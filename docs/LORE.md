@@ -52,6 +52,28 @@ prodded and then does not stop. Tarn Wights are the frozen dead of the tarns, ga
 shrouded things trailing cold mist, that climb out of the ice at dusk; what they
 leave behind is sold as marrow and nobody in Highgate asks what it is for.
 
+Mob ecology: each zone has a natural population (the spawn counts) and a ceiling of
+about one and a half times that. When no hero has hunted a zone for a couple of hours
+its creatures breed toward the ceiling and drift from their dens toward the roads, so
+travellers notice an unhunted zone before they enter it; they never cross a zone's
+border. Hunters thin the herd back to its natural size. Spillover keeps clear of the
+Thornvale roads nearest the city gates.
+
+## Rare elites
+Named beasts, one per zone and never two at once. They appear without warning (the
+Chronicle says "Rumours spread of ... stalking ..."), roam the whole zone instead of a
+den, ignore prey more than two levels beneath them and the already wounded, mend
+slowly, and are far tougher than their kin (about twice the hide, half again the bite).
+A slayer always carries off one of the zone's epics, and the Chronicle names both. Once
+one falls, no new elite stalks that zone for at least ten hours.
+
+| Elite | Zone | Level | Kin | Notes |
+| --- | --- | --- | --- | --- |
+| Hollowfang, the Old Wolf of Thornvale | Thornvale | 7 | Timber Wolf | Grey-muzzled and one-eared; has outlived three packs and most of the hunters sent after him. |
+| Old Mother Sedge, Matriarch of the Fen | Mirefen | 12 | Fen Lurker | Her nests clog the reed beds; every lurker in the fen is one of hers. |
+| Scoriath, the Drake of the High Pass | Cinderpass | 17 | Ash Drake | Scales black as cooled slag; roosts on the crags above the lair road. |
+| Ulfryn Coldmarrow, the Tarn-King | Hoarfell | 22 | Tarn Wight | Crowned wight of the deepest tarn; the lesser wights climb out of the ice in his wake. |
+
 ## Epic items
 - Thornvale: Fang of the Old Wood, Thornheart Longbow, Bramblecrown
 - Mirefen: Mosswoven Cloak, Bogwalker Boots, Fenlight Lantern

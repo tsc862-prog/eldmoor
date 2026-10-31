@@ -76,6 +76,7 @@ export function createRenderer(cv,screenEl,terrain){
       if(CRYPT.group&&CRYPT.group.phase==='inside')drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,41*T-2,'#9ae0b8',14);
       for(const a of agents){if(a.hidden)continue;if(Math.abs(a.x*T-cam.camX)>vw/2+20||Math.abs(a.y*T-cam.camY)>vh/2+20)continue;
         const dead=a.state==='dead';drawText((dead?'† ':'')+a.name,a.x*T,a.y*T-9.5,a===sel?'#f2c14e':dead?'#9a98ac':FAC[a.fac].color,14)}
+      for(const m of mobs){if(!m.elite||!m.alive||Math.abs(m.x*T-cam.camX)>vw/2+20||Math.abs(m.y*T-cam.camY)>vh/2+20)continue;drawText(m.name,m.x*T,m.y*T-9.5,'#ffb060',14)} // named elite nameplate
       if(boss.alive)drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-12,'#ffb060',15);
       for(const p of fx)if(p.type==='txt'){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
   }
