@@ -1,5 +1,6 @@
 // Heroes: stats, quests, movement, combat, death and the per-hero state
-// machine (town, travel, hunt, fight, return, ghost, duel, assist, dungeon, raid).
+// machine (town, travel, hunt, follow, fight, return, ghost, duel, assist, regroup, dungeon, raid).
+// Party behaviour (forming, following, joining fights, shared XP) lives in party.js.
 // Owned by ai-designer (behaviour) and character-builder (stat formulas).
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {SPEED} from '../world/tiles.js';
@@ -11,6 +12,7 @@ import {EPICS,GOODS,price} from '../data/items.js';
 import {S,clockStr} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
+import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerClear} from './party.js';
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
@@ -23,7 +25,7 @@ export function newQuest(a){const z=zoneFor(a.lvl);const opts=Object.keys(MOBS).
 export function makeHero(f,cls,guild,wait){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
     bag:[],kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
-    wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0};
+    wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0};
   newQuest(a);a.hp=maxHp(a);
   const c=CITY[f];a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
   S.agents.push(a);return a}
@@ -40,8 +42,8 @@ export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
 export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.')}
 
 export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a.kills++;
-  const diff=m.lvl-a.lvl;gainXp(a,(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1));
-  const M=MOBS[m.type];if(rnd()<.72)a.bag.push(M.loot);a.gold+=Math.max(1,Math.round(m.lvl*.6*rnd()));
+  const diff=m.lvl-a.lvl,xp=(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1);gainXp(a,xp);
+  const M=MOBS[m.type];shareKill(a,m,xp);if(rnd()<.72)a.bag.push(M.loot);a.gold+=Math.max(1,Math.round(m.lvl*.6*rnd()));
   if(rnd()<.006)getEpic(a,pickA(EPICS[M.z]),'a '+M.name);
   if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need)a.quest.have++;
   a.target=null;a.state='hunt'}
@@ -49,6 +51,7 @@ export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a
 // Permanent death: graveyard entry, a recruit is scheduled, old graves recycled.
 export function fall(a,cause){
   a.deaths++;a.state='dead';a.cause=cause;a.diedAt=clockStr();a.hp=0;a.target=null;a.raid=false;a.moving=false;a.hidden=false;a.dest=null;
+  if(a.party)disband(a.party);
   for(const m of S.mobs)if(m.target===a)m.target=null;
   S.facStats[a.fac].fallen++;
   S.fallen.unshift({name:a.name,fac:a.fac,lvl:a.lvl,cls:a.cls,cause,t:a.diedAt});if(S.fallen.length>15)S.fallen.pop();
@@ -93,45 +96,60 @@ export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a
   if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');a.quest=null}
   if(!a.quest||MOBS[a.quest.type].z!==zoneFor(a.lvl))newQuest(a)}
 
-export function findMob(a){let best=null,bs=1e9;
+export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=L?5:9,lq=L&&L.quest?L.quest.type:null;
   for(const m of S.mobs){if(!m.alive||(m.target&&m.target!==a)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+1)continue;
-    const d=dist(a,m);if(d>9)continue;const s=d-(a.quest&&a.quest.type===m.type?4:0);if(s<bs){bs=s;best=m}}return best}
+    const d=dist(a,m);if(d>range)continue;const s=d-(a.quest&&a.quest.type===m.type||m.type===lq?4:0);if(s<bs){bs=s;best=m}}return best}
 
-// Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20%.
+// Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
 export function updAgent(a,dt){
   a.cd-=dt;a.healCd-=dt;const mh=maxHp(a),c=CITY[a.fac],boss=S.boss;
   switch(a.state){
   case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
     if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;
       if(a.townStep===0){sellAndShop(a);a.townStep=1;a.wait=1+rnd()*1.5}
-      else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2}
-      else{a.zone=zoneFor(a.lvl);a.state='travel';a.dest=zonePoint(a.zone)}}break}
-  case 'travel':
+      else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2;a.linger=a.cls==='Warrior'?4+rnd()*2:2;seekParty(a)}
+      else{if(a.linger>0&&!a.party&&seekParty(a)==='wait'){a.linger--;a.wait=1;break}
+        if(a.linger>0&&a.party&&partyMates(a).some(b=>b.state==='town'&&b.townStep<2)){a.linger--;a.wait=1;break}
+        a.zone=a.party?a.party.zone:zoneFor(a.lvl);a.state='travel';a.dest=zonePoint(a.zone)}}break}
+  case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
-    if(moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state='hunt';a.dest=null}break;
-  case 'hunt':{a.hp=Math.min(mh,a.hp+mh*.025*dt);
-    if(a.hp<mh*.45||a.bag.length>=8||(a.quest&&a.quest.have>=a.quest.need)){goHome(a);break}
+    if(!a.dest)a.dest=zonePoint(a.zone);if(moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state='hunt';a.dest=null}break}
+  case 'hunt':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
+    a.hp=Math.min(mh,a.hp+mh*.025*dt);const mates=partyMates(a);
+    if(a.party)priestHeal(a,mates);
+    if(a.hp<mh*.45||a.bag.length>=8||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.hp<maxHp(b)*.3)){goHome(a);break}
+    if(steerClear(a,dt,moveTo))break;
     a.scan-=dt;if(a.scan<=0){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
     if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
+  // Party member at the leader's side: heals, picks off nearby mobs, joins the leader's fights (party tick),
+  // hangs back when hurt. Drops to solo hunting (or heads home) the moment there is no leader to follow.
+  case 'follow':{const L=leaderOf(a);if(!L){a.state=a.party&&a.party.home?'return':'hunt';a.dest=null;break}
+    a.hp=Math.min(mh,a.hp+mh*.025*dt);priestHeal(a,a.party.mem);
+    a.scan-=dt;if(a.scan<=0&&a.hp>=mh*.45&&L.state!=='return'){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
+    if(dist(a,L)>2){a.dest=followPt(a);moveTo(a,a.dest.x,a.dest.y,dt,L.state==='return'?2.5:2.1)}else{a.dest=null;a.moving=false}break}
   case 'fight':{const m=a.target;if(!m||!m.alive){a.state='hunt';a.target=null;break}
     const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
     if(d>r){moveTo(a,m.x,m.y,dt,2.4);break}a.moving=false;
     if(!m.target)m.target=a;
-    priestHeal(a,[a]);
+    priestHeal(a,a.party?a.party.mem:[a]);
     if(a.cd<=0){strike(a,m);a.cd=1.1}
     if(a.state==='fight'&&a.hp<mh*.22&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
     break}
-  case 'return':if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;
+  case 'regroup':{a.regT-=dt;if(a.regT<=0||!a.dest||moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state=a.regNext==='return'?'return':leaderOf(a)?'follow':'hunt';a.dest=null;a.regNext=null}break}
+  case 'return':if(steerClear(a,dt,moveTo))break;if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;
   case 'ghost':if(moveTo(a,c.grave.x,c.grave.y,dt,4)){a.state='town';a.hp=mh*.5;a.townStep=0;a.wait=2;pop(a.x,a.y-.6,'REVIVED','#9ad0ff')}break;
   case 'duel':{const b=a.target;if(!b||b.state!=='duel'||b.target!==a){a.state='hunt';a.target=null;break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
     if(d>r){moveTo(a,b.x,b.y,dt,2.4);break}a.moving=false;priestHeal(a,[a]);
     if(a.cd<=0){strike(a,b);a.cd=1.1}
-    if(a.state==='duel'&&a.hp<mh*.2&&rnd()<dt*.5){b.state='hunt';b.target=null;goHome(a);
+    // Caution: break off at 20% HP, or at 50% when outnumbered (helpers on you, none on your foe).
+    const outn=S.agents.some(g=>g.state==='assist'&&g.target===a)&&!S.agents.some(g=>g.state==='assist'&&g.target===b);
+    if(a.state==='duel'&&a.hp<mh*(outn?.5:.2)&&rnd()<dt*(outn?1.5:.5)){b.state='hunt';b.target=null;regroup(a,b,'return',3);
       if(rnd()<.5)log(a,' fled from ',b,' in ',ZONES[zoneAt(a.x,a.y)],'.')}
     break}
-  case 'assist':{const b=a.target;if(!b||b.state!=='duel'){a.state='hunt';a.target=null;break}
+  case 'assist':{const b=a.target;if(!b||b.state!=='duel'){regroup(a,b&&b.state!=='dead'?b:null,a.regNext);break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;if(d>r){moveTo(a,b.x,b.y,dt,2.8);break}a.moving=false;
+    if(b.target&&b.target.kind==='hero')priestHeal(a,[b.target,a,...partyMates(a)]);
     if(a.cd<=0){strike(a,b);a.cd=1.1}break}
   case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx;
     moveTo(a,CRYPT.x+(k%3-1)*.9,CRYPT.y+.6+Math.floor(k/3)*.7,dt,2.6);break}

@@ -9,6 +9,7 @@ export const S={
   fx:[],          // transient effects: damage text, bolts, boss rings
   fallen:[],      // graveyard entries, newest first, capped at 15
   recruits:[],    // pending replacements for the dead
+  parties:[],     // hero parties {id, fac, leader, mem, zone, home}; each member has a.party
   chronicle:[],   // log entries {t, parts}, newest first, capped at 90
   boss:{kind:'boss',name:'Kragmaw',x:LAIR.x,y:LAIR.y+.6,lvl:18,maxhp:9000,hp:9000,alive:true,respawn:0,cd:0,breath:7,dmg:[0,0],face:-1},
   GUILDS:GUILD_DEFS.map(g=>({...g,clears:0,wipes:0,bosses:0})),

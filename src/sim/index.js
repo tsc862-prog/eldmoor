@@ -7,6 +7,7 @@ import {S} from './state.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
 import {makeHero,updAgent} from './heroes.js';
+import {partyTick} from './party.js';
 import {spawnAll,updMob} from './mobs.js';
 import {updBoss,raidCheck} from './boss.js';
 import {pvpCheck} from './pvp.js';
@@ -32,6 +33,6 @@ export function init(){
 export function step(dt){S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,r.guild,1);if(rnd()<.5)log('A new ',r.cls.toLowerCase(),', ',a,', joins ',{t:'<'+r.guild.tag+'> '+r.guild.name,c:'f'+r.fac},' in ',CITY[r.fac].name,'.')}
-  for(const a of S.agents)updAgent(a,dt);for(const m of S.mobs)updMob(m,dt);
+  for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   updFx(dt)}
