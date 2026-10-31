@@ -41,6 +41,7 @@ export function renderHero(){const el=$('hero'),a=cam.sel;
   const add=(cls,html)=>{const d=document.createElement('div');d.className=cls;if(html instanceof Node)d.append(html);else d.textContent=html;el.append(d);return d};
   add('nm f'+a.fac,a.name);
   add('meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · <${a.guild.tag}> ${a.guild.name}`);
+  add('meta','Traits: '+(a.traits||[]).join(', '));
   add('doing',doing(a));
   add('dm','HP');const hp=add('meter hp','');const i1=document.createElement('i');i1.style.width=clamp(a.hp/mh*100,0,100)+'%';hp.append(i1);
   add('dm','XP');const xp=add('meter xp','');const i2=document.createElement('i');i2.style.width=(a.lvl>=20?100:a.xp/xpNeed(a.lvl)*100)+'%';xp.append(i2);
