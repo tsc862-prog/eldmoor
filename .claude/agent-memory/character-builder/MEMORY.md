@@ -1,0 +1,1 @@
+- [Traits roster decisions](project_traits_roster.md) — the 8 traits, modifier keys incl. `mercy`, class leanings, and the 120-min death variance to expect when gating balance

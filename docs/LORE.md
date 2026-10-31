@@ -18,6 +18,25 @@ are remembered in the Graveyard and the Chronicle.
 ## Classes
 Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), Rogue (melee, crits).
 
+## Traits
+Every hero is born with one or two of these and keeps them for life. Rogues lean
+Reckless and Greedy, Priests Cautious, Loyal and Pious, Warriors Loyal and Reckless,
+Mages Cautious and Boastful, Hunters Loner and Greedy. Nobody is both Reckless and
+Cautious, or both Loyal and a Loner. About one recruit in three has their nature noted
+in the Chronicle on arrival ("Thrakash is reckless and greedy; Grimhold will remember
+that."), and the hero card lists them.
+
+| Trait | Description | Effect |
+| --- | --- | --- |
+| Reckless | Fights on when wiser heads would run, and calls it courage. | Leaves the hunt at 32% HP instead of 45%, flees a fight or duel at 13% instead of 22%/20%, half again as likely to start a duel. |
+| Cautious | Counts the exits before the enemies, and leaves while both are still open. | Heads home at 56% HP, flees fights at 31% and duels at 28%, 40% less likely to pick a duel. |
+| Greedy | Never comes home while the bag has room, and buys gear only when the gold starts to itch. | Hunts until the bag holds 12 goods instead of 8; stops buying gear a little below the usual gear ceiling. |
+| Loyal | Drops whatever they are doing when a guildmate shouts. | 60% more likely to rush to a guildmate's duel. |
+| Loner | Leaves the gate alone and likes it that way. | Never forms or joins a party; slightly more likely to duel. |
+| Vengeful | Keeps a list. Everyone on it is on it for good. | 20% more likely to duel and to answer a guildmate's call. |
+| Pious | Tends the wounded before the wounds are grave, and does not stay to be martyred. | A Priest with it heals allies from 69% HP instead of 55%; flees a little earlier; 30% more likely to assist. |
+| Boastful | Picks fights for the story, and loots for the audience. | 20% more likely to duel; hunts a little longer before selling. |
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |
@@ -25,6 +44,9 @@ Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), 
 | Mirefen | 6-10 | Swamps and mud flats east of the river. Contested; most PvP happens here. |
 | Cinderpass | 11-15 | Volcanic rock and peaks in the east. |
 | Hoarfell | 16+ | Wind-scoured snowfields and frozen tarns north of the fen and the pass. |
+
+## Weather
+Every zone has its own sky, and it turns every one to three hours. Thornvale gets drizzle and rain. Mirefen's fogs roll in off the fen and hide hunter and hunted alike. Cinderpass sees grey ashfall and, now and then, a choking ash storm. Hoarfell's snows thicken into squalls that close the high ground. Rain and snow slow travel, fog and storms shorten sight, and ash storms and squalls drive hunters back to town until they blow over.
 
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.

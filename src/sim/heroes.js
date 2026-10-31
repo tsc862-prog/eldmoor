@@ -7,6 +7,7 @@ import {SPEED} from '../world/tiles.js';
 import {CITY,CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {FAC,genName} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
+import {rollTraits,tm,traitPhrase} from '../data/traits.js';
 import {MOBS} from '../data/mobs.js';
 import {EPICS,GOODS,price} from '../data/items.js';
 import {S,clockStr} from './state.js';
@@ -14,6 +15,7 @@ import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
 import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerClear} from './party.js';
 import {say,spotMob} from './chat.js';
+import {speedMul,sightMul,isStorm} from './weather.js';
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
@@ -27,12 +29,15 @@ export function makeHero(f,cls,guild,wait){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
     bag:[],kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
     wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0};
-  newQuest(a);a.hp=maxHp(a);
+  a.traits=rollTraits(cls);newQuest(a);a.hp=maxHp(a);
   const c=CITY[f];a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
-  S.agents.push(a);return a}
+  S.agents.push(a);
+  // Trait reveal for recruits (not the opening roster): "Thrakash is reckless and greedy; Grimhold will remember that."
+  if(S.gameMin>0&&rnd()<.3)log(a,' is ',{t:traitPhrase(a),c:'gd'},'; ',c.name,' will remember that.');
+  return a}
 
 export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);if(d<.12){e.moving=false;return true}
-  const st=sp*SPEED[tileAt(e.x,e.y)]*dt;e.moving=true;if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
+  const st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt;e.moving=true;if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
   if(st>=d){e.x=x;e.y=y;e.moving=false;return true}e.x+=dx/d*st;e.y+=dy/d*st;return false}
 
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
@@ -87,7 +92,7 @@ export function strike(a,t){
   if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}}
 
 export function priestHeal(a,list){if(!CLS[a.cls].heal||a.healCd>0)return;let low=null;
-  for(const b of list){if(b.state==='ghost'||dist(a,b)>4)continue;if(b.hp<maxHp(b)*.55&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
+  for(const b of list){if(b.state==='ghost'||dist(a,b)>4)continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
   if(low){const h=Math.round(20+a.lvl*5);low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5}}
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
@@ -96,18 +101,19 @@ export function sellAndShop(a){const c=CITY[a.fac];let tot=0,n=0;
   for(const it of a.bag){if(GOODS[it]){tot+=price(it);GOODS[it].supply++;n++}}a.bag=[];a.gold+=tot;
   if(n>=6&&rnd()<.35)log(a,' sold ',String(n),' goods at the ',c.name,' auction house for ',gold(tot+'g'),'.');
   const cost=Math.round(18*Math.pow(a.gear+1,1.55));
-  if(a.gold>=cost&&a.gear<a.lvl+2){a.gold-=cost;a.gear++;a.hp=maxHp(a);if(a.gear%3===0)log(a,' bought new gear (gear score ',String(a.gear),') for ',gold(cost+'g'),'.')}}
+  if(a.gold>=cost&&a.gear<a.lvl+2*tm(a,'thrift')){a.gold-=cost;a.gear++;a.hp=maxHp(a);if(a.gear%3===0)log(a,' bought new gear (gear score ',String(a.gear),') for ',gold(cost+'g'),'.')}}
 
 export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
     say(a,'quest',{mob:M.pl});
   if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');a.quest=null}
   if(!a.quest||MOBS[a.quest.type].z!==zoneFor(a.lvl))newQuest(a)}
 
-export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=L?5:9,lq=L&&L.quest?L.quest.type:null;
+export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9)*sightMul(a.zone),lq=L&&L.quest?L.quest.type:null;
   for(const m of S.mobs){if(!m.alive||(m.target&&m.target!==a)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+1)continue;
     const d=dist(a,m);if(d>range)continue;const s=d-(a.quest&&a.quest.type===m.type||m.type===lq?4:0);if(s<bs){bs=s;best=m}}return best}
 
 // Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
+// Personality traits (data/traits.js) scale these via tm(a,key): Reckless lowers retreat/flee, Cautious raises them, etc.
 export function updAgent(a,dt){
   a.cd-=dt;a.healCd-=dt;const mh=maxHp(a),c=CITY[a.fac],boss=S.boss;
   switch(a.state){
@@ -126,7 +132,7 @@ export function updAgent(a,dt){
   case 'hunt':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     a.hp=Math.min(mh,a.hp+mh*.025*dt);const mates=partyMates(a);
     if(a.party)priestHeal(a,mates);
-    if(a.hp<mh*.45||a.bag.length>=8||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.hp<maxHp(b)*.3)){goHome(a);break}
+    if(a.hp<mh*.45*tm(a,'retreat')||a.bag.length>=Math.round(8*tm(a,'greed'))||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.hp<maxHp(b)*.3)||isStorm(a.zone)){goHome(a);break}
     if(steerClear(a,dt,moveTo))break;
     a.scan-=dt;if(a.scan<=0){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
     if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
@@ -143,7 +149,7 @@ export function updAgent(a,dt){
     if(!m.target)m.target=a;
     priestHeal(a,a.party?a.party.mem:[a]);
     if(a.cd<=0){strike(a,m);a.cd=1.1}
-    if(a.state==='fight'&&a.hp<mh*.22&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
+    if(a.state==='fight'&&a.hp<mh*.22*tm(a,'flee')&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
     if(a.state==='return')say(a,'flee',{mob:MOBS[m.type].name});
     break}
   case 'regroup':{a.regT-=dt;if(a.regT<=0||!a.dest||moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state=a.regNext==='return'?'return':leaderOf(a)?'follow':'hunt';a.dest=null;a.regNext=null}break}
@@ -155,7 +161,7 @@ export function updAgent(a,dt){
     if(a.cd<=0){strike(a,b);a.cd=1.1}
     // Caution: break off at 20% HP, or at 50% when outnumbered (helpers on you, none on your foe).
     const outn=S.agents.some(g=>g.state==='assist'&&g.target===a)&&!S.agents.some(g=>g.state==='assist'&&g.target===b);
-    if(a.state==='duel'&&a.hp<mh*(outn?.5:.2)&&rnd()<dt*(outn?1.5:.5)){b.state='hunt';b.target=null;regroup(a,b,'return',3);
+    if(a.state==='duel'&&a.hp<mh*(outn?.5:.2*tm(a,'flee'))&&rnd()<dt*(outn?1.5:.5)){b.state='hunt';b.target=null;regroup(a,b,'return',3);
       if(rnd()<.5)log(a,' fled from ',b,' in ',ZONES[zoneAt(a.x,a.y)],'.')}
     break}
   case 'assist':{const b=a.target;if(!b||b.state!=='duel'){regroup(a,b&&b.state!=='dead'?b:null,a.regNext);break}

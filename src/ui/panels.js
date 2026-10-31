@@ -7,6 +7,7 @@ import {MOBS} from '../data/mobs.js';
 import {GOODS,price} from '../data/items.js';
 import {S,clockStr,maxHp,xpNeed,onLog,onMarketTick} from '../sim/index.js';
 import {cam} from '../render/draw.js';
+import {weatherName} from '../sim/weather.js';
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -40,10 +41,12 @@ export function renderHero(){const el=$('hero'),a=cam.sel;
   const add=(cls,html)=>{const d=document.createElement('div');d.className=cls;if(html instanceof Node)d.append(html);else d.textContent=html;el.append(d);return d};
   add('nm f'+a.fac,a.name);
   add('meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · <${a.guild.tag}> ${a.guild.name}`);
+  add('meta','Traits: '+(a.traits||[]).join(', '));
   add('doing',doing(a));
   add('dm','HP');const hp=add('meter hp','');const i1=document.createElement('i');i1.style.width=clamp(a.hp/mh*100,0,100)+'%';hp.append(i1);
   add('dm','XP');const xp=add('meter xp','');const i2=document.createElement('i');i2.style.width=(a.lvl>=20?100:a.xp/xpNeed(a.lvl)*100)+'%';xp.append(i2);
   add('meta','Quest: '+q);
+  add('meta','Weather: '+weatherName(a.zone)+' in '+ZONES[a.zone]);
   if(a.party){const d=add('meta','');d.append('Party: ');a.party.mem.forEach((b,i)=>{const s=document.createElement('span');s.className='f'+b.fac;s.textContent=b.name+(b===a.party.leader?' (leader)':'');d.append(s);if(i<a.party.mem.length-1)d.append(', ')})}
   const nem=Object.entries(a.nemesis).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const b=S.agents.find(x=>x.id==nem[0]);const d=add('meta','');d.append('Nemesis: ');const s=document.createElement('span');s.className='f'+b.fac;s.textContent=b.name;d.append(s,` (killed guildmate ${nem[1]})`)}

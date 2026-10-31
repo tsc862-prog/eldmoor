@@ -11,6 +11,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {pop} from './effects.js';
 import {moveTo,agentDie} from './heroes.js';
+import {sightMul} from './weather.js';
 
 // Per-zone target population (today's COUNTS total), a COUNTS-weighted species list for extra
 // spawns, and the road tiles mobs may drift toward.
@@ -77,4 +78,4 @@ export function updMob(m,dt){
       if(m.elite){if(a.lvl<m.lvl-2||a.hp<.9*(CLS[a.cls].hp+a.lvl*14+a.gear*6+a.epics.length*10))continue; // elites ignore small prey and the already wounded
         if(dist(a,m)<2.2&&rnd()<.5){m.target=a;a.state='fight';a.target=m;a.dest=null;break}continue}
       if(m.lvl<a.lvl-3)continue;
-      if(dist(a,m)<1.3&&rnd()<.3){m.target=a;a.state='fight';a.target=m;a.dest=null;break}}}}
+      if(dist(a,m)<1.3*sightMul(z)&&rnd()<.3){m.target=a;a.state='fight';a.target=m;a.dest=null;break}}}}
