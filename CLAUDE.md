@@ -14,6 +14,12 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   recruit of the same class and guild replaces them.
 - **No build step required for the art.** All terrain and sprites are generated
   in code (pixel arrays and procedural textures). No image assets yet.
+- **Built to scale.** The world will grow 20-30x with several races and home
+  towns per faction (see the scaling epic on GitHub). Never hard-code the number
+  of zones, factions, cities or races; loop over the tables. Never assume a zone
+  is a vertical band or where it sits on the map; ask the world module
+  (`zoneAt`, `zoneFor`, `CITY`). Keep entity scans in one helper each so they can
+  move to a spatial index.
 - After any change to simulation logic, run `npm run sim` (and `npm run sim -- 120`
   for balance work) and check the summary still looks sane.
 
