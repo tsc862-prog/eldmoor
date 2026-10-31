@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Eldmoor</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <h1>ELDMOOR</h1>
+      <div class="sub">A living world of 28 heroes in four guilds. They quest, trade, hold grudges, run dungeons and raid on their own. Hardcore rules: one life each. You watch.</div>
+    </div>
+    <div class="clock" id="clock">Day 1 · 15:00</div>
+  </header>
+
+  <div class="main">
+    <div class="col">
+      <div class="screen" id="screen">
+        <canvas id="cv" aria-label="Map of Eldmoor showing heroes and monsters"></canvas>
+        <div class="hint" id="hint">Tap a hero to follow</div>
+      </div>
+      <div class="bar">
+        <div class="group" role="group" aria-label="Speed">
+          <span class="lbl">Speed</span>
+          <button id="sp0" data-sp="0">Pause</button>
+          <button id="sp1" data-sp="1" aria-pressed="true">1×</button>
+          <button id="sp3" data-sp="3">3×</button>
+          <button id="sp8" data-sp="8">8×</button>
+        </div>
+        <div class="group" role="group" aria-label="View">
+          <span class="lbl">View</span>
+          <button id="vMap" aria-pressed="true">Whole map</button>
+          <button id="vFol">Follow</button>
+          <button id="vNext">Next hero</button>
+        </div>
+      </div>
+      <section class="panel" aria-live="off">
+        <h2>Hero</h2>
+        <div class="hero" id="hero"></div>
+      </section>
+    </div>
+
+    <aside class="col">
+      <section class="panel">
+        <h2>Factions</h2>
+        <div class="facs" id="facs"></div>
+      </section>
+      <section class="panel">
+        <h2>Chronicle</h2>
+        <ul class="log" id="log"></ul>
+      </section>
+      <section class="panel">
+        <h2>Graveyard</h2>
+        <ul class="log" id="fallen" style="max-height:220px"></ul>
+      </section>
+      <section class="panel">
+        <h2>Guilds</h2>
+        <table class="ah"><thead><tr><td class="dm">Guild</td><td class="dm">Crypt</td><td class="dm">Score</td></tr></thead><tbody id="guilds"></tbody></table>
+      </section>
+      <section class="panel">
+        <h2>Top heroes</h2>
+        <ul class="tops" id="tops"></ul>
+      </section>
+      <section class="panel">
+        <h2>Auction house</h2>
+        <table class="ah"><tbody id="ah"></tbody></table>
+      </section>
+    </aside>
+  </div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
