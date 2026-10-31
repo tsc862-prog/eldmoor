@@ -71,40 +71,56 @@ other. The rules:
 
 ## Layout
 
-- `index.html`: page shell and side panels.
-- `src/style.css`: UI styling. Dark single-theme arcade look; Press Start 2P for
-  labels, VT323 for body text.
-- `src/main.js`: the whole game today, one module with section headers:
-  - **world**: 80x50 tile map, zones (Thornvale 1-5, Mirefen 6-10, Cinderpass
-    11+), cities Highgate (Concord) and Grimhold (Warband), roads, river, the
-    Sunken Crypt entrance, Kragmaw's lava lair.
-  - **terrain render**: per-pixel procedural tile textures into an offscreen canvas.
-  - **sprites**: pixel-string sprites, cached canvases; `heroSprite` composes
-    faction color, class gear and skin.
-  - **entities**: data tables (MOBS, CLS, GOODS, EPICS), heroes, mobs, boss, guilds.
-  - **chronicle**: `log(...parts)` writes the event feed. Parts are strings,
-    heroes (auto-colored) or `{t, c}` spans.
-  - **simulation**: hero state machine (`town`, `travel`, `hunt`, `fight`,
-    `return`, `duel`, `assist`, `raid`, `dungeon`, `dead`), mob AI, boss fight,
-    raid muster, PvP and nemesis checks, dungeon runs, auction-house prices,
-    recruits. `step(dt)` advances everything; 1 real second at 1x = 6 game minutes.
-  - **rendering**: camera (whole map / follow), entities sorted by y, effects,
-    day/night overlay with torch light, labels at constant CSS size.
-  - **UI**: speed and view controls, hero card, factions, guilds, graveyard, top
-    heroes, auction house.
-- `scripts/headless.mjs`: DOM stubs + fast-forward harness; reads state from
-  `globalThis.__eldmoor` (set inside `step`).
+- `index.html`: page shell and side panels. `src/style.css`: dark single-theme
+  arcade look; Press Start 2P for labels, VT323 for body text.
+- `src/main.js`: browser entry only. Calls `init()`, builds the terrain canvas,
+  creates the renderer and panels, runs the frame loop (1 real second at 1x =
+  6 game minutes).
+- `src/core/rng.js`: random helpers, hash, value noise, fbm.
+- `src/world/` (world-builder): `tiles.js` map size, tile ids, speeds;
+  `map.js` the 80x50 tile and zone arrays, zone boundaries (river, `z2X`,
+  `hoarY`), cities Highgate (Concord) and Grimhold (Warband), roads, the
+  Sunken Crypt entrance, Kragmaw's lair, the `zoneFor` level ladder
+  (Thornvale 1-5, Mirefen 6-10, Cinderpass 11-15, Hoarfell 16+), `ZPTS`
+  spawn points, lights and map labels.
+- `src/data/` (pure tables, no logic): `factions.js` FAC, guild roster, names
+  (character-builder); `classes.js` CLS (character-builder); `mobs.js` MOBS and
+  COUNTS (creature-designer); `items.js` EPICS, BOSS_EPICS, DG_EPICS, GOODS and
+  `price` (creature-designer).
+- `src/sim/` (DOM-free; ai-designer owns behaviour, creature-designer owns boss
+  numbers): `state.js` the single `S` state object and game clock;
+  `chronicle.js` `log(...parts)` and `onLog`; `effects.js` pop/bolt;
+  `heroes.js` stat formulas, quests, movement, combat, death and the `updAgent`
+  state machine (`town`, `travel`, `hunt`, `fight`, `return`, `ghost`, `duel`,
+  `assist`, `dungeon`, `raid`, `dead`); `mobs.js` spawning and mob AI;
+  `boss.js` the Kragmaw fight and raid muster; `pvp.js` duels, nemesis hunts,
+  assists; `dungeon.js` Sunken Crypt runs; `market.js` auction-house prices;
+  `index.js` `init()` and `step(dt)`.
+- `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
+  `terrain.js` per-pixel tile textures into an offscreen canvas;
+  `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
+  overlay with torch light, labels at constant CSS size.
+- `src/ui/`: `panels.js` hero card, factions, chronicle, graveyard, guilds,
+  top heroes, auction house, clock; `controls.js` speed, view and selection.
+- `scripts/headless.mjs`: imports `src/sim/index.js` directly (no DOM stubs),
+  steps the world and prints a summary from `S`.
 
-## Tuning knobs (in main.js)
+Data flow: sim writes `S` and emits chronicle and market events; render reads
+`S` and owns `cam` (view mode and selected hero); UI reads both. `S.pinned` is
+the followed hero, whose grave is never recycled. Sim modules never import from
+render or ui, so the headless harness stays stub-free.
 
-- XP curve `xpNeed`, hero `maxHp`/`atkOf`, class table `CLS`.
-- Mob stats: `maxhp: 25 + lvl*16`, hit `3 + lvl*2`.
-- Boss: `boss.maxhp`, hit 55-85 every 1.6s, breath every 7s; raids need 4+ heroes at level 12+.
-- Dungeon success: `pw` formula in `dungeonCheck`.
-- PvP: duel chance and range in `pvpCheck`.
-- Caution: hunt retreat at 45% HP, flee at 22%.
+## Tuning knobs
 
-## Known state (end of the claude.ai prototype)
+- XP curve `xpNeed`, hero `maxHp`/`atkOf`, caution thresholds (hunt retreat at
+  45% HP, flee at 22%): `src/sim/heroes.js`. Class table `CLS`: `src/data/classes.js`.
+- Mob stats (`maxhp: 25 + lvl*16`, hit `3 + lvl*2`), aggro and wander: `src/sim/mobs.js`.
+- Boss: `maxhp` 9000 in `src/sim/state.js`; hit 55-85 every 1.6s, breath every
+  7s, raids need 4+ heroes at level 12+: `src/sim/boss.js`.
+- Dungeon success: the `pw` formula in `src/sim/dungeon.js`.
+- PvP: duel chance, range and level gap in `src/sim/pvp.js`.
+
+## Known state
 
 - In a 60-minute headless run from level 1, about 60 heroes die (roughly 60% PvP).
   A few veterans reach 14-16. No raid has killed Kragmaw yet; the boss is likely
@@ -113,8 +129,8 @@ other. The rules:
 
 ## Roadmap ideas
 
-1. Split `main.js` into modules (`world`, `sprites`, `sim/*`, `render`, `ui`) with
-   a DOM-free sim core, so the headless harness no longer needs stubs.
+1. Done: `main.js` is split into `world`, `data`, `sim`, `render`, `ui` with a
+   DOM-free sim core.
 2. Save and load the world (localStorage or file export) so it persists.
 3. Rebalance hardcore: fewer pointless PvP deaths, a winnable Kragmaw.
 4. More world: a second dungeon, rare elite mobs, world events, weather.

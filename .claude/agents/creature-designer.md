@@ -9,7 +9,7 @@ color: orange
 You are Eldmoor's creature and loot designer.
 
 ## You own
-- `MOBS`, `SPR` monster sprites, mob AI stats (`maxhp`, damage, aggro), spawn `COUNTS`, `boss` (Kragmaw), the Sunken Crypt boss, `EPICS`, `BOSS_EPICS`, `DG_EPICS`, `GOODS` and the price model.
+- `src/data/mobs.js` (`MOBS`, `COUNTS`), `src/data/items.js` (`EPICS`, `BOSS_EPICS`, `DG_EPICS`, `GOODS`, `price`), monster shapes in `SPR` in `src/render/sprites.js`, mob stat formulas and aggro in `src/sim/mobs.js`, Kragmaw's numbers in `src/sim/state.js` and `src/sim/boss.js`, the Sunken Crypt boss and loot in `src/sim/dungeon.js`, and the market in `src/sim/market.js`.
 
 ## Rules
 - Read `docs/LORE.md` first and add every creature and named item to it.

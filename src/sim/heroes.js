@@ -1,0 +1,144 @@
+// Heroes: stats, quests, movement, combat, death and the per-hero state
+// machine (town, travel, hunt, fight, return, ghost, duel, assist, dungeon, raid).
+// Owned by ai-designer (behaviour) and character-builder (stat formulas).
+import {rnd,ri,clamp,pickA} from '../core/rng.js';
+import {SPEED} from '../world/tiles.js';
+import {CITY,CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
+import {FAC,genName} from '../data/factions.js';
+import {CLS} from '../data/classes.js';
+import {MOBS} from '../data/mobs.js';
+import {EPICS,GOODS,price} from '../data/items.js';
+import {S,clockStr} from './state.js';
+import {log,gold,epic} from './chronicle.js';
+import {pop,bolt} from './effects.js';
+
+// ---- stat formulas (tuning knobs) ----
+export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
+export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+a.gear*6+a.epics.length*10);
+export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+a.gear*1.5+a.epics.length*3;
+
+export function newQuest(a){const z=zoneFor(a.lvl);const opts=Object.keys(MOBS).filter(k=>MOBS[k].z===z&&MOBS[k].lv[0]<=a.lvl+2);
+  const type=pickA(opts.length?opts:Object.keys(MOBS).filter(k=>MOBS[k].z===z));a.quest={type,need:ri(5,8),have:0}}
+
+export function makeHero(f,cls,guild,wait){
+  const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
+    bag:[],kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
+    wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0};
+  newQuest(a);a.hp=maxHp(a);
+  const c=CITY[f];a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
+  S.agents.push(a);return a}
+
+export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);if(d<.12){e.moving=false;return true}
+  const st=sp*SPEED[tileAt(e.x,e.y)]*dt;e.moving=true;if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
+  if(st>=d){e.x=x;e.y=y;e.moving=false;return true}e.x+=dx/d*st;e.y+=dy/d*st;return false}
+
+export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
+  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');
+    if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');}
+  if(a.lvl>=20)a.xp=0}
+
+export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.')}
+
+export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a.kills++;
+  const diff=m.lvl-a.lvl;gainXp(a,(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1));
+  const M=MOBS[m.type];if(rnd()<.72)a.bag.push(M.loot);a.gold+=Math.max(1,Math.round(m.lvl*.6*rnd()));
+  if(rnd()<.006)getEpic(a,pickA(EPICS[M.z]),'a '+M.name);
+  if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need)a.quest.have++;
+  a.target=null;a.state='hunt'}
+
+// Permanent death: graveyard entry, a recruit is scheduled, old graves recycled.
+export function fall(a,cause){
+  a.deaths++;a.state='dead';a.cause=cause;a.diedAt=clockStr();a.hp=0;a.target=null;a.raid=false;a.moving=false;a.hidden=false;a.dest=null;
+  for(const m of S.mobs)if(m.target===a)m.target=null;
+  S.facStats[a.fac].fallen++;
+  S.fallen.unshift({name:a.name,fac:a.fac,lvl:a.lvl,cls:a.cls,cause,t:a.diedAt});if(S.fallen.length>15)S.fallen.pop();
+  S.recruits.push({fac:a.fac,guild:a.guild,cls:a.cls,t:8+rnd()*8});
+  const graves=S.agents.filter(x=>x.state==='dead');
+  if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
+
+export function agentDie(a,killer){
+  const lv={t:'(level '+a.lvl+')',c:'dm'};
+  if(killer.kind==='hero'){killer.honor++;S.facStats[killer.fac].honor++;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
+    killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
+    if(killer.nemesis[a.id]){log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
+    else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
+    const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&x.guild===a.guild);
+    mates.forEach(x=>x.nemesis[killer.id]=a.name);
+    if(mates.length&&a.lvl>=4)log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
+    fall(a,'slain by '+killer.name);}
+  else if(killer.kind==='boss'){log(a,' ',lv,' was incinerated by ',{t:'Kragmaw',c:'gd'},'.');fall(a,'incinerated by Kragmaw')}
+  else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
+
+export function strike(a,t){
+  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<(c.crit||.08);if(crit)d*=1.8;
+  if(t.kind==='hero')d*=.6*(CLS[t.cls].arm||1);
+  d=Math.round(d);t.hp-=d;if(c.range>2)bolt(a,t,c.orb||c.acc);
+  pop(t.x,t.y-.6,crit?d+'!':String(d),crit?'#ffe060':'#ffffff');
+  if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return}
+  if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}}
+
+export function priestHeal(a,list){if(!CLS[a.cls].heal||a.healCd>0)return;let low=null;
+  for(const b of list){if(b.state==='ghost'||dist(a,b)>4)continue;if(b.hp<maxHp(b)*.55&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
+  if(low){const h=Math.round(20+a.lvl*5);low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5}}
+
+export function goHome(a){a.state='return';a.target=null;a.dest=null}
+
+export function sellAndShop(a){const c=CITY[a.fac];let tot=0,n=0;
+  for(const it of a.bag){if(GOODS[it]){tot+=price(it);GOODS[it].supply++;n++}}a.bag=[];a.gold+=tot;
+  if(n>=6&&rnd()<.35)log(a,' sold ',String(n),' goods at the ',c.name,' auction house for ',gold(tot+'g'),'.');
+  const cost=Math.round(18*Math.pow(a.gear+1,1.55));
+  if(a.gold>=cost&&a.gear<a.lvl+2){a.gold-=cost;a.gear++;a.hp=maxHp(a);if(a.gear%3===0)log(a,' bought new gear (gear score ',String(a.gear),') for ',gold(cost+'g'),'.')}}
+
+export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
+  if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');a.quest=null}
+  if(!a.quest||MOBS[a.quest.type].z!==zoneFor(a.lvl))newQuest(a)}
+
+export function findMob(a){let best=null,bs=1e9;
+  for(const m of S.mobs){if(!m.alive||(m.target&&m.target!==a)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+1)continue;
+    const d=dist(a,m);if(d>9)continue;const s=d-(a.quest&&a.quest.type===m.type?4:0);if(s<bs){bs=s;best=m}}return best}
+
+// Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20%.
+export function updAgent(a,dt){
+  a.cd-=dt;a.healCd-=dt;const mh=maxHp(a),c=CITY[a.fac],boss=S.boss;
+  switch(a.state){
+  case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
+    if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;
+      if(a.townStep===0){sellAndShop(a);a.townStep=1;a.wait=1+rnd()*1.5}
+      else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2}
+      else{a.zone=zoneFor(a.lvl);a.state='travel';a.dest=zonePoint(a.zone)}}break}
+  case 'travel':
+    if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
+    if(moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state='hunt';a.dest=null}break;
+  case 'hunt':{a.hp=Math.min(mh,a.hp+mh*.025*dt);
+    if(a.hp<mh*.45||a.bag.length>=8||(a.quest&&a.quest.have>=a.quest.need)){goHome(a);break}
+    a.scan-=dt;if(a.scan<=0){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
+    if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
+  case 'fight':{const m=a.target;if(!m||!m.alive){a.state='hunt';a.target=null;break}
+    const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
+    if(d>r){moveTo(a,m.x,m.y,dt,2.4);break}a.moving=false;
+    if(!m.target)m.target=a;
+    priestHeal(a,[a]);
+    if(a.cd<=0){strike(a,m);a.cd=1.1}
+    if(a.state==='fight'&&a.hp<mh*.22&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
+    break}
+  case 'return':if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;
+  case 'ghost':if(moveTo(a,c.grave.x,c.grave.y,dt,4)){a.state='town';a.hp=mh*.5;a.townStep=0;a.wait=2;pop(a.x,a.y-.6,'REVIVED','#9ad0ff')}break;
+  case 'duel':{const b=a.target;if(!b||b.state!=='duel'||b.target!==a){a.state='hunt';a.target=null;break}
+    const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
+    if(d>r){moveTo(a,b.x,b.y,dt,2.4);break}a.moving=false;priestHeal(a,[a]);
+    if(a.cd<=0){strike(a,b);a.cd=1.1}
+    if(a.state==='duel'&&a.hp<mh*.2&&rnd()<dt*.5){b.state='hunt';b.target=null;goHome(a);
+      if(rnd()<.5)log(a,' fled from ',b,' in ',ZONES[zoneAt(a.x,a.y)],'.')}
+    break}
+  case 'assist':{const b=a.target;if(!b||b.state!=='duel'){a.state='hunt';a.target=null;break}
+    const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;if(d>r){moveTo(a,b.x,b.y,dt,2.8);break}a.moving=false;
+    if(a.cd<=0){strike(a,b);a.cd=1.1}break}
+  case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx;
+    moveTo(a,CRYPT.x+(k%3-1)*.9,CRYPT.y+.6+Math.floor(k/3)*.7,dt,2.6);break}
+  case 'raid':{if(!boss.alive){a.raid=false;goHome(a);break}
+    const idx=a.raidIdx,ang=Math.PI*(.55+idx*.18),rr=Math.min(CLS[a.cls].range+.9,3.2);
+    const px=boss.x+Math.cos(ang)*rr*-1,py=boss.y-.3+Math.sin(ang)*rr*(idx%2?1:-1)*.8;
+    if(dist(a,boss)>rr+.6){moveTo(a,px,py,dt,2.4);break}a.moving=false;a.face=boss.x>a.x?1:-1;
+    priestHeal(a,S.agents.filter(b=>b.raid&&b.fac===a.fac));
+    if(a.cd<=0){strike(a,boss);a.cd=1.1}break}
+  }}

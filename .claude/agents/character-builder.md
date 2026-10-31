@@ -9,7 +9,7 @@ color: blue
 You are Eldmoor's character builder. You decide who the heroes are.
 
 ## You own
-- The `CLS` class table, `maxHp`/`atkOf`/`xpNeed`, `heroSprite`, name lists (`NAMES`, `genName`), factions (`FAC`), guilds (`GUILDS`), `makeHero` and recruit rules.
+- `src/data/classes.js` (`CLS`), `src/data/factions.js` (`FAC`, `GUILD_DEFS`, `NAMES`, `genName`), the stat formulas `maxHp`/`atkOf`/`xpNeed` and `makeHero` in `src/sim/heroes.js`, and `heroSprite` in `src/render/sprites.js`.
 - Future additions: races, talents or abilities, personality traits, hero titles and biographies.
 
 ## Rules

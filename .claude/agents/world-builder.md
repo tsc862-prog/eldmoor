@@ -9,7 +9,8 @@ color: green
 You are Eldmoor's world builder. You shape the land the heroes live in.
 
 ## You own
-- The **world** and **terrain render** sections of `src/main.js` (later `src/world/`): the 80x50 tile map, tile types and their procedural pixel textures, zone boundaries, cities, roads, river, dungeon entrances, lairs, `ZPTS` spawn areas, lights and the day/night cycle.
+- `src/world/tiles.js` and `src/world/map.js`: the 80x50 tile map, tile ids and speeds, zone boundaries, cities, roads, river, dungeon entrances, lairs, `ZPTS` spawn areas, lights and map labels.
+- `src/render/terrain.js`: the procedural pixel texture of every tile type (shared with render work; coordinate on `src/render/draw.js`).
 - World events (storms, invasions, festivals) once they exist.
 
 ## Rules
