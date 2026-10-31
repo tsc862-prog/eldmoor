@@ -20,15 +20,15 @@ export const BARKS={
   // Breaking off a fight at low health.
   flee:[
     ['A tactical withdrawal. Entirely planned.','Retreating. The report will say "regrouping".','Discretion. Not fear. Discretion.','Live to be dull another day.','I decline to continue this engagement.'],
-    ['This is not running. This is leaving fast.','Not today, beast. Not today.','I will be back with a bigger axe.','Ha! You wish I were dead. Keep wishing.','The blood is mine and I am keeping it.']],
+    ['This is not running. This is leaving fast.','Not yet, beast. Not by you.','I will be back with a bigger axe.','Ha! You wish I were dead. Keep wishing.','The blood is mine and I am keeping it.']],
   // Reaching a milestone level (every 5, or 15+).
   levelup:[
     ['Level {level}. Progress, duly recorded.','{level} now. The gear has yet to catch up.','Another level. The road stays long.','Level {level}. Mother would be quietly pleased.','Stronger. Marginally. It adds up.'],
     ['Level {level}! Hear that, Grimhold?','{level}. Stronger than I was this morning.','Level {level}. The beasts should start worrying.','Still breathing, still climbing. {level}!','Another notch. {level}, and not done.']],
   // Looting an epic item.
   epic:[
-    ['{item}. Well. That is unexpected.','A fine piece, this {item}. It will be cared for.','{item}. I shall try not to gloat. I shall fail.','The {item}... remarkable craft.','Logged: one {item}. Priceless.'],
-    ['{item}! Mine! Look at it!','Hah! {item}. Try and take it.','Shiny. Deadly. {item}. Good day.','The {item}. Even the spirits envy me now.','{item}. Every scar was worth it.']],
+    ['{item}. Well. That is unexpected.','{item}. A fine piece. It will be cared for.','{item}. I shall try not to gloat. I shall fail.','{item}. Remarkable. Someone will want it back.','Logged: {item}. Value: do not ask.'],
+    ['{item}! Mine! Look at it!','Hah! {item}. Try and take it.','Shiny. Deadly. {item}. Good day.','{item}. Even the spirits envy me now.','{item}. Every scar was worth it.']],
   // A duel begins against a hero of the other faction.
   duel:[
     ['{target}. Shall we settle this properly?','Steel, then. I had hoped for conversation.','Very well, {target}. Let us be quick about it.','This will be brief, {target}. My apologies in advance.','Blades out. Manners kept.'],
@@ -65,7 +65,7 @@ export const CLASS_BARKS={
         {Mage:['Burn first. Think second.'],Rogue:['From behind, quiet. That is how.'],Warrior:['Shield up. Teeth out.']}],
   flee:[{Priest:['The healer cannot heal from the grave.']},{Priest:['Spirits, carry me. Faster.']}],
   levelup:[{Warrior:['The armor fits better each level.']},{Mage:['More power. Yes. More.']}],
-  epic:[{Hunter:['A hunter notices such things. {item}. Noted.']},{Mage:['Power. More power. {item}!']}],
+  epic:[{Hunter:['A hunter notices such things. {item}. Noted.']},{Mage:['{item}. Finally, something that can keep up with me.']}],
   duel:[{Rogue:['You will not see the second blade.']},{Warrior:['Shield to shield, then!']}],
   idle:[{Priest:['Someone is always bleeding. I wait.']},{Hunter:['Bow strung. Hands idle. Wrong.']}],
   banter:[{Priest:['Do try to bleed less, all of you.']},{Priest:['Stand still so I can mend you!']}],
