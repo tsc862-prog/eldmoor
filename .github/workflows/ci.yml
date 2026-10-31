@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Build and headless sim
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Static build
+        run: npm run build
+      - name: Headless sim (10 game-hours)
+        run: npm run sim -- 10 | tee sim.txt
+      - name: Sanity-check the sim summary
+        run: |
+          grep -q "Living heroes:" sim.txt
+          # the world must still have heroes alive after the run
+          test "$(grep -o 'Living heroes: [0-9]*' sim.txt | grep -o '[0-9]*$')" -gt 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sim-summary
+          path: sim.txt

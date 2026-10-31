@@ -17,6 +17,51 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
 - After any change to simulation logic, run `npm run sim` (and `npm run sim -- 120`
   for balance work) and check the summary still looks sane.
 
+## Agent team
+
+Dedicated subagents live in `.claude/agents/`. Delegate to them by area:
+
+| Agent | Owns |
+| --- | --- |
+| `world-builder` | Map, zones, terrain, cities, dungeons, landmarks, world events |
+| `character-builder` | Classes, factions, guilds, names, hero sprites, stats, traits |
+| `creature-designer` | Monsters, bosses, loot, epics, auction-house economy |
+| `ai-designer` | Hero behavior: states, questing, PvP, grudges, dungeons, raids |
+| `balance-tester` | Read-only headless sim runs and balance reports |
+| `lore-keeper` | `docs/LORE.md`, flavor text, originality checks |
+
+For a feature that spans areas (for example a new zone with new monsters), plan it,
+hand each part to its owner, then have `lore-keeper` check names and
+`balance-tester` check the numbers. `docs/LORE.md` is the shared canon.
+
+## Working in parallel (agents and people)
+
+The repo is set up so several agents can work at once without stepping on each
+other. The rules:
+
+- **One task, one branch, one area.** Branch from `main` as
+  `<area>/<short-name>` (for example `world/hoarfell-weather`). Edit only files
+  your area owns (see the ownership table below). If you must touch another
+  area's file, keep the edit minimal and list it under "Out-of-area edits" in
+  the PR.
+- **Parallel work uses worktrees.** `git worktree add ../eldmoor-<area> -b <area>/<name>`
+  gives each agent its own checkout; never have two agents editing one working
+  tree.
+- **Small PRs, always green.** Every PR runs `npm run build` and a headless sim in
+  CI. Paste the `npm run sim` summary in the PR body. Balance-sensitive changes
+  also include `npm run sim -- 120`.
+- **Names go through lore.** Anything newly named (zone, creature, item, NPC,
+  guild, quest) is added to `docs/LORE.md` in the same PR, and `lore-keeper`
+  checks originality before merge.
+- **Numbers go through balance.** Changes to stats, mobs, bosses, XP or AI get a
+  `balance-tester` report before merge.
+- **Issues are the queue.** Work is tracked as GitHub issues labelled
+  `area:<area>`; an issue labelled `agent-ready` is scoped enough to hand to the
+  owning agent with no further questions. Pick one, branch, PR, close it.
+- **Shared data tables are append-only during a feature.** Adding a row to
+  `MOBS`, `EPICS`, `GOODS`, `CLS` or a zone list is fine in parallel; renaming or
+  reordering existing rows is a coordinated change done alone on `main`.
+
 ## Commands
 
 - `npm install` once, then `npm run dev` to play at http://localhost:5173
