@@ -45,6 +45,9 @@ that."), and the hero card lists them.
 | Cinderpass | 11-15 | Volcanic rock and peaks in the east. |
 | Hoarfell | 16+ | Wind-scoured snowfields and frozen tarns north of the fen and the pass. |
 
+## Weather
+Every zone has its own sky, and it turns every one to three hours. Thornvale gets drizzle and rain. Mirefen's fogs roll in off the fen and hide hunter and hunted alike. Cinderpass sees grey ashfall and, now and then, a choking ash storm. Hoarfell's snows thicken into squalls that close the high ground. Rain and snow slow travel, fog and storms shorten sight, and ash storms and squalls drive hunters back to town until they blow over.
+
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 18, raided by 4-6 heroes of level 12+.

@@ -9,6 +9,7 @@ import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
 import {sprite,SPR,heroSprite} from './sprites.js';
+import {drawWeather} from './weather.js';
 
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1};
 // Follow view shows about 460 world pixels (29 tiles) across the screen.
@@ -74,6 +75,7 @@ export function createRenderer(cv,screenEl,terrain){
       ctx.globalCompositeOperation='lighter';
       for(const L of LIGHTS){const r=L.big?92:28;const g=ctx.createRadialGradient(L.x*T,L.y*T,0,L.x*T,L.y*T,r);g.addColorStop(0,'rgba(255,170,70,'+(dk*.7)+')');g.addColorStop(1,'rgba(255,170,70,0)');ctx.fillStyle=g;ctx.fillRect(L.x*T-r,L.y*T-r,r*2,r*2)}
       ctx.globalCompositeOperation='source-over'}
+    drawWeather(ctx,S,cam,blink);
     // labels
     if(!follow){
       for(const[t,x,y]of LABELS)drawText(t,x*T,y*T,'#f4ecd0',13);
