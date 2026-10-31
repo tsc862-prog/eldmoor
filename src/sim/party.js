@@ -12,6 +12,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {MOBS} from '../data/mobs.js';
 import {maxHp,gainXp} from './heroes.js';
+import {tm} from '../data/traits.js';
 
 export const partyMates=a=>a.party?a.party.mem.filter(b=>b!==a&&b.state!=='dead'):[];
 const inField=b=>!(b.state==='town'||b.state==='dead'||b.state==='dungeon'||b.state==='raid'||b.state==='ghost');
@@ -34,8 +35,8 @@ const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.len
 
 // Called when a hero finishes the quest-giver step and again while lingering at the gate.
 // Returns 'wait' when a Warrior should hold at the gate a little longer for a Priest.
-export function seekParty(a){if(a.party)return;
-  const cand=S.agents.filter(b=>b!==a&&!b.party&&b.fac===a.fac&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2);
+export function seekParty(a){if(a.party||!tm(a,'social'))return; // Loners never form or join a party
+  const cand=S.agents.filter(b=>b!==a&&!b.party&&tm(b,'social')&&b.fac===a.fac&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2);
   if(!cand.length)return;
   if(a.cls==='Warrior'&&a.linger>0&&!cand.some(b=>b.cls==='Priest'))return 'wait';
   const want=a.cls==='Priest'?'Warrior':a.cls==='Warrior'?'Priest':null;
