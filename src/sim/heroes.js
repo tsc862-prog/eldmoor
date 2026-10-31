@@ -14,6 +14,7 @@ import {S,clockStr} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
 import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerClear} from './party.js';
+import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 
 // ---- stat formulas (tuning knobs) ----
@@ -41,10 +42,12 @@ export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);
 
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
   while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');
+    if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');}
   if(a.lvl>=20)a.xp=0}
 
-export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.')}
+export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.');
+  say(a,'epic',{item:name})}
 
 export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a.kills++;
   const diff=m.lvl-a.lvl,xp=(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1);gainXp(a,xp);
@@ -67,8 +70,10 @@ export function fall(a,cause){
 
 export function agentDie(a,killer){
   const lv={t:'(level '+a.lvl+')',c:'dm'};
+  for(const x of S.agents)if(x!==a&&x.state!=='dead'&&(x.guild===a.guild||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
   if(killer.kind==='hero'){killer.honor++;S.facStats[killer.fac].honor++;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
     killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
+    say(killer,'kill',{target:a.name});
     if(killer.nemesis[a.id]){log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
     else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&x.guild===a.guild);
@@ -99,6 +104,7 @@ export function sellAndShop(a){const c=CITY[a.fac];let tot=0,n=0;
   if(a.gold>=cost&&a.gear<a.lvl+2*tm(a,'thrift')){a.gold-=cost;a.gear++;a.hp=maxHp(a);if(a.gear%3===0)log(a,' bought new gear (gear score ',String(a.gear),') for ',gold(cost+'g'),'.')}}
 
 export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
+    say(a,'quest',{mob:M.pl});
   if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');a.quest=null}
   if(!a.quest||MOBS[a.quest.type].z!==zoneFor(a.lvl))newQuest(a)}
 
@@ -113,10 +119,12 @@ export function updAgent(a,dt){
   switch(a.state){
   case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
     if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;
+      if(a.townStep===0)say(a,'idle',{p:.35});
       if(a.townStep===0){sellAndShop(a);a.townStep=1;a.wait=1+rnd()*1.5}
       else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2;a.linger=a.cls==='Warrior'?4+rnd()*2:2;seekParty(a)}
       else{if(a.linger>0&&!a.party&&seekParty(a)==='wait'){a.linger--;a.wait=1;break}
         if(a.linger>0&&a.party&&partyMates(a).some(b=>b.state==='town'&&b.townStep<2)){a.linger--;a.wait=1;break}
+        say(a,'depart',{zone:ZONES[a.party?a.party.zone:zoneFor(a.lvl)]});
         a.zone=a.party?a.party.zone:zoneFor(a.lvl);a.state='travel';a.dest=zonePoint(a.zone)}}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
@@ -135,12 +143,14 @@ export function updAgent(a,dt){
     a.scan-=dt;if(a.scan<=0&&a.hp>=mh*.45&&L.state!=='return'){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
     if(dist(a,L)>2){a.dest=followPt(a);moveTo(a,a.dest.x,a.dest.y,dt,L.state==='return'?2.5:2.1)}else{a.dest=null;a.moving=false}break}
   case 'fight':{const m=a.target;if(!m||!m.alive){a.state='hunt';a.target=null;break}
+    spotMob(a,m);
     const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
     if(d>r){moveTo(a,m.x,m.y,dt,2.4);break}a.moving=false;
     if(!m.target)m.target=a;
     priestHeal(a,a.party?a.party.mem:[a]);
     if(a.cd<=0){strike(a,m);a.cd=1.1}
     if(a.state==='fight'&&a.hp<mh*.22*tm(a,'flee')&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
+    if(a.state==='return')say(a,'flee',{mob:MOBS[m.type].name});
     break}
   case 'regroup':{a.regT-=dt;if(a.regT<=0||!a.dest||moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state=a.regNext==='return'?'return':leaderOf(a)?'follow':'hunt';a.dest=null;a.regNext=null}break}
   case 'return':if(steerClear(a,dt,moveTo))break;if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;

@@ -9,6 +9,7 @@ import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
 import {sprite,SPR,heroSprite} from './sprites.js';
+import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
 
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1};
@@ -85,6 +86,7 @@ export function createRenderer(cv,screenEl,terrain){
       if(CRYPT.group&&CRYPT.group.phase==='inside')drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,41*T-4,'#9ae0b8',14);
       for(const a of agents){if(a.hidden)continue;if(Math.abs(a.x*T-cam.camX)>vw/2+40||Math.abs(a.y*T-cam.camY)>vh/2+40)continue;
         const dead=a.state==='dead';drawText((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?'#f2c14e':dead?'#9a98ac':FAC[a.fac].color,14)}
+      drawBubbles(ctx,S,cam,drawText);
       for(const m of mobs){if(!m.elite||!m.alive||Math.abs(m.x*T-cam.camX)>vw/2+40||Math.abs(m.y*T-cam.camY)>vh/2+40)continue;drawText(m.name,m.x*T,m.y*T-17,'#ffb060',14)} // named elite nameplate
       if(boss.alive)drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,'#ffb060',15);
       for(const p of fx)if(p.type==='txt'){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}

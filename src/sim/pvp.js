@@ -5,6 +5,7 @@ import {rnd} from '../core/rng.js';
 import {dist,zoneAt} from '../world/map.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
+import {say,duelBark} from './chat.js';
 import {sightMul} from './weather.js';
 import {tm} from '../data/traits.js';
 
@@ -17,6 +18,8 @@ export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agent
         log(a,' spots ',b,', who killed ',{t:a.nemesis[id],c:'f'+a.fac},', and charges.');break}}}
   for(const a of free)for(const b of free){if(a.fac!==0||b.fac!==1||a.state==='duel'||b.state==='duel')continue;
     if(dist(a,b)<3*sightMul(zoneAt(a.x,a.y))&&Math.abs(a.lvl-b.lvl)<=5&&rnd()<.25*tm(a,'bold')*tm(b,'bold')){a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null}}
+  for(const a of agents)if(a.state==='duel'&&a.target)duelBark(a,a.target);
   for(const a of agents){if(a.state!=='duel'||!a.target)continue;const foe=a.target;
     for(const g of free){if(!isFree(g)||g.guild!==a.guild||dist(g,a)>8||rnd()>.35*tm(g,'loyal'))continue;
+      say(g,'assist',{target:a.name});
       g.state='assist';g.target=foe;g.dest=null;if(rnd()<.6)log(g,' rushes to help guildmate ',a,' against ',foe,'.');break}}}

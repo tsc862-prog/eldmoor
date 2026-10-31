@@ -1,2 +1,3 @@
 - [Party rules](party_rules.md) — why followers have their own state, duelers stay, regroup exists, zone = weakest member, 50% outnumbered flee
 - [Mirefen PvP dynamics](pvp_dynamics.md) — Mirefen hero-time drives deaths; clustering multiplies duel pairs; how to instrument deaths headlessly
+- [Chatter rules](chatter_rules.md) — say() in chat.js, private RNG, lazy per-hero fields, spot at 2+ levels, merge-safe one-line inserts

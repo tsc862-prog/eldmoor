@@ -52,7 +52,11 @@ export function renderHero(){const el=$('hero'),a=cam.sel;
   if(nem){const b=S.agents.find(x=>x.id==nem[0]);const d=add('meta','');d.append('Nemesis: ');const s=document.createElement('span');s.className='f'+b.fac;s.textContent=b.name;d.append(s,` (killed guildmate ${nem[1]})`)}
   const st=add('stats','');[['Gold',a.gold+'g'],['Gear',a.gear],['Kills',a.kills],['Honor',a.honor]].forEach(([k,v])=>{const d=document.createElement('div');const b=document.createElement('b');b.textContent=v;const s=document.createElement('span');s.textContent=k;d.append(b,s);st.append(d)});
   if(a.epics.length){const e=add('epics','');e.append('Epics: ');a.epics.forEach((n,i)=>{const s=document.createElement('span');s.className='ep';s.textContent='['+n+']';e.append(s);if(i<a.epics.length-1)e.append(' ')})}
-  else add('epics dm','No epic items yet.')}
+  else add('epics dm','No epic items yet.');
+  // Chat: the last 8 lines this hero said or heard, newest first (the full Chat tab is issue #19).
+  const chat=(a.chat||[]).slice(-8).reverse();
+  if(chat.length){add('dm','Chat');const c=add('chat meta','');for(const e of chat){const d=document.createElement('div');const t=document.createElement('time');t.textContent=e.t+' ';
+    const n=document.createElement('span');n.className='f'+e.from.fac;n.textContent=e.from.name+': ';d.append(t,n,e.text);c.append(d)}}}
 
 export function renderTops(){const el=$('tops');el.innerHTML='';ranked().slice(0,8).forEach((a,i)=>{const li=document.createElement('li');const b=document.createElement('button');
   if(a===cam.sel)b.className='sel';const n=document.createElement('span');n.className='dm';n.textContent=i+1;const nm=document.createElement('span');nm.className='f'+a.fac;nm.textContent=a.name+' ';

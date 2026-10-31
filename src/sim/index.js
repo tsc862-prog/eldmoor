@@ -14,6 +14,7 @@ import {updBoss,raidCheck} from './boss.js';
 import {pvpCheck} from './pvp.js';
 import {dungeonCheck} from './dungeon.js';
 import {updMarket} from './market.js';
+import {chatTick} from './chat.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -36,4 +37,5 @@ export function step(dt){S.gameMin+=dt*6;
     const a=makeHero(r.fac,r.cls,r.guild,1);if(rnd()<.5)log('A new ',r.cls.toLowerCase(),', ',a,', joins ',{t:'<'+r.guild.tag+'> '+r.guild.name,c:'f'+r.fac},' in ',CITY[r.fac].name,'.')}
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
+  chatTick(dt);
   updFx(dt)}
