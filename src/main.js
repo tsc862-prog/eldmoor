@@ -12,21 +12,24 @@ function vnoise(x,y,s){const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u
 const fbm=(x,y,s)=>vnoise(x/6,y/6,s)*.6+vnoise(x/3,y/3,s+7)*.3+vnoise(x/1.5,y/1.5,s+13)*.1;
 
 /* ---------- world ---------- */
-const G=0,TREE=1,SWAMP=2,MUD=3,ROCK=4,PEAK=5,LAVA=6,ROAD=7,FLOOR=8,WALL=9,RIVER=10,BRIDGE=11,SGRASS=12,FLOWER=13;
-const SPEED=[1,.75,.5,.7,.9,.6,.6,1.3,1.1,1,.55,1.2,.9,1];
+const G=0,TREE=1,SWAMP=2,MUD=3,ROCK=4,PEAK=5,LAVA=6,ROAD=7,FLOOR=8,WALL=9,RIVER=10,BRIDGE=11,SGRASS=12,FLOWER=13,SNOW=14,ICE=15;
+const SPEED=[1,.75,.5,.7,.9,.6,.6,1.3,1.1,1,.55,1.2,.9,1,.9,1.15];
 const tiles=new Uint8Array(W*H), zone=new Uint8Array(W*H), I=(x,y)=>y*W+x;
 const riverX=y=>26+Math.round(Math.sin(y/5)*1.6+Math.sin(y/2.3+1)*.7);
 const z2X=y=>53+Math.round((vnoise(3.3,y/4,5)-.5)*7);
+// Hoarfell: the frozen north, east of the river. Southern edge wanders between y=9 and y=15 (never past 16, so Kragmaw's lair stays in Cinderpass).
+const hoarY=x=>12+Math.round((vnoise(x/4,2.7,17)-.5)*6);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-  const z=x<riverX(y)?0:x<z2X(y)?1:2; zone[I(x,y)]=z;
+  const z=x<riverX(y)?0:y<hoarY(x)?3:x<z2X(y)?1:2; zone[I(x,y)]=z;
   const n=fbm(x,y,11),n2=fbm(x+50,y+20,23); let t;
   if(z===0)t=n>.58?TREE:(hash(x,y,5)>.95?FLOWER:G);
   else if(z===1)t=n>.6?SWAMP:n2>.63?TREE:(hash(x,y,6)>.5?SGRASS:MUD);
+  else if(z===3)t=n>.68?PEAK:n2>.64?TREE:vnoise(x/2.5,y/2.5,31)>.74?ICE:hash(x,y,8)>.94?ROCK:SNOW;
   else t=n>.6?PEAK:n2>.66?LAVA:ROCK;
   if(x===riverX(y)||x===riverX(y)+1)t=RIVER;
   tiles[I(x,y)]=t;
 }
-const ZONES=['Thornvale','Mirefen','Cinderpass'];
+const ZONES=['Thornvale','Mirefen','Cinderpass','Hoarfell'];
 const FAC=[{name:'Concord',color:'#5b8ff2',dark:'#2a4fa0',skin:['#f0c8a0','#d8a878','#b88058']},
            {name:'Warband',color:'#e8544a',dark:'#8a2420',skin:['#8fb070','#a08c6c','#7a9a88']}];
 function mkCity(name,fac,dy){return{name,fac,x0:2,x1:12,y0:2+dy,y1:10+dy,ah:{x:5.5,y:5.8+dy},qg:{x:9.5,y:5.8+dy},
@@ -50,6 +53,7 @@ road([[13,6.5],[20,9],[29,17],[40,25]]);road([[13,43.5],[20,41],[29,33],[40,25]]
 const CRYPT={name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:44.5,y:43.1,group:null,cd:25};
 for(let y=41;y<=43;y++)for(let x=43;x<=45;x++)tiles[I(x,y)]=ROCK;
 road([[40,25],[38,33],[44,43.4]]);
+road([[40,25],[46,17],[52,8]]); // north road into Hoarfell
 
 /* ---------- terrain render ---------- */
 const terrain=document.createElement('canvas');terrain.width=W*T;terrain.height=H*T;
@@ -62,10 +66,16 @@ function texel(t,tx,ty,px,py){
   switch(t){
     case G:return grass(h);
     case FLOWER:return (px===3&&py===3)?(hash(tx,ty,9)>.5?'#f4e06a':'#f08ab0'):(px===3&&py===4)?'#2a6a28':grass(h);
-    case TREE:{const dx=px-3.5,dy=py-3,r2=dx*dx+dy*dy*1.15;const swamp=zone[I(tx,ty)]===1;
+    case TREE:{const dx=px-3.5,dy=py-3,r2=dx*dx+dy*dy*1.15;const zt=zone[I(tx,ty)],swamp=zt===1,frost=zt===3;
+      if(frost){ // Hoarfell pine: dark blue-green spire under a snow cap, on snow
+        const hw=.6+py*.55; if(py<=5&&Math.abs(dx)<hw){if(py<=1||(py<=3&&dx+py<-.8))return '#e4ecf4';return h>.85?'#2c5a4e':pk(['#1e3f3a','#24483f'],h)}
+        if(py>=6&&(px===3||px===4))return '#3a2a20';
+        return h>.9?'#c8d2de':pk(['#e2e8ee','#d8e0e8','#dde4ec'],h)}
       if(r2<10.5){if(dx+dy<-2.2)return swamp?'#5a7a3a':'#45a044';if(r2>7)return swamp?'#2a3a1e':'#174a1e';return h>.85?(swamp?'#4a6a30':'#2f7a33'):(swamp?'#3a5228':'#22612a')}
       if(py>=5&&(px===3||px===4))return '#5a3a20';
       return swamp?pk(['#46622f','#3d5729'],h):grass(h)}
+    case SNOW:return h>.93?'#b8c2cc':h>.9?'#f0f4f8':pk(['#e2e8ee','#d8e0e8','#dde4ec'],h);
+    case ICE:return ((px*2+py*3+tx*5+ty*7)%13===0)?'#8fb8c8':((px+py*2+tx)%11===0)?'#dff6fc':pk(['#b4dce8','#aad4e2','#bde2ec'],h);
     case SWAMP:return ((px+py*2+tx*3)%9===0)?'#5a8a6a':pk(['#2f5a4a','#2a5242','#335f4e'],h);
     case MUD:return h>.9?'#6e6a3e':pk(['#5b5a34','#545330','#4f4e2c'],h);
     case SGRASS:return (h>.86&&py<6)?'#7a9a46':pk(['#46622f','#3d5729','#42602c'],h);
@@ -108,6 +118,8 @@ const SPR={
   bog:[".GGG.","GEGEG","GGGGG","FGGGF",".G.G."],
   golem:[".RRRR.","RREERR","RRRRRR","R.RR.R","..RR..",".R..R."],
   drake:["W....WW","WW..WWE","RRRRRR.",".RRRR..",".R..R.."],
+  shaghorn:["....H.H","BBBBBBB","BBBBBEB","SBBBBBS","S.S.S.S"],
+  wight:[".WWW.",".EWE.","WWWWW",".WWW.","M.W.M","..M.."],
   boss:["W............W","WW..........WW","WWW..RRRR..WWW",".WWWRRRRRRWWW.","...RRERRERR...","..RRRRRRRRRR..","..RRTTTTTTRR..","...RR....RR...","..DD......DD.."],
   npc:[".HHH.",".SSS.","RRRRR",".RRR.",".RRR.",".R.R."]
 };
@@ -120,11 +132,14 @@ const MOBS={
   lurker:{name:'Fen Lurker',pl:'Fen Lurkers',z:1,lv:[8,11],spr:'spider',col:{K:'#2f6a42',L:'#1e3a26',E:'#f0e040'},loot:'Venom Sac',q:'Venom for the Apothecary'},
   golem:{name:'Cinder Golem',pl:'Cinder Golems',z:2,lv:[11,15],spr:'golem',col:{R:'#7a6a62',E:'#ff8a2a'},loot:'Ember Core',q:'Heart of the Mountain'},
   drake:{name:'Ash Drake',pl:'Ash Drakes',z:2,lv:[13,17],spr:'drake',col:{R:'#a83a2a',W:'#d86a3a',E:'#ffe060'},loot:'Cinder Scale',q:'Ash on the Wind'},
+  rimehound:{name:'Rimehound',pl:'Rimehounds',z:3,lv:[15,18],spr:'wolf',col:{G:'#6e86a0',E:'#9af0ff'},loot:'Rime Pelt',q:'Howls on the Snowfield'},
+  shaghorn:{name:'Tundra Shaghorn',pl:'Tundra Shaghorns',z:3,lv:[16,19],spr:'shaghorn',col:{B:'#5a4634',S:'#3a2c20',H:'#e8dcc0',E:'#ffd040'},loot:'Hoar Wool',q:'Wool for the Weavers'},
+  wight:{name:'Tarn Wight',pl:'Tarn Wights',z:3,lv:[18,21],spr:'wight',col:{W:'#7d94ad',E:'#9af8ff',M:'#4a7a96'},loot:'Wight Marrow',q:'What the Tarn Keeps'},
 };
-const EPICS=[["Fang of the Old Wood","Thornheart Longbow","Bramblecrown"],["Mosswoven Cloak","Bogwalker Boots","Fenlight Lantern"],["Ember-Forged Greatsword","Cinderscale Mantle","Magma-Tempered Gauntlets"]];
+const EPICS=[["Fang of the Old Wood","Thornheart Longbow","Bramblecrown"],["Mosswoven Cloak","Bogwalker Boots","Fenlight Lantern"],["Ember-Forged Greatsword","Cinderscale Mantle","Magma-Tempered Gauntlets"],["Rime-Etched Warpick","Shaghorn Greatcloak","Icevein Diadem"]];
 const BOSS_EPICS=["Kragmaw's Molten Eye","Wyrmbone Crown","Cinder Wyrm Fang","Mantle of the Ashen King"];
 const GOODS={};
-[['Grave Dust',18],['Wolf Pelt',4],['Boar Tusk',5],['Silk Bundle',7],['Fen Moss',9],['Thick Hide',11],['Venom Sac',14],['Ember Core',22],['Cinder Scale',26]]
+[['Grave Dust',18],['Wolf Pelt',4],['Boar Tusk',5],['Silk Bundle',7],['Fen Moss',9],['Thick Hide',11],['Venom Sac',14],['Ember Core',22],['Cinder Scale',26],['Rime Pelt',30],['Hoar Wool',34],['Wight Marrow',40]]
   .forEach(([n,b])=>GOODS[n]={base:b,supply:ri(2,14),prev:0});
 const price=n=>{const g=GOODS[n];return Math.max(1,Math.round(g.base*clamp(1.5-g.supply*.035,.35,1.8)))};
 for(const n in GOODS)GOODS[n].prev=price(n);
@@ -155,14 +170,14 @@ function genName(f){let n,k=0;do{n=pickA(NAMES[f][0])+pickA(NAMES[f][1]);if(++k>
 const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
 const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+a.gear*6+a.epics.length*10);
 const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+a.gear*1.5+a.epics.length*3;
-const zoneFor=l=>l<6?0:l<11?1:2;
+const zoneFor=l=>l<6?0:l<11?1:l<16?2:3;
 const zoneAt=(x,y)=>zone[I(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1))];
 const tileAt=(x,y)=>tiles[I(clamp(Math.floor(x),0,W-1),clamp(Math.floor(y),0,H-1))];
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 
-const ZPTS=[[],[],[]];
+const ZPTS=[[],[],[],[]];
 for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const t=tiles[I(x,y)];
-  if([G,TREE,FLOWER,SGRASS,MUD,ROCK,PEAK,ROAD].indexOf(t)<0)continue;
+  if([G,TREE,FLOWER,SGRASS,MUD,ROCK,PEAK,ROAD,SNOW,ICE].indexOf(t)<0)continue;
   if(x<17&&(y<14||y>35))continue;
   if(Math.hypot(x+.5-LAIR.x,y+.5-LAIR.y)<7.5)continue;
   if(Math.hypot(x+.5-44.5,y+.5-42.5)<3.5)continue;
@@ -174,7 +189,7 @@ const mobs=[];
 function spawnMob(type){const M=MOBS[type],p=zonePoint(M.z);const lvl=ri(M.lv[0],M.lv[1]);
   const m={id:++uid,kind:'mob',type,lvl,x:p.x,y:p.y,home:{...p},maxhp:25+lvl*16,alive:true,respawn:0,target:null,cd:0,face:1,wait:rnd()*3,dest:null,scan:rnd()};
   m.hp=m.maxhp;mobs.push(m)}
-const COUNTS={wolf:11,boar:10,spider:9,bog:10,mudboar:9,lurker:9,golem:11,drake:10};
+const COUNTS={wolf:11,boar:10,spider:9,bog:10,mudboar:9,lurker:9,golem:11,drake:10,rimehound:9,shaghorn:8,wight:8};
 for(const t in COUNTS)for(let i=0;i<COUNTS[t];i++)spawnMob(t);
 
 const agents=[];
@@ -340,7 +355,7 @@ function updMob(m,dt){
   if(m.dest){if(moveTo(m,m.dest.x,m.dest.y,dt,.9))m.dest=null}
   else{m.wait-=dt;if(m.wait<=0){m.wait=2+rnd()*5;m.dest={x:m.home.x+(rnd()-.5)*4,y:m.home.y+(rnd()-.5)*4}}}
   m.scan-=dt;if(m.scan<=0){m.scan=.6;
-    for(const a of agents){if((a.state!=='travel'&&a.state!=='hunt')||m.lvl<a.lvl-3)continue;
+    for(const a of agents){if((a.state!=='travel'&&a.state!=='hunt')||m.lvl<a.lvl-3||zoneAt(a.x,a.y)!==MOBS[m.type].z)continue; // territorial: no ambushing travellers outside the mob's own zone
       if(dist(a,m)<1.3&&rnd()<.3){m.target=a;a.state='fight';a.target=m;a.dest=null;break}}}}
 
 function updBoss(dt){
@@ -485,7 +500,7 @@ function draw(){
     ctx.globalCompositeOperation='source-over'}
   // labels
   if(!follow){
-    const lab=[['THORNVALE',14,24],['MIREFEN',40,13],['CINDERPASS',66,12],['HIGHGATE',7.5,1.4],['GRIMHOLD',7.5,49.2]];
+    const lab=[['THORNVALE',14,24],['MIREFEN',38,19],['CINDERPASS',63,18],['HOARFELL',52,5],['HIGHGATE',7.5,1.4],['GRIMHOLD',7.5,49.2]];
     for(const[t,x,y]of lab)drawText(t,x*T,y*T,'#f4ecd0',13);
     if(boss.alive)drawText('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,'#ffb060',12);
     drawText(CRYPT.group&&CRYPT.group.phase==='inside'?'CRYPT · '+CRYPT.group.mem.length+' INSIDE':'SUNKEN CRYPT',CRYPT.x*T,40.4*T,'#9ae0b8',12)}

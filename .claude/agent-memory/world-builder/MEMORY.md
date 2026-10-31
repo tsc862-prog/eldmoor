@@ -1,0 +1,1 @@
+- [Hoarfell zone design](project_hoarfell_zone.md) — zone 3 frozen north strip (16+); label spots, peak-threshold tuning, zone-indexed arrays need 4 entries

@@ -1,0 +1,1 @@
+- [Bestiary tuning](project_bestiary_tuning.md) — Hoarfell bands, territorial aggro rule, price ladder, why long sims are needed to verify high zones

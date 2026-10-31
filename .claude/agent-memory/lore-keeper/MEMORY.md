@@ -1,0 +1,1 @@
+- [Hoarfell names review](project_hoarfell_names.md) — Hoarfell zone names passed originality 2026-10-31; house patterns for quest/epic/goods naming
