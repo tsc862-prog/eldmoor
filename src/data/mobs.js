@@ -16,3 +16,21 @@ export const MOBS={
   wight:{name:'Tarn Wight',pl:'Tarn Wights',z:3,lv:[18,21],spr:'wight',col:{W:'#7d94ad',E:'#9af8ff',M:'#4a7a96'},loot:'Wight Marrow',q:'What the Tarn Keeps'},
 };
 export const COUNTS={wolf:11,boar:10,spider:9,bog:10,mudboar:9,lurker:9,golem:11,drake:10,rimehound:9,shaghorn:8,wight:8};
+
+// Named rare elites, one per zone, index = zone. base: the species whose sprite, palette, loot and
+// quest tag it shares. lvl: zone max + 2 (Hoarfell's max is the level cap, 20). scale multiplies the
+// formula hp and hit multiplies the formula damage in spawnMob. At most one alive per zone; a kill
+// drops a guaranteed epic from EPICS[z]. Named in docs/LORE.md under "Rare elites".
+export const ELITES=[
+  {name:'Hollowfang',title:'the Old Wolf of Thornvale',base:'wolf',lvl:7,scale:2.2,hit:1.5},
+  {name:'Old Mother Sedge',title:'Matriarch of the Fen',base:'lurker',lvl:12,scale:2.2,hit:1.5},
+  {name:'Scoriath',title:'the Drake of the High Pass',base:'drake',lvl:17,scale:2.2,hit:1.5},
+  {name:'Ulfryn Coldmarrow',title:'the Tarn-King',base:'wight',lvl:22,scale:2.2,hit:1.5},
+];
+// Ecology knobs. cap: zone population ceiling as a multiple of the COUNTS total. emptyAfter: game
+// minutes without a hero in the zone before it counts as unhunted. tick: real seconds between
+// growth/drift passes. drift: tiles a mob's home slides toward the nearest road per tick while the
+// zone is unhunted. roadMinX: per zone, roads west of this x never attract mobs (keeps Thornvale
+// spillover away from the city gates). eliteRoll: 1-in-N chance per real minute that a zone with no
+// living elite gets one. eliteCd: game minutes after an elite dies before the next may appear.
+export const ECO={cap:1.6,emptyAfter:120,tick:10,drift:.6,roadMinX:[18,0,0,0],eliteRoll:35,eliteCd:600};
