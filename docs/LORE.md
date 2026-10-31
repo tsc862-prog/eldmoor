@@ -86,3 +86,24 @@ one falls, no new elite stalks that zone for at least ten hours.
 Wolf Pelt, Boar Tusk, Silk Bundle, Fen Moss, Thick Hide, Venom Sac, Ember Core, Cinder Scale, Rime Pelt, Hoar Wool, Wight Marrow, Grave Dust.
 
 Base prices climb with zone: Thornvale 4-7, Mirefen 9-14, Grave Dust 18, Cinderpass 22-26, Hoarfell 30-40.
+
+## Voices
+Heroes speak short lines in context (`src/data/barks.js`; picked and cooled down by
+`src/sim/chat.js`). Concord lines are formal and dry; Warband lines are blunt and
+boastful. Every line is original to Eldmoor. A hero speaks at most once per 20 real
+seconds (death, epic, duel and kill lines may cut in after 3); heroes within 7 tiles hear
+it, and the line shows as a speech bubble over the sprite in follow view.
+
+Triggers: **quest** (turn-in), **depart** (leaving the gate), **spot** (engaging a monster
+two or more levels up, or a named elite), **flee**, **levelup** (every 5, or 15+), **epic**,
+**duel**, **assist** (rushing to a guildmate), **mourn** (a guildmate or party member dies
+in sight), **kill** (slaying an enemy hero), **party** (forming up), **idle** (in the city),
+**banter** (a party afield for a minute). Some triggers add a class line or two.
+
+Samples:
+- Concord, quest: "Task concluded. The ledger balances."
+- Concord, flee: "A tactical withdrawal. Entirely planned."
+- Concord, mourn: "A candle for {target} tonight. Then work."
+- Warband, depart: "Out the gate. Blood before breakfast."
+- Warband, duel: "{target}! Your head or mine. Mine stays."
+- Warband, epic: "Hah! {item}. Try and take it."

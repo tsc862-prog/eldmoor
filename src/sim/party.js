@@ -12,6 +12,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {MOBS} from '../data/mobs.js';
 import {maxHp,gainXp} from './heroes.js';
+import {say} from './chat.js';
 
 export const partyMates=a=>a.party?a.party.mem.filter(b=>b!==a&&b.state!=='dead'):[];
 const inField=b=>!(b.state==='town'||b.state==='dead'||b.state==='dungeon'||b.state==='raid'||b.state==='ghost');
@@ -45,6 +46,7 @@ export function seekParty(a){if(a.party)return;
   // The party hunts where its weakest member can survive, not where the leader would go alone.
   const p={id:++S.uid,fac:a.fac,leader,mem,zone:zoneFor(Math.min(...mem.map(b=>b.lvl))),home:false};
   for(const b of mem)b.party=p;S.parties.push(p);
+  say(mem.find(b=>b!==leader)||leader,'party',{target:leader.name,zone:ZONES[p.zone]});
   if(rnd()<.4)log(...names(mem),' set out for ',{t:ZONES[p.zone],c:'gd'},' together.')}
 
 // Leaving a party never leaves a dangling dest or a follower without a leader.
