@@ -29,6 +29,8 @@ export function doing(a){const c=CITY[a.fac].name,zn=ZONES[a.zone];
     case 'raid':return 'Raiding Kragmaw the Cinder Wyrm';
     case 'dead':return `Fell at level ${a.lvl}, ${a.cause}, at ${a.diedAt}. Gone forever.`;
     case 'assist':return a.target?`Helping a guildmate fight ${a.target.name}`:'Helping a guildmate';
+    case 'follow':return a.party?`Following ${a.party.leader.name}'s party in ${zn}`:'Following the party';
+    case 'regroup':return 'Pulling back after a skirmish';
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
 export function renderHero(){const el=$('hero'),a=cam.sel;
@@ -42,6 +44,7 @@ export function renderHero(){const el=$('hero'),a=cam.sel;
   add('dm','HP');const hp=add('meter hp','');const i1=document.createElement('i');i1.style.width=clamp(a.hp/mh*100,0,100)+'%';hp.append(i1);
   add('dm','XP');const xp=add('meter xp','');const i2=document.createElement('i');i2.style.width=(a.lvl>=20?100:a.xp/xpNeed(a.lvl)*100)+'%';xp.append(i2);
   add('meta','Quest: '+q);
+  if(a.party){const d=add('meta','');d.append('Party: ');a.party.mem.forEach((b,i)=>{const s=document.createElement('span');s.className='f'+b.fac;s.textContent=b.name+(b===a.party.leader?' (leader)':'');d.append(s);if(i<a.party.mem.length-1)d.append(', ')})}
   const nem=Object.entries(a.nemesis).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const b=S.agents.find(x=>x.id==nem[0]);const d=add('meta','');d.append('Nemesis: ');const s=document.createElement('span');s.className='f'+b.fac;s.textContent=b.name;d.append(s,` (killed guildmate ${nem[1]})`)}
   const st=add('stats','');[['Gold',a.gold+'g'],['Gear',a.gear],['Kills',a.kills],['Honor',a.honor]].forEach(([k,v])=>{const d=document.createElement('div');const b=document.createElement('b');b.textContent=v;const s=document.createElement('span');s.textContent=k;d.append(b,s);st.append(d)});
