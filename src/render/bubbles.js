@@ -15,7 +15,7 @@ function wrap(text){const out=[];let cur='';
 export function drawBubbles(ctx,S,cam,drawText){
   const cv=ctx.canvas,vw=cv.width/cam.sc,vh=cv.height/cam.sc;
   const s=CSS*cam.dpr/cam.sc,lh=s*.8,pad=s*.3;
-  for(const a of S.agents){const b=a.bubble;if(!b||b.life<=0||a.hidden||a.state==='dead')continue;
+  for(const a of S.agents.concat(S.npcs||[])){const b=a.bubble;if(!b||b.life<=0||a.hidden||a.state==='dead')continue; // heroes and townsfolk (sim/npcs.js)
     const px=a.x*T,py=a.y*T;if(Math.abs(px-cam.camX)>vw/2+60||Math.abs(py-cam.camY)>vh/2+60)continue;
     const lines=wrap(b.text);
     ctx.font=s+'px VT323, monospace';let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);

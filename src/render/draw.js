@@ -13,11 +13,11 @@
 //   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
 import {W,H,T} from '../world/tiles.js';
-import {CITY,LAIR,CRYPT,LIGHTS,LABELS} from '../world/map.js';
+import {LAIR,CRYPT,LIGHTS,LABELS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
-import {sprite,SPR,heroSprite} from './sprites.js';
+import {sprite,SPR,heroSprite,npcSprite} from './sprites.js';
 import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
@@ -98,25 +98,19 @@ export function createRenderer(cv,screenEl){
     const tt=performance.now()/400;
     if(inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle='#ffe27a';for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
     const close=cam.close=sc>=cam.fit*2;
-    // NPCs: quest giver (purple, exclamation mark) and auctioneer (gold sign)
-    const nf=Math.floor(blink*1.5)%2;
-    for(const c of CITY){if(!inView(c.qg.x*T,c.qg.y*T,MARGIN*2))continue;
-      for(const [p,col] of [[c.qg,'#7a4ab8'],[c.ah,'#b8862a']]){const s=sprite('npc'+col+nf,SPR.npc[nf],{H:'#d8d0c0',S:'#f0c8a0',R:col});
-      const sx=Math.round(p.x*T),sy=Math.round((p.y-.15)*T);shadow(sx,sy,10);ctx.drawImage(s,sx-5,sy-12)}
-      const top=Math.round((c.qg.y-.15)*T)-12,by=Math.round(Math.sin(blink*4))*1,qx=Math.round(c.qg.x*T)-1;
-      ctx.fillStyle='#ffe040';ctx.fillRect(qx,top-11+by,2,6);ctx.fillRect(qx,top-4+by,2,2);
-      ctx.fillStyle='#f2c14e';ctx.fillRect(Math.round(c.ah.x*T)-2,top-8,4,4);ctx.fillStyle='#8a6a1a';ctx.fillRect(Math.round(c.ah.x*T)-1,top-6,2,1)}
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
-    // entities in view, sorted by y
+    // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
     const ents=[];
     for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ents.push(m);
     for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ents.push(a);
+    for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ents.push(p);
     if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ents.push(boss);
     ents.sort((a,b)=>a.y-b.y);
     for(const e of ents){
       const fr=e.moving?Math.floor(blink*6+e.id)%2:0;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
+      else if(e.kind==='npc')s=npcSprite(e,e.moving?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
       else if(e.state==='dead')s=sprite('grave'+e.fac,SPR.grave[0],{G:'#8a8a96',F:'#3a3a46',B:FAC[e.fac].dark});
       else s=heroSprite(e,e.state==='ghost',fr);
       const px=Math.round(e.x*T),py=Math.round(e.y*T);
@@ -125,6 +119,9 @@ export function createRenderer(cv,screenEl){
       ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);
       ctx.drawImage(s,-Math.floor(s.width/2),py-s.height);ctx.restore();ctx.globalAlpha=1;
       const top=py-s.height;
+      // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
+      if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle='#ffe040';ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
+        else if(e.role==='quartermaster'){ctx.fillStyle='#f2c14e';ctx.fillRect(px-2,top-8,4,4);ctx.fillStyle='#8a6a1a';ctx.fillRect(px-1,top-6,2,1)}}
       if(e===sel){ctx.fillStyle=Math.floor(blink*3)%2?'#f2c14e':'#fff2b0';ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
       if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=e.kind==='boss'?28:12;
         ctx.fillStyle='#000';ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?'#3fbf4a':'#e0483e';ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
@@ -148,6 +145,7 @@ export function createRenderer(cv,screenEl){
       if(CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,41*T-4,'#9ae0b8',14);
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';drawText((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?'#f2c14e':dead?'#9a98ac':FAC[a.fac].color,14)}
+      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40))drawText(p.name,p.x*T,p.y*T-17,'#d8c890',12); // townsfolk nameplates
       drawBubbles(ctx,S,cam,drawText);
       for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;drawText(m.name,m.x*T,m.y*T-17,'#ffb060',14)} // named elite nameplate
       if(boss.alive&&inView(boss.x*T,boss.y*T,LM))drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,'#ffb060',15);

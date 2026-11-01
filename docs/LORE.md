@@ -247,6 +247,44 @@ Wolf Pelt, Boar Tusk, Silk Bundle, Fen Moss, Thick Hide, Venom Sac, Ember Core, 
 
 Base prices climb with zone: Thornvale 4-7, Mirefen 9-14, Grave Dust 18, Cinderpass 22-26, Hoarfell 30-40.
 
+## Townsfolk
+Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
+routines). Each is one of the town's own people, named from that people's syllables when the
+world starts (so the innkeeper of Highgate is a Hallowan and keeps her name all run long, but
+no name is canon; a fresh world rolls fresh townsfolk). They never fight and never leave the
+walls. By day they keep their posts; at night they sleep in a row of houses along the back
+wall, opposite the gate. Heroes sell at the quartermaster's table and take their writs from
+the gate captain, so those two posts are the old auction-house and quest-giver stops.
+
+| Role (Concord / Warband) | Post | Hours | Does |
+| --- | --- | --- | --- |
+| Innkeeper / Mead-keeper | The inn by the south wall | 08:00-24:00 | Beds, stew, tabs, and a wager on who comes back. |
+| Smith / Forge-master | The forge by the north wall | 06:00-21:00 | Mends edges and dents; cannot mend pride. |
+| Quartermaster / Quartermaster | The table in the market | 06:00-21:00 | Buys pelts, fangs and oddments; runs the auction house. |
+| Priest / Shaman | The chapel (Concord) or the spirit circle (Warband) in the gate-side corner | 06:00-21:00 | Lights a candle for every name that leaves the gate; blesses Crypt parties. |
+| Bard / Boast-singer | The square, mid-path; strolls about it | 06:00-21:00 | Rhymes names, sings the news. |
+| Gate Captain / Gate Warden | Just inside the gate | Always | Hands out writs, takes reports, never leaves the gate. |
+
+Townsfolk speak through the same chat layer as heroes (bubble in follow view, a line in the
+chat tab of every hero within 7 tiles): a greeting when a hero comes within two tiles of the
+post, no more than once per 30 real seconds per resident and one roll per hero per game week,
+plus a line on opening and closing. Concord townsfolk are formal and dry, Warband townsfolk
+blunt and loud. Two of them watch the world:
+- The **bard** sings of the latest named elite slain (naming the hero and the beast) and of
+  Kragmaw's death, once per town per deed, a proud verse for the home faction and a sour one
+  for the enemy's hero.
+- The **priest or shaman** blesses a Sunken Crypt party of their faction forming in town
+  (`blessed`: one strike at +20%, as the wayside lanternstones grant), hurrying to the gate
+  while members are still inside the walls.
+
+Samples:
+- Highgate innkeeper: "Still alive, {target}. I had a wager on it. Thank you for that."
+- Highgate priest, blessing: "Kneel a moment, {target}. There. Whatever waits below, you do not face it alone."
+- Highgate bard, song: "Hear it, Highgate: {hero} has brought down {elite} in {zone}. I am adding a verse."
+- Grimhold forge-master: "Hit harder, {target}, and I will have to make it thicker."
+- Grimhold gate warden: "{target}. You went out. You came back. That is the whole of my report."
+- Grimhold boast-singer, enemy kill: "The Concord's {hero} killed {elite} in {zone}. Fine. The next one is ours."
+
 ## Voices
 Heroes speak short lines in context (`src/data/barks.js`; picked and cooled down by
 `src/sim/chat.js`). Concord lines are formal and dry; Warband lines are blunt and
