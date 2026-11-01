@@ -16,12 +16,13 @@ import {pop,bolt} from './effects.js';
 import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerClear} from './party.js';
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
+import {emptySlots,gearScore,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
 import {record} from './history.js';
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
-export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+a.gear*6+a.epics.length*10);
-export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+a.gear*1.5+a.epics.length*3;
+export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+gearScore(a)*6+a.epics.length*10);
+export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+gearScore(a)*1.5+a.epics.length*3;
 
 export function newQuest(a){const z=zoneFor(a.lvl);const opts=Object.keys(MOBS).filter(k=>MOBS[k].z===z&&MOBS[k].lv[0]<=a.lvl+2);
   const type=pickA(opts.length?opts:Object.keys(MOBS).filter(k=>MOBS[k].z===z));a.quest={type,need:ri(5,8),have:0}}
@@ -30,7 +31,9 @@ export function makeHero(f,cls,guild,wait){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
     bag:[],kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
     wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0};
-  a.traits=rollTraits(cls);newQuest(a);a.hp=maxHp(a);
+  a.traits=rollTraits(cls);newQuest(a);
+  a.slots=emptySlots();
+  a.hp=maxHp(a);
   const c=CITY[f];a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
   S.agents.push(a);
   // Trait reveal for recruits (not the opening roster): "Thrakash is reckless and greedy; Grimhold will remember that."
@@ -49,12 +52,14 @@ export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
   if(a.lvl>=20)a.xp=0}
 
 export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.');
+  equipEpic(a,name);
   record(a,'Looted ',epic(name),' from '+src+'.');
   say(a,'epic',{item:name})}
 
 export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a.kills++;
   const diff=m.lvl-a.lvl,xp=(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1);gainXp(a,xp);
   const M=MOBS[m.type];shareKill(a,m,xp);if(rnd()<.72)a.bag.push(M.loot);a.gold+=Math.max(1,Math.round(m.lvl*.6*rnd()));
+  rollDrop(a,m);
   if(rnd()<.006)getEpic(a,pickA(EPICS[M.z]),'a '+M.name);
   if(m.elite)record(a,'Slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');
   if(m.elite){a.eliteKills=(a.eliteKills||0)+1;log(a,' slew ',{t:m.name,c:'gd'},', ',m.title,', in ',ZONES[M.z],'!');getEpic(a,pickA(EPICS[M.z]),m.name)} // named elite: guaranteed epic from the zone table
@@ -103,11 +108,10 @@ export function priestHeal(a,list){if(!CLS[a.cls].heal||a.healCd>0)return;let lo
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
-export function sellAndShop(a){const c=CITY[a.fac];let tot=0,n=0;
+export function sellAndShop(a){const c=CITY[a.fac];let tot=sellGear(a),n=0;
   for(const it of a.bag){if(GOODS[it]){tot+=price(it);GOODS[it].supply++;n++}}a.bag=[];a.gold+=tot;
   if(n>=6&&rnd()<.35)log(a,' sold ',String(n),' goods at the ',c.name,' auction house for ',gold(tot+'g'),'.');
-  const cost=Math.round(18*Math.pow(a.gear+1,1.55));
-  if(a.gold>=cost&&a.gear<a.lvl+2*tm(a,'thrift')){a.gold-=cost;a.gear++;a.hp=maxHp(a);if(a.gear%3===0)log(a,' bought new gear (gear score ',String(a.gear),') for ',gold(cost+'g'),'.')}}
+  if(shopUpgrade(a))a.hp=maxHp(a)}
 
 export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
     say(a,'quest',{mob:M.pl});
