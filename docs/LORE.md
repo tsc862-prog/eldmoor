@@ -449,6 +449,85 @@ Triggers and samples:
   "Dawn, day 8. Twelve fell since the last dawn: three to monsters and nine to enemy heroes. 23 levels gained; Feneth stands highest at 9. The Crypt was cleared once; Kragmaw sleeps untouched." /
   "Day 15 begins. Nobody died since the last dawn; the Chronicler checks the list twice. 31 levels gained; Ragrek stands highest at 13, and Old Mother Sedge is dead. The Crypt was cleared once; Kragmaw sleeps untouched."
 
+## Adventures
+Heroes do not only hunt for the gate captain's tally. The towns post jobs, and a party (or a
+lone hero) takes one up and sees it through over a day or more: an adventure. A Dungeon Master
+runs them, rule-of-thumb for now (`src/sim/dm.js`, templates in `src/data/adventures.js`).
+Every adventure is a hook, three to five scenes on real places of the map, and an ending;
+the dice decide each scene, and what goes wrong carries forward. The kill-count writs are
+still there for heroes below level 4 and for anyone with nothing better on offer.
+
+**Where jobs come from.** Each town keeps up to three jobs posted, each for a day or two, plus
+personal ones for a single hero:
+- the **gate captain**'s writs and the **smith**, **priest**, **quartermaster**, **bard** and
+  **innkeeper**'s requests, given by name ("Gate Captain Merel stops Alwyn's party at the
+  Highgate gate with a job");
+- **rumours** at the inn of a named elite on the prowl (a hunt for the real beast, for parties
+  that can stand against it);
+- **graves**: a hero of the town who fell in the last day left a pack where they died;
+- **remnants** of the road: a robbed traveller, a strongbox sprung in a ditch, a wagon
+  merchant who never came back;
+- **oaths**: a hero sworn to kill an elite is offered its hunt, an heirloom-seeker a relic,
+  a pilgrim a message to carry to the Crypt mouth or the far country, a hoarder a paying escort;
+- **follow-ups**: a job well done sometimes brings the next one to the same hero.
+
+**Kinds of adventure** (titles are patterns; the subject comes from the hook):
+
+| Adventure | Party | From level | Scenes |
+| --- | --- | --- | --- |
+| Rescue ("Bring Home a woodcutter") | 1-3 | 4 | search the region, break the monsters' ring, a choice (straight through the brush past an old snare-line, or a night's camp on the road), bring them to the gate |
+| Escort ("Escort a salt wagon to Cairnmoot") | 1-3 | 4 | out of the gate, a snare across the road, monsters drawn by the wagon, deliver and be paid |
+| Investigate ("What Happened on the Mirefen Road") | 1-3 | 4 | read the ground where it happened, question a stranger, a choice (follow the claw-marks to a named beast, or report what is known) |
+| Clear a lair ("Clear the Den in Thornvale") | 2-3 | 5 | track the pack, the snared den mouth, the pack, the pack's master |
+| Recover a relic ("Recover the chapel's lantern-bell") | 1-3 | 4 | search beside a landmark, the hiding place's trap, a choice (take it back from a scavenger's camp, or buy it back), carry it home |
+| Negotiate ("Parley with a Rookscar toll-crew") | 1-3 | 6 | meet them on the road, the parley, a choice (clear their road of beasts, or swear on the old road-law), bring the terms home |
+| Hunt a named beast ("Hunt Crookback") | 2-3 | 5 | pick up the trail, a cold camp with a watch, the beast |
+| Deliver a message ("Carry a sealed letter to the Mirefen waymark") | 1-2 | 4 | a hard pace on the road, a toll-gate that was not there last week, hand it over |
+| Recover the fallen ("What Pellora Left Behind") | 1-3 | 4 | find where they fell, drive off the scavengers, bury them and keep watch, carry the gear home |
+
+Deliveries go to another town of the hero's own faction where there is one, else to a
+waymark on the region's road; a pilgrim's go to the Crypt mouth or the edge of the far country.
+
+**Named foes.** Some adventures end in a fight with a beast that has a name for the length of
+the job: Old Scar, the Grey Widow, Crookback, Longtooth, the Quiet One, Ashjaw, Rimeclaw,
+Mudmother, Halfhorn, the Pale Hunger, Blackgums, Old Rot, each with a title such as "terror of
+the Mirefen drovers" or "the oldest fen lurker in Mirefen". They are a monster of the region,
+a level above the strongest of the party and tougher than their kind. They are not the rare
+elites (Hollowfang and the rest), carry no epic and never come back; only an inn rumour or an
+oath sends a party after a real elite.
+
+**Scenes and dice.** A scene rolls d20 plus the party's best modifier (level/3, and a class
+bonus for the kind of roll: Hunters track, Rogues find traps, Priests and Mages talk and know
+old things, Warriors and Hunters strike first and keep watch) against 10 + a quarter of the
+region's lowest level, plus the scene's own difficulty. Kinds of scene: **travel** (a march to a
+point, sometimes a tracking roll), **fight** (real monsters spawned for the job; the roll decides
+who strikes first), **social** (a parley, a haggle, a stranger questioned), **trap**, **choice**
+(two roads, chosen by the leader's temper and the party's wounds) and **rest** (a camp with a
+watch roll at the end). Consequences carry forward: wounds for everyone, half a day lost, a
+stranger who will make the next parley harder and the next fight bigger, monsters out of the
+dark at a failed watch. A natural 20 brings a find or an easier next step. A party worn below
+three-fifths of its strength between scenes makes camp where it stands; a badly hurt one goes
+home, and takes the job up again on its next trip out. Jobs left three days go cold.
+
+**Endings.** The last roll decides between **success** and **partial**; a string of failed rolls
+and lost days drags a success to partial and a partial to **failure**, and the leader's death
+ends it. Success pays every member gold, experience and a little honor, a reward item for the
+leader (and sometimes the others), and draws the party closer; partial pays half; failure
+nothing. An heirloom hunt may turn up the heirloom itself. The first adventure of each kind seen
+through by each faction, and every hunted elite brought down, go on the Timeline.
+
+**In the Chronicle.** The Chronicler follows up to two adventures at a time beat by beat (and
+always the one the watcher follows): the job's posting, one line per scene with the roll shown,
+and the ending with the pay. The rest keep to the heroes' own logs, except the end of an
+elite hunt and a death on the job.
+
+Samples:
+- "Gate Captain Valric stops Mireth's party at the Highgate gate with a job: Smoke Out the Mirefen Den."
+- "Rhukorn's party tracks the pack to its den... rolls 2+4 vs 11. They find it the long way, by the smell. They lose the afternoon to it."
+- "Halfhorn, terror of the Mirefen drovers, comes out last... rolls 18+3 vs 11. Mireth is ready for it."
+- "Lurken delivers a salt wagon at the Thornvale waymark... rolls 7+2 vs 10. Two crates short. The tallyman docks the pay and does not apologise."
+- "Mireth's party returns from Smoke Out the Mirefen Den with the job done. 40g each, and Mireth takes Fenleather Vestment."
+
 ## Minds
 
 Some heroes are played by a language model instead of the old rules of thumb. In Eldmoor that means nothing at all: there is no such thing as an AI-played hero, only heroes. They are born, swear oaths, hold grudges and die the same way as everyone else, once, for good. The UI marks them with an "AI-played" badge because the watcher may want to know; the world does not. A mind that falls silent (the relay is down) is written as a dim chronicle line, "<hero>'s thoughts go quiet", and the hero simply goes on as before. Minds speak in their faction's voice: Concord formal and dry, Warband blunt and short. They never mention models, prompts, players or games.

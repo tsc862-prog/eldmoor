@@ -37,7 +37,7 @@ const NIGHT_FROM=19,NIGHT_TO=5; // game hours
 const ELITE_SIGHT=6;     // tiles
 
 const NAR={t:'',c:'nar'},dm=t=>({t,c:'dm'}),gd=t=>({t,c:'gd'});
-const d20=()=>ri(1,20);
+export const d20=()=>ri(1,20); // also the DM's dice (sim/dm.js)
 const hour=()=>(S.gameMin/60)%24;
 const isNight=()=>{const h=hour();return h>=NIGHT_FROM||h<NIGHT_TO};
 const dawnIdx=()=>Math.floor((S.gameMin-360)/1440); // increments at every 06:00
