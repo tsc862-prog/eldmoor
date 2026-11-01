@@ -25,6 +25,7 @@ import {agentDie,strike,maxHp} from './heroes.js';
 import {weatherKind,sightMul} from './weather.js';
 import {record} from './history.js';
 import {nearHeroes} from './spatial.js';
+import {dmgTaken} from './stats.js';
 
 // ---- knobs ----
 const CAP=20;            // real seconds between scene lines
@@ -95,7 +96,7 @@ export function scoutCheck(a,m){ensure();
 // at flee health that can still kill, and a death here is always narrated.
 export function fleeCheck(a,m){ensure();if(a.state!=='return'||!m||!m.alive)return;
   const mod=skillMod(a,'athletics'),r=d20(),ok=r+mod>=FLEE_DC;let dmg=0;
-  if(!ok){dmg=Math.max(1,Math.round((3+m.lvl*2)*m.hit*(.8+rnd()*.4)*(CLS[a.cls].arm||1)*FLEE_GLANCE));a.hp-=dmg;pop(a.x,a.y-.6,String(dmg),'#ff6a5a')}
+  if(!ok){dmg=Math.max(1,Math.round((3+m.lvl*2)*m.hit*(.8+rnd()*.4)*dmgTaken(a)*FLEE_GLANCE));a.hp-=dmg;pop(a.x,a.y-.6,String(dmg),'#ff6a5a')}
   const dead=a.hp<=0;S.narStats.flees[ok?0:1]++;if(dead)S.narStats.fleeDeaths++;
   const nm=mobNames(m),plain=m.elite?m.name:'a '+MOBS[m.type].name;
   record(a,(ok?'Got clear of ':'Was caught fleeing ')+plain+' ('+rollStr(r,mod,FLEE_DC)+').');

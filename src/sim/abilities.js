@@ -3,9 +3,11 @@
 // A hero stores plain data only: a.abil {brawn..presence}, a.prof [skill ids], a.trade (optional).
 // Heroes without scores (a dead stub, an unmigrated save) read as all-zero modifiers.
 //
-// Consumers: heroes.js (makeHero rolls, gainXp grows, maxHp/atkOf/strike use hpBonus/atkBonus/
-// critBonus), dm.js (scene rolls), encounters.js (chest, ambush), narrator.js (scout, flee),
-// brain.js (snapshot), ui/panels.js (Stats tab).
+// A score is the stored base (a.abil) plus whatever worn items add (item.bonus, issue #88): every
+// skill, check and combat figure reads the total. The combat totals themselves live in sim/stats.js.
+// Consumers: heroes.js (makeHero rolls, gainXp grows), stats.js (Health, Attack, Crit), dm.js
+// (scene rolls), encounters.js (chest, ambush), narrator.js (scout, flee), brain.js (snapshot),
+// ui/panels.js (Stats tab).
 import {rnd,ri,pickA} from '../core/rng.js';
 import {raceOf} from '../data/races.js';
 import {
@@ -35,7 +37,10 @@ export function growScores(a,lvl){
   a.abil[ca.primary]=Math.min(SCORE_MAX,a.abil[ca.primary]+1);
   if(rnd()<.5)a.abil[ca.secondary]=Math.min(SCORE_MAX,a.abil[ca.secondary]+1)}
 
-export const score=(a,k)=>a.abil&&a.abil[k]!==undefined?a.abil[k]:10;
+export const baseScore=(a,k)=>a.abil&&a.abil[k]!==undefined?a.abil[k]:10;
+// Points worn items add to one score (item.bonus); 0 for a hero without slots.
+export function gearBonusOf(a,k){let n=0;const s=a.slots;if(!s)return 0;for(const x in s){const it=s[x];if(it&&it.bonus&&it.bonus[k])n+=it.bonus[k]}return n}
+export const score=(a,k)=>baseScore(a,k)+gearBonusOf(a,k);
 export const mod=(a,k)=>modOf(score(a,k));
 
 // ---- skills ----
@@ -70,15 +75,6 @@ export function socialSkill(a){
   const t=a.traits||[];
   for(const s of ['intimidation','persuasion'])if(SOCIAL_LEAN[s].some(x=>t.includes(x)))return s;
   return skillMod(a,'intimidation')>skillMod(a,'persuasion')?'intimidation':'persuasion'}
-
-// ---- combat feeds (calibrated so the average hero equals the pre-ability formulas) ----
-// Reference modifiers are the population means; see the PR for the measurement.
-const HP_PER_LVL=1,HP_REF=.7,CRIT_PER=.008,CRIT_REF=1.5;
-const atkRef=l=>2.6+.1*l; // mean primary modifier at level l (growth included)
-export function hpBonus(a){return a.abil?Math.round(a.lvl*(mod(a,'grit')*HP_PER_LVL-HP_REF)):0}
-export function atkBonus(a){if(!a.abil)return 0;const ca=CLASS_ABIL[a.cls];if(!ca)return 0;
-  return (mod(a,ca.primary)-atkRef(a.lvl))*(.6+a.lvl*.1)}
-export function critBonus(a){return a.abil?(mod(a,'reflex')-CRIT_REF)*CRIT_PER:0}
 
 // Top two scores, "Reflex 15 (+2)".
 export function topScores(a,n=2){return ABIL_IDS.slice().sort((x,y)=>score(a,y)-score(a,x)).slice(0,n).map(k=>ABILITIES[k].name+' '+score(a,k))}
