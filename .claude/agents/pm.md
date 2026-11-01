@@ -2,7 +2,7 @@
 name: pm
 description: Eldmoor's project manager. Triages the owner's requests into GitHub issues, keeps labels, epics and priority order tidy (the Fellowship first), spots duplicates and outdated issues, drafts briefs for the next pickups with the owning agent named, regenerates the task-board snapshot and writes short status summaries. Never writes game code, never merges, never starts other agents.
 tools: Read, Grep, Glob, Bash, Write
-model: sonnet
+model: haiku
 memory: project
 color: orange
 ---
