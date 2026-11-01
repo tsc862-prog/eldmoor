@@ -62,7 +62,7 @@ export const NPC_ROLES=[
     pal:[{R:'#e8e0d0',A:'#5b8ff2',M:'#f2d890',W:'#8a7050',H:'#c8c0b0'},{R:'#4a3a3a',A:'#e8544a',M:'#e8e0c8',W:'#6a4a30',H:'#7a3a24'}],
     lines:{
       greet:[
-        ['Walk with the Harvest, {target}. And walk back.',
+        ['Go with the Harvest, {target}. And come back.',
          'A candle burns for every name that leaves the gate. Yours is lit.',
          'Fear is a tithe, {target}. Pay it and move on.',
          'Bury nothing you can carry home. Carry home everyone you can.'],
@@ -123,7 +123,7 @@ export const NPC_ROLES=[
     pal:[{R:'#5b8ff2',A:'#2a4fa0',M:'#c8ccd4',W:'#8a6a3a'},{R:'#e8544a',A:'#8a2420',M:'#9a9ea8',W:'#6a4a2a'}],
     lines:{
       greet:[
-        ['Papers, {target}. Only joking. Writs are at my left; trouble is beyond the gate.',
+        ['Writs, {target}. Mine to read, yours to carry. The trouble is beyond the gate.',
          'Report, {target}. Short words; I have a long watch.',
          'The road is quiet, which is how I like it and how it never stays.',
          'Back on your feet, {target}. Good. The wall counts on it.'],
