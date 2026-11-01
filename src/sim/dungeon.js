@@ -5,6 +5,7 @@ import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {CRYPT,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {DG_EPICS} from '../data/items.js';
+import {addGood,addUse,cryptDraughts} from './inv.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {gainXp,getEpic,goHome,fall} from './heroes.js';
@@ -40,13 +41,13 @@ export function dungeonCheck(dt){const agents=S.agents;
     else if(g.t<=0){g.mem.forEach(a=>a.state='hunt');CRYPT.group=null}return}
   if(g.t>0)return;
   const n=g.mem.length,avg=g.mem.reduce((t,a)=>t+a.lvl+a.gear*.3,0)/n;
-  const pw=avg+(g.mem.some(a=>a.cls==='Priest')?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+n*.6+(g.bonus||0); // g.bonus: the Fellowship's choices at the table (sim/table.js)
+  const pw=avg+(g.mem.some(a=>a.cls==='Priest')?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+n*.6+(g.bonus||0)+Math.min(1.5,cryptDraughts(g.mem)/n*.6); // g.bonus: the Fellowship's choices at the table (sim/table.js); the draughts the party drinks below (sim/inv.js)
   const ok=rnd()<clamp((pw-8)/8,.15,.92),who=tagOf(g.guild,g.fac,g.name);
   for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6}
   if(ok){if(g.guild)g.guild.clears++;log(who,' cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'!');
     if(first('crypt:'+(g.guild?g.guild.tag:'f'+g.fac)))timeline('crypt',who,' cleared ',{t:CRYPT.name,c:'gd'},' for the first time.');
     for(const a of g.mem)record(a,'Cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'.');
-    for(const a of g.mem){gainXp(a,250+a.lvl*20);a.gold+=25+ri(0,20);a.kills+=ri(8,14);for(let k=0;k<3;k++)a.bag.push('Grave Dust');
+    for(const a of g.mem){gainXp(a,250+a.lvl*20);a.gold+=25+ri(0,20);a.kills+=ri(8,14);addGood(a,'Grave Dust',3);addUse(a,'Marrowmend Tonic',1);
       if(rnd()<.25)getEpic(a,pickA(DG_EPICS),CRYPT.boss);goalEvent(a,'crypt');goHome(a)}}
   else{if(g.guild)g.guild.wipes++;const lost=[];
     for(const a of g.mem)record(a,'The group wiped in ',{t:CRYPT.name,c:'gd'},'.');

@@ -23,6 +23,8 @@ import {rnd,ri,hash} from '../core/rng.js';
 import {CITY,LAIR,CRYPT,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
 import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
 import {MOBS} from '../data/mobs.js';
+import {USES} from '../data/items.js';
+import {campMeal,campLight} from './inv.js'; // rations and torches (sim/inv.js)
 import {homeOf} from '../data/races.js';
 import {CAMP_LINES,TOPICS,QUARREL_REPLY,NTH} from '../data/camp.js';
 import {S} from './state.js';
@@ -120,7 +122,7 @@ function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zo
   if(!p)return null;
   const m=spawnMob(t,null,{lvl:Math.max(M.lv[0]-2,Math.min(M.lv[1]+1,lvl)),add:true});m.xpMul=.6;m.x=p.x;m.y=p.y;m.home={...p};m.spawn={...p};return m}
 function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors++;
-  const avg=Math.round(L.reduce((s,a)=>s+a.lvl,0)/L.length),spot=check(w,'perception',CAMP.SPOT_DC),victim=L[ri(0,L.length-1)];
+  const avg=Math.round(L.reduce((s,a)=>s+a.lvl,0)/L.length),spot=check(w,'perception',CAMP.SPOT_DC-(g.lit?USES['Pitch Torch'].watch:0)),victim=L[ri(0,L.length-1)];
   const foeHero=nearHeroes(g.x,g.y,16,b=>b.fac!==w.fac&&b.state!=='dead'&&!b.hidden&&(b.state==='hunt'||b.state==='travel')&&Math.abs(b.lvl-w.lvl)<=3)[0];
   const useHero=foeHero&&rnd()<.4;let m=null;
   if(!useHero){m=ambushMob(g,avg);if(!m)return}
@@ -181,7 +183,8 @@ export function campTick(dt){const F=S.fellowship;
   if(g.phase==='gather'){let all=true;
     L.forEach((a,i)=>{const p=spotOf(g,i,L.length);if(!moveTo(a,p.x,p.y,dt,2.4))all=false;a.face=g.x>a.x?1:-1});
     if(all||now-g.start>CAMP.GATHER_MAX){g.phase='rest';g.restAt=Math.round(now);g.nextRoll=now+CAMP.ROLL_MIN;g.nextTalk=now+20;g.nextBond=now+180;g.watchIdx=-1;
-      for(const a of L)a.moving=false}
+      for(const a of L){a.moving=false;campMeal(a)}
+      for(const a of L)if(!g.lit&&a.inv&&a.inv.list.length)campLight(a)}
     return}
   // rest: heal, watches, rolls, talk
   for(const a of L){const mh=maxHp(a);a.hp=Math.min(mh,a.hp+mh*CAMP.CAMP_HEAL*dt);a.face=g.x>a.x?1:-1}

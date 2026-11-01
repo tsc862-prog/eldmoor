@@ -22,6 +22,7 @@ import {select,setView} from './controls.js';
 import {mindOf,mindText,mindTitle,mindButton} from './mindctl.js';
 import {openSheet} from './sheet.js';
 import {runnerControl,runnerSig} from './runners.js'; // app runners: Start / Stop on an agent-played member
+import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -53,6 +54,8 @@ export function topSkills(a,n=3){return SKILL_IDS.slice().sort((x,y)=>skillMod(a
 // The member who held this place before, when the place has turned over (the DM's replacement).
 function before(slot){const F=S.fellowship;if(!F)return null;for(let i=F.past.length-1;i>=0;i--)if(F.past[i].slot===slot)return F.past[i];return null}
 const today=()=>Math.floor(S.gameMin/1440)+1;
+// Potions carried, as frame text: "3 potions" (empty when none).
+export const potText=a=>{const n=a&&a.inv?countKind(a,'potion'):0;return n?n+(n===1?' potion':' potions'):''};
 export function replacedLine(slot){const p=before(slot);return p&&p.day>=today()-1?'Took the place of † '+p.name+' ('+p.cause+')':''}
 
 // The whole strip as text: one entry per place.
@@ -60,7 +63,7 @@ export function frameRows(){return fellowshipMembers().map(m=>{const a=m.hero;
   if(!a){const p=before(m.slot);return {role:m.label,empty:true,text:m.label+' · place empty'+(p?' · † '+p.name+', '+p.cause:'')}}
   const mh=maxHp(a);
   return {role:m.label,name:a.name,cls:a.cls,lvl:a.lvl,hp:Math.max(0,Math.round(a.hp))+' / '+mh,status:doing(a),target:targetOf(a),
-    chips:chipsOf(a).map(c=>c.t),mind:mindText(a),replaced:replacedLine(m.slot),lead:!!(fellowParty()&&fellowParty().leader===a),
+    chips:chipsOf(a).map(c=>c.t),pots:potText(a),mind:mindText(a),replaced:replacedLine(m.slot),lead:!!(fellowParty()&&fellowParty().leader===a),
     hover:combatRows(a).map(r=>r[1]+' '+r[2]).concat(['Skills: '+topSkills(a).join(', ')])}})}
 
 // ---- DOM ----
@@ -78,7 +81,7 @@ function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
   top.append(r.port,id);
   const hp=el('div','meter hp pfhp');r.hpi=document.createElement('i');r.hpt=el('span','pfhpt');hp.append(r.hpi,r.hpt);
   r.doing=el('div','pfdo');r.tgt=el('div','pftg');r.chips=el('div','pfchips');
-  const foot=el('div','pffoot');r.mind=el('span','pfmind');r.btn=el('span','pfbtn');foot.append(r.mind,r.btn);r.run=el('div','pfrun');
+  const foot=el('div','pffoot');r.pot=el('span','pfpot');r.mind=el('span','pfmind');r.btn=el('span','pfbtn');foot.append(r.pot,r.mind,r.btn);r.run=el('div','pfrun');
   r.rep=el('div','dm pfrep');
   f.append(top,hp,r.doing,r.tgt,r.chips,r.rep,foot,r.run);
   return {node:f,hid:a.id,r}}
@@ -95,7 +98,7 @@ function update(fr,m){const a=m.hero,r=fr.r;
   setText(r.hpt,dead?'fallen':Math.max(0,Math.round(a.hp))+' / '+mh);
   setText(r.doing,doing(a));const t=targetOf(a);setText(r.tgt,t?'» '+t:'');
   const ch=chipsOf(a),ck=ch.map(c=>c.t).join('|');if(r.chips._k!==ck){r.chips._k=ck;r.chips.replaceChildren();for(const c of ch){const s=el('span','chip c-'+c.c,c.t);s.title=c.title||'';if(c.col)s.style.color=c.col;r.chips.append(s)}}
-  setText(r.rep,replacedLine(m.slot));
+  setText(r.rep,replacedLine(m.slot));setText(r.pot,dead?'':potText(a));
   setText(r.mind,mindText(a));setCls(r.mind,'pfmind m-'+mindOf(a));setAttr(r.mind,'title',mindTitle(a));
   const bk=dead?'':mindOf(a);if(r.btn._k!==bk){r.btn._k=bk;r.btn.replaceChildren();if(!dead)r.btn.append(mindButton(a))}
   const rk=dead||!a.player?'':runnerSig(a);if(r.run._k!==rk){r.run._k=rk;r.run.replaceChildren();if(rk)r.run.append(runnerControl(a))}}
