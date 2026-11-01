@@ -15,6 +15,7 @@ import {GOODS,price} from '../data/items.js';
 import {S,clockStr,maxHp,xpNeed,atkOf,onLog,onMarketTick} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {weatherName} from '../sim/weather.js';
+import {friendsOf} from '../sim/bonds.js';
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -81,6 +82,7 @@ function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
   b.append(el('div','meta','Quest: '+q));
   const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
+  {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
   b.append(el('div','meta',`Weather: ${weatherName(a.zone)} in ${ZONES[a.zone]}`))}
 
 function tabLog(b,a){const h=(a.history||[]).slice().reverse();

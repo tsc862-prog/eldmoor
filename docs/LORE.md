@@ -115,6 +115,16 @@ tiers), and an oath whose target dies first is void and re-sworn.
 | Bank N gold | the hero holds N gold at once | - |
 | Clear the Sunken Crypt | the hero's group clears the Crypt | first pick for Crypt groups |
 
+## Bonds and blood debts
+Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,
+heals, rescues in a duel and setting out in a party raise a bond; a day apart wears it
+down. Six points make friends, fifteen make sworn companions, and the Chronicle says so
+when the line is crossed. When a hero falls to an enemy hero, the sworn companions take
+the killer as a nemesis and friends do so half the time, so the grudge outlives the dead
+and is hunted on sight ("spots X, who killed their friend Y, and charges"). The closest
+friend swears the death will be paid for. Whoever finally kills the killer has paid the
+blood debt, and the dead hero's friends warm to them. A grudge ends only with the killer.
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |
