@@ -32,6 +32,7 @@ import {councilTick} from './council.js';
 import {tableTick,tableHold} from './table.js';
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
+import {opening} from './opening.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -43,12 +44,15 @@ export {enableBrain,disableBrain,brainStatus} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
 export {found,autoPick,disbandFellowship,fellowshipMembers,fellows,setMinds} from './fellowship.js';
 export {TABLE,bannerOf} from './table.js';
+export {fellowshipStart,START_BANDS} from './opening.js';
 
-// Populate the world: monsters, 14 level-1 heroes per faction, the opening chronicle.
-export function init(){
+// Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
+// Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
+// o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
+export function init(o={}){
   spawnAll();
   for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%5],null,i*.6+rnd()*1.5);
-  log('Twenty-eight new heroes of ',fac(0),' and ',fac(1),' arrive in ',{t:'Eldmoor',c:'gd'},'. Every one of them is level 1.');
+  opening(o);
   log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
   log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
   log({t:'Hardcore rules:',c:'gd'},' every hero has one life. The fallen stay fallen.');

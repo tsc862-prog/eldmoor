@@ -54,9 +54,9 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
 
 export function mindAct(t){if(!t||!t.dataset||!t.dataset.mmode)return false;
   const a=byHid(t.dataset.mhid);if(!a||a.state==='dead')return true;const k=t.dataset.mmode;
-  if(k==='scripted'){if(a.player)agentOff(a);disableBrain(a);delete a.fellowBrain}
-  else if(k==='ai'){if(a.player)agentOff(a);if(!a.brain)enableBrain(a)}
-  else if(k==='agent'&&!a.player)agentOn(a);
+  if(k==='scripted'){if(a.player)agentOff(a);disableBrain(a);delete a.fellowBrain;delete a.fellowAgent}
+  else if(k==='ai'){if(a.player)agentOff(a);delete a.fellowAgent;if(!a.brain&&enableBrain(a)&&a.fellow)a.fellowBrain=true}
+  else if(k==='agent'&&!a.player){if(a.brain){disableBrain(a);delete a.fellowBrain}if(agentOn(a)&&a.fellow)a.fellowAgent=true}
   return true}
 
 export function mindChange(s){if(!s||!s.dataset)return false;

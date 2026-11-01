@@ -10,7 +10,7 @@ const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 
 TABLE.speed = 1;
-init(); run(1200);
+init({fellowship: false}); run(1200); // the old start (#111): this check founds its own Fellowship
 ok(found(autoPick(0), {ai: false}).ok, 'Fellowship founded');
 let camps = 0, prev = null, sawRest = false, mid = null, maxCamped = 0, bg = 0;
 for (let i = 0; i < 8 * 240 * 60; i++) {

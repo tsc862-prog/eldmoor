@@ -79,6 +79,7 @@ other. The rules:
   levels, deaths, honor, guild dungeon results and boss state.
 - `npm run build`: static build into `dist/`.
 - Worlds: Eldmoor (80x50) by default; `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node selects the 160x100 Stepping Lands test continent (saves are kept per world).
+- New worlds (#111): `init()` founds the default Fellowship (level 1, home town, Minds scripted) and starts the other heroes at levels 1-15 in fitting zones (`src/sim/opening.js`, `START_BANDS`). `ELDMOOR_FELLOWSHIP=0` in Node, `?fellowship=0` in the browser or `init({fellowship:false})` keeps the old all-level-1 start for balance baselines; checks that found their own Fellowship use it.
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
@@ -325,7 +326,7 @@ render or ui, so the headless harness stays stub-free.
 
 ## Tuning knobs
 
-- XP curve `xpNeed`, caution thresholds (hunt retreat at 45% HP, flee at 22%):
+- XP curve `xpNeed` (60 * l^1.45, times a ramp of +80% from L10 to L16, #107), caution thresholds (hunt retreat at 45% HP, flee at 22%):
   `src/sim/heroes.js`. Hero combat totals (Health, Attack, Defense, Crit, Speed) and their
   level terms: `combatStats` in `src/sim/stats.js`; item armor/damage rates and properties:
   `src/data/items.js`. Class table `CLS`: `src/data/classes.js`.
@@ -334,12 +335,12 @@ render or ui, so the headless harness stays stub-free.
   7s, raids need level 14+ heroes, 5+ of them or 4 with average gear 9+; raiders
   break off below 15% HP and a failed raid cools down 240s: `src/sim/boss.js`,
   `RAID_FLEE` in `src/sim/heroes.js`.
-- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 55% of the party.
+- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 40% of the party (was 55%). Webspinner and Bristleback Boar are softened in `data/bestiary.js` (tilt + aggro); Fellowship replacements seed in `fellowship.js` (`SEED_BEHIND`=2). Duel chance .0375 in `pvp.js`.
 - PvP: chance duels 4% x boldness, level gap 2, range 3 tiles; nemesis spot cooldown 45s; guild assist 20%; duellers yield below 30% HP; only fallen heroes of level 12+ pass the grudge to the whole guild (lesser deaths bind their party): `src/sim/pvp.js`, `GUILD_GRUDGE_LVL` in `src/sim/heroes.js`.
 
 ## Known state
 
-- In a 120-minute headless run from level 1 (after the rebalance and item stats), about 26 deaths per hour, roughly 40% PvP; median living level 11; 9 veterans at 14+. Kragmaw dies in most runs with 0-4 raid deaths. Late-game (240 min) PvP among level 11+ veterans climbs back toward 50-60% of deaths.
+- In a 120-minute headless run from level 1 (balance #107, 10-run mean): about 21 deaths per hour, ~45% PvP; crypt about 12 deaths and ~50 clears per run; L1-5 mob deaths about 5 (was 16); median living level 11-12, top 18, level 20 not reached by minute 120 in any of 10 runs (first at ~minute 125-140). Median at minute 60 is 11. Kragmaw dies in most runs. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
 - The world auto-saves to localStorage every game-hour and on tab close, and restores on reload; Export/Import move it as JSON (`src/sim/save.js`, `src/ui/save.js`, `npm run savecheck`).
 
 ## Roadmap ideas

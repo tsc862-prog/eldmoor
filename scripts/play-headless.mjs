@@ -65,7 +65,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     restore(snap);
     console.log(`[play] resumed ${worldFile} at day ${Math.floor(S.gameMin / 1440) + 1}`);
   } else {
-    init(); const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
+    const fs = flag('fellowship') || opt('fellowship', null); init(fs ? {fac: Number(opt('fac', 0)) === 1 ? 1 : 0} : {fellowship: false}); const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
   }
   // Heroes to play: named ones, else --agents N alternating the factions (Concord first).
   // The Fellowship (#68): found one with every member agent-played, unless the save already has one.

@@ -29,7 +29,7 @@ const {score} = await import('../src/sim/abilities.js');
 
 // ---- determinism child: a seeded world without a Fellowship, hashed ----
 if (process.argv[2] === '--hash') {
-  init(); for (let i = 0; i < 180 * 60; i++) step(1 / 60);
+  init({fellowship: false}); for (let i = 0; i < 180 * 60; i++) step(1 / 60);
   let h = Math.round(S.gameMin); for (const a of S.agents) h = (Math.imul(h, 31) + a.lvl * 1000 + Math.round(a.xp) + Math.round(a.x * 10) * 7 + Math.round(a.hp)) | 0;
   console.log('HASH ' + h + ' table:' + (S.table ? 1 : 0) + ' fellowship:' + (S.fellowship ? 1 : 0)); process.exit(0);
 }
@@ -40,7 +40,7 @@ const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 const act = (a, tool, args) => P.playerAct(a.id, tool, args || {});
 
 console.log('\nEldmoor tablecheck: Table mode, the council and the party as one unit (mock agents)\n');
-init(); run(60);
+init({fellowship: false}); run(60); // the old start (#111): this check founds its own Fellowship
 for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
 const r0 = F_.found(F_.autoPick(0), {fac: 0, ai: false});
 ok(r0.ok && F_.fellows().length === 5, `founded ${S.fellowship && S.fellowship.name} with ${F_.fellows().length} members`);

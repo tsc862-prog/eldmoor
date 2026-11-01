@@ -17,6 +17,7 @@ console.log('Living heroes:', alive.length, '| levels:', lv.join(' '));
 console.log('Fallen:', S.facStats.map((f) => f.fallen).join(' / '), '(Concord / Warband)');
 console.log('Honor:', S.facStats.map((f) => f.honor).join(' / '), '| Boss kills:', S.facStats.map((f) => f.bosses).join(' / '));
 console.log('Guilds (clears/wipes/bosses):', S.GUILDS.filter((g) => !g.retired).map((g) => `${g.tag} ${g.clears}/${g.wipes}/${g.bosses}`).join('  '), '| retired', S.GUILDS.filter((g) => g.retired).length, '| unguilded alive', alive.filter((a) => !a.guild).length, '| events', JSON.stringify(S.guildStats || {}));
+{const F=S.fellowship;console.log('Fellowship:', F ? `${F.name} (${['Concord','Warband'][F.fac]}) | members ${F.ids.map((id) => S.agents.find((a) => a.id === id)).filter(Boolean).map((a) => `${a.name} L${a.lvl} ${a.cls}`).join(', ')} | fallen ${F.past.length}` : 'none')}
 console.log('Kragmaw alive:', S.boss.alive, '| hp', Math.round(S.boss.hp));
 console.log('Top 5:', alive.sort((a, b) => b.lvl - a.lvl).slice(0, 5).map((a) => `${a.name} L${a.lvl} ${a.cls}`).join(', '));
 console.log('Recent deaths:', S.fallen.slice(0, 8).map((f) => `${f.name} L${f.lvl} (${f.cause})`).join('; '));
