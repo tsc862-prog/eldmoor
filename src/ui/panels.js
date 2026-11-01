@@ -165,7 +165,7 @@ export function renderClock(){$('clock').textContent=`Day ${Math.floor(S.gameMin
 
 // Chronicle: render what the sim already logged, then follow new entries.
 function initChronicle(){const el_=$('log');
-  const add=e=>{const li=document.createElement('li');li.append(el('time',null,e.t));parts(li,e.parts);
+  const add=e=>{const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';li.append(el('time',null,e.t));parts(li,e.parts);
     el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()};
   for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i]);
   onLog(add)}

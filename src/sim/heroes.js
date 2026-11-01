@@ -19,6 +19,7 @@ import {speedMul,sightMul,isStorm} from './weather.js';
 import {emptySlots,gearScore,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
 import {record} from './history.js';
 import {checkEncounter} from './encounters.js';
+import {scoutCheck,fleeCheck} from './narrator.js';
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
@@ -158,12 +159,14 @@ export function updAgent(a,dt){
     if(dist(a,L)>2){a.dest=followPt(a);moveTo(a,a.dest.x,a.dest.y,dt,L.state==='return'?2.5:2.1)}else{a.dest=null;a.moving=false}break}
   case 'fight':{const m=a.target;if(!m||!m.alive){a.state='hunt';a.target=null;break}
     spotMob(a,m);
+    scoutCheck(a,m); // Chronicler: ambush / outleveled scout roll at fight entry (sim/narrator.js)
     const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
     if(d>r){moveTo(a,m.x,m.y,dt,2.4);break}a.moving=false;
     if(!m.target)m.target=a;
     priestHeal(a,a.party?a.party.mem:[a]);
     if(a.cd<=0){strike(a,m);a.cd=1.1}
     if(a.state==='fight'&&a.hp<mh*.22*tm(a,'flee')&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
+    fleeCheck(a,m); // Chronicler: flee roll, a failure lands one more hit (sim/narrator.js)
     if(a.state==='return')say(a,'flee',{mob:MOBS[m.type].name});
     break}
   case 'regroup':{a.regT-=dt;if(a.regT<=0||!a.dest||moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state=a.regNext==='return'?'return':leaderOf(a)?'follow':'hunt';a.dest=null;a.regNext=null}break}
