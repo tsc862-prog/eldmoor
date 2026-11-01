@@ -20,8 +20,7 @@ import {FAC} from '../data/factions.js';
 import {SLOTS} from '../data/items.js';
 import {S} from './state.js';
 import {log,fac} from './chronicle.js';
-import {xpNeed,maxHp,newQuest} from './heroes.js';
-import {growScores} from './abilities.js';
+import {xpNeed,maxHp,seedLevel} from './heroes.js';
 import {makeItem,syncGear} from './gear.js';
 import {record,first} from './history.js';
 import {found,autoPick} from './fellowship.js';
@@ -48,14 +47,14 @@ const AGO=['a season','half a year','a year','two years'];
 
 // Give a level-1 hero the career of a level-L one and put them in the field.
 export function season(a,L){if(L<=1){record(a,'New to the road out of '+homeOf(a).name+'.');return}
-  a.lvl=L;a.xp=Math.floor(rnd()*xpNeed(L)*.8);
-  for(let l=5;l<=L;l+=5){growScores(a,l);first('lvl:'+a.fac+':'+l);if(l>=10)first('cls:'+a.fac+':'+a.cls+':'+l)} // no "first to level 10" later for a level a veteran already holds
+  seedLevel(a,L);a.xp=Math.floor(rnd()*xpNeed(L)*.8); // level, ability growth and a fitting quest (heroes.js)
+  for(let l=5;l<=L;l+=5){first('lvl:'+a.fac+':'+l);if(l>=10)first('cls:'+a.fac+':'+a.cls+':'+l)} // no "first to level 10" later for a level a veteran already holds
   const fill=Math.min(1,.2+L*.12); // greenhorns have bought a piece or two; veterans wear a full set
   for(const k of SLOTS)if(rnd()<fill){const il=Math.max(1,L-ri(0,2));a.slots[k]=makeItem(a.cls,k,il,zoneFor(il),{src:'Carried from earlier days',rare:.03})}
   syncGear(a);
   a.gold=ri(3,8)*L;a.kills=Math.round(killsTo(L)*(.8+rnd()*.4));
   const c=homeOf(a),z=zoneFor(L,c.gate),p=zonePoint(z,null,c.gate);
-  a.zone=z;a.x=p.x;a.y=p.y;a.state='hunt';a.dest=null;a.townStep=1;newQuest(a);a.hp=maxHp(a);
+  a.zone=z;a.x=p.x;a.y=p.y;a.state='hunt';a.dest=null;a.townStep=1;a.hp=maxHp(a);
   const ago=AGO[Math.min(AGO.length-1,Math.floor((L-1)/4))];
   record(a,'Left '+c.name+' '+ago+' ago. Level '+L+' now, '+a.kills+' kills behind them, hunting in '+ZONES[z]+'.')}
 
