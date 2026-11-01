@@ -32,7 +32,7 @@ if (argFp) {
   const {init, step, S, enableBrain} = await import('../src/sim/index.js');
   const B = await import('../src/sim/brain.js');
   init();
-  if (argFp !== 'plain') {B.CFG.url = 'http://127.0.0.1:9/decide'; B.CFG.timeoutMs = 200; B.CFG.aiQuietTable = argFp === 'brain'; for (const a of S.agents.slice(0, 3)) enableBrain(a)}
+  if (argFp !== 'plain') {B.CFG.url = 'http://127.0.0.1:9/decide'; B.CFG.timeoutMs = 200; B.CFG.aiQuietTable = argFp === 'brain'; for (const a of S.agents.slice(0, 3)) enableBrain(a); B.setMind(S.agents[1], {provider: 'ollama', model: 'qwen2.5:14b'})}
   for (let i = 0; i < 3 * 60 * 60; i++) {step(1 / 60); if (i % 900 === 0) await sleep(2)}
   await sleep(50);
   console.log(JSON.stringify({t: S.gameMin, uid: S.uid, a: S.agents.map(a => [a.id, a.state, a.lvl, a.xp, Math.round(a.x * 100), Math.round(a.y * 100), Math.round(a.hp), a.deaths, a.kills, a.gold, a.chat ? a.chat.length : 0])}));
@@ -124,9 +124,73 @@ await new Promise(r => relay.server.close(r));
   await new Promise(r => v.server.close(r));
   const recs = existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n').map(l => JSON.parse(l)) : [];
   const keys = recs[0] ? Object.keys(recs[0]).join(',') : '';
-  ok(recs.length === 2 && ['ts', 'kind', 'hero', 'system', 'user', 'response', 'usage', 'ms'].every(k => k in recs[0]) && recs[0].hero === 'Test' && recs[0].user === JSON.stringify(town.snapshot), 'verbose: one JSON line per call (' + keys + ')');
+  ok(recs.length === 2 && ['ts', 'kind', 'hero', 'provider', 'model', 'system', 'user', 'response', 'usage', 'ms'].every(k => k in recs[0]) && recs[0].provider === 'anthropic' && recs[0].hero === 'Test' && recs[0].user === JSON.stringify(town.snapshot), 'verbose: one JSON line per call (' + keys + ')');
   ok(recs[1] && /not in options/.test(recs[1].error) && recs[1].response.includes('Nowhere'), 'verbose: failed calls are logged with the raw reply and the error');
   ok(!/api[-_]?key|x-api-key|authorization|sk-ant/i.test(readFileSync(file, 'utf8')), 'verbose: no key or headers in the log');
+}
+
+// ======== 1b. mixed minds: provider adapters (issue #97), with a mock Ollama server ========
+console.log('mixed minds: provider adapters');
+const {makeProviders, ollamaAdapter, isLocal} = await import('./providers/index.mjs');
+let olMode = 'ok', olDelay = 0; const olGot = [];
+// Answers from the schema it was given (as Ollama's structured outputs would): the first option, a line, a memory.
+const olAnswer = f => {const p = f && f.properties || {}; if (p.choice) return {choice: olMode === 'invalid' ? 'Nowhere' : p.choice.enum[0], crypt: false, reason: 'The bog keeps its own counsel.', line: 'Hold.'};
+  if (p.long) return {long: 'I remember the fen and the cold.'}; if (p.crypt) return {crypt: true, reason: 'Why not.'}; return {line: 'Mud and patience.'}};
+const olMock = http.createServer((req, res) => {
+  let b = ''; req.on('data', c => b += c); req.on('end', () => {
+    const json = (code, o) => {res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(o))};
+    if (req.method === 'GET' && req.url === '/api/tags') return json(200, {models: [{name: 'qwen2.5:14b'}, {name: 'llama3.1:8b'}]});
+    if (req.method !== 'POST' || req.url !== '/api/chat') return json(404, {error: 'not found'});
+    const q = JSON.parse(b); olGot.push(q);
+    if (q.model === 'missing:1b') return json(404, {error: "model 'missing:1b' not found"});
+    if (q.model === 'plain:7b' && 'think' in q) return json(400, {error: '"plain:7b" does not support thinking'});
+    if (olMode === 'slow') return; // never answers; the relay aborts
+    const reply = () => json(200, {model: q.model, done: true, done_reason: olMode === 'length' ? 'length' : 'stop', prompt_eval_count: 700, eval_count: 25,
+      message: {role: 'assistant', content: olMode === 'length' ? '{"choice":"Thorn' : JSON.stringify(olAnswer(q.format))}});
+    olDelay ? setTimeout(reply, olDelay) : reply();
+  });
+});
+await new Promise(r => olMock.listen(0, '127.0.0.1', r));
+const OL = `http://127.0.0.1:${olMock.address().port}`;
+const mixedProviders = () => ({...makeProviders({anthropicClient: fakeClient, env: {}}), ollama: ollamaAdapter({url: OL})});
+{
+  const mlines = [];
+  const mr = createRelay({client: fakeClient, providers: mixedProviders(), timeoutMs: 120, localTimeout: {decide: 400, write: 800}, log: m => mlines.push(m)});
+  await new Promise(r => mr.server.listen(0, '127.0.0.1', r));
+  const mb = `http://127.0.0.1:${mr.server.address().port}`;
+  const mpost = body => fetch(mb + '/decide', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
+  const local = {...town, provider: 'ollama', model: 'qwen2.5:14b'};
+  let r = await mpost(local), j = await r.json(), q = olGot[olGot.length - 1];
+  ok(r.status === 200 && j.choice === 'Thornvale' && j.crypt === false && j.reason === 'The bog keeps its own counsel.', 'ollama: valid townPlan returns {choice, crypt, reason}');
+  ok(j.provider === 'ollama' && j.model === 'qwen2.5:14b' && j.usage && j.usage.cost === 0 && j.usage.in === 700 && j.usage.out === 25, 'ollama: reply names provider and model, usage from the token counts, cost 0');
+  ok(q && q.stream === false && q.model === 'qwen2.5:14b' && JSON.stringify(q.format.properties.choice.enum) === '["Thornvale","Mirefen"]' && q.format.additionalProperties === false, 'ollama: /api/chat with format = the JSON schema (options as enum), stream off');
+  ok(q && q.messages[0].role === 'system' && q.messages[0].content === j.sent.system && q.messages[1].content === JSON.stringify(town.snapshot) && q.options.num_predict >= 110, 'ollama: same system prompt and snapshot as Claude gets');
+  ok(mlines.some(l => /townPlan Test ollama\/qwen2\.5:14b in=700 out=25 \$0\.000000/.test(l)), 'ollama: log line records provider and model (' + (mlines.find(l => /ollama/.test(l)) || '').replace('[relay] ', '') + ')');
+  r = await mpost(town); j = await r.json();
+  ok(r.status === 200 && j.provider === 'anthropic' && j.model === DEFAULT_MODEL && seen.req.model === DEFAULT_MODEL && j.usage.cost > 0, 'no provider in the request -> Claude, as before');
+  olMode = 'invalid'; r = await mpost(local); j = await r.json();
+  ok(r.status === 502 && /not in options/.test(j.error) && j.provider === 'ollama' && j.sent, 'ollama: a choice outside the options is rejected the same way (502, prompt echoed, provider named)');
+  olMode = 'length'; r = await mpost(local); j = await r.json(); ok(r.status === 502 && j.error === 'reply cut off', 'ollama: a cut-off reply is rejected');
+  olMode = 'ok'; olDelay = 250; r = await mpost(local); j = await r.json();
+  ok(r.status === 200 && j.choice === 'Thornvale', 'ollama: a 250 ms answer passes (local timeout 400 ms, longer than the 120 ms API timeout here)');
+  olDelay = 0; olMode = 'slow'; const t1 = Date.now(); r = await mpost(local); j = await r.json(); const slowMs = Date.now() - t1;
+  ok(r.status === 504 && j.error === 'timeout' && slowMs >= 350 && slowMs < 2000, 'ollama: slow model aborted at the local timeout -> 504 (' + slowMs + ' ms)');
+  olMode = 'ok';
+  r = await mpost({...local, model: 'missing:1b'}); j = await r.json(); ok(r.status === 502 && /not found/.test(j.error), 'ollama: a model that is not pulled -> error (' + j.error + ')');
+  ok(q && q.think === false, 'ollama: think:false, so a thinking model answers instead of spending its budget thinking');
+  const n0 = olGot.length; r = await mpost({...local, model: 'plain:7b'}); j = await r.json(); await mpost({...local, model: 'plain:7b'});
+  ok(r.status === 200 && j.choice === 'Thornvale' && olGot.length === n0 + 3 && !('think' in olGot[olGot.length - 1]), 'ollama: a model without thinking support is asked again without the field, and remembered');
+  r = await mpost({...town, provider: 'openai', model: 'some-model'}); j = await r.json(); ok(r.status === 502 && /not configured/.test(j.error) && j.provider === 'openai', 'openai stub: not configured -> error, the sim falls back');
+  r = await mpost({...town, provider: 'acme'}); ok(r.status === 400, 'unknown provider -> 400');
+  r = await mpost({...town, provider: 'ollama', model: 'qwen 14b; rm'}); ok(r.status === 400, 'bad model name -> 400');
+  r = await mpost({kind: 'memory', snapshot: {fac: 'Warband', name: 'Test'}, provider: 'ollama', model: 'llama3.1:8b'}); j = await r.json();
+  ok(r.status === 200 && j.long === 'I remember the fen and the cold.' && j.model === 'llama3.1:8b' && olGot[olGot.length - 1].format.properties.long, 'ollama: writing kinds go through the same adapter');
+  r = await fetch(mb + '/health'); j = await r.json();
+  ok(j.providers && j.providers.ollama.ok && j.providers.ollama.local && JSON.stringify(j.providers.ollama.models) === '["llama3.1:8b","qwen2.5:14b"]' && j.providers.anthropic.ok && !j.providers.openai.ok, '/health lists providers and the pulled Ollama models');
+  ok(j.byProvider.ollama.requests >= 9 && j.byProvider.ollama.cost === 0 && j.byProvider.anthropic.cost > 0 && j.localTimeout.decide === 400, '/health counts calls and cost per provider (ollama ' + (j.byProvider.ollama || {}).requests + ' calls, $0)');
+  const down = await ollamaAdapter({url: 'http://127.0.0.1:9'}).status();
+  ok(down.ok === false && /not reachable/.test(down.error) && isLocal('ollama') && !isLocal('anthropic'), 'Ollama down: /health says not reachable (' + down.error + ')');
+  await new Promise(r => mr.server.close(r));
 }
 
 // ======== 2. the sim with a mock relay ========
@@ -467,6 +531,49 @@ console.log('parties: the leader decides, followers follow');
   for (const p of S.parties.slice()) disband(p);
   B.setFetch(null); Object.assign(B.CFG, cfg0); B.resetBrain();
 }
+
+// ======== 2d. mixed minds: each hero asks its own model (issue #97) ========
+console.log('mixed minds: routing by hero');
+{
+  const mr = createRelay({client: fakeClient, providers: mixedProviders(), timeoutMs: 400, localTimeout: {decide: 1500, write: 3000}, log: () => {}});
+  await new Promise(r => mr.server.listen(0, '127.0.0.1', r));
+  const cfg0 = {...B.CFG}; B.CFG.url = `http://127.0.0.1:${mr.server.address().port}/decide`; B.CFG.timeoutMs = 600; B.CFG.localTimeoutMs = 2500;
+  B.resetBrain();
+  const pick = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.party && !a.fellow && !a.hidden).slice(0, 2);
+  const [A, Lo] = pick; for (const h of pick) {h.lvl = 8; h.hp = maxHp(h); delete h.mind; delete h.brainPlan; enableBrain(h)}
+  const stored = B.setMind(Lo, {provider: 'ollama', model: 'qwen2.5:14b'});
+  ok(JSON.stringify(stored) === '{"provider":"ollama","model":"qwen2.5:14b"}' && B.mindTag(Lo) === 'qwen2.5:14b · local' && B.mindTag(A) === 'Claude' && isPlain(Lo.brainCfg), 'setMind stores {provider, model} on the hero (plain, saved); tags "' + B.mindTag(Lo) + '" and "' + B.mindTag(A) + '"');
+  const hold = () => {for (const h of pick) if (h.state !== 'dead') {h.state = 'town'; h.townStep = 0; h.wait = 200}};
+  const answered = h => (h.mind || []).find(e => e.kind === 'townPlan' && e.ms != null);
+  const settleBoth = async () => {for (let i = 0; i < 80 && !(answered(A) && answered(Lo)); i++) {hold(); await run(120); await sleep(30)}};
+  olGot.length = 0; olDelay = 800; hold(); await settleBoth(); olDelay = 0; // 800 ms: over the API timeouts, inside the local ones
+  const ea = answered(A), el = answered(Lo);
+  ok(olGot.length >= 1 && olGot.every(q => q.model === 'qwen2.5:14b' && JSON.parse(q.messages[1].content).name === Lo.name), 'only the local hero\'s requests reach Ollama (' + olGot.length + ', all ' + Lo.name + ')');
+  ok(ea && ea.provider === 'anthropic' && ea.model === DEFAULT_MODEL && ea.usage.cost > 0 && B.modelTag(ea) === DEFAULT_MODEL, 'the default hero asked Claude (' + (ea && B.modelTag(ea)) + ', $' + (ea && ea.usage.cost) + ')');
+  ok(el && el.outcome !== 'offline' && el.provider === 'ollama' && el.model === 'qwen2.5:14b' && el.usage.cost === 0 && el.usage.in === 700 && el.choice === el.options[0] && el.ms >= 700, 'the local hero\'s Mind entry: provider, model, cost 0, its choice, ' + (el && el.ms) + ' ms (a 0.8 s answer is waited for: local timeout ' + B.CFG.localTimeoutMs + ' ms)');
+  ok(el && B.modelTag(el) === 'qwen2.5:14b · local', 'model tag for the Mind tab and Minds panel: "' + (el && B.modelTag(el)) + '"');
+  // a bad local answer and a stalled local model both fall back to the scripted rules, per hero
+  B.resetBrain(); for (const h of pick) {delete h.mind; delete h.brainPlan}
+  olMode = 'invalid'; hold(); await settleBoth();
+  const bad = answered(Lo);
+  ok(bad && bad.outcome === 'offline' && /not in options/.test(bad.error) && bad.provider === 'ollama' && bad.scripted && answered(A) && answered(A).outcome !== 'offline', 'invalid local answer -> rejected by the relay, scripted acts (' + (bad && bad.error) + '); the Claude hero is unaffected');
+  B.resetBrain(); for (const h of pick) {delete h.mind; delete h.brainPlan}
+  olMode = 'slow'; hold(); await settleBoth();
+  const slow = answered(Lo);
+  ok(slow && slow.outcome === 'offline' && /timeout/.test(slow.error) && brainStatus(Lo) === 'offline' && brainStatus(A) === 'on', 'stalled local model -> timeout, offline, scripted acts (' + (slow && slow.error) + ')');
+  olMode = 'ok'; B.resetBrain();
+  // writing kinds (Fellowship sheets) use the member's mind too
+  const w = await B.askRelay('memory', {fac: 'Warband', name: Lo.name}, 50, Lo);
+  ok(w && w.long && w.provider === 'ollama' && w.model === 'qwen2.5:14b' && w.usage.cost === 0, 'askRelay(kind, snap, timeout, hero): the member\'s local model writes; a 50 ms timeout is stretched for local');
+  const {speak} = await import('../src/sim/chat.js');
+  speak(Lo, 'Mud and patience.', 'kill', 'qwen2.5:14b · local'); const ce = Lo.chat[Lo.chat.length - 1];
+  ok(ce.ai === true && ce.model === 'qwen2.5:14b · local', 'Chat entry records the model tag');
+  ok(B.setMind(Lo, {provider: 'anthropic'}) === null && !('brainCfg' in Lo) && B.setMind(A, {provider: 'acme'}) === null, 'back to the default (or an unknown provider) clears the setting');
+  for (const h of pick) disableBrain(h);
+  Object.assign(B.CFG, cfg0); B.resetBrain();
+  await new Promise(r => mr.server.close(r));
+}
+olMock.closeAllConnections(); await new Promise(r => olMock.close(r));
 
 // ======== 3. cost estimate from the observed rate ========
 {

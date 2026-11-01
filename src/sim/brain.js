@@ -54,7 +54,7 @@ import {topScores} from './abilities.js';
 import {combatStats} from './stats.js';
 import {fellowCard} from './persona.js';
 
-export const CFG={url:'http://127.0.0.1:8787/decide',timeoutMs:3000,offlineSec:60,
+export const CFG={url:'http://127.0.0.1:8787/decide',timeoutMs:3000,localTimeoutMs:9000,localWriteMs:35000,offlineSec:60,
   planTtl:900,fightTtl:20,sayFresh:4,aiQuietTable:true,sayGap:25,maxPerHour:240,quietMin:60,sight:12};
 // sayFresh: sim seconds after the trigger in which a model line may still be said.
 // aiQuietTable: an AI hero holds its table line back while a model line is asked for, and
@@ -80,6 +80,26 @@ export function resetBrain(){clk=0;acc=0;busy.clear();offline.clear();ready.clea
   stats.sent=stats.rejected=stats.dropped=stats.timeouts=stats.failures=stats.fallback=0;
   stats.applied={townPlan:0,fightOrFlee:0,say:0};stats.lastZone=null;rejections.length=0}
 export const setFetch=f=>{fetchOverride=f}; // tests only
+
+// ---- which mind (Mixed minds, issue #97) ----
+// a.brainCfg = {provider, model?, effort?}: the same shape as the agent runner's per-hero settings (#93,
+// sess.runner), so a later provider-neutral runner can read it. No brainCfg = the relay's default
+// (Claude). Saved with the hero. Local providers get longer timeouts and cost nothing.
+export const MIND_PROVIDERS=['anthropic','ollama','openai','google'];
+export const LOCAL_PROVIDERS={ollama:1};
+export const PROVIDER_LABEL={anthropic:'Claude',ollama:'Local (Ollama)',openai:'OpenAI',google:'Google'};
+const MODEL_OK=/^[A-Za-z0-9][\w.:\/+-]{0,99}$/;
+export function mindCfg(a){const c=a&&a.brainCfg;if(!c||typeof c!=='object'||!MIND_PROVIDERS.includes(c.provider))return null;
+  const o={provider:c.provider};if(typeof c.model==='string'&&MODEL_OK.test(c.model))o.model=c.model;if(c.effort==='low'||c.effort==='medium'||c.effort==='high')o.effort=c.effort;return o}
+// Set (or clear, with null or provider 'anthropic' and no model) the hero's mind; returns the stored value.
+export function setMind(a,cfg){if(!a)return null;const c=cfg&&MIND_PROVIDERS.includes(cfg.provider)?mindCfg({brainCfg:cfg}):null;
+  if(!c||(c.provider==='anthropic'&&!c.model&&!c.effort))delete a.brainCfg;else a.brainCfg=c;return a.brainCfg||null}
+const isLocalMind=a=>{const c=mindCfg(a);return !!(c&&LOCAL_PROVIDERS[c.provider])};
+// Short label for a model: "qwen2.5:14b · local", "claude-haiku-5-5". From an entry (what answered) or a setting.
+export function modelTag(x){if(!x)return null;const m=x.model,p=x.provider;
+  if(!m)return p&&p!=='anthropic'?(PROVIDER_LABEL[p]||p):null;return m+(LOCAL_PROVIDERS[p]?' · local':'')}
+// The hero's current mind as a tag: its setting, or 'Claude' for the relay default.
+export const mindTag=a=>{const c=mindCfg(a);return c?modelTag(c)||PROVIDER_LABEL[c.provider]:'Claude'};
 
 // ---- who is AI-played ----
 export function enableBrain(a){if(!a||a.kind!=='hero'||a.state==='dead')return false;
@@ -184,20 +204,23 @@ function reject(a,kind,why,raw,e){stats.rejected++;if(rejections.length>=50)reje
 // arrive; ctx holds transient facts the sweep needs (the mob of a fight).
 function ask(a,kind,extra,onOk,ctx){
   const key=a.id+':'+kind;if(busy.has(key)||!canAsk(a))return false;
-  let body,snap;try{snap=snapshotFor(a,kind,extra);body=JSON.stringify({kind,snapshot:snap})}catch(e){return false}
+  const mc=mindCfg(a),tmo=isLocalMind(a)?CFG.localTimeoutMs:CFG.timeoutMs;
+  let body,snap;try{snap=snapshotFor(a,kind,extra);body=JSON.stringify({kind,snapshot:snap,...(mc||{})})}catch(e){return false}
   const me=mindAdd(a,kind,snap),fk=a.id+':'+me.id;inflight.set(fk,ctx||{});
+  if(mc){me.provider=mc.provider;if(mc.model)me.model=mc.model} // what was asked; the reply names what answered
   busy.add(key);stats.sent++;
   let l=sent.get(a.id);if(!l)sent.set(a.id,l=[]);l.push(Date.now());
   const t0=clk,w0=Date.now(),ac=typeof AbortController==='function'?new AbortController():null;
   let over=false,timer=null;
   const finish=()=>{over=true;clearTimeout(timer);busy.delete(key);inflight.delete(fk);me.ms=Date.now()-w0};
-  const down=(why,j)=>{if(j&&j.sent)keepSent(me,j.sent);settle(me,'offline',{error:why,scripted:scriptedFor(a,kind)})};
-  timer=setTimeout(()=>{if(over)return;finish();failed(a,true);down('timeout after '+CFG.timeoutMs+' ms');if(ac)ac.abort()},CFG.timeoutMs);
+  const who=j=>{if(j&&typeof j.provider==='string')me.provider=clip(j.provider,20);if(j&&typeof j.model==='string')me.model=clip(j.model,100)};
+  const down=(why,j)=>{if(j&&j.sent)keepSent(me,j.sent);who(j);settle(me,'offline',{error:why,scripted:scriptedFor(a,kind)})};
+  timer=setTimeout(()=>{if(over)return;finish();failed(a,true);down('timeout after '+tmo+' ms');if(ac)ac.abort()},tmo);
   try{(fetchOverride||fetch)(CFG.url,{method:'POST',headers:{'content-type':'application/json'},body,signal:ac&&ac.signal})
     .then(r=>r.json().then(j=>({ok:r.ok,j})))
     .then(({ok,j})=>{if(over)return;finish();
       if(!ok||!j||typeof j!=='object'||j.error){failed(a,false);down(j&&j.error?'relay: '+clip(j.error,120):'relay error',j);return}
-      if(j.sent)keepSent(me,j.sent);if(j.usage&&typeof j.usage==='object')me.usage={in:+j.usage.in||0,out:+j.usage.out||0};
+      if(j.sent)keepSent(me,j.sent);who(j);if(j.usage&&typeof j.usage==='object')me.usage={in:+j.usage.in||0,out:+j.usage.out||0,cost:+j.usage.cost||0};
       if(clk-t0>CFG.planTtl||a.state==='dead'||!a.brain){stats.dropped++;settle(me,'late',{scripted:scriptedFor(a,kind),error:'answer came too late'});return}
       try{onOk(j,me)}catch(e){stats.dropped++;settle(me,'rejected',{error:'could not apply: '+clip(e.message,80)})}})
     .catch(()=>{if(over)return;finish();failed(a,false);down('relay unreachable')})}
@@ -206,11 +229,13 @@ function ask(a,kind,extra,onOk,ctx){
 // One-off writing request (Fellowship persona, backstory, memory summary; #68). Not a decision:
 // no Mind entry, no hero gating. Resolves to the relay's reply object, or null on any failure
 // (relay down, timeout, {error}, kill switch). The caller validates and applies; nothing waits.
-export function askRelay(kind,snapshot,timeoutMs=CFG.timeoutMs){
+// hero (optional): whose mind writes it (a.brainCfg: provider and model); a local mind gets at least CFG.localWriteMs.
+export function askRelay(kind,snapshot,timeoutMs=CFG.timeoutMs,hero=null){
+  const mc=mindCfg(hero);if(mc&&LOCAL_PROVIDERS[mc.provider])timeoutMs=Math.max(timeoutMs,CFG.localWriteMs);
   if(S.brainOn===false||!(fetchOverride||typeof fetch==='function'))return Promise.resolve(null);
   const ac=typeof AbortController==='function'?new AbortController():null,w0=Date.now();
   let timer=null;const late=new Promise(res=>{timer=setTimeout(()=>{if(ac)ac.abort();res(null)},timeoutMs)});
-  let body;try{body=JSON.stringify({kind,snapshot})}catch(e){clearTimeout(timer);return Promise.resolve(null)}
+  let body;try{body=JSON.stringify({kind,snapshot,...(mc||{})})}catch(e){clearTimeout(timer);return Promise.resolve(null)}
   const go=Promise.resolve().then(()=>(fetchOverride||fetch)(CFG.url,{method:'POST',headers:{'content-type':'application/json'},body,signal:ac&&ac.signal}))
     .then(r=>r.json()).then(j=>j&&typeof j==='object'&&!j.error?{...j,ms:Date.now()-w0}:null).catch(()=>null);
   return Promise.race([go,late]).finally(()=>clearTimeout(timer))}
@@ -351,7 +376,7 @@ function sayTick(){
     const why=!a.brain||!canSpeak(a)?'the hero could no longer speak':clk-r.t0>CFG.sayFresh?'came after the moment passed':!sameSituation(a,r.trigger,r.sit)?'the situation changed':null;
     if(why){stats.dropped++;settle(e,'late',{error:why});continue}
     const h=held.get(id);if(h&&h.mid===r.mid)held.delete(id);
-    speak(a,r.text,r.trigger,true);stats.applied.say++;settle(e,'applied')}
+    speak(a,r.text,r.trigger,modelTag(e)||true);stats.applied.say++;settle(e,'applied')}
   for(const [id,h] of held){const a=S.agents.find(x=>x.id===id),e=a&&mindGet(a,h.mid);
     if(a&&e&&e.outcome==='pending'&&clk<h.until)continue;
     held.delete(id);if(a&&canSpeak(a))speak(a,h.text,h.trigger,false)}}
