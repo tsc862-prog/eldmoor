@@ -13,6 +13,8 @@ export const BIOMES={
   fen:(x,y,n,n2)=>n>.6?SWAMP:n2>.63?TREE:(hash(x,y,6)>.5?SGRASS:MUD),
   ash:(x,y,n,n2)=>n>.6?PEAK:n2>.66?LAVA:ROCK,
   tundra:(x,y,n,n2)=>n>.68?PEAK:n2>.64?TREE:vnoise(x/2.5,y/2.5,31)>.74?ICE:hash(x,y,8)>.94?ROCK:SNOW,
+  // Dry upland: grass, scree and stunted trees, a few crags. Reuses existing tiles.
+  highland:(x,y,n,n2)=>n>.66?PEAK:n2>.62?TREE:vnoise(x/3,y/3,41)>.66?ROCK:(hash(x,y,9)>.94?FLOWER:G),
 };
 
 // Travel cost per tile for road routing. Rivers are crossable but dear, so a
@@ -179,7 +181,11 @@ export function buildWorld(spec){
     for(const c of CITY)if(x>=c.x0-pad[0]&&x<=c.x1+pad[0]&&y>=c.y0-pad[1]&&y<=c.y1+pad[1])continue tile;
     for(const e of excl)if(Math.hypot(x+.5-e.x,y+.5-e.y)<e.r)continue tile;
     ZPTS[zone[I(x,y)]].push({x:x+.5,y:y+.5})}
-  const zonePoint=(z,near)=>{const L=ZPTS[z];if(near){for(let i=0;i<14;i++){const p=pickA(L);if(Math.hypot(p.x-near.x,p.y-near.y)<7)return{...p}}}return{...pickA(L)}};
+  const nearest=(spec.spawn&&spec.spawn.nearest)||0;
+  const zonePoint=(z,near,home)=>{const L=ZPTS[z];
+    // big regions (spec.spawn.nearest): the closest of N random points to the hero, or to their home town
+    const to=nearest&&(near||home);if(to){let best=null,bd=Infinity;for(let i=0;i<nearest;i++){const p=pickA(L),d=Math.hypot(p.x-to.x,p.y-to.y);if(d<bd){bd=d;best=p}}return{...best}}
+    if(near){for(let i=0;i<14;i++){const p=pickA(L);if(Math.hypot(p.x-near.x,p.y-near.y)<7)return{...p}}}return{...pickA(L)}};
 
   // lights and labels
   const LIGHTS=[];const torch=(spec.lights&&spec.lights.townTorches)||[];

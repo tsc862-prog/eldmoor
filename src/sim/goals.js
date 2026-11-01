@@ -22,7 +22,8 @@
 // Tiers: a recruit's first oath is tier 0; each kept oath rolls the next tier (max 2). An oath
 // whose target dies first is void and re-rolled at the same tier. Counts live on S.goals.
 import {rnd,ri,pickA} from '../core/rng.js';
-import {CITY,CRYPT,ZONES,ZPTS,zoneAt,zoneFor,dist} from '../world/map.js';
+import {CRYPT,ZONES,REGIONS,ZPTS,zoneAt,zoneFor,dist} from '../world/map.js';
+import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {ELITES} from '../data/mobs.js';
 import {EPICS,DG_EPICS,BOSS_EPICS} from '../data/items.js';
@@ -30,7 +31,7 @@ import {HAMLETS,TRADES,RAIDERS,PILGRIM_ZONE,KIN,CHILD,ORIGINS,GOAL_TEXT,GOAL_DON
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
-import {goHome} from './heroes.js';
+import {goHome,huntZone} from './heroes.js';
 
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!==undefined?String(v[k]):m);
 const lc=t=>t.charAt(0).toLowerCase()+t.slice(1);
@@ -39,7 +40,8 @@ const bump=(o,k)=>{o[k]=(o[k]||0)+1};
 
 // Lowest level that hunts in zone z (from the zoneFor ladder), so goals can speak in bands.
 const bandMin=z=>{for(let l=1;l<=20;l++)if(zoneFor(l)===z)return l;return 99};
-const FAR=ZONES.indexOf(PILGRIM_ZONE),CRYPT_Z=zoneAt(CRYPT.x,CRYPT.y);
+const FAR=ZONES.indexOf(PILGRIM_ZONE)>=0?ZONES.indexOf(PILGRIM_ZONE):REGIONS.findIndex(r=>r.far), // a spec can mark its far region with far:true
+  CRYPT_Z=zoneAt(CRYPT.x,CRYPT.y);
 const alive=x=>x&&x.state!=='dead';
 const byId=id=>S.agents.find(x=>x.id==id); // loose: nemesis keys are strings
 
@@ -53,7 +55,7 @@ const originEpic=()=>pickA([...EPICS.filter((e,z)=>z!==FAR).flat(),...DG_EPICS])
 
 export function assignBackstory(a){const f=a.fac,o=pickA(ORIGINS[f]),E=originElite(),ep=originEpic();
   const v={name:a.name,hamlet:pickA(HAMLETS[f]),trade:pickA(TRADES[f]),child:pickA(CHILD),kin:pickA(KIN),elite:E.name,
-    other:pickA(RAIDERS.filter((r,i)=>i!==f)),epic:ep,city:CITY[f].name};
+    other:pickA(RAIDERS.filter((r,i)=>i!==f)),epic:ep,city:homeOf(a).name};
   a.origin=fill(o.text,v);a.originShort=fill(o.short,v);a.home=v.hamlet;
   const bias=o.loss==='elite'?{avenge:E}:o.loss==='heirloom'?{heirloom:ep}:o.loss==='raiders'?{raiders:true}:null;
   a.goal=rollGoal(a,0,bias);bump(stats().rolled,a.goal.type);
@@ -133,10 +135,10 @@ export const raidPull=a=>a.goal&&!a.goal.done&&(a.goal.type==='legend'||a.goal.t
 // hero crossing a higher zone neither stops to hunt there nor picks its monsters. On arrival
 // the oath is kept and, if the zone is above their band, they turn for home.
 function goalPoint(a,g){if(g.type==='pilgrimCrypt')return{x:CRYPT.x,y:CRYPT.y+1};
-  const gate=CITY[a.fac].gate;let best=null,bd=1e9;for(const p of ZPTS[g.zone]){const d=dist(p,gate);if(d<bd){bd=d;best=p}}return best}
+  const gate=homeOf(a).gate;let best=null,bd=1e9;for(const p of ZPTS[g.zone]){const d=dist(p,gate);if(d<bd){bd=d;best=p}}return best}
 function pilgrimStep(a,g){
   const arrived=g.type==='pilgrimCrypt'?dist(a,CRYPT)<2.6:zoneAt(a.x,a.y)===g.zone;
-  if(arrived&&a.state!=='ghost'){complete(a);if(zoneFor(a.lvl)!==g.zone&&(a.state==='hunt'||a.state==='travel'))goHome(a);return}
+  if(arrived&&a.state!=='ghost'){complete(a);if(huntZone(a)!==g.zone&&(a.state==='hunt'||a.state==='travel'))goHome(a);return}
   if(a.lvl<g.minLvl||a.party||(a.state!=='travel'&&a.state!=='hunt'))return;
   if(!a.dest||!a.dest.pil){const p=goalPoint(a,g);if(!p)return;stats().pilgrimSteers++;a.dest={x:p.x,y:p.y,pil:true}}}
 

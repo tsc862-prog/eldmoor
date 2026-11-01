@@ -3,12 +3,14 @@
 // roads bridge rivers, and fails if the ELDMOOR map drifted from its snapshot.
 // Usage: npm run worldcheck
 // If you changed the Eldmoor map on purpose, paste the new hashes into SNAPSHOT.
-import {ELDMOOR, TESTWORLD} from '../src/world/spec.js';
+import {ELDMOOR, TESTWORLD, STEPPING} from '../src/world/spec.js';
 import {buildWorld} from '../src/world/gen.js';
 import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
 
 // FNV-1a of the zone and tile arrays of the Eldmoor map as of the spec rewrite.
 const SNAPSHOT = {zone: '7d08ac18', tiles: 'bda9e97b'};
+// Same for the Stepping Lands (160x100). Update when the STEPPING spec or the generator changes on purpose.
+const SNAPSHOT_STEPPING = {zone: '1089eab4', tiles: 'cfab7241'};
 const TILE_NAMES = ['grass','tree','swamp','mud','rock','peak','lava','road','floor','wall','river','bridge','sgrass','flower','snow','ice'];
 
 function fnv(a) {let h = 0x811c9dc5; for (let i = 0; i < a.length; i++) {h ^= a[i]; h = Math.imul(h, 16777619) >>> 0} return h.toString(16).padStart(8, '0')}
@@ -65,8 +67,33 @@ if (first) {
   if (!crossed || !bridged) {console.error('FAIL: Testworld road from the town did not bridge the brook'); fail++}
   else console.log(`  bridge check: route 1 crosses the brook over ${first.filter(([x, y]) => tw.tiles[tw.I(x, y)] === BRIDGE).length} bridge tile(s)`);
 }
+// the Stepping Lands: snapshot, spawn points in every region, routed roads continuous, towns reachable
+const st = report(STEPPING);
+if (fnv(st.zone) !== SNAPSHOT_STEPPING.zone) {console.error(`FAIL: Stepping zone array hash ${fnv(st.zone)} != snapshot ${SNAPSHOT_STEPPING.zone}`); fail++}
+if (fnv(st.tiles) !== SNAPSHOT_STEPPING.tiles) {console.error(`FAIL: Stepping tile array hash ${fnv(st.tiles)} != snapshot ${SNAPSHOT_STEPPING.tiles}`); fail++}
+for (let z = 0; z < st.ZONES.length; z++) if (st.ZPTS[z].length < 200) {console.error(`FAIL: Stepping region ${st.ZONES[z]} has ${st.ZPTS[z].length} spawn points`); fail++}
+for (const path of st.ROUTES) {const a = path[0], b = path[path.length - 1];
+  if (!roadConnected(st, a, b)) {console.error(`FAIL: Stepping routed road ${a} -> ${b} is not continuous`); fail++}}
+{ // every town gate reaches every other over walkable tiles (flood fill from the first gate)
+  const key = (x, y) => y * st.w + x, seen = new Uint8Array(st.w * st.h), q = [];
+  const g0 = st.CITY[0].gate; q.push([Math.floor(g0.x), Math.floor(g0.y)]); seen[key(q[0][0], q[0][1])] = 1;
+  while (q.length) {const [x, y] = q.pop();
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= st.w || ny >= st.h || seen[key(nx, ny)]) continue;
+      const t = st.tiles[st.I(nx, ny)]; if (WALKABLE.indexOf(t) < 0 && t !== BRIDGE) continue;
+      if (dx && dy && (st.tiles[st.I(x, ny)] === RIVER && st.tiles[st.I(nx, y)] === RIVER)) continue;
+      seen[key(nx, ny)] = 1; q.push([nx, ny])}}
+  for (const c of st.CITY) if (!seen[key(Math.floor(c.gate.x), Math.floor(c.gate.y))]) {console.error(`FAIL: Stepping town ${c.name} is not reachable from ${st.CITY[0].name}`); fail++}
+  for (const l of st.LANDMARKS) if (!seen[key(Math.floor(l.x), Math.floor(l.y))] && !(l.kind === 'lair')) {console.error(`FAIL: Stepping landmark ${l.name} is not reachable`); fail++}
+  console.log('  stepping reachability: ' + st.CITY.map(c => c.name).join(', ') + ' all connected by walkable tiles');
+}
+// the road net joins the towns: every gate is within 3 tiles of a road tile reachable from the first gate along roads
+{ const reach = (a, b) => roadConnected(st, a, b); const near = c => {const gx = Math.floor(c.gate.x), gy = Math.floor(c.gate.y);
+    for (let r = 0; r <= 3; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {const t = st.tiles[st.I(gx + dx, gy + dy)]; if (t === ROAD) return [gx + dx, gy + dy]} return null};
+  const a = near(st.CITY[0]); for (const c of st.CITY) {const b = near(c); if (!a || !b || !reach(a, b)) {console.error(`FAIL: no continuous road from ${st.CITY[0].name} to ${c.name}`); fail++}} }
+
 // every spawn point is on a walkable tile
-for (const w of [eld, tw]) for (const L of w.ZPTS) for (const p of L) if (WALKABLE.indexOf(w.tileAt(p.x, p.y)) < 0) {console.error(`FAIL: ${w.name} spawn point ${p.x},${p.y} is not walkable`); fail++; break}
+for (const w of [eld, tw, st]) for (const L of w.ZPTS) for (const p of L) if (WALKABLE.indexOf(w.tileAt(p.x, p.y)) < 0) {console.error(`FAIL: ${w.name} spawn point ${p.x},${p.y} is not walkable`); fail++; break}
 
 console.log(fail ? `\n${fail} check(s) failed` : '\nworldcheck: all checks passed');
 process.exit(fail ? 1 : 0);

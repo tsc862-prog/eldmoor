@@ -41,9 +41,9 @@ const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p)
 const zoneIdx=z=>typeof z==='number'?z:ZONES.indexOf(z);
 
 // One line describing what a hero is doing right now.
-export function doing(a){const c=CITY[a.fac].name,zn=ZONES[a.zone];
+export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
   switch(a.state){
-    case 'town':return a.townStep===0?`Selling loot at the ${c} auction house`:a.townStep===1?`Checking in with the ${c} quest giver`:`Leaving ${c} for ${ZONES[zoneFor(a.lvl)]}`;
+    case 'town':return a.townStep===0?`Selling loot at the ${c} auction house`:a.townStep===1?`Checking in with the ${c} quest giver`:`Leaving ${c} for ${ZONES[a.party?a.party.zone:zoneFor(a.lvl,homeOf(a).gate)]}`;
     case 'travel':return `Traveling to ${zn}`;
     case 'hunt':return a.quest?`Hunting ${MOBS[a.quest.type].pl} in ${zn}`:`Hunting in ${zn}`;
     case 'fight':return a.target?`Fighting a level ${a.target.lvl} ${MOBS[a.target.type].name}`:'Fighting';

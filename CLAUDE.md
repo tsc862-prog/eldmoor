@@ -77,6 +77,7 @@ other. The rules:
 - `npm run sim [minutes]`: headless run of the real game code in Node, prints
   levels, deaths, honor, guild dungeon results and boss state.
 - `npm run build`: static build into `dist/`.
+- Worlds: Eldmoor (80x50) by default; `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node selects the 160x100 Stepping Lands test continent (saves are kept per world).
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
 

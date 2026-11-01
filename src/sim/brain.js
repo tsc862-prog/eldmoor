@@ -22,7 +22,7 @@ import {raceOf} from '../data/races.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {pop} from './effects.js';
-import {maxHp,goHome} from './heroes.js';
+import {maxHp,goHome,huntZone} from './heroes.js';
 import {gearScore} from './gear.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {friendsOf} from './bonds.js';
@@ -36,7 +36,7 @@ export const SAY_TRIGGERS={levelup:1,epic:1,kill:1,mourn:1,duel:1,spot:1,quest:1
 
 // ---- the scripted policy: today's behaviour, as an object so a policy is swappable ----
 export const SCRIPTED={
-  townPlan:a=>({zone:zoneFor(a.lvl),crypt:true}),
+  townPlan:a=>({zone:huntZone(a),crypt:true}),
   fightOrFlee:()=>'fight',
   say:()=>null};
 
@@ -63,7 +63,7 @@ export const brainStatus=a=>!a||!a.brain?'off':offline.get(a.id)>clk?'offline':'
 const pct=(h,m)=>Math.max(0,Math.round(h/m*100));
 const dayPart=()=>{const h=(S.gameMin/60)%24;return h<5||h>=21?'night':h<8?'dawn':h<18?'day':'dusk'};
 const clip=(s,n)=>String(s==null?'':s).slice(0,n);
-export function legalZones(a){const z=zoneFor(a.lvl),out=[];if(z>0)out.push(z-1);out.push(z);return out}
+export function legalZones(a){const z=huntZone(a),out=[];if(z>0)out.push(z-1);out.push(z);return out}
 export function snapshotFor(a,kind,extra={}){
   const mh=maxHp(a),z=zoneAt(a.x,a.y),R=CFG.sight;
   let top=null;for(const k of SLOTS){const it=a.slots&&a.slots[k];if(it&&(!top||it.ilvl>top.ilvl))top=it}
