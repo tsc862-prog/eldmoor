@@ -1,7 +1,16 @@
-// Map renderer: camera (whole map or follow), entities sorted by y, effects,
-// day/night overlay with torch light, labels at constant CSS size.
+// Map renderer: camera (free camera with zoom steps and panning, or follow), terrain
+// chunks that intersect the view, entities sorted by y and culled to the view,
+// effects, day/night overlay with torch light, labels at constant CSS size, minimap.
 // `cam` is shared with the UI (selection and view mode live here).
 // All world positions are in tile units times T (16px); sprites are two-frame.
+//
+// Camera model: cam.fit is the scale at which the whole map fits the canvas.
+//   free camera ('map'): sc = fit * zoom, zoom one of ZOOMS; camX/camY is the view
+//     centre in world px, clamped so the view never leaves the map (at zoom 1 that
+//     pins it to the map centre, exactly the old whole-map view).
+//   follow: sc = max(fit*2.6, canvas/FOLLOW_VIEW) and the centre eases to the hero.
+//   A wheel, drag or minimap click in follow mode drops to the free camera at the
+//   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
 import {W,H,T} from '../world/tiles.js';
 import {CITY,LAIR,CRYPT,LIGHTS,LABELS} from '../world/map.js';
@@ -12,49 +21,99 @@ import {sprite,SPR,heroSprite} from './sprites.js';
 import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
+import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
+import {createMinimap} from './minimap.js';
 
-export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1};
+export const ZOOMS=[1,1.6,2.6,4];
+export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false};
 // Follow view shows about 460 world pixels (29 tiles) across the screen.
 const FOLLOW_VIEW=460;
+// Entities and labels this many world px outside the view are not drawn.
+const MARGIN=48;
 const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a20'};
 
-export function createRenderer(cv,screenEl,terrain){
-  const ctx=cv.getContext('2d');
-  function resize(){const r=screenEl.getBoundingClientRect();cam.dpr=window.devicePixelRatio||1;cv.width=Math.max(1,Math.round(r.width*cam.dpr));cv.height=Math.max(1,Math.round(r.height*cam.dpr));cam.fit=cv.width/(W*T)}
+// ---- camera control (module level so the UI and tools can drive it) ----
+let cvRef=null;const listeners=[];
+export function onCamChange(fn){listeners.push(fn)}
+const changed=()=>{for(const f of listeners)f(cam)};
+const followScale=()=>cvRef?Math.max(cam.fit*2.6,cvRef.width/FOLLOW_VIEW):cam.fit*2.6;
+const following=()=>cam.view==='follow'&&!!cam.sel;
+// The zoom the camera is effectively at right now (follow mode included).
+export const currentZoom=()=>following()?followScale()/cam.fit:cam.zoom;
+export function stepZoom(z,dir){if(dir>0){for(const s of ZOOMS)if(s>z+1e-6)return s;return ZOOMS[ZOOMS.length-1]}
+  let r=ZOOMS[0];for(const s of ZOOMS)if(s<z-1e-6)r=s;return r}
+function clampCam(){const vw=cvRef?cvRef.width/cam.sc:cam.vw,vh=cvRef?cvRef.height/cam.sc:cam.vh;cam.vw=vw;cam.vh=vh;
+  cam.camX=vw>=W*T?W*T/2:clamp(cam.camX,vw/2,W*T-vw/2);cam.camY=vh>=H*T?H*T/2:clamp(cam.camY,vh/2,H*T-vh/2)}
+// Leave follow mode (if on) for the free camera at zoom z, keeping the centre.
+function freeCam(z){cam.view='map';cam.zoom=z;cam.sc=cam.fit*z;clampCam()}
+export function setZoom(z){freeCam(z);changed()}
+// Zoom one step in (dir>0) or out around the pointer position (client px), keeping the world point under it fixed.
+export function zoomAt(clientX,clientY,dir){const nz=stepZoom(currentZoom(),dir);if(nz===currentZoom()&&!following())return;
+  const r=cvRef.getBoundingClientRect(),px=(clientX-r.left)*cam.dpr,py=(clientY-r.top)*cam.dpr;
+  const wx=(px-cam.offX)/cam.sc,wy=(py-cam.offY)/cam.sc,nsc=cam.fit*nz;
+  freeCam(nz);cam.camX=wx-(px-cvRef.width/2)/nsc;cam.camY=wy-(py-cvRef.height/2)/nsc;clampCam();changed()}
+// Pan by a pointer delta in CSS px (dragging right moves the world right).
+export function panBy(dx,dy){freeCam(currentZoom());cam.camX-=dx*cam.dpr/cam.sc;cam.camY-=dy*cam.dpr/cam.sc;clampCam();changed()}
+// Centre the free camera on a world-pixel point; from the whole-map view this also zooms in to the local step.
+export function centerOn(wx,wy){const z=currentZoom();freeCam(z<ZOOMS[1]?2.6:z);cam.camX=wx;cam.camY=wy;clampCam();changed()}
+// Convert a pointer position (client px) to tile coordinates.
+export function screenToWorld(clientX,clientY){const r=cvRef.getBoundingClientRect();
+  return {x:((clientX-r.left)*cam.dpr-cam.offX)/cam.sc/T,y:((clientY-r.top)*cam.dpr-cam.offY)/cam.sc/T}}
+
+export function createRenderer(cv,screenEl){
+  const ctx=cv.getContext('2d');cvRef=cv;
+  const miniEl=document.getElementById('minimap');
+  const mini=miniEl&&miniEl.getContext?createMinimap(miniEl,cam,centerOn):null;
+  function resize(){const r=screenEl.getBoundingClientRect();cam.dpr=window.devicePixelRatio||1;cv.width=Math.max(1,Math.round(r.width*cam.dpr));cv.height=Math.max(1,Math.round(r.height*cam.dpr));
+    cam.fit=Math.min(cv.width/(W*T),cv.height/(H*T));if(mini)mini.resize()}
   new ResizeObserver(resize).observe(screenEl);resize();
 
   function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
   function shadow(x,y,w){ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()}
 
+  // Draw the terrain chunks that intersect the canvas, each snapped to integer device
+  // pixels so neighbouring chunks never show a seam at fractional scales.
+  function drawTerrain(sc){ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;const cs=CH*T;
+    const i0=Math.max(0,Math.floor(-cam.offX/sc/cs)),i1=Math.min(CHUNKS_X-1,Math.floor((cv.width-cam.offX)/sc/cs));
+    const j0=Math.max(0,Math.floor(-cam.offY/sc/cs)),j1=Math.min(CHUNKS_Y-1,Math.floor((cv.height-cam.offY)/sc/cs));
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const c=getChunk(i,j);
+      const x0=Math.round(cam.offX+i*cs*sc),y0=Math.round(cam.offY+j*cs*sc),x1=Math.round(cam.offX+(i*cs+c.width)*sc),y1=Math.round(cam.offY+(j*cs+c.height)*sc);
+      ctx.drawImage(c,0,0,c.width,c.height,x0,y0,x1-x0,y1-y0)}}
+
   let blink=0;
   function draw(){
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
-    const sel=cam.sel,follow=cam.view==='follow'&&sel;
-    cam.sc=follow?Math.max(cam.fit*2.6,cv.width/FOLLOW_VIEW):cam.fit;const sc=cam.sc;
-    const vw=cv.width/sc,vh=cv.height/sc;
-    if(follow){cam.camX+=(sel.x*T-cam.camX)*.12;cam.camY+=(sel.y*T-cam.camY)*.12}else{cam.camX=W*T/2;cam.camY=H*T/2}
-    const cx=clamp(cam.camX,vw/2,W*T-vw/2),cy=clamp(cam.camY,vh/2,H*T-vh/2);
-    cam.offX=Math.round((vw/2-cx)*sc);cam.offY=Math.round((vh/2-cy)*sc);
+    const sel=cam.sel,follow=following();
+    cam.sc=follow?followScale():cam.fit*cam.zoom;const sc=cam.sc;
+    if(follow){cam.camX+=(sel.x*T-cam.camX)*.12;cam.camY+=(sel.y*T-cam.camY)*.12}
+    clampCam();const vw=cam.vw,vh=cam.vh;
+    cam.offX=Math.round((vw/2-cam.camX)*sc);cam.offY=Math.round((vh/2-cam.camY)*sc);
+    const vx0=cam.camX-vw/2,vy0=cam.camY-vh/2,vx1=vx0+vw,vy1=vy0+vh;
+    const inView=(x,y,m)=>x>vx0-m&&x<vx1+m&&y>vy0-m&&y<vy1+m;
+    drawTerrain(sc);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
-    ctx.drawImage(terrain,0,0);
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
-    ctx.fillStyle='#ffe27a';for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}
-    const close=sc>=cam.fit*2;
+    if(inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle='#ffe27a';for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
+    const close=cam.close=sc>=cam.fit*2;
     // NPCs: quest giver (purple, exclamation mark) and auctioneer (gold sign)
     const nf=Math.floor(blink*1.5)%2;
-    for(const c of CITY){for(const [p,col] of [[c.qg,'#7a4ab8'],[c.ah,'#b8862a']]){const s=sprite('npc'+col+nf,SPR.npc[nf],{H:'#d8d0c0',S:'#f0c8a0',R:col});
+    for(const c of CITY){if(!inView(c.qg.x*T,c.qg.y*T,MARGIN*2))continue;
+      for(const [p,col] of [[c.qg,'#7a4ab8'],[c.ah,'#b8862a']]){const s=sprite('npc'+col+nf,SPR.npc[nf],{H:'#d8d0c0',S:'#f0c8a0',R:col});
       const sx=Math.round(p.x*T),sy=Math.round((p.y-.15)*T);shadow(sx,sy,10);ctx.drawImage(s,sx-5,sy-12)}
       const top=Math.round((c.qg.y-.15)*T)-12,by=Math.round(Math.sin(blink*4))*1,qx=Math.round(c.qg.x*T)-1;
       ctx.fillStyle='#ffe040';ctx.fillRect(qx,top-11+by,2,6);ctx.fillRect(qx,top-4+by,2,2);
       ctx.fillStyle='#f2c14e';ctx.fillRect(Math.round(c.ah.x*T)-2,top-8,4,4);ctx.fillStyle='#8a6a1a';ctx.fillRect(Math.round(c.ah.x*T)-1,top-6,2,1)}
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
-    // entities sorted by y
-    const ents=[];for(const m of mobs)if(m.alive)ents.push(m);for(const a of agents)ents.push(a);if(boss.alive)ents.push(boss);
+    // entities in view, sorted by y
+    const ents=[];
+    for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ents.push(m);
+    for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ents.push(a);
+    if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ents.push(boss);
     ents.sort((a,b)=>a.y-b.y);
-    for(const e of ents){if(e.hidden)continue;
+    for(const e of ents){
       const fr=e.moving?Math.floor(blink*6+e.id)%2:0;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
@@ -71,32 +130,30 @@ export function createRenderer(cv,screenEl,terrain){
         ctx.fillStyle='#000';ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?'#3fbf4a':'#e0483e';ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
     }
     // effects
-    for(const p of fx){if(p.type==='bolt'){ctx.fillStyle=p.col;const t=1-p.life/.25;const x=(p.x0+(p.x1-p.x0)*t)*T,y=(p.y0+(p.y1-p.y0)*t)*T;ctx.fillRect(Math.round(x),Math.round(y),3,2)}
-      if(p.type==='ring'){ctx.strokeStyle='rgba(255,140,40,'+p.life+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x*T,p.y*T,(1-p.life/.6)*72+8,0,7);ctx.stroke()}}
+    for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;const x=(p.x0+(p.x1-p.x0)*t)*T,y=(p.y0+(p.y1-p.y0)*t)*T;if(!inView(x,y,8))continue;ctx.fillStyle=p.col;ctx.fillRect(Math.round(x),Math.round(y),3,2)}
+      if(p.type==='ring'){if(!inView(p.x*T,p.y*T,96))continue;ctx.strokeStyle='rgba(255,140,40,'+p.life+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x*T,p.y*T,(1-p.life/.6)*72+8,0,7);ctx.stroke()}}
     // night
     const dk=darkness();if(dk>0){ctx.fillStyle='rgba(8,10,40,'+dk+')';ctx.fillRect(0,0,W*T,H*T);
       ctx.globalCompositeOperation='lighter';
-      for(const L of LIGHTS){const r=L.big?92:28;const g=ctx.createRadialGradient(L.x*T,L.y*T,0,L.x*T,L.y*T,r);g.addColorStop(0,'rgba(255,170,70,'+(dk*.7)+')');g.addColorStop(1,'rgba(255,170,70,0)');ctx.fillStyle=g;ctx.fillRect(L.x*T-r,L.y*T-r,r*2,r*2)}
+      for(const L of LIGHTS){const r=L.big?92:28;if(!inView(L.x*T,L.y*T,r))continue;const g=ctx.createRadialGradient(L.x*T,L.y*T,0,L.x*T,L.y*T,r);g.addColorStop(0,'rgba(255,170,70,'+(dk*.7)+')');g.addColorStop(1,'rgba(255,170,70,0)');ctx.fillStyle=g;ctx.fillRect(L.x*T-r,L.y*T-r,r*2,r*2)}
       ctx.globalCompositeOperation='source-over'}
     drawWeather(ctx,S,cam,blink);
-    // labels
-    if(!follow){
-      for(const[t,x,y]of LABELS)drawText(t,x*T,y*T,'#f4ecd0',13);
-      if(boss.alive)drawText('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,'#ffb060',12);
-      drawText(CRYPT.group&&CRYPT.group.phase==='inside'?'CRYPT · '+CRYPT.group.mem.length+' INSIDE':'SUNKEN CRYPT',CRYPT.x*T,40.4*T,'#9ae0b8',12)}
+    // labels: region names when zoomed out, nameplates when close
+    const LM=MARGIN*4;
+    if(!close){
+      for(const[t,x,y]of LABELS)if(inView(x*T,y*T,LM))drawText(t,x*T,y*T,'#f4ecd0',13);
+      if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))drawText('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,'#ffb060',12);
+      if(inView(CRYPT.x*T,CRYPT.y*T,LM))drawText(CRYPT.group&&CRYPT.group.phase==='inside'?'CRYPT · '+CRYPT.group.mem.length+' INSIDE':'SUNKEN CRYPT',CRYPT.x*T,40.4*T,'#9ae0b8',12)}
     else{
-      if(CRYPT.group&&CRYPT.group.phase==='inside')drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,41*T-4,'#9ae0b8',14);
-      for(const a of agents){if(a.hidden)continue;if(Math.abs(a.x*T-cam.camX)>vw/2+40||Math.abs(a.y*T-cam.camY)>vh/2+40)continue;
+      if(CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,41*T-4,'#9ae0b8',14);
+      for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';drawText((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?'#f2c14e':dead?'#9a98ac':FAC[a.fac].color,14)}
       drawBubbles(ctx,S,cam,drawText);
-      for(const m of mobs){if(!m.elite||!m.alive||Math.abs(m.x*T-cam.camX)>vw/2+40||Math.abs(m.y*T-cam.camY)>vh/2+40)continue;drawText(m.name,m.x*T,m.y*T-17,'#ffb060',14)} // named elite nameplate
-      if(boss.alive)drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,'#ffb060',15);
-      for(const p of fx)if(p.type==='txt'){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
+      for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;drawText(m.name,m.x*T,m.y*T-17,'#ffb060',14)} // named elite nameplate
+      if(boss.alive&&inView(boss.x*T,boss.y*T,LM))drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,'#ffb060',15);
+      for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
+    if(mini)mini.draw(S);
   }
 
-  // Convert a pointer position to tile coordinates.
-  function screenToWorld(clientX,clientY){const r=cv.getBoundingClientRect();
-    return {x:((clientX-r.left)*cam.dpr-cam.offX)/cam.sc/T,y:((clientY-r.top)*cam.dpr-cam.offY)/cam.sc/T}}
-
-  return {draw,resize,screenToWorld};
+  return {draw,resize,screenToWorld,setZoom,zoomAt,panBy,centerOn,stepZoom,currentZoom,onCamChange};
 }

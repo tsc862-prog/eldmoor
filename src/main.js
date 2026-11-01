@@ -3,13 +3,12 @@
 // renderer (src/render) and the side panels (src/ui). See CLAUDE.md for the
 // module map and who owns what.
 import {init,step} from './sim/index.js';
-import {buildTerrain} from './render/terrain.js';
 import {createRenderer} from './render/draw.js';
 import {initPanels,renderHero,renderTops,renderFacs,renderGuilds,renderFallen,renderClock,ranked} from './ui/panels.js';
 import {initControls,select,ctl} from './ui/controls.js';
 
 init();
-const renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen'),buildTerrain());
+const renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
 initPanels();initControls(renderer);select(ranked()[0]);
 
 let last=performance.now(),uiT=0;
