@@ -11,9 +11,9 @@ import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
 import {raceOf,homeOf} from '../data/races.js';
 import {MOBS} from '../data/mobs.js';
-import {GOODS,price,STAT_KEYS,STAT_NAMES,EPIC_STATS} from '../data/items.js';
-import {itemStats,gearStat,gearBonus} from '../sim/gear.js';
-import {S,clockStr,maxHp,xpNeed,atkOf,onLog,onMarketTick} from '../sim/index.js';
+import {GOODS,price,EPIC_ITEMS,PROPS} from '../data/items.js';
+import {combatStats} from '../sim/stats.js';
+import {S,clockStr,maxHp,xpNeed,onLog,onMarketTick} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {weatherName} from '../sim/weather.js';
 import {friendsOf} from '../sim/bonds.js';
@@ -23,7 +23,7 @@ import {initDmLog,showAdventure} from './dmpanel.js';
 import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
 import {enableBrain,disableBrain,brainStatus,mindUser} from '../sim/brain.js';
 import {advLine} from '../sim/dm.js';
-import {mod,score,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
+import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -72,42 +72,73 @@ export function setTab(t){if(TABS.some(([k])=>k===t))tab=t;renderHero()}
 // TODO(#20): swap in gearScore(a) from sim/gear.js once that module is on main.
 const gearScoreOf=a=>typeof a.gearScore==='number'?a.gearScore:a.slots?Math.round(SLOTS.reduce((t,[k])=>t+(a.slots[k]?a.slots[k].ilvl||0:0),0)/SLOTS.length):a.gear;
 
-// Ability scores and skills (sim/abilities.js): six chips with modifiers, then the skills, trained ones marked.
-function abilityBlock(b,a){
-  const sg=m=>(m>=0?'+':'')+m,g=el('div','abils');
-  for(const k of ABIL_IDS){const A=ABILITIES[k],m=mod(a,k),c=el('span','abil'+(m>=2?' hi':m<0?' lo':''));c.title=A.name+': '+A.desc;c.append(el('span','an',A.short),el('span','as',String(score(a,k))),el('span','am',sg(m)));g.append(c)}
-  b.append(g);
-  const sk=el('div','meta skills');sk.append('Skills: ');
-  SKILL_IDS.slice().sort((x,y)=>skillMod(a,y)-skillMod(a,x)).forEach((k,i)=>{const t=trained(a,k),m=skillMod(a,k),s=el('span',t?'gd':'dm',SKILLS[k].name.toLowerCase()+' '+sg(m)+(t?'*':''));
-    s.title=SKILLS[k].desc+' ('+skillParts(a,k).map(p=>p.k+' '+sg(p.v)).join(', ')+')';if(i)sk.append(', ');sk.append(s)});
-  b.append(sk)}
+// ---- Stats tab (issue #88) ----
+// Six sections, top to bottom: Identity, Scores, Combat, Skills, Record, Story. The six scores are the
+// only attributes; the five combat totals come from sim/stats.js with a breakdown each (hover a row for
+// the breakdown as a tooltip, click it to keep it open under the row).
+const sg=m=>(m>=0?'+':'')+m;
+const sec=(b,t)=>b.append(el('div','sec',t));
+let statOpen=null; // the combat row held open: 'health' | 'attack' | ...
+export const fmtPct=v=>{const p=Math.round(v*1000)/10;return (Number.isInteger(p)?p:p.toFixed(1))+'%'};
+const speedWord=s=>s>=1.12?'fast':s<=.92?'slow':'normal';
+// One breakdown line's value, in the unit of its stat.
+const bdVal=(k,v)=>k==='health'?sg(Math.round(v)):k==='attack'?sg(Math.round(v*10)/10):k==='speed'?(v>=1?'x'+v.toFixed(2):sg(Math.round(v*100))+'%'):(v>=0?'+':'-')+fmtPct(Math.abs(v));
+// The five rows: [key, label, value text].
+export function combatRows(a){const c=combatStats(a),cl=CLS[a.cls];
+  return [['health','Health',`${Math.max(0,Math.round(a.hp))} / ${c.health}`],
+    ['attack','Attack',`${Math.round(c.attack)} ${cl.range>2?'ranged':'melee'}`],
+    ['defense','Defense',fmtPct(c.defense)],
+    ['crit','Crit',fmtPct(c.crit)],
+    ['speed','Speed',`${c.aps.toFixed(2)}/s ${speedWord(c.speed)}`]]}
+export const breakdownText=(a,k)=>{const l=combatStats(a).bd[k];return l.length?l.map(p=>p.label+' '+bdVal(k,p.value)):['no armor, no training']};
 
-function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
-  const rows=[['Level',a.lvl],['Class',a.cls],['Faction',FAC[a.fac].name],['Guild',a.guild?`<${a.guild.tag}> ${a.guild.name}`:'Unguilded'],
-    ['HP',`${Math.max(0,Math.round(a.hp))} / ${mh}`],['Attack',Math.round(atkOf(a))],['Armour',Math.round((1-(c.arm||1))*100)+'%'],
-    ['Crit',Math.round((c.crit||.08)*100)+'%'],['Range',c.range>2?`${c.range} (ranged)`:`${c.range} (melee)`],
-    ['XP to next',a.lvl>=20?'Max level':`${Math.max(0,xpNeed(a.lvl)-Math.round(a.xp))} xp`],
-    ['Gold',a.gold+'g'],['Kills',a.kills],['Honor',a.honor],['Elite kills',a.eliteKills||0]];
-  if(a.avenged!=null)rows.push(['Avenged',a.avenged]);
-  const kv=el('div','kv');for(const [k,v] of rows)kv.append(el('span','k',k),el('span','v',String(v)));b.append(kv);
-  if(a.slots){const f=el('div','meta gearline');f.append('From gear: ');
-    const pct=k=>Math.round(gearBonus(a,k)*10)/10,parts=[`${gearStat(a,'vigor')} Vigor (+${Math.round(gearBonus(a,'vigor'))} HP)`,`${gearStat(a,'might')} Might (+${Math.round(gearBonus(a,'might'))} atk)`,
-      `${gearStat(a,'guard')} Guard (-${pct('guard')}% dmg)`,`${gearStat(a,'precision')} Precision (+${pct('precision')}% crit)`,`${gearStat(a,'haste')} Haste (${pct('haste')}% faster)`];
-    parts.forEach((t,i)=>{const s=el('span','s-'+STAT_KEYS[i],t);f.append(s);if(i<parts.length-1)f.append(' · ')});b.append(f)}
+function identity(b,a){sec(b,'Identity');const kv=el('div','kv');
+  const row=(k,v)=>{kv.append(el('span','k',k));const s=el('span','v');if(typeof v==='string')s.textContent=v;else s.append(v);kv.append(s)};
+  row('Level',String(a.lvl));row('Class',a.cls);
+  if(a.race){const s=el('span','gd',raceOf(a).name);s.title=raceOf(a).culture;const w=el('span');w.append(s,' of '+homeOf(a).name);row('People',w)}
+  row('Faction',FAC[a.fac].name);row('Guild',a.guild?`<${a.guild.tag}> ${a.guild.name}`:'Unguilded');b.append(kv);
+  const need=xpNeed(a.lvl),xp=el('div','xprow');
+  if(a.lvl>=20)xp.append(el('span','dm','Max level'));
+  else{xp.append(meter('xp xpb',Math.max(0,a.xp)/need),el('span','dm',`${Math.round(a.xp)} / ${need} xp to level ${a.lvl+1}`))}
+  b.append(xp)}
+
+function scoresRow(b,a){sec(b,'Scores');const g=el('div','scores');
+  for(const k of ABIL_IDS){const A=ABILITIES[k],m=mod(a,k),gb=gearBonusOf(a,k),c=el('span','sc'+(m>=2?' hi':m<0?' lo':''));
+    c.title=`${A.name}: ${A.desc} Base ${baseScore(a,k)}${gb?', '+sg(gb)+' from gear':''}, modifier ${sg(m)}.`;
+    c.append(el('span','an',A.short),' ',el('span','as',String(score(a,k))));if(gb)c.append(' ',el('span','ab',`(${sg(gb)})`));c.append(' ',el('span','am',sg(m)));g.append(c)}
+  b.append(g)}
+
+function combatBlock(b,a){sec(b,'Combat');const g=el('div','cstats');
+  for(const [k,label,v] of combatRows(a)){const open=statOpen===k,r=el('div','cs'+(open?' open':''));r.dataset.cstat=k;
+    r.title=breakdownText(a,k).join('\n');r.append(el('span','k',label),el('span','v',v),el('span','dm caret',open?'-':'+'));g.append(r);
+    if(open){const ul=el('ul','bd');for(const t of breakdownText(a,k))ul.append(el('li',null,t));g.append(ul)}}
+  b.append(g)}
+
+function skillsGrid(b,a){if(!a.abil)return;sec(b,'Skills');const g=el('div','skgrid');
+  SKILL_IDS.slice().sort((x,y)=>skillMod(a,y)-skillMod(a,x)).forEach(k=>{const t=trained(a,k),m=skillMod(a,k),s=el('span','sk'+(t?' tr':''));
+    s.title=SKILLS[k].desc+' ('+skillParts(a,k).map(p=>p.k+' '+sg(p.v)).join(', ')+')'+(t?' Trained.':'');
+    s.append(el('span','sn',(t?'* ':'')+SKILLS[k].name),el('span','sv',sg(m)));g.append(s)});
+  b.append(g,el('div','dm skey','* trained'))}
+
+function record_(b,a){sec(b,'Record');const kv=el('div','kv');
+  const rows=[['Gold',a.gold+'g'],['Honor',a.honor],['Kills',a.kills],['Elite kills',a.eliteKills||0]];if(a.avenged!=null)rows.push(['Avenged',a.avenged]);
+  for(const [k,v] of rows)kv.append(el('span','k',k),el('span','v',String(v)));b.append(kv)}
+
+function story(b,a){sec(b,'Story');
   const tr=el('div','meta');tr.append('Traits: ');const ts=a.traits||[];if(!ts.length)tr.append('none');
   ts.forEach((t,i)=>{const s=el('span','gd',t);if(TRAITS[t])s.title=TRAITS[t].desc;tr.append(s);if(i<ts.length-1)tr.append(', ')});b.append(tr);
-  if(a.race){const rc=el('div','meta');rc.append('People: ');const rs=el('span','gd',raceOf(a).name);rs.title=raceOf(a).culture;rc.append(rs,' of '+homeOf(a).name);b.append(rc)}
-  if(a.abil)abilityBlock(b,a);
   if(a.origin)b.append(el('div','meta',a.origin));
   if(a.goal){const g=el('div','goal');g.append(el('div',a.goal.done?'gd':'',(a.goal.done?'Done: ':'Goal: ')+a.goal.text));
     if(a.goal.need){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}
+  {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
+  const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
+  if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
   const q=a.quest?`${MOBS[a.quest.type].q}: ${a.quest.have}/${a.quest.need} ${MOBS[a.quest.type].pl}`:'No quest';
   b.append(el('div','meta','Quest: '+q));
   {const ad=advLine(a);if(ad){const d=el('div','meta adv');d.dataset.adv=a.adv;d.title='Open this adventure in the Dungeon Master log';parts(d,ad);b.append(d)}} // the DM's adventure and scene (sim/dm.js)
-  const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
-  if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
-  {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
   b.append(el('div','meta',`Weather: ${weatherName(a.zone)} in ${ZONES[a.zone]}`))}
+
+function tabStats(b,a){identity(b,a);if(a.abil)scoresRow(b,a);combatBlock(b,a);skillsGrid(b,a);record_(b,a);story(b,a)}
 
 function tabLog(b,a){const h=(a.history||[]).slice().reverse();
   if(!h.length){b.append(el('div','dm','Nothing worth recording yet.'));return}
@@ -121,16 +152,27 @@ let tipEl=null,hov=null,pinned=null,tipXY=[0,0];
 const qCls=it=>it.epic?'ep':it.quality==='rare'?'qr':it.quality==='fine'?'qf':'qp';
 const qLabel=it=>it.epic?'Epic':it.quality==='rare'?'Rare':it.quality==='fine'?'Fine':'Plain';
 const slotLabel=k=>(SLOTS.find(s=>s[0]===k)||[k,k])[1];
-const fmtStat=(k,v)=>'+'+v+' '+STAT_NAMES[k];
+// Item lines in the Stats tab's vocabulary: "+12 armor", "+5 damage", "+2 Brawn", "swift (+8% attack speed)".
+export function itemLines(it){const out=[];if(!it)return out;
+  if(it.armor)out.push(['ar','+'+it.armor+' armor']);if(it.damage)out.push(['dg','+'+it.damage+' damage']);
+  for(const k of ABIL_IDS)if(it.bonus&&it.bonus[k])out.push(['bn',sg(it.bonus[k])+' '+ABILITIES[k].name]);
+  if(it.property&&PROPS[it.property])out.push(['pr',it.property+' ('+PROPS[it.property].desc+')']);
+  return out}
+// What changed against the replaced piece: "+3 armor, +1 Grit, -swift".
+function itemDelta(it,o){const ds=[],d=(n,lbl)=>{if(n)ds.push(sg(n)+' '+lbl)};
+  d((it.armor||0)-(o.armor||0),'armor');d((it.damage||0)-(o.damage||0),'damage');
+  for(const k of ABIL_IDS)d(((it.bonus||{})[k]||0)-((o.bonus||{})[k]||0),ABILITIES[k].name);
+  if(it.property!==o.property){if(it.property)ds.push(it.property);if(o.property)ds.push('-'+o.property)}
+  return ds}
 function itemCard(it,cls){const d=el('div',cls||'itip');
   d.append(el('div','in '+qCls(it),it.name));
   d.append(el('div','dm',`${qLabel(it)} · ilvl ${it.ilvl} ${slotLabel(it.slot)}`));
-  const st=itemStats(it);for(const k of STAT_KEYS)if(st[k])d.append(el('div','is s-'+k,fmtStat(k,st[k])));
+  for(const [c,t] of itemLines(it))d.append(el('div','is s-'+c,t));
   for(const f of it.affixes||[])d.append(el('div','ia',f));
   const z=zoneIdx(it.zone);if(z>=0)d.append(el('div','dm','Found in '+ZONES[z]));
   if(it.src)d.append(el('div','dm',it.src));
-  if(it.epic&&EPIC_STATS[it.name])d.append(el('div','if',EPIC_STATS[it.name].flavour));
-  if(it.over){const o=it.over,ds=[];for(const k of STAT_KEYS){const x=(st[k]||0)-((o.stats||{})[k]||0);if(x)ds.push((x>0?'+':'')+x+' '+STAT_NAMES[k])}
+  if(it.epic&&EPIC_ITEMS[it.name])d.append(el('div','if',EPIC_ITEMS[it.name].flavour));
+  if(it.over){const o=it.over,ds=itemDelta(it,o);
     d.append(el('div','dm','Replaced '+o.name+' (ilvl '+o.ilvl+')'+(ds.length?': '+ds.join(', '):'')))}
   return d}
 const hoverItem=()=>{const a=cam.sel;return hov&&a&&a.id===hov.id&&a.slots?a.slots[hov.slot]:null};
@@ -310,6 +352,7 @@ function initClicks(){const host=document.querySelector('.main')||document.body;
     const mr=t.closest('[data-mind]');if(mr){const a=cam.sel,id=Number(mr.dataset.mind);
       if(a)mindOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===id?null:{hid:a.id,id,prompt:false};renderHero();return}
     const dv=t.closest('[data-adv]');if(dv&&!t.closest('.hn[data-hid]')){showAdventure(dv.dataset.adv);return}
+    const cs=t.closest('[data-cstat]');if(cs){statOpen=statOpen===cs.dataset.cstat?null:cs.dataset.cstat;renderHero();return}
     const tb=t.closest('[data-tab]');if(tb){setTab(tb.dataset.tab);return}
     const n=t.closest('.hn[data-hid]');if(!n)return;
     const a=S.agents.find(x=>x.id==n.dataset.hid);if(a){pick(a);if(a.state==='dead'&&n.closest('#fallen'))setTab('bio')}})}

@@ -20,8 +20,9 @@ import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
 import {blockOf} from '../data/bestiary.js';
 import {rollLoot} from './loot.js';
-import {rollScores,growScores,hpBonus,atkBonus,critBonus} from './abilities.js'; // ability scores (sim/abilities.js)
-import {emptySlots,gearScore,gearHp,gearAtk,gearCrit,guardMul,hasteMul,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
+import {rollScores,growScores} from './abilities.js'; // ability scores (sim/abilities.js)
+import {combatStats,dmgTaken} from './stats.js'; // Health, Attack, Defense, Crit, Speed (sim/stats.js)
+import {emptySlots,equipEpic,sellGear,shopUpgrade} from './gear.js';
 import {record,timeline,first} from './history.js';
 import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
@@ -32,8 +33,8 @@ import {dmDepart,dmTravel,dmHunt} from './dm.js'; // adventures (sim/dm.js): a h
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
-export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+hpBonus(a)+gearHp(a)+a.epics.length*10);
-export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+atkBonus(a)+gearAtk(a)+a.epics.length*3;
+export const maxHp=a=>combatStats(a).health;
+export const atkOf=a=>combatStats(a).attack;
 
 // Where a hero of this level hunts: the band's region, or the one nearest their home town when bands overlap.
 export const huntZone=a=>zoneFor(a.lvl,homeOf(a).gate);
@@ -122,9 +123,9 @@ export function agentDie(a,killer){
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
 
 export function strike(a,t){
-  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<(c.crit||.08)+gearCrit(a)+critBonus(a);if(crit)d*=1.8;
+  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<combatStats(a).crit;if(crit)d*=1.8;
   if(a.blessed){d*=1.2;a.blessed=0} // wayside shrine blessing: one strike at +20% (sim/encounters.js)
-  if(t.kind==='hero')d*=.6*(CLS[t.cls].arm||1)*guardMul(t);
+  if(t.kind==='hero')d*=.6*dmgTaken(t);
   d=Math.round(d);t.hp-=d;if(c.range>2)bolt(a,t,c.orb||c.acc);
   pop(t.x,t.y-.6,crit?d+'!':String(d),crit?'#ffe060':'#ffffff');
   if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return}
@@ -154,7 +155,7 @@ export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9
 // Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
 // Personality traits (data/traits.js) scale these via tm(a,key): Reckless lowers retreat/flee, Cautious raises them, etc.
 export function updAgent(a,dt){
-  a.cd-=dt*hasteMul(a);a.healCd-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
+  a.cd-=dt*combatStats(a).speed;a.healCd-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
   switch(a.state){
   case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
     if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;

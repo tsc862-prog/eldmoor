@@ -51,10 +51,10 @@ export const epicZone=n=>{const z=EPICS.findIndex(l=>l.includes(n));return z>=0?
 // property: rare items and most epics carry one word from PROPS.
 // Armor and damage scale with item level and quality; bonuses and properties do not.
 export const ARMOR_PER_ILVL=1;    // armor points per item level, before slot and class weights
-export const DAMAGE_PER_ILVL=.85; // weapon damage per item level, before the class split
+export const DAMAGE_PER_ILVL=.68; // weapon damage per item level, before the class split
 export const ARMOR_SLOT={head:1.2,chest:1.6,hands:.6,feet:.6,off:1}; // `off` only for a class with a shield
 // Plate, leather and cloth: how much armor a class's pieces carry.
-export const ARMOR_CLASS={Warrior:1,Hunter:.4,Rogue:.35,Mage:.2,Priest:.3};
+export const ARMOR_CLASS={Warrior:1,Hunter:.3,Rogue:.25,Mage:.2,Priest:.25};
 // Which slots carry damage for each class, and their share. Hunters split it between hatchet and longbow.
 export const WEAPON_SLOTS={Warrior:{main:1},Mage:{main:1},Priest:{main:1},Rogue:{main:1},Hunter:{main:.5,off:.5}};
 export const SHIELD_CLASS={Warrior:true};

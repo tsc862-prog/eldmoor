@@ -21,14 +21,16 @@ import {mod} from './abilities.js';
 // ---- tuning (calibrated against the pre-#88 formulas; see the PR for the band averages) ----
 export const SWING=1.1;              // seconds between blows at speed 1
 export const DEF_CAP=.5;             // no hero turns aside more than half of a blow
-export const ARMOR_RATE=.0027;       // defense per armor point
+export const ARMOR_RATE=.0017;       // defense per armor point
 export const EPIC_HP=10,EPIC_ATK=3;  // every epic ever looted (a.epics), as before #88
 export const BASE_CRIT=.08;          // classes without their own crit
 const CRIT_PER=.008,CRIT_REF=1.5;    // crit per Reflex modifier point, around the average hero
+// Seasoning: blows land true more often as a hero levels (what the old Precision stat gave the average hero).
+export const lvlCrit=l=>.00015*l*l;
 // Level terms. Health and attack per level absorb what the old gear stats (Vigor, Might) gave an
 // average hero of that level, so population figures stay where they were.
-export const lvlHp=l=>Math.round(l*(13.3+.2*l));
-export const lvlAtk=l=>2.1*l-1.6-.01*l*l+.7*l;
+export const lvlHp=l=>Math.round(13.3*l+Math.max(.5*l,4.6*l-8));
+export const lvlAtk=l=>2.1*l-1.6-.01*l*l;
 // The primary score's weight in attack grows with level.
 export const scoreAtkW=l=>.6+.1*l;
 
@@ -66,9 +68,9 @@ function build(a){
   if(def>DEF_CAP){bd.defense.push({src:'cap',label:'cap '+pct(DEF_CAP),value:DEF_CAP-def});def=DEF_CAP}
   // Crit
   const rm=mod(a,'reflex'),cc=c.crit||BASE_CRIT,rc=(rm-CRIT_REF)*CRIT_PER,kc=(P.keen||0)*PROPS.keen.v;
-  bd.crit.push({src:'class',label:a.cls+' base',value:cc},{src:'score:reflex',label:'Reflex '+sg(rm),value:rc});
+  const lc=lvlCrit(l);bd.crit.push({src:'class',label:a.cls+' base',value:cc},{src:'level',label:'Level '+l,value:lc},{src:'score:reflex',label:'Reflex '+sg(rm),value:rc});
   if(kc)bd.crit.push({src:'property',label:'keen'+(P.keen>1?' x'+P.keen:''),value:kc});
-  const crit=Math.max(0,cc+rc+kc);
+  const crit=Math.max(0,cc+lc+rc+kc);
   // Speed
   const sw=(P.swift||0)*PROPS.swift.v,speed=(c.spd||1)+sw;
   bd.speed.push({src:'class',label:a.cls+' swing',value:c.spd||1});

@@ -5,7 +5,7 @@
 // Six scores run 3-18 at recruitment (4d6, drop the lowest, arranged by class priority) and
 // grow at levels 5/10/15/20. Modifier = floor((score - 10) / 2).
 
-// id -> {name, short, desc}. (Brawn is not the gear stat "Might"; gear is a separate bonus.)
+// id -> {name, short, desc}. These are the only attributes: items add to them (item.bonus, data/items.js).
 export const ABILITIES={
   brawn:   {name:'Brawn',   short:'BRN',desc:'Raw strength: blows, climbing, shouldering doors and men.'},
   reflex:  {name:'Reflex',  short:'RFX',desc:'Quickness of hand and foot: aim, balance, the knife in the dark.'},

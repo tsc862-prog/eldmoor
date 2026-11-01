@@ -134,12 +134,25 @@ ul.tlist time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-num
 .mbtn{align-self:flex-start;font-size:7px;padding:4px 6px;box-shadow:none}
 .mpre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow-y:auto;margin:0;padding:6px;background:#0a0b14;border:1px solid var(--edge);color:var(--ink)}
 
-/* ability scores on the Stats tab (sim/abilities.js) */
-.abils{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:8px 0 4px;text-align:center}
-.abil{display:flex;flex-direction:column;border:1px solid var(--line,#3a3a4a);padding:3px 0;line-height:1.1}
-.abil .an{font-family:var(--px);font-size:7px;color:var(--dim)} .abil .as{font-size:20px} .abil .am{color:var(--dim)}
-.abil.hi .am{color:#8ad88a} .abil.lo .am{color:#d88a8a}
-.skills{margin-top:2px}
+/* Stats tab (issue #88): section labels, one row of scores, combat totals with breakdowns, skill grid */
+.hero .sec{grid-column:1/-1;font-family:var(--px);font-size:7px;color:var(--gold);letter-spacing:.1em;text-transform:uppercase;margin:8px 0 0;border-bottom:1px solid var(--edge);padding-bottom:3px}
+.xprow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+.meter.xpb{height:4px}
+.scores{display:flex;flex-wrap:wrap;gap:2px 12px;font-variant-numeric:tabular-nums}
+.scores .sc{white-space:nowrap}
+.scores .an{font-family:var(--px);font-size:7px;color:var(--dim)} .scores .ab{color:var(--green)} .scores .am{color:var(--dim)}
+.scores .hi .am{color:#8ad88a} .scores .lo .am{color:#d88a8a}
+.cstats{display:grid;grid-template-columns:1fr;gap:1px}
+.cstats .cs{display:grid;grid-template-columns:70px 1fr auto;gap:8px;align-items:center;cursor:pointer;padding:1px 4px}
+.cstats .cs:hover,.cstats .cs.open{background:var(--panel2)}
+.cstats .k{color:var(--dim)} .cstats .v{font-family:var(--px);font-size:9px;font-variant-numeric:tabular-nums}
+.cstats .bd{margin:0 0 3px;padding:2px 8px 4px 24px;list-style:none;background:var(--panel2);color:var(--dim)}
+.skgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:1px 10px;min-width:0}
+.skgrid .sk{display:flex;justify-content:space-between;gap:6px;color:var(--dim);min-width:0}
+.skgrid .sk .sn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .skgrid .sk .sv{font-variant-numeric:tabular-nums}
+.skgrid .sk.tr{color:var(--gold)}
+.skey{font-size:14px}
+.itip .s-ar,.itip .s-dg{color:var(--ink)} .itip .s-pr{color:#6fb4ff}
 
 /* Minds at play: heroes played by a model or an agent */
 .mcount{display:inline-block;min-width:16px;padding:2px 5px;margin-left:6px;background:#7fd6c2;color:#0d0e19;font-size:8px;text-align:center}

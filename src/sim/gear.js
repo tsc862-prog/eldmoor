@@ -70,24 +70,27 @@ export function makeItem(cls,slot,ilvl,zone,opt={}){const z=clamp(zone,0,GEAR_MA
   if(opt.src)it.src=opt.src;return it}
 
 // Save migration (v3 -> v4): an item from before #88 carried {stats:{vigor,might,guard,precision,haste}}.
-// Its armor and damage are re-derived from its slot, class and level; its old budget is mapped onto
-// bonuses in proportion (Vigor -> Grit, Might -> the class primary, Precision -> Reflex, Guard and Haste
-// toward the rare properties warding and swift); epics take their new block.
+// Its armor and damage are re-derived from its slot, class and level at its quality. Score bonuses
+// follow its affixes (each affix now names a score, data/items.js AFFIXES); an affix the tables no longer
+// know falls back to the item's biggest old stat (Vigor -> Grit, Might -> the class primary, Precision ->
+// Reflex). A rare gets the property nearest its old lean (Guard warding, Haste swift, Precision keen,
+// else vital). Epics take their new block. The replaced-piece note loses its old stats.
 export function convertItem(it,cls){if(!it||typeof it!=='object'||!it.slot)return it;
   const old=it.stats||{};delete it.stats;delete it.armor;delete it.damage;delete it.bonus;delete it.property;
+  if(it.over&&it.over.stats)delete it.over.stats;
   if(it.epic){setEpic(it);return it}
   const q=QUALITY[it.quality]?it.quality:'plain',Q=QUALITY[q];it.quality=q;
   const ar=itemArmor(cls,it.slot,it.ilvl,Q.mult),dm=itemDamage(cls,it.slot,it.ilvl,Q.mult);if(ar)it.armor=ar;if(dm)it.damage=dm;
   const ca=CLASS_ABIL[cls]||{primary:'brawn',secondary:'grit'};
   const wt={grit:old.vigor||0,[ca.primary]:old.might||0,reflex:old.precision||0};
-  const pts=q==='rare'?2:q==='fine'?1:0,b={};
-  if(pts){const order=Object.keys(wt).filter(k=>wt[k]>0).sort((x,y)=>wt[y]-wt[x]);
-    if(order.length){addBonus(b,order[0],1);if(pts>1)addBonus(b,order[1]||order[0],1)}}
+  const pts=q==='rare'?2:q==='fine'?1:0,b={},known=new Map(AFFIXES.flat().map(x=>[x[0],x[1]]));
+  const order=Object.keys(wt).filter(k=>wt[k]>0).sort((x,y)=>wt[y]-wt[x]);let left=pts;
+  for(const f of it.affixes||[]){if(left<=0)break;const k=known.get(f);if(k){addBonus(b,k,1);left--}}
+  for(let i=0;left>0&&order.length;i++,left--)addBonus(b,order[i%order.length],1);
   if(charmSlot(cls,it.slot))addBonus(b,it.slot==='trinket'?ca.primary:ca.secondary,1);
   if(Object.keys(b).length)it.bonus=b;
   if(q==='rare'){const g=old.guard||0,h=old.haste||0,p=old.precision||0,v=old.vigor||0;
     it.property=g>=h&&g>=p&&g>=v/3?'warding':h>=p&&h>=v/3?'swift':p>=v/3?'keen':'vital'}
-  if(it.over&&it.over.stats)delete it.over.stats;
   return it}
 
 // Lowest item level among the non-epic slots (empty counts as 0); null if every slot holds an epic.
