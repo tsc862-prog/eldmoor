@@ -95,6 +95,29 @@ tiers), and an oath whose target dies first is void and re-sworn.
 ## Weather
 Every zone has its own sky, and it turns every one to three hours. Thornvale gets drizzle and rain. Mirefen's fogs roll in off the fen and hide hunter and hunted alike. Cinderpass sees grey ashfall and, now and then, a choking ash storm. Hoarfell's snows thicken into squalls that close the high ground. Rain and snow slow travel, fog and storms shorten sight, and ash storms and squalls drive hunters back to town until they blow over.
 
+## Road encounters
+The roads between the gates are never quite empty. At most three encounters stand on
+road tiles at a time, each at least twelve tiles from any gate; a new one appears every
+one to two game hours and an ignored one is gone after a game day. Heroes walking out
+or home notice one within four tiles and detour to it, unless they are below 40% HP,
+walking through an ash storm or squall, or following a party leader (only the leader or
+a solo hero detours). Every resolution is one Chronicle line with the roll shown.
+
+| Encounter | What it is | Outcomes |
+| --- | --- | --- |
+| Wagon merchant | A tinker's covered wagon with a lantern on the bow, selling road-worn gear to anyone with coin. | d20: 11+ a bargain (3g per level), else full price (4g per level). One gear point, once per hero per wagon, never above the city shop's ceiling. |
+| Lanternstone shrine | A wayside pillar of grey stone with a flame that nobody tends and nobody has seen go out. Travellers kneel for luck. | d20: blessed (the next blow lands 20% harder); 16+ the lantern burns bright and also mends 30% HP. |
+| Strongbox | A banded chest left in the ditch, locked, and not left there by accident. | d20 vs 10 + 2 per zone: gold (5g per level) or a needle in the lock for 25% max HP. Gone either way. |
+| Lost pilgrim | A hooded traveller with a pack and a staff, well off the pilgrim road, looking for a gate. Picked up by heroes on the way home. | Escort to the hero's own city for +3 honor; d20 12+ adds a gift (2g per level + 3). The pilgrim waits by the roadside again if the hero dies, leaves the road or dawdles for three game hours. |
+| Rookscar ambush | Two or three Rookscar bandits step out of the verge: hooded cutpurses who work the roads of every zone and rob rather than kill. | d20 + half the hero's level (a party uses its best) vs 12 + 2 per zone: the bandits break and run for the XP of a zone-level kill and their purses, or the hero is cut for 35% max HP and driven home. Parties share the XP. An ambush wounds; it never kills. |
+
+Sample lines:
+- "Alwyn haggles with a wagon merchant on the Mirefen road... rolls 15. A bargain: new gear for 27g."
+- "Miriel kneels at a lanternstone on the Thornvale road... rolls 18. The lantern burns bright: blessed and mended for 21."
+- "Zugmar pries at a strongbox on the Mirefen road... rolls 20 vs 12. Gold: 35g."
+- "Vexzar brings the pilgrim safe to the gate of Grimhold. rolls 20. +3 honor and a gift of 19g."
+- "Pellora and party are ambushed by 2 Rookscar bandits on the Mirefen road... rolls 12+3 vs 14. The bandits break and run; 20g in their purses."
+
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 18, raided by 4-6 heroes of level 12+.
@@ -150,6 +173,40 @@ one falls, no new elite stalks that zone for at least ten hours.
 - Hoarfell: Rime-Etched Warpick, Shaghorn Greatcloak, Icevein Diadem
 - Sunken Crypt: Vesk's Phylactery Shard, Drowned King's Signet, Cryptbound Greaves, Staff of Still Water
 - Kragmaw: Kragmaw's Molten Eye, Wyrmbone Crown, Cinder Wyrm Fang, Mantle of the Ashen King
+
+## Equipment
+Every hero wears seven pieces: **head, chest, hands, feet, main hand, off hand** (a shield,
+tome or ranged weapon) **and a trinket**. Each piece has a name, an item level and a zone of
+origin. Ordinary pieces are named `<material> <slot noun>`: the material says where it came
+from, the noun what kind of hero wears it. Town smiths and tailors sell pieces at the hero's own
+level for 6 gold a level; monsters drop one now and then at their own level, give or take one,
+and named elites always do. A hero wears an upgrade on the spot and sells what it replaced at
+the auction house. Epics take a slot outright, are never displaced by ordinary gear, and grow with
+their bearer: a smith reworks a worn epic to the hero's own level and a little more on every visit
+home, so a relic looted at level three is still a relic at twenty.
+
+Materials by zone: Thornvale **Bramble, Oakbark, Wolfhide**; Mirefen **Mossweave, Bogiron,
+Fenleather**; Cinderpass **Cinder, Emberforged, Ashsteel**; Hoarfell **Rime, Hoarfrost,
+Icevein**. Weapons, shields and bows take the hard materials only (Oakbark, Bogiron,
+Emberforged, Ashsteel, Icevein).
+
+| Class | Head | Chest | Hands | Feet | Main hand | Off hand | Trinket |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Warrior (plate) | Helm | Breastplate | Gauntlets | Greaves | Longsword | Shield | Medallion |
+| Mage (cloth) | Cowl | Robe | Wraps | Sandals | Staff | Grimoire | Charm |
+| Priest (cloth) | Circlet | Vestment | Mitts | Slippers | Mace | Censer | Reliquary |
+| Hunter (leather) | Hood | Jerkin | Gloves | Treads | Hatchet | Longbow | Talisman |
+| Rogue (leather) | Mask | Vest | Grips | Softboots | Dagger | Shiv | Lockcharm |
+
+Examples: Wolfhide Jerkin, Oakbark Longsword, Mossweave Cowl, Bogiron Censer, Ashsteel
+Shield, Emberforged Dagger, Hoarfrost Reliquary, Icevein Longbow.
+
+Epics by slot: head Bramblecrown, Icevein Diadem, Wyrmbone Crown; chest Mosswoven Cloak,
+Cinderscale Mantle, Shaghorn Greatcloak, Mantle of the Ashen King; hands Magma-Tempered
+Gauntlets; feet Bogwalker Boots, Cryptbound Greaves; main hand Fang of the Old Wood,
+Ember-Forged Greatsword, Rime-Etched Warpick, Cinder Wyrm Fang, Staff of Still Water; off hand
+Thornheart Longbow, Fenlight Lantern; trinket Kragmaw's Molten Eye, Vesk's Phylactery Shard,
+Drowned King's Signet.
 
 ## Trade goods
 Wolf Pelt, Boar Tusk, Silk Bundle, Fen Moss, Thick Hide, Venom Sac, Ember Core, Cinder Scale, Rime Pelt, Hoar Wool, Wight Marrow, Grave Dust.

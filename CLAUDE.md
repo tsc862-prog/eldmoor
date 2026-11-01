@@ -102,6 +102,7 @@ other. The rules:
   `assist`, `dungeon`, `raid`, `dead`); `mobs.js` spawning and mob AI;
   `boss.js` the Kragmaw fight and raid muster; `pvp.js` duels, nemesis hunts,
   assists; `dungeon.js` Sunken Crypt runs; `market.js` auction-house prices;
+  `history.js` `record(a, ...parts)` per-hero event log for the dossier Log tab;
   `index.js` `init()` and `step(dt)`.
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;

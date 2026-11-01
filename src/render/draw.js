@@ -11,6 +11,7 @@ import {S,maxHp} from '../sim/index.js';
 import {sprite,SPR,heroSprite} from './sprites.js';
 import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
+import {drawEncounters} from './encounters.js';
 
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1};
 // Follow view shows about 460 world pixels (29 tiles) across the screen.
@@ -49,6 +50,7 @@ export function createRenderer(cv,screenEl,terrain){
       const top=Math.round((c.qg.y-.15)*T)-12,by=Math.round(Math.sin(blink*4))*1,qx=Math.round(c.qg.x*T)-1;
       ctx.fillStyle='#ffe040';ctx.fillRect(qx,top-11+by,2,6);ctx.fillRect(qx,top-4+by,2,2);
       ctx.fillStyle='#f2c14e';ctx.fillRect(Math.round(c.ah.x*T)-2,top-8,4,4);ctx.fillStyle='#8a6a1a';ctx.fillRect(Math.round(c.ah.x*T)-1,top-6,2,1)}
+    drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
     // entities sorted by y
     const ents=[];for(const m of mobs)if(m.alive)ents.push(m);for(const a of agents)ents.push(a);if(boss.alive)ents.push(boss);
     ents.sort((a,b)=>a.y-b.y);
