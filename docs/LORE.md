@@ -104,6 +104,40 @@ one falls, no new elite stalks that zone for at least ten hours.
 - Sunken Crypt: Vesk's Phylactery Shard, Drowned King's Signet, Cryptbound Greaves, Staff of Still Water
 - Kragmaw: Kragmaw's Molten Eye, Wyrmbone Crown, Cinder Wyrm Fang, Mantle of the Ashen King
 
+## Equipment
+Every hero wears seven pieces: **head, chest, hands, feet, main hand, off hand** (a shield,
+tome or ranged weapon) **and a trinket**. Each piece has a name, an item level and a zone of
+origin. Ordinary pieces are named `<material> <slot noun>`: the material says where it came
+from, the noun what kind of hero wears it. Town smiths and tailors sell pieces at the hero's own
+level for 6 gold a level; monsters drop one now and then at their own level, give or take one,
+and named elites always do. A hero wears an upgrade on the spot and sells what it replaced at
+the auction house. Epics take a slot outright, are never displaced by ordinary gear, and grow with
+their bearer: a smith reworks a worn epic to the hero's own level and a little more on every visit
+home, so a relic looted at level three is still a relic at twenty.
+
+Materials by zone: Thornvale **Bramble, Oakbark, Wolfhide**; Mirefen **Mossweave, Bogiron,
+Fenleather**; Cinderpass **Cinder, Emberforged, Ashsteel**; Hoarfell **Rime, Hoarfrost,
+Icevein**. Weapons, shields and bows take the hard materials only (Oakbark, Bogiron,
+Emberforged, Ashsteel, Icevein).
+
+| Class | Head | Chest | Hands | Feet | Main hand | Off hand | Trinket |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Warrior (plate) | Helm | Breastplate | Gauntlets | Greaves | Longsword | Shield | Medallion |
+| Mage (cloth) | Cowl | Robe | Wraps | Sandals | Staff | Grimoire | Charm |
+| Priest (cloth) | Circlet | Vestment | Mitts | Slippers | Mace | Censer | Reliquary |
+| Hunter (leather) | Hood | Jerkin | Gloves | Treads | Hatchet | Longbow | Talisman |
+| Rogue (leather) | Mask | Vest | Grips | Softboots | Dagger | Shiv | Lockcharm |
+
+Examples: Wolfhide Jerkin, Oakbark Longsword, Mossweave Cowl, Bogiron Censer, Ashsteel
+Shield, Emberforged Dagger, Hoarfrost Reliquary, Icevein Longbow.
+
+Epics by slot: head Bramblecrown, Icevein Diadem, Wyrmbone Crown; chest Mosswoven Cloak,
+Cinderscale Mantle, Shaghorn Greatcloak, Mantle of the Ashen King; hands Magma-Tempered
+Gauntlets; feet Bogwalker Boots, Cryptbound Greaves; main hand Fang of the Old Wood,
+Ember-Forged Greatsword, Rime-Etched Warpick, Cinder Wyrm Fang, Staff of Still Water; off hand
+Thornheart Longbow, Fenlight Lantern; trinket Kragmaw's Molten Eye, Vesk's Phylactery Shard,
+Drowned King's Signet.
+
 ## Trade goods
 Wolf Pelt, Boar Tusk, Silk Bundle, Fen Moss, Thick Hide, Venom Sac, Ember Core, Cinder Scale, Rime Pelt, Hoar Wool, Wight Marrow, Grave Dust.
 
