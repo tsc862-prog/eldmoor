@@ -18,6 +18,10 @@ jobs:
       - run: npm ci
       - name: Static build
         run: npm run build
+      - name: World spec snapshot check
+        run: npm run worldcheck
+      - name: Save/load round trip
+        run: npm run savecheck
       - name: Headless sim (10 game-hours)
         run: npm run sim -- 10 | tee sim.txt
       - name: Sanity-check the sim summary

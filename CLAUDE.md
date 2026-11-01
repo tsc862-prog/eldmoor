@@ -75,6 +75,8 @@ other. The rules:
 - `npm run sim [minutes]`: headless run of the real game code in Node, prints
   levels, deaths, honor, guild dungeon results and boss state.
 - `npm run build`: static build into `dist/`.
+- `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
+- `npm run savecheck`: snapshot/restore round trip of the sim state.
 
 ## Layout
 
@@ -140,13 +142,13 @@ render or ui, so the headless harness stays stub-free.
 - In a 60-minute headless run from level 1, about 60 heroes die (roughly 60% PvP).
   A few veterans reach 14-16. No raid has killed Kragmaw yet; the boss is likely
   overtuned for hardcore rosters.
-- The world does not save; a reload restarts at level 1.
+- The world auto-saves to localStorage every game-hour and on tab close, and restores on reload; Export/Import move it as JSON (`src/sim/save.js`, `src/ui/save.js`, `npm run savecheck`).
 
 ## Roadmap ideas
 
 1. Done: `main.js` is split into `world`, `data`, `sim`, `render`, `ui` with a
    DOM-free sim core.
-2. Save and load the world (localStorage or file export) so it persists.
+2. Done: save and load (localStorage auto-save, JSON export/import).
 3. Rebalance hardcore: fewer pointless PvP deaths, a winnable Kragmaw.
 4. More world: a second dungeon, rare elite mobs, world events, weather.
 5. Smarter AI: parties that quest together, healers following tanks, heroes
