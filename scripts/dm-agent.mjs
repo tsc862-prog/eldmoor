@@ -109,7 +109,8 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
       if (t && t.ok && t.call && t.call.id !== seen && t.call.seconds_left > .8) {
         seen = t.call.id; const c = t.call, t0 = Date.now();
         try {
-          const r = await adapter.call({system: TABLE_SYSTEM, user: tablePrompt(t), schema: tableSchema(c), maxTokens: 160, model, effort, timeoutMs: Math.max(800, c.seconds_left * 1000 - 400)});
+          const ms = Math.max(800, c.seconds_left * 1000 - 400); // past the call's budget the answer is worthless: abort it (the Ollama adapter honours only the signal)
+          const r = await adapter.call({system: TABLE_SYSTEM, user: tablePrompt(t), schema: tableSchema(c), maxTokens: 160, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
           let j = null; try {j = JSON.parse(r.text)} catch {}
           onCost(r.usage || {});
           if (!j || typeof j.text !== 'string') log(`[table] call ${c.id} ${c.kind}: the model's reply was not JSON; the scripted DM fills it`);

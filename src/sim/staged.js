@@ -97,7 +97,9 @@ const partyLvl=()=>{const L=fellows();if(!L.length)return {avg:1,lo:1,hi:1,n:0};
 const band=z=>REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];
 
 // ---- the DM log ----
-const LOG=(kind,summary,detail,heroes)=>dmlog(kind,null,summary,{by:'dm-agent',...detail},{heroes:heroes||[]});
+// Entries name no heroes (heroes: []): the Fellowship's campaign log and memories (fellowship.js readDm) take
+// the scene from the Table's own outcome, in the world's words, never the DM's bookkeeping ("staged", reasons).
+const LOG=(kind,summary,detail)=>dmlog(kind,null,summary,{by:'dm-agent',...detail},{heroes:[]});
 function refuse(why,a){const G=stagedState();G.stats.refused++;
   LOG('agent',['Staged scene refused: '+why+(a&&a.kind?' ('+clean(a.kind,12)+')':'')+'.'],{staged:null,kind:a&&a.kind?clean(a.kind,12):null,reason:clean(a&&a.reason,STAGE.REASON_MAX),result:'rejected: '+why});
   return {ok:false,error:'Refused: '+why}}
@@ -138,7 +140,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   const frame=clean(a.frame,STAGE.FRAME_MAX);if(frame.length<12)return refuse('the frame (what the heroes see as it begins) is missing or too short',a);
   if(!F||!fellows().length)return refuse('no Fellowship rides in this world',a);
   if(S.table)return refuse('a Table scene is open; stage the next one when it is over',a);
-  if(F&&openProps().length)return refuse('a party vote is open; let them settle it first',a);
+  if(openProps().length)return refuse('a party vote is open; let them settle it first',a);
   if(G.cur&&G.cur.phase!=='done')return refuse('your staged '+G.cur.kind+' "'+G.cur.title+'" is still '+(G.cur.phase==='waiting'?'waiting for the party':'running')+'; one at a time',a);
   if(today().n>=STAGE.PER_DAY)return refuse(STAGE.PER_DAY+' staged scenes today already; the world needs room to breathe',a);
   if(FIGHTING[kind]){const h=fellows().find(b=>b.state!=='town'&&!b.hidden&&b.hp<maxHp(b)*STAGE.PILE_HP);
@@ -214,6 +216,8 @@ function tick(){const G=S.staged;if(!G||!G.cur)return false;const rec=G.cur;
   const fight=rec.kind==='elite'||rec.kind==='ambush';
   if(S.gameMin>=rec.until||!S.fellowship||!fellows().length||fight&&!rec.cast.mobs.some(id=>liveMob(mobOf(id)))||rec.cast.npc!=null&&!npcOf(rec.cast.npc)){expire(rec);return false}
   const A=anchorOf(rec),L=field();
+  // a staged fight or trap holds back while a member out in the field is badly hurt (the pile-on rule, at the meeting too)
+  if(FIGHTING[rec.kind]&&L.some(b=>b.hp<maxHp(b)*STAGE.PILE_HP)){for(const id of rec.cast.mobs){const m=mobOf(id);if(liveMob(m)&&!m.target)m.dest=null}return false}
   // walk the cast to the member it was staged near (a cast left far behind starts again nearer)
   const h=rec.near.hero!=null?byId(rec.near.hero):null;
   if(h&&living(h)&&!h.hidden&&h.state!=='town'&&A!==rec.at){const d=dist(A,h);
@@ -233,7 +237,7 @@ function meet(rec,a){const G=S.staged,F=S.fellowship,fight=rec.kind==='elite'||r
       m.target=best;m.dest=null;if(['hunt','travel','follow','return'].includes(best.state)){best.state='fight';best.target=m;best.dest=null}}
     if(F){const s=F.tableSeen||(F.tableSeen={});for(const m of mobs)s['elite:'+m.id]=S.gameMin}} // the elite trigger does not open the same foe twice
   const w=rec.cast.npc!=null?npcOf(rec.cast.npc):null;if(w){w.stroll=null;w.face=a.x>w.x?1:-1}
-  LOG('frame',['Staged ',gd(rec.kind),' meets the Fellowship: ',gd(rec.title),' ('+a.name+' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+').'],{staged:rec.id,kind:rec.kind,met:a.id},[a.id]);
+  LOG('frame',['Staged ',gd(rec.kind),' meets the Fellowship: ',gd(rec.title),' ('+a.name+' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+').'],{staged:rec.id,kind:rec.kind,met:a.id});
   if(!tableOn()){finish(rec,null,'played out in the world (Table mode is off)');return false}
   rec.phase='open';
   const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),dcUp:0,tally:{}};
@@ -249,7 +253,7 @@ function expire(rec){const G=S.staged;G.stats.expired++;
   rec.phase='done';rec.result='expired';retire(rec)}
 function finish(rec,sc,why){if(rec.phase==='done')return;rec.phase='done';rec.result=why||(sc&&sc.summary)||'done';
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.alive&&!m.gone){m.gone=true;m.target=null}}
-  LOG('payoff',['Staged ',gd(rec.kind),' ',gd(rec.title),' ends: '+clean(rec.result,180)],{staged:rec.id,kind:rec.kind,result:rec.result,calls:sc&&sc.calls?sc.calls.map(c=>({kind:c.kind,by:c.by,...(c.pick?{pick:c.pick}:{})})):null},sc?sc.ids:[]);
+  LOG('payoff',['Staged ',gd(rec.kind),' ',gd(rec.title),' ends: '+clean(rec.result,180)],{staged:rec.id,kind:rec.kind,result:rec.result,calls:sc&&sc.calls?sc.calls.map(c=>({kind:c.kind,by:c.by,...(c.pick?{pick:c.pick}:{})})):null,heroes:sc?sc.ids:[]});
   const F=S.fellowship;if(F)F.tableDm=S.dmLogSeq||0; // the scene's own rolls do not reopen the table as a DM check
   retire(rec)}
 function retire(rec){const G=S.staged;G.past.unshift({id:rec.id,kind:rec.kind,title:rec.title,day:Math.floor(rec.born/DAY)+1,result:rec.result});if(G.past.length>STAGE.PAST_KEEP)G.past.pop()}
@@ -264,7 +268,7 @@ function dcOf(sc){const rec=recOf(sc),c=sc.ctx;let dc=rec&&rec.cast.dc||11;
   return dc+(c.dcUp||0)}
 function roll(sc,a,act,dc){const skill=SKILL[act],R=check(a,skill,dc,{nat:true});
   LOG('roll',[a.name+' rolls '+skill+' '+R.d20+(R.mod>=0?'+':'')+R.mod+' = '+R.total+' vs DC '+dc+(R.pass?': success':': failure')+' ('+sc.title+').'],
-    {staged:sc.ctx.staged,sceneType:'staged',kind:sc.kind,act,skill,d20:R.d20,mod:R.mod,total:R.total,dc,pass:R.pass},[a.id]);
+    {staged:sc.ctx.staged,sceneType:'staged',kind:sc.kind,act,skill,d20:R.d20,mod:R.mod,total:R.total,dc,pass:R.pass,hero:a.id});
   return R}
 const res=R=>(R.pass?'success':'failure')+', '+R.total+' vs '+R.dc;
 function spring(sc,a){const rec=recOf(sc),t=rec?rec.cast.trap:{dmg:.4,name:'the trap'},mh=maxHp(a),hit=Math.round(mh*t.dmg*.5),floor=Math.min(a.hp,Math.ceil(mh*STAGE.TRAP_FLOOR)),was=a.hp;
@@ -342,7 +346,7 @@ function fill(sc,c){const rec=recOf(sc),G=stagedState(),n=rec?rec.cast.name:'the
 function resolve(sc,c,{text,pick,by,from}){c.done=true;c.by=by;c.text=text||'';if(pick)c.pick=pick;
   let effect=null;if(c.kind==='complication')effect=complicate(sc,c.pick||'none');
   if(text)say(sc,text,from||NARRATOR);
-  if(c.kind!=='outcome'||by==='dm-agent')LOG('agent',['At the table ('+c.kind+(c.pick?': '+c.pick:'')+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{staged:sc.ctx.staged,call:c.kind,pick:c.pick||null,text,effect,...(by==='scripted'?{by:'scripted',fill:true}:{})},sc.ids)}
+  if(c.kind!=='outcome'||by==='dm-agent')LOG('agent',['At the table ('+c.kind+(c.pick?': '+c.pick:'')+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{staged:sc.ctx.staged,call:c.kind,pick:c.pick||null,text,effect,...(by==='scripted'?{by:'scripted',fill:true}:{})})}
 function complicate(sc,pick){const rec=recOf(sc),c=sc.ctx;
   if(pick==='falter'){const m=(c.mobs||[]).map(mobOf).find(liveMob);if(m&&m.hp<m.maxhp*.5){m.fled=2.5;return (m.name||MOBS[m.type].name)+' breaks off for a moment'}return 'the foe stands firm (above half its health)'}
   if(pick==='reinforce'){if(!rec)return null;const alive=(c.mobs||[]).map(mobOf).filter(liveMob);if(!alive.length||alive.length>=STAGE.PACK_MAX)return 'nothing more comes';
