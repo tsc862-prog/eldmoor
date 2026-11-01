@@ -62,7 +62,7 @@ export const NPC_ROLES=[
     pal:[{R:'#e8e0d0',A:'#5b8ff2',M:'#f2d890',W:'#8a7050',H:'#c8c0b0'},{R:'#4a3a3a',A:'#e8544a',M:'#e8e0c8',W:'#6a4a30',H:'#7a3a24'}],
     lines:{
       greet:[
-        ['Go with the Harvest, {target}. And come back.',
+        ['Go with a lamp lit, {target}. And come back.',
          'A candle burns for every name that leaves the gate. Yours is lit.',
          'Fear is a tithe, {target}. Pay it and move on.',
          'Bury nothing you can carry home. Carry home everyone you can.'],
