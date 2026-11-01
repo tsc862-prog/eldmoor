@@ -16,6 +16,7 @@ import {pvpCheck} from './pvp.js';
 import {dungeonCheck} from './dungeon.js';
 import {updMarket} from './market.js';
 import {chatTick} from './chat.js';
+import {npcsTick} from './npcs.js';
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
 
@@ -41,6 +42,6 @@ export function step(dt){S.gameMin+=dt*6;
     const a=makeHero(r.fac,r.cls,r.guild,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', joins ',{t:'<'+r.guild.tag+'> '+r.guild.name,c:'f'+r.fac},' in ',homeOf(a).name,'.')}
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
-  chatTick(dt);goalsTick(dt);
+  chatTick(dt);npcsTick(dt);goalsTick(dt);
   narratorTick(dt);
   updFx(dt)}

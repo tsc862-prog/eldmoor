@@ -5,6 +5,7 @@
 // pose, frame 1 the step (or wing beat); draw.js alternates them while moving.
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
+import {npcRole} from '../data/npcs.js';
 
 const sprCache={};
 export function sprite(key,rows,map){if(sprCache[key])return sprCache[key];const w=Math.max(...rows.map(r=>r.length)),h=rows.length;
@@ -272,6 +273,166 @@ export const SPR={
     "..RRRRRR..",
     "..RRRRRR..",
     "..RR..RR.."]],
+  // ---- townsfolk 10x12 (data/npcs.js roles; drawn by npcSprite). Shared palette:
+  // H hair (or hood/cap where it covers the hair), S skin, R body, A accent (apron, trim,
+  // shield), M metal (helmet, hammer head, strings), W tool (tankard, haft, staff, lute),
+  // D boots. Frame 0 idle; frame 1 steps the legs apart and works the hands.
+  // innkeeper: apron over the tunic, tankard in the right hand.
+  innkeeper:[[
+    "...HHHH...",
+    "..HHHHHH..",
+    "..HSSSSH..",
+    "..SSSSSS..",
+    "...SSSS...",
+    "..RRRRRR..",
+    ".RRAAAARR.",
+    "SRRAAAARRW",
+    ".RRAAAARRW",
+    "..RAAAAR..",
+    "..RAAAAR..",
+    "..DD..DD.."],[
+    "...HHHH...",
+    "..HHHHHH..",
+    "..HSSSSH..",
+    "..SSSSSS..",
+    "...SSSS...",
+    "..RRRRRR.W",
+    ".RRAAAARRW",
+    "SRRAAAARRS",
+    ".RRAAAARR.",
+    "..RAAAAR..",
+    "..RAAAAR..",
+    ".DD....DD."]],
+  // smith: short hair, bare arms, leather apron, hammer (W haft, M head) at the right.
+  smith:[[
+    "...HHHH...",
+    "..HSSSSH..",
+    "..SSSSSS..",
+    "..SSSSSS..",
+    "...SSSS...",
+    ".SRRRRRRS.",
+    ".SRAAAARSM",
+    "SSRAAAARSW",
+    ".RRAAAARRW",
+    "..RAAAAR.W",
+    "..RAAAAR..",
+    "..DD..DD.."],[
+    "...HHHH..M",
+    "..HSSSSH.W",
+    "..SSSSSS.W",
+    "..SSSSSS.W",
+    "...SSSS.SW",
+    ".SRRRRRRS.",
+    ".SRAAAARS.",
+    "SSRAAAARS.",
+    ".RRAAAARR.",
+    "..RAAAAR..",
+    "..RAAAAR..",
+    ".DD....DD."]],
+  // quartermaster: flat cap (H), sash (A) across the coat, coin pouch (W) in hand.
+  quartermaster:[[
+    "..HHHHHH..",
+    ".HHHHHHHH.",
+    "..SSSSSS..",
+    "..SSSSSS..",
+    "...SSSS...",
+    "..RRRRRR..",
+    ".RRRARRRR.",
+    "SRRRARRRRS",
+    ".RRRARRRRW",
+    "..RRARRR.W",
+    "..RRRRRR..",
+    "..DD..DD.."],[
+    "..HHHHHH..",
+    ".HHHHHHHH.",
+    "..SSSSSS..",
+    "..SSSSSS..",
+    "...SSSS...",
+    "..RRRRRR.W",
+    ".RRRARRRRW",
+    "SRRRARRRRS",
+    ".RRRARRRR.",
+    "..RRARRR..",
+    "..RRRRRR..",
+    ".DD....DD."]],
+  // priest or shaman: hood (H) framing the face, stole (A), staff (W) with a charm (M).
+  priest:[[
+    "...HHHH..M",
+    "..HHHHHH.W",
+    "..HSSSSH.W",
+    "..HSSSSH.W",
+    "...SSSS..W",
+    "..RRRRRR.W",
+    ".RRRAARRRW",
+    "SRRRAARRSW",
+    ".RRRAARRR.",
+    "..RRAARR..",
+    "..RRAARR..",
+    "..RRRRRR.."],[
+    "...HHHH..M",
+    "..HHHHHH.W",
+    "..HSSSSH.W",
+    "..HSSSSH.W",
+    "...SSSS..W",
+    "..RRRRRR.W",
+    ".RRRAARRSW",
+    ".RRRAARRR.",
+    "SRRRAARRR.",
+    "..RRAARR..",
+    "..RRAARR..",
+    ".RRR..RRR."]],
+  // bard: feathered cap (H cap, A feather), lute (W body, M strings) held across the chest.
+  bard:[[
+    "....A.....",
+    "..HHHHHH..",
+    "..HSSSSH..",
+    "..SSSSSS..",
+    "...SSSS...",
+    "..RRRRRR..",
+    ".RRRRWWWW.",
+    "SRRWWMMWRS",
+    ".RRWWMMWR.",
+    "..RRWWWR..",
+    "..RRRRRR..",
+    "..DD..DD.."],[
+    "...A......",
+    "..HHHHHH..",
+    "..HSSSSH..",
+    "..SSSSSS..",
+    "...SSSS...",
+    "..RRRRRR..",
+    ".RRRRWWWW.",
+    ".RRWWMMWSR",
+    "SRRWWMMWR.",
+    "..RRWWWR..",
+    "..RRRRRR..",
+    ".DD....DD."]],
+  // gate captain: helmet (M), faction tabard (R), shield (A) on the left, spear (W, M tip).
+  captain:[[
+    "..MMMMMM.M",
+    ".MMMMMMM.W",
+    ".MMSSSSM.W",
+    "..SSSSSS.W",
+    "...SSSS..W",
+    "..RRRRRR.W",
+    "AARRRRRR.W",
+    "AARRRRRRSW",
+    "AARRRRRR.W",
+    ".ARRRRRR.W",
+    "..RRRRRR..",
+    "..DD..DD.."],[
+    "..MMMMMM.M",
+    ".MMMMMMM.W",
+    ".MMSSSSM.W",
+    "..SSSSSS.W",
+    "...SSSS..W",
+    "..RRRRRR.W",
+    ".AARRRRRSW",
+    ".AARRRRR.W",
+    ".AARRRRR.W",
+    "..ARRRRR.W",
+    "..RRRRRR..",
+    ".DD....DD."]],
   // gravestone 10x12: G stone, F carving, B faction-dark plinth.
   grave:[[
     "...GGGG...",
@@ -456,3 +617,10 @@ export function heroSprite(a,ghost,frame=0){
   const map=ghost?{H:'#d8ecff',R:'#c8e0f8',S:'#d8ecff',E:'#b8d4f4',A:'#b8d4f4',B:'#a8c8f0',D:'#98b8e0',L:'#88a8d0',K:'#7898c0',W:'#c8e0ff',O:'#ffffff'}
     :{H:c.head,R:hair,S:skin,E:'#1a1218',A:c.acc,B:f.color,D:f.dark,L:'#3a2f2a',K:'#241c18',W:c.wep,O:c.orb||c.wep};
   return sprite(key,rows.map(r=>r.join('')),map)}
+
+// Townsfolk (data/npcs.js roles, sim/npcs.js entities): the role's shape in the people's
+// skin and hair with the role's faction palette; a hood or cap colour (pal.H) replaces the hair.
+export function npcSprite(p,frame=0){
+  frame=frame?1:0;const R=npcRole(p.role),rows=SPR[R&&R.spr]||SPR.npc,pal=(R&&(R.pal[p.fac]||R.pal[0]))||{R:'#7a4ab8',A:'#5a3a88',M:'#c8ccd4',W:'#8a6a3a'};
+  const key='n'+p.role+p.fac+(p.skin||'')+(p.hair||'')+frame;if(sprCache[key])return sprCache[key];
+  return sprite(key,rows[frame],{H:pal.H||p.hair||'#2a2020',S:p.skin||FAC[p.fac].skin[0],R:pal.R,A:pal.A,M:pal.M,W:pal.W,D:'#241c18'})}

@@ -45,6 +45,16 @@ function compileMask(m,curves){
     default:throw new Error('world spec: unknown mask kind '+m.kind)}}
 
 // ---- towns: the rect plus the interior points the sim uses.
+// Default interior spots as fractions of the rect, in a frame where the gate is on the
+// right (fx=1): quartermaster and gate are the old ah/qg offsets of an 11x9 east-gated
+// town; the others place the inn south, the forge north, the chapel in the gate-side
+// corner and the square mid-path. A spec may override any of them with [dx,dy] offsets.
+const SPOT_DEFAULTS={quartermaster:[.35,.475],gate:[.75,.475],inn:[.35,.9125],smith:[.55,.2],chapel:[.85,.2375],square:[.55,.7625]};
+function spotAt(t,fx,fy){const g=t.gate||'E',w=t.w-1,h=t.h-1;
+  if(g==='E')return{x:t.x0+fx*w,y:t.y0+fy*h};
+  if(g==='W')return{x:t.x0+(1-fx)*w,y:t.y0+fy*h};
+  if(g==='S')return{x:t.x0+fy*w,y:t.y0+fx*h};
+  return{x:t.x0+fy*w,y:t.y0+(1-fx)*h}}
 function mkTown(t){
   const x0=t.x0,y0=t.y0,x1=x0+t.w-1,y1=y0+t.h-1,g=t.gate||'E';
   const mx=Math.floor(t.w/2),my=Math.floor(t.h/2); // middle wall tile; the gate is this tile and the next
@@ -53,8 +63,12 @@ function mkTown(t){
   else if(g==='W'){gateTiles=[[x0,y0+my],[x0,y0+my+1]];gate={x:x0-.8,y:y0+my+1}}
   else if(g==='S'){gateTiles=[[x0+mx,y1],[x0+mx+1,y1]];gate={x:x0+mx+1,y:y1+1.8}}
   else{gateTiles=[[x0+mx,y0],[x0+mx+1,y0]];gate={x:x0+mx+1,y:y0-.8}}
+  const spots={};
+  for(const k in SPOT_DEFAULTS){const o=t.spots&&t.spots[k];
+    spots[k]=o?{x:x0+o[0],y:y0+o[1]}:spotAt(t,SPOT_DEFAULTS[k][0],SPOT_DEFAULTS[k][1])}
+  for(const k in t.spots||{})if(!spots[k])spots[k]={x:x0+t.spots[k][0],y:y0+t.spots[k][1]};
   return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,
-    ah:{x:x0+3.5,y:y0+3.8},qg:{x:x0+7.5,y:y0+3.8},gate,grave:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
+    spots,npcs:t.npcs||null,ah:spots.quartermaster,qg:spots.gate,gate,grave:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
 
 // ---- roads
 // Paint a polyline: river tiles become bridges, everything but town tiles becomes road.
