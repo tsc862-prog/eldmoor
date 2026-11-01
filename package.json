@@ -15,7 +15,11 @@
     "braincheck": "node scripts/braincheck.mjs"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.316",
     "@anthropic-ai/sdk": "^1.3.0",
-    "vite": "^5.4.10"
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "vite": "^5.4.10",
+    "ws": "^8.22.1",
+    "zod": "^4.6.7"
   }
 }
