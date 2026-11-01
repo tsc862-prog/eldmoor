@@ -22,6 +22,7 @@ import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {FAC} from '../src/data/factions.js';
+import {attachPlay, PLAY_LOG} from './relay-mcp.mjs'; // agent player: /mcp, /play (issue #75)
 import {KINDS, OPTION_KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason} from '../src/data/prompts.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -150,9 +151,12 @@ const isAbort = e => e && (e.name === 'AbortError' || /abort|timed out/i.test(e.
 // ---- run as a script ----
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const env = loadEnv();
-  if (!env.ANTHROPIC_API_KEY) {console.error('No ANTHROPIC_API_KEY. Copy .env.example to .env and put your key in it.'); process.exit(1)}
+  const playOnly = process.argv.includes('--play-only'); // agent player bridge without brain calls (no key needed)
+  if (!env.ANTHROPIC_API_KEY && !playOnly) {console.error('No ANTHROPIC_API_KEY. Copy .env.example to .env and put your key in it (or run with --play-only for the agent bridge alone).'); process.exit(1)}
   const model = env.RELAY_MODEL || DEFAULT_MODEL, port = Number(env.RELAY_PORT || 8787);
   const verbose = process.argv.includes('--verbose') || /^(1|true|yes)$/i.test(env.RELAY_VERBOSE || '') ? LOG_FILE : null;
-  const {server} = createRelay({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), model, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose});
+  const client = env.ANTHROPIC_API_KEY ? new Anthropic({apiKey: env.ANTHROPIC_API_KEY}) : {messages: {create: async () => {throw new Error('relay started with --play-only')}}};
+  const {server} = createRelay({client, model, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose});
+  attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null}); // agent player: MCP at /mcp, the game page at ws /play
   server.listen(port, '127.0.0.1', () => console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}`));
 }

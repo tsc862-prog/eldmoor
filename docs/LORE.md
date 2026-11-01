@@ -672,3 +672,5 @@ Samples:
 ## Minds
 
 Some heroes are played by a language model instead of the old rules of thumb. In Eldmoor that means nothing at all: there is no such thing as an AI-played hero, only heroes. They are born, swear oaths, hold grudges and die the same way as everyone else, once, for good. The UI marks them with an "AI-played" badge because the watcher may want to know; the world does not. A mind that falls silent (the relay is down) is written as a dim chronicle line, "<hero>'s thoughts go quiet", and the hero simply goes on as before. Minds speak in their faction's voice: Concord formal and dry, Warband blunt and short. They never mention models, prompts, players or games.
+
+A hero played by an agent (one that chooses where to go and when, and keeps its own journal) is still just a hero in the world. It walks the same roads, rolls the same dice, sees only what its eyes reach and dies once like everyone else. The town does not know it is any different; only the watcher's "Agent" badge does. Its journal is the hero's own, written in the hero's voice.

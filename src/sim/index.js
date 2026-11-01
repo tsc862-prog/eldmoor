@@ -24,6 +24,7 @@ import {rebuild} from './spatial.js';
 import {bondsTick} from './bonds.js';
 import {brainTick} from './brain.js';
 import {dmTick} from './dm.js';
+import {playerUpd} from './player.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -32,6 +33,7 @@ export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
 export {snapshot,restore,isSave,SAVE_VERSION} from './save.js';
 export {enableBrain,disableBrain,brainStatus} from './brain.js';
+export {markPlayer,playerAct,playerHero,playerSeat,playerNarrate} from './player.js';
 
 // Populate the world: monsters, 14 level-1 heroes per faction, the opening chronicle.
 export function init(){
@@ -48,7 +50,8 @@ export function step(dt){S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
-  for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  for(const a of S.agents)if(!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // agent-played heroes (sim/player.js) run a reduced machine first
+  partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);goalsTick(dt);guildsTick(dt);
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);
