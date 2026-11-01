@@ -47,6 +47,9 @@ import {nearHeroes,nearMobs} from './spatial.js';
 import {dmDepart,advLine,K as DMK} from './dm.js';
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard} from './persona.js'; // Fellowship (#68)
+import {ev} from './notify.js';
+import {partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead} from './council.js';
+import {sceneAct,tableView} from './table.js';
 
 // ---- knobs ----
 export const PK={
@@ -81,8 +84,6 @@ const cmdOf=a=>a.pq&&a.pq.length?a.pq[0]:null;
 const legal=['town','hunt','travel','return','fight','follow','regroup','duel','assist'];
 
 // Events: what happened to the hero, handed to the agent with the next tool result.
-function ev(a,text,urgent){const e={n:(a.playEvN=(a.playEvN||0)+1),t:clockStr(),text:clean(text,200)};if(urgent)e.u=1;
-  (a.playEv||(a.playEv=[])).push(e);if(a.playEv.length>PK.EV)a.playEv.shift()}
 function takeEvents(a){const seen=a.playEvSeen||0,out=(a.playEv||[]).filter(e=>e.n>seen).map(e=>e.t+' '+e.text);a.playEvSeen=a.playEvN||0;
   return out.length>PK.EV_OUT?['('+(out.length-PK.EV_OUT)+' earlier events not shown)',...out.slice(-PK.EV_OUT)]:out}
 function done(a,text,urgent=true){if(a.pq&&a.pq.length)a.pq.shift();if(text)ev(a,text,urgent)}
@@ -107,7 +108,7 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   // Drafts the agent did not ask for: a crypt group or a raid muster. Step back out.
   if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a call to '+CRYPT.name+' (you go only where you choose).')}
   if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a raid muster on Kragmaw.')}
-  if(a.party&&!a.partyOk){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')}
+  if(a.party&&!a.partyOk&&!a.party.fellow){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')} // the Fellowship's own party is always theirs
   const adv=advOf(a),cmd=cmdOf(a);
   // A choice scene answered (or timed out): send the hero back to the scene point so the DM
   // reaches the choice again and takes the pick (sim/player-choice.js).
@@ -122,7 +123,7 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   case 'travel':case 'hunt':
     if(cmd)return a.state==='travel'||cmd.kind==='move'?travel(a,dt,cmd):field(a,dt,cmd);
     if(driving)return false; // the DM leads the adventure's legs (dmTravel / dmHunt)
-    if(a.partyOk&&leaderOf(a)){a.state='follow';a.dest=null;return false}
+    if((a.partyOk||(a.party&&a.party.fellow))&&leaderOf(a)){a.state='follow';a.dest=null;return false}
     if(a.state==='travel'){a.state='hunt';a.dest=null}
     return field(a,dt,null);
   default:return false}}
@@ -143,6 +144,9 @@ function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kil
   w.hp=a.hp;w.lvl=a.lvl;w.state=a.state;w.kills=a.kills}
 
 function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*dt);
+  // Fellowship (#68): with nothing else to do, a member follows the leader out of town (leave_party to stay)
+  if(!cmd&&a.party&&a.party.fellow&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil){const c=homeOf(a);
+    cmd={kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'town'}],last:'hunt',label:'the gate, following '+a.party.leader.name};a.pq=[cmd];ev(a,'The party is out with '+a.party.leader.name+'; you follow them out of '+c.name+'.')}
   if(cmd&&cmd.kind==='move')return travel(a,dt,cmd);
   if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||a.hp>=mh)done(a,'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
   if(cmd)done(a,'Cannot '+cmd.kind+' inside the town walls.');
@@ -274,7 +278,7 @@ const T={
   look(a){const z=zoneAt(a.x,a.y),here=inTown(a)?homeOf(a):null,s=seen(a);
     const r={ok:true,time:day()+' ('+dayPart()+')',where:here?'inside '+here.name+' ('+FAC[here.fac].name+')':(ZONES[z]||'the wilds'),pos:[r1(a.x),r1(a.y)],
       weather:weatherName(z),you:{hp:pct(a.hp,maxHp(a))+'%',state:a.state,doing:a.playDoing||null},sight:here?'the whole town':Math.round(sightOf(a))+' tiles',...s};
-    const ch=choiceInfo(a);if(ch)r.choice=ch;
+    const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv;
     const near=LANDMARKS.filter(l=>dist(a,l)<20).map(l=>l.name+' ('+r1(dist(a,l))+' tiles)');if(near.length)r.landmarks=near;
     return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
@@ -288,7 +292,8 @@ const T={
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
     if(a.party&&a.party.leader===a)r.party_lead=true;
     if(adv)r.adventure=plain(advLine(a));const ch=choiceInfo(a);if(ch)r.choice=ch;
-    if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc} // Fellowship (#68): persona, memory, companions
+    if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc;const P=a.party&&a.party.fellow?a.party:null;if(P){r.party_leader=P.leader.name;if(P.dest)r.party_heading=P.dest.label}
+      const op=openProps().map(propText);if(op.length)r.proposals=op;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
     r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...ZONES.map((n,i)=>n+(REGIONS[i]&&REGIONS[i].band?' (L'+REGIONS[i].band[0]+'-'+REGIONS[i].band[1]+')':'')),'crypt',...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];
     return r},
@@ -314,6 +319,7 @@ const T={
   say(a,{text}){const t=clean(text,PK.SAY_LEN);need(t,'Say what?');need(a.state!=='ghost','Ghosts do not speak.');
     speak(a,t,'agent',true);const heard=nearHeroes(a.x,a.y,7).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden).length;return {ok:true,said:t,heard_by:heard}},
   join_party(a,{hero_id}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');
+    if(a.fellow&&b.fellow){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
     need(b.fac===a.fac,b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
     need(Math.abs(b.lvl-a.lvl)<=3,'Too far apart in level (more than 3).');need(!['dungeon','raid','duel','ghost'].includes(b.state),b.name+' is busy.');
     need(tm(b,'social')||b.player,b.name+' is a loner and will not travel with anyone.');
@@ -325,7 +331,9 @@ const T={
     a.party=p;a.partyOk=true;for(const m of p.mem)if(m.lvl>p.leader.lvl)p.leader=m;
     record(a,'Joined ',b,' on the road.');record(b,a.name+' joined them.');
     return {ok:true,party:p.mem.map(x=>x.name),leader:p.leader.name}},
-  leave_party(a){need(a.party,'You are not in a party.');leaveParty(a);a.partyOk=false;return {ok:true}},
+  leave_party(a){if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');splitOff(a,false);a.partyOk=false;
+      return {ok:true,note:'You go your own way for a while ('+Math.round((a.splitUntil-S.gameMin)/60)+' game hours); your companions think less of you for it. join_party with a companion to come back sooner.'}}
+    need(a.party,'You are not in a party.');leaveParty(a);a.partyOk=false;return {ok:true}},
   list_jobs(a){need(inTown(a),'Jobs are posted at your town gate. Go home first.');const c=homeOf(a),mem=[a,...partyMates(a)];
     const mine=advOf(a);const out=[];
     if(mine)out.push({id:mine.id,title:mine.title,yours:true,resume:true,scene:plain(advLine(a))});
@@ -389,9 +397,23 @@ const T={
   read_chronicle(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||8)));return {ok:true,news:S.chronicle.slice(0,k).map(e=>e.t+' '+plain(e.parts))}},
   journal_read(a,{n}){const k=Math.min(50,Math.max(1,Math.round(Number(n)||10)));return {ok:true,entries:(a.journal||[]).slice(-k).map(e=>e.t+': '+e.text),total:(a.journal||[]).length}},
   journal_write(a,{text}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});if(j.length>PK.JOURNAL)j.shift();return {ok:true,entries:j.length}},
+  party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);return {ok:true,said:clean(text,PK.SAY_LEN),heard_by:n}},
+  party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
+  propose(a,{kind,details,job_id}){need(a.fellow,'Only a Fellowship member can put something to the party.');const P=propose(a,String(kind||'').toLowerCase(),details,{job:job_id});
+    if(typeof P==='string')throw new Rule(P);return {ok:true,proposal:propText(P),status:P.status,note:P.status==='open'?'The others vote; the leader settles it when all have voted or in '+Math.round(P.until-S.gameMin)+' game minutes.':P.result}},
+  vote(a,{proposal_id,vote,reason}){need(a.fellow,'Only Fellowship members vote.');const P=propById(proposal_id);need(P,'No proposal '+proposal_id+'.');
+    const sc=tableView(a);if(sc&&sc.kind==='decision'&&!sc.acted&&S.table&&S.table.ctx.prop===P.id){const x=sceneAct(a,vote,reason);if(typeof x==='string')throw new Rule(x);return {ok:true,voted:x.k,note:'Counted at the table on your turn.'}}
+    const x=castVote(a,P.id,vote,reason,'agent');if(typeof x==='string')throw new Rule(x);return {ok:true,voted:String(vote).toLowerCase(),proposal:propText(P)}},
+  lead_to(a,{target}){need(a.fellow&&a.party&&a.party.fellow,'You are not with the Fellowship.');need(a.party.leader===a,'Only the leader ('+a.party.leader.name+') leads the party.');
+    need(legal.includes(a.state),'You cannot lead from here ('+a.state+').');need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
+    const p=plan(a,target);if(p.error)throw new Rule(p.error);a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
+    const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};if(p.warn)r.warning=p.warn;return r},
+  scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
+    return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   wait(a,{minutes}){const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS}}},
 };
+function propText(P){const v=Object.keys(P.votes||{}).length;return '#'+P.id+' '+P.kind+': '+P.details+' (by '+P.byName+', '+v+' vote'+(v===1?'':'s')+(P.status!=='open'?', '+P.result:'')+')'}
 function cmdText(c){if(c.kind==='move')return (c.flee?'flee to ':'walk to ')+c.label;if(c.kind==='hunt')return 'hunt ('+c.n+' kills)';if(c.kind==='rest')return 'rest until '+Math.round(c.until)+' game-min';if(c.kind==='fight')return 'fight #'+c.id;return c.kind}
 function itemText(it){if(!it)return null;const st=itemStats(it);return it.name+' (ilvl '+it.ilvl+(it.epic?', epic':it.quality&&it.quality!=='plain'?', '+it.quality:'')+(it.slot?', '+it.slot:'')+': '+Object.keys(st).map(k=>'+'+st[k]+' '+k).join(' ')+(it.property?' '+it.property:'')+')'}
 function jobText(h){const T=D.ADVENTURES[h.tpl];const thing=h.data&&h.data.thing;return (T&&T.name?T.name:h.tpl)+(thing?': '+thing:'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')}
@@ -423,8 +445,8 @@ export function waitOver(p){const a=hero(p.hero);if(!a||a.state==='dead'||!a.pla
 export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:false,error:'No such hero.'};
   const r={ok:true,waited_min:Math.round(S.gameMin-p.from)};
   if(a.state==='dead')Object.assign(r,{ok:false,dead:true,error:a.name+' died ('+(a.cause||'fallen')+'). Hardcore: one life.'});
-  else{r.why=S.gameMin>=p.until?'time passed':realOut?'the world is paused or slow; nothing much happened':'something needs you';
-    r.hp=pct(a.hp,maxHp(a))+'%';r.state=a.state;r.doing=a.playDoing||null;const ch=choiceInfo(a);if(ch)r.choice=ch}
+  else{r.why=S.gameMin>=p.until?'time passed':realOut&&tableView(a)?'the world is paused for a scene at the table':realOut?'the world is paused or slow; nothing much happened':'something needs you';
+    r.hp=pct(a.hp,maxHp(a))+'%';r.state=a.state;r.doing=a.playDoing||null;const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv}
   const evs=takeEvents(a);if(evs.length)r.events=evs;
   const e=(a.playLog||[])[0];if(e&&e.tool==='wait'&&e.pending){e.pending=false;e.text=summarize(r)}
   return r}

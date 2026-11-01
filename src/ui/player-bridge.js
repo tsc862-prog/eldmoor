@@ -7,7 +7,7 @@
 // panel. The runner's narration arrives here too and is kept on its hero.
 // The world never waits on the bridge: a disconnected or silent agent just leaves its hero to
 // its reflexes. Reconnects every few seconds while an agent-played hero is alive.
-import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain} from '../sim/index.js';
+import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,S} from '../sim/index.js';
 import {hostCall} from '../sim/player-host.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
@@ -27,7 +27,7 @@ export function agentOn(a){if(!a||a.state==='dead')return false;
 export function agentOff(a){markPlayer(a,false);if(!playerSeats().length)disconnect();else hello()}
 
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead'})),k=JSON.stringify(hs);
+function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id))}:{})})),k=JSON.stringify(hs);
   if(k===lastHello&&status==='connected')return;lastHello=k;send({type:'hello',heroes:hs,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
 const seat=id=>id!=null?playerSeat(id):playerSeat();
 function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecting';

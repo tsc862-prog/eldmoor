@@ -9,7 +9,8 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerAct, found, autoPick} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, markPlayer, playerAct, found, autoPick, TABLE} from '../src/sim/index.js';
+TABLE.mode = 'off'; // Watch mode: the clock checks below expect the world never to pause for the Fellowship's scenes (tablecheck covers Table mode)
 import {GOODS} from '../src/data/items.js';
 import {CRYPT} from '../src/world/map.js';
 

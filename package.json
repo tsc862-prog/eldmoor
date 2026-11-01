@@ -18,6 +18,8 @@
     "mcp": "node scripts/mcp-stdio.mjs",
     "agent": "node scripts/agent-player.mjs",
     "playcheck": "node scripts/playcheck.mjs",
+    "tablecheck": "node scripts/tablecheck.mjs",
+    "fellowship": "node scripts/fellowship.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs"
   },
   "devDependencies": {

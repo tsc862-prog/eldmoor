@@ -22,6 +22,7 @@
       <div class="screen" id="screen">
         <canvas id="cv" aria-label="Map of Eldmoor showing heroes and monsters"></canvas>
         <div class="hint" id="hint">Tap a hero to follow</div>
+        <div class="tbanner" id="tbanner" hidden aria-live="polite"></div>
         <canvas id="minimap" class="minimap" aria-label="Minimap of Eldmoor; click to move the view there"></canvas>
       </div>
       <div class="bar">
@@ -37,6 +38,7 @@
           <button id="vMap" aria-pressed="true">Whole map</button>
           <button id="vFol">Follow</button>
           <button id="vFel" hidden title="Frame the whole Fellowship">Fellowship</button>
+          <button id="vTab" hidden title="Table mode: the world pauses at 1x for the Fellowship's scenes (Auto) or never pauses (Off, Watch mode)">Table: Auto</button>
           <button id="vNext">Next hero</button>
           <button id="zOut" class="zoom" aria-label="Zoom out" title="Zoom out">−</button>
           <button id="zIn" class="zoom" aria-label="Zoom in" title="Zoom in">+</button>

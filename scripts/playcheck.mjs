@@ -23,6 +23,7 @@ const {hostCall} = await import('../src/sim/player-host.js');
 const {CHOICE_MIN} = await import('../src/sim/player-choice.js');
 const {setDmPolicy} = await import('../src/sim/dm.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
+const {TOOL_NAMES} = await import('../src/data/player-tools.js');
 const {localBackend} = await import('./play-headless.mjs');
 
 let fail = 0;
@@ -187,7 +188,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = (path, body, h = {}) => fetch(base + path, {method: 'POST', headers: {'content-type': 'application/json', accept: 'application/json, text/event-stream', ...h}, body: JSON.stringify(body)});
   let j = await (await post('/mcp', {jsonrpc: '2.0', id: 1, method: 'tools/list', params: {}})).json();
-  ok(j.result && j.result.tools.length === 23 && j.result.tools.some(t => t.name === 'take_adventure'), `MCP tools/list: ${j.result && j.result.tools.length} tools`);
+  ok(j.result && j.result.tools.length === TOOL_NAMES.length && j.result.tools.some(t => t.name === 'take_adventure'), `MCP tools/list: ${j.result && j.result.tools.length} tools`);
   j = await (await post('/mcp', {jsonrpc: '2.0', id: 2, method: 'tools/call', params: {name: 'journal_read', arguments: {n: 5}}}, {'x-eldmoor-hero': String(id)})).json();
   const body = j.result && JSON.parse(j.result.content[0].text);
   ok(body && body.ok && body.entries.length >= 1, `MCP tools/call journal_read (X-Eldmoor-Hero #${id}): ${body && body.entries.length} entries`);

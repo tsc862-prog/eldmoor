@@ -8,6 +8,10 @@
 //   node scripts/play-headless.mjs --hero Ann,Bo   these heroes (by name or id)
 //   node scripts/play-headless.mjs --port 8790 --speed 2 --warm 20 --class Hunter
 //   node scripts/play-headless.mjs --resume        reload logs/agent-world.json and its agent heroes
+//   node scripts/play-headless.mjs --fellowship    found a Fellowship ("form one for me", Concord) with Minds
+//                                                  set to agents: all five are agent-played (npm run fellowship);
+//                                                  --no-relay keeps the world off the brain relay, --turn-ms MS the table
+//                                                  turn budget, --watch never pauses for scenes
 //
 // Options: --port (or PLAY_PORT, default 8789), --speed (world speed, default 1),
 // --warm N (fast-forward N real minutes at 1x before choosing heroes, default 0),
@@ -19,7 +23,7 @@ import http from 'node:http';
 import {existsSync, readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE} from '../src/sim/index.js';
 import {onLog} from '../src/sim/chronicle.js';
 import {hostCall} from '../src/sim/player-host.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
@@ -39,7 +43,7 @@ export function localBackend(hostOpts) {
     call: (heroId, tool, args) => {const a = heroId != null ? playerSeat(heroId) : playerSeat();
       return a ? hostCall(a.id, tool, args, hostOpts) : Promise.resolve({ok: false, error: heroId != null ? `Hero #${heroId} is not agent-played.` : 'No agent-played hero.', offline: true})},
     narrate: (heroId, text) => {const a = heroId != null ? playerSeat(heroId) : playerSeat(); if (a) playerNarrate(a.id, text)},
-    info: () => ({connected: true, heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead'}))}),
+    info: () => ({connected: true, heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', ...(a.fellow ? {fellow: true, role: a.fellowRole || null, lead: !!(a.party && a.party.fellow && a.party.leader === a), table: !!(S.table && S.table.ids.includes(a.id))} : {})}))}),
   };
 }
 
@@ -62,9 +66,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     init(); const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
   }
   // Heroes to play: named ones, else --agents N alternating the factions (Concord first).
+  // The Fellowship (#68): found one with every member agent-played, unless the save already has one.
+  if (flag('fellowship') || opt('fellowship', null)) {
+    if (!S.fellowship) {const fac = Number(opt('fac', 0)) === 1 ? 1 : 0, r = found(autoPick(fac), {fac, ai: !flag('no-relay')}); if (!r.ok) throw new Error('could not found a Fellowship: ' + r.error)}
+    setMinds('agent'); if (flag('no-relay')) S.brainOn = false; // --no-relay: never call a brain relay (sheets and table lines stay scripted)
+    console.log(`[play] Fellowship: ${S.fellowship.name} (${S.fellowship.ids.length} members, Minds: agents)`);
+  }
+  TABLE.speed = speed; if (opt('turn-ms', null)) TABLE.turnMs = Math.max(1000, Number(opt('turn-ms'))); if (flag('watch')) TABLE.mode = 'off';
   const names = String(opt('hero', '') || '').split(',').map(s => s.trim()).filter(Boolean), want = Math.max(1, Math.min(8, Number(opt('agents', names.length || 1))));
   for (const n of names) {const a = chooseHero({name: n}); if (!a) throw new Error('no living hero called ' + n); markPlayer(a, true)}
-  for (let k = 0; playerSeats().filter(a => a.state !== 'dead').length < want && k < 16; k++) {
+  for (let k = 0; !S.fellowship && playerSeats().filter(a => a.state !== 'dead').length < want && k < 16; k++) {
     const a = chooseHero({cls: opt('class', null), fac: k % 2}); if (!a) break; markPlayer(a, true)}
   if (!playerSeats().length) throw new Error('no hero to play');
   for (const h of playerSeats()) console.log(`[play] agent hero: ${h.name} (#${h.id}), level ${h.lvl} ${h.cls} of ${h.fac ? 'the Warband' : 'the Concord'}${h.state === 'dead' ? ' (dead)' : ''}`);

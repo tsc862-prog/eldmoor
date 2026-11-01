@@ -1,3 +1,3 @@
 - [Brain design](brain-design.md) — decision points, relay protocol, model choice, cost and test approach from issue #40
 - [Agent player](agent-player.md) — #75/#93 MCP tools, per-hero routing+claims, WS protocol, runner settings, per-hero sessions, cost per turn, playcheck
-- [Fellowship](fellowship.md) — #68 phase A: 5 role slots, persona/backstory/memory shapes, Sonnet writing kinds, hooks, tests, escape pitfall
+- [Fellowship](fellowship.md) — #68 phase A shapes and hooks; phase B council, Table mode, Minds=agents, runner cost per member
