@@ -105,17 +105,17 @@ a solo hero detours). Every resolution is one Chronicle line with the roll shown
 
 | Encounter | What it is | Outcomes |
 | --- | --- | --- |
-| Wagon merchant | A tinker's covered wagon with a lantern on the bow, selling road-worn gear to anyone with coin. | d20: 11+ a bargain (3g per level), else full price (4g per level). One gear point, once per hero per wagon, never above the city shop's ceiling. |
+| Wagon merchant | A tinker's covered wagon with a lantern on the bow, selling road-worn gear to anyone with coin. | d20: 11+ a bargain (3g per level), else full price (4g per level). One piece of road-worn gear at the hero's level, once per hero per wagon, never above the city shop's ceiling. |
 | Lanternstone shrine | A wayside pillar of grey stone with a flame that nobody tends and nobody has seen go out. Travellers kneel for luck. | d20: blessed (the next blow lands 20% harder); 16+ the lantern burns bright and also mends 30% HP. |
 | Strongbox | A banded chest left in the ditch, locked, and not left there by accident. | d20 vs 10 + 2 per zone: gold (5g per level) or a needle in the lock for 25% max HP. Gone either way. |
-| Lost pilgrim | A hooded traveller with a pack and a staff, well off the pilgrim road, looking for a gate. Picked up by heroes on the way home. | Escort to the hero's own city for +3 honor; d20 12+ adds a gift (2g per level + 3). The pilgrim waits by the roadside again if the hero dies, leaves the road or dawdles for three game hours. |
+| Lost pilgrim | A hooded traveller with a pack and a staff, well off any road they meant to take, looking for a gate. Picked up by heroes on the way home. | Escort to the hero's own city for +3 honor; d20 12+ adds a gift (2g per level + 3). The pilgrim waits by the roadside again if the hero dies, leaves the road or dawdles for three game hours. |
 | Rookscar ambush | Two or three Rookscar bandits step out of the verge: hooded cutpurses who work the roads of every zone and rob rather than kill. | d20 + half the hero's level (a party uses its best) vs 12 + 2 per zone: the bandits break and run for the XP of a zone-level kill and their purses, or the hero is cut for 35% max HP and driven home. Parties share the XP. An ambush wounds; it never kills. |
 
 Sample lines:
 - "Alwyn haggles with a wagon merchant on the Mirefen road... rolls 15. A bargain: new gear for 27g."
 - "Miriel kneels at a lanternstone on the Thornvale road... rolls 18. The lantern burns bright: blessed and mended for 21."
 - "Zugmar pries at a strongbox on the Mirefen road... rolls 20 vs 12. Gold: 35g."
-- "Vexzar brings the pilgrim safe to the gate of Grimhold. rolls 20. +3 honor and a gift of 19g."
+- "Vexzar brings the pilgrim safe to the gate of Grimhold... rolls 20. +3 honor and a gift of 19g."
 - "Pellora and party are ambushed by 2 Rookscar bandits on the Mirefen road... rolls 12+3 vs 14. The bandits break and run; 20g in their purses."
 
 ## Landmarks
