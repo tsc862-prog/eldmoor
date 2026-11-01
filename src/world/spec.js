@@ -52,8 +52,8 @@ export const ELDMOOR={
   ],
   river:{curve:'river',width:2},
   towns:[
-    {name:'Highgate',fac:0,x0:2,y0:2,w:11,h:9,gate:'E',race:null},
-    {name:'Grimhold',fac:1,x0:2,y0:39,w:11,h:9,gate:'E',race:null},
+    {name:'Highgate',fac:0,x0:2,y0:2,w:11,h:9,gate:'E',race:'hallowan'},
+    {name:'Grimhold',fac:1,x0:2,y0:39,w:11,h:9,gate:'E',race:'ashfolk'},
   ],
   landmarks:[
     {kind:'lair',name:'Kragmaw',x:71.5,y:25.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
