@@ -13,15 +13,21 @@
 // `hero` on /play/*), so its tools only ever touch that hero.
 //
 // One "turn" here is one query() to the agent: it looks, decides, acts, waits, and ends the turn
-// with a line of narration; the runner prints the tool calls, the narration and a cost line, and
-// starts the next turn. Each hero's session id lives in its own file, logs/agents/<heroId>.json
+// with a line of narration; the runner prints the tool calls, the narration and a cost line.
+// Pacing (issue #126, scripts/pacing.mjs): the next turn starts when something happens to the hero
+// (attacked, badly hurt, a choice or a scene: at once; an arrival, a vote, a party line, the narrator:
+// after the minimum gap) or after a heartbeat of game time (--heartbeat MIN, default 240 game minutes),
+// never sooner than --min-gap S real seconds (default 20) except for what cannot wait. A paused world
+// takes no turns. The runner stops when the hero dies or leaves agent play, and after --max-fails N
+// (default 5) failed or empty turns in a row. Each hero's session id lives in its own file, logs/agents/<heroId>.json
 // (gitignored; scripts/agent-sessions.mjs), so the next run for that hero resumes the same
 // conversation and no runner ever overwrites another hero's session (--new sets the old one
 // aside in logs/agents/old/ and starts afresh). Long sessions compact automatically (the Agent
 // SDK's auto-compaction; boundaries are printed).
 //
 // Options: --hero NAME|ID, --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N
-// (default 20), --budget USD (default 1.00, total for this run), --tool-turns N (model round
+// (default 20 for Claude and OpenAI; a local Ollama mind runs until stopped unless given), --heartbeat MIN,
+// --min-gap S, --max-fails N (or AGENT_HEARTBEAT, AGENT_MIN_GAP, AGENT_MAX_FAILS), --budget USD (default 1.00, total for this run), --tool-turns N (model round
 // trips per turn, default 12), --model (or AGENT_MODEL; default claude-sonnet-5-5), --effort (or
 // AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic', 'ollama' or 'openai'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
 // .env), --new.
@@ -47,6 +53,7 @@ import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine} from './local-agent.mjs';
 import {openaiRunner} from './agent-chat.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, takeClaudeSlot} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -87,31 +94,40 @@ async function play(base, hero, tool, args = {}) {return (await post(base, '/pla
 const narrate = (base, hero, text) => post(base, '/play/narrate', {hero, text, runner: RUNNER}, 5000).catch(() => {});
 const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s};
 const money = v => '$' + (v || 0).toFixed(4);
-export const turnPrompt = turns => turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
-  : `Turn ${turns + 1}. Continue living your life in Eldmoor.`;
+// w: why this turn started (scripts/pacing.mjs), the hero's own news only
+export const turnPrompt = (turns, w = null) => turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
+  : `Turn ${turns + 1}. Continue living your life in Eldmoor.${wakeNote(w)}`;
+// Between turns: wait for the game (scripts/pacing.mjs). -> {w} or {end: why the run is over}
+async function between(pacer) {
+  const w = await pacer.next();
+  if (w.dead) return {end: 'the hero is dead'};
+  if (w.gone) return {end: 'the hero left agent play'};
+  if (w.stopped) return {end: 'stopped'};
+  return {w};
+}
 
 // The local runner (issue #97 part 2): the same turns, claims and session file, played by an Ollama
 // model through scripts/local-agent.mjs. Ends the process.
-async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl, numCtx, release, beat, file, openai = null, budget = 1}) {
-  if (openai) return runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter: openai, budget});
+async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl, numCtx, release, beat, file, openai = null, budget = 1, pacer, pace}) {
+  if (openai) return runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter: openai, budget, pacer, pace});
   const ol = ollamaAdapter({url: ollamaUrl, defaultModel: rs.model}), s0 = await ol.status();
   if (!s0.ok) {console.error(`[agent] Ollama at ${s0.url} is ${s0.error}. Start Ollama (https://ollama.com) or pass --ollama-url.`); await release(); process.exit(1)}
   if (!s0.models.includes(rs.model)) {console.error(`[agent] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await release(); process.exit(1)}
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
-  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | up to ${maxTurns} turns`);
-  let ended = null, runIn = 0, runOut = 0, t0 = Date.now();
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)} | ${paceText(pace)}`);
+  let ended = null, runIn = 0, runOut = 0, t0 = Date.now(); const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
-    let r;
-    try {r = await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns), model: rs.model, toolTurns,
+    let r = null, w = null;
+    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    try {r = await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(await pacer.brief()), model: rs.model, toolTurns,
       opts: numCtx ? {numCtx: Number(numCtx)} : {},
       on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
-    catch (e) {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); ended = 'error'}
-    sess.turns++;
+    catch (e) {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
+    pacer.turnDone(); sess.turns++;
     if (r) {runIn += r.in; runOut += r.out; if (r.dead) ended = 'the hero is dead'; console.log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
     saveSess();
-    const now = await play(base, heroId, 'status').catch(() => null);
-    if (now && now.dead) ended = 'the hero is dead';
+    if (fails.ok(localWorked(r)) && !ended) ended = fails.why();
   }
   clearInterval(beat); await release();
   console.log(`[agent] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t0) / 1000).toFixed(0)} s, $0 (local). Session saved to ${file}.`);
@@ -120,23 +136,23 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
 
 // The OpenAI runner (issue #97): the same loop as the local runner against OpenAI's Chat Completions, with
 // real cost: every turn line carries "| run $", the budget stops the run, the session keeps the total.
-async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter, budget}) {
+async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter, budget, pacer, pace}) {
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
-  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via OpenAI | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | up to ${maxTurns} turns, budget ${money(budget)}`);
-  let ended = null, runIn = 0, runOut = 0, spent = 0, unknown = false, t0 = Date.now();
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via OpenAI | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
+  let ended = null, runIn = 0, runOut = 0, spent = 0, unknown = false, t0 = Date.now(); const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    let r;
-    try {r = await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns), model: rs.model, toolTurns,
+    let r = null, w = null;
+    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    try {r = await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(await pacer.brief()), model: rs.model, toolTurns,
       on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)}})}
-    catch (e) {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); ended = 'error'}
-    sess.turns++;
+    catch (e) {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
+    pacer.turnDone(); sess.turns++;
     if (r) {runIn += r.in; runOut += r.out; spent += r.cost; sess.costUsd = (sess.costUsd || 0) + r.cost; if (!r.costKnown) unknown = true; if (r.dead) ended = 'the hero is dead';
       console.log(`[turn ${sess.turns}] ${paidLine(r, rs.model, 'openai', {run: spent, session: sess.costUsd})}`)}
     saveSess();
-    const now = await play(base, heroId, 'status').catch(() => null);
-    if (now && now.dead) ended = 'the hero is dead';
+    if (fails.ok(localWorked(r)) && !ended) ended = fails.why();
   }
   clearInterval(beat); await release();
   console.log(`[agent] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${unknown ? 'cost unknown for ' + rs.model + ' (not in the price table), counted ' + money(spent) : money(spent)}. Session saved to ${file}.`);
@@ -147,7 +163,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const envFile = opt('env', null);
   const env = envFile ? loadEnv(dirname(resolve(envFile))) : loadEnv();
   const base = String(opt('url', env.PLAY_URL || 'http://127.0.0.1:8787')).replace(/\/$/, '');
-  const maxTurns = Math.max(1, Number(opt('max-turns', 20))), budget = Math.max(.01, Number(opt('budget', 1))), toolTurns = Math.max(2, Number(opt('tool-turns', 12)));
+  const turnsAsked = opt('max-turns', null), pace = paceSettings(opt, env), budget = Math.max(.01, Number(opt('budget', 1))), toolTurns = Math.max(2, Number(opt('tool-turns', 12)));
 
   const health = await fetch(base + '/play/health', {signal: AbortSignal.timeout(5000)}).then(r => r.json()).catch(e => ({error: e.message}));
   if (!health.ok || !health.connected || !(health.heroes || []).length) {console.error(`The game at ${base} is not ready: ${health.error || (!health.connected ? 'no game page connected' : 'no agent-played hero')}.`); process.exit(1)}
@@ -155,6 +171,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const pick = pickHero(health.heroes, opt('hero', env.AGENT_HERO || null));
   if (pick.error) {console.error('[agent] ' + pick.error); process.exit(1)}
   const heroId = pick.hero.id, runner = `${hostname()}:${process.pid}`; RUNNER = runner;
+  let stopReq = false; // pacing between turns ends on a stop
+  const pacer = makePacer({base, hero: heroId, runner, heartbeat: pace.heartbeat, minGap: pace.minGap, log: s => console.log(s), stopped: () => stopReq});
   let mind = {}; // {provider, model} once known: rides on the claim so the game can tag the runner (#97)
   const claim = () => post(base, '/play/claim', {hero: heroId, runner, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
   const c0 = await claim();
@@ -162,9 +180,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const beat = setInterval(() => claim().then(c => {if (c.status === 409) {console.error('[agent] ' + c.error); process.exit(1)}}), 10000); beat.unref();
   const release = () => post(base, '/play/release', {hero: heroId, runner}, 3000).catch(() => {});
   let turnAbort = null; // the Agent SDK turn in flight, so a stop ends it (and its subprocess) cleanly
-  process.on('SIGINT', async () => {if (turnAbort) turnAbort.abort(); await release(); process.exit(130)});
+  process.on('SIGINT', async () => {stopReq = true; if (turnAbort) turnAbort.abort(); await release(); process.exit(130)});
   // Started from the game (scripts/runners.mjs): a "stop" on stdin, or the relay going away, ends the run.
-  onSupervisorStop(async why => {console.log(`[agent] ${why}: releasing the hero and stopping`); if (turnAbort) turnAbort.abort(); await release(); setTimeout(() => process.exit(0), 200)});
+  onSupervisorStop(async why => {console.log(`[agent] ${why}: releasing the hero and stopping`); stopReq = true; if (turnAbort) turnAbort.abort(); await release(); setTimeout(() => process.exit(0), 200)});
   const st = await play(base, heroId, 'status');
   if (!st.ok) {console.error('status failed: ' + st.error); await release(); process.exit(1)}
 
@@ -182,7 +200,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
     rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
     sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
-    await runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: opt('num-ctx', env.OLLAMA_NUM_CTX || null), release, beat, file: SESSION_FILE});
+    await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'ollama', 20), toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: opt('num-ctx', env.OLLAMA_NUM_CTX || null), release, beat, file: SESSION_FILE, pacer, pace});
   }
   if (rs.provider === 'openai') {
     // OpenAI plays (issue #97): the same tool loop through Chat Completions; the key stays in this process.
@@ -190,13 +208,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (o.error) {console.error('[agent] ' + o.error); await release(); process.exit(1)}
     if (o.note) console.log('[agent] ' + o.note);
     sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
-    await runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file: SESSION_FILE, openai: o.adapter, budget});
+    await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'openai', 20), toolTurns, release, beat, file: SESSION_FILE, openai: o.adapter, budget, pacer, pace});
   }
   if (!env.ANTHROPIC_API_KEY) {console.error('No ANTHROPIC_API_KEY in the environment or .env (use --env FILE).'); await release(); process.exit(1)}
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
-  const {model, effort} = rs;
+  const {model, effort} = rs, maxTurns = turnCap(turnsAsked, 'anthropic', 20), fails = failTracker(pace.maxFails);
   const saveSess = () => saveSession(sess, {url: base});
-  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | up to ${maxTurns} turns, budget ${money(budget)}`);
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
 
   const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'};
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
@@ -204,9 +222,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   let spent = 0, ended = null;
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    const prompt = sess.turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
-      : `Turn ${sess.turns + 1}. Continue living your life in Eldmoor.`;
-    const t0 = Date.now(); let tools = 0, result = null;
+    let w = null;
+    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    const prompt = turnPrompt(sess.turns, w);
+    const t0 = Date.now(); let tools = 0, result = null, failed = false;
+    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const q = query({prompt, options: {
       abortController: turnAbort,
@@ -232,8 +252,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }} catch (e) {
       // Running out of tool turns (--tool-turns) only ends this turn; the next one resumes the session.
       if (result && result.subtype === 'error_max_turns') console.log(`[agent] turn hit the ${toolTurns} model-call cap; continuing next turn`);
-      else {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); ended = 'error'}}
-    sess.turns++;
+      else {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); failed = true}}
+    freeSlot(); pacer.turnDone(); sess.turns++;
     if (result) {
       // total_cost_usd is cumulative for the session when resumed; take the part this turn added.
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
@@ -242,8 +262,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       console.log(`[turn ${sess.turns}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
     saveSess();
-    const now = await play(base, heroId, 'status').catch(() => null);
-    if (now && now.dead) ended = 'the hero is dead';
+    if (fails.ok(!failed && tools > 0) && !ended) ended = fails.why();
   }
   clearInterval(beat); await release();
   console.log(`[agent] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}, session ${money(sess.costUsd)}. Session saved to ${SESSION_FILE}.`);

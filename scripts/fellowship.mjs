@@ -13,13 +13,17 @@
 // (scripts/agent-player.mjs) plus the Fellowship's: persona and memory come with status, the
 // party tools (party_say, party_read, propose, vote, lead_to, leave_party) and Table mode.
 //
-// Scheduling: every member runs its own loop of turns (one query() each). Between scenes a member
-// rests --cadence seconds between turns (travel, rest, shopping and journaling need few calls);
-// the moment the game reports the member at a Table mode scene (/play/health heroes[].table),
-// its next turn starts at once with a prompt to act with scene_act. A silent or slow agent never
-// stalls the table: the game gives every turn a real-time budget and then acts by reflex.
-// Cost controls: one overall --budget for the run (each query gets what is left; several members
-// may finish a turn in flight just past it), --max-turns per member, and --follower-model (for
+// Scheduling: every member runs its own loop of turns (one query() each), paced by the game (issue
+// #126, scripts/pacing.mjs): a member's next turn starts when something happens to it (a scene at the
+// table, a choice, an attack, low HP: at once; a party line, a vote, an arrival, the narrator: after
+// the minimum gap, --min-gap S, default 20, --cadence is the old name) or after a heartbeat of game time
+// (--heartbeat MIN, default 240 game minutes). A scene opens the member's turn with a prompt to act
+// with scene_act. A silent or slow agent never stalls the table: the game gives every turn a
+// real-time budget and then acts by reflex. A member stops when it dies or leaves agent play, and
+// after --max-fails N (default 5) failed or empty turns in a row.
+// Cost controls: one overall --budget for the run's paid members (each query gets what is left; several
+// members may finish a turn in flight just past it), --max-turns per member (default 6 for Claude and
+// OpenAI members; local members play until stopped unless it is given), and --follower-model (for
 // example claude-haiku-5-5) for members other than the leader between scenes; in scenes and for
 // the leader the member's own model plays.
 //
@@ -32,7 +36,7 @@
 // member's name first); a run summary with per-member cost is appended to logs/fellowship-runs.jsonl.
 // Options: --url (or PLAY_URL), --max-turns N (per member, default 6), --budget USD (default 2.00),
 // --model / --effort / --provider (override every member's saved settings), --follower-model M,
-// --cadence S (default 20), --tool-turns N (model calls per turn, default 10), --env FILE, --new,
+// --min-gap S (or --cadence S; default 20), --heartbeat MIN (default 240), --max-fails N (default 5), --tool-turns N (model calls per turn, default 10), --env FILE, --new,
 // --claude-concurrency N (at most N Claude member turns at once; the app runner sets it to stay under the org's cap).
 // Local members (issue #97 part 2): a member whose runner provider is 'ollama' (saved in its session
 // file by `npm run agent -- --hero X --provider ollama --model M`, or --provider ollama here for all)
@@ -51,6 +55,7 @@ import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine} from './local-agent.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, withClaudeSlot} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -81,15 +86,16 @@ const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.string
 const money = v => '$' + (v || 0).toFixed(4);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // A member's prompt for one turn: at the table, the first turn, or carrying on.
-export const memberPrompt = (turns, scene) => scene ? 'The Fellowship is at the table: a scene is open and the world is paused. Read the table (status, or the event you were sent) only if you must, then act NOW with scene_act(option, line). Then wait.'
+// w: why the turn started (scripts/pacing.mjs), the member's own news only (issue #123)
+export const memberPrompt = (turns, scene, w = null) => scene ? 'The Fellowship is at the table: a scene is open and the world is paused. Read the table (status, or the event you were sent) only if you must, then act NOW with scene_act(option, line). Then wait.'
   : turns === 0 ? 'Begin. Get to know yourself, your companions and your surroundings (status, look, party_read, journal_read), say a word to the party, write a first journal entry, then act. Follow your leader.'
-  : `Turn ${turns + 1}. Carry on with your companions: answer open proposals, keep to the party, and act.`;
+  : `Turn ${turns + 1}. Carry on with your companions: answer open proposals, keep to the party, and act.${wakeNote(w)}`;
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const envFile = opt('env', null), env = envFile ? loadEnv(dirname(resolve(envFile))) : loadEnv();
   const base = String(opt('url', env.PLAY_URL || 'http://127.0.0.1:8787')).replace(/\/$/, '');
-  const maxTurns = Math.max(1, Number(opt('max-turns', 6))), budget = Math.max(.01, Number(opt('budget', 2))), toolTurns = Math.max(2, Number(opt('tool-turns', 10)));
-  const cadence = Math.max(0, Number(opt('cadence', 20))) * 1000, followerModel = opt('follower-model', env.FELLOWSHIP_FOLLOWER_MODEL || null);
+  const turnsAsked = opt('max-turns', null), budget = Math.max(.01, Number(opt('budget', 2))), toolTurns = Math.max(2, Number(opt('tool-turns', 10)));
+  const pace = paceSettings(opt, env, {cadence: opt('cadence', null)}), followerModel = opt('follower-model', env.FELLOWSHIP_FOLLOWER_MODEL || null);
   mkdirSync(join(ROOT, 'logs'), {recursive: true});
   const out = (who, text) => {const line = `[${new Date().toISOString().slice(11, 19)}] ${who ? '[' + who + '] ' : ''}${text}`; console.log(line); try {appendFileSync(LOG_FILE, line + '\n')} catch {}};
 
@@ -143,9 +149,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       openaiChat = o.adapter.chat;
     } else if (!env.ANTHROPIC_API_KEY) {skip(h, 'plays Claude but there is no ANTHROPIC_API_KEY in the environment or .env (use --env FILE, or --provider ollama); skipped'); await release(h.id); return}
     sess.runner = rs; saveSession(sess, {url: base});
-    const m = {id: h.id, name: st.name, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai', paid: rs.provider === 'openai', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0};
+    const m = {id: h.id, name: st.name, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai', paid: rs.provider === 'openai', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
+      maxTurns: turnCap(turnsAsked, rs.provider, 6), fails: failTracker(pace.maxFails)};
     members.set(h.id, m); claim(h.id);
-    out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.paid ? rs.model + ' (OpenAI)' : m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'}`);
+    out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.paid ? rs.model + ' (OpenAI)' : m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'} | ${capText(m.maxTurns)}`);
     loop(m).catch(e => {m.ended = 'error: ' + e.message; out(m.name, 'loop failed: ' + e.message)});
   }
 
@@ -156,15 +163,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   let claudeLive = 0; const claudeQ = [];
   const slot = scene => claudeMax && claudeLive >= claudeMax ? new Promise(r => {if (scene) claudeQ.unshift(r); else claudeQ.push(r)}).then(() => {claudeLive++}) : (claudeLive++, Promise.resolve());
   const free = () => {claudeLive--; const n = claudeQ.shift(); if (n) n()};
-  async function turn(m, scene) {
-    if (m.local) return localMemberTurn(m, scene);
+  // -> whether the turn did anything (a failed or empty turn counts toward the --max-fails stop)
+  async function turn(m, scene, w) {
+    if (m.local) return localMemberTurn(m, scene, w);
     await slot(scene);
-    try {return await claudeTurn(m, scene)} finally {free()}
+    try {return await withClaudeSlot(base, () => claudeTurn(m, scene, w), s => out(m.name, s), {stopped: () => !!stopping})} finally {free()}
   }
-  async function claudeTurn(m, scene) {
+  async function claudeTurn(m, scene, w) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
-    const prompt = memberPrompt(m.sess.turns, scene);
-    const t0 = Date.now(); let result = null, tools = 0;
+    const prompt = memberPrompt(m.sess.turns, scene, w);
+    const t0 = Date.now(); let result = null, tools = 0, failed = false;
     const ac = new AbortController(); aborts.add(ac);
     const q = query({prompt, options: {
       abortController: ac,
@@ -188,7 +196,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       } else if (msg.type === 'result') result = msg;
     }} catch (e) {
       if (result && result.subtype === 'error_max_turns') out(m.name, `turn hit the model-call cap; continuing next turn`);
-      else {out(m.name, `turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); m.fails = (m.fails || 0) + 1; if (m.fails >= 3) m.ended = 'errors'}}
+      else {out(m.name, `turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); failed = true}}
     aborts.delete(ac);
     m.sess.turns++; m.turns++; m.tools += tools; if (scene) m.scenes++;
     if (result) {
@@ -198,35 +206,43 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${model} | ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s | tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`);
     }
     saveSession(m.sess, {url: base});
+    return !failed && tools > 0;
   }
 
   // A local member's turn (issue #97 part 2): the small tool loop against Ollama, same tools, prompts,
   // session file and scene handling; cost 0, tokens and seconds reported.
-  async function localMemberTurn(m, scene) {
+  async function localMemberTurn(m, scene, w) {
     let r = null;
-    try {r = await localTurn({chat: m.paid ? openaiChat : ollama.chat, call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, prompt: memberPrompt(m.sess.turns, scene), model: m.rs.model,
+    try {r = await localTurn({chat: m.paid ? openaiChat : ollama.chat, call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, prompt: memberPrompt(m.sess.turns, scene, w) + briefText(m.pacer ? await m.pacer.brief() : null), model: m.rs.model,
       toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, opts: opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? {numCtx: Number(opt('num-ctx', env.OLLAMA_NUM_CTX))} : {},
       on: (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})}
         else if (k === 'tool') out(m.name, `> ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`);
         else if (k === 'mode') out(m.name, `[${m.rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
-    catch (e) {out(m.name, `turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); m.fails = (m.fails || 0) + 1; if (m.fails >= 3) m.ended = 'errors'}
+    catch (e) {out(m.name, `turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
     m.sess.turns++; m.turns++; if (scene) m.scenes++;
     if (r) {m.tools += r.tools; m.tin += r.in; m.tout += r.out; if (r.dead) m.ended = 'dead';
       if (m.paid) {spent += r.cost; m.cost += r.cost; m.sess.costUsd = (m.sess.costUsd || 0) + r.cost;
         out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${paidLine(r, m.rs.model, 'openai', {run: spent})} of ${money(budget)} | member ${money(m.cost)}`)}
       else out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${localLine(r, m.rs.model)} | member tokens ${m.tin} / ${m.tout}`)}
     saveSession(m.sess, {url: base});
+    return localWorked(r);
   }
 
+  // One member's turns, paced by the game (scripts/pacing.mjs): the first at once, then on its events or heartbeat.
   async function loop(m) {
-    while (!m.ended && !stopping && m.turns < maxTurns) {
-      if (spent >= budget) {stopping = 'budget reached'; break}
-      await turn(m, inScene.has(m.id));
-      if (m.ended || stopping) break;
-      // between scenes: a slower cadence, cut short the moment a scene opens for this member
-      for (let t = 0; t < cadence && !inScene.has(m.id) && !stopping; t += 1000) await sleep(1000);
+    const pacer = makePacer({base, hero: m.id, runner: runnerId, heartbeat: pace.heartbeat, minGap: pace.minGap, log: s => out(m.name, s), stopped: () => !!(stopping || m.ended)}); m.pacer = pacer;
+    let w = null;
+    while (!m.ended && !stopping && m.turns < m.maxTurns) {
+      // the budget binds the paid members (Claude, OpenAI); a local member plays on
+      if (spent >= budget && !(m.local && !m.paid)) {m.ended = 'budget reached'; break}
+      const worked = await turn(m, inScene.has(m.id) || !!(w && w.table && w.wake === 'now'), w);
+      pacer.turnDone();
+      if (m.fails.ok(worked) && !m.ended) m.ended = m.fails.why();
+      if (m.ended || stopping || m.turns >= m.maxTurns) break;
+      w = await pacer.next();
+      if (w.dead) m.ended = 'dead'; else if (w.gone) m.ended = 'left agent play'; else if (w.stopped) break;
     }
-    if (!m.ended) m.ended = stopping || (m.turns >= maxTurns ? 'max turns' : 'stopped');
+    if (!m.ended) m.ended = stopping || (m.turns >= m.maxTurns ? 'max turns' : 'stopped');
     await release(m.id); out(m.name, `done (${m.ended}): ${m.turns} turns, ${m.scenes} at the table, ${money(m.cost)}`);
   }
 
@@ -238,7 +254,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     for (const m of members.values()) if (!m.ended && m.turns >= 0) claim(m.id);}, 1000);
   watch.unref();
   const L0 = (h0.heroes || []).find(x => x.fellow && x.lead); leadId = L0 ? L0.id : null;
-  out(null, `Fellowship runner at ${base}: ${fellowsOf(h0).map(x => x.name + (x.lead ? ' (leads)' : '')).join(', ')} | up to ${maxTurns} turns each, budget ${money(budget)}, cadence ${cadence / 1000} s`);
+  out(null, `Fellowship runner at ${base}: ${fellowsOf(h0).map(x => x.name + (x.lead ? ' (leads)' : '')).join(', ')} | ${turnsAsked != null ? 'up to ' + turnsAsked + ' turns each' : 'Claude/OpenAI members up to 6 turns, local members until stopped'}, budget ${money(budget)} | ${paceText(pace)}`);
   for (const h of fellowsOf(h0)) await addMember(h);
   const finish = async why => {stopping = stopping || why; for (const m of members.values()) if (m.sess) await release(m.id)};
   process.on('SIGINT', async () => {for (const a of aborts) a.abort(); await finish('interrupted'); summary(); process.exit(130)});
@@ -251,7 +267,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const rows = [...members.values()].filter(m => m.sess);
     out(null, `Run over${stopping ? ' (' + stopping + ')' : ''}: ${money(spent)} in all.`);
     for (const m of rows) out(null, `  ${m.name.padEnd(12)} ${String(m.role || '').padEnd(7)} ${m.turns} turns (${m.scenes} at the table), ${m.tools} tool calls, ${m.paid ? money(m.cost) + ', tokens ' + m.tin + ' in / ' + m.tout + ' out' : m.local ? '$0 (local), tokens ' + m.tin + ' in / ' + m.tout + ' out' : money(m.cost)} | session ${money(m.sess.costUsd)} | ${m.rs.model}${m.paid ? ' (OpenAI)' : m.local ? ' (local)' : followerModel ? ' / ' + followerModel : ''}`);
-    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, spent, budget, maxTurns, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: m.paid ? 'openai' : 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
+    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, spent, budget, maxTurns: turnsAsked != null ? Number(turnsAsked) : null, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: m.paid ? 'openai' : 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
     for (const mdl of new Set(rows.map(m => m.rs.model).concat(followerModel ? [followerModel] : []))) if (PRICES[mdl]) out(null, `  list price ${mdl}: $${PRICES[mdl].in} in / $${PRICES[mdl].out} out per 1M tokens`);
   }
   process.exit(0);

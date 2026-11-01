@@ -64,6 +64,7 @@ export const PK={
   BAG:8,             // reflex: idle in the field with this many bag entries -> go home
   REST_REGEN:.06,    // share of max HP per real second while resting (the DM's camp rate)
   RATE:12,           // world-changing tool calls per game hour
+  IDLE:120,          // game minutes without a command or an action before the scripted rules play the hero (#126)
   WAIT:[10,240],     // game minutes a wait may span
   WAIT_REAL_MS:45000,// a wait never holds the agent longer than this in real time (paused world, hidden tab)
   JOURNAL:100,JOURNAL_LEN:600,LOG:40,EV:40,EV_OUT:15,NARR:20,SAY_LEN:120, // EV_OUT: events handed back per tool result
@@ -96,7 +97,7 @@ function since(list,k){if(!list||!list.length)return [];if(!k)return list.slice(
 
 // ---- marking ----
 export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
-  if(on){if(a.state==='dead')return false;a.player=true;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
+  if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
     ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');return true}
@@ -113,6 +114,11 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a raid muster on Kragmaw.')}
   if(a.party&&!a.partyOk&&!a.party.fellow){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')} // the Fellowship's own party is always theirs
   const adv=advOf(a),cmd=cmdOf(a);
+  // Idle (issue #126): no command and no action for PK.IDLE game minutes, outside an adventure or a scene: the
+  // scripted rules play the hero until the agent acts again, so the world never waits on a silent mind.
+  const lastAct=a.playActAt??(a.playActAt=S.gameMin);
+  if(!cmd&&!adv&&!tableView(a)&&S.gameMin-lastAct>=PK.IDLE){if(!a.playIdle){a.playIdle=true;ev(a,'You stood idle for a while; your instincts carry you for now (give a command to take the reins back).')}a.playDoing='on instinct (scripted, until you act)';return false}
+  if(a.playIdle)a.playIdle=false;
   // A choice scene answered (or timed out): send the hero back to the scene point so the DM
   // reaches the choice again and takes the pick (sim/player-choice.js).
   if(adv&&adv.stage==='choose'&&adv.pick&&(adv.pick.chosen||S.gameMin>=adv.pick.until)){adv.pick.rearm=true;adv.stage='go';if(a.state==='hunt'||a.state==='travel'){a.state='travel';a.dest=null}}
@@ -138,14 +144,14 @@ function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kil
   if(a.lvl>w.lvl)ev(a,'Reached level '+a.lvl+'.',true);
   if(a.kills>w.kills&&a.target==null&&a.state!=='fight')ev(a,'Made a kill ('+a.kills+' in all).');
   if(a.state!==w.state){
-    if(a.state==='fight'&&a.target&&a.target.kind==='mob'&&a.target.target===a&&!(cmdOf(a)&&cmdOf(a).kind!=='move'))ev(a,'Attacked by '+(a.target.elite?'':'a level '+a.target.lvl+' ')+mobName(a.target)+'!',true);
-    if(a.state==='duel'&&a.target)ev(a,'In a duel with '+a.target.name+' ('+FAC[a.target.fac].name+' '+a.target.cls+', level '+a.target.lvl+')!',true);
-    if(a.state==='assist'&&a.target)ev(a,'Rushing to help against '+a.target.name+'.',true)}
-  if(a.hp<mh*.3&&w.hp>=mh*.3)ev(a,'Badly hurt: '+pct(a.hp,mh)+'% HP.',true);
+    if(a.state==='fight'&&a.target&&a.target.kind==='mob'&&a.target.target===a&&!(cmdOf(a)&&cmdOf(a).kind!=='move'))ev(a,'Attacked by '+(a.target.elite?'':'a level '+a.target.lvl+' ')+mobName(a.target)+'!',2);
+    if(a.state==='duel'&&a.target)ev(a,'In a duel with '+a.target.name+' ('+FAC[a.target.fac].name+' '+a.target.cls+', level '+a.target.lvl+')!',2);
+    if(a.state==='assist'&&a.target)ev(a,'Rushing to help against '+a.target.name+'.',2)}
+  if(a.hp<mh*.3&&w.hp>=mh*.3)ev(a,'Badly hurt: '+pct(a.hp,mh)+'% HP.',2);
   if(a.playChoiceNew){a.playChoiceNew=false;const adv=advOf(a),p=adv&&adv.pick;
-    if(p)ev(a,'A choice on '+(p.title||'your adventure')+': '+p.frame+'. a) '+p.opts.a+'  b) '+p.opts.b+'. choose() within '+Math.max(0,Math.round(p.until-S.gameMin))+' game minutes.',true)}
+    if(p)ev(a,'A choice on '+(p.title||'your adventure')+': '+p.frame+'. a) '+p.opts.a+'  b) '+p.opts.b+'. choose() within '+Math.max(0,Math.round(p.until-S.gameMin))+' game minutes.',2)}
   const hs=since(a.history,w.hist);for(const e of hs)if(!/^Began to choose/.test(e.text))ev(a,e.text);if(a.history&&a.history.length)w.hist=key(a.history[a.history.length-1]);
-  const cs=since(a.chat,w.chat);for(const e of cs)if(e.from!==a&&!(e.from&&e.from.kind!=='npc'&&e.from.id===a.id))ev(a,heardText(e));if(a.chat&&a.chat.length)w.chat=key(a.chat[a.chat.length-1]);
+  const cs=since(a.chat,w.chat);for(const e of cs)if(e.from!==a&&!(e.from&&e.from.kind!=='npc'&&e.from.id===a.id))ev(a,heardText(e),false,e.party||e.from&&(e.from.kind==='dm'||e.from.kind==='npc')?1:0);if(a.chat&&a.chat.length)w.chat=key(a.chat[a.chat.length-1]);
   w.hp=a.hp;w.lvl=a.lvl;w.state=a.state;w.kills=a.kills}
 
 function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*dt);
@@ -442,6 +448,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}
     st.push(S.gameMin)}
   let r;try{r=fn(a,args&&typeof args==='object'?args:{})}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
+  if(meta.act&&r&&r.ok!==false)a.playActAt=S.gameMin; // the agent's last action that went through (idle takeover, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
   logCall(a,tool,args,r);return r}
 

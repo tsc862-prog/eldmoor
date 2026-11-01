@@ -19,7 +19,7 @@ import {tmpdir, hostname} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {attachPlay} from './relay-mcp.mjs';
-import {attachRunners, checkStart, runnerArgs, MAX_RUNNERS, RUNNER_KINDS, HOW} from './runners.mjs';
+import {attachRunners, checkStart, runnerArgs, MAX_RUNNERS, SEATS, RUNNER_KINDS, HOW} from './runners.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,7 +38,7 @@ console.log('start requests');
 {
   const hs = [{id: 1, name: 'Ann', alive: true}, {id: 2, name: 'Bo', alive: false}, {id: 3, name: 'Cy', alive: true, fellow: true}, {id: 4, name: 'Di', alive: true, fellow: true}];
   const c = checkStart({hero: 1}, hs);
-  ok(c.req && c.req.key === 'hero:1' && c.req.maxTurns === 20 && c.req.budget === 1, 'a hero runner defaults to 20 turns and $1.00 (as npm run agent)');
+  ok(c.req && c.req.key === 'hero:1' && c.req.maxTurns === null && c.req.budget === 1, 'a hero runner keeps $1.00 and leaves the turn cap to the runner (Claude 20, a local mind until stopped; issue #126)');
   const l = checkStart({hero: '1', provider: 'ollama', model: 'qwen2.5:14b', maxTurns: 40}, hs);
   ok(l.req && l.req.budget === null && l.req.maxTurns === 40 && l.req.model === 'qwen2.5:14b', 'a local runner has no budget, only a turn cap');
   ok(checkStart({hero: 9}, hs).code === 404 && checkStart({hero: 2}, hs).code === 409 && checkStart({}, hs).code === 400, 'unknown, dead and missing heroes are refused');
@@ -49,12 +49,17 @@ console.log('start requests');
   ok(checkStart({hero: 1, maxTurns: 201}, hs).code === 400 && checkStart({hero: 1, maxTurns: 1.5}, hs).code === 400 && checkStart({hero: 1, budget: 5.01}, hs).code === 400 && checkStart({hero: 1, budget: 0}, hs).code === 400, 'turns and budget are capped (200 turns, $5.00 for one hero)');
   ok(checkStart({kind: 'shell'}, hs).code === 400, 'unknown runner kinds are refused');
   const f = checkStart({kind: 'fellowship'}, hs);
-  ok(f.req && f.req.key === 'fellowship' && f.req.maxTurns === 6 && f.req.budget === 2, 'a Fellowship runner defaults to 6 turns each and $2.00 (as npm run fellowship)');
+  ok(f.req && f.req.key === 'fellowship' && f.req.maxTurns === null && f.req.budget === 2, 'a Fellowship runner keeps $2.00 and leaves the turn cap to the runner (Claude members 6, local ones until stopped)');
   ok(checkStart({kind: 'fellowship'}, hs.filter(h => !h.fellow)).code === 404, 'no Fellowship runner without agent-played members');
   ok(checkStart({hero: 1}, hs, {running: [{key: 'hero:1'}]}).code === 409, 'one runner per hero');
   ok(checkStart({hero: 1}, hs, {running: Array.from({length: MAX_RUNNERS}, (_, i) => ({key: 'hero:' + (100 + i)}))}).code === 429, `at most ${MAX_RUNNERS} at once`);
   const args = runnerArgs({...c.req, provider: 'anthropic', model: 'claude-sonnet-5-5'}, 'http://127.0.0.1:8787');
-  ok(args[0] === RUNNER_KINDS.hero.script && args.join(' ') === 'scripts/agent-player.mjs --url http://127.0.0.1:8787 --hero 1 --max-turns 20 --budget 1 --provider anthropic --model claude-sonnet-5-5', 'the command line: script, url, hero, caps, provider, model');
+  ok(args[0] === RUNNER_KINDS.hero.script && args.join(' ') === 'scripts/agent-player.mjs --url http://127.0.0.1:8787 --hero 1 --budget 1 --provider anthropic --model claude-sonnet-5-5', 'the command line: script, url, hero, budget, provider, model (no turn cap unless asked)');
+  ok(runnerArgs({...l.req}, 'u').join(' ') === 'scripts/agent-player.mjs --url u --hero 1 --max-turns 40 --provider ollama --model qwen2.5:14b', 'an asked turn cap goes on the command line');
+  {const fs = hs.map(h => ({...h, fellow: true, alive: true})), full = Array.from({length: MAX_RUNNERS}, (_, i) => ({key: 'hero:' + (100 + i)}));
+    ok(checkStart({hero: 3}, fs, {running: full}).req && checkStart({kind: 'dm'}, fs, {running: full, max: 2}).req, 'a Fellowship member or the DM still fits when other runners fill the cap (six seats)');
+    const seats = Array.from({length: SEATS}, (_, i) => ({key: 'hero:' + (200 + i), fellow: true}));
+    ok(checkStart({hero: 3}, fs, {running: seats}).code === 429, `but not past ${SEATS} seats`)}
   ok(!args.some(a => /key|sk-ant/i.test(a)), 'no key on the command line');
   ok(runnerArgs({...f.req, claudeConcurrency: 2}, 'u').join(' ').endsWith('--budget 2 --claude-concurrency 2'), 'a Fellowship runner gets its share of Claude slots (--claude-concurrency)');
 }
@@ -112,8 +117,8 @@ console.log('runner routes (fake children)');
   {const nv = (await req(on.base, '/play/runner', {origin: null})).runners.find(r => r.key === 'hero:1');
     ok(nv && nv.state === 'waiting' && nv.lines.length === 0, 'without the page\'s origin the runners\' output lines are withheld (issue #123: for the watcher only)')}
   // up to MAX_RUNNERS
-  for (const id of [2, 3, 4, 5]) await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: id}, origin: PAGE});
-  s = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 6}, origin: PAGE});
+  for (const id of [2, 3, 4, 5, 6]) await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: id}, origin: PAGE});
+  s = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 7}, origin: PAGE});
   ok(kids.length === MAX_RUNNERS && s.status === 429, `${MAX_RUNNERS} runners at once, the next is refused`);
   // stop: "stop" on stdin; the child exits cleanly
   s = await req(on.base, '/play/runner/stop', {method: 'POST', body: {hero: 1}, origin: PAGE});
@@ -133,15 +138,35 @@ console.log('runner routes (fake children)');
   on.sup.killAll(); await sleep(20);
   ok(kids.slice(2).every(k => k.killed), 'the host closing kills every child');
   on.server.close();
-  // Claude slots: concurrent Claude requests the app's runners may add on top of the relay's own
+  // Claude slots: concurrent Claude turns the app's runners may run on top of the relay's own; leased per turn
   const sl = await mk(true, {RUNNER_CLAUDE_MAX: '1'}), n0 = kids.length;
   s = await req(sl.base, '/play/runner/start', {method: 'POST', body: {hero: 1, provider: 'anthropic'}, origin: PAGE});
   const s2 = await req(sl.base, '/play/runner/start', {method: 'POST', body: {hero: 2}, origin: PAGE});
   const s3 = await req(sl.base, '/play/runner/start', {method: 'POST', body: {hero: 3, provider: 'ollama', model: 'qwen2.5:14b'}, origin: PAGE});
-  g = await req(sl.base, '/play/runner');
-  ok(s.status === 200 && s2.status === 429 && /Claude runner slot/.test(s2.error) && s3.status === 200 && kids.length === n0 + 2, 'with RUNNER_CLAUDE_MAX=1 a second Claude runner is refused; a local one still starts');
-  ok(g.claude.slots === 1 && g.claude.used === 1 && g.runners.find(r => r.key === 'hero:1').claudeSlots === 1, 'the page sees the Claude slots in use');
+  ok(s.status === 200 && s2.status === 200 && s3.status === 200 && kids.length === n0 + 3 && kids[n0].opts.env.ELDMOOR_RUNNER_KEY === 'hero:1', 'with RUNNER_CLAUDE_MAX=1 two Claude runners and a local one all start (slots are leased per turn)');
+  const l1 = await req(sl.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:1'}});
+  const t2 = Date.now(), p2 = req(sl.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:2'}});
+  await sleep(150); g = await req(sl.base, '/play/runner');
+  ok(l1.ok && l1.lease && g.claude.slots === 1 && g.claude.used === 1 && g.claude.waiting === 1, 'the first Claude turn gets the slot, the second waits for it (the page sees used and waiting)');
+  await req(sl.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: l1.lease}});
+  const l2 = await p2;
+  ok(l2.ok && l2.lease !== l1.lease && Date.now() - t2 < 5000, 'released after the turn, the slot goes to the waiting runner');
+  ok((await req(sl.base, '/play/runner/slot', {method: 'POST', body: {key: 'nope'}})).status === 404, 'only a live runner of this supervisor may lease a slot');
+  kids[n0 + 1].emit('exit', 0); await sleep(20);
+  ok((await req(sl.base, '/play/runner')).claude.used === 0, 'a runner that exits gives its slot back');
   sl.sup.killAll(); sl.server.close();
+  // six minds: the Fellowship's five as hero runners and the DM start together, whatever the caps
+  {for (const h of heroes) h.fellow = h.id <= 5;
+    const six = await mk(true, {RUNNER_CLAUDE_MAX: '1', RELAY_MAX_RUNNERS: '2'}), n2 = kids.length;
+    const realDm6 = RUNNER_KINDS.dm.script; RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs';
+    const st = [];
+    for (const id of [1, 2, 3, 4, 5]) st.push(await req(six.base, '/play/runner/start', {method: 'POST', body: {hero: id, provider: 'anthropic'}, origin: PAGE}));
+    st.push(await req(six.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic'}, origin: PAGE}));
+    const extra = await req(six.base, '/play/runner/start', {method: 'POST', body: {hero: 6, provider: 'ollama', model: 'qwen2.5:14b'}, origin: PAGE});
+    ok(st.every(x => x.status === 200) && kids.length === n2 + 6, `five members and the DM start together with RUNNER_CLAUDE_MAX=1 and RELAY_MAX_RUNNERS=2 (${st.map(x => x.status).join(',')})`);
+    ok(extra.status === 429, 'a seventh runner, for a hero outside the Fellowship, is refused by the cap');
+    RUNNER_KINDS.dm.script = realDm6; six.sup.killAll(); six.server.close();
+    for (const h of heroes) delete h.fellow}
   // the DM agent: kind 'dm', no hero, one at most, counted in the Claude slots; refused until installed
   const dm = await mk(true, {RUNNER_CLAUDE_MAX: '2'}), n1 = kids.length;
   s = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic', model: 'claude-sonnet-5-5', maxTurns: 10, budget: 1}, origin: PAGE});
@@ -153,7 +178,7 @@ console.log('runner routes (fake children)');
   const sd = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm'}, origin: PAGE});
   g = await req(dm.base, '/play/runner');
   ok(s.status === 200 && s.runner.key === 'dm' && s.runner.hero === null && kd.args[0] === 'scripts/mock-ollama.mjs' && kd.args.includes('--budget') && sd.status === 409, 'a DM runner starts with no hero, its flags, and only one at a time');
-  ok(g.claude.used === 1 && g.kinds.dm.installed === true, 'it takes a Claude slot');
+  ok(g.runners.find(r => r.key === 'dm').claudeSlots === 1 && g.kinds.dm.installed === true, 'it counts as a Claude mind (it leases a slot per turn)');
   ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'starting', 'it is starting until it holds the DM seat');
   await fetch(dm.base + '/play/claim', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({role: 'dm', runner: 'fake:1'})});
   ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'waiting', 'it shows waiting once it holds the seat');
@@ -173,7 +198,7 @@ console.log('runner routes (fake children)');
 // ---------------------------------------------------------------- 3. end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
 const mock = await startMockOllama();
-const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: mock.url, RELAY_RUNNERS: ''};
+const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: mock.url, RELAY_RUNNERS: '', AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30'}; // pacing (issue #126) kept short
 const procs = [];
 function start(args, {wait = null, env = childEnv} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe']}); procs.push(p);

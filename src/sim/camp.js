@@ -134,7 +134,7 @@ function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors+
     ev('caught',[w,' nods off on watch. ',gd(foeName),' reaches the fire before anyone cries out and catches ',victim,' ('+Math.max(0,hit)+' damage).'],{watcher:w.name,roll:spot.total,dc:spot.dc,foe:foeName,hero:!!useHero},ids)}
   log(nar(''),gd(F.name),' is '+(spot.pass?'roused':'caught asleep')+' by ',useHero?foeHero:gd(foeName),' at camp in ',gd(ZONES[g.zone]||'the wilds'),'.');
   for(const a of wake){remember(a,'camp',spot.pass?w.name+' raised the alarm: '+foeName+' came out of the dark.':'We were caught at camp by '+foeName+'.');
-    if(a.player)notify(a,'ALARM at camp: '+foeName+' is on us. '+(spot.pass?w.name+' raised the alarm in time.':'The watch failed.'),true)}
+    if(a.player)notify(a,'ALARM at camp: '+foeName+' is on us. '+(spot.pass?w.name+' raised the alarm in time.':'The watch failed.'),2)}
   breakCamp(F,'ambush');
   if(useHero){const b=foeHero;for(const a of wake)a.state='hunt';w.state='duel';w.target=b;b.state='duel';b.target=w;b.dest=null}
   else{m.target=spot.pass?w:victim;for(const a of wake){a.state='fight';a.target=m;a.dest=null}

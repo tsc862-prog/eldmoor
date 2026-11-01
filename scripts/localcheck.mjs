@@ -94,7 +94,7 @@ console.log('ollama adapter chat (mock server)');
 
 // ---------------------------------------------------------------- 2. the runner, end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
-const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA};
+const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30'}; // pacing (issue #126) kept short for the old sections
 const kids = [];
 function start(args, {wait: ready = null, env = childEnv} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe']});
@@ -169,6 +169,87 @@ console.log('npm run fellowship -- --provider ollama (headless Fellowship, no AP
   const runs = readFileSync(join(ROOT, 'logs', 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop(), j = JSON.parse(runs);
   ok(j.url === FB && j.spent === 0 && j.members.every(m => m.provider === 'ollama' && m.tokensIn > 0), 'the run record lists the local members with tokens and cost 0');
   fw.p.kill();
+}
+
+// ---------------------------------------------------------------- 4. pacing (issue #126)
+// An in-process world (so the check can read the game clock and raise events) served over HTTP like
+// play-headless, and real runner processes against it: turns follow game time and events, a notification
+// that cannot wait starts a turn at once, others wait for the minimum gap, a lazy model is re-prompted and
+// stopped after its empty turns, the scripted rules take over an idle hero, and leaving agent play ends the run.
+console.log('runner pacing (in-process world at 8x, mock Ollama)');
+{
+  const sim = await import('../src/sim/index.js'), {localBackend, chooseHero} = await import('./play-headless.mjs');
+  const {notify} = await import('../src/sim/notify.js'), {homeOf} = await import('../src/data/races.js');
+  const {S} = sim; sim.init({fellowship: false}); for (let i = 0; i < 60 * 30; i++) sim.step(1 / 60);
+  const speed = 8; let last = Date.now();
+  const tick = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
+  const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
+  attachPlay(server, {backend: localBackend(), log: () => {}});
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const PB = `http://127.0.0.1:${server.address().port}`;
+  const park = a => {const c = homeOf(a); a.state = 'town'; a.x = c.gate.x; a.y = c.gate.y - 1; a.target = null; a.pq = []; a.dest = null}; // in town: nothing attacks
+  const pick = () => {const a = chooseHero({fac: 0}); park(a); sim.markPlayer(a, true); return a};
+  // a runner process with its output lines timed against the real and the game clock
+  function runner(a, model, extra) {
+    const p = spawn(process.execPath, ['scripts/agent-player.mjs', '--url', PB, '--hero', String(a.id), '--provider', 'ollama', '--model', model, '--ollama-url', OLLAMA, ...extra], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
+    kids.push(p); const R = {p, out: '', turns: [], wakes: [], done: new Promise(r => p.on('exit', c => r(c)))}; let part = '';
+    const take = d => {R.out += d; part += d; const ls = part.split(/\r?\n/); part = ls.pop();
+      for (const l of ls) {const t = {real: Date.now(), gm: S.gameMin, line: l};
+        if (/^\[turn \d+\]/.test(l)) R.turns.push(t); const w = l.match(/\[pace\] woke \((\w+)/); if (w) R.wakes.push({...t, kind: w[1]})}};
+    p.stdout.on('data', take); p.stderr.on('data', take); return R;
+  }
+  const until = async (f, ms) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {if (f()) return true; await sleep(50)} return false};
+
+  // A. a quiet hero: turns come from the heartbeat (60 game minutes here), never back to back
+  {const a = pick(), hb = 60, gap = 1;
+    const R = runner(a, 'mock-tools:1b', ['--max-turns', '5', '--heartbeat', String(hb), '--min-gap', String(gap)]);
+    const code = await R.done, g0 = R.turns[0], gN = R.turns[R.turns.length - 1];
+    const hours = (gN.gm - g0.gm) / 60, perHour = (R.turns.length - 1) / Math.max(hours, 1e-9);
+    // each later turn starts at least one heartbeat (or the gap, in game time) after the previous one ended
+    const minGm = Math.min(hb, gap * 6 * speed), gaps = R.wakes.map((w, i) => w.gm - R.turns[i].gm);
+    ok(code === 0 && R.turns.length === 5, `a quiet hero plays its 5 turns (${R.turns.length})` + (code === 0 ? '' : '\n' + R.out.slice(-1500)));
+    ok(gaps.length === 4 && gaps.every(x => x >= minGm - 6), `turns wait for the game: ${gaps.map(x => Math.round(x)).join(', ')} game minutes between turns (at least ${minGm})`);
+    ok(perHour <= 60 / minGm + .05, `at most one turn per ${minGm} game minutes on a quiet world: ${perHour.toFixed(2)} turns per game hour`);
+    ok(R.wakes.every(w => w.kind === 'heartbeat' || w.kind === 'soft') && /up to 5 turns/.test(R.out) && /every 60 game min, at least 1 s apart/.test(R.out), `woken by the heartbeat or the hero's own news (${R.wakes.map(w => w.kind).join(', ')})`);
+    ok(/Right now \(from the game/.test(JSON.stringify(seen.slice(-6))) && !/still battling/.test(R.out), 'every local turn prompt carries the hero\'s state from the game');
+    sim.markPlayer(a, false)}
+
+  // B. a notification that cannot wait starts a turn at once, inside the gap; the hero's other news waits for the gap
+  {const a = pick();
+    const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '4']);
+    ok(await until(() => R.turns.length >= 1, 30000), 'a local runner without --max-turns plays (until stopped)');
+    ok(/until stopped/.test(R.out), 'and says it runs until stopped');
+    await sleep(400); park(a); const tN = Date.now();
+    notify(a, 'Attacked by a level 3 test wolf!', 2);
+    ok(await until(() => R.wakes.length >= 1, 4000), `an attack starts the next turn at once: ${R.wakes[0] ? R.wakes[0].kind + ' after ' + (R.wakes[0].real - tN) + ' ms' : 'no turn'}`);
+    ok(R.wakes[0] && R.wakes[0].kind === 'now' && R.wakes[0].real - R.turns[0].real < 4000, 'inside the 4 s minimum gap');
+    await until(() => R.turns.length >= 2, 30000); park(a);
+    notify(a, 'A test traveller hails you from the road.', true); const t2 = R.turns[1].real;
+    await until(() => R.wakes.length >= 2, 15000);
+    const w2 = R.wakes[1], dt = w2 ? w2.real - t2 : null;
+    ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 9000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`);
+    await until(() => R.turns.length >= 3, 30000);
+    sim.markPlayer(a, false);
+    const code = await Promise.race([R.done, sleep(20000).then(() => 'timeout')]);
+    ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 ? '' : '\n' + R.out.slice(-1200)))}
+
+  // C. a lazy model (the owner's live bug): re-prompted once per turn, empty turns stop the runner, the scripted rules take over
+  {const a = pick(), n0 = seen.length;
+    const R = runner(a, 'mock-lazy:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--new']);
+    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]);
+    const mine = seen.slice(n0), re = mine.filter(b => {const u = b.messages.filter(m => m.role === 'user').pop(); return u && /^Act through a tool/.test(u.content)});
+    ok(code === 0 && R.turns.length === 6 && /3 failed or empty turns in a row/.test(R.out), `three good turns, then three empty ones stop the runner (${R.turns.length} turns)` + (code === 0 ? '' : '\n' + R.out.slice(-1500)));
+    ok(re.length === 3 && (R.out.match(/re-prompted to act/g) || []).length === 3 && (R.out.match(/empty turn \(no tool call\)/g) || []).length === 3, `each empty turn was re-prompted once to act through a tool (${re.length})`);
+    const lastReq = mine[mine.length - 1], narrs = lastReq.messages.filter(m => m.role === 'assistant' && /still battling/.test(m.content || ''));
+    ok(narrs.length <= 2, `the model's own old narrations are not fed back (${narrs.length} in the last request, this turn's only)`);
+    const x0 = a.x, y0 = a.y, s0 = a.state;
+    ok(await until(() => a.playIdle, 15000), 'with no command for 2 game hours the scripted rules take over the idle hero');
+    ok(await until(() => a.state !== s0 || Math.abs(a.x - x0) + Math.abs(a.y - y0) > 1, 20000), `and play it (${s0} -> ${a.state})`);
+    ok((a.playEv || []).some(e => /instincts carry you/.test(e.text)), 'the hero is told so (an event the agent reads when it comes back)');
+    const r = sim.playerAct(a.id, 'say', {text: 'Enough wandering. I choose my own road again.'});
+    sim.step(1 / 60);
+    ok(r.ok && !a.playIdle, 'an action from the agent takes the reins back' + (r.ok ? '' : ': ' + r.error))}
+  clearInterval(tick); server.close();
 }
 
 // ---------------------------------------------------------------- the page's links message
