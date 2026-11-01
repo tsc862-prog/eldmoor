@@ -5,7 +5,8 @@
 //
 // Small render helpers are exported for other UI modules (party frames and the side-by-side sheet
 // in #94 build on them):
-//   renderRoster(node)            members in slot order: role, leader star, name, level, HP
+//   renderSettings(node)          members in slot order: role, leader star, name, Sheet/Remove, mind row
+//                                 (live level/HP/status live only in the party frames, #114)
 //   renderBackstory(node, a)      the hero's backstory paragraphs and summary (read-only)
 //   renderPersona(node, a)        the persona sheet (read-only)
 //   renderCampaignLog(node, opt)  sessions by game-day, newest first ({days} limits how many)
@@ -13,12 +14,11 @@
 //   tabMemory(node, a)            the Memory tab body
 // Hero names are .hn[data-hid] spans; panels.js owns the delegated click that follows them.
 import {FAC} from '../data/factions.js';
-import {S,maxHp} from '../sim/index.js';
+import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
-import {doing} from './panels.js';
 import {renderMindRow,mindAct,mindChange,mindRowSig} from './mindpick.js'; // per-member mind (Mixed minds, #97)
 
 const $=id=>document.getElementById(id);
@@ -30,16 +30,14 @@ const byId=id=>S.agents.find(x=>x.id==id);
 const alive=a=>a&&a.state!=='dead';
 
 // ---- exported helpers ----
-export function renderRoster(node){const P=fellowParty(),ul=el('div','felroster');
+export function renderSettings(node){const P=fellowParty(),ul=el('div','felroster');
   for(const m of fellowshipMembers()){const row=el('div','fm'),a=m.hero;
     row.append(el('span','frole r-'+m.role,m.label));
-    if(!a){const e=el('span','dm','empty');row.append(e);const b=el('button','mini','Fill');b.dataset.ffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';row.append(b);
-      const s=cam.sel;if(s&&alive(s)&&!s.fellow&&S.fellowship&&s.fac===S.fellowship.fac&&fits(m.slot,s)){const c=el('button','mini','Add '+s.name);c.dataset.fadd=m.slot;row.append(c)}
-      ul.append(row);continue}
-    const nm=el('span','fn');if(P&&P.leader===a)nm.append(el('span','gd','★ '));nm.append(hn(a),el('span','dm',' Lv '+a.lvl+' '+a.cls));row.append(nm);
-    row.append(meter(a.hp/maxHp(a)));
+    if(!a){const e=el('span','dm fn','empty place');row.append(e);const tools=el('span','ftools');const b=el('button','mini','Fill');b.dataset.ffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';tools.append(b);
+      const s=cam.sel;if(s&&alive(s)&&!s.fellow&&S.fellowship&&s.fac===S.fellowship.fac&&fits(m.slot,s)){const c=el('button','mini','Add '+s.name);c.dataset.fadd=m.slot;tools.append(c)}
+      row.append(tools);ul.append(row);continue}
+    const nm=el('span','fn');if(P&&P.leader===a)nm.append(el('span','gd','★ '));nm.append(hn(a));if(enriching(a))nm.append(el('span','dm',' · writing…'));row.append(nm);
     const tools=el('span','ftools');const sh=el('button','mini','Sheet');sh.dataset.fsheet=a.id;const rm=el('button','mini','Remove');rm.dataset.fremove=a.id;tools.append(sh,rm);row.append(tools);
-    const d=el('div','fdo dm',doing(a)+(enriching(a)?' · writing their story…':''));row.append(d);
     if(a.state!=='dead'){const mr=el('div','fmind');renderMindRow(mr,a);row.append(mr)}
     ul.append(row)}
   node.append(ul)}
@@ -106,7 +104,7 @@ function topView(node){const F=S.fellowship;
   ai.title=md==='off'?'Scripted rules only. Click: the relay plays the members (npm run relay).':md==='relay'?'The relay plays the members and writes their sheets (scripted when it is down). Click: one AI agent per member (npm run fellowship).':'Each member is agent-played: run npm run fellowship to start their agents (reflexes act while they are silent). Click: back to scripted.';
   const db=el('button',null,confirmDisband?'Really disband?':'Disband');db.dataset.fact='disband';
   bar.append(fol,ai,db);node.append(bar);
-  renderRoster(node);
+  renderSettings(node);
   if(msg)node.append(el('div','fmsg',msg));
   if(F.enrich&&F.enrich.calls)node.append(el('div','dm','Relay writing: '+F.enrich.ok+' sheets written, '+F.enrich.fail+' kept scripted, $'+F.enrich.usd.toFixed(4)+(F.enrich.ms?' · last '+(F.enrich.ms/1000).toFixed(1)+' s':'')));
   const th=el('details','tlbox');th.append(el('summary',null,'Open threads'));renderThreads(th);node.append(th);
@@ -163,7 +161,7 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm){sigForm=sig;sigTop='';top.replaceChildren();formView(top)}return}
   logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.lvl+':'+Math.round(m.hero.hp/maxHp(m.hero)*20)+':'+m.hero.state+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
   const picking=typeof document!=='undefined'&&document.activeElement&&document.activeElement.tagName==='SELECT'&&top.contains(document.activeElement); // never rebuild under an open picker
   if(sig!==sigTop&&!picking){sigTop=sig;sigForm='';top.replaceChildren();topView(top)}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog){sigLog=ls;logBox._b.replaceChildren();renderCampaignLog(logBox._b)}}
