@@ -42,6 +42,20 @@ def lane_of(title, labels):
         if test(title, L): return key
     return "infra"
 
+# Owning agent: an explicit agent:<name> label wins; otherwise the agent that owns the
+# card's first area in the CLAUDE.md agent table. ui/render have no dedicated agent yet.
+AREA_OWNER = {"world": "world-builder", "creatures": "creature-designer", "characters": "character-builder",
+              "ai": "ai-designer", "lore": "lore-keeper", "balance": "balance-tester", "infra": "brain-builder",
+              "ui": None, "render": None}
+def owner_of(labels):
+    for l in labels:
+        if l.startswith("agent:"): return l.split(":", 1)[1]
+    for l in labels:
+        if l.startswith("area:"):
+            o = AREA_OWNER.get(l.split(":", 1)[1], None)
+            if o: return o
+    return None
+
 def area(labels):
     return [l.split(":", 1)[1] for l in labels if l.startswith("area:")]
 
@@ -60,7 +74,7 @@ for i in open_issues:
     elif "agent-ready" in labels: status = "ready"
     else: status = "backlog"
     cards.append({"n": n, "title": i["title"], "lane": lane_of(i["title"], labels), "status": status,
-                  "areas": area(labels), "epic": epic_of(i["title"]), "pr": pr_for.get(n), "size": size_of(labels)})
+                  "areas": area(labels), "epic": epic_of(i["title"]), "pr": pr_for.get(n), "size": size_of(labels), "owner": owner_of(labels)})
 
 today = datetime.datetime.now(datetime.timezone.utc)
 for i in closed:
@@ -68,7 +82,7 @@ for i in closed:
     when = datetime.datetime.fromisoformat(i["closedAt"].replace("Z", "+00:00"))
     if (today - when).days > 3: continue
     cards.append({"n": i["number"], "title": i["title"], "lane": lane_of(i["title"], labels), "status": "done",
-                  "areas": area(labels), "epic": epic_of(i["title"]), "closedAt": i["closedAt"], "size": size_of(labels)})
+                  "areas": area(labels), "epic": epic_of(i["title"]), "closedAt": i["closedAt"], "size": size_of(labels), "owner": owner_of(labels)})
 
 board = {
     "repo": "tsc862-prog/eldmoor",
