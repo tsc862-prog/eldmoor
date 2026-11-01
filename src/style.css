@@ -84,3 +84,6 @@ button[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:va
 .minimap{position:absolute;right:8px;bottom:8px;width:160px;height:100px;border:2px solid var(--edge);background:#000;image-rendering:pixelated;cursor:crosshair;box-shadow:2px 2px 0 #05060c;opacity:.92}
 .screen.drag{cursor:grabbing}
 button.zoom{min-width:34px;padding-left:6px;padding-right:6px}
+/* World group: save status text next to the Save/Load/Export/Import buttons (ui/save.js) */
+.group.world .status{font-family:var(--mono);font-size:16px;color:var(--dim);margin-left:6px;white-space:nowrap}
+.group.world .status:empty{display:none}
