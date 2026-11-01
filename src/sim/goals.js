@@ -81,7 +81,7 @@ const M={
   rival:(a,t)=>{const pool=S.agents.filter(x=>x.fac!==a.fac&&alive(x)&&x.lvl>a.lvl&&x.lvl<=a.lvl+6);if(!pool.length)return null;const r=pickA(pool);
     return mk('rival',t,{target:r.name,targetId:r.id,targetFac:r.fac,fac:FAC[r.fac].name,need:r.lvl+1})},
   // A guildmate's killer who still lives; the hero takes them as a nemesis so pvp.js hunts them on sight.
-  avengeHero:(a,t)=>{const seen={};for(const x of S.agents){if(x.guild!==a.guild||!alive(x))continue;for(const id in x.nemesis){const k=byId(id);if(alive(k)&&k.fac!==a.fac)seen[id]=x.nemesis[id]}}
+  avengeHero:(a,t)=>{const seen={};for(const x of S.agents){if(!a.guild||x.guild!==a.guild||!alive(x))continue;for(const id in x.nemesis){const k=byId(id);if(alive(k)&&k.fac!==a.fac)seen[id]=x.nemesis[id]}}
     const ids=Object.keys(seen).sort((p,q)=>byId(p).lvl-byId(q).lvl);if(!ids.length)return null;const id=ids[ri(0,Math.min(1,ids.length-1))],k=byId(id);a.nemesis[k.id]=seen[id]; // the two lowest-level killers: a recruit can catch those
     return mk('avengeHero',t,{target:k.name,targetId:k.id,targetFac:k.fac,victim:seen[id]})},
 };

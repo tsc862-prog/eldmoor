@@ -15,13 +15,12 @@
 import {S,SAVE_VERSION} from './state.js';
 import {CRYPT} from '../world/map.js';
 import {GOODS,price} from '../data/items.js';
-import {GUILD_DEFS} from '../data/factions.js';
 
 export {SAVE_VERSION};
 
-// Where each kind of entity lives on S. Guilds have no id; their tag is stable.
+// Where each kind of entity lives on S. Guilds carry a numeric id (S.guildSeq) that is never reused.
 const HOMES={agents:'hero',mobs:'mob',parties:'party',encounters:'enc',GUILDS:'guild'};
-const idOf=(kind,o)=>kind==='guild'?o.tag:o.id;
+const idOf=(kind,o)=>o.id;
 // Per-key handlers for keys of S that are not just walked. A handler returning undefined
 // drops the key from the save; `reset` is what restore does to it instead.
 const KEYS={
@@ -29,7 +28,10 @@ const KEYS={
 };
 // Older versions step through here one at a time: MIGRATIONS[v] takes a version-v snapshot
 // to version v+1. Empty for now.
-const MIGRATIONS={};
+// v1 -> v2: guilds were keyed by tag; give them numeric ids (dynamic guilds, #56).
+const MIGRATIONS={1:snap=>{const ids={};(snap.GUILDS||[]).forEach((g,i)=>{ids[g.tag]=g.id=i+1;g.founded=0;g.leaderId=null;g.retired=false});snap.guildSeq=(snap.GUILDS||[]).length;
+  const walk=v=>{if(!v||typeof v!=='object')return;if(Array.isArray(v)){v.forEach(walk);return}
+    if(v.ref==='guild'&&ids[v.id]!==undefined)v.id=ids[v.id];else for(const k in v)walk(v[k])};walk(snap);return snap}};
 
 // ---- snapshot ----
 export function snapshot(){
@@ -65,7 +67,7 @@ export function restore(snap){
   // Pass 1: allocate every entity so references can be resolved in any order.
   const pools={},alloc={};
   for(const k in HOMES){const kind=HOMES[k],pool=pools[kind]=new Map();
-    alloc[k]=(snap[k]||[]).map(e=>{const o=kind==='guild'?{...(GUILD_DEFS.find(g=>g.tag===e.tag)||{})}:{};pool.set(String(idOf(kind,e)),o);return o})}
+    alloc[k]=(snap[k]||[]).map(e=>{const o={};pool.set(String(idOf(kind,e)),o);return o})}
   const stubs=new Map();
   const resolve=r=>{if(r.ref==='boss')return S.boss;
     const pool=pools[r.ref],o=pool&&pool.get(String(r.id));if(o)return o;
