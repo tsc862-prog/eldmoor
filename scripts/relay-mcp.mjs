@@ -31,8 +31,13 @@
 // touches an agent-played hero the game names; there is no file, shell or key access.
 // Verbose (RELAY_VERBOSE=1 or --verbose) appends each tool call to logs/play.jsonl.
 //
+// The DM seat (issue #66): the DM as an agent has its own tools (src/data/dm-tools.js), selected
+// with an X-Eldmoor-Role: dm header or /mcp?role=dm, plain JSON at POST /play/dm {tool, args}, and
+// one claimed seat (POST /play/claim {role:'dm', runner}); /play/health reports it as `dm`. The game
+// answers DM calls only while its DM seat is open (the DM panel's "DM agent", or play-headless --dm).
+//
 // A backend is {call(heroId,tool,args) -> Promise<result>, narrate(heroId,text),
-// info() -> {connected, heroes:[{id,name,alive}]}, links?(map)}. attachPlay() makes a browser
+// info() -> {connected, heroes:[{id,name,alive}], dm?}, links?(map, runners, dm), dmCall?(tool,args)}. attachPlay() makes a browser
 // backend (WebSocket) unless one is passed in (headless).
 import {mkdirSync, appendFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
@@ -42,16 +47,18 @@ import {z} from 'zod';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {PLAYER_TOOLS} from '../src/data/player-tools.js';
+import {DM_TOOLS} from '../src/data/dm-tools.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
 export const CLAIM_MS = 30000, LINK_MS = 20000; // a runner claim lives this long unrefreshed; a call keeps the link 'connected' this long
-export const HERO_HEADER = 'x-eldmoor-hero';
+export const HERO_HEADER = 'x-eldmoor-hero', ROLE_HEADER = 'x-eldmoor-role', DM_KEY = 'dm'; // DM_KEY: the DM seat's key in the claim and link maps
 // The runner's mind as a claim reports it (issue #97): {provider, model} with safe names, or null.
 export const runnerInfo = b => {const p = typeof b.provider === 'string' && /^[a-z][a-z0-9_-]{0,19}$/.test(b.provider) ? b.provider : null;
   const m = typeof b.model === 'string' && /^[A-Za-z0-9][\w.:\/+-]{0,99}$/.test(b.model) ? b.model : null;
   return p ? {provider: p, model: m} : null};
+export const DM_INSTRUCTIONS = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world that runs on its own. Between scenes you read the world, keep campaign notes and shape what comes next through validated world levers. You never control a hero and never decide who dies: the dice do.';
 export const INSTRUCTIONS = 'You play one hero in Eldmoor, a hardcore fantasy world that keeps running whether you act or not. One life: death is permanent. Use status and look to orient, act with one command at a time, then wait() to let game time pass. Keep a journal with journal_write.';
 
 const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(h || ''));
@@ -64,7 +71,7 @@ export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes
 
 // ---- the browser backend: one page at a time over a WebSocket, serving all its agent heroes ----
 export function browserBackend({log = () => {}} = {}) {
-  let sock = null, heroes = [], seq = 0, lastLinks = '';
+  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false;
   const waiting = new Map();
   const send = o => {if (sock && sock.readyState === 1) sock.send(JSON.stringify(o))};
   return {
@@ -79,12 +86,24 @@ export function browserBackend({log = () => {}} = {}) {
           const k = next.map(h => h.id + ':' + h.name + ':' + h.alive).join(',');
           if (k !== heroes.map(h => h.id + ':' + h.name + ':' + h.alive).join(',')) log(`[play] agent heroes: ${next.length ? next.map(h => h.name + ' #' + h.id + (h.alive ? '' : ' (dead)')).join(', ') : 'none'}`);
           heroes = next; lastLinks = '';
+          const seat = m.dm === true || !!(m.dm && m.dm.seat); if (seat !== dmSeat) log(`[play] DM seat ${seat ? 'open' : 'closed'}`); dmSeat = seat;
         } else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
       });
-      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; log('[play] game page disconnected');
+      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; log('[play] game page disconnected');
         for (const [id, w] of waiting) {clearTimeout(w.t); w.res({ok: false, error: 'The game page went away.'}); waiting.delete(id)}});
     },
-    info: () => ({connected: !!sock, heroes: heroes.slice()}),
+    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat}),
+    // A DM tool call (issue #66), answered by the page through src/sim/dmagent.js.
+    dmCall(tool, args) {
+      if (!sock || sock.readyState !== 1) return Promise.resolve({ok: false, error: 'The game is not connected. Open the game page and open the DM seat (Dungeon Master panel: "DM agent").', offline: true});
+      if (!dmSeat) return Promise.resolve({ok: false, error: 'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent").', offline: true});
+      const id = ++seq;
+      return new Promise(res => {
+        const t = setTimeout(() => {waiting.delete(id); res({ok: false, error: 'The game did not answer in time (is the tab hidden or paused?).'})}, CALL_MS);
+        waiting.set(id, {res, t});
+        send({type: 'dmcall', id, tool, args: args || {}});
+      });
+    },
     call(heroId, tool, args) {
       if (!sock || sock.readyState !== 1) return Promise.resolve({ok: false, error: 'The game is not connected. Open the game page and press "Agent" on a hero.', offline: true});
       if (!heroes.length) return Promise.resolve({ok: false, error: 'No hero is agent-played. Press "Agent" on a hero in the game.', offline: true});
@@ -99,7 +118,8 @@ export function browserBackend({log = () => {}} = {}) {
     narrate(heroId, text) {send({type: 'narrate', hero: heroId, text: String(text).slice(0, 600)})},
     // Runner link states for the page's Agent tab and Minds panel; sent only when they change.
     // runners: hero id -> {provider, model} of the runner holding it (issue #97), for the mind tag.
-    links(map, runners = {}) {const k = JSON.stringify([map, runners]); if (k === lastLinks) return; lastLinks = k; send({type: 'links', links: map, runners})},
+    // dm: the DM seat's link and runner ({seat, link, claimed, runner?}), issue #66.
+    links(map, runners = {}, dm = null) {const k = JSON.stringify([map, runners, dm]); if (k === lastLinks) return; lastLinks = k; send({type: 'links', links: map, runners, ...(dm ? {dm} : {})})},
   };
 }
 
@@ -111,6 +131,18 @@ function zodFor(spec) {
     s = s.describe(a.desc || k); if (a.optional) s = s.optional(); shape[k] = s;
   }
   return shape;
+}
+// The DM's MCP server (issue #66): the tools of src/data/dm-tools.js ('object' args: the lever params).
+export function buildDmMcp(call) {
+  const server = new McpServer({name: 'eldmoor-dm', version: '1.0.0'}, {instructions: DM_INSTRUCTIONS});
+  for (const t of DM_TOOLS) {
+    const shape = {};
+    for (const [k, a] of Object.entries(t.args || {})) {let s = a.type === 'object' ? z.record(z.string(), z.any()) : a.enum ? z.enum(a.enum) : a.type === 'integer' ? z.number().int() : a.type === 'number' ? z.number() : z.string();
+      s = s.describe(a.desc || k); if (a.optional) s = s.optional(); shape[k] = s}
+    server.registerTool(t.name, {description: t.desc, inputSchema: shape, annotations: {readOnlyHint: !t.act, destructiveHint: false, openWorldHint: false}},
+      async args => {const r = await call(t.name, args || {}); return {content: [{type: 'text', text: JSON.stringify(r)}], isError: !!(r && r.offline)}});
+  }
+  return server;
 }
 export function buildMcp(call) {
   const server = new McpServer({name: 'eldmoor-player', version: '1.1.0'}, {instructions: INSTRUCTIONS});
@@ -140,7 +172,10 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const links = () => Object.fromEntries((be.info().heroes || []).map(h => [h.id, linkOf(h.id)]));
   const runnerOf = id => {const c = claimOf(id); return c && c.info ? c.info : null};
   const runners = () => Object.fromEntries((be.info().heroes || []).map(h => [h.id, runnerOf(h.id)]).filter(e => e[1]));
-  const pushLinks = () => {if (be.links) be.links(links(), runners())};
+  // the DM seat (issue #66): open in the game?, its link and its runner's mind
+  const dmOpen = () => !!(be.info().dm);
+  const dmInfo = () => {const r = runnerOf(DM_KEY); return {seat: dmOpen(), link: linkOf(DM_KEY), claimed: !!claimOf(DM_KEY), ...(r ? {runner: r} : {})}};
+  const pushLinks = () => {if (be.links) be.links(links(), runners(), dmInfo())};
   const resolve = hero => hero != null ? hero : (defaultHero(be.info().heroes || []) || {}).id ?? null;
 
   // Every tool call goes through here: routed to one hero, counted, logged when verbose, never thrown.
@@ -154,6 +189,19 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     if (r.ok === false) stats.errors++;
     log(`[play] #${id ?? '?'} ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), hero: id, tool, args, result: r, ms: now() - t0});
+    return r;
+  }
+  // A DM tool call (issue #66): counted, logged, never thrown.
+  async function dmCall(tool, args) {
+    const t0 = now(); stats.calls++;
+    const a = act.get(DM_KEY) || {last: 0, inflight: 0}; a.inflight++; a.last = t0; act.set(DM_KEY, a); pushLinks();
+    let r;
+    try {r = be.dmCall ? await be.dmCall(tool, args) : {ok: false, error: 'This host has no DM seat.', offline: true}} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    a.inflight--; a.last = now(); pushLinks();
+    if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
+    if (r.ok === false) stats.errors++;
+    log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'} (${now() - t0} ms)`);
+    vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
     return r;
   }
   // Link states change with time alone (claims and calls age out); refresh the page now and then.
@@ -176,11 +224,23 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     if (!localHost(req.headers.host)) return send(403, {error: 'host not allowed'});
     if (req.headers.origin) return send(403, {error: 'browser origins may not drive the hero'});
     // the hero this request is for: header, then query (a body field may override below)
-    let hero = heroParam(req.headers[HERO_HEADER]); if (hero === null) hero = heroParam(new URLSearchParams(qs || '').get('hero'));
+    // the DM seat (issue #66): X-Eldmoor-Role: dm or ?role=dm (or role:'dm' in a /play/claim|release body)
+    const q = new URLSearchParams(qs || ''), role = String(req.headers[ROLE_HEADER] || q.get('role') || '').trim().toLowerCase();
+    if (role && role !== 'dm' && role !== 'hero') return send(400, {error: 'unknown role (dm or hero)'});
+    let hero = role === 'dm' ? null : heroParam(req.headers[HERO_HEADER]); if (hero === null && role !== 'dm') hero = heroParam(q.get('hero'));
     if (Number.isNaN(hero)) return send(400, {error: 'bad hero id (use the numeric id, e.g. X-Eldmoor-Hero: 12)'});
     try {
+      if (path === '/mcp' && role === 'dm') {
+        if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
+        const body = await readBody(req);
+        const mcp = buildDmMcp((tool, args) => dmCall(tool, args)), transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
+        res.on('close', () => {transport.close(); mcp.close()});
+        await mcp.connect(transport);
+        await transport.handleRequest(req, res, body);
+        return;
+      }
       if (path === '/play/health' && req.method === 'GET') {const i = be.info(), hs = i.heroes || [], d = defaultHero(hs);
-        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {})}}), ...stats})}
+        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {})}}), dm: dmInfo(), ...stats})}
       if (path === '/mcp') {
         if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
         const body = await readBody(req);
@@ -192,6 +252,20 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       }
       if (req.method !== 'POST') return send(404, {error: 'not found'});
       const b = await readBody(req) || {};
+      if (path === '/play/dm') {
+        if (typeof b.tool !== 'string' || !DM_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown DM tool'});
+        return send(200, await dmCall(b.tool, b.args && typeof b.args === 'object' ? b.args : {}))}
+      if ((path === '/play/claim' || path === '/play/release') && (role === 'dm' || b.role === 'dm')) {
+        const runner = typeof b.runner === 'string' ? b.runner.slice(0, 80) : '';
+        if (!runner) return send(400, {error: 'claim needs {role:"dm", runner}'});
+        const held = claimOf(DM_KEY);
+        if (path === '/play/release') {if (held && held.runner === runner) {claims.delete(DM_KEY); log('[play] runner let go of the DM seat'); pushLinks()} return send(200, {ok: true})}
+        if (held && held.runner !== runner) return send(409, {ok: false, error: `The DM seat already has a live runner (${held.runner}). One DM at a time.`});
+        if (!dmOpen()) return send(404, {ok: false, error: 'The DM seat is closed in this world. Open it in the game (Dungeon Master panel: "DM agent"), or start play-headless with --dm.'});
+        const info = runnerInfo(b) || (held && held.info) || null;
+        if (!held) log(`[play] runner ${runner} took the DM seat${info ? ' (' + info.provider + (info.model ? ' ' + info.model : '') + ')' : ''}`);
+        claims.set(DM_KEY, {runner, at: now(), info}); pushLinks();
+        return send(200, {ok: true, dm: dmInfo(), ...(info ? {runner: info} : {})})}
       if (b.hero !== undefined) {hero = heroParam(b.hero); if (Number.isNaN(hero)) return send(400, {error: 'bad hero id'})}
       if (path === '/play/call') {
         if (typeof b.tool !== 'string' || !PLAYER_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown tool'});
@@ -219,5 +293,5 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const claimed = id => !!claimOf(id);
   const dropRunner = prefix => {let n = 0; for (const [id, c] of claims) if (c.runner === prefix || c.runner.startsWith(prefix + ':')) {claims.delete(id); n++}
     if (n) {log(`[play] runner ${prefix} gone: ${n} claim(s) dropped`); pushLinks()} return n};
-  return {backend: be, stats, call, linkOf, links, runnerOf, claimed, dropRunner};
+  return {backend: be, stats, call, dmCall, dmInfo, linkOf, links, runnerOf, claimed, dropRunner};
 }
