@@ -1,9 +1,9 @@
 // Kragmaw the Cinder Wyrm: the world boss fight and raid mustering.
-// Tuning: hit 55-85 every 1.6s, breath 22-30 every 7s on everyone within 4.6 tiles;
+// Numbers live in data/bosses.js (template `kragmaw`): hit 55-85 every 1.6s, breath 22-30 every 7s on everyone within 4.6 tiles;
 // raids need level 14+ heroes from one faction, 5+ of them or 4 with average gear score 9+; respawn 300s after a kill.
 import {rnd,ri,pickA} from '../core/rng.js';
 import {dist} from '../world/map.js';
-import {BOSS_EPICS} from '../data/items.js';
+import {BOSSES,phaseOf} from '../data/bosses.js';
 import {S} from './state.js';
 import {log,fac} from './chronicle.js';
 import {pop} from './effects.js';
@@ -14,20 +14,25 @@ import {record,timeline} from './history.js';
 import {bossPull} from './narrator.js';
 
 const RAID_COOLDOWN=240,RAID_LVL=14,RAID_FULL=5,RAID_GEAR=9; // entry level, party size that needs no gear check, average gear score otherwise
-export function updBoss(dt){const boss=S.boss,agents=S.agents;
-  if(!boss.alive){boss.respawn-=dt;if(boss.respawn<=0){boss.alive=true;boss.hp=boss.maxhp;boss.dmg=[0,0];log({t:'Kragmaw',c:'gd'},' stirs again in its Cinderpass lair.')}return}
+// Runs the template's phases, signature moves and enrage; Kragmaw has one phase, one breath and no enrage,
+// so this plays exactly the fight the rebalance tuned. Adds are declared by templates but spawned by the crawl rework.
+const tplOf=boss=>BOSSES[boss.tpl||'kragmaw'];
+export function updBoss(dt){const boss=S.boss,agents=S.agents,T=tplOf(boss);
+  if(!boss.alive){boss.respawn-=dt;if(boss.respawn<=0){boss.alive=true;boss.hp=boss.maxhp;boss.dmg=[0,0];log({t:T.name,c:'gd'},T.wake)}return}
   const eng=agents.filter(a=>a.state==='raid'&&dist(a,boss)<5);
-  if(!eng.length){boss.hp=Math.min(boss.maxhp,boss.hp+boss.maxhp*.08*dt);if(boss.hp>=boss.maxhp)boss.dmg=[0,0];return}
+  if(!eng.length){boss.t=0;boss.hp=Math.min(boss.maxhp,boss.hp+boss.maxhp*.08*dt);if(boss.hp>=boss.maxhp)boss.dmg=[0,0];return}
   bossPull(eng); // Chronicler: scene line when a raid first engages (sim/narrator.js)
-  boss.cd-=dt;boss.breath-=dt;
-  if(boss.cd<=0){boss.cd=1.6;const t=pickA(eng);boss.face=t.x>boss.x?1:-1;const d=Math.round((55+rnd()*30)*guardMul(t));t.hp-=d;pop(t.x,t.y-.6,String(d),'#ff6a5a');if(t.hp<=0)agentDie(t,boss)}
-  if(boss.breath<=0){boss.breath=7;S.fx.push({type:'ring',x:boss.x,y:boss.y-.5,life:.6});
-    for(const t of eng){if(t.state!=='raid'||dist(t,boss)>4.6)continue;const d=Math.round(22+rnd()*8);t.hp-=d;pop(t.x,t.y-.6,String(d),'#ffa040');if(t.hp<=0)agentDie(t,boss)}}
-  if(boss.hp<=0){boss.alive=false;boss.respawn=300;const f=boss.dmg[0]>=boss.dmg[1]?0:1;S.facStats[f].bosses++;
-    log(fac(f),' slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'!');timeline('boss',fac(f),' slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'.');
-    for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')record(a,'Slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'!');
+  boss.cd-=dt;boss.breath-=dt;boss.t=(boss.t||0)+dt;
+  const ph=phaseOf(T,boss.hp/boss.maxhp),en=T.enrage&&boss.t>T.enrage.after?T.enrage.hit:1,hm=(ph.hit||1)*en,A=T.abilities[0];
+  if(ph.name!==boss.phase){if(boss.phase&&ph.say)log({t:T.name,c:'gd'},': ',ph.say);boss.phase=ph.name}
+  if(boss.cd<=0){boss.cd=T.attack.cd*(ph.cd||1);const t=pickA(eng);boss.face=t.x>boss.x?1:-1;const d=Math.round((T.attack.dmg[0]+rnd()*T.attack.dmg[1])*hm*guardMul(t));t.hp-=d;pop(t.x,t.y-.6,String(d),'#ff6a5a');if(t.hp<=0)agentDie(t,boss)}
+  if(boss.breath<=0){boss.breath=A.cd;S.fx.push({type:'ring',x:boss.x,y:boss.y-.5,life:.6});
+    for(const t of eng){if(t.state!=='raid'||dist(t,boss)>A.radius)continue;const d=Math.round((A.dmg[0]+rnd()*A.dmg[1])*hm);t.hp-=d;pop(t.x,t.y-.6,String(d),A.color||'#ffa040');if(t.hp<=0)agentDie(t,boss)}}
+  if(boss.hp<=0){boss.alive=false;boss.respawn=T.respawn;boss.t=0;boss.phase=null;const f=boss.dmg[0]>=boss.dmg[1]?0:1;S.facStats[f].bosses++;
+    log(fac(f),' slew ',{t:T.full,c:'gd'},'!');timeline('boss',fac(f),' slew ',{t:T.full,c:'gd'},'.');
+    for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')record(a,'Slew ',{t:T.full,c:'gd'},'!');
     const gs=new Set();for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')gs.add(a.guild);gs.delete(null);gs.forEach(g=>g.bosses++);
-    for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid'){gainXp(a,400);a.gold+=40;if(rnd()<.4)getEpic(a,pickA(BOSS_EPICS),'Kragmaw');goalEvent(a,'boss')}
+    for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid'){gainXp(a,T.loot.xp);a.gold+=T.loot.gold;if(rnd()<T.loot.p)getEpic(a,pickA(T.loot.epics),T.loot.src);goalEvent(a,'boss')}
     for(const a of agents)if(a.raid){a.raid=false;goHome(a)}}}
 
 export function raidCheck(dt){const boss=S.boss,agents=S.agents;
