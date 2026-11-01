@@ -11,6 +11,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {pop} from './effects.js';
 import {moveTo,agentDie} from './heroes.js';
+import {guardMul} from './gear.js';
 import {sightMul} from './weather.js';
 import {eliteSight} from './narrator.js';
 
@@ -69,7 +70,7 @@ export function updMob(m,dt){
     if(t.state!=='fight'){t.state='fight';t.target=m;t.dest=null}
     const d=dist(m,t);m.face=t.x>m.x?1:-1;
     if(d>1){moveTo(m,t.x,t.y,dt,2.1);return}m.moving=false;
-    if(m.cd<=0){m.cd=1.3;const dm=Math.round((3+m.lvl*2)*m.hit*(.8+rnd()*.4)*(CLS[t.cls].arm||1));t.hp-=dm;pop(t.x,t.y-.6,String(dm),'#ff6a5a');
+    if(m.cd<=0){m.cd=1.3;const dm=Math.round((3+m.lvl*2)*m.hit*(.8+rnd()*.4)*(CLS[t.cls].arm||1)*guardMul(t));t.hp-=dm;pop(t.x,t.y-.6,String(dm),'#ff6a5a');
       if(t.hp<=0){if(m.elite)S.eco.stats.eliteDeaths++;agentDie(t,m)}}return}
   m.hp=Math.min(m.maxhp,m.hp+m.maxhp*(m.elite?.01:.1)*dt); // elites mend slowly: hit-and-run heroes can wear one down
   if(m.dest){if(moveTo(m,m.dest.x,m.dest.y,dt,.9))m.dest=null}
