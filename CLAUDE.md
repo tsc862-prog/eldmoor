@@ -82,6 +82,7 @@ other. The rules:
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
+- `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
 
 ## Agent player
 
@@ -128,6 +129,40 @@ is silent, and scene choices time out to the scripted branch, so the world never
   the journal and a save/restore, proves a silent agent never stalls the world, and runs two
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
   session files). The mock agent's waits drive game time, so it depends on the seed only.
+
+## Fellowship (agents and Table mode)
+
+The Fellowship (#68) is five heroes (Tank, Healer, three DPS) who are the story. Its panel's
+**Minds** button cycles scripted -> relay -> agents. With **agents** every member is
+agent-played (a replacement after a death is too) and `npm run fellowship` plays all five,
+one Agent SDK session per member.
+
+- Browser: `npm run relay` (the brain relay, port 8787; it also serves the agents' MCP tools),
+  `npm run dev` (5173), found a Fellowship, set Minds to agents, then
+  `npm run fellowship -- --max-turns 6 --budget 2.00`.
+- Headless: `node scripts/play-headless.mjs --fellowship --port 8790 --warm 20 [--no-relay]`
+  then `npm run fellowship -- --url http://127.0.0.1:8790 --max-turns 2 --budget 0.50`.
+- The runner reuses the per-hero sessions (`logs/agents/<heroId>.json`, resumed next run,
+  `--new` to start over), runner settings and claims of `npm run agent`; one overall
+  `--budget`, `--max-turns` per member, `--cadence S` between turns outside scenes (a scene
+  starts the member's turn at once), `--follower-model claude-haiku-5-5` for members other
+  than the leader between scenes. Combined log `logs/fellowship.log`, per-run cost per member
+  in `logs/fellowship-runs.jsonl`.
+- Party tools (`src/data/player-tools.js`, `src/sim/council.js`): `party_say`/`party_read`
+  (party channel, Chat tab and bubble), `propose`/`vote` (job, crypt, raid, split, other; the
+  leader settles it: majority, leader breaks ties, silent members vote by reflex at the
+  timeout), leader-only `lead_to`, `leave_party` (splits off for 6 game hours, costs bonds).
+  A Crypt group or raid takes the whole Fellowship or none of it; an agent-played Fellowship
+  is asked first (a `crypt`/`raid` proposal).
+- Table mode (`src/sim/table.js`, banner `src/ui/table.js`): Crypt entry and inner chamber,
+  Kragmaw, elite/named foes, enemy ambushes, a member below 25% HP, DM checks and choice
+  scenes on their adventures, and proposals open a scene. At 1x `step()` pauses the world
+  (only the scene runs), the DM frames it, members act in initiative order (Reflex with gear)
+  with `scene_act`; an agent has `TABLE.turnMs` (7 s) per turn, then its reflex acts; scripted
+  members act at once. At 3x/8x scenes resolve instantly with a summary. The View group's
+  **Table: Auto/Off** switch (Off = Watch mode) never pauses. `npm run tablecheck` proves a
+  silent agent never stalls a scene, votes, `lead_to`, the all-or-none Crypt draft and
+  determinism without a Fellowship.
 
 ## Local models (Mixed minds, issue #97)
 
@@ -203,7 +238,9 @@ play (`npm run agent`) is still Claude-only until the provider-neutral runner la
   roles (Tank, Healer, three DPS), founding, muster, hardcore replacement, campaign log,
   `fellowshipMembers()` in slot order; `persona.js` persona sheets and backstories from
   sim facts (scripted, or enriched once through the relay) and `fellowCard` for prompts;
-  `memory.js` per-member recent memories, long-term summary and companion stances.
+  `memory.js` per-member recent memories, long-term summary and companion stances;
+  `council.js` party chat, proposals and votes, `lead_to`, splitting off and the all-or-none
+  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes.
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
@@ -211,7 +248,8 @@ play (`npm run agent`) is still Claude-only until the provider-neutral runner la
 - `src/ui/`: `panels.js` hero card, factions, chronicle, graveyard, guilds,
   top heroes, auction house, clock; `controls.js` speed, view (incl. Follow Fellowship)
   and selection; `fellowship.js` the Fellowship panel (founding, roster, sheet editor,
-  campaign log), the Memory tab and the Chronicle's "Fellowship only" filter.
+  campaign log), the Memory tab and the Chronicle's "Fellowship only" filter; `table.js` the
+  Table mode banner and the View group's Table switch.
 - `scripts/headless.mjs`: imports `src/sim/index.js` directly (no DOM stubs),
   steps the world and prints a summary from `S`.
 

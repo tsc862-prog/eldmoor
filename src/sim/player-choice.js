@@ -14,7 +14,13 @@ import {S} from './state.js';
 
 export const CHOICE_MIN=180; // game minutes a choice waits (30 real seconds at 1x)
 
+// Fellowship (#68 phase B): a choice on the Fellowship's adventure goes to the whole table
+// (sim/table.js registers the hook; it answers undefined when Table mode cannot run, e.g. at 3x).
+var fellowChoice; // hoisted: registered while the import cycle loads
+export function setFellowChoice(f){fellowChoice=f}
+
 export function playerBranch(adv,sc,a,spec){
+  if(a&&a.fellow&&fellowChoice){const t=fellowChoice(adv,sc,a,spec);if(t!==undefined)return t}
   if(!a||!a.player)return null;
   let p=adv.pick;
   // A stale wait (the hero went home mid-choice and came back) starts over; sim/player.js sets

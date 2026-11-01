@@ -223,7 +223,7 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){const c=(a.chat||[]).slice(-20).reverse();
   if(!c.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
-  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t),hn(e.from));if(e.ai)li.append(' ',aiBadge('AI',e.model?'Written by '+e.model:null));li.append(': '+e.text);if(e.model)li.append(' ',el('span','mmodel',e.model));ul.append(li)}b.append(ul)}
+  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));li.append(hn(e.from));if(e.ai)li.append(' ',aiBadge('AI',e.model?'Written by '+e.model:null));li.append(': '+e.text);if(e.model)li.append(' ',el('span','mmodel',e.model));ul.append(li)}b.append(ul)}
 
 // ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
