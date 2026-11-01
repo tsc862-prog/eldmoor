@@ -30,6 +30,7 @@ import {speak} from './chat.js';
 import {notify} from './notify.js';
 import {remember} from './memory.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
+import {score} from './abilities.js';
 import {fellows,fellowParty,campaign} from './fellowship.js';
 import {setProposeHook,castVote,resolveProp,reflexVote,propById,leaderOfF} from './council.js';
 import {setFellowChoice} from './player-choice.js';
@@ -89,7 +90,8 @@ export function reflexFor(sc,a){const k=sc.kind,mh=maxHp(a),hurt=a.hp<mh*.2,lo=l
   return null}
 
 // ---- opening a scene ----
-function initiative(L){return L.slice().sort((x,y)=>((y.abil&&y.abil.reflex)||10)-((x.abil&&x.abil.reflex)||10)||x.id-y.id)}
+// Initiative: the Reflex score with gear (abilities.js score), highest first; ties by id.
+function initiative(L){const rf=a=>score(a,'reflex')||10;return L.slice().sort((x,y)=>rf(y)-rf(x)||x.id-y.id)}
 function open(kind,title,frame,ctx={}){const F=S.fellowship;if(!F||S.table)return null;const L=fellows().filter(a=>!(kind==='site'||kind==='room')||(CRYPT.group&&CRYPT.group.mem.includes(a)));
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,kind,title:clean(title,80),frame,ids:initiative(L).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:canPause(),at:Math.round(S.gameMin)};

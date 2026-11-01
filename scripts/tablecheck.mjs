@@ -25,6 +25,7 @@ const T = await import('../src/sim/table.js');
 const C = await import('../src/sim/council.js');
 const {CRYPT, zoneFor, zonePoint, dist} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
+const {score} = await import('../src/sim/abilities.js');
 
 // ---- determinism child: a seeded world without a Fellowship, hashed ----
 if (process.argv[2] === '--hash') {
@@ -61,7 +62,7 @@ place(); let m = mobNear(); const victim = rest[0]; startFight(victim, m);
 T.tableTick(); // the trigger rules (step() runs them after the heroes move)
 let sc = S.table;
 ok(sc && sc.kind === 'rescue' && sc.pause, `a member at ${Math.round(victim.hp / maxHp(victim) * 100)}% opens a rescue scene (${sc && sc.title}), world paused`);
-ok(sc && sc.ids.length === 5 && sc.ids.every((id, i) => i === 0 || ((S.agents.find(x => x.id === sc.ids[i - 1]).abil || {}).reflex || 10) >= ((S.agents.find(x => x.id === id).abil || {}).reflex || 10)), 'initiative order follows Reflex');
+ok(sc && sc.ids.length === 5 && sc.ids.every((id, i) => i === 0 || score(S.agents.find(x => x.id === sc.ids[i - 1]), 'reflex') >= score(S.agents.find(x => x.id === id), 'reflex')), 'initiative order follows Reflex (with gear)');
 const evA = (A.playEv || []).slice(-3).map(e => e.text).join(' | ');
 ok(/TABLE \(rescue\)/.test(evA) && (A.playEv || []).some(e => e.u), 'the agent gets an urgent table event with its options');
 let st = act(A, 'status');
