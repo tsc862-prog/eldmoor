@@ -17,7 +17,7 @@ const SLOTS=[[-1.7,-.5],[1.7,-.5],[0,1.3]]; // offsets from the square spot, one
 let acc=0;
 
 // The Legends hall's score when the hero is recorded there (sim/legends.js), else a quick estimate.
-export const legendScore=a=>{const e=(S.legends||[]).find(x=>x.id===a.id);return e?e.score:a.lvl*10+(a.eliteKills||0)*3+(a.honor||0)*2+(a.gear||0)};
+export const legendScore=a=>{const e=((S.legends&&S.legends.list)||[]).find(x=>x.id===a.id);return e?e.score:a.lvl*10+(a.eliteKills||0)*3+(a.honor||0)*2+(a.gear||0)};
 const inTown=(x,y)=>CITY.some(c=>x>=c.x0-.5&&x<=c.x1+1.5&&y>=c.y0-.5&&y<=c.y1+1.5);
 const protectedGrave=g=>g.keep||(S.statues||[]).some(s=>s.id===g.id);
 

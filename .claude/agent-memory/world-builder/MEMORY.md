@@ -3,3 +3,4 @@
 - [Road encounters](project_road_encounters.md) — issue #30 table, dice, spawn spots per zone, single-line hooks, merchant gear cap, 120-min baselines
 - [World spec generator](project_world_spec.md) — map built from spec.js via gen.js; edit the spec not formulas; worldcheck snapshot hashes; reserved TESTWORLD names
 - [Townsfolk NPCs](project_townsfolk_npcs.md) — issue #28 six roles per town from spec spots; chat-rate tuning (REGREET week, GREET_P .12, gated open/close ~47/h); save-walker from-stub gotcha
+- [Rest and camp](project_rest_camp.md) — Fellowship night camps (#64): state 'camp', watches, ambush via Table openScene, tuning, gotchas
