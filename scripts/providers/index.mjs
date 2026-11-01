@@ -22,7 +22,7 @@ export function makeProviders({anthropicClient = null, model, env = process.env,
   return {
     anthropic: anthropicAdapter({client: anthropicClient, ...(model ? {defaultModel: model} : {})}),
     ollama: ollamaAdapter({url: env.OLLAMA_URL || OLLAMA_URL, defaultModel: env.OLLAMA_MODEL || OLLAMA_MODEL, fetchImpl}),
-    openai: openaiAdapter({apiKey: env.OPENAI_API_KEY || null}),
+    openai: openaiAdapter({apiKey: env.OPENAI_API_KEY || null, baseUrl: env.OPENAI_BASE_URL || undefined, defaultModel: env.OPENAI_MODEL || null, fetchImpl}),
     google: googleAdapter({apiKey: env.GOOGLE_API_KEY || null}),
   };
 }

@@ -22,12 +22,12 @@ export const bridgeStatus=()=>status; // off | connecting | connected | offline
 export const agentLink=a=>!a||!a.player?'off':status!=='connected'?status:links[a.id]||'none';
 // The mind behind a hero's runner, as its claim reports it (issue #97): {provider, model} or null.
 export const agentRunner=a=>a&&a.player&&status==='connected'&&runners[a.id]||null;
-export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':''):null};
+export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':''):null};
 // The DM seat (issue #66): open it and the page answers the DM agent's tools (sim/dmagent.js) over the
 // same WebSocket. dmLink(): 'connected' | 'waiting' | 'none' as for a hero, or the bridge's own state.
 export function dmSeatSet(on){setDmSeat(on);if(on){connect();hello()}else{hello();if(!wanted())disconnect()}}
 export const dmLink=()=>!dmSeatOn()?'off':status!=='connected'?status:dmLinkInfo&&dmLinkInfo.link||'none';
-export const dmRunnerTag=()=>{const r=dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.runner;return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':''):null};
+export const dmRunnerTag=()=>{const r=dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.runner;return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':''):null};
 export const LINK_TEXT={connected:'agent connected',waiting:'agent waiting (runner idle)',none:'no runner',connecting:'connecting to the relay…',offline:'relay offline',off:'not connected'};
 
 // Make a an agent-played hero (alongside any others) and connect.

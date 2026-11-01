@@ -20,7 +20,7 @@ import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
-import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
+import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
 import {fellowshipRunnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start all five / Stop all
 
 const $=id=>document.getElementById(id);
@@ -107,7 +107,7 @@ function topView(node){const F=S.fellowship;
   const db=el('button',null,confirmDisband?'Really disband?':'Disband');db.dataset.fact='disband';
   bar.append(fol,ai,db);node.append(bar);
   // Minds: agents -> the members' runners can be started from here (the relay runs them; --runners)
-  if(md==='agent'){const rc=fellowshipRunnerControl();if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels()),rc.firstChild);node.append(rc)}
+  if(md==='agent'){const rc=fellowshipRunnerControl();if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels(),openaiModels()),rc.firstChild);node.append(rc)}
   renderSettings(node);
   if(msg)node.append(el('div','fmsg',msg));
   if(F.enrich&&F.enrich.calls)node.append(el('div','dm','Relay writing: '+F.enrich.ok+' sheets written, '+F.enrich.fail+' kept scripted, $'+F.enrich.usd.toFixed(4)+(F.enrich.ms?' · last '+(F.enrich.ms/1000).toFixed(1)+' s':'')));

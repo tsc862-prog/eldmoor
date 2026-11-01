@@ -157,7 +157,9 @@ console.log('npm run fellowship -- --provider ollama (headless Fellowship, no AP
   const hf = await health(FB), fellows = hf.heroes.filter(x => x.fellow);
   ok(fellows.length === 5, 'five agent-played Fellowship members');
   const run = start(['scripts/fellowship.mjs', '--url', FB, '--provider', 'ollama', '--model', 'mock-tools:1b', '--max-turns', '1', '--cadence', '0', '--ollama-url', OLLAMA]);
-  let tags = 0; for (let i = 0; i < 100 && tags < 5; i++) {await sleep(100); const h = await health(FB).catch(() => null); tags = h ? h.heroes.filter(x => x.runner && x.runner.provider === 'ollama').length : 0}
+  const seen = new Set(); let tags = 0; // members claim, play one turn and release at their own pace: count every member seen tagged
+  for (let i = 0; i < 300 && seen.size < 5; i++) {await sleep(100); const h = await health(FB).catch(() => null); if (h) for (const x of h.heroes) if (x.runner && x.runner.provider === 'ollama') seen.add(x.id)}
+  tags = seen.size;
   ok(tags === 5, `every member's claim carries its local model (${tags}/5)`);
   const code = await run.done, out = run.out();
   ok(code === 0, 'the Fellowship runner finishes' + (code ? '\n' + out.slice(-3000) : ''));
