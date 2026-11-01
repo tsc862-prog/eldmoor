@@ -82,6 +82,7 @@ other. The rules:
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
+- `npm run localcheck`: the local agent runner against a mock Ollama (see "Local models").
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
 
 ## Agent player
@@ -114,8 +115,8 @@ is silent, and scene choices time out to the scripted branch, so the world never
 - Sessions: one file per hero, `logs/agents/<heroId>.json` (gitignored), with the Agent SDK
   session id, system prompt, turns, cost and the hero's runner settings (`runner: {provider,
   model, effort}`, default `anthropic` + `claude-sonnet-5-5`; flags override, then saved, then
-  env), so each hero can keep its own mind; only `anthropic` runs today (Mixed minds will add
-  others; the relay already routes by hero id only). The next run for that hero resumes it. Runners
+  env), so each hero can keep its own mind; `anthropic` (Agent SDK) and `ollama` (a local model,
+  see "Local models") run today; the relay routes by hero id only. The next run for that hero resumes it. Runners
   never write another hero's file. A file whose hero name no longer matches (a new world
   reused the id) and the old session on `--new` are moved to `logs/agents/old/`, never
   overwritten. The single `logs/agent-session.json` of #75 migrates on first run.
@@ -167,8 +168,8 @@ one Agent SDK session per member.
 ## Local models (Mixed minds, issue #97)
 
 Each AI-played hero can ask a different model. Part 1 covers single decisions (town plan, crypt
-call, fight or flee, say) and the Fellowship writing kinds (persona, backstory, memory); agent
-play (`npm run agent`) is still Claude-only until the provider-neutral runner lands.
+call, fight or flee, say) and the Fellowship writing kinds (persona, backstory, memory); part 2
+lets a local model play a hero end to end as an agent (`npm run agent`, `npm run fellowship`).
 
 - Install Ollama (https://ollama.com), then pull a model: `ollama pull qwen2.5:14b` (fits a
   24 GB GPU with room to spare; Mistral Small, Gemma or a Qwen 32B also work). Ollama listens on
@@ -193,7 +194,42 @@ play (`npm run agent`) is still Claude-only until the provider-neutral runner la
   the scripted rules. The Mind tab, Chat tab and Minds panel tag which model answered
   (for example `qwen2.5:14b · local`), and the relay log and `--verbose` log record provider and model.
 - Adapters live in `scripts/providers/` (one interface: `call({system, user, schema, maxTokens,
-  model, effort})`). OpenAI and Google are stubs that report "not configured" until built.
+  model, effort})`; Ollama also has `chat({messages, tools|format})` for the agent loop). OpenAI and
+  Google are stubs that report "not configured" until built.
+
+Local agent runner (part 2):
+
+- One hero: press **Agent** on it (or `play-headless`), then
+  `npm run agent -- --hero <name|id> --provider ollama --model qwen2.5:14b`. No key; the settings
+  are saved in the hero's session file (`runner: {provider: 'ollama', model}`), so later runs need
+  only `--hero`. `--provider anthropic` switches it back to Claude (the Claude session is kept).
+- A Fellowship: give each member its runner once with `npm run agent -- --hero X --provider ollama
+  --model M --max-turns 1`, or play all five locally with `npm run fellowship -- --provider ollama
+  --model qwen2.5:14b`. Mixed Fellowships work: members saved as `ollama` play locally, the others
+  through the Agent SDK (they still need `ANTHROPIC_API_KEY`; without one only local members play).
+- How it plays: `scripts/local-agent.mjs`, a small tool-calling loop on Ollama's `/api/chat`
+  `tools`, through the same game tools as Claude (`/play/call`), with the same system prompt,
+  turn prompts, claims, cadence, scene turns and `--max-turns`. Every call is checked against the
+  tool table first (bad names or arguments go back to the model as an error, never to the game).
+  A turn ends when the model answers in words, at `--tool-turns`, or right after a `wait` returns
+  (one last call without tools asks for the narration; small models rarely stop on their own).
+  Models without tool support switch to JSON actions (the tool list in the prompt, replies forced
+  into `{tool, args, narration}`), remembered per hero; calls written as text
+  (`<tool_call>{...}</tool_call>`) are understood.
+- Memory: the conversation is kept in the session file (`local.history`, tool results cut to 400
+  characters, oldest whole turns dropped past 24k characters; the journal is the long-term memory).
+  Context asked of Ollama: 16384 tokens (`--num-ctx`, `OLLAMA_NUM_CTX`); a different `num_ctx`
+  from the relay's decision calls makes Ollama reload the model when both use it.
+- Turn line: tool calls, seconds (and seconds in the model), model calls, tokens in/out, `$0 (local)`.
+  The claim carries `{provider, model}`, so the mind row's Agent mode, the Agent tab and the Minds
+  panel tag the runner (`qwen3.5:4b · local · live`); `/play/health` lists it as `heroes[].runner`.
+- Measured live (RTX 4090, `qwen3.5:4b`, thinking off): 0.5-1.5 s per model call alone, about
+  6-9 k input tokens per call (tools and history), 6-12 calls and 5-25 s per turn; five Fellowship
+  members at once: 1.5-3 s per call (Ollama queues them), 20-40 s per turn. A 4B model plays legal
+  moves but loops (re-reads, forgets to wait); expect better from 14B and up.
+- `npm run localcheck` (in CI) tests all of it against a mock Ollama: the loop, the JSON fallback,
+  the runner end to end on a headless world (claims, tags, session file, resume) and a local
+  Fellowship.
 
 ## Layout
 

@@ -10,10 +10,12 @@
 //   POST /play/call      {tool, args, hero?} -> result; the same tools without MCP (the stdio
 //                        MCP entry scripts/mcp-stdio.mjs and tests use it)
 //   POST /play/narrate   {text, hero?}: the runner's narration, shown in the hero's Agent tab
-//   POST /play/claim     {hero, runner}: a runner binds itself to one hero (and refreshes the
-//                        claim every few seconds); 409 when another live runner holds it
+//   POST /play/claim     {hero, runner, provider?, model?}: a runner binds itself to one hero (and
+//                        refreshes the claim every few seconds); 409 when another live runner
+//                        holds it. provider/model (issue #97) name the mind behind the runner
+//                        (anthropic + a Claude id, ollama + a local tag) so the UI can tag it
 //   POST /play/release   {hero, runner}: the runner lets go (on exit)
-//   GET  /play/health    {connected, hero, heroes:[{id,name,alive,link}], calls}
+//   GET  /play/health    {connected, hero, heroes:[{id,name,alive,link,claimed,runner?}], calls}
 //
 // Which hero: every call names its hero by id, as the X-Eldmoor-Hero header (what
 // scripts/agent-player.mjs sends on its MCP connection), a ?hero= query on the URL, or a `hero`
@@ -46,6 +48,10 @@ export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
 export const CLAIM_MS = 30000, LINK_MS = 20000; // a runner claim lives this long unrefreshed; a call keeps the link 'connected' this long
 export const HERO_HEADER = 'x-eldmoor-hero';
+// The runner's mind as a claim reports it (issue #97): {provider, model} with safe names, or null.
+export const runnerInfo = b => {const p = typeof b.provider === 'string' && /^[a-z][a-z0-9_-]{0,19}$/.test(b.provider) ? b.provider : null;
+  const m = typeof b.model === 'string' && /^[A-Za-z0-9][\w.:\/+-]{0,99}$/.test(b.model) ? b.model : null;
+  return p ? {provider: p, model: m} : null};
 export const INSTRUCTIONS = 'You play one hero in Eldmoor, a hardcore fantasy world that keeps running whether you act or not. One life: death is permanent. Use status and look to orient, act with one command at a time, then wait() to let game time pass. Keep a journal with journal_write.';
 
 const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(h || ''));
@@ -92,7 +98,8 @@ export function browserBackend({log = () => {}} = {}) {
     },
     narrate(heroId, text) {send({type: 'narrate', hero: heroId, text: String(text).slice(0, 600)})},
     // Runner link states for the page's Agent tab and Minds panel; sent only when they change.
-    links(map) {const k = JSON.stringify(map); if (k === lastLinks) return; lastLinks = k; send({type: 'links', links: map})},
+    // runners: hero id -> {provider, model} of the runner holding it (issue #97), for the mind tag.
+    links(map, runners = {}) {const k = JSON.stringify([map, runners]); if (k === lastLinks) return; lastLinks = k; send({type: 'links', links: map, runners})},
   };
 }
 
@@ -131,7 +138,9 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const linkOf = id => {const a = act.get(id), busy = a && (a.inflight > 0 || now() - a.last < LINK_MS);
     return busy ? 'connected' : claimOf(id) ? 'waiting' : 'none'};
   const links = () => Object.fromEntries((be.info().heroes || []).map(h => [h.id, linkOf(h.id)]));
-  const pushLinks = () => {if (be.links) be.links(links())};
+  const runnerOf = id => {const c = claimOf(id); return c && c.info ? c.info : null};
+  const runners = () => Object.fromEntries((be.info().heroes || []).map(h => [h.id, runnerOf(h.id)]).filter(e => e[1]));
+  const pushLinks = () => {if (be.links) be.links(links(), runners())};
   const resolve = hero => hero != null ? hero : (defaultHero(be.info().heroes || []) || {}).id ?? null;
 
   // Every tool call goes through here: routed to one hero, counted, logged when verbose, never thrown.
@@ -171,7 +180,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     if (Number.isNaN(hero)) return send(400, {error: 'bad hero id (use the numeric id, e.g. X-Eldmoor-Hero: 12)'});
     try {
       if (path === '/play/health' && req.method === 'GET') {const i = be.info(), hs = i.heroes || [], d = defaultHero(hs);
-        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => ({...h, link: linkOf(h.id)})), ...stats})}
+        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {})}}), ...stats})}
       if (path === '/mcp') {
         if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
         const body = await readBody(req);
@@ -198,11 +207,12 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         if (held && held.runner !== runner) return send(409, {ok: false, error: `Hero #${hero} already has a live agent runner (${held.runner}). One agent per hero.`});
         const h = (be.info().heroes || []).find(x => x.id === hero);
         if (!h) return send(404, {ok: false, error: `Hero #${hero} is not agent-played in this world.`});
-        if (!held) log(`[play] runner ${runner} took ${h.name} #${hero}`);
-        claims.set(hero, {runner, at: now()}); pushLinks();
-        return send(200, {ok: true, hero: h, link: linkOf(hero)})}
+        const info = runnerInfo(b) || (held && held.info) || null;
+        if (!held) log(`[play] runner ${runner} took ${h.name} #${hero}${info ? ' (' + info.provider + (info.model ? ' ' + info.model : '') + ')' : ''}`);
+        claims.set(hero, {runner, at: now(), info}); pushLinks();
+        return send(200, {ok: true, hero: h, link: linkOf(hero), ...(info ? {runner: info} : {})})}
       send(404, {error: 'not found'});
     } catch (e) {if (!res.headersSent) send(400, {error: String(e.message || e)})}
   });
-  return {backend: be, stats, call, linkOf, links};
+  return {backend: be, stats, call, linkOf, links, runnerOf};
 }
