@@ -54,6 +54,7 @@ import {goalEvent} from './goals.js';
 import {makeItem,equip,weakestSlot,slotLevel} from './gear.js';
 import {say} from './chat.js';
 import {d20} from './narrator.js';
+import {dmlog} from './dmlog.js';
 
 // ---- knobs ----
 export const K={
@@ -112,7 +113,9 @@ export function setDmPolicy(p){policy=p||SCRIPTED_DM}
 // Ask the policy; fall back to the scripted DM when the answer is missing or not legal.
 function slot(name,legal,...args){let v;
   if(policy!==SCRIPTED_DM&&typeof policy[name]==='function'){try{v=policy[name](...args)}catch(e){v=undefined}
-    if(v!==undefined&&legal(v))return v;stats().fallback++}
+    if(v!==undefined&&legal(v))return v;stats().fallback++;
+    const ad=args[0]&&args[0].tpl?args[0]:null,hh=args[0]&&args[0].kind==='hero'?args[0]:null;
+    dmlog('fallback',ad,['The DM’s ',name,' answer was ',v===undefined?'missing':'illegal',': the scripted DM answered instead.'],{slot:name,got:v===undefined?'nothing':String(typeof v==='object'?JSON.stringify(v):v).slice(0,80)},{heroes:hh?[hh.id]:undefined})}
   return SCRIPTED_DM[name](...args)}
 const COMPS=Object.keys(D.COMPLICATIONS);
 
@@ -276,9 +279,20 @@ export function dmDepart(a,c){ensure();
     const open=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&fits(h,a,mem));
     const h=slot('pickHook',v=>v===null||open.includes(v),a,open,mem);if(!h){bump(dp,open.length?'declined':'nofit');return false}
     bump(dp,'took');
-    adv=start(h,a,mem)}
+    const why=pickWhy(a,open,mem,h);
+    adv=start(h,a,mem);
+    dmlog('pick',adv,[a,mem.length>1?'’s party':'',' took ',gd(adv.title),' at '+c.name+' ('+why.reason+')'],why.detail)}
   const sc=adv.scenes[adv.idx];a.zone=sc&&sc.z!=null?sc.z:adv.z;a.state='travel';a.dest=null;adv.stage='go';
   say(a,'depart',{zone:ZONES[a.zone]});return true}
+
+// Why the pick went the way it did: the scripted DM's weights (no dice), for the DM log.
+function pickWhy(a,open,mem,h){const bold=tm(a,'bold')>1||tm(a,'retreat')<1,careful=tm(a,'retreat')>1;
+  const w=x=>{const f=fightShare(x.tpl);return bold?1+f*2:careful?1+(1-f)*2:1};
+  const personal=h.for!=null&&mem.some(b=>b.id===h.for),temper=bold?'bold':careful?'careful':'steady';
+  const rows=open.map(x=>({hook:x.id,tpl:x.tpl,src:x.src,fightShare:Math.round(fightShare(x.tpl)*100)/100,weight:Math.round(w(x)*100)/100,taken:x===h}));
+  return {reason:personal?'a personal hook for the party':temper+' temper, weight '+Math.round(w(h)*100)/100+' of '+Math.round(open.reduce((s,x)=>s+w(x),0)*100)/100,
+    detail:{hook:h.id,tpl:h.tpl,src:h.src,personal,temper,fitting:rows.length,candidates:rows,leader:a.id,party:mem.map(b=>b.id),levels:mem.map(b=>b.lvl).join(','),
+      rule:personal?'personal hooks (oath, follow-up) first':'weights: bold or reckless leaders favour fights (1+2f), careful ones favour roads and talk (1+2(1-f)); f = share of fight scenes'}}}
 
 // The adventure this hero drives right now, or null (followers, heroes without one).
 function driving(a){if(!a.adv)return null;const adv=advOf(a.adv);
@@ -327,15 +341,32 @@ export function dmHunt(a,dt){const adv=driving(a);if(!adv)return false;
 // Roll for the party: d20 + the best member's level/3 + class bonus, vs region DC + scene.
 function roll(adv,a,sc){const mem=[a,...partyMates(a).filter(b=>dist(a,b)<10)],kind=sc.check;
   let mod=0,by=a;for(const b of mem){const m=Math.floor(b.lvl/3)+((D.CHECKS[kind]||{})[b.cls]||0);if(m>mod){mod=m;by=b}}
-  let dc=zoneDc(sc.z!=null?sc.z:adv.z)+sc.dc;if(kind==='social'&&adv.flags.hostile){dc+=D.COMPLICATIONS.hostile.dc;adv.flags.hostile=0}
-  if(adv.flags.boon){dc+=D.COMPLICATIONS.boon.dc;adv.flags.boon=0}
+  const zdc=zoneDc(sc.z!=null?sc.z:adv.z);let dc=zdc+sc.dc,hostile=0,boon=0;if(kind==='social'&&adv.flags.hostile){hostile=D.COMPLICATIONS.hostile.dc;dc+=hostile;adv.flags.hostile=0}
+  if(adv.flags.boon){boon=D.COMPLICATIONS.boon.dc;dc+=boon;adv.flags.boon=0}
   const r=d20(),ok=r===20||(r!==1&&r+mod>=dc);stats().checks[ok?0:1]++;
+  const cb=(D.CHECKS[kind]||{})[by.cls]||0,total=r+mod;
+  lastRoll=dmlog('roll',adv,[by,' rolls '+(kind||'a')+' check: d20 '+r+(mod?'+'+mod:'')+' = '+total+' vs DC '+dc+' - '+(r===20?'natural 20':r===1?'natural 1':ok?'pass':'fail')],
+    {scene:adv.idx+1,sceneType:sc.type,check:kind,
+     dc:{base:10,region:zdc-10,regionName:ZONES[sc.z!=null?sc.z:adv.z],scene:sc.dc,hostile,boon,total:dc},
+     modifier:{level:Math.floor(by.lvl/3),cls:cb,total:mod,by:by.id,byName:by.name,byClass:by.cls,pool:mem.length+' within reach'},
+     d20:r,total,pass:ok,nat:r===20?20:r===1?1:null,sceneIdx:adv.idx},{});
   return {r,mod,dc,ok,nat:r,by}}
+let lastRoll=null; // the newest roll entry, so the scene's frame text can join it
 const rollStr=x=>'rolls '+x.r+(x.mod?'+'+x.mod:'')+' vs '+x.dc;
+
+// The DM's framing of a scene (policy slot). The text joins the scene's roll entry when it has
+// one (the roll comes first in arrive); otherwise it is its own log entry.
+function frame(adv,sc,C){const p=slot('frameScene',isParts,adv,sc,C),text=plain(p),
+  loc=sc.at?{x:Math.round(sc.at.x),y:Math.round(sc.at.y),zone:ZONES[sc.z]||null}:null;
+  if(lastRoll&&lastRoll.advId===adv.id&&lastRoll.detail.sceneIdx===adv.idx&&lastRoll.detail.frame==null){lastRoll.detail.frame=text;lastRoll.detail.location=loc;return p}
+  dmlog('frame',adv,['Scene '+(adv.idx+1)+' ('+sc.type+'): ',...p],{scene:adv.idx+1,sceneType:sc.type,text,location:loc,check:sc.check||'none'});return p}
 
 // Apply what a roll brought. Returns the words to add to the scene's line.
 function complicate(adv,a,sc,x){
   const k=slot('chooseComplication',v=>v===null||COMPS.includes(v),adv,sc,x);if(!k)return [];bump(stats().comps,k);const C=D.COMPLICATIONS[k];
+  dmlog('complication',adv,['Scene '+(adv.idx+1)+': '+k+' ('+(x.nat===20?'natural 20':'the roll failed')+')'],{complication:k,scene:adv.idx+1,sceneType:sc.type,
+    why:x.nat===20?'natural 20 on a '+sc.type+' scene: a boon':'failed roll ('+(x.r+x.mod)+' vs DC '+x.dc+'): drawn by weight from this scene type’s complications',
+    options:D.SCENE_TYPES[sc.type].complications.join(', ')||'none'});
   switch(k){
   case 'wound':adv.flags.wound++;for(const b of [a,...partyMates(a)]){if(dist(a,b)>10)continue;const d=Math.round(maxHp(b)*C.hp);b.hp=Math.max(1,b.hp-d);pop(b.x,b.y-.6,String(d),'#ff6a5a')}break;
   case 'late':adv.flags.late++;adv.stage='wait';adv.waitKind='late';adv.wait=ri(...C.wait);break;
@@ -349,10 +380,10 @@ function complicate(adv,a,sc,x){
 function arrive(adv,a,sc){const S2=spec(adv,sc),C=ctx(adv);
   switch(sc.type){
   case 'travel':case 'social':case 'trap':{
-    if(!sc.check){note(adv,plain(slot('frameScene',isParts,adv,sc,C))+'.');next(adv,a);return}
+    if(!sc.check){note(adv,plain(frame(adv,sc,C))+'.');next(adv,a);return}
     const x=roll(adv,a,sc);sc.res=x.ok?'pass':'fail';
     const tail=complicate(adv,a,sc,x);
-    beat(adv,false,...slot('frameScene',isParts,adv,sc,C),'... ',dmS(rollStr(x)),'. ',...fill(x.ok?S2.pass:S2.fail,C),...tail);
+    beat(adv,false,...frame(adv,sc,C),'... ',dmS(rollStr(x)),'. ',...fill(x.ok?S2.pass:S2.fail,C),...tail);
     if(x.ok)reward(adv,a,'check');
     if(x.ok)adv.pass++;else adv.fail++;
     if(liveFoes(adv).length){adv.stage='fight';return}
@@ -366,11 +397,15 @@ function arrive(adv,a,sc){const S2=spec(adv,sc),C=ctx(adv);
     const x=roll(adv,a,sc);sc.pre=x.ok?'pass':'fail';
     if(x.ok){for(const m of liveFoes(adv))m.hp=Math.round(m.hp*K.FIRST)}
     const tail=complicate(adv,a,sc,x);
-    beat(adv,false,...slot('frameScene',isParts,adv,sc,C),'... ',dmS(rollStr(x)),'. ',...fill(x.ok?S2.pass:S2.fail,C),...tail);
+    beat(adv,false,...frame(adv,sc,C),'... ',dmS(rollStr(x)),'. ',...fill(x.ok?S2.pass:S2.fail,C),...tail);
     adv.stage='fight';return}
-  case 'rest':{adv.stage='wait';adv.waitKind='rest';adv.wait=ri(...K.REST_T);note(adv,plain(slot('frameScene',isParts,adv,sc,C))+'.');
+  case 'rest':{adv.stage='wait';adv.waitKind='rest';adv.wait=ri(...K.REST_T);note(adv,plain(frame(adv,sc,C))+'.');
     const mem=members(adv);if(mem.length>1)bondEvent(a,'party',mem);return}
   case 'choice':{const br=slot('resolveBranch',v=>v==='a'||v==='b',adv,sc);const B=S2[br];sc.res=br;
+    {const L=hero(adv.lead),hurt=members(adv).some(b=>b.hp<maxHp(b)*.6)||adv.flags.wound>0,bold=!!L&&(tm(L,'bold')>1||tm(L,'retreat')<1);
+     dmlog('branch',adv,['Choice at scene '+(adv.idx+1)+': '+B.label+' (the '+(br==='a'?'bold':'careful')+' road)'],{scene:adv.idx+1,a:S2.a.label,b:S2.b.label,taken:br,takenLabel:B.label,
+       why:br==='a'?(bold&&!hurt?'bold leader and nobody hurt':'coin flip'):hurt?'party is hurt or carrying wounds':bold?'bold leader':(L&&tm(L,'retreat')>1)?'careful leader':'coin flip',
+       hurt,boldLeader:bold})}
     beat(adv,false,...fill(S2.frame,C),'. ',...fill(B.line,C));note(adv,'Chose: '+B.label+'.');
     adv.scenes.splice(adv.idx+1,0,mkScene(B.scene,sc.k,br,place(adv,B.scene.at,sc.at||{x:a.x,y:a.y},a)));
     next(adv,a);return}}}
@@ -433,6 +468,11 @@ function finish(adv,outcome,why){if(adv.phase!=='active')return;outcome=outcome|
     record(b,(outcome==='success'?'Saw through ':'Half finished ')+adv.title+' for '+g+'g.');}
   else for(const b of mem)record(b,'Failed at '+adv.title+'.');
   if(k>0){pay.push(' ',gold(gp+'g'),mem.length>1?' each':'');if(item)pay.push(', and ',L,' takes ',{t:item.name,c:'gd'});pay.push('.')}
+  {const detail={outcome,why:why||'judged',passed:adv.pass,failed:adv.fail,late:adv.flags.late,scenes:adv.idx+'/'+adv.scenes.length,tpl:adv.tpl,days:Math.round((S.gameMin-adv.started)/144)/10,
+     rule:why?'ended early':'final roll '+((adv.scenes.filter(s=>s.final).pop()||{}).res==='pass'?'passed':'missed')+'; failed rolls + lost days = '+(adv.fail+adv.flags.late)+' (3 or more drags the result down a step)'};
+   if(k>0){detail.goldEach=gp;detail.honor=outcome==='success'?T.pay.honor:0;detail.item=item?item.name:null}
+   const ttl=gd(adv.title);
+   dmlog(k>0?'payoff':why==='abandoned'?'abandon':'fail',adv,k>0?[ttl,' ended in '+outcome+(gp?' (+'+gp+'g'+(mem.length>1?' each':'')+')':'')+'.']:[ttl,' failed: '+(why||'the rolls went against the party')+'.'],detail,{heroes:adv.mem.slice()})}
   if(key)beat(adv,why==='death'||adv.data.eliteId!=null,...fill(pickA(D.OUTCOME[key]),C),...pay);
   if(outcome!=='failure'&&mem.length>1)bondEvent(mem[0],'party',mem);
   // oaths: an heirloom hunt may turn up the heirloom itself; anyone may count the deed
@@ -465,17 +505,26 @@ export function dmTick(dt){ensure();S.dmClock=(S.dmClock||0)+dt;S.dmT+=dt;if(S.d
   for(const m of S.mobs)if(m.adv!=null&&!m.gone&&!m.alive){m.gone=true}
   S.dmHookT-=step;if(S.dmHookT<=0){S.dmHookT=K.REFILL;refill()}}
 
-function refill(){
+function refill(){const gone={};
   for(let i=S.adventures.length-1;i>=0;i--){const h=S.adventures[i];
-    if(h.phase==='open'&&(S.gameMin>h.until||(h.for!=null&&!alive(hero(h.for)))))S.adventures.splice(i,1);
+    if(h.phase==='open'&&(S.gameMin>h.until||(h.for!=null&&!alive(hero(h.for))))){(gone[h.town]||(gone[h.town]=[])).push(hookRow(h,S.gameMin>h.until?'expired':'oath-bearer died'));S.adventures.splice(i,1)}
     else if(h.phase==='done'&&S.gameMin-h.ended>K.GONE)S.adventures.splice(i,1)}
   const done=S.adventures.filter(h=>h.phase==='done');while(done.length>K.KEEP_DONE){const h=done.shift();S.adventures.splice(S.adventures.indexOf(h),1)}
   // Posted jobs (not personal ones): up to HOOKS per town. If every posted job is tied to one
   // region and none is open-ended, the oldest is taken down for a fresh townsfolk job, so a
   // party of any level always has something on the board.
   for(const c of CITY){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null);
-    if(posted.length<K.HOOKS){makeHook(c);continue}
-    if(!posted.some(h=>h.zone==null)){S.adventures.splice(S.adventures.indexOf(posted[0]),1);townHook(c)}}}
+    if(posted.length<K.HOOKS){boardLog(c,makeHook(c),gone[c.name]||[]);continue}
+    if(!posted.some(h=>h.zone==null)){S.adventures.splice(S.adventures.indexOf(posted[0]),1);
+      boardLog(c,townHook(c),(gone[c.name]||[]).concat(hookRow(posted[0],'every posted job was tied to one region: oldest taken down')))}}}
+const hookRow=(h,why)=>({id:h.id,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone],for:h.for==null?null:h.for,why});
+// One log entry per town per refresh: what went up on the board, what came down, what stands.
+function boardLog(c,h,removed){const open=S.adventures.filter(x=>x.phase==='open'&&x.town===c.name),who=h.for!=null?hero(h.for):null;
+  const why=h.src==='death'?'a hero of this town fell recently':h.src==='remnant'?'a road encounter left a remnant':h.src==='oath'?'a hero in town has a matching oath':
+    h.src==='follow'?'follow-up to a finished job':h.data.eliteId!=null?'a living elite is about':'townsfolk request or gate writ, template drawn at random';
+  dmlog('hooks',null,['Board at '+c.name+': '+h.tpl+' posted by '+(h.giver?h.giver.name:'the gate')+' ('+h.src+')',...(who?[' for ',who]:[]),
+    removed.length?'; '+removed.length+' taken down.':'.'],
+    {added:[hookRow(h,'')],removed,board:open.map(x=>x.tpl+'/'+x.src).join(', '),open:open.length,why},{town:c.name,heroes:who?[who.id]:[]})}
 
 // Remember where road encounters ended, so a robbed wagon can become an investigation.
 function watchWorld(){const seen=S.dmSeen.enc,E=S.encounters||[],now={};
