@@ -1,11 +1,18 @@
 ---
 name: mixed-minds
-description: Mixed minds (#97) part 1 - provider adapters in scripts/providers/, Ollama protocol and pitfalls (think:false), per-hero a.brainCfg, relay request/health fields, local timeouts, measured local latency
+description: Mixed minds (#97) parts 1+2 - provider adapters, Ollama pitfalls (think:false), a.brainCfg, relay fields, local timeouts; part 2 local agent runner loop, claim runner tags, session history, measured local latency/tokens
 metadata:
   type: project
 ---
 
-Part 1 built 2026-11-01 on branch ai/mixed-minds-1 (PR "Mixed minds part 1"). Part 2 (provider-neutral agent runner) waits on Fellowship phase B (table runner); do not start it before that merges.
+Part 1 built 2026-11-01 on branch ai/mixed-minds-1 (PR #108, merged). Part 2 built 2026-11-01 on branch ai/mixed-minds-2 (PR "Part of #97").
+
+Part 2 (local agent runner):
+- scripts/local-agent.mjs localTurn({chat, call, sess, prompt, model, toolTurns, on, opts}): Ollama /api/chat with `tools` (PLAYER_TOOLS -> function tools), cleanArgs validates/coerces against the tool table (rejections go back as tool results), parseTextCall for <tool_call> text, JSON-action fallback (e.noTools from 400 "does not support tools" -> format schema {tool,args,narration}, tool 'end'), endOnWait: after a successful wait one tools-free call gets the narration (4B model never stopped on its own: every turn hit the cap before). History in sess.local {mode, history (turn:1 marks turn start), tokensIn/Out, seconds, dropped}; tool results kept 400 chars, assistant 800, trim oldest whole turns past 24k chars. num_ctx 16384 default.
+- ollama adapter chat() added. agent-player: RUNNER_PROVIDERS ['anthropic','ollama'], runLocal(); a claude-* model is dropped when switching to ollama. fellowship.mjs: per-member local path (localMemberTurn), no-key start allowed (only local members play), skip() records skipped members (fixed a re-add-every-second loop for unsupported providers).
+- Claims carry {provider, model} (runnerInfo validation); /play/health heroes get runner + claimed; links WS message gets `runners` map; UI runnerTag(a) in player-bridge -> mind row Agent mode, Agent tab, Minds panel. pickHero uses `claimed` (a just-released runner still shows link 'connected' for LINK_MS 20 s and was wrongly refused).
+- AGENT_LOGS env redirects logs/agents (tests). npm run localcheck (mock Ollama models mock-tools/mock-json/mock-text, spawns play-headless + runners as children, in CI).
+- Measured live (RTX 4090, qwen3.5:4b, Ollama 0.40.13, which lists capabilities incl. tools): single hero 0.5-1.5 s per call, 6-9k input tokens per call, 6-12 calls / 5-25 s per turn; 5 Fellowship members concurrently 1.5-3 s per call, 20-40 s per turn, ~55-68k tokens in per member turn. Play quality: legal but loopy (re-reads, move_to then look without wait).
 
 - Adapters: scripts/providers/{anthropic,ollama,openai,google,index}.mjs, one interface {name, local, configured(), status(), call({system,user,schema,maxTokens,model,effort,signal,timeoutMs}) -> {text,usage:{in,out,cost},model,ms}}; errors carry .raw and .result (usage) so the relay still counts tokens on refusal/cut-off. anthropic.mjs owns DEFAULT_MODEL/PRICES/costOf (relay.mjs re-exports them; agent-player imports PRICES from relay). openai/google are stubs ("not configured" / "not built yet") with TODOs: prices must be checked live, never from memory.
 - Relay: request may add provider/model/effort (checkRequest: provider in PROVIDERS, model /^[A-Za-z0-9][\w.:\/+-]{0,99}$/, effort low|medium|high). Reply and error replies carry provider+model. Log line `[relay] kind hero provider/model in= out= $ ms`; verbose records provider, model. /health adds byProvider stats, providers:{name:{ok,models,local,error?}} (Ollama via /api/tags, cached 10 s, 1.5 s timeout) and localTimeout. LOCAL_TIMEOUT decide 8000 / write max(30000, KIND_TIMEOUT) (env RELAY_LOCAL_TIMEOUT, RELAY_LOCAL_WRITE_TIMEOUT). Relay now starts without ANTHROPIC_API_KEY (warns; Claude calls fail -> scripted).

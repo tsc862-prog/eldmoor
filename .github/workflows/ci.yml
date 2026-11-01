@@ -22,6 +22,8 @@ jobs:
         run: npm run worldcheck
       - name: Save/load round trip
         run: npm run savecheck
+      - name: Local agent runner (mock Ollama)
+        run: npm run localcheck
       - name: Headless sim (10 game-hours)
         run: npm run sim -- 10 | tee sim.txt
       - name: Sanity-check the sim summary

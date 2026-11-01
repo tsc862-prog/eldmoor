@@ -8,7 +8,7 @@
 // 15 s while a row is shown). The setting is a.brainCfg = {provider, model} (sim/brain.js setMind), saved
 // with the world; the brain client sends it with each request for that hero.
 import {CFG,enableBrain,disableBrain,setMind,mindCfg,MIND_PROVIDERS,PROVIDER_LABEL,LOCAL_PROVIDERS} from '../sim/brain.js';
-import {agentOn,agentOff} from './player-bridge.js';
+import {agentOn,agentOff,agentLink,runnerTag,LINK_TEXT} from './player-bridge.js';
 import {S} from '../sim/index.js';
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -21,7 +21,7 @@ const provs=()=>health&&health.providers||null;
 const byHid=id=>S.agents.find(x=>x.id==id);
 const modeOf=a=>a.player?'agent':a.brain?'ai':'scripted';
 
-export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ver;
+export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ver+(a.player?':'+agentLink(a)+':'+runnerTag(a):'');
 
 export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   const row=el('div','mindrow'),mode=modeOf(a);
@@ -42,6 +42,9 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
     row.append(ps,ms);
     const note=!P?'relay not answering':st&&!st.ok?String(st.error||'not available'):LOCAL_PROVIDERS[c.provider]?(list.length?'local · free':'no models pulled (ollama pull qwen2.5:14b)'):'';
     if(note)row.append(el('span','dm mnote',note))}
+  // Agent: which runner holds the hero and which model it plays (from the runner's claim, issue #97)
+  if(mode==='agent'){const k=agentLink(a),tag=runnerTag(a),n=el('span','dm mnote',tag?tag+' · '+(k==='connected'?'live':'idle'):LINK_TEXT[k]||k);
+    n.title=tag?'Agent runner model: '+tag:'Start a runner: npm run agent -- --hero '+a.name+' (add --provider ollama --model <tag> for a local model)';row.append(n)}
   node.append(row)}
 
 export function mindAct(t){if(!t||!t.dataset||!t.dataset.mmode)return false;

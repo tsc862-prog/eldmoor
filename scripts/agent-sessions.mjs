@@ -6,11 +6,11 @@
 // rather than overwritten. The single logs/agent-session.json of #75 is migrated on first use.
 // Plain Node, no SDK import (scripts/playcheck.mjs tests it).
 import {existsSync, readFileSync, writeFileSync, mkdirSync, renameSync} from 'node:fs';
-import {dirname, join} from 'node:path';
+import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const LOGS = join(ROOT, 'logs');
+export const LOGS = process.env.AGENT_LOGS ? resolve(process.env.AGENT_LOGS) : join(ROOT, 'logs'); // AGENT_LOGS: tests keep their sessions elsewhere
 export const sessionDir = (logs = LOGS) => join(logs, 'agents');
 export const sessionPath = (heroId, logs = LOGS) => join(sessionDir(logs), Math.floor(Number(heroId)) + '.json');
 const readJson = f => {try {return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null} catch {return null}};
@@ -40,9 +40,9 @@ export function loadSession(heroId, heroName, fresh, {logs = LOGS, startNew = fa
   return {sess: fresh(), note};
 }
 // Per-hero runner settings, kept in the session file as sess.runner = {provider, model, effort}.
-// Each hero can have its own mind: today only the 'anthropic' runner exists (scripts/agent-player.mjs,
-// Claude Agent SDK), but the relay routes by hero id alone and never assumes a model or an SDK, so
-// a runner for another provider can read the same file later. Precedence: command-line overrides,
+// Each hero can have its own mind: 'anthropic' (Claude Agent SDK) and 'ollama' (a local model through
+// scripts/local-agent.mjs) both run in scripts/agent-player.mjs and scripts/fellowship.mjs; the relay routes by hero id alone and never assumes a model or an SDK, so
+// other providers can read the same file later. Precedence: command-line overrides,
 // then the hero's saved settings, then the defaults (environment / built-in). Returns the settings
 // and whether they changed what was saved.
 export const DEFAULT_PROVIDER = 'anthropic';
@@ -59,15 +59,18 @@ export function runnerSettings(sess, overrides = {}, defaults = {}) {
 // Which hero a runner takes, from /play/health's heroes ([{id,name,alive,link}]):
 // --hero NAME|ID names one (case-insensitive name, or id); without it the first living hero
 // with no live runner (link 'none'). Returns {hero} or {error} with the list to choose from.
+// Held by a live runner: the claim decides when health reports it (a runner that just let go still
+// shows 'connected' for a few seconds after its last call, and may start again at once).
+const busy = h => h.claimed != null ? !!h.claimed || h.link === 'waiting' : !!h.link && h.link !== 'none';
 export function pickHero(heroes, want) {
   const list = (heroes || []).map(h => `${h.name} #${h.id}${h.alive ? '' : ' (dead)'}: ${h.link === 'none' ? 'free' : 'runner ' + h.link}`).join('; ') || 'none';
   if (want != null && String(want).trim()) {
     const w = String(want).trim().toLowerCase(), h = (heroes || []).find(x => String(x.id) === w || x.name.toLowerCase() === w);
     if (!h) return {error: `No agent-played hero "${want}". Agent-played heroes: ${list}. Press "Agent" on the hero in the game first.`};
-    if (h.link && h.link !== 'none') return {error: `${h.name} #${h.id} already has a live agent runner (${h.link}). One agent per hero.`};
+    if (busy(h)) return {error: `${h.name} #${h.id} already has a live agent runner (${h.link}). One agent per hero.`};
     return {hero: h};
   }
-  const h = (heroes || []).find(x => x.alive && (!x.link || x.link === 'none'));
+  const h = (heroes || []).find(x => x.alive && !busy(x));
   return h ? {hero: h} : {error: `No free agent-played hero (${list}). Press "Agent" on another hero, or name one with --hero.`};
 }
 export function saveSession(sess, extra = {}, logs = LOGS) {writeAtomic(sessionPath(sess.heroId, logs), {...sess, ...extra, updated: new Date().toISOString()})}
