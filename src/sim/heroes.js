@@ -90,6 +90,7 @@ export function fall(a,cause){
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
 
+const GUILD_GRUDGE_LVL=12,RAID_FLEE=.15;
 export function agentDie(a,killer){
   const lv={t:'(level '+a.lvl+')',c:'dm'};
   record(a,'Fell at level '+a.lvl+', slain by ',killer.kind==='hero'?killer:killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+MOBS[killer.type].name,'.');
@@ -103,7 +104,7 @@ export function agentDie(a,killer){
     if(killer.nemesis[a.id]){log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
     else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&x.guild===a.guild);
-    mates.forEach(x=>x.nemesis[killer.id]=a.name);
+    mates.forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran swears the whole guild; lesser deaths bind just their party
     inheritGrudge(a,killer);
     goalEvent(killer,'slay',a);
     if(mates.length&&a.lvl>=4)log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
@@ -193,7 +194,7 @@ export function updAgent(a,dt){
     if(a.cd<=0){strike(a,b);a.cd=1.1}
     // Caution: break off at 20% HP, or at 50% when outnumbered (helpers on you, none on your foe).
     const outn=S.agents.some(g=>g.state==='assist'&&g.target===a)&&!S.agents.some(g=>g.state==='assist'&&g.target===b);
-    if(a.state==='duel'&&a.hp<mh*(outn?.5:.2*tm(a,'flee'))&&rnd()<dt*(outn?1.5:.5)){b.state='hunt';b.target=null;regroup(a,b,'return',3);
+    if(a.state==='duel'&&a.hp<mh*(outn?.5:.3*tm(a,'flee'))&&rnd()<dt*1.5){b.state='hunt';b.target=null;regroup(a,b,'return',3);
       if(rnd()<.5)log(a,' fled from ',b,' in ',ZONES[zoneAt(a.x,a.y)],'.')}
     break}
   case 'assist':{const b=a.target;if(!b||b.state!=='duel'){regroup(a,b&&b.state!=='dead'?b:null,a.regNext);break}
@@ -203,6 +204,7 @@ export function updAgent(a,dt){
   case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx;
     moveTo(a,CRYPT.x+(k%3-1)*.9,CRYPT.y+.6+Math.floor(k/3)*.7,dt,2.6);break}
   case 'raid':{if(!boss.alive){a.raid=false;goHome(a);break}
+    if(a.hp<mh*RAID_FLEE&&rnd()<dt*2){a.raid=false;a.target=null;pop(a.x,a.y-.6,'RETREAT','#ffd070');log(a,' broke from the raid on ',{t:'Kragmaw',c:'gd'},' wounded and fled the lair.');goHome(a);break} // live to raid again
     const idx=a.raidIdx,ang=Math.PI*(.55+idx*.18),rr=Math.min(CLS[a.cls].range+.9,3.2);
     const px=boss.x+Math.cos(ang)*rr*-1,py=boss.y-.3+Math.sin(ang)*rr*(idx%2?1:-1)*.8;
     if(dist(a,boss)>rr+.6){moveTo(a,px,py,dt,2.4);break}a.moving=false;a.face=boss.x>a.x?1:-1;
