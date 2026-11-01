@@ -9,6 +9,7 @@ import {MOBS,COUNTS,ELITES,ECO} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
+import {timeline} from './history.js';
 import {pop} from './effects.js';
 import {moveTo,agentDie} from './heroes.js';
 import {guardMul} from './gear.js';
@@ -35,7 +36,7 @@ export function spawnAll(){for(const t in COUNTS)for(let i=0;i<COUNTS[t];i++)spa
   S.eco={t:ECO.tick,eliteT:60,empty:[false,false,false,false],eliteNext:[0,0,0,0],stats:{extra:0,culled:0,eliteSpawns:0,eliteKills:0,eliteDeaths:0}}}
 
 function spawnElite(z){const E=ELITES[z],m=spawnMob(E.base,E);S.eco.stats.eliteSpawns++;
-  log('Rumours spread of ',{t:m.name,c:'gd'},', ',E.title,', stalking ',ZONES[z],'.')}
+  log('Rumours spread of ',{t:m.name,c:'gd'},', ',E.title,', stalking ',ZONES[z],'.');timeline('elite',{t:m.name,c:'gd'},', '+E.title+', began stalking '+ZONES[z]+'.')}
 
 // Slide a mob's home toward the nearest road tile of its zone, never across a zone border.
 function driftHome(m,z){const R=ZROADS[z];if(!R.length)return;let best=null,bd=1e9;

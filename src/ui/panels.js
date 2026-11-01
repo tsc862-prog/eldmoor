@@ -17,6 +17,8 @@ import {S,clockStr,maxHp,xpNeed,atkOf,onLog,onMarketTick} from '../sim/index.js'
 import {cam} from '../render/draw.js';
 import {weatherName} from '../sim/weather.js';
 import {friendsOf} from '../sim/bonds.js';
+import {biography} from './biography.js';
+import {initTimeline} from './timeline.js';
 import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
 import {enableBrain,disableBrain,brainStatus} from '../sim/brain.js';
 
@@ -56,7 +58,7 @@ export function doing(a){const c=CITY[a.fac].name,zn=ZONES[a.zone];
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
 // ---- hero dossier ----
-const TABS=[['stats','Stats'],['log','Log'],['gear','Gear'],['party','Party'],['chat','Chat']];
+const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['gear','Gear'],['party','Party'],['chat','Chat']];
 const SLOTS=[['head','Head'],['chest','Chest'],['hands','Hands'],['feet','Feet'],['main','Main hand'],['off','Off hand'],['trinket','Trinket']];
 let tab='stats'; // persists across hero changes
 export const activeTab=()=>tab;
@@ -167,7 +169,8 @@ const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title
 function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
   if(st!=='off')d.append(' ',aiBadge('AI-played'+(st==='offline'?' (quiet)':''),'This hero\'s choices come from a language model via the local relay; the scripted rules take over whenever it is silent.'));
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);return d}
-const BODY={stats:tabStats,log:tabLog,gear:tabGear,party:tabParty,chat:tabChat};
+function tabBio(b,a){for(const p of biography(a,S.agents)){const d=el('p','bio');parts(d,p);b.append(d)}}
+const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,party:tabParty,chat:tabChat};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
 // header and only the active tab's body, since it runs every 0.3s.
@@ -242,6 +245,6 @@ function initClicks(){const host=document.querySelector('.main')||document.body;
     const ai=t.closest('[data-ai]');if(ai){const a=cam.sel;if(a){if(a.brain)disableBrain(a);else enableBrain(a);renderHero()}return}
     const tb=t.closest('[data-tab]');if(tb){setTab(tb.dataset.tab);return}
     const n=t.closest('.hn[data-hid]');if(!n)return;
-    const a=S.agents.find(x=>x.id==n.dataset.hid);if(a)pick(a)})}
+    const a=S.agents.find(x=>x.id==n.dataset.hid);if(a){pick(a);if(a.state==='dead'&&n.closest('#fallen'))setTab('bio')}})}
 
-export function initPanels(){initChronicle();initClicks();onMarketTick(renderAH);renderFacs();renderAH();renderGuilds();renderFallen();renderClock()}
+export function initPanels(){initChronicle();initTimeline();initClicks();onMarketTick(renderAH);renderFacs();renderAH();renderGuilds();renderFallen();renderClock()}
