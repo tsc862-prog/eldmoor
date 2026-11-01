@@ -136,15 +136,20 @@ function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors+
     ev('caught',[w,' nods off on watch. ',gd(foeName),' reaches the fire before anyone cries out and catches ',victim,' ('+Math.max(0,hit)+' damage).'],{watcher:w.name,roll:spot.total,dc:spot.dc,foe:foeName,hero:!!useHero},ids)}
   log(nar(''),gd(F.name),' is '+(spot.pass?'roused':'caught asleep')+' by ',useHero?foeHero:gd(foeName),' at camp in ',gd(ZONES[g.zone]||'the wilds'),'.');
   for(const a of wake){remember(a,'camp',spot.pass?w.name+' raised the alarm: '+foeName+' came out of the dark.':'We were caught at camp by '+foeName+'.');
-    if(a.player)notify(a,'ALARM at camp: '+foeName+' is on us. '+(spot.pass?w.name+' raised the alarm in time.':'The watch failed.'),true)}
+    if(a.player)notify(a,'ALARM at camp: '+foeName+' is on us. '+(spot.pass?w.name+' raised the alarm in time.':'The watch failed.'),2)}
   breakCamp(F,'ambush');
   if(useHero){const b=foeHero;for(const a of wake)a.state='hunt';w.state='duel';w.target=b;b.state='duel';b.target=w;b.dest=null}
   else{m.target=spot.pass?w:victim;for(const a of wake){a.state='fight';a.target=m;a.dest=null}
     openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at the Fellowship\'s camp in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id})}}
 
 // ---- campfire talk ----
-function talk(F,g,L){if(L.length<2)return;g.stats.talks++;
-  const h=Math.floor(S.gameMin),pool=L.filter(a=>!a.player),sp=(pool.length?pool:L)[Math.floor(hash(h,g.start,5)*(pool.length||L.length))%(pool.length||L.length)];
+function talk(F,g,L){if(L.length<2)return;
+  // agents say only what their agents say (issue #126): with no scripted member at the fire, no scripted line is
+  // voiced; the agents hear once that the fire is lit and talk if they like (they hear each other, sim/player.js)
+  const pool=L.filter(a=>!a.player);
+  if(!pool.length){if(!g.agentTalk){g.agentTalk=1;for(const a of L)notify(a,'The fire is lit and the night is quiet: talk round it if you like (party_say); your companions hear you.',false,1)}return}
+  g.stats.talks++;
+  const h=Math.floor(S.gameMin),sp=pool[Math.floor(hash(h,g.start,5)*pool.length)%pool.length];
   const others=L.filter(a=>a!==sp),other=others[Math.floor(hash(h,sp.id,6)*others.length)%others.length];
   const hurt=L.filter(a=>a.hp<maxHp(a)*.6).length;
   let topic=TOPICS[Math.floor(hash(h,sp.id,7)*TOPICS.length)%TOPICS.length];

@@ -15,11 +15,15 @@
 // Cadence: one turn now, then one every game evening (18:00) by default, or every --cadence S real
 // seconds; a turn never starts while a Table scene or a party vote is open (that is part 2's at-
 // the-table work). One model call at a time (the owner's API concurrency is low); a rate limit (429
-// or overloaded) backs off 30 s, 60 s, ... up to 10 min and retries the turn.
+// or overloaded) backs off 30 s, 60 s, ... up to 10 min and retries the turn. Turns are also at least
+// --min-gap S real seconds apart (issue #126; default 20, AGENT_MIN_GAP), so a fast world (8x: a game day
+// in 30 s) gets a DM turn now and then, not back to back. A local (Ollama) DM runs until stopped unless
+// --max-turns is given; any DM stops after --max-fails N (default 5) failed or empty turns in a row.
 // Session: logs/agents/dm.json (gitignored), resumed next run for the same world; --new sets it
 // aside in logs/agents/old/. Cost line per turn.
 //
-// Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (default 12), --budget USD
+// Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (default 12 for Claude; a local
+// DM until stopped), --min-gap S, --max-fails N, --budget USD
 // (default 1.00, this run), --cadence evening|S, --tool-turns N (model calls per turn, default 16),
 // --provider anthropic|ollama (or DM_PROVIDER), --model (or DM_MODEL; default claude-sonnet-5-5, or the
 // Ollama default), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
@@ -34,6 +38,7 @@ import {hostname} from 'node:os';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
 import {loadDmSession, saveDmSession, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
+import {paceSettings, turnCap, capText, failTracker, localWorked, takeClaudeSlot} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const DM_PROVIDERS = ['anthropic', 'ollama'];
@@ -129,8 +134,9 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
 }
 
 // Wait until the cadence allows a turn and nothing is pending. Returns the fresh status, or null on stop.
-async function waitTurn({base, cadence, lastGm, log, stopped}) {
-  const target = cadence === 'evening' && lastGm != null ? nextEvening(lastGm) : null, until = cadence !== 'evening' && lastGm != null ? Date.now() + Number(cadence) * 1000 : 0;
+// gapUntil: the earliest real time (ms) the next turn may start (the minimum gap, issue #126).
+async function waitTurn({base, cadence, lastGm, log, stopped, gapUntil = 0}) {
+  const target = cadence === 'evening' && lastGm != null ? nextEvening(lastGm) : null, until = Math.max(gapUntil, cadence !== 'evening' && lastGm != null ? Date.now() + Number(cadence) * 1000 : 0);
   let said = '';
   for (;;) {
     if (stopped()) return null;
@@ -153,7 +159,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const {loadEnv} = await import('./relay.mjs');
   const envFile = opt('env', null), env = envFile ? loadEnv(dirname(resolve(envFile))) : loadEnv();
   const base = String(opt('url', env.PLAY_URL || 'http://127.0.0.1:8787')).replace(/\/$/, '');
-  const maxTurns = Math.max(1, Number(opt('max-turns', 12))), budget = Math.max(.01, Number(opt('budget', 1))), toolTurns = Math.max(2, Number(opt('tool-turns', 16)));
+  const turnsAsked = opt('max-turns', null), pace = paceSettings(opt, env), budget = Math.max(.01, Number(opt('budget', 1))), toolTurns = Math.max(2, Number(opt('tool-turns', 16)));
   const cadence = String(opt('cadence', 'evening')); if (cadence !== 'evening' && !(Number(cadence) >= 5)) {console.error('[dm] --cadence is "evening" or a number of real seconds (5 or more).'); process.exit(1)}
   const log = s => console.log(s);
 
@@ -182,7 +188,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
   const saveSess = () => saveDmSession(sess, {url: base});
-  let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0;
+  let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;
+  const maxTurns = turnCap(turnsAsked, rs.provider, 12), fails = failTracker(pace.maxFails), gapUntil = () => lastEnd ? lastEnd + pace.minGap * 1000 : 0;
   const t00 = Date.now();
 
   if (rs.provider === 'ollama') {
@@ -194,20 +201,21 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const ol = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), defaultModel: rs.model}), s0 = await ol.status();
     if (!s0.ok) {console.error(`[dm] Ollama at ${s0.url} is ${s0.error}. Start Ollama or pass --ollama-url.`); await quit(1)}
     if (!s0.models.includes(rs.model)) {console.error(`[dm] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await quit(1)}
-    log(`[dm] DM seat taken | local model ${rs.model} via Ollama | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | up to ${maxTurns} turns, cadence ${cadence}`);
+    log(`[dm] DM seat taken | local model ${rs.model} via Ollama | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
     const numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null);
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
-      const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping}); if (!st) {ended = 'the seat closed'; break}
-      let r;
+      const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
+      let r = null;
       try {r = await localTurn({chat: ol.chat, call: (tool, args) => dmTool(base, tool, args), sess, prompt: dmTurnPrompt(sess.turns, st), model: rs.model, toolTurns, tools: DM_TOOLS, rules,
         opts: {...(numCtx ? {numCtx: Number(numCtx)} : {}), endOnWait: false},
         on: (k, a, b) => {if (k === 'text') log(`  DM: ${a}`); else if (k === 'tool') log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') log(`    < ${short(a, 220)}`)}})}
-      catch (e) {console.error(`[dm] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); ended = 'error'}
-      sess.turns++; sess.lastGm = st.gameMin;
+      catch (e) {console.error(`[dm] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
+      sess.turns++; sess.lastGm = st.gameMin; lastEnd = Date.now();
       if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
       saveSess();
+      if (fails.ok(localWorked(r))) ended = fails.why();
     }
     clearInterval(beat); await release();
     log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t00) / 1000).toFixed(0)} s, $0 (local). Session saved to ${dmSessionPath()}.`);
@@ -226,14 +234,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
   const {model, effort} = rs;
-  log(`[dm] DM seat taken | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | up to ${maxTurns} turns, budget ${money(budget)}, cadence ${cadence}`);
+  log(`[dm] DM seat taken | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
   const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-dm-agent/1.0'};
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping}); if (!st) {ended = 'the seat closed'; break}
+    const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
     const t0 = Date.now(); let tools = 0, result = null, limited = false, failed = null;
+    const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const q = query({prompt: dmTurnPrompt(sess.turns, st), options: {
       abortController: turnAbort,
@@ -260,7 +269,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const msg = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300);
       if (result && result.subtype === 'error_max_turns') log(`[dm] turn hit the ${toolTurns} model-call cap; continuing next turn`);
       else if (isRateLimit(msg) || limited) failed = failed || 'rate_limit';
-      else {console.error(`[dm] turn failed: ${msg}`); ended = 'error'}}
+      else {console.error(`[dm] turn failed: ${msg}`); failed = failed || 'error'}}
+    freeSlot();
     if (result) {
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
       spent += cost; sess.costUsd += cost;
@@ -269,9 +279,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       log(`[turn ${sess.turns + 1}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
     // A rate-limited turn that did nothing is retried after a growing pause; a turn that got work done counts.
-    if (failed && !tools) {const s = BACKOFF[Math.min(backoff, BACKOFF.length - 1)]; backoff++; log(`[dm] rate limited (${failed}); backing off ${s} s before trying the turn again`); saveSess(); await sleep(s * 1000); continue}
-    backoff = 0; sess.turns++; sess.lastGm = st.gameMin; turn++;
+    if (failed && failed !== 'error' && !tools) {const s = BACKOFF[Math.min(backoff, BACKOFF.length - 1)]; backoff++; log(`[dm] rate limited (${failed}); backing off ${s} s before trying the turn again`); saveSess(); await sleep(s * 1000); continue}
+    backoff = 0; sess.turns++; sess.lastGm = st.gameMin; turn++; lastEnd = Date.now();
     saveSess();
+    if (fails.ok(!failed && tools > 0)) ended = fails.why();
   }
   clearInterval(beat); await release();
   log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}${tableCost ? ' (table voice ' + money(tableCost) + ')' : ''}, session ${money(sess.costUsd)}. Session saved to ${dmSessionPath()}.`);

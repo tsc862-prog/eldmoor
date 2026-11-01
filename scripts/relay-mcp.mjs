@@ -10,6 +10,11 @@
 //   POST /play/call      {tool, args, hero?} -> result; the same tools without MCP (the stdio
 //                        MCP entry scripts/mcp-stdio.mjs and tests use it)
 //   POST /play/narrate   {text, hero?}: the runner's narration, shown in the hero's Agent tab
+//   POST /play/pace      {hero, runner, since?, minutes?, wake?, realMs?}: runner pacing (issue #126,
+//                        src/sim/pace.js): answers when the hero's next turn should start ({wake:
+//                        'now'|'soft'|'heartbeat'}) or after realMs with wake null; not a tool, does
+//                        not count as activity for the link state, never consumes the hero's events;
+//                        {brief:true} answers at once with the hero's state header for a turn prompt
 //   POST /play/claim     {hero, runner, provider?, model?}: a runner binds itself to one hero (and
 //                        refreshes the claim every few seconds); 409 when another live runner
 //                        holds it. provider/model (issue #97) name the mind behind the runner
@@ -118,7 +123,7 @@ export function browserBackend({log = () => {}} = {}) {
       if (!heroes.some(h => h.id === heroId)) return Promise.resolve({ok: false, error: `Hero #${heroId} is not agent-played in the game.`, offline: true});
       const id = ++seq;
       return new Promise(res => {
-        const t = setTimeout(() => {waiting.delete(id); res({ok: false, error: 'The game did not answer in time (is the tab hidden or paused?).'})}, tool === 'wait' ? WAIT_MS : CALL_MS);
+        const t = setTimeout(() => {waiting.delete(id); res({ok: false, error: 'The game did not answer in time (is the tab hidden or paused?).'})}, tool === 'wait' || tool === 'pace' ? WAIT_MS : CALL_MS);
         waiting.set(id, {res, t});
         send({type: 'call', id, hero: heroId, tool, args: args || {}});
       });
@@ -279,7 +284,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         if (role === 'hero' || b.role === 'hero' || hero != null || b.hero != null || heroClaimOf(rid)) return send(403, {ok: false, error: 'Heroes have no DM tools: a hero hears the DM only in the game.'});
         const dh = heldBy(DM_KEY, rid); if (dh) return send(409, {ok: false, refused: true, error: `The DM seat is held by another runner (${dh}).`});
         return send(200, await dmCall(b.tool, b.args && typeof b.args === 'object' ? b.args : {}))}
-      if ((path === '/play/call' || path === '/play/narrate') && dmAsked) return send(403, {ok: false, error: 'The DM seat has no hero tools: the DM speaks to heroes only in the game (narrate, npc_say).'});
+      if ((path === '/play/call' || path === '/play/narrate' || path === '/play/pace') && dmAsked) return send(403, {ok: false, error: 'The DM seat has no hero tools: the DM speaks to heroes only in the game (narrate, npc_say).'});
       if ((path === '/play/claim' || path === '/play/release') && (role === 'dm' || b.role === 'dm')) {
         const runner = typeof b.runner === 'string' ? b.runner.slice(0, 80) : '';
         if (!runner) return send(400, {error: 'claim needs {role:"dm", runner}'});
@@ -297,6 +302,14 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         if (typeof b.tool !== 'string' || !PLAYER_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown tool'});
         const r = await call(hero, b.tool, b.args && typeof b.args === 'object' ? b.args : {}, rid);
         return send(r && r.refused ? 409 : 200, r)}
+      // Runner pacing (issue #126): the claimed runner's long poll between turns. Not a tool call: it is not
+      // counted, not logged, and does not keep the link 'connected' (a runner between turns is 'waiting').
+      if (path === '/play/pace') {const id = hero;
+        if (id == null) return send(400, {ok: false, error: 'pace needs the hero id'});
+        const holder = heldBy(id, rid); if (holder) return send(409, refusedSeat(id, holder));
+        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
+        let r; try {r = await be.call(id, 'pace', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+        return send(200, r && typeof r === 'object' ? r : {ok: false, error: 'no answer'})}
       if (path === '/play/narrate') {const id = resolve(hero);
         const holder = heldBy(id, rid); if (holder) return send(409, refusedSeat(id, holder));
         if (id != null && typeof b.text === 'string' && b.text.trim()) {be.narrate(id, b.text.trim()); vlog({ts: new Date().toISOString(), hero: id, narrate: b.text.slice(0, 600)})}
