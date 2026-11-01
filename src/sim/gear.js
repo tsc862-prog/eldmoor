@@ -96,6 +96,10 @@ export function convertItem(it,cls){if(!it||typeof it!=='object'||!it.slot)retur
 // Lowest item level among the non-epic slots (empty counts as 0); null if every slot holds an epic.
 export function weakestSlot(a){let best=null,bs=1e9;for(const k of SLOTS){const it=a.slots[k];if(it&&it.epic)continue;const v=it?it.ilvl:0;if(v<bs){bs=v;best=k}}return best}
 
+// An item's numbers in one flat map, {armor, damage, <score>: n}, for text read-outs (sim/player.js).
+// The property is not a number; read it.property.
+export function itemStats(it){const o={};if(!it)return o;if(it.armor)o.armor=it.armor;if(it.damage)o.damage=it.damage;
+  for(const k in it.bonus||{})o[k]=it.bonus[k];return o}
 // What an item adds, for the replaced-piece note: {armor, damage, bonus, property}.
 const summary=it=>{const o={};if(it.armor)o.armor=it.armor;if(it.damage)o.damage=it.damage;if(it.bonus)o.bonus={...it.bonus};if(it.property)o.property=it.property;return o};
 // Put an item in its slot and return what it replaced (or null). Epics are announced by getEpic;

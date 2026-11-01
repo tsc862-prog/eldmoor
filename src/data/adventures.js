@@ -73,7 +73,7 @@ export const COMPLICATIONS={
 // Strangers for social scenes (generic folk, no names).
 export const STRANGERS=['peat-cutter','hermit','drover','charcoal-burner','Rookscar deserter','tinker','ferryman','widow with a lantern'];
 // Named foes made for an adventure: a name and a title pattern ({zone}, {kind} the species).
-export const BEAST_NAMES=['Old Scar','the Grey Widow','Crookback','Longtooth','the Quiet One','Ashjaw','Rimeclaw','Mudmother','Halfhorn','the Pale Hunger','Blackgums','Old Rot'];
+export const BEAST_NAMES=['Old Notch','the Grey Widow','Crookback','Longtooth','the Quiet One','Ashjaw','Rimeclaw','Mudmother','Halfhorn','the Thin Hunger','Blackgums','Old Rot'];
 export const BEAST_TITLES=['the {kind} nobody hunts twice','terror of the {zone} drovers','the oldest {kind} in {zone}','the {kind} with the broken leash','that the {zone} children sing about'];
 // A named foe: formula stats at (highest party level + 1), times these (lower for a solo hero).
 export const BEAST={scale:[1.25,1.5],hit:[1,1.15]};

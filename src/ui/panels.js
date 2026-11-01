@@ -24,6 +24,8 @@ import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
 import {enableBrain,disableBrain,brainStatus,mindUser} from '../sim/brain.js';
 import {advLine} from '../sim/dm.js';
 import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
+import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
+import {agentOn,agentOff,initBridge} from './player-bridge.js';
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -45,6 +47,7 @@ const zoneIdx=z=>typeof z==='number'?z:ZONES.indexOf(z);
 
 // One line describing what a hero is doing right now.
 export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
+  if(a.player&&a.playDoing&&a.state!=='dead')return a.playDoing; // agent-played (sim/player.js)
   switch(a.state){
     case 'town':return a.townStep===0?`Selling loot at the ${c} auction house`:a.townStep===1?`Checking in with the ${c} quest giver`:`Leaving ${c} for ${ZONES[a.party?a.party.zone:zoneFor(a.lvl,homeOf(a).gate)]}`;
     case 'travel':return `Traveling to ${zn}`;
@@ -61,7 +64,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
 // ---- hero dossier ----
-const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['gear','Gear'],['party','Party'],['chat','Chat'],['mind','Mind']];
+const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['gear','Gear'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
 const SLOTS=[['head','Head'],['chest','Chest'],['hands','Hands'],['feet','Feet'],['main','Main hand'],['off','Off hand'],['trinket','Trinket']];
 let tab='stats'; // persists across hero changes
 export const activeTab=()=>tab;
@@ -225,7 +228,11 @@ function tabChat(b,a){const c=(a.chat||[]).slice(-20).reverse();
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
 function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
   if(st!=='off')d.append(' ',aiBadge('AI-played'+(st==='offline'?' (quiet)':''),'This hero\'s choices come from a language model via the local relay; the scripted rules take over whenever it is silent.'));
-  const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);return d}
+  const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);
+  // Agent player (issue #75): an AI agent with its own session plays this hero through MCP tools.
+  if(a.player)d.append(' ',aiBadge('Agent','An AI agent plays this hero through the relay (npm run agent); reflexes keep it alive while the agent is silent.'));
+  if(a.state!=='dead'){const g=el('button','ai-toggle',a.player?'Agent off':'Agent');g.dataset.agent='1';g.title=a.player?'Return this hero to the scripted rules':'Let an AI agent play this hero (npm run relay, then npm run agent)';d.append(' ',g)}
+  return d}
 function tabBio(b,a){for(const p of biography(a,S.agents)){const d=el('p','bio');parts(d,p);b.append(d)}}
 
 // ---- Mind tab (issue #61): the AI-played hero's decision log, a.mind from sim/brain.js ----
@@ -273,7 +280,7 @@ function tabMind(b,a){const m=a.mind||[];
     h.append(el('span','dm',' \u00b7 '),el('span','mo mo-'+e.outcome,e.outcome));
     row.append(h);if(isOpen)mindDetail(row,a,e);list.append(row)}
   b.append(list)}
-const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,party:tabParty,chat:tabChat,mind:tabMind};
+const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
 // header and only the active tab's body, since it runs every 0.3s.
@@ -291,8 +298,8 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   h.append(el('div','doing',doing(a)));
   h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
   h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
-  const mindable=hasMind(a),cur=tab==='mind'&&!mindable?'stats':tab; // the Mind tab exists only for AI-played heroes
-  for(const b of k.tabs.children){b.setAttribute('aria-pressed',String(b.dataset.tab===cur));if(b.dataset.tab==='mind')b.hidden=!mindable}
+  const mindable=hasMind(a),agentable=hasAgent(a),cur=tab==='mind'&&!mindable||tab==='agent'&&!agentable?'stats':tab; // the Mind tab exists only for AI-played heroes, the Agent tab for agent-played ones
+  for(const b of k.tabs.children){b.setAttribute('aria-pressed',String(b.dataset.tab===cur));if(b.dataset.tab==='mind')b.hidden=!mindable;if(b.dataset.tab==='agent')b.hidden=!agentable}
   if(pinned&&pinned.id!==a.id)pinned=null;
   if(cur==='mind'){const sig=mindSig(a);if(k.tb.dataset.tab!=='mind'||k.tb.dataset.sig!==sig){k.tb.replaceChildren();k.tb.dataset.tab='mind';k.tb.dataset.sig=sig;tabMind(k.tb,a)}}
   else{k.tb.replaceChildren();k.tb.dataset.tab=cur;delete k.tb.dataset.sig;BODY[cur](k.tb,a)}
@@ -347,6 +354,7 @@ function initChronicle(){const el_=$('log');
 // tab buttons ([data-tab]) switch the dossier tab.
 function initClicks(){const host=document.querySelector('.main')||document.body;
   host.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
+    const ag=t.closest('[data-agent]');if(ag){const a=cam.sel;if(a){if(a.player)agentOff(a);else if(agentOn(a))tab='agent';renderHero()}return}
     const ai=t.closest('[data-ai]');if(ai){const a=cam.sel;if(a){if(a.brain)disableBrain(a);else enableBrain(a);renderHero()}return}
     const mp=t.closest('[data-mprompt]');if(mp){if(mindOpen)mindOpen.prompt=!mindOpen.prompt;renderHero();return}
     const mr=t.closest('[data-mind]');if(mr){const a=cam.sel,id=Number(mr.dataset.mind);
@@ -357,4 +365,4 @@ function initClicks(){const host=document.querySelector('.main')||document.body;
     const n=t.closest('.hn[data-hid]');if(!n)return;
     const a=S.agents.find(x=>x.id==n.dataset.hid);if(a){pick(a);if(a.state==='dead'&&n.closest('#fallen'))setTab('bio')}})}
 
-export function initPanels(){initChronicle();initTimeline();initDmLog();initClicks();onMarketTick(renderAH);renderFacs();renderAH();renderGuilds();renderFallen();renderClock()}
+export function initPanels(){initBridge();initChronicle();initTimeline();initDmLog();initClicks();onMarketTick(renderAH);renderFacs();renderAH();renderGuilds();renderFallen();renderClock()}

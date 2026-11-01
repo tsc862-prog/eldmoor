@@ -36,6 +36,7 @@ Dedicated subagents live in `.claude/agents/`. Delegate to them by area:
 | `balance-tester` | Read-only headless sim runs and balance reports |
 | `lore-keeper` | `docs/LORE.md`, flavor text, originality checks |
 | `brain-builder` | Model-played heroes: decision-policy interface, local relay, prompts, fallbacks; generated narrator and chatter modes |
+| `pm` | Backlog triage, issues and labels, priority order, briefs for next pickups, board snapshot and status summaries (no code, no merges, no dispatch) |
 
 Models per agent (set in each agent's frontmatter): Opus for `ai-designer` and `brain-builder` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review). Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
 
@@ -80,6 +81,32 @@ other. The rules:
 - Worlds: Eldmoor (80x50) by default; `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node selects the 160x100 Stepping Lands test continent (saves are kept per world).
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
+- `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
+
+## Agent player
+
+An AI agent can play one hero end to end (issue #75): it looks around, walks, fights, takes
+adventures, answers scene choices and keeps a journal, through MCP tools (the list is
+`src/data/player-tools.js`; the game side is `src/sim/player.js`). The hero stays a hero:
+one life, sight limits, the same dice; reflexes (defend, flee below 15% HP, go home with a
+full bag) keep it alive while the agent thinks or is silent, and scene choices time out to
+the scripted branch, so the world never waits.
+
+- With the browser: `npm run relay` (or `npm run relay -- --play-only` without a key),
+  `npm run dev`, select a hero and press **Agent** on its card (the page connects to
+  `ws://127.0.0.1:8787/play`; the Agent tab shows tool calls, narration and the journal).
+  Then `npm run agent` (Claude Agent SDK, `claude-sonnet-5-5` by default, `AGENT_MODEL` to
+  change; `--max-turns 20 --budget 1.00` are the default caps; `--new` starts a fresh
+  session, otherwise `logs/agent-session.json` resumes it; cost line per turn).
+- Headless: `npm run play-headless -- --warm 20` (a Node world on port 8789, saved to
+  `logs/agent-world.json`, `--resume` to continue), then
+  `npm run agent -- --url http://127.0.0.1:8789`.
+- Other MCP clients: streamable HTTP at `http://127.0.0.1:8787/mcp` (or `:8789/mcp`
+  headless), stateless, POST only; or stdio with `npm run -s mcp` (forwards to `PLAY_URL`).
+  Plain JSON without MCP: `POST /play/call {tool, args}`. Only localhost, no browser origins;
+  tools only ever touch the one agent-played hero.
+- `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
+  the journal and a save/restore, and proves a silent agent never stalls the world.
 
 ## Layout
 
@@ -115,6 +142,11 @@ other. The rules:
   `boss.js` the Kragmaw fight and raid muster; `pvp.js` duels, nemesis hunts,
   assists; `dungeon.js` Sunken Crypt runs; `market.js` auction-house prices;
   `history.js` `record(a, ...parts)` per-hero event log for the dossier Log tab;
+  `levers.js` the DM's world levers: a validated registry (`pull(name, params, {by, reason})`)
+  with limits, cooldowns and DM log entries for people, places, danger/cleared areas, region
+  conditions, price shocks, hooks and named/custom foes, plus the hooks the world reads them
+  through (state on `S.levers`, `S.places`, `S.marks`, `S.conditions`, `S.wanderers`;
+  drawn by `src/render/places.js`; `npm run levercheck`);
   `index.js` `init()` and `step(dt)`.
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;

@@ -12,7 +12,9 @@ export const isMind=a=>!!a&&a.state!=='dead'&&(a.brain||a.player);
 const OUT={applied:'ok',rejected:'bad',late:'dim',offline:'dim',superseded:'dim',overruled:'warn',pending:'dim'};
 const KIND={townPlan:'Town plan',fightOrFlee:'Fight or flee',say:'Says',cryptCall:'Crypt call'};
 
-function latest(a){const m=a.mind&&a.mind[0];if(!m)return null;
+function latest(a){
+  if(a.player&&a.playLog&&a.playLog.length){const c=a.playLog[0];return {t:c.t,kind:'Agent',what:c.tool+(c.args?' '+c.args:''),outcome:c.pending?'pending':c.ok?'applied':'rejected'}} // agent player: its latest tool call (sim/player.js)
+  const m=a.mind&&a.mind[0];if(!m)return null;
   const what=m.kind==='say'?(m.line?'“'+m.line+'”':'a line'):(m.choice?'chose '+m.choice:(m.outcome==='pending'?'thinking…':m.outcome));
   return {t:m.t,kind:KIND[m.kind]||m.kind,what,outcome:m.outcome}}
 

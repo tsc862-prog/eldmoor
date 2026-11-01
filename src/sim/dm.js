@@ -58,6 +58,9 @@ import {say} from './chat.js';
 import {d20} from './narrator.js';
 import {bestFor,socialSkill,SKILLS} from './abilities.js';
 import {dmlog} from './dmlog.js';
+import {pull,ready,spotErr,attitudeDc,activeOf} from './levers.js';
+import {GOODS} from '../data/items.js';
+import {playerBranch} from './player-choice.js';
 
 // ---- knobs ----
 export const K={
@@ -82,6 +85,7 @@ export const K={
   TOLD:2,               // adventures the Chronicle follows beat by beat at once
   ENEMY_GATE:15,        // tiles any scene point keeps from an enemy town gate
   GATE_CLEAR:10,        // tiles a road point keeps from every gate
+  STRANGER:.5,          // chance an angered stranger stays on the road as a hostile camp (create_npc)
 };
 const OUT={success:1,partial:.5,failure:0};
 const NAR={t:'',c:'nar'},dmS=t=>({t,c:'dm'}),gd=t=>({t,c:'gd'});
@@ -190,10 +194,19 @@ function place(adv,at,prev,L){const z=adv.z,fac=adv.fac,d=adv.data,home=homeOf(L
 // Who posts a job: the town's resident in that role, by name ("Gate Captain Merel").
 function giverOf(town,roles){const ps=(S.npcs||[]).filter(p=>p.town===town.name&&roles.includes(p.role));
   const p=ps.length?pickA(ps):null;return p?{name:p.title+' '+p.name,role:p.role}:{name:'the gate captain',role:'captain'}}
-function newHook(c,tpl,src,o={}){const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
+// The board itself (the post_hook lever in sim/levers.js calls this; nothing else should).
+export function postHook(c,tpl,src,o={}){const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
   const h={id:++S.uid,phase:'open',town:c.name,fac:c.fac,tpl,src,giver:g,zone:o.zone==null?null:o.zone,for:o.for==null?null:o.for,
     data:{thing:o.thing||(T.things?pickA(T.things):null),...(o.data||{})},born:S.gameMin,until:S.gameMin+ri(...K.HOOK_LIFE)*(o.zone==null?1:.5)}; // news tied to one place goes stale sooner
   S.adventures.push(h);bump(stats().hooks,src);bump(stats().offered,tpl);return h}
+export function withdrawHook(id){const i=S.adventures.findIndex(h=>h.id===id&&h.phase==='open');if(i<0)return null;return S.adventures.splice(i,1)[0]}
+// The scripted DM posts every hook through the post_hook lever. On the board refresh the lever's
+// log entry is folded into the board's own entry (boardLever) instead of standing alone.
+let boardLever=null;
+function newHook(c,tpl,src,o={},reason,quiet){const r=pull('post_hook',{town:c.name,tpl,src,spec:o},{by:'scripted',reason:reason||HOOK_WHY[src]||'a job for the board',log:quiet?false:undefined});
+  if(quiet)boardLever=r.entry?{...r.entry.detail}:null;return r.ok?r.ret:null}
+const HOOK_WHY={death:'a hero of this town fell recently',remnant:'a road encounter left a remnant',rumour:'a living elite is about',oath:'a hero in town has a matching oath',
+  follow:'follow-up to a finished job',request:'a townsfolk request',writ:'the gate captain’s writ'};
 
 // Hooks from the world, in order of preference: a fallen hero's pack, a robbed wagon or a
 // vanished merchant, a living elite the innkeeper has heard of, an oath of a hero in town,
@@ -202,21 +215,21 @@ function makeHook(c){const seen=S.dmSeen,r=rnd();
   // recent deaths of this town's heroes, where they fell
   if(r<.3){const g=S.agents.find(x=>x.state==='dead'&&x.fac===c.fac&&homeOf(x)===c&&x.lvl>=3&&!seen.dead.includes(x.id)&&x.diedMin!=null&&S.gameMin-x.diedMin<1440);
     if(g){seen.dead.push(g.id);if(seen.dead.length>60)seen.dead.shift();const z=zoneAt(g.x,g.y);
-      if(z>=0&&safeFor(g,c.fac))return newHook(c,'fallen','death',{zone:z,thing:g.name,data:{x:g.x,y:g.y,deadId:g.id},roles:['priest','innkeeper']})}}
+      if(z>=0&&safeFor(g,c.fac))return newHook(c,'fallen','death',{zone:z,thing:g.name,data:{x:g.x,y:g.y,deadId:g.id},roles:['priest','innkeeper']},null,true)}}
   // encounter remnants: a resolved ambush or strongbox, an expired merchant
   if(r<.55){const R=S.dmRemnants||[];const i=R.findIndex(x=>safeFor(x,c.fac));
     if(i>=0){const x=R.splice(i,1)[0];const thing=x.type==='merchant'?'a wagon merchant who never came back':x.type==='chest'?'a strongbox left in a ditch':'a robbed wagon';
-      return newHook(c,'investigate','remnant',{zone:x.z,thing,data:{x:x.x,y:x.y},roles:['captain','quartermaster']})}}
+      return newHook(c,'investigate','remnant',{zone:x.z,thing,data:{x:x.x,y:x.y},roles:['captain','quartermaster']},null,true)}}
   // rumours: a living elite (a hunt the innkeeper would pay to see done)
   if(r<.7){const E=S.mobs.find(m=>m.elite&&m.alive&&!m.gone&&!S.adventures.some(h=>h.data&&h.data.eliteId===m.id&&h.phase!=='done'));
-    if(E){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper']})}}
+    if(E){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper']},null,true)}}
   // an oath of a hero standing in town
   if(r<.85){const a=S.agents.find(x=>x.state==='town'&&x.fac===c.fac&&homeOf(x)===c&&!x.adv&&x.lvl>=K.MIN_LVL&&oathTpl(x)&&!S.adventures.some(h=>h.phase==='open'&&h.for===x.id));
-    if(a){const o=oathTpl(a);return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data})}}
+    if(a){const o=oathTpl(a);return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data},null,true)}}
   return townHook(c)}
 // The townsfolk: a request (smith, priest, quartermaster, bard, innkeeper) or the captain's writ.
 function townHook(c){const tpl=pickA(Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'));const T=D.ADVENTURES[tpl];
-  const g=giverOf(c,T.givers);return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g})}
+  const g=giverOf(c,T.givers);return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g},null,true)}
 
 // An oath that an adventure can serve: which template, where, and what it is about.
 function oathTpl(a){const g=a.goal;if(!g||g.done)return null;
@@ -349,17 +362,23 @@ function roll(adv,a,sc){const mem=[a,...partyMates(a).filter(b=>dist(a,b)<10)],k
   let mod=0,by=a,skill=null,parts=null;
   if(SKILL_FOR[kind]){const bf=bestFor(mem,SKILL_FOR[kind]);mod=bf.mod;by=bf.hero;skill=bf.skill;parts=bf.parts}
   else for(const b of mem){const m=Math.floor(b.lvl/3)+((D.CHECKS[kind]||{})[b.cls]||0);if(m>mod){mod=m;by=b}}
-  const zdc=zoneDc(sc.z!=null?sc.z:adv.z);let dc=zdc+sc.dc,hostile=0,boon=0;if(kind==='social'&&adv.flags.hostile){hostile=D.COMPLICATIONS.hostile.dc;dc+=hostile;adv.flags.hostile=0}
+  const zdc=zoneDc(sc.z!=null?sc.z:adv.z);let dc=zdc+sc.dc,hostile=0,boon=0,att=null;if(kind==='social'&&adv.flags.hostile){hostile=D.COMPLICATIONS.hostile.dc;dc+=hostile;adv.flags.hostile=0}
+  if(kind==='social'){att=attitudeDc(adv.data.giver,sc.at,mem);if(att.dc)dc+=att.dc;else att=null} // set_attitude / create_npc: hostile +3, wary +1, friendly -2
   if(adv.flags.boon){boon=D.COMPLICATIONS.boon.dc;dc+=boon;adv.flags.boon=0}
   const r=d20(),ok=r===20||(r!==1&&r+mod>=dc);stats().checks[ok?0:1]++;
   const cb=skill?0:(D.CHECKS[kind]||{})[by.cls]||0,total=r+mod;
   lastRoll=dmlog('roll',adv,[by,' rolls '+(skill?SKILLS[skill].name.toLowerCase():kind||'a')+' check: d20 '+r+(mod?'+'+mod:'')+' = '+total+' vs DC '+dc+' - '+(r===20?'natural 20':r===1?'natural 1':ok?'pass':'fail')],
     {scene:adv.idx+1,sceneType:sc.type,check:kind,
-     dc:{base:10,region:zdc-10,regionName:ZONES[sc.z!=null?sc.z:adv.z],scene:sc.dc,hostile,boon,total:dc},
+     dc:{base:10,region:zdc-10,regionName:ZONES[sc.z!=null?sc.z:adv.z],scene:sc.dc,hostile,boon,attitude:att?att.dc:0,attitudeOf:att?att.who+' ('+att.attitude+')':null,total:dc},
      modifier:{level:skill?0:Math.floor(by.lvl/3),cls:cb,skill,parts:parts&&parts.map(p=>p.k+' '+(p.v>=0?'+':'')+p.v),total:mod,by:by.id,byName:by.name,byClass:by.cls,pool:mem.length+' within reach'},
      d20:r,total,pass:ok,nat:r===20?20:r===1?1:null,sceneIdx:adv.idx},{});
+  for(const d of pendLevers)fold(lastRoll,d);pendLevers=[];
   return {r,mod,dc,ok,nat:r,by}}
 let lastRoll=null; // the newest roll entry, so the scene's frame text can join it
+// Lever pulls a scene made before its roll (a named foe) ride on the roll's log entry, and a
+// follow-up hook on the payoff's, so the DM log keeps its volume; the Levers filter finds them.
+let pendLevers=[];
+function fold(e,d){if(!e)return;const L=e.detail.levers||(e.detail.levers=[]);L.push(d);e.detail.lever=L.map(x=>x.lever).join(', ')}
 const rollStr=x=>'rolls '+x.r+(x.mod?'+'+x.mod:'')+' vs '+x.dc;
 
 // The DM's framing of a scene (policy slot). The text joins the scene's roll entry when it has
@@ -378,7 +397,7 @@ function complicate(adv,a,sc,x){
   switch(k){
   case 'wound':adv.flags.wound++;for(const b of [a,...partyMates(a)]){if(dist(a,b)>10)continue;const d=Math.round(maxHp(b)*C.hp);b.hp=Math.max(1,b.hp-d);pop(b.x,b.y-.6,String(d),'#ff6a5a')}break;
   case 'late':adv.flags.late++;adv.stage='wait';adv.waitKind='late';adv.wait=ri(...C.wait);break;
-  case 'hostile':adv.flags.hostile=1;break;
+  case 'hostile':adv.flags.hostile=1;angered(adv,a,sc);break;
   case 'boon':adv.flags.boon=1;break;
   case 'item':adv.flags.item=1;break;
   case 'ambush':{const t=spawnFoes(adv,a,sc,{n:[1,2]});const v=ctx(adv);v.foes=foesName(t.type,t.n);return [' ',...fill(pickA(C.line),v)]}}
@@ -409,10 +428,11 @@ function arrive(adv,a,sc){const S2=spec(adv,sc),C=ctx(adv);
     adv.stage='fight';return}
   case 'rest':{adv.stage='wait';adv.waitKind='rest';adv.wait=ri(...K.REST_T);note(adv,plain(frame(adv,sc,C))+'.');
     const mem=members(adv);if(mem.length>1)bondEvent(a,'party',mem);return}
-  case 'choice':{const br=slot('resolveBranch',v=>v==='a'||v==='b',adv,sc);const B=S2[br];sc.res=br;
+  case 'choice':{const pb=playerBranch(adv,sc,a,S2);if(pb==='wait')return; // agent-played leader (sim/player-choice.js): wait for its pick; on timeout the scripted branch
+    const br=pb||slot('resolveBranch',v=>v==='a'||v==='b',adv,sc);const B=S2[br];sc.res=br;
     {const L=hero(adv.lead),hurt=members(adv).some(b=>b.hp<maxHp(b)*.6)||adv.flags.wound>0,bold=!!L&&(tm(L,'bold')>1||tm(L,'retreat')<1);
      dmlog('branch',adv,['Choice at scene '+(adv.idx+1)+': '+B.label+' (the '+(br==='a'?'bold':'careful')+' road)'],{scene:adv.idx+1,a:S2.a.label,b:S2.b.label,taken:br,takenLabel:B.label,
-       why:br==='a'?(bold&&!hurt?'bold leader and nobody hurt':'coin flip'):hurt?'party is hurt or carrying wounds':bold?'bold leader':(L&&tm(L,'retreat')>1)?'careful leader':'coin flip',
+       why:pb?'player choice':br==='a'?(bold&&!hurt?'bold leader and nobody hurt':'coin flip'):hurt?'party is hurt or carrying wounds':bold?'bold leader':(L&&tm(L,'retreat')>1)?'careful leader':'coin flip',
        hurt,boldLeader:bold})}
     beat(adv,false,...fill(S2.frame,C),'. ',...fill(B.line,C));note(adv,'Chose: '+B.label+'.');
     adv.scenes.splice(adv.idx+1,0,mkScene(B.scene,sc.k,br,place(adv,B.scene.at,sc.at||{x:a.x,y:a.y},a)));
@@ -445,12 +465,10 @@ function spawnFoes(adv,a,sc,foe){const mem=members(adv),lo=Math.min(...mem.map(b
   const put=(m,i)=>{const ang=i*2.3+rnd(),r=.9+rnd()*1.2;m.x=at.x+Math.cos(ang)*r;m.y=at.y+Math.sin(ang)*r;m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};m.adv=adv.id;m.dest=null;m.target=null;adv.foes.push(m.id)};
   adv.foes=adv.foes.filter(id=>{const m=S.mobs.find(x=>x.id===id);return m&&m.alive&&!m.gone});
   let i=0;
-  if(foe.named){const k=adv.data.beastType&&MOBS[adv.data.beastType]&&MOBS[adv.data.beastType].z===z?adv.data.beastType:type,m=spawnMob(k),solo=mem.length<2?0:1;
-    // A named foe is the species' block as a leader (hp and bite scaled so the total is the old BEAST.scale / hit), with its name's signature ability.
-    const B=blockOf(k);m.role='leader';m.lvl=hi+1;m.maxhp=Math.round((25+m.lvl*16)*D.BEAST.scale[solo]);m.hp=m.maxhp;m.hpl=m.hp;
-    m.hit=blockOf(k,undefined,'leader').hit*D.BEAST.hit[solo];m.acd=ROLES.leader.cd;
-    m.ab=[...new Set([...B.abilities,...(NAMED_KITS[adv.data.beast]||[])])].slice(0,3);m.abcd={};
-    m.name=adv.data.beast;m.title=adv.data.btitle;m.named=true;put(m,i++);adv.named=m.id;stats().named[0]++}
+  if(foe.named){const k=adv.data.beastType&&MOBS[adv.data.beastType]&&MOBS[adv.data.beastType].z===z?adv.data.beastType:type; // raised through the named_foe lever (sim/levers.js)
+    const R=pull('named_foe',{type:k,region:z,lvl:clamp(hi+1,band(z)[0]-3,band(z)[1]+3),name:adv.data.beast,title:adv.data.btitle||'',solo:mem.length<2},{by:'scripted',reason:'scene '+(adv.idx+1)+' of '+adv.title+' calls for '+adv.data.beast,adv,log:false});
+    pendLevers.push(R.entry.detail); // folded into the scene's roll entry (roll(), below)
+    if(R.ok){const m=R.ret;put(m,i++);adv.named=m.id;stats().named[0]++}}
   for(const f of enc.foes){const m=spawnFoe(f);m.hpl=m.hp;put(m,i++)}
   return {type,n:enc.foes.length}}
 const liveFoes=adv=>adv.foes.map(id=>S.mobs.find(m=>m.id===id)).filter(m=>m&&m.alive&&!m.gone);
@@ -477,17 +495,18 @@ function finish(adv,outcome,why){if(adv.phase!=='active')return;outcome=outcome|
   bump(stats().done,adv.tpl);stats().outcome[outcome]++;
   const key=why==='death'?'death':why==='expired'?'expired':why==='abandoned'?'abandoned':why==='gone'?null:outcome;
   const pay=[];let gp=0,item=null;
-  if(k>0)for(const b of mem){const g=Math.round((6+b.lvl*3)*T.pay.gold*k);b.gold+=g;gp=Math.max(gp,g);gainXp(b,xpNeed(b.lvl)*T.pay.xp*K.PAY_XP*k);
+  if(k>0)for(const b of mem){const g=Math.round((6+b.lvl*3)*T.pay.gold*k*(adv.data.payMul||1));b.gold+=g;gp=Math.max(gp,g);gainXp(b,xpNeed(b.lvl)*T.pay.xp*K.PAY_XP*k);
     if(outcome==='success'){b.honor+=T.pay.honor;
       if(b===L||adv.flags.item||rnd()<T.pay.gear){const it=rewardItem(b,adv);if(it&&b===L)item=it}}
     record(b,(outcome==='success'?'Saw through ':'Half finished ')+adv.title+' for '+g+'g.');}
   else for(const b of mem)record(b,'Failed at '+adv.title+'.');
   if(k>0){pay.push(' ',gold(gp+'g'),mem.length>1?' each':'');if(item)pay.push(', and ',L,' takes ',{t:item.name,c:'gd'});pay.push('.')}
+  let endEntry=null;
   {const detail={outcome,why:why||'judged',passed:adv.pass,failed:adv.fail,late:adv.flags.late,scenes:adv.idx+'/'+adv.scenes.length,tpl:adv.tpl,days:Math.round((S.gameMin-adv.started)/144)/10,
      rule:why?'ended early':'final roll '+((adv.scenes.filter(s=>s.final).pop()||{}).res==='pass'?'passed':'missed')+'; failed rolls + lost days = '+(adv.fail+adv.flags.late)+' (3 or more drags the result down a step)'};
    if(k>0){detail.goldEach=gp;detail.honor=outcome==='success'?T.pay.honor:0;detail.item=item?item.name:null}
    const ttl=gd(adv.title);
-   dmlog(k>0?'payoff':why==='abandoned'?'abandon':'fail',adv,k>0?[ttl,' ended in '+outcome+(gp?' (+'+gp+'g'+(mem.length>1?' each':'')+')':'')+'.']:[ttl,' failed: '+(why||'the rolls went against the party')+'.'],detail,{heroes:adv.mem.slice()})}
+   endEntry=dmlog(k>0?'payoff':why==='abandoned'?'abandon':'fail',adv,k>0?[ttl,' ended in '+outcome+(gp?' (+'+gp+'g'+(mem.length>1?' each':'')+')':'')+'.']:[ttl,' failed: '+(why||'the rolls went against the party')+'.'],detail,{heroes:adv.mem.slice()})}
   if(key)beat(adv,why==='death'||adv.data.eliteId!=null,...fill(pickA(D.OUTCOME[key]),C),...pay);
   if(outcome!=='failure'&&mem.length>1)bondEvent(mem[0],'party',mem);
   // oaths: an heirloom hunt may turn up the heirloom itself; anyone may count the deed
@@ -496,9 +515,38 @@ function finish(adv,outcome,why){if(adv.phase!=='active')return;outcome=outcome|
   if(outcome==='success'&&((adv.slain&&adv.data.eliteId!=null)||first('adv:'+adv.fac+':'+adv.tpl)))timeline('adventure',...(mem.length>1?[L||mem[0],'’s party']:[L||mem[0]]),' completed ',gd(adv.title),' for '+adv.town+'.');
   else if(why==='death'&&L)timeline('adventure',L,' died on ',gd(adv.title),'.');
   // a follow-up job for the same leader
-  if(outcome==='success'&&T.follow&&alive(L)&&rnd()<.35){const c=CITY.find(t=>t.name===adv.town);if(c)newHook(c,T.follow,'follow',{for:L.id,zone:adv.z,giver:adv.giver})}
+  if(outcome==='success'&&T.follow&&alive(L)&&rnd()<.35){const c=CITY.find(t=>t.name===adv.town);if(c){boardLever=null;newHook(c,T.follow,'follow',{for:L.id,zone:adv.z,giver:adv.giver},'follow-up to '+adv.title,true);if(boardLever)fold(endEntry,boardLever)}}
+  worldAfter(adv,outcome,why);
   for(const b of adv.mem.map(hero))if(b&&b.adv===adv.id)b.adv=null;
   if(L&&alive(L)&&why!=='death'&&(L.state==='hunt'||L.state==='travel'))goHome(L)}
+// ---- the DM's hand on the world (sim/levers.js) ----
+// What a finished adventure leaves behind: a lost escort marks its road dangerous for a day (two
+// in one region while marked bring bandits onto its roads), a cleared den marks the place cleared,
+// a caravan brought through (an escort, or a robbed wagon's trail followed to the end) floods the
+// stalls with one good for a few hours. ready() first, so a used-up lever is not even tried.
+function scenePt(adv,type){const pts=adv.scenes.filter(s=>s.at&&(!type||s.type===type)).map(s=>s.at).reverse();for(const p of pts)if(!spotErr(p))return p;return null}
+function worldAfter(adv,outcome,why){const by={by:'scripted',adv};
+  if(adv.tpl==='escort'&&outcome==='failure'&&why!=='abandoned'){const p=scenePt(adv,'fight')||scenePt(adv);
+    if(p){const z=zoneAt(p.x,p.y);
+      if(ready('mark_dangerous',z))pull('mark_dangerous',{at:p,r:4,lvl:band(z)[0]+2,hours:24},{...by,reason:adv.title+' was lost on this road'});
+      if(S.marks.filter(m=>m.kind==='danger'&&m.z===z).length>=2&&!S.conditions.some(c=>c.z===z)&&ready('set_condition',z))
+        pull('set_condition',{region:z,kind:'bandits',strength:1,hours:12},{...by,reason:'two escorts lost on the '+ZONES[z]+' roads in a day'})}}
+  if(adv.tpl==='clear'&&outcome==='success'&&adv.slain){const p=scenePt(adv,'fight');
+    if(p&&ready('mark_cleared',zoneAt(p.x,p.y)))pull('mark_cleared',{at:p,r:4,hours:24},{...by,reason:'the den of '+(adv.data.beast||'the pack')+' was cleared'})}
+  if(outcome==='success'&&(adv.tpl==='escort'||adv.tpl==='investigate'&&adv.src==='remnant')&&ready('price_shock')){
+    const ks=Object.keys(GOODS).filter(g=>!activeOf('price_shock').some(x=>x.params.good===g));
+    if(ks.length)pull('price_shock',{good:ks[adv.id%ks.length],direction:'down',size:1,hours:8},{...by,reason:(adv.data.thing||'a caravan')+' came through to '+(adv.data.place||adv.town)+': the stalls fill'})}}
+// An angered stranger (the hostile complication at a parley) may stay on the road: a camp on
+// the nearest clear road tile and a hostile person in it, for two game days. Social rolls near
+// them are harder (attitudeDc) and they have cold words for passing heroes. No dice: the
+// adventure id decides, so the gameplay RNG stream is not touched.
+const STRANGER_ROLE={'hermit':'hermit','drover':'drover','Rookscar deserter':'sellsword','tinker':'peddler'};
+function angered(adv,a,sc){if(sc.type!=='social'||(adv.id*7+adv.idx)%10>=K.STRANGER*10)return;
+  const at=sc.at||{x:a.x,y:a.y},z=zoneAt(at.x,at.y);if(z<0||!ready('create_npc',z)||!ready('mark_place',z))return;
+  let p=null;for(const q of (ROADS[z]||[]).slice().sort((u,v)=>dist(u,at)-dist(v,at)).slice(0,16))if(!spotErr(q,{road:true})&&!(S.places||[]).some(x=>dist(x,q)<3)){p={x:q.x,y:q.y};break}
+  if(!p)return;const who=adv.data.stranger||'stranger',L=hero(adv.lead),by={by:'scripted',adv};
+  const camp=pull('mark_place',{kind:'camp',at:p,hours:48},{...by,reason:'the '+who+' from '+adv.title+' makes camp by the road, nursing a grudge'});if(!camp.ok)return;
+  pull('create_npc',{role:STRANGER_ROLE[who]||'stranger',home:'camp',at:p,attitude:'hostile',hours:48,towardParty:L&&L.party?L.party.id:undefined},{...by,reason:'the '+who+' '+(L?L.name:'the party')+' angered will not forget it'})}
 function rewardItem(b,adv){const k=weakestSlot(b);if(!k)return null;const il=b.lvl+1;if(slotLevel(b,k)>=il)return null;
   const it=makeItem(b.cls,k,il,adv.z,{src:'Reward for '+adv.title,fine:.6,rare:.1});const old=equip(b,it);if(old)b.bag.push(old);return it}
 
@@ -529,17 +577,20 @@ function refill(){const gone={};
   // region and none is open-ended, the oldest is taken down for a fresh townsfolk job, so a
   // party of any level always has something on the board.
   for(const c of CITY){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null);
-    if(posted.length<K.HOOKS){boardLog(c,makeHook(c),gone[c.name]||[]);continue}
-    if(!posted.some(h=>h.zone==null)){S.adventures.splice(S.adventures.indexOf(posted[0]),1);
-      boardLog(c,townHook(c),(gone[c.name]||[]).concat(hookRow(posted[0],'every posted job was tied to one region: oldest taken down')))}}}
+    if(posted.length<K.HOOKS){boardLever=null;const h=makeHook(c);boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}
+    if(!posted.some(h=>h.zone==null)){const w=pull('withdraw_hook',{hook:posted[0].id},{by:'scripted',reason:'every posted job was tied to one region',log:false});
+      boardLever=null;const h=townHook(c);boardLog(c,h,(gone[c.name]||[]).concat(w.ok?[hookRow(posted[0],'every posted job was tied to one region: oldest taken down')]:[]),[w.entry.detail].concat(boardLever?[boardLever]:[]))}}}
 const hookRow=(h,why)=>({id:h.id,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone],for:h.for==null?null:h.for,why});
 // One log entry per town per refresh: what went up on the board, what came down, what stands.
-function boardLog(c,h,removed){const open=S.adventures.filter(x=>x.phase==='open'&&x.town===c.name),who=h.for!=null?hero(h.for):null;
+// levers: the post_hook / withdraw_hook pulls behind this refresh (the Levers filter shows the entry).
+function boardLog(c,h,removed,levers){const open=S.adventures.filter(x=>x.phase==='open'&&x.town===c.name);
+  if(!h){if(levers.length)dmlog('lever',null,['Board at '+c.name+': nothing posted ('+levers.map(l=>l.lever+' '+l.result).join('; ')+').'],{lever:levers.map(l=>l.lever).join(', '),levers,open:open.length},{town:c.name});return}
+  const who=h.for!=null?hero(h.for):null;
   const why=h.src==='death'?'a hero of this town fell recently':h.src==='remnant'?'a road encounter left a remnant':h.src==='oath'?'a hero in town has a matching oath':
     h.src==='follow'?'follow-up to a finished job':h.data.eliteId!=null?'a living elite is about':'townsfolk request or gate writ, template drawn at random';
   dmlog('hooks',null,['Board at '+c.name+': '+h.tpl+' posted by '+(h.giver?h.giver.name:'the gate')+' ('+h.src+')',...(who?[' for ',who]:[]),
     removed.length?'; '+removed.length+' taken down.':'.'],
-    {added:[hookRow(h,'')],removed,board:open.map(x=>x.tpl+'/'+x.src).join(', '),open:open.length,why},{town:c.name,heroes:who?[who.id]:[]})}
+    {added:[hookRow(h,'')],removed,board:open.map(x=>x.tpl+'/'+x.src).join(', '),open:open.length,why,lever:levers.map(l=>l.lever).join(', ')||null,levers},{town:c.name,heroes:who?[who.id]:[]})}
 
 // Remember where road encounters ended, so a robbed wagon can become an investigation.
 function watchWorld(){const seen=S.dmSeen.enc,E=S.encounters||[],now={};

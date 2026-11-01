@@ -21,6 +21,7 @@ import {sprite,SPR,heroSprite,npcSprite} from './sprites.js';
 import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
+import {drawPlaces} from './places.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
 
@@ -99,6 +100,7 @@ export function createRenderer(cv,screenEl){
     if(inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle='#ffe27a';for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
     const close=cam.close=sc>=cam.fit*2;
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
+    drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
     const ents=[];
     for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ents.push(m);
