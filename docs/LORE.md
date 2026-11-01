@@ -287,6 +287,120 @@ one falls, no new elite stalks that zone for at least ten hours.
 | Scoriath, the Drake of the High Pass | Cinderpass | 17 | Ash Drake | Scales black as cooled slag; roosts on the crags above the lair road. |
 | Ulfryn Coldmarrow, the Tarn-King | Hoarfell | 22 | Tarn Wight | Crowned wight of the deepest tarn; the lesser wights climb out of the ice in his wake. |
 
+## Bestiary
+Every creature has a stat block (`src/data/bestiary.js`): a **family** (what it is), a **role**
+(how it fights), one to three **abilities**, what it resists or fears, how it behaves and what
+it leaves behind. The field table above says where each lives; the bestiary says what it does.
+The DM never invents a monster: dungeons and fights are filled from these blocks, and the
+average creature of any level is exactly as tough as it ever was.
+
+**Families:** beast, vermin, undead, elemental, brute-folk, bandit, wyrm.
+
+**Roles.** A role tilts a creature's hide and bite; the mix in each zone keeps the average level.
+
+| Role | Hide | Bite | Fights like |
+| --- | --- | --- | --- |
+| brute | high | slow, heavy | stands and trades blows |
+| skirmisher | low | fast | darts, often in packs |
+| caster | low | slow | spits, curses and poisons from a step away |
+| swarm | very low | light | many at once |
+| guardian | very high | slow | holds a place and shrugs off blows |
+| leader | high | steady | rallies others; named foes and bosses |
+
+**Abilities.** Slow, root, fear (the hero loses strikes), poison (damage over time), knockback
+(hurled out of reach), summon (kin join the fight), heal (mends a hurt ally), breath (everyone
+fighting it), frenzy (a rage when badly hurt).
+
+| Ability | Effect | Used by |
+| --- | --- | --- |
+| Venom | poison over six seconds | Webspinner, Fen Lurker, Tomb Skitter, Cave Crawler, Hedge Caller |
+| Web Snare | roots the hero | Webspinner, Cave Crawler |
+| Howl | frightens a hero when kin are near | Timber Wolf, Rimehound, Den Mother |
+| Gore | hurls the hero back | Bristleback Boar, Mudback Boar, tundra and bandit brutes, Tollbreaker |
+| Frenzy | a rage below 45% hide | Mudback Boar, Reedcutter, Camp Captain, Den Mother, Hollowfang |
+| Mire Grip | slows | Bogling |
+| Hatch | brings forth two lesser kin | Fen Lurker, Old Mother Sedge |
+| Slag Slam | slams the hero away | Cinder Golem |
+| Ash Breath | fire on everyone fighting it | Ash Drake, Slag Mote |
+| Rime Bite | slows with cold | Rimehound |
+| Rimeblast | killing frost on everyone fighting it | Ulfryn Coldmarrow, Whitemaw |
+| Bellow | frightens | Tundra Shaghorn, Camp Captain, Scoriath |
+| Marrow Chill | drains over five seconds | Tarn Wight, Bone Archer |
+| Grave Dread | frightens | Tarn Wight, Crypt Shambler, Grave Warden |
+| Mend | heals a hurt ally | Grave Warden, Hedge Caller |
+
+**Field creatures.**
+
+| Creature | Family | Role | Abilities | Resists / fears |
+| --- | --- | --- | --- | --- |
+| Timber Wolf | beast | skirmisher | Howl; calls one packmate; breaks off at 15% | none |
+| Bristleback Boar | beast | brute | Gore | none |
+| Webspinner | vermin | caster | Web Snare, Venom | resists nature, fears holy |
+| Bogling | brute-folk | swarm | Mire Grip; calls two kin | fears arcane |
+| Mudback Boar | beast | brute | Frenzy, Gore | none |
+| Fen Lurker | vermin | caster | Venom, Hatch | resists nature, fears arcane |
+| Cinder Golem | elemental | guardian | Slag Slam | resists physical, fears arcane; slow to anger |
+| Ash Drake | wyrm | caster | Ash Breath | resists arcane, fears physical blades |
+| Rimehound | beast | skirmisher | Rime Bite, Howl; calls two packmates | fears arcane |
+| Tundra Shaghorn | beast | brute | Bellow, Gore | resists physical; ignores heroes until they come close |
+| Tarn Wight | undead | caster | Marrow Chill, Grave Dread | resists nature, fears holy |
+
+Damage is tagged by who deals it: Warriors and Rogues physical, Hunters nature, Mages arcane,
+Priests holy. Fire and cold are reserved for monster breath and, later, wands.
+
+**Site foes.** Creatures of dungeons, camps and ruins rather than open country. They wear a
+field species' shape and colours (a Reedcutter is built like a Bogling) and are not hunted
+for quests.
+
+| Creature | Family | Role | Abilities | Found in |
+| --- | --- | --- | --- | --- |
+| Crypt Shambler | undead | brute | Grave Dread | crypt, temple, ruin |
+| Bone Archer | undead | caster | Marrow Chill | crypt, temple, ruin |
+| Grave Warden | undead | guardian | Grave Dread, Mend | crypt, temple |
+| Tomb Skitter | vermin | swarm | Venom | crypt, mine, ruin, den |
+| Reedcutter | bandit | skirmisher | Frenzy | fortress, road, ruin |
+| Tollbreaker | bandit | brute | Gore | fortress, road |
+| Hedge Caller | bandit | caster | Mend, Venom | fortress, road, den |
+| Camp Captain | bandit | leader | Bellow, Frenzy | fortress |
+| Slag Mote | elemental | swarm | Ash Breath | mine, temple |
+| Cave Crawler | vermin | skirmisher | Venom, Web Snare | mine, den |
+| Den Mother | beast | leader | Howl, Frenzy | den |
+
+**Rare elites** are a template on a base creature: about twice the hide, half again the bite,
+slow mending, a wider ambush, a guaranteed epic and one extra ability: Hollowfang Frenzy, Old
+Mother Sedge Hatch, Scoriath Bellow, Ulfryn Coldmarrow Rimeblast, Brask Ironhorn Gore,
+Whitemaw Rimeblast.
+
+**Named foes** (Old Scar and the rest) are a monster of the region as a leader, with a
+signature ability on top of their kin's: Old Scar Frenzy, the Grey Widow Web Snare, Crookback
+Gore, Longtooth Howl, the Quiet One Grave Dread, Ashjaw Ash Breath, Rimeclaw Rime Bite,
+Mudmother Mire Grip, Halfhorn Bellow, the Pale Hunger Marrow Chill, Blackgums Venom, Old Rot
+Hatch.
+
+**Boss templates** (`src/data/bosses.js`): phases at hide thresholds, signature moves, adds,
+an enrage timer and a named loot table.
+- **Kragmaw the Cinder Wyrm**: one phase; a heavy blow every second and a half; Cinder Breath
+  on the whole raid every seven seconds; no adds, no enrage; four named epics.
+- **Lich-Warden Vesk**: three phases. *The Warden* (Grave Chill drains one hero, Warden's
+  Dread frightens), *The Drowned Court* below 55% (the water in the crypt stands still and
+  Grave Wardens rise from it), *Unbound* below 20% (he tears the phylactery from his own
+  chest); enrages after four minutes. Loot: the Sunken Crypt epics.
+- **Site bosses**, one set per theme and three tiers: crypt the Barrow-Reeve, Marrowmother
+  Ysolt, the Hollow Abbot; fortress Captain Redhand, Warden Brannock Sull, the Iron Reeve; den
+  Greymaw, Long Ursel, Rimejaw; mine the Cave Duchess, Slagheart, Emberdeep Kor; temple the
+  Veiled Cantor, Ashen Prior Vael, the Pale Hierophant; ruin the Stone Steward, Lord Orrick
+  Dane, the Sundered Queen; road Black Tam, Sable Marrin, the Pale Reeve.
+
+**Encounters and sites.** Themes: crypt, fortress, den, mine, temple, ruin, road. A fight is
+bought with a budget: each creature costs by its role and by how far above the party it stands,
+and a party of four spends about four ordinary foes' worth. A site is a run of rooms (guard,
+trap, puzzle, treasure, shrine, boss), each with foes and loot, the boss room holding a named
+epic.
+
+**Special foes.** The DM may spend a few tweak points on a creature (rename, one or two more
+levels, swap one ability, add one resistance), at most twice per region per day, always
+written to the DM log. They are the exception, never the standard.
+
 ## Epic items
 - Thornvale: Fang of the Old Wood, Thornheart Longbow, Bramblecrown
 - Mirefen: Mosswoven Cloak, Bogwalker Boots, Fenlight Lantern
@@ -554,6 +668,48 @@ Samples:
 - "Halfhorn, terror of the Mirefen drovers, comes out last... rolls 18+3 vs 11. Mireth is ready for it."
 - "Lurken delivers a salt wagon at the Thornvale waymark... rolls 7+2 vs 10. Two crates short. The tallyman docks the pay and does not apologise."
 - "Mireth's party returns from Smoke Out the Mirefen Den with the job done. 40g each, and Mireth takes Fenleather Vestment."
+
+## The DM's hand
+The Dungeon Master does not reach into the world freely. It has a short list of levers
+(`src/sim/levers.js`), each with hard limits, a cooldown and a written reason, and every pull,
+granted or refused, goes into the DM log.
+
+**What the DM can change**
+- **People.** Place someone in the world: a peddler, hermit, drover, sellsword, minstrel or a
+  plain stranger, visiting a town, camped in the wilds or standing on a road, friendly, neutral,
+  wary or hostile. Send them away again. Turn any person's mood toward a hero, a party or a
+  whole faction for a while: a hostile face makes talk harder (+3 to the roll needed), a wary
+  one a little harder, a friendly one easier (-2). Townsfolk keep their posts; only the DM's own
+  people can be sent away.
+- **Places.** Mark a ruin, a camp, a shrine, a cairn door or a watchtower on open ground, never
+  in a town or at its gate. Markers sit on top of the land; the land itself does not change.
+- **Danger.** Mark a stretch of road dangerous (more Rookscar ambushes, a few more of the
+  region's own beasts, never stronger than the region allows) or cleared (ambushes there become
+  quiet shrines, and the local dens move out past its edge), for up to two days.
+- **Conditions.** Lay one condition over a region for up to three days: bandits on the roads,
+  plague (townsfolk keep indoors, the roads fill with lost pilgrims), a festival (talkative
+  townsfolk, merchants instead of ambushes), a migration (more beasts on the move) or fog-bound
+  skies (everyone sees less).
+- **Trade.** Flood the auction house with one good or make it scarce for some hours.
+- **Jobs.** Post a job on a town board, aimed at a place or a person, for a small, fair or
+  generous purse; take a job down.
+- **Foes.** Raise the named beast an adventure calls for, or a special foe from the bestiary
+  with a few tweaks, always kept to the region's level band.
+
+**What the DM cannot do**
+Kill a hero or save one, change anyone's health, experience, level, scores or class, bend the
+one-life rule, reshape the land, or hand out treasure the item tables do not hold. No lever
+exists for any of it.
+
+**How the scripted DM uses them.** A lost escort leaves its road marked dangerous for a day,
+and two lost in one region in a day bring bandits onto its roads. A cleared den is marked
+cleared. A caravan brought through, or a robbed wagon's trail followed to the end, fills the
+stalls with one good for a few hours. A stranger angered at a parley may make camp by the
+road and stay there, nursing the grudge, for two days.
+
+The DM's own people (new canon): **Peddler, Hermit, Drover, Sellsword, Minstrel, Stranger**,
+named from the peoples of Eldmoor; place markers: **ruin, camp, shrine, cairn door,
+watchtower**, named like "the lantern cairn of Mirefen" or "the drovers' camp of Thornvale".
 
 ## Minds
 

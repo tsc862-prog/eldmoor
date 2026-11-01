@@ -45,6 +45,8 @@ import {log,gold} from './chronicle.js';
 import {pop} from './effects.js';
 import {maxHp,gainXp,moveTo,goHome,huntZone,xpNeed,getEpic} from './heroes.js';
 import {spawnMob} from './mobs.js';
+import {buildEncounter,spawnFoe} from './encounterbuilder.js';
+import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
 import {partyMates} from './party.js';
 import {checkEncounter} from './encounters.js';
 import {isStorm} from './weather.js';
@@ -449,12 +451,15 @@ function restDone(adv,a,sc){const S2=spec(adv,sc),C=ctx(adv),x=roll(adv,a,sc);sc
 
 // Spawn monsters of the scene's region for this adventure, around the scene point.
 // A named foe is one monster of the region raised to the party's top level + 1 and toughened.
+// Which bestiary theme each adventure's fights draw on.
+const THEME_OF={clear:'den',hunt:'den',rescue:'den',escort:'road',fallen:'road',negotiate:'road',deliver:'road',relic:'ruin',investigate:'ruin'};
 function spawnFoes(adv,a,sc,foe){const mem=members(adv),lo=Math.min(...mem.map(b=>b.lvl)),hi=Math.max(...mem.map(b=>b.lvl));
   const z=sc.z!=null?sc.z:adv.z,at=sc.at||{x:a.x,y:a.y};
-  const types=Object.keys(MOBS).filter(k=>MOBS[k].z===z),pool=types.length?types:Object.keys(MOBS).filter(k=>MOBS[k].z===adv.z);
-  const near=pool.filter(k=>MOBS[k].lv[0]<=lo+1),type=pickA(near.length?near:pool);
-  let n=ri(foe.n[0],foe.n[1])+(adv.flags.hostile&&!foe.named?1:0);if(adv.flags.hostile&&!foe.named)adv.flags.hostile=0;
-  if(mem.length<2)n=Math.min(n,2); // a solo hero is never mobbed by an adventure
+  const hostile=adv.flags.hostile&&!foe.named?1:0;if(hostile)adv.flags.hostile=0;
+  let nmin=foe.n[0],nmax=foe.n[1]+hostile;if(mem.length<2){nmax=Math.min(nmax,2);nmin=Math.min(nmin,nmax)} // a solo hero is never mobbed by an adventure
+  // The bestiary fills the fight (sim/encounterbuilder.js): one species of the region, levels within one of the weakest hero,
+  // a count the scene's range and the party's budget settle. Standard foes only; a named foe is the scene's one special.
+  const enc=buildEncounter(THEME_OF[adv.tpl]||'den',z,lo,mem.length,{n:[nmin,nmax],lvlBand:[Math.max(1,lo-1),lo+1],mono:true,variants:false}),type=enc.foes.length?enc.foes[0].type:Object.keys(MOBS).find(k=>MOBS[k].z===z)||Object.keys(MOBS)[0];
   const put=(m,i)=>{const ang=i*2.3+rnd(),r=.9+rnd()*1.2;m.x=at.x+Math.cos(ang)*r;m.y=at.y+Math.sin(ang)*r;m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};m.adv=adv.id;m.dest=null;m.target=null;adv.foes.push(m.id)};
   adv.foes=adv.foes.filter(id=>{const m=S.mobs.find(x=>x.id===id);return m&&m.alive&&!m.gone});
   let i=0;
@@ -462,8 +467,8 @@ function spawnFoes(adv,a,sc,foe){const mem=members(adv),lo=Math.min(...mem.map(b
     const R=pull('named_foe',{type:k,region:z,lvl:clamp(hi+1,band(z)[0]-3,band(z)[1]+3),name:adv.data.beast,title:adv.data.btitle||'',solo:mem.length<2},{by:'scripted',reason:'scene '+(adv.idx+1)+' of '+adv.title+' calls for '+adv.data.beast,adv,log:false});
     pendLevers.push(R.entry.detail); // folded into the scene's roll entry (roll(), below)
     if(R.ok){const m=R.ret;put(m,i++);adv.named=m.id;stats().named[0]++}}
-  for(let j=0;j<n;j++){const m=spawnMob(type);m.lvl=clamp(m.lvl,Math.max(1,lo-1),lo+1);m.maxhp=25+m.lvl*16;m.hp=m.maxhp;put(m,i++)}
-  return {type,n}}
+  for(const f of enc.foes){const m=spawnFoe(f);m.hpl=m.hp;put(m,i++)}
+  return {type,n:enc.foes.length}}
 const liveFoes=adv=>adv.foes.map(id=>S.mobs.find(m=>m.id===id)).filter(m=>m&&m.alive&&!m.gone);
 function despawn(adv){for(const id of adv.foes){const m=S.mobs.find(x=>x.id===id);if(!m||m.elite)continue;m.alive=false;m.gone=true;m.target=null}adv.foes=[]}
 

@@ -58,7 +58,7 @@ ok(S0.length >= 4 && S1.length >= 4 && roads[0].length > 0 && bad, `found legal 
 console.log('\nforbidden effects');
 for (const k of ['hp', 'xp', 'stats', 'cls', 'loot', 'item', 'revive', 'kill']) {let threw = false; try {register({name: 'evil_' + k, params: {[k]: {type: 'int'}}, apply: () => ({ok: true})})} catch (e) {threw = true} ok(threw && !LEVERS['evil_' + k], `register() refuses a lever with a '${k}' parameter`)}
 {let threw = false; try {register({name: 'xp', params: {}, apply: () => ({ok: true})})} catch (e) {threw = true} ok(threw, 'register() refuses a lever named xp')}
-ok(Object.values(LEVERS).every(d => Object.keys(d.params).every(k => !/^(hp|maxhp|xp|stats?|cls|class|gold|item|loot|epic|gear|lvl)$/.test(k) || (k === 'lvl' && ['mark_dangerous', 'mark_cleared', 'named_foe'].includes(d.name)))), 'no lever parameter names a hero number (lvl only as a monster or area level)');
+ok(Object.values(LEVERS).every(d => Object.keys(d.params).every(k => !/^(hp|maxhp|xp|stats?|cls|class|gold|item|loot|epic|gear|lvl)$/.test(k) || (k === 'lvl' && ['mark_dangerous', 'mark_cleared', 'named_foe', 'custom_foe'].includes(d.name)))), 'no lever parameter names a hero number (lvl only as a monster or area level)');
 const heroNums = () => JSON.stringify(S.agents.map(a => [a.id, a.hp, a.xp, a.lvl, a.cls, a.state, a.gold, a.honor, a.gear, (a.epics || []).length, JSON.stringify(a.abil || null), JSON.stringify(a.eq || null)]));
 const before = heroNums();
 
@@ -144,9 +144,18 @@ rej('set_condition', {region: 1, kind: 'plague', strength: 9}, /strength must be
 rej('mark_place', {kind: 'ruin', at: S0[4]}, /reason/, 'missing reason', {by: 'agent', reason: ' '});
 rej('mark_place', {kind: 'ruin', at: S0[4]}, /caller/, 'unknown caller', {by: 'god', reason: 'because'});
 rej('teleport_hero', {}, /no such lever/, 'unknown lever');
-for (const st of ['custom_foe', 'create_site', 'start_event', 'nudge_relation']) rej(st, {}, /not available yet/, st + ' stub');
-provide('customFoe', (spec) => ({ok: true, effect: {stub: spec.kind}}));
-{const x = pull('custom_foe', {spec: {kind: 'test'}}, by); ok(x.ok && x.effect.stub === 'test', 'custom_foe works once the bestiary provides customFoe')}
+for (const st of ['create_site', 'start_event', 'nudge_relation']) rej(st, {}, /not available yet/, st + ' stub');
+provide('startEvent', (p) => ({ok: true, effect: {stub: p.kind}}));
+{const x = pull('start_event', {kind: 'test', region: 0}, by); ok(x.ok && x.effect.stub === 'test', 'a stub works once its system provides an implementation')}
+// custom_foe: the bestiary's customFoe, inside its tweak budget and per-region cap
+{const {MOBS} = await import('../src/data/mobs.js'); const base = Object.keys(MOBS).find(k => MOBS[k].z === 0 && !k.includes('@'));
+  S.levers.cd = {}; const x = pull('custom_foe', {base, region: 0, at: S0[5], name: 'Old Testfang', levels: 1}, by), m = x.ok && x.ret;
+  ok(x.ok && m.name === 'Old Testfang' && dist(m, S0[5]) < .01 && m.lever === x.id, `custom_foe: ${m && m.name} (L${m && m.lvl}, ${x.effect && x.effect.points} tweak points) stands at the spot` + (x.ok ? '' : ' -- ' + x.reason));
+  rej('custom_foe', {base, region: 0, at: S0[4], levels: 3}, /levels must be/, 'custom_foe over the level tweak');
+  rej('custom_foe', {base, region: 1, at: S0[4]}, /outside Mirefen/, 'custom_foe placed outside its region');
+  advance(31); const y = pull('custom_foe', {base, region: 0, at: S0[4], levels: 2, swap: {pair: ['nope', 'nope']}}, by); ok(!y.ok, 'custom_foe: the bestiary refuses a bad swap: ' + y.reason);
+  advance(31); ok(pull('custom_foe', {base, region: 0, at: S0[4]}, by).ok, 'custom_foe: a second in the region');
+  advance(31); rej('custom_foe', {base, region: 0, at: S0[3]}, /per region per game day|special foes today/, 'custom_foe: the region cap');}
 
 // ---- limits and cooldowns ----
 console.log('\nlimits and cooldowns');

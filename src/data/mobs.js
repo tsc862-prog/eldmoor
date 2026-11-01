@@ -1,7 +1,8 @@
 // Monster table and spawn counts. Owned by creature-designer.
 // z: zone index (0 Thornvale, 1 Mirefen, 2 Cinderpass, 3 Hoarfell). lv: level range.
 // spr: key into render/sprites SPR. col: palette for that sprite. loot: trade good. q: quest title.
-// Stats are formula-driven in sim (maxhp 25+lvl*16, hit 3+lvl*2); do not add per-mob stats here.
+// Stats are not here: the formula (maxhp 25+lvl*16, hit 3+lvl*2) is tilted by each species' role in data/bestiary.js,
+// which also holds family, abilities, resistances, behaviour and loot. Add a row here and a block there together.
 export const MOBS={
   wolf:{name:'Timber Wolf',pl:'Timber Wolves',z:0,lv:[1,3],spr:'wolf',col:{G:'#9a9aa8',E:'#e04040'},loot:'Wolf Pelt',q:'Wolves at the Gate'},
   boar:{name:'Bristleback Boar',pl:'Bristleback Boars',z:0,lv:[2,5],spr:'boar',col:{B:'#7a4a2a',T:'#f0ead0',D:'#3a2418'},loot:'Boar Tusk',q:'Tusks for the Tanner'},

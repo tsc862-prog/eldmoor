@@ -46,6 +46,9 @@ import {npcSay,ensureNpcs} from './npcs.js';
 import {moveTo} from './heroes.js';
 import {spawnMob} from './mobs.js';
 import {postHook,withdrawHook} from './dm.js';
+import {customFoe,spawnFoe} from './encounterbuilder.js';
+import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
+import {CUSTOM} from '../data/encounter-tables.js';
 
 // ---- knobs ----
 export const LK={
@@ -124,13 +127,13 @@ export function bandLvl(z,lvl){const [lo]=band(z),hi=bandHi(z);
 
 // ---- the registry ----
 export const LEVERS={};
-const IMPL={}; // implementations other systems provide (the bestiary's customFoe, a future createSite)
+const IMPL={}; // implementations other systems provide for the stub levers (a future createSite, startEvent, nudgeRelation)
 export function register(def){
   if(!def||typeof def.name!=='string'||typeof def.apply!=='function')throw new Error('lever needs a name and apply()');
   for(const k in def.params||{})if(FORBIDDEN.test(k))throw new Error('lever '+def.name+': parameter '+k+' is not allowed (heroes’ numbers, life and loot are off limits)');
   if(FORBIDDEN.test(def.name))throw new Error('lever name '+def.name+' is not allowed');
   def.params=def.params||{};def.limits=def.limits||{};def.cooldown=def.cooldown||0;LEVERS[def.name]=def;return def}
-// Another system provides an implementation a stub lever calls (provide('customFoe', fn)).
+// Another system provides an implementation a stub lever calls (provide('createSite', fn)).
 export function provide(name,fn){IMPL[name]=fn}
 // The menu for a model or agent: names, parameter schemas and limits as plain JSON.
 export function leverMenu(){return Object.values(LEVERS).map(d=>({name:d.name,about:d.about||'',params:JSON.parse(JSON.stringify(d.params,(k,v)=>v===Infinity?null:typeof v==='function'?undefined:v)),limits:{...d.limits},cooldown:d.cooldown,available:!d.stub||!!IMPL[d.stub]}))}
@@ -323,16 +326,33 @@ register({name:'named_foe',about:'Raise a named foe for a running adventure: a m
   params:{type:{type:'enum',values:Object.keys(MOBS)},region:{type:'region'},lvl:{type:'int',min:1,max:60},name:{type:'str',max:24},title:{type:'str',max:60,def:''},solo:{type:'bool',def:false}},
   limits:{perDay:60},cooldown:0,
   check(p,ctx){if(!ctx.adv||ctx.adv.phase!=='active')return 'a named foe belongs to a running adventure';return bandLvl(p.region,p.lvl).err||null},
-  apply(p){const b=bandLvl(p.region,p.lvl),m=spawnMob(p.type),k=p.solo?0:1;
-    m.lvl=b.lvl;m.maxhp=Math.round((25+m.lvl*16)*BEAST.scale[k]);m.hp=m.maxhp;m.hit=BEAST.hit[k];m.name=p.name;m.title=p.title;m.named=true;
+  // the species' bestiary block as a leader (hp and bite scaled to the old BEAST.scale / hit), with its name's signature ability
+  apply(p){const b=bandLvl(p.region,p.lvl),m=spawnMob(p.type),k=p.solo?0:1,B=blockOf(p.type);
+    m.role='leader';m.lvl=b.lvl;m.maxhp=Math.round((25+m.lvl*16)*BEAST.scale[k]);m.hp=m.maxhp;m.hpl=m.hp;
+    m.hit=blockOf(p.type,undefined,'leader').hit*BEAST.hit[k];m.acd=ROLES.leader.cd;
+    m.ab=[...new Set([...B.abilities,...(NAMED_KITS[p.name]||[])])].slice(0,3);m.abcd={};m.name=p.name;m.title=p.title;m.named=true;
     return {ok:true,effect:{mob:m.id,lvl:m.lvl,clamped:b.clamped,type:p.type},ret:m}},
   describe:p=>p.name+' (L'+p.lvl+' '+p.type+')'});
 
+// A special foe from the bestiary (sim/encounterbuilder.js customFoe): a creature with a few tweaks
+// (+levels, one ability swapped, one resistance, a name) inside the bestiary's tweak budget and
+// its per-region daily cap, placed on a walkable spot of the region, level kept to the band.
+// swap and resist: {pair:[old,new]} / {pair:[tag,mult]}. It wanders off after a game day.
+register({name:'custom_foe',about:'A special foe from the bestiary: base creature, +0-'+CUSTOM.maxLevels+' levels, an ability swap, a resistance and a name, within '+CUSTOM.points+' tweak points; '+CUSTOM.perRegionDay+' per region per game day.',
+  params:{base:{type:'str',max:40},region:{type:'region'},at:{type:'point'},lvl:{type:'int',min:1,max:60,opt:true},name:{type:'str',max:40,opt:true},
+    levels:{type:'int',min:0,max:CUSTOM.maxLevels,def:0},swap:{type:'obj',opt:true},resist:{type:'obj',opt:true}},
+  limits:{maxActive:6,perDay:CUSTOM.perRegionDay*ZONES.length,perRegionPerDay:CUSTOM.perRegionDay},cooldown:30,
+  check(p){const e=spotErr(p.at,{region:p.region});if(e)return e;if(p.lvl!=null)return bandLvl(p.region,p.lvl).err||null;return null},
+  apply(p,ctx){const lvl=p.lvl!=null?bandLvl(p.region,p.lvl).lvl:band(p.region)[0]+2,pair=v=>v&&Array.isArray(v.pair)&&v.pair.length===2?v.pair:undefined;
+    const f=customFoe(p.base,{name:p.name,levels:p.levels,swap:pair(p.swap),resist:pair(p.resist)},{region:p.region,level:lvl,reason:ctx.reason,adv:ctx.adv});
+    if(!f){const e=S.dmLog&&S.dmLog[0];return {ok:false,effect:e&&e.kind==='custom'?String(e.summary[0]).replace('Special foe refused: ',''):'the bestiary refused it'}}
+    const m=spawnFoe(f);m.hpl=m.hp;m.x=p.at.x;m.y=p.at.y;m.home={...p.at};m.spawn={...p.at};m.lever=ctx.id;if(ctx.adv)m.adv=ctx.adv.id;
+    return {ok:true,effect:{mob:m.id,name:f.name,lvl:m.lvl,points:f.points},until:S.gameMin+DAY,ret:m}},
+  expire(rec){mobsOf(rec.id,true)},
+  describe:p=>(p.name||p.base)+' in '+ZONES[p.region]});
 // Stubs: they reject with "not available yet" until the system behind them registers an
-// implementation (provide('customFoe', fn) from the bestiary, provide('createSite', fn) from #69),
+// implementation (provide('createSite', fn) once #69 gives sites a lifecycle, startEvent, nudgeRelation),
 // or replaces the lever outright with register().
-register({name:'custom_foe',stub:'customFoe',about:'A foe built from the bestiary’s stat blocks (bestiary, #84).',params:{spec:{type:'obj'}},limits:{perDay:20},cooldown:0,
-  apply:(p,ctx)=>IMPL.customFoe(p.spec,ctx),describe:()=>'custom foe'});
 register({name:'create_site',stub:'createSite',about:'A DM-made dungeon site (#69).',
   params:{theme:{type:'str',max:24},region:{type:'region'},band:{type:'int',min:1,max:60},size:{type:'enum',values:['small','medium','large'],def:'small'},raid:{type:'bool',def:false}},
   limits:{maxActive:2,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.createSite(p,ctx),describe:p=>p.theme+' site in '+ZONES[p.region]});

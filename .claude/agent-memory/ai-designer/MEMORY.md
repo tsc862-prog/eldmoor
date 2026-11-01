@@ -5,3 +5,4 @@
 - [Spatial index](spatial_index.md) — all proximity scans go through sim/spatial.js; id-sorted results keep RNG order; what was left brute-force and why
 - [Rebalance #18](rebalance_issue18.md) — tuned PvP/raid/crypt values, what moved deaths, noise warning, late-game vet PvP caveat
 - [DM adventures](dm_adventures.md) — dm.js drives adventures inside travel/hunt, away != failure, hook board, told-budget, XP/honor sizing
+- [DM levers](dm_levers.md) — levers.js rules: log folding for volume, ready() before scripted pulls, no-RNG hooks, band clamp, foe levers
