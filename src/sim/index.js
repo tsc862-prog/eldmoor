@@ -19,6 +19,7 @@ import {chatTick} from './chat.js';
 import {npcsTick} from './npcs.js';
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
+import {bondsTick} from './bonds.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -43,5 +44,5 @@ export function step(dt){S.gameMin+=dt*6;
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);goalsTick(dt);
-  narratorTick(dt);
+  narratorTick(dt);bondsTick(dt);
   updFx(dt)}
