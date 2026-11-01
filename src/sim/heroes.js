@@ -18,6 +18,8 @@ import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerCl
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
+import {blockOf} from '../data/bestiary.js';
+import {rollLoot} from './loot.js';
 import {rollScores,growScores,hpBonus,atkBonus,critBonus} from './abilities.js'; // ability scores (sim/abilities.js)
 import {emptySlots,gearScore,gearHp,gearAtk,gearCrit,guardMul,hasteMul,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
 import {record,timeline,first} from './history.js';
@@ -75,11 +77,9 @@ export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58
   goalEvent(a,'epic',name)}
 
 export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a.kills++;
-  const diff=m.lvl-a.lvl,xp=(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1);gainXp(a,xp);
-  const M=MOBS[m.type];shareKill(a,m,xp);if(rnd()<.72)a.bag.push(M.loot);a.gold+=Math.max(1,Math.round(m.lvl*.6*rnd()));
-  rollDrop(a,m);
+  const diff=m.lvl-a.lvl,xp=(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1)*blockOf(m.type,m.v,m.role).xp*(m.xpMul!=null?m.xpMul:1);gainXp(a,xp);
+  const M=MOBS[m.type];shareKill(a,m,xp);rollLoot(a,m); // trade good, gold, slot item, zone epic: the creature's bestiary loot table (sim/loot.js)
   bondEvent(a,'kill',partyMates(a));
-  if(rnd()<.006)getEpic(a,pickA(EPICS[M.z]),'a '+M.name);
   if(m.elite)record(a,'Slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');
   if(m.elite){timeline('elite',a,' slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');a.eliteKills=(a.eliteKills||0)+1;log(a,' slew ',{t:m.name,c:'gd'},', ',m.title,', in ',ZONES[M.z],'!');getEpic(a,pickA(EPICS[M.z]),m.name)} // named elite: guaranteed epic from the zone table
   if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need)a.quest.have++;
