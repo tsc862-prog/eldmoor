@@ -10,6 +10,7 @@
 import {CFG,enableBrain,disableBrain,setMind,mindCfg,MIND_PROVIDERS,PROVIDER_LABEL,LOCAL_PROVIDERS} from '../sim/brain.js';
 import {agentOn,agentOff,agentLink,runnerTag,LINK_TEXT} from './player-bridge.js';
 import {S} from '../sim/index.js';
+import {runnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start / Stop from the page
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 let health=null,fetchedAt=0,inFlight=false,ver=0;
@@ -18,10 +19,12 @@ function poll(){if(inFlight||Date.now()-fetchedAt<15000||typeof fetch!=='functio
   fetch(healthUrl()).then(r=>r.json()).then(j=>{health=j&&typeof j==='object'?j:null}).catch(()=>{health=null})
     .finally(()=>{inFlight=false;ver++})}
 const provs=()=>health&&health.providers||null;
+// Local models pulled in Ollama, from the relay's /health (empty when unknown).
+export const pulledModels=()=>{poll();const o=provs()&&provs().ollama;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
 const byHid=id=>S.agents.find(x=>x.id==id);
 const modeOf=a=>a.player?'agent':a.brain?'ai':'scripted';
 
-export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ver+(a.player?':'+agentLink(a)+':'+runnerTag(a):'');
+export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ver+(a.player?':'+agentLink(a)+':'+runnerTag(a)+':'+runnerSig(a):'');
 
 export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   const row=el('div','mindrow'),mode=modeOf(a);
@@ -44,7 +47,9 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
     if(note)row.append(el('span','dm mnote',note))}
   // Agent: which runner holds the hero and which model it plays (from the runner's claim, issue #97)
   if(mode==='agent'){const k=agentLink(a),tag=runnerTag(a),n=el('span','dm mnote',tag?tag+' · '+(k==='connected'?'live':'idle'):LINK_TEXT[k]||k);
-    n.title=tag?'Agent runner model: '+tag:'Start a runner: npm run agent -- --hero '+a.name+' (add --provider ollama --model <tag> for a local model)';row.append(n)}
+    n.title=tag?'Agent runner model: '+tag:'Start a runner here, or in a terminal: npm run agent -- --hero '+a.name;row.append(n);
+    // app runners: start or stop this hero's runner from the page, with the mind it starts with
+    const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,pulledModels()));row.append(r)}
   node.append(row)}
 
 export function mindAct(t){if(!t||!t.dataset||!t.dataset.mmode)return false;
