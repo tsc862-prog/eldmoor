@@ -5,6 +5,7 @@
 // delegated click handler (initPanels) looks the hero up in S.agents and hands it
 // to the picker, which controls.js wires to select + follow.
 import {clamp} from '../core/rng.js';
+import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
 import {CITY,CRYPT,ZONES,zoneFor} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -222,8 +223,10 @@ function tabParty(b,a){const p=a.party;
     row.append(nm,meter('hp',m.hp/maxHp(m)));g.append(row)}
   b.append(g,el('div','meta',`★ leader · bound for ${ZONES[p.zone]}${p.home?' · heading home':''}`))}
 
-function tabChat(b,a){const c=(a.chat||[]).slice(-20).reverse();
-  if(!c.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
+function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
+  if(S.fellowship){const on=worldChatter(),t=el('button','mini','World chatter: '+(on?'on':'off'));t.title='Show what background heroes say to each other (kept per viewer).';
+    t.onclick=()=>{setWorldChatter(!on);renderHero()};b.append(t)}
+  if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far. Turn World chatter on to see it.':'Nothing said or heard yet.'));return}
   const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));if(e.from&&e.from.kind==='dm')li.append(el('span','gd','[Narrator]'));else li.append(hn(e.from));if(e.ai)li.append(' ',aiBadge('AI',e.model?'Written by '+e.model:null));li.append(': '+e.text);if(e.model)li.append(' ',el('span','mmodel',e.model));ul.append(li)}b.append(ul)}
 
 // ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----

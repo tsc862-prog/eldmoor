@@ -230,8 +230,8 @@ function npcSay(a){const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)retur
   if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs for ids and names).'};
   if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return {ok:false,error:p.name+' is nowhere the heroes could hear them.'};
   const e={t:clockStr(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
-  const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);for(const b of hs)hearLine(b,e);
-  p.bubble={text:t,life:BUBBLE};day.npc=(day.npc||0)+1;
+  const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;for(const b of hs)hearLine(b,e);
+  p.bubble={text:t,life:BUBBLE};if(e.fh)p.bubble.fh=true;day.npc=(day.npc||0)+1;
   dmlog('agent',null,[(p.title?p.title+' ':'')+p.name+' (DM agent): "',t,'"'],{by:'dm-agent',voice:'npc_say',npc:p.id,text:t,heard:hs.map(b=>b.id)});
   return {ok:true,who:(p.title?p.title+' ':'')+p.name,said:t,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
 

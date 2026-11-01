@@ -3,6 +3,7 @@
 // bubble fades out over its last 0.6s. Text is word-wrapped to at most three short lines;
 // anything longer is truncated with an ellipsis.
 import {T} from '../world/tiles.js';
+import {bubbleVisible} from '../core/chatview.js';
 
 const CSS=12,LINE=20,MAXL=3,FADE=.6;
 
@@ -15,7 +16,7 @@ function wrap(text){const out=[];let cur='';
 export function drawBubbles(ctx,S,cam,drawText){
   const cv=ctx.canvas,vw=cv.width/cam.sc,vh=cv.height/cam.sc;
   const s=CSS*cam.dpr/cam.sc,lh=s*.8,pad=s*.3;
-  for(const a of S.agents.concat(S.npcs||[],S.wanderers||[])){const b=a.bubble;if(!b||b.life<=0||a.hidden||a.state==='dead')continue; // heroes and townsfolk (sim/npcs.js)
+  for(const a of S.agents.concat(S.npcs||[],S.wanderers||[])){const b=a.bubble;if(!b||b.life<=0||a.hidden||a.state==='dead'||!bubbleVisible(a,S))continue; // heroes and townsfolk (sim/npcs.js)
     const px=a.x*T,py=a.y*T;if(Math.abs(px-cam.camX)>vw/2+60||Math.abs(py-cam.camY)>vh/2+60)continue;
     const lines=wrap(b.text);
     ctx.font=s+'px VT323, monospace';let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
