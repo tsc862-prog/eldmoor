@@ -22,6 +22,8 @@ jobs:
         run: npm run worldcheck
       - name: Save/load round trip
         run: npm run savecheck
+      - name: Model request rate (counting mock relay)
+        run: npm run ratecheck
       - name: Local agent runner (mock Ollama)
         run: npm run localcheck
       - name: App runners and relay concurrency (mock Ollama, mock 429)

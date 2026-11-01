@@ -222,11 +222,15 @@ function sheets(a){const F=S.fellowship,mates=fellows();
   if(!a.backstory||!a.backstory.edited)a.backstory=buildBackstory(a,mates,F?F.name:'the Fellowship');
   if(!a.persona||!a.persona.edited)a.persona=buildPersona(a,mates)}
 function cost(j,F){if(!F||!j)return;F.enrich.calls++;if(j.usage)F.enrich.usd=Math.round((F.enrich.usd+(+j.usage.cost||0))*1e6)/1e6;if(j.ms)F.enrich.ms=j.ms}
-export function enrich(a){const F=S.fellowship;if(!F||!F.ai||pending.has(a.id))return false;pending.add(a.id);
+const written=x=>!!x&&(x.src==='model'||x.edited); // a sheet the model (or the user) already wrote is never asked for again (#117)
+export function enrich(a){const F=S.fellowship;if(!F||!F.ai||pending.has(a.id))return false;
+  const needB=!written(a.backstory),needP=!written(a.persona);if(!needB&&!needP)return false;pending.add(a.id);
   const fid=F.id,still=()=>S.fellowship&&S.fellowship.id===fid&&a.fellow&&a.state!=='dead';
-  askRelay('backstory',backstorySnapshot(a,fellows(),F.name),TIMEOUT.backstory,a).then(j=>{
-    if(!still())return;cost(j,S.fellowship);
-    if(j&&!(a.backstory&&a.backstory.edited)&&applyBackstory(a,j,fellows(),j.model))S.fellowship.enrich.ok++;else S.fellowship.enrich.fail++;
+  const none=Promise.resolve(needB?null:{skip:true});
+  (needB?askRelay('backstory',backstorySnapshot(a,fellows(),F.name),TIMEOUT.backstory,a):none).then(j=>{
+    if(!still())return;if(needB){cost(j,S.fellowship);
+      if(j&&!(a.backstory&&a.backstory.edited)&&applyBackstory(a,j,fellows(),j.model))S.fellowship.enrich.ok++;else S.fellowship.enrich.fail++}
+    if(!needP)return;
     return askRelay('persona',personaSnapshot(a,fellows(),S.fellowship.name),TIMEOUT.persona,a).then(p=>{if(!still())return;cost(p,S.fellowship);
       if(p&&!(a.persona&&a.persona.edited)&&applyPersona(a,p,fellows(),p.model)){S.fellowship.enrich.ok++;refreshStances(a,S.fellowship.ids)}else S.fellowship.enrich.fail++})})
     .catch(()=>{}).finally(()=>pending.delete(a.id));return true}
