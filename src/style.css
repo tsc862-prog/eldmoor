@@ -297,3 +297,49 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .dmseat{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:8px 0;min-width:0}
 .dmseat .mlink{overflow-wrap:anywhere}
 .badge.b-dma{color:#7fd6c2}
+
+/* New World setup page (#133): a full-screen sheet over the game; same pixel look, single column on a phone */
+.setup{position:fixed;inset:0;z-index:60;overflow:auto;background:rgba(5,6,12,.94);padding:16px max(16px,env(safe-area-inset-left,0px)) 28px;-webkit-overflow-scrolling:touch}
+.setup[hidden]{display:none}
+.spage{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.shead h2{font-family:var(--px);font-size:clamp(14px,3.4vw,20px);color:var(--gold);margin:0 0 6px;text-shadow:2px 2px 0 #6a3a10}
+.ssec{background:var(--panel);border:2px solid var(--edge);box-shadow:4px 4px 0 #05060c;padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.ssec h3{font-family:var(--px);font-size:10px;color:var(--ink);margin:0;letter-spacing:.06em}
+.spresets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.spresets .mini,.sbtns .mini,.smind .mini{font-size:8px;padding:7px 9px}
+.slbl{font-family:var(--px);font-size:7px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.scards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.scard{background:var(--panel2);border:2px solid var(--edge);padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.stop{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.srole{font-family:var(--px);font-size:9px;color:var(--gold)}
+.sfield{display:flex;flex-direction:column;gap:3px;min-width:0}
+.setup .msel,.setup .sinput{font-family:var(--mono);font-size:18px;background:#0a0b14;color:var(--ink);border:2px solid var(--edge);padding:4px 6px;max-width:100%;min-width:0;width:100%;box-sizing:border-box}
+.setup .stop .msel{width:auto;min-width:110px}
+.setup .sinput:focus-visible,.setup .msel:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.snamerow{display:flex;gap:6px;align-items:stretch}
+.snamerow .sinput{flex:1}
+.smind{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.smind .mseg{flex-wrap:wrap}
+.setup button.off{opacity:.5}
+.setup button.primary{background:var(--gold);color:#1a1206;border-color:var(--gold)}
+.setup button.primary.off{background:var(--panel2);color:var(--dim);border-color:var(--edge)}
+.sbtns{display:flex;flex-wrap:wrap;gap:8px}
+.sbtns .mini{font-size:9px;padding:10px 12px}
+.srelay{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.sdot{width:10px;height:10px;background:var(--dim);display:inline-block}
+.srelay.ready .sdot{background:var(--green)}
+.srelay.norunners .sdot{background:var(--amber)}
+.srelay.offline .sdot{background:var(--red)}
+.sprobs{margin:0;padding-left:20px;color:var(--amber)}
+.sbad{color:var(--red)}
+.sconfirm{border:2px solid var(--red);padding:10px;display:flex;flex-direction:column;gap:8px}
+.nwbar{position:sticky;top:0;z-index:50;background:var(--panel);border:2px solid var(--gold);padding:8px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px}
+.nwbar[hidden]{display:none}
+.nwrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.nwt{font-family:var(--px);font-size:9px;color:var(--gold)}
+.nwrow .mini{margin-left:auto}
+.nwitems{display:flex;flex-wrap:wrap;gap:6px 14px}
+.nwitem.ok{color:var(--green)}
+.nwitem.bad{color:var(--red)}
+@media (max-width:520px){.scards,.sgrid{grid-template-columns:minmax(0,1fr)}}

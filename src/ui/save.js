@@ -7,9 +7,11 @@
 import {S,log,snapshot,restore,isSave} from '../sim/index.js';
 import {WORLD_ID} from '../world/map.js';
 
-export const SAVE_KEY=WORLD_ID==='eldmoor'?'eldmoor.save.v1':'eldmoor.save.v1.'+WORLD_ID; // one slot per world
+export const saveKeyFor=id=>id==='eldmoor'?'eldmoor.save.v1':'eldmoor.save.v1.'+id;
+export const SAVE_KEY=saveKeyFor(WORLD_ID); // one slot per world
+export const PENDING_KEY='eldmoor.setup.pending'; // a New World setup waiting for the next boot (ui/setup.js, #133)
 const $=id=>document.getElementById(id);
-let lastHour=-1,suppress=false; // suppress: skip the unload save when we are reloading on purpose
+let lastHour=-1,suppress=false,hold=false,how='fresh',newWorld=null,applied=null; // suppress: skip the unload save when we are reloading on purpose
 
 const store=()=>{try{return window.localStorage}catch(e){return null}};
 const dayOf=min=>Math.floor(min/1440)+1;
@@ -21,16 +23,32 @@ export function readSave(){const st=store();if(!st)return null;const raw=st.getI
 export const hasSave=()=>{try{return !!readSave()}catch(e){return false}};
 
 // Write the current world. Returns the serialised save, or null when storage refused it.
-export function writeSave(){const st=store();if(!st)return null;
+export function writeSave(){const st=store();if(!st||hold)return null;
   const json=JSON.stringify(snapshot());
   try{st.setItem(SAVE_KEY,json)}catch(e){console.warn('Eldmoor: could not save',e);status('Save failed: storage full?');return null}
   lastHour=Math.floor(S.gameMin/60);status('Saved · Day '+dayOf(S.gameMin)+' '+clock(S.gameMin)+' · '+(json.length/1024).toFixed(0)+' KB');return json}
 
 // Start the world: from the save when one exists and restores cleanly, else fresh via init().
 // Returns true when the world was restored.
-export function boot(init){let snap=null;
+// How the world started: 'restored' (a save), 'setup' (a New World setup was applied) or 'fresh' (defaults).
+export const bootKind=()=>how;
+export const appliedSetup=()=>applied;
+export const holdSave=on=>{hold=!!on}; // no autosave while the setup page sits over a world nobody chose
+export const setNewWorldHandler=f=>{newWorld=f};
+export const saveSummary=id=>{try{const raw=store().getItem(saveKeyFor(id));if(!raw)return null;const j=JSON.parse(raw);return isSave(j)?{day:dayOf(j.gameMin),kb:Math.round(raw.length/1024)}:null}catch(e){return null}};
+// Queue a New World setup and restart the page into it. The same world's save is erased (the caller has
+// already asked); another world's save is left alone. Returns an error string, or null when reloading.
+export function queueNewWorld(setup){const st=store();if(!st)return 'No storage available: the setup cannot be passed to the new page.';
+  try{st.setItem(PENDING_KEY,JSON.stringify(setup));st.removeItem(saveKeyFor(setup.world));if(setup.world===WORLD_ID)suppress=true}catch(e){return 'Storage refused the setup.'}
+  const u=new URL(location.href);if(setup.world==='eldmoor')u.searchParams.delete('world');else u.searchParams.set('world',setup.world);
+  if(u.href===location.href)location.reload();else location.href=u.href;return null}
+const takePending=()=>{const st=store();if(!st)return null;let raw=null;try{raw=st.getItem(PENDING_KEY);st.removeItem(PENDING_KEY)}catch(e){return null}
+  if(!raw)return null;try{const j=JSON.parse(raw);return j&&j.world===WORLD_ID?j:null}catch(e){return null}};
+export function boot(init){let snap=null;const pend=takePending();
+  if(pend){try{init({setup:pend});applied=pend;how='setup';lastHour=Math.floor(S.gameMin/60);status('New world · seed '+pend.seed);return false}
+    catch(e){console.warn('Eldmoor: the New World setup failed, starting a default world',e)}}
   try{snap=readSave()}catch(e){console.warn('Eldmoor: unreadable save, starting a new world',e)}
-  if(snap){try{restore(snap);log({t:'The world was restored from a saved chronicle.',c:'dm'});
+  if(snap){try{restore(snap);how='restored';log({t:'The world was restored from a saved chronicle.',c:'dm'});
       lastHour=Math.floor(S.gameMin/60);status('Restored · Day '+dayOf(S.gameMin)+' '+clock(S.gameMin));return true}
     catch(e){console.warn('Eldmoor: could not restore the save, starting a new world',e)}}
   init();lastHour=Math.floor(S.gameMin/60);return false}
@@ -38,7 +56,7 @@ export function boot(init){let snap=null;
 // Called every frame: saves once each time the game clock crosses an hour boundary.
 export function autoSaveTick(){const h=Math.floor(S.gameMin/60);if(h!==lastHour)writeSave()}
 
-function download(){const snap=snapshot(),blob=new Blob([JSON.stringify(snap)],{type:'application/json'}),url=URL.createObjectURL(blob);
+export function exportSave(){const snap=snapshot(),blob=new Blob([JSON.stringify(snap)],{type:'application/json'}),url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.download='eldmoor-day'+dayOf(snap.gameMin)+'.json';document.body.append(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);status('Exported '+a.download)}
 
@@ -56,10 +74,10 @@ export function initSaveUI(){
   const on=(id,f)=>{const el=$(id);if(el)el.onclick=f};
   on('wSave',()=>writeSave());
   on('wLoad',()=>{if(!hasSave()){status('No save yet');return}suppress=true;location.reload()}); // boot() restores the save; progress since then is dropped
-  on('wExport',download);
+  on('wExport',exportSave);
   on('wImport',()=>{const f=$('wFile');if(f){f.value='';f.click()}});
   const file=$('wFile');if(file)file.onchange=()=>importFile(file.files&&file.files[0]);
-  on('wNew',()=>{if(confirm('Start a new world? The saved one is erased.'))reloadWith(null)});
+  on('wNew',()=>{if(newWorld)return newWorld();if(confirm('Start a new world? The saved one is erased.'))reloadWith(null)});
   window.addEventListener('beforeunload',()=>{if(!suppress)writeSave()});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&!suppress)writeSave()});
   if(!$('wStatus')||!$('wStatus').textContent)status(hasSave()?'Auto-save on':'New world · auto-save on')}

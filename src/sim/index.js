@@ -1,6 +1,6 @@
 // Simulation entry point. DOM-free: the browser (src/main.js) and the headless
 // harness (scripts/headless.mjs) both import init() and step() from here.
-import {rnd} from '../core/rng.js';
+import {rnd,seedRng} from '../core/rng.js';
 import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
 import {S} from './state.js';
@@ -45,15 +45,18 @@ export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} fr
 export {found,autoPick,disbandFellowship,fellowshipMembers,fellows,setMinds} from './fellowship.js';
 export {TABLE,bannerOf} from './table.js';
 export {fellowshipStart,START_BANDS} from './opening.js';
+export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners} from './setup.js'; // New World setup (#133)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
 // o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
 export function init(o={}){
+  const seeded=!!(o.setup&&o.setup.seed!=null);
+  if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
   spawnAll();
   for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%5],null,i*.6+rnd()*1.5);
-  opening(o);
+  try{opening(o)}finally{if(seeded)seedRng(null)}
   log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
   log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
   log({t:'Hardcore rules:',c:'gd'},' every hero has one life. The fallen stay fallen.');
