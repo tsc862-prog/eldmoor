@@ -27,7 +27,8 @@
 // member's name first); a run summary with per-member cost is appended to logs/fellowship-runs.jsonl.
 // Options: --url (or PLAY_URL), --max-turns N (per member, default 6), --budget USD (default 2.00),
 // --model / --effort / --provider (override every member's saved settings), --follower-model M,
-// --cadence S (default 20), --tool-turns N (model calls per turn, default 10), --env FILE, --new.
+// --cadence S (default 20), --tool-turns N (model calls per turn, default 10), --env FILE, --new,
+// --claude-concurrency N (at most N Claude member turns at once; the app runner sets it to stay under the org's cap).
 // Local members (issue #97 part 2): a member whose runner provider is 'ollama' (saved in its session
 // file by `npm run agent -- --hero X --provider ollama --model M`, or --provider ollama here for all)
 // plays through scripts/local-agent.mjs against Ollama (--ollama-url / OLLAMA_URL, --num-ctx): same
@@ -43,6 +44,7 @@ import {systemPrompt, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-playe
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine} from './local-agent.mjs';
+import {onSupervisorStop} from './runners.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -98,6 +100,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const mindOf = id => {const m = members.get(id); return m && m.rs ? {provider: m.rs.provider, model: m.rs.model} : {}};
   const claim = (id, mind = mindOf(id)) => post(base, '/play/claim', {hero: id, runner: runnerId, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
   const release = id => post(base, '/play/release', {hero: id, runner: runnerId}, 3000).catch(() => {});
+  const aborts = new Set(); // Agent SDK turns in flight, ended on a stop
   const adding = new Set(); // members being added (the watcher calls addMember every second)
   let ollama = null; // the local adapter, made when the first local member joins
   const skip = (h, why) => {out(h.name, why); members.set(h.id, {id: h.id, name: h.name, ended: 'skipped'})};
@@ -133,12 +136,24 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
 
   // One turn: one query() to the member's own session.
+  // --claude-concurrency N: at most N Claude member turns at once (the API org's concurrent-request cap is
+  // shared with the relay); the others queue, scene turns first. Local members never wait. Default: no cap.
+  const claudeMax = Math.max(0, Number(opt('claude-concurrency', env.FELLOWSHIP_CLAUDE_CONCURRENCY || 0)) || 0);
+  let claudeLive = 0; const claudeQ = [];
+  const slot = scene => claudeMax && claudeLive >= claudeMax ? new Promise(r => {if (scene) claudeQ.unshift(r); else claudeQ.push(r)}).then(() => {claudeLive++}) : (claudeLive++, Promise.resolve());
+  const free = () => {claudeLive--; const n = claudeQ.shift(); if (n) n()};
   async function turn(m, scene) {
     if (m.local) return localMemberTurn(m, scene);
+    await slot(scene);
+    try {return await claudeTurn(m, scene)} finally {free()}
+  }
+  async function claudeTurn(m, scene) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
     const prompt = memberPrompt(m.sess.turns, scene);
     const t0 = Date.now(); let result = null, tools = 0;
+    const ac = new AbortController(); aborts.add(ac);
     const q = query({prompt, options: {
+      abortController: ac,
       model, effort: m.rs.effort, systemPrompt: m.sess.system, resume: m.sess.sessionId || undefined,
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${m.id}`, headers: {'X-Eldmoor-Hero': String(m.id)}, timeout: 90000}},
       tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
@@ -160,6 +175,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }} catch (e) {
       if (result && result.subtype === 'error_max_turns') out(m.name, `turn hit the model-call cap; continuing next turn`);
       else {out(m.name, `turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); m.fails = (m.fails || 0) + 1; if (m.fails >= 3) m.ended = 'errors'}}
+    aborts.delete(ac);
     m.sess.turns++; m.turns++; m.tools += tools; if (scene) m.scenes++;
     if (result) {
       const tot = result.total_cost_usd || 0, cost = tot >= m.sess.lastTotal ? tot - m.sess.lastTotal : tot; m.sess.lastTotal = tot;
@@ -209,7 +225,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   out(null, `Fellowship runner at ${base}: ${fellowsOf(h0).map(x => x.name + (x.lead ? ' (leads)' : '')).join(', ')} | up to ${maxTurns} turns each, budget ${money(budget)}, cadence ${cadence / 1000} s`);
   for (const h of fellowsOf(h0)) await addMember(h);
   const finish = async why => {stopping = stopping || why; for (const m of members.values()) if (m.sess) await release(m.id)};
-  process.on('SIGINT', async () => {await finish('interrupted'); summary(); process.exit(130)});
+  process.on('SIGINT', async () => {for (const a of aborts) a.abort(); await finish('interrupted'); summary(); process.exit(130)});
+  // Started from the game (scripts/runners.mjs): a "stop" on stdin, or the relay going away, ends the run.
+  onSupervisorStop(async why => {out(null, why + ': releasing the members and stopping'); for (const a of aborts) a.abort(); await finish(why); summary(); setTimeout(() => process.exit(0), 200)});
   while ([...members.values()].some(m => !m.ended)) await sleep(500);
   clearInterval(watch);
   summary();
