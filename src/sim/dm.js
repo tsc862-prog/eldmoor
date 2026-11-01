@@ -54,6 +54,7 @@ import {goalEvent} from './goals.js';
 import {makeItem,equip,weakestSlot,slotLevel} from './gear.js';
 import {say} from './chat.js';
 import {d20} from './narrator.js';
+import {playerBranch} from './player-choice.js';
 
 // ---- knobs ----
 export const K={
@@ -370,7 +371,8 @@ function arrive(adv,a,sc){const S2=spec(adv,sc),C=ctx(adv);
     adv.stage='fight';return}
   case 'rest':{adv.stage='wait';adv.waitKind='rest';adv.wait=ri(...K.REST_T);note(adv,plain(slot('frameScene',isParts,adv,sc,C))+'.');
     const mem=members(adv);if(mem.length>1)bondEvent(a,'party',mem);return}
-  case 'choice':{const br=slot('resolveBranch',v=>v==='a'||v==='b',adv,sc);const B=S2[br];sc.res=br;
+  case 'choice':{const pb=playerBranch(adv,sc,a,S2);if(pb==='wait')return; // agent-played leader (sim/player-choice.js): wait for its pick; on timeout the scripted branch
+    const br=pb||slot('resolveBranch',v=>v==='a'||v==='b',adv,sc);const B=S2[br];sc.res=br;
     beat(adv,false,...fill(S2.frame,C),'. ',...fill(B.line,C));note(adv,'Chose: '+B.label+'.');
     adv.scenes.splice(adv.idx+1,0,mkScene(B.scene,sc.k,br,place(adv,B.scene.at,sc.at||{x:a.x,y:a.y},a)));
     next(adv,a);return}}}
