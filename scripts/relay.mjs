@@ -5,8 +5,8 @@
 // Every model call's reply also echoes what the model saw (issue #61, the Mind tab):
 // sent:{id, system, user} is the exact system prompt and user content, size-capped.
 //
-//   POST /decide   {kind:'townPlan'|'fightOrFlee'|'say', snapshot:{...options:[...]}}
-//     200 {choice?, crypt?, line?, reason?, sent, usage:{in,out,cost}}
+//   POST /decide   {kind:'townPlan'|'cryptCall'|'fightOrFlee'|'say', snapshot:{...options:[...]}}  (cryptCall and say carry no options)
+//     200 {choice?, crypt?, line?, reason?, sent, usage:{in,out,cost}}   (cryptCall: {crypt, reason})
 //     4xx/5xx {error:'...', sent?}   (the sim treats any error as "scripted")
 //   GET  /health   {ok, model, requests, cost}
 //
@@ -22,7 +22,7 @@ import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {FAC} from '../src/data/factions.js';
-import {KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason} from '../src/data/prompts.js';
+import {KINDS, OPTION_KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason} from '../src/data/prompts.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Cheapest current model (claude-api skill, cached 2026-10-06): Haiku 5.5, $0.10 in / $0.50 out per 1M tokens (prompts up to 100K).
@@ -51,7 +51,7 @@ export function checkRequest(body) {
   if (!body || typeof body !== 'object') return 'bad body';
   if (!KINDS.includes(body.kind)) return 'unknown kind';
   const s = body.snapshot; if (!s || typeof s !== 'object') return 'no snapshot';
-  if (body.kind !== 'say') {
+  if (OPTION_KINDS.includes(body.kind)) {
     if (!Array.isArray(s.options) || s.options.length < 1 || s.options.length > 8 || s.options.some(o => typeof o !== 'string' || o.length > 40)) return 'bad options';
   }
   return null;
@@ -60,8 +60,9 @@ export function checkRequest(body) {
 // Validate what the model said against the options the sim sent; returns the reply or throws.
 export function checkReply(kind, options, text) {
   let j; try {j = JSON.parse(text)} catch {throw new Error('model reply is not JSON')}
-  if (kind !== 'say' && !options.includes(j.choice)) throw new Error('choice not in options');
+  if (OPTION_KINDS.includes(kind) && !options.includes(j.choice)) throw new Error('choice not in options');
   const reason = cleanReason(j.reason), r = reason ? {reason} : {};
+  if (kind === 'cryptCall') {if (typeof j.crypt !== 'boolean') throw new Error('crypt is not a yes or no'); return {crypt: j.crypt, ...r}}
   if (kind === 'townPlan') return {choice: j.choice, crypt: j.crypt === true, ...r};
   const line = typeof j.line === 'string' ? j.line.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
   return kind === 'say' ? {line} : {choice: j.choice, line, ...r};

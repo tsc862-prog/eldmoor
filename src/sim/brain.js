@@ -3,6 +3,8 @@
 //
 // Decision points (all async-capable, none per tick):
 //   townPlan(a)            zone for the next trip, and whether to answer a Sunken Crypt call
+//                          (a party leader picks for the party; a follower is asked only
+//                          the crypt call, kind 'cryptCall'; see partyZone below)
 //   fightOrFlee(a,m)       once HP crosses 50% in a fight with a mob 1+ levels above
 //   say(a,trigger,ctx)     one in-voice line in the moment, or none (chat.js)
 // The scripted policy is today's logic. A hero with a.brain asks the relay
@@ -22,13 +24,21 @@
 // saw (user is left out when it is exactly JSON.stringify(snapshot), userSame:true).
 // outcome: pending -> applied | rejected (error) | late (the decision point or the moment
 // passed first; scripted acted) | offline (no usable answer: unreachable, timeout or relay error; scripted
-// acted) | superseded (replaced, expired unused, or orphaned by a reload). scripted holds the
+// acted) | superseded (replaced, expired unused, or orphaned by a reload) | overruled (a legal
+// answer the party would not follow: a leader's zone outside the weakest member's range, or a
+// follower's zone when the party goes elsewhere). scripted holds the
 // scripted choice actually taken when it differs from the model's.
+//
+// Parties (issue: plans respect parties): the leader decides. partyZone(a) is called by every
+// party member at the town gate; the first call of a trip lets an AI leader's fresh plan set
+// p.zone, limited to partyLegal(p) (the legal range of the weakest member, from the leader's
+// home). Followers are never asked for a zone: an AI follower asks only the crypt question
+// (kind 'cryptCall') and logs a token-free 'follow' entry when it leaves with the party.
 import {ZONES,zoneFor,zoneAt,dist,CRYPT} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {SLOTS} from '../data/items.js';
 import {MOBS} from '../data/mobs.js';
-import {raceOf} from '../data/races.js';
+import {raceOf,homeOf} from '../data/races.js';
 import {S,clockStr} from './state.js';
 import {log} from './chronicle.js';
 import {pop} from './effects.js';
@@ -80,7 +90,14 @@ export const brainStatus=a=>!a||!a.brain?'off':offline.get(a.id)>clk?'offline':'
 const pct=(h,m)=>Math.max(0,Math.round(h/m*100));
 const dayPart=()=>{const h=(S.gameMin/60)%24;return h<5||h>=21?'night':h<8?'dawn':h<18?'day':'dusk'};
 const clip=(s,n)=>String(s==null?'':s).slice(0,n);
-export function legalZones(a){const z=huntZone(a),out=[];if(z>0)out.push(z-1);out.push(z);return out}
+const around=z=>{const out=[];if(z>0)out.push(z-1);out.push(z);return out};
+export const legalZones=a=>around(huntZone(a));
+// The weakest member of a party, and the zones legal for the whole party (its level, the leader's home).
+const weakest=p=>p.mem.reduce((w,b)=>b.lvl<w.lvl?b:w,p.mem[0]);
+export const partyLegal=p=>around(zoneFor(weakest(p).lvl,homeOf(p.leader).gate));
+// Who may still be asked where to go: a solo hero, or a party leader before the party's zone is set.
+const zoneQ=a=>!a.party||(a.party.leader===a&&!a.party.set);
+const townOptions=a=>a.party&&a.party.leader===a?partyLegal(a.party):legalZones(a);
 export function snapshotFor(a,kind,extra={}){
   const mh=maxHp(a),z=zoneAt(a.x,a.y),R=CFG.sight;
   let top=null;for(const k of SLOTS){const it=a.slots&&a.slots[k];if(it&&(!top||it.ilvl>top.ilvl))top=it}
@@ -103,7 +120,8 @@ export function snapshotFor(a,kind,extra={}){
   const ch=(a.chat||[]).slice(-5).map(e=>clip(e.from&&e.from.name,16)+': '+clip(e.text,80));if(ch.length)s.chat=ch;
   const hi=(a.history||[]).slice(-3).map(e=>clip(e.text,90));if(hi.length)s.history=hi;
   s.kind=kind;
-  if(kind==='townPlan'){s.options=legalZones(a).map(i=>ZONES[i]);s.cryptOpen=a.lvl>=7}
+  if(kind==='townPlan'){s.options=townOptions(a).map(i=>ZONES[i]);s.cryptOpen=a.lvl>=7;if(a.party&&a.party.leader===a)s.leadParty=true}
+  else if(kind==='cryptCall'){s.cryptOpen=true;if(a.party)s.leader=a.party.leader.name}
   else if(kind==='fightOrFlee'){const m=extra.mob;s.options=['fight','flee'];s.foe=m?(m.elite?m.name:MOBS[m.type].name)+' L'+m.lvl+' hp'+pct(m.hp,m.maxhp)+'%':'?'}
   else if(kind==='say'){s.trigger=extra.trigger;s.ctx=extra.ctx||{}}
   return s}
@@ -116,6 +134,10 @@ function mindAdd(a,kind,snap){const m=a.mind||(a.mind=[]);a.mindSeq=(a.mindSeq||
     choice:null,line:null,reason:null,ms:null,outcome:'pending'};
   if(kind==='say')e.trigger=snap.trigger;
   m.unshift(e);if(m.length>MIND_MAX)m.length=MIND_MAX;return e}
+// A settled entry for something the hero did without asking the model (no snapshot, no tokens).
+function mindNote(a,kind,f){const m=a.mind||(a.mind=[]);a.mindSeq=(a.mindSeq||0)+1;
+  const e={id:a.mindSeq,t:stamp(),gameMin:Math.floor(S.gameMin),kind,options:null,snapshot:null,choice:null,line:null,reason:null,ms:null,outcome:'applied',...f};
+  m.unshift(e);if(m.length>MIND_MAX)m.length=MIND_MAX;return e}
 const mindGet=(a,id)=>id&&a.mind?a.mind.find(e=>e.id===id)||null:null;
 // Final outcome for an entry; the first final outcome wins (later events only add detail).
 function settle(e,outcome,more){if(!e)return;if(more)for(const k in more)if(more[k]!=null&&e[k]==null)e[k]=more[k];
@@ -124,7 +146,7 @@ function settle(e,outcome,more){if(!e)return;if(more)for(const k in more)if(more
 const scriptedFor=(a,kind)=>kind==='townPlan'?ZONES[SCRIPTED.townPlan(a).zone]:kind==='fightOrFlee'?'fight':null;
 // Whether a pending entry still has a live answer parked for its decision point.
 function parked(a,e){const P=a.brainPlan||{};
-  if(e.kind==='townPlan'){const p=P.town;return !!(p&&p.mid===e.id&&!p.used&&p.t<=clk&&clk-p.t<=CFG.planTtl)}
+  if(e.kind==='townPlan'||e.kind==='cryptCall'){const p=P.town;return !!(p&&p.mid===e.id&&!p.used&&p.t<=clk&&clk-p.t<=CFG.planTtl)}
   if(e.kind==='fightOrFlee'){const f=P.fight;return !!(f&&f.mid===e.id&&!f.done&&f.t<=clk&&clk-f.t<=CFG.fightTtl)}
   const r=ready.get(a.id);return !!(r&&r.mid===e.id)}
 const fightOn=(a,mob)=>a.state==='fight'&&a.target&&a.target.id===mob;
@@ -135,7 +157,7 @@ function mindSweep(a){if(!a.mind)return;
     if(e.kind==='fightOrFlee'){const mob=fl?fl.mob:a.brainPlan&&a.brainPlan.fight&&a.brainPlan.fight.mid===e.id?a.brainPlan.fight.mob:null;
       if(mob!=null&&!fightOn(a,mob)){settle(e,'late',{scripted:'fight',error:'the fight ended first'});continue}}
     if(fl||parked(a,e))continue;
-    settle(e,'superseded',{error:'answer expired unused'})}}
+    settle(e,'superseded',{error:e.kind==='townPlan'||e.kind==='cryptCall'?(a.state==='town'?'the hero did not leave town in time':'the hero left town without passing the gate'):'answer expired unused'})}}
 
 // ---- relay client ----
 const dim=t=>({t,c:'dm'});
@@ -193,22 +215,58 @@ export function cleanLine(s){if(typeof s!=='string')return null;
 export function townZone(a){const dflt=SCRIPTED.townPlan(a).zone;if(!a.brain||S.brainOn===false)return dflt;
   const p=a.brainPlan&&a.brainPlan.town;
   if(p&&!p.used&&p.t<=clk&&clk-p.t<=CFG.planTtl){p.used=1;const ix=legalZones(a).find(i=>ZONES[i]===p.choice),e=mindGet(a,p.mid);
+    if(p.choice==null){settle(e,'applied');lateTown(a,ZONES[dflt]);stats.fallback++;return dflt} // a crypt-only plan (asked as a follower) carries no zone
     if(ix!==undefined){stats.applied.townPlan++;stats.lastZone={id:a.id,zone:ix};settle(e,'applied',ix!==dflt?{scripted:ZONES[dflt]}:null);return ix}
     reject(a,'townPlan','illegal at apply',p.choice,e)}
-  // a question still in flight missed the gate: the scripted zone is taken
-  for(const e of a.mind||[])if(e.kind==='townPlan'&&e.outcome==='pending'&&inflight.has(a.id+':'+e.id))settle(e,'late',{scripted:ZONES[dflt],error:'left town before the answer came'});
-  stats.fallback++;return dflt}
+  lateTown(a,ZONES[dflt]);stats.fallback++;return dflt}
+// A town question still in flight missed the gate: the zone actually taken is noted.
+function lateTown(a,zone,why){for(const e of a.mind||[])if((e.kind==='townPlan'||e.kind==='cryptCall')&&e.outcome==='pending'&&inflight.has(a.id+':'+e.id))
+  settle(e,'late',{scripted:e.kind==='townPlan'?zone:null,error:why||'left town before the answer came'})}
+
+// ---- parties: the leader decides, followers follow ----
+// Called by every party member at the town gate (heroes.js step 2) in place of reading p.zone.
+// The first call of a trip settles the zone once (p.set): an AI leader's fresh plan sets it if
+// it is legal for the weakest member, else it is overruled and p.zone (the scripted zone set
+// when the party formed, from the weakest member) stands. With no AI leader nothing changes:
+// the return value is exactly p.zone. An AI follower logs that it follows.
+export function partyZone(a){const p=a.party;if(!p)return townZone(a);
+  if(!p.set&&p.leader.brain&&S.brainOn!==false){p.set=1;leaderDecides(p)}
+  if(a.brain&&S.brainOn!==false&&a!==p.leader)follows(a,p);
+  return p.zone}
+function leaderDecides(p){const L=p.leader,dflt=p.zone,P=L.brainPlan&&L.brainPlan.town;
+  if(P&&!P.used&&P.t<=clk&&clk-P.t<=CFG.planTtl){P.used=1;const e=mindGet(L,P.mid);
+    if(P.choice==null){settle(e,'applied');lateTown(L,ZONES[dflt],'the party left before the answer came');stats.fallback++;return}
+    const ix=partyLegal(p).find(i=>ZONES[i]===P.choice);
+    if(ix!==undefined){p.zone=ix;stats.applied.townPlan++;stats.lastZone={id:L.id,zone:ix,party:p.id};settle(e,'applied',ix!==dflt?{scripted:ZONES[dflt]}:null);return}
+    const w=weakest(p),why='too far for '+w.name+' (L'+w.lvl+'); the party goes to '+ZONES[dflt];
+    stats.rejected++;if(rejections.length>=50)rejections.shift();rejections.push({kind:'townPlan',hero:L.name,why:'overruled: '+why,raw:clip(P.choice,40)});
+    settle(e,'overruled',{error:why,scripted:ZONES[dflt]});return}
+  lateTown(L,ZONES[dflt],'the party left before the answer came');stats.fallback++}
+function follows(a,p){const z=ZONES[p.zone],P=a.brainPlan&&a.brainPlan.town;
+  if(P&&!P.used&&P.t<=clk&&clk-P.t<=CFG.planTtl){P.used=1;const e=mindGet(a,P.mid); // the crypt answer stays in force (brainOk)
+    if(P.choice==null||P.choice===z)settle(e,'applied');
+    else settle(e,'overruled',{error:'the party goes to '+z+'; '+p.leader.name+' leads',scripted:z})}
+  lateTown(a,z,'left town with the party before the answer came');
+  mindNote(a,'follow',{choice:z,reason:'follows the party to '+z,leader:p.leader.name})}
 // Whether a hero would answer a Sunken Crypt call; scripted heroes always do.
 export function brainOk(a,what){if(!a.brain||S.brainOn===false||what!=='crypt')return true;
   const p=a.brainPlan&&a.brainPlan.town;return !(p&&p.t<=clk&&clk-p.t<=CFG.planTtl&&p.crypt===false)}
-function askTown(a){if(legalZones(a).length<2&&a.lvl<7)return;
-  const old=a.brainPlan&&a.brainPlan.town;
-  if(ask(a,'townPlan',{},(j,e)=>{const names=legalZones(a).map(i=>ZONES[i]);
-    if(typeof j.choice==='string')e.choice=clip(j.choice,40);e.reason=cleanReason(j.reason);if(typeof j.crypt==='boolean')e.crypt=j.crypt;
-    if(typeof j.choice!=='string'||!names.includes(j.choice)||typeof j.crypt!=='boolean'){reject(a,'townPlan','not in options',j,e);return}
-    if(e.outcome!=='pending')return; // the hero already left; recorded, not parked
-    (a.brainPlan||(a.brainPlan={})).town={choice:j.choice,crypt:j.crypt,t:clk,mid:e.id}})&&old&&!old.used)
-    settle(mindGet(a,old.mid),'superseded',{error:'replaced by a newer plan'})}
+// A solo hero (or a party leader before the zone is set) is asked the zone and the crypt call;
+// a party follower only the crypt call, and nothing at all when the crypt is not open to it.
+function askTown(a){const old=a.brainPlan&&a.brainPlan.town,park=(e,f)=>{(a.brainPlan||(a.brainPlan={})).town={...f,t:clk,mid:e.id}};
+  let sent_;
+  if(zoneQ(a)){if(townOptions(a).length<2&&a.lvl<7)return;
+    sent_=ask(a,'townPlan',{},(j,e)=>{const names=e.options||[];
+      if(typeof j.choice==='string')e.choice=clip(j.choice,40);e.reason=cleanReason(j.reason);if(typeof j.crypt==='boolean')e.crypt=j.crypt;
+      if(typeof j.choice!=='string'||!names.includes(j.choice)||typeof j.crypt!=='boolean'){reject(a,'townPlan','not in options',j,e);return}
+      if(e.outcome!=='pending')return; // the hero already left; recorded, not parked
+      park(e,{choice:j.choice,crypt:j.crypt})})}
+  else{if(a.lvl<7)return;
+    sent_=ask(a,'cryptCall',{},(j,e)=>{e.reason=cleanReason(j.reason);if(typeof j.crypt==='boolean'){e.crypt=j.crypt;e.choice=j.crypt?'answer':'decline'}
+      if(typeof j.crypt!=='boolean'){reject(a,'cryptCall','not a yes or no',j,e);return}
+      if(e.outcome!=='pending')return;
+      park(e,{choice:null,crypt:j.crypt})})}
+  if(sent_&&old&&!old.used)settle(mindGet(a,old.mid),'superseded',{error:'replaced by a newer plan'})}
 
 // ---- decision point: fightOrFlee ----
 // Called every fight tick (heroes.js fight case). Asks once when HP first drops under 50%

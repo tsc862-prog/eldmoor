@@ -176,20 +176,21 @@ function tabBio(b,a){for(const p of biography(a,S.agents)){const d=el('p','bio')
 // options, reason, scripted choice and, on request, the exact prompt the model saw. The body is
 // rebuilt only when the log's entries, their outcomes or the open row change (mindSig).
 const hasMind=a=>!!(a.brain||(a.mind&&a.mind.length));
-const MIND_KIND={townPlan:'Town plan',fightOrFlee:'Fight or flee',say:'Says'};
+const MIND_KIND={townPlan:'Town plan',cryptCall:'Crypt call',follow:'Follows',fightOrFlee:'Fight or flee',say:'Says'};
 let mindOpen=null; // {hid, id, prompt}
 const mindSig=a=>a.id+'|'+(a.mind||[]).map(e=>e.id+':'+e.outcome+':'+(e.ms==null?'':e.ms)).join(',')+'|'+(mindOpen&&mindOpen.hid===a.id?mindOpen.id+(mindOpen.prompt?'p':''):'');
 function mindRow(e){const bits=[e.t,MIND_KIND[e.kind]||e.kind];
   if(e.kind==='say')bits.push(e.trigger?'on '+e.trigger:'line');
+  else if(e.kind==='follow')bits.push(e.leader?e.leader+' leads':'party');
   else if(e.choice){const over=(e.options||[]).filter(o=>o!==e.choice);bits.push('chose '+e.choice+(over.length?' (over '+over.join(', ')+')':''))}
   else bits.push(e.outcome==='pending'?'waiting':'no answer');
   const q=e.reason||e.line;if(q)bits.push('\u2018'+q+'\u2019');
-  bits.push(e.ms==null?'\u2026':e.ms+' ms');
+  bits.push(e.kind==='follow'?'no call':e.ms==null?'\u2026':e.ms+' ms');
   return bits}
 function mindDetail(d,a,e){const box=el('div','mdet');
   const kv=el('div','kv mkv'),add=(k,v)=>{if(v==null||v==='')return;kv.append(el('span','k',k),el('span','v',String(v)))};
   add('Options',(e.options||[]).join(' · ')||(e.kind==='say'?'free line':''));
-  if(e.choice)add('Choice',e.choice+(e.kind==='townPlan'&&e.crypt!=null?' · crypt call: '+(e.crypt?'answer':'decline'):''));
+  if(e.choice)add(e.kind==='follow'?'Zone':'Choice',e.choice+(e.kind==='townPlan'&&e.crypt!=null?' · crypt call: '+(e.crypt?'answer':'decline'):''));
   add('Reason',e.kind==='say'?null:e.reason||'none given');
   add('Line',e.line);
   if(e.scripted)add(e.outcome==='applied'?'Scripted':'Scripted acted',e.outcome==='applied'?e.scripted+' (overridden)':e.scripted);
@@ -197,6 +198,7 @@ function mindDetail(d,a,e){const box=el('div','mdet');
   if(e.usage)add('Tokens',e.usage.in+' in / '+e.usage.out+' out');
   box.append(kv);
   const open=mindOpen&&mindOpen.prompt;
+  if(!e.snapshot){d.append(box);return} // a note (follow): nothing was sent
   const btn=el('button','mbtn',open?'hide prompt':'show prompt');btn.dataset.mprompt='1';box.append(btn);
   if(open){
     if(e.sent){box.append(el('div','dm','System ('+(e.sent.id||e.kind)+')'),el('pre','mpre',e.sent.system||''))}
