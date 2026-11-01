@@ -36,6 +36,7 @@ import {bondEvent,bond} from './bonds.js';
 import {remember,stanceEvent} from './memory.js';
 import {notify} from './notify.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
+import {sayOk} from './throttle.js';
 import {fellows,campaign} from './fellowship.js';
 import {partySay,leaderOfF} from './council.js';
 import {openScene} from './table.js';
@@ -149,7 +150,7 @@ function talk(F,g,L){if(L.length<2)return;g.stats.talks++;
   if(topic==='quarrel'&&bond(sp,other)>=6&&hash(h,2,9)<.6)topic='memory';
   const zn=ZONES[g.zone]||'the wilds',pool2=CAMP_LINES[topic],said=g.said||(g.said=[]);let ix=Math.floor(hash(h,sp.id,10)*pool2.length)%pool2.length;for(let k=0;k<pool2.length&&said.includes(topic+ix);k++)ix=(ix+1)%pool2.length; // no line twice in a camp while others remain
   said.push(topic+ix);if(said.length>8)said.shift();const text=fill(pool2[ix],sp,other,zn);
-  const asked=sp.brain&&F.ai&&S.brainOn!==false;
+  const asked=sp.brain&&F.ai&&S.brainOn!==false&&sayOk(sp); // speed-aware chatter cap (#117)
   const say=t=>{partySay(sp,t);remember(sp,'camp','Round the fire I said: "'+t+'"');for(const b of others)if(!b.player&&hash(h,b.id,11)<.5)remember(b,'camp',sp.name+' said at the fire: "'+(t.length>70?t.slice(0,68)+'..':t)+'"')};
   const finish=()=>{
     if(topic==='quarrel'){g.stats.quarrels++;for(const [x,y] of [[sp,other],[other,sp]]){x.bonds=x.bonds||{};x.bonds[y.id]=Math.max(-10,bond(x,y)-1)}
