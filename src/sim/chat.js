@@ -33,8 +33,15 @@ export function say(a,trigger,ctx={}){
   let line=pool[Math.floor(r()*pool.length)];
   if(pool.length>1&&line===a.lastBark)line=pool[(pool.indexOf(line)+1)%pool.length];
   a.lastBark=line;
-  const ml=a.brain&&brainLine(a,trigger,ctx); // BRAIN: cached model line for AI-played heroes, else the table line
-  const text=ml||fill(line,a,ctx),e={t:clockStr(),from:a,text,trigger};if(ml)e.ai=true;
+  const text=fill(line,a,ctx);
+  // BRAIN: an AI-played hero asks for a line in the moment (said later by brain.js via speak);
+  // with aiQuietTable the table line is held back and said only if no model line comes in time.
+  if(a.brain&&brainLine(a,trigger,ctx,text)==='held'){a.chatCd=COOL;return}
+  speak(a,text,trigger)}
+
+// Put a line in the speaker's and every nearby listener's chat buffer and show the bubble.
+// ai marks a model-written line (brain.js speaks those as follow-ups).
+export function speak(a,text,trigger,ai){const e={t:clockStr(),from:a,text,trigger};if(ai)e.ai=true;
   hear(a,e);
   for(const b of nearHeroes(a.x,a.y,HEAR)){if(b===a||b.state==='dead'||b.hidden||dist(a,b)>HEAR)continue;hear(b,e)}
   a.bubble={text,life:BUBBLE};a.chatCd=COOL}

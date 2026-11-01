@@ -7,9 +7,12 @@
 //     state for state, to a run without brains (seeded Math.random, child processes);
 //   - the Mind log (issue #61) records every request with the right outcome (applied, rejected,
 //     late, offline, superseded), the exact snapshot, the relay's echo of the prompt and a
-//     validated reason; the relay's verbose log writes JSON lines without secrets.
+//     validated reason; the relay's verbose log writes JSON lines without secrets;
+//   - say lines (issue #71) are spoken in the moment or dropped: a fresh answer is said at once
+//     and applied, a stale one or one whose situation changed settles late unsaid, and with
+//     aiQuietTable the table line is held back and only said when no model line came in time.
 // Usage: npm run braincheck
-// Internal: node scripts/braincheck.mjs --fp plain|brain   (prints a fingerprint of a short run)
+// Internal: node scripts/braincheck.mjs --fp plain|brain|loud   (prints a fingerprint of a short run)
 import http from 'node:http';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -26,7 +29,7 @@ if (argFp) {
   const {init, step, S, enableBrain} = await import('../src/sim/index.js');
   const B = await import('../src/sim/brain.js');
   init();
-  if (argFp === 'brain') {B.CFG.url = 'http://127.0.0.1:9/decide'; B.CFG.timeoutMs = 200; for (const a of S.agents.slice(0, 3)) enableBrain(a)}
+  if (argFp !== 'plain') {B.CFG.url = 'http://127.0.0.1:9/decide'; B.CFG.timeoutMs = 200; B.CFG.aiQuietTable = argFp === 'brain'; for (const a of S.agents.slice(0, 3)) enableBrain(a)}
   for (let i = 0; i < 3 * 60 * 60; i++) {step(1 / 60); if (i % 900 === 0) await sleep(2)}
   await sleep(50);
   console.log(JSON.stringify({t: S.gameMin, uid: S.uid, a: S.agents.map(a => [a.id, a.state, a.lvl, a.xp, Math.round(a.x * 100), Math.round(a.y * 100), Math.round(a.hp), a.deaths, a.kills, a.gold, a.chat ? a.chat.length : 0])}));
@@ -276,6 +279,67 @@ console.log('save and load');
   for (const h of back) disableBrain(h);
 }
 
+// ======== 2b. say in the moment or not at all (issue #71) ========
+console.log('say: in the moment or dropped');
+{
+  const {say, spotMob, COOL} = await import('../src/sim/chat.js');
+  let answers = [];
+  B.setFetch(() => new Promise(res => answers.push(line => res(line == null ? {ok: false, json: async () => ({error: 'model refused'})} : {ok: true, json: async () => ({line, usage: {in: 800, out: 12}})}))));
+  const cfg0 = {...B.CFG}; B.CFG.timeoutMs = 5000;
+  const h = S.agents.find(a => a.kind === 'hero' && a.state !== 'dead' && !a.hidden);
+  const mob = S.mobs.find(m => m.alive);
+  const prep = (quiet, brain = true) => {B.resetBrain(); B.CFG.aiQuietTable = quiet; answers = []; delete h.mind; h.chat = []; h.chatCd = 0; h.bubble = null; h.spotTgt = null;
+    h.state = 'hunt'; h.target = null; h.hidden = false; if (brain) enableBrain(h); else disableBrain(h)};
+  const answer = async (line, i = 0) => {answers[i](line); await sleep(10)};
+  const aiLines = () => h.chat.filter(e => e.ai), table = () => h.chat.filter(e => !e.ai);
+  const tick = dt => B.brainTick(dt);
+  const fight = () => {mob.alive = true; mob.lvl = h.lvl + 3; h.state = 'fight'; h.target = mob};
+
+  // fresh answer, table line already said (quiet table off)
+  prep(false); say(h, 'kill', {target: 'Ser Test'});
+  ok(table().length === 1 && answers.length === 1 && h.mind[0].outcome === 'pending', 'quiet off: table line said at once, model asked');
+  tick(1.3); await answer('Rest now, Ser Test.'); tick(1 / 60);
+  ok(aiLines().length === 1 && aiLines()[0].text === 'Rest now, Ser Test.' && h.bubble && h.bubble.text === 'Rest now, Ser Test.' && h.mind[0].outcome === 'applied' && h.mind[0].line === 'Rest now, Ser Test.', 'fresh answer is said immediately as a follow-up, marked ai, entry applied');
+  ok(h.chat.length === 2 && h.chatCd === COOL, 'follow-up goes through chat like say (buffer, bubble, cool-down)');
+  // stale answer
+  prep(false); say(h, 'kill', {target: 'Ser Test'}); tick(B.CFG.sayFresh + .5); await answer('Too late for words.'); tick(1 / 60);
+  ok(aiLines().length === 0 && h.mind[0].outcome === 'late' && h.mind[0].error === 'came after the moment passed' && h.mind[0].line === 'Too late for words.', 'stale answer settles late and is not said (' + h.mind[0].error + ')');
+  // situation changed: the target died
+  prep(false); fight(); spotMob(h, mob); tick(.5); mob.alive = false; await answer('This one is big.'); tick(1 / 60);
+  ok(h.mind[0].trigger === 'spot' && h.mind[0].outcome === 'late' && h.mind[0].error === 'the situation changed' && aiLines().length === 0, 'spot: target died before the answer -> late, not said');
+  // situation changed: the hero's state changed
+  prep(false); fight(); spotMob(h, mob); tick(.5); h.state = 'return'; await answer('This one is big.'); tick(1 / 60);
+  ok(h.mind[0].outcome === 'late' && h.mind[0].error === 'the situation changed' && aiLines().length === 0, 'spot: hero left the fight before the answer -> late, not said');
+  // same situation: said
+  prep(false); fight(); spotMob(h, mob); tick(.5); await answer('This one is big.'); tick(1 / 60);
+  ok(h.mind[0].outcome === 'applied' && aiLines().length === 1, 'spot: same fight, same living target -> applied and said');
+  // dead hero: dropped
+  prep(false); say(h, 'kill', {target: 'X'}); h.state = 'ghost'; await answer('Words from beyond.'); tick(1 / 60);
+  ok(h.mind[0].outcome === 'late' && aiLines().length === 0, 'hero no longer able to speak -> late, not said');
+  // quiet table: model in time, table line never said
+  prep(true); say(h, 'kill', {target: 'Ser Test'});
+  ok(h.chat.length === 0 && h.chatCd === COOL && answers.length === 1, 'quiet on: table line held back while the model is asked');
+  tick(1.5); await answer('Down you go.'); tick(1 / 60); tick(B.CFG.sayFresh + 1);
+  ok(h.chat.length === 1 && aiLines().length === 1 && h.mind[0].outcome === 'applied', 'quiet on: model line in time -> said, table line never said');
+  // quiet table: no answer in time, table line said when the window expires; the late answer is dropped
+  prep(true); say(h, 'kill', {target: 'Ser Test'}); tick(B.CFG.sayFresh - .5);
+  ok(h.chat.length === 0, 'quiet on: nothing said inside the window');
+  tick(.6); ok(table().length === 1 && aiLines().length === 0, 'quiet on: window expired -> table line said');
+  await answer('Down you go.'); tick(1 / 60);
+  ok(h.chat.length === 1 && h.mind[0].outcome === 'late', 'quiet on: the late model line settles late, not said');
+  // quiet table: relay error inside the window releases the table line at once
+  prep(true); say(h, 'kill', {target: 'Ser Test'}); tick(.5); await answer(null); tick(1 / 60);
+  ok(table().length === 1 && h.mind[0].outcome === 'offline', 'quiet on: failed request -> table line said without waiting out the window');
+  // per-hero gap still applies: a second trigger inside sayGap sends nothing and speaks the table line
+  prep(true); say(h, 'kill', {target: 'A'}); tick(1.5); await answer('One.'); tick(1 / 60); h.chatCd = 0; say(h, 'kill', {target: 'B'});
+  ok(answers.length === 1 && table().length === 1 && aiLines().length === 1, 'say gap: second trigger within ' + B.CFG.sayGap + ' s is not asked, table line said at once (' + [answers.length, table().length, aiLines().length] + ')');
+  // scripted hero: unchanged
+  prep(true, false); say(h, 'kill', {target: 'Ser Test'}); tick(1 / 60);
+  ok(table().length === 1 && answers.length === 0 && !h.mind && B.brainLine(h, 'kill', {}, 'x') === null, 'scripted hero: table line said at once, nothing asked or held');
+  mob.alive = true; h.state = 'hunt'; h.target = null;
+  B.setFetch(null); Object.assign(B.CFG, cfg0); B.resetBrain();
+}
+
 // ======== 3. cost estimate from the observed rate ========
 {
   const sys = ['townPlan', 'fightOrFlee', 'say'].map(k => systemFor(k, 0).length);
@@ -286,9 +350,11 @@ console.log('save and load');
 // ======== 4. determinism: a dead relay changes nothing ========
 console.log('determinism');
 const fp = m => {const p = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fp', m], {encoding: 'utf8', maxBuffer: 1 << 26}); if (p.status !== 0) {console.error(p.stderr); return null} return p.stdout.trim().split('\n').pop()};
-const pa = fp('plain'), pb = fp('plain'), br = fp('brain');
+const pa = fp('plain'), pb = fp('plain'), br = fp('brain'), lo = fp('loud');
+const noChat = s => {const o = JSON.parse(s); for (const r of o.a) r.pop(); return JSON.stringify(o)};
 ok(pa && pa === pb, 'seeded plain runs are identical (harness is sound)');
-ok(pa && br === pa, 'seeded run with 3 brain heroes and a dead relay is identical to the plain run (no RNG used, no state changed)');
+ok(pa && lo === pa, 'seeded run with 3 brain heroes, a dead relay and aiQuietTable off is identical to the plain run (no RNG used, no state changed)');
+ok(pa && br && noChat(br) === noChat(pa), 'with aiQuietTable on, only chat buffers differ (held table lines are said a few seconds later); gameplay is identical');
 
 console.log(fail ? `\n${fail} FAILED` : '\nbraincheck passed');
 process.exit(fail ? 1 : 0);
