@@ -35,6 +35,7 @@ import {makeHero,maxHp,goHome} from './heroes.js';
 import {leaveParty} from './party.js';
 import {bond} from './bonds.js';
 import {enableBrain,disableBrain,askRelay} from './brain.js';
+import {markPlayer} from './player.js';
 import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME} from './persona.js';
 import {remember,memOf,refreshStances,stanceEvent,setSummariser,memorySnapshot,applyLong} from './memory.js';
 
@@ -152,6 +153,7 @@ export function join(a,key,why,quiet){const F=S.fellowship;if(!F||!alive(a)||!fi
   F.slots[key]=a.id;F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);
   a.fellow=true;a.fellowRole=key;if(a.fellowFrom==null)a.fellowFrom=a.town||null;a.town=F.hall;
   memOf(a);if(F.ai&&!a.brain){enableBrain(a);a.fellowBrain=true}
+  if(F.minds==='agent'&&!a.player&&markPlayer(a,true))a.fellowAgent=true; // phase B: an agent plays every member (npm run fellowship)
   if(!quiet){campaign('recruit',a,' joins ',gd(F.name),' as its '+slotOf(key).label+(why?' ('+why+')':'')+'.');
     log(a,' takes the empty place in ',gd(F.name),' as its '+lcRole(key)+'.');
     timeline('oath',a,' joins ',gd(F.name),' as its '+slotOf(key).label+'.');
@@ -165,8 +167,20 @@ export function join(a,key,why,quiet){const F=S.fellowship;if(!F||!alive(a)||!fi
 export function leave(a,why){const F=S.fellowship;if(!F||!a)return;const k=SLOT_KEYS.find(k=>F.slots[k]===a.id);if(k)F.slots[k]=null;
   F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);
   if(a.party&&a.party.fellow)leaveParty(a);
-  a.fellow=false;delete a.fellowRole;if(a.fellowBrain){disableBrain(a);delete a.fellowBrain}if(a.fellowFrom!=null&&a.state!=='dead'){a.town=a.fellowFrom}delete a.fellowFrom;
+  a.fellow=false;delete a.fellowRole;if(a.fellowBrain){disableBrain(a);delete a.fellowBrain}if(a.fellowAgent){if(a.state!=='dead')markPlayer(a,false);delete a.fellowAgent}delete a.splitUntil;if(a.fellowFrom!=null&&a.state!=='dead'){a.town=a.fellowFrom}delete a.fellowFrom;
   if(alive(a)&&why!=='disband'){campaign('leave',a,' leaves ',gd(F.name),why?' ('+why+')':'','.');record(a,'Left ',gd(F.name),'.')}}
+
+// Who plays the members (the panel's Minds switch): 'off' scripted only, 'relay' the brain relay
+// (scripted when it is down), 'agent' one Agent SDK session per member (npm run fellowship; the
+// relay still writes their sheets). Agent mode marks every member agent-played (markPlayer);
+// a member who joins later is marked on joining, and one who leaves is handed back.
+export const MINDS=['off','relay','agent'];
+export const mindsOf=F=>F?(F.minds||(F.ai?'relay':'off')):'off';
+export function setMinds(mode){const F=S.fellowship;if(!F||!MINDS.includes(mode))return false;F.minds=mode;F.ai=mode!=='off';
+  for(const a of fellows()){
+    if(F.ai){if(!a.brain){enableBrain(a);a.fellowBrain=true}}else if(a.fellowBrain){disableBrain(a);delete a.fellowBrain}
+    if(mode==='agent'){if(!a.player&&markPlayer(a,true))a.fellowAgent=true}else if(a.fellowAgent){markPlayer(a,false);delete a.fellowAgent}}
+  return true}
 
 export function disbandFellowship(){const F=S.fellowship;if(!F)return;
   for(const a of fellows())leave(a,'disband');const p=fellowParty();if(p){p.fellow=false}
@@ -224,12 +238,12 @@ export function editSheet(a,which,field,text){if(!a)return false;const v=String(
 // ---- the tick ----
 function muster(){const F=S.fellowship,L=fellows();let P=fellowParty();
   for(const b of L)if(b.party&&b.party!==P)leaveParty(b);
-  if(!P){const inTown=L.filter(b=>b.state==='town');if(inTown.length<2)return;
+  if(!P){const inTown=L.filter(b=>b.state==='town'&&!b.splitUntil);if(inTown.length<2)return;
     let lead=inTown[0];for(const b of inTown)if(b.lvl>lead.lvl)lead=b;
     P={id:++S.uid,fac:F.fac,leader:lead,mem:inTown.slice(),zone:zoneFor(Math.min(...inTown.map(b=>b.lvl)),homeOf(lead).gate),home:false,fellow:true};
     for(const b of inTown)b.party=P;S.parties.push(P);return}
   if(P.home)return;
-  for(const b of L)if(!b.party&&(b.state==='town'||(loose(b)&&b.state!=='return'&&dist(b,P.leader)<12))){P.mem.push(b);b.party=P}}
+  for(const b of L)if(!b.party&&!b.splitUntil&&(b.state==='town'||(loose(b)&&b.state!=='return'&&dist(b,P.leader)<12))){P.mem.push(b);b.party=P}}
 
 const fightSeen=new Map(),lastState=new Map();
 function watch(a){const st=a.state,prev=lastState.get(a.id);lastState.set(a.id,st);

@@ -12,6 +12,7 @@ import {guardMul} from './gear.js';
 import {raidPull,goalEvent} from './goals.js';
 import {record,timeline} from './history.js';
 import {bossPull} from './narrator.js';
+import {unitDraft} from './council.js';
 
 const RAID_COOLDOWN=240,RAID_LVL=14,RAID_FULL=5,RAID_GEAR=9; // entry level, party size that needs no gear check, average gear score otherwise
 // Runs the template's phases, signature moves and enrage; Kragmaw has one phase, one breath and no enrage,
@@ -39,7 +40,8 @@ export function raidCheck(dt){const boss=S.boss,agents=S.agents;
   for(let f=0;f<2;f++){if(S.raidOn[f]&&!agents.some(a=>a.raid&&a.fac===f)){S.raidOn[f]=false;if(boss.alive){log('The ',fac(f),' raid on Kragmaw ended in defeat.');timeline('raid','The ',fac(f),' raid on Kragmaw ended in defeat.');S.raidT=Math.max(S.raidT,RAID_COOLDOWN)}}}
   S.raidT-=dt;if(S.raidT>0)return;S.raidT=45+rnd()*30;if(!boss.alive)return;
   const f=ri(0,1);if(S.raidOn[f])return;
-  const cand=agents.filter(a=>a.fac===f&&a.lvl>=RAID_LVL&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>(raidPull(y)-raidPull(x))||(y.lvl-x.lvl)).slice(0,6); // oath-bound (legend, Kragmaw heirloom) first
+  const pool=agents.filter(a=>a.fac===f&&a.lvl>=RAID_LVL&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>(raidPull(y)-raidPull(x))||(y.lvl-x.lvl));
+  const cand=unitDraft(pool,pool,6,'raid'); // oath-bound (legend, Kragmaw heirloom) first; the Fellowship (#68) all together or not at all
   if(cand.length<4||(cand.length<RAID_FULL&&cand.reduce((t,a)=>t+a.gear,0)/cand.length<RAID_GEAR))return;S.raidOn[f]=true;
   cand.forEach((a,i)=>{a.raid=true;a.raidIdx=i;a.state='raid';a.target=null;a.dest=null;a.hp=Math.max(a.hp,maxHp(a)*.8)});
   for(const a of cand)record(a,'Mustered with '+(cand.length-1)+' others to raid ',{t:'Kragmaw',c:'gd'},'’s lair.');

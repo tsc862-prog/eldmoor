@@ -1,4 +1,4 @@
-// Agent player (issue #75): the tools an AI agent uses to play one hero. Pure data, shared by
+// Agent player (issues #75, #68): the tools an AI agent uses to play one hero. Pure data, shared by
 // the MCP server (scripts/relay-mcp.mjs), the headless host and the docs. Each tool:
 //   {name, desc, act, args:{argName:{type:'string'|'integer'|'number', desc, optional?, enum?}}}
 // act: true for tools that change the world (rate limited per game hour), false for reads.
@@ -26,6 +26,13 @@ export const PLAYER_TOOLS=[
   {name:'read_chronicle',act:false,desc:'The latest news of the world as the town criers tell it (newest first).',args:{n:{type:'integer',desc:'How many lines (1-20, default 8)',optional:true}}},
   {name:'journal_read',act:false,desc:'Read your own journal (newest last).',args:{n:{type:'integer',desc:'How many entries (1-50, default 10)',optional:true}}},
   {name:'journal_write',act:false,desc:'Write a short journal entry in your hero\'s voice (max 600 characters). It is saved with the world.',args:{text:{type:'string',desc:'The entry'}}},
+  // ---- the Fellowship (issue #68, phase B): party chat, the council, leading, and Table mode ----
+  {name:'party_say',act:true,desc:'Say a line on the party channel (max 120 characters): every member of your party hears it wherever they are (in the Fellowship, all five). Shows in their Chat tabs and as your speech bubble.',args:{text:{type:'string',desc:'What you say to the party'}}},
+  {name:'party_read',act:false,desc:'Read the latest party-channel lines (newest last).',args:{n:{type:'integer',desc:'How many lines (1-20, default 10)',optional:true}}},
+  {name:'propose',act:true,desc:'Fellowship only: put a decision to the whole party. kind: job (take a posted job; give job_id), crypt (answer a call to the Sunken Crypt), raid (answer a raid muster on Kragmaw), split (go separate ways for a while), other. Everyone votes; the leader settles it when all have voted or after about 120 game minutes (majority, the leader breaks a tie). Your own vote counts as yes.',args:{kind:{type:'string',enum:['job','crypt','raid','split','other'],desc:'What kind of decision'},details:{type:'string',desc:'What you propose, in a sentence',optional:true},job_id:{type:'integer',desc:'For kind job: the job id from list_jobs',optional:true}}},
+  {name:'vote',act:true,desc:'Fellowship only: vote yes or no on an open proposal (ids in status.proposals and in events), with a short reason in your own voice.',args:{proposal_id:{type:'integer',desc:'The proposal id'},vote:{type:'string',enum:['yes','no'],desc:'yes or no'},reason:{type:'string',desc:'Why, in a sentence',optional:true}}},
+  {name:'lead_to',act:true,desc:'Fellowship leader only: lead the whole party somewhere (the same targets as move_to). The others follow you unless they leave_party.',args:{target:{type:'string',desc:'Where to lead the party'}}},
+  {name:'scene_act',act:false,desc:'Table mode: when the Fellowship is in a scene (status/look/wait show "table"), act in it. option is one of the keys the scene lists (for example strike, guard, heal, retreat; a or b; yes or no). You may answer as soon as the scene opens; it happens on your turn. On your turn you have a few real seconds, then your reflexes act for you. line: what you say aloud as you act (optional, max 120 characters).',args:{option:{type:'string',desc:'The option key'},line:{type:'string',desc:'What you say as you act',optional:true}}},
   {name:'wait',act:false,desc:'Let game time pass (10-240 game minutes; 1 real second is 6 game minutes) while your command runs. Returns early when something urgent happens: an attack, a choice, low HP, a finished command. Use it between actions instead of polling.',args:{minutes:{type:'integer',desc:'Game minutes (10-240, default 60)',optional:true}}},
 ];
 export const TOOL_NAMES=PLAYER_TOOLS.map(t=>t.name);

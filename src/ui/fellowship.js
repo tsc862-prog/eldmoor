@@ -15,7 +15,7 @@
 import {FAC} from '../data/factions.js';
 import {S,maxHp} from '../sim/index.js';
 import {cam} from '../render/draw.js';
-import {SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
+import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {doing} from './panels.js';
@@ -46,7 +46,7 @@ export function renderBackstory(node,a){const B=a&&a.backstory;if(!B){node.appen
   node.append(el('div','dm',(B.src==='model'?'Written by the model'+(B.model?' ('+B.model+')':''):'Scripted from the world')+(B.edited?', edited by you':'')+'.'))}
 export function renderPersona(node,a){const P=a&&a.persona;if(!P){node.append(el('div','dm','No persona yet.'));return}
   const kv=el('div','kv');for(const [k,label] of PERSONA_ORDER)kv.append(el('span','k',label),el('span','v',P[k]||''));node.append(kv)}
-const KIND_LABEL={found:'FOUND',join:'JOIN',recruit:'RECRUIT',leave:'LEAVE',adventure:'JOB',scene:'SCENE',roll:'ROLL',branch:'CHOICE',complication:'TWIST',outcome:'END',npc:'MET',fight:'FIGHT',level:'LVL',kill:'KILL',death:'DEATH',session:'DAY',note:'NOTE'};
+const KIND_LABEL={council:'COUNCIL',table:'TABLE',found:'FOUND',join:'JOIN',recruit:'RECRUIT',leave:'LEAVE',adventure:'JOB',scene:'SCENE',roll:'ROLL',branch:'CHOICE',complication:'TWIST',outcome:'END',npc:'MET',fight:'FIGHT',level:'LVL',kill:'KILL',death:'DEATH',session:'DAY',note:'NOTE'};
 export function renderCampaignLog(node,o={}){const F=S.fellowship;if(!F){node.append(el('div','dm','No Fellowship.'));return}
   const days=[];for(const e of F.log){let d=days[days.length-1];if(!d||d.day!==e.day){d={day:e.day,list:[]};days.push(d)}d.list.push(e)}
   if(!days.length){node.append(el('div','dm','Nothing yet. The log fills as the five take jobs, roll dice and bleed.'));return}
@@ -100,7 +100,8 @@ function topView(node){const F=S.fellowship;
   node.append(h);
   const bar=el('div','fbar');
   const fol=el('button',null,'Follow');fol.dataset.fact='follow';fol.setAttribute('aria-pressed',String(cam.view==='fellow'));
-  const ai=el('button',null,F.ai?'Minds: on':'Minds: off');ai.dataset.fact='ai';ai.title=F.ai?'Members are AI-played through the relay (scripted when it is down). Click to return them to the scripted rules.':'Let a language model play the members and write their sheets (needs npm run relay)';
+  const md=mindsOf(F),ai=el('button',null,'Minds: '+({off:'scripted',relay:'relay',agent:'agents'})[md]);ai.dataset.fact='ai';
+  ai.title=md==='off'?'Scripted rules only. Click: the relay plays the members (npm run relay).':md==='relay'?'The relay plays the members and writes their sheets (scripted when it is down). Click: one AI agent per member (npm run fellowship).':'Each member is agent-played: run npm run fellowship to start their agents (reflexes act while they are silent). Click: back to scripted.';
   const db=el('button',null,confirmDisband?'Really disband?':'Disband');db.dataset.fact='disband';
   bar.append(fol,ai,db);node.append(bar);
   renderRoster(node);
@@ -138,7 +139,7 @@ function act(t){const F=S.fellowship;msg='';
     draft.slots={tank:null,healer:null,dps1:null,dps2:null,dps3:null};focus=true;onFilter();setViewHook('fellow');return}
   if(!F)return;
   if(k==='follow'){setViewHook(cam.view==='fellow'?'map':'fellow');return}
-  if(k==='ai'){F.ai=!F.ai;for(const a of fellows()){if(F.ai){if(!a.brain){enableBrain(a);a.fellowBrain=true}}else{disableBrain(a);delete a.fellowBrain}}campaign('note','The watcher turned the members’ minds '+(F.ai?'on':'off')+'.');return}
+  if(k==='ai'){const nx=MINDS[(MINDS.indexOf(mindsOf(F))+1)%MINDS.length];setMinds(nx);campaign('note','The watcher set the members’ minds to '+({off:'the scripted rules',relay:'the relay',agent:'their own agents'})[nx]+'.');return}
   if(k==='disband'){if(!confirmDisband){confirmDisband=true;return}confirmDisband=false;disbandFellowship();sheetOpen=null;sheetView(sheet,null);onFilter();setViewHook('map');return}
   if(k==='save'){const a=byId(sheetOpen);if(a)for(const ta of sheet.querySelectorAll('textarea[data-fw]'))editSheet(a,ta.dataset.fw,ta.dataset.fk,ta.value);msg='Sheet saved.';sheetView(sheet,a);return}
   if(k==='close'){sheetOpen=null;sheetView(sheet,null)}}
@@ -158,6 +159,6 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm){sigForm=sig;sigTop='';top.replaceChildren();formView(top)}return}
   logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+F.ai+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.lvl+':'+Math.round(m.hero.hp/maxHp(m.hero)*20)+':'+m.hero.state+':'+enriching(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.lvl+':'+Math.round(m.hero.hp/maxHp(m.hero)*20)+':'+m.hero.state+':'+enriching(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
   if(sig!==sigTop){sigTop=sig;sigForm='';top.replaceChildren();topView(top)}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog){sigLog=ls;logBox._b.replaceChildren();renderCampaignLog(logBox._b)}}

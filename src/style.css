@@ -181,3 +181,12 @@ button.mini{font-size:7px;padding:3px 6px;box-shadow:none}
 .felLog .tlist{max-height:320px;overflow:auto}
 .mstar{margin-right:2px}
 .mtag.fellow{color:var(--dim)}
+
+/* Table mode banner (#68 phase B): the scene, whose turn it is, the last act */
+.tbanner{position:absolute;left:8px;right:8px;top:8px;max-width:560px;margin:0 auto;background:rgba(8,10,20,.88);border:2px solid var(--edge);padding:6px 8px;pointer-events:none;color:#e8e4d0;font-size:15px;line-height:1.15}
+.tbanner .tt{font-family:var(--px);font-size:8px;color:#ffd866;letter-spacing:.04em;margin-bottom:3px}
+.tbanner .tf{opacity:.9}
+.tbanner .tl{margin-top:3px;color:#9ad0ff}
+.tbanner .to{margin-top:3px;font-size:13px;opacity:.85}
+.tbanner .to b{color:#ffd866;font-weight:normal}
+.tbanner .tp{font-family:var(--px);font-size:7px;color:#ff9a6a;margin-left:6px}
