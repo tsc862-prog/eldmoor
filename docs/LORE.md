@@ -398,3 +398,7 @@ Triggers and samples:
 - **Dawn recap** at 06:00 every game day, one to three sentences on the day since the last dawn (deaths and their causes, levels gained and the highest hero, elites slain, Crypt clears and wipes, Kragmaw's state):
   "Dawn, day 8. Twelve fell since the last dawn: three to monsters and nine to enemy heroes. 23 levels gained; Feneth stands highest at 9. The Crypt was cleared once; Kragmaw sleeps untouched." /
   "Day 15 begins. Nobody died since the last dawn; the Chronicler checks the list twice. 31 levels gained; Ragrek stands highest at 13, and Old Mother Sedge is dead. The Crypt was cleared once; Kragmaw sleeps untouched."
+
+## Minds
+
+Some heroes are played by a language model instead of the old rules of thumb. In Eldmoor that means nothing at all: there is no such thing as an AI-played hero, only heroes. They are born, swear oaths, hold grudges and die the same way as everyone else, once, for good. The UI marks them with an "AI-played" badge because the watcher may want to know; the world does not. A mind that falls silent (the relay is down) is written as a dim chronicle line, "<hero>'s thoughts go quiet", and the hero simply goes on as before. Minds speak in their faction's voice: Concord formal and dry, Warband blunt and short. They never mention models, prompts, players or games.

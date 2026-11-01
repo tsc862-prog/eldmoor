@@ -24,6 +24,7 @@ import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
 import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
+import {townZone,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
@@ -154,8 +155,9 @@ export function updAgent(a,dt){
       else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2;a.linger=a.cls==='Warrior'?4+rnd()*2:2;seekParty(a)}
       else{if(a.linger>0&&!a.party&&seekParty(a)==='wait'){a.linger--;a.wait=1;break}
         if(a.linger>0&&a.party&&partyMates(a).some(b=>b.state==='town'&&b.townStep<2)){a.linger--;a.wait=1;break}
-        say(a,'depart',{zone:ZONES[a.party?a.party.zone:zoneFor(a.lvl)]});
-        a.zone=a.party?a.party.zone:zoneFor(a.lvl);a.state='travel';a.dest=zonePoint(a.zone)}}break}
+        const tz=a.party?a.party.zone:townZone(a); // BRAIN: zone pick (scripted = zoneFor(a.lvl))
+        say(a,'depart',{zone:ZONES[tz]});
+        a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone)}}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     if(checkEncounter(a,dt))break; // road encounter in reach: detour and resolve (sim/encounters.js)
     if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
@@ -181,6 +183,7 @@ export function updAgent(a,dt){
     if(!m.target)m.target=a;
     priestHeal(a,a.party?a.party.mem:[a]);
     if(a.cd<=0){strike(a,m);a.cd=1.1}
+    brainFight(a,m,mh); // BRAIN: optional earlier bail-out at 50% HP for AI-played heroes
     if(a.state==='fight'&&a.hp<mh*.22*tm(a,'flee')&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
     fleeCheck(a,m); // Chronicler: flee roll, a failure lands one more hit (sim/narrator.js)
     if(a.state==='return')say(a,'flee',{mob:MOBS[m.type].name});
