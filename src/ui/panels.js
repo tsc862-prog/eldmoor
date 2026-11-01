@@ -17,6 +17,7 @@ import {S,clockStr,maxHp,xpNeed,atkOf,onLog,onMarketTick} from '../sim/index.js'
 import {cam} from '../render/draw.js';
 import {weatherName} from '../sim/weather.js';
 import {friendsOf} from '../sim/bonds.js';
+import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -66,7 +67,7 @@ export function setTab(t){if(TABS.some(([k])=>k===t))tab=t;renderHero()}
 const gearScoreOf=a=>typeof a.gearScore==='number'?a.gearScore:a.slots?Math.round(SLOTS.reduce((t,[k])=>t+(a.slots[k]?a.slots[k].ilvl||0:0),0)/SLOTS.length):a.gear;
 
 function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
-  const rows=[['Level',a.lvl],['Class',a.cls],['Faction',FAC[a.fac].name],['Guild',`<${a.guild.tag}> ${a.guild.name}`],
+  const rows=[['Level',a.lvl],['Class',a.cls],['Faction',FAC[a.fac].name],['Guild',a.guild?`<${a.guild.tag}> ${a.guild.name}`:'Unguilded'],
     ['HP',`${Math.max(0,Math.round(a.hp))} / ${mh}`],['Attack',Math.round(atkOf(a))],['Armour',Math.round((1-(c.arm||1))*100)+'%'],
     ['Crit',Math.round((c.crit||.08)*100)+'%'],['Range',c.range>2?`${c.range} (ranged)`:`${c.range} (melee)`],
     ['XP to next',a.lvl>=20?'Max level':`${Math.max(0,xpNeed(a.lvl)-Math.round(a.xp))} xp`],
@@ -174,7 +175,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   const k=skel&&skel.root===root&&root.contains(skel.hd)?skel:skeleton(root);
   const mh=maxHp(a),h=k.hd;h.replaceChildren();
   h.append(el('div','nm f'+a.fac,a.name));
-  h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · <${a.guild.tag}> ${a.guild.name}`));
+  h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
   h.append(el('div','doing',doing(a)));
   h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
   h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
@@ -207,9 +208,14 @@ export function renderFallen(){const el_=$('fallen');if(!S.fallen.length){el_.in
     if(a){n.classList.add('hn');n.dataset.hid=a.id}
     li.append(n,` · Lv ${f.lvl} ${f.cls}, ${f.cause}`);el_.append(li)}}
 
-const gScore=g=>{const m=living().filter(a=>a.guild===g);return Math.round(m.reduce((t,a)=>t+a.lvl+a.honor*3+a.kills/25,0)+g.clears*25+g.bosses*40)};
-export function renderGuilds(){$('guilds').innerHTML=S.GUILDS.slice().sort((x,y)=>gScore(y)-gScore(x)).map((g,i)=>
-  `<tr><td><span class="dm">${i+1}</span> <span class="f${g.fac}">&lt;${g.tag}&gt; ${g.name}</span></td><td>${g.clears}/${g.clears+g.wipes}</td><td class="gd">${gScore(g)}</td></tr>`).join('')}
+const gScore=g=>{const m=membersOf(g);return Math.round(m.reduce((t,a)=>t+a.lvl+a.honor*3+a.kills/25,0)+g.clears*25+g.bosses*40)};
+// Living guilds by score with leader and head count, then a count of the retired.
+export function renderGuilds(){const live=livingGuilds().map(g=>({g,m:membersOf(g),s:gScore(g)})).sort((x,y)=>y.s-x.s);
+  const ret=S.GUILDS.length-live.length;
+  $('guilds').innerHTML=(live.length?live.map(({g,m,s},i)=>{const L=leaderOf(g);
+    return `<tr><td><span class="dm">${i+1}</span> <span class="f${g.fac}">&lt;${g.tag}&gt; ${g.name}</span><br><span class="dm">${L?'led by '+L.name+' · ':''}${m.length} member${m.length===1?'':'s'}</span></td><td>${g.clears}/${g.clears+g.wipes}</td><td class="gd">${s}</td></tr>`}).join('')
+    :'<tr><td class="dm" colspan="3">No guild has been founded yet.</td></tr>')
+    +(ret?`<tr><td class="dm" colspan="3">Retired: ${ret}</td></tr>`:'')}
 
 export function renderAH(){$('ah').innerHTML=Object.keys(GOODS).map(n=>{const p=price(n),d=p-GOODS[n].prev;
   return `<tr><td>${n}</td><td class="gd">${p}g</td><td class="${d>0?'up':d<0?'down':'dm'}">${d>0?'▲'+d:d<0?'▼'+(-d):'–'}</td></tr>`}).join('')}

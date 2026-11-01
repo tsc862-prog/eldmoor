@@ -10,17 +10,18 @@ import {log} from './chronicle.js';
 import {gainXp,getEpic,goHome,fall} from './heroes.js';
 import {cryptPull,goalEvent} from './goals.js';
 import {record} from './history.js';
+import {livingGuilds} from './guilds.js';
 
 export function dungeonCheck(dt){const agents=S.agents;
   const g=CRYPT.group,tagOf=(gu,f)=>gu?{t:'<'+gu.tag+'> '+gu.name,c:'f'+f}:{t:'A '+FAC[f].name+' group',c:'f'+f};
   if(!g){CRYPT.cd-=dt;if(CRYPT.cd>0)return;CRYPT.cd=20+rnd()*25;
     const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&a.lvl>=7&&!a.raid&&['hunt','travel','town','return'].includes(a.state));
-    const gu=pickA(S.GUILDS.filter(x=>x.fac===f));
-    let mem=pool.filter(a=>a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
+    const cands=livingGuilds().filter(x=>x.fac===f&&pool.filter(a=>a.guild===x).length>=3),gu=cands.length?pickA(cands):null; // none: the unguilded mixed pool below
+    let mem=pool.filter(a=>gu&&a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
     if(mem.length<5)mem=mem.concat(pool.filter(a=>!mem.includes(a)).sort((x,y)=>cryptPull(y)-cryptPull(x)).slice(0,5-mem.length));
     if(mem.length<4)return;
     mem.forEach((a,i)=>{a.state='dungeon';a.dgIdx=i;a.target=null;a.dest=null});
-    const main=mem.filter(a=>a.guild===gu).length>=3?gu:null;
+    const main=gu&&mem.filter(a=>a.guild===gu).length>=3?gu:null;
     CRYPT.group={fac:f,mem,guild:main,phase:'gather',t:30};
     for(const a of mem)record(a,'Joined a group for ',{t:CRYPT.name,c:'gd'},'.');
     log(tagOf(main,f),' formed a group for ',{t:CRYPT.name,c:'gd'},'.');return}

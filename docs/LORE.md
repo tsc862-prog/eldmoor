@@ -43,8 +43,31 @@ Sprites: the class gives the helm or hood colour and the weapon; the people give
 and the hair that shows at the helm's rim and over the ears.
 
 ## Guilds
-- Concord: **<SV> Silver Vow**, **<DR> Dawnriders**
-- Warband: **<BF> Bloodfang**, **<AF> Ashen Fist**
+No guild is written down: the heroes found them (issue #56, `src/sim/guilds.js`). A fresh world has
+none. Three or more unguilded heroes of one faction who keep company (a shared party, a bond of 6+,
+or the same oath) within 20 tiles or in town raise a banner under their highest-level member:
+"Pellora, Aliel and Gorn raise a banner: <FW> The Fenwatch." Others join through a party leader,
+a sworn companion (bond 10+), or by signing the roll in town from level 3 (cap 12 a guild). The
+leader is the highest-level living member (succession is logged). A guild of 6+ whose leader has
+two or more blood-minded strangers among the members (rival or avenge-a-guildmate oaths) may
+split; a guild with fewer than 2 living members for a game-week disbands and stays on record as
+retired. Names and 2-3 letter tags are unique among living guilds and generated in faction voice
+(`GUILD_VOICE` in `src/data/factions.js`):
+
+- Concord (formal, civic): compounds of a stem and a tail, "The Fenwatch", "The Gatewardens"
+  (stems Fen, Hearth, Reed, Lantern, Marsh, Ember, Tide, Oath, Stone, Dawn, Gate, Ford, Thorn,
+  Bell, Heron; tails watch, wardens, keepers, wrights, bearers, guard, banner, wake), or an adjective
+  and a noun, usually with "The": "The Hearth Accord" (Hearth, Amber, Silver, Quiet, Steadfast, Open,
+  Hallowed, Gilded, Lantern, Evenfall, Green, Sworn; Accord, Covenant, Vigil, Compact, Circle,
+  Assembly, Lantern, Fellowship, Charter, Oath).
+- Warband (blunt, ugly): "The Bonegnash", "Gutter Pact", "The Bone Tide" (stems Gut, Bone, Rust,
+  Scab, Ash, Grim, Slag, Sour; tails fang, gnash, maw, hide, rot, claw; adjectives Gutter, Bone, Rust,
+  Black, Ash, Red, Grim, Sour, Iron, Broken, Cinder, Gore, Scab, Hollow; nouns Pact, Tide, Fang,
+  Hounds, Knives, Maw, Cleavers, Brood, Mob, Pit, Fist, Wolves).
+- Tags are the initials of the two parts, a third letter on a clash ("The Fenwatch" = FW).
+- Retired canon: the four guilds the world first began with, **Silver Vow** (SV), **Dawnriders**
+  (DR), **Bloodfang** (BF) and **Ashen Fist** (AF), are no longer seeded. They are old names that
+  may reappear in the Chronicle as history or be worn again by a new banner.
 
 ## Classes
 Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), Rogue (melee, crits).

@@ -1,3 +1,4 @@
 - [Traits roster decisions](project_traits_roster.md) — the 8 traits, modifier keys incl. `mercy`, class leanings, and the 120-min death variance to expect when gating balance
 - [Origins and goals roster](project_origins_goals.md) — the 12 oath types, tiers, hook points, gotchas (string nemesis ids, rare legend/heirloom completions)
 - [Races roster decisions](project_races_roster.md) — the 6 peoples, assignRace/homeOf wiring, a.home vs a.town collision, the races->state import-cycle gotcha
+- [Dynamic guilds](project_dynamic_guilds.md) — guilds founded by heroes, null-safe a.guild, numeric ids, save v2
