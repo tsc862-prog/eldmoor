@@ -1,6 +1,9 @@
 // Open-world PvP: nemesis hunts, chance duels between factions outside
 // Thornvale, and guildmates rushing to assist. Tuning: duel range 3 tiles,
 // level gap 5, 25% chance per check; nemesis spotted within 8 tiles.
+// Every "who is near this hero" question goes through the spatial grid (sim/spatial.js);
+// candidates come back id-ascending, the same order the old whole-roster loops used, so
+// per-candidate dice rolls and first-match breaks behave exactly as before.
 import {rnd} from '../core/rng.js';
 import {dist,zoneAt} from '../world/map.js';
 import {S} from './state.js';
@@ -10,19 +13,25 @@ import {sightMul} from './weather.js';
 import {tm} from '../data/traits.js';
 import {record} from './history.js';
 import {ZONES} from '../world/map.js';
+import {nearHeroes} from './spatial.js';
 
 export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agents=S.agents;
   const free=agents.filter(a=>(a.state==='hunt'||a.state==='travel'||a.state==='return')&&zoneAt(a.x,a.y)>=1);
-  const isFree=a=>free.includes(a)&&(a.state==='hunt'||a.state==='travel'||a.state==='return');
-  for(const a of free){a.spotCd-=.5;if(!isFree(a)||a.spotCd>0)continue;
-    for(const id in a.nemesis){const b=agents.find(x=>x.id==id);
-      if(b&&isFree(b)&&dist(a,b)<8*sightMul(zoneAt(a.x,a.y))){a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null;a.spotCd=20;
-        log(a,' spots ',b,', who killed ',{t:a.nemesis[id],c:'f'+a.fac},', and charges.');break}}}
-  for(const a of free)for(const b of free){if(a.fac!==0||b.fac!==1||a.state==='duel'||b.state==='duel')continue;
-    if(dist(a,b)<3*sightMul(zoneAt(a.x,a.y))&&Math.abs(a.lvl-b.lvl)<=5&&rnd()<.25*tm(a,'bold')*tm(b,'bold')){a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null}}
+  const freeSet=new Set(free);
+  const isFree=a=>freeSet.has(a)&&(a.state==='hunt'||a.state==='travel'||a.state==='return');
+  // Nemesis: the lowest-id free hero in sight who is on this hero's grudge list (nemesis keys are ids, iterated ascending).
+  for(const a of free){a.spotCd-=.5;if(!isFree(a)||a.spotCd>0)continue;const r=8*sightMul(zoneAt(a.x,a.y));
+    for(const b of nearHeroes(a.x,a.y,r)){const id=b.id;if(!a.nemesis[id]||!isFree(b)||dist(a,b)>=r)continue;
+      a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null;a.spotCd=20;
+      log(a,' spots ',b,', who killed ',{t:a.nemesis[id],c:'f'+a.fac},', and charges.');break}}
+  // Chance duels: each free Concord hero rolls against every free Warband hero within 3 tiles (sight-scaled), in id order.
+  for(const a of free){if(a.fac!==0)continue;const r=3*sightMul(zoneAt(a.x,a.y));
+    for(const b of nearHeroes(a.x,a.y,r)){if(!freeSet.has(b)||b.fac!==1||a.state==='duel'||b.state==='duel')continue;
+      if(dist(a,b)<r&&Math.abs(a.lvl-b.lvl)<=5&&rnd()<.25*tm(a,'bold')*tm(b,'bold')){a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null}}}
   for(const a of agents){if(a.state==='duel'&&a.target){if(a.histDuel!==a.target){a.histDuel=a.target;record(a,'Dueled ',a.target,' in '+ZONES[zoneAt(a.x,a.y)]+'.')}}else a.histDuel=null}
   for(const a of agents)if(a.state==='duel'&&a.target)duelBark(a,a.target);
+  // Assists: free guildmates within 8 tiles of a dueller roll to rush in; the first to pass goes.
   for(const a of agents){if(a.state!=='duel'||!a.target)continue;const foe=a.target;
-    for(const g of free){if(!isFree(g)||g.guild!==a.guild||dist(g,a)>8||rnd()>.35*tm(g,'loyal'))continue;
+    for(const g of nearHeroes(a.x,a.y,8)){if(!isFree(g)||g.guild!==a.guild||dist(g,a)>8||rnd()>.35*tm(g,'loyal'))continue;
       say(g,'assist',{target:a.name});
       g.state='assist';g.target=foe;g.dest=null;if(rnd()<.6)log(g,' rushes to help guildmate ',a,' against ',foe,'.');break}}}

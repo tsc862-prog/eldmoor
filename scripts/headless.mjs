@@ -2,7 +2,7 @@
 // fast-forwards N in-game minutes of real time at 1x, and prints a summary.
 // Usage: npm run sim            (60 minutes)
 //        npm run sim -- 120     (120 minutes)
-import {init, step, S} from '../src/sim/index.js';
+import {init, step, S, spatialStats} from '../src/sim/index.js';
 
 const minutes = Number(process.argv[2] || 60);
 init();
@@ -20,3 +20,4 @@ console.log('Guilds (clears/wipes/bosses):', S.GUILDS.map((g) => `${g.tag} ${g.c
 console.log('Kragmaw alive:', S.boss.alive, '| hp', Math.round(S.boss.hp));
 console.log('Top 5:', alive.sort((a, b) => b.lvl - a.lvl).slice(0, 5).map((a) => `${a.name} L${a.lvl} ${a.cls}`).join(', '));
 console.log('Recent deaths:', S.fallen.slice(0, 8).map((f) => `${f.name} L${f.lvl} (${f.cause})`).join('; '));
+console.log(`Spatial index: ${spatialStats.cells} cells | indexed ${spatialStats.heroes} heroes, ${spatialStats.mobs} mobs | ${(spatialStats.queries / frames).toFixed(1)} queries/step, ${(spatialStats.candidates / Math.max(1, spatialStats.queries)).toFixed(1)} candidates/query`);
