@@ -4,7 +4,7 @@
 // (sightMul), and true storms (isStorm) send hunting heroes home. Owned by
 // world-builder. DOM-free; the renderer reads weatherKind() to draw it.
 import {rnd} from '../core/rng.js';
-import {ZONES} from '../world/map.js';
+import {ZONES,REGIONS} from '../world/map.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
 
@@ -19,13 +19,16 @@ export const WEATHER={
   snow:    {name:'Snow',      speed:.8,  sight:.85, storm:false,msg:'Snow falls on {z}.'},
   squall:  {name:'Squall',    speed:.65, sight:.6,  storm:true, msg:'A squall closes {z}.'},
 };
-// What each zone's sky can do, with transition weights (clear about half the time).
-const ZW=[
-  [['clear',.5],['rain',.25],['drizzle',.25]],   // Thornvale
-  [['clear',.5],['fog',.3],['rain',.2]],         // Mirefen
-  [['clear',.5],['ashfall',.3],['ashstorm',.2]], // Cinderpass
-  [['clear',.5],['snow',.3],['squall',.2]],      // Hoarfell
-];
+// What each biome's sky can do, with transition weights (clear about half the time). A region takes
+// the table of its biome (spec.js), so any world's regions get weather without an entry of their own.
+const BIOME_SKY={
+  meadow:  [['clear',.5],['rain',.25],['drizzle',.25]],   // Thornvale, Lowmark
+  fen:     [['clear',.5],['fog',.3],['rain',.2]],         // Mirefen, Sedgewater
+  ash:     [['clear',.5],['ashfall',.3],['ashstorm',.2]], // Cinderpass, Cinderreach
+  tundra:  [['clear',.5],['snow',.3],['squall',.2]],      // Hoarfell, Rimeholt, Palereach
+  highland:[['clear',.5],['fog',.25],['drizzle',.15],['squall',.1]], // Cairnwold
+};
+const ZW=REGIONS.map(r=>BIOME_SKY[r.biome]||BIOME_SKY.meadow);
 // Game minutes a spell lasts: clear skies 1.5-3 h, weather 1-2.5 h.
 const dur=k=>k==='clear'?90+rnd()*90:60+rnd()*90;
 

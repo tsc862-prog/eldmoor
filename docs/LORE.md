@@ -133,6 +133,8 @@ blood debt, and the dead hero's friends warm to them. A grudge ends only with th
 | Cinderpass | 11-15 | Volcanic rock and peaks in the east. |
 | Hoarfell | 16+ | Wind-scoured snowfields and frozen tarns north of the fen and the pass. |
 
+The Stepping Lands, a larger test continent with six regions of its own (Lowmark, Sedgewater, Cairnwold, Cinderreach, Rimeholt, Palereach), are listed under Landmarks.
+
 ## Weather
 Every zone has its own sky, and it turns every one to three hours. Thornvale gets drizzle and rain. Mirefen's fogs roll in off the fen and hide hunter and hunted alike. Cinderpass sees grey ashfall and, now and then, a choking ash storm. Hoarfell's snows thicken into squalls that close the high ground. Rain and snow slow travel, fog and storms shorten sight, and ash storms and squalls drive hunters back to town until they blow over.
 
@@ -162,6 +164,31 @@ Sample lines:
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 20, raided by 5-6 heroes of level 14+ (or four well-geared ones).
+
+### The Stepping Lands (test continent, not the home map)
+`STEPPING` in `src/world/spec.js` is a 160x100 stepping-stone map, four times the area of Eldmoor, used to test pacing, travel times and performance on the way to a larger world. Select it with `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node; the default is Eldmoor. It keeps Highgate, Grimhold, the Sunken Crypt and Kragmaw, and adds two more home towns and four new regions. Its geography is a test layout, not canon for Eldmoor itself. The monsters of each region are first-pass copies of the Eldmoor species (`src/data/fauna.js`), waiting for a creature-designer pass.
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Lowmark | 1-5 | Meadow and wood in the west, between the four home towns and the Greywater. Everyone starts here. |
+| Sedgewater | 4-9 | Fen and mud flats east of the Greywater. The Sunken Crypt lies in its south. |
+| Cairnwold | 8-13 | Dry upland of crags, scree and stunted trees north of the fen; the Hollow Cairn is cut into its hills. |
+| Cinderreach | 12-16 | Slag, ash and lava in the east; Kragmaw's lair burns on its western edge. |
+| Rimeholt | 15-19 | Snowfield and frozen scrub in the north-east, beyond the Cinderreach road. |
+| Palereach | 18-22 | The far north-eastern tundra, the pale end of the map. Where the Stepping Lands' pilgrims hope to walk. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Highgate | Concord | Hallowan | As in Eldmoor, in the north-west corner. |
+| Cairnmoot | Concord | Tarrow | A cairn-ringed hill market on the western bank of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Grimhold | Warband | Ashfolk | As in Eldmoor, in the south-west corner. |
+| Murkstead | Warband | Mirekin | A stilted salt-boilers' town at the fen margin, west of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+
+- **The Greywater**: the river that divides Lowmark from the fen and the upland.
+- **The Hollow Cairn** (level 8-13, Cairnwold): placeholder second dungeon. Only the entrance exists today; it has no group runs, boss fight or loot. Its warden, **The Cairn-Warden**, is reserved for the future dungeon.
+- **Brask Ironhorn, the Ram-King of the Cairnwold** (Cairnwold elite, level 15, kin Tundra Shaghorn): a crag-ram with one horn snapped and the other grown into his own shoulder. Placeholder.
+- **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.
+- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth stay reserved.
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.

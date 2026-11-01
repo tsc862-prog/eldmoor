@@ -8,6 +8,7 @@
 // duel stays: the others rally to them, then everyone pulls back (regroup) or heads home.
 import {rnd} from '../core/rng.js';
 import {ZONES,zoneFor,zonePoint,dist} from '../world/map.js';
+import {homeOf} from '../data/races.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {MOBS} from '../data/mobs.js';
@@ -40,7 +41,7 @@ const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.len
 // Called when a hero finishes the quest-giver step and again while lingering at the gate.
 // Returns 'wait' when a Warrior should hold at the gate a little longer for a Priest.
 export function seekParty(a){if(a.party||!tm(a,'social'))return; // Loners never form or join a party
-  const cand=S.agents.filter(b=>b!==a&&!b.party&&tm(b,'social')&&b.fac===a.fac&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2);
+  const cand=S.agents.filter(b=>b!==a&&!b.party&&tm(b,'social')&&b.fac===a.fac&&homeOf(b)===homeOf(a)&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2); // same home town: a party musters in one gate
   if(!cand.length)return;
   if(a.cls==='Warrior'&&a.linger>0&&!cand.some(b=>b.cls==='Priest'))return 'wait';
   const want=a.cls==='Priest'?'Warrior':a.cls==='Warrior'?'Priest':null;
@@ -48,7 +49,7 @@ export function seekParty(a){if(a.party||!tm(a,'social'))return; // Loners never
   const mem=[a,...cand.slice(0,2)];
   let leader=mem[0];for(const b of mem)if(b.lvl>leader.lvl)leader=b;
   // The party hunts where its weakest member can survive, not where the leader would go alone.
-  const p={id:++S.uid,fac:a.fac,leader,mem,zone:zoneFor(Math.min(...mem.map(b=>b.lvl))),home:false};
+  const p={id:++S.uid,fac:a.fac,leader,mem,zone:zoneFor(Math.min(...mem.map(b=>b.lvl)),homeOf(a).gate),home:false};
   for(const b of mem)b.party=p;S.parties.push(p);
   for(const b of mem)record(b,'Formed a party with ',...names(mem.filter(x=>x!==b)),' bound for ',{t:ZONES[p.zone],c:'gd'},'.');
   bondEvent(leader,'party',mem);

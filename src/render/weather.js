@@ -4,11 +4,11 @@
 // zone array; draw.js calls drawWeather after the night overlay and before the
 // labels so the labels stay readable. Owned by world-builder.
 import {W,H,T} from '../world/tiles.js';
-import {zone,I} from '../world/map.js';
+import {zone,I,ZONES} from '../world/map.js';
 import {weatherKind} from '../sim/weather.js';
 
 // Per zone: horizontal tile spans [x0,y,len] for the tint, and a bounding box for particles.
-const SPANS=[[],[],[],[]],BOX=[0,1,2,3].map(()=>({x0:W,y0:H,x1:0,y1:0}));
+const SPANS=ZONES.map(()=>[]),BOX=ZONES.map(()=>({x0:W,y0:H,x1:0,y1:0}));
 for(let y=0;y<H;y++){let x=0;while(x<W){const z=zone[I(x,y)];let x1=x;while(x1<W&&zone[I(x1,y)]===z)x1++;
   SPANS[z].push([x,y,x1-x]);const b=BOX[z];b.x0=Math.min(b.x0,x);b.x1=Math.max(b.x1,x1);b.y0=Math.min(b.y0,y);b.y1=Math.max(b.y1,y+1);x=x1}}
 
@@ -31,7 +31,7 @@ const mod=(v,m)=>((v%m)+m)%m;
 
 // cam is part of the agreed renderer call signature; the overlay is cheap enough to draw whole.
 export function drawWeather(ctx,S,cam,blink){
-  for(let z=0;z<4;z++){const L=LOOK[weatherKind(z)];if(!L)continue;
+  for(let z=0;z<ZONES.length;z++){const L=LOOK[weatherKind(z)];if(!L)continue;
     ctx.fillStyle=L.tint;for(const[x,y,n]of SPANS[z])ctx.fillRect(x*T,y*T,n*T,T);
     const b=BOX[z],bw=b.x1-b.x0,bh=b.y1-b.y0;
     for(let i=0;i<L.n;i++){const s=SEED[i],sp=.7+s[2]*.6;

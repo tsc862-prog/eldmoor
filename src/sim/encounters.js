@@ -10,6 +10,7 @@
 import {rnd,ri,pickA} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
 import {tiles,zone,I,ZONES,CITY,LAIR,zoneFor,zoneAt,dist} from '../world/map.js';
+import {homeOf} from '../data/races.js';
 import {S} from './state.js';
 import {log,gold} from './chronicle.js';
 import {pop} from './effects.js';
@@ -88,7 +89,7 @@ function resolve(a,e){const mh=maxHp(a),st=S.encStats;bump(e.type==='pilgrim'?st
     if(r>=dc){const g=a.lvl*5;a.gold+=g;bump(st.success,e.type);pop(a.x,a.y-.6,'+'+g+'g','#f2c14e');log(a,' pries at a strongbox on ',road(e),'... ',dm('rolls '+r+' vs '+dc),'. Gold: ',gold(g+'g'),'.')}
     else{const w=Math.round(mh*.25);a.hp=Math.max(1,a.hp-w);pop(a.x,a.y-.6,String(w),'#ff6a5a');log(a,' pries at a strongbox on ',road(e),'... ',dm('rolls '+r+' vs '+dc),'. A needle in the lock: ',String(w),' damage.')}break}
   case 'pilgrim':{e.escort=a;e.escortT=S.gameMin;a.pilgrim=e;record(a,'Took a lost pilgrim under escort in '+ZONES[e.z]+'.');
-    log(a,' finds a lost pilgrim on ',road(e),' and takes them along to ',CITY[a.fac].name,'.');break}
+    log(a,' finds a lost pilgrim on ',road(e),' and takes them along to ',homeOf(a).name,'.');break}
   case 'ambush':{const mates=partyMates(a).filter(b=>dist(a,b)<=8),mod=Math.max(Math.floor(a.lvl/2),...mates.map(b=>Math.floor(b.lvl/2))),r=d20(),dc=12+e.z*2;remove(e);
     const who=e.n+' Rookscar bandits';record(a,(r+mod>=dc?'Drove off ':'Robbed by ')+who+' in '+ZONES[e.z]+' (rolled '+r+'+'+mod+' vs '+dc+').');
     if(r+mod>=dc){const zl=ZLVL[e.z],diff=zl-a.lvl,xp=(8+zl*6)*(diff<-4?.3:diff>2?1.3:1),g=zl*2+ri(0,zl);bump(st.success,e.type);
@@ -117,8 +118,8 @@ export function encountersTick(dt){ensure();const L=alive();
   for(let i=L.length-1;i>=0;i--){const e=L[i];
     if(e.escort){const a=e.escort;
       if(a.state==='town'){bump(S.encStats.resolved,'pilgrim');const r=d20(),gift=r>=12?a.lvl*2+3:0;a.honor+=3;S.facStats[a.fac].honor+=3;if(gift){a.gold+=gift;bump(S.encStats.success,'pilgrim')}
-        record(a,'Brought a pilgrim safe to '+CITY[a.fac].name+' for 3 honor'+(gift?' and '+gift+'g':'')+'.');
-        log(a,' brings the pilgrim safe to the gate of ',CITY[a.fac].name,'... ',dm('rolls '+r),'. +3 honor',gift?' and a gift of ':'.',gift?gold(gift+'g'):'',gift?'.':'');remove(e);continue}
+        record(a,'Brought a pilgrim safe to '+homeOf(a).name+' for 3 honor'+(gift?' and '+gift+'g':'')+'.');
+        log(a,' brings the pilgrim safe to the gate of ',homeOf(a).name,'... ',dm('rolls '+r),'. +3 honor',gift?' and a gift of ':'.',gift?gold(gift+'g'):'',gift?'.':'');remove(e);continue}
       if(!afield(a)||a.hidden||S.gameMin-e.escortT>ESCORT_MAX){S.encStats.abandoned++;if(a.state!=='dead')log('The pilgrim loses sight of ',a,' on ',road(e),' and waits by the roadside.');
         a.pilgrim=null;e.escort=null;e.until=Math.max(e.until,S.gameMin+240);e.z=zoneAt(e.x,e.y);continue}
       if(dist(e,a)>1.2)moveTo(e,a.x-a.face*.9,a.y+.2,dt,2.8);else e.moving=false;continue}

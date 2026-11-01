@@ -3,12 +3,17 @@
 // Built once at import time from the ELDMOOR spec (spec.js) by the generator
 // (gen.js). Everything other modules need is re-exported here under the names
 // they have always used. Owned by world-builder.
-import {W as TW,H as TH} from './tiles.js';
-import {ELDMOOR} from './spec.js';
+import {setWorldSize} from './tiles.js';
+import {ACTIVE_SPEC,WORLD_ID} from './spec.js';
 import {buildWorld} from './gen.js';
+import {applyFauna} from '../data/fauna.js';
 
-const WORLD=buildWorld(ELDMOOR);
-if(WORLD.w!==TW||WORLD.h!==TH)throw new Error(`world spec ${ELDMOOR.name} is ${WORLD.w}x${WORLD.h} but tiles.js says ${TW}x${TH}`);
+// The world is chosen once (spec.js: ?world= in the browser, ELDMOOR_WORLD in Node). tiles.js already
+// holds its size; setWorldSize makes that explicit before anything is built from it.
+const WORLD=buildWorld(ACTIVE_SPEC);
+setWorldSize(WORLD.w,WORLD.h);
+applyFauna(WORLD.REGIONS); // worlds with their own regions swap in region-keyed mob, elite and epic tables
+export {WORLD_ID};
 
 export const {tiles,zone,I,ZONES,REGIONS,CITY,LANDMARKS,LAIR,CRYPT,ZPTS,LIGHTS,LABELS,zoneFor,zoneAt,tileAt,zonePoint,road}=WORLD;
 export const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);

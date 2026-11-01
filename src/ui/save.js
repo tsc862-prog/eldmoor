@@ -5,8 +5,9 @@
 // reload: the save is put in place (or removed) and the page starts again through boot(),
 // so every panel is rebuilt from state by the normal start-up path.
 import {S,log,snapshot,restore,isSave} from '../sim/index.js';
+import {WORLD_ID} from '../world/map.js';
 
-export const SAVE_KEY='eldmoor.save.v1';
+export const SAVE_KEY=WORLD_ID==='eldmoor'?'eldmoor.save.v1':'eldmoor.save.v1.'+WORLD_ID; // one slot per world
 const $=id=>document.getElementById(id);
 let lastHour=-1,suppress=false; // suppress: skip the unload save when we are reloading on purpose
 

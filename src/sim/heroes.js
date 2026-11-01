@@ -30,7 +30,9 @@ export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
 export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+gearHp(a)+a.epics.length*10);
 export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+gearAtk(a)+a.epics.length*3;
 
-export function newQuest(a){const z=zoneFor(a.lvl);const opts=Object.keys(MOBS).filter(k=>MOBS[k].z===z&&MOBS[k].lv[0]<=a.lvl+2);
+// Where a hero of this level hunts: the band's region, or the one nearest their home town when bands overlap.
+export const huntZone=a=>zoneFor(a.lvl,homeOf(a).gate);
+export function newQuest(a){const z=huntZone(a);const opts=Object.keys(MOBS).filter(k=>MOBS[k].z===z&&MOBS[k].lv[0]<=a.lvl+2);
   const type=pickA(opts.length?opts:Object.keys(MOBS).filter(k=>MOBS[k].z===z));a.quest={type,need:ri(5,8),have:0}}
 
 export function makeHero(f,cls,guild,wait){
@@ -136,7 +138,7 @@ export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a
     say(a,'quest',{mob:M.pl});
     record(a,'Completed ',{t:'“'+M.q+'”',c:'gd'},' for '+g+'g.');
   if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');a.quest=null}
-  if(!a.quest||MOBS[a.quest.type].z!==zoneFor(a.lvl))newQuest(a)}
+  if(!a.quest||MOBS[a.quest.type].z!==huntZone(a))newQuest(a)}
 
 export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9)*sightMul(a.zone),lq=L&&L.quest?L.quest.type:null;
   for(const m of nearMobs(a.x,a.y,range)){if(!m.alive||(m.target&&m.target!==a)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+1)continue;
@@ -154,12 +156,12 @@ export function updAgent(a,dt){
       else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2;a.linger=a.cls==='Warrior'?4+rnd()*2:2;seekParty(a)}
       else{if(a.linger>0&&!a.party&&seekParty(a)==='wait'){a.linger--;a.wait=1;break}
         if(a.linger>0&&a.party&&partyMates(a).some(b=>b.state==='town'&&b.townStep<2)){a.linger--;a.wait=1;break}
-        say(a,'depart',{zone:ZONES[a.party?a.party.zone:zoneFor(a.lvl)]});
-        a.zone=a.party?a.party.zone:zoneFor(a.lvl);a.state='travel';a.dest=zonePoint(a.zone)}}break}
+        say(a,'depart',{zone:ZONES[a.party?a.party.zone:huntZone(a)]});
+        a.zone=a.party?a.party.zone:huntZone(a);a.state='travel';a.dest=zonePoint(a.zone,null,c.gate)}}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     if(checkEncounter(a,dt))break; // road encounter in reach: detour and resolve (sim/encounters.js)
     if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
-    if(!a.dest)a.dest=zonePoint(a.zone);if(moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state='hunt';a.dest=null}break}
+    if(!a.dest)a.dest=zonePoint(a.zone,null,c.gate);if(moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state='hunt';a.dest=null}break}
   case 'hunt':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     a.hp=Math.min(mh,a.hp+mh*.025*dt);const mates=partyMates(a);
     if(a.party)priestHeal(a,mates);

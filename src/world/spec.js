@@ -3,7 +3,7 @@
 // Pure data, no logic. Owned by world-builder.
 //
 // Shape of a spec:
-//   size      {w,h} in tiles. (Must equal W,H in tiles.js until phase 5 decouples them.)
+//   size      {w,h} in tiles. tiles.js takes W,H from the active spec (see WORLD_ID below).
 //   seeds     {terrain, detail} fbm seeds for the two biome noise fields.
 //   curves    named boundary curves. `axis:'y'` gives an x threshold per row
 //             (a north-south line that wanders), `axis:'x'` a y threshold per
@@ -12,7 +12,7 @@
 //               noise:{seed,scale,amp,slice}        (vnoise(..)-.5)*amp sampled at t/scale
 //   regions   ordered; later regions override earlier ones where masks overlap.
 //             {id, name, band:[minLvl,maxLvl], biome, mask}
-//             biome: 'meadow' | 'fen' | 'ash' | 'tundra' (painters live in gen.js)
+//             biome: 'meadow' | 'fen' | 'ash' | 'tundra' | 'highland' (painters live in gen.js)
 //             mask kinds: 'all' | 'rect'{x0,y0,x1,y1} | 'west-of-curve' |
 //               'east-of-curve' | 'north-of-curve' | 'south-of-curve' (curve: name) |
 //               'and'{masks} | 'or'{masks} | 'not'{mask}
@@ -110,3 +110,83 @@ export const TESTWORLD={
   lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]]},
   spawn:{townPad:[4,3]},
 };
+
+// ---- The Stepping Lands: a 160x100 test continent (issue #36, scaling phase 5) ----
+// Four times the area of Eldmoor: two home towns per faction, six regions on a ladder of
+// overlapping level bands (1-5, 4-9, 8-13, 12-16, 15-19, 18-22), the Sunken Crypt and Kragmaw
+// kept, and a placeholder second dungeon. Where bands overlap, zoneFor(level, home) sends a
+// hero to the region nearest their home town, so northern and southern towns climb different
+// ways. Not canon geography: see docs/LORE.md, "The Stepping Lands". Region fauna lives in
+// src/data/fauna.js, keyed by region id.
+const TOWN_SPOTS={quartermaster:[3.5,3.8],gate:[7.5,3.8],inn:[3.5,7.3],smith:[5.5,1.6],chapel:[8.5,1.9],square:[5.5,6.1]};
+export const STEPPING={
+  name:'Stepping Lands',
+  size:{w:160,h:100},
+  seeds:{terrain:37,detail:61},
+  curves:{
+    // The Greywater: the western river, x≈46.
+    river:{axis:'y',base:46,sin:[[6,1.8,0],[2.6,.7,1]]},
+    // Cairnwold / Cinderreach boundary: x≈104, noisy.
+    cinderEdge:{axis:'y',base:104,noise:{seed:9,scale:5,amp:10,slice:4.1}},
+    // The Pale boundary: x≈132, noisy. Splits the northern tundra into two regions.
+    paleEdge:{axis:'y',base:132,noise:{seed:21,scale:5,amp:8,slice:6.3}},
+    // The frost line: y≈36, the southern edge of the highland and the tundra.
+    frostLine:{axis:'x',base:36,noise:{seed:17,scale:5,amp:8,slice:2.7}},
+  },
+  regions:[
+    {id:'lowmark',name:'Lowmark',band:[1,5],biome:'meadow',mask:{kind:'all'}},
+    {id:'sedgewater',name:'Sedgewater',band:[4,9],biome:'fen',mask:{kind:'east-of-curve',curve:'river'}},
+    {id:'cairnwold',name:'Cairnwold',band:[8,13],biome:'highland',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'river'},{kind:'west-of-curve',curve:'cinderEdge'},{kind:'north-of-curve',curve:'frostLine'}]}},
+    {id:'cinderreach',name:'Cinderreach',band:[12,16],biome:'ash',mask:{kind:'east-of-curve',curve:'cinderEdge'}},
+    {id:'rimeholt',name:'Rimeholt',band:[15,19],biome:'tundra',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'cinderEdge'},{kind:'west-of-curve',curve:'paleEdge'},{kind:'north-of-curve',curve:'frostLine'}]}},
+    {id:'palereach',name:'Palereach',band:[18,22],biome:'tundra',far:true,
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'paleEdge'},{kind:'north-of-curve',curve:'frostLine'}]}},
+  ],
+  river:{curve:'river',width:2},
+  towns:[
+    {name:'Highgate',fac:0,x0:2,y0:2,w:11,h:9,gate:'E',race:'hallowan',spots:TOWN_SPOTS},
+    {name:'Grimhold',fac:1,x0:2,y0:87,w:11,h:9,gate:'E',race:'ashfolk',spots:TOWN_SPOTS},
+    {name:'Cairnmoot',fac:0,x0:28,y0:30,w:11,h:9,gate:'E',race:'tarrow',spots:TOWN_SPOTS},
+    {name:'Murkstead',fac:1,x0:28,y0:62,w:11,h:9,gate:'E',race:'mirekin',spots:TOWN_SPOTS},
+  ],
+  landmarks:[
+    {kind:'crypt',name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25},
+    {kind:'lair',name:'Kragmaw',x:140.5,y:66.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
+    // Placeholder second dungeon: an entrance only, no group, boss or loot yet (see LORE.md).
+    {kind:'crypt',name:'The Hollow Cairn',boss:'The Cairn-Warden',x:84.5,y:14.1,mouth:{x0:83,y0:12,w:3,h:3},exclude:3.5,cd:25},
+  ],
+  points:{hubW:[58,46],hubE:[104,52],lairGate:[134,66],frostGate:[116,24],paleGate:[146,22]},
+  roads:[
+    {from:'Highgate',to:'Cairnmoot'},
+    {from:'Cairnmoot',to:'hubW'},
+    {from:'Grimhold',to:'Murkstead'},
+    {from:'Murkstead',to:'hubW'},
+    {from:'hubW',to:'The Sunken Crypt'},
+    {from:'hubW',to:'The Hollow Cairn'},
+    {from:'hubW',to:'hubE'},
+    {from:'hubE',to:'lairGate'},
+    {from:'hubE',to:'frostGate'},
+    {from:'frostGate',to:'paleGate'},
+  ],
+  lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]]},
+  // nearest: when picking a hunting point near a hero (or a home town), take the nearest of this
+  // many random spawn points, so heroes stay local in regions too big for the Eldmoor 7-tile test.
+  spawn:{townPad:[4,3],nearest:40},
+};
+
+// ---- choosing the world ----
+// `?world=stepping` in the browser, ELDMOOR_WORLD=stepping in Node (or globalThis.ELDMOOR_WORLD
+// set before the first import, for tests); default eldmoor. Everything that needs the map size
+// or the spec goes through ACTIVE_SPEC / WORLD_ID so the choice is made exactly once.
+export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING};
+function pickWorld(){
+  let id=null;
+  try{if(typeof location!=='undefined'&&location.search)id=new URLSearchParams(location.search).get('world')}catch(e){}
+  if(!id&&typeof globalThis.ELDMOOR_WORLD==='string')id=globalThis.ELDMOOR_WORLD;
+  if(!id){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_WORLD)id=p.env.ELDMOOR_WORLD}
+  id=String(id||'eldmoor').toLowerCase();
+  return WORLDS[id]?id:'eldmoor'}
+export const WORLD_ID=pickWorld();
+export const ACTIVE_SPEC=WORLDS[WORLD_ID];
