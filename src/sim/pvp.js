@@ -33,6 +33,6 @@ export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agent
   for(const a of agents)if(a.state==='duel'&&a.target)duelBark(a,a.target);
   // Assists: free guildmates within 8 tiles of a dueller roll to rush in; the first to pass goes.
   for(const a of agents){if(a.state!=='duel'||!a.target)continue;const foe=a.target;
-    for(const g of nearHeroes(a.x,a.y,8)){if(!isFree(g)||g.guild!==a.guild||dist(g,a)>8||rnd()>.2*tm(g,'loyal'))continue;
+    for(const g of nearHeroes(a.x,a.y,8)){if(!isFree(g)||!a.guild||g.guild!==a.guild||dist(g,a)>8||rnd()>.2*tm(g,'loyal'))continue;
       say(g,'assist',{target:a.name});
       bondEvent(g,'assist',[a]);g.state='assist';g.target=foe;g.dest=null;if(rnd()<.6)log(g,' rushes to help guildmate ',a,' against ',foe,'.');break}}}

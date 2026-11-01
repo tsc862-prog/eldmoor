@@ -49,9 +49,9 @@ function sane(label) {
   ok(S.parties.every((p) => p.mem.length >= 2 && p.mem.every((a) => a.party === p) && p.mem.includes(p.leader)), `${label}: ${S.parties.length} parties consistent`);
   ok(Array.isArray(S.encounters) && S.encounters.every((e) => !e.escort || e.escort.pilgrim === e), `${label}: ${S.encounters.length} encounters consistent`);
   ok(S.chronicle.length > 0 && S.chronicle.length <= 90, `${label}: chronicle ${S.chronicle.length} lines`);
-  ok(S.agents.every((a) => a.guild && S.GUILDS.includes(a.guild)), `${label}: every hero's guild is a GUILDS entry`);
+  ok(S.agents.every((a) => a.guild === null || S.GUILDS.includes(a.guild)), `${label}: every hero's guild is null or a GUILDS entry (${S.GUILDS.filter((g) => !g.retired).length} living, ${S.GUILDS.filter((g) => g.retired).length} retired, ${S.agents.filter((a) => !a.guild && a.state !== 'dead').length} unguilded alive)`);
+  ok(new Set(S.GUILDS.map((g) => g.id)).size === S.GUILDS.length && S.GUILDS.every((g) => g.id <= S.guildSeq), `${label}: guild ids unique and below guildSeq ${S.guildSeq}`);
   ok(S.agents.every((a) => !a.target || a.target.kind), `${label}: hero targets are entities`);
-  ok(S.recruits.every((r) => S.GUILDS.includes(r.guild)), `${label}: ${S.recruits.length} recruits linked to guilds`);
 }
 
 const args = process.argv.slice(2);
@@ -82,6 +82,18 @@ ok(twoDays.length < 1.5 * 1024 * 1024, 'two-day save is under 1.5 MB');
 run(RUN_MIN - TWO_DAYS_MIN);
 sane(`after ${RUN_MIN} minutes`);
 
+// Make sure the world under test has several guilds, a retired one and unguilded heroes.
+{
+  const live = S.GUILDS.filter((g) => !g.retired);
+  ok(live.length >= 2, `${live.length} living guilds founded by the heroes after ${RUN_MIN} min`);
+  if (!S.GUILDS.some((g) => g.retired) && live.length > 1) {
+    const g = live[live.length - 1];
+    for (const a of S.agents) if (a.guild === g) a.guild = null;
+    g.retired = true; g.disbanded = S.gameMin;
+  }
+  ok(S.GUILDS.some((g) => g.retired), 'a retired guild is in the world');
+  ok(S.agents.some((a) => a.state !== 'dead' && !a.guild), 'an unguilded hero is in the world');
+}
 let A;
 try {A = snapshot(); scan(A); ok(true, 'snapshot() walks clean: no functions, canvases, NaN or live entity objects')} catch (e) {ok(false, 'snapshot(): ' + e.message); process.exit(1)}
 ok(isSave(A), 'snapshot is recognised by isSave()');

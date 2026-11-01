@@ -9,18 +9,20 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {gainXp,getEpic,goHome,fall} from './heroes.js';
 import {cryptPull,goalEvent} from './goals.js';
-import {record} from './history.js';
+import {record,timeline,first} from './history.js';
+import {livingGuilds} from './guilds.js';
+import {brainOk} from './brain.js';
 
 export function dungeonCheck(dt){const agents=S.agents;
   const g=CRYPT.group,tagOf=(gu,f)=>gu?{t:'<'+gu.tag+'> '+gu.name,c:'f'+f}:{t:'A '+FAC[f].name+' group',c:'f'+f};
   if(!g){CRYPT.cd-=dt;if(CRYPT.cd>0)return;CRYPT.cd=20+rnd()*25;
-    const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&a.lvl>=7&&!a.raid&&['hunt','travel','town','return'].includes(a.state));
-    const gu=pickA(S.GUILDS.filter(x=>x.fac===f));
-    let mem=pool.filter(a=>a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
+    const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&a.lvl>=7&&!a.raid&&['hunt','travel','town','return'].includes(a.state)&&brainOk(a,'crypt'));
+    const cands=livingGuilds().filter(x=>x.fac===f&&pool.filter(a=>a.guild===x).length>=3),gu=cands.length?pickA(cands):null; // none: the unguilded mixed pool below
+    let mem=pool.filter(a=>gu&&a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
     if(mem.length<5)mem=mem.concat(pool.filter(a=>!mem.includes(a)).sort((x,y)=>cryptPull(y)-cryptPull(x)).slice(0,5-mem.length));
     if(mem.length<4)return;
     mem.forEach((a,i)=>{a.state='dungeon';a.dgIdx=i;a.target=null;a.dest=null});
-    const main=mem.filter(a=>a.guild===gu).length>=3?gu:null;
+    const main=gu&&mem.filter(a=>a.guild===gu).length>=3?gu:null;
     CRYPT.group={fac:f,mem,guild:main,phase:'gather',t:30};
     for(const a of mem)record(a,'Joined a group for ',{t:CRYPT.name,c:'gd'},'.');
     log(tagOf(main,f),' formed a group for ',{t:CRYPT.name,c:'gd'},'.');return}
@@ -37,6 +39,7 @@ export function dungeonCheck(dt){const agents=S.agents;
   const ok=rnd()<clamp((pw-8)/8,.15,.92),who=tagOf(g.guild,g.fac);
   for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6}
   if(ok){if(g.guild)g.guild.clears++;log(who,' cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'!');
+    if(first('crypt:'+(g.guild?g.guild.tag:'f'+g.fac)))timeline('crypt',who,' cleared ',{t:CRYPT.name,c:'gd'},' for the first time.');
     for(const a of g.mem)record(a,'Cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'.');
     for(const a of g.mem){gainXp(a,250+a.lvl*20);a.gold+=25+ri(0,20);a.kills+=ri(8,14);for(let k=0;k<3;k++)a.bag.push('Grave Dust');
       if(rnd()<.25)getEpic(a,pickA(DG_EPICS),CRYPT.boss);goalEvent(a,'crypt');goHome(a)}}
@@ -46,5 +49,5 @@ export function dungeonCheck(dt){const agents=S.agents;
     for(const a of lost)record(a,'Lost forever in ',{t:CRYPT.name,c:'gd'},'.');
     const parts=[who,' wiped in ',{t:CRYPT.name,c:'gd'},'.'];
     if(lost.length){parts.push(' Lost forever: ');lost.forEach((a,i)=>{parts.push(a);if(i<lost.length-1)parts.push(', ')});parts.push('.')}
-    else parts.push(' Everyone escaped.');log(...parts)}
+    else parts.push(' Everyone escaped.');log(...parts);if(lost.length)timeline('death',...parts)}
   CRYPT.group=null}

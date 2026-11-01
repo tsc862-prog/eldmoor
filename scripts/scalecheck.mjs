@@ -26,7 +26,7 @@ if (!mode) {
   setIndex(mode === 'index');
   init();
   while (S.agents.length < heroes) {
-    const f = ri(0, 1), a = makeHero(f, pickA(CLSN), S.GUILDS[f * 2 + ri(0, 1)], rnd() * 3);
+    const f = ri(0, 1), a = makeHero(f, pickA(CLSN), null, rnd() * 3);
     a.lvl = ri(1, 12); a.hp = maxHp(a);
   }
   const nMobs = S.mobs.length, t0 = Date.now(), frames = minutes * 60 * 60;
