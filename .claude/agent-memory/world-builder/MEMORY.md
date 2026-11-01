@@ -1,3 +1,4 @@
 - [Hoarfell zone design](project_hoarfell_zone.md) — zone 3 frozen north strip (16+); label spots, peak-threshold tuning, zone-indexed arrays need 4 entries
 - [Weather system](project_weather_system.md) — per-zone weather table, multipliers, single-line shared hooks, death-rate baseline vs after, storm-bounce trade-off
 - [Road encounters](project_road_encounters.md) — issue #30 table, dice, spawn spots per zone, single-line hooks, merchant gear cap, 120-min baselines
+- [World spec generator](project_world_spec.md) — map built from spec.js via gen.js; edit the spec not formulas; worldcheck snapshot hashes; reserved TESTWORLD names
