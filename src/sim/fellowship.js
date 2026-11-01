@@ -31,7 +31,7 @@ import {hash} from '../core/rng.js';
 import {S,clockStr} from './state.js';
 import {log} from './chronicle.js';
 import {record,timeline,onRecord} from './history.js';
-import {makeHero,maxHp,goHome} from './heroes.js';
+import {makeHero,maxHp,goHome,seedLevel} from './heroes.js';
 import {leaveParty} from './party.js';
 import {bond} from './bonds.js';
 import {enableBrain,disableBrain,askRelay} from './brain.js';
@@ -122,8 +122,10 @@ export function checkSlots(slots,fac){const seen=new Set();
   return null}
 
 // The next recruit of a class: a pending recruit of that faction and class arrives now, else a fresh one.
+// It arrives a few levels under the party's lowest living member (balance #107), not at level 1 beside veterans.
+const SEED_BEHIND=2;
 function recruit(fac,cls){const i=S.recruits.findIndex(r=>r.fac===fac&&r.cls===cls);if(i>=0)S.recruits.splice(i,1);
-  const a=makeHero(fac,cls,null,1);log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
+  const mates=fellows(),a=makeHero(fac,cls,null,1);if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
 
 // ---- founding, joining, leaving ----
 export function found(slots,o={}){if(S.fellowship)return {ok:false,error:'A Fellowship already rides. Disband it first.'};
@@ -199,6 +201,9 @@ export function offerReplacement(key){const F=S.fellowship;if(!F||F.slots[key]!=
   const cls=s.role==='dps'?(DPS.find(x=>!used.includes(x))||DPS[0]):s.cls[0];
   const a=recruit(F.fac,cls);join(a,key,'a fresh recruit, sent for by the DM');return a}
 
+// The record of a member whose grave was recycled before the tick saw them fall: last seen name, class and level.
+function ghost(key){const F=S.fellowship,l=(F.last||{})[key]||{},f=S.fallen.find(x=>x.name===l.name);
+  return {id:l.id==null?null:l.id,name:l.name||'A companion',cls:l.cls||'?',lvl:(f&&f.lvl)||l.lvl||0,cause:(f&&f.cause)||'lost'}}
 function onDeath(a,key){const F=S.fellowship;F.slots[key]=null;F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);
   const lvl=a?a.lvl:0,cause=a&&a.cause||'lost';
   F.past.push({id:a?a.id:null,name:a?a.name:'?',cls:a?a.cls:'?',slot:key,lvl,cause,day:day()});
@@ -285,7 +290,7 @@ function session(){const F=S.fellowship,d=day();if(d<=F.day)return;const prev=F.
 
 let acc=0;
 export function fellowshipTick(dt){const F=S.fellowship;if(!F)return;
-  for(const k of SLOT_KEYS){const id=F.slots[k];if(id==null)continue;const a=byId(id);if(!alive(a))onDeath(a||{name:'?',cause:'lost'},k)}
+  for(const k of SLOT_KEYS){const id=F.slots[k];if(id==null)continue;const a=byId(id);if(!alive(a))onDeath(a||ghost(k),k);else (F.last||(F.last={}))[k]={id:a.id,name:a.name,cls:a.cls,lvl:a.lvl}}
   muster();
   const P=fellowParty(),L=fellows();let holding=false;
   if(P)for(const b of L){if(b.state!=='town'||b.townStep!==2||b.party!==P)continue;
