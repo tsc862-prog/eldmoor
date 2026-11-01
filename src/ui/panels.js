@@ -1,4 +1,4 @@
-// Side panels: hero dossier (header + Stats/Log/Gear/Party/Chat tabs), factions,
+// Side panels: hero dossier (header + Stats/Log/Bio/Gear/Party/Chat/Mind tabs), factions,
 // chronicle, graveyard, guilds, top heroes, auction house, clock. Reads sim state
 // and the renderer's camera selection.
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
@@ -20,7 +20,7 @@ import {friendsOf} from '../sim/bonds.js';
 import {biography} from './biography.js';
 import {initTimeline} from './timeline.js';
 import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
-import {enableBrain,disableBrain,brainStatus} from '../sim/brain.js';
+import {enableBrain,disableBrain,brainStatus,mindUser} from '../sim/brain.js';
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -58,7 +58,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
 // ---- hero dossier ----
-const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['gear','Gear'],['party','Party'],['chat','Chat']];
+const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['gear','Gear'],['party','Party'],['chat','Chat'],['mind','Mind']];
 const SLOTS=[['head','Head'],['chest','Chest'],['hands','Hands'],['feet','Feet'],['main','Main hand'],['off','Off hand'],['trinket','Trinket']];
 let tab='stats'; // persists across hero changes
 export const activeTab=()=>tab;
@@ -170,7 +170,51 @@ function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
   if(st!=='off')d.append(' ',aiBadge('AI-played'+(st==='offline'?' (quiet)':''),'This hero\'s choices come from a language model via the local relay; the scripted rules take over whenever it is silent.'));
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);return d}
 function tabBio(b,a){for(const p of biography(a,S.agents)){const d=el('p','bio');parts(d,p);b.append(d)}}
-const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,party:tabParty,chat:tabChat};
+
+// ---- Mind tab (issue #61): the AI-played hero's decision log, a.mind from sim/brain.js ----
+// Shown only for a hero with a brain or a non-empty log. Newest first; a row expands to the
+// options, reason, scripted choice and, on request, the exact prompt the model saw. The body is
+// rebuilt only when the log's entries, their outcomes or the open row change (mindSig).
+const hasMind=a=>!!(a.brain||(a.mind&&a.mind.length));
+const MIND_KIND={townPlan:'Town plan',fightOrFlee:'Fight or flee',say:'Says'};
+let mindOpen=null; // {hid, id, prompt}
+const mindSig=a=>a.id+'|'+(a.mind||[]).map(e=>e.id+':'+e.outcome+':'+(e.ms==null?'':e.ms)).join(',')+'|'+(mindOpen&&mindOpen.hid===a.id?mindOpen.id+(mindOpen.prompt?'p':''):'');
+function mindRow(e){const bits=[e.t,MIND_KIND[e.kind]||e.kind];
+  if(e.kind==='say')bits.push(e.trigger?'on '+e.trigger:'line');
+  else if(e.choice){const over=(e.options||[]).filter(o=>o!==e.choice);bits.push('chose '+e.choice+(over.length?' (over '+over.join(', ')+')':''))}
+  else bits.push(e.outcome==='pending'?'waiting':'no answer');
+  const q=e.reason||e.line;if(q)bits.push('\u2018'+q+'\u2019');
+  bits.push(e.ms==null?'\u2026':e.ms+' ms');
+  return bits}
+function mindDetail(d,a,e){const box=el('div','mdet');
+  const kv=el('div','kv mkv'),add=(k,v)=>{if(v==null||v==='')return;kv.append(el('span','k',k),el('span','v',String(v)))};
+  add('Options',(e.options||[]).join(' · ')||(e.kind==='say'?'free line':''));
+  if(e.choice)add('Choice',e.choice+(e.kind==='townPlan'&&e.crypt!=null?' · crypt call: '+(e.crypt?'answer':'decline'):''));
+  add('Reason',e.kind==='say'?null:e.reason||'none given');
+  add('Line',e.line);
+  if(e.scripted)add(e.outcome==='applied'?'Scripted':'Scripted acted',e.outcome==='applied'?e.scripted+' (overridden)':e.scripted);
+  add('Outcome',e.outcome+(e.error?' \u2014 '+e.error:''));
+  if(e.usage)add('Tokens',e.usage.in+' in / '+e.usage.out+' out');
+  box.append(kv);
+  const open=mindOpen&&mindOpen.prompt;
+  const btn=el('button','mbtn',open?'hide prompt':'show prompt');btn.dataset.mprompt='1';box.append(btn);
+  if(open){
+    if(e.sent){box.append(el('div','dm','System ('+(e.sent.id||e.kind)+')'),el('pre','mpre',e.sent.system||''))}
+    else box.append(el('div','dm',e.outcome==='offline'||e.ms==null?'Never reached the model ('+(e.error||e.outcome)+'). This is what the relay would have been sent:'
+      :'The relay did not echo its prompt (an older relay); the user content it builds is exactly this snapshot:'));
+    box.append(el('div','dm','User'),el('pre','mpre',mindUser(e)))}
+  d.append(box)}
+function tabMind(b,a){const m=a.mind||[];
+  b.append(el('div','meta',a.brain?'Choices asked of the model, newest first. Tap a row for details.':'No longer AI-played; the last choices it made:'));
+  if(!m.length){b.append(el('div','dm','No decisions yet. The hero asks at the town gate, in hard fights and when it has something to say.'));return}
+  const list=el('div','mind');
+  for(const e of m){const isOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===e.id;
+    const row=el('div','mrow'+(isOpen?' open':'')),h=el('div','mh');h.dataset.mind=e.id;
+    mindRow(e).forEach((t,i)=>{if(i)h.append(el('span','dm',' \u00b7 '));h.append(el('span',i===0?'dm':i===3&&(e.reason||e.line)?'mq':null,t))});
+    h.append(el('span','dm',' \u00b7 '),el('span','mo mo-'+e.outcome,e.outcome));
+    row.append(h);if(isOpen)mindDetail(row,a,e);list.append(row)}
+  b.append(list)}
+const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,party:tabParty,chat:tabChat,mind:tabMind};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
 // header and only the active tab's body, since it runs every 0.3s.
@@ -188,10 +232,12 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   h.append(el('div','doing',doing(a)));
   h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
   h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
-  for(const b of k.tabs.children)b.setAttribute('aria-pressed',String(b.dataset.tab===tab));
+  const mindable=hasMind(a),cur=tab==='mind'&&!mindable?'stats':tab; // the Mind tab exists only for AI-played heroes
+  for(const b of k.tabs.children){b.setAttribute('aria-pressed',String(b.dataset.tab===cur));if(b.dataset.tab==='mind')b.hidden=!mindable}
   if(pinned&&pinned.id!==a.id)pinned=null;
-  k.tb.replaceChildren();k.tb.dataset.tab=tab;BODY[tab](k.tb,a);
-  if(tab!=='gear')hideTip();else if(hov)showTip()}
+  if(cur==='mind'){const sig=mindSig(a);if(k.tb.dataset.tab!=='mind'||k.tb.dataset.sig!==sig){k.tb.replaceChildren();k.tb.dataset.tab='mind';k.tb.dataset.sig=sig;tabMind(k.tb,a)}}
+  else{k.tb.replaceChildren();k.tb.dataset.tab=cur;delete k.tb.dataset.sig;BODY[cur](k.tb,a)}
+  if(cur!=='gear')hideTip();else if(hov)showTip()}
 
 // ---- other panels ----
 export function renderTops(){const el_=$('tops');el_.innerHTML='';ranked().slice(0,8).forEach((a,i)=>{const li=document.createElement('li');const b=document.createElement('button');
@@ -243,6 +289,9 @@ function initChronicle(){const el_=$('log');
 function initClicks(){const host=document.querySelector('.main')||document.body;
   host.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
     const ai=t.closest('[data-ai]');if(ai){const a=cam.sel;if(a){if(a.brain)disableBrain(a);else enableBrain(a);renderHero()}return}
+    const mp=t.closest('[data-mprompt]');if(mp){if(mindOpen)mindOpen.prompt=!mindOpen.prompt;renderHero();return}
+    const mr=t.closest('[data-mind]');if(mr){const a=cam.sel,id=Number(mr.dataset.mind);
+      if(a)mindOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===id?null:{hid:a.id,id,prompt:false};renderHero();return}
     const tb=t.closest('[data-tab]');if(tb){setTab(tb.dataset.tab);return}
     const n=t.closest('.hn[data-hid]');if(!n)return;
     const a=S.agents.find(x=>x.id==n.dataset.hid);if(a){pick(a);if(a.state==='dead'&&n.closest('#fallen'))setTab('bio')}})}
