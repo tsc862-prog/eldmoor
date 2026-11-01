@@ -39,7 +39,7 @@ async function send(path,body){
     return r.ok?{ok:true,runner:j.runner}:{ok:false,error:j.how||j.error||('HTTP '+r.status)}}
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
 // pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
-const pickBody=k=>{const p=picks[k]||'',t=turnPicks[k]?{maxTurns:Number(turnPicks[k])}:{};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:{}),...t}};
+const pickBody=k=>{const p=picks[k]||'',t=turnPicks[k]?{maxTurns:Number(turnPicks[k])}:{};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:{}),...t}};
 export async function startRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';
   const r=await send('/start',{kind,...(hero!=null?{hero}:{}),...pickBody(k)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
 export async function stopRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';
@@ -54,7 +54,14 @@ function stateLine(r,k){if(note[k])return note[k];
   if(r.turns)bits.push(r.turns+' turn'+(r.turns===1?'':'s'));if(r.cost)bits.push('$'+r.cost.toFixed(3));
   // pacing (issue #126): turns per minute, the last turn's age, the cap
   if(r.turns&&r.turnsPerMin!=null)bits.push(r.turnsPerMin+'/min');if(r.lastTurnAgo!=null&&!DONE[r.state])bits.push('last '+ago(r.lastTurnAgo));if(r.turnCap&&!DONE[r.state])bits.push(r.turnCap);
+  const other=r.provider==='ollama'&&r.model&&!DONE[r.state]?mindsLocal().find(m=>m!==r.model):null; // #126: two local models evict each other on one GPU
+  if(other)bits.push('minds use '+other+': on one GPU the two models evict each other, use one');
   if(r.state==='crashed'&&r.error)bits.push(r.error);return bits.join(' · ')}
+// The local models the relay's minds (AI-played heroes) use, refreshed every few seconds.
+let mlAt=0,ml=[];
+function mindsLocal(){if(Date.now()-mlAt<3000)return ml;mlAt=Date.now();const set=new Set();
+  for(const a of S.brainHeroes||[]){const h=S.agents.find(x=>x.id===a);const c=h&&h.brain&&h.state!=='dead'&&h.brainCfg;if(c&&c.provider==='ollama'&&c.model)set.add(c.model)}
+  return ml=[...set]}
 const ago=s=>s<60?s+' s ago':s<3600?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago';
 // the tooltip: what the runner's pacing waits for, then its last lines
 const tip=(r,n)=>r?[r.pace?'pacing: '+r.pace:''].concat(r.lines?r.lines.slice(-n):[]).filter(Boolean).join('\n'):'';
@@ -88,8 +95,9 @@ export const dmRunnerSig=()=>{poll(true);const r=runnerByKey('dm');return (r?r.s
 
 // The mind a runner starts with. models: pulled local models (from the relay's /health), may be empty.
 export function runnerPick(k,models,openai){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude)';
-  const opts=[['','saved mind'],['anthropic','Claude']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai']));
-  if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai):/,'')+(picks[k].startsWith('openai:')?' · openai':' · local')]);
+  // Claude by model (the owner pays per model): Haiku is also what a runner started here plays when nothing is saved
+  const opts=[['','saved mind (new: Claude Haiku)'],['anthropic:claude-haiku-5-5','Claude Haiku'],['anthropic:claude-sonnet-5-5','Claude Sonnet']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai']));
+  if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai|anthropic):/,'')+(picks[k].startsWith('openai:')?' · openai':picks[k].startsWith('anthropic')?'':' · local')]);
   for(const [v,t] of opts){const o=new Option(t,v);if(v===(picks[k]||''))o.selected=true;s.append(o)}
   // the turn cap: by default a local mind plays until stopped, Claude and OpenAI stop at their default count (and budget)
   const c=el('select','msel');c.dataset.runturns=k;c.title='How many turns the runner plays before it stops (it also stops when the hero dies or after 5 empty turns in a row)';

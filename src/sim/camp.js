@@ -141,8 +141,13 @@ function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors+
     openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at the Fellowship\'s camp in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id})}}
 
 // ---- campfire talk ----
-function talk(F,g,L){if(L.length<2)return;g.stats.talks++;
-  const h=Math.floor(S.gameMin),pool=L.filter(a=>!a.player),sp=(pool.length?pool:L)[Math.floor(hash(h,g.start,5)*(pool.length||L.length))%(pool.length||L.length)];
+function talk(F,g,L){if(L.length<2)return;
+  // agents say only what their agents say (issue #126): with no scripted member at the fire, no scripted line is
+  // voiced; the agents hear once that the fire is lit and talk if they like (they hear each other, sim/player.js)
+  const pool=L.filter(a=>!a.player);
+  if(!pool.length){if(!g.agentTalk){g.agentTalk=1;for(const a of L)notify(a,'The fire is lit and the night is quiet: talk round it if you like (party_say); your companions hear you.',false,1)}return}
+  g.stats.talks++;
+  const h=Math.floor(S.gameMin),sp=pool[Math.floor(hash(h,g.start,5)*pool.length)%pool.length];
   const others=L.filter(a=>a!==sp),other=others[Math.floor(hash(h,sp.id,6)*others.length)%others.length];
   const hurt=L.filter(a=>a.hp<maxHp(a)*.6).length;
   let topic=TOPICS[Math.floor(hash(h,sp.id,7)*TOPICS.length)%TOPICS.length];

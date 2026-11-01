@@ -53,7 +53,7 @@ import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine} from './local-agent.mjs';
 import {openaiRunner} from './agent-chat.mjs';
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, takeClaudeSlot} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, takeClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -83,6 +83,7 @@ export function systemPrompt(st) {
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice. Read it back with journal_read when you resume.',
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
+    '- Write, narrate and speak only in English.',
   ].filter(s => s !== null).join('\n');
 }
 
@@ -96,7 +97,7 @@ const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.string
 const money = v => '$' + (v || 0).toFixed(4);
 // w: why this turn started (scripts/pacing.mjs), the hero's own news only
 export const turnPrompt = (turns, w = null) => turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
-  : `Turn ${turns + 1}. Continue living your life in Eldmoor.${wakeNote(w)}`;
+  : `Turn ${turns + 1}. Continue living your life in Eldmoor.${wakeNote(w)} Answer and speak only in English.`;
 // Between turns: wait for the game (scripts/pacing.mjs). -> {w} or {end: why the run is over}
 async function between(pacer) {
   const w = await pacer.next();
@@ -116,10 +117,11 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)} | ${paceText(pace)}`);
-  let ended = null, runIn = 0, runOut = 0, t0 = Date.now(); const fails = failTracker(pace.maxFails);
+  let ended = null, runIn = 0, runOut = 0, t0 = Date.now(), lastNote = null; const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     let r = null, w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    {const n = await localModelNote(ol, rs.model); if (n && n !== lastNote) console.log('[agent] ' + n); lastNote = n} // before every turn: another model on the GPU
     try {r = await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(await pacer.brief()), model: rs.model, toolTurns,
       opts: numCtx ? {numCtx: Number(numCtx)} : {},
       on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
@@ -199,6 +201,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
     rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
+    if (!opt('model', null)) {const ol0 = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL)}), s = await ol0.status(), p = await preferLoaded(ol0, rs.model, s.models || []); if (p.note) {console.log('[agent] ' + p.note); rs.model = p.model}}
     sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
     await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'ollama', 20), toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: opt('num-ctx', env.OLLAMA_NUM_CTX || null), release, beat, file: SESSION_FILE, pacer, pace});
   }

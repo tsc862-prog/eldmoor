@@ -90,6 +90,21 @@ console.log('ollama adapter chat (mock server)');
   ok(last.think === false && last.options.num_ctx === 8192 && last.stream === false && last.tools.length === ollamaTools().length, 'thinking off, the context size and the tools are sent');
   let e = null; try {await ol.chat({model: 'mock-json:1b', messages: [{role: 'user', content: 'x'}], tools: ollamaTools()})} catch (x) {e = x}
   ok(e && e.noTools, 'a model without tool support is reported as noTools');
+  // issue #126: one queue per adapter (a Fellowship runner's members share it), and a clear timeout message
+  let live = 0, most = 0;
+  const slow = ollamaAdapter({url: OLLAMA, parallel: 1, chatPost: async () => {live++; most = Math.max(most, live); await sleep(60); live--; return {ok: true, status: 200, json: async () => ({message: {role: 'assistant', content: 'ok'}, prompt_eval_count: 1, eval_count: 1})}}});
+  await Promise.all([1, 2, 3].map(() => slow.chat({model: 'm', messages: []})));
+  ok(most === 1, 'with OLLAMA_PARALLEL 1 the members\' chats queue: one request at a time');
+  const stuck = ollamaAdapter({url: OLLAMA, chatTimeoutMs: 1000, chatPost: async () => {throw Object.assign(new Error('timeout'), {code: 'ETIMEDOUT'})}});
+  e = null; try {await stuck.chat({model: 'qwen2.5:14b', messages: []})} catch (x) {e = x}
+  ok(e && /busy or loading the model/.test(e.message), 'a chat that times out says Ollama is busy or loading: ' + (e && e.message.slice(0, 80)));
+  const real = ollamaAdapter({url: OLLAMA, chatTimeoutMs: 50});
+  e = null; try {await real.chat({model: 'mock-tools:1b', messages: [{role: 'user', content: 'Begin.'}], tools: ollamaTools()})} catch (x) {e = x}
+  ok(!e, 'the node:http path talks to Ollama (mock)');
+  const {preferLoaded, localModelNote} = await import('./pacing.mjs'), gpu = {loaded: async () => ['qwen2.5:14b']};
+  const pl = await preferLoaded(gpu, 'qwen3.5:4b', ['qwen2.5:14b', 'qwen3.5:4b']);
+  ok(pl.model === 'qwen2.5:14b' && /already holds qwen2.5:14b/.test(pl.note), 'with no model picked, a local runner takes the model Ollama already holds (the relay\'s minds)');
+  ok((await preferLoaded(gpu, 'qwen3.5:4b', ['qwen3.5:4b'])).model === 'qwen3.5:4b' && /evict each other/.test(await localModelNote(gpu, 'qwen3.5:4b')) && !(await localModelNote(gpu, 'qwen2.5:14b')), 'otherwise it keeps its model and warns that another one holds the GPU');
 }
 
 // ---------------------------------------------------------------- 2. the runner, end to end
@@ -180,7 +195,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
 {
   const sim = await import('../src/sim/index.js'), {localBackend, chooseHero} = await import('./play-headless.mjs');
   const {notify} = await import('../src/sim/notify.js'), {homeOf} = await import('../src/data/races.js');
-  const {S} = sim; sim.init({fellowship: false}); for (let i = 0; i < 60 * 30; i++) sim.step(1 / 60);
+  const {S} = sim, {maxHp: maxHpOf} = await import('../src/sim/heroes.js'); sim.init({fellowship: false}); for (let i = 0; i < 60 * 30; i++) sim.step(1 / 60);
   const speed = 8; let last = Date.now();
   const tick = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
   const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
@@ -223,33 +238,75 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     notify(a, 'Attacked by a level 3 test wolf!', 2);
     ok(await until(() => R.wakes.length >= 1, 4000), `an attack starts the next turn at once: ${R.wakes[0] ? R.wakes[0].kind + ' after ' + (R.wakes[0].real - tN) + ' ms' : 'no turn'}`);
     ok(R.wakes[0] && R.wakes[0].kind === 'now' && R.wakes[0].real - R.turns[0].real < 4000, 'inside the 4 s minimum gap');
-    await until(() => R.turns.length >= 2, 30000); park(a);
-    notify(a, 'A test traveller hails you from the road.', true); const t2 = R.turns[1].real;
-    await until(() => R.wakes.length >= 2, 15000);
-    const w2 = R.wakes[1], dt = w2 ? w2.real - t2 : null;
+    // (the world may wake the hero first, say an attack on the way: then try again after that turn)
+    let w2 = null, dt = null;
+    for (let k = 2; k <= 4 && !w2; k++) {
+      await until(() => R.turns.length >= k, 30000); park(a); a.hp = a.maxhp || a.hp;
+      notify(a, 'A test traveller hails you from the road (' + k + ').', true); const tk = R.turns[k - 1].real, nw = R.wakes.length;
+      await until(() => R.wakes.length > nw, 15000);
+      const w = R.wakes[nw]; if (w && /test traveller/.test(w.line)) {w2 = w; dt = w.real - tk}
+    }
     ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 9000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`);
-    await until(() => R.turns.length >= 3, 30000);
+    await until(() => R.turns.length >= R.wakes.length + 1, 30000);
     sim.markPlayer(a, false);
     const code = await Promise.race([R.done, sleep(20000).then(() => 'timeout')]);
     ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 ? '' : '\n' + R.out.slice(-1200)))}
 
   // C. a lazy model (the owner's live bug): re-prompted once per turn, empty turns stop the runner, the scripted rules take over
   {const a = pick(), n0 = seen.length;
-    const R = runner(a, 'mock-lazy:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--new']);
+    // --max-fails 3, but a fresh context after two empty turns breaks the loop first (the mock forgets it went lazy)
+    const R = runner(a, 'mock-lazy:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--max-turns', '8', '--new']);
     const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]);
     const mine = seen.slice(n0), re = mine.filter(b => {const u = b.messages.filter(m => m.role === 'user').pop(); return u && /^Act through a tool/.test(u.content)});
-    ok(code === 0 && R.turns.length === 6 && /3 failed or empty turns in a row/.test(R.out), `three good turns, then three empty ones stop the runner (${R.turns.length} turns)` + (code === 0 ? '' : '\n' + R.out.slice(-1500)));
-    ok(re.length === 3 && (R.out.match(/re-prompted to act/g) || []).length === 3 && (R.out.match(/empty turn \(no tool call\)/g) || []).length === 3, `each empty turn was re-prompted once to act through a tool (${re.length})`);
-    const lastReq = mine[mine.length - 1], narrs = lastReq.messages.filter(m => m.role === 'assistant' && /still battling/.test(m.content || ''));
-    ok(narrs.length <= 2, `the model's own old narrations are not fed back (${narrs.length} in the last request, this turn's only)`);
-    const x0 = a.x, y0 = a.y, s0 = a.state;
-    ok(await until(() => a.playIdle, 15000), 'with no command for 2 game hours the scripted rules take over the idle hero');
-    ok(await until(() => a.state !== s0 || Math.abs(a.x - x0) + Math.abs(a.y - y0) > 1, 20000), `and play it (${s0} -> ${a.state})`);
-    ok((a.playEv || []).some(e => /instincts carry you/.test(e.text)), 'the hero is told so (an event the agent reads when it comes back)');
+    const flags = R.turns.map(t => /empty turn/.test(t.line) ? 'E' : 'A').join('');
+    ok(code === 0 && R.turns.length === 8 && flags === 'AAAEEAAA', `three good turns, two empty ones, then a fresh context and it acts again (${flags})` + (code === 0 ? '' : '\n' + R.out.slice(-1500)));
+    ok(re.length === 2 && (R.out.match(/re-prompted to act/g) || []).length === 2 && (R.out.match(/empty turn \(no tool call\)/g) || []).length === 2 && /\[turn 6\].*fresh context/.test(R.out), `each empty turn was re-prompted once to act through a tool (${re.length}); turn 6 starts fresh`);
+    const most = Math.max(...mine.map(b => b.messages.filter(m => m.role === 'assistant' && /still battling/.test(m.content || '')).length));
+    ok(most <= 2, `the model's own old narrations are not fed back (at most ${most} in a request: the last turn's and this one's)`);
+    // autopilot (owner: an agent-played hero is never scripted): out in the field, hurt, with a hunt as its last order
+    const out = S.agents.find(x => x !== a && x.state === 'hunt' && !x.player && x.kind === 'hero');
+    a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15}; a.hp = Math.round(a.hp * .4) || 1;
+    ok(await until(() => a.playIdle && a.pq[0] && a.pq[0].auto, 15000), `with no order for 2 game hours autopilot carries on (${a.pq[0] && a.pq[0].auto})`);
+    ok(a.player && !a.brain && /^autopilot: /.test(a.playDoing || ''), `the agent stays the mind (agent-played, no brain): "${a.playDoing}"`);
+    a.hp = maxHpOf(a); a.pq = [];
+    ok(await until(() => a.pq[0] && a.pq[0].kind === 'hunt' || a.state === 'fight', 15000), 'mended, it carries on its last order (hunt)');
+    ok((a.playEv || []).some(e => /autopilot carries on/.test(e.text)) && !(a.playEv || []).some(e => /scripted|instinct/i.test(e.text)), 'the hero is told so, and nothing calls it scripted');
     const r = sim.playerAct(a.id, 'say', {text: 'Enough wandering. I choose my own road again.'});
     sim.step(1 / 60);
     ok(r.ok && !a.playIdle, 'an action from the agent takes the reins back' + (r.ok ? '' : ': ' + r.error))}
-  clearInterval(tick); server.close();
+  // E. English only: a model answering in Chinese is re-prompted in English, its lines never reach the chat,
+  // its empty turns get a fresh context and stop the runner; the game refuses a foreign-script line
+  {const a = pick(), n0 = seen.length;
+    const R = runner(a, 'mock-zh:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--new']);
+    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]);
+    const mine = seen.slice(n0), en = mine.filter(b => {const u = b.messages.filter(m => m.role === 'user').pop(); return u && /^Answer in English only/.test(u.content)});
+    ok(code === 0 && /3 failed or empty turns in a row/.test(R.out) && (R.out.match(/empty turn \(not in English\)/g) || []).length === 3, 'a model answering in Chinese: three empty turns, then the runner stops' + (code === 0 ? '' : '\n' + R.out.slice(-1200)));
+    ok(en.length === 3, `each turn it is re-prompted once to answer in English (${en.length})`);
+    ok(!/[一-鿿]/.test(R.out) && !(a.playNarr || []).some(n => /[一-鿿]/.test(n.text)) && !(a.chat || []).some(e => /[一-鿿]/.test(e.text)), 'no Chinese line reaches the runner output, the Agent tab or the chat');
+    ok(mine.every(b => b.options.temperature === 0.6 && b.options.repeat_penalty === 1.15), 'local turns sample at temperature 0.6 with a repeat penalty');
+    ok(/fresh context/.test(R.out) && mine.some(b => b.messages.filter(m => m.role === 'assistant').length === 0 && /^Turn 3/.test((b.messages[1] || {}).content || '')), 'after two empty turns the next one starts from a fresh context');
+    const sz = sim.playerAct(a.id, 'say', {text: '我将带领团队去见萨满'});
+    ok(!sz.ok && /speak in English/.test(sz.error), 'the game refuses a foreign-script line: ' + sz.error);
+    sim.markPlayer(a, false)}
+
+  // D. hearing: an agent's line wakes the agent heroes who hear it, at most once per few game minutes each
+  {clearInterval(tick);
+    const A = pick(), B = chooseHero({fac: 0}); park(B); sim.markPlayer(B, true); B.x = A.x + 1; B.y = A.y;
+    sim.step(1 / 60); const nB = B.playEvN || 0;
+    const r1 = sim.playerAct(A.id, 'say', {text: 'Ready when you are.'}); sim.step(1 / 60);
+    const heard = (B.playEv || []).filter(e => e.n > nB && /Ready when you are/.test(e.text));
+    ok(r1.ok && heard.length === 1 && heard[0].w === 2, `${B.name} hears ${A.name}'s line and it starts a turn promptly (wake ${heard[0] && heard[0].w})`);
+    const n2 = B.playEvN; sim.playerAct(A.id, 'say', {text: 'Did you hear me?'}); sim.step(1 / 60);
+    const again = (B.playEv || []).filter(e => e.n > n2 && /Did you hear me/.test(e.text));
+    ok(again.length === 1 && !again[0].w, 'a second line within the debounce is heard but does not start another turn (no ping-pong)');
+    const mine = (A.chat || []).filter(e => e.from === A && e.trigger === 'agent');
+    ok(mine.length && mine.every(e => e.agent && /^AGENT · /.test(e.model) && !e.ai), 'the agent\'s lines are tagged AGENT for the Chat tab, not AI');
+    const chat = await import('../src/sim/chat.js'), c0 = (A.chat || []).length; A.chatCd = 0;
+    chat.say(A, 'banter', {zone: 'x'}); chat.say(A, 'levelup', {}); const c1 = (A.chat || []).length; A.chatCd = 0;
+    chat.say(A, 'spot', {mob: 'a test wolf', level: 9}); const c2 = (A.chat || []).length;
+    ok(c1 === c0 && c2 === c1, 'an agent hero voices no scripted line at all (banter, level-up, combat call)');
+    sim.markPlayer(A, false); sim.markPlayer(B, false)}
+  server.close();
 }
 
 // ---------------------------------------------------------------- the page's links message

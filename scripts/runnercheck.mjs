@@ -144,6 +144,7 @@ console.log('runner routes (fake children)');
   const s2 = await req(sl.base, '/play/runner/start', {method: 'POST', body: {hero: 2}, origin: PAGE});
   const s3 = await req(sl.base, '/play/runner/start', {method: 'POST', body: {hero: 3, provider: 'ollama', model: 'qwen2.5:14b'}, origin: PAGE});
   ok(s.status === 200 && s2.status === 200 && s3.status === 200 && kids.length === n0 + 3 && kids[n0].opts.env.ELDMOOR_RUNNER_KEY === 'hero:1', 'with RUNNER_CLAUDE_MAX=1 two Claude runners and a local one all start (slots are leased per turn)');
+  ok(kids[n0].opts.env.AGENT_MODEL === 'claude-haiku-5-5' && kids[n0].opts.env.DM_MODEL === 'claude-haiku-5-5', 'a Claude runner started from the app plays Claude Haiku unless the request or the saved settings of the hero say otherwise');
   const l1 = await req(sl.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:1'}});
   const t2 = Date.now(), p2 = req(sl.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:2'}});
   await sleep(150); g = await req(sl.base, '/play/runner');

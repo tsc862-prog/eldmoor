@@ -40,7 +40,7 @@ import {S,clockStr} from './state.js';
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,findMob,turnIn,huntZone} from './heroes.js';
 import {partyMates,leaderOf,leaveParty} from './party.js';
-import {speak,say} from './chat.js';
+import {speak,say,agentLine} from './chat.js';
 import {npcSay,ensureNpcs} from './npcs.js';
 import {sellGear,equip,makeItem,SHOP_COST,SELL_VALUE,slotLevel,weakestSlot,itemStats,gearScore,refreshEpics} from './gear.js';
 import {weatherName,sightMul,isStorm} from './weather.js';
@@ -51,6 +51,8 @@ import {dmDepart,advLine,K as DMK} from './dm.js';
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard} from './persona.js'; // Fellowship (#68)
 import {ev} from './notify.js';
+import {notEnglish} from './lang.js';
+const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead} from './council.js';
 import {sceneAct,tableView} from './table.js';
 
@@ -64,7 +66,8 @@ export const PK={
   BAG:8,             // reflex: idle in the field with this many bag entries -> go home
   REST_REGEN:.06,    // share of max HP per real second while resting (the DM's camp rate)
   RATE:12,           // world-changing tool calls per game hour
-  IDLE:120,          // game minutes without a command or an action before the scripted rules play the hero (#126)
+  HEAR_WAKE:15,      // game minutes: an agent's line heard starts the listener's turn at most this often (#126)
+  IDLE:120,          // game minutes without a command or an action before autopilot carries on for the agent (#126)
   WAIT:[10,240],     // game minutes a wait may span
   WAIT_REAL_MS:45000,// a wait never holds the agent longer than this in real time (paused world, hidden tab)
   JOURNAL:100,JOURNAL_LEN:600,LOG:40,EV:40,EV_OUT:15,NARR:20,SAY_LEN:120, // EV_OUT: events handed back per tool result
@@ -95,6 +98,15 @@ const key=e=>e?e.t+'|'+e.text:'';
 // Entries of list that came after the one whose key is k (all of them when k is not found).
 function since(list,k){if(!list||!list.length)return [];if(!k)return list.slice(-3);for(let i=list.length-1;i>=0;i--)if(key(list[i])===k)return list.slice(i+1);return list.slice(-3)}
 
+// Autopilot's next command (issue #126): what the hero's own reflexes and last order call for. In the field:
+// rest when hurt, else hunt again when the last order was a hunt; in town it heals and waits; a Fellowship
+// member follows its leader (the 'follow' state); a full bag already sends it home (field()).
+function autopilot(a){const mh=maxHp(a),field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
+  if(!field)return null;
+  if(a.hp<mh*.6)return {kind:'rest',until:S.gameMin+60,auto:'resting while hurt',label:'rest'};
+  const o=a.playOrder;if(o&&o.kind==='hunt')return {kind:'hunt',n:o.n,k0:a.kills,flee:o.flee,auto:'hunting again (your last order: hunt '+o.n+')',label:'hunt'};
+  return null}
+
 // ---- marking ----
 export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
   if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
@@ -113,17 +125,20 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a call to '+CRYPT.name+' (you go only where you choose).')}
   if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a raid muster on Kragmaw.')}
   if(a.party&&!a.partyOk&&!a.party.fellow){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')} // the Fellowship's own party is always theirs
-  const adv=advOf(a),cmd=cmdOf(a);
-  // Idle (issue #126): no command and no action for PK.IDLE game minutes, outside an adventure or a scene: the
-  // scripted rules play the hero until the agent acts again, so the world never waits on a silent mind.
+  const adv=advOf(a);
+  // Autopilot (issue #126): no command and no action for PK.IDLE game minutes, outside an adventure or a scene.
+  // The agent stays the hero's mind; until it acts again the hero carries on its last order and does what a
+  // reflex would (rest when hurt, follow the party, fight back, go home when hurt or full), never the scripted rules.
   const lastAct=a.playActAt??(a.playActAt=S.gameMin);
-  if(!cmd&&!adv&&!tableView(a)&&S.gameMin-lastAct>=PK.IDLE){if(!a.playIdle){a.playIdle=true;ev(a,'You stood idle for a while; your instincts carry you for now (give a command to take the reins back).')}a.playDoing='on instinct (scripted, until you act)';return false}
-  if(a.playIdle)a.playIdle=false;
+  if(!cmdOf(a)&&!adv&&!tableView(a)&&S.gameMin-lastAct>=PK.IDLE){if(!a.playIdle){a.playIdle=true;ev(a,'No order from you for a while: autopilot carries on (your last order, rest when hurt, follow the party). Any command takes over.')}
+    const ap=autopilot(a);if(ap){a.pq=[ap];a.playAuto=ap.label}}
+  else if(a.playIdle&&S.gameMin-lastAct<PK.IDLE){a.playIdle=false;a.playAuto=null}
+  const cmd=cmdOf(a);
   // A choice scene answered (or timed out): send the hero back to the scene point so the DM
   // reaches the choice again and takes the pick (sim/player-choice.js).
   if(adv&&adv.stage==='choose'&&adv.pick&&(adv.pick.chosen||S.gameMin>=adv.pick.until)){adv.pick.rearm=true;adv.stage='go';if(a.state==='hunt'||a.state==='travel'){a.state='travel';a.dest=null}}
   const driving=adv&&adv.lead===a.id&&(!a.party||a.party.leader===a);
-  a.playDoing=doingText(a,adv,cmd);
+  a.playDoing=doingText(a,adv,cmd);if(a.playIdle)a.playDoing='autopilot: '+(cmd&&cmd.auto?cmd.auto:a.playDoing||'standing watch');
   switch(a.state){
   case 'town':return town(a,dt,cmd);
   case 'follow':if(!cmd)return false;a.state='hunt';a.dest=null;return cmd.kind==='move'?travel(a,dt,cmd):field(a,dt,cmd);
@@ -139,6 +154,12 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
 
 // A line the hero heard (sim/chat.js, council.js party chat, an NPC, the DM's narrate), as the agent reads it.
 const heardText=e=>e.from&&e.from.kind==='dm'?'The narrator: '+e.text:(e.party?'[party] ':'')+(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"';
+// Hearing (issue #126): a line from an agent-played hero (aloud in earshot, or on the party channel) starts the
+// listener's turn promptly (2), at most once per PK.HEAR_WAKE game minutes per listener so two agents cannot
+// talk each other into turns forever; the narrator, an NPC or a scripted companion's party line wake after the gap (1).
+function hearWake(a,e){const f=e.from;
+  if(f&&f.kind==='hero'&&f.player){if(S.gameMin-(a.playHeardAt??-1e9)>=PK.HEAR_WAKE){a.playHeardAt=S.gameMin;return 2}return 0}
+  return e.party||f&&(f.kind==='dm'||f.kind==='npc')?1:0}
 // Notice what changed since the last step and turn it into events.
 function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills});const mh=maxHp(a);
   if(a.lvl>w.lvl)ev(a,'Reached level '+a.lvl+'.',true);
@@ -149,9 +170,9 @@ function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kil
     if(a.state==='assist'&&a.target)ev(a,'Rushing to help against '+a.target.name+'.',2)}
   if(a.hp<mh*.3&&w.hp>=mh*.3)ev(a,'Badly hurt: '+pct(a.hp,mh)+'% HP.',2);
   if(a.playChoiceNew){a.playChoiceNew=false;const adv=advOf(a),p=adv&&adv.pick;
-    if(p)ev(a,'A choice on '+(p.title||'your adventure')+': '+p.frame+'. a) '+p.opts.a+'  b) '+p.opts.b+'. choose() within '+Math.max(0,Math.round(p.until-S.gameMin))+' game minutes.',2)}
+    if(p)ev(a,'A choice on '+(p.title||'your adventure')+': '+p.frame+'. a) '+p.opts.a+'  b) '+p.opts.b+'. choose() within '+Math.max(0,Math.round(p.until-S.gameMin))+' game minutes.',3)}
   const hs=since(a.history,w.hist);for(const e of hs)if(!/^Began to choose/.test(e.text))ev(a,e.text);if(a.history&&a.history.length)w.hist=key(a.history[a.history.length-1]);
-  const cs=since(a.chat,w.chat);for(const e of cs)if(e.from!==a&&!(e.from&&e.from.kind!=='npc'&&e.from.id===a.id))ev(a,heardText(e),false,e.party||e.from&&(e.from.kind==='dm'||e.from.kind==='npc')?1:0);if(a.chat&&a.chat.length)w.chat=key(a.chat[a.chat.length-1]);
+  const cs=since(a.chat,w.chat);for(const e of cs)if(e.from!==a&&!(e.from&&e.from.kind!=='npc'&&e.from.id===a.id))ev(a,heardText(e),false,hearWake(a,e));if(a.chat&&a.chat.length)w.chat=key(a.chat[a.chat.length-1]);
   w.hp=a.hp;w.lvl=a.lvl;w.state=a.state;w.kills=a.kills}
 
 function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*dt);
@@ -327,8 +348,8 @@ const T={
     if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
     const n=(b.chat||[]).length;say(b,'idle',{});const e=(b.chat||[])[(b.chat||[]).length-1];
     return {ok:true,who:b.name,answer:(b.chat||[]).length>n&&e&&e.from===b?e.text:'('+b.name+' is busy and does not answer.)'}},
-  say(a,{text}){const t=clean(text,PK.SAY_LEN);need(t,'Say what?');need(a.state!=='ghost','Ghosts do not speak.');
-    speak(a,t,'agent',true);const heard=nearHeroes(a.x,a.y,7).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden).length;return {ok:true,said:t,heard_by:heard}},
+  say(a,{text}){const t=clean(text,PK.SAY_LEN);need(t,'Say what?');need(!notEnglish(t),ENGLISH);need(a.state!=='ghost','Ghosts do not speak.');
+    agentLine(a,speak(a,t,'agent'));const heard=nearHeroes(a.x,a.y,7).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden).length;return {ok:true,said:t,heard_by:heard}},
   join_party(a,{hero_id}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');
     if(a.fellow&&b.fellow){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
     need(b.fac===a.fac,b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
@@ -408,7 +429,7 @@ const T={
   read_chronicle(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||8)));return {ok:true,news:S.chronicle.slice(0,k).map(e=>e.t+' '+plain(e.parts))}},
   journal_read(a,{n}){const k=Math.min(50,Math.max(1,Math.round(Number(n)||10)));return {ok:true,entries:(a.journal||[]).slice(-k).map(e=>e.t+': '+e.text),total:(a.journal||[]).length}},
   journal_write(a,{text}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});if(j.length>PK.JOURNAL)j.shift();return {ok:true,entries:j.length}},
-  party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);return {ok:true,said:clean(text,PK.SAY_LEN),heard_by:n}},
+  party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);agentLine(a,a.chat&&a.chat[a.chat.length-1]);return {ok:true,said:clean(text,PK.SAY_LEN),heard_by:n}},
   party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
   chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+e.text:heardText(e)))}},
   propose(a,{kind,details,job_id}){need(a.fellow,'Only a Fellowship member can put something to the party.');const P=propose(a,String(kind||'').toLowerCase(),details,{job:job_id});
@@ -448,7 +469,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}
     st.push(S.gameMin)}
   let r;try{r=fn(a,args&&typeof args==='object'?args:{})}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
-  if(meta.act&&r&&r.ok!==false)a.playActAt=S.gameMin; // the agent's last action that went through (idle takeover, #126)
+  if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'&&a.pq&&a.pq[0])a.playOrder={kind:'hunt',n:a.pq[0].n,flee:a.pq[0].flee}} // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
   logCall(a,tool,args,r);return r}
 

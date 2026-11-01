@@ -55,7 +55,7 @@ import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine} from './local-agent.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, withClaudeSlot} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, withClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -89,7 +89,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // w: why the turn started (scripts/pacing.mjs), the member's own news only (issue #123)
 export const memberPrompt = (turns, scene, w = null) => scene ? 'The Fellowship is at the table: a scene is open and the world is paused. Read the table (status, or the event you were sent) only if you must, then act NOW with scene_act(option, line). Then wait.'
   : turns === 0 ? 'Begin. Get to know yourself, your companions and your surroundings (status, look, party_read, journal_read), say a word to the party, write a first journal entry, then act. Follow your leader.'
-  : `Turn ${turns + 1}. Carry on with your companions: answer open proposals, keep to the party, and act.${wakeNote(w)}`;
+  : `Turn ${turns + 1}. Carry on with your companions: answer open proposals, keep to the party, and act.${wakeNote(w)} Answer and speak only in English.`;
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const envFile = opt('env', null), env = envFile ? loadEnv(dirname(resolve(envFile))) : loadEnv();
@@ -139,8 +139,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       // a local member (issue #97 part 2): plays through scripts/local-agent.mjs, no key, cost 0
       if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
       rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
-      ollama = ollama || ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL)});
+      // one adapter, so one Ollama queue for every local member (OLLAMA_PARALLEL, default 1)
+      if (!ollama) {ollama = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL)}); const n = await localModelNote(ollama, rs.model); if (n) out(null, n)}
       const s = await ollama.status();
+      if (!opt('model', null) && s.ok) {const p = await preferLoaded(ollama, rs.model, s.models); if (p.note) {out(h.name, p.note); rs.model = p.model}}
       if (!s.ok || !s.models.includes(rs.model)) {skip(h, s.ok ? `local model ${rs.model} is not pulled (pulled: ${s.models.join(', ') || 'none'}; ollama pull ${rs.model}); skipped` : `Ollama at ${s.url} is ${s.error}; skipped`); await release(h.id); return}
     } else if (rs.provider === 'openai') {
       // an OpenAI member (issue #97): the same loop against Chat Completions, real cost; the key stays in this process
@@ -213,6 +215,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // session file and scene handling; cost 0, tokens and seconds reported.
   async function localMemberTurn(m, scene, w) {
     let r = null;
+    if (!m.paid) {const n = await localModelNote(ollama, m.rs.model); if (n && n !== m.note) out(m.name, n); m.note = n} // another model on the GPU (#126)
     try {r = await localTurn({chat: m.paid ? openaiChat : ollama.chat, call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, prompt: memberPrompt(m.sess.turns, scene, w) + briefText(m.pacer ? await m.pacer.brief() : null), model: m.rs.model,
       toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, opts: opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? {numCtx: Number(opt('num-ctx', env.OLLAMA_NUM_CTX))} : {},
       on: (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})}

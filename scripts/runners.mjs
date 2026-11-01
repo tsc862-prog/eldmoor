@@ -48,6 +48,10 @@ export const CLAUDE_SLOTS = 3, LEASE_MS = 15 * 60000, LEASE_WAIT_MS = 20000;
 // fit whatever the setting: a runner for a Fellowship member, the Fellowship runner or the DM is refused only
 // when SEATS such runners already run.
 export const SEATS = 6;
+// The Claude model a runner started from the app plays when neither the request nor the hero's saved settings name
+// one (the owner's cost ask, #126): Haiku. Terminal runners keep their own default (Sonnet). AGENT_MODEL / DM_MODEL
+// in the relay's environment override it.
+export const APP_CLAUDE_MODEL = 'claude-haiku-5-5';
 export const MAX_RUNNERS = 6, STOP_GRACE_MS = 6000, KEEP_LINES = 12, MAX_BODY = 4096, KEEP_DONE = 20, TPM_WINDOW = 10 * 60000;
 export const MODEL_RE = /^[A-Za-z0-9][\w.:\/+-]{0,99}$/; // the relay's (providers/index.mjs), kept here so this module has no SDK imports
 export const HOW = 'Runners are off. Start the relay with runners on: npm run relay -- --runners (or set RELAY_RUNNERS=1, or use start-eldmoor.cmd).';
@@ -178,7 +182,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     const write = line => {try {appendFileSync(logFile, line + '\n')} catch {}};
     write(`=== ${new Date().toISOString()} start ${req.kind} ${req.name} | node ${args.join(' ')}`);
     let child;
-    try {child = spawnImpl(process.execPath, args, {cwd: ROOT, env: {...env, ELDMOOR_SUPERVISED: '1', ELDMOOR_RUNNER_KEY: req.key}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true})}
+    try {child = spawnImpl(process.execPath, args, {cwd: ROOT, env: {...env, ELDMOOR_SUPERVISED: '1', ELDMOOR_RUNNER_KEY: req.key, AGENT_MODEL: env.AGENT_MODEL || APP_CLAUDE_MODEL, DM_MODEL: env.DM_MODEL || APP_CLAUDE_MODEL}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true})}
     catch (e) {return {error: 'could not start: ' + e.message}}
     r.child = child; r.pid = child.pid;
     const take = (buf, err) => {

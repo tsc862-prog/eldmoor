@@ -126,14 +126,25 @@ is silent, and scene choices time out to the scripted branch, so the world never
   minimum gap has passed (`--min-gap S`, default 20 real seconds) when the hero has unread news (an arrival,
   a vote, a party line, the narrator, an NPC); else after a heartbeat of game time (`--heartbeat MIN`,
   default 240 game minutes). A quiet hero takes about one turn a real minute at 1x and at most one per
-  gap plus the turn at 8x; a paused world takes none; at most 4 immediate turns in a row inside the gap.
+  gap plus the turn at 8x; a paused world takes none; at most 2 immediate turns a real minute inside the gap.
   The runner stops when the hero dies or leaves agent play, and after `--max-fails N` (default 5) failed or
   empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. An older relay or page
   without `/play/pace` falls back to real time as if at 1x. A local (Ollama) runner has no turn cap unless
   `--max-turns` is given (it runs until stopped); Claude and OpenAI keep 20 turns and the budget.
-- Idle heroes: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
-  game minutes, outside an adventure or a scene, is played by the scripted rules (`a.playIdle`, "on
-  instinct") until its agent acts again, so nobody idles in town while a mind is silent.
+- Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
+  game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in
+  the Agent tab, with "Last agent order: N game min ago"): rest when hurt, hunt again when its last order was
+  a hunt, follow the party, fight back, go home when hurt or full. The agent stays the mind; nothing is ever
+  handed to the scripted rules, and any command takes over again.
+- One mind per hero: an agent-played hero has no relay brain (Fellowship Minds: agents turns the members'
+  brains off; the relay still writes their sheets) and voices no scripted line (no barks, banter, camp lines,
+  quarrel replies or table lines; a silent agent's table reflex acts without a word). Its own lines (say,
+  party_say, a table line) show "AGENT · <runner model>" in the Chat tab. Agents speak only English: the
+  game refuses a say/party_say that is mostly non-Latin script.
+- Hearing: a line from an agent-played hero (aloud in earshot, or on the party channel) starts each listening
+  agent's turn at once, at most once per `PK.HEAR_WAKE` (15) game minutes per listener; narrator, NPC and
+  scripted party lines wake after the gap. When every member at a Fellowship camp is agent-played, the agents
+  are told the fire is lit and talk if they like.
 - Headless: `npm run play-headless -- --warm 20 --agents 2` (a Node world on port 8789 with
   the top Concord and Warband heroes agent-played, or `--hero Ann,Bo`; saved to
   `logs/agent-world.json`, `--resume` to continue), then in two terminals
@@ -163,7 +174,9 @@ is silent, and scene choices time out to the scripted branch, so the world never
   party frame have **Start runner / Stop runner** with the runner's state (starting, live, waiting,
   stopping, stopped, crashed with its last error line), provider/model, turns and cost; the Fellowship panel
   (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`). A picker chooses the mind
-  it starts with (the hero's saved mind, Claude, or a pulled local model) and its turn cap ("until stopped"
+  it starts with (the hero's saved mind, Claude Haiku, Claude Sonnet, or a pulled local model; a runner started from the
+  app plays Claude Haiku when nothing is saved, `APP_CLAUDE_MODEL` in `scripts/runners.mjs`, while terminal runners keep
+  Sonnet; `AGENT_MODEL`/`DM_MODEL` override both) and its turn cap ("until stopped"
   for a local mind by default, or 5-200 turns). The state line shows turns per minute, the last turn's age
   and the cap; its tooltip shows what the pacing waits for. The relay spawns the runners as
   child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship'|'dm',
@@ -274,7 +287,15 @@ Local agent runner (part 2):
   from the game (`POST /play/pace {brief:true}`: state, doing, HP, place, foe, unread news), a first answer
   without a tool call is re-prompted once ("Act through a tool"), only the latest narration stays in the
   history, and a turn with no tool call, every call rejected, or a narration repeating the last one with no
-  world-changing call is an empty turn (it counts toward `--max-fails`). Every call is checked against the
+  world-changing call is an empty turn (it counts toward `--max-fails`). Prompts ask for English; a reply that
+  is mostly non-Latin script is re-prompted once in English and otherwise counts as empty (never shown or kept).
+  Sampling: temperature 0.6, repeat_penalty 1.15; after two empty turns in a row the next starts from a fresh
+  context. `chat()` uses node:http with its own timeout (`OLLAMA_CHAT_TIMEOUT`, 600 s, a clear "busy or
+  loading" message instead of undici's 5-minute "fetch failed") and one queue per runner process
+  (`OLLAMA_PARALLEL`, default 1: a Fellowship runner's local members take turns). Before every local turn the
+  runner checks `/api/ps` and warns when Ollama holds another model (the relay's minds evict it on one GPU);
+  with no `--model` given it plays with the model Ollama already holds. The runner state line warns when the
+  minds and a runner use different local models. Every call is checked against the
   tool table first (bad names or arguments go back to the model as an error, never to the game).
   A turn ends when the model answers in words, at `--tool-turns`, or right after a `wait` returns
   (one last call without tools asks for the narration; small models rarely stop on their own).

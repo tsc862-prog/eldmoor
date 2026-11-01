@@ -6,7 +6,8 @@
 //   'soft'       something happened that the agent has not read yet (an urgent event such as an
 //                arrival or a vote, a party line, the narrator, a person speaking to the hero);
 //   'heartbeat'  `minutes` of game time passed since `since` with nothing of the sort.
-// With wake:'now' only the first kind counts (the runner's minimum real-time gap has not passed yet).
+// With wake:'now' only the first kind counts (the runner's minimum real-time gap has not passed yet); with
+// wake:'must' only a choice or a table scene (e.w=3), which must be answered in time (answers carry must:true).
 // paceBrief: the state header a runner puts on every local turn prompt (the coordinator's live bug: a
 // small model kept narrating a fight long over), from what the hero itself knows.
 // It reads the events the agent has not seen (e.n > a.playEvSeen) and never consumes them: the next
@@ -29,11 +30,13 @@ export function paceCheck(id,{since=null,minutes=240,wake='all'}={}){const a=her
   if(a.state==='dead')return {ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+'). Hardcore: one life.'};
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
   const from=Number.isFinite(Number(since))&&since!==null?Number(since):S.gameMin,m=Math.min(PACE.MIN[1],Math.max(PACE.MIN[0],Number(minutes)||240));
-  const out=(w,why)=>({ok:true,wake:w,why:why||null,gameMin:Math.round(S.gameMin),since:from,clock:day(),table:!!tv});
+  const out=(w,why,must)=>({ok:true,wake:w,why:why||null,...(must?{must:true}:{}),gameMin:Math.round(S.gameMin),since:from,clock:day(),table:!!tv});
   const tv=tableView(a);
-  if(tv&&!tv.acted&&tv.phase!=='outcome')return out('now','a scene at the table: '+tv.scene);
-  const seen=a.playEvSeen||0;let soft=null;
-  for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=2)return out('now',e.text);if(l===1&&!soft)soft=e}
+  if(tv&&!tv.acted&&tv.phase!=='outcome')return out('now','a scene at the table: '+tv.scene,true);
+  const seen=a.playEvSeen||0;let soft=null,now=null;
+  for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=3)return out('now',e.text,true);if(l===2&&!now)now=e;if(l===1&&!soft)soft=e}
+  if(wake==='must')return null;
+  if(now)return out('now',now.text);
   if(wake==='now')return null;
   if(soft)return out('soft',soft.text);
   if(S.gameMin>=from+m)return out('heartbeat',m+' game minutes passed');
@@ -52,4 +55,4 @@ export function paceBrief(id){const a=hero(Number(id));
   const foe=fighting?(t.kind==='hero'?t.name:t.elite||t.named?t.name:(MOBS[t.type]&&MOBS[t.type].name||'a monster')+(t.lvl?' (level '+t.lvl+')':'')):null;
   const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
-    foe,scripted:!!a.playIdle,table:!!(tv&&tv.phase!=='outcome'),news}}}
+    foe,autopilot:!!a.playIdle,table:!!(tv&&tv.phase!=='outcome'),news}}}

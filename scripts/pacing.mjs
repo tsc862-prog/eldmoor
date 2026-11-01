@@ -4,7 +4,8 @@
 // Between turns the runner long-polls POST /play/pace (scripts/relay-mcp.mjs -> src/sim/pace.js) and
 // starts the next turn when
 //   - something cannot wait (attacked, badly hurt, a choice, a table scene): at once, even inside the
-//     minimum gap (at most NOW_BURST such turns in a row, then the gap applies once);
+//     minimum gap (at most NOW_MAX such turns per NOW_WINDOW of real time; past that they wait for the gap,
+//     except a choice or a table scene, which must be answered in time and always starts at once);
 //   - something happened the agent has not read (an arrival, a vote, a party line, the narrator), or
 //     `heartbeat` game minutes passed: once `minGap` real seconds have passed since the last turn.
 // So a quiet hero at 1x takes a turn about once a real minute (240 game minutes = 40 s, plus the
@@ -14,7 +15,21 @@
 // Safety stop: failTracker(maxFails) counts failed or empty turns in a row (a turn that threw, made no
 // tool call, or had every call rejected); the runner stops after maxFails of them.
 export const PACE_DEFAULTS = {heartbeat: 240, minGap: 20, maxFails: 5};
-export const NOW_BURST = 4, POLL_REAL_MS = 10000, LEGACY_SEC_PER_GAME_MIN = 10 / 60; // 1x: 1 real s = 6 game min
+// Another local model held by Ollama (the relay's minds, another runner) evicts ours on a single GPU: say so.
+export async function localModelNote(adapter, model) {
+  const held = adapter && adapter.loaded ? await adapter.loaded() : null, others = (held || []).filter(m => m !== model);
+  return others.length ? `note: Ollama also holds ${others.join(', ')} in memory (the relay's minds or another runner?). On one GPU two local models evict each other and every call waits for a reload: use one local model for minds and runners.` : null;
+}
+// The local model a runner should use when nobody picked one (no --model): the one Ollama already holds in
+// memory, when it is pulled (the relay's minds keep it loaded; a second model would never get the GPU).
+// -> {model, note}
+export async function preferLoaded(adapter, model, pulled = []) {
+  const held = adapter && adapter.loaded ? await adapter.loaded() : null;
+  if (!held || !held.length || held.includes(model)) return {model, note: null};
+  const alt = held.find(m => pulled.includes(m));
+  return alt ? {model: alt, note: `Ollama already holds ${alt} in memory (the relay's minds?), so this runner plays with it instead of ${model}; pick a model explicitly to override.`} : {model, note: null};
+}
+export const NOW_MAX = 2, NOW_WINDOW = 60000, POLL_REAL_MS = 10000, LEGACY_SEC_PER_GAME_MIN = 10 / 60; // 1x: 1 real s = 6 game min
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const num = (v, d) => {const n = Number(v); return v === null || v === undefined || v === '' || !Number.isFinite(n) ? d : n};
@@ -40,13 +55,13 @@ export function failTracker(maxFails) {
 }
 // Did a local-loop turn (scripts/local-agent.mjs result) do anything?
 // (a turn with no call, every call rejected, or a narration repeating the last one with no world-changing call is empty)
-export const localWorked = r => !!(r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts));
+export const localWorked = r => !!(r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.foreign);
 
 // makePacer({base, hero, runner, heartbeat, minGap, log, stopped}) -> {next(), turnDone(), state}
 //   next(): waits for the next turn. -> {wake:'now'|'soft'|'heartbeat', why, table, clock} or {dead} / {gone, why} / {stopped}
 //   turnDone(): call when a turn ends (the gap and the heartbeat count from here).
 export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbeat, minGap = PACE_DEFAULTS.minGap, log = () => {}, stopped = () => false, fetchImpl = fetch}) {
-  let lastEnd = null, since = null, streak = 0, legacy = false, said = false;
+  let lastEnd = null, since = null, nows = [], legacy = false, said = false;
   const st = {waiting: false, wake: null};
   async function pace(wake, realMs) {
     try {
@@ -69,10 +84,10 @@ export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbe
           if (left <= 0) return {wake: 'heartbeat', why: 'real-time fallback', legacy: true};
           await sleep(Math.min(left, 1000)); continue;
         }
-        if (gapLeft > 0 && streak >= NOW_BURST) {await sleep(Math.min(gapLeft, 1000)); continue}
-        const mode = gapLeft > 0 ? 'now' : 'all';
+        nows = nows.filter(t => Date.now() - t < NOW_WINDOW);
+        const mode = gapLeft <= 0 ? 'all' : nows.length < NOW_MAX ? 'now' : 'must';
         if (!said) {said = true; log(`[pace] waiting: ${paceText({heartbeat, minGap})}`)}
-        const r = await pace(mode, mode === 'now' ? Math.max(50, Math.min(gapLeft, POLL_REAL_MS)) : POLL_REAL_MS);
+        const r = await pace(mode, mode !== 'all' ? Math.max(50, Math.min(gapLeft, POLL_REAL_MS)) : POLL_REAL_MS);
         if (r.unsupported) {legacy = true; said = false; continue}
         if (r.ok === false) {
           if (r.dead) return {dead: true, why: r.error};
@@ -83,7 +98,7 @@ export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbe
         }
         if (r.since != null) since = r.since;
         if (!r.wake) continue;
-        streak = r.wake === 'now' && gapLeft > 0 ? streak + 1 : 0;
+        if (r.wake === 'now' && gapLeft > 0 && !r.must) nows.push(Date.now());
         st.wake = r.wake;
         log(`[pace] woke (${r.wake}${r.clock ? ', ' + r.clock : ''}): ${String(r.why || '').slice(0, 160)}`);
         return r;
@@ -110,7 +125,7 @@ export function briefText(b) {
   if (b.place) bits.push('in ' + b.place);
   bits.push(b.foe ? 'fighting ' + b.foe : 'no foe engaged');
   if (b.table) bits.push('a scene is open at the table');
-  if (b.scripted) bits.push('you have been idle, so your instincts are acting for you until you give a command');
+  if (b.autopilot) bits.push('no order from you for a while, so autopilot carries on your last order (give a command to take over)');
   return `\n\nRight now (from the game, trust this over anything you said before): ${bits.join(' | ')}.` +
     (b.news && b.news.length ? `\nNew since you last looked: ${b.news.join(' / ')}` : '\nNothing new since you last looked.') +
     '\nAct through the tools (look, status, move_to, hunt, rest, wait, ...): words alone change nothing in the world.';

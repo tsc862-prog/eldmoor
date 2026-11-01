@@ -14,6 +14,12 @@ import {brainLine} from './brain.js';
 
 export const COOL=20,URGENT=3,HEAR=7,CAP=20,BUBBLE=3,BANTER=60;
 const URGENT_TRIGGERS={mourn:1,epic:1,duel:1,kill:1};
+// An agent-played hero says only what its agent says (issue #126): no scripted bark, banter or call at all.
+// Its own lines (say, party_say, a table line) are marked here for the watcher's Chat tab: "AGENT · <runner
+// model>" (e.ai stays for model-written mind lines). The tag comes from the host (the page knows each runner's
+// model, src/ui/player-bridge.js); heroes never read it (chat_read and events carry the text only).
+let agentTag=()=>null;export function setAgentTag(fn){agentTag=typeof fn==='function'?fn:()=>null}
+export function agentLine(a,e){if(!e||e.from!==a)return e;e.agent=true;delete e.ai;const t=agentTag(a);e.model='AGENT · '+(t||'agent');return e}
 
 // Private LCG so picking lines never perturbs the gameplay RNG.
 let seed=0x2545f491;
@@ -24,6 +30,7 @@ const fill=(s,a,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?a.name:ctx[k]!=nu
 
 export function say(a,trigger,ctx={}){
   if(!a||a.state==='dead'||a.state==='ghost')return;
+  if(a.player)return;
   if(ctx.p!=null&&r()>=ctx.p)return;
   a.chatCd=a.chatCd||0;
   if(a.chatCd>(URGENT_TRIGGERS[trigger]?COOL-URGENT:0))return;
@@ -44,7 +51,7 @@ export function say(a,trigger,ctx={}){
 export function speak(a,text,trigger,ai){const e={t:clockStr(),from:a,text,trigger};if(ai){e.ai=true;if(typeof ai==='string')e.model=ai}
   hear(a,e);
   for(const b of nearHeroes(a.x,a.y,HEAR)){if(b===a||b.state==='dead'||b.hidden||dist(a,b)>HEAR)continue;hear(b,e)}
-  a.bubble={text,life:BUBBLE};a.chatCd=COOL}
+  a.bubble={text,life:BUBBLE};a.chatCd=COOL;return e}
 
 function hear(b,e){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CAP)b.chat.shift()}
 
