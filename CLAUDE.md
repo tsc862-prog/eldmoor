@@ -191,8 +191,10 @@ render or ui, so the headless harness stays stub-free.
 
 ## Tuning knobs
 
-- XP curve `xpNeed`, hero `maxHp`/`atkOf`, caution thresholds (hunt retreat at
-  45% HP, flee at 22%): `src/sim/heroes.js`. Class table `CLS`: `src/data/classes.js`.
+- XP curve `xpNeed`, caution thresholds (hunt retreat at 45% HP, flee at 22%):
+  `src/sim/heroes.js`. Hero combat totals (Health, Attack, Defense, Crit, Speed) and their
+  level terms: `combatStats` in `src/sim/stats.js`; item armor/damage rates and properties:
+  `src/data/items.js`. Class table `CLS`: `src/data/classes.js`.
 - Mob stats (`maxhp: 25 + lvl*16`, hit `3 + lvl*2`), aggro and wander: `src/sim/mobs.js`.
 - Boss: `maxhp` 9000 in `src/sim/state.js`; hit 55-85 every 1.6s, breath every
   7s, raids need level 14+ heroes, 5+ of them or 4 with average gear 9+; raiders

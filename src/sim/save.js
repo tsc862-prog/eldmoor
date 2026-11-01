@@ -16,6 +16,7 @@ import {S,SAVE_VERSION} from './state.js';
 import {CRYPT} from '../world/map.js';
 import {GOODS,price} from '../data/items.js';
 import {rollScores} from './abilities.js';
+import {convertItem} from './gear.js';
 
 export {SAVE_VERSION};
 
@@ -36,7 +37,12 @@ const MIGRATIONS={1:snap=>{const ids={};(snap.GUILDS||[]).forEach((g,i)=>{ids[g.
   // v2 -> v3: heroes gain ability scores and skill training (abilities, #80); growth for levels already reached is replayed.
   2:snap=>{for(const a of snap.agents||[])if(a.kind==='hero'&&!a.abil)rollScores(a);return snap},
   // v3 -> v4: the Fellowship (#68) adds S.fellowship and a.fellow/persona/backstory/memory; older saves simply have none.
-  3:snap=>snap};
+  3:snap=>snap,
+  // v4 -> v5: items lose Vigor/Might/Guard/Precision/Haste and carry armor, damage, score bonuses and a
+  // rare property instead (stat cleanup, #88); the hero's cached stat totals go.
+  4:snap=>{for(const a of snap.agents||[]){if(a.kind!=='hero')continue;delete a.gtot;
+    for(const k in a.slots||{})if(a.slots[k])convertItem(a.slots[k],a.cls);
+    for(const it of a.bag||[])if(it&&typeof it==='object')convertItem(it,a.cls)}return snap}};
 
 // ---- snapshot ----
 export function snapshot(){

@@ -51,6 +51,7 @@ import {weatherName} from './weather.js';
 import {cleanReason} from '../data/prompts.js';
 import {speak} from './chat.js';
 import {topScores} from './abilities.js';
+import {combatStats} from './stats.js';
 import {fellowCard} from './persona.js';
 
 export const CFG={url:'http://127.0.0.1:8787/decide',timeoutMs:3000,offlineSec:60,
@@ -100,12 +101,15 @@ export const partyLegal=p=>around(zoneFor(weakest(p).lvl,homeOf(p.leader).gate))
 // Who may still be asked where to go: a solo hero, or a party leader before the party's zone is set.
 const zoneQ=a=>!a.party||(a.party.leader===a&&!a.party.set);
 const townOptions=a=>a.party&&a.party.leader===a?partyLegal(a.party):legalZones(a);
+// "health 212, attack 48, defense 31%, crit 9%, 0.95 blows/s"
+const combatLine=a=>{const c=combatStats(a);return 'health '+c.health+', attack '+Math.round(c.attack)+', defense '+Math.round(c.defense*100)+'%, crit '+Math.round(c.crit*100)+'%, '+c.aps.toFixed(2)+' blows/s'};
 export function snapshotFor(a,kind,extra={}){
   const mh=maxHp(a),z=zoneAt(a.x,a.y),R=CFG.sight;
   let top=null;for(const k of SLOTS){const it=a.slots&&a.slots[k];if(it&&(!top||it.ilvl>top.ilvl))top=it}
   const q=a.quest;
   const s={fac:FAC[a.fac].name,name:a.name,race:raceOf(a).name,cls:a.cls,lvl:a.lvl,hp:pct(a.hp,mh),gold:a.gold,
     gear:Math.round(gearScore(a)*10)/10,best:top?clip(top.name,40)+' ilvl '+top.ilvl:'none',
+    combat:combatLine(a), // the five combat totals (sim/stats.js), one short string
     traits:(a.traits||[]).join(', '),origin:clip(a.origin,160),
     scores:topScores(a),skills:(a.prof||[]).join(', '), // ability scores (sim/abilities.js)
     goal:a.goal?clip(a.goal.text,100)+' ('+a.goal.progress+'/'+a.goal.need+')':'none',
