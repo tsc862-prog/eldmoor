@@ -140,3 +140,16 @@ ul.tlist time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-num
 .abil .an{font-family:var(--px);font-size:7px;color:var(--dim)} .abil .as{font-size:20px} .abil .am{color:var(--dim)}
 .abil.hi .am{color:#8ad88a} .abil.lo .am{color:#d88a8a}
 .skills{margin-top:2px}
+
+/* Minds at play: heroes played by a model or an agent */
+.mcount{display:inline-block;min-width:16px;padding:2px 5px;margin-left:6px;background:#7fd6c2;color:#0d0e19;font-size:8px;text-align:center}
+ul.minds{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+li.mind{border:1px solid var(--edge);border-left:3px solid #7fd6c2;padding:5px 7px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.mtop{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.mlvl{color:var(--dim)}
+.mtag{margin-left:auto;font-family:var(--px);font-size:7px;padding:2px 4px;background:#7fd6c2;color:#0d0e19}
+.mtag.offline{background:var(--edge);color:var(--dim)}
+.mtag.agent{background:var(--gold);color:#0d0e19}
+.mlast{color:var(--dim);overflow-wrap:anywhere}
+.mo.ok{color:var(--green)} .mo.bad{color:var(--red)} .mo.warn{color:var(--gold)} .mo.dim{color:var(--dim)}
+li.mempty{color:var(--dim)}
