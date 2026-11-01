@@ -17,6 +17,7 @@ import {S,clockStr,maxHp,xpNeed,atkOf,onLog,onMarketTick} from '../sim/index.js'
 import {cam} from '../render/draw.js';
 import {weatherName} from '../sim/weather.js';
 import {friendsOf} from '../sim/bonds.js';
+import {enableBrain,disableBrain,brainStatus} from '../sim/brain.js';
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -158,8 +159,13 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){const c=(a.chat||[]).slice(-20).reverse();
   if(!c.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
-  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t),hn(e.from),': '+e.text);ul.append(li)}b.append(ul)}
+  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t),hn(e.from));if(e.ai)li.append(' ',aiBadge('AI'));li.append(': '+e.text);ul.append(li)}b.append(ul)}
 
+// ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----
+const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
+function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
+  if(st!=='off')d.append(' ',aiBadge('AI-played'+(st==='offline'?' (quiet)':''),'This hero\'s choices come from a language model via the local relay; the scripted rules take over whenever it is silent.'));
+  const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);return d}
 const BODY={stats:tabStats,log:tabLog,gear:tabGear,party:tabParty,chat:tabChat};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
@@ -173,7 +179,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   if(!a){root.innerHTML='<div class="meta">Tap a hero on the map, or pick one from Top heroes.</div>';skel=null;return}
   const k=skel&&skel.root===root&&root.contains(skel.hd)?skel:skeleton(root);
   const mh=maxHp(a),h=k.hd;h.replaceChildren();
-  h.append(el('div','nm f'+a.fac,a.name));
+  h.append(heroName(a));
   h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · <${a.guild.tag}> ${a.guild.name}`));
   h.append(el('div','doing',doing(a)));
   h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
@@ -227,6 +233,7 @@ function initChronicle(){const el_=$('log');
 // tab buttons ([data-tab]) switch the dossier tab.
 function initClicks(){const host=document.querySelector('.main')||document.body;
   host.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
+    const ai=t.closest('[data-ai]');if(ai){const a=cam.sel;if(a){if(a.brain)disableBrain(a);else enableBrain(a);renderHero()}return}
     const tb=t.closest('[data-tab]');if(tb){setTab(tb.dataset.tab);return}
     const n=t.closest('.hn[data-hid]');if(!n)return;
     const a=S.agents.find(x=>x.id==n.dataset.hid);if(a)pick(a)})}

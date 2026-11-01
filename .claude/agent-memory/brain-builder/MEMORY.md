@@ -1,0 +1,1 @@
+- [Brain design](brain-design.md) — decision points, relay protocol, model choice, cost and test approach from issue #40

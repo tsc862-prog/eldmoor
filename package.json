@@ -10,9 +10,12 @@
     "preview": "vite preview",
     "sim": "node scripts/headless.mjs",
     "worldcheck": "node scripts/worldcheck.mjs",
-    "savecheck": "node scripts/savecheck.mjs"
+    "savecheck": "node scripts/savecheck.mjs",
+    "relay": "node scripts/relay.mjs",
+    "braincheck": "node scripts/braincheck.mjs"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "vite": "^5.4.10"
   }
 }

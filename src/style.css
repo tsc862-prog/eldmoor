@@ -96,3 +96,7 @@ button.zoom{min-width:34px;padding-left:6px;padding-right:6px}
 .itip.pinned{margin-top:8px;max-width:none}
 .itip .in{font-weight:bold}
 .itip .is{color:var(--green)} .itip .ia{color:var(--gold)} .itip .if{color:var(--dim);font-style:italic;margin-top:4px}
+
+/* AI-played marking (sim/brain.js) */
+.ai-badge{font-family:var(--px);font-size:7px;color:#0d0e19;background:#7fd6c2;padding:2px 4px;margin-left:4px;vertical-align:middle;letter-spacing:.06em}
+.ai-toggle{font-size:7px;padding:3px 5px;margin-left:6px;box-shadow:none;vertical-align:middle}
