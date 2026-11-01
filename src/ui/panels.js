@@ -27,6 +27,7 @@ import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,AB
 import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
+import {showMindButtons} from './mindctl.js'; // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -229,6 +230,7 @@ function tabChat(b,a){const c=(a.chat||[]).slice(-20).reverse();
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
 function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
   if(st!=='off')d.append(' ',aiBadge('AI-played'+(st==='offline'?' (quiet)':''),'This hero\'s choices come from a language model via the local relay; the scripted rules take over whenever it is silent.'));
+  if(!showMindButtons(a)){if(a.player)d.append(' ',aiBadge('Agent','An AI agent plays this hero through the relay.'));return d}
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);
   // Agent player (issue #75): an AI agent with its own session plays this hero through MCP tools.
   if(a.player)d.append(' ',aiBadge('Agent','An AI agent plays this hero through the relay (npm run agent); reflexes keep it alive while the agent is silent.'));

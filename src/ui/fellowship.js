@@ -19,6 +19,7 @@ import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {doing} from './panels.js';
+import {mindOf,mindButton} from './mindctl.js'; // per-member mind control (#94)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -37,7 +38,7 @@ export function renderRoster(node){const P=fellowParty(),ul=el('div','felroster'
       ul.append(row);continue}
     const nm=el('span','fn');if(P&&P.leader===a)nm.append(el('span','gd','★ '));nm.append(hn(a),el('span','dm',' Lv '+a.lvl+' '+a.cls));row.append(nm);
     row.append(meter(a.hp/maxHp(a)));
-    const tools=el('span','ftools');const sh=el('button','mini','Sheet');sh.dataset.fsheet=a.id;const rm=el('button','mini','Remove');rm.dataset.fremove=a.id;tools.append(sh,rm);row.append(tools);
+    const tools=el('span','ftools');const sh=el('button','mini','Sheet');sh.dataset.fsheet=a.id;const rm=el('button','mini','Remove');rm.dataset.fremove=a.id;tools.append(mindButton(a),sh,rm);row.append(tools);
     const d=el('div','fdo dm',doing(a)+(enriching(a)?' · writing their story…':''));row.append(d);
     ul.append(row)}
   node.append(ul)}
@@ -159,6 +160,6 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm){sigForm=sig;sigTop='';top.replaceChildren();formView(top)}return}
   logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.lvl+':'+Math.round(m.hero.hp/maxHp(m.hero)*20)+':'+m.hero.state+':'+enriching(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.lvl+':'+Math.round(m.hero.hp/maxHp(m.hero)*20)+':'+m.hero.state+':'+enriching(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+fellows().map(mindOf).join(',');
   if(sig!==sigTop){sigTop=sig;sigForm='';top.replaceChildren();topView(top)}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog){sigLog=ls;logBox._b.replaceChildren();renderCampaignLog(logBox._b)}}

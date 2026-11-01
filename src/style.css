@@ -211,3 +211,69 @@ ul.legends li.lgd{opacity:.8}
 .lgm{margin-right:4px}.lgl{color:var(--green)}.lgx{color:var(--red)}
 .lgs{float:right;color:var(--gold)}
 ul.legends .meta{margin-left:22px}
+
+/* Fellowship-first UI (#94): party frames above the map, the side-by-side sheet, the World group */
+.frames{display:flex;flex-direction:column;gap:6px;min-width:0}
+.frames[hidden]{display:none}
+.frhead{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.frttl{font-family:var(--px);font-size:9px;color:var(--gold);letter-spacing:.06em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.frlist{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.pf{background:var(--panel);border:2px solid var(--edge);border-top-width:3px;box-shadow:3px 3px 0 #05060c;padding:5px 6px;display:flex;flex-direction:column;gap:3px;min-width:0;cursor:pointer;font-size:16px;line-height:1.05}
+.pf.r-tank{border-top-color:var(--blue)} .pf.r-healer{border-top-color:var(--green)} .pf.r-dps{border-top-color:var(--red)}
+.pf:hover,.pf:focus-visible{border-color:var(--gold);outline:none}
+.pf.sel{border-color:var(--gold);background:var(--panel2)}
+.pf.low .pfhp{border-color:var(--red)}
+.pf.dead,.pf.ghost{opacity:.6}
+.pf.empty{cursor:default;align-items:flex-start}
+.pfempty{font-family:var(--px);font-size:8px;color:var(--dim)}
+.pftop{display:flex;gap:6px;align-items:center;min-width:0}
+.pfport{width:30px;height:36px;flex:none;image-rendering:pixelated;background:#0a0b14;border:1px solid var(--edge);padding:1px}
+.pfid{min-width:0;display:flex;flex-direction:column;gap:2px}
+.pfname{font-family:var(--px);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pfsub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pfhp{height:13px}
+.pfhpt{position:absolute;inset:0;font-size:14px;line-height:12px;text-align:center;color:#fff;text-shadow:1px 1px 0 #000;font-variant-numeric:tabular-nums}
+.pfdo,.pftg,.pfrep{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pftg{color:#ffb060}
+.pftg:empty,.pfrep:empty,.pfchips:empty{display:none}
+.pfchips{display:flex;flex-wrap:wrap;gap:3px}
+.chip{font-family:var(--px);font-size:6px;padding:2px 3px;border:1px solid currentColor;letter-spacing:.04em;white-space:nowrap}
+.chip.c-good{color:#9ad0ff} .chip.c-bad{color:var(--red)} .chip.c-dim{color:var(--dim)} .chip.c-crypt{color:#c58cff} .chip.c-warn{color:var(--amber)} .chip.c-oath{color:var(--gold)}
+.pffoot{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-top:auto;min-width:0}
+.pfmind{font-family:var(--px);font-size:6px;padding:2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pfmind.m-scripted{color:var(--dim);border:1px solid var(--edge)} .pfmind.m-ai{background:#7fd6c2;color:#0d0e19} .pfmind.m-quiet{background:var(--edge);color:var(--dim)} .pfmind.m-agent{background:var(--gold);color:#0d0e19}
+button.mindbtn{font-size:6px;padding:2px 4px;white-space:nowrap}
+.fm .ftools{flex-wrap:wrap;justify-content:flex-end}
+.pftip .pftr{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}
+@media (max-width:920px){.frlist{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:560px){
+  .frlist{gap:4px}
+  .pf{font-size:14px;padding:3px 4px}
+  .pfport{width:20px;height:24px}
+  .pfname{font-size:7px}
+  .pftg,.pfrep,.pfchips{display:none}
+}
+/* the World group: the world panels, folded under one heading while a Fellowship rides */
+.worldgrp{border-style:dashed}
+.worldbody{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.worldbody>.panel{box-shadow:none;padding:8px 10px;background:var(--panel2)}
+.wsub{margin-top:4px;font-size:16px}
+/* the sheet overlay: scrolls inside its own frame, never the page */
+.sheetov{position:fixed;inset:0;z-index:40;background:rgba(5,6,12,.78);display:flex;align-items:flex-start;justify-content:center;padding:28px 16px 16px}
+.sheetov[hidden]{display:none}
+.shbox{background:var(--panel);border:2px solid var(--gold);box-shadow:6px 6px 0 #05060c;max-width:min(1200px,100%);width:100%;max-height:calc(100vh - 48px);display:flex;flex-direction:column;min-width:0}
+.shhead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-bottom:2px solid var(--edge)}
+.shttl{font-family:var(--px);font-size:10px;color:var(--gold);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shbody{overflow:auto;min-width:0;flex:1}
+.shkey{padding:6px 10px;font-size:15px}
+table.shtbl{border-collapse:collapse;font-size:17px;min-width:720px;width:100%;font-variant-numeric:tabular-nums}
+.shtbl th,.shtbl td{padding:3px 8px;border-bottom:1px solid var(--edge);text-align:left;vertical-align:top}
+.shtbl thead th{position:sticky;top:0;background:var(--panel2);z-index:1;font-weight:normal}
+.shtbl .shcorner{font-family:var(--px);font-size:7px;color:var(--dim);vertical-align:bottom}
+.shtbl .shrow{position:sticky;left:0;background:var(--panel);z-index:1;white-space:nowrap}
+.shtbl thead .shcorner{left:0;z-index:2}
+.shtbl td{min-width:130px;max-width:220px;overflow-wrap:anywhere}
+.shtbl tr.shgrp td{font-family:var(--px);font-size:7px;color:var(--gold);letter-spacing:.1em;text-transform:uppercase;background:#11142a;padding-top:6px}
+button.shsort{font-family:var(--mono);font-size:17px;background:transparent;border:0;box-shadow:none;padding:0;color:var(--dim);text-align:left}
+button.shsort:hover,button.shsort.on{color:var(--gold)}
+.shtbl td.hi{color:var(--green)} .shtbl td.lo{color:var(--red)}
