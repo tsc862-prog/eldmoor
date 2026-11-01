@@ -8,6 +8,7 @@ import {S} from './state.js';
 import {log,fac} from './chronicle.js';
 import {pop} from './effects.js';
 import {maxHp,gainXp,getEpic,goHome,agentDie} from './heroes.js';
+import {record} from './history.js';
 
 export function updBoss(dt){const boss=S.boss,agents=S.agents;
   if(!boss.alive){boss.respawn-=dt;if(boss.respawn<=0){boss.alive=true;boss.hp=boss.maxhp;boss.dmg=[0,0];log({t:'Kragmaw',c:'gd'},' stirs again in its Cinderpass lair.')}return}
@@ -19,6 +20,7 @@ export function updBoss(dt){const boss=S.boss,agents=S.agents;
     for(const t of eng){if(t.state!=='raid'||dist(t,boss)>4.6)continue;const d=Math.round(22+rnd()*8);t.hp-=d;pop(t.x,t.y-.6,String(d),'#ffa040');if(t.hp<=0)agentDie(t,boss)}}
   if(boss.hp<=0){boss.alive=false;boss.respawn=300;const f=boss.dmg[0]>=boss.dmg[1]?0:1;S.facStats[f].bosses++;
     log(fac(f),' slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'!');
+    for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')record(a,'Slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'!');
     const gs=new Set();for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')gs.add(a.guild);gs.forEach(g=>g.bosses++);
     for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid'){gainXp(a,400);a.gold+=40;if(rnd()<.4)getEpic(a,pickA(BOSS_EPICS),'Kragmaw')}
     for(const a of agents)if(a.raid){a.raid=false;goHome(a)}}}
@@ -30,4 +32,5 @@ export function raidCheck(dt){const boss=S.boss,agents=S.agents;
   const cand=agents.filter(a=>a.fac===f&&a.lvl>=12&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>y.lvl-x.lvl).slice(0,6);
   if(cand.length<4)return;S.raidOn[f]=true;
   cand.forEach((a,i)=>{a.raid=true;a.raidIdx=i;a.state='raid';a.target=null;a.dest=null;a.hp=Math.max(a.hp,maxHp(a)*.8)});
+  for(const a of cand)record(a,'Mustered with '+(cand.length-1)+' others to raid ',{t:'Kragmaw',c:'gd'},'’s lair.');
   log(fac(f),' musters ',String(cand.length),' heroes to raid Kragmaw’s lair.')}
