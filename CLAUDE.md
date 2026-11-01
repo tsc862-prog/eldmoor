@@ -164,6 +164,37 @@ one Agent SDK session per member.
   silent agent never stalls a scene, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
 
+## Local models (Mixed minds, issue #97)
+
+Each AI-played hero can ask a different model. Part 1 covers single decisions (town plan, crypt
+call, fight or flee, say) and the Fellowship writing kinds (persona, backstory, memory); agent
+play (`npm run agent`) is still Claude-only until the provider-neutral runner lands.
+
+- Install Ollama (https://ollama.com), then pull a model: `ollama pull qwen2.5:14b` (fits a
+  24 GB GPU with room to spare; Mistral Small, Gemma or a Qwen 32B also work). Ollama listens on
+  `http://localhost:11434`; set `OLLAMA_URL` in `.env` if it runs elsewhere, `OLLAMA_MODEL` for
+  the default model.
+- Start the relay as usual (`npm run relay`). No API key is needed for local models; without one
+  the relay still starts and only Claude requests fail (those heroes play scripted). On start it
+  prints whether Ollama is reachable and which models are pulled; `GET /health` lists the same
+  under `providers`.
+- Pick a mind per member in the Fellowship panel: each member row has Scripted / AI / Agent, and
+  for AI a provider (Claude, Local (Ollama), OpenAI, Google) and a model picked from what the relay
+  reports. The setting is `a.brainCfg = {provider, model}` on the hero (same shape as the agent
+  runner's `runner` settings), saved with the world; the brain sends it with every request for
+  that hero, Fellowship sheets included.
+- What to expect: zero cost. Measured on the owner's RTX 4090 with `qwen3.5:4b`: 0.3-0.7 s per
+  town plan and about 0.25 s per line once loaded (the first call, which loads the model, took
+  about 5 s; the relay keeps it loaded for 30 min); a 14B model will be a few times slower. Local calls get longer timeouts: 8 s per decision, 30 s or more for writing
+  (`RELAY_LOCAL_TIMEOUT`, `RELAY_LOCAL_WRITE_TIMEOUT`); the sim waits up to 9 s. Smaller models
+  pick legal options (the schema forces that) but reason less well and drift out of voice more.
+  Thinking models (qwen3.x) are asked with thinking off, or they spend the budget thinking.
+- Every answer is validated the same way as Claude's; a bad, slow or missing answer falls back to
+  the scripted rules. The Mind tab, Chat tab and Minds panel tag which model answered
+  (for example `qwen2.5:14b · local`), and the relay log and `--verbose` log record provider and model.
+- Adapters live in `scripts/providers/` (one interface: `call({system, user, schema, maxTokens,
+  model, effort})`). OpenAI and Google are stubs that report "not configured" until built.
+
 ## Layout
 
 - `index.html`: page shell and side panels. `src/style.css`: dark single-theme
@@ -218,7 +249,11 @@ one Agent SDK session per member.
   top heroes, auction house, clock; `controls.js` speed, view (incl. Follow Fellowship)
   and selection; `fellowship.js` the Fellowship panel (founding, roster, sheet editor,
   campaign log), the Memory tab and the Chronicle's "Fellowship only" filter; `table.js` the
-  Table mode banner and the View group's Table switch.
+  Table mode banner and the View group's Table switch. Fellowship-first UI (#94):
+  `frames.js` party frames above the map, `sheet.js` the side-by-side sheet overlay,
+  `layout.js` folds the world panels into a "World" group while a Fellowship exists,
+  `mindctl.js` per-member mind control and the Developer toggle (with a Fellowship, AI/Agent
+  buttons show only on members unless Developer is on).
 - `scripts/headless.mjs`: imports `src/sim/index.js` directly (no DOM stubs),
   steps the world and prints a summary from `S`.
 

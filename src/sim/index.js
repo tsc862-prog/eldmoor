@@ -31,6 +31,7 @@ import {fellowshipTick} from './fellowship.js';
 import {councilTick} from './council.js';
 import {tableTick,tableHold} from './table.js';
 import {legendsTick} from './legends.js';
+import {campTick} from './camp.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -59,8 +60,9 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
-  for(const a of S.agents)if(!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // agent-played heroes (sim/player.js) run a reduced machine first
-  partyTick();fellowshipTick(dt);councilTick();tableTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  for(const a of S.agents)if(a.state!=='camp'&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
+  // agent-played heroes (sim/player.js) run a reduced machine first
+  partyTick();fellowshipTick(dt);councilTick();campTick(dt);tableTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);goalsTick(dt);guildsTick(dt);
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);leverTick(dt);legendsTick(dt);memorialsTick(dt);

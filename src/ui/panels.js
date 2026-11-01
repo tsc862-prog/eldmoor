@@ -21,12 +21,13 @@ import {biography} from './biography.js';
 import {initTimeline} from './timeline.js';
 import {initDmLog,showAdventure} from './dmpanel.js';
 import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
-import {enableBrain,disableBrain,brainStatus,mindUser} from '../sim/brain.js';
+import {enableBrain,disableBrain,brainStatus,mindUser,modelTag,mindTag} from '../sim/brain.js';
 import {advLine} from '../sim/dm.js';
 import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
 import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
+import {showMindButtons} from './mindctl.js'; // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -223,12 +224,13 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){const c=(a.chat||[]).slice(-20).reverse();
   if(!c.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
-  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));li.append(hn(e.from));if(e.ai)li.append(' ',aiBadge('AI'));li.append(': '+e.text);ul.append(li)}b.append(ul)}
+  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));li.append(hn(e.from));if(e.ai)li.append(' ',aiBadge('AI',e.model?'Written by '+e.model:null));li.append(': '+e.text);if(e.model)li.append(' ',el('span','mmodel',e.model));ul.append(li)}b.append(ul)}
 
 // ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
 function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
   if(st!=='off')d.append(' ',aiBadge('AI-played'+(st==='offline'?' (quiet)':''),'This hero\'s choices come from a language model via the local relay; the scripted rules take over whenever it is silent.'));
+  if(!showMindButtons(a)){if(a.player)d.append(' ',aiBadge('Agent','An AI agent plays this hero through the relay.'));return d}
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);
   // Agent player (issue #75): an AI agent with its own session plays this hero through MCP tools.
   if(a.player)d.append(' ',aiBadge('Agent','An AI agent plays this hero through the relay (npm run agent); reflexes keep it alive while the agent is silent.'));
@@ -252,6 +254,7 @@ function mindRow(e){const bits=[e.t,MIND_KIND[e.kind]||e.kind];
   else bits.push(e.outcome==='pending'?'waiting':'no answer');
   const q=e.reason||e.line;if(q)bits.push('\u2018'+q+'\u2019');
   bits.push(e.kind==='follow'?'no call':e.ms==null?'\u2026':e.ms+' ms');
+  const mt=modelTag(e);if(mt&&e.kind!=='follow')bits.push(mt); // Mixed minds (#97): which model answered
   return bits}
 function mindDetail(d,a,e){const box=el('div','mdet');
   const kv=el('div','kv mkv'),add=(k,v)=>{if(v==null||v==='')return;kv.append(el('span','k',k),el('span','v',String(v)))};
@@ -261,7 +264,8 @@ function mindDetail(d,a,e){const box=el('div','mdet');
   add('Line',e.line);
   if(e.scripted)add(e.outcome==='applied'?'Scripted':'Scripted acted',e.outcome==='applied'?e.scripted+' (overridden)':e.scripted);
   add('Outcome',e.outcome+(e.error?' \u2014 '+e.error:''));
-  if(e.usage)add('Tokens',e.usage.in+' in / '+e.usage.out+' out');
+  add('Model',modelTag(e));
+  if(e.usage)add('Tokens',e.usage.in+' in / '+e.usage.out+' out'+(e.usage.cost!=null?' · $'+(+e.usage.cost).toFixed(6):''));
   box.append(kv);
   const open=mindOpen&&mindOpen.prompt;
   if(!e.snapshot){d.append(box);return} // a note (follow): nothing was sent
@@ -273,7 +277,7 @@ function mindDetail(d,a,e){const box=el('div','mdet');
     box.append(el('div','dm','User'),el('pre','mpre',mindUser(e)))}
   d.append(box)}
 function tabMind(b,a){const m=a.mind||[];
-  b.append(el('div','meta',a.brain?'Choices asked of the model, newest first. Tap a row for details.':'No longer AI-played; the last choices it made:'));
+  b.append(el('div','meta',a.brain?'Choices asked of the model ('+mindTag(a)+'), newest first. Tap a row for details.':'No longer AI-played; the last choices it made:'));
   if(!m.length){b.append(el('div','dm','No decisions yet. The hero asks at the town gate, in hard fights and when it has something to say.'));return}
   const list=el('div','mind');
   for(const e of m){const isOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===e.id;

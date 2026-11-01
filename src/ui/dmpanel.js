@@ -8,9 +8,9 @@ import {S} from '../sim/index.js';
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 
-export const FILTERS=[['all','All',null],['hooks','Hooks',['hooks','pick']],['scenes','Scenes',['frame','branch']],['rolls','Rolls',['roll','complication']],
+export const FILTERS=[['all','All',null],['hooks','Hooks',['hooks','pick']],['scenes','Scenes',['frame','branch','camp']],['rolls','Rolls',['roll','complication']],
   ['outcomes','Outcomes',['payoff','fail','abandon','fallback']],['levers','Levers',['lever']]];
-const BADGE={hooks:'BOARD',pick:'PICK',frame:'SCENE',roll:'ROLL',complication:'TWIST',branch:'FORK',payoff:'PAYOFF',fail:'FAIL',abandon:'DROP',fallback:'FALLBACK',lever:'LEVER'};
+const BADGE={hooks:'BOARD',pick:'PICK',frame:'SCENE',roll:'ROLL',complication:'TWIST',branch:'FORK',payoff:'PAYOFF',fail:'FAIL',abandon:'DROP',fallback:'FALLBACK',lever:'LEVER',camp:'CAMP'};
 let filter='all',advId=null,seen='',box=null,list=null,bar=null,chip=null;
 const open=new Set();
 export const dmFilter=()=>filter;

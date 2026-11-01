@@ -19,6 +19,7 @@ import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {doing} from './panels.js';
+import {renderMindRow,mindAct,mindChange,mindRowSig} from './mindpick.js'; // per-member mind (Mixed minds, #97)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -39,6 +40,7 @@ export function renderRoster(node){const P=fellowParty(),ul=el('div','felroster'
     row.append(meter(a.hp/maxHp(a)));
     const tools=el('span','ftools');const sh=el('button','mini','Sheet');sh.dataset.fsheet=a.id;const rm=el('button','mini','Remove');rm.dataset.fremove=a.id;tools.append(sh,rm);row.append(tools);
     const d=el('div','fdo dm',doing(a)+(enriching(a)?' · writing their story…':''));row.append(d);
+    if(a.state!=='dead'){const mr=el('div','fmind');renderMindRow(mr,a);row.append(mr)}
     ul.append(row)}
   node.append(ul)}
 export function renderBackstory(node,a){const B=a&&a.backstory;if(!B){node.append(el('div','dm','No backstory yet.'));return}
@@ -46,7 +48,7 @@ export function renderBackstory(node,a){const B=a&&a.backstory;if(!B){node.appen
   node.append(el('div','dm',(B.src==='model'?'Written by the model'+(B.model?' ('+B.model+')':''):'Scripted from the world')+(B.edited?', edited by you':'')+'.'))}
 export function renderPersona(node,a){const P=a&&a.persona;if(!P){node.append(el('div','dm','No persona yet.'));return}
   const kv=el('div','kv');for(const [k,label] of PERSONA_ORDER)kv.append(el('span','k',label),el('span','v',P[k]||''));node.append(kv)}
-const KIND_LABEL={council:'COUNCIL',table:'TABLE',found:'FOUND',join:'JOIN',recruit:'RECRUIT',leave:'LEAVE',adventure:'JOB',scene:'SCENE',roll:'ROLL',branch:'CHOICE',complication:'TWIST',outcome:'END',npc:'MET',fight:'FIGHT',level:'LVL',kill:'KILL',death:'DEATH',session:'DAY',note:'NOTE'};
+const KIND_LABEL={council:'COUNCIL',table:'TABLE',camp:'CAMP',found:'FOUND',join:'JOIN',recruit:'RECRUIT',leave:'LEAVE',adventure:'JOB',scene:'SCENE',roll:'ROLL',branch:'CHOICE',complication:'TWIST',outcome:'END',npc:'MET',fight:'FIGHT',level:'LVL',kill:'KILL',death:'DEATH',session:'DAY',note:'NOTE'};
 export function renderCampaignLog(node,o={}){const F=S.fellowship;if(!F){node.append(el('div','dm','No Fellowship.'));return}
   const days=[];for(const e of F.log){let d=days[days.length-1];if(!d||d.day!==e.day){d={day:e.day,list:[]};days.push(d)}d.list.push(e)}
   if(!days.length){node.append(el('div','dm','Nothing yet. The log fills as the five take jobs, roll dice and bleed.'));return}
@@ -123,6 +125,7 @@ function sheetView(node,a){node.replaceChildren();if(!a)return;
   node.append(box)}
 
 function act(t){const F=S.fellowship;msg='';
+  if(mindAct(t))return;
   if(t.dataset.ffac!=null){draft.fac=+t.dataset.ffac;draft.slots={tank:null,healer:null,dps1:null,dps2:null,dps3:null};sigForm='';return}
   if(t.dataset.ffill){offerReplacement(t.dataset.ffill);return}
   if(t.dataset.fadd){const s=cam.sel;if(s&&join(s,t.dataset.fadd,'chosen by the watcher'))msg=s.name+' joins.';return}
@@ -150,7 +153,8 @@ export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('fe
   root.append(top,sheet,logBox);
   root.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('button'):null;if(!t||!root.contains(t))return;
     if(t.closest('.hn'))return;act(t);sigTop='';sigForm='';renderFellowship()});
-  root.addEventListener('change',e=>{const s=e.target;if(s&&s.dataset&&s.dataset.fslot){const v=s.value;draft.slots[s.dataset.fslot]=v?+v:null;sigForm='';renderFellowship()}});
+  root.addEventListener('change',e=>{const s=e.target;if(mindChange(s)){sigTop='';renderFellowship();return}
+    if(s&&s.dataset&&s.dataset.fslot){const v=s.value;draft.slots[s.dataset.fslot]=v?+v:null;sigForm='';renderFellowship()}});
   const cb=$('chronFel');if(cb)cb.addEventListener('click',()=>{focus=!focus;syncChronBtn();onFilter()});
   renderFellowship()}
 
@@ -159,6 +163,7 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm){sigForm=sig;sigTop='';top.replaceChildren();formView(top)}return}
   logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.lvl+':'+Math.round(m.hero.hp/maxHp(m.hero)*20)+':'+m.hero.state+':'+enriching(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
-  if(sig!==sigTop){sigTop=sig;sigForm='';top.replaceChildren();topView(top)}
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.lvl+':'+Math.round(m.hero.hp/maxHp(m.hero)*20)+':'+m.hero.state+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
+  const picking=typeof document!=='undefined'&&document.activeElement&&document.activeElement.tagName==='SELECT'&&top.contains(document.activeElement); // never rebuild under an open picker
+  if(sig!==sigTop&&!picking){sigTop=sig;sigForm='';top.replaceChildren();topView(top)}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog){sigLog=ls;logBox._b.replaceChildren();renderCampaignLog(logBox._b)}}

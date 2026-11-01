@@ -1,0 +1,30 @@
+// The Fellowship's campfire (issue #64): stone ring, logs, flickering flame, drifting sparks, bedrolls
+// at each camper's spot, and a warm pool of light at night. Procedural, no image assets. Reads
+// S.fellowship.camp (sim/camp.js); draws nothing when there is no camp.
+const T=16;
+const camp=S=>{const F=S.fellowship,g=F&&F.camp;return g&&g.phase?g:null};
+
+export function drawCamp(ctx,S,cam,o){const g=camp(S);if(!g)return;const {inView,blink,drawText}=o;
+  const cx=Math.round(g.x*T),cy=Math.round(g.y*T);if(!inView(cx,cy,40))return;
+  // bedrolls
+  const ids=g.ids||[];ids.forEach((id,i)=>{const a=S.agents.find(x=>x.id===id);if(!a||a.state!=='camp')return;
+    const ang=i/Math.max(1,ids.length)*Math.PI*2+.6,bx=Math.round(g.x*T+Math.cos(ang)*T*1.15)-5,by=Math.round(g.y*T+Math.sin(ang)*T*.92)+3;
+    ctx.fillStyle='#2a2430';ctx.fillRect(bx-1,by-1,12,6);ctx.fillStyle=id===g.watcher?'#6a5a40':'#7a4a3a';ctx.fillRect(bx,by,10,4);ctx.fillStyle='#d8c8a0';ctx.fillRect(bx,by,3,4)});
+  // stone ring and logs
+  ctx.fillStyle='#4a4650';for(let k=0;k<8;k++){const a=k/8*Math.PI*2;ctx.fillRect(Math.round(cx+Math.cos(a)*6)-1,Math.round(cy+Math.sin(a)*4.5)-1,3,2)}
+  ctx.fillStyle='#3a2616';ctx.fillRect(cx-4,cy+1,8,2);ctx.fillStyle='#5a3a20';ctx.fillRect(cx-3,cy,6,2);
+  // flame: three layers that flicker
+  const f=Math.floor(blink*9),h=3+(f%3);
+  ctx.fillStyle='#c8381c';ctx.fillRect(cx-3,cy-h+1,6,h);
+  ctx.fillStyle='#f08a2a';ctx.fillRect(cx-2,cy-h-1+(f&1),4,h);
+  ctx.fillStyle='#ffe27a';ctx.fillRect(cx-1,cy-h+1,2,Math.max(2,h-2));
+  // sparks
+  for(let k=0;k<3;k++){const t=(blink*1.6+k*.37)%1;ctx.fillStyle=t<.6?'#ffd060':'#c8803a';ctx.fillRect(Math.round(cx-3+k*3+Math.sin(t*6+k)*2),Math.round(cy-6-t*14),1,1)}
+  if(cam.close){const w=ids.map(id=>S.agents.find(x=>x.id===id)).find(a=>a&&a.id===g.watcher);
+    drawText('CAMP'+(w?' · '+w.name+' on watch':''),cx,cy-26,'#f4c070',13)}}
+
+// Warm light for the night overlay (draw.js calls this in the 'lighter' pass).
+export function drawCampLight(ctx,S,dk,inView){const g=camp(S);if(!g)return;const x=g.x*T,y=g.y*T,r=54;if(!inView(x,y,r))return;
+  const fl=.85+.15*Math.sin(performance.now()/90);
+  const gr=ctx.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,'rgba(255,170,70,'+(dk*.85*fl)+')');gr.addColorStop(1,'rgba(255,170,70,0)');
+  ctx.fillStyle=gr;ctx.fillRect(x-r,y-r,r*2,r*2)}

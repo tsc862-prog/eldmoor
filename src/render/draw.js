@@ -22,6 +22,7 @@ import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
+import {drawCamp,drawCampLight} from './camp.js';
 import {drawMemorials} from './memorials.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
@@ -32,6 +33,7 @@ export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,d
 const FOLLOW_VIEW=460;
 // Entities and labels this many world px outside the view are not drawn.
 const MARGIN=48;
+export const ROLE_COL={tank:'#5b8ff2',healer:'#7dce5a',dps:'#e8544a'}; // Fellowship role colours, as the .frole badges
 const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a20'};
 
 // ---- camera control (module level so the UI and tools can drive it) ----
@@ -107,6 +109,7 @@ export function createRenderer(cv,screenEl){
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
     drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
+    drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
     const ents=[];
     for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ents.push(m);
@@ -141,6 +144,7 @@ export function createRenderer(cv,screenEl){
     const dk=darkness();if(dk>0){ctx.fillStyle='rgba(8,10,40,'+dk+')';ctx.fillRect(0,0,W*T,H*T);
       ctx.globalCompositeOperation='lighter';
       for(const L of LIGHTS){const r=L.big?92:28;if(!inView(L.x*T,L.y*T,r))continue;const g=ctx.createRadialGradient(L.x*T,L.y*T,0,L.x*T,L.y*T,r);g.addColorStop(0,'rgba(255,170,70,'+(dk*.7)+')');g.addColorStop(1,'rgba(255,170,70,0)');ctx.fillStyle=g;ctx.fillRect(L.x*T-r,L.y*T-r,r*2,r*2)}
+      drawCampLight(ctx,S,dk,inView);
       ctx.globalCompositeOperation='source-over'}
     drawWeather(ctx,S,cam,blink);
     // labels: region names when zoomed out, nameplates when close
@@ -158,6 +162,16 @@ export function createRenderer(cv,screenEl){
       for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;drawText(m.name,m.x*T,m.y*T-17,'#ffb060',14)} // named elite nameplate
       if(boss.alive&&inView(boss.x*T,boss.y*T,LM))drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,'#ffb060',15);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
+    // The Fellowship (#94): a role marker over each member and their name at any zoom (close views already
+    // name everyone), plus a dashed ring around the party in Follow Fellowship.
+    if(S.fellowship){const px1=cam.dpr/sc,F=S.fellowship,mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
+      if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
+        ctx.save();ctx.strokeStyle='rgba(242,193,78,.55)';ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
+      for(const a of mem){if(!inView(a.x*T,a.y*T,40))continue;const role=a.fellowRole?String(a.fellowRole).replace(/\d+$/,''):'dps',col=ROLE_COL[role]||ROLE_COL.dps;
+        const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-(close?17:14)-(close?16:15)*px1-m;
+        ctx.fillStyle='#05060c';ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
+        ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
+        if(!close)drawText(a.name,a.x*T,a.y*T-14,a===sel?'#f2c14e':'#fff2d0',13)}}
     if(mini)mini.draw(S);
   }
 

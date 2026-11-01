@@ -224,14 +224,14 @@ function sheets(a){const F=S.fellowship,mates=fellows();
 function cost(j,F){if(!F||!j)return;F.enrich.calls++;if(j.usage)F.enrich.usd=Math.round((F.enrich.usd+(+j.usage.cost||0))*1e6)/1e6;if(j.ms)F.enrich.ms=j.ms}
 export function enrich(a){const F=S.fellowship;if(!F||!F.ai||pending.has(a.id))return false;pending.add(a.id);
   const fid=F.id,still=()=>S.fellowship&&S.fellowship.id===fid&&a.fellow&&a.state!=='dead';
-  askRelay('backstory',backstorySnapshot(a,fellows(),F.name),TIMEOUT.backstory).then(j=>{
+  askRelay('backstory',backstorySnapshot(a,fellows(),F.name),TIMEOUT.backstory,a).then(j=>{
     if(!still())return;cost(j,S.fellowship);
     if(j&&!(a.backstory&&a.backstory.edited)&&applyBackstory(a,j,fellows(),j.model))S.fellowship.enrich.ok++;else S.fellowship.enrich.fail++;
-    return askRelay('persona',personaSnapshot(a,fellows(),S.fellowship.name),TIMEOUT.persona).then(p=>{if(!still())return;cost(p,S.fellowship);
+    return askRelay('persona',personaSnapshot(a,fellows(),S.fellowship.name),TIMEOUT.persona,a).then(p=>{if(!still())return;cost(p,S.fellowship);
       if(p&&!(a.persona&&a.persona.edited)&&applyPersona(a,p,fellows(),p.model)){S.fellowship.enrich.ok++;refreshStances(a,S.fellowship.ids)}else S.fellowship.enrich.fail++})})
     .catch(()=>{}).finally(()=>pending.delete(a.id));return true}
 setSummariser((a,items,before,stamp)=>{const F=S.fellowship;if(!F||!F.ai||!a.fellow)return;
-  askRelay('memory',memorySnapshot(a,items,before),TIMEOUT.memory).then(j=>{if(j&&S.fellowship){cost(j,S.fellowship);applyLong(a,j.long,stamp)}}).catch(()=>{})});
+  askRelay('memory',memorySnapshot(a,items,before),TIMEOUT.memory,a).then(j=>{if(j&&S.fellowship){cost(j,S.fellowship);applyLong(a,j.long,stamp)}}).catch(()=>{})});
 
 // User edits from the Fellowship panel: plain strings, cut to the same caps the model gets.
 export function editSheet(a,which,field,text){if(!a)return false;const v=String(text==null?'':text).replace(/\r/g,'').slice(0,600);

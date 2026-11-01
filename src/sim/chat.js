@@ -40,8 +40,8 @@ export function say(a,trigger,ctx={}){
   speak(a,text,trigger)}
 
 // Put a line in the speaker's and every nearby listener's chat buffer and show the bubble.
-// ai marks a model-written line (brain.js speaks those as follow-ups).
-export function speak(a,text,trigger,ai){const e={t:clockStr(),from:a,text,trigger};if(ai)e.ai=true;
+// ai marks a model-written line (brain.js speaks those as follow-ups); a string is the model tag (#97).
+export function speak(a,text,trigger,ai){const e={t:clockStr(),from:a,text,trigger};if(ai){e.ai=true;if(typeof ai==='string')e.model=ai}
   hear(a,e);
   for(const b of nearHeroes(a.x,a.y,HEAR)){if(b===a||b.state==='dead'||b.hidden||dist(a,b)>HEAR)continue;hear(b,e)}
   a.bubble={text,life:BUBBLE};a.chatCd=COOL}
