@@ -24,7 +24,7 @@ import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
 import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
-import {townZone,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
+import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
 import {dmDepart,dmTravel,dmHunt} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 
 // ---- stat formulas (tuning knobs) ----
@@ -161,8 +161,10 @@ export function updAgent(a,dt){
       else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2;a.linger=a.cls==='Warrior'?4+rnd()*2:2;seekParty(a)}
       else{if(a.linger>0&&!a.party&&seekParty(a)==='wait'){a.linger--;a.wait=1;break}
         if(a.linger>0&&a.party&&partyMates(a).some(b=>b.state==='town'&&b.townStep<2)){a.linger--;a.wait=1;break}
-        if(dmDepart(a,c))break; // DM: take a posted adventure or resume one (sim/dm.js)
-        const tz=a.party?a.party.zone:townZone(a); // BRAIN: zone pick (scripted = huntZone(a))
+        // Order is deliberate: a posted adventure outranks any zone plan, so the DM goes first
+        // and an AI hero's (or leader's) town plan is then settled 'overruled' (brainJob).
+        if(dmDepart(a,c)){brainJob(a);break} // DM: take a posted adventure or resume one (sim/dm.js)
+        const tz=a.party?partyZone(a):townZone(a); // BRAIN: zone pick (scripted = huntZone(a); a party's zone, which an AI leader may set)
         say(a,'depart',{zone:ZONES[tz]});
         a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate)}}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
