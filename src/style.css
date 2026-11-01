@@ -30,18 +30,40 @@ button[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:va
 .panel{background:var(--panel);border:2px solid var(--edge);box-shadow:4px 4px 0 #05060c;padding:12px 14px;min-width:0}
 .panel h2{font-family:var(--px);font-size:10px;color:var(--gold);margin:0 0 10px;letter-spacing:.08em;text-transform:uppercase}
 .f0{color:var(--blue)} .f1{color:var(--red)} .ep{color:#c58cff} .gd{color:var(--gold)} .dm{color:var(--dim)}
-.hero{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:center}
+/* Hero dossier: header grid, tab strip, then the active tab's body */
+.hero{display:flex;flex-direction:column;gap:10px}
+.hero .hd{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:center}
 .hero .nm{font-family:var(--px);font-size:13px;grid-column:1/-1}
 .hero .meta{grid-column:1/-1;color:var(--dim)}
 .hero .doing{grid-column:1/-1;background:var(--panel2);border-left:3px solid var(--gold);padding:6px 8px}
 .meter{height:10px;background:#0a0b14;border:1px solid var(--edge);position:relative}
 .meter i{position:absolute;inset:0 auto 0 0;display:block}
-.hp i{background:#3fbf4a}.xp i{background:#9a6af0}
-.stats{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;font-variant-numeric:tabular-nums}
-.stats div{background:var(--panel2);padding:6px;text-align:center}
-.stats b{display:block;font-family:var(--px);font-size:11px;font-weight:normal;margin-bottom:3px}
-.stats span{color:var(--dim);font-size:16px}
-.epics{grid-column:1/-1;font-size:18px}
+.hp i{background:#3fbf4a}.xp i{background:#9a6af0}.gl i{background:var(--gold)}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:2px solid var(--edge);padding-bottom:6px}
+.tabs button{font-size:8px;padding:6px 8px;box-shadow:none}
+.tb{display:flex;flex-direction:column;gap:8px;min-height:120px}
+.tb .log{max-height:260px}
+/* Clickable hero names anywhere in the panels */
+.hn{cursor:pointer;text-decoration:underline dotted transparent;text-underline-offset:3px;transition:text-decoration-color .1s}
+.hn:hover,.hn:focus-visible{text-decoration-color:currentColor;text-decoration-style:solid}
+/* Stats tab */
+.kv{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:4px 12px;font-variant-numeric:tabular-nums}
+@media (max-width:560px){.kv{grid-template-columns:auto 1fr}}
+.kv .k{color:var(--dim)} .kv .v{font-family:var(--px);font-size:10px;align-self:center}
+.goal{display:flex;flex-direction:column;gap:4px;background:var(--panel2);padding:6px 8px;border-left:3px solid var(--gold)}
+/* Gear tab */
+.gear{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center}
+.gear .k{color:var(--dim);font-family:var(--px);font-size:8px;text-transform:uppercase;letter-spacing:.06em}
+.ilv{color:var(--dim);font-size:16px;font-variant-numeric:tabular-nums}
+.ztag{font-family:var(--px);font-size:7px;padding:2px 4px;border:1px solid currentColor;color:var(--dim);vertical-align:middle;white-space:nowrap}
+.z0{color:var(--green)} .z1{color:#5fc9b8} .z2{color:#f08a3c} .z3{color:#9fd8ff}
+/* Party tab */
+.party{display:flex;flex-direction:column;gap:6px}
+.party .pm{display:grid;grid-template-columns:1fr 90px;gap:10px;align-items:center;background:var(--panel2);padding:4px 8px}
+.party .lead{border-left:3px solid var(--gold)}
+/* Log and chat tabs reuse .log; chat speakers keep their faction colour */
+.chat li,.hist li{line-height:1.15}
+.epics{font-size:18px}
 .facs{display:grid;grid-template-columns:auto 1fr 1fr;gap:4px 10px;font-variant-numeric:tabular-nums}
 .facs .h{font-family:var(--px);font-size:9px}
 .facs .k{color:var(--dim)}

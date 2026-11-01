@@ -17,6 +17,7 @@ import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerCl
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 import {emptySlots,gearScore,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
+import {record} from './history.js';
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
@@ -46,11 +47,13 @@ export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
   while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
+    record(a,'Reached level '+a.lvl+'.');
     if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');}
   if(a.lvl>=20)a.xp=0}
 
 export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.');
   equipEpic(a,name);
+  record(a,'Looted ',epic(name),' from '+src+'.');
   say(a,'epic',{item:name})}
 
 export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a.kills++;
@@ -58,6 +61,7 @@ export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a
   const M=MOBS[m.type];shareKill(a,m,xp);if(rnd()<.72)a.bag.push(M.loot);a.gold+=Math.max(1,Math.round(m.lvl*.6*rnd()));
   rollDrop(a,m);
   if(rnd()<.006)getEpic(a,pickA(EPICS[M.z]),'a '+M.name);
+  if(m.elite)record(a,'Slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');
   if(m.elite){a.eliteKills=(a.eliteKills||0)+1;log(a,' slew ',{t:m.name,c:'gd'},', ',m.title,', in ',ZONES[M.z],'!');getEpic(a,pickA(EPICS[M.z]),m.name)} // named elite: guaranteed epic from the zone table
   if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need)a.quest.have++;
   a.target=null;a.state='hunt'}
@@ -75,10 +79,12 @@ export function fall(a,cause){
 
 export function agentDie(a,killer){
   const lv={t:'(level '+a.lvl+')',c:'dm'};
+  record(a,'Fell at level '+a.lvl+', slain by ',killer.kind==='hero'?killer:killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+MOBS[killer.type].name,'.');
   for(const x of S.agents)if(x!==a&&x.state!=='dead'&&(x.guild===a.guild||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
   if(killer.kind==='hero'){killer.honor++;S.facStats[killer.fac].honor++;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
     killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
     say(killer,'kill',{target:a.name});
+    record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':'Killed ',a,' (level '+a.lvl+').');
     if(killer.nemesis[a.id]){log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
     else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&x.guild===a.guild);
@@ -109,6 +115,7 @@ export function sellAndShop(a){const c=CITY[a.fac];let tot=sellGear(a),n=0;
 
 export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
     say(a,'quest',{mob:M.pl});
+    record(a,'Completed ',{t:'“'+M.q+'”',c:'gd'},' for '+g+'g.');
   if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');a.quest=null}
   if(!a.quest||MOBS[a.quest.type].z!==zoneFor(a.lvl))newQuest(a)}
 
