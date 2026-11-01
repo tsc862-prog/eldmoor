@@ -24,6 +24,7 @@ import {xpNeed,maxHp,seedLevel} from './heroes.js';
 import {makeItem,syncGear} from './gear.js';
 import {record,first} from './history.js';
 import {found,autoPick} from './fellowship.js';
+import {pickSetup,applyMinds,cleanSetup} from './setup.js';
 
 // Starting levels of background heroes: weight per band, levels spread evenly inside a band.
 // About 30% greenhorns (1-3), 36% journeymen (4-7), 24% seasoned (8-11), 10% veterans (12-15).
@@ -60,14 +61,15 @@ export function season(a,L){if(L<=1){record(a,'New to the road out of '+homeOf(a
 
 // The opening for a fresh world. Called by init() after the level-1 roster exists.
 export function opening(o={}){
-  if(!fellowshipStart(o)){
+  const setup=o.setup?cleanSetup(o.setup):null; // New World setup (sim/setup.js, #133): chosen classes, names, peoples and minds
+  if(!setup&&!fellowshipStart(o)){
     log('Twenty-eight new heroes of ',fac(0),' and ',fac(1),' arrive in ',{t:'Eldmoor',c:'gd'},'. Every one of them is level 1.');return null}
-  const ff=o.fac!=null?o.fac:rnd()<.5?0:1,pick=autoPick(ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
+  const ff=setup?setup.fac:o.fac!=null?o.fac:rnd()<.5?0:1,pick=setup?pickSetup(setup):autoPick(ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
   for(let f=0;f<FAC.length;f++){const hs=S.agents.filter(a=>a.fac===f&&!ids.has(a.id)&&a.state!=='dead');
     for(let i=hs.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[hs[i],hs[j]]=[hs[j],hs[i]]} // shuffle, so level does not follow class order
     hs.forEach((a,i)=>season(a,startLevel((i+rnd())/hs.length)))}
   const bg=S.agents.filter(a=>!ids.has(a.id)),lv=bg.map(a=>a.lvl);
   log({t:'Eldmoor',c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',fac(0),' and ',fac(1),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.');
-  const r=found(pick,{fac:ff,ai:false}); // the five set out at level 1 from their hall, Minds scripted
-  if(r.ok)r.fellowship.minds='off';
+  const r=found(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, Minds scripted unless the setup chose
+  if(r.ok){r.fellowship.minds='off';if(setup){applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm}}}
   return r.ok?r.fellowship:null}
