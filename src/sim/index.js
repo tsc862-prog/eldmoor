@@ -25,6 +25,7 @@ import {bondsTick} from './bonds.js';
 import {brainTick} from './brain.js';
 import {dmTick} from './dm.js';
 import {leverTick} from './levers.js';
+import {memorialsTick} from './memorials.js';
 import {playerUpd} from './player.js';
 import {fellowshipTick} from './fellowship.js';
 
@@ -57,5 +58,5 @@ export function step(dt){S.gameMin+=dt*6;
   partyTick();fellowshipTick(dt);for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);goalsTick(dt);guildsTick(dt);
-  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);leverTick(dt);
+  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);leverTick(dt);memorialsTick(dt);
   updFx(dt)}

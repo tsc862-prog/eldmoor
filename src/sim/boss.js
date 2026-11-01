@@ -29,6 +29,7 @@ export function updBoss(dt){const boss=S.boss,agents=S.agents,T=tplOf(boss);
   if(boss.breath<=0){boss.breath=A.cd;S.fx.push({type:'ring',x:boss.x,y:boss.y-.5,life:.6});
     for(const t of eng){if(t.state!=='raid'||dist(t,boss)>A.radius)continue;const d=Math.round((A.dmg[0]+rnd()*A.dmg[1])*hm);t.hp-=d;pop(t.x,t.y-.6,String(d),A.color||'#ffa040');if(t.hp<=0)agentDie(t,boss)}}
   if(boss.hp<=0){boss.alive=false;boss.respawn=T.respawn;boss.t=0;boss.phase=null;const f=boss.dmg[0]>=boss.dmg[1]?0:1;S.facStats[f].bosses++;
+    log('The lava ring around the lair cools to black rock; the hoard lies open until the wyrm wakes.'); // memorials: render/memorials.js draws the cooled lair while the boss is dead
     log(fac(f),' slew ',{t:T.full,c:'gd'},'!');timeline('boss',fac(f),' slew ',{t:T.full,c:'gd'},'.');
     for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')record(a,'Slew ',{t:T.full,c:'gd'},'!');
     const gs=new Set();for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')gs.add(a.guild);gs.delete(null);gs.forEach(g=>g.bosses++);
