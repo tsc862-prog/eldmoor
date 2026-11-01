@@ -192,7 +192,9 @@ console.log('npm run fellowship -- --provider openai (headless Fellowship, mock 
   const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '8', '--world', join(tmp, 'fworld.json')], {wait: /headless world/});
   await fw.until;
   const run = start(['scripts/fellowship.mjs', '--url', FB, '--provider', 'openai', '--model', 'gpt-6-luna', '--max-turns', '1', '--cadence', '0', '--budget', '1']);
-  let tags = 0; for (let i = 0; i < 100 && tags < 5; i++) {await sleep(100); const h = await health(FB).catch(() => null); tags = h ? h.heroes.filter(x => x.runner && x.runner.provider === 'openai').length : 0}
+  const seen = new Set(); let tags = 0; // members claim, play one turn and release at their own pace: count every member seen tagged
+  for (let i = 0; i < 300 && seen.size < 5; i++) {await sleep(100); const h = await health(FB).catch(() => null); if (h) for (const x of h.heroes) if (x.runner && x.runner.provider === 'openai') seen.add(x.id)}
+  tags = seen.size;
   ok(tags === 5, `every member's claim carries provider openai (${tags}/5)`);
   const code = await run.done, out = run.out();
   ok(code === 0, 'the Fellowship runner finishes' + (code ? '\n' + out.slice(-3000) : ''));
