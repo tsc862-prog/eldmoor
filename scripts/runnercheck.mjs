@@ -136,6 +136,23 @@ console.log('runner routes (fake children)');
   ok(s.status === 200 && s2.status === 429 && /Claude runner slot/.test(s2.error) && s3.status === 200 && kids.length === n0 + 2, 'with RUNNER_CLAUDE_MAX=1 a second Claude runner is refused; a local one still starts');
   ok(g.claude.slots === 1 && g.claude.used === 1 && g.runners.find(r => r.key === 'hero:1').claudeSlots === 1, 'the page sees the Claude slots in use');
   sl.sup.killAll(); sl.server.close();
+  // the DM agent: kind 'dm', no hero, one at most, counted in the Claude slots; refused until installed
+  const dm = await mk(true, {RUNNER_CLAUDE_MAX: '2'}), n1 = kids.length;
+  s = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic', model: 'claude-sonnet-5-5', maxTurns: 10, budget: 1}, origin: PAGE});
+  ok(existsSync(join(ROOT, 'scripts', 'dm-agent.mjs')) ? s.status === 200 : s.status === 501 && /DM agent is not installed yet/.test(s.error) && kids.length === n1, 'a DM runner before scripts/dm-agent.mjs exists: "not installed yet"');
+  const realDm = RUNNER_KINDS.dm.script; RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs'; // stand-in so the route can be tested now
+  for (const k of dm.sup.list()) dm.sup.stop(k.key);
+  s = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic', maxTurns: 10, budget: 1}, origin: PAGE});
+  const kd = kids[kids.length - 1];
+  const sd = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm'}, origin: PAGE});
+  g = await req(dm.base, '/play/runner');
+  ok(s.status === 200 && s.runner.key === 'dm' && s.runner.hero === null && kd.args[0] === 'scripts/mock-ollama.mjs' && kd.args.includes('--budget') && sd.status === 409, 'a DM runner starts with no hero, its flags, and only one at a time');
+  ok(g.claude.used === 1 && g.kinds.dm.installed === true, 'it takes a Claude slot');
+  kd.stdout.emit('data', '[dm] [turn 1] ... | run $0.0100 |\n'); await sleep(5);
+  ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'live', 'it shows live once it plays a turn');
+  s = await req(dm.base, '/play/runner/stop', {method: 'POST', body: {kind: 'dm'}, origin: PAGE});
+  ok(s.status === 200 && kd.got === 'stop\n', 'stop {kind: "dm"} stops it');
+  RUNNER_KINDS.dm.script = realDm; dm.sup.killAll(); dm.server.close();
   rmSync(tmp, {recursive: true, force: true});
 }
 

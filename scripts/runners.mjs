@@ -3,13 +3,13 @@
 // (scripts/play-headless.mjs --runners) attach it next to the agent-player routes of relay-mcp.mjs.
 //
 //   GET  /play/runner         {ok, enabled, how?, max, kinds:{kind:{defaults,caps}}, providers, runners:[...]}
-//   POST /play/runner/start   {kind?:'hero'|'fellowship', hero?, provider?, model?, maxTurns?, budget?}
+//   POST /play/runner/start   {kind?:'hero'|'fellowship'|'dm', hero?, provider?, model?, maxTurns?, budget?}
 //                             -> {ok, runner} | 4xx {error}
-//   POST /play/runner/stop    {key} or {kind?, hero?} -> {ok, runner}
+//   POST /play/runner/stop    {kind?, hero?} (or {key}) -> {ok, runner}
 //
 // A runner is one child process of a known kind (RUNNER_KINDS): 'hero' plays one agent-played hero
 // (scripts/agent-player.mjs --hero <id>), 'fellowship' plays every agent-played Fellowship member
-// (scripts/fellowship.mjs); more kinds (the DM agent) are one more row in the table. Each runner has a
+// (scripts/fellowship.mjs), 'dm' the DM agent (scripts/dm-agent.mjs, once installed; one at most). Each runner has a
 // key ('hero:12', 'fellowship'), a state (starting, live, waiting, stopping, stopped, crashed), pid,
 // uptime, turns and cost (read from its turn lines), provider and model (from its claim, else as
 // asked), the last lines of its output and, when it crashed, its last error line. Output goes to
@@ -51,8 +51,13 @@ export const RUNNER_KINDS = {
     key: r => 'hero:' + r.hero, args: r => ['--hero', String(r.hero)], heroes: (r) => [r.hero]},
   fellowship: {script: 'scripts/fellowship.mjs', label: 'Fellowship runner', needsHero: false,
     defaults: {maxTurns: 6, budget: 2}, caps: {maxTurns: 100, budget: 10},
-    key: () => 'fellowship', args: () => ['--cadence', '20'], heroes: (r, hs) => hs.filter(h => h.fellow && h.alive).map(h => h.id)},
+    key: () => 'fellowship', args: () => [], heroes: (r, hs) => hs.filter(h => h.fellow && h.alive).map(h => h.id)},
+  // The DM agent (#66): one at most, no hero; it claims the DM seat itself. Installed once scripts/dm-agent.mjs exists.
+  dm: {script: 'scripts/dm-agent.mjs', label: 'DM agent', needsHero: false, noHeroes: true, missing: 'The DM agent is not installed yet (scripts/dm-agent.mjs comes with the DM agent PR).',
+    defaults: {maxTurns: 20, budget: 1}, caps: {maxTurns: 200, budget: 5},
+    key: () => 'dm', args: () => [], heroes: () => [], session: 'dm'},
 };
+export const kindInstalled = K => existsSync(join(ROOT, K.script));
 
 const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(h || ''));
 const loopback = a => /^(127\.|::1$|::ffff:127\.)/.test(String(a || ''));
@@ -81,6 +86,9 @@ export function checkStart(b, heroes, {running = []} = {}) {
     if (!h) return {error: `Hero #${id} is not agent-played in the game (press Agent on it first).`, code: 404};
     if (!h.alive) return {error: `${h.name} is dead. Hardcore: one life.`, code: 409};
     req.hero = id; req.name = h.name;
+  } else if (K.noHeroes) {
+    if (!kindInstalled(K)) return {error: K.missing || `${K.label} is not installed.`, code: 501};
+    req.name = K.label;
   } else {
     const ids = K.heroes(req, known);
     if (!ids.length) return {error: kind === 'fellowship' ? 'No agent-played Fellowship member. Set the Fellowship\'s Minds to agents first.' : 'Nothing for this runner to play.', code: 404};
@@ -109,7 +117,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   const claudeMax = Number.isFinite(Number(env.RUNNER_CLAUDE_MAX)) && env.RUNNER_CLAUDE_MAX !== '' && env.RUNNER_CLAUDE_MAX != null ? Math.max(0, Number(env.RUNNER_CLAUDE_MAX)) : CLAUDE_SLOTS;
   // the provider a hero's runner will use: the request's, else the hero's saved runner settings, else the default
   const providerFor = (id, asked) => {if (asked) return asked;
-    try {const f = sessionPath(id, logs); if (existsSync(f)) {const j = JSON.parse(readFileSync(f, 'utf8')); if (j && j.runner && j.runner.provider) return j.runner.provider}} catch {}
+    try {const f = typeof id === 'string' ? join(logs, 'agents', id + '.json') : sessionPath(id, logs); if (existsSync(f)) {const j = JSON.parse(readFileSync(f, 'utf8')); if (j && j.runner && j.runner.provider) return j.runner.provider}} catch {}
     return env.AGENT_PROVIDER || 'anthropic'};
   const table = new Map(); // key -> runner record (running and recently finished)
   const dir = join(logs, 'runners');
@@ -121,6 +129,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   function stateOf(r) {
     if (r.done) return r.state;
     if (r.stopping) return 'stopping';
+    if (RUNNER_KINDS[r.kind].noHeroes) return r.turns ? 'live' : r.lines.length ? 'waiting' : 'starting'; // no hero claims to read: its output tells
     const ids = r.kind === 'hero' ? [r.hero] : RUNNER_KINDS[r.kind].heroes(r, heroes());
     const links = ids.map(id => play.linkOf(id)), held = ids.filter(id => play.claimed(id));
     if (!held.length) return 'starting';
@@ -212,7 +221,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (!localHost(req.headers.host) || !loopback(req.socket.remoteAddress)) return send(403, {error: 'host not allowed'});
     if (!okOrigin) return send(403, {error: 'origin not allowed'});
     if (req.method === 'OPTIONS') {res.writeHead(204, o === origin ? {'access-control-allow-origin': origin, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '600', vary: 'origin'} : {}); return res.end()}
-    const kinds = Object.fromEntries(Object.entries(RUNNER_KINDS).map(([k, K]) => [k, {defaults: K.defaults, caps: K.caps}]));
+    const kinds = Object.fromEntries(Object.entries(RUNNER_KINDS).map(([k, K]) => [k, {defaults: K.defaults, caps: K.caps, installed: kindInstalled(K)}]));
     if (path === '/play/runner' && req.method === 'GET') return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), max: MAX_RUNNERS, claude: {slots: claudeMax, used: running().reduce((t, r) => t + (r.claude || 0), 0)}, kinds, providers: RUNNER_PROVIDERS, runners: enabled ? list() : []});
     if (req.method !== 'POST') return send(404, {error: 'not found'});
     if (!enabled) return send(403, {error: 'runners are off', how: HOW});
@@ -222,7 +231,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (c.error) {log(`[runners] start refused: ${c.error}`); return send(c.code, {ok: false, error: c.error})}
       if (c.req.kind === 'hero' && play.claimed(c.req.hero)) return send(409, {ok: false, error: `${c.req.name} already has a live agent runner (one agent per hero).`});
       // Claude slots (see CLAUDE_SLOTS): how many concurrent Claude requests this runner can make
-      const ids = RUNNER_KINDS[c.req.kind].heroes(c.req, heroes()), want = ids.filter(id => providerFor(id, c.req.provider) === 'anthropic').length;
+      const K = RUNNER_KINDS[c.req.kind], ids = K.session ? [K.session] : K.heroes(c.req, heroes()), want = ids.filter(id => providerFor(id, c.req.provider) === 'anthropic').length;
       const used = running().reduce((t, r) => t + (r.claude || 0), 0), free = Math.max(0, claudeMax - used);
       if (want && !free) {const why = `All ${claudeMax} Claude runner slot(s) are in use (RUNNER_CLAUDE_MAX; the API org caps concurrent requests, shared with the relay). Stop a Claude runner, or play this one with a local model.`; log(`[runners] start refused: ${why}`); return send(429, {ok: false, error: why})}
       c.req.claude = Math.min(want, free); if (c.req.kind === 'fellowship' && want) c.req.claudeConcurrency = c.req.claude;

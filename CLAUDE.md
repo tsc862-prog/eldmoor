@@ -137,9 +137,9 @@ is silent, and scene choices time out to the scripted branch, so the world never
   stopping, stopped, crashed with its last error line), provider/model, turns and cost; the Fellowship panel
   (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`). A picker chooses the mind
   it starts with (the hero's saved mind, Claude, or a pulled local model). The relay spawns the runners as
-  child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship',
-  hero?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {key}`; kinds are a table, the DM
-  agent can be one more), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
+  child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship'|'dm',
+  hero?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {kind, hero?}`; kinds are a table; `dm` runs
+  `scripts/dm-agent.mjs`, one at most, and is refused as "not installed yet" until that file exists), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
   a stop writes "stop" on the child's stdin (it releases its heroes), then kills; a child also stops when
   the relay goes away. Limits: off without the flag, loopback and the game page's origin only, heroes the
   page names as agent-played, providers anthropic/ollama, defaults 20 turns/$1.00 per hero and 6 turns
