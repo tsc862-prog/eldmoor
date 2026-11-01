@@ -9,15 +9,16 @@ const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 
 export const FILTERS=[['all','All',null],['hooks','Hooks',['hooks','pick']],['scenes','Scenes',['frame','branch','camp']],['rolls','Rolls',['roll','complication']],
-  ['outcomes','Outcomes',['payoff','fail','abandon','fallback']],['levers','Levers',['lever']]];
-const BADGE={hooks:'BOARD',pick:'PICK',frame:'SCENE',roll:'ROLL',complication:'TWIST',branch:'FORK',payoff:'PAYOFF',fail:'FAIL',abandon:'DROP',fallback:'FALLBACK',lever:'LEVER',camp:'CAMP'};
+  ['outcomes','Outcomes',['payoff','fail','abandon','fallback']],['levers','Levers',['lever']],['agent','DM agent',['agent']]]; // agent: the DM agent's notes, plans and pulls (#66)
+const BADGE={hooks:'BOARD',pick:'PICK',frame:'SCENE',roll:'ROLL',complication:'TWIST',branch:'FORK',payoff:'PAYOFF',fail:'FAIL',abandon:'DROP',fallback:'FALLBACK',lever:'LEVER',camp:'CAMP',agent:'DM AGENT'};
+const byAgent=e=>!!(e.detail&&e.detail.by==='dm-agent'); // the DM agent's entries (issue #66) carry a tag
 let filter='all',advId=null,seen='',box=null,list=null,bar=null,chip=null;
 const open=new Set();
 export const dmFilter=()=>filter;
 export const dmAdventure=()=>advId;
 
 // The Levers filter also finds entries that carry folded lever pulls (board posts, named foes on a roll).
-const matches=e=>{const f=FILTERS.find(([k])=>k===filter);return (!f[2]||f[2].includes(e.kind)||filter==='levers'&&!!(e.detail&&e.detail.levers))&&(advId==null||e.advId===advId)};
+const matches=e=>{const f=FILTERS.find(([k])=>k===filter);return (!f[2]||f[2].includes(e.kind)||filter==='levers'&&!!(e.detail&&e.detail.levers)||filter==='agent'&&byAgent(e))&&(advId==null||e.advId===advId)};
 // Lever pulls in an entry (its own, or folded ones) and how long each has left: "18h left", "ended".
 const leversOf=e=>e.kind==='lever'&&e.detail&&e.detail.lever&&!e.detail.levers?[e.detail]:(e.detail&&e.detail.levers)||[];
 const hrs=m=>{const h=Math.max(0,Math.round(m/60));return h>=24?Math.floor(h/24)+'d'+(h%24?' '+h%24+'h':''):h+'h'};
@@ -58,7 +59,7 @@ export function renderDmLog(){if(!list)return;
   list.replaceChildren();let n=0;
   for(const e of L){if(!matches(e))continue;
     const li=el('li','tl dmrow dm-'+e.kind);li.dataset.dmid=e.id;
-    li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-dm',BADGE[e.kind]||e.kind.toUpperCase()));
+    li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-dm',BADGE[e.kind]||e.kind.toUpperCase()));if(byAgent(e)&&e.kind!=='agent')li.append(el('span','badge b-dm b-dma','DM AGENT'));
     const t=el('span','tx dmtx');partsTo(t,e.summary);{const r=left(e);if(r)t.append(el('span','dm',' ('+r+')'))}li.append(t);
     if(open.has(e.id))li.append(table(e));
     list.append(li);n++}

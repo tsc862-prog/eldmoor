@@ -5,7 +5,8 @@
 // a model-backed DM calls dmNote(prompt, reply) just before the slot answer is used and the
 // next entry picks them up. Logging rolls no random numbers and changes no behaviour.
 //   entry: {id, t, gameMin, kind, town, advId, heroes:[ids], summary:[parts], detail:{}, prompt, reply}
-//   kinds: hooks pick frame roll complication branch payoff fail abandon fallback
+//   kinds: hooks pick frame roll complication branch payoff fail abandon fallback lever camp agent
+//   (agent: the DM agent's notes, plans and seat changes, issue #66; its lever pulls are kind lever with detail.by 'dm-agent')
 import {S,clockStr} from './state.js';
 
 export const DMLOG_CAP=200;

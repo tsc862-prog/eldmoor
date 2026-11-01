@@ -5,6 +5,7 @@
 import {S} from '../sim/index.js';
 import {brainStatus,mindTag,modelTag} from '../sim/brain.js';
 import {agentLink,runnerTag,LINK_TEXT} from './player-bridge.js'; // each agent's runner link (issue #93)
+import {dmMindRow,dmSeatSig} from './dmseat.js'; // the DM seat's row (issue #66)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 let list=null,count=null,lastKey='';
@@ -24,11 +25,13 @@ export function renderMinds(){if(!list)return;
   const rows=minds.map(a=>{const st=a.player?'agent':a.brain?brainStatus(a):'fellow',l=latest(a),link=a.player?agentLink(a):null,rtag=a.player?runnerTag(a):null;
     const mt=a.brain&&!a.player?mindTag(a):null;
     return {a,st,l,link,mt,key:[a.id,a.fellow?1:0,a.lvl,st,link,rtag,a.state,l&&l.t,l&&l.outcome,l&&l.what,mt].join('|')}});
-  const key=rows.map(r=>r.key).join(';');
-  if(key===lastKey)return;lastKey=key;
-  count.textContent=String(minds.length);
-  list.replaceChildren();
-  if(!minds.length){list.append(el('li','mempty','No hero is AI-played right now. Select a hero of level 7 or higher and click the AI button by their name.'));return}
+  const dmRow=dmMindRow(),key=rows.map(r=>r.key).join(';')+'#'+(dmRow?dmSeatSig():'');
+  if(key===lastKey)return;
+  if(dmRow&&list.contains(document.activeElement)&&document.activeElement.tagName==='SELECT')return; // never rebuild under an open picker
+  lastKey=key;
+  count.textContent=String(minds.length+(dmRow?1:0));
+  list.replaceChildren();if(dmRow)list.append(dmRow);
+  if(!minds.length&&!dmRow){list.append(el('li','mempty','No hero is AI-played right now. Select a hero of level 7 or higher and click the AI button by their name.'));return}
   for(const {a,st,l,link,mt} of rows){
     const li=el('li','mind');
     const top=el('div','mtop');

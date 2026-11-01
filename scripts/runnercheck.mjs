@@ -61,7 +61,8 @@ console.log('runner routes (fake children)');
 {
   const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
   const heroes = [1, 2, 3, 4, 5, 6, 7].map(id => ({id, name: 'H' + id, alive: true}));
-  const be = {call: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes})};
+  let dmSeat = true; // the game's DM seat (#66): a DM runner starts only while it is open
+  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat})};
   const kids = [];
   const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 40000 + kids.length; k.cmd = cmd; k.args = args; k.opts = opts; k.got = '';
     k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d}});
@@ -141,17 +142,25 @@ console.log('runner routes (fake children)');
   s = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic', model: 'claude-sonnet-5-5', maxTurns: 10, budget: 1}, origin: PAGE});
   ok(existsSync(join(ROOT, 'scripts', 'dm-agent.mjs')) ? s.status === 200 : s.status === 501 && /DM agent is not installed yet/.test(s.error) && kids.length === n1, 'a DM runner before scripts/dm-agent.mjs exists: "not installed yet"');
   const realDm = RUNNER_KINDS.dm.script; RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs'; // stand-in so the route can be tested now
-  for (const k of dm.sup.list()) dm.sup.stop(k.key);
+  for (const k of dm.sup.list()) {dm.sup.stop(k.key); kids[kids.length - 1].emit('exit', 0)} await sleep(10); // the real DM runner, started above, is let go
   s = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic', maxTurns: 10, budget: 1}, origin: PAGE});
   const kd = kids[kids.length - 1];
   const sd = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm'}, origin: PAGE});
   g = await req(dm.base, '/play/runner');
   ok(s.status === 200 && s.runner.key === 'dm' && s.runner.hero === null && kd.args[0] === 'scripts/mock-ollama.mjs' && kd.args.includes('--budget') && sd.status === 409, 'a DM runner starts with no hero, its flags, and only one at a time');
   ok(g.claude.used === 1 && g.kinds.dm.installed === true, 'it takes a Claude slot');
+  ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'starting', 'it is starting until it holds the DM seat');
+  await fetch(dm.base + '/play/claim', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({role: 'dm', runner: 'fake:1'})});
+  ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'waiting', 'it shows waiting once it holds the seat');
+  await fetch(dm.base + '/play/dm', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({tool: 'dm_status'})});
   kd.stdout.emit('data', '[dm] [turn 1] ... | run $0.0100 |\n'); await sleep(5);
-  ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'live', 'it shows live once it plays a turn');
+  ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'live', 'it shows live once it calls the DM tools');
   s = await req(dm.base, '/play/runner/stop', {method: 'POST', body: {kind: 'dm'}, origin: PAGE});
   ok(s.status === 200 && kd.got === 'stop\n', 'stop {kind: "dm"} stops it');
+  kd.emit('exit', 0); await sleep(20); dmSeat = false;
+  s = await req(dm.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'ollama', model: 'qwen2.5:14b'}, origin: PAGE});
+  ok(s.status === 409 && /DM seat is closed/.test(s.error), 'with the DM seat closed a DM runner is refused');
+  dmSeat = true;
   RUNNER_KINDS.dm.script = realDm; dm.sup.killAll(); dm.server.close();
   rmSync(tmp, {recursive: true, force: true});
 }

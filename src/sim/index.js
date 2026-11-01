@@ -45,6 +45,7 @@ export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} fr
 export {found,autoPick,disbandFellowship,fellowshipMembers,fellows,setMinds} from './fellowship.js';
 export {TABLE,bannerOf} from './table.js';
 export {fellowshipStart,START_BANDS} from './opening.js';
+export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);

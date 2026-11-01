@@ -7,11 +7,13 @@
 // panel. The runner's narration arrives here too and is kept on its hero.
 // The world never waits on the bridge: a disconnected or silent agent just leaves its hero to
 // its reflexes. Reconnects every few seconds while an agent-played hero is alive.
-import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,S} from '../sim/index.js';
+import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,S,dmAct,dmSeatOn,setDmSeat} from '../sim/index.js';
 import {hostCall} from '../sim/player-host.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
-let ws=null,status='off',timer=null,lastHello='',links={},runners={};
+let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null;
+// The bridge is wanted while a hero is agent-played or the DM seat is open (issue #66).
+const wanted=()=>!!playerHero()||dmSeatOn();
 export const bridgeUrl=()=>{try{return localStorage.getItem('eldmoor.playUrl')||DEFAULT_URL}catch(e){return DEFAULT_URL}};
 export const bridgeStatus=()=>status; // off | connecting | connected | offline
 // One hero's agent link: 'connected' (its runner is calling tools), 'waiting' (a runner holds
@@ -21,17 +23,22 @@ export const agentLink=a=>!a||!a.player?'off':status!=='connected'?status:links[
 // The mind behind a hero's runner, as its claim reports it (issue #97): {provider, model} or null.
 export const agentRunner=a=>a&&a.player&&status==='connected'&&runners[a.id]||null;
 export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':''):null};
+// The DM seat (issue #66): open it and the page answers the DM agent's tools (sim/dmagent.js) over the
+// same WebSocket. dmLink(): 'connected' | 'waiting' | 'none' as for a hero, or the bridge's own state.
+export function dmSeatSet(on){setDmSeat(on);if(on){connect();hello()}else{hello();if(!wanted())disconnect()}}
+export const dmLink=()=>!dmSeatOn()?'off':status!=='connected'?status:dmLinkInfo&&dmLinkInfo.link||'none';
+export const dmRunnerTag=()=>{const r=dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.runner;return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':''):null};
 export const LINK_TEXT={connected:'agent connected',waiting:'agent waiting (runner idle)',none:'no runner',connecting:'connecting to the relay…',offline:'relay offline',off:'not connected'};
 
 // Make a an agent-played hero (alongside any others) and connect.
 export function agentOn(a){if(!a||a.state==='dead')return false;
   if(a.brain)disableBrain(a); // a hero has one mind at a time: the model brain or the agent
   if(!markPlayer(a,true))return false;connect();hello();return true}
-export function agentOff(a){markPlayer(a,false);if(!playerSeats().length)disconnect();else hello()}
+export function agentOff(a){markPlayer(a,false);if(!wanted())disconnect();else hello()}
 
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id))}:{})})),k=JSON.stringify(hs);
-  if(k===lastHello&&status==='connected')return;lastHello=k;send({type:'hello',heroes:hs,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
+function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id))}:{})})),dm={seat:dmSeatOn()},k=JSON.stringify([hs,dm]);
+  if(k===lastHello&&status==='connected')return;lastHello=k;send({type:'hello',heroes:hs,dm,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
 const seat=id=>id!=null?playerSeat(id):playerSeat();
 function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecting';
   try{ws=new WebSocket(bridgeUrl())}catch(e){ws=null;status='offline';later();return}
@@ -41,12 +48,13 @@ function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecti
       try{r=a?await hostCall(a.id,String(m.tool),m.args||{}):{ok:false,error:m.hero!=null?'Hero #'+m.hero+' is not agent-played in the game.':'No agent-played hero in the game.'}}catch(err){r={ok:false,error:String(err&&err.message||err)}}
       send({type:'result',id:m.id,result:r})}
     else if(m.type==='narrate'){const a=seat(m.hero);if(a)playerNarrate(a.id,String(m.text||''))}
-    else if(m.type==='links'&&m.links&&typeof m.links==='object'){links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{}}};
-  ws.onclose=()=>{ws=null;lastHello='';links={};runners={};status=playerHero()?'offline':'off';if(playerHero())later()};
+    else if(m.type==='dmcall'){let r;try{r=dmAct(String(m.tool),m.args||{})}catch(err){r={ok:false,error:String(err&&err.message||err)}}send({type:'result',id:m.id,result:r})}
+    else if(m.type==='links'&&m.links&&typeof m.links==='object'){links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{};dmLinkInfo=m.dm&&typeof m.dm==='object'?m.dm:null}};
+  ws.onclose=()=>{ws=null;lastHello='';links={};runners={};dmLinkInfo=null;status=wanted()?'offline':'off';if(wanted())later()};
   ws.onerror=()=>{}}
-function later(){if(timer)return;timer=setTimeout(()=>{timer=null;if(playerHero())connect()},4000)}
-function disconnect(){if(timer){clearTimeout(timer);timer=null}if(ws){const w=ws;ws=null;try{w.close()}catch(e){}}status='off';lastHello='';links={};runners={}}
+function later(){if(timer)return;timer=setTimeout(()=>{timer=null;if(wanted())connect()},4000)}
+function disconnect(){if(timer){clearTimeout(timer);timer=null}if(ws){const w=ws;ws=null;try{w.close()}catch(e){}}status='off';lastHello='';links={};runners={};dmLinkInfo=null}
 
 // On page load (a restored save may hold agent-played heroes) and every few seconds after,
 // so the relay always knows which heroes are played.
-export function initBridge(){if(playerHero())connect();setInterval(()=>{if(playerHero()){if(!ws)connect();else hello()}},3000)}
+export function initBridge(){if(wanted())connect();setInterval(()=>{if(wanted()){if(!ws)connect();else hello()}},3000)}

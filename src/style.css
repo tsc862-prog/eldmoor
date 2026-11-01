@@ -291,3 +291,7 @@ table.shtbl{border-collapse:collapse;font-size:17px;min-width:720px;width:100%;f
 button.shsort{font-family:var(--mono);font-size:17px;background:transparent;border:0;box-shadow:none;padding:0;color:var(--dim);text-align:left}
 button.shsort:hover,button.shsort.on{color:var(--gold)}
 .shtbl td.hi{color:var(--green)} .shtbl td.lo{color:var(--red)}
+/* the DM seat (#66): Open seat, the DM agent's mind, Start DM / Stop DM, its link */
+.dmseat{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:8px 0;min-width:0}
+.dmseat .mlink{overflow-wrap:anywhere}
+.badge.b-dma{color:#7fd6c2}
