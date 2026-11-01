@@ -72,7 +72,7 @@ export function checkStart(b, heroes, {running = []} = {}) {
   const req = {kind};
   if (b.provider != null && b.provider !== '') {if (!RUNNER_PROVIDERS.includes(b.provider)) return {error: 'unknown provider (one of: ' + RUNNER_PROVIDERS.join(', ') + ')', code: 400}; req.provider = b.provider}
   if (b.model != null && b.model !== '') {if (typeof b.model !== 'string' || !MODEL_RE.test(b.model)) return {error: 'bad model name', code: 400}; req.model = b.model}
-  const local = req.provider === 'ollama';
+  const local = req.provider === 'ollama'; // openai is paid: it keeps the budget cap and takes no Claude slot
   const mt = num(b.maxTurns), bu = num(b.budget);
   if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
   if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};

@@ -7,7 +7,7 @@
 //   runnerByKey(key)           a runner by key
 //   runnerControl(a)           a small control: state, provider/model and a Start / Stop button
 //   fellowshipRunnerControl()  "Start all five" / "Stop all" with the Fellowship runner's state
-//   runnerPick(key, models)    a picker for the mind a runner is started with (saved, Claude, a local model)
+//   runnerPick(key, models, openai)  a picker for the mind a runner is started with (saved, Claude, a local or OpenAI model)
 //   runnerSig(a)               what the controls show, for the callers' rebuild signatures
 //   initRunners(after)         one delegated handler for every control on the page
 // When the relay runs without --runners the controls say how to turn it on; the world never waits on any of this.
@@ -37,8 +37,8 @@ async function send(path,body){
   try{const r=await fetch(base()+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));
     return r.ok?{ok:true,runner:j.runner}:{ok:false,error:j.how||j.error||('HTTP '+r.status)}}
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
-// pick: '' (the hero's saved mind), 'anthropic', or 'ollama:<model>'
-const pickBody=k=>{const p=picks[k]||'';return p==='anthropic'?{provider:'anthropic'}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:{}};
+// pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
+const pickBody=k=>{const p=picks[k]||'';return p==='anthropic'?{provider:'anthropic'}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:{}};
 export async function startRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';
   const r=await send('/start',{kind,...(hero!=null?{hero}:{}),...pickBody(k)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
 export async function stopRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';
@@ -46,7 +46,7 @@ export async function stopRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:k
 export async function stopAllFellows(){const ids=(S.fellowship&&S.fellowship.ids)||[];await stopRunner('fellowship');
   for(const id of ids){const r=runnerByKey('hero:'+id);if(r&&!DONE[r.state])await stopRunner('hero',id)}}
 
-const mindTag=r=>r&&(r.model||r.provider)?(r.model||r.provider)+(r.provider==='ollama'?' · local':''):'';
+const mindTag=r=>r&&(r.model||r.provider)?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':''):'';
 function stateLine(r,k){if(note[k])return note[k];
   if(up===false)return 'relay offline';if(info&&!info.enabled)return HOW_TEXT;if(!r)return 'no runner';
   const bits=[RUN_TEXT[r.state]||r.state];const m=mindTag(r);if(m)bits.push(m);
@@ -81,9 +81,9 @@ export function dmRunnerControl(){poll(true);const d=el('span','runctl');const r
 export const dmRunnerSig=()=>{poll(true);const r=runnerByKey('dm');return (r?r.state+':'+r.turns+':'+(r.model||'')+':'+(r.error||''):'-')+':'+(note.dm||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks.dm||'')};
 
 // The mind a runner starts with. models: pulled local models (from the relay's /health), may be empty.
-export function runnerPick(k,models){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude)';
-  const opts=[['','saved mind'],['anthropic','Claude']].concat((models||[]).map(m=>['ollama:'+m,m+' · local']));
-  if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^ollama:/,'')+' · local']);
+export function runnerPick(k,models,openai){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude)';
+  const opts=[['','saved mind'],['anthropic','Claude']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai']));
+  if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai):/,'')+(picks[k].startsWith('openai:')?' · openai':' · local')]);
   for(const [v,t] of opts){const o=new Option(t,v);if(v===(picks[k]||''))o.selected=true;s.append(o)}return s}
 
 export function initRunners(after){const done=after||(()=>{});

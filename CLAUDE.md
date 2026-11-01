@@ -90,7 +90,8 @@ other. The rules:
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
-- `npm run localcheck`: the local agent runner against a mock Ollama (see "Local models").
+- `npm run localcheck`: the local agent runner against a mock Ollama (see "Model providers").
+- `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
 - `start-eldmoor.cmd` (Windows, double-click): starts the relay with app runners on and the dev server in two
   windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.
@@ -130,7 +131,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   session id, system prompt, turns, cost and the hero's runner settings (`runner: {provider,
   model, effort}`, default `anthropic` + `claude-sonnet-5-5`; flags override, then saved, then
   env), so each hero can keep its own mind; `anthropic` (Agent SDK) and `ollama` (a local model,
-  see "Local models") run today; the relay routes by hero id only. The next run for that hero resumes it. Runners
+  see "Model providers") and `openai` run today; the relay routes by hero id only. The next run for that hero resumes it. Runners
   never write another hero's file. A file whose hero name no longer matches (a new world
   reused the id) and the old session on `--new` are moved to `logs/agents/old/`, never
   overwritten. The single `logs/agent-session.json` of #75 migrates on first run.
@@ -151,8 +152,8 @@ is silent, and scene choices time out to the scripted branch, so the world never
   `scripts/dm-agent.mjs`, one at most, and is refused as "not installed yet" until that file exists), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
   a stop writes "stop" on the child's stdin (it releases its heroes), then kills; a child also stops when
   the relay goes away. Limits: off without the flag, loopback and the game page's origin only, heroes the
-  page names as agent-played, providers anthropic/ollama, defaults 20 turns/$1.00 per hero and 6 turns
-  each/$2.00 for the Fellowship (caps 200/$5, 100/$10; local runners have no budget), at most 5 runners, and
+  page names as agent-played, providers anthropic/ollama/openai, defaults 20 turns/$1.00 per hero and 6 turns
+  each/$2.00 for the Fellowship (caps 200/$5, 100/$10; local runners have no budget, OpenAI runners keep it and take no Claude slot), at most 5 runners, and
   at most `RUNNER_CLAUDE_MAX` (default 3) concurrent Claude requests across them (a Fellowship runner shares
   its slots with `--claude-concurrency`). Without `--runners` the buttons say how to turn it on.
 - Relay concurrency: the owner's API org caps concurrent requests across all models. The relay keeps at most
@@ -200,7 +201,7 @@ one Agent SDK session per member.
   silent agent never stalls a scene, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
 
-## Local models (Mixed minds, issue #97)
+## Model providers (Mixed minds, issue #97)
 
 Each AI-played hero can ask a different model. Part 1 covers single decisions (town plan, crypt
 call, fight or flee, say) and the Fellowship writing kinds (persona, backstory, memory); part 2
@@ -229,8 +230,8 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   the scripted rules. The Mind tab, Chat tab and Minds panel tag which model answered
   (for example `qwen2.5:14b · local`), and the relay log and `--verbose` log record provider and model.
 - Adapters live in `scripts/providers/` (one interface: `call({system, user, schema, maxTokens,
-  model, effort})`; Ollama also has `chat({messages, tools|format})` for the agent loop). OpenAI and
-  Google are stubs that report "not configured" until built.
+  model, effort})`; Ollama and OpenAI also have `chat({messages, tools|format})` for the agent loop).
+  Google is a stub that reports "not configured" until built.
 
 Local agent runner (part 2):
 
@@ -265,6 +266,42 @@ Local agent runner (part 2):
 - `npm run localcheck` (in CI) tests all of it against a mock Ollama: the loop, the JSON fallback,
   the runner end to end on a headless world (claims, tags, session file, resume) and a local
   Fellowship.
+
+### OpenAI (ChatGPT models)
+
+The OpenAI provider (`scripts/providers/openai.mjs`) uses the Chat Completions API with strict
+JSON-schema structured output for decisions and writing, and the same tool-calling agent loop as
+Ollama (`scripts/local-agent.mjs`) for agent play. It is billed per token by OpenAI.
+
+Owner setup:
+
+1. Create an API key at https://platform.openai.com/api-keys and add credit under Billing. API
+   billing is separate from a ChatGPT Plus subscription: Plus does not pay for API calls.
+2. Add `OPENAI_API_KEY=sk-...` to `.env` (ignored by version control; only the relay and the agent
+   runners read it, never the browser). Optionally `OPENAI_MODEL=<id>` (a default; there is none in
+   code) and `OPENAI_BASE_URL` (default `https://api.openai.com/v1`, or any OpenAI-compatible server).
+3. Restart the relay (`npm run relay`). `GET /health` now lists OpenAI under `providers` with the chat
+   models your key can use; the Fellowship panel's mind row (AI) and the Start runner picker fill from it.
+4. Pick **OpenAI** in a member's mind row and choose a model (the row says "pick a model" until you do),
+   or play an agent with `npm run agent -- --hero <name|id> --provider openai --model <id>` (saved in the
+   hero's session file; later runs need only `--hero`), or `npm run fellowship -- --provider openai --model <id>`.
+   Tags read like `gpt-6-luna · openai`.
+
+Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pick any model from your
+own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
+1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
+with its source and date) drives cost; a model not in it reports tokens with cost "unknown" (the turn
+line says so; the run budget cannot count it). Cached-input discounts are ignored, so costs are an
+upper bound. Every request sends `reasoning_effort: "none"` (Chat Completions supports function calling
+on the current reasoning models only with it); a model that rejects the field is asked again without it.
+Errors: 401 "bad or missing key", 429 "rate limit" (the relay's limiter queues OpenAI calls,
+`RELAY_OPENAI_CONCURRENCY`, default 4, pauses on `retry-after`, drops a late decision and retries writing
+kinds; an agent turn waits `retry-after` itself), "out of credit" for `insufficient_quota`, "reply cut
+off", "model refused". A failed call means the hero plays scripted. Agent runs report real cost per turn
+(`| turn $ | run $ | session $`), stop at `--budget`, and appear in the Start runner picker as
+`<model> · openai`. The runner reads the key from its own environment/`.env` like the Claude runner
+does, and never prints it. `npm run openaicheck` (in CI) tests all of it against a mock OpenAI server,
+with no key and no network.
 
 ## DM agent (issue #66, part 1)
 
