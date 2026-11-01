@@ -1,6 +1,7 @@
 // All mutable simulation state in one object, so every sim module and the
 // renderer, UI and headless harness read the same world. No DOM here.
 import {LAIR} from '../world/map.js';
+import {BOSSES} from '../data/bosses.js';
 
 export const S={
   agents:[],      // heroes, living and dead (graves are recycled past 40)
@@ -12,7 +13,7 @@ export const S={
   timeline:[],    // world events {t, gameMin, kind, parts}, newest first, capped at 200 (sim/history.js)
   dmLog:[],       // DM log entries, newest first, capped at 200 (sim/dmlog.js)
   chronicle:[],  // log entries {t, parts}, newest first, capped at 90
-  boss:{kind:'boss',name:'Kragmaw',x:LAIR.x,y:LAIR.y+.6,lvl:20,maxhp:9000,hp:9000,alive:true,respawn:0,cd:0,breath:7,dmg:[0,0],face:-1},
+  boss:{kind:'boss',tpl:'kragmaw',name:'Kragmaw',x:LAIR.x,y:LAIR.y+.6,lvl:BOSSES.kragmaw.lvl,maxhp:BOSSES.kragmaw.maxhp,hp:BOSSES.kragmaw.maxhp,alive:true,respawn:0,cd:0,breath:7,dmg:[0,0],face:-1},
   GUILDS:[],      // guilds founded by the heroes (sim/guilds.js); retired ones stay with retired:true
   guildSeq:0,     // last guild id handed out, never reused
   facStats:[{honor:0,bosses:0,fallen:0},{honor:0,bosses:0,fallen:0}],

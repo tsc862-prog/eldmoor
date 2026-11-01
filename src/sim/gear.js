@@ -104,7 +104,7 @@ export function equip(a,it){const old=a.slots[it.slot]||null;if(old)it.over={nam
 
 // A mob kill: about 6% of kills drop a slot item at the mob's level +-1; named elites always do.
 // Upgrades are worn at once, the rest (and anything replaced) rides in the bag to be sold in town.
-export function rollDrop(a,m){if(!a.slots)return;if(!m.elite&&rnd()>=DROP_RATE)return;
+export function rollDrop(a,m,opt={}){if(!a.slots)return;if(!m.elite&&rnd()>=(opt.rate!=null?opt.rate:DROP_RATE))return;
   const M=MOBS[m.type],it=makeItem(a.cls,pickA(SLOTS),m.lvl+ri(-1,1),M?M.z:zoneFor(m.lvl),
     {src:'Dropped by '+(m.name||(M&&M.name)||'a monster'),quality:m.elite?(rnd()<.25?'rare':'fine'):undefined});
   const cur=a.slots[it.slot];
