@@ -234,7 +234,11 @@ ok(B.brainOk(h0, 'crypt') === false && B.brainOk({}, 'crypt') === true, 'crypt c
 }
 // information limits
 {
-  const h = heroes[0], e = S.agents.find(a => a.fac !== h.fac && a.state !== 'dead');
+  // An enemy the hero knows nothing else about: not in its chat, history, grudges or friends, and
+  // whose name is not part of another hero's name (those parts of the snapshot are legitimate
+  // knowledge; a random pick sometimes hit one, so this check failed now and then).
+  const h = heroes[0], {foes, ...rest} = B.snapshotFor(h, 'say', {trigger: 'kill'}), known = JSON.stringify(rest);
+  const e = S.agents.find(a => a.fac !== h.fac && a.state !== 'dead' && !known.includes(a.name) && !S.agents.some(b => b !== a && b.name.includes(a.name)));
   e.x = h.x + 30; e.y = h.y; rebuild();
   ok(!JSON.stringify(B.snapshotFor(h, 'say', {trigger: 'kill'})).includes(e.name), 'enemy hero 30 tiles away is not in the snapshot');
   e.x = h.x + 3; e.y = h.y; e.state = 'hunt'; e.hidden = false; rebuild();
@@ -243,7 +247,10 @@ ok(B.brainOk(h0, 'crypt') === false && B.brainOk({}, 'crypt') === true, 'crypt c
 
 console.log('policy: invalid answers are dropped');
 reset(); mode = 'invalid';
-await runUntil(() => B.rejections.length >= 3 && minds().some(e => e.outcome === 'rejected' && e.kind === 'townPlan'), 40);
+// Wait on the Mind entries themselves: a bad answer counts in B.rejections even when its entry
+// was already closed (late, or superseded at the gate), so waiting on the stats alone could leave
+// fewer than three rejected entries to check (the old 1-in-3 failure).
+await runUntil(() => B.rejections.length >= 3 && minds().filter(e => e.outcome === 'rejected').length >= 3 && minds().some(e => e.outcome === 'rejected' && e.kind === 'townPlan'), 80);
 ok(B.stats.rejected >= 3 && B.stats.applied.townPlan === 0 && B.stats.applied.say === 0, 'rejected ' + B.stats.rejected + ', applied 0 (' + B.rejections.map(x => x.kind + ':' + x.why).slice(0, 3).join(', ') + ')');
 ok(heroes.every(h => !(h.brainPlan && h.brainPlan.town)), 'no plan parked from a bad answer');
 {

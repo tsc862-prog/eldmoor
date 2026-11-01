@@ -150,6 +150,7 @@ li.mind{border:1px solid var(--edge);border-left:3px solid #7fd6c2;padding:5px 7
 .mtag{margin-left:auto;font-family:var(--px);font-size:7px;padding:2px 4px;background:#7fd6c2;color:#0d0e19}
 .mtag.offline{background:var(--edge);color:var(--dim)}
 .mtag.agent{background:var(--gold);color:#0d0e19}
+.mlink{font-size:15px;color:var(--dim)} .mlink.connected{color:var(--green)} .mlink.waiting{color:var(--gold)} .mlink.none,.mlink.offline,.mlink.off,.mlink.connecting{color:var(--dim)}
 .mlast{color:var(--dim);overflow-wrap:anywhere}
 .mo.ok{color:var(--green)} .mo.bad{color:var(--red)} .mo.warn{color:var(--gold)} .mo.dim{color:var(--dim)}
 li.mempty{color:var(--dim)}

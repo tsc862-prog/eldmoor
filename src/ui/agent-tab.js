@@ -2,16 +2,20 @@
 // bridge state, the command it runs, a scene choice waiting for it, the agent's narration (sent
 // by the runner, scripts/agent-player.mjs), its latest tool calls with their results, and the
 // hero's journal. Everything is read from plain data on the hero (sim/player.js).
-import {bridgeStatus,bridgeUrl} from './player-bridge.js';
+import {bridgeStatus,bridgeUrl,agentLink} from './player-bridge.js';
 import {S} from '../sim/index.js';
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const STATUS={connected:'connected to the relay',connecting:'connecting to the relay…',offline:'relay not reachable (start npm run relay, then npm run agent)',off:'not connected'};
 
+const LINK={connected:['connected','its agent is calling tools'],waiting:['waiting','a runner holds this hero and is thinking or between turns'],none:['no runner','start one: npm run agent -- --hero ']};
+
 export const hasAgent=a=>!!(a&&(a.player||(a.playLog&&a.playLog.length)||(a.journal&&a.journal.length)));
 
 export function tabAgent(b,a){
-  if(a.player){const st=bridgeStatus();b.append(el('div','meta','Agent-played · bridge '+(STATUS[st]||st)+(st==='connected'?'':' · '+bridgeUrl())))}
+  if(a.player){const st=bridgeStatus();b.append(el('div','meta','Agent-played · bridge '+(STATUS[st]||st)+(st==='connected'?'':' · '+bridgeUrl())));
+    // the runner bound to this hero (issue #93: one agent per hero, several side by side)
+    if(st==='connected'){const k=agentLink(a),t=LINK[k]||[k,''],d=el('div','meta');d.append('Agent: ',el('span','mlink '+k,t[0]),' · '+t[1]+(k==='none'?a.name:''));b.append(d)}}
   else b.append(el('div','meta','No longer agent-played. What the agent did and wrote:'));
   if(a.playDoing)b.append(el('div','doing',a.playDoing));
   const adv=a.adv&&S.adventures?S.adventures.find(v=>v.id===a.adv&&v.phase==='active'):null,p=adv&&adv.stage==='choose'&&adv.pick;

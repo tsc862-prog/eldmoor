@@ -4,6 +4,7 @@
 // Rebuilds only when the set of minds or a shown value changes.
 import {S} from '../sim/index.js';
 import {brainStatus} from '../sim/brain.js';
+import {agentLink,LINK_TEXT} from './player-bridge.js'; // each agent's runner link (issue #93)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 let list=null,count=null,lastKey='';
@@ -20,20 +21,22 @@ function latest(a){
 
 export function renderMinds(){if(!list)return;
   const minds=S.agents.filter(isMind).sort((x,y)=>(!!y.fellow-!!x.fellow)||y.lvl-x.lvl||x.id-y.id);
-  const rows=minds.map(a=>{const st=a.player?'agent':a.brain?brainStatus(a):'fellow',l=latest(a);
-    return {a,st,l,key:[a.id,a.fellow?1:0,a.lvl,st,a.state,l&&l.t,l&&l.outcome,l&&l.what].join('|')}});
+  const rows=minds.map(a=>{const st=a.player?'agent':a.brain?brainStatus(a):'fellow',l=latest(a),link=a.player?agentLink(a):null;
+    return {a,st,l,link,key:[a.id,a.fellow?1:0,a.lvl,st,link,a.state,l&&l.t,l&&l.outcome,l&&l.what].join('|')}});
   const key=rows.map(r=>r.key).join(';');
   if(key===lastKey)return;lastKey=key;
   count.textContent=String(minds.length);
   list.replaceChildren();
   if(!minds.length){list.append(el('li','mempty','No hero is AI-played right now. Select a hero of level 7 or higher and click the AI button by their name.'));return}
-  for(const {a,st,l} of rows){
+  for(const {a,st,l,link} of rows){
     const li=el('li','mind');
     const top=el('div','mtop');
     const n=el('span','hn f'+a.fac,a.name);n.dataset.hid=a.id;if(a.fellow)top.append(el('span','gd mstar','★ '));
     const tag=el('span','mtag '+st,st==='agent'?'AGENT':st==='offline'?'QUIET':st==='fellow'?'SCRIPTED':'AI');if(st==='fellow')tag.title='A Fellowship member on the scripted rules (Minds are off).';
     if(st==='offline')tag.title='The relay is not answering; scripted rules are playing this hero for now.';
-    top.append(n,el('span','mlvl','Lv '+a.lvl+' '+a.cls),tag);
+    top.append(n,el('span','mlvl','Lv '+a.lvl+' '+a.cls));
+    if(link){const k=el('span','mlink '+link,LINK_TEXT[link]||link);k.title='Agent runner: npm run agent -- --hero '+a.name;top.append(k)}
+    top.append(tag);
     li.append(top);
     if(l){const d=el('div','mlast');d.append(el('span','mt',l.t+' · '+l.kind+' · '),el('span','mo '+(OUT[l.outcome]||'dim'),l.what));li.append(d)}
     else li.append(el('div','mlast','No decisions asked yet.'));
