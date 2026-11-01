@@ -30,6 +30,7 @@ import {speak} from './chat.js';
 import {notify} from './notify.js';
 import {remember} from './memory.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
+import {sayOk,setSpeedSource} from './throttle.js';
 import {score} from './abilities.js';
 import {fellows,fellowParty,campaign} from './fellowship.js';
 import {setProposeHook,castVote,resolveProp,reflexVote,propById,leaderOfF} from './council.js';
@@ -57,6 +58,7 @@ const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').re
 let seed=0x1f2e3d4c;const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
 export const tableOn=()=>!!S.fellowship&&TABLE.mode!=='off';
+setSpeedSource(()=>TABLE.speed);
 export const canPause=()=>tableOn()&&TABLE.speed<=1;
 export const scene=()=>S.table||null;
 export const inScene=a=>!!(S.table&&a&&S.table.ids.includes(a.id));
@@ -126,7 +128,7 @@ const LINES={strike:['Now, while it turns!','Hit it together.','Mine. Leave this
 // A scripted member's line: the model voices it in persona when the relay is on and the world is
 // paused (said in the moment, never cached); otherwise a plain line.
 function voice(sc,a,k){const pool=LINES[k];if(!pool||a.hidden)return;const text=pool[Math.floor(r()*pool.length)];
-  if(sc.pause&&a.brain&&S.fellowship&&S.fellowship.ai&&S.brainOn!==false){const sid=sc.id;
+  if(sc.pause&&a.brain&&S.fellowship&&S.fellowship.ai&&S.brainOn!==false&&sayOk(a)){const sid=sc.id;
     askRelay('say',snapshotFor(a,'say',{trigger:'table',ctx:{scene:sc.title,kind:sc.kind,choice:k}}),Math.min(TABLE.turnMs,4000)).then(j=>{
       const still=S.table&&S.table.id===sid&&living(a)&&!a.hidden;const t=j&&cleanLine(j.line);
       if(still)speak(a,t||text,'table',!!t)}).catch(()=>{});return}

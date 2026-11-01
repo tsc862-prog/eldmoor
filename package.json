@@ -21,6 +21,7 @@
     "localcheck": "node scripts/localcheck.mjs",
     "tablecheck": "node scripts/tablecheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",
+    "ratecheck": "node scripts/ratecheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs"
   },
