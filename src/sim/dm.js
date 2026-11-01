@@ -56,6 +56,7 @@ import {goalEvent} from './goals.js';
 import {makeItem,equip,weakestSlot,slotLevel} from './gear.js';
 import {say} from './chat.js';
 import {d20} from './narrator.js';
+import {bestFor,socialSkill,SKILLS} from './abilities.js';
 import {dmlog} from './dmlog.js';
 
 // ---- knobs ----
@@ -340,17 +341,22 @@ export function dmHunt(a,dt){const adv=driving(a);if(!adv)return false;
   return true}
 
 // ---- scenes ----
-// Roll for the party: d20 + the best member's level/3 + class bonus, vs region DC + scene.
+// Roll for the party: d20 + the best member's modifier vs region DC + scene. Skill scenes use the
+// scene kind's skill (sim/abilities.js: ability modifier + training + trait nudge); the fight kind
+// keeps the old combat modifier (level/3 + class bonus).
+const SKILL_FOR={track:['tracking','survival'],trap:'traps',social:socialSkill,lore:'lore',watch:'perception'};
 function roll(adv,a,sc){const mem=[a,...partyMates(a).filter(b=>dist(a,b)<10)],kind=sc.check;
-  let mod=0,by=a;for(const b of mem){const m=Math.floor(b.lvl/3)+((D.CHECKS[kind]||{})[b.cls]||0);if(m>mod){mod=m;by=b}}
+  let mod=0,by=a,skill=null,parts=null;
+  if(SKILL_FOR[kind]){const bf=bestFor(mem,SKILL_FOR[kind]);mod=bf.mod;by=bf.hero;skill=bf.skill;parts=bf.parts}
+  else for(const b of mem){const m=Math.floor(b.lvl/3)+((D.CHECKS[kind]||{})[b.cls]||0);if(m>mod){mod=m;by=b}}
   const zdc=zoneDc(sc.z!=null?sc.z:adv.z);let dc=zdc+sc.dc,hostile=0,boon=0;if(kind==='social'&&adv.flags.hostile){hostile=D.COMPLICATIONS.hostile.dc;dc+=hostile;adv.flags.hostile=0}
   if(adv.flags.boon){boon=D.COMPLICATIONS.boon.dc;dc+=boon;adv.flags.boon=0}
   const r=d20(),ok=r===20||(r!==1&&r+mod>=dc);stats().checks[ok?0:1]++;
-  const cb=(D.CHECKS[kind]||{})[by.cls]||0,total=r+mod;
-  lastRoll=dmlog('roll',adv,[by,' rolls '+(kind||'a')+' check: d20 '+r+(mod?'+'+mod:'')+' = '+total+' vs DC '+dc+' - '+(r===20?'natural 20':r===1?'natural 1':ok?'pass':'fail')],
+  const cb=skill?0:(D.CHECKS[kind]||{})[by.cls]||0,total=r+mod;
+  lastRoll=dmlog('roll',adv,[by,' rolls '+(skill?SKILLS[skill].name.toLowerCase():kind||'a')+' check: d20 '+r+(mod?'+'+mod:'')+' = '+total+' vs DC '+dc+' - '+(r===20?'natural 20':r===1?'natural 1':ok?'pass':'fail')],
     {scene:adv.idx+1,sceneType:sc.type,check:kind,
      dc:{base:10,region:zdc-10,regionName:ZONES[sc.z!=null?sc.z:adv.z],scene:sc.dc,hostile,boon,total:dc},
-     modifier:{level:Math.floor(by.lvl/3),cls:cb,total:mod,by:by.id,byName:by.name,byClass:by.cls,pool:mem.length+' within reach'},
+     modifier:{level:skill?0:Math.floor(by.lvl/3),cls:cb,skill,parts:parts&&parts.map(p=>p.k+' '+(p.v>=0?'+':'')+p.v),total:mod,by:by.id,byName:by.name,byClass:by.cls,pool:mem.length+' within reach'},
      d20:r,total,pass:ok,nat:r===20?20:r===1?1:null,sceneIdx:adv.idx},{});
   return {r,mod,dc,ok,nat:r,by}}
 let lastRoll=null; // the newest roll entry, so the scene's frame text can join it

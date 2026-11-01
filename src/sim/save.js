@@ -15,6 +15,7 @@
 import {S,SAVE_VERSION} from './state.js';
 import {CRYPT} from '../world/map.js';
 import {GOODS,price} from '../data/items.js';
+import {rollScores} from './abilities.js';
 
 export {SAVE_VERSION};
 
@@ -31,7 +32,9 @@ const KEYS={
 // v1 -> v2: guilds were keyed by tag; give them numeric ids (dynamic guilds, #56).
 const MIGRATIONS={1:snap=>{const ids={};(snap.GUILDS||[]).forEach((g,i)=>{ids[g.tag]=g.id=i+1;g.founded=0;g.leaderId=null;g.retired=false});snap.guildSeq=(snap.GUILDS||[]).length;
   const walk=v=>{if(!v||typeof v!=='object')return;if(Array.isArray(v)){v.forEach(walk);return}
-    if(v.ref==='guild'&&ids[v.id]!==undefined)v.id=ids[v.id];else for(const k in v)walk(v[k])};walk(snap);return snap}};
+    if(v.ref==='guild'&&ids[v.id]!==undefined)v.id=ids[v.id];else for(const k in v)walk(v[k])};walk(snap);return snap},
+  // v2 -> v3: heroes gain ability scores and skill training (abilities, #80); growth for levels already reached is replayed.
+  2:snap=>{for(const a of snap.agents||[])if(a.kind==='hero'&&!a.abil)rollScores(a);return snap}};
 
 // ---- snapshot ----
 export function snapshot(){

@@ -13,6 +13,7 @@
 //   eliteSight(m,dt) mobs.js updMob         bossPull(eng)   boss.js updBoss
 // Zone-entry scenes and the dawn recap need no hook: narratorTick scans S each step.
 import {rnd,ri,pickA} from '../core/rng.js';
+import {bestFor,skillMod} from './abilities.js';
 import {ZONES,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
@@ -73,7 +74,7 @@ function sceneEnter(a){const z=zoneAt(a.x,a.y),wk=weatherKind(z),night=isNight()
 
 // ---- dice: scout check at fight entry ----
 // Fires once per engagement when a mob ambushed the hero (it already had them as target) or
-// the hero took on something two or more levels up. d20 + lvl/3 (+2 Hunter/Rogue) vs
+// the hero took on something two or more levels up. d20 + the better of Perception/Stealth (sim/abilities.js) vs
 // 10 + 2 per zone (+3 when the weather cuts sight). Pass: the hero lands a strike before the
 // fight proper (if in reach; otherwise simply swings first) and the mob's first bite is delayed.
 // Fail: one free hit lands (never fatal: the fight itself decides that). The strike resets a.cd so
@@ -82,7 +83,7 @@ function sceneEnter(a){const z=zoneAt(a.x,a.y),wk=weatherKind(z),night=isNight()
 export function scoutCheck(a,m){ensure();
   if(a.scoutTgt===m&&S.nar.t-a.scoutT<SCOUT_RECHECK)return;a.scoutTgt=m;a.scoutT=S.nar.t;
   const ambush=m.target===a;if(!ambush&&m.lvl<a.lvl+2)return;
-  const z=MOBS[m.type].z,mod=Math.floor(a.lvl/3)+(a.cls==='Hunter'||a.cls==='Rogue'?2:0),dc=10+z*2+(sightMul(z)<1?3:0),r=d20(),ok=r+mod>=dc;
+  const z=MOBS[m.type].z,mod=bestFor([a],['perception','stealth']).mod,dc=10+z*2+(sightMul(z)<1?3:0),r=d20(),ok=r+mod>=dc;
   let dmg=0;if(ok){m.cd=1.3;if(dist(a,m)<=CLS[a.cls].range+.5){strike(a,m);a.cd=1.1}else a.cd=0}else{dmg=3+m.lvl*2;a.hp=Math.max(1,a.hp-dmg);pop(a.x,a.y-.6,String(dmg),'#ff6a5a')}
   a.scoutOk=ok;S.narStats.scouts[ok?0:1]++;const nm=mobNames(m),plain=m.elite?m.name:MOBS[m.type].name;
   record(a,(ok?'Spotted ':'Was surprised by ')+(m.elite?'':'a ')+plain+' ('+rollStr(r,mod,dc)+').');
@@ -90,10 +91,10 @@ export function scoutCheck(a,m){ensure();
     speak(...fill(pickA(N.SCOUT_LEAD),{hero:a}),' ',dm(rollStr(r,mod,dc)),'. ',...fill(pickA(ok?N.SCOUT_PASS:N.SCOUT_FAIL),{hero:a,dmg,...nm}))}
 
 // ---- dice: flee roll at the FLEE pop ----
-// d20 + lvl/4 vs 11. Fail: the mob lands a glancing hit (FLEE_GLANCE of a bite) as the hero turns;
+// d20 + Athletics vs 11. Fail: the mob lands a glancing hit (FLEE_GLANCE of a bite) as the hero turns;
 // at flee health that can still kill, and a death here is always narrated.
 export function fleeCheck(a,m){ensure();if(a.state!=='return'||!m||!m.alive)return;
-  const mod=Math.floor(a.lvl/4),r=d20(),ok=r+mod>=FLEE_DC;let dmg=0;
+  const mod=skillMod(a,'athletics'),r=d20(),ok=r+mod>=FLEE_DC;let dmg=0;
   if(!ok){dmg=Math.max(1,Math.round((3+m.lvl*2)*m.hit*(.8+rnd()*.4)*(CLS[a.cls].arm||1)*FLEE_GLANCE));a.hp-=dmg;pop(a.x,a.y-.6,String(dmg),'#ff6a5a')}
   const dead=a.hp<=0;S.narStats.flees[ok?0:1]++;if(dead)S.narStats.fleeDeaths++;
   const nm=mobNames(m),plain=m.elite?m.name:'a '+MOBS[m.type].name;

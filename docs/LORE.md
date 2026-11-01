@@ -138,6 +138,33 @@ tiers), and an oath whose target dies first is void and re-sworn.
 | Bank N gold | the hero holds N gold at once | - |
 | Clear the Sunken Crypt | the hero's group clears the Crypt | first pick for Crypt groups |
 
+## Abilities and skills
+
+Every hero carries six ability scores and ten skills (`src/data/abilities.js`, `src/sim/abilities.js`). The names are plain working words, chosen so they never collide with the gear stats (Vigor, Might, Guard, Precision, Haste).
+
+**Scores** (3-18 at recruitment: roll 4d6, drop the lowest, six times; the best go to the class's primary then secondary, the rest fall where they fall; modifier = floor((score - 10) / 2)):
+
+| Score | Short | Means |
+| --- | --- | --- |
+| Brawn | BRN | Strength: blows, climbing, shouldering doors and men |
+| Reflex | RFX | Quickness: aim, balance, the knife in the dark |
+| Grit | GRT | Stamina and stubbornness: hit points, marches, cold |
+| Wits | WIT | Learning and cunning: lore, locks, spellcraft |
+| Insight | INS | Reading land and people: senses, tracks, wounds |
+| Presence | PRS | Force of personality: bargaining, faith, the voice that carries |
+
+Class priorities (primary / secondary): Warrior Brawn / Grit; Mage Wits / Insight; Hunter Reflex / Insight; Priest Insight / Presence; Rogue Reflex / Wits. The primary also feeds attack. Each people leans +1 toward one score: Hallowan Presence, Tarrow Insight, Skerrin Wits, Ashfolk Brawn, Mirekin Reflex, Thornhide Grit. At levels 5, 10, 15 and 20 a hero gains +1 to the primary and, half the time, +1 to the secondary (cap 20).
+
+**Skills** (each keyed to a score): Tracking (Insight), Stealth (Reflex), Traps (Wits; locks, snares, needles), Persuasion (Presence), Intimidation (Brawn), Lore (Wits), Healing (Insight), Athletics (Brawn), Survival (Grit), Perception (Insight). A skill modifier is the score modifier plus the proficiency bonus (+2 at levels 1-4, +3 at 5-9, +4 at 10-14, +5 at 15+) if trained, or half of it (rounded down) if not, plus +1 from a fitting trait.
+
+- Trained by class: Warrior athletics, intimidation, survival, perception; Mage lore, traps, persuasion; Hunter tracking, survival, stealth, perception; Priest healing, persuasion, lore, perception; Rogue stealth, traps, intimidation, persuasion.
+- Trained by trade (only when the origin names one): miller and cooper athletics; tanner and skinner survival; scribe and bone-carver lore; drover and hedge-warden tracking; smith's apprentice, net-mender and trapper traps; chandler persuasion; ferryman perception; pit-fighter intimidation; whelp-minder and salt-boiler healing; gully-runner stealth.
+- Trait nudges (+1): Cautious perception; Greedy traps; Reckless and Boastful intimidation; Vengeful tracking; Pious healing; Loyal persuasion; Loner stealth and survival.
+
+**Where they are rolled.** Dungeon Master scenes: track/travel uses the better of tracking and survival, trap uses traps, lore uses lore, a rest's watch uses perception, social uses intimidation for the reckless, boastful and vengeful and persuasion for the pious, loyal, cautious and greedy (else whichever they do better). The party's best-suited member rolls, and the DM log names the skill, the member and the parts of the modifier. Fight scenes keep the combat roll. Road chests use traps, ambushes use perception, the narrator's scout uses the better of perception and stealth, and a flight uses athletics.
+
+**Combat.** Grit adds to hit points per level, the primary score to attack, Reflex nudges crit. All are measured against the average hero so population stats stay put and only the spread between heroes changes: a Warrior with high Grit is the toughest thing in the Concord, a Mage with low Grit dies sooner.
+
 ## Bonds and blood debts
 Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,
 heals, rescues in a duel and setting out in a party raise a bond; a day apart wears it

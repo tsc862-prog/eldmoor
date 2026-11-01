@@ -20,6 +20,7 @@ import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
 import {blockOf} from '../data/bestiary.js';
 import {rollLoot} from './loot.js';
+import {rollScores,growScores,hpBonus,atkBonus,critBonus} from './abilities.js'; // ability scores (sim/abilities.js)
 import {emptySlots,gearScore,gearHp,gearAtk,gearCrit,guardMul,hasteMul,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
 import {record,timeline,first} from './history.js';
 import {bondEvent,inheritGrudge,avenged} from './bonds.js';
@@ -31,8 +32,8 @@ import {dmDepart,dmTravel,dmHunt} from './dm.js'; // adventures (sim/dm.js): a h
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
-export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+gearHp(a)+a.epics.length*10);
-export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+gearAtk(a)+a.epics.length*3;
+export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+hpBonus(a)+gearHp(a)+a.epics.length*10);
+export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+atkBonus(a)+gearAtk(a)+a.epics.length*3;
 
 // Where a hero of this level hunts: the band's region, or the one nearest their home town when bands overlap.
 export const huntZone=a=>zoneFor(a.lvl,homeOf(a).gate);
@@ -47,6 +48,7 @@ export function makeHero(f,cls,guild,wait){
   a.slots=emptySlots();
   assignRace(a,S.agents); // people, skin, hair, name and home town (data/races.js)
   assignBackstory(a);
+  rollScores(a); // six ability scores and skill training, after the people and trade are known
   a.hp=maxHp(a);
   const c=homeOf(a);a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
   S.agents.push(a);
@@ -59,7 +61,7 @@ export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);
   if(st>=d){e.x=x;e.y=y;e.moving=false;return true}e.x+=dx/d*st;e.y+=dy/d*st;return false}
 
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
-  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');
+  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;if(a.lvl%5===0)growScores(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     record(a,'Reached level '+a.lvl+'.');
     if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');
@@ -120,7 +122,7 @@ export function agentDie(a,killer){
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
 
 export function strike(a,t){
-  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<(c.crit||.08)+gearCrit(a);if(crit)d*=1.8;
+  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<(c.crit||.08)+gearCrit(a)+critBonus(a);if(crit)d*=1.8;
   if(a.blessed){d*=1.2;a.blessed=0} // wayside shrine blessing: one strike at +20% (sim/encounters.js)
   if(t.kind==='hero')d*=.6*(CLS[t.cls].arm||1)*guardMul(t);
   d=Math.round(d);t.hp-=d;if(c.range>2)bolt(a,t,c.orb||c.acc);
