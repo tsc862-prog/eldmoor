@@ -104,8 +104,8 @@ export const ELITE_EXTRA={ // the one extra ability each named elite carries
 // The DM's named foe: one monster of the region raised to the party's top level + 1, role leader, with a
 // signature ability on top of its kin's. Scale and hit come from adventures.js BEAST.
 export const NAMED_KITS={
-  'Old Scar':['frenzy'],'the Grey Widow':['web'],'Crookback':['gore'],'Longtooth':['howl'],'the Quiet One':['dread'],
-  'Ashjaw':['ashbreath'],'Rimeclaw':['chill'],'Mudmother':['mire'],'Halfhorn':['roar'],'the Pale Hunger':['drain'],
+  'Old Notch':['frenzy'],'the Grey Widow':['web'],'Crookback':['gore'],'Longtooth':['howl'],'the Quiet One':['dread'],
+  'Ashjaw':['ashbreath'],'Rimeclaw':['chill'],'Mudmother':['mire'],'Halfhorn':['roar'],'the Thin Hunger':['drain'],
   'Blackgums':['venom'],'Old Rot':['hatch']};
 
 // ---- block assembly ----
