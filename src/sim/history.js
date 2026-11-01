@@ -5,10 +5,13 @@
 import {S,clockStr} from './state.js';
 
 export const HIST_CAP=40,TL_CAP=200;
+// One observer (sim/fellowship.js, #68) turns a Fellowship member's log lines into memories. It reads only.
+let hook=null;export const onRecord=f=>{hook=f};
 export function record(a,...parts){if(!a)return;
   const text=parts.map(p=>typeof p==='string'?p:p.kind==='hero'?p.name:p.t).join('');
   (a.history||(a.history=[])).push({t:clockStr(),parts,text});
-  if(a.history.length>HIST_CAP)a.history.shift()}
+  if(a.history.length>HIST_CAP)a.history.shift();
+  if(hook&&a.fellow)hook(a,text)}
 
 // World timeline: notable events for the Timeline panel. timeline(kind, ...parts) puts
 // {t, gameMin, kind, parts} on S.timeline, newest first, capped at TL_CAP. kind is one of

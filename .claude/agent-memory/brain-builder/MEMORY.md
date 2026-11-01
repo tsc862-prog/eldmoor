@@ -1,2 +1,3 @@
 - [Brain design](brain-design.md) — decision points, relay protocol, model choice, cost and test approach from issue #40
 - [Agent player](agent-player.md) — #75 MCP tools, WS bridge protocol, Agent SDK runner settings, measured cost per turn, playcheck
+- [Fellowship](fellowship.md) — #68 phase A: 5 role slots, persona/backstory/memory shapes, Sonnet writing kinds, hooks, tests, escape pitfall

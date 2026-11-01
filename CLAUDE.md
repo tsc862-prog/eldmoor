@@ -146,13 +146,19 @@ the scripted branch, so the world never waits.
   conditions, price shocks, hooks and named/custom foes, plus the hooks the world reads them
   through (state on `S.levers`, `S.places`, `S.marks`, `S.conditions`, `S.wanderers`;
   drawn by `src/render/places.js`; `npm run levercheck`);
-  `index.js` `init()` and `step(dt)`.
+  `index.js` `init()` and `step(dt)`; `fellowship.js` the Fellowship (#68): five fixed
+  roles (Tank, Healer, three DPS), founding, muster, hardcore replacement, campaign log,
+  `fellowshipMembers()` in slot order; `persona.js` persona sheets and backstories from
+  sim facts (scripted, or enriched once through the relay) and `fellowCard` for prompts;
+  `memory.js` per-member recent memories, long-term summary and companion stances.
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
   overlay with torch light, labels at constant CSS size.
 - `src/ui/`: `panels.js` hero card, factions, chronicle, graveyard, guilds,
-  top heroes, auction house, clock; `controls.js` speed, view and selection.
+  top heroes, auction house, clock; `controls.js` speed, view (incl. Follow Fellowship)
+  and selection; `fellowship.js` the Fellowship panel (founding, roster, sheet editor,
+  campaign log), the Memory tab and the Chronicle's "Fellowship only" filter.
 - `scripts/headless.mjs`: imports `src/sim/index.js` directly (no DOM stubs),
   steps the world and prints a summary from `S`.
 

@@ -8,7 +8,7 @@ import {brainStatus} from '../sim/brain.js';
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 let list=null,count=null,lastKey='';
 
-export const isMind=a=>!!a&&a.state!=='dead'&&(a.brain||a.player);
+export const isMind=a=>!!a&&a.state!=='dead'&&(a.brain||a.player||a.fellow); // Fellowship members (#68) are listed first, starred
 const OUT={applied:'ok',rejected:'bad',late:'dim',offline:'dim',superseded:'dim',overruled:'warn',pending:'dim'};
 const KIND={townPlan:'Town plan',fightOrFlee:'Fight or flee',say:'Says',cryptCall:'Crypt call'};
 
@@ -19,9 +19,9 @@ function latest(a){
   return {t:m.t,kind:KIND[m.kind]||m.kind,what,outcome:m.outcome}}
 
 export function renderMinds(){if(!list)return;
-  const minds=S.agents.filter(isMind).sort((x,y)=>y.lvl-x.lvl||x.id-y.id);
-  const rows=minds.map(a=>{const st=a.player?'agent':brainStatus(a),l=latest(a);
-    return {a,st,l,key:[a.id,a.lvl,st,a.state,l&&l.t,l&&l.outcome,l&&l.what].join('|')}});
+  const minds=S.agents.filter(isMind).sort((x,y)=>(!!y.fellow-!!x.fellow)||y.lvl-x.lvl||x.id-y.id);
+  const rows=minds.map(a=>{const st=a.player?'agent':a.brain?brainStatus(a):'fellow',l=latest(a);
+    return {a,st,l,key:[a.id,a.fellow?1:0,a.lvl,st,a.state,l&&l.t,l&&l.outcome,l&&l.what].join('|')}});
   const key=rows.map(r=>r.key).join(';');
   if(key===lastKey)return;lastKey=key;
   count.textContent=String(minds.length);
@@ -30,8 +30,8 @@ export function renderMinds(){if(!list)return;
   for(const {a,st,l} of rows){
     const li=el('li','mind');
     const top=el('div','mtop');
-    const n=el('span','hn f'+a.fac,a.name);n.dataset.hid=a.id;
-    const tag=el('span','mtag '+st,st==='agent'?'AGENT':st==='offline'?'QUIET':'AI');
+    const n=el('span','hn f'+a.fac,a.name);n.dataset.hid=a.id;if(a.fellow)top.append(el('span','gd mstar','★ '));
+    const tag=el('span','mtag '+st,st==='agent'?'AGENT':st==='offline'?'QUIET':st==='fellow'?'SCRIPTED':'AI');if(st==='fellow')tag.title='A Fellowship member on the scripted rules (Minds are off).';
     if(st==='offline')tag.title='The relay is not answering; scripted rules are playing this hero for now.';
     top.append(n,el('span','mlvl','Lv '+a.lvl+' '+a.cls),tag);
     li.append(top);

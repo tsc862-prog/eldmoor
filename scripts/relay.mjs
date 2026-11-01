@@ -6,6 +6,9 @@
 // sent:{id, system, user} is the exact system prompt and user content, size-capped.
 //
 //   POST /decide   {kind:'townPlan'|'cryptCall'|'fightOrFlee'|'say', snapshot:{...options:[...]}}  (cryptCall and say carry no options)
+//                  {kind:'persona'|'backstory'|'memory', snapshot:{...companions:[{id,name,...}]}}  (Fellowship writing, #68:
+//                  persona -> {voice,wants,fears,quirk,never_says,stances:{id:line}}; backstory -> {family,arms,defining,
+//                  flaw,wants,joined,link,summary,link_id,link_hero,link_kind}; memory -> {long}; plus model)
 //     200 {choice?, crypt?, line?, reason?, sent, usage:{in,out,cost}}   (cryptCall: {crypt, reason})
 //     4xx/5xx {error:'...', sent?}   (the sim treats any error as "scripted")
 //   GET  /health   {ok, model, requests, cost}
@@ -23,13 +26,19 @@ import {dirname, join} from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {FAC} from '../src/data/factions.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs'; // agent player: /mcp, /play (issue #75)
-import {KINDS, OPTION_KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason} from '../src/data/prompts.js';
+import {KINDS, OPTION_KINDS, WRITE_KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason, cleanText, PERSONA_FIELDS, STANCE_MAX, BACKSTORY_FIELDS, LINK_KINDS, MEMORY_LONG_MAX} from '../src/data/prompts.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Cheapest current model (claude-api skill, cached 2026-10-06): Haiku 5.5, $0.10 in / $0.50 out per 1M tokens (prompts up to 100K).
 export const DEFAULT_MODEL = 'claude-haiku-5-5';
 export const PRICES = {'claude-haiku-5-5': {in: 0.10, out: 0.50}, 'claude-sonnet-5-5': {in: 2, out: 10}, 'claude-opus-5-5': {in: 4, out: 20}}; // $ per 1M tokens
 export const TIMEOUT_MS = 2500, MAX_BODY = 32 * 1024, DEV_ORIGIN = 'http://localhost:5173';
+// Fellowship writing kinds (issue #68): one-time character work on the Sonnet tier (the owner's plan;
+// claude-api skill, cached 2026-10-06: claude-sonnet-5-5, $2 in / $10 out per 1M). The sim never waits
+// for these, so they get a long timeout. memory (a summary of capped memories) stays on the default tier.
+// Env override: RELAY_WRITE_MODEL for persona and backstory.
+export const KIND_MODEL = {persona: 'claude-sonnet-5-5', backstory: 'claude-sonnet-5-5'};
+export const KIND_TIMEOUT = {persona: 40000, backstory: 60000, memory: 15000};
 export const ECHO_MAX = 6000; // chars of system and of user content echoed back per reply
 export const LOG_FILE = join(ROOT, 'logs', 'relay.jsonl');
 
@@ -55,12 +64,16 @@ export function checkRequest(body) {
   if (OPTION_KINDS.includes(body.kind)) {
     if (!Array.isArray(s.options) || s.options.length < 1 || s.options.length > 8 || s.options.some(o => typeof o !== 'string' || o.length > 40)) return 'bad options';
   }
+  if (body.kind === 'persona' || body.kind === 'backstory') {
+    const c = s.companions; if (c !== undefined && (!Array.isArray(c) || c.length > 6 || c.some(x => !x || typeof x.name !== 'string' || x.name.length > 40 || (typeof x.id !== 'number' && typeof x.id !== 'string')))) return 'bad companions';
+  }
   return null;
 }
 
 // Validate what the model said against the options the sim sent; returns the reply or throws.
-export function checkReply(kind, options, text) {
+export function checkReply(kind, options, text, snap = {}) {
   let j; try {j = JSON.parse(text)} catch {throw new Error('model reply is not JSON')}
+  if (WRITE_KINDS.includes(kind)) return checkWriting(kind, j, snap);
   if (OPTION_KINDS.includes(kind) && !options.includes(j.choice)) throw new Error('choice not in options');
   const reason = cleanReason(j.reason), r = reason ? {reason} : {};
   if (kind === 'cryptCall') {if (typeof j.crypt !== 'boolean') throw new Error('crypt is not a yes or no'); return {crypt: j.crypt, ...r}}
@@ -68,11 +81,26 @@ export function checkReply(kind, options, text) {
   const line = typeof j.line === 'string' ? j.line.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
   return kind === 'say' ? {line} : {choice: j.choice, line, ...r};
 }
+// Persona, backstory and memory replies: every field present and non-empty, cut to its cap; stances and
+// the companion link only for companions the sim sent.
+export function checkWriting(kind, j, snap = {}) {
+  if (!j || typeof j !== 'object') throw new Error('reply is not an object');
+  const comps = Array.isArray(snap.companions) ? snap.companions : [], out = {};
+  const need = (fields) => {for (const k in fields) {const v = cleanText(j[k], fields[k]); if (!v) throw new Error('missing ' + k); out[k] = v}};
+  if (kind === 'memory') {const v = cleanText(j.long, MEMORY_LONG_MAX); if (!v) throw new Error('missing long'); return {long: v}}
+  if (kind === 'persona') {need(PERSONA_FIELDS); out.stances = {};
+    for (const c of comps) {const v = cleanText(j.stances && j.stances[String(c.id)], STANCE_MAX); if (v) out.stances[String(c.id)] = v}
+    return out}
+  need(BACKSTORY_FIELDS);
+  if (comps.length) {const c = comps.find(x => x.name === j.link_hero); if (!c) throw new Error('link_hero is not a companion');
+    out.link_id = c.id; out.link_hero = c.name; out.link_kind = LINK_KINDS.includes(j.link_kind) ? j.link_kind : 'oath'}
+  return out;
+}
 const cap = (t, n = ECHO_MAX) => t.length > n ? t.slice(0, n) + '…[cut]' : t;
 
 // createRelay({client, model}) returns {server, stats}; client needs messages.create (the SDK, or a fake in tests).
 // verbose: a file path; each call appends {ts, kind, hero, system, user, response, usage, ms}.
-export function createRelay({client, model = DEFAULT_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null} = {}) {
+export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null} = {}) {
   const stats = {requests: 0, errors: 0, inTok: 0, outTok: 0, cost: 0};
   const vlog = rec => {
     if (!verbose) return;
@@ -84,19 +112,29 @@ export function createRelay({client, model = DEFAULT_MODEL, origin = DEV_ORIGIN,
   // carrying .sent so a failed call can still show its prompt.
   async function decide(body) {
     const kind = body.kind, s = body.snapshot, ac = new AbortController(), t0 = Date.now();
+    const mdl = kindModel[kind] || model, tmo = KIND_TIMEOUT[kind] || timeoutMs;
     const system = systemFor(kind, FAC.findIndex(f => f.name === s.fac)), user = JSON.stringify(s);
     const sent = {id: promptId(kind), system: cap(system), user: cap(user)};
-    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    const timer = setTimeout(() => ac.abort(), tmo);
     let usage = null, raw = null;
     try {
-      const res = await client.messages.create({
-        model, max_tokens: MAX_TOKENS[kind],
+      const req = {
+        model: mdl, max_tokens: MAX_TOKENS[kind],
         system,
         thinking: {type: 'disabled'},
-        output_config: {effort: 'low', format: {type: 'json_schema', schema: schemaFor(kind, s.options)}},
+        output_config: {effort: 'low', format: {type: 'json_schema', schema: schemaFor(kind, s.options, s)}},
         messages: [{role: 'user', content: user}],
-      }, {signal: ac.signal, timeout: timeoutMs, maxRetries: 0});
-      const u = res.usage || {}, cost = costOf(model, u.input_tokens || 0, u.output_tokens || 0);
+      };
+      let call = client.messages;
+      if (mdl.startsWith('claude-sonnet-5-5')) {
+        // Sonnet 5.5 rejects thinking 'disabled'; 'between_tools' is its no-extended-thinking setting (effort high or
+        // below). Server-side refusal fallback ("default" form, Claude API only) through the beta namespace when present.
+        req.thinking = {type: 'between_tools'};
+        if (client.beta && client.beta.messages) {call = client.beta.messages; req.betas = ['server-side-fallback-2026-07-01']; req.fallbacks = 'default'}
+      }
+      const res = await call.create(req, {signal: ac.signal, timeout: tmo, maxRetries: 0});
+      const billed = res.model && PRICES[res.model] ? res.model : mdl;
+      const u = res.usage || {}, cost = costOf(billed, u.input_tokens || 0, u.output_tokens || 0);
       usage = {in: u.input_tokens || 0, out: u.output_tokens || 0, cost};
       stats.inTok += usage.in; stats.outTok += usage.out; stats.cost += cost;
       log(`[relay] ${kind} ${s.name || ''} in=${u.input_tokens} out=${u.output_tokens} $${cost.toFixed(6)} total $${stats.cost.toFixed(4)} (${stats.requests} calls)`);
@@ -105,7 +143,7 @@ export function createRelay({client, model = DEFAULT_MODEL, origin = DEV_ORIGIN,
       if (res.stop_reason === 'refusal') throw new Error('model refused');
       if (res.stop_reason === 'max_tokens') throw new Error('reply cut off');
       if (!block) throw new Error('no text in reply');
-      const out = {...checkReply(kind, s.options, block.text), sent, usage};
+      const out = {...checkReply(kind, s.options, block.text, s), sent, usage, ...(WRITE_KINDS.includes(kind) ? {model: billed} : {})};
       vlog({ts: new Date().toISOString(), kind, hero: s.name || null, system, user, response: raw, usage, ms: Date.now() - t0});
       return out;
     } catch (e) {
@@ -156,7 +194,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const model = env.RELAY_MODEL || DEFAULT_MODEL, port = Number(env.RELAY_PORT || 8787);
   const verbose = process.argv.includes('--verbose') || /^(1|true|yes)$/i.test(env.RELAY_VERBOSE || '') ? LOG_FILE : null;
   const client = env.ANTHROPIC_API_KEY ? new Anthropic({apiKey: env.ANTHROPIC_API_KEY}) : {messages: {create: async () => {throw new Error('relay started with --play-only')}}};
-  const {server} = createRelay({client, model, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose});
+  const kindModel = env.RELAY_WRITE_MODEL ? {persona: env.RELAY_WRITE_MODEL, backstory: env.RELAY_WRITE_MODEL} : KIND_MODEL;
+  const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose});
   attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null}); // agent player: MCP at /mcp, the game page at ws /play
   server.listen(port, '127.0.0.1', () => console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}`));
 }

@@ -9,7 +9,7 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerAct} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, markPlayer, playerAct, found, autoPick} from '../src/sim/index.js';
 import {GOODS} from '../src/data/items.js';
 import {CRYPT} from '../src/world/map.js';
 
@@ -52,6 +52,7 @@ function sane(label) {
   ok(S.agents.every((a) => a.guild === null || S.GUILDS.includes(a.guild)), `${label}: every hero's guild is null or a GUILDS entry (${S.GUILDS.filter((g) => !g.retired).length} living, ${S.GUILDS.filter((g) => g.retired).length} retired, ${S.agents.filter((a) => !a.guild && a.state !== 'dead').length} unguilded alive)`);
   ok(new Set(S.GUILDS.map((g) => g.id)).size === S.GUILDS.length && S.GUILDS.every((g) => g.id <= S.guildSeq), `${label}: guild ids unique and below guildSeq ${S.guildSeq}`);
   ok(S.agents.every((a) => !a.target || a.target.kind), `${label}: hero targets are entities`);
+  {const F = S.fellowship; ok(!!F && F.ids.length >= 4 && F.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a && a.fellow && a.state !== 'dead' && a.persona && a.backstory && a.memory && Array.isArray(a.memory.recent)}) && F.log.length > 0, `${label}: Fellowship ${F ? F.name + ' with ' + F.ids.length + ' members, ' + F.log.length + ' log entries, ' + F.past.length + ' fallen' : 'missing'}`)}
   ok(S.agents.filter((a) => a.player).every((a) => Array.isArray(a.journal) && Array.isArray(a.pq) && a.journal.length >= 1), `${label}: ${S.agents.filter((a) => a.player).length} agent-played hero(es) keep journal and queue`);
 }
 
@@ -79,6 +80,8 @@ init();
 // An agent-played hero (issue #75) with a journal and a command in its queue rides along.
 {const p = S.agents.find((a) => a.state !== 'dead');
   ok(markPlayer(p, true) && playerAct(p.id, 'journal_write', {text: 'Savecheck was here.'}).ok && playerAct(p.id, 'move_to', {target: 'home'}).ok !== undefined, `agent-played hero ${p.name} with a journal entry`)}
+// The Fellowship (issue #68) rides along: five heroes with personas, backstories, memories and a campaign log (relay off).
+{const r = found(autoPick(0), {ai: false}); ok(r.ok, 'Fellowship founded: ' + (r.ok ? S.fellowship.name : r.error))}
 run(TWO_DAYS_MIN);
 const twoDays = JSON.stringify(snapshot());
 console.log(`  size after ${TWO_DAYS_MIN} min (2 game-days): ${kb(twoDays)}`);
