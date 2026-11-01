@@ -3,7 +3,7 @@
 // Names are clickable .hn spans; panels.js owns the delegated click that follows them.
 // Rebuilds only when the set of minds or a shown value changes.
 import {S} from '../sim/index.js';
-import {brainStatus} from '../sim/brain.js';
+import {brainStatus,mindTag,modelTag} from '../sim/brain.js';
 import {agentLink,LINK_TEXT} from './player-bridge.js'; // each agent's runner link (issue #93)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -17,24 +17,26 @@ function latest(a){
   if(a.player&&a.playLog&&a.playLog.length){const c=a.playLog[0];return {t:c.t,kind:'Agent',what:c.tool+(c.args?' '+c.args:''),outcome:c.pending?'pending':c.ok?'applied':'rejected'}} // agent player: its latest tool call (sim/player.js)
   const m=a.mind&&a.mind[0];if(!m)return null;
   const what=m.kind==='say'?(m.line?'“'+m.line+'”':'a line'):(m.choice?'chose '+m.choice:(m.outcome==='pending'?'thinking…':m.outcome));
-  return {t:m.t,kind:KIND[m.kind]||m.kind,what,outcome:m.outcome}}
+  return {t:m.t,kind:KIND[m.kind]||m.kind,what,outcome:m.outcome,model:modelTag(m)}}
 
 export function renderMinds(){if(!list)return;
   const minds=S.agents.filter(isMind).sort((x,y)=>(!!y.fellow-!!x.fellow)||y.lvl-x.lvl||x.id-y.id);
   const rows=minds.map(a=>{const st=a.player?'agent':a.brain?brainStatus(a):'fellow',l=latest(a),link=a.player?agentLink(a):null;
-    return {a,st,l,link,key:[a.id,a.fellow?1:0,a.lvl,st,link,a.state,l&&l.t,l&&l.outcome,l&&l.what].join('|')}});
+    const mt=a.brain&&!a.player?mindTag(a):null;
+    return {a,st,l,link,mt,key:[a.id,a.fellow?1:0,a.lvl,st,link,a.state,l&&l.t,l&&l.outcome,l&&l.what,mt].join('|')}});
   const key=rows.map(r=>r.key).join(';');
   if(key===lastKey)return;lastKey=key;
   count.textContent=String(minds.length);
   list.replaceChildren();
   if(!minds.length){list.append(el('li','mempty','No hero is AI-played right now. Select a hero of level 7 or higher and click the AI button by their name.'));return}
-  for(const {a,st,l,link} of rows){
+  for(const {a,st,l,link,mt} of rows){
     const li=el('li','mind');
     const top=el('div','mtop');
     const n=el('span','hn f'+a.fac,a.name);n.dataset.hid=a.id;if(a.fellow)top.append(el('span','gd mstar','★ '));
     const tag=el('span','mtag '+st,st==='agent'?'AGENT':st==='offline'?'QUIET':st==='fellow'?'SCRIPTED':'AI');if(st==='fellow')tag.title='A Fellowship member on the scripted rules (Minds are off).';
     if(st==='offline')tag.title='The relay is not answering; scripted rules are playing this hero for now.';
     top.append(n,el('span','mlvl','Lv '+a.lvl+' '+a.cls));
+    if(mt){const k=el('span','mmodel',mt);k.title='The model playing this hero (set per member in the Fellowship panel)';top.append(k)}
     if(link){const k=el('span','mlink '+link,LINK_TEXT[link]||link);k.title='Agent runner: npm run agent -- --hero '+a.name;top.append(k)}
     top.append(tag);
     li.append(top);

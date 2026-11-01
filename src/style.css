@@ -182,6 +182,13 @@ button.mini{font-size:7px;padding:3px 6px;box-shadow:none}
 .fm{display:grid;grid-template-columns:58px 1fr 70px auto;gap:6px;align-items:center;background:var(--panel2);padding:4px 6px}
 .fm .fdo{grid-column:2/-1;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fm .ftools{display:flex;gap:4px}
+.fm .fmind{grid-column:1/-1}
+.mindrow{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.mseg{display:inline-flex;gap:2px}
+.mseg button[aria-pressed=true]{border-color:#7fd6c2;color:#7fd6c2}
+.msel{font-family:var(--mono);font-size:16px;background:#0a0b14;color:var(--ink);border:1px solid var(--edge);max-width:140px;min-width:0}
+.mnote{font-size:15px}
+.mmodel{color:var(--dim);font-size:15px}
 .frole{font-family:var(--px);font-size:7px;padding:2px 4px;border:1px solid currentColor;text-align:center}
 .frole.r-tank{color:var(--blue)} .frole.r-healer{color:var(--green)} .frole.r-dps{color:var(--red)}
 .felform{display:flex;flex-direction:column;gap:4px;margin-top:6px}

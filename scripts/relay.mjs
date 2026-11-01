@@ -9,15 +9,22 @@
 //                  {kind:'persona'|'backstory'|'memory', snapshot:{...companions:[{id,name,...}]}}  (Fellowship writing, #68:
 //                  persona -> {voice,wants,fears,quirk,never_says,stances:{id:line}}; backstory -> {family,arms,defining,
 //                  flaw,wants,joined,link,summary,link_id,link_hero,link_kind}; memory -> {long}; plus model)
-//     200 {choice?, crypt?, line?, reason?, sent, usage:{in,out,cost}}   (cryptCall: {crypt, reason})
-//     4xx/5xx {error:'...', sent?}   (the sim treats any error as "scripted")
-//   GET  /health   {ok, model, requests, cost}
+//                  Any request may add provider:'anthropic'|'ollama'|'openai'|'google', model:'<id or tag>', effort
+//                  (Mixed minds, #97; the hero's a.brainCfg). Default: anthropic with the models below.
+//     200 {choice?, crypt?, line?, reason?, sent, usage:{in,out,cost}, provider, model}   (cryptCall: {crypt, reason})
+//     4xx/5xx {error:'...', sent?, provider?, model?}   (the sim treats any error as "scripted")
+//   GET  /health   {ok, model, requests, cost, byProvider:{name:{requests,errors,inTok,outTok,cost,ms}},
+//                   providers:{anthropic:{ok,models}, ollama:{ok,url,models (pulled, from /api/tags),error?}, openai, google}, localTimeout}
+//
+// Providers: scripts/providers/ (anthropic.mjs = the Claude call, ollama.mjs = local models at OLLAMA_URL,
+// default http://localhost:11434, cost 0; openai.mjs and google.mjs are stubs until built).
 //
 // Setup: put ANTHROPIC_API_KEY=... in .env at the repo root (gitignored; see .env.example),
-// then `npm run relay`. Optional env: RELAY_MODEL, RELAY_PORT, RELAY_ORIGIN.
+// then `npm run relay`. Optional env: RELAY_MODEL, RELAY_PORT, RELAY_ORIGIN, OLLAMA_URL, OLLAMA_MODEL.
+// With no key the relay still runs: Claude requests fail (scripted fallback), local models work.
 // Verbose log: `npm run relay -- --verbose` (or RELAY_VERBOSE=1) appends one JSON line per
 // call to logs/relay.jsonl: {ts, kind, hero, system, user, response, usage, ms}. Never the key or headers.
-// Limits: 2.5 s per model call (hard abort), small max_tokens per kind, body <= 32 KB,
+// Limits: 2.5 s per model call (hard abort; local models 8 s, see LOCAL_TIMEOUT), small max_tokens per kind, body <= 32 KB,
 // CORS only for the dev origin. Token usage and a running cost estimate are logged.
 import http from 'node:http';
 import {readFileSync, existsSync, mkdirSync, appendFileSync} from 'node:fs';
@@ -26,12 +33,16 @@ import {dirname, join} from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {FAC} from '../src/data/factions.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs'; // agent player: /mcp, /play (issue #75)
+import {makeProviders, PROVIDERS, isLocal, MODEL_RE, DEFAULT_MODEL, PRICES, costOf} from './providers/index.mjs'; // Mixed minds (#97): one adapter per provider
 import {KINDS, OPTION_KINDS, WRITE_KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason, cleanText, PERSONA_FIELDS, STANCE_MAX, BACKSTORY_FIELDS, LINK_KINDS, MEMORY_LONG_MAX} from '../src/data/prompts.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Cheapest current model (claude-api skill, cached 2026-10-06): Haiku 5.5, $0.10 in / $0.50 out per 1M tokens (prompts up to 100K).
-export const DEFAULT_MODEL = 'claude-haiku-5-5';
-export const PRICES = {'claude-haiku-5-5': {in: 0.10, out: 0.50}, 'claude-sonnet-5-5': {in: 2, out: 10}, 'claude-opus-5-5': {in: 4, out: 20}}; // $ per 1M tokens
+// DEFAULT_MODEL, PRICES and costOf live with the Anthropic adapter (scripts/providers/anthropic.mjs).
+export {DEFAULT_MODEL, PRICES, costOf};
+// Local models (Ollama, #97) are slower than the API: decisions get 8 s, writing kinds at least 30 s.
+// Env: RELAY_LOCAL_TIMEOUT, RELAY_LOCAL_WRITE_TIMEOUT (ms).
+export const LOCAL_TIMEOUT = {decide: 8000, write: 30000};
 export const TIMEOUT_MS = 2500, MAX_BODY = 32 * 1024, DEV_ORIGIN = 'http://localhost:5173';
 // Fellowship writing kinds (issue #68): one-time character work on the Sonnet tier (the owner's plan;
 // claude-api skill, cached 2026-10-06: claude-sonnet-5-5, $2 in / $10 out per 1M). The sim never waits
@@ -54,12 +65,13 @@ export function loadEnv(root = ROOT, env = process.env) {
   return env;
 }
 
-export const costOf = (model, inTok, outTok) => {const p = PRICES[model]; return p ? (inTok * p.in + outTok * p.out) / 1e6 : 0};
-
 // Check a snapshot well enough to build a prompt and schema from it.
 export function checkRequest(body) {
   if (!body || typeof body !== 'object') return 'bad body';
   if (!KINDS.includes(body.kind)) return 'unknown kind';
+  if (body.provider !== undefined && !PROVIDERS.includes(body.provider)) return 'unknown provider';
+  if (body.model !== undefined && (typeof body.model !== 'string' || !MODEL_RE.test(body.model))) return 'bad model';
+  if (body.effort !== undefined && !['low', 'medium', 'high'].includes(body.effort)) return 'bad effort';
   const s = body.snapshot; if (!s || typeof s !== 'object') return 'no snapshot';
   if (OPTION_KINDS.includes(body.kind)) {
     if (!Array.isArray(s.options) || s.options.length < 1 || s.options.length > 8 || s.options.some(o => typeof o !== 'string' || o.length > 40)) return 'bad options';
@@ -100,56 +112,59 @@ const cap = (t, n = ECHO_MAX) => t.length > n ? t.slice(0, n) + '…[cut]' : t;
 
 // createRelay({client, model}) returns {server, stats}; client needs messages.create (the SDK, or a fake in tests).
 // verbose: a file path; each call appends {ts, kind, hero, system, user, response, usage, ms}.
-export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null} = {}) {
-  const stats = {requests: 0, errors: 0, inTok: 0, outTok: 0, cost: 0};
+// providers: {name: adapter} (scripts/providers/); default built from client and the environment.
+// localTimeout: {decide, write} ms for local providers (a writing kind gets at least its KIND_TIMEOUT).
+export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null, providers = null, localTimeout = LOCAL_TIMEOUT} = {}) {
+  providers = providers || makeProviders({anthropicClient: client || null, model});
+  const stats = {requests: 0, errors: 0, inTok: 0, outTok: 0, cost: 0, byProvider: {}};
   const vlog = rec => {
     if (!verbose) return;
     try {mkdirSync(dirname(verbose), {recursive: true}); appendFileSync(verbose, JSON.stringify(rec) + '\n')}
     catch (e) {log(`[relay] verbose log failed: ${e.message}`)}
   };
 
-  // Returns the validated reply plus sent (what the model saw) and usage; throws an Error
-  // carrying .sent so a failed call can still show its prompt.
+  // Returns the validated reply plus sent (what the model saw), usage, provider and model; throws an Error
+  // carrying .sent (and .provider/.model) so a failed call can still show its prompt and who was asked.
+  // The provider adapter (scripts/providers/) makes the call; validation is the same for every provider.
   async function decide(body) {
     const kind = body.kind, s = body.snapshot, ac = new AbortController(), t0 = Date.now();
-    const mdl = kindModel[kind] || model, tmo = KIND_TIMEOUT[kind] || timeoutMs;
+    const prov = body.provider || 'anthropic', P = providers[prov], local = isLocal(prov);
+    const mdl = body.model || (prov === 'anthropic' ? kindModel[kind] || model : P && P.defaultModel) || null;
+    const tmo = local ? (WRITE_KINDS.includes(kind) ? Math.max(localTimeout.write, KIND_TIMEOUT[kind] || 0) : localTimeout.decide) : KIND_TIMEOUT[kind] || timeoutMs;
     const system = systemFor(kind, FAC.findIndex(f => f.name === s.fac)), user = JSON.stringify(s);
     const sent = {id: promptId(kind), system: cap(system), user: cap(user)};
+    const who = {provider: prov, model: mdl}, ps = stats.byProvider[prov] || (stats.byProvider[prov] = {requests: 0, errors: 0, inTok: 0, outTok: 0, cost: 0, ms: 0});
+    ps.requests++;
     const timer = setTimeout(() => ac.abort(), tmo);
     let usage = null, raw = null;
+    const count = r => {
+      if (!r || !r.usage) return; usage = r.usage; if (r.model) who.model = r.model;
+      stats.inTok += usage.in; stats.outTok += usage.out; stats.cost += usage.cost;
+      ps.inTok += usage.in; ps.outTok += usage.out; ps.cost += usage.cost;
+      log(`[relay] ${kind} ${s.name || ''} ${prov}/${who.model} in=${usage.in} out=${usage.out} $${usage.cost.toFixed(6)} ${Date.now() - t0} ms total $${stats.cost.toFixed(4)} (${stats.requests} calls)`);
+    };
     try {
-      const req = {
-        model: mdl, max_tokens: MAX_TOKENS[kind],
-        system,
-        thinking: {type: 'disabled'},
-        output_config: {effort: 'low', format: {type: 'json_schema', schema: schemaFor(kind, s.options, s)}},
-        messages: [{role: 'user', content: user}],
-      };
-      let call = client.messages;
-      if (mdl.startsWith('claude-sonnet-5-5')) {
-        // Sonnet 5.5 rejects thinking 'disabled'; 'between_tools' is its no-extended-thinking setting (effort high or
-        // below). Server-side refusal fallback ("default" form, Claude API only) through the beta namespace when present.
-        req.thinking = {type: 'between_tools'};
-        if (client.beta && client.beta.messages) {call = client.beta.messages; req.betas = ['server-side-fallback-2026-07-01']; req.fallbacks = 'default'}
-      }
-      const res = await call.create(req, {signal: ac.signal, timeout: tmo, maxRetries: 0});
-      const billed = res.model && PRICES[res.model] ? res.model : mdl;
-      const u = res.usage || {}, cost = costOf(billed, u.input_tokens || 0, u.output_tokens || 0);
-      usage = {in: u.input_tokens || 0, out: u.output_tokens || 0, cost};
-      stats.inTok += usage.in; stats.outTok += usage.out; stats.cost += cost;
-      log(`[relay] ${kind} ${s.name || ''} in=${u.input_tokens} out=${u.output_tokens} $${cost.toFixed(6)} total $${stats.cost.toFixed(4)} (${stats.requests} calls)`);
-      const block = (res.content || []).find(b => b.type === 'text');
-      raw = block ? block.text : null;
-      if (res.stop_reason === 'refusal') throw new Error('model refused');
-      if (res.stop_reason === 'max_tokens') throw new Error('reply cut off');
-      if (!block) throw new Error('no text in reply');
-      const out = {...checkReply(kind, s.options, block.text, s), sent, usage, ...(WRITE_KINDS.includes(kind) ? {model: billed} : {})};
-      vlog({ts: new Date().toISOString(), kind, hero: s.name || null, system, user, response: raw, usage, ms: Date.now() - t0});
+      if (!P) throw new Error('unknown provider');
+      const res = await P.call({system, user, schema: schemaFor(kind, s.options, s), maxTokens: MAX_TOKENS[kind], model: mdl, effort: body.effort || 'low', signal: ac.signal, timeoutMs: tmo});
+      count(res); raw = res.text;
+      const out = {...checkReply(kind, s.options, res.text, s), sent, usage, ...who};
+      ps.ms += Date.now() - t0;
+      vlog({ts: new Date().toISOString(), kind, hero: s.name || null, ...who, system, user, response: raw, usage, ms: Date.now() - t0});
       return out;
     } catch (e) {
-      vlog({ts: new Date().toISOString(), kind, hero: s.name || null, system, user, response: raw, error: isAbort(e) ? 'timeout' : String(e.message || e), usage, ms: Date.now() - t0});
-      e.sent = sent; throw e;
+      if (e && e.result) count(e.result);
+      if (e && e.raw != null) raw = e.raw;
+      ps.errors++;
+      vlog({ts: new Date().toISOString(), kind, hero: s.name || null, ...who, system, user, response: raw, error: isAbort(e) ? 'timeout' : String(e.message || e), usage, ms: Date.now() - t0});
+      e.sent = sent; e.who = who; throw e;
     } finally {clearTimeout(timer)}
+  }
+  // Which providers can answer: Anthropic configured or not, Ollama reachable or not and its pulled models.
+  async function providerStatus() {
+    const out = {};
+    for (const name of PROVIDERS) {const P = providers[name]; if (!P) continue;
+      try {out[name] = {...await P.status(), local: isLocal(name)}} catch (e) {out[name] = {ok: false, models: [], local: isLocal(name), error: String(e.message || e).slice(0, 80)}}}
+    return out;
   }
 
   const server = http.createServer((req, res) => {
@@ -164,7 +179,7 @@ export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MOD
       const h = origin_ === origin ? {'access-control-allow-origin': origin, 'access-control-allow-methods': 'POST, GET, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '600', vary: 'origin'} : {};
       res.writeHead(204, h); return res.end();
     }
-    if (req.method === 'GET' && req.url === '/health') return send(200, {ok: true, model, ...stats});
+    if (req.method === 'GET' && req.url === '/health') return void providerStatus().then(p => send(200, {ok: true, model, ...stats, providers: p, localTimeout}), () => send(200, {ok: true, model, ...stats}));
     if (req.method !== 'POST' || req.url !== '/decide') return send(404, {error: 'not found'});
     let size = 0; const chunks = [];
     req.on('data', c => {size += c.length; if (size > MAX_BODY) {send(413, {error: 'too large'}); req.destroy()} else chunks.push(c)});
@@ -177,8 +192,8 @@ export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MOD
       catch (e) {
         stats.errors++;
         const timeout = isAbort(e);
-        log(`[relay] ${body.kind} failed: ${timeout ? 'timeout' : e.message}`);
-        send(timeout ? 504 : 502, {error: timeout ? 'timeout' : String(e.message || e).slice(0, 200), ...(e.sent ? {sent: e.sent} : {})});
+        log(`[relay] ${body.kind} ${body.snapshot.name || ''} ${e.who ? e.who.provider + '/' + e.who.model : ''} failed: ${timeout ? 'timeout' : e.message}`);
+        send(timeout ? 504 : 502, {error: timeout ? 'timeout' : String(e.message || e).slice(0, 200), ...(e.sent ? {sent: e.sent} : {}), ...(e.who || {})});
       }
     });
   });
@@ -190,12 +205,17 @@ const isAbort = e => e && (e.name === 'AbortError' || /abort|timed out/i.test(e.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const env = loadEnv();
   const playOnly = process.argv.includes('--play-only'); // agent player bridge without brain calls (no key needed)
-  if (!env.ANTHROPIC_API_KEY && !playOnly) {console.error('No ANTHROPIC_API_KEY. Copy .env.example to .env and put your key in it (or run with --play-only for the agent bridge alone).'); process.exit(1)}
+  if (!env.ANTHROPIC_API_KEY && !playOnly) console.warn('[relay] No ANTHROPIC_API_KEY: Claude requests will fail and those heroes play scripted. Local models (Ollama) still work. Put a key in .env (see .env.example) for Claude.');
   const model = env.RELAY_MODEL || DEFAULT_MODEL, port = Number(env.RELAY_PORT || 8787);
   const verbose = process.argv.includes('--verbose') || /^(1|true|yes)$/i.test(env.RELAY_VERBOSE || '') ? LOG_FILE : null;
-  const client = env.ANTHROPIC_API_KEY ? new Anthropic({apiKey: env.ANTHROPIC_API_KEY}) : {messages: {create: async () => {throw new Error('relay started with --play-only')}}};
+  const client = env.ANTHROPIC_API_KEY ? new Anthropic({apiKey: env.ANTHROPIC_API_KEY}) : null;
+  const providers = makeProviders({anthropicClient: client, model, env});
+  const localTimeout = {decide: Number(env.RELAY_LOCAL_TIMEOUT) || LOCAL_TIMEOUT.decide, write: Number(env.RELAY_LOCAL_WRITE_TIMEOUT) || LOCAL_TIMEOUT.write};
   const kindModel = env.RELAY_WRITE_MODEL ? {persona: env.RELAY_WRITE_MODEL, backstory: env.RELAY_WRITE_MODEL} : KIND_MODEL;
-  const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose});
+  const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose, providers, localTimeout});
   attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null}); // agent player: MCP at /mcp, the game page at ws /play
-  server.listen(port, '127.0.0.1', () => console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}`));
+  server.listen(port, '127.0.0.1', () => {
+    console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}`);
+    providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error}`));
+  });
 }
