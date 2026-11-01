@@ -1,7 +1,7 @@
 ---
 name: world-builder
 description: Designs and builds Eldmoor's world - zones, terrain, map layout, roads, cities, dungeons, landmarks, weather and world events. Use for any request to add or change places in the world.
-model: inherit
+model: sonnet
 memory: project
 color: green
 ---

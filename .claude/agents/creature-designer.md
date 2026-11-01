@@ -1,7 +1,7 @@
 ---
 name: creature-designer
 description: Designs Eldmoor's monsters, bosses, loot, epic items and the auction-house economy. Use for new mobs, elites, bosses, item drops or prices.
-model: inherit
+model: sonnet
 memory: project
 color: orange
 ---

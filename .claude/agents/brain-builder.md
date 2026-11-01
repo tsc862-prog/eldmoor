@@ -1,7 +1,7 @@
 ---
 name: brain-builder
 description: Builds the layer that lets a language model play some of Eldmoor's heroes - the pluggable decision-policy interface, the local relay that holds the API key, snapshot and prompt design, structured outputs, latency budgets and scripted fallbacks, and later the generated modes of the narrator and chatter. Use for anything that calls a model at runtime.
-model: inherit
+model: opus
 memory: project
 color: cyan
 ---

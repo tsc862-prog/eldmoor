@@ -1,7 +1,7 @@
 ---
 name: ai-designer
 description: Designs how Eldmoor's heroes think and act - the hero state machine, questing, grouping, PvP, grudges, guild behavior, dungeon runs and raids. Use for any request about hero behavior or decision-making.
-model: inherit
+model: opus
 memory: project
 color: purple
 ---

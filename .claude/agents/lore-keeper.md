@@ -2,7 +2,7 @@
 name: lore-keeper
 description: Keeps Eldmoor's canon consistent and original - maintains docs/LORE.md, writes flavor text, quest and item names, and checks that no names or content borrow from World of Warcraft or other existing IP. Use proactively when new names, places, creatures or items are added.
 tools: Read, Grep, Glob, Edit, Write
-model: inherit
+model: sonnet
 memory: project
 color: pink
 ---

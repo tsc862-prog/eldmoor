@@ -1,7 +1,7 @@
 ---
 name: character-builder
 description: Designs Eldmoor's heroes - classes, races, factions, guilds, naming, hero sprites, stats, abilities and personalities. Use for any request about who the heroes are or how they look.
-model: inherit
+model: sonnet
 memory: project
 color: blue
 ---
