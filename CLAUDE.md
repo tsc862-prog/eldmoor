@@ -35,6 +35,7 @@ Dedicated subagents live in `.claude/agents/`. Delegate to them by area:
 | `ai-designer` | Hero behavior: states, questing, PvP, grudges, dungeons, raids |
 | `balance-tester` | Read-only headless sim runs and balance reports |
 | `lore-keeper` | `docs/LORE.md`, flavor text, originality checks |
+| `brain-builder` | Model-played heroes: decision-policy interface, local relay, prompts, fallbacks; generated narrator and chatter modes |
 
 For a feature that spans areas (for example a new zone with new monsters), plan it,
 hand each part to its owner, then have `lore-keeper` check names and
