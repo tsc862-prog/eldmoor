@@ -82,7 +82,7 @@ init();
 {const p = S.agents.find((a) => a.state !== 'dead');
   ok(markPlayer(p, true) && playerAct(p.id, 'journal_write', {text: 'Savecheck was here.'}).ok && playerAct(p.id, 'move_to', {target: 'home'}).ok !== undefined, `agent-played hero ${p.name} with a journal entry`)}
 // The Fellowship (issue #68) rides along: five heroes with personas, backstories, memories and a campaign log (relay off).
-{const r = found(autoPick(0), {ai: false}); ok(r.ok, 'Fellowship founded: ' + (r.ok ? S.fellowship.name : r.error))}
+{const r = S.fellowship ? {ok: true} : found(autoPick(0), {ai: false}); ok(r.ok && S.fellowship, 'Fellowship founded: ' + (r.ok ? S.fellowship.name + (S.agents.some((a) => !a.fellow && a.lvl > 1) ? ' (new-world start, #111)' : '') : r.error))}
 run(TWO_DAYS_MIN);
 const twoDays = JSON.stringify(snapshot());
 console.log(`  size after ${TWO_DAYS_MIN} min (2 game-days): ${kb(twoDays)}`);

@@ -199,7 +199,7 @@ const B = await import('../src/sim/brain.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {maxHp} = await import('../src/sim/index.js');
 const {setDmPolicy} = await import('../src/sim/dm.js');
-init();
+init({fellowship: false}); // the old start (#111): these checks pick level-1 heroes in town
 // The DM (sim/dm.js) may send heroes off on adventures at the gate, which would overrule their
 // town plans at random. These checks are about the brain, so no hero takes a job here (a policy
 // answer of null means "no hook"); the job overrule itself is checked directly in 2c.

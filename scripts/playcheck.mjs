@@ -45,7 +45,7 @@ const until = async (cond, maxS, label) => {let t = 0; while (!cond()) {if (t > 
 const hostOpts = () => driven ? {nap: advance, now: () => vclock} : undefined;
 
 console.log('\nEldmoor playcheck: a mock agent plays a hero through the tools\n');
-init(); run(1);
+init({fellowship: false}); run(1); // the old start (#111): this check sets up its own heroes and Fellowship
 // A mid-level hero so posted jobs fit (the DM offers adventures from level 4).
 let a = S.agents.find(x => x.fac === 0 && x.cls === 'Warrior' && x.state === 'town') || S.agents.find(x => x.fac === 0 && x.state === 'town');
 a.lvl = 7; a.hp = maxHp(a); a.gold = 120; // enough to shop once
