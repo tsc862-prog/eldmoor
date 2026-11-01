@@ -81,8 +81,8 @@ export function npcSay(p,trigger,ctx={}){
   // `from` is a small stub, not the live NPC: the chat tab only needs name and faction, and
   // the save walker (sim/save.js) would otherwise copy the whole NPC into every hero's buffer.
   const text=fill(line,p,ctx),e={t:clockStr(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc'};let heard=0;
-  for(const a of S.agents){if(a.state==='dead'||a.hidden||dist(a,p)>HEAR)continue;(a.chat||(a.chat=[])).push(e);if(a.chat.length>CAP)a.chat.shift();heard++}
-  p.bubble={text,life:BUBBLE};p.chatCd=COOL;
+  for(const a of S.agents){if(a.state==='dead'||a.hidden||dist(a,p)>HEAR)continue;if(S.fellowship&&a.fellow)e.fh=true;(a.chat||(a.chat=[])).push(e);if(a.chat.length>CAP)a.chat.shift();heard++}
+  p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=COOL;
   const st=S.npcNews.stats;st.lines++;if(heard)st.heard++;return true}
 
 // Daily routine: walk to the post in working hours, home outside them; open and close

@@ -42,9 +42,11 @@ export function say(a,trigger,ctx={}){
 // Put a line in the speaker's and every nearby listener's chat buffer and show the bubble.
 // ai marks a model-written line (brain.js speaks those as follow-ups); a string is the model tag (#97).
 export function speak(a,text,trigger,ai){const e={t:clockStr(),from:a,text,trigger};if(ai){e.ai=true;if(typeof ai==='string')e.model=ai}
-  hear(a,e);
-  for(const b of nearHeroes(a.x,a.y,HEAR)){if(b===a||b.state==='dead'||b.hidden||dist(a,b)>HEAR)continue;hear(b,e)}
-  a.bubble={text,life:BUBBLE};a.chatCd=COOL}
+  const ls=[];for(const b of nearHeroes(a.x,a.y,HEAR)){if(b===a||b.state==='dead'||b.hidden||dist(a,b)>HEAR)continue;ls.push(b)}
+  // fh: a Fellowship member said it or can hear it (the watcher's Chat tab and bubbles, issue #127)
+  if(S.fellowship&&(a.fellow||ls.some(b=>b.fellow)))e.fh=true;
+  hear(a,e);for(const b of ls)hear(b,e);
+  a.bubble={text,life:BUBBLE};if(e.fh)a.bubble.fh=true;a.chatCd=COOL}
 
 function hear(b,e){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CAP)b.chat.shift()}
 
