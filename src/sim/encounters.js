@@ -17,6 +17,7 @@ import {maxHp,gainXp,moveTo,goHome} from './heroes.js';
 import {partyMates} from './party.js';
 import {isStorm} from './weather.js';
 import {record} from './history.js';
+import {offerUpgrade} from './gear.js';
 
 // ---- knobs ----
 const MAX_ALIVE=3;            // encounters on the roads at once
@@ -67,7 +68,7 @@ const road=e=>'the '+ZONES[e.z]+' road';
 // Can this hero make use of this encounter right now? (Also keeps a hero from re-using a merchant or shrine.)
 function wants(a,e){if(e.used[a.id])return false;
   switch(e.type){
-  case 'merchant':return a.gold>=4*a.lvl&&a.gear<a.lvl+2; // same gear ceiling as the city shop
+  case 'merchant':return a.gold>=6*(a.lvl+1); // the gear module decides whether anything is worth buying
   case 'shrine':return !a.blessed;
   case 'pilgrim':return a.state==='return'&&!e.escort&&!a.pilgrim;
   default:return true}}
@@ -75,7 +76,8 @@ function wants(a,e){if(e.used[a.id])return false;
 // ---- resolution: one roll, one line ----
 function resolve(a,e){const mh=maxHp(a),st=S.encStats;bump(e.type==='pilgrim'?st.escorts:st.resolved,e.type); // a pilgrim counts as resolved on arrival
   switch(e.type){
-  case 'merchant':{const r=d20(),cheap=r>=11,cost=(cheap?3:4)*a.lvl;a.gold-=cost;a.gear++;a.hp=Math.min(maxHp(a),a.hp+6);e.used[a.id]=1;if(cheap)bump(st.success,e.type);
+  case 'merchant':{const r=d20(),cheap=r>=11,before=a.gold,bought=offerUpgrade(a,a.lvl+1);if(bought&&cheap)a.gold+=Math.round((before-a.gold)*.35);const cost=before-a.gold;a.hp=Math.min(maxHp(a),a.hp+6);e.used[a.id]=1;if(cheap&&bought)bump(st.success,e.type);
+    if(!bought){record(a,'Passed a road merchant in '+ZONES[e.z]+' with nothing worth buying.');log(a,' browses a wagon merchant on ',road(e),' and keeps the coin.');break}
     record(a,'Bought gear from a road merchant in '+ZONES[e.z]+' for '+cost+'g (rolled '+r+').');
     log(a,' haggles with a wagon merchant on ',road(e),'... ',dm('rolls '+r),'. ',cheap?'A bargain: new gear for ':'New gear for ',gold(cost+'g'),'.');break}
   case 'shrine':{const r=d20(),deep=r>=16;a.blessed=1;e.used[a.id]=1;pop(a.x,a.y-.6,'BLESSED','#9ad0ff');if(deep)bump(st.success,e.type);
@@ -116,7 +118,7 @@ export function encountersTick(dt){ensure();const L=alive();
     if(e.escort){const a=e.escort;
       if(a.state==='town'){bump(S.encStats.resolved,'pilgrim');const r=d20(),gift=r>=12?a.lvl*2+3:0;a.honor+=3;S.facStats[a.fac].honor+=3;if(gift){a.gold+=gift;bump(S.encStats.success,'pilgrim')}
         record(a,'Brought a pilgrim safe to '+CITY[a.fac].name+' for 3 honor'+(gift?' and '+gift+'g':'')+'.');
-        log(a,' brings the pilgrim safe to the gate of ',CITY[a.fac].name,'. ',dm('rolls '+r),'. +3 honor',gift?' and a gift of ':'.',gift?gold(gift+'g'):'',gift?'.':'');remove(e);continue}
+        log(a,' brings the pilgrim safe to the gate of ',CITY[a.fac].name,'... ',dm('rolls '+r),'. +3 honor',gift?' and a gift of ':'.',gift?gold(gift+'g'):'',gift?'.':'');remove(e);continue}
       if(!afield(a)||a.hidden||S.gameMin-e.escortT>ESCORT_MAX){S.encStats.abandoned++;if(a.state!=='dead')log('The pilgrim loses sight of ',a,' on ',road(e),' and waits by the roadside.');
         a.pilgrim=null;e.escort=null;e.until=Math.max(e.until,S.gameMin+240);e.z=zoneAt(e.x,e.y);continue}
       if(dist(e,a)>1.2)moveTo(e,a.x-a.face*.9,a.y+.2,dt,2.8);else e.moving=false;continue}

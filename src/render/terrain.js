@@ -1,9 +1,9 @@
-// Paints the whole map once into an offscreen canvas: a per-pixel procedural
+// Paints the map in cached 32x32-tile chunks on first request: a per-pixel procedural
 // 16x16 texture for every tile, then city buildings and the crypt mouth on top.
-// Owned by world-builder (textures) together with render.
+// Owned by world-builder (textures) together with render (chunk cache).
 import {hash,vnoise} from '../core/rng.js';
 import {W,H,T,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
-import {tiles,zone,I,CITY} from '../world/map.js';
+import {tiles,zone,I,CITY,CRYPT} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 
 const rgbC={};const rgb=s=>rgbC[s]||(rgbC[s]=[parseInt(s.slice(1,3),16),parseInt(s.slice(3,5),16),parseInt(s.slice(5,7),16)]);
@@ -146,29 +146,59 @@ export function texel(t,tx,ty,px,py){
   }return '#000'}
 function isWater(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return true;const t=tiles[I(tx,ty)];return t===RIVER||t===BRIDGE}
 
-// Build and return the terrain canvas (W*T by H*T pixels).
+// ---- chunks ----
+// The map is painted in CH x CH tile canvases, each on its first request, and cached
+// for the life of the page. draw.js asks only for the chunks that intersect the view,
+// so a world 30x this size costs nothing until the camera reaches it.
+export const CH=32;
+export const CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
+const chunks=new Map();
+
+// Cached canvas for chunk (cx,cy): min(CH,W-cx*CH)*T by min(CH,H-cy*CH)*T pixels.
+export function getChunk(cx,cy){const k=cy*CHUNKS_X+cx;let c=chunks.get(k);if(!c){c=paintChunk(cx,cy);chunks.set(k,c)}return c}
+
+function paintChunk(cx,cy){
+  const tx0=cx*CH,ty0=cy*CH,cw=Math.min(CH,W-tx0),ch=Math.min(CH,H-ty0),stride=cw*T;
+  const cv=document.createElement('canvas');cv.width=cw*T;cv.height=ch*T;
+  const c=cv.getContext('2d');
+  const img=c.createImageData(cw*T,ch*T),d=img.data;
+  for(let j=0;j<ch;j++)for(let i=0;i<cw;i++){const tx=tx0+i,ty=ty0+j,t=tiles[I(tx,ty)];
+    for(let py=0;py<T;py++)for(let px=0;px<T;px++){const col=rgb(texel(t,tx,ty,px,py)),o=((j*T+py)*stride+i*T+px)*4;d[o]=col[0];d[o+1]=col[1];d[o+2]=col[2];d[o+3]=255}}
+  c.putImageData(img,0,0);
+  // decorations are painted in world pixels; the translated context clips them to this chunk
+  c.translate(-tx0*T,-ty0*T);
+  decorate(c,tx0,ty0,tx0+cw,ty0+ch);
+  return cv}
+
+// Paint every chunk into one W*T by H*T canvas. Compatibility helper for tools and
+// previews; the renderer never calls it.
 export function buildTerrain(){
   const terrain=document.createElement('canvas');terrain.width=W*T;terrain.height=H*T;
   const tctx=terrain.getContext('2d');
-  const img=tctx.createImageData(W*T,H*T),d=img.data;
-  for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];
-    for(let py=0;py<T;py++)for(let px=0;px<T;px++){const c=rgb(texel(t,tx,ty,px,py)),o=((ty*T+py)*W*T+tx*T+px)*4;d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=255}}
-  tctx.putImageData(img,0,0);
+  for(let cy=0;cy<CHUNKS_Y;cy++)for(let cx=0;cx<CHUNKS_X;cx++)tctx.drawImage(getChunk(cx,cy),cx*CH*T,cy*CH*T);
+  return terrain}
+
+// City buildings, gate banners, graveyard stones and the crypt mouth, drawn in world
+// pixels onto tctx. Only decorations whose tile box touches [x0,x1)x[y0,y1) are painted.
+const hits=(ax0,ay0,ax1,ay1,x0,y0,x1,y1)=>ax0<x1&&ax1>x0&&ay0<y1&&ay1>y0;
+function decorate(tctx,x0,y0,x1,y1){
   const R=(x,y,w,h,c)=>{tctx.fillStyle=c;tctx.fillRect(x,y,w,h)};
   // city buildings: auction house (faction roof, gold sign) and quest hall, gate banners, graveyard stones
-  for(const c of CITY){const f=FAC[c.fac],dy=c.dy*T;
-    const bld=(x,y,roof,wall,sign)=>{
+  for(const c of CITY){const f=FAC[c.fac],ox=(c.x0-2)*T,dy=(c.y0-2)*T; // building layout is drawn relative to the town's top-left corner
+    if(!hits(c.x0-2,c.y0-2,c.x0+13,c.y0+9,x0,y0,x1,y1))continue; // layout spans tiles x0+2..x0+12, y0+1..y0+7
+    const bld=(x,y,roof,wall,sign)=>{x+=ox;
       R(x,y,48,14,roof);R(x,y,48,2,'#fff3');R(x+1,y+1,46,1,'#fff2');for(let r=4;r<14;r+=3)R(x,y+r,48,1,'#0004');R(x,y+13,48,1,'#0008');
       R(x+2,y+14,44,18,wall);R(x+2,y+30,44,2,'#0006');R(x+2,y+14,44,1,'#fff2');
       R(x+19,y+19,10,13,'#5a3a1c');R(x+20,y+20,8,12,'#3a2414');R(x+26,y+26,1,1,'#f2c14e');
       for(const wx of [x+7,x+35]){R(wx-1,wx===x+7?y+17:y+17,8,8,'#2a1c10');R(wx,y+18,6,6,'#9ad0ff');R(wx+3,y+18,1,6,'#2a1c10');R(wx,y+21,6,1,'#2a1c10');R(wx-1,y+24,8,1,'#d8d0c0')}
       if(sign){R(x+17,y+3,14,7,'#3a2414');R(x+18,y+4,12,5,sign);R(x+20,y+6,8,1,'#8a6a1a')}};
     bld(4*T,3*T+dy,f.dark,'#c8b890','#f2c14e');bld(8*T,3*T+dy,'#6a4a3a','#b8a888');
-    for(const gy of [5,8]){const gx=12*T+6,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}
-    for(let i=0;i<3;i++){const gx=4*T+i*12,gyy=8*T+dy+4;R(gx+1,gyy,4,1,'#5a5a66');R(gx,gyy+1,6,7,'#5a5a66');R(gx+1,gyy+1,4,1,'#6e6e7a');R(gx+2,gyy+3,2,2,'#3a3a46');R(gx-1,gyy+8,8,1,'#3a3a46')}
+    for(const gy of [5,8]){const gx=12*T+6+ox,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}
+    for(let i=0;i<3;i++){const gx=4*T+i*12+ox,gyy=8*T+dy+4;R(gx+1,gyy,4,1,'#5a5a66');R(gx,gyy+1,6,7,'#5a5a66');R(gx+1,gyy+1,4,1,'#6e6e7a');R(gx+2,gyy+3,2,2,'#3a3a46');R(gx-1,gyy+8,8,1,'#3a3a46')}
   }
-  // the Sunken Crypt mouth
-  const x=43*T,y=41*T;R(x+6,y+2,36,30,'#4a4652');R(x+6,y+2,36,4,'#78748a');R(x+6,y+2,4,30,'#78748a');R(x+38,y+2,4,30,'#78748a');
+  // the dungeon mouth (the Sunken Crypt), drawn over its 3x3 rock patch
+  const mo=CRYPT&&CRYPT.mouth;
+  if(mo&&hits(mo.x0,mo.y0,mo.x1+1,mo.y1+1,x0,y0,x1,y1)){const x=mo.x0*T,y=mo.y0*T;R(x+6,y+2,36,30,'#4a4652');R(x+6,y+2,36,4,'#78748a');R(x+6,y+2,4,30,'#78748a');R(x+38,y+2,4,30,'#78748a');
   R(x+10,y+6,28,1,'#2e2a34');R(x+16,y+12,16,20,'#0a0810');R(x+15,y+11,18,1,'#2e2a34');R(x+22,y+8,4,2,'#7ad0a0');R(x+23,y+9,2,1,'#c8ffd8');
-  R(x+12,y+28,4,4,'#e8e4d8');R(x+32,y+28,4,4,'#e8e4d8');R(x+13,y+29,1,1,'#0a0810');R(x+15,y+29,1,1,'#0a0810');R(x+33,y+29,1,1,'#0a0810');R(x+35,y+29,1,1,'#0a0810');
-  return terrain}
+  R(x+12,y+28,4,4,'#e8e4d8');R(x+32,y+28,4,4,'#e8e4d8');R(x+13,y+29,1,1,'#0a0810');R(x+15,y+29,1,1,'#0a0810');R(x+33,y+29,1,1,'#0a0810');R(x+35,y+29,1,1,'#0a0810')}
+}

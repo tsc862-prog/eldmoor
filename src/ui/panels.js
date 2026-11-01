@@ -9,6 +9,7 @@ import {CITY,CRYPT,ZONES,zoneFor} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
+import {raceOf,homeOf} from '../data/races.js';
 import {MOBS} from '../data/mobs.js';
 import {GOODS,price} from '../data/items.js';
 import {S,clockStr,maxHp,xpNeed,atkOf,onLog,onMarketTick} from '../sim/index.js';
@@ -72,6 +73,7 @@ function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
   const kv=el('div','kv');for(const [k,v] of rows)kv.append(el('span','k',k),el('span','v',String(v)));b.append(kv);
   const tr=el('div','meta');tr.append('Traits: ');const ts=a.traits||[];if(!ts.length)tr.append('none');
   ts.forEach((t,i)=>{const s=el('span','gd',t);if(TRAITS[t])s.title=TRAITS[t].desc;tr.append(s);if(i<ts.length-1)tr.append(', ')});b.append(tr);
+  if(a.race){const rc=el('div','meta');rc.append('People: ');const rs=el('span','gd',raceOf(a).name);rs.title=raceOf(a).culture;rc.append(rs,' of '+homeOf(a).name);b.append(rc)}
   if(a.origin)b.append(el('div','meta',a.origin));
   if(a.goal){const g=el('div','goal');g.append(el('div',a.goal.done?'gd':'',(a.goal.done?'Done: ':'Goal: ')+a.goal.text));
     if(a.goal.need){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}

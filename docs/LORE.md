@@ -8,8 +8,40 @@ Grounded classic fantasy with grit and dry humor. Every hero has one life; death
 are remembered in the Graveyard and the Chronicle.
 
 ## Factions
-- **The Concord** (blue). Capital: **Highgate**, northwest. Human-like peoples; names like Alwyn, Pellora, Syleth.
-- **The Warband** (red). Capital: **Grimhold**, southwest. Green- and grey-skinned brutes; names like Thrakash, Zugnok, Grimrek.
+- **The Concord** (blue). Capital: **Highgate**, northwest. Three human-like peoples (Hallowans, Carrows, Skerrins; see Peoples); names like Alwyn, Pellora, Syleth.
+- **The Warband** (red). Capital: **Grimhold**, southwest. Three peoples of brutes (Ashfolk, Mirekin, Thornhides; see Peoples); names like Thrakash, Zugnok, Grimrek.
+
+## Peoples of Eldmoor
+Every hero belongs to a people within their faction (`src/data/races.js`). A people has a
+home town; recruits are born there, return there to sell and quest, and are buried in its
+graveyard. Until the world spec grows the extra towns, every people of a faction shares the
+capital (Highgate is Hallowan ground, Grimhold is Ashfolk ground). A hero's people shows on
+the hero card ("People: Carrow of Highgate") and in the recruit line ("A new Ashfolk
+warrior, Kardul, joins <BF> Bloodfang in Grimhold."). Recruits are drawn to keep the living
+roster of each faction roughly even across its peoples, with a nudge toward the classes a
+people favours. Peoples differ in skin and hair, names, home and culture only; stats come
+from class and level. Home towns not yet on the map are reserved names: Cairnmoot, Saltmarsh
+Reach (today a hamlet), Murkstead and Thornteeth (today a camp).
+
+| People | Faction | Home | Look | Favours | Culture |
+| --- | --- | --- | --- | --- | --- |
+| Hallowan (pl. Hallowans) | Concord | Highgate | Fair to tan skin; brown, wheat, red or black hair | Warrior, Priest | River-valley farmers, millers and ledger-keepers of the hedged lowlands around Highgate; swear by the harvest and bury their dead facing the water. |
+| Carrow (pl. Carrows) | Concord | Cairnmoot | Ruddy, weathered skin; auburn, black or ash-blond hair | Hunter | Highland herders and hedge-wardens of the thorn ridges; taciturn, long-memoried, and the Concord's best bowmen. |
+| Skerrin (pl. Skerrins) | Concord | Saltmarsh Reach | Pale skin; black, dark red or salt-grey hair | Mage, Rogue | Fisherfolk and net-menders of the salt reaches; read weather in gull-flight, pay their debts to the tide and to each other, and favour the staff and the knife over the sword. |
+| Ashfolk (pl. Ashfolk) | Warband | Grimhold | Grey-green to olive skin; black, soot-grey or rust hair | Warrior | Crag-dwellers of the ridges above Grimhold; raised in the fighting pits, measure worth in scars, and stand as the Warband's shield wall. |
+| Mirekin (pl. Mirekin) | Warband | Murkstead | Bog-green and teal skin; black, dark green or bone-white hair | Priest, Rogue, Mage | Marsh-born trappers and salt-boilers of the fen margins; patient, poisonous, keep their dead in the water and their grudges longer. |
+| Thornhide (pl. Thornhides) | Warband | Thornteeth | Ochre and umber skin; dark brown, umber or bone-grey hair | Hunter | Ridge-walkers and bone-carvers of the Thornteeth; trade skins for steel and will track a foe across three zones for the story of it. |
+
+Names by people (prefix + suffix, never repeated within a world):
+- Hallowan: Alwyn, Pellora, Syleth, Corric, Lysara, Galion.
+- Carrow: Branrhi, Gwilach, Maelwen, Dovon, Ulfagh, Kerrith.
+- Skerrin: Haelir, Tevmund, Gullmund, Thessin, Marwe, Oskald.
+- Ashfolk: Thrakash, Zugnok, Grimrek, Kardul, Vexosh, Ragmar.
+- Mirekin: Ssathith, Bogaque, Zhalim, Yssoss, Velesh, Quagoth.
+- Thornhide: Rhukur, Tuskak, Yurrug, Bralish, Kezeng, Hrakorn.
+
+Sprites: the class gives the helm or hood colour and the weapon; the people gives the skin
+and the hair that shows at the helm's rim and over the ears.
 
 ## Guilds
 - Concord: **<SV> Silver Vow**, **<DR> Dawnriders**
@@ -37,6 +69,53 @@ that."), and the hero card lists them.
 | Pious | Tends the wounded before the wounds are grave, and does not stay to be martyred. | A Priest with it heals allies from 69% HP instead of 55%; flees a little earlier; 30% more likely to assist. |
 | Boastful | Picks fights for the story, and loots for the audience. | 20% more likely to duel; hunts a little longer before selling. |
 
+## Origins and goals
+Every recruit arrives with a one-sentence backstory (`src/data/origins.js`, filled from the
+living world by `src/sim/goals.js`) and swears an oath: a personal goal they pursue and the
+Chronicle announces when kept ("Pellora has kept the oath: Hollowfang is dead. A new oath:
+walk the snows of Hoarfell.") or mourns when they die short of it ("Thrakash died with the
+oath unkept: Recover the Fenlight Lantern."). About one recruit in three announces origin
+and oath together on arrival ("Pellora, a tanner's daughter from Hollowmere, swears to
+recover the Fenlight Lantern."). Concord origins are formal and dry, Warband origins blunt.
+The hero card shows origin, oath and progress.
+
+**Hamlets.** Concord villages sit in the hedged farmland around Highgate: Hollowmere,
+Wendell's Ford, Thistledown, Larkhollow, Brackenby, Oldwick, Saltmarsh Reach, Fallow
+Cross. Warband camps and holds are strung along the ridges and gullies south of Grimhold:
+Skullrock, Red Gully, Gnashfang Hollow, Ironmaw, Bonepile, Scarhide Camp, Thornteeth,
+Grukk's Ditch.
+
+**Trades.** Concord: miller, tanner, scribe, drover, smith's apprentice, cooper, chandler,
+ferryman, net-mender, hedge-warden. Warband: drover, tanner, bone-carver, pit-fighter,
+smith's apprentice, skinner, trapper, whelp-minder, salt-boiler, gully-runner. The enemy's
+raiders are "Warband raiders" to the Concord and "Concord riders" to the Warband.
+
+**Origins** (seven per faction). A trade's son or daughter from a hamlet; one who lost a
+brother, sister, mother or father to a named rare elite (and swears to kill it); one burned
+out of their hamlet by the other faction's raiders (and swears to avenge a guildmate's
+killer, or to out-level a rival); a hamlet's former scribe, ledger-keeper or bored tradesman;
+the third of a family to serve (the first two did not come home); an heir to a lost epic the
+family never stopped mentioning (and swears to recover it); a temple orphan, an outcast who
+means to win enough fights to walk back in, a pit-killer hungry since twelve.
+
+**Oaths.** A recruit's first oath is modest; each oath kept rolls a harder one (three
+tiers), and an oath whose target dies first is void and re-sworn.
+
+| Oath | Kept when | Changes behaviour |
+| --- | --- | --- |
+| Slay {elite} | the hero kills that named rare elite | - |
+| Avenge {guildmate} by slaying {hero} | the hero kills, or is in the fight (within 8 tiles) that kills, the enemy who slew a guildmate; the lowest-level killers are chosen | the killer becomes a nemesis: charged on sight |
+| Recover the {epic} | the hero loots that named zone epic | - |
+| Bring the {epic} out of the Sunken Crypt | the hero loots that Crypt epic | first pick for Crypt groups |
+| Tear the {epic} from Kragmaw | the hero loots that Kragmaw epic | first pick for raids |
+| Walk the snows of Hoarfell | the hero sets foot in Hoarfell | once within 3 levels of the band, a solo hero's trips head for Hoarfell; the pilgrim turns home on arrival if under-levelled |
+| Stand at the mouth of the Sunken Crypt | the hero reaches the Crypt mouth | same steering toward the Crypt; first pick for Crypt groups |
+| Reach level N | level N | - |
+| Out-level {hero} of the {faction} | the hero's level passes a named living enemy's | - |
+| Slay Kragmaw the Cinder Wyrm | the hero is in the raid that kills Kragmaw | first pick for raids |
+| Bank N gold | the hero holds N gold at once | - |
+| Clear the Sunken Crypt | the hero's group clears the Crypt | first pick for Crypt groups |
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |
@@ -58,22 +137,25 @@ a solo hero detours). Every resolution is one Chronicle line with the roll shown
 
 | Encounter | What it is | Outcomes |
 | --- | --- | --- |
-| Wagon merchant | A tinker's covered wagon with a lantern on the bow, selling road-worn gear to anyone with coin. | d20: 11+ a bargain (3g per level), else full price (4g per level). One gear point, once per hero per wagon, never above the city shop's ceiling. |
+| Wagon merchant | A tinker's covered wagon with a lantern on the bow, selling road-worn gear to anyone with coin. | d20: 11+ a bargain (3g per level), else full price (4g per level). One piece of road-worn gear at the hero's level, once per hero per wagon, never above the city shop's ceiling. |
 | Lanternstone shrine | A wayside pillar of grey stone with a flame that nobody tends and nobody has seen go out. Travellers kneel for luck. | d20: blessed (the next blow lands 20% harder); 16+ the lantern burns bright and also mends 30% HP. |
 | Strongbox | A banded chest left in the ditch, locked, and not left there by accident. | d20 vs 10 + 2 per zone: gold (5g per level) or a needle in the lock for 25% max HP. Gone either way. |
-| Lost pilgrim | A hooded traveller with a pack and a staff, well off the pilgrim road, looking for a gate. Picked up by heroes on the way home. | Escort to the hero's own city for +3 honor; d20 12+ adds a gift (2g per level + 3). The pilgrim waits by the roadside again if the hero dies, leaves the road or dawdles for three game hours. |
+| Lost pilgrim | A hooded traveller with a pack and a staff, well off any road they meant to take, looking for a gate. Picked up by heroes on the way home. | Escort to the hero's own city for +3 honor; d20 12+ adds a gift (2g per level + 3). The pilgrim waits by the roadside again if the hero dies, leaves the road or dawdles for three game hours. |
 | Rookscar ambush | Two or three Rookscar bandits step out of the verge: hooded cutpurses who work the roads of every zone and rob rather than kill. | d20 + half the hero's level (a party uses its best) vs 12 + 2 per zone: the bandits break and run for the XP of a zone-level kill and their purses, or the hero is cut for 35% max HP and driven home. Parties share the XP. An ambush wounds; it never kills. |
 
 Sample lines:
 - "Alwyn haggles with a wagon merchant on the Mirefen road... rolls 15. A bargain: new gear for 27g."
 - "Miriel kneels at a lanternstone on the Thornvale road... rolls 18. The lantern burns bright: blessed and mended for 21."
 - "Zugmar pries at a strongbox on the Mirefen road... rolls 20 vs 12. Gold: 35g."
-- "Vexzar brings the pilgrim safe to the gate of Grimhold. rolls 20. +3 honor and a gift of 19g."
+- "Vexzar brings the pilgrim safe to the gate of Grimhold... rolls 20. +3 honor and a gift of 19g."
 - "Pellora and party are ambushed by 2 Rookscar bandits on the Mirefen road... rolls 12+3 vs 14. The bandits break and run; 20g in their purses."
 
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 18, raided by 4-6 heroes of level 12+.
+
+### Test fixtures (not canon)
+`TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
 
 ## Creatures
 | Creature | Zone | Levels | Drops | Quest |
