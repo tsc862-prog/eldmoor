@@ -154,7 +154,7 @@ export function join(a,key,why,quiet){const F=S.fellowship;if(!F||!alive(a)||!fi
   if(a.party&&!a.party.fellow)leaveParty(a);
   F.slots[key]=a.id;F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);
   a.fellow=true;a.fellowRole=key;if(a.fellowFrom==null)a.fellowFrom=a.town||null;a.town=F.hall;
-  memOf(a);if(F.ai&&!a.brain){enableBrain(a);a.fellowBrain=true}
+  memOf(a);if(F.ai&&F.minds!=='agent'&&!a.brain){enableBrain(a);a.fellowBrain=true} // an agent-played member has one mind: its agent (#126)
   if(F.minds==='agent'&&!a.player&&markPlayer(a,true))a.fellowAgent=true; // phase B: an agent plays every member (npm run fellowship)
   if(!quiet){campaign('recruit',a,' joins ',gd(F.name),' as its '+slotOf(key).label+(why?' ('+why+')':'')+'.');
     log(a,' takes the empty place in ',gd(F.name),' as its '+lcRole(key)+'.');
@@ -180,7 +180,8 @@ export const MINDS=['off','relay','agent'];
 export const mindsOf=F=>F?(F.minds||(F.ai?'relay':'off')):'off';
 export function setMinds(mode){const F=S.fellowship;if(!F||!MINDS.includes(mode))return false;F.minds=mode;F.ai=mode!=='off';
   for(const a of fellows()){
-    if(F.ai){if(!a.brain){enableBrain(a);a.fellowBrain=true}}else if(a.fellowBrain){disableBrain(a);delete a.fellowBrain}
+    // one mind per member (issue #126): the relay's brain in 'relay', none in 'agent' (the agent is the mind; the relay still writes sheets)
+    if(mode==='relay'){if(!a.brain){enableBrain(a);a.fellowBrain=true}}else if(a.fellowBrain||mode==='agent'&&a.brain){disableBrain(a);delete a.fellowBrain}
     if(mode==='agent'){if(!a.player&&markPlayer(a,true))a.fellowAgent=true}else if(a.fellowAgent){markPlayer(a,false);delete a.fellowAgent}}
   return true}
 

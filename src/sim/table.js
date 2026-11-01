@@ -26,7 +26,7 @@ import {tm} from '../data/traits.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {strike,maxHp,goHome} from './heroes.js';
-import {speak} from './chat.js';
+import {speak,agentLine} from './chat.js';
 import {notify} from './notify.js';
 import {remember} from './memory.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
@@ -101,7 +101,7 @@ function open(kind,title,frame,ctx={}){const F=S.fellowship;if(!F||S.table)retur
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,kind,title:clean(title,80),frame,ids:initiative(L).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:canPause(),at:Math.round(S.gameMin)};
   S.table=sc;F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
   const order=sc.ids.map(byId).filter(Boolean).map(a=>a.name).join(', ');
-  for(const a of L)if(a.player)notify(a,'TABLE ('+kind+'): '+plain(frame)+' Initiative: '+order+'. Your options: '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. Answer with scene_act(option, line) now or on your turn ('+Math.round(TABLE.turnMs/1000)+' s).',true);
+  for(const a of L)if(a.player)notify(a,'TABLE ('+kind+'): '+plain(frame)+' Initiative: '+order+'. Your options: '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. Answer with scene_act(option, line) now or on your turn ('+Math.round(TABLE.turnMs/1000)+' s).',3);
   if(!sc.pause){finishAll(sc);return sc}
   return sc}
 
@@ -119,7 +119,7 @@ export function sceneAct(a,opt,line){const sc=S.table;if(!sc||!sc.ids.includes(a
 function take(sc,a,act){const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act);
   const F=S.fellowship;if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
   sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null});
-  if(act.line&&a.state!=='dead')speak(a,act.line,'table',true);
+  if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
   else if(!a.player)voice(sc,a,act.k);
   remember(a,'table',sc.title+': I chose to '+o.text.charAt(0).toLowerCase()+o.text.slice(1)+(res?' ('+res+')':'')+'.')}
 const LINES={strike:['Now, while it turns!','Hit it together.','Mine. Leave this one to me.'],guard:['Here! Look at me!','On me. Get behind.','Come on, then.'],
@@ -154,7 +154,7 @@ function apply(sc,a,act){const f=foeOf(sc),k=act.k;
   default:return null}}
 
 function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;if(!a||!a.player||sc.acts[a.id])return;
-  notify(a,'YOUR TURN at the table ('+sc.title+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line) within '+Math.round(TABLE.turnMs/1000)+' s.',true)}
+  notify(a,'YOUR TURN at the table ('+sc.title+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line) within '+Math.round(TABLE.turnMs/1000)+' s.',3)}
 // Advance the turn pointer as far as it can go this step. Returns true while an agent is thinking.
 function runTurns(sc,dt,instant){
   while(sc.i<sc.ids.length){const a=byId(sc.ids[sc.i]);

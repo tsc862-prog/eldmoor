@@ -9,6 +9,7 @@
 // its reflexes. Reconnects every few seconds while an agent-played hero is alive.
 import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,S,dmAct,dmSeatOn,setDmSeat} from '../sim/index.js';
 import {hostCall} from '../sim/player-host.js';
+import {setAgentTag} from '../sim/chat.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
 let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null;
@@ -23,6 +24,7 @@ export const agentLink=a=>!a||!a.player?'off':status!=='connected'?status:links[
 // The mind behind a hero's runner, as its claim reports it (issue #97): {provider, model} or null.
 export const agentRunner=a=>a&&a.player&&status==='connected'&&runners[a.id]||null;
 export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':''):null};
+setAgentTag(a=>runnerTag(a)); // agent chat lines carry the runner's model in the Chat tab (#126)
 // The DM seat (issue #66): open it and the page answers the DM agent's tools (sim/dmagent.js) over the
 // same WebSocket. dmLink(): 'connected' | 'waiting' | 'none' as for a hero, or the bridge's own state.
 export function dmSeatSet(on){setDmSeat(on);if(on){connect();hello()}else{hello();if(!wanted())disconnect()}}

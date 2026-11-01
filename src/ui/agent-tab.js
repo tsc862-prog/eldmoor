@@ -20,6 +20,8 @@ export function tabAgent(b,a){
     const rc=el('div','meta');rc.append('Runner: ',runnerControl(a));b.append(rc)}
   else b.append(el('div','meta','No longer agent-played. What the agent did and wrote:'));
   if(a.playDoing)b.append(el('div','doing',a.playDoing));
+  // who acts (issue #126): the agent's orders, or autopilot carrying on while it is silent; never the scripted rules
+  if(a.player&&a.playActAt!=null){const m=Math.max(0,Math.round(S.gameMin-a.playActAt));b.append(el('div','meta','Last agent order: '+(m<60?m+' game min':Math.round(m/60)+' game h')+' ago'+(a.playIdle?' · autopilot is carrying on until the agent acts':'')))}
   const adv=a.adv&&S.adventures?S.adventures.find(v=>v.id===a.adv&&v.phase==='active'):null,p=adv&&adv.stage==='choose'&&adv.pick;
   if(p&&!p.chosen){const d=el('div','meta adv');d.append('Choice waiting: '+p.frame+' — a) '+p.opts.a+' · b) '+p.opts.b+' ('+Math.max(0,Math.round(p.until-S.gameMin))+' min left)');b.append(d)}
   const narr=(a.playNarr||[]).slice(0,5);

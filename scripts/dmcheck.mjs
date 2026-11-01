@@ -218,7 +218,7 @@ const mock = http.createServer((req, res) => {
 await new Promise(res => mock.listen(0, '127.0.0.1', res));
 const OLLAMA = `http://127.0.0.1:${mock.address().port}`;
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-dmcheck-'));
-const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, RELAY_VERBOSE: ''};
+const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, RELAY_VERBOSE: '', AGENT_MIN_GAP: '0'};
 const kids = [];
 function start(args, ready) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']}); kids.push(p); let out = '';

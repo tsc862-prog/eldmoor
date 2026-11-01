@@ -1,10 +1,12 @@
 // A mock Ollama server for tests (scripts/localcheck.mjs, scripts/runnercheck.mjs): no Ollama and no
 // model needed. Models: mock-tools (tool calling), mock-json (no tool support: 400 on tools), mock-text
-// (writes calls as text). Each turn it plays status, rest 20, a bad tool (fly), wait 20, then narrates.
+// (writes calls as text), mock-lazy (plays like mock-tools for three turns, then only narrates a long-over
+// fight, never calling a tool: the owner's live bug, issue #126). Each turn it plays status, rest 20, a bad
+// tool (fly), wait 20, then narrates.
 // startMockOllama() -> {url, seen (every /api/chat body; seen.final counts closing calls), close()}
 import http from 'node:http';
 
-export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b'];
+export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b'];
 export async function startMockOllama() {
   const seen = [];
   const plan = {
@@ -25,6 +27,10 @@ export async function startMockOllama() {
         return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({narration: '', ...plan.json[Math.min(n, plan.json.length - 1)]})}});
       }
       const n = after.filter(m => m.role === 'assistant').length;
+      if (body.model === 'mock-zh:1b') // answers in Chinese, never calling a tool (issue #126, the owner's live bug)
+        return send(200, {...done, message: {role: 'assistant', content: '我将带领团队去见萨满奥兹雷克，询问新的任务。'}});
+      if (body.model === 'mock-lazy:1b' && msgs.filter(m => m.role === 'user' && /^(Begin|Turn \d)/.test(m.content)).length > 3)
+        return send(200, {...done, message: {role: 'assistant', content: 'I am still battling the Concord Rogue, blade against blade.'}});
       if (!body.tools) seen.final = (seen.final || 0) + 1; // the closing call after a wait: words only
       if (n >= plan.tools.length || !body.tools) return send(200, {...done, message: {role: 'assistant', content: 'The hero looked, rested and waited.'}});
       const [name, args = {}] = plan.tools[n];
