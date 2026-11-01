@@ -170,6 +170,24 @@ ok(prop.status === 'passed' && CRYPT.group && F_.fellows().every(a => CRYPT.grou
 step(1 / 60); step(1 / 60);
 ok(F_.fellows().every(a => a.state === 'dungeon'), 'agent members stay in the Crypt group (not turned down as an unasked draft)');
 
+// ---- 5b. priority (#135): a gathering group steps aside; a group inside means we go next, the cooldown waived ----
+{const D = await import('../src/sim/dungeon.js');
+ reset(); field(); F_.setMinds('relay'); S.fellowship.cool = {}; S.fellowship.wait = {};
+ const bg = S.agents.filter(a => a.fac === 0 && !a.fellow && a.state !== 'dead').slice(0, 4); for (const a of bg) a.lvl = 8;
+ const voteCrypt = () => {const q = C.propose(C.leaderOfF(), 'crypt', 'Down we go.', {vote: 'yes'}); for (const a of F_.fellows()) if (q.status === 'open' && !q.votes[a.id]) C.castVote(a, q.id, 'yes', '', 'agent'); return q};
+ D.musterCrypt(bg, 0, null, 'Hollow Cleavers'); const before = CRYPT.group;
+ const q1 = voteCrypt();
+ ok(q1.status === 'passed' && CRYPT.group && CRYPT.group !== before && F_.fellows().every(a => CRYPT.group.mem.includes(a)) && bg.every(a => !CRYPT.group.mem.includes(a) && a.state === 'hunt'), `a gathering group steps aside and the Fellowship takes the Crypt (${q1.result})`);
+ reset(); field(); for (const a of bg) a.lvl = 8; S.fellowship.cool = {}; S.fellowship.wait = {};
+ D.musterCrypt(bg, 0, null, 'Hollow Cleavers'); CRYPT.group.phase = 'inside'; CRYPT.group.t = 400; for (const a of bg) a.hidden = true;
+ const q2 = voteCrypt();
+ ok(q2.status === 'passed' && /another group is inside/.test(q2.result) && S.fellowship.wait.crypt > S.gameMin, `a passed vote is not dropped while a group is inside (${q2.result})`);
+ CRYPT.cd = 9999; CRYPT.group.t = 0.01; field(); for (const a of bg) {a.state = 'dungeon'; a.hidden = true}
+ for (let k = 0; k < 20 && !(CRYPT.group && CRYPT.group.mem.some(a => a.fellow)); k++) {step(1 / 60); field()}
+ ok(CRYPT.group && F_.fellows().every(a => CRYPT.group.mem.includes(a)) && !S.fellowship.wait.crypt, 'when they come out the Fellowship goes next, cooldown waived');
+ reset(); S.fellowship.wait = {}; CRYPT.cd = 0;
+}
+
 // ---- 6. determinism without a Fellowship ----
 const me = fileURLToPath(import.meta.url), h1 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim(), h2 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim();
 ok(/^HASH -?\d+ table:0 fellowship:0$/.test(h1) && h1 === h2, `no Fellowship: two seeded 3-minute runs are identical (${h1})`);
