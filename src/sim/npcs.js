@@ -18,6 +18,7 @@ import {NPC_ROLES,npcRole} from '../data/npcs.js';
 import {S,clockStr} from './state.js';
 import {pop} from './effects.js';
 import {moveTo} from './heroes.js';
+import {attitudeOf,presence} from './levers.js';
 
 // Tuning. Speeds in tiles/s at 1x; GREET_R tiles from the post that count as a visit;
 // BLESS_R the priest's reach; HEAR who hears a line (same as chat.js); COOL real seconds
@@ -108,7 +109,8 @@ function greet(p,work){
   if(p.chatCd>0||!(p.state==='post'||(p.role==='bard'&&work)))return;
   for(const a of S.agents){if(a.state==='dead'||a.state==='ghost'||a.hidden||dist(a,p)>GREET_R)continue;
     const last=p.met[a.id];if(last!=null&&S.gameMin-last<REGREET)continue;
-    p.met[a.id]=S.gameMin;if(r()>=GREET_P)continue;
+    // DM levers: a hostile resident turns away; a friendly one, a festival or a plague changes the odds
+    p.met[a.id]=S.gameMin;const att=attitudeOf(p,[a]);if(att==='hostile'||r()>=GREET_P*presence(p.town)*(att==='friendly'?2:1))continue;
     p.face=a.x>p.x?1:-1;if(npcSay(p,'greet',{target:a.name}))S.npcNews.stats.greets++;return}
   if(Object.keys(p.met).length>120)for(const k in p.met)if(S.gameMin-p.met[k]>REGREET)delete p.met[k]}
 

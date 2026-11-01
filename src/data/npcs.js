@@ -133,5 +133,42 @@ export const NPC_ROLES=[
          'The gate shuts for nobody. Walk out when you like; walk back if you can.']]}},
 ];
 
-const byId={};for(const r of NPC_ROLES)byId[r.id]=r;
+// People the DM places outside the town rosters (sim/levers.js create_npc): visitors, camp
+// folk and road people. Same shape as NPC_ROLES, but no town staffs them and they keep no
+// hours. Triggers: greet (neutral or friendly), wary, hostile (the DM set them against the
+// hero, the party or the faction). One pool for both factions; the neutral palette is pal[0].
+export const WANDER_ROLES=[
+  {id:'peddler',title:['Peddler','Peddler'],post:'square',spr:'quartermaster',hours:null,
+    pal:[{R:'#7a6a4a',A:'#4a3a2a',M:'#c8c0a0',W:'#8a6a3a'},{R:'#6a5a3a',A:'#3a2a1a',M:'#b8b090',W:'#7a5a30'}],
+    lines:{greet:[['Needles, nails, a lucky button. Looking costs nothing, {target}.','Every road leads to a customer. Today it led to you.']],
+      wary:[['I have nothing worth stealing, {target}. Walk on.']],
+      hostile:[['Not you. Your coin smells of trouble, {target}.','I sell to anyone. Anyone else.']]}},
+  {id:'hermit',title:['Hermit','Hermit'],post:'square',spr:'priest',hours:null,
+    pal:[{R:'#5a5a4a',A:'#3a3a2a',M:'#a8a890',W:'#6a5a3a'},{R:'#4a4a3a',A:'#2a2a1a',M:'#98988a',W:'#5a4a2a'}],
+    lines:{greet:[['The moss grows north here. Remember that, {target}, and you will not get lost.','Sit, if you like. I have been talking to the stones; they are poor company.']],
+      wary:[['Keep your distance and your voice down.']],
+      hostile:[['Go back the way you came, {target}. The quiet was mine first.','I know your kind. Loud boots and short memories.']]}},
+  {id:'drover',title:['Drover','Drover'],post:'square',spr:'innkeeper',hours:null,
+    pal:[{R:'#6a4a3a',A:'#c8b890',M:'#c8c0a0',W:'#8a6a3a'},{R:'#5a3a2a',A:'#a89878',M:'#b8b090',W:'#7a5a30'}],
+    lines:{greet:[['Mind the herd, {target}. They bite, and so do I.','The beasts are restless tonight. Something on the wind.']],
+      wary:[['Stay clear of the animals. They do not like strangers. Nor do I.']],
+      hostile:[['You spooked the herd last time, {target}. Keep walking.','Touch my beasts and you will be walking home lighter.']]}},
+  {id:'sellsword',title:['Sellsword','Sellsword'],post:'gate',spr:'captain',hours:null,
+    pal:[{R:'#4a4a5a',A:'#2a2a3a',M:'#a8acb4',W:'#5a4a3a'},{R:'#5a3a3a',A:'#3a1a1a',M:'#9a9ea8',W:'#4a3a2a'}],
+    lines:{greet:[['Need a blade, {target}? Mine is cheap and mostly honest.','Quiet road. I hate a quiet road.']],
+      wary:[['Hands where I can see them, {target}.']],
+      hostile:[['I remember your face, {target}. Next time I will remember it with steel.','Walk past. Slowly.']]}},
+  {id:'minstrel',title:['Minstrel','Minstrel'],post:'square',spr:'bard',hours:null,
+    pal:[{R:'#6a3a6a',A:'#e8c060',M:'#c8ccd4',W:'#8a5a2a'},{R:'#7a3a3a',A:'#d8a040',M:'#b8bcc4',W:'#7a4a2a'}],
+    lines:{greet:[['A song for the road, {target}? It has a chorus. You will hate it by the end.','Tell me something brave and I will make it braver.']],
+      wary:[['I sing about heroes. I am not yet sure which one you are.']],
+      hostile:[['There is a verse about you, {target}. You will not like the rhyme.','Coins in the hat or out of my light.']]}},
+  {id:'stranger',title:['Stranger','Stranger'],post:'square',spr:'smith',hours:null,
+    pal:[{R:'#3a3a3a',A:'#2a2420',M:'#8a8a8a',W:'#5a4a3a'},{R:'#3a2a2a',A:'#241a18',M:'#7a7a7a',W:'#4a3a2a'}],
+    lines:{greet:[['Fair day. Or near enough.','You are a long way from a warm fire, {target}.']],
+      wary:[['I am only passing through. So are you.']],
+      hostile:[['Last time we spoke, {target}, it went badly. It can go worse.','Keep walking. I have not forgotten.','You again. The road is not wide enough for both of us.']]}},
+];
+
+const byId={};for(const r of NPC_ROLES.concat(WANDER_ROLES))byId[r.id]=r;
 export const npcRole=id=>byId[id];

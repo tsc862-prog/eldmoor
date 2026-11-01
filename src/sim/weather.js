@@ -7,6 +7,7 @@ import {rnd} from '../core/rng.js';
 import {ZONES,REGIONS} from '../world/map.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
+import {sightLever} from './levers.js';
 
 // Every weather kind with its gameplay multipliers and chronicle line ({z} is the zone name).
 export const WEATHER={
@@ -47,5 +48,5 @@ export function weatherTick(dt){ensure();
 export const weatherKind=z=>S.weather&&S.weather[z]?S.weather[z].k:'clear';
 export const weatherName=z=>WEATHER[weatherKind(z)].name;
 export const speedMul=z=>WEATHER[weatherKind(z)].speed;
-export const sightMul=z=>WEATHER[weatherKind(z)].sight;
+export const sightMul=z=>WEATHER[weatherKind(z)].sight*sightLever(z); // a fog-bound condition (DM lever) closes in on top of the sky
 export const isStorm=z=>WEATHER[weatherKind(z)].storm;

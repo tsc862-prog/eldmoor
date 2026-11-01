@@ -12,7 +12,8 @@
     "worldcheck": "node scripts/worldcheck.mjs",
     "savecheck": "node scripts/savecheck.mjs",
     "relay": "node scripts/relay.mjs",
-    "braincheck": "node scripts/braincheck.mjs"
+    "braincheck": "node scripts/braincheck.mjs",
+    "levercheck": "node scripts/levercheck.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

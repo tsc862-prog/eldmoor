@@ -24,6 +24,7 @@ import {rebuild} from './spatial.js';
 import {bondsTick} from './bonds.js';
 import {brainTick} from './brain.js';
 import {dmTick} from './dm.js';
+import {leverTick} from './levers.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -51,5 +52,5 @@ export function step(dt){S.gameMin+=dt*6;
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);goalsTick(dt);guildsTick(dt);
-  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);
+  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);leverTick(dt);
   updFx(dt)}
