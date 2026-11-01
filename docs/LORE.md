@@ -168,7 +168,7 @@ Class priorities (primary / secondary): Warrior Brawn / Grit; Mage Wits / Insigh
 - **Health**: class base, a share per level, Grit modifier x level, +10 for every epic ever looted, and +5% per *vital* item.
 - **Attack**: class base, a share per level, the class's primary score modifier (weighted more as the hero levels), weapon damage, +3 per epic looted.
 - **Defense**: the share of every blow turned aside. A Warrior's training turns aside a fifth; item armor and *warding* add to it; no one turns aside more than half.
-- **Crit**: class base (Rogues 25%, everyone else 8%), a little more with every level, Reflex, and +3% per *keen* item. A critical blow strikes for 1.8x.
+- **Crit**: class base (Rogues 25%, everyone else 8%), Reflex, and +3% per *keen* item. A critical blow strikes for 1.8x.
 - **Speed**: blows per second (a swing every 1.1 s), +8% per *swift* item.
 
 Scores worn on items count everywhere a score does: a +2 Grit cloak adds hit points and also helps Survival rolls.
@@ -472,7 +472,28 @@ Quality: **plain** (seven in ten drops), **fine** (about one in four: armor and 
 
 Epics are hand-made: each relic's armor or damage grows with its item level (armor counted as plate, so a relic shields a Mage as well as a Warrior), while its score bonuses and property stay fixed. At item level 20:
 
-@@EPICTABLE@@
+| Epic | Slot | At item level 20 | Flavour |
+| --- | --- | --- | --- |
+| Fang of the Old Wood | main | 18 damage, +1 Reflex, +1 Brawn, swift | Cut from a hollow oak's first limb; it hums when wolves are near. |
+| Thornheart Longbow | off | 11 damage, +2 Reflex, keen | The string is wound with bramble fibre and never goes slack. |
+| Bramblecrown | head | 26 armor, +2 Grit | Thorns turned inward, which is how a brave head is told from a foolish one. |
+| Mosswoven Cloak | chest | 32 armor, +1 Grit, +1 Insight, vital | Grown rather than sewn; the bog keeps its wearer warm. |
+| Bogwalker Boots | feet | 12 armor, +1 Reflex, +1 Grit, swift | The mud lets go of them a heartbeat early. |
+| Fenlight Lantern | off | +2 Insight, +1 Wits, keen | A pale flame that shows where a foe is weakest. |
+| Ember-Forged Greatsword | main | 20 damage, +2 Brawn | Quenched in Cinderpass ash; it is never quite cold. |
+| Cinderscale Mantle | chest | 40 armor, +1 Grit, +1 Brawn, warding | Scales shed by something that did not need them any more. |
+| Magma-Tempered Gauntlets | hands | 13 armor, +2 Brawn, swift | They glow when a grip is about to matter. |
+| Rime-Etched Warpick | main | 19 damage, +1 Brawn, +1 Grit, keen | Frost patterns crawl up the haft with every swing. |
+| Shaghorn Greatcloak | chest | 42 armor, +2 Grit, vital | Hide of the shaghorn, heavy as a promise to stay alive. |
+| Icevein Diadem | head | 22 armor, +2 Wits, +1 Insight, keen | Cold enough to sharpen thought, and nothing else. |
+| Vesk's Phylactery Shard | trinket | +2 Wits, +1 Grit, swift | A sliver of a lich that wanted to be remembered. |
+| Drowned King's Signet | trinket | +2 Presence, +1 Insight, warding | Still wet, no matter how long it is worn. |
+| Cryptbound Greaves | feet | 13 armor, +1 Grit, swift | Made to stand a long vigil, and to leave it quickly. |
+| Staff of Still Water | main | 19 damage, +1 Wits, +1 Insight, swift | Not a ripple on it, even in the middle of a fight. |
+| Kragmaw's Molten Eye | trinket | +2 Reflex, +1 Wits, keen | It still watches the lair it was torn from. |
+| Wyrmbone Crown | head | 31 armor, +2 Grit, +1 Presence, warding | A crown for someone who has already won. |
+| Cinder Wyrm Fang | main | 22 damage, +1 Brawn, +1 Reflex, swift | A tooth as long as a forearm, and twice as eager. |
+| Mantle of the Ashen King | chest | 46 armor, +2 Grit, warding | Ash drifts from its hem and never reaches the floor. |
 
 An item remembers where it came from (`src`: "Dropped by Hollowfang", "Bought in Highgate",
 "Road merchant", "Looted from ...") and the piece it replaced, so the Gear tab can show both.
