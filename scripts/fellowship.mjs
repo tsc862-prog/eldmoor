@@ -28,14 +28,21 @@
 // Options: --url (or PLAY_URL), --max-turns N (per member, default 6), --budget USD (default 2.00),
 // --model / --effort / --provider (override every member's saved settings), --follower-model M,
 // --cadence S (default 20), --tool-turns N (model calls per turn, default 10), --env FILE, --new.
+// Local members (issue #97 part 2): a member whose runner provider is 'ollama' (saved in its session
+// file by `npm run agent -- --hero X --provider ollama --model M`, or --provider ollama here for all)
+// plays through scripts/local-agent.mjs against Ollama (--ollama-url / OLLAMA_URL, --num-ctx): same
+// tools, prompts, claims, cadence and scenes, cost 0, tokens and seconds in the turn line. Mixed
+// Fellowships work: Claude members still need ANTHROPIC_API_KEY, local members do not.
 import {mkdirSync, appendFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
-import {systemPrompt, DEFAULT_AGENT_MODEL} from './agent-player.mjs';
+import {systemPrompt, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
+import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
+import {localTurn, localLine} from './local-agent.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -63,6 +70,10 @@ const health = base => fetch(base + '/play/health', {signal: AbortSignal.timeout
 const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s};
 const money = v => '$' + (v || 0).toFixed(4);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// A member's prompt for one turn: at the table, the first turn, or carrying on.
+export const memberPrompt = (turns, scene) => scene ? 'The Fellowship is at the table: a scene is open and the world is paused. Read the table (status, or the event you were sent) only if you must, then act NOW with scene_act(option, line). Then wait.'
+  : turns === 0 ? 'Begin. Get to know yourself, your companions and your surroundings (status, look, party_read, journal_read), say a word to the party, write a first journal entry, then act. Follow your leader.'
+  : `Turn ${turns + 1}. Carry on with your companions: answer open proposals, keep to the party, and act.`;
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const envFile = opt('env', null), env = envFile ? loadEnv(dirname(resolve(envFile))) : loadEnv();
@@ -76,18 +87,27 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!h0.ok || !h0.connected) {console.error(`The game at ${base} is not ready: ${h0.error || 'no game page connected'}.`); process.exit(1)}
   const fellowsOf = h => (h.heroes || []).filter(x => x.fellow && x.alive);
   if (!fellowsOf(h0).length) {console.error('No agent-played Fellowship member. In the game, set the Fellowship panel\'s Minds to "agents" (or run play-headless with --fellowship).'); process.exit(1)}
-  if (!env.ANTHROPIC_API_KEY) {console.error('No ANTHROPIC_API_KEY in the environment or .env (use --env FILE).'); process.exit(1)}
+  if (!env.ANTHROPIC_API_KEY) out(null, 'No ANTHROPIC_API_KEY in the environment or .env (use --env FILE): only members with a local runner (provider ollama) will play.');
   const moved = migrateLegacy(); if (moved) out(null, moved);
 
   const runnerId = `${hostname()}:${process.pid}:fellowship`, childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-fellowship/1.0'};
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   const members = new Map(); // heroId -> {id, name, sess, rs, turns, cost, ended, scene}
   let spent = 0, stopping = null, inScene = new Set(), leadId = null;
-  const claim = id => post(base, '/play/claim', {hero: id, runner: runnerId}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
+  // the claim names the member's runner model once it is known, so the game can tag it (#97)
+  const mindOf = id => {const m = members.get(id); return m && m.rs ? {provider: m.rs.provider, model: m.rs.model} : {}};
+  const claim = (id, mind = mindOf(id)) => post(base, '/play/claim', {hero: id, runner: runnerId, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
   const release = id => post(base, '/play/release', {hero: id, runner: runnerId}, 3000).catch(() => {});
+  const adding = new Set(); // members being added (the watcher calls addMember every second)
+  let ollama = null; // the local adapter, made when the first local member joins
+  const skip = (h, why) => {out(h.name, why); members.set(h.id, {id: h.id, name: h.name, ended: 'skipped'})};
 
   async function addMember(h) {
-    if (members.has(h.id)) return;
+    if (members.has(h.id) || adding.has(h.id)) return;
+    adding.add(h.id);
+    try {await addMember1(h)} finally {adding.delete(h.id)}
+  }
+  async function addMember1(h) {
     const c = await claim(h.id); if (c.status !== 200) {out(h.name, 'skipped: ' + (c.error || 'could not claim')); members.set(h.id, {id: h.id, name: h.name, ended: 'claimed elsewhere'}); return}
     const st = await play(base, h.id, 'status'); if (!st.ok) {out(h.name, 'status failed: ' + st.error); await release(h.id); return}
     const sys = systemPrompt(st) + '\n' + fellowshipPrompt(st);
@@ -96,20 +116,27 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!String(sess.system || '').includes('FELLOWSHIP:')) sess.system = sys; // a hero first played solo now rides with the Fellowship
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
-    if (rs.provider !== 'anthropic') {out(st.name, `provider "${rs.provider}" is not supported yet (see the Mixed minds issue); skipped`); await release(h.id); return}
+    if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic or ollama); skipped`); await release(h.id); return}
+    if (rs.provider === 'ollama') {
+      // a local member (issue #97 part 2): plays through scripts/local-agent.mjs, no key, cost 0
+      if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
+      rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
+      ollama = ollama || ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL)});
+      const s = await ollama.status();
+      if (!s.ok || !s.models.includes(rs.model)) {skip(h, s.ok ? `local model ${rs.model} is not pulled (pulled: ${s.models.join(', ') || 'none'}; ollama pull ${rs.model}); skipped` : `Ollama at ${s.url} is ${s.error}; skipped`); await release(h.id); return}
+    } else if (!env.ANTHROPIC_API_KEY) {skip(h, 'plays Claude but there is no ANTHROPIC_API_KEY in the environment or .env (use --env FILE, or --provider ollama); skipped'); await release(h.id); return}
     sess.runner = rs; saveSession(sess, {url: base});
-    const m = {id: h.id, name: st.name, role: (st.fellowship || {}).role || h.role, sess, rs, turns: 0, cost: 0, tools: 0, ended: null, scenes: 0};
-    members.set(h.id, m);
-    out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${rs.model} (effort ${rs.effort})${followerModel ? ', ' + followerModel + ' between scenes when following' : ''} | ${sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'}`);
+    const m = {id: h.id, name: st.name, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0};
+    members.set(h.id, m); claim(h.id);
+    out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'}`);
     loop(m).catch(e => {m.ended = 'error: ' + e.message; out(m.name, 'loop failed: ' + e.message)});
   }
 
   // One turn: one query() to the member's own session.
   async function turn(m, scene) {
+    if (m.local) return localMemberTurn(m, scene);
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
-    const prompt = scene ? 'The Fellowship is at the table: a scene is open and the world is paused. Read the table (status, or the event you were sent) only if you must, then act NOW with scene_act(option, line). Then wait.'
-      : m.sess.turns === 0 ? 'Begin. Get to know yourself, your companions and your surroundings (status, look, party_read, journal_read), say a word to the party, write a first journal entry, then act. Follow your leader.'
-      : `Turn ${m.sess.turns + 1}. Carry on with your companions: answer open proposals, keep to the party, and act.`;
+    const prompt = memberPrompt(m.sess.turns, scene);
     const t0 = Date.now(); let result = null, tools = 0;
     const q = query({prompt, options: {
       model, effort: m.rs.effort, systemPrompt: m.sess.system, resume: m.sess.sessionId || undefined,
@@ -143,6 +170,22 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     saveSession(m.sess, {url: base});
   }
 
+  // A local member's turn (issue #97 part 2): the small tool loop against Ollama, same tools, prompts,
+  // session file and scene handling; cost 0, tokens and seconds reported.
+  async function localMemberTurn(m, scene) {
+    let r = null;
+    try {r = await localTurn({chat: ollama.chat, call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, prompt: memberPrompt(m.sess.turns, scene), model: m.rs.model,
+      toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, opts: opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? {numCtx: Number(opt('num-ctx', env.OLLAMA_NUM_CTX))} : {},
+      on: (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a}, 5000).catch(() => {})}
+        else if (k === 'tool') out(m.name, `> ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`);
+        else if (k === 'mode') out(m.name, `[${m.rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
+    catch (e) {out(m.name, `turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); m.fails = (m.fails || 0) + 1; if (m.fails >= 3) m.ended = 'errors'}
+    m.sess.turns++; m.turns++; if (scene) m.scenes++;
+    if (r) {m.tools += r.tools; m.tin += r.in; m.tout += r.out; if (r.dead) m.ended = 'dead';
+      out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${localLine(r, m.rs.model)} | member tokens ${m.tin} / ${m.tout}`)}
+    saveSession(m.sess, {url: base});
+  }
+
   async function loop(m) {
     while (!m.ended && !stopping && m.turns < maxTurns) {
       if (spent >= budget) {stopping = 'budget reached'; break}
@@ -173,8 +216,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   function summary() {
     const rows = [...members.values()].filter(m => m.sess);
     out(null, `Run over${stopping ? ' (' + stopping + ')' : ''}: ${money(spent)} in all.`);
-    for (const m of rows) out(null, `  ${m.name.padEnd(12)} ${String(m.role || '').padEnd(7)} ${m.turns} turns (${m.scenes} at the table), ${m.tools} tool calls, ${money(m.cost)} | session ${money(m.sess.costUsd)} | ${m.rs.model}${followerModel ? ' / ' + followerModel : ''}`);
-    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, spent, budget, maxTurns, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, cost: m.cost, model: m.rs.model}))}) + '\n')} catch {}
+    for (const m of rows) out(null, `  ${m.name.padEnd(12)} ${String(m.role || '').padEnd(7)} ${m.turns} turns (${m.scenes} at the table), ${m.tools} tool calls, ${m.local ? '$0 (local), tokens ' + m.tin + ' in / ' + m.tout + ' out' : money(m.cost)} | session ${money(m.sess.costUsd)} | ${m.rs.model}${m.local ? ' (local)' : followerModel ? ' / ' + followerModel : ''}`);
+    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, spent, budget, maxTurns, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
     for (const mdl of new Set(rows.map(m => m.rs.model).concat(followerModel ? [followerModel] : []))) if (PRICES[mdl]) out(null, `  list price ${mdl}: $${PRICES[mdl].in} in / $${PRICES[mdl].out} out per 1M tokens`);
   }
   process.exit(0);

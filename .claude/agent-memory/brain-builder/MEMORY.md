@@ -1,4 +1,4 @@
 - [Brain design](brain-design.md) — decision points, relay protocol, model choice, cost and test approach from issue #40
 - [Agent player](agent-player.md) — #75/#93 MCP tools, per-hero routing+claims, WS protocol, runner settings, per-hero sessions, cost per turn, playcheck
 - [Fellowship](fellowship.md) — #68 phase A shapes and hooks; phase B council, Table mode, Minds=agents, runner cost per member
-- [Mixed minds](mixed-minds.md) — #97 part 1: providers/ adapters, Ollama think:false pitfall, a.brainCfg per hero, relay fields, local timeouts, live latency
+- [Mixed minds](mixed-minds.md) — #97 parts 1+2: adapters, think:false, a.brainCfg, local agent loop, claim runner tags, local latency/tokens

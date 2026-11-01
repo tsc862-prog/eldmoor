@@ -50,7 +50,7 @@ export function dungeonCheck(dt){const agents=S.agents;
       if(rnd()<.25)getEpic(a,pickA(DG_EPICS),CRYPT.boss);goalEvent(a,'crypt');goHome(a)}}
   else{if(g.guild)g.guild.wipes++;const lost=[];
     for(const a of g.mem)record(a,'The group wiped in ',{t:CRYPT.name,c:'gd'},'.');
-    for(const a of g.mem){if(rnd()<.55){lost.push(a);fall(a,'lost in '+CRYPT.name)}else goHome(a)}
+    for(const a of g.mem){if(rnd()<.40){lost.push(a);fall(a,'lost in '+CRYPT.name)}else goHome(a)}
     for(const a of lost)record(a,'Lost forever in ',{t:CRYPT.name,c:'gd'},'.');
     const parts=[who,' wiped in ',{t:CRYPT.name,c:'gd'},'.'];
     if(lost.length){parts.push(' Lost forever: ');lost.forEach((a,i)=>{parts.push(a);if(i<lost.length-1)parts.push(', ')});parts.push('.')}

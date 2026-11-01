@@ -18,6 +18,7 @@
     "mcp": "node scripts/mcp-stdio.mjs",
     "agent": "node scripts/agent-player.mjs",
     "playcheck": "node scripts/playcheck.mjs",
+    "localcheck": "node scripts/localcheck.mjs",
     "tablecheck": "node scripts/tablecheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",

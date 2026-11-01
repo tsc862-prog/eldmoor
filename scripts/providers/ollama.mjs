@@ -57,5 +57,22 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
       if (!text) throw Object.assign(fail('no text in reply'), {result: out});
       return out;
     },
+    // A multi-turn chat for the local agent runner (issue #97 part 2, scripts/local-agent.mjs).
+    // messages: Ollama chat messages (system/user/assistant with tool_calls/tool); tools: Ollama
+    // function tools, or format: a JSON schema for the JSON-action fallback. Returns {message,
+    // usage:{in,out,cost:0}, model, ms, done}. A model without tool support fails with e.noTools.
+    async chat({model, messages, tools, format, maxTokens = 600, numCtx = null, signal}) {
+      const mdl = model || defaultModel, t0 = Date.now();
+      const body = {model: mdl, stream: false, keep_alive: keepAlive, ...(noThink.has(mdl) ? {} : {think: false}), messages,
+        ...(tools ? {tools} : {}), ...(format ? {format} : {}),
+        options: {num_predict: maxTokens, ...(numCtx ? {num_ctx: numCtx} : {})}};
+      const post = () => fetchImpl(base + '/api/chat', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal});
+      let r = await post(), j = null; try {j = await r.json()} catch {}
+      if (!r.ok && 'think' in body && /think/i.test(String(j && j.error))) {noThink.add(mdl); delete body.think; r = await post(); j = null; try {j = await r.json()} catch {}}
+      if (!r.ok) {const msg = String(j && j.error || 'HTTP ' + r.status);
+        throw Object.assign(fail('ollama: ' + msg.slice(0, 160)), {noTools: !!tools && /does not support tools|tools? (are|is) not supported/i.test(msg), status: r.status})}
+      const message = j && j.message && typeof j.message === 'object' ? j.message : {role: 'assistant', content: ''};
+      return {message, usage: {in: +(j && j.prompt_eval_count) || 0, out: +(j && j.eval_count) || 0, cost: 0}, model: (j && j.model) || mdl, ms: Date.now() - t0, done: j && j.done_reason || null};
+    },
   };
 }

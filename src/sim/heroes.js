@@ -32,7 +32,7 @@ import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hook
 import {dmDepart,dmTravel,dmHunt} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 
 // ---- stat formulas (tuning knobs) ----
-export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
+export const xpNeed=l=>Math.round(60*Math.pow(l,1.45)*(1+.8*Math.min(1,Math.max(0,(l-9)/7)))); // veterans: L10-16 ramp to +80% (balance #107)
 export const maxHp=a=>combatStats(a).health;
 export const atkOf=a=>combatStats(a).attack;
 
@@ -56,6 +56,11 @@ export function makeHero(f,cls,guild,wait){
   // Trait reveal for recruits (not the opening roster): "Thrakash is reckless and greedy; Grimhold will remember that."
   if(S.gameMin>0&&rnd()<.3)log(a,' is ',{t:traitPhrase(a),c:'gd'},'; ',c.name,' will remember that.');
   return a}
+
+// A recruit seeded above level 1 (Fellowship replacements, balance #107): the ability growth of every fifth level, a quest of its zone.
+export function seedLevel(a,lvl){lvl=Math.max(1,Math.min(20,Math.round(lvl)));if(lvl<=a.lvl)return a;
+  for(let l=a.lvl+1;l<=lvl;l++)if(l%5===0)growScores(a,l);
+  a.lvl=lvl;a.xp=0;a.hp=maxHp(a);newQuest(a);return a}
 
 export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);if(d<.12){e.moving=false;return true}
   const st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt;e.moving=true;if(Math.abs(dx)>.05)e.face=dx>0?1:-1;

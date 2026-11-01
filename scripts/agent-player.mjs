@@ -23,8 +23,14 @@
 // Options: --hero NAME|ID, --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N
 // (default 20), --budget USD (default 1.00, total for this run), --tool-turns N (model round
 // trips per turn, default 12), --model (or AGENT_MODEL; default claude-sonnet-5-5), --effort (or
-// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; only 'anthropic' today), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
+// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic' or 'ollama'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
 // .env), --new.
+// Local models (issue #97 part 2): --provider ollama --model qwen2.5:14b plays the hero with a local
+// Ollama model through the same tools, claims and session file (scripts/local-agent.mjs; the
+// conversation is kept compactly in the session file, trimmed to a budget). No key, cost 0; the
+// turn line reports tokens and seconds. --ollama-url (or OLLAMA_URL; default http://localhost:11434),
+// --num-ctx N (or OLLAMA_NUM_CTX; context window asked of Ollama, default 16384). The settings are
+// saved per hero, so the next `npm run agent -- --hero X` plays it locally again.
 // The key is read from the environment or the .env file and handed only to the SDK process.
 // The agent gets no built-in tools (no files, no shell, no web): only the game's MCP tools.
 import {mkdirSync} from 'node:fs';
@@ -34,8 +40,11 @@ import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
 import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
+import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
+import {localTurn, localLine} from './local-agent.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+export const RUNNER_PROVIDERS = ['anthropic', 'ollama']; // providers with an agent runner (openai/google: not yet)
 export const DEFAULT_AGENT_MODEL = 'claude-sonnet-5-5'; // claude-api skill (cached 2026-10-06): Sonnet 5.5, $2 in / $10 out per 1M tokens
 
 const argv = process.argv.slice(2);
@@ -70,6 +79,35 @@ async function play(base, hero, tool, args = {}) {return (await post(base, '/pla
 const narrate = (base, hero, text) => post(base, '/play/narrate', {hero, text}, 5000).catch(() => {});
 const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s};
 const money = v => '$' + (v || 0).toFixed(4);
+export const turnPrompt = turns => turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
+  : `Turn ${turns + 1}. Continue living your life in Eldmoor.`;
+
+// The local runner (issue #97 part 2): the same turns, claims and session file, played by an Ollama
+// model through scripts/local-agent.mjs. Ends the process.
+async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl, numCtx, release, beat, file}) {
+  const ol = ollamaAdapter({url: ollamaUrl, defaultModel: rs.model}), s0 = await ol.status();
+  if (!s0.ok) {console.error(`[agent] Ollama at ${s0.url} is ${s0.error}. Start Ollama (https://ollama.com) or pass --ollama-url.`); await release(); process.exit(1)}
+  if (!s0.models.includes(rs.model)) {console.error(`[agent] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await release(); process.exit(1)}
+  const saveSess = () => saveSession(sess, {url: base});
+  const L = sess.local || {};
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | up to ${maxTurns} turns`);
+  let ended = null, runIn = 0, runOut = 0, t0 = Date.now();
+  for (let turn = 1; turn <= maxTurns && !ended; turn++) {
+    let r;
+    try {r = await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns), model: rs.model, toolTurns,
+      opts: numCtx ? {numCtx: Number(numCtx)} : {},
+      on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
+    catch (e) {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); ended = 'error'}
+    sess.turns++;
+    if (r) {runIn += r.in; runOut += r.out; if (r.dead) ended = 'the hero is dead'; console.log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
+    saveSess();
+    const now = await play(base, heroId, 'status').catch(() => null);
+    if (now && now.dead) ended = 'the hero is dead';
+  }
+  clearInterval(beat); await release();
+  console.log(`[agent] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t0) / 1000).toFixed(0)} s, $0 (local). Session saved to ${file}.`);
+  process.exit(0);
+}
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const envFile = opt('env', null);
@@ -83,7 +121,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const pick = pickHero(health.heroes, opt('hero', env.AGENT_HERO || null));
   if (pick.error) {console.error('[agent] ' + pick.error); process.exit(1)}
   const heroId = pick.hero.id, runner = `${hostname()}:${process.pid}`;
-  const claim = () => post(base, '/play/claim', {hero: heroId, runner}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
+  let mind = {}; // {provider, model} once known: rides on the claim so the game can tag the runner (#97)
+  const claim = () => post(base, '/play/claim', {hero: heroId, runner, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
   const c0 = await claim();
   if (c0.status !== 200) {console.error('[agent] ' + (c0.error || 'could not claim the hero')); process.exit(1)}
   const beat = setInterval(() => claim().then(c => {if (c.status === 409) {console.error('[agent] ' + c.error); process.exit(1)}}), 10000); beat.unref();
@@ -100,9 +139,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
-  if (rs.provider !== 'anthropic') {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which is not supported yet (see the Mixed minds issue). This runner plays Claude only; use --provider anthropic.`); await release(); process.exit(1)}
+  if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic or --provider ollama.`); await release(); process.exit(1)}
+  if (rs.provider === 'ollama') {
+    // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
+    if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
+    rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
+    sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
+    await runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: opt('num-ctx', env.OLLAMA_NUM_CTX || null), release, beat, file: SESSION_FILE});
+  }
   if (!env.ANTHROPIC_API_KEY) {console.error('No ANTHROPIC_API_KEY in the environment or .env (use --env FILE).'); await release(); process.exit(1)}
-  sess.runner = rs;
+  sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
   const {model, effort} = rs;
   const saveSess = () => saveSession(sess, {url: base});
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | up to ${maxTurns} turns, budget ${money(budget)}`);
