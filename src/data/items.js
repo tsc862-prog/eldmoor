@@ -100,3 +100,49 @@ export const EPIC_ITEMS={
   'Cryptbound Greaves':{armor:1.1,bonus:{grit:1},property:'swift',flavour:'Made to stand a long vigil, and to leave it quickly.'},
   'Staff of Still Water':{damage:1.4,bonus:{wits:1,insight:1},property:'swift',flavour:'Not a ripple on it, even in the middle of a fight.'}};
 
+// ---- inventory (issue #124) ----
+// A hero's pack (a.inv, sim/inv.js) holds stacks: trade goods, consumables, quest items, and spare gear
+// (an item object with a slot). Gold is kept apart. One slot per stack or spare piece.
+export const INV={
+  BASE:16,         // slots in a plain pack
+  STACK:20,        // units in one stack
+  KEEP_SPARES:2,   // too-high spares kept past a town sale (until the hero grows into them)
+  WEAR_OVER:5,     // gear may be worn this many item levels above the hero's level
+  POT_CD:6,        // seconds between potions in a fight (one shared cooldown per hero)
+  POT_AT:.4,       // drink below this share of max HP in a fight (scaled by the flee trait)
+  BANDAGE_AT:.6,   // bind wounds in the field below this share of max HP
+  DROP_RATE:.05,   // consumable drop per ordinary kill; named elites always drop a potion
+  WARD_SECS:40};   // how long a warding scroll holds
+// Consumables, one row each: what they do (the tooltip prints these numbers), what they cost in town,
+// the hero level that buys them and the weight for loot drops. kind: potion (heal in a fight),
+// bandage (heal out of one), ration and torch (used at camp), antidote (cures venom), scroll
+// (effect: recall | ward), pack (more slots).
+export const USES={
+  'Redroot Draught':   {kind:'potion', heal:.35,price:8, lvl:1, tier:1,drop:10,flavour:'Bitter, red, and quick. The herbwives of the Thornvale roads swear by it.'},
+  'Marrowmend Tonic':  {kind:'potion', heal:.55,price:26,lvl:10,tier:2,drop:10,flavour:'Brewed from hearthbloom and cold-water silt; it knits what a blade has parted.'},
+  'Linen Bandage':     {kind:'bandage',heal:.2, price:3, lvl:1, drop:6, flavour:'Boiled linen, tightly rolled. Useless in the middle of a fight, a mercy after one.'},
+  'Trail Ration':      {kind:'ration', heal:.2, price:3, lvl:1, drop:3, flavour:'Hard bread, smoked meat and a pinch of salt. A camp supper that mends a little.'},
+  'Pitch Torch':       {kind:'torch',  watch:3,price:3, lvl:1, drop:2, flavour:'Burns the night back from the camp; whoever keeps the watch sees farther.'},
+  'Bogroot Antidote':  {kind:'antidote',price:8, lvl:3, drop:2, flavour:'A grey paste that draws venom and rot out of a wound.'},
+  'Scroll of Hearthward':{kind:'scroll',effect:'recall',price:25,lvl:4,drop:.5,flavour:'Read aloud, it pulls the reader to their home gate in one breath.'},
+  'Scroll of the Steadfast Hour':{kind:'scroll',effect:'ward',ward:.25,price:22,lvl:6,drop:.5,flavour:'A short-lived ward; blows land softer while the ink holds.'},
+  "Wayfarer's Pack":   {kind:'pack',  slots:8,price:60,lvl:5,drop:0,flavour:'Stitched leather with a frame of ash. Carries what two ordinary packs would.'}};
+// What a consumable does, as tooltip lines [css, text] (src/ui/panels.js prints them like gear stats).
+export function useLines(id){const U=USES[id],o=[];if(!U)return o;
+  if(U.heal)o.push(['ar','Heals '+Math.round(U.heal*100)+'% of max health'+(U.kind==='bandage'?', out of combat':U.kind==='ration'?', at camp':'')]);
+  if(U.kind==='potion')o.push(['dg','Usable in a fight; one every '+INV.POT_CD+' s']);
+  if(U.kind==='torch')o.push(['bn',"Camp: the watcher's Perception check is "+U.watch+' easier']);
+  if(U.kind==='antidote')o.push(['bn','Cures venom and rot']);
+  if(U.effect==='recall')o.push(['bn','Carries the reader to their home gate']);
+  if(U.effect==='ward')o.push(['pr','Blows taken -'+Math.round(U.ward*100)+'% for '+INV.WARD_SECS+' s']);
+  if(U.kind==='pack')o.push(['bn','+'+U.slots+' pack slots (one pack)']);
+  if(U.lvl>1)o.push(['dm','Sold from level '+U.lvl]);
+  return o}
+// Quest items the DM's hand can place (sim/levers.js give_token). Adventures also hand out their own
+// carried object under its job text ("a sealed letter"); those have no row here. Never sold, never given.
+export const QUEST_ITEMS={
+  'Rookscar Toll-Token':{flavour:'A bent copper disc stamped with a rook. Toll-crews wave a bearer through.'},
+  'Chapel Tithe-Seal':{flavour:'A wax seal for a tithe box that has not yet been found.'},
+  'Cairn-Door Key':{flavour:'Cold iron, notched twice. It fits no lock in any town.'},
+  'Shrine Candle-Stub':{flavour:'Lit once at a wayside shrine; the wick still remembers.'}};
+

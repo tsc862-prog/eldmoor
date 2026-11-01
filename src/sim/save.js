@@ -17,6 +17,7 @@ import {CRYPT} from '../world/map.js';
 import {GOODS,price} from '../data/items.js';
 import {rollScores} from './abilities.js';
 import {convertItem} from './gear.js';
+import {convertBag} from './inv.js';
 
 export {SAVE_VERSION};
 
@@ -42,7 +43,9 @@ const MIGRATIONS={1:snap=>{const ids={};(snap.GUILDS||[]).forEach((g,i)=>{ids[g.
   // rare property instead (stat cleanup, #88); the hero's cached stat totals go.
   4:snap=>{for(const a of snap.agents||[]){if(a.kind!=='hero')continue;delete a.gtot;
     for(const k in a.slots||{})if(a.slots[k])convertItem(a.slots[k],a.cls);
-    for(const it of a.bag||[])if(it&&typeof it==='object')convertItem(it,a.cls)}return snap}};
+    for(const it of a.bag||[])if(it&&typeof it==='object')convertItem(it,a.cls)}return snap},
+  // v5 -> v6: the trade-goods bag becomes the pack a.inv (inventory, #124): stacks, spare gear, consumables, quest items.
+  5:snap=>{for(const a of snap.agents||[])if(a.kind==='hero'&&!a.inv)convertBag(a);return snap}};
 
 // ---- snapshot ----
 export function snapshot(){

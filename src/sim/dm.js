@@ -54,6 +54,7 @@ import {record,timeline,first} from './history.js';
 import {bondEvent} from './bonds.js';
 import {goalEvent} from './goals.js';
 import {makeItem,equip,weakestSlot,slotLevel} from './gear.js';
+import {addGear,addQuest,hasQuestFor,dropQuest} from './inv.js'; // quest items an adventure carries (sim/inv.js)
 import {say} from './chat.js';
 import {d20} from './narrator.js';
 import {bestFor,socialSkill,SKILLS} from './abilities.js';
@@ -273,6 +274,7 @@ function start(h,a,mem){const T=D.ADVENTURES[h.tpl],L=a,c=homeOf(L);
   adv.told=watched(adv)||S.adventures.filter(v=>v.phase==='active'&&v.told).length<K.TOLD;if(adv.told)stats().told++;
   const C=ctx(adv);beat(adv,false,...fill(pickA(D.OFFER[h.src]||D.OFFER.writ),C));
   for(const b of mem)record(b,'Took up an adventure: ',gd(adv.title),' ('+(h.giver?h.giver.name:'the gate')+').');
+  if(T.carry==='start')carryItem(adv);
   return adv}
 function mkScene(s,k,br,at){return {k,br,type:s.type,at:at?{x:at.x,y:at.y}:null,z:at?zoneAt(at.x,at.y):null,check:s.check===undefined?D.SCENE_TYPES[s.type].check:s.check,
   dc:s.dc||0,final:!!s.final,res:null}}
@@ -490,7 +492,9 @@ function reward(adv,a,kind){const z=adv.z,zl=band(z)[0]+2;for(const b of [a,...p
 // rolls or lost days drags a success down to partial and a partial to failure.
 function judge(adv){const fin=adv.scenes.filter(s=>s.final).pop(),okFinal=fin&&fin.res==='pass',bad=adv.fail+adv.flags.late;
   if(okFinal)return bad>=3?'partial':'success';return bad>=3?'failure':'partial'}
-function finish(adv,outcome,why){if(adv.phase!=='active')return;outcome=outcome||judge(adv);adv.phase='done';adv.outcome=outcome;adv.why=why||null;adv.ended=S.gameMin;
+function finish(adv,outcome,why){if(adv.phase!=='active')return;outcome=outcome||judge(adv);
+  {const cr=adv.carrier!=null?hero(adv.carrier):null;if(cr){if(outcome==='success'&&alive(cr)&&!hasQuestFor(cr,adv.id)){outcome='partial';/* the job's object is gone */}dropQuest(cr,adv.id)}}
+  adv.phase='done';adv.outcome=outcome;adv.why=why||null;adv.ended=S.gameMin;
   despawn(adv);const T=D.ADVENTURES[adv.tpl],C=ctx(adv),mem=members(adv),L=hero(adv.lead),k=OUT[outcome]||0;
   bump(stats().done,adv.tpl);stats().outcome[outcome]++;
   const key=why==='death'?'death':why==='expired'?'expired':why==='abandoned'?'abandoned':why==='gone'?null:outcome;
@@ -547,8 +551,12 @@ function angered(adv,a,sc){if(sc.type!=='social'||(adv.id*7+adv.idx)%10>=K.STRAN
   if(!p)return;const who=adv.data.stranger||'stranger',L=hero(adv.lead),by={by:'scripted',adv};
   const camp=pull('mark_place',{kind:'camp',at:p,hours:48},{...by,reason:'the '+who+' from '+adv.title+' makes camp by the road, nursing a grudge'});if(!camp.ok)return;
   pull('create_npc',{role:STRANGER_ROLE[who]||'stranger',home:'camp',at:p,attitude:'hostile',hours:48,towardParty:L&&L.party?L.party.id:undefined},{...by,reason:'the '+who+' '+(L?L.name:'the party')+' angered will not forget it'})}
+// A job's object (a sealed letter, a bone reliquary) rides in the leader's pack as a quest item until the
+// job ends: never sold, never given away. A success needs it still in hand (finish).
+function carryItem(adv){const L=hero(adv.lead),t=plain([adv.data.thing||'the job’s object']);if(!alive(L)||adv.carried)return;
+  const name=t.charAt(0).toUpperCase()+t.slice(1);addQuest(L,name,adv.id);adv.carried=true;adv.carrier=L.id;record(L,'Took charge of ',gd(name),' for '+adv.title+'.')}
 function rewardItem(b,adv){const k=weakestSlot(b);if(!k)return null;const il=b.lvl+1;if(slotLevel(b,k)>=il)return null;
-  const it=makeItem(b.cls,k,il,adv.z,{src:'Reward for '+adv.title,fine:.6,rare:.1});const old=equip(b,it);if(old)b.bag.push(old);return it}
+  const it=makeItem(b.cls,k,il,adv.z,{src:'Reward for '+adv.title,fine:.6,rare:.1});const old=equip(b,it);if(old)addGear(b,old);return it}
 
 // ---- once per step (sim/index.js) ----
 export function dmTick(dt){ensure();S.dmClock=(S.dmClock||0)+dt;S.dmT+=dt;if(S.dmT<.5)return;const step=S.dmT;S.dmT=0;
@@ -556,6 +564,7 @@ export function dmTick(dt){ensure();S.dmClock=(S.dmClock||0)+dt;S.dmT+=dt;if(S.d
   for(const adv of S.adventures){if(adv.phase!=='active')continue;
     const L=hero(adv.lead);
     if(!alive(L)){finish(adv,'failure','death');continue}
+    if(!adv.carried&&D.ADVENTURES[adv.tpl].carry==='mid'&&adv.idx>=2)carryItem(adv); // the relic is in hand once the trap is past
     if(S.gameMin-adv.started>K.MAX_DAYS*1440){finish(adv,'failure','expired');continue}
     // the leader went home (fled, wounded, party heading back) or was called to the Crypt or a raid
     const out=L.state==='return'||L.state==='town'||L.state==='dungeon'||L.state==='raid';

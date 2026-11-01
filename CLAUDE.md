@@ -44,8 +44,9 @@ Dedicated subagents live in `.claude/agents/`. Delegate to them by area:
 | `lore-keeper` | `docs/LORE.md`, flavor text, originality checks |
 | `brain-builder` | Model-played heroes: decision-policy interface, local relay, prompts, fallbacks; generated narrator and chatter modes |
 | `pm` | Backlog triage, issues and labels, priority order, briefs for next pickups, board snapshot and status summaries (no code, no merges, no dispatch) |
+| `playtest-reviewer` | Reads DM and character behavior logs (runner logs, sessions, relay, `logs/behavior/`) after play and files evidenced issues (no code, no merges) |
 
-Models per agent (set in each agent's frontmatter): Opus for `ai-designer` and `brain-builder` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review), Haiku for `pm` (triage and board). Quick read-only checks (a short lore pass, a board sync) may run on Haiku by overriding `model` on the call; full originality reviews stay on Sonnet. Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
+Models per agent (set in each agent's frontmatter): Opus for `ai-designer` and `brain-builder` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review), Haiku for `pm` (triage and board), Sonnet for `playtest-reviewer`. Quick read-only checks (a short lore pass, a board sync) may run on Haiku by overriding `model` on the call; full originality reviews stay on Sonnet. Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
 
 For a feature that spans areas (for example a new zone with new monsters), plan it,
 hand each part to its owner, then have `lore-keeper` check names and
@@ -89,6 +90,7 @@ other. The rules:
 - New worlds (#111): `init()` founds the default Fellowship (level 1, home town, Minds scripted) and starts the other heroes at levels 1-15 in fitting zones (`src/sim/opening.js`, `START_BANDS`). `ELDMOOR_FELLOWSHIP=0` in Node, `?fellowship=0` in the browser or `init({fellowship:false})` keeps the old all-level-1 start for balance baselines; checks that found their own Fellowship use it.
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
+- `npm run invcheck`: the pack, consumables, quest items, the bag-to-pack save migration and determinism.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
 - `npm run localcheck`: the local agent runner against a mock Ollama (see "Model providers"), and runner
   pacing (turns per game hour on a quiet world, a notification starts a turn at once, the failure stop, a lazy
@@ -449,7 +451,7 @@ The owner's rule: the DM and the players talk only inside the game. How it holds
   state machine (`town`, `travel`, `hunt`, `fight`, `return`, `ghost`, `duel`,
   `assist`, `dungeon`, `raid`, `dead`); `mobs.js` spawning and mob AI;
   `boss.js` the Kragmaw fight and raid muster; `pvp.js` duels, nemesis hunts,
-  assists; `dungeon.js` Sunken Crypt runs; `market.js` auction-house prices;
+  assists; `dungeon.js` Sunken Crypt runs; `market.js` auction-house prices; `inv.js` the hero pack `a.inv` (stacks, spare gear, consumables from `USES`, quest items, supplies bought in town, `npm run invcheck`);
   `history.js` `record(a, ...parts)` per-hero event log for the dossier Log tab;
   `levers.js` the DM's world levers: a validated registry (`pull(name, params, {by, reason})`)
   with limits, cooldowns and DM log entries for people, places, danger/cleared areas, region

@@ -33,7 +33,7 @@ import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {MOBS} from '../data/mobs.js';
 import {TRAITS,tm} from '../data/traits.js';
-import {GOODS,price,SLOTS} from '../data/items.js';
+import {GOODS,price,SLOTS,USES,INV,useLines} from '../data/items.js';
 import * as D from '../data/adventures.js';
 import {PLAYER_TOOLS} from '../data/player-tools.js';
 import {S,clockStr} from './state.js';
@@ -42,7 +42,7 @@ import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,findMob,turnIn,huntZone} fro
 import {partyMates,leaderOf,leaveParty} from './party.js';
 import {speak,say,agentLine} from './chat.js';
 import {npcSay,ensureNpcs} from './npcs.js';
-import {sellGear,equip,makeItem,SHOP_COST,SELL_VALUE,slotLevel,weakestSlot,itemStats,gearScore,refreshEpics} from './gear.js';
+import {equip,makeItem,SHOP_COST,SELL_VALUE,slotLevel,weakestSlot,itemStats,gearScore,refreshEpics} from './gear.js';
 import {weatherName,sightMul,isStorm} from './weather.js';
 import {record} from './history.js';
 import {fleeCheck} from './narrator.js';
@@ -55,6 +55,7 @@ import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead} from './council.js';
 import {sceneAct,tableView} from './table.js';
+import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
 
 // ---- knobs ----
 export const PK={
@@ -215,7 +216,7 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
   if(cmd){done(a,'Cannot '+cmd.kind+' here.');return true}
   // idle reflex: a full bag goes home to be sold
   a.moving=false;
-  if(a.bag.length>=PK.BAG){const c=homeOf(a);a.pq=[{kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (bag full)'}];ev(a,'Your bag is full; heading home to sell.',true)}
+  if(load(a)>=PK.BAG){const c=homeOf(a);a.pq=[{kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (pack full)'}];ev(a,'Your pack is full of loot; heading home to sell.',true)}
   return true}
 
 function fight(a,dt,cmd){const m=a.target,mh=maxHp(a);a.cd-=dt;
@@ -227,6 +228,7 @@ function fight(a,dt,cmd){const m=a.target,mh=maxHp(a);a.cd-=dt;
   if(!m.target)m.target=a;
   priestHeal(a,a.party?a.party.mem:[a]);
   if(a.cd<=0){strike(a,m);a.cd=1.1}
+  fightAid(a,m); // reflex: a potion or ward from the pack keeps the hero up while the agent thinks (sim/inv.js)
   if(a.state==='fight'){const fb=cmd&&cmd.flee!=null?cmd.flee:PK.FLEE;if(a.hp<mh*fb)flee(a,true)}
   return true}
 
@@ -330,7 +332,13 @@ const T={
     r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...ZONES.map((n,i)=>n+(REGIONS[i]&&REGIONS[i].band?' (L'+REGIONS[i].band[0]+'-'+REGIONS[i].band[1]+')':'')),'crypt',...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];
     return r},
   inventory(a){const slots={};for(const k of SLOTS){const it=a.slots&&a.slots[k];slots[k]=it?itemText(it):null}
-    return {ok:true,gold:a.gold,slots,bag:a.bag.map((it,i)=>({index:i,item:typeof it==='string'?it+(GOODS[it]?' (sells for about '+price(it)+'g)':''):itemText(it)+(it&&it.slot?', sells '+SELL_VALUE(it)+'g':'')}))}},
+    // Only this hero's own pack (inventory, #124): stacks, spare gear, consumables and quest items, by index.
+    return {ok:true,gold:a.gold,slots,capacity:{used:used(a),max:capOf(a)},items:invOf(a).list.map((e,i)=>({index:i,kind:kindOf(e),item:entryText(e)}))}},
+  use_item(a,{index,target_id}){const i=Number(index),e=invOf(a).list[i];need(e&&!isGear(e)&&e.kind==='use','No usable item at pack index '+index+'.');
+    let on=a;if(target_id!=null&&Number(target_id)!==a.id){on=hero(Number(target_id));need(on&&on.kind==='hero'&&on.state!=='dead','No such party member.')}
+    const r=useItem(a,e.id,on);need(r.ok,r.error);return {ok:true,result:r.text,hp:pct(a.hp,maxHp(a))+'%',pack:invOf(a).list.length+'/'+capOf(a)}},
+  drop(a,{index,count}){const r=dropEntry(a,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
+  give(a,{index,hero_id,count}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');const r=giveItem(a,b,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
   move_to(a,{target}){need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
     need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);
@@ -409,20 +417,27 @@ const T={
   rest(a,{minutes}){need(a.state==='hunt'||a.state==='town'||a.state==='travel'||a.state==='follow','You cannot rest now ('+(a.state==='return'?'you are heading home; rest in town':a.state)+').');
     if(a.state==='travel'||a.state==='follow')a.state='hunt'; // stop walking and sit down where you are
     const m=Math.min(240,Math.max(10,Math.round(Number(minutes)||60)));a.pq=[{kind:'rest',until:S.gameMin+m}];a.dest=null;return {ok:true,resting_min:m}},
-  buy(a,{slot}){need(inTown(a),'The smiths are in town.');const k=slot?String(slot):weakestSlot(a);need(k&&SLOTS.includes(k),'No slot to fill.');
+  buy(a,{slot,item,count}){need(inTown(a),'The smiths are in town.');
+    if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>x.toLowerCase()===String(item).toLowerCase());
+      need(id,'Not sold here. For sale: '+Object.keys(USES).filter(x=>USES[x].lvl<=a.lvl).map(x=>x+' ('+USES[x].price+'g)').join(', ')+'.');
+      const U=USES[id];need(U.lvl<=a.lvl,id+' is sold from level '+U.lvl+'.');const n=Math.min(10,Math.max(1,Math.round(Number(count)||1)));
+      need(a.gold>=U.price,'That costs '+U.price+'g each; you have '+a.gold+'g.');
+      if(U.kind==='pack'){need(!invOf(a).pack,'You already carry a Wayfarer\'s Pack.');a.gold-=U.price;invOf(a).pack=1;return {ok:true,bought:id,cost:U.price,gold:a.gold,capacity:capOf(a)}}
+      let got=0;while(got<n&&a.gold>=U.price&&addUse(a,id,1)){a.gold-=U.price;got++}need(got,'Your pack is full ('+used(a)+'/'+capOf(a)+').');
+      return {ok:true,bought:id+' x'+got,cost:got*U.price,gold:a.gold}}
+    const k=slot?String(slot):weakestSlot(a);need(k&&SLOTS.includes(k),'No slot to fill.');
     const cur=a.slots[k];need(!(cur&&cur.epic),'An epic holds that slot.');need(slotLevel(a,k)<a.lvl,'Nothing better than your '+(cur?cur.name:'gear')+' (item level '+slotLevel(a,k)+') is for sale at your level.');
     const cost=SHOP_COST(a.lvl);need(a.gold>=cost,'That costs '+cost+'g; you have '+a.gold+'g.');
     refreshEpics(a);a.gold-=cost;const it=makeItem(a.cls,k,a.lvl,zoneFor(a.lvl),{src:'Bought in '+homeOf(a).name,rare:0});
-    const old=equip(a,it);if(old)a.bag.push(old);a.hp=Math.min(a.hp,maxHp(a));
-    return {ok:true,bought:itemText(it),cost,gold:a.gold,replaced:old?itemText(old)+' (now in your bag)':null}},
+    const old=equip(a,it);if(old)addGear(a,old);a.hp=Math.min(a.hp,maxHp(a));
+    return {ok:true,bought:itemText(it),cost,gold:a.gold,replaced:old?itemText(old)+' (now in your pack)':null}},
   sell(a,{index}){need(inTown(a),'The auction house is in town.');let tot=0,n=0;
-    const one=it=>{if(it&&typeof it==='object'&&it.slot){tot+=SELL_VALUE(it);n++;return true}if(GOODS[it]){tot+=price(it);GOODS[it].supply++;n++;return true}return false};
-    if(index!=null){const i=Number(index);need(i>=0&&i<a.bag.length,'No bag entry '+index+'.');need(one(a.bag[i]),'That cannot be sold.');a.bag.splice(i,1)}
-    else{a.bag=a.bag.filter(it=>!one(it))}
+    if(index!=null){const i=Number(index);need(i>=0&&i<used(a),'No pack entry '+index+'.');tot=sellEntry(a,i);need(tot>=0,'That cannot be sold (consumables and quest items are kept).');n=1}
+    else{const s=sellLoot(a);tot=s.gold;n=s.n}
     need(n,'Nothing to sell.');a.gold+=tot;return {ok:true,sold:n,gold_gained:tot,gold:a.gold}},
   equip(a,{index}){need(!['fight','duel','assist'].includes(a.state),'Not in the middle of a fight.');const i=Number(index);
-    const it=a.bag[i];need(it&&typeof it==='object'&&it.slot,'No gear at bag index '+index+'.');need(it.ilvl<=a.lvl+5,'Too far above your level to wear.');
-    a.bag.splice(i,1);const old=equip(a,it);if(old)a.bag.push(old);a.hp=Math.min(a.hp,maxHp(a));return {ok:true,wearing:itemText(it),replaced:old?itemText(old):null}},
+    const it=invOf(a).list[i];need(isGear(it),'No gear at pack index '+index+'.');need(!it.cls||it.cls===a.cls||it.epic,'That is made for a '+it.cls+'.');need(it.ilvl<=a.lvl+INV.WEAR_OVER,'Too far above your level to wear.');
+    const old=equipSpare(a,it);a.hp=Math.min(a.hp,maxHp(a));return {ok:true,wearing:itemText(it),replaced:old?itemText(old)+' (now in your pack)':null}},
   turn_in(a){need(inTown(a),'The quest giver is in town.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,x=a.xp,l=a.lvl;turnIn(a);
     const nq=a.quest?(MOBS[a.quest.type].q)+': '+a.quest.need+' '+MOBS[a.quest.type].pl+' in '+ZONES[MOBS[a.quest.type].z]:null;
     return doneQ?{ok:true,reward_gold:a.gold-g,leveled:a.lvl>l||undefined,new_quest:nq}:{ok:false,error:'Your quest is not done ('+(q?q.have+'/'+q.need:'none')+').',quest:nq}},
@@ -448,6 +463,10 @@ const T={
 };
 function propText(P){const v=Object.keys(P.votes||{}).length;return '#'+P.id+' '+P.kind+': '+P.details+' (by '+P.byName+', '+v+' vote'+(v===1?'':'s')+(P.status!=='open'?', '+P.result:'')+')'}
 function cmdText(c){if(c.kind==='move')return (c.flee?'flee to ':'walk to ')+c.label;if(c.kind==='hunt')return 'hunt ('+c.n+' kills)';if(c.kind==='rest')return 'rest until '+Math.round(c.until)+' game-min';if(c.kind==='fight')return 'fight #'+c.id;return c.kind}
+function entryText(e){if(isGear(e))return itemText(e)+(e.cls&&!e.epic?' ['+e.cls+' gear]':'')+', sells '+SELL_VALUE(e)+'g';
+  if(e.kind==='good')return e.id+' x'+e.n+(GOODS[e.id]?' (sells for about '+price(e.id)+'g each)':'');
+  if(e.kind==='use')return e.id+' x'+e.n+' ('+useLines(e.id).map(l=>l[1]).join('; ')+')';
+  return e.id+' (quest item: cannot be sold, dropped or given)'}
 function itemText(it){if(!it)return null;const st=itemStats(it);return it.name+' (ilvl '+it.ilvl+(it.epic?', epic':it.quality&&it.quality!=='plain'?', '+it.quality:'')+(it.slot?', '+it.slot:'')+': '+Object.keys(st).map(k=>'+'+st[k]+' '+k).join(' ')+(it.property?' '+it.property:'')+')'}
 function jobText(h){const T=D.ADVENTURES[h.tpl];const thing=h.data&&h.data.thing;return (T&&T.name?T.name:h.tpl)+(thing?': '+thing:'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')}
 // Why a job does not suit this hero (and party), or null. The DM's own fits() decides in the end.

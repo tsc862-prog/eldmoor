@@ -503,6 +503,40 @@ Wolf Pelt, Boar Tusk, Silk Bundle, Fen Moss, Thick Hide, Venom Sac, Ember Core, 
 
 Base prices climb with zone: Thornvale 4-7, Mirefen 9-14, Grave Dust 18, Cinderpass 22-26, Hoarfell 30-40.
 
+## The pack (issue #124)
+Every hero carries a pack (`a.inv`, `src/sim/inv.js`; 16 slots, 24 with a Wayfarer's Pack). One slot
+holds a stack of up to 20 trade goods or supplies, or one piece of gear (a spare, an upgrade for a
+companion, a piece still too high to wear). Gold is kept apart. Quest items ride in the pack too
+and are never sold, dropped or given.
+
+**Supplies** (`USES` in `src/data/items.js`, sold in every town, found on the road):
+
+| Name | What it does | Price | From level |
+| --- | --- | --- | --- |
+| Redroot Draught | Heals 35% of health, in a fight or out | 8g | 1 |
+| Marrowmend Tonic | Heals 55% of health, in a fight or out | 26g | 10 |
+| Linen Bandage | Heals 20%, only out of a fight | 3g | 1 |
+| Trail Ration | Heals 20% at camp | 3g | 1 |
+| Pitch Torch | Lit at camp; the watcher's Perception check is 3 easier | 3g | 1 |
+| Bogroot Antidote | Cures venom and rot | 8g | 3 |
+| Scroll of Hearthward | Carries the reader to their home gate | 25g | 4 |
+| Scroll of the Steadfast Hour | Blows taken -25% for 40 seconds | 22g | 6 |
+| Wayfarer's Pack | +8 pack slots (one per hero) | 60g | 5 |
+
+The herbwives of the Thornvale roads swear by redroot; hearthbloom and cold-water silt go into the
+tonic. Hearthward is read aloud, the Steadfast Hour is a short-lived ward in a small hand.
+
+**Quest items.** A job's own object travels with the leader: a sealed letter, the captain's writ, a
+ledger, a bone reliquary, a surveyor's brass chain and the rest of the `things` lists of the Deliver
+and Recover-a-relic jobs. The DM can also place a token from a short table, and take it back:
+
+| Name | Flavour |
+| --- | --- |
+| Rookscar Toll-Token | A bent copper disc stamped with a rook. Toll-crews wave a bearer through. |
+| Chapel Tithe-Seal | A wax seal for a tithe box that has not yet been found. |
+| Cairn-Door Key | Cold iron, notched twice. It fits no lock in any town. |
+| Shrine Candle-Stub | Lit once at a wayside shrine; the wick still remembers. |
+
 ## Townsfolk
 Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
 routines). Each is one of the town's own people, named from that people's syllables when the
@@ -701,6 +735,9 @@ granted or refused, goes into the DM log.
   generous purse; take a job down.
 - **Foes.** Raise the named beast an adventure calls for, or a special foe from the bestiary
   with a few tweaks, always kept to the region's level band.
+- **Tokens.** Put a quest item from the short table (a toll-token, a tithe-seal, a cairn-door
+  key, a candle-stub; see The pack) in a living hero's pack, or take it back. A token has no
+  numbers and cannot be sold, dropped or given.
 
 **What the DM cannot do**
 Kill a hero or save one, change anyone's health, experience, level, scores or class, bend the

@@ -32,6 +32,7 @@ import {remember} from './memory.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
 import {sayOk,setSpeedSource} from './throttle.js';
 import {score} from './abilities.js';
+import {bestUse,useItem} from './inv.js'; // a potion in a scene (scene_act option potion)
 import {fellows,fellowParty,campaign} from './fellowship.js';
 import {setProposeHook,castVote,resolveProp,reflexVote,propById,leaderOfF} from './council.js';
 import {setFellowChoice} from './player-choice.js';
@@ -74,6 +75,7 @@ export function optionsFor(sc,a){if(!sc||!a)return [];const k=sc.kind;
   if(COMBAT[k]){const f=foeOf(sc),fn=f?(f.kind==='hero'?f.name:mobName(f)):'the foe',lo=lowest(),o=[{k:'strike',text:'Strike '+fn}];
     if(f&&f.kind!=='boss')o.push({k:'guard',text:'Draw '+fn+' onto yourself'});
     if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
+    const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
     o.push({k:'retreat',text:'Fall back toward home'});return o}
   if(k==='site'||k==='room'){const s=SPECIAL[a.cls];return [...(s?[{k:s[0],text:s[1]}]:[]),{k:'press',text:'Press on, first into the dark'},{k:'careful',text:'Go carefully, one step at a time'}]}
   if(k==='choice')return [{k:'a',text:sc.ctx.a},{k:'b',text:sc.ctx.b}];
@@ -83,7 +85,7 @@ export function optionsFor(sc,a){if(!sc||!a)return [];const k=sc.kind;
 
 // The scripted choice: what a member does when nobody plays it (or its agent is silent).
 export function reflexFor(sc,a){const k=sc.kind,mh=maxHp(a),hurt=a.hp<mh*.2,lo=lowest(),healer=CLS[a.cls]&&CLS[a.cls].heal;
-  if(COMBAT[k]){if(hurt&&!(healer&&lo===a))return 'retreat';if(healer&&lo&&lo.hp<maxHp(lo)*.6)return 'heal';
+  if(COMBAT[k]){if(lo&&lo.hp<maxHp(lo)*.35&&bestUse(a,'potion'))return 'potion';if(hurt&&!(healer&&lo===a))return 'retreat';if(healer&&lo&&lo.hp<maxHp(lo)*.6)return 'heal';
     const f=foeOf(sc);if(a.cls==='Warrior'&&f&&f.kind==='mob'&&f.target&&f.target!==a)return 'guard';return 'strike'}
   if(k==='site'||k==='room')return SPECIAL[a.cls]?SPECIAL[a.cls][0]:'press';
   if(k==='choice'){const anyHurt=fellows().some(b=>b.hp<maxHp(b)*.6);return tm(a,'bold')>1&&!anyHurt?'a':anyHurt||tm(a,'retreat')>1?'b':a.fellowRole==='tank'?'a':'b'}
@@ -142,6 +144,7 @@ function apply(sc,a,act){const f=foeOf(sc),k=act.k;
   case 'guard':if(!f)return 'nothing to guard against';if(f.kind==='mob'){f.target=a;if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}return 'drew it on'}
     if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&a.fac!==f.fac){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
   case 'heal':{const lo=lowest();if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
+  case 'potion':{const lo=lowest(),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});return r.ok?'+'+r.healed+' to '+lo.name:r.error}
   case 'retreat':if(a.raid){a.raid=false}if(f&&f.target===a)f.target=null;if(a.state==='duel'&&f&&f.target===a&&f.kind==='hero'){f.state='hunt';f.target=null}
     if(a.state!=='dungeon'){goHome(a);if(a.player)a.pq=[]}return 'fell back';
   case 'hold':case 'ward':case 'scout':case 'read':case 'press':case 'careful':{const g=CRYPT.group;if(!g)return null;g.bonus=Math.round(((g.bonus||0)+SITE_BONUS[k])*100)/100;
