@@ -19,12 +19,14 @@ import {chatTick} from './chat.js';
 import {npcsTick} from './npcs.js';
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
+import {rebuild} from './spatial.js';
 import {bondsTick} from './bonds.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
 export {onMarketTick} from './market.js';
 export {xpNeed,maxHp,atkOf} from './heroes.js';
+export {spatialStats} from './spatial.js';
 export {snapshot,restore,isSave,SAVE_VERSION} from './save.js';
 
 // Populate the world: monsters, 14 level-1 heroes per faction, the opening chronicle.
@@ -41,6 +43,7 @@ export function init(){
 export function step(dt){S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,r.guild,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', joins ',{t:'<'+r.guild.tag+'> '+r.guild.name,c:'f'+r.fac},' in ',homeOf(a).name,'.')}
+  rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);goalsTick(dt);

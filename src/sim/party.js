@@ -15,6 +15,7 @@ import {maxHp,gainXp} from './heroes.js';
 import {say} from './chat.js';
 import {tm} from '../data/traits.js';
 import {record} from './history.js';
+import {nearHeroes} from './spatial.js';
 import {bondEvent} from './bonds.js';
 
 export const partyMates=a=>a.party?a.party.mem.filter(b=>b!==a&&b.state!=='dead'):[];
@@ -31,7 +32,7 @@ export function steerClear(a,dt,moveTo){if(!a.party||a.party.leader!==a)return f
   if(!a.dest||!a.dest.away||dist(a.dest,foe)<=dist(a,foe)){a.dest=awayPoint(a,foe);a.dest.away=true}
   if(moveTo(a,a.dest.x,a.dest.y,dt,2.3))a.dest=null;return true}
 const afield=b=>b.state==='travel'||b.state==='hunt'||b.state==='fight'||b.state==='return'||b.state==='duel'||b.state==='assist';
-export function nearestFoe(a,r){let best=null,bd=r;for(const b of S.agents){if(b.fac===a.fac||!afield(b))continue;const d=dist(a,b);if(d<bd){bd=d;best=b}}return best}
+export function nearestFoe(a,r){let best=null,bd=r;for(const b of nearHeroes(a.x,a.y,r)){if(b.fac===a.fac||!afield(b))continue;const d=dist(a,b);if(d<bd){bd=d;best=b}}return best}
 export function awayPoint(a,foe){let best=null,bd=-1;for(let i=0;i<8;i++){const p=zonePoint(a.zone,a);const d=dist(p,foe);if(d>bd){bd=d;best=p}}return best}
 
 const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.length-2)out.push(', ');else if(i===list.length-2)out.push(' and ')});return out};

@@ -23,6 +23,7 @@ import {pop} from './effects.js';
 import {agentDie,strike,maxHp} from './heroes.js';
 import {weatherKind,sightMul} from './weather.js';
 import {record} from './history.js';
+import {nearHeroes} from './spatial.js';
 
 // ---- knobs ----
 const CAP=20;            // real seconds between scene lines
@@ -104,7 +105,7 @@ export function fleeCheck(a,m){ensure();if(a.state!=='return'||!m||!m.alive)retu
 // ---- scene: first sighting of a named elite ----
 export function eliteSight(m,dt){if(!m.elite||m.seen||!m.alive)return;ensure();
   m.seenScan=(m.seenScan||0)-dt;if(m.seenScan>0)return;m.seenScan=.5;
-  if(!canSpeak())return;let who=null;for(const a of S.agents){if(afield(a)&&dist(a,m)<ELITE_SIGHT){who=a;break}}
+  if(!canSpeak())return;let who=null;for(const a of nearHeroes(m.x,m.y,ELITE_SIGHT)){if(afield(a)&&dist(a,m)<ELITE_SIGHT){who=a;break}}
   if(!who)return;m.seen=true;S.narStats.elites++;const zone=ZONES[MOBS[m.type].z];
   speak(...fill(pickA(N.ELITE_OPEN[zone]||N.GENERIC_ELITE),{zone}),' ',...fill(pickA(N.ELITE_TAIL),{elite:gd(m.name),title:m.title,zone,hero:who}))}
 
