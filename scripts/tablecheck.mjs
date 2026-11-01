@@ -9,6 +9,10 @@
 //   - lead_to: the leader leads, the party follows (the silent agent too)
 //   - the Crypt: the Fellowship is drafted all together or not at all; an agent party is asked
 //     first (a proposal) and goes together when it votes yes
+//   - staged scenes (issue #132, a child with a fresh world): the DM agent stages each kind (elite,
+//     ambush, meeting, trap, mystery, social); the cast meets the party and a paused scene opens;
+//     a mock DM answers every at-the-table call; a silent DM is filled by the scripted DM after
+//     its budget (then at once); no runner = no wait; 3x resolves at once; a save mid-scene; expiry
 //   - without a Fellowship, two seeded runs are identical (determinism)
 // Usage: npm run tablecheck   (TABLECHECK_SEED to vary the world)
 import {spawnSync} from 'node:child_process';
@@ -23,7 +27,7 @@ const P = await import('../src/sim/player.js');
 const F_ = await import('../src/sim/fellowship.js');
 const T = await import('../src/sim/table.js');
 const C = await import('../src/sim/council.js');
-const {CRYPT, zoneFor, zonePoint, dist} = await import('../src/world/map.js');
+const {CRYPT, ZONES, zoneFor, zonePoint, dist} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
 const {score} = await import('../src/sim/abilities.js');
 
@@ -38,6 +42,105 @@ let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 const act = (a, tool, args) => P.playerAct(a.id, tool, args || {});
+
+// ---- staged scenes (issue #132), in a child with a fresh world: node scripts/tablecheck.mjs --staged ----
+if (process.argv[2] === '--staged') {
+  const {dmAct, setDmSeat} = SIM;
+  const ST = await import('../src/sim/staged.js');
+  init({fellowship: false}); run(30);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(true);
+  const M = F_.fellowshipMembers().map(m => m.hero), A = M[0];
+  F_.setMinds('agent'); for (const x of M.slice(1)) {P.markPlayer(x, false); delete x.fellowAgent} // A is agent-played (and answers), the rest scripted
+  const home = homeOf(A).gate, zone = zoneFor(8, home), spot = zonePoint(zone, null, home);
+  const place = () => M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []});
+  const fresh = () => {place(); if (S.staged) S.staged.day.n = 0; if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} // the people lever's own limits are not under test here
+    for (const m of S.mobs) if (!m.staged && dist(m, spot) < 16) {m.alive = false; m.gone = true}};
+  const tag = e => e.detail && (e.detail.by === 'dm-agent' || e.detail.by === 'scripted');
+  // mock DM: 'answer' answers every call at once, 'silent' polls but never answers, 'away' never polls
+  const play = (mode, maxS = 120) => {let f = 0, opened = null, maxPause = 0;
+    while (f < 60 * maxS) {const g = S.gameMin; step(1 / 60); f++;
+      if (S.table && S.table.ctx.staged != null) {opened = opened || S.table; if (S.table.pause && S.table.phase !== 'frame' && S.gameMin !== g) maxPause = 1;
+        if (mode !== 'away') {const t = dmAct('table_call'); if (mode === 'answer' && t.call) {const c = t.call; dmAct('table_answer', {call: c.id, text: 'DM line ' + c.id + ': the ' + c.kind + ' lands hard.', ...(c.legal ? {pick: c.legal[c.legal.length - 1]} : {})})}}
+        if (A.player && !S.table.acts[A.id] && S.table.phase === 'turn') {const st = act(A, 'status'); const o = st.table && st.table.options; if (o && o.length) act(A, 'scene_act', {option: o[0].split(' = ')[0], line: 'On my word.'})}}
+      if (!S.table && S.staged.cur.phase === 'done') break}
+    return {opened, secs: f / 60, maxPause}};
+  console.log('staged scenes (issue #132)');
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  const CAST = {meeting: {role: 'drover', name: 'Hesk', want: 'find my lost ox before the frost', voice: 'slow and worried', choices: {help: 'Promise Hesk to find the ox'}},
+    social: {role: 'sellsword', want: 'a toll for the ford', attitude: 'wary', reveal: 'The toll goes to the Rookscar crew.'}, trap: {trap: 'spikes'},
+    mystery: {place: 'shrine', reveal: 'The shrine remembers a drowned king.'}, elite: {name: 'Old Greyjaw', title: 'the Hungry', choices: {strike: 'Go for the throat'}}, ambush: {}};
+  for (const kind of ST.STAGE_KINDS) {
+    fresh(); const log0 = S.dmLogSeq, hp0 = M.map(x => x.hp);
+    const r = dmAct('stage_scene', {kind, near: 'fellowship', frame: 'The road narrows between thorn banks, and something waits for them.', cast: CAST[kind], reason: 'tablecheck ' + kind});
+    ok(r.ok && r.staged, `stage_scene ${kind}: ${r.title || r.error} ${r.where || ''}${r.level ? ' (level ' + r.level + ', party ' + r.party_level + ')' : ''}`);
+    if (!r.ok) continue;
+    const {opened: sc, secs, maxPause} = play('answer');
+    ok(sc && sc.kind === kind && sc.ctx.staged === r.staged && sc.pause, `the cast met the party and a ${kind} scene opened at the table (${secs.toFixed(1)} s), world paused`);
+    if (!sc) continue;
+    ok(!maxPause, 'the world clock stood still through the scene');
+    ok((A.chat || []).some(e => e.from.kind === 'dm' && /thorn banks/.test(e.text)), 'the frame reached the members as narration');
+    const calls = sc.calls || [];
+    ok(calls.length >= sc.ids.length + 2 && calls.every(c => c.done) && calls.filter(c => c.by === 'dm-agent').length === calls.length, `${calls.length} DM calls (voice, an outcome per member, one complication), all answered by the mock DM`);
+    const comp = calls.find(c => c.kind === 'complication');
+    ok(comp && ST.COMPLICATIONS[kind].includes(comp.pick), `the complication is one of the legal set: ${comp && comp.pick}`);
+    ok(sc.beats.length === sc.ids.length || ['elite', 'ambush'].includes(kind), `every member acted (${sc.beats.map(b => b.name + '=' + b.k + '(' + b.by + ')').join(', ')})`);
+    if (CAST[kind].choices) ok(sc.beats.some(b => Object.values(CAST[kind].choices).includes(b.text)), 'the DM\'s own label for a legal action shows at the table');
+    if (kind === 'meeting' || kind === 'social') ok((A.chat || []).some(e => e.from.kind === 'npc' && /^DM line/.test(e.text)), 'the voice call is said by the person, in the game');
+    const mine = S.dmLog.filter(e => e.id > log0);
+    ok(mine.some(e => e.kind === 'frame' && tag(e)) && mine.some(e => e.kind === 'payoff' && tag(e)) && mine.every(e => tag(e) || e.kind === 'lever'), `DM log: ${mine.length} entries, every one tagged (${[...new Set(mine.map(e => e.kind))].join(', ')})`);
+    if (!['elite', 'ambush'].includes(kind)) ok(mine.some(e => e.kind === 'roll' && e.detail.d20 >= 1 && e.detail.dc), 'the dice decide: d20 rolls against a DC are logged');
+    ok(M.every(x => x.state !== 'dead') && (kind !== 'trap' || M.every((x, i) => x.hp >= Math.min(hp0[i], Math.ceil(maxHp(x) * ST.STAGE.TRAP_FLOOR)))), 'nobody died; a trap never takes anyone below ' + ST.STAGE.TRAP_FLOOR * 100 + '% HP');
+    ok(S.staged.cur.phase === 'done' && S.staged.cur.result, `the staged scene ends: ${S.staged.cur.result}`);
+    for (const id of S.staged.cur.cast.mobs) {const m = S.mobs.find(x => x.id === id); if (m && m.alive) {m.alive = false; m.gone = true}}
+    run(1);
+  }
+  // a silent DM (polls, never answers): each call waits its budget, then the scripted DM; after MISS_MAX misses, at once
+  fresh(); T.TABLE.dmMs = 1500;
+  let r = dmAct('stage_scene', {kind: 'mystery', near: A.name, frame: 'A ring of old stones stands in the bracken, humming faintly.', cast: {}, reason: 'silent DM'});
+  let p = play('silent');
+  let calls = p.opened ? p.opened.calls : [];
+  ok(r.ok && p.opened && calls.length && calls.every(c => c.done && c.by === 'scripted'), `a silent DM: every call filled by the scripted DM (${calls.length})`);
+  ok(p.opened && p.opened.dmMiss === ST.STAGE.MISS_MAX, `it waited for ${ST.STAGE.MISS_MAX} calls, then stopped waiting`);
+  ok(p.secs <= T.TABLE.frameS + T.TABLE.outcomeS + ST.STAGE.MISS_MAX * T.TABLE.dmMs / 1000 + T.TABLE.turnMs / 1000 + 25, `the scene still ended (${p.secs.toFixed(1)} s, walk included)`);
+  // nobody listening at all: no wait
+  fresh(); const poll0 = ST.STAGE.POLL_MS; ST.STAGE.POLL_MS = 0; // as if the last poll were long ago
+  r = dmAct('stage_scene', {kind: 'social', near: A.name, frame: 'A toll-keeper leans on a pike across the track.', cast: {role: 'sellsword', want: 'two silver for the ford'}, reason: 'no runner'});
+  const t0 = Date.now(); p = play('away');
+  ok(r.ok && p.opened && p.opened.calls.every(c => c.by === 'scripted') && !p.opened.dmMiss && p.secs < 30, `no runner listening: the scripted DM fills at once (scene over after ${p.secs.toFixed(1)} s game-step time)`);
+  ST.STAGE.POLL_MS = poll0;
+  T.TABLE.dmMs = 6000;
+  // late and illegal answers
+  ok(dmAct('table_answer', {call: 1, text: 'x'}).ok === false, 'an answer with no staged scene at the table is refused');
+  // at 3x: no pause, everything resolved at once, scripted
+  fresh(); T.TABLE.speed = 3;
+  r = dmAct('stage_scene', {kind: 'trap', near: A.name, frame: 'Fresh earth across the path, raked too smooth.', cast: {trap: 'gas'}, reason: 'fast'});
+  p = play('answer'); const pay = S.dmLog.find(e => e.kind === 'payoff' && e.detail.staged === r.staged);
+  ok(r.ok && !p.opened && pay && pay.detail.calls.length && pay.detail.calls.every(c => c.by === 'scripted'), 'at 3x the staged scene resolves in one step (never paused) with the scripted DM in every slot');
+  T.TABLE.speed = 1;
+  // a save mid-scene, with a pending call
+  fresh();
+  r = dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A pilgrim sits by a cairn, mending a sandal.', cast: {role: 'hermit', want: 'company as far as the ford'}, reason: 'save'});
+  let f = 0; while (f++ < 60 * 60 && !(S.table && S.table.calls && S.table.calls.some(c => !c.done))) {step(1 / 60); dmAct('table_call')}
+  const pend = S.table && S.table.calls.find(c => !c.done);
+  ok(!!pend, `a call is waiting (${pend && pend.kind})`);
+  const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);
+  ok(S.table && S.table.ctx.staged === r.staged && S.staged.cur.phase === 'open', 'a save mid-scene restores the staged scene and its calls');
+  const bad = dmAct('table_answer', {call: 999, text: 'x'}), c1 = dmAct('table_call').call;
+  ok(bad.ok === false && c1 && dmAct('table_answer', {call: c1.id, text: 'The pilgrim looks up and smiles.'}).ok && dmAct('table_answer', {call: c1.id, text: 'again'}).ok === false, 'unknown and repeated answers are refused; the pending one is taken');
+  p = play('away');
+  ok(!S.table && S.staged.cur.phase === 'done', 'the restored scene runs to its end');
+  // expiry: a cast that never meets the party gives up
+  fresh(); const far = M.map(x => ({x: x.x, y: x.y}));
+  r = dmAct('stage_scene', {kind: 'ambush', near: Math.round(spot.x + 12) + ',' + Math.round(spot.y), frame: 'Something watches the road from the hedges.', cast: {}, reason: 'never met'});
+  if (!r.ok) r = dmAct('stage_scene', {kind: 'mystery', near: ZONES[zone], frame: 'Something watches the road from the hedges.', cast: {}, reason: 'never met'});
+  for (const x of M) {const c = homeOf(x); x.state = 'town'; x.townStep = 2; x.wait = 9e9; x.x = c.gate.x; x.y = c.gate.y - 1}
+  T.TABLE.speed = 8; const g0 = S.gameMin; while (S.gameMin - g0 < ST.STAGE.WAIT_MIN + 30) step(1 / 60);
+  ok(r.ok && S.staged.cur.phase === 'done' && S.staged.cur.result === 'expired' && S.dmLog.some(e => e.kind === 'abandon' && tag(e)), `a cast nobody meets gives up after ${ST.STAGE.WAIT_MIN / 60} game hours (logged)`);
+  ok(S.staged.cur.cast.mobs.every(id => {const m = S.mobs.find(x => x.id === id); return !m || m.gone}), 'and its foes leave the map');
+  console.log('STAGED ' + (fail ? 'FAIL ' + fail : 'OK'));
+  process.exit(fail ? 1 : 0);
+}
 
 console.log('\nEldmoor tablecheck: Table mode, the council and the party as one unit (mock agents)\n');
 init({fellowship: false}); run(60); // the old start (#111): this check founds its own Fellowship
@@ -169,6 +272,11 @@ for (const a of F_.fellows()) if (!prop.votes[a.id]) act(a, 'vote', {proposal_id
 ok(prop.status === 'passed' && CRYPT.group && F_.fellows().every(a => CRYPT.group.mem.includes(a) && a.cryptOk), `they vote yes and set out together (${prop.result})`);
 step(1 / 60); step(1 / 60);
 ok(F_.fellows().every(a => a.state === 'dungeon'), 'agent members stay in the Crypt group (not turned down as an unasked draft)');
+
+// ---- 5b. staged scenes (issue #132): a fresh world in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--staged'], {encoding: 'utf8', env: {...process.env}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /STAGED OK/.test(ch.stdout || ''), 'staged scenes: every kind with a mock DM, a silent DM, no runner, 3x, a save mid-scene, expiry')}
 
 // ---- 6. determinism without a Fellowship ----
 const me = fileURLToPath(import.meta.url), h1 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim(), h2 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim();

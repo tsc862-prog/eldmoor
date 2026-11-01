@@ -310,7 +310,8 @@ with no key and no network.
 An AI agent can sit in the DM seat between scenes: it reads the world, keeps campaign notes and shapes
 what comes next through the world levers; the scripted DM keeps running beside it, unchanged. It never
 controls a hero and never kills anyone by fiat (no lever touches HP, level or life, and a pull that piles
-danger onto a badly hurt Fellowship member out in the field is refused). Fast at-the-table calls are part 2.
+danger onto a badly hurt Fellowship member out in the field is refused). It can also stage narrated
+encounters and speak at their tables (issue #132, below).
 
 - In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; open the
   **Dungeon Master** panel and press **Open seat**, pick the mind (Claude or a pulled local model) and
@@ -341,6 +342,30 @@ danger onto a badly hurt Fellowship member out in the field is refused). Fast at
   in all four sections, a ruin and a wary hermit, one refused pull it corrected); a quiet turn 3 calls, 8 s, $0.013.
 - `npm run dmcheck` (in CI): tools, notes, limits and refusals, save/restore, a silent seat leaves a
   seeded world identical, relay routes and MCP, the browser bridge, and the runner end to end on a mock Ollama.
+
+### Staged scenes and the DM at the table (issue #132)
+
+- `stage_scene {kind, near, frame, title?, cast?, reason}` (`src/sim/staged.js`): `elite` (a named foe built
+  from the bestiary at a level bounded by the party's: at most `STAGE.LVL_UP` 2 above its average, asking for
+  more than 3 above is refused), `ambush` (a pack of the region's creatures from the encounter builder),
+  `meeting` and `social` (a person with a want, placed through `create_npc`), `trap` (hidden; a d20 save, never
+  below 10% HP) and `mystery` (a `mark_place` marker; a Lore/Perception roll uncovers `cast.reveal`). `near`:
+  "fellowship", a member, "x,y", a place or a region. The cast walks to the member (or waits at the place;
+  a trap or a strange place lies just ahead of them) and a Table scene opens when they meet; the frame
+  reaches the members as narration. `cast.choices` relabels the legal Table actions only. Refused: more than
+  3 a game day, one still pending, an open scene or vote, a fight or trap while a member out in the field is
+  below 35% HP, a foe far above the party, a creature not of that region, a town. All of it in the DM log
+  with the DM AGENT tag; the banner shows the staged cast.
+- At the table: the DM is asked short calls (`table_call` / `table_answer`): voice the person or foe, describe
+  each member's act (true to the dice), and pick one complication from a legal set (`none`, `omen`, and per
+  kind `falter`/`reinforce`, `rival`, `tremor`). Each call has `TABLE.dmMs` (6 s) at 1x, and only while the
+  runner is polling; then the scripted DM fills it, and after 2 misses it fills the rest at once. At 3x/8x
+  every slot is scripted and the scene resolves in one step.
+- Runner: `npm run dm` answers the calls with a table voice (one structured call each: `claude-haiku-5-5` by
+  default, `--table-model`/`DM_TABLE_MODEL`; with Ollama the seat's own model; `--no-table-voice` leaves them to
+  the scripted DM). Its cost counts toward `--budget`; a `[table]` line per call.
+- `npm run tablecheck` stages every kind with a mock DM (and a silent one, no runner, 3x, a save mid-scene,
+  expiry); `npm run dmcheck` covers the refusals and the table voice over `/play/dm`.
 
 ## In-game channels (issue #123)
 
@@ -413,7 +438,7 @@ The owner's rule: the DM and the players talk only inside the game. How it holds
   sim facts (scripted, or enriched once through the relay) and `fellowCard` for prompts;
   `memory.js` per-member recent memories, long-term summary and companion stances;
   `council.js` party chat, proposals and votes, `lead_to`, splitting off and the all-or-none
-  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `dmagent.js` the DM seat and its tools (#66).
+  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `dmagent.js` the DM seat and its tools (#66); `staged.js` the DM agent's staged scenes and its at-the-table calls (#132).
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
