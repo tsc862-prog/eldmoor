@@ -23,6 +23,7 @@ import {initDmLog,showAdventure} from './dmpanel.js';
 import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
 import {enableBrain,disableBrain,brainStatus,mindUser} from '../sim/brain.js';
 import {advLine} from '../sim/dm.js';
+import {mod,score,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
 import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 
@@ -74,6 +75,16 @@ export function setTab(t){if(TABS.some(([k])=>k===t))tab=t;renderHero()}
 // TODO(#20): swap in gearScore(a) from sim/gear.js once that module is on main.
 const gearScoreOf=a=>typeof a.gearScore==='number'?a.gearScore:a.slots?Math.round(SLOTS.reduce((t,[k])=>t+(a.slots[k]?a.slots[k].ilvl||0:0),0)/SLOTS.length):a.gear;
 
+// Ability scores and skills (sim/abilities.js): six chips with modifiers, then the skills, trained ones marked.
+function abilityBlock(b,a){
+  const sg=m=>(m>=0?'+':'')+m,g=el('div','abils');
+  for(const k of ABIL_IDS){const A=ABILITIES[k],m=mod(a,k),c=el('span','abil'+(m>=2?' hi':m<0?' lo':''));c.title=A.name+': '+A.desc;c.append(el('span','an',A.short),el('span','as',String(score(a,k))),el('span','am',sg(m)));g.append(c)}
+  b.append(g);
+  const sk=el('div','meta skills');sk.append('Skills: ');
+  SKILL_IDS.slice().sort((x,y)=>skillMod(a,y)-skillMod(a,x)).forEach((k,i)=>{const t=trained(a,k),m=skillMod(a,k),s=el('span',t?'gd':'dm',SKILLS[k].name.toLowerCase()+' '+sg(m)+(t?'*':''));
+    s.title=SKILLS[k].desc+' ('+skillParts(a,k).map(p=>p.k+' '+sg(p.v)).join(', ')+')';if(i)sk.append(', ');sk.append(s)});
+  b.append(sk)}
+
 function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
   const rows=[['Level',a.lvl],['Class',a.cls],['Faction',FAC[a.fac].name],['Guild',a.guild?`<${a.guild.tag}> ${a.guild.name}`:'Unguilded'],
     ['HP',`${Math.max(0,Math.round(a.hp))} / ${mh}`],['Attack',Math.round(atkOf(a))],['Armour',Math.round((1-(c.arm||1))*100)+'%'],
@@ -89,6 +100,7 @@ function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
   const tr=el('div','meta');tr.append('Traits: ');const ts=a.traits||[];if(!ts.length)tr.append('none');
   ts.forEach((t,i)=>{const s=el('span','gd',t);if(TRAITS[t])s.title=TRAITS[t].desc;tr.append(s);if(i<ts.length-1)tr.append(', ')});b.append(tr);
   if(a.race){const rc=el('div','meta');rc.append('People: ');const rs=el('span','gd',raceOf(a).name);rs.title=raceOf(a).culture;rc.append(rs,' of '+homeOf(a).name);b.append(rc)}
+  if(a.abil)abilityBlock(b,a);
   if(a.origin)b.append(el('div','meta',a.origin));
   if(a.goal){const g=el('div','goal');g.append(el('div',a.goal.done?'gd':'',(a.goal.done?'Done: ':'Goal: ')+a.goal.text));
     if(a.goal.need){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}

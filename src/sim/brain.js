@@ -50,6 +50,7 @@ import {partyMates} from './party.js';
 import {weatherName} from './weather.js';
 import {cleanReason} from '../data/prompts.js';
 import {speak} from './chat.js';
+import {topScores} from './abilities.js';
 
 export const CFG={url:'http://127.0.0.1:8787/decide',timeoutMs:3000,offlineSec:60,
   planTtl:900,fightTtl:20,sayFresh:4,aiQuietTable:true,sayGap:25,maxPerHour:240,quietMin:60,sight:12};
@@ -105,6 +106,7 @@ export function snapshotFor(a,kind,extra={}){
   const s={fac:FAC[a.fac].name,name:a.name,race:raceOf(a).name,cls:a.cls,lvl:a.lvl,hp:pct(a.hp,mh),gold:a.gold,
     gear:Math.round(gearScore(a)*10)/10,best:top?clip(top.name,40)+' ilvl '+top.ilvl:'none',
     traits:(a.traits||[]).join(', '),origin:clip(a.origin,160),
+    scores:topScores(a),skills:(a.prof||[]).join(', '), // ability scores (sim/abilities.js)
     goal:a.goal?clip(a.goal.text,100)+' ('+a.goal.progress+'/'+a.goal.need+')':'none',
     quest:q?(MOBS[q.type].q||q.type)+' '+q.have+'/'+q.need:'none',
     where:ZONES[z]||'the road',weather:weatherName(z),time:dayPart()};

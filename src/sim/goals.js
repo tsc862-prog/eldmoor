@@ -56,7 +56,7 @@ const originEpic=()=>pickA([...EPICS.filter((e,z)=>z!==FAR).flat(),...DG_EPICS])
 export function assignBackstory(a){const f=a.fac,o=pickA(ORIGINS[f]),E=originElite(),ep=originEpic();
   const v={name:a.name,hamlet:pickA(HAMLETS[f]),trade:pickA(TRADES[f]),child:pickA(CHILD),kin:pickA(KIN),elite:E.name,
     other:pickA(RAIDERS.filter((r,i)=>i!==f)),epic:ep,city:homeOf(a).name};
-  a.origin=fill(o.text,v);a.originShort=fill(o.short,v);a.home=v.hamlet;
+  a.origin=fill(o.text,v);a.originShort=fill(o.short,v);a.home=v.hamlet;if((o.text+o.short).includes('{trade}'))a.trade=v.trade; // trains one skill (sim/abilities.js)
   const bias=o.loss==='elite'?{avenge:E}:o.loss==='heirloom'?{heirloom:ep}:o.loss==='raiders'?{raiders:true}:null;
   a.goal=rollGoal(a,0,bias);bump(stats().rolled,a.goal.type);
   // Recruits (not the opening roster) announce their oath about a third of the time.
