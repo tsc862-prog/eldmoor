@@ -37,6 +37,53 @@ that."), and the hero card lists them.
 | Pious | Tends the wounded before the wounds are grave, and does not stay to be martyred. | A Priest with it heals allies from 69% HP instead of 55%; flees a little earlier; 30% more likely to assist. |
 | Boastful | Picks fights for the story, and loots for the audience. | 20% more likely to duel; hunts a little longer before selling. |
 
+## Origins and goals
+Every recruit arrives with a one-sentence backstory (`src/data/origins.js`, filled from the
+living world by `src/sim/goals.js`) and swears an oath: a personal goal they pursue and the
+Chronicle announces when kept ("Pellora has kept the oath: Hollowfang is dead. A new oath:
+walk the snows of Hoarfell.") or mourns when they die short of it ("Thrakash died with the
+oath unkept: Recover the Fenlight Lantern."). About one recruit in three announces origin
+and oath together on arrival ("Pellora, a tanner's daughter from Hollowmere, swears to
+recover the Fenlight Lantern."). Concord origins are formal and dry, Warband origins blunt.
+The hero card shows origin, oath and progress.
+
+**Hamlets.** Concord villages sit in the hedged farmland around Highgate: Hollowmere,
+Wendell's Ford, Thistledown, Larkhollow, Brackenby, Oldwick, Saltmarsh Reach, Fallow
+Cross. Warband camps and holds are strung along the ridges and gullies south of Grimhold:
+Skullrock, Red Gully, Gnashfang Hollow, Ironmaw, Bonepile, Scarhide Camp, Thornteeth,
+Grukk's Ditch.
+
+**Trades.** Concord: miller, tanner, scribe, drover, smith's apprentice, cooper, chandler,
+ferryman, net-mender, hedge-warden. Warband: drover, tanner, bone-carver, pit-fighter,
+smith's apprentice, skinner, trapper, whelp-minder, salt-boiler, gully-runner. The enemy's
+raiders are "Warband raiders" to the Concord and "Concord riders" to the Warband.
+
+**Origins** (seven per faction). A trade's son or daughter from a hamlet; one who lost a
+brother, sister, mother or father to a named rare elite (and swears to kill it); one burned
+out of their hamlet by the other faction's raiders (and swears to avenge a guildmate's
+killer, or to out-level a rival); a hamlet's former scribe, ledger-keeper or bored tradesman;
+the third of a family to serve (the first two did not come home); an heir to a lost epic the
+family never stopped mentioning (and swears to recover it); a temple orphan, an outcast who
+means to win enough fights to walk back in, a pit-killer hungry since twelve.
+
+**Oaths.** A recruit's first oath is modest; each oath kept rolls a harder one (three
+tiers), and an oath whose target dies first is void and re-sworn.
+
+| Oath | Kept when | Changes behaviour |
+| --- | --- | --- |
+| Slay {elite} | the hero kills that named rare elite | - |
+| Avenge {guildmate} by slaying {hero} | the hero kills, or is in the fight (within 8 tiles) that kills, the enemy who slew a guildmate; the lowest-level killers are chosen | the killer becomes a nemesis: charged on sight |
+| Recover the {epic} | the hero loots that named zone epic | - |
+| Bring the {epic} out of the Sunken Crypt | the hero loots that Crypt epic | first pick for Crypt groups |
+| Tear the {epic} from Kragmaw | the hero loots that Kragmaw epic | first pick for raids |
+| Walk the snows of Hoarfell | the hero sets foot in Hoarfell | once within 3 levels of the band, a solo hero's trips head for Hoarfell; the pilgrim turns home on arrival if under-levelled |
+| Stand at the mouth of the Sunken Crypt | the hero reaches the Crypt mouth | same steering toward the Crypt; first pick for Crypt groups |
+| Reach level N | level N | - |
+| Out-level {hero} of the {faction} | the hero's level passes a named living enemy's | - |
+| Slay Kragmaw the Cinder Wyrm | the hero is in the raid that kills Kragmaw | first pick for raids |
+| Bank N gold | the hero holds N gold at once | - |
+| Clear the Sunken Crypt | the hero's group clears the Crypt | first pick for Crypt groups |
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |

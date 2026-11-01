@@ -16,6 +16,7 @@ import {pop,bolt} from './effects.js';
 import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerClear} from './party.js';
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
+import {assignBackstory,goalEvent} from './goals.js';
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
@@ -29,7 +30,9 @@ export function makeHero(f,cls,guild,wait){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
     bag:[],kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
     wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0};
-  a.traits=rollTraits(cls);newQuest(a);a.hp=maxHp(a);
+  a.traits=rollTraits(cls);newQuest(a);
+  assignBackstory(a);
+  a.hp=maxHp(a);
   const c=CITY[f];a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
   S.agents.push(a);
   // Trait reveal for recruits (not the opening roster): "Thrakash is reckless and greedy; Grimhold will remember that."
@@ -43,11 +46,13 @@ export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
   while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
-    if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');}
+    if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');
+    goalEvent(a,'level');}
   if(a.lvl>=20)a.xp=0}
 
 export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.');
-  say(a,'epic',{item:name})}
+  say(a,'epic',{item:name});
+  goalEvent(a,'epic',name)}
 
 export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a.kills++;
   const diff=m.lvl-a.lvl,xp=(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1);gainXp(a,xp);
@@ -55,6 +60,7 @@ export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a
   if(rnd()<.006)getEpic(a,pickA(EPICS[M.z]),'a '+M.name);
   if(m.elite){a.eliteKills=(a.eliteKills||0)+1;log(a,' slew ',{t:m.name,c:'gd'},', ',m.title,', in ',ZONES[M.z],'!');getEpic(a,pickA(EPICS[M.z]),m.name)} // named elite: guaranteed epic from the zone table
   if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need)a.quest.have++;
+  goalEvent(a,'kill',m);
   a.target=null;a.state='hunt'}
 
 // Permanent death: graveyard entry, a recruit is scheduled, old graves recycled.
@@ -64,6 +70,7 @@ export function fall(a,cause){
   for(const m of S.mobs)if(m.target===a)m.target=null;
   S.facStats[a.fac].fallen++;
   S.fallen.unshift({name:a.name,fac:a.fac,lvl:a.lvl,cls:a.cls,cause,t:a.diedAt});if(S.fallen.length>15)S.fallen.pop();
+  goalEvent(a,'died');
   S.recruits.push({fac:a.fac,guild:a.guild,cls:a.cls,t:8+rnd()*8});
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
@@ -78,6 +85,7 @@ export function agentDie(a,killer){
     else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&x.guild===a.guild);
     mates.forEach(x=>x.nemesis[killer.id]=a.name);
+    goalEvent(killer,'slay',a);
     if(mates.length&&a.lvl>=4)log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
     fall(a,'slain by '+killer.name);}
   else if(killer.kind==='boss'){log(a,' ',lv,' was incinerated by ',{t:'Kragmaw',c:'gd'},'.');fall(a,'incinerated by Kragmaw')}
