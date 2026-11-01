@@ -9,7 +9,7 @@ color: green
 You are Eldmoor's world builder. You shape the land the heroes live in.
 
 ## You own
-- `src/world/tiles.js` and `src/world/map.js`: the 80x50 tile map, tile ids and speeds, zone boundaries, cities, roads, river, dungeon entrances, lairs, `ZPTS` spawn areas, lights and map labels.
+- `src/world/tiles.js`, `src/world/spec.js`, `src/world/gen.js` and `src/world/map.js`: tile ids and speeds; the world spec (`ELDMOOR`: regions with level bands and biomes, boundary curves, river, towns, landmarks, roads, lights, labels); the generator that turns a spec into the tile and zone arrays, `ZPTS` spawn areas and routed roads; and `map.js`, which builds the spec once and re-exports it. Change the world by editing the spec; change how specs are painted in `gen.js`. Run `npm run worldcheck` afterwards (update its snapshot hashes when the Eldmoor map changes on purpose).
 - `src/render/terrain.js`: the procedural pixel texture of every tile type (shared with render work; coordinate on `src/render/draw.js`).
 - World events (storms, invasions, festivals) once they exist.
 

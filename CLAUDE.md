@@ -85,11 +85,18 @@ other. The rules:
   6 game minutes).
 - `src/core/rng.js`: random helpers, hash, value noise, fbm.
 - `src/world/` (world-builder): `tiles.js` map size, tile ids, speeds;
-  `map.js` the 80x50 tile and zone arrays, zone boundaries (river, `z2X`,
-  `hoarY`), cities Highgate (Concord) and Grimhold (Warband), roads, the
-  Sunken Crypt entrance, Kragmaw's lair, the `zoneFor` level ladder
-  (Thornvale 1-5, Mirefen 6-10, Cinderpass 11-15, Hoarfell 16+), `ZPTS`
-  spawn points, lights and map labels.
+  `spec.js` the world as data: `ELDMOOR` (size, seeded boundary curves,
+  regions with level bands, biomes and masks, the river, towns Highgate
+  (Concord) and Grimhold (Warband), landmarks (Kragmaw's lair, the Sunken
+  Crypt), roads, lights, spawn exclusions, labels) plus the tiny `TESTWORLD`
+  fixture; `gen.js` `buildWorld(spec)` paints biomes, river, town rects,
+  landmarks and roads (polylines, or A* `routeRoad` between named endpoints
+  that bridges rivers) and derives `ZONES`, `CITY`, `LAIR`, `CRYPT`, the
+  `zoneFor` level ladder from region bands, `ZPTS` spawn points, `LIGHTS` and
+  `LABELS`; `map.js` builds `ELDMOOR` once and re-exports it under the old
+  names (`tiles`, `zone`, `I`, `riverX`, `z2X`, `hoarY`, ...). `npm run
+  worldcheck` builds both specs and fails if the Eldmoor map drifts from its
+  snapshot hashes.
 - `src/data/` (pure tables, no logic): `factions.js` FAC, guild roster, names
   (character-builder); `classes.js` CLS (character-builder); `mobs.js` MOBS and
   COUNTS (creature-designer); `items.js` EPICS, BOSS_EPICS, DG_EPICS, GOODS and

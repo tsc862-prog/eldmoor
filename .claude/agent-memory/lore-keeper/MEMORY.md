@@ -1,1 +1,2 @@
 - [Hoarfell names review](project_hoarfell_names.md) — Hoarfell zone names passed originality 2026-10-31; house patterns for quest/epic/goods naming
+- [Gear and encounter names](project_gear_and_encounter_names.md) — materials, slot nouns, lanternstone, Rookscar passed 2026-11-01; open nits
