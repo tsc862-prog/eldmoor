@@ -38,3 +38,8 @@ Rules that are not obvious from the code and why:
 Measure with a scratch run.mjs that samples `a.adv` share among lvl5+ heroes, S.dmStats,
 chronicle lines/h and timeline kinds; pin the top hero (`S.pinned`) to get full transcripts.
 See [[narrator-rules]] for the noise warning (deaths 37-57 per 2h run on both branches).
+
+## DM log (issue #76, branch ai/dm-log)
+- `S.dmLog` (cap 200, newest first) written via `dmlog(kind, adv, summary, detail)` in `src/sim/dmlog.js`; panel in `src/ui/dmpanel.js`. Logging uses no RNG, so it cannot move sim results.
+- Volume rule: hook entries are one per town per refill; the scene frame text is merged into the scene's roll entry (separate `frame` entry only for rest/no-check scenes); complication entries only when one fires. Measured ~110 entries per game day (target <150). Do not add per-tick or per-nofit entries.
+- A model-backed DM calls `dmNote(prompt, reply)` before its slot answer returns; the next entry carries them.

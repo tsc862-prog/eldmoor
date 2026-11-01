@@ -10,7 +10,8 @@ export const S={
   recruits:[],    // pending replacements for the dead
   parties:[],     // hero parties {id, fac, leader, mem, zone, home}; each member has a.party
   timeline:[],    // world events {t, gameMin, kind, parts}, newest first, capped at 200 (sim/history.js)
-  chronicle:[],   // log entries {t, parts}, newest first, capped at 90
+  dmLog:[],       // DM log entries, newest first, capped at 200 (sim/dmlog.js)
+  chronicle:[],  // log entries {t, parts}, newest first, capped at 90
   boss:{kind:'boss',name:'Kragmaw',x:LAIR.x,y:LAIR.y+.6,lvl:20,maxhp:9000,hp:9000,alive:true,respawn:0,cd:0,breath:7,dmg:[0,0],face:-1},
   GUILDS:[],      // guilds founded by the heroes (sim/guilds.js); retired ones stay with retired:true
   guildSeq:0,     // last guild id handed out, never reused

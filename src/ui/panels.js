@@ -19,6 +19,7 @@ import {weatherName} from '../sim/weather.js';
 import {friendsOf} from '../sim/bonds.js';
 import {biography} from './biography.js';
 import {initTimeline} from './timeline.js';
+import {initDmLog,showAdventure} from './dmpanel.js';
 import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
 import {enableBrain,disableBrain,brainStatus,mindUser} from '../sim/brain.js';
 import {advLine} from '../sim/dm.js';
@@ -90,7 +91,7 @@ function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
     if(a.goal.need){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}
   const q=a.quest?`${MOBS[a.quest.type].q}: ${a.quest.have}/${a.quest.need} ${MOBS[a.quest.type].pl}`:'No quest';
   b.append(el('div','meta','Quest: '+q));
-  {const ad=advLine(a);if(ad){const d=el('div','meta adv');parts(d,ad);b.append(d)}} // the DM's adventure and scene (sim/dm.js)
+  {const ad=advLine(a);if(ad){const d=el('div','meta adv');d.dataset.adv=a.adv;d.title='Open this adventure in the Dungeon Master log';parts(d,ad);b.append(d)}} // the DM's adventure and scene (sim/dm.js)
   const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
   {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
@@ -296,8 +297,9 @@ function initClicks(){const host=document.querySelector('.main')||document.body;
     const mp=t.closest('[data-mprompt]');if(mp){if(mindOpen)mindOpen.prompt=!mindOpen.prompt;renderHero();return}
     const mr=t.closest('[data-mind]');if(mr){const a=cam.sel,id=Number(mr.dataset.mind);
       if(a)mindOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===id?null:{hid:a.id,id,prompt:false};renderHero();return}
+    const dv=t.closest('[data-adv]');if(dv&&!t.closest('.hn[data-hid]')){showAdventure(dv.dataset.adv);return}
     const tb=t.closest('[data-tab]');if(tb){setTab(tb.dataset.tab);return}
     const n=t.closest('.hn[data-hid]');if(!n)return;
     const a=S.agents.find(x=>x.id==n.dataset.hid);if(a){pick(a);if(a.state==='dead'&&n.closest('#fallen'))setTab('bio')}})}
 
-export function initPanels(){initChronicle();initTimeline();initClicks();onMarketTick(renderAH);renderFacs();renderAH();renderGuilds();renderFallen();renderClock()}
+export function initPanels(){initChronicle();initTimeline();initDmLog();initClicks();onMarketTick(renderAH);renderFacs();renderAH();renderGuilds();renderFallen();renderClock()}
