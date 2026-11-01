@@ -64,7 +64,7 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     const retryAfter = Number.isFinite(ra) && ra >= 0 ? ra : null;
     if (status === 401) return fail('openai: bad or missing key', {status, kind: 'auth'});
     if (status === 429 && /insufficient_quota/.test(code)) return fail('openai: out of credit (insufficient quota; check billing)', {status, kind: 'quota'});
-    if (status === 429) return fail('openai: rate limit' + (retryAfter != null ? ` (retry after ${retryAfter} s)` : ''), {status, kind: 'rate', retryAfter});
+    if (status === 429) return fail('openai: rate limit' + (retryAfter != null ? ` (retry after ${retryAfter} s)` : ''), {status, kind: 'rate', retryAfter, ...(retryAfter != null ? {headers: {'retry-after': String(retryAfter)}} : {})}); // headers: what the relay's limiter (providers/limiter.mjs rateLimitOf) reads
     if (status === 404) return fail('openai: model not found or not available to this key' + (msg ? ' (' + msg + ')' : ''), {status, kind: 'model'});
     return fail('openai: ' + (msg || 'HTTP ' + status), {status, kind: 'http', apiMessage: msg});
   }
@@ -72,7 +72,7 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
   // One POST with the reasoning_effort fallback and a bounded wait on 429. waitMs: the most we sleep for
   // a rate limit in total (0 = never; decisions have seconds, an agent turn can afford more).
   async function post(path, body, {signal, waitMs = 0, retries = 1} = {}) {
-    if (!apiKey) throw fail('openai: bad or missing key (no OPENAI_API_KEY)', {status: 401, kind: 'auth'});
+    if (!apiKey) throw fail('openai is not configured (no OPENAI_API_KEY): bad or missing key', {status: 401, kind: 'auth'});
     let waited = 0;
     for (let attempt = 0; ; attempt++) {
       const r = await fetchImpl(base + path, {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer ' + apiKey}, body: JSON.stringify(body), signal});
@@ -111,14 +111,14 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
       return cached;
     },
     // One structured decision or writing request.
-    async call({system, user, schema, maxTokens, model, signal, timeoutMs}) {
+    async call({system, user, schema, maxTokens, model, signal}) {
       const mdl = model || defaultModel;
       if (!mdl) throw fail('openai: no model chosen (pick one in the mind row, or set OPENAI_MODEL)');
       const t0 = Date.now();
       const body = {model: mdl, ...effortField(mdl), max_completion_tokens: maxTokens,
         response_format: {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema}},
         messages: [{role: 'system', content: system}, {role: 'user', content: user}]};
-      const j = await post('/chat/completions', body, {signal, waitMs: Math.min(2000, Math.max(0, (timeoutMs || 3000) - 1500))});
+      const j = await post('/chat/completions', body, {signal, retries: 0}); // a 429 goes to the relay's limiter (queue pause, writing kinds retried)
       return finish(j, mdl, t0, true);
     },
     // A multi-turn chat for the agent loop. messages are the loop's own (Ollama-shaped) messages:

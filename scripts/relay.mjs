@@ -17,7 +17,7 @@
 //                   providers:{anthropic:{ok,models}, ollama:{ok,url,models (pulled, from /api/tags),error?}, openai, google}, localTimeout}
 //
 // Providers: scripts/providers/ (anthropic.mjs = the Claude call, ollama.mjs = local models at OLLAMA_URL,
-// default http://localhost:11434, cost 0; openai.mjs and google.mjs are stubs until built).
+// default http://localhost:11434, cost 0; openai.mjs = OpenAI Chat Completions; google.mjs is a stub until built).
 //
 // Setup: put ANTHROPIC_API_KEY=... in .env at the repo root (gitignored; see .env.example),
 // then `npm run relay`. Optional env: RELAY_MODEL, RELAY_PORT, RELAY_ORIGIN, OLLAMA_URL, OLLAMA_MODEL.
@@ -62,7 +62,8 @@ export const LOG_FILE = join(ROOT, 'logs', 'relay.jsonl');
 // else 1-2-4 s, at most RATE_PAUSE_MAX) and only writing kinds retry, with jitter, up to RATE_RETRIES times.
 export const ANTHROPIC_CONCURRENCY = 2, RATE_RETRIES = 3, RATE_PAUSE_MAX = 10000;
 export const DECIDE_MIN_LEFT = 300; // a decision that would leave the queue with less than this before its deadline is dropped (at most a quarter of its timeout)
-export const makeLimits = (env = {}) => ({anthropic: makeLimiter({max: Number(env.RELAY_ANTHROPIC_CONCURRENCY) || ANTHROPIC_CONCURRENCY})});
+export const OPENAI_CONCURRENCY = 4; // env RELAY_OPENAI_CONCURRENCY
+export const makeLimits = (env = {}) => ({anthropic: makeLimiter({max: Number(env.RELAY_ANTHROPIC_CONCURRENCY) || ANTHROPIC_CONCURRENCY}), openai: makeLimiter({max: Number(env.RELAY_OPENAI_CONCURRENCY) || OPENAI_CONCURRENCY})});
 const sleepFor = (ms, signal) => new Promise((res, rej) => {if (signal && signal.aborted) return rej(Object.assign(new Error('aborted'), {name: 'AbortError'}));
   const t = setTimeout(res, ms); if (signal) signal.addEventListener('abort', () => {clearTimeout(t); rej(Object.assign(new Error('aborted'), {name: 'AbortError'}))}, {once: true})});
 // One provider call through its limiter: queued (decisions first), paused on 429, writing kinds retried.

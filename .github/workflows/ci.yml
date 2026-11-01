@@ -24,6 +24,8 @@ jobs:
         run: npm run savecheck
       - name: Local agent runner (mock Ollama)
         run: npm run localcheck
+      - name: OpenAI provider (mock OpenAI, no key)
+        run: npm run openaicheck
       - name: App runners and relay concurrency (mock Ollama, mock 429)
         run: npm run runnercheck
       - name: Headless sim (10 game-hours)

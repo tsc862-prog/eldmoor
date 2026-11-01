@@ -97,7 +97,7 @@ export function setMind(a,cfg){if(!a)return null;const c=cfg&&MIND_PROVIDERS.inc
 const isLocalMind=a=>{const c=mindCfg(a);return !!(c&&LOCAL_PROVIDERS[c.provider])};
 // Short label for a model: "qwen2.5:14b · local", "claude-haiku-5-5". From an entry (what answered) or a setting.
 export function modelTag(x){if(!x)return null;const m=x.model,p=x.provider;
-  if(!m)return p&&p!=='anthropic'?(PROVIDER_LABEL[p]||p):null;return m+(LOCAL_PROVIDERS[p]?' · local':'')}
+  if(!m)return p&&p!=='anthropic'?(PROVIDER_LABEL[p]||p):null;return m+(LOCAL_PROVIDERS[p]?' · local':p==='openai'?' · openai':'')}
 // The hero's current mind as a tag: its setting, or 'Claude' for the relay default.
 export const mindTag=a=>{const c=mindCfg(a);return c?modelTag(c)||PROVIDER_LABEL[c.provider]:'Claude'};
 

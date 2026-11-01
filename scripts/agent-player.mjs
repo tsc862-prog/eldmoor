@@ -23,7 +23,7 @@
 // Options: --hero NAME|ID, --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N
 // (default 20), --budget USD (default 1.00, total for this run), --tool-turns N (model round
 // trips per turn, default 12), --model (or AGENT_MODEL; default claude-sonnet-5-5), --effort (or
-// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic' or 'ollama'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
+// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic', 'ollama' or 'openai'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
 // .env), --new.
 // Local models (issue #97 part 2): --provider ollama --model qwen2.5:14b plays the hero with a local
 // Ollama model through the same tools, claims and session file (scripts/local-agent.mjs; the
@@ -31,6 +31,9 @@
 // turn line reports tokens and seconds. --ollama-url (or OLLAMA_URL; default http://localhost:11434),
 // --num-ctx N (or OLLAMA_NUM_CTX; context window asked of Ollama, default 16384). The settings are
 // saved per hero, so the next `npm run agent -- --hero X` plays it locally again.
+// OpenAI (issue #97): --provider openai --model <id> plays through the same loop against OpenAI's Chat
+// Completions with real cost (OPENAI_API_KEY from the environment/.env, OPENAI_MODEL a default, OPENAI_BASE_URL
+// for a compatible server); --budget caps the run like Claude's.
 // The key is read from the environment or the .env file and handed only to the SDK process.
 // The agent gets no built-in tools (no files, no shell, no web): only the game's MCP tools.
 import {mkdirSync} from 'node:fs';
@@ -42,7 +45,8 @@ import {loadEnv, PRICES} from './relay.mjs';
 import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
-import {localTurn, localLine} from './local-agent.mjs';
+import {localTurn, localLine, paidLine} from './local-agent.mjs';
+import {openaiRunner} from './agent-chat.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -85,7 +89,8 @@ export const turnPrompt = turns => turns === 0 ? 'Begin. Get to know yourself an
 
 // The local runner (issue #97 part 2): the same turns, claims and session file, played by an Ollama
 // model through scripts/local-agent.mjs. Ends the process.
-async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl, numCtx, release, beat, file}) {
+async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl, numCtx, release, beat, file, openai = null, budget = 1}) {
+  if (openai) return runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter: openai, budget});
   const ol = ollamaAdapter({url: ollamaUrl, defaultModel: rs.model}), s0 = await ol.status();
   if (!s0.ok) {console.error(`[agent] Ollama at ${s0.url} is ${s0.error}. Start Ollama (https://ollama.com) or pass --ollama-url.`); await release(); process.exit(1)}
   if (!s0.models.includes(rs.model)) {console.error(`[agent] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await release(); process.exit(1)}
@@ -107,6 +112,31 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
   }
   clearInterval(beat); await release();
   console.log(`[agent] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t0) / 1000).toFixed(0)} s, $0 (local). Session saved to ${file}.`);
+  process.exit(0);
+}
+
+// The OpenAI runner (issue #97): the same loop as the local runner against OpenAI's Chat Completions, with
+// real cost: every turn line carries "| run $", the budget stops the run, the session keeps the total.
+async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter, budget}) {
+  const saveSess = () => saveSession(sess, {url: base});
+  const L = sess.local || {};
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via OpenAI | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | up to ${maxTurns} turns, budget ${money(budget)}`);
+  let ended = null, runIn = 0, runOut = 0, spent = 0, unknown = false, t0 = Date.now();
+  for (let turn = 1; turn <= maxTurns && !ended; turn++) {
+    if (spent >= budget) {ended = 'budget reached'; break}
+    let r;
+    try {r = await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns), model: rs.model, toolTurns,
+      on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)}})}
+    catch (e) {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); ended = 'error'}
+    sess.turns++;
+    if (r) {runIn += r.in; runOut += r.out; spent += r.cost; sess.costUsd = (sess.costUsd || 0) + r.cost; if (!r.costKnown) unknown = true; if (r.dead) ended = 'the hero is dead';
+      console.log(`[turn ${sess.turns}] ${paidLine(r, rs.model, 'openai', {run: spent, session: sess.costUsd})}`)}
+    saveSess();
+    const now = await play(base, heroId, 'status').catch(() => null);
+    if (now && now.dead) ended = 'the hero is dead';
+  }
+  clearInterval(beat); await release();
+  console.log(`[agent] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${unknown ? 'cost unknown for ' + rs.model + ' (not in the price table), counted ' + money(spent) : money(spent)}. Session saved to ${file}.`);
   process.exit(0);
 }
 
@@ -143,13 +173,21 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
-  if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic or --provider ollama.`); await release(); process.exit(1)}
+  if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama or openai.`); await release(); process.exit(1)}
   if (rs.provider === 'ollama') {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
     rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
     sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
     await runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: opt('num-ctx', env.OLLAMA_NUM_CTX || null), release, beat, file: SESSION_FILE});
+  }
+  if (rs.provider === 'openai') {
+    // OpenAI plays (issue #97): the same tool loop through Chat Completions; the key stays in this process.
+    const o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
+    if (o.error) {console.error('[agent] ' + o.error); await release(); process.exit(1)}
+    if (o.note) console.log('[agent] ' + o.note);
+    sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
+    await runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file: SESSION_FILE, openai: o.adapter, budget});
   }
   if (!env.ANTHROPIC_API_KEY) {console.error('No ANTHROPIC_API_KEY in the environment or .env (use --env FILE).'); await release(); process.exit(1)}
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();

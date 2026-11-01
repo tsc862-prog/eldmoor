@@ -20,7 +20,7 @@ export const bridgeStatus=()=>status; // off | connecting | connected | offline
 export const agentLink=a=>!a||!a.player?'off':status!=='connected'?status:links[a.id]||'none';
 // The mind behind a hero's runner, as its claim reports it (issue #97): {provider, model} or null.
 export const agentRunner=a=>a&&a.player&&status==='connected'&&runners[a.id]||null;
-export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':''):null};
+export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':''):null};
 export const LINK_TEXT={connected:'agent connected',waiting:'agent waiting (runner idle)',none:'no runner',connecting:'connecting to the relay…',offline:'relay offline',off:'not connected'};
 
 // Make a an agent-played hero (alongside any others) and connect.

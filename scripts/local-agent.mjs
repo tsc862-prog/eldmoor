@@ -87,7 +87,8 @@ export function trimHistory(h, budget) {
 export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12, on = () => {}, opts = {}}) {
   const o = {...LOCAL_DEFAULTS, ...opts};
   const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
-  const t0 = Date.now(), stat = {tools: 0, modelCalls: 0, in: 0, out: 0, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: L.mode};
+  const t0 = Date.now(), stat = {tools: 0, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: L.mode};
+  const addCost = u => {stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false}; // paid providers (OpenAI) report a cost; Ollama's is 0
   const turnMsgs = [{role: 'user', content: prompt, turn: 1}];
   const sys = () => sess.system + (L.mode === 'json' ? '\n\n' + JSON_RULES + actionCatalogue() : LOCAL_RULES);
   const tools = ollamaTools();
@@ -105,7 +106,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     let res;
     try {res = await chat({model, messages, ...(L.mode === 'json' ? {format: actionSchema()} : {tools}), maxTokens: o.maxTokens, numCtx: o.numCtx})}
     catch (e) {if (e.noTools && L.mode !== 'json') {L.mode = stat.mode = 'json'; on('mode', 'json'); i--; continue} throw e}
-    stat.modelCalls++; stat.in += res.usage.in; stat.out += res.usage.out; stat.modelMs += res.ms;
+    stat.modelCalls++; stat.in += res.usage.in; stat.out += res.usage.out; stat.modelMs += res.ms; addCost(res.usage);
     const msg = res.message || {}, content = String(msg.content || '');
     if (L.mode === 'json') {
       let j = null; try {j = JSON.parse(content)} catch {}
@@ -134,7 +135,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     if (o.endOnWait && !stat.dead && calls.some(c => c.function && c.function.name === 'wait') && /"ok":true/.test(turnMsgs[turnMsgs.length - 1].content)) {
       turnMsgs.push({role: 'user', content: 'The wait is over. End your turn now: one short sentence of narration in the third person about what you did and why.'});
       const fin = await chat({model, messages: [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)], maxTokens: o.maxTokens, numCtx: o.numCtx});
-      stat.modelCalls++; stat.in += fin.usage.in; stat.out += fin.usage.out; stat.modelMs += fin.ms;
+      stat.modelCalls++; stat.in += fin.usage.in; stat.out += fin.usage.out; stat.modelMs += fin.ms; addCost(fin.usage);
       stat.narration = String(fin.message && fin.message.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       turnMsgs.push({role: 'assistant', content: stat.narration}); break;
     }
@@ -153,3 +154,11 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
 
 // The cost line for a local turn: tokens and seconds, cost 0.
 export const localLine = (st, model) => `${model} (local) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | $0 (local)${st.capped ? ' | hit the model-call cap' : ''}`;
+
+// The cost line for a turn played through a paid provider (OpenAI): like localLine, with the real cost.
+// Ends with "| turn $x | run $y" when run is given (the app runner supervisor reads "| run $"); an
+// unknown price (a model not in the provider's price table) says so instead of a dollar figure.
+export const paidLine = (st, model, provider, {run = null, session = null} = {}) => {
+  const money = v => '$' + v.toFixed(4);
+  return `${model} (${provider}) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | ${st.costKnown ? 'turn ' + money(st.cost) : 'cost unknown (model not in the price table)'}${run != null ? ' | run ' + money(run) : ''}${session != null ? ' | session ' + money(session) : ''}${st.capped ? ' | hit the model-call cap' : ''}`;
+};
