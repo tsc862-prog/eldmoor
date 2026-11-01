@@ -8,11 +8,12 @@ import {initPanels,renderHero,renderTops,renderFacs,renderGuilds,renderFallen,re
 import {initControls,select,ctl,setView} from './ui/controls.js';
 import {boot,initSaveUI,autoSaveTick} from './ui/save.js';
 import {initMinds,renderMinds} from './ui/minds.js';
+import {initLegends} from './ui/legends.js';
 import {initFellowship,renderFellowship} from './ui/fellowship.js';
 
 boot(init); // restores the localStorage save when there is one, else init()
 const renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
-initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);
+initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();
 select(S.pinned&&typeof S.pinned.x==='number'?S.pinned:ranked()[0]); // keep following the saved hero
 if(S.fellowship)setView('fellow'); // the Fellowship is the story: frame it by default (#68)
 
