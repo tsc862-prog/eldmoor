@@ -114,3 +114,15 @@ ul.tlist time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-num
 /* AI-played marking (sim/brain.js) */
 .ai-badge{font-family:var(--px);font-size:7px;color:#0d0e19;background:#7fd6c2;padding:2px 4px;margin-left:4px;vertical-align:middle;letter-spacing:.06em}
 .ai-toggle{font-size:7px;padding:3px 5px;margin-left:6px;box-shadow:none;vertical-align:middle}
+/* Mind tab: an AI-played hero's decision log (ui/panels.js, issue #61) */
+.mind{display:flex;flex-direction:column;gap:4px;max-height:360px;overflow-y:auto;font-size:18px}
+.mrow{background:var(--panel2);border-left:3px solid var(--edge);padding:4px 6px}
+.mrow.open{border-left-color:var(--gold)}
+.mrow .mh{cursor:pointer;line-height:1.1}
+.mq{font-style:italic}
+.mo{font-family:var(--px);font-size:7px;letter-spacing:.06em;vertical-align:1px}
+.mo-applied{color:var(--green)} .mo-rejected{color:var(--red)} .mo-late,.mo-offline,.mo-superseded,.mo-pending{color:var(--dim)}
+.mdet{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.kv.mkv{grid-template-columns:auto 1fr}
+.mbtn{align-self:flex-start;font-size:7px;padding:4px 6px;box-shadow:none}
+.mpre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow-y:auto;margin:0;padding:6px;background:#0a0b14;border:1px solid var(--edge);color:var(--ink)}
