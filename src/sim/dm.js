@@ -163,7 +163,7 @@ function line(adv,...parts){log({t:'',c:'nar',adv:adv.id},...parts);stats().line
 // fewer than TOLD others are being told, or whenever the watcher follows one of its party.
 // A told adventure speaks every beat; the rest go to the heroes' own logs (the dossier), and
 // only their headline moments (a named foe, a death, a hunted elite) reach the Chronicle.
-const watched=adv=>!!(S.pinned&&adv.mem.includes(S.pinned.id));
+const watched=adv=>!!(S.pinned&&adv.mem.includes(S.pinned.id))||adv.mem.some(id=>S.agents.some(b=>b.id===id&&b.fellow)); // the Fellowship's adventures are always told (#68)
 function beat(adv,big,...parts){if(adv.told||watched(adv)||big){line(adv,...parts);return}stats().quiet++;note(adv,plain(parts))}
 function note(adv,text){for(const b of members(adv))record(b,text)}
 

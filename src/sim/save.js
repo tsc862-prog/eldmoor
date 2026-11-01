@@ -34,7 +34,9 @@ const MIGRATIONS={1:snap=>{const ids={};(snap.GUILDS||[]).forEach((g,i)=>{ids[g.
   const walk=v=>{if(!v||typeof v!=='object')return;if(Array.isArray(v)){v.forEach(walk);return}
     if(v.ref==='guild'&&ids[v.id]!==undefined)v.id=ids[v.id];else for(const k in v)walk(v[k])};walk(snap);return snap},
   // v2 -> v3: heroes gain ability scores and skill training (abilities, #80); growth for levels already reached is replayed.
-  2:snap=>{for(const a of snap.agents||[])if(a.kind==='hero'&&!a.abil)rollScores(a);return snap}};
+  2:snap=>{for(const a of snap.agents||[])if(a.kind==='hero'&&!a.abil)rollScores(a);return snap},
+  // v3 -> v4: the Fellowship (#68) adds S.fellowship and a.fellow/persona/backstory/memory; older saves simply have none.
+  3:snap=>snap};
 
 // ---- snapshot ----
 export function snapshot(){

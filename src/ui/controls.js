@@ -4,6 +4,13 @@ import {T} from '../world/tiles.js';
 import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {renderHero,renderTops,ranked,setPicker} from './panels.js';
+import {fellows} from '../sim/fellowship.js';
+
+// Follow Fellowship (#68): frame every living member who is out in the open (not inside the Crypt).
+export function fellowFrame(){const L=fellows().filter(a=>!a.hidden);if(!L.length)return null;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of L){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
+  return {x:(x0+x1)/2,y:(y0+y1)/2,w:x1-x0,h:y1-y0}}
+cam.frame=fellowFrame;
 
 const $=id=>document.getElementById(id);
 export const ctl={speed:1};
@@ -12,9 +19,10 @@ let R=null; // the renderer (camera API), set by initControls
 const DRAG_PX=4;
 
 // Reflect the camera state in the view buttons and the hint.
-export function syncView(){const map=cam.view!=='follow';
-  $('vMap').setAttribute('aria-pressed',String(map&&cam.zoom===1));$('vFol').setAttribute('aria-pressed',String(!map));
-  $('hint').textContent=!map?'Following '+(cam.sel?cam.sel.name:''):cam.zoom===1?'Tap a hero to follow · wheel to zoom':'Drag to pan · wheel to zoom'}
+export function syncView(){const fel=cam.view==='fellow',map=cam.view!=='follow'&&!fel;
+  $('vMap').setAttribute('aria-pressed',String(map&&cam.zoom===1));$('vFol').setAttribute('aria-pressed',String(cam.view==='follow'));
+  const vf=$('vFel');if(vf){vf.hidden=!fellows().length;vf.setAttribute('aria-pressed',String(fel))}
+  $('hint').textContent=fel?'Following the Fellowship':cam.view==='follow'?'Following '+(cam.sel?cam.sel.name:''):cam.zoom===1?'Tap a hero to follow · wheel to zoom':'Drag to pan · wheel to zoom'}
 
 // 'map' is the free camera (the Whole map button also resets the zoom); 'follow' tracks cam.sel.
 export function setView(v){cam.view=v;if(v==='map'&&R)R.setZoom(1);syncView()}
@@ -25,6 +33,7 @@ export function initControls(renderer){R=renderer;
   document.querySelectorAll('[data-sp]').forEach(b=>b.addEventListener('click',()=>{ctl.speed=+b.dataset.sp;document.querySelectorAll('[data-sp]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))}));
   $('vMap').onclick=()=>setView('map');
   $('vFol').onclick=()=>{if(!cam.sel)select(ranked()[0]);setView('follow')};
+  if($('vFel'))$('vFel').onclick=()=>setView(fellows().length?'fellow':'map');
   $('vNext').onclick=()=>{const r=ranked();const i=cam.sel?r.indexOf(cam.sel):-1;select(r[(i+1)%r.length]);setView('follow')};
   $('zIn').onclick=()=>renderer.setZoom(renderer.stepZoom(renderer.currentZoom(),1));
   $('zOut').onclick=()=>renderer.setZoom(renderer.stepZoom(renderer.currentZoom(),-1));
