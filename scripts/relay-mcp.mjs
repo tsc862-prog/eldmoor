@@ -214,5 +214,10 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       send(404, {error: 'not found'});
     } catch (e) {if (!res.headersSent) send(400, {error: String(e.message || e)})}
   });
-  return {backend: be, stats, call, linkOf, links, runnerOf};
+  // For the runner supervisor (scripts/runners.mjs): whether a live runner holds a hero, and dropping the
+  // claims of a runner process that is gone (a stopped child cannot always release on its way out).
+  const claimed = id => !!claimOf(id);
+  const dropRunner = prefix => {let n = 0; for (const [id, c] of claims) if (c.runner === prefix || c.runner.startsWith(prefix + ':')) {claims.delete(id); n++}
+    if (n) {log(`[play] runner ${prefix} gone: ${n} claim(s) dropped`); pushLinks()} return n};
+  return {backend: be, stats, call, linkOf, links, runnerOf, claimed, dropRunner};
 }

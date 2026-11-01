@@ -250,6 +250,13 @@ ul.legends .meta{margin-left:22px}
 .pfmind{font-family:var(--px);font-size:6px;padding:2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .pfmind.m-scripted{color:var(--dim);border:1px solid var(--edge)} .pfmind.m-ai{background:#7fd6c2;color:#0d0e19} .pfmind.m-quiet{background:var(--edge);color:var(--dim)} .pfmind.m-agent{background:var(--gold);color:#0d0e19}
 button.mindbtn{font-size:6px;padding:2px 4px;white-space:nowrap}
+/* app runners: Start / Stop runner controls (src/ui/runners.js) */
+.runctl{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}
+.pfrun{font-size:14px;min-width:0;overflow:hidden}
+.pfrun button.runbtn{font-size:6px;padding:2px 4px}
+button.runbtn.off{opacity:.55}
+.runstate{font-size:15px;overflow-wrap:anywhere}
+.runstate.r-live{color:#7fd6c2}.runstate.r-waiting{color:#d9c27a}.runstate.r-crashed{color:#e07a6a}.runstate.r-starting,.runstate.r-stopping{color:#9fb4d8}
 .fm .ftools{flex-wrap:wrap;justify-content:flex-end}
 .pftip .pftr{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}
 @media (max-width:920px){.frlist{grid-template-columns:repeat(3,minmax(0,1fr))}}

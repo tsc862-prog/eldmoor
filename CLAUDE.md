@@ -84,6 +84,10 @@ other. The rules:
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
 - `npm run localcheck`: the local agent runner against a mock Ollama (see "Local models").
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
+- `start-eldmoor.cmd` (Windows, double-click): starts the relay with app runners on and the dev server in two
+  windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.
+- `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
+  the relay's Anthropic concurrency queue (mock 429 provider).
 
 ## Agent player
 
@@ -126,6 +130,27 @@ is silent, and scene choices time out to the scripted branch, so the world never
   without MCP: `POST /play/call {tool, args, hero}`; `GET /play/health` lists the agent heroes
   and their links. A call that names no hero goes to the first living agent hero (the old
   single-hero path). Only localhost, no browser origins.
+- From the app (no terminal per hero): run the relay with `--runners` (`npm run relay -- --runners`,
+  `RELAY_RUNNERS=1`, or `start-eldmoor.cmd`). Then an agent-played hero's mind row, its Agent tab and its
+  party frame have **Start runner / Stop runner** with the runner's state (starting, live, waiting,
+  stopping, stopped, crashed with its last error line), provider/model, turns and cost; the Fellowship panel
+  (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`). A picker chooses the mind
+  it starts with (the hero's saved mind, Claude, or a pulled local model). The relay spawns the runners as
+  child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship',
+  hero?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {key}`; kinds are a table, the DM
+  agent can be one more), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
+  a stop writes "stop" on the child's stdin (it releases its heroes), then kills; a child also stops when
+  the relay goes away. Limits: off without the flag, loopback and the game page's origin only, heroes the
+  page names as agent-played, providers anthropic/ollama, defaults 20 turns/$1.00 per hero and 6 turns
+  each/$2.00 for the Fellowship (caps 200/$5, 100/$10; local runners have no budget), at most 5 runners, and
+  at most `RUNNER_CLAUDE_MAX` (default 3) concurrent Claude requests across them (a Fellowship runner shares
+  its slots with `--claude-concurrency`). Without `--runners` the buttons say how to turn it on.
+- Relay concurrency: the owner's API org caps concurrent requests across all models. The relay keeps at most
+  `RELAY_ANTHROPIC_CONCURRENCY` (default 2) Anthropic calls in flight (`scripts/providers/limiter.mjs`):
+  decisions queue ahead of writing kinds and are dropped when their deadline passes in the queue (the sim
+  plays them scripted); a 429 pauses the queue (retry-after, else backoff) and only writing kinds retry.
+  `/health` shows `queues.anthropic` (depth, in flight, 429s, dropped). Keep `RELAY_ANTHROPIC_CONCURRENCY +
+  RUNNER_CLAUDE_MAX` within the org's limit; with a very low limit, play runners with local models.
 - `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
   the journal and a save/restore, proves a silent agent never stalls the world, and runs two
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
