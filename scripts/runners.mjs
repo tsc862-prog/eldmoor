@@ -72,7 +72,7 @@ export function checkStart(b, heroes, {running = []} = {}) {
   const req = {kind};
   if (b.provider != null && b.provider !== '') {if (!RUNNER_PROVIDERS.includes(b.provider)) return {error: 'unknown provider (one of: ' + RUNNER_PROVIDERS.join(', ') + ')', code: 400}; req.provider = b.provider}
   if (b.model != null && b.model !== '') {if (typeof b.model !== 'string' || !MODEL_RE.test(b.model)) return {error: 'bad model name', code: 400}; req.model = b.model}
-  const local = req.provider === 'ollama';
+  const local = req.provider === 'ollama'; // openai is paid: it keeps the budget cap and takes no Claude slot
   const mt = num(b.maxTurns), bu = num(b.budget);
   if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
   if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};
@@ -224,7 +224,10 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (!okOrigin) return send(403, {error: 'origin not allowed'});
     if (req.method === 'OPTIONS') {res.writeHead(204, o === origin ? {'access-control-allow-origin': origin, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '600', vary: 'origin'} : {}); return res.end()}
     const kinds = Object.fromEntries(Object.entries(RUNNER_KINDS).map(([k, K]) => [k, {defaults: K.defaults, caps: K.caps, installed: kindInstalled(K)}]));
-    if (path === '/play/runner' && req.method === 'GET') return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), max: MAX_RUNNERS, claude: {slots: claudeMax, used: running().reduce((t, r) => t + (r.claude || 0), 0)}, kinds, providers: RUNNER_PROVIDERS, runners: enabled ? list() : []});
+    // The runners' output (narration, tool results, the DM's thinking) is for the watcher's page only (issue #123):
+    // a request without the page's origin (another local process, a runner) gets the states without the lines.
+    if (path === '/play/runner' && req.method === 'GET') {const page = o === origin, rs = enabled ? list().map(v => page ? v : {...v, lines: [], error: v.error ? 'see the runner log' : null}) : [];
+      return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), max: MAX_RUNNERS, claude: {slots: claudeMax, used: running().reduce((t, r) => t + (r.claude || 0), 0)}, kinds, providers: RUNNER_PROVIDERS, runners: rs})}
     if (req.method !== 'POST') return send(404, {error: 'not found'});
     if (!enabled) return send(403, {error: 'runners are off', how: HOW});
     let b; try {b = await readBody(req)} catch (e) {return send(400, {error: e.message})}

@@ -25,6 +25,12 @@
 // or one in the last LINK_MS), 'waiting' (a runner holds the hero but is quiet: thinking, or
 // between turns), 'none' (no runner).
 //
+// In-game channels (issue #123): seats never talk to each other here. A claimed hero answers only
+// the runner that claimed it (X-Eldmoor-Runner header or ?runner= on /mcp, `runner` on /play/*;
+// anyone else gets 409), a DM seat held by a runner answers only that runner, the DM role has no
+// hero tools and a hero (or a runner holding one) has no DM tools, and one runner never holds both
+// a hero and the DM seat. /play/narrate only reaches the watcher's Agent tab. No route carries text
+// from one seat to another: the DM reaches heroes through the game (narrate, npc_say).
 // Safety: the server only listens on 127.0.0.1. Requests must carry a localhost Host header
 // (DNS rebinding). /mcp and /play/* refuse any request with an Origin header (a web page
 // cannot drive a hero); the WebSocket accepts only the game's dev origin. Every tool only
@@ -53,7 +59,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
 export const CLAIM_MS = 30000, LINK_MS = 20000; // a runner claim lives this long unrefreshed; a call keeps the link 'connected' this long
-export const HERO_HEADER = 'x-eldmoor-hero', ROLE_HEADER = 'x-eldmoor-role', DM_KEY = 'dm'; // DM_KEY: the DM seat's key in the claim and link maps
+export const HERO_HEADER = 'x-eldmoor-hero', ROLE_HEADER = 'x-eldmoor-role', RUNNER_HEADER = 'x-eldmoor-runner', DM_KEY = 'dm'; // DM_KEY: the DM seat's key in the claim and link maps
+// A runner id from a header, query or body value (what /play/claim was given), or null.
+export const runnerParam = v => typeof v === 'string' && v.trim() ? v.trim().slice(0, 80) : null;
 // The runner's mind as a claim reports it (issue #97): {provider, model} with safe names, or null.
 export const runnerInfo = b => {const p = typeof b.provider === 'string' && /^[a-z][a-z0-9_-]{0,19}$/.test(b.provider) ? b.provider : null;
   const m = typeof b.model === 'string' && /^[A-Za-z0-9][\w.:\/+-]{0,99}$/.test(b.model) ? b.model : null;
@@ -179,8 +187,13 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const resolve = hero => hero != null ? hero : (defaultHero(be.info().heroes || []) || {}).id ?? null;
 
   // Every tool call goes through here: routed to one hero, counted, logged when verbose, never thrown.
-  async function call(hero, tool, args) {
+  // In-game channels (issue #123): a claimed hero answers only the runner that claimed it, so no
+  // process reads another seat's tool results (another hero's journal, events, chat) or acts for it.
+  const heldBy = (id, rid) => {const c = id != null ? claimOf(id) : null; return c && c.runner !== rid ? c.runner : null};
+  const refusedSeat = (id, holder) => ({ok: false, refused: true, error: `Hero #${id} is played by another runner (${holder}). A runner plays only the hero it claimed: name it (X-Eldmoor-Runner, or runner in the body).`});
+  async function call(hero, tool, args, rid = null) {
     const t0 = now(), id = resolve(hero); stats.calls++;
+    const holder = heldBy(id, rid); if (holder) {stats.errors++; log(`[play] #${id} ${tool} refused: held by ${holder}, asked by ${rid || 'no runner'}`); return refusedSeat(id, holder)}
     const a = id != null ? act.get(id) || {last: 0, inflight: 0} : null; if (a) {a.inflight++; a.last = t0; act.set(id, a); pushLinks()}
     let r;
     try {r = id == null ? {ok: false, error: 'No hero is agent-played.', offline: true} : await be.call(id, tool, args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
@@ -226,6 +239,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     // the hero this request is for: header, then query (a body field may override below)
     // the DM seat (issue #66): X-Eldmoor-Role: dm or ?role=dm (or role:'dm' in a /play/claim|release body)
     const q = new URLSearchParams(qs || ''), role = String(req.headers[ROLE_HEADER] || q.get('role') || '').trim().toLowerCase();
+    let rid = runnerParam(req.headers[RUNNER_HEADER] || q.get('runner')); // the runner asking (a body field may override below)
     if (role && role !== 'dm' && role !== 'hero') return send(400, {error: 'unknown role (dm or hero)'});
     let hero = role === 'dm' ? null : heroParam(req.headers[HERO_HEADER]); if (hero === null && role !== 'dm') hero = heroParam(q.get('hero'));
     if (Number.isNaN(hero)) return send(400, {error: 'bad hero id (use the numeric id, e.g. X-Eldmoor-Hero: 12)'});
@@ -233,6 +247,9 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (path === '/mcp' && role === 'dm') {
         if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
         const body = await readBody(req);
+        if (heroParam(req.headers[HERO_HEADER]) != null || heroParam(q.get('hero')) != null || [...claims.entries()].some(([k, c]) => k !== DM_KEY && c.runner === rid && now() - c.at < CLAIM_MS))
+          return send(403, {jsonrpc: '2.0', error: {code: -32000, message: 'Heroes have no DM tools: a hero hears the DM only in the game.'}, id: null});
+        const dh = heldBy(DM_KEY, rid); if (dh) return send(409, {jsonrpc: '2.0', error: {code: -32000, message: `The DM seat is held by another runner (${dh}).`}, id: null});
         const mcp = buildDmMcp((tool, args) => dmCall(tool, args)), transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
         res.on('close', () => {transport.close(); mcp.close()});
         await mcp.connect(transport);
@@ -244,7 +261,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (path === '/mcp') {
         if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
         const body = await readBody(req);
-        const mcp = buildMcp((tool, args) => call(hero, tool, args)), transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
+        const mcp = buildMcp((tool, args) => call(hero, tool, args, rid)), transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
         res.on('close', () => {transport.close(); mcp.close()});
         await mcp.connect(transport);
         await transport.handleRequest(req, res, body);
@@ -252,15 +269,23 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       }
       if (req.method !== 'POST') return send(404, {error: 'not found'});
       const b = await readBody(req) || {};
+      if (b.runner !== undefined) rid = runnerParam(b.runner);
+      const heroClaimOf = r => r != null && [...claims.entries()].some(([k, c]) => k !== DM_KEY && c.runner === r && now() - c.at < CLAIM_MS);
+      const dmAsked = role === 'dm' || b.role === 'dm';
       if (path === '/play/dm') {
         if (typeof b.tool !== 'string' || !DM_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown DM tool'});
+        // seats stay apart (issue #123): a hero's runner has no DM tools, and a held DM seat answers only its runner
+        if (role === 'hero' || b.role === 'hero' || hero != null || b.hero != null || heroClaimOf(rid)) return send(403, {ok: false, error: 'Heroes have no DM tools: a hero hears the DM only in the game.'});
+        const dh = heldBy(DM_KEY, rid); if (dh) return send(409, {ok: false, refused: true, error: `The DM seat is held by another runner (${dh}).`});
         return send(200, await dmCall(b.tool, b.args && typeof b.args === 'object' ? b.args : {}))}
+      if ((path === '/play/call' || path === '/play/narrate') && dmAsked) return send(403, {ok: false, error: 'The DM seat has no hero tools: the DM speaks to heroes only in the game (narrate, npc_say).'});
       if ((path === '/play/claim' || path === '/play/release') && (role === 'dm' || b.role === 'dm')) {
         const runner = typeof b.runner === 'string' ? b.runner.slice(0, 80) : '';
         if (!runner) return send(400, {error: 'claim needs {role:"dm", runner}'});
         const held = claimOf(DM_KEY);
         if (path === '/play/release') {if (held && held.runner === runner) {claims.delete(DM_KEY); log('[play] runner let go of the DM seat'); pushLinks()} return send(200, {ok: true})}
         if (held && held.runner !== runner) return send(409, {ok: false, error: `The DM seat already has a live runner (${held.runner}). One DM at a time.`});
+        if (heroClaimOf(runner)) return send(409, {ok: false, error: 'This runner plays a hero; the DM seat needs a runner of its own (seats stay apart).'});
         if (!dmOpen()) return send(404, {ok: false, error: 'The DM seat is closed in this world. Open it in the game (Dungeon Master panel: "DM agent"), or start play-headless with --dm.'});
         const info = runnerInfo(b) || (held && held.info) || null;
         if (!held) log(`[play] runner ${runner} took the DM seat${info ? ' (' + info.provider + (info.model ? ' ' + info.model : '') + ')' : ''}`);
@@ -269,8 +294,10 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (b.hero !== undefined) {hero = heroParam(b.hero); if (Number.isNaN(hero)) return send(400, {error: 'bad hero id'})}
       if (path === '/play/call') {
         if (typeof b.tool !== 'string' || !PLAYER_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown tool'});
-        return send(200, await call(hero, b.tool, b.args && typeof b.args === 'object' ? b.args : {}))}
+        const r = await call(hero, b.tool, b.args && typeof b.args === 'object' ? b.args : {}, rid);
+        return send(r && r.refused ? 409 : 200, r)}
       if (path === '/play/narrate') {const id = resolve(hero);
+        const holder = heldBy(id, rid); if (holder) return send(409, refusedSeat(id, holder));
         if (id != null && typeof b.text === 'string' && b.text.trim()) {be.narrate(id, b.text.trim()); vlog({ts: new Date().toISOString(), hero: id, narrate: b.text.slice(0, 600)})}
         return send(200, {ok: true})}
       if (path === '/play/claim' || path === '/play/release') {
@@ -279,6 +306,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         const held = claimOf(hero);
         if (path === '/play/release') {if (held && held.runner === runner) {claims.delete(hero); log(`[play] runner let go of #${hero}`); pushLinks()} return send(200, {ok: true})}
         if (held && held.runner !== runner) return send(409, {ok: false, error: `Hero #${hero} already has a live agent runner (${held.runner}). One agent per hero.`});
+        if (path === '/play/claim' && claimOf(DM_KEY) && claimOf(DM_KEY).runner === runner) return send(409, {ok: false, error: 'This runner holds the DM seat; a hero needs a runner of its own (seats stay apart).'});
         const h = (be.info().heroes || []).find(x => x.id === hero);
         if (!h) return send(404, {ok: false, error: `Hero #${hero} is not agent-played in this world.`});
         const info = runnerInfo(b) || (held && held.info) || null;

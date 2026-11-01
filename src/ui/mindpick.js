@@ -21,6 +21,8 @@ function poll(){if(inFlight||Date.now()-fetchedAt<15000||typeof fetch!=='functio
 const provs=()=>health&&health.providers||null;
 // Local models pulled in Ollama, from the relay's /health (empty when unknown).
 export const pulledModels=()=>{poll();const o=provs()&&provs().ollama;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
+// Chat models the OpenAI key can use, from the relay's /health (empty until the relay reports OpenAI configured).
+export const openaiModels=()=>{poll();const o=provs()&&provs().openai;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
 const byHid=id=>S.agents.find(x=>x.id==id);
 const modeOf=a=>a.player?'agent':a.brain?'ai':'scripted';
 
@@ -39,17 +41,17 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
     const ms=el('select','msel');ms.dataset.mmodel=a.id;ms.title='Which model';
     const st=P&&P[c.provider],list=st&&Array.isArray(st.models)?st.models.slice():[];
     if(c.provider==='anthropic')ms.append(new Option('default',''));
-    else if(!c.model)ms.append(new Option(st&&st.default?st.default+' (default)':'default',''));
+    else if(!c.model)ms.append(new Option(st&&st.default?st.default+' (default)':c.provider==='openai'?'pick a model':'default',''));
     if(c.model&&!list.includes(c.model))list.unshift(c.model);
-    for(const m of list){const o=new Option(m+(st&&st.ok&&c.provider!=='anthropic'&&!st.models.includes(m)?' (not pulled)':''),m);if(m===c.model)o.selected=true;ms.append(o)}
+    for(const m of list){const o=new Option(m+(st&&st.ok&&c.provider!=='anthropic'&&!st.models.includes(m)?c.provider==='openai'?' (not in list)':' (not pulled)':''),m);if(m===c.model)o.selected=true;ms.append(o)}
     row.append(ps,ms);
-    const note=!P?'relay not answering':st&&!st.ok?String(st.error||'not available'):LOCAL_PROVIDERS[c.provider]?(list.length?'local · free':'no models pulled (ollama pull qwen2.5:14b)'):'';
+    const note=!P?'relay not answering':st&&!st.ok?String(st.error||'not available'):LOCAL_PROVIDERS[c.provider]?(list.length?'local · free':'no models pulled (ollama pull qwen2.5:14b)'):c.provider==='openai'?(c.model||st&&st.default?'billed by OpenAI':'pick a model (billed by OpenAI)'):'';
     if(note)row.append(el('span','dm mnote',note))}
   // Agent: which runner holds the hero and which model it plays (from the runner's claim, issue #97)
   if(mode==='agent'){const k=agentLink(a),tag=runnerTag(a),n=el('span','dm mnote',tag?tag+' · '+(k==='connected'?'live':'idle'):LINK_TEXT[k]||k);
     n.title=tag?'Agent runner model: '+tag:'Start a runner here, or in a terminal: npm run agent -- --hero '+a.name;row.append(n);
     // app runners: start or stop this hero's runner from the page, with the mind it starts with
-    const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,pulledModels()));row.append(r)}
+    const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,pulledModels(),openaiModels()));row.append(r)}
   node.append(row)}
 
 export function mindAct(t){if(!t||!t.dataset||!t.dataset.mmode)return false;
@@ -61,7 +63,7 @@ export function mindAct(t){if(!t||!t.dataset||!t.dataset.mmode)return false;
 
 export function mindChange(s){if(!s||!s.dataset)return false;
   if(s.dataset.mprov){const a=byHid(s.dataset.mprov),st=provs()&&provs()[s.value]; // a provider switch drops the model (as the runner settings do)
-    const pulled=st&&st.ok&&Array.isArray(st.models)?st.models:[],first=s.value!=='anthropic'&&pulled.length&&!pulled.includes(st.default)?pulled[0]:undefined; // default not pulled: take one that is
+    const pulled=st&&st.ok&&Array.isArray(st.models)?st.models:[],first=s.value!=='anthropic'&&s.value!=='openai'&&pulled.length&&!pulled.includes(st.default)?pulled[0]:undefined; // default not pulled: take one that is
     if(a)setMind(a,{provider:s.value,model:first});fetchedAt=0;return true}
   if(s.dataset.mmodel){const a=byHid(s.dataset.mmodel);if(a){const c=mindCfg(a)||{provider:'anthropic'};setMind(a,{...c,model:s.value||undefined})}return true}
   return false}

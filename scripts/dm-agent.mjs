@@ -53,6 +53,7 @@ export function dmSystemPrompt(st) {
     '- The scripted DM keeps posting jobs and running adventures beside you. Build on what it does; do not flood the boards.',
     '- Keep notes: open threads (unresolved things), characters (recurring people and their wants), plans (what you are setting up), secrets (what the heroes do not know yet). Read them back at the start of a turn and keep them current; they are your memory.',
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
+    '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '',
@@ -64,7 +65,9 @@ export const dmTurnPrompt = (turns, st) => turns === 0
   : `Day ${st.day}, ${st.time} (${st.part}). ${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign.`;
 
 const post = (base, path, body, ms) => fetch(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(ms)});
-export async function dmTool(base, tool, args = {}) {try {return await (await post(base, '/play/dm', {tool, args}, 20000)).json()} catch (e) {return {ok: false, error: e.message, offline: true}}}
+// Every DM call names the role and this runner (the id it claimed the seat with), issue #123.
+let RUNNER = null;
+export async function dmTool(base, tool, args = {}) {try {return await (await post(base, '/play/dm', {tool, args, role: 'dm', runner: RUNNER}, 20000)).json()} catch (e) {return {ok: false, error: e.message, offline: true}}}
 const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s};
 const money = v => '$' + (v || 0).toFixed(4);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -104,7 +107,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const health = await fetch(base + '/play/health', {signal: AbortSignal.timeout(5000)}).then(r => r.json()).catch(e => ({error: e.message}));
   if (!health.ok || !health.connected) {console.error(`[dm] The game at ${base} is not ready: ${health.error || 'no game page connected'}. Start the relay (npm run relay) and open the game, or run play-headless --dm.`); process.exit(1)}
   if (!health.dm || !health.dm.seat) {console.error('[dm] The DM seat is closed. In the game, open the Dungeon Master panel and press "DM agent" (or start play-headless with --dm).'); process.exit(1)}
-  const runner = `${hostname()}:${process.pid}`;
+  const runner = `${hostname()}:${process.pid}:dm`; RUNNER = runner;
   let mind = {};
   const claim = () => post(base, '/play/claim', {role: 'dm', runner, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
   const c0 = await claim();
@@ -173,7 +176,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const q = query({prompt: dmTurnPrompt(sess.turns, st), options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
-      mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?role=dm`, headers: {'X-Eldmoor-Role': 'dm'}, timeout: 30000}},
+      mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?role=dm&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': runner}, timeout: 30000}},
       tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
       settings: {autoCompactEnabled: true}, maxTurns: toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv,

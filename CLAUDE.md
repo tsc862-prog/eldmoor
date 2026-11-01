@@ -12,6 +12,13 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   fine; Azeroth, Horde, Alliance, Stormwind, Arthas etc. are not.
 - **Hardcore.** Every hero has one life. Death is permanent; a fresh level-1
   recruit of the same class and guild replaces them.
+- **In-game channels only.** The DM and the players (Fellowship members, agent-played heroes)
+  communicate only inside the game: in-game chat (say in earshot, the party channel, townsfolk, the
+  DM's `narrate` and `npc_say`) and what their characters can see. Nobody messages anyone directly
+  outside it. A hero's tools, runner prompts and brain snapshots never carry DM notes, the DM log,
+  lever reasons, or another hero's journal, memories, persona, mind, narration or session; a claimed
+  hero answers only its own runner; heroes have no DM tools and the DM no hero tools. The watcher
+  (the owner's browser) still sees everything. See "In-game channels" below; `npm run channelcheck`.
 - **No build step required for the art.** All terrain and sprites are generated
   in code (pixel arrays and procedural textures). No image assets yet.
 - **Built to scale.** The world will grow 20-30x with several races and home
@@ -84,13 +91,15 @@ other. The rules:
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
 - `npm run invcheck`: the pack, consumables, quest items, the bag-to-pack save migration and determinism.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
-- `npm run localcheck`: the local agent runner against a mock Ollama (see "Local models").
+- `npm run localcheck`: the local agent runner against a mock Ollama (see "Model providers").
+- `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
 - `start-eldmoor.cmd` (Windows, double-click): starts the relay with app runners on and the dev server in two
   windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
+- `npm run channelcheck`: the in-game channels rule (see "In-game channels").
 
 ## Agent player
 
@@ -123,12 +132,12 @@ is silent, and scene choices time out to the scripted branch, so the world never
   session id, system prompt, turns, cost and the hero's runner settings (`runner: {provider,
   model, effort}`, default `anthropic` + `claude-sonnet-5-5`; flags override, then saved, then
   env), so each hero can keep its own mind; `anthropic` (Agent SDK) and `ollama` (a local model,
-  see "Local models") run today; the relay routes by hero id only. The next run for that hero resumes it. Runners
+  see "Model providers") and `openai` run today; the relay routes by hero id only. The next run for that hero resumes it. Runners
   never write another hero's file. A file whose hero name no longer matches (a new world
   reused the id) and the old session on `--new` are moved to `logs/agents/old/`, never
   overwritten. The single `logs/agent-session.json` of #75 migrates on first run.
 - Other MCP clients: streamable HTTP at `http://127.0.0.1:8787/mcp` (or `:8789/mcp`
-  headless), stateless, POST only, with the `X-Eldmoor-Hero` header or `?hero=<id>`; or stdio
+  headless), stateless, POST only, with the `X-Eldmoor-Hero` header or `?hero=<id>` (plus `X-Eldmoor-Runner` for a claimed hero); or stdio
   with `npm run -s mcp` (forwards to `PLAY_URL`, `PLAY_HERO=<id>` picks the hero). Plain JSON
   without MCP: `POST /play/call {tool, args, hero}`; `GET /play/health` lists the agent heroes
   and their links. A call that names no hero goes to the first living agent hero (the old
@@ -144,8 +153,8 @@ is silent, and scene choices time out to the scripted branch, so the world never
   `scripts/dm-agent.mjs`, one at most, and is refused as "not installed yet" until that file exists), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
   a stop writes "stop" on the child's stdin (it releases its heroes), then kills; a child also stops when
   the relay goes away. Limits: off without the flag, loopback and the game page's origin only, heroes the
-  page names as agent-played, providers anthropic/ollama, defaults 20 turns/$1.00 per hero and 6 turns
-  each/$2.00 for the Fellowship (caps 200/$5, 100/$10; local runners have no budget), at most 5 runners, and
+  page names as agent-played, providers anthropic/ollama/openai, defaults 20 turns/$1.00 per hero and 6 turns
+  each/$2.00 for the Fellowship (caps 200/$5, 100/$10; local runners have no budget, OpenAI runners keep it and take no Claude slot), at most 5 runners, and
   at most `RUNNER_CLAUDE_MAX` (default 3) concurrent Claude requests across them (a Fellowship runner shares
   its slots with `--claude-concurrency`). Without `--runners` the buttons say how to turn it on.
 - Relay concurrency: the owner's API org caps concurrent requests across all models. The relay keeps at most
@@ -193,7 +202,7 @@ one Agent SDK session per member.
   silent agent never stalls a scene, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
 
-## Local models (Mixed minds, issue #97)
+## Model providers (Mixed minds, issue #97)
 
 Each AI-played hero can ask a different model. Part 1 covers single decisions (town plan, crypt
 call, fight or flee, say) and the Fellowship writing kinds (persona, backstory, memory); part 2
@@ -222,8 +231,8 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   the scripted rules. The Mind tab, Chat tab and Minds panel tag which model answered
   (for example `qwen2.5:14b · local`), and the relay log and `--verbose` log record provider and model.
 - Adapters live in `scripts/providers/` (one interface: `call({system, user, schema, maxTokens,
-  model, effort})`; Ollama also has `chat({messages, tools|format})` for the agent loop). OpenAI and
-  Google are stubs that report "not configured" until built.
+  model, effort})`; Ollama and OpenAI also have `chat({messages, tools|format})` for the agent loop).
+  Google is a stub that reports "not configured" until built.
 
 Local agent runner (part 2):
 
@@ -259,6 +268,42 @@ Local agent runner (part 2):
   the runner end to end on a headless world (claims, tags, session file, resume) and a local
   Fellowship.
 
+### OpenAI (ChatGPT models)
+
+The OpenAI provider (`scripts/providers/openai.mjs`) uses the Chat Completions API with strict
+JSON-schema structured output for decisions and writing, and the same tool-calling agent loop as
+Ollama (`scripts/local-agent.mjs`) for agent play. It is billed per token by OpenAI.
+
+Owner setup:
+
+1. Create an API key at https://platform.openai.com/api-keys and add credit under Billing. API
+   billing is separate from a ChatGPT Plus subscription: Plus does not pay for API calls.
+2. Add `OPENAI_API_KEY=sk-...` to `.env` (ignored by version control; only the relay and the agent
+   runners read it, never the browser). Optionally `OPENAI_MODEL=<id>` (a default; there is none in
+   code) and `OPENAI_BASE_URL` (default `https://api.openai.com/v1`, or any OpenAI-compatible server).
+3. Restart the relay (`npm run relay`). `GET /health` now lists OpenAI under `providers` with the chat
+   models your key can use; the Fellowship panel's mind row (AI) and the Start runner picker fill from it.
+4. Pick **OpenAI** in a member's mind row and choose a model (the row says "pick a model" until you do),
+   or play an agent with `npm run agent -- --hero <name|id> --provider openai --model <id>` (saved in the
+   hero's session file; later runs need only `--hero`), or `npm run fellowship -- --provider openai --model <id>`.
+   Tags read like `gpt-6-luna · openai`.
+
+Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pick any model from your
+own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
+1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
+with its source and date) drives cost; a model not in it reports tokens with cost "unknown" (the turn
+line says so; the run budget cannot count it). Cached-input discounts are ignored, so costs are an
+upper bound. Every request sends `reasoning_effort: "none"` (Chat Completions supports function calling
+on the current reasoning models only with it); a model that rejects the field is asked again without it.
+Errors: 401 "bad or missing key", 429 "rate limit" (the relay's limiter queues OpenAI calls,
+`RELAY_OPENAI_CONCURRENCY`, default 4, pauses on `retry-after`, drops a late decision and retries writing
+kinds; an agent turn waits `retry-after` itself), "out of credit" for `insufficient_quota`, "reply cut
+off", "model refused". A failed call means the hero plays scripted. Agent runs report real cost per turn
+(`| turn $ | run $ | session $`), stop at `--budget`, and appear in the Start runner picker as
+`<model> · openai`. The runner reads the key from its own environment/`.env` like the Claude runner
+does, and never prints it. `npm run openaicheck` (in CI) tests all of it against a mock OpenAI server,
+with no key and no network.
+
 ## DM agent (issue #66, part 1)
 
 An AI agent can sit in the DM seat between scenes: it reads the world, keeps campaign notes and shapes
@@ -285,13 +330,42 @@ danger onto a badly hurt Fellowship member out in the field is refused). Fast at
   `regions`, `hooks`, `levers`, `notes_read`, `notes_write` (threads, characters, plans, secrets; saved
   with the world in `S.dmAgent`), `pull_lever` (`pull(name, params, {by:'dm-agent', reason})`; at most
   `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's),
-  `log_intent`. The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
+  `log_intent`, and its in-game voice `narrate` (`{text, near, radius?}`: heroes near a hero, town,
+  region or "x,y", or everyone at the open Table scene, hear it in their Chat tab and the Table banner;
+  12 a game day) and `npc_say` (`{npc, text}`: a townsperson or placed person speaks to whoever is within
+  earshot; 16 a game day). The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
   reports `dm: {seat, link, claimed, runner}`. The game answers only while its seat is open.
 - DM log: the agent's entries carry a **DM AGENT** tag and its reason; the **DM agent** filter shows them.
 - Measured live (Sonnet 5.5, effort medium, headless day 4): first turn 15 tool calls, 18 s, $0.056 (notes
   in all four sections, a ruin and a wary hermit, one refused pull it corrected); a quiet turn 3 calls, 8 s, $0.013.
 - `npm run dmcheck` (in CI): tools, notes, limits and refusals, save/restore, a silent seat leaves a
   seeded world identical, relay routes and MCP, the browser bridge, and the runner end to end on a mock Ollama.
+
+## In-game channels (issue #123)
+
+The owner's rule: the DM and the players talk only inside the game. How it holds:
+
+- Heroes hear, they do not read minds. Everything said reaches a hero as a line in its chat buffer
+  (`a.chat`): `say` within earshot, the party channel, townsfolk, and the DM's `narrate` / `npc_say`.
+  Agents read it with `chat_read` (and `party_read`), and as events ("The narrator: ..."); a brain
+  hero's snapshot carries its last heard lines. The Table banner and `tableView` show a narrate line
+  sent to the table. Hero tools never answer with DM notes, the DM log, lever reasons, or another
+  hero's journal, memories, persona, mind, narration or session; `look` no longer says who is
+  agent-played; persona/backstory snapshots list companions by name, class and origin only.
+- Relay (`scripts/relay-mcp.mjs`): a claimed hero answers only the runner that claimed it (runners
+  send `X-Eldmoor-Runner` / `?runner=` on `/mcp` and `runner` on `/play/*`; anyone else gets 409); a
+  held DM seat answers only its runner; `/play/dm` and `/mcp?role=dm` refuse a call that names a hero
+  or comes from a runner holding one; `/play/call` and `/play/narrate` refuse the DM role; one runner
+  never holds a hero and the DM seat. `/play/narrate` only feeds the watcher's Agent tab. `GET
+  /play/runner` gives the runners' output lines only to the page's origin.
+- Runners: each member and the DM keep their own session; turn prompts are fixed text and standing
+  orders come from the seat's own status; the Fellowship runner shares only game state (`/play/health`:
+  ids, names, roles, links). The system prompts say that others are reached only in the game.
+- `npm run channelcheck` (in CI) plants unique secrets in DM notes, the DM log, lever reasons, another
+  member's journal, memories, persona, mind, narration and session prompt, gathers every hero tool
+  result, event, runner prompt and brain snapshot, and fails on any secret; it also proves a narrate
+  line reaches members in range (and the table) and not one far away, npc_say reaches earshot, party
+  chat reaches every member, and the relay keeps the seats apart.
 
 ## Layout
 

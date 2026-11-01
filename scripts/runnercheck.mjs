@@ -28,7 +28,8 @@ const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PAGE = 'http://localhost:5173';
 const until = async (f, ms = 30000, step = 150) => {const t0 = Date.now(); for (;;) {const v = await f().catch(() => null); if (v) return v; if (Date.now() - t0 > ms) return null; await sleep(step)}};
-const req = (base, path, {method = 'GET', body, origin, host} = {}) => fetch(base + path, {method, headers: {...(body ? {'content-type': 'application/json'} : {}), ...(origin ? {origin} : {}), ...(host ? {host} : {})}, body: body ? JSON.stringify(body) : undefined})
+// as the page asks (with its origin): only the watcher's page sees the runners' output lines (issue #123)
+const req = (base, path, {method = 'GET', body, origin = path.startsWith('/play/runner') ? PAGE : undefined, host} = {}) => fetch(base + path, {method, headers: {...(body ? {'content-type': 'application/json'} : {}), ...(origin ? {origin} : {}), ...(host ? {host} : {})}, body: body ? JSON.stringify(body) : undefined})
   .then(async r => ({status: r.status, headers: r.headers, ...(await r.json().catch(() => ({})))}));
 const alive = pid => {try {process.kill(pid, 0); return true} catch {return false}};
 
@@ -41,7 +42,9 @@ console.log('start requests');
   const l = checkStart({hero: '1', provider: 'ollama', model: 'qwen2.5:14b', maxTurns: 40}, hs);
   ok(l.req && l.req.budget === null && l.req.maxTurns === 40 && l.req.model === 'qwen2.5:14b', 'a local runner has no budget, only a turn cap');
   ok(checkStart({hero: 9}, hs).code === 404 && checkStart({hero: 2}, hs).code === 409 && checkStart({}, hs).code === 400, 'unknown, dead and missing heroes are refused');
-  ok(checkStart({hero: 1, provider: 'openai'}, hs).code === 400 && checkStart({hero: 1, provider: 'x;rm'}, hs).code === 400, 'only providers with a runner (anthropic, ollama)');
+  const oa = checkStart({hero: 1, provider: 'openai', model: 'gpt-6-luna'}, hs);
+  ok(oa.req && oa.req.budget === 1 && oa.req.model === 'gpt-6-luna', 'an OpenAI runner is paid: it keeps the budget cap');
+  ok(checkStart({hero: 1, provider: 'google'}, hs).code === 400 && checkStart({hero: 1, provider: 'x;rm'}, hs).code === 400, 'only providers with a runner (anthropic, ollama, openai)');
   ok(checkStart({hero: 1, model: 'a b'}, hs).code === 400 && checkStart({hero: 1, model: '--env=x'}, hs).code === 400, 'model names must be plain (no spaces, no leading dash)');
   ok(checkStart({hero: 1, maxTurns: 201}, hs).code === 400 && checkStart({hero: 1, maxTurns: 1.5}, hs).code === 400 && checkStart({hero: 1, budget: 5.01}, hs).code === 400 && checkStart({hero: 1, budget: 0}, hs).code === 400, 'turns and budget are capped (200 turns, $5.00 for one hero)');
   ok(checkStart({kind: 'shell'}, hs).code === 400, 'unknown runner kinds are refused');
@@ -106,6 +109,8 @@ console.log('runner routes (fake children)');
   g = await req(on.base, '/play/runner');
   let v = g.runners.find(r => r.key === 'hero:1');
   ok(v && v.state === 'waiting' && v.turns === 2 && v.cost === 0.031 && v.lines.length === 3 && v.model === 'qwen2.5:14b', `claimed and quiet: waiting, 2 turns, $0.031, model from the claim (${v && v.state}, ${v && v.turns}, ${v && v.cost})`);
+  {const nv = (await req(on.base, '/play/runner', {origin: null})).runners.find(r => r.key === 'hero:1');
+    ok(nv && nv.state === 'waiting' && nv.lines.length === 0, 'without the page\'s origin the runners\' output lines are withheld (issue #123: for the watcher only)')}
   // up to MAX_RUNNERS
   for (const id of [2, 3, 4, 5]) await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: id}, origin: PAGE});
   s = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 6}, origin: PAGE});
@@ -152,7 +157,7 @@ console.log('runner routes (fake children)');
   ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'starting', 'it is starting until it holds the DM seat');
   await fetch(dm.base + '/play/claim', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({role: 'dm', runner: 'fake:1'})});
   ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'waiting', 'it shows waiting once it holds the seat');
-  await fetch(dm.base + '/play/dm', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({tool: 'dm_status'})});
+  await fetch(dm.base + '/play/dm', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({tool: 'dm_status', role: 'dm', runner: 'fake:1'})});
   kd.stdout.emit('data', '[dm] [turn 1] ... | run $0.0100 |\n'); await sleep(5);
   ok((await req(dm.base, '/play/runner')).runners.find(r => r.key === 'dm').state === 'live', 'it shows live once it calls the DM tools');
   s = await req(dm.base, '/play/runner/stop', {method: 'POST', body: {kind: 'dm'}, origin: PAGE});

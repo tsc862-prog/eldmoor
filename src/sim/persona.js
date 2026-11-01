@@ -157,7 +157,7 @@ export const PERSONA_ORDER=[['voice','Voice'],['wants','Wants'],['fears','Fears'
 
 // ---- relay snapshots and validated application ----
 const compOf=(b,a)=>({id:b.id,name:b.name,cls:b.cls,people:raceOf(b).name,home:b.home||null,trade:b.trade||null,lvl:b.lvl,bond:bond(a,b),
-  role:ROLE_NAME[roleOf(b)],origin:b.origin?String(b.origin).slice(0,160):null,summary:b.backstory?b.backstory.summary:null});
+  role:ROLE_NAME[roleOf(b)],origin:b.origin?String(b.origin).slice(0,160):null}); // never a companion's sheet, persona or memories (issue #123)
 export function personaSnapshot(a,mates,fname){const P=a.persona||buildPersona(a,mates);
   return {name:a.name,fac:FAC[a.fac].name,fellowship:fname,facts:factsOf(a),backstory:a.backstory?a.backstory.summary:null,
     link:a.backstory&&a.backstory.link?a.backstory.link:null,companions:mates.filter(b=>b!==a).map(b=>compOf(b,a)),
