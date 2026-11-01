@@ -15,7 +15,7 @@
 // level, class, scores, epics or worn items change, so hot paths may call it every step. Never mutate it.
 import {CLS} from '../data/classes.js';
 import {CLASS_ABIL,ABILITIES} from '../data/abilities.js';
-import {SLOTS,PROPS} from '../data/items.js';
+import {SLOTS,PROPS,USES} from '../data/items.js';
 import {mod} from './abilities.js';
 
 // ---- tuning (calibrated against the pre-#88 formulas; see the PR for the band averages) ----
@@ -91,4 +91,4 @@ export function combatStats(a){const k=sig(a),e=cache.get(a);if(e&&same(e,a,k))r
   const s=a.slots,items=s?SLOTS.map(x=>s[x]||null):null,v=build(a);
   cache.set(a,{k,items,lv:items?items.map(it=>it?it.ilvl:0):null,v});return v}
 // Damage multiplier for a blow landing on this hero.
-export const dmgTaken=a=>1-combatStats(a).defense;
+export const dmgTaken=a=>(1-combatStats(a).defense)*(a.wardT>0?1-USES['Scroll of the Steadfast Hour'].ward:1); // a warding scroll (sim/inv.js) softens every blow while it holds

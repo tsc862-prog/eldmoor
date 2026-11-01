@@ -1,4 +1,4 @@
-// Side panels: hero dossier (header + Stats/Log/Bio/Memory/Gear/Party/Chat/Mind tabs; Memory from ui/fellowship.js), factions,
+// Side panels: hero dossier (header + Stats/Log/Bio/Memory/Gear/Pack/Party/Chat/Mind tabs; Memory from ui/fellowship.js), factions,
 // chronicle, graveyard, guilds, top heroes, auction house, clock. Reads sim state
 // and the renderer's camera selection.
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
@@ -11,7 +11,8 @@ import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
 import {raceOf,homeOf} from '../data/races.js';
 import {MOBS} from '../data/mobs.js';
-import {GOODS,price,EPIC_ITEMS,PROPS} from '../data/items.js';
+import {GOODS,price,EPIC_ITEMS,PROPS,USES,QUEST_ITEMS,useLines} from '../data/items.js';
+import {capOf,used as packUsed,isGear} from '../sim/inv.js'; // the pack (#124)
 import {combatStats} from '../sim/stats.js';
 import {S,clockStr,maxHp,xpNeed,onLog,onMarketTick} from '../sim/index.js';
 import {cam} from '../render/draw.js';
@@ -66,7 +67,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
 // ---- hero dossier ----
-const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
+const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['inv','Pack'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
 const SLOTS=[['head','Head'],['chest','Chest'],['hands','Hands'],['feet','Feet'],['main','Main hand'],['off','Off hand'],['trinket','Trinket']];
 let tab='stats'; // persists across hero changes
 export const activeTab=()=>tab;
@@ -180,23 +181,35 @@ function itemCard(it,cls){const d=el('div',cls||'itip');
   if(it.over){const o=it.over,ds=itemDelta(it,o);
     d.append(el('div','dm','Replaced '+o.name+' (ilvl '+o.ilvl+')'+(ds.length?': '+ds.join(', '):'')))}
   return d}
-const hoverItem=()=>{const a=cam.sel;return hov&&a&&a.id===hov.id&&a.slots?a.slots[hov.slot]:null};
+// Pack entries (issue #124): consumables, quest items and trade goods get a card in the same style as gear.
+const invEntry=(a,i)=>a&&a.inv?a.inv.list[i]||null:null;
+function supplyCard(e,cls){const d=el('div',cls||'itip');
+  if(e.kind==='use'&&USES[e.id]){const U=USES[e.id];d.append(el('div','in qf',e.id),el('div','dm',U.kind.charAt(0).toUpperCase()+U.kind.slice(1)+' · x'+e.n));
+    for(const [c,t] of useLines(e.id))d.append(el('div','is s-'+c,t));d.append(el('div','dm','Costs '+U.price+'g in town'),el('div','if',U.flavour))}
+  else if(e.kind==='good'){d.append(el('div','in qp',e.id),el('div','dm','Trade good · x'+e.n));if(GOODS[e.id])d.append(el('div','is s-bn','Sells for about '+price(e.id)+'g each'))}
+  else{const Q=QUEST_ITEMS[e.id];d.append(el('div','in gd',e.id),el('div','dm','Quest item'));
+    d.append(el('div','if',Q?Q.flavour:'Carried for a job; it is handed in when the job ends.'),el('div','dm','Cannot be sold, dropped or given.'))}
+  return d}
+const cardOf=(it,cls)=>isGear(it)?itemCard(it,cls):supplyCard(it,cls);
+const hoverItem=()=>{const a=cam.sel;if(!hov||!a||a.id!==hov.id)return null;return hov.inv!=null?invEntry(a,hov.inv):a.slots?a.slots[hov.slot]:null};
 function placeTip(){if(!tipEl)return;const pad=14,w=tipEl.offsetWidth,h=tipEl.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
   let x=tipXY[0]+pad,y=tipXY[1]+pad;if(x+w>vw-4)x=Math.max(4,tipXY[0]-w-pad);if(y+h>vh-4)y=Math.max(4,vh-h-4);
   tipEl.style.left=x+'px';tipEl.style.top=y+'px'}
 function showTip(){const it=hoverItem();if(!it){hideTip();return}
   if(!tipEl){tipEl=el('div','itip floating');tipEl.setAttribute('role','tooltip');document.body.append(tipEl)}
-  tipEl.replaceChildren(...itemCard(it).childNodes);tipEl.style.display='block';placeTip()}
+  tipEl.replaceChildren(...cardOf(it).childNodes);tipEl.style.display='block';placeTip()}
 function hideTip(){hov=null;if(tipEl)tipEl.style.display='none'}
 // Delegated listeners on the persistent tab body: rows are rebuilt, the listeners are not.
 function wireGear(tb){
-  const slotOf=e=>{const r=e.target&&e.target.closest?e.target.closest('[data-slot]'):null;return r?r.dataset.slot:null};
-  tb.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;tipXY=[e.clientX,e.clientY];const s=slotOf(e),a=cam.sel;
-    if(!s||!a){if(hov)hideTip();return}
-    if(!hov||hov.slot!==s||hov.id!==a.id){hov={id:a.id,slot:s};showTip()}else placeTip()});
+  const keyOf=e=>{const r=e.target&&e.target.closest?e.target.closest('[data-slot],[data-inv]'):null;return r?(r.dataset.inv!=null?{inv:+r.dataset.inv}:{slot:r.dataset.slot}):null};
+  const same=(h,k,a)=>!!(h&&k&&h.id===a.id&&h.slot===k.slot&&h.inv===k.inv);
+  tb.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;tipXY=[e.clientX,e.clientY];const k=keyOf(e),a=cam.sel;
+    if(!k||!a){if(hov)hideTip();return}
+    if(!same(hov,k,a)){hov={id:a.id,...k};showTip()}else placeTip()});
   tb.addEventListener('pointerleave',hideTip);
-  tb.addEventListener('click',e=>{const s=slotOf(e),a=cam.sel;if(!s||!a||!a.slots||!a.slots[s])return;
-    pinned=pinned&&pinned.id===a.id&&pinned.slot===s?null:{id:a.id,slot:s};hideTip();renderHero()})}
+  tb.addEventListener('click',e=>{const k=keyOf(e),a=cam.sel;if(!k||!a)return;
+    if(k.inv!=null?!invEntry(a,k.inv):!(a.slots&&a.slots[k.slot]))return;
+    pinned=same(pinned,k,a)?null:{id:a.id,...k};hideTip();renderHero()})}
 
 function tabGear(b,a){
   if(pinned&&pinned.id!==a.id)pinned=null; // the pin belongs to one hero
@@ -213,6 +226,22 @@ function tabGear(b,a){
   b.append(el('div','meta','Gear score '+gearScoreOf(a)+' · bought piece by piece in town'));
   if(a.epics.length){const e=el('div','epics');e.append('Epics: ');a.epics.forEach((n,i)=>{e.append(el('span','ep','['+n+']'));if(i<a.epics.length-1)e.append(' ')});b.append(e)}
   else b.append(el('div','dm','No epic items yet.'))}
+
+// ---- Pack tab (issue #124): consumables, quest items, spare gear and trade goods; hover or tap for a card ----
+function tabInv(b,a){
+  if(pinned&&pinned.id!==a.id)pinned=null;
+  if(!a.inv||!a.inv.list.length){b.append(el('div','meta','Pack 0/'+(a.inv?capOf(a):'?')+' slots · '+a.gold+'g'),el('div','dm','Nothing carried.'));return}
+  b.append(el('div','meta','Pack '+packUsed(a)+'/'+capOf(a)+' slots · '+a.gold+'g · hover or tap an item'));
+  const groups=[['Potions and supplies',e=>e.kind==='use'],['Quest items',e=>e.kind==='quest'],['Spare gear',isGear],['Trade goods',e=>e.kind==='good']];
+  for(const [title,f] of groups){const rows=a.inv.list.map((e,i)=>[e,i]).filter(([e])=>f(e));if(!rows.length)continue;
+    b.append(el('div','dm',title));const g=el('div','gear');
+    for(const [e,i] of rows){const sel=pinned&&pinned.inv===i,gear=isGear(e);
+      const kk=el('span','k',gear?slotLabel(e.slot):'x'+e.n),v=el('span','v');kk.dataset.inv=String(i);v.dataset.inv=String(i);if(sel){kk.classList.add('pin');v.classList.add('pin')}
+      if(gear){v.append(el('span',qCls(e),e.name),' ',el('span','ilv','ilvl '+e.ilvl));if(e.cls&&e.cls!==a.cls&&!e.epic)v.append(' ',el('span','dm','for '+e.cls))}
+      else v.append(el('span',e.kind==='quest'?'gd':e.kind==='use'?'qf':'qp',e.id));
+      g.append(kk,v)}
+    b.append(g)}
+  const pe=pinned&&pinned.inv!=null?invEntry(a,pinned.inv):null;if(pe)b.append(cardOf(pe,'itip pinned'))}
 
 function tabParty(b,a){const p=a.party;
   if(!p||!p.mem.length){b.append(el('div','dm','Travelling alone.'));return}
@@ -286,7 +315,7 @@ function tabMind(b,a){const m=a.mind||[];
     h.append(el('span','dm',' \u00b7 '),el('span','mo mo-'+e.outcome,e.outcome));
     row.append(h);if(isOpen)mindDetail(row,a,e);list.append(row)}
   b.append(list)}
-const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent,memory:tabMemory};
+const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,inv:tabInv,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent,memory:tabMemory};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
 // header and only the active tab's body, since it runs every 0.3s.

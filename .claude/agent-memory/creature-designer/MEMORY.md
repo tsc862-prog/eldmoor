@@ -2,3 +2,4 @@
 - [Elites and ecology](project_elites_ecology.md) — why elites engage at lvl-2 only, slow regen, 1-in-35 roll, Thornvale roads x<18 excluded; hand-off gaps
 - [Gear slots](project_gear_slots.md) — GEAR_K=.65 matches the old gold-throttled gear number; epics grow with bearer; gold now piles up (merchant hook is the sink)
 - [Bestiary blocks](project_bestiary_blocks.md) — #84 role calibration, ability rule (hero.cd/pos/hp only), elites/named/site foes, builder, measuring gotchas
+- [Inventory pack](project_inventory.md) — #124 a.inv design, potion tuning, sims: mob deaths -36% but total deaths flat, tooling gotchas

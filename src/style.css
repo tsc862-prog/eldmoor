@@ -247,6 +247,7 @@ ul.legends .meta{margin-left:22px}
 .chip{font-family:var(--px);font-size:6px;padding:2px 3px;border:1px solid currentColor;letter-spacing:.04em;white-space:nowrap}
 .chip.c-good{color:#9ad0ff} .chip.c-bad{color:var(--red)} .chip.c-dim{color:var(--dim)} .chip.c-crypt{color:#c58cff} .chip.c-warn{color:var(--amber)} .chip.c-oath{color:var(--gold)}
 .pffoot{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-top:auto;min-width:0}
+.pfpot{font-family:var(--px);font-size:6px;color:var(--green);white-space:nowrap;margin-right:4px}
 .pfmind{font-family:var(--px);font-size:6px;padding:2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .pfmind.m-scripted{color:var(--dim);border:1px solid var(--edge)} .pfmind.m-ai{background:#7fd6c2;color:#0d0e19} .pfmind.m-quiet{background:var(--edge);color:var(--dim)} .pfmind.m-agent{background:var(--gold);color:#0d0e19}
 button.mindbtn{font-size:6px;padding:2px 4px;white-space:nowrap}

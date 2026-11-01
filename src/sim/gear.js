@@ -12,6 +12,7 @@ import {tm} from '../data/traits.js';
 import {zoneFor} from '../world/map.js';
 import {log} from './chronicle.js';
 import {dmgTaken} from './stats.js';
+import {addGear} from './inv.js'; // spare gear rides in the pack (sim/inv.js)
 
 // Tuning. gearScore = average item level over the seven slots * GEAR_K: a rough "how kitted" figure
 // for raid musters (boss.js), dungeon power (dungeon.js) and the Gear tab. Combat reads combatStats.
@@ -66,7 +67,7 @@ const setEpic=(it)=>{const p=epicProps(it.name,it.ilvl);delete it.armor;delete i
 export function makeItem(cls,slot,ilvl,zone,opt={}){const z=clamp(zone,0,GEAR_MATERIALS.length-1),m=GEAR_MATERIALS[z];
   const mat=pickA(slot==='main'||slot==='off'?m.hard:m.any),noun=(SLOT_NOUNS[cls]||SLOT_NOUNS.Warrior)[slot];
   ilvl=Math.max(1,Math.round(ilvl));const quality=opt.quality||rollQuality(opt.fine==null?.25:opt.fine,opt.rare==null?.05:opt.rare,rnd());
-  const it={name:mat+' '+noun,ilvl,zone:z,slot,epic:false,quality,...rollProps(cls,slot,ilvl,z,quality)};
+  const it={name:mat+' '+noun,ilvl,zone:z,slot,epic:false,quality,cls,...rollProps(cls,slot,ilvl,z,quality)};
   if(opt.src)it.src=opt.src;return it}
 
 // Save migration (v3 -> v4): an item from before #88 carried {stats:{vigor,might,guard,precision,haste}}.
@@ -110,16 +111,13 @@ export function equip(a,it){const old=a.slots[it.slot]||null;if(old)it.over={nam
   return old}
 
 // A mob kill: about 6% of kills drop a slot item at the mob's level +-1; named elites always do.
-// Upgrades are worn at once, the rest (and anything replaced) rides in the bag to be sold in town.
+// Upgrades are worn at once, the rest (and anything replaced) rides in the pack (sim/inv.js) to be sold in town.
 export function rollDrop(a,m,opt={}){if(!a.slots)return;if(!m.elite&&rnd()>=(opt.rate!=null?opt.rate:DROP_RATE))return;
   const M=MOBS[m.type],it=makeItem(a.cls,pickA(SLOTS),m.lvl+ri(-1,1),M?M.z:zoneFor(m.lvl),
     {src:'Dropped by '+(m.name||(M&&M.name)||'a monster'),quality:m.elite?(rnd()<.25?'rare':'fine'):undefined});
   const cur=a.slots[it.slot];
-  if(cur&&(cur.epic||cur.ilvl>=it.ilvl)){a.bag.push(it);return}
-  const old=equip(a,it);if(old)a.bag.push(old)}
-
-// Town: sell any gear carried in the bag. Returns the gold and removes the items; goods stay.
-export function sellGear(a){let g=0;a.bag=a.bag.filter(it=>{if(it&&typeof it==='object'&&it.slot){g+=SELL_VALUE(it);return false}return true});return g}
+  if(cur&&(cur.epic||cur.ilvl>=it.ilvl)){addGear(a,it);return}
+  const old=equip(a,it);if(old)addGear(a,old)}
 
 // Town: buy one item for the weakest slot at ilvl = hero level if it is an upgrade and gold allows.
 // Greedy heroes (thrift < 1) only shop once the weakest slot has fallen a little further behind.
@@ -137,4 +135,4 @@ export const EPIC_LEAD=3;
 export function refreshEpics(a){for(const k of SLOTS){const it=a.slots[k];if(it&&it.epic&&it.ilvl<a.lvl+EPIC_LEAD){it.ilvl=a.lvl+EPIC_LEAD;setEpic(it)}}syncGear(a)}
 export function equipEpic(a,name,src){if(!a.slots)return;const slot=EPIC_SLOT[name]||'trinket';
   const ilvl=Math.max(a.lvl+EPIC_LEAD,slotLevel(a,slot)+1);
-  const old=equip(a,{name,ilvl,zone:epicZone(name),slot,epic:true,quality:'epic',...epicProps(name,ilvl),src:src||undefined});if(old)a.bag.push(old)}
+  const old=equip(a,{name,ilvl,zone:epicZone(name),slot,epic:true,quality:'epic',...epicProps(name,ilvl),src:src||undefined});if(old)addGear(a,old)}

@@ -35,7 +35,8 @@ import {clamp} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
-import {GOODS} from '../data/items.js';
+import {GOODS,QUEST_ITEMS} from '../data/items.js';
+import {addQuest,take} from './inv.js';
 import {RACES} from '../data/races.js';
 import {npcRole,WANDER_ROLES} from '../data/npcs.js';
 import {BEAST,ADVENTURES} from '../data/adventures.js';
@@ -319,6 +320,20 @@ register({name:'withdraw_hook',about:'Take an open job down from a board.',param
   check(p){const h=(S.adventures||[]).find(x=>x.id===p.hook);return !h?'no such hook':h.phase!=='open'?'hook #'+p.hook+' is already taken':null},
   apply(p){const h=withdrawHook(p.hook);return h?{ok:true,effect:{hook:h.id,tpl:h.tpl,town:h.town}}:{ok:false,effect:'could not take it down'}},
   describe:p=>'hook #'+p.hook+' taken down'});
+
+// Quest items: a token from the quest-item table (data/items.js QUEST_ITEMS) put in a hero's pack, or taken back. They carry no
+// numbers and cannot be sold, dropped or given (sim/inv.js); an adventure or the DM can look for them.
+const livingHero=id=>{const a=S.agents.find(x=>x.id===id);return a&&a.kind==='hero'&&a.state!=='dead'?a:null};
+register({name:'give_token',about:'Put a quest item (a key, a seal, a token) in the hero pack: it opens nothing by itself, but jobs and townsfolk can ask for it.',
+  params:{hero:{type:'id'},token:{type:'enum',values:Object.keys(QUEST_ITEMS)}},limits:{perDay:6},cooldown:0,
+  check(p){const a=livingHero(p.hero);return !a?'no such living hero':a.inv&&a.inv.list.some(e=>e.kind==='quest'&&e.id===p.token)?a.name+' already carries it':null},
+  apply(p){const a=livingHero(p.hero);addQuest(a,p.token,null);return {ok:true,effect:{hero:a.name,token:p.token}}},
+  describe:p=>p.token+' to hero #'+p.hero});
+register({name:'take_token',about:'Take a quest item back out of the hero pack.',
+  params:{hero:{type:'id'},token:{type:'enum',values:Object.keys(QUEST_ITEMS)}},limits:{perDay:6},cooldown:0,
+  check(p){const a=livingHero(p.hero);return !a?'no such living hero':!(a.inv&&a.inv.list.some(e=>e.kind==='quest'&&e.id===p.token))?a.name+' does not carry it':null},
+  apply(p){const a=livingHero(p.hero);take(a,'quest',p.token,1);return {ok:true,effect:{hero:a.name,token:p.token}}},
+  describe:p=>p.token+' taken from hero #'+p.hero});
 
 // Foes for an adventure scene: one monster of the region raised to a named foe, its level kept
 // to the region's band. The adventure owns it (dm.js places it and tags it m.adv).

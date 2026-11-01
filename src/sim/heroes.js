@@ -22,7 +22,8 @@ import {blockOf} from '../data/bestiary.js';
 import {rollLoot} from './loot.js';
 import {rollScores,growScores} from './abilities.js'; // ability scores (sim/abilities.js)
 import {combatStats,dmgTaken} from './stats.js'; // Health, Attack, Defense, Crit, Speed (sim/stats.js)
-import {emptySlots,equipEpic,sellGear,shopUpgrade} from './gear.js';
+import {emptySlots,equipEpic,shopUpgrade} from './gear.js';
+import {newInv,load,sellLoot,autoEquip,passSpares,restock,fightAid,idleTend,tendAlly} from './inv.js'; // the pack (sim/inv.js)
 import {record,timeline,first} from './history.js';
 import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
@@ -43,7 +44,7 @@ export function newQuest(a){const z=huntZone(a);const opts=Object.keys(MOBS).fil
 
 export function makeHero(f,cls,guild,wait){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
-    bag:[],kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
+    inv:newInv(),kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
     wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0,adv:null};
   a.traits=rollTraits(cls);newQuest(a);
   a.slots=emptySlots();
@@ -136,16 +137,17 @@ export function strike(a,t){
   if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return}
   if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}}
 
-export function priestHeal(a,list){if(!CLS[a.cls].heal||a.healCd>0)return;let low=null;
+export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){tendAlly(a,list);return}let low=null; // spell on cooldown: a potion for a member nearly down (sim/inv.js)
   for(const b of list){if(b.state==='ghost'||dist(a,b)>4)continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
   if(low){const h=Math.round(20+a.lvl*5);low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;if(low!==a)bondEvent(a,'heal',[low])}}
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
-export function sellAndShop(a){const c=homeOf(a);let tot=sellGear(a),n=0;
-  for(const it of a.bag){if(GOODS[it]){tot+=price(it);GOODS[it].supply++;n++}}a.bag=[];a.gold+=tot;
+// Town: wear a better spare, pass spares to a party member they suit, sell goods and the rest, buy gear, then stock the pack.
+export function sellAndShop(a){const c=homeOf(a);autoEquip(a);passSpares(a);const sold=sellLoot(a),tot=sold.gold,n=sold.goods;a.gold+=tot;
   if(n>=6&&rnd()<.35)log(a,' sold ',String(n),' goods at the ',c.name,' auction house for ',gold(tot+'g'),'.');
-  if(shopUpgrade(a))a.hp=maxHp(a)}
+  if(shopUpgrade(a))a.hp=maxHp(a);
+  restock(a)}
 
 export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
     say(a,'quest',{mob:M.pl});
@@ -160,7 +162,7 @@ export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9
 // Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
 // Personality traits (data/traits.js) scale these via tm(a,key): Reckless lowers retreat/flee, Cautious raises them, etc.
 export function updAgent(a,dt){
-  a.cd-=dt*combatStats(a).speed;a.healCd-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
+  a.cd-=dt*combatStats(a).speed;a.healCd-=dt;if(a.potCd>0)a.potCd-=dt;if(a.wardT>0)a.wardT-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
   switch(a.state){
   case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
     if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;
@@ -182,9 +184,9 @@ export function updAgent(a,dt){
     if(!a.dest)a.dest=zonePoint(a.zone,null,c.gate);if(moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state='hunt';a.dest=null}break}
   case 'hunt':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     if(a.adv&&dmHunt(a,dt))break; // DM: the adventure's fight, rest or next leg instead of the kill-N hunt
-    a.hp=Math.min(mh,a.hp+mh*.025*dt);const mates=partyMates(a);
+    a.hp=Math.min(mh,a.hp+mh*.025*dt);idleTend(a);const mates=partyMates(a);
     if(a.party)priestHeal(a,mates);
-    if(a.hp<mh*.45*tm(a,'retreat')||a.bag.length>=Math.round(8*tm(a,'greed'))||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.hp<maxHp(b)*.3)||isStorm(a.zone)){goHome(a);break}
+    if(a.hp<mh*.45*tm(a,'retreat')||load(a)>=Math.round(8*tm(a,'greed'))||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.hp<maxHp(b)*.3)||isStorm(a.zone)){goHome(a);break}
     if(steerClear(a,dt,moveTo))break;
     a.scan-=dt;if(a.scan<=0){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
     if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
@@ -202,6 +204,7 @@ export function updAgent(a,dt){
     if(!m.target)m.target=a;
     priestHeal(a,a.party?a.party.mem:[a]);
     if(a.cd<=0){strike(a,m);a.cd=1.1}
+    fightAid(a,m); // potion, antidote, ward or Hearthward from the pack (sim/inv.js)
     brainFight(a,m,mh); // BRAIN: optional earlier bail-out at 50% HP for AI-played heroes
     if(a.state==='fight'&&a.hp<mh*.22*tm(a,'flee')&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
     fleeCheck(a,m); // Chronicler: flee roll, a failure lands one more hit (sim/narrator.js)
@@ -214,6 +217,7 @@ export function updAgent(a,dt){
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
     if(d>r){moveTo(a,b.x,b.y,dt,2.4);break}a.moving=false;priestHeal(a,[a]);
     if(a.cd<=0){strike(a,b);a.cd=1.1}
+    fightAid(a,b); // a potion in a duel too
     // Caution: break off at 20% HP, or at 50% when outnumbered (helpers on you, none on your foe).
     const outn=S.agents.some(g=>g.state==='assist'&&g.target===a)&&!S.agents.some(g=>g.state==='assist'&&g.target===b);
     if(a.state==='duel'&&a.hp<mh*(outn?.5:.3*tm(a,'flee'))&&rnd()<dt*1.5){b.state='hunt';b.target=null;regroup(a,b,'return',3);
@@ -231,5 +235,6 @@ export function updAgent(a,dt){
     const px=boss.x+Math.cos(ang)*rr*-1,py=boss.y-.3+Math.sin(ang)*rr*(idx%2?1:-1)*.8;
     if(dist(a,boss)>rr+.6){moveTo(a,px,py,dt,2.4);break}a.moving=false;a.face=boss.x>a.x?1:-1;
     priestHeal(a,S.agents.filter(b=>b.raid&&b.fac===a.fac));
-    if(a.cd<=0){strike(a,boss);a.cd=1.1}break}
+    if(a.cd<=0){strike(a,boss);a.cd=1.1}
+    fightAid(a,boss);break}
   }}

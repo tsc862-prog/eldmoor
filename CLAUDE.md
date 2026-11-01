@@ -82,6 +82,7 @@ other. The rules:
 - New worlds (#111): `init()` founds the default Fellowship (level 1, home town, Minds scripted) and starts the other heroes at levels 1-15 in fitting zones (`src/sim/opening.js`, `START_BANDS`). `ELDMOOR_FELLOWSHIP=0` in Node, `?fellowship=0` in the browser or `init({fellowship:false})` keeps the old all-level-1 start for balance baselines; checks that found their own Fellowship use it.
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
+- `npm run invcheck`: the pack, consumables, quest items, the bag-to-pack save migration and determinism.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
 - `npm run localcheck`: the local agent runner against a mock Ollama (see "Local models").
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
@@ -324,7 +325,7 @@ danger onto a badly hurt Fellowship member out in the field is refused). Fast at
   state machine (`town`, `travel`, `hunt`, `fight`, `return`, `ghost`, `duel`,
   `assist`, `dungeon`, `raid`, `dead`); `mobs.js` spawning and mob AI;
   `boss.js` the Kragmaw fight and raid muster; `pvp.js` duels, nemesis hunts,
-  assists; `dungeon.js` Sunken Crypt runs; `market.js` auction-house prices;
+  assists; `dungeon.js` Sunken Crypt runs; `market.js` auction-house prices; `inv.js` the hero pack `a.inv` (stacks, spare gear, consumables from `USES`, quest items, supplies bought in town, `npm run invcheck`);
   `history.js` `record(a, ...parts)` per-hero event log for the dossier Log tab;
   `levers.js` the DM's world levers: a validated registry (`pull(name, params, {by, reason})`)
   with limits, cooldowns and DM log entries for people, places, danger/cleared areas, region

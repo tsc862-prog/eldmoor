@@ -14,6 +14,7 @@
 //   pay       on success, per member: xp (share of xpNeed(level)), gold (x (6 + 3 x level)),
 //             honor, gear (chance of a reward item for members other than the leader)
 //   follow    template a success may spawn as a follow-up hook
+//   carry     'start' or 'mid' (after two scenes): the leader carries the job's {thing} as a quest item (sim/inv.js)
 //   scenes    3-5 scene specs, run in order. The last one (or a choice's branch) is final.
 //
 // Scene spec fields:
@@ -160,7 +161,7 @@ export const ADVENTURES={
     ]},
   relic:{name:'Recover a relic',title:['Recover {thing}','Lost in {zone}: {thing}'],
     things:['the chapel’s lantern-bell','a bone reliquary','a surveyor’s brass chain','an old banner pole','a sealed tithe box'],
-    size:[1,3],lvl:4,givers:['priest','smith','innkeeper'],pay:{xp:.5,gold:1.1,honor:2,gear:.5},follow:'negotiate',
+    size:[1,3],lvl:4,givers:['priest','smith','innkeeper'],pay:{xp:.5,gold:1.1,honor:2,gear:.5},follow:'negotiate',carry:'mid',
     scenes:[
       {type:'travel',at:'landmark',check:'lore',frame:'{who} looks for {thing} near {place}',
         pass:'Someone buried it carefully, and marked the spot for themselves.',fail:'An afternoon of digging in the wrong places.'},
@@ -201,7 +202,7 @@ export const ADVENTURES={
     ]},
   deliver:{name:'Deliver a message',title:['Carry {thing} to {place}','A Message for {place}'],
     things:['a sealed letter','the captain’s writ','a warning about the roads','a ledger','a sick-list for the chapel'],
-    size:[1,2],lvl:4,givers:['captain','priest','quartermaster'],pay:{xp:.4,gold:1.2,honor:1,gear:.3},follow:'relic',
+    size:[1,2],lvl:4,givers:['captain','priest','quartermaster'],pay:{xp:.4,gold:1.2,honor:1,gear:.3},follow:'relic',carry:'start',
     scenes:[
       {type:'travel',at:'road',check:'track',frame:'{who} sets a hard pace along the {zone} road',
         pass:'The miles go quickly.',fail:'A washed-out ford costs them hours.'},

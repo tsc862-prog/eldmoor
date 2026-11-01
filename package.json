@@ -11,6 +11,7 @@
     "sim": "node scripts/headless.mjs",
     "worldcheck": "node scripts/worldcheck.mjs",
     "savecheck": "node scripts/savecheck.mjs",
+    "invcheck": "node scripts/invcheck.mjs",
     "relay": "node scripts/relay.mjs",
     "braincheck": "node scripts/braincheck.mjs",
     "levercheck": "node scripts/levercheck.mjs",

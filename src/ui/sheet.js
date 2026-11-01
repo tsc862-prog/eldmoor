@@ -14,6 +14,7 @@ import {combatStats} from '../sim/stats.js';
 import {bond} from '../sim/bonds.js';
 import {ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS,score,mod,trained} from '../sim/abilities.js';
 import {gearScore} from '../sim/gear.js';
+import {capOf,used,countKind} from '../sim/inv.js';
 import {fmtPct} from './panels.js';
 
 const $=id=>document.getElementById(id);
@@ -36,6 +37,10 @@ export function sheetRows(){const ms=fellowshipMembers(),cols=ms.map(m=>({slot:m
   row('skills','Skills','Trained',a=>{const t=SKILL_IDS.filter(k=>trained(a,k)).map(k=>SKILLS[k].name);return {t:t.join(', ')||'none',n:t.length}});
   for(const k of GEAR_SLOTS)row('g_'+k,'Gear',SLOT_NAME[k]||k,a=>{const it=a.slots&&a.slots[k];return it?{t:it.name+' · '+it.ilvl,n:it.ilvl,c:qCls(it)}:{t:'empty',n:0,c:'dm'}});
   row('gs','Gear','Gear score',a=>{const g=Math.round(gearScore(a)*10)/10;return {t:String(g),n:g}});
+  row('pack','Pack','Pack',a=>{const n=a.inv?used(a):0;return {t:a.inv?n+'/'+capOf(a)+' slots':'none',n}});
+  row('pots','Pack','Potions',a=>{const p=a.inv?countKind(a,'potion'):0;return {t:String(p),n:p,c:p?'':'dm'}});
+  row('supplies','Pack','Supplies',a=>{const L=a.inv?a.inv.list.filter(e=>e.kind==='use'&&e.id):[];const t=L.map(e=>e.id+(e.n>1?' x'+e.n:'')).join(', ');return {t:t||'none',n:L.reduce((s,e)=>s+e.n,0),c:t?'':'dm'}});
+  row('quest','Pack','Quest items',a=>{const L=a.inv?a.inv.list.filter(e=>e.kind==='quest'):[];return {t:L.map(e=>e.id).join(', ')||'none',n:L.length,c:L.length?'gd':'dm'}});
   row('gold','Record','Gold',a=>({t:a.gold+'g',n:a.gold}));
   row('kills','Record','Kills',a=>({t:String(a.kills),n:a.kills}));
   row('oath','Story','Oath',a=>{const g=a.goal;if(!g)return {t:'none',n:-1,c:'dm'};const f=g.done?1:g.need?(g.progress||0)/g.need:0;

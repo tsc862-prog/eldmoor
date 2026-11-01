@@ -59,7 +59,7 @@ ok(r.ok && /inside/.test(r.where) && Array.isArray(r.townsfolk) && r.townsfolk.l
 ok(r.monsters.every(m => m.dist <= 12.01) && r.heroes.every(h => h.hp === undefined || h.party), 'look keeps to sight and never shows a stranger\'s HP');
 r = await call('status');
 ok(r.ok && r.name === a.name && r.level === 7 && Array.isArray(r.places), `status: ${r.name}, level ${r.level} ${r.cls}, oath "${r.oath}"`);
-r = await call('inventory'); ok(r.ok && r.slots && Array.isArray(r.bag), 'inventory: slots and bag');
+r = await call('inventory'); ok(r.ok && r.slots && Array.isArray(r.items) && r.capacity && r.capacity.max >= 16, 'inventory: slots, pack capacity and items');
 r = await call('move_to', {target: 'inn'}); ok(r.ok, `move_to inn (${r.going})`);
 await until(() => !(S.agents.find(x => x.id === id).pq || []).length, 20, 'reaching the inn');
 r = await call('talk', {target: 'innkeeper'}); ok(r.ok && typeof r.answer === 'string' && r.answer.length > 5, `the innkeeper answers: "${r.answer && r.answer.slice(0, 60)}"`);
@@ -67,6 +67,22 @@ r = await call('say', {text: 'Ale first, then the road.'}); ok(r.ok && a.bubble 
 r = await call('journal_write', {text: 'Day one. The innkeeper thinks I will die. I would like to disappoint him.'}); ok(r.ok && a.journal.length === 1, 'journal_write');
 r = await call('fight', {target_id: 1}); ok(!r.ok, 'fight is refused inside the town walls');
 r = await call('buy', {slot: 'head'}); ok(r.ok || /gold|better/i.test(r.error), 'buy: ' + (r.ok ? r.bought : r.error));
+// ---- the pack (issue #124): supplies, use, give, drop, quest items ----
+{const INV = await import('../src/sim/inv.js');
+ a.gold = Math.max(a.gold, 100);
+ r = await call('buy', {item: 'Redroot Draught', count: 2}); ok(r.ok && /Redroot/.test(r.bought), 'buy a supply: ' + (r.ok ? r.bought : r.error));
+ r = await call('buy', {item: 'Moonwater'}); ok(!r.ok && /Not sold/.test(r.error), 'buy refuses a supply that is not sold');
+ r = await call('inventory'); const pi = r.items.find(e => /Redroot/.test(e.item)); ok(pi && pi.kind === 'use' && /Heals 35%/.test(pi.item), 'the potions are in the pack with their numbers');
+ a.hp = maxHp(a); r = await call('use_item', {index: pi.index}); ok(!r.ok && /not hurt/.test(r.error), 'a potion is not wasted at full health');
+ a.hp = Math.floor(maxHp(a) * .3); r = await call('use_item', {index: pi.index}); ok(r.ok && a.hp > maxHp(a) * .5, 'use_item heals: ' + (r.result || r.error));
+ const other = S.agents.find(x => x !== a && x.kind === 'hero' && x.state !== 'dead' && !(x.party && x.party === a.party));
+ r = await call('give', {index: pi.index, hero_id: other.id}); ok(!r.ok && /party/.test(r.error), 'give refuses anyone outside the party: ' + r.error);
+ INV.addQuest(a, 'Cairn-Door Key'); r = await call('inventory'); const qi = r.items.find(e => e.kind === 'quest');
+ ok(qi && /cannot be sold/.test(qi.item), 'a quest item shows in the pack');
+ r = await call('drop', {index: qi.index}); ok(!r.ok && /quest/i.test(r.error), 'a quest item cannot be dropped');
+ r = await call('sell', {index: qi.index}); ok(!r.ok, 'a quest item cannot be sold');
+ r = await call('give', {index: qi.index, hero_id: other.id}); ok(!r.ok, 'a quest item cannot be given');
+ INV.take(a, 'quest', 'Cairn-Door Key', 1); a.hp = maxHp(a);}
 
 // ---- a posted job with a choice scene ----
 // Prefer a job with a choice scene; take it, and if the job-giver turns the hero away (the DM's
@@ -155,8 +171,8 @@ if (a.state !== 'dead') {
     r = P.playerAct(b.id, 'take_adventure', {job_id: h.id}); adv = S.adventures.find(x => x.id === h.id && x.phase === 'active')}
   if (adv) {
     const T = (await import('../src/data/adventures.js')).ADVENTURES[adv.tpl]; const k = T.scenes.findIndex(s => s.type === 'choice');
-    if (k >= 0) {adv.idx = adv.scenes.findIndex(s => s.k === k && s.type === 'choice'); const sc = adv.scenes[adv.idx]; sc.at = {x: b.x, y: b.y}; sc.z = 0; b.state = 'travel'; b.bag = []; b.pq = []; b.hp = maxHp(b);
-      // nothing may pull the hero off the scene while it waits: a full bag sends it home to sell, a storm home to shelter
+    if (k >= 0) {adv.idx = adv.scenes.findIndex(s => s.k === k && s.type === 'choice'); const sc = adv.scenes[adv.idx]; sc.at = {x: b.x, y: b.y}; sc.z = 0; b.state = 'travel'; b.inv = {list: []}; b.pq = []; b.hp = maxHp(b);
+      // nothing may pull the hero off the scene while it waits: a full pack of loot sends it home to sell, a storm home to shelter
       const {zoneAt} = await import('../src/world/map.js'), zw = S.weather && S.weather[zoneAt(b.x, b.y)]; if (zw) {zw.k = 'clear'; zw.until = S.gameMin + 1e4}}
     const gm = S.gameMin; let sawWait = false;
     // a monster that wanders by is waved off: this case is about the choice timing out, not a fight
