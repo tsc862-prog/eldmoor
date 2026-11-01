@@ -10,6 +10,7 @@ import {MOBS} from '../data/mobs.js';
 import {BARKS,CLASS_BARKS} from '../data/barks.js';
 import {S,clockStr} from './state.js';
 import {nearHeroes} from './spatial.js';
+import {brainLine} from './brain.js';
 
 export const COOL=20,URGENT=3,HEAR=7,CAP=20,BUBBLE=3,BANTER=60;
 const URGENT_TRIGGERS={mourn:1,epic:1,duel:1,kill:1};
@@ -32,7 +33,8 @@ export function say(a,trigger,ctx={}){
   let line=pool[Math.floor(r()*pool.length)];
   if(pool.length>1&&line===a.lastBark)line=pool[(pool.indexOf(line)+1)%pool.length];
   a.lastBark=line;
-  const text=fill(line,a,ctx),e={t:clockStr(),from:a,text,trigger};
+  const ml=a.brain&&brainLine(a,trigger,ctx); // BRAIN: cached model line for AI-played heroes, else the table line
+  const text=ml||fill(line,a,ctx),e={t:clockStr(),from:a,text,trigger};if(ml)e.ai=true;
   hear(a,e);
   for(const b of nearHeroes(a.x,a.y,HEAR)){if(b===a||b.state==='dead'||b.hidden||dist(a,b)>HEAR)continue;hear(b,e)}
   a.bubble={text,life:BUBBLE};a.chatCd=COOL}

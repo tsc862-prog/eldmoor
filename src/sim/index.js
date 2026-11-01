@@ -22,6 +22,7 @@ import {goalsTick} from './goals.js';
 import {guildsTick} from './guilds.js';
 import {rebuild} from './spatial.js';
 import {bondsTick} from './bonds.js';
+import {brainTick} from './brain.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -29,6 +30,7 @@ export {onMarketTick} from './market.js';
 export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
 export {snapshot,restore,isSave,SAVE_VERSION} from './save.js';
+export {enableBrain,disableBrain,brainStatus} from './brain.js';
 
 // Populate the world: monsters, 14 level-1 heroes per faction, the opening chronicle.
 export function init(){
@@ -48,5 +50,5 @@ export function step(dt){S.gameMin+=dt*6;
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);goalsTick(dt);guildsTick(dt);
-  narratorTick(dt);bondsTick(dt);
+  narratorTick(dt);bondsTick(dt);brainTick(dt);
   updFx(dt)}
