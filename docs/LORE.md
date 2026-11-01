@@ -52,6 +52,9 @@ Every zone has its own sky, and it turns every one to three hours. Thornvale get
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 18, raided by 4-6 heroes of level 12+.
 
+### Test fixtures (not canon)
+`TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
+
 ## Creatures
 | Creature | Zone | Levels | Drops | Quest |
 | --- | --- | --- | --- | --- |
