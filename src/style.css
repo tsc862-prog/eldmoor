@@ -79,3 +79,7 @@ button[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:va
 .ah td:nth-child(2),.ah td:nth-child(3){text-align:right}
 .up{color:var(--green)} .down{color:var(--red)}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+/* Minimap in the screen corner, drag cursor and the zoom buttons (render: chunks, zoom, pan) */
+.minimap{position:absolute;right:8px;bottom:8px;width:160px;height:100px;border:2px solid var(--edge);background:#000;image-rendering:pixelated;cursor:crosshair;box-shadow:2px 2px 0 #05060c;opacity:.92}
+.screen.drag{cursor:grabbing}
+button.zoom{min-width:34px;padding-left:6px;padding-right:6px}
