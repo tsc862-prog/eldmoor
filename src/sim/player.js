@@ -11,6 +11,9 @@
 //   - Sight: look reports what is within SIGHT tiles (scaled by weather), or the hero's town
 //     when inside it. Other heroes' HP is never reported, only "wounded" when visibly so;
 //     party members' HP only within sight.
+//   - Hearing, not telepathy (issue #123): what others say reaches the hero only in the game, as
+//     lines it hears (say within earshot, the party channel, townsfolk, the DM's narrate) in its
+//     chat buffer; never the DM's notes or log, nor another hero's journal, memories, mind or prompt.
 //   - Commands queue on a.pq and run through the ordinary movement and combat code
 //     (moveTo, strike, findMob, priestHeal from heroes.js). Reflexes keep the hero alive
 //     when the agent is slow or silent: defend when attacked (mobs pull the hero into a
@@ -128,6 +131,8 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
     return field(a,dt,null);
   default:return false}}
 
+// A line the hero heard (sim/chat.js, council.js party chat, an NPC, the DM's narrate), as the agent reads it.
+const heardText=e=>e.from&&e.from.kind==='dm'?'The narrator: '+e.text:(e.party?'[party] ':'')+(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"';
 // Notice what changed since the last step and turn it into events.
 function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills});const mh=maxHp(a);
   if(a.lvl>w.lvl)ev(a,'Reached level '+a.lvl+'.',true);
@@ -140,7 +145,7 @@ function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kil
   if(a.playChoiceNew){a.playChoiceNew=false;const adv=advOf(a),p=adv&&adv.pick;
     if(p)ev(a,'A choice on '+(p.title||'your adventure')+': '+p.frame+'. a) '+p.opts.a+'  b) '+p.opts.b+'. choose() within '+Math.max(0,Math.round(p.until-S.gameMin))+' game minutes.',true)}
   const hs=since(a.history,w.hist);for(const e of hs)if(!/^Began to choose/.test(e.text))ev(a,e.text);if(a.history&&a.history.length)w.hist=key(a.history[a.history.length-1]);
-  const cs=since(a.chat,w.chat);for(const e of cs)if(e.from!==a&&!(e.from&&e.from.id===a.id))ev(a,(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"');if(a.chat&&a.chat.length)w.chat=key(a.chat[a.chat.length-1]);
+  const cs=since(a.chat,w.chat);for(const e of cs)if(e.from!==a&&!(e.from&&e.from.kind!=='npc'&&e.from.id===a.id))ev(a,heardText(e));if(a.chat&&a.chat.length)w.chat=key(a.chat[a.chat.length-1]);
   w.hp=a.hp;w.lvl=a.lvl;w.state=a.state;w.kills=a.kills}
 
 function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*dt);
@@ -262,7 +267,7 @@ function seen(a){const R=sightOf(a),here=inTown(a)?homeOf(a):null,out={heroes:[]
   for(const b of nearHeroes(a.x,a.y,qr)){if(b===a||b.hidden||b.state==='dead'||!vis(b))continue;
     const mate=a.party&&b.party===a.party,o={id:b.id,name:b.name,fac:FAC[b.fac].name,cls:b.cls,lvl:b.lvl,dist:r1(dist(a,b)),doing:b.state};
     if(mate)o.party=true,o.hp=pct(b.hp,maxHp(b))+'%';else if(b.hp<maxHp(b)*.5)o.wounded=true;
-    if(b.guild)o.guild=b.guild.tag;if(b.player)o.agent=true;out.heroes.push(o);if(out.heroes.length>=10)break}
+    if(b.guild)o.guild=b.guild.tag;out.heroes.push(o);if(out.heroes.length>=10)break}
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone)continue;
     const o={id:m.id,name:mobName(m),lvl:m.lvl,dist:r1(dist(a,m))};if(m.elite||m.named)o.named=true;if(m.target===a)o.onYou=true;else if(m.target)o.busy=true;
     if(m.hp<m.maxhp)o.hurt=pct(m.hp,m.maxhp)+'%';out.monsters.push(o)}
@@ -399,6 +404,7 @@ const T={
   journal_write(a,{text}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});if(j.length>PK.JOURNAL)j.shift();return {ok:true,entries:j.length}},
   party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);return {ok:true,said:clean(text,PK.SAY_LEN),heard_by:n}},
   party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
+  chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+e.text:heardText(e)))}},
   propose(a,{kind,details,job_id}){need(a.fellow,'Only a Fellowship member can put something to the party.');const P=propose(a,String(kind||'').toLowerCase(),details,{job:job_id});
     if(typeof P==='string')throw new Rule(P);return {ok:true,proposal:propText(P),status:P.status,note:P.status==='open'?'The others vote; the leader settles it when all have voted or in '+Math.round(P.until-S.gameMin)+' game minutes.':P.result}},
   vote(a,{proposal_id,vote,reason}){need(a.fellow,'Only Fellowship members vote.');const P=propById(proposal_id);need(P,'No proposal '+proposal_id+'.');

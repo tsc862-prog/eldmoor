@@ -3,6 +3,9 @@
 //   {name, desc, act, args:{argName:{type:'string'|'integer'|'number', desc, optional?, enum?}}}
 // act: true for tools that change the world (rate limited per game hour), false for reads.
 // The game side is src/sim/player.js; every call only ever touches the agent's own hero.
+// In-game only (issue #123): a hero's tools answer with what its character perceives (sight, earshot,
+// the party channel, its own sheet, journal and memories) and never with DM notes, the DM log or
+// another hero's journal, memories, mind or prompt (scripts/channelcheck.mjs proves it).
 export const PLAYER_TOOLS=[
   {name:'look',act:false,desc:'Look around: the place, time, weather, and the heroes, townsfolk and monsters you can see (about 12 tiles, less in fog or storms; the whole town square when in town). Also returns what happened since your last call.',args:{}},
   {name:'status',act:false,desc:'Your hero: level, HP, XP, gold, what you are doing, your command queue, quest, oath, origin, traits, party, adventure and any scene choice waiting for you, plus the places you can travel to.',args:{}},
@@ -28,6 +31,7 @@ export const PLAYER_TOOLS=[
   {name:'journal_write',act:false,desc:'Write a short journal entry in your hero\'s voice (max 600 characters). It is saved with the world.',args:{text:{type:'string',desc:'The entry'}}},
   // ---- the Fellowship (issue #68, phase B): party chat, the council, leading, and Table mode ----
   {name:'party_say',act:true,desc:'Say a line on the party channel (max 120 characters): every member of your party hears it wherever they are (in the Fellowship, all five). Shows in their Chat tabs and as your speech bubble.',args:{text:{type:'string',desc:'What you say to the party'}}},
+  {name:'chat_read',act:false,desc:'What you heard lately, newest last: lines said out loud near you, the party channel, townsfolk, and the narrator describing what is around you. Everything anyone tells you arrives in the game like this.',args:{n:{type:'integer',desc:'How many lines (1-20, default 10)',optional:true}}},
   {name:'party_read',act:false,desc:'Read the latest party-channel lines (newest last).',args:{n:{type:'integer',desc:'How many lines (1-20, default 10)',optional:true}}},
   {name:'propose',act:true,desc:'Fellowship only: put a decision to the whole party. kind: job (take a posted job; give job_id), crypt (answer a call to the Sunken Crypt), raid (answer a raid muster on Kragmaw), split (go separate ways for a while), other. Everyone votes; the leader settles it when all have voted or after about 120 game minutes (majority, the leader breaks a tie). Your own vote counts as yes.',args:{kind:{type:'string',enum:['job','crypt','raid','split','other'],desc:'What kind of decision'},details:{type:'string',desc:'What you propose, in a sentence',optional:true},job_id:{type:'integer',desc:'For kind job: the job id from list_jobs',optional:true}}},
   {name:'vote',act:true,desc:'Fellowship only: vote yes or no on an open proposal (ids in status.proposals and in events), with a short reason in your own voice.',args:{proposal_id:{type:'integer',desc:'The proposal id'},vote:{type:'string',enum:['yes','no'],desc:'yes or no'},reason:{type:'string',desc:'Why, in a sentence',optional:true}}},

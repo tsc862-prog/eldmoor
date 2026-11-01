@@ -234,8 +234,9 @@ driven = false; // from here on tool calls arrive over sockets; the background t
 
   // the two agents play at once: A over MCP (X-Eldmoor-Hero header), B over /play/call (hero field)
   let rpc = 10;
-  const viaMcp = (hero, name, args) => post('/mcp', {jsonrpc: '2.0', id: ++rpc, method: 'tools/call', params: {name, arguments: args || {}}}, {'x-eldmoor-hero': String(hero.id)}).then(r => r.json()).then(j => JSON.parse(j.result.content[0].text));
-  const viaPlay = (hero, name, args) => post('/play/call', {hero: hero.id, tool: name, args: args || {}}).then(r => r.json());
+  // each runner names itself on every call (issue #123: a claimed hero answers only its own runner)
+  const viaMcp = (hero, name, args, runner = 'runner-A') => post('/mcp', {jsonrpc: '2.0', id: ++rpc, method: 'tools/call', params: {name, arguments: args || {}}}, {'x-eldmoor-hero': String(hero.id), 'x-eldmoor-runner': runner}).then(r => r.json()).then(j => JSON.parse(j.result.content[0].text));
+  const viaPlay = (hero, name, args, runner = 'runner-B') => post('/play/call', {hero: hero.id, tool: name, args: args || {}, runner}).then(r => r.json());
   const seen = {};
   async function agent(hero, send) {
     const out = [], line = 'I am ' + hero.name + ' and no one else.';
@@ -261,7 +262,13 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   ok(JSON.stringify(S.agents.find(x => x.id === id).playLog || []) === before, 'the first agent hero was not touched by either runner');
   let j = await viaPlay(other, 'look'); ok(j.ok === false && /not agent-played/.test(j.error), 'a call for a hero that is not agent-played is refused');
   c = await post('/play/call', {hero: 'abc', tool: 'look'}); ok(c.status === 400, 'a bad hero id is refused (400)');
-  await post('/play/narrate', {hero: hB.id, text: 'B watches the road.'});
+  // one runner never reads or plays the other's hero (issue #123)
+  c = await post('/play/call', {hero: hA.id, tool: 'journal_read', runner: 'runner-B'}); j = await c.json();
+  ok(c.status === 409 && j.ok === false && !JSON.stringify(j).includes(hA.name + ' kept'), 'runner B cannot call ' + hA.name + ' tools (409): ' + j.error);
+  j = await viaMcp(hB, 'journal_read', {}, 'runner-A'); ok(j.ok === false && j.refused, 'nor runner A ' + hB.name + ' over MCP');
+  c = await post('/play/call', {hero: hA.id, tool: 'status'}); ok(c.status === 409, 'a call naming no runner is refused for a claimed hero');
+  c = await post('/play/narrate', {hero: hA.id, text: 'Not mine to say.', runner: 'runner-B'}); ok(c.status === 409 && !(hA.playNarr || []).some(n => n.text === 'Not mine to say.'), 'narration for a hero of another runner is refused');
+  await post('/play/narrate', {hero: hB.id, text: 'B watches the road.', runner: 'runner-B'});
   ok((hB.playNarr || [])[0] && hB.playNarr[0].text === 'B watches the road.' && !(hA.playNarr || []).some(n => n.text === 'B watches the road.'), 'narration lands on the named hero only');
 
   // links age out: a quiet runner -> waiting; released or expired -> none; then free for another runner
@@ -300,7 +307,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   skew += LINK_MS + 1000; await post('/play/claim', {hero: hA.id, runner: 'page-test'});
   await until(() => BR.agentLink(hA) === 'waiting', 5, 'the link states reaching the page');
   ok(BR.agentLink(hA) === 'waiting' && BR.agentLink(hB) === 'none', `the page sees each agent's link (${BR.agentLink(hA)}, ${BR.agentLink(hB)})`);
-  const w = post('/play/call', {hero: hA.id, tool: 'wait', args: {minutes: 30}});
+  const w = post('/play/call', {hero: hA.id, tool: 'wait', args: {minutes: 30}, runner: 'page-test'});
   await until(() => BR.agentLink(hA) === 'connected', 5, 'the link turning connected');
   ok(BR.agentLink(hA) === 'connected', 'a call in flight shows as connected on the page'); await w;
   await post('/play/narrate', {hero: hB.id, text: 'Through the page.'}); await until(() => (hB.playNarr || [])[0] && hB.playNarr[0].text === 'Through the page.', 5, 'narration through the page');

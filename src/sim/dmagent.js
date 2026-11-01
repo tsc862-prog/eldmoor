@@ -11,10 +11,13 @@
 // an agent's pulls replace nothing, they just leave the scripted DM fewer empty slots (a job the
 // agent posts counts toward the board's three). No seat, no runner, or a silent runner: nothing
 // changes, nothing waits. Reads roll no dice and write nothing but the seat's own bookkeeping.
+// In-game only (issue #123): the DM speaks to the heroes through narrate and npc_say, heard by the
+// heroes in range like any line said in the world. Its notes, log_intent lines and lever reasons
+// are for the DM and the watcher; no hero tool, prompt or snapshot ever carries them.
 //
 // ---- state (plain JSON, saved with the world; created on first use only) ----
 //   S.dmAgent {world (a tag the runner keys its session by), seat, notes:{threads,characters,plans,secrets:[{id,text,about,day,t}]}, seq,
-//              day:{d, pulls, notes, intents}, calls:[{t,tool,args,ok}] newest first,
+//              day:{d, pulls, notes, intents, narr, npc}, calls:[{t,tool,args,ok}] newest first,
 //              seen:{tl, chron, log} (what dm_status last showed), stats:{calls, pulls, refused}}
 import {S,clockStr} from './state.js';
 import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
@@ -26,6 +29,8 @@ import {pull,leverMenu,LEVERS} from './levers.js';
 import {maxHp} from './heroes.js';
 import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
 import {openProps} from './council.js';
+import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
+import {ensureNpcs} from './npcs.js';
 
 // ---- knobs ----
 export const DMA={
@@ -37,6 +42,10 @@ export const DMA={
   NEAR_R:12,           // default radius of heroes_near
   PILE_HP:.35,         // a Fellowship member below this share of HP out in the field is not piled on
   PILE_R:14,           // ... within this many tiles of the pull (or in its region)
+  NARRATE_PER_DAY:12,  // narrate lines per game day (issue #123: the DM's voice in the game)
+  NPC_SAY_PER_DAY:16,  // npc_say lines per game day
+  NARRATE_MAX:240, NPC_SAY_MAX:160,
+  NARRATE_R:10,        // default radius of a narrate line around its place
 };
 const DAY=1440;
 const PILING=['mark_dangerous','custom_foe','named_foe','set_condition'];
@@ -53,7 +62,7 @@ export const dmAgentView=()=>S.dmAgent?{seat:S.dmAgent.seat,calls:S.dmAgent.call
 
 // ---- helpers ----
 const gameDay=()=>Math.floor(S.gameMin/DAY);
-function today(){const D=dmState();if(D.day.d!==gameDay())D.day={d:gameDay(),pulls:0,notes:0,intents:0};return D.day}
+function today(){const D=dmState();if(D.day.d!==gameDay())D.day={d:gameDay(),pulls:0,notes:0,intents:0,narr:0,npc:0};return D.day}
 const txt=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&(p.kind==='hero'||p.ref==='hero')?p.name||'?':p&&p.t!=null?p.t:'').join('');
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 const nOf=(v,d,lo,hi)=>{const n=Math.round(Number(v));return Number.isFinite(n)?Math.max(lo,Math.min(hi,n)):d};
@@ -99,6 +108,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
+    your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
     notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length]))}}
 
 function timelineRead(n){return {ok:true,timeline:(S.timeline||[]).slice(0,nOf(n,12,1,30)).map(e=>({day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,text:txt(e.parts)}))}}
@@ -193,6 +203,38 @@ function logIntent(text){const day=today(),t=clean(text,DMA.INTENT_MAX);if(!t)re
   if(day.intents>=DMA.INTENTS_PER_DAY)return {ok:false,error:'Enough plans logged for one game day ('+DMA.INTENTS_PER_DAY+'): keep the rest in notes.'};
   day.intents++;dmlog('agent',null,['DM agent: ',t],{by:'dm-agent',intent:t});return {ok:true,logged:t}}
 
+// ---- the DM's voice in the game (issue #123) ----
+// The owner's rule: the DM and the players talk only inside the game. These two tools are the only
+// way the DM's words reach a hero: a line the heroes in range hear (their chat buffer, so the Chat
+// tab, an agent's chat_read and events, a brain hero's snapshot), and the Table banner while a scene
+// is open. Notes, log_intent and lever reasons never reach a hero (scripts/channelcheck.mjs).
+export const NARRATOR={kind:'dm',name:'The Narrator'}; // a stub `from`, like an NPC's (sim/npcs.js), so saves stay small
+const hearLine=(b,e)=>{(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()};
+const byIdA=id=>S.agents.find(x=>x.id===id)||null;
+function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)return {ok:false,error:'Narrate what?'};
+  if((day.narr||0)>=DMA.NARRATE_PER_DAY)return {ok:false,error:'Enough narration for one game day ('+DMA.NARRATE_PER_DAY+'): let the world speak for itself.'};
+  const near=clean(a.near,60);let hs,label;
+  if(near.toLowerCase()==='table'){const sc=S.table;if(!sc)return {ok:false,error:'No Table scene is open.'};hs=sc.ids.map(byIdA).filter(alive);label='at the table'}
+  else{const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+near+'". Use a hero name or id, a town, a region name, "x,y", or "table".'};
+    const r=nOf(a.radius,DMA.NARRATE_R,4,20);label=p.label;
+    hs=S.agents.filter(b=>alive(b)&&!b.hidden&&(dist(b,p)<=r||p.town&&b.state==='town'&&b.town===p.town))}
+  const e={t:clockStr(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs)hearLine(b,e);
+  if(S.table&&hs.some(b=>S.table.ids.includes(b.id)))S.table.narr={t:e.t,text:t}; // the banner and tableView show it
+  day.narr=(day.narr||0)+1;
+  dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
+  return {ok:true,narrated:t,where:label,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
+function npcSay(a){const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)return {ok:false,error:'Say what?'};
+  if((day.npc||0)>=DMA.NPC_SAY_PER_DAY)return {ok:false,error:'Enough lines for the townsfolk for one game day ('+DMA.NPC_SAY_PER_DAY+').'};
+  ensureNpcs();const k=clean(a.npc,60).toLowerCase(),all=[...(S.npcs||[]),...(S.wanderers||[])];
+  const p=all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k);
+  if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs for ids and names).'};
+  if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return {ok:false,error:p.name+' is nowhere the heroes could hear them.'};
+  const e={t:clockStr(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
+  const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);for(const b of hs)hearLine(b,e);
+  p.bubble={text:t,life:BUBBLE};day.npc=(day.npc||0)+1;
+  dmlog('agent',null,[(p.title?p.title+' ':'')+p.name+' (DM agent): "',t,'"'],{by:'dm-agent',voice:'npc_say',npc:p.id,text:t,heard:hs.map(b=>b.id)});
+  return {ok:true,who:(p.title?p.title+' ':'')+p.name,said:t,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
+
 const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // One DM tool call: validated, answered, never thrown. The seat must be open.
 export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:false,error:'Unknown DM tool '+String(tool).slice(0,40)+'.'};
@@ -213,6 +255,8 @@ export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:f
     case 'notes_write':r=notesWrite(args);break;
     case 'pull_lever':r=pullLever(args);break;
     case 'log_intent':r=logIntent(args.text);break;
+    case 'narrate':r=narrate(args);break;
+    case 'npc_say':r=npcSay(args);break;
   }}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
   remember(tool,args,r.ok!==false);
