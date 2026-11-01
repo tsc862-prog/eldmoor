@@ -194,3 +194,11 @@ button.mini{font-size:7px;padding:3px 6px;box-shadow:none}
 .felLog .tlist{max-height:320px;overflow:auto}
 .mstar{margin-right:2px}
 .mtag.fellow{color:var(--dim)}
+/* Legends hall (ui/legends.js, issue #17) */
+ul.legends{list-style:none;margin:8px 0 0;padding:0;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
+ul.legends li.lg{line-height:1.1;cursor:default}
+ul.legends li.lgd{opacity:.8}
+.lgr{display:inline-block;min-width:22px;color:var(--dim)}
+.lgm{margin-right:4px}.lgl{color:var(--green)}.lgx{color:var(--red)}
+.lgs{float:right;color:var(--gold)}
+ul.legends .meta{margin-left:22px}

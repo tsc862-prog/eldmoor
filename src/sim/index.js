@@ -27,6 +27,7 @@ import {dmTick} from './dm.js';
 import {leverTick} from './levers.js';
 import {playerUpd} from './player.js';
 import {fellowshipTick} from './fellowship.js';
+import {legendsTick} from './legends.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -57,5 +58,5 @@ export function step(dt){S.gameMin+=dt*6;
   partyTick();fellowshipTick(dt);for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);goalsTick(dt);guildsTick(dt);
-  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);leverTick(dt);
+  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);leverTick(dt);legendsTick(dt);
   updFx(dt)}
