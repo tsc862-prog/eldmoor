@@ -109,7 +109,12 @@ const {init, step, S, enableBrain, disableBrain, brainStatus, onLog} = await imp
 const B = await import('../src/sim/brain.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {maxHp} = await import('../src/sim/index.js');
+const {setDmPolicy} = await import('../src/sim/dm.js');
 init();
+// The DM (sim/dm.js) may send heroes off on adventures at the gate, which would overrule their
+// town plans at random. These checks are about the brain, so no hero takes a job here (a policy
+// answer of null means "no hook"); the job overrule itself is checked directly in 2c.
+setDmPolicy({pickHook: () => null});
 let quietLines = 0; onLog(e => {if (e.parts.some(p => p && typeof p.t === 'string' && p.t.includes('thoughts go quiet')))quietLines++});
 
 let mode = 'valid', delay = 0, status = 200; const got = [];
@@ -402,6 +407,25 @@ console.log('parties: the leader decides, followers follow');
   // 5. scripted party unchanged: no brains, no flags, no entries
   begin(9, 8, false, false); p = form(); const z5 = p.zone; await settleAsks();
   ok(B.partyZone(F) === z5 && B.partyZone(L) === z5 && !p.set && !L.mind && !F.mind && !reqs.length, 'scripted party: zone untouched, nothing asked or logged');
+
+  // 7. the DM sends the party on an adventure: the leader's plan is overruled, the follower follows the job
+  {
+    const src = readFileSync(fileURLToPath(new URL('../src/sim/heroes.js', import.meta.url)), 'utf8');
+    const iD = src.indexOf('if(dmDepart(a,c)){brainJob(a);break}'), iP = src.indexOf('partyZone(a)');
+    ok(iD > 0 && iP > iD, 'gate order: dmDepart runs before the zone pick, and a taken job calls brainJob');
+    begin(9, 8, true, true); p = form(); const z7 = p.zone; await settleAsks();
+    if (!S.adventures) S.adventures = [];
+    S.adventures.push({id: 'braincheck-job', phase: 'active', title: 'The Drowned Bell'}); L.adv = F.adv = 'braincheck-job';
+    B.brainJob(L);
+    const e7 = L.mind.find(e => e.kind === 'townPlan');
+    ok(e7 && e7.outcome === 'overruled' && e7.error === 'the party took a job: The Drowned Bell', 'leader took a job: plan overruled ("' + (e7 && e7.error) + '")');
+    const zf = B.partyZone(F);
+    ok(zf === z7 && p.zone === z7 && F.mind[0].kind === 'follow' && F.mind[0].reason === 'follows the party on The Drowned Bell' && F.mind.find(e => e.kind === 'cryptCall').outcome === 'applied', 'follower follows the job ("' + F.mind[0].reason + '"), party zone untouched');
+    B.brainJob(F); // not a leader on its own, nothing pending: no change
+    ok(L.mind.concat(F.mind).every(e => e.outcome !== 'pending'), 'no entry left to expire');
+    S.adventures = S.adventures.filter(v => v.id !== 'braincheck-job'); L.adv = F.adv = null;
+    begin(9, 8, false, false); p = form(); B.brainJob(L); ok(!p.set && !L.mind, 'scripted leader taking a job: brainJob does nothing');
+  }
 
   // 6. a plan that really expires in town says so
   begin(9, 8, true, false); await settleAsks(); L.townStep = 2; L.brainPlan.town.t -= B.CFG.planTtl + 5; B.brainTick(1.01);

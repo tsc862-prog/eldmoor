@@ -242,12 +242,26 @@ function leaderDecides(p){const L=p.leader,dflt=p.zone,P=L.brainPlan&&L.brainPla
     stats.rejected++;if(rejections.length>=50)rejections.shift();rejections.push({kind:'townPlan',hero:L.name,why:'overruled: '+why,raw:clip(P.choice,40)});
     settle(e,'overruled',{error:why,scripted:ZONES[dflt]});return}
   lateTown(L,ZONES[dflt],'the party left before the answer came');stats.fallback++}
-function follows(a,p){const z=ZONES[p.zone],P=a.brainPlan&&a.brainPlan.town;
+// The active adventure a hero drives or joined (sim/dm.js keeps them on S.adventures), or null.
+const jobOf=a=>a&&a.adv!=null&&S.adventures?S.adventures.find(v=>v.id===a.adv&&v.phase==='active')||null:null;
+// Called at the gate right after the DM sent this hero (solo, or a party leader) on an adventure
+// (heroes.js: dmDepart runs before the zone pick, so a posted job outranks any zone plan).
+// The hero's zone plan, parked or still in flight, settles 'overruled' instead of expiring;
+// a crypt-only answer stays applied. Scripted heroes return at the first test.
+export function brainJob(a){if(!a.brain||S.brainOn===false)return;
+  const adv=jobOf(a),why=(a.party?'the party took a job: ':'took a job: ')+(adv?adv.title:'an adventure');
+  if(a.party&&a.party.leader===a)a.party.set=1; // the zone question is closed for this trip
+  const P=a.brainPlan&&a.brainPlan.town;
+  if(P&&!P.used&&P.t<=clk&&clk-P.t<=CFG.planTtl){P.used=1;const e=mindGet(a,P.mid);
+    if(P.choice==null)settle(e,'applied');else settle(e,'overruled',{error:why})}
+  for(const e of a.mind||[])if(e.outcome==='pending'&&inflight.has(a.id+':'+e.id)){
+    if(e.kind==='townPlan')settle(e,'overruled',{error:why});else if(e.kind==='cryptCall')settle(e,'late',{error:'left town before the answer came'})}}
+function follows(a,p){const z=ZONES[p.zone],P=a.brainPlan&&a.brainPlan.town,job=jobOf(p.leader);
   if(P&&!P.used&&P.t<=clk&&clk-P.t<=CFG.planTtl){P.used=1;const e=mindGet(a,P.mid); // the crypt answer stays in force (brainOk)
-    if(P.choice==null||P.choice===z)settle(e,'applied');
-    else settle(e,'overruled',{error:'the party goes to '+z+'; '+p.leader.name+' leads',scripted:z})}
+    if(P.choice==null||(P.choice===z&&!job))settle(e,'applied');
+    else settle(e,'overruled',{error:job?'the party took a job: '+job.title:'the party goes to '+z+'; '+p.leader.name+' leads',scripted:job?null:z})}
   lateTown(a,z,'left town with the party before the answer came');
-  mindNote(a,'follow',{choice:z,reason:'follows the party to '+z,leader:p.leader.name})}
+  mindNote(a,'follow',{choice:z,reason:job?'follows the party on '+job.title:'follows the party to '+z,leader:p.leader.name})}
 // Whether a hero would answer a Sunken Crypt call; scripted heroes always do.
 export function brainOk(a,what){if(!a.brain||S.brainOn===false||what!=='crypt')return true;
   const p=a.brainPlan&&a.brainPlan.town;return !(p&&p.t<=clk&&clk-p.t<=CFG.planTtl&&p.crypt===false)}

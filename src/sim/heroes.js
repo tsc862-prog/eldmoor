@@ -24,7 +24,8 @@ import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
 import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
-import {townZone,partyZone,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
+import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
+import {dmDepart,dmTravel,dmHunt} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
@@ -39,7 +40,7 @@ export function newQuest(a){const z=huntZone(a);const opts=Object.keys(MOBS).fil
 export function makeHero(f,cls,guild,wait){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
     bag:[],kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
-    wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0};
+    wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0,adv:null};
   a.traits=rollTraits(cls);newQuest(a);
   a.slots=emptySlots();
   assignRace(a,S.agents); // people, skin, hair, name and home town (data/races.js)
@@ -160,14 +161,19 @@ export function updAgent(a,dt){
       else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2;a.linger=a.cls==='Warrior'?4+rnd()*2:2;seekParty(a)}
       else{if(a.linger>0&&!a.party&&seekParty(a)==='wait'){a.linger--;a.wait=1;break}
         if(a.linger>0&&a.party&&partyMates(a).some(b=>b.state==='town'&&b.townStep<2)){a.linger--;a.wait=1;break}
+        // Order is deliberate: a posted adventure outranks any zone plan, so the DM goes first
+        // and an AI hero's (or leader's) town plan is then settled 'overruled' (brainJob).
+        if(dmDepart(a,c)){brainJob(a);break} // DM: take a posted adventure or resume one (sim/dm.js)
         const tz=a.party?partyZone(a):townZone(a); // BRAIN: zone pick (scripted = huntZone(a); a party's zone, which an AI leader may set)
         say(a,'depart',{zone:ZONES[tz]});
         a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate)}}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
+    if(a.adv&&dmTravel(a,dt))break; // DM: walking to the adventure's next scene
     if(checkEncounter(a,dt))break; // road encounter in reach: detour and resolve (sim/encounters.js)
     if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
     if(!a.dest)a.dest=zonePoint(a.zone,null,c.gate);if(moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state='hunt';a.dest=null}break}
   case 'hunt':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
+    if(a.adv&&dmHunt(a,dt))break; // DM: the adventure's fight, rest or next leg instead of the kill-N hunt
     a.hp=Math.min(mh,a.hp+mh*.025*dt);const mates=partyMates(a);
     if(a.party)priestHeal(a,mates);
     if(a.hp<mh*.45*tm(a,'retreat')||a.bag.length>=Math.round(8*tm(a,'greed'))||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.hp<maxHp(b)*.3)||isStorm(a.zone)){goHome(a);break}
