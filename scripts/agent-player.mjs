@@ -23,7 +23,7 @@
 // Options: --hero NAME|ID, --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N
 // (default 20), --budget USD (default 1.00, total for this run), --tool-turns N (model round
 // trips per turn, default 12), --model (or AGENT_MODEL; default claude-sonnet-5-5), --effort (or
-// AGENT_EFFORT; default medium), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
+// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; only 'anthropic' today), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
 // .env), --new.
 // The key is read from the environment or the .env file and handed only to the SDK process.
 // The agent gets no built-in tools (no files, no shell, no web): only the game's MCP tools.
@@ -33,7 +33,7 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
-import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero} from './agent-sessions.mjs';
+import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const DEFAULT_AGENT_MODEL = 'claude-sonnet-5-5'; // claude-api skill (cached 2026-10-06): Sonnet 5.5, $2 in / $10 out per 1M tokens
@@ -76,8 +76,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const env = envFile ? loadEnv(dirname(resolve(envFile))) : loadEnv();
   const base = String(opt('url', env.PLAY_URL || 'http://127.0.0.1:8787')).replace(/\/$/, '');
   const maxTurns = Math.max(1, Number(opt('max-turns', 20))), budget = Math.max(.01, Number(opt('budget', 1))), toolTurns = Math.max(2, Number(opt('tool-turns', 12)));
-  const model = opt('model', env.AGENT_MODEL || DEFAULT_AGENT_MODEL), effort = opt('effort', env.AGENT_EFFORT || 'medium');
-  if (!env.ANTHROPIC_API_KEY) {console.error('No ANTHROPIC_API_KEY in the environment or .env (use --env FILE).'); process.exit(1)}
 
   const health = await fetch(base + '/play/health', {signal: AbortSignal.timeout(5000)}).then(r => r.json()).catch(e => ({error: e.message}));
   if (!health.ok || !health.connected || !(health.heroes || []).length) {console.error(`The game at ${base} is not ready: ${health.error || (!health.connected ? 'no game page connected' : 'no agent-played hero')}.`); process.exit(1)}
@@ -99,7 +97,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
   const SESSION_FILE = sessionPath(heroId);
-  const saveSess = () => saveSession(sess, {model, url: base});
+  // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
+  const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
+    {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
+  if (rs.provider !== 'anthropic') {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which is not supported yet (see the Mixed minds issue). This runner plays Claude only; use --provider anthropic.`); await release(); process.exit(1)}
+  if (!env.ANTHROPIC_API_KEY) {console.error('No ANTHROPIC_API_KEY in the environment or .env (use --env FILE).'); await release(); process.exit(1)}
+  sess.runner = rs;
+  const {model, effort} = rs;
+  const saveSess = () => saveSession(sess, {url: base});
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | up to ${maxTurns} turns, budget ${money(budget)}`);
 
   const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'};

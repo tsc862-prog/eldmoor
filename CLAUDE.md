@@ -110,7 +110,10 @@ is silent, and scene choices time out to the scripted branch, so the world never
   **connected** (calling tools), **waiting** (a runner holds it but is thinking or between
   turns), **no runner**.
 - Sessions: one file per hero, `logs/agents/<heroId>.json` (gitignored), with the Agent SDK
-  session id, system prompt, turns and cost; the next run for that hero resumes it. Runners
+  session id, system prompt, turns, cost and the hero's runner settings (`runner: {provider,
+  model, effort}`, default `anthropic` + `claude-sonnet-5-5`; flags override, then saved, then
+  env), so each hero can keep its own mind; only `anthropic` runs today (Mixed minds will add
+  others; the relay already routes by hero id only). The next run for that hero resumes it. Runners
   never write another hero's file. A file whose hero name no longer matches (a new world
   reused the id) and the old session on `--new` are moved to `logs/agents/old/`, never
   overwritten. The single `logs/agent-session.json` of #75 migrates on first run.

@@ -329,6 +329,15 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   L = SS.loadSession(6, 'Bo', fresh(6, 'Bo'), {logs, startNew: true});
   ok(L.sess.sessionId === null && readdirSync(join(logs, 'agents', 'old')).some(f => f.startsWith('6-Bo-')), '--new starts afresh and keeps the old conversation in logs/agents/old/');
   ok(SS.migrateLegacy(logs) === null, 'migration runs once');
+  // per-hero runner settings ride with the session: each hero may later have its own provider and model
+  const D = {provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'medium'};
+  let RS = SS.runnerSettings({}, {}, D).runner; ok(RS.provider === 'anthropic' && RS.model === D.model && RS.effort === 'medium', 'runner settings default to anthropic and the current model');
+  const kept = SS.loadSession(6, 'Bo', fresh(6, 'Bo'), {logs}).sess; kept.runner = {provider: 'anthropic', model: 'claude-haiku-5-5', effort: 'low'}; SS.saveSession(kept, {}, logs);
+  RS = SS.runnerSettings(SS.loadSession(6, 'Bo', fresh(6, 'Bo'), {logs}).sess, {}, D).runner;
+  ok(RS.model === 'claude-haiku-5-5' && RS.effort === 'low' && SS.loadSession(5, 'Cyd', fresh(5, 'Cyd'), {logs}).sess.runner === undefined, 'a hero keeps its own saved model and effort; other heroes are unaffected');
+  RS = SS.runnerSettings({runner: {provider: 'anthropic', model: 'claude-haiku-5-5', effort: 'low'}}, {effort: 'high'}, D).runner; ok(RS.model === 'claude-haiku-5-5' && RS.effort === 'high', 'a command-line flag overrides one saved setting');
+  RS = SS.runnerSettings({runner: {provider: 'ollama', model: 'llama', effort: null}}, {}, D).runner; ok(RS.provider === 'ollama' && RS.model === 'llama', 'a saved non-anthropic provider is kept as is (the runner refuses it until Mixed minds lands)');
+  RS = SS.runnerSettings({runner: {provider: 'ollama', model: 'llama'}}, {provider: 'anthropic'}, D).runner; ok(RS.provider === 'anthropic' && RS.model === D.model, 'switching provider drops the old provider\'s model');
   rmSync(logs, {recursive: true, force: true});
 }
 

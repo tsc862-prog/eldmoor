@@ -39,6 +39,23 @@ export function loadSession(heroId, heroName, fresh, {logs = LOGS, startNew = fa
   if (s && (s.heroName !== heroName || startNew)) note = 'earlier session kept at ' + archive(f, s, logs);
   return {sess: fresh(), note};
 }
+// Per-hero runner settings, kept in the session file as sess.runner = {provider, model, effort}.
+// Each hero can have its own mind: today only the 'anthropic' runner exists (scripts/agent-player.mjs,
+// Claude Agent SDK), but the relay routes by hero id alone and never assumes a model or an SDK, so
+// a runner for another provider can read the same file later. Precedence: command-line overrides,
+// then the hero's saved settings, then the defaults (environment / built-in). Returns the settings
+// and whether they changed what was saved.
+export const DEFAULT_PROVIDER = 'anthropic';
+export function runnerSettings(sess, overrides = {}, defaults = {}) {
+  const saved = sess && sess.runner && typeof sess.runner === 'object' ? sess.runner : {};
+  const pick = k => overrides[k] != null && overrides[k] !== '' ? String(overrides[k]) : saved[k] != null ? String(saved[k]) : defaults[k] != null ? String(defaults[k]) : null;
+  const r = {provider: pick('provider') || DEFAULT_PROVIDER, model: pick('model'), effort: pick('effort')};
+  // a provider switch drops the saved model and effort (they belong to the old provider)
+  if (saved.provider && r.provider !== saved.provider) {r.model = overrides.model || defaults.model || null; r.effort = overrides.effort || defaults.effort || null}
+  const changed = JSON.stringify(saved) !== JSON.stringify(r);
+  return {runner: r, changed};
+}
+
 // Which hero a runner takes, from /play/health's heroes ([{id,name,alive,link}]):
 // --hero NAME|ID names one (case-insensitive name, or id); without it the first living hero
 // with no live runner (link 'none'). Returns {hero} or {error} with the list to choose from.
