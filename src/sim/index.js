@@ -34,7 +34,7 @@ export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
 export {snapshot,restore,isSave,SAVE_VERSION} from './save.js';
 export {enableBrain,disableBrain,brainStatus} from './brain.js';
-export {markPlayer,playerAct,playerHero,playerSeat,playerNarrate} from './player.js';
+export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
 
 // Populate the world: monsters, 14 level-1 heroes per faction, the opening chronicle.
 export function init(){

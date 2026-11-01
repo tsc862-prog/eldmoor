@@ -438,8 +438,14 @@ function summarize(r){if(r.ok===false)return 'x '+clean(r.error,160);const skip=
 export function playerNarrate(id,text){const a=hero(Number(id));if(!a||!a.player)return false;const t=clean(text,600);if(!t)return false;
   const N=a.playNarr||(a.playNarr=[]);N.unshift({t:clockStr(),text:t});if(N.length>PK.NARR)N.pop();return true}
 
-// The one agent-played hero a host serves (the first living one), or null.
-export const playerHero=()=>(S.playerHeroes||[]).map(hero).find(a=>a&&a.player&&a.state!=='dead')||null;
-// The seat: the agent-played hero the game serves, even after it died (its tools then answer "dead").
-export const playerSeat=()=>playerHero()||(S.playerHeroes||[]).map(hero).filter(a=>a&&a.player).pop()||null;
+// Agent-played heroes (issue #93: several at once, one agent each). With an id, these answer
+// for that hero only (null when it is not agent-played); without one, the old single-hero path:
+// playerHero() the first living agent-played hero, playerSeat() that hero or, when every agent
+// hero has died, the last of them (its tools then answer "dead").
+const seatOf=id=>{const a=hero(Number(id));return a&&a.player?a:null};
+export const playerHero=id=>{if(id!=null){const a=seatOf(id);return a&&a.state!=='dead'?a:null}
+  return (S.playerHeroes||[]).map(hero).find(a=>a&&a.player&&a.state!=='dead')||null};
+export const playerSeat=id=>id!=null?seatOf(id):playerHero()||(S.playerHeroes||[]).map(hero).filter(a=>a&&a.player).pop()||null;
+// Every agent-played hero, living or dead, in the order they were marked.
+export const playerSeats=()=>(S.playerHeroes||[]).map(hero).filter(a=>a&&a.player);
 export {CHOICE_MIN};
