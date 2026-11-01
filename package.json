@@ -19,6 +19,7 @@
     "agent": "node scripts/agent-player.mjs",
     "playcheck": "node scripts/playcheck.mjs",
     "tablecheck": "node scripts/tablecheck.mjs",
+    "campcheck": "node scripts/campcheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs"
   },
