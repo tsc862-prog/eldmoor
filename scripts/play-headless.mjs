@@ -12,6 +12,8 @@
 //                                                  set to agents: all five are agent-played (npm run fellowship);
 //                                                  --no-relay keeps the world off the brain relay, --turn-ms MS the table
 //                                                  turn budget, --watch never pauses for scenes
+//   node scripts/play-headless.mjs --dm            open the DM seat (issue #66) for npm run dm -- --url http://127.0.0.1:8789
+//                                                  (with --agents 0 no hero is agent-played: only the DM agent plays)
 //   node scripts/play-headless.mjs --runners       runners can be started and stopped over HTTP (scripts/runners.mjs)
 //
 // Options: --port (or PLAY_PORT, default 8789), --speed (world speed, default 1),
@@ -24,7 +26,7 @@ import http from 'node:http';
 import {existsSync, readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat} from '../src/sim/index.js';
 import {onLog} from '../src/sim/chronicle.js';
 import {hostCall} from '../src/sim/player-host.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
@@ -44,8 +46,9 @@ export function localBackend(hostOpts) {
   return {
     call: (heroId, tool, args) => {const a = heroId != null ? playerSeat(heroId) : playerSeat();
       return a ? hostCall(a.id, tool, args, hostOpts) : Promise.resolve({ok: false, error: heroId != null ? `Hero #${heroId} is not agent-played.` : 'No agent-played hero.', offline: true})},
+    dmCall: (tool, args) => Promise.resolve(dmAct(tool, args)), // the DM seat (issue #66): answered at once, no waits
     narrate: (heroId, text) => {const a = heroId != null ? playerSeat(heroId) : playerSeat(); if (a) playerNarrate(a.id, text)},
-    info: () => ({connected: true, heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', ...(a.fellow ? {fellow: true, role: a.fellowRole || null, lead: !!(a.party && a.party.fellow && a.party.leader === a), table: !!(S.table && S.table.ids.includes(a.id))} : {})}))}),
+    info: () => ({connected: true, dm: dmSeatOn(), heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', ...(a.fellow ? {fellow: true, role: a.fellowRole || null, lead: !!(a.party && a.party.fellow && a.party.leader === a), table: !!(S.table && S.table.ids.includes(a.id))} : {})}))}),
   };
 }
 
@@ -75,11 +78,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.log(`[play] Fellowship: ${S.fellowship.name} (${S.fellowship.ids.length} members, Minds: agents)`);
   }
   TABLE.speed = speed; if (opt('turn-ms', null)) TABLE.turnMs = Math.max(1000, Number(opt('turn-ms'))); if (flag('watch')) TABLE.mode = 'off';
-  const names = String(opt('hero', '') || '').split(',').map(s => s.trim()).filter(Boolean), want = Math.max(1, Math.min(8, Number(opt('agents', names.length || 1))));
+  const names = String(opt('hero', '') || '').split(',').map(s => s.trim()).filter(Boolean), want = Math.max(flag('dm') ? 0 : 1, Math.min(8, Number(opt('agents', names.length || 1)))); // --dm --agents 0: the DM agent alone
   for (const n of names) {const a = chooseHero({name: n}); if (!a) throw new Error('no living hero called ' + n); markPlayer(a, true)}
   for (let k = 0; !S.fellowship && playerSeats().filter(a => a.state !== 'dead').length < want && k < 16; k++) {
     const a = chooseHero({cls: opt('class', null), fac: k % 2}); if (!a) break; markPlayer(a, true)}
-  if (!playerSeats().length) throw new Error('no hero to play');
+  if (flag('dm')) {setDmSeat(true); console.log('[play] DM seat open: npm run dm -- --url http://127.0.0.1:' + port)}
+  if (!playerSeats().length && !dmSeatOn()) throw new Error('no hero to play');
   for (const h of playerSeats()) console.log(`[play] agent hero: ${h.name} (#${h.id}), level ${h.lvl} ${h.cls} of ${h.fac ? 'the Warband' : 'the Concord'}${h.state === 'dead' ? ' (dead)' : ''}`);
   if (!quiet) onLog(e => {const t = e.parts.map(p => typeof p === 'string' ? p : p && p.kind === 'hero' ? p.name : p && p.t || '').join(''); if (playerSeats().some(h => t.includes(h.name))) console.log(`[world ${e.t}] ${t}`)});
 

@@ -24,6 +24,8 @@
     "campcheck": "node scripts/campcheck.mjs",
     "ratecheck": "node scripts/ratecheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",
+    "dm": "node scripts/dm-agent.mjs",
+    "dmcheck": "node scripts/dmcheck.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs"
   },
   "devDependencies": {

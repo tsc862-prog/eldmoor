@@ -15,12 +15,13 @@ import {initFrames,renderFrames} from './ui/frames.js'; // Fellowship-first UI (
 import {initSheet,renderSheet} from './ui/sheet.js';
 import {applyLayout} from './ui/layout.js';
 import {initMindCtl} from './ui/mindctl.js';
-import {initRunners} from './ui/runners.js'; // app runners: start and stop agent runners from the page
+import {initRunners} from './ui/runners.js';
+import {initDmSeat} from './ui/dmseat.js'; // the DM seat (#66): open it, Start DM / Stop DM // app runners: start and stop agent runners from the page
 
 boot(init); // restores the localStorage save when there is one, else init()
 const renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
 initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initTable();
-initSheet();initFrames();applyLayout();initMindCtl(()=>{renderHero();renderFrames();renderFellowship();renderMinds()});initRunners(()=>{renderHero();renderFrames();renderFellowship();renderMinds()});
+initSheet();initFrames();applyLayout();initMindCtl(()=>{renderHero();renderFrames();renderFellowship();renderMinds()});initRunners(()=>{renderHero();renderFrames();renderFellowship();renderMinds()});initDmSeat(()=>renderMinds());
 select(S.pinned&&typeof S.pinned.x==='number'?S.pinned:ranked()[0]); // keep following the saved hero
 if(S.fellowship)setView('fellow'); // the Fellowship is the story: frame it by default (#68)
 

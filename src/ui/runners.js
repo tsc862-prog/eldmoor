@@ -71,6 +71,15 @@ export function fellowshipRunnerControl(){poll(true);const d=el('div','runctl fb
   const s=el('span','dm runstate r-'+(r&&!note.fellowship?r.state:'none'),stateLine(r,'fellowship'));s.title=r&&r.lines&&r.lines.length?r.lines.slice(-6).join('\n'):'';d.append(s);
   return d}
 
+// The DM agent's runner (#66): Start DM / Stop DM and its state, for the DM panel and the Minds panel's
+// DM row (src/ui/dmseat.js). It plays no hero, so it polls whether or not a hero is agent-played.
+export function dmRunnerControl(){poll(true);const d=el('span','runctl');const r=runnerByKey('dm'),on=r&&!DONE[r.state];
+  if(on)d.append(button('Stop DM','stop','dm',null,'Stop the DM agent (it lets go of the seat; the scripted DM runs on)'));
+  else{const b=button('Start DM','start','dm',null,info&&!info.enabled?HOW_TEXT:'Start the DM agent from the relay (npm run dm, no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
+  const s=el('span','dm runstate r-'+(r&&!note.dm?r.state:'none'),' '+stateLine(r,'dm'));s.title=r&&r.lines&&r.lines.length?r.lines.slice(-6).join('\n'):'';d.append(s);
+  return d}
+export const dmRunnerSig=()=>{poll(true);const r=runnerByKey('dm');return (r?r.state+':'+r.turns+':'+(r.model||'')+':'+(r.error||''):'-')+':'+(note.dm||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks.dm||'')};
+
 // The mind a runner starts with. models: pulled local models (from the relay's /health), may be empty.
 export function runnerPick(k,models){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude)';
   const opts=[['','saved mind'],['anthropic','Claude']].concat((models||[]).map(m=>['ollama:'+m,m+' · local']));

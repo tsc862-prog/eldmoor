@@ -61,7 +61,7 @@ export const LK={
   TL_PER_DAY:2,      // timeline entries the levers may write per game day
   REASON_MAX:160,
 };
-const BY=['scripted','model','agent'];
+const BY=['scripted','model','agent','dm-agent']; // dm-agent: the DM played by an agent (sim/dmagent.js, issue #66)
 const DAY=1440;
 // Parameter names no lever may have: the hero's numbers, life and death, and loot.
 const FORBIDDEN=/^(hp|maxhp|xp|lvl_?up|level_?up|stats?|abil|cls|class|hardcore|kill|slay|revive|resurrect|save_?hero|loot|item|epic|gold_?grant|gear)$/i;
@@ -149,7 +149,7 @@ export function pull(name,raw,o={}){const L=ensureLevers(),def=LEVERS[name],by=o
     const sum=['Lever ',gd(name),' refused: '+why+(reason?' (wanted: '+reason+')':'')+'.'];
     if(o.log===false)res.entry={summary:sum,detail:det};else dmlog('lever',o.adv||null,sum,det,{town:o.town,heroes:o.heroes});return res};
   if(!def)return fail('no such lever');
-  if(!BY.includes(by))return fail('caller must be scripted, model or agent');
+  if(!BY.includes(by))return fail('caller must be scripted, model, agent or dm-agent');
   if(!reason)return fail('a reason is required');
   if(def.stub&&!IMPL[def.stub]&&!def.native)return fail('not available yet');
   const p=validate(def,raw);if(typeof p==='string')return fail(p);
