@@ -27,6 +27,7 @@ function buildBase(){const cv=document.createElement('canvas');cv.width=W;cv.hei
 
 // canvas: the #minimap element. cam: the shared camera (camX/camY in world px, vw/vh the
 // view size in world px). onCenter(wx,wy) is called with a world-pixel point on click.
+const ROLE_DOT={tank:'#8fb4ff',healer:'#a6f07a',dps:'#ff7a6a'}; // brighter cuts of the Fellowship role colours
 const MIND_COL='#7fd6c2'; // same teal as the AI-played badge
 export function createMinimap(canvas,cam,onCenter){
   const ctx=canvas.getContext('2d');let base=null,k=1;
@@ -50,6 +51,9 @@ export function createMinimap(canvas,cam,onCenter){
       dot(a.x,a.y,d,FAC[a.fac].color);ctx.globalAlpha=1}
     for(const a of S.agents){if(a.hidden||a.state==='dead'||!(a.brain||a.player))continue; // AI- or agent-played heroes get a ring
       ctx.strokeStyle=MIND_COL;ctx.lineWidth=Math.max(1,Math.round(k/2));const r=big+2;ctx.strokeRect(Math.round(a.x*k-r/2)+.5,Math.round(a.y*k-r/2)+.5,r,r)}
+    // Fellowship members (#94): bright role-coloured dots with a dark edge, on top of everyone else
+    if(S.fellowship)for(const k in S.fellowship.slots){const a=S.agents.find(x=>x.id==S.fellowship.slots[k]);if(!a||a.hidden||a.state==='dead')continue;
+      dot(a.x,a.y,big+2,'#05060c');dot(a.x,a.y,big,ROLE_DOT[k.replace(/\d+$/,'')]||ROLE_DOT.dps)}
     const sel=cam.sel;if(sel&&!sel.hidden&&sel.state!=='dead'){dot(sel.x,sel.y,big+1,'#000');dot(sel.x,sel.y,d+1,SEL_COL)}
     // view rectangle, kept inside the canvas
     const lw=Math.max(1,Math.round(k/2)),x0=Math.max(0,(cam.camX-cam.vw/2)/T*k),y0=Math.max(0,(cam.camY-cam.vh/2)/T*k);

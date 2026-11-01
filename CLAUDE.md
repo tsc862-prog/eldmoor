@@ -249,7 +249,11 @@ play (`npm run agent`) is still Claude-only until the provider-neutral runner la
   top heroes, auction house, clock; `controls.js` speed, view (incl. Follow Fellowship)
   and selection; `fellowship.js` the Fellowship panel (founding, roster, sheet editor,
   campaign log), the Memory tab and the Chronicle's "Fellowship only" filter; `table.js` the
-  Table mode banner and the View group's Table switch.
+  Table mode banner and the View group's Table switch. Fellowship-first UI (#94):
+  `frames.js` party frames above the map, `sheet.js` the side-by-side sheet overlay,
+  `layout.js` folds the world panels into a "World" group while a Fellowship exists,
+  `mindctl.js` per-member mind control and the Developer toggle (with a Fellowship, AI/Agent
+  buttons show only on members unless Developer is on).
 - `scripts/headless.mjs`: imports `src/sim/index.js` directly (no DOM stubs),
   steps the world and prints a summary from `S`.
 

@@ -19,6 +19,7 @@
 
   <div class="main">
     <div class="col">
+      <div class="frames" id="frames" hidden aria-label="Fellowship party frames"></div>
       <div class="screen" id="screen">
         <canvas id="cv" aria-label="Map of Eldmoor showing heroes and monsters"></canvas>
         <div class="hint" id="hint">Tap a hero to follow</div>
@@ -50,6 +51,7 @@
           <button id="wExport" title="Download the save as a JSON file">Export</button>
           <button id="wImport" title="Restore a downloaded JSON save">Import</button>
           <button id="wNew" title="Erase the save and start a fresh world">New world</button>
+          <button id="wDev" class="dev" hidden aria-pressed="false" title="Developer: show the AI and Agent buttons on every hero, not only the Fellowship">Developer</button>
           <span class="status" id="wStatus" aria-live="polite"></span>
           <input type="file" id="wFile" accept="application/json,.json" hidden>
         </div>
@@ -60,39 +62,39 @@
       </section>
     </div>
 
-    <aside class="col">
-      <section class="panel fel" id="fellowship" aria-live="off">
+    <aside class="col" id="side">
+      <section class="panel fel" id="fellowship" aria-live="off" data-o="1">
         <h2>Fellowship</h2>
         <div id="felbody"></div>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="2" data-world="1">
         <h2>Factions</h2>
         <div class="facs" id="facs"></div>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="3">
         <h2 class="hrow">Chronicle <button id="chronFel" class="mini" hidden aria-pressed="true" title="Show only the Fellowship and the world&rsquo;s major events">Fellowship only</button></h2>
         <ul class="log" id="log"></ul>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="4">
         <details class="tlbox" id="mindsbox" open>
           <summary>Minds at play <span class="mcount" id="mindsCount">0</span></summary>
           <ul class="minds" id="minds"></ul>
         </details>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="5" data-world="5">
         <details class="tlbox" id="timeline" open>
           <summary>Timeline</summary>
           <div class="tfilter" id="tfilter" role="group" aria-label="Timeline filter"></div>
           <ul class="tlist" id="tlist"></ul>
         </details>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="6" data-world="6">
         <details class="tlbox" id="legendsbox">
           <summary>Legends</summary>
           <ul class="legends" id="legends"></ul>
         </details>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="7" data-world="7">
         <details class="tlbox" id="dmlog">
           <summary>Dungeon Master</summary>
           <div class="tfilter" id="dmfilter" role="group" aria-label="DM log filter"></div>
@@ -100,23 +102,31 @@
           <ul class="tlist dmlist" id="dmlist"></ul>
         </details>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="8" data-world="4">
         <h2>Graveyard</h2>
         <ul class="log" id="fallen" style="max-height:220px"></ul>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="9" data-world="3">
         <h2>Guilds</h2>
         <table class="ah"><thead><tr><td class="dm">Guild</td><td class="dm">Crypt</td><td class="dm">Score</td></tr></thead><tbody id="guilds"></tbody></table>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="10" data-world="2">
         <h2>Top heroes</h2>
         <ul class="tops" id="tops"></ul>
       </section>
-      <section class="panel">
+      <section class="panel" data-o="11" data-world="8">
         <h2>Auction house</h2>
         <table class="ah"><tbody id="ah"></tbody></table>
       </section>
+      <section class="panel worldgrp" id="worldgrp" hidden>
+        <details class="tlbox" id="worldbox">
+          <summary>World</summary>
+          <div class="dm wsub">Factions, top heroes, guilds, graveyard, timeline, legends, the Dungeon Master and the auction house.</div>
+          <div class="worldbody" id="worldbody"></div>
+        </details>
+      </section>
     </aside>
+    <div class="sheetov" id="sheetov" hidden></div>
   </div>
 </div>
 <script type="module" src="./src/main.js"></script>
