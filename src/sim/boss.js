@@ -26,7 +26,7 @@ export function updBoss(dt){const boss=S.boss,agents=S.agents;
   if(boss.hp<=0){boss.alive=false;boss.respawn=300;const f=boss.dmg[0]>=boss.dmg[1]?0:1;S.facStats[f].bosses++;
     log(fac(f),' slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'!');
     for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')record(a,'Slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'!');
-    const gs=new Set();for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')gs.add(a.guild);gs.forEach(g=>g.bosses++);
+    const gs=new Set();for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')gs.add(a.guild);gs.delete(null);gs.forEach(g=>g.bosses++);
     for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid'){gainXp(a,400);a.gold+=40;if(rnd()<.4)getEpic(a,pickA(BOSS_EPICS),'Kragmaw');goalEvent(a,'boss')}
     for(const a of agents)if(a.raid){a.raid=false;goHome(a)}}}
 

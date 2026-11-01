@@ -19,6 +19,7 @@ import {chatTick} from './chat.js';
 import {npcsTick} from './npcs.js';
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
+import {guildsTick} from './guilds.js';
 import {rebuild} from './spatial.js';
 import {bondsTick} from './bonds.js';
 import {brainTick} from './brain.js';
@@ -34,20 +35,20 @@ export {enableBrain,disableBrain,brainStatus} from './brain.js';
 // Populate the world: monsters, 14 level-1 heroes per faction, the opening chronicle.
 export function init(){
   spawnAll();
-  for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%5],S.GUILDS[f*2+(i%2)],i*.6+rnd()*1.5);
+  for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%5],null,i*.6+rnd()*1.5);
   log('Twenty-eight new heroes of ',fac(0),' and ',fac(1),' arrive in ',{t:'Eldmoor',c:'gd'},'. Every one of them is level 1.');
   log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
-  log('Four guilds compete for glory, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
+  log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
   log({t:'Hardcore rules:',c:'gd'},' every hero has one life. The fallen stay fallen.');
 }
 
 // Advance the world by dt real seconds at 1x (6 game minutes per second).
 export function step(dt){S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
-    const a=makeHero(r.fac,r.cls,r.guild,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', joins ',{t:'<'+r.guild.tag+'> '+r.guild.name,c:'f'+r.fac},' in ',homeOf(a).name,'.')}
+    const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
-  chatTick(dt);npcsTick(dt);goalsTick(dt);
+  chatTick(dt);npcsTick(dt);goalsTick(dt);guildsTick(dt);
   narratorTick(dt);bondsTick(dt);brainTick(dt);
   updFx(dt)}

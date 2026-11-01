@@ -87,7 +87,7 @@ export function fall(a,cause){
   S.facStats[a.fac].fallen++;
   S.fallen.unshift({name:a.name,fac:a.fac,lvl:a.lvl,cls:a.cls,cause,t:a.diedAt});if(S.fallen.length>15)S.fallen.pop();
   goalEvent(a,'died');
-  S.recruits.push({fac:a.fac,guild:a.guild,cls:a.cls,t:8+rnd()*8});
+  S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8});
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
 
@@ -96,7 +96,7 @@ export function agentDie(a,killer){
   const lv={t:'(level '+a.lvl+')',c:'dm'};
   record(a,'Fell at level '+a.lvl+', slain by ',killer.kind==='hero'?killer:killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+MOBS[killer.type].name,'.');
   bondEvent(a,'died',[killer]);
-  for(const x of nearHeroes(a.x,a.y,10))if(x!==a&&x.state!=='dead'&&(x.guild===a.guild||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
+  for(const x of nearHeroes(a.x,a.y,10))if(x!==a&&x.state!=='dead'&&((a.guild&&x.guild===a.guild)||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
   if(killer.kind==='hero'){killer.honor++;S.facStats[killer.fac].honor++;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
     killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
     say(killer,'kill',{target:a.name});
@@ -104,11 +104,11 @@ export function agentDie(a,killer){
     avenged(killer,a);
     if(killer.nemesis[a.id]){log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
     else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
-    const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&x.guild===a.guild);
+    const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild);
     mates.forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran swears the whole guild; lesser deaths bind just their party
     inheritGrudge(a,killer);
     goalEvent(killer,'slay',a);
-    if(mates.length&&a.lvl>=4)log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
+    if(mates.length&&a.guild&&a.lvl>=4)log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
     fall(a,'slain by '+killer.name);}
   else if(killer.kind==='boss'){log(a,' ',lv,' was incinerated by ',{t:'Kragmaw',c:'gd'},'.');fall(a,'incinerated by Kragmaw')}
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
