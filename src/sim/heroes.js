@@ -17,6 +17,7 @@ import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerCl
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 import {record} from './history.js';
+import {checkEncounter} from './encounters.js';
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
@@ -91,6 +92,7 @@ export function agentDie(a,killer){
 
 export function strike(a,t){
   const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<(c.crit||.08);if(crit)d*=1.8;
+  if(a.blessed){d*=1.2;a.blessed=0} // wayside shrine blessing: one strike at +20% (sim/encounters.js)
   if(t.kind==='hero')d*=.6*(CLS[t.cls].arm||1);
   d=Math.round(d);t.hp-=d;if(c.range>2)bolt(a,t,c.orb||c.acc);
   pop(t.x,t.y-.6,crit?d+'!':String(d),crit?'#ffe060':'#ffffff');
@@ -134,6 +136,7 @@ export function updAgent(a,dt){
         say(a,'depart',{zone:ZONES[a.party?a.party.zone:zoneFor(a.lvl)]});
         a.zone=a.party?a.party.zone:zoneFor(a.lvl);a.state='travel';a.dest=zonePoint(a.zone)}}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
+    if(checkEncounter(a,dt))break; // road encounter in reach: detour and resolve (sim/encounters.js)
     if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
     if(!a.dest)a.dest=zonePoint(a.zone);if(moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state='hunt';a.dest=null}break}
   case 'hunt':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
@@ -160,7 +163,7 @@ export function updAgent(a,dt){
     if(a.state==='return')say(a,'flee',{mob:MOBS[m.type].name});
     break}
   case 'regroup':{a.regT-=dt;if(a.regT<=0||!a.dest||moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state=a.regNext==='return'?'return':leaderOf(a)?'follow':'hunt';a.dest=null;a.regNext=null}break}
-  case 'return':if(steerClear(a,dt,moveTo))break;if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;
+  case 'return':if(steerClear(a,dt,moveTo))break;if(checkEncounter(a,dt))break;if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;
   case 'ghost':if(moveTo(a,c.grave.x,c.grave.y,dt,4)){a.state='town';a.hp=mh*.5;a.townStep=0;a.wait=2;pop(a.x,a.y-.6,'REVIVED','#9ad0ff')}break;
   case 'duel':{const b=a.target;if(!b||b.state!=='duel'||b.target!==a){a.state='hunt';a.target=null;break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
