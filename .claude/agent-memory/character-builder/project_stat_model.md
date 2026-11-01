@@ -12,6 +12,8 @@ The owner found the old Stats tab confusing ("different stats all over the place
 **Why:** one true figure per stat, each explainable by a breakdown.
 **How to apply:** any new stat source (talents, races, buffs) should be a new breakdown entry in `build()` in stats.js, never a parallel multiplier in heroes.js/mobs.js. Level terms `lvlHp`/`lvlAtk` absorb what old gear gave the average hero; recalibrate them, not item rates, if heroes drift.
 
+**Calibrated constants (final):** `lvlHp=13.3l+max(.5l,4.6l-8)`, `lvlAtk=2.1l-1.6-.01l^2`, ARMOR_RATE .0017, DAMAGE_PER_ILVL .68, ARMOR_CLASS plate 1 / leather .25-.3 / cloth .2-.25, crit seasoning `.0006*(l-11)^2` past L11 (needed: old Precision piled up at L20, crit fell 27% without it). All bands landed within ~5% of main; 6x120 deaths matched.
+
 **Calibration method:** a measurement script samples living heroes every 3 min over 4x120-min runs and averages health/attack/damage taken/crit by band (1-5, 6-10, 11-15, 16+); compare against a `git archive origin/main` export in the scratchpad (src has no bare imports, so it runs without node_modules). 120-min death counts vary a lot (56-105 on the same build), so use 6 runs per side, not 3.
 
 **Gotcha:** the session scratchpad is shared with other agents' files; keep scripts in a private subfolder.

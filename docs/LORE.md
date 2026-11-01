@@ -168,7 +168,7 @@ Class priorities (primary / secondary): Warrior Brawn / Grit; Mage Wits / Insigh
 - **Health**: class base, a share per level, Grit modifier x level, +10 for every epic ever looted, and +5% per *vital* item.
 - **Attack**: class base, a share per level, the class's primary score modifier (weighted more as the hero levels), weapon damage, +3 per epic looted.
 - **Defense**: the share of every blow turned aside. A Warrior's training turns aside a fifth; item armor and *warding* add to it; no one turns aside more than half.
-- **Crit**: class base (Rogues 25%, everyone else 8%), Reflex, and +3% per *keen* item. A critical blow strikes for 1.8x.
+- **Crit**: class base (Rogues 25%, everyone else 8%), a veteran's seasoning past level 11 (about +5% by level 20), Reflex, and +3% per *keen* item. A critical blow strikes for 1.8x.
 - **Speed**: blows per second (a swing every 1.1 s), +8% per *swift* item.
 
 Scores worn on items count everywhere a score does: a +2 Grit cloak adds hit points and also helps Survival rolls.

@@ -25,6 +25,9 @@ export const ARMOR_RATE=.0017;       // defense per armor point
 export const EPIC_HP=10,EPIC_ATK=3;  // every epic ever looted (a.epics), as before #88
 export const BASE_CRIT=.08;          // classes without their own crit
 const CRIT_PER=.008,CRIT_REF=1.5;    // crit per Reflex modifier point, around the average hero
+// Seasoning: past level 11 a veteran's blows land true more often (what the old Precision stat gave the
+// average high-level hero): +0.6% at 12, +2.2% at 17, +4.9% at 20.
+export const lvlCrit=l=>l>11?.0006*(l-11)*(l-11):0;
 // Level terms. Health and attack per level absorb what the old gear stats (Vigor, Might) gave an
 // average hero of that level, so population figures stay where they were.
 export const lvlHp=l=>Math.round(13.3*l+Math.max(.5*l,4.6*l-8));
@@ -66,9 +69,10 @@ function build(a){
   if(def>DEF_CAP){bd.defense.push({src:'cap',label:'cap '+pct(DEF_CAP),value:DEF_CAP-def});def=DEF_CAP}
   // Crit
   const rm=mod(a,'reflex'),cc=c.crit||BASE_CRIT,rc=(rm-CRIT_REF)*CRIT_PER,kc=(P.keen||0)*PROPS.keen.v;
-  bd.crit.push({src:'class',label:a.cls+' base',value:cc},{src:'score:reflex',label:'Reflex '+sg(rm),value:rc});
+  const lc=lvlCrit(l);bd.crit.push({src:'class',label:a.cls+' base',value:cc});if(lc)bd.crit.push({src:'level',label:'Level '+l+' (seasoned)',value:lc});
+  bd.crit.push({src:'score:reflex',label:'Reflex '+sg(rm),value:rc});
   if(kc)bd.crit.push({src:'property',label:'keen'+(P.keen>1?' x'+P.keen:''),value:kc});
-  const crit=Math.max(0,cc+rc+kc);
+  const crit=Math.max(0,cc+lc+rc+kc);
   // Speed
   const sw=(P.swift||0)*PROPS.swift.v,speed=(c.spd||1)+sw;
   bd.speed.push({src:'class',label:a.cls+' swing',value:c.spd||1});
