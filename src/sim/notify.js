@@ -2,12 +2,20 @@
 // with the next tool result. Urgent events end a pending `wait` early (sim/player.js waitOver).
 // Kept in its own module so the Fellowship's council and Table mode (sim/council.js,
 // sim/table.js) can tell an agent "your turn" without importing the player module.
+// Runner pacing (issue #126): an event also says whether it should start the agent's next turn
+// (sim/pace.js). urgent=2 marks the ones that cannot wait (attacked, badly hurt, a choice, a table
+// scene, a camp alarm: e.w=2, a turn at once; urgent=3 for a choice or a table turn, which must be answered
+// in time: e.w=3, at once even when the runner has used up its immediate turns); other urgent events and the `wake` ones (a party line,
+// the narrator, a person speaking to the hero) start a turn once the runner's minimum gap has passed.
 import {clockStr} from './state.js';
 
 export const EV_MAX=40;
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 
-export function ev(a,text,urgent){if(!a)return;const e={n:(a.playEvN=(a.playEvN||0)+1),t:clockStr(),text:clean(text,240)};if(urgent)e.u=1;
+export function ev(a,text,urgent,wake){if(!a)return;const e={n:(a.playEvN=(a.playEvN||0)+1),t:clockStr(),text:clean(text,240)};if(urgent)e.u=1;
+  if(urgent===3||wake===3)e.w=3;else if(urgent===2||wake===2)e.w=2;else if(wake)e.w=1;
   (a.playEv||(a.playEv=[])).push(e);if(a.playEv.length>EV_MAX)a.playEv.shift()}
 // Only agent-played heroes read events; scripted heroes are skipped so their saves stay small.
-export const notify=(a,text,urgent)=>{if(a&&a.player)ev(a,text,urgent)};
+export const notify=(a,text,urgent,wake)=>{if(a&&a.player)ev(a,text,urgent,wake)};
+// How strongly an event calls for the agent's next turn: 2 at once, 1 after the runner's gap, 0 not at all.
+export const wakeLevel=e=>e?e.w||(e.u?1:0):0; // 3 must answer now, 2 at once, 1 after the gap, 0 never

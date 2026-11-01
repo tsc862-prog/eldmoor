@@ -11,7 +11,8 @@
 // (scripts/agent-player.mjs --hero <id>), 'fellowship' plays every agent-played Fellowship member
 // (scripts/fellowship.mjs), 'dm' the DM agent (scripts/dm-agent.mjs, once installed; one at most). Each runner has a
 // key ('hero:12', 'fellowship'), a state (starting, live, waiting, stopping, stopped, crashed), pid,
-// uptime, turns and cost (read from its turn lines), provider and model (from its claim, else as
+// uptime, turns and cost (read from its turn lines), turns per minute and the last turn's time (issue
+// #126), what its pacing waits for (its last "[pace]" line), provider and model (from its claim, else as
 // asked), the last lines of its output and, when it crashed, its last error line. Output goes to
 // logs/runners/<key>.log (AGENT_LOGS moves logs/ for tests).
 //
@@ -24,7 +25,8 @@
 // Safety: off unless enabled (--runners / RELAY_RUNNERS=1); only loopback sockets with a localhost
 // Host; only no Origin (local tools) or the game page's origin; a hero must be one the game names as
 // agent-played (and not already held by a live runner); providers limited to RUNNER_PROVIDERS, model
-// names to MODEL_RE; maxTurns and budget capped per kind (local models: no budget, turns capped); at
+// names to MODEL_RE; maxTurns and budget capped per kind (local models: no budget, and no turn cap unless
+// one is asked: a local runner plays until stopped, issue #126; Claude and OpenAI keep the kind's default); at
 // most MAX_RUNNERS at once, and at most CLAUDE_SLOTS concurrent Claude requests across them.
 import {spawn} from 'node:child_process';
 import {mkdirSync, appendFileSync, readFileSync, existsSync} from 'node:fs';
@@ -34,13 +36,23 @@ import {fileURLToPath} from 'node:url';
 import {LOGS, RUNNER_PROVIDERS, sessionPath} from './agent-sessions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-// Claude slots: concurrent Claude requests the app's runners may add (env RUNNER_CLAUDE_MAX). Each Claude
-// runner makes one request at a time, so a hero runner takes 1 slot and a Fellowship runner takes one per
-// Claude member, at most what is free (it then runs with --claude-concurrency so its members share them).
+// Claude slots: concurrent Claude turns the app's runners may run (env RUNNER_CLAUDE_MAX, at least 1). A
+// supervised Claude runner leases a slot for each turn (POST /play/runner/slot, released after the turn;
+// scripts/pacing.mjs withClaudeSlot) and waits its turn when all are taken, so any number of Claude runners
+// can be started (five members and the DM always fit) while at most this many talk to the API at once.
+// A Fellowship runner also gets --claude-concurrency so its members queue inside it (scene turns first).
 // The relay itself keeps RELAY_ANTHROPIC_CONCURRENCY (default 2) for brain calls; keep the sum of the two
 // within the API org's concurrent-request limit (default 2 + 3 = 5). Local (Ollama) runners take none.
-export const CLAUDE_SLOTS = 3;
-export const MAX_RUNNERS = 5, STOP_GRACE_MS = 6000, KEEP_LINES = 12, MAX_BODY = 4096, KEEP_DONE = 20;
+export const CLAUDE_SLOTS = 3, LEASE_MS = 15 * 60000, LEASE_WAIT_MS = 20000;
+// At most MAX_RUNNERS at once (env RELAY_MAX_RUNNERS). SEATS: the Fellowship's five and the DM, which always
+// fit whatever the setting: a runner for a Fellowship member, the Fellowship runner or the DM is refused only
+// when SEATS such runners already run.
+export const SEATS = 6;
+// The Claude model a runner started from the app plays when neither the request nor the hero's saved settings name
+// one (the owner's cost ask, #126): Haiku. Terminal runners keep their own default (Sonnet). AGENT_MODEL / DM_MODEL
+// in the relay's environment override it.
+export const APP_CLAUDE_MODEL = 'claude-haiku-5-5';
+export const MAX_RUNNERS = 6, STOP_GRACE_MS = 6000, KEEP_LINES = 12, MAX_BODY = 4096, KEEP_DONE = 20, TPM_WINDOW = 10 * 60000;
 export const MODEL_RE = /^[A-Za-z0-9][\w.:\/+-]{0,99}$/; // the relay's (providers/index.mjs), kept here so this module has no SDK imports
 export const HOW = 'Runners are off. Start the relay with runners on: npm run relay -- --runners (or set RELAY_RUNNERS=1, or use start-eldmoor.cmd).';
 // Kinds of runner. defaults: what the terminal runner uses; caps: the most a request may ask.
@@ -65,7 +77,8 @@ const stripAnsi = s => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 const num = v => v === undefined || v === null || v === '' ? null : Number(v);
 
 // Check a start request against the kinds, providers and caps. Returns {req} or {error, code}.
-export function checkStart(b, heroes, {running = []} = {}) {
+const seatRunner = r => r.kind === 'dm' || r.kind === 'fellowship' || !!r.fellow;
+export function checkStart(b, heroes, {running = [], max = MAX_RUNNERS} = {}) {
   if (!b || typeof b !== 'object') return {error: 'bad body', code: 400};
   const kind = b.kind == null ? 'hero' : b.kind, K = RUNNER_KINDS[kind];
   if (!K) return {error: 'unknown runner kind (one of: ' + Object.keys(RUNNER_KINDS).join(', ') + ')', code: 400};
@@ -76,7 +89,7 @@ export function checkStart(b, heroes, {running = []} = {}) {
   const mt = num(b.maxTurns), bu = num(b.budget);
   if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
   if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};
-  req.maxTurns = mt ?? K.defaults.maxTurns;
+  req.maxTurns = mt; // null: the runner's own default (Claude/OpenAI: the kind's default; a local mind: until stopped)
   req.budget = local ? null : bu ?? K.defaults.budget; // a local model costs nothing: turns are its only cap
   const known = (heroes || []);
   if (K.needsHero) {
@@ -85,7 +98,7 @@ export function checkStart(b, heroes, {running = []} = {}) {
     const h = known.find(x => x.id === id);
     if (!h) return {error: `Hero #${id} is not agent-played in the game (press Agent on it first).`, code: 404};
     if (!h.alive) return {error: `${h.name} is dead. Hardcore: one life.`, code: 409};
-    req.hero = id; req.name = h.name;
+    req.hero = id; req.name = h.name; if (h.fellow) req.fellow = true;
   } else if (K.noHeroes) {
     if (!kindInstalled(K)) return {error: K.missing || `${K.label} is not installed.`, code: 501};
     req.name = K.label;
@@ -96,13 +109,14 @@ export function checkStart(b, heroes, {running = []} = {}) {
   }
   req.key = K.key(req);
   if (running.some(r => r.key === req.key)) return {error: `A ${K.label} for ${req.name} is already running.`, code: 409};
-  if (running.length >= MAX_RUNNERS) return {error: `At most ${MAX_RUNNERS} runners at once. Stop one first.`, code: 429};
+  if (running.length >= max && !(seatRunner(req) && running.filter(seatRunner).length < SEATS)) return {error: `At most ${max} runners at once (RELAY_MAX_RUNNERS). Stop one first.`, code: 429};
   return {req};
 }
 
 // The command line for a runner (no key, no shell): node <script> --url <base> ...
 export function runnerArgs(req, base) {
-  const K = RUNNER_KINDS[req.kind], a = [K.script, '--url', base, ...K.args(req), '--max-turns', String(req.maxTurns)];
+  const K = RUNNER_KINDS[req.kind], a = [K.script, '--url', base, ...K.args(req)];
+  if (req.maxTurns != null) a.push('--max-turns', String(req.maxTurns));
   if (req.budget != null) a.push('--budget', String(req.budget));
   if (req.provider) a.push('--provider', req.provider);
   if (req.model) a.push('--model', req.model);
@@ -114,7 +128,13 @@ export function runnerArgs(req, base) {
 //   play: attachPlay()'s return (backend, linkOf, runnerOf, claimed, dropRunner)
 //   base: () => the URL runners use to reach this server (http://127.0.0.1:<port>)
 export function attachRunners(server, {play, enabled = false, origin = 'http://localhost:5173', base, log = console.log, spawnImpl = spawn, logs = LOGS, env = process.env, now = () => Date.now()} = {}) {
-  const claudeMax = Number.isFinite(Number(env.RUNNER_CLAUDE_MAX)) && env.RUNNER_CLAUDE_MAX !== '' && env.RUNNER_CLAUDE_MAX != null ? Math.max(0, Number(env.RUNNER_CLAUDE_MAX)) : CLAUDE_SLOTS;
+  const claudeMax = Number.isFinite(Number(env.RUNNER_CLAUDE_MAX)) && env.RUNNER_CLAUDE_MAX !== '' && env.RUNNER_CLAUDE_MAX != null ? Math.max(1, Number(env.RUNNER_CLAUDE_MAX)) : CLAUDE_SLOTS;
+  const maxRunners = Number(env.RELAY_MAX_RUNNERS) >= 1 ? Math.round(Number(env.RELAY_MAX_RUNNERS)) : MAX_RUNNERS;
+  // Claude slot leases: lease id -> {key, at}; waiters get the next free one in order
+  const leases = new Map(), waiters = []; let leaseSeq = 0;
+  const grantNext = () => {for (const [id, l] of leases) if (now() - l.at > LEASE_MS) leases.delete(id); // a lease never held forever
+    while (waiters.length && leases.size < claudeMax) {const w = waiters.shift(); const id = 'L' + (++leaseSeq); leases.set(id, {key: w.key, at: now()}); clearTimeout(w.t); w.res(id)}};
+  const dropLeases = key => {for (const [id, l] of leases) if (l.key === key) leases.delete(id); grantNext()};
   // the provider a hero's runner will use: the request's, else the hero's saved runner settings, else the default
   const providerFor = (id, asked) => {if (asked) return asked;
     try {const f = typeof id === 'string' ? join(logs, 'agents', id + '.json') : sessionPath(id, logs); if (existsSync(f)) {const j = JSON.parse(readFileSync(f, 'utf8')); if (j && j.runner && j.runner.provider) return j.runner.provider}} catch {}
@@ -144,9 +164,14 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     return {key: r.key, kind: r.kind, hero: r.hero ?? null, heroes: ids, name: r.name, state: stateOf(r), pid: r.pid,
       startedAt: new Date(r.started).toISOString(), uptime: Math.round(((r.ended || now()) - r.started) / 1000),
       turns: r.turns, cost: Math.round(r.cost * 10000) / 10000, provider: (mind && mind.provider) || r.provider || null, model: (mind && mind.model) || r.model || null,
-      maxTurns: r.maxTurns, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
+      maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' : r.local ? 'until stopped' : 'up to ' + RUNNER_KINDS[r.kind].defaults.maxTurns + ' turns' + (r.kind === 'fellowship' ? ' each' : ''),
+      ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
       log: relative(ROOT, r.logFile).replace(/\\/g, '/')};
   }
+  // turns per minute over the last TPM_WINDOW (or the uptime when shorter) and the last turn's time
+  function turnRate(r) {const t = now(), since = Math.max(r.started, t - TPM_WINDOW), n = (r.turnTimes || []).filter(x => x >= since).length, mins = Math.max(1 / 6, ((r.ended || t) - since) / 60000);
+    const last = r.turnTimes && r.turnTimes.length ? r.turnTimes[r.turnTimes.length - 1] : null;
+    return {turnsPerMin: Math.round(n / mins * 10) / 10, lastTurnAt: last ? new Date(last).toISOString() : null, lastTurnAgo: last ? Math.round(((r.ended || t) - last) / 1000) : null}}
   const list = () => [...table.values()].map(view);
 
   function start(req) {
@@ -157,7 +182,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     const write = line => {try {appendFileSync(logFile, line + '\n')} catch {}};
     write(`=== ${new Date().toISOString()} start ${req.kind} ${req.name} | node ${args.join(' ')}`);
     let child;
-    try {child = spawnImpl(process.execPath, args, {cwd: ROOT, env: {...env, ELDMOOR_SUPERVISED: '1'}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true})}
+    try {child = spawnImpl(process.execPath, args, {cwd: ROOT, env: {...env, ELDMOOR_SUPERVISED: '1', ELDMOOR_RUNNER_KEY: req.key, AGENT_MODEL: env.AGENT_MODEL || APP_CLAUDE_MODEL, DM_MODEL: env.DM_MODEL || APP_CLAUDE_MODEL}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true})}
     catch (e) {return {error: 'could not start: ' + e.message}}
     r.child = child; r.pid = child.pid;
     const take = (buf, err) => {
@@ -165,7 +190,8 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       const parts = r.partial.split(/\r?\n/); r.partial = parts.pop();
       for (const line of parts) {if (!line.trim()) continue;
         write(line); r.lines.push(line.slice(0, 300)); if (r.lines.length > KEEP_LINES) r.lines.shift();
-        if (/\[turn \d+/.test(line)) r.turns++;
+        if (/\[turn \d+/.test(line)) {r.turns++; (r.turnTimes || (r.turnTimes = [])).push(now()); if (r.turnTimes.length > 200) r.turnTimes.shift()}
+        const pc = line.match(/\[pace\] (.*)$/); if (pc) r.pace = pc[1].slice(0, 160);
         const c = line.match(/\| run \$(\d+\.\d+)/); if (c) r.cost = Number(c[1]);
         if (err || /failed|error|not ready|refused|No ANTHROPIC|is not|cannot|could not/i.test(line)) r.lastErr = line.slice(0, 300);
       }};
@@ -183,11 +209,12 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       write(`=== ${new Date().toISOString()} ${r.state}${code != null ? ' (exit ' + code + ')' : ''}${r.error ? ': ' + r.error : ''}`);
       log(`[runners] ${r.key} ${r.name} ${r.state}${r.error ? ': ' + r.error : ''} (${r.turns} turns${r.cost ? ', $' + r.cost.toFixed(4) : ''})`);
       if (r.pid) play.dropRunner(`${host}:${r.pid}`); // its claims, in case it could not release them
+      dropLeases(r.key);
       const done = [...table.values()].filter(x => x.done); // keep a few finished runners for the page
       if (done.length > KEEP_DONE) table.delete(done[0].key);
     }
     table.delete(req.key); table.set(req.key, r);
-    log(`[runners] started ${req.kind} runner for ${req.name} (pid ${r.pid}): ${req.provider || 'saved provider'}${req.model ? ' ' + req.model : ''}, ${req.maxTurns} turns${req.budget != null ? ', $' + req.budget.toFixed(2) : ''}`);
+    log(`[runners] started ${req.kind} runner for ${req.name} (pid ${r.pid}): ${req.provider || 'saved provider'}${req.model ? ' ' + req.model : ''}, ${req.maxTurns != null ? req.maxTurns + ' turns' : req.local ? 'until stopped' : 'default turns'}${req.budget != null ? ', $' + req.budget.toFixed(2) : ''}`);
     return {runner: view(r)};
   }
 
@@ -227,24 +254,37 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     // The runners' output (narration, tool results, the DM's thinking) is for the watcher's page only (issue #123):
     // a request without the page's origin (another local process, a runner) gets the states without the lines.
     if (path === '/play/runner' && req.method === 'GET') {const page = o === origin, rs = enabled ? list().map(v => page ? v : {...v, lines: [], error: v.error ? 'see the runner log' : null}) : [];
-      return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), max: MAX_RUNNERS, claude: {slots: claudeMax, used: running().reduce((t, r) => t + (r.claude || 0), 0)}, kinds, providers: RUNNER_PROVIDERS, runners: rs})}
+      return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), max: maxRunners, seats: SEATS, claude: {slots: claudeMax, used: leases.size, waiting: waiters.length}, kinds, providers: RUNNER_PROVIDERS, runners: rs})}
     if (req.method !== 'POST') return send(404, {error: 'not found'});
     if (!enabled) return send(403, {error: 'runners are off', how: HOW});
     let b; try {b = await readBody(req)} catch (e) {return send(400, {error: e.message})}
     if (path === '/play/runner/start') {
-      const c = checkStart(b, heroes(), {running: running()});
+      const c = checkStart(b, heroes(), {running: running(), max: maxRunners});
       if (c.error) {log(`[runners] start refused: ${c.error}`); return send(c.code, {ok: false, error: c.error})}
       if (c.req.kind === 'hero' && play.claimed(c.req.hero)) return send(409, {ok: false, error: `${c.req.name} already has a live agent runner (one agent per hero).`});
       if (c.req.kind === 'dm') {const d = play.dmInfo ? play.dmInfo() : null; // the DM seat (#66)
         if (d && !d.seat) return send(409, {ok: false, error: 'The DM seat is closed: open it first (Dungeon Master panel, "Open seat").'});
         if (d && d.claimed) return send(409, {ok: false, error: 'The DM seat already has a live runner (one DM at a time).'})}
-      // Claude slots (see CLAUDE_SLOTS): how many concurrent Claude requests this runner can make
+      // Claude slots (see CLAUDE_SLOTS): its Claude minds lease a slot per turn, so starting never waits on them
       const K = RUNNER_KINDS[c.req.kind], ids = K.session ? [K.session] : K.heroes(c.req, heroes()), want = ids.filter(id => providerFor(id, c.req.provider) === 'anthropic').length;
-      const used = running().reduce((t, r) => t + (r.claude || 0), 0), free = Math.max(0, claudeMax - used);
-      if (want && !free) {const why = `All ${claudeMax} Claude runner slot(s) are in use (RUNNER_CLAUDE_MAX; the API org caps concurrent requests, shared with the relay). Stop a Claude runner, or play this one with a local model.`; log(`[runners] start refused: ${why}`); return send(429, {ok: false, error: why})}
-      c.req.claude = Math.min(want, free); if (c.req.kind === 'fellowship' && want) c.req.claudeConcurrency = c.req.claude;
+      c.req.claude = want; if (c.req.kind === 'fellowship' && want) c.req.claudeConcurrency = Math.min(want, claudeMax);
+      c.req.local = ids.length > 0 && ids.every(id => providerFor(id, c.req.provider) === 'ollama'); // no turn cap unless asked (issue #126)
       const s = start(c.req); if (s.error) return send(500, {ok: false, error: s.error});
       return send(200, {ok: true, runner: s.runner});
+    }
+    // A supervised runner's Claude turn: lease a slot (waits up to LEASE_WAIT_MS, then {ok:false, busy}; the
+    // runner asks again) and release it after the turn. Only for a live runner of this supervisor.
+    if (path === '/play/runner/slot') {
+      const key = typeof b.key === 'string' ? b.key : '', r = table.get(key);
+      if (!r || r.done) return send(404, {ok: false, error: 'no such live runner'});
+      grantNext();
+      if (leases.size < claudeMax && !waiters.length) {const id = 'L' + (++leaseSeq); leases.set(id, {key, at: now()}); return send(200, {ok: true, lease: id, slots: claudeMax})}
+      const id = await new Promise(res => {const w = {key, res}; w.t = setTimeout(() => {const i = waiters.indexOf(w); if (i >= 0) waiters.splice(i, 1); res(null)}, LEASE_WAIT_MS); waiters.push(w)});
+      return send(200, id ? {ok: true, lease: id, slots: claudeMax} : {ok: false, busy: true, slots: claudeMax, waiting: waiters.length});
+    }
+    if (path === '/play/runner/slot/release') {
+      if (typeof b.lease === 'string' && leases.has(b.lease)) {leases.delete(b.lease); grantNext()}
+      return send(200, {ok: true});
     }
     if (path === '/play/runner/stop') {
       let key = typeof b.key === 'string' ? b.key : null;
