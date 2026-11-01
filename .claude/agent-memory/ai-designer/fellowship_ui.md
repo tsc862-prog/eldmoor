@@ -14,3 +14,5 @@ With a Fellowship, AI/Agent control belongs to its members only (owner direction
 - The layout switch moves existing panel nodes (data-o / data-world in index.html) rather than rebuilding, so listeners and open state survive. A new world panel needs both attributes.
 - Fellowship slot changes are instant on death (offerReplacement runs in onDeath), so the "dead" state the UI can show is usually "replaced"; read `F.past` for the previous holder.
 - Related: [[party-rules]].
+
+#114: each member appears once with live stats, in the party frames. The Fellowship panel's roster is now a settings list (renderSettings: role chip, name, Sheet, Remove, Fill/Add, mind row), no level/HP/status. Chose a panel list over a per-frame gear popover: the mind row's selects would be lost to the frames' 0.3 s re-render in a popover, and frames.js stays untouched. Frames' cycle button and the mind row both set fellowBrain/fellowAgent.

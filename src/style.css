@@ -181,6 +181,7 @@ button.mini{font-size:7px;padding:3px 6px;box-shadow:none}
 .felroster{display:flex;flex-direction:column;gap:4px}
 .fm{display:grid;grid-template-columns:58px 1fr auto;gap:6px;align-items:center;background:var(--panel2);padding:4px 6px}
 .fm .ftools{display:flex;gap:4px}
+.fm .fn{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .fm .fmind{grid-column:1/-1}
 .mindrow{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 .mseg{display:inline-flex;gap:2px}
