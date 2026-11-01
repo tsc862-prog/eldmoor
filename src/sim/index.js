@@ -1,7 +1,7 @@
 // Simulation entry point. DOM-free: the browser (src/main.js) and the headless
 // harness (scripts/headless.mjs) both import init() and step() from here.
 import {rnd} from '../core/rng.js';
-import {CITY} from '../world/map.js';
+import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
 import {S} from './state.js';
 import {log,fac} from './chronicle.js';
@@ -36,7 +36,7 @@ export function init(){
 // Advance the world by dt real seconds at 1x (6 game minutes per second).
 export function step(dt){S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
-    const a=makeHero(r.fac,r.cls,r.guild,1);if(rnd()<.5)log('A new ',r.cls.toLowerCase(),', ',a,', joins ',{t:'<'+r.guild.tag+'> '+r.guild.name,c:'f'+r.fac},' in ',CITY[r.fac].name,'.')}
+    const a=makeHero(r.fac,r.cls,r.guild,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', joins ',{t:'<'+r.guild.tag+'> '+r.guild.name,c:'f'+r.fac},' in ',homeOf(a).name,'.')}
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);goalsTick(dt);

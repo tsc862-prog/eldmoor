@@ -415,13 +415,14 @@ export const SPR={
     ".RR....RR."]],
 };
 
-// Hero body 10x12: hair/helm (H), skin (S) with eye (E), class accent pauldrons
-// and chest emblem (A), faction tabard (B) with darker trim (D), legs (L), boots (K).
+// Hero body 10x12: class helm or hood (H) with the people's hair (R) showing at its
+// rim and over the ears, skin (S) with eye (E), class accent pauldrons and chest
+// emblem (A), faction tabard (B) with darker trim (D), legs (L), boots (K).
 // Columns 8-9 are free for the weapon drawn by heroSprite.
 const HERO_BODY=[
   "..HHHH....",
-  ".HHHHHH...",
-  ".HSSSSH...",
+  ".RHHHHR...",
+  ".RSSSSR...",
   ".SSESES...",
   "..SSSS....",
   ".ADDDDA...",
@@ -441,14 +442,17 @@ const WEAPON={
   Rogue:[[8,4,'W'],[8,5,'W'],[8,6,'W'],[8,7,'A'],[0,4,'W'],[0,5,'W'],[0,6,'W'],[0,7,'A']],
 };
 
-// Hero: faction-coloured tabard, class weapon on the right, class headgear, skin tone.
+// Hero: faction-coloured tabard, class weapon on the right, class headgear, and the
+// skin and hair of the hero's people (a.skin, a.hair from data/races.js; a hero made
+// without a race falls back to the faction's first skin tone and dark hair).
 // frame 0 is the idle pose; frame 1 steps the legs apart and lifts the weapon arm.
 export function heroSprite(a,ghost,frame=0){
-  frame=frame?1:0;const key='h'+a.fac+a.cls+a.skin+(ghost?'g':'')+frame;if(sprCache[key])return sprCache[key];
+  frame=frame?1:0;const skin=a.skin||FAC[a.fac].skin[0],hair=a.hair||'#2a2020';
+  const key='h'+a.fac+a.cls+(a.race||'')+skin+hair+(ghost?'g':'')+frame;if(sprCache[key])return sprCache[key];
   const rows=HERO_BODY.map(r=>r.split(''));
   if(frame){rows[10]=HERO_LEGS1[0].split('');rows[11]=HERO_LEGS1[1].split('')}
   for(const [x,y,ch] of WEAPON[a.cls]||[]){const yy=y-frame;if(yy>=0&&yy<12)rows[yy][x]=ch}
   const c=CLS[a.cls],f=FAC[a.fac];
-  const map=ghost?{H:'#d8ecff',S:'#d8ecff',E:'#b8d4f4',A:'#b8d4f4',B:'#a8c8f0',D:'#98b8e0',L:'#88a8d0',K:'#7898c0',W:'#c8e0ff',O:'#ffffff'}
-    :{H:c.head,S:a.skin,E:'#1a1218',A:c.acc,B:f.color,D:f.dark,L:'#3a2f2a',K:'#241c18',W:c.wep,O:c.orb||c.wep};
+  const map=ghost?{H:'#d8ecff',R:'#c8e0f8',S:'#d8ecff',E:'#b8d4f4',A:'#b8d4f4',B:'#a8c8f0',D:'#98b8e0',L:'#88a8d0',K:'#7898c0',W:'#c8e0ff',O:'#ffffff'}
+    :{H:c.head,R:hair,S:skin,E:'#1a1218',A:c.acc,B:f.color,D:f.dark,L:'#3a2f2a',K:'#241c18',W:c.wep,O:c.orb||c.wep};
   return sprite(key,rows.map(r=>r.join('')),map)}

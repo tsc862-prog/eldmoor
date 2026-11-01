@@ -4,7 +4,8 @@
 // Owned by ai-designer (behaviour) and character-builder (stat formulas).
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {SPEED} from '../world/tiles.js';
-import {CITY,CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
+import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
+import {assignRace,homeOf} from '../data/races.js';
 import {FAC,genName} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {rollTraits,tm,traitPhrase} from '../data/traits.js';
@@ -35,9 +36,10 @@ export function makeHero(f,cls,guild,wait){
     wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0};
   a.traits=rollTraits(cls);newQuest(a);
   a.slots=emptySlots();
+  assignRace(a,S.agents); // people, skin, hair, name and home town (data/races.js)
   assignBackstory(a);
   a.hp=maxHp(a);
-  const c=CITY[f];a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
+  const c=homeOf(a);a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
   S.agents.push(a);
   // Trait reveal for recruits (not the opening roster): "Thrakash is reckless and greedy; Grimhold will remember that."
   if(S.gameMin>0&&rnd()<.3)log(a,' is ',{t:traitPhrase(a),c:'gd'},'; ',c.name,' will remember that.');
@@ -117,7 +119,7 @@ export function priestHeal(a,list){if(!CLS[a.cls].heal||a.healCd>0)return;let lo
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
-export function sellAndShop(a){const c=CITY[a.fac];let tot=sellGear(a),n=0;
+export function sellAndShop(a){const c=homeOf(a);let tot=sellGear(a),n=0;
   for(const it of a.bag){if(GOODS[it]){tot+=price(it);GOODS[it].supply++;n++}}a.bag=[];a.gold+=tot;
   if(n>=6&&rnd()<.35)log(a,' sold ',String(n),' goods at the ',c.name,' auction house for ',gold(tot+'g'),'.');
   if(shopUpgrade(a))a.hp=maxHp(a)}
@@ -135,7 +137,7 @@ export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9
 // Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
 // Personality traits (data/traits.js) scale these via tm(a,key): Reckless lowers retreat/flee, Cautious raises them, etc.
 export function updAgent(a,dt){
-  a.cd-=dt;a.healCd-=dt;const mh=maxHp(a),c=CITY[a.fac],boss=S.boss;
+  a.cd-=dt;a.healCd-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
   switch(a.state){
   case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
     if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;
