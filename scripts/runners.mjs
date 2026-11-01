@@ -54,8 +54,8 @@ export const RUNNER_KINDS = {
     key: () => 'fellowship', args: () => [], heroes: (r, hs) => hs.filter(h => h.fellow && h.alive).map(h => h.id)},
   // The DM agent (#66): one at most, no hero; it claims the DM seat itself. Installed once scripts/dm-agent.mjs exists.
   dm: {script: 'scripts/dm-agent.mjs', label: 'DM agent', needsHero: false, noHeroes: true, missing: 'The DM agent is not installed yet (scripts/dm-agent.mjs comes with the DM agent PR).',
-    defaults: {maxTurns: 20, budget: 1}, caps: {maxTurns: 200, budget: 5},
-    key: () => 'dm', args: () => [], heroes: () => [], session: 'dm'},
+    defaults: {maxTurns: 12, budget: 1}, caps: {maxTurns: 200, budget: 5},
+    key: () => 'dm', args: () => [], heroes: () => [], session: 'dm', seat: 'dm'}, // seat: the claim key it holds at the relay (DM_KEY in relay-mcp.mjs)
 };
 export const kindInstalled = K => existsSync(join(ROOT, K.script));
 
@@ -129,7 +129,9 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   function stateOf(r) {
     if (r.done) return r.state;
     if (r.stopping) return 'stopping';
-    if (RUNNER_KINDS[r.kind].noHeroes) return r.turns ? 'live' : r.lines.length ? 'waiting' : 'starting'; // no hero claims to read: its output tells
+    const K = RUNNER_KINDS[r.kind];
+    if (K.seat) {if (!play.claimed(K.seat)) return 'starting'; return play.linkOf(K.seat) === 'connected' ? 'live' : 'waiting'} // the DM seat's claim and link (#66)
+    if (K.noHeroes) return r.turns ? 'live' : r.lines.length ? 'waiting' : 'starting'; // no hero claims to read: its output tells
     const ids = r.kind === 'hero' ? [r.hero] : RUNNER_KINDS[r.kind].heroes(r, heroes());
     const links = ids.map(id => play.linkOf(id)), held = ids.filter(id => play.claimed(id));
     if (!held.length) return 'starting';
@@ -138,7 +140,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   function view(r) {
     const ids = r.kind === 'hero' ? [r.hero] : r.done ? r.heroes || [] : RUNNER_KINDS[r.kind].heroes(r, heroes());
     if (!r.done) r.heroes = ids;
-    const mind = ids.map(id => play.runnerOf(id)).find(Boolean);
+    const seat = RUNNER_KINDS[r.kind].seat, mind = seat ? play.runnerOf(seat) : ids.map(id => play.runnerOf(id)).find(Boolean);
     return {key: r.key, kind: r.kind, hero: r.hero ?? null, heroes: ids, name: r.name, state: stateOf(r), pid: r.pid,
       startedAt: new Date(r.started).toISOString(), uptime: Math.round(((r.ended || now()) - r.started) / 1000),
       turns: r.turns, cost: Math.round(r.cost * 10000) / 10000, provider: (mind && mind.provider) || r.provider || null, model: (mind && mind.model) || r.model || null,
@@ -230,6 +232,9 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       const c = checkStart(b, heroes(), {running: running()});
       if (c.error) {log(`[runners] start refused: ${c.error}`); return send(c.code, {ok: false, error: c.error})}
       if (c.req.kind === 'hero' && play.claimed(c.req.hero)) return send(409, {ok: false, error: `${c.req.name} already has a live agent runner (one agent per hero).`});
+      if (c.req.kind === 'dm') {const d = play.dmInfo ? play.dmInfo() : null; // the DM seat (#66)
+        if (d && !d.seat) return send(409, {ok: false, error: 'The DM seat is closed: open it first (Dungeon Master panel, "Open seat").'});
+        if (d && d.claimed) return send(409, {ok: false, error: 'The DM seat already has a live runner (one DM at a time).'})}
       // Claude slots (see CLAUDE_SLOTS): how many concurrent Claude requests this runner can make
       const K = RUNNER_KINDS[c.req.kind], ids = K.session ? [K.session] : K.heroes(c.req, heroes()), want = ids.filter(id => providerFor(id, c.req.provider) === 'anthropic').length;
       const used = running().reduce((t, r) => t + (r.claude || 0), 0), free = Math.max(0, claudeMax - used);

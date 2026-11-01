@@ -1,0 +1,25 @@
+// The DM as an agent (issue #66, part 1): the tools an AI agent uses to prepare and shape the
+// campaign between scenes. Pure data, shared by the MCP server (scripts/relay-mcp.mjs, selected
+// with X-Eldmoor-Role: dm or /mcp?role=dm), the headless host, the local agent loop and the docs.
+// Separate from the hero tools (src/data/player-tools.js): the DM never controls a hero. The game
+// side is src/sim/dmagent.js. Each tool:
+//   {name, desc, act, args:{argName:{type:'string'|'integer'|'number'|'object', desc, optional?, enum?}}}
+// act: true for tools that change something (the world through a lever, the DM's own notes or log).
+export const NOTE_SECTIONS=['threads','characters','plans','secrets'];
+export const DM_TOOLS=[
+  {name:'dm_status',act:false,desc:'Where the campaign stands: game day and time, whether a Table scene or a party vote is open (then leave the table alone), the Fellowship at a glance, how much happened since you last looked, your lever budget today and your notes.',args:{}},
+  {name:'read_timeline',act:false,desc:'The world timeline: notable events (deaths, levels, raids, the Crypt, oaths, world changes), newest first.',args:{n:{type:'integer',desc:'How many (1-30, default 12)',optional:true}}},
+  {name:'read_chronicle',act:false,desc:'The latest news lines as the town criers tell them, newest first.',args:{n:{type:'integer',desc:'How many (1-30, default 12)',optional:true}}},
+  {name:'read_dm_log',act:false,desc:'Your own DM log: hook boards, adventure scenes, rolls, outcomes and lever pulls (yours and the scripted DM\'s), newest first.',args:{n:{type:'integer',desc:'How many (1-30, default 12)',optional:true},kind:{type:'string',enum:['all','hooks','scenes','rolls','outcomes','levers','agent'],desc:'Filter (default all)',optional:true}}},
+  {name:'fellowship_view',act:false,desc:'The Fellowship: each member with role, class, level, health, where they are and what they do, their persona, backstory, memories and stances, plus the open threads (unfinished jobs, blood owed, oaths), open proposals and the latest campaign log.',args:{}},
+  {name:'heroes_near',act:false,desc:'Heroes and parties near a place: a hero (name or id), a town, a region name, or map coordinates "x,y".',args:{near:{type:'string',desc:'Hero name or id, town, region, or "x,y"'},radius:{type:'integer',desc:'Tiles (4-30, default 12)',optional:true}}},
+  {name:'npcs',act:false,desc:'Townsfolk and the people the DM placed (wanderers): id, name, role, where, and how they feel about heroes, parties or factions.',args:{town:{type:'string',desc:'Only this town (and wanderers near it)',optional:true}}},
+  {name:'regions',act:false,desc:'Every region: index, name, level band, its condition if any, danger and cleared areas, places, and how many monsters and heroes are there. Also the towns with their gate coordinates.',args:{}},
+  {name:'hooks',act:false,desc:'Open jobs on the town boards and the adventures under way (who is on them, which scene).',args:{town:{type:'string',desc:'Only this town',optional:true}}},
+  {name:'levers',act:false,desc:'The world levers you can pull: each with its parameters, limits and cooldown, plus the levers active now and what has been pulled today.',args:{}},
+  {name:'notes_read',act:false,desc:'Read your campaign notes: open threads, recurring characters, plans and secrets. They are saved with the world.',args:{section:{type:'string',enum:['all',...NOTE_SECTIONS],desc:'Which section (default all)',optional:true}}},
+  {name:'notes_write',act:true,desc:'Keep your campaign notes (saved with the world, seen only by you and the watcher): add a note to a section, edit one by id, or remove one. about: who or what it concerns (a hero, a person, a place). Max 300 characters a note, 40 notes a section.',args:{section:{type:'string',enum:NOTE_SECTIONS,desc:'threads, characters, plans or secrets'},op:{type:'string',enum:['add','edit','remove'],desc:'add, edit or remove'},id:{type:'integer',desc:'Note id (edit, remove)',optional:true},text:{type:'string',desc:'The note (add, edit)',optional:true},about:{type:'string',desc:'Who or what it concerns',optional:true}}},
+  {name:'pull_lever',act:true,desc:'Change the world through one lever (see levers for names and parameters). Every pull is validated and held to the lever\'s limits and cooldown; the reason is shown in the DM log. Levers never touch a hero\'s health, level or life: you shape the world, the dice decide. params is an object, for example {"region":"Mirefen","kind":"fogbound","strength":1,"hours":12}; points are {"x":30,"y":22}.',args:{lever:{type:'string',desc:'Lever name'},params:{type:'object',desc:'The lever\'s parameters'},reason:{type:'string',desc:'Why, in one sentence (shown in the DM log)'}}},
+  {name:'log_intent',act:true,desc:'Write one line of your reasoning or plan into the DM log (max 200 characters, a few a day), so the watcher can follow what you are preparing.',args:{text:{type:'string',desc:'The line'}}},
+];
+export const DM_TOOL_NAMES=DM_TOOLS.map(t=>t.name);

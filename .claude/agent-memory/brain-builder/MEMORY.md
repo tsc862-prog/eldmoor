@@ -3,3 +3,5 @@
 - [Fellowship](fellowship.md) — #68 phase A shapes and hooks; phase B council, Table mode, Minds=agents, runner cost per member
 - [Mixed minds](mixed-minds.md) — #97 parts 1+2: adapters, think:false, a.brainCfg, local agent loop, claim runner tags, local latency/tokens
 - [App runners](app-runners.md) — start/stop runners from the page: route contract, dm kind, stop protocol, Claude slots, relay 429 limiter
+- [DM agent](dm-agent.md) — #66 part 1: DM seat, role=dm MCP routing, claim key dm, runner cadence/429 backoff, supervisor kind, cost per turn
+- [Request throttle](request-throttle.md) — #117 throttle.js, say caps, writing backoff, memory coalescing, ratecheck before/after numbers

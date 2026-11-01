@@ -90,6 +90,7 @@ other. The rules:
   windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
+- `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
 
 ## Agent player
 
@@ -294,6 +295,40 @@ off", "model refused". A failed call means the hero plays scripted. Agent runs r
 does, and never prints it. `npm run openaicheck` (in CI) tests all of it against a mock OpenAI server,
 with no key and no network.
 
+## DM agent (issue #66, part 1)
+
+An AI agent can sit in the DM seat between scenes: it reads the world, keeps campaign notes and shapes
+what comes next through the world levers; the scripted DM keeps running beside it, unchanged. It never
+controls a hero and never kills anyone by fiat (no lever touches HP, level or life, and a pull that piles
+danger onto a badly hurt Fellowship member out in the field is refused). Fast at-the-table calls are part 2.
+
+- In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; open the
+  **Dungeon Master** panel and press **Open seat**, pick the mind (Claude or a pulled local model) and
+  press **Start DM**. The seat (link, runner mind, runner state and last error) shows there and as the
+  DM row of **Minds at play** (Start DM / Stop DM there too). Without `--runners` the button says how to
+  turn runners on; from a terminal instead: `npm run dm` (one runner; it claims the seat).
+- Headless: `node scripts/play-headless.mjs --dm --agents 0 --port 8789` (no agent hero, the seat open),
+  then `npm run dm -- --url http://127.0.0.1:8789`.
+- Runner (`scripts/dm-agent.mjs`): Agent SDK with `claude-sonnet-5-5` by default (`DM_MODEL`, `--model`,
+  `--effort`), or `--provider ollama --model M` through `scripts/local-agent.mjs`; `--max-turns 12
+  --budget 1.00` by default; `--cadence evening` (a turn now, then one every game evening at 18:00) or
+  `--cadence S` real seconds; never starts a turn while a Table scene or a party vote is open. One model
+  call at a time; a rate limit (429/overloaded) backs off 30 s up to 10 min and retries. Cost line per
+  turn. Session `logs/agents/dm.json` (keyed by the world's tag, resumed next run, `--new` sets it aside).
+- Tools (`src/data/dm-tools.js`, game side `src/sim/dmagent.js`), over MCP at `/mcp?role=dm` (or the
+  `X-Eldmoor-Role: dm` header), plain JSON at `POST /play/dm {tool, args}`: `dm_status`,
+  `read_timeline`, `read_chronicle`, `read_dm_log`, `fellowship_view`, `heroes_near`, `npcs`,
+  `regions`, `hooks`, `levers`, `notes_read`, `notes_write` (threads, characters, plans, secrets; saved
+  with the world in `S.dmAgent`), `pull_lever` (`pull(name, params, {by:'dm-agent', reason})`; at most
+  `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's),
+  `log_intent`. The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
+  reports `dm: {seat, link, claimed, runner}`. The game answers only while its seat is open.
+- DM log: the agent's entries carry a **DM AGENT** tag and its reason; the **DM agent** filter shows them.
+- Measured live (Sonnet 5.5, effort medium, headless day 4): first turn 15 tool calls, 18 s, $0.056 (notes
+  in all four sections, a ruin and a wary hermit, one refused pull it corrected); a quiet turn 3 calls, 8 s, $0.013.
+- `npm run dmcheck` (in CI): tools, notes, limits and refusals, save/restore, a silent seat leaves a
+  seeded world identical, relay routes and MCP, the browser bridge, and the runner end to end on a mock Ollama.
+
 ## Layout
 
 - `index.html`: page shell and side panels. `src/style.css`: dark single-theme
@@ -339,7 +374,7 @@ with no key and no network.
   sim facts (scripted, or enriched once through the relay) and `fellowCard` for prompts;
   `memory.js` per-member recent memories, long-term summary and companion stances;
   `council.js` party chat, proposals and votes, `lead_to`, splitting off and the all-or-none
-  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes.
+  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `dmagent.js` the DM seat and its tools (#66).
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night

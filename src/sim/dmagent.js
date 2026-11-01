@@ -1,0 +1,219 @@
+// The DM as an agent (issue #66, part 1): prep and world-shaping between scenes. An AI agent
+// (scripts/dm-agent.mjs, through the MCP tools of src/data/dm-tools.js) takes the DM seat, reads
+// the world as the DM sees it, keeps campaign notes saved with the world, and pulls the world
+// levers of sim/levers.js with by:'dm-agent', so every pull is validated, held to the lever's
+// limits and cooldown, and written to the DM log with its reason. DOM-free; both hosts (the
+// browser page through src/ui/player-bridge.js, scripts/play-headless.mjs) answer dmAct().
+//
+// What the DM agent cannot do, by construction: control a hero (no hero tools here), touch a
+// hero's HP, level or life (no lever can), or pile danger onto a badly hurt Fellowship member
+// out in the field (pileOn below refuses it). The scripted DM keeps running exactly as before:
+// an agent's pulls replace nothing, they just leave the scripted DM fewer empty slots (a job the
+// agent posts counts toward the board's three). No seat, no runner, or a silent runner: nothing
+// changes, nothing waits. Reads roll no dice and write nothing but the seat's own bookkeeping.
+//
+// ---- state (plain JSON, saved with the world; created on first use only) ----
+//   S.dmAgent {world (a tag the runner keys its session by), seat, notes:{threads,characters,plans,secrets:[{id,text,about,day,t}]}, seq,
+//              day:{d, pulls, notes, intents}, calls:[{t,tool,args,ok}] newest first,
+//              seen:{tl, chron, log} (what dm_status last showed), stats:{calls, pulls, refused}}
+import {S,clockStr} from './state.js';
+import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
+import {FAC} from '../data/factions.js';
+import {MOBS} from '../data/mobs.js';
+import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
+import {dmlog} from './dmlog.js';
+import {pull,leverMenu,LEVERS} from './levers.js';
+import {maxHp} from './heroes.js';
+import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
+import {openProps} from './council.js';
+
+// ---- knobs ----
+export const DMA={
+  PULLS_PER_DAY:8,     // lever pulls the agent may make per game day (each lever has its own limits on top)
+  NOTES_PER_DAY:40,    // note writes per game day
+  INTENTS_PER_DAY:8,   // log_intent lines per game day
+  NOTE_MAX:300, NOTES_CAP:40, INTENT_MAX:200, REASON_MAX:160,
+  CALLS_KEEP:24,       // recent calls kept for the panels
+  NEAR_R:12,           // default radius of heroes_near
+  PILE_HP:.35,         // a Fellowship member below this share of HP out in the field is not piled on
+  PILE_R:14,           // ... within this many tiles of the pull (or in its region)
+};
+const DAY=1440;
+const PILING=['mark_dangerous','custom_foe','named_foe','set_condition'];
+
+// ---- the seat ----
+export function dmState(){return S.dmAgent||(S.dmAgent={world:'w'+Math.round(S.gameMin)+'-'+(S.uid||0),seat:false,notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,[]])),seq:0,
+  day:{d:-1,pulls:0,notes:0,intents:0},calls:[],seen:{tl:0,chron:'',log:0},stats:{calls:0,pulls:0,refused:0}})}
+export const dmSeatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
+// Open or close the DM seat (the DM panel's "DM agent" button, play-headless --dm). Notes stay either way.
+export function setDmSeat(on){const D=dmState();on=!!on;if(D.seat===on)return on;D.seat=on;
+  dmlog('agent',null,[on?'The DM seat is open: an agent DM may sit in (npm run dm).':'The DM seat is closed: the scripted DM runs alone.'],{by:'dm-agent',seat:on});return on}
+// For the panels: the seat's recent calls and today's counts.
+export const dmAgentView=()=>S.dmAgent?{seat:S.dmAgent.seat,calls:S.dmAgent.calls.slice(0,8),day:{...S.dmAgent.day},stats:{...S.dmAgent.stats}}:null;
+
+// ---- helpers ----
+const gameDay=()=>Math.floor(S.gameMin/DAY);
+function today(){const D=dmState();if(D.day.d!==gameDay())D.day={d:gameDay(),pulls:0,notes:0,intents:0};return D.day}
+const txt=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&(p.kind==='hero'||p.ref==='hero')?p.name||'?':p&&p.t!=null?p.t:'').join('');
+const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
+const nOf=(v,d,lo,hi)=>{const n=Math.round(Number(v));return Number.isFinite(n)?Math.max(lo,Math.min(hi,n)):d};
+const alive=a=>a&&a.state!=='dead';
+const pct=a=>Math.round(100*a.hp/Math.max(1,maxHp(a)));
+const facName=f=>f===0||f===1?FAC[f].name:'neutral';
+const band=z=>{const b=REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];return b[0]+'-'+(b[1]===Infinity?'+':b[1])};
+const regionIdx=v=>{if(Number.isInteger(v)&&v>=0&&v<ZONES.length)return v;if(typeof v==='string'){const s=v.trim().toLowerCase();if(/^\d+$/.test(s))return regionIdx(Number(s));
+  const i=ZONES.findIndex(n=>n.toLowerCase()===s);return i>=0?i:null}return null};
+const townOf=v=>typeof v==='string'?CITY.find(c=>c.name.toLowerCase()===v.trim().toLowerCase())||null:null;
+const where=a=>a.state==='town'?'in '+(a.town||'town'):a.state==='dead'?'dead':'in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+' at '+Math.round(a.x)+','+Math.round(a.y);
+const heroLine=a=>({id:a.id,name:a.name,lvl:a.lvl,cls:a.cls,faction:facName(a.fac),hp:pct(a)+'%',doing:a.state,where:where(a),party:a.party?a.party.id:null,
+  ...(a.fellow?{fellowship:a.fellowRole||true}:{}),...(a.adv?{adventure:a.adv}:{})});
+// The centre of a region (the mean of its spawn points), for heroes_near.
+const centreOf=z=>{const P=ZPTS[z]||[];if(!P.length)return null;let x=0,y=0;for(const p of P){x+=p.x;y+=p.y}return {x:x/P.length,y:y/P.length}};
+function placeOf(near){const s=String(near||'').trim();if(!s)return null;
+  const m=/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/.exec(s);if(m)return {x:Number(m[1]),y:Number(m[2]),label:'around '+m[1]+','+m[2]};
+  const lo=s.toLowerCase(),h=S.agents.find(a=>alive(a)&&!a.hidden&&(String(a.id)===s||a.name.toLowerCase()===lo));if(h)return {x:h.x,y:h.y,label:'around '+h.name};
+  const c=townOf(s);if(c)return {x:c.gate.x,y:c.gate.y,label:'around '+c.name+'’s gate',town:c.name};
+  const z=regionIdx(s);if(z!=null){const p=centreOf(z);return p?{...p,label:'in '+ZONES[z],z}:null}
+  return null}
+function remember(tool,args,ok){const D=dmState();D.stats.calls++;
+  D.calls.unshift({t:clockStr(),tool,args:args&&Object.keys(args).length?JSON.stringify(args).slice(0,140):'',ok:!!ok});if(D.calls.length>DMA.CALLS_KEEP)D.calls.pop()}
+
+// A Fellowship member badly hurt out in the field near the pull: the DM does not pile on.
+export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object')return null;
+  if(name==='set_condition'&&!['bandits','migration'].includes(p.kind))return null;
+  const at=p.at&&typeof p.at==='object'&&Number.isFinite(Number(p.at.x))?{x:Number(p.at.x),y:Number(p.at.y)}:null,z=p.region!=null?regionIdx(p.region):at?zoneAt(at.x,at.y):null;
+  for(const a of fellows()){if(a.state==='town'||a.hp>=maxHp(a)*DMA.PILE_HP)continue;
+    if(at&&dist(a,at)<=DMA.PILE_R||z!=null&&zoneAt(a.x,a.y)===z)return a.name+' of the Fellowship is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.'}
+  return null}
+
+// ---- the tools ----
+function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle||[],L=S.dmLog||[],F=S.fellowship;
+  const sinceTl=tl.filter(e=>e.gameMin>D.seen.tl).length,i=ch.findIndex(e=>(e.t+txt(e.parts))===D.seen.chron),sinceCh=i<0?Math.min(ch.length,30):i,sinceLog=L.filter(e=>e.id>D.seen.log).length;
+  D.seen.tl=tl[0]?tl[0].gameMin:D.seen.tl;D.seen.chron=ch[0]?ch[0].t+txt(ch[0].parts):D.seen.chron;D.seen.log=L[0]?L[0].id:D.seen.log;
+  const sc=S.table||null,props=F?openProps():[];
+  const h=Math.floor((S.gameMin%DAY)/60);
+  return {ok:true,world:D.world,day:gameDay()+1,time:clockStr(),gameMin:Math.round(S.gameMin),part:h<6?'night':h<12?'morning':h<18?'afternoon':'evening',
+    table:sc?{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; the at-the-table calls are not yours in this phase.'}:{open:false},
+    proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,
+    fellowship:F?{name:F.name,minds:mindsOf(F),members:fellowshipMembers().map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:m.label,lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:m.label,empty:true})}:null,
+    since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
+    adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
+    levers_active:(S.levers&&S.levers.active||[]).length,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
+    notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length]))}}
+
+function timelineRead(n){return {ok:true,timeline:(S.timeline||[]).slice(0,nOf(n,12,1,30)).map(e=>({day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,text:txt(e.parts)}))}}
+function chronicleRead(n){return {ok:true,news:(S.chronicle||[]).slice(0,nOf(n,12,1,30)).map(e=>e.t+' '+txt(e.parts))}}
+const LOG_KINDS={hooks:['hooks','pick'],scenes:['frame','branch','camp'],rolls:['roll','complication'],outcomes:['payoff','fail','abandon','fallback'],levers:['lever'],agent:['agent']};
+function dmLogRead(n,kind){const k=LOG_KINDS[kind]||null,out=[];
+  for(const e of S.dmLog||[]){if(k&&!(k.includes(e.kind)||kind==='agent'&&e.detail&&e.detail.by==='dm-agent'))continue;
+    out.push({id:e.id,day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,town:e.town||null,adventure:e.advId,text:txt(e.summary),...(e.detail&&e.detail.by?{by:e.detail.by}:{})});
+    if(out.length>=nOf(n,12,1,30))break}
+  return {ok:true,log:out}}
+
+function fellowshipView(){const F=S.fellowship;if(!F)return {ok:true,fellowship:null,note:'No Fellowship rides in this world yet.'};
+  const members=fellowshipMembers().map(m=>{const a=m.hero;if(!a)return {role:m.label,empty:true};
+    const P=a.persona||{},M=a.memory||{};
+    return {...heroLine(a),role:m.label,persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
+      oath:a.goal&&!a.goal.done?a.goal.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
+      stances:Object.fromEntries(Object.entries(M.stances||{}).slice(0,6).map(([id,s])=>{const b=S.agents.find(x=>String(x.id)===String(id));return [b?b.name:'#'+id,String(s).slice(0,120)]}))}});
+  return {ok:true,fellowship:{name:F.name,faction:facName(F.fac),hall:F.hall||null,founded_day:F.day||null,minds:mindsOf(F),members,
+    open_threads:openThreads().map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:openProps().map(P=>({id:P.id,kind:P.kind,details:P.details||null,by:P.by||null})),
+    campaign_log:(F.log||[]).slice(0,10).map(e=>'D'+e.day+' '+e.t+' '+txt(e.parts)),fallen:(F.past||[]).slice(-5).map(p=>p.name||('#'+p.id))}}}
+
+function heroesNear(near,radius){const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+clean(near,40)+'". Use a hero name or id, a town, a region name, or "x,y".'};
+  const r=nOf(radius,DMA.NEAR_R,4,30),hs=[];
+  for(const a of S.agents){if(!alive(a)||a.hidden)continue;if(p.town?!(a.state==='town'&&a.town===p.town)&&dist(a,p)>r:dist(a,p)>r)continue;hs.push(a)}
+  hs.sort((x,y)=>dist(x,p)-dist(y,p));const parties=new Map();for(const a of hs)if(a.party&&!parties.has(a.party.id))parties.set(a.party.id,a.party);
+  return {ok:true,place:p.label,radius:r,heroes:hs.slice(0,24).map(heroLine),more:Math.max(0,hs.length-24),
+    parties:[...parties.values()].map(P=>({id:P.id,leader:P.leader?P.leader.name:null,members:(P.members||[]).filter(alive).map(b=>b.name),fellowship:!!P.fellow}))}}
+
+const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({toward:x.to+' '+x.id,attitude:x.a}));
+function npcsRead(town){const c=town?townOf(town):null;if(town&&!c)return {ok:false,error:'No town called '+clean(town,40)+'. Towns: '+CITY.map(t=>t.name).join(', ')};
+  const folk=(S.npcs||[]).filter(n=>!c||n.town===c.name).map(n=>({id:n.id,name:n.title+' '+n.name,role:n.role,town:n.town,...(attOf(n).length?{attitudes:attOf(n)}:{})}));
+  const wand=(S.wanderers||[]).filter(w=>!c||w.town===c.name||dist(w,c.gate)<=20).map(w=>({id:w.id,name:w.title+' '+w.name,role:w.role,where:w.town||ZONES[zoneAt(w.x,w.y)],home:w.homeKind,attitude:w.attitude||'neutral',
+    ...(attOf(w).length?{attitudes:attOf(w)}:{}),placed_by_lever:w.lever||null}));
+  return {ok:true,townsfolk:folk.slice(0,60),wanderers:wand}}
+
+function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Array(ZONES.length).fill(0);
+  for(const m of S.mobs)if(m.alive&&!m.gone){const z=zoneAt(m.x,m.y);if(z>=0)mobs[z]++}
+  for(const a of S.agents)if(alive(a)&&a.state!=='town'&&!a.hidden){const z=zoneAt(a.x,a.y);if(z>=0)heroes[z]++}
+  return {ok:true,regions:ZONES.map((name,z)=>{const cond=(S.conditions||[]).filter(c=>c.z===z),marks=(S.marks||[]).filter(m=>m.z===z),pl=(S.places||[]).filter(p=>p.z===z);
+    return {index:z,name,levels:band(z),monsters:mobs[z],heroes_out:heroes[z],creatures:Object.keys(MOBS).filter(k=>MOBS[k].z===z).slice(0,8),
+      ...(cond.length?{condition:cond.map(c=>c.kind+' '+c.str+' ('+Math.max(0,Math.round((c.until-S.gameMin)/60))+'h left)')}:{}),
+      ...(marks.length?{areas:marks.map(m=>m.kind+' at '+Math.round(m.x)+','+Math.round(m.y)+' r'+m.r)}:{}),
+      ...(pl.length?{places:pl.map(p=>({id:p.id,kind:p.kind,name:p.name,at:Math.round(p.x)+','+Math.round(p.y)}))}:{})}}),
+    towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]}))}}
+
+function hooksRead(town){const c=town?townOf(town):null;if(town&&!c)return {ok:false,error:'No town called '+clean(town,40)};
+  const A=(S.adventures||[]).filter(v=>!c||v.town===c.name),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};
+  return {ok:true,open_jobs:A.filter(v=>v.phase==='open').map(h=>({id:h.id,town:h.town,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,region:h.zone==null?'any':ZONES[h.zone],
+      ...(h.for!=null?{for:hn(h.for)}:{}),hours_left:Math.max(0,Math.round((h.until-S.gameMin)/60))})),
+    under_way:A.filter(v=>v.phase==='active').map(v=>({id:v.id,title:v.title,tpl:v.tpl,town:v.town,leader:hn(v.lead),members:v.mem.map(hn),scene:(v.idx||0)+1,of:(v.scenes||[]).length,away:!!v.away})),
+    recently_done:A.filter(v=>v.phase==='done').slice(-5).map(v=>({id:v.id,title:v.title,outcome:v.outcome||null}))}}
+
+function leversRead(){const L=S.levers,d=today(),hrs=m=>Math.max(0,Math.round(m/60));
+  return {ok:true,levers:leverMenu().filter(l=>l.available&&l.name!=='named_foe').map(l=>({name:l.name,about:l.about,params:l.params,limits:l.limits,cooldown_min:l.cooldown})),
+    note:'named_foe belongs to the scripted DM inside a running scene. post_hook may not use tpl "fallen" or spec.',
+    active:(L&&L.active||[]).map(x=>({id:x.id,lever:x.name,by:x.by,region:x.region!=null?ZONES[x.region]:null,hours_left:hrs(x.until-S.gameMin),reason:x.reason})),
+    pulled_today:L&&L.day&&L.day.d===gameDay()?{...L.day.n}:{},cooldowns:Object.fromEntries(Object.entries(L&&L.cd||{}).filter(([,t])=>t>S.gameMin).map(([k,t])=>[k,hrs(t-S.gameMin)+'h'])),
+    your_pulls_today:d.pulls+'/'+DMA.PULLS_PER_DAY}}
+
+function notesRead(section){const D=dmState(),ks=section&&section!=='all'?[section]:NOTE_SECTIONS;
+  if(!ks.every(k=>NOTE_SECTIONS.includes(k)))return {ok:false,error:'section must be one of all, '+NOTE_SECTIONS.join(', ')};
+  return {ok:true,notes:Object.fromEntries(ks.map(k=>[k,D.notes[k].map(n=>({id:n.id,text:n.text,...(n.about?{about:n.about}:{}),day:n.day}))]))}}
+function notesWrite(a){const D=dmState(),day=today(),k=a.section;
+  if(!NOTE_SECTIONS.includes(k))return {ok:false,error:'section must be one of '+NOTE_SECTIONS.join(', ')};
+  if(day.notes>=DMA.NOTES_PER_DAY)return {ok:false,error:'That is enough note-keeping for one game day ('+DMA.NOTES_PER_DAY+').'};
+  const list=D.notes[k],text=clean(a.text,DMA.NOTE_MAX),about=clean(a.about,60)||null,id=nOf(a.id,null,1,1e9);
+  let n=null;
+  if(a.op==='add'){if(!text)return {ok:false,error:'add needs text'};if(list.length>=DMA.NOTES_CAP)return {ok:false,error:'The '+k+' section is full ('+DMA.NOTES_CAP+'): remove or edit a note first.'};
+    n={id:++D.seq,text,about,day:gameDay()+1,t:clockStr()};list.push(n)}
+  else if(a.op==='edit'){n=list.find(x=>x.id===id);if(!n)return {ok:false,error:'No note '+a.id+' in '+k};if(!text)return {ok:false,error:'edit needs text'};n.text=text;if(about)n.about=about;n.t=clockStr()}
+  else if(a.op==='remove'){const i=list.findIndex(x=>x.id===id);if(i<0)return {ok:false,error:'No note '+a.id+' in '+k};n=list.splice(i,1)[0]}
+  else return {ok:false,error:'op must be add, edit or remove'};
+  day.notes++;
+  dmlog('agent',null,['DM agent ',a.op==='add'?'noted':a.op==='edit'?'revised':'struck',' ('+k+')',k==='secrets'?': a secret.':': '+n.text.slice(0,90)+(n.text.length>90?'…':'')],{by:'dm-agent',notes:k,op:a.op,id:n.id,text:n.text,about:n.about||null});
+  return {ok:true,note:{id:n.id,section:k,text:n.text,...(n.about?{about:n.about}:{})},op:a.op,count:list.length}}
+
+function pullLever(a){const day=today(),D=dmState(),name=clean(a.lever,40),reason=clean(a.reason,DMA.REASON_MAX);
+  let params=a.params;if(typeof params==='string'){try{params=params.trim()?JSON.parse(params):{}}catch(e){params=null}}
+  const refuse=why=>{D.stats.refused++;dmlog('lever',null,['Lever ',{t:name||'?',c:'gd'},' refused: '+why+(reason?' (wanted: '+reason+')':'')+'.'],{lever:name,by:'dm-agent',params:params&&typeof params==='object'?params:String(a.params).slice(0,200),reason,result:'rejected: '+why});
+    return {ok:false,error:'Refused: '+why}};
+  if(!params||typeof params!=='object'||Array.isArray(params))return refuse('params must be an object');
+  if(!LEVERS[name])return refuse('no such lever (see levers)');
+  if(name==='named_foe')return refuse('named foes are raised by the scripted DM inside a running scene');
+  if(day.pulls>=DMA.PULLS_PER_DAY)return refuse('the DM agent has pulled '+DMA.PULLS_PER_DAY+' levers today; the world needs time to answer');
+  const pile=pileOn(name,params);if(pile)return refuse(pile);
+  const r=pull(name,params,{by:'dm-agent',reason});
+  if(!r.ok){D.stats.refused++;return {ok:false,error:'Refused: '+r.reason}}
+  day.pulls++;D.stats.pulls++;
+  return {ok:true,lever:name,id:r.id,effect:r.effect,hours:r.until!=null?Math.round((r.until-S.gameMin)/60):null,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY}}
+
+function logIntent(text){const day=today(),t=clean(text,DMA.INTENT_MAX);if(!t)return {ok:false,error:'Say what you intend.'};
+  if(day.intents>=DMA.INTENTS_PER_DAY)return {ok:false,error:'Enough plans logged for one game day ('+DMA.INTENTS_PER_DAY+'): keep the rest in notes.'};
+  day.intents++;dmlog('agent',null,['DM agent: ',t],{by:'dm-agent',intent:t});return {ok:true,logged:t}}
+
+const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
+// One DM tool call: validated, answered, never thrown. The seat must be open.
+export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:false,error:'Unknown DM tool '+String(tool).slice(0,40)+'.'};
+  if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
+  args=args&&typeof args==='object'?args:{};let r;
+  try{switch(tool){
+    case 'dm_status':r=status();break;
+    case 'read_timeline':r=timelineRead(args.n);break;
+    case 'read_chronicle':r=chronicleRead(args.n);break;
+    case 'read_dm_log':r=dmLogRead(args.n,args.kind);break;
+    case 'fellowship_view':r=fellowshipView();break;
+    case 'heroes_near':r=heroesNear(args.near,args.radius);break;
+    case 'npcs':r=npcsRead(args.town);break;
+    case 'regions':r=regionsRead();break;
+    case 'hooks':r=hooksRead(args.town);break;
+    case 'levers':r=leversRead();break;
+    case 'notes_read':r=notesRead(args.section);break;
+    case 'notes_write':r=notesWrite(args);break;
+    case 'pull_lever':r=pullLever(args);break;
+    case 'log_intent':r=logIntent(args.text);break;
+  }}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
+  if(!r)r={ok:false,error:'no answer'};
+  remember(tool,args,r.ok!==false);
+  return r}

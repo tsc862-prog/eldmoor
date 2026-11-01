@@ -24,7 +24,9 @@ export const LOCAL_DEFAULTS = {historyChars: 24000, resultChars: 1800, keptChars
 export const LOCAL_RULES = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you have given your command and waited, end the turn by replying with one short sentence of narration in plain text (no tool call).';
 
 const BY_NAME = new Map(PLAYER_TOOLS.map(t => [t.name, t]));
-const jsonType = a => a.type === 'integer' ? 'integer' : a.type === 'number' ? 'number' : 'string';
+// Another tool table (the DM's, src/data/dm-tools.js, issue #66) can be passed as `list` / `tools`.
+const MAPS = new WeakMap(); const byName = list => {if (!list || list === PLAYER_TOOLS) return BY_NAME; let m = MAPS.get(list); if (!m) {m = new Map(list.map(t => [t.name, t])); MAPS.set(list, m)} return m};
+const jsonType = a => a.type === 'integer' ? 'integer' : a.type === 'number' ? 'number' : a.type === 'object' ? 'object' : 'string';
 
 // The tool table as Ollama function tools.
 export function ollamaTools(list = PLAYER_TOOLS) {
@@ -35,15 +37,16 @@ export function ollamaTools(list = PLAYER_TOOLS) {
 
 // A model's arguments checked against the tool table: {args} or {error}. Numbers given as strings are
 // coerced, unknown keys dropped, enums and required arguments enforced. The game validates again.
-export function cleanArgs(name, raw) {
-  const t = BY_NAME.get(name); if (!t) return {error: `unknown tool "${name}". Tools: ${[...BY_NAME.keys()].join(', ')}`};
+export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
+  const M = byName(list), t = M.get(name); if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}`};
   let a = raw; if (typeof a === 'string') {try {a = a.trim() ? JSON.parse(a) : {}} catch {return {error: 'arguments are not valid JSON'}}}
   if (a == null) a = {}; if (typeof a !== 'object' || Array.isArray(a)) return {error: 'arguments must be an object'};
   const out = {};
   for (const [k, spec] of Object.entries(t.args || {})) {
     let v = a[k];
     if (v == null || v === '') {if (!spec.optional) return {error: `${name} needs "${k}" (${spec.desc || k})`}; continue}
-    if (spec.type === 'integer' || spec.type === 'number') {const n = Number(v); if (!Number.isFinite(n)) return {error: `"${k}" must be a number`}; v = spec.type === 'integer' ? Math.round(n) : n}
+    if (spec.type === 'object') {if (typeof v === 'string') {try {v = JSON.parse(v)} catch {return {error: `"${k}" must be a JSON object`}} } if (!v || typeof v !== 'object' || Array.isArray(v)) return {error: `"${k}" must be an object`}}
+    else if (spec.type === 'integer' || spec.type === 'number') {const n = Number(v); if (!Number.isFinite(n)) return {error: `"${k}" must be a number`}; v = spec.type === 'integer' ? Math.round(n) : n}
     else v = typeof v === 'string' ? v : typeof v === 'object' ? JSON.stringify(v) : String(v);
     if (spec.enum && !spec.enum.includes(v)) return {error: `"${k}" must be one of ${spec.enum.join(', ')}`};
     out[k] = v;
@@ -60,7 +63,8 @@ export const actionSchema = (list = PLAYER_TOOLS) => ({type: 'object', propertie
 export const JSON_RULES = 'You cannot call tools directly. Answer every message with ONE JSON object: {"tool": a tool name, "args": {its arguments}, "narration": ""}. The result comes back in the next message. To end your turn answer {"tool": "end", "args": {}, "narration": "one sentence of what you did and why"}.\n\nTools:\n';
 
 // A tool call written as text: <tool_call>{"name":..,"arguments":..}</tool_call>, or the bare object.
-export function parseTextCall(content) {
+export function parseTextCall(content, list = PLAYER_TOOLS) {
+  const BY_NAME = byName(list);
   const s = String(content || '').trim(); if (!s) return null;
   const m = s.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/) || (s.startsWith('{') ? [null, s] : null);
   if (!m) return null;
@@ -84,16 +88,17 @@ export function trimHistory(h, budget) {
 // One turn. chat: the adapter's chat(); call(tool, args) -> game result; sess: the hero's session
 // (sess.system, sess.local); on(kind, ...): 'text' narration, 'tool' (name, args), 'result' (text),
 // 'mode' (new mode). Returns {tools, modelCalls, in, out, modelMs, ms, narration, dead, capped, rejected, mode}.
-export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12, on = () => {}, opts = {}}) {
+// tools: the tool table (default the hero's; the DM runner passes DM_TOOLS); rules: the line appended to the system prompt.
+export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12, on = () => {}, opts = {}, tools: list = PLAYER_TOOLS, rules = LOCAL_RULES}) {
   const o = {...LOCAL_DEFAULTS, ...opts};
   const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
   const t0 = Date.now(), stat = {tools: 0, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: L.mode};
   const addCost = u => {stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false}; // paid providers (OpenAI) report a cost; Ollama's is 0
   const turnMsgs = [{role: 'user', content: prompt, turn: 1}];
-  const sys = () => sess.system + (L.mode === 'json' ? '\n\n' + JSON_RULES + actionCatalogue() : LOCAL_RULES);
-  const tools = ollamaTools();
+  const sys = () => sess.system + (L.mode === 'json' ? '\n\n' + JSON_RULES + actionCatalogue(list) : rules);
+  const tools = ollamaTools(list);
   const exec = async (name, rawArgs) => {
-    const c = cleanArgs(name, rawArgs); stat.tools++;
+    const c = cleanArgs(name, rawArgs, list); stat.tools++;
     on('tool', name, c.args || rawArgs);
     let r; if (c.error) {stat.rejected++; r = {ok: false, error: 'Not done: ' + c.error}} else {try {r = await call(name, c.args)} catch (e) {r = {ok: false, error: String(e.message || e)}}}
     const text = typeof r === 'string' ? r : JSON.stringify(r);
@@ -104,7 +109,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   for (let i = 0; i < toolTurns && !stat.dead; i++) {
     const messages = [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)];
     let res;
-    try {res = await chat({model, messages, ...(L.mode === 'json' ? {format: actionSchema()} : {tools}), maxTokens: o.maxTokens, numCtx: o.numCtx})}
+    try {res = await chat({model, messages, ...(L.mode === 'json' ? {format: actionSchema(list)} : {tools}), maxTokens: o.maxTokens, numCtx: o.numCtx})}
     catch (e) {if (e.noTools && L.mode !== 'json') {L.mode = stat.mode = 'json'; on('mode', 'json'); i--; continue} throw e}
     stat.modelCalls++; stat.in += res.usage.in; stat.out += res.usage.out; stat.modelMs += res.ms; addCost(res.usage);
     const msg = res.message || {}, content = String(msg.content || '');
@@ -119,7 +124,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
       continue;
     }
     let calls = Array.isArray(msg.tool_calls) && msg.tool_calls.length ? msg.tool_calls : null;
-    if (!calls) {const tc = parseTextCall(content); if (tc) calls = [tc]}
+    if (!calls) {const tc = parseTextCall(content, list); if (tc) calls = [tc]}
     if (!calls) {stat.narration = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim(); turnMsgs.push({role: 'assistant', content: stat.narration}); break}
     calls = calls.slice(0, o.callsPerReply);
     turnMsgs.push({role: 'assistant', content: msg.tool_calls ? content : '', tool_calls: calls.map(c => ({function: {name: c.function && c.function.name, arguments: c.function && c.function.arguments || {}}}))});

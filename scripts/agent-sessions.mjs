@@ -75,3 +75,22 @@ export function pickHero(heroes, want) {
   return h ? {hero: h} : {error: `No free agent-played hero (${list}). Press "Agent" on another hero, or name one with --hero.`};
 }
 export function saveSession(sess, extra = {}, logs = LOGS) {writeAtomic(sessionPath(sess.heroId, logs), {...sess, ...extra, updated: new Date().toISOString()})}
+
+// ---- the DM seat (issue #66): one session for the DM agent, logs/agents/dm.json ----
+// The file carries the world tag the game reports (dm_status.world); a file from another world, or
+// the old one on --new, is moved to logs/agents/old/ rather than overwritten, like a hero's.
+export const dmSessionPath = (logs = LOGS) => join(sessionDir(logs), 'dm.json');
+export function loadDmSession(world, fresh, {logs = LOGS, startNew = false} = {}) {
+  const f = dmSessionPath(logs), s = readJson(f);
+  if (s && s.world === world && !startNew) return {sess: s, note: null};
+  let note = null;
+  if (s) {const to = join(sessionDir(logs), 'old', `dm-${safe(s.world)}-${Date.now()}.json`); mkdirSync(dirname(to), {recursive: true}); renameSync(f, to); note = 'earlier DM session kept at ' + to}
+  return {sess: fresh(), note};
+}
+export function saveDmSession(sess, extra = {}, logs = LOGS) {writeAtomic(dmSessionPath(logs), {...sess, ...extra, updated: new Date().toISOString()})}
+// The DM runner as a row for the relay's runner supervisor (scripts/runners.mjs RUNNER_KINDS, in-app
+// Start/Stop). Same shape as its 'hero' and 'fellowship' rows; needsDmSeat: start only while the game
+// reports an open DM seat (/play/health dm.seat), since it plays no hero.
+export const DM_RUNNER_KIND = {script: 'scripts/dm-agent.mjs', label: 'DM runner', needsHero: false, needsDmSeat: true,
+  defaults: {maxTurns: 12, budget: 1}, caps: {maxTurns: 200, budget: 5},
+  key: () => 'dm', args: () => [], heroes: () => []};

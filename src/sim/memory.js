@@ -11,6 +11,7 @@
 import {S,clockStr} from './state.js';
 import {MEMORY_LONG_MAX,cleanText} from '../data/prompts.js';
 import {scriptedStance} from './persona.js';
+import {speedNow,blocked} from './throttle.js';
 
 export const RECENT_MAX=12,COMPRESS=6;
 const day=()=>Math.floor(S.gameMin/1440)+1;
@@ -20,7 +21,8 @@ let summarise=null; // (a, items, longBefore) => void; set by fellowship.js to a
 export const setSummariser=f=>{summarise=f};
 
 export function remember(a,k,text){if(!a||!text)return;const M=memOf(a),t=String(text).replace(/\s+/g,' ').trim().slice(0,200);
-  const last=M.recent[M.recent.length-1];if(last&&last.text===t&&S.gameMin-last.gameMin<60)return; // the same line twice in an hour is one memory
+  const same=M.recent.find(e=>e.text===t&&e.k===k); // an identical line folds into the one already kept, with a count (#117)
+  if(same){same.c=(same.c||1)+1;same.gameMin=Math.round(S.gameMin);return}
   M.recent.push({t:'D'+day()+' '+clockStr(),day:day(),gameMin:Math.round(S.gameMin),k,text:t});M.n=(M.n||0)+1;
   if(M.recent.length>RECENT_MAX)compress(a)}
 
@@ -37,7 +39,13 @@ export function capLong(t){t=String(t||'').replace(/\s+/g,' ').trim();while(t.le
 
 export function compress(a){const M=memOf(a);const items=M.recent.splice(0,COMPRESS);if(!items.length)return;
   const before=M.long||'';M.long=capLong((before?before+' ':'')+digest(items));M.longAt=(M.longAt||0)+1;
-  if(summarise)try{summarise(a,items,before,M.longAt)}catch(e){}}
+  // The model summary is coalesced (#117): folds pile up in M.pend and go out as one request, at most one per
+  // member per game day, none at 3x/8x except the fold that opens a new day (the last one of the day before).
+  const D=day(),newDay=M.foldDay!=null&&D>M.foldDay;M.foldDay=D;
+  if(!M.pend||!M.pend.length){M.pend=[];M.pendBefore=before}
+  M.pend=M.pend.concat(items).slice(-30);
+  const due=(M.sumAt==null||S.gameMin-M.sumAt>=1440)&&(speedNow()<=1||newDay);
+  if(summarise&&due&&!blocked('memory',a)){const p=M.pend,b=M.pendBefore;M.pend=[];M.sumAt=S.gameMin;try{summarise(a,p,b,M.longAt)}catch(e){}}}
 // A model summary arrives: use it only if no later fold happened in the meantime.
 export function applyLong(a,text,stamp){const M=memOf(a);if(M.longAt!==stamp)return false;const v=cleanText(text,MEMORY_LONG_MAX);if(!v)return false;M.long=v;M.longSrc='model';return true}
 
@@ -51,4 +59,4 @@ export function refreshStances(a,ids){const M=memOf(a),P=a.persona;
 // A party event between two members (healed, saved, quarrelled) colours the stance until the next one.
 export function stanceEvent(a,b,text){if(!a||!b||a===b)return;const M=memOf(a);(M.events||(M.events={}))[b.id]=String(text).slice(0,80)}
 
-export const memorySnapshot=(a,items,before)=>({name:a.name,voice:a.persona?a.persona.voice:null,long:before||'',items:items.map(e=>e.t+': '+e.text)});
+export const memorySnapshot=(a,items,before)=>({name:a.name,voice:a.persona?a.persona.voice:null,long:before||'',items:items.map(e=>e.t+': '+e.text+(e.c>1?' (x'+e.c+')':''))});

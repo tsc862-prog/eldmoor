@@ -53,6 +53,7 @@ import {speak} from './chat.js';
 import {topScores} from './abilities.js';
 import {combatStats} from './stats.js';
 import {fellowCard} from './persona.js';
+import * as TH from './throttle.js';
 
 export const CFG={url:'http://127.0.0.1:8787/decide',timeoutMs:3000,localTimeoutMs:9000,localWriteMs:35000,offlineSec:60,
   planTtl:900,fightTtl:20,sayFresh:4,aiQuietTable:true,sayGap:25,maxPerHour:240,quietMin:60,sight:12};
@@ -76,7 +77,7 @@ let lastQuiet=-1e9,fetchOverride=null,acc=0;
 export const stats={sent:0,applied:{townPlan:0,fightOrFlee:0,say:0},rejected:0,dropped:0,timeouts:0,failures:0,fallback:0,lastZone:null};
 export const rejections=[];
 export const brainClock=()=>clk;
-export function resetBrain(){clk=0;acc=0;busy.clear();offline.clear();ready.clear();held.clear();asked.clear();sent.clear();lastSay.clear();inflight.clear();lastQuiet=-1e9;
+export function resetBrain(){TH.resetThrottle();clk=0;acc=0;busy.clear();offline.clear();ready.clear();held.clear();asked.clear();sent.clear();lastSay.clear();inflight.clear();lastQuiet=-1e9;
   stats.sent=stats.rejected=stats.dropped=stats.timeouts=stats.failures=stats.fallback=0;
   stats.applied={townPlan:0,fightOrFlee:0,say:0};stats.lastZone=null;rejections.length=0}
 export const setFetch=f=>{fetchOverride=f}; // tests only
@@ -208,19 +209,19 @@ function ask(a,kind,extra,onOk,ctx){
   let body,snap;try{snap=snapshotFor(a,kind,extra);body=JSON.stringify({kind,snapshot:snap,...(mc||{})})}catch(e){return false}
   const me=mindAdd(a,kind,snap),fk=a.id+':'+me.id;inflight.set(fk,ctx||{});
   if(mc){me.provider=mc.provider;if(mc.model)me.model=mc.model} // what was asked; the reply names what answered
-  busy.add(key);stats.sent++;
+  busy.add(key);stats.sent++;TH.sent(kind);
   let l=sent.get(a.id);if(!l)sent.set(a.id,l=[]);l.push(Date.now());
   const t0=clk,w0=Date.now(),ac=typeof AbortController==='function'?new AbortController():null;
   let over=false,timer=null;
   const finish=()=>{over=true;clearTimeout(timer);busy.delete(key);inflight.delete(fk);me.ms=Date.now()-w0};
   const who=j=>{if(j&&typeof j.provider==='string')me.provider=clip(j.provider,20);if(j&&typeof j.model==='string')me.model=clip(j.model,100)};
-  const down=(why,j)=>{if(j&&j.sent)keepSent(me,j.sent);who(j);settle(me,'offline',{error:why,scripted:scriptedFor(a,kind)})};
+  const down=(why,j)=>{TH.fail(kind,a,why);if(j&&j.sent)keepSent(me,j.sent);who(j);settle(me,'offline',{error:why,scripted:scriptedFor(a,kind)})};
   timer=setTimeout(()=>{if(over)return;finish();failed(a,true);down('timeout after '+tmo+' ms');if(ac)ac.abort()},tmo);
   try{(fetchOverride||fetch)(CFG.url,{method:'POST',headers:{'content-type':'application/json'},body,signal:ac&&ac.signal})
     .then(r=>r.json().then(j=>({ok:r.ok,j})))
     .then(({ok,j})=>{if(over)return;finish();
       if(!ok||!j||typeof j!=='object'||j.error){failed(a,false);down(j&&j.error?'relay: '+clip(j.error,120):'relay error',j);return}
-      if(j.sent)keepSent(me,j.sent);who(j);if(j.usage&&typeof j.usage==='object')me.usage={in:+j.usage.in||0,out:+j.usage.out||0,cost:+j.usage.cost||0};
+      TH.ok(kind,a);if(j.sent)keepSent(me,j.sent);who(j);if(j.usage&&typeof j.usage==='object')me.usage={in:+j.usage.in||0,out:+j.usage.out||0,cost:+j.usage.cost||0};
       if(clk-t0>CFG.planTtl||a.state==='dead'||!a.brain){stats.dropped++;settle(me,'late',{scripted:scriptedFor(a,kind),error:'answer came too late'});return}
       try{onOk(j,me)}catch(e){stats.dropped++;settle(me,'rejected',{error:'could not apply: '+clip(e.message,80)})}})
     .catch(()=>{if(over)return;finish();failed(a,false);down('relay unreachable')})}
@@ -233,11 +234,15 @@ function ask(a,kind,extra,onOk,ctx){
 export function askRelay(kind,snapshot,timeoutMs=CFG.timeoutMs,hero=null){
   const mc=mindCfg(hero);if(mc&&LOCAL_PROVIDERS[mc.provider])timeoutMs=Math.max(timeoutMs,CFG.localWriteMs);
   if(S.brainOn===false||!(fetchOverride||typeof fetch==='function'))return Promise.resolve(null);
+  if(TH.blocked(kind,hero)){TH.denied(kind);return Promise.resolve(null)} // backing off after a failed answer (#117)
   const ac=typeof AbortController==='function'?new AbortController():null,w0=Date.now();
-  let timer=null;const late=new Promise(res=>{timer=setTimeout(()=>{if(ac)ac.abort();res(null)},timeoutMs)});
+  let timer=null,over=false;const late=new Promise(res=>{timer=setTimeout(()=>{if(over)return;over=true;TH.fail(kind,hero,'timeout');if(ac)ac.abort();res(null)},timeoutMs)});
   let body;try{body=JSON.stringify({kind,snapshot,...(mc||{})})}catch(e){clearTimeout(timer);return Promise.resolve(null)}
+  TH.sent(kind);
   const go=Promise.resolve().then(()=>(fetchOverride||fetch)(CFG.url,{method:'POST',headers:{'content-type':'application/json'},body,signal:ac&&ac.signal}))
-    .then(r=>r.json()).then(j=>j&&typeof j==='object'&&!j.error?{...j,ms:Date.now()-w0}:null).catch(()=>null);
+    .then(r=>r.json().then(j=>({j,st:r.status}))).then(({j,st})=>{if(over)return null;over=true;
+      if(j&&typeof j==='object'&&!j.error&&st<400){TH.ok(kind,hero);return {...j,ms:Date.now()-w0}}
+      TH.fail(kind,hero,(st===429?'429 ':'')+(j&&j.error?String(j.error):'relay error '+st));return null}).catch(()=>{if(!over){over=true;TH.fail(kind,hero,'unreachable')}return null});
   return Promise.race([go,late]).finally(()=>clearTimeout(timer))}
 // Keep the relay's echo of the prompt; the user content is dropped when it is exactly the snapshot.
 function keepSent(e,x){if(!x||typeof x!=='object')return;const user=typeof x.user==='string'?x.user:null;
@@ -359,6 +364,7 @@ const sameSituation=(a,trigger,sit)=>{if(!sit)return true;const t=sitTarget(a,tr
 const canSpeak=a=>a.state!=='dead'&&a.state!=='ghost'&&!a.hidden;
 export function brainLine(a,trigger,ctx,text){if(!a.brain||!SAY_TRIGGERS[trigger]||S.brainOn===false)return null;
   if(lastSay.has(a.id)&&clk-lastSay.get(a.id)<CFG.sayGap)return null;
+  if(!TH.sayOk(a))return null; // speed-aware cap, per hero and global (#117)
   lastSay.set(a.id,clk);
   const flat={};for(const k in ctx||{})if(typeof ctx[k]!=='object')flat[k]=clip(ctx[k],30);
   const t0=clk,sit=situation(a,trigger);
@@ -382,7 +388,7 @@ function sayTick(){
     held.delete(id);if(a&&canSpeak(a))speak(a,h.text,h.trigger,false)}}
 
 // ---- once per step (sim/index.js): clock and plan prefetch for the few AI heroes ----
-export function brainTick(dt){clk+=dt;if(ready.size||held.size)sayTick();const l=S.brainHeroes;if(!l||!l.length)return;
+export function brainTick(dt){clk+=dt;TH.tick(dt);if(ready.size||held.size)sayTick();const l=S.brainHeroes;if(!l||!l.length)return;
   acc+=dt;if(acc<1)return;acc=0;
   for(const id of l.slice()){const a=S.agents.find(x=>x.id===id);
     if(!a||a.state==='dead'){if(a)disableBrain(a);else S.brainHeroes=S.brainHeroes.filter(i=>i!==id);continue}

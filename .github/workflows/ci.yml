@@ -22,12 +22,16 @@ jobs:
         run: npm run worldcheck
       - name: Save/load round trip
         run: npm run savecheck
+      - name: Model request rate (counting mock relay)
+        run: npm run ratecheck
       - name: Local agent runner (mock Ollama)
         run: npm run localcheck
       - name: OpenAI provider (mock OpenAI, no key)
         run: npm run openaicheck
       - name: App runners and relay concurrency (mock Ollama, mock 429)
         run: npm run runnercheck
+      - name: DM agent (mock agent, mock Ollama)
+        run: npm run dmcheck
       - name: Headless sim (10 game-hours)
         run: npm run sim -- 10 | tee sim.txt
       - name: Sanity-check the sim summary
