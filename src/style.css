@@ -87,3 +87,12 @@ button.zoom{min-width:34px;padding-left:6px;padding-right:6px}
 /* World group: save status text next to the Save/Load/Export/Import buttons (ui/save.js) */
 .group.world .status{font-family:var(--mono);font-size:16px;color:var(--dim);margin-left:6px;white-space:nowrap}
 .group.world .status:empty{display:none}
+/* Item tooltips and the pinned detail in the Gear tab (ui/panels.js, issue #52) */
+.qp{color:#fff} .qf{color:var(--green)} .qr{color:#6fb4ff}
+.gear [data-slot]{cursor:pointer}
+.gear .v.pin,.gear .k.pin{background:var(--panel2)}
+.itip{font-family:var(--mono);font-size:18px;line-height:1.1;background:var(--panel);border:2px solid var(--edge);padding:6px 8px;box-shadow:3px 3px 0 #05060c;max-width:260px}
+.itip.floating{position:fixed;z-index:50;display:none;pointer-events:none}
+.itip.pinned{margin-top:8px;max-width:none}
+.itip .in{font-weight:bold}
+.itip .is{color:var(--green)} .itip .ia{color:var(--gold)} .itip .if{color:var(--dim);font-style:italic;margin-top:4px}

@@ -8,6 +8,7 @@ import {S} from './state.js';
 import {log,fac} from './chronicle.js';
 import {pop} from './effects.js';
 import {maxHp,gainXp,getEpic,goHome,agentDie} from './heroes.js';
+import {guardMul} from './gear.js';
 import {raidPull,goalEvent} from './goals.js';
 import {record} from './history.js';
 import {bossPull} from './narrator.js';
@@ -19,7 +20,7 @@ export function updBoss(dt){const boss=S.boss,agents=S.agents;
   if(!eng.length){boss.hp=Math.min(boss.maxhp,boss.hp+boss.maxhp*.08*dt);if(boss.hp>=boss.maxhp)boss.dmg=[0,0];return}
   bossPull(eng); // Chronicler: scene line when a raid first engages (sim/narrator.js)
   boss.cd-=dt;boss.breath-=dt;
-  if(boss.cd<=0){boss.cd=1.6;const t=pickA(eng);boss.face=t.x>boss.x?1:-1;const d=Math.round(55+rnd()*30);t.hp-=d;pop(t.x,t.y-.6,String(d),'#ff6a5a');if(t.hp<=0)agentDie(t,boss)}
+  if(boss.cd<=0){boss.cd=1.6;const t=pickA(eng);boss.face=t.x>boss.x?1:-1;const d=Math.round((55+rnd()*30)*guardMul(t));t.hp-=d;pop(t.x,t.y-.6,String(d),'#ff6a5a');if(t.hp<=0)agentDie(t,boss)}
   if(boss.breath<=0){boss.breath=7;S.fx.push({type:'ring',x:boss.x,y:boss.y-.5,life:.6});
     for(const t of eng){if(t.state!=='raid'||dist(t,boss)>4.6)continue;const d=Math.round(22+rnd()*8);t.hp-=d;pop(t.x,t.y-.6,String(d),'#ffa040');if(t.hp<=0)agentDie(t,boss)}}
   if(boss.hp<=0){boss.alive=false;boss.respawn=300;const f=boss.dmg[0]>=boss.dmg[1]?0:1;S.facStats[f].bosses++;
