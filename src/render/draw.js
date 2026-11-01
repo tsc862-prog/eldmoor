@@ -22,6 +22,7 @@ import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
+import {drawCamp,drawCampLight} from './camp.js';
 import {drawMemorials} from './memorials.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
@@ -108,6 +109,7 @@ export function createRenderer(cv,screenEl){
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
     drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
+    drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
     const ents=[];
     for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ents.push(m);
@@ -142,6 +144,7 @@ export function createRenderer(cv,screenEl){
     const dk=darkness();if(dk>0){ctx.fillStyle='rgba(8,10,40,'+dk+')';ctx.fillRect(0,0,W*T,H*T);
       ctx.globalCompositeOperation='lighter';
       for(const L of LIGHTS){const r=L.big?92:28;if(!inView(L.x*T,L.y*T,r))continue;const g=ctx.createRadialGradient(L.x*T,L.y*T,0,L.x*T,L.y*T,r);g.addColorStop(0,'rgba(255,170,70,'+(dk*.7)+')');g.addColorStop(1,'rgba(255,170,70,0)');ctx.fillStyle=g;ctx.fillRect(L.x*T-r,L.y*T-r,r*2,r*2)}
+      drawCampLight(ctx,S,dk,inView);
       ctx.globalCompositeOperation='source-over'}
     drawWeather(ctx,S,cam,blink);
     // labels: region names when zoomed out, nameplates when close

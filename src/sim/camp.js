@@ -1,0 +1,197 @@
+// Rest and camp (issue #64, DM phase 2). DOM-free. The Fellowship, when it is out in the field at
+// night or worn out, makes camp at a safe spot, rests, posts night watches in turn and talks round
+// the fire. Background heroes do not camp.
+//
+//   trigger   night (21:00-03:00) or worn out (average HP < WORN_AVG or anyone < WORN_ONE) with at
+//             least MIN_CAMP members out hunting/travelling/following, none on a DM adventure
+//   spot      found through the world module (tileAt/WALKABLE/CITY/LAIR/CRYPT): open ground near the
+//             leader, away from towns and the great lairs; never a fixed coordinate
+//   phases    'gather' (walk to the fire) -> 'rest' (state 'camp': heal CAMP_HEAL of max HP per
+//             second at 1x, watches, talk) -> break camp (night camps at dawn once healed; worn camps
+//             when mended or after WORN_MAX minutes)
+//   watches   WATCH_MIN game minutes each, members in slot order. Every ROLL_MIN a roll for a
+//             visitor: an ambush mob (a summoned 'add' of the camp's region) or, when an enemy hero
+//             is close, a duel. The watcher's Perception vs SPOT_DC decides whether the camp is
+//             roused in time (spotted) or the foe gets in a free blow (caught). Either way the camp
+//             wakes and the Table (sim/table.js) opens an 'ambush' scene
+//   talk      every TALK_MIN a line in the party channel (sim/council.js partySay): scripted from
+//             src/data/camp.js, or the brain 'say' kind for relay-minded members; quarrels cost a
+//             bond point, shared talk grows bonds
+//   logs      campaign log, chronicle, DM log (kind 'camp'), member memories
+// State is plain data on S.fellowship.camp (ids only), saved with the world.
+import {rnd,ri,hash} from '../core/rng.js';
+import {CITY,LAIR,CRYPT,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
+import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
+import {MOBS} from '../data/mobs.js';
+import {homeOf} from '../data/races.js';
+import {CAMP_LINES,TOPICS,QUARREL_REPLY,NTH} from '../data/camp.js';
+import {S} from './state.js';
+import {log} from './chronicle.js';
+import {dmlog} from './dmlog.js';
+import {maxHp,moveTo} from './heroes.js';
+import {spawnMob} from './mobs.js';
+import {nearHeroes} from './spatial.js';
+import {check} from './abilities.js';
+import {bondEvent,bond} from './bonds.js';
+import {remember,stanceEvent} from './memory.js';
+import {notify} from './notify.js';
+import {askRelay,snapshotFor,cleanLine} from './brain.js';
+import {fellows,campaign} from './fellowship.js';
+import {partySay,leaderOfF} from './council.js';
+import {openScene} from './table.js';
+
+export const CAMP={
+  MIN_CAMP:3,        // members that must be out in the field to make a camp
+  NIGHT_FROM:21,NIGHT_TO:3,  // game hours when a night camp may be made
+  DAWN:5.5,          // a night camp breaks at this hour once everyone is mended
+  WORN_AVG:.6,WORN_ONE:.3,  // worn out: average HP below, or any one member below, this share
+  WORN_MAX:300,      // game minutes a worn-out camp rests at most
+  CAMP_HEAL:.05,     // share of max HP healed per second of rest at 1x (a camp mends in about 20 s)
+  MENDED:.95,
+  COOL:150,          // game minutes before another camp after one ends
+  TOWN_MIN:11,       // tiles from any town rectangle
+  LAIR_MIN:14,       // tiles from Kragmaw's lair and the Crypt door
+  GATHER_MAX:40,     // game minutes to reach the fire before resting anyway
+  WATCH_MIN:120,ROLL_MIN:60,TALK_MIN:50,
+  AMBUSH_P:.08,      // base chance per roll, plus .02 per region index
+  SPOT_DC:12,
+  CAUGHT_HIT:.12,    // share of max HP a sleeper loses to a free blow (never lethal)
+  RING:1.15,         // tiles from the fire to the bedrolls
+};
+const nar=t=>({t,c:'nar'}),gd=t=>({t,c:'gd'});
+const byId=id=>S.agents.find(x=>x.id==id)||null;
+const hourNow=()=>(S.gameMin/60)%24;
+const LOOSE=['hunt','travel','follow'];
+const fill=(s,a,o,zone)=>String(s).replace(/\{(\w+)\}/g,(m,k)=>k==='other'?(o?o.name:'friend'):k==='zone'?zone:k==='town'?homeOf(a).name:m);
+export const campOf=()=>{const F=S.fellowship;return F&&F.camp&&F.camp.phase?F.camp:null};
+export const isCamped=a=>!!(a&&a.state==='camp');
+
+// ---- the safe spot: asked of the world module ----
+const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!==PEAK};
+function safe(x,y){if(!open(x,y))return false;
+  for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(!open(x+dx,y+dy))return false;
+  for(const c of CITY)if(x>=c.x0-CAMP.TOWN_MIN&&x<=c.x1+CAMP.TOWN_MIN&&y>=c.y0-CAMP.TOWN_MIN&&y<=c.y1+CAMP.TOWN_MIN)return false;
+  if(dist({x,y},LAIR)<CAMP.LAIR_MIN||dist({x,y},CRYPT)<CAMP.LAIR_MIN)return false;
+  return true}
+// Nearest safe open ground to (x,y), by rings; null if none within 10 tiles.
+export function campSpot(x,y){for(let r=0;r<=10;r++)for(let k=0;k<Math.max(1,r*6);k++){const ang=k/Math.max(1,r*6)*Math.PI*2,px=Math.floor(x+Math.cos(ang)*r)+.5,py=Math.floor(y+Math.sin(ang)*r)+.5;if(safe(px,py))return {x:px,y:py}}return null}
+
+// ---- who can camp ----
+const eligible=a=>a&&a.state!=='dead'&&LOOSE.includes(a.state)&&!a.adv&&!a.hidden&&!(a.splitUntil&&a.splitUntil>S.gameMin)&&!a.raid;
+function wantCamp(L){const h=hourNow();
+  if(h>=CAMP.NIGHT_FROM||h<CAMP.NIGHT_TO)return 'night';
+  const f=L.map(a=>a.hp/maxHp(a)),avg=f.reduce((s,x)=>s+x,0)/f.length;
+  return avg<CAMP.WORN_AVG||Math.min(...f)<CAMP.WORN_ONE?'worn':null}
+
+function say_(a,text,k){if(!a||a.state==='dead')return;partySay(a,text);remember(a,k||'camp',text.length>90?text.slice(0,88)+'..':text)}
+const ev=(kind,parts,detail,ids)=>{campaign('camp',...parts);dmlog('camp',null,parts,{camp:kind,...detail},{heroes:ids})};
+const members=g=>g.ids.map(byId).filter(a=>a&&a.state==='camp');
+
+// ---- making and breaking camp ----
+function makeCamp(F,L,why){const lead=L.includes(leaderOfF())?leaderOfF():L[0],sp=campSpot(lead.x,lead.y);if(!sp)return;
+  const zone=zoneAt(sp.x,sp.y),ids=L.map(a=>a.id);
+  const g=F.camp={phase:'gather',why,x:sp.x,y:sp.y,zone,ids,start:Math.round(S.gameMin),restAt:0,nextRoll:0,nextTalk:0,nextBond:0,watchIdx:-1,
+    cd:F.camp&&F.camp.cd||0,stats:F.camp&&F.camp.stats||{camps:0,watches:0,visitors:0,spotted:0,caught:0,talks:0,quarrels:0}};
+  g.stats.camps++;
+  L.forEach((a,i)=>{a.state='camp';a.camp=i;a.dest=null;a.target=null;a.moving=false;if(a.pq)a.pq=[]});
+  const zn=ZONES[zone]||'the wilds';
+  ev('make',[why==='night'?'The Fellowship makes camp for the night in ':'The Fellowship, worn thin, makes camp in ',gd(zn),'.'],{why,zone:zn,at:[Math.round(sp.x),Math.round(sp.y)],members:ids.length},ids);
+  log(nar(''),gd(F.name),why==='night'?' makes camp for the night in ':', worn thin, makes camp in ',gd(zn),'.');
+  for(const a of L)if(a.player)notify(a,'The Fellowship makes camp in '+zn+'. You may party_say round the fire; the watch will wake you if anything comes.',false)}
+
+function spotOf(g,i,n){const ang=i/Math.max(1,n)*Math.PI*2+.6;return {x:g.x+Math.cos(ang)*CAMP.RING,y:g.y+Math.sin(ang)*CAMP.RING*.8}}
+
+function breakCamp(F,why){const g=F.camp;if(!g||!g.phase)return;const L=members(g);
+  for(const a of L){a.state='hunt';a.dest=null;a.camp=undefined;a.moving=false}
+  for(const id of g.ids){const a=byId(id);if(a&&a.state==='camp'){a.state='hunt';a.camp=undefined}}
+  g.cd=Math.round(S.gameMin)+CAMP.COOL;g.phase=null;
+  const ids=g.ids.slice();
+  if(why==='dawn'||why==='mended'){ev('break',[why==='dawn'?'The Fellowship breaks camp at first light and takes the road.':'The Fellowship, mended, breaks camp and takes the road.'],{why,rested:Math.round(S.gameMin-g.start)},ids);
+    log(nar(''),gd(F.name),' breaks camp and takes the road.');for(const a of L)remember(a,'camp','We broke camp rested and took the road.')}
+  g.ids=[]}
+
+// ---- visitors: an ambush on the watch ----
+function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zone&&MOBS[t].lv&&!MOBS[t].boss);if(!all.length)return null;
+  let types=all.filter(t=>MOBS[t].lv[0]<=lvl+2); // never a foe far above the company: the weakest of the region if none fits
+  if(!types.length)types=[all.reduce((b,t)=>MOBS[t].lv[0]<MOBS[b].lv[0]?t:b)];
+  const t=types[ri(0,types.length-1)],M=MOBS[t];
+  let p=null;for(let k=0;k<8&&!p;k++){const ang=rnd()*Math.PI*2,x=g.x+Math.cos(ang)*7,y=g.y+Math.sin(ang)*7;if(open(x,y))p={x,y}}
+  if(!p)return null;
+  const m=spawnMob(t,null,{lvl:Math.max(M.lv[0]-2,Math.min(M.lv[1]+1,lvl)),add:true});m.xpMul=.6;m.x=p.x;m.y=p.y;m.home={...p};m.spawn={...p};return m}
+function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors++;
+  const avg=Math.round(L.reduce((s,a)=>s+a.lvl,0)/L.length),spot=check(w,'perception',CAMP.SPOT_DC),victim=L[ri(0,L.length-1)];
+  const foeHero=nearHeroes(g.x,g.y,16,b=>b.fac!==w.fac&&b.state!=='dead'&&!b.hidden&&(b.state==='hunt'||b.state==='travel')&&Math.abs(b.lvl-w.lvl)<=3)[0];
+  const useHero=foeHero&&rnd()<.4;let m=null;
+  if(!useHero){m=ambushMob(g,avg);if(!m)return}
+  const foeName=useHero?foeHero.name:MOBS[m.type].name;
+  // everyone wakes; the camp is over for tonight
+  const wake=L.slice();for(const a of wake){a.camp=undefined;a.dest=null}
+  g.stats[spot.pass?'spotted':'caught']++;
+  const ids=wake.map(a=>a.id);
+  if(spot.pass)ev('spotted',[w,' hears something move at the edge of the firelight and rouses the camp: ',gd(foeName),' comes out of the dark.'],{watcher:w.name,roll:spot.total,dc:spot.dc,foe:foeName,hero:!!useHero},ids);
+  else{const hit=Math.min(victim.hp-1,Math.round(maxHp(victim)*CAMP.CAUGHT_HIT));victim.hp-=Math.max(0,hit);
+    ev('caught',[w,' nods off on watch. ',gd(foeName),' reaches the fire before anyone cries out and catches ',victim,' ('+Math.max(0,hit)+' damage).'],{watcher:w.name,roll:spot.total,dc:spot.dc,foe:foeName,hero:!!useHero},ids)}
+  log(nar(''),gd(F.name),' is '+(spot.pass?'roused':'caught asleep')+' by ',useHero?foeHero:gd(foeName),' at camp in ',gd(ZONES[g.zone]||'the wilds'),'.');
+  for(const a of wake){remember(a,'camp',spot.pass?w.name+' raised the alarm: '+foeName+' came out of the dark.':'We were caught at camp by '+foeName+'.');
+    if(a.player)notify(a,'ALARM at camp: '+foeName+' is on us. '+(spot.pass?w.name+' raised the alarm in time.':'The watch failed.'),true)}
+  breakCamp(F,'ambush');
+  if(useHero){const b=foeHero;for(const a of wake)a.state='hunt';w.state='duel';w.target=b;b.state='duel';b.target=w;b.dest=null}
+  else{m.target=spot.pass?w:victim;for(const a of wake){a.state='fight';a.target=m;a.dest=null}
+    openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at the Fellowship\'s camp in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id})}}
+
+// ---- campfire talk ----
+function talk(F,g,L){if(L.length<2)return;g.stats.talks++;
+  const h=Math.floor(S.gameMin),pool=L.filter(a=>!a.player),sp=(pool.length?pool:L)[Math.floor(hash(h,g.start,5)*(pool.length||L.length))%(pool.length||L.length)];
+  const others=L.filter(a=>a!==sp),other=others[Math.floor(hash(h,sp.id,6)*others.length)%others.length];
+  const hurt=L.filter(a=>a.hp<maxHp(a)*.6).length;
+  let topic=TOPICS[Math.floor(hash(h,sp.id,7)*TOPICS.length)%TOPICS.length];
+  if(topic==='worry'&&!hurt&&hash(h,1,8)<.5)topic='hope';
+  if(topic==='quarrel'&&bond(sp,other)>=6&&hash(h,2,9)<.6)topic='memory';
+  const zn=ZONES[g.zone]||'the wilds',pool2=CAMP_LINES[topic],said=g.said||(g.said=[]);let ix=Math.floor(hash(h,sp.id,10)*pool2.length)%pool2.length;for(let k=0;k<pool2.length&&said.includes(topic+ix);k++)ix=(ix+1)%pool2.length; // no line twice in a camp while others remain
+  said.push(topic+ix);if(said.length>8)said.shift();const text=fill(pool2[ix],sp,other,zn);
+  const asked=sp.brain&&F.ai&&S.brainOn!==false;
+  const say=t=>{partySay(sp,t);remember(sp,'camp','Round the fire I said: "'+t+'"');for(const b of others)if(!b.player&&hash(h,b.id,11)<.5)remember(b,'camp',sp.name+' said at the fire: "'+(t.length>70?t.slice(0,68)+'..':t)+'"')};
+  const finish=()=>{
+    if(topic==='quarrel'){g.stats.quarrels++;for(const [x,y] of [[sp,other],[other,sp]]){x.bonds=x.bonds||{};x.bonds[y.id]=Math.max(-10,bond(x,y)-1)}
+      stanceEvent(sp,other,'Snapped at '+other.name+' round the fire.');stanceEvent(other,sp,'Was sharp with me round the fire.');
+      const rp=QUARREL_REPLY[Math.floor(hash(h,other.id,12)*QUARREL_REPLY.length)%QUARREL_REPLY.length];if(!other.player)partySay(other,rp)
+      campaign('camp',sp,' and ',other,' snap at each other over the fire, then let it lie.')}
+    else if(topic==='song'||topic==='story')campaign('camp',sp,topic==='song'?' leads a song round the fire.':' tells a story round the fire.')};
+  if(asked){const gen=g.start;askRelay('say',snapshotFor(sp,'say',{trigger:'camp',ctx:{topic,place:zn,kind:g.why}}),4000).then(j=>{
+      const t=j&&cleanLine(j.line),c=F.camp;if(!c||c.start!==gen||sp.state!=='camp')return;say(t||text)}).catch(()=>{});finish()}
+  else{say(text);finish()}}
+
+// ---- once per step ----
+export function campTick(dt){const F=S.fellowship;
+  const g=F&&F.camp&&F.camp.phase?F.camp:null;
+  if(!g){for(const a of S.agents)if(a.state==='camp'){a.state='hunt';a.camp=undefined;a.dest=null} // a camp that no longer exists (disbanded, restored) frees its sleepers
+    if(!F||S.table)return;const L=fellows();if(L.length<CAMP.MIN_CAMP)return;
+    if(F.camp&&F.camp.cd>S.gameMin)return;
+    const E=L.filter(eligible);if(E.length<CAMP.MIN_CAMP||E.length<L.length-1)return; // the (near) whole company must be out on the road together
+    const lead=E.includes(leaderOfF())?leaderOfF():E[0];
+    if(E.some(a=>dist(a,lead)>14))return;
+    const why=wantCamp(E);if(!why)return;
+    makeCamp(F,E,why);return}
+  // upkeep: dead, departed or re-tasked sleepers drop out
+  g.ids=g.ids.filter(id=>{const a=byId(id);return a&&a.state==='camp'});
+  const L=members(g);if(L.length<2){breakCamp(F,'thin');return}
+  const now=S.gameMin;
+  for(const a of L)if(a.pq&&a.pq.length)a.pq=[];
+  if(g.phase==='gather'){let all=true;
+    L.forEach((a,i)=>{const p=spotOf(g,i,L.length);if(!moveTo(a,p.x,p.y,dt,2.4))all=false;a.face=g.x>a.x?1:-1});
+    if(all||now-g.start>CAMP.GATHER_MAX){g.phase='rest';g.restAt=Math.round(now);g.nextRoll=now+CAMP.ROLL_MIN;g.nextTalk=now+20;g.nextBond=now+180;g.watchIdx=-1;
+      for(const a of L)a.moving=false}
+    return}
+  // rest: heal, watches, rolls, talk
+  for(const a of L){const mh=maxHp(a);a.hp=Math.min(mh,a.hp+mh*CAMP.CAMP_HEAL*dt);a.face=g.x>a.x?1:-1}
+  const wi=Math.floor((now-g.restAt)/CAMP.WATCH_MIN),w=L[wi%L.length];
+  if(wi!==g.watchIdx){g.watchIdx=wi;g.watcher=w.id;g.stats.watches++;
+    campaign('camp',w,' takes the '+NTH[Math.min(NTH.length-1,wi)]+' watch.');
+    w.bubble={text:'Taking the watch.',life:3}}
+  if(now>=g.nextTalk){g.nextTalk=now+CAMP.TALK_MIN;talk(F,g,L)}
+  if(now>=g.nextBond){g.nextBond=now+180;bondEvent(L[0],'party',L)}
+  if(now>=g.nextRoll){g.nextRoll=now+CAMP.ROLL_MIN;
+    if(rnd()<CAMP.AMBUSH_P+.02*g.zone){visitor(F,g,byId(g.watcher)||w);return}}
+  const full=L.every(a=>a.hp>=maxHp(a)*CAMP.MENDED),h=hourNow();
+  if(g.why==='night'){if(full&&h>=CAMP.DAWN&&h<12)breakCamp(F,'dawn')}
+  else if(full||now-g.restAt>CAMP.WORN_MAX)breakCamp(F,'mended')}

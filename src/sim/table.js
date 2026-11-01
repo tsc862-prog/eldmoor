@@ -101,6 +101,8 @@ function open(kind,title,frame,ctx={}){const F=S.fellowship;if(!F||S.table)retur
   if(!sc.pause){finishAll(sc);return sc}
   return sc}
 
+export {open as openScene}; // sim/camp.js opens the camp ambush scene
+
 // An agent's answer (scene_act), before or during its turn. Returns an error string or the act.
 export function sceneAct(a,opt,line){const sc=S.table;if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
   if(sc.phase==='outcome'||sc.phase==='done')return 'The scene is over.';
