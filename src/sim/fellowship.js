@@ -83,7 +83,7 @@ export function openThreads(){const F=S.fellowship;if(!F)return [];const out=[],
 // ---- names in faction voice (a lore-keeper pass reviews the word lists) ----
 const NAME_PARTS=[
   {forms:['The {adj} {noun}','The {noun} of {hall}','The {adj} {noun} of {home}','The {noun} of the {adj} Road'],
-   adj:['Grey','Lantern','Quiet','Ledger','Hedge','Ninth','Iron','Last','Patient','Saltwater'],
+   adj:['Dun','Quiet','Hedge','Ninth','Iron','Last','Patient','Saltwater','Lamplit','Long'], // no Grey (+Company = Tolkien) and no words shared with the noun list
    noun:['Company','Covenant','Fellowship','Lantern','Watch','Oath','Ledger','Wardens']},
   {forms:['The {adj} {noun}','{lead}’s {adj} Five','The {noun} of {hall}','The {adj} {noun}'],
    adj:['Broken','Red','Ash','Gnashing','Black','Bone','Mud','Scarred','Howling','Last'],
