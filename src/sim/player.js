@@ -59,7 +59,7 @@ export const PK={
   RATE:12,           // world-changing tool calls per game hour
   WAIT:[10,240],     // game minutes a wait may span
   WAIT_REAL_MS:45000,// a wait never holds the agent longer than this in real time (paused world, hidden tab)
-  JOURNAL:100,JOURNAL_LEN:600,LOG:40,EV:40,NARR:20,SAY_LEN:120,
+  JOURNAL:100,JOURNAL_LEN:600,LOG:40,EV:40,EV_OUT:15,NARR:20,SAY_LEN:120, // EV_OUT: events handed back per tool result
 };
 
 // ---- helpers ----
@@ -82,7 +82,8 @@ const legal=['town','hunt','travel','return','fight','follow','regroup','duel','
 // Events: what happened to the hero, handed to the agent with the next tool result.
 function ev(a,text,urgent){const e={n:(a.playEvN=(a.playEvN||0)+1),t:clockStr(),text:clean(text,200)};if(urgent)e.u=1;
   (a.playEv||(a.playEv=[])).push(e);if(a.playEv.length>PK.EV)a.playEv.shift()}
-function takeEvents(a){const seen=a.playEvSeen||0,out=(a.playEv||[]).filter(e=>e.n>seen).map(e=>e.t+' '+e.text);a.playEvSeen=a.playEvN||0;return out}
+function takeEvents(a){const seen=a.playEvSeen||0,out=(a.playEv||[]).filter(e=>e.n>seen).map(e=>e.t+' '+e.text);a.playEvSeen=a.playEvN||0;
+  return out.length>PK.EV_OUT?['('+(out.length-PK.EV_OUT)+' earlier events not shown)',...out.slice(-PK.EV_OUT)]:out}
 function done(a,text,urgent=true){if(a.pq&&a.pq.length)a.pq.shift();if(text)ev(a,text,urgent)}
 const key=e=>e?e.t+'|'+e.text:'';
 // Entries of list that came after the one whose key is k (all of them when k is not found).
@@ -358,12 +359,13 @@ const T={
     need(['hunt','travel','return','follow'].includes(t.state),t.name+' is not free to be challenged right now.');
     a.pq=[];a.state=t.state='duel';a.target=t;t.target=a;a.dest=t.dest=null;record(a,'Challenged ',t,'.');
     return {ok:true,duel:t.name+' ('+t.cls+' L'+t.lvl+')',note:'A duel runs until one falls or breaks off; you break off on your own at low HP, or flee().'}},
-  hunt(a,{count,flee_below}){need(fieldState(a)&&!inTown(a),'Hunt out in the world, not in town.');need(a.state!=='return','You are heading home.');
+  hunt(a,{count,flee_below}){need(fieldState(a)&&!inTown(a),'Hunt out in the world, not in town: move_to a region first.');need(a.state!=='return','You are heading home.');
     const n=Math.min(10,Math.max(1,Math.round(Number(count)||3)));
     a.pq=[{kind:'hunt',n,k0:a.kills,flee:flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100))}];a.state='hunt';a.dest=null;
     return {ok:true,hunting:n+' kill'+(n>1?'s':'')+' in '+ZONES[zoneAt(a.x,a.y)]}},
   flee(a){need(['fight','duel','assist'].includes(a.state),'You are not in a fight.');flee(a,false);return {ok:true,fleeing_to:homeOf(a).name,hp:pct(a.hp,maxHp(a))+'%'}},
-  rest(a,{minutes}){need(a.state==='hunt'||a.state==='town','You can only rest when standing still in the world or in town.');
+  rest(a,{minutes}){need(a.state==='hunt'||a.state==='town'||a.state==='travel'||a.state==='follow','You cannot rest now ('+(a.state==='return'?'you are heading home; rest in town':a.state)+').');
+    if(a.state==='travel'||a.state==='follow')a.state='hunt'; // stop walking and sit down where you are
     const m=Math.min(240,Math.max(10,Math.round(Number(minutes)||60)));a.pq=[{kind:'rest',until:S.gameMin+m}];a.dest=null;return {ok:true,resting_min:m}},
   buy(a,{slot}){need(inTown(a),'The smiths are in town.');const k=slot?String(slot):weakestSlot(a);need(k&&SLOTS.includes(k),'No slot to fill.');
     const cur=a.slots[k];need(!(cur&&cur.epic),'An epic holds that slot.');need(slotLevel(a,k)<a.lvl,'Nothing better than your '+(cur?cur.name:'gear')+' (item level '+slotLevel(a,k)+') is for sale at your level.');
@@ -438,4 +440,6 @@ export function playerNarrate(id,text){const a=hero(Number(id));if(!a||!a.player
 
 // The one agent-played hero a host serves (the first living one), or null.
 export const playerHero=()=>(S.playerHeroes||[]).map(hero).find(a=>a&&a.player&&a.state!=='dead')||null;
+// The seat: the agent-played hero the game serves, even after it died (its tools then answer "dead").
+export const playerSeat=()=>playerHero()||(S.playerHeroes||[]).map(hero).filter(a=>a&&a.player).pop()||null;
 export {CHOICE_MIN};

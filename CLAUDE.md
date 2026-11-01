@@ -80,6 +80,32 @@ other. The rules:
 - Worlds: Eldmoor (80x50) by default; `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node selects the 160x100 Stepping Lands test continent (saves are kept per world).
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
+- `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
+
+## Agent player
+
+An AI agent can play one hero end to end (issue #75): it looks around, walks, fights, takes
+adventures, answers scene choices and keeps a journal, through MCP tools (the list is
+`src/data/player-tools.js`; the game side is `src/sim/player.js`). The hero stays a hero:
+one life, sight limits, the same dice; reflexes (defend, flee below 15% HP, go home with a
+full bag) keep it alive while the agent thinks or is silent, and scene choices time out to
+the scripted branch, so the world never waits.
+
+- With the browser: `npm run relay` (or `npm run relay -- --play-only` without a key),
+  `npm run dev`, select a hero and press **Agent** on its card (the page connects to
+  `ws://127.0.0.1:8787/play`; the Agent tab shows tool calls, narration and the journal).
+  Then `npm run agent` (Claude Agent SDK, `claude-sonnet-5-5` by default, `AGENT_MODEL` to
+  change; `--max-turns 20 --budget 1.00` are the default caps; `--new` starts a fresh
+  session, otherwise `logs/agent-session.json` resumes it; cost line per turn).
+- Headless: `npm run play-headless -- --warm 20` (a Node world on port 8789, saved to
+  `logs/agent-world.json`, `--resume` to continue), then
+  `npm run agent -- --url http://127.0.0.1:8789`.
+- Other MCP clients: streamable HTTP at `http://127.0.0.1:8787/mcp` (or `:8789/mcp`
+  headless), stateless, POST only; or stdio with `npm run -s mcp` (forwards to `PLAY_URL`).
+  Plain JSON without MCP: `POST /play/call {tool, args}`. Only localhost, no browser origins;
+  tools only ever touch the one agent-played hero.
+- `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
+  the journal and a save/restore, and proves a silent agent never stalls the world.
 
 ## Layout
 
