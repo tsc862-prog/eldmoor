@@ -61,9 +61,9 @@ export const ABILITIES={
 // that keep each role mix level (see bestiarycheck). loot: p chance of the trade good, gold scale, gear
 // chance (defaults to the role's), epic chance of a zone epic.
 export const BESTIARY={
-  wolf:     {family:'beast',role:'skirmisher',tilt:{dps:.95},abilities:['howl'],beh:{aggro:1.3,pack:1,flee:.15}},
-  boar:     {family:'beast',role:'brute',abilities:['gore'],beh:{aggro:1.3}},
-  spider:   {family:'vermin',role:'caster',abilities:['web','venom'],beh:{aggro:1.3},res:{nature:.85},weak:{holy:1.1}},
+  wolf:     {family:'beast',role:'skirmisher',tilt:{dps:1.1},abilities:['howl'],beh:{aggro:1.3,pack:1,flee:.15}},
+  boar:     {family:'beast',role:'brute',tilt:{dps:.88},abilities:['gore'],beh:{aggro:1.0}},
+  spider:   {family:'vermin',role:'caster',tilt:{dps:.84,hp:.95},abilities:['web','venom'],beh:{aggro:.9},res:{nature:.85},weak:{holy:1.1}},
   bog:      {family:'brute-folk',role:'swarm',tilt:{hp:1.3,dps:1.1},abilities:['mire'],beh:{aggro:1.3,pack:2},weak:{arcane:1.1}},
   mudboar:  {family:'beast',role:'brute',abilities:['frenzy','gore'],beh:{aggro:1.3}},
   lurker:   {family:'vermin',role:'caster',tilt:{hp:1.1},abilities:['venom','hatch'],beh:{aggro:1.3},res:{nature:.8},weak:{arcane:1.15}},
