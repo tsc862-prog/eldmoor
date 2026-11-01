@@ -19,7 +19,8 @@ import {cam} from '../render/draw.js';
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
-import {renderMindRow,mindAct,mindChange,mindRowSig} from './mindpick.js'; // per-member mind (Mixed minds, #97)
+import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
+import {fellowshipRunnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start all five / Stop all
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -104,6 +105,8 @@ function topView(node){const F=S.fellowship;
   ai.title=md==='off'?'Scripted rules only. Click: the relay plays the members (npm run relay).':md==='relay'?'The relay plays the members and writes their sheets (scripted when it is down). Click: one AI agent per member (npm run fellowship).':'Each member is agent-played: run npm run fellowship to start their agents (reflexes act while they are silent). Click: back to scripted.';
   const db=el('button',null,confirmDisband?'Really disband?':'Disband');db.dataset.fact='disband';
   bar.append(fol,ai,db);node.append(bar);
+  // Minds: agents -> the members' runners can be started from here (the relay runs them; --runners)
+  if(md==='agent'){const rc=fellowshipRunnerControl();if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels()),rc.firstChild);node.append(rc)}
   renderSettings(node);
   if(msg)node.append(el('div','fmsg',msg));
   if(F.enrich&&F.enrich.calls)node.append(el('div','dm','Relay writing: '+F.enrich.ok+' sheets written, '+F.enrich.fail+' kept scripted, $'+F.enrich.usd.toFixed(4)+(F.enrich.ms?' · last '+(F.enrich.ms/1000).toFixed(1)+' s':'')));
@@ -161,7 +164,7 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm){sigForm=sig;sigTop='';top.replaceChildren();formView(top)}return}
   logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0);
   const picking=typeof document!=='undefined'&&document.activeElement&&document.activeElement.tagName==='SELECT'&&top.contains(document.activeElement); // never rebuild under an open picker
   if(sig!==sigTop&&!picking){sigTop=sig;sigForm='';top.replaceChildren();topView(top)}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog){sigLog=ls;logBox._b.replaceChildren();renderCampaignLog(logBox._b)}}

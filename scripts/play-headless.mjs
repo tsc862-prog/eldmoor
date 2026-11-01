@@ -12,6 +12,7 @@
 //                                                  set to agents: all five are agent-played (npm run fellowship);
 //                                                  --no-relay keeps the world off the brain relay, --turn-ms MS the table
 //                                                  turn budget, --watch never pauses for scenes
+//   node scripts/play-headless.mjs --runners       runners can be started and stopped over HTTP (scripts/runners.mjs)
 //
 // Options: --port (or PLAY_PORT, default 8789), --speed (world speed, default 1),
 // --warm N (fast-forward N real minutes at 1x before choosing heroes, default 0),
@@ -27,6 +28,7 @@ import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, player
 import {onLog} from '../src/sim/chronicle.js';
 import {hostCall} from '../src/sim/player-host.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
+import {attachRunners} from './runners.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const WORLD_FILE = join(ROOT, 'logs', 'agent-world.json');
@@ -88,8 +90,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     saveT += real; if (saveT >= 60) {saveT = 0; save()}}, 50);
 
   const server = http.createServer((req, res) => {res.writeHead(404, {'content-type': 'application/json'}); res.end('{"error":"not found"}')});
-  attachPlay(server, {backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
+  const play = attachPlay(server, {backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
+  // --runners (or RELAY_RUNNERS=1): runners can be started over HTTP (POST /play/runner/start), as from the game page
+  const sup = attachRunners(server, {play, enabled: flag('runners') || /^(1|true|yes)$/i.test(process.env.RELAY_RUNNERS || ''), log: quiet ? () => {} : console.log, base: () => `http://127.0.0.1:${port}`});
   server.listen(port, '127.0.0.1', () => console.log(`[play] headless world at ${speed}x; MCP http://127.0.0.1:${port}/mcp  (plain: POST /play/call)\n[play] run one agent per hero: npm run agent -- --url http://127.0.0.1:${port} --hero <name>`));
-  const stop = () => {save(); console.log('[play] world saved to ' + worldFile); process.exit(0)};
+  const stop = () => {sup.stopAll(); save(); console.log('[play] world saved to ' + worldFile); setTimeout(() => process.exit(0), 1000)};
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

@@ -21,6 +21,7 @@ import {doing,combatRows} from './panels.js';
 import {select,setView} from './controls.js';
 import {mindOf,mindText,mindTitle,mindButton} from './mindctl.js';
 import {openSheet} from './sheet.js';
+import {runnerControl,runnerSig} from './runners.js'; // app runners: Start / Stop on an agent-played member
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -77,9 +78,9 @@ function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
   top.append(r.port,id);
   const hp=el('div','meter hp pfhp');r.hpi=document.createElement('i');r.hpt=el('span','pfhpt');hp.append(r.hpi,r.hpt);
   r.doing=el('div','pfdo');r.tgt=el('div','pftg');r.chips=el('div','pfchips');
-  const foot=el('div','pffoot');r.mind=el('span','pfmind');r.btn=el('span','pfbtn');foot.append(r.mind,r.btn);
+  const foot=el('div','pffoot');r.mind=el('span','pfmind');r.btn=el('span','pfbtn');foot.append(r.mind,r.btn);r.run=el('div','pfrun');
   r.rep=el('div','dm pfrep');
-  f.append(top,hp,r.doing,r.tgt,r.chips,r.rep,foot);
+  f.append(top,hp,r.doing,r.tgt,r.chips,r.rep,foot,r.run);
   return {node:f,hid:a.id,r}}
 
 function update(fr,m){const a=m.hero,r=fr.r;
@@ -96,7 +97,8 @@ function update(fr,m){const a=m.hero,r=fr.r;
   const ch=chipsOf(a),ck=ch.map(c=>c.t).join('|');if(r.chips._k!==ck){r.chips._k=ck;r.chips.replaceChildren();for(const c of ch){const s=el('span','chip c-'+c.c,c.t);s.title=c.title||'';if(c.col)s.style.color=c.col;r.chips.append(s)}}
   setText(r.rep,replacedLine(m.slot));
   setText(r.mind,mindText(a));setCls(r.mind,'pfmind m-'+mindOf(a));setAttr(r.mind,'title',mindTitle(a));
-  const bk=dead?'':mindOf(a);if(r.btn._k!==bk){r.btn._k=bk;r.btn.replaceChildren();if(!dead)r.btn.append(mindButton(a))}}
+  const bk=dead?'':mindOf(a);if(r.btn._k!==bk){r.btn._k=bk;r.btn.replaceChildren();if(!dead)r.btn.append(mindButton(a))}
+  const rk=dead||!a.player?'':runnerSig(a);if(r.run._k!==rk){r.run._k=rk;r.run.replaceChildren();if(rk)r.run.append(runnerControl(a))}}
 
 // ---- hover: combat totals and top skills ----
 function tipBody(a){const d=[];d.push(el('div','in f'+a.fac,a.name+' · Lv '+a.lvl+' '+a.cls));

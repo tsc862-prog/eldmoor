@@ -39,12 +39,13 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
-import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
+import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
+import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine} from './local-agent.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const RUNNER_PROVIDERS = ['anthropic', 'ollama']; // providers with an agent runner (openai/google: not yet)
+export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
 export const DEFAULT_AGENT_MODEL = 'claude-sonnet-5-5'; // claude-api skill (cached 2026-10-06): Sonnet 5.5, $2 in / $10 out per 1M tokens
 
 const argv = process.argv.slice(2);
@@ -127,7 +128,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (c0.status !== 200) {console.error('[agent] ' + (c0.error || 'could not claim the hero')); process.exit(1)}
   const beat = setInterval(() => claim().then(c => {if (c.status === 409) {console.error('[agent] ' + c.error); process.exit(1)}}), 10000); beat.unref();
   const release = () => post(base, '/play/release', {hero: heroId, runner}, 3000).catch(() => {});
-  process.on('SIGINT', async () => {await release(); process.exit(130)});
+  let turnAbort = null; // the Agent SDK turn in flight, so a stop ends it (and its subprocess) cleanly
+  process.on('SIGINT', async () => {if (turnAbort) turnAbort.abort(); await release(); process.exit(130)});
+  // Started from the game (scripts/runners.mjs): a "stop" on stdin, or the relay going away, ends the run.
+  onSupervisorStop(async why => {console.log(`[agent] ${why}: releasing the hero and stopping`); if (turnAbort) turnAbort.abort(); await release(); setTimeout(() => process.exit(0), 200)});
   const st = await play(base, heroId, 'status');
   if (!st.ok) {console.error('status failed: ' + st.error); await release(); process.exit(1)}
 
@@ -162,7 +166,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const prompt = sess.turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
       : `Turn ${sess.turns + 1}. Continue living your life in Eldmoor.`;
     const t0 = Date.now(); let tools = 0, result = null;
+    turnAbort = new AbortController();
     const q = query({prompt, options: {
+      abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       // the hero rides on every MCP request (header, and the query for clients that drop headers)
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${heroId}`, headers: {'X-Eldmoor-Hero': String(heroId)}, timeout: 90000}},

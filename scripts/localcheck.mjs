@@ -23,6 +23,7 @@ import {fileURLToPath} from 'node:url';
 import {localTurn, cleanArgs, parseTextCall, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
 import {ollamaAdapter} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
+import {startMockOllama} from './mock-ollama.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0;
@@ -77,36 +78,8 @@ console.log('local agent loop (fake chat)');
   ok(dropped > 0 && JSON.stringify(h).length <= 2000 && h[0].turn === 1 && h[h.length - 2].content === 'Turn 9', `the history is trimmed by whole turns, oldest first (${dropped} dropped)`);
 }
 
-// ---------------------------------------------------------------- the mock Ollama
-// Models: mock-tools (tool calling), mock-json (no tool support: 400 on tools), mock-text (writes calls as text).
-const seen = [];
-const plan = {
-  tools: [['status'], ['rest', {minutes: '20'}], ['fly'], ['wait', {minutes: 20}]],
-  json: [{tool: 'status', args: {}}, {tool: 'wait', args: {minutes: 20}}, {tool: 'end', args: {}, narration: 'The hero waited, local and free.'}],
-};
-const ollamaServer = http.createServer((req, res) => {
-  const send = (code, o) => {res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(o))};
-  if (req.url === '/api/tags') return send(200, {models: ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b'].map(name => ({name, model: name}))});
-  if (req.url !== '/api/chat' || req.method !== 'POST') return send(404, {error: 'not found'});
-  let b = ''; req.on('data', c => b += c); req.on('end', () => {
-    const body = JSON.parse(b); seen.push(body);
-    const msgs = body.messages, lastTurn = msgs.map((m, i) => m.role === 'user' && !/^(Result of|That was not)/.test(m.content) ? i : -1).filter(i => i >= 0).pop();
-    const after = msgs.slice(lastTurn + 1), done = {done: true, done_reason: 'stop', prompt_eval_count: 900, eval_count: 20, model: body.model};
-    if (body.model === 'mock-json:1b') {
-      if (body.tools) return send(400, {error: `registry.ollama.ai/library/mock-json does not support tools`});
-      const n = after.filter(m => m.role === 'assistant').length;
-      return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({narration: '', ...plan.json[Math.min(n, plan.json.length - 1)]})}});
-    }
-    const n = after.filter(m => m.role === 'assistant').length;
-    if (!body.tools) seen.final = (seen.final || 0) + 1; // the closing call after a wait: words only
-    if (n >= plan.tools.length || !body.tools) return send(200, {...done, message: {role: 'assistant', content: 'The hero looked, rested and waited.'}});
-    const [name, args = {}] = plan.tools[n];
-    if (body.model === 'mock-text:1b') return send(200, {...done, message: {role: 'assistant', content: `<tool_call>${JSON.stringify({name, arguments: args})}</tool_call>`}});
-    send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name, arguments: args}}]}});
-  });
-});
-await new Promise(r => ollamaServer.listen(0, '127.0.0.1', r));
-const OLLAMA = `http://127.0.0.1:${ollamaServer.address().port}`;
+// ---------------------------------------------------------------- the mock Ollama (scripts/mock-ollama.mjs)
+const {url: OLLAMA, seen, close: closeOllama} = await startMockOllama();
 
 console.log('ollama adapter chat (mock server)');
 {
@@ -219,7 +192,7 @@ console.log('relay links message');
 }
 
 for (const k of kids) try {k.kill()} catch {}
-ollamaServer.close();
+closeOllama();
 try {rmSync(tmp, {recursive: true, force: true})} catch {}
 console.log(fail ? `\nlocalcheck: ${fail} FAILED` : '\nlocalcheck: all ok');
 process.exit(fail ? 1 : 0);

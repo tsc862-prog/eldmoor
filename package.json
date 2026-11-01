@@ -19,6 +19,7 @@
     "agent": "node scripts/agent-player.mjs",
     "playcheck": "node scripts/playcheck.mjs",
     "localcheck": "node scripts/localcheck.mjs",
+    "runnercheck": "node scripts/runnercheck.mjs",
     "tablecheck": "node scripts/tablecheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",
