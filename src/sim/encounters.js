@@ -20,6 +20,7 @@ import {partyMates} from './party.js';
 import {isStorm} from './weather.js';
 import {record} from './history.js';
 import {offerUpgrade} from './gear.js';
+import {encRate,encKind,encSpot} from './levers.js';
 
 // ---- knobs ----
 const MAX_ALIVE=3;            // encounters on the roads at once
@@ -57,9 +58,11 @@ const bump=(tab,k)=>{tab[k]=(tab[k]||0)+1};
 function ensure(){if(S.encounters)return;S.encounters=[];S.encNext=S.gameMin+SPAWN_MIN+rnd()*(SPAWN_MAX-SPAWN_MIN);
   S.encStats={spawned:{},resolved:{},success:{},escorts:{},expired:0,abandoned:0}}
 
-function spawn(){if(!SPOTS.length)return;let p=null;
+// DM levers (sim/levers.js): a danger area draws half the spawns to its road and biases them to
+// ambushes; cleared areas, festivals and plague turn ambushes into quieter kinds.
+function spawn(){if(!SPOTS.length)return;let p=encSpot(SPOTS,rnd);
   for(let i=0;i<20&&!p;i++){const q=pickA(SPOTS);if(!alive().some(e=>dist(e,q)<6))p=q}
-  if(!p)return;const kind=pickKind();
+  if(!p)return;const kind=encKind(p,pickKind(),rnd);
   const e={id:++S.uid,kind:'enc',type:kind,x:p.x,y:p.y,home:{...p},z:zone[I(Math.floor(p.x),Math.floor(p.y))],born:S.gameMin,until:S.gameMin+LIFE,
     used:{},face:1,moving:false,escort:null,escortT:0,n:kind==='ambush'?ri(2,3):0};
   alive().push(e);bump(S.encStats.spawned,kind);return e}
@@ -115,7 +118,7 @@ const afield=b=>b.state==='travel'||b.state==='return'||b.state==='hunt'||b.stat
 
 // Once per step: spawn, expire, walk escorted pilgrims and settle their arrival.
 export function encountersTick(dt){ensure();const L=alive();
-  if(S.gameMin>=S.encNext){S.encNext=S.gameMin+SPAWN_MIN+rnd()*(SPAWN_MAX-SPAWN_MIN);if(L.length<MAX_ALIVE)spawn()}
+  if(S.gameMin>=S.encNext){S.encNext=S.gameMin+(SPAWN_MIN+rnd()*(SPAWN_MAX-SPAWN_MIN))/encRate();if(L.length<MAX_ALIVE)spawn()}
   for(let i=L.length-1;i>=0;i--){const e=L[i];
     if(e.escort){const a=e.escort;
       if(a.state==='town'){bump(S.encStats.resolved,'pilgrim');const r=d20(),gift=r>=12?a.lvl*2+3:0;a.honor+=3;S.facStats[a.fac].honor+=3;if(gift){a.gold+=gift;bump(S.encStats.success,'pilgrim')}

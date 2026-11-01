@@ -9,14 +9,20 @@ const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 
 export const FILTERS=[['all','All',null],['hooks','Hooks',['hooks','pick']],['scenes','Scenes',['frame','branch']],['rolls','Rolls',['roll','complication']],
-  ['outcomes','Outcomes',['payoff','fail','abandon','fallback']]];
-const BADGE={hooks:'BOARD',pick:'PICK',frame:'SCENE',roll:'ROLL',complication:'TWIST',branch:'FORK',payoff:'PAYOFF',fail:'FAIL',abandon:'DROP',fallback:'FALLBACK'};
+  ['outcomes','Outcomes',['payoff','fail','abandon','fallback']],['levers','Levers',['lever']]];
+const BADGE={hooks:'BOARD',pick:'PICK',frame:'SCENE',roll:'ROLL',complication:'TWIST',branch:'FORK',payoff:'PAYOFF',fail:'FAIL',abandon:'DROP',fallback:'FALLBACK',lever:'LEVER'};
 let filter='all',advId=null,seen='',box=null,list=null,bar=null,chip=null;
 const open=new Set();
 export const dmFilter=()=>filter;
 export const dmAdventure=()=>advId;
 
-const matches=e=>{const f=FILTERS.find(([k])=>k===filter);return (!f[2]||f[2].includes(e.kind))&&(advId==null||e.advId===advId)};
+// The Levers filter also finds entries that carry folded lever pulls (board posts, named foes on a roll).
+const matches=e=>{const f=FILTERS.find(([k])=>k===filter);return (!f[2]||f[2].includes(e.kind)||filter==='levers'&&!!(e.detail&&e.detail.levers))&&(advId==null||e.advId===advId)};
+// Lever pulls in an entry (its own, or folded ones) and how long each has left: "18h left", "ended".
+const leversOf=e=>e.kind==='lever'&&e.detail&&e.detail.lever&&!e.detail.levers?[e.detail]:(e.detail&&e.detail.levers)||[];
+const hrs=m=>{const h=Math.max(0,Math.round(m/60));return h>=24?Math.floor(h/24)+'d'+(h%24?' '+h%24+'h':''):h+'h'};
+function left(e){const out=[];for(const l of leversOf(e)){if(l.until==null)continue;
+  const live=(S.levers&&S.levers.active||[]).some(x=>x.id===l.id);out.push(l.lever+' '+(live&&l.until>S.gameMin?hrs(l.until-S.gameMin)+' left':'ended'))}return out.join(', ')}
 const dayOf=e=>Math.floor((e.gameMin||0)/1440)+1;
 const heroSpan=(id,h)=>{const s=el('span','hn f'+(h?h.fac:0),h?h.name:'#'+id);s.dataset.hid=id;return s};
 
@@ -37,6 +43,7 @@ function table(e){const t=el('table','dmkv'),b=el('tbody');
   if(e.heroes&&e.heroes.length)add('heroes',hs);
   if(e.advId!=null)add('adventure','#'+e.advId);
   if(e.town)add('town',e.town);
+  {const r=left(e);if(r)add('remaining',r)}
   for(const [k,v] of rows(e.detail||{},'',[]))add(k,v);
   if(e.prompt)add('prompt',e.prompt);
   if(e.reply)add('reply',e.reply);
@@ -45,14 +52,14 @@ function table(e){const t=el('table','dmkv'),b=el('tbody');
 function advTitle(id){const a=(S.adventures||[]).find(x=>x.id===id);return a&&a.title?a.title:'#'+id}
 
 export function renderDmLog(){if(!list)return;
-  const L=S.dmLog||[],sig=L.length+':'+(L[0]?L[0].id:0)+':'+filter+':'+advId+':'+open.size+':'+[...open].join(',');
+  const L=S.dmLog||[],sig=L.length+':'+(L[0]?L[0].id:0)+':'+filter+':'+advId+':'+open.size+':'+[...open].join(',')+(filter==='levers'?':'+Math.floor(S.gameMin/60):'');
   if(sig===seen)return;seen=sig;
   if(chip){chip.replaceChildren();if(advId!=null){chip.hidden=false;chip.append('Adventure: '+advTitle(advId)+' ');const x=el('button',null,'show all');x.dataset.dmclear='1';chip.append(x)}else chip.hidden=true}
   list.replaceChildren();let n=0;
   for(const e of L){if(!matches(e))continue;
     const li=el('li','tl dmrow dm-'+e.kind);li.dataset.dmid=e.id;
     li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-dm',BADGE[e.kind]||e.kind.toUpperCase()));
-    const t=el('span','tx dmtx');partsTo(t,e.summary);li.append(t);
+    const t=el('span','tx dmtx');partsTo(t,e.summary);{const r=left(e);if(r)t.append(el('span','dm',' ('+r+')'))}li.append(t);
     if(open.has(e.id))li.append(table(e));
     list.append(li);n++}
   if(!n)list.append(el('li','dm','Nothing logged yet.'))}

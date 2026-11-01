@@ -141,6 +141,11 @@ the scripted branch, so the world never waits.
   `boss.js` the Kragmaw fight and raid muster; `pvp.js` duels, nemesis hunts,
   assists; `dungeon.js` Sunken Crypt runs; `market.js` auction-house prices;
   `history.js` `record(a, ...parts)` per-hero event log for the dossier Log tab;
+  `levers.js` the DM's world levers: a validated registry (`pull(name, params, {by, reason})`)
+  with limits, cooldowns and DM log entries for people, places, danger/cleared areas, region
+  conditions, price shocks, hooks and named/custom foes, plus the hooks the world reads them
+  through (state on `S.levers`, `S.places`, `S.marks`, `S.conditions`, `S.wanderers`;
+  drawn by `src/render/places.js`; `npm run levercheck`);
   `index.js` `init()` and `step(dt)`.
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;

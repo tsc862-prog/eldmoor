@@ -13,6 +13,7 @@
     "savecheck": "node scripts/savecheck.mjs",
     "relay": "node scripts/relay.mjs",
     "braincheck": "node scripts/braincheck.mjs",
+    "levercheck": "node scripts/levercheck.mjs",
     "play-headless": "node scripts/play-headless.mjs",
     "mcp": "node scripts/mcp-stdio.mjs",
     "agent": "node scripts/agent-player.mjs",
