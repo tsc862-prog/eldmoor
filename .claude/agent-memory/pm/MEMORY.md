@@ -1,0 +1,1 @@
+- [Priorities](project_priorities.md) — Fellowship-first order, size labels, readiness rules
