@@ -133,3 +133,10 @@ ul.tlist time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-num
 .kv.mkv{grid-template-columns:auto 1fr}
 .mbtn{align-self:flex-start;font-size:7px;padding:4px 6px;box-shadow:none}
 .mpre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow-y:auto;margin:0;padding:6px;background:#0a0b14;border:1px solid var(--edge);color:var(--ink)}
+
+/* ability scores on the Stats tab (sim/abilities.js) */
+.abils{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:8px 0 4px;text-align:center}
+.abil{display:flex;flex-direction:column;border:1px solid var(--line,#3a3a4a);padding:3px 0;line-height:1.1}
+.abil .an{font-family:var(--px);font-size:7px;color:var(--dim)} .abil .as{font-size:20px} .abil .am{color:var(--dim)}
+.abil.hi .am{color:#8ad88a} .abil.lo .am{color:#d88a8a}
+.skills{margin-top:2px}
