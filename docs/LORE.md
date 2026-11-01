@@ -371,10 +371,10 @@ slow mending, a wider ambush, a guaranteed epic and one extra ability: Hollowfan
 Mother Sedge Hatch, Scoriath Bellow, Ulfryn Coldmarrow Rimeblast, Brask Ironhorn Gore,
 Whitemaw Rimeblast.
 
-**Named foes** (Old Scar and the rest) are a monster of the region as a leader, with a
-signature ability on top of their kin's: Old Scar Frenzy, the Grey Widow Web Snare, Crookback
+**Named foes** (Old Notch and the rest) are a monster of the region as a leader, with a
+signature ability on top of their kin's: Old Notch Frenzy, the Grey Widow Web Snare, Crookback
 Gore, Longtooth Howl, the Quiet One Grave Dread, Ashjaw Ash Breath, Rimeclaw Rime Bite,
-Mudmother Mire Grip, Halfhorn Bellow, the Pale Hunger Marrow Chill, Blackgums Venom, Old Rot
+Mudmother Mire Grip, Halfhorn Bellow, the Thin Hunger Marrow Chill, Blackgums Venom, Old Rot
 Hatch.
 
 **Boss templates** (`src/data/bosses.js`): phases at hide thresholds, signature moves, adds,
@@ -387,9 +387,9 @@ an enrage timer and a named loot table.
   chest); enrages after four minutes. Loot: the Sunken Crypt epics.
 - **Site bosses**, one set per theme and three tiers: crypt the Barrow-Reeve, Marrowmother
   Ysolt, the Hollow Abbot; fortress Captain Redhand, Warden Brannock Sull, the Iron Reeve; den
-  Greymaw, Long Ursel, Rimejaw; mine the Cave Duchess, Slagheart, Emberdeep Kor; temple the
-  Veiled Cantor, Ashen Prior Vael, the Pale Hierophant; ruin the Stone Steward, Lord Orrick
-  Dane, the Sundered Queen; road Black Tam, Sable Marrin, the Pale Reeve.
+  Dunmaw, Long Ursel, Snowdam; mine the Cave Duchess, Slagheart, Emberdeep Kor; temple the
+  Veiled Cantor, Ashen Prior Orsan, the Tarnkeeper; ruin the Stone Steward, Lord Orrick
+  Dane, the Sundered Queen; road Black Tam, Sable Marrin, the Winter Reeve.
 
 **Encounters and sites.** Themes: crypt, fortress, den, mine, temple, ruin, road. A fight is
 bought with a budget: each creature costs by its role and by how far above the party it stands,
@@ -630,8 +630,8 @@ Deliveries go to another town of the hero's own faction where there is one, else
 waymark on the region's road; a pilgrim's go to the Crypt mouth or the edge of the far country.
 
 **Named foes.** Some adventures end in a fight with a beast that has a name for the length of
-the job: Old Scar, the Grey Widow, Crookback, Longtooth, the Quiet One, Ashjaw, Rimeclaw,
-Mudmother, Halfhorn, the Pale Hunger, Blackgums, Old Rot, each with a title such as "terror of
+the job: Old Notch, the Grey Widow, Crookback, Longtooth, the Quiet One, Ashjaw, Rimeclaw,
+Mudmother, Halfhorn, the Thin Hunger, Blackgums, Old Rot, each with a title such as "terror of
 the Mirefen drovers" or "the oldest fen lurker in Mirefen". They are a monster of the region,
 a level above the strongest of the party and tougher than their kind. They are not the rare
 elites (Hollowfang and the rest), carry no epic and never come back; only an inn rumour or an
