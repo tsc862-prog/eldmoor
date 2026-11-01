@@ -22,7 +22,7 @@ import {raceOf} from '../data/races.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {pop} from './effects.js';
-import {maxHp,goHome} from './heroes.js';
+import {maxHp,goHome,huntZone} from './heroes.js';
 import {gearScore} from './gear.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {friendsOf} from './bonds.js';
