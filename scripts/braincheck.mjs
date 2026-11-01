@@ -10,7 +10,10 @@
 //     validated reason; the relay's verbose log writes JSON lines without secrets;
 //   - say lines (issue #71) are spoken in the moment or dropped: a fresh answer is said at once
 //     and applied, a stale one or one whose situation changed settles late unsaid, and with
-//     aiQuietTable the table line is held back and only said when no model line came in time.
+//     aiQuietTable the table line is held back and only said when no model line came in time;
+//   - town plans respect parties: an AI leader's plan sets the party zone within the weakest
+//     member's legal range (else it is overruled), followers are asked only the crypt call and
+//     log "follows the party", solo heroes and scripted parties are unchanged.
 // Usage: npm run braincheck
 // Internal: node scripts/braincheck.mjs --fp plain|brain|loud   (prints a fingerprint of a short run)
 import http from 'node:http';
@@ -106,7 +109,12 @@ const {init, step, S, enableBrain, disableBrain, brainStatus, onLog} = await imp
 const B = await import('../src/sim/brain.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {maxHp} = await import('../src/sim/index.js');
+const {setDmPolicy} = await import('../src/sim/dm.js');
 init();
+// The DM (sim/dm.js) may send heroes off on adventures at the gate, which would overrule their
+// town plans at random. These checks are about the brain, so no hero takes a job here (a policy
+// answer of null means "no hook"); the job overrule itself is checked directly in 2c.
+setDmPolicy({pickHook: () => null});
 let quietLines = 0; onLog(e => {if (e.parts.some(p => p && typeof p.t === 'string' && p.t.includes('thoughts go quiet')))quietLines++});
 
 let mode = 'valid', delay = 0, status = 200; const got = [];
@@ -337,6 +345,94 @@ console.log('say: in the moment or dropped');
   prep(true, false); say(h, 'kill', {target: 'Ser Test'}); tick(1 / 60);
   ok(table().length === 1 && answers.length === 0 && !h.mind && B.brainLine(h, 'kill', {}, 'x') === null, 'scripted hero: table line said at once, nothing asked or held');
   mob.alive = true; h.state = 'hunt'; h.target = null;
+  B.setFetch(null); Object.assign(B.CFG, cfg0); B.resetBrain();
+}
+
+// ======== 2c. town plans respect parties ========
+console.log('parties: the leader decides, followers follow');
+{
+  const {ZONES, zoneFor} = await import('../src/world/map.js');
+  const {homeOf} = await import('../src/data/races.js');
+  const {disband} = await import('../src/sim/party.js');
+  const reqs = []; let pickLast = false;
+  B.setFetch(async (url, opt) => {const q = JSON.parse(opt.body); reqs.push(q);
+    const out = q.kind === 'cryptCall' ? {crypt: false, reason: 'Not into that dark.'} : {choice: q.snapshot.options[pickLast ? q.snapshot.options.length - 1 : 0], crypt: true, reason: 'Where my blade is needed.'};
+    return {ok: true, json: async () => ({...out, usage: {in: 800, out: 30}})}});
+  const cfg0 = {...B.CFG}; B.CFG.timeoutMs = 5000;
+  for (const p of S.parties.slice()) disband(p);
+  const live = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.party);
+  const L = live[0], F = live.find(b => b !== L && b.fac === L.fac && homeOf(b) === homeOf(L)) || live.find(b => b !== L);
+  const fresh = (a, lvl, brain) => {a.lvl = lvl; a.hp = maxHp(a); a.state = 'town'; a.townStep = 0; a.wait = 200; a.party = null; delete a.mind; delete a.brainPlan; delete a.mindSeq;
+    if (brain) enableBrain(a); else disableBrain(a)};
+  const form = () => {const p = {id: ++S.uid, fac: L.fac, leader: L, mem: [L, F], zone: zoneFor(Math.min(L.lvl, F.lvl), homeOf(L).gate), home: false};
+    L.party = F.party = p; S.parties.push(p); return p};
+  const begin = (lL, lF, bL, bF) => {B.resetBrain(); S.brainHeroes = []; reqs.length = 0; pickLast = false; fresh(L, lL, bL); fresh(F, lF, bF)};
+  const settleAsks = async () => {B.brainTick(1.01); await sleep(30)};
+
+  // 1. leader's choice sets the party zone; follower asks only the crypt call and follows
+  begin(9, 8, true, true); let p = form(); const scripted = p.zone;
+  await settleAsks();
+  const qL = reqs.find(q => q.snapshot.name === L.name), qF = reqs.find(q => q.snapshot.name === F.name);
+  ok(qL && qL.kind === 'townPlan' && qL.snapshot.leadParty === true && JSON.stringify(qL.snapshot.options) === JSON.stringify(B.partyLegal(p).map(i => ZONES[i])), 'leader is asked the zone, offered the party\'s legal zones (' + (qL && qL.snapshot.options) + ')');
+  ok(qF && qF.kind === 'cryptCall' && !qF.snapshot.options && qF.snapshot.leader === L.name && !reqs.some(q => q.snapshot.name === F.name && q.kind === 'townPlan'), 'follower makes no zone call, only the crypt call (' + (qF && qF.kind) + ')');
+  ok(schemaFor('cryptCall').required.join() === 'crypt,reason' && !schemaFor('cryptCall').properties.choice && checkRequest({kind: 'cryptCall', snapshot: {}}) === null && checkReply('cryptCall', null, '{"crypt":false,"reason":"No."}').crypt === false, 'cryptCall schema is {crypt, reason}; relay accepts it without options');
+  const zF = B.partyZone(F), zL = B.partyZone(L);
+  const eL = L.mind.find(e => e.kind === 'townPlan'), eF = F.mind.find(e => e.kind === 'cryptCall'), fo = F.mind[0];
+  ok(zF === 0 && zL === 0 && p.zone === 0 && scripted !== 0, 'leader\'s choice (' + ZONES[0] + ') sets the party zone over the scripted ' + ZONES[scripted] + ', for whoever leaves first');
+  ok(eL && eL.outcome === 'applied' && eL.scripted === ZONES[scripted] && B.stats.applied.townPlan === 1, 'mind: leader\'s plan applied, scripted zone recorded (' + (eL && eL.outcome) + ')');
+  ok(eF && eF.outcome === 'applied' && B.brainOk(F, 'crypt') === false, 'mind: follower\'s crypt answer applied and honoured');
+  ok(fo && fo.kind === 'follow' && fo.outcome === 'applied' && fo.reason === 'follows the party to ' + ZONES[0] && !fo.usage && !fo.snapshot && !L.mind.some(e => e.kind === 'follow'), 'mind: follower logs "' + (fo && fo.reason) + '" (applied, no tokens); the leader does not');
+  ok(F.mind.every(e => e.outcome !== 'pending') && L.mind.every(e => e.outcome !== 'pending'), 'no entry left to expire');
+
+  // 2. a leader's choice outside the weakest member's range is overruled
+  begin(12, 9, true, false); pickLast = true;
+  await settleAsks(); // asked while still solo: its own range
+  p = form(); const z2 = p.zone;
+  const zz = B.partyZone(F); const e2 = L.mind.find(e => e.kind === 'townPlan');
+  ok(e2 && e2.choice === ZONES[B.legalZones(L).slice(-1)[0]] && !B.partyLegal(p).includes(ZONES.indexOf(e2.choice)), 'leader chose ' + (e2 && e2.choice) + ', outside ' + F.name + '\'s range');
+  ok(zz === z2 && p.zone === z2 && e2.outcome === 'overruled' && e2.error.includes(F.name) && e2.scripted === ZONES[z2], 'overruled, party keeps ' + ZONES[z2] + ' (' + (e2 && e2.error) + ')');
+  ok(B.rejections.some(r => /overruled/.test(r.why)) && !F.mind, 'overrule logged as a rejection; a scripted follower gets no Mind entries');
+
+  // 3. a low-level follower (no crypt question) asks nothing at all, and still follows
+  begin(7, 5, true, true); p = form(); await settleAsks();
+  ok(!reqs.some(q => q.snapshot.name === F.name) && reqs.some(q => q.snapshot.name === L.name), 'follower below crypt level sends no request');
+  B.partyZone(F); ok(F.mind && F.mind.length === 1 && F.mind[0].kind === 'follow', 'and logs only the follow note');
+
+  // 4. solo behaviour unchanged
+  begin(9, 8, true, false); await settleAsks();
+  const qs = reqs.find(q => q.snapshot.name === L.name);
+  ok(qs && qs.kind === 'townPlan' && !qs.snapshot.leadParty && JSON.stringify(qs.snapshot.options) === JSON.stringify(B.legalZones(L).map(i => ZONES[i])), 'solo hero: asked the zone over its own range');
+  ok(B.partyZone(L) === 0 && L.mind[0].outcome === 'applied', 'solo hero: partyZone without a party is townZone, plan applied');
+
+  // 5. scripted party unchanged: no brains, no flags, no entries
+  begin(9, 8, false, false); p = form(); const z5 = p.zone; await settleAsks();
+  ok(B.partyZone(F) === z5 && B.partyZone(L) === z5 && !p.set && !L.mind && !F.mind && !reqs.length, 'scripted party: zone untouched, nothing asked or logged');
+
+  // 7. the DM sends the party on an adventure: the leader's plan is overruled, the follower follows the job
+  {
+    const src = readFileSync(fileURLToPath(new URL('../src/sim/heroes.js', import.meta.url)), 'utf8');
+    const iD = src.indexOf('if(dmDepart(a,c)){brainJob(a);break}'), iP = src.indexOf('partyZone(a)');
+    ok(iD > 0 && iP > iD, 'gate order: dmDepart runs before the zone pick, and a taken job calls brainJob');
+    begin(9, 8, true, true); p = form(); const z7 = p.zone; await settleAsks();
+    if (!S.adventures) S.adventures = [];
+    S.adventures.push({id: 'braincheck-job', phase: 'active', title: 'The Drowned Bell'}); L.adv = F.adv = 'braincheck-job';
+    B.brainJob(L);
+    const e7 = L.mind.find(e => e.kind === 'townPlan');
+    ok(e7 && e7.outcome === 'overruled' && e7.error === 'the party took a job: The Drowned Bell', 'leader took a job: plan overruled ("' + (e7 && e7.error) + '")');
+    const zf = B.partyZone(F);
+    ok(zf === z7 && p.zone === z7 && F.mind[0].kind === 'follow' && F.mind[0].reason === 'follows the party on The Drowned Bell' && F.mind.find(e => e.kind === 'cryptCall').outcome === 'applied', 'follower follows the job ("' + F.mind[0].reason + '"), party zone untouched');
+    B.brainJob(F); // not a leader on its own, nothing pending: no change
+    ok(L.mind.concat(F.mind).every(e => e.outcome !== 'pending'), 'no entry left to expire');
+    S.adventures = S.adventures.filter(v => v.id !== 'braincheck-job'); L.adv = F.adv = null;
+    begin(9, 8, false, false); p = form(); B.brainJob(L); ok(!p.set && !L.mind, 'scripted leader taking a job: brainJob does nothing');
+  }
+
+  // 6. a plan that really expires in town says so
+  begin(9, 8, true, false); await settleAsks(); L.townStep = 2; L.brainPlan.town.t -= B.CFG.planTtl + 5; B.brainTick(1.01);
+  ok(L.mind[0].outcome === 'superseded' && L.mind[0].error === 'the hero did not leave town in time', 'expired plan: superseded, "' + L.mind[0].error + '"');
+
+  for (const a of [L, F]) {disableBrain(a); a.party = null; a.wait = 0}
+  for (const p of S.parties.slice()) disband(p);
   B.setFetch(null); Object.assign(B.CFG, cfg0); B.resetBrain();
 }
 

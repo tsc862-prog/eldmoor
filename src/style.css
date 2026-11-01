@@ -1,7 +1,7 @@
 /* Layout: game screen on the left with controls and hero card below; chronicle sidebar on the right; stacks on phones */
 :root{
   --bg:#0d0e19; --panel:#161a2c; --panel2:#1d2238; --edge:#2e3456; --ink:#ece6d2; --dim:#8f8ca8;
-  --gold:#f2c14e; --blue:#5b8ff2; --red:#e8544a; --green:#7dce5a;
+  --gold:#f2c14e; --blue:#5b8ff2; --red:#e8544a; --green:#7dce5a; --amber:#f0a040;
   --px:"Press Start 2P", ui-monospace, Menlo, monospace;
   --mono:"VT323", ui-monospace, Menlo, monospace;
   color-scheme:dark;
@@ -121,7 +121,7 @@ ul.tlist time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-num
 .mrow .mh{cursor:pointer;line-height:1.1}
 .mq{font-style:italic}
 .mo{font-family:var(--px);font-size:7px;letter-spacing:.06em;vertical-align:1px}
-.mo-applied{color:var(--green)} .mo-rejected{color:var(--red)} .mo-late,.mo-offline,.mo-superseded,.mo-pending{color:var(--dim)}
+.mo-applied{color:var(--green)} .mo-rejected{color:var(--red)} .mo-overruled{color:var(--amber)} .mo-late,.mo-offline,.mo-superseded,.mo-pending{color:var(--dim)}
 .mdet{display:flex;flex-direction:column;gap:5px;margin-top:6px}
 .kv.mkv{grid-template-columns:auto 1fr}
 .mbtn{align-self:flex-start;font-size:7px;padding:4px 6px;box-shadow:none}
