@@ -21,6 +21,7 @@ import {biography} from './biography.js';
 import {initTimeline} from './timeline.js';
 import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
 import {enableBrain,disableBrain,brainStatus} from '../sim/brain.js';
+import {advLine} from '../sim/dm.js';
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -89,6 +90,7 @@ function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
     if(a.goal.need){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}
   const q=a.quest?`${MOBS[a.quest.type].q}: ${a.quest.have}/${a.quest.need} ${MOBS[a.quest.type].pl}`:'No quest';
   b.append(el('div','meta','Quest: '+q));
+  {const ad=advLine(a);if(ad){const d=el('div','meta adv');parts(d,ad);b.append(d)}} // the DM's adventure and scene (sim/dm.js)
   const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
   {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
