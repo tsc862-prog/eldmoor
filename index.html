@@ -40,6 +40,16 @@
           <button id="zOut" class="zoom" aria-label="Zoom out" title="Zoom out">−</button>
           <button id="zIn" class="zoom" aria-label="Zoom in" title="Zoom in">+</button>
         </div>
+        <div class="group world" role="group" aria-label="World">
+          <span class="lbl">World</span>
+          <button id="wSave" title="Save now. The world also saves itself every game hour and when you leave.">Save</button>
+          <button id="wLoad" title="Go back to the last save">Load</button>
+          <button id="wExport" title="Download the save as a JSON file">Export</button>
+          <button id="wImport" title="Restore a downloaded JSON save">Import</button>
+          <button id="wNew" title="Erase the save and start a fresh world">New world</button>
+          <span class="status" id="wStatus" aria-live="polite"></span>
+          <input type="file" id="wFile" accept="application/json,.json" hidden>
+        </div>
       </div>
       <section class="panel" aria-live="off">
         <h2>Hero</h2>

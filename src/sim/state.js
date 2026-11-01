@@ -19,4 +19,6 @@ export const S={
   uid:0,
   pinned:null,    // the hero the watcher is following; its grave is never recycled
 };
+// Save-file format version (sim/save.js). Bump it and add a migration there when the shape of S changes.
+export const SAVE_VERSION=1;
 export const clockStr=()=>{const m=Math.floor(S.gameMin)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
