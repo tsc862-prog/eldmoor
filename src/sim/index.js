@@ -23,6 +23,7 @@ export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
 export {onMarketTick} from './market.js';
 export {xpNeed,maxHp,atkOf} from './heroes.js';
+export {snapshot,restore,isSave,SAVE_VERSION} from './save.js';
 
 // Populate the world: monsters, 14 level-1 heroes per faction, the opening chronicle.
 export function init(){
