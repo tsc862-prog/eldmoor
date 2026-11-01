@@ -40,8 +40,8 @@ const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.len
 
 // Called when a hero finishes the quest-giver step and again while lingering at the gate.
 // Returns 'wait' when a Warrior should hold at the gate a little longer for a Priest.
-export function seekParty(a){if(a.party||!tm(a,'social'))return; // Loners never form or join a party
-  const cand=S.agents.filter(b=>b!==a&&!b.party&&tm(b,'social')&&b.fac===a.fac&&homeOf(b)===homeOf(a)&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2); // same home town: a party musters in one gate
+export function seekParty(a){if(a.party||a.fellow||!tm(a,'social'))return; // Loners never form or join a party; Fellowship members muster with their own (sim/fellowship.js)
+  const cand=S.agents.filter(b=>b!==a&&!b.party&&!b.fellow&&tm(b,'social')&&b.fac===a.fac&&homeOf(b)===homeOf(a)&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2); // same home town: a party musters in one gate
   if(!cand.length)return;
   if(a.cls==='Warrior'&&a.linger>0&&!cand.some(b=>b.cls==='Priest'))return 'wait';
   const want=a.cls==='Priest'?'Warrior':a.cls==='Warrior'?'Priest':null;
@@ -88,7 +88,7 @@ export function partyTick(){
       else if(b.state==='dungeon'||b.state==='raid'||(b.state==='town'&&p.home))leaveParty(b)}
     if(!S.parties.includes(p))continue;
     for(const b of p.mem)if(b.lvl>p.leader.lvl||!p.mem.includes(p.leader))p.leader=b;
-    const lv=p.mem.map(b=>b.lvl);if(Math.max(...lv)-Math.min(...lv)>3){disband(p);continue}
+    const lv=p.mem.map(b=>b.lvl);if(!p.fellow&&Math.max(...lv)-Math.min(...lv)>3){disband(p);continue} // the Fellowship (p.fellow) holds together across levels
     if(p.brawl&&!p.mem.some(b=>b.state==='assist'||b.state==='duel')){p.brawl=false;const foe=nearestFoe(p.leader,10);
       for(const b of p.mem)if(loose(b))regroup(b,foe)}
     // Heading home: everyone who is loose turns back; followers keep to the leader's side on the way.

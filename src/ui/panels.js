@@ -1,4 +1,4 @@
-// Side panels: hero dossier (header + Stats/Log/Bio/Gear/Party/Chat/Mind tabs), factions,
+// Side panels: hero dossier (header + Stats/Log/Bio/Memory/Gear/Party/Chat/Mind tabs; Memory from ui/fellowship.js), factions,
 // chronicle, graveyard, guilds, top heroes, auction house, clock. Reads sim state
 // and the renderer's camera selection.
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
@@ -26,6 +26,7 @@ import {advLine} from '../sim/dm.js';
 import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
 import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
+import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -64,7 +65,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
 // ---- hero dossier ----
-const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['gear','Gear'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
+const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
 const SLOTS=[['head','Head'],['chest','Chest'],['hands','Hands'],['feet','Feet'],['main','Main hand'],['off','Off hand'],['trinket','Trinket']];
 let tab='stats'; // persists across hero changes
 export const activeTab=()=>tab;
@@ -233,7 +234,8 @@ function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
   if(a.player)d.append(' ',aiBadge('Agent','An AI agent plays this hero through the relay (npm run agent); reflexes keep it alive while the agent is silent.'));
   if(a.state!=='dead'){const g=el('button','ai-toggle',a.player?'Agent off':'Agent');g.dataset.agent='1';g.title=a.player?'Return this hero to the scripted rules':'Let an AI agent play this hero (npm run relay, then npm run agent)';d.append(' ',g)}
   return d}
-function tabBio(b,a){for(const p of biography(a,S.agents)){const d=el('p','bio');parts(d,p);b.append(d)}}
+function tabBio(b,a){if(a.backstory){renderBackstory(b,a);b.append(el('div','dm','The record'))} // a Fellowship member's backstory first (#68)
+  for(const p of biography(a,S.agents)){const d=el('p','bio');parts(d,p);b.append(d)}}
 
 // ---- Mind tab (issue #61): the AI-played hero's decision log, a.mind from sim/brain.js ----
 // Shown only for a hero with a brain or a non-empty log. Newest first; a row expands to the
@@ -280,7 +282,7 @@ function tabMind(b,a){const m=a.mind||[];
     h.append(el('span','dm',' \u00b7 '),el('span','mo mo-'+e.outcome,e.outcome));
     row.append(h);if(isOpen)mindDetail(row,a,e);list.append(row)}
   b.append(list)}
-const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent};
+const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent,memory:tabMemory};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
 // header and only the active tab's body, since it runs every 0.3s.
@@ -298,8 +300,8 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   h.append(el('div','doing',doing(a)));
   h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
   h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
-  const mindable=hasMind(a),agentable=hasAgent(a),cur=tab==='mind'&&!mindable||tab==='agent'&&!agentable?'stats':tab; // the Mind tab exists only for AI-played heroes, the Agent tab for agent-played ones
-  for(const b of k.tabs.children){b.setAttribute('aria-pressed',String(b.dataset.tab===cur));if(b.dataset.tab==='mind')b.hidden=!mindable;if(b.dataset.tab==='agent')b.hidden=!agentable}
+  const mindable=hasMind(a),agentable=hasAgent(a),memable=!!a.memory,cur=tab==='mind'&&!mindable||tab==='agent'&&!agentable||tab==='memory'&&!memable?'stats':tab; // the Mind tab exists only for AI-played heroes, the Agent tab for agent-played ones
+  for(const b of k.tabs.children){b.setAttribute('aria-pressed',String(b.dataset.tab===cur));if(b.dataset.tab==='mind')b.hidden=!mindable;if(b.dataset.tab==='agent')b.hidden=!agentable;if(b.dataset.tab==='memory')b.hidden=!memable}
   if(pinned&&pinned.id!==a.id)pinned=null;
   if(cur==='mind'){const sig=mindSig(a);if(k.tb.dataset.tab!=='mind'||k.tb.dataset.sig!==sig){k.tb.replaceChildren();k.tb.dataset.tab='mind';k.tb.dataset.sig=sig;tabMind(k.tb,a)}}
   else{k.tb.replaceChildren();k.tb.dataset.tab=cur;delete k.tb.dataset.sig;BODY[cur](k.tb,a)}
@@ -345,9 +347,10 @@ export function renderClock(){$('clock').textContent=`Day ${Math.floor(S.gameMin
 
 // Chronicle: render what the sim already logged, then follow new entries.
 function initChronicle(){const el_=$('log');
-  const add=e=>{const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';li.append(el('time',null,e.t));parts(li,e.parts);
+  const add=e=>{if(!chronicleShows(e))return;const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';li.append(el('time',null,e.t));parts(li,e.parts);
     el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()};
-  for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i]);
+  const all=()=>{el_.replaceChildren();for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i])};all();
+  setChronicleRefresh(all); // the Fellowship only filter toggles re-render from S.chronicle
   onLog(add)}
 
 // One delegated click handler for every panel: hero names (.hn[data-hid]) pick that hero,

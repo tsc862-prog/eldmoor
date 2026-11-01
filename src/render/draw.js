@@ -38,9 +38,12 @@ let cvRef=null;const listeners=[];
 export function onCamChange(fn){listeners.push(fn)}
 const changed=()=>{for(const f of listeners)f(cam)};
 const followScale=()=>cvRef?Math.max(cam.fit*2.6,cvRef.width/FOLLOW_VIEW):cam.fit*2.6;
-const following=()=>cam.view==='follow'&&!!cam.sel;
+// 'fellow' view (#68): cam.frame() (set by ui/controls.js) returns {x,y,w,h} in tiles framing the Fellowship, or null.
+const framed=()=>cam.view==='fellow'&&typeof cam.frame==='function'?cam.frame():null;
+const frameScale=f=>cvRef?clamp(Math.min(cvRef.width/((f.w+8)*T),cvRef.height/((f.h+6)*T)),cam.fit,followScale()):cam.fit*2.6;
+const following=()=>(cam.view==='follow'&&!!cam.sel)||!!framed();
 // The zoom the camera is effectively at right now (follow mode included).
-export const currentZoom=()=>following()?followScale()/cam.fit:cam.zoom;
+export const currentZoom=()=>{const f=framed();return f?frameScale(f)/cam.fit:following()?followScale()/cam.fit:cam.zoom};
 export function stepZoom(z,dir){if(dir>0){for(const s of ZOOMS)if(s>z+1e-6)return s;return ZOOMS[ZOOMS.length-1]}
   let r=ZOOMS[0];for(const s of ZOOMS)if(s<z-1e-6)r=s;return r}
 function clampCam(){const vw=cvRef?cvRef.width/cam.sc:cam.vw,vh=cvRef?cvRef.height/cam.sc:cam.vh;cam.vw=vw;cam.vh=vh;
@@ -86,9 +89,10 @@ export function createRenderer(cv,screenEl){
   function draw(){
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
-    const sel=cam.sel,follow=following();
-    cam.sc=follow?followScale():cam.fit*cam.zoom;const sc=cam.sc;
-    if(follow){cam.camX+=(sel.x*T-cam.camX)*.12;cam.camY+=(sel.y*T-cam.camY)*.12}
+    const sel=cam.sel,fr=framed(),follow=following();
+    cam.sc=fr?cam.sc+(frameScale(fr)-cam.sc)*.08:follow?followScale():cam.fit*cam.zoom;const sc=cam.sc;
+    if(fr){cam.camX+=(fr.x*T-cam.camX)*.1;cam.camY+=(fr.y*T-cam.camY)*.1}
+    else if(follow){cam.camX+=(sel.x*T-cam.camX)*.12;cam.camY+=(sel.y*T-cam.camY)*.12}
     clampCam();const vw=cam.vw,vh=cam.vh;
     cam.offX=Math.round((vw/2-cam.camX)*sc);cam.offY=Math.round((vh/2-cam.camY)*sc);
     const vx0=cam.camX-vw/2,vy0=cam.camY-vh/2,vx1=vx0+vw,vy1=vy0+vh;

@@ -36,9 +36,11 @@ const MIGRATIONS={1:snap=>{const ids={};(snap.GUILDS||[]).forEach((g,i)=>{ids[g.
     if(v.ref==='guild'&&ids[v.id]!==undefined)v.id=ids[v.id];else for(const k in v)walk(v[k])};walk(snap);return snap},
   // v2 -> v3: heroes gain ability scores and skill training (abilities, #80); growth for levels already reached is replayed.
   2:snap=>{for(const a of snap.agents||[])if(a.kind==='hero'&&!a.abil)rollScores(a);return snap},
-  // v3 -> v4: items lose Vigor/Might/Guard/Precision/Haste and carry armor, damage, score bonuses and a
+  // v3 -> v4: the Fellowship (#68) adds S.fellowship and a.fellow/persona/backstory/memory; older saves simply have none.
+  3:snap=>snap,
+  // v4 -> v5: items lose Vigor/Might/Guard/Precision/Haste and carry armor, damage, score bonuses and a
   // rare property instead (stat cleanup, #88); the hero's cached stat totals go.
-  3:snap=>{for(const a of snap.agents||[]){if(a.kind!=='hero')continue;delete a.gtot;
+  4:snap=>{for(const a of snap.agents||[]){if(a.kind!=='hero')continue;delete a.gtot;
     for(const k in a.slots||{})if(a.slots[k])convertItem(a.slots[k],a.cls);
     for(const it of a.bag||[])if(it&&typeof it==='object')convertItem(it,a.cls)}return snap}};
 

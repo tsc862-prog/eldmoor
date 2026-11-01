@@ -46,6 +46,7 @@ import {fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {dmDepart,advLine,K as DMK} from './dm.js';
 import {CHOICE_MIN} from './player-choice.js';
+import {fellowCard} from './persona.js'; // Fellowship (#68)
 
 // ---- knobs ----
 export const PK={
@@ -287,6 +288,7 @@ const T={
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
     if(a.party&&a.party.leader===a)r.party_lead=true;
     if(adv)r.adventure=plain(advLine(a));const ch=choiceInfo(a);if(ch)r.choice=ch;
+    if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc} // Fellowship (#68): persona, memory, companions
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
     r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...ZONES.map((n,i)=>n+(REGIONS[i]&&REGIONS[i].band?' (L'+REGIONS[i].band[0]+'-'+REGIONS[i].band[1]+')':'')),'crypt',...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];
     return r},
@@ -438,8 +440,14 @@ function summarize(r){if(r.ok===false)return 'x '+clean(r.error,160);const skip=
 export function playerNarrate(id,text){const a=hero(Number(id));if(!a||!a.player)return false;const t=clean(text,600);if(!t)return false;
   const N=a.playNarr||(a.playNarr=[]);N.unshift({t:clockStr(),text:t});if(N.length>PK.NARR)N.pop();return true}
 
-// The one agent-played hero a host serves (the first living one), or null.
-export const playerHero=()=>(S.playerHeroes||[]).map(hero).find(a=>a&&a.player&&a.state!=='dead')||null;
-// The seat: the agent-played hero the game serves, even after it died (its tools then answer "dead").
-export const playerSeat=()=>playerHero()||(S.playerHeroes||[]).map(hero).filter(a=>a&&a.player).pop()||null;
+// Agent-played heroes (issue #93: several at once, one agent each). With an id, these answer
+// for that hero only (null when it is not agent-played); without one, the old single-hero path:
+// playerHero() the first living agent-played hero, playerSeat() that hero or, when every agent
+// hero has died, the last of them (its tools then answer "dead").
+const seatOf=id=>{const a=hero(Number(id));return a&&a.player?a:null};
+export const playerHero=id=>{if(id!=null){const a=seatOf(id);return a&&a.state!=='dead'?a:null}
+  return (S.playerHeroes||[]).map(hero).find(a=>a&&a.player&&a.state!=='dead')||null};
+export const playerSeat=id=>id!=null?seatOf(id):playerHero()||(S.playerHeroes||[]).map(hero).filter(a=>a&&a.player).pop()||null;
+// Every agent-played hero, living or dead, in the order they were marked.
+export const playerSeats=()=>(S.playerHeroes||[]).map(hero).filter(a=>a&&a.player);
 export {CHOICE_MIN};

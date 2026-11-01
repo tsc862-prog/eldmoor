@@ -52,6 +52,7 @@ import {cleanReason} from '../data/prompts.js';
 import {speak} from './chat.js';
 import {topScores} from './abilities.js';
 import {combatStats} from './stats.js';
+import {fellowCard} from './persona.js';
 
 export const CFG={url:'http://127.0.0.1:8787/decide',timeoutMs:3000,offlineSec:60,
   planTtl:900,fightTtl:20,sayFresh:4,aiQuietTable:true,sayGap:25,maxPerHour:240,quietMin:60,sight:12};
@@ -125,6 +126,7 @@ export function snapshotFor(a,kind,extra={}){
   if(nm.length)s.nemesis=nm;
   const ch=(a.chat||[]).slice(-5).map(e=>clip(e.from&&e.from.name,16)+': '+clip(e.text,80));if(ch.length)s.chat=ch;
   const hi=(a.history||[]).slice(-3).map(e=>clip(e.text,90));if(hi.length)s.history=hi;
+  if(a.fellow){const fc=fellowCard(a);if(fc)s.fellow=fc} // Fellowship (#68): persona, backstory summary, memory and companion stances
   s.kind=kind;
   if(kind==='townPlan'){s.options=townOptions(a).map(i=>ZONES[i]);s.cryptOpen=a.lvl>=7;if(a.party&&a.party.leader===a)s.leadParty=true}
   else if(kind==='cryptCall'){s.cryptOpen=true;if(a.party)s.leader=a.party.leader.name}
@@ -201,6 +203,17 @@ function ask(a,kind,extra,onOk,ctx){
     .catch(()=>{if(over)return;finish();failed(a,false);down('relay unreachable')})}
   catch(e){finish();failed(a,false);down('relay unreachable');return false}
   return true}
+// One-off writing request (Fellowship persona, backstory, memory summary; #68). Not a decision:
+// no Mind entry, no hero gating. Resolves to the relay's reply object, or null on any failure
+// (relay down, timeout, {error}, kill switch). The caller validates and applies; nothing waits.
+export function askRelay(kind,snapshot,timeoutMs=CFG.timeoutMs){
+  if(S.brainOn===false||!(fetchOverride||typeof fetch==='function'))return Promise.resolve(null);
+  const ac=typeof AbortController==='function'?new AbortController():null,w0=Date.now();
+  let timer=null;const late=new Promise(res=>{timer=setTimeout(()=>{if(ac)ac.abort();res(null)},timeoutMs)});
+  let body;try{body=JSON.stringify({kind,snapshot})}catch(e){clearTimeout(timer);return Promise.resolve(null)}
+  const go=Promise.resolve().then(()=>(fetchOverride||fetch)(CFG.url,{method:'POST',headers:{'content-type':'application/json'},body,signal:ac&&ac.signal}))
+    .then(r=>r.json()).then(j=>j&&typeof j==='object'&&!j.error?{...j,ms:Date.now()-w0}:null).catch(()=>null);
+  return Promise.race([go,late]).finally(()=>clearTimeout(timer))}
 // Keep the relay's echo of the prompt; the user content is dropped when it is exactly the snapshot.
 function keepSent(e,x){if(!x||typeof x!=='object')return;const user=typeof x.user==='string'?x.user:null;
   const same=user!=null&&user===JSON.stringify(e.snapshot);

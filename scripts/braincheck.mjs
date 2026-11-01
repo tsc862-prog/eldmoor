@@ -73,6 +73,31 @@ ok(j.sent && j.sent.id === promptId('townPlan') && j.sent.system === seen.req.sy
 ok(j.usage && j.usage.in === 500 && j.usage.out === 20, 'reply carries token usage');
 ok(cleanReason('x'.repeat(300)).length === REASON_MAX && cleanReason(42) === null && cleanReason('  ') === null && cleanReason('a<b>\tc') === 'a b c', 'cleanReason: truncates, drops non-strings and blanks, strips markup and control characters');
 ok(seen.req.system.includes(VOICE[1]) && !seen.req.system.includes(VOICE[0]), 'Warband voice picked from the faction name');
+// Fellowship writing kinds (#68): persona and backstory go to the Sonnet tier with between_tools thinking and the
+// server-side refusal fallback (beta namespace); memory stays on the default tier; replies are validated per field.
+{
+  let w = null;
+  const wFields = sch => {const o = {}; for (const k in sch.properties) {const pr = sch.properties[k]; o[k] = pr.enum ? pr.enum[0] : pr.type === 'object' ? Object.fromEntries(Object.keys(pr.properties).map(id => [id, 'Trusts them.\nMostly.'])) : 'Text for ' + k + '.'} return o};
+  const reply = req => ({stop_reason: 'end_turn', model: req.model, usage: {input_tokens: 900, output_tokens: 400}, content: [{type: 'text', text: JSON.stringify(wFields(req.output_config.format.schema))}]});
+  const wClient = {messages: {create: async (req, opt) => {w = {req, opt, beta: false}; return reply(req)}}, beta: {messages: {create: async (req, opt) => {w = {req, opt, beta: true}; return reply(req)}}}};
+  const wr = createRelay({client: wClient, log: () => {}});
+  await new Promise(r => wr.server.listen(0, '127.0.0.1', r));
+  const wpost = body => fetch('http://127.0.0.1:' + wr.server.address().port + '/decide', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  const comps = [{id: 7, name: 'Pellora'}, {id: 9, name: 'Garion'}];
+  let k = await wpost({kind: 'persona', snapshot: {fac: 'Concord', name: 'Alwyn', companions: comps}});
+  ok(w.beta && w.req.model === 'claude-sonnet-5-5' && w.req.thinking.type === 'between_tools' && w.req.fallbacks === 'default' && w.req.betas.includes('server-side-fallback-2026-07-01') && w.opt.timeout >= 30000, 'persona: Sonnet 5.5, between_tools, server-side fallback, long timeout');
+  ok(k.voice && k.stances && k.stances['7'] === 'Trusts them. Mostly.' && Object.keys(w.req.output_config.format.schema.properties.stances.properties).join() === '7,9' && k.model === 'claude-sonnet-5-5', 'persona: stances keyed by the companions the sim sent, cleaned to one line');
+  k = await wpost({kind: 'backstory', snapshot: {fac: 'Concord', name: 'Alwyn', companions: comps}});
+  ok(k.family && k.joined && k.summary && k.link_id === 7 && k.link_kind === 'debt' && JSON.stringify(w.req.output_config.format.schema.properties.link_hero.enum) === '["Pellora","Garion"]', 'backstory: six paragraphs, summary and a link to a real companion');
+  k = await wpost({kind: 'memory', snapshot: {name: 'Alwyn', long: '', items: ['D2 08:00: Reached level 5.']}});
+  ok(!w.beta && w.req.model === DEFAULT_MODEL && w.req.thinking.type === 'disabled' && typeof k.long === 'string', 'memory: default tier, plain request');
+  const {checkWriting} = await import('./relay.mjs');
+  let threw = 0; try {checkWriting('backstory', {...wFields(schemaFor('backstory', null, {companions: comps})), link_hero: 'Nobody'}, {companions: comps})} catch {threw++}
+  try {checkWriting('persona', {voice: 'x'}, {companions: comps})} catch {threw++}
+  ok(threw === 2, 'writing replies with a missing field or an unknown companion are rejected');
+  ok(checkRequest({kind: 'persona', snapshot: {companions: 'x'}}) === 'bad companions', 'relay refuses malformed companions');
+  wr.server.close();
+}
 ok(systemFor('say', 0).includes(VOICE[0]) && /one life/i.test(systemFor('townPlan', 0)), 'prompts carry voice and hardcore rules');
 ok(lines.some(l => /in=500 out=20 \$0\.00006/.test(l)), 'usage and cost logged: ' + (lines[0] || '').replace('[relay] ', ''));
 r = await fetch(base + '/decide', {method: 'OPTIONS', headers: {origin: DEV_ORIGIN}});
@@ -209,7 +234,11 @@ ok(B.brainOk(h0, 'crypt') === false && B.brainOk({}, 'crypt') === true, 'crypt c
 }
 // information limits
 {
-  const h = heroes[0], e = S.agents.find(a => a.fac !== h.fac && a.state !== 'dead');
+  // An enemy the hero knows nothing else about: not in its chat, history, grudges or friends, and
+  // whose name is not part of another hero's name (those parts of the snapshot are legitimate
+  // knowledge; a random pick sometimes hit one, so this check failed now and then).
+  const h = heroes[0], {foes, ...rest} = B.snapshotFor(h, 'say', {trigger: 'kill'}), known = JSON.stringify(rest);
+  const e = S.agents.find(a => a.fac !== h.fac && a.state !== 'dead' && !known.includes(a.name) && !S.agents.some(b => b !== a && b.name.includes(a.name)));
   e.x = h.x + 30; e.y = h.y; rebuild();
   ok(!JSON.stringify(B.snapshotFor(h, 'say', {trigger: 'kill'})).includes(e.name), 'enemy hero 30 tiles away is not in the snapshot');
   e.x = h.x + 3; e.y = h.y; e.state = 'hunt'; e.hidden = false; rebuild();
@@ -218,7 +247,10 @@ ok(B.brainOk(h0, 'crypt') === false && B.brainOk({}, 'crypt') === true, 'crypt c
 
 console.log('policy: invalid answers are dropped');
 reset(); mode = 'invalid';
-await runUntil(() => B.rejections.length >= 3 && minds().some(e => e.outcome === 'rejected' && e.kind === 'townPlan'), 40);
+// Wait on the Mind entries themselves: a bad answer counts in B.rejections even when its entry
+// was already closed (late, or superseded at the gate), so waiting on the stats alone could leave
+// fewer than three rejected entries to check (the old 1-in-3 failure).
+await runUntil(() => B.rejections.length >= 3 && minds().filter(e => e.outcome === 'rejected').length >= 3 && minds().some(e => e.outcome === 'rejected' && e.kind === 'townPlan'), 80);
 ok(B.stats.rejected >= 3 && B.stats.applied.townPlan === 0 && B.stats.applied.say === 0, 'rejected ' + B.stats.rejected + ', applied 0 (' + B.rejections.map(x => x.kind + ':' + x.why).slice(0, 3).join(', ') + ')');
 ok(heroes.every(h => !(h.brainPlan && h.brainPlan.town)), 'no plan parked from a bad answer');
 {

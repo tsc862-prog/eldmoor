@@ -85,28 +85,49 @@ other. The rules:
 
 ## Agent player
 
-An AI agent can play one hero end to end (issue #75): it looks around, walks, fights, takes
-adventures, answers scene choices and keeps a journal, through MCP tools (the list is
-`src/data/player-tools.js`; the game side is `src/sim/player.js`). The hero stays a hero:
-one life, sight limits, the same dice; reflexes (defend, flee below 15% HP, go home with a
-full bag) keep it alive while the agent thinks or is silent, and scene choices time out to
-the scripted branch, so the world never waits.
+AI agents can play heroes end to end (issues #75, #93), several side by side, one agent per
+hero: each looks around, walks, fights, takes adventures, answers scene choices and keeps a
+journal, through MCP tools (the list is `src/data/player-tools.js`; the game side is
+`src/sim/player.js`). The hero stays a hero: one life, sight limits, the same dice; reflexes
+(defend, flee below 15% HP, go home with a full bag) keep it alive while the agent thinks or
+is silent, and scene choices time out to the scripted branch, so the world never waits.
 
 - With the browser: `npm run relay` (or `npm run relay -- --play-only` without a key),
-  `npm run dev`, select a hero and press **Agent** on its card (the page connects to
-  `ws://127.0.0.1:8787/play`; the Agent tab shows tool calls, narration and the journal).
-  Then `npm run agent` (Claude Agent SDK, `claude-sonnet-5-5` by default, `AGENT_MODEL` to
-  change; `--max-turns 20 --budget 1.00` are the default caps; `--new` starts a fresh
-  session, otherwise `logs/agent-session.json` resumes it; cost line per turn).
-- Headless: `npm run play-headless -- --warm 20` (a Node world on port 8789, saved to
-  `logs/agent-world.json`, `--resume` to continue), then
-  `npm run agent -- --url http://127.0.0.1:8789`.
+  `npm run dev`, select a hero and press **Agent** on its card, for as many heroes as you
+  like (the page connects to `ws://127.0.0.1:8787/play` and serves them all; the Agent tab
+  shows tool calls, narration, the journal and the agent's link). Then one terminal per hero:
+  `npm run agent -- --hero <name|id>` (Claude Agent SDK, `claude-sonnet-5-5` by default,
+  `AGENT_MODEL` to change; `--max-turns 20 --budget 1.00` are the default caps per runner;
+  cost line per turn). Without `--hero` the runner lists the agent-played heroes and takes
+  the first living one with no runner, or says none is free.
+- Headless: `npm run play-headless -- --warm 20 --agents 2` (a Node world on port 8789 with
+  the top Concord and Warband heroes agent-played, or `--hero Ann,Bo`; saved to
+  `logs/agent-world.json`, `--resume` to continue), then in two terminals
+  `npm run agent -- --url http://127.0.0.1:8789 --hero <first>` and `... --hero <second>`.
+- One runner per hero: a runner claims its hero at the relay (`POST /play/claim`, refreshed
+  every 10 s, released on exit; a second runner for a held hero is refused) and names it on
+  every call (`X-Eldmoor-Hero: <id>` on the MCP connection, `hero` on `/play/*`), so its tools
+  only touch that hero. Link state per hero, in the Agent tab and the Minds panel:
+  **connected** (calling tools), **waiting** (a runner holds it but is thinking or between
+  turns), **no runner**.
+- Sessions: one file per hero, `logs/agents/<heroId>.json` (gitignored), with the Agent SDK
+  session id, system prompt, turns, cost and the hero's runner settings (`runner: {provider,
+  model, effort}`, default `anthropic` + `claude-sonnet-5-5`; flags override, then saved, then
+  env), so each hero can keep its own mind; only `anthropic` runs today (Mixed minds will add
+  others; the relay already routes by hero id only). The next run for that hero resumes it. Runners
+  never write another hero's file. A file whose hero name no longer matches (a new world
+  reused the id) and the old session on `--new` are moved to `logs/agents/old/`, never
+  overwritten. The single `logs/agent-session.json` of #75 migrates on first run.
 - Other MCP clients: streamable HTTP at `http://127.0.0.1:8787/mcp` (or `:8789/mcp`
-  headless), stateless, POST only; or stdio with `npm run -s mcp` (forwards to `PLAY_URL`).
-  Plain JSON without MCP: `POST /play/call {tool, args}`. Only localhost, no browser origins;
-  tools only ever touch the one agent-played hero.
+  headless), stateless, POST only, with the `X-Eldmoor-Hero` header or `?hero=<id>`; or stdio
+  with `npm run -s mcp` (forwards to `PLAY_URL`, `PLAY_HERO=<id>` picks the hero). Plain JSON
+  without MCP: `POST /play/call {tool, args, hero}`; `GET /play/health` lists the agent heroes
+  and their links. A call that names no hero goes to the first living agent hero (the old
+  single-hero path). Only localhost, no browser origins.
 - `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
-  the journal and a save/restore, and proves a silent agent never stalls the world.
+  the journal and a save/restore, proves a silent agent never stalls the world, and runs two
+  mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
+  session files). The mock agent's waits drive game time, so it depends on the seed only.
 
 ## Layout
 
@@ -147,13 +168,19 @@ the scripted branch, so the world never waits.
   conditions, price shocks, hooks and named/custom foes, plus the hooks the world reads them
   through (state on `S.levers`, `S.places`, `S.marks`, `S.conditions`, `S.wanderers`;
   drawn by `src/render/places.js`; `npm run levercheck`);
-  `index.js` `init()` and `step(dt)`.
+  `index.js` `init()` and `step(dt)`; `fellowship.js` the Fellowship (#68): five fixed
+  roles (Tank, Healer, three DPS), founding, muster, hardcore replacement, campaign log,
+  `fellowshipMembers()` in slot order; `persona.js` persona sheets and backstories from
+  sim facts (scripted, or enriched once through the relay) and `fellowCard` for prompts;
+  `memory.js` per-member recent memories, long-term summary and companion stances.
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
   overlay with torch light, labels at constant CSS size.
 - `src/ui/`: `panels.js` hero card, factions, chronicle, graveyard, guilds,
-  top heroes, auction house, clock; `controls.js` speed, view and selection.
+  top heroes, auction house, clock; `controls.js` speed, view (incl. Follow Fellowship)
+  and selection; `fellowship.js` the Fellowship panel (founding, roster, sheet editor,
+  campaign log), the Memory tab and the Chronicle's "Fellowship only" filter.
 - `scripts/headless.mjs`: imports `src/sim/index.js` directly (no DOM stubs),
   steps the world and prints a summary from `S`.
 
