@@ -8,6 +8,7 @@ import {S} from './state.js';
 import {log,fac} from './chronicle.js';
 import {pop} from './effects.js';
 import {maxHp,gainXp,getEpic,goHome,agentDie} from './heroes.js';
+import {raidPull,goalEvent} from './goals.js';
 import {record} from './history.js';
 
 export function updBoss(dt){const boss=S.boss,agents=S.agents;
@@ -22,14 +23,14 @@ export function updBoss(dt){const boss=S.boss,agents=S.agents;
     log(fac(f),' slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'!');
     for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')record(a,'Slew ',{t:'Kragmaw the Cinder Wyrm',c:'gd'},'!');
     const gs=new Set();for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')gs.add(a.guild);gs.forEach(g=>g.bosses++);
-    for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid'){gainXp(a,400);a.gold+=40;if(rnd()<.4)getEpic(a,pickA(BOSS_EPICS),'Kragmaw')}
+    for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid'){gainXp(a,400);a.gold+=40;if(rnd()<.4)getEpic(a,pickA(BOSS_EPICS),'Kragmaw');goalEvent(a,'boss')}
     for(const a of agents)if(a.raid){a.raid=false;goHome(a)}}}
 
 export function raidCheck(dt){const boss=S.boss,agents=S.agents;
   for(let f=0;f<2;f++){if(S.raidOn[f]&&!agents.some(a=>a.raid&&a.fac===f)){S.raidOn[f]=false;if(boss.alive)log('The ',fac(f),' raid on Kragmaw ended in defeat.')}}
   S.raidT-=dt;if(S.raidT>0)return;S.raidT=45+rnd()*30;if(!boss.alive)return;
   const f=ri(0,1);if(S.raidOn[f])return;
-  const cand=agents.filter(a=>a.fac===f&&a.lvl>=12&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>y.lvl-x.lvl).slice(0,6);
+  const cand=agents.filter(a=>a.fac===f&&a.lvl>=12&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>(raidPull(y)-raidPull(x))||(y.lvl-x.lvl)).slice(0,6); // oath-bound (legend, Kragmaw heirloom) first
   if(cand.length<4)return;S.raidOn[f]=true;
   cand.forEach((a,i)=>{a.raid=true;a.raidIdx=i;a.state='raid';a.target=null;a.dest=null;a.hp=Math.max(a.hp,maxHp(a)*.8)});
   for(const a of cand)record(a,'Mustered with '+(cand.length-1)+' others to raid ',{t:'Kragmaw',c:'gd'},'’s lair.');
