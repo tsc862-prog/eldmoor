@@ -252,6 +252,55 @@ Ember-Forged Greatsword, Rime-Etched Warpick, Cinder Wyrm Fang, Staff of Still W
 Thornheart Longbow, Fenlight Lantern; trinket Kragmaw's Molten Eye, Vesk's Phylactery Shard,
 Drowned King's Signet.
 
+### Item stats, qualities and affixes
+Every piece carries stats. **Vigor** raises a hero's health, **Might** their strike, **Guard**
+turns a share of every blow aside (at most 35 percent), **Precision** makes a blow more likely to
+land true, and **Haste** shortens the pause between blows (at most 25 percent). Heads and chests
+carry the most, trinkets the least. Weapons lean to Might and Haste, armour to Vigor and Guard,
+trinkets to Precision and Haste; Warriors' gear leans to Vigor and Guard, Mages' and Priests' to
+Might and Haste, Hunters' and Rogues' to Precision and Might.
+
+Quality: **plain** (seven in ten drops), **fine** (about one in four: a tenth more stats and one
+affix, shown in green) and **rare** (one in twenty: a third more stats and two affixes, shown in
+blue). Town smiths sell plain and fine pieces; named elites drop fine or rare ones; epics are
+purple. An affix is a suffix in the voice of the zone, and it pulls its own stat up.
+
+| Zone | Affixes (leaning stat) |
+| --- | --- |
+| Thornvale | of the Briar (Guard), of the Hollow Oak (Vigor), of the Hare (Haste), of the Wolf Run (Might) |
+| Mirefen | of the Mire (Vigor), of Still Water (Guard), of the Fen Light (Precision), of the Heron (Haste) |
+| Cinderpass | of the Ember (Might), of the Forge (Guard), of the Cinderfall (Precision), of the Slagwind (Haste) |
+| Hoarfell | of the Rime (Guard), of the Hoarwind (Haste), of the Long Night (Vigor), of the Drift (Precision) |
+
+Epic stat blocks are fixed ratios of the item's level, so a relic grows with its bearer.
+Stats at item level 20, with the line each epic carries:
+
+| Epic | Stats at ilvl 20 | Flavour |
+| --- | --- | --- |
+| Fang of the Old Wood | 26 Might, 16 Haste, 14 Precision, 8 Vigor | Cut from a hollow oak's first limb; it hums when wolves are near. |
+| Thornheart Longbow | 20 Precision, 16 Might, 12 Haste | The string is wound with bramble fibre and never goes slack. |
+| Bramblecrown | 30 Vigor, 18 Guard, 10 Precision, 8 Haste | Thorns turned inward, which is how a brave head is told from a foolish one. |
+| Mosswoven Cloak | 32 Vigor, 20 Guard, 14 Haste | Grown rather than sewn; the bog keeps its wearer warm. |
+| Bogwalker Boots | 18 Vigor, 18 Haste, 12 Guard | The mud lets go of them a heartbeat early. |
+| Fenlight Lantern | 18 Might, 16 Precision, 14 Vigor | A pale flame that shows where a foe is weakest. |
+| Ember-Forged Greatsword | 32 Might, 16 Precision, 12 Haste, 8 Vigor | Quenched in Cinderpass ash; it is never quite cold. |
+| Cinderscale Mantle | 28 Vigor, 26 Guard, 14 Might | Scales shed by something that did not need them any more. |
+| Magma-Tempered Gauntlets | 18 Might, 16 Haste, 14 Guard | They glow when a grip is about to matter. |
+| Rime-Etched Warpick | 30 Might, 16 Vigor, 12 Guard, 10 Precision | Frost patterns crawl up the haft with every swing. |
+| Shaghorn Greatcloak | 34 Vigor, 24 Guard, 10 Haste | Hide of the shaghorn, heavy as a promise to stay alive. |
+| Icevein Diadem | 20 Might, 18 Precision, 18 Vigor, 12 Haste | Cold enough to sharpen thought, and nothing else. |
+| Kragmaw's Molten Eye | 20 Precision, 14 Might, 10 Haste | It still watches the lair it was torn from. |
+| Wyrmbone Crown | 32 Vigor, 20 Guard, 14 Might, 8 Precision | A crown for someone who has already won. |
+| Cinder Wyrm Fang | 36 Might, 18 Haste, 12 Precision, 8 Vigor | A tooth as long as a forearm, and twice as eager. |
+| Mantle of the Ashen King | 36 Vigor, 28 Guard, 10 Might | Ash drifts from its hem and never reaches the floor. |
+| Vesk's Phylactery Shard | 18 Might, 14 Haste, 12 Vigor | A sliver of a lich that wanted to be remembered. |
+| Drowned King's Signet | 18 Precision, 14 Vigor, 12 Guard | Still wet, no matter how long it is worn. |
+| Cryptbound Greaves | 22 Vigor, 16 Guard, 14 Haste | Made to stand a long vigil, and to leave it quickly. |
+| Staff of Still Water | 28 Might, 20 Haste, 12 Vigor, 8 Guard | Not a ripple on it, even in the middle of a fight. |
+
+An item remembers where it came from (`src`: "Dropped by Hollowfang", "Bought in Highgate",
+"Road merchant", "Looted from ...") and the piece it replaced, so the Gear tab can show both.
+
 ## Trade goods
 Wolf Pelt, Boar Tusk, Silk Bundle, Fen Moss, Thick Hide, Venom Sac, Ember Core, Cinder Scale, Rime Pelt, Hoar Wool, Wight Marrow, Grave Dust.
 

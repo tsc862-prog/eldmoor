@@ -18,7 +18,7 @@ import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerCl
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
-import {emptySlots,gearScore,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
+import {emptySlots,gearScore,gearHp,gearAtk,gearCrit,guardMul,hasteMul,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
 import {record} from './history.js';
 import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
@@ -27,8 +27,8 @@ import {nearHeroes,nearMobs} from './spatial.js';
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45));
-export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+gearScore(a)*6+a.epics.length*10);
-export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+gearScore(a)*1.5+a.epics.length*3;
+export const maxHp=a=>Math.round(CLS[a.cls].hp+a.lvl*14+gearHp(a)+a.epics.length*10);
+export const atkOf=a=>CLS[a.cls].atk+a.lvl*2.4+gearAtk(a)+a.epics.length*3;
 
 export function newQuest(a){const z=zoneFor(a.lvl);const opts=Object.keys(MOBS).filter(k=>MOBS[k].z===z&&MOBS[k].lv[0]<=a.lvl+2);
   const type=pickA(opts.length?opts:Object.keys(MOBS).filter(k=>MOBS[k].z===z));a.quest={type,need:ri(5,8),have:0}}
@@ -61,7 +61,7 @@ export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
   if(a.lvl>=20)a.xp=0}
 
 export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.');
-  equipEpic(a,name);
+  equipEpic(a,name,'Looted from '+src);
   record(a,'Looted ',epic(name),' from '+src+'.');
   say(a,'epic',{item:name});
   goalEvent(a,'epic',name)}
@@ -112,9 +112,9 @@ export function agentDie(a,killer){
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
 
 export function strike(a,t){
-  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<(c.crit||.08);if(crit)d*=1.8;
+  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<(c.crit||.08)+gearCrit(a);if(crit)d*=1.8;
   if(a.blessed){d*=1.2;a.blessed=0} // wayside shrine blessing: one strike at +20% (sim/encounters.js)
-  if(t.kind==='hero')d*=.6*(CLS[t.cls].arm||1);
+  if(t.kind==='hero')d*=.6*(CLS[t.cls].arm||1)*guardMul(t);
   d=Math.round(d);t.hp-=d;if(c.range>2)bolt(a,t,c.orb||c.acc);
   pop(t.x,t.y-.6,crit?d+'!':String(d),crit?'#ffe060':'#ffffff');
   if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return}
@@ -144,7 +144,7 @@ export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9
 // Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
 // Personality traits (data/traits.js) scale these via tm(a,key): Reckless lowers retreat/flee, Cautious raises them, etc.
 export function updAgent(a,dt){
-  a.cd-=dt;a.healCd-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
+  a.cd-=dt*hasteMul(a);a.healCd-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
   switch(a.state){
   case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
     if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;

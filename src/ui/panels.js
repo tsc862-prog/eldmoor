@@ -11,7 +11,8 @@ import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
 import {raceOf,homeOf} from '../data/races.js';
 import {MOBS} from '../data/mobs.js';
-import {GOODS,price} from '../data/items.js';
+import {GOODS,price,STAT_KEYS,STAT_NAMES,EPIC_STATS} from '../data/items.js';
+import {itemStats,gearStat,gearBonus} from '../sim/gear.js';
 import {S,clockStr,maxHp,xpNeed,atkOf,onLog,onMarketTick} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {weatherName} from '../sim/weather.js';
@@ -72,6 +73,10 @@ function tabStats(b,a){const c=CLS[a.cls],mh=maxHp(a);
     ['Gold',a.gold+'g'],['Kills',a.kills],['Honor',a.honor],['Elite kills',a.eliteKills||0]];
   if(a.avenged!=null)rows.push(['Avenged',a.avenged]);
   const kv=el('div','kv');for(const [k,v] of rows)kv.append(el('span','k',k),el('span','v',String(v)));b.append(kv);
+  if(a.slots){const f=el('div','meta gearline');f.append('From gear: ');
+    const pct=k=>Math.round(gearBonus(a,k)*10)/10,parts=[`${gearStat(a,'vigor')} Vigor (+${Math.round(gearBonus(a,'vigor'))} HP)`,`${gearStat(a,'might')} Might (+${Math.round(gearBonus(a,'might'))} atk)`,
+      `${gearStat(a,'guard')} Guard (-${pct('guard')}% dmg)`,`${gearStat(a,'precision')} Precision (+${pct('precision')}% crit)`,`${gearStat(a,'haste')} Haste (${pct('haste')}% faster)`];
+    parts.forEach((t,i)=>{const s=el('span','s-'+STAT_KEYS[i],t);f.append(s);if(i<parts.length-1)f.append(' · ')});b.append(f)}
   const tr=el('div','meta');tr.append('Traits: ');const ts=a.traits||[];if(!ts.length)tr.append('none');
   ts.forEach((t,i)=>{const s=el('span','gd',t);if(TRAITS[t])s.title=TRAITS[t].desc;tr.append(s);if(i<ts.length-1)tr.append(', ')});b.append(tr);
   if(a.race){const rc=el('div','meta');rc.append('People: ');const rs=el('span','gd',raceOf(a).name);rs.title=raceOf(a).culture;rc.append(rs,' of '+homeOf(a).name);b.append(rc)}
@@ -89,14 +94,56 @@ function tabLog(b,a){const h=(a.history||[]).slice().reverse();
   if(!h.length){b.append(el('div','dm','Nothing worth recording yet.'));return}
   const ul=el('ul','log hist');for(const e of h){const li=el('li');li.append(el('time',null,e.t));parts(li,e.parts||[e.text]);ul.append(li)}b.append(ul)}
 
+// ---- item tooltip and pinned detail (issue #52) ----
+// One tooltip div is reused for every hover; it lives on <body>, so the 0.3s tab rebuilds never
+// destroy it. The hovered and pinned slots are remembered as keys (hero id + slot) and the item
+// is looked up fresh from the hero each time, so the text follows upgrades and epic growth.
+let tipEl=null,hov=null,pinned=null,tipXY=[0,0];
+const qCls=it=>it.epic?'ep':it.quality==='rare'?'qr':it.quality==='fine'?'qf':'qp';
+const qLabel=it=>it.epic?'Epic':it.quality==='rare'?'Rare':it.quality==='fine'?'Fine':'Plain';
+const slotLabel=k=>(SLOTS.find(s=>s[0]===k)||[k,k])[1];
+const fmtStat=(k,v)=>'+'+v+' '+STAT_NAMES[k];
+function itemCard(it,cls){const d=el('div',cls||'itip');
+  d.append(el('div','in '+qCls(it),it.name));
+  d.append(el('div','dm',`${qLabel(it)} · ilvl ${it.ilvl} ${slotLabel(it.slot)}`));
+  const st=itemStats(it);for(const k of STAT_KEYS)if(st[k])d.append(el('div','is s-'+k,fmtStat(k,st[k])));
+  for(const f of it.affixes||[])d.append(el('div','ia',f));
+  const z=zoneIdx(it.zone);if(z>=0)d.append(el('div','dm','Found in '+ZONES[z]));
+  if(it.src)d.append(el('div','dm',it.src));
+  if(it.epic&&EPIC_STATS[it.name])d.append(el('div','if',EPIC_STATS[it.name].flavour));
+  if(it.over){const o=it.over,ds=[];for(const k of STAT_KEYS){const x=(st[k]||0)-((o.stats||{})[k]||0);if(x)ds.push((x>0?'+':'')+x+' '+STAT_NAMES[k])}
+    d.append(el('div','dm','Replaced '+o.name+' (ilvl '+o.ilvl+')'+(ds.length?': '+ds.join(', '):'')))}
+  return d}
+const hoverItem=()=>{const a=cam.sel;return hov&&a&&a.id===hov.id&&a.slots?a.slots[hov.slot]:null};
+function placeTip(){if(!tipEl)return;const pad=14,w=tipEl.offsetWidth,h=tipEl.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
+  let x=tipXY[0]+pad,y=tipXY[1]+pad;if(x+w>vw-4)x=Math.max(4,tipXY[0]-w-pad);if(y+h>vh-4)y=Math.max(4,vh-h-4);
+  tipEl.style.left=x+'px';tipEl.style.top=y+'px'}
+function showTip(){const it=hoverItem();if(!it){hideTip();return}
+  if(!tipEl){tipEl=el('div','itip floating');tipEl.setAttribute('role','tooltip');document.body.append(tipEl)}
+  tipEl.replaceChildren(...itemCard(it).childNodes);tipEl.style.display='block';placeTip()}
+function hideTip(){hov=null;if(tipEl)tipEl.style.display='none'}
+// Delegated listeners on the persistent tab body: rows are rebuilt, the listeners are not.
+function wireGear(tb){
+  const slotOf=e=>{const r=e.target&&e.target.closest?e.target.closest('[data-slot]'):null;return r?r.dataset.slot:null};
+  tb.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;tipXY=[e.clientX,e.clientY];const s=slotOf(e),a=cam.sel;
+    if(!s||!a){if(hov)hideTip();return}
+    if(!hov||hov.slot!==s||hov.id!==a.id){hov={id:a.id,slot:s};showTip()}else placeTip()});
+  tb.addEventListener('pointerleave',hideTip);
+  tb.addEventListener('click',e=>{const s=slotOf(e),a=cam.sel;if(!s||!a||!a.slots||!a.slots[s])return;
+    pinned=pinned&&pinned.id===a.id&&pinned.slot===s?null:{id:a.id,slot:s};hideTip();renderHero()})}
+
 function tabGear(b,a){
+  if(pinned&&pinned.id!==a.id)pinned=null; // the pin belongs to one hero
   if(a.slots){const g=el('div','gear');
-    for(const [k,label] of SLOTS){const it=a.slots[k];g.append(el('span','k',label));const v=el('span','v');
+    for(const [k,label] of SLOTS){const it=a.slots[k],sel=pinned&&pinned.slot===k;
+      const kk=el('span','k',label),v=el('span','v');kk.dataset.slot=k;v.dataset.slot=k;if(sel){kk.classList.add('pin');v.classList.add('pin')}
+      g.append(kk);
       if(!it)v.append(el('span','dm','Empty'));
-      else{v.append(el('span',it.epic?'ep':'',it.name),' ',el('span','ilv','ilvl '+it.ilvl));
+      else{v.append(el('span',qCls(it),it.name),' ',el('span','ilv','ilvl '+it.ilvl));
         const z=zoneIdx(it.zone);if(z>=0)v.append(' ',el('span','ztag z'+z,ZONES[z]));else if(it.zone)v.append(' ',el('span','ztag',String(it.zone)))}
       g.append(v)}
-    b.append(g,el('div','meta','Gear score '+gearScoreOf(a)));return}
+    b.append(g,el('div','meta','Gear score '+gearScoreOf(a)+' · hover or tap a slot'));
+    const pit=pinned&&a.slots[pinned.slot];if(pit)b.append(itemCard(pit,'itip pinned'));return}
   b.append(el('div','meta','Gear score '+gearScoreOf(a)+' · bought piece by piece in town'));
   if(a.epics.length){const e=el('div','epics');e.append('Epics: ');a.epics.forEach((n,i)=>{e.append(el('span','ep','['+n+']'));if(i<a.epics.length-1)e.append(' ')});b.append(e)}
   else b.append(el('div','dm','No epic items yet.'))}
@@ -120,7 +167,7 @@ const BODY={stats:tabStats,log:tabLog,gear:tabGear,party:tabParty,chat:tabChat};
 let skel=null;
 function skeleton(root){root.replaceChildren();const hd=el('div','hd'),tabs=el('div','tabs'),tb=el('div','tb');
   for(const [k,label] of TABS){const b=el('button',null,label);b.dataset.tab=k;tabs.append(b)}
-  root.append(hd,tabs,tb);skel={root,hd,tabs,tb};return skel}
+  wireGear(tb);root.append(hd,tabs,tb);skel={root,hd,tabs,tb};return skel}
 
 export function renderHero(){const root=$('hero'),a=cam.sel;
   if(!a){root.innerHTML='<div class="meta">Tap a hero on the map, or pick one from Top heroes.</div>';skel=null;return}
@@ -132,7 +179,9 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
   h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
   for(const b of k.tabs.children)b.setAttribute('aria-pressed',String(b.dataset.tab===tab));
-  k.tb.replaceChildren();k.tb.dataset.tab=tab;BODY[tab](k.tb,a)}
+  if(pinned&&pinned.id!==a.id)pinned=null;
+  k.tb.replaceChildren();k.tb.dataset.tab=tab;BODY[tab](k.tb,a);
+  if(tab!=='gear')hideTip();else if(hov)showTip()}
 
 // ---- other panels ----
 export function renderTops(){const el_=$('tops');el_.innerHTML='';ranked().slice(0,8).forEach((a,i)=>{const li=document.createElement('li');const b=document.createElement('button');
