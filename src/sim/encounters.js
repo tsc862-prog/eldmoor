@@ -8,6 +8,7 @@
 // Bandits are not real mobs: an ambush is a single roll, so it wounds but never kills.
 // DOM-free; render/encounters.js draws S.encounters.
 import {rnd,ri,pickA} from '../core/rng.js';
+import {check,bestFor} from './abilities.js';
 import {W,H,ROAD} from '../world/tiles.js';
 import {tiles,zone,I,ZONES,CITY,LAIR,zoneFor,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
@@ -85,12 +86,12 @@ function resolve(a,e){const mh=maxHp(a),st=S.encStats;bump(e.type==='pilgrim'?st
     record(a,'Blessed at a lanternstone shrine in '+ZONES[e.z]+' (rolled '+r+').');
     if(deep){const h=Math.round(mh*.3);a.hp=Math.min(mh,a.hp+h);log(a,' kneels at a lanternstone on ',road(e),'... ',dm('rolls '+r),'. The lantern burns bright: blessed and mended for ',String(h),'.')}
     else log(a,' kneels at a lanternstone on ',road(e),'... ',dm('rolls '+r),'. Blessed: the next blow lands harder.');break}
-  case 'chest':{const r=d20(),dc=10+e.z*2;remove(e);record(a,(r>=dc?'Opened':'Sprung')+' a trapped strongbox in '+ZONES[e.z]+' (rolled '+r+' vs '+dc+').');
-    if(r>=dc){const g=a.lvl*5;a.gold+=g;bump(st.success,e.type);pop(a.x,a.y-.6,'+'+g+'g','#f2c14e');log(a,' pries at a strongbox on ',road(e),'... ',dm('rolls '+r+' vs '+dc),'. Gold: ',gold(g+'g'),'.')}
-    else{const w=Math.round(mh*.25);a.hp=Math.max(1,a.hp-w);pop(a.x,a.y-.6,String(w),'#ff6a5a');log(a,' pries at a strongbox on ',road(e),'... ',dm('rolls '+r+' vs '+dc),'. A needle in the lock: ',String(w),' damage.')}break}
+  case 'chest':{const dc=10+e.z*2,ck=check(a,'traps',dc),r=ck.d20,rs=r+(ck.mod?(ck.mod>0?'+':'')+ck.mod:'');remove(e);record(a,(ck.pass?'Opened':'Sprung')+' a trapped strongbox in '+ZONES[e.z]+' (rolled '+rs+' vs '+dc+').');
+    if(ck.pass){const g=a.lvl*5;a.gold+=g;bump(st.success,e.type);pop(a.x,a.y-.6,'+'+g+'g','#f2c14e');log(a,' pries at a strongbox on ',road(e),'... ',dm('rolls '+rs+' vs '+dc),'. Gold: ',gold(g+'g'),'.')}
+    else{const w=Math.round(mh*.25);a.hp=Math.max(1,a.hp-w);pop(a.x,a.y-.6,String(w),'#ff6a5a');log(a,' pries at a strongbox on ',road(e),'... ',dm('rolls '+rs+' vs '+dc),'. A needle in the lock: ',String(w),' damage.')}break}
   case 'pilgrim':{e.escort=a;e.escortT=S.gameMin;a.pilgrim=e;record(a,'Took a lost pilgrim under escort in '+ZONES[e.z]+'.');
     log(a,' finds a lost pilgrim on ',road(e),' and takes them along to ',homeOf(a).name,'.');break}
-  case 'ambush':{const mates=partyMates(a).filter(b=>dist(a,b)<=8),mod=Math.max(Math.floor(a.lvl/2),...mates.map(b=>Math.floor(b.lvl/2))),r=d20(),dc=12+e.z*2;remove(e);
+  case 'ambush':{const mates=partyMates(a).filter(b=>dist(a,b)<=8),mod=bestFor([a,...mates],'perception').mod,r=d20(),dc=12+e.z*2;remove(e);
     const who=e.n+' Rookscar bandits';record(a,(r+mod>=dc?'Drove off ':'Robbed by ')+who+' in '+ZONES[e.z]+' (rolled '+r+'+'+mod+' vs '+dc+').');
     if(r+mod>=dc){const zl=ZLVL[e.z],diff=zl-a.lvl,xp=(8+zl*6)*(diff<-4?.3:diff>2?1.3:1),g=zl*2+ri(0,zl);bump(st.success,e.type);
       gainXp(a,xp);for(const b of mates)gainXp(b,xp*.6);a.gold+=g;pop(a.x,a.y-.6,'+'+g+'g','#f2c14e');
