@@ -240,6 +240,7 @@ export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))ret
   if(!sc.acts[a.id]&&sc.phase!=='outcome')v.options=optionsFor(sc,a).map(o=>o.k+' = '+o.text);
   if(v.your_turn)v.seconds_left=Math.max(0,Math.round((TABLE.turnMs/1000-sc.t)*10)/10);
   if(sc.beats.length)v.so_far=sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':''));
+  if(sc.narr)v.narrator=sc.narr.text; // the DM's narrate line at this table (issue #123)
   if(sc.summary)v.outcome=sc.summary;return v}
 // What the banner shows (src/ui/table.js).
 export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc.ids[sc.i]),last=sc.beats[sc.beats.length-1];
@@ -248,4 +249,4 @@ export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc
   else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]?cur.name+' is thinking… ('+Math.max(0,Math.ceil(TABLE.turnMs/1000-sc.t))+' s)':cur.name+' acts'}
   else line=sc.summary||'';
   return {title:sc.title,kind:sc.kind,frame:sc.frame,line,who,last:last?last.name+': '+last.text+(last.res?' ('+last.res+')':''):null,
-    order:sc.ids.map(byId).filter(Boolean),turn:sc.phase==='turn'?sc.i:-1,phase:sc.phase,paused:!!sc.pause}}
+    order:sc.ids.map(byId).filter(Boolean),turn:sc.phase==='turn'?sc.i:-1,phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null}}

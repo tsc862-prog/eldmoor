@@ -12,6 +12,13 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   fine; Azeroth, Horde, Alliance, Stormwind, Arthas etc. are not.
 - **Hardcore.** Every hero has one life. Death is permanent; a fresh level-1
   recruit of the same class and guild replaces them.
+- **In-game channels only.** The DM and the players (Fellowship members, agent-played heroes)
+  communicate only inside the game: in-game chat (say in earshot, the party channel, townsfolk, the
+  DM's `narrate` and `npc_say`) and what their characters can see. Nobody messages anyone directly
+  outside it. A hero's tools, runner prompts and brain snapshots never carry DM notes, the DM log,
+  lever reasons, or another hero's journal, memories, persona, mind, narration or session; a claimed
+  hero answers only its own runner; heroes have no DM tools and the DM no hero tools. The watcher
+  (the owner's browser) still sees everything. See "In-game channels" below; `npm run channelcheck`.
 - **No build step required for the art.** All terrain and sprites are generated
   in code (pixel arrays and procedural textures). No image assets yet.
 - **Built to scale.** The world will grow 20-30x with several races and home
@@ -90,6 +97,7 @@ other. The rules:
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
+- `npm run channelcheck`: the in-game channels rule (see "In-game channels").
 
 ## Agent player
 
@@ -127,7 +135,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   reused the id) and the old session on `--new` are moved to `logs/agents/old/`, never
   overwritten. The single `logs/agent-session.json` of #75 migrates on first run.
 - Other MCP clients: streamable HTTP at `http://127.0.0.1:8787/mcp` (or `:8789/mcp`
-  headless), stateless, POST only, with the `X-Eldmoor-Hero` header or `?hero=<id>`; or stdio
+  headless), stateless, POST only, with the `X-Eldmoor-Hero` header or `?hero=<id>` (plus `X-Eldmoor-Runner` for a claimed hero); or stdio
   with `npm run -s mcp` (forwards to `PLAY_URL`, `PLAY_HERO=<id>` picks the hero). Plain JSON
   without MCP: `POST /play/call {tool, args, hero}`; `GET /play/health` lists the agent heroes
   and their links. A call that names no hero goes to the first living agent hero (the old
@@ -284,13 +292,42 @@ danger onto a badly hurt Fellowship member out in the field is refused). Fast at
   `regions`, `hooks`, `levers`, `notes_read`, `notes_write` (threads, characters, plans, secrets; saved
   with the world in `S.dmAgent`), `pull_lever` (`pull(name, params, {by:'dm-agent', reason})`; at most
   `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's),
-  `log_intent`. The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
+  `log_intent`, and its in-game voice `narrate` (`{text, near, radius?}`: heroes near a hero, town,
+  region or "x,y", or everyone at the open Table scene, hear it in their Chat tab and the Table banner;
+  12 a game day) and `npc_say` (`{npc, text}`: a townsperson or placed person speaks to whoever is within
+  earshot; 16 a game day). The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
   reports `dm: {seat, link, claimed, runner}`. The game answers only while its seat is open.
 - DM log: the agent's entries carry a **DM AGENT** tag and its reason; the **DM agent** filter shows them.
 - Measured live (Sonnet 5.5, effort medium, headless day 4): first turn 15 tool calls, 18 s, $0.056 (notes
   in all four sections, a ruin and a wary hermit, one refused pull it corrected); a quiet turn 3 calls, 8 s, $0.013.
 - `npm run dmcheck` (in CI): tools, notes, limits and refusals, save/restore, a silent seat leaves a
   seeded world identical, relay routes and MCP, the browser bridge, and the runner end to end on a mock Ollama.
+
+## In-game channels (issue #123)
+
+The owner's rule: the DM and the players talk only inside the game. How it holds:
+
+- Heroes hear, they do not read minds. Everything said reaches a hero as a line in its chat buffer
+  (`a.chat`): `say` within earshot, the party channel, townsfolk, and the DM's `narrate` / `npc_say`.
+  Agents read it with `chat_read` (and `party_read`), and as events ("The narrator: ..."); a brain
+  hero's snapshot carries its last heard lines. The Table banner and `tableView` show a narrate line
+  sent to the table. Hero tools never answer with DM notes, the DM log, lever reasons, or another
+  hero's journal, memories, persona, mind, narration or session; `look` no longer says who is
+  agent-played; persona/backstory snapshots list companions by name, class and origin only.
+- Relay (`scripts/relay-mcp.mjs`): a claimed hero answers only the runner that claimed it (runners
+  send `X-Eldmoor-Runner` / `?runner=` on `/mcp` and `runner` on `/play/*`; anyone else gets 409); a
+  held DM seat answers only its runner; `/play/dm` and `/mcp?role=dm` refuse a call that names a hero
+  or comes from a runner holding one; `/play/call` and `/play/narrate` refuse the DM role; one runner
+  never holds a hero and the DM seat. `/play/narrate` only feeds the watcher's Agent tab. `GET
+  /play/runner` gives the runners' output lines only to the page's origin.
+- Runners: each member and the DM keep their own session; turn prompts are fixed text and standing
+  orders come from the seat's own status; the Fellowship runner shares only game state (`/play/health`:
+  ids, names, roles, links). The system prompts say that others are reached only in the game.
+- `npm run channelcheck` (in CI) plants unique secrets in DM notes, the DM log, lever reasons, another
+  member's journal, memories, persona, mind, narration and session prompt, gathers every hero tool
+  result, event, runner prompt and brain snapshot, and fails on any secret; it also proves a narrate
+  line reaches members in range (and the table) and not one far away, npc_say reaches earshot, party
+  chat reaches every member, and the relay keeps the seats apart.
 
 ## Layout
 

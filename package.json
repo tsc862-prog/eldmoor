@@ -26,6 +26,7 @@
     "fellowship": "node scripts/fellowship.mjs",
     "dm": "node scripts/dm-agent.mjs",
     "dmcheck": "node scripts/dmcheck.mjs",
+    "channelcheck": "node scripts/channelcheck.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs"
   },
   "devDependencies": {

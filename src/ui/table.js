@@ -22,8 +22,9 @@ export function initTable(){
 // Called every frame with the host's speed: the sim pauses only at 1x.
 export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();const box=$('tbanner');if(!box)return;
   const b=bannerOf();if(!b){if(!box.hidden){box.hidden=true;sig=''}return}
-  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused].join('|');if(s===sig)return;sig=s;box.hidden=false;box.replaceChildren();
+  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr].join('|');if(s===sig)return;sig=s;box.hidden=false;box.replaceChildren();
   const tt=el('div','tt','AT THE TABLE · '+b.title.toUpperCase());if(b.paused)tt.append(el('span','tp','WORLD PAUSED'));box.append(tt);
   box.append(el('div','tf',plain(b.frame)));
+  if(b.narr)box.append(el('div','tf tnarr',b.narr)); // the DM's narrate line (issue #123)
   const o=el('div','to');b.order.forEach((a,i)=>{if(i)o.append(' · ');o.append(i===b.turn?el('b',null,'▶ '+a.name):a.name)});box.append(o);
   box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome')box.append(el('div','to',b.last))}

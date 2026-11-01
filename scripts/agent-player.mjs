@@ -66,6 +66,7 @@ export function systemPrompt(st) {
     '',
     'How to play:',
     '- You act only through the tools. You know only what they tell you: what you can see nearby, what you hear, and the news.',
+    '- Everyone you deal with is in the game, and so are your words: you speak with say (and party_say in a party) and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way.',
     '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns early, something needs you: read the events.',
     '- Grow stronger: hunt in your level band, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice. Read it back with journal_read when you resume.',
@@ -74,10 +75,12 @@ export function systemPrompt(st) {
   ].filter(s => s !== null).join('\n');
 }
 
-// Every call names its hero, so the relay routes it to that hero only.
+// Every call names its hero and this runner (the id it claimed with), so the relay routes it to that
+// hero only and refuses it for a hero another runner holds (issue #123).
+let RUNNER = null;
 const post = (base, path, body, ms) => fetch(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(ms)});
-async function play(base, hero, tool, args = {}) {return (await post(base, '/play/call', {hero, tool, args}, 90000)).json()}
-const narrate = (base, hero, text) => post(base, '/play/narrate', {hero, text}, 5000).catch(() => {});
+async function play(base, hero, tool, args = {}) {return (await post(base, '/play/call', {hero, tool, args, runner: RUNNER}, 90000)).json()}
+const narrate = (base, hero, text) => post(base, '/play/narrate', {hero, text, runner: RUNNER}, 5000).catch(() => {});
 const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s};
 const money = v => '$' + (v || 0).toFixed(4);
 export const turnPrompt = turns => turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
@@ -121,7 +124,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // Bind this runner to one hero, and hold it while running.
   const pick = pickHero(health.heroes, opt('hero', env.AGENT_HERO || null));
   if (pick.error) {console.error('[agent] ' + pick.error); process.exit(1)}
-  const heroId = pick.hero.id, runner = `${hostname()}:${process.pid}`;
+  const heroId = pick.hero.id, runner = `${hostname()}:${process.pid}`; RUNNER = runner;
   let mind = {}; // {provider, model} once known: rides on the claim so the game can tag the runner (#97)
   const claim = () => post(base, '/play/claim', {hero: heroId, runner, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
   const c0 = await claim();
@@ -171,7 +174,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       // the hero rides on every MCP request (header, and the query for clients that drop headers)
-      mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${heroId}`, headers: {'X-Eldmoor-Hero': String(heroId)}, timeout: 90000}},
+      mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Hero': String(heroId), 'X-Eldmoor-Runner': runner}, timeout: 90000}},
       tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
       settings: {autoCompactEnabled: true}, maxTurns: toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv,
