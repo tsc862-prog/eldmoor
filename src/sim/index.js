@@ -16,6 +16,7 @@ import {pvpCheck} from './pvp.js';
 import {dungeonCheck} from './dungeon.js';
 import {updMarket} from './market.js';
 import {chatTick} from './chat.js';
+import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
 
 export {S,clockStr} from './state.js';
@@ -40,4 +41,5 @@ export function step(dt){S.gameMin+=dt*6;
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);goalsTick(dt);
+  narratorTick(dt);
   updFx(dt)}

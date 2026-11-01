@@ -268,3 +268,37 @@ Samples:
 - Warband, depart: "Out the gate. Blood before breakfast."
 - Warband, duel: "{target}! Your head or mine. Mine stays."
 - Warband, epic: "Hah! {item}. Try and take it."
+
+## The Chronicler
+The Chronicle has a second voice beside the plain record of kills and quests: the
+Chronicler, who sets scenes, calls the dice and sums up each day at dawn. Templates
+live in `src/data/narration.js`; triggers, the dice and the recap in `src/sim/narrator.js`.
+The voice is third person, present tense, grounded and dry. It never addresses the
+watcher, never speaks of respawns or of the world as a game, and quotes nothing from
+anywhere else. Its lines show in italics with a gold rule in the Chronicle (class `nar`).
+Scene lines keep to one per 20 real seconds; a roll that leaves a hero under half health,
+a roll that kills, and the dawn recap may cut in regardless.
+
+Dice are real d20 rolls on the game's dice, shown dim in the line ("rolls 14+2 vs 12"),
+and they change what happens:
+
+| Check | When | Roll | Pass | Fail |
+| --- | --- | --- | --- | --- |
+| Scout | A monster ambushes a hero, or a hero takes on one two or more levels up (once per engagement). | d20 + level/3 (+2 for Hunters and Rogues) vs 10 + 2 per zone (+3 when fog, ash or snow cut sight). | The hero lands a strike before the fight proper and the monster's first bite is delayed. | The monster lands one free hit. It wounds; it never kills by itself. |
+| Flee | A hero breaks off a monster fight at low health. | d20 + level/4 vs 11. | Clean away. | One glancing bite lands on the way out. At flee health that can kill, and a death here is always narrated. |
+
+Triggers and samples:
+- **Zone entry** after dark (19:00-05:00) or under weather, by a solo hero or a party leader, two times in five:
+  "Night falls on Mirefen as fog closes in; Alwyn's party presses on." /
+  "Rain hammers down over Thornvale. Feneth's party pulls a hood up and goes in."
+- **Scout check** (about one roll in seven is narrated; a dozen happen every minute): "Pellora scouts ahead... rolls 14+2 vs 12. A Fen Lurker is spotted first. Pellora strikes before it closes." /
+  "Coreth stops, listens... rolls 2+2 vs 10. Coreth sees nothing, and a Webspinner proves it: 13 damage."
+- **Flee roll** (two in five are narrated; every fatal one is): "Enough. Valanne runs from the Bristleback Boar... rolls 13 vs 11, and gets clear. Barely." /
+  "Lysora turns from the Fen Lurker and runs... rolls 3+2 vs 11, but not fast enough: 7 damage on the way out."
+- **Elite sighted**, the first time a hero comes within six tiles of a living named elite, with a per-zone opener:
+  "Something large moves between the pines. Hollowfang has found the road." /
+  "The reeds part, and the water behind them does not settle. Old Mother Sedge, Matriarch of the Fen, is hunting."
+- **Boss pull**, when a raid first engages: "The lava ring stirs. Kragmaw raises its head and five heroes of the Warband stop pretending to be brave."
+- **Dawn recap** at 06:00 every game day, one to three sentences on the day since the last dawn (deaths and their causes, levels gained and the highest hero, elites slain, Crypt clears and wipes, Kragmaw's state):
+  "Dawn, day 8. Twelve fell since the last dawn: three to monsters and nine to enemy heroes. 23 levels gained; Feneth stands highest at 9. The Crypt was cleared once; Kragmaw sleeps untouched." /
+  "Day 15 begins. Nobody died since the last dawn; the Chronicler checks the list twice. 31 levels gained; Ragrek stands highest at 13, and Old Mother Sedge is dead. The Crypt was cleared once; Kragmaw sleeps untouched."

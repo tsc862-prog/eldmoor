@@ -12,6 +12,7 @@ import {log} from './chronicle.js';
 import {pop} from './effects.js';
 import {moveTo,agentDie} from './heroes.js';
 import {sightMul} from './weather.js';
+import {eliteSight} from './narrator.js';
 
 // Per-zone target population (today's COUNTS total), a COUNTS-weighted species list for extra
 // spawns, and the road tiles mobs may drift toward.
@@ -61,6 +62,7 @@ export function updMob(m,dt){
     if(m.respawn<=0){
       if(!S.eco.empty[z]&&zonePop(z)>ZTARGET[z]){m.gone=true;S.eco.stats.culled++;return} // hunted zones decay back to target
       m.alive=true;m.hp=m.maxhp;m.home={...m.spawn};m.x=m.home.x;m.y=m.home.y;m.target=null;m.dest=null}return}
+  eliteSight(m,dt); // Chronicler: first hero within sight of a living elite (sim/narrator.js)
   m.cd-=dt;const t=m.target;
   if(t){const engaged=(t.state==='fight'&&t.target===m)||(t.state==='hunt'||t.state==='travel');
     if(t.state==='ghost'||!engaged||dist(m,m.home)>10){m.target=null;m.dest={...m.home};return}
