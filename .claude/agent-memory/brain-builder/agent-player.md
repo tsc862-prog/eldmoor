@@ -1,0 +1,16 @@
+---
+name: agent-player
+description: Agent player (issue #75) - MCP tool surface, bridge protocol, Agent SDK runner settings, measured cost per turn, test approach and pitfalls
+metadata:
+  type: project
+---
+
+Agent player built for issue #75 (PR from branch ai/agent-player, 2026-11-01). An AI agent plays one hero through 23 MCP tools.
+
+- Layers: `src/sim/player.js` (playerAct/playerUpd/markPlayer, DOM-free) -> `src/sim/player-host.js` (hostCall: polls the `wait` tool against game time, 45 s real cap) -> host = browser page (`src/ui/player-bridge.js`, ws://127.0.0.1:8787/play) or `scripts/play-headless.mjs` (Node world, port 8789). `scripts/relay-mcp.mjs` attachPlay() adds /mcp (stateless streamable HTTP, enableJsonResponse, one McpServer per POST), /play/call, /play/narrate, /play/health to any http.Server by re-ordering 'request' listeners; relay.mjs gets one import + one call (`--play-only` runs without a key). `npm run mcp` = stdio server forwarding to PLAY_URL/play/call.
+- WS protocol: page -> {type:'hello',hero:{id,name}}; relay -> {type:'call',id,tool,args} / {type:'narrate',text}; page -> {type:'result',id,result}. Origin must be the dev origin; /mcp and /play/* refuse any Origin header; Host must be localhost.
+- Hook points: index.js step `if(!(a.player&&playerUpd(a,dt)))updAgent(a,dt)`; dm.js choice case one call `playerBranch(adv,sc,a,S2)` (src/sim/player-choice.js, no import cycle) returning 'wait' until choose() or CHOICE_MIN=180 game min; branch logged by dmlog with why 'player choice'. take_adventure never edits dm.js: it hides other open hooks (phase 'held') and sets h.for=a.id so the scripted pickHook takes it without a roll, then restores. Coordinator asked: only that one dm.js hook.
+- Reflexes: fight flee below 15% (flee_below arg), hunt cmd stops at 45%*retreat trait, idle bag>=8 goes home; crypt/raid drafts and unrequested parties are declined (a.cryptOk/raidOk/partyOk). Rate limit 12 world-changing calls per game hour.
+- Runner `scripts/agent-player.mjs`: @anthropic-ai/claude-agent-sdk 0.3.316 query() per "turn"; model claude-sonnet-5-5 (AGENT_MODEL), effort medium, tools:[], allowedTools:['mcp__eldmoor'], permissionMode 'dontAsk', settingSources:[], settings.autoCompactEnabled, maxTurns 12 per turn, maxBudgetUsd; cwd must exist (logs/) or spawn fails with misleading "native binary failed to launch (ENOENT)". total_cost_usd is cumulative across resume -> per-turn = delta. Session in logs/agent-session.json keyed by hero id+name; `--env FILE` loads a .env elsewhere (worktrees have no .env).
+- Measured live 2026-11-01 (headless, warm 15, level 7 Mage, Sonnet 5.5 medium): 5 turns, 38 tool calls, $0.103 total; turn 1 $0.037 (cache warm-up), later turns $0.014-0.020; ~32-43 s per turn; ~0.6-1.3 k output tokens/turn, >90% input cached. Agent behaved sensibly (rested, fled L11, bought gear) but rarely journals and sometimes replaces a command at once (rest then hunt).
+- Tests: `npm run playcheck` (mock agent, background ticker steps the world ~12x real time, seeded Math.random but wall-clock dependent; PLAYCHECK_SEED varies it). Seeded `npm run sim -- 60` identical to main (scratchpad seeded-sim wrapper). Pitfall hit: a `//` comment inserted mid-line in index.js swallowed `partyTick()` and stalled leveling; always diff seeded sims vs main.
