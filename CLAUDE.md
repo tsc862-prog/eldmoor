@@ -133,15 +133,15 @@ render or ui, so the headless harness stays stub-free.
   45% HP, flee at 22%): `src/sim/heroes.js`. Class table `CLS`: `src/data/classes.js`.
 - Mob stats (`maxhp: 25 + lvl*16`, hit `3 + lvl*2`), aggro and wander: `src/sim/mobs.js`.
 - Boss: `maxhp` 9000 in `src/sim/state.js`; hit 55-85 every 1.6s, breath every
-  7s, raids need 4+ heroes at level 12+: `src/sim/boss.js`.
-- Dungeon success: the `pw` formula in `src/sim/dungeon.js`.
-- PvP: duel chance, range and level gap in `src/sim/pvp.js`.
+  7s, raids need level 14+ heroes, 5+ of them or 4 with average gear 9+; raiders
+  break off below 15% HP and a failed raid cools down 240s: `src/sim/boss.js`,
+  `RAID_FLEE` in `src/sim/heroes.js`.
+- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 55% of the party.
+- PvP: chance duels 4% x boldness, level gap 2, range 3 tiles; nemesis spot cooldown 45s; guild assist 20%; duellers yield below 30% HP; only fallen heroes of level 12+ pass the grudge to the whole guild (lesser deaths bind their party): `src/sim/pvp.js`, `GUILD_GRUDGE_LVL` in `src/sim/heroes.js`.
 
 ## Known state
 
-- In a 60-minute headless run from level 1, about 60 heroes die (roughly 60% PvP).
-  A few veterans reach 14-16. No raid has killed Kragmaw yet; the boss is likely
-  overtuned for hardcore rosters.
+- In a 120-minute headless run from level 1 (after the rebalance and item stats), about 26 deaths per hour, roughly 40% PvP; median living level 11; 9 veterans at 14+. Kragmaw dies in most runs with 0-4 raid deaths. Late-game (240 min) PvP among level 11+ veterans climbs back toward 50-60% of deaths.
 - The world auto-saves to localStorage every game-hour and on tab close, and restores on reload; Export/Import move it as JSON (`src/sim/save.js`, `src/ui/save.js`, `npm run savecheck`).
 
 ## Roadmap ideas

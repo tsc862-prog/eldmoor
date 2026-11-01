@@ -90,7 +90,7 @@ export function fall(a,cause){
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
 
-const GUILD_GRUDGE_LVL=12,RAID_FLEE=.22;
+const GUILD_GRUDGE_LVL=12,RAID_FLEE=.15;
 export function agentDie(a,killer){
   const lv={t:'(level '+a.lvl+')',c:'dm'};
   record(a,'Fell at level '+a.lvl+', slain by ',killer.kind==='hero'?killer:killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+MOBS[killer.type].name,'.');
@@ -194,7 +194,7 @@ export function updAgent(a,dt){
     if(a.cd<=0){strike(a,b);a.cd=1.1}
     // Caution: break off at 20% HP, or at 50% when outnumbered (helpers on you, none on your foe).
     const outn=S.agents.some(g=>g.state==='assist'&&g.target===a)&&!S.agents.some(g=>g.state==='assist'&&g.target===b);
-    if(a.state==='duel'&&a.hp<mh*(outn?.5:.35*tm(a,'flee'))&&rnd()<dt*1.5){b.state='hunt';b.target=null;regroup(a,b,'return',3);
+    if(a.state==='duel'&&a.hp<mh*(outn?.5:.3*tm(a,'flee'))&&rnd()<dt*1.5){b.state='hunt';b.target=null;regroup(a,b,'return',3);
       if(rnd()<.5)log(a,' fled from ',b,' in ',ZONES[zoneAt(a.x,a.y)],'.')}
     break}
   case 'assist':{const b=a.target;if(!b||b.state!=='duel'){regroup(a,b&&b.state!=='dead'?b:null,a.regNext);break}

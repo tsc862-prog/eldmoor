@@ -3,3 +3,4 @@
 - [Chatter rules](chatter_rules.md) — say() in chat.js, private RNG, lazy per-hero fields, spot at 2+ levels, merge-safe one-line inserts
 - [Narrator rules](narrator_rules.md) — why scout pass is a real strike, flee fail is a glancing bite, 20s cap exceptions, baseline variance is 92-124 deaths/2h
 - [Spatial index](spatial_index.md) — all proximity scans go through sim/spatial.js; id-sorted results keep RNG order; what was left brute-force and why
+- [Rebalance #18](rebalance_issue18.md) — tuned PvP/raid/crypt values, what moved deaths, noise warning, late-game vet PvP caveat
