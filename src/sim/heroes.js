@@ -19,7 +19,7 @@ import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
 import {emptySlots,gearScore,gearHp,gearAtk,gearCrit,guardMul,hasteMul,rollDrop,equipEpic,sellGear,shopUpgrade} from './gear.js';
-import {record} from './history.js';
+import {record,timeline,first} from './history.js';
 import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
 import {scoutCheck,fleeCheck} from './narrator.js';
@@ -57,6 +57,8 @@ export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     record(a,'Reached level '+a.lvl+'.');
     if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');
+    if(a.lvl%5===0){const fa=first('lvl:'+a.fac+':'+a.lvl),cl=a.lvl>=10&&first('cls:'+a.fac+':'+a.cls+':'+a.lvl),fn={t:FAC[a.fac].name,c:'f'+a.fac};
+      if(fa)timeline('level',a,' is the first of the ',fn,' to reach level '+a.lvl+'.');else if(cl)timeline('level',a,' is the first '+a.cls+' of the ',fn,' to reach level '+a.lvl+'.')}
     goalEvent(a,'level');}
   if(a.lvl>=20)a.xp=0}
 
@@ -73,7 +75,7 @@ export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a
   bondEvent(a,'kill',partyMates(a));
   if(rnd()<.006)getEpic(a,pickA(EPICS[M.z]),'a '+M.name);
   if(m.elite)record(a,'Slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');
-  if(m.elite){a.eliteKills=(a.eliteKills||0)+1;log(a,' slew ',{t:m.name,c:'gd'},', ',m.title,', in ',ZONES[M.z],'!');getEpic(a,pickA(EPICS[M.z]),m.name)} // named elite: guaranteed epic from the zone table
+  if(m.elite){timeline('elite',a,' slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');a.eliteKills=(a.eliteKills||0)+1;log(a,' slew ',{t:m.name,c:'gd'},', ',m.title,', in ',ZONES[M.z],'!');getEpic(a,pickA(EPICS[M.z]),m.name)} // named elite: guaranteed epic from the zone table
   if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need)a.quest.have++;
   goalEvent(a,'kill',m);
   a.target=null;a.state='hunt'}
@@ -86,6 +88,7 @@ export function fall(a,cause){
   S.facStats[a.fac].fallen++;
   S.fallen.unshift({name:a.name,fac:a.fac,lvl:a.lvl,cls:a.cls,cause,t:a.diedAt});if(S.fallen.length>15)S.fallen.pop();
   goalEvent(a,'died');
+  if(a.lvl>=10&&!/^lost in/.test(cause))timeline('death',a,' fell at level '+a.lvl+' ('+cause+').'+(a.lvl>=15?' A legend ends.':''));
   S.recruits.push({fac:a.fac,guild:a.guild,cls:a.cls,t:8+rnd()*8});
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}

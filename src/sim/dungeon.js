@@ -9,7 +9,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {gainXp,getEpic,goHome,fall} from './heroes.js';
 import {cryptPull,goalEvent} from './goals.js';
-import {record} from './history.js';
+import {record,timeline,first} from './history.js';
 
 export function dungeonCheck(dt){const agents=S.agents;
   const g=CRYPT.group,tagOf=(gu,f)=>gu?{t:'<'+gu.tag+'> '+gu.name,c:'f'+f}:{t:'A '+FAC[f].name+' group',c:'f'+f};
@@ -37,6 +37,7 @@ export function dungeonCheck(dt){const agents=S.agents;
   const ok=rnd()<clamp((pw-8)/8,.15,.92),who=tagOf(g.guild,g.fac);
   for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6}
   if(ok){if(g.guild)g.guild.clears++;log(who,' cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'!');
+    if(first('crypt:'+(g.guild?g.guild.tag:'f'+g.fac)))timeline('crypt',who,' cleared ',{t:CRYPT.name,c:'gd'},' for the first time.');
     for(const a of g.mem)record(a,'Cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'.');
     for(const a of g.mem){gainXp(a,250+a.lvl*20);a.gold+=25+ri(0,20);a.kills+=ri(8,14);for(let k=0;k<3;k++)a.bag.push('Grave Dust');
       if(rnd()<.25)getEpic(a,pickA(DG_EPICS),CRYPT.boss);goalEvent(a,'crypt');goHome(a)}}
@@ -46,5 +47,5 @@ export function dungeonCheck(dt){const agents=S.agents;
     for(const a of lost)record(a,'Lost forever in ',{t:CRYPT.name,c:'gd'},'.');
     const parts=[who,' wiped in ',{t:CRYPT.name,c:'gd'},'.'];
     if(lost.length){parts.push(' Lost forever: ');lost.forEach((a,i)=>{parts.push(a);if(i<lost.length-1)parts.push(', ')});parts.push('.')}
-    else parts.push(' Everyone escaped.');log(...parts)}
+    else parts.push(' Everyone escaped.');log(...parts);if(lost.length)timeline('death',...parts)}
   CRYPT.group=null}
