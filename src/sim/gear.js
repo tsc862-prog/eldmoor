@@ -1,18 +1,20 @@
 // Slot equipment: seven named, levelled items per hero replace the old single gear number.
-// Drops (rollDrop), town upgrades (shopUpgrade), epic placement (equipEpic) and the derived
-// gearScore that maxHp/atkOf read. Owned by creature-designer.
+// Drops (rollDrop), town upgrades (shopUpgrade), epic placement (equipEpic) and the gear score.
+// Owned by creature-designer. What items are worth in a fight is worked out in sim/stats.js
+// (combatStats): items carry armor, weapon damage, score bonuses and rare properties (issue #88).
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
-import {SLOTS,GEAR_MATERIALS,SLOT_NOUNS,EPIC_SLOT,epicZone,STAT_KEYS,STAT_RATE,STAT_CAP,BUDGET_K,SLOT_WEIGHT,SLOT_LEAN,CLASS_SHARE,QUALITY,rollQuality,AFFIXES,EPIC_STATS} from '../data/items.js';
+import {SLOTS,GEAR_MATERIALS,SLOT_NOUNS,EPIC_SLOT,epicZone,QUALITY,rollQuality,AFFIXES,EPIC_ITEMS,
+  ARMOR_PER_ILVL,DAMAGE_PER_ILVL,ARMOR_SLOT,ARMOR_CLASS,WEAPON_SLOTS,SHIELD_CLASS,PROP_IDS} from '../data/items.js';
+import {CLASS_ABIL} from '../data/abilities.js';
 import {homeOf} from '../data/races.js';
 import {MOBS} from '../data/mobs.js';
 import {tm} from '../data/traits.js';
 import {zoneFor} from '../world/map.js';
 import {log} from './chronicle.js';
+import {dmgTaken} from './stats.js';
 
-// Tuning. gearScore = average item level over the seven slots * GEAR_K. Heroes keep their slots
-// near their own level (shop items are ilvl = level, drops are mob level +-1), so without the factor
-// the score would sit at about 0.9 x level; the old gear number, throttled by gold, sat at about
-// 0.55-0.65 x level in 60-120 minute runs. GEAR_K keeps maxHp/atkOf where they were.
+// Tuning. gearScore = average item level over the seven slots * GEAR_K: a rough "how kitted" figure
+// for raid musters (boss.js), dungeon power (dungeon.js) and the Gear tab. Combat reads combatStats.
 export const GEAR_K=.65;
 export const DROP_RATE=.06;            // slot item per ordinary kill; named elites always drop one
 export const SHOP_COST=ilvl=>6*ilvl;   // gold for a town-bought item
@@ -20,50 +22,82 @@ export const SELL_VALUE=it=>it.ilvl*2; // gold the auction house pays for a repl
 
 export function emptySlots(){const s={};for(const k of SLOTS)s[k]=null;return s}
 export function gearScore(a){if(!a.slots)return a.gear||0;let t=0;for(const k of SLOTS){const it=a.slots[k];if(it)t+=it.ilvl}return t/SLOTS.length*GEAR_K}
-export const syncGear=a=>{a.gear=Math.round(gearScore(a));a.gtot=statTotals(a)};
+export const syncGear=a=>{a.gear=Math.round(gearScore(a));if('gtot' in a)delete a.gtot};
 export const slotLevel=(a,k)=>a.slots[k]?a.slots[k].ilvl:0;
+// Damage multiplier for a blow landing on a hero (class training, armor, warding). Kept under its old
+// name for callers that predate sim/stats.js; prefer dmgTaken from there.
+export const guardMul=a=>dmgTaken(a);
 
-// ---- stats (issue #52) ----
-// Roll an item's stats: a budget of ilvl * BUDGET_K * slot weight * quality, split over the three
-// (four on a rare) stats its class, slot and affixes favour. Affixes pull their own stat up.
-function rollStats(cls,slot,ilvl,zone,quality){
-  const budget=ilvl*BUDGET_K*(SLOT_WEIGHT[slot]||1)*QUALITY[quality].mult,sh=CLASS_SHARE[cls]||CLASS_SHARE.Warrior,lean=SLOT_LEAN[slot]||{};
-  const pool=(AFFIXES[zone]||AFFIXES[0]).slice(),aff=[];
-  for(let i=0;i<QUALITY[quality].affixes&&pool.length;i++)aff.push(pool.splice(ri(0,pool.length-1),1)[0]);
-  const w={};for(const k of STAT_KEYS)w[k]=sh[k]*(lean[k]||1)*(.7+rnd()*.6);
-  for(const [,k] of aff)w[k]*=2.2;
-  const top=STAT_KEYS.slice().sort((x,y)=>w[y]-w[x]).slice(0,quality==='rare'?4:3),sum=top.reduce((t,k)=>t+w[k],0),stats={};
-  for(const k of top)stats[k]=Math.max(1,Math.round(budget*w[k]/sum));
-  return {stats,affixes:aff.map(x=>x[0])}}
-// Stats of an epic at its current level: fixed ratios times ilvl.
-export function epicStats(name,ilvl){const E=EPIC_STATS[name],s={};if(!E)return s;for(const k in E.r)s[k]=Math.max(1,Math.round(ilvl*E.r[k]));return s}
-// The stats of any item. Items from older saves have none stored, so derive an ordinary spread.
-export function itemStats(it){if(!it)return {};if(it.stats)return it.stats;if(it.epic&&EPIC_STATS[it.name])return epicStats(it.name,it.ilvl);
-  const b=it.ilvl*BUDGET_K*(SLOT_WEIGHT[it.slot]||1),s={};s.vigor=Math.round(b*.4);s.might=Math.round(b*.35);s.guard=Math.round(b*.1);s.precision=Math.round(b*.05);s.haste=Math.round(b*.1);return s}
-function statTotals(a){const t={vigor:0,might:0,guard:0,precision:0,haste:0};if(!a.slots)return t;
-  for(const k of SLOTS){const it=a.slots[k];if(!it)continue;const s=itemStats(it);for(const x of STAT_KEYS)t[x]+=s[x]||0}return t}
-// Summed item points for one stat, and what they are worth: max HP, attack, damage taken (a multiplier),
-// crit chance (a fraction) and attack cooldown (a multiplier). Guard and Haste are capped.
-export const gearStat=(a,k)=>(a.gtot||(a.gtot=statTotals(a)))[k]||0;
-export const gearBonus=(a,k)=>{const v=gearStat(a,k)*STAT_RATE[k];return STAT_CAP[k]?Math.min(STAT_CAP[k],v):v};
-export const gearHp=a=>a.slots?gearStat(a,'vigor')*STAT_RATE.vigor:(a.gear||0)*6;
-export const gearAtk=a=>a.slots?gearStat(a,'might')*STAT_RATE.might:(a.gear||0)*1.5;
-export const guardMul=a=>1-gearBonus(a,'guard')/100;
-export const gearCrit=a=>gearBonus(a,'precision')/100;
-export const hasteMul=a=>1/(1-gearBonus(a,'haste')/100); // cooldown ticks down this much faster
+// ---- item properties (issue #88) ----
+// What a slot carries for a class: armor weight, damage share, or (tome, censer, shiv, trinket) a score.
+export const armorWeight=(cls,slot)=>slot==='off'&&!SHIELD_CLASS[cls]?0:(ARMOR_SLOT[slot]||0)*(ARMOR_CLASS[cls]||.3);
+export const damageShare=(cls,slot)=>((WEAPON_SLOTS[cls]||WEAPON_SLOTS.Warrior)[slot])||0;
+const charmSlot=(cls,slot)=>slot==='trinket'||(slot==='off'&&!armorWeight(cls,slot)&&!damageShare(cls,slot));
+export const itemArmor=(cls,slot,ilvl,mult=1)=>{const w=armorWeight(cls,slot);return w?Math.max(1,Math.round(ilvl*ARMOR_PER_ILVL*w*mult)):0};
+export const itemDamage=(cls,slot,ilvl,mult=1)=>{const w=damageShare(cls,slot);return w?Math.max(1,Math.round(ilvl*DAMAGE_PER_ILVL*w*mult)):0};
+// Affixes lean toward the class's scores: primary x3, secondary x2, the rest x1.
+const affixW=(cls,score)=>{const ca=CLASS_ABIL[cls];return !ca?1:score===ca.primary?3:score===ca.secondary?2:1};
+function pickAffix(cls,pool){let tot=0;for(const x of pool)tot+=affixW(cls,x[1]);let r=rnd()*tot;
+  for(let i=0;i<pool.length;i++){r-=affixW(cls,pool[i][1]);if(r<=0)return pool.splice(i,1)[0]}return pool.pop()}
+const addBonus=(b,k,n)=>{b[k]=(b[k]||0)+n};
 
+// Roll an ordinary item's properties. Fine: one affix, +1 to its score. Rare: two affixes (+1 each),
+// or a third of the time one affix at +2; and one property. Trinkets and charm off hands add +1 to the
+// class's primary (trinket) or secondary (off hand) at every quality.
+function rollProps(cls,slot,ilvl,zone,quality){
+  const Q=QUALITY[quality],it={},pool=(AFFIXES[zone]||AFFIXES[0]).slice(),bonus={},aff=[];
+  const ar=itemArmor(cls,slot,ilvl,Q.mult),dm=itemDamage(cls,slot,ilvl,Q.mult);if(ar)it.armor=ar;if(dm)it.damage=dm;
+  const double=quality==='rare'&&rnd()<1/3,n=double?1:Q.affixes;
+  for(let i=0;i<n&&pool.length;i++){const x=pickAffix(cls,pool);aff.push(x[0]);addBonus(bonus,x[1],double?2:1)}
+  if(charmSlot(cls,slot)){const ca=CLASS_ABIL[cls];if(ca)addBonus(bonus,slot==='trinket'?ca.primary:ca.secondary,1)}
+  if(Object.keys(bonus).length)it.bonus=bonus;
+  if(quality==='rare')it.property=pickA(PROP_IDS);
+  if(aff.length)it.affixes=aff;
+  return it}
+// An epic's armor and damage at its current level (plate armor, a plain weapon's damage, times the
+// relic's multiplier) plus its fixed bonus and property.
+export function epicProps(name,ilvl){const E=EPIC_ITEMS[name],slot=EPIC_SLOT[name]||'trinket',it={};if(!E)return it;
+  if(E.armor)it.armor=Math.max(1,Math.round(ilvl*ARMOR_PER_ILVL*(ARMOR_SLOT[slot]||1)*E.armor));
+  if(E.damage)it.damage=Math.max(1,Math.round(ilvl*DAMAGE_PER_ILVL*E.damage));
+  if(E.bonus)it.bonus={...E.bonus};if(E.property)it.property=E.property;return it}
+const setEpic=(it)=>{const p=epicProps(it.name,it.ilvl);delete it.armor;delete it.damage;Object.assign(it,p)};
+
+// opt: {quality, fine, rare, src}. Signature unchanged since #20.
 export function makeItem(cls,slot,ilvl,zone,opt={}){const z=clamp(zone,0,GEAR_MATERIALS.length-1),m=GEAR_MATERIALS[z];
   const mat=pickA(slot==='main'||slot==='off'?m.hard:m.any),noun=(SLOT_NOUNS[cls]||SLOT_NOUNS.Warrior)[slot];
   ilvl=Math.max(1,Math.round(ilvl));const quality=opt.quality||rollQuality(opt.fine==null?.25:opt.fine,opt.rare==null?.05:opt.rare,rnd());
-  const r=rollStats(cls,slot,ilvl,z,quality),it={name:mat+' '+noun,ilvl,zone:z,slot,epic:false,quality,stats:r.stats};
-  if(r.affixes.length)it.affixes=r.affixes;if(opt.src)it.src=opt.src;return it}
+  const it={name:mat+' '+noun,ilvl,zone:z,slot,epic:false,quality,...rollProps(cls,slot,ilvl,z,quality)};
+  if(opt.src)it.src=opt.src;return it}
+
+// Save migration (v3 -> v4): an item from before #88 carried {stats:{vigor,might,guard,precision,haste}}.
+// Its armor and damage are re-derived from its slot, class and level; its old budget is mapped onto
+// bonuses in proportion (Vigor -> Grit, Might -> the class primary, Precision -> Reflex, Guard and Haste
+// toward the rare properties warding and swift); epics take their new block.
+export function convertItem(it,cls){if(!it||typeof it!=='object'||!it.slot)return it;
+  const old=it.stats||{};delete it.stats;delete it.armor;delete it.damage;delete it.bonus;delete it.property;
+  if(it.epic){setEpic(it);return it}
+  const q=QUALITY[it.quality]?it.quality:'plain',Q=QUALITY[q];it.quality=q;
+  const ar=itemArmor(cls,it.slot,it.ilvl,Q.mult),dm=itemDamage(cls,it.slot,it.ilvl,Q.mult);if(ar)it.armor=ar;if(dm)it.damage=dm;
+  const ca=CLASS_ABIL[cls]||{primary:'brawn',secondary:'grit'};
+  const wt={grit:old.vigor||0,[ca.primary]:old.might||0,reflex:old.precision||0};
+  const pts=q==='rare'?2:q==='fine'?1:0,b={};
+  if(pts){const order=Object.keys(wt).filter(k=>wt[k]>0).sort((x,y)=>wt[y]-wt[x]);
+    if(order.length){addBonus(b,order[0],1);if(pts>1)addBonus(b,order[1]||order[0],1)}}
+  if(charmSlot(cls,it.slot))addBonus(b,it.slot==='trinket'?ca.primary:ca.secondary,1);
+  if(Object.keys(b).length)it.bonus=b;
+  if(q==='rare'){const g=old.guard||0,h=old.haste||0,p=old.precision||0,v=old.vigor||0;
+    it.property=g>=h&&g>=p&&g>=v/3?'warding':h>=p&&h>=v/3?'swift':p>=v/3?'keen':'vital'}
+  if(it.over&&it.over.stats)delete it.over.stats;
+  return it}
 
 // Lowest item level among the non-epic slots (empty counts as 0); null if every slot holds an epic.
 export function weakestSlot(a){let best=null,bs=1e9;for(const k of SLOTS){const it=a.slots[k];if(it&&it.epic)continue;const v=it?it.ilvl:0;if(v<bs){bs=v;best=k}}return best}
 
+// What an item adds, for the replaced-piece note: {armor, damage, bonus, property}.
+const summary=it=>{const o={};if(it.armor)o.armor=it.armor;if(it.damage)o.damage=it.damage;if(it.bonus)o.bonus={...it.bonus};if(it.property)o.property=it.property;return o};
 // Put an item in its slot and return what it replaced (or null). Epics are announced by getEpic;
 // here only a slot's first item above level 10 is logged, to keep the Chronicle quiet.
-export function equip(a,it){const old=a.slots[it.slot]||null;if(old)it.over={name:old.name,ilvl:old.ilvl,stats:{...itemStats(old)}}; // kept so the Gear tab can show the delta
+export function equip(a,it){const old=a.slots[it.slot]||null;if(old)it.over={name:old.name,ilvl:old.ilvl,...summary(old)}; // kept so the Gear tab can show the delta
   a.slots[it.slot]=it;syncGear(a);
   if(!it.epic&&it.ilvl>10&&(!old||old.ilvl<=10))log(a,' now wears ',{t:it.name,c:'gd'},' (item level ',String(it.ilvl),').');
   return old}
@@ -93,7 +127,7 @@ export function offerUpgrade(a,ilvl,src='Road merchant'){if(!a.slots)return fals
 // and grow with their bearer: each town visit lifts a worn epic back to hero level + 3, so a
 // Fang of the Old Wood looted at level 3 is not a dead slot at level 20.
 export const EPIC_LEAD=3;
-export function refreshEpics(a){for(const k of SLOTS){const it=a.slots[k];if(it&&it.epic&&it.ilvl<a.lvl+EPIC_LEAD){it.ilvl=a.lvl+EPIC_LEAD;it.stats=epicStats(it.name,it.ilvl)}}syncGear(a)}
+export function refreshEpics(a){for(const k of SLOTS){const it=a.slots[k];if(it&&it.epic&&it.ilvl<a.lvl+EPIC_LEAD){it.ilvl=a.lvl+EPIC_LEAD;setEpic(it)}}syncGear(a)}
 export function equipEpic(a,name,src){if(!a.slots)return;const slot=EPIC_SLOT[name]||'trinket';
   const ilvl=Math.max(a.lvl+EPIC_LEAD,slotLevel(a,slot)+1);
-  const old=equip(a,{name,ilvl,zone:epicZone(name),slot,epic:true,quality:'epic',stats:epicStats(name,ilvl),src:src||undefined});if(old)a.bag.push(old)}
+  const old=equip(a,{name,ilvl,zone:epicZone(name),slot,epic:true,quality:'epic',...epicProps(name,ilvl),src:src||undefined});if(old)a.bag.push(old)}
