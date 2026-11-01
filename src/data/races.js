@@ -18,32 +18,32 @@ export const RACES=[
   // ---- The Concord ----
   {id:'hallowan',name:'Hallowan',plural:'Hallowans',fac:0,home:'Highgate',
     skin:['#f0c8a0','#d8a878','#b88058','#e8b890'],hair:['#5a3a22','#c89a4a','#8a4a2a','#2a2020'],
-    names:[['Al','Bren','Cor','Dar','El','Fen','Gal','Hal','Isa','Jor','Kae','Lor','Mir','Nor','Pell','Quin','Ros','Syl','Tor','Val','Wyn','Ari','Cae','Lys'],
+    names:[['Al','Bren','Cor','Dar','Em','Fen','Gar','Hal','Isa','Jor','Kae','Lor','Mir','Nor','Pell','Quin','Ros','Syl','Tor','Val','Wyn','Ari','Cae','Lys'],
            ['a','en','ic','ion','ara','eth','wyn','dor','is','iel','ric','anne','ius','ora']],
     culture:'River-valley farmers, millers and ledger-keepers of the hedged lowlands around Highgate; swear by the harvest and bury their dead facing the water.',
     lean:{Warrior:1.3,Priest:1.3}},
-  {id:'carrow',name:'Carrow',plural:'Carrows',fac:0,home:'Cairnmoot',
+  {id:'tarrow',name:'Tarrow',plural:'Tarrows',fac:0,home:'Cairnmoot',
     skin:['#d9a07c','#c08a62','#a8724e','#e6b494'],hair:['#7a3a1e','#1e1a1c','#c8b890','#4a2a1a'],
-    names:[['Bran','Cael','Dun','Eyr','Gwil','Hest','Ivo','Kerr','Mael','Nev','Osw','Rhun','Tam','Ulf','Wick','Ael','Dov','Garr'],
-           ['ach','wen','ith','ys','an','on','od','ric','rhi','agh','ett','ow','as','ell']],
+    names:[['Bran','Cael','Dun','Eyr','Gwil','Hest','Ivo','Kerr','Mael','Nev','Osw','Rhos','Tam','Ulf','Wick','Ael','Dov','Garr'],
+           ['ach','wen','ith','ys','an','on','od','ock','rhi','agh','ett','ow','as','ell']],
     culture:'Highland herders and hedge-wardens of the thorn ridges; taciturn, long-memoried, and the Concord’s best bowmen.',
     lean:{Hunter:1.8,Warrior:1.1}},
-  {id:'skerrin',name:'Skerrin',plural:'Skerrins',fac:0,home:'Saltmarsh Reach',
+  {id:'skerrin',name:'Skerrin',plural:'Skerrins',fac:0,home:'Brinereach',
     skin:['#f2d6c0','#e0bfa8','#c9a58e','#f6e0d0'],hair:['#1c1a20','#6a2a24','#9aa0a8','#3a2e3c'],
-    names:[['Mar','Osk','Hael','Tev','Brin','Sael','Ker','Lun','Ald','Fin','Wren','Thess','Ebb','Gull','Nance','Pike','Sorr','Vey'],
-           ['a','ir','wen','is','ric','ald','ley','ora','in','eth','mund','we','ane','ish']],
+    names:[['Mar','Osk','Hael','Tev','Brin','Sael','Ker','Lun','Ald','Fin','Wren','Thess','Ebb','Gull','Nell','Pike','Sorr','Vey'],
+           ['a','ir','wen','is','ric','ald','ley','ora','in','eth','mund','wy','ane','ish']],
     culture:'Fisherfolk and net-menders of the salt reaches; read weather in gull-flight, pay their debts to the tide and to each other, and favour the staff and the knife over the sword.',
     lean:{Mage:1.5,Rogue:1.3}},
   // ---- The Warband ----
   {id:'ashfolk',name:'Ashfolk',plural:'Ashfolk',fac:1,home:'Grimhold',
     skin:['#8fb070','#a08c6c','#7a9a88','#6e8a5a'],hair:['#1a1616','#4a4a50','#7a3a24','#2c2420'],
-    names:[['Gor','Thrak','Ur','Zug','Mog','Kar','Grim','Drak','Vor','Rok','Skar','Bru','Nar','Gash','Krul','Ozz','Rag','Vex'],
-           ['ash','gul','nok','rek','tusk','mar','dul','zar','osh','ga','ka','thar','rim','gash']],
-    culture:'Grey-green crag-dwellers of the ridges above Grimhold; raised in the fighting pits, measure worth in scars, and stand as the Warband’s shield wall.',
+    names:[['Gor','Thrak','Ur','Zug','Mog','Kar','Grim','Drak','Vor','Rok','Skar','Bru','Norr','Gash','Krul','Ozz','Rag','Vex'],
+           ['ash','gul','nok','rek','tusk','mar','dul','zar','osh','ga','ka','tharn','rim','gash']],
+    culture:'Crag-dwellers of the ridges above Grimhold; raised in the fighting pits, measure worth in scars, and stand as the Warband’s shield wall.',
     lean:{Warrior:1.8,Rogue:.8}},
   {id:'mirekin',name:'Mirekin',plural:'Mirekin',fac:1,home:'Murkstead',
     skin:['#5f8e6e','#6fa08a','#4e7a66','#7fae8e'],hair:['#101c18','#2e5a40','#d8d8c8','#1e3028'],
-    names:[['Ssath','Vel','Mur','Ool','Quag','Nesh','Ith','Zhal','Bog','Hrul','Mire','Sseth','Ulg','Vosh','Lurk','Nagg','Yss','Thul'],
+    names:[['Ssath','Vull','Mur','Ool','Quag','Nesh','Ith','Zhal','Bog','Hrul','Mire','Ssil','Ulg','Vosh','Lurk','Nagg','Yss','Thul'],
            ['ith','esh','ul','oss','ar','aque','im','en','oth','aal','isk','ug','ael','ott']],
     culture:'Marsh-born trappers and salt-boilers of the fen margins; patient, poisonous, keep their dead in the water and their grudges longer.',
     lean:{Priest:1.6,Rogue:1.4,Mage:1.2}},
@@ -51,7 +51,7 @@ export const RACES=[
     skin:['#a8784a','#8e6238','#b88a5c','#7a5230'],hair:['#2a1c14','#5a3c24','#8a7a60','#161210'],
     names:[['Hrak','Dur','Mogg','Orv','Sketh','Varn','Yurr','Kez','Bral','Tusk','Garn','Hodd','Rhuk','Snagg','Ulv','Wrack','Zeb','Korr'],
            ['ak','orn','ug','ar','ish','ekk','ol','un','agh','ir','ott','ask','ur','eng']],
-    culture:'Ochre-skinned ridge-walkers and bone-carvers of the Thornteeth; trade skins for steel and will track a foe across three zones for the story of it.',
+    culture:'Ridge-walkers and bone-carvers of the Thornteeth; trade skins for steel and will track a foe across three zones for the story of it.',
     lean:{Hunter:1.8,Rogue:1.1}},
 ];
 
@@ -65,7 +65,7 @@ export function raceName(r){let n,k=0;do{n=pickA(r.names[0])+pickA(r.names[1]);i
 
 // Pick a people for a new hero: the faction's races weighted to keep the living roster
 // (the heroes passed in, normally S.agents) roughly even, nudged by the class lean
-// (a Carrow hunter is likelier than a Carrow mage).
+// (a Tarrow hunter is likelier than a Tarrow mage).
 export function assignRace(a,roster=[]){
   const rs=racesOf(a.fac);if(!rs.length)return a;
   const live={};for(const b of roster)if(b.fac===a.fac&&b.state!=='dead'&&b.race)live[b.race]=(live[b.race]||0)+1;

@@ -8,7 +8,7 @@ Grounded classic fantasy with grit and dry humor. Every hero has one life; death
 are remembered in the Graveyard and the Chronicle.
 
 ## Factions
-- **The Concord** (blue). Capital: **Highgate**, northwest. Three human-like peoples (Hallowans, Carrows, Skerrins; see Peoples); names like Alwyn, Pellora, Syleth.
+- **The Concord** (blue). Capital: **Highgate**, northwest. Three human-like peoples (Hallowans, Tarrows, Skerrins; see Peoples); names like Alwyn, Pellora, Syleth.
 - **The Warband** (red). Capital: **Grimhold**, southwest. Three peoples of brutes (Ashfolk, Mirekin, Thornhides; see Peoples); names like Thrakash, Zugnok, Grimrek.
 
 ## Peoples of Eldmoor
@@ -16,26 +16,25 @@ Every hero belongs to a people within their faction (`src/data/races.js`). A peo
 home town; recruits are born there, return there to sell and quest, and are buried in its
 graveyard. Until the world spec grows the extra towns, every people of a faction shares the
 capital (Highgate is Hallowan ground, Grimhold is Ashfolk ground). A hero's people shows on
-the hero card ("People: Carrow of Highgate") and in the recruit line ("A new Ashfolk
+the hero card ("People: Tarrow of Highgate") and in the recruit line ("A new Ashfolk
 warrior, Kardul, joins <BF> Bloodfang in Grimhold."). Recruits are drawn to keep the living
 roster of each faction roughly even across its peoples, with a nudge toward the classes a
 people favours. Peoples differ in skin and hair, names, home and culture only; stats come
-from class and level. Home towns not yet on the map are reserved names: Cairnmoot, Saltmarsh
-Reach (today a hamlet), Murkstead and Thornteeth (today a camp).
+from class and level. Home towns not yet on the map are reserved names: Cairnmoot, Brinereach (today a hamlet), Murkstead and Thornteeth (today a camp).
 
 | People | Faction | Home | Look | Favours | Culture |
 | --- | --- | --- | --- | --- | --- |
 | Hallowan (pl. Hallowans) | Concord | Highgate | Fair to tan skin; brown, wheat, red or black hair | Warrior, Priest | River-valley farmers, millers and ledger-keepers of the hedged lowlands around Highgate; swear by the harvest and bury their dead facing the water. |
-| Carrow (pl. Carrows) | Concord | Cairnmoot | Ruddy, weathered skin; auburn, black or ash-blond hair | Hunter | Highland herders and hedge-wardens of the thorn ridges; taciturn, long-memoried, and the Concord's best bowmen. |
-| Skerrin (pl. Skerrins) | Concord | Saltmarsh Reach | Pale skin; black, dark red or salt-grey hair | Mage, Rogue | Fisherfolk and net-menders of the salt reaches; read weather in gull-flight, pay their debts to the tide and to each other, and favour the staff and the knife over the sword. |
+| Tarrow (pl. Tarrows) | Concord | Cairnmoot | Ruddy, weathered skin; auburn, black or ash-blond hair | Hunter | Highland herders and hedge-wardens of the thorn ridges; taciturn, long-memoried, and the Concord's best bowmen. |
+| Skerrin (pl. Skerrins) | Concord | Brinereach | Pale skin; black, dark red or salt-grey hair | Mage, Rogue | Fisherfolk and net-menders of the salt reaches; read weather in gull-flight, pay their debts to the tide and to each other, and favour the staff and the knife over the sword. |
 | Ashfolk (pl. Ashfolk) | Warband | Grimhold | Grey-green to olive skin; black, soot-grey or rust hair | Warrior | Crag-dwellers of the ridges above Grimhold; raised in the fighting pits, measure worth in scars, and stand as the Warband's shield wall. |
 | Mirekin (pl. Mirekin) | Warband | Murkstead | Bog-green and teal skin; black, dark green or bone-white hair | Priest, Rogue, Mage | Marsh-born trappers and salt-boilers of the fen margins; patient, poisonous, keep their dead in the water and their grudges longer. |
 | Thornhide (pl. Thornhides) | Warband | Thornteeth | Ochre and umber skin; dark brown, umber or bone-grey hair | Hunter | Ridge-walkers and bone-carvers of the Thornteeth; trade skins for steel and will track a foe across three zones for the story of it. |
 
 Names by people (prefix + suffix, never repeated within a world):
-- Hallowan: Alwyn, Pellora, Syleth, Corric, Lysara, Galion.
-- Carrow: Branrhi, Gwilach, Maelwen, Dovon, Ulfagh, Kerrith.
-- Skerrin: Haelir, Tevmund, Gullmund, Thessin, Marwe, Oskald.
+- Hallowan: Alwyn, Pellora, Syleth, Corric, Lysara, Garion.
+- Tarrow: Branrhi, Gwilach, Maelwen, Dovon, Ulfagh, Kerrock.
+- Skerrin: Haelir, Tevmund, Gullwen, Thessin, Marwy, Oskald.
 - Ashfolk: Thrakash, Zugnok, Grimrek, Kardul, Vexosh, Ragmar.
 - Mirekin: Ssathith, Bogaque, Zhalim, Yssoss, Velesh, Quagoth.
 - Thornhide: Rhukur, Tuskak, Yurrug, Bralish, Kezeng, Hrakorn.
@@ -80,7 +79,7 @@ recover the Fenlight Lantern."). Concord origins are formal and dry, Warband ori
 The hero card shows origin, oath and progress.
 
 **Hamlets.** Concord villages sit in the hedged farmland around Highgate: Hollowmere,
-Wendell's Ford, Thistledown, Larkhollow, Brackenby, Oldwick, Saltmarsh Reach, Fallow
+Wendell's Ford, Thistledown, Larkhollow, Brackenby, Oldwick, Brinereach, Fallow
 Cross. Warband camps and holds are strung along the ridges and gullies south of Grimhold:
 Skullrock, Red Gully, Gnashfang Hollow, Ironmaw, Bonepile, Scarhide Camp, Thornteeth,
 Grukk's Ditch.

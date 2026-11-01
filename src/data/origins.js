@@ -15,7 +15,7 @@
 // around Highgate; Warband camps and holds are strung along the ridges and gullies south of
 // Grimhold.
 export const HAMLETS=[
-  ['Hollowmere','Wendell’s Ford','Thistledown','Larkhollow','Brackenby','Oldwick','Saltmarsh Reach','Fallow Cross'],
+  ['Hollowmere','Wendell’s Ford','Thistledown','Larkhollow','Brackenby','Oldwick','Brinereach','Fallow Cross'],
   ['Skullrock','Red Gully','Gnashfang Hollow','Ironmaw','Bonepile','Scarhide Camp','Thornteeth','Grukk’s Ditch'],
 ];
 
