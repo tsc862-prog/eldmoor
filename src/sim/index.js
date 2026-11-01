@@ -16,9 +16,11 @@ import {pvpCheck} from './pvp.js';
 import {dungeonCheck} from './dungeon.js';
 import {updMarket} from './market.js';
 import {chatTick} from './chat.js';
+import {npcsTick} from './npcs.js';
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
 import {rebuild} from './spatial.js';
+import {bondsTick} from './bonds.js';
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -44,6 +46,6 @@ export function step(dt){S.gameMin+=dt*6;
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)updAgent(a,dt);partyTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
-  chatTick(dt);goalsTick(dt);
-  narratorTick(dt);
+  chatTick(dt);npcsTick(dt);goalsTick(dt);
+  narratorTick(dt);bondsTick(dt);
   updFx(dt)}

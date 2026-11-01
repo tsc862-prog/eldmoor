@@ -12,6 +12,7 @@ import {say,duelBark} from './chat.js';
 import {sightMul} from './weather.js';
 import {tm} from '../data/traits.js';
 import {record} from './history.js';
+import {bondEvent,grudgeOf} from './bonds.js';
 import {ZONES} from '../world/map.js';
 import {nearHeroes} from './spatial.js';
 
@@ -23,7 +24,7 @@ export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agent
   for(const a of free){a.spotCd-=.5;if(!isFree(a)||a.spotCd>0)continue;const r=8*sightMul(zoneAt(a.x,a.y));
     for(const b of nearHeroes(a.x,a.y,r)){const id=b.id;if(!a.nemesis[id]||!isFree(b)||dist(a,b)>=r)continue;
       a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null;a.spotCd=20;
-      log(a,' spots ',b,', who killed ',{t:a.nemesis[id],c:'f'+a.fac},', and charges.');break}}
+      log(a,' spots ',b,', who killed ',grudgeOf(a,id),{t:a.nemesis[id],c:'f'+a.fac},', and charges.');break}}
   // Chance duels: each free Concord hero rolls against every free Warband hero within 3 tiles (sight-scaled), in id order.
   for(const a of free){if(a.fac!==0)continue;const r=3*sightMul(zoneAt(a.x,a.y));
     for(const b of nearHeroes(a.x,a.y,r)){if(!freeSet.has(b)||b.fac!==1||a.state==='duel'||b.state==='duel')continue;
@@ -34,4 +35,4 @@ export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agent
   for(const a of agents){if(a.state!=='duel'||!a.target)continue;const foe=a.target;
     for(const g of nearHeroes(a.x,a.y,8)){if(!isFree(g)||g.guild!==a.guild||dist(g,a)>8||rnd()>.35*tm(g,'loyal'))continue;
       say(g,'assist',{target:a.name});
-      g.state='assist';g.target=foe;g.dest=null;if(rnd()<.6)log(g,' rushes to help guildmate ',a,' against ',foe,'.');break}}}
+      bondEvent(g,'assist',[a]);g.state='assist';g.target=foe;g.dest=null;if(rnd()<.6)log(g,' rushes to help guildmate ',a,' against ',foe,'.');break}}}

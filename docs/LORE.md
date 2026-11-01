@@ -115,6 +115,16 @@ tiers), and an oath whose target dies first is void and re-sworn.
 | Bank N gold | the hero holds N gold at once | - |
 | Clear the Sunken Crypt | the hero's group clears the Crypt | first pick for Crypt groups |
 
+## Bonds and blood debts
+Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,
+heals, rescues in a duel and setting out in a party raise a bond; a day apart wears it
+down. Six points make friends, fifteen make sworn companions, and the Chronicle says so
+when the line is crossed. When a hero falls to an enemy hero, the sworn companions take
+the killer as a nemesis and friends do so half the time, so the grudge outlives the dead
+and is hunted on sight ("spots X, who killed their friend Y, and charges"). The closest
+friend swears the death will be paid for. Whoever finally kills the killer has paid the
+blood debt, and the dead hero's friends warm to them. A grudge ends only with the killer.
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |
@@ -246,6 +256,44 @@ Drowned King's Signet.
 Wolf Pelt, Boar Tusk, Silk Bundle, Fen Moss, Thick Hide, Venom Sac, Ember Core, Cinder Scale, Rime Pelt, Hoar Wool, Wight Marrow, Grave Dust.
 
 Base prices climb with zone: Thornvale 4-7, Mirefen 9-14, Grave Dust 18, Cinderpass 22-26, Hoarfell 30-40.
+
+## Townsfolk
+Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
+routines). Each is one of the town's own people, named from that people's syllables when the
+world starts (so the innkeeper of Highgate is a Hallowan and keeps her name all run long, but
+no name is canon; a fresh world rolls fresh townsfolk). They never fight and never leave the
+walls. By day they keep their posts; at night they sleep in a row of houses along the back
+wall, opposite the gate. Heroes sell at the quartermaster's table and take their writs from
+the gate captain, so those two posts are the old auction-house and quest-giver stops.
+
+| Role (Concord / Warband) | Post | Hours | Does |
+| --- | --- | --- | --- |
+| Innkeeper / Mead-keeper | The inn by the south wall | 08:00-24:00 | Beds, stew, tabs, and a wager on who comes back. |
+| Smith / Forge-master | The forge by the north wall | 06:00-21:00 | Mends edges and dents; cannot mend pride. |
+| Quartermaster / Quartermaster | The table in the market | 06:00-21:00 | Buys pelts, fangs and oddments; runs the auction house. |
+| Priest / Shaman | The chapel (Concord) or the spirit circle (Warband) in the gate-side corner | 06:00-21:00 | Lights a candle for every name that leaves the gate; blesses Crypt parties. |
+| Bard / Boast-singer | The square, mid-path; strolls about it | 06:00-21:00 | Rhymes names, sings the news. |
+| Gate Captain / Gate Warden | Just inside the gate | Always | Hands out writs, takes reports, never leaves the gate. |
+
+Townsfolk speak through the same chat layer as heroes (bubble in follow view, a line in the
+chat tab of every hero within 7 tiles): a greeting when a hero comes within two tiles of the
+post, no more than once per 30 real seconds per resident and one roll per hero per game week,
+plus a line on opening and closing. Concord townsfolk are formal and dry, Warband townsfolk
+blunt and loud. Two of them watch the world:
+- The **bard** sings of the latest named elite slain (naming the hero and the beast) and of
+  Kragmaw's death, once per town per deed, a proud verse for the home faction and a sour one
+  for the enemy's hero.
+- The **priest or shaman** blesses a Sunken Crypt party of their faction forming in town
+  (`blessed`: one strike at +20%, as the wayside lanternstones grant), hurrying to the gate
+  while members are still inside the walls.
+
+Samples:
+- Highgate innkeeper: "Still alive, {target}. I had a wager on it. Thank you for that."
+- Highgate priest, blessing: "Kneel a moment, {target}. There. Whatever waits below, you do not face it alone."
+- Highgate bard, song: "Hear it, Highgate: {hero} has brought down {elite} in {zone}. I am adding a verse."
+- Grimhold forge-master: "Hit harder, {target}, and I will have to make it thicker."
+- Grimhold gate warden: "{target}. You went out. You came back. That is the whole of my report."
+- Grimhold boast-singer, enemy kill: "The Concord's {hero} killed {elite} in {zone}. Fine. The next one is ours."
 
 ## Voices
 Heroes speak short lines in context (`src/data/barks.js`; picked and cooled down by

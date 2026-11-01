@@ -17,10 +17,15 @@
 //               'east-of-curve' | 'north-of-curve' | 'south-of-curve' (curve: name) |
 //               'and'{masks} | 'or'{masks} | 'not'{mask}
 //   river     {curve, width} painted as RIVER along the curve; roads bridge it.
-//   towns     {name, fac, x0, y0, w, h, gate:'E'|'W'|'N'|'S', race}
+//   towns     {name, fac, x0, y0, w, h, gate:'E'|'W'|'N'|'S', race, spots, npcs}
 //             WALL border, FLOOR inside, two gate tiles in the middle of the gate
-//             wall; auction house, quest giver, gate point and graveyard are
-//             derived from the rect by gen.js (same offsets as the old mkCity).
+//             wall; gate point and graveyard are derived from the rect by gen.js.
+//             spots: interior points as [dx,dy] offsets from x0,y0 where the
+//             townsfolk keep their posts: quartermaster (the auction house, the
+//             heroes' `ah` stop), gate (the gate captain, the quest-giver `qg`
+//             stop), inn, smith, chapel, square. Missing spots get defaults laid
+//             out relative to the gate side (sim/npcs.js, data/npcs.js).
+//             npcs: role ids staffed here (default: every role in data/npcs.js).
 //   landmarks {kind:'lair', name, x, y, r, inner, mouth:'W'|'E'|'N'|'S', exclude, light}
 //             {kind:'crypt', name, boss, x, y, mouth:{x0,y0,w,h}, exclude, cd}
 //   points    named waypoints that roads may reference.
@@ -52,8 +57,13 @@ export const ELDMOOR={
   ],
   river:{curve:'river',width:2},
   towns:[
-    {name:'Highgate',fac:0,x0:2,y0:2,w:11,h:9,gate:'E',race:'hallowan'},
-    {name:'Grimhold',fac:1,x0:2,y0:39,w:11,h:9,gate:'E',race:'ashfolk'},
+    // spots: the quartermaster's table and the captain's gate post are the heroes' old ah/qg stops;
+    // the inn is by the south wall, the forge by the north, the chapel in the gate-side corner,
+    // the square in the middle of the hero path. Homes line the back (west) wall at night.
+    {name:'Highgate',fac:0,x0:2,y0:2,w:11,h:9,gate:'E',race:'hallowan',
+      spots:{quartermaster:[3.5,3.8],gate:[7.5,3.8],inn:[3.5,7.3],smith:[5.5,1.6],chapel:[8.5,1.9],square:[5.5,6.1]}},
+    {name:'Grimhold',fac:1,x0:2,y0:39,w:11,h:9,gate:'E',race:'ashfolk',
+      spots:{quartermaster:[3.5,3.8],gate:[7.5,3.8],inn:[3.5,7.3],smith:[5.5,1.6],chapel:[8.5,1.9],square:[5.5,6.1]}},
   ],
   landmarks:[
     {kind:'lair',name:'Kragmaw',x:71.5,y:25.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
