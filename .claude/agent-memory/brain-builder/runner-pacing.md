@@ -50,5 +50,9 @@ Built 2026-11-01 on branch infra/runner-pacing (PR "Closes #126"). The coordinat
   - #5: per-action source marking in the Log. Only "Last agent order N min ago" and autopilot in the Agent tab are done.
   - Ollama-busy link state.
 - Tests: localcheck section 4, parts A to E; runnercheck seats and leases. tablecheck "leader left" now uses the farthest point. The seeded sim -- 60 run is identical.
-- Measured: see the PR body. With the mock at 1x and defaults: 0.25 turns/game h, 1.5 turns/real min.
+- Measured with default pacing on a headless world (PR #134):
+  - mock at 1x: 0.25 turns/game h, 1.5 turns/real min;
+  - mock at 8x: 0.062 turns/game h, 3.0 turns/real min;
+  - qwen2.5:14b at 8x: 0.046 turns/game h, 2.2 turns/real min, 1 empty turn of 11, turns 5-17 s;
+  - qwen2.5:14b at 1x (an active hero, woken mostly by arrivals): 0.36 turns/game h, 2.17 turns/real min, 0 empty of 13.
 - Pitfall: python heredocs in bash eat backslashes. Use the Edit tool for JS lines with \n or regex escapes.
