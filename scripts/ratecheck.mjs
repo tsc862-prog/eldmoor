@@ -52,10 +52,11 @@ if (phase) {
     out.found = log.length;
     await play(DAYS, SPEED);
     out.past = S.fellowship ? S.fellowship.past.length : 0; // members lost and replaced in the run (each replacement is a new member and is enriched once)
-    out.sim = simSec; out.log = log; out.totals = T ? T.totals : {sent: log.length, failed: 0}; out.rpm = T ? T.rpm() : 0; out.fails = T ? T.recentFailures() : [];
+    out.sim = simSec; out.log = log; out.totals = T ? JSON.parse(JSON.stringify(T.totals)) : {sent: log.length, failed: 0}; out.rpm = T ? T.rpm() : 0; out.fails = T ? T.recentFailures() : []; // totals copied: the restore phase below may send more (the live object would count those too)
     if (phase === 'ok') {
       const snap = JSON.parse(JSON.stringify(snapshot()));
       log = []; restore(snap); await play(0.02, SPEED);
+      out.restoreSent = log.length;
       out.restoreSheets = log.filter(e => e[0] === 'persona' || e[0] === 'backstory').length;
       const m0 = fellowshipMembers()[0].hero;
       m0.persona = {...(m0.persona || {}), src: 'model'}; m0.backstory = {...(m0.backstory || {}), src: 'model'};
