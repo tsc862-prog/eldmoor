@@ -6,7 +6,8 @@
 // world), and rounds left (Table combat). An effect holds while either is still running. Plain data, so a
 // save keeps it. Keys: taken (damage-taken multiplier on e), mark (damage-taken multiplier from any attacker).
 import {S} from './state.js';
-import {PASSIVES,CLASS_PASSIVES} from '../data/moves.js';
+import {PASSIVES,CLASS_PASSIVES,SPEC_PASSIVES} from '../data/moves.js';
+import {SPECS} from '../data/classes.js';
 
 const now=()=>S.gameMin/6;
 export function setEff(e,key,v,dur,durR,round){(e.eff||(e.eff={}))[key]=round?{v,u:0,r:durR||1}:{v,u:now()+(dur||0),r:0}}
@@ -17,7 +18,9 @@ export const effLeft=(e,key)=>{const f=e&&e.eff&&e.eff[key];return f&&f.u>now()?
 export function eachRound(e){if(!e||!e.eff)return;for(const k in e.eff){const f=e.eff[k];if(f.r>0)f.r--}}
 
 // Passives learned so far (a hero's class and level).
-export const passivesOf=a=>(CLASS_PASSIVES[a.cls]||[]).filter(id=>PASSIVES[id].lvl<=(a.lvl||1));
+// A chosen specialisation (a.spec, issue #82) adds its own passives; a spec of another class is ignored.
+export const passivesOf=a=>{const L=a.lvl||1,sp=a.spec&&SPECS[a.spec]&&SPECS[a.spec].cls===a.cls?SPEC_PASSIVES[a.spec]||[]:[];
+  return [...(CLASS_PASSIVES[a.cls]||[]),...sp].filter(id=>PASSIVES[id].lvl<=L)};
 export function passiveSum(a,key){let t=0;for(const id of passivesOf(a)){const v=PASSIVES[id][key];if(typeof v==='number')t+=v}return t}
 export function passiveMul(a,key){let t=1;for(const id of passivesOf(a)){const v=PASSIVES[id][key];if(typeof v==='number')t*=v}return t}
 // Blows on this hero: the plain passive, and the one that wakes under a health share.

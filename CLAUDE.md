@@ -117,6 +117,7 @@ other. The rules:
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
 - `npm run channelcheck`: the in-game channels rule (see "In-game channels").
 - `npm run lorecheck`: learning the world (#188, see "Agent player").
+- `npm run tiercheck`: tiered long-term memory (landmarks, chapters, `journal_search`, the overview, migration; see "Agent player").
 - `npm run behavior-report`, `npm run behaviorcheck`: behavior logs for review (see "Behavior logs").
 
 ## Agent player
@@ -238,6 +239,17 @@ is silent, and scene choices time out to the scripted branch, so the world never
   by the relay (from the page) or the headless world: `logs/agents/<world>/<heroId>-<name>/memory/` (`MEMORY.md`
   plus `<id>-<slug>.md` with front matter), the DM under `dm/memory/`; never read back. `--no-mirror` (or
   `RELAY_MIRROR=0`) turns the files off. The Memory tab and the DM panel's **Notes** filter show them.
+- Tiered memory (#153, `src/sim/tiers.js`, `a.tiers`): agent heroes and Fellowship members keep **landmarks** outside
+  every rolling cap (a companion's death, joining or leaving the Fellowship, levels 5/10/15/20, Crypt clears, a boss or
+  named elite slain, a nemesis taken or paid, and entries written with `journal_write {landmark: yes}`, 3 a day; 30
+  kept, the lightest folds first), read from the record hook and `memory.js` lines only, and **chapters** instead of
+  deletion: journal entries past 100 and notebook notes past the archive fold 20 at a time into a chapter (days,
+  title, ~300 characters, 40 search words; scripted digest at once, rewritten by the relay kind `chapter` when it
+  answers; 24 kept, the oldest two merge). `journal_search {query?, day?, n?}` searches entries, landmarks and
+  chapters; `journal_read` with no arguments is the overview (landmarks, chapter titles, last 10 entries cut to 300
+  characters; under ~2.5k tokens by its caps); the first turn of a resumed run is told to read it. Old saves migrate
+  on first touch (an existing journal becomes chapter 1, unlabeled). Hardcore: they die with the hero. No RNG, so the
+  seeded sim is unchanged. Mirrored as `LIFE.md`. `npm run tiercheck`.
 - Reflection moments (#179, `src/sim/reflect.js`): at natural pauses (making camp, the end of a Table scene, a
   companion's death, an oath kept, a buy or sell of 150g+, a conversation of 4 lines within 3 game hours, and dusk from
   19:00 once a game day when something happened) the state header names `reflect {id, kind, why}` and the runner's next

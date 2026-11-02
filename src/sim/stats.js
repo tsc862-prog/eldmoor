@@ -86,7 +86,7 @@ function build(a){
 // Cache: rebuilt when anything the totals read has changed (worn items are compared by identity and
 // level, since a smith reworks an epic in place).
 const cache=new WeakMap();
-function sig(a){const s=a.slots,ab=a.abil,parts=[a.cls,a.lvl,(a.epics||[]).length];
+function sig(a){const s=a.slots,ab=a.abil,parts=[a.cls,a.lvl,(a.epics||[]).length,a.spec||''];
   if(ab)for(const k in ab)parts.push(ab[k]);
   return parts.join(',')}
 function same(e,a,k){if(e.k!==k)return false;const s=a.slots;if(!s)return !e.items;if(!e.items)return false;

@@ -7,8 +7,9 @@
 //   secrets  DM notes (secrets and threads), DM log intent, a lever reason, the DM log's model
 //            prompt, another member's journal, memories (recent and long), persona and backstory,
 //            mind (a brain prompt), runner narration (Agent tab) and saved session prompt, the notebooks of
-//            issue #155 (another member's memories, a fallen member's private note, the DM's remember)
-//   hero     every hero tool result (status, look, chat_read, party_read, journal_read, events,
+//            issue #155 (another member's memories, a fallen member's private note, the DM's remember), another
+//            member's landmark and journal chapter (issue #153)
+//   hero     every hero tool result (status, look, chat_read, party_read, journal_read, journal_search, events,
 //            wait, scene views ...), the runner prompts (system prompt, Fellowship orders, turn
 //            prompts) and the brain snapshots (townPlan, say, fightOrFlee, cryptCall, persona,
 //            backstory, memory, the Fellowship card)
@@ -107,6 +108,11 @@ r = DMA.dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A drover wa
 ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), 'a staged scene\'s reason in the DM log' + (r.ok ? '' : ': ' + r.error));
 S.dmLog[0].prompt = 'DM model prompt ' + plant('dmPrompt'); S.dmLog[0].reply = 'DM model reply ' + plant('dmReply');
 ok(act(B, 'journal_write', {text: 'Dear diary, ' + plant('bJournal')}).ok, 'B\'s journal');
+// tiered memory (issue #153): B's own landmark and a chapter of B's older lines stay B's
+ok(act(B, 'journal_write', {text: 'A turning point: ' + plant('bLandmark'), landmark: 'yes'}).landmark > 0, 'B\'s own landmark');
+{const TI = await import('../src/sim/tiers.js'); TI.spill(B, {day: 1, text: 'An old line ' + plant('bChapter') + ' of the road', src: 'journal'});
+  for (let i = 0; i < TI.TIER.BLOCK; i++) TI.spill(B, {day: 1, text: 'filler ' + i});
+  ok(TI.tiersOf(B).chapters.some(c => c.kw.includes(SECRETS.bChapter.toLowerCase())), 'B\'s chapter keeps its words')}
 ME.remember(B, 'scene', 'I remember ' + plant('bMemory'));
 ME.memOf(B).long = (ME.memOf(B).long || '') + ' Long ago ' + plant('bLong') + '.';
 B.persona = {...(B.persona || PE.buildPersona(B, M)), wants: 'B wants ' + plant('bWants'), fears: 'B fears ' + plant('bFears'), voice: 'B speaks ' + plant('bVoice')};
@@ -176,6 +182,7 @@ console.log('hero tools, events, prompts and snapshots');
 run(2); // let the watch() step turn heard lines into events
 const argsFor = {move_to: {target: 'home'}, talk: {target: B.name}, say: {text: 'Well met.'}, join_party: {hero_id: B.id}, take_adventure: {job_id: 1}, choose: {option: 'a'},
   fight: {target_id: 0}, hunt: {count: 1}, rest: {minutes: 10}, buy: {}, sell: {index: 99}, equip: {index: 99}, read_chronicle: {n: 20}, journal_read: {n: 50}, journal_write: {text: 'A writes.'},
+  journal_search: {query: 'diary turning point road old line filler ' + SECRETS.bJournal + ' ' + SECRETS.bLandmark + ' ' + SECRETS.bChapter},
   party_say: {text: 'Aye.'}, party_read: {n: 20}, chat_read: {n: 20}, propose: {kind: 'other', details: 'A small fire tonight.'}, vote: {proposal_id: 1, vote: 'yes', reason: 'fine'},
   lead_to: {target: 'home'}, scene_act: {option: 'a'}, wait: {minutes: 10}, list_jobs: {},
   remember: {title: 'Road notes', text: 'A notes the road home.', tags: ['road', 'secret'], about: B.name}, recall: {query: 'road hide secret memory'}, update_memory: {id: 1, text: 'A rewrites the road note.'}, forget: {id: 9999}, pin: {id: 1}};
@@ -194,6 +201,7 @@ for (const t of PLAYER_TOOLS) if (t.name !== 'wait') keep('A ' + t.name, act(A, 
   const leak = heard.filter(h => h.what.startsWith('A ') && beastNums.test(h.text)).map(h => h.what);
   ok(!leak.length, 'no hero tool result numbers the creature (level or HP)' + (leak.length ? ': ' + leak.join(', ') : ''));
   beast.x = A.x + 60; beast.lvl = 3; beast.maxhp = beast.hp = 73}
+keep('A journal overview', act(A, 'journal_read', {})); keep('A journal_search day 1', act(A, 'journal_search', {day: 1, n: 10})); // #153: A's own tiers only
 // A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
 for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));
 ok(act(A, 'recall', {n: 20}).notes.every(n => n.title === 'Road notes' || n.title === 'A writes.'), 'A\'s recall finds only A\'s own notes (its note and its journal entry, #179), whatever it asks');

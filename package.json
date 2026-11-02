@@ -33,6 +33,7 @@
     "dmcheck": "node scripts/dmcheck.mjs",
     "channelcheck": "node scripts/channelcheck.mjs",
     "lorecheck": "node scripts/lorecheck.mjs",
+    "tiercheck": "node scripts/tiercheck.mjs",
     "movecheck": "node scripts/movecheck.mjs",
     "behaviorcheck": "node scripts/behaviorcheck.mjs",
     "behavior-report": "node scripts/behavior-report.mjs",

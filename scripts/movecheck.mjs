@@ -9,6 +9,11 @@ import {combatStats, dmgTaken} from '../src/sim/stats.js';
 import {effOn} from '../src/sim/eff.js';
 import {rebuild} from '../src/sim/spatial.js';
 import {optionsFor, TABLE} from '../src/sim/table.js';
+import {SPECS, CLASS_SPECS, SPEC_LVL} from '../src/data/classes.js';
+import {SPEC_MOVES, SPEC_PASSIVES} from '../src/data/moves.js';
+import {chooseSpec, specBlock, pickSpec, ensureSpec} from '../src/sim/spec.js';
+import {score} from '../src/sim/abilities.js';
+import {SKILLS} from '../src/data/abilities.js';
 
 let bad = 0;
 const ok = (c, m) => {console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) bad++};
@@ -31,7 +36,7 @@ for (const id in PASSIVES) {const P = PASSIVES[id]; ok(P.name && P.cls in CLS &&
 // ---- the resolver ----
 init({fellowship: false}); for (let i = 0; i < 600; i++) step(1 / 60);
 const used = new Set();
-const mk = (cls, lvl) => {const a = S.agents.find(x => x.cls === cls && x.kind === 'hero' && !used.has(x.id) && !x.hidden && !x.player && x.state !== 'dead' && x.state !== 'ghost'); used.add(a.id); a.lvl = lvl; a.hp = combatStats(a).health; a.mcd = {}; a.mcr = {}; a.eff = {}; return a};
+const mk = (cls, lvl) => {const a = S.agents.find(x => x.cls === cls && x.kind === 'hero' && !used.has(x.id) && !x.hidden && !x.player && x.state !== 'dead' && x.state !== 'ghost'); used.add(a.id); a.lvl = lvl; delete a.spec; a.hp = combatStats(a).health; a.mcd = {}; a.mcr = {}; a.eff = {}; return a};
 const usedM = new Set();
 const foeNear = a => {const m = S.mobs.find(x => x.alive && !x.gone && !x.elite && !usedM.has(x.id)); usedM.add(m.id); m.x = a.x + 1; m.y = a.y; m.lvl = Math.max(1, a.lvl - 2); m.maxhp = 400; m.hp = 400; m.target = a; m.cd = 0; rebuild(); return m};
 
@@ -69,6 +74,30 @@ const lo = mk('Warrior', 3), hi = mk('Warrior', 8), base = combatStats(lo).healt
 ok(combatStats(hi).bd.health.some(p => p.src === 'passive'), 'Stout Heart shows in the Health breakdown');
 const rg = mk('Rogue', 6); ok(combatStats(rg).bd.crit.some(p => p.src === 'passive'), 'Knife-Hand shows in the Crit breakdown');
 const pa = mk('Warrior', 5); pa.hp = combatStats(pa).health * .2; const low = dmgTaken(pa); pa.hp = combatStats(pa).health; ok(low < dmgTaken(pa), 'Unbowed: wounded blows land softer');
+
+
+// ---- specialisations (#82) ----
+for (const c in CLS) ok((CLASS_SPECS[c] || []).length === 2, c + ': two paths');
+for (const id in SPECS) {const P = SPECS[id];
+  ok(P.name && P.desc && P.skill in SKILLS && Object.keys(P.abil).length && (SPEC_MOVES[id] || []).length === 1 && (SPEC_PASSIVES[id] || []).length === 1 && MOVES[SPEC_MOVES[id][0]].cls === P.cls && MOVES[SPEC_MOVES[id][0]].lvl === SPEC_LVL, id + ': well formed (' + P.name + ', 1 ability + 1 passive at ' + SPEC_LVL + ')')}
+{const t = mk('Priest', 9); ok(/level 10/.test(specBlock(t) || ''), 'no path before level 10');
+ const m10 = mk('Priest', 10), brawn0 = score(m10, 'insight'), crit0 = combatStats(m10).crit, n0 = movesOf(m10).length, h0 = abilityView(m10).length;
+ ok(!chooseSpec(m10, 'reaver').ok, 'a path of another class is refused');
+ const r = chooseSpec(m10, 'mender'); ok(r.ok && m10.spec === 'mender', 'Mender chosen: ' + r.text);
+ ok(score(m10, 'insight') === brawn0 + 1 && m10.prof.includes('empathy'), 'the path adds a score point and a trained skill');
+ ok(movesOf(m10).includes('mendingtouch') && movesOf(m10).length === n0 + 1 && abilityView(m10).length === h0 + 2, 'the path adds an ability and a passive to the list');
+ ok(!chooseSpec(m10, 'battlecleric').ok, 'a path is permanent');
+ ok(!!S.chronicle.find(e => e.parts.some(x => x && x.t === 'Mender')) && m10.history.some(h => /path of the Mender/.test(h.text)), 'the Chronicle and the hero log record the choice');
+ const hurt = mk('Warrior', 10); hurt.hp = 10; hurt.x = m10.x + 1; hurt.y = m10.y; hurt.fac = m10.fac; const rr = useMove(m10, 'mendingtouch', hurt); ok(rr.ok && hurt.hp > 10 && rr.healed > 0, 'Mending Touch heals one friend: ' + rr.text);
+ const r2 = useMove(mk('Priest', 10), 'mendingtouch', hurt); ok(!r2.ok, 'a spec ability is refused to a hero without the path');
+ const b = mk('Warrior', 10); const d0 = combatStats(b).defense; chooseSpec(b, 'warden'); ok(combatStats(b).defense > d0 && combatStats(b).bd.defense.some(p => p.src === 'passive'), 'Wardens Vow reaches Defense (cache rebuilt)');
+ const cr = mk('Rogue', 10); const c0 = combatStats(cr).crit; chooseSpec(cr, 'cutthroat'); ok(combatStats(cr).crit > c0, 'Cutthroat raises Crit');
+ const sc = mk('Mage', 10); sc.traits = ['Cautious']; ok(pickSpec(sc, []) === 'rimekeeper', 'a Cautious Mage leans to the Rimekeeper');
+ sc.traits = []; sc.id = 0; ok(pickSpec(sc, [{...mk('Mage', 10), spec: 'rimekeeper'}]) === 'runescribe', 'a party that has control wants damage');
+ const sg = mk('Hunter', 12); sg.traits = ['Loner']; ok(!sg.spec && ensureSpec(sg, [sg]) && sg.spec, 'a scripted hero at level 10+ picks a path by itself: ' + sg.spec);
+ const old = mk('Warrior', 14); ok(!old.spec && movesOf(old).length === 3, 'an old save (no spec) keeps its three abilities and plays on');
+ const back2 = (restore(JSON.parse(JSON.stringify(snapshot()))), S.agents.find(x => x.id === m10.id)); ok(back2 && back2.spec === 'mender' && score(back2, 'insight') === brawn0 + 1, 'the path survives a save');
+}
 
 // ---- the Table offers abilities ----
 init({fellowship: true}); for (let i = 0; i < 60; i++) step(1 / 60); used.clear(); usedM.clear();

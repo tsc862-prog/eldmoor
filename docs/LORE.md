@@ -200,6 +200,22 @@ Passives: Warrior **Unbowed** (4, under 35% health blows land at 80%) and **Stou
 
 Saves: a control ability that can be resisted lets the foe roll d20 plus its modifier (a monster's is a quarter of its level, elites +2, Kragmaw +4) against 8 + the caster's stat modifier + training. Scripted heroes use abilities by simple class rules (a Warrior taunts a monster that is mauling a hurt friend; a Priest wards the friend in danger and sings the Chorus when two or more are hurt; a Rogue opens with Ambush; heroes keep attack abilities out of duels with each other). Agent-played heroes choose with the `use_ability` tool.
 
+## Specialisations (issue #82)
+At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/classes.js`). A path is permanent. It adds a point to two ability scores, trains one more skill, and brings one passive and one more active ability, all learned at level 10 (rows of `src/data/moves.js` carrying `spec:`). The Chronicle and the hero's own log mark the choice. Scripted heroes choose by their traits and by what their party lacks (a party with no damage-dealer of its own favours the damage path); agent-played heroes see `status.specialisation` and choose with `choose_specialisation`. All names are plain-English coinages.
+
+| Class | Path | Scores / skill | Passive | Ability | Gist |
+| --- | --- | --- | --- | --- | --- |
+| Warrior | **Warden** | Grit, Presence / Empathy | Warden's Vow (+5% Defense, +4% Health) | **Shield Cover** (ward a friend, 55%) | the one who stands guard |
+| Warrior | **Reaver** | Brawn, Reflex / Tracking | Reaver's Fury (+5% Crit, +15% opener) | **Cleaving Sweep** (90% to every foe beside you) | trades safety for killing speed |
+| Mage | **Runescribe** | Wits, Reflex / Perception | Great Runes (+5% Crit, +20% opener) | **Twin Lance** (150%, +20% crit) | the great runes |
+| Mage | **Rimekeeper** | Wits, Grit / Survival | Frostbound (+4% Defense, +6% Health) | **Winter's Hold** (one foe loses 5 s) | frost that holds a foe still |
+| Hunter | **Stalker** | Insight, Reflex / Traps | Steady Aim (+7% Crit) | **Heartseeker** (240%, +20% crit) | the patient single shot |
+| Hunter | **Trapper** | Wits, Insight / Lore | Ground-Lore (+4% Defense, blows at 96%) | **Thornfield** (50% and 3 s to every foe near) | snares a whole pack |
+| Priest | **Battle-Cleric** | Brawn, Presence / Athletics | Zeal (+6% Health, +4% Crit) | **Dawnbrand** (210%, foe reels) | faith carried into the fight |
+| Priest | **Mender** | Insight, Presence / Empathy | Tenderness (healing +20%) | **Mending Touch** (heal one friend) | gives everything to the wounded |
+| Rogue | **Cutthroat** | Reflex, Brawn / Perception | Deadly Opening (+4% Crit, +25% opener) | **Backstab** (220%, +30% crit) | lives for the opening |
+| Rogue | **Trickster** | Wits, Presence / Lore | Nimble (blows at 92%) | **Dirty Trick** (foe loses 3 s and takes 20% more for 8 s) | wins by misdirection |
+
 ## Bonds and blood debts
 Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,
 heals, rescues in a duel and setting out in a party raise a bond; a day apart wears it

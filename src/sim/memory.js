@@ -12,6 +12,7 @@ import {S,clockStr} from './state.js';
 import {MEMORY_LONG_MAX,cleanText} from '../data/prompts.js';
 import {scriptedStance} from './persona.js';
 import {speedNow,blocked} from './throttle.js';
+import {memoryLine} from './tiers.js'; // landmarks (#153): a companion's death, a joining
 
 export const RECENT_MAX=12,COMPRESS=6;
 const day=()=>Math.floor(S.gameMin/1440)+1;
@@ -23,7 +24,7 @@ export const setSummariser=f=>{summarise=f};
 export function remember(a,k,text){if(!a||!text)return;const M=memOf(a),t=String(text).replace(/\s+/g,' ').trim().slice(0,200);
   const same=M.recent.find(e=>e.text===t&&e.k===k); // an identical line folds into the one already kept, with a count (#117)
   if(same){same.c=(same.c||1)+1;same.gameMin=Math.round(S.gameMin);return}
-  M.recent.push({t:'D'+day()+' '+clockStr(),day:day(),gameMin:Math.round(S.gameMin),k,text:t});M.n=(M.n||0)+1;
+  M.recent.push({t:'D'+day()+' '+clockStr(),day:day(),gameMin:Math.round(S.gameMin),k,text:t});M.n=(M.n||0)+1;memoryLine(a,k,t);
   if(M.recent.length>RECENT_MAX)compress(a)}
 
 // Scripted digest: count what happened and keep the lines that matter (deaths, levels, scenes won or lost).

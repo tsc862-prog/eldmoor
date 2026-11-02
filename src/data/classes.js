@@ -10,3 +10,34 @@ export const CLS={
   Rogue:{hp:50,atk:8,range:1.1,acc:'#e6d24a',head:'#2e2a30',wep:'#c8c8d0',crit:.25},
 };
 export const CLSN=Object.keys(CLS);
+
+// Specialisations (issue #82): at level SPEC_LVL a hero takes one of two paths for their class. A path adds
+// score points (abil), trains one more skill (skill), brings a passive and one more active ability (rows in
+// data/moves.js carrying spec:<id>), and is recorded on the hero as a.spec. Scripted heroes choose by trait
+// leanings (lean: trait -> weight) and by what their party lacks (fills: the role the path covers);
+// AI-brain and agent heroes choose themselves (tool choose_specialisation). Owned by character-builder.
+export const SPEC_LVL=10;
+export const SPECS={
+  warden:{name:'Warden',cls:'Warrior',fills:'guard',abil:{grit:1,presence:1},skill:'empathy',lean:{Cautious:2,Loyal:2,Pious:1},
+    desc:'Stands between the party and harm. Sturdier, and can cover a friend with the shield.'},
+  reaver:{name:'Reaver',cls:'Warrior',fills:'damage',abil:{brawn:1,reflex:1},skill:'tracking',lean:{Reckless:2,Boastful:2,Vengeful:1},
+    desc:'Trades safety for speed of killing. Hits harder and cuts through crowds.'},
+  runescribe:{name:'Runescribe',cls:'Mage',fills:'damage',abil:{wits:1,reflex:1},skill:'perception',lean:{Boastful:2,Reckless:1},
+    desc:'Writes the great runes: a fiercer first strike and a second lance close behind the first.'},
+  rimekeeper:{name:'Rimekeeper',cls:'Mage',fills:'control',abil:{wits:1,grit:1},skill:'survival',lean:{Cautious:2,Loyal:1},
+    desc:'Binds the foe in frost and keeps the party from being reached. Hardier, and holds one foe still.'},
+  stalker:{name:'Stalker',cls:'Hunter',fills:'damage',abil:{insight:1,reflex:1},skill:'traps',lean:{Loner:2,Greedy:1,Boastful:1},
+    desc:'The patient single shot: better crits and one heartseeking arrow.'},
+  trapper:{name:'Trapper',cls:'Hunter',fills:'control',abil:{wits:1,insight:1},skill:'lore',lean:{Cautious:2,Loyal:1},
+    desc:'Sows the ground with thorn and cord: steadier on its feet and snares a whole pack at once.'},
+  battlecleric:{name:'Battle-Cleric',cls:'Priest',fills:'damage',abil:{brawn:1,presence:1},skill:'athletics',lean:{Reckless:1,Vengeful:2,Boastful:1},
+    desc:'Carries the faith into the fight: hardier, harder-hitting, with a branding blow.'},
+  mender:{name:'Mender',cls:'Priest',fills:'heal',abil:{insight:1,presence:1},skill:'empathy',lean:{Pious:3,Cautious:1,Loyal:1},
+    desc:'Gives everything to the wounded: stronger healing and a swift mending touch for one friend.'},
+  cutthroat:{name:'Cutthroat',cls:'Rogue',fills:'damage',abil:{reflex:1,brawn:1},skill:'perception',lean:{Reckless:2,Greedy:1,Vengeful:1},
+    desc:'Lives for the opening: a deadlier first blow and a backstab that finds the gap.'},
+  trickster:{name:'Trickster',cls:'Rogue',fills:'control',abil:{wits:1,presence:1},skill:'lore',lean:{Cautious:2,Loner:1,Boastful:1},
+    desc:'Wins by misdirection: seldom where the blow lands, and a dirty trick that leaves a foe open.'},
+};
+export const CLASS_SPECS={};
+for(const id in SPECS)(CLASS_SPECS[SPECS[id].cls]||(CLASS_SPECS[SPECS[id].cls]=[])).push(id);
