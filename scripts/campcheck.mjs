@@ -82,6 +82,49 @@ ok(CAMPM.leaderRest(LD, 4) === null, 'second camp');
 for (let i = 0; i < 40 && S.fellowship.camp.phase !== 'rest'; i++) run(10);
 ok(typeof CAMPM.leaderBreak(M.find(a => a !== LD)) === 'string', 'only the leader breaks camp outright');
 ok(CAMPM.leaderBreak(LD) === null && !S.fellowship.camp.phase, 'the leader breaks camp');
+// ---- #400: orders refused at camp say how to go on; a second break_camp is a yes; vote refusals name the open one ----
+{const RL = await import('../src/sim/runlink.js');
+({L: M, lead: LD} = gather());
+ok(CAMPM.leaderRest(LD, 4) === null, '#400 camp');
+for (let i = 0; i < 40 && S.fellowship.camp.phase !== 'rest'; i++) run(10);
+RL.setRunnerLinks(a => 'connected'); // live agents: their votes wait, so the proposal stays open
+const others = M.filter(a => a !== LD), [m1, m2] = others, act = (a, t, x) => P_.playerAct(a.id, t, x || {});
+let r = act(m1, 'move_to', {target: 'home'});
+ok(!r.ok && /camped \(.*leader: .*propose \{kind:'break_camp'\}.*or wait/.test(r.error), 'move_to at camp names the way on: ' + r.error);
+r = act(LD, 'move_to', {target: 'home'});
+ok(!r.ok && /You lead: break_camp to move on now/.test(r.error), 'the leader is told to break_camp: ' + r.error);
+r = act(LD, 'lead_to', {target: 'home'});
+ok(!r.ok && /break_camp/.test(r.error), 'lead_to at camp names break_camp: ' + r.error);
+r = act(m1, 'rest', {minutes: 60});
+ok(r.ok && /You rest at camp/.test(r.camp), 'rest at camp is ok: ' + r.camp);
+r = act(m1, 'rest', {hours: 2});
+ok(r.ok && /You rest at camp/.test(r.camp), 'rest {hours} at camp is ok too');
+r = act(m1, 'vote', {proposal_id: 999, vote: 'yes'});
+ok(!r.ok && /No proposal 999\. No proposal is open; put one to the party with propose/.test(r.error), 'vote on a missing proposal says none is open');
+r = act(m1, 'break_camp');
+const BP = CO.openProps().find(P => P.kind === 'break_camp');
+ok(r.ok && BP && BP.votes[m1.id] && BP.votes[m1.id].v === 'yes' && /went to the vote/.test(r.note), 'a non-leader break_camp becomes the proposal: ' + r.note);
+r = act(m2, 'propose', {kind: 'break_camp', details: 'On we go'});
+ok(r.ok && /counted on the open proposal/.test(r.your_vote) && BP.votes[m2.id] && BP.votes[m2.id].v === 'yes' && CO.openProps().filter(P => P.kind === 'break_camp').length === 1, 'a second break_camp proposal is a yes vote on the open one');
+r = act(m2, 'propose', {kind: 'break_camp'});
+ok(r.ok && /already said yes/.test(r.your_vote), 'a third call from the same member is still ok');
+r = act(m1, 'move_to', {target: 'home'});
+ok(!r.ok && r.error.includes('vote(' + BP.id + ', yes)'), 'with one open, move_to points at the vote: ' + r.error);
+r = act(m1, 'vote', {proposal_id: 999, vote: 'yes'});
+ok(!r.ok && r.error.includes('Open now: #' + BP.id + ' (break_camp'), 'vote on a missing proposal names the open one: ' + r.error);
+r = act(m1, 'vote', {proposal_id: BP.id, vote: 'maybe'});
+ok(!r.ok && /vote\(\d+, yes\|no/.test(r.error), 'a bad vote word names the call');
+ok(act(m1, 'propose', {kind: 'other', details: 'Sing a song'}).ok, 'an other proposal');
+r = act(m2, 'propose', {kind: 'other', details: 'Tell a tale'});
+ok(!r.ok && /is already open\. Vote on it with vote\(\d+, yes\|no\), or wait for it to settle \(about \d+ game min\)/.test(r.error), 'a duplicate kind names the open proposal: ' + r.error);
+for (const a of M) for (const P of CO.openProps()) if (!P.votes[a.id]) {const v = act(a, 'vote', {proposal_id: P.id, vote: P.kind === 'break_camp' ? 'yes' : 'no'}); if (!v.ok) console.log('    vote', a.name, P.id, v.error.slice(0, 120))}
+for (let i = 0; i < 60 && (S.table || S.fellowship.camp.phase); i++) run(1); // the votes are counted at the table (an all-at-once decision scene)
+ok(BP.status === 'passed' && !S.fellowship.camp.phase && M.every(a => a.state !== 'camp'), 'the seconded break_camp passed and broke camp');
+r = act(m1, 'vote', {proposal_id: BP.id, vote: 'yes'});
+ok(!r.ok && /already passed .*nothing to vote on\. No proposal is open/.test(r.error), 'a vote on a settled proposal says so: ' + r.error);
+r = act(m1, 'propose', {kind: 'break_camp'});
+ok(!r.ok && /not camped\. Go on with move_to/.test(r.error), 'no camp to break names move_to: ' + r.error);
+RL.setRunnerLinks(null);}
 // a set-time camp ends by itself
 ({L: M, lead: LD} = gather());
 ok(CAMPM.leaderRest(LD, 1) === null, 'third camp, one hour');

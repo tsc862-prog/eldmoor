@@ -16,7 +16,7 @@ import {S} from '../sim/index.js';
 import {TR} from '../sim/tableround.js';
 import {maxHp} from '../sim/heroes.js';
 import {effOn,condOn} from '../sim/eff.js';
-import {CONDITIONS} from '../data/moves.js';
+import {CONDITIONS,MOVES} from '../data/moves.js';
 import {patch} from './stable.js'; // update in place (#145)
 
 const $=id=>document.getElementById(id);
@@ -65,6 +65,10 @@ export function combatView(){const sc=S.table;if(!sc||sc.rd==null)return null;co
   const foeNow=sc.phase==='turn'&&!sc.fd&&sc.i>=sc.foeAt&&!!f;
   const mem=sc.ids.map(byId).filter(Boolean).map(a=>({name:a.name,hp:pct(a.hp,maxHp(a)),cond:condsOf(a,sc,f),cur:!foeNow&&a===cur,down:a.state==='dead'||(sc.out||[]).includes(a.id)}));
   const foe=f?{name:f.name,foe:true,hp:pct(f.hp,f.maxhp),cond:[...(f.pack>1?['pack of '+f.pack]:[]),...(f.conds||[]).map(id=>CONDITIONS[id].name.toLowerCase())],cur:foeNow,down:false}:null;
+  // the round in play (or the last one at a round's start): the class move each member used, by name (#390)
+  let rd0=sc.rd;if(rd0>1&&!sc.beats.some(x=>(x.rd||1)===rd0))rd0--;
+  for(const x of mem)x.mv='';
+  sc.beats.forEach(x=>{if((x.rd||1)!==rd0||x.by==='foe'||x.by==='cond'||!MOVES[x.k])return;const i=sc.ids.map(byId).filter(Boolean).findIndex(a=>a.id===x.id);if(i>=0)mem[i].mv=MOVES[x.k].name});
   const order=mem.slice();if(foe)order.splice(Math.min(sc.foeAt,order.length),0,foe);
   // the rolls of the round in play; at a round's start (nothing rolled yet) the last round's, marked as such
   let rd=sc.rd;if(rd>1&&!sc.beats.some(x=>(x.rd||1)===rd))rd--;
@@ -79,8 +83,8 @@ function combatBlock(box,c){
   const o=el('div','tcinit');o.setAttribute('role','list');o.setAttribute('aria-label','Initiative order');
   for(const x of c.order){const ch=el('span','tci'+(x.foe?' foe':'')+(x.cur?' cur':'')+(x.down?' down':''));ch.setAttribute('role','listitem');
     ch.append(el('span','tcn',(x.cur?'▶ ':'')+x.name));const bar=el('span','tchp'),i=el('i');i.style.width=x.hp+'%';if(x.hp<25)i.className='lo';bar.append(i);
-    ch.setAttribute('aria-label',x.name+(x.foe?' (foe)':'')+', '+x.hp+'% health'+(x.cond.length?', '+x.cond.join(', '):'')+(x.cur?', acting now':''));
-    ch.append(bar,el('span','tcp',x.hp+'%'));for(const k of x.cond)ch.append(el('span','tcc',k));o.append(ch)}
+    ch.setAttribute('aria-label',x.name+(x.foe?' (foe)':'')+', '+x.hp+'% health'+(x.cond.length?', '+x.cond.join(', '):'')+(x.mv?', used '+x.mv:'')+(x.cur?', acting now':''));
+    ch.append(bar,el('span','tcp',x.hp+'%'));for(const k of x.cond)ch.append(el('span','tcc',k));if(x.mv)ch.append(el('span','tcm',x.mv));o.append(ch)}
   box.append(o);
   if(!c.rolls.length)return;const L=el('div','trolls'),hid=Math.max(0,c.rolls.length-SHOW);
   L.append(el('div','trh',(c.prev?'Last round ('+c.rolled+')':'Round '+c.rolled)+(hid?' · '+hid+' earlier':'')));
