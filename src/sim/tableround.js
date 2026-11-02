@@ -24,8 +24,10 @@ import {CONDITIONS,FX_CONDS} from '../data/moves.js';
 import {ABILITIES as TRICKS} from '../data/bestiary.js';
 import {setCond,condOn,endCond} from './eff.js';
 import {blk,mobBlow} from './mobs.js';
-import {actHurt} from './actlog.js';
+import {actHurt,actItem} from './actlog.js';
 import {dmlog} from './dmlog.js';
+import {USES} from '../data/items.js';
+import {invOf,useItem,venomOn,take} from './inv.js';
 
 export const TR={
   ROUNDS:3,   // rounds a combat scene plays at most; then the fight goes on in the world (HP and cooldowns carry over)
@@ -56,7 +58,7 @@ const sg=n=>(n<0?'':'+')+n;
 // One line of the round's DM log entry.
 function note(sc,by,at,R,dmg,extra){(sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by,at,d20:R?R.d:null,bonus:R?R.b:null,ac:R?R.ac:null,hit:R?R.hit:true,dmg:dmg||0,...(extra?{note:extra}:{})})}
 // Parley and condition saves (#296) keep their die as `die` (not d20, which is an attack roll against AC).
-const lineOf=r=>r.kind==='parley'?r.by+' parleys with '+r.at+' ('+r.skill+' d20 '+r.die+sg(r.mod)+' vs DC '+r.dc+'): '+r.note
+const lineOf=r=>r.kind==='use'?r.by+' uses '+r.item+(r.at!==r.by?' on '+r.at:'')+(r.note?' ('+r.note+')':''):r.kind==='parley'?r.by+' parleys with '+r.at+' ('+r.skill+' d20 '+r.die+sg(r.mod)+' vs DC '+r.dc+'): '+r.note
   :r.kind==='save'?r.by+', '+r.note+' (save d20 '+r.die+sg(r.mod)+' vs DC '+r.dc+(r.pass?': it ends':': it holds')+')'
   :r.kind==='poison'?r.by+' takes '+r.dmg+' from the poison'+(r.note?' ('+r.note+')':''):r.by+(r.d20==null?' '+(r.note||'acts')+' on '+r.at:' at '+r.at+': d20 '+r.d20+'+'+r.bonus+' vs AC '+r.ac+(r.hit?', '+r.dmg+' damage':', miss'))+(r.d20!=null&&r.note?' ('+r.note+')':'');
 // Fold the scene's rolls into one DM log entry, a sentence per round (kind 'table': not an adventure roll, so it opens no
@@ -70,6 +72,46 @@ export function memberStrike(sc,a,f){const R=roll(a,f);
   if(!R.hit){note(sc,a.name,name(f),R,0);sc.rr=rollData(R,0,name(f));return rollText(R)+': missed'}
   const h=f.hp,o=R.crit?{crit:1}:undefined;strike(a,f,o);const dmg=Math.max(0,Math.round(h-f.hp)),down=f.kind==='boss'?!f.alive:f.kind==='hero'?f.state==='dead':!f.alive;
   note(sc,a.name,name(f),R,dmg,down?'down':null);sc.rr=rollData(R,dmg,name(f),down);return rollText(R)+': hit for '+dmg+(down?', and it falls':'')}
+
+// ---- an item from the pack as the round's act (#360) ----
+// A consumable (data/items USES, not craft, not a quest item) that does something right now: a potion when someone is hurt
+// (yourself first, else the hurt companion the table names), an antidote when you are poisoned (a creature's venom or the
+// round's poison condition), a warding scroll while no ward holds, a recall scroll when you can still get away (not rooted).
+// Bandages, rations, torches and the pack do nothing in a fight, so they are never offered. The act goes through inv.js
+// useItem (one unit taken, the action log's item line); no dice. Option keys are 'use:<item slug>'.
+const RECALL_FROM=['fight','hunt','travel','follow','duel','assist']; // the states inv.js useItem reads a recall scroll in
+export const useSlug=id=>String(id).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const hurt=b=>!!b&&b.state!=='dead'&&b.hp<maxHp(b);
+// Whom the item would go to now (undefined: nothing to use it on). lo: the hurt companion the table would tend.
+function useOn(sc,a,id,lo){const U=USES[id];if(!U||U.craft)return undefined;
+  if(U.kind==='potion')return hurt(a)?a:hurt(lo)&&a.party&&lo.party===a.party?lo:undefined; // a companion only in the same party (inv.js useItem's rule)
+  if(U.kind==='antidote')return venomOn(a)||condOn(a,'poison')?a:undefined;
+  if(U.kind==='scroll'){if(U.effect==='recall')return RECALL_FROM.includes(a.state)&&!(sc.rd!=null&&condOn(a,'root'))?a:undefined;return a.wardT>0?undefined:a}
+  return undefined}
+const pctOf=b=>Math.round(b.hp/maxHp(b)*100);
+function useText(a,id,on){const U=USES[id];
+  if(U.kind==='potion')return 'Use '+id+' on '+(on===a?'yourself':on.name)+' ('+pctOf(on)+'%; heals '+Math.round(U.heal*100)+'%)';
+  if(U.kind==='antidote')return 'Use '+id+': draw the poison out';
+  if(U.effect==='recall')return 'Read '+id+': pulled home to your gate, out of the fight';
+  return 'Read '+id+': blows land '+Math.round((U.ward||0)*100)+'% softer on you a while'}
+// The legal 'use' options for a member, one per consumable it carries that would do something (pack order).
+export function useOptions(sc,a,lo){const out=[],seen=new Set();if(!a||!a.inv)return out;
+  for(const e of invOf(a).list){if(e.kind!=='use'||!(e.n>0)||seen.has(e.id))continue;seen.add(e.id);const on=useOn(sc,a,e.id,lo);if(!on)continue;
+    out.push({k:'use:'+useSlug(e.id),text:useText(a,e.id,on)})}
+  return out}
+// The item an option key names, if the member still carries it.
+export const useItemOf=(a,k)=>{if(!a||!a.inv||!String(k).startsWith('use:'))return null;const s=String(k).slice(4);
+  for(const e of invOf(a).list)if(e.kind==='use'&&e.n>0&&useSlug(e.id)===s)return e.id;return null};
+// The round's line in the DM log entry and the item as data on the beat (sc.ru until table.js take() moves it on).
+export function useNote(sc,a,id,on,res){const txt=res.ok?res.text:res.error;sc.ru={item:id,on:on.name,ok:!!res.ok,effect:txt,...(res.healed?{healed:res.healed}:{})};
+  if(sc.rd!=null&&res.ok)(sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by:a.name,at:on.name,kind:'use',item:id,note:res.healed?'+'+res.healed+' health':USES[id].kind==='antidote'?'the poison drawn':USES[id].effect==='recall'?'pulled home':'warded'})}
+// Use it: one unit from the pack. Returns the beat's result text.
+export function useInRound(sc,a,k,lo){const id=useItemOf(a,k);if(!id)return 'nothing left to use';const on=useOn(sc,a,id,lo);if(!on)return 'no need for the '+id+' now';
+  const U=USES[id];let res;
+  if(U.kind==='antidote'&&!venomOn(a)){endCond(a,'poison');take(a,'use',id,1);actItem(a,id,a);res={ok:true,text:'Drew the poison out with '+id+'.'}} // the round's poison condition only: no venom on a creature to cure
+  else{if(U.kind==='antidote'&&condOn(a,'poison'))endCond(a,'poison');res=useItem(a,id,on,{table:true});
+    if(res.ok&&U.effect==='recall'&&sc.rd!=null)(sc.out||(sc.out=[])).push(a.id)} // read out of the fight: it leaves the rounds like a retreat
+  useNote(sc,a,id,on,res);return res.ok?res.text:res.error}
 
 // ---- the foe's turn ----
 // fs: the foes acting (a staged pack acts together at its leader's place in the order); L: the members in the fight.
