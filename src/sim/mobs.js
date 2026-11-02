@@ -82,6 +82,9 @@ const unitOf=m=>(3+m.lvl*2)*m.hit*hitRamp(m);
 function hurt(t,m,dm){if(dm<=0||t.state==='dead'||t.state==='ghost')return;if(t.fellow)dm/=hitRamp(m); // the Fellowship keeps the old bite (#154: the world is deadlier, the story is not ground down)
   dm=Math.max(1,Math.round(dm*dmgTaken(t)));t.hp-=dm;actHurt(t,m,dm);pop(t.x,t.y-.6,String(dm),'#ff6a5a');
   if(t.hp<=0){if(m.elite)S.eco.stats.eliteDeaths++;agentDie(t,m)}}
+// One bite at the Table (sim/tableround.js, #276): the creature's own blow (variance, crit, the Fellowship's cut) through
+// hurt(); mul scales it (a natural 20). Returns the damage dealt.
+export function mobBlow(m,t,mul=1){const h=t.hp;hurt(t,m,unitOf(m)*(.8+rnd()*.4)*(rnd()<blk(m).crit?1.6:1)*mul);return Math.max(0,Math.round(h-Math.max(0,t.hp)))}
 const alliesHurt=m=>nearMobs(m.x,m.y,6,o=>o!==m&&o.alive&&!o.gone&&o.hp<o.maxhp*.5)[0]||null;
 const packNear=m=>nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&(o.target||m.target)).length>0;
 const liveAdds=m=>S.mobs.reduce((n,o)=>n+(o.add&&o.parent===m.id&&o.alive&&!o.gone?1:0),0);

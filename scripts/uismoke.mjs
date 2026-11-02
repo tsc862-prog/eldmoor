@@ -549,5 +549,44 @@ console.log('start gate: ready, not just claimed');
   const bar=rows[0]&&rows[0].querySelector('.profbar i');ok(bar&&bar.style.width==='60%','stats: the bar is skill out of 100');
   delete h.profs}
 
+// Table banner: the combat block (#277). A scene with rounds, set up by hand (no world step), rendered like main.js does.
+{const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),S=sim.S,box=$('tbanner'),spd=T.TABLE.speed;
+  const ms=sim.fellows().filter(a=>a.state!=='dead').slice(0,3),m=S.mobs.find(x=>x.alive&&!x.gone);
+  if(ms.length<2||!m)console.log('  skip combat banner (no members or no creature)');else{
+  const keep=S.table,hp0=ms.map(a=>a.hp),mhp=m.hp;m.hp=Math.round(m.maxhp*.6);
+  const sc={id:9001,kind:'elite',title:'Smoke fight',frame:['A brute bars the road.'],ids:ms.map(a=>a.id),i:1,phase:'turn',t:0,acts:{},ctx:{mob:m.id},pause:true,at:0,rd:2,fd:1,foeAt:1,
+    beats:[{id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 20+5=25 vs AC 14 (a natural 20): hit for 18',by:'agent',rd:1},
+      {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[1].name,res:'d20 3+4=7 vs AC 15: missed',by:'foe',rd:1},
+      {id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 12+5=17 vs AC 14: hit for 9',by:'agent',rd:2},
+      {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[0].name+' (drawn)',res:'d20 1+4=5 vs AC 15 (a natural 1): missed',by:'foe',rd:2}]};
+  m.target=ms[0];S.table=sc;TB.renderTable(1);
+  const t=()=>box.textContent,v=TB.combatView();
+  ok(!box.hidden&&/ROUND 2\/3/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+'/'+(v&&v.of)+')');
+  const chips=box.querySelectorAll('.tci');
+  ok(chips.length===ms.length+1&&chips[1].classList.contains('foe'),'combat banner: initiative order with the foe at its place ('+chips.length+' chips)');
+  ok(chips[2].classList.contains('cur')&&/▶/.test(chips[2].textContent)&&!chips[1].classList.contains('cur'),'combat banner: the current actor is marked');
+  {const e=Math.round(m.hp/m.maxhp*100)+'%';ok(chips[1].querySelector('.tcp').textContent===e&&chips[1].querySelector('.tchp i').style.width===e,'combat banner: the foe has an HP bar and % ('+e+')')}
+  ok(chips[0].querySelector('.tchp')&&/drawn/.test(chips[0].textContent),'combat banner: members have HP bars and conditions (drawn)');
+  const rows=box.querySelectorAll('.trl');
+  ok(rows.length===2&&/Round 2/.test(box.querySelector('.trh').textContent),'combat banner: the rolls of the round in play');
+  ok(rows[0].classList.contains('hit')&&/d20 12\+5=17 vs 14/.test(rows[0].textContent)&&/HIT 9/.test(rows[0].textContent),'combat banner: a hit shows its roll and damage');
+  ok(rows[1].classList.contains('miss')&&rows[1].classList.contains('foe')&&/FUMBLE/.test(rows[1].textContent),'combat banner: the foe\'s miss on a natural 1');
+  ok(!box.querySelector('.to'),'combat banner: no duplicate plain order or last-act line');
+  const ch0=chips[0];ch0._same=1;TB.renderTable(1);ok(box.querySelector('.tci')._same===1,'combat banner: an unchanged frame is not rebuilt');
+  m.hp=Math.round(m.maxhp*.2);TB.renderTable(1);
+  ok(box.querySelector('.tci')._same===1&&box.querySelectorAll('.tci')[1].querySelector('.tcp').textContent===Math.round(m.hp/m.maxhp*100)+'%'&&box.querySelectorAll('.tci')[1].querySelector('.tchp i').className==='lo','combat banner: HP patches in place, low HP marked');
+  sc.rd=3;sc.i=0;sc.fd=0;TB.renderTable(1);
+  ok(/Last round \(2\)/.test(box.querySelector('.trh').textContent),'combat banner: at a round\'s start the last round\'s rolls show, labelled');
+  sc.beats.push({id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 20+5=25 vs AC 14 (a natural 20): hit for 30, and it falls',by:'agent',rd:3});
+  for(let i=0;i<4;i++)sc.beats.push({id:ms[1].id,name:ms[1].name,k:'heal',text:'Heal',res:'+5 to '+ms[0].name,by:'reflex',rd:3});
+  TB.renderTable(1);const r3=box.querySelectorAll('.trl');
+  ok(r3.length===4&&/1 earlier/.test(box.querySelector('.trh').textContent),'combat banner: at most 4 roll lines, the rest counted');
+  m.alive=false;sc.phase='outcome';sc.summary='The foe is down.';sc.fell=[ms[2]?ms[2].id:ms[1].id];TB.renderTable(1);
+  const ends=[...box.querySelectorAll('.tendc')].map(e=>e.textContent);
+  ok(ends.includes('The foe is down')&&ends.some(e=>/ fell$/.test(e)),'combat banner: the end reason (foe down, a member fell): '+ends.join(' | '));
+  m.alive=true;sc.end='fled';TB.renderTable(1);ok([...box.querySelectorAll('.tendc')].some(e=>e.textContent==='The foe fled'),'combat banner: a foe that ran');
+  sc.rd=null;TB.renderTable(1);ok(!box.querySelector('.tci')&&!/ROUND/.test(t())&&!box.classList.contains('tcombat'),'combat banner: a scene without rounds keeps the plain banner');
+  S.table=null;TB.renderTable(1);ok(box.hidden,'combat banner: hidden when the scene closes');
+  S.table=keep;m.hp=mhp;m.target=null;ms.forEach((a,i)=>a.hp=hp0[i]);T.TABLE.speed=spd}}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

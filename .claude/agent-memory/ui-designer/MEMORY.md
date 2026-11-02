@@ -6,3 +6,4 @@
 - [DM turn cards](dm_turn_cards.md): page-side per-turn cards from bridge dmcalls, localStorage, no sim record
 - [Sheet last fight](sheet_last_fight.md): #241 row on the Fellowship sheet, button opens Combat tab
 - [Professions UI](professions_ui.md): #259 Stats block, setup pickers, S.setup.profs for replacements
+- [Table combat panel](table_combat_panel.md): #277 combatView in ui/table.js, reads sc.rd/foeAt/fd/beats, roll regex, step not built
