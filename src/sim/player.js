@@ -300,6 +300,24 @@ function flee(a,reflex){const t=a.target,c=homeOf(a);
 
 const alive=t=>t&&(t.kind==='mob'?t.alive&&!t.gone:t.state!=='dead');
 function findTarget(id){return S.mobs.find(m=>m.id===id)||S.agents.find(b=>b.id===id)||null}
+// Targets by name or id, and refusals that list what is legal (#399): small models guessed ids ("target_id":5) and got
+// "No such friend." with nothing to pick from. Only what the hero can see: companions and foes in sight, never across the map.
+const idIn=v=>{if(v==null||v==='')return null;if(typeof v==='number')return Number.isFinite(v)?v:null;const m=/^\s*#?(\d+)\s*$/.exec(String(v))||/(?:#|\bid\s*)(\d+)/i.exec(String(v));return m?Number(m[1]):null};
+const nameKey=v=>String(v==null?'':v).toLowerCase().replace(/\s*[#(].*$/,'').replace(/^(?:an?|the)\s+/,'').trim();
+const byDist=a=>(x,y)=>dist(a,x)-dist(a,y);
+function friendsInSight(a){const R=sightOf(a);return (a.party?a.party.mem:[]).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden&&dist(a,b)<=R).sort(byDist(a))}
+function foesInSight(a){const R=sightOf(a);return [...nearMobs(a.x,a.y,R).filter(m=>alive(m)&&!m.hidden),...nearHeroes(a.x,a.y,R).filter(b=>b.fac!==a.fac&&b.state!=='dead'&&!b.hidden)].filter(t=>dist(a,t)<=R).sort(byDist(a))}
+const friendList=a=>{const L=friendsInSight(a);return L.length?'Companions in sight: '+L.slice(0,5).map(b=>b.name+' (id '+b.id+', '+Math.round(dist(a,b))+' tiles)').join(', ')+'; or leave the target out for yourself.':'No companion is in sight; leave the target out for yourself.'};
+const taken=(a,t)=>t.kind==='mob'&&t.target&&t.target!==a&&t.target.state!=='dead';
+const foeList=(a,free)=>{const L=foesInSight(a).filter(t=>!free||!taken(a,t));return L.length?(free?'Free foes in sight: ':'Foes in sight: ')+L.slice(0,6).map(t=>foeName(a,t)+' (id '+t.id+', '+Math.round(dist(a,t))+' tiles'+(taken(a,t)?', taken':'')+')').join(', ')+'.':(free?'No free foe is in sight.':'No foe is in sight.')};
+// A companion named or numbered by the agent: a hero (any id, as before), a name in sight, or null.
+function friendBy(a,id,name){const i=idIn(id);if(i!=null)return i===a.id?a:hero(i);const n=nameKey(name!=null&&name!==''?name:id);if(!n)return null;
+  if(n==='me'||n==='self'||n==='myself'||n==='you'||n===a.name.toLowerCase())return a;const L=friendsInSight(a);
+  return L.find(b=>b.name.toLowerCase()===n)||L.find(b=>b.name.toLowerCase().split(' ')[0]===n)||L.find(b=>b.name.toLowerCase().startsWith(n))||null}
+// A foe named or numbered by the agent: any id (checked for sight later, as before), or the nearest in sight by the name the hero knows it by.
+function foeBy(a,id,name){const i=idIn(id);if(i!=null)return findTarget(i);const n=nameKey(name!=null&&name!==''?name:id);if(!n)return null;const L=foesInSight(a),nm=t=>nameKey(foeName(a,t));
+  return L.find(t=>nm(t)===n&&!taken(a,t))||L.find(t=>nm(t)===n)||L.find(t=>nm(t).includes(n)&&!taken(a,t))||L.find(t=>nm(t).includes(n))||null}
+const givenAs=(id,name)=>{const v=name!=null&&name!==''?name:id;return v==null||v===''?'':' "'+clean(String(v),40)+'"'};
 
 // ---- what the hero is doing, for the card and the tools ----
 function doingText(a,adv,cmd){
@@ -321,9 +339,59 @@ function townSpot(c,name){const k=SPOT_ALIASES[name];if(k&&c[k])return {x:c[k].x
   ensureNpcs();const p=(S.npcs||[]).find(p=>p.town===c.name&&(p.name.toLowerCase()===name||p.role===name||p.title.toLowerCase()===name||(p.title+' '+p.name).toLowerCase()===name));
   if(p)return {x:p.x,y:p.y+.6,label:p.title+' '+p.name};return null}
 const enemyNear=(a,p,r=12)=>CITY.some(c=>c.fac!==a.fac&&(dist(p,c.gate)<r||inRect(c,p,2)));
-// Resolve a move_to target into legs, or {error}.
-function plan(a,target){const t=clean(target,60).toLowerCase(),c=homeOf(a),here=inTown(a);
-  if(!t)return {error:'Say where to go.'};
+// Resolve a move_to target into legs, or {error}. Tool quick wins (#399): the target is read the way the game wrote it
+// ("gate in Highgate", "the inn", "Lowmark (home)", "(4, 5)", "Highgate (town; Lowmark around it)"), a known region inside longer
+// words ("Lowmark Forest"), the world's own name, or a companion in sight; an unknown place gets the nearest name the hero knows.
+// Only places this hero knows are ever named back to it (#188).
+function plan(a,target){const raw=clean(target,60),t0=raw.toLowerCase().trim();
+  if(!t0)return {error:'Say where to go.'};
+  for(const v of placeVariants(a,t0)){const r=planOne(a,v.t,v.town);if(r){if(v.note&&!r.error)r.note=v.note;return r}}
+  return placeFallback(a,t0,raw)||{error:unknownPlace(a,t0,raw)}}
+const SPOT_WORDS={blacksmith:'smith',smithy:'smith',forge:'smith',armorer:'smith',armourer:'smith',tanner:'smith',tavern:'inn',innkeeper:'inn',temple:'chapel',church:'chapel',shrine:'chapel',plaza:'square',gates:'gate','town gate':'gate','main gate':'gate','city gate':'gate',auctioneer:'auction house'};
+const TOWN_SPOTS=['gate','inn','smith','chapel','square','auction house','quest giver'];
+const spotWord=x=>{x=x.trim().replace(/^the\s+/,'');return SPOT_WORDS[x]||(/^(?:town|market|main|village|city)?\s*square$/.test(x)?'square':x)};
+// The ways an agent writes a place, most literal first: as given, without a trailing "(...)", without "the"/"town", a spot word,
+// and "<spot> in|of|at <town>" or "<town> <spot>" (a friendly town that is not home: its gate).
+function placeVariants(a,t0){const out=[],seen=new Set(),add=(t,town)=>{t=String(t||'').trim();const k=t+'|'+(town?town.name:'');if(t&&!seen.has(k)){seen.add(k);out.push({t,town})}};
+  add(t0);const p=/^\((.+)\)$/.exec(t0);let s=p?p[1].trim():t0.replace(/\s*\([^)]*\)\s*$/,'').trim();add(s);
+  s=s.replace(/[.!?]+$/,'').replace(/^(?:to|towards?|into)\s+/,'');for(let i=0;i<3;i++)s=s.replace(/^(?:the|a|an|town|main|market|village|city)\s+(?=\S)/,'');add(s);
+  add(spotWord(s));
+  const c=homeOf(a),m=/^(.+?)\s+(?:in|of|at|near)\s+(?:the\s+)?(.+)$/.exec(s);
+  if(m){const tn=CITY.find(x=>x.name.toLowerCase()===m[2]),zn=ZONES.findIndex(n=>n&&n.toLowerCase()===m[2]);
+    if(tn&&tn===c)add(spotWord(m[1]));else if(tn&&tn.fac===a.fac)add(spotWord(m[1]),tn);else if(tn)add(tn.name.toLowerCase());else if(zn>=0)add(m[1])}
+  for(const tn of CITY){const n=tn.name.toLowerCase();if(s.startsWith(n+' ')&&s.length>n.length+1){const rest=spotWord(s.slice(n.length+1));if(tn===c)add(rest);else if(tn.fac===a.fac)add(rest,tn);else add(n)}}
+  return out}
+// Names the hero knows to go to (#188): known regions and landmarks, friendly towns.
+function knownNames(a){const L=a.lore&&a.lore.p?Object.keys(a.lore.p):ZONES.filter(Boolean);return [...new Set([...L,...CITY.filter(x=>x.fac===a.fac).map(x=>x.name)])]}
+const reEsc=s=>s.replace(/[.*+?^$\x7b}()|[\]\\]/g,'\\$&');
+// What the target could still mean: a known place inside longer words, the world's name, a companion in sight.
+function placeFallback(a,t,raw){const c=homeOf(a);
+  const hit=knownNames(a).filter(n=>n&&new RegExp('(^|[^a-z])'+reEsc(n.toLowerCase())+'($|[^a-z])').test(t)).sort((x,y)=>y.length-x.length)[0];
+  if(hit){const r=planOne(a,hit.toLowerCase());if(r&&!r.error){r.note='Read "'+raw+'" as '+hit+'.';return r}if(r)return r}
+  if(/\b(eldmoor|stepping lands?)\b/.test(t)||/^(?:the\s+)?(?:world|land|lands|realm|wilds|wilderness|countryside|outside)$/.test(t)){
+    const hz=ZONES[zoneAt(c.gate.x,c.gate.y)],r=hz&&knowsPlace(a,hz)?planOne(a,hz.toLowerCase()):null;
+    const also=knownNames(a).filter(n=>n!==hz&&n!==c.name).slice(0,6);
+    if(r&&!r.error){r.note='"'+raw+'" is the whole land, not one place: you set out for '+hz+', the country around '+c.name+'.'+(also.length?' Other places you know: '+also.join(', ')+'.':'');return r}
+    return {error:'"'+raw+'" is the whole land, not one place. Name a place you know ('+knownNames(a).slice(0,8).join(', ')+'), a direction ("north") or "x,y".'}}
+  const who=t.replace(/^(?:follow|join|meet|find|with|go to|walk to)\s+/,'').replace(/^the\s+/,'').trim(),mates=a.party?a.party.mem.filter(b=>b!==a&&b.state!=='dead'):[];
+  let b=null;if(/^(?:follow|leader|party leader|party|fellowship|group|companions?|friends?)$/.test(who))b=a.party&&a.party.leader!==a&&a.party.leader.state!=='dead'?a.party.leader:mates.slice().sort((x,y)=>dist(a,x)-dist(a,y))[0]||null;
+  else b=mates.find(x=>x.name.toLowerCase()===who||x.name.toLowerCase().split(' ')[0]===who)||null;
+  if(b){if(b.hidden||dist(a,b)>sightOf(a))return {error:b.name+' is not in sight, so you cannot walk to them. party_say to ask where they are'+(a.party&&a.party.leader===b?', or wait for their lead_to':'')+'; or move_to a place you know.'};
+    const p={x:b.x,y:b.y},ct=cityAt(p),here=inTown(a),home=ct&&ct===c;
+    const legs=home?(here?[{x:p.x,y:p.y,st:'town'}]:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:p.x,y:p.y,st:'town'}]):here?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}];
+    return {legs,last:home?'town':'hunt',label:'where '+b.name+' stands',note:'You walk to where '+b.name+' is now ('+Math.round(dist(a,b))+' tiles); they may move on.'}}
+  return null}
+const lev=(x,y)=>{const m=x.length,n=y.length;if(!m||!n)return m+n;let p=Array.from({length:n+1},(_,j)=>j);for(let i=1;i<=m;i++){const q=[i];for(let j=1;j<=n;j++)q[j]=Math.min(p[j]+1,q[j-1]+1,p[j-1]+(x[i-1]===y[j-1]?0:1));p=q}return p[n]};
+// The refusal for a place nobody can find: the nearest name the hero knows first, then the short list.
+function unknownPlace(a,t,raw){const c=homeOf(a),cands=[...knownNames(a),...TOWN_SPOTS,'home'];
+  const s=t.replace(/\s*\([^)]*\)\s*$/,'').replace(/^(?:the|a|an)\s+/,'');let best=null,bd=1e9;
+  for(const n of cands){const k=n.toLowerCase();const d=k.length>2&&(k.includes(s)||s.includes(k))?Math.abs(k.length-s.length)/4:lev(s,k);if(d<bd){bd=d;best=n}}
+  const close=best&&bd<=Math.max(2,Math.floor(s.length/3));
+  return 'Unknown place "'+raw+'".'+(close?' Did you mean "'+best+'"?':'')+' Places you know: '+(placesView(a).slice(0,8).join(', ')||'none yet')+'. In '+c.name+': '+TOWN_SPOTS.join(', ')+', or "home". Or a direction ("north", "explore east") or "x,y".'}
+const toFieldOf=(a,p,label)=>{const c=homeOf(a);return {legs:inTown(a)?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}],last:'hunt',label}};
+function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
+  if(inT){if(!(t==='town'||t==='home'||SPOT_ALIASES[t]||TOWN_SPOTS.includes(t)||inT.spots&&inT.spots[t]))return null;
+    return toFieldOf(a,{x:inT.gate.x,y:inT.gate.y},'the gate of '+inT.name)}
   const toTown=(p,label)=>({legs:here?[{x:p.x,y:p.y,st:'town'}]:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:p.x,y:p.y,st:'town'}],last:'town',label});
   const toField=(p,label)=>({legs:here?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}],last:'hunt',label});
   if(t==='home'||t==='town'||t===c.name.toLowerCase()){const p=c.spots&&c.spots.square||c.ah;return toTown(p,c.name)}
@@ -350,7 +418,7 @@ function plan(a,target){const t=clean(target,60).toLowerCase(),c=homeOf(a),here=
     const ct=cityAt(p);if(ct&&ct===c)return toTown(p,'('+p.x+', '+p.y+') in '+c.name);
     return toField(p,'('+p.x+', '+p.y+') in '+(ZONES[zoneAt(p.x,p.y)]||'the wilds'))}
   const named=placeNameIn(t);if(named)return unknown(named);
-  return {error:'Unknown place "'+target+'". Try a town spot (auction house, quest giver, gate, inn, smith, chapel, square), "home", a place you know ('+placesView(a).join(', ')+'), a direction ("north", "explore east"), or "x,y".'}}
+  return null}
 const DIRS={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0],northeast:[1,-1],northwest:[-1,-1],southeast:[1,1],southwest:[-1,1]};
 // A place name the agent used that the world has but the hero has not heard of (so the refusal does not confirm others).
 const placeNameIn=t=>{const n=[...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).find(x=>x.toLowerCase()===t);return n||null};
@@ -407,15 +475,15 @@ const T={
   inventory(a){const slots={};for(const k of SLOTS){const it=a.slots&&a.slots[k];slots[k]=it?itemText(it):null}
     // Only this hero's own pack (inventory, #124): stacks, spare gear, consumables and quest items, by index.
     return {ok:true,gold:a.gold,slots,capacity:{used:used(a),max:capOf(a)},items:invOf(a).list.map((e,i)=>({index:i,kind:kindOf(e),item:entryText(e)}))}},
-  use_item(a,{index,target_id}){const i=Number(index),e=invOf(a).list[i];need(e&&!isGear(e)&&e.kind==='use','No usable item at pack index '+index+'.');
-    let on=a;if(target_id!=null&&Number(target_id)!==a.id){on=hero(Number(target_id));need(on&&on.kind==='hero'&&on.state!=='dead','No such party member.')}
+  use_item(a,{index,target_id,target}){const i=Number(index),e=invOf(a).list[i];need(e&&!isGear(e)&&e.kind==='use','No usable item at pack index '+index+'.');
+    let on=a;if((target_id!=null&&target_id!=='')||(target!=null&&target!=='')){on=friendBy(a,target_id,target);need(on&&on.kind==='hero'&&on.state!=='dead','No such party member'+givenAs(target_id,target)+'. '+friendList(a))}
     const r=useItem(a,e.id,on);need(r.ok,r.error);return {ok:true,result:r.text,hp:pct(a.hp,maxHp(a))+'%',pack:invOf(a).list.length+'/'+capOf(a)}},
-  use_ability(a,{ability,target_id}){const key=String(ability==null?'':ability).toLowerCase().replace(/[^a-z]/g,'');
+  use_ability(a,{ability,target_id,target}){const named=(target_id!=null&&target_id!=='')||(target!=null&&target!=='');const key=String(ability==null?'':ability).toLowerCase().replace(/[^a-z]/g,'');
     const id=movesOf(a).find(i=>i===key||MOVES[i].name.toLowerCase().replace(/[^a-z]/g,'')===key);
     need(id,'You have no ability "'+ability+'". Yours: '+(movesOf(a).map(i=>MOVES[i].name).join(', ')||'none yet')+'.');
     const M=MOVES[id];let t=null;
-    if(M.target==='foe'){t=target_id!=null?findTarget(Number(target_id)):a.target;need(t&&alive(t)&&!t.hidden,'Name a living foe in sight (target_id from look), or be in a fight with one.')}
-    else if(M.target==='ally'){t=target_id!=null&&Number(target_id)!==a.id?hero(Number(target_id)):a;need(t&&t.kind==='hero'&&t.state!=='dead','No such friend.')}
+    if(M.target==='foe'){t=named?foeBy(a,target_id,target):a.target;need(t&&alive(t)&&!t.hidden,(named?'No such target'+givenAs(target_id,target)+'. ':'')+'Name a living foe in sight (target_id from look, or target by name), or be in a fight with one. '+foeList(a))}
+    else if(M.target==='ally'){t=named?friendBy(a,target_id,target):a;need(t&&t.kind==='hero'&&t.state!=='dead','No such friend'+givenAs(target_id,target)+'. '+friendList(a))}
     const r=useMove(a,id,t,{mates:a.party?a.party.mem:[a],foe:a.target&&a.target.kind!=='hero'?a.target:null});need(r.ok,r.error);
     if(M.swing)a.cd=Math.max(a.cd,0)+1.1; // an attack ability takes the place of a weapon blow
     if(t&&t.kind==='mob'&&M.target==='foe'){if(!t.target)t.target=a;if(a.state==='hunt'||a.state==='travel'){a.state='fight';a.target=t;a.dest=null}}
@@ -427,12 +495,13 @@ const T={
     const err=specBlock(a);need(!err,err);need(id,'Not a path for a '+a.cls+'. Yours: '+specChoices(a).map(x=>x.name).join(', ')+'.');
     const r=chooseSpec(a,id.id,{by:'agent'});need(r.ok,r.error);return {ok:true,result:r.text}},
   drop(a,{index,count}){const r=dropEntry(a,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
-  give(a,{index,hero_id,count}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');const r=giveItem(a,b,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
+  give(a,{index,hero_id,to,count}){need((hero_id!=null&&hero_id!=='')||(to!=null&&to!==''),'Give to whom? hero_id or to (a companion\'s name). '+friendList(a));
+    const b=friendBy(a,hero_id,to);need(b&&b!==a&&b.state!=='dead','No such companion'+givenAs(hero_id,to)+'. '+friendList(a));const r=giveItem(a,b,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
   move_to(a,{target}){need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
     need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);
     a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.explore)r.explore=true;return r},
+    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r},
   talk(a,{target,text}){const t=clean(target,60).toLowerCase();need(t,'Talk to whom?');
     ensureNpcs();const here=cityAt(a);
     // NPC conversations (#170): a Fellowship member's words to a person open a conversation the DM answers (sim/talk.js)
@@ -457,7 +526,9 @@ const T={
     agentLine(a,speak(a,t,'agent'));const H=nearHeroes(a.x,a.y,7).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden);noteSaid(a,t,H);talked(a,H.map(b=>b.name));const heard=H.length;
     const to=addressed(a,t);if(to){const r=talkTo(a,to,t);if(!r.error)return {...r,heard_by:heard,to:r.who}} // said to a person: the conversation goes on (#170)
     return {ok:true,said:t,heard_by:heard}},
-  join_party(a,{hero_id}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');
+  join_party(a,{hero_id,who}){const n=nameKey(who!=null&&who!==''?who:hero_id),i=idIn(hero_id)??idIn(who);
+    const b=i!=null?hero(i):nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
+    need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');
     if(a.fellow&&b.fellow){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
     need(b.fac===a.fac,b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
     need(Math.abs(b.lvl-a.lvl)<=3,'Too far apart in level (more than 3).');need(!['dungeon','raid','duel','ghost'].includes(b.state),b.name+' is busy.');
@@ -541,18 +612,19 @@ const T={
   choose(a,{option}){const o=clean(option,4).toLowerCase();need(o==='a'||o==='b','Choose "a" or "b".');const adv=advOf(a),p=adv&&adv.pick;
     need(p&&adv.stage==='choose'&&!p.chosen,'No choice is waiting for you.');need(S.gameMin<p.until,'Too late: the moment passed.');
     p.chosen=o;return {ok:true,chose:o+') '+p.opts[o]}},
-  fight(a,{target_id,flee_below}){need(fieldState(a)||a.state==='fight','You can only pick a fight out in the world.');
-    const t=findTarget(Number(target_id));need(t&&alive(t)&&!t.hidden,'No such target.');need(dist(a,t)<=sightOf(a),'You cannot see that from here.');
+  fight(a,{target_id,target,flee_below}){need(fieldState(a)||a.state==='fight','You can only pick a fight out in the world.');
+    const t=foeBy(a,target_id,target);need(t&&alive(t)&&!t.hidden,'No such target'+givenAs(target_id,target)+'. '+foeList(a));need(dist(a,t)<=sightOf(a),'You cannot see that from here. '+foeList(a));
     const fb=flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100));
-    if(t.kind==='mob'){need(!(t.target&&t.target!==a&&t.target.state!=='dead'),'Someone else is already fighting it.');
+    if(t.kind==='mob'){need(!(t.target&&t.target!==a&&t.target.state!=='dead'),'Someone else is already fighting it. '+foeList(a,true));
       a.pq=[{kind:'fight',id:t.id,flee:fb}];a.target=t;a.state='fight';a.dest=null;
       const pr=perceived(a,t);return {ok:true,target:foeName(a,t),threat:threatText(a,t),warning:pr==null?'You cannot tell how strong it is.':pr>=3?'You judge it '+threatText(a,t).replace(/^looks /,'')+'.':undefined}}
-    need(t.kind==='hero'&&t!==a,'No such target.');need(t.fac!==a.fac,'You will not raise a hand against your own faction.');
+    need(t.kind==='hero'&&t!==a,'No such target'+givenAs(target_id,target)+'. '+foeList(a));need(t.fac!==a.fac,'You will not raise a hand against your own faction.');
     need(zoneAt(a.x,a.y)>=1&&zoneAt(t.x,t.y)>=1,'Thornvale is the peaceful vale: no duels there.');
     need(['hunt','travel','return','follow'].includes(t.state),t.name+' is not free to be challenged right now.');
     a.pq=[];a.state=t.state='duel';a.target=t;t.target=a;a.dest=t.dest=null;record(a,'Challenged ',t,'.');
     return {ok:true,duel:t.name+' ('+t.cls+' L'+t.lvl+')',note:'A duel runs until one falls or breaks off; you break off on your own at low HP, or flee().'}},
-  hunt(a,{count,flee_below,prey}){need(fieldState(a)&&!inTown(a),'Hunt out in the world, not in town: move_to a region first.');need(a.state!=='return','You are heading home.');
+  hunt(a,{count,flee_below,prey}){if(!(fieldState(a)&&!inTown(a))){const ct=cityAt(a)||(inTown(a)?homeOf(a):null),hz=ct?ZONES[zoneAt(ct.gate.x,ct.gate.y)]:null;
+      need(false,'Hunt out in the world, not in town: move_to a region first'+(ct&&hz&&knowsPlace(a,hz)?' (you are in '+ct.name+'; '+hz+' lies around it: move_to("'+hz+'"), then hunt)':'')+'.')}need(a.state!=='return','You are heading home.');
     const n=Math.min(10,Math.max(1,Math.round(Number(count)||3)));
     // what the hero chooses (#188): a creature it knows by name, or whatever is around that it has not learned to fear
     let pk=null;if(prey!=null&&String(prey).trim()&&!/^(any|anything|around|whatever.*)$/i.test(String(prey).trim())){pk=preyKey(a,prey);need(pk,'You know of no creature called "'+clean(prey,40)+'". Hunt what is around (no prey), or learn its name first (fight one, look, ask around).')}
@@ -625,7 +697,7 @@ const T={
   lead_to(a,{target}){need(a.fellow&&a.party&&a.party.fellow,'You are not with the Fellowship.');need(a.party.leader===a,'Only the leader ('+a.party.leader.name+') leads the party.');
     need(legal.includes(a.state),'You cannot lead from here ('+a.state+').');need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};const far=outOfRange(a);if(far.length)r.not_told=nameList(far)+' too far away to hear the order; they stay where they are until you are together or a courier reaches them.';if(p.warn)r.warning=p.warn;return r},
+    const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};const far=outOfRange(a);if(far.length)r.not_told=nameList(far)+' too far away to hear the order; they stay where they are until you are together or a courier reaches them.';if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;return r},
   send_courier(a,{to,text}){need(a.fellow,'Only a Fellowship member can hire the Fellowship courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
   scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);

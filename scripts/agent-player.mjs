@@ -73,7 +73,7 @@ const flag = k => argv.includes('--' + k);
 export function systemPrompt(st) {
   const traits = (st.traits || []).join('; ');
   return [
-    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in Eldmoor, a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
+    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of Eldmoor (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
     st.origin ? `Your past: ${st.origin}` : '',
     st.oath ? `Your oath: ${st.oath}.` : '',
     traits ? `Your nature: ${traits}. Let it colour your choices.` : '',
@@ -121,7 +121,7 @@ const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.string
 const money = v => '$' + (v || 0).toFixed(4);
 // w: why this turn started (scripts/pacing.mjs), the hero's own news only
 export const turnPrompt = (turns, w = null) => turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
-  : `Turn ${turns + 1}. Continue living your life in Eldmoor.${wakeNote(w)} Answer and speak only in English.`;
+  : `Turn ${turns + 1}. Continue living your life.${wakeNote(w)} Answer and speak only in English.`;
 // Between turns: wait for the game (scripts/pacing.mjs). -> {w} or {end: why the run is over}
 async function between(pacer) {
   const w = await pacer.next();

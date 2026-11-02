@@ -18,7 +18,7 @@ import {wakeLevel} from './notify.js';
 import {tableView,optionsFor} from './table.js';
 import {heardLines,metNames} from './talk.js';
 import {maxHp} from './heroes.js';
-import {ZONES,zoneAt} from '../world/map.js';
+import {ZONES,zoneAt,CITY} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {notTold,NOT_TOLD} from './reach.js';
 import {heroRelevant} from './notebook.js'; // the notes that matter now (#155)
@@ -68,7 +68,7 @@ export function paceBrief(id){const a=hero(Number(id));
   const t=a.target,fighting=(a.state==='fight'||a.state==='duel'||a.state==='assist')&&t&&(t.hp>0||t.alive);
   const foe=fighting?foeName(a,t):null;
   const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
-  return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
+  return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:placeOf(a),
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook), // what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
@@ -89,3 +89,7 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
 function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(S.table,a).map(o=>o.k);if(!keys.length)return null;
   return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[]}}
+// Where the hero stands, for the header (#399): a town by name when it is inside one ("Highgate (town; Lowmark around it)"), so
+// an agent waiting in town no longer reads the region and calls hunt there. The same words move_to reads back.
+const inTown=(c,p)=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5; // player.js cityAt
+function placeOf(a){const z=ZONES[zoneAt(a.x,a.y)]||null,c=CITY.find(t=>inTown(t,a));return c?c.name+' (town'+(z?'; '+z+' around it':'')+')':z}
