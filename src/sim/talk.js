@@ -179,7 +179,7 @@ function readPerson(c,p,a){const want=p.want||talkOf(p).want,R=check(a,'empathy'
 // ---- the person answers ----
 // Deliver one line from the person to everyone within earshot (and the members in the conversation), tagged with the
 // conversation so a hero's agent wakes at once (sim/player.js hearWake) and the watcher's chat panel can group it.
-function speakAs(p,c,text,by,mark){const e={t:clockStr(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc',talk:c.id,dm:true,by};if(mark)e.mark=mark;
+function speakAs(p,c,text,by,mark){const e={t:clockStr(),d:gameDay()+1,from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc',talk:c.id,dm:true,by};if(mark)e.mark=mark;
   const hs=S.agents.filter(b=>living(b)&&(dist(b,p)<=HEAR||c.heroes.includes(b.id)));if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;
   for(const b of hs){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=Math.max(p.chatCd||0,10);

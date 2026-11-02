@@ -17,3 +17,5 @@ Rules added:
 - Done lists are packed (no null fields) and capped 20 for agent/Fellowship heroes, 6 for scripted: about +8% save size.
 
 **How to apply:** new quest sources should add a builder in questlog.js and a done hook, never a second copy of the state; verify with `npm run questcheck` (its first section proves the scripted world unchanged in subprocesses). See [[dm-adventures]], [[fellowship-always-agents]].
+
+Pitfall (2026-11-02, #245): this codebase packs many statements on one line, so a `//` comment inserted mid-line silently deletes the rest of the line (it cut the adventure payout). Use `/* */` mid-line, and prove "scripted world unchanged" with a seeded state hash against `git archive origin/main src` in the scratchpad, not only with questcheck.
