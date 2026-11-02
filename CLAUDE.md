@@ -571,7 +571,7 @@ encounters and speak at their tables (issue #132, below).
   `read_timeline`, `read_chronicle`, `read_dm_log`, `fellowship_view`, `heroes_near`, `npcs`,
   `regions`, `hooks`, `levers`, `notes_read`, `notes_write` (threads, characters, plans, secrets; saved
   with the world in `S.dmAgent`), `pull_lever` (`pull(name, params, {by:'dm-agent', reason})`; at most
-  `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's),
+  `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's), the flat lever tools `post_hook {town, tpl, giver?, reward?, region?, place?, for?}`, `place_person {role, near, name?, faction?, want?, attitude?, hours?, spot?}` (create_npc) and `mark_place {kind, near, name?, hours?}` (#413: each with a reason, `near` read like `stage_scene`'s, pulled through pull_lever's path, so the same caps, limits, Fellowship reserve and DM log),
   `log_intent`, and its in-game voice `narrate` (`{text, near, radius?}`: heroes near a hero, town,
   region or "x,y", or everyone at the open Table scene, hear it in their Chat tab and the Table banner;
   12 a game day) and `npc_say` (`{npc, text}`: a townsperson or placed person speaks to whoever is within

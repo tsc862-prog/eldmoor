@@ -144,8 +144,8 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
   ok(parseTextCalls('Here is the plan:\n```json\n{"region": "Mirefen", "kind": "fogbound"}\n```', DM_TOOLS).length === 0 && parseTextCalls('```\nnot json at all\n```').length === 0, 'a fenced block that is not a call stays narration');
   ok(parseTextCalls('```json\n{"name": "hunt", "arguments": {"n": 2}}\n```')[0].function.name === 'hunt', 'a hero\'s fenced call (the whole reply) runs too');
   // a lever called as a tool, and lever params at the top level
-  const lv = cleanArgs('post_hook', {town: 'Highgate'}, DM_TOOLS);
-  ok(lv.error && /pull_lever/.test(lv.error) && /"lever":"post_hook"/.test(lv.error), 'a lever name called as a DM tool is pointed at pull_lever: ' + (lv.error || '').slice(-120));
+  const lv = cleanArgs('set_condition', {region: 'Mirefen'}, DM_TOOLS);
+  ok(lv.error && /pull_lever/.test(lv.error) && /"lever":"set_condition"/.test(lv.error), 'a lever name called as a DM tool is pointed at pull_lever: ' + (lv.error || '').slice(-120));
   ok(!/pull_lever/.test(cleanArgs('teleport', {}).error), 'a hero\'s unknown tool gets no lever hint');
   const flat = cleanArgs('pull_lever', {lever: 'set_condition', region: 'Mirefen', kind: 'fogbound', reason: 'fog'}, DM_TOOLS);
   ok(flat.args && flat.args.params.region === 'Mirefen' && flat.args.params.kind === 'fogbound' && flat.args.lever === 'set_condition', 'a lever\'s params given beside lever and reason are folded into params, not dropped');
