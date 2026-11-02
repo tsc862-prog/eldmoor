@@ -15,7 +15,19 @@ export const effOn=(e,key)=>{const f=e&&e.eff&&e.eff[key];return !!f&&(f.u>now()
 export const effMul=(e,key)=>effOn(e,key)?e.eff[key].v:1;
 export const effLeft=(e,key)=>{const f=e&&e.eff&&e.eff[key];return f&&f.u>now()?Math.round((f.u-now())*10)/10:0};
 // A round passed at the Table: effects counted in rounds run down.
-export function eachRound(e){if(!e||!e.eff)return;for(const k in e.eff){const f=e.eff[k];if(f.r>0)f.r--}}
+export function eachRound(e){if(!e||!e.eff)return;for(const k in e.eff){if(COND_IDS.includes(k))continue;const f=e.eff[k];if(f.r>0)f.r--}}
+
+// Table conditions (issue #296): stun, root and poison, held in rounds only (sim/tableround.js runs them down: a stun on
+// its holder's turn, a root or poison at the end of each round, each with a save). e.eff[id] = {v, u:0, r, dc, by}: v is
+// poison's damage a round, dc the save to beat, by the id of who laid it. Warded is the round-counted 'taken' ward.
+export const COND_IDS=['stun','root','poison'];
+export function setCond(e,id,r,dc,v,by){(e.eff||(e.eff={}))[id]={v:v||0,u:0,r,dc,by:by==null?null:by}}
+export const condOn=(e,id)=>id==='ward'?!!(e&&e.eff&&e.eff.taken&&e.eff.taken.v<1&&e.eff.taken.r>0):effOn(e,id);
+export const condsOf=e=>[...COND_IDS,'ward'].filter(id=>condOn(e,id));
+export function endCond(e,id){if(e&&e.eff)delete e.eff[id]}
+// A Table scene ends: its conditions and its round-counted effects end with it, so none of them carries into the
+// real-time fight (a ward counted in rounds would otherwise hold in seconds until the next scene).
+export function clearRounds(e){if(!e||!e.eff)return;for(const k in e.eff){const f=e.eff[k];if(COND_IDS.includes(k)||(f.r>0&&!(f.u>now())))delete e.eff[k]}}
 
 // Passives learned so far (a hero's class and level).
 // A chosen specialisation (a.spec, issue #82) adds its own passives; a spec of another class is ignored.

@@ -143,7 +143,8 @@ export function updMob(m,dt){
   if(m.dest){if(moveTo(m,m.dest.x,m.dest.y,dt,.9))m.dest=null}
   else{m.wait-=dt;if(m.wait<=0){m.wait=2+rnd()*5;if(m.elite&&rnd()<.25)m.home=zonePoint(z,m.home); // elites stalk the whole zone
     m.dest={x:m.home.x+(rnd()-.5)*4,y:m.home.y+(rnd()-.5)*4}}}
-  m.scan-=dt;if(m.scan<=0){m.scan=.6;const reach=m.elite?ELITE_TEMPLATE.aggro:B.beh.aggro*sightMul(z); // ambush reach; the index returns heroes within it, id-ascending (sim/spatial.js)
+  m.scan-=dt;if(m.scan<=0&&m.spared>S.gameMin)m.scan=.6; // talked down at the Table (#296): it leaves people be for a while
+  if(m.scan<=0){m.scan=.6;const reach=m.elite?ELITE_TEMPLATE.aggro:B.beh.aggro*sightMul(z); // ambush reach; the index returns heroes within it, id-ascending (sim/spatial.js)
     for(const a of nearHeroes(m.x,m.y,reach)){if((a.state!=='travel'&&a.state!=='hunt')||(B.beh.territorial&&zoneAt(a.x,a.y)!==z))continue; // territorial: no ambushing travellers outside the mob's own zone
       if(m.elite){if(a.lvl<m.lvl-2||a.hp<.9*(CLS[a.cls].hp+a.lvl*14+a.gear*6+a.epics.length*10))continue; // elites ignore small prey and the already wounded
         if(dist(a,m)<ELITE_TEMPLATE.aggro&&rnd()<.5){m.target=a;a.state='fight';a.target=m;a.dest=null;break}continue}

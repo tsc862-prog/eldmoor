@@ -100,6 +100,113 @@ if (process.argv[2] === '--rounds') {
   process.exit(0);
 }
 
+// ---- parley and conditions (#296), in a child with a fresh world: node scripts/tablecheck.mjs --parley ----
+// The dice are the world's seeded LCG (Math.random above); forceNext(v) rewinds it so the very next roll is v, which lets
+// the check pin a natural 20 or a natural 1 on a parley or a save without stubbing the game.
+if (process.argv[2] === '--parley') {
+  const {MOBS} = await import('../src/data/mobs.js'), E = await import('../src/sim/eff.js'), MV = await import('../src/sim/moves.js'), {MOVES, MOVE_CONDS} = await import('../src/data/moves.js');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const inv = (() => {let a = 1664525n, m = 1n << 32n, [r0, r1, s0, s1] = [a, m, 1n, 0n]; while (r1) {const q = r0 / r1; [r0, r1] = [r1, r0 - q * r1]; [s0, s1] = [s1, s0 - q * s1]} return ((s0 % m) + m) % m})();
+  const forceNext = v => {const t = BigInt(Math.min(4294967295, Math.floor(v * 4294967296))); seed = Number((((t - 1013904223n) % (1n << 32n) + (1n << 32n)) * inv) % (1n << 32n))};
+  const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
+  init({fellowship: false}); run(30);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); SIM.setRunnerLinks(() => 'connected');
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  let M = F_.fellowshipMembers().map(m => m.hero); const home = homeOf(M[0]).gate, spot = zonePoint(zoneFor(8, home), null, home);
+  const byId = id => S.agents.find(x => x.id === id);
+  for (const m of S.mobs) if (m.alive && dist(m, spot) < 16) {m.alive = false; m.gone = true}
+  const fam = m => TRD.canParley(m);
+  const pick = want => S.mobs.find(m => m.alive && !m.gone && !m.elite && !m.used && (want === 'talker' ? fam(m) : !fam(m)));
+  const setup = (q, opt = {}) => {q.used = true; M = M.map(x => byId(x.id));
+    M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'fight'; x.hidden = false; x.dest = null; x.hp = maxHp(x); x.pq = []; x.target = q; x.eff = {}; x.mcr = {}});
+    q.x = spot.x + 1; q.y = spot.y; q.lvl = opt.lvl || 9; q.maxhp = 4000; q.hp = opt.hp || 4000; q.cd = 99; q.fledOnce = true; q.hit = .001; q.target = M[0]; q.eff = {}; q.ab = opt.ab || []; // tricks only where a case asks for them
+    S.fellowship.tableSeen = {}; const sc = T.openScene('elite', 'Talk test', ['A rough voice from the brush.'], {mob: q.id}); sc.foeAt = sc.ids.length; return sc};
+  const toTurns = () => {let g = 0; while (S.table && S.table.phase === 'frame' && g++ < 600) step(1 / 60)};
+  const strikeAll = () => {const c = S.table; if (c && c.phase === 'turn') for (const id of c.ids) if (!c.acts[id]) P.playerAct(id, 'scene_act', {option: 'strike'})};
+  const finish = (maxS = 60) => {let g = 0; while (S.table && g++ < 60 * maxS) {strikeAll(); step(1 / 60)}};
+  const tableText = () => {const e = S.dmLog.filter(x => x.kind === 'table')[0]; return e ? e.summary.join('') : ''};
+
+  // (a) parley is a legal action on an intelligent foe only, offered once a fight
+  const talker = pick('talker'), beast = pick('beast');
+  ok(talker && beast, `a talker (${talker && MOBS[talker.type].name}) and a beast (${beast && MOBS[beast.type].name}) to test with`);
+  let sc = setup(beast); toTurns();
+  ok(!T.optionsFor(sc, M[0]).some(o => o.k === 'parley'), 'a beast cannot be talked to: no parley option');
+  T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto'; ok(!S.table, 'the beast scene closes');
+  sc = setup(talker); toTurns();
+  const spk = byId(sc.ids[0]), o1 = T.optionsFor(sc, spk).find(o => o.k === 'parley'), tv = P.playerAct(spk.id, 'status', {}).table;
+  ok(o1 && /^Talk .+ down \((persuasion|intimidation), once a fight\)$/.test(o1.text) && tv && tv.options.some(s => /^parley = /.test(s)), `parley is offered against ${MOBS[talker.type].name}: ${o1 && o1.text}`);
+  // (b) the legal action through scene_act: its result agrees with its dice, in the beat, the banner and the DM log
+  const ans = P.playerAct(spk.id, 'scene_act', {option: 'parley', line: 'Put it down and walk away.'});
+  ok(ans && !ans.error, 'scene_act parley is accepted');
+  step(1 / 60); const pb = sc.beats.find(b => b.k === 'parley'), ck = pb && pb.check;
+  const want = ck && (ck.die === 20 || (ck.hit && ck.total - ck.vs >= 5) ? 'yield' : ck.hit ? 'flee' : 'hold');
+  ok(pb && ck && ck.kind === 'parley' && ck.result === want && ck.total === ck.die + ck.mod && /^(persuasion|intimidation) d20 \d+[+-]\d+=\d+ vs DC \d+/.test(pb.res) && !pb.roll,
+    `the parley is a dice line with its check as data: ${pb && pb.res} -> ${ck && ck.result}`);
+  ok(T.bannerOf() && /Talk .+ down/.test(T.bannerOf().last || ''), `the banner shows it: ${T.bannerOf() && T.bannerOf().last}`);
+  finish(); ok(!S.table && /parleys with .+ \((persuasion|intimidation) d20 \d+[+-]\d+ vs DC \d+\): it /.test(tableText()), `the DM log has it: ${(tableText().match(/[^:;.]*parleys with[^;.]*/) || [''])[0]}`);
+  // (c) a natural 20 on the tongue: it yields, the scene ends, it leaves the party be
+  const t2 = pick('talker'); sc = setup(t2); toTurns(); let s2 = byId(sc.ids[0]);
+  forceNext(.999); const r20 = TRD.parley(sc, s2, [t2], M);
+  ok(/d20 20/.test(r20) && sc.end === 'yield' && t2.target === null && t2.spared > S.gameMin && M.every(x => x.target !== t2), `a natural 20: ${r20}`);
+  finish();
+  ok(!S.table && new RegExp('yields and breaks off at ' + s2.name + "'s words").test(sc.summary), `the scene ends on it: ${sc.summary}`);
+  run(5); ok(t2.target === null && M.every(x => byId(x.id).target !== t2), 'the spared foe does not pick the fight up again');
+  // (d) a natural 1: it holds, turns on the speaker, the fight goes on, and that member cannot parley again this fight
+  const t3 = pick('talker'); sc = setup(t3); toTurns(); s2 = byId(sc.ids[0]);
+  forceNext(0); const r1 = TRD.parley(sc, s2, [t3], M);
+  ok(/d20 1[^0-9]/.test(r1) && !sc.end && t3.target === s2 && !T.optionsFor(sc, s2).some(o => o.k === 'parley') && T.optionsFor(sc, byId(sc.ids[1])).some(o => o.k === 'parley'), `a natural 1: ${r1}`);
+  T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto';
+
+  // (e) a move lays a condition at the Table on a failed save (the move's own save), never in real time
+  let mvr = null; for (const x of M) for (const id of MV.movesOf(x)) if (MOVE_CONDS[id] && !mvr) mvr = {x, id};
+  ok(mvr, `a member with a condition move (${mvr && mvr.x.name}: ${mvr && MOVES[mvr.id].name})`);
+  if (mvr) {const tg = pick('beast'); tg.used = true; tg.x = spot.x + 1; tg.y = spot.y; tg.lvl = 1; tg.maxhp = 4000; tg.hp = 4000; tg.eff = {}; mvr.x.x = spot.x; mvr.x.y = spot.y; mvr.x.state = 'fight'; mvr.x.target = tg;
+    const st = MOVES[mvr.id].save.stat, keep = mvr.x.abil[st]; mvr.x.abil[st] = 40; mvr.x.mcr = {}; mvr.x.mcd = {};
+    const rr = MV.useMove(mvr.x, mvr.id, tg, {mode: 'round', mates: M}), c = MOVE_CONDS[mvr.id];
+    ok(rr.ok && E.condOn(tg, c) && tg.eff[c].dc >= 21 && tg.eff[c].by === mvr.x.id, `${MOVES[mvr.id].name} at the Table leaves the foe ${c} (${rr.text})`);
+    E.clearRounds(tg); mvr.x.mcr = {}; mvr.x.mcd = {};
+    const rs = MV.useMove(mvr.x, mvr.id, tg, {mode: 'sec', mates: M});
+    ok(rs.ok && !E.condsOf(tg).length, `in real time it leaves none (${rs.text})`);
+    mvr.x.abil[st] = keep; mvr.x.mcd = {}; mvr.x.mcr = {}}
+
+  // (f) four conditions across rounds, a save and restore mid-scene, and all of them gone with the scene
+  const t4 = pick('beast'); sc = setup(t4, {lvl: 20}); const [X, Y, Z, W] = sc.ids.map(byId);
+  E.setCond(X, 'poison', 2, 99, 5, t4.id); E.setCond(Y, 'stun', 1, 99, 0, t4.id); E.setCond(Z, 'root', 2, 99, 0, t4.id); E.setCond(t4, 'root', 2, 99, 0, X.id);
+  W.eff.taken = {v: .7, u: 0, r: 3};
+  const bn = T.bannerOf(), tvx = P.playerAct(X.id, 'status', {}).table;
+  ok(bn.conds[X.id].includes('poison') && bn.conds[Y.id].includes('stun') && bn.conds[Z.id].includes('root') && bn.conds[W.id].includes('ward') && bn.foe.conds.includes('root'), `the banner has each condition as data: ${JSON.stringify(bn.conds)} foe ${JSON.stringify(bn.foe.conds)}`);
+  ok(tvx && tvx.your_conditions.includes('poisoned') && tvx.foe.conditions.includes('rooted'), `a member reads them in words: ${tvx && tvx.your_conditions} / foe ${tvx && tvx.foe.conditions}`);
+  ok(!T.optionsFor(sc, Z).some(o => o.k === 'retreat') && T.optionsFor(sc, X).some(o => o.k === 'retreat'), 'a rooted member cannot fall back');
+  toTurns(); let g = 0; const hp0 = X.hp;
+  while (S.table && S.table.rd === 1 && g++ < 60 * 60) {strikeAll(); step(1 / 60)}
+  const r1b = sc.beats.filter(b => (b.rd || 1) === 1), yb = r1b.filter(b => b.id === Y.id);
+  const stunB = yb.find(b => b.k === 'stunned' || b.k === 'unstun');
+  ok(stunB && /^save d20 \d+[+-]\d+=\d+ vs DC 99: (held|shaken off)$/.test(stunB.res) && stunB.check && stunB.check.kind === 'save' && (stunB.k === 'unstun' || !yb.some(b => b.k === 'strike')) && !E.condOn(Y, 'stun'),
+    `the stun is checked on ${Y.name}'s turn: ${stunB && stunB.text} (${stunB && stunB.res})`);
+  const fa = r1b.filter(b => b.by === 'foe' && b.k === 'attack');
+  ok(fa.length && fa.every(b => b.roll && b.roll.mod === TRD.hitOf(t4) - TRD.COND.ROOT_HIT), `a rooted foe strikes ${TRD.COND.ROOT_HIT} worse (mod ${fa[0] && fa[0].roll.mod} for hit ${TRD.hitOf(t4)})`);
+  const pz = r1b.find(b => b.k === 'poison' && b.id === X.id), ps = r1b.find(b => b.k === 'poison' && b.id === X.id && b.check);
+  ok(S.table && S.table.rd === 2 && pz && pz.res === '5 damage' && ps && /^save d20/.test(ps.res), `round 1 ends: the poison bites ${X.name} (${pz && pz.res}) and is saved against (${ps && ps.res})`);
+  ok(r1b.some(b => b.k === 'root' && b.id === Z.id && b.check) && r1b.some(b => b.k === 'root' && b.id === 'foe' && b.check), 'rooted member and rooted foe save at the end of the round');
+  ok(['poison', 'root'].every(c => !E.condOn(X, c) || X.eff.poison.r === 1) && (!E.condOn(Z, 'root') || Z.eff.root.r === 1) && (!E.condOn(t4, 'root') || t4.eff.root.r === 1) && W.eff.taken.r === 2, 'what holds runs down a round (the ward with it)');
+  const was = JSON.stringify([X.eff, Z.eff, t4.eff, W.eff]), sid = sc.id;
+  const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);
+  const sc2 = S.table, X2 = byId(X.id), Z2 = byId(Z.id), W2 = byId(W.id), t42 = S.mobs.find(m => m.id === t4.id);
+  ok(sc2 && sc2.id === sid && sc2.rd === 2 && JSON.stringify([X2.eff, Z2.eff, t42.eff, W2.eff]) === was, 'a save mid-scene keeps the round and every condition');
+  M = M.map(x => byId(x.id)); finish();
+  ok(!S.table && sc2.phase !== 'turn' && [...M, t42].every(e => !E.condsOf(e).length && !['stun', 'root', 'poison'].some(k => e.eff && e.eff[k])), `the scene ends (${sc2.rd} rounds) and every condition ends with it: ${sc2.summary}`);
+  ok(/still poisoned|purges the poison/.test(tableText()) && /save d20/.test(tableText()), 'the DM log has the saves');
+
+  // (g) a creature's trick lays its condition when the blow lands (venom), with a save, at most once every TRICK_GAP rounds
+  const t5 = pick('beast'); sc = setup(t5, {lvl: 20, ab: ['venom']}); toTurns(); finish();
+  const trick = sc.beats.filter(b => b.by === 'foe' && /poisons |shrugs off its Venom/.test(b.res || ''));
+  const landed = sc.beats.filter(b => b.by === 'foe' && /: hit for/.test(b.res || '')).length;
+  ok(landed === 0 || (trick.length >= 1 && trick.length <= Math.ceil(sc.rd / TRD.COND.TRICK_GAP) && trick.every(b => /save d20 \d+[+-]\d+=\d+ vs DC \d+/.test(b.res))), `venom: ${trick.length} trick(s) in ${sc.rd} rounds, ${landed} blows landed: ${trick[0] && trick[0].res}`);
+  console.log('PARLEY ' + (fail ? 'FAIL ' + fail : 'OK'));
+  process.exit(fail ? 1 : 0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -342,7 +449,7 @@ link(RA, 'connected'); link(RB, 'waiting');
 // ---- 2b. combat rounds (#276): the foe takes its turn, every blow shows its d20, the scene ends on a fall ----
 TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
 {const fieldR = () => {field3(); RM.forEach(x => {x.state = 'fight'})};
- const foeAt = (lvl, hpMul) => {const q = S.mobs.filter(x => x.alive && !x.gone && !x.elite && !x.staged).sort((p, r) => dist(p, spot) - dist(r, spot))[0]; q.x = spot.x + 1; q.y = spot.y; q.lvl = lvl; q.maxhp = Math.round((25 + lvl * 16) * hpMul); q.hp = q.maxhp; q.cd = 99; q.fledOnce = true; return q};
+ const foeAt = (lvl, hpMul) => {const q = S.mobs.filter(x => x.alive && !x.gone && !x.elite && !x.staged).sort((p, r) => dist(p, spot) - dist(r, spot))[0]; q.x = spot.x + 1; q.y = spot.y; q.lvl = lvl; q.maxhp = Math.round((25 + lvl * 16) * hpMul); q.hp = q.maxhp; q.cd = 99; q.fledOnce = true; q.ab = []; return q}; // no creature tricks: conditions have their own section (#296)
  const elite = q => {for (const x of RM) {x.target = q} q.target = RM[0]; S.fellowship.tableSeen = {}; return T.openScene('elite', 'A test of rounds', ['Something big comes out of the brush.'], {mob: q.id})};
  const rollRe = /^d20 \d+\+\d+=\d+ vs AC \d+/;
  const lastTable = () => {const e = S.fellowship.log.filter(x => x.kind === 'table').pop(); return e ? e.parts.map(p => typeof p === 'string' ? p : p && p.t || '').join('') : ''};
@@ -413,6 +520,11 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  ok(/^ROUNDS \[\[/.test(lf3) && lf3 === lr3, `combat rounds answered in initiative order and in reverse give the same rolls: ${lf3.slice(0, 160)}`);
 }
 link(RA, 'connected'); link(RB, 'waiting');
+
+// ---- 2c. parley and conditions (#296): a fresh world in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--parley'], {encoding: 'utf8'});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /PARLEY OK/.test(ch.stdout || ''), 'parley and conditions: a legal action on talkers only, its dice in the banner and the DM log, a 20 yields, a 1 holds; four conditions across rounds, a save mid-scene, all gone with the scene')}
 
 // ---- 3. proposals (in town, where nothing attacks) ----
 T.TABLE.speed = 1;

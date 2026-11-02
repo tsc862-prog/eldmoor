@@ -149,3 +149,19 @@ for(const id in PASSIVES){const P=PASSIVES[id];if(P.spec){(SPEC_PASSIVES[P.spec]
 export const KINDS=['attack','heal','buff','control','defend','move'];
 // Tooltip colour per kind (ui/abilities.js).
 export const KIND_COLOR={attack:'#ff8a5a',heal:'#7dce5a',buff:'#f2c14e',control:'#9ad0ff',defend:'#c8c8e0',move:'#c58cff'};
+
+// ---- Table conditions (issue #296, part of #140) ----
+// Round-counted states a Table combat round checks (sim/tableround.js), shown as badges on the banner. rounds: how long
+// one holds when laid; save: the ability its holder rolls (d20 + modifier, + training for a hero) against the DC it was
+// laid with: a stunned one on its own turn (fail: the turn is lost), a rooted or poisoned one at the end of each round
+// (pass: it ends early). Warded is the 'taken' effect of the ward moves above, counted in rounds; no save, it runs down.
+export const CONDITIONS={
+  stun:  {name:'Stunned', rounds:1,save:'grit',  desc:'Loses its next turn unless a save shakes it off.'},
+  root:  {name:'Rooted',  rounds:2,save:'reflex',desc:'Cannot fall back or run, and its blows come 2 worse; a save at the end of each round breaks free.'},
+  poison:{name:'Poisoned',rounds:2,save:'grit',  desc:'Takes a little damage at the end of each round; a save then purges it.'},
+  ward:  {name:'Warded',  rounds:0,save:null,    desc:'Blows on it land lighter (a ward ability); runs down with the rounds.'},
+};
+// The moves that leave a condition at the Table when the foe fails the move's own save (no second roll).
+export const MOVE_CONDS={rimering:'root',snare:'root',sinewcut:'root',rootbind:'root',thornfield:'root',thornring:'root',winterhold:'stun',dirtytrick:'stun'};
+// What a creature's own trick (data/bestiary.js ABILITIES fx) leaves when its blow lands at the Table.
+export const FX_CONDS={poison:'poison',root:'root',slow:'root',fear:'stun',knockback:'stun'};

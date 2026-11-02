@@ -208,6 +208,18 @@ Passives: Warrior **Unbowed** (4, under 35% health blows land at 80%) and **Stou
 
 Saves: a control ability that can be resisted lets the foe roll d20 plus its modifier (a monster's is a quarter of its level, elites +2, Kragmaw +4) against 8 + the caster's stat modifier + training. Scripted heroes use abilities by simple class rules (a Warrior taunts a monster that is mauling a hurt friend; a Priest wards the friend in danger and sings the Chorus when two or more are hurt; a Rogue opens with Ambush; heroes keep attack abilities out of duels with each other). Agent-played heroes choose with the `use_ability` tool.
 
+### Table conditions and parley (issue #296)
+In Table combat rounds four plain conditions can hold on a hero or a foe, each shown as a badge on the banner and checked as a dice line (`src/data/moves.js` `CONDITIONS`):
+
+| Condition | Laid by | What it does |
+| --- | --- | --- |
+| **Stunned** | Winter's Hold, Dirty Trick; a creature's fear or knockback (Bellow, Howl, Grave Dread, Gore, Slag Slam) | Loses its next turn unless a Grit save shakes it off on that turn. |
+| **Rooted** | Rime Ring, Gorse Snare, Sinew Cut, Rootbind, Thornfield, Ring of Thorns; a web or a mire (Web Snare, Mire Grip, Rime Bite) | Cannot fall back or run, and its blows come 2 worse; a Reflex save each round breaks free. |
+| **Poisoned** | Venom, Marrow Chill | A little damage at the end of each round; a Grit save then purges it. |
+| **Warded** | Ward of Dawn, Bastion, Shield Cover, Rallying Verse, Antler Ward, Smoke Veil | Blows land lighter; it runs down with the rounds. |
+
+A creature's slow (Mire Grip, Rime Bite) counts as Rooted at the Table. All of them end when the scene ends. **Parley**: once a fight, a member may talk down a foe that can talk back (an enemy hero, bandits and brute-folk; never Kragmaw) with Persuasion or Intimidation against the foe's temper. It holds (fights on and turns on the speaker), breaks away and runs, or yields and leaves the party be.
+
 ## Specialisations (issue #82)
 At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/classes.js`). A path is permanent. It adds a point to two ability scores, trains one more skill, and brings one passive and one more active ability, all learned at level 10 (rows of `src/data/moves.js` carrying `spec:`). The Chronicle and the hero's own log mark the choice. Scripted heroes choose by their traits and by what their party lacks (a party with no damage-dealer of its own favours the damage path); agent-played heroes see `status.specialisation` and choose with `choose_specialisation`. All names are plain-English coinages.
 
