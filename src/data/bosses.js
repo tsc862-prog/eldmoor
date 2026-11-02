@@ -17,7 +17,7 @@ import {BOSS_EPICS, DG_EPICS} from './items.js';
 
 export const BOSSES={
   kragmaw:{
-    id:'kragmaw',name:'Kragmaw',full:'Kragmaw the Cinder Wyrm',family:'wyrm',lvl:20,maxhp:9000,respawn:300,
+    id:'kragmaw',name:'Kragmaw',full:'Kragmaw the Cinder Wyrm',family:'wyrm',lvl:20,maxhp:13000,respawn:600,
     wake:' stirs again in its Cinderpass lair.',
     attack:{cd:1.6,dmg:[55,30]},
     abilities:[{id:'cinderbreath',fx:'breath',cd:7,dmg:[22,8],radius:4.6,tag:'fire',color:'#ffa040',name:'Cinder Breath'}],

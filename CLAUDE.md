@@ -606,17 +606,17 @@ render or ui, so the headless harness stays stub-free.
   `src/sim/heroes.js`. Hero combat totals (Health, Attack, Defense, Crit, Speed) and their
   level terms: `combatStats` in `src/sim/stats.js`; item armor/damage rates and properties:
   `src/data/items.js`. Class table `CLS`: `src/data/classes.js`.
-- Mob stats (`maxhp: 25 + lvl*16`, hit `3 + lvl*2`), aggro and wander: `src/sim/mobs.js`.
-- Boss: `maxhp` 9000 in `src/sim/state.js`; hit 55-85 every 1.6s, breath every
+- Mob stats (`maxhp: 25 + lvl*16`, hit `(3 + lvl*2) * MOB_HIT`, MOB_HIT 1.35), aggro and wander: `src/sim/mobs.js`.
+- Boss: `maxhp` 13000, respawn 600s in `src/data/bosses.js`; hit 55-85 every 1.6s, breath every
   7s, raids need level 14+ heroes, 5+ of them or 4 with average gear 9+; raiders
   break off below 15% HP and a failed raid cools down 240s: `src/sim/boss.js`,
   `RAID_FLEE` in `src/sim/heroes.js`.
-- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 40% of the party (was 55%). Webspinner and Bristleback Boar are softened in `data/bestiary.js` (tilt + aggro); Fellowship replacements seed in `fellowship.js` (`SEED_BEHIND`=2). Duel chance .0375 in `pvp.js`.
+- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 40% of the party (was 55%). Webspinner and Bristleback Boar are softened in `data/bestiary.js` (tilt + aggro); Fellowship replacements seed in `fellowship.js` (`SEED_BEHIND`=2). Duel chance .03 in `pvp.js`.
 - PvP: chance duels 4% x boldness, level gap 2, range 3 tiles; nemesis spot cooldown 45s; guild assist 20%; duellers yield below 30% HP; only fallen heroes of level 12+ pass the grudge to the whole guild (lesser deaths bind their party): `src/sim/pvp.js`, `GUILD_GRUDGE_LVL` in `src/sim/heroes.js`.
 
 ## Known state
 
-- In a 120-minute headless run from level 1 (balance #107, 10-run mean): about 21 deaths per hour, ~45% PvP; crypt about 12 deaths and ~50 clears per run; L1-5 mob deaths about 5 (was 16); median living level 11-12, top 18, level 20 not reached by minute 120 in any of 10 runs (first at ~minute 125-140). Median at minute 60 is 11. Kragmaw dies in most runs. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
+- In a 120-minute headless run from level 1 (balance #154, 10-run mean, wide spread): about 18 deaths per hour (range 8-26), ~31% PvP, crypt about 14 deaths and ~40 clears per run; L1-5 mob deaths 6-8 per run (mobs hit 1.35x); median living level 14, top 18-20 (the first level 20 arrives around minute 80-100); Kragmaw dies about 5 times per run (13000 hp, respawn 600s). Fellowship deaths about 4 per run. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
 - The world auto-saves to localStorage every game-hour and on tab close, and restores on reload; Export/Import move it as JSON (`src/sim/save.js`, `src/ui/save.js`, `npm run savecheck`).
 
 ## Roadmap ideas
