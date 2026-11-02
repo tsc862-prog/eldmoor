@@ -45,6 +45,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const DM_PROVIDERS = ['anthropic', 'ollama'];
 export const DEFAULT_DM_MODEL = 'claude-sonnet-5-5'; // claude-api skill (cached 2026-10-06): Sonnet 5.5, $2 in / $10 out per 1M tokens
 export const EVENING = 18 * 60, DAY = 1440, POLL_MS = 4000, BACKOFF = [30, 60, 120, 240, 600];
+// Fellowship-change turns (issue #165): between evenings, a turn is also due when the Fellowship's situation changed (dm_status
+// fellowship_change: they arrived or set out, a scene ended, a member fell, an oath or a job finished), at most EVENT_MAX a game
+// day and EVENT_GAP game minutes apart, on top of the real-time minimum gap and the Table/vote wait.
+export const EVENT_MAX = 3, EVENT_GAP = 120;
 
 // The DM's standing orders: built once per session and kept with it, so a resumed conversation sees the same prompt.
 export function dmSystemPrompt(st) {
@@ -66,19 +70,32 @@ export function dmSystemPrompt(st) {
     '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
     '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
     '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); you do not need to do anything for that.',
+    DM_FELLOWSHIP_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '',
-    'Each turn: dm_status, notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, levers as needed), update notes, pull at most a few levers, and end with one short sentence of what you prepared.',
+    'Each turn: dm_status (read fellowship_needs first), notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, levers as needed), update notes, pull at most a few levers, and end with one short sentence of what you prepared.',
   ].join('\n');
 }
+// Priorities (issue #165): the Fellowship first, then the overall world. The standing-orders line; withDmFellowshipOrders adds it to an older session's prompt.
+export const DM_FELLOWSHIP_ORDERS = '- The Fellowship comes first, then the overall world. Every turn starts with them: where they are, their open threads and oaths, pending decisions, their recent scenes, and what would make their next game hours interesting (dm_status fellowship_needs; fellowship_view for the detail). The DM never reads hero notes; you know only what the game shows. Put your hooks, rumours, people, places and staged scenes on their road and their threads first. World-shaping that does not touch them comes after, and only when nothing is pending for them; part of each day�s lever and staging limits is kept for the Fellowship, so a refusal that says so is that rule, not an error. A turn also runs when their situation changes (a scene ends, they arrive somewhere, a member falls, an oath is kept), not only on game evenings.';
+export const withDmFellowshipOrders = sys => {
+  sys = String(sys || ''); if (/\bThe Fellowship comes first\b/.test(sys)) return sys;
+  const at = sys.indexOf('\n- If dm_status shows a Table scene');
+  return at < 0 ? sys + '\n' + DM_FELLOWSHIP_ORDERS : sys.slice(0, at) + '\n' + DM_FELLOWSHIP_ORDERS + sys.slice(at);
+};
 // Searchable notes (issue #155): the DM's standing-orders line; withDmMemoryOrders adds it to an older session's prompt.
 export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything you want to find again, free-form (your own title, text and tags; about and section optional), recall by words, tag, about or id across all sections before you build on a person, place or thread, update_memory, forget, and pin the few that must never be archived. dm_status lists the notes that bear on the moment.';
 export const withDmMemoryOrders = sys => /\bYour notes are searchable\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_MEMORY_ORDERS;
 const notesNow = st => st && Array.isArray(st.relevant_notes) && st.relevant_notes.length ? ` Notes that may matter now: ${st.relevant_notes.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id}).` : '';
 export const dmTurnPrompt = (turns, st) => turns === 0
   ? 'You take the DM seat. Orient yourself: dm_status, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
-  : `Day ${st.day}, ${st.time} (${st.part}). ${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign.${notesNow(st)}`;
+  : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign, the Fellowship first.${notesNow(st)}`;
+// Each turn starts with the Fellowship (issue #165): the status line and the first needs, then the wider world only if nothing is pending for them.
+export const fellowNow = st => {const n = st && st.fellowship_needs; if (!n) return ''; return `Fellowship first: ${n.summary} ${(n.items || []).slice(0, 3).join(' ')} ${n.quiet ? 'Nothing is pending for them, so the wider world may have a turn after you have given them something to ride toward.' : 'Settle what is pending for them before you touch the wider world.'} `.replace(/\s+/g, ' ').trim() + ' '};
+// Is a Fellowship-change turn due before the next evening? last: {sig, gm} of the previous turn; ev: {day, n} (mutated by noteEvent).
+export const eventDue = (st, last, ev) => !!(st && st.ok && st.fellowship_change && last && last.sig != null && st.fellowship_change !== last.sig && last.gm != null && st.gameMin - last.gm >= EVENT_GAP && !(ev && ev.day === st.day && ev.n >= EVENT_MAX));
+export const noteEvent = (ev, st) => {if (ev.day !== st.day) {ev.day = st.day; ev.n = 0} ev.n++};
 
 const post = (base, path, body, ms) => fetch(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(ms)});
 // Every DM call names the role and this runner (the id it claimed the seat with), issue #123.
@@ -141,18 +158,18 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
 
 // Wait until the cadence allows a turn and nothing is pending. Returns the fresh status, or null on stop.
 // gapUntil: the earliest real time (ms) the next turn may start (the minimum gap, issue #126).
-async function waitTurn({base, cadence, lastGm, log, stopped, gapUntil = 0}) {
+async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n: 0}, log, stopped, gapUntil = 0}) {
   const target = cadence === 'evening' && lastGm != null ? nextEvening(lastGm) : null, until = Math.max(gapUntil, cadence !== 'evening' && lastGm != null ? Date.now() + Number(cadence) * 1000 : 0);
   let said = '';
   for (;;) {
     if (stopped()) return null;
     const st = await dmTool(base, 'dm_status');
-    let why = '';
+    let why = '', evt = false;
     if (!st.ok) why = st.offline ? 'the game is not answering (' + short(st.error, 90) + ')' : short(st.error, 90);
-    else if (target != null && st.gameMin < target) why = `waiting for the evening of day ${Math.floor(target / DAY) + 1} (now day ${st.day} ${st.time})`;
+    else if (target != null && st.gameMin < target && !(evt = eventDue(st, {sig: lastSig, gm: lastGm}, ev))) why = `waiting for the evening of day ${Math.floor(target / DAY) + 1} (now day ${st.day} ${st.time})`;
     else if (until && Date.now() < until) why = `next turn in ${Math.ceil((until - Date.now()) / 1000)} s`;
     else if (st.pending) why = st.table && st.table.open ? 'a Table scene is running' : 'a party vote is open';
-    if (!why) return st;
+    if (!why) {if (evt) {noteEvent(ev, st); st.event = true; log(`[dm] the Fellowship's situation changed: an extra turn (${ev.n} of ${EVENT_MAX} today)`)} return st}
     if (why.replace(/\d+/g, '') !== said) {said = why.replace(/\d+/g, ''); log(`[dm] ${why}`)}
     await sleep(POLL_MS);
   }
@@ -190,7 +207,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!st0.ok) {console.error('[dm] dm_status failed: ' + st0.error); await quit(1)}
   const {sess, note} = loadDmSession(st0.world, () => ({sessionId: null, world: st0.world, system: dmSystemPrompt(st0), turns: 0, costUsd: 0, lastTotal: 0, lastGm: null}), {startNew: flag('new')});
   if (note) log('[dm] ' + note);
-  sess.system = withDmMemoryOrders(sess.system); // searchable notes (#155) for a session that began before them
+  sess.system = withDmFellowshipOrders(withDmMemoryOrders(sess.system)); // searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
@@ -213,13 +230,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
-      const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
+      const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
       let r = null, err = null;
       try {r = await localTurn({chat: ol.chat, call: (tool, args) => dmTool(base, tool, args), sess, prompt: dmTurnPrompt(sess.turns, st), model: rs.model, toolTurns, tools: DM_TOOLS, rules,
         opts: {...(numCtx ? {numCtx: Number(numCtx)} : {}), endOnWait: false},
         on: (k, a, b) => {if (k === 'text') log(`  DM: ${a}`); else if (k === 'tool') log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') log(`    < ${short(a, 220)}`)}})}
       catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
-      sess.turns++; sess.lastGm = st.gameMin; lastEnd = Date.now();
+      sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; lastEnd = Date.now();
       reportTurn(base, {role: 'dm', runner, provider: 'ollama', model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
       if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
       saveSess();
@@ -248,7 +265,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
+    const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
@@ -292,7 +309,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       flags: result && result.subtype !== 'success' ? [result.subtype] : [], ...(failed ? {error: failed === 'rate_limit' || failed === 'overloaded' ? '429 ' + failed : failed} : {})});
     // A rate-limited turn that did nothing is retried after a growing pause; a turn that got work done counts.
     if (failed && failed !== 'error' && !tools) {const s = BACKOFF[Math.min(backoff, BACKOFF.length - 1)]; backoff++; log(`[dm] rate limited (${failed}); backing off ${s} s before trying the turn again`); saveSess(); await sleep(s * 1000); continue}
-    backoff = 0; sess.turns++; sess.lastGm = st.gameMin; turn++; lastEnd = Date.now();
+    backoff = 0; sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; turn++; lastEnd = Date.now();
     saveSess();
     if (fails.ok(!failed && tools > 0)) ended = fails.why();
   }

@@ -42,6 +42,7 @@ import {npcRole,WANDER_ROLES} from '../data/npcs.js';
 import {BEAST,ADVENTURES} from '../data/adventures.js';
 import {S} from './state.js';
 import {dmlog} from './dmlog.js';
+import {focus,pullTouches,reserveOf} from './dmfocus.js'; // the Fellowship's reserved share of the daily limits (issue #165)
 import {timeline} from './history.js';
 import {npcSay,ensureNpcs} from './npcs.js';
 import {moveTo} from './heroes.js';
@@ -78,7 +79,7 @@ export function ensureLevers(){
   if(!S.places)S.places=[];if(!S.marks)S.marks=[];if(!S.conditions)S.conditions=[];if(!S.wanderers)S.wanderers=[];
   return S.levers}
 const day=()=>Math.floor(S.gameMin/DAY);
-function today(){const L=S.levers;if(L.day.d!==day())L.day={d:day(),n:{},rz:{}};return L.day}
+function today(){const L=S.levers;if(L.day.d!==day())L.day={d:day(),n:{},rz:{},nf:{}};return L.day}
 const bump=(o,k,n=1)=>{o[k]=(o[k]||0)+n};
 const band=z=>REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];
 const bandHi=z=>Math.min(band(z)[1],60);
@@ -159,12 +160,16 @@ export function pull(name,raw,o={}){const L=ensureLevers(),def=LEVERS[name],by=o
   const z=def.region?def.region(p):p.region!=null?p.region:null,D=today(),lim=def.limits;
   if(lim.maxActive!=null&&activeOf(name).length>=lim.maxActive)return fail('limit: '+lim.maxActive+' '+name+' already active');
   if(lim.perDay!=null&&(D.n[name]||0)>=lim.perDay)return fail('limit: '+lim.perDay+' '+name+' per game day');
+  // Fellowship first (issue #165): with a Fellowship, a share of each daily limit is kept for pulls that concern it,
+  // so world upkeep cannot use the day up before the story needs it.
+  const fo=lim.perDay!=null?focus():null,forFellow=fo?pullTouches(name,p,z,fo):false;
+  if(fo&&!forFellow&&(D.nf[name]||0)>=lim.perDay-reserveOf(lim.perDay))return fail('limit: '+(lim.perDay-reserveOf(lim.perDay))+' '+name+' per game day for the world; the rest is kept for the Fellowship');
   if(lim.perRegionPerDay!=null&&z!=null&&(D.rz[name+':'+z]||0)>=lim.perRegionPerDay)return fail('limit: '+lim.perRegionPerDay+' '+name+' per region per game day in '+ZONES[z]);
   const ck=name+(z!=null?':'+z:'');if(def.cooldown&&L.cd[ck]>S.gameMin)return fail('cooldown: '+hrs(L.cd[ck]-S.gameMin)+' left'+(z!=null?' in '+ZONES[z]:''));
   const id=++L.seq;ctx.id=id;ctx.region=z;
   let out;try{out=def.apply(p,ctx)}catch(e){out={ok:false,effect:'failed: '+e.message}}
   if(!out||!out.ok)return fail(out&&out.effect?String(out.effect):'could not be applied');
-  bump(D.n,name);if(z!=null)bump(D.rz,name+':'+z);if(def.cooldown)L.cd[ck]=S.gameMin+def.cooldown;bump(L.stats.pulled,name);
+  bump(D.n,name);if(fo&&!forFellow)bump(D.nf,name);if(z!=null)bump(D.rz,name+':'+z);if(def.cooldown)L.cd[ck]=S.gameMin+def.cooldown;bump(L.stats.pulled,name);
   const until=out.until!=null?Math.round(out.until):null;
   if(until!=null)L.active.push({id,name,params:p,region:z,by,reason,born:S.gameMin,until,undo:out.undo||null,effect:out.effect||null});
   const det={lever:name,id,by,params:shown(def,p),reason,result:'applied',effect:out.effect||null,region:z!=null?ZONES[z]:null,until,lasts:until!=null?hrs(until-S.gameMin):null};

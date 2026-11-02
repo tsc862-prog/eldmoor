@@ -56,6 +56,7 @@ import {goalEvent} from './goals.js';
 import {makeItem,equip,weakestSlot,slotLevel} from './gear.js';
 import {addGear,addQuest,hasQuestFor,dropQuest} from './inv.js'; // quest items an adventure carries (sim/inv.js)
 import {say} from './chat.js';
+import {focus} from './dmfocus.js'; // the Fellowship first (issue #165)
 import {d20} from './narrator.js';
 import {bestFor,socialSkill,SKILLS} from './abilities.js';
 import {dmlog} from './dmlog.js';
@@ -65,6 +66,7 @@ import {playerBranch} from './player-choice.js';
 
 // ---- knobs ----
 export const K={
+  FLOOR:1,              // posted hooks an outlying board keeps while the Fellowship has nothing under way (issue #165)
   HOOKS:3,              // posted hooks per town (personal ones, for one hero's oath or a follow-up, come on top)
   HOOK_LIFE:[1440,2880],// game minutes a hook stays posted (one to two game days)
   REFILL:5,             // real seconds between hook refills
@@ -212,7 +214,25 @@ const HOOK_WHY={death:'a hero of this town fell recently',remnant:'a road encoun
 // Hooks from the world, in order of preference: a fallen hero's pack, a robbed wagon or a
 // vanished merchant, a living elite the innkeeper has heard of, an oath of a hero in town,
 // and otherwise a townsperson's request or the gate captain's writ.
-function makeHook(c){const seen=S.dmSeen,r=rnd();
+// ---- the Fellowship first (issue #165) ----
+// The board of the Fellowship's hall always keeps one posted job that concerns them: an oath a member swore, a living
+// elite nearest their road, or a townsfolk job set in the region they are in (when its level band suits them). Deterministic:
+// no dice, the members in slot order. Returns the posted hook or null (then the ordinary draw runs).
+const forFellow=(h,fo)=>h.for!=null&&fo.ids.has(h.for)||h.zone!=null&&fo.zones.has(h.zone)||(h.data&&h.data.eliteId!=null&&(()=>{const E=S.mobs.find(m=>m.id===h.data.eliteId);return !!E&&fo.zones.has(MOBS[E.type].z)})());
+function fellowHook(c,fo){
+  const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl));
+  for(const a of fo.members){if(a.adv||a.lvl<K.MIN_LVL||S.adventures.some(h=>h.phase==='open'&&h.for===a.id))continue;
+    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data},'a Fellowship member’s oath',true)}
+  const taken=m=>S.adventures.some(h=>h.data&&h.data.eliteId===m.id&&h.phase!=='done');
+  const E=S.mobs.filter(m=>m.elite&&m.alive&&!m.gone&&!taken(m)&&m.lvl<=hi+2).sort((p,q)=>dist(p,fo)-dist(q,fo)||p.id-q.id)[0];
+  if(E&&fo.members.length>=2){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper']},'a living elite lies near the Fellowship’s road',true)}
+  const z=fo.zone!=null&&band(fo.zone)[0]<=lo&&band(fo.zone)[1]>=lo-4?fo.zone:null;
+  if(z==null)return null;
+  const tpl=pickA(Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'));const T=D.ADVENTURES[tpl],g=giverOf(c,T.givers);
+  return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g,zone:z},'a job in the region the Fellowship rides',true)}
+function makeHook(c){const seen=S.dmSeen,fo=focus();
+  if(fo&&fo.town&&fo.town.name===c.name&&!S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&forFellow(h,fo))){const h=fellowHook(c,fo);if(h)return h}
+  const r=rnd();
   // recent deaths of this town's heroes, where they fell
   if(r<.3){const g=S.agents.find(x=>x.state==='dead'&&x.fac===c.fac&&homeOf(x)===c&&x.lvl>=3&&!seen.dead.includes(x.id)&&x.diedMin!=null&&S.gameMin-x.diedMin<1440);
     if(g){seen.dead.push(g.id);if(seen.dead.length>60)seen.dead.shift();const z=zoneAt(g.x,g.y);
@@ -585,7 +605,11 @@ function refill(){const gone={};
   // Posted jobs (not personal ones): up to HOOKS per town. If every posted job is tied to one
   // region and none is open-ended, the oldest is taken down for a fresh townsfolk job, so a
   // party of any level always has something on the board.
-  for(const c of CITY){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null);
+  // Fellowship first (issue #165): its hall's board is filled first; other boards fill beyond a floor of one posted job only
+  // while the Fellowship has a job under way (then the world's background hooks are not starved, and not ahead of the story).
+  const fo=focus(),order=fo&&fo.town?[fo.town,...CITY.filter(c=>c!==fo.town)]:CITY;
+  for(const c of order){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null);
+    if(fo&&fo.town&&c!==fo.town&&!fo.busy&&posted.length>=K.FLOOR)continue;
     if(posted.length<K.HOOKS){boardLever=null;const h=makeHook(c);boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}
     if(!posted.some(h=>h.zone==null)){const w=pull('withdraw_hook',{hook:posted[0].id},{by:'scripted',reason:'every posted job was tied to one region',log:false});
       boardLever=null;const h=townHook(c);boardLog(c,h,(gone[c.name]||[]).concat(w.ok?[hookRow(posted[0],'every posted job was tied to one region: oldest taken down')]:[]),[w.entry.detail].concat(boardLever?[boardLever]:[]))}}}
