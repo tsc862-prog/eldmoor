@@ -52,7 +52,7 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
-import {systemPrompt, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
+import {systemPrompt, withMemoryOrders, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk} from './local-agent.mjs';
@@ -61,7 +61,7 @@ import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, withClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, withClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -78,6 +78,7 @@ export function fellowshipPrompt(st) {
     '- The leader (status.party_leader) chooses where the party goes with lead_to; everyone else follows. If you are the leader, lead: pick hunting grounds and jobs that suit the weakest of you. leave_party splits you off for a while and costs you the others\' trust; do it only for a reason your character would have.',
     '- TABLE MODE: when status, look or wait show "table", the world is paused for a scene and every second counts. Act at once with scene_act(option, line), using one of the options listed, with a short line in your voice. Do not look around first. You may answer as soon as the scene opens; it happens on your turn. Then wait.',
     '- Hardcore still holds: one life each. Protect each other.',
+    '- A letter: pin a memory tagged "letter" (remember, then pin) and, if you fall, whoever takes your place in the Fellowship finds it. Only that one note outlives you.',
   ].join('\n');
 }
 
@@ -141,6 +142,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const {sess, note} = loadSession(h.id, st.name, () => ({sessionId: null, heroId: h.id, heroName: st.name, system: sys, turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
     if (note) out(st.name, note);
     if (!String(sess.system || '').includes('do not introduce yourself again')) sess.system = sys; // a hero first played solo now rides with the Fellowship; older orders get the talk rule
+    sess.system = withMemoryOrders(sess.system); // memories (#155) for a session that began before them
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
     if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama or openai); skipped`); await release(h.id); return}
@@ -182,8 +184,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   async function claudeTurn(m, scene, w) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
-    const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129), and what was said lately
-    const prompt = memberPrompt(m.sess.turns, scene, w) + talkText(b0);
+    const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129), the memory line (#155), what was said lately
+    const prompt = memberPrompt(m.sess.turns, scene, w) + (scene ? '' : memoryNote(b0) + talkText(b0));
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
     const ac = new AbortController(); aborts.add(ac);
     const q = query({prompt, options: {

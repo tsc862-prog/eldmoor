@@ -126,7 +126,7 @@ export function briefText(b) {
   bits.push(b.foe ? 'fighting ' + b.foe : 'no foe engaged');
   if (b.table) bits.push('a scene is open at the table');
   if (b.autopilot) bits.push('no order from you for a while, so autopilot carries on your last order (give a command to take over)');
-  return `\n\nRight now (from the game, trust this over anything you said before): ${bits.join(' | ')}.` +
+  return `\n\nRight now (from the game, trust this over anything you said before): ${bits.join(' | ')}.` + memoryNote(b) +
     (b.news && b.news.length ? `\nNew since you last looked: ${b.news.join(' / ')}` : '\nNothing new since you last looked.') + talkText(b) +
     '\nAct through the tools (look, status, move_to, hunt, rest, wait, ...): words alone change nothing in the world.';
 }
@@ -137,6 +137,13 @@ export function talkText(b) {
   const heard = Array.isArray(b.heard) ? b.heard : [], met = Array.isArray(b.met) ? b.met : [];
   return (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
     (met.length ? `\nCompanions you have met: ${met.join(', ')}. You know each other: do not introduce yourself again or repeat a line; talk to move the party forward (propose, vote, lead_to, or answer a question you were asked).` : '');
+}
+
+// Your own notes that bear on the moment (issue #155, src/sim/notebook.js relevant): title and id only, so the model can
+// recall them. Every turn prompt carries it (local turns inside briefText, Claude turns on their own); '' when none.
+export function memoryNote(b) {
+  const m = b && Array.isArray(b.memories) ? b.memories : [];
+  return m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '';
 }
 
 // The line a turn prompt carries about why it started (the hero's own events only, issue #123).

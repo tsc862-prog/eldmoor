@@ -4,6 +4,7 @@ import {LAIR} from '../world/map.js';
 import {BOSSES} from '../data/bosses.js';
 
 export const S={
+  worldVoice:'dm', // issue #164: 'dm' = background heroes and townsfolk say no scripted lines (only the DM voices world characters who meet the Fellowship); 'scripted' brings the old barks back (Settings)
   agents:[],      // heroes, living and dead (graves are recycled past 40)
   mobs:[],
   fx:[],          // transient effects: damage text, bolts, boss rings

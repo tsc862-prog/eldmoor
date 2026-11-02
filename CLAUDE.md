@@ -213,6 +213,17 @@ is silent, and scene choices time out to the scripted branch, so the world never
   plays them scripted); a 429 pauses the queue (retry-after, else backoff) and only writing kinds retry.
   `/health` shows `queues.anthropic` (depth, in flight, 429s, dropped). Keep `RELAY_ANTHROPIC_CONCURRENCY +
   RUNNER_CLAUDE_MAX` within the org's limit; with a very low limit, play runners with local models.
+- Memories (#155, `src/sim/notebook.js`): every agent hero keeps its own searchable notes with `remember {title,
+  text, tags[], about?}`, `recall {query?, tag?, about?, id?, n?}` (title and tag words 3, about 2, text 1, +1 pinned,
+  plus recency; a tag or about filters), `update_memory`, `forget` and `pin`; 200 notes of 600 characters, the oldest
+  unpinned is archived (40 kept, still found), 20 pins, 60 writes a game day. Saved with the world on the hero
+  (`a.memories`); each turn's state header names the 3 most relevant (people in sight and the party, region, town,
+  foe, adventure, an open scene or vote) by id and title only. Hardcore: they die with the hero; in the Fellowship a
+  pinned note tagged `letter` is found by whoever takes the fallen member's place, nothing else. The DM has the same
+  tools over its four note sections (search across them; `dm_status.relevant_notes`). Mirrored read-only as Markdown
+  by the relay (from the page) or the headless world: `logs/agents/<world>/<heroId>-<name>/memory/` (`MEMORY.md`
+  plus `<id>-<slug>.md` with front matter), the DM under `dm/memory/`; never read back. `--no-mirror` (or
+  `RELAY_MIRROR=0`) turns the files off. The Memory tab and the DM panel's **Notes** filter show them.
 - `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
   the journal and a save/restore, proves a silent agent never stalls the world, and runs two
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero

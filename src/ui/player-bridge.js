@@ -13,6 +13,7 @@ import {setAgentTag} from '../sim/chat.js';
 import {makeWatch} from '../sim/behavior.js';
 import {mindsOf} from '../sim/fellowship.js';
 import {WORLD_ID} from '../world/map.js';
+import {mirrorDirty} from '../sim/notebook.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
 let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null;
@@ -48,7 +49,7 @@ function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.sta
 const seat=id=>id!=null?playerSeat(id):playerSeat();
 function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecting';
   try{ws=new WebSocket(bridgeUrl())}catch(e){ws=null;status='offline';later();return}
-  ws.onopen=()=>{status='connected';lastHello='';links={};runners={};hello()};
+  ws.onopen=()=>{status='connected';lastHello='';links={};runners={};sentMem.clear();hello()};
   ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
     if(m.type==='call'){const a=seat(m.hero);let r;
       try{r=a?await hostCall(a.id,String(m.tool),m.args||{}):{ok:false,error:m.hero!=null?'Hero #'+m.hero+' is not agent-played in the game.':'No agent-played hero in the game.'}}catch(err){r={ok:false,error:String(err&&err.message||err)}}
@@ -64,7 +65,7 @@ function disconnect(){if(timer){clearTimeout(timer);timer=null}if(ws){const w=ws
 // On page load (a restored save may hold agent-played heroes) and every few seconds after,
 // so the relay always knows which heroes are played.
 export function initBridge(){if(wanted())connect();setInterval(()=>{if(wanted()){if(!ws)connect();else hello()}},3000);
-  setInterval(behaviorTick,BEHAVIOR_MS)}
+  setInterval(behaviorTick,BEHAVIOR_MS);setInterval(mirrorTick,MIRROR_MS)}
 
 // Behavior logs (issue #129): the world digest, game-side anomalies and settled Mind decisions (sim/behavior.js) go to
 // the relay over this socket, which writes logs/behavior/<world>/ for the watcher. Read-only on the world; held
@@ -74,3 +75,10 @@ function behaviorTick(){let out;try{out=watch.tick()}catch(e){return}
   for(const o of out){held.push(o);if(held.length>BEHAVIOR_HOLD)held.shift()}
   if(!ws||ws.readyState!==1||status!=='connected')return;
   while(held.length){const o=held.shift();send({type:'behavior',kind:o.kind,rec:o.rec})}}
+
+// Agent memories (issue #155): the notebooks that changed (sim/notebook.js mirrorDirty) go to the relay, which writes them as
+// Markdown under logs/agents/<world>/ for the owner (scripts/memory-mirror.mjs). Only while connected; everything is sent
+// again after a reconnect. The relay never sends any of it back, and no agent reads those files.
+const MIRROR_MS=2000,sentMem=new Map();
+function mirrorTick(){if(!ws||ws.readyState!==1||status!=='connected')return;let out;try{out=mirrorDirty(sentMem)}catch(e){return}
+  if(!out.length)return;send({type:'mirror',seats:out.map(o=>o.seat)});for(const o of out)sentMem.set(o.key,o.sig)}

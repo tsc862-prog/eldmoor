@@ -56,7 +56,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, takeClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, takeClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -84,11 +84,16 @@ export function systemPrompt(st) {
     '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns early, something needs you: read the events.',
     '- Grow stronger: hunt in your level band, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice. Read it back with journal_read when you resume.',
+    MEMORY_ORDERS,
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
   ].filter(s => s !== null).join('\n');
 }
+
+// Memories (issue #155): the line every hero's standing orders carry; withMemoryOrders adds it to an older session's prompt.
+export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
+export const withMemoryOrders = sys => /- Keep memories: /.test(String(sys || '')) ? sys : String(sys || '') + '\n' + MEMORY_ORDERS;
 
 // Every call names its hero and this runner (the id it claimed with), so the relay routes it to that
 // hero only and refuses it for a hero another runner holds (issue #123).
@@ -213,6 +218,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const moved = migrateLegacy(); if (moved) console.log('[agent] ' + moved);
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
+  sess.system = withMemoryOrders(sess.system); // memories (#155) for a session that began before them
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
@@ -248,8 +254,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
-    const prompt = turnPrompt(sess.turns, w);
-    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // for the behavior log only (issue #129): a Claude turn's prompt does not carry the brief
+    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries only its memory line (#155)
+    const prompt = turnPrompt(sess.turns, w) + memoryNote(b0);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
