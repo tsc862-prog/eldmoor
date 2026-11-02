@@ -6,7 +6,7 @@
 // sent:{id, system, user} is the exact system prompt and user content, size-capped.
 //
 //   POST /decide   {kind:'townPlan'|'cryptCall'|'fightOrFlee'|'say', snapshot:{...options:[...]}}  (cryptCall and say carry no options)
-//                  {kind:'persona'|'backstory'|'memory', snapshot:{...companions:[{id,name,...}]}}  (Fellowship writing, #68:
+//                  {kind:'persona'|'backstory'|'memory'|'chapter', snapshot:{...companions:[{id,name,...}]}}  (Fellowship writing, #68:
 //                  persona -> {voice,wants,fears,quirk,never_says,stances:{id:line}}; backstory -> {family,arms,defining,
 //                  flaw,wants,joined,link,summary,link_id,link_hero,link_kind}; memory -> {long}; plus model)
 //                  Any request may add provider:'anthropic'|'ollama'|'openai'|'google', model:'<id or tag>', effort
@@ -44,7 +44,7 @@ import {memoryMirror} from './memory-mirror.mjs'; // agent memories mirrored as 
 import {behaviorLog} from './behavior-log.mjs'; // behavior logs for the watcher (issue #129) // app runners: the page starts and stops agent runners (--runners)
 import {makeProviders, PROVIDERS, isLocal, MODEL_RE, DEFAULT_MODEL, PRICES, costOf} from './providers/index.mjs';
 import {makeLimiter, rateLimitOf} from './providers/limiter.mjs'; // per-provider concurrency (the org's concurrent-request cap) // Mixed minds (#97): one adapter per provider
-import {KINDS, OPTION_KINDS, WRITE_KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason, cleanText, PERSONA_FIELDS, STANCE_MAX, BACKSTORY_FIELDS, LINK_KINDS, MEMORY_LONG_MAX} from '../src/data/prompts.js';
+import {KINDS, OPTION_KINDS, WRITE_KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason, cleanText, PERSONA_FIELDS, STANCE_MAX, BACKSTORY_FIELDS, LINK_KINDS, MEMORY_LONG_MAX, CHAPTER_TITLE_MAX, CHAPTER_TEXT_MAX} from '../src/data/prompts.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Cheapest current model (claude-api skill, cached 2026-10-06): Haiku 5.5, $0.10 in / $0.50 out per 1M tokens (prompts up to 100K).
@@ -59,7 +59,7 @@ export const TIMEOUT_MS = 2500, MAX_BODY = 32 * 1024, DEV_ORIGIN = 'http://local
 // for these, so they get a long timeout. memory (a summary of capped memories) stays on the default tier.
 // Env override: RELAY_WRITE_MODEL for persona and backstory.
 export const KIND_MODEL = {persona: 'claude-sonnet-5-5', backstory: 'claude-sonnet-5-5'};
-export const KIND_TIMEOUT = {persona: 40000, backstory: 60000, memory: 15000};
+export const KIND_TIMEOUT = {persona: 40000, backstory: 60000, memory: 15000, chapter: 15000};
 export const ECHO_MAX = 6000; // chars of system and of user content echoed back per reply
 export const LOG_FILE = join(ROOT, 'logs', 'relay.jsonl');
 // Concurrent Anthropic requests the relay allows at once (env RELAY_ANTHROPIC_CONCURRENCY). The owner's API org
@@ -135,6 +135,7 @@ export function checkWriting(kind, j, snap = {}) {
   const comps = Array.isArray(snap.companions) ? snap.companions : [], out = {};
   const need = (fields) => {for (const k in fields) {const v = cleanText(j[k], fields[k]); if (!v) throw new Error('missing ' + k); out[k] = v}};
   if (kind === 'memory') {const v = cleanText(j.long, MEMORY_LONG_MAX); if (!v) throw new Error('missing long'); return {long: v}}
+  if (kind === 'chapter') {need({title: CHAPTER_TITLE_MAX, text: CHAPTER_TEXT_MAX}); return out} // a journal chapter (#153)
   if (kind === 'persona') {need(PERSONA_FIELDS); out.stances = {};
     for (const c of comps) {const v = cleanText(j.stances && j.stances[String(c.id)], STANCE_MAX); if (v) out.stances[String(c.id)] = v}
     return out}
