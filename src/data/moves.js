@@ -108,7 +108,7 @@ export const PASSIVES={
   knifehand:{name:'Knife-Hand',cls:'Rogue',lvl:3,crit:.06,desc:'+6% Crit.'},
   slipblow:{name:'Slip the Blow',cls:'Rogue',lvl:6,taken:.95,desc:'Blows on you land at 95%: you are seldom where the weapon thought.'},
   practisedear:{name:'Practised Ear',cls:'Skald',lvl:2,crit:.05,desc:'+5% Crit: you hear the beat of the fight.'},
-  lastverse:{name:'Last Verse',cls:'Skald',lvl:7,takenBelow:{hp:.4,mul:.9},desc:'Under 40% health, blows on you land at 90%: you sing louder when it matters.'},
+  lastverse:{name:'Last Verse',cls:'Skald',lvl:7,takenBelow:{hp:.5,mul:.9},desc:'Under half health, blows on you land at 90%: you sing louder when it matters.'},
   // ---- Specialisation passives (issue #82), learned with the path at level 10 ----
   wardenvow:{name:"Warden's Vow",cls:'Warrior',spec:'warden',lvl:10,defense:.05,health:.04,desc:'+5% Defense and +4% Health.'},
   reaverfury:{name:"Reaver's Fury",cls:'Warrior',spec:'reaver',lvl:10,crit:.05,openerMul:1.15,desc:'+5% Crit; the first blow on an unhurt foe does 15% more.'},

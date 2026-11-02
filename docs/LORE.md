@@ -219,7 +219,7 @@ At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/
 The **Warden** path is a living warrior's vow to stand guard over friends; it has nothing to do with the undead wardens of the Sunken Crypt (Lich-Warden Vesk and his Grave Wardens), who guard the dead. The word is shared, the calling is not. Trapper: Thornfield now also opens on one worthwhile foe (an elite, a boss, a duellist or a mob near the Trapper's level), not only on a pack; Mender: Mending Touch answers a friend below 72% health.
 
 ## Skald (issue #83)
-The sixth class: a **Skald** is a war-singer, one of the road-poets who march behind a shield wall and make the fight easier to bear. Not a healer and not a mage: the voice is the weapon, and the work is done to the whole company at once. In the Fellowship a Skald is a DPS pick (Mage, Hunter, Rogue or Skald); the three DPS places still prefer three different classes. Ability score Presence (then Wits); trained in Persuasion, Lore, Intimidation and Perception. Mid health, a medium reach of about three tiles, no armour training (light gear, hide and cloth like a Rogue). Banner colours: rose and plum, with a gold-bodied lute carried on the right.
+The sixth class: a **Skald** is a war-singer, one of the road-poets who march behind a shield wall and make the fight easier to bear. Not a healer and not a mage: the voice is the weapon, and the work is done to the whole company at once. In the Fellowship a Skald is a DPS pick (Mage, Hunter, Rogue or Skald); the three DPS places still prefer three different classes. Ability score Presence (then Wits); trained in Persuasion, Lore, Intimidation and Perception. Mid health, a medium reach of about three tiles, no armour training (by canon light gear, hide and cloth like a Rogue; the gear tables in `src/data/items.js` do not list the Skald yet). Banner colours: rose and plum, with a gold-bodied lute carried on the right.
 
 | Kind | Name | Level | Gist |
 | --- | --- | --- | --- |
@@ -227,7 +227,7 @@ The sixth class: a **Skald** is a war-singer, one of the road-poets who march be
 | Verse | **Rallying Verse** | 3 | the whole company within five tiles takes blows at 85% for 8 s |
 | Verse | **Dirge of Doubt** | 6 | one foe loses 1.5 s and takes 20% more for 8 s (a save resists) |
 | Passive | **Practised Ear** | 2 | +5% Crit |
-| Passive | **Last Verse** | 7 | under 40% health, blows land at 90% |
+| Passive | **Last Verse** | 7 | under half health, blows land at 90% |
 
 Paths at level 10:
 
