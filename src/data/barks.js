@@ -61,12 +61,13 @@ export const BARKS={
 
 // Optional class flavour, mixed into the pool for that trigger and faction.
 export const CLASS_BARKS={
-  spot:[{Mage:['Distance is my friend. Let us keep it so.'],Rogue:['It cannot hit what it cannot find.'],Hunter:['Range, then patience, then the shot.']},
-        {Mage:['Burn first. Think second.'],Rogue:['From behind, quiet. That is how.'],Warrior:['Shield up. Teeth out.']}],
-  flee:[{Priest:['The healer cannot heal from the grave.']},{Priest:['Spirits, carry me. Faster.']}],
+  spot:[{Mage:['Distance is my friend. Let us keep it so.'],Rogue:['It cannot hit what it cannot find.'],Hunter:['Range, then patience, then the shot.'],Skald:['A level {level} {mob}. I have a verse for exactly this.','Rally to the chorus. Here it comes.'],Wildspeaker:['The ground does not like that {mob}. I shall ask it to object.','Root and bramble, hold it for me.']},
+        {Mage:['Burn first. Think second.'],Rogue:['From behind, quiet. That is how.'],Warrior:['Shield up. Teeth out.'],Skald:['Big {mob}! Good. A big foe wants a big song.','Sing it down, sing it down!'],Wildspeaker:['Green words, wake. Hold it.','The earth is on my side. It always is.']}],
+  flee:[{Priest:['The healer cannot heal from the grave.'],Skald:['A change of key, nothing more.','The refrain can wait. I cannot.'],Wildspeaker:['The wood forgives a retreat. Come away.','The green will keep. Come away, all of you.']},{Priest:['Spirits, carry me. Faster.'],Skald:['The song is not over. I am just singing it from farther away.','Run now, boast later. I have the verse ready.'],Wildspeaker:['Roots, hold it! I am not staying!','No seed grows on this ground today. Out!']}],
   levelup:[{Warrior:['The armor fits better each level.']},{Mage:['More power. Yes. More.']}],
   epic:[{Hunter:['A hunter notices such things. {item}. Noted.']},{Mage:['{item}. Finally, something that can keep up with me.']}],
-  duel:[{Rogue:['You will not see the second blade.']},{Warrior:['Shield to shield, then!']}],
-  idle:[{Priest:['Someone is always bleeding. I wait.']},{Hunter:['Bow strung. Hands idle. Wrong.']}],
+  duel:[{Rogue:['You will not see the second blade.'],Skald:['{target}. Let us see whose verse is the better.','Hear me out, {target}. Briefly, and with steel.'],Wildspeaker:['{target}, the ground is listening. I would not trouble it.','Forgive me, {target}. The briars are not forgiving.']},{Warrior:['Shield to shield, then!'],Skald:['{target}! You will be in my next song!','Sing, {target}! You are going to need the breath!'],Wildspeaker:['{target}, the brambles like you already.','Stand on that spot, {target}. Go on. Stand there.']}],
+  idle:[{Priest:['Someone is always bleeding. I wait.'],Skald:['A quiet street is a poor audience. I wait.','The next verse will not write itself. Alas.'],Wildspeaker:['City stone. Not one root in it. I miss them.','Even here a seed finds a crack. I am taking notes.']},{Hunter:['Bow strung. Hands idle. Wrong.'],Skald:['Humming a war-song. Quietly. For once.','A hall like this wants a song. I am the song.'],Wildspeaker:['Too much smoke. I smell moss in my sleep.','Dry ground. Dry, burned ground. I do not like it.']}],
+  mourn:[{Wildspeaker:['I will plant a seed where {target} lies. The grove always begins somewhere.'],Skald:['{target}. I will carry your verse.']},{Wildspeaker:['A seed for {target}. Something green will mark the place.'],Skald:['{target}! I will sing you a long one.']}],
   banter:[{Priest:['Do try to bleed less, all of you.']},{Priest:['Stand still so I can mend you!']}],
 };

@@ -273,6 +273,8 @@ Paths at level 10:
 
 Skald is a generic fantasy role (the word is an old one for a poet of war); the abilities, paths and quirks here are Eldmoor's own. Soothsinger is not a Priest: the lullaby is a small mercy for a whole company, where a Priest's healing is aimed and large.
 
+Voice (`CLASS_BARKS` in `src/data/barks.js`, spot, flee, duel, idle, plus mourn): the Skald treats everything as a song, with verses, refrains and keys, and cheerfully offers a foe a place in the next one; Concord Skalds are rueful and exact, Warband Skalds loud. Never a franchise bard's phrase.
+
 ## Wildspeaker (issue #83)
 The seventh class: a **Wildspeaker** is a hedge-and-hollow healer, one of the walkers who learned the green words from old gardens, field edges and the stubborn groves the roads cut through. Where a Priest asks light of the heavens, a Wildspeaker asks it of the ground: moss, bramble and root. In the Fellowship a Wildspeaker is the other choice for the Healer place (Priest or Wildspeaker). Ability score Insight (then Grit); trained in Healing, Survival, Tracking and Empathy. Sturdier than a Priest (health 52) with a shorter reach of about two and a half tiles. Mends one friend at a time and holds foes in place, where the Priest's strength is the mass mend. Banner colours: moss and teal, with a crooked staff whose head curls over like a fern.
 
@@ -292,6 +294,8 @@ Paths at level 10:
 | **Springwarden** | Insight, Grit / Empathy | Evergreen (+6% Health, healing +10%) | **Antler Ward** (every friend within five tiles takes blows at 80% for 6 s) | keeps the company standing |
 
 Wildspeaker is a generic fantasy role; the abilities, paths and quirks here are Eldmoor's own. The **Springwarden** path shares the word "warden" with the Warrior's Warden path and the Crypt's Grave Wardens, and nothing else: it is a green crown over friends, not a sworn guard.
+
+Voice (`CLASS_BARKS` in `src/data/barks.js`, spot, flee, duel, idle, plus mourn): the Wildspeaker talks to ground, root and bramble, misses living green in a city, and plants a seed where a friend falls, so that something grows to mark the place; the habit grew from a grove the Wildspeakers' teachers once saw burned, and they have planted at graves ever since. Concord lines are gentle and dry, Warband lines clipped.
 
 ## Bonds and blood debts
 Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,
