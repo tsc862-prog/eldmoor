@@ -23,6 +23,7 @@ import {select,setView} from './controls.js';
 import {mindOf,mindText,mindTitle} from './mindctl.js'; // the frame shows the mind; it is set in Members and minds (#145)
 import {openSheet} from './sheet.js';
 import {runnerControl,runnerSig} from './runners.js'; // app runners: Start / Stop on an agent-played member
+import {mountDmFrame,renderDmFrame} from './dmframe.js'; // the DM beside the party (owner request)
 import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
 
 const $=id=>document.getElementById(id);
@@ -116,7 +117,7 @@ function hideTip(){tipFor=null;if(tip)tip.style.display='none'}
 export function initFrames(){root=$('frames');if(!root)return;
   const head=el('div','frhead');const ttl=el('span','frttl');root._ttl=ttl;
   const cmp=el('button','mini','Compare the five');cmp.dataset.pfsheet='1';cmp.title='Side by side: scores, combat, skills, gear, oaths and bonds';
-  head.append(ttl,cmp);list=el('div','frlist');root.append(head,list);
+  head.append(ttl,cmp);list=el('div','frlist');root.append(head,list);mountDmFrame(root);
   root.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
     if(t.closest('[data-pfsheet]')){openSheet();return}
     const fill=t.closest('[data-pffill]');if(fill){offerReplacement(fill.dataset.pffill);renderFrames();return}
@@ -131,7 +132,7 @@ export function initFrames(){root=$('frames');if(!root)return;
 
 export function renderFrames(){if(!root)return;const F=S.fellowship;
   if(!F){if(!root.hidden){root.hidden=true;list.replaceChildren();for(const k in frames)delete frames[k];hideTip()}return}
-  root.hidden=false;setText(root._ttl,F.name);
+  root.hidden=false;setText(root._ttl,F.name);renderDmFrame();
   const ms=fellowshipMembers();
   ms.forEach((m,i)=>{const hid=m.hero?m.hero.id:null;let fr=frames[m.slot];
     if(!fr||fr.hid!==hid){const nf=build(m);if(fr&&fr.node.parentNode===list)list.replaceChild(nf.node,fr.node);fr=frames[m.slot]=nf}
