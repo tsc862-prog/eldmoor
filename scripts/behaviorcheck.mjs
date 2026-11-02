@@ -160,6 +160,7 @@ const lastW = world[world.length - 1] || {};
 ok(lastW.members && lastW.members.every(m => m.mind && m.state && m.hp != null && m.lvl && m.idleMin != null), 'digest members carry mind, state, HP, level and idle time');
 ok(lastW.members && lastW.members.some(m => m.id === A.id && m.link), 'digest members carry the relay link state');
 ok(world.some(w => w.table && w.table.opened > 0) && world.some(w => w.votes && w.votes.reflex > 0) && world.some(w => w.levers && w.levers.refused >= 3), 'digests count Table scenes, reflex votes and lever refusals');
+ok(world.every(w => w.dmFocus && w.dmFocus.fellow <= w.dmFocus.acts) && world.some(w => w.dmFocus && w.dmFocus.acts > 0 && w.dmFocus.share != null), 'digests carry dmFocus: DM actions and the share that touched the Fellowship (issue #165)');
 ok(world.some(w => Object.keys(w.chat || {}).length) || true, 'digests count chat by channel');
 ok(decisions.filter(d => d.src === 'relay').length === 6 && decisions.filter(d => d.src === 'relay').every(d => d.status === 504), 'six relay decision lines with status 504');
 ok(decisions.some(d => d.src === 'game' && d.outcome), `settled Mind decisions from the game (${decisions.filter(d => d.src === 'game').length})`);

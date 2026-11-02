@@ -18,6 +18,7 @@ import {renderNotebook} from './notebook.js'; // agent memories (#155)
 import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
+import {campSummary} from '../sim/camp.js';
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
@@ -110,6 +111,7 @@ function formView(node){const f=draft.fac;
 function topView(node){const F=S.fellowship;
   const h=el('div','fhead');h.append(el('div','fname f'+F.fac,F.name));
   const alive_=fellows().length;h.append(el('div','dm','The '+FAC[F.fac].name+' · lodged in '+F.hall+' · founded day '+(Math.floor(F.founded/1440)+1)+' · '+alive_+' of 5 standing'+(F.past.length?' · '+F.past.length+' fallen':'')));
+  const cs=campSummary();if(cs)h.append(el('div','gd',cs)); // camp: how long, who sleeps, who watches (#178)
   node.append(h);
   const bar=el('div','fbar');
   const fol=el('button',null,'Follow');fol.dataset.fact='follow';fol.setAttribute('aria-pressed',String(cam.view==='fellow'));
@@ -184,7 +186,7 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm&&patch(top,n=>formView(n))){sigForm=sig;sigTop=''}return}
   if(logBox!==$('campaign'))logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+(campSummary()||'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
   // patched in place (#145): never under an open picker, a press or a scroll; open threads and days stay open
   if(sig!==sigTop&&patch(top,n=>topView(n))){sigTop=sig;sigForm=''}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog&&patch(logBox._b,n=>renderCampaignLog(n)))sigLog=ls}
