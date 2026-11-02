@@ -90,8 +90,8 @@ export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
 
 export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)return 'Only a Fellowship member can put something to the party.';
   if(!PROP_KINDS.includes(kind))return 'Kind must be one of: '+PROP_KINDS.join(', ')+'.';
-  if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break.';
-  if(openProps().some(P=>P.kind===kind))return 'A proposal to '+KIND_TEXT[kind]+' is already open.';
+  if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break: the Fellowship is not camped. Go on with move_to'+(leaderOfF()===a?' or lead_to':'')+'.';
+  {const O=openProps().find(P=>P.kind===kind);if(O)return 'Proposal '+propLine(O)+' is already open. Vote on it with vote('+O.id+', yes|no), or wait for it to settle'+leftText(O)+' before proposing another.'}
   const d=clean(details,200);if(!d&&kind==='other')return 'Say what you propose.';
   // presence (#182): only members within shouting range hear a proposal and vote; the absent hear of it on rejoining
   const away=fellows().filter(b=>b!==a&&!inRange(a,b));
@@ -108,8 +108,13 @@ export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)r
   if(!(proposeHook&&proposeHook(P)))reflexFill(P);
   settleIfDone(P);return P}
 
-export function castVote(a,id,v,reason,by='agent'){const P=propById(id);if(!P)return 'No proposal '+id+'.';if(P.status!=='open')return 'That proposal is already '+P.status+'.';
-  if(!a.fellow)return 'Only members vote.';if(!voters(P).includes(a))return 'You are too far from the others to hear this proposal; it reaches you when you rejoin them (or by courier).';v=String(v||'').toLowerCase();if(v!=='yes'&&v!=='no')return 'Vote yes or no.';
+// Refusal texts that name the open proposals and the legal next step (#400): agents act on them instead of retrying.
+const propLine=P=>'#'+P.id+' ('+P.kind+': "'+P.details+'")';
+const leftText=P=>{const m=Math.max(0,Math.round(P.until-S.gameMin));return ' (about '+m+' game min)'};
+export function openNote(){const O=openProps();return O.length?'Open now: '+O.map(P=>propLine(P)+', vote('+P.id+', yes|no)').join('; ')+'.':'No proposal is open; put one to the party with propose {kind, details}.'}
+export const noProposal=id=>'No proposal '+id+'. '+openNote();
+export function castVote(a,id,v,reason,by='agent'){const P=propById(id);if(!P)return noProposal(id);if(P.status!=='open')return 'Proposal '+propLine(P)+' is already '+P.status+(P.result?' ('+P.result+')':'')+'; there is nothing to vote on. '+openNote();
+  if(!a.fellow)return 'Only members vote.';if(!voters(P).includes(a))return 'You are too far from the others to hear this proposal; it reaches you when you rejoin them (or by courier).';v=String(v||'').toLowerCase();if(v!=='yes'&&v!=='no')return 'Vote yes or no: vote('+P.id+', yes|no, reason).';
   P.votes[a.id]={v,reason:clean(reason,120),by,at:Math.round(S.gameMin)};settleIfDone(P);return P}
 
 // Members a reflex may vote for (no runner, and the owner said go on; or no host): they vote at once.
