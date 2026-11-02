@@ -439,5 +439,24 @@ console.log('start gate: ready, not just claimed');
   delete globalThis.__questLog;setTab('stats');uiFast()}
 
 
+// ---- wide screens (owner request): column count by width, the moved panels, the map follows its box ----
+{const {columnCount}=await import('../src/ui/layout.js');
+  const cols=()=>{uiFast();return $('colL').hidden?($('side').parentNode.className.includes('cols3')?-1:0):3};
+  const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
+  const keep=window.innerWidth;
+  ok(!!sim.S.fellowship,'wide layout: a Fellowship stands for the column checks');
+  for(const [w,n,st,hr] of [[1000,2,'side','colM'],[1600,2,'side','colM'],[2600,3,'colL','side'],[390,1,'side','colM'],[1000,2,'side','colM']]){
+    window.innerWidth=w;uiFast();
+    ok(columnCount()===n,w+' px: '+n+' column(s)');
+    ok(where('storySec')===st&&where('heroSec')===hr&&(w<2200?where('worldgrp')==='side':where('worldgrp')==='colL'),w+' px: Story, World and Hero are in '+st+' / '+hr);
+    ok($('colL').hidden===(w<2200)&&$('side').parentNode.className.includes('cols3')===(w>=2200),w+' px: the left column is '+(w<2200?'hidden':'shown'))}
+  const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  ok(css.includes('@media (min-width:1600px){')&&css.includes('.shell{max-width:none}'),'full width from 1600 px (no cap)');
+  ok(/@media \(min-width:1200px\)\{\.screen\{aspect-ratio:auto;height:clamp\(380px,70vh/.test(css),'the map is taller from 1200 px');
+  ok(/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'one column below 920 px');
+  const draw=readFileSync(new URL('../src/render/draw.js',import.meta.url),'utf8');
+  ok(/new ResizeObserver\(resize\)\.observe\(screenEl\)/.test(draw),'the map canvas resizes with its box (ResizeObserver on the screen)');
+  window.innerWidth=keep;uiFast()}
+
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
