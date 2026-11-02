@@ -221,7 +221,7 @@ function outcome(sc){const L=sc.beats,F=S.fellowship,by=k=>L.filter(b=>b.k===k).
     const adv=(S.adventures||[]).find(v=>v.id===sc.ctx.adv);
     if(adv&&adv.phase==='active'){adv.tablePick={k:sc.ctx.k,br};if(adv.stage==='choose')adv.stage='go';const ld=byId(adv.lead);if(ld&&(ld.state==='hunt'||ld.state==='travel')){ld.state='travel';ld.dest=null}}}
   else if(sc.kind==='decision'){const P=resolveProp(propById(sc.ctx.prop),'voted at the table');tail=P&&P.result?P.result+'.':''}
-  else if(COMBAT[sc.kind]){const f=foeOf(sc),fl=by('retreat');tail=(f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?'stands at '+Math.max(0,Math.round(f.hp/(f.maxhp||maxHp(f))*100))+'%':'still stands'):'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')}
+  else if(COMBAT[sc.kind]){const f=foeOf(sc),fl=by('retreat');tail=(f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?hurtWord(f.hp/(f.maxhp||maxHp(f))):'still stands'):'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')}
   else if(sc.kind==='site'||sc.kind==='room'){const g=CRYPT.group;tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
   else if(sc.kind==='check')tail='The road goes on.';
   else if(EXTRA[sc.kind])tail=EXTRA[sc.kind].outcome(sc)||'';
@@ -267,7 +267,7 @@ export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks 
     open('ambush','Ambush: '+f.name,[f,' of the enemy falls on ',a,' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+'.'],{foe:f.id});return}
   // elite or named foe
   for(const a of L){const m=a.target;if(a.state!=='fight'||!m||m.kind!=='mob'||!(m.elite||m.named)||!m.alive)continue;if(seen('elite:'+m.id,COOL.elite))continue;
-    open('elite',mobName(m),[a,' meets ',gd(mobName(m)+(m.title?', '+m.title:'')),', level '+m.lvl+', in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+'.'],{mob:m.id});return}
+    open('elite',mobName(m),[a,' meets ',gd(mobName(m)+(m.title?', '+m.title:'')),' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+'.'],{mob:m.id});return}
   // the Crypt: going in, and the inner chamber
   const g=CRYPT.group;if(g&&g.phase==='inside'&&g.mem.some(a=>a.fellow)){
     if(!g.tSite){g.tSite=1;open('site',CRYPT.name,['The stair goes down into ',gd(CRYPT.name),'. Water drips; something below has heard the door.'],{});return}
@@ -296,6 +296,8 @@ setFellowChoice((adv,sc,a,spec)=>{if(!holdOk(fellows()))return undefined;
   adv.stage='choose';return 'wait'});
 
 // What the table looks like to one member (agent tools: look, status, wait).
+// A foe's state in words for the members (#188: no HP numbers to agents; the watcher's banner still has the bars).
+const hurtWord=f=>f>=.95?'stands unhurt':f>=.6?'is hurt':f>=.25?'is badly hurt':'is close to falling';
 export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))return null;const cur=byId(sc.ids[sc.i]);
   const v={scene:sc.title,kind:sc.kind,frame:plain(sc.frame),phase:sc.phase,order:sc.ids.map(byId).filter(Boolean).map(b=>b.name),
     turn:sc.phase==='turn'&&cur?cur.name:null,your_turn:sc.phase==='turn'&&cur===a,acted:!!sc.acts[a.id]};

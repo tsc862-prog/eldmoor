@@ -38,6 +38,8 @@ jobs:
         run: npm run dmcheck
       - name: In-game channels (planted secrets never reach a hero)
         run: npm run channelcheck
+      - name: Learn the world (lorecheck)
+        run: npm run lorecheck
       - name: Tiered memory (landmarks, chapters, journal_search)
         run: npm run tiercheck
       - name: Behavior logs (mock runners, known anomalies logged and reported)

@@ -117,6 +117,7 @@ other. The rules:
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
 - `npm run channelcheck`: the in-game channels rule (see "In-game channels").
+- `npm run lorecheck`: learning the world (#188, see "Agent player").
 - `npm run tiercheck`: tiered long-term memory (landmarks, chapters, `journal_search`, the overview, migration; see "Agent player").
 - `npm run behavior-report`, `npm run behaviorcheck`: behavior logs for review (see "Behavior logs").
 
@@ -217,6 +218,17 @@ is silent, and scene choices time out to the scripted branch, so the world never
   plays them scripted); a 429 pauses the queue (retry-after, else backoff) and only writing kinds retry.
   `/health` shows `queues.anthropic` (depth, in flight, 429s, dropped). Keep `RELAY_ANTHROPIC_CONCURRENCY +
   RUNNER_CLAUDE_MAX` within the org's limit; with a very low limit, play runners with local models.
+- Learn the world (#188, `src/sim/lore.js`): an agent hero knows only what it saw, heard or was told (`a.lore`, saved with
+  the hero). `look` describes a creature it does not know ("a lean, quick wolf-like beast") with its own threat read in words
+  (a d20 Lore/Perception read at first sight, from a hash, no RNG); never a level or HP number (events, the state header,
+  `fight`, Table frames too). Fighting, killing, its tricks, a near death (below 30% HP: an event and a `lesson` reflection
+  moment), a hero falling to it in sight, and any line heard that names it (say in earshot, a companion's shout, the
+  narrator, a townsperson, `read_chronicle`; warning words mark it dangerous) teach its name, measure and tricks; the `lore`
+  tool lists it all. Places: home region and friendly towns, then where it has been, landmarks seen, places heard of (quest,
+  jobs, chat); `move_to`/`lead_to` refuse unknown places but always take a direction ("explore north") or "x,y". `hunt`
+  takes `prey` (a creature known by name) or whatever is around except what it learned to fear; `list_jobs` gives the
+  gate's rumour, not "fits"; townsfolk warn a green blade off the next region up. Background heroes keep the scripted
+  level logic and never get lore; the hooks only touch `a.player` heroes, so `npm run sim` is unchanged.
 - Memories (#155, `src/sim/notebook.js`): every agent hero keeps its own searchable notes with `remember {title,
   text, tags[], about?}`, `recall {query?, tag?, about?, id?, n?}` (title and tag words 3, about 2, text 1, +1 pinned,
   plus recency; a tag or about filters), `update_memory`, `forget` and `pin`; 200 notes of 600 characters, the oldest

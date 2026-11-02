@@ -318,6 +318,7 @@ delete S.fellowship.wait; // a Crypt order waiting from the section above (crypt
 run(1);
 const FP = F_.fellowParty();
 ok(FP && FP.leader === RA, `the Fellowship musters with ${RA.name} leading (${FP && FP.mem.length} in the party)`);
+(await import('../src/sim/lore.js')).hear(RA, 'They say Mirefen lies past the river.', 'a townsperson'); // the leader has heard of it (#188)
 ok(!act(RB, 'lead_to', {target: 'Mirefen'}).ok, 'only the leader may lead');
 const ld = act(RA, 'lead_to', {target: 'Mirefen'});
 ok(ld.ok, `lead_to: ${ld.leading || ld.error}`);
