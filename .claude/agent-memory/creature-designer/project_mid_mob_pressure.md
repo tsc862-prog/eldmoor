@@ -6,7 +6,7 @@ metadata:
 ---
 
 mobs.js rows carry no stats (hit/hp come from bestiary.js + sim/mobs.js), so the only data levers for L6-13 are `lv` and `COUNTS`.
-Change: bog 7-10, mudboar 9-12, lurker 10-13; COUNTS bog 18, mudboar 17, lurker 17, golem 15 (were 10/9/9/11).
+Change (final): lv shift only - bog 7-10, mudboar 9-12, lurker 10-13; COUNTS unchanged. Raising COUNTS made scripts/tablecheck staged scenes fail (seed-fragile untagged DM-log entry) and bought little: counts alone +0.8 deaths/h.
 10-run sim 120: deaths/h 11.9 -> 14.3, L6-13 mob deaths 1.3 -> 5.0, PvP share 55% -> 34%, Fellowship deaths 1.6 -> 0.6 per run.
 Counts alone (+40%) gave only +0.8/h; the lv shift is what bites.
 **Why:** floor is 20/h; this slice cannot reach it alone, PvP and crypt are other levers.

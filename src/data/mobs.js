@@ -16,7 +16,7 @@ export const MOBS={
   shaghorn:{name:'Tundra Shaghorn',pl:'Tundra Shaghorns',z:3,lv:[16,19],spr:'shaghorn',col:{B:'#5a4634',S:'#3a2c20',H:'#e8dcc0',E:'#ffd040'},loot:'Hoar Wool',q:'Wool for the Weavers'},
   wight:{name:'Tarn Wight',pl:'Tarn Wights',z:3,lv:[18,21],spr:'wight',col:{W:'#7d94ad',E:'#9af8ff',M:'#4a7a96'},loot:'Wight Marrow',q:'What the Tarn Keeps'},
 };
-export const COUNTS={wolf:11,boar:10,spider:9,bog:14,mudboar:13,lurker:13,golem:11,drake:12,rimehound:9,shaghorn:8,wight:8};
+export const COUNTS={wolf:11,boar:10,spider:9,bog:10,mudboar:9,lurker:9,golem:11,drake:10,rimehound:9,shaghorn:8,wight:8};
 
 // Named rare elites, one per zone, index = zone. base: the species whose sprite, palette, loot and
 // quest tag it shares. lvl: zone max + 2 (Hoarfell's max is the level cap, 20). scale multiplies the
