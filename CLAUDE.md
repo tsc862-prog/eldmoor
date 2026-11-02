@@ -229,7 +229,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
 - Reflection moments (#179, `src/sim/reflect.js`): at natural pauses (making camp, the end of a Table scene, a
   companion's death, an oath kept, a buy or sell of 150g+, a conversation of 4 lines within 3 game hours, and dusk from
   19:00 once a game day when something happened) the state header names `reflect {id, kind, why}` and the runner's next
-  turn (unless something cannot wait) is a short reflection: "Before you rest: what is worth remembering?". Local and
+  turn (a soft wake through `/play/pace {reflect:true}`; unless something cannot wait) is a short reflection: "Before you rest: what is worth remembering?". Local and
   OpenAI minds answer one forced structured object `{notes: [{title, text, tags, about}]}` (0-3, the #163 path) that the
   runner sends with `remember`; Claude gets the same prompt with tool use (4 tool turns). The runner closes it with
   `POST /play/pace {reflected: id, wrote}`; a note written while a moment is due closes it too and is stamped `rf`.

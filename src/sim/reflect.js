@@ -14,8 +14,8 @@
 // plays it (local/OpenAI: one forced structured answer of 0-3 notes it submits with remember; Claude: the same
 // prompt with tool use) and closes it with POST /play/pace {reflected: id, wrote: n}. A note written while a moment
 // is due closes it too (so a runner or relay from before #179 still counts), and the notes written then carry rf.
-// A moment not answered within REFLECT.TTL game minutes lapses. Nothing here wakes a runner: camp and dusk come with
-// the heartbeat, a scene's end with its own event.
+// A moment not answered within REFLECT.TTL game minutes lapses. A due moment wakes a pacing runner softly (sim/pace.js
+// paceCheck with reflect: after the minimum gap, like news); something that cannot wait always comes first.
 import {S} from './state.js';
 
 export const REFLECT={
