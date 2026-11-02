@@ -134,7 +134,7 @@ export function agentDie(a,killer){
 export function strike(a,t,o){
   const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4)*(o&&o.mul||1);const crit=rnd()<combatStats(a).crit+(o&&o.crit||0);if(crit)d*=1.8;
   if(t.hp>=(t.kind==='hero'?maxHp(t):t.maxhp)*.95)d*=passiveMul(a,'openerMul'); // Opening Rune
-  d*=effMul(t,'mark'); // Quarry Mark
+  d*=effMul(t,'mark'); // Name the Quarry
   if(a.blessed){d*=1.2;a.blessed=0} // wayside shrine blessing: one strike at +20% (sim/encounters.js)
   if(t.kind==='hero')d*=.6*dmgTaken(t);
   d=Math.round(d);t.hp-=d;if(c.range>2)bolt(a,t,c.orb||c.acc);

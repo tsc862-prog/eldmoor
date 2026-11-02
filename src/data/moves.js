@@ -26,7 +26,7 @@ export const MOVES={
   // ---- Warrior: the one who stands in front ----
   challenge:{name:'Challenge',cls:'Warrior',kind:'control',lvl:1,cd:18,rounds:3,cost:null,target:'foe',range:6,swing:false,
     fx:{taunt:true},use:'taunt',desc:'Bellow a foe onto yourself: a monster fighting someone else turns on you.'},
-  bastion:{name:'Bastion',cls:'Warrior',kind:'defend',lvl:4,cd:40,rounds:5,cost:null,target:'self',range:0,swing:false,
+  bastion:{name:'Dig In',cls:'Warrior',kind:'defend',lvl:4,cd:40,rounds:5,cost:null,target:'self',range:0,swing:false,
     fx:{taken:.6},dur:6,durR:2,use:'selfhurt',desc:'Plant your feet behind the shield: blows on you land at 60% for six seconds.'},
   recklessblow:{name:'Reckless Blow',cls:'Warrior',kind:'attack',lvl:7,cd:12,rounds:2,cost:{hp:.05},target:'foe',range:'weapon',swing:true,
     fx:{dmg:1.9},use:'burst',desc:'A swing with the whole body behind it: 190% damage, and it costs 5% of your health.'},
@@ -38,21 +38,21 @@ export const MOVES={
   flicker:{name:'Flicker Step',cls:'Mage',kind:'move',lvl:6,cd:26,rounds:4,cost:null,target:'self',range:0,swing:false,
     fx:{blink:3.5,delay:1.5},use:'pressed',desc:'Step through the seam of the air a few tiles away from the fight; the foe loses 1.5 seconds finding you.'},
   // ---- Hunter: marks, snares and the long shot ----
-  deadeye:{name:'Dead-Eye Shot',cls:'Hunter',kind:'attack',lvl:1,cd:11,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
+  deadeye:{name:'Held-Breath Shot',cls:'Hunter',kind:'attack',lvl:1,cd:11,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
     fx:{dmg:1.8,crit:.3},use:'burst',desc:'Breathe out and loose one careful shot: 180% damage with a 30% better chance to crit.'},
   snare:{name:'Gorse Snare',cls:'Hunter',kind:'control',lvl:3,cd:24,rounds:4,cost:null,target:'foe',range:'weapon',swing:false,
     fx:{dmg:.4,delay:3.5},save:{abil:'reflex',stat:'insight'},use:'snare',desc:'A noose of thorn-cord where the foe will step: 40% damage and it loses 3.5 seconds before its next blow (half on a save).'},
-  quarrymark:{name:'Quarry Mark',cls:'Hunter',kind:'control',lvl:6,cd:20,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
+  quarrymark:{name:'Name the Quarry',cls:'Hunter',kind:'control',lvl:6,cd:20,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
     fx:{mark:1.25},dur:8,durR:2,save:{abil:'insight',stat:'insight'},use:'mark',desc:'Name the quarry: for eight seconds every blow that lands on it, from anyone, does 25% more.'},
   // ---- Priest: wards and mending ----
   dawnward:{name:'Ward of Dawn',cls:'Priest',kind:'defend',lvl:2,cd:20,rounds:3,cost:null,target:'ally',range:4,swing:false,
     fx:{taken:.7},dur:8,durR:2,use:'wardally',desc:'Lay a warm light on a friend (or yourself): blows on them land at 70% for eight seconds.'},
   searingword:{name:'Searing Word',cls:'Priest',kind:'attack',lvl:4,cd:13,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
     fx:{dmg:1.7,delay:.8},use:'burst',desc:'A word the dark cannot stand: 170% damage, and the foe flinches for 0.8 seconds.'},
-  chorus:{name:'Chorus of Mending',cls:'Priest',kind:'heal',lvl:6,cd:34,rounds:6,cost:null,target:'allies',range:5,swing:false,
+  chorus:{name:'Knitting Hymn',cls:'Priest',kind:'heal',lvl:6,cd:34,rounds:6,cost:null,target:'allies',range:5,swing:false,
     fx:{heal:{base:8,lvl:2.5,hp:.04}},use:'masshurt',desc:'A hymn that knits every friend within five tiles: 8 + 2.5 per level + 4% of their health.'},
   // ---- Rogue: the opener and the vanishing ----
-  ambush:{name:'Ambush',cls:'Rogue',kind:'attack',lvl:1,cd:18,rounds:4,cost:null,target:'foe',range:'weapon',swing:true,
+  ambush:{name:'Waylay',cls:'Rogue',kind:'attack',lvl:1,cd:18,rounds:4,cost:null,target:'foe',range:'weapon',swing:true,
     fx:{dmg:2.8},use:'opener',desc:'The first blow on a fresh, unhurt foe: 280% damage.'},
   sinewcut:{name:'Sinew Cut',cls:'Rogue',kind:'attack',lvl:3,cd:11,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
     fx:{dmg:1,delay:2.5},save:{abil:'grit',stat:'wits'},use:'burst',desc:'A cut at the tendon: normal damage, and the foe loses 2.5 seconds before its next blow (half on a save).'},
@@ -72,7 +72,7 @@ export const PASSIVES={
   hawkeyed:{name:'Hawk-Eyed',cls:'Hunter',lvl:2,crit:.05,desc:'+5% Crit.'},
   trailwise:{name:'Trail-Wise',cls:'Hunter',lvl:7,defense:.04,desc:'+4% Defense: you know where the ground will hold.'},
   gentlehands:{name:'Gentle Hands',cls:'Priest',lvl:1,healMul:1.15,desc:'Healing done +15%.'},
-  sanctuary:{name:'Sanctuary',cls:'Priest',lvl:8,takenBelow:{hp:.5,mul:.9},desc:'Under half health, blows on you land at 90%.'},
+  sanctuary:{name:'Last Mercy',cls:'Priest',lvl:8,takenBelow:{hp:.5,mul:.9},desc:'Under half health, blows on you land at 90%.'},
   knifehand:{name:'Knife-Hand',cls:'Rogue',lvl:3,crit:.06,desc:'+6% Crit.'},
   slipblow:{name:'Slip the Blow',cls:'Rogue',lvl:6,taken:.95,desc:'Blows on you land at 95%: you are seldom where the weapon thought.'},
 };
