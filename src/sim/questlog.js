@@ -30,6 +30,7 @@ import {homeOf} from '../data/races.js';
 import * as D from '../data/adventures.js';
 import {K as DMK,holdAdventure,resumeAdventure} from './dm.js';
 import {ev} from './notify.js';
+import {wakeQuestDone} from './wakes.js'; // finished quests wake the agent (one wake helper, no copy)
 
 export const QL={
   MAX:5,        // quests a hero holds at once (oaths and blood debts come on top)
@@ -138,14 +139,17 @@ function logOf(a){return a.qlog||(a.qlog={focus:null,done:[]})}
 const pack=q=>{const o={};for(const k in q){const v=q[k];if(v!=null&&v!==false)o[k]=v}return o};
 const FIELDS={giver:null,where:null,progress:null,reward:null,focus:false,started:null,ends:null};
 const unpack=q=>({...FIELDS,...q});
-function push(a,q){if(!a||a.kind!=='hero')return;const L=logOf(a);L.done.unshift(pack(q));const cap=a.player||a.fellow?QL.DONE:QL.DONE_BG;if(L.done.length>cap)L.done.length=cap;
+// A quest finished well wakes its agent at once (sim/wakes.js), whether it was in focus or held. The kill quest's
+// turn-in already wakes from heroes.js turnIn, so it is skipped here (one wake per quest). Agent heroes only, no dice.
+function wakeDone(a,q,gold){if(a.player&&q.status==='done'&&!/^kill:/.test(q.id))wakeQuestDone(a,q.title,gold||0)}
+function push(a,q,gold){if(!a||a.kind!=='hero')return;wakeDone(a,q,gold);const L=logOf(a);L.done.unshift(pack(q));const cap=a.player||a.fellow?QL.DONE:QL.DONE_BG;if(L.done.length>cap)L.done.length=cap;
   if(L.focus===q.id)L.focus=null}
 const ended=(q,status,extra)=>Object.assign(q,{status,focus:false,ends:Math.round(S.gameMin)},extra||{});
 export function killDone(a){if(a&&a.quest)push(a,ended(killQ(a,a.quest,'done',false),'done'))}
 const JOB_END={success:'done',partial:'done'};
 export function jobDone(b,adv){const why=adv.why,st=JOB_END[adv.outcome]||(why==='abandoned'?'abandoned':why==='expired'?'expired':'failed');
   const q=jobQ(b,adv,st,false);q.objective=clip((adv.outcome==='partial'?'Half done: ':adv.outcome==='success'?'Done: ':'')+jobTitle(adv)+(adv.quitWhy&&adv.held===b.id?' ('+adv.quitWhy+')':''),160);q.progress=sceneProgress(adv);
-  push(b,ended(q,st,{outcome:adv.outcome}))}
+  push(b,ended(q,st,{outcome:adv.outcome}),adv.paid&&adv.paid[b.id])}
 export function takenGone(a,h,st,why){const q=jobQ(a,h,st,false);if(why)q.objective=clip(q.objective+' ('+why+')',160);push(a,ended(q,st))}
 export function oathDone(a,g,st){push(a,ended(oathQ(a,g,st,false),st))}
 export function debtDone(a,k){const v=a.nemesis&&a.nemesis[k.id];if(!v)return;push(a,ended(debtQ(a,k,v,false),'done'))}
