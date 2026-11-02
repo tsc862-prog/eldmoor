@@ -24,6 +24,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Poll a condition on the wall clock (bounded), for answers that settle on timers; never a fixed delay alone.
+const until = async (cond, maxMs = 10000) => {const t0 = Date.now(); while (!cond() && Date.now() - t0 < maxMs) await sleep(10)};
 const argFp = process.argv[2] === '--fp' ? process.argv[3] : null;
 
 // ---- child phase: seeded run, print fingerprint ----
@@ -282,18 +284,18 @@ ok(B.brainOk(h0, 'crypt') === false && B.brainOk({}, 'crypt') === true, 'crypt c
   const e = h.mind && h.mind[0];
   ok(e && e.kind === 'townPlan' && e.outcome === 'pending', 'mind: a request opens a pending entry');
   const z = B.townZone(h);
-  await sleep(400);
+  await until(() => e.ms != null);
   ok(e.outcome === 'late' && z === B.SCRIPTED.townPlan(h).zone && e.scripted === e.options[1] && e.choice === e.options[0] && e.reason && !(h.brainPlan && h.brainPlan.town), 'mind: answer after the gate -> late, recorded but not parked, scripted zone taken (' + e.scripted + ')');
   delay = 0;
 }
 { // superseded: a parked plan expires unused and a newer one replaces it
   reset(); mode = 'valid';
   const h = heroes[1]; h.state = 'town'; h.townStep = 0;
-  B.brainTick(1.01); await sleep(150);
+  B.brainTick(1.01); await until(() => h.mind[0] && h.mind[0].ms != null);
   const e = h.mind[0];
   ok(e.outcome === 'pending' && h.brainPlan.town.mid === e.id, 'mind: valid answer parked, entry waits for the gate');
   h.brainPlan.town.t -= B.CFG.planTtl + 5;
-  B.brainTick(1.01); await sleep(150);
+  B.brainTick(1.01); await until(() => e.outcome === 'superseded');
   ok(e.outcome === 'superseded' && h.mind[0] !== e && h.mind[0].kind === 'townPlan', 'mind: expired plan -> superseded by the next request (' + e.error + ')');
   h.state = 'hunt';
 }
@@ -464,7 +466,7 @@ console.log('parties: the leader decides, followers follow');
   const form = () => {const p = {id: ++S.uid, fac: L.fac, leader: L, mem: [L, F], zone: zoneFor(Math.min(L.lvl, F.lvl), homeOf(L).gate), home: false};
     L.party = F.party = p; S.parties.push(p); return p};
   const begin = (lL, lF, bL, bF) => {B.resetBrain(); S.brainHeroes = []; reqs.length = 0; pickLast = false; fresh(L, lL, bL); fresh(F, lF, bF)};
-  const settleAsks = async () => {B.brainTick(1.01); await sleep(30)};
+  const settleAsks = async () => {B.brainTick(1.01); await sleep(30); await until(() => [L, F].every(h => !(h.mind || []).some(e => e.outcome === 'pending' && e.ms == null)))};
 
   // 1. leader's choice sets the party zone; follower asks only the crypt call and follows
   begin(9, 8, true, true); let p = form(); const scripted = p.zone;
@@ -545,8 +547,12 @@ console.log('mixed minds: routing by hero');
   const stored = B.setMind(Lo, {provider: 'ollama', model: 'qwen2.5:14b'});
   ok(JSON.stringify(stored) === '{"provider":"ollama","model":"qwen2.5:14b"}' && B.mindTag(Lo) === 'qwen2.5:14b · local' && B.mindTag(A) === 'Claude' && isPlain(Lo.brainCfg), 'setMind stores {provider, model} on the hero (plain, saved); tags "' + B.mindTag(Lo) + '" and "' + B.mindTag(A) + '"');
   const hold = () => {for (const h of pick) if (h.state !== 'dead') {h.state = 'town'; h.townStep = 0; h.wait = 200}};
+  // A settled request: ms is stamped when it ends (a valid answer then stays 'pending' until the hero reaches the gate, so the outcome is not tested).
   const answered = h => (h.mind || []).find(e => e.kind === 'townPlan' && e.ms != null);
-  const settleBoth = async () => {for (let i = 0; i < 80 && !(answered(A) && answered(Lo)); i++) {hold(); await run(120); await sleep(30)}};
+  // Wait on the wall clock, bounded at 10 s (a fixed iteration count is too short for the 2.5 s local timeout on a slow runner).
+  // The world is not stepped: a stepping hero can leave town or join a party before the answer comes, and the question is then
+  // settled 'late' ("the party left before the answer came") instead of offline. brainTick alone asks and sweeps, with the hero pinned in town.
+  const settleBoth = async () => {const t0 = Date.now(); while (Date.now() - t0 < 10000 && !(answered(A) && answered(Lo))) {hold(); B.brainTick(1.01); await sleep(20)}};
   olGot.length = 0; olDelay = 800; hold(); await settleBoth(); olDelay = 0; // 800 ms: over the API timeouts, inside the local ones
   const ea = answered(A), el = answered(Lo);
   ok(olGot.length >= 1 && olGot.every(q => q.model === 'qwen2.5:14b' && JSON.parse(q.messages[1].content).name === Lo.name), 'only the local hero\'s requests reach Ollama (' + olGot.length + ', all ' + Lo.name + ')');
