@@ -40,7 +40,7 @@ console.log('local agent loop (fake chat)');
 {
   ok(ollamaTools().length > 20 && ollamaTools().every(t => t.type === 'function' && t.function.parameters.type === 'object'), 'every game tool becomes an Ollama function tool');
   ok(JSON.stringify(cleanArgs('fight', {target_id: '12', junk: 1})) === '{"args":{"target_id":12}}', 'numbers given as strings are coerced, unknown keys dropped');
-  ok(cleanArgs('fight', {}).error && cleanArgs('choose', {option: 'c'}).error && cleanArgs('teleport', {}).error, 'a missing argument, a bad enum and an unknown tool are rejected');
+  ok(cleanArgs('move_to', {}).error && cleanArgs('choose', {option: 'c'}).error && cleanArgs('teleport', {}).error, 'a missing argument, a bad enum and an unknown tool are rejected');
   ok(parseTextCall('<tool_call>{"name":"look","arguments":{}}</tool_call>').function.name === 'look' && parseTextCall('I look around.') === null, 'a call written as text is understood; prose is not a call');
 
   const calls = [], game = async (tool, args) => {calls.push([tool, args]); return {ok: true, tool, ...(tool === 'status' ? {hp: '100%', note: 'x'.repeat(3000)} : {})}};
