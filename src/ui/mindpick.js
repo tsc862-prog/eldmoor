@@ -8,7 +8,8 @@
 // 15 s while a row is shown). The setting is a.brainCfg = {provider, model} (sim/brain.js setMind), saved
 // with the world; the brain client sends it with each request for that hero.
 import {CFG,enableBrain,disableBrain,setMind,mindCfg,MIND_PROVIDERS,PROVIDER_LABEL,LOCAL_PROVIDERS} from '../sim/brain.js';
-import {agentOn,agentOff,agentLink,runnerTag,LINK_TEXT} from './player-bridge.js';
+import {agentOn,agentOff,agentLink,runnerTag} from './player-bridge.js';
+import {mindLabel,linkOf} from './mindlabel.js'; // the one mind label (issue #136)
 import {S} from '../sim/index.js';
 import {runnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start / Stop from the page
 
@@ -26,7 +27,7 @@ export const openaiModels=()=>{poll();const o=provs()&&provs().openai;return o&&
 const byHid=id=>S.agents.find(x=>x.id==id);
 const modeOf=a=>a.player?'agent':a.brain?'ai':'scripted';
 
-export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ver+(a.player?':'+agentLink(a)+':'+runnerTag(a)+':'+runnerSig(a):'');
+export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ver+(a.player?':'+linkOf(a)+':'+runnerTag(a)+':'+runnerSig(a):'');
 
 export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   const row=el('div','mindrow'),mode=modeOf(a);
@@ -48,8 +49,8 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
     const note=!P?'relay not answering':st&&!st.ok?String(st.error||'not available'):LOCAL_PROVIDERS[c.provider]?(list.length?'local · free':'no models pulled (ollama pull qwen2.5:14b)'):c.provider==='openai'?(c.model||st&&st.default?'billed by OpenAI':'pick a model (billed by OpenAI)'):'';
     if(note)row.append(el('span','dm mnote',note))}
   // Agent: which runner holds the hero and which model it plays (from the runner's claim, issue #97)
-  if(mode==='agent'){const k=agentLink(a),tag=runnerTag(a),n=el('span','dm mnote',tag?tag+' · '+(k==='connected'?'live':'idle'):LINK_TEXT[k]||k);
-    n.title=tag?'Agent runner model: '+tag:'Start a runner here, or in a terminal: npm run agent -- --hero '+a.name;row.append(n);
+  if(mode==='agent'){const ml=mindLabel(a),n=el('span','dm mnote',ml.text);
+    n.title=ml.title;row.append(n);
     // app runners: start or stop this hero's runner from the page, with the mind it starts with
     const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,pulledModels(),openaiModels()));row.append(r)}
   node.append(row)}

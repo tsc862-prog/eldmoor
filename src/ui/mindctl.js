@@ -3,20 +3,17 @@
 // the Fellowship roster. When a Fellowship exists only its members need AI or Agent control; the
 // hero card hides those buttons on everyone else unless the small "Developer" toggle is on.
 import {S,enableBrain,disableBrain,brainStatus} from '../sim/index.js';
-import {agentOn,agentOff,agentLink,LINK_TEXT} from './player-bridge.js';
+import {agentOn,agentOff} from './player-bridge.js';
+import {mindLabel} from './mindlabel.js';
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 
 // 'agent' | 'ai' | 'quiet' (AI-played, relay silent) | 'scripted'
 export const mindOf=a=>!a?'scripted':a.player?'agent':a.brain?(brainStatus(a)==='offline'?'quiet':'ai'):'scripted';
-export const MIND_LABEL={scripted:'SCRIPTED',ai:'AI',quiet:'AI · QUIET',agent:'AGENT'};
-// Short text for the mind tag, with the agent runner's link state when agent-played.
-export function mindText(a){const m=mindOf(a);if(m!=='agent')return MIND_LABEL[m];const k=agentLink(a);
-  return 'AGENT · '+(k==='connected'?'LIVE':k==='waiting'?'IDLE':k==='none'?'NO RUNNER':String(k).toUpperCase())}
-export function mindTitle(a){const m=mindOf(a);
-  return m==='agent'?'Agent-played: '+(LINK_TEXT[agentLink(a)]||agentLink(a))+'. Runner: npm run agent -- --hero '+a.name
-    :m==='ai'?'A language model plays this hero through the relay (npm run relay).'
-    :m==='quiet'?'AI-played, but the relay is not answering; the scripted rules play for now.':'The scripted rules play this hero.'}
+export const MIND_LABEL={scripted:'Scripted',ai:'AI',quiet:'AI',agent:'Agent'};
+// The one mind label (ui/mindlabel.js): Scripted, AI (model) or Agent (runner model · link).
+export const mindText=a=>mindLabel(a).text;
+export const mindTitle=a=>mindLabel(a).title;
 const NEXT={scripted:'AI',ai:'Agent',quiet:'Agent',agent:'Scripted'};
 
 // Scripted -> AI -> Agent -> Scripted. A member's mind set here is marked the way the Fellowship's
@@ -28,7 +25,7 @@ export function cycleMind(a){if(!a||a.state==='dead')return;const m=mindOf(a);
 
 // The control: a small button naming the next mind; data-mindctl carries the hero id.
 export function mindButton(a){const m=mindOf(a),b=el('button','mini mindbtn','→ '+NEXT[m]);b.dataset.mindctl=a.id;
-  b.title='Mind: '+MIND_LABEL[m].toLowerCase()+'. Click to switch to '+NEXT[m].toLowerCase()+' (scripted → AI → agent).';return b}
+  b.title='Mind: '+mindText(a)+'. Click to switch to '+NEXT[m].toLowerCase()+' (scripted → AI → agent).';return b}
 
 // ---- the Developer toggle (kept per viewer) ----
 const KEY='eldmoor.dev';

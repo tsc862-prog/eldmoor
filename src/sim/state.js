@@ -24,4 +24,5 @@ export const S={
 };
 // Save-file format version (sim/save.js). Bump it and add a migration there when the shape of S changes.
 export const SAVE_VERSION=6;
+export const dayNo=()=>Math.floor(S.gameMin/1440)+1; // game day, 1-based (the UI shows D4 03:12 with it)
 export const clockStr=()=>{const m=Math.floor(S.gameMin)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};

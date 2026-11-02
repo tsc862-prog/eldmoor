@@ -300,7 +300,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const again = (B.playEv || []).filter(e => e.n > n2 && /Did you hear me/.test(e.text));
     ok(again.length === 1 && !again[0].w, 'a second line within the debounce is heard but does not start another turn (no ping-pong)');
     const mine = (A.chat || []).filter(e => e.from === A && e.trigger === 'agent');
-    ok(mine.length && mine.every(e => e.agent && /^AGENT · /.test(e.model) && !e.ai), 'the agent\'s lines are tagged AGENT for the Chat tab, not AI');
+    ok(mine.length && mine.every(e => e.agent && /^Agent \(/.test(e.model) && !e.ai), 'the agent\'s lines are tagged Agent for the Chat tab, not AI');
     const chat = await import('../src/sim/chat.js'), c0 = (A.chat || []).length; A.chatCd = 0;
     chat.say(A, 'banter', {zone: 'x'}); chat.say(A, 'levelup', {}); const c1 = (A.chat || []).length; A.chatCd = 0;
     chat.say(A, 'spot', {mob: 'a test wolf', level: 9}); const c2 = (A.chat || []).length;

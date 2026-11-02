@@ -5,6 +5,8 @@
 // tags a line `fh` (heard by, or spoken by, a member) and a bubble the same way. No Fellowship: all shown.
 const KEY='eldmoor.worldChatter';
 let on=false;try{on=localStorage.getItem(KEY)==='1'}catch(_){}
+// A Fellowship member's role for name colouring ('tank', 'healer', 'dps'), else null (issue #136).
+export const fellowRoleOf=a=>a&&a.fellow&&a.fellowRole?String(a.fellowRole).replace(/\d+$/,''):null;
 export const worldChatter=()=>on;
 export function setWorldChatter(v){on=!!v;try{localStorage.setItem(KEY,on?'1':'0')}catch(_){}}
 // Line `e` (an entry in a chat buffer): shown to the watcher?

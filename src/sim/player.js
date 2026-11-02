@@ -36,7 +36,7 @@ import {TRAITS,tm} from '../data/traits.js';
 import {GOODS,price,SLOTS,USES,INV,useLines} from '../data/items.js';
 import * as D from '../data/adventures.js';
 import {PLAYER_TOOLS} from '../data/player-tools.js';
-import {S,clockStr} from './state.js';
+import {S,clockStr,dayNo} from './state.js';
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,findMob,turnIn,huntZone} from './heroes.js';
 import {partyMates,leaderOf,leaveParty} from './party.js';
@@ -44,7 +44,7 @@ import {speak,say,agentLine} from './chat.js';
 import {npcSay,ensureNpcs} from './npcs.js';
 import {equip,makeItem,SHOP_COST,SELL_VALUE,slotLevel,weakestSlot,itemStats,gearScore,refreshEpics} from './gear.js';
 import {weatherName,sightMul,isStorm} from './weather.js';
-import {record} from './history.js';
+import {record,asSrc} from './history.js';
 import {fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {dmDepart,advLine,K as DMK} from './dm.js';
@@ -228,8 +228,8 @@ function fight(a,dt,cmd){const m=a.target,mh=maxHp(a);a.cd-=dt;
   if(!m.target)m.target=a;
   priestHeal(a,a.party?a.party.mem:[a]);
   if(a.cd<=0){strike(a,m);a.cd=1.1}
-  fightAid(a,m); // reflex: a potion or ward from the pack keeps the hero up while the agent thinks (sim/inv.js)
-  if(a.state==='fight'){const fb=cmd&&cmd.flee!=null?cmd.flee:PK.FLEE;if(a.hp<mh*fb)flee(a,true)}
+  asSrc('reflex',()=>fightAid(a,m)); // reflex: a potion or ward from the pack keeps the hero up while the agent thinks (sim/inv.js)
+  if(a.state==='fight'){const fb=cmd&&cmd.flee!=null?cmd.flee:PK.FLEE;if(a.hp<mh*fb)asSrc('reflex',()=>flee(a,true))}
   return true}
 
 // Break off: a monster lets go (one parting blow is rolled), a duel ends in a pull-back.
@@ -487,7 +487,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(meta.act){const st=a.playRate||(a.playRate=[]);while(st.length&&st[0]<S.gameMin-60)st.shift();
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}
     st.push(S.gameMin)}
-  let r;try{r=fn(a,args&&typeof args==='object'?args:{})}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
+  let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
   if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'&&a.pq&&a.pq[0])a.playOrder={kind:'hunt',n:a.pq[0].n,flee:a.pq[0].flee}} // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
   logCall(a,tool,args,r);return r}
@@ -506,14 +506,14 @@ export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:fals
 
 // Recent tool calls for the Agent tab: newest first, short text.
 function logCall(a,tool,args,r){const L=a.playLog||(a.playLog=[]);
-  L.unshift({t:clockStr(),tool,args:argText(args),ok:r.ok!==false,pending:!!r.pending||undefined,text:r.pending?'waiting...':summarize(r)});if(L.length>PK.LOG)L.pop()}
+  L.unshift({t:clockStr(),d:dayNo(),tool,args:argText(args),ok:r.ok!==false,pending:!!r.pending||undefined,text:r.pending?'waiting...':summarize(r)});if(L.length>PK.LOG)L.pop()}
 const argText=x=>{if(!x||typeof x!=='object')return '';const k=Object.keys(x);return k.length?clean(k.map(j=>j+'='+(typeof x[j]==='string'?'"'+x[j]+'"':x[j])).join(' '),120):''};
 function summarize(r){if(r.ok===false)return 'x '+clean(r.error,160);const skip={ok:1,events:1,pending:1};
   return clean(Object.keys(r).filter(k=>!skip[k]).map(k=>{const v=r[k];return k+': '+(typeof v==='string'||typeof v==='number'?v:Array.isArray(v)?v.length+' item'+(v.length===1?'':'s'):v&&typeof v==='object'?'{...}':String(v))}).join(' · '),200)}
 
 // The runner's narration (the agent's own text between tool calls), for the Agent tab.
 export function playerNarrate(id,text){const a=hero(Number(id));if(!a||!a.player)return false;const t=clean(text,600);if(!t)return false;
-  const N=a.playNarr||(a.playNarr=[]);N.unshift({t:clockStr(),text:t});if(N.length>PK.NARR)N.pop();return true}
+  const N=a.playNarr||(a.playNarr=[]);N.unshift({t:clockStr(),d:dayNo(),text:t});if(N.length>PK.NARR)N.pop();return true}
 
 // Agent-played heroes (issue #93: several at once, one agent each). With an id, these answer
 // for that hero only (null when it is not agent-played); without one, the old single-hero path:

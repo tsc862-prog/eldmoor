@@ -3,7 +3,9 @@
 // bubble fades out over its last 0.6s. Text is word-wrapped to at most three short lines;
 // anything longer is truncated with an ellipsis.
 import {T} from '../world/tiles.js';
-import {bubbleVisible} from '../core/chatview.js';
+import {bubbleVisible,fellowRoleOf} from '../core/chatview.js';
+
+const ROLE_COL={tank:'#7fa8ff',healer:'#8fe070',dps:'#ff7a70'}; // the party frames' role colours, lightened for the dark bubble
 
 const CSS=12,LINE=20,MAXL=3,FADE=.6;
 
@@ -18,12 +20,12 @@ export function drawBubbles(ctx,S,cam,drawText){
   const s=CSS*cam.dpr/cam.sc,lh=s*.8,pad=s*.3;
   for(const a of S.agents.concat(S.npcs||[],S.wanderers||[])){const b=a.bubble;if(!b||b.life<=0||a.hidden||a.state==='dead'||!bubbleVisible(a,S))continue; // heroes and townsfolk (sim/npcs.js)
     const px=a.x*T,py=a.y*T;if(Math.abs(px-cam.camX)>vw/2+60||Math.abs(py-cam.camY)>vh/2+60)continue;
-    const lines=wrap(b.text);
+    const role=fellowRoleOf(a),lines=(role?[a.name.toUpperCase()]:[]).concat(wrap(b.text)); // a Fellowship member's bubble leads with its name in role colour
     ctx.font=s+'px VT323, monospace';let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
     const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=py-17-s*1.15,top=bottom-bh,x0=px-bw/2;
     ctx.globalAlpha=Math.min(1,b.life/FADE);
     ctx.fillStyle='rgba(10,10,22,.86)';
     if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill()}else ctx.fillRect(x0,top,bw,bh);
     ctx.beginPath();ctx.moveTo(px-pad*.6,bottom);ctx.lineTo(px+pad*.6,bottom);ctx.lineTo(px,bottom+pad*.7);ctx.fill();
-    lines.forEach((l,i)=>drawText(l,px,top+pad*.6+lh*(i+.85),'#f4ecd0',CSS));
+    lines.forEach((l,i)=>drawText(l,px,top+pad*.6+lh*(i+.85),role&&i===0?ROLE_COL[role]:'#f4ecd0',CSS));
     ctx.globalAlpha=1}}
