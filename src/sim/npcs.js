@@ -15,7 +15,7 @@ import {FAC} from '../data/factions.js';
 import {RACES,racesOf,raceName} from '../data/races.js';
 import {ELITES} from '../data/mobs.js';
 import {NPC_ROLES,npcRole} from '../data/npcs.js';
-import {S,clockStr} from './state.js';
+import {S,clockStr,dayNo} from './state.js';
 import {pop} from './effects.js';
 import {moveTo} from './heroes.js';
 import {attitudeOf,presence} from './levers.js';
@@ -86,7 +86,7 @@ export function npcSay(p,trigger,ctx={},opts={}){
   // the save walker (sim/save.js) would otherwise copy the whole NPC into every hero's buffer.
   const dmVoice=opts.dm||S.worldVoice!=='dm'||S.agents.some(a=>a.fellow&&a.state!=='dead'&&!a.hidden&&dist(a,p)<=HEAR);
   if(!dmVoice){p.chatCd=COOL;return false}
-  const text=fill(line,p,ctx),e={t:clockStr(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc'};if(S.worldVoice==='dm')e.dm=true;let heard=0;
+  const text=fill(line,p,ctx),e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc'};if(S.worldVoice==='dm')e.dm=true;let heard=0;
   for(const a of S.agents){if(a.state==='dead'||a.hidden||dist(a,p)>HEAR)continue;if(S.fellowship&&a.fellow)e.fh=true;(a.chat||(a.chat=[])).push(e);if(a.chat.length>CAP)a.chat.shift();heard++}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=COOL;
   const st=S.npcNews.stats;st.lines++;if(heard)st.heard++;return true}
