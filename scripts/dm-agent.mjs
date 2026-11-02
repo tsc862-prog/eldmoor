@@ -77,6 +77,7 @@ export function dmSystemPrompt(st) {
     '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); you do not need to do anything for that.',
     DM_FELLOWSHIP_ORDERS,
     DM_EVENT_ORDERS,
+    DM_CALL_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '',
@@ -93,6 +94,15 @@ export const withDmFellowshipOrders = sys => {
 // World events (issue #352): festivals, plagues and the rest through start_event, the Fellowship first. withDmEventOrders adds it to an older session's prompt.
 export const DM_EVENT_ORDERS = '- World events (start_event: a festival, a plague, and the other kinds dm_status world_events lists) change a whole region for days. The Fellowship comes first here too: consider one only when nothing is pending for them, and only where it fits the region they ride or are headed to (world_events fellowship_regions), so it meets them on their road. One runs at a time and one may start a day; world_events says what is running, whether one may start today and why not. Give the reason the story needs it; the watcher reads it in the DM log, no hero ever does.';
 export const withDmEventOrders = sys => /\bWorld events \(start_event\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_EVENT_ORDERS;
+// Well-formed calls (issue #388, from the behavior logs of 2026-11-02): most of the DM seat's refused calls were missing
+// arguments, guessed names and combined places, and staging while the whole Fellowship sat in town. Three lines, one per
+// logged problem; withDmCallOrders adds them to an older session's prompt.
+export const DM_CALL_ORDERS = [
+  '- Send every call whole, the first time. stage_scene needs kind, near, frame and reason (one sentence). pull_lever takes lever (a name exactly as levers lists it) and params (the parameters levers shows for it): create_npc needs role (peddler, hermit, drover, sellsword, minstrel or stranger) and home, either "town" with town, or "camp" or "road" with at {"x":..,"y":..} on the map and on walkable ground near the Fellowship. A refusal names what is wrong: fix that argument or drop the move; never send the same call again.',
+  '- Name places and people exactly. near is one thing: a member\'s name or id, a town, a region, or "x,y" alone, never two together ("Highgate, 10,20" is refused); "fellowship" works for stage_scene, while narrate takes a member\'s name or "table" instead. A landmark such as the Sunken Crypt is not a place name; use its region. npc_say and npc_offer always need npc: the id from npcs, or effect.npc from the create_npc pull that placed them; never a name you made up or wrote differently.',
+  '- When the whole Fellowship is in town, stage_scene is refused (staged scenes happen out in the world). Then speak through a townsperson there (npc_say), place a person in their town, or note the scene in your plans and stage it once they ride out.',
+].join('\n');
+export const withDmCallOrders = sys => /\bSend every call whole\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_CALL_ORDERS;
 // Searchable notes (issue #155): the DM's standing-orders line; withDmMemoryOrders adds it to an older session's prompt.
 export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything you want to find again, free-form (your own title, text and tags; about and section optional), recall by words, tag, about or id across all sections before you build on a person, place or thread, update_memory, forget, and pin the few that must never be archived. dm_status lists the notes that bear on the moment.';
 // Campaign seed: the notes start from the world's campaign file (docs/campaigns/<world>.md).
@@ -285,7 +295,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))); // searchable notes (#155) for a session that began before them
+  sess.system = withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
