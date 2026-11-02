@@ -6,6 +6,7 @@
 import {MOVES,PASSIVES} from '../data/moves.js';
 import {SPEC_LVL} from '../data/classes.js';
 import {notify} from './notify.js';
+import {foeName} from './lore.js'; // a creature is named only as the hero knows it (#188)
 
 // Update the unread event stored under `key`, else post a new one.
 function pend(a,key,text,wake){const P=a.playPend||(a.playPend={}),seen=a.playEvSeen||0,n=P[key];
@@ -18,8 +19,8 @@ const list=o=>Object.entries(o).map(([k,v])=>v>1?k+' x'+v:k).join(', ');
 const bundle=a=>{const X=a.playXp||(a.playXp={xp:0,kills:0,names:{}});
   if(X.n!=null&&X.n<=(a.playEvSeen||0)){X.xp=0;X.kills=0;X.names={};X.n=null} // the last one was read: start a new bundle
   return X};
-export function wakeKill(a,m){if(!a.player)return;const X=bundle(a),nm=m.name||m.type;X.kills++;X.names[nm]=(X.names[nm]||0)+1;
-  if(m.elite)pend(a,'elite','You slew '+(m.name||m.type)+(m.title?', '+m.title:'')+'.',1)}
+export function wakeKill(a,m){if(!a.player)return;const X=bundle(a),nm=foeName(a,m).replace(/^an? /,'');X.kills++;X.names[nm]=(X.names[nm]||0)+1;
+  if(m.elite)pend(a,'elite','You slew '+foeName(a,m)+'.',1)}
 
 // XP gained: one bundled line since the hero's last read.
 export function wakeXp(a,x,need){if(!a.player)return;const X=bundle(a);

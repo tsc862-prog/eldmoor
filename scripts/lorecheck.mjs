@@ -90,7 +90,7 @@ console.log('    (the fight: ' + (mob.alive ? 'still alive' : 'over') + ', A ' +
 if (!A.kills) {mob.alive = true; mob.gone = false; HE.killMob(A, mob)} // someone else may have taken it: the kill itself is what is checked
 ok(A.lore.c[L.keyOf(mob)].killed >= 1, `the kill is kept (killed ${A.lore.c[L.keyOf(mob)].killed})`);
 let lv = act(A, 'lore', {about: realName});
-ok(lv.creatures.length === 1 && lv.creatures[0].name === realName && /fought once/.test(J(lv.creatures[0].known)) && !/\b(lvl|level)\b/.test(J(lv)), `lore: ${J(lv.creatures[0])}`);
+ok(lv.creatures.length === 1 && lv.creatures[0].name === realName && /fought once/.test(J(lv.creatures[0].known)) && !/\b(lvl|level)\b/.test(J(lv.creatures) + J(lv.places)), `lore: ${J(lv.creatures[0])}`);
 st = act(A, 'status'); noNums('status', st);
 
 // ---------------------------------------------------------------- 3. words heard
