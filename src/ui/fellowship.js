@@ -94,7 +94,7 @@ let sigTop='',sigLog='',sigForm='',root=null,top=null,sheet=null,logBox=null;
 function eligibleFor(slot,fac){return S.agents.filter(a=>alive(a)&&a.fac===fac&&!a.fellow&&!a.player&&fits(slot,a)).sort((x,y)=>y.lvl-x.lvl||x.id-y.id)}
 function formView(node){const f=draft.fac;
   const facs=el('div','tfilter');FAC.forEach((F,i)=>{const b=el('button',null,F.name);b.dataset.ffac=i;b.setAttribute('aria-pressed',String(i===f));facs.append(b)});node.append(facs);
-  node.append(el('div','dm','Five places, fixed roles: one Tank (Warrior), one Healer (Priest), three DPS (Mage, Hunter, Rogue). An empty place is filled by a fresh recruit.'));
+  node.append(el('div','dm','Five places, fixed roles: one Tank (Warrior), one Healer (Priest), three DPS (Mage, Hunter, Rogue or Skald). An empty place is filled by a fresh recruit.'));
   const g=el('div','felform');
   for(const s of SLOTS){const lab=el('label','fslot');lab.append(el('span','frole r-'+s.role,s.label));const sel=el('select');sel.dataset.fslot=s.key;
     sel.append(new Option('(a fresh recruit)',''));

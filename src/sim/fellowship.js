@@ -41,7 +41,7 @@ import {seedProfs} from './professions.js';
 import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME} from './persona.js';
 import {remember,memOf,refreshStances,stanceEvent,setSummariser,memorySnapshot,applyLong} from './memory.js';
 
-export const DPS=['Mage','Hunter','Rogue'];
+export const DPS=['Mage','Hunter','Rogue','Skald'];
 export const SLOTS=[{key:'tank',role:'tank',label:'Tank',cls:['Warrior']},{key:'healer',role:'healer',label:'Healer',cls:['Priest']},
   {key:'dps1',role:'dps',label:'DPS',cls:DPS},{key:'dps2',role:'dps',label:'DPS',cls:DPS},{key:'dps3',role:'dps',label:'DPS',cls:DPS}];
 export const SLOT_KEYS=SLOTS.map(s=>s.key);

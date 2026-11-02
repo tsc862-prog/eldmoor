@@ -87,7 +87,7 @@ ok(br.foe == null || !/level/.test(br.foe), `the state header's foe has no level
 ok(A.lore.c[L.keyOf(mob)].fought === 1 && A.lore.c[L.keyOf(mob)].name, 'closing with it teaches its name');
 for (let k = 0; k < 60 && mob.alive; k++) run(0.5);
 console.log('    (the fight: ' + (mob.alive ? 'still alive' : 'over') + ', A ' + A.state + ', kills ' + A.kills + ')');
-if (!A.kills) {mob.alive = true; mob.gone = false; HE.killMob(A, mob)} // someone else may have taken it: the kill itself is what is checked
+if (!(A.lore.c[L.keyOf(mob)].killed >= 1)) {mob.alive = true; mob.gone = false; HE.killMob(A, mob)} // someone else may have taken it: the kill itself is what is checked
 ok(A.lore.c[L.keyOf(mob)].killed >= 1, `the kill is kept (killed ${A.lore.c[L.keyOf(mob)].killed})`);
 let lv = act(A, 'lore', {about: realName});
 ok(lv.creatures.length === 1 && lv.creatures[0].name === realName && /fought once/.test(J(lv.creatures[0].known)) && !/\b(lvl|level)\b/.test(J(lv)), `lore: ${J(lv.creatures[0])}`);
