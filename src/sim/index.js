@@ -43,7 +43,8 @@ export {snapshot,restore,isSave,SAVE_VERSION} from './save.js';
 export {enableBrain,disableBrain,brainStatus} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
 export {found,autoPick,disbandFellowship,fellowshipMembers,fellows,setMinds} from './fellowship.js';
-export {TABLE,bannerOf} from './table.js';
+export {TABLE,bannerOf,decisionsWaiting} from './table.js';
+export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} from './runlink.js'; // the Fellowship's decisions wait for its runners (#148)
 export {fellowshipStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners} from './setup.js'; // New World setup (#133)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)

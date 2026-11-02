@@ -6,8 +6,9 @@
 - [Rebalance #18](rebalance_issue18.md) — tuned PvP/raid/crypt values, what moved deaths, noise warning, late-game vet PvP caveat
 - [DM adventures](dm_adventures.md) — dm.js drives adventures inside travel/hunt, away != failure, hook board, told-budget, XP/honor sizing
 - [DM levers](dm_levers.md) — levers.js rules: log folding for volume, ready() before scripted pulls, no-RNG hooks, band clamp, foe levers
-- [Fellowship UI](fellowship_ui.md) — #94: AI/Agent only on members unless Developer; per-member minds set fellowBrain/fellowAgent; layout moves nodes
+- [Fellowship UI](fellowship_ui.md) — #94 layout moves nodes; since #148 members have no Scripted/AI controls, only runner model
 - [Rebalance #107](rebalance_issue107.md) — crypt .40, spider/boar softening, xpNeed ramp, replacement seeding, duel .0375; use 10-run batches
 - [New world opening](new_world_opening.md) — #111: default Fellowship at L1, others seeded 1-15 (START_BANDS), opt-out flag and which checks use it
 - [New World setup](new_world_setup.md) — #133: setup page flow, seeded init, agent-from-minute-one, runner plan/limits, local-model rule
 - [Agent tab polish #136](agent_tab_polish.md) — one mind label, day stamps, log sources, runner-stop alert
+- [Fellowship always agents](fellowship_always_agents.md) — #148: runlink.js gate (live waits, owner hold, reflex = scripted), 3x drop, check mocks

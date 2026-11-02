@@ -3,9 +3,9 @@
 // the opening all use the same rules.
 //
 // A setup is {v, world, seed, fac, name?, slots:{tank,healer,dps1,dps2,dps3: {cls, name?, race?, mind}}, dm:{mode, provider?, model?}}
-//   mind  {mode:'scripted'} or {mode:'ai'|'agent', provider:'anthropic'|'ollama'|'openai', model}
-//         ai    a language model decides through the relay (brainCfg); agent  an agent runner plays the
-//               hero through the game tools (the model is what its runner is started with)
+//   mind  {mode:'agent', provider:'anthropic'|'ollama'|'openai', model}: an agent runner plays the hero through
+//         the game tools (the model is what its runner is started with). The Fellowship is always agent-played
+//         (hard rule, #148): a member has no scripted or AI mind; an older setup's are turned into agents.
 //   dm    {mode:'scripted'} or {mode:'agent', provider, model}: the DM seat is opened and a DM runner started
 //   race  a people id of the faction (data/races.js) or absent for "whoever the recruits are"
 // validateSetup(s) lists what is wrong (empty = fine); init({setup}) builds the world (sim/opening.js):
@@ -18,14 +18,15 @@ import {S} from './state.js';
 import {SLOTS,SLOT_KEYS} from './fellowship.js';
 import {makeHero} from './heroes.js';
 import {rollScores} from './abilities.js';
-import {enableBrain,disableBrain,setMind,MIND_PROVIDERS} from './brain.js';
+import {disableBrain,MIND_PROVIDERS} from './brain.js';
 import {markPlayer} from './player.js';
 import {setDmSeat} from './dmagent.js';
 
 export const SETUP_VERSION=1;
 export const CLAUDE_MODELS={haiku:'claude-haiku-5-5',sonnet:'claude-sonnet-5-5'};
 export const SETUP_PROVIDERS=['anthropic','ollama','openai']; // what the runners can start with
-export const MIND_MODES=['scripted','ai','agent'];
+export const MIND_MODES=['agent']; // a member's mind (#148); the DM may still be scripted (DM_MODES)
+export const DM_MODES=['scripted','agent'];
 const MODEL_OK=/^[A-Za-z0-9][\w.:\/+-]{0,99}$/;
 export const slotLabel=k=>(SLOTS.find(s=>s.key===k)||{}).label||k;
 export const slotClasses=k=>((SLOTS.find(s=>s.key===k)||{}).cls||[]).slice();
@@ -33,31 +34,38 @@ export const slotClasses=k=>((SLOTS.find(s=>s.key===k)||{}).cls||[]).slice();
 const SCRIPTED={mode:'scripted'};
 export const claudeMind=(mode,which='haiku')=>({mode,provider:'anthropic',model:CLAUDE_MODELS[which]});
 
-// The default: a Concord-or-Warband Fellowship of one of each preferred class, every mind scripted.
+// The default: a Concord-or-Warband Fellowship of one of each preferred class, every member an agent on
+// Claude Haiku (#148), the DM scripted.
+export const DEFAULT_MIND=()=>claudeMind('agent','haiku');
 export function defaultSetup(seed=1,world='eldmoor',fac=0){
   const cls={tank:'Warrior',healer:'Priest',dps1:'Mage',dps2:'Hunter',dps3:'Rogue'},slots={};
-  for(const k of SLOT_KEYS)slots[k]={cls:cls[k],mind:{...SCRIPTED}};
+  for(const k of SLOT_KEYS)slots[k]={cls:cls[k],mind:DEFAULT_MIND()};
   return {v:SETUP_VERSION,world,seed:seed>>>0,fac,slots,dm:{...SCRIPTED}}}
 
 // ---- presets ----
 // ctx: {local} the one local model the relay has loaded (or the first pulled), '' when none; {last} the
 // viewer's last used setup. Returns a copy of base with the minds replaced, or null when the preset
-// cannot be made (no local model, no last setup).
-export const PRESETS=['scripted','claude','local','last'];
+// cannot be made (no local model, no last setup). There is no "all scripted" preset (#148): the members are
+// always agents; 'haiku' keeps the DM scripted, the cheapest way to play.
+export const PRESETS=['haiku','claude','local','last'];
 export function applyPreset(name,base,ctx={}){const s=JSON.parse(JSON.stringify(base)),all=m=>{for(const k of SLOT_KEYS)s.slots[k].mind={...m}};
-  if(name==='scripted'){all(SCRIPTED);s.dm={...SCRIPTED};return s}
+  if(name==='haiku'){all(claudeMind('agent','haiku'));s.dm={...SCRIPTED};return s}
   if(name==='claude'){all(claudeMind('agent','haiku'));s.dm=claudeMind('agent','sonnet');return s}
   if(name==='local'){if(!ctx.local)return null;all({mode:'agent',provider:'ollama',model:ctx.local});s.dm={mode:'agent',provider:'ollama',model:ctx.local};return s}
   if(name==='last'){const l=ctx.last;if(!l||!l.slots)return null;
-    for(const k of SLOT_KEYS)if(l.slots[k]&&l.slots[k].mind)s.slots[k]={...s.slots[k],mind:{...l.slots[k].mind}};
+    for(const k of SLOT_KEYS)if(l.slots[k]&&l.slots[k].mind)s.slots[k]={...s.slots[k],mind:agentOnly(l.slots[k].mind)};
     if(l.dm)s.dm={...l.dm};
     // the viewer's last Fellowship, kept whole when it is of the same faction
     if(l.fac===s.fac)for(const k of SLOT_KEYS)if(l.slots[k]){const {cls,name,race}=l.slots[k];s.slots[k]={...s.slots[k],cls,...(name?{name}:{}),...(race?{race}:{})}}
     return s}
   return null}
 
+// A remembered member mind as an agent mind: an older AI mind keeps its model, a scripted one becomes the
+// default agent (#148).
+function agentOnly(m){if(m&&(m.mode==='agent'||m.mode==='ai')&&m.provider&&m.model)return {mode:'agent',provider:m.provider,model:m.model};return DEFAULT_MIND()}
+
 // ---- checking ----
-function mindProblem(m,what){if(!m||typeof m!=='object'||!MIND_MODES.includes(m.mode))return what+': unknown mind.';
+function mindProblem(m,what,modes=MIND_MODES){if(!m||typeof m!=='object'||!modes.includes(m.mode))return what+(modes===MIND_MODES&&m&&(m.mode==='scripted'||m.mode==='ai')?': a Fellowship member is always played by an agent; pick its model.':': unknown mind.');
   if(m.mode==='scripted')return null;
   if(!SETUP_PROVIDERS.includes(m.provider)||!MIND_PROVIDERS.includes(m.provider))return what+': pick a provider for the '+(m.mode==='ai'?'AI':'agent')+'.';
   if(typeof m.model!=='string'||!MODEL_OK.test(m.model))return what+': there is no model for the '+(m.mode==='ai'?'AI':'agent')+'; pick one'+(m.provider==='ollama'?' (is Ollama running with a model pulled?)':'')+'.';
@@ -75,13 +83,13 @@ export function validateSetup(s){const out=[];
       if(n.length<2||n.length>24||!/^[\p{L}][\p{L}' -]*$/u.test(n))out.push(sl.label+': a name is 2-24 letters (spaces, hyphens and apostrophes allowed).');
       else if(seen.has(n.toLowerCase()))out.push(sl.label+': "'+n+'" is used twice.');else seen.add(n.toLowerCase())}
     const mp=mindProblem(p.mind,sl.label);if(mp)out.push(mp)}
-  if(!s.dm||!['scripted','agent'].includes(s.dm.mode))out.push('DM: pick scripted or agent.');
-  else if(s.dm.mode==='agent'){const mp=mindProblem({...s.dm},'DM');if(mp)out.push(mp)}
+  if(!s.dm||!DM_MODES.includes(s.dm.mode))out.push('DM: pick scripted or agent.');
+  else if(s.dm.mode==='agent'){const mp=mindProblem({...s.dm},'DM',DM_MODES);if(mp)out.push(mp)}
   return out}
 
 // Strip a setup to the fields we read (it may come from localStorage or the URL of an older page).
 export function cleanSetup(s){if(!s||typeof s!=='object')return null;
-  const m=x=>x&&MIND_MODES.includes(x.mode)?x.mode==='scripted'?{mode:'scripted'}:{mode:x.mode,provider:x.provider,model:x.model}:{mode:'scripted'};
+  const m=agentOnly; // members: agents only (#148); an older page's scripted or AI mind becomes an agent
   const slots={};for(const k of SLOT_KEYS){const p=(s.slots&&s.slots[k])||{};slots[k]={cls:p.cls,...(p.name?{name:String(p.name).trim()}:{}),...(p.race?{race:p.race}:{}),mind:m(p.mind)}}
   const dm=s.dm&&s.dm.mode==='agent'?{mode:'agent',provider:s.dm.provider,model:s.dm.model}:{mode:'scripted'};
   return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,fac:s.fac|0,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),slots,dm}}
@@ -110,18 +118,15 @@ export function pickSetup(setup){const used=new Set(),pick={},fac=setup.fac;
     if(p.name){let n=p.name;if(n.toLowerCase()!==a.name.toLowerCase()&&taken.has(n.toLowerCase()))n+=' II';taken.delete(a.name.toLowerCase());taken.add(n.toLowerCase());a.name=n}}
   return pick}
 
-// Minds, set before the first tick: AI members get a brain and its model, agent members are agent-played
-// at once (AGENT with a link state, their reflexes playing until a runner claims them), the DM seat opens
-// when the DM is an agent. Replaces what found() set.
+// Minds, set before the first tick: every member is agent-played at once (found() already marked them: AGENT
+// with a link state, autopilot and reflexes until a runner claims it), the DM seat opens when the DM is an agent.
+// The model each member's runner starts with is in the setup (planRunners); the page starts them.
 export function applyMinds(setup){const F=S.fellowship;if(!F)return;
   const mem=SLOT_KEYS.map(k=>[k,F.slots[k]!=null?S.agents.find(a=>a.id==F.slots[k]):null]);
-  for(const [k,a] of mem){if(!a)continue;const m=(setup.slots[k]||{}).mind||SCRIPTED;
+  for(const [k,a] of mem){if(!a)continue;
     if(a.brain){disableBrain(a);delete a.fellowBrain}
-    if(a.fellowAgent){markPlayer(a,false);delete a.fellowAgent}
-    if(m.mode==='ai'){enableBrain(a);a.fellowBrain=true;setMind(a,{provider:m.provider,model:m.model})}
-    else if(m.mode==='agent'){if(markPlayer(a,true))a.fellowAgent=true}}
-  const modes=SLOT_KEYS.map(k=>(setup.slots[k]||{mind:SCRIPTED}).mind.mode);
-  F.minds=modes.every(x=>x==='agent')?'agent':modes.some(x=>x!=='scripted')?'relay':'off';F.ai=F.minds!=='off';
+    if(!a.player&&markPlayer(a,true))a.fellowAgent=true}
+  F.minds='agent';F.ai=true;
   if(setup.dm&&setup.dm.mode==='agent')setDmSeat(true)}
 
 // ---- which runners a setup needs ----

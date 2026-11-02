@@ -4,8 +4,8 @@
 // and lets the other heroes start part-way through their careers, so the five set out into a world
 // that already has veterans, middling hunters and greenhorns in it:
 //   - the Fellowship: one faction (rolled per seed), the "form one for me" pick (autoPick) of its
-//     level-1 roster, founded with found() in the leader's home town, Minds scripted ('off'); the
-//     owner switches members to AI or Agent from their rows. They start at level 1 like everyone used to.
+//     level-1 roster, founded with found() in the leader's home town, every member agent-played (#148:
+//     autopilot and reflexes until their runners claim them). They start at level 1 like everyone used to.
 //   - background heroes: a starting level drawn from START_BANDS (stratified per faction, so both
 //     factions get the same spread), placed hunting in the region that fits that level (zoneFor,
 //     nearest their home town), with worn gear, gold, kills, ability growth and a line of history.
@@ -70,6 +70,6 @@ export function opening(o={}){
     hs.forEach((a,i)=>season(a,startLevel((i+rnd())/hs.length)))}
   const bg=S.agents.filter(a=>!ids.has(a.id)),lv=bg.map(a=>a.lvl);
   log({t:'Eldmoor',c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',fac(0),' and ',fac(1),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.');
-  const r=found(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, Minds scripted unless the setup chose
-  if(r.ok){r.fellowship.minds='off';if(setup){applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm}}}
+  const r=found(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, agent-played from the first tick (#148)
+  if(r.ok){if(setup){applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm}}}
   return r.ok?r.fellowship:null}

@@ -11,8 +11,13 @@
 // The world never waits on the agent: the timeout is in game minutes, and a silent or
 // disconnected agent simply gets the scripted branch.
 import {S} from './state.js';
+import {notify} from './notify.js';
+import {reflexMay,ownerHeld} from './runlink.js';
 
 export const CHOICE_MIN=180; // game minutes a choice waits (30 real seconds at 1x)
+// #148: a Fellowship member's choice waits for its agent: CHOICE_HOLD more game minutes (with a nudge) while its
+// runner holds it, and as long as it takes while its runner is gone and the owner has not answered the alert.
+export const CHOICE_HOLD=600;
 
 // Fellowship (#68 phase B): a choice on the Fellowship's adventure goes to the whole table
 // (sim/table.js registers the hook; it answers undefined when Table mode cannot run, e.g. at 3x).
@@ -32,5 +37,8 @@ export function playerBranch(adv,sc,a,spec){
     a.playChoiceNew=true; // sim/player.js turns this into an urgent event
   }
   if(p.chosen==='a'||p.chosen==='b'){const c=p.chosen;adv.pick=null;return c}
+  if(S.gameMin>=p.until&&a.fellow&&!reflexMay(a)&&(ownerHeld(a)||!p.held)){const held=ownerHeld(a);p.until=S.gameMin+(held?10:CHOICE_HOLD);
+    if(!held&&!p.held){p.held=1;notify(a,'The choice on '+(p.title||'your adventure')+' still waits for you: '+p.opts.a+' (a) or '+p.opts.b+' (b).',3)}
+    adv.stage='choose';return 'wait'}
   if(S.gameMin>=p.until){adv.pick=null;adv.pickTimedOut=(adv.pickTimedOut||0)+1;return null}
   adv.stage='choose';return 'wait'}

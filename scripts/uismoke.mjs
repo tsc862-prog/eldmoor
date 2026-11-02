@@ -173,7 +173,7 @@ console.log('declutter');
   ok(!$('hero').querySelector('.hd [data-ai]')&&!$('hero').querySelector('.hd [data-agent]'),'a member\'s header has no AI/Agent buttons (one mind control)');
   ok(!$('frames').querySelector('[data-mindctl]'),'the frames show the mind label, without a switch');
   const fb=$('felbody'),mm=[...fb.querySelectorAll('details')].find(d=>/Members and minds/.test(d.textContent));
-  ok(!!mm&&!mm.open&&!!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member\'s mind is set, folded by default');
+  ok(!!mm&&!mm.open&&!!mm.querySelector('.mindrow')&&!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member\'s mind is set, folded by default');
   ok(!/Model requests|Relay writing/.test(fb.textContent),'request stats are hidden unless Developer is on');
   ok(document.body.classList.contains('fellow-mode')&&!document.body.classList.contains('dev-mode'),'Minds at play is folded away (fellow-mode without dev-mode)');
   const st=$('storyTabs');ok(st&&!st.hidden&&$('storyTtl').textContent==='Story','the Story panel has Chronicle and Campaign log tabs');

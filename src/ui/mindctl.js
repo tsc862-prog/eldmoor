@@ -1,7 +1,9 @@
 // Per-member mind control (issue #94): who plays one hero right now (the scripted rules, a model
 // via the relay, or an agent runner) and a button that cycles it. Used by the party frames and
-// the Fellowship roster. When a Fellowship exists only its members need AI or Agent control; the
-// hero card hides those buttons on everyone else unless the small "Developer" toggle is on.
+// the Fellowship roster. A Fellowship member is always agent-played (#148): it gets no cycle button
+// and no AI/Agent toggles, only its mind label (its model is picked on its runner, ui/mindpick.js).
+// Background heroes keep Scripted / AI / Agent, on the hero card only while the "Developer" toggle is
+// on when a Fellowship exists.
 import {S,enableBrain,disableBrain,brainStatus} from '../sim/index.js';
 import {agentOn,agentOff} from './player-bridge.js';
 import {mindLabel} from './mindlabel.js';
@@ -18,22 +20,23 @@ const NEXT={scripted:'AI',ai:'Agent',quiet:'Agent',agent:'Scripted'};
 
 // Scripted -> AI -> Agent -> Scripted. A member's mind set here is marked the way the Fellowship's
 // Minds switch marks it (fellowBrain / fellowAgent), so leaving the Fellowship hands the hero back.
-export function cycleMind(a){if(!a||a.state==='dead')return;const m=mindOf(a);
+export function cycleMind(a){if(!a||a.state==='dead'||a.fellow)return;const m=mindOf(a); // a member stays an agent (#148)
   if(m==='agent'){agentOff(a);delete a.fellowAgent}
   else if(m==='ai'||m==='quiet'){disableBrain(a);delete a.fellowBrain;if(agentOn(a)&&a.fellow)a.fellowAgent=true}
   else if(enableBrain(a)&&a.fellow)a.fellowBrain=true}
 
 // The control: a small button naming the next mind; data-mindctl carries the hero id.
-export function mindButton(a){const m=mindOf(a),b=el('button','mini mindbtn','→ '+NEXT[m]);b.dataset.mindctl=a.id;
+export function mindButton(a){if(a&&a.fellow){const s=el('span','mini mindbtn','Agent');s.title='Mind: '+mindText(a)+'. A Fellowship member is always played by its agent; pick the model on its runner (Fellowship panel).';return s}
+  const m=mindOf(a),b=el('button','mini mindbtn','→ '+NEXT[m]);b.dataset.mindctl=a.id;
   b.title='Mind: '+mindText(a)+'. Click to switch to '+NEXT[m].toLowerCase()+' (scripted → AI → agent).';return b}
 
 // ---- the Developer toggle (kept per viewer) ----
 const KEY='eldmoor.dev';
 let dev=false;try{dev=localStorage.getItem(KEY)==='1'}catch(_){}
 export const devMode=()=>dev;
-// AI/Agent buttons on the hero card: for everyone without a Fellowship, for members with one,
-// and for everyone again in Developer mode.
-export const showMindButtons=a=>!S.fellowship||!!(a&&a.fellow)||dev;
+// AI/Agent buttons on the hero card: never on a Fellowship member (always an agent, #148); on everyone
+// else without a Fellowship, or in Developer mode.
+export const showMindButtons=a=>!(a&&a.fellow)&&(!S.fellowship||dev);
 
 let after=()=>{};
 // One delegated click (capture phase) for every [data-mindctl] button; onChange re-renders.

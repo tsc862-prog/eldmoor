@@ -27,7 +27,7 @@ import http from 'node:http';
 import {existsSync, readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks} from '../src/sim/index.js';
 import {onLog} from '../src/sim/chronicle.js';
 import {hostCall} from '../src/sim/player-host.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
@@ -45,9 +45,13 @@ const flag = k => argv.includes('--' + k);
 // The local backend: tool calls go straight into the sim through the shared host, for the hero
 // the call names (attachPlay resolves a call without a hero to the first living agent hero).
 // hostOpts is passed to hostCall (tests drive game time through it).
+// links: the relay's claims per hero (attachPlay pushes them); the sim's decisions wait for a hero whose runner
+// holds it and fall to reflex at once when none does (no owner to ask here, #148).
 export function localBackend(hostOpts) {
   const seats = () => playerSeats();
+  let linkMap = {}; setRunnerLinks(a => linkMap[a.id] || 'none');
   return {
+    links: map => {linkMap = map && typeof map === 'object' ? map : {}},
     call: (heroId, tool, args) => {const a = heroId != null ? playerSeat(heroId) : playerSeat();
       return a ? hostCall(a.id, tool, args, hostOpts) : Promise.resolve({ok: false, error: heroId != null ? `Hero #${heroId} is not agent-played.` : 'No agent-played hero.', offline: true})},
     dmCall: (tool, args) => Promise.resolve(dmAct(tool, args)), // the DM seat (issue #66): answered at once, no waits
@@ -65,7 +69,7 @@ export function chooseHero({cls = null, name = null, fac = 0, skip = []} = {}) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const port = Number(opt('port', process.env.PLAY_PORT || 8789)), speed = Math.max(.25, Math.min(8, Number(opt('speed', 1)))), quiet = flag('quiet');
+  const port = Number(opt('port', process.env.PLAY_PORT || 8789)), quiet = flag('quiet'); let speed = Math.max(.25, Math.min(8, Number(opt('speed', 1))));
   const worldFile = opt('world', null) ? resolve(opt('world')) : WORLD_FILE;
   if (flag('resume') && existsSync(worldFile)) {
     const snap = JSON.parse(readFileSync(worldFile, 'utf8')); if (!isSave(snap)) throw new Error('not a save: ' + worldFile);
@@ -94,6 +98,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const save = () => {try {mkdirSync(dirname(worldFile), {recursive: true}); writeFileSync(worldFile, JSON.stringify(snapshot()))} catch (e) {console.error('[play] save failed: ' + e.message)}};
   let last = Date.now(), saveT = 0;
   setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now;
+    if (TABLE.drop) {if (speed > 1) {console.log(`[play] ${speed}x -> 1x: a Fellowship decision waits for its agents (${TABLE.drop.reason})`); speed = 1; TABLE.speed = 1} TABLE.drop = null} // #148
     const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) step(dt / n);
     saveT += real; if (saveT >= 60) {saveT = 0; save()}}, 50);
 
