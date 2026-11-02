@@ -29,7 +29,9 @@ const BIOME_SKY={
   tundra:  [['clear',.5],['snow',.3],['squall',.2]],      // Hoarfell, Rimeholt, Palereach
   highland:[['clear',.5],['fog',.25],['drizzle',.15],['squall',.1]], // Cairnwold
 };
-const ZW=REGIONS.map(r=>BIOME_SKY[r.biome]||BIOME_SKY.meadow);
+// A region may name its own sky in the spec (`sky`: [kind, weight] pairs); else its biome's table.
+export const skyFor=r=>r.sky||BIOME_SKY[r.biome]||BIOME_SKY.meadow;
+const ZW=REGIONS.map(skyFor);
 // Game minutes a spell lasts: clear skies 1.5-3 h, weather 1-2.5 h.
 const dur=k=>k==='clear'?90+rnd()*90:60+rnd()*90;
 
