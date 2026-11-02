@@ -124,7 +124,7 @@ ELDMOOR                       [Day 3 · 14:20]  [Agents $0.42 / $5]  [Settings] 
   with state, model, turns and cost, a turn cap ("until stopped" for local models) and a budget
   for paid models. Above the rows: a global session budget with the live spend. The DM seat's
   Open/Close moves here too. Minds at play folds into this popover, as a debugging list.
-- **Settings** (popover): Table mode Auto/Off, Sound, Alert on runner stop, World chatter and
+- **Settings** (popover): Table mode Auto/Off, Sound, Alert on runner stop (sound), Run without agents (Developer), World chatter and
   Developer. All are kept per viewer, as today.
 - **World v** (menu): Save, Load, Export, Import, New world, and the save status as its subtitle.
 - **Phone width:** the top bar wraps into two rows: title and clock, then the three buttons. The
@@ -151,3 +151,7 @@ Each step is a small PR checked by `npm run uismoke`, which grows a check per st
 5. `ui/declutter-side`: the Fellowship card above the frames, the Story panel (Chronicle,
    Campaign, Timeline), Members and minds folded, Minds at play and the dev stats behind
    Agents/Developer. Closes #145.
+
+## Run gate (#171)
+
+The world runs only while every required agent seat is connected: each living Fellowship member and the DM seat when the DM agent is chosen (`src/ui/rungate.js`). A missing seat holds the world (speed buttons other than Pause are inert; the owner's speed is kept, so it resumes by itself, and a world the owner paused stays paused). A bar over the map lists who is missing and why, with Start / Restart per seat and Start all. A seat live within the last 20 s still counts (no flicker). A new world starts held until its runners claim. Developer-only "Run without agents" (Settings, this session) skips the gate. The old runner-stop alert's "Resume without it" is gone.

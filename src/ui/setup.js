@@ -234,23 +234,20 @@ export async function afterBoot(){const setup=appliedSetup();if(!setup||bootKind
     link:()=>r.kind==='dm'?dmLink():r.kind==='fellowship'?worst(SLOT_KEYS.map(k=>mem[k])):agentLink(mem[r.slot]||null),
     error:''}));
   launch={jobs,sent:false,headline:'Starting the runners…'};paintBar();
-  const prev=ctl.speed||1;ctl.speed=0; // wait a few seconds for the runners to claim, never longer
-  const resume=()=>{if(ctl.speed===0)ctl.speed=prev};
+  if(ctl.speed===0)ctl.speed=1; // the run gate (ui/rungate.js) holds the world until every runner has claimed, then it plays on
   const timer=setInterval(paintBar,700);
   const claimed=()=>jobs.every(j=>j.error||j.link()==='connected'||j.link()==='waiting');
-  const cap=setTimeout(resume,6000);
   let info=null;try{info=await (await fetch(relayBase()+'/play/runner')).json()}catch(e){}
-  if(!info||!info.enabled){const why=!info?'The relay is not reachable: start it (npm run relay -- --runners) and the runners from the Minds panel; the heroes play on reflexes meanwhile.':(info.how||'Runners are off on the relay: start them yourself.');
-    for(const j of jobs)j.error='no runner';launch.headline=why;clearTimeout(cap);resume();clearInterval(timer);paintBar();return}
-  launch.sent=true;launch.headline='Runners are starting. The world waits for them for a few seconds, then plays on.';
+  if(!info||!info.enabled){const why=!info?'The relay is not reachable: start it (npm run relay -- --runners).':(info.how||'Runners are off on the relay: start them yourself.');
+    for(const j of jobs)j.error='no runner';launch.headline=why+' The world stays paused until they connect.';clearInterval(timer);paintBar();return}
+  launch.sent=true;launch.headline='Runners are starting. The world is paused until they all claim their seats.';
   for(const j of jobs){const body={kind:j.kind,provider:j.provider,model:j.model,...(j.kind==='hero'?{hero:mem[j.slot].id}:{})};
     let r;for(let i=0;i<10;i++){r=await post('/play/runner/start',body);if(r.ok||r.code!==404)break;await sleep(1000)} // the page tells the relay which heroes are agent-played a moment after loading
     if(!r.ok)j.error=r.error}
   const failed=jobs.filter(j=>j.error);
-  launch.headline=failed.length?failed.length+' of '+jobs.length+' runners did not start; the others play. Start the rest from the Minds panel.':'All runners started; the heroes act on reflexes until they claim.';
+  launch.headline=failed.length?failed.length+' of '+jobs.length+' runners did not start. The world stays paused: start the rest from the bar over the map.':'All runners started; the world plays on when they have claimed.';
   paintBar();
   for(let i=0;i<20&&!claimed();i++)await sleep(500);
-  clearTimeout(cap);resume();
-  if(claimed()&&!failed.length)launch.headline='All runners have claimed their heroes.';
+  if(claimed()&&!failed.length)launch.headline='All runners have claimed their seats; the world is running.';
   paintBar();setTimeout(()=>{clearInterval(timer)},60000)}
 const worst=hs=>{const ls=hs.filter(Boolean).map(h=>agentLink(h));return ls.some(l=>l!=='connected'&&l!=='waiting')?'none':ls.includes('waiting')?'waiting':'connected'};

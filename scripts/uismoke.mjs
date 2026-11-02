@@ -180,5 +180,45 @@ console.log('declutter');
   st.children.find(b=>b.dataset.story==='camp').click();ok($('log').hidden&&!$('campaign').hidden&&$('chronFel').hidden,'Campaign log tab shows the campaign');
   st.children.find(b=>b.dataset.story==='chron').click();ok(!$('log').hidden&&$('campaign').hidden,'Chronicle tab shows the chronicle')}
 
+// The run gate (#171): the world only runs while every required agent seat is connected
+console.log('run gate');
+{const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');
+  for(const m of sim.fellows())sim.markPlayer(m,true);
+  const L={};for(const m of sim.fellows())L[m.id]='connected';let dm='off';
+  gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>dm});
+  const T0=1e6,box=$('rgate'),sp=n=>$('sp'+n),press=n=>sp(n).dispatch('click',{target:sp(n)});
+  ctl.speed=1;gate.checkRunGate(T0);
+  ok(!ctl.held&&box.hidden,'all five connected: the world runs and no bar shows');
+  const m3=sim.fellows()[2];L[m3.id]='none';
+  gate.checkRunGate(T0+5000);ok(!ctl.held,'a short blip (5 s) does not close the gate');
+  gate.checkRunGate(T0+25000);
+  ok(ctl.held&&!box.hidden&&box.textContent.includes(m3.name),'the member\'s link dropped for 25 s: the gate closes and the bar names '+m3.name);
+  ok(/Start/.test(box.textContent)&&/Start all/.test(box.textContent),'the bar offers Start and Start all');
+  ok(/no runner/.test(box.textContent),'the bar says why: '+box.children.map(c=>c.textContent).join(' / ').slice(0,120));
+  ok(sp(3).getAttribute('aria-disabled')==='true'&&sp(0).getAttribute('aria-disabled')!=='true','the speed buttons are inert but Pause works');
+  press(3);ok(ctl.speed===1,'3x cannot unpause or change the speed while held');
+  const bar0=box.children[0];gate.checkRunGate(T0+26000);ok(box.children[0]===bar0,'the bar is patched only when its text changes (same nodes)');
+  L[m3.id]='waiting';gate.checkRunGate(T0+27000);
+  ok(!ctl.held&&ctl.speed===1&&box.hidden&&sp(3).getAttribute('aria-disabled')!=='true','it reconnects: the world resumes by itself at the same speed');
+  // a pause by the owner is kept
+  L[m3.id]='none';gate.checkRunGate(T0+60000);gate.checkRunGate(T0+90000);ok(ctl.held,'closed again');
+  press(0);ok(ctl.speed===0,'Pause works while held');
+  L[m3.id]='connected';gate.checkRunGate(T0+91000);
+  ok(!ctl.held&&ctl.speed===0,'the world was paused by the owner: it stays paused after reconnecting');
+  // the DM seat
+  ctl.speed=1;sim.setDmSeat(true);dm='none';gate.checkRunGate(T0+100000);
+  ok(ctl.held&&gate.gateMissing().some(m=>m.kind==='dm')&&/DM/.test(box.textContent),'the DM seat chosen and its runner absent: held, and the DM is listed');
+  dm='connected';gate.checkRunGate(T0+101000);ok(!ctl.held,'the DM connects: running');
+  sim.setDmSeat(false);
+  // a dead member is not required; a restart blip of a whole runner within 20 s is not a flicker
+  // developer override
+  L[m3.id]='none';gate.checkRunGate(T0+200000);gate.checkRunGate(T0+230000);ok(ctl.held,'held again');
+  gate.setRunFree(true);gate.checkRunGate(T0+231000);
+  ok(!ctl.held&&box.hidden&&$('wFree').textContent==='Run without agents: on','Developer "Run without agents" runs the world without them');
+  ok(sim.reflexMay&&sim.reflexMay(m3),'reflexes may decide for the member without a runner in that mode');
+  gate.setRunFree(false);gate.checkRunGate(T0+232000);ok(ctl.held,'switching it off closes the gate again');
+  ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
+  gate.setGateProbe(null);L[m3.id]='connected'}
+
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

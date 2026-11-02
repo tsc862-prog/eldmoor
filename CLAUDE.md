@@ -20,6 +20,7 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   lead_to, Table scene choices, jobs, splitting off, what to say. A decision point waits for the agent
   (Table mode pauses the world at 1x); reflex choices are only a fallback when the runner is gone, and then
   the runner-stop alert pauses the world and asks the owner. Background heroes may be scripted.
+- **The DM serves the Fellowship first, then the world.** The DM's priorities are the Fellowship first, then the overall game world, for the DM agent and the scripted DM alike: each turn or refresh starts with where the Fellowship is, their open threads and oaths, pending decisions and what would make their next game hours interesting; hooks, rumours, people, places and staged scenes go to their road first; world-shaping that does not touch them comes after, and only when nothing is pending for them. A share of every daily lever and staging limit is reserved for them. See "DM agent" below.
 - **In-game channels only.** The DM and the players (Fellowship members, agent-played heroes)
   communicate only inside the game: in-game chat (say in earshot, the party channel, townsfolk, the
   DM's `narrate` and `npc_say`) and what their characters can see. Nobody messages anyone directly
@@ -54,8 +55,9 @@ Dedicated subagents live in `.claude/agents/`. Delegate to them by area:
 | `pm` | Backlog triage, issues and labels, priority order, briefs for next pickups, board snapshot and status summaries (no code, no merges, no dispatch) |
 | `playtest-reviewer` | Reads DM and character behavior logs (runner logs, sessions, relay, `logs/behavior/`) after play and files evidenced issues (no code, no merges) |
 | `ui-designer` | The watcher interface: layout, panels, dossier tabs, Fellowship panel and frames, Table banner, Agent/Mind/Chat tabs, setup page, styles, scrolling, phone width |
+| `pixel-artist` | World graphics: terrain, tiles, sprites and animation, towns and landmarks, lighting, weather, effects, camera and draw order (`src/render/*`) |
 
-Models per agent (set in each agent's frontmatter): Opus for `ai-designer`, `brain-builder` and `ui-designer` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review), Haiku for `pm` (triage and board), Sonnet for `playtest-reviewer`. Quick read-only checks (a short lore pass, a board sync) may run on Haiku by overriding `model` on the call; full originality reviews stay on Sonnet. Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
+Models per agent (set in each agent's frontmatter): Opus for `ai-designer`, `brain-builder`, `ui-designer` and `pixel-artist` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review), Haiku for `pm` (triage and board), Sonnet for `playtest-reviewer`. Quick read-only checks (a short lore pass, a board sync) may run on Haiku by overriding `model` on the call; full originality reviews stay on Sonnet. Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
 
 For a feature that spans areas (for example a new zone with new monsters), plan it,
 hand each part to its owner, then have `lore-keeper` check names and
@@ -404,6 +406,13 @@ what comes next through the world levers; the scripted DM keeps running beside i
 controls a hero and never kills anyone by fiat (no lever touches HP, level or life, and a pull that piles
 danger onto a badly hurt Fellowship member out in the field is refused). It can also stage narrated
 encounters and speak at their tables (issue #132, below).
+
+- **Fellowship first (issue #165).** The DM's priorities are the Fellowship, then the overall world (a Hard rule).
+  - Agent: the standing orders and every turn prompt start with them (`fellowNow`); `dm_status` lists `fellowship_first` and `fellowship_needs` (summary, items: where they ride, open threads and oaths, pending Table scene or vote, hurt members, what is under way, what would make their next hours interesting; `quiet` when nothing is pending) before the world, plus `fellowship_change`, a signature of their situation. The DM never reads hero notes. World-shaping that does not touch them comes after, and only when nothing is pending for them.
+  - Cadence: besides each game evening, the runner takes an extra turn when `fellowship_change` differs from the last turn's (they arrived or set out, a scene ended, a member fell, an oath or job finished), at most `EVENT_MAX` 3 a game day, `EVENT_GAP` 120 game minutes apart, still behind the Table/vote wait and the real-time minimum gap (`eventDue` in `scripts/dm-agent.mjs`; the DM seat has no `/play/pace`, that route is the heroes'). `src/sim/dmfocus.js` is the one place that knows where the Fellowship is.
+  - Scripted DM (`src/sim/dm.js`, deterministic): the Fellowship's hall board always keeps one posted job that concerns them (a member's oath, the living elite nearest their road, or a townsfolk job in the region they ride, level band permitting) and fills first; outlying boards keep a floor of `K.FLOOR` 1 posted job and fill up to `K.HOOKS` only while the Fellowship has a job under way.
+  - Reserved share: with a Fellowship, `FOCUS.RESERVE` (about a third, at least one) of each lever's `perDay` limit and `STAGE.RESERVE` (1) of the 3 staged scenes a day are kept for pulls near the Fellowship (their regions, hall, members); world pulls hit "kept for the Fellowship" first.
+  - Measure: `S.dmFocus` counts DM actions (board posts, applied levers outside adventures, staged scenes) and those that touched the Fellowship; `dm_status` shows the share, the behavior digest has `dmFocus {acts, fellow, share}`, the report prints it, and `npm run dmcheck` asserts most scripted-DM actions concern the Fellowship (about 60% over 150 game hours) and that the run is deterministic.
 
 - In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; open the
   **Dungeon Master** panel and press **Open seat**, pick the mind (Claude or a pulled local model) and
