@@ -430,6 +430,8 @@ export function renderFallen(){patch($('fallen'),el_=>{if(!S.fallen.length){el_.
     if(a){n.classList.add('hn');n.dataset.hid=a.id}
     li.append(n,` · Lv ${f.lvl} ${f.cls}, ${f.cause}`);el_.append(li)}})}
 
+const FOCUS_WHY={crypt:'its leader will lead them down into the Crypt',raid:'its leader means to bring down the world boss',adventure:'its leader sends them after the jobs on the town boards',pvp:'its leader wants enemy blood on the roads'};
+const focusWhy=(f,L)=>(L?L.name+': ':'')+(FOCUS_WHY[f]||'no focus chosen');
 const gScore=g=>{const m=membersOf(g);return Math.round(m.reduce((t,a)=>t+a.lvl+a.honor*3+a.kills/25,0)+g.clears*25+g.bosses*40)};
 // Living guilds by score with leader and head count, then a count of the retired.
 export function renderGuilds(){const live=livingGuilds().map(g=>({g,m:membersOf(g),s:gScore(g)})).sort((x,y)=>y.s-x.s);
@@ -437,8 +439,9 @@ export function renderGuilds(){const live=livingGuilds().map(g=>({g,m:membersOf(
   patch($('guilds'),tb=>{if(!live.length)tb.append(wide('No guild has been founded yet.'));
     live.forEach(({g,m,s},i)=>{const L=leaderOf(g),tr=el('tr'),td=el('td');tr.setAttribute('data-k',keyOf(g));
       td.append(el('span','dm',String(i+1)),' ',el('span','f'+g.fac,'<'+g.tag+'> '+g.name),el('br'),el('span','dm',(L?'led by '+L.name+' · ':'')+m.length+' member'+(m.length===1?'':'s')));
-      {const fo=guildFocus(g);if(fo!=='open')td.append(el('br'),el('span','dm','Focus: '),el('span','gd',FOCUS_NAME[fo]))} // the leader's focus (sim/guildfocus.js, #6)
-      const rv=rivalsOf(g);if(rv.length){td.append(el('br'),el('span','dm','Rivals: '));rv.forEach((h,j)=>td.append(j?el('span','dm',', '):'',el('span','f'+h.fac,'<'+h.tag+'>')))} // declared rivalries (sim/rivals.js, #6)
+      {const fo=guildFocus(g),fel=m.some(x=>x.fellow&&x.state!=='dead');
+        if(fo!=='open'||fel){const w=el('span','gd',fel?'none (Fellowship member)':FOCUS_NAME[fo]);w.title=fel?'A guild with a living Fellowship member sets no focus.':focusWhy(fo,L);td.append(el('br'),el('span','dm','Focus: '),w)}} // the leader's focus and why (sim/guildfocus.js, #6, #327)
+      const rv=rivalsOf(g);if(rv.length){td.append(el('br'),el('span','dm','Rivals: '));rv.forEach((h,j)=>{const ht=S.rivals&&S.rivals.heat[g.id<h.id?g.id+':'+h.id:h.id+':'+g.id]||0,sp=el('span','f'+h.fac,'<'+h.tag+'>');sp.title='Rivalry with <'+h.tag+'> '+h.name+': heat '+(Math.round(ht*10)/10)+' of 8';td.append(j?el('span','dm',', '):'',sp)})} // declared rivalries and their heat (sim/rivals.js, #6, #327)
       tr.append(td,el('td',null,g.clears+'/'+(g.clears+g.wipes)),el('td','gd',String(s)));tb.append(tr)});
     if(ret)tb.append(wide('Retired: '+ret))})}
 
