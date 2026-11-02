@@ -48,6 +48,9 @@ jobs:
           if ! echo "$info" | jq -e '.labels | map(.name) | index("automerge")' >/dev/null; then echo "#$pr has no automerge label"; exit 0; fi
           if [ "$(echo "$info" | jq -r .isDraft)" != false ]; then echo "#$pr is a draft"; exit 0; fi
           head=$(echo "$info" | jq -r .headRefOid)
+          # a PR that only touches docs/, .claude/ or Markdown runs no CI (ci.yml paths-ignore): merge it on the label alone
+          other=$(gh pr view "$pr" -R "$REPO" --json files --jq '[.files[].path | select((startswith("docs/") or startswith(".claude/") or endswith(".md")) | not)] | length')
+          if [ "$other" = 0 ]; then gh pr merge "$pr" -R "$REPO" --merge; exit 0; fi
           ok=$(gh api "repos/$REPO/commits/$head/check-runs?check_name=CI%20ok" --jq '.check_runs | sort_by(.completed_at) | last | .conclusion')
           if [ "$ok" != success ]; then echo "#$pr: CI ok is '$ok' on $head, waiting"; exit 0; fi
           gh pr merge "$pr" -R "$REPO" --merge
