@@ -4,54 +4,89 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
+# Parallel groups: a run takes as long as its slowest group, not the sum. "CI ok" is the one check the
+# auto-merge workflow (automerge.yml) waits for. Add a new check as a step in a group; a new job must also
+# be listed in ok.needs.
 jobs:
-  check:
-    name: Build and headless sim
+  core:
+    name: Build, world, saves, sim
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
+        with: {node-version: 20, cache: npm}
       - run: npm ci
-      - name: Static build
-        run: npm run build
-      - name: World spec snapshot check
-        run: npm run worldcheck
-      - name: Watcher UI keeps scroll and open rows while the world ticks (stubbed DOM)
-        run: npm run uismoke
-      - name: Save/load round trip
-        run: npm run savecheck
-      - name: Model request rate (counting mock relay)
-        run: npm run ratecheck
-      - name: Brain policy and relay (mock model)
-        run: npm run braincheck
-      - name: Local agent runner (mock Ollama)
-        run: npm run localcheck
-      - name: OpenAI provider (mock OpenAI, no key)
-        run: npm run openaicheck
-      - name: App runners and relay concurrency (mock Ollama, mock 429)
-        run: npm run runnercheck
-      - name: DM agent (mock agent, mock Ollama)
-        run: npm run dmcheck
-      - name: In-game channels (planted secrets never reach a hero)
-        run: npm run channelcheck
-      - name: Learn the world (lorecheck)
-        run: npm run lorecheck
-      - name: Tiered memory (landmarks, chapters, journal_search)
-        run: npm run tiercheck
-      - name: Behavior logs (mock runners, known anomalies logged and reported)
-        run: npm run behaviorcheck
+      - {name: Static build, run: npm run build}
+      - {name: World spec snapshot check, run: npm run worldcheck}
+      - {name: Save/load round trip, run: npm run savecheck}
+      - {name: Pack and inventory, run: npm run invcheck}
+      - {name: Bestiary, run: npm run bestiarycheck}
+      - {name: Class abilities and specialisations, run: npm run movecheck}
+      - {name: DM levers, run: npm run levercheck}
+      - {name: New World setup, run: npm run setupcheck}
       - name: Headless sim (10 game-hours)
         run: npm run sim -- 10 | tee sim.txt
       - name: Sanity-check the sim summary
         run: |
           grep -q "Living heroes:" sim.txt
-          # the world must still have heroes alive after the run
           test "$(grep -o 'Living heroes: [0-9]*' sim.txt | grep -o '[0-9]*$')" -gt 0
       - uses: actions/upload-artifact@v4
-        with:
-          name: sim-summary
-          path: sim.txt
+        with: {name: sim-summary, path: sim.txt}
+
+  ui:
+    name: Watcher UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: Watcher UI keeps scroll and open rows (stubbed DOM), run: npm run uismoke}
+      - {name: New World setup and title screen (stubbed DOM), run: npm run setupsmoke}
+
+  agents:
+    name: Agent players and runners
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: Agent player (mock agents), run: npm run playcheck}
+      - {name: Local agent runner (mock Ollama), run: npm run localcheck}
+      - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
+      - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
+      - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
+
+  minds:
+    name: Brain, DM, Table, channels, memory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: Model request rate (counting mock relay), run: npm run ratecheck}
+      - {name: Brain policy and relay (mock model), run: npm run braincheck}
+      - {name: DM agent (mock agent and Ollama), run: npm run dmcheck}
+      - {name: Table mode and staged scenes, run: npm run tablecheck}
+      - {name: Camp and rest, run: npm run campcheck}
+      - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
+      - {name: Learn the world, run: npm run lorecheck}
+      - {name: Tiered memory, run: npm run tiercheck}
+      - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
+
+  ok:
+    name: CI ok
+    if: always()
+    needs: [core, ui, agents, minds]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every group passed
+        run: |
+          test "${{ needs.core.result }}" = success
+          test "${{ needs.ui.result }}" = success
+          test "${{ needs.agents.result }}" = success
+          test "${{ needs.minds.result }}" = success

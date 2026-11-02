@@ -96,10 +96,42 @@ select(mem[1]);setTab('agent');uiFast();
 ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-played member');
 {const get=()=>tb().querySelector('.agentlog');const l=get();if(l){l.scrollTop=40;const n=l;for(let i=0;i<4;i++){sim.playerAct(mem[1].id,'look',{});tick(5)}
   ok(get()===n&&n.scrollTop>=40,'Agent tab tool calls: same list, scroll held while calls arrive ('+n.scrollTop+')')}else ok(false,'Agent tab tool calls: list not found')}
+// Keys 1-5 select the member in that party slot
+{const {cam}=await import('../src/render/draw.js');
+  const press=(k,o={})=>{let pd=false;for(const f of document._ls.keydown||[])f({key:k,target:document.body,preventDefault(){pd=true},...o});return pd};
+  const hints=[...$('frames').querySelectorAll('.pfkey')].map(n=>n.textContent).join();
+  ok(hints==='1,2,3,4,5','party frames carry the key hints 1..5: '+hints);
+  ok($('frames').querySelector('.pfkey').title==='Press 1-5 to select','key hint tooltip');
+  select(mem[0]);press('2');ok(cam.sel===mem[1]&&cam.view==='follow','key 2 selects slot 2 and follows');
+  press('4',{code:'Numpad4'});ok(cam.sel===sim.fellows()[3],'key 4 selects slot 4');
+  press('Digit5'.slice(5),{});ok(cam.sel===sim.fellows()[4],'key 5 selects slot 5');
+  select(mem[0]);press('3',{target:{tagName:'INPUT'}});ok(cam.sel===mem[0],'typing 3 in an input does not select');
+  press('3',{target:{tagName:'TEXTAREA'}});press('3',{target:{tagName:'DIV',isContentEditable:true}});ok(cam.sel===mem[0],'textarea and contenteditable ignored');
+  press('1',{ctrlKey:true});press('2',{metaKey:true});press('3',{altKey:true});ok(cam.sel===mem[0],'Ctrl/Meta/Alt + digit does not select');
+  press('6');press('0');ok(cam.sel===mem[0],'other digits do nothing')}
 // Fellowship panel: open details stay open, the campaign log keeps its place
-{const fb=$('felbody');const th=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));
-  ok(!!th,'Open threads is there');if(th){th.open=true;select(mem[2]);tick(10);
-    const th2=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));ok(th2===th&&th2.open,'Open threads stays open across a refresh')}}
+{const fb=$('felbody');const th=fb.querySelector('.felthreads');
+  ok(!!th&&/Open threads/.test(th.textContent),'Open threads lead the Fellowship panel, always visible');
+  select(mem[2]);tick(10);ok(fb.querySelector('.felthreads')===th,'the threads box is patched in place across a refresh');
+  ok(!!fb.querySelector('.fhline')&&!fb.querySelector('details'),'the header is one line with no folded sections');
+  ok(!/Minds: agents/.test(fb.textContent),'no Minds: agents label (members are always agents)');
+  ok(!fb.querySelector('.feldrawer'),'Members and Fallen are closed by default');
+  // a thread that is not about a hero: an oath and a meeting plan show as one-liners
+  mem[0].goal={text:'Avenge Torius on Grishnak',progress:0,need:1};tick(10);uiFast();
+  ok(/swore to avenge Torius/.test(fb.querySelector('.fthreads').textContent),'an oath is a live one-liner');
+  // Disband needs a confirmation behind the ... menu
+  ok(!fb.querySelector('[data-fact=disband]'),'Disband is not on the header');
+  fb.querySelector('[data-fact=menu]').click();ok(!!fb.querySelector('[data-fact=disband]'),'the ... menu offers Disband');
+  fb.querySelector('[data-fact=disband]').click();ok(!!sim.S.fellowship&&/Yes, disband/.test(fb.textContent),'Disband asks first and the Fellowship still stands');
+  fb.querySelector('[data-fact=menu]').click();ok(!sim.S.fellowship===false&&!fb.querySelector('[data-fact=disband]'),'Cancel closes the menu without disbanding');
+  fb.querySelector('[data-fact="drawer:members"]').click();const dr=fb.querySelector('.feldrawer');
+  ok(!!dr&&!!dr.querySelector('.mindrow'),'the members drawer opens on a click');
+  if(sim.S.fellowship.past.length){fb.querySelector('[data-fact="drawer:fallen"]').click();ok(/Fallen/.test(fb.querySelector('.feldrawer').textContent),'Fallen is one click away')}
+  else ok(!fb.querySelector('[data-fact="drawer:fallen"]'),'no Fallen button while nobody has fallen');
+  fb.querySelector('[data-fact="drawer:members"]').click();
+  {const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+    ok(/\.fhline\{[^}]*flex-wrap:wrap/.test(css)&&/\.feldrawer\{[^}]*overflow-wrap:anywhere/.test(css)&&/\.fmeta\{[^}]*min-width:0/.test(css),'phone width (390px): the header wraps, the name and drawer cannot push the column wider')}
+}
 {const d=$('campaign').querySelector('details');const k=d&&d.getAttribute('data-k');
   holds('Campaign log ('+k+')',()=>$('campaign').querySelector('details[data-k='+k+'] .tlist'),{sec:60,min:3})}
 // a focused picker is never replaced
@@ -189,14 +221,14 @@ console.log('declutter');
   const gr=$('hero').querySelector('.tgroups'),sub=$('hero').querySelector('.tsub'),shown=()=>sub.children.filter(b=>!b.hidden).map(b=>b.textContent);
   ok(gr&&gr.children.map(b=>b.textContent).join()==='Character,Story,Mind','three dossier groups: '+(gr&&gr.children.map(b=>b.textContent)));
   ok(shown().join()==='Stats,Gear,Pack','Character: Stats, Gear, Pack (no Party for a member: the frames are the party): '+shown());
-  setGroup('story');uiFast();ok(shown().join()==='Log,Bio,Memory','Story: Log, Bio, Memory: '+shown());
+  setGroup('story');uiFast();ok(shown().join()==='Quests,Log,Bio,Memory','Story: Quests, Log, Bio, Memory: '+shown());
   setGroup('mind');uiFast();ok(shown().includes('Chat')&&shown().includes('Agent'),'Mind: Chat and Agent for the agent-played member: '+shown());
   setGroup('char');uiFast();ok(tb().querySelector('[data-cstat]'),'Character opens on Stats');
   setGroup('story');setTab('bio');setGroup('char');setGroup('story');uiFast();ok(shown().length&&sub.children.find(b=>b.getAttribute('aria-pressed')==='true').textContent==='Bio','a group reopens on its last tab');
   ok(!$('hero').querySelector('.hd [data-ai]')&&!$('hero').querySelector('.hd [data-agent]'),'a member\'s header has no AI/Agent buttons (one mind control)');
   ok(!$('frames').querySelector('[data-mindctl]'),'the frames show the mind label, without a switch');
-  const fb=$('felbody'),mm=[...fb.querySelectorAll('details')].find(d=>/Members and minds/.test(d.textContent));
-  ok(!!mm&&!mm.open&&!!mm.querySelector('.mindrow')&&!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member\'s mind is set, folded by default');
+  const fb=$('felbody');fb.querySelector('[data-fact="drawer:members"]').click();const mm=fb.querySelector('.feldrawer');
+  ok(!!mm&&!!mm.querySelector('.mindrow')&&!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member mind is set, in the drawer');fb.querySelector('[data-fact="drawer:members"]').click();
   ok(!/Model requests|Relay writing/.test(fb.textContent),'request stats are hidden unless Developer is on');
   ok(document.body.classList.contains('fellow-mode')&&!document.body.classList.contains('dev-mode'),'Minds at play is folded away (fellow-mode without dev-mode)');
   const st=$('storyTabs');ok(st&&!st.hidden&&$('storyTtl').textContent==='Story','the Story panel has Chronicle and Campaign log tabs');
@@ -254,11 +286,15 @@ console.log('declutter');
    const chipEl=cl.parentNode.children.find(c=>c.classList.contains('chatnew'));ok(chipEl&&!chipEl.hidden&&/new line/.test(chipEl.textContent),'chat panel: a "new lines" chip shows while scrolled down');
    chipEl.dispatch('click',{target:chipEl});ok(cl.scrollTop===0&&chipEl.hidden,'chat panel: the chip returns to the top');
    cl.scrollTop=0}
-  {const wb=$('chatWide');ok(!!wb&&wb.textContent==='Wider','chat panel: a width toggle');const had=document.body.classList.contains('chat-wide');
-   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')!==had&&wb.getAttribute('aria-pressed')==='true','width toggle widens the side column (body.chat-wide)');
-   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')===had,'width toggle narrows it again');
-   const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
-   ok(/--side:clamp\(340px,28vw,460px\)/.test(css)&&/grid-template-columns:minmax\(0,1fr\) var\(--side\)/.test(css)&&/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'side column is wider by default, and one column at phone width')}
+  {const wb=$('chatTall');ok(!!wb&&wb.textContent==='Taller','chat panel: a height toggle');const had=document.body.classList.contains('chat-tall');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-tall')!==had&&wb.getAttribute('aria-pressed')==='true','height toggle makes the chat taller (body.chat-tall)');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-tall')===had,'height toggle shortens it again');
+   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');const iS=html.indexOf('id="screen"'),iC=html.indexOf('id="chatSec"'),iF=html.indexOf('id="frames"'),iA=html.indexOf('id="side"');
+   ok(iF<iS&&iS<iC&&iC<iA,'chat panel follows the map in the DOM (frames, map, chat, then the side column)');
+   ok(!$('side').children.includes($('chatSec')),'chat is not in the side column');
+   const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   ok(/--side:clamp\(340px,28vw,460px\)/.test(css)&&!/chat-wide/.test(css)&&/grid-template-columns:minmax\(0,1fr\) var\(--side\)/.test(css)&&/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'side column is its normal width, and one column at phone width');
+   ok(/\.chatbox \.chatlist\{height:clamp\(/.test(css),'chat list has its own fixed height and scroll')}
   {const dossier=await import('../src/ui/panels.js');const g=dossier.chatGroups([{from:mem[1],text:'x',party:true},{from:mem[1],text:'x',party:true},{from:mem[1],text:'y'}]);
    ok(g.length===2&&g[0].n===2,'repeats still collapse to a count (x2)')}
   {const dlog=await import('../src/sim/dmlog.js');dlog.dmlog('agent',null,['The DM agent plans a quiet road.'],{by:'dm-agent'});dlog.dmlog('frame',null,['A scripted scene opens.'],{});
@@ -309,6 +345,29 @@ console.log('run gate');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
   gate.setGateProbe(null);L[m3.id]='connected'}
 
+// The start gate (#222): connected is not enough; every seat must have answered one warm-up model call
+console.log('start gate: ready, not just claimed');
+{const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');
+  const F=sim.fellows(),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
+  gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'off',ready:a=>R[a.id]||null,dmReady:()=>null});
+  const T0=5e6,box=$('rgate');ctl.speed=1;gate.checkRunGate(T0);
+  ok(!ctl.held,'every seat ready: the world runs');
+  const slow=F[1],down=F[3];R[slow.id]={state:'warming',model:'qwen2.5:14b',at:Date.now()-40000};R[down.id]=null;
+  gate.checkRunGate(T0+1000);
+  ok(ctl.held&&/WAITING FOR MINDS · 3\/5 READY/.test(box.textContent),'a seat still warming up and one only claimed hold the world: '+(box.children[0]&&box.children[0].textContent));
+  ok(box.textContent.includes(slow.name+': loading qwen2.5:14b (4')&&box.textContent.includes(down.name+': claimed'),'the banner says who is loading which model (and for how long) and who is only claimed');
+  ok(/Start anyway/.test(box.textContent),'the banner offers Start anyway');
+  R[down.id]={state:'failed',error:'ollama: no answer from qwen2.5:14b in 600 s',at:0};gate.checkRunGate(T0+2000);
+  ok(ctl.held&&box.textContent.includes('warm-up failed: ollama: no answer'),'a crashed warm-up shows in the banner with its error');
+  gate.startAnyway();
+  ok(!ctl.held&&box.hidden,'Start anyway releases the world');
+  R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
+  L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+30000);
+  L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+31000);
+  ok(ctl.held&&box.textContent.includes(down.name),'a runner that went away and came back must warm up again');
+  R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
+  gate.setGateProbe(null)}
+
 // ---- the DM frame (owner request): the DM's status beside the party frames ----
 {console.log('DM frame');
   const posts=[];const wait=()=>new Promise(r=>setTimeout(r,30));
@@ -358,6 +417,27 @@ console.log('run gate');
   key('Enter');ok(played.length===0,'Enter does not Continue while the question is open');
   key('Escape');ok(!/replaces the saved/.test(root.textContent),'Escape closes the question');
   key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away')}
+
+// ---- the Quests tab (owner request): groups, focus, folded Done, held scroll ----
+{select(busy);const mk=(id,kind,extra={})=>({id,kind,title:'T '+id,giver:'G',where:'W',objective:'Do '+id,progress:kind==='oath'?{have:1,need:3}:null,reward:'5g',status:'active',focus:false,started:0,ends:sim.S.gameMin+3000,from:'scripted',...extra});
+  const log={active:[mk('b1','board'),mk('b2','board'),mk('d1','dm',{from:'agent'}),mk('d2','dm'),mk('o1','oath',{focus:true}),mk('o2','oath')],
+    done:[mk('x1','board',{status:'done'}),mk('x2','dm',{status:'failed'}),mk('x3','oath',{status:'expired'})],focus:'o1'};
+  globalThis.__questLog=()=>log;
+  setTab('quests');uiFast();
+  const hasTab=[...$('hero').querySelectorAll('button')].some(b=>b.dataset.tab==='quests'&&!b.hidden);
+  ok(hasTab,'Quests tab shows');
+  const q=()=>tb().querySelectorAll('.qrow');
+  ok(tb().querySelectorAll('.qb-board').length>=2&&tb().querySelectorAll('.qb-dm').length>=2&&tb().querySelectorAll('.qb-oath').length>=2,'groups render all three kinds');
+  ok(/From the DM/.test(tb().textContent)&&/Oaths/.test(tb().textContent)&&/Quests/.test(tb().textContent),'group headings');
+  const first=tb().querySelector('.qrow');ok(first&&first.className.includes('qfocus')&&/▶/.test(first.textContent)&&/T o1/.test(first.textContent),'the focused quest is pinned on top with a marker');
+  ok(/from the DM agent/.test(tb().textContent)&&/from the scripted DM/.test(tb().textContent),'DM quests say which DM made them');
+  const dn=tb().querySelector('details.qdone');ok(dn&&!dn.getAttribute('open')&&/Done \(3\)/.test(dn.textContent),'Done is folded');
+  const r0=tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent));r0._same=1;
+  holds('Quests tab',tb,{sec:10,min:3});
+  ok(tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent))._same===1,'Quests tab: rows are patched, not rebuilt');
+  log.active=[];log.done=[];uiFast();ok(/No quests yet/.test(tb().textContent),'empty state');
+  delete globalThis.__questLog;setTab('stats');uiFast()}
+
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

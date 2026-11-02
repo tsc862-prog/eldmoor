@@ -16,10 +16,16 @@
 // tool call, or had every call rejected); the runner stops after maxFails of them.
 export const PACE_DEFAULTS = {heartbeat: 240, minGap: 20, maxFails: 5};
 // Another local model held by Ollama (the relay's minds, another runner) evicts ours on a single GPU: say so.
+// And our own model held at another context size (issue #221) reloads on every call that asks ours.
 export async function localModelNote(adapter, model) {
-  const held = adapter && adapter.loaded ? await adapter.loaded() : null, others = (held || []).filter(m => m !== model);
-  return others.length ? `note: Ollama also holds ${others.join(', ')} in memory (the relay's minds or another runner?). On one GPU two local models evict each other and every call waits for a reload: use one local model for minds and runners.` : null;
+  const rows = adapter && adapter.held ? await adapter.held() : adapter && adapter.loaded ? ((await adapter.loaded()) || []).map(name => ({name, ctx: null})) : null;
+  const others = (rows || []).map(m => m.name).filter(m => m !== model), notes = [];
+  if (others.length) notes.push(`note: Ollama also holds ${others.join(', ')} in memory (the relay's minds or another runner?). On one GPU two local models evict each other and every call waits for a reload: use one local model for minds and runners.`);
+  const ours = (rows || []).find(m => m.name === model), want = adapter && adapter.numCtx;
+  if (ours && ours.ctx && want && ours.ctx !== want) notes.push(ctxNote(model, ours.ctx, want));
+  return notes.length ? notes.join(' ') : null;
 }
+export const ctxNote = (model, held, want) => `note: Ollama holds ${model} at ${held}; runners ask ${want}, so it reloads each time. Set OLLAMA_NUM_CTX=${want} for everything that uses it (the relay, every runner) or restart them with one value.`;
 // The local model a runner should use when nobody picked one (no --model): the one Ollama already holds in
 // memory, when it is pulled (the relay's minds keep it loaded; a second model would never get the GPU).
 // -> {model, note}
@@ -51,11 +57,12 @@ export const capText = n => n === Infinity ? 'until stopped' : `up to ${n} turns
 // Failed or empty turns in a row. ok(turnWorked) -> true when the runner must stop.
 export function failTracker(maxFails) {
   let n = 0;
-  return {ok(worked) {n = worked ? 0 : n + 1; return n >= maxFails}, get count() {return n}, why: () => `${n} failed or empty turns in a row`};
+  return {ok(worked) {if (worked === null) return n >= maxFails; n = worked ? 0 : n + 1; return n >= maxFails}, get count() {return n}, why: () => `${n} failed or empty turns in a row`};
 }
 // Did a local-loop turn (scripts/local-agent.mjs result) do anything?
 // (a turn with no call, every call rejected, or a narration repeating the last one with no world-changing call is empty)
-export const localWorked = r => !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.foreign);
+// null (neither worked nor failed, failTracker leaves its count): a turn Ollama aborted twice for repeating tokens (#221) with no call made.
+export const localWorked = r => r && r.looped && !r.tools ? null : !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.foreign);
 
 // makePacer({base, hero, runner, heartbeat, minGap, log, stopped}) -> {next(), turnDone(), state}
 //   next(): waits for the next turn. -> {wake:'now'|'soft'|'heartbeat', why, table, clock} or {dead} / {gone, why} / {stopped}
@@ -143,7 +150,12 @@ export function talkText(b) {
 // recall them. Every turn prompt carries it (local turns inside briefText, Claude turns on their own); '' when none.
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '';
+  return questNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+}
+// The quest in focus and how many others the hero holds (brief.quest, src/sim/questlog.js); every turn prompt carries it with the memories.
+export function questNote(b) {
+  const q = b && b.quest;
+  return q && q.focus ? `\nYour quest in focus: ${String(q.focus).slice(0, 120)}${q.others ? ` (and ${q.others} more you hold: quests lists them, focus_quest switches)` : ''}.` : '';
 }
 
 // The line a turn prompt carries about why it started (the hero's own events only, issue #123).

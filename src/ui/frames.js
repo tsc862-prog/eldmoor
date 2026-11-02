@@ -25,6 +25,9 @@ import {openSheet} from './sheet.js';
 import {runnerControl,runnerSig} from './runners.js'; // app runners: Start / Stop on an agent-played member
 import {mountDmFrame,renderDmFrame} from './dmframe.js'; // the DM beside the party (owner request)
 import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
+import {agentReadyWord} from './player-bridge.js'; // the start gate (#222): claimed / warming / ready / failed
+const READY_TEXT={claimed:'claimed',warming:'warming up',ready:'ready',failed:'warm-up failed'};
+const mindLine=a=>{const w=a&&a.player&&a.state!=='dead'?agentReadyWord(a):null;return mindText(a)+(w?' · '+READY_TEXT[w]:'')};
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -65,18 +68,21 @@ export function frameRows(){return fellowshipMembers().map(m=>{const a=m.hero;
   if(!a){const p=before(m.slot);return {role:m.label,empty:true,text:m.label+' · place empty'+(p?' · † '+p.name+', '+p.cause:'')}}
   const mh=maxHp(a);
   return {role:m.label,name:a.name,cls:a.cls,lvl:a.lvl,hp:Math.max(0,Math.round(a.hp))+' / '+mh,status:doing(a),target:targetOf(a),
-    chips:chipsOf(a).map(c=>c.t),pots:potText(a),mind:mindText(a),replaced:replacedLine(m.slot),lead:!!(fellowParty()&&fellowParty().leader===a),
+    chips:chipsOf(a).map(c=>c.t),pots:potText(a),mind:mindLine(a),replaced:replacedLine(m.slot),lead:!!(fellowParty()&&fellowParty().leader===a),
     hover:combatRows(a).map(r=>r[1]+' '+r[2]).concat(['Skills: '+topSkills(a).join(', ')])}})}
 
 // ---- DOM ----
 let root=null,list=null,tip=null,tipFor=null,tipXY=[0,0];
 const frames={}; // slot -> {node, hid, refs}
 
+const slotNo=m=>fellowshipMembers().findIndex(x=>x.slot===m.slot)+1;
 function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;if(a)f.style.borderTopColor=classColor(a.cls);
   const r={};
   if(!a){f.classList.add('empty');f.append(el('span','frole r-'+m.role,m.label));r.empty=el('div','pfempty','Place empty');r.past=el('div','dm pfpast');
-    const b=el('button','mini','Fill');b.dataset.pffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';f.append(r.empty,r.past,b);return {node:f,hid:null,r}}
+    const b=el('button','mini','Fill');b.dataset.pffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';f.append(r.empty,r.past,b);
+    const k=el('span','pfkey',String(slotNo(m)));k.title='Press 1-5 to select';k.setAttribute('aria-hidden','true');f.append(k);return {node:f,hid:null,r}}
   f.tabIndex=0;f.setAttribute('role','button');f.dataset.hid=a.id;
+  r.key=el('span','pfkey',String(slotNo(m)));r.key.title='Press 1-5 to select';r.key.setAttribute('aria-hidden','true');f.append(r.key);
   const top=el('div','pftop');r.port=el('canvas','pfport');r.port.width=10;r.port.height=12;
   const id=el('div','pfid');r.name=el('div','pfname f'+a.fac);r.star=el('span','gd','★ ');r.nm=el('span',null,a.name);r.nm.style.color=classColor(a.cls);r.name.append(r.star,r.nm);
   const sub=el('div','pfsub');sub.append(el('span','frole r-'+m.role,m.label),' ');r.sub=el('span','dm');sub.append(r.sub);id.append(r.name,sub);
@@ -101,7 +107,7 @@ function update(fr,m){const a=m.hero,r=fr.r;
   setText(r.doing,doing(a));const t=targetOf(a);setText(r.tgt,t?'» '+t:'');
   const ch=chipsOf(a),ck=ch.map(c=>c.t).join('|');if(r.chips._k!==ck){r.chips._k=ck;r.chips.replaceChildren();for(const c of ch){const s=el('span','chip c-'+c.c,c.t);s.title=c.title||'';if(c.col)s.style.color=c.col;r.chips.append(s)}}
   setText(r.rep,replacedLine(m.slot));setText(r.pot,dead?'':potText(a));
-  setText(r.mind,mindText(a));setCls(r.mind,'pfmind m-'+mindOf(a));setAttr(r.mind,'title',mindTitle(a));
+  setText(r.mind,mindLine(a));setCls(r.mind,'pfmind m-'+mindOf(a));setAttr(r.mind,'title',mindTitle(a));
   const rk=dead||!a.player?'':runnerSig(a);if(r.run._k!==rk){r.run._k=rk;r.run.replaceChildren();if(rk)r.run.append(runnerControl(a))}}
 
 // ---- hover: combat totals and top skills ----
@@ -114,7 +120,19 @@ function showTip(a){if(!tip){tip=el('div','itip floating pftip');tip.setAttribut
   tipFor=a;const k=a.id+'|'+combatRows(a).map(r=>r[2]).join('|')+'|'+topSkills(a).join('|');if(tip._k!==k){tip._k=k;tip.replaceChildren(...tipBody(a))}tip.style.display='block';placeTip()}
 function hideTip(){tipFor=null;if(tip)tip.style.display='none'}
 
+
+// Keys 1-5 (owner request): the member in that party slot, as a click on its frame does. Ignored while typing,
+// behind the title or setup pages, and with Ctrl/Alt/Meta held.
+export function partyKey(e){if(e.ctrlKey||e.altKey||e.metaKey||e.defaultPrevented)return false;
+  let n=/^[1-5]$/.test(e.key||'')?+e.key:(/^Numpad[1-5]$/.test(e.code||'')?+e.code.slice(6):0);if(!n)return false;
+  const t=e.target,tn=t&&t.tagName?String(t.tagName).toUpperCase():'';
+  if(tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT'||(t&&(t.isContentEditable||t.contentEditable==='true')))return false;
+  for(const id of ['title','setup']){const o=document.getElementById(id);if(o&&!o.hidden)return false}
+  if(!S.fellowship)return false;
+  const m=fellowshipMembers()[n-1],a=m&&m.hero;if(!a)return false;
+  hideTip();select(a);setView('follow');return true}
 export function initFrames(){root=$('frames');if(!root)return;
+  document.addEventListener('keydown',e=>{if(partyKey(e))e.preventDefault()});
   const head=el('div','frhead');const ttl=el('span','frttl');root._ttl=ttl;
   const cmp=el('button','mini','Compare the five');cmp.dataset.pfsheet='1';cmp.title='Side by side: scores, combat, skills, gear, oaths and bonds';
   head.append(ttl,cmp);list=el('div','frlist');root.append(head,list);mountDmFrame(root);

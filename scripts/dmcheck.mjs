@@ -508,6 +508,8 @@ try {
   ok(c2 === 0 && /resuming/.test(o2) && /mock-dm:1b/.test(o2) && s2.turns === 3, 'the next run resumes the saved session and settings (no flags)' + (c2 === 0 ? '' : '\n' + o2.slice(-1200)));
   h = await (await fetch(BASE + '/play/health')).json();
   ok(!h.dm.claimed, 'the runner let go of the seat on exit');
+  const sizes = [...new Set(seen.map(b => b.options && b.options.num_ctx))];
+  ok(seen.length && sizes.length === 1 && sizes[0] === 16384, `every DM loop request asks one num_ctx (${sizes.join(', ')}; issue #221)`);
   world.p.kill();
 } catch (e) {ok(false, 'runner section: ' + (e.message || e))}
 for (const k of kids) try {k.kill()} catch {}

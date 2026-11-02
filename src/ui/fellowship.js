@@ -88,7 +88,7 @@ function syncChronBtn(){const F=!!S.fellowship,camp=F&&story==='camp',b=$('chron
   if(lg)lg.hidden=camp;if(cp)cp.hidden=!camp}
 
 // ---- the panel ----
-let draft={fac:0,slots:{tank:null,healer:null,dps1:null,dps2:null,dps3:null}},msg='',sheetOpen=null,confirmDisband=false;
+let draft={fac:0,slots:{tank:null,healer:null,dps1:null,dps2:null,dps3:null}},msg='',sheetOpen=null,confirmDisband=false,drawer=null,menuOpen=false,moreThreads=false;
 let sigTop='',sigLog='',sigForm='',root=null,top=null,sheet=null,logBox=null;
 
 function eligibleFor(slot,fac){return S.agents.filter(a=>alive(a)&&a.fac===fac&&!a.fellow&&!a.player&&fits(slot,a)).sort((x,y)=>y.lvl-x.lvl||x.id-y.id)}
@@ -108,30 +108,44 @@ function formView(node){const f=draft.fac;
   const go=el('button','go','Found the Fellowship');go.dataset.fact='found';
   bar.append(add,auto,go);node.append(bar);if(msg)node.append(el('div','fmsg',msg))}
 
+const plainOf=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join('');
+const THREADS=4; // open threads shown before "+N more"
+// The header is one line (the owner found the old panel took the top of the column for little);
+// threads lead, and Members and Fallen open in a drawer under it. Disband sits behind the ... menu.
 function topView(node){const F=S.fellowship;
-  const h=el('div','fhead');h.append(el('div','fname f'+F.fac,F.name));
-  const alive_=fellows().length;h.append(el('div','dm','The '+FAC[F.fac].name+' · lodged in '+F.hall+' · founded day '+(Math.floor(F.founded/1440)+1)+' · '+alive_+' of 5 standing'+(F.past.length?' · '+F.past.length+' fallen':'')));
-  const cs=campSummary();if(cs)h.append(el('div','gd',cs)); // camp: how long, who sleeps, who watches (#178)
-  node.append(h);
-  const bar=el('div','fbar');
-  const fol=el('button',null,'Follow');fol.dataset.fact='follow';fol.setAttribute('aria-pressed',String(cam.view==='fellow'));
-  const md=mindsOf(F),ai=el('span','mini','Minds: agents'); // always agents (#148): the choice is the model, on the runners below
-  ai.title='Every member is played by its own agent, always. Pick the model for all five here (Start all five) or per member on its row. Between decisions they auto-play; every decision waits for its agent, and a member whose runner is gone waits for you (the runner-stop alert).';
-  const db=el('button',null,confirmDisband?'Really disband?':'Disband');db.dataset.fact='disband';
-  bar.append(fol,ai,db);node.append(bar);
+  const h=el('div','fhline');
+  const nm=el('span','fname f'+F.fac,F.name);nm.title=F.name;
+  const n=fellows().length;
+  h.append(nm,el('span','fbadge f'+F.fac,FAC[F.fac].name),el('span','fmeta dm',F.hall+' · '+n+'/5 standing'+(F.past.length?' · '+F.past.length+' fallen':'')+' · day '+(Math.floor(F.founded/1440)+1)));
+  const tools=el('span','ftools2');
+  const ib=(fact,txt,label,pressed)=>{const b=el('button','ficon',txt);b.dataset.fact=fact;b.title=label;b.setAttribute('aria-label',label);if(pressed!=null)b.setAttribute('aria-pressed',String(pressed));return b};
+  tools.append(ib('follow','◎','Follow the Fellowship',cam.view==='fellow'),ib('drawer:members','☰','Members and minds',drawer==='members'));
+  if(F.past.length)tools.append(ib('drawer:fallen','†','Fallen ('+F.past.length+')',drawer==='fallen'));
+  tools.append(ib('menu','⋯','More',menuOpen));
+  h.append(tools);node.append(h);
+  if(menuOpen){const m=el('div','felmenu');
+    if(!confirmDisband){const d=el('button',null,'Disband the Fellowship...');d.dataset.fact='disband';m.append(d)}
+    else{m.append(el('span','dm','Disband for good? The five go their own ways.'));const y=el('button','danger','Yes, disband');y.dataset.fact='disband';const c=el('button',null,'Cancel');c.dataset.fact='menu';m.append(y,c)}
+    node.append(m)}
+  const cs=campSummary();if(cs)node.append(el('div','gd fcamp',cs)); // camp: how long, who sleeps, who watches (#178)
   if(msg)node.append(el('div','fmsg',msg));
-  // Members and minds (#145): who plays each place and their runners; the one place a member's mind is set
-  const mm=el('details','tlbox felmem');mm.setAttribute('data-k','members');mm.append(el('summary',null,'Members and minds'));
-  // Minds: agents -> the members' runners can be started from here (the relay runs them; --runners)
-  if(md==='agent'){const rc=fellowshipRunnerControl();if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels(),openaiModels()),rc.firstChild);mm.append(rc)}
-  renderSettings(mm);node.append(mm);
+  // Open threads lead (oaths, meeting plans, unfinished jobs, blood owed): live one-liners
+  const th=openThreads(),box=el('div','felthreads');box.setAttribute('data-k','threads');
+  box.append(el('div','fth-h dm','Open threads'+(th.length?' ('+th.length+')':'')));
+  if(!th.length)box.append(el('div','dm','No open threads. Oaths, meeting plans and jobs show here.'));
+  else{const ul=el('ul','tlist fthreads');th.slice(0,moreThreads?th.length:THREADS).forEach((t,i)=>{const li=el('li','th-'+t.kind);li.setAttribute('data-k','th'+i);parts(li,t.parts);ul.append(li)});box.append(ul);
+    if(th.length>THREADS){const mb=el('button','mini',moreThreads?'Show fewer':'+'+(th.length-THREADS)+' more');mb.dataset.fact='more';box.append(mb)}}
+  node.append(box);
+  if(drawer==='members'){const mm=el('div','feldrawer felmem');mm.setAttribute('data-k','members');mm.append(el('div','fth-h dm','Members and minds'));
+    const md=mindsOf(F); // always agents (#148): the choice is the model, on the runners below
+    if(md==='agent'){const rc=fellowshipRunnerControl();if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels(),openaiModels()),rc.firstChild);mm.append(rc)}
+    renderSettings(mm);node.append(mm)}
+  if(drawer==='fallen'&&F.past.length){const fa=el('div','feldrawer');fa.setAttribute('data-k','fallen');fa.append(el('div','fth-h dm','Fallen ('+F.past.length+')'));const ul=el('ul','tlist');
+    for(const p of F.past.slice().reverse()){const li=el('li'),a=byId(p.id);li.append('† ',a?hn(a):p.name,' · '+(ROLE_NAME[String(p.slot).replace(/\d+$/,'')]||p.slot)+', Lv '+p.lvl+' '+p.cls+', '+p.cause+', day '+p.day);ul.append(li)}fa.append(ul);node.append(fa)}
   if(devMode()&&F.enrich&&F.enrich.calls)node.append(el('div','dm','Relay writing: '+F.enrich.ok+' sheets written, '+F.enrich.fail+' kept scripted, $'+F.enrich.usd.toFixed(4)+(F.enrich.ms?' · last '+(F.enrich.ms/1000).toFixed(1)+' s':'')));
   if(devMode()&&(reqTotals.sent||reqTotals.denied)){const fl=recentFailures(),r=el('div','dm','Model requests: '+rpm()+'/min · '+reqTotals.sent+' sent, '+reqTotals.failed+' failed, '+reqTotals.denied+' held back');
     if(fl.length)r.title='Recent failures: '+fl.map(f=>f.kind+(f.hero?' '+f.hero:'')+': '+f.why).join(' | ');node.append(r);
-    if(fl.length)node.append(el('div','dm','Last failure: '+fl[0].kind+(fl[0].hero?' ('+fl[0].hero+')':'')+', '+fl[0].why+'. Writing backs off, scripted text stands in.'))}
-  const th=el('details','tlbox');th.setAttribute('data-k','threads');th.append(el('summary',null,'Open threads'));renderThreads(th);node.append(th);
-  if(F.past.length){const fa=el('details','tlbox');fa.setAttribute('data-k','fallen');fa.append(el('summary',null,'Fallen ('+F.past.length+')'));const ul=el('ul','tlist');
-    for(const p of F.past.slice().reverse()){const li=el('li'),a=byId(p.id);li.append('† ',a?hn(a):p.name,' · '+(ROLE_NAME[String(p.slot).replace(/\d+$/,'')]||p.slot)+', Lv '+p.lvl+' '+p.cls+', '+p.cause+', day '+p.day);ul.append(li)}fa.append(ul);node.append(fa)}}
+    if(fl.length)node.append(el('div','dm','Last failure: '+fl[0].kind+(fl[0].hero?' ('+fl[0].hero+')':'')+', '+fl[0].why+'. Writing backs off, scripted text stands in.'))}}
 
 // The sheet editor is rebuilt only when it is opened, saved or closed, never on the tick, so typing is safe.
 function sheetView(node,a){node.replaceChildren();if(!a)return;
@@ -163,7 +177,10 @@ function act(t){const F=S.fellowship;msg='';
     draft.slots={tank:null,healer:null,dps1:null,dps2:null,dps3:null};focus=true;onFilter();setViewHook('fellow');return}
   if(!F)return;
   if(k==='follow'){setViewHook(cam.view==='fellow'?'map':'fellow');return}
-  if(k==='disband'){if(!confirmDisband){confirmDisband=true;return}confirmDisband=false;disbandFellowship();sheetOpen=null;sheetView(sheet,null);onFilter();setViewHook('map');return}
+  if(k==='menu'){menuOpen=!menuOpen;confirmDisband=false;return}
+  if(k==='more'){moreThreads=!moreThreads;return}
+  if(k&&k.startsWith('drawer:')){const w=k.slice(7);drawer=drawer===w?null:w;return}
+  if(k==='disband'){if(!confirmDisband){confirmDisband=true;return}confirmDisband=false;menuOpen=false;drawer=null;disbandFellowship();sheetOpen=null;sheetView(sheet,null);onFilter();setViewHook('map');return}
   if(k==='save'){const a=byId(sheetOpen);if(a)for(const ta of sheet.querySelectorAll('textarea[data-fw]'))editSheet(a,ta.dataset.fw,ta.dataset.fk,ta.value);msg='Sheet saved.';sheetView(sheet,a);return}
   if(k==='close'){sheetOpen=null;sheetView(sheet,null)}}
 
@@ -176,6 +193,7 @@ export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('fe
   const st=$('storyTabs');if(st)st.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-story]');if(!b)return;story=b.dataset.story;syncChronBtn()});
   root.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('button'):null;if(!t||!root.contains(t))return;
     if(t.closest('.hn'))return;act(t);sigTop='';sigForm='';renderFellowship()});
+  root.addEventListener('keydown',e=>{if(e.key==='Escape'&&(menuOpen||drawer)){menuOpen=false;confirmDisband=false;drawer=null;sigTop='';renderFellowship()}});
   root.addEventListener('change',e=>{const s=e.target;if(mindChange(s)){sigTop='';renderFellowship();return}
     if(s&&s.dataset&&s.dataset.fslot){const v=s.value;draft.slots[s.dataset.fslot]=v?+v:null;sigForm='';renderFellowship()}});
   const cb=$('chronFel');if(cb)cb.addEventListener('click',()=>{focus=!focus;syncChronBtn();onFilter()});
@@ -186,7 +204,7 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm&&patch(top,n=>formView(n))){sigForm=sig;sigTop=''}return}
   if(logBox!==$('campaign'))logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+(campSummary()||'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+menuOpen+'|'+drawer+'|'+moreThreads+'|'+openThreads().map(t=>plainOf(t.parts)).join('~')+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+(campSummary()||'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
   // patched in place (#145): never under an open picker, a press or a scroll; open threads and days stay open
   if(sig!==sigTop&&patch(top,n=>topView(n))){sigTop=sig;sigForm=''}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog&&patch(logBox._b,n=>renderCampaignLog(n)))sigLog=ls}

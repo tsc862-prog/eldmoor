@@ -36,6 +36,7 @@ import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
 import {notebookSig} from './notebook.js'; // agent memories (#155)
 import {showMindButtons,devMode} from './mindctl.js';
+import {tabQuests} from './quests.js'; // the Quests tab
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
@@ -76,9 +77,9 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
 // ---- hero dossier ----
-const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['inv','Pack'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
+const TABS=[['stats','Stats'],['quests','Quests'],['log','Log'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['inv','Pack'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
 // The tabs in three groups (#145): Character, Story, Mind. A tab added later without a group lands in Character.
-const GROUPS=[['char','Character',['stats','gear','inv','party']],['story','Story',['log','bio','memory']],['mind','Mind',['chat','agent','mind']]];
+const GROUPS=[['char','Character',['stats','gear','inv','party']],['story','Story',['quests','log','bio','memory']],['mind','Mind',['chat','agent','mind']]];
 const groupOf=t=>(GROUPS.find(g=>g[2].includes(t))||GROUPS[0])[0];
 const lastIn={}; // the sub-tab last opened in each group
 const SLOTS=[['head','Head'],['chest','Chest'],['hands','Hands'],['feet','Feet'],['main','Main hand'],['off','Off hand'],['trinket','Trinket']];
@@ -364,7 +365,7 @@ function tabMind(b,a){const m=a.mind||[];
     row.append(h);if(isOpen)mindDetail(row,a,e);return row},'div');
   b.append(list)}
 const memTabSig=a=>{const M=a.memory;return a.id+'|'+(M?(M.n||0)+':'+(M.long||'').length+':'+Object.values(M.stances||{}).join('|').length:'')+'|'+notebookSig(a)}; // the Memory tab (#68, #155)
-const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,inv:tabInv,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent,memory:tabMemory};
+const BODY={quests:tabQuests,stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,inv:tabInv,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent,memory:tabMemory};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
 // header and only the active tab's body, since it runs every 0.3s.

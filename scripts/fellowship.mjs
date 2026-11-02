@@ -54,9 +54,10 @@ import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
 import {systemPrompt, withMemoryOrders, withKnowledgeOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
-import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
+import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
 import Anthropic from '@anthropic-ai/sdk';
+import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
@@ -125,7 +126,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const aborts = new Set(); // Agent SDK turns in flight, ended on a stop
   const adding = new Set(); // members being added (the watcher calls addMember every second)
   let ollama = null; // the local adapter, made when the first local member joins
-  let openaiChat = null; // the OpenAI adapter's chat(), set when an OpenAI member joins (all share one key and base URL)
+  let openaiChat = null, openaiAd = null, claudeWarm = null; // the OpenAI adapter's chat(), set when an OpenAI member joins (all share one key and base URL); warm-up adapters (#222)
   let claudeAd = null; // a structured Claude call for a scene turn that ended without scene_act (issue #163); the key stays in this process
   const claudeAdapter = () => claudeAd || (claudeAd = anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}));
   const skip = (h, why) => {out(h.name, why); members.set(h.id, {id: h.id, name: h.name, ended: 'skipped'})};
@@ -151,7 +152,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
       rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
       // one adapter, so one Ollama queue for every local member (OLLAMA_PARALLEL, default 1)
-      if (!ollama) {ollama = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL)}); const n = await localModelNote(ollama, rs.model); if (n) out(null, n)}
+      if (!ollama) {ollama = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)})}); out(null, `Ollama num_ctx ${ollama.numCtx} for every local call (OLLAMA_NUM_CTX)`); const n = await localModelNote(ollama, rs.model); if (n) out(null, n)}
       const s = await ollama.status();
       if (!opt('model', null) && s.ok) {const p = await preferLoaded(ollama, rs.model, s.models); if (p.note) {out(h.name, p.note); rs.model = p.model}}
       if (!s.ok || !s.models.includes(rs.model)) {skip(h, s.ok ? `local model ${rs.model} is not pulled (pulled: ${s.models.join(', ') || 'none'}; ollama pull ${rs.model}); skipped` : `Ollama at ${s.url} is ${s.error}; skipped`); await release(h.id); return}
@@ -159,7 +160,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       // an OpenAI member (issue #97): the same loop against Chat Completions, real cost; the key stays in this process
       const o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
       if (o.error) {skip(h, o.error + '; skipped'); await release(h.id); return}
-      openaiChat = o.adapter.chat;
+      openaiChat = o.adapter.chat; openaiAd = o.adapter;
     } else if (!env.ANTHROPIC_API_KEY) {skip(h, 'plays Claude but there is no ANTHROPIC_API_KEY in the environment or .env (use --env FILE, or --provider ollama); skipped'); await release(h.id); return}
     sess.runner = rs; saveSession(sess, {url: base});
     const m = {id: h.id, name: st.name, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai', paid: rs.provider === 'openai', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
@@ -187,10 +188,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   // A local or OpenAI member's reflection: one forced structured answer of 0-3 notes, sent with remember by the runner.
   async function localReflect(m, b0, w) {
-    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat, numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? Number(opt('num-ctx', env.OLLAMA_NUM_CTX)) : null;
+    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat;
     const on = (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})} else if (k === 'tool') out(m.name, `> ${a}(${short(b, 120)})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`)};
     let r = null, err = null; out(m.name, `[reflection: ${b0.reflect.why}]`);
-    try {r = await reflectTurn({ask: chatAsk(chat, m.rs.model, {numCtx, strict: m.paid}), strict: m.paid, call, sess: m.sess, moment: b0.reflect, prompt: reflectPrompt(b0.reflect, {tools: false}), context: briefText(b0), on})}
+    try {r = await reflectTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), strict: m.paid, call, sess: m.sess, moment: b0.reflect, prompt: reflectPrompt(b0.reflect, {tools: false}), context: briefText(b0), on})}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `reflection failed: ${err}`)}
     await closeReflection(base, m.id, runnerId, b0.reflect.id, r ? r.wrote : 0); // closed even when missed: one try per moment
     m.sess.turns++; m.turns++; m.reflections = (m.reflections || 0) + 1;
@@ -265,7 +266,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let r = null;
     if (!m.paid) {const n = await localModelNote(ollama, m.rs.model); if (n && n !== m.note) out(m.name, n); m.note = n} // another model on the GPU (#126)
     const b0 = m.pacer ? await m.pacer.brief() : null; let err = null;
-    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat, numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? Number(opt('num-ctx', env.OLLAMA_NUM_CTX)) : null;
+    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat;
     const on = (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})}
       else if (k === 'tool') out(m.name, `> ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`);
       else if (k === 'mode') out(m.name, `[${m.rs.model} has no tool support in Ollama: switching to JSON actions]`)};
@@ -273,11 +274,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     try {
       // the member's own scene is open: one structured answer, then scene_act by the runner (issue #163)
       sc = await sceneToAnswer(b0, call, scene);
-      if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {numCtx, strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
+      if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
         if (!r.tools) out(m.name, `[scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`)}
       const answered = b0 && 'scene' in b0 && !sc; // in the scene but already acted: an ordinary turn
       if (!r || !r.tools) {const r0 = r; r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns)) + briefText(b0), model: m.rs.model,
-        toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, opts: numCtx ? {numCtx} : {}, on});
+        toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, on});
         if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0}}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`)}
     m.sess.turns++; m.turns++; if (scene || sc) m.scenes++;
@@ -294,6 +295,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // One member's turns, paced by the game (scripts/pacing.mjs): the first at once, then on its events or heartbeat.
   async function loop(m) {
     const pacer = makePacer({base, hero: m.id, runner: runnerId, heartbeat: pace.heartbeat, minGap: pace.minGap, log: s => out(m.name, s), stopped: () => !!(stopping || m.ended)}); m.pacer = pacer;
+    // the start gate (issue #222): one tiny call with the member's model before its first turn; the page holds the world until it answers
+    const ad = m.paid ? openaiAd : m.local ? ollama : (claudeWarm = claudeWarm || claudeWarmAdapter(env.ANTHROPIC_API_KEY));
+    await warmUp({base, seat: {hero: m.id}, runner: runnerId, model: m.rs.model, adapter: await ad, log: s => out(m.name, s)});
     let w = null;
     while (!m.ended && !stopping && m.turns < m.maxTurns) {
       // the budget binds the paid members (Claude, OpenAI); a local member plays on
