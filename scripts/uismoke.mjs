@@ -67,26 +67,6 @@ setTab('log');uiFast();
 {const other=ranked().find(a=>a!==busy&&(a.history||[]).length>3);if(other){tb().querySelector('.log').scrollTop=40;select(other);uiFast();
   const l=tb().querySelector('.log');ok(!l||l.scrollTop===0,'a different hero opens at the top');select(busy);uiFast()}}
 
-// ---- the Quests tab (owner request): groups, focus, folded Done, held scroll ----
-{const mk=(id,kind,extra={})=>({id,kind,title:'T '+id,giver:'G',where:'W',objective:'Do '+id,progress:kind==='oath'?{have:1,need:3}:null,reward:'5g',status:'active',focus:false,started:0,ends:sim.S.gameMin+3000,from:'scripted',...extra});
-  const log={active:[mk('b1','board'),mk('b2','board'),mk('d1','dm',{from:'agent'}),mk('d2','dm'),mk('o1','oath',{focus:true}),mk('o2','oath')],
-    done:[mk('x1','board',{status:'done'}),mk('x2','dm',{status:'failed'}),mk('x3','oath',{status:'expired'})],focus:'o1'};
-  globalThis.__questLog=()=>log;
-  setTab('quests');uiFast();
-  const hasTab=[...$('hero').querySelectorAll('button')].some(b=>b.dataset.tab==='quests'&&!b.hidden);
-  ok(hasTab,'Quests tab shows');
-  const q=()=>tb().querySelectorAll('.qrow');
-  ok(tb().querySelectorAll('.qb-board').length>=2&&tb().querySelectorAll('.qb-dm').length>=2&&tb().querySelectorAll('.qb-oath').length>=2,'groups render all three kinds');
-  ok(/From the DM/.test(tb().textContent)&&/Oaths/.test(tb().textContent)&&/Quests/.test(tb().textContent),'group headings');
-  const first=tb().querySelector('.qrow');ok(first&&first.className.includes('qfocus')&&/▶/.test(first.textContent)&&/T o1/.test(first.textContent),'the focused quest is pinned on top with a marker');
-  ok(/from the DM agent/.test(tb().textContent)&&/from the scripted DM/.test(tb().textContent),'DM quests say which DM made them');
-  const dn=tb().querySelector('details.qdone');ok(dn&&!dn.getAttribute('open')&&/Done \(3\)/.test(dn.textContent),'Done is folded');
-  const r0=tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent));r0._same=1;
-  holds('Quests tab',tb,{sec:10,min:3});
-  ok(tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent))._same===1,'Quests tab: rows are patched, not rebuilt');
-  log.active=[];log.done=[];uiFast();ok(/No quests yet/.test(tb().textContent),'empty state');
-  delete globalThis.__questLog;setTab('log');uiFast()}
-
 console.log('side panels');
 holds('Chronicle',()=>$('log'));
 while(sim.S.fallen.length<6)sim.S.fallen.push({t:'00:0'+sim.S.fallen.length,name:'Testgrave'+sim.S.fallen.length,fac:0,lvl:3,cls:'Mage',cause:'a smoke test'}); // a quiet world: a few graves to scroll
@@ -343,6 +323,27 @@ console.log('run gate');
   key('Enter');ok(played.length===0,'Enter does not Continue while the question is open');
   key('Escape');ok(!/replaces the saved/.test(root.textContent),'Escape closes the question');
   key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away')}
+
+// ---- the Quests tab (owner request): groups, focus, folded Done, held scroll ----
+{select(busy);const mk=(id,kind,extra={})=>({id,kind,title:'T '+id,giver:'G',where:'W',objective:'Do '+id,progress:kind==='oath'?{have:1,need:3}:null,reward:'5g',status:'active',focus:false,started:0,ends:sim.S.gameMin+3000,from:'scripted',...extra});
+  const log={active:[mk('b1','board'),mk('b2','board'),mk('d1','dm',{from:'agent'}),mk('d2','dm'),mk('o1','oath',{focus:true}),mk('o2','oath')],
+    done:[mk('x1','board',{status:'done'}),mk('x2','dm',{status:'failed'}),mk('x3','oath',{status:'expired'})],focus:'o1'};
+  globalThis.__questLog=()=>log;
+  setTab('quests');uiFast();
+  const hasTab=[...$('hero').querySelectorAll('button')].some(b=>b.dataset.tab==='quests'&&!b.hidden);
+  ok(hasTab,'Quests tab shows');
+  const q=()=>tb().querySelectorAll('.qrow');
+  ok(tb().querySelectorAll('.qb-board').length>=2&&tb().querySelectorAll('.qb-dm').length>=2&&tb().querySelectorAll('.qb-oath').length>=2,'groups render all three kinds');
+  ok(/From the DM/.test(tb().textContent)&&/Oaths/.test(tb().textContent)&&/Quests/.test(tb().textContent),'group headings');
+  const first=tb().querySelector('.qrow');ok(first&&first.className.includes('qfocus')&&/▶/.test(first.textContent)&&/T o1/.test(first.textContent),'the focused quest is pinned on top with a marker');
+  ok(/from the DM agent/.test(tb().textContent)&&/from the scripted DM/.test(tb().textContent),'DM quests say which DM made them');
+  const dn=tb().querySelector('details.qdone');ok(dn&&!dn.getAttribute('open')&&/Done \(3\)/.test(dn.textContent),'Done is folded');
+  const r0=tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent));r0._same=1;
+  holds('Quests tab',tb,{sec:10,min:3});
+  ok(tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent))._same===1,'Quests tab: rows are patched, not rebuilt');
+  log.active=[];log.done=[];uiFast();ok(/No quests yet/.test(tb().textContent),'empty state');
+  delete globalThis.__questLog;setTab('stats');uiFast()}
+
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
