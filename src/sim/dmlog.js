@@ -8,6 +8,7 @@
 //   kinds: hooks pick frame roll complication branch payoff fail abandon fallback lever camp agent
 //   (agent: the DM agent's notes, plans and seat changes, issue #66; its lever pulls are kind lever with detail.by 'dm-agent')
 import {S,clockStr} from './state.js';
+import {tally} from './dmfocus.js'; // the share of DM actions that touched the Fellowship (issue #165)
 
 export const DMLOG_CAP=200;
 let pend=null;
@@ -17,4 +18,4 @@ export function dmlog(kind,adv,summary,detail,o={}){
   const L=S.dmLog||(S.dmLog=[]);
   const e={id:S.dmLogSeq=(S.dmLogSeq||0)+1,t:clockStr(),gameMin:S.gameMin,kind,town:o.town||(adv?adv.town:null),advId:adv?adv.id:null,
     heroes:o.heroes||(adv?adv.mem.slice():[]),summary,detail:detail||{},prompt:pend?pend.prompt:'',reply:pend?pend.reply:''};
-  pend=null;L.unshift(e);if(L.length>DMLOG_CAP)L.pop();return e}
+  pend=null;L.unshift(e);if(L.length>DMLOG_CAP)L.pop();tally(e);return e}
