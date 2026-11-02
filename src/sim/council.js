@@ -92,7 +92,7 @@ export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)r
 
 export function castVote(a,id,v,reason,by='agent'){const P=propById(id);if(!P)return 'No proposal '+id+'.';if(P.status!=='open')return 'That proposal is already '+P.status+'.';
   if(!a.fellow)return 'Only members vote.';v=String(v||'').toLowerCase();if(v!=='yes'&&v!=='no')return 'Vote yes or no.';
-  P.votes[a.id]={v,reason:clean(reason,120),by};settleIfDone(P);return P}
+  P.votes[a.id]={v,reason:clean(reason,120),by,at:Math.round(S.gameMin)};settleIfDone(P);return P}
 
 // Members a reflex may vote for (no runner, and the owner said go on; or no host): they vote at once.
 const atTable=P=>!!(S.table&&S.table.ctx&&S.table.ctx.prop===P.id);
@@ -103,7 +103,7 @@ export const waitingVoters=P=>P&&P.status==='open'?fellows().filter(b=>!P.votes[
 // Everyone has voted (or the time is up): the leader settles it.
 function settleIfDone(P){if(P.status!=='open')return;const L=fellows();if(L.every(b=>P.votes[b.id]))resolveProp(P,'everyone voted')}
 export function resolveProp(P,why){if(!P||P.status!=='open')return P;const L=fellows(),lead=leaderOfF();
-  for(const b of L)if(!P.votes[b.id])P.votes[b.id]={v:reflexVote(b,P),reason:'',by:'reflex'};
+  for(const b of L)if(!P.votes[b.id])P.votes[b.id]={v:reflexVote(b,P),reason:'',by:'reflex',at:Math.round(S.gameMin)};
   let yes=0,no=0;for(const b of L){const x=P.votes[b.id];if(x.v==='yes')yes++;else no++}
   const tie=yes===no,pass=tie?(lead&&P.votes[lead.id]?P.votes[lead.id].v==='yes':false):yes>no;
   P.status=pass?'passed':'failed';P.result=(pass?'Passed ':'Failed ')+yes+'-'+no+(tie&&lead?', '+lead.name+' breaking the tie':'')+' ('+why+')';P.done=Math.round(S.gameMin);

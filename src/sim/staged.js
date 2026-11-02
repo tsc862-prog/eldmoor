@@ -329,7 +329,7 @@ let polledAt=0;
 const live=sc=>sc.ctx.by==='dm-agent'&&seatOn()&&(sc.dmMiss||0)<STAGE.MISS_MAX&&Date.now()-polledAt<STAGE.POLL_MS;
 const npcFrom=w=>({kind:'npc',id:w.id,name:w.name,fac:w.fac});
 // A DM line at the table: every member at the scene hears it (their chat, so events and chat_read), the banner shows it.
-function say(sc,text,from){const t=clean(text,STAGE.LINE_MAX);if(!t)return;const e={t:clockStr(),d:dayNo(),from,text:t,trigger:from.kind==='dm'?'dm':'npc',...(from.kind==='dm'?{dm:true}:{}),fh:true};
+function say(sc,text,from){const t=clean(text,STAGE.LINE_MAX);if(!t)return;const e={t:clockStr(),d:dayNo(),from,text:t,scene:true,trigger:from.kind==='dm'?'dm':'npc',...(from.kind==='dm'?{dm:true}:{}),fh:true};
   for(const id of sc.ids){const b=byId(id);if(!living(b))continue;(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
   if(from.kind==='npc'){const w=npcOf(from.id);if(w)w.bubble={text:t,life:BUBBLE,fh:true}}
   sc.narr={t:e.t,text:(from.kind==='npc'?from.name+': ':'')+t}}
