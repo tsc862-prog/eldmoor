@@ -49,9 +49,9 @@ r = useMove(w, 'challenge', m); ok(r.ok && m.target === w, 'Challenge turns a mo
 
 // kinds: heal and ward and control in both modes
 const pr = mk('Priest', 9); pr.x = w.x; pr.y = w.y; const hurt = mk('Warrior', 9); hurt.fac = pr.fac; hurt.x = pr.x + 1; hurt.y = pr.y; hurt.hp = 5;
-r = useMove(pr, 'chorus', null, {mates: [pr, hurt]}); ok(r.ok && hurt.hp > 5 && r.healed > 0, 'Knitting Hymn heals the group: ' + r.text);
+r = useMove(pr, 'chorus', null, {mates: [pr, hurt]}); ok(r.ok && hurt.hp > 5 && r.healed > 0, 'Chorus of Mending heals the group: ' + r.text);
 r = useMove(pr, 'dawnward', hurt); ok(r.ok && effOn(hurt, 'taken'), 'Ward of Dawn on a friend: ' + r.text);
-const hu = mk('Hunter', 8), mm = foeNear(hu); r = useMove(hu, 'quarrymark', mm); ok(r.ok, 'Name the Quarry: ' + r.text);
+const hu = mk('Hunter', 8), mm = foeNear(hu); r = useMove(hu, 'quarrymark', mm); ok(r.ok, 'Quarry Mark: ' + r.text);
 const ma = mk('Mage', 8), m2 = foeNear(ma); const cd0 = m2.cd; r = useMove(ma, 'rimering', null); ok(r.ok && (m2.cd > cd0 || r.saved), 'Rime Ring slows or is resisted: ' + r.text);
 const ro = mk('Rogue', 8), m3 = foeNear(ro); m3.hp = m3.maxhp; r = useMove(ro, 'ambush', m3); ok(r.ok && m3.hp < m3.maxhp, 'Ambush: ' + r.text);
 

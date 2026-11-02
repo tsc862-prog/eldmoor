@@ -188,10 +188,10 @@ Active abilities each have a cooldown in seconds and a matching cooldown in roun
 | Mage | **Flicker Step** (6) | move | Steps three and a half tiles out of the fight; the foe loses 1.5 s. |
 | Hunter | **Held-Breath Shot** (1) | attack | 180% damage, +30% crit chance. |
 | Hunter | **Gorse Snare** (3) | control | A thorn-cord noose: 40% damage, the foe loses 3.5 s (half on a save). |
-| Hunter | **Name the Quarry** (6) | control | For eight seconds every blow on the quarry does 25% more. |
+| Hunter | **Quarry Mark** (6) | control | For eight seconds every blow on the quarry does 25% more. |
 | Priest | **Ward of Dawn** (2) | defend | Blows on a friend land at 70% for eight seconds. |
 | Priest | **Searing Word** (4) | attack | 170% damage; the foe flinches 0.8 s. |
-| Priest | **Knitting Hymn** (6) | heal | Heals every friend within five tiles. |
+| Priest | **Chorus of Mending** (6) | heal | Heals every friend within five tiles. |
 | Rogue | **Waylay** (1) | attack | 280% damage, only on a fresh, unhurt foe. |
 | Rogue | **Sinew Cut** (3) | attack | Normal damage; the foe loses 2.5 s (half on a save). |
 | Rogue | **Smoke Veil** (5) | defend | Foes on the Rogue lose 2.5 s; blows land at half for four seconds. |

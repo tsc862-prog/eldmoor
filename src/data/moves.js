@@ -42,14 +42,14 @@ export const MOVES={
     fx:{dmg:1.8,crit:.3},use:'burst',desc:'Breathe out and loose one careful shot: 180% damage with a 30% better chance to crit.'},
   snare:{name:'Gorse Snare',cls:'Hunter',kind:'control',lvl:3,cd:24,rounds:4,cost:null,target:'foe',range:'weapon',swing:false,
     fx:{dmg:.4,delay:3.5},save:{abil:'reflex',stat:'insight'},use:'snare',desc:'A noose of thorn-cord where the foe will step: 40% damage and it loses 3.5 seconds before its next blow (half on a save).'},
-  quarrymark:{name:'Name the Quarry',cls:'Hunter',kind:'control',lvl:6,cd:20,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
+  quarrymark:{name:'Quarry Mark',cls:'Hunter',kind:'control',lvl:6,cd:20,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
     fx:{mark:1.25},dur:8,durR:2,save:{abil:'insight',stat:'insight'},use:'mark',desc:'Name the quarry: for eight seconds every blow that lands on it, from anyone, does 25% more.'},
   // ---- Priest: wards and mending ----
   dawnward:{name:'Ward of Dawn',cls:'Priest',kind:'defend',lvl:2,cd:20,rounds:3,cost:null,target:'ally',range:4,swing:false,
     fx:{taken:.7},dur:8,durR:2,use:'wardally',desc:'Lay a warm light on a friend (or yourself): blows on them land at 70% for eight seconds.'},
   searingword:{name:'Searing Word',cls:'Priest',kind:'attack',lvl:4,cd:13,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
     fx:{dmg:1.7,delay:.8},use:'burst',desc:'A word the dark cannot stand: 170% damage, and the foe flinches for 0.8 seconds.'},
-  chorus:{name:'Knitting Hymn',cls:'Priest',kind:'heal',lvl:6,cd:34,rounds:6,cost:null,target:'allies',range:5,swing:false,
+  chorus:{name:'Chorus of Mending',cls:'Priest',kind:'heal',lvl:6,cd:34,rounds:6,cost:null,target:'allies',range:5,swing:false,
     fx:{heal:{base:8,lvl:2.5,hp:.04}},use:'masshurt',desc:'A hymn that knits every friend within five tiles: 8 + 2.5 per level + 4% of their health.'},
   // ---- Rogue: the opener and the vanishing ----
   ambush:{name:'Waylay',cls:'Rogue',kind:'attack',lvl:1,cd:18,rounds:4,cost:null,target:'foe',range:'weapon',swing:true,
