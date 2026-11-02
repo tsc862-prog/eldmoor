@@ -96,6 +96,19 @@ select(mem[1]);setTab('agent');uiFast();
 ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-played member');
 {const get=()=>tb().querySelector('.agentlog');const l=get();if(l){l.scrollTop=40;const n=l;for(let i=0;i<4;i++){sim.playerAct(mem[1].id,'look',{});tick(5)}
   ok(get()===n&&n.scrollTop>=40,'Agent tab tool calls: same list, scroll held while calls arrive ('+n.scrollTop+')')}else ok(false,'Agent tab tool calls: list not found')}
+// Keys 1-5 select the member in that party slot
+{const {cam}=await import('../src/render/draw.js');
+  const press=(k,o={})=>{let pd=false;for(const f of document._ls.keydown||[])f({key:k,target:document.body,preventDefault(){pd=true},...o});return pd};
+  const hints=[...$('frames').querySelectorAll('.pfkey')].map(n=>n.textContent).join();
+  ok(hints==='1,2,3,4,5','party frames carry the key hints 1..5: '+hints);
+  ok($('frames').querySelector('.pfkey').title==='Press 1-5 to select','key hint tooltip');
+  select(mem[0]);press('2');ok(cam.sel===mem[1]&&cam.view==='follow','key 2 selects slot 2 and follows');
+  press('4',{code:'Numpad4'});ok(cam.sel===sim.fellows()[3],'key 4 selects slot 4');
+  press('Digit5'.slice(5),{});ok(cam.sel===sim.fellows()[4],'key 5 selects slot 5');
+  select(mem[0]);press('3',{target:{tagName:'INPUT'}});ok(cam.sel===mem[0],'typing 3 in an input does not select');
+  press('3',{target:{tagName:'TEXTAREA'}});press('3',{target:{tagName:'DIV',isContentEditable:true}});ok(cam.sel===mem[0],'textarea and contenteditable ignored');
+  press('1',{ctrlKey:true});press('2',{metaKey:true});press('3',{altKey:true});ok(cam.sel===mem[0],'Ctrl/Meta/Alt + digit does not select');
+  press('6');press('0');ok(cam.sel===mem[0],'other digits do nothing')}
 // Fellowship panel: open details stay open, the campaign log keeps its place
 {const fb=$('felbody');const th=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));
   ok(!!th,'Open threads is there');if(th){th.open=true;select(mem[2]);tick(10);

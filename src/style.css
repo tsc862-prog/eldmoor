@@ -297,6 +297,8 @@ ul.legends .meta{margin-left:22px}
 .frttl{font-family:var(--px);font-size:9px;color:var(--gold);letter-spacing:.06em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .frlist{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
 .pf{background:var(--panel);border:2px solid var(--edge);border-top-width:3px;box-shadow:3px 3px 0 #05060c;padding:5px 6px;display:flex;flex-direction:column;gap:3px;min-width:0;cursor:pointer;font-size:16px;line-height:1.05}
+.pf{position:relative}
+.pfkey{position:absolute;top:2px;right:3px;font-family:'Press Start 2P',monospace;font-size:7px;line-height:1;color:var(--dim,#6c7390);opacity:.7;pointer-events:auto}
 .pf:hover,.pf:focus-visible{border-color:var(--gold);outline:none}
 .pf.sel{border-color:var(--gold);background:var(--panel2)}
 .pf.low .pfhp{border-color:var(--red)}
