@@ -35,6 +35,7 @@
     "channelcheck": "node scripts/channelcheck.mjs",
     "lorecheck": "node scripts/lorecheck.mjs",
     "wakecheck": "node scripts/wakecheck.mjs",
+    "actcheck": "node scripts/actcheck.mjs",
     "tiercheck": "node scripts/tiercheck.mjs",
     "movecheck": "node scripts/movecheck.mjs",
     "behaviorcheck": "node scripts/behaviorcheck.mjs",
