@@ -151,6 +151,19 @@ is silent, and scene choices time out to the scripted branch, so the world never
   empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. An older relay or page
   without `/play/pace` falls back to real time as if at 1x. A local (Ollama) runner has no turn cap unless
   `--max-turns` is given (it runs until stopped); Claude and OpenAI keep 20 turns and the budget.
+- Start gate (#222, extends the run gate #171 in `src/ui/rungate.js`): a seat is **ready** only after its runner
+  completed one warm-up model call with the model it plays (and the shared `num_ctx`, #221): before its first turn
+  every runner (hero, Fellowship member, DM; `scripts/warmup.mjs`) posts `POST /play/ready {hero|role:'dm', runner,
+  state:'warming'}`, makes one tiny structured call (Ollama `chat()` through the runner's queue, else the adapter's
+  `call()`), then `{state:'ready', ms}` or `{state:'failed', error}`. Readiness belongs to the runner that reported
+  it, so a restarted runner starts over; `/play/health` shows `heroes[].ready` (+ `warm`) and `dm.ready`, and the
+  page gets it with the links. The page holds the world (after Continue, a new world, any runner start) until every
+  living Fellowship seat and the open DM seat are ready; the banner reads "WAITING FOR MINDS · 3/5 READY" with each
+  seat's state ("loading qwen2.5:14b (40 s)", "claimed", "warm-up failed: ...") and **Start anyway** (waives the
+  seats as they are; a waived seat whose runner goes away must warm up again). Party frames and the DM frame show
+  claimed / warming up / ready / warm-up failed. `play-headless --wait-ready` holds a headless world the same way
+  (every living agent hero and the open DM seat); without the flag headless runs as before. A failed warm-up never
+  stops the runner. `npm run localcheck` (slow and crashing mock warm-ups) and `npm run uismoke` cover it.
 - Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
   game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in
   the Agent tab, with "Last agent order: N game min ago"): rest when hurt, hunt again when its last order was

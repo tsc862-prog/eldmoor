@@ -345,6 +345,29 @@ console.log('run gate');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
   gate.setGateProbe(null);L[m3.id]='connected'}
 
+// The start gate (#222): connected is not enough; every seat must have answered one warm-up model call
+console.log('start gate: ready, not just claimed');
+{const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');
+  const F=sim.fellows(),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
+  gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'off',ready:a=>R[a.id]||null,dmReady:()=>null});
+  const T0=5e6,box=$('rgate');ctl.speed=1;gate.checkRunGate(T0);
+  ok(!ctl.held,'every seat ready: the world runs');
+  const slow=F[1],down=F[3];R[slow.id]={state:'warming',model:'qwen2.5:14b',at:Date.now()-40000};R[down.id]=null;
+  gate.checkRunGate(T0+1000);
+  ok(ctl.held&&/WAITING FOR MINDS · 3\/5 READY/.test(box.textContent),'a seat still warming up and one only claimed hold the world: '+(box.children[0]&&box.children[0].textContent));
+  ok(box.textContent.includes(slow.name+': loading qwen2.5:14b (4')&&box.textContent.includes(down.name+': claimed'),'the banner says who is loading which model (and for how long) and who is only claimed');
+  ok(/Start anyway/.test(box.textContent),'the banner offers Start anyway');
+  R[down.id]={state:'failed',error:'ollama: no answer from qwen2.5:14b in 600 s',at:0};gate.checkRunGate(T0+2000);
+  ok(ctl.held&&box.textContent.includes('warm-up failed: ollama: no answer'),'a crashed warm-up shows in the banner with its error');
+  gate.startAnyway();
+  ok(!ctl.held&&box.hidden,'Start anyway releases the world');
+  R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
+  L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+30000);
+  L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+31000);
+  ok(ctl.held&&box.textContent.includes(down.name),'a runner that went away and came back must warm up again');
+  R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
+  gate.setGateProbe(null)}
+
 // ---- the DM frame (owner request): the DM's status beside the party frames ----
 {console.log('DM frame');
   const posts=[];const wait=()=>new Promise(r=>setTimeout(r,30));

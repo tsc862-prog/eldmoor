@@ -370,7 +370,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     ok(code === 0 && /3 failed or empty turns in a row/.test(R.out) && (R.out.match(/empty turn \(not in English\)/g) || []).length === 3, 'a model answering in Chinese: three empty turns, then the runner stops' + (code === 0 ? '' : '\n' + R.out.slice(-1200)));
     ok(en.length === 3, `each turn it is re-prompted once to answer in English (${en.length})`);
     ok(!/[一-鿿]/.test(R.out) && !(a.playNarr || []).some(n => /[一-鿿]/.test(n.text)) && !(a.chat || []).some(e => /[一-鿿]/.test(e.text)), 'no Chinese line reaches the runner output, the Agent tab or the chat');
-    ok(mine.every(b => b.options.temperature === 0.6 && b.options.repeat_penalty === 1.15), 'local turns sample at temperature 0.6 with a repeat penalty');
+    ok(mine.filter(b => !(b.format && b.format.properties && b.format.properties.ready)).every(b => b.options.temperature === 0.6 && b.options.repeat_penalty === 1.15), 'local turns sample at temperature 0.6 with a repeat penalty');
     ok(/fresh context/.test(R.out) && mine.some(b => b.messages.filter(m => m.role === 'assistant').length === 0 && /^Turn 3/.test((b.messages[1] || {}).content || '')), 'after two empty turns the next one starts from a fresh context');
     const sz = sim.playerAct(a.id, 'say', {text: '我将带领团队去见萨满'});
     ok(!sz.ok && /speak in English/.test(sz.error), 'the game refuses a foreign-script line: ' + sz.error);
@@ -509,6 +509,29 @@ console.log('relay links message');
   server.close();
 }
 
+// ---------------------------------------------------------------- the start gate (issue #222): play-headless --wait-ready
+console.log('start gate: --wait-ready holds the world until every mind answered a warm-up');
+{
+  ok(!/world held/.test(world.out()), 'without --wait-ready play-headless never holds the world (unchanged)');
+  const P2 = port + 650, B2 = `http://127.0.0.1:${P2}`, poll = async (f, ms = 30000) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {const h = await health(B2).catch(() => null); if (h && f(h)) return h; await sleep(100)} return null};
+  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--world', join(tmp, 'world-ready.json')], {wait: /headless world/});
+  await w2.until;
+  const [ga, gb] = (await health(B2)).heroes, by = (h, id) => h.heroes.find(x => x.id === id) || {};
+  ok(await poll(() => /world held, waiting for minds: .*no runner/.test(w2.out()), 5000), 'with --wait-ready a world with no runners is held');
+  const ra = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(ga.id), '--provider', 'ollama', '--model', 'mock-slow:1b', '--ollama-url', OLLAMA]);
+  const warming = await poll(h => by(h, ga.id).ready === 'warming', 20000);
+  ok(warming && by(warming, ga.id).warm.model === 'mock-slow:1b', '/play/health shows the slow seat warming up with its model');
+  const t0 = Date.now(), readyA = await poll(h => by(h, ga.id).ready === 'ready', 20000);
+  ok(readyA && Date.now() - t0 > 1000 && by(readyA, ga.id).warm.ms >= 2000, `it turns ready only when the slow warm-up answers (${readyA && by(readyA, ga.id).warm.ms} ms)`);
+  ok(!/every mind is ready/.test(w2.out()) && /no runner/.test(w2.out().split('waiting for minds:').pop()), 'the world stays held: the other seat has no runner');
+  const rb = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-down:1b', '--ollama-url', OLLAMA]);
+  const failed = await poll(h => by(h, gb.id).ready === 'failed', 20000);
+  ok(failed && /unexpectedly stopped/.test(by(failed, gb.id).warm.error || '') && /failed \(ollama: model runner has unexpectedly stopped/.test(w2.out()), 'a crashed warm-up is reported (failed, with the error) and keeps the world held');
+  rb.p.kill(); await poll(h => !by(h, gb.id).claimed, 40000);
+  const rb2 = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', OLLAMA]);
+  ok(await poll(() => /every mind is ready: the world runs/.test(w2.out()), 30000), 'once every seat answered its warm-up the world runs');
+  for (const k of [ra, rb2, w2]) try {k.p.kill()} catch {}
+}
 // issue #221: every request the runners sent (agent loop, closing calls, forced scene, reflection) asked one num_ctx
 {
   const runs = seen.slice(ctxFrom), sizes = [...new Set(runs.map(b => b.options && b.options.num_ctx))];
