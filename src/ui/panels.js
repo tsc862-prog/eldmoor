@@ -70,6 +70,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'dead':return `Fell at level ${a.lvl}, ${a.cause}, at ${a.diedAt}. Gone forever.`;
     case 'assist':return a.target?`Helping a guildmate fight ${a.target.name}`:'Helping a guildmate';
     case 'follow':return a.party?`Following ${a.party.leader.name}'s party in ${zn}`:'Following the party';
+    case 'camp':return a.playDoing||'Resting at camp';
     case 'regroup':return 'Pulling back after a skirmish';
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
