@@ -657,7 +657,10 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   seat's text in a seat's lines, chat as counts only.
 - `npm run behavior-report [-- --world NAME | --all] [--hours N]` writes `logs/behavior/<world>/report.md`:
   top anomalies with counts and examples, per-seat health, model comparison (empty-turn rate, seconds,
-  tokens and cost per provider/model, relay failure rates, decision outcomes), the world digests.
+  tokens and cost per provider/model, relay failure rates, decision outcomes), a **Mind comparison** per Fellowship
+  member and provider/model (#280, `scripts/mind-compare.mjs`: agent turns, empty/failed, Table answers, decisions,
+  rejected, scripted fallbacks, p50/p90 latency, tokens, cost, digest hours on autopilot, close calls, deaths survived,
+  lifetimes; "-" where a member has no data), the world digests.
 - `npm run behaviorcheck` (in CI): mock runners and a timing-out relay produce every anomaly kind above on
   a headless Fellowship of silent agents; asserts they are logged and reported, that a runner cannot write
   another seat's line, keys are redacted, files rotate, the watch leaves the world unchanged, and that a

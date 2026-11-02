@@ -185,6 +185,41 @@ ok(world.some(w => w.memories && w.memories[A.name] >= 1) && anomalies.some(x =>
 ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: memories written per member per game day');
 ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last world digest');
 
+// ---- 6b. the mind comparison (issue #280) on mock logs: two members on qwen, one on Claude, a death, writing calls ----
+{
+  const MD = join(ROOT, 'minds', 'mock'); const {mkdirSync} = await import('node:fs'); mkdirSync(MD, {recursive: true});
+  const KEY2 = 'sk-ant-api03-' + 'Qq7'.repeat(12), t0 = Date.parse('2026-11-01T10:00:00Z'), ts = m => new Date(t0 + m * 1000).toISOString();
+  const mem = (id, name, role, hp, mind, prov, model) => ({id, name, role, fellow: true, agent: true, mind, state: 'hunt', place: 'Thornvale', hp, lvl: 3, idleMin: 0, link: 'connected', runner: {provider: prov, model}});
+  const W2 = [], T2 = [], D2 = [];
+  for (let h = 1; h <= 6; h++) W2.push({ts: ts(h * 60), gameMin: 600 + h * 60, fellowship: {name: 'The Mock Band', minds: 'agent'},
+    members: [mem(1, 'Ann', 'tank', h === 3 ? 20 : 100, h % 2 ? 'agent' : 'autopilot', 'ollama', 'qwen2.5:14b'), mem(2, 'Bo', 'healer', 100, 'agent', 'anthropic', 'claude-haiku-5-5'),
+      ...(h <= 4 ? [mem(3, 'Cy', 'dps1', 90, 'scripted', 'ollama', 'qwen2.5:14b')] : [])],
+    table: {opened: 1, agentTurns: 2, reflexTurns: h === 2 ? 1 : 0}, votes: {agent: 2, reflex: 0}, deaths: h === 5 ? [{name: 'Cy', lvl: 3, cls: 'Rogue', cause: 'slain by a Bristleback Boar ' + KEY2, agent: true}] : []});
+  const turnL = (id, name, prov, model, i, o) => ({ts: ts(i * 10), seat: 'hero:' + id, hero: i % 3 ? {id, name} : null, provider: prov, model, turn: i, tools: o.tools || [{name: 'look', ok: true}], calls: (o.tools || [1]).length,
+    narration: 'SECRET-NARRATION-' + name + ' ' + KEY2, seconds: o.s, tokensIn: o.tin ?? 1000, tokensOut: 50, cost: o.cost ?? 0, flags: o.flags || []});
+  for (let i = 1; i <= 10; i++) T2.push(turnL(1, 'Ann', 'ollama', 'qwen2.5:14b', i, {s: i, flags: i <= 2 ? ['empty'] : i === 3 ? ['refused'] : i === 4 ? ['scene'] : [], tools: i <= 2 ? [] : i === 4 ? [{name: 'scene_act', ok: true}] : undefined}));
+  for (let i = 1; i <= 4; i++) T2.push(turnL(2, 'Bo', 'anthropic', 'claude-haiku-5-5', i, {s: 20 + i, cost: .01, tin: 4000}));
+  T2.push({ts: ts(5), seat: 'dm', hero: null, provider: 'anthropic', model: 'claude-sonnet-5-5', turn: 1, tools: [], narration: 'SECRET-DM-NOTE', seconds: 9, cost: .02, flags: ['empty']});
+  for (const [o, ms] of [['applied', 300], ['applied', 500], ['rejected', 900], ['late', 9000]]) D2.push({ts: ts(100), src: 'game', hero: {id: 2, name: 'Bo'}, kind: 'townPlan', provider: 'anthropic', model: 'claude-haiku-5-5', outcome: o, ms});
+  D2.push({ts: ts(120), src: 'relay', kind: 'memory', hero: 'Ann', provider: 'anthropic', model: 'claude-haiku-5-5', ok: true, status: 200, ms: 1500});
+  D2.push({ts: ts(121), src: 'relay', kind: 'chapter', hero: 'Ann', provider: 'anthropic', model: 'claude-haiku-5-5', ok: false, status: 504, ms: 30000});
+  writeFileSync(join(MD, FILES.world), W2.map(x => JSON.stringify(x)).join('\n') + '\n'); writeFileSync(join(MD, FILES.turn), T2.map(x => JSON.stringify(x)).join('\n') + '\n'); writeFileSync(join(MD, FILES.decision), D2.map(x => JSON.stringify(x)).join('\n') + '\n');
+  const rm = writeReport(join(ROOT, 'minds'), 'mock'), mmd = readFileSync(rm.file, 'utf8'), sec = (mmd.split('## Mind comparison')[1] || '').split('## World')[0];
+  const rowOf = n => (sec.split('\n').find(l => l.startsWith('| ' + n + ' |')) || '').split('|').slice(1, -1).map(s => s.trim());
+  const ann = rowOf('Ann'), bo = rowOf('Bo'), cy = rowOf('Cy');
+  ok(/## Mind comparison/.test(mmd) && ann.length === 19 && bo.length === 19 && cy.length === 19, 'report has a Mind comparison table with a row per member (#280)');
+  ok(ann[2] === 'ollama/qwen2.5:14b' && ann[3] === '10' && ann[4] === '2' && ann[5] === '1' && ann[6] === '1', `Ann on qwen: 10 turns (unnamed lines named from the digests), 2 empty, 1 failed, 1 Table answer: ${ann.slice(2, 7).join(' ')}`);
+  ok(ann[7] === '-' && ann[8] === '-' && ann[9] === '-' && ann[12] === '-', 'a member with no decisions shows "-", not zero');
+  ok(/2 by anthropic\/claude-haiku-5-5 \(1 failed\)/.test(ann[10]) && !sec.split('\n').some(l => l.startsWith('| Ann | tank | anthropic')), 'the relay writing Ann\'s sheet is folded into her row, not shown as her mind');
+  ok(ann[11] === '5 / 9 s' && ann[15] === '6 (3, 0)' && ann[16] === '1', `Ann: turn seconds p50/p90, digest hours with autopilot, one close call: ${ann[11]} | ${ann[15]} | ${ann[16]}`);
+  ok(bo[2] === 'anthropic/claude-haiku-5-5' && bo[7] === '4' && bo[8] === '1' && bo[9] === '2' && bo[12] === '500 / 9000 ms' && bo[14] === '$0.0400', `Bo on Claude: 4 decisions, 1 rejected, 2 fallbacks, decision ms p50/p90, cost: ${bo.slice(7, 15).join(' | ')}`);
+  ok(cy[3] === '-' && cy[15] === '4 (0, 4)' && /died: slain by a Bristleback Boar/.test(cy[18]) && ann[17] === '1' && bo[17] === '1' && cy[17] === '0', `deaths survived and lifetimes from the digests: Ann ${ann[17]}, Bo ${bo[17]}, Cy ${cy[18]}`);
+  ok(/\| ollama\/qwen2\.5:14b \| 2 \| 10 \| 2 \(20%\) \| 1 \(10%\) \|/.test(sec) && /\| anthropic\/claude-haiku-5-5 \| 2 \| 4 \|/.test(sec), 'overall per mind: qwen 10 turns 20% empty, Claude Haiku 4 turns');
+  ok(/12 by the agent, 1 by reflex/.test(sec), 'overall Table turns by agent vs reflex from the digests');
+  ok(!mmd.includes(KEY2) && sec.includes('[redacted]') && !sec.includes('SECRET-'), 'the comparison redacts keys and shows no narration or DM text');
+  ok(!/\| dm \|/.test(sec) && !sec.includes('claude-sonnet-5-5'), 'the DM seat is not a member row');
+}
+
 // ---- 7. rotation by size ----
 {const rot = behaviorLog({root: join(ROOT, 'rot'), world: 'r', rotate: {bytes: 1500, keep: 2}});
   for (let i = 0; i < 60; i++) rot.ingest('world', {gameMin: i, members: [], pad: 'x'.repeat(80)});
