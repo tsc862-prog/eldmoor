@@ -854,6 +854,17 @@ Every member carries a **backstory** (family and home, how they came to arms, on
 
 Names: a Fellowship is named in its faction's voice when it is founded. Concord names are sober and civic (The Patient Watch, The Lantern Wardens, The Covenant of Highgate, The Ledger of the Quiet Road); Warband names are short and brutal (The Broken Teeth, The Red Five, The Pit of Grimhold, Thrakash’s Scarred Five). Word lists live in `src/sim/fellowship.js` (`NAME_PARTS`) and are original to Eldmoor, with one exception under review: the adjective `Grey` paired with `Company` yields "The Grey Company", the name of Aragorn's rangers in Tolkien, and must be replaced in the sim list (suggested: `Dun`). The word "Fellowship" for the party of five is a generic English noun but is also the title of Tolkien's first volume; it is kept as the product term and should never be paired with a ring, a nine or a quest to destroy anything. Reviewed 2026-11-01.
 
+### Archetypes (issue #295)
+
+Six optional temperaments a Fellowship member's persona can take in place of a generated sheet (`src/data/archetypes.js`, applied by `applyArchetype` in `src/sim/persona.js`). Each fills only the voice, wants, fears, quirk, the line never said and a default stance; class, bonds, oath, home and history are never touched. The names are generic fantasy roles.
+
+- **Dour Veteran**: weary, buries friends and expects more; wants the young ones home alive.
+- **Bright Idealist**: earnest, sure a road can be made safe; fears the work changes nothing.
+- **Quiet Schemer**: soft-spoken, three moves ahead; every kind word has a second purpose.
+- **Comic Coward**: afraid and honest about it, always still there.
+- **Burning Zealot**: one cause, one answer; fears the quiet kind of doubt.
+- **Plain Mercenary**: fights for coin, stays for the company, never says so.
+
 ### Camp and the night watch
 
 When night falls (21:00 to 03:00) or the company is worn thin, and the whole Fellowship (or all but one) is out on the road, they make camp on open ground at least eleven tiles from any town and fourteen from Kragmaw's lair or the Sunken Crypt: a ring of stones, a small fire, a bedroll each. They sleep in turns of two hours each, one of them on **watch**, and an hour at a time the dark may send a visitor (a wandering foe of the region, or an enemy hero passing close). A watcher who hears it in time wakes the camp; one who nods off lets the visitor reach the fire. Camp heals everyone; a night camp breaks at first light once all are mended. Round the fire they tell stories, sing and sometimes quarrel. The camp songs and sayings are folk verse of the Thornvale roads, not named works: the lantern road, the seven bells and the broken oar, the river crossing that did not count. No new place is named.
