@@ -128,7 +128,7 @@ const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the f
    ok(u2.children.filter(x=>x.classList.contains('daysep')).length>=2,'chat: day separators appear where the day changes');
    // #181: the dossier Chat tab is a per-hero filter of the chat panel's stream; the phone-width View group wraps
    {const mine=tb().querySelector('.log.chat').textContent;h.chat.push({t:'09:00',d:d0+7,from:h,text:'Only-for-me test line.',trigger:'x'});
-    const other=mem.find(m=>m!==h&&m!==sp);other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
+    const other=mem.find(m=>m!==h&&m!==sp&&m.chat)||{chat:[]};other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
     const t2=tb().querySelector('.log.chat').textContent;
     ok(/Only-for-me/.test(t2)&&!/Only-for-other/.test(t2),'dossier chat: shows this heros slice of the stream only');
     ok(tb().querySelector('.log.chat').children.length>0&&mine.length>0,'dossier chat: built from the stream');
@@ -234,6 +234,33 @@ console.log('declutter');
   const pT=click('party');ok(/Stream test line/.test(pT)&&/proposes:/.test(pT)&&!/Well met/.test(pT),'chat panel: Party filter shows party lines and the council');
   ok(!!$('chatLegend')&&/hostile/.test($('chatLegend').textContent),'chat panel: a colour legend');
   click('all');
+  // newest on top (owner): the panel, the day separators, and a held scroll
+  {const lis=()=>cl.children.filter(c=>c.tagName==='LI'&&!c.classList.contains('daysep'));
+   const stamps=()=>lis().map(l=>{const m=/D(\d+) (\d\d):(\d\d)/.exec(l.querySelector('time').textContent);return m?(+m[1]-1)*1440+(+m[2])*60+(+m[3]):0});
+   const sd=stamps();ok(sd.every((v,i)=>i===0||sd[i-1]>=v),'chat panel: newest line on top, times never increase down the list');
+   ok(cl.children[0].classList.contains('daysep'),'chat panel: a day separator heads the newest day block');
+   const di=cl.children.map((c,i)=>c.classList.contains('daysep')?i:-1).filter(i=>i>=0);
+   ok(di.every(i=>cl.children[i+1]&&!cl.children[i+1].classList.contains('daysep')),'chat panel: each separator sits above the day newest line');
+   ok(cl.scrollTop===0,'chat panel opens at the top');
+   mem[1].chat.push({t:'06:00',d:50,from:mem[1],text:'Top test A.',party:true,heard:[]});uiFast();
+   ok(lis()[0].textContent.includes('Top test A.'),'chat panel: at the top, a new line appears first');
+   for(let i=0;i<30;i++)mem[1].chat.push({t:'06:'+String(1+i).padStart(2,'0'),d:50,from:mem[1],text:'Filler line '+i+'.',party:true,heard:[]});uiFast();
+   cl.scrollTop=100;const read=cl.children.find(c=>c.offsetTop+c.offsetHeight>100),off=read.offsetTop-100,mark={};read._mark=mark;
+   mem[1].chat.push({t:'07:59',d:50,from:mem[1],text:'Arrives while reading.',party:true,heard:[]});mem[1].chat.push({t:'07:58',d:50,from:mem[1],text:'Arrives too.',party:true,heard:[]});
+   // lines sort by time: a later stamp lands on top
+   mem[1].chat.push({t:'08:30',d:50,from:mem[1],text:'Newest while reading.',party:true,heard:[]});
+   uiFast();uiFast();
+   ok(cl.scrollTop>=100&&cl.children.includes(read)&&read.offsetTop-cl.scrollTop===off,'chat panel: scrolled down, the line being read does not move when new lines arrive on top ('+off+' -> '+(read.offsetTop-cl.scrollTop)+')');
+   const chipEl=cl.parentNode.children.find(c=>c.classList.contains('chatnew'));ok(chipEl&&!chipEl.hidden&&/new line/.test(chipEl.textContent),'chat panel: a "new lines" chip shows while scrolled down');
+   chipEl.dispatch('click',{target:chipEl});ok(cl.scrollTop===0&&chipEl.hidden,'chat panel: the chip returns to the top');
+   cl.scrollTop=0}
+  {const wb=$('chatWide');ok(!!wb&&wb.textContent==='Wider','chat panel: a width toggle');const had=document.body.classList.contains('chat-wide');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')!==had&&wb.getAttribute('aria-pressed')==='true','width toggle widens the side column (body.chat-wide)');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')===had,'width toggle narrows it again');
+   const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   ok(/--side:clamp\(340px,28vw,460px\)/.test(css)&&/grid-template-columns:minmax\(0,1fr\) var\(--side\)/.test(css)&&/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'side column is wider by default, and one column at phone width')}
+  {const dossier=await import('../src/ui/panels.js');const g=dossier.chatGroups([{from:mem[1],text:'x',party:true},{from:mem[1],text:'x',party:true},{from:mem[1],text:'y'}]);
+   ok(g.length===2&&g[0].n===2,'repeats still collapse to a count (x2)')}
   {const dlog=await import('../src/sim/dmlog.js');dlog.dmlog('agent',null,['The DM agent plans a quiet road.'],{by:'dm-agent'});dlog.dmlog('frame',null,['A scripted scene opens.'],{});
    $('chatTabs').children.find(b=>b.dataset.ctab==='dm').click();uiFast();const dl=$('dmChatList');
    ok(!$('dmPane').hidden&&$('chatPane').hidden,'DM tab opens beside the chat');
@@ -281,6 +308,21 @@ console.log('run gate');
   gate.setRunFree(false);gate.checkRunGate(T0+232000);ok(ctl.held,'switching it off closes the gate again');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
   gate.setGateProbe(null);L[m3.id]='connected'}
+
+// ---- the title screen (owner request): keyboard, and the skip params for checks and dev ----
+{console.log('title screen');
+  const title=await import('../src/ui/title.js'),save=await import('../src/ui/save.js');
+  ok(title.titleWanted('?skip-title=1')===false&&title.titleWanted('?continue=1')===false,'a skip param goes straight into the world');
+  save.holdSave(false);save.writeSave();
+  let played=[];const root=title.showTitle(k=>played.push(k));
+  ok(!root.hidden&&root.querySelector('[data-a="continue"]'),'the title shows Continue over a saved world');
+  ok(document.activeElement&&document.activeElement.dataset.a==='continue','Continue has the focus');
+  const key=(k,target=document.body)=>{for(const f of document._ls.keydown||[])f({key:k,target,preventDefault(){}})};
+  key('Enter',root.querySelector('[data-a="new"]'));ok(played.length===0,'Enter on a focused button is left to the button');
+  root.querySelector('[data-a="new"]').click();ok(/replaces the saved/.test(root.textContent),'New world asks first');
+  key('Enter');ok(played.length===0,'Enter does not Continue while the question is open');
+  key('Escape');ok(!/replaces the saved/.test(root.textContent),'Escape closes the question');
+  key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away')}
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

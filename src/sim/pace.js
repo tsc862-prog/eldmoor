@@ -24,6 +24,7 @@ import {notTold,NOT_TOLD} from './reach.js';
 import {heroRelevant} from './notebook.js'; // the notes that matter now (#155)
 import {reflectDue} from './reflect.js'; // reflection moments (#179)
 import {asleep,campView} from './camp.js';
+import {foeName} from './lore.js'; // the foe as the hero knows it, never its level (#188)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60]}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -60,7 +61,7 @@ export function paceBrief(id){const a=hero(Number(id));
   if(a.state==='dead')return {ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+'). Hardcore: one life.'};
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
   const t=a.target,fighting=(a.state==='fight'||a.state==='duel'||a.state==='assist')&&t&&(t.hp>0||t.alive);
-  const foe=fighting?(t.kind==='hero'?t.name:t.elite||t.named?t.name:(MOBS[t.type]&&MOBS[t.type].name||'a monster')+(t.lvl?' (level '+t.lvl+')':'')):null;
+  const foe=fighting?foeName(a,t):null;
   const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
