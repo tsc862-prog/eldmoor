@@ -9,6 +9,11 @@
 //   4. Over HTTP (attachPlay + the headless backend): /play/health reports the seat; one claimed DM
 //      seat (a second runner is refused, a closed seat refuses claims); the MCP server at
 //      /mcp?role=dm lists the DM tools and none of the hero tools; /play/dm and MCP calls work.
+//   1b. Staged scenes (issue #132): every refusal of stage_scene (kind, reason, frame, cast, place, town,
+//      not a member, far above the party, a creature not of that region, meeting without a want, bad role,
+//      a badly hurt member before a fight or trap, an open scene or vote, one at a time, per day), all in
+//      the DM log tagged dm-agent; dm_status and table_call with nothing staged. In part 4 the runner's table
+//      voice (scripts/dm-agent.mjs tableVoice, mock model) answers a staged meeting's calls over /play/dm.
 //   5. The runner end to end: `npm run dm -- --provider ollama` against a mock Ollama and a headless
 //      world opened with --dm: it claims the seat, reads, writes a note, pulls a lever, gets one
 //      refused, prints a cost line per turn and keeps its session in logs/agents/dm.json (resumed next run).
@@ -108,6 +113,47 @@ r = dmAct('log_intent', {text: 'The wagon thread will pull the party toward Mire
 ok(r.ok && S.dmLog[0].kind === 'agent' && S.dmLog[0].detail.intent, 'log_intent writes a DM agent line');
 ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
 
+// ---------------------------------------------------------------- 1b. staged scenes: the rules of the seat (issue #132)
+console.log('staged scenes: refusals');
+{const ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
+  const L = fellows(), home = homeOf(L[0]).gate, spot = zonePoint(zoneFor(Math.max(1, L[0].lvl), home), null, home);
+  L.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)});
+  T.TABLE.mode = 'off'; // nothing opens on its own while the refusals are tried
+  const frame = 'Mist lies on the road, and something moves in it.', st = (a) => dmAct('stage_scene', {kind: 'mystery', near: 'fellowship', frame, cast: {}, reason: 'test', ...a});
+  const no = (a, re, m) => {const x = st(a); ok(x.ok === false && re.test(x.error), m + ': ' + (x.error || 'staged!').replace(/^Refused: /, ''))};
+  const n0 = S.dmLog.filter(e => /Staged scene refused/.test(e.summary.map(p => typeof p === 'string' ? p : p && p.t || '').join(''))).length;
+  no({kind: 'dragon'}, /kind must be one of/, 'an unknown kind');
+  no({reason: ''}, /reason is required/, 'no reason');
+  no({frame: 'Mist.'}, /frame/, 'no real frame');
+  no({cast: [1, 2]}, /cast must be an object/, 'a cast that is not an object');
+  no({near: 'Nowhere-at-all'}, /unknown place/, 'an unknown place');
+  no({near: CITYN()}, /not inside/, 'inside a town');
+  const stranger = S.agents.find(a => !a.fellow && a.state !== 'dead');
+  no({near: stranger.name}, /only the Fellowship/, 'a hero outside the Fellowship');
+  no({kind: 'elite', cast: {level: Math.max(...L.map(a => a.lvl)) + 6}}, /far above the party/, 'a foe far above the party\'s level');
+  no({kind: 'elite', cast: {foe: 'Cinder Wyrm'}}, /lives in/, 'a creature that does not live there');
+  no({kind: 'meeting', cast: {role: 'drover'}}, /needs cast.want/, 'a meeting with no want');
+  no({kind: 'meeting', cast: {role: 'king', want: 'x'}}, /role must be one of/, 'a role no wanderer has');
+  L[1].hp = maxHp(L[1]) * .2;
+  no({kind: 'ambush'}, /badly hurt/, `an ambush while ${L[1].name} is at 20% HP in the field`);
+  no({kind: 'trap'}, /badly hurt/, 'a trap too');
+  L[1].hp = maxHp(L[1]);
+  S.table = {id: 0, kind: 'check', ids: [], ctx: {}, calls: null}; no({}, /Table scene is open/, 'while a Table scene is open'); S.table = null;
+  const P0 = {id: 999, status: 'open', kind: 'other', votes: {}, by: L[0].id, details: 'x'}; (S.fellowship.props || (S.fellowship.props = [])).push(P0);
+  no({}, /vote is open/, 'while a party vote is open'); P0.status = 'failed';
+  const okR = st({}); ok(okR.ok && okR.staged, `a mystery is staged: ${okR.title} ${okR.where}`);
+  no({kind: 'meeting', cast: {role: 'drover', want: 'a hand'}}, /one at a time/, 'a second one while the first waits');
+  S.staged.cur.phase = 'done'; S.staged.day.n = ST.STAGE.PER_DAY;
+  no({}, /staged scenes today/, `past ${ST.STAGE.PER_DAY} a day`);
+  S.staged.day.n = 0;
+  ok(S.dmLog.filter(e => /Staged scene refused/.test(e.summary.map(p => typeof p === 'string' ? p : p && p.t || '').join('')) && e.detail.by === 'dm-agent').length === n0 + 17, 'every refusal is in the DM log, tagged dm-agent');
+  ok(S.dmLog.some(e => e.kind === 'frame' && e.detail.by === 'dm-agent' && e.detail.staged === okR.staged && e.detail.reason === 'test'), 'the staging is in the DM log with its reason');
+  const ds = dmAct('dm_status'); ok(ds.ok && ds.staged && /\/3$/.test(ds.staged.today), `dm_status shows the day's staged scenes (${ds.staged && ds.staged.today})`);
+  const tc = dmAct('table_call'); ok(tc.ok && tc.call === null && tc.scene === null, 'table_call with nothing at the table: no call');
+  ok(dmAct('table_answer', {call: 1, text: 'x'}).ok === false, 'table_answer with nothing at the table is refused');
+  T.TABLE.mode = 'auto'}
+function CITYN() {return S.agents.length && (S.fellowship.hall || 'Highgate')}
+
 // ---------------------------------------------------------------- 2. save and restore
 console.log('save and restore');
 const before = JSON.stringify(S.dmAgent.notes), day0 = S.dmAgent.day.pulls;
@@ -158,11 +204,31 @@ ok(h.dm.link === 'connected', 'after a call the seat shows connected');
   await c.connect(new StreamableHTTPClientTransport(new URL(B + '/mcp?role=dm'), {requestInit: {headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': 'test:1'}}}));
   const tools = (await c.listTools()).tools.map(t => t.name);
   ok(tools.includes('pull_lever') && tools.includes('notes_write') && !tools.includes('look') && !tools.includes('move_to'), `MCP /mcp?role=dm lists ${tools.length} DM tools and no hero tools`);
+  ok(['stage_scene', 'table_call', 'table_answer'].every(t => tools.includes(t)), 'and the staged-scene tools (stage_scene, table_call, table_answer)');
   const res = await c.callTool({name: 'notes_write', arguments: {section: 'characters', op: 'add', text: 'Merel the gate captain, owes the party.'}});
   ok(/"ok":true/.test(res.content[0].text) && S.dmAgent.notes.characters.length === 1, 'an MCP notes_write lands in the world');
   const res2 = await c.callTool({name: 'pull_lever', arguments: {lever: 'mark_place', params: {kind: 'shrine', at: {x: 1, y: 1}}, reason: 'test'}});
   ok(/"ok":false/.test(res2.content[0].text), 'an MCP lever pull with an illegal spot is refused, not thrown');
   await c.close()}
+// the runner's table voice (issue #132): a mock model answers the calls of a staged scene over /play/dm
+{const {tableVoice} = await import('./dm-agent.mjs'), T = await import('../src/sim/table.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
+  const L = fellows(), home = homeOf(L[0]).gate, spot = zonePoint(zoneFor(Math.max(1, L[0].lvl), home), null, home);
+  L.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)});
+  if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} if (S.staged) {S.staged.day.n = 0; if (S.staged.cur) S.staged.cur.phase = 'done'}
+  T.TABLE.mode = 'auto'; T.TABLE.speed = 1; S.table = null;
+  const st = await post('/play/dm', {tool: 'stage_scene', runner: 'test:1', args: {kind: 'meeting', near: 'fellowship', frame: 'A drover sits on a milestone, his ox lame beside him.', cast: {role: 'drover', want: 'a hand getting the ox to the ford', voice: 'tired, kind'}, reason: 'runner test'}});
+  ok(st.ok, 'stage_scene over /play/dm' + (st.ok ? '' : ': ' + st.error));
+  const asked = [];
+  const adapter = {call: async ({user, schema}) => {asked.push(user); const e = schema.properties.pick.enum; return {text: JSON.stringify({text: 'Mock line ' + asked.length + ': the ox lows.', pick: e[e.length - 1]}), usage: {in: 300, out: 20, cost: 0}}}};
+  const lines = [], v = tableVoice({base: B, adapter, model: 'mock', log: s => lines.push(s), pollIdle: 5, pollHot: 5, tool: (b, tool, args) => post('/play/dm', {tool, args, runner: 'test:1'})});
+  let sc = null; const t0 = Date.now();
+  while (Date.now() - t0 < 30000) {step(1 / 60); if (S.table && S.table.ctx.staged != null) sc = S.table; if (sc && !S.table && S.staged.cur.phase === 'done') break; await new Promise(res => setTimeout(res, 1))}
+  await v.stop();
+  const calls = sc ? sc.calls : [], mine = calls.filter(c => c.by === 'dm-agent');
+  ok(sc && calls.length && mine.length >= Math.ceil(calls.length / 2), `the table voice answered ${mine.length} of ${calls.length} calls in ${((Date.now() - t0) / 1000).toFixed(1)} s (the scripted DM filled ${calls.length - mine.length})`);
+  ok(asked.length && /Call \d+ \(voice/.test(asked[0]) && /drover/i.test(asked[0]), 'its prompt carries the scene and the call');
+  ok(lines.some(l => /^\[table\] call \d+ /.test(l)), 'a log line per call: ' + (lines[0] || ''));
+  ok(fellows().some(a => (a.chat || []).some(e => /^Mock line/.test(e.text))), 'the members hear the DM\'s lines in the game')}
 r = await post('/play/release', {role: 'dm', runner: 'test:1'});
 setDmSeat(false);
 r = await post('/play/claim', {role: 'dm', runner: 'test:3'});

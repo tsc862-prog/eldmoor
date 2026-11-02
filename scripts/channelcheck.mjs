@@ -91,6 +91,9 @@ ok(r.ok, 'DM log: an intent line');
 r = DMA.dmAct('pull_lever', {lever: 'set_condition', params: {region: ZONES[zone > 0 ? zone : 1], kind: 'fogbound', strength: 1, hours: 6}, reason: 'Reason ' + plant('leverReason')});
 DMA.dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'shrine', at: {x: 1, y: 1}}, reason: 'Refused ' + plant('leverRefused')});
 ok(S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.leverReason) || JSON.stringify(e).includes(SECRETS.leverRefused)), 'lever reasons (granted or refused) in the DM log');
+// a staged scene (issue #132): its reason is the DM's own (DM log only); the frame and the person's want are said in the game
+r = DMA.dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A drover waits by the road with a lame ox.', cast: {role: 'drover', want: 'a hand with the ox'}, reason: 'Stage ' + plant('stageReason')});
+ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), 'a staged scene\'s reason in the DM log' + (r.ok ? '' : ': ' + r.error));
 S.dmLog[0].prompt = 'DM model prompt ' + plant('dmPrompt'); S.dmLog[0].reply = 'DM model reply ' + plant('dmReply');
 ok(act(B, 'journal_write', {text: 'Dear diary, ' + plant('bJournal')}).ok, 'B\'s journal');
 ME.remember(B, 'scene', 'I remember ' + plant('bMemory'));

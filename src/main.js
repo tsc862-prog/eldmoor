@@ -6,7 +6,8 @@ import {init,step,S} from './sim/index.js';
 import {createRenderer} from './render/draw.js';
 import {initPanels,renderHero,renderTops,renderFacs,renderGuilds,renderFallen,renderClock,ranked} from './ui/panels.js';
 import {initControls,select,ctl,setView} from './ui/controls.js';
-import {boot,initSaveUI,autoSaveTick} from './ui/save.js';
+import {boot,initSaveUI,autoSaveTick,bootKind} from './ui/save.js';
+import {initSetup,openSetup,afterBoot} from './ui/setup.js'; // the New World setup page (#133)
 import {initMinds,renderMinds} from './ui/minds.js';
 import {initLegends} from './ui/legends.js';
 import {initFellowship,renderFellowship} from './ui/fellowship.js';
@@ -22,6 +23,7 @@ boot(init); // restores the localStorage save when there is one, else init()
 const renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
 initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initTable();
 initSheet();initFrames();applyLayout();initMindCtl(()=>{renderHero();renderFrames();renderFellowship();renderMinds()});initRunners(()=>{renderHero();renderFrames();renderFellowship();renderMinds()});initDmSeat(()=>renderMinds());
+initSetup();if(bootKind()==='fresh')openSetup({first:true});else afterBoot(); // no save and no queued setup: the setup page opens over the default world; a setup boot starts its runners
 select(S.pinned&&typeof S.pinned.x==='number'?S.pinned:ranked()[0]); // keep following the saved hero
 if(S.fellowship)setView('fellow'); // the Fellowship is the story: frame it by default (#68)
 

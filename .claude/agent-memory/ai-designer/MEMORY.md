@@ -9,3 +9,4 @@
 - [Fellowship UI](fellowship_ui.md) — #94: AI/Agent only on members unless Developer; per-member minds set fellowBrain/fellowAgent; layout moves nodes
 - [Rebalance #107](rebalance_issue107.md) — crypt .40, spider/boar softening, xpNeed ramp, replacement seeding, duel .0375; use 10-run batches
 - [New world opening](new_world_opening.md) — #111: default Fellowship at L1, others seeded 1-15 (START_BANDS), opt-out flag and which checks use it
+- [New World setup](new_world_setup.md) — #133: setup page flow, seeded init, agent-from-minute-one, runner plan/limits, local-model rule
