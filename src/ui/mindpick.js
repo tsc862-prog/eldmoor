@@ -1,5 +1,7 @@
 // Per-member mind setting (Mixed minds, issue #97): Scripted / AI / Agent, and for AI the provider and
 // model. Used by the Fellowship panel (ui/fellowship.js) on each member row; any panel can reuse it.
+// A Fellowship member is always agent-played (#148): its row has no mode buttons, only the model its
+// runner plays with (Claude Haiku, Claude Sonnet, a local or an OpenAI model) and the runner's Start / Stop.
 //   renderMindRow(node, a)   the row: three mode buttons, then provider and model pickers when AI
 //   mindAct(button)          handles a click on the row; true when it was one of ours
 //   mindChange(select)       handles a picker change; true when it was one of ours
@@ -31,6 +33,9 @@ export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ve
 
 export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   const row=el('div','mindrow'),mode=modeOf(a);
+  if(a.fellow){const ml=mindLabel(a),n=el('span','dm mnote',ml.text);n.title=ml.title+' A Fellowship member is always played by its agent; choose the model its runner plays with.';row.append(n);
+    const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,pulledModels(),openaiModels()));row.append(r);
+    node.append(row);return}
   const seg=el('span','mseg');
   for(const [k,label,title] of [['scripted','Scripted','The scripted rules play this hero'],['ai','AI','A language model makes the decisions through the relay (scripted when it is silent)'],['agent','Agent','An agent runner plays this hero through the game tools (npm run agent)']]){
     const b=el('button','mini',label);b.dataset.mmode=k;b.dataset.mhid=a.id;b.title=title;b.setAttribute('aria-pressed',String(mode===k));seg.append(b)}
@@ -56,7 +61,7 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   node.append(row)}
 
 export function mindAct(t){if(!t||!t.dataset||!t.dataset.mmode)return false;
-  const a=byHid(t.dataset.mhid);if(!a||a.state==='dead')return true;const k=t.dataset.mmode;
+  const a=byHid(t.dataset.mhid);if(!a||a.state==='dead'||a.fellow)return true;const k=t.dataset.mmode; // a member stays an agent (#148)
   if(k==='scripted'){if(a.player)agentOff(a);disableBrain(a);delete a.fellowBrain;delete a.fellowAgent}
   else if(k==='ai'){if(a.player)agentOff(a);delete a.fellowAgent;if(!a.brain&&enableBrain(a)&&a.fellow)a.fellowBrain=true}
   else if(k==='agent'&&!a.player){if(a.brain){disableBrain(a);delete a.fellowBrain}if(agentOn(a)&&a.fellow)a.fellowAgent=true}

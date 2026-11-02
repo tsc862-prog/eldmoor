@@ -231,13 +231,23 @@ is silent, and scene choices time out to the scripted branch, so the world never
 
 ## Fellowship (agents and Table mode)
 
-The Fellowship (#68) is five heroes (Tank, Healer, three DPS) who are the story. Its panel's
-**Minds** button cycles scripted -> relay -> agents. With **agents** every member is
-agent-played (a replacement after a death is too) and `npm run fellowship` plays all five,
-one Agent SDK session per member.
+The Fellowship (#68) is five heroes (Tank, Healer, three DPS) who are the story. It is always
+agent-played (#148): founding, joining, replacement and a new world mark every member agent-played,
+an older save's scripted or relay members are converted with a notice, and the only mind choice is the
+model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or an OpenAI model).
+`npm run fellowship` plays all five, one Agent SDK session per member.
+- Decisions wait for the agent (`src/sim/runlink.js`): the host passes each member's link from the relay's
+  claims. `connected`/`waiting` = a runner holds it (a slow agent is still there): a Table turn waits (nudged
+  after `TABLE.turnMs`, reflex only after `TABLE.liveMs`, 2 min), a vote stays open past `PROP_MIN` for
+  `COUNCIL.HOLD_MIN` (600 game min) more, an adventure choice for `CHOICE_HOLD`, each with a must-answer
+  event so pacing starts the runner's turn at once; autopilot carries on outside scenes. No runner =
+  gone: the page's runner-stop alert asks the owner (Restart, or Resume: that member's reflexes, the
+  scripted rules, play it and decide until a runner holds it again); until then its decisions hold.
+  `npm run sim`, the checks and play-headless have no owner to ask: a member with no runner plays by reflex.
+  At 3x/8x a Fellowship decision asks the host to drop to 1x (`TABLE.drop`; page and play-headless honour it).
 
 - Browser: `npm run relay` (the brain relay, port 8787; it also serves the agents' MCP tools),
-  `npm run dev` (5173), found a Fellowship, set Minds to agents, then
+  `npm run dev` (5173), found a Fellowship (its members are agents), then
   `npm run fellowship -- --max-turns 6 --budget 2.00`.
 - Headless: `node scripts/play-headless.mjs --fellowship --port 8790 --warm 20 [--no-relay]`
   then `npm run fellowship -- --url http://127.0.0.1:8790 --max-turns 2 --budget 0.50`.
@@ -250,18 +260,19 @@ one Agent SDK session per member.
   in `logs/fellowship-runs.jsonl`.
 - Party tools (`src/data/player-tools.js`, `src/sim/council.js`): `party_say`/`party_read`
   (party channel, Chat tab and bubble), `propose`/`vote` (job, crypt, raid, split, other; the
-  leader settles it: majority, leader breaks ties, silent members vote by reflex at the
-  timeout), leader-only `lead_to`, `leave_party` (splits off for 6 game hours, costs bonds).
+  leader settles it: majority, leader breaks ties; members with no runner vote by reflex, a live
+  agent's vote is waited for, see above), leader-only `lead_to`, `leave_party` (splits off for 6 game hours, costs bonds).
   A Crypt group or raid takes the whole Fellowship or none of it; an agent-played Fellowship
   is asked first (a `crypt`/`raid` proposal).
 - Table mode (`src/sim/table.js`, banner `src/ui/table.js`): Crypt entry and inner chamber,
   Kragmaw, elite/named foes, enemy ambushes, a member below 25% HP, DM checks and choice
   scenes on their adventures, and proposals open a scene. At 1x `step()` pauses the world
   (only the scene runs), the DM frames it, members act in initiative order (Reflex with gear)
-  with `scene_act`; an agent has `TABLE.turnMs` (7 s) per turn, then its reflex acts; scripted
-  members act at once. At 3x/8x scenes resolve instantly with a summary. The View group's
-  **Table: Auto/Off** switch (Off = Watch mode) never pauses. `npm run tablecheck` proves a
-  silent agent never stalls a scene, votes, `lead_to`, the all-or-none Crypt draft and
+  with `scene_act`; the table waits for a live agent (see above); a member with no runner acts by reflex
+  once the owner resumed. At 3x/8x a scene with agents to decide drops the world to 1x; only a
+  reflex-only scene resolves instantly with a summary. The View group's **Table: Auto/Off** switch
+  (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
+  agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
 
 ## Model providers (Mixed minds, issue #97)
@@ -278,7 +289,7 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   the relay still starts and only Claude requests fail (those heroes play scripted). On start it
   prints whether Ollama is reachable and which models are pulled; `GET /health` lists the same
   under `providers`.
-- Pick a mind per member in the Fellowship panel: each member row has Scripted / AI / Agent, and
+- Pick a mind per background hero (Developer toggle; Fellowship members are always agents, #148): Scripted / AI / Agent, and
   for AI a provider (Claude, Local (Ollama), OpenAI, Google) and a model picked from what the relay
   reports. The setting is `a.brainCfg = {provider, model}` on the hero (same shape as the agent
   runner's `runner` settings), saved with the world; the brain sends it with every request for

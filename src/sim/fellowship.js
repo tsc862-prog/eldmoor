@@ -34,7 +34,7 @@ import {record,timeline,onRecord} from './history.js';
 import {makeHero,maxHp,goHome,seedLevel} from './heroes.js';
 import {leaveParty} from './party.js';
 import {bond} from './bonds.js';
-import {enableBrain,disableBrain,askRelay} from './brain.js';
+import {disableBrain,askRelay} from './brain.js';
 import {markPlayer} from './player.js';
 import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME} from './persona.js';
 import {remember,memOf,refreshStances,stanceEvent,setSummariser,memorySnapshot,applyLong} from './memory.js';
@@ -135,7 +135,7 @@ export function found(slots,o={}){if(S.fellowship)return {ok:false,error:'A Fell
   const filled={};for(const s of SLOTS){const id=slots[s.key];filled[s.key]=id!=null?byId(id):recruit(fac,s.cls.find(c=>!SLOTS.some(t=>t.key!==s.key&&filled[t.key]&&filled[t.key].cls===c))||s.cls[0])}
   const mem=SLOT_KEYS.map(k=>filled[k]);let lead=mem[0];for(const b of mem)if(b.lvl>lead.lvl)lead=b;
   const F=S.fellowship={id:++S.uid,name:'',fac,hall:homeOf(lead).name,slots:{},ids:[],founded:Math.round(S.gameMin),day:day(),log:[],past:[],npcs:[],
-    dmSeen:S.dmLogSeq||0,ai:o.ai!==false,enrich:{calls:0,ok:0,fail:0,usd:0,ms:0},seq:0};
+    dmSeen:S.dmLogSeq||0,ai:o.ai!==false,minds:'agent',enrich:{calls:0,ok:0,fail:0,usd:0,ms:0},seq:0};
   F.name=(o.name&&String(o.name).trim().slice(0,40))||fellowshipName(fac,lead,F.id);
   for(const s of SLOTS)join(filled[s.key],s.key,null,true);
   const roster=[];mem.forEach((b,i)=>{roster.push(b,' ('+slotOf(SLOT_KEYS[i]).label+')');if(i<mem.length-2)roster.push(', ');else if(i===mem.length-2)roster.push(' and ')});
@@ -154,8 +154,7 @@ export function join(a,key,why,quiet){const F=S.fellowship;if(!F||!alive(a)||!fi
   if(a.party&&!a.party.fellow)leaveParty(a);
   F.slots[key]=a.id;F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);
   a.fellow=true;a.fellowRole=key;if(a.fellowFrom==null)a.fellowFrom=a.town||null;a.town=F.hall;
-  memOf(a);if(F.ai&&F.minds!=='agent'&&!a.brain){enableBrain(a);a.fellowBrain=true} // an agent-played member has one mind: its agent (#126)
-  if(F.minds==='agent'&&!a.player&&markPlayer(a,true))a.fellowAgent=true; // phase B: an agent plays every member (npm run fellowship)
+  memOf(a);agentMind(a); // the Fellowship is always agent-played (#148): one mind per member, its agent (#126)
   if(!quiet){campaign('recruit',a,' joins ',gd(F.name),' as its '+slotOf(key).label+(why?' ('+why+')':'')+'.');
     log(a,' takes the empty place in ',gd(F.name),' as its '+lcRole(key)+'.');
     timeline('oath',a,' joins ',gd(F.name),' as its '+slotOf(key).label+'.');
@@ -172,18 +171,25 @@ export function leave(a,why){const F=S.fellowship;if(!F||!a)return;const k=SLOT_
   a.fellow=false;delete a.fellowRole;if(a.fellowBrain){disableBrain(a);delete a.fellowBrain}if(a.fellowAgent){if(a.state!=='dead')markPlayer(a,false);delete a.fellowAgent}delete a.splitUntil;if(a.fellowFrom!=null&&a.state!=='dead'){a.town=a.fellowFrom}delete a.fellowFrom;
   if(alive(a)&&why!=='disband'){campaign('leave',a,' leaves ',gd(F.name),why?' ('+why+')':'','.');record(a,'Left ',gd(F.name),'.')}}
 
-// Who plays the members (the panel's Minds switch): 'off' scripted only, 'relay' the brain relay
-// (scripted when it is down), 'agent' one Agent SDK session per member (npm run fellowship; the
-// relay still writes their sheets). Agent mode marks every member agent-played (markPlayer);
-// a member who joins later is marked on joining, and one who leaves is handed back.
-export const MINDS=['off','relay','agent'];
-export const mindsOf=F=>F?(F.minds||(F.ai?'relay':'off')):'off';
-export function setMinds(mode){const F=S.fellowship;if(!F||!MINDS.includes(mode))return false;F.minds=mode;F.ai=mode!=='off';
-  for(const a of fellows()){
-    // one mind per member (issue #126): the relay's brain in 'relay', none in 'agent' (the agent is the mind; the relay still writes sheets)
-    if(mode==='relay'){if(!a.brain){enableBrain(a);a.fellowBrain=true}}else if(a.fellowBrain||mode==='agent'&&a.brain){disableBrain(a);delete a.fellowBrain}
-    if(mode==='agent'){if(!a.player&&markPlayer(a,true))a.fellowAgent=true}else if(a.fellowAgent){markPlayer(a,false);delete a.fellowAgent}}
-  return true}
+// Who plays the members (hard rule, #148): always their agents. There is no scripted or single-call AI
+// mode for a member; the only choice left is which model each member's runner plays with (the runner
+// settings, ui/runners.js). Every member is agent-played (markPlayer) from founding, joining or
+// replacement on; one who leaves is handed back to the scripted rules (background heroes may be scripted).
+// Between decisions a member auto-plays (sim/player.js autopilot and reflexes); its decisions wait for its
+// runner (sim/runlink.js). 'off' and 'relay' are gone: an older save that still has them is converted.
+export const MINDS=['agent'];
+export const mindsOf=F=>F?'agent':'off';
+// A member's one mind: its agent. No relay brain (the relay still writes sheets when F.ai).
+function agentMind(a){let n=0;if(a.brain||a.fellowBrain){disableBrain(a);delete a.fellowBrain;n++}
+  if(!a.player){if(markPlayer(a,true)){a.fellowAgent=true;n++}}return n}
+export function setMinds(mode){const F=S.fellowship;if(!F||!MINDS.includes(mode))return false;F.minds='agent';for(const a of fellows())agentMind(a);return true}
+// Every member agent-played (called each tick: a restored older save, or anything that unmarked one).
+// An older save's scripted or AI members are converted with a notice (#148).
+export function enforceAgents(){const F=S.fellowship;if(!F)return 0;let n=0;for(const a of fellows())n+=agentMind(a)?1:0;
+  if(F.minds!=='agent'){const was=F.minds||(F.ai?'relay':'off');F.minds='agent';
+    if(n){campaign('note','The Fellowship is always agent-played now: '+n+' member'+(n===1?'':'s')+' who '+(n===1?'was':'were')+' '+(was==='relay'?'played by the relay or the scripted rules':'scripted')+' '+(n===1?'is':'are')+' agent-played (start their runners; reflexes keep them alive meanwhile).');
+      log(gd(F.name),' is agent-played from now on: every member answers to their own agent.')}}
+  return n}
 
 export function disbandFellowship(){const F=S.fellowship;if(!F)return;
   for(const a of fellows())leave(a,'disband');const p=fellowParty();if(p){p.fellow=false}
@@ -295,6 +301,7 @@ function session(){const F=S.fellowship,d=day();if(d<=F.day)return;const prev=F.
 
 let acc=0;
 export function fellowshipTick(dt){const F=S.fellowship;if(!F)return;
+  enforceAgents();
   for(const k of SLOT_KEYS){const id=F.slots[k];if(id==null)continue;const a=byId(id);if(!alive(a))onDeath(a||ghost(k),k);else (F.last||(F.last={}))[k]={id:a.id,name:a.name,cls:a.cls,lvl:a.lvl}}
   muster();
   const P=fellowParty(),L=fellows();let holding=false;

@@ -2,10 +2,13 @@
 //   party chat   partySay / partyRead: a line every member hears wherever they are (Chat tab
 //                and speech bubble), the way a party channel works
 //   proposals    propose / castVote / resolveProp for decisions that need everyone: take a job,
-//                answer a Crypt or raid call, split up (or 'other', logged only). Scripted members
-//                vote at once by reflex; agent members vote with the vote tool (or on their turn
-//                at the table). The leader resolves: majority of the votes cast, the leader's vote
-//                breaks a tie; at the timeout everyone who has not voted is counted by reflex.
+//                answer a Crypt or raid call, split up (or 'other', logged only). Members vote with
+//                the vote tool (or on their turn at the table); every vote waits for the member's
+//                agent (#148): a member whose runner holds it is nudged at once (a must-answer event)
+//                and the vote stays open past PROP_MIN, up to HOLD_MIN more, while autopilot carries
+//                on; a member whose runner is gone waits for the owner (the page's runner-stop alert)
+//                and, once the owner resumes without it, or with no host at all, votes by reflex at
+//                once. The leader resolves: majority of the votes cast, the leader's vote breaks a tie.
 //                Results go to the campaign log, the chronicle and every member's memory.
 //   lead_to      the leader sets the party's destination; followers follow unless they split off
 //   splitOff     leave_party for a member: they go their own way for SPLIT_MIN game minutes, at a
@@ -25,8 +28,9 @@ import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {fellows,fellowParty,campaign} from './fellowship.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
+import {reflexMay,ownerHeld} from './runlink.js';
 
-export const COUNCIL={PROP_MIN:120,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,WAIT_MIN:480,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:120,HEAR:7};
+export const COUNCIL={PROP_MIN:120,HOLD_MIN:600,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,WAIT_MIN:480,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:120,HEAR:7};
 export const PROP_KINDS=['job','crypt','raid','split','other'];
 const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',other:'decide'};
 const gd=t=>({t,c:'gd'});
@@ -56,7 +60,7 @@ export const propById=id=>((F_()&&F_().props)||[]).find(P=>P.id===Number(id))||n
 var proposeHook;
 export function setProposeHook(f){proposeHook=f}
 
-// How a scripted member (or a silent agent at the timeout) votes.
+// How a member votes by reflex: its runner is gone (and the owner said go on), or its agent let HOLD_MIN pass.
 export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
   switch(P.kind){
   case 'crypt':return a.lvl>=7&&!hurt?'yes':'no';
@@ -73,14 +77,20 @@ export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)r
   (F.props||(F.props=[])).unshift(P);if(F.props.length>COUNCIL.PROPS_MAX)F.props.pop();
   if(kind==='crypt')yieldCrypt(F); // reserve on proposal: a background group still gathering steps aside
   campaign('council',a,' proposes to '+KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:'')+'.');
-  for(const b of fellows())if(b!==a)notify(b,a.name+' proposes to '+KIND_TEXT[kind]+(d?': '+d:'')+'. vote('+P.id+', yes|no, reason).',true);
+  for(const b of fellows())if(b!==a)notify(b,a.name+' proposes to '+KIND_TEXT[kind]+(d?': '+d:'')+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
   if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'my proposal','agent');
-  if(!(proposeHook&&proposeHook(P)))for(const b of fellows())if(!b.player&&!P.votes[b.id])castVote(b,P.id,reflexVote(b,P),'',"reflex");
+  if(!(proposeHook&&proposeHook(P)))reflexFill(P);
   settleIfDone(P);return P}
 
 export function castVote(a,id,v,reason,by='agent'){const P=propById(id);if(!P)return 'No proposal '+id+'.';if(P.status!=='open')return 'That proposal is already '+P.status+'.';
   if(!a.fellow)return 'Only members vote.';v=String(v||'').toLowerCase();if(v!=='yes'&&v!=='no')return 'Vote yes or no.';
   P.votes[a.id]={v,reason:clean(reason,120),by};settleIfDone(P);return P}
+
+// Members a reflex may vote for (no runner, and the owner said go on; or no host): they vote at once.
+const atTable=P=>!!(S.table&&S.table.ctx&&S.table.ctx.prop===P.id);
+function reflexFill(P){for(const b of fellows())if(!P.votes[b.id]&&reflexMay(b)&&P.status==='open')castVote(b,P.id,reflexVote(b,P),'','reflex')}
+// Who the open vote still waits for: members without a vote whose agent (or owner) has the say (#148).
+export const waitingVoters=P=>P&&P.status==='open'?fellows().filter(b=>!P.votes[b.id]&&!reflexMay(b)):[];
 
 // Everyone has voted (or the time is up): the leader settles it.
 function settleIfDone(P){if(P.status!=='open')return;const L=fellows();if(L.every(b=>P.votes[b.id]))resolveProp(P,'everyone voted')}
@@ -159,6 +169,13 @@ export function unitDraft(list,pool,n,kind){const top=list.slice(0,n),F=F_();if(
 
 // ---- once per step (after the Fellowship tick) ----
 export function councilTick(){const F=F_();if(!F)return;
-  for(const P of openProps())if(S.gameMin>=P.until)resolveProp(P,'time ran out');else settleIfDone(P);
+  for(const P of openProps()){if(!atTable(P))reflexFill(P);if(P.status!=='open')continue;
+    if(S.gameMin<P.until){settleIfDone(P);continue}
+    // past PROP_MIN: a vote waits for a live agent up to HOLD_MIN more (nudged once more), and for an absent
+    // runner until the owner answers the runner-stop alert (#148); otherwise the reflexes fill in
+    const wait=waitingVoters(P);
+    if(wait.length&&(wait.some(ownerHeld)||S.gameMin<P.until+COUNCIL.HOLD_MIN)){
+      if(!P.held){P.held=1;for(const b of wait)notify(b,'The vote on "'+P.details+'" still waits for you: vote('+P.id+', yes|no, reason).',3)}continue}
+    resolveProp(P,wait.length?'waited for '+wait.map(b=>b.name).join(' and ')+' as long as it could':'time ran out')}
   for(const a of fellows()){if(a.cryptOk&&a.state!=='dungeon')a.cryptOk=false;if(a.raidOk&&!a.raid&&a.state!=='raid'&&!(F.accept&&F.accept.raid>S.gameMin))a.raidOk=false;
     if(a.splitUntil&&S.gameMin>=a.splitUntil)delete a.splitUntil}}

@@ -75,8 +75,10 @@ function select(f,opts,value,title){const s=el('select','msel');s.dataset.f=f;if
   for(const [v,t] of opts){const o=new Option(t,v);if(v===value)o.selected=true;s.append(o)}s.value=value;return s}
 function field(label,...kids){const d=el('label','sfield');d.append(el('span','slbl',label),...kids);return d}
 
+// A member's mind is always an agent (#148): only its model is chosen. The DM may be scripted or an agent.
 function mindControls(who,m){const d=el('div','smind'),seg=el('span','mseg');
-  const modes=who==='dm'?['scripted','agent']:['scripted','ai','agent'];
+  const modes=who==='dm'?['scripted','agent']:[];
+  if(who!=='dm')seg.append(el('span','dm','Agent'));
   for(const k of modes){const b=btn(who==='dm'&&k==='agent'?'DM agent':MODE_TEXT[k],'mode',{who,mode:k});b.title=MODE_TITLE[k];b.setAttribute('aria-pressed',String(m.mode===k));seg.append(b)}
   d.append(seg);
   if(m.mode!=='scripted'){const opts=modelOptions();if(m.model&&!opts.some(o=>o[0]===joinMind(m)))opts.push([joinMind(m),labelOf(m)+' (not reported by the relay)']);
@@ -113,7 +115,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   const pre=el('div','spresets');pre.append(el('span','slbl','Presets'));
   const lm=localModel(),last=readLast();
   const mk=(label,name,off,why)=>{const b=btn(label,'preset',{name});if(off){b.classList.add('off');b.title=why}return b};
-  pre.append(mk('All scripted','scripted'),mk('All agents (Haiku), DM on Sonnet','claude'),mk('All local'+(lm?' ('+lm+')':''),'local',!lm,'The relay reports no local model: start Ollama and pull one'),mk('Last used','last',!last,'Nothing remembered yet'));
+  pre.append(mk('All agents (Haiku), DM scripted','haiku'),mk('All agents (Haiku), DM on Sonnet','claude'),mk('All local'+(lm?' ('+lm+')':''),'local',!lm,'The relay reports no local model: start Ollama and pull one'),mk('Last used','last',!last,'Nothing remembered yet'));
   page.append(pre);
 
   const wsec=el('section','ssec');wsec.append(el('h3',null,'World'));
