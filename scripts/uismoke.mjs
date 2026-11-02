@@ -106,7 +106,8 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
 {const s=$('felbody').querySelector('select');if(s){s.focus();const n=s;select(mem[3]);tick(10);ok($('felbody').contains(n),'a focused picker in the Fellowship panel survives refreshes');n.blur()}
   else console.log('  skip picker (no select in the Fellowship panel)')}
 // Chat tab (#145, owner): one compact line, no mind badge, own-name prefix dropped, repeats collapsed
-{const sp=mem[1];sp.x=mem[0].x+1;sp.y=mem[0].y; // within shouting range (#182)
+{for(const m of mem.slice(0,2)){m.hidden=false;if(m.state==='dead'||m.hp<=0){m.state='town';m.hp=1}} // a shout needs two living members in the open (#182); the world may have put one in the Crypt
+ const sp=mem[1];sp.x=mem[0].x+1;sp.y=mem[0].y; // within shouting range (#182)
 const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});(await import('../src/sim/council.js')).partySay(sp,'Hold the line at the ford.'); // a repeat said outside the agent tool (agents' own near-repeats are refused since #163)
   const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
   ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
