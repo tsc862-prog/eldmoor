@@ -52,7 +52,7 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
-import {systemPrompt, withMemoryOrders, withKnowledgeOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
+import {systemPrompt, withMemoryOrders, withKnowledgeOrders, withTownOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
@@ -142,7 +142,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const {sess, note} = loadSession(h.id, st.name, () => ({sessionId: null, heroId: h.id, heroName: st.name, system: sys, turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
     if (note) out(st.name, note);
     if (!String(sess.system || '').includes('do not introduce yourself again')) sess.system = sys; // a hero first played solo now rides with the Fellowship; older orders get the talk rule
-    sess.system = withKnowledgeOrders(withMemoryOrders(sess.system)); // memories (#155), learning the world (#188) for a session that began before them
+    sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
     if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama or openai); skipped`); await release(h.id); return}

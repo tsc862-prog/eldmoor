@@ -99,6 +99,9 @@ export function systemPrompt(st) {
 export const KNOWLEDGE_ORDERS = 'YOU KNOW ONLY WHAT YOU HAVE SEEN, HEARD OR BEEN TOLD. A creature you have never met is a stranger: look describes it and gives your own read of its threat, and fighting it, watching it, a warning or the town criers teach you more (its name, its measure, its tricks). You walk by name only to places you know (status.places: your home region, where you have been, what you were told of); to go anywhere else, explore a direction or "x,y". Nobody picks safe prey for you: hunt with prey you know, or what is around. Ask townsfolk and companions about places and creatures, heed warnings, share what you learn with your companions, and remember what hurt you (lore lists what you know).';
 const OLD_RULES = [[' Fight things your level or below, rest or go home when hurt,', ' Rest or go home when hurt,'], ['hunt in your level band,', 'hunt what you judge you can beat,']];
 export const withKnowledgeOrders = sys => {let s = String(sys || ''); if (s.includes('YOU KNOW ONLY WHAT YOU HAVE SEEN')) return s; for (const [a, b] of OLD_RULES) s = s.split(a).join(b); return s + '\n' + KNOWLEDGE_ORDERS};
+// Townsfolk (owner request): the turn header lists the people about ("nearby"); this line sends the agent to them.
+export const TOWN_ORDERS = 'In town, talk to the people: innkeepers have news, merchants trade, strangers have wants. A conversation can open a job or a trade. Answer when someone calls to you.';
+export const withTownOrders = sys => {const s = String(sys || ''); return s.includes('In town, talk to the people') ? s : s + '\n' + TOWN_ORDERS};
 // Memories (issue #155): the line every hero's standing orders carry; withMemoryOrders adds it to an older session's prompt.
 export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
 // Tiered memory (issue #153): landmarks, chapters and journal_search; withMemoryOrders adds this line to an older prompt too.
@@ -241,7 +244,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const moved = migrateLegacy(); if (moved) console.log('[agent] ' + moved);
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
-  sess.system = withKnowledgeOrders(withMemoryOrders(sess.system)); // memories (#155), learning the world (#188) for a session that began before them
+  sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
