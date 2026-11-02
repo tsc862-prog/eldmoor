@@ -11,6 +11,7 @@ import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,
 import {hostCall} from '../sim/player-host.js';
 import {setAgentTag} from '../sim/chat.js';
 import {makeWatch} from '../sim/behavior.js';
+import {noteDmCall} from './dmturns.js'; // per-turn cards of the DM tab (#181)
 import {mindsOf} from '../sim/fellowship.js';
 import {WORLD_ID} from '../world/map.js';
 import {mirrorDirty} from '../sim/notebook.js';
@@ -64,7 +65,7 @@ function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecti
       try{r=a?await hostCall(a.id,String(m.tool),m.args||{},{nap:wsleep}):{ok:false,error:m.hero!=null?'Hero #'+m.hero+' is not agent-played in the game.':'No agent-played hero in the game.'}}catch(err){r={ok:false,error:String(err&&err.message||err)}}
       send({type:'result',id:m.id,result:r})}
     else if(m.type==='narrate'){const a=seat(m.hero);if(a)playerNarrate(a.id,String(m.text||''))}
-    else if(m.type==='dmcall'){let r;try{r=dmAct(String(m.tool),m.args||{})}catch(err){r={ok:false,error:String(err&&err.message||err)}}send({type:'result',id:m.id,result:r})}
+    else if(m.type==='dmcall'){let r;try{r=dmAct(String(m.tool),m.args||{})}catch(err){r={ok:false,error:String(err&&err.message||err)}}try{noteDmCall(String(m.tool),m.args||{},r)}catch(err){}send({type:'result',id:m.id,result:r})}
     else if(m.type==='links'&&m.links&&typeof m.links==='object'){links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{};readies=m.ready&&typeof m.ready==='object'?m.ready:{};dmLinkInfo=m.dm&&typeof m.dm==='object'?m.dm:null}};
   ws.onclose=()=>{ws=null;lastHello='';links={};runners={};readies={};dmLinkInfo=null;status=wanted()?'offline':'off';if(wanted())later()};
   ws.onerror=()=>{}}
