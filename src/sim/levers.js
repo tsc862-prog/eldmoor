@@ -315,7 +315,7 @@ register({name:'post_hook',about:'Post a job on a town board: template, giver ro
     const open=(S.adventures||[]).filter(h=>h.phase==='open'&&h.town===p.town).length;if(open>=LK.BOARD_MAX)return p.town+'’s board is full ('+open+')';
     if(p.target!=null&&!(S.places||[]).some(x=>x.id===p.target)&&!anyNpc(p.target))return 'no such place or person';
     if(p.forHero!=null&&!S.agents.some(a=>a.id===p.forHero&&a.state!=='dead'))return 'no such living hero';return null},
-  apply(p){const c=townOf(p.town),o=p.spec?{...p.spec}:{};o.data={...(o.data||{})};
+  apply(p,ctx){const c=townOf(p.town),o=p.spec?{...p.spec}:{};o.data={...(o.data||{})};if(ctx&&ctx.by)o.by=ctx.by; // the quest log tells the DM agent's jobs apart (sim/questlog.js)
     if(p.giver&&!o.giver)o.roles=[p.giver];if(p.forHero!=null)o.for=p.forHero;if(p.region!=null&&o.zone==null)o.zone=p.region;
     if(p.target!=null){const t=(S.places||[]).find(x=>x.id===p.target)||anyNpc(p.target);o.data.x=t.x;o.data.y=t.y;o.data.place=t.name;if(o.zone==null)o.zone=zoneAt(t.x,t.y)}
     if(p.reward!=='fair')o.data.payMul=REWARD[p.reward];

@@ -33,6 +33,7 @@ import {slain as loreSlain,witness as loreWitness} from './lore.js'; // learn th
 import {effMul,passiveMul} from './eff.js'; // timed effects and class passives (sim/eff.js, #81)
 import {fightMoves} from './moves.js'; // class abilities (sim/moves.js, #81)
 import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
+import {killDone,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
 import {dmDepart,dmTravel,dmHunt} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 
 // ---- stat formulas (tuning knobs) ----
@@ -43,7 +44,7 @@ export const atkOf=a=>combatStats(a).attack;
 // Where a hero of this level hunts: the band's region, or the one nearest their home town when bands overlap.
 export const huntZone=a=>zoneFor(a.lvl,homeOf(a).gate);
 export function newQuest(a){const z=huntZone(a);const opts=Object.keys(MOBS).filter(k=>MOBS[k].z===z&&MOBS[k].lv[0]<=a.lvl+2);
-  const type=pickA(opts.length?opts:Object.keys(MOBS).filter(k=>MOBS[k].z===z));a.quest={type,need:ri(5,8),have:0}}
+  const type=pickA(opts.length?opts:Object.keys(MOBS).filter(k=>MOBS[k].z===z));a.quest={type,need:ri(5,8),have:0,at:Math.round(S.gameMin)}} // at: when it was given (the quest log's id, sim/questlog.js)
 
 export function makeHero(f,cls,guild,wait){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
@@ -122,7 +123,7 @@ export function agentDie(a,killer){
     say(killer,'kill',{target:a.name});
     record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':'Killed ',a,' (level '+a.lvl+').');
     avenged(killer,a);
-    if(killer.nemesis[a.id]){log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
+    if(killer.nemesis[a.id]){debtDone(killer,a);log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
     else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild);
     mates.forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran swears the whole guild; lesser deaths bind just their party
@@ -161,7 +162,7 @@ export function sellAndShop(a){const c=homeOf(a);autoEquip(a);passSpares(a);cons
 export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
     say(a,'quest',{mob:M.pl});
     record(a,'Completed ',{t:'“'+M.q+'”',c:'gd'},' for '+g+'g.');
-  if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');a.quest=null}
+  if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');killDone(a);a.quest=null}
   if(!a.quest||MOBS[a.quest.type].z!==huntZone(a))newQuest(a)}
 
 export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9)*sightMul(a.zone),lq=L&&L.quest?L.quest.type:null;

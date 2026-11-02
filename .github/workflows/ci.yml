@@ -42,6 +42,8 @@ jobs:
         run: npm run lorecheck
       - name: Tiered memory (landmarks, chapters, journal_search)
         run: npm run tiercheck
+      - name: Quest log (several quests per hero, focus, oaths, DM tags, scripted world unchanged)
+        run: npm run questcheck
       - name: Behavior logs (mock runners, known anomalies logged and reported)
         run: npm run behaviorcheck
       - name: Headless sim (10 game-hours)

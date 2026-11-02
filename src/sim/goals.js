@@ -32,6 +32,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {moment} from './reflect.js';
+import {oathDone} from './questlog.js'; // finished oaths in the quest log (no dice)
 import {goHome,huntZone} from './heroes.js';
 
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!==undefined?String(v[k]):m);
@@ -65,7 +66,7 @@ export function assignBackstory(a){const f=a.fac,o=pickA(ORIGINS[f]),E=originEli
 
 // ---- goal makers (each returns null when the world holds no sensible target) ----
 const mk=(type,tier,v={})=>({type,tier,text:fill(GOAL_TEXT[type],v),target:v.target,targetId:v.targetId,targetFac:v.targetFac,victim:v.victim,
-  need:v.need!==undefined?v.need:1,progress:0,done:false});
+  need:v.need!==undefined?v.need:1,progress:0,done:false,at:Math.round(S.gameMin)}); // at: when it was sworn (the quest log, sim/questlog.js)
 const ELITE_LV=[[0,12],[10,18],[15,99]],BAND=[[0,6],[6,11],[11,99]],HOARD=[[40,90],[150,300],[300,500]];
 const zonesFor=tier=>ZONES.map((z,i)=>i).filter(z=>bandMin(z)>=BAND[tier][0]&&bandMin(z)<=BAND[tier][1]&&EPICS[z]&&EPICS[z].length);
 const M={
@@ -101,13 +102,13 @@ function rollGoal(a,tier,bias){
 
 function next(a,tier){const g=rollGoal(a,tier,null);bump(stats().rolled,g.type);a.goal=g;return g}
 
-function complete(a){const g=a.goal;g.done=true;bump(stats().done,g.type);moment(a,'oath',g.text); // reflection moment (#179): agent heroes only
+function complete(a){const g=a.goal;g.done=true;oathDone(a,g,'done');bump(stats().done,g.type);moment(a,'oath',g.text); // reflection moment (#179): agent heroes only
   const n=next(a,Math.min(TIERS.length-1,g.tier+1));
   if(g.tier>=2)timeline('oath',a,' kept a high oath: '+lc(g.text)+'.');
   log(a,fill(GOAL_DONE[g.type],g),' A new oath: ',lc(n.text),'.')}
 
 // The target died before the oath could be kept: re-roll at the same tier.
-function voided(a){const g=a.goal;stats().moot++;const n=next(a,g.tier);
+function voided(a){const g=a.goal;stats().moot++;oathDone(a,g,'expired');const n=next(a,g.tier);
   if(rnd()<.5)log(a,' outlived ',{t:g.target,c:'f'+g.targetFac},' with the oath unkept. A new oath: ',lc(n.text),'.')}
 
 function checkRival(a){const g=a.goal,t=byId(g.targetId);if(!alive(t)){voided(a);return}
