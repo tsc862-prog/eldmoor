@@ -29,7 +29,7 @@ import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,AB
 import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
 import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
 import {mindLabel,chatTag} from './mindlabel.js'; // the one mind label (issue #136)
-import {byDay,stampOf,srcTag} from './daystamp.js'; // game day on times, action sources (issue #136)
+import {byDay,stampOf,srcTag,dayOf,daySep} from './daystamp.js'; // game day on times, action sources (issue #136)
 import {fellowRoleOf} from '../core/chatview.js';
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
@@ -70,6 +70,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'dead':return `Fell at level ${a.lvl}, ${a.cause}, at ${a.diedAt}. Gone forever.`;
     case 'assist':return a.target?`Helping a guildmate fight ${a.target.name}`:'Helping a guildmate';
     case 'follow':return a.party?`Following ${a.party.leader.name}'s party in ${zn}`:'Following the party';
+    case 'camp':return a.playDoing||'Resting at camp';
     case 'regroup':return 'Pulling back after a skirmish';
     case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
 
@@ -267,10 +268,12 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
   if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far (Settings, World chatter, shows it).':'Nothing said or heard yet.'));return}
-  const ul=el('ul','log chat');for(const g of chatGroups(c))ul.append(chatLine(g.e,g.n));b.append(ul)}
+  const ul=el('ul','log chat');chatByDay(ul,chatGroups(c));b.append(ul)}
+// Chat lines with game-day stamps and a separator between days (#168), newest first like the other tabs.
+export function chatByDay(ul,groups){let last=null;for(const g of groups){const d=dayOf(g.e);if(d!=null&&d!==last){ul.append(daySep(d));last=d}ul.append(chatLine(g.e,g.n))}}
 // One compact line per message (#145, owner): "02:52 [Party] Nevith: text", the text wrapping under itself.
 // No mind badge: the Mind and Agent tabs say who plays a hero; the model is in the name's hover title.
-export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t));
+export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,stampOf(e)));
   if(e.party)li.append(el('span','chtag','Party'));
   if(e.from&&e.from.kind==='dm')li.append(el('span','gd chn','Narrator'));else{const s=chatName(e.from),tg=chatTag(e);if(tg)s.title=(e.agent?'Agent-played':'AI-played')+(e.model?' · '+e.model.replace(/^Agent \((.*)\)$/,'$1'):'');li.append(s)}
   li.append(': ',e.text);if(n>1)li.append(el('span','dm chx',' ×'+n));return li}
