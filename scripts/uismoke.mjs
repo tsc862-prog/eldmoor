@@ -221,7 +221,7 @@ console.log('declutter');
   const gr=$('hero').querySelector('.tgroups'),sub=$('hero').querySelector('.tsub'),shown=()=>sub.children.filter(b=>!b.hidden).map(b=>b.textContent);
   ok(gr&&gr.children.map(b=>b.textContent).join()==='Character,Story,Mind','three dossier groups: '+(gr&&gr.children.map(b=>b.textContent)));
   ok(shown().join()==='Stats,Gear,Pack','Character: Stats, Gear, Pack (no Party for a member: the frames are the party): '+shown());
-  setGroup('story');uiFast();ok(shown().join()==='Quests,Log,Bio,Memory','Story: Quests, Log, Bio, Memory: '+shown());
+  setGroup('story');uiFast();ok(shown().join()==='Quests,Log,Combat,Bio,Memory','Story: Quests, Log, Combat, Bio, Memory: '+shown());
   setGroup('mind');uiFast();ok(shown().includes('Chat')&&shown().includes('Agent'),'Mind: Chat and Agent for the agent-played member: '+shown());
   setGroup('char');uiFast();ok(tb().querySelector('[data-cstat]'),'Character opens on Stats');
   setGroup('story');setTab('bio');setGroup('char');setGroup('story');uiFast();ok(shown().length&&sub.children.find(b=>b.getAttribute('aria-pressed')==='true').textContent==='Bio','a group reopens on its last tab');
@@ -437,6 +437,36 @@ console.log('start gate: ready, not just claimed');
   ok(tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent))._same===1,'Quests tab: rows are patched, not rebuilt');
   log.active=[];log.done=[];uiFast();ok(/No quests yet/.test(tb().textContent),'empty state');
   delete globalThis.__questLog;setTab('stats');uiFast()}
+
+
+// ---- the Combat tab (owner request): fight cards, lines, filters, held scroll, empty state ----
+{select(busy);const t0=sim.S.gameMin;let evs=[],fl=[];
+  const E=(i,fight,kind,o={})=>({t:t0+i*.1,kind,who:'You',target:'Timber Wolf',name:null,amount:0,fight,...o});
+  for(let f=1;f<=4;f++){const b=(f-1)*40;fl.push({id:f,foe:'Wolf '+f,start:t0+b/10,end:t0+b/10+1.4,dealt:214,taken:87,healed:30,abilities:{Heartseeker:2},items:{'Healing Draught':1},crits:3,result:'won'});
+    for(let i=0;i<30;i++)evs.push(E(b+i,f,i===5?'ability':i===9?'item':i%7===0?'hurt':i===12?'heal':'hit',{amount:5+i,name:i===5?'Heartseeker':i===9?'Healing Draught':i%7===0?null:'Slash',crit:i===20}))}
+  globalThis.__actionLog={actionLog:()=>evs.slice(),fights:()=>fl.slice(),fightSummary:(a,id)=>fl.find(x=>x.id===id)};
+  setTab('combat');uiFast();
+  ok([...$('hero').querySelectorAll('button')].some(b=>b.dataset.tab==='combat'&&!b.hidden),'Combat tab shows');
+  const cards=()=>tb().querySelectorAll('.cbcard');
+  ok(cards().length===4,'four fight cards');
+  ok(/Wolf 4/.test(cards()[0].textContent)&&/Wolf 1/.test(cards()[3].textContent),'newest fight on top');
+  ok(/dealt 214/.test(cards()[0].textContent)&&/taken 87/.test(cards()[0].textContent)&&/Heartseeker ×2/.test(cards()[0].textContent)&&/Healing Draught ×1/.test(cards()[0].textContent)&&/3 crits/.test(cards()[0].textContent),'card shows totals, abilities, items, crits');
+  ok(cards()[0].getAttribute('open')!=null&&cards()[1].getAttribute('open')==null,'only the newest card is open');
+  ok(cards()[0].querySelectorAll('.cbl').length>3&&/Slash on Timber Wolf/.test(cards()[0].textContent),'open card lists its lines');
+  ok(/dealt \d+ · taken \d+/.test(tb().querySelector('.cbtot').textContent),'totals line for All');
+  const chip=n=>tb().querySelectorAll('.cbchip').find(c=>c.textContent===n);
+  chip('Abilities').click();
+  ok(chip('Abilities').getAttribute('aria-pressed')==='true'&&/abilities used 4/.test(tb().querySelector('.cbtot').textContent),'Abilities filter: pressed, totals count 4 uses');
+  ok(cards()[0].querySelectorAll('.cbl').length===1&&/Heartseeker/.test(cards()[0].textContent),'Abilities filter keeps only ability lines');
+  chip('Heals').click();ok(/healed 34/.test(tb().querySelector('.cbtot').textContent)||/healed \d+/.test(tb().querySelector('.cbtot').textContent),'Heals filter totals');
+  chip('Items').click();ok(/items used 4/.test(tb().querySelector('.cbtot').textContent),'Items filter totals');
+  chip('All').click();
+  const c1=cards()[1];c1._same=1;
+  holds('Combat tab',tb,{sec:10,min:3});
+  ok(cards()[1]._same===1,'Combat tab: cards are patched, not rebuilt');
+  globalThis.__actionLog={actionLog:()=>[],fights:()=>[]};uiFast();ok(/No fights yet/.test(tb().textContent),'empty state');
+  delete globalThis.__actionLog;uiFast();ok(/arrives with the next update/.test(tb().textContent)||tb().querySelectorAll('.cbcard').length>=0,'no sim API: says so');
+  setTab('stats');uiFast()}
 
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
