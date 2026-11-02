@@ -138,6 +138,18 @@ if (npc) {A.x = npc.x + 1; A.y = npc.y}
 r = npc ? DMA.dmAct('npc_say', {npc: String(npc.id), text: said.npc}) : {ok: false, error: 'no npc'};
 ok(r.ok && r.heard_by >= 1 && (A.chat || []).some(e => e.text === said.npc && e.from.kind === 'npc'), `npc_say: ${r.who || r.error} speaks; A hears it`);
 ok(!(B.chat || []).some(e => e.text === said.npc), 'B, out of earshot, does not');
+// #164: the world is muted (only the DM voices it): a background hero says no scripted line, a townsperson near a member
+// speaks only as the scripted DM (tagged dm), and the old chatter comes back with S.worldVoice = 'scripted'
+{const {say} = await import('../src/sim/chat.js'), {npcSay} = await import('../src/sim/npcs.js');
+  ok(S.worldVoice === 'dm', 'the world voice defaults to the DM');
+  const bg = S.agents.find(h => !h.fellow && !h.player && h.state !== 'dead' && h.state !== 'ghost');
+  if (bg) {const n0 = (bg.chat || []).length; bg.chatCd = 0; say(bg, 'idle', {}); say(bg, 'kill', {mob: 'Boar', level: 3});
+    ok((bg.chat || []).length === n0 && !bg.bubble, 'a background hero speaks no scripted line while the flag is on');
+    S.worldVoice = 'scripted'; bg.chatCd = 0; say(bg, 'kill', {mob: 'Boar', level: 3});
+    ok((bg.chat || []).length > n0, 'with the flag off the old scripted chatter returns'); S.worldVoice = 'dm'}
+  if (npc) {const n1 = (A.chat || []).length; npc.chatCd = 0; ok(npcSay(npc, 'greet', {target: A.name}) && (A.chat || []).length === n1 + 1 && A.chat[A.chat.length - 1].dm, 'a townsperson meeting a member is voiced by the scripted DM (attributed to them, tagged dm)');
+    const far = {x: A.x + 30, y: A.y + 30}; const saved = {x: npc.x, y: npc.y}; npc.x = far.x; npc.y = far.y; npc.chatCd = 0; const n2 = (A.chat || []).length;
+    npcSay(npc, 'greet', {target: 'x'}); ok((A.chat || []).length === n2, 'a townsperson with no member in earshot says nothing scripted'); npc.x = saved.x; npc.y = saved.y}}
 A.x = before.x; A.y = before.y;
 ok(!DMA.dmAct('narrate', {text: 'x', near: 'nowhere at all'}).ok && !DMA.dmAct('npc_say', {npc: 'Nobody Atall', text: 'x'}).ok && !DMA.dmAct('narrate', {text: 'x', near: 'table'}).ok, 'unknown places, people, and "table" without a scene are refused');
 
@@ -154,6 +166,7 @@ for (const t of ['status', 'look', 'chat_read', 'party_read', 'journal_read', 'r
 ok((first.chat_read.lines || []).some(l => l.includes(said.narr) && /narrator/i.test(l)) && (first.chat_read.lines || []).some(l => l.includes(said.party)), 'chat_read: the narrator and B\'s party line');
 ok((first.party_read.lines || []).some(l => l.includes(said.party)), 'party_read: B\'s party line');
 ok(JSON.stringify(first.status.events || []).includes(said.narr) || JSON.stringify(first.status).includes(said.narr) || heard.some(h => h.text.includes('The narrator: ' + said.narr)), 'events: "The narrator: ..." reaches A\'s agent');
+ok(JSON.stringify(first.status.events || []).includes(said.npc) || (first.chat_read.lines || []).some(l => l.includes(said.npc)) || heard.some(h => h.text.includes(said.npc)), 'an npc_say near a member reaches that member agent (events or chat_read)');
 for (const t of PLAYER_TOOLS) if (t.name !== 'wait') keep('A ' + t.name, act(A, t.name, argsFor[t.name] || {}));
 // A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
 for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));

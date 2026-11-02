@@ -12,3 +12,4 @@
 - [New World setup](new_world_setup.md) — #133: setup page flow, seeded init, agent-from-minute-one, runner plan/limits, local-model rule
 - [Agent tab polish #136](agent_tab_polish.md) — one mind label, day stamps, log sources, runner-stop alert
 - [Fellowship always agents](fellowship_always_agents.md) — #148: runlink.js gate (live waits, owner hold, reflex = scripted), 3x drop, check mocks
+- [World voice #164](world_voice.md) � S.worldVoice mutes scripted say/npcSay; scripted DM voices NPCs near members; RNG preserved
