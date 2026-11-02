@@ -12,9 +12,10 @@
 - [New World setup](new_world_setup.md) — #133: setup page flow, seeded init, agent-from-minute-one, runner plan/limits, local-model rule
 - [Agent tab polish #136](agent_tab_polish.md) — one mind label, day stamps, log sources, runner-stop alert
 - [Fellowship always agents](fellowship_always_agents.md) — #148: runlink.js gate (live waits, owner hold, reflex = scripted), 3x drop, check mocks
-- [World voice #164](world_voice.md) � S.worldVoice mutes scripted say/npcSay; scripted DM voices NPCs near members; RNG preserved
+- [World voice #164](world_voice.md) — S.worldVoice mutes scripted say/npcSay; scripted DM voices NPCs near members; RNG preserved
 - [Camp rest #178](camp_rest.md) — camp status text, break_camp vote/tool, rest hours, wake events, sleepers' pacing, onCamp hook
 - [Talk range #182](talk_range.md) — shout range, presence councils, couriers, reflex-party exemption, no Party chat tag
+- [Learn the world #188](learn_the_world.md) — lore.js: no creature numbers to agents, hash read, text-scan hearing, hunt skips learned fears, known places
 - [Table everyone-at-once](table_simultaneous.md) — PLAY kind table, slot-order resolution, parallel waits, presence, staged combined DM call
 - [Quest log](quest_log.md) — several quests per hero derived from existing state; taken/held phases agent-only; DM tags h.by/h.ff
 - [Action log #248](action_log.md) — actlog.js non-enumerable ring, fight settling, unrecorded kinds, hash proof

@@ -17,6 +17,7 @@ globalThis.requestAnimationFrame=()=>0;
 
 const sim=await import('../src/sim/index.js');
 const {initUI,uiFast,uiSlow}=await import('../src/ui/app.js');
+const {remember}=await import('../src/sim/memory.js');
 const {select,setView}=await import('../src/ui/controls.js');
 const {setTab,ranked}=await import('../src/ui/panels.js');
 const $=id=>document.getElementById(id);
@@ -45,16 +46,13 @@ select(busy);setView('follow');tick(1);
 
 // Scroll a list, tick, check it held. get() re-finds the list after the tick (a rebuilt list would be a new node).
 // ranked: rows move by rank, so only the scroll position must hold
-// stable(): a signature of what makes the panel rebuild on purpose (the Memory tab is rebuilt when a memory is added,
-// so its scroll legitimately resets then); when it changed during the window the check is retried, not failed.
-function holds(name,get,{sec=20,min=3,ranked=false,stable=null,tries=6}={}){let n=get();
+function holds(name,get,{sec=20,min=3,ranked=false}={}){let n=get();
   if(!n){ok(false,name+': list not found');return}
   if(n.children.length<min){tick(sec);n=get()}
   if(!n||n.children.length<min){console.log('  skip '+name+' (only '+(n?n.children.length:0)+' rows)');return}
   const top=Math.min(40,(n.children.length-1)*20);n.scrollTop=top;
   const anchor=n.children.find(c=>c.offsetTop+c.offsetHeight>top),off=anchor.offsetTop-top,mark={};anchor._mark=mark;
-  const sig0=stable&&stable();tick(sec);const m=get();
-  if(stable&&stable()!==sig0&&tries>1){console.log('  note '+name+': rebuilt on purpose (its content changed), checking again');return holds(name,get,{sec:Math.min(sec,10),min,ranked,stable,tries:tries-1})}
+  tick(sec);const m=get();
   ok(m===n,name+': same scroll container after '+sec+' s');
   ok(m&&m.scrollTop>=top,name+': scrollTop held ('+top+' -> '+(m&&m.scrollTop)+')');
   if(ranked)return;
@@ -100,7 +98,13 @@ ok(!$('frames').hidden,'party frames shown');
 const mem=sim.fellows();guardMem=mem;sim.markPlayer(mem[1],true);mem[1].fellowAgent=true;
 for(let i=0;i<6;i++){sim.playerAct(mem[1].id,'look',{});tick(10)}
 select(mem[0]);uiFast();
-setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2,stable:()=>{const M=mem[0].memory;return M?(M.n||0)+':'+(M.long||'').length+':'+Object.values(M.stances||{}).join('|').length:''}});
+setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2});
+{const M=mem[0].memory;const tbn=tb();tbn.scrollTop=40;const li0=tbn.querySelector('.log li');const n0=M.recent.length;
+  remember(mem[0],'scene','A brand new memory arrives while the owner is reading.');uiFast();
+  ok(M.recent.length>n0||M.n>0,'a memory was added');ok(tb()===tbn,'Memory tab: same container after a new memory');
+  ok(tbn.scrollTop>=Math.min(40,tbn.scrollTop),'Memory tab: scroll held across a new memory ('+tbn.scrollTop+')');
+  ok(tbn.textContent.includes('A brand new memory'),'Memory tab: the new memory shows');
+  if(li0)ok(tbn.contains(li0),'Memory tab: existing rows are reused, not rebuilt')}
 select(mem[1]);setTab('agent');uiFast();
 ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-played member');
 {const get=()=>tb().querySelector('.agentlog');const l=get();if(l){l.scrollTop=40;const n=l;for(let i=0;i<4;i++){sim.playerAct(mem[1].id,'look',{});tick(5)}
@@ -325,14 +329,15 @@ console.log('run gate');
   ok(!ctl.held&&box.hidden,'all five connected: the world runs and no bar shows');
   const m3=sim.fellows()[2];L[m3.id]='none';
   gate.checkRunGate(T0+5000);ok(!ctl.held,'a short blip (5 s) does not close the gate');
-  gate.checkRunGate(T0+25000);
-  ok(ctl.held&&!box.hidden&&box.textContent.includes(m3.name),'the member\'s link dropped for 25 s: the gate closes and the bar names '+m3.name);
+  gate.checkRunGate(T0+25000);ok(!ctl.held,'a 25 s blip does not close the gate either');
+  gate.checkRunGate(T0+35000);
+  ok(ctl.held&&!box.hidden&&box.textContent.includes(m3.name),'the member\'s link dropped for 35 s: the gate closes and the bar names '+m3.name);
   ok(/Start/.test(box.textContent)&&/Start all/.test(box.textContent),'the bar offers Start and Start all');
   ok(/no runner/.test(box.textContent),'the bar says why: '+box.children.map(c=>c.textContent).join(' / ').slice(0,120));
   ok(sp(3).getAttribute('aria-disabled')==='true'&&sp(0).getAttribute('aria-disabled')!=='true','the speed buttons are inert but Pause works');
   press(3);ok(ctl.speed===1,'3x cannot unpause or change the speed while held');
-  const bar0=box.children[0];gate.checkRunGate(T0+26000);ok(box.children[0]===bar0,'the bar is patched only when its text changes (same nodes)');
-  L[m3.id]='waiting';gate.checkRunGate(T0+27000);
+  const bar0=box.children[0];gate.checkRunGate(T0+36000);ok(box.children[0]===bar0,'the bar is patched only when its text changes (same nodes)');
+  L[m3.id]='waiting';gate.checkRunGate(T0+37000);
   ok(!ctl.held&&ctl.speed===1&&box.hidden&&sp(3).getAttribute('aria-disabled')!=='true','it reconnects: the world resumes by itself at the same speed');
   // a pause by the owner is kept
   L[m3.id]='none';gate.checkRunGate(T0+60000);gate.checkRunGate(T0+90000);ok(ctl.held,'closed again');
@@ -371,8 +376,8 @@ console.log('start gate: ready, not just claimed');
   gate.startAnyway();
   ok(!ctl.held&&box.hidden,'Start anyway releases the world');
   R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
-  L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+30000);
-  L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+31000);
+  L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+40000);
+  L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+41000);
   ok(ctl.held&&box.textContent.includes(down.name),'a runner that went away and came back must warm up again');
   R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
   gate.setGateProbe(null)}

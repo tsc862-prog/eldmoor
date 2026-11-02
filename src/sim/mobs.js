@@ -76,8 +76,11 @@ export function ecologyTick(dt){const E=S.eco;
 // A scripted policy: when a mob's attack timer is ready it fires the first ability that is off cooldown and
 // whose `when` holds, else bites. Effects touch only the mob, the hero's attack timer, position and hp, so
 // heroes.js needs no hooks. unit = the mob's own bite before variance.
-const unitOf=m=>(3+m.lvl*2)*m.hit;
-function hurt(t,m,dm){if(dm<=0||t.state==='dead'||t.state==='ghost')return;dm=Math.max(1,Math.round(dm*dmgTaken(t)));t.hp-=dm;actHurt(t,m,dm);pop(t.x,t.y-.6,String(dm),'#ff6a5a');
+const MOB_HIT=1.35; // #154: mobs from level 7 bite 1.35x (deaths floor); ramps in from level 3 so level 1-3 heroes are not hit harder
+const hitRamp=m=>1+(MOB_HIT-1)*Math.min(1,Math.max(0,(m.lvl-3)/4));
+const unitOf=m=>(3+m.lvl*2)*m.hit*hitRamp(m);
+function hurt(t,m,dm){if(dm<=0||t.state==='dead'||t.state==='ghost')return;if(t.fellow)dm/=hitRamp(m); // the Fellowship keeps the old bite (#154: the world is deadlier, the story is not ground down)
+  dm=Math.max(1,Math.round(dm*dmgTaken(t)));t.hp-=dm;actHurt(t,m,dm);pop(t.x,t.y-.6,String(dm),'#ff6a5a');
   if(t.hp<=0){if(m.elite)S.eco.stats.eliteDeaths++;agentDie(t,m)}}
 const alliesHurt=m=>nearMobs(m.x,m.y,6,o=>o!==m&&o.alive&&!o.gone&&o.hp<o.maxhp*.5)[0]||null;
 const packNear=m=>nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&(o.target||m.target)).length>0;
@@ -89,7 +92,7 @@ function useAbility(m,t){for(const id of m.ab||[]){const A=ABILITIES[id];if(!A||
   m.abcd[id]=A.cd;const u=unitOf(m);if(t&&t.player)loreTrick(t,m,id);
   switch(A.fx){
     case 'frenzy':m.frenzy=A.dur;pop(m.x,m.y-.8,'FRENZY','#ff8a5a');continue; // a free action: the bite still lands
-    case 'poison':{const dps=A.dmg*u/A.dur,d=(m.dots||(m.dots=[])).find(x=>x.h===t&&x.id===id);if(d){d.rem=A.dur;d.dps=dps}else m.dots.push({h:t,id,rem:A.dur,dps});pop(t.x,t.y-.9,'POISON','#7dce5a');break}
+    case 'poison':{const dps=A.dmg*u/A.dur/(t.fellow?hitRamp(m):1),d=(m.dots||(m.dots=[])).find(x=>x.h===t&&x.id===id);if(d){d.rem=A.dur;d.dps=dps}else m.dots.push({h:t,id,rem:A.dur,dps});pop(t.x,t.y-.9,'POISON','#7dce5a');break}
     case 'slow':case 'root':case 'fear':t.cd+=A.lose;hurt(t,m,A.dmg*u);pop(t.x,t.y-.9,A.fx==='slow'?'SLOWED':A.fx==='root'?'ROOTED':'FEAR','#9ad0ff');break;
     case 'knockback':{hurt(t,m,A.dmg*u);if(t.hp>0){const dx=t.x-m.x,dy=t.y-m.y,d=Math.hypot(dx,dy)||1,nx=t.x+dx/d*A.push,ny=t.y+dy/d*A.push;
       if(WALKABLE.includes(tileAt(nx,ny))&&zoneAt(nx,ny)===zoneAt(t.x,t.y)){t.x=nx;t.y=ny}t.cd+=A.lose;pop(t.x,t.y-.9,'KNOCKED BACK','#ffd080')}break}

@@ -319,8 +319,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     inScene = new Set((h.heroes || []).filter(x => x.table).map(x => x.id));
     const L = (h.heroes || []).find(x => x.fellow && x.lead && x.alive); leadId = L ? L.id : leadId;
     for (const x of fellowsOf(h)) if (!members.has(x.id) && !stopping) addMember(x);
-    for (const m of members.values()) if (!m.ended && m.turns >= 0) claim(m.id);}, 1000);
+    }, 1000);
   watch.unref();
+  // Claims are refreshed on their own timer, never gated on /play/health (a slow health call must not let a claim lapse).
+  const beat = setInterval(() => {for (const m of members.values()) if (!m.ended && m.turns >= 0) claim(m.id)}, 8000); beat.unref();
   const L0 = (h0.heroes || []).find(x => x.fellow && x.lead); leadId = L0 ? L0.id : null;
   out(null, `Fellowship runner at ${base}: ${fellowsOf(h0).map(x => x.name + (x.lead ? ' (leads)' : '')).join(', ')} | ${turnsAsked != null ? 'up to ' + turnsAsked + ' turns each' : 'Claude/OpenAI members up to 6 turns, local members until stopped'}, budget ${money(budget)} | ${paceText(pace)}`);
   for (const h of fellowsOf(h0)) await addMember(h);

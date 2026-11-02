@@ -14,6 +14,7 @@ import {makeWatch} from '../sim/behavior.js';
 import {mindsOf} from '../sim/fellowship.js';
 import {WORLD_ID} from '../world/map.js';
 import {mirrorDirty} from '../sim/notebook.js';
+import {sleep as wsleep,every} from './ticker.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
 let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null,readies={};
@@ -60,19 +61,20 @@ function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecti
   ws.onopen=()=>{status='connected';lastHello='';links={};runners={};readies={};sentMem.clear();hello()};
   ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
     if(m.type==='call'){const a=seat(m.hero);let r;
-      try{r=a?await hostCall(a.id,String(m.tool),m.args||{}):{ok:false,error:m.hero!=null?'Hero #'+m.hero+' is not agent-played in the game.':'No agent-played hero in the game.'}}catch(err){r={ok:false,error:String(err&&err.message||err)}}
+      try{r=a?await hostCall(a.id,String(m.tool),m.args||{},{nap:wsleep}):{ok:false,error:m.hero!=null?'Hero #'+m.hero+' is not agent-played in the game.':'No agent-played hero in the game.'}}catch(err){r={ok:false,error:String(err&&err.message||err)}}
       send({type:'result',id:m.id,result:r})}
     else if(m.type==='narrate'){const a=seat(m.hero);if(a)playerNarrate(a.id,String(m.text||''))}
     else if(m.type==='dmcall'){let r;try{r=dmAct(String(m.tool),m.args||{})}catch(err){r={ok:false,error:String(err&&err.message||err)}}send({type:'result',id:m.id,result:r})}
     else if(m.type==='links'&&m.links&&typeof m.links==='object'){links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{};readies=m.ready&&typeof m.ready==='object'?m.ready:{};dmLinkInfo=m.dm&&typeof m.dm==='object'?m.dm:null}};
   ws.onclose=()=>{ws=null;lastHello='';links={};runners={};readies={};dmLinkInfo=null;status=wanted()?'offline':'off';if(wanted())later()};
   ws.onerror=()=>{}}
-function later(){if(timer)return;timer=setTimeout(()=>{timer=null;if(wanted())connect()},4000)}
-function disconnect(){if(timer){clearTimeout(timer);timer=null}if(ws){const w=ws;ws=null;try{w.close()}catch(e){}}status='off';lastHello='';links={};runners={};readies={};dmLinkInfo=null}
+// the reconnect timer runs on the worker clock so a hidden tab reconnects in seconds, not a minute
+function later(){if(timer)return;timer=1;wsleep(4000).then(()=>{timer=null;if(wanted())connect()})}
+function disconnect(){if(ws){const w=ws;ws=null;try{w.close()}catch(e){}}status='off';lastHello='';links={};runners={};readies={};dmLinkInfo=null}
 
 // On page load (a restored save may hold agent-played heroes) and every few seconds after,
 // so the relay always knows which heroes are played.
-export function initBridge(){if(wanted())connect();setInterval(()=>{if(wanted()){if(!ws)connect();else hello()}},3000);
+export function initBridge(){if(wanted())connect();every(3000,()=>{if(wanted()){if(!ws)connect();else hello()}});
   setInterval(behaviorTick,BEHAVIOR_MS);setInterval(mirrorTick,MIRROR_MS)}
 
 // Behavior logs (issue #129): the world digest, game-side anomalies and settled Mind decisions (sim/behavior.js) go to

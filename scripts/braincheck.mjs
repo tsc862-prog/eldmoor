@@ -334,7 +334,7 @@ reset(); mode = 'valid'; delay = 900;
 await runUntil(() => B.stats.timeouts >= 1 && minds().some(e => e.outcome === 'offline'), 10);
 ok(B.stats.timeouts >= 1 && B.stats.applied.townPlan === 0, 'timed out after ' + B.CFG.timeoutMs + ' ms, nothing applied');
 ok(heroes.some(h => brainStatus(h) === 'offline'), 'hero marked offline');
-ok(minds().some(e => e.outcome === 'offline' && /timeout/.test(e.error) && e.ms >= B.CFG.timeoutMs), 'mind: timed-out request -> offline (' + (minds().find(e => e.outcome === 'offline') || {}).error + ')');
+ok(minds().some(e => e.outcome === 'offline' && /timeout/.test(e.error) && e.ms >= B.CFG.timeoutMs - 50 /* timers fire ~1 ms early against Date.now() */), 'mind: timed-out request -> offline (' + (minds().find(e => e.outcome === 'offline') || {}).error + ')');
 await run(600); await sleep(900);
 ok(B.stats.applied.townPlan === 0 && B.stats.applied.say === 0, 'the late answers were dropped');
 delay = 0;
