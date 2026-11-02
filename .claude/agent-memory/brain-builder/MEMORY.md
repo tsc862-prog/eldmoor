@@ -9,6 +9,7 @@
 - [Runner pacing](runner-pacing.md) — #126 /play/pace protocol, wake levels, until-stopped local runners, lazy-model fixes, idle takeover, 6 seats, Claude slot leases
 - [Staged scenes](staged-scenes.md) — #132: stage_scene kinds/refusals, table calls (voice/outcome/complication, 6 s, poll-live), table voice runner, test pitfalls
 - [Behavior logs](behavior-logs.md) — #129 logs/behavior/<world>/: turn-line protocol + seat check, game watch, detector thresholds, report, behaviorcheck pitfalls
+- [Table turns](table-turns.md) — #163/#159: forced structured scene turns, text-call parsing, wait refusal, talk.js no-repeat/met, brief scene/heard/met
 - [Agent memories](agent-memories.md) — #155 notebooks: free-form rule, ranking weights, header, caps, letter, Markdown mirror protocol
 - [NPC conversations](npc-conversations.md) — #170 talk.js: person record (mood/warmth/hostile), npc_call/npc_say{conv}/npc_offer, talk voice, budgets, pitfalls
 - [DM Fellowship first](dm-fellowship-first.md) — #165 dmfocus.js, fellowship_needs/change, event cadence, scripted board rule, reserved share, dmFocus digest
