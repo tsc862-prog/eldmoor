@@ -53,10 +53,12 @@ export const leaderOfF=()=>{const P=fellowParty();if(P&&living(P.leader)&&P.lead
 // heroes within earshot hear it too. Returns the number of listeners, or an error string.
 // An agent's line over the cap is refused (party_say shows the error); a scripted line is cut at a word with an ellipsis.
 const wordCut=(t,n)=>{if(t.length<=n)return t;const c=t.slice(0,n-1),i=c.lastIndexOf(' ');return (i>n*.6?c.slice(0,i):c).replace(/[\s,.;:]+$/,'')+'…'};
+// Who a party shout by a reaches (#182): its companions (the Fellowship, else its party) split into near (within
+// shoutRange, sim/reach.js) and far. One helper for partySay and the earshot tool (#395).
+export function shoutHearers(a){const mates=(a.fellow?fellows().filter(b=>b!==a):partyMates(a)).filter(living);
+  const near=mates.filter(b=>inRange(a,b));return {mates,near,far:mates.filter(b=>!near.includes(b))}}
 export function partySay(a,text){let L=spokenLine(a,text);if(L.error&&/^Too long/.test(L.error)&&!a.player)L={text:wordCut(spokenLine(a,text,1e9).text,COUNCIL.SAY_LEN)};if(L.error)return L.error;const t=L.text;
-  const mates=(a.fellow?fellows().filter(b=>b!==a):partyMates(a)).filter(living);if(!mates.length)return 'You have no party to talk to.';
-  // a shout carries COUNCIL.SHOUT tiles (#182): mates beyond it do not hear, and the line records who did
-  const near=mates.filter(b=>inRange(a,b)),far=mates.filter(b=>!near.includes(b));
+  const {mates,near,far}=shoutHearers(a);if(!mates.length)return 'You have no party to talk to.';
   const e={t:clockStr(),d:dayNo(),from:a,text:t,trigger:'party',party:true,heard:near.map(b=>b.name),far:far.map(b=>b.name)},heard=new Set([a]);
   const hear=b=>{if(heard.has(b))return;heard.add(b);(b.chat||(b.chat=[])).push(e);if(b.chat.length>20)b.chat.shift()};
   (a.chat||(a.chat=[])).push(e);if(a.chat.length>20)a.chat.shift();
