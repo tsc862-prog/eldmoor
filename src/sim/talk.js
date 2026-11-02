@@ -43,6 +43,7 @@ import {CAP as CHAT_CAP,BUBBLE,HEAR} from './chat.js';
 import {ensureNpcs} from './npcs.js';
 import {stageScene} from './staged.js';
 import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
+import {npcWarning} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
 
 // ---- knobs ----
@@ -285,10 +286,12 @@ function knows(p,a){const out=[],z=Number.isFinite(p.x)?zoneAt(p.x,p.y):null;
   for(const m of S.marks||[])if(m.kind==='danger')out.push({text:'The road around '+Math.round(m.x)+','+Math.round(m.y)+' in '+ZONES[m.z]+' has turned dangerous.',where:ZONES[m.z]});
   for(const cnd of S.conditions||[])out.push({text:cnd.kind+' over '+ZONES[cnd.z]+'.',where:ZONES[cnd.z]});
   for(const q of S.places||[])out.push({text:'There is '+q.name+' out in '+ZONES[q.z]+', at '+Math.round(q.x)+','+Math.round(q.y)+'.',where:ZONES[q.z]});
+  if(a){const w=npcWarning(a);if(w)out.push({text:w,warn:true})}
   if(a){const hz=huntZone(a),E=ELITES[hz];if(E&&E.name)out.push({text:'They say '+E.name+' prowls '+ZONES[hz]+'. Few who meet it come home whole.',where:ZONES[hz]})}
   if(z!=null&&z>=0)out.sort((x,y)=>(y.where===ZONES[z])-(x.where===ZONES[z]));
+  out.sort((x,y)=>(y.warn?1:0)-(x.warn?1:0)); // a warning to a green blade comes first (#188)
   return out.slice(0,5)}
-function lore(p,a){const L=knows(p,a);return L.length?L[Math.floor(r()*L.length)]:null}
+function lore(p,a){const L=knows(p,a);return L.length?L[0].warn?L[0]:L[Math.floor(r()*L.length)]:null}
 
 // ---- trade with a person (the buy and sell tools with npc) ----
 export function stockOf(p){return ROLE_STOCK[p.role]||DEFAULT_STOCK}

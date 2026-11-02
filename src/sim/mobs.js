@@ -17,6 +17,7 @@ import {dmgTaken} from './stats.js';
 import {sightMul} from './weather.js';
 import {eliteSight} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
+import {trick as loreTrick} from './lore.js'; // a creature's tricks, learned by the agent hero it is used on (#188)
 
 // Per-zone target population (today's COUNTS total), a COUNTS-weighted species list for extra
 // spawns, and the road tiles mobs may drift toward.
@@ -87,7 +88,7 @@ function ready(m,A,id){if((m.abcd[id]||0)>0)return false;
   switch(A.when){case 'hurt':return m.hp<m.maxhp*(A.hp||.5)&&(A.fx!=='summon'||liveAdds(m)<A.max);case 'pack':return packNear(m);case 'ally':return !!alliesHurt(m);default:return true}}
 // Fire one ability at t. Returns true when it used the mob's attack turn.
 function useAbility(m,t){for(const id of m.ab||[]){const A=ABILITIES[id];if(!A||!ready(m,A,id))continue;
-  m.abcd[id]=A.cd;const u=unitOf(m);
+  m.abcd[id]=A.cd;const u=unitOf(m);if(t&&t.player)loreTrick(t,m,id);
   switch(A.fx){
     case 'frenzy':m.frenzy=A.dur;pop(m.x,m.y-.8,'FRENZY','#ff8a5a');continue; // a free action: the bite still lands
     case 'poison':{const dps=A.dmg*u/A.dur/(t.fellow?hitRamp(m):1),d=(m.dots||(m.dots=[])).find(x=>x.h===t&&x.id===id);if(d){d.rem=A.dur;d.dps=dps}else m.dots.push({h:t,id,rem:A.dur,dps});pop(t.x,t.y-.9,'POISON','#7dce5a');break}
@@ -107,7 +108,8 @@ function tickDots(m,dt){const L=m.dots;for(let i=L.length-1;i>=0;i--){const d=L[
   if(d.rem<=0)L.splice(i,1)}}
 // A pack-caller drags nearby kin into the fight; they bite the same hero while it fights the first.
 function callPack(m,a,B){if(!B.beh.pack)return;let n=B.beh.pack;
-  for(const o of nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&!o.target&&!o.elite&&!o.add)){if(n--<=0)break;o.target=a;o.pack=true;o.dest=null}}
+  for(const o of nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&!o.target&&!o.elite&&!o.add)){if(n--<=0)break;o.target=a;o.pack=true;o.dest=null}
+  if(a&&a.player&&n<B.beh.pack)loreTrick(a,m,'pack')}
 
 export function updMob(m,dt){
   if(m.gone)return;const z=zoneOf(m),B=blk(m);

@@ -52,7 +52,7 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
-import {systemPrompt, withMemoryOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
+import {systemPrompt, withMemoryOrders, withKnowledgeOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
@@ -75,7 +75,7 @@ export function fellowshipPrompt(st) {
     '- Talk to your companions with party_say, a shout your companions hear only within about 12 tiles (the result says who heard and who was too far away), and catch up with party_read. DISTANCE CUTS YOU OFF: beyond that range nobody hears you, only companions within it hear a proposal or vote, and lead_to reaches only those near. If you must separate, agree aloud where and when to meet again (leave_party with where and when_hours, or a split proposal with meet_at and meet_in_hours), write it in your notes (remember), and keep to it. A paid courier (send_courier, hired at a town gate) is the only way to reach someone out of range, and it takes game hours. When you come back from a long absence, ask what you missed; when a companion returns, tell them what they missed, in your own words. Keep it short and in character. Your companions and the DM are other minds: you know only what they say in the game and what your hero sees.',
     '- You already know your companions: do not introduce yourself again, and do not repeat a line or a question (each turn shows what was said lately). Talk to move the party forward: propose, vote, lead_to, or answer a question you were asked. The game refuses a line you already said.',
     '- Decisions that need everyone (take a job, answer a Crypt or raid call, split up) go through propose(kind, details) and vote(proposal_id, yes|no, reason). Vote on every open proposal (status.proposals, or an event) with a reason in your own voice.',
-    '- The leader (status.party_leader) chooses where the party goes with lead_to; everyone else follows. If you are the leader, lead: pick hunting grounds and jobs that suit the weakest of you. leave_party splits you off for a while and costs you the others\' trust; do it only for a reason your character would have.',
+    '- The leader (status.party_leader) chooses where the party goes with lead_to; everyone else follows. If you are the leader, lead: pick hunting grounds and jobs that suit the weakest of you, from what the party has seen and been told. leave_party splits you off for a while and costs you the others\' trust; do it only for a reason your character would have.',
     '- TABLE MODE: when status, look or wait show "table", the world is paused for a scene and every second counts. Act at once with scene_act(option, line), using one of the options listed, with a short line in your voice. Do not look around first. You may answer as soon as the scene opens; it happens on your turn. Then wait.',
     '- Hardcore still holds: one life each. Protect each other.',
     '- A letter: pin a memory tagged "letter" (remember, then pin) and, if you fall, whoever takes your place in the Fellowship finds it. Only that one note outlives you.',
@@ -142,7 +142,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const {sess, note} = loadSession(h.id, st.name, () => ({sessionId: null, heroId: h.id, heroName: st.name, system: sys, turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
     if (note) out(st.name, note);
     if (!String(sess.system || '').includes('do not introduce yourself again')) sess.system = sys; // a hero first played solo now rides with the Fellowship; older orders get the talk rule
-    sess.system = withMemoryOrders(sess.system); // memories (#155) for a session that began before them
+    sess.system = withKnowledgeOrders(withMemoryOrders(sess.system)); // memories (#155), learning the world (#188) for a session that began before them
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
     if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama or openai); skipped`); await release(h.id); return}
