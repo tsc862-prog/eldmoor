@@ -6,6 +6,7 @@ import {T} from '../world/tiles.js';
 import {bubbleVisible} from '../core/chatview.js';
 import {toneOf} from '../core/colors.js';
 
+import {TEXT} from './palette.js';
 
 const CSS=12,LINE=20,MAXL=3,FADE=.6;
 
@@ -27,5 +28,5 @@ export function drawBubbles(ctx,S,cam,drawText){
     ctx.fillStyle='rgba(10,10,22,.86)';
     if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill()}else ctx.fillRect(x0,top,bw,bh);
     ctx.beginPath();ctx.moveTo(px-pad*.6,bottom);ctx.lineTo(px+pad*.6,bottom);ctx.lineTo(px,bottom+pad*.7);ctx.fill();
-    lines.forEach((l,i)=>drawText(l,px,top+pad*.6+lh*(i+.85),head&&i===0?tone.color:'#f4ecd0',CSS));
+    lines.forEach((l,i)=>drawText(l,px,top+pad*.6+lh*(i+.85),head&&i===0?tone.color:TEXT.label,CSS));
     ctx.globalAlpha=1}}

@@ -7,6 +7,7 @@
 import {T,W,H} from '../world/tiles.js';
 import {zone,I,ZONES,LABELS} from '../world/map.js';
 import {CONDITIONS} from '../sim/levers.js';
+import {TEXT} from './palette.js';
 import {toneOf,toneName} from '../core/colors.js';
 
 // Each prop: rectangles [x, y, w, h, colour] in world px relative to the foot point.
@@ -34,10 +35,10 @@ export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite}=
   for(const p of S.places||[]){const px=Math.round(p.x*T),py=Math.round(p.y*T);if(!inView(px,py,32))continue;
     for(const [x,y,w,h,c] of PROPS[p.kind]||PROPS.ruin){ctx.fillStyle=c;ctx.fillRect(px+x,py+y,w,h)}
     if(p.kind==='camp'){ctx.fillStyle=FIRE[Math.floor(blink*4)%2];ctx.fillRect(px+4,py-4,2,2)}
-    if(close)drawText(p.name,px,py-(p.kind==='watchtower'?22:14),'#d8c890',12)}
+    if(close)drawText(p.name,px,py-(p.kind==='watchtower'?22:14),TEXT.person,12)}
   // DM-placed people
   for(const w of S.wanderers||[]){if(!inView(w.x*T,w.y*T,32))continue;
     const fr=w.moving?Math.floor(blink*6+w.id)%2:Math.floor(blink*1.5)%2,s=npcSprite(w,fr),px=Math.round(w.x*T),py=Math.round(w.y*T);
     ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(px,py,s.width/2,1.5,0,0,7);ctx.fill();
     ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(s,-Math.floor(s.width/2),py-s.height);ctx.restore();
-    if(close){const t=toneOf(w,S.fellowship);drawText(toneName(w,t),px,py-17,t.color||'#d8c890',12)}}}
+    if(close){const t=toneOf(w,S.fellowship);drawText(toneName(w,t),px,py-17,t.color||TEXT.person,12)}}}
