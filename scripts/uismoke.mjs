@@ -570,6 +570,40 @@ console.log('start gate: ready, not just claimed');
   ok(JSON.stringify(SH.sheetRows().rows.map(r=>[r.key,r.cells.map(c=>c.t)]))===T0,'sheet faces: sheetRows() stays plain data, unchanged');
   ok(!SH.sheetRows().cols.some(c=>'face' in c||'portrait' in c),'sheet faces: no face in the row data');
   SH.closeSheet()}
+// Fellowship sheet: the Life view (#389), landmarks newest first, chapters with days, last 10 journal entries, patched in place
+{const SH=await import('../src/ui/sheet.js'),LV=await import('../src/ui/lifeview.js'),ms=sim.fellowshipMembers().filter(m=>m.hero);
+  const a=ms[0].hero,b=ms[1].hero,keepT=a.tiers,keepJ=a.journal,keepTb=b.tiers,keepJb=b.journal;
+  delete b.tiers;b.journal=[];
+  a.tiers={v:1,seq:3,marks:[{id:1,k:'level',w:3,day:2,gm:1440,text:'Reached level 5.',key:'x1'},{id:2,k:'death',w:5,day:4,gm:4320,text:'Watched Brann fall in the crypt.',key:'x2'}],
+    chapters:[{n:1,d0:1,d1:3,title:'Days 1-3: the road out of Highgate',text:'We set out.',kw:[],src:'scripted',items:20,stamp:'1'}],pend:[],nem:[],own:{d:0,n:0}};
+  a.journal=[];for(let i=1;i<=14;i++)a.journal.push({t:'Day '+i+' 08:00',gameMin:i*1440,text:(i===14?'x'.repeat(10)+' '+'long words '.repeat(60):'Entry '+i)});
+  const T0=JSON.stringify(a.tiers),J0=JSON.stringify(a.journal),gm=sim.S.gameMin;
+  SH.openSheet();const ov=$('sheetov'),body=ov.querySelector('.shbody'),lf=()=>ov.querySelector('.lfview'),btn=v=>ov.querySelectorAll('[data-sview]').find(x=>x.dataset.sview===v);
+  ok(!!btn('life')&&btn('table').getAttribute('aria-pressed')==='true'&&lf().hidden,'life: the sheet opens side by side, with a Life button');
+  body.scrollTop=37;btn('life').click();
+  ok(SH.sheetView()==='life'&&!lf().hidden&&ov.querySelector('.shtblw').hidden&&btn('life').getAttribute('aria-pressed')==='true','life: Life shows the life cards and hides the table');
+  const cards=()=>lf().querySelectorAll('.lfcard');ok(cards().length===sim.fellowshipMembers().length,'life: one card per Fellowship place ('+cards().length+')');
+  const c0=cards()[0],marks=c0.querySelectorAll('.lfmark'),chs=c0.querySelectorAll('.lfch'),ents=c0.querySelectorAll('.lfent');
+  ok(marks.length===2&&/Watched Brann/.test(marks[0].textContent)&&/Day 4/.test(marks[0].textContent)&&/level 5/.test(marks[1].textContent),'life: landmarks newest first, with their day');
+  ok(chs.length===1&&/Ch\. 1 · Days 1-3/.test(chs[0].textContent)&&/the road out of Highgate/.test(chs[0].textContent)&&!/Days 1-3:/.test(chs[0].textContent),'life: chapter title with its days ('+chs[0].textContent+')');
+  ok(ents.length===10&&/Day 14/.test(ents[0].textContent)&&/Entry 5$/.test(ents[9].textContent),'life: the last 10 journal entries, newest first');
+  const L=LV.lifeRows()[0];ok(L.entries[0].text.length<=300&&L.entries[0].text.endsWith('…'),'life: a long entry is cut to 300 characters ('+L.entries[0].text.length+')');
+  ok(/10 of 14/.test(c0.textContent),'life: the journal heading says 10 of 14');
+  const c1=cards()[1];ok(!!c1.querySelector('.lfnone')&&/No life written yet/.test(c1.textContent)&&!c1.querySelector('.lfrow'),'life: a member with no tiers and no journal shows the empty state');
+  ok(!('tiers' in b),'life: reading never creates tiers (no migration write)');
+  ok(JSON.stringify(a.tiers)===T0&&JSON.stringify(a.journal)===J0&&sim.S.gameMin===gm,'life: no writes to the hero or S');
+  marks[1]._same=1;ents[3]._same=1;lf().scrollTop=0;body.scrollTop=50;
+  uiFast();uiFast();ok(cards()[0]===c0&&c0.querySelectorAll('.lfmark')[1]._same===1&&c0.querySelectorAll('.lfent')[3]._same===1&&body.scrollTop===50,'life: nothing rebuilt on an unchanged tick, scroll held');
+  a.tiers.marks.push({id:3,k:'own',w:4,day:5,gm:5760,text:'Swore to see Grimhold burn.',key:'x3'});uiFast();
+  const m2=c0.querySelectorAll('.lfmark');ok(cards()[0]===c0&&m2.length===3&&/Swore/.test(m2[0].textContent)&&m2[2]._same===1&&body.scrollTop===50,'life: a new landmark patches in at the top; old rows are the same nodes and the scroll holds');
+  a.journal.push({t:'Day 15 09:00',gameMin:15*1440,text:'Entry 15'});uiFast();
+  ok(/Day 15/.test(c0.querySelectorAll('.lfent')[0].textContent)&&c0.querySelectorAll('.lfent').length===10,'life: a new journal entry patches in');
+  b.journal=[{t:'Day 15 10:00',gameMin:15*1440+60,text:'First words.'}];uiFast();
+  ok(cards()[1]===c1&&c1.querySelectorAll('.lfent').length===1&&/No landmarks yet/.test(c1.textContent),'life: an old save with a journal and no tiers shows the entries and empty landmark/chapter states');
+  btn('table').click();ok(SH.sheetView()==='table'&&lf().hidden&&!ov.querySelector('.shtblw').hidden&&body.scrollTop===37,'life: back to side by side restores its own scroll ('+body.scrollTop+')');
+  ok(!!body.querySelector('.shfight'),'life: the table is still there');
+  btn('life').click();ok(body.scrollTop===50,'life: Life keeps its own scroll too');btn('table').click();
+  a.tiers=keepT;a.journal=keepJ;if(keepTb)b.tiers=keepTb;b.journal=keepJb;SH.closeSheet()}
 
 // Professions block on the Stats tab (#259)
 {const h=(sim.fellowshipMembers().filter(x=>x.hero)[0]||{hero:sim.S.agents.find(a=>a.kind==='hero')}).hero;

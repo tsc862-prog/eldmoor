@@ -672,3 +672,25 @@ button.tbtn.danger{border-color:var(--red)}
 /* ---- Table banner: round moves per member (#390) ---- */
 .tbanner .tcm{font-size:12px;color:#ffd878;border:1px solid #6a5a2a;padding:0 3px;overflow-wrap:anywhere}
 .tbanner .tci{flex-wrap:wrap}
+/* ---- Fellowship sheet: Life view (#389, src/ui/lifeview.js) ---- */
+.shhead .shttl{flex:1;min-width:0}
+.shviews{display:flex;gap:4px;flex:none}
+.shviews .mini{font-size:8px;padding:6px 8px}
+.lfview{padding:8px 10px}
+.lfview[hidden],.shtblw[hidden]{display:none}
+.lfgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;align-items:start}
+.lfcard{background:var(--panel2);border:1px solid var(--edge);padding:8px;min-width:0}
+.lfhd{font-size:17px;margin-bottom:4px;overflow-wrap:anywhere}
+.lfsec{margin-top:6px}
+.lfh{font-family:var(--px);font-size:7px;color:var(--gold);letter-spacing:.1em;text-transform:uppercase;margin:6px 0 3px;font-weight:normal}
+.lflist{list-style:none;margin:0;padding:0}
+.lfrow{font-size:16px;line-height:1.15;padding:3px 0;border-bottom:1px solid var(--edge);overflow-wrap:anywhere;min-width:0}
+.lfrow:last-child{border-bottom:0}
+.lfday{color:var(--dim);margin-right:6px;white-space:nowrap}
+.lftag{font-family:var(--px);font-size:6px;color:var(--gold);border:1px solid var(--edge);padding:1px 3px;margin-right:6px;vertical-align:2px;text-transform:uppercase;white-space:nowrap}
+.lfmark.k-death .lftag,.lfmark.k-friend .lftag{color:var(--red)}
+.lfmark.k-level .lftag,.lfmark.k-own .lftag{color:var(--green)}
+.lfch[title]{cursor:help}
+.lfnone{font-size:15px;margin:2px 0}
+@media (max-width:560px){.shhead{flex-wrap:wrap}.shhead .shttl{flex-basis:100%}.lfview{padding:6px}.lfgrid{grid-template-columns:minmax(0,1fr)}}
+/* ---- end Life view ---- */

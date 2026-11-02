@@ -60,7 +60,7 @@ import {setFellowChoice} from './player-choice.js';
 import {reflexMay,ownerHeld} from './runlink.js';
 import {MOVES} from '../data/moves.js';
 import {movesOf,ready,useMove,pickMove,tickRound,tableHealMove} from './moves.js'; // class abilities, round cooldowns (#81)
-import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName,roundEnd,stunCheck,canParley,parley} from './tableround.js'; // combat rounds: the foe's turn and the dice (#276); conditions and parley (#296)
+import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName,roundEnd,stunCheck,canParley,parley,useOptions,useInRound,useNote,useSlug} from './tableround.js'; // combat rounds: the foe's turn and the dice (#276); conditions and parley (#296)
 import {condOn,condsOf,clearRounds} from './eff.js';
 import {CONDITIONS} from '../data/moves.js';
 import {socialSkill,trained} from './abilities.js';
@@ -165,6 +165,7 @@ function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])retu
     const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
     for(const id of movesOf(a))if(ready(a,id,'round')){const M=MOVES[id];if(M.target==='foe'&&!f)continue;if(M.target==='ally'&&!lo)continue;
       o.push({k:id,text:'Ability, '+M.name+' ('+M.kind+', cooldown '+M.rounds+' rounds): '+M.desc})} // class abilities (data/moves.js); ready ones only
+    o.push(...useOptions(sc,a,lo)); // a potion or scroll from the pack as the round's act (#360): 'use:<item>'
     if(rounds(sc)&&canParley(f)&&!(sc.pl||[]).includes(a.id))o.push({k:'parley',text:'Talk '+fn+' down ('+socialSkill(a)+', once a fight)'}); // #296
     if(!(rounds(sc)&&condOn(a,'root')))o.push({k:'retreat',text:'Fall back toward home'});return o} // a rooted member cannot fall back
   if(k==='site'||k==='room'){const s=SPECIAL[a.cls];return [...(s?[{k:s[0],text:s[1]}]:[]),{k:'press',text:'Press on, first into the dark'},{k:'careful',text:'Go carefully, one step at a time'}]}
@@ -214,13 +215,14 @@ export function sceneAct(a,opt,line){const sc=S.table;if(!sc||!sc.ids.includes(a
   if(together(sc)&&sc.resolved)return 'The table has already answered.';
   const i=sc.ids.indexOf(a.id);if(!together(sc)&&i<sc.i&&sc.phase==='turn')return 'Your turn has passed.';
   if(sc.acts[a.id])return 'You already acted in this scene.';
-  const o=optionsFor(sc,a).find(x=>x.k===String(opt||'').toLowerCase());if(!o)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.';
+  let key=String(opt||'').trim().toLowerCase();if(key.startsWith('use:'))key='use:'+useSlug(key.slice(4)); // 'use:Redroot Draught' or 'use:redroot-draught'
+  const o=key==='use'?optionsFor(sc,a).find(x=>x.k.startsWith('use:')):optionsFor(sc,a).find(x=>x.k===key);if(!o)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.'; // a bare 'use': the first item offered
   sc.acts[a.id]={k:o.k,line:clean(line,120),by:'agent'};return sc.acts[a.id]}
 
 // ---- turns ----
-function take(sc,a,act){delete sc.rr;delete sc.rc;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc;delete sc.rr;delete sc.rc; // a strike's roll as data (#285), a parley's check (#296)
+function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc,use=sc.ru;delete sc.rr;delete sc.rc;delete sc.ru; // a strike's roll as data (#285), a parley's check (#296)
   const F=S.fellowship;if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
-  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(roll?{roll}:{}),...(chk?{check:chk}:{})});
+  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{})}); // an item used (#360): {item, on, ok, effect, healed?}
   const first=!(sc.rd>1);sc.beats[sc.beats.length-1].rd=sc.rd||1;
   if(staged(sc)&&!together(sc)&&first)STG.onBeat(sc,sc.beats[sc.beats.length-1]); // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
   if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
@@ -241,6 +243,7 @@ function voice(sc,a,k){const pool=LINES[k];if(!pool||a.hidden)return;const text=
   speak(a,text,'table')}
 
 function apply(sc,a,act){if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act);const f=foeOf(sc),k=act.k;
+  if(COMBAT[sc.kind]&&k.startsWith('use:'))return useInRound(sc,a,k,lowest()); // an item from the pack (#360)
   switch(k){
   case 'strike':if(!f)return 'the foe was already gone';if(a.hidden&&f.kind!=='boss')return 'out of reach';
     if(f.kind==='mob'&&['hunt','follow','travel','fight','return'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}
@@ -249,7 +252,7 @@ function apply(sc,a,act){if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act)
   case 'guard':if(!f)return 'nothing to guard against';if(f.kind==='mob'){f.target=a;if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}return 'drew it on'}
     if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&a.fac!==f.fac){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
   case 'heal':{const lo=lowest();if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
-  case 'potion':{const lo=lowest(),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});return r.ok?'+'+r.healed+' to '+lo.name:r.error}
+  case 'potion':{const lo=lowest(),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});useNote(sc,a,id,lo,r);return r.ok?'+'+r.healed+' to '+lo.name+' ('+id+')':r.error}
   case 'parley':if(!rounds(sc)||!canParley(f))return 'no one there will listen';return parley(sc,a,foesOf(sc),fighters(sc)); // a say-check against the foe's temper (#296)
   case 'retreat':if(rounds(sc)&&condOn(a,'root'))return 'rooted: cannot fall back';if(rounds(sc))(sc.out||(sc.out=[])).push(a.id);if(a.raid){a.raid=false}if(f&&f.target===a)f.target=null;if(a.state==='duel'&&f&&f.target===a&&f.kind==='hero'){f.state='hunt';f.target=null}
     if(a.state!=='dungeon'){goHome(a);if(a.player)a.pq=[]}return 'fell back';
