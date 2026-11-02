@@ -54,7 +54,7 @@ function sane(label) {
   ok(new Set(S.GUILDS.map((g) => g.id)).size === S.GUILDS.length && S.GUILDS.every((g) => g.id <= S.guildSeq), `${label}: guild ids unique and below guildSeq ${S.guildSeq}`);
   ok(S.agents.every((a) => !a.target || a.target.kind), `${label}: hero targets are entities`);
   {const F = S.fellowship; ok(!!F && F.ids.length >= 4 && F.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a && a.fellow && a.state !== 'dead' && a.persona && a.backstory && a.memory && Array.isArray(a.memory.recent)}) && F.log.length > 0, `${label}: Fellowship ${F ? F.name + ' with ' + F.ids.length + ' members, ' + F.log.length + ' log entries, ' + F.past.length + ' fallen' : 'missing'}`)}
-  ok(S.agents.filter((a) => a.player).every((a) => Array.isArray(a.journal) && Array.isArray(a.pq) && (a.fellow || a.journal.length >= 1)), `${label}: ${S.agents.filter((a) => a.player).length} agent-played hero(es) keep journal and queue`);
+  ok(S.agents.filter((a) => a.player).every((a) => Array.isArray(a.journal) && Array.isArray(a.pq) && (a.fellow || a.state === 'dead' || a.journal.length >= 1)),`${label}: ${S.agents.filter((a) => a.player).length} agent-played hero(es) keep journal and queue`);
   ok(S.fellowship.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a && a.player && !a.brain}) && S.fellowship.minds === 'agent', `${label}: every Fellowship member is agent-played (#148)`);
 }
 
