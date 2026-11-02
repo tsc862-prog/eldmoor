@@ -582,6 +582,12 @@ and Recover-a-relic jobs. The DM can also place a token from a short table, and 
 | Cairn-Door Key | Cold iron, notched twice. It fits no lock in any town. |
 | Shrine Candle-Stub | Lit once at a wayside shrine; the wick still remembers. |
 
+## Professions (issue #254, epic #238)
+A hero may hold two trades, each with a skill from 1 to 100 that rises with use. Names are generic and provisional until lore-keeper has checked them.
+- Gathering: Herbalism (herbs, moss, flowers), Mining (ore and stone), Skinning (hide, sinew, bone), Fishing (river, mere and sea).
+- Crafting: Alchemy (potions, cures), Smithing (weapons, armor, repairs), Leatherworking (cured hide: armor, straps, packs), Cooking (camp meals that hearten the company), Scribing (scrolls, maps).
+- Skill bands used by recipes and nodes: 1-24, 25-49, 50-74, 75-99, 100.
+
 ## Townsfolk
 Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
 routines). Each is one of the town's own people, named from that people's syllables when the
