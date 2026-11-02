@@ -1,1 +1,1 @@
-- [Baselines](project_baselines.md) — dated sim numbers; Hoarfell check 2026-10-31
+- [Baselines](project_baselines.md) — dated sim numbers; latest 2026-11-01 main vs PR147 (main: 17.7 deaths/h, PvP 53%, Kragmaw 8/120min)
