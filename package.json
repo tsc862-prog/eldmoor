@@ -12,7 +12,7 @@
     "worldcheck": "node scripts/worldcheck.mjs",
     "savecheck": "node scripts/savecheck.mjs",
     "setupcheck": "node scripts/setupcheck.mjs",
-    "setupsmoke": "node scripts/setupsmoke.mjs . a && node scripts/setupsmoke.mjs . b",
+    "setupsmoke": "node scripts/setupsmoke.mjs . a && node scripts/setupsmoke.mjs . b && node scripts/setupsmoke.mjs . c",
     "uismoke": "node scripts/uismoke.mjs",
     "invcheck": "node scripts/invcheck.mjs",
     "relay": "node scripts/relay.mjs",
