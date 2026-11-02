@@ -43,3 +43,8 @@ Seeded harness (Math.random mulberry32, seeds 11/22/33, 120 min, 28 living each)
 - A (default Fellowship) F deaths/run 0.88 -> 0.00; F heal uses/run Mending Touch 0.13 -> 7.0, Chorus 0.25 -> 1.25; specs taken 6 -> 40; crawl clears 16.5 -> 18.1, wipes 0/0; world deaths/h 10.0 -> 12.4; PvP 33% -> 34%; Antler Ward world-wide 1.25 -> 36.4/run; median living lvl 15.6 -> 15.8.
 - B (forced Warrior/Wildspeaker/Skald/Mage/Hunter) F deaths 0.00 -> 0.38; Greenmend 0 -> 5.0, Lullaby 0 -> 1.25; world deaths/h 9.6 -> 11.6; PvP 38% -> 39%; Ward 0.5 -> 17; median lvl 15.6 -> 15.3. Verdict PASS.
 - Harness: scratchpad/b347/run.mjs (seeded LCG, fallen counted via facStats delta because S.fallen is capped at 15; PvP = cause /^slain by (?!a )/). Seeded world deaths/h stay ~10-12 on both sides (below 20-40 target, pre-existing).
+
+## 2026-11-02 PR #377 (issue #360 table potions) vs main 9e201d8, 8 seeds x 120 min, seeded (harness scratchpad b360/)
+- Branch output byte-identical to main on all 8 seeds, arm auto and arm live. PASS.
+- Main auto means: Fellowship deaths 0, close calls 0.6, ~372 Table scenes/run, crawl runs/clears/driven/wipes 26/22.4/3.6/0, world deaths 14.8/h, PvP 43%, median lvl 16.9, potions drunk ~877.
+- Note: b310 `live` arm founds no Fellowship now (0 scenes, crawl null) - degenerate, so it only tests the background world.
