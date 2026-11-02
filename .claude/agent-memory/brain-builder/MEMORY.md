@@ -11,3 +11,4 @@
 - [Behavior logs](behavior-logs.md) — #129 logs/behavior/<world>/: turn-line protocol + seat check, game watch, detector thresholds, report, behaviorcheck pitfalls
 - [Agent memories](agent-memories.md) — #155 notebooks: free-form rule, ranking weights, header, caps, letter, Markdown mirror protocol
 - [NPC conversations](npc-conversations.md) — #170 talk.js: person record (mood/warmth/hostile), npc_call/npc_say{conv}/npc_offer, talk voice, budgets, pitfalls
+- [DM Fellowship first](dm-fellowship-first.md) — #165 dmfocus.js, fellowship_needs/change, event cadence, scripted board rule, reserved share, dmFocus digest
