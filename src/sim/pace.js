@@ -11,13 +11,15 @@
 // paceBrief: the state header a runner puts on every local turn prompt (the coordinator's live bug: a
 // small model kept narrating a fight long over), from what the hero itself knows.
 // It reads the events the agent has not seen (e.n > a.playEvSeen) and never consumes them: the next
-// tool call hands them over as usual. It writes nothing, so a world with no runner is unchanged.
+// tool call hands them over as usual. It writes nothing (but for a Fellowship letter it delivers to a new
+// member's notebook, sim/notebook.js), so a world with no runner is unchanged.
 import {S,clockStr} from './state.js';
 import {wakeLevel} from './notify.js';
 import {tableView} from './table.js';
 import {maxHp} from './heroes.js';
 import {ZONES,zoneAt} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
+import {heroRelevant} from './notebook.js'; // the notes that matter now (#155)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60]}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -55,4 +57,4 @@ export function paceBrief(id){const a=hero(Number(id));
   const foe=fighting?(t.kind==='hero'?t.name:t.elite||t.named?t.name:(MOBS[t.type]&&MOBS[t.type].name||'a monster')+(t.lvl?' (level '+t.lvl+')':'')):null;
   const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
-    foe,autopilot:!!a.playIdle,table:!!(tv&&tv.phase!=='outcome'),news}}}
+    foe,autopilot:!!a.playIdle,table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a)}}} // memories: the hero's own notes most relevant now, {id, title} only (#155)

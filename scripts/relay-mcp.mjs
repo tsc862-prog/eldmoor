@@ -88,7 +88,7 @@ const cleanHeroes = list => (Array.isArray(list) ? list : []).filter(h => h && t
 export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes.length - 1] || null);
 
 // ---- the browser backend: one page at a time over a WebSocket, serving all its agent heroes ----
-export function browserBackend({log = () => {}, onBehavior = null, onWorld = null} = {}) {
+export function browserBackend({log = () => {}, onBehavior = null, onWorld = null, onMirror = null} = {}) {
   let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false;
   const waiting = new Map();
   const send = o => {if (sock && sock.readyState === 1) sock.send(JSON.stringify(o))};
@@ -107,6 +107,7 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
           const seat = m.dm === true || !!(m.dm && m.dm.seat); if (seat !== dmSeat) log(`[play] DM seat ${seat ? 'open' : 'closed'}`); dmSeat = seat;
           if (onWorld && typeof m.world === 'string') onWorld(m.world); // the behavior logs' folder (issue #129)
         } else if (m.type === 'behavior' && onBehavior && typeof m.kind === 'string') {try {onBehavior(m.kind, m.rec)} catch (e) {log('[play] behavior log: ' + e.message)}}
+        else if (m.type === 'mirror' && onMirror && Array.isArray(m.seats)) {try {onMirror(m.seats)} catch (e) {log('[play] memory mirror: ' + e.message)}} // agent memories as Markdown (#155); written, never read back
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
       });
       ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; log('[play] game page disconnected');
@@ -144,10 +145,13 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
 }
 
 // ---- MCP: one stateless server per request ----
+// One argument's schema: 'object' (the DM's lever params), 'array' (a list of strings, e.g. memory tags, #155; a
+// comma-separated string is taken too), enums, numbers, strings.
+const zArg = a => a.type === 'object' ? z.record(z.string(), z.any()) : a.type === 'array' ? z.union([z.array(z.string()), z.string()]) : a.enum ? z.enum(a.enum) : a.type === 'integer' ? z.number().int() : a.type === 'number' ? z.number() : z.string();
 function zodFor(spec) {
   const shape = {};
   for (const [k, a] of Object.entries(spec.args || {})) {
-    let s = a.enum ? z.enum(a.enum) : a.type === 'integer' ? z.number().int() : a.type === 'number' ? z.number() : z.string();
+    let s = zArg(a);
     s = s.describe(a.desc || k); if (a.optional) s = s.optional(); shape[k] = s;
   }
   return shape;
@@ -157,7 +161,7 @@ export function buildDmMcp(call) {
   const server = new McpServer({name: 'eldmoor-dm', version: '1.0.0'}, {instructions: DM_INSTRUCTIONS});
   for (const t of DM_TOOLS) {
     const shape = {};
-    for (const [k, a] of Object.entries(t.args || {})) {let s = a.type === 'object' ? z.record(z.string(), z.any()) : a.enum ? z.enum(a.enum) : a.type === 'integer' ? z.number().int() : a.type === 'number' ? z.number() : z.string();
+    for (const [k, a] of Object.entries(t.args || {})) {let s = zArg(a);
       s = s.describe(a.desc || k); if (a.optional) s = s.optional(); shape[k] = s}
     server.registerTool(t.name, {description: t.desc, inputSchema: shape, annotations: {readOnlyHint: !t.act, destructiveHint: false, openWorldHint: false}},
       async args => {const r = await call(t.name, args || {}); return {content: [{type: 'text', text: JSON.stringify(r)}], isError: !!(r && r.offline)}});
@@ -180,12 +184,14 @@ const readBody = req => new Promise((res, rej) => {
   req.on('error', rej);
 });
 
-// attachPlay(server, {backend?, origin, log, verbose, now, behavior?}) -> {backend, stats, call, linkOf, links, behaviorIngest}
+// attachPlay(server, {backend?, origin, log, verbose, now, behavior?, mirror?}) -> {backend, stats, call, linkOf, links, behaviorIngest}
+// mirror: a scripts/memory-mirror.mjs writer (issue #155) for the page's {type:'mirror', seats} messages.
 // behavior: a scripts/behavior-log.mjs writer (issue #129); without it the host keeps no behavior logs.
-export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null} = {}) {
+export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null} = {}) {
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
   const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, rec, {links: links(), runners: runners()}) : false;
-  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior ? w => behavior.setWorld(w) : null});
+  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror ? w => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w)} : null,
+    onMirror: mirror ? seats => mirror.write(seats) : null}); // mirror: scripts/memory-mirror.mjs (issue #155)
   const stats = {calls: 0, errors: 0};
   const claims = new Map(), act = new Map(); // hero id -> {runner, at} / {last, inflight}
   const vlog = rec => {if (!verbose) return; try {mkdirSync(dirname(verbose), {recursive: true}); appendFileSync(verbose, JSON.stringify(rec) + '\n')} catch (e) {log(`[play] verbose log failed: ${e.message}`)}};

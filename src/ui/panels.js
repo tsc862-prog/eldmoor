@@ -33,6 +33,7 @@ import {byDay,stampOf,srcTag} from './daystamp.js'; // game day on times, action
 import {fellowRoleOf} from '../core/chatview.js';
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
+import {notebookSig} from './notebook.js'; // agent memories (#155)
 import {showMindButtons,devMode} from './mindctl.js';
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
@@ -338,6 +339,7 @@ function tabMind(b,a){const m=a.mind||[];
     h.append(el('span','dm',' \u00b7 '),el('span','mo mo-'+e.outcome,e.outcome));
     row.append(h);if(isOpen)mindDetail(row,a,e);return row},'div');
   b.append(list)}
+const memTabSig=a=>{const M=a.memory;return a.id+'|'+(M?(M.n||0)+':'+(M.long||'').length+':'+Object.values(M.stances||{}).join('|').length:'')+'|'+notebookSig(a)}; // the Memory tab (#68, #155)
 const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,inv:tabInv,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent,memory:tabMemory};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
@@ -354,7 +356,7 @@ function skeleton(root){root.replaceChildren();const hd=el('div','hd'),tabs=el('
   wireGear(tb);root.append(hd,tabs,tb);skel={root,hd,tabs,tb,gr,sub};return skel}
 // Which tabs a hero has: Mind only for an AI-played hero, Agent for an agent-played one, Memory for a Fellowship
 // member; Party is hidden for members, whose party is the frames above the map.
-function tabShown(a,k){if(k==='mind')return hasMind(a);if(k==='agent')return hasAgent(a);if(k==='memory')return !!a.memory;if(k==='party')return !(a.fellow&&S.fellowship);return true}
+function tabShown(a,k){if(k==='mind')return hasMind(a);if(k==='agent')return hasAgent(a);if(k==='memory')return !!a.memory||!!a.memories;if(k==='party')return !(a.fellow&&S.fellowship);return true}
 
 export function renderHero(){const root=$('hero'),a=cam.sel;
   if(!a){root.innerHTML='<div class="meta">Tap a hero on the map, or pick one from Top heroes.</div>';skel=null;return}
@@ -373,6 +375,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   // a new hero or tab starts at the top; the same hero and tab keep their place
   const who=a.id+':'+cur;if(k.tb.dataset.who!==who){k.tb.dataset.who=who;k.tb.replaceChildren();delete k.tb.dataset.sig}
   if(cur==='mind'){const sig=mindSig(a);if(k.tb.dataset.sig!==sig&&patch(k.tb,b=>tabMind(b,a)))k.tb.dataset.sig=sig}
+  else if(cur==='memory'){const sig=memTabSig(a);if(k.tb.dataset.sig!==sig){k.tb.replaceChildren();k.tb.dataset.sig=sig;tabMemory(k.tb,a)}} // rebuilt on change only: its search box keeps focus (#155)
   else patch(k.tb,b=>BODY[cur](b,a));
   k.tb.dataset.tab=cur;
   if(cur!=='gear')hideTip();else if(hov)showTip()}
