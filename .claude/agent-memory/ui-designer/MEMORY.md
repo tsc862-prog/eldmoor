@@ -13,3 +13,4 @@
 - [Hall board](hall_board.md): #334 block in the Fellowship panel, hallHooks/hallBoard in sim/dmfocus.js shared with pace.js
 - [Conditions panel](conditions_panel.md): #366 world panel from S.conditions, mounted by layout.js, road first via focus()
 - [Sheet faces](sheet_faces.md): #376 portraits in the sheet column headers, canvas Map kept across rebuilds
+- [Life view](life_view.md): #389 Side by side / Life switch on the sheet, lifeview.js reads tiersView (never tiersOf)
