@@ -162,7 +162,7 @@ console.log('bars');
   const sp=$('setPop'),sb=$('setBtn');ok(sp.contains($('vTab'))&&sp.contains($('vRal'))&&sp.contains($('vSnd'))&&sp.contains($('wDev'))&&sp.contains($('vChat')),'the viewing switches live in Settings');
   sb.click();ok(!sp.hidden&&sb.getAttribute('aria-expanded')==='true','Settings opens');
   const vc=$('vChat'),was=localStorage.getItem('eldmoor.worldChatter');vc.click();
-  ok(localStorage.getItem('eldmoor.worldChatter')!==was&&/World chatter: (on|off)/.test(vc.textContent),'World chatter switches from Settings and is kept per viewer');vc.click();
+  ok(localStorage.getItem('eldmoor.worldChatter')!==was&&/Scripted chatter: (on|off)/.test(vc.textContent),'Scripted chatter switches from Settings (Developer) and is kept per viewer');vc.click();
   for(const f of document._ls.keydown||[])f({key:'Escape'});ok(sp.hidden&&sb.getAttribute('aria-expanded')==='false','Escape closes Settings');
   ok(!tb().querySelector('button.mini')||!/World chatter/.test(tb().textContent),'the Chat tab no longer carries its own World chatter switch')}
 

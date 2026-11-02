@@ -74,13 +74,19 @@ export function ensureNpcs(){if(S.npcs)return;
 
 // Speak: a role line for the trigger, filled in, pushed onto the chat buffer of every
 // living hero within earshot and shown as a bubble. Returns whether a line was said.
-export function npcSay(p,trigger,ctx={}){
+// #164: a townsperson says no scripted line of their own while the DM voices the world. Only when a Fellowship
+// member is in earshot (a meeting, a greeting, a blessing: a world character interacting with them) the
+// scripted DM speaks it for them, attributed to the NPC, with a bubble; opts.dm forces it (an agent's talk).
+// Lines are picked and the cooldown set either way, so the private RNG and the routine stay identical.
+export function npcSay(p,trigger,ctx={},opts={}){
   const R=npcRole(p.role),L=R&&R.lines[trigger];if(!L)return false;
   const pool=L[p.fac]||L[0];let line=pool[Math.floor(r()*pool.length)];
   if(pool.length>1&&line===p.lastBark)line=pool[(pool.indexOf(line)+1)%pool.length];p.lastBark=line;
   // `from` is a small stub, not the live NPC: the chat tab only needs name and faction, and
   // the save walker (sim/save.js) would otherwise copy the whole NPC into every hero's buffer.
-  const text=fill(line,p,ctx),e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc'};let heard=0;
+  const dmVoice=opts.dm||S.worldVoice!=='dm'||S.agents.some(a=>a.fellow&&a.state!=='dead'&&!a.hidden&&dist(a,p)<=HEAR);
+  if(!dmVoice){p.chatCd=COOL;return false}
+  const text=fill(line,p,ctx),e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc'};if(S.worldVoice==='dm')e.dm=true;let heard=0;
   for(const a of S.agents){if(a.state==='dead'||a.hidden||dist(a,p)>HEAR)continue;if(S.fellowship&&a.fellow)e.fh=true;(a.chat||(a.chat=[])).push(e);if(a.chat.length>CAP)a.chat.shift();heard++}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=COOL;
   const st=S.npcNews.stats;st.lines++;if(heard)st.heard++;return true}

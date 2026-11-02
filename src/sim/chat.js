@@ -41,6 +41,8 @@ export function say(a,trigger,ctx={}){
   if(pool.length>1&&line===a.lastBark)line=pool[(pool.indexOf(line)+1)%pool.length];
   a.lastBark=line;
   const text=fill(line,a,ctx);
+  // #164: the line was picked (same private draws as ever); a background hero says nothing aloud while the DM voices the world
+  if(S.worldVoice==='dm'&&!a.fellow){a.chatCd=COOL;return}
   // BRAIN: an AI-played hero asks for a line in the moment (said later by brain.js via speak);
   // with aiQuietTable the table line is held back and said only if no model line comes in time.
   if(a.brain&&brainLine(a,trigger,ctx,text)==='held'){a.chatCd=COOL;return}
@@ -75,3 +77,4 @@ export function chatTick(dt){
     if(out.length<2){p.chatT=0;continue}
     p.chatT=(p.chatT||0)+dt;if(p.chatT<BANTER)continue;p.chatT=0;
     say(out[Math.floor(r()*out.length)],'banter',{zone:p.zone})}}
+export const worldMuted=()=>S.worldVoice==='dm';

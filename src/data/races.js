@@ -62,6 +62,10 @@ export const racesOf=f=>RACES.filter(r=>r.fac===f);
 
 // Names: one shared pool so no two heroes, living or dead, ever share a name.
 const used=new Set();
+// Restored worlds: put every saved name (living or fallen) back in the pool, and give a living
+// hero who shares a name with another a numeral, so no two in one group are ever alike.
+export function reserveNames(heroes,fallen=[]){used.clear();for(const f of fallen)if(f&&f.name)used.add(f.name);
+  const seen=new Set();for(const a of heroes){if(!a||!a.name)continue;let n=a.name;if(seen.has(n)){let k=2;while(seen.has(n+' '+['','','II','III','IV','V','VI','VII'][k])&&k<7)k++;n=n+' '+['','','II','III','IV','V','VI','VII'][k];a.name=n}seen.add(n);used.add(n)}}
 export function raceName(r){let n,k=0;do{n=pickA(r.names[0])+pickA(r.names[1]);if(++k>40)n+=' '+pickA(['II','III','IV','V','VI'])}while(used.has(n));used.add(n);return n}
 
 // Pick a people for a new hero: the faction's races weighted to keep the living roster

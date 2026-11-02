@@ -18,6 +18,7 @@ import {GOODS,price} from '../data/items.js';
 import {rollScores} from './abilities.js';
 import {convertItem} from './gear.js';
 import {convertBag} from './inv.js';
+import {reserveNames} from '../data/races.js';
 
 export {SAVE_VERSION};
 
@@ -101,4 +102,5 @@ export function restore(snap){
     else S[k]=v}
   for(const n in snap.GOODS||{}){const g=GOODS[n],s=snap.GOODS[n];if(!g||!s)continue;g.supply=s.supply;g.prev=s.prev!=null?s.prev:price(n)}
   if(snap.CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
+  reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
   return S}
