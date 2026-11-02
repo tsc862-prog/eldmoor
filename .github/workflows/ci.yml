@@ -60,6 +60,7 @@ jobs:
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
+      - {name: One-window launcher and runner resume, run: npm run upcheck}
 
   minds:
     name: Brain, DM, Table, channels, memory
