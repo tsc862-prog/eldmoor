@@ -29,6 +29,11 @@
 // TABLE.liveMs wait, side by side; then the acts resolve in Fellowship slot order (never arrival order, so a seeded
 // world plays the same whatever order the answers come in), reflexes chosen at that point, and the DM narrates the
 // combined result. Only members within shouting range (#182) of the scene's anchor take part.
+// Combat rounds (#276, sim/tableround.js): elite, ambush, boss and rescue scenes play up to TR.ROUNDS rounds. The foe
+// joins the initiative order (Reflex, ties by id) and takes a scripted turn at its place; every blow is a d20 against
+// 10 + Defense, shown in the beats and in the scene's DM log entry. The fight ends when the foe falls, runs or yields,
+// or no member is left in it (fallen, fallen back, out of reach); after the last round it goes on in the world, HP and
+// round cooldowns carried over. At 3x/8x a reflex-only fight resolves every round in one step.
 // Scene state is plain data on S.table (ids only), so a save taken mid-scene resumes it.
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
