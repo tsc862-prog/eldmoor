@@ -6,10 +6,11 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
 
 ## Hard rules
 
-- **Original IP only.** Everything is WoW-*inspired*, never WoW content. No
-  Blizzard names, races, classes-as-branded, zones, characters, items, maps,
-  sprites or sounds. Generic fantasy terms (warrior, mage, orc-like brutes) are
-  fine; Azeroth, Horde, Alliance, Stormwind, Arthas etc. are not.
+- **Own world, borrowed words are fine.** This is a personal project, so copyright is not a concern.
+  Generic fantasy names and ability or item names that also appear in other games (Ambush, Sanctuary,
+  Bastion) are fine. Don't copy a franchise's distinctive proper nouns wholesale (Azeroth, Horde,
+  Alliance, Stormwind, Arthas) or its maps, sprites and sounds; Eldmoor keeps its own places, peoples
+  and characters. Prefer names that sound good over names that are merely unique.
 - **Hardcore.** Every hero has one life. Death is permanent; a fresh level-1
   recruit of the same class and guild replaces them.
 - **The Fellowship is always agent-played.** Every Fellowship member (and every replacement) is
