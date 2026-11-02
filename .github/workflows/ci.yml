@@ -80,6 +80,7 @@ jobs:
       - {name: Brain policy and relay (mock model), run: npm run braincheck}
       - {name: DM agent (mock agent and Ollama), run: npm run dmcheck}
       - {name: Table mode and staged scenes, run: npm run tablecheck}
+      - {name: Dungeon crawl room by room, run: npm run crawlcheck}
       - {name: Camp and rest, run: npm run campcheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}

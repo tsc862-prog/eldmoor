@@ -109,6 +109,7 @@ other. The rules:
   model re-prompted and stopped, the scripted takeover of an idle hero).
 - `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
+- `npm run crawlcheck`: the dungeon crawl (#65, see "Dungeon crawl" below): rooms as spec data, a Fellowship crawl opening room scenes in order, retreat, driven back and wipe at the table's dice, save mid-crawl, 8x, seeded determinism, and a seeded background world that repeats (`CRAWL_BASELINE_HASH=<hash from main>` asserts it equals main's).
 - `npm run movecheck`: class abilities (#81): `src/data/moves.js` MOVES/PASSIVES (3 active abilities with a cooldown in seconds and in rounds, 2 passives per class), the one resolver `useMove` in `src/sim/moves.js` for real-time and Table rounds, timed effects and passives in `src/sim/eff.js`, the `use_ability` agent tool, and the Abilities block (`src/ui/abilities.js`) on the Stats tab and Fellowship sheet.
 - `npm run setupcheck`, `npm run setupsmoke`: the New World setup (`src/sim/setup.js`, `src/ui/setup.js`, #133): New world opens a page to choose the Fellowship (class, name, people, mind per place) and the DM, then builds the world seeded (`init({setup})`) with agent members agent-played from the first tick and starts their runners through the relay.
 - `npm run up` (`scripts/up.mjs`) and `start-eldmoor.cmd` (Windows, double-click; it calls `node scripts\up.mjs`): one window
@@ -371,8 +372,21 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Dungeon crawl (#65, `src/sim/crawl.js`): when the Fellowship is in the group that goes down a dungeon whose spec lists
+  `rooms` (`CRYPT.rooms`, from the landmark in `src/world/spec.js`; add chambers as data: `{id, name, frame, foes:[{type, n,
+  name?, hits?, atk?}], lvl, hit, rounds, boss?}`, `type` a bestiary key incl. site foes), the run goes room by room instead of the one
+  `pw` roll. Every round of every room is a Table scene of kind `crawl` (turns, `PLAY.crawl`), the DM-framed text naming the foes left and
+  who is hurt. Options: `strike`, `guard` (draw the foes), the class special (`hold`, `ward`, `scout`, `read`), `heal`, `potion`, `retreat`.
+  Dice at the table: a strike is d20 + (level + gear*.3)/2 + the round's edge against 10 + foe level/2 (a 20 lands twice, a 1 leaves you
+  open); then each foe still standing strikes once (d20 against armour) for `room.hit` of a hero's max HP, the guard-holder drawing
+  most blows; real HP, a hero at zero is dead (`fall`, hardcore); no hidden wipe roll. Most members falling back withdraws the party
+  (a rearguard blow), a room not won in `rounds` drives it back, the last room won pays what the abstract run pays (`payClear` in
+  `dungeon.js`). The stair scene (`site`) still opens first and its choices tip every roll. Table Off (Watch) and groups without a
+  Fellowship member keep the abstract roll, so the background balance and a seeded no-Fellowship hash do not move. Wired through
+  `setCrawlHook` in `dungeon.js` (crawl.js is imported by `sim/index.js`); state is plain data on `CRYPT.group.crawl`, saved with the
+  group; the record is `S.fellowship.crawl` (runs, clears, driven, withdrawn, wipes, deaths, rooms). A world without `rooms` has no crawl.
 - Everyone at once (owner request): `PLAY` in `src/sim/table.js` says per scene kind how it is played. `turns`
-  (elite, ambush, boss, rescue, Crypt site/room): initiative order, one act changes the next. `all` (decision =
+  (elite, ambush, boss, rescue, Crypt site/room, dungeon crawl): initiative order, one act changes the next. `all` (decision =
   every vote incl. break_camp, check, choice, staged meeting/social/trap/mystery): every member present gets the
   scene at the same moment (a must-answer event), `your_turn` is true for each until it answers (then `wait` is
   allowed), answers come in any order, and each live agent has its own `turnMs` nudge and `liveMs` wait side by
