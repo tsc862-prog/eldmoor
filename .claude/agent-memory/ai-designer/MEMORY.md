@@ -20,3 +20,4 @@
 - [Quest log](quest_log.md) — several quests per hero derived from existing state; taken/held phases agent-only; DM tags h.by/h.ff
 - [Action log #248](action_log.md) — actlog.js non-enumerable ring, fight settling, unrecorded kinds, hash proof
 - [Table rounds #276](table_rounds.md) — foe in initiative, d20 vs 10+Def*20, 3-round cap, one DM log entry a scene, test pitfalls
+- [Table step #285](table_step.md) — TABLE.step hold/auto (paused 1x only), stepNext, beat.roll data, bannerOf().foe object

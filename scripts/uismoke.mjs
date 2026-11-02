@@ -553,12 +553,13 @@ console.log('start gate: ready, not just claimed');
 {const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),S=sim.S,box=$('tbanner'),spd=T.TABLE.speed;
   const ms=sim.fellows().filter(a=>a.state!=='dead').slice(0,3),m=S.mobs.find(x=>x.alive&&!x.gone);
   if(ms.length<2||!m)console.log('  skip combat banner (no members or no creature)');else{
-  const keep=S.table,hp0=ms.map(a=>a.hp),mhp=m.hp;m.hp=Math.round(m.maxhp*.6);
+  const R=(die,mod,vs,hit,crit,dmg,target,down)=>({die,mod,total:die+mod,vs,hit:!!hit,crit:!!crit,dmg,target,down:!!down}); // beat.roll (#285)
+  const keep=S.table,hp0=ms.map(a=>a.hp),mhp=m.hp,st0=T.TABLE.step;m.hp=Math.round(m.maxhp*.6);
   const sc={id:9001,kind:'elite',title:'Smoke fight',frame:['A brute bars the road.'],ids:ms.map(a=>a.id),i:1,phase:'turn',t:0,acts:{},ctx:{mob:m.id},pause:true,at:0,rd:2,fd:1,foeAt:1,
-    beats:[{id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 20+5=25 vs AC 14 (a natural 20): hit for 18',by:'agent',rd:1},
-      {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[1].name,res:'d20 3+4=7 vs AC 15: missed',by:'foe',rd:1},
-      {id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 12+5=17 vs AC 14: hit for 9',by:'agent',rd:2},
-      {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[0].name+' (drawn)',res:'d20 1+4=5 vs AC 15 (a natural 1): missed',by:'foe',rd:2}]};
+    beats:[{id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 20+5=25 vs AC 14 (a natural 20): hit for 18',by:'agent',rd:1,roll:R(20,5,14,1,1,18,'Brute')},
+      {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[1].name,res:'d20 3+4=7 vs AC 15: missed',by:'foe',rd:1,roll:R(3,4,15,0,0,0,ms[1].name)},
+      {id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'roll text the banner no longer parses',by:'agent',rd:2,roll:R(12,5,14,1,0,9,'Brute')},
+      {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[0].name+' (drawn)',res:'d20 1+4=5 vs AC 15 (a natural 1): missed',by:'foe',rd:2,roll:R(1,4,15,0,0,0,ms[0].name)}]};
   m.target=ms[0];S.table=sc;TB.renderTable(1);
   const t=()=>box.textContent,v=TB.combatView();
   ok(!box.hidden&&/ROUND 2\/3/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+'/'+(v&&v.of)+')');
@@ -577,10 +578,20 @@ console.log('start gate: ready, not just claimed');
   ok(box.querySelector('.tci')._same===1&&box.querySelectorAll('.tci')[1].querySelector('.tcp').textContent===Math.round(m.hp/m.maxhp*100)+'%'&&box.querySelectorAll('.tci')[1].querySelector('.tchp i').className==='lo','combat banner: HP patches in place, low HP marked');
   sc.rd=3;sc.i=0;sc.fd=0;TB.renderTable(1);
   ok(/Last round \(2\)/.test(box.querySelector('.trh').textContent),'combat banner: at a round\'s start the last round\'s rolls show, labelled');
-  sc.beats.push({id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 20+5=25 vs AC 14 (a natural 20): hit for 30, and it falls',by:'agent',rd:3});
+  sc.beats.push({id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 20+5=25 vs AC 14 (a natural 20): hit for 30, and it falls',by:'agent',rd:3,roll:R(20,5,14,1,1,30,'Brute',1)});
   for(let i=0;i<4;i++)sc.beats.push({id:ms[1].id,name:ms[1].name,k:'heal',text:'Heal',res:'+5 to '+ms[0].name,by:'reflex',rd:3});
   TB.renderTable(1);const r3=box.querySelectorAll('.trl');
   ok(r3.length===4&&/1 earlier/.test(box.querySelector('.trh').textContent),'combat banner: at most 4 roll lines, the rest counted');
+  {const r0=TB.combatView().rolls[0].r;ok(!!r0&&r0.crit&&r0.down&&r0.dmg===30&&r0.target==='Brute','combat banner: the rolls are the beats roll data (crit, down, damage, target)')}
+  // the watcher's round pace (#285): the mode button cycles off/hold/auto; a held round shows Next round, which releases it
+  T.TABLE.step='off';TB.renderTable(1);let sb=box.querySelector('.tstb');
+  ok(!!sb&&/Step: off/.test(sb.textContent)&&!box.querySelector('.tnext'),'combat banner: the step button shows the round pace (off)');
+  sb.click();TB.renderTable(1);ok(T.TABLE.step==='hold'&&/Step: hold/.test(box.querySelector('.tstb').textContent),'combat banner: the step button cycles to hold');
+  const i0=sc.i;sc.i=sc.ids.length;sc.sh={rd:sc.rd,t:0,go:0};TB.renderTable(1);
+  const nx=box.querySelector('.tnext');ok(!!nx&&/Round 3 is done/.test(box.textContent),'combat banner: a held round says so and offers Next round ('+(T.bannerOf()||{}).line+')');
+  nx.click();ok(sc.sh.go===1,'combat banner: Next round releases the held round');TB.renderTable(1);ok(!box.querySelector('.tnext'),'combat banner: no Next round once released');
+  T.TABLE.step='auto';sc.sh={rd:sc.rd,t:1,go:0};TB.renderTable(1);ok(/\(3 s\)/.test((box.querySelector('.tnext')||{}).textContent||'')&&/next round in 3 s/.test(box.textContent),'combat banner: auto shows the seconds left');
+  box.querySelector('.tstb').click();ok(T.TABLE.step==='off','combat banner: the step button cycles back to off');delete sc.sh;sc.i=i0;T.TABLE.step=st0;
   m.alive=false;sc.phase='outcome';sc.summary='The foe is down.';sc.fell=[ms[2]?ms[2].id:ms[1].id];TB.renderTable(1);
   const ends=[...box.querySelectorAll('.tendc')].map(e=>e.textContent);
   ok(ends.includes('The foe is down')&&ends.some(e=>/ fell$/.test(e)),'combat banner: the end reason (foe down, a member fell): '+ends.join(' | '));

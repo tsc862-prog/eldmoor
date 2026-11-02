@@ -44,6 +44,9 @@ export function reflexOf(x){if(x.kind==='hero')return score(x,'reflex')||10;if(x
 export function foeSlot(L,f){if(!f)return L.length;const fr=reflexOf(f);let n=0;
   for(const a of L){const ar=score(a,'reflex')||10;if(ar>fr||(ar===fr&&a.id<f.id))n++}return n}
 export function roll(att,t){const d=ri(1,20),b=hitOf(att),ac=acOf(t);return {d,b,ac,hit:d===20||(d!==1&&d+b>=ac),crit:d===20}}
+// The roll as data for the watcher's banner (#285): {die, mod, total, vs, hit, crit, dmg, target, down}; the beat's res text
+// keeps the same roll in words for logs and agents.
+export const rollData=(R,dmg,target,down)=>({die:R.d,mod:R.b,total:R.d+R.b,vs:R.ac,hit:R.hit,crit:R.crit,dmg:dmg||0,target,down:!!down});
 export const rollText=R=>'d20 '+R.d+'+'+R.b+'='+(R.d+R.b)+' vs AC '+R.ac+(R.crit?' (a natural 20)':R.d===1?' (a natural 1)':'');
 // One line of the round's DM log entry.
 function note(sc,by,at,R,dmg,extra){(sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by,at,d20:R?R.d:null,bonus:R?R.b:null,ac:R?R.ac:null,hit:R?R.hit:true,dmg:dmg||0,...(extra?{note:extra}:{})})}
@@ -54,27 +57,28 @@ export function flushRolls(sc){const L=sc.rl;if(!L||!L.length)return;sc.rl=[];co
   dmlog('table',null,[sc.title+': '+rs.map(n=>'round '+n+': '+L.filter(r=>r.rd===n).map(lineOf).join('; ')).join('. ')+'.'],{scene:sc.id,kind:sc.kind,rounds:sc.rd||1,sceneType:'fight',by:'scripted',rolls:L},{heroes:sc.ids.slice()})}
 
 // ---- a member's strike, with its roll ----
+// The structured roll waits on sc.rr until table.js take() puts it on the member's beat (beat.roll).
 export function memberStrike(sc,a,f){const R=roll(a,f);
-  if(!R.hit){note(sc,a.name,name(f),R,0);return rollText(R)+': missed'}
+  if(!R.hit){note(sc,a.name,name(f),R,0);sc.rr=rollData(R,0,name(f));return rollText(R)+': missed'}
   const h=f.hp,o=R.crit?{crit:1}:undefined;strike(a,f,o);const dmg=Math.max(0,Math.round(h-f.hp)),down=f.kind==='boss'?!f.alive:f.kind==='hero'?f.state==='dead':!f.alive;
-  note(sc,a.name,name(f),R,dmg,down?'down':null);return rollText(R)+': hit for '+dmg+(down?', and it falls':'')}
+  note(sc,a.name,name(f),R,dmg,down?'down':null);sc.rr=rollData(R,dmg,name(f),down);return rollText(R)+': hit for '+dmg+(down?', and it falls':'')}
 
 // ---- the foe's turn ----
 // fs: the foes acting (a staged pack acts together at its leader's place in the order); L: the members in the fight.
-// Returns beats ({id:'foe', name, k, text, res, by:'foe'}) and sets sc.end ('fled', 'yield') when the foe breaks off.
+// Returns beats ({id:'foe', name, k, text, res, by:'foe', roll?}) and sets sc.end ('fled', 'yield') when the foe breaks off.
 export function foeTurn(sc,fs,L){const out=[];
   for(const f of fs){if(!f)continue;const nm=name(f);
     if(f.kind==='hero'&&f.state!=='dead'&&f.hp<maxHp(f)*TR.YIELD*tm(f,'flee')){yieldHero(f,L);sc.end='yield';out.push(beat(nm,'yield','Yields and breaks off',null));note(sc,nm,'the fight',null,0,'yields');break}
     if(f.kind==='mob'&&fs.length===1&&!f.elite&&!f.fledOnce&&(blk(f).beh||{}).flee&&f.hp<f.maxhp*blk(f).beh.flee){f.fledOnce=true;f.fled=2.5;sc.end='fled';out.push(beat(nm,'flee','Breaks away and runs',null));note(sc,nm,'the fight',null,0,'flees');break}
     const live=L.filter(b=>b.state!=='dead'&&b.hp>0);if(!live.length)break;
     if(f.kind==='boss'){out.push(...bossTurn(sc,f,live));continue}
-    const t=targetOf(f,live),R=roll(f,t);let res;
-    if(!R.hit){res=rollText(R)+': missed';note(sc,nm,t.name,R,0)}
+    const t=targetOf(f,live),R=roll(f,t);let res,rd;
+    if(!R.hit){res=rollText(R)+': missed';note(sc,nm,t.name,R,0);rd=rollData(R,0,t.name)}
     else{const dmg=f.kind==='hero'?heroBlow(f,t,R.crit):mobBlow(f,t,R.crit?1.5:1);const down=t.state==='dead';
-      res=rollText(R)+': hit for '+dmg+(down?'; '+t.name+' falls':'');note(sc,nm,t.name,R,dmg,down?'down':null);if(down)(sc.fell||(sc.fell=[])).push(t.id)}
-    out.push(beat(nm,'attack','Strikes at '+t.name+(f.target===t?' (drawn)':''),res))}
+      res=rollText(R)+': hit for '+dmg+(down?'; '+t.name+' falls':'');note(sc,nm,t.name,R,dmg,down?'down':null);rd=rollData(R,dmg,t.name,down);if(down)(sc.fell||(sc.fell=[])).push(t.id)}
+    out.push(beat(nm,'attack','Strikes at '+t.name+(f.target===t?' (drawn)':''),res,rd))}
   return out}
-const beat=(nm,k,text,res)=>({id:'foe',name:nm,k,text,res,by:'foe'});
+const beat=(nm,k,text,res,roll)=>({id:'foe',name:nm,k,text,res,by:'foe',...(roll?{roll}:{})});
 // The member it has drawn (guard, a taunt, the one it was already fighting), else the lowest share of HP in reach.
 function targetOf(f,L){const d=f.target&&L.includes(f.target)?f.target:null;if(d)return d;
   let lo=null;for(const b of L)if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo)||(b.hp/maxHp(b)===lo.hp/maxHp(lo)&&b.id<lo.id))lo=b;return lo}
@@ -84,9 +88,9 @@ function yieldHero(f,L){for(const b of L)if(b.target===f&&['duel','assist'].incl
 // (seconds, run down by one claw's cooldown a round), on everyone in its radius with no roll, as in real time.
 function bossTurn(sc,f,L){const T=BOSSES[f.tpl||'kragmaw'],out=[],A=T.abilities&&T.abilities[0];
   const t=pickA(L),R=roll(f,t);
-  if(!R.hit){out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': missed'));note(sc,f.name,t.name,R,0)}
+  if(!R.hit){out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': missed',rollData(R,0,t.name)));note(sc,f.name,t.name,R,0)}
   else{let d=Math.round((T.attack.dmg[0]+rnd()*T.attack.dmg[1])*(R.crit?1.5:1)*dmgTaken(t));t.hp-=d;actHurt(t,f,d);const down=t.hp<=0;if(down){agentDie(t,f);(sc.fell||(sc.fell=[])).push(t.id)}
-    out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': hit for '+d+(down?'; '+t.name+' falls':'')));note(sc,f.name,t.name,R,d,down?'down':null)}
+    out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': hit for '+d+(down?'; '+t.name+' falls':''),rollData(R,d,t.name,down)));note(sc,f.name,t.name,R,d,down?'down':null)}
   if(A){if(sc.br==null)sc.br=f.breath!=null?f.breath:A.cd;sc.br-=T.attack.cd;
     if(sc.br<=0){sc.br+=A.cd;const hit=[];
       for(const b of L){if(b.state==='dead'||dist(b,f)>A.radius)continue;const d=Math.round(A.dmg[0]+rnd()*A.dmg[1]);b.hp-=d;actHurt(b,f,d,'breath');hit.push(b.name+' '+d);if(b.hp<=0){agentDie(b,f);(sc.fell||(sc.fell=[])).push(b.id)}}
