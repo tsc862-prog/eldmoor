@@ -128,7 +128,7 @@ const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the f
    ok(u2.children.filter(x=>x.classList.contains('daysep')).length>=2,'chat: day separators appear where the day changes');
    // #181: the dossier Chat tab is a per-hero filter of the chat panel's stream; the phone-width View group wraps
    {const mine=tb().querySelector('.log.chat').textContent;h.chat.push({t:'09:00',d:d0+7,from:h,text:'Only-for-me test line.',trigger:'x'});
-    const other=mem.find(m=>m!==h&&m!==sp);other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
+    const other=mem.find(m=>m!==h&&m!==sp&&m.chat)||{chat:[]};other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
     const t2=tb().querySelector('.log.chat').textContent;
     ok(/Only-for-me/.test(t2)&&!/Only-for-other/.test(t2),'dossier chat: shows this heros slice of the stream only');
     ok(tb().querySelector('.log.chat').children.length>0&&mine.length>0,'dossier chat: built from the stream');
