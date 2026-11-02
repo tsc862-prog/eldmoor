@@ -278,8 +278,9 @@ button.ficon:focus-visible,.felmenu button:focus-visible{outline:2px solid var(-
 .fhall .fhmeta{display:block;font-size:15px;padding-left:8px}
 .feldrawer{margin-top:8px;padding:6px;background:var(--panel2);max-height:60vh;overflow:auto;overflow-wrap:anywhere}
 .felroster{display:flex;flex-direction:column;gap:4px}
-.fm{display:grid;grid-template-columns:58px 1fr auto;gap:6px;align-items:center;background:var(--panel2);padding:4px 6px}
+.fm{display:grid;grid-template-columns:30px 58px 1fr auto;gap:6px;align-items:center;background:var(--panel2);padding:4px 6px}
 .fm .ftools{display:flex;gap:4px}
+.fm .fport{width:30px;height:36px;image-rendering:pixelated;background:var(--panel)}
 .fm .fn{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .fm .fmind{grid-column:1/-1}
 .mindrow{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
