@@ -51,6 +51,7 @@ if (phase) {
     await yieldLoop();
     out.found = log.length;
     await play(DAYS, SPEED);
+    out.past = S.fellowship ? S.fellowship.past.length : 0; // members lost and replaced in the run (each replacement is a new member and is enriched once)
     out.sim = simSec; out.log = log; out.totals = T ? T.totals : {sent: log.length, failed: 0}; out.rpm = T ? T.rpm() : 0; out.fails = T ? T.recentFailures() : [];
     if (phase === 'ok') {
       const snap = JSON.parse(JSON.stringify(snapshot()));
@@ -84,7 +85,8 @@ ok(rate <= BOUND, 'request rate ' + rate.toFixed(1) + '/min stays under ' + BOUN
 const mk = {}; for (const e of h.log) if (e[0] === 'memory') mk[e[1] + '|' + e[2]] = (mk[e[1] + '|' + e[2]] || 0) + 1;
 ok(Math.max(0, ...Object.values(mk)) <= 1, 'at most one memory summary per member per game day (' + (k.memory || 0) + ' sent)');
 ok((k.say || 0) <= Math.ceil(h.sim / SPEED / 3), 'chatter stays under the global say cap (' + (k.say || 0) + ' say requests)');
-ok((k.persona || 0) <= 5 && (k.backstory || 0) <= 5, 'enrichment asked once per member (' + (k.persona || 0) + ' personas, ' + (k.backstory || 0) + ' backstories)');
+const MEM = 5 + (h.past || 0); // the five founders plus one per replacement; a crypt wipe or a fall in the run is dice, not a bug
+ok((k.persona || 0) <= MEM && (k.backstory || 0) <= MEM, 'enrichment asked once per member (' + (k.persona || 0) + ' personas, ' + (k.backstory || 0) + ' backstories, ' + MEM + ' members over the run)');
 ok(h.restoreSheets === 0, 'a restore sends no persona or backstory request');
 ok(h.reask === false, 'a member with written sheets is not asked again');
 ok(h.totals.sent === h.log.length && h.rpm >= 0, 'the throttle counts every request (' + h.totals.sent + ')');
