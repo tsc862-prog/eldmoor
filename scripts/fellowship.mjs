@@ -62,7 +62,7 @@ import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
+import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, claudeBrief, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -204,8 +204,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   async function claudeTurn(m, scene, w, refl = null) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
-    const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129), the memory line (#155), what was said lately
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : memberPrompt(m.sess.turns, scene, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns) + memoryNote(b0) + talkText(b0)); // a reflection (#179): the same prompt, with tool use
+    const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129); outside a scene the fresh state header and the turn order (#401)
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : memberPrompt(m.sess.turns, scene, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns) + claudeBrief(b0)); // a reflection (#179): the same prompt, with tool use
     if (refl) out(m.name, `[reflection: ${refl.why}]`);
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
     const ac = new AbortController(); aborts.add(ac);

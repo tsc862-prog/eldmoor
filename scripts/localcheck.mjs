@@ -129,6 +129,34 @@ console.log('text-written calls and forced scene turns (issue #163)');
   ok(/forced scene turn/.test(localLine({...st, tools: 1, misses: 0, ms: 5, modelMs: 2}, 'm')), 'the turn line says it was a forced scene turn');
 }
 
+// ---------------------------------------------------------------- 1c. fenced JSON calls and DM argument shapes (issue #401)
+console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
+{
+  const {DM_TOOLS} = await import('../src/data/dm-tools.js');
+  // the live DM form: prose, then the call as a fenced json block (44 DM calls were lost this way)
+  const dmReply = 'The Fellowship rides past the old mill. A wary hermit should cross their road.\n\n```json\n{"name": "stage_scene", "arguments": {"kind": "meeting", "near": "fellowship", "frame": "A ragged hermit steps out of the reeds, leaning on a staff.", "cast": {"role": "hermit", "want": "a lost charm"}, "reason": "a lead for their oath"}}\n```\n\nThat should give them something to chew on.';
+  const fc = parseTextCalls(dmReply, DM_TOOLS);
+  ok(fc.length === 1 && fc[0].function.name === 'stage_scene' && fc[0].function.arguments.cast.role === 'hermit' && fc[0].function.arguments.reason === 'a lead for their oath', 'a ```json {"name","arguments"} block inside prose is a call');
+  const fn = cleanNarration(dmReply, DM_TOOLS, fc);
+  ok(!/```|stage_scene|"kind"/.test(fn) && /old mill/.test(fn) && /chew on/.test(fn), 'the fenced call is cut from the narration, the prose stays: ' + JSON.stringify(fn));
+  const two = parseTextCalls('First the board, then a word:\n```\n[{"tool": "pull_lever", "args": {"lever": "post_hook", "params": {"town": "Highgate", "tpl": "rescue"}, "reason": "their road"}}, {"function": {"name": "log_intent", "arguments": "{\\"text\\": \\"a rescue for them\\"}"}}]\n```', DM_TOOLS);
+  ok(two.length === 2 && two[0].function.name === 'pull_lever' && two[0].function.arguments.params.tpl === 'rescue' && two[1].function.name === 'log_intent' && two[1].function.arguments.text === 'a rescue for them', 'a fenced list, {tool,args} and {function:{name,arguments as text}} forms count too');
+  ok(parseTextCalls('Here is the plan:\n```json\n{"region": "Mirefen", "kind": "fogbound"}\n```', DM_TOOLS).length === 0 && parseTextCalls('```\nnot json at all\n```').length === 0, 'a fenced block that is not a call stays narration');
+  ok(parseTextCalls('```json\n{"name": "hunt", "arguments": {"n": 2}}\n```')[0].function.name === 'hunt', 'a hero\'s fenced call (the whole reply) runs too');
+  // a lever called as a tool, and lever params at the top level
+  const lv = cleanArgs('post_hook', {town: 'Highgate'}, DM_TOOLS);
+  ok(lv.error && /pull_lever/.test(lv.error) && /"lever":"post_hook"/.test(lv.error), 'a lever name called as a DM tool is pointed at pull_lever: ' + (lv.error || '').slice(-120));
+  ok(!/pull_lever/.test(cleanArgs('teleport', {}).error), 'a hero\'s unknown tool gets no lever hint');
+  const flat = cleanArgs('pull_lever', {lever: 'set_condition', region: 'Mirefen', kind: 'fogbound', reason: 'fog'}, DM_TOOLS);
+  ok(flat.args && flat.args.params.region === 'Mirefen' && flat.args.params.kind === 'fogbound' && flat.args.lever === 'set_condition', 'a lever\'s params given beside lever and reason are folded into params, not dropped');
+  ok(/reason/.test(cleanArgs('stage_scene', {kind: 'meeting', near: 'fellowship'}, DM_TOOLS).error || ''), 'stage_scene needs a reason in the schema');
+  // end to end: a local DM turn whose reply carries the fenced call runs it
+  const ran = []; let i = 0;
+  const replies = [{role: 'assistant', content: dmReply}, {role: 'assistant', content: 'The hermit waits on their road.'}];
+  const r = await localTurn({chat: async () => ({message: replies[Math.min(i++, replies.length - 1)], usage: {in: 10, out: 5, cost: 0}, ms: 1}), call: async (tool, args) => {ran.push([tool, args]); return {ok: true}}, sess: {system: 'You are the DM.'}, prompt: 'Your turn.', model: 'm', tools: DM_TOOLS, toolTurns: 4});
+  ok(ran.length === 1 && ran[0][0] === 'stage_scene' && ran[0][1].frame.startsWith('A ragged hermit') && r.tools === 1 && r.rejected === 0, `a local DM turn runs the fenced stage_scene call (${ran.map(x => x[0]).join(',') || 'none'})`);
+}
+
 // ---------------------------------------------------------------- the mock Ollama (scripts/mock-ollama.mjs)
 const {url: OLLAMA, seen, close: closeOllama} = await startMockOllama();
 let ctxFrom = 0; // where the runners' requests start in `seen` (after the adapter's own tests)

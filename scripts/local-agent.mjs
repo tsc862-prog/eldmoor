@@ -58,9 +58,16 @@ export function ollamaTools(list = PLAYER_TOOLS) {
 // A model's arguments checked against the tool table: {args} or {error}. Numbers given as strings are
 // coerced, unknown keys dropped, enums and required arguments enforced. The game validates again.
 export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
-  const M = byName(list), t = M.get(name); if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}`};
+  const M = byName(list), t = M.get(name);
+  // a DM calling a world lever by name (post_hook, mark_place: issue #401) is pointed at pull_lever
+  if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '')};
   let a = raw; if (typeof a === 'string') {try {a = a.trim() ? JSON.parse(a) : {}} catch {return {error: 'arguments are not valid JSON'}}}
   if (a == null) a = {}; if (typeof a !== 'object' || Array.isArray(a)) return {error: 'arguments must be an object'};
+  // a tool with one object argument (pull_lever's params): keys the tool does not take are that object's, not dropped
+  const objKeys = Object.entries(t.args || {}).filter(([, s]) => s.type === 'object').map(([k]) => k);
+  if (objKeys.length === 1) {const k = objKeys[0], extra = Object.keys(a).filter(x => !(x in (t.args || {})));
+    if (extra.length) {let base = a[k]; if (typeof base === 'string') {try {base = base.trim() ? JSON.parse(base) : {}} catch {base = null}}
+      if (base == null || (typeof base === 'object' && !Array.isArray(base))) {a = {...a, [k]: {...Object.fromEntries(extra.map(x => [x, a[x]])), ...(base || {})}}}}}
   const out = {};
   for (const [k, spec] of Object.entries(t.args || {})) {
     let v = a[k];
@@ -102,6 +109,13 @@ export function parseTextCalls(content, list = PLAYER_TOOLS) {
   const M = byName(list), s = String(content || ''), out = [];
   if (!/<tool_call>/.test(s)) {const one = parseTextCall(s, list); if (one) return [{...one, start: 0, end: s.length}]} // the whole reply is one call object
   for (const m of s.matchAll(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g)) {const c = parseTextCall(m[0], list); if (c) out.push({...c, start: m.index, end: m.index + m[0].length})}
+  // a fenced block inside prose (issue #401: 44 DM calls were lost): ```json {"name":"stage_scene","arguments":{...}} ```,
+  // also {"tool","args"}, {"function":{...}} and a list of them; a fence that is not a call stays narration
+  for (const m of s.matchAll(/```[ \t]*([A-Za-z_]*)[ \t]*\r?\n?([\s\S]*?)```/g)) {
+    if (out.some(c => m.index >= c.start && m.index < c.end)) continue;
+    const cs = fencedCalls(m[2], M); if (!cs.length) continue;
+    out.push(...cs.map((c, i) => ({function: c, start: m.index + i, end: i === cs.length - 1 ? m.index + m[0].length : m.index + i + 1})));
+  }
   const names = [...M.keys()].filter(n => /^\w+$/.test(n)).sort((a, b) => b.length - a.length);
   const re = new RegExp('(?<![\\w.])(' + names.join('|') + ')\\s*\\(', 'g');
   for (const m of s.matchAll(re)) {
@@ -113,6 +127,22 @@ export function parseTextCalls(content, list = PLAYER_TOOLS) {
     out.push({function: {name: m[1], arguments: args}, start, end});
   }
   return out.sort((a, b) => a.start - b.start);
+}
+// The calls in one fenced block: a JSON object or a list of them, each {name|tool, arguments|parameters|args} or
+// {function: {name, arguments}}. A name the tools do not know counts only with arguments (rejected with the list).
+function fencedCalls(body, M) {
+  let j; try {j = JSON.parse(String(body || '').trim())} catch {return []}
+  const one = x => {if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+    const f = x.function && typeof x.function === 'object' ? x.function : x, name = f.name || x.tool || x.name;
+    if (typeof name !== 'string' || !name) return null;
+    const hasArgs = 'arguments' in f || 'parameters' in f || 'args' in x;
+    if (!M.has(name) && !hasArgs) return null;
+    let args = f.arguments ?? f.parameters ?? x.args ?? {};
+    if (typeof args === 'string') {try {args = args.trim() ? JSON.parse(args) : {}} catch {}}
+    return {name, arguments: args}};
+  const xs = Array.isArray(j) ? j : [j], out = [];
+  for (const x of xs) {const c = one(x); if (!c) return []; out.push(c)}
+  return out;
 }
 function matchParen(s, i) {
   let depth = 0, q = null;

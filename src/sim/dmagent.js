@@ -31,7 +31,7 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
-import {pull,leverMenu,LEVERS,ready,activeOf} from './levers.js';
+import {pull,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames} from './levers.js';
 import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
 import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
@@ -307,17 +307,42 @@ function dmMemory(tool,a){const D=dmState(),b=dmBook(D);
   if(!r.ok)return r;day.notes++;const n=r.note;noteLog(op,k0||'threads',n);
   return {ok:true,[op==='add'?'remembered':op==='edit'?'updated':op==='remove'?'forgot':op==='pin'?'pinned':'unpinned']:{id:n.id,title:n.title,section:k0},...(r.archived?{archived:{id:r.archived.id,title:r.archived.title,note:'the oldest unpinned note of that section was archived (recall still finds it)'}}:{})}}
 
+// The shapes a model sends for a lever's params, made into what the lever reads (issue #401): params as a JSON string,
+// the lever's own keys at the top level beside lever/reason, and a point given as x,y / coords / "x,y" instead of {x,y}.
+// It only reshapes; the lever validates the result as before.
+const PULL_KEYS=['lever','params','reason'];
+function leverParams(name,a){let params=a.params;
+  if(typeof params==='string'){try{params=params.trim()?JSON.parse(params):{}}catch(e){return null}}
+  if(params==null)params={};if(typeof params!=='object'||Array.isArray(params))return null;params={...params};
+  const def=LEVERS[name];if(!def)return params;
+  for(const k in a)if(!PULL_KEYS.includes(k)&&k in def.params&&!(k in params))params[k]=a[k];
+  const pts=Object.keys(def.params).filter(k=>def.params[k].type==='point'),num=v=>v!==''&&v!=null&&Number.isFinite(Number(v));
+  const asPt=v=>{if(typeof v==='string'){const m=/^\s*\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?\s*$/.exec(v);return m?{x:Number(m[1]),y:Number(m[2])}:v}
+    if(Array.isArray(v)&&v.length===2&&num(v[0])&&num(v[1]))return {x:Number(v[0]),y:Number(v[1])};
+    if(v&&typeof v==='object'&&num(v.x)&&num(v.y))return {x:Number(v.x),y:Number(v.y)};return v};
+  for(const k of pts)if(params[k]!=null)params[k]=asPt(params[k]);
+  const loose=pts.filter(k=>params[k]==null);
+  if(loose.length===1){const k=loose[0],src=num(params.x)&&num(params.y)?params:num(a.x)&&num(a.y)?a:null,c=params.coords!=null?params.coords:a.coords;
+    if(src){params[k]={x:Number(src.x),y:Number(src.y)};if(!('x' in def.params))delete params.x;if(!('y' in def.params))delete params.y}
+    else if(c!=null){const p=asPt(c);if(p&&typeof p==='object'&&!Array.isArray(p)){params[k]=p;delete params.coords}}}
+  return params}
 function pullLever(a){const day=today(),D=dmState(),name=clean(a.lever,40),reason=clean(a.reason,DMA.REASON_MAX);
-  let params=a.params;if(typeof params==='string'){try{params=params.trim()?JSON.parse(params):{}}catch(e){params=null}}
-  const refuse=why=>{D.stats.refused++;dmlog('lever',null,['Lever ',{t:name||'?',c:'gd'},' refused: '+why+(reason?' (wanted: '+reason+')':'')+'.'],{lever:name,by:'dm-agent',params:params&&typeof params==='object'?params:String(a.params).slice(0,200),reason,result:'rejected: '+why});
-    return {ok:false,error:'Refused: '+why}};
-  if(!params||typeof params!=='object'||Array.isArray(params))return refuse('params must be an object');
-  if(!LEVERS[name])return refuse('no such lever (see levers)');
+  const params=leverParams(name,a);
+  const refuse=(why,usage)=>{D.stats.refused++;dmlog('lever',null,['Lever ',{t:name||'?',c:'gd'},' refused: '+why+(reason?' (wanted: '+reason+')':'')+'.'],{lever:name,by:'dm-agent',params:params&&typeof params==='object'?params:String(a.params).slice(0,200),reason,result:'rejected: '+why});
+    return {ok:false,error:'Refused: '+why+(usage?'. '+usage:''),...(usage?{usage}:{})}};
+  const call='call it as pull_lever {"lever":"'+(name||'<name>')+'","params":{...},"reason":"one sentence"}';
+  if(!name)return refuse('lever is required (one of: '+leverNames().join(', ')+')',call);
+  if(!LEVERS[name])return refuse('no such lever "'+name+'"; levers: '+leverNames().join(', '));
+  const usage=leverUsage(name)+'; '+call;
+  if(!params)return refuse('params must be an object such as {"region":"'+ZONES[0]+'"}',usage);
   if(name==='named_foe')return refuse('named foes are raised by the scripted DM inside a running scene');
+  if(!reason)return refuse('a reason is required (one sentence for the DM log)',usage);
   if(day.pulls>=DMA.PULLS_PER_DAY)return refuse('the DM agent has pulled '+DMA.PULLS_PER_DAY+' levers today; the world needs time to answer');
   const pile=pileOn(name,params);if(pile)return refuse(pile);
   const r=pull(name,params,{by:'dm-agent',reason});
-  if(!r.ok){D.stats.refused++;return {ok:false,error:'Refused: '+r.reason}}
+  // a limit, a cooldown or the reserved share is a refusal to wait out, not a wrong call: no contract with it
+  if(!r.ok){D.stats.refused++;const shape=!/^(limit|cooldown|not available)/.test(r.reason);
+    return {ok:false,error:'Refused: '+r.reason+(shape?'. '+usage:''),...(shape?{usage}:{})}}
   day.pulls++;D.stats.pulls++;
   return {ok:true,lever:name,id:r.id,effect:r.effect,hours:r.until!=null?Math.round((r.until-S.gameMin)/60):null,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY}}
 
@@ -346,8 +371,22 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
   return {ok:true,narrated:t,where:label,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
 // A person by id or name (townsfolk or a DM-placed person).
-function personOf(v){ensureNpcs();const k=clean(v,60).toLowerCase(),all=[...(S.npcs||[]),...(S.wanderers||[])];
-  return all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k)||null}
+// Names match ignoring case, spaces and punctuation too ("EdrinPask" is Edrin Pask, issue #401).
+const squeeze=s=>String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]+/g,'');
+const peopleAll=()=>{ensureNpcs();return [...(S.npcs||[]),...(S.wanderers||[])]};
+function personOf(v){const k=clean(v,60).toLowerCase(),q=squeeze(k),all=peopleAll();if(!k)return null;
+  return all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k)
+    ||(q?all.find(n=>squeeze(n.name)===q||squeeze((n.title||'')+n.name)===q):null)||null}
+// The person a call means: npc, else the person of the conversation conv (an answer may name only the conversation).
+function personFor(a){const p=personOf(a.npc);if(p||clean(a.npc,60))return p;
+  if(a.conv==null||a.conv==='')return null;const c=convById(a.conv);return c?peopleAll().find(n=>n.id===c.npc)||null:null}
+// "Nobody called X" with the closest names, so the next call can be right.
+function edits(x,y){if(x===y)return 0;const m=x.length,n=y.length;if(!m||!n)return m||n;let prev=Array.from({length:n+1},(_,j)=>j);
+  for(let i=1;i<=m;i++){const cur=[i];for(let j=1;j<=n;j++)cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(x[i-1]===y[j-1]?0:1));prev=cur}return prev[n]}
+function nobody(v){const q=squeeze(v),all=peopleAll(),nm=n=>(n.title?n.title+' ':'')+n.name;
+  if(!clean(v,40))return {ok:false,error:'npc is required: the person\'s id or name from npcs (when answering a conversation, conv alone is enough).'};
+  const near=q?all.map(n=>({n,d:Math.min(edits(q,squeeze(n.name)),edits(q,squeeze(nm(n))),squeeze(n.name).includes(q)||q.includes(squeeze(n.name))?1:99)})).sort((x,y)=>x.d-y.d).slice(0,3).filter(x=>x.d<=Math.max(3,q.length/2)):[];
+  return {ok:false,error:'Nobody called "'+clean(v,40)+'".'+(near.length?' Did you mean '+near.map(x=>nm(x.n)+' (id '+x.n.id+')').join(', ')+'?':'')+' npc takes a person\'s id or name from npcs.',...(near.length?{did_you_mean:near.map(x=>({id:x.n.id,name:nm(x.n)}))}:{})}}
 // npc_say as the answer in a conversation (#170): with conv, or to a person whose conversation waits for the DM.
 function convAnswer(a){const p=personOf(a.npc);if(!p)return null;
   const c=a.conv!=null&&a.conv!==''?convById(a.conv):convWith(p);
@@ -355,7 +394,7 @@ function convAnswer(a){const p=personOf(a.npc);if(!p)return null;
   if(!c||!(c.wait||a.conv!=null&&a.conv!==''))return null;
   return dmAnswer(c,p,a.text,{warmth:a.warmth,remember:a.remember})}
 // npc_offer (#170): one follow-up of a conversation.
-function npcOffer(a){const p=personOf(a.npc);if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs).'};
+function npcOffer(a){const p=personFor(a);if(!p)return nobody(a.npc);
   const c=a.conv!=null&&a.conv!==''?convById(a.conv):convWith(p);if(!c||c.npc!==p.id)return {ok:false,error:'No open conversation with '+p.name+': a follow-up belongs to a conversation a member started.'};
   const kind=clean(a.kind,12).toLowerCase();
   if(c.wait&&!legalOffers(c,p).includes(kind))return npcOfferApply(c,p,kind,a,'dm-agent'); // refused before the line is spoken (it says why)
@@ -363,12 +402,11 @@ function npcOffer(a){const p=personOf(a.npc);if(!p)return {ok:false,error:'Nobod
   const r=npcOfferApply(c,p,kind,a,'dm-agent');
   if(r.ok){const w=Number(a.warmth);if(Number.isFinite(w)&&w)warm(p,Math.max(-3,Math.min(3,Math.round(w))),'the DM: '+kind)}
   return said?{...r,said:said.ok}:r}
-function npcSay(a){const cv=convAnswer(a);if(cv)return cv;
-  const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)return {ok:false,error:'Say what?'};
+function npcSay(a){const p0=personFor(a);if(p0)a={...a,npc:String(p0.id)};const cv=convAnswer(a);if(cv)return cv;
+  const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)return {ok:false,error:'Say what? npc_say takes npc (id or name from npcs), text (the line), and conv when answering a conversation.'};
   if((day.npc||0)>=DMA.NPC_SAY_PER_DAY)return {ok:false,error:'Enough lines for the townsfolk for one game day ('+DMA.NPC_SAY_PER_DAY+').'};
-  ensureNpcs();const k=clean(a.npc,60).toLowerCase(),all=[...(S.npcs||[]),...(S.wanderers||[])];
-  const p=all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k);
-  if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs for ids and names).'};
+  const p=p0;
+  if(!p)return nobody(a.npc);
   if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return {ok:false,error:p.name+' is nowhere the heroes could hear them.'};
   const e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
   const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;for(const b of hs)hearLine(b,e);
@@ -377,10 +415,16 @@ function npcSay(a){const cv=convAnswer(a);if(cv)return cv;
   return {ok:true,who:(p.title?p.title+' ':'')+p.name,said:t,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
 
 const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
+// A tool name that is not a DM tool (issue #401): a lever name called as a tool (post_hook, mark_place, create_npc,
+// or create_npc_placeholder) is pointed at pull_lever with that lever's contract; anything else lists the tools.
+export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();
+  const lv=LEVERS[lo]?lo:Object.keys(LEVERS).filter(n=>lo.includes(n)).sort((x,y)=>y.length-x.length)[0];
+  if(lv&&leverNames().includes(lv))return {ok:false,error:'"'+s+'" is not a tool'+(lv===lo?'':'; it looks like the lever '+lv)+'. Levers are pulled through pull_lever: pull_lever {"lever":"'+lv+'","params":{...},"reason":"one sentence"}. '+leverUsage(lv)+'.',hint:'pull_lever',lever:lv,usage:leverUsage(lv)};
+  return {ok:false,error:'Unknown DM tool "'+s+'". Tools: '+DM_TOOLS.map(t=>t.name).join(', ')+'. World levers ('+leverNames().join(', ')+') go through pull_lever.'}}
 // One DM tool call: validated, answered, never thrown. The seat must be open.
 export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
-  const t=BY_NAME.get(tool);if(!t)return {ok:false,error:'Unknown DM tool '+String(tool).slice(0,40)+'.'};
+  const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args); // a DM present: conversations wait for it a little (#170)
   try{switch(tool){
