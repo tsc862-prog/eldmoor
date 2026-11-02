@@ -463,3 +463,22 @@ button.tbtn.danger{border-color:var(--red)}
 .tfoot a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
 .chatwidebtn{margin-left:auto}
+
+/* ---- Quests tab ---- */
+.qlog{display:flex;flex-direction:column;gap:10px}
+.qgroup{display:flex;flex-direction:column;gap:6px;min-width:0}
+.qhead{font-family:var(--px);font-size:9px;letter-spacing:.5px;color:var(--dim);text-transform:uppercase}
+.qh-board{color:var(--blue)}.qh-dm{color:var(--amber)}.qh-oath{color:var(--gold)}
+.qrow{background:var(--panel2);padding:6px 8px;border-left:3px solid var(--edge);display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere}
+.qrow.q-board{border-left-color:var(--blue)}.qrow.q-dm{border-left-color:var(--amber)}.qrow.q-oath{border-left-color:var(--gold)}
+.qrow.qfocus{outline:1px solid var(--gold)}
+.qrow.q-done,.qrow.q-failed,.qrow.q-abandoned,.qrow.q-expired{opacity:.75}
+.qtop{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:20px}
+.qplay{color:var(--gold)}
+.qbadge{font-family:var(--px);font-size:8px;padding:2px 4px;color:#0d0e19;background:var(--dim)}
+.qb-board{background:var(--blue)}.qb-dm{background:var(--amber)}.qb-oath{background:var(--gold)}
+.qstat{font-family:var(--px);font-size:8px;color:var(--dim)}.qs-failed,.qs-expired{color:var(--red)}.qs-done{color:var(--green)}
+.qmeta{color:var(--dim);font-size:18px}.qobj{font-size:18px}
+.qm i{background:var(--blue)}.q-oath .qm i{background:var(--gold)}.q-dm .qm i{background:var(--amber)}
+.qdone>summary{cursor:pointer;font-family:var(--px);font-size:9px;color:var(--dim);padding:4px 0}
+.qdone[open]>summary{margin-bottom:6px}.qdone .qrow{margin-bottom:6px}
