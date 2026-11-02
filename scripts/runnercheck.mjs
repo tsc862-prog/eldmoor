@@ -139,7 +139,7 @@ console.log('runner routes (fake children)');
     ok(kn && kn.args.join(' ') === k3.args.join(' ') && v && v.pid === kn.pid && !v.error, 'the same command line (same hero and mind), no error shown');
     const old = readFileSync(join(tmp, 'runners', 'hero-3.log'), 'utf8');
     ok(/stopped \(exit 75\)/.test(old) && !/crashed/.test(old), 'a new world is a stop in the log, not a crash');
-    const n1 = kids.length; kn.emit('exit', 0); await sleep(RESTART_MS + 400); ok(kids.length === n1, 'a normal exit is not restarted')}
+    const n1 = kids.length; kn.emit('exit', 0); await sleep(RESTART_MS + 400); ok(kids.length === n1, 'a normal exit is not restarted'); k3.killed = kn.killed = true}
   // a runner that ignores stop is killed after the grace period (skipped: shortened via a direct kill)
   s = await req(on.base, '/play/runner/stop', {method: 'POST', body: {key: 'nope'}, origin: PAGE});
   ok(s.status === 404, 'stopping an unknown runner says so');

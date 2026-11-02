@@ -21,7 +21,7 @@
 // Usage: npm run localcheck
 import http from 'node:http';
 import {spawn} from 'node:child_process';
-import {mkdtempSync, readFileSync, existsSync, rmSync} from 'node:fs';
+import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -354,6 +354,21 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const sz = sim.playerAct(a.id, 'say', {text: '我将带领团队去见萨满'});
     ok(!sz.ok && /speak in English/.test(sz.error), 'the game refuses a foreign-script line: ' + sz.error);
     sim.markPlayer(a, false)}
+
+  // I. a New World reuses the hero's id for another hero (issue #219): the runner notices, releases its claim and
+  // exits with code 75 (the supervisor starts it again); the next run sets the old session aside and takes a turn
+  {const a = pick(), oldName = a.name;
+    const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '0', '--new']);
+    ok(await until(() => R.turns.length >= 1, 30000) && existsSync(join(tmp, 'agents', a.id + '.json')), 'a runner plays and keeps its session for the hero');
+    a.name = 'Newcomer'; // the same id, another hero
+    const code = await Promise.race([R.done, sleep(15000).then(() => 'timeout')]);
+    ok(code === 75 && /\[world\] a new world: #\d+ was .*, now Newcomer/.test(R.out), `a runner whose hero was renamed under its id exits for the supervisor (code ${code})`);
+    ok(!(await health(PB)).heroes.find(h => h.id === a.id).claimed, 'and has released its claim');
+    const R2 = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '0', '--max-turns', '1']);
+    ok(await until(() => R2.turns.length >= 1, 30000) && await Promise.race([R2.done, sleep(15000).then(() => 'timeout')]) === 0, 'the restarted runner takes a turn for the new hero');
+    const oldDir = join(tmp, 'agents', 'old'), moved = existsSync(oldDir) ? readdirSync(oldDir).filter(f => f.startsWith(a.id + '-' + oldName.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 40) + '-')) : [];
+    ok(moved.length >= 1 && JSON.parse(readFileSync(join(tmp, 'agents', a.id + '.json'), 'utf8')).heroName === 'Newcomer', 'the old session is in logs/agents/old/ and the new one is for the new name');
+    a.name = oldName; sim.markPlayer(a, false)}
 
   // D. hearing: an agent's line wakes the agent heroes who hear it, at most once per few game minutes each
   {clearInterval(tick);
