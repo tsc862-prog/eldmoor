@@ -29,3 +29,5 @@ by the foe in hand (duels count). 0 -> 15 uses in that seed. Rallying Verse unch
 **How to apply:** prove "unchanged without X" with a seeded hash where X is removed from its table at runtime
 (e.g. splice `springwarden` from `CLASS_SPECS.Wildspeaker`), not by hoping the seed lacks it. See [[check-fixtures]],
 [[fellowship-always-agents]].
+
+**Camp fixture (2026-11-02).** After this change campcheck "one-hour rest ends on time" failed: no game bug (camp members never reach fightMoves). The seeded watch roll became an ambush at the end of that hour, which breaks camp with no "Camp is broken" event. Fix was to hold `CAMP.AMBUSH_P` in that fixture. Before blaming new behaviour, find the real break reason (`breakCamp` why).
