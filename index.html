@@ -24,7 +24,8 @@
       <div class="aghead"><span class="fname">Settings</span><button class="mini" data-popclose="1">Close</button></div>
       <div class="setrow"><button id="vTab" hidden title="Table mode: the world pauses at 1x for the Fellowship's scenes (Auto) or never pauses (Off, Watch mode)">Table: Auto</button><span class="dm">The world pauses at 1x for the Fellowship's scenes (Off: it never pauses).</span></div>
       <div class="setrow"><button id="vSnd" hidden title="A short chime when a Table scene opens">Sound: on</button><span class="dm">A short chime when a scene opens.</span></div>
-      <div class="setrow"><button id="vRal" hidden title="Pause the world and show an alert when the agent runner of a Fellowship member or the DM stops">Alert on runner stop: on</button><span class="dm">Pause and alert when a member's or the DM's runner stops.</span></div>
+      <div class="setrow"><button id="vRal" hidden title="Play the alert sound when the world is held because an agent runner is not connected">Alert on runner stop: on</button><span class="dm">Sound when the world is held for a missing runner.</span></div>
+      <div class="setrow" id="wFreeRow"><button id="wFree" class="dev" aria-pressed="false" title="Developer: let the world run even when a Fellowship member or the DM has no connected runner (reflexes decide for them). Until you reload.">Run without agents: off</button><span class="dm">Developer: skip the run gate (until reload).</span></div>
       <div class="setrow"><button id="vChat" title="Developer: let background heroes and townsfolk speak their scripted lines again (by default only the DM voices world characters)">Scripted chatter: off</button><span class="dm">Developer: background heroes' and townsfolk's scripted lines (off: only the DM speaks for the world).</span></div>
       <div class="setrow"><button id="wDev" class="dev" hidden aria-pressed="false" title="Developer: AI and Agent buttons on every hero, the Minds at play list and request stats">Developer</button><span class="dm">AI and Agent buttons on every hero, request stats.</span></div>
       <div class="dm agfoot">Kept in this browser.</div>
@@ -37,7 +38,8 @@
       <div class="screen" id="screen">
         <canvas id="cv" aria-label="Map of Eldmoor showing heroes and monsters"></canvas>
         <div class="hint" id="hint">Tap a hero to follow</div>
-        <div class="ralert" id="ralert" hidden role="alert"></div>
+        <div class="ralert" id="ralert" hidden role="status"></div>
+        <div class="rgate" id="rgate" hidden role="alert"></div>
         <div class="tbanner" id="tbanner" hidden aria-live="polite"></div>
         <canvas id="minimap" class="minimap" aria-label="Minimap of Eldmoor; click to move the view there"></canvas>
       </div>
