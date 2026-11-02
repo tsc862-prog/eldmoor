@@ -18,6 +18,7 @@ import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
 import {sprite,SPR,heroSprite,npcSprite,outlined} from './sprites.js';
+import {classColor,toneOf,toneName,DISP} from '../core/colors.js';
 import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
@@ -26,7 +27,7 @@ import {drawCamp,drawCampLight} from './camp.js';
 import {drawMemorials} from './memorials.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
-import {ROLE,TEXT,MARK,DISPO,LIGHT,roleOf,dispoOf} from './palette.js';
+import {TEXT,MARK,LIGHT} from './palette.js';
 import {CITY} from '../world/map.js';
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
@@ -36,7 +37,6 @@ export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,d
 const FOLLOW_VIEW=460;
 // Entities and labels this many world px outside the view are not drawn.
 const MARGIN=48;
-export const ROLE_COL=ROLE; // Fellowship role colours, as the .frole badges (palette.js)
 const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a20'};
 
 // ---- camera control (module level so the UI and tools can drive it) ----
@@ -93,7 +93,7 @@ export function createRenderer(cv,screenEl){
   function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
   // A thin disposition ellipse at the feet (close zoom only), the same colours as the UI.
-  function dispoRing(x,y,w,d){ctx.strokeStyle=DISPO[d]||DISPO.neutral;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
+  function dispoRing(x,y,w,d){ctx.strokeStyle=(DISP[d]||DISP.neutral).color;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
   // Label queue: lab() records, flushLabels() places by priority with overlap rejection in screen px.
   // The queue and box arrays are reused across frames.
   const LQ=[],POOL=[],BOX=[];
@@ -155,7 +155,7 @@ export function createRenderer(cv,screenEl){
       const px=Math.round(e.x*T),py=Math.round(e.y*T),live=e.state!=='dead';
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
       if(live)shadow(px,py,s.width);
-      if(close&&e.kind==='npc')dispoRing(px,py,s.width,dispoOf(e,S.gameMin)); // townsfolk: friendly green, wary amber, hostile red
+      if(close&&e.kind==='npc')dispoRing(px,py,s.width,toneOf(e,S.fellowship,S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
       const o=live?outlined(s):s,ow=live?1:0; // living entities get the dark outline
       ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);
       ctx.drawImage(o,-Math.floor(s.width/2)-ow,py-s.height-ow);ctx.restore();ctx.globalAlpha=1;
@@ -205,8 +205,8 @@ export function createRenderer(cv,screenEl){
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
         lab((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14,a===sel?10:fel&&fel.has(String(a.id))?8:dead?1:4)}
-      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const d=dispoOf(p,S.gameMin);if(d==='friendly'&&!near)continue; // townsfolk nameplates; a wary or hostile one in its colour at any close zoom
-        lab(p.name,p.x*T,p.y*T-17,d==='friendly'?TEXT.person:DISPO[d],12,d==='friendly'?2:5)}
+      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,S.fellowship,S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
+        lab(toneName(p,t),p.x*T,p.y*T-17,t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
       for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-17,TEXT.elite,14,6)} // named elite nameplate
       if(boss.alive&&inView(boss.x*T,boss.y*T,LM))lab('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,TEXT.elite,15,9)}
     // The Fellowship (#94): a role marker over each member and their name at any zoom (close views
@@ -214,11 +214,11 @@ export function createRenderer(cv,screenEl){
     if(S.fellowship){const px1=cam.dpr/sc,F=S.fellowship,mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
       if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
         ctx.save();ctx.strokeStyle=MARK.party;ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
-      for(const a of mem){if(!inView(a.x*T,a.y*T,40))continue;const col=ROLE[roleOf(a)]||ROLE.dps;
+      for(const a of mem){if(!inView(a.x*T,a.y*T,40))continue;const col=classColor(a.cls); // a member's marker: its class colour (one palette, core/colors.js)
         const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-(close?17:14)-(close?16:15)*px1-m;
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
-        if(!close)lab(a.name,a.x*T,a.y*T-14,a===sel?MARK.sel:TEXT.hero,13,a===sel?10:7)}}
+        if(!close)lab(a.name,a.x*T,a.y*T-14,a===sel?MARK.sel:col,13,a===sel?10:7)}}
     flushLabels(sc);
     if(close){drawBubbles(ctx,S,cam,drawText);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
