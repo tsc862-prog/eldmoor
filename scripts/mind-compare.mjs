@@ -11,7 +11,7 @@
 //                    fallbacks = the scripted rules played it (rejected, late, offline)
 //   writing          relay calls that write the member's sheet (persona, backstory, memory, chapter), as the relay saw them
 //   latency          agent turn seconds p50/p90; decision ms p50/p90 (game entries, else relay decision calls)
-//   tokens, cost     summed from the turn lines ($0 for local models)
+//   tokens, cost     summed from the turn lines ($0 for local models). Tokens in = uncached input; cache read shown apart (Claude only). Claude lines from before #282 (cumulative totals) are left out
 //   hours            the hourly world digests: hours the member was seen under this mind's runner, and how many of
 //                    them it ran on autopilot or the scripted rules (no runner) instead of its agent
 //   deaths survived  Fellowship deaths (from the digests) while the member lived; close calls = digests at 25% HP or less
@@ -19,6 +19,7 @@
 // A member with no data for a column shows "-", never 0. Names, model ids, counts and death causes only: no
 // narration, prompts or another seat's text.
 import {WRITE_KINDS} from '../src/data/prompts.js';
+import {legacyTokens} from './behavior-log.mjs';
 
 export const MC = {CLOSE: 25}; // HP percent at or below which a digest counts as a close call
 
@@ -53,7 +54,7 @@ export function compareMinds(T = [], D = [], W = []) {
 
   const rows = new Map();
   const row = (h, mind) => {const k = h.key + '|' + mind; let r = rows.get(k);
-    if (!r) rows.set(k, r = {hero: h, mind, turns: 0, empty: 0, failed: 0, table: 0, sceneTurns: 0, secs: [], tin: 0, tout: 0, tokN: 0, cost: 0, costN: 0,
+    if (!r) rows.set(k, r = {hero: h, mind, turns: 0, empty: 0, failed: 0, table: 0, sceneTurns: 0, secs: [], tin: 0, tout: 0, tokN: 0, cr: 0, crN: 0, legacy: 0, cost: 0, costN: 0,
       dec: 0, rejected: 0, fallback: 0, decMs: [], relayDec: 0, relayDecFail: 0, relayMs: [], writing: 0, writingFail: 0, hours: 0, autopilot: 0, scripted: 0, close: 0, died: null}); return r};
 
   // agent turns
@@ -67,7 +68,8 @@ export function compareMinds(T = [], D = [], W = []) {
     if (f.has('scene') || f.has('forced-scene')) r.sceneTurns++;
     r.table += (t.tools || []).filter(x => x.name === 'scene_act' && x.ok).length;
     r.secs.push(t.seconds);
-    if (Number.isFinite(t.tokensIn) || Number.isFinite(t.tokensOut)) {r.tin += t.tokensIn || 0; r.tout += t.tokensOut || 0; r.tokN++}
+    if (legacyTokens(t)) r.legacy++; // before #282: the SDK's cumulative total, not a per-turn count
+    else if (Number.isFinite(t.tokensIn) || Number.isFinite(t.tokensOut)) {r.tin += t.tokensIn || 0; r.tout += t.tokensOut || 0; r.tokN++; if (Number.isFinite(t.cacheRead)) {r.cr += t.cacheRead; r.crN++}}
     if (Number.isFinite(t.cost)) {r.cost += t.cost; r.costN++}
   }
   // decisions: settled Mind entries (game) and relay calls (decisions and writing kinds)
@@ -111,8 +113,8 @@ export function compareMinds(T = [], D = [], W = []) {
   }
   // overall per mind
   const overall = new Map();
-  for (const r of [...rows.values()].flatMap(r => [r, ...(r.folded || [])])) {let o = overall.get(r.mind); if (!o) overall.set(r.mind, o = {mind: r.mind, heroes: new Set(), turns: 0, empty: 0, failed: 0, table: 0, secs: [], tin: 0, tout: 0, tokN: 0, cost: 0, costN: 0, dec: 0, rejected: 0, fallback: 0, decMs: [], writing: 0, writingFail: 0, hours: 0, autopilot: 0, scripted: 0, close: 0, deaths: 0});
-    o.heroes.add(r.hero.key); for (const k of ['turns', 'empty', 'failed', 'table', 'tin', 'tout', 'tokN', 'cost', 'costN', 'dec', 'rejected', 'fallback', 'writing', 'writingFail', 'hours', 'autopilot', 'scripted', 'close']) o[k] += r[k];
+  for (const r of [...rows.values()].flatMap(r => [r, ...(r.folded || [])])) {let o = overall.get(r.mind); if (!o) overall.set(r.mind, o = {mind: r.mind, heroes: new Set(), turns: 0, empty: 0, failed: 0, table: 0, secs: [], tin: 0, tout: 0, tokN: 0, cr: 0, crN: 0, legacy: 0, cost: 0, costN: 0, dec: 0, rejected: 0, fallback: 0, decMs: [], writing: 0, writingFail: 0, hours: 0, autopilot: 0, scripted: 0, close: 0, deaths: 0});
+    o.heroes.add(r.hero.key); for (const k of ['turns', 'empty', 'failed', 'table', 'tin', 'tout', 'tokN', 'cr', 'crN', 'legacy', 'cost', 'costN', 'dec', 'rejected', 'fallback', 'writing', 'writingFail', 'hours', 'autopilot', 'scripted', 'close']) o[k] += r[k];
     o.secs.push(...r.secs); o.decMs.push(...(r.dec ? r.decMs : r.relayMs)); if (r.died) o.deaths++}
   const table = {opened: 0, agentTurns: 0, reflexTurns: 0}, votes = {agent: 0, reflex: 0};
   for (const w of W) {if (w.table) {table.opened += w.table.opened || 0; table.agentTurns += w.table.agentTurns || 0; table.reflexTurns += w.table.reflexTurns || 0} if (w.votes) {votes.agent += w.votes.agent || 0; votes.reflex += w.votes.reflex || 0}}
@@ -130,18 +132,20 @@ export function mindSection(T, D, W, tableFn) {
   const writes = r => {const parts = Object.entries(r.writers || {}).map(([m, n]) => n + ' by ' + m); if (r.writing) parts.unshift(r.writing + ' by this mind');
     return parts.length ? parts.join(', ') + (r.writingFail ? ' (' + r.writingFail + ' failed)' : '') : '-'};
   const lat = (xs, unit) => {const a = pctile(xs, 50), b = pctile(xs, 90); return a == null ? '-' : `${r1(a)} / ${r1(b)}${unit}`};
-  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'lifetime (game h)'],
+  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'lifetime (game h)'],
     c.rows.map(r => {const h = r.hero, t = r.turns > 0, d = r.dec > 0, life = h.lifeH == null ? '-' : r1(h.lifeH) + (h.died ? ' (died' + (r.died ? ': ' + r.died : '') + ')' : ' (alive)');
       return [h.name + (h.named === false ? ' (unnamed)' : ''), h.role || (h.fellow ? 'member' : 'agent hero'), r.mind, dash(r.turns, t), dash(r.empty, t), dash(r.failed, t), t || r.table ? r.table : '-', dash(r.dec, d), dash(r.rejected, d), dash(r.fallback, d),
-        writes(r), lat(r.secs, ' s'), lat(d ? r.decMs : r.relayMs, ' ms'), r.tokN ? `${r.tin} / ${r.tout}` : '-', r.costN ? money(r.cost) : '-',
+        writes(r), lat(r.secs, ' s'), lat(d ? r.decMs : r.relayMs, ' ms'), r.tokN ? `${r.tin} / ${r.tout}` : '-', r.crN ? r.cr : '-', r.costN ? money(r.cost) : '-',
         r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, life]})), '');
   L.push('Overall per mind:', '');
-  L.push(tableFn(['mind', 'heroes', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'fallbacks', 'sheets written (failed)', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out per turn', 'cost per turn', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths'],
+  L.push(tableFn(['mind', 'heroes', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'fallbacks', 'sheets written (failed)', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out per turn', 'cache read per turn', 'cost per turn', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths'],
     c.overall.map(o => {const t = o.turns > 0;
       return [o.mind, o.heroes.size, dash(o.turns, t), t ? `${o.empty} (${Math.round(o.empty / o.turns * 100)}%)` : '-', t ? `${o.failed} (${Math.round(o.failed / o.turns * 100)}%)` : '-', t || o.table ? o.table : '-',
         dash(o.dec, o.dec > 0), o.dec ? o.fallback : '-', o.writing ? `${o.writing} (${o.writingFail})` : '-', lat(o.secs, ' s'), lat(o.decMs, ' ms'),
-        o.tokN ? `${Math.round(o.tin / o.tokN)} / ${Math.round(o.tout / o.tokN)}` : '-', o.costN ? money(o.cost / o.costN) : '-', o.costN ? money(o.cost) : '-',
+        o.tokN ? `${Math.round(o.tin / o.tokN)} / ${Math.round(o.tout / o.tokN)}` : '-', o.crN ? Math.round(o.cr / o.crN) : '-', o.costN ? money(o.cost / o.costN) : '-', o.costN ? money(o.cost) : '-',
         o.hours ? `${o.hours} (${o.autopilot}, ${o.scripted})` : '-', o.hours ? o.close : '-', o.hours ? o.deaths : '-']})), '');
+  const legacyN = c.overall.reduce((t, o) => t + o.legacy, 0);
+  if (legacyN) L.push(`${legacyN} Claude turn line${legacyN === 1 ? '' : 's'} from before the per-turn token fix (#282) are left out of the token columns (they logged the SDK's cumulative total).`, '');
   const tt = c.table.agentTurns + c.table.reflexTurns, vv = c.votes.agent + c.votes.reflex;
   L.push(`- Table turns of agent members (the whole party, from the digests): ${c.table.agentTurns} by the agent, ${c.table.reflexTurns} by reflex${tt ? ' (' + Math.round(c.table.agentTurns / tt * 100) + '% agent)' : ''}, in ${c.table.opened} scenes.`);
   L.push(`- Votes of agent members: ${c.votes.agent} by the agent, ${c.votes.reflex} by reflex${vv ? ' (' + Math.round(c.votes.agent / vv * 100) + '% agent)' : ''}.`);
