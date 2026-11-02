@@ -32,7 +32,7 @@ const {init, step, S, snapshot, restore, dmAct, setDmSeat, dmSeatOn} = sim;
 const {DMA, pileOn} = await import('../src/sim/dmagent.js');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {fellows} = await import('../src/sim/fellowship.js');
-const {ZONES, zoneAt} = await import('../src/world/map.js');
+const {ZONES, ZPTS, zoneAt} = await import('../src/world/map.js');
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 
 // ---- determinism child: a seeded world, the seat open (silent) or not, hashed ----
@@ -44,6 +44,14 @@ if (process.argv[2] === '--hash') {
   let h = Math.round(S.gameMin); for (const a of S.agents) h = (Math.imul(h, 31) + a.lvl * 1000 + Math.round(a.xp) + Math.round(a.x * 10) * 7 + Math.round(a.hp)) | 0;
   for (const m of S.mobs) h = (Math.imul(h, 17) + Math.round(m.x * 10) + m.lvl) | 0;
   console.log('HASH ' + h); process.exit(0);
+}
+
+// ---- Fellowship-first child (issue #165): a seeded world with a Fellowship, the scripted DM alone, the share printed ----
+if (process.argv[2] === '--focus') {
+  init({fac: 0}); run(1500);
+  const {focusStats} = await import('../src/sim/dmfocus.js');
+  console.log('FOCUS ' + JSON.stringify(focusStats()) + ' H ' + Math.round(S.gameMin) + ' ' + S.agents.length + ' ' + (S.dmLog || []).length);
+  process.exit(0);
 }
 
 let fail = 0;
@@ -165,6 +173,49 @@ ok(dmSeatOn() && JSON.stringify(S.dmAgent.notes) === before && S.dmAgent.day.pul
 ok(dmAct('notes_read', {section: 'threads'}).notes.threads.length === 2, 'notes_read works on the restored world');
 run(10);
 ok(S.gameMin > snap.gameMin, 'the restored world runs on');
+
+// ---------------------------------------------------------------- 2b. the Fellowship first (issue #165)
+console.log('the Fellowship first');
+{const FO = await import('../src/sim/dmfocus.js'), ST = await import('../src/sim/staged.js'), {pull} = await import('../src/sim/levers.js'), DA = await import('./dm-agent.mjs');
+  const fo = FO.focus();
+  ok(!!fo && fo.ids.size >= 1 && fo.town && fo.zones.size >= 1, 'the DM knows the Fellowship: hall town and the regions it rides');
+  r = dmAct('dm_status');
+  const keys = Object.keys(r);
+  ok(r.ok && typeof r.fellowship_first === 'string' && keys.indexOf('fellowship_needs') >= 0 && keys.indexOf('fellowship_needs') < keys.indexOf('table') && keys.indexOf('fellowship_needs') < keys.indexOf('adventures'), 'dm_status lists the Fellowship first: fellowship_first and fellowship_needs come before the world');
+  const n = r.fellowship_needs;
+  ok(n && typeof n.summary === 'string' && n.summary.length > 10 && Array.isArray(n.items) && 'quiet' in n && n.share_of_dm_actions, 'fellowship_needs: a short summary, the items (threads, scenes, hurt members) and the share of DM actions so far: ' + (n && n.summary));
+  ok(typeof r.fellowship_change === 'string' && r.fellowship_change.length > 0, 'fellowship_change is a signature of their situation (' + r.fellowship_change + ')');
+  const sig0 = r.fellowship_change; S.fellowship.past.push({id: -1, name: 'Test'});
+  ok(dmAct('dm_status').fellowship_change !== sig0, 'a fallen member changes the signature'); S.fellowship.past.pop();
+  // the runner's bounded, event-driven cadence
+  const st = {ok: true, day: 3, gameMin: 4000, fellowship_change: 'b'};
+  ok(DA.eventDue(st, {sig: 'a', gm: 3000}, {day: 3, n: 0}) === true, 'cadence: a changed situation makes an extra turn due');
+  ok(!DA.eventDue({...st, fellowship_change: 'a'}, {sig: 'a', gm: 3000}, {}) && !DA.eventDue(st, {sig: 'a', gm: 3000}, {day: 3, n: DA.EVENT_MAX}) && !DA.eventDue(st, {sig: 'a', gm: 3950}, {}) && !DA.eventDue(st, {sig: null, gm: 3000}, {}), 'cadence: nothing new, the day cap and the minimum gap each hold it back');
+  ok(/Fellowship first:/.test(DA.dmTurnPrompt(2, {...r, day: 3, part: 'day'})) && /The Fellowship comes first/.test(DA.dmSystemPrompt(r)) && /The Fellowship comes first/.test(DA.withDmFellowshipOrders('old prompt')), 'the standing orders and every turn prompt start with the Fellowship');
+  // the reserved share of the daily limits
+  const far = ZONES.map((_, z) => z).find(z => !fo.zones.has(z) && (ZPTS[z] || []).length);
+  const zp = ZPTS[far][0], L0 = S.levers; L0.day.d = -1;
+  const fn = z => pull('mark_cleared', {at: {x: zp.x, y: zp.y}, r: 3, hours: 4}, {by: 'scripted', reason: 'test'});
+  S.levers.day = {d: Math.floor(S.gameMin / 1440), n: {mark_cleared: 4}, rz: {}, nf: {mark_cleared: 4}};
+  const rf = fn();
+  ok(!rf.ok && /kept for the Fellowship/.test(rf.reason), 'the world cannot use the reserved share of a daily limit: ' + (rf.reason || 'pulled'));
+  S.levers.day = {d: Math.floor(S.gameMin / 1440), n: {}, rz: {}, nf: {}}; S.levers.cd = {};
+  const ra = fn();
+  ok(ra.ok && S.levers.day.nf.mark_cleared === 1, 'a world pull below the reserve still goes through and is counted (' + (ra.reason || 'ok') + ')');
+  const near = fo.members[0], pn = {x: Math.round(near.x), y: Math.round(near.y)};
+  ok(FO.pullTouches('mark_cleared', {at: pn}, zoneAt(pn.x, pn.y), fo) && !FO.pullTouches('mark_cleared', {at: zp}, far, fo), 'a pull at the side of a member concerns the Fellowship; one in a far region does not');
+  const G = ST.stagedState(); G.cur = null; G.day = {d: Math.floor(S.gameMin / 1440), n: 2, nw: 2};
+  const stg = dmAct('stage_scene', {kind: 'mystery', near: Math.round(zp.x) + ',' + Math.round(zp.y), frame: 'A cairn stands crooked on the far moor, a lantern burning in it.', reason: 'test the reserve'});
+  ok(stg.ok === false && /kept for the Fellowship|spot|outside|tile|ground|far/.test(stg.error), 'a staged scene far from the Fellowship cannot take the last slot of the day: ' + stg.error);
+  G.day = {d: -1, n: 0, nw: 0}; G.cur = null;
+}
+{ // the scripted DM, alone, with a Fellowship: most of what it does concerns them, and it is deterministic
+  const run1 = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env}}), line = (run1.stdout || '').trim().split(/\r?\n/).pop();
+  const m = /^FOCUS (\{.*\}) H/.exec(line), fs_ = m ? JSON.parse(m[1]) : null;
+  ok(fs_ && fs_.acts >= 6 && fs_.share > 0.5, 'with a Fellowship, most DM actions concern it: ' + (fs_ ? fs_.fellow + ' of ' + fs_.acts + ' (' + Math.round(fs_.share * 100) + '%)' : line || run1.stderr.slice(-300)));
+  const run2 = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env}});
+  ok((run2.stdout || '').trim() === (run1.stdout || '').trim(), 'the scripted DM is deterministic under the same seed (same actions, same share)');
+}
 
 // ---------------------------------------------------------------- 3. silence never stalls the world
 console.log('silence');
