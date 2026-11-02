@@ -34,6 +34,7 @@ import {record,timeline,onRecord} from './history.js';
 import {makeHero,maxHp,goHome,seedLevel} from './heroes.js';
 import {leaveParty} from './party.js';
 import {bond} from './bonds.js';
+import {moment} from './reflect.js'; // reflection moments (#179)
 import {disableBrain,askRelay} from './brain.js';
 import {markPlayer} from './player.js';
 import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME} from './persona.js';
@@ -221,6 +222,7 @@ function onDeath(a,key){const F=S.fellowship;F.slots[key]=null;F.ids=SLOT_KEYS.m
   const who=a&&a.kind==='hero'?a:gd(a&&a.name||'a companion');
   campaign('death',who,' fell at level '+lvl+' ('+cause+'). The '+lcRole(key)+'’s place stands empty.');
   log({t:'',c:'nar'},gd(F.name),' has lost ',who,', their '+lcRole(key)+', '+cause+'. Hardcore: there is no coming back.');
+  for(const b of fellows())moment(b,'death',(a&&a.name||'a companion')+' fell ('+cause+')'); // reflection moment (#179)
   for(const b of fellows()){remember(b,'death',(a&&a.name||'A companion')+', our '+lcRole(key)+', fell ('+cause+'). One life each, and that was theirs.');
     if(b.state==='hunt'||b.state==='travel'||b.state==='follow')goHome(b)} // the survivors carry the news home
   offerReplacement(key)}

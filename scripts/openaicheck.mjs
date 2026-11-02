@@ -137,7 +137,7 @@ console.log('agent loop over the OpenAI adapter');
 // ---------------------------------------------------------------- end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-openaicheck-'));
 const kids = [];
-const cleanEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OPENAI_API_KEY: KEY, OPENAI_BASE_URL: mock.url, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30'};
+const cleanEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OPENAI_API_KEY: KEY, OPENAI_BASE_URL: mock.url, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // no reflection turns (#179) where turn counts are exact
 delete cleanEnv.OPENAI_MODEL;
 function start(args, {wait: ready = null, env = cleanEnv} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe']});

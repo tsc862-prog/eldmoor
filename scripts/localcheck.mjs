@@ -160,7 +160,7 @@ console.log('ollama adapter chat (mock server)');
 
 // ---------------------------------------------------------------- 2. the runner, end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
-const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30'}; // pacing (issue #126) kept short for the old sections
+const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // AGENT_REFLECT=0: no reflection turns where turn counts are exact; H passes --reflect (#179) // pacing (issue #126) kept short for the old sections
 const kids = [];
 function start(args, {wait: ready = null, env = childEnv} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe']});
@@ -246,7 +246,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
 {
   const sim = await import('../src/sim/index.js'), {localBackend, chooseHero} = await import('./play-headless.mjs');
   const {notify} = await import('../src/sim/notify.js'), {homeOf} = await import('../src/data/races.js');
-  const {S} = sim, {maxHp: maxHpOf} = await import('../src/sim/heroes.js'); sim.init({fellowship: false}); for (let i = 0; i < 60 * 30; i++) sim.step(1 / 60);
+  const {S} = sim, {maxHp: maxHpOf} = await import('../src/sim/heroes.js'); sim.init({fellowship: false});
+  const {REFLECT} = await import('../src/sim/reflect.js'), PER_DAY = REFLECT.PER_DAY; REFLECT.PER_DAY = 0; // no reflection moments in A-G (their turn counts are exact); H turns them on (#179)
+  for (let i = 0; i < 60 * 30; i++) sim.step(1 / 60);
   let speed = 8, last = Date.now(), hold = false; // hold: a section steps the world itself (deterministic, issue #159)
   const tick = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; if (hold) return; const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
   const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
@@ -433,6 +435,32 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       ok(later.some(t => /Said lately \(party and aloud, oldest first\): .*\[party\]: Hello friends! I am /.test(t) && /Companions you have met: \w+/.test(t) && /do not introduce yourself again/.test(t)), 'a later turn\'s header shows the party lines heard and the companions met');
       const mt = (await import('../src/sim/talk.js')).metNames(live[0]);
       ok(live.slice(1).every(b => mt.includes(b.name)), `meeting is recorded in game once both have spoken in each other's hearing (${live[0].name} met ${mt.join(', ')}; live ${live.map(b => b.name).join(', ')})`);
+    }
+
+    // H. reflection moments (issue #179): live, 130 agent turns wrote 0 memories. A lazy model (mock-lazy, which never
+    // calls remember on its own) is given a camp reflection: one forced structured answer, its notes land in the notebook
+    // (stamped as a reflection), the moment is closed at the game, and the Markdown mirror folder appears.
+    {const RF = await import('../src/sim/reflect.js'), NBm = await import('../src/sim/notebook.js'), {memoryMirror} = await import('./memory-mirror.mjs'), {readdirSync} = await import('node:fs');
+      const a = mem.find(x => x.state !== 'dead' && x.player); park(a); a.hp = a.maxhp || a.hp;
+      RF.REFLECT.PER_DAY = PER_DAY; delete a.reflect; // a fresh state: no moment left over from the scenes of F
+      const n0 = a.memories ? a.memories.notes.length : 0, r0 = seen.reflect || 0;
+      RF.moment(a, 'camp', 'Test Hollow');
+      const due = RF.reflectDue(a);
+      ok(due && due.kind === 'camp' && /making camp: Test Hollow/.test(due.why), 'making camp raises a reflection moment for the member: ' + (due && due.why));
+      last = Date.now(); const tickR = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
+      const R = runner(a, 'mock-lazy:1b', ['--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--reflect']);
+      const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]); clearInterval(tickR);
+      const fresh = (a.memories ? a.memories.notes : []).slice(n0), rf = fresh.filter(x => x.rf === 'camp');
+      ok(code === 0 && (seen.reflect || 0) > r0, 'the runner asked the lazy model for one structured reflection' + (code === 0 ? '' : ' (' + code + ')\n' + R.out.slice(-2000)));
+      ok(rf.length === 2 && rf.some(x => /Reflection: making camp: Test Hollow/.test(x.title)) && rf.some(x => x.tags.includes('lesson')), `its notes landed in the notebook, marked as written at the camp reflection (${fresh.map(x => x.title + (x.rf ? ' [' + x.rf + ']' : '')).join('; ')})`);
+      ok(/\[reflection: making camp: Test Hollow\]/.test(R.out) && /reflection \(2 memories\)/.test(R.out) && /> remember\(/.test(R.out), 'the turn line says reflection (2 memories) and the remember calls show');
+      const v = RF.reflectView(a);
+      ok(v && v.today === 1 && v.last && v.last.wrote === 2 && !(v.due && v.due.kind === 'camp'), `the moment is closed at the game (today ${v && v.today}, last wrote ${v && v.last && v.last.wrote})`);
+      ok((a.playNarr || []).some(n => /Reflects \(camp\) and keeps 2 memories/.test(n.text)), 'the Agent tab shows the reflection');
+      const mroot = join(tmp, 'mirror'), mir = memoryMirror({root: mroot, world: 'localcheck', log: () => {}}); mir.write(NBm.mirrorDirty(new Map()));
+      const find = d => existsSync(d) ? readdirSync(d, {withFileTypes: true}).flatMap(e => e.isDirectory() ? find(join(d, e.name)) : [join(d, e.name)]) : [];
+      const files = find(mroot).filter(f => /[\\/]memory[\\/]/.test(f) && f.includes(String(a.id) + '-'));
+      ok(files.some(f => /reflection-making-camp/.test(f)), `the mirror folder appears with the notes (${files.length} files)`);
     }
   }
   server.close();

@@ -374,6 +374,40 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   rmSync(logs, {recursive: true, force: true});
 }
 
+// ---- reflection moments (issue #179): the cap holds ----
+{
+  paused = true; a = S.agents.find(x => x.id === id);
+  const RF = await import('../src/sim/reflect.js'), {hostPace} = await import('../src/sim/player-host.js'), R = RF.REFLECT;
+  const gm0 = S.gameMin, day0 = Math.floor(gm0 / 1440) + 2; delete a.reflect;
+  S.gameMin = (day0 - 1) * 1440 + 8 * 60; // 08:00 on a fresh day
+  let done = 0, offered = 0;
+  for (let i = 0; i < R.PER_DAY + 3; i++) {
+    RF.moment(a, i % 2 ? 'scene' : 'camp', 'test ' + i); const due = RF.reflectDue(a);
+    if (due) {offered++; const r = await hostPace(id, {reflected: due.id, wrote: 1}); if (r.ok) done++}
+    S.gameMin += R.GAP;
+  }
+  ok(done === R.PER_DAY && offered === R.PER_DAY, `at most ${R.PER_DAY} reflections a game day, however many moments come (${done} done of ${R.PER_DAY + 3} moments)`);
+  a.playEvN = (a.playEvN || 0) + R.EV_MIN; S.gameMin = (day0 - 1) * 1440 + R.DUSK + 30;
+  ok(!RF.reflectDue(a), 'once the day\'s cap is spent, not even the evening reflection is offered');
+  delete a.reflect; S.gameMin = day0 * 1440 + 8 * 60; RF.moment(a, 'camp', 'gap test'); let due = RF.reflectDue(a);
+  ok(due && (await hostPace(id, {reflected: due.id, wrote: 0})).ok, 'a moment closed with no memory still counts (one try per moment)');
+  RF.moment(a, 'scene', 'too soon'); ok(!RF.reflectDue(a), `two reflections are at least ${R.GAP} game minutes apart`);
+  S.gameMin += R.GAP; a.playActAt = -1;
+  ok(RF.reflectDue(a) && RF.reflectDue(a).kind === 'scene', 'a waiting moment comes once the gap has passed');
+  await hostPace(id, {reflected: RF.reflectDue(a).id, wrote: 0}); S.gameMin = day0 * 1440 + R.DUSK + 10;
+  ok(!RF.reflectDue(a), 'the evening reflection is skipped when nothing happened since the last one');
+  S.gameMin += R.GAP; a.playEvN += R.EV_MIN; due = RF.reflectDue(a);
+  ok(due && due.kind === 'dusk', 'with something happened, the day ends with a reflection: ' + (due && due.why));
+  const nb = await call('remember', {title: 'Cap test', text: 'A night by the road.', tags: ['test']});
+  ok(nb.ok && !RF.reflectDue(a) && a.memories.notes.find(n => n.title === 'Cap test').rf === 'dusk', 'a note written while a moment is due closes it and is marked as a reflection');
+  S.gameMin += R.GAP; a.playEvN += R.EV_MIN; ok(!RF.reflectDue(a), 'one evening reflection a game day');
+  ok(!(await hostPace(id, {reflected: 'm999', wrote: 3})).ok, 'closing a moment that is not due is refused');
+  const bg = S.agents.find(x => !x.player && x.state !== 'dead'); RF.moment(bg, 'camp', 'x'); RF.talked(bg, ['Ann']);
+  ok(!bg.reflect && !RF.reflectDue(bg), 'a hero that is not agent-played gets no moments (the scripted sim is untouched)');
+  S.gameMin += 1440; delete a.reflect; for (let i = 0; i < R.TALK; i++) RF.talked(a, ['Bo']);
+  due = RF.reflectDue(a); ok(due && due.kind === 'talk' && /with Bo/.test(due.why), 'a conversation of ' + R.TALK + ' lines raises a moment: ' + (due && due.why));
+  delete a.reflect; S.gameMin = gm0;
+}
 // ---- NPC conversations (issue #170): a Fellowship member talks to a townsperson ----
 {paused = true;
   const F_ = await import('../src/sim/fellowship.js'), DMA = await import('../src/sim/dmagent.js'), TK = await import('../src/sim/talk.js');

@@ -31,6 +31,7 @@ import {HAMLETS,TRADES,RAIDERS,PILGRIM_ZONE,KIN,CHILD,ORIGINS,GOAL_TEXT,GOAL_DON
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
+import {moment} from './reflect.js';
 import {goHome,huntZone} from './heroes.js';
 
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!==undefined?String(v[k]):m);
@@ -100,7 +101,7 @@ function rollGoal(a,tier,bias){
 
 function next(a,tier){const g=rollGoal(a,tier,null);bump(stats().rolled,g.type);a.goal=g;return g}
 
-function complete(a){const g=a.goal;g.done=true;bump(stats().done,g.type);
+function complete(a){const g=a.goal;g.done=true;bump(stats().done,g.type);moment(a,'oath',g.text); // reflection moment (#179): agent heroes only
   const n=next(a,Math.min(TIERS.length-1,g.tier+1));
   if(g.tier>=2)timeline('oath',a,' kept a high oath: '+lc(g.text)+'.');
   log(a,fill(GOAL_DONE[g.type],g),' A new oath: ',lc(n.text),'.')}

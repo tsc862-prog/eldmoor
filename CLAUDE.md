@@ -226,6 +226,21 @@ is silent, and scene choices time out to the scripted branch, so the world never
   by the relay (from the page) or the headless world: `logs/agents/<world>/<heroId>-<name>/memory/` (`MEMORY.md`
   plus `<id>-<slug>.md` with front matter), the DM under `dm/memory/`; never read back. `--no-mirror` (or
   `RELAY_MIRROR=0`) turns the files off. The Memory tab and the DM panel's **Notes** filter show them.
+- Reflection moments (#179, `src/sim/reflect.js`): at natural pauses (making camp, the end of a Table scene, a
+  companion's death, an oath kept, a buy or sell of 150g+, a conversation of 4 lines within 3 game hours, and dusk from
+  19:00 once a game day when something happened) the state header names `reflect {id, kind, why}` and the runner's next
+  turn (a soft wake through `/play/pace {reflect:true}`; unless something cannot wait) is a short reflection: "Before you rest: what is worth remembering?". Local and
+  OpenAI minds answer one forced structured object `{notes: [{title, text, tags, about}]}` (0-3, the #163 path) that the
+  runner sends with `remember`; Claude gets the same prompt with tool use (4 tool turns). The runner closes it with
+  `POST /play/pace {reflected: id, wrote}`; a note written while a moment is due closes it too and is stamped `rf`.
+  Budget: `REFLECT.PER_DAY` 4 a game day per hero (dusk plus major events), 90 game minutes apart, a moment lapses after
+  6 game hours, dusk is skipped when nothing happened; each counts as a turn for pacing, turn caps and cost. Only
+  agent-played heroes get moments (the scripted sim is unchanged). Journal: every `journal_write` also becomes a memory
+  tagged `journal` (title from its first sentence), so the journal is searchable with `recall`. Shown in the Agent tab
+  (reflections today, the last one, new memories) and the Memory tab (NEW and REFLECTION badges); the behavior digest
+  counts memories per member, the report has "Memories written per member per game day" and a `no-memories` anomaly
+  after 2 game days without one (`BW.NO_NOTES_MIN`). `--no-reflect` or `AGENT_REFLECT=0` turns reflection turns off for a runner
+  (the checks that count exact turns do; `--reflect` turns them back on).
 - `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
   the journal and a save/restore, proves a silent agent never stalls the world, and runs two
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
