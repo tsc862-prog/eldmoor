@@ -1,12 +1,15 @@
 // A mock Ollama server for tests (scripts/localcheck.mjs, scripts/runnercheck.mjs): no Ollama and no
 // model needed. Models: mock-tools (tool calling), mock-json (no tool support: 400 on tools), mock-text
 // (writes calls as text), mock-lazy (plays like mock-tools for three turns, then only narrates a long-over
-// fight, never calling a tool: the owner's live bug, issue #126). Each turn it plays status, rest 20, a bad
-// tool (fly), wait 20, then narrates.
+// fight, never calling a tool: the owner's live bug, issue #126), mock-zh (answers in Chinese), mock-fumble
+// (issue #163: writes `(scene_act(press, "..."))`, the option unquoted, as text under a "CallCheck" label and then really calls
+// wait; a structured `format` request gets the same written call instead of JSON), mock-intro (introduces
+// itself to the party with party_say every turn, then waits: the owner's screenshot). Each turn it plays status,
+// rest 20, a bad tool (fly), wait 20, then narrates.
 // startMockOllama() -> {url, seen (every /api/chat body; seen.final counts closing calls), close()}
 import http from 'node:http';
 
-export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b'];
+export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b'];
 export async function startMockOllama() {
   const seen = [];
   const plan = {
@@ -27,6 +30,22 @@ export async function startMockOllama() {
         return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({narration: '', ...plan.json[Math.min(n, plan.json.length - 1)]})}});
       }
       const n = after.filter(m => m.role === 'assistant').length;
+      if (body.model === 'mock-fumble:1b') { // issue #163 (qwen2.5:14b live): writes scene_act as text under a made-up label, then really calls wait
+        const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
+        const pick = en ? (en.includes('press') ? 'press' : en[0]) : 'press', written = `CallCheck sees the party waiting.\n(scene_act(${pick}, "Forward, together. I'll not stand idle."))\n---\nThe hero presses on.`; // the option unquoted, as Garrwen wrote deadeye live
+        seen.fumble = (seen.fumble || 0) + 1;
+        if (body.format) return send(200, {...done, message: {role: 'assistant', content: written}}); // even the forced answer comes back as text
+        if (!body.tools || n >= 1) return send(200, {...done, message: {role: 'assistant', content: 'CallCheck: the hero pressed on with the others.'}});
+        return send(200, {...done, message: {role: 'assistant', content: written, tool_calls: [{function: {name: 'wait', arguments: {minutes: 10}}}]}});
+      }
+      if (body.model === 'mock-intro:1b') { // the owner's screenshot: introduces itself to the party every turn, then waits
+        const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
+        if (en) return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: en[0], line: 'Here.'})}});
+        const who = ((msgs[0] && msgs[0].content || '').match(/^You are (\w+)/) || [])[1] || 'Nobody';
+        const plan = [['party_say', {text: `Hello friends! I am ${who} of the Concord, sworn to recover the Fenlight Lantern.`}], ['wait', {minutes: 10}]];
+        if (!body.tools || n >= plan.length) return send(200, {...done, message: {role: 'assistant', content: `${who} greeted the party.`}});
+        return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: plan[n][0], arguments: plan[n][1]}}]}});
+      }
       if (body.model === 'mock-zh:1b') // answers in Chinese, never calling a tool (issue #126, the owner's live bug)
         return send(200, {...done, message: {role: 'assistant', content: '我将带领团队去见萨满奥兹雷克，询问新的任务。'}});
       if (body.model === 'mock-lazy:1b' && msgs.filter(m => m.role === 'user' && /^(Begin|Turn \d)/.test(m.content)).length > 3)
