@@ -52,6 +52,7 @@ import {fellows,campaign} from './fellowship.js';
 import {partySay,leaderOfF,setCampHook} from './council.js';
 import {openScene} from './table.js';
 import {reflexMay} from './runlink.js';
+import {advCampable} from './dm.js'; // a night camp may fall between an adventure's scenes (#325)
 
 export const CAMP={
   MIN_CAMP:3,        // members that must be out in the field to make a camp
@@ -93,7 +94,7 @@ function safe(x,y){if(!open(x,y))return false;
 export function campSpot(x,y){for(let r=0;r<=10;r++)for(let k=0;k<Math.max(1,r*6);k++){const ang=k/Math.max(1,r*6)*Math.PI*2,px=Math.floor(x+Math.cos(ang)*r)+.5,py=Math.floor(y+Math.sin(ang)*r)+.5;if(safe(px,py))return {x:px,y:py}}return null}
 
 // ---- who can camp ----
-const eligible=a=>a&&a.state!=='dead'&&LOOSE.includes(a.state)&&!a.adv&&!a.hidden&&!(a.splitUntil&&a.splitUntil>S.gameMin)&&!a.raid;
+const eligible=a=>a&&a.state!=='dead'&&LOOSE.includes(a.state)&&advCampable(a)&&!a.hidden&&!(a.splitUntil&&a.splitUntil>S.gameMin)&&!a.raid;
 function wantCamp(L){const h=hourNow();
   if(h>=CAMP.NIGHT_FROM||h<CAMP.NIGHT_TO)return 'night';
   const f=L.map(a=>a.hp/maxHp(a)),avg=f.reduce((s,x)=>s+x,0)/f.length;

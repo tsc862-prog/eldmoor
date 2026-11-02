@@ -18,6 +18,10 @@ Rules added in `src/sim/dm.js`:
   the Fellowship's posted bounty, `data.bounty` = the bounty id; the bounty stays posted for everyone.
 - At the gate (`heroes.js`, after `dmDepart` fails) a Fellowship leader calls `fellowBounty(a,c,tz)` before
   `chooseBounty`; it posts the bounty job only when no ff job is open, then `dmDepart` again.
+- `camp.js` `eligible` used to refuse any hero with `a.adv`; with a job nearly always under way the Fellowship stopped
+  camping (campcheck: 1 camp in 8 days, CI fail). Now `advCampable(a)` (dm.js) lets the night or worn camp fall between scenes
+  (stage `go` or the adventure's own camp wait); the job waits while they sleep (camp is not an `away` state). **Why:** camp is
+  where reflections, watches and camp talk happen; more scenes must never cost the camp.
 - All of it is gated on `focus()` or `a.fellow`, so `ELDMOOR_FELLOWSHIP=0` rolls exactly as main (hash checked).
 
 **Measured** (b325 harness, 12 seeds x 120 min, reflex Fellowship): non-crawl Fellowship scenes (ambush+check+rescue+elite+

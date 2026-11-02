@@ -727,4 +727,8 @@ export function beginJob(a,h){ensure();const mem=[a,...(a.party&&a.party.leader=
 export function abandonAdventure(a,adv){if(!adv||adv.phase!=='active')return false;
   if(adv.lead===a.id||adv.held===a.id){adv.held=adv.held||a.id; /* no walk home: the hero only stops */finish(adv,'failure','abandoned');return true}
   drop(a);return true}
+// The Fellowship's own camp (sim/camp.js) may fall on the road between an adventure's scenes (#325): with a job nearly always
+// under way they would otherwise never make camp. The job waits (foes, scene and all) until camp breaks; never mid-fight or mid-scene.
+export function advCampable(a){const adv=a&&a.adv?advOf(a.adv):null;if(!adv||adv.phase!=='active')return true;
+  return adv.stage==='go'||(adv.stage==='wait'&&adv.waitKind==='camp')}
 export const fitsJob=(h,a)=>{const mem=[a,...(a.party&&a.party.leader===a?partyMates(a):[])];const forWas=h.for;h.for=a.id;const ok=fits(h,a,mem);h.for=forWas;return ok};
