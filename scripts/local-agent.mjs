@@ -238,7 +238,68 @@ export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep
   return stat;
 }
 
-const strip = m => {const o = {role: m.role, content: m.content || ''}; if (m.tool_calls) o.tool_calls = m.tool_calls; if (m.tool_name) o.tool_name = m.tool_name; return o};
+// ---- reflection turns (issue #179) ----
+// At a reflection moment (brief.reflect, src/sim/reflect.js) a local or OpenAI member does not get the free loop (small
+// models treat remember as optional: 0 calls in 130 live turns): it is asked for ONE structured answer, an array of 0-3
+// free-form notes, which the runner submits with remember. Notes stay the agent's own: any title, text and tags.
+export const REFLECT_NOTES = 3;
+// strict: OpenAI's strict json_schema (every property required, no maxItems/maxLength; cut here instead).
+export function reflectSchema({strict = false} = {}) {
+  const s = (d, n) => ({type: 'string', description: d, ...(strict ? {} : {maxLength: n})});
+  return {type: 'object', additionalProperties: false, required: ['notes'], properties: {notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
+    description: 'The memories you want to keep (0-3); empty if nothing is worth it',
+    items: {type: 'object', additionalProperties: false, required: strict ? ['title', 'text', 'tags', 'about'] : ['title', 'text', 'tags'], properties: {
+      title: s('A short title of your choosing', 80), text: s('The memory in your own words', 600),
+      tags: {type: 'array', items: {type: 'string'}, description: 'A few tags of your choosing'},
+      about: s('Who or what it concerns (a name, a place), or empty', 60)}}}}};
+}
+// What the member did lately, from its own compact conversation (sess.local.history), for the reflection prompt.
+export function recentOf(sess, chars = 2400) {
+  const h = (sess && sess.local && sess.local.history) || [], out = [];
+  for (let i = h.length - 1; i >= 0 && out.join('\n').length < chars; i--) {const m = h[i];
+    const t = m.role === 'tool' ? `(${m.tool_name || 'tool'} answered) ${String(m.content || '').slice(0, 240)}` : m.role === 'assistant' ? [String(m.content || '').trim(), ...(m.tool_calls || []).map(c => `you called ${c.function && c.function.name}(${JSON.stringify(c.function && c.function.arguments || {}).slice(0, 120)})`)].filter(Boolean).join(' / ') : '';
+    if (t) out.unshift(t)}
+  return out.join('\n').slice(-chars);
+}
+// The notes of a structured answer, cleaned (0-3, text required, tags strings). -> [{title, text, tags, about?}] or null (not the JSON)
+export function reflectNotes(text) {
+  let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
+  const L = Array.isArray(j) ? j : j && Array.isArray(j.notes) ? j.notes : j && typeof j === 'object' && /^none$/i.test(String(j.notes || '')) ? [] : null;
+  if (!L) return null;
+  return L.filter(n => n && typeof n === 'object' && String(n.text || '').trim()).slice(0, REFLECT_NOTES).map(n => ({title: String(n.title || '').slice(0, 80), text: cleanNarration(String(n.text), PLAYER_TOOLS, []).slice(0, 600),
+    tags: (Array.isArray(n.tags) ? n.tags : String(n.tags || '').split(',')).map(x => String(x).trim()).filter(Boolean).slice(0, 6), ...(String(n.about || '').trim() ? {about: String(n.about).trim().slice(0, 60)} : {})})).filter(n => n.text);
+}
+// One reflection turn: at most two asks, then remember per note by the runner. moment: brief.reflect; context: the turn's
+// state header text (pacing.mjs briefText). -> a turn record like localTurn's (mode 'reflect', notes: titles written).
+export async function reflectTurn({ask, call, sess, moment, prompt, context = '', on = () => {}, keep = true, strict = false}) {
+  const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'reflect', forced: true, calls: [], misses: 0, notes: [], moment: moment && moment.id};
+  const recent = recentOf(sess), user = [recent ? 'What you did and heard lately (your own turns):\n' + recent : '', context ? context.trim() : '', prompt].filter(Boolean).join('\n\n');
+  let notes = null, note = '';
+  for (let k = 0; k < 2 && !notes; k++) {
+    const r = await ask(sess.system || '', user + note, reflectSchema({strict})), u = r.usage || {};
+    stat.modelCalls++; stat.in += u.in || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
+    notes = reflectNotes(r.text);
+    if (!notes) {const w = parseTextCalls(r.text).filter(c => c.function.name === 'remember').map(c => c.function.arguments).filter(a => a && a.text); if (w.length) notes = w.slice(0, REFLECT_NOTES)} // remember written as text still counts
+    if (!notes) {stat.misses++; note = '\n\nThat was not the JSON object. Answer only with {"notes": [...]} (an empty list for none).'}
+  }
+  for (const n of notes || []) {
+    on('tool', 'remember', n); stat.tools++;
+    let r; try {r = await call('remember', n)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    on('result', typeof r === 'string' ? r : JSON.stringify(r));
+    if (r && r.ok !== false) {stat.calls.push({name: 'remember', ok: true}); stat.notes.push(n.title || n.text.slice(0, 40))} else {stat.rejected++; stat.calls.push({name: 'remember', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
+    if (r && r.dead) {stat.dead = true; break}
+  }
+  stat.answered = !!notes; stat.wrote = stat.notes.length;
+  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) : '';
+  if (keep && stat.wrote) {const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
+    L.history.push({role: 'user', content: 'A moment to reflect: ' + String(moment && moment.why || ''), turn: 1}, {role: 'assistant', content: stat.narration});
+    L.tokensIn += stat.in; L.tokensOut += stat.out; L.dropped += trimHistory(L.history, LOCAL_DEFAULTS.historyChars); L.seconds += (Date.now() - t0) / 1000}
+  if (stat.narration) on('text', stat.narration);
+  stat.ms = Date.now() - t0;
+  return stat;
+}
+
+const strip = m => {const o ={role: m.role, content: m.content || ''}; if (m.tool_calls) o.tool_calls = m.tool_calls; if (m.tool_name) o.tool_name = m.tool_name; return o};
 const cut = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
 // Drop the oldest whole turns (a turn starts at a message marked turn:1) until the history fits.
 export function trimHistory(h, budget) {
@@ -345,7 +406,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
 }
 
 // Marks on a turn line (issue #126): the model was told to act, or only repeated itself.
-const turnFlags = st => (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : '');
+const turnFlags = st => (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : '');
 // The cost line for a local turn: tokens and seconds, cost 0.
 export const localLine = (st, model) => `${model} (local) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | $0 (local)${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 

@@ -22,7 +22,7 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   the runner-stop alert pauses the world and asks the owner. Background heroes may be scripted.
 - **The DM serves the Fellowship first, then the world.** The DM's priorities are the Fellowship first, then the overall game world, for the DM agent and the scripted DM alike: each turn or refresh starts with where the Fellowship is, their open threads and oaths, pending decisions and what would make their next game hours interesting; hooks, rumours, people, places and staged scenes go to their road first; world-shaping that does not touch them comes after, and only when nothing is pending for them. A share of every daily lever and staging limit is reserved for them. See "DM agent" below.
 - **In-game channels only.** The DM and the players (Fellowship members, agent-played heroes)
-  communicate only inside the game: in-game chat (say in earshot, the party channel, townsfolk, the
+  communicate only inside the game: in-game chat (say in earshot, party shouts in range, townsfolk, the
   DM's `narrate` and `npc_say`) and what their characters can see. Nobody messages anyone directly
   outside it. A hero's tools, runner prompts and brain snapshots never carry DM notes, the DM log,
   lever reasons, or another hero's journal, memories, persona, mind, narration or session; a claimed
@@ -157,7 +157,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   quarrel replies or table lines; a silent agent's table reflex acts without a word). Its own lines (say,
   party_say, a table line) show "AGENT · <runner model>" in the Chat tab. Agents speak only English: the
   game refuses a say/party_say that is mostly non-Latin script.
-- Hearing: a line from an agent-played hero (aloud in earshot, or on the party channel) starts each listening
+- Hearing: a line from an agent-played hero (aloud in earshot, or a party shout in range) starts each listening
   agent's turn at once, at most once per `PK.HEAR_WAKE` (15) game minutes per listener; narrator, NPC and
   scripted party lines wake after the gap. When every member at a Fellowship camp is agent-played, the agents
   are told the fire is lit and talk if they like.
@@ -226,6 +226,21 @@ is silent, and scene choices time out to the scripted branch, so the world never
   by the relay (from the page) or the headless world: `logs/agents/<world>/<heroId>-<name>/memory/` (`MEMORY.md`
   plus `<id>-<slug>.md` with front matter), the DM under `dm/memory/`; never read back. `--no-mirror` (or
   `RELAY_MIRROR=0`) turns the files off. The Memory tab and the DM panel's **Notes** filter show them.
+- Reflection moments (#179, `src/sim/reflect.js`): at natural pauses (making camp, the end of a Table scene, a
+  companion's death, an oath kept, a buy or sell of 150g+, a conversation of 4 lines within 3 game hours, and dusk from
+  19:00 once a game day when something happened) the state header names `reflect {id, kind, why}` and the runner's next
+  turn (a soft wake through `/play/pace {reflect:true}`; unless something cannot wait) is a short reflection: "Before you rest: what is worth remembering?". Local and
+  OpenAI minds answer one forced structured object `{notes: [{title, text, tags, about}]}` (0-3, the #163 path) that the
+  runner sends with `remember`; Claude gets the same prompt with tool use (4 tool turns). The runner closes it with
+  `POST /play/pace {reflected: id, wrote}`; a note written while a moment is due closes it too and is stamped `rf`.
+  Budget: `REFLECT.PER_DAY` 4 a game day per hero (dusk plus major events), 90 game minutes apart, a moment lapses after
+  6 game hours, dusk is skipped when nothing happened; each counts as a turn for pacing, turn caps and cost. Only
+  agent-played heroes get moments (the scripted sim is unchanged). Journal: every `journal_write` also becomes a memory
+  tagged `journal` (title from its first sentence), so the journal is searchable with `recall`. Shown in the Agent tab
+  (reflections today, the last one, new memories) and the Memory tab (NEW and REFLECTION badges); the behavior digest
+  counts memories per member, the report has "Memories written per member per game day" and a `no-memories` anomaly
+  after 2 game days without one (`BW.NO_NOTES_MIN`). `--no-reflect` or `AGENT_REFLECT=0` turns reflection turns off for a runner
+  (the checks that count exact turns do; `--reflect` turns them back on).
 - `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
   the journal and a save/restore, proves a silent agent never stalls the world, and runs two
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
@@ -261,11 +276,22 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   than the leader between scenes. Combined log `logs/fellowship.log`, per-run cost per member
   in `logs/fellowship-runs.jsonl`.
 - Party tools (`src/data/player-tools.js`, `src/sim/council.js`): `party_say`/`party_read`
-  (party channel, Chat tab and bubble), `propose`/`vote` (job, crypt, raid, split, other; the
+  (a shout in range, Chat tab and bubble), `propose`/`vote` (job, crypt, raid, split, other; the
   leader settles it: majority, leader breaks ties; members with no runner vote by reflex, a live
   agent's vote is waited for, see above), leader-only `lead_to`, `leave_party` (splits off for 6 game hours, costs bonds).
   A Crypt group or raid takes the whole Fellowship or none of it; an agent-played Fellowship
   is asked first (a `crypt`/`raid` proposal).
+- Talking takes presence (#182, `src/sim/reach.js`): `party_say` is a shout heard within `REACH.SHOUT` 12 tiles
+  (less in fog and storm; `say` stays at 7), and the result says who heard and who was too far away. Only members in
+  range hear a proposal and vote (the absent hear of it when they rejoin, and the leader settles with those present);
+  `lead_to` moves those in range; a Crypt or raid call needs everyone together (a reflex-only party, as in `npm run sim`,
+  moves as one and is not held to it). `leave_party {where, when_hours}` and a `split` proposal's `meet_at`/`meet_in_hours`
+  record a meeting plan (an open thread, plus a memory for those who heard it). `send_courier` (hired at a town gate,
+  a few gold by distance, about 1.5 h plus 6 min a tile) is the one way to reach someone out of range. A member back after
+  2+ hours apart: one present companion is told what was missed and asked to say it; the returner is told only to ask.
+  The standing orders (`scripts/fellowship.mjs`, `scripts/agent-player.mjs`) say that distance cuts them off. The Chat tab
+  shows a shout as "Kerin shouts: ..." with a dim "(Lorwyn, Fena)" of who heard, or "Kerin calls out, but no one is near";
+  there is no "Party" channel tag any more.
 - Table mode (`src/sim/table.js`, banner `src/ui/table.js`): Crypt entry and inner chamber,
   Kragmaw, elite/named foes, enemy ambushes, a member below 25% HP, DM checks and choice
   scenes on their adventures, and proposals open a scene. At 1x `step()` pauses the world
@@ -474,7 +500,7 @@ encounters and speak at their tables (issue #132, below).
 The owner's rule: the DM and the players talk only inside the game. How it holds:
 
 - Heroes hear, they do not read minds. Everything said reaches a hero as a line in its chat buffer
-  (`a.chat`): `say` within earshot, the party channel, townsfolk, and the DM's `narrate` / `npc_say`.
+  (`a.chat`): `say` within earshot, party shouts within 12 tiles (#182; couriers carry word farther), townsfolk, and the DM's `narrate` / `npc_say`.
   Agents read it with `chat_read` (and `party_read`), and as events ("The narrator: ..."); a brain
   hero's snapshot carries its last heard lines. The Table banner and `tableView` show a narrate line
   sent to the table. Hero tools never answer with DM notes, the DM log, lever reasons, or another

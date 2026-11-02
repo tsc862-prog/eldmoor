@@ -143,7 +143,12 @@ const said = {narr: 'The fog smells of ' + secret('narr') + ' and wet stone.', p
 r = DMA.dmAct('narrate', {text: said.narr, near: A.name, radius: 6});
 ok(r.ok && r.heard_by >= 3 && r.heroes.includes(A.name) && !r.heroes.includes(B.name), `narrate near ${A.name}: heard by ${r.heard_by} (${(r.heroes || []).join(', ')})`);
 ok((A.chat || []).some(e => e.text === said.narr && e.from && e.from.kind === 'dm') && !(B.chat || []).some(e => e.text === said.narr), 'A hears the narrator; B, far away, does not');
-ok(act(B, 'party_say', {text: said.party}).ok, 'B speaks on the party channel');
+// talking takes presence (#182): B, far from A, shouts and A hears nothing; the result says who was too far
+const farLine = 'Is anyone there? ' + secret('far');
+r = act(B, 'party_say', {text: farLine});
+ok(r.ok && (r.too_far || []).includes(A.name) && !(A.chat || []).some(e => e.party && e.text === farLine) && /too far away/.test(r.note || ''), 'B shouts far from A: A does not hear it, B is told (' + (r.note || r.error) + ')');
+{const bx = {x: B.x, y: B.y}; B.x = A.x + 1; B.y = A.y; r = act(B, 'party_say', {text: said.party}); B.x = bx.x; B.y = bx.y;
+ ok(r.ok && r.heard_by.includes(A.name), 'B shouts beside A: A hears it (' + r.note + ')')}
 // an NPC: the nearest townsperson to A's home gate, with A walked next to them
 const npc = (S.npcs || []).filter(p => Number.isFinite(p.x)).sort((p, q) => dist(p, homeOf(A).gate) - dist(q, homeOf(A).gate))[0];
 const before = {x: A.x, y: A.y};
@@ -183,7 +188,7 @@ ok(JSON.stringify(first.status.events || []).includes(said.npc) || (first.chat_r
 for (const t of PLAYER_TOOLS) if (t.name !== 'wait') keep('A ' + t.name, act(A, t.name, argsFor[t.name] || {}));
 // A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
 for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));
-ok(act(A, 'recall', {n: 20}).notes.every(n => n.title === 'Road notes'), 'A\'s recall finds only A\'s own note, whatever it asks');
+ok(act(A, 'recall', {n: 20}).notes.every(n => n.title === 'Road notes' || n.title === 'A writes.'), 'A\'s recall finds only A\'s own notes (its note and its journal entry, #179), whatever it asks');
 {const br = keep('A pace brief', PC.paceBrief(A.id)); keep('A memory line', memoryNote(br.brief)); keep('A brief text', SIM.S && br.brief ? JSON.stringify(br.brief) : '')}
 // a wait, finished by the host the way sim/player-host.js does
 const w = act(A, 'wait', {minutes: 10}); run(3); keep('A wait', P.finishWait(w.pending, true));
@@ -311,9 +316,10 @@ const mir = MM.memoryMirror({root: LOGS, world: 'check'}), sentM = new Map();
 const flush = () => {const out = NBm.mirrorDirty(sentM); mir.write(out); for (const o of out) sentM.set(o.key, o.sig); return out};
 flush();
 const dirOf = h => join(LOGS, 'check', h.id + '-' + MM.slug(h.name, 30), 'memory');
-ok(existsSync(join(dirOf(B), 'MEMORY.md')) && existsSync(join(dirOf(B), '1-what-i-hide.md')), 'mirror: logs/agents/<world>/<id>-<name>/memory/ with MEMORY.md and <id>-<slug>.md');
-{const f = readFileSync(join(dirOf(B), '1-what-i-hide.md'), 'utf8');
-  ok(/^---\nid: 1\ntitle: "What I hide"\ntags: \["secret"\]\nabout: ".+"\nday: \d+/.test(f) && f.includes(SECRETS.bNote), 'front matter (title, tags, about, game day) and the text')}
+const hideF = (existsSync(dirOf(B)) ? readdirSync(dirOf(B)) : []).find(f => /^\d+-what-i-hide\.md$/.test(f)) || 'none'; // B's journal entry is note 1 (#179: journal entries are memories too)
+ok(existsSync(join(dirOf(B), 'MEMORY.md')) && existsSync(join(dirOf(B), hideF)), 'mirror: logs/agents/<world>/<id>-<name>/memory/ with MEMORY.md and <id>-<slug>.md');
+{const f = readFileSync(join(dirOf(B), hideF), 'utf8');
+  ok(/^---\nid: \d+\ntitle: "What I hide"\ntags: \["secret"\]\nabout: ".+"\nday: \d+/.test(f) && f.includes(SECRETS.bNote), 'front matter (title, tags, about, game day) and the text')}
 ok(existsSync(join(LOGS, 'check', 'dm', 'memory', 'MEMORY.md')) && readdirSync(join(LOGS, 'check', 'dm', 'memory')).some(f => /the-fogbound-road/.test(f)), 'the DM\'s notes go under dm/');
 ok(/Fallen/.test(readFileSync(join(dirOf(D2), 'MEMORY.md'), 'utf8')), 'a fallen hero\'s index says the notes died with them');
 act(C1, 'forget', {id: id1});

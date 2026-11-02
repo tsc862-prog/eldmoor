@@ -15,10 +15,13 @@ const q={hero:'',dm:''};
 const matches=(n,query)=>{const qs=words(query);if(!qs.length)return true;const ws=words([n.title,(n.tags||[]).join(' '),n.about,n.text].join(' '));
   return qs.every(x=>ws.some(w=>w.startsWith(x)))};
 const order=(x,y)=>(y.pin?1:0)-(x.pin?1:0)||(y.up??y.gm??0)-(x.up??x.gm??0)||y.id-x.id;
+const NEW_MIN=360; // game minutes a note shows as NEW (#179)
 function noteLi(n,sec){const li=el('li');
   li.append(el('time',null,'D'+(n.day||'?')+(n.upDay&&n.upDay!==n.day?'→'+n.upDay:'')));
   if(n.pin)li.append(el('span','badge',(n.tags||[]).includes('letter')?'LETTER':'PIN'),' ');
   if(n.arch)li.append(el('span','badge','OLD'),' ');
+  if(!n.arch&&S.gameMin-(n.gm??-1e9)<=NEW_MIN)li.append(el('span','badge','NEW'),' ');
+  if(n.rf){const b=el('span','badge','REFLECTION');b.title='Written at a reflection moment ('+n.rf+')';li.append(b,' ')}
   if(sec)li.append(el('span','dm',sec+' · '));
   li.append(el('b',null,'#'+n.id+' '+(n.title||String(n.text||'').slice(0,40))),' ');
   if(n.about)li.append(el('span','dm','about '+n.about+' '));
@@ -28,7 +31,7 @@ function searchBox(key,onChange){const i=el('input','sinput');i.type='search';i.
   i.style.cssText='width:100%;box-sizing:border-box;font:inherit;background:#0a0b14;color:inherit;border:1px solid #333;padding:2px 4px;margin:2px 0';
   i.addEventListener('input',()=>{q[key]=i.value;onChange()});return i}
 
-export const notebookSig=a=>{const M=a&&a.memories;return M?(a.id+':'+(M.v||0)+':'+a.state):''};
+export const notebookSig=a=>{const M=a&&a.memories;return M?(a.id+':'+(M.v||0)+':'+a.state+':'+Math.floor(S.gameMin/60)):''}; // the hour: NEW badges fade
 export function renderNotebook(b,a){const M=a.memories;
   b.append(el('div','dm','Memories ('+(M?M.notes.length:0)+(M&&M.arch.length?' + '+M.arch.length+' archived':'')+')'+(a.state==='dead'?' · died with them':'')));
   if(!M||!M.notes.length&&!M.arch.length){b.append(el('div','dm',a.player?'No memories written yet (the agent keeps them with remember).':'Only agent-played heroes keep a notebook.'));return}

@@ -51,7 +51,8 @@ import {loadEnv, PRICES} from './relay.mjs';
 import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
-import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk} from './local-agent.mjs';
+import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
+import {reflectPrompt, reflectNow, closeReflection} from './pacing.mjs'; // reflection moments (#179)
 import Anthropic from '@anthropic-ai/sdk';
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
@@ -80,7 +81,7 @@ export function systemPrompt(st) {
     '',
     'How to play:',
     '- You act only through the tools. You know only what they tell you: what you can see nearby, what you hear, and the news.',
-    '- Everyone you deal with is in the game, and so are your words: you speak with say (and party_say in a party) and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way.',
+    '- Everyone you deal with is in the game, and so are your words: you speak with say (heard within about 7 tiles) and party_say in a party (a shout heard within about 12 tiles), and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way. Distance cuts you off: beyond shouting range your companions neither hear you nor your proposals and votes, so before you part agree where and when to meet again and remember it; only a paid courier from a town gate (send_courier) carries word farther, slowly.',
     '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns early, something needs you: read the events.',
     '- Grow stronger: hunt in your level band, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice. Read it back with journal_read when you resume.',
@@ -125,6 +126,15 @@ async function forcedScene({b0, w, base, heroId, sess, ask, strict = false, keep
   if (!r.tools) console.log(`  [scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`);
   return r;
 }
+// A reflection moment (issue #179, brief.reflect): one forced structured answer of 0-3 notes, sent with remember by the
+// runner, then the moment is closed at the game. -> the turn record, or null when no moment is due (or something cannot wait).
+async function reflectLocal({b0, w, base, heroId, sess, ask, strict = false, on}) {
+  if (!reflectNow(b0, w)) return null;
+  console.log(`  [reflection: ${b0.reflect.why}]`);
+  const r = await reflectTurn({ask, strict, call: (tool, args) => play(base, heroId, tool, args), sess, moment: b0.reflect, prompt: reflectPrompt(b0.reflect, {tools: false}), context: briefText(b0), on});
+  await closeReflection(base, heroId, RUNNER, b0.reflect.id, r.wrote);
+  return r;
+}
 const sumTurns = (r0, r) => {if (r0 && r && r !== r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0; return r};
 
 // The local runner (issue #97 part 2): the same turns, claims and session file, played by an Ollama
@@ -144,8 +154,9 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
     {const n = await localModelNote(ol, rs.model); if (n && n !== lastNote) console.log('[agent] ' + n); lastNote = n} // before every turn: another model on the GPU
     const b0 = await pacer.brief(); let err = null;
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
-    try {r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model, {numCtx: numCtx ? Number(numCtx) : null}), on}); // a Fellowship member's own scene (issue #163)
-      if (!r || !r.tools) r = sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns,
+    try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model, {numCtx: numCtx ? Number(numCtx) : null}), on}); // a reflection moment (issue #179)
+      if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model, {numCtx: numCtx ? Number(numCtx) : null}), on}); // a Fellowship member's own scene (issue #163)
+      if (r && r.mode !== 'reflect' && !r.tools || !r) r = sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns,
       opts: numCtx ? {numCtx: Number(numCtx)} : {}, on}))}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
@@ -172,8 +183,9 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     const b0 = await pacer.brief(); let err = null;
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
-    try {r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a Fellowship member's own scene (issue #163)
-      if (!r || !r.tools) r = sumTurns(r, await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns, on}))}
+    try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a reflection moment (issue #179)
+      if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a Fellowship member's own scene (issue #163)
+      if (r && r.mode !== 'reflect' && !r.tools || !r) r = sumTurns(r, await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns, on}))}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
@@ -255,7 +267,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries only its memory line (#155)
-    const prompt = turnPrompt(sess.turns, w) + memoryNote(b0);
+    const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + memoryNote(b0);
+    if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
@@ -265,7 +279,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       // the hero rides on every MCP request (header, and the query for clients that drop headers)
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Hero': String(heroId), 'X-Eldmoor-Runner': runner}, timeout: 90000}},
       tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
-      settings: {autoCompactEnabled: true}, maxTurns: toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
+      settings: {autoCompactEnabled: true}, maxTurns: refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv,
     }});
     try {for await (const m of q) {
@@ -303,10 +317,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         if (forced) {spent += forced.cost; sess.costUsd += forced.cost; turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; for (const c of forced.calls) tc.tools.push(c);
           console.log(`[scene answer] ${model} | ${forced.tools ? 'scene_act sent' : forced.misses + ' answers missed'} | tokens in ${forced.in} / out ${forced.out} | ${money(forced.cost)} | run ${money(spent)}`)}}
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
+    if (refl) {const wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; await closeReflection(base, heroId, RUNNER, refl.id, wrote); console.log(`  [reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cost: turnCost,
-      flags: [...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSess();
-    if (fails.ok(!failed && tools > 0) && !ended) ended = fails.why();
+    if (fails.ok(!failed && (tools > 0 || !!refl)) && !ended) ended = fails.why();
   }
   clearInterval(beat); await release();
   console.log(`[agent] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}, session ${money(sess.costUsd)}. Session saved to ${SESSION_FILE}.`);

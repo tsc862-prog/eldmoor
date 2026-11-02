@@ -114,7 +114,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     const seat = rec.seat, S = seatOf(seat), tools = Array.isArray(rec.tools) ? rec.tools.slice(0, 40) : [];
     const narration = cut(rec.narration, 600), flags = new Set(Array.isArray(rec.flags) ? rec.flags.map(String) : []);
     const failed = tools.filter(t => !t.ok).length, refused = tools.filter(t => t.refused).length;
-    if (!tools.length) flags.add('empty');
+    if (!tools.length && !flags.has('reflection')) flags.add('empty'); // a reflection answered "none" (issue #179) is not an empty turn
     if (tools.length && failed === tools.length) flags.add('refused');
     if (narration && S.narr.some(p => similar(p, narration) >= BD.REPEAT_SIM)) flags.add('repeat');
     if (narration && notEnglish(narration)) flags.add('foreign');

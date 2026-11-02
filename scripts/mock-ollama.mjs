@@ -24,6 +24,11 @@ export async function startMockOllama() {
       const body = JSON.parse(b); seen.push(body);
       const msgs = body.messages, lastTurn = msgs.map((m, i) => m.role === 'user' && !/^(Result of|That was not)/.test(m.content) ? i : -1).filter(i => i >= 0).pop();
       const after = msgs.slice(lastTurn + 1), done = {done: true, done_reason: 'stop', prompt_eval_count: 900, eval_count: 20, model: body.model};
+      if (body.format && body.format.properties && body.format.properties.notes) { // a reflection turn (issue #179): two free-form notes from what the prompt says
+        seen.reflect = (seen.reflect || 0) + 1;
+        const u = String((msgs[msgs.length - 1] || {}).content || ''), why = (u.match(/\(now: ([^)]*)\)/) || [])[1] || 'a quiet day';
+        return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({notes: [{title: 'Reflection: ' + why.slice(0, 50), text: `At ${why} I took stock: the road was long and my companions held.`, tags: ['reflection', 'mock']}, {title: 'A lesson', text: 'Rest before the dark, not after it.', tags: ['lesson'], about: ''}]})}});
+      }
       if (body.model === 'mock-json:1b') {
         if (body.tools) return send(400, {error: `registry.ollama.ai/library/mock-json does not support tools`});
         const n = after.filter(m => m.role === 'assistant').length;
