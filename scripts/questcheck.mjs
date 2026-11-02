@@ -18,6 +18,9 @@ const {createHash} = await import('node:crypto');
 const P = await import('../src/sim/player.js');
 const {pull} = await import('../src/sim/levers.js');
 const {homeOf} = await import('../src/data/races.js');
+const {MOBS} = await import('../src/data/mobs.js');
+const {huntZone, turnIn} = await import('../src/sim/heroes.js');
+const {bountiesAt} = await import('../src/sim/dm.js');
 const {ADVENTURES} = await import('../src/data/adventures.js');
 const {QL, questTick, jobDone} = await import('../src/sim/questlog.js');
 // 'Quest completed' wakes (sim/wakes.js, w=2) posted to a hero since event number n
@@ -70,7 +73,14 @@ const post = (tpl, by) => {for (let i = S.adventures.length - 1; i >= 0; i--) {c
 const hA = post(tplA, 'scripted').ret, hB = post(tplB, 'dm-agent').ret;
 ok(hA && hB && hB.by === 'dm-agent' && !hA.by, `two jobs posted: #${hA && hA.id} by the board, #${hB && hB.id} by the DM agent`);
 
-let r = call('quests');
+// #67: no hero is handed a kill quest; the gate captain's bounty is taken with turn_in (a choice)
+ok(!a.quest || a.quest.bounty != null, 'nobody is handed a kill quest: a hero holds a bounty only if it took one (#67)');
+a.quest = null;
+let r = call('turn_in'); ok(r.ok && r.new_bounty && a.quest && a.quest.bounty != null && a.quest.have === 0, `turn_in with no bounty takes the gate captain's: ${r.new_bounty || r.error}`);
+r = call('turn_in'); ok(!r.ok && /not done/.test(r.error), 'turn_in on an unfinished bounty is refused');
+ok(S.bounties.some(b => b.id === a.quest.bounty), 'the bounty stays posted on the board for others');
+ok((call('list_jobs').bounties || []).some(b => b.yours), 'list_jobs shows the posted bounties, this one marked yours');
+r = call('quests');
 const kill0 = r.active.find(q => q.kind === 'quest');
 ok(r.ok && kill0 && kill0.focus, `quests: the kill quest is the focus at first (${kill0 && kill0.title})`);
 ok(r.active.some(q => q.kind === 'oath'), 'quests: the oath is listed');
@@ -139,7 +149,18 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
 // ---- an old save (no log, an adventure under way): its adventure is the focus ----
 {const b = S.agents.find(x => x.adv && !x.player) || null;
   if (b) {delete b.qlog; const Lb = questLog(b); ok(Lb.focus === 'job:' + b.adv && Lb.active[0].focus, 'an old save: the running adventure is the focus, nothing to migrate')}
-  else {const c2 = S.agents.find(x => !x.player && x.quest); delete c2.qlog; delete c2.quest.at; const Lc = questLog(c2); ok(Lc.focus === 'kill:' + c2.quest.type + ':0', 'an old save: the kill quest is the focus')}}
+  else {const c2 = S.agents.find(x => !x.player && x.quest); if (c2) {delete c2.qlog; delete c2.quest.at; const Lc = questLog(c2); ok(Lc.focus === 'kill:' + c2.quest.type + ':0', 'an old save: the kill quest is the focus')}}}
+
+// ---- an old save holding a kill quest from the quest giver (#67): it loads, finishes and is paid as before ----
+{const b = S.agents.find(x => !x.player && x.state !== 'dead' && !x.adv && x.id !== a.id);
+  const type = Object.keys(MOBS).find(k => MOBS[k].z === huntZone(b)) || Object.keys(MOBS)[0];
+  b.quest = {type, need: 5, have: 5}; delete b.qlog; // the old shape: no at, no bounty
+  const snapO = JSON.parse(JSON.stringify(snapshot())); delete snapO.bounties; restore(snapO);
+  const b2 = S.agents.find(x => x.id === b.id), g0 = b2.gold, x0 = b2.xp + b2.lvl * 1e6;
+  ok(b2.quest && b2.quest.type === type && !S.bounties, 'an old save (no bounty board) restores with its kill quest');
+  turnIn(b2);
+  ok(!b2.quest && b2.gold > g0 && b2.xp + b2.lvl * 1e6 > x0 && questLog(b2).done.some(q => q.id === 'kill:' + type + ':0' && q.status === 'done'), 'the old kill quest is handed in and paid, and no new one is handed out');
+  ok(bountiesAt(homeOf(b2)).length > 0, 'the board is posted lazily for an old save')}
 
 // ---- a held adventure is taken up again near its place ----
 {const b = S.agents.find(x => x.id === a.id);

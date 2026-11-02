@@ -83,7 +83,7 @@ export const K={
   SPEED:2.4,            // travel speed, as travel in heroes.js
   FIRST:.7,             // a won initiative roll leaves the foes at this share of their HP
   CHECK_XP:.35,         // a passed roll is worth this many zone kills of XP to each member
-  PAY_XP:.3,            // scales every template's pay.xp (levelling pace stays near the kill-N loop's)
+  PAY_XP:.35,           // scales every template's pay.xp: adventures carry levelling now that kill-N bounties are optional (#67; was .3)
   GONE:240,             // game minutes a finished adventure stays on S.adventures
   KEEP_DONE:24,         // finished adventures kept at most
   TOLD:2,               // adventures the Chronicle follows beat by beat at once
@@ -212,6 +212,35 @@ function newHook(c,tpl,src,o={},reason,quiet){const r=pull('post_hook',{town:c.n
   if(quiet)boardLever=r.entry?{...r.entry.detail}:null;return r.ok?r.ret:null}
 const HOOK_WHY={death:'a hero of this town fell recently',remnant:'a road encounter left a remnant',rumour:'a living elite is about',oath:'a hero in town has a matching oath',
   follow:'follow-up to a finished job',request:'a townsfolk request',writ:'the gate captain’s writ'};
+
+// ---- the gate captain's bounties (issue #67) ----
+// The kill-N quest is no longer handed to every hero at the quest giver; it is a background bounty the gate captain
+// posts on the hall board: one standing bounty per region the town's heroes hunt ("6 boars in the Greenmarch"), with
+// the reward the kill quest always paid (heroes.js turnIn: a quarter level of XP, 4+3*level gold). A bounty is a
+// choice, never the main loop: a departing hero takes an adventure first (dmDepart), and only a hero with none takes
+// the bounty of its hunting ground (scripted: BOUNTY.TAKE scaled by greed, heroes.js; an agent: turn_in). The posting
+// stays up for others (the captain pays per head) until it expires; taking copies it into a.quest. Not a lever: the
+// DM's daily limits and the Fellowship's reserve are untouched, and nothing goes to the DM log.
+export const BOUNTY={
+  TAKE:.55,             // chance a departing scripted hero with no adventure takes its region's bounty (x greed)
+  LIFE:[1440,2880],     // game minutes a bounty stays posted
+};
+const bountyList=()=>S.bounties||(S.bounties=[]);
+// Post a bounty for every region a living hero of the town hunts that has none; expired ones come down.
+export function postBounties(){const B=bountyList();
+  for(let i=B.length-1;i>=0;i--)if(S.gameMin>B[i].until)B.splice(i,1);
+  for(const c of CITY){const zs=new Map();
+    for(const a of S.agents){if(a.state==='dead'||homeOf(a)!==c)continue;const z=huntZone(a);if(!zs.has(z)||a.lvl<zs.get(z))zs.set(z,a.lvl)}
+    for(const [z,lo] of [...zs].sort((p,q)=>p[0]-q[0])){if(B.some(b=>b.town===c.name&&b.z===z))continue;
+      const all=Object.keys(MOBS).filter(k=>MOBS[k].z===z);if(!all.length)continue;const fit=all.filter(k=>MOBS[k].lv[0]<=lo+2);
+      B.push({id:++S.uid,town:c.name,z,type:pickA(fit.length?fit:all),need:ri(5,8),giver:giverOf(c,['captain']).name,born:S.gameMin,until:S.gameMin+ri(...BOUNTY.LIFE)});
+      bump(stats(),'bounties')}}}
+export const bountiesAt=c=>{if(!S.bounties)postBounties();return bountyList().filter(b=>b.town===c.name)};
+// The posted bounty at c for region z that suits a (its creature not far above the hero), or null.
+export function bountyFor(a,c,z){const fit=b=>b.z===z&&MOBS[b.type]&&MOBS[b.type].lv[0]<=a.lvl+2;let b=bountiesAt(c).find(fit);
+  if(!b){postBounties();b=bountiesAt(c).find(fit)}return b||null}
+export function takeBounty(a,b){a.quest={type:b.type,need:b.need,have:0,at:Math.round(S.gameMin),bounty:b.id,giver:b.giver};bump(stats(),'bountiesTaken');
+  record(a,'Took ',gd(b.giver),'’s bounty: '+b.need+' '+MOBS[b.type].pl+' in '+ZONES[b.z]+'.');return a.quest}
 
 // Hooks from the world, in order of preference: a fallen hero's pack, a robbed wagon or a
 // vanished merchant, a living elite the innkeeper has heard of, an oath of a hero in town,
@@ -599,7 +628,7 @@ export function dmTick(dt){ensure();S.dmClock=(S.dmClock||0)+dt;S.dmT+=dt;if(S.d
       if(field&&!(b.party&&b.party===L.party))drop(b)}}
   // foes of finished or abandoned scenes never respawn
   for(const m of S.mobs)if(m.adv!=null&&!m.gone&&!m.alive){m.gone=true}
-  S.dmHookT-=step;if(S.dmHookT<=0){S.dmHookT=K.REFILL;refill()}}
+  S.dmHookT-=step;if(S.dmHookT<=0){S.dmHookT=K.REFILL;refill();postBounties()}}
 
 function refill(){const gone={};
   for(let i=S.adventures.length-1;i>=0;i--){const h=S.adventures[i];
