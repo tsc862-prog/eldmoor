@@ -13,6 +13,7 @@ import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {pop} from './effects.js';
 import {moveTo,agentDie} from './heroes.js';
+import {actHurt} from './actlog.js';
 import {dmgTaken} from './stats.js';
 import {sightMul} from './weather.js';
 import {eliteSight} from './narrator.js';
@@ -79,7 +80,7 @@ const MOB_HIT=1.35; // #154: mobs from level 7 bite 1.35x (deaths floor); ramps 
 const hitRamp=m=>1+(MOB_HIT-1)*Math.min(1,Math.max(0,(m.lvl-3)/4));
 const unitOf=m=>(3+m.lvl*2)*m.hit*hitRamp(m);
 function hurt(t,m,dm){if(dm<=0||t.state==='dead'||t.state==='ghost')return;if(t.fellow)dm/=hitRamp(m); // the Fellowship keeps the old bite (#154: the world is deadlier, the story is not ground down)
-  dm=Math.max(1,Math.round(dm*dmgTaken(t)));t.hp-=dm;pop(t.x,t.y-.6,String(dm),'#ff6a5a');
+  dm=Math.max(1,Math.round(dm*dmgTaken(t)));t.hp-=dm;actHurt(t,m,dm);pop(t.x,t.y-.6,String(dm),'#ff6a5a');
   if(t.hp<=0){if(m.elite)S.eco.stats.eliteDeaths++;agentDie(t,m)}}
 const alliesHurt=m=>nearMobs(m.x,m.y,6,o=>o!==m&&o.alive&&!o.gone&&o.hp<o.maxhp*.5)[0]||null;
 const packNear=m=>nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&(o.target||m.target)).length>0;
@@ -104,7 +105,7 @@ function useAbility(m,t){for(const id of m.ab||[]){const A=ABILITIES[id];if(!A||
 function tickDots(m,dt){const L=m.dots;for(let i=L.length-1;i>=0;i--){const d=L[i],h=d.h;
   if(!h||h.state==='dead'||h.state==='ghost'||h.state==='town'||h.hp<=0){L.splice(i,1);continue}
   d.acc=(d.acc||0)+d.dps*Math.min(dt,d.rem);d.rem-=dt;
-  if(d.acc>=1){const n=Math.floor(d.acc);d.acc-=n;h.hp-=Math.max(1,Math.round(n*dmgTaken(h)));if(h.hp<=0){if(m.elite)S.eco.stats.eliteDeaths++;L.splice(i,1);agentDie(h,m);continue}}
+  if(d.acc>=1){const n=Math.floor(d.acc);d.acc-=n;const dd=Math.max(1,Math.round(n*dmgTaken(h)));h.hp-=dd;actHurt(h,m,dd,'venom');if(h.hp<=0){if(m.elite)S.eco.stats.eliteDeaths++;L.splice(i,1);agentDie(h,m);continue}}
   if(d.rem<=0)L.splice(i,1)}}
 // A pack-caller drags nearby kin into the fight; they bite the same hero while it fights the first.
 function callPack(m,a,B){if(!B.beh.pack)return;let n=B.beh.pack;

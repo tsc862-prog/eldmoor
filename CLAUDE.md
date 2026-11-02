@@ -111,8 +111,22 @@ other. The rules:
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
 - `npm run movecheck`: class abilities (#81): `src/data/moves.js` MOVES/PASSIVES (3 active abilities with a cooldown in seconds and in rounds, 2 passives per class), the one resolver `useMove` in `src/sim/moves.js` for real-time and Table rounds, timed effects and passives in `src/sim/eff.js`, the `use_ability` agent tool, and the Abilities block (`src/ui/abilities.js`) on the Stats tab and Fellowship sheet.
 - `npm run setupcheck`, `npm run setupsmoke`: the New World setup (`src/sim/setup.js`, `src/ui/setup.js`, #133): New world opens a page to choose the Fellowship (class, name, people, mind per place) and the DM, then builds the world seeded (`init({setup})`) with agent members agent-played from the first tick and starts their runners through the relay.
-- `start-eldmoor.cmd` (Windows, double-click): starts the relay with app runners on and the dev server in two
-  windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.
+- `npm run up` (`scripts/up.mjs`) and `start-eldmoor.cmd` (Windows, double-click; it calls `node scripts\up.mjs`): one window
+  for the whole game. It starts the relay with app runners on and `--resume-runners` and the Vite dev server as child
+  processes (output prefixed and coloured `[relay]`, `[vite]`, `[up]`), then opens http://localhost:5173 once. Single keys
+  (or the word plus Enter where raw mode is missing): `u` update (`git pull --ff-only`; refused on a dirty tree outside .claude/ (agent memory never blocks it; git refuses if the pull touches a file you edited, naming it; nothing is stashed) or a
+  non-fast-forward; `npm install` only when package-lock.json changed, with Vite stopped meanwhile; then the relay restarts,
+  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `s`
+  status (relay health, runners, Ollama models loaded), `h` help, `q`/Ctrl+C quit (runners get "stop" first so they
+  release their heroes, then the relay, then Vite; the process trees are killed with `taskkill /T /F` as a last resort, so
+  no node process or port stays held; closing the window does the same). A change under `scripts/` while it runs prints
+  "relay code changed: press u (or r) to apply" (never an automatic restart mid-play). The relay keeps the running runners
+  in `logs/runners/active.json` (kind, hero, name, mind, caps; a stop from the page, a crash or a finished runner leaves the
+  list, a relay quit does not) and with `--resume-runners` (`RELAY_RESUME_RUNNERS=1`) starts them again once the page
+  reconnects and names the same heroes (same id and name, alive; a hero that is gone, renamed by a new world or dead is
+  skipped). The page's bridge reconnects by itself after a relay restart. Options: `--relay-port N`, `--vite-port N`,
+  `--no-open`, `--repo DIR` (the checkout `u` pulls). The old way, `npm run relay -- --runners` and `npm run dev` in two
+  terminals, still works. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
@@ -243,6 +257,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   takes `prey` (a creature known by name) or whatever is around except what it learned to fear; `list_jobs` gives the
   gate's rumour, not "fits"; townsfolk warn a green blade off the next region up. Background heroes keep the scripted
   level logic and never get lore; the hooks only touch `a.player` heroes, so `npm run sim` is unchanged.
+- New world under the same ids (#219): New World reuses hero ids, so a runner that holds ids would play nobody. Hero and Fellowship runners poll `/play/health` (`watchWorld` in `scripts/pacing.mjs`) and, when a held id now names another hero (the name differs; the world instance id will be compared too once `/play/health` carries it as `world`), release their claims and exit with code 75 (`NEW_WORLD_EXIT`, `[world] a new world: ...` line). The supervisor (`scripts/runners.mjs`) restarts a runner that exits 75 with the same request after `RESTART_MS`, at most `MAX_RESTARTS` in a row without a turn; the restart sets the old sessions aside in `logs/agents/old/`. A DM runner whose seat is closed (a new world starts with it closed) says so in its `[pace]` line (the DM frame shows it) and waits for Open seat.
 - Memories (#155, `src/sim/notebook.js`): every agent hero keeps its own searchable notes with `remember {title,
   text, tags[], about?}`, `recall {query?, tag?, about?, id?, n?}` (title and tag words 3, about 2, text 1, +1 pinned,
   plus recency; a tag or about filters), `update_memory`, `forget` and `pin`; 200 notes of 600 characters, the oldest
@@ -356,6 +371,16 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Everyone at once (owner request): `PLAY` in `src/sim/table.js` says per scene kind how it is played. `turns`
+  (elite, ambush, boss, rescue, Crypt site/room): initiative order, one act changes the next. `all` (decision =
+  every vote incl. break_camp, check, choice, staged meeting/social/trap/mystery): every member present gets the
+  scene at the same moment (a must-answer event), `your_turn` is true for each until it answers (then `wait` is
+  allowed), answers come in any order, and each live agent has its own `turnMs` nudge and `liveMs` wait side by
+  side (not summed). Once nobody is waited on, the acts resolve in Fellowship slot order (never arrival order;
+  reflexes chosen then), and a staged scene gets one combined outcome call for the DM instead of one per act.
+  Only members within shouting range (#182) of the scene's anchor (a vote: its voters) take part. `tableView`
+  adds `everyone_answers`, `answered` ("3/5") and `waiting_on`; the banner shows EVERYONE ANSWERS and
+  "3/5 answered · waiting for Fena, Maelell". A kind not in the table plays in turns.
 - Forced scene turns (#163): a local or OpenAI member whose own scene is open (the pace brief's `scene`: its
   legal option keys, incl. ready abilities by id) gets one structured answer (Ollama `format` / OpenAI strict
   json_schema: `{option: enum, line}`) and the runner sends `scene_act` itself; Claude keeps tool use, with one

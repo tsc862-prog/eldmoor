@@ -40,11 +40,13 @@ ok(S.agents.every(a => a.state !== 'camp' || (S.fellowship.camp.ids || []).inclu
 
 // ---- #178: status text, break_camp vote, leader break, rest {hours}, wake events ----
 const CAMPM = await import('../src/sim/camp.js'), CO = await import('../src/sim/council.js');
+const {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
 const members = () => fellowshipMembers().map(m => m.hero).filter(a => a && a.state !== 'dead');
 const gather = () => {
   let n = 0; while (S.fellowship.camp && S.fellowship.camp.phase && n++ < 40) run(30);
   for (let n = 0; n < 60 && members().some(a => a.hidden || a.adv || a.raid); n++) run(10); // wait out a crypt run or a raid in progress (the check assumes the company is out on the road)
   S.table = null; const L = members(), lead = CO.leaderOfF();
+  {const g = homeOf(lead).gate, p = zonePoint(zoneFor(3, g), null, g); lead.x = p.x; lead.y = p.y} // out in quiet home fields: camp ground is never in or by a town, the lair or the Crypt
   for (const a of L) {a.x = lead.x; a.y = lead.y; a.state = 'hunt'; a.adv = null; a.dest = null; a.hp = Math.round(a.maxhp || a.hp); a.splitUntil = 0; a.player = true; a.playEv = []}
   return {L, lead};
 };

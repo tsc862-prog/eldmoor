@@ -28,8 +28,14 @@ if(sim.S.fellowship)sim.disbandFellowship(); // the first half runs without one
 const renderer={onCamChange(){},setZoom(){},stepZoom:(z)=>z,currentZoom:()=>1,zoomAt(){},panBy(){},screenToWorld:()=>({x:0,y:0})};
 initUI(renderer);
 let clockS=0;
+// The Fellowship half needs its five members alive, visible and together (hardcore: a member who dies is replaced by
+// a new object, and one who enters the Crypt is hidden, which silently drops every shout and made the chat cases flaky).
+// guard() runs each sim step; stage() is called where a block needs them in one spot.
+let guardMem=null;
+const guard=()=>{if(guardMem)for(const a of guardMem){if(a.state!=='dead'&&a.maxhp)a.hp=Math.max(a.hp,a.maxhp);a.hidden=false}};
+function stage(){guardMem=mem;guard();for(const a of mem){a.state=a.state==='dead'?'town':a.state;a.x=mem[0].x+(mem.indexOf(a)%3);a.y=mem[0].y}}
 // Tick the world like main.js: sim in 0.05 s steps, the fast UI every 0.3 s, the slow UI every second.
-function tick(sec){for(let t=0;t<sec;t+=.1){sim.step(.05);sim.step(.05);clockS+=.1;
+function tick(sec){for(let t=0;t<sec;t+=.1){sim.step(.05);guard();sim.step(.05);guard();clockS+=.1;
   if(Math.round(clockS*10)%3===0)uiFast();if(Math.round(clockS*10)%10===0)uiSlow()}uiFast();uiSlow()}
 
 console.log('warming the world up (no Fellowship)');
@@ -39,13 +45,16 @@ select(busy);setView('follow');tick(1);
 
 // Scroll a list, tick, check it held. get() re-finds the list after the tick (a rebuilt list would be a new node).
 // ranked: rows move by rank, so only the scroll position must hold
-function holds(name,get,{sec=20,min=3,ranked=false}={}){let n=get();
+// stable(): a signature of what makes the panel rebuild on purpose (the Memory tab is rebuilt when a memory is added,
+// so its scroll legitimately resets then); when it changed during the window the check is retried, not failed.
+function holds(name,get,{sec=20,min=3,ranked=false,stable=null,tries=6}={}){let n=get();
   if(!n){ok(false,name+': list not found');return}
   if(n.children.length<min){tick(sec);n=get()}
   if(!n||n.children.length<min){console.log('  skip '+name+' (only '+(n?n.children.length:0)+' rows)');return}
   const top=Math.min(40,(n.children.length-1)*20);n.scrollTop=top;
   const anchor=n.children.find(c=>c.offsetTop+c.offsetHeight>top),off=anchor.offsetTop-top,mark={};anchor._mark=mark;
-  tick(sec);const m=get();
+  const sig0=stable&&stable();tick(sec);const m=get();
+  if(stable&&stable()!==sig0&&tries>1){console.log('  note '+name+': rebuilt on purpose (its content changed), checking again');return holds(name,get,{sec:Math.min(sec,10),min,ranked,stable,tries:tries-1})}
   ok(m===n,name+': same scroll container after '+sec+' s');
   ok(m&&m.scrollTop>=top,name+': scrollTop held ('+top+' -> '+(m&&m.scrollTop)+')');
   if(ranked)return;
@@ -88,10 +97,10 @@ console.log('with a Fellowship');
 const slots=sim.autoPick(0);const r=sim.found(slots,{fac:0,ai:false});ok(r&&r.ok!==false,'Fellowship founded');
 tick(1);
 ok(!$('frames').hidden,'party frames shown');
-const mem=sim.fellows();sim.markPlayer(mem[1],true);mem[1].fellowAgent=true;
+const mem=sim.fellows();guardMem=mem;sim.markPlayer(mem[1],true);mem[1].fellowAgent=true;
 for(let i=0;i<6;i++){sim.playerAct(mem[1].id,'look',{});tick(10)}
 select(mem[0]);uiFast();
-setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2});
+setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2,stable:()=>{const M=mem[0].memory;return M?(M.n||0)+':'+(M.long||'').length+':'+Object.values(M.stances||{}).join('|').length:''}});
 select(mem[1]);setTab('agent');uiFast();
 ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-played member');
 {const get=()=>tb().querySelector('.agentlog');const l=get();if(l){l.scrollTop=40;const n=l;for(let i=0;i<4;i++){sim.playerAct(mem[1].id,'look',{});tick(5)}
@@ -138,7 +147,7 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
 {const s=$('felbody').querySelector('select');if(s){s.focus();const n=s;select(mem[3]);tick(10);ok($('felbody').contains(n),'a focused picker in the Fellowship panel survives refreshes');n.blur()}
   else console.log('  skip picker (no select in the Fellowship panel)')}
 // Chat tab (#145, owner): one compact line, no mind badge, own-name prefix dropped, repeats collapsed
-{const sp=mem[1];sp.x=mem[0].x+1;sp.y=mem[0].y; // within shouting range (#182)
+{stage();const sp=mem[1]; // together, within shouting range (#182)
 const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});(await import('../src/sim/council.js')).partySay(sp,'Hold the line at the ford.'); // a repeat said outside the agent tool (agents' own near-repeats are refused since #163)
   const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
   ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
@@ -246,7 +255,7 @@ console.log('declutter');
   ok(dispositionOf({...away,mood:'hostile'},F)==='hostile'&&dispositionOf({...home,hostile:true},F)==='hostile'&&dispositionOf({kind:'foe',name:'Brute'},F)==='hostile','npc.mood, npc.hostile and a foe make it hostile');
   ok(dispositionOf({cls:'Mage',fac:1-F.fac,name:'Rival'},F)==='hostile','an enemy-faction hero is hostile');
   ok(toneOf(dps[0],F).kind==='class'&&toneOf(home,F).npc===true&&toneOf(home,F).color!==classColor('Rogue'),'NPCs carry the shape cue and a colour apart from the class colours');
-  const sec=$('chatSec');ok(!!sec&&!sec.hidden,'the Fellowship chat panel is shown with a Fellowship');
+  stage();const sec=$('chatSec');ok(!!sec&&!sec.hidden,'the Fellowship chat panel is shown with a Fellowship');
   const sp=mem[1];sim.playerAct(sp.id,'party_say',{text:'Stream test line.'});
   mem[0].chat.push({t:'05:00',d:1,from:home,text:'Well met, travellers.',trigger:'npc',fh:true});
   sim.playerAct(mem[0].id,'propose',{kind:'job',details:'take a job from the gate that matches our level'});
@@ -262,7 +271,7 @@ console.log('declutter');
   const nm=cl.querySelector('li .hn.fmn');ok(!!nm&&/^#[0-9a-f]{6}$/i.test(nm.style.color||'#000000'),'chat panel: a member\'s name carries its class colour');
   const fb=$('chatFilter');const click=k=>{fb.children.find(b=>b.dataset.cf===k).click();return cl.textContent};
   const dmT=click('dm');ok(/Well met/.test(dmT)&&!/Stream test line/.test(dmT),'chat panel: DM filter shows the NPC line only');
-  const npcName=cl.querySelector('.npcn');ok(!!npcName&&npcName.classList.contains('npc-friendly'),'chat panel: an NPC name is underlined in its disposition class');
+  const npcName=cl.children.find(c=>/Well met/.test(c.textContent)).querySelector('.npcn');ok(!!npcName&&npcName.classList.contains('npc-friendly'),'chat panel: an NPC name is underlined in its disposition class');
   const pT=click('party');ok(/Stream test line/.test(pT)&&/proposes:/.test(pT)&&!/Well met/.test(pT),'chat panel: Party filter shows party lines and the council');
   ok(!!$('chatLegend')&&/hostile/.test($('chatLegend').textContent),'chat panel: a colour legend');
   click('all');
@@ -438,6 +447,25 @@ console.log('start gate: ready, not just claimed');
   log.active=[];log.done=[];uiFast();ok(/No quests yet/.test(tb().textContent),'empty state');
   delete globalThis.__questLog;setTab('stats');uiFast()}
 
+
+// ---- wide screens (owner request): column count by width, the moved panels, the map follows its box ----
+{const {columnCount}=await import('../src/ui/layout.js');
+  const cols=()=>{uiFast();return $('colL').hidden?($('side').parentNode.className.includes('cols3')?-1:0):3};
+  const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
+  const keep=window.innerWidth;
+  ok(!!sim.S.fellowship,'wide layout: a Fellowship stands for the column checks');
+  for(const [w,n,st,hr] of [[1000,2,'side','colM'],[1600,2,'side','colM'],[2600,3,'colL','side'],[390,1,'side','colM'],[1000,2,'side','colM']]){
+    window.innerWidth=w;uiFast();
+    ok(columnCount()===n,w+' px: '+n+' column(s)');
+    ok(where('storySec')===st&&where('heroSec')===hr&&(w<2200?where('worldgrp')==='side':where('worldgrp')==='colL'),w+' px: Story, World and Hero are in '+st+' / '+hr);
+    ok($('colL').hidden===(w<2200)&&$('side').parentNode.className.includes('cols3')===(w>=2200),w+' px: the left column is '+(w<2200?'hidden':'shown'))}
+  const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  ok(css.includes('@media (min-width:1600px){')&&css.includes('.shell{max-width:none}'),'full width from 1600 px (no cap)');
+  ok(/@media \(min-width:1200px\)\{\.screen\{aspect-ratio:auto;height:clamp\(380px,70vh/.test(css),'the map is taller from 1200 px');
+  ok(/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'one column below 920 px');
+  const draw=readFileSync(new URL('../src/render/draw.js',import.meta.url),'utf8');
+  ok(/new ResizeObserver\(resize\)\.observe\(screenEl\)/.test(draw),'the map canvas resizes with its box (ResizeObserver on the screen)');
+  window.innerWidth=keep;uiFast()}
 
 // ---- the Combat tab (owner request): fight cards, lines, filters, held scroll, empty state ----
 {select(busy);const t0=sim.S.gameMin;let evs=[],fl=[];

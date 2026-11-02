@@ -37,7 +37,7 @@ export function wakeLevelUp(a,maxhp){if(!a.player)return;const L=a.lvl,un=[];
   notify(a,'LEVEL UP: you are level '+L+', HP '+maxhp+(un.length?'. Unlocked: '+un.join('; '):''),0,2)}
 
 export function wakeQuest(a,done){if(!a.player||!a.quest)return;pend(a,'quest','Quest progress: '+a.quest.have+' of '+a.quest.need+' '+(a.quest.type||'')+(done?' - ready to turn in':''),1)}
-export function wakeQuestDone(a,name,gold){notify(a,'Quest completed: '+name+' ('+gold+'g)',0,2)}
+export function wakeQuestDone(a,name,gold){notify(a,'Quest completed: '+name+(gold?' ('+gold+'g)':''),0,2)} // an oath or a scene pays no gold
 
 // Loot: gear and goods bundled; a rare or epic wakes at once.
 export function wakeLoot(a,name,quality){if(!a.player)return;

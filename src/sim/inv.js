@@ -9,6 +9,7 @@
 // suits. Agent tools and Table mode go through useItem / giveItem / equipSpare below.
 // Owned by creature-designer.
 import {rnd} from '../core/rng.js';
+import {actItem,actHeal} from './actlog.js';
 import {INV,USES,GOODS,price} from '../data/items.js';
 import {tm} from '../data/traits.js';
 import {S} from './state.js';
@@ -130,6 +131,7 @@ export function useItem(a,id,on,o={}){const U=USES[id];on=on||a;
     break;
   case 'pack':{const inv=invOf(a);if(inv.pack)return err('You already carry a Wayfarer\'s Pack.');inv.pack=1;res=okay('Strapped on the pack: '+capOf(a)+' slots.')}break;
   default:return err('That cannot be used.')}
+  actItem(a,id,on,res.healed);if(res.healed)actHeal(a,on,res.healed,id);
   take(a,'use',id,1);return res}
 
 
