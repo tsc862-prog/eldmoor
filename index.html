@@ -12,9 +12,23 @@
   <header>
     <div>
       <h1>ELDMOOR</h1>
-      <div class="sub">A living world of 28 heroes in four guilds. They quest, trade, hold grudges, run dungeons and raid on their own. Hardcore rules: one life each. You watch.</div>
+      <div class="sub">A living world of heroes who quest, trade, hold grudges, run dungeons and raid on their own. Hardcore: one life each. You watch.</div>
     </div>
-    <div class="clock" id="clock">Day 1 · 15:00</div>
+    <div class="hbtns">
+      <button id="agentsBtn" class="agbtn" hidden aria-expanded="false" aria-controls="agentsPop" title="Agent limits: turn caps, budgets and the session budget, with the spend so far">Agents</button>
+      <button id="setBtn" class="agbtn" aria-expanded="false" aria-controls="setPop" title="Viewing settings, kept in this browser">Settings</button>
+      <div class="clock" id="clock">Day 1 · 15:00</div>
+    </div>
+    <div class="agpop" id="agentsPop" hidden role="dialog" aria-label="Agents: limits and spend"></div>
+    <div class="agpop setpop" id="setPop" hidden role="dialog" aria-label="Settings">
+      <div class="aghead"><span class="fname">Settings</span><button class="mini" data-popclose="1">Close</button></div>
+      <div class="setrow"><button id="vTab" hidden title="Table mode: the world pauses at 1x for the Fellowship's scenes (Auto) or never pauses (Off, Watch mode)">Table: Auto</button><span class="dm">The world pauses at 1x for the Fellowship's scenes (Off: it never pauses).</span></div>
+      <div class="setrow"><button id="vSnd" hidden title="A short chime when a Table scene opens">Sound: on</button><span class="dm">A short chime when a scene opens.</span></div>
+      <div class="setrow"><button id="vRal" hidden title="Pause the world and show an alert when the agent runner of a Fellowship member or the DM stops">Alert on runner stop: on</button><span class="dm">Pause and alert when a member's or the DM's runner stops.</span></div>
+      <div class="setrow"><button id="vChat" title="Show what background heroes say to each other, in the Chat tab and as bubbles">World chatter: off</button><span class="dm">Background heroes' talk in the Chat tab and bubbles.</span></div>
+      <div class="setrow"><button id="wDev" class="dev" hidden aria-pressed="false" title="Developer: AI and Agent buttons on every hero, the Minds at play list and request stats">Developer</button><span class="dm">AI and Agent buttons on every hero, request stats.</span></div>
+      <div class="dm agfoot">Kept in this browser.</div>
+    </div>
   </header>
 
   <div class="main">
@@ -40,24 +54,22 @@
           <button id="vMap" aria-pressed="true">Whole map</button>
           <button id="vFol">Follow</button>
           <button id="vFel" hidden title="Frame the whole Fellowship">Fellowship</button>
-          <button id="vTab" hidden title="Table mode: the world pauses at 1x for the Fellowship's scenes (Auto) or never pauses (Off, Watch mode)">Table: Auto</button>
-          <button id="vRal" hidden title="Pause the world and show an alert when the agent runner of a Fellowship member or the DM stops (kept per viewer)">Alert on runner stop: on</button>
-          <button id="vSnd" hidden title="A short chime when a Table scene opens (kept per viewer)">Sound: on</button>
           <button id="vNext">Next hero</button>
           <button id="zOut" class="zoom" aria-label="Zoom out" title="Zoom out">−</button>
           <button id="zIn" class="zoom" aria-label="Zoom in" title="Zoom in">+</button>
         </div>
-        <div class="group world" role="group" aria-label="World">
-          <span class="lbl">World</span>
-          <button id="wSave" title="Save now. The world also saves itself every game hour and when you leave.">Save</button>
-          <button id="wLoad" title="Go back to the last save">Load</button>
-          <button id="wExport" title="Download the save as a JSON file">Export</button>
-          <button id="wImport" title="Restore a downloaded JSON save">Import</button>
-          <button id="wNew" title="Erase the save and start a fresh world">New world</button>
-          <button id="wDev" class="dev" hidden aria-pressed="false" title="Developer: show the AI and Agent buttons on every hero, not only the Fellowship">Developer</button>
-          <span class="status" id="wStatus" aria-live="polite"></span>
-          <input type="file" id="wFile" accept="application/json,.json" hidden>
-        </div>
+        <details class="wmenu" id="wmenu">
+          <summary>World</summary>
+          <div class="wdrop" role="group" aria-label="World">
+            <button id="wSave" title="Save now. The world also saves itself every game hour and when you leave.">Save</button>
+            <button id="wLoad" title="Go back to the last save">Load</button>
+            <button id="wExport" title="Download the save as a JSON file">Export</button>
+            <button id="wImport" title="Restore a downloaded JSON save">Import</button>
+            <button id="wNew" title="Erase the save and start a fresh world">New world</button>
+            <span class="status" id="wStatus" aria-live="polite"></span>
+            <input type="file" id="wFile" accept="application/json,.json" hidden>
+          </div>
+        </details>
       </div>
       <section class="panel" aria-live="off">
         <h2>Hero</h2>
@@ -74,11 +86,13 @@
         <h2>Factions</h2>
         <div class="facs" id="facs"></div>
       </section>
-      <section class="panel" data-o="3">
-        <h2 class="hrow">Chronicle <button id="chronFel" class="mini" hidden aria-pressed="true" title="Show only the Fellowship and the world&rsquo;s major events">Fellowship only</button></h2>
+      <section class="panel" data-o="3" id="storySec">
+        <h2 class="hrow"><span id="storyTtl">Chronicle</span> <button id="chronFel" class="mini" hidden aria-pressed="true" title="Show only the Fellowship and the world&rsquo;s major events">Fellowship only</button></h2>
+        <div class="tfilter" id="storyTabs" role="tablist" aria-label="Story" hidden><button data-story="chron" role="tab" aria-pressed="true">Chronicle</button><button data-story="camp" role="tab" aria-pressed="false">Campaign log</button></div>
         <ul class="log" id="log"></ul>
+        <div id="campaign" class="felLog" hidden></div>
       </section>
-      <section class="panel" data-o="4">
+      <section class="panel" data-o="4" id="mindsSec">
         <details class="tlbox" id="mindsbox" open>
           <summary>Minds at play <span class="mcount" id="mindsCount">0</span></summary>
           <ul class="minds" id="minds"></ul>

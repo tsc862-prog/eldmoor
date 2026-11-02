@@ -10,7 +10,24 @@ html,body{background:var(--bg);color:var(--ink)}
 body{font-family:var(--mono);font-size:20px;line-height:1.15;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 28px}
 .shell{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
-header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 20px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 20px;position:relative}
+.hbtns{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* the Agents popover (ui/agents.js, #145): limits and spend in one place */
+button.agbtn{font-size:9px;padding:7px 9px}
+.agpop{position:absolute;right:0;top:calc(100% + 6px);z-index:45;width:min(440px,100%);max-height:min(70vh,560px);overflow:auto;background:var(--panel);border:2px solid var(--gold);box-shadow:6px 6px 0 #05060c;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.agpop[hidden]{display:none}
+.aghead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.agbody{display:flex;flex-direction:column;gap:8px}
+.agsess{display:flex;flex-direction:column;gap:4px;background:var(--panel2);padding:6px 8px;border-left:3px solid var(--gold)}
+.agrow{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
+.agspent{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.agm{flex:1;min-width:80px;height:8px} .agm i{background:var(--gold)}
+.agsub{margin-top:4px}
+.agr{border:1px solid var(--edge);padding:5px 7px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.agname{font-family:var(--px);font-size:8px;color:var(--ink)}
+.agnote{font-size:15px}
+.agfoot{font-size:15px}
+@media (max-width:560px){.agpop{position:fixed;left:16px;right:16px;top:64px;width:auto}}
 h1{font-family:var(--px);font-size:clamp(20px,4vw,30px);margin:0;color:var(--gold);letter-spacing:.04em;text-shadow:3px 3px 0 #6a3a10;text-wrap:balance}
 .sub{color:var(--dim);margin-top:6px}
 .clock{font-family:var(--px);font-size:11px;color:var(--ink);background:var(--panel);border:2px solid var(--edge);padding:8px 10px;font-variant-numeric:tabular-nums}
@@ -39,8 +56,13 @@ button[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:va
 .meter{height:10px;background:#0a0b14;border:1px solid var(--edge);position:relative}
 .meter i{position:absolute;inset:0 auto 0 0;display:block}
 .hp i{background:#3fbf4a}.xp i{background:#9a6af0}.gl i{background:var(--gold)}
-.tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:2px solid var(--edge);padding-bottom:6px}
+.tabs{display:flex;flex-direction:column;gap:4px;border-bottom:2px solid var(--edge);padding-bottom:6px}
+.tgroups,.tsub{display:flex;flex-wrap:wrap;gap:4px}
 .tabs button{font-size:8px;padding:6px 8px;box-shadow:none}
+.tgroups button{font-size:9px;padding:7px 10px}
+.tsub button{background:transparent;border-color:transparent;color:var(--dim)}
+.tsub button:hover{border-color:var(--edge);color:var(--ink)}
+.tsub button[aria-pressed="true"]{background:transparent;color:var(--gold);border-color:transparent;border-bottom-color:var(--gold)}
 .tb{display:flex;flex-direction:column;gap:8px;min-height:120px}
 .tb .log{max-height:260px}
 /* Clickable hero names anywhere in the panels */
@@ -77,7 +99,11 @@ div.daysep{margin:8px 0 3px}
 .ai-badge.mk-scripted{background:var(--edge);color:var(--dim)} .ai-badge.mk-agent{background:var(--gold)} .ai-badge.mk-quiet{background:var(--edge);color:var(--dim)}
 .mlink.busy{color:var(--amber)}
 /* a Fellowship member's name in chat: bold, role colour as on the party frames, lightened for the dark theme */
-.hn.fm{font-weight:bold} .hn.fm.r-tank{color:#7fa8ff} .hn.fm.r-healer{color:#8fe070} .hn.fm.r-dps{color:#ff7a70}
+.hn.fmn{font-weight:bold} .hn.fmn.r-tank{color:#7fa8ff} .hn.fmn.r-healer{color:#8fe070} .hn.fmn.r-dps{color:#ff7a70}
+/* Chat tab: one line per message, text wrapping under itself (hanging indent) */
+.log.chat li.chl{padding-left:1.6em;text-indent:-1.6em;overflow-wrap:anywhere}
+.chtag{font-family:var(--px);font-size:7px;color:var(--gold);border:1px solid var(--edge);padding:1px 3px;margin-right:5px;vertical-align:2px;text-indent:0}
+.chn{font-weight:bold} .chx{font-size:16px}
 .log li.nar{font-style:italic;border-left:2px solid rgba(242,193,78,.45);padding-left:6px} /* the Chronicler's voice */
 .tops{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .tops button{width:100%;display:grid;grid-template-columns:2ch 1fr auto;gap:8px;text-align:left;font-family:var(--mono);font-size:19px;padding:3px 8px;box-shadow:none;border-color:transparent;background:transparent}
@@ -92,9 +118,28 @@ div.daysep{margin:8px 0 3px}
 .minimap{position:absolute;right:8px;bottom:8px;width:160px;height:100px;border:2px solid var(--edge);background:#000;image-rendering:pixelated;cursor:crosshair;box-shadow:2px 2px 0 #05060c;opacity:.92}
 .screen.drag{cursor:grabbing}
 button.zoom{min-width:34px;padding-left:6px;padding-right:6px}
-/* World group: save status text next to the Save/Load/Export/Import buttons (ui/save.js) */
-.group.world .status{font-family:var(--mono);font-size:16px;color:var(--dim);margin-left:6px;white-space:nowrap}
-.group.world .status:empty{display:none}
+/* World menu (#145): Save/Load/Export/Import/New world folded under one button, the save status inside (ui/save.js) */
+.wmenu{position:relative}
+.wmenu>summary{list-style:none;font-family:var(--px);font-size:10px;color:var(--ink);background:var(--panel2);border:2px solid var(--edge);padding:8px 10px;cursor:pointer;box-shadow:2px 2px 0 #05060c}
+.wmenu>summary::-webkit-details-marker{display:none}
+.wmenu>summary::after{content:" \25BE";color:var(--dim)}
+.wmenu>summary:hover{border-color:var(--gold)} .wmenu>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.wmenu[open]>summary{border-color:var(--gold)}
+.wdrop{position:absolute;z-index:44;top:calc(100% + 4px);left:0;display:flex;flex-direction:column;gap:4px;background:var(--panel);border:2px solid var(--gold);box-shadow:4px 4px 0 #05060c;padding:8px;min-width:170px}
+.wdrop .status{font-family:var(--mono);font-size:16px;color:var(--dim)}
+.wdrop .status:empty{display:none}
+@media (max-width:560px){.wdrop{position:fixed;left:16px;right:16px;top:auto;bottom:16px}}
+/* Settings popover (#145): the viewing switches, one row each */
+.setrow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center}
+.setrow:has(>button[hidden]){display:none}
+.setrow button{font-size:8px;padding:6px 8px;white-space:nowrap}
+.setrow .dm{font-size:16px}
+/* with a Fellowship, Minds at play is a developer list: the frames and the Agents panel cover the five (#145) */
+.fellow-mode:not(.dev-mode) #mindsSec{display:none}
+#campaign[hidden],#log[hidden]{display:none}
+.felmem>summary{font-size:9px}
+/* a Fellowship rides: the pitch under the title has done its job */
+.fellow-mode .sub{display:none}
 /* Item tooltips and the pinned detail in the Gear tab (ui/panels.js, issue #52) */
 .qp{color:#fff} .qf{color:var(--green)} .qr{color:#6fb4ff}
 .gear [data-slot]{cursor:pointer}

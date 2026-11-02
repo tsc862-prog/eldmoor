@@ -6,6 +6,13 @@
 //   POST /play/runner/start   {kind?:'hero'|'fellowship'|'dm', hero?, provider?, model?, maxTurns?, budget?}
 //                             -> {ok, runner} | 4xx {error}
 //   POST /play/runner/stop    {kind?, hero?} (or {key}) -> {ok, runner}
+//   POST /play/runner/limits  {sessionBudget?: number|null} and/or {key, maxTurns?, budget?} -> {ok, session, runner?, applies?}
+//                             (issue #145: limits set in the game). The session budget caps what all paid runners
+//                             started by this supervisor spend together: the spend so far is in GET's `session`, a paid
+//                             runner's budget is clipped to what is left, and when it runs out every paid runner is
+//                             stopped ("session budget reached") and new paid starts are refused. A running runner's
+//                             own turn cap or budget can be lowered live (the supervisor stops it on reaching it);
+//                             raising it past what it was started with applies on its next start (applies: 'next start').
 //
 // A runner is one child process of a known kind (RUNNER_KINDS): 'hero' plays one agent-played hero
 // (scripts/agent-player.mjs --hero <id>), 'fellowship' plays every agent-played Fellowship member
@@ -75,6 +82,7 @@ const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(
 const loopback = a => /^(127\.|::1$|::ffff:127\.)/.test(String(a || ''));
 const stripAnsi = s => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 const num = v => v === undefined || v === null || v === '' ? null : Number(v);
+export const SESSION_BUDGET_MAX = 500; // dollars: the most a session budget may be set to
 
 // Check a start request against the kinds, providers and caps. Returns {req} or {error, code}.
 const seatRunner = r => r.kind === 'dm' || r.kind === 'fellowship' || !!r.fellow;
@@ -140,6 +148,10 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     try {const f = typeof id === 'string' ? join(logs, 'agents', id + '.json') : sessionPath(id, logs); if (existsSync(f)) {const j = JSON.parse(readFileSync(f, 'utf8')); if (j && j.runner && j.runner.provider) return j.runner.provider}} catch {}
     return env.AGENT_PROVIDER || 'anthropic'};
   const table = new Map(); // key -> runner record (running and recently finished)
+  const session = {budget: null, spent: 0}; // issue #145: one budget across every paid runner of this supervisor
+  const left = () => session.budget == null ? Infinity : Math.max(0, session.budget - session.spent);
+  const paid = r => r.budget != null; // local (Ollama) runners have no budget: they cost nothing
+  const sessionView = () => ({budget: session.budget, spent: Math.round(session.spent * 10000) / 10000, left: session.budget == null ? null : Math.round(left() * 10000) / 10000})
   const dir = join(logs, 'runners');
   const heroes = () => (play.backend.info().heroes || []);
   const running = () => [...table.values()].filter(r => !r.done);
@@ -164,6 +176,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     return {key: r.key, kind: r.kind, hero: r.hero ?? null, heroes: ids, name: r.name, state: stateOf(r), pid: r.pid,
       startedAt: new Date(r.started).toISOString(), uptime: Math.round(((r.ended || now()) - r.started) / 1000),
       turns: r.turns, cost: Math.round(r.cost * 10000) / 10000, provider: (mind && mind.provider) || r.provider || null, model: (mind && mind.model) || r.model || null,
+      capTurns: r.capTurns ?? null, capBudget: r.capBudget ?? null, stopWhy: r.stopWhy || null,
       maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' : r.local ? 'until stopped' : 'up to ' + RUNNER_KINDS[r.kind].defaults.maxTurns + ' turns' + (r.kind === 'fellowship' ? ' each' : ''),
       ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
       log: relative(ROOT, r.logFile).replace(/\\/g, '/')};
@@ -192,11 +205,11 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
         write(line); r.lines.push(line.slice(0, 300)); if (r.lines.length > KEEP_LINES) r.lines.shift();
         if (/\[turn \d+/.test(line)) {r.turns++; (r.turnTimes || (r.turnTimes = [])).push(now()); if (r.turnTimes.length > 200) r.turnTimes.shift()}
         const pc = line.match(/\[pace\] (.*)$/); if (pc) r.pace = pc[1].slice(0, 160);
-        const c = line.match(/\| run \$(\d+\.\d+)/); if (c) r.cost = Number(c[1]);
+        const c = line.match(/\| run \$(\d+\.\d+)/); if (c) {const v = Number(c[1]); if (v > r.cost) session.spent += v - r.cost; r.cost = v}
         if (err || /failed|error|not ready|refused|No ANTHROPIC|is not|cannot|could not/i.test(line)) r.lastErr = line.slice(0, 300);
       }};
-    child.stdout && child.stdout.on('data', d => take(d, false));
-    child.stderr && child.stderr.on('data', d => take(d, true));
+    child.stdout && child.stdout.on('data', d => {take(d, false); checkCaps()});
+    child.stderr && child.stderr.on('data', d => {take(d, true); checkCaps()});
     if (child.stdin) child.stdin.on('error', () => {});
     child.on('error', e => {r.lastErr = 'could not start: ' + e.message; finish(null)});
     child.on('exit', code => finish(code));
@@ -218,15 +231,40 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     return {runner: view(r)};
   }
 
-  function stop(key) {
+  // Limits set in the game (#145): a lowered turn cap or budget, and the session budget. The runner's own reason
+  // line ("stopped after N turns (reason)") is what the page's runner-stop alert reads.
+  function checkCaps() {
+    for (const r of running()) {if (r.stopping) continue;
+      const why = r.capTurns != null && r.kind !== 'fellowship' && r.turns >= r.capTurns ? `turn cap reached: ${r.turns} of ${r.capTurns}`
+        : r.capBudget != null && r.cost >= r.capBudget ? `budget reached: $${r.cost.toFixed(2)} of $${r.capBudget.toFixed(2)}`
+        : paid(r) && session.budget != null && left() <= 0 ? `session budget reached: $${session.spent.toFixed(2)} of $${session.budget.toFixed(2)}` : null;
+      if (why) {r.lines.push(`[runners] stopped after ${r.turns} turns (${why})`); if (r.lines.length > KEEP_LINES) r.lines.shift(); stop(r.key, why)}}}
+  // Change limits. Returns {session, runner?, applies?} or {error, code}.
+  function limits(b) {
+    if (!b || typeof b !== 'object') return {error: 'bad body', code: 400};
+    if ('sessionBudget' in b) {const v = num(b.sessionBudget);
+      if (v !== null && !(Number.isFinite(v) && v >= .01 && v <= SESSION_BUDGET_MAX)) return {error: `sessionBudget must be from $0.01 to $${SESSION_BUDGET_MAX}, or null for none`, code: 400};
+      session.budget = v; log(`[runners] session budget ${v == null ? 'off' : '$' + v.toFixed(2)} (spent $${session.spent.toFixed(4)})`)}
+    let out = {session: sessionView()};
+    if (b.key != null) {const r = table.get(String(b.key)); if (!r || r.done) return {error: 'no such live runner', code: 404};
+      const K = RUNNER_KINDS[r.kind], mt = num(b.maxTurns), bu = num(b.budget); let later = false;
+      if ('maxTurns' in b) {if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
+        const own = r.maxTurns ?? (r.local ? Infinity : K.defaults.maxTurns); r.capTurns = mt; if (mt == null ? own !== Infinity : mt > own || r.kind === 'fellowship') later = true}
+      if ('budget' in b) {if (!paid(r)) return {error: 'a local runner has no budget', code: 400};
+        if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};
+        r.capBudget = bu; if (bu == null || bu > r.budget) later = true}
+      out = {...out, runner: view(r), applies: later ? 'next start' : 'now'}}
+    checkCaps(); out.session = sessionView(); return out}
+
+  function stop(key, why) {
     const r = table.get(key);
     if (!r) return {error: 'no such runner', code: 404};
     if (r.done) return {runner: view(r)};
     if (!r.stopping) {
-      r.stopping = true;
+      r.stopping = true; if (why) r.stopWhy = why;
       try {r.child.stdin && r.child.stdin.write('stop\n')} catch {}
       r.killT = setTimeout(() => {try {r.child.kill()} catch {}}, STOP_GRACE_MS); if (r.killT.unref) r.killT.unref();
-      log(`[runners] stopping ${r.key} ${r.name} (pid ${r.pid})`);
+      log(`[runners] stopping ${r.key} ${r.name} (pid ${r.pid})${why ? ': ' + why : ''}`);
     }
     return {runner: view(r)};
   }
@@ -254,7 +292,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     // The runners' output (narration, tool results, the DM's thinking) is for the watcher's page only (issue #123):
     // a request without the page's origin (another local process, a runner) gets the states without the lines.
     if (path === '/play/runner' && req.method === 'GET') {const page = o === origin, rs = enabled ? list().map(v => page ? v : {...v, lines: [], error: v.error ? 'see the runner log' : null}) : [];
-      return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), max: maxRunners, seats: SEATS, claude: {slots: claudeMax, used: leases.size, waiting: waiters.length}, kinds, providers: RUNNER_PROVIDERS, runners: rs})}
+      return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), session: sessionView(), max: maxRunners, seats: SEATS, claude: {slots: claudeMax, used: leases.size, waiting: waiters.length}, kinds, providers: RUNNER_PROVIDERS, runners: rs})}
     if (req.method !== 'POST') return send(404, {error: 'not found'});
     if (!enabled) return send(403, {error: 'runners are off', how: HOW});
     let b; try {b = await readBody(req)} catch (e) {return send(400, {error: e.message})}
@@ -269,6 +307,9 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       const K = RUNNER_KINDS[c.req.kind], ids = K.session ? [K.session] : K.heroes(c.req, heroes()), want = ids.filter(id => providerFor(id, c.req.provider) === 'anthropic').length;
       c.req.claude = want; if (c.req.kind === 'fellowship' && want) c.req.claudeConcurrency = Math.min(want, claudeMax);
       c.req.local = ids.length > 0 && ids.every(id => providerFor(id, c.req.provider) === 'ollama'); // no turn cap unless asked (issue #126)
+      if (paid(c.req) && session.budget != null) {const l = left(); // the session budget (#145): clip this runner's budget to what is left
+        if (l < .01) return send(402, {ok: false, error: `Session budget reached ($${session.spent.toFixed(2)} of $${session.budget.toFixed(2)}). Raise it in the game's Agents settings.`});
+        if (c.req.budget > l) c.req.budget = Math.floor(l * 100) / 100}
       const s = start(c.req); if (s.error) return send(500, {ok: false, error: s.error});
       return send(200, {ok: true, runner: s.runner});
     }
@@ -286,6 +327,10 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (typeof b.lease === 'string' && leases.has(b.lease)) {leases.delete(b.lease); grantNext()}
       return send(200, {ok: true});
     }
+    if (path === '/play/runner/limits') {
+      const l = limits(b); if (l.error) return send(l.code, {ok: false, error: l.error});
+      return send(200, {ok: true, ...l});
+    }
     if (path === '/play/runner/stop') {
       let key = typeof b.key === 'string' ? b.key : null;
       if (!key) {const K = RUNNER_KINDS[b.kind == null ? 'hero' : b.kind]; if (!K) return send(400, {ok: false, error: 'unknown runner kind'}); key = K.key({hero: Number(b.hero)})}
@@ -294,7 +339,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     }
     send(404, {error: 'not found'});
   });
-  return {list, start, stop, stopAll, killAll, table};
+  return {list, start, stop, stopAll, killAll, table, limits, session: sessionView};
 }
 
 // A supervised runner (ELDMOOR_SUPERVISED=1) calls this once: fn runs on a "stop" line on stdin, or

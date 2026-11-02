@@ -55,7 +55,7 @@ import {heroMemory} from './notebook.js'; // agent memories (#155)
 import {reflexMay} from './runlink.js';
 import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
-import {partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead} from './council.js';
+import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead} from './council.js';
 import {sceneAct,tableView} from './table.js';
 import {MOVES} from '../data/moves.js';
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
@@ -75,7 +75,7 @@ export const PK={
   IDLE:120,          // game minutes without a command or an action before autopilot carries on for the agent (#126)
   WAIT:[10,240],     // game minutes a wait may span
   WAIT_REAL_MS:45000,// a wait never holds the agent longer than this in real time (paused world, hidden tab)
-  JOURNAL:100,JOURNAL_LEN:600,LOG:40,EV:40,EV_OUT:15,NARR:20,SAY_LEN:120, // EV_OUT: events handed back per tool result
+  JOURNAL:100,JOURNAL_LEN:600,LOG:40,EV:40,EV_OUT:15,NARR:20,SAY_LEN:200, // EV_OUT: events handed back per tool result
 };
 
 // ---- helpers ----
@@ -375,7 +375,7 @@ const T={
     if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
     const n=(b.chat||[]).length;say(b,'idle',{});const e=(b.chat||[])[(b.chat||[]).length-1];
     return {ok:true,who:b.name,answer:(b.chat||[]).length>n&&e&&e.from===b?e.text:'('+b.name+' is busy and does not answer.)'}},
-  say(a,{text}){const t=clean(text,PK.SAY_LEN);need(t,'Say what?');need(!notEnglish(t),ENGLISH);need(a.state!=='ghost','Ghosts do not speak.');
+  say(a,{text}){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);const t=L.text;need(!notEnglish(t),ENGLISH);need(a.state!=='ghost','Ghosts do not speak.');
     agentLine(a,speak(a,t,'agent'));const heard=nearHeroes(a.x,a.y,7).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden).length;return {ok:true,said:t,heard_by:heard}},
   join_party(a,{hero_id}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');
     if(a.fellow&&b.fellow){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
@@ -465,7 +465,7 @@ const T={
   journal_write(a,{text}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});if(j.length>PK.JOURNAL)j.shift();return {ok:true,entries:j.length}},
   // memories (issue #155, sim/notebook.js): the hero's own notebook only
   remember:(a,x)=>heroMemory(a,'remember',x),recall:(a,x)=>heroMemory(a,'recall',x),update_memory:(a,x)=>heroMemory(a,'update_memory',x),forget:(a,x)=>heroMemory(a,'forget',x),pin:(a,x)=>heroMemory(a,'pin',x),
-  party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);agentLine(a,a.chat&&a.chat[a.chat.length-1]);return {ok:true,said:clean(text,PK.SAY_LEN),heard_by:n}},
+  party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);const e=a.chat&&a.chat[a.chat.length-1];agentLine(a,e);return {ok:true,said:e?e.text:'',heard_by:n}},
   party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
   chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+e.text:heardText(e)))}},
   propose(a,{kind,details,job_id}){need(a.fellow,'Only a Fellowship member can put something to the party.');const P=propose(a,String(kind||'').toLowerCase(),details,{job:job_id});

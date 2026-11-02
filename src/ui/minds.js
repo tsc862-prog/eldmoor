@@ -3,6 +3,7 @@
 // Names are clickable .hn spans; panels.js owns the delegated click that follows them.
 // Rebuilds only when the set of minds or a shown value changes.
 import {S} from '../sim/index.js';
+import {patch} from './stable.js'; // update in place, keep scroll (#145)
 import {brainStatus,mindTag,modelTag} from '../sim/brain.js';
 import {agentLink,runnerTag} from './player-bridge.js'; // each agent's runner link (issue #93)
 import {mindLabel,linkOf} from './mindlabel.js'; // the one mind label (issue #136)
@@ -28,13 +29,14 @@ export function renderMinds(){if(!list)return;
     return {a,st,l,link,mt,key:[a.id,a.fellow?1:0,a.lvl,st,link,rtag,a.state,l&&l.t,l&&l.outcome,l&&l.what,mt].join('|')}});
   const dmRow=dmMindRow(),key=rows.map(r=>r.key).join(';')+'#'+(dmRow?dmSeatSig():'');
   if(key===lastKey)return;
-  if(dmRow&&list.contains(document.activeElement)&&document.activeElement.tagName==='SELECT')return; // never rebuild under an open picker
+  if(!patch(list,list=>fill(list,rows,minds,dmRow),{anchor:false}))return; // never under an open picker, a press or a scroll (#145)
   lastKey=key;
-  count.textContent=String(minds.length+(dmRow?1:0));
-  list.replaceChildren();if(dmRow)list.append(dmRow);
+  count.textContent=String(minds.length+(dmRow?1:0))}
+function fill(list,rows,minds,dmRow){
+  if(dmRow){dmRow.setAttribute('data-k','dm');list.append(dmRow)}
   if(!minds.length&&!dmRow){list.append(el('li','mempty','No hero is AI-played right now. Select a hero of level 7 or higher and click the AI button by their name.'));return}
   for(const {a,st,l,link,mt} of rows){
-    const li=el('li','mind');
+    const li=el('li','mind');li.setAttribute('data-k','h'+a.id);
     const top=el('div','mtop');
     const n=el('span','hn f'+a.fac,a.name);n.dataset.hid=a.id;if(a.fellow)top.append(el('span','gd mstar','★ '));
     const ml=mindLabel(a),tag=el('span','mtag '+st,ml.text);tag.title=ml.title;

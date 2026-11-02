@@ -20,6 +20,8 @@ jobs:
         run: npm run build
       - name: World spec snapshot check
         run: npm run worldcheck
+      - name: Watcher UI keeps scroll and open rows while the world ticks (stubbed DOM)
+        run: npm run uismoke
       - name: Save/load round trip
         run: npm run savecheck
       - name: Model request rate (counting mock relay)

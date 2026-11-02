@@ -19,7 +19,7 @@ import {heroSprite} from '../render/sprites.js';
 import {cam} from '../render/draw.js';
 import {doing,combatRows} from './panels.js';
 import {select,setView} from './controls.js';
-import {mindOf,mindText,mindTitle,mindButton} from './mindctl.js';
+import {mindOf,mindText,mindTitle} from './mindctl.js'; // the frame shows the mind; it is set in Members and minds (#145)
 import {openSheet} from './sheet.js';
 import {runnerControl,runnerSig} from './runners.js'; // app runners: Start / Stop on an agent-played member
 import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
@@ -100,7 +100,6 @@ function update(fr,m){const a=m.hero,r=fr.r;
   const ch=chipsOf(a),ck=ch.map(c=>c.t).join('|');if(r.chips._k!==ck){r.chips._k=ck;r.chips.replaceChildren();for(const c of ch){const s=el('span','chip c-'+c.c,c.t);s.title=c.title||'';if(c.col)s.style.color=c.col;r.chips.append(s)}}
   setText(r.rep,replacedLine(m.slot));setText(r.pot,dead?'':potText(a));
   setText(r.mind,mindText(a));setCls(r.mind,'pfmind m-'+mindOf(a));setAttr(r.mind,'title',mindTitle(a));
-  const bk=dead?'':mindOf(a);if(r.btn._k!==bk){r.btn._k=bk;r.btn.replaceChildren();if(!dead)r.btn.append(mindButton(a))}
   const rk=dead||!a.player?'':runnerSig(a);if(r.run._k!==rk){r.run._k=rk;r.run.replaceChildren();if(rk)r.run.append(runnerControl(a))}}
 
 // ---- hover: combat totals and top skills ----
