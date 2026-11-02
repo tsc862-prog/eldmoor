@@ -317,6 +317,9 @@ blood debt, and the dead hero's friends warm to them. A grudge ends only with th
 
 The Stepping Lands, a larger test continent with six regions of its own (Lowmark, Sedgewater, Cairnwold, Cinderreach, Rimeholt, Palereach), are listed under Landmarks.
 
+## World events (issue #335)
+The DM can start a **festival** or a **plague** over a region (the lever `start_event`); both are the region conditions of the same names. A **festival** (3 game days, longer at a higher scale up to 9) fills the market towns: townsfolk talk more and merchants walk the roads in place of ambushes. A **plague** (the same lengths) sends townsfolk indoors and turns road ambushes into lost pilgrims. Neither touches anyone's health or life. The chronicle says so in plain words: "A festival fills the market towns of Thornvale." and "A plague creeps through Mirefen; townsfolk keep indoors."
+
 ## Weather
 Every zone has its own sky, and it turns every one to three hours. Thornvale gets drizzle and rain. Mirefen's fogs roll in off the fen and hide hunter and hunted alike. Cinderpass sees grey ashfall and, now and then, a choking ash storm. Hoarfell's snows thicken into squalls that close the high ground. Rain and snow slow travel, fog and storms shorten sight, and ash storms and squalls drive hunters back to town until they blow over.
 
@@ -867,7 +870,7 @@ granted or refused, goes into the DM log.
 - **Danger.** Mark a stretch of road dangerous (more Rookscar ambushes, a few more of the
   region's own beasts, never stronger than the region allows) or cleared (ambushes there become
   quiet shrines, and the local dens move out past its edge), for up to two days.
-- **Conditions.** Lay one condition over a region for up to three days: bandits on the roads,
+- **Conditions.** Lay one condition over a region for up to three days (a festival or plague started with start_event runs 3 to 9 days, see World events): bandits on the roads,
   plague (townsfolk keep indoors, the roads fill with lost pilgrims), a festival (talkative
   townsfolk, merchants instead of ambushes), a migration (more beasts on the move) or fog-bound
   skies (everyone sees less).

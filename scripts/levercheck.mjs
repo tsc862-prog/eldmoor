@@ -144,9 +144,22 @@ rej('set_condition', {region: 1, kind: 'plague', strength: 9}, /strength must be
 rej('mark_place', {kind: 'ruin', at: S0[4]}, /reason/, 'missing reason', {by: 'agent', reason: ' '});
 rej('mark_place', {kind: 'ruin', at: S0[4]}, /caller/, 'unknown caller', {by: 'god', reason: 'because'});
 rej('teleport_hero', {}, /no such lever/, 'unknown lever');
-for (const st of ['create_site', 'start_event', 'nudge_relation']) rej(st, {}, /not available yet/, st + ' stub');
-provide('startEvent', (p) => ({ok: true, effect: {stub: p.kind}}));
-{const x = pull('start_event', {kind: 'test', region: 0}, by); ok(x.ok && x.effect.stub === 'test', 'a stub works once its system provides an implementation')}
+for (const st of ['create_site', 'nudge_relation']) rej(st, {}, /not available yet/, st + ' stub');
+provide('createSite', (p) => ({ok: true, effect: {stub: p.theme}}));
+{const x = pull('create_site', {theme: 'test', region: 0, band: 3}, by); ok(x.ok && x.effect.stub === 'test', 'a stub works once its system provides an implementation')}
+// start_event (#335): festival and plague as timed region conditions
+{await import('../src/sim/events.js'); S.levers.cd = {}; S.levers.day = {}; S.conditions = [];
+  rej('start_event', {kind: 'invasion', region: 0}, /unknown event kind/, 'start_event unknown kind');
+  const n0 = S.chronicle.length, g0 = S.gameMin, x = pull('start_event', {kind: 'festival', region: 0}, by);
+  ok(x.ok && x.until === Math.round(g0 + 3 * 1440) && S.conditions.some(c => c.kind === 'festival' && c.z === 0 && c.str === 1), 'festival runs 3 game days as a region condition');
+  ok(S.chronicle[0].parts.join('').includes('festival') && S.chronicle.length >= n0, 'a chronicle line at the start: ' + S.chronicle[0].parts.join(''));
+  rej('start_event', {kind: 'plague', region: 0}, /limit|already|cooldown/, 'start_event limit holds');
+  S.gameMin = x.until + 1; leverTick(1);
+  ok(!S.conditions.some(c => c.kind === 'festival'), 'the festival ends');
+  S.levers.cd = {}; S.levers.day = {}; const y = pull('start_event', {kind: 'plague', region: 1, scale: 3}, by);
+  ok(y.ok && y.until === Math.round(S.gameMin + 9 * 1440) && S.conditions.some(c => c.kind === 'plague' && c.str === 3), 'plague at scale 3 runs 9 days, strength 3');
+  rej('start_event', {kind: 'plague', region: 2, scale: 4}, /scale must be/, 'scale capped at 3');
+  S.gameMin = y.until + 1; leverTick(1); S.conditions = []; S.levers.cd = {}; S.levers.day = {}}
 // custom_foe: the bestiary's customFoe, inside its tweak budget and per-region cap
 {const {MOBS} = await import('../src/data/mobs.js'); const base = Object.keys(MOBS).find(k => MOBS[k].z === 0 && !k.includes('@'));
   S.levers.cd = {}; const x = pull('custom_foe', {base, region: 0, at: S0[5], name: 'Old Testfang', levels: 1}, by), m = x.ok && x.ret;

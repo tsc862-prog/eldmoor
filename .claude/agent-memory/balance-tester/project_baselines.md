@@ -34,3 +34,7 @@ Fellowship (autoPick Concord, founded min 10, ai off): 4 member deaths in 110min
 Main: deaths 11.7/h (below 20-40 floor), PvP 40%, Kragmaw 9.4 kills, median 13.1@60 / 15.0@120, top 19.8; Fellowship crypt 21.7 attempts, 20.3 clears, 1.4 wipes, 2.2 crypt deaths/run (3.1 Fellowship deaths/run); Fellowship avg lvl 12.5@60, 16.5@120.
 PR: deaths 11.6/h, Kragmaw 6.0, median 12.3/13.8, top 19.1; Fellowship 19.5 attempts, 16.8 clears, 2.7 driven back, 0 wipes, 0.5 crypt deaths/run (1.2 Fellowship deaths/run); Fellowship lvl 11.9@60, 15.3@120 (~1 under main); 319 crawl scenes/run (~16 per attempt).
 Hit sensitivity (PR): hit x0.8 15.2 clears/1.6 driven/0.0 deaths; x1.0 16.8/2.7/0.5; x1.25 10.5/5.5/1.7 deaths (66% clear, not the author's 30%). Current hit judged a good middle. Verdict merge (lore PASS seen), auto-merge enabled.
+
+## 2026-11-02 PR #339 start_event (festival/plague) vs main ef82241
+Seeded harness (Math.random mulberry32, seeds 11/22/33, 120 min, 28 living each). No pulls: branch == main bit-identical (20 min seed 7 and 120 min x3, same state hash). Pull at min 10 (scale 2, one event at a time: lever limit "1 start_event already active"; event outlasts a 120 min run since 120 min = 12 game h):
+- base 12.7 deaths/h, PvP 50%, median lvl 15.7; festival Thornvale 13.0/h, PvP 49%, med 15; plague Mirefen 13.7/h, PvP 33%, med 15.3. Differences within seed noise (pull perturbs RNG stream). No anomalies.
