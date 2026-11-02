@@ -12,6 +12,13 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   fine; Azeroth, Horde, Alliance, Stormwind, Arthas etc. are not.
 - **Hardcore.** Every hero has one life. Death is permanent; a fresh level-1
   recruit of the same class and guild replaces them.
+- **The Fellowship is always agent-played.** Every Fellowship member (and every replacement) is
+  controlled by an agent at all times; there is no scripted or single-call AI mode for members. Between
+  decisions a member may auto-play (autopilot: carry out the last order, follow the leader, reflexes such as
+  defend, drink a potion, flee below 15% HP), but every decision belongs to its agent: votes, proposals,
+  lead_to, Table scene choices, jobs, splitting off, what to say. A decision point waits for the agent
+  (Table mode pauses the world at 1x); reflex choices are only a fallback when the runner is gone, and then
+  the runner-stop alert pauses the world and asks the owner. Background heroes may be scripted.
 - **In-game channels only.** The DM and the players (Fellowship members, agent-played heroes)
   communicate only inside the game: in-game chat (say in earshot, the party channel, townsfolk, the
   DM's `narrate` and `npc_say`) and what their characters can see. Nobody messages anyone directly
