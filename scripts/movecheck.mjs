@@ -8,7 +8,7 @@ import {movesOf, useMove, canUse, pickMove, tickRound, cdLeft, roundsLeft, abili
 import {combatStats, dmgTaken} from '../src/sim/stats.js';
 import {effOn} from '../src/sim/eff.js';
 import {rebuild} from '../src/sim/spatial.js';
-import {openScene, optionsFor, scene, TABLE} from '../src/sim/table.js';
+import {optionsFor, TABLE} from '../src/sim/table.js';
 
 let bad = 0;
 const ok = (c, m) => {console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) bad++};
@@ -57,10 +57,10 @@ const ro = mk('Rogue', 8), m3 = foeNear(ro); m3.hp = m3.maxhp; r = useMove(ro, '
 
 // ---- round mode ----
 const rw = mk('Warrior', 8), rm = foeNear(rw);
-r = useMove(rw, 'bastion', null, {mode: 'round'}); ok(r.ok && effOn(rw, 'taken') && roundsLeft(rw, 'bastion') === 4, 'round mode: Bastion holds for rounds, cooldown 4 rounds');
+r = useMove(rw, 'bastion', null, {mode: 'round'}); ok(r.ok && effOn(rw, 'taken') && roundsLeft(rw, 'bastion') === MOVES.bastion.rounds, 'round mode: Bastion holds for rounds, cooldown ' + MOVES.bastion.rounds + ' rounds');
 ok(!canUse(rw, 'bastion', null, 'round') === false, 'a cooling ability is refused in rounds');
-tickRound(rw); tickRound(rw); ok(!effOn(rw, 'taken') && roundsLeft(rw, 'bastion') === 2, 'two rounds pass: the effect ends, the cooldown runs down');
-tickRound(rw); tickRound(rw); ok(canUse(rw, 'bastion', null, 'round') === null, 'after its rounds the ability is ready again');
+tickRound(rw); tickRound(rw); ok(!effOn(rw, 'taken') && roundsLeft(rw, 'bastion') === MOVES.bastion.rounds - 2, 'two rounds pass: the effect ends, the cooldown runs down');
+for (let i = 2; i < MOVES.bastion.rounds; i++) tickRound(rw); ok(canUse(rw, 'bastion', null, 'round') === null, 'after its rounds the ability is ready again');
 ok(pickMove(mk('Rogue', 5), foeNear(rw), [], true, 'round') !== undefined, 'the scripted policy answers in round mode');
 
 // ---- passives reach the stat model ----
@@ -75,9 +75,12 @@ init({fellowship: true}); for (let i = 0; i < 60; i++) step(1 / 60); used.clear(
 if (S.fellowship) {
   TABLE.mode = 'auto';
   const f = S.agents.find(x => x.fellow && x.state !== 'dead'), mob = S.mobs.find(x => x.alive && !x.gone);
-  const sc = openScene('elite', 'Test foe', ['A test foe.'], {mob: mob.id});
-  const sc2 = sc || scene();
-  ok(sc2 && optionsFor(sc2, f).some(o => MOVES[o.k]), 'a combat scene lists ready abilities as options: ' + (sc2 ? optionsFor(sc2, f).map(o => o.k).join(', ') : 'no scene'));
+  const sc2 = {kind: 'elite', ctx: {mob: mob.id}, ids: [f.id], acts: {}, beats: []}; // a combat scene's shape; no need to run one
+  const opts = optionsFor(sc2, f).filter(o => MOVES[o.k]);
+  ok(opts.length >= 1, 'a combat scene lists ready abilities as options: ' + optionsFor(sc2, f).map(o => o.k).join(', ') + ' (' + f.cls + ' L' + f.lvl + ')');
+  const hp0 = mob.hp, r2 = useMove(f, opts[0].k, MOVES[opts[0].k].target === 'foe' ? mob : f, {mode: 'round', mates: [f], foe: mob});
+  ok(r2.ok, 'the option resolves in round mode: ' + (r2.text || r2.error));
+  ok(!optionsFor(sc2, f).some(o => o.k === opts[0].k), 'a used ability leaves the options until its rounds pass');
 } else ok(false, 'a Fellowship to test the Table with');
 
 // ---- save round trip ----
