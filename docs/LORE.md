@@ -161,7 +161,7 @@ Every hero carries six ability scores and ten skills (`src/data/abilities.js`, `
 | Insight | INS | Reading land and people: senses, tracks, wounds |
 | Presence | PRS | Force of personality: bargaining, faith, the voice that carries |
 
-Class priorities (primary / secondary): Warrior Brawn / Grit; Mage Wits / Insight; Hunter Reflex / Insight; Priest Insight / Presence; Rogue Reflex / Wits. The primary also feeds attack. Each people leans +1 toward one score: Hallowan Presence, Tarrow Insight, Skerrin Wits, Ashfolk Brawn, Mirekin Reflex, Thornhide Grit. At levels 5, 10, 15 and 20 a hero gains +1 to the primary and, half the time, +1 to the secondary (cap 20).
+Class priorities (primary / secondary): Warrior Brawn / Grit; Mage Wits / Insight; Hunter Reflex / Insight; Priest Insight / Presence; Rogue Reflex / Wits; Skald Presence / Wits; Wildspeaker Insight / Grit. The primary also feeds attack. Each people leans +1 toward one score: Hallowan Presence, Tarrow Insight, Skerrin Wits, Ashfolk Brawn, Mirekin Reflex, Thornhide Grit. At levels 5, 10, 15 and 20 a hero gains +1 to the primary and, half the time, +1 to the secondary (cap 20).
 
 **Skills** (each keyed to a score): Tracking (Insight), Stealth (Reflex), Traps (Wits; locks, snares, needles), Persuasion (Presence), Intimidation (Brawn), Lore (Wits), Healing (Insight), Athletics (Brawn), Survival (Grit), Perception (Insight). A skill modifier is the score modifier plus the proficiency bonus (+2 at levels 1-4, +3 at 5-9, +4 at 10-14, +5 at 15+) if trained, or half of it (rounded down) if not, plus +1 from a fitting trait.
 
