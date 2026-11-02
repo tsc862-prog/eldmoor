@@ -22,6 +22,7 @@ import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
 import {fellowshipRunnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start all five / Stop all
+import {devMode} from './mindctl.js'; // request stats are a developer surface (#145)
 import {patch,held,keyOf} from './stable.js'; // update in place, keep scroll (#145)
 
 const $=id=>document.getElementById(id);
@@ -74,7 +75,13 @@ let focus=true;
 export const chronicleShows=e=>!focus||!S.fellowship||chronicleFocus(e);
 let onFilter=()=>{};
 export function setChronicleRefresh(f){onFilter=f}
-function syncChronBtn(){const b=$('chronFel');if(!b)return;b.hidden=!S.fellowship;b.setAttribute('aria-pressed',String(focus))}
+// The Story panel (#145): the Chronicle, and with a Fellowship its Campaign log as a second tab.
+let story='chron';
+function syncChronBtn(){const F=!!S.fellowship,camp=F&&story==='camp',b=$('chronFel'),t=$('storyTabs'),tt=$('storyTtl'),lg=$('log'),cp=$('campaign');
+  if(b){b.hidden=!F||camp;b.setAttribute('aria-pressed',String(focus))}
+  if(t){t.hidden=!F;for(const x of t.children)x.setAttribute('aria-pressed',String(x.dataset.story===(camp?'camp':'chron')))}
+  if(tt&&tt.textContent!==(F?'Story':'Chronicle'))tt.textContent=F?'Story':'Chronicle';
+  if(lg)lg.hidden=camp;if(cp)cp.hidden=!camp}
 
 // ---- the panel ----
 let draft={fac:0,slots:{tank:null,healer:null,dps1:null,dps2:null,dps3:null}},msg='',sheetOpen=null,confirmDisband=false;
@@ -107,12 +114,14 @@ function topView(node){const F=S.fellowship;
   ai.title=md==='off'?'Scripted rules only. Click: the relay plays the members (npm run relay).':md==='relay'?'The relay plays the members and writes their sheets (scripted when it is down). Click: one AI agent per member (npm run fellowship).':'Each member is agent-played: run npm run fellowship to start their agents (reflexes act while they are silent). Click: back to scripted.';
   const db=el('button',null,confirmDisband?'Really disband?':'Disband');db.dataset.fact='disband';
   bar.append(fol,ai,db);node.append(bar);
-  // Minds: agents -> the members' runners can be started from here (the relay runs them; --runners)
-  if(md==='agent'){const rc=fellowshipRunnerControl();if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels(),openaiModels()),rc.firstChild);node.append(rc)}
-  renderSettings(node);
   if(msg)node.append(el('div','fmsg',msg));
-  if(F.enrich&&F.enrich.calls)node.append(el('div','dm','Relay writing: '+F.enrich.ok+' sheets written, '+F.enrich.fail+' kept scripted, $'+F.enrich.usd.toFixed(4)+(F.enrich.ms?' · last '+(F.enrich.ms/1000).toFixed(1)+' s':'')));
-  if(reqTotals.sent||reqTotals.denied){const fl=recentFailures(),r=el('div','dm','Model requests: '+rpm()+'/min · '+reqTotals.sent+' sent, '+reqTotals.failed+' failed, '+reqTotals.denied+' held back');
+  // Members and minds (#145): who plays each place and their runners; the one place a member's mind is set
+  const mm=el('details','tlbox felmem');mm.setAttribute('data-k','members');mm.append(el('summary',null,'Members and minds'));
+  // Minds: agents -> the members' runners can be started from here (the relay runs them; --runners)
+  if(md==='agent'){const rc=fellowshipRunnerControl();if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels(),openaiModels()),rc.firstChild);mm.append(rc)}
+  renderSettings(mm);node.append(mm);
+  if(devMode()&&F.enrich&&F.enrich.calls)node.append(el('div','dm','Relay writing: '+F.enrich.ok+' sheets written, '+F.enrich.fail+' kept scripted, $'+F.enrich.usd.toFixed(4)+(F.enrich.ms?' · last '+(F.enrich.ms/1000).toFixed(1)+' s':'')));
+  if(devMode()&&(reqTotals.sent||reqTotals.denied)){const fl=recentFailures(),r=el('div','dm','Model requests: '+rpm()+'/min · '+reqTotals.sent+' sent, '+reqTotals.failed+' failed, '+reqTotals.denied+' held back');
     if(fl.length)r.title='Recent failures: '+fl.map(f=>f.kind+(f.hero?' '+f.hero:'')+': '+f.why).join(' | ');node.append(r);
     if(fl.length)node.append(el('div','dm','Last failure: '+fl[0].kind+(fl[0].hero?' ('+fl[0].hero+')':'')+', '+fl[0].why+'. Writing backs off, scripted text stands in.'))}
   const th=el('details','tlbox');th.setAttribute('data-k','threads');th.append(el('summary',null,'Open threads'));renderThreads(th);node.append(th);
@@ -155,8 +164,11 @@ function act(t){const F=S.fellowship;msg='';
 
 let setViewHook=()=>{};
 export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('felbody');if(!root)return;
-  top=el('div');sheet=el('div');logBox=el('details','tlbox felLog');logBox.open=true;logBox.append(el('summary',null,'Campaign log'));const lb=el('div');logBox.append(lb);logBox._b=lb;
-  root.append(top,sheet,logBox);
+  top=el('div');sheet=el('div');
+  // the campaign log is a tab of the Story panel (#145); an older page without it keeps it here
+  const cp=$('campaign');if(cp){logBox=cp;logBox._b=cp;root.append(top,sheet)}
+  else{logBox=el('details','tlbox felLog');logBox.open=true;logBox.append(el('summary',null,'Campaign log'));const lb=el('div');logBox.append(lb);logBox._b=lb;root.append(top,sheet,logBox)}
+  const st=$('storyTabs');if(st)st.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-story]');if(!b)return;story=b.dataset.story;syncChronBtn()});
   root.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('button'):null;if(!t||!root.contains(t))return;
     if(t.closest('.hn'))return;act(t);sigTop='';sigForm='';renderFellowship()});
   root.addEventListener('change',e=>{const s=e.target;if(mindChange(s)){sigTop='';renderFellowship();return}
@@ -165,11 +177,11 @@ export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('fe
   renderFellowship()}
 
 export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChronBtn();
-  if(!F){logBox.hidden=true;
+  if(!F){if(logBox!==$('campaign'))logBox.hidden=true;
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm&&patch(top,n=>formView(n))){sigForm=sig;sigTop=''}return}
-  logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed;
+  if(logBox!==$('campaign'))logBox.hidden=false;
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
   // patched in place (#145): never under an open picker, a press or a scroll; open threads and days stay open
   if(sig!==sigTop&&patch(top,n=>topView(n))){sigTop=sig;sigForm=''}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog&&patch(logBox._b,n=>renderCampaignLog(n)))sigLog=ls}

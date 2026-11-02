@@ -41,6 +41,9 @@ export function initMindCtl(onChange){after=onChange||(()=>{});
   document.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('[data-mindctl]'):null;if(!t)return;
     e.stopPropagation();const a=S.agents.find(x=>x.id==t.dataset.mindctl);if(a){cycleMind(a);after()}},true);
   const d=document.getElementById('wDev');if(d){d.setAttribute('aria-pressed',String(dev));
-    d.onclick=()=>{dev=!dev;try{localStorage.setItem(KEY,dev?'1':'0')}catch(_){}d.setAttribute('aria-pressed',String(dev));after()}}
+    d.onclick=()=>{dev=!dev;try{localStorage.setItem(KEY,dev?'1':'0')}catch(_){}d.setAttribute('aria-pressed',String(dev));syncDevBody();after()}}
+  syncDevBody()
   syncDevBtn()}
+// body.dev-mode shows the developer surfaces (Minds at play with a Fellowship, request stats; #145)
+function syncDevBody(){if(document.body&&document.body.classList)document.body.classList.toggle('dev-mode',dev)}
 export function syncDevBtn(){const d=document.getElementById('wDev');if(d)d.hidden=!S.fellowship}

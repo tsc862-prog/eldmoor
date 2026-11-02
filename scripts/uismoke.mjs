@@ -100,8 +100,8 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
 {const fb=$('felbody');const th=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));
   ok(!!th,'Open threads is there');if(th){th.open=true;select(mem[2]);tick(10);
     const th2=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));ok(th2===th&&th2.open,'Open threads stays open across a refresh')}}
-{const d=$('felbody').querySelector('.felLog details');const k=d&&d.getAttribute('data-k');
-  holds('Campaign log ('+k+')',()=>$('felbody').querySelector('.felLog details[data-k='+k+'] .tlist'),{sec:60,min:3})}
+{const d=$('campaign').querySelector('details');const k=d&&d.getAttribute('data-k');
+  holds('Campaign log ('+k+')',()=>$('campaign').querySelector('details[data-k='+k+'] .tlist'),{sec:60,min:3})}
 // a focused picker is never replaced
 {const s=$('felbody').querySelector('select');if(s){s.focus();const n=s;select(mem[3]);tick(10);ok($('felbody').contains(n),'a focused picker in the Fellowship panel survives refreshes');n.blur()}
   else console.log('  skip picker (no select in the Fellowship panel)')}
@@ -148,6 +148,27 @@ console.log('bars');
   ok(localStorage.getItem('eldmoor.worldChatter')!==was&&/World chatter: (on|off)/.test(vc.textContent),'World chatter switches from Settings and is kept per viewer');vc.click();
   for(const f of document._ls.keydown||[])f({key:'Escape'});ok(sp.hidden&&sb.getAttribute('aria-expanded')==='false','Escape closes Settings');
   ok(!tb().querySelector('button.mini')||!/World chatter/.test(tb().textContent),'the Chat tab no longer carries its own World chatter switch')}
+
+// Decluttered (#145): dossier groups, one mind control, the Story panel, developer surfaces folded
+console.log('declutter');
+{const {setGroup}=await import('../src/ui/panels.js');
+  select(mem[1]);setTab('stats');uiFast();
+  const gr=$('hero').querySelector('.tgroups'),sub=$('hero').querySelector('.tsub'),shown=()=>sub.children.filter(b=>!b.hidden).map(b=>b.textContent);
+  ok(gr&&gr.children.map(b=>b.textContent).join()==='Character,Story,Mind','three dossier groups: '+(gr&&gr.children.map(b=>b.textContent)));
+  ok(shown().join()==='Stats,Gear,Pack','Character: Stats, Gear, Pack (no Party for a member: the frames are the party): '+shown());
+  setGroup('story');uiFast();ok(shown().join()==='Log,Bio,Memory','Story: Log, Bio, Memory: '+shown());
+  setGroup('mind');uiFast();ok(shown().includes('Chat')&&shown().includes('Agent'),'Mind: Chat and Agent for the agent-played member: '+shown());
+  setGroup('char');uiFast();ok(tb().querySelector('[data-cstat]'),'Character opens on Stats');
+  setGroup('story');setTab('bio');setGroup('char');setGroup('story');uiFast();ok(shown().length&&sub.children.find(b=>b.getAttribute('aria-pressed')==='true').textContent==='Bio','a group reopens on its last tab');
+  ok(!$('hero').querySelector('.hd [data-ai]')&&!$('hero').querySelector('.hd [data-agent]'),'a member\'s header has no AI/Agent buttons (one mind control)');
+  ok(!$('frames').querySelector('[data-mindctl]'),'the frames show the mind label, without a switch');
+  const fb=$('felbody'),mm=[...fb.querySelectorAll('details')].find(d=>/Members and minds/.test(d.textContent));
+  ok(!!mm&&!mm.open&&!!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member\'s mind is set, folded by default');
+  ok(!/Model requests|Relay writing/.test(fb.textContent),'request stats are hidden unless Developer is on');
+  ok(document.body.classList.contains('fellow-mode')&&!document.body.classList.contains('dev-mode'),'Minds at play is folded away (fellow-mode without dev-mode)');
+  const st=$('storyTabs');ok(st&&!st.hidden&&$('storyTtl').textContent==='Story','the Story panel has Chronicle and Campaign log tabs');
+  st.children.find(b=>b.dataset.story==='camp').click();ok($('log').hidden&&!$('campaign').hidden&&$('chronFel').hidden,'Campaign log tab shows the campaign');
+  st.children.find(b=>b.dataset.story==='chron').click();ok(!$('log').hidden&&$('campaign').hidden,'Chronicle tab shows the chronicle')}
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

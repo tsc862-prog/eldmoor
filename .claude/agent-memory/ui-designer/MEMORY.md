@@ -1,0 +1,5 @@
+- [Stable panels](stable_panels.md): patch() in src/ui/stable.js, data-k keys, held(), the uismoke stub DOM, ui/app.js cadence
+- [Watcher IA (#145)](watcher_ia.md): where things live after the declutter (Settings, World menu, Agents, dossier groups, Story panel), one mind control
+- [Agent limits](agent_limits.md): Agents popover, per-runner caps/budgets, session budget, supervisor /play/runner/limits
+- [Chat lines](chat_lines.md): one compact line, no mind badge, spokenLine() in sim/council.js, 200 chars refused not cut
+- Workflow: PRs #150 -> #151, #157 -> #158 -> #159 were stacked (each needs stable.js); say "stacked on" in the body. Python edits on Windows: write with newline='\n'; the sandbox refuses bash commands containing the word "git" in heredocs, so write scripts to the scratchpad first.

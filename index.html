@@ -86,11 +86,13 @@
         <h2>Factions</h2>
         <div class="facs" id="facs"></div>
       </section>
-      <section class="panel" data-o="3">
-        <h2 class="hrow">Chronicle <button id="chronFel" class="mini" hidden aria-pressed="true" title="Show only the Fellowship and the world&rsquo;s major events">Fellowship only</button></h2>
+      <section class="panel" data-o="3" id="storySec">
+        <h2 class="hrow"><span id="storyTtl">Chronicle</span> <button id="chronFel" class="mini" hidden aria-pressed="true" title="Show only the Fellowship and the world&rsquo;s major events">Fellowship only</button></h2>
+        <div class="tfilter" id="storyTabs" role="tablist" aria-label="Story" hidden><button data-story="chron" role="tab" aria-pressed="true">Chronicle</button><button data-story="camp" role="tab" aria-pressed="false">Campaign log</button></div>
         <ul class="log" id="log"></ul>
+        <div id="campaign" class="felLog" hidden></div>
       </section>
-      <section class="panel" data-o="4">
+      <section class="panel" data-o="4" id="mindsSec">
         <details class="tlbox" id="mindsbox" open>
           <summary>Minds at play <span class="mcount" id="mindsCount">0</span></summary>
           <ul class="minds" id="minds"></ul>

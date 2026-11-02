@@ -32,7 +32,7 @@ import {byDay,stampOf,srcTag} from './daystamp.js'; // game day on times, action
 import {fellowRoleOf} from '../core/chatview.js';
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
-import {showMindButtons} from './mindctl.js';
+import {showMindButtons,devMode} from './mindctl.js';
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
@@ -73,10 +73,17 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
 
 // ---- hero dossier ----
 const TABS=[['stats','Stats'],['log','Log'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['inv','Pack'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
+// The tabs in three groups (#145): Character, Story, Mind. A tab added later without a group lands in Character.
+const GROUPS=[['char','Character',['stats','gear','inv','party']],['story','Story',['log','bio','memory']],['mind','Mind',['chat','agent','mind']]];
+const groupOf=t=>(GROUPS.find(g=>g[2].includes(t))||GROUPS[0])[0];
+const lastIn={}; // the sub-tab last opened in each group
 const SLOTS=[['head','Head'],['chest','Chest'],['hands','Hands'],['feet','Feet'],['main','Main hand'],['off','Off hand'],['trinket','Trinket']];
 let tab='stats'; // persists across hero changes
 export const activeTab=()=>tab;
-export function setTab(t){if(TABS.some(([k])=>k===t))tab=t;renderHero()}
+export function setTab(t){if(TABS.some(([k])=>k===t)){tab=t;lastIn[groupOf(t)]=t}renderHero()}
+// Open a group: its last-opened tab, else its first one this hero has.
+export function setGroup(g){const G=GROUPS.find(x=>x[0]===g);if(!G)return;const a=cam.sel,ok_=k=>!a||tabShown(a,k);
+  const inG=TABS.map(([k])=>k).filter(k=>groupOf(k)===g&&ok_(k));setTab(inG.includes(lastIn[g])?lastIn[g]:inG[0]||'stats')}
 
 // Gear score: the gear module's own number when it has merged (a.gearScore), else the
 // mean item level of the seven slots, else the legacy a.gear counter.
@@ -266,7 +273,7 @@ function chatName(h){const s=hn(h),r=fellowRoleOf(h);if(r)s.className+=' fm r-'+
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
 function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
   {const ml=mindLabel(a),bd=aiBadge(ml.text,ml.title);bd.classList.add('mk-'+ml.kind);d.append(' ',bd)} // the one mind label (issue #136)
-  if(!showMindButtons(a))return d;
+  if(!showMindButtons(a)||(a.fellow&&S.fellowship&&!devMode()))return d; // a member's mind is set in Members and minds (#145)
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);
   // Agent player (issue #75): an AI agent with its own session plays this hero through MCP tools.
   if(a.state!=='dead'){const g=el('button','ai-toggle',a.player?'Agent off':'Agent');g.dataset.agent='1';g.title=a.player?'Return this hero to the scripted rules':'Let an AI agent play this hero (npm run relay, then npm run agent)';d.append(' ',g)}
@@ -327,8 +334,17 @@ const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,inv:tabInv,party:t
 // header and only the active tab's body, since it runs every 0.3s.
 let skel=null;
 function skeleton(root){root.replaceChildren();const hd=el('div','hd'),tabs=el('div','tabs'),tb=el('div','tb');
-  for(const [k,label] of TABS){const b=el('button',null,label);b.dataset.tab=k;tabs.append(b)}
-  wireGear(tb);root.append(hd,tabs,tb);skel={root,hd,tabs,tb};return skel}
+  const gr=el('div','tgroups'),sub=el('div','tsub');gr.setAttribute('role','tablist');gr.setAttribute('aria-label','Dossier');sub.setAttribute('role','tablist');
+  for(const [g,label] of GROUPS){const b=el('button',null,label);b.dataset.tgroup=g;b.setAttribute('role','tab');gr.append(b)}
+  for(const [k,label] of TABS){const b=el('button',null,label);b.dataset.tab=k;b.setAttribute('role','tab');sub.append(b)}
+  tabs.append(gr,sub);
+  // arrow keys move along a row of tabs
+  tabs.addEventListener('keydown',e=>{if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;const row=e.target.parentNode;if(!row||!tabs.contains(row))return;
+    const bs=[...row.children].filter(b=>!b.hidden),i=bs.indexOf(e.target);if(i<0)return;const n=bs[(i+(e.key==='ArrowRight'?1:bs.length-1))%bs.length];e.preventDefault();n.click();n.focus()});
+  wireGear(tb);root.append(hd,tabs,tb);skel={root,hd,tabs,tb,gr,sub};return skel}
+// Which tabs a hero has: Mind only for an AI-played hero, Agent for an agent-played one, Memory for a Fellowship
+// member; Party is hidden for members, whose party is the frames above the map.
+function tabShown(a,k){if(k==='mind')return hasMind(a);if(k==='agent')return hasAgent(a);if(k==='memory')return !!a.memory;if(k==='party')return !(a.fellow&&S.fellowship);return true}
 
 export function renderHero(){const root=$('hero'),a=cam.sel;
   if(!a){root.innerHTML='<div class="meta">Tap a hero on the map, or pick one from Top heroes.</div>';skel=null;return}
@@ -340,8 +356,9 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
     h.append(el('div','doing',doing(a)));
     h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
     h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)))});
-  const mindable=hasMind(a),agentable=hasAgent(a),memable=!!a.memory,cur=tab==='mind'&&!mindable||tab==='agent'&&!agentable||tab==='memory'&&!memable?'stats':tab; // the Mind tab exists only for AI-played heroes, the Agent tab for agent-played ones
-  for(const b of k.tabs.children){b.setAttribute('aria-pressed',String(b.dataset.tab===cur));if(b.dataset.tab==='mind')b.hidden=!mindable;if(b.dataset.tab==='agent')b.hidden=!agentable;if(b.dataset.tab==='memory')b.hidden=!memable}
+  const cur=tabShown(a,tab)?tab:'stats',grp=groupOf(cur);
+  for(const b of k.gr.children){const on=b.dataset.tgroup===grp;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-selected',String(on))}
+  for(const b of k.sub.children){const on=b.dataset.tab===cur;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-selected',String(on));b.hidden=groupOf(b.dataset.tab)!==grp||!tabShown(a,b.dataset.tab)}
   if(pinned&&pinned.id!==a.id)pinned=null;
   // a new hero or tab starts at the top; the same hero and tab keep their place
   const who=a.id+':'+cur;if(k.tb.dataset.who!==who){k.tb.dataset.who=who;k.tb.replaceChildren();delete k.tb.dataset.sig}
@@ -408,6 +425,7 @@ function initClicks(){const host=document.querySelector('.main')||document.body;
       if(a)mindOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===id?null:{hid:a.id,id,prompt:false};renderHero();return}
     const dv=t.closest('[data-adv]');if(dv&&!t.closest('.hn[data-hid]')){showAdventure(dv.dataset.adv);return}
     const cs=t.closest('[data-cstat]');if(cs){statOpen=statOpen===cs.dataset.cstat?null:cs.dataset.cstat;renderHero();return}
+    const tg=t.closest('[data-tgroup]');if(tg){setGroup(tg.dataset.tgroup);return}
     const tb=t.closest('[data-tab]');if(tb){setTab(tb.dataset.tab);return}
     const n=t.closest('.hn[data-hid]');if(!n)return;
     const a=S.agents.find(x=>x.id==n.dataset.hid);if(a){pick(a);if(a.state==='dead'&&n.closest('#fallen'))setTab('bio')}})}
