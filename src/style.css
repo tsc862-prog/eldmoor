@@ -47,6 +47,10 @@ h1{font-family:var(--px);font-size:clamp(20px,4vw,30px);margin:0;color:var(--gol
   .main.cols3{flex:1;min-height:0;grid-template-columns:var(--sideL) minmax(0,1fr) var(--side);align-items:stretch}
   .main.cols3>.col{overflow-y:auto;overflow-x:hidden;min-height:0;overscroll-behavior:contain}
   .main.cols3 .screen{height:clamp(420px,62vh,1300px)}
+  /* chat at the top of the left column (owner request): it fills most of the column, Story and World scroll below it */
+  .colL>#chatSec{flex:0 0 auto}
+  body.chat-left .colL .chatbox .chatlist,body.chat-left .colL .chatdm{height:clamp(240px,calc(62vh - 170px),1000px)}
+  body.chat-left #chatTall{display:none}
 }
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
 .screen{position:relative;aspect-ratio:640/400;max-width:100%;background:#000;border:3px solid var(--edge);box-shadow:0 0 0 3px #05060c,6px 6px 0 0 #05060c;cursor:pointer;touch-action:manipulation}
@@ -498,7 +502,7 @@ button.tbtn.danger{border-color:var(--red)}
 .tfoot a{color:var(--gold)}
 .tfoot a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
-.chatwidebtn{margin-left:auto}
+.chatwidebtn{margin-left:auto}.chatsidebtn{margin-left:6px}.chatsidebtn[hidden]{display:none}
 
 /* ---- Quests tab ---- */
 .qlog{display:flex;flex-direction:column;gap:10px}
