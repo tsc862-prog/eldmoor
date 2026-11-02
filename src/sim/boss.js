@@ -15,8 +15,10 @@ import {record,timeline} from './history.js';
 import {bossPull} from './narrator.js';
 import {unitDraft,raidReserve} from './council.js';
 import {rivalDeed} from './rivals.js';
+import {raidFirst,raidCore,focusCount} from './guildfocus.js';
 
-const RAID_COOLDOWN=240,RAID_LVL=14,RAID_FULL=5,RAID_GEAR=9; // entry level, party size that needs no gear check, average gear score otherwise
+export const RAID_LVL=14;
+const RAID_COOLDOWN=240,RAID_FULL=5,RAID_GEAR=9; // entry level, party size that needs no gear check, average gear score otherwise
 // Runs the template's phases, signature moves and enrage; Kragmaw has one phase, one breath and no enrage,
 // so this plays exactly the fight the rebalance tuned. Adds are declared by templates but spawned by the crawl rework.
 const tplOf=boss=>BOSSES[boss.tpl||'kragmaw'];
@@ -45,10 +47,11 @@ export function raidCheck(dt){const boss=S.boss,agents=S.agents;
   const rf=raidReserve(); // the Fellowship's muster comes first (#135): its faction is checked every few seconds and no background muster beats it
   S.raidT-=dt;if(S.raidT>0)return;S.raidT=rf>=0?6:45+rnd()*30;if(!boss.alive)return;
   const f=rf>=0?rf:ri(0,1);if(S.raidOn[f])return;
-  const pool=agents.filter(a=>a.fac===f&&a.lvl>=RAID_LVL&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>(rf>=0&&(y.fellow?1:0)-(x.fellow?1:0))||(raidPull(y)-raidPull(x))||(y.lvl-x.lvl));
+  const pool=agents.filter(a=>a.fac===f&&a.lvl>=RAID_LVL&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>(rf>=0&&(y.fellow?1:0)-(x.fellow?1:0))||(raidPull(y)-raidPull(x))||(raidFirst(y)-raidFirst(x))||(y.lvl-x.lvl)); // a Wyrmhunt guild's members (sim/guildfocus.js) muster first
   const cand=unitDraft(pool,pool,6,'raid'); // oath-bound (legend, Kragmaw heirloom) first; the Fellowship (#68) all together or not at all
   if(rf>=0&&!cand.some(a=>a.fellow))return; // reserved: background raiders only join under the Fellowship
-  if(cand.length<4||(cand.length<RAID_FULL&&cand.reduce((t,a)=>t+a.gear,0)/cand.length<RAID_GEAR))return;S.raidOn[f]=true;
+  const core=cand.length>=4&&raidCore(cand); // a Wyrmhunt core goes without the gear check
+  if(cand.length<4||(cand.length<RAID_FULL&&!core&&cand.reduce((t,a)=>t+a.gear,0)/cand.length<RAID_GEAR))return;S.raidOn[f]=true;if(core)focusCount('raids');
   cand.forEach((a,i)=>{a.raid=true;a.raidIdx=i;a.state='raid';a.target=null;a.dest=null;a.hp=Math.max(a.hp,maxHp(a)*.8)});
   for(const a of cand)record(a,'Mustered with '+(cand.length-1)+' others to raid ',{t:'Kragmaw',c:'gd'},'’s lair.');
   log(fac(f),' musters ',String(cand.length),' heroes to raid Kragmaw’s lair.');timeline('raid',fac(f),' mustered '+cand.length+' heroes to raid Kragmaw’s lair.')}

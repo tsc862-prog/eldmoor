@@ -77,6 +77,21 @@ and its end, when the blood cools or a banner falls; the guild panel lists each 
 members meeting in the wilds duel more readily, and guildmates rush in against a rival sooner. The
 Fellowship's guild stays out of it.
 
+**Guild focus** (issue #6, `src/sim/guildfocus.js`): a guild's leader turns its banner to one end,
+chosen from who rides under it, their oaths and the guild's record, and weighed again each day or when
+the banner passes. The four foci:
+
+- **Delve**: the Sunken Crypt. Called up for Crypt groups far more often than other guilds.
+- **Wyrmhunt**: Kragmaw (or whichever wyrm holds the lair). Its members muster first, and three of them
+  will raid with a short party that others would think too poorly geared.
+- **Wayfaring**: the town boards. Its leaders almost always take a fitting job at the gate.
+- **Warpath**: enemy blood. Chosen only by a leader sworn to a blood oath or a guild with a declared
+  rival; its members duel more readily and guildmates rush in sooner.
+
+The Chronicle and the timeline (GUILD badge) carry each change ("<SC> The Sablecrest turns its banner to
+the Delve: Mirric will lead them down into The Sunken Crypt."); the guild panel shows the focus. A guild
+with no focus yet has none listed. The Fellowship's guild never takes a focus.
+
 ## Classes
 Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), Rogue (melee, crits), Skald (war-singer, see below), Wildspeaker (green-handed healer, see below).
 

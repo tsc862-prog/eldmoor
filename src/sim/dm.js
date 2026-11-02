@@ -58,6 +58,7 @@ import {addGear,addQuest,hasQuestFor,dropQuest} from './inv.js'; // quest items 
 import {jobDone} from './questlog.js'; // several quests per hero (the quest log)
 import {say} from './chat.js';
 import {focus} from './dmfocus.js'; // the Fellowship first (issue #165)
+import {takeChance,focusOf,focusCount} from './guildfocus.js'; // a Wayfaring guild's leaders take hooks more readily (#6)
 import {d20} from './narrator.js';
 import {bestFor,socialSkill,SKILLS} from './abilities.js';
 import {dmlog} from './dmlog.js';
@@ -100,7 +101,7 @@ export const SCRIPTED_DM={
   // bold or reckless leaders like fights, cautious ones like roads and talk.
   pickHook(a,hooks,mem){if(!hooks.length)return null;
     const mine=hooks.filter(h=>h.for!=null&&mem.some(b=>b.id===h.for));if(mine.length)return mine[0];
-    if(rnd()>K.TAKE)return null;
+    if(rnd()>takeChance(a,K.TAKE))return null;
     const bold=tm(a,'bold')>1||tm(a,'retreat')<1,careful=tm(a,'retreat')>1;
     const w=h=>{const f=fightShare(h.tpl);return bold?1+f*2:careful?1+(1-f)*2:1};
     let tot=0;for(const h of hooks)tot+=w(h);let r=rnd()*tot;for(const h of hooks){r-=w(h);if(r<=0)return h}return hooks[0]},
@@ -347,7 +348,7 @@ export function dmDepart(a,c){ensure();
   else{const dp=stats().depart;if(Math.min(...mem.map(b=>b.lvl))<K.MIN_LVL){bump(dp,'low');return false}
     const open=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&fits(h,a,mem));
     const h=slot('pickHook',v=>v===null||open.includes(v),a,open,mem);if(!h){bump(dp,open.length?'declined':'nofit');return false}
-    bump(dp,'took');
+    bump(dp,'took');if(focusOf(a)==='adventure')focusCount('hooks');
     const why=pickWhy(a,open,mem,h);
     adv=start(h,a,mem);
     dmlog('pick',adv,[a,mem.length>1?'’s party':'',' took ',gd(adv.title),' at '+c.name+' ('+why.reason+')'],why.detail)}
