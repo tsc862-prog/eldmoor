@@ -25,6 +25,7 @@ type: project
 - `?continue=1` on a fresh profile boots a new world in Follow Fellowship; call `ui/controls.js` `setView('map')`
   before `setZoom`, or the follow camera overrides it.
 - Condition glyphs (#317): to stage them for a screenshot, `import('/src/sim/eff.js')` and `setCond(a,'stun',2,12)`,
-  `setEff(a,'taken',.7,0,2,true)` (ward) on Fellowship members moved side by side; ctl.speed=0 keeps them on.
+  `setEff(a,'taken',.7,0,2,true)` (Table ward) or `setEff(a,'taken',.7,8)` (real-time ward, #342) on Fellowship
+  members moved side by side; ctl.speed=0 keeps them on (the clock stops, so real-time seconds never run out).
   For a before/after, copy the edited files aside, `git show origin/main:<file> > <file>`, restart your vite, capture, copy back.
 - Killing headless Chrome by its PID with `taskkill //PID n //T //F` takes its child tree too (all yours).

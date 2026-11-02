@@ -14,14 +14,14 @@ const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 const hash = () => {let h = 5381; const feed = s => {for (let i = 0; i < s.length; i++) h = (Math.imul(h, 33) ^ s.charCodeAt(i)) >>> 0};
   for (const a of S.agents) feed([a.id, a.lvl, a.xp, a.kills, a.gold, a.state, a.x.toFixed(2), a.y.toFixed(2), a.hp.toFixed(1)].join(',')); return h};
-if (process.argv.includes('--hash') || process.argv.includes('--off')) {F.GF.ON = !process.argv.includes('--off'); reseed(0x6f0c); init({fellowship: true}); run(900);
+if (process.argv.includes('--hash') || process.argv.includes('--off')) {F.GF.ON = !process.argv.includes('--off'); const si = process.argv.indexOf('--seed'); reseed(si > 0 ? Number(process.argv[si + 1]) : 0x6f0c); init({fellowship: true}); run(900);
   console.log(JSON.stringify({hash: hash(), guilds: S.GUILDS.length, focused: S.GUILDS.some(g => g.focus), stats: S.focusStats || null})); process.exit(0)}
 const lines = []; onLog(e => lines.push(e.parts.map(x => typeof x === 'string' ? x : x && (x.t || x.name) || '').join('')));
 console.log('\nEldmoor focuscheck\n');
 
 // init() does not clear S, so every seeded world runs in a fresh process of its own (this one, and children).
 const {execFileSync} = await import('node:child_process');
-const child = arg => JSON.parse(execFileSync(process.execPath, [new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), arg], {encoding: 'utf8'}).trim().split('\n').pop());
+const child = (arg, ...more) => JSON.parse(execFileSync(process.execPath, [new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), arg, ...more], {encoding: 'utf8'}).trim().split('\n').pop());
 // 1 on: foci are taken and logged.
 reseed(0x6f0c); init({fellowship: true}); run(900);
 const on1 = hash(), st = S.focusStats || {}, gs = S.GUILDS.filter(g => !g.retired);
@@ -35,7 +35,10 @@ ok(fg.every(g => (g.focus || 'open') === 'open'), 'the Fellowship\'s guild has n
 ok(child('--hash').hash === on1, 'focus on is deterministic for a seed');
 const off = child('--off');
 ok(off.guilds > 0 && !off.focused && !off.stats, 'focus off: guilds form and none takes a focus, no counters');
-ok(off.hash !== on1, 'focus on changes the world (it is meant to)');
+// A focus only tips rolls near their odds, so in 15 game minutes one seed may draw no roll it tips (#325 made 0x6f0c such a
+// seed; main has others): the claim is checked on the usual seed, then on a second one.
+const tips = off.hash !== on1 || child('--hash', '--seed', '28430').hash !== child('--off', '--seed', '28430').hash;
+ok(tips, 'focus on changes the world (it is meant to)');
 // 3 the hooks: neutral for the Fellowship and the unguilded, and Warpath needs blood or a rival.
 const fel = S.agents.find(a => a.fellow), un = S.agents.find(a => !a.guild && !a.fellow), mem = S.agents.find(a => a.guild && !a.guild.retired && a.state !== 'dead' && !S.agents.some(b => b.guild === a.guild && b.fellow && b.state !== 'dead'));
 if (fel) ok(F.focusOf(fel) === 'open' && F.takeChance(fel, .9) === .9, 'a Fellowship member is never steered');
