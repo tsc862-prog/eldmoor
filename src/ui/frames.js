@@ -16,7 +16,7 @@ import {S,maxHp} from '../sim/index.js';
 import {fellowshipMembers,fellowParty,offerReplacement} from '../sim/fellowship.js';
 import {conditionAt,CONDITIONS} from '../sim/levers.js';
 import {SKILLS,SKILL_IDS,skillMod,trained} from '../sim/abilities.js';
-import {heroSprite} from '../render/sprites.js';
+import {portrait} from '../render/sprites.js'; // generated face portraits (#367)
 import {cam} from '../render/draw.js';
 import {doing,combatRows} from './panels.js';
 import {select,setView} from './controls.js';
@@ -85,7 +85,7 @@ function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
     const k=el('span','pfkey',String(slotNo(m)));k.title='Press 1-5 to select';k.setAttribute('aria-hidden','true');f.append(k);return {node:f,hid:null,r}}
   f.tabIndex=0;f.setAttribute('role','button');f.dataset.hid=a.id;
   r.key=el('span','pfkey',String(slotNo(m)));r.key.title='Press 1-5 to select';r.key.setAttribute('aria-hidden','true');f.append(r.key);
-  const top=el('div','pftop');r.port=el('canvas','pfport');r.port.width=10;r.port.height=12;
+  const top=el('div','pftop');r.port=el('canvas','pfport');r.port.width=15;r.port.height=18;
   const id=el('div','pfid');r.name=el('div','pfname f'+a.fac);r.star=el('span','gd','★ ');r.nm=el('span',null,a.name);r.nm.style.color=classColor(a.cls);r.name.append(r.star,r.nm);
   const sub=el('div','pfsub');sub.append(el('span','frole r-'+m.role,m.label),' ');r.sub=el('span','dm');sub.append(r.sub);id.append(r.name,sub);
   top.append(r.port,id);
@@ -100,8 +100,8 @@ function update(fr,m){const a=m.hero,r=fr.r;
   if(!a){const p=before(m.slot);setText(r.past,p?'† '+p.name+', Lv '+p.lvl+' '+p.cls+', '+p.cause:'');return}
   const dead=a.state==='dead',mh=maxHp(a),P=fellowParty();
   setCls(fr.node,'pf r-'+m.role+(cam.sel===a?' sel':'')+(dead?' dead':a.state==='ghost'?' ghost':'')+(a.hp<mh*.35&&!dead?' low':''));
-  // portrait: redraw only when the sprite itself changes (ghost, a new hero)
-  const s=heroSprite(a,a.state==='ghost',0);if(r.port._s!==s){r.port._s=s;r.port.width=s.width;r.port.height=s.height;const c=r.port.getContext&&r.port.getContext('2d');if(c){c.clearRect(0,0,s.width,s.height);c.drawImage(s,0,0)}}
+  // portrait: redraw only when the face itself changes (ghost, fallen, a new hero)
+  const s=portrait(a,dead?'dead':a.state==='ghost'?'ghost':'');if(r.port._s!==s){r.port._s=s;r.port.width=s.width;r.port.height=s.height;const c=r.port.getContext&&r.port.getContext('2d');if(c){c.clearRect(0,0,s.width,s.height);c.drawImage(s,0,0)}}
   r.star.hidden=!(P&&P.leader===a);
   setText(r.sub,'Lv '+a.lvl+' '+a.cls);
   const w=dead?0:Math.max(0,Math.min(100,a.hp/mh*100));if(r.hpi._w!==w){r.hpi._w=w;r.hpi.style.width=w.toFixed(1)+'%'}

@@ -760,3 +760,6 @@ export function buntingSprite(wpx,frame=0){frame=frame?1:0;const key='bunt'+wpx+
   for(let i=4,n=0;i+3<wpx-3;i+=7,n++){const y=sagAt(i+1)+1,c=BUNT_COLS[n%4];if(y+2>=h)continue;
     for(let k=0;k<4;k++)rows[y][i+k]=c;rows[y+1][i+1]=rows[y+1][i+2]=c;rows[y+2][frame&&n%2?i+2:i+1]=c}
   return sprite(key,rows.map(r=>r.join('')),{S:'#3a2a1a',r:'#e8544a',g:'#7dce5a',b:'#5b8ff2',y:'#f2c14e'})}
+
+// Fellowship face portraits (#367): generated head-and-shoulders faces, see portrait.js.
+export {portrait,portraitPixels,PORTRAIT_W,PORTRAIT_H} from './portrait.js';
