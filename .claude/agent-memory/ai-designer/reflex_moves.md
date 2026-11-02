@@ -31,3 +31,8 @@ by the foe in hand (duels count). 0 -> 15 uses in that seed. Rallying Verse unch
 [[fellowship-always-agents]].
 
 **Camp fixture (2026-11-02).** After this change campcheck "one-hour rest ends on time" failed: no game bug (camp members never reach fightMoves). The seeded watch roll became an ambush at the end of that hour, which breaks camp with no "Camp is broken" event. Fix was to hold `CAMP.AMBUSH_P` in that fixture. Before blaming new behaviour, find the real break reason (`breakCamp` why).
+
+**Heal order below 35% (#387).** A reflex Table healer, lowest member below 35%: class heal move (if ready and fits),
+then a potion, then the plain heal; 35-60% stays move-or-plain-heal; non-healers still drink first. Why: the potion
+used to come first and wasted a ready Mending Touch/Chorus. A Priest at L12 picks Chorus for one badly hurt friend,
+so movecheck asserts "any heal-kind move" and cools all of them for the potion case. Seeded hashes did not move.
