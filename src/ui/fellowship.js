@@ -20,7 +20,8 @@ import {cam} from '../render/draw.js';
 import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
 import {campSummary} from '../sim/camp.js';
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
-import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
+import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype} from '../sim/persona.js';
+import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
 import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
@@ -153,11 +154,27 @@ function sheetView(node,a){node.replaceChildren();if(!a)return;
   box.append(el('div','dm','Persona: '+(a.persona&&a.persona.src==='model'?'written by the model':'scripted')+(a.persona&&a.persona.edited?', edited':'')+'. Backstory: '+(a.backstory&&a.backstory.src==='model'?'written by the model':'scripted')+(a.backstory&&a.backstory.edited?', edited':'')+'.'+(enriching(a)?' The relay is still writing; saving now keeps your text.':'')));
   abilityBlock(box,a);
   const ta=(which,k,label,v,rows)=>{const l=el('label','fta');l.append(el('span','dm',label));const t=el('textarea');t.rows=rows||2;t.value=v||'';t.dataset.fw=which;t.dataset.fk=k;l.append(t);box.append(l)};
+  archRow(box,a);
   for(const [k,label] of PERSONA_ORDER)ta('persona',k,label,a.persona&&a.persona[k],2);
   ta('backstory','summary','Backstory summary',a.backstory&&a.backstory.summary,2);
   for(const [k,label] of BACKSTORY_ORDER)ta('backstory',k,label,a.backstory&&a.backstory.paras&&a.backstory.paras[k],3);
   const bar=el('div','fbar');const sv=el('button','go','Save sheet');sv.dataset.fact='save';const cl=el('button',null,'Close');cl.dataset.fact='close';bar.append(sv,cl);box.append(bar);
   node.append(box)}
+
+// Archetype (#295): picking one rewrites the persona text through applyArchetype and fills the five persona
+// boxes in place (the backstory boxes keep whatever is typed there). The hint is the archetype's voice.
+const archHint=id=>ARCHETYPES[id]?ARCHETYPES[id].blurb+' '+ARCHETYPES[id].voice:'No archetype: the persona below is the hero’s own.';
+function archRow(box,a){const cur=a.persona&&a.persona.archetype,l=el('label','fta farch');l.append(el('span','dm','Archetype'));
+  const s=el('select','msel');s.dataset.farch=a.id;s.title='Rewrites voice, wants, fears, quirk and never says; fills stances toward companions that have none of their own';
+  if(!ARCHETYPES[cur])s.append(new Option('None (choose one)',''));
+  for(const id of ARCHETYPE_IDS)s.append(new Option(ARCHETYPES[id].name,id));s.value=ARCHETYPES[cur]?cur:'';
+  l.append(s,el('span','dm farchhint',archHint(cur)));box.append(l)}
+function pickArchetype(s){const a=byId(s.dataset.farch),id=s.value;if(!a||!ARCHETYPES[id]||!applyArchetype(a,id))return false;
+  editSheet(a,'persona','voice',a.persona.voice); // marks the persona as the owner's, so relay writing never replaces it
+  for(const t of sheet.querySelectorAll('textarea[data-fw="persona"]'))t.value=a.persona[t.dataset.fk]||'';
+  const h=s.parentNode&&s.parentNode.querySelector('.farchhint');if(h)h.textContent=archHint(id);
+  for(const o of [...s.children])if(o.value==='')o.remove();
+  msg=ARCHETYPES[id].name+' applied to '+a.name+'. Edit the boxes and Save to change the words.';return true}
 
 function act(t){const F=S.fellowship;msg='';
   if(mindAct(t))return;
@@ -195,6 +212,7 @@ export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('fe
     if(t.closest('.hn'))return;act(t);sigTop='';sigForm='';renderFellowship()});
   root.addEventListener('keydown',e=>{if(e.key==='Escape'&&(menuOpen||drawer)){menuOpen=false;confirmDisband=false;drawer=null;sigTop='';renderFellowship()}});
   root.addEventListener('change',e=>{const s=e.target;if(mindChange(s)){sigTop='';renderFellowship();return}
+    if(s&&s.dataset&&s.dataset.farch!=null){if(pickArchetype(s)){sigTop='';renderFellowship()}return}
     if(s&&s.dataset&&s.dataset.fslot){const v=s.value;draft.slots[s.dataset.fslot]=v?+v:null;sigForm='';renderFellowship()}});
   const cb=$('chronFel');if(cb)cb.addEventListener('click',()=>{focus=!focus;syncChronBtn();onFilter()});
   renderFellowship()}
