@@ -716,5 +716,21 @@ console.log('start gate: ready, not just claimed');
     delete g1.focus;delete sim.S.rivals.on[k];delete sim.S.rivals.heat[k]}
   if(fel){uiSlow();const row=[...$('guilds').children].find(r=>r.textContent.includes(fel.name));
     ok(row&&/none \(Fellowship member\)/.test(row.textContent),'guild rows: a Fellowship guild reads none (Fellowship member)')}}
+// ---- the Chronicle's Fellowship-only view keeps guild lines for the Fellowship (#341) ----
+{const {chronicleShows}=await import('../src/ui/fellowship.js');const {chronicleFocus,guildLabel}=await import('../src/sim/fellowship.js');
+  const a=mem.find(x=>x.state!=='dead'),was=a.guild;
+  const ours={id:-341,tag:'OWN',name:'Oathbound Test',fac:a.fac,retired:false},theirs={id:-342,tag:'ELS',name:'Elsewhere Test',fac:1-a.fac,retired:false};
+  a.guild=ours;const tg=g=>({t:guildLabel(g),c:'f'+g.fac}),stranger=sim.S.agents.find(x=>!x.fellow&&x.state!=='dead'&&!mem.some(m=>(m.nemesis||{})[x.id]));
+  const e=(...parts)=>({t:'12:00',parts});
+  const focusLine=e(tg(ours),' turns its banner to the ',{t:'Delve',c:'gd'},'.'),otherLine=e(tg(theirs),' goes ',{t:'Wayfaring',c:'gd'},'.');
+  const rivalLine=e(tg(theirs),' and ',tg(ours),' declare a rivalry: blood on the road.');
+  ok(chronicleShows(focusLine)&&chronicleFocus(focusLine),'Fellowship only: a guild line naming a member\'s guild shows');
+  ok(chronicleShows(rivalLine),'Fellowship only: a rivalry naming the member\'s guild shows');
+  ok(!chronicleShows(otherLine),'Fellowship only: an unrelated guild line stays hidden');
+  ok(chronicleShows(e(a,' slays a wolf.'))&&chronicleShows(e({t:'Kragmaw',c:'gd'},' stirs.')),'Fellowship only: member and Kragmaw lines still show');
+  if(stranger)ok(!chronicleShows(e(stranger,' slays a wolf.')),'Fellowship only: a stranger\'s line stays hidden');
+  a.guild=null;ok(!chronicleShows(focusLine),'Fellowship only: once no member is in it, the guild line hides');
+  a.guild=was;$('chronFel').click();ok(chronicleShows(otherLine),'the whole Chronicle (toggle off) shows every guild line');$('chronFel').click();
+  ok(!chronicleShows(otherLine),'Fellowship only again: the unrelated guild line hides')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
