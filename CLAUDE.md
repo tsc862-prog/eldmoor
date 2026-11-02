@@ -654,7 +654,7 @@ render or ui, so the headless harness stays stub-free.
 
 ## Known state
 
-- In a 120-minute headless run from level 1 (balance #154, 10-run mean, wide spread): about 15 deaths per hour (range 9-25), ~34% PvP, crypt about 13 deaths and ~42 clears per run; L1-5 mob deaths about 4 per run (mobs of level 7+ hit 1.35x, ramped in from level 3); median living level 14, top 18-20 (the first level 20 arrives around minute 80-100); Kragmaw dies about 5 times per run (13000 hp, respawn 600s). Fellowship deaths about 5 per run. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
+- In a 120-minute headless run from level 1 (balance #154, 8-run mean, balance-tester; main before it measured about 14 deaths per hour and about 47% PvP): about 14 deaths per hour (range 8-20, below the 20-40 target), ~48% PvP (still near half); L1-5 mob deaths about 4 per run; crypt about 9 deaths, 42 clears and 4 wipes; median living level 12 at minute 60 and 14 at minute 120, top 20; Kragmaw dies about 5 times per run (was 8; 13000 hp, respawn 600 sim seconds, about 60 game hours, so kills are limited by raid musters). Mobs of level 7+ hit 1.35x (ramped in from level 3, Fellowship exempt); Fellowship deaths about 3 per run. Next levers: mid-level (L6-13) mob pressure, crypt pw, PvP via duel yield/range or nemesis hunts. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
 - The world auto-saves to localStorage every game-hour and on tab close, and restores on reload; Export/Import move it as JSON (`src/sim/save.js`, `src/ui/save.js`, `npm run savecheck`).
 
 ## Roadmap ideas
