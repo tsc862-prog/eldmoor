@@ -53,6 +53,26 @@ if (process.argv[2] === '--hash-talk') {
   const Fs = S.fellowship; console.log('HASH ' + h + ' plans:' + (Fs.plans || []).map(p => p.status).join(',') + ' post:' + (Fs.post || []).length); process.exit(0);
 }
 
+// ---- the answer-order child (everyone at once): a staged trap, all five agents answer, forward or reverse ----
+if (process.argv[2] === '--simul') {
+  const {dmAct, setDmSeat} = SIM, rev = process.argv[3] === 'rev';
+  init({fellowship: false}); for (let i = 0; i < 30 * 60; i++) step(1 / 60);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(true); SIM.setRunnerLinks(() => 'connected');
+  const M = F_.fellowshipMembers().map(m => m.hero), home = homeOf(M[0]).gate, spot = zonePoint(zoneFor(8, home), null, home);
+  for (const m of S.mobs) if (m.alive && dist(m, spot) < 16) {m.alive = false; m.gone = true}
+  M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = Math.round(maxHp(x) * (.5 + i * .1)); x.pq = []});
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  const r = dmAct('stage_scene', {kind: 'trap', near: 'fellowship', frame: 'Fresh earth across the path, raked too smooth.', cast: {trap: 'spikes'}, reason: 'order'});
+  let f = 0; while (!(S.table && S.table.phase === 'turn') && f++ < 60 * 120) step(1 / 60);
+  const sc = S.table; if (!r.ok || !sc) {console.log('NO SCENE ' + (r.error || '')); process.exit(1)}
+  const pick = ['spot', 'disarm', 'round', 'spot', 'disarm'], ids = rev ? sc.ids.slice().reverse() : sc.ids.slice();
+  for (const id of ids) {for (let k = 0; k < 20; k++) step(1 / 60); P.playerAct(id, 'scene_act', {option: pick[sc.ids.indexOf(id)]})}
+  while (S.table && f++ < 60 * 240) step(1 / 60);
+  console.log('ORDER ' + JSON.stringify(sc.beats.map(b => [b.id, b.k, b.by, b.res])) + ' ' + sc.summary + ' hp:' + M.map(x => Math.round(x.hp)).join(','));
+  process.exit(0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -97,7 +117,8 @@ if (process.argv[2] === '--staged') {
     ok(!maxPause, 'the world clock stood still through the scene');
     ok((A.chat || []).some(e => e.from.kind === 'dm' && /thorn banks/.test(e.text)), 'the frame reached the members as narration');
     const calls = sc.calls || [];
-    ok(calls.length >= sc.ids.length + 2 && calls.every(c => c.done) && calls.filter(c => c.by === 'dm-agent').length === calls.length, `${calls.length} DM calls (voice, an outcome per member, one complication), all answered by the mock DM`);
+    if (T.PLAY[kind] === 'all') ok(calls.length === 3 && calls.filter(c => c.kind === 'outcome').length === 1 && calls.find(c => c.kind === 'outcome').beat === 'all' && calls.every(c => c.done && c.by === 'dm-agent'), `${calls.length} DM calls (voice, one combined outcome after everyone answered, one complication), all answered by the mock DM`);
+    else ok(calls.length >= sc.ids.length + 2 && calls.every(c => c.done) && calls.filter(c => c.by === 'dm-agent').length === calls.length, `${calls.length} DM calls (voice, an outcome per member, one complication), all answered by the mock DM`);
     const comp = calls.find(c => c.kind === 'complication');
     ok(comp && ST.COMPLICATIONS[kind].includes(comp.pick), `the complication is one of the legal set: ${comp && comp.pick}`);
     ok(sc.beats.length === sc.ids.length || ['elite', 'ambush'].includes(kind), `every member acted (${sc.beats.map(b => b.name + '=' + b.k + '(' + b.by + ')').join(', ')})`);
@@ -330,6 +351,72 @@ ok(pr.ok && S.table && S.table.kind === 'decision' && S.table.pause && T.TABLE.d
  stepUntil(() => C.propById(pid5).status !== 'open', 20); PP = C.propById(pid5);
  ok(PP.status !== 'open' && PP.votes[RB.id].by === 'agent', `and resolves once the agents have voted (${PP.result})`);
  for (let k = 0; k < 600 && S.table; k++) {for (const x of [RA, RB]) if (S.table && !S.table.acts[x.id] && S.table.ids.includes(x.id)) {const o = act(x, 'status').table; if (o && o.options) act(x, 'scene_act', {option: o.options[0].split(' = ')[0]})} step(1 / 60)}} // let any scene that followed end
+
+// ---- 3b. everyone answers at once (owner request): votes, checks, choices and staged talk scenes ----
+console.log('everyone answers at once');
+{const CP = await import('../src/sim/camp.js');
+ ok(['decision', 'check', 'choice', 'meeting', 'social', 'trap', 'mystery'].every(k => T.PLAY[k] === 'all') && ['elite', 'ambush', 'boss', 'rescue', 'site', 'room'].every(k => T.PLAY[k] === 'turns'), 'the kind table: votes, checks, choices and talk/trap/mystery scenes at once; combat and the Crypt in turns');
+ T.TABLE.mode = 'off'; T.TABLE.speed = 1; for (const x of RM) link(x, 'waiting');
+ for (const P of C.openProps()) P.status = 'failed'; delete S.fellowship.wait;
+ const fieldAll = () => {for (const m of S.mobs) if (m.alive && !m.gone && dist(m, spot) < 16) {m.alive = false; m.gone = true}
+   RM.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []; x.splitUntil = 0; x.playEv = []})};
+ for (const p of S.parties.slice()) if (p.fellow) {for (const b of p.mem) b.party = null; S.parties.splice(S.parties.indexOf(p), 1)}
+ fieldAll(); const lead = C.leaderOfF();
+ const rc = CP.leaderRest(lead, 4); run(1);
+ ok(!rc && CP.campOf(), 'the leader makes camp in the field' + (rc ? ': ' + rc : ''));
+ T.TABLE.mode = 'auto'; for (const x of RM) x.playEv = [];
+ const pb = act(lead, 'propose', {kind: 'break_camp', details: 'Break camp and ride on'});
+ const sc = S.table, others = RM.filter(x => x !== lead);
+ ok(pb.ok && sc && sc.kind === 'decision' && sc.all && sc.ids.length === 5, `a break_camp vote opens a scene where everyone answers (${sc && sc.ids.length} at the table)`);
+ ok(others.every(x => (x.playEv || []).some(e => /Everyone answers at once/.test(e.text) && e.w === 3)), 'all four other members got the scene at the same moment, as a must-answer event');
+ ok(others.every(x => {const t = act(x, 'status').table; return t && t.your_turn && t.everyone_answers}), 'your_turn is true for every member who has not answered');
+ const PACE = await import('../src/sim/pace.js');
+ ok(others.every(x => {const b = PACE.paceBrief(x.id).brief.scene; return b && b.your_turn && b.keys.join() === 'yes,no'}), 'the pace brief carries the scene (yes/no) with your_turn for each of them');
+ const [o1, o2, o3, o4] = others;
+ run(2); act(o3, 'scene_act', {option: 'yes', line: 'Dawn is up.'}); run(1); act(o1, 'scene_act', {option: 'yes'}); act(o2, 'scene_act', {option: 'no'});
+ const bl = (T.bannerOf() || {}).line || '';
+ ok(S.table === sc && bl.startsWith('4/5 answered · waiting for ' + o4.name) && T.bannerOf().all, `the banner counts the answers: "${bl}"`);
+ ok(act(o1, 'wait', {minutes: 5}).ok, 'a member who has answered may wait');
+ const w4 = act(o4, 'wait', {minutes: 5});
+ ok(!w4.ok && /your turn at the table/.test(w4.error), 'the one who has not answered may not');
+ ok(SIM.decisionsWaiting().some(d => d.a === o4 && /answer at the table/.test(d.what)) && !SIM.decisionsWaiting().some(d => d.a === o1), 'the runner-stop alert would name only the member still to answer');
+ run(5); ok(S.table === sc && C.propById(sc.ctx.prop).status === 'open', 'the table holds for the last answer');
+ act(o4, 'scene_act', {option: 'yes'}); step(1 / 60);
+ const PB = C.propById(sc.ctx.prop);
+ ok(PB.status === 'passed' && sc.beats.map(b => b.id).join() === sc.ids.join() && sc.beats.every(b => b.by === 'agent'), `the last answer resolves it at once, in slot order (${PB.result})`);
+ ok(!CP.campOf(), 'the camp breaks');
+ stepUntil(() => !S.table, 10);
+
+ // a silent but connected member's reflex comes after the live wait, side by side (not summed)
+ T.TABLE.liveMs = 4000; fieldAll();
+ const sc2 = T.openScene('check', 'A rope bridge', ['The DM calls for a roll.'], {anchor: RA.id});
+ act(RA, 'scene_act', {option: 'press'});
+ const p2 = stepUntil(() => !S.table, 30), silent = RM.filter(x => x !== RA);
+ ok(!S.table && p2.secs <= T.TABLE.frameS + T.TABLE.outcomeS + T.TABLE.liveMs / 1000 + 1, `four silent agents: each waits ${T.TABLE.liveMs / 1000} s at once, and the scene ends in ${p2.secs.toFixed(1)} s (not ${4 * T.TABLE.liveMs / 1000} s)`);
+ ok(silent.every(x => (sc2.beats.find(b => b.id === x.id) || {}).by === 'reflex' && (x.playEv || []).some(e => /table waited/.test(e.text))) && sc2.beats.find(b => b.id === RA.id).by === 'agent', 'their reflexes act, each with a notice; the answer that came stands');
+ T.TABLE.liveMs = 120000;
+
+ // presence (#182): a member out of shouting range is not asked
+ fieldAll(); const far = RM[4]; far.x = spot.x < 40 ? spot.x + 30 : spot.x - 30;
+ const sc3 = T.openScene('check', 'A cold ford', ['The water runs fast.'], {anchor: RA.id});
+ ok(sc3 && sc3.ids.length === 4 && !sc3.ids.includes(far.id) && !(far.playEv || []).some(e => /TABLE/.test(e.text)) && !act(far, 'status').table, `${far.name}, out of range, is not at the table and not asked`);
+ for (const x of RM) if (x !== far) act(x, 'scene_act', {option: 'steady'});
+ stepUntil(() => !S.table, 10);
+ ok(!S.table && sc3.beats.length === 4, 'the four present answer and it resolves');
+
+ // combat stays in turns
+ fieldAll(); m = mobNear(); startFight(RM[2], m); S.fellowship.tableSeen = {}; T.tableTick();
+ const sc4 = S.table, first = sc4 && RM.find(x => x.id === sc4.ids[0]), second = sc4 && RM.find(x => x.id === sc4.ids[1]);
+ run(2);
+ ok(sc4 && sc4.kind === 'rescue' && !sc4.all && act(first, 'status').table.your_turn && !act(second, 'status').table.your_turn && act(second, 'wait', {minutes: 5}).ok, 'a rescue scene stays in initiative order: only the first is on turn, the next may wait');
+ for (const x of RM) link(x, 'none'); stepUntil(() => !S.table, 10); link(RA, 'connected'); link(RB, 'waiting');
+ ok(!S.table, 'it plays out');
+
+ // the order answers arrive in never changes the outcome (a child, twice, on a trap scene with dice)
+ const me2 = fileURLToPath(import.meta.url), fw = spawnSync(process.execPath, [me2, '--simul', 'fwd'], {encoding: 'utf8'}), rv = spawnSync(process.execPath, [me2, '--simul', 'rev'], {encoding: 'utf8'});
+ const lf = (fw.stdout || '').trim().split('\n').pop(), lr = (rv.stdout || '').trim().split('\n').pop(); if (fw.stderr) process.stderr.write(fw.stderr);
+ ok(/^ORDER \[\[/.test(lf) && lf === lr, `answers in slot order and in reverse give the same scene: ${lf.slice(0, 160)}`);
+}
 
 // ---- 4. lead_to ----
 T.TABLE.mode = 'off'; T.TABLE.speed = 1;

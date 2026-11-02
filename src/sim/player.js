@@ -619,7 +619,7 @@ const T={
   send_courier(a,{to,text}){need(a.fellow,'Only a Fellowship member can hire the Fellowship courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
   scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
-    return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
+    return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
     if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&S.table.ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
     const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
