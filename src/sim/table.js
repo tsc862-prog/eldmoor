@@ -42,6 +42,8 @@ import {fellows,fellowParty,campaign} from './fellowship.js';
 import {setProposeHook,castVote,resolveProp,reflexVote,propById,leaderOfF,openProps,waitingVoters} from './council.js';
 import {setFellowChoice} from './player-choice.js';
 import {reflexMay,ownerHeld} from './runlink.js';
+import {MOVES} from '../data/moves.js';
+import {movesOf,ready,useMove,pickMove,tickRound} from './moves.js'; // class abilities, round cooldowns (#81)
 
 export const TABLE={
   mode:'auto',     // 'auto' (the trigger rules) or 'off' (Watch mode: never a scene); the View group switch
@@ -101,6 +103,8 @@ function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])retu
     if(f&&f.kind!=='boss')o.push({k:'guard',text:'Draw '+fn+' onto yourself'});
     if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
     const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
+    for(const id of movesOf(a))if(ready(a,id,'round')){const M=MOVES[id];if(M.target==='foe'&&!f)continue;if(M.target==='ally'&&!lo)continue;
+      o.push({k:id,text:'Ability, '+M.name+' ('+M.kind+', cooldown '+M.rounds+' rounds): '+M.desc})} // class abilities (data/moves.js); ready ones only
     o.push({k:'retreat',text:'Fall back toward home'});return o}
   if(k==='site'||k==='room'){const s=SPECIAL[a.cls];return [...(s?[{k:s[0],text:s[1]}]:[]),{k:'press',text:'Press on, first into the dark'},{k:'careful',text:'Go carefully, one step at a time'}]}
   if(k==='choice')return [{k:'a',text:sc.ctx.a},{k:'b',text:sc.ctx.b}];
@@ -111,7 +115,8 @@ function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])retu
 // The scripted choice: what a member does when nobody plays it (or its agent is silent).
 export function reflexFor(sc,a){if(EXTRA[sc.kind])return EXTRA[sc.kind].reflex(sc,a);const k=sc.kind,mh=maxHp(a),hurt=a.hp<mh*.2,lo=lowest(),healer=CLS[a.cls]&&CLS[a.cls].heal;
   if(COMBAT[k]){if(lo&&lo.hp<maxHp(lo)*.35&&bestUse(a,'potion'))return 'potion';if(hurt&&!(healer&&lo===a))return 'retreat';if(healer&&lo&&lo.hp<maxHp(lo)*.6)return 'heal';
-    const f=foeOf(sc);if(a.cls==='Warrior'&&f&&f.kind==='mob'&&f.target&&f.target!==a)return 'guard';return 'strike'}
+    const f=foeOf(sc);if(f){const mv=pickMove(a,f,fellows(),true,'round');if(mv)return mv.id} // the scripted ability policy, in rounds (sim/moves.js)
+    if(a.cls==='Warrior'&&f&&f.kind==='mob'&&f.target&&f.target!==a)return 'guard';return 'strike'}
   if(k==='site'||k==='room')return SPECIAL[a.cls]?SPECIAL[a.cls][0]:'press';
   if(k==='choice'){const anyHurt=fellows().some(b=>b.hp<maxHp(b)*.6);return tm(a,'bold')>1&&!anyHurt?'a':anyHurt||tm(a,'retreat')>1?'b':a.fellowRole==='tank'?'a':'b'}
   if(k==='decision'){const P=propById(sc.ctx.prop);return P?reflexVote(a,P):'yes'}
@@ -177,8 +182,10 @@ function apply(sc,a,act){if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act)
   case 'hold':case 'ward':case 'scout':case 'read':case 'press':case 'careful':{const g=CRYPT.group;if(!g)return null;g.bonus=Math.round(((g.bonus||0)+SITE_BONUS[k])*100)/100;
     if(k==='ward')for(const b of g.mem)b.hp=Math.min(maxHp(b),b.hp+maxHp(b)*.1);return '+'+SITE_BONUS[k]}
   case 'aid':{const lo=lowest();if(!lo)return null;const h=Math.round(maxHp(lo)*.15);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
+  default:if(MOVES[k]){const M=MOVES[k],t=M.target==='foe'?f:M.target==='ally'?lowest():null;
+    const r=useMove(a,k,t,{mode:'round',mates:fellows(),foe:f&&f.kind!=='hero'?f:null});return r.ok?r.text:r.error}return null;
   case 'a':case 'b':case 'yes':case 'no':if(sc.kind==='decision')castVote(a,sc.ctx.prop,k,act.line||'',act.by);return null;
-  default:return null}}
+  }}
 
 function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;sc.nudge=0;if(!a||!a.player||sc.acts[a.id])return;
   notify(a,'YOUR TURN at the table ('+sc.title+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line); the table waits for you.',3)}
@@ -221,6 +228,7 @@ function outcome(sc){const L=sc.beats,F=S.fellowship,by=k=>L.filter(b=>b.k===k).
   sc.summary=tail;sc.phase='outcome';sc.t=0;
   if(F){campaign('table',gd(sc.title),': '+what+'. '+tail);
     log(nar(''),gd(F.name),' at the table: '+sc.title+'. '+tail)}
+  if(COMBAT[sc.kind]){for(const a of fellows())tickRound(a);const f=foeOf(sc);if(f)tickRound(f)} // a round has passed: ability cooldowns and round-long effects run down
   for(const a of fellows())notify(a,'The scene ends: '+sc.title+'. '+tail,true);
   if(staged(sc))STG.done(sc)}
 function finishAll(sc){frameCalls(sc);runTurns(sc,0,true);outcome(sc);S.table=null}

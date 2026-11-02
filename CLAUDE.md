@@ -6,12 +6,20 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
 
 ## Hard rules
 
-- **Original IP only.** Everything is WoW-*inspired*, never WoW content. No
-  Blizzard names, races, classes-as-branded, zones, characters, items, maps,
-  sprites or sounds. Generic fantasy terms (warrior, mage, orc-like brutes) are
-  fine; Azeroth, Horde, Alliance, Stormwind, Arthas etc. are not.
+- **Own world, borrowed words are fine.** This is a personal project, so copyright is not a concern.
+  Generic fantasy names and ability or item names that also appear in other games (Ambush, Sanctuary,
+  Bastion) are fine. Don't copy a franchise's distinctive proper nouns wholesale (Azeroth, Horde,
+  Alliance, Stormwind, Arthas) or its maps, sprites and sounds; Eldmoor keeps its own places, peoples
+  and characters. Prefer names that sound good over names that are merely unique.
 - **Hardcore.** Every hero has one life. Death is permanent; a fresh level-1
   recruit of the same class and guild replaces them.
+- **The Fellowship is always agent-played.** Every Fellowship member (and every replacement) is
+  controlled by an agent at all times; there is no scripted or single-call AI mode for members. Between
+  decisions a member may auto-play (autopilot: carry out the last order, follow the leader, reflexes such as
+  defend, drink a potion, flee below 15% HP), but every decision belongs to its agent: votes, proposals,
+  lead_to, Table scene choices, jobs, splitting off, what to say. A decision point waits for the agent
+  (Table mode pauses the world at 1x); reflex choices are only a fallback when the runner is gone, and then
+  the runner-stop alert pauses the world and asks the owner. Background heroes may be scripted.
 - **In-game channels only.** The DM and the players (Fellowship members, agent-played heroes)
   communicate only inside the game: in-game chat (say in earshot, the party channel, townsfolk, the
   DM's `narrate` and `npc_say`) and what their characters can see. Nobody messages anyone directly
@@ -98,6 +106,7 @@ other. The rules:
   model re-prompted and stopped, the scripted takeover of an idle hero).
 - `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
+- `npm run movecheck`: class abilities (#81): `src/data/moves.js` MOVES/PASSIVES (3 active abilities with a cooldown in seconds and in rounds, 2 passives per class), the one resolver `useMove` in `src/sim/moves.js` for real-time and Table rounds, timed effects and passives in `src/sim/eff.js`, the `use_ability` agent tool, and the Abilities block (`src/ui/abilities.js`) on the Stats tab and Fellowship sheet.
 - `npm run setupcheck`, `npm run setupsmoke`: the New World setup (`src/sim/setup.js`, `src/ui/setup.js`, #133): New world opens a page to choose the Fellowship (class, name, people, mind per place) and the DM, then builds the world seeded (`init({setup})`) with agent members agent-played from the first tick and starts their runners through the relay.
 - `start-eldmoor.cmd` (Windows, double-click): starts the relay with app runners on and the dev server in two
   windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.

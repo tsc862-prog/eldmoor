@@ -3,3 +3,4 @@
 - [Races roster decisions](project_races_roster.md) — the 6 peoples, assignRace/homeOf wiring, a.home vs a.town collision, the races->state import-cycle gotcha
 - [Dynamic guilds](project_dynamic_guilds.md) — guilds founded by heroes, null-safe a.guild, numeric ids, save v2
 - [Stat model (#88)](project_stat_model.md) — six scores only, combatStats totals+breakdowns, item armor/damage/bonus/property, calibration method
+- [Class abilities (#81)](project_class_abilities.md) — data/moves.js + sim/moves.js resolver (sec and round modes), eff.js, balance tweaks, test gotchas
