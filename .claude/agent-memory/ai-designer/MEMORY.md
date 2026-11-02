@@ -16,3 +16,4 @@
 - [Camp rest #178](camp_rest.md) — camp status text, break_camp vote/tool, rest hours, wake events, sleepers' pacing, onCamp hook
 - [Talk range #182](talk_range.md) — shout range, presence councils, couriers, reflex-party exemption, no Party chat tag
 - [Quest log](quest_log.md) — several quests per hero derived from existing state; taken/held phases agent-only; DM tags h.by/h.ff
+- [Action log #248](action_log.md) — actlog.js non-enumerable ring, fight settling, unrecorded kinds, hash proof
