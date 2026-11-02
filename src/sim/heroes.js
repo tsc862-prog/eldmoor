@@ -35,8 +35,8 @@ import {actHit,actHurt,actHeal,actKill,actDeath,actFlee,actNote} from './actlog.
 import {wakeKill,wakeXp,wakeLevelUp,wakeQuest,wakeQuestDone,wakeLoot} from './wakes.js'; // more turn triggers (agent heroes only)
 import {fightMoves} from './moves.js'; // class abilities (sim/moves.js, #81)
 import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
-import {killDone,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
-import {dmDepart,dmTravel,dmHunt} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
+import {killDone,killAbandoned,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
+import {dmDepart,dmTravel,dmHunt,BOUNTY,bountyFor,takeBounty} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45)*(1+.8*Math.min(1,Math.max(0,(l-9)/7)))); // veterans: L10-16 ramp to +80% (balance #107)
@@ -45,14 +45,18 @@ export const atkOf=a=>combatStats(a).attack;
 
 // Where a hero of this level hunts: the band's region, or the one nearest their home town when bands overlap.
 export const huntZone=a=>zoneFor(a.lvl,homeOf(a).gate);
-export function newQuest(a){const z=huntZone(a);const opts=Object.keys(MOBS).filter(k=>MOBS[k].z===z&&MOBS[k].lv[0]<=a.lvl+2);
-  const type=pickA(opts.length?opts:Object.keys(MOBS).filter(k=>MOBS[k].z===z));a.quest={type,need:ri(5,8),have:0,at:Math.round(S.gameMin)}} // at: when it was given (the quest log's id, sim/questlog.js)
+// Kill-N quests are the gate captain's background bounties now (issue #67, sim/dm.js BOUNTY): nobody is handed one.
+// A departing hero with no adventure may take the bounty of the region it sets out for. a.quest = {type, need, have,
+// at (the quest log's id), bounty, giver}; an old save's kill quest (no bounty field) is finished and paid the same way.
+function chooseBounty(a,c,z){
+  if(a.quest&&MOBS[a.quest.type]&&MOBS[a.quest.type].z!==z){killAbandoned(a,'left for '+ZONES[z]);record(a,'Let the bounty on '+MOBS[a.quest.type].pl+' go.');a.quest=null}
+  if(a.quest)return;const b=bountyFor(a,c,z);if(b&&rnd()<BOUNTY.TAKE*tm(a,'greed'))takeBounty(a,b)}
 
 export function makeHero(f,cls,guild,wait){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
     inv:newInv(),kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
     wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0,adv:null};
-  a.traits=rollTraits(cls);newQuest(a);
+  a.traits=rollTraits(cls);
   a.slots=emptySlots();
   assignRace(a,S.agents); // people, skin, hair, name and home town (data/races.js)
   assignBackstory(a);
@@ -64,10 +68,10 @@ export function makeHero(f,cls,guild,wait){
   if(S.gameMin>0&&rnd()<.3)log(a,' is ',{t:traitPhrase(a),c:'gd'},'; ',c.name,' will remember that.');
   return a}
 
-// A recruit seeded above level 1 (Fellowship replacements, balance #107): the ability growth of every fifth level, a quest of its zone.
+// A recruit seeded above level 1 (Fellowship replacements, balance #107): the ability growth of every fifth level.
 export function seedLevel(a,lvl){lvl=Math.max(1,Math.min(20,Math.round(lvl)));if(lvl<=a.lvl)return a;
   for(let l=a.lvl+1;l<=lvl;l++)if(l%5===0)growScores(a,l);
-  a.lvl=lvl;a.xp=0;a.hp=maxHp(a);newQuest(a);return a}
+  a.lvl=lvl;a.xp=0;a.hp=maxHp(a);return a}
 
 export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);if(d<.12){e.moving=false;return true}
   const st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt;e.moving=true;if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
@@ -165,8 +169,7 @@ export function sellAndShop(a){const c=homeOf(a);autoEquip(a);passSpares(a);cons
 export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
     wakeQuestDone(a,M.q,g);say(a,'quest',{mob:M.pl});
     record(a,'Completed ',{t:'“'+M.q+'”',c:'gd'},' for '+g+'g.');
-  if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');killDone(a);a.quest=null}
-  if(!a.quest||MOBS[a.quest.type].z!==huntZone(a))newQuest(a)}
+  if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');killDone(a);a.quest=null;if(S.dmStats)S.dmStats.bountiesDone=(S.dmStats.bountiesDone||0)+1}}
 
 export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9)*sightMul(a.zone),lq=L&&L.quest?L.quest.type:null;
   for(const m of nearMobs(a.x,a.y,range)){if(!m.alive||(m.target&&m.target!==a)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+1)continue;
@@ -188,6 +191,7 @@ export function updAgent(a,dt){
         // and an AI hero's (or leader's) town plan is then settled 'overruled' (brainJob).
         if(dmDepart(a,c)){brainJob(a);break} // DM: take a posted adventure or resume one (sim/dm.js)
         const tz=a.party?partyZone(a):townZone(a); // BRAIN: zone pick (scripted = huntZone(a); a party's zone, which an AI leader may set)
+        chooseBounty(a,c,tz); // no adventure: the captain's bounty for that region, if the hero wants it (issue #67)
         say(a,'depart',{zone:ZONES[tz]});
         a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate)}}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}

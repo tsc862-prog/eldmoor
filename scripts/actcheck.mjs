@@ -106,7 +106,9 @@ run(180);
 ok(S.agents.some(x => actionLog(x, {kinds: ['hurt']}).some(e => e.amount > 0 && e.target)), 'a mob bite records hurt on some hero');
 
 // saves
-ok(!JSON.stringify(a).includes('"_al"') && !Object.keys(a).includes('_al'), 'buffers are not saved (non-enumerable)');
+// the save itself (a live hero mid-fight is a cycle through hero.target / mob.target; the snapshot writes references)
+{const SV = await import('../src/sim/save.js'), snap = JSON.stringify(SV.snapshot());
+  ok(!snap.includes('"_al"') && !Object.keys(a).includes('_al'), 'buffers are not saved (non-enumerable)')}
 
 // the agent tool: only its own log
 ok(TOOL_NAMES.includes('combat_log'), 'combat_log is in the tool table');

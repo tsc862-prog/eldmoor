@@ -744,6 +744,7 @@ render or ui, so the headless harness stays stub-free.
   7s, raids need level 14+ heroes, 5+ of them or 4 with average gear 9+; raiders
   break off below 15% HP and a failed raid cools down 240s: `src/sim/boss.js`,
   `RAID_FLEE` in `src/sim/heroes.js`.
+- Bounties (#67): kill-N quests are optional gate-captain bounties (`BOUNTY` in `src/sim/dm.js`, take chance .55 x greed after no adventure fits); adventure pay XP `K.PAY_XP` .35.
 - Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 40% of the party (was 55%). Webspinner and Bristleback Boar are softened in `data/bestiary.js` (tilt + aggro); Fellowship replacements seed in `fellowship.js` (`SEED_BEHIND`=2). Duel chance .03 in `pvp.js`.
 - PvP: chance duels 4% x boldness, level gap 2, range 3 tiles; nemesis spot cooldown 45s; guild assist 20%; duellers yield below 30% HP; only fallen heroes of level 12+ pass the grudge to the whole guild (lesser deaths bind their party): `src/sim/pvp.js`, `GUILD_GRUDGE_LVL` in `src/sim/heroes.js`.
 

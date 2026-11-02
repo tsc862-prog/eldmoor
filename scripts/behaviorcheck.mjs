@@ -75,7 +75,7 @@ C.COUNCIL.HOLD_MIN = 0; // #148: a live agent's turn and vote wait (TABLE.liveMs
 const city = homeOf(A), mid = {x: (city.x0 + city.x1) / 2 + .5, y: (city.y0 + city.y1) / 2 + .5};
 const zone = zoneFor(8, city.gate), spot = zonePoint(zone, null, city.gate);
 const park = (x, p, state) => {x.x = p.x; x.y = p.y; x.state = state; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []};
-park(A, spot, 'hunt'); park(B, {x: spot.x + 1, y: spot.y}, 'hunt'); park(Cm, mid, 'town'); park(Dm, {x: mid.x + 1, y: mid.y}, 'town'); park(E, {x: spot.x, y: spot.y + 1}, 'hunt');
+park(A, spot, 'hunt'); park(B, {x: spot.x + 1, y: spot.y}, 'hunt'); park(Cm, mid, 'town'); park(Dm, {x: mid.x + 1, y: mid.y}, 'town'); park(E, {x: mid.x + 2, y: mid.y}, 'town'); // E waits in town (held, below) and walks out hurt only for the lever: a reflex-played E in the field can die before then, and the digests need all five
 
 const behavior = behaviorLog({world: WORLD, log: () => {}});
 const server = http.createServer((q, s) => {s.writeHead(404); s.end()});
@@ -94,7 +94,8 @@ const cB = await post('/play/claim', {hero: B.id, runner: 'mock-B', provider: 'o
 // C and D are held by silent runners too (#148: a member with no runner plays by reflex, the scripted rules; a held
 // one only autopilots, so these two sit in town)
 const cC = await post('/play/claim', {hero: Cm.id, runner: 'mock-C', provider: 'anthropic', model: 'claude-haiku-5-5'}), cD = await post('/play/claim', {hero: Dm.id, runner: 'mock-D', provider: 'anthropic', model: 'claude-haiku-5-5'});
-ok(cA.status === 200 && cB.status === 200 && cC.status === 200 && cD.status === 200, 'four mock runners claimed A, B, C and D');
+const cE = await post('/play/claim', {hero: E.id, runner: 'mock-E', provider: 'anthropic', model: 'claude-haiku-5-5'});
+ok(cA.status === 200 && cB.status === 200 && cC.status === 200 && cD.status === 200 && cE.status === 200, 'five mock runners claimed A, B, C, D and E');
 const KEY = 'sk-ant-api03-' + 'Zx9'.repeat(12);
 const turn = (hero, runner, rec) => reportTurn(base, {hero, runner, ...rec});
 const brief = h => ({state: h.state, hp: '100%', level: h.lvl, place: ZONES[zoneAt(h.x, h.y)], foe: null, news: []});
@@ -128,6 +129,8 @@ rs.close();
 // Mind decisions: a few scripted heroes with the brain on and a relay that cannot be reached
 BR.setFetch(() => Promise.reject(new Error('unreachable')));
 const brainy = S.agents.filter(a => a.state !== 'dead' && !a.fellow && !a.player).slice(0, 12); for (const a of brainy) SIM.enableBrain(a);
+// four of them stand in their town, so they ask a town plan now (out in the field a hero asks only when it comes home; #67)
+for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.ah.y; a.state = 'town'; a.townStep = 0; a.wait = .5; a.target = null; a.dest = null}
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
 const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
 ok(memA.ok, 'A wrote a memory (#179)');
