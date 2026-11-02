@@ -58,6 +58,25 @@ if (argv[0] === '--hash' || argv[0] === '--hash-off') {
   console.log('HASH ' + h + ' guilds:' + gu); process.exit(0);
 }
 
+// Stepping section (#369): runs in a child with ELDMOOR_WORLD=stepping (the world is chosen at import).
+if (argv[0] === '--stepping') {
+  const sk = {n: 0}; const sok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); sk.n++}};
+  const NAMES = ['The Reed Sump', 'The Salt-Bone Hall', "The Mere-Warden's Seat"];
+  const rooms = CRYPT.rooms || [];
+  sok(rooms.length === 3 && rooms.map(r => r.name).join('|') === NAMES.join('|'), 'the Stepping crypt lists its three rooms from the spec: ' + rooms.map(r => r.id).join(', '));
+  sok(rooms.every(r => r.name && r.frame && r.foes.every(f => species(f.type) && f.n >= 1)), 'every room names bestiary species');
+  sok(rooms.map(r => !!r.boss).join() === 'false,false,true' && rooms[2].foes.some(f => f.name === CRYPT.boss), 'only the last room is the boss room and it holds ' + CRYPT.boss);
+  const M = descend(14); const seen = crawl(M, {act: () => 'strike'});
+  const order = [...new Set(seen.map(s => s.room))];
+  sok(seen.length >= 3 && seen.every(s => s.title && s.beats >= 1), seen.length + ' room scenes opened, each resolved at the table');
+  sok(order.every((r, i) => r === i), 'rooms come in order, none skipped: ' + order.join(' > '));
+  sok(seen.every((s, i) => i === 0 || s.room >= seen[i - 1].room), 'no scene goes back a room');
+  sok(order.length === 3 && order[2] === 2, 'all three rooms were reached, the boss room last');
+  sok(S.fellowship.crawl.clears >= 1 && !CRYPT.group && !S.table, 'the Fellowship cleared the crypt and the table and group are free again');
+  console.log('SIG ' + signature(M, seen));
+  process.exit(sk.n ? 1 : 0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 
@@ -134,6 +153,18 @@ console.log('determinism');
   const a = sig(7), b = sig(7), c = sig(8);
   ok(a && a === b, 'the same seed crawls the same way');
   ok(a && c && a !== c, 'a different seed crawls differently');
+}
+
+console.log('Stepping crypt, three rooms');
+{
+  const me = fileURLToPath(import.meta.url), env = {...process.env, ELDMOOR_WORLD: 'stepping'};
+  const r = spawnSync(process.execPath, [me, '--stepping'], {encoding: 'utf8', env});
+  process.stdout.write(r.stdout.split(String.fromCharCode(10)).filter(l => !l.startsWith('SIG ')).join(String.fromCharCode(10)));
+  if (r.stderr) process.stderr.write(r.stderr);
+  ok(r.status === 0, 'the Stepping crawl checks pass in a stepping-world child');
+  const sg = n => spawnSync(process.execPath, [me, '--stepping'], {encoding: 'utf8', env: {...env, CRAWLCHECK_SEED: String(n)}}).stdout.split(String.fromCharCode(10)).find(l => l.startsWith('SIG '));
+  const a = sg(7), b = sg(7);
+  ok(a && a === b, 'a seeded Stepping crawl repeats exactly (same seed, same hash)');
 }
 
 console.log('background groups keep the abstract roll');
