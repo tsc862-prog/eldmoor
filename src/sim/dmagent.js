@@ -16,7 +16,8 @@
 // are for the DM and the watcher; no hero tool, prompt or snapshot ever carries them.
 //
 // ---- state (plain JSON, saved with the world; created on first use only) ----
-//   S.dmAgent {world (a tag the runner keys its session by), seat, notes:{threads,characters,plans,secrets:[{id,text,about,day,t}]}, seq,
+//   S.dmAgent {world (a tag the runner keys its session by), seat, notes:{threads,characters,plans,secrets:[note]}, seq, arch:[note], mv,
+//              (note: sim/notebook.js {id,title,text,tags,about,rk,day,t,gm,up,pin?,sec}; older saves' notes lack title and tags)
 //              day:{d, pulls, notes, intents, narr, npc}, calls:[{t,tool,args,ok}] newest first,
 //              seen:{tl, chron, log} (what dm_status last showed), stats:{calls, pulls, refused}}
 import {S,clockStr} from './state.js';
@@ -31,14 +32,15 @@ import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
 import {openProps} from './council.js';
 import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {ensureNpcs} from './npcs.js';
-import {stageScene,tableCall,tableAnswer,stagedView} from './staged.js'; // staged scenes and the at-the-table calls (issue #132)
+import {stageScene,tableCall,tableAnswer,stagedView} from './staged.js';
+import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
 // ---- knobs ----
 export const DMA={
   PULLS_PER_DAY:8,     // lever pulls the agent may make per game day (each lever has its own limits on top)
-  NOTES_PER_DAY:40,    // note writes per game day
+  NOTES_PER_DAY:60,    // note writes per game day (notes_write, remember, update_memory, forget, pin)
   INTENTS_PER_DAY:8,   // log_intent lines per game day
-  NOTE_MAX:300, NOTES_CAP:40, INTENT_MAX:200, REASON_MAX:160,
+  NOTE_MAX:600, NOTES_CAP:DM_NB.PER_SEC, INTENT_MAX:200, REASON_MAX:160, // a full section archives its oldest unpinned note (#155)
   CALLS_KEEP:24,       // recent calls kept for the panels
   NEAR_R:12,           // default radius of heroes_near
   PILE_HP:.35,         // a Fellowship member below this share of HP out in the field is not piled on
@@ -112,7 +114,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
-    notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length]))}}
+    notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length])),relevant_notes:relevant(dmBook(D),dmContext())}} // relevant_notes: your notes that bear on the moment, {id,title} (#155)
 
 function timelineRead(n){return {ok:true,timeline:(S.timeline||[]).slice(0,nOf(n,12,1,30)).map(e=>({day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,text:txt(e.parts)}))}}
 function chronicleRead(n){return {ok:true,news:(S.chronicle||[]).slice(0,nOf(n,12,1,30)).map(e=>e.t+' '+txt(e.parts))}}
@@ -173,20 +175,33 @@ function leversRead(){const L=S.levers,d=today(),hrs=m=>Math.max(0,Math.round(m/
 
 function notesRead(section){const D=dmState(),ks=section&&section!=='all'?[section]:NOTE_SECTIONS;
   if(!ks.every(k=>NOTE_SECTIONS.includes(k)))return {ok:false,error:'section must be one of all, '+NOTE_SECTIONS.join(', ')};
-  return {ok:true,notes:Object.fromEntries(ks.map(k=>[k,D.notes[k].map(n=>({id:n.id,text:n.text,...(n.about?{about:n.about}:{}),day:n.day}))]))}}
+  return {ok:true,notes:Object.fromEntries(ks.map(k=>[k,D.notes[k].map(n=>({id:n.id,...(n.title?{title:n.title}:{}),text:n.text,...(n.tags&&n.tags.length?{tags:n.tags}:{}),...(n.about?{about:n.about}:{}),day:n.day,...(n.pin?{pinned:true}:{})}))]))}}
+function noteLog(op,k,n){const D=dmState();
+  dmlog('agent',null,['DM agent ',op==='add'?'noted':op==='edit'?'revised':op==='pin'?'pinned':op==='unpin'?'unpinned':'struck',' ('+k+')',k==='secrets'?': a secret.':': '+(n.title&&n.title!==n.text.slice(0,n.title.length)?n.title+' - ':'')+n.text.slice(0,90)+(n.text.length>90?'…':'')],
+    {by:'dm-agent',notes:k,op,id:n.id,title:n.title||null,text:n.text,about:n.about||null,...(n.tags&&n.tags.length?{tags:n.tags.join(', ')}:{})});return D}
+const secOf=(D,id)=>{for(const k of NOTE_SECTIONS)if(D.notes[k].some(n=>n.id===id))return k;const n=(D.arch||[]).find(x=>x.id===id);return n?n.sec||'threads':null};
 function notesWrite(a){const D=dmState(),day=today(),k=a.section;
   if(!NOTE_SECTIONS.includes(k))return {ok:false,error:'section must be one of '+NOTE_SECTIONS.join(', ')};
   if(day.notes>=DMA.NOTES_PER_DAY)return {ok:false,error:'That is enough note-keeping for one game day ('+DMA.NOTES_PER_DAY+').'};
-  const list=D.notes[k],text=clean(a.text,DMA.NOTE_MAX),about=clean(a.about,60)||null,id=nOf(a.id,null,1,1e9);
-  let n=null;
-  if(a.op==='add'){if(!text)return {ok:false,error:'add needs text'};if(list.length>=DMA.NOTES_CAP)return {ok:false,error:'The '+k+' section is full ('+DMA.NOTES_CAP+'): remove or edit a note first.'};
-    n={id:++D.seq,text,about,day:gameDay()+1,t:clockStr()};list.push(n)}
-  else if(a.op==='edit'){n=list.find(x=>x.id===id);if(!n)return {ok:false,error:'No note '+a.id+' in '+k};if(!text)return {ok:false,error:'edit needs text'};n.text=text;if(about)n.about=about;n.t=clockStr()}
-  else if(a.op==='remove'){const i=list.findIndex(x=>x.id===id);if(i<0)return {ok:false,error:'No note '+a.id+' in '+k};n=list.splice(i,1)[0]}
+  const b=dmBook(D),id=nOf(a.id,null,1,1e9);let r;
+  if(a.op==='add')r=addNote(b,{text:a.text,about:a.about,sec:k},DMA.NOTE_MAX);
+  else if(a.op==='edit'||a.op==='remove'){if(secOf(D,id)!==k)return {ok:false,error:'No note '+a.id+' in '+k};
+    r=a.op==='edit'?updateNote(b,id,{text:a.text==null?'':a.text,...(clean(a.about,60)?{about:a.about}:{})},DMA.NOTE_MAX):forgetNote(b,id)}
   else return {ok:false,error:'op must be add, edit or remove'};
-  day.notes++;
-  dmlog('agent',null,['DM agent ',a.op==='add'?'noted':a.op==='edit'?'revised':'struck',' ('+k+')',k==='secrets'?': a secret.':': '+n.text.slice(0,90)+(n.text.length>90?'…':'')],{by:'dm-agent',notes:k,op:a.op,id:n.id,text:n.text,about:n.about||null});
-  return {ok:true,note:{id:n.id,section:k,text:n.text,...(n.about?{about:n.about}:{})},op:a.op,count:list.length}}
+  if(!r.ok)return {ok:false,error:r.error.replace(/^update_memory needs the new text.*/,'edit needs text').replace(/^Remember what\?.*/,'add needs text')};
+  day.notes++;const n=r.note;noteLog(a.op,k,n);
+  return {ok:true,note:{id:n.id,section:k,text:n.text,...(n.about?{about:n.about}:{})},op:a.op,count:D.notes[k].length,...(r.archived?{archived:{id:r.archived.id,title:r.archived.title}}:{})}}
+// The searchable notes (issue #155): remember, recall, update_memory, forget and pin over the same sections.
+function dmMemory(tool,a){const D=dmState(),b=dmBook(D);
+  if(tool==='recall')return recallNotes(b,a);
+  const day=today();if(day.notes>=DMA.NOTES_PER_DAY)return {ok:false,error:'That is enough note-keeping for one game day ('+DMA.NOTES_PER_DAY+'). recall still works.'};
+  const id=nOf(a.id,null,1,1e9),k0=tool==='remember'?(a.section||'threads'):secOf(D,id);let r,op;
+  if(tool==='remember'){if(!NOTE_SECTIONS.includes(k0))return {ok:false,error:'section must be one of '+NOTE_SECTIONS.join(', ')};r=addNote(b,{title:a.title,text:a.text,tags:a.tags,about:a.about,sec:k0},DMA.NOTE_MAX);op='add'}
+  else if(tool==='update_memory'){r=updateNote(b,id,{text:a.text,title:a.title,tags:a.tags,about:a.about},DMA.NOTE_MAX);op='edit'}
+  else if(tool==='forget'){r=forgetNote(b,id);op='remove'}
+  else{const on=!/^(false|no|off)$/i.test(String(a.on||''));r=pinNote(b,id,on);op=on?'pin':'unpin'}
+  if(!r.ok)return r;day.notes++;const n=r.note;noteLog(op,k0||'threads',n);
+  return {ok:true,[op==='add'?'remembered':op==='edit'?'updated':op==='remove'?'forgot':op==='pin'?'pinned':'unpinned']:{id:n.id,title:n.title,section:k0},...(r.archived?{archived:{id:r.archived.id,title:r.archived.title,note:'the oldest unpinned note of that section was archived (recall still finds it)'}}:{})}}
 
 function pullLever(a){const day=today(),D=dmState(),name=clean(a.lever,40),reason=clean(a.reason,DMA.REASON_MAX);
   let params=a.params;if(typeof params==='string'){try{params=params.trim()?JSON.parse(params):{}}catch(e){params=null}}
@@ -258,6 +273,7 @@ export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:f
     case 'notes_write':r=notesWrite(args);break;
     case 'pull_lever':r=pullLever(args);break;
     case 'log_intent':r=logIntent(args.text);break;
+    case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;
     case 'npc_say':r=npcSay(args);break;
     case 'stage_scene':r=stageScene(args);break;

@@ -33,6 +33,7 @@ import {byDay,stampOf,srcTag} from './daystamp.js'; // game day on times, action
 import {fellowRoleOf} from '../core/chatview.js';
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
+import {notebookSig} from './notebook.js'; // agent memories (#155)
 import {showMindButtons} from './mindctl.js'; // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
@@ -323,6 +324,7 @@ function tabMind(b,a){const m=a.mind||[];
     h.append(el('span','dm',' \u00b7 '),el('span','mo mo-'+e.outcome,e.outcome));
     row.append(h);if(isOpen)mindDetail(row,a,e);return row},'div');
   b.append(list)}
+const memTabSig=a=>{const M=a.memory;return a.id+'|'+(M?(M.n||0)+':'+(M.long||'').length+':'+Object.values(M.stances||{}).join('|').length:'')+'|'+notebookSig(a)}; // the Memory tab (#68, #155)
 const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,inv:tabInv,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent,memory:tabMemory};
 
 // The card skeleton (header, tab strip, body) is built once; renderHero refreshes the
@@ -341,10 +343,11 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   h.append(el('div','doing',doing(a)));
   h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
   h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
-  const mindable=hasMind(a),agentable=hasAgent(a),memable=!!a.memory,cur=tab==='mind'&&!mindable||tab==='agent'&&!agentable||tab==='memory'&&!memable?'stats':tab; // the Mind tab exists only for AI-played heroes, the Agent tab for agent-played ones
+  const mindable=hasMind(a),agentable=hasAgent(a),memable=!!a.memory||!!a.memories,cur=tab==='mind'&&!mindable||tab==='agent'&&!agentable||tab==='memory'&&!memable?'stats':tab; // the Mind tab exists only for AI-played heroes, the Agent tab for agent-played ones
   for(const b of k.tabs.children){b.setAttribute('aria-pressed',String(b.dataset.tab===cur));if(b.dataset.tab==='mind')b.hidden=!mindable;if(b.dataset.tab==='agent')b.hidden=!agentable;if(b.dataset.tab==='memory')b.hidden=!memable}
   if(pinned&&pinned.id!==a.id)pinned=null;
   if(cur==='mind'){const sig=mindSig(a);if(k.tb.dataset.tab!=='mind'||k.tb.dataset.sig!==sig){k.tb.replaceChildren();k.tb.dataset.tab='mind';k.tb.dataset.sig=sig;tabMind(k.tb,a)}}
+  else if(cur==='memory'){const sig=memTabSig(a);if(k.tb.dataset.tab!=='memory'||k.tb.dataset.sig!==sig){k.tb.replaceChildren();k.tb.dataset.tab='memory';k.tb.dataset.sig=sig;tabMemory(k.tb,a)}} // rebuilt on change only: its search box keeps focus (#155)
   else{k.tb.replaceChildren();k.tb.dataset.tab=cur;delete k.tb.dataset.sig;BODY[cur](k.tb,a)}
   if(cur!=='gear')hideTip();else if(hov)showTip()}
 

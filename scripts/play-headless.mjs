@@ -20,7 +20,8 @@
 // --warm N (fast-forward N real minutes at 1x before choosing heroes, default 0),
 // --class C / --hero NAME[,NAME] / --agents N (who to play; default the highest-level living
 // Concord hero), --world FILE (default logs/agent-world.json), --resume, --quiet, --log-world NAME (the behavior logs'
-// folder, logs/behavior/<NAME>/, default <world id>-headless; issue #129), --no-behavior (keep none). The world is
+// folder, logs/behavior/<NAME>/, default <world id>-headless; issue #129; also the memory mirror's logs/agents/<NAME>/, #155),
+// --no-behavior (keep none), --no-mirror (no Markdown copy of the agents' memories). The world is
 // saved every minute and on exit, so `--resume` (and `npm run agent`, which keeps one session per
 // hero in logs/agents/) pick up where they stopped.
 import http from 'node:http';
@@ -34,6 +35,8 @@ import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
 import {attachRunners} from './runners.mjs';
 import {behaviorLog} from './behavior-log.mjs';
 import {makeWatch} from '../src/sim/behavior.js';
+import {mirrorDirty} from '../src/sim/notebook.js';
+import {memoryMirror} from './memory-mirror.mjs';
 import {WORLD_ID} from '../src/world/map.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -102,9 +105,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch() : null;
   const play = attachPlay(server, {behavior, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
   if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);
+  // Agent memories (issue #155): the notebooks mirrored as Markdown under logs/agents/<world>/ (--no-mirror: none); written, never read back.
+  const mirror = flag('no-mirror') ? null : memoryMirror({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), sentMem = new Map();
+  const mirrorNow = () => {if (!mirror) return; try {const out = mirrorDirty(sentMem); if (out.length) {mirror.write(out); for (const o of out) sentMem.set(o.key, o.sig)}} catch (e) {console.error('[play] memory mirror: ' + e.message)}};
+  if (mirror) setInterval(mirrorNow, 2000);
   // --runners (or RELAY_RUNNERS=1): runners can be started over HTTP (POST /play/runner/start), as from the game page
   const sup = attachRunners(server, {play, enabled: flag('runners') || /^(1|true|yes)$/i.test(process.env.RELAY_RUNNERS || ''), log: quiet ? () => {} : console.log, base: () => `http://127.0.0.1:${port}`});
   server.listen(port, '127.0.0.1', () => console.log(`[play] headless world at ${speed}x; MCP http://127.0.0.1:${port}/mcp  (plain: POST /play/call)\n[play] run one agent per hero: npm run agent -- --url http://127.0.0.1:${port} --hero <name>`));
-  const stop = () => {sup.stopAll(); save(); console.log('[play] world saved to ' + worldFile); setTimeout(() => process.exit(0), 1000)};
+  const stop = () => {sup.stopAll(); save(); mirrorNow(); console.log('[play] world saved to ' + worldFile); setTimeout(() => process.exit(0), 1000)};
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

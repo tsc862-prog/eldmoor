@@ -26,6 +26,8 @@
 // runners (scripts/runners.mjs: GET /play/runner, POST /play/runner/start|stop).
 // Behavior logs (issue #129): logs/behavior/<world>/{turns,decisions,world,anomalies}.jsonl for the watcher (npm run
 // behavior-report); --no-behavior or RELAY_BEHAVIOR=0 turns them off.
+// Agent memories (issue #155): the game page's notebooks mirrored as Markdown under logs/agents/<world>/ (scripts/memory-mirror.mjs);
+// --no-mirror or RELAY_MIRROR=0 turns it off. Written only, never read back into a prompt.
 // Verbose log: `npm run relay -- --verbose` (or RELAY_VERBOSE=1) appends one JSON line per
 // call to logs/relay.jsonl: {ts, kind, hero, system, user, response, usage, ms}. Never the key or headers.
 // Limits: 2.5 s per model call (hard abort; local models 8 s, see LOCAL_TIMEOUT), small max_tokens per kind, body <= 32 KB,
@@ -38,6 +40,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {FAC} from '../src/data/factions.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs'; // agent player: /mcp, /play (issue #75)
 import {attachRunners} from './runners.mjs';
+import {memoryMirror} from './memory-mirror.mjs'; // agent memories mirrored as Markdown (issue #155)
 import {behaviorLog} from './behavior-log.mjs'; // behavior logs for the watcher (issue #129) // app runners: the page starts and stops agent runners (--runners)
 import {makeProviders, PROVIDERS, isLocal, MODEL_RE, DEFAULT_MODEL, PRICES, costOf} from './providers/index.mjs';
 import {makeLimiter, rateLimitOf} from './providers/limiter.mjs'; // per-provider concurrency (the org's concurrent-request cap) // Mixed minds (#97): one adapter per provider
@@ -257,7 +260,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // Behavior logs (issue #129): logs/behavior/<world>/ (the world the game page names); off with --no-behavior or RELAY_BEHAVIOR=0.
   const behavior = process.argv.includes('--no-behavior') || /^(0|false|no|off)$/i.test(env.RELAY_BEHAVIOR || '') ? null : behaviorLog({world: env.ELDMOOR_WORLD || 'eldmoor', log: console.log});
   const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose, providers, localTimeout, limits, onDecide: behavior ? behavior.relayDecision : null});
-  const play = attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null, behavior}); // agent player: MCP at /mcp, the game page at ws /play
+  // Agent memories (issue #155): logs/agents/<world>/<hero>/memory/*.md from the page's notebooks; off with --no-mirror or RELAY_MIRROR=0.
+  const mirror = process.argv.includes('--no-mirror') || /^(0|false|no|off)$/i.test(env.RELAY_MIRROR || '') ? null : memoryMirror({world: env.ELDMOOR_WORLD || 'eldmoor', log: console.log});
+  const play = attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null, behavior, mirror}); // agent player: MCP at /mcp, the game page at ws /play
   // App runners: with --runners (or RELAY_RUNNERS=1) the game page may start and stop agent runners
   // (child processes of this relay; scripts/runners.mjs). Off by default.
   const runnersOn = process.argv.includes('--runners') || /^(1|true|yes)$/i.test(env.RELAY_RUNNERS || '');

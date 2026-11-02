@@ -14,6 +14,7 @@
 //   tabMemory(node, a)            the Memory tab body
 // Hero names are .hn[data-hid] spans; panels.js owns the delegated click that follows them.
 import {FAC} from '../data/factions.js';
+import {renderNotebook} from './notebook.js'; // agent memories (#155)
 import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
@@ -61,13 +62,14 @@ export function renderCampaignLog(node,o={}){const F=S.fellowship;if(!F){node.ap
 export function renderThreads(node){const th=openThreads();if(!th.length){node.append(el('div','dm','No open threads.'));return}
   const ul=el('ul','tlist');for(const t of th){const li=el('li');parts(li,t.parts);ul.append(li)}node.append(ul)}
 export function tabMemory(b,a){const M=a.memory;
-  if(!M){b.append(el('div','dm','Only Fellowship members keep a memory.'));return}
+  if(!M){if(a.memories)renderNotebook(b,a);else b.append(el('div','dm','Only Fellowship members keep a memory.'));return} // an agent hero's own notes (#155)
   if(a.backstory&&a.backstory.summary)b.append(el('div','meta',a.backstory.summary));
   b.append(el('div','dm','Long-term'),el('p','bio',M.long||'Nothing has faded into the long memory yet.'));
   const st=Object.entries(M.stances||{});if(st.length){b.append(el('div','dm','Companions'));const ul=el('ul','log hist');
     for(const [id,line] of st){const c=byId(id);const li=el('li');if(c)li.append(hn(c),': ');li.append(line);ul.append(li)}b.append(ul)}
   b.append(el('div','dm','Recent ('+(M.recent||[]).length+' of '+(M.n||0)+' remembered)'));
-  const ul=el('ul','log hist');for(const e of (M.recent||[]).slice().reverse()){const li=el('li');li.append(el('time',null,e.t),e.text+(e.c>1?' (x'+e.c+')':''));ul.append(li)}b.append(ul)}
+  const ul=el('ul','log hist');for(const e of (M.recent||[]).slice().reverse()){const li=el('li');li.append(el('time',null,e.t),e.text+(e.c>1?' (x'+e.c+')':''));ul.append(li)}b.append(ul);
+  renderNotebook(b,a)} // the agent's own searchable notes (#155)
 
 // ---- the Chronicle filter ----
 let focus=true;

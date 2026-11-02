@@ -4,12 +4,13 @@
 // adventure (the hero card's "Adventure:" line calls it). Rebuilds only when the log, the
 // filter or an expanded entry changes; one pass over at most 200 entries.
 import {S} from '../sim/index.js';
+import {renderDmNotes,dmNotesSig} from './notebook.js'; // the DM agent's notes viewer (#155)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 
 export const FILTERS=[['all','All',null],['hooks','Hooks',['hooks','pick']],['scenes','Scenes',['frame','branch','camp']],['rolls','Rolls',['roll','complication']],
-  ['outcomes','Outcomes',['payoff','fail','abandon','fallback']],['levers','Levers',['lever']],['agent','DM agent',['agent']]]; // agent: the DM agent's notes, plans and pulls (#66)
+  ['outcomes','Outcomes',['payoff','fail','abandon','fallback']],['levers','Levers',['lever']],['agent','DM agent',['agent']],['notes','Notes',[]]]; // agent: the DM agent's notes, plans and pulls (#66); notes: its notebook (#155)
 const BADGE={hooks:'BOARD',pick:'PICK',frame:'SCENE',roll:'ROLL',complication:'TWIST',branch:'FORK',payoff:'PAYOFF',fail:'FAIL',abandon:'DROP',fallback:'FALLBACK',lever:'LEVER',camp:'CAMP',agent:'DM AGENT'};
 const byAgent=e=>!!(e.detail&&e.detail.by==='dm-agent'); // the DM agent's entries (issue #66) carry a tag
 let filter='all',advId=null,seen='',box=null,list=null,bar=null,chip=null;
@@ -53,8 +54,9 @@ function table(e){const t=el('table','dmkv'),b=el('tbody');
 function advTitle(id){const a=(S.adventures||[]).find(x=>x.id===id);return a&&a.title?a.title:'#'+id}
 
 export function renderDmLog(){if(!list)return;
-  const L=S.dmLog||[],sig=L.length+':'+(L[0]?L[0].id:0)+':'+filter+':'+advId+':'+open.size+':'+[...open].join(',')+(filter==='levers'?':'+Math.floor(S.gameMin/60):'');
+  const L=S.dmLog||[],sig=L.length+':'+(L[0]?L[0].id:0)+':'+filter+':'+advId+':'+open.size+':'+[...open].join(',')+(filter==='levers'?':'+Math.floor(S.gameMin/60):'')+(filter==='notes'?':'+dmNotesSig():'');
   if(sig===seen)return;seen=sig;
+  if(filter==='notes'){if(chip)chip.hidden=true;list.replaceChildren();renderDmNotes(list);return} // the notes viewer instead of the log (#155)
   if(chip){chip.replaceChildren();if(advId!=null){chip.hidden=false;chip.append('Adventure: '+advTitle(advId)+' ');const x=el('button',null,'show all');x.dataset.dmclear='1';chip.append(x)}else chip.hidden=true}
   list.replaceChildren();let n=0;
   for(const e of L){if(!matches(e))continue;
