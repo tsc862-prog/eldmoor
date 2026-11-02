@@ -265,9 +265,18 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
   if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far (Settings, World chatter, shows it).':'Nothing said or heard yet.'));return}
-  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));if(e.from&&e.from.kind==='dm')li.append(el('span','gd','[Narrator]'));else li.append(chatName(e.from));const tg=chatTag(e);if(tg)li.append(' ',aiBadge(tg,e.agent?'Written by the agent playing this hero':'Written by '+(e.model||'the model')));li.append(': '+e.text);ul.append(li)}b.append(ul)}
+  const ul=el('ul','log chat');for(const g of chatGroups(c))ul.append(chatLine(g.e,g.n));b.append(ul)}
+// One compact line per message (#145, owner): "02:52 [Party] Nevith: text", the text wrapping under itself.
+// No mind badge: the Mind and Agent tabs say who plays a hero; the model is in the name's hover title.
+export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t));
+  if(e.party)li.append(el('span','chtag','Party'));
+  if(e.from&&e.from.kind==='dm')li.append(el('span','gd chn','Narrator'));else{const s=chatName(e.from),tg=chatTag(e);if(tg)s.title=(e.agent?'Agent-played':'AI-played')+(e.model?' · '+e.model.replace(/^Agent \((.*)\)$/,'$1'):'');li.append(s)}
+  li.append(': ',e.text);if(n>1)li.append(el('span','dm chx',' ×'+n));return li}
+// The same speaker saying the same thing on the same channel back to back shows once with a count.
+export function chatGroups(lines){const out=[];for(const e of lines){const p=out[out.length-1];
+  if(p&&p.e.from===e.from&&p.e.text===e.text&&!!p.e.party===!!e.party)p.n++;else out.push({e,n:1})}return out}
 // A Fellowship member's name stands out in chat: bold, in its party-frame role colour (Tank blue, Healer green, DPS red).
-function chatName(h){const s=hn(h),r=fellowRoleOf(h);if(r)s.className+=' fm r-'+r;return s}
+function chatName(h){const s=hn(h),r=fellowRoleOf(h);s.classList.add('chn');if(r)s.classList.add('fmn','r-'+r);return s}
 
 // ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};

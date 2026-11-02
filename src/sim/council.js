@@ -26,18 +26,26 @@ import {notify} from './notify.js';
 import {fellows,fellowParty,campaign} from './fellowship.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
 
-export const COUNCIL={PROP_MIN:120,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,WAIT_MIN:480,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:120,HEAR:7};
+export const COUNCIL={PROP_MIN:120,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,WAIT_MIN:480,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:200,HEAR:7};
 export const PROP_KINDS=['job','crypt','raid','split','other'];
 const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',other:'decide'};
 const gd=t=>({t,c:'gd'});
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
+// A spoken line (#145): whitespace folded, a leading "<own name>:" / "<own name> here," dropped (the game already
+// shows who speaks), and never cut: over `max` characters it is refused. Returns {text} or {error}.
+const esc=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+export function spokenLine(a,text,max=COUNCIL.SAY_LEN){let t=String(text==null?'':text).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();
+  if(a&&a.name){const re=new RegExp('^[\\[(]?(?:party\\]?\\s*)?'+esc(a.name)+'(?:\\s+here)?\\s*[:,\\-\u2013\u2014]\\s*','i');const s=t.replace(re,'');if(s&&s!==t)t=s.charAt(0).toUpperCase()+s.slice(1)}
+  if(!t)return {error:'Say what?'};if(t.length>max)return {error:'Too long: keep it under '+max+' characters (this was '+t.length+').'};return {text:t}}
 const living=a=>a&&a.state!=='dead';
 export const leaderOfF=()=>{const P=fellowParty();if(P&&living(P.leader)&&P.leader.fellow)return P.leader;const L=fellows();let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b};
 
 // ---- party chat ----
 // Everyone in the speaker's party (the whole Fellowship for a member) hears it, near or far;
 // heroes within earshot hear it too. Returns the number of listeners, or an error string.
-export function partySay(a,text){const t=clean(text,COUNCIL.SAY_LEN);if(!t)return 'Say what?';
+// An agent's line over the cap is refused (party_say shows the error); a scripted line is cut at a word with an ellipsis.
+const wordCut=(t,n)=>{if(t.length<=n)return t;const c=t.slice(0,n-1),i=c.lastIndexOf(' ');return (i>n*.6?c.slice(0,i):c).replace(/[\s,.;:]+$/,'')+'…'};
+export function partySay(a,text){let L=spokenLine(a,text);if(L.error&&/^Too long/.test(L.error)&&!a.player)L={text:wordCut(spokenLine(a,text,1e9).text,COUNCIL.SAY_LEN)};if(L.error)return L.error;const t=L.text;
   const mates=a.fellow?fellows().filter(b=>b!==a):partyMates(a);if(!mates.length)return 'You have no party to talk to.';
   const e={t:clockStr(),from:a,text:t,trigger:'party',party:true},heard=new Set([a]);
   const hear=b=>{if(heard.has(b))return;heard.add(b);(b.chat||(b.chat=[])).push(e);if(b.chat.length>20)b.chat.shift()};

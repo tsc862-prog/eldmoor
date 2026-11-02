@@ -105,6 +105,16 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
 // a focused picker is never replaced
 {const s=$('felbody').querySelector('select');if(s){s.focus();const n=s;select(mem[3]);tick(10);ok($('felbody').contains(n),'a focused picker in the Fellowship panel survives refreshes');n.blur()}
   else console.log('  skip picker (no select in the Fellowship panel)')}
+// Chat tab (#145, owner): one compact line, no mind badge, own-name prefix dropped, repeats collapsed
+{const sp=mem[1];const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});sim.playerAct(sp.id,'party_say',{text:'Hold the line at the ford.'});
+  const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
+  ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
+  select(mem[0]);setTab('chat');uiFast();const ul=tb().querySelector('.log');
+  const li=ul&&ul.children.find(x=>/Hold the line/.test(x.textContent));
+  ok(!!li&&li.textContent.endsWith('Hold the line at the ford. ×2'),'chat: repeated line shows once with a count: '+(li&&li.textContent));
+  ok(!!li&&!li.textContent.includes(sp.name+': '+sp.name),'chat: the own-name prefix is dropped');
+  ok(!tb().querySelector('.ai-badge'),'chat: no mind or model badge');
+  ok(!!li&&!!li.querySelector('.chtag')&&li.querySelector('.hn').classList.contains('fmn'),'chat: channel tag and role-coloured name on the one line')}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 
 // The Agents panel (#145): limits and spend in one place, sent to the relay's supervisor
