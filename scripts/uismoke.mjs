@@ -107,5 +107,35 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
   else console.log('  skip picker (no select in the Fellowship panel)')}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 
+// The Agents panel (#145): limits and spend in one place, sent to the relay's supervisor
+console.log('Agents panel');
+{const posts=[];const hk='hero:'+mem[1].id;
+  const relay={ok:true,enabled:true,session:{budget:null,spent:.42,left:null},kinds:{hero:{defaults:{maxTurns:20,budget:1},caps:{maxTurns:200,budget:5}},fellowship:{defaults:{maxTurns:6,budget:2},caps:{maxTurns:100,budget:10}},dm:{defaults:{maxTurns:12,budget:1},caps:{maxTurns:200,budget:5}}},
+    runners:[{key:hk,kind:'hero',hero:mem[1].id,heroes:[mem[1].id],name:mem[1].name,state:'live',turns:3,cost:.42,budget:1,provider:'anthropic',model:'claude-haiku-5-5',lines:[]}]};
+  globalThis.fetch=async(url,o)=>{url=String(url);const j=v=>({ok:true,status:200,json:async()=>v});
+    if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push({url,body});
+      if(url.endsWith('/limits')){if('sessionBudget' in body)relay.session={budget:body.sessionBudget,spent:.42,left:body.sessionBudget==null?null:body.sessionBudget-.42};return j({ok:true,session:relay.session,applies:body.budget!=null&&body.budget<1?'now':'next start'})}
+      return j({ok:true})}
+    if(url.endsWith('/play/runner'))return j(relay);throw new Error('no route '+url)};
+  const wait=()=>new Promise(r=>setTimeout(r,30));
+  const btn=$('agentsBtn'),pop=$('agentsPop');uiSlow();
+  ok(btn&&!btn.hidden,'the Agents button shows with a Fellowship');
+  btn.click();ok(!pop.hidden&&btn.getAttribute('aria-expanded')==='true','it opens the Agents popover');
+  const ss=pop.querySelector('select[data-agsess]');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
+  ok(posts.some(p=>p.url.endsWith('/play/runner/limits')&&p.body.sessionBudget===5),'the session budget is sent to the relay');
+  ok(/Spent \$0\.42 of \$5\.00/.test(pop.textContent),'the spend so far shows live against the budget');
+  ok(/Agents · \$0\.42 \/ \$5\.00/.test(btn.textContent),'the button carries the spend: '+btn.textContent);
+  ok(JSON.parse(localStorage.getItem('eldmoor.agentLimits')).session===5,'the session budget is kept per viewer');
+  const row=pop.querySelector('.agr[data-k='+hk.replace(':','\\:')+']')||pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
+  ok(!!row&&row.textContent.includes(mem[1].name),'a row for the agent-played hero');
+  const bs=row.querySelectorAll('select').find(x=>x.dataset.agf==='budget');bs.value='0.5';bs.dispatch('change',{target:bs});await wait();uiSlow();
+  ok(posts.some(p=>p.body.key===hk&&p.body.budget===.5),'a lower budget on a running runner is sent live');
+  const row2=pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
+  ok(/applies now/.test(row2.textContent),'the row says the change applies now');
+  const ts=row2.querySelectorAll('select').find(x=>x.dataset.agf==='turns');ok(!!ts&&ts.children.some(o=>o.value==='200'),'a turn cap picker up to the kind\'s cap');
+  ok(!pop.querySelector('select[data-runturns]')&&!$('felbody').querySelector('select[data-runturns]'),'turn caps live only in the Agents panel');
+  for(const f of document._ls.keydown||[])f({key:'Escape'});
+  ok(pop.hidden&&btn.getAttribute('aria-expanded')==='false','Escape closes it')}
+
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
