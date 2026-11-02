@@ -134,11 +134,19 @@ function npmCli() { // npm-cli.js, so install runs as node + argument array (no 
 async function update() {
   const st = await git('status', '--porcelain', '--untracked-files=no');
   if (st.code !== 0) return up(`update refused: git status failed: ${(st.err || st.out).trim().split('\n')[0]}`);
-  if (st.out.trim()) return up(`update refused: the working tree has local changes (${st.out.trim().split('\n').length} file(s), e.g. ${st.out.trim().split('\n')[0].trim()}). Commit or discard them, then press u again.`);
+  // .claude/ holds the agents' memory notes, which change all the time: they never block an update. git itself refuses the
+  // pull if an incoming commit touches a file that has local changes (handled below); nothing is ever stashed.
+  const dirty = st.out.split('\n').filter(l => l.trim() && !/^.. "?\.claude\//.test(l));
+  if (dirty.length) return up(`update refused: the working tree has local changes (${dirty.length} file(s), e.g. ${dirty[0].trim()}). Commit or discard them, then press u again.`);
   const before = (await git('rev-parse', 'HEAD')).out.trim();
   quietUntil = Date.now() + 8000; // the pull rewrites scripts/: not a "code changed" notice
   const pull = await git('pull', '--ff-only');
   say('git', (pull.out + pull.err).trim());
+  if (pull.code !== 0) {
+    const mine = (pull.err.match(/overwritten by merge:\n([\s\S]*?)(?:\nPlease|\nAborting|$)/) || [])[1];
+    const files = mine ? mine.split('\n').map(f => f.trim()).filter(Boolean) : [];
+    if (files.length) return up(`update refused: the incoming commits change files you have edited locally. Commit or discard your local changes to ${files.join(', ')}, then press u again. Nothing was changed.`);
+  }
   if (pull.code !== 0) return up('update refused: git pull --ff-only did not fast-forward (diverged history, no upstream or no network). Nothing was changed.');
   const after = (await git('rev-parse', 'HEAD')).out.trim();
   if (before === after) return up('already up to date. (Press r to restart the relay anyway.)');
@@ -213,6 +221,7 @@ async function command(word) {
 async function shutdown(why, code = 0) {
   if (quitting) return; quitting = true;
   up(`stopping (${why}): runners, then the relay, then Vite`);
+  up('runners will resume next start (delete logs/runners/active.json to start clean)');
   const fast = /hangup|close/.test(why); // a closing window gives only a few seconds
   try {if (relay) await stopProc(relay, {soft: true, graceMs: fast ? 3000 : GRACE_MS}); if (vite) await stopProc(vite)} catch {}
   for (const p of [...live]) await killTree(p.pid);

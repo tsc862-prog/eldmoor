@@ -98,7 +98,7 @@ console.log('launcher (real children on spare ports)');
   const git = (cwd, ...a) => { const r = spawnSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], {encoding: 'utf8'}); if (r.status !== 0) throw new Error('git ' + a.join(' ') + ': ' + r.stderr); return r.stdout.trim() };
   const bare = join(tmp, 'origin.git'), work = join(tmp, 'work'), other = join(tmp, 'other');
   git(tmp, 'init', '-q', '--bare', '-b', 'main', bare); git(tmp, 'clone', '-q', bare, work);
-  writeFileSync(join(work, 'package-lock.json'), '{}'); writeFileSync(join(work, 'vite.config.js'), 'export default {};\n'); writeFileSync(join(work, 'a.txt'), 'a\n');
+  writeFileSync(join(work, 'package-lock.json'), '{}'); writeFileSync(join(work, 'vite.config.js'), 'export default {};\n'); writeFileSync(join(work, 'a.txt'), 'a\n'); mkdirSync(join(work, '.claude', 'agent-memory', 'x'), {recursive: true}); writeFileSync(join(work, '.claude', 'agent-memory', 'x', 'MEMORY.md'), 'm\n'); writeFileSync(join(work, '.claude', 'agent-memory', 'x', 'OTHER.md'), 'o\n');
   git(work, 'add', '-A'); git(work, 'commit', '-q', '-m', 'base'); git(work, 'push', '-q', '-u', 'origin', 'main');
   git(tmp, 'clone', '-q', bare, other);
   const logs = join(tmp, 'logs'), active = join(logs, 'runners', 'active.json'); mkdirSync(join(logs, 'runners'), {recursive: true});
@@ -157,11 +157,19 @@ console.log('launcher (real children on spare ports)');
     writeFileSync(join(other, 'remote.txt'), 'y'); git(other, 'add', 'remote.txt'); git(other, 'commit', '-q', '-m', 'remote'); git(other, 'push', '-q', 'origin', 'main');
     m = mark(); send('u'); ok(await seen(/update refused: git pull --ff-only did not fast-forward/, m, 20000), 'u refuses a diverged history');
     git(work, 'fetch', '-q'); git(work, 'reset', '-q', '--hard', 'origin/main'); // drop the local commit: back in line with origin
+    // u: git's own refusal when an incoming commit touches a locally edited file (here an agent-memory note)
+    const mem = join(work, '.claude', 'agent-memory', 'x', 'MEMORY.md');
+    git(other, 'pull', '-q', '--ff-only'); writeFileSync(join(other, '.claude', 'agent-memory', 'x', 'MEMORY.md'), 'remote note\n'); git(other, 'add', '-A'); git(other, 'commit', '-q', '-m', 'note'); git(other, 'push', '-q', 'origin', 'main');
+    appendFileSync(mem, 'local note\n'); m = mark(); send('u');
+    ok(await seen(/Commit or discard your local changes to \.claude\/agent-memory\/x\/MEMORY\.md/, m, 20000), 'a pull that would overwrite a locally edited file is refused by git, naming the file');
+    git(work, 'checkout', '--', '.claude/agent-memory/x/MEMORY.md');
+    // u: a dirty agent-memory file (not touched by the pull) does not block it; a dirty src file does (a.txt above)
+    appendFileSync(join(work, '.claude', 'agent-memory', 'x', 'OTHER.md'), 'unsaved agent note\n'); writeFileSync(join(work, '.claude', 'agent-memory', 'new-note.md'), 'untracked\n');
     // u: fast-forward with a changed lockfile and vite config
     writeFileSync(join(other, 'package-lock.json'), '{"changed":1}'); writeFileSync(join(other, 'vite.config.js'), 'export default {server:{}};\n');
     git(other, 'pull', '-q', '--ff-only'); git(other, 'add', '-A'); git(other, 'commit', '-q', '-m', 'deps'); git(other, 'push', '-q', 'origin', 'main');
     m = mark(); send('u');
-    ok(await seen(/updated [0-9a-f]{7} -> [0-9a-f]{7}: 2 file\(s\) changed/, m, 30000), 'u pulls the fast-forward');
+    ok(await seen(/updated [0-9a-f]{7} -> [0-9a-f]{7}: 3 file\(s\) changed/, m, 30000), 'u pulls the fast-forward although an agent-memory file is dirty');
     ok(await seen(/relay started \(pid \d+\)[\s\S]*vite started|vite started \(pid \d+\)/, m, 60000) && existsSync(join(tmp, 'npm-ran.txt')) && /install in .*work/.test(readFileSync(join(tmp, 'npm-ran.txt'), 'utf8')), 'a changed package-lock.json runs npm install (mock) in the repo');
     const relay3 = pidOf(/relay started \(pid (\d+)\)/, m), vite2 = pidOf(/vite started \(pid (\d+)\)/, m);
     ok(relay3 && relay3 !== relay2 && !alive(relay2) && vite2 && vite2 !== vite1 && !alive(vite1), 'the relay and (dependencies changed) Vite restarted with new pids');

@@ -114,7 +114,7 @@ other. The rules:
 - `npm run up` (`scripts/up.mjs`) and `start-eldmoor.cmd` (Windows, double-click; it calls `node scripts\up.mjs`): one window
   for the whole game. It starts the relay with app runners on and `--resume-runners` and the Vite dev server as child
   processes (output prefixed and coloured `[relay]`, `[vite]`, `[up]`), then opens http://localhost:5173 once. Single keys
-  (or the word plus Enter where raw mode is missing): `u` update (`git pull --ff-only`; refused on a dirty tree or a
+  (or the word plus Enter where raw mode is missing): `u` update (`git pull --ff-only`; refused on a dirty tree outside .claude/ (agent memory never blocks it; git refuses if the pull touches a file you edited, naming it; nothing is stashed) or a
   non-fast-forward; `npm install` only when package-lock.json changed, with Vite stopped meanwhile; then the relay restarts,
   and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `s`
   status (relay health, runners, Ollama models loaded), `h` help, `q`/Ctrl+C quit (runners get "stop" first so they
