@@ -218,6 +218,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     a.inflight--; a.last = now(); pushLinks();
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
+    if (tool === 'table_call' && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
     log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
     return r;

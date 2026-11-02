@@ -7,3 +7,4 @@
 - [DM agent](dm-agent.md) — #66 part 1: DM seat, role=dm MCP routing, claim key dm, runner cadence/429 backoff, supervisor kind, cost per turn
 - [In-game channels](in-game-channels.md) — #123 owner rule: leak audit, runner-scoped relay, narrate/npc_say, chat_read, channelcheck
 - [Runner pacing](runner-pacing.md) — #126 /play/pace protocol, wake levels, until-stopped local runners, lazy-model fixes, idle takeover, 6 seats, Claude slot leases
+- [Staged scenes](staged-scenes.md) — #132: stage_scene kinds/refusals, table calls (voice/outcome/complication, 6 s, poll-live), table voice runner, test pitfalls
