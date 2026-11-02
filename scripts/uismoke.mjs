@@ -588,5 +588,24 @@ console.log('start gate: ready, not just claimed');
   sc.rd=null;TB.renderTable(1);ok(!box.querySelector('.tci')&&!/ROUND/.test(t())&&!box.classList.contains('tcombat'),'combat banner: a scene without rounds keeps the plain banner');
   S.table=null;TB.renderTable(1);ok(box.hidden,'combat banner: hidden when the scene closes');
   S.table=keep;m.hp=mhp;m.target=null;ms.forEach((a,i)=>a.hp=hp0[i]);T.TABLE.speed=spd}}
+// ---- chat in the left column on the three-column layout (owner request) ----
+{const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
+  const keep=window.innerWidth;ok(!!sim.S.fellowship,'chat left: a Fellowship stands');
+  const lst=$('chatList'),sec=$('chatSec');
+  window.innerWidth=2600;uiFast();
+  ok(where('chatSec')==='colL'&&$('colL').children[0]===sec,'2600 px: the chat is first in the left column');
+  ok(where('storySec')==='colL'&&where('worldgrp')==='colL'&&$('colL').children.indexOf($('storySec'))>0,'2600 px: Story and World sit below the chat');
+  const fb=$('chatFilter').children[1];fb.dispatch('click',{target:fb});const pressed=fb.getAttribute('aria-pressed');
+  for(const w of [1600,2600]){window.innerWidth=w;uiFast()}
+  ok($('chatList')===lst&&where('chatSec')==='colL','2600 px again: the same chat node is back in the left column');
+  ok(fb.getAttribute('aria-pressed')===pressed&&pressed==='true','a resize keeps the chat filter');
+  ok(document.body.classList.contains('chat-left')&&$('chatSide')&&!$('chatSide').hidden,'left column: the placement switch is shown');
+  const sb=$('chatSide');sb.dispatch('click',{target:sb});
+  ok(where('chatSec')==='colM'&&!document.body.classList.contains('chat-left'),'the switch puts the chat under the map at 2600 px');
+  sb.dispatch('click',{target:sb});ok(where('chatSec')==='colL','and back to the left column');
+  for(const w of [1600,390]){window.innerWidth=w;uiFast();
+    ok(where('chatSec')==='colM'&&$('colM').children.indexOf(sec)<$('colM').children.indexOf($('heroSec')),w+' px: the chat is under the map, above the hero card');
+    ok(!document.body.classList.contains('chat-left')&&$('chatSide').hidden,w+' px: no left-chat styling, no switch')}
+  window.innerWidth=keep;uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
