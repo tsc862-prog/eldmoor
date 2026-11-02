@@ -282,6 +282,7 @@ const v = act(RB, 'vote', {proposal_id: pid4, vote: 'no', reason: 'We have rope.
 PP = C.propById(pid4);
 ok(v.ok && PP.status !== 'open' && /everyone voted/.test(PP.result), `all votes in settles it at once: ${PP.result}`);
 ok(!act(RB, 'vote', {proposal_id: pid4, vote: 'yes'}).ok, 'a settled proposal takes no more votes');
+RM.forEach((x, i) => {x.x = RA.x + (i % 3) * .5; x.y = RA.y}); // in shouting range (#182)
 ok(act(RA, 'party_say', {text: 'Rope it is, then.'}).ok && Rrest.every(x => (x.chat || []).some(e => e.party && e.text === 'Rope it is, then.')), 'party_say reaches every member');
 ok(act(RB, 'party_read', {n: 5}).lines.some(l => /Rope it is/.test(l)), 'party_read shows it');
 // at 3x with Table on, a proposal drops the world to 1x and becomes a decision scene
@@ -315,6 +316,71 @@ const lp = act(RB, 'leave_party');
 ok(lp.ok && RB.splitUntil && !RB.party, 'leave_party splits a member off (for a while)');
 ok(((RA.bonds || {})[RB.id] || 0) === Math.max(-10, bond0 - C.COUNCIL.BOND_COST), `splitting off costs bonds (${bond0} -> ${(RA.bonds || {})[RB.id]})`);
 act(RB, 'join_party', {hero_id: RA.id});
+
+// ---- 4b. talking takes presence (issue #182): shouting range, councils, plans, couriers, catching up ----
+console.log('talking takes presence');
+{const R = await import('../src/sim/reach.js'), PACE = await import('../src/sim/pace.js');
+ T.TABLE.mode = 'off'; T.TABLE.speed = 1; for (const x of RM) link(x, 'connected');
+ for (const p of S.parties.slice()) if (p.fellow) {for (const b of p.mem) b.party = null; S.parties.splice(S.parties.indexOf(p), 1)}
+ const gate = homeOf(RA).gate, farX = gate.x < 40 ? gate.x + 30 : gate.x - 30;
+ const gather = () => {RM.forEach((x, i) => {x.x = gate.x + i * .5; x.y = gate.y - 1; x.state = 'town'; x.townStep = 2; x.wait = 99; x.hidden = false; x.target = null; x.pq = []; x.hp = maxHp(x); x.splitUntil = 0; delete x.apartSince; delete x.missed; delete x.catchUp; x.chat = []; x.playEv = []})};
+ const awayB = () => {RB.x = farX; RB.y = gate.y - 1};
+ const mem = RM.filter(x => x !== RB);
+ // shouting range
+ gather(); awayB();
+ let q = act(RA, 'party_say', {text: 'Hold the ford!'});
+ ok(q.ok && !q.heard_by.includes(RB.name) && q.too_far.includes(RB.name) && mem.filter(x => x !== RA).every(x => q.heard_by.includes(x.name)), `party_say: ${q.note}`);
+ ok(!(RB.chat || []).some(e => e.text === 'Hold the ford!') && mem.filter(x => x !== RA).every(x => x.chat.some(e => e.party && e.text === 'Hold the ford!')), 'the far member hears nothing; those in range do');
+ ok(C.COUNCIL.SHOUT === 12 && C.COUNCIL.HEAR === 7, 'one shout constant (12), earshot stays 7');
+ gather(); RM.forEach((x, i) => {x.x = 5 + i * 20; x.y = 10 + (i % 2) * 20});
+ q = act(RA, 'party_say', {text: 'Anyone?'});
+ ok(q.ok && q.heard_by.length === 0 && /No one is near/.test(q.note), 'a shout nobody can hear says so (' + q.note + ')');
+ // councils need presence
+ gather(); awayB(); delete S.fellowship.wait; for (const P of C.openProps()) P.status = 'failed';
+ let pq = act(RA, 'propose', {kind: 'other', details: 'Rest at the ford'});
+ const PP = C.propById(Number(String(pq.proposal).match(/#(\d+)/)[1]));
+ ok(pq.ok && PP.absent && PP.absent.includes(RB.id), 'a proposal made while split reaches only the members in range');
+ const vb = act(RB, 'vote', {proposal_id: PP.id, vote: 'yes'});
+ ok(!vb.ok && /too far/.test(JSON.stringify(vb)), 'the absent member cannot vote');
+ for (const x of mem) if (!PP.votes[x.id] && PP.status === 'open') act(x, 'vote', {proposal_id: PP.id, vote: 'yes', reason: 'ok'});
+ ok(PP.status !== 'open' && !PP.votes[RB.id] && /Passed 4-0/.test(PP.result), 'a vote counts only the members present, and settles without the absent one: ' + PP.result);
+ const cq = act(RA, 'propose', {kind: 'crypt', details: 'Down we go'});
+ ok(!cq.ok && /whole Fellowship together/.test(JSON.stringify(cq)), 'a Crypt call needs everyone together');
+ // meeting plans
+ gather(); awayB(); for (const x of RM) x.memories = null;
+ const pl = C.makeMeeting(RA, 'the ford at Mirefen', 6);
+ ok(!pl.error && !pl.who.includes(RB.id) && pl.who.length === 4, 'a meeting plan is recorded for those who heard it (' + (pl.whoNames || pl.error) + ')');
+ ok(F_.openThreads().some(t => t.kind === 'meeting') && RA.chat.some(e => /meet again at the ford/.test(e.text)), 'it is an open thread and a party line');
+ const hasNote = x => (x.memories && x.memories.notes || []).some(n => (n.tags || []).includes('plan'));
+ ok(hasNote(RA) && hasNote(mem[1]) && !hasNote(RB), 'a memory (#155) for everyone present, none for the absent member');
+ ok(!(RB.chat || []).some(e => /ford at Mirefen/.test(e.text)), 'the absent member got no word of it');
+ // couriers
+ gather(); awayB(); RA.gold = 100; RA.state = 'town';
+ const sc2 = act(RA, 'send_courier', {to: RB.name, text: 'Meet me at the ford.'});
+ ok(sc2.ok && sc2.cost > 0 && RA.gold === 100 - sc2.cost && sc2.arrives_in_hours > 1, `a paid courier is hired at the gate: ${sc2.cost}g, ${sc2.arrives_in_hours} h (${sc2.error || ''})`);
+ ok(!act(RA, 'send_courier', {to: RM[2].name, text: 'Hi'}).ok, 'no courier to someone who can hear you');
+ RA.state = 'hunt'; ok(!act(RA, 'send_courier', {to: RB.name, text: 'x'}).ok, 'couriers are hired in town only'); RA.state = 'town';
+ C.councilTick(); ok(!(RB.chat || []).some(e => e.courier), 'nothing arrives at once');
+ const due = S.fellowship.post[0].due, gm0 = S.gameMin; S.gameMin = due - 1; C.councilTick(); ok(!(RB.chat || []).some(e => e.courier), 'nor before the delay');
+ S.gameMin = due + 1; C.councilTick();
+ ok((RB.chat || []).some(e => e.courier && e.text === 'Meet me at the ford.') && (RB.playEv || []).some(e => /courier finds you/.test(e.text)) && S.fellowship.post.length === 0, 'the message arrives after its delay, as an event and a chat line');
+ // catching up after an absence: no facts until a companion says them
+ gather(); for (const x of RM) {x.chat = []; x.playEv = []}
+ C.councilTick(); awayB(); C.councilTick();
+ ok(RB.apartSince != null, 'a member out of range is tracked as apart');
+ F_.campaign('scene', 'The Fellowship fought off an ambush at the ford.'); F_.campaign('npc', 'Old Hesk warned them of the fen.');
+ S.gameMin += 180; C.councilTick(); RB.x = RA.x + 1; RB.y = RA.y; RB.chat = []; RB.playEv = []; for (const x of RM) if (x !== RB) x.playEv = [];
+ C.councilTick();
+ const tellEv = [].concat(...mem.map(x => x.playEv)).filter(e => /is back after 3 hours/.test(e.text));
+ ok(tellEv.length === 1 && /ambush at the ford/.test(tellEv[0].text) && /Old Hesk/.test(tellEv[0].text) && /Catch them up/.test(tellEv[0].text), 'one present member is told what was missed and asked to say it');
+ ok(RB.playEv.some(e => /back with the company/.test(e.text)) && !RB.playEv.some(e => /ambush|Hesk/.test(e.text)) && !RB.chat.length, 'the returner is told only to ask: no facts reach it');
+ C.councilTick(); C.councilTick(); ok(RM.reduce((n, x) => n + x.playEv.filter(e => /is back after|back with the company/.test(e.text)).length, 0) === 2, 'the briefing fires once');
+ ok(!PACE.paceBrief(RB.id).brief.warning, 'no warning yet');
+ S.gameMin += 40; ok(/not been told/.test(PACE.paceBrief(RB.id).brief.warning || '') && /not been told/.test(act(RB, 'status').warning || ''), 'unspoken for a while, the returner\'s turn header says it has not been told');
+ act(RA, 'party_say', {text: 'You missed an ambush at the ford, and Old Hesk warned us of the fen.'});
+ ok(!PACE.paceBrief(RB.id).brief.warning && RB.chat.some(e => /ambush at the ford/.test(e.text)), 'once a companion speaks, the returner hears it in game and the warning goes');
+ for (const x of RM) {x.splitUntil = 0; x.chat = []}
+}
 
 // ---- 5. the Crypt: all together or not at all ----
 T.TABLE.mode = 'off'; T.TABLE.speed = 1; // outside Table mode: the Crypt call is a proposal the agents answer with vote

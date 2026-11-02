@@ -271,9 +271,11 @@ function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e
 // One compact line per message (#145, owner): "02:52 [Party] Nevith: text", the text wrapping under itself.
 // No mind badge: the Mind and Agent tabs say who plays a hero; the model is in the name's hover title.
 export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t));
-  if(e.party)li.append(el('span','chtag','Party'));
   if(e.from&&e.from.kind==='dm')li.append(el('span','gd chn','Narrator'));else{const s=chatName(e.from),tg=chatTag(e);if(tg)s.title=(e.agent?'Agent-played':'AI-played')+(e.model?' · '+e.model.replace(/^Agent \((.*)\)$/,'$1'):'');li.append(s)}
-  li.append(': ',e.text);if(n>1)li.append(el('span','dm chx',' ×'+n));return li}
+  // a shout (party_say, #182) reads 'Kerin shouts: text', a courier 'Kerin sends word: text'; the dim suffix says who heard it. No channel tag (owner).
+  const none=e.party&&!e.courier&&e.heard&&!e.heard.length;li.append(e.courier?' sends word: ':none?' calls out, but no one is near: ':e.party?' shouts: ':': ',e.text);
+  if(n>1)li.append(el('span','dm chx',' ×'+n));
+  if(e.party&&!e.courier&&e.heard&&e.heard.length)li.append(el('span','dm chheard',' ('+e.heard.join(', ')+')'));return li}
 // The same speaker saying the same thing on the same channel back to back shows once with a count.
 export function chatGroups(lines){const out=[];for(const e of lines){const p=out[out.length-1];
   if(p&&p.e.from===e.from&&p.e.text===e.text&&!!p.e.party===!!e.party)p.n++;else out.push({e,n:1})}return out}
