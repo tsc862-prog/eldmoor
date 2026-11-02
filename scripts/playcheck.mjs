@@ -463,6 +463,32 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   ok(m.playEv.some(e => /\[trade opened\]/.test(e.text)), 'and the follow-up as an event');
   // walking away ends it; the scripted DM picks up again when the seat goes quiet
   m.x = sm.x + 15; step(1 / 60); ok(!TK.convWith(sm), 'walking off ends the conversation');
+  // ---- earshot (issue #395): who hears you, before you speak; the same sets say and party_say use ----
+  {const {paceBrief} = await import('../src/sim/pace.js'), {zoneAt} = await import('../src/world/map.js'), R = await import('../src/sim/reach.js');
+    const [, f2, f3, ...rest] = F_.fellows(); stand(qm); m.state = 'town'; const z = zoneAt(m.x, m.y), wz = S.weather && S.weather[z], wk = wz && wz.k;
+    if (wz) wz.k = 'clear';
+    f2.x = m.x + 2; f2.y = m.y; f3.x = m.x + 9; f3.y = m.y; for (const x of [f2, f3]) {x.pq = []; x.target = null}
+    step(1 / 60); // the spatial index say uses is rebuilt each step
+    r = await mc('earshot');
+    ok(r.ok && r.shout && r.shout.range === R.REACH.SHOUT && r.say.some(l => l.startsWith(f2.name + ' (')) && !r.say.some(l => l.startsWith(f3.name + ' (')), `earshot: say reaches ${f2.name}, not ${f3.name} at 9 tiles`);
+    ok(r.talk.some(l => l.startsWith(qm.title + ' ' + qm.name)), 'earshot: the quartermaster is close enough to talk to');
+    ok(r.shout.hear.some(l => l.startsWith(f2.name)) && r.shout.hear.some(l => l.startsWith(f3.name)) && rest.every(b => r.shout.out_of_range.includes(b.name)), `earshot: a ${r.shout.range}-tile shout reaches ${f2.name} and ${f3.name}; ${r.shout.out_of_range.join(', ')} out of range`);
+    ok(/send_courier/.test(r.text) && !/\d+,\d+/.test(JSON.stringify(r.shout.out_of_range)), `earshot names the far companions only, with the courier hint: "${r.text}"`);
+    let b = paceBrief(m.id).brief; ok(b && typeof b.earshot === 'string' && b.earshot.includes(f2.name) && /send_courier/.test(b.earshot), `the state header: "In earshot: ${b && b.earshot}"`);
+    const said = await mc('party_say', {text: 'Clear skies, stay close.'});
+    ok(said.ok && JSON.stringify(said.heard_by.slice().sort()) === JSON.stringify(r.shout.hear.map(l => l.replace(/ \(.*$/, '')).sort()), 'party_say reaches exactly the companions earshot named');
+    if (wz) {wz.k = 'fog'; r = await mc('earshot');
+      ok(r.shout.range < R.REACH.SHOUT && /fog/i.test(r.shout.shorter || '') && !r.shout.hear.some(l => l.startsWith(f3.name)) && r.shout.out_of_range.includes(f3.name), `in fog a shout carries ${r.shout.range} tiles (${r.shout.shorter}): ${f3.name} is out of range`);
+      const s2 = await mc('party_say', {text: 'Fog rolling in, hold together.'});
+      ok(s2.ok && (s2.too_far || []).includes(f3.name) && !s2.heard_by.includes(f3.name), 'and party_say agrees: too far in the fog');
+      wz.k = wk}
+    // alone, with nobody near: no line in the header
+    for (const x of F_.fellows()) if (x !== m) {x.x = home.gate.x + 30; x.y = home.gate.y}
+    const far = {x: m.x, y: m.y};
+    const {earshotLine} = await import('../src/sim/earshot.js');
+    let spot = null; for (let dx = -30; dx <= 30 && !spot; dx += 3) for (let dy = -20; dy <= 20 && !spot; dy += 3) {m.x = far.x + dx; m.y = far.y + dy; if (m.x > 1 && m.y > 1 && m.x < 78 && m.y < 48 && !earshotLine(m)) spot = [m.x, m.y]}
+    b = spot && paceBrief(m.id).brief; ok(spot && b && b.earshot === null, 'with nobody near, the header carries no earshot line');
+    m.x = far.x; m.y = far.y}
   DMA.setDmSeat(false); F_.disbandFellowship(); paused = false}
 
 // ---- stale orders (issue #240): autopilot holds during the agent's turn, the hold has a cap, and an order the
