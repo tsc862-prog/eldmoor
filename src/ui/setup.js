@@ -7,7 +7,8 @@
 // file is the form, the relay status and the runner launch. Choices are remembered per viewer in localStorage
 // (eldmoor.setup.last). Starting reloads the page into the new world (ui/save.js queueNewWorld), where
 // init({setup}) builds it, so every panel starts from state as for any boot.
-import {fellowshipMembers,defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners} from '../sim/index.js';
+import {fellowshipMembers,defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM} from '../sim/index.js';
+import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
 import {SLOT_KEYS} from '../sim/fellowship.js';
 import {racesOf} from '../data/races.js';
 import {PROF,PROF_IDS,MAX_PROF} from '../data/professions.js';
@@ -98,9 +99,15 @@ function slotCard(k){const p=st.setup.slots[k],card=el('div','scard'),top=el('di
   const rs=racesOf(st.setup.fac);
   const people=select('race:'+k,[['','any people']].concat(rs.map(r=>[r.id,r.name])),p.race||'','People');
   card.append(field('Name',row));card.append(field('People',people));
+  card.append(archControls(k,p));
   card.append(profControls(k,p));
   card.append(field('Mind',mindControls(k,p.mind)));
   return card}
+
+// A persona archetype for a place (#295): None, one of the six, or Random (picked from the seed at founding).
+export const archetypeOptions=()=>[['','None'],...ARCHETYPE_IDS.map(id=>[id,ARCHETYPES[id].name]),[ARCHETYPE_RANDOM,'Random']];
+export const archetypeHint=v=>!v?'Their own voice, from the world.':v===ARCHETYPE_RANDOM?'One of the six, picked from the seed.':ARCHETYPES[v]?ARCHETYPES[v].voice:'';
+const archControls=(k,p)=>field('Archetype',select('arch:'+k,archetypeOptions(),p.archetype||'','Persona archetype for the '+slotLabel(k)),el('span','dm sarchnote',archetypeHint(p.archetype)));
 
 // Up to MAX_PROF professions for a place, or none chosen = "let them choose" (the hero picks in play, #259).
 function profControls(k,p){const d=el('div','sfield'),chosen=p.profs||[],row=el('div','sprofs');
@@ -181,6 +188,7 @@ function onChange(e){const t=e.target;if(!t||!t.dataset||!t.dataset.f)return;con
   if(f==='world')st.setup.world=v;
   else if(f==='fac'){st.setup.fac=+v;for(const k of ROLE_ORDER){delete st.setup.slots[k].race;delete st.setup.slots[k].name}}
   else if(f.startsWith('cls:'))st.setup.slots[f.slice(4)].cls=v;
+  else if(f.startsWith('arch:')){const k=f.slice(5);if(v)st.setup.slots[k].archetype=v;else delete st.setup.slots[k].archetype}
   else if(f.startsWith('race:')){const k=f.slice(5);if(v)st.setup.slots[k].race=v;else delete st.setup.slots[k].race}
   else if(f.startsWith('mind:'))setModel(f.slice(5),v);
   else return;

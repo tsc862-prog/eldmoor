@@ -628,3 +628,8 @@ button.tbtn.danger{border-color:var(--red)}
   .tbanner.tcombat .tf{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .tbanner .tcn{max-width:7em}.tbanner .tchp{width:24px}.tbanner .tcc{font-size:11px}
   .tbanner .trl:not(:nth-last-child(-n+3)){display:none}}
+/* Persona archetypes (#295): the setup page's hint under the select and the sheet editor's select */
+.sarchnote{min-width:0;overflow-wrap:anywhere;line-height:1.1}
+.fsheet .farch .msel{font-family:var(--mono);font-size:18px;background:#0a0b14;color:var(--ink);border:1px solid var(--edge);max-width:100%;width:100%;box-sizing:border-box}
+.fsheet .farch .msel:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.farchhint{overflow-wrap:anywhere;line-height:1.1}

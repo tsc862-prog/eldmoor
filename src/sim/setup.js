@@ -8,6 +8,7 @@
 //         (hard rule, #148): a member has no scripted or AI mind; an older setup's are turned into agents.
 //   dm    {mode:'scripted'} or {mode:'agent', provider, model}: the DM seat is opened and a DM runner started
 //   race  a people id of the faction (data/races.js) or absent for "whoever the recruits are"
+//   archetype  an id of data/archetypes.js, 'random' (picked from the seed, no RNG) or absent for none (#295)
 // validateSetup(s) lists what is wrong (empty = fine); init({setup}) builds the world (sim/opening.js):
 // the chosen classes, names and peoples at level 1 in the hall, minds set before the first tick, and the
 // same world for the same seed.
@@ -23,12 +24,22 @@ import {markPlayer} from './player.js';
 import {setDmSeat} from './dmagent.js';
 import {PROF,MAX_PROF} from '../data/professions.js';
 import {seedProfs} from './professions.js';
+import {hash} from '../core/rng.js';
+import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js';
+import {applyArchetype} from './persona.js';
 
 export const SETUP_VERSION=1;
 export const CLAUDE_MODELS={haiku:'claude-haiku-5-5',sonnet:'claude-sonnet-5-5'};
 export const SETUP_PROVIDERS=['anthropic','ollama','openai']; // what the runners can start with
 export const MIND_MODES=['agent']; // a member's mind (#148); the DM may still be scripted (DM_MODES)
 export const DM_MODES=['scripted','agent'];
+export const ARCHETYPE_RANDOM='random';
+const archOk=v=>v===ARCHETYPE_RANDOM||!!ARCHETYPES[v];
+// The archetype a place gets: the chosen id, or for 'random' one picked from the seed and the place (a hash,
+// so the world's random stream is untouched and the same seed gives the same five). null = none.
+export function resolveArchetype(setup,k){const v=setup&&setup.slots&&setup.slots[k]&&setup.slots[k].archetype;if(!v)return null;
+  if(v!==ARCHETYPE_RANDOM)return ARCHETYPES[v]?v:null;
+  const i=Math.max(0,SLOT_KEYS.indexOf(k));return ARCHETYPE_IDS[Math.floor(hash(i+1,295,(setup.seed>>>0)%2147483647)*ARCHETYPE_IDS.length)%ARCHETYPE_IDS.length]}
 const MODEL_OK=/^[A-Za-z0-9][\w.:\/+-]{0,99}$/;
 export const slotLabel=k=>(SLOTS.find(s=>s.key===k)||{}).label||k;
 export const slotClasses=k=>((SLOTS.find(s=>s.key===k)||{}).cls||[]).slice();
@@ -58,7 +69,7 @@ export function applyPreset(name,base,ctx={}){const s=JSON.parse(JSON.stringify(
     for(const k of SLOT_KEYS)if(l.slots[k]&&l.slots[k].mind)s.slots[k]={...s.slots[k],mind:agentOnly(l.slots[k].mind)};
     if(l.dm)s.dm={...l.dm};
     // the viewer's last Fellowship, kept whole when it is of the same faction
-    if(l.fac===s.fac)for(const k of SLOT_KEYS)if(l.slots[k]){const {cls,name,race,profs}=l.slots[k];s.slots[k]={...s.slots[k],cls,...(name?{name}:{}),...(race?{race}:{}),...(profs&&profs.length?{profs:profs.slice()}:{})}}
+    if(l.fac===s.fac)for(const k of SLOT_KEYS)if(l.slots[k]){const {cls,name,race,profs,archetype}=l.slots[k];s.slots[k]={...s.slots[k],cls,...(name?{name}:{}),...(race?{race}:{}),...(profs&&profs.length?{profs:profs.slice()}:{}),...(archetype?{archetype}:{})}}
     return s}
   return null}
 
@@ -85,6 +96,7 @@ export function validateSetup(s){const out=[];
       if(n.length<2||n.length>24||!/^[\p{L}][\p{L}' -]*$/u.test(n))out.push(sl.label+': a name is 2-24 letters (spaces, hyphens and apostrophes allowed).');
       else if(seen.has(n.toLowerCase()))out.push(sl.label+': "'+n+'" is used twice.');else seen.add(n.toLowerCase())}
     if(p.profs!=null){if(!Array.isArray(p.profs)||p.profs.length>MAX_PROF||p.profs.some(id=>!PROF[id])||new Set(p.profs).size!==p.profs.length)out.push(sl.label+': pick up to '+MAX_PROF+' different professions, or let them choose.')}
+    if(p.archetype!=null&&p.archetype!==''&&!archOk(p.archetype))out.push(sl.label+': unknown archetype; pick one, Random or None.');
     const mp=mindProblem(p.mind,sl.label);if(mp)out.push(mp)}
   if(!s.dm||!DM_MODES.includes(s.dm.mode))out.push('DM: pick scripted or agent.');
   else if(s.dm.mode==='agent'){const mp=mindProblem({...s.dm},'DM',DM_MODES);if(mp)out.push(mp)}
@@ -93,7 +105,7 @@ export function validateSetup(s){const out=[];
 // Strip a setup to the fields we read (it may come from localStorage or the URL of an older page).
 export function cleanSetup(s){if(!s||typeof s!=='object')return null;
   const m=agentOnly; // members: agents only (#148); an older page's scripted or AI mind becomes an agent
-  const slots={};for(const k of SLOT_KEYS){const p=(s.slots&&s.slots[k])||{};slots[k]={cls:p.cls,...(p.name?{name:String(p.name).trim()}:{}),...(p.race?{race:p.race}:{}),...(Array.isArray(p.profs)&&p.profs.length?{profs:[...new Set(p.profs)].filter(id=>PROF[id]).slice(0,MAX_PROF)}:{}),mind:m(p.mind)}}
+  const slots={};for(const k of SLOT_KEYS){const p=(s.slots&&s.slots[k])||{};slots[k]={cls:p.cls,...(p.name?{name:String(p.name).trim()}:{}),...(p.race?{race:p.race}:{}),...(Array.isArray(p.profs)&&p.profs.length?{profs:[...new Set(p.profs)].filter(id=>PROF[id]).slice(0,MAX_PROF)}:{}),...(archOk(p.archetype)?{archetype:p.archetype}:{}),mind:m(p.mind)}}
   const dm=s.dm&&s.dm.mode==='agent'?{mode:'agent',provider:s.dm.provider,model:s.dm.model}:{mode:'scripted'};
   return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,fac:s.fac|0,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),slots,dm}}
 
@@ -130,6 +142,7 @@ export function applyMinds(setup){const F=S.fellowship;if(!F)return;
     if(a.brain){disableBrain(a);delete a.fellowBrain}
     if(!a.player&&markPlayer(a,true))a.fellowAgent=true}
   const chosen={};for(const [k,a] of mem){const ids=setup.slots[k]&&setup.slots[k].profs;if(a&&ids&&ids.length){chosen[k]=ids.slice();seedProfs(a,ids)}}
+  for(const [k,a] of mem){const id=a&&resolveArchetype(setup,k);if(id)applyArchetype(a,id)} // the persona voice the owner chose (#295)
   F.minds='agent';F.ai=true;
   if(setup.dm&&setup.dm.mode==='agent')setDmSeat(true);
   return chosen} // {slot:[profession ids]} the owner chose; kept in S.setup.profs for whoever fills a place later

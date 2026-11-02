@@ -618,5 +618,20 @@ console.log('start gate: ready, not just claimed');
     ok(where('chatSec')==='colM'&&$('colM').children.indexOf(sec)<$('colM').children.indexOf($('heroSec')),w+' px: the chat is under the map, above the hero card');
     ok(!document.body.classList.contains('chat-left')&&$('chatSide').hidden,w+' px: no left-chat styling, no switch')}
   window.innerWidth=keep;uiFast()}
+// Fellowship sheet editor: the Archetype select (#295 follow-up) rewrites the persona boxes in place and fills stances
+{const fb=$('felbody'),{ARCHETYPES}=await import('../src/data/archetypes.js');
+  fb.querySelector('[data-fact="drawer:members"]').click();const a=sim.fellows()[0];
+  const sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));sb.click();
+  const sel=fb.querySelector('select[data-farch]');
+  ok(!!sel&&sel.children.length===7&&sel.value==='','sheet editor: an Archetype select, None until one is picked');
+  const voice=()=>fb.querySelectorAll('textarea').find(t=>t.dataset.fw==='persona'&&t.dataset.fk==='voice');const box0=voice();
+  const typed=fb.querySelectorAll('textarea').find(t=>t.dataset.fw==='backstory');typed.value='typed but not saved';
+  sel.value='mercenary';sel.dispatch('change',{target:sel});uiFast();
+  ok(a.persona.archetype==='mercenary'&&a.persona.voice===ARCHETYPES.mercenary.voice&&a.persona.edited,'sheet editor: picking one applies it and marks the persona as the owner choice');
+  ok(voice()===box0&&box0.value===ARCHETYPES.mercenary.voice&&typed.value==='typed but not saved','sheet editor: the persona boxes change in place, typed text elsewhere is kept');
+  ok(fb.querySelector('.farchhint').textContent.includes(ARCHETYPES.mercenary.voice),'sheet editor: the hint shows the archetype voice');
+  const m2=sim.fellows()[1];ok(a.persona.stances[m2.id]===ARCHETYPES.mercenary.stance.replace('{other}',m2.name),'sheet editor: stances name each companion');
+  ok(!fb.querySelector('select[data-farch]').children.some(o=>o.value===''),'sheet editor: None is gone once one is picked');
+  fb.querySelectorAll('button').find(b=>b.dataset.fact==='close').click()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

@@ -182,7 +182,7 @@ if(mode==='a'){
   save.holdSave(false);save.writeSave();played=[];title.showTitle(k=>played.push(k));t=ids.get('title');
   click(t,b=>b.dataset.a==='continue');ok(played.join()==='continue','Continue resumes the save');
 }else{
-  const s=sim.cleanSetup(sim.applyPreset('claude',sim.defaultSetup(777,'eldmoor',0)));
+  const s0=sim.applyPreset('claude',sim.defaultSetup(777,'eldmoor',0));s0.slots.tank.archetype='veteran';const s=sim.cleanSetup(s0);
   localStorage.setItem(PENDING_KEY,JSON.stringify(s));
   boot(sim.init);
   ok(bootKind()==='setup'&&appliedSetup().seed===777,'boot applies the queued setup');
@@ -219,4 +219,24 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   const pend2=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
   ok(pend2&&pend2.slots.tank.profs.join()==='smithing'&&!pend2.slots.healer.profs,'Start queues the choice for that place only');
   localStorage.removeItem(PENDING_KEY)}
+// Archetype picker on the place cards (#295 follow-up): None, the six, Random; the hint follows the pick
+if(mode==='a'){setup.openSetup({first:true});await sleep(30);
+  const {ARCHETYPES,ARCHETYPE_IDS}=await imp('src/data/archetypes.js');
+  const asel=k=>all(ids.get('setup'),'select').find(s=>s.dataset.f==='arch:'+k);
+  ok(all(ids.get('setup'),'.scard').every(c=>all(c,'select').some(s=>/^arch:/.test(s.dataset.f||''))),'archetype: one select per place card');
+  const ov=asel('tank').childNodes.map(o=>o.value);
+  ok(ov[0]===''&&ov[ov.length-1]==='random'&&ARCHETYPE_IDS.every(id=>ov.includes(id))&&ov.length===ARCHETYPE_IDS.length+2,'archetype: None, the six, Random -> '+ov.join());
+  ok(asel('tank').value===''&&/own voice/.test(all(ids.get('setup'),'.scard')[0].textContent),'archetype: None by default, with its hint');
+  let s1=asel('tank');s1.value='zealot';s1.dispatch('change',{target:s1});
+  ok(asel('tank').value==='zealot'&&all(ids.get('setup'),'.scard')[0].textContent.includes(ARCHETYPES.zealot.voice),'archetype: the hint shows the voice of the pick');
+  s1=asel('dps2');s1.value='random';s1.dispatch('change',{target:s1});
+  ok(/picked from the seed/.test(all(ids.get('setup'),'.scard')[3].textContent),'archetype: Random explains itself');
+  s1=asel('tank');s1.value='';s1.dispatch('change',{target:s1});s1=asel('tank');s1.value='veteran';s1.dispatch('change',{target:s1});
+  ok(!/unknown archetype/.test(text(ids.get('setup'))),'archetype: no problem flagged for a legal pick');
+  click(ids.get('setup'),b=>b.dataset.a==='start');
+  const pend3=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
+  ok(pend3&&pend3.slots.tank.archetype==='veteran'&&pend3.slots.dps2.archetype==='random'&&!pend3.slots.healer.archetype,'archetype: Start queues the picks per place');
+  localStorage.removeItem(PENDING_KEY)}
+if(mode==='b'){const t=sim.fellowshipMembers().find(m=>m.slot==='tank').hero;
+  ok(t.persona&&t.persona.archetype==='veteran','archetype: the queued pick is applied at founding')}
 console.log(fail?fail+' FAILED':'smoke133 '+mode+' passed');process.exit(fail?1:0);

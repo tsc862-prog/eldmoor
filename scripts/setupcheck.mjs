@@ -12,10 +12,11 @@ const chosen = seed => {
   s.slots.dps1 = {cls: 'Rogue', name: 'Vexa', race: 'thornhide', mind: {mode: 'agent', provider: 'ollama', model: 'qwen2.5:14b'}};
   s.slots.dps2 = {cls: 'Rogue', mind: {mode: 'agent', provider: 'openai', model: 'gpt-5-mini'}};
   s.slots.dps3 = {cls: 'Rogue', name: 'Orrak', mind: {mode: 'agent', provider: 'anthropic', model: 'claude-sonnet-5-5'}};
-  s.slots.tank = {...s.slots.tank, race: 'ashfolk'};
+  s.slots.tank = {...s.slots.tank, race: 'ashfolk', archetype: 'zealot'};
+  s.slots.healer = {...s.slots.healer, archetype: 'random'};
   return s;
 };
-const sigOf = () => JSON.stringify([S.fellowship.name, fellowshipMembers().map(m => [m.slot, m.hero.name, m.hero.cls, m.hero.race, m.hero.lvl, m.hero.x.toFixed(2), !!m.hero.player, !!m.hero.brain]), S.agents.length, S.agents.map(a => a.lvl).join('')]);
+const sigOf = () => JSON.stringify([S.fellowship.name, fellowshipMembers().map(m => [m.slot, m.hero.name, m.hero.cls, m.hero.race, m.hero.lvl, m.hero.x.toFixed(2), !!m.hero.player, !!m.hero.brain, m.hero.persona && m.hero.persona.archetype || null]), S.agents.length, S.agents.map(a => a.lvl).join('')]);
 
 if (process.argv[2] === '--child') {init({setup: cleanSetup(chosen(+process.argv[3]))}); console.log('SIG ' + sigOf()); process.exit(0)}
 
@@ -38,6 +39,7 @@ bad(t => t.slots.dps2.name = '12', 'a name that is not letters');
 bad(t => t.slots.dps2.race = 'hallowan', 'a people of the other faction');
 bad(t => t.dm = {mode: 'agent', provider: 'ollama'}, 'a DM agent with no model');
 bad(t => t.fac = 7, 'an unknown faction');
+bad(t => t.slots.dps1.archetype = 'jester', 'an unknown archetype (#295)');
 
 // ---- presets ----
 ok(applyPreset('scripted', s) === null, 'there is no All scripted preset (#148)');
@@ -66,6 +68,19 @@ ok(mem.every(x => x.hero.player && x.hero.fellowAgent && !x.hero.brain), 'every 
 ok(S.fellowship.minds === 'agent', 'Minds: agents');
 {const {planRunners} = await import('../src/sim/setup.js'); const pl = planRunners(cleanSetup(s)); ok(pl.filter(r => r.kind === 'hero').length === 5 && pl.some(r => r.kind === 'dm'), 'mixed models: one runner per member, plus the DM')}
 ok(S.dmAgent && S.dmAgent.seat === true, 'an agent DM opens the DM seat');
+// Archetypes (#295 follow-up): the pick is applied at founding, Random comes from the seed (no RNG), stances name companions
+{const {ARCHETYPES, ARCHETYPE_IDS} = await import('../src/data/archetypes.js'), {resolveArchetype} = await import('../src/sim/setup.js');
+ ok(m.tank.persona.archetype === 'zealot' && m.tank.persona.voice === ARCHETYPES.zealot.voice, 'a chosen archetype is applied at founding');
+ ok(ARCHETYPE_IDS.includes(m.healer.persona.archetype) && m.healer.persona.archetype === resolveArchetype(cleanSetup(s), 'healer'), 'Random resolves to one of the six, the same one resolveArchetype names');
+ ok(!m.dps1.persona.archetype, 'None leaves the persona as it was');
+ const others = mem.filter(x => x.hero !== m.tank).map(x => x.hero);
+ ok(others.every(b => m.tank.persona.stances[b.id] === ARCHETYPES.zealot.stance.replace('{other}', b.name)), 'each companion gets the stance template with their name');
+ ok(!JSON.stringify(m.tank.persona.stances).includes('{other}'), 'no {other} left in a stance');
+ ok(cleanSetup({...s, slots: {...s.slots, dps1: {...s.slots.dps1, archetype: 'jester'}}}).slots.dps1.archetype === undefined && cleanSetup(s).slots.healer.archetype === 'random', 'cleanSetup keeps a legal pick and drops an unknown one');
+ const picks = seed => ['tank', 'healer', 'dps1', 'dps2', 'dps3'].map(k => resolveArchetype({seed, slots: {[k]: {archetype: 'random'}}}, k)).join();
+ ok(picks(4242) === picks(4242), 'Random is the same for the same seed');
+ ok(new Set([1, 2, 3, 4, 5, 6, 7, 8].map(picks)).size > 1, 'Random differs across seeds');
+ ok(applyPreset('last', s, {last: s}).slots.tank.archetype === 'zealot', 'Last used restores the archetype')}
 ok(S.setup && S.setup.seed === 4242 && S.setup.world === 'eldmoor', 'S.setup records the seed');
 ok(JSON.stringify(snapshot()).length > 1000, 'the world snapshots');
 
