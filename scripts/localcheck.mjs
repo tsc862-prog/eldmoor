@@ -553,7 +553,7 @@ console.log('start gate: --wait-ready holds the world until every mind answered 
   const heldLine = failed ? await poll(() => /failed \(ollama: model runner has unexpectedly stopped/.test(w2.out()), 15000) : null;
   if (!(failed && heldLine)) console.log('  (debug) warm state:', JSON.stringify(failed && by(failed, gb.id).warm), 'out tail:', w2.out().slice(-400));
   ok(failed && /unexpectedly stopped/.test(by(failed, gb.id).warm.error || '') && heldLine, 'a crashed warm-up is reported (failed, with the error) and keeps the world held');
-  rb.p.kill(); await poll(h => !by(h, gb.id).claimed, 40000);
+  rb.p.kill(); await poll(h => !by(h, gb.id).claimed, 60000);
   const rb2 = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', OLLAMA]);
   ok(await poll(() => /every mind is ready: the world runs/.test(w2.out()), 30000), 'once every seat answered its warm-up the world runs');
   for (const k of [ra, rb2, w2]) try {k.p.kill()} catch {}

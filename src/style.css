@@ -557,3 +557,13 @@ button.tbtn.danger{border-color:var(--red)}
 .cb-hit{color:var(--gold)}.cb-hurt{color:var(--red)}.cb-heal,.cb-healed{color:var(--green)}.cb-item{color:var(--blue)}
 .cb-kill,.cb-death,.cb-xp,.cb-loot,.cb-level,.cb-flee,.cb-miss,.cb-dodge,.cb-block{color:var(--dim)}
 .cb-crit{font-weight:bold}
+
+/* DM per-turn cards (#181) */
+.dmcards{list-style:none;padding:0}
+.dmcards li.dmcard{display:block;border:1px solid var(--line,#2a3140);border-radius:4px;padding:6px 8px;margin:0 0 6px;background:rgba(255,255,255,.03);min-width:0}
+.dmch{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:3px}
+.dmcl{display:flex;gap:8px;font-size:18px;line-height:1.15;min-width:0}
+.dmck{flex:0 0 74px;color:var(--gold);font-size:16px}
+.dmcv{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.dmcl.bad .dmck,.dmcl.bad .dmcv{color:#e07a6e}
+@media (max-width:920px){.dmck{flex-basis:64px}}

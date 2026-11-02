@@ -70,6 +70,7 @@ export function dmSystemPrompt(st) {
     '- The scripted DM keeps posting jobs and running adventures beside you. Build on what it does; do not flood the boards.',
     '- Keep notes: open threads (unresolved things), characters (recurring people and their wants), plans (what you are setting up), secrets (what the heroes do not know yet). Read them back at the start of a turn and keep them current; they are your memory.',
     DM_MEMORY_ORDERS,
+    DM_CAMPAIGN_ORDERS,
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
     '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
     '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): for an elite or an ambush call stage_scene with preview "true" first to see the cast the game will build, then write a frame that fits it (a frame of armed men over a pack of boars is refused); you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
@@ -90,6 +91,9 @@ export const withDmFellowshipOrders = sys => {
 };
 // Searchable notes (issue #155): the DM's standing-orders line; withDmMemoryOrders adds it to an older session's prompt.
 export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything you want to find again, free-form (your own title, text and tags; about and section optional), recall by words, tag, about or id across all sections before you build on a person, place or thread, update_memory, forget, and pin the few that must never be archived. dm_status lists the notes that bear on the moment.';
+// Campaign seed: the notes start from the world's campaign file (docs/campaigns/<world>.md).
+export const DM_CAMPAIGN_ORDERS = '- Your notes start with a campaign seed (premise, threads, characters, plans, secrets): a starting point to adapt to the Fellowship, not a script; reveal it only through play. dm_status campaign says whether one was loaded.';
+export const withDmCampaignOrders = sys => /\bcampaign seed\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_CAMPAIGN_ORDERS;
 export const withDmMemoryOrders = sys => /\bYour notes are searchable\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_MEMORY_ORDERS;
 const notesNow = st => st && Array.isArray(st.relevant_notes) && st.relevant_notes.length ? ` Notes that may matter now: ${st.relevant_notes.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id}).` : '';
 export const dmTurnPrompt = (turns, st) => turns === 0
@@ -277,7 +281,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmFellowshipOrders(withDmMemoryOrders(sess.system)); // searchable notes (#155) for a session that began before them
+  sess.system = withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))); // searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}

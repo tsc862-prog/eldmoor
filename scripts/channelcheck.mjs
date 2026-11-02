@@ -70,6 +70,9 @@ const keep = (what, v) => {heard.push({what, text: typeof v === 'string' ? v : J
 const leaks = () => {const out = []; for (const [k, s] of Object.entries(SECRETS)) for (const h of heard) if (h.text.includes(s)) out.push(k + ' in ' + h.what); return out};
 
 console.log('\nEldmoor channelcheck: the DM and the players meet only inside the game\n');
+// the DM's campaign seed (owner request): a campaign file with a secret in every section seeds the DM's notes; no hero ever hears it
+const {WORLD_ID: WID} = await import('../src/world/map.js');
+SIM.provideCampaigns({[WID]: ['## Premise', '- **Premise**: The premise holds ' + plant('campPremise') + '.', '## Threads', '- **T**: A thread ' + plant('campThread') + '.', '## Characters', '- **C**: A person ' + plant('campChar') + '.', '## Plans', '- **P**: A plan ' + plant('campPlan') + '.', '## Secrets', '- **S**: The secret ' + plant('campSecret') + '. tags: x'].join(String.fromCharCode(10))});
 init({fellowship: false}); run(60);
 for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
 const r0 = F_.found(F_.autoPick(0), {fac: 0, ai: false});
@@ -79,6 +82,7 @@ const M = F_.fellowshipMembers().map(m => m.hero);
 const [A, B] = M, rest = M.slice(2);
 ok(M.every(x => x.player), `every member agent-played; A = ${A.name}, B = ${B.name}`);
 DMA.setDmSeat(true);
+{const seen = JSON.stringify(DMA.dmAct('notes_read', {section: 'all'})); ok(['campPremise', 'campThread', 'campChar', 'campPlan', 'campSecret'].every(k => seen.includes(SECRETS[k])), 'the campaign seeded the DM notes (the DM reads it, a hero never does)')}
 T.TABLE.mode = 'off'; // no scene opens on its own; the Table part opens one by hand
 
 // Put A in the field with two companions, B and the rest far away (out of sight and earshot).

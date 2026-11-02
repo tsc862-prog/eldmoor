@@ -3,7 +3,7 @@
 // chosen. A seat counts as connected when its link, from the relay's claims (ui/player-bridge.js), is 'connected' or
 // 'waiting'. While any seat is missing, ctl.held is true: main.js does not step the sim and the speed buttons cannot
 // unpause. ctl.speed keeps the owner's wish, so when the last seat connects the world resumes by itself, and a world the
-// owner had paused stays paused. A seat that was live in the last GRACE ms (a claim refresh missed, a runner restarting
+// owner had paused stays paused. A seat that was live in the last GRACE ms (30 s, unless the relay reports its runner stopped or crashed) (a claim refresh missed, a runner restarting
 // between turns) still counts, so a short blip does not flicker the gate. A new world or a reload starts closed.
 // The Developer switch "Run without agents" (this session only) turns the gate off, and then reflexes decide for any
 // member without a runner (sim/runlink.js setReflexAck). A bar over the map lists who is missing and why, with
@@ -20,7 +20,7 @@ import {ctl} from './controls.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
-export const GRACE=20000;
+export const GRACE=30000; // a blip shorter than this never closes the gate (a real stop, a runner the relay reports stopped or crashed, closes it at once)
 const LIVE={connected:1,waiting:1};
 let free=false,lastLive={},missing=[],checkAt=0,sig='',closeCb=null,probe=null,total=0,readyN=0;
 const anyway=new Map(),lastRd={}; // seat key -> 'missing' | 'live': waived by Start anyway (#222)
@@ -67,7 +67,8 @@ export function checkRunGate(now=Date.now()){
   if(L.length&&!probe)watchRunners();
   let nReady=0;
   for(const s of L){if(LIVE[s.link])lastLive[s.key]=now;
-    const live=LIVE[s.link]||(lastLive[s.key]!=null&&now-lastLive[s.key]<GRACE);s.live=!!live;
+    const r=LIVE[s.link]||probe?null:s.kind==='dm'?runnerByKey('dm'):runnerFor(s.a),gone=!!(r&&DONE_STATE[r.state]&&r.state!=='starting'); // a runner the relay reports stopped or crashed closes at once, no grace
+    const live=LIVE[s.link]||(!gone&&lastLive[s.key]!=null&&now-lastLive[s.key]<GRACE);s.live=!!live;
     if(LIVE[s.link])lastRd[s.key]=s.ready||null;else if(live&&!s.ready)s.ready=lastRd[s.key]||null; // a short blip keeps the last readiness too
     const w=anyway.get(s.key);if(w==='missing'&&live)anyway.delete(s.key);if(w==='live'&&!live)anyway.delete(s.key); // a new runner warms up again
     const ok=live&&stateOf(s)==='ready';if(ok)nReady++;

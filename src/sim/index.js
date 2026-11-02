@@ -32,6 +32,7 @@ import {playerUpd} from './player.js';
 import {fellowshipTick} from './fellowship.js';
 import {councilTick} from './council.js';
 import {tableTick,tableHold} from './table.js';
+import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Table (#65)
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
 import {opening} from './opening.js';
@@ -52,6 +53,8 @@ export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} fr
 export {fellowshipStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners} from './setup.js'; // New World setup (#133)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
+import {ensureCampaign} from './dmagent.js';
+export {provideCampaigns,parseCampaign,campaignIdOf} from './campaign.js'; // the campaign seed
 export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
@@ -64,6 +67,7 @@ export function init(o={}){
   spawnAll();
   for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%5],null,i*.6+rnd()*1.5);
   try{opening(o)}finally{if(seeded)seedRng(null)}
+  ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
   log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
   log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
   log({t:'Hardcore rules:',c:'gd'},' every hero has one life. The fallen stay fallen.');

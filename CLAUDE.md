@@ -109,6 +109,7 @@ other. The rules:
   model re-prompted and stopped, the scripted takeover of an idle hero).
 - `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
+- `npm run crawlcheck`: the dungeon crawl (#65, see "Dungeon crawl" below): rooms as spec data, a Fellowship crawl opening room scenes in order, retreat, driven back and wipe at the table's dice, save mid-crawl, 8x, seeded determinism, and a seeded background world that repeats (`CRAWL_BASELINE_HASH=<hash from main>` asserts it equals main's).
 - `npm run movecheck`: class abilities (#81): `src/data/moves.js` MOVES/PASSIVES (3 active abilities with a cooldown in seconds and in rounds, 2 passives per class), the one resolver `useMove` in `src/sim/moves.js` for real-time and Table rounds, timed effects and passives in `src/sim/eff.js`, the `use_ability` agent tool, and the Abilities block (`src/ui/abilities.js`) on the Stats tab and Fellowship sheet.
 - `npm run professioncheck`: professions (#254, epic #238), the table `src/data/professions.js` (`PROF`, `PROF_IDS`, `MAX_PROF` 2, `SKILL_MAX` 100; nine ids: herbalism, mining, skinning, fishing = `gather`; alchemy, smithing, leatherworking, cooking, scribing = `craft`; append-only) and the skill model `src/sim/professions.js`. A hero's trades are `a.profs = [{id, skill}]` (optional; absent reads as `[]`; not `a.prof`, which is the ability skills of `abilities.js`). API: `professionsOf(a)` -> `[{id,name,kind,skill}]`, `skillOf(a,id)` (whole 0-100, 0 = not held), `hasProfession`, `canLearn(a,id)` / `learn(a,id)` -> `{ok, why?}` (refuses unknown, duplicate, third; starts at 1), `gainSkill(a,id,amount)` -> `{ok, skill, gained, up}` (amount in points, fractions allowed, pure function of the amount, caps at 100, no RNG), `skillBand(skill)` 0-4, `normalizeProfs(a)` (restore hook in `save.js`). Nothing in the existing sim calls it yet (learning is wired by #257); `node scripts/professioncheck.mjs --hash` prints the seeded world hash used to prove the scripted world is unchanged.
 - `npm run setupcheck`, `npm run setupsmoke`: the New World setup (`src/sim/setup.js`, `src/ui/setup.js`, #133): New world opens a page to choose the Fellowship (class, name, people, mind per place) and the DM, then builds the world seeded (`init({setup})`) with agent members agent-played from the first tick and starts their runners through the relay.
@@ -372,8 +373,21 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Dungeon crawl (#65, `src/sim/crawl.js`): when the Fellowship is in the group that goes down a dungeon whose spec lists
+  `rooms` (`CRYPT.rooms`, from the landmark in `src/world/spec.js`; add chambers as data: `{id, name, frame, foes:[{type, n,
+  name?, hits?, atk?}], lvl, hit, rounds, boss?}`, `type` a bestiary key incl. site foes), the run goes room by room instead of the one
+  `pw` roll. Every round of every room is a Table scene of kind `crawl` (turns, `PLAY.crawl`), the DM-framed text naming the foes left and
+  who is hurt. Options: `strike`, `guard` (draw the foes), the class special (`hold`, `ward`, `scout`, `read`), `heal`, `potion`, `retreat`.
+  Dice at the table: a strike is d20 + (level + gear*.3)/2 + the round's edge against 10 + foe level/2 (a 20 lands twice, a 1 leaves you
+  open); then each foe still standing strikes once (d20 against armour) for `room.hit` of a hero's max HP, the guard-holder drawing
+  most blows; real HP, a hero at zero is dead (`fall`, hardcore); no hidden wipe roll. Most members falling back withdraws the party
+  (a rearguard blow), a room not won in `rounds` drives it back, the last room won pays what the abstract run pays (`payClear` in
+  `dungeon.js`). The stair scene (`site`) still opens first and its choices tip every roll. Table Off (Watch) and groups without a
+  Fellowship member keep the abstract roll, so the background balance and a seeded no-Fellowship hash do not move. Wired through
+  `setCrawlHook` in `dungeon.js` (crawl.js is imported by `sim/index.js`); state is plain data on `CRYPT.group.crawl`, saved with the
+  group; the record is `S.fellowship.crawl` (runs, clears, driven, withdrawn, wipes, deaths, rooms). A world without `rooms` has no crawl.
 - Everyone at once (owner request): `PLAY` in `src/sim/table.js` says per scene kind how it is played. `turns`
-  (elite, ambush, boss, rescue, Crypt site/room): initiative order, one act changes the next. `all` (decision =
+  (elite, ambush, boss, rescue, Crypt site/room, dungeon crawl): initiative order, one act changes the next. `all` (decision =
   every vote incl. break_camp, check, choice, staged meeting/social/trap/mystery): every member present gets the
   scene at the same moment (a must-answer event), `your_turn` is true for each until it answers (then `wait` is
   allowed), answers come in any order, and each live agent has its own `turnMs` nudge and `liveMs` wait side by
@@ -527,6 +541,8 @@ encounters and speak at their tables (issue #132, below).
   - Scripted DM (`src/sim/dm.js`, deterministic): the Fellowship's hall board always keeps one posted job that concerns them (a member's oath, the living elite nearest their road, or a townsfolk job in the region they ride, level band permitting) and fills first; outlying boards keep a floor of `K.FLOOR` 1 posted job and fill up to `K.HOOKS` only while the Fellowship has a job under way.
   - Reserved share: with a Fellowship, `FOCUS.RESERVE` (about a third, at least one) of each lever's `perDay` limit and `STAGE.RESERVE` (1) of the 3 staged scenes a day are kept for pulls near the Fellowship (their regions, hall, members); world pulls hit "kept for the Fellowship" first.
   - Measure: `S.dmFocus` counts DM actions (board posts, applied levers outside adventures, staged scenes) and those that touched the Fellowship; `dm_status` shows the share, the behavior digest has `dmFocus {acts, fellow, share}`, the report prints it, and `npm run dmcheck` asserts most scripted-DM actions concern the Fellowship (about 60% over 150 game hours) and that the run is deterministic.
+
+- Campaign seed: `docs/campaigns/<world>.md` (H2 Premise, Threads, Characters, Plans, Secrets; bullets `- **Title**: text`) is parsed by `src/sim/campaign.js` and seeds the DM's notes once (`from:'campaign'`, premise pinned in plans) when a world's DM state is created, or on load for an older save with empty notes. The host hands the text over (`provideCampaigns`: Vite `?raw` glob in `src/main.js`, `scripts/campaign-files.mjs` in Node); no file, no seed. `dm_status` shows `campaign`. Heroes never see it (`npm run channelcheck`); `npm run campaigncheck`.
 
 - In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; open the
   **Dungeon Master** panel and press **Open seat**, pick the mind (Claude or a pulled local model) and
@@ -720,17 +736,17 @@ render or ui, so the headless harness stays stub-free.
   `src/sim/heroes.js`. Hero combat totals (Health, Attack, Defense, Crit, Speed) and their
   level terms: `combatStats` in `src/sim/stats.js`; item armor/damage rates and properties:
   `src/data/items.js`. Class table `CLS`: `src/data/classes.js`.
-- Mob stats (`maxhp: 25 + lvl*16`, hit `3 + lvl*2`), aggro and wander: `src/sim/mobs.js`.
-- Boss: `maxhp` 9000 in `src/sim/state.js`; hit 55-85 every 1.6s, breath every
+- Mob stats (`maxhp: 25 + lvl*16`, hit `(3 + lvl*2) * MOB_HIT`, MOB_HIT 1.35 for mob level 7+, ramping from level 3), aggro and wander: `src/sim/mobs.js`.
+- Boss: `maxhp` 13000, respawn 600s in `src/data/bosses.js`; hit 55-85 every 1.6s, breath every
   7s, raids need level 14+ heroes, 5+ of them or 4 with average gear 9+; raiders
   break off below 15% HP and a failed raid cools down 240s: `src/sim/boss.js`,
   `RAID_FLEE` in `src/sim/heroes.js`.
-- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 40% of the party (was 55%). Webspinner and Bristleback Boar are softened in `data/bestiary.js` (tilt + aggro); Fellowship replacements seed in `fellowship.js` (`SEED_BEHIND`=2). Duel chance .0375 in `pvp.js`.
+- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 40% of the party (was 55%). Webspinner and Bristleback Boar are softened in `data/bestiary.js` (tilt + aggro); Fellowship replacements seed in `fellowship.js` (`SEED_BEHIND`=2). Duel chance .03 in `pvp.js`.
 - PvP: chance duels 4% x boldness, level gap 2, range 3 tiles; nemesis spot cooldown 45s; guild assist 20%; duellers yield below 30% HP; only fallen heroes of level 12+ pass the grudge to the whole guild (lesser deaths bind their party): `src/sim/pvp.js`, `GUILD_GRUDGE_LVL` in `src/sim/heroes.js`.
 
 ## Known state
 
-- In a 120-minute headless run from level 1 (balance #107, 10-run mean): about 21 deaths per hour, ~45% PvP; crypt about 12 deaths and ~50 clears per run; L1-5 mob deaths about 5 (was 16); median living level 11-12, top 18, level 20 not reached by minute 120 in any of 10 runs (first at ~minute 125-140). Median at minute 60 is 11. Kragmaw dies in most runs. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
+- In a 120-minute headless run from level 1 (balance #154, 8-run mean, balance-tester; main before it measured about 14 deaths per hour and about 47% PvP): about 14 deaths per hour (range 8-20, below the 20-40 target), ~48% PvP (still near half); L1-5 mob deaths about 4 per run; crypt about 9 deaths, 42 clears and 4 wipes; median living level 12 at minute 60 and 14 at minute 120, top 20; Kragmaw dies about 5 times per run (was 8; 13000 hp, respawn 600 sim seconds, about 60 game hours, so kills are limited by raid musters). Mobs of level 7+ hit 1.35x (ramped in from level 3, Fellowship exempt); Fellowship deaths about 3 per run. Next levers: mid-level (L6-13) mob pressure, crypt pw, PvP via duel yield/range or nemesis hunts. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
 - The world auto-saves to localStorage every game-hour and on tab close, and restores on reload; Export/Import move it as JSON (`src/sim/save.js`, `src/ui/save.js`, `npm run savecheck`).
 
 ## Roadmap ideas

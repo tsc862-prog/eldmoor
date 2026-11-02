@@ -6,6 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A new push to a PR cancels its older run. Every PR runs CI, so the required "CI ok" check (branch
+# protection on main) always reports and GitHub's auto-merge (gh pr merge --auto) can act.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Parallel groups: a run takes as long as its slowest group, not the sum. "CI ok" is the one check the
 # auto-merge workflow (automerge.yml) waits for. Add a new check as a step in a group; a new job must also
 # be listed in ok.needs.
@@ -75,8 +81,10 @@ jobs:
       - {name: Brain policy and relay (mock model), run: npm run braincheck}
       - {name: DM agent (mock agent and Ollama), run: npm run dmcheck}
       - {name: Table mode and staged scenes, run: npm run tablecheck}
+      - {name: Dungeon crawl room by room, run: npm run crawlcheck}
       - {name: Camp and rest, run: npm run campcheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
+      - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: Action log, run: npm run actcheck}

@@ -20,6 +20,7 @@ import {convertItem} from './gear.js';
 import {convertBag} from './inv.js';
 import {reserveNames} from '../data/races.js';
 import {normalizeProfs} from './professions.js';
+import {ensureCampaign} from './dmagent.js';
 
 export {SAVE_VERSION};
 
@@ -106,6 +107,7 @@ export function restore(snap){
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
   for(const a of S.agents||[])if(a.profs!==undefined)normalizeProfs(a); // a.profs is optional (professions, #254): absent reads as [], present is cleaned
   reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
+  ensureCampaign(); // an older save whose DM notes are empty gets the campaign seed once
   return S}
 
 // ---- a short description of a save, for the title screen (read-only, never changes S) ----
