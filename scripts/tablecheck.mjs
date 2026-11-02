@@ -226,7 +226,7 @@ if (process.argv[2] === '--staged') {
   ok(!S.table && S.staged.cur.phase === 'done', 'the restored scene runs to its end');
   // expiry: a cast that never meets the party gives up
   fresh(); const far = M.map(x => ({x: x.x, y: x.y}));
-  r = dmAct('stage_scene', {kind: 'ambush', near: Math.round(spot.x + 12) + ',' + Math.round(spot.y), frame: 'A pack watches the road from the hedges.', cast: {}, reason: 'never met'});
+  r = {ok: false}; for (const [dx, dy] of [[12, 0], [-12, 0], [0, 12], [0, -12], [9, 9], [-9, -9]]) {if (r.ok) break; r = dmAct('stage_scene', {kind: 'ambush', near: Math.round(spot.x + dx) + ',' + Math.round(spot.y + dy), frame: 'A pack watches the road from the hedges.', cast: {}, reason: 'never met'})} // the roster (every class added) moves the spot: try a few offsets
   if (!r.ok) r = dmAct('stage_scene', {kind: 'mystery', near: ZONES[zone], frame: 'A pack watches the road from the hedges.', cast: {}, reason: 'never met'});
   for (const x of M) {const c = homeOf(x); x.state = 'town'; x.townStep = 2; x.wait = 9e9; x.x = c.gate.x; x.y = c.gate.y - 1}
   T.TABLE.speed = 8; const g0 = S.gameMin; while (S.gameMin - g0 < ST.STAGE.WAIT_MIN + 30) step(1 / 60);
@@ -316,7 +316,8 @@ const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);
 ok(S.table && S.table.kind === 'rescue', 'a save taken mid-scene restores the scene');
 p1 = stepUntil(() => !S.table, 40);
 ok(!S.table, `the restored scene resolves (${p1.secs.toFixed(1)} s)`);
-const RA = S.agents.find(x => x.id === A.id), RB = S.agents.find(x => x.id === B.id), Rrest = rest.map(x => S.agents.find(y => y.id === x.id)), RM = [RA, RB, ...Rrest];
+const RA = S.agents.find(x => x.id === A.id), RB = S.agents.find(x => x.id === B.id), Rrest = rest.map(x => S.agents.find(y => y.id === x.id));
+let RM = [RA, RB, ...Rrest];
 
 // ---- 2. at 3x: a Fellowship decision drops the world to 1x; reflex-only tables still resolve at once ----
 T.TABLE.speed = 3;
@@ -451,6 +452,7 @@ const v = act(RB, 'vote', {proposal_id: pid4, vote: 'no', reason: 'We have rope.
 PP = C.propById(pid4);
 ok(v.ok && PP.status !== 'open' && /everyone voted/.test(PP.result), `all votes in settles it at once: ${PP.result}`);
 ok(!act(RB, 'vote', {proposal_id: pid4, vote: 'yes'}).ok, 'a settled proposal takes no more votes');
+{const live = F_.fellows(); RM = RM.map(x => x.state === 'dead' ? (live.find(y => !RM.includes(y) && y.state !== 'dead') || x) : x); for (let i = 0; i < Rrest.length; i++) Rrest[i] = RM[i + 2]} // a member who fell while the world ran on is replaced by the recruit who took the place
 RM.forEach((x, i) => {x.x = RA.x + (i % 3) * .5; x.y = RA.y}); // in shouting range (#182)
 ok(act(RA, 'party_say', {text: 'Rope it is, then.'}).ok && Rrest.every(x => (x.chat || []).some(e => e.party && e.text === 'Rope it is, then.')), 'party_say reaches every member');
 ok(act(RB, 'party_read', {n: 5}).lines.some(l => /Rope it is/.test(l)), 'party_read shows it');

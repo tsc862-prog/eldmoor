@@ -18,6 +18,7 @@
 // fellowCard(a) is the compact block every brain prompt and the agent's status get.
 import {hash} from '../core/rng.js';
 import {ZONES,LANDMARKS,zoneFor} from '../world/map.js';
+import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
 import {raceOf,homeOf} from '../data/races.js';
 import {TRAITS} from '../data/traits.js';
@@ -27,6 +28,7 @@ import {cleanText,PERSONA_FIELDS,STANCE_MAX,BACKSTORY_FIELDS,LINK_KINDS} from '.
 import {S} from './state.js';
 import {bond,FRIEND,CLOSE} from './bonds.js';
 import {topScores,SKILLS} from './abilities.js';
+import {ARCHETYPES} from '../data/archetypes.js';
 
 const pick=(a,salt,list)=>list[Math.floor(hash(a.id|0,salt,7)*list.length)%list.length];
 const lc=t=>t?t.charAt(0).toLowerCase()+t.slice(1):'';
@@ -34,7 +36,7 @@ const alive=x=>x&&x.state!=='dead';
 const byId=id=>S.agents.find(x=>x.id==id);
 const W=f=>f===1; // Warband voice
 export const ROLE_NAME={tank:'Tank',healer:'Healer',dps:'Damage'};
-const roleOf=a=>a.fellowRole?String(a.fellowRole).replace(/\d+$/,''):a.cls==='Warrior'?'tank':a.cls==='Priest'?'healer':'dps';
+const roleOf=a=>a.fellowRole?String(a.fellowRole).replace(/\d+$/,''):a.cls==='Warrior'?'tank':(CLS[a.cls]&&CLS[a.cls].heal)?'healer':'dps';
 const tradeOf=a=>a.trade||pick(a,11,TRADES[a.fac]||TRADES[0]);
 const nemesisOf=a=>Object.keys(a.nemesis||{}).map(byId).filter(alive);
 const goalTarget=a=>a.goal&&a.goal.target?a.goal.target:null;
@@ -63,13 +65,15 @@ const WANTS={avenge:'To see {t} dead by their own hand.',avengeHero:'To settle t
 const FEARS={Warrior:['Being the wall that breaks first.','Living through the fight that kills the people behind them.'],Priest:['Running out of light with a friend still bleeding.','Choosing whom to heal, and choosing wrong.'],
   Mage:['The day the spell does not come.','Being caught in the open with nothing between them and the teeth.'],Hunter:['A trail that leads back to their own camp.','Missing the one shot that mattered.'],
   Rogue:['Being seen before they are ready.','Being trusted, and failing it.'],
-  Skald:['The song that does not carry in the dark.','Being the last voice a friend hears, and the wrong one.']};
+  Skald:['The song that does not carry in the dark.','Being the last voice a friend hears, and the wrong one.'],
+  Wildspeaker:['A grove burned for a road, and no one left who remembers its name.','Mending a friend only to send them back to the same wound.']};
 const QUIRKS={Warrior:['Taps their shield twice before every fight.','Sharpens a blade that is already sharp.','Counts the party at every halt, out loud.'],
   Priest:['Keeps a pebble from every grave they have stood at.','Hums the same four bars when worried.','Thanks the food, the fire and the boots, in that order.'],
   Mage:['Writes the weather in a little book each morning.','Warms their hands on spent sparks.','Talks to their staff when nobody answers.'],
   Hunter:['Never sits with their back to open ground.','Names every animal they kill, after.','Chews a grass stem on the march.'],
   Rogue:['Flips a coin across their knuckles.','Always knows where the door is.','Pockets small things and returns them later, cleaned.'],
-  Skald:['Hums the key of the next fight under their breath.','Gives every blade in the party a name and a verse.','Taps the rhythm of the march on whatever is nearest.']};
+  Skald:['Hums the key of the next fight under their breath.','Gives every blade in the party a name and a verse.','Taps the rhythm of the march on whatever is nearest.'],
+  Wildspeaker:['Carries a seed in each pocket and plants one at every grave.','Asks pardon of the ground before every camp.','Reads the weather from the moss on the north side of anything.']};
 const NEVER=[['I am afraid.','Let them have it; it does not matter.','Run, and leave them.','Gold is gold, whoever paid in blood.'],
   ['I am sorry.','Let us talk this out.','Leave them; they are weak.','The pits were nothing.']];
 const TRAIT_NEVER={Cautious:'Charge! No plan needed.',Reckless:'Perhaps we should wait.',Loyal:'Every one for themselves.',Greedy:'Keep it, I need nothing.',Pious:'There is nothing after this.',Vengeful:'All is forgiven.',Boastful:'It was mostly luck.',Loner:'I could not do this alone.'};
@@ -120,6 +124,7 @@ const ARMS={
   Mage:['taught themself the first spark from a borrowed book, and burned the book by accident','was apprenticed to a hedge-caster who died owing them a year of lessons'],
   Hunter:['learned the bow on the {trade} rounds, shooting what came for the stock','followed tracks out of {home} at twelve and never quite came back'],
   Rogue:['learned the knife collecting debts for a {trade} who was owed too much','got very good at not being seen, because being seen was expensive'],
+  Wildspeaker:['learned the green words from the widow of a {trade} who kept the only garden in {town} through a bad winter','walked out of {home} after a blight, to learn why the hedgerows still sang'],
   Skald:['learned the first ballads from a {trade} who paid in songs, and found the songs paid better','sang the {town} market awake every morning until someone offered coin for silence, then for more singing']};
 const FLAW={Reckless:'charges first and counts the cost after, and the cost has been rising',Cautious:'has left a friend behind once to save their own skin, and has not told anyone',
   Greedy:'keeps a purse nobody knows about and lies about it with a straight face',Loyal:'would follow a friend into a fire they started themselves',
@@ -181,6 +186,14 @@ export function applyBackstory(a,j,mates,model){if(!j||typeof j!=='object')retur
   const old=a.backstory||{};
   a.backstory={src:'model',model:model||null,edited:false,at:S.gameMin,paras,summary,
     link:b?{id:b.id,name:b.name,kind:LINK_KINDS.includes(j.link_kind)?j.link_kind:'oath'}:old.link||null,world:old.world||null};return true}
+
+// ---- archetypes (issue #295) ----
+// Writes only persona text: voice, wants, fears, quirk, never_says, the default stance and the
+// archetype id. Facts, stances toward named companions, class, bonds, oath, home and history are
+// never touched. No RNG; a second apply replaces the first. Returns false for an unknown id.
+export function applyArchetype(a,id){const A=ARCHETYPES[id];if(!a||!A)return false;
+  const old=a.persona||buildPersona(a,[]);
+  a.persona={...old,voice:A.voice,wants:A.wants,fears:A.fears,quirk:A.quirk,never_says:A.never_says,stance:A.stance,archetype:id};return true}
 
 // ---- the compact block prompts and the agent player get ----
 export function fellowCard(a){if(!a||!a.fellow)return null;const F=S.fellowship,P=a.persona,M=a.memory;

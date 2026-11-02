@@ -24,6 +24,7 @@ export const CLASS_ABIL={
   Priest: {primary:'insight',secondary:'presence'},
   Rogue:  {primary:'reflex', secondary:'wits'},
   Skald:  {primary:'presence',secondary:'wits'},
+  Wildspeaker:{primary:'insight',secondary:'grit'},
 };
 // Each people's small lean (+1 to one score) lives on the race row as `abil` (data/races.js).
 
@@ -51,6 +52,7 @@ export const CLASS_SKILLS={
   Priest: ['healing','persuasion','lore','perception'],
   Rogue:  ['stealth','traps','intimidation','persuasion'],
   Skald:  ['persuasion','lore','intimidation','perception'],
+  Wildspeaker:['healing','survival','tracking','empathy'],
 };
 
 // The trade a recruit worked before arms (data/origins.js TRADES) trains one more skill.

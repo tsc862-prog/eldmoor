@@ -8,6 +8,7 @@
 // duel stays: the others rally to them, then everyone pulls back (regroup) or heads home.
 import {rnd} from '../core/rng.js';
 import {ZONES,zoneFor,zonePoint,dist} from '../world/map.js';
+import {CLS} from '../data/classes.js';
 import {homeOf} from '../data/races.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
@@ -44,9 +45,9 @@ const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.len
 export function seekParty(a){if(a.party||a.fellow||!tm(a,'social'))return; // Loners never form or join a party; Fellowship members muster with their own (sim/fellowship.js)
   const cand=S.agents.filter(b=>b!==a&&!b.party&&!b.fellow&&tm(b,'social')&&b.fac===a.fac&&homeOf(b)===homeOf(a)&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2); // same home town: a party musters in one gate
   if(!cand.length)return;
-  if(a.cls==='Warrior'&&a.linger>0&&!cand.some(b=>b.cls==='Priest'))return 'wait';
-  const want=a.cls==='Priest'?'Warrior':a.cls==='Warrior'?'Priest':null;
-  cand.sort((x,y)=>((y.cls===want)-(x.cls===want))||(Math.abs(x.lvl-a.lvl)-Math.abs(y.lvl-a.lvl)));
+  if(a.cls==='Warrior'&&a.linger>0&&!cand.some(b=>CLS[b.cls]&&CLS[b.cls].heal))return 'wait';
+  const isHeal=c=>!!(CLS[c.cls]&&CLS[c.cls].heal),want=isHeal(a)?c=>c.cls==='Warrior':a.cls==='Warrior'?isHeal:()=>false;
+  cand.sort((x,y)=>((want(y)?1:0)-(want(x)?1:0))||(Math.abs(x.lvl-a.lvl)-Math.abs(y.lvl-a.lvl)));
   const mem=[a,...cand.slice(0,2)];
   let leader=mem[0];for(const b of mem)if(b.lvl>leader.lvl)leader=b;
   // The party hunts where its weakest member can survive, not where the leader would go alone.

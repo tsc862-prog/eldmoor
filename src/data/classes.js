@@ -10,6 +10,8 @@ export const CLS={
   Rogue:{hp:50,atk:8,range:1.1,acc:'#e6d24a',head:'#2e2a30',wep:'#c8c8d0',crit:.25},
   // Skald (#83): a war-singer. Middling health and reach; the voice is the weapon (party-wide wards and marks).
   Skald:{hp:50,atk:7,range:2.8,acc:'#e0709c',head:'#6e3a62',wep:'#c8964a',orb:'#f0d070'},
+  // Wildspeaker (#83): a hedge-and-hollow healer. Sturdier and shorter-reached than a Priest; mends one friend at a time, roots foes in place.
+  Wildspeaker:{hp:52,atk:6,range:2.4,acc:'#4fc9a0',head:'#2f6b58',wep:'#9a7a4a',orb:'#b8f090',heal:true},
 };
 export const CLSN=Object.keys(CLS);
 
@@ -44,6 +46,10 @@ export const SPECS={
     desc:'Sings the fight forward: a rolling chant that bites every foe nearby, and a louder opening verse.'},
   soothsinger:{name:'Soothsinger',cls:'Skald',fills:'heal',abil:{presence:1,insight:1},skill:'healing',lean:{Loyal:2,Pious:1,Cautious:1},
     desc:'Sings the party back together: a lullaby that mends the whole company and a steadier voice.'},
+  thornbinder:{name:'Thornbinder',cls:'Wildspeaker',fills:'control',abil:{wits:1,reflex:1},skill:'tracking',lean:{Cautious:2,Vengeful:1,Loner:1},
+    desc:'Calls the briars up around the fight: a ring of thorns that cuts and holds every foe nearby.'},
+  springwarden:{name:'Springwarden',cls:'Wildspeaker',fills:'guard',abil:{insight:1,grit:1},skill:'empathy',lean:{Loyal:2,Pious:1,Cautious:1},
+    desc:'Keeps the company standing: an antler-ward over every friend near and a steadier, hardier voice.'},
 };
 export const CLASS_SPECS={};
 for(const id in SPECS)(CLASS_SPECS[SPECS[id].cls]||(CLASS_SPECS[SPECS[id].cls]=[])).push(id);

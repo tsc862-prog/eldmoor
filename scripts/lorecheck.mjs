@@ -36,7 +36,7 @@ const act = (a, tool, args) => P.playerAct(a.id, tool, args || {});
 const J = v => JSON.stringify(v);
 
 console.log('\nEldmoor lorecheck: heroes learn the world in the game (#188)\n');
-init({fellowship: false}); run(20);
+init({fellowship: false}); run(26); // the warm-up length picks a seed-dependent start where A's home field is clear of the other faction's wall (the roster changes with every class)
 const A = S.agents.find(a => a.fac === 0 && a.state !== 'dead' && a.kind === 'hero');
 const c = homeOf(A), home = zoneAt(c.gate.x, c.gate.y);
 A.lvl = 3; A.hp = maxHp(A); P.markPlayer(A, true);

@@ -686,6 +686,8 @@ const WEAPON={
   Rogue:[[8,4,'W'],[8,5,'W'],[8,6,'W'],[8,7,'A'],[0,4,'W'],[0,5,'W'],[0,6,'W'],[0,7,'A']],
   // Skald: a round-bellied lute held out to the right, a gold rose sound-hole and a long neck up past the shoulder.
   Skald:[[9,1,'W'],[9,2,'W'],[8,3,'W'],[8,4,'O'],[9,4,'O'],[8,5,'O'],[9,5,'W'],[8,6,'O'],[9,6,'O'],[8,7,'W']],
+  // Wildspeaker: a crooked staff, the head curling over like a fern, with two green sprouts on the shaft.
+  Wildspeaker:[[8,1,'W'],[9,1,'W'],[9,2,'W'],[8,2,'W'],[8,3,'W'],[8,4,'W'],[8,5,'W'],[8,6,'W'],[8,7,'W'],[8,8,'W'],[8,9,'W'],[7,3,'O'],[9,5,'O']],
 };
 
 // Hero: faction-coloured tabard, class weapon on the right, class headgear, and the
