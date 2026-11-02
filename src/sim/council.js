@@ -18,7 +18,7 @@
 // Plain data, saved with the world: F.props [{id,kind,details,by,at,until,votes,status,result}],
 // F.accept {crypt|raid: gameMin until a passed call stands}, a.splitUntil, a.cryptOk / a.raidOk.
 import {CRYPT,dist} from '../world/map.js';
-import {S,clockStr} from './state.js';
+import {S,clockStr,dayNo} from './state.js';
 import {log} from './chronicle.js';
 import {maxHp} from './heroes.js';
 import {leaveParty,partyMates} from './party.js';
@@ -31,8 +31,8 @@ import {musterCrypt,yieldCrypt} from './dungeon.js';
 import {reflexMay,ownerHeld} from './runlink.js';
 
 export const COUNCIL={PROP_MIN:120,HOLD_MIN:600,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,WAIT_MIN:480,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:200,HEAR:7};
-export const PROP_KINDS=['job','crypt','raid','split','other'];
-const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',other:'decide'};
+export const PROP_KINDS=['job','crypt','raid','split','break_camp','other'];
+const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide'};
 const gd=t=>({t,c:'gd'});
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 // A spoken line (#145): whitespace folded, a leading "<own name>:" / "<own name> here," dropped (the game already
@@ -51,7 +51,7 @@ export const leaderOfF=()=>{const P=fellowParty();if(P&&living(P.leader)&&P.lead
 const wordCut=(t,n)=>{if(t.length<=n)return t;const c=t.slice(0,n-1),i=c.lastIndexOf(' ');return (i>n*.6?c.slice(0,i):c).replace(/[\s,.;:]+$/,'')+'…'};
 export function partySay(a,text){let L=spokenLine(a,text);if(L.error&&/^Too long/.test(L.error)&&!a.player)L={text:wordCut(spokenLine(a,text,1e9).text,COUNCIL.SAY_LEN)};if(L.error)return L.error;const t=L.text;
   const mates=a.fellow?fellows().filter(b=>b!==a):partyMates(a);if(!mates.length)return 'You have no party to talk to.';
-  const e={t:clockStr(),from:a,text:t,trigger:'party',party:true},heard=new Set([a]);
+  const e={t:clockStr(),d:dayNo(),from:a,text:t,trigger:'party',party:true},heard=new Set([a]);
   const hear=b=>{if(heard.has(b))return;heard.add(b);(b.chat||(b.chat=[])).push(e);if(b.chat.length>20)b.chat.shift()};
   (a.chat||(a.chat=[])).push(e);if(a.chat.length>20)a.chat.shift();
   for(const b of mates)hear(b);
@@ -65,8 +65,9 @@ export const openProps=()=>((F_()&&F_().props)||[]).filter(P=>P.status==='open')
 export const propById=id=>((F_()&&F_().props)||[]).find(P=>P.id===Number(id))||null;
 // sim/table.js turns a new proposal into a decision scene when it can pause. A hoisted function and
 // a var without initializer, because table.js registers it while the import cycle is still loading.
-var proposeHook;
+var proposeHook,campHook;
 export function setProposeHook(f){proposeHook=f}
+export function setCampHook(f){campHook=f} // sim/camp.js: break the camp when a break_camp vote passes
 
 // How a member votes by reflex: its runner is gone (and the owner said go on), or its agent let HOLD_MIN pass.
 export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
@@ -74,10 +75,12 @@ export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
   case 'crypt':return a.lvl>=7&&!hurt?'yes':'no';
   case 'raid':return a.lvl>=14&&!hurt?'yes':'no';
   case 'split':return 'no';
+  case 'break_camp':{const g=F_()&&F_().camp;return g&&g.phase&&fellows().every(b=>b.hp>=maxHp(b)*.9)?'yes':'no'}
   default:return 'yes'}}
 
 export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)return 'Only a Fellowship member can put something to the party.';
   if(!PROP_KINDS.includes(kind))return 'Kind must be one of: '+PROP_KINDS.join(', ')+'.';
+  if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break.';
   if(openProps().some(P=>P.kind===kind))return 'A proposal to '+KIND_TEXT[kind]+' is already open.';
   const d=clean(details,200);if(!d&&kind==='other')return 'Say what you propose.';
   const P={id:F.propSeq=(F.propSeq||0)+1,kind,details:d||KIND_TEXT[kind],by:a.id,byName:a.name,at:Math.round(S.gameMin),until:S.gameMin+COUNCIL.PROP_MIN,votes:{},status:'open',result:null,src:o.src||'member'};
@@ -86,7 +89,7 @@ export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)r
   if(kind==='crypt')yieldCrypt(F); // reserve on proposal: a background group still gathering steps aside
   campaign('council',a,' proposes to '+KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:'')+'.');
   for(const b of fellows())if(b!==a)notify(b,a.name+' proposes to '+KIND_TEXT[kind]+(d?': '+d:'')+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
-  if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'my proposal','agent');
+  if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'','agent');
   if(!(proposeHook&&proposeHook(P)))reflexFill(P);
   settleIfDone(P);return P}
 
@@ -140,6 +143,7 @@ function carryOut(P){const F=F_(),L=fellows();
       for(const b of L)notify(b,inside?'Another group is inside '+CRYPT.name+'. The vote stands: you go the moment they come out.':'The vote stands: you go to '+CRYPT.name+' as soon as everyone can.',true);return}
     goCrypt(F,L)}
   else if(P.kind==='raid'){setWait(F,'raid');(F.accept||(F.accept={})).raid=S.gameMin+COUNCIL.ACCEPT_MIN;for(const b of L)if(b.player)b.raidOk=true}
+  else if(P.kind==='break_camp'){if(campHook&&campHook('called'))P.result+='; camp is broken'}
   else if(P.kind==='split'){for(const b of L)splitOff(b,true);campaign('council',gd(F.name),' splits up for a while, by agreement.')}
   else if(P.kind==='job'){const lead=leaderOfF();if(lead)notify(lead,'The party agreed to take '+(P.job!=null?'job '+P.job:'a job')+'. As leader, take_adventure('+(P.job!=null?P.job:'id')+') at the gate.',true)}}
 
