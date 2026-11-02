@@ -5,3 +5,4 @@
 - [Townsfolk NPCs](project_townsfolk_npcs.md) — issue #28 six roles per town from spec spots; chat-rate tuning (REGREET week, GREET_P .12, gated open/close ~47/h); save-walker from-stub gotcha
 - [Rest and camp](project_rest_camp.md) — Fellowship night camps (#64): state 'camp', watches, ambush via Table openScene, tuning, gotchas
 - [Dungeon crawl](project_dungeon_crawl.md) — #65 Crypt room by room as Table scenes from spec rooms; tuning numbers, VARIANTS gotcha, test injection
+- [Crawl pace](project_crawl_pace.md) — #264: rounds 2, XP per room, room hits retuned so 2 rounds can win

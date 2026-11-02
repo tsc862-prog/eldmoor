@@ -32,9 +32,10 @@ export function yieldCrypt(F){const g=CRYPT.group;if(!g||g.phase!=='gather'||g.m
   log(tagOf(g.guild,g.fac,g.name),' step aside at the mouth of ',{t:CRYPT.name,c:'gd'},' to let ',{t:F.name,c:'gd'},' go first.');
   CRYPT.group=null;return true}
 // What a cleared Crypt pays each member (the abstract roll and the Fellowship's crawl alike).
-export function payClear(g){
+export const clearXp=a=>250+a.lvl*20;
+export function payClear(g,perRoom){
   for(const a of g.mem)record(a,'Cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'.');
-  for(const a of g.mem){gainXp(a,250+a.lvl*20);a.gold+=25+ri(0,20);a.kills+=ri(8,14);addGood(a,'Grave Dust',3);addUse(a,'Marrowmend Tonic',1);
+  for(const a of g.mem){gainXp(a,perRoom?Math.round(clearXp(a)*perRoom):clearXp(a));a.gold+=25+ri(0,20);a.kills+=ri(8,14);addGood(a,'Grave Dust',3);addUse(a,'Marrowmend Tonic',1);
     if(rnd()<.25)getEpic(a,pickA(DG_EPICS),CRYPT.boss);goalEvent(a,'crypt');goHome(a)}}
 export function dungeonCheck(dt){const agents=S.agents;
   const g=CRYPT.group;

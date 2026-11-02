@@ -44,15 +44,15 @@
 // The Sunken Crypt's chambers, in the order the Fellowship meets them (sim/crawl.js). Bestiary species, no new creatures.
 const CRYPT_ROOMS=[
   {id:'stair',name:'The Weeping Stair',frame:'Water runs down the steps of the stair and something small scuttles in the dark below.',
-    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.10,rounds:4},
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.10,rounds:2},
   {id:'ossuary',name:'The Ossuary',frame:'Shelves of old bone line the walls. Some of it stands up as the light reaches it.',
-    foes:[{type:'shambler',n:2}],lvl:0,hit:.13,rounds:4},
+    foes:[{type:'shambler',n:2}],lvl:0,hit:.13,rounds:2},
   {id:'gallery',name:"The Archers' Gallery",frame:'A long gallery with arrow-slits in every pillar. Dry bowstrings creak somewhere above.',
-    foes:[{type:'boneshot',n:2},{type:'shambler',n:1}],lvl:0,hit:.13,rounds:4},
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.13,rounds:2},
   {id:'court',name:'The Drowned Court',frame:'The floor is a black mirror of still water. Grave Wardens stand in it to the knee, keeping a court that no longer sits.',
-    foes:[{type:'graveward',n:2}],lvl:1,hit:.17,rounds:5},
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.17,rounds:2},
   {id:'vigil',name:'The Vigil Chamber',frame:'The last door. Something has kept watch here a very long time, and the cold has a voice. It knows every name in the party.',
-    foes:[{type:'graveward',n:1,name:'Lich-Warden Vesk',hits:8,atk:1.6},{type:'tombskit',n:2}],lvl:2,hit:.19,rounds:6,boss:true},
+    foes:[{type:'graveward',n:1,name:'Lich-Warden Vesk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.19,rounds:2,boss:true},
 ];
 
 export const ELDMOOR={
