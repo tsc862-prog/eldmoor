@@ -31,6 +31,7 @@ import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {slain as loreSlain,witness as loreWitness} from './lore.js'; // learn the world (#188): agent heroes only, no RNG
 import {effMul,passiveMul} from './eff.js'; // timed effects and class passives (sim/eff.js, #81)
+import {wakeKill,wakeXp,wakeLevelUp,wakeQuest,wakeQuestDone,wakeLoot} from './wakes.js'; // more turn triggers (agent heroes only)
 import {fightMoves} from './moves.js'; // class abilities (sim/moves.js, #81)
 import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
 import {killDone,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
@@ -72,28 +73,28 @@ export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);
   if(st>=d){e.x=x;e.y=y;e.moving=false;return true}e.x+=dx/d*st;e.y+=dy/d*st;return false}
 
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);
-  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;if(a.lvl%5===0)growScores(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');
+  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;if(a.lvl%5===0)growScores(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     record(a,'Reached level '+a.lvl+'.');
     if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');
     if(a.lvl%5===0){const fa=first('lvl:'+a.fac+':'+a.lvl),cl=a.lvl>=10&&first('cls:'+a.fac+':'+a.cls+':'+a.lvl),fn={t:FAC[a.fac].name,c:'f'+a.fac};
       if(fa)timeline('level',a,' is the first of the ',fn,' to reach level '+a.lvl+'.');else if(cl)timeline('level',a,' is the first '+a.cls+' of the ',fn,' to reach level '+a.lvl+'.')}
     goalEvent(a,'level');}
-  if(a.lvl>=20)a.xp=0}
+  if(a.lvl>=20)a.xp=0;else wakeXp(a,x,xpNeed(a.lvl))}
 
-export function getEpic(a,name,src){a.epics.push(name);pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.');
+export function getEpic(a,name,src){a.epics.push(name);wakeLoot(a,name,'epic');pop(a.x,a.y,'EPIC!','#c58cff');log(a,' looted ',epic(name),' from ',src,'.');
   equipEpic(a,name,'Looted from '+src);
   record(a,'Looted ',epic(name),' from '+src+'.');
   say(a,'epic',{item:name});
   goalEvent(a,'epic',name)}
 
 export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a.kills++;
-  const diff=m.lvl-a.lvl,xp=(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1)*blockOf(m.type,m.v,m.role).xp*(m.xpMul!=null?m.xpMul:1);gainXp(a,xp);
+  const diff=m.lvl-a.lvl,xp=(8+m.lvl*6)*(diff<-4?.3:diff>2?1.3:1)*blockOf(m.type,m.v,m.role).xp*(m.xpMul!=null?m.xpMul:1);wakeKill(a,m);gainXp(a,xp);
   const M=MOBS[m.type];shareKill(a,m,xp);rollLoot(a,m); // trade good, gold, slot item, zone epic: the creature's bestiary loot table (sim/loot.js)
   bondEvent(a,'kill',partyMates(a));
   if(m.elite)record(a,'Slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');
   if(m.elite){timeline('elite',a,' slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');a.eliteKills=(a.eliteKills||0)+1;log(a,' slew ',{t:m.name,c:'gd'},', ',m.title,', in ',ZONES[M.z],'!');getEpic(a,pickA(EPICS[M.z]),m.name)} // named elite: guaranteed epic from the zone table
-  if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need)a.quest.have++;
+  if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need){a.quest.have++;wakeQuest(a,a.quest.have>=a.quest.need)}
   goalEvent(a,'kill',m);
   if(a.player)loreSlain(a,m);
   a.target=null;a.state='hunt'}
@@ -160,7 +161,7 @@ export function sellAndShop(a){const c=homeOf(a);autoEquip(a);passSpares(a);cons
   restock(a)}
 
 export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a.quest.type];gainXp(a,xpNeed(a.lvl)*.25);const g=4+a.lvl*3;a.gold+=g;
-    say(a,'quest',{mob:M.pl});
+    wakeQuestDone(a,M.q,g);say(a,'quest',{mob:M.pl});
     record(a,'Completed ',{t:'“'+M.q+'”',c:'gd'},' for '+g+'g.');
   if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');killDone(a);a.quest=null}
   if(!a.quest||MOBS[a.quest.type].z!==huntZone(a))newQuest(a)}
