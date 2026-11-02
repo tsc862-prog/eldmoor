@@ -147,8 +147,10 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
 const dir = mkdtempSync(join(tmpdir(), 'eldmoor-save-'));
 const file = join(dir, 'save.json');
 writeFileSync(file, json);
-const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--restore', file], {encoding: 'utf8'});
-process.stdout.write(child.stdout); process.stderr.write(child.stderr);
+const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--restore', file], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+process.stdout.write(child.stdout || ''); process.stderr.write(child.stderr || '');
+{const out = (child.stdout || '') + (child.stderr || ''), bad = out.split(/\r?\n/).filter((l) => /FAIL|Error|\bat .*\.m?js/.test(l));
+  if (child.status !== 0) console.error(`  child exited with status ${child.status}, signal ${child.signal}${child.error ? ', error ' + child.error.message : ''}; its failing lines:\n` + (bad.join('\n') || '    (none printed)'))}
 ok(child.status === 0, 'child restore into a pristine module state passed');
 rmSync(dir, {recursive: true, force: true});
 
