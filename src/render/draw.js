@@ -17,7 +17,7 @@ import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
-import {sprite,SPR,heroSprite,npcSprite} from './sprites.js';
+import {sprite,SPR,heroSprite,npcSprite,outlined} from './sprites.js';
 import {drawBubbles} from './bubbles.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
@@ -26,7 +26,7 @@ import {drawCamp,drawCampLight} from './camp.js';
 import {drawMemorials} from './memorials.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
-import {ROLE,TEXT,MARK,roleOf} from './palette.js';
+import {ROLE,TEXT,MARK,DISPO,roleOf,dispoOf} from './palette.js';
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false};
@@ -78,6 +78,8 @@ export function createRenderer(cv,screenEl){
 
   function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
+  // A thin disposition ellipse at the feet (close zoom only), the same colours as the UI.
+  function dispoRing(x,y,w,d){ctx.strokeStyle=DISPO[d]||DISPO.neutral;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
   function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()}
 
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
@@ -109,7 +111,7 @@ export function createRenderer(cv,screenEl){
     const close=cam.close=sc>=cam.fit*2;
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
-    drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
+    drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite,outlined,dispoRing}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
     drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
     const ents=[];
@@ -125,11 +127,13 @@ export function createRenderer(cv,screenEl){
       else if(e.kind==='npc')s=npcSprite(e,e.moving?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
       else if(e.state==='dead')s=sprite('grave'+e.fac,SPR.grave[0],{G:'#8a8a96',F:'#3a3a46',B:FAC[e.fac].dark});
       else s=heroSprite(e,e.state==='ghost',fr);
-      const px=Math.round(e.x*T),py=Math.round(e.y*T);
+      const px=Math.round(e.x*T),py=Math.round(e.y*T),live=e.state!=='dead';
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
-      if(e.state!=='dead')shadow(px,py,s.width);
+      if(live)shadow(px,py,s.width);
+      if(close&&e.kind==='npc')dispoRing(px,py,s.width,dispoOf(e,S.gameMin)); // townsfolk: friendly green, wary amber, hostile red
+      const o=live?outlined(s):s,ow=live?1:0; // living entities get the dark outline
       ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);
-      ctx.drawImage(s,-Math.floor(s.width/2),py-s.height);ctx.restore();ctx.globalAlpha=1;
+      ctx.drawImage(o,-Math.floor(s.width/2)-ow,py-s.height-ow);ctx.restore();ctx.globalAlpha=1;
       const top=py-s.height;
       // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
       if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle=MARK.quest;ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
@@ -160,7 +164,7 @@ export function createRenderer(cv,screenEl){
       if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14);
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';drawText((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14)}
-      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40))drawText(p.name,p.x*T,p.y*T-17,TEXT.person,12); // townsfolk nameplates
+      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const d=dispoOf(p,S.gameMin);drawText(p.name,p.x*T,p.y*T-17,d==='friendly'?TEXT.person:DISPO[d],12)} // townsfolk nameplates; a wary or hostile one in its colour
       drawBubbles(ctx,S,cam,drawText);
       for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;drawText(m.name,m.x*T,m.y*T-17,TEXT.elite,14)} // named elite nameplate
       if(boss.alive&&inView(boss.x*T,boss.y*T,LM))drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,TEXT.elite,15);

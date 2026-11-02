@@ -11,6 +11,12 @@ export const UI={gold:'#f2c14e',blue:'#5b8ff2',red:'#e8544a',amber:'#f0a040',gre
 
 // NPC and creature disposition toward the heroes, as the UI shows it.
 export const DISPO={hostile:UI.red,neutral:UI.amber,friendly:UI.green};
+// Disposition of a townsperson or DM-placed person: a wanderer's own attitude, else the strongest live
+// attitude a townsperson holds toward anyone (hostile beats wary); townsfolk are friendly by default.
+// 'wary' shows as neutral amber.
+export function dispoOf(p,now,def='friendly'){const a=p.attitude||null;if(a)return a==='hostile'?'hostile':a==='friendly'?'friendly':'neutral';
+  let d=def;for(const x of p.att||[]){if(x.until!=null&&x.until<=now)continue;if(x.a==='hostile')return 'hostile';if(x.a==='wary'||x.a==='neutral')d='neutral'}
+  return d}
 // Fellowship roles, as the .frole badges; the light cut is for small marks on dark (bubbles, minimap).
 export const ROLE={tank:UI.blue,healer:UI.green,dps:UI.red};
 export const ROLE_LIGHT={tank:'#8fb4ff',healer:'#a6f07a',dps:'#ff7a6a'};
