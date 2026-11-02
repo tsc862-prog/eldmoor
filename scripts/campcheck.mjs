@@ -85,8 +85,12 @@ ok(CAMPM.leaderBreak(LD) === null && !S.fellowship.camp.phase, 'the leader break
 // a set-time camp ends by itself
 ({L: M, lead: LD} = gather());
 ok(CAMPM.leaderRest(LD, 1) === null, 'third camp, one hour');
+// No visitor this hour: an ambush breaks camp early by design (covered above), and whether the watch's roll comes up
+// in this hour depends on how the seeded dice fell earlier in the run, which any sim change upstream shifts (#347).
+const ambushP = CAMPM.CAMP.AMBUSH_P; CAMPM.CAMP.AMBUSH_P = -1;
 for (let i = 0; i < 40 && S.fellowship.camp.phase !== 'rest'; i++) run(10);
 const t0 = S.gameMin; for (let i = 0; i < 60 && S.fellowship.camp.phase; i++) run(10);
+CAMPM.CAMP.AMBUSH_P = ambushP;
 ok(!S.fellowship.camp.phase && S.gameMin - t0 < 90 && S.gameMin - t0 >= 50, 'a one-hour rest ends on time (' + Math.round(S.gameMin - t0) + ' game min)');
 ok(M.every(a => a.playEv.some(e => /Camp is broken/.test(e.text))), 'wake event after a timed rest too');
 ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused with no camp');
