@@ -127,8 +127,16 @@ export function briefText(b) {
   if (b.table) bits.push('a scene is open at the table');
   if (b.autopilot) bits.push('no order from you for a while, so autopilot carries on your last order (give a command to take over)');
   return `\n\nRight now (from the game, trust this over anything you said before): ${bits.join(' | ')}.` +
-    (b.news && b.news.length ? `\nNew since you last looked: ${b.news.join(' / ')}` : '\nNothing new since you last looked.') +
+    (b.news && b.news.length ? `\nNew since you last looked: ${b.news.join(' / ')}` : '\nNothing new since you last looked.') + talkText(b) +
     '\nAct through the tools (look, status, move_to, hunt, rest, wait, ...): words alone change nothing in the world.';
+}
+// What was said lately and whom the hero has met (the brief's heard/met, sim/talk.js), so a trimmed or fresh context
+// does not re-introduce itself or ask the same question again. Also used alone in Claude members' turn prompts.
+export function talkText(b) {
+  if (!b) return '';
+  const heard = Array.isArray(b.heard) ? b.heard : [], met = Array.isArray(b.met) ? b.met : [];
+  return (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
+    (met.length ? `\nCompanions you have met: ${met.join(', ')}. You know each other: do not introduce yourself again or repeat a line; talk to move the party forward (propose, vote, lead_to, or answer a question you were asked).` : '');
 }
 
 // The line a turn prompt carries about why it started (the hero's own events only, issue #123).

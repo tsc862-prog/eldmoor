@@ -124,13 +124,14 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     // A multi-turn chat for the agent loop. messages are the loop's own (Ollama-shaped) messages:
     // assistant tool_calls with object arguments, tool results with tool_name. They are translated to
     // OpenAI's shape here (call ids made up in order). tools: function tools; format: a JSON schema, asked
-    // for as JSON mode (OpenAI models all have tools, so this is only a fallback). Returns the loop's
+    // for as JSON mode (OpenAI models all have tools, so this is only a fallback), or with strict: true as strict
+    // json_schema (the forced Table turn, issue #163). Returns the loop's
     // shape {message:{role,content,tool_calls?}, usage:{in,out,cost,costKnown}, model, ms, done}.
-    async chat({model, messages, tools, format, maxTokens = 600, signal}) {
+    async chat({model, messages, tools, format, strict = false, maxTokens = 600, signal}) {
       const mdl = model || defaultModel;
       if (!mdl) throw fail('openai: no model chosen (use --model, or set OPENAI_MODEL)');
       const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), max_completion_tokens: maxTokens, messages: toOpenAI(messages),
-        ...(tools ? {tools} : {}), ...(format ? {response_format: {type: 'json_object'}} : {})};
+        ...(tools ? {tools} : {}), ...(format ? {response_format: strict ? {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema: format}} : {type: 'json_object'}} : {})};
       const j = await post('/chat/completions', body, {signal, waitMs: 30000, retries: 4});
       const out = finish(j, mdl, t0, false);
       const m = out.raw, calls = Array.isArray(m.tool_calls) ? m.tool_calls.filter(c => c && c.function).map(c => {
