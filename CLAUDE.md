@@ -45,8 +45,9 @@ Dedicated subagents live in `.claude/agents/`. Delegate to them by area:
 | `brain-builder` | Model-played heroes: decision-policy interface, local relay, prompts, fallbacks; generated narrator and chatter modes |
 | `pm` | Backlog triage, issues and labels, priority order, briefs for next pickups, board snapshot and status summaries (no code, no merges, no dispatch) |
 | `playtest-reviewer` | Reads DM and character behavior logs (runner logs, sessions, relay, `logs/behavior/`) after play and files evidenced issues (no code, no merges) |
+| `ui-designer` | The watcher interface: layout, panels, dossier tabs, Fellowship panel and frames, Table banner, Agent/Mind/Chat tabs, setup page, styles, scrolling, phone width |
 
-Models per agent (set in each agent's frontmatter): Opus for `ai-designer` and `brain-builder` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review), Haiku for `pm` (triage and board), Sonnet for `playtest-reviewer`. Quick read-only checks (a short lore pass, a board sync) may run on Haiku by overriding `model` on the call; full originality reviews stay on Sonnet. Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
+Models per agent (set in each agent's frontmatter): Opus for `ai-designer`, `brain-builder` and `ui-designer` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review), Haiku for `pm` (triage and board), Sonnet for `playtest-reviewer`. Quick read-only checks (a short lore pass, a board sync) may run on Haiku by overriding `model` on the call; full originality reviews stay on Sonnet. Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
 
 For a feature that spans areas (for example a new zone with new monsters), plan it,
 hand each part to its owner, then have `lore-keeper` check names and
