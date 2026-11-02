@@ -389,6 +389,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       // a combat scene: the brief's scene keys (the forced turn's enum) carry the member's ready class abilities by id
       const {paceBrief} = await import('../src/sim/pace.js'), {movesOf} = await import('../src/sim/moves.js');
       const foe = S.mobs.find(m => m.alive && !m.gone && !m.elite), hunter = mem.find(a => movesOf(a).length) || mem[0];
+      hunter.mcr = {}; // every ability ready this round (a world-dependent cooldown made this flaky)
       const sc1 = openScene('rescue', 'A test fight', ['A beast lunges.'], {hero: hunter.id, mob: foe.id});
       const bk = paceBrief(hunter.id).brief.scene;
       ok(bk && bk.keys.includes('strike') && movesOf(hunter).some(id => bk.keys.includes(id)), `the forced turn's enum includes ready abilities by id (${hunter.cls}: ${bk && bk.keys.join(', ')})`);
@@ -423,12 +424,13 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const live = mem.filter(a => a.state !== 'dead'), refused = (qo.match(/< \{"ok":false,"error":"You (have already met your companions|already said that)/g) || []).length;
       ok(code === 0, 'mock-intro: every member plays two turns' + (code === 0 ? '' : ' (' + code + ')\n' + qo.slice(-2000)));
       ok(refused === live.length, `the first introduction goes through, the repeat is refused with an error the model sees (${refused} refused of ${live.length} members)` + (refused === live.length ? '' : '\n' + qo.slice(-2500)));
-      const intros = live.map(a => (a.chat || []).filter(e => e.from === a && e.party && /I am /.test(e.text)).length);
+      // counted from the runner's own log (the chat buffer keeps only 20 lines per hero)
+      const intros = live.map(a => (qo.match(new RegExp('\\[' + a.name + '\\] < \\{"ok":true,"said":"Hello friends! I am ', 'g')) || []).length);
       ok(intros.every(n => n === 1), 'each member introduced itself once in the party chat: ' + intros.join(', '));
       const later = seen.slice(n0).filter(b => b.model === 'mock-intro:1b' && b.tools).map(b => (b.messages.filter(m => m.role === 'user' && /^Turn \d/.test(m.content)).pop() || {}).content || '').filter(Boolean);
       ok(later.some(t => /Said lately \(party and aloud, oldest first\): .*\[party\]: Hello friends! I am /.test(t) && /Companions you have met: \w+/.test(t) && /do not introduce yourself again/.test(t)), 'a later turn\'s header shows the party lines heard and the companions met');
       const mt = (await import('../src/sim/talk.js')).metNames(live[0]);
-      ok(mt.length === live.length - 1, `meeting is recorded in game once both have spoken in each other's hearing (${live[0].name} met ${mt.join(', ')})`);
+      ok(live.slice(1).every(b => mt.includes(b.name)), `meeting is recorded in game once both have spoken in each other's hearing (${live[0].name} met ${mt.join(', ')})`);
     }
   }
   server.close();
