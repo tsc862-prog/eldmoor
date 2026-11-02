@@ -945,5 +945,7 @@ New names (townsfolk names are rolled per world and are not canon; these placed 
 - **Hesper Wain**, Cairn-Keeper (Stepping Lands): last of the waymark keepers.
 - **Sister Maud Orrin**: Concord pilgrim-priest walking the Stair.
 - **The Pilgrim's Stair** (Stepping Lands): the line of waymark-cairns from Lowmark to Palereach.
+- **The Dark Waymarks** (Stepping Lands): the thread of the waymark-cairns going dark in order, from Palereach back toward Lowmark. A **waymark-cairn** is a pilgrim's stone pile with a candle-stub at its base; a lit cairn marks one stage of the walk (see the seed's "The Cairns Are a Calendar"). Cairns facing the wrong way and wet stubs are the early signs.
+- **Pilgrims With No Gate**, **Hollowfang's Season**, **The Door at the Hollow Cairn**, **Murkstead Salt, Cairnmoot Wool** and **The Ram-King's Toll** (Stepping Lands): the other thread titles of the Stepping seed. They use canon places and creatures only: Hollowfang, the Hollow Cairn (sealed, no dungeon run), the Greywater trade between Murkstead and Cairnmoot, and Brask Ironhorn's pass.
 - **The Compact of Four Pages** (Stepping Lands): one page in each home town (Highgate debts, Cairnmoot the route, Grimhold the salt-song, Murkstead the names).
 - Endings named in the Eldmoor seed: **the Kept Light**, **the Dark Road**, **the Unowned Flame**.
