@@ -39,6 +39,7 @@ import {disableBrain,askRelay} from './brain.js';
 import {markPlayer} from './player.js';
 import {seedProfs} from './professions.js';
 import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME} from './persona.js';
+import {STANCE_MAX} from '../data/prompts.js';
 import {remember,memOf,refreshStances,stanceEvent,setSummariser,memorySnapshot,applyLong} from './memory.js';
 
 export const DPS=['Mage','Hunter','Rogue','Skald'];
@@ -256,6 +257,9 @@ setSummariser((a,items,before,stamp)=>{const F=S.fellowship;if(!F||!F.ai||!a.fel
 // User edits from the Fellowship panel: plain strings, cut to the same caps the model gets.
 export function editSheet(a,which,field,text){if(!a)return false;const v=String(text==null?'':text).replace(/\r/g,'').slice(0,600);
   if(which==='persona'){a.persona=a.persona||buildPersona(a,fellows());a.persona[field]=v;a.persona.edited=true;return true}
+  if(which==='stance'){const b=byId(field);if(!b||b===a)return false;const P=a.persona=a.persona||buildPersona(a,fellows()),t=v.trim().slice(0,STANCE_MAX);
+    const st=P.stances={...(P.stances||{})},by=P.stanceBy={...(P.stanceBy||{})}; // the owner's line toward one companion (#305); empty hands it back to the bond reading
+    if(t){st[b.id]=t;by[b.id]='owner'}else{delete st[b.id];delete by[b.id]}P.edited=true;refreshStances(a,S.fellowship?S.fellowship.ids:[]);return true}
   if(which==='backstory'){a.backstory=a.backstory||buildBackstory(a,fellows(),S.fellowship?S.fellowship.name:'the Fellowship');
     if(field==='summary')a.backstory.summary=v;else (a.backstory.paras||(a.backstory.paras={}))[field]=v;a.backstory.edited=true;return true}
   return false}

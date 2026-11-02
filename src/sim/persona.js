@@ -29,6 +29,7 @@ import {S} from './state.js';
 import {bond,FRIEND,CLOSE} from './bonds.js';
 import {topScores,SKILLS} from './abilities.js';
 import {ARCHETYPES} from '../data/archetypes.js';
+import {refreshStances} from './memory.js'; // a cycle (memory.js reads scriptedStance); only called at run time
 
 const pick=(a,salt,list)=>list[Math.floor(hash(a.id|0,salt,7)*list.length)%list.length];
 const lc=t=>t?t.charAt(0).toLowerCase()+t.slice(1):'';
@@ -200,7 +201,17 @@ export function applyArchetype(a,id,mates){const A=ARCHETYPES[id];if(!a||!A)retu
   const st={...(old.stances||{})},filler=old.src!=='model'&&!old.edited; // an unedited scripted persona's stances are all scripted lines (their bond reading drifts)
   for(const b of mates){if(!b||b===a)continue;const cur=st[b.id];
     if(!cur||filler||cur===scriptedStance(a,b)||(old.archetype&&cur===archetypeStance(old.archetype,b)))st[b.id]=archetypeStance(id,b)}
-  a.persona={...old,voice:A.voice,wants:A.wants,fears:A.fears,quirk:A.quirk,never_says:A.never_says,stance:A.stance,stances:st,archetype:id};return true}
+  a.persona={...old,voice:A.voice,wants:A.wants,fears:A.fears,quirk:A.quirk,never_says:A.never_says,stance:A.stance,stances:st,archetype:id};
+  if(a.fellow&&F&&a.memory)refreshStances(a,F.ids); // the members' prompts read the new lines at once (#305)
+  return true}
+// The stance a persona itself holds toward b (#305), or '' when the scripted bond reading should speak:
+// a model-written persona's line, one the owner wrote (stanceBy[id]==='owner'), or the archetype's line
+// (as applyArchetype filled it, or the archetype template for a companion who joined later). An unedited
+// scripted persona's own stances are only the bond reading at the time it was built, so they never count.
+export function authoredStance(a,b){const P=a&&a.persona;if(!P||!b)return '';const cur=P.stances&&P.stances[b.id];
+  if(cur&&(P.src==='model'||(P.stanceBy&&P.stanceBy[b.id]==='owner')))return cur;
+  if(P.archetype){const t=archetypeStance(P.archetype,b);if(!cur||cur===t)return t}
+  return ''}
 
 // ---- the compact block prompts and the agent player get ----
 export function fellowCard(a){if(!a||!a.fellow)return null;const F=S.fellowship,P=a.persona,M=a.memory;
