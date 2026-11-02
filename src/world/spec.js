@@ -49,9 +49,9 @@ const CRYPT_ROOMS=[
     foes:[{type:'shambler',n:2}],lvl:0,hit:.13,rounds:4},
   {id:'gallery',name:"The Archers' Gallery",frame:'A long gallery with arrow-slits in every pillar. Dry bowstrings creak somewhere above.',
     foes:[{type:'boneshot',n:2},{type:'shambler',n:1}],lvl:0,hit:.13,rounds:4},
-  {id:'court',name:'The Drowned Court',frame:'The floor is a black mirror of still water. Grave Wardens stand in it to the knee, waiting for a court that never came.',
+  {id:'court',name:'The Drowned Court',frame:'The floor is a black mirror of still water. Grave Wardens stand in it to the knee, keeping a court that no longer sits.',
     foes:[{type:'graveward',n:2}],lvl:1,hit:.17,rounds:5},
-  {id:'vigil',name:'The Vigil Chamber',frame:'The last door. The cold here has a voice, and it knows every name in the party.',
+  {id:'vigil',name:'The Vigil Chamber',frame:'The last door. Something has kept watch here a very long time, and the cold has a voice. It knows every name in the party.',
     foes:[{type:'graveward',n:1,name:'Lich-Warden Vesk',hits:8,atk:1.6},{type:'tombskit',n:2}],lvl:2,hit:.19,rounds:6,boss:true},
 ];
 

@@ -271,7 +271,7 @@ Sample lines:
     - **The Ossuary**: shelves of old bone; Crypt Shamblers stand up from them.
     - **The Archers' Gallery**: a long gallery of arrow-slits and dry bowstrings; Bone Archers and a Shambler.
     - **The Drowned Court**: a floor of black still water, Grave Wardens standing in it to the knee (the court Ossian Vael drowned).
-    - **The Vigil Chamber**: the last door; Lich-Warden Vesk with Tomb Skitters at his feet.
+    - **The Vigil Chamber**: the last door; Lich-Warden Vesk with Tomb Skitters at his feet. He is a keeper holding Ossian Vael's oath, not a usurper (see the campaign seed), so his scene should read as a watch kept, not a lair raided. The boss fight's second phase is also called *The Drowned Court*: the same water, the same room, deliberately.
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 20, raided by 5-6 heroes of level 14+ (or four well-geared ones).
 
 ### The Stepping Lands (test continent, not the home map)
