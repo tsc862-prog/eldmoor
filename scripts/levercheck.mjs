@@ -149,7 +149,7 @@ provide('createSite', (p) => ({ok: true, effect: {stub: p.theme}}));
 {const x = pull('create_site', {theme: 'test', region: 0, band: 3}, by); ok(x.ok && x.effect.stub === 'test', 'a stub works once its system provides an implementation')}
 // start_event (#335): festival and plague as timed region conditions
 {await import('../src/sim/events.js'); S.levers.cd = {}; S.levers.day = {}; S.conditions = [];
-  rej('start_event', {kind: 'invasion', region: 0}, /unknown event kind/, 'start_event unknown kind');
+  rej('start_event', {kind: 'earthquake', region: 0}, /unknown event kind.*invasion/, 'start_event unknown kind');
   const n0 = S.chronicle.length, g0 = S.gameMin, x = pull('start_event', {kind: 'festival', region: 0}, by);
   ok(x.ok && x.until === Math.round(g0 + 3 * 1440) && S.conditions.some(c => c.kind === 'festival' && c.z === 0 && c.str === 1), 'festival runs 3 game days as a region condition');
   ok(S.chronicle[0].parts.join('').includes('festival') && S.chronicle.length >= n0, 'a chronicle line at the start: ' + S.chronicle[0].parts.join(''));
@@ -159,7 +159,13 @@ provide('createSite', (p) => ({ok: true, effect: {stub: p.theme}}));
   S.levers.cd = {}; S.levers.day = {}; const y = pull('start_event', {kind: 'plague', region: 1, scale: 3}, by);
   ok(y.ok && y.until === Math.round(S.gameMin + 9 * 1440) && S.conditions.some(c => c.kind === 'plague' && c.str === 3), 'plague at scale 3 runs 9 days, strength 3');
   rej('start_event', {kind: 'plague', region: 2, scale: 4}, /scale must be/, 'scale capped at 3');
-  S.gameMin = y.until + 1; leverTick(1); S.conditions = []; S.levers.cd = {}; S.levers.day = {}}
+  S.gameMin = y.until + 1; leverTick(1); S.conditions = []; S.levers.cd = {}; S.levers.day = {};
+  for (const [k, cond, word] of [['migration', 'migration', 'herds'], ['invasion', 'bandits', 'Raiders']]) {
+    S.levers.cd = {}; S.levers.day = {}; S.conditions = []; const t0 = S.gameMin, r = pull('start_event', {kind: k, region: 2}, by);
+    ok(r.ok && r.until === Math.round(t0 + 3 * 1440) && S.conditions.some(c => c.kind === cond && c.z === 2), k + ' runs 3 game days as the ' + cond + ' condition' + (r.ok ? '' : ' -- ' + r.reason));
+    ok(S.chronicle[0].parts.join('').includes(word), k + ' chronicle line');
+    S.gameMin = r.until + 1; leverTick(1); ok(!S.conditions.some(c => c.kind === cond), k + ' ends and clears its condition')}
+  S.levers.cd = {}; S.levers.day = {}; S.conditions = [];}
 // custom_foe: the bestiary's customFoe, inside its tweak budget and per-region cap
 {const {MOBS} = await import('../src/data/mobs.js'); const base = Object.keys(MOBS).find(k => MOBS[k].z === 0 && !k.includes('@'));
   S.levers.cd = {}; const x = pull('custom_foe', {base, region: 0, at: S0[5], name: 'Old Testfang', levels: 1}, by), m = x.ok && x.ret;
