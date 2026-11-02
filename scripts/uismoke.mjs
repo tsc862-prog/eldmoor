@@ -553,6 +553,24 @@ console.log('start gate: ready, not just claimed');
   fx.taken=30;SH.renderSheet();ok(/taken 30/.test(body.querySelector('.shfight').textContent),'sheet: the row patches when the fight changes');
   delete globalThis.__actionLog;SH.closeSheet()}
 
+// Fellowship sheet: each member's face in its column header (#376), the party frame's portrait and modes
+{const SH=await import('../src/ui/sheet.js'),{portrait}=await import('../src/render/sprites.js'),ms=sim.fellowshipMembers().filter(m=>m.hero);
+  const T0=JSON.stringify(SH.sheetRows().rows.map(r=>[r.key,r.cells.map(c=>c.t)]));
+  SH.openSheet();const body=document.querySelector('.shbody'),ports=()=>body.querySelectorAll('.shport');
+  ok(ports().length===ms.length,'sheet faces: one portrait per member column ('+ports().length+'/'+ms.length+')');
+  const a=ms[1].hero,cv0=ports()[1];
+  ok(!!cv0&&cv0._s===portrait(a,'')&&cv0.width===15&&cv0.height===18,'sheet faces: the column shows the member\'s own face, as the party frame does');
+  ok(cv0.parentNode&&cv0.parentNode.querySelector('.hn').dataset.hid==String(a.id),'sheet faces: the face sits beside the member\'s name');
+  let drew=0;const gc=cv0.getContext.bind(cv0);cv0.getContext=k=>{drew++;return gc(k)};
+  SH.renderSheet();ok(drew===0,'sheet faces: an unchanged face is not redrawn');
+  const st=a.state;a.state='ghost';SH.renderSheet();
+  const cv1=ports()[1];ok(cv1===cv0&&cv1._s===portrait(a,'ghost')&&drew===1,'sheet faces: a ghost gets the ghost face, redrawn once on the same canvas');
+  a.state='dead';SH.renderSheet();ok(ports()[1]._s===portrait(a,'dead')&&drew===2,'sheet faces: a fallen place shows the dead face');
+  a.state=st;SH.renderSheet();ok(ports()[1]._s===portrait(a,'')&&drew===3,'sheet faces: back to the living face');
+  ok(JSON.stringify(SH.sheetRows().rows.map(r=>[r.key,r.cells.map(c=>c.t)]))===T0,'sheet faces: sheetRows() stays plain data, unchanged');
+  ok(!SH.sheetRows().cols.some(c=>'face' in c||'portrait' in c),'sheet faces: no face in the row data');
+  SH.closeSheet()}
+
 // Professions block on the Stats tab (#259)
 {const h=(sim.fellowshipMembers().filter(x=>x.hero)[0]||{hero:sim.S.agents.find(a=>a.kind==='hero')}).hero;
   const Pf=await import('../src/sim/professions.js');
