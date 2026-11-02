@@ -465,3 +465,22 @@ button.tbtn.danger{border-color:var(--red)}
 .tfoot a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
 .chatwidebtn{margin-left:auto}
+
+/* The DM frame (owner request): the Dungeon Master beside the party frames */
+.dmf{background:var(--panel);border:2px solid var(--edge);border-top:3px solid var(--gold);box-shadow:3px 3px 0 #05060c;padding:5px 8px;min-width:0;cursor:pointer;font-size:16px;line-height:1.1}
+.dmf:hover,.dmf:focus-visible{border-color:var(--gold);outline:none}
+.dmf.closed{padding:3px 8px;box-shadow:none;background:transparent;border-style:dashed;border-top-width:2px}
+.dmfchip{display:flex;align-items:center;gap:8px}
+.dmffull{display:flex;flex-direction:column;gap:3px;min-width:0}
+.dmffull[hidden],.dmfchip[hidden]{display:none}
+.dmftop{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;min-width:0}
+.dmflbl{font-family:var(--px);font-size:9px;color:var(--gold);letter-spacing:.06em}
+.dmfmind{color:var(--dim);overflow-wrap:anywhere}
+.dmftop .mini{margin-left:auto}
+.dmfdo{color:#d9c27a;overflow-wrap:anywhere}
+.dmfdo:empty,.dmfstg:empty{display:none}
+.dmfact,.dmffol,.dmfstg{color:var(--dim);overflow-wrap:anywhere}
+.dmffoot{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
+.dmfrun{min-width:0;flex:1 1 auto}
+.dmfrun button.runbtn{font-size:6px;padding:2px 4px}
+@media (max-width:560px){.dmf{font-size:14px;padding:3px 6px}.dmfact,.dmffol{font-size:14px}}
