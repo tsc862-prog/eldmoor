@@ -8,32 +8,48 @@
 // The Developer switch "Run without agents" (this session only) turns the gate off, and then reflexes decide for any
 // member without a runner (sim/runlink.js setReflexAck). A bar over the map lists who is missing and why, with
 // Start / Restart per seat and Start all. The bar is patched only when its text changes.
+// Ready, not just claimed (issue #222): a connected seat still holds the world until its runner has completed one
+// warm-up model call (POST /play/ready on the relay: 'warming' -> 'ready' | 'failed'). That covers Continue, a new
+// world and any runner (re)start, since readiness belongs to the runner that reported it. "Start anyway" waives the
+// wait for the seats as they are now: a waived connected seat must warm up again only after its runner goes away; a
+// waived missing seat holds again once a runner claims it (until that runner is ready).
 import {S,dmSeatOn} from '../sim/index.js';
 import {runnerFor,runnerByKey,relayUp,runnersEnabled,ollamaBusy,reasonOf,watchRunners,DONE_STATE} from './runners.js';
-import {agentLink,dmLink,bridgeStatus} from './player-bridge.js';
+import {agentLink,dmLink,bridgeStatus,agentReady,dmReady} from './player-bridge.js';
 import {ctl} from './controls.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 export const GRACE=30000; // a blip shorter than this never closes the gate (a real stop, a runner the relay reports stopped or crashed, closes it at once)
 const LIVE={connected:1,waiting:1};
-let free=false,lastLive={},missing=[],checkAt=0,sig='',closeCb=null,probe=null;
+let free=false,lastLive={},missing=[],checkAt=0,sig='',closeCb=null,probe=null,total=0,readyN=0;
+const anyway=new Map(),lastRd={}; // seat key -> 'missing' | 'live': waived by Start anyway (#222)
 // Developer switch, this session only (a stale "off" must never leave a real run unguarded after a reload).
 export const runFree=()=>free;
 export function setRunFree(v){free=!!v;checkAt=0;const b=$('wFree');if(b){b.setAttribute('aria-pressed',String(free));b.textContent='Run without agents: '+(free?'on':'off')}}
 export const gateMissing=()=>missing;
 export const onGateClose=fn=>{closeCb=fn};
-// Test seam (scripts/uismoke.mjs): {link(a), dm()} replaces the relay's links.
-export const setGateProbe=p=>{probe=p||null};
+// Test seam (scripts/uismoke.mjs): {link(a), dm(), ready?(a), dmReady?()} replaces the relay's links (a probe without
+// ready functions counts every live seat as ready, as before #222).
+export const setGateProbe=p=>{probe=p||null;anyway.clear()};
 const linkOf=a=>probe?probe.link(a):agentLink(a),dmOf=()=>probe?probe.dm():dmLink();
+const READY={state:'ready'};
+const readyOf=a=>probe?(probe.ready?probe.ready(a):READY):agentReady(a),dmReadyOf=()=>probe?(probe.dmReady?probe.dmReady():READY):dmReady();
+// 'ready' | 'warming' | 'failed' | 'claimed' (connected, no warm-up reported yet) for a connected seat
+const stateOf=s=>s.ready&&s.ready.state?s.ready.state:'claimed';
+export const gateCounts=()=>({ready:readyN,total});
 
 export function seats(){const out=[];
-  for(const a of S.agents)if(a.fellow&&a.player&&a.state!=='dead')out.push({key:'hero:'+a.id,kind:'hero',hero:a.id,name:a.name,a,link:linkOf(a)});
-  if(dmSeatOn())out.push({key:'dm',kind:'dm',name:'DM',link:dmOf()});
+  for(const a of S.agents)if(a.fellow&&a.player&&a.state!=='dead')out.push({key:'hero:'+a.id,kind:'hero',hero:a.id,name:a.name,a,link:linkOf(a),ready:readyOf(a)});
+  if(dmSeatOn())out.push({key:'dm',kind:'dm',name:'DM',link:dmOf(),ready:dmReadyOf()});
   return out}
 
 // Why a seat is not connected, in the owner's words.
 export function whyMissing(s){
+  if(s.live){const st=stateOf(s),r=s.ready||{},m=r.model||'its model';
+    if(st==='warming')return 'loading '+m+(r.at?' ('+Math.max(0,Math.round((Date.now()-r.at)/1000))+' s)':'')+'…';
+    if(st==='failed')return 'warm-up failed'+(r.error?': '+r.error:'')+' (Restart, or Start anyway)';
+    return 'claimed, waiting for its first model answer (an older runner never reports one: Start anyway)'}
   if(!probe){const bs=bridgeStatus();if(bs==='connecting')return 'connecting to the relay…';if(bs!=='connected'||relayUp()===false)return 'the relay is offline (npm run relay -- --runners)'}
   const r=s.kind==='dm'?runnerByKey('dm'):runnerFor(s.a);
   if(r&&r.state==='crashed')return reasonOf(r,s.a||null);
@@ -49,10 +65,17 @@ export function checkRunGate(now=Date.now()){
   if(now-checkAt<1000&&!probe)return;checkAt=now;
   const L=seats();let list=[];
   if(L.length&&!probe)watchRunners();
+  let nReady=0;
   for(const s of L){if(LIVE[s.link])lastLive[s.key]=now;
-    else{const r=probe?null:s.kind==='dm'?runnerByKey('dm'):runnerFor(s.a),gone=!!(r&&DONE_STATE[r.state]&&r.state!=='starting');
-      if(gone||!(lastLive[s.key]!=null&&now-lastLive[s.key]<GRACE))list.push(s)}}
-  for(const k in lastLive)if(!L.some(s=>s.key===k))delete lastLive[k];
+    const r=LIVE[s.link]||probe?null:s.kind==='dm'?runnerByKey('dm'):runnerFor(s.a),gone=!!(r&&DONE_STATE[r.state]&&r.state!=='starting'); // a runner the relay reports stopped or crashed closes at once, no grace
+    const live=LIVE[s.link]||(!gone&&lastLive[s.key]!=null&&now-lastLive[s.key]<GRACE);s.live=!!live;
+    if(LIVE[s.link])lastRd[s.key]=s.ready||null;else if(live&&!s.ready)s.ready=lastRd[s.key]||null; // a short blip keeps the last readiness too
+    const w=anyway.get(s.key);if(w==='missing'&&live)anyway.delete(s.key);if(w==='live'&&!live)anyway.delete(s.key); // a new runner warms up again
+    const ok=live&&stateOf(s)==='ready';if(ok)nReady++;
+    if(!ok&&!anyway.has(s.key))list.push(s)}
+  for(const k in lastLive)if(!L.some(s=>s.key===k)){delete lastLive[k];delete lastRd[k]}
+  for(const k of [...anyway.keys()])if(!L.some(s=>s.key===k))anyway.delete(k);
+  total=L.length;readyN=nReady;
   if(free)list=[];
   const was=ctl.held;
   missing=list;ctl.held=list.length>0;
@@ -63,19 +86,23 @@ export function checkRunGate(now=Date.now()){
 const setupOpen=()=>{const s=$('setup');return !!(s&&!s.hidden)};
 function paint(){const box=$('rgate');if(!box)return;
   const show=ctl.held&&!setupOpen();
-  const s=show?missing.map(m=>m.key+'='+m.link+'='+whyMissing(m)).join('|')+'|'+ctl.speed:'';
+  const s=show?missing.map(m=>m.key+'='+m.link+'='+whyMissing(m)).join('|')+'|'+ctl.speed+'|'+readyN+'/'+total:'';
   if(s===sig)return;sig=s;
   if(!show){box.hidden=true;box.replaceChildren();return}
   box.hidden=false;box.replaceChildren();
   const paused=ctl.speed===0;
-  box.append(el('div','rt','WORLD HELD · WAITING FOR AGENTS'));
-  box.append(el('div','rl dm',paused?'Paused. It will stay paused once they connect.':'It runs by itself as soon as they all connect.'));
+  box.append(el('div','rt','WAITING FOR MINDS · '+readyN+'/'+total+' READY'));
+  box.append(el('div','rl dm',paused?'Paused. It will stay paused once every mind is ready.':'The world runs by itself once every mind has connected and answered once.'));
   for(const m of missing){const row=el('div','rl rgrow');row.append(el('span','rgn',m.name),el('span','rgw',': '+whyMissing(m)));
     const r=m.kind==='dm'?runnerByKey('dm'):runnerFor(m.a),running=r&&!DONE_STATE[r.state]&&r.state!=='stopping';
     const b=el('button','mini runbtn',running?'Restart':'Start');b.dataset.runact=running?'restart':'start';b.dataset.runkind=m.kind;if(m.hero!=null)b.dataset.runhero=m.hero;
     b.title=running?'Stop this runner and start it again':'Start the runner from the relay';row.append(b);box.append(row)}
   const all=el('button','mini runbtn','Start all');all.dataset.gateall='1';all.title='Start the Fellowship runner (all five) and the DM runner for every seat that is missing';
-  const bt=el('div','rb');bt.append(all);box.append(bt)}
+  const go=el('button','mini runbtn','Start anyway');go.dataset.gateanyway='1';go.title='Run the world now with the minds as they are (members without a ready runner act by reflex until theirs is ready)';
+  const bt=el('div','rb');bt.append(all,go);box.append(bt)}
+
+// Start anyway (#222): waive the wait for every seat that holds the world now.
+export function startAnyway(){for(const m of missing)anyway.set(m.key,m.live?'live':'missing');checkAt=0;sig=null;checkRunGate(Date.now())}
 
 // Start all: one Fellowship runner for the members, the DM runner for the DM, only where a seat is missing.
 export async function startAllMissing(start){
@@ -84,6 +111,7 @@ export async function startAllMissing(start){
 
 export function initRunGate(start){
   const box=$('rgate');
-  if(box)box.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('[data-gateall]'):null;if(t&&start)startAllMissing(start).then(()=>{sig='';checkAt=0})});
+  if(box)box.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('[data-gateall]'):null;if(t&&start)startAllMissing(start).then(()=>{sig='';checkAt=0});
+    if(e.target&&e.target.closest&&e.target.closest('[data-gateanyway]'))startAnyway()});
   const b=$('wFree');if(b)b.onclick=()=>setRunFree(!free);
   checkRunGate(Date.now())}

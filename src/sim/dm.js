@@ -55,6 +55,7 @@ import {bondEvent} from './bonds.js';
 import {goalEvent} from './goals.js';
 import {makeItem,equip,weakestSlot,slotLevel} from './gear.js';
 import {addGear,addQuest,hasQuestFor,dropQuest} from './inv.js'; // quest items an adventure carries (sim/inv.js)
+import {jobDone} from './questlog.js'; // several quests per hero (the quest log)
 import {say} from './chat.js';
 import {focus} from './dmfocus.js'; // the Fellowship first (issue #165)
 import {d20} from './narrator.js';
@@ -201,6 +202,7 @@ function giverOf(town,roles){const ps=(S.npcs||[]).filter(p=>p.town===town.name&
 export function postHook(c,tpl,src,o={}){const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
   const h={id:++S.uid,phase:'open',town:c.name,fac:c.fac,tpl,src,giver:g,zone:o.zone==null?null:o.zone,for:o.for==null?null:o.for,
     data:{thing:o.thing||(T.things?pickA(T.things):null),...(o.data||{})},born:S.gameMin,until:S.gameMin+ri(...K.HOOK_LIFE)*(o.zone==null?1:.5)}; // news tied to one place goes stale sooner
+  if(o.by&&o.by!=='scripted')h.by=o.by;if(o.ff)h.ff=1; // who made it, for the quest log (sim/questlog.js): the DM agent, or the scripted DM's Fellowship-first job
   S.adventures.push(h);bump(stats().hooks,src);bump(stats().offered,tpl);return h}
 export function withdrawHook(id){const i=S.adventures.findIndex(h=>h.id===id&&h.phase==='open');if(i<0)return null;return S.adventures.splice(i,1)[0]}
 // The scripted DM posts every hook through the post_hook lever. On the board refresh the lever's
@@ -222,14 +224,14 @@ const forFellow=(h,fo)=>h.for!=null&&fo.ids.has(h.for)||h.zone!=null&&fo.zones.h
 function fellowHook(c,fo){
   const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl));
   for(const a of fo.members){if(a.adv||a.lvl<K.MIN_LVL||S.adventures.some(h=>h.phase==='open'&&h.for===a.id))continue;
-    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data},'a Fellowship member’s oath',true)}
+    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data,ff:1},'a Fellowship member’s oath',true)}
   const taken=m=>S.adventures.some(h=>h.data&&h.data.eliteId===m.id&&h.phase!=='done');
   const E=S.mobs.filter(m=>m.elite&&m.alive&&!m.gone&&!taken(m)&&m.lvl<=hi+2).sort((p,q)=>dist(p,fo)-dist(q,fo)||p.id-q.id)[0];
-  if(E&&fo.members.length>=2){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper']},'a living elite lies near the Fellowship’s road',true)}
+  if(E&&fo.members.length>=2){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper'],ff:1},'a living elite lies near the Fellowship’s road',true)}
   const z=fo.zone!=null&&band(fo.zone)[0]<=lo&&band(fo.zone)[1]>=lo-4?fo.zone:null;
   if(z==null)return null;
   const tpl=pickA(Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'));const T=D.ADVENTURES[tpl],g=giverOf(c,T.givers);
-  return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g,zone:z},'a job in the region the Fellowship rides',true)}
+  return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g,zone:z,ff:1},'a job in the region the Fellowship rides',true)}
 function makeHook(c){const seen=S.dmSeen,fo=focus();
   if(fo&&fo.town&&fo.town.name===c.name&&!S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&forFellow(h,fo))){const h=fellowHook(c,fo);if(h)return h}
   const r=rnd();
@@ -519,7 +521,7 @@ function finish(adv,outcome,why){if(adv.phase!=='active')return;outcome=outcome|
   bump(stats().done,adv.tpl);stats().outcome[outcome]++;
   const key=why==='death'?'death':why==='expired'?'expired':why==='abandoned'?'abandoned':why==='gone'?null:outcome;
   const pay=[];let gp=0,item=null;
-  if(k>0)for(const b of mem){const g=Math.round((6+b.lvl*3)*T.pay.gold*k*(adv.data.payMul||1));b.gold+=g;gp=Math.max(gp,g);gainXp(b,xpNeed(b.lvl)*T.pay.xp*K.PAY_XP*k);
+  if(k>0)for(const b of mem){const g=Math.round((6+b.lvl*3)*T.pay.gold*k*(adv.data.payMul||1));b.gold+=g;(adv.paid||(adv.paid={}))[b.id]=g;/* the quest log wake names the pay */gp=Math.max(gp,g);gainXp(b,xpNeed(b.lvl)*T.pay.xp*K.PAY_XP*k);
     if(outcome==='success'){b.honor+=T.pay.honor;
       if(b===L||adv.flags.item||rnd()<T.pay.gear){const it=rewardItem(b,adv);if(it&&b===L)item=it}}
     record(b,(outcome==='success'?'Saw through ':'Half finished ')+adv.title+' for '+g+'g.');}
@@ -536,13 +538,14 @@ function finish(adv,outcome,why){if(adv.phase!=='active')return;outcome=outcome|
   // oaths: an heirloom hunt may turn up the heirloom itself; anyone may count the deed
   if(outcome==='success'&&adv.data.heirloom){const h=hero(adv.for);if(alive(h)&&mem.includes(h)&&rnd()<.35)getEpic(h,adv.data.heirloom,'the end of '+adv.title)}
   for(const b of mem)goalEvent(b,'adventure',adv);
+  for(const b of adv.mem.map(hero))if(b)jobDone(b,adv); // the quest log (sim/questlog.js): no dice
   if(outcome==='success'&&((adv.slain&&adv.data.eliteId!=null)||first('adv:'+adv.fac+':'+adv.tpl)))timeline('adventure',...(mem.length>1?[L||mem[0],'’s party']:[L||mem[0]]),' completed ',gd(adv.title),' for '+adv.town+'.');
   else if(why==='death'&&L)timeline('adventure',L,' died on ',gd(adv.title),'.');
   // a follow-up job for the same leader
   if(outcome==='success'&&T.follow&&alive(L)&&rnd()<.35){const c=CITY.find(t=>t.name===adv.town);if(c){boardLever=null;newHook(c,T.follow,'follow',{for:L.id,zone:adv.z,giver:adv.giver},'follow-up to '+adv.title,true);if(boardLever)fold(endEntry,boardLever)}}
   worldAfter(adv,outcome,why);
   for(const b of adv.mem.map(hero))if(b&&b.adv===adv.id)b.adv=null;
-  if(L&&alive(L)&&why!=='death'&&(L.state==='hunt'||L.state==='travel'))goHome(L)}
+  if(L&&alive(L)&&why!=='death'&&!adv.held&&(L.state==='hunt'||L.state==='travel'))goHome(L)}
 // ---- the DM's hand on the world (sim/levers.js) ----
 // What a finished adventure leaves behind: a lost escort marks its road dangerous for a day (two
 // in one region while marked bring bandits onto its roads), a cleared den marks the place cleared,
@@ -586,6 +589,7 @@ export function dmTick(dt){ensure();S.dmClock=(S.dmClock||0)+dt;S.dmT+=dt;if(S.d
     if(!alive(L)){finish(adv,'failure','death');continue}
     if(!adv.carried&&D.ADVENTURES[adv.tpl].carry==='mid'&&adv.idx>=2)carryItem(adv); // the relic is in hand once the trap is past
     if(S.gameMin-adv.started>K.MAX_DAYS*1440){finish(adv,'failure','expired');continue}
+    if(adv.held)continue; // set aside by its agent for another quest (sim/questlog.js): it waits, and still goes cold
     // the leader went home (fled, wounded, party heading back) or was called to the Crypt or a raid
     const out=L.state==='return'||L.state==='town'||L.state==='dungeon'||L.state==='raid';
     if(out&&!adv.away){adv.away=true;stats().retreats++;despawn(adv);adv.stage='go';adv.waitKind=null;
@@ -642,3 +646,35 @@ export function advLine(a){const adv=a&&a.adv?advOf(a.adv):null;if(!adv||adv.pha
   const mem=members(adv).filter(b=>b!==a);if(mem.length){out.push(' (with ');mem.forEach((b,i)=>{out.push(b);if(i<mem.length-1)out.push(', ')});out.push(')')}
   return out}
 const SCENE_LABEL={travel:'on the road',fight:'a fight',social:'a parley',trap:'a trap',rest:'a rest',choice:'a choice'};
+
+// ---- several quests per hero (sim/questlog.js) ----
+// An agent-played hero may hold more than one job. Only the focused one leads it (a.adv); the others wait:
+//   a taken job   a posted hook taken off the board for this hero (phase 'taken', h.taker), not started yet;
+//   a held one    a running adventure set aside (adv.held = hero id): its foes are gone, its scene keeps,
+//                 dmTick only ages it (MAX_DAYS from its start) and ends it if its hero dies.
+// Scripted heroes never hold a second job, so none of this runs in the scripted sim. No dice anywhere here.
+export function holdAdventure(a){const adv=a.adv?advOf(a.adv):null;if(!adv||adv.phase!=='active'){a.adv=null;return null}
+  despawn(adv);adv.held=a.id;adv.away=true;adv.stage='go';adv.waitKind=null;adv.wait=0;
+  for(const b of adv.mem.map(hero))if(b&&b!==a&&b.adv===adv.id)b.adv=null;
+  adv.mem=[a.id];adv.lead=a.id;a.adv=null;note(adv,'Set '+adv.title+' aside for now.');return adv}
+// Pick a held adventure back up where it stands (the hero and its party, if it leads one). Returns the adventure.
+export function resumeAdventure(a,adv){if(!adv||adv.phase!=='active')return null;if(a.adv&&a.adv!==adv.id)holdAdventure(a);
+  const mem=[a,...(a.party&&a.party.leader===a?partyMates(a):[])];adv.held=null;adv.lead=a.id;
+  for(const b of mem){if(b.adv&&b.adv!==adv.id)drop(b);b.adv=adv.id;if(!adv.mem.includes(b.id))adv.mem.push(b.id)}
+  note(adv,'Took up '+adv.title+' again.');
+  if(a.state==='hunt'||a.state==='travel'||a.state==='follow'){adv.away=false;const sc=adv.scenes[adv.idx];a.zone=sc&&sc.z!=null?sc.z:adv.z;a.state='travel';a.dest=null;adv.stage='go'}
+  return adv}
+// Start a taken job now, from wherever the hero stands (the job-giver already said yes). Returns the adventure,
+// or a reason string when it does not suit the hero (and party) any more.
+export function beginJob(a,h){ensure();const mem=[a,...(a.party&&a.party.leader===a?partyMates(a):[])];
+  const forWas=h.for;h.for=a.id;const ok=fits(h,a,mem);h.for=forWas;if(!ok)return 'it does not suit you (and your party) as you are now';
+  if(a.adv)holdAdventure(a);h.phase='open';h.taker=null;const adv=start(h,a,mem);
+  dmlog('pick',adv,[a,mem.length>1?'’s party':'',' set out on ',gd(adv.title),' (a job they had taken earlier)'],{hook:adv.id,tpl:adv.tpl,src:adv.src,personal:true,rule:'taken earlier, focused now by the hero',leader:a.id,party:mem.map(b=>b.id)});
+  const sc=adv.scenes[adv.idx];a.zone=sc&&sc.z!=null?sc.z:adv.z;
+  if(a.state==='town'){a.state='travel';a.dest=null}else if(a.state==='hunt'||a.state==='travel'||a.state==='follow'){a.state='travel';a.dest=null}
+  adv.stage='go';return adv}
+// The hero gives the adventure up: a leader (or a lone hero) ends it for everyone, a member leaves it to the others.
+export function abandonAdventure(a,adv){if(!adv||adv.phase!=='active')return false;
+  if(adv.lead===a.id||adv.held===a.id){adv.held=adv.held||a.id; /* no walk home: the hero only stops */finish(adv,'failure','abandoned');return true}
+  drop(a);return true}
+export const fitsJob=(h,a)=>{const mem=[a,...(a.party&&a.party.leader===a?partyMates(a):[])];const forWas=h.for;h.for=a.id;const ok=fits(h,a,mem);h.for=forWas;return ok};

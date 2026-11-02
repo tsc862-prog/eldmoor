@@ -46,6 +46,16 @@ const ticker = setInterval(() => {if (!paused && !driven) for (let i = 0; i < 12
 const until = async (cond, maxS, label) => {let t = 0; while (!cond()) {if (t > maxS * 1000) {ok(false, 'timed out waiting for ' + label); return false} await pause(20); t += 20} return true};
 const hostOpts = () => driven ? {nap: advance, now: () => vclock} : undefined;
 
+// Internal (#240 determinism): node scripts/playcheck.mjs --fp 0|1 prints a fingerprint of a seeded run (with a Fellowship
+// for 1) in which one background hero is agent-played and its turn is held open and closed again by its tool calls.
+if (process.argv[2] === '--fp') {
+  init({fellowship: process.argv[3] === '1'}); run(1);
+  const h = S.agents.find(x => x.fac === 0 && !x.fellow && x.state !== 'dead'); P.markPlayer(h, true); P.playerAct(h.id, 'look');
+  for (let i = 0; i < 4 * 600; i++) {step(1 / 60); if (i === 1500) P.playerAct(h.id, 'wait', {minutes: 30})}
+  console.log(JSON.stringify({t: S.gameMin, uid: S.uid, a: S.agents.map(x => [x.id, x.state, x.lvl, Math.round(x.xp), Math.round(x.x * 100), Math.round(x.y * 100), Math.round(x.hp), x.kills, x.gold, x.playTurn ?? null])}));
+  process.exit(0);
+}
+
 console.log('\nEldmoor playcheck: a mock agent plays a hero through the tools\n');
 init({fellowship: false}); run(1); // the old start (#111): this check sets up its own heroes and Fellowship
 // A mid-level hero so posted jobs fit (the DM offers adventures from level 4).
@@ -454,6 +464,52 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   // walking away ends it; the scripted DM picks up again when the seat goes quiet
   m.x = sm.x + 15; step(1 / 60); ok(!TK.convWith(sm), 'walking off ends the conversation');
   DMA.setDmSeat(false); F_.disbandFellowship(); paused = false}
+
+// ---- stale orders (issue #240): autopilot holds during the agent's turn, the hold has a cap, and an order the
+// world moved past is refused with what changed since the agent's last look ----
+{
+  paused = true;
+  const {hostPace} = await import('../src/sim/player-host.js'), {dist} = await import('../src/world/map.js'), {leaveParty} = await import('../src/sim/party.js');
+  const c = S.agents.find(x => x.fac === 1 && x.state !== 'dead' && !x.player && !x.fellow && !x.adv);
+  if (c.party) leaveParty(c); P.markPlayer(c, true);
+  const out = S.agents.find(x => x !== c && x.state === 'hunt' && !x.player && x.kind === 'hero');
+  const calm = () => {S.pvpT = 1; c.spotCd = 99; for (const m of S.mobs) {if (m.target === c) m.target = null; if (dist(m, c) < 30) m.scan = 1}
+    if (c.state === 'fight' || c.state === 'duel' || c.state === 'assist' || c.state === 'return') {c.state = 'hunt'; c.target = null}};
+  const stepFor = (gameMin, f) => {const end = S.gameMin + gameMin; while (S.gameMin < end) {calm(); step(1 / 60); if (f && f()) return true} return false};
+  const idle = () => {c.x = out.x; c.y = out.y; c.state = 'hunt'; c.pq = []; c.target = null; c.dest = null; c.inv = {list: []}; c.hp = maxHp(c);
+    c.playOrder = {kind: 'hunt', n: 2, flee: .15}; c.playActAt = S.gameMin - 200; c.playIdle = false; c.playAuto = null};
+  const autoStarted = () => c.playIdle || c.playAuto || (c.pq[0] && c.pq[0].auto);
+  // a turn opens with the agent's first tool call: two game hours past its last order, autopilot still starts nothing
+  idle(); let r = P.playerAct(c.id, 'look'); const t0 = S.gameMin;
+  ok(r.ok && c.playTurn === t0 && /^Day \d+ \d\d:\d\d/.test(r.as_of || ''), 'a tool call opens the turn; results carry as_of: ' + r.as_of);
+  ok(!stepFor(60, autoStarted), `during the turn autopilot starts nothing new (60 game min, ${Math.round(S.gameMin - c.playActAt)} since the last order)`);
+  // a runner asking when to go next ends the turn: autopilot carries on at once
+  await hostPace(c.id, {wake: 'must', realMs: 0}); ok(c.playTurn == null, 'the next pace call closes the turn');
+  ok(stepFor(5, () => c.playAuto === 'hunt'), `once the turn is over autopilot carries on (${c.playAuto}: ${c.playDoing})`);
+  // a hung runner: the hold releases at the cap
+  idle(); c.playTurn = null; r = P.playerAct(c.id, 'status'); const t1 = S.gameMin;
+  const freed = stepFor(P.PK.HOLD + 10, autoStarted);
+  ok(freed && S.gameMin - t1 >= P.PK.HOLD, `a turn that never ends holds at most ${P.PK.HOLD} game min (autopilot at +${Math.round(S.gameMin - t1)})`);
+  ok(P.turnHeld(c) === false, 'and the hold stays released until the runner paces again');
+  // a slow agent's order after the world moved on: the refusal says what changed since its look
+  await hostPace(c.id, {wake: 'must', realMs: 0});
+  idle(); const m = S.mobs.find(x => x.alive && !x.gone && !x.target && dist(x, c) < 40) || S.mobs.find(x => x.alive && !x.gone);
+  c.x = m.x - 1; c.y = m.y; c.target = m; c.state = 'fight'; m.target = c;
+  r = P.playerAct(c.id, 'look'); ok(r.ok && c.playLook && c.playLook.foe && c.playLook.foe.id === m.id, 'look remembers the foe in the fight: ' + (c.playLook && c.playLook.foe && c.playLook.foe.name));
+  m.alive = false; m.target = null; c.target = null; const home = homeOf(c); c.x = home.ah.x; c.y = home.ah.y; c.state = 'town';
+  for (let i = 0; i < 500; i++) step(1 / 60); // about 50 game minutes
+  r = P.playerAct(c.id, 'fight', {target_id: m.id});
+  ok(!r.ok && /You can only pick a fight/.test(r.error) && /Since your last look \(Day \d+ \d\d:\d\d, \d+ game min ago\)/.test(r.error) && /fight with .* is over/.test(r.error) && r.error.includes('now you are in ' + home.name) && /target #\d+ is (dead|gone|out of sight)/.test(r.error), // (the dead foe's slot may have respawned far off)
+    'a stale order is refused with what changed: ' + r.error);
+  ok(r.changed && /game min since your last look/.test(r.since_look || '') && r.as_of, `and says how old the view is (${r.since_look})`);
+  P.playerAct(c.id, 'look'); r = P.playerAct(c.id, 'fight', {target_id: m.id});
+  ok(!r.ok && !/Since your last look/.test(r.error) && !r.since_look, 'right after a fresh look a refusal is plain: ' + r.error);
+  // only agent-played heroes change: a seeded run with a held turn is the same twice, with and without a Fellowship
+  const {execFileSync} = await import('node:child_process'), {fileURLToPath} = await import('node:url'), me = fileURLToPath(import.meta.url);
+  for (const f of ['0', '1']) {const fp = () => execFileSync(process.execPath, [me, '--fp', f], {encoding: 'utf8'}).trim().split('\n').pop();
+    const x = fp(), y = fp(); ok(x === y && x.length > 100, `a seeded run with an agent hero's turn held is deterministic (${f === '1' ? 'with' : 'without'} a Fellowship)`)}
+  P.markPlayer(c, false); paused = false;
+}
 
 // ---- hardcore: a dead hero only answers that it is dead ----
 {

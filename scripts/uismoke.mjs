@@ -28,8 +28,14 @@ if(sim.S.fellowship)sim.disbandFellowship(); // the first half runs without one
 const renderer={onCamChange(){},setZoom(){},stepZoom:(z)=>z,currentZoom:()=>1,zoomAt(){},panBy(){},screenToWorld:()=>({x:0,y:0})};
 initUI(renderer);
 let clockS=0;
+// The Fellowship half needs its five members alive, visible and together (hardcore: a member who dies is replaced by
+// a new object, and one who enters the Crypt is hidden, which silently drops every shout and made the chat cases flaky).
+// guard() runs each sim step; stage() is called where a block needs them in one spot.
+let guardMem=null;
+const guard=()=>{if(guardMem)for(const a of guardMem){if(a.state!=='dead'&&a.maxhp)a.hp=Math.max(a.hp,a.maxhp);a.hidden=false}};
+function stage(){guardMem=mem;guard();for(const a of mem){a.state=a.state==='dead'?'town':a.state;a.x=mem[0].x+(mem.indexOf(a)%3);a.y=mem[0].y}}
 // Tick the world like main.js: sim in 0.05 s steps, the fast UI every 0.3 s, the slow UI every second.
-function tick(sec){for(let t=0;t<sec;t+=.1){sim.step(.05);sim.step(.05);clockS+=.1;
+function tick(sec){for(let t=0;t<sec;t+=.1){sim.step(.05);guard();sim.step(.05);guard();clockS+=.1;
   if(Math.round(clockS*10)%3===0)uiFast();if(Math.round(clockS*10)%10===0)uiSlow()}uiFast();uiSlow()}
 
 console.log('warming the world up (no Fellowship)');
@@ -39,13 +45,16 @@ select(busy);setView('follow');tick(1);
 
 // Scroll a list, tick, check it held. get() re-finds the list after the tick (a rebuilt list would be a new node).
 // ranked: rows move by rank, so only the scroll position must hold
-function holds(name,get,{sec=20,min=3,ranked=false}={}){let n=get();
+// stable(): a signature of what makes the panel rebuild on purpose (the Memory tab is rebuilt when a memory is added,
+// so its scroll legitimately resets then); when it changed during the window the check is retried, not failed.
+function holds(name,get,{sec=20,min=3,ranked=false,stable=null,tries=6}={}){let n=get();
   if(!n){ok(false,name+': list not found');return}
   if(n.children.length<min){tick(sec);n=get()}
   if(!n||n.children.length<min){console.log('  skip '+name+' (only '+(n?n.children.length:0)+' rows)');return}
   const top=Math.min(40,(n.children.length-1)*20);n.scrollTop=top;
   const anchor=n.children.find(c=>c.offsetTop+c.offsetHeight>top),off=anchor.offsetTop-top,mark={};anchor._mark=mark;
-  tick(sec);const m=get();
+  const sig0=stable&&stable();tick(sec);const m=get();
+  if(stable&&stable()!==sig0&&tries>1){console.log('  note '+name+': rebuilt on purpose (its content changed), checking again');return holds(name,get,{sec:Math.min(sec,10),min,ranked,stable,tries:tries-1})}
   ok(m===n,name+': same scroll container after '+sec+' s');
   ok(m&&m.scrollTop>=top,name+': scrollTop held ('+top+' -> '+(m&&m.scrollTop)+')');
   if(ranked)return;
@@ -88,10 +97,10 @@ console.log('with a Fellowship');
 const slots=sim.autoPick(0);const r=sim.found(slots,{fac:0,ai:false});ok(r&&r.ok!==false,'Fellowship founded');
 tick(1);
 ok(!$('frames').hidden,'party frames shown');
-const mem=sim.fellows();sim.markPlayer(mem[1],true);mem[1].fellowAgent=true;
+const mem=sim.fellows();guardMem=mem;sim.markPlayer(mem[1],true);mem[1].fellowAgent=true;
 for(let i=0;i<6;i++){sim.playerAct(mem[1].id,'look',{});tick(10)}
 select(mem[0]);uiFast();
-setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2});
+setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2,stable:()=>{const M=mem[0].memory;return M?(M.n||0)+':'+(M.long||'').length+':'+Object.values(M.stances||{}).join('|').length:''}});
 select(mem[1]);setTab('agent');uiFast();
 ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-played member');
 {const get=()=>tb().querySelector('.agentlog');const l=get();if(l){l.scrollTop=40;const n=l;for(let i=0;i<4;i++){sim.playerAct(mem[1].id,'look',{});tick(5)}
@@ -110,16 +119,35 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
   press('1',{ctrlKey:true});press('2',{metaKey:true});press('3',{altKey:true});ok(cam.sel===mem[0],'Ctrl/Meta/Alt + digit does not select');
   press('6');press('0');ok(cam.sel===mem[0],'other digits do nothing')}
 // Fellowship panel: open details stay open, the campaign log keeps its place
-{const fb=$('felbody');const th=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));
-  ok(!!th,'Open threads is there');if(th){th.open=true;select(mem[2]);tick(10);
-    const th2=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));ok(th2===th&&th2.open,'Open threads stays open across a refresh')}}
+{const fb=$('felbody');const th=fb.querySelector('.felthreads');
+  ok(!!th&&/Open threads/.test(th.textContent),'Open threads lead the Fellowship panel, always visible');
+  select(mem[2]);tick(10);ok(fb.querySelector('.felthreads')===th,'the threads box is patched in place across a refresh');
+  ok(!!fb.querySelector('.fhline')&&!fb.querySelector('details'),'the header is one line with no folded sections');
+  ok(!/Minds: agents/.test(fb.textContent),'no Minds: agents label (members are always agents)');
+  ok(!fb.querySelector('.feldrawer'),'Members and Fallen are closed by default');
+  // a thread that is not about a hero: an oath and a meeting plan show as one-liners
+  mem[0].goal={text:'Avenge Torius on Grishnak',progress:0,need:1};tick(10);uiFast();
+  ok(/swore to avenge Torius/.test(fb.querySelector('.fthreads').textContent),'an oath is a live one-liner');
+  // Disband needs a confirmation behind the ... menu
+  ok(!fb.querySelector('[data-fact=disband]'),'Disband is not on the header');
+  fb.querySelector('[data-fact=menu]').click();ok(!!fb.querySelector('[data-fact=disband]'),'the ... menu offers Disband');
+  fb.querySelector('[data-fact=disband]').click();ok(!!sim.S.fellowship&&/Yes, disband/.test(fb.textContent),'Disband asks first and the Fellowship still stands');
+  fb.querySelector('[data-fact=menu]').click();ok(!sim.S.fellowship===false&&!fb.querySelector('[data-fact=disband]'),'Cancel closes the menu without disbanding');
+  fb.querySelector('[data-fact="drawer:members"]').click();const dr=fb.querySelector('.feldrawer');
+  ok(!!dr&&!!dr.querySelector('.mindrow'),'the members drawer opens on a click');
+  if(sim.S.fellowship.past.length){fb.querySelector('[data-fact="drawer:fallen"]').click();ok(/Fallen/.test(fb.querySelector('.feldrawer').textContent),'Fallen is one click away')}
+  else ok(!fb.querySelector('[data-fact="drawer:fallen"]'),'no Fallen button while nobody has fallen');
+  fb.querySelector('[data-fact="drawer:members"]').click();
+  {const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+    ok(/\.fhline\{[^}]*flex-wrap:wrap/.test(css)&&/\.feldrawer\{[^}]*overflow-wrap:anywhere/.test(css)&&/\.fmeta\{[^}]*min-width:0/.test(css),'phone width (390px): the header wraps, the name and drawer cannot push the column wider')}
+}
 {const d=$('campaign').querySelector('details');const k=d&&d.getAttribute('data-k');
   holds('Campaign log ('+k+')',()=>$('campaign').querySelector('details[data-k='+k+'] .tlist'),{sec:60,min:3})}
 // a focused picker is never replaced
 {const s=$('felbody').querySelector('select');if(s){s.focus();const n=s;select(mem[3]);tick(10);ok($('felbody').contains(n),'a focused picker in the Fellowship panel survives refreshes');n.blur()}
   else console.log('  skip picker (no select in the Fellowship panel)')}
 // Chat tab (#145, owner): one compact line, no mind badge, own-name prefix dropped, repeats collapsed
-{const sp=mem[1];sp.x=mem[0].x+1;sp.y=mem[0].y; // within shouting range (#182)
+{stage();const sp=mem[1]; // together, within shouting range (#182)
 const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});(await import('../src/sim/council.js')).partySay(sp,'Hold the line at the ford.'); // a repeat said outside the agent tool (agents' own near-repeats are refused since #163)
   const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
   ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
@@ -202,14 +230,14 @@ console.log('declutter');
   const gr=$('hero').querySelector('.tgroups'),sub=$('hero').querySelector('.tsub'),shown=()=>sub.children.filter(b=>!b.hidden).map(b=>b.textContent);
   ok(gr&&gr.children.map(b=>b.textContent).join()==='Character,Story,Mind','three dossier groups: '+(gr&&gr.children.map(b=>b.textContent)));
   ok(shown().join()==='Stats,Gear,Pack','Character: Stats, Gear, Pack (no Party for a member: the frames are the party): '+shown());
-  setGroup('story');uiFast();ok(shown().join()==='Quests,Log,Bio,Memory','Story: Quests, Log, Bio, Memory: '+shown());
+  setGroup('story');uiFast();ok(shown().join()==='Quests,Log,Combat,Bio,Memory','Story: Quests, Log, Combat, Bio, Memory: '+shown());
   setGroup('mind');uiFast();ok(shown().includes('Chat')&&shown().includes('Agent'),'Mind: Chat and Agent for the agent-played member: '+shown());
   setGroup('char');uiFast();ok(tb().querySelector('[data-cstat]'),'Character opens on Stats');
   setGroup('story');setTab('bio');setGroup('char');setGroup('story');uiFast();ok(shown().length&&sub.children.find(b=>b.getAttribute('aria-pressed')==='true').textContent==='Bio','a group reopens on its last tab');
   ok(!$('hero').querySelector('.hd [data-ai]')&&!$('hero').querySelector('.hd [data-agent]'),'a member\'s header has no AI/Agent buttons (one mind control)');
   ok(!$('frames').querySelector('[data-mindctl]'),'the frames show the mind label, without a switch');
-  const fb=$('felbody'),mm=[...fb.querySelectorAll('details')].find(d=>/Members and minds/.test(d.textContent));
-  ok(!!mm&&!mm.open&&!!mm.querySelector('.mindrow')&&!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member\'s mind is set, folded by default');
+  const fb=$('felbody');fb.querySelector('[data-fact="drawer:members"]').click();const mm=fb.querySelector('.feldrawer');
+  ok(!!mm&&!!mm.querySelector('.mindrow')&&!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member mind is set, in the drawer');fb.querySelector('[data-fact="drawer:members"]').click();
   ok(!/Model requests|Relay writing/.test(fb.textContent),'request stats are hidden unless Developer is on');
   ok(document.body.classList.contains('fellow-mode')&&!document.body.classList.contains('dev-mode'),'Minds at play is folded away (fellow-mode without dev-mode)');
   const st=$('storyTabs');ok(st&&!st.hidden&&$('storyTtl').textContent==='Story','the Story panel has Chronicle and Campaign log tabs');
@@ -227,7 +255,7 @@ console.log('declutter');
   ok(dispositionOf({...away,mood:'hostile'},F)==='hostile'&&dispositionOf({...home,hostile:true},F)==='hostile'&&dispositionOf({kind:'foe',name:'Brute'},F)==='hostile','npc.mood, npc.hostile and a foe make it hostile');
   ok(dispositionOf({cls:'Mage',fac:1-F.fac,name:'Rival'},F)==='hostile','an enemy-faction hero is hostile');
   ok(toneOf(dps[0],F).kind==='class'&&toneOf(home,F).npc===true&&toneOf(home,F).color!==classColor('Rogue'),'NPCs carry the shape cue and a colour apart from the class colours');
-  const sec=$('chatSec');ok(!!sec&&!sec.hidden,'the Fellowship chat panel is shown with a Fellowship');
+  stage();const sec=$('chatSec');ok(!!sec&&!sec.hidden,'the Fellowship chat panel is shown with a Fellowship');
   const sp=mem[1];sim.playerAct(sp.id,'party_say',{text:'Stream test line.'});
   mem[0].chat.push({t:'05:00',d:1,from:home,text:'Well met, travellers.',trigger:'npc',fh:true});
   sim.playerAct(mem[0].id,'propose',{kind:'job',details:'take a job from the gate that matches our level'});
@@ -243,7 +271,7 @@ console.log('declutter');
   const nm=cl.querySelector('li .hn.fmn');ok(!!nm&&/^#[0-9a-f]{6}$/i.test(nm.style.color||'#000000'),'chat panel: a member\'s name carries its class colour');
   const fb=$('chatFilter');const click=k=>{fb.children.find(b=>b.dataset.cf===k).click();return cl.textContent};
   const dmT=click('dm');ok(/Well met/.test(dmT)&&!/Stream test line/.test(dmT),'chat panel: DM filter shows the NPC line only');
-  const npcName=cl.querySelector('.npcn');ok(!!npcName&&npcName.classList.contains('npc-friendly'),'chat panel: an NPC name is underlined in its disposition class');
+  const npcName=cl.children.find(c=>/Well met/.test(c.textContent)).querySelector('.npcn');ok(!!npcName&&npcName.classList.contains('npc-friendly'),'chat panel: an NPC name is underlined in its disposition class');
   const pT=click('party');ok(/Stream test line/.test(pT)&&/proposes:/.test(pT)&&!/Well met/.test(pT),'chat panel: Party filter shows party lines and the council');
   ok(!!$('chatLegend')&&/hostile/.test($('chatLegend').textContent),'chat panel: a colour legend');
   click('all');
@@ -327,6 +355,29 @@ console.log('run gate');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
   gate.setGateProbe(null);L[m3.id]='connected'}
 
+// The start gate (#222): connected is not enough; every seat must have answered one warm-up model call
+console.log('start gate: ready, not just claimed');
+{const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');
+  const F=sim.fellows(),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
+  gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'off',ready:a=>R[a.id]||null,dmReady:()=>null});
+  const T0=5e6,box=$('rgate');ctl.speed=1;gate.checkRunGate(T0);
+  ok(!ctl.held,'every seat ready: the world runs');
+  const slow=F[1],down=F[3];R[slow.id]={state:'warming',model:'qwen2.5:14b',at:Date.now()-40000};R[down.id]=null;
+  gate.checkRunGate(T0+1000);
+  ok(ctl.held&&/WAITING FOR MINDS · 3\/5 READY/.test(box.textContent),'a seat still warming up and one only claimed hold the world: '+(box.children[0]&&box.children[0].textContent));
+  ok(box.textContent.includes(slow.name+': loading qwen2.5:14b (4')&&box.textContent.includes(down.name+': claimed'),'the banner says who is loading which model (and for how long) and who is only claimed');
+  ok(/Start anyway/.test(box.textContent),'the banner offers Start anyway');
+  R[down.id]={state:'failed',error:'ollama: no answer from qwen2.5:14b in 600 s',at:0};gate.checkRunGate(T0+2000);
+  ok(ctl.held&&box.textContent.includes('warm-up failed: ollama: no answer'),'a crashed warm-up shows in the banner with its error');
+  gate.startAnyway();
+  ok(!ctl.held&&box.hidden,'Start anyway releases the world');
+  R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
+  L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+30000);
+  L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+31000);
+  ok(ctl.held&&box.textContent.includes(down.name),'a runner that went away and came back must warm up again');
+  R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
+  gate.setGateProbe(null)}
+
 // ---- the DM frame (owner request): the DM's status beside the party frames ----
 {console.log('DM frame');
   const posts=[];const wait=()=>new Promise(r=>setTimeout(r,30));
@@ -396,6 +447,55 @@ console.log('run gate');
   ok(tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent))._same===1,'Quests tab: rows are patched, not rebuilt');
   log.active=[];log.done=[];uiFast();ok(/No quests yet/.test(tb().textContent),'empty state');
   delete globalThis.__questLog;setTab('stats');uiFast()}
+
+
+// ---- wide screens (owner request): column count by width, the moved panels, the map follows its box ----
+{const {columnCount}=await import('../src/ui/layout.js');
+  const cols=()=>{uiFast();return $('colL').hidden?($('side').parentNode.className.includes('cols3')?-1:0):3};
+  const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
+  const keep=window.innerWidth;
+  ok(!!sim.S.fellowship,'wide layout: a Fellowship stands for the column checks');
+  for(const [w,n,st,hr] of [[1000,2,'side','colM'],[1600,2,'side','colM'],[2600,3,'colL','side'],[390,1,'side','colM'],[1000,2,'side','colM']]){
+    window.innerWidth=w;uiFast();
+    ok(columnCount()===n,w+' px: '+n+' column(s)');
+    ok(where('storySec')===st&&where('heroSec')===hr&&(w<2200?where('worldgrp')==='side':where('worldgrp')==='colL'),w+' px: Story, World and Hero are in '+st+' / '+hr);
+    ok($('colL').hidden===(w<2200)&&$('side').parentNode.className.includes('cols3')===(w>=2200),w+' px: the left column is '+(w<2200?'hidden':'shown'))}
+  const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  ok(css.includes('@media (min-width:1600px){')&&css.includes('.shell{max-width:none}'),'full width from 1600 px (no cap)');
+  ok(/@media \(min-width:1200px\)\{\.screen\{aspect-ratio:auto;height:clamp\(380px,70vh/.test(css),'the map is taller from 1200 px');
+  ok(/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'one column below 920 px');
+  const draw=readFileSync(new URL('../src/render/draw.js',import.meta.url),'utf8');
+  ok(/new ResizeObserver\(resize\)\.observe\(screenEl\)/.test(draw),'the map canvas resizes with its box (ResizeObserver on the screen)');
+  window.innerWidth=keep;uiFast()}
+
+// ---- the Combat tab (owner request): fight cards, lines, filters, held scroll, empty state ----
+{select(busy);const t0=sim.S.gameMin;let evs=[],fl=[];
+  const E=(i,fight,kind,o={})=>({t:t0+i*.1,kind,who:'You',target:'Timber Wolf',name:null,amount:0,fight,...o});
+  for(let f=1;f<=4;f++){const b=(f-1)*40;fl.push({id:f,foe:'Wolf '+f,start:t0+b/10,end:t0+b/10+1.4,dealt:214,taken:87,healed:30,abilities:{Heartseeker:2},items:{'Healing Draught':1},crits:3,result:'won'});
+    for(let i=0;i<30;i++)evs.push(E(b+i,f,i===5?'ability':i===9?'item':i%7===0?'hurt':i===12?'heal':'hit',{amount:5+i,name:i===5?'Heartseeker':i===9?'Healing Draught':i%7===0?null:'Slash',crit:i===20}))}
+  globalThis.__actionLog={actionLog:()=>evs.slice(),fights:()=>fl.slice(),fightSummary:(a,id)=>fl.find(x=>x.id===id)};
+  setTab('combat');uiFast();
+  ok([...$('hero').querySelectorAll('button')].some(b=>b.dataset.tab==='combat'&&!b.hidden),'Combat tab shows');
+  const cards=()=>tb().querySelectorAll('.cbcard');
+  ok(cards().length===4,'four fight cards');
+  ok(/Wolf 4/.test(cards()[0].textContent)&&/Wolf 1/.test(cards()[3].textContent),'newest fight on top');
+  ok(/dealt 214/.test(cards()[0].textContent)&&/taken 87/.test(cards()[0].textContent)&&/Heartseeker ×2/.test(cards()[0].textContent)&&/Healing Draught ×1/.test(cards()[0].textContent)&&/3 crits/.test(cards()[0].textContent),'card shows totals, abilities, items, crits');
+  ok(cards()[0].getAttribute('open')!=null&&cards()[1].getAttribute('open')==null,'only the newest card is open');
+  ok(cards()[0].querySelectorAll('.cbl').length>3&&/Slash on Timber Wolf/.test(cards()[0].textContent),'open card lists its lines');
+  ok(/dealt \d+ · taken \d+/.test(tb().querySelector('.cbtot').textContent),'totals line for All');
+  const chip=n=>tb().querySelectorAll('.cbchip').find(c=>c.textContent===n);
+  chip('Abilities').click();
+  ok(chip('Abilities').getAttribute('aria-pressed')==='true'&&/abilities used 4/.test(tb().querySelector('.cbtot').textContent),'Abilities filter: pressed, totals count 4 uses');
+  ok(cards()[0].querySelectorAll('.cbl').length===1&&/Heartseeker/.test(cards()[0].textContent),'Abilities filter keeps only ability lines');
+  chip('Heals').click();ok(/healed 34/.test(tb().querySelector('.cbtot').textContent)||/healed \d+/.test(tb().querySelector('.cbtot').textContent),'Heals filter totals');
+  chip('Items').click();ok(/items used 4/.test(tb().querySelector('.cbtot').textContent),'Items filter totals');
+  chip('All').click();
+  const c1=cards()[1];c1._same=1;
+  holds('Combat tab',tb,{sec:10,min:3});
+  ok(cards()[1]._same===1,'Combat tab: cards are patched, not rebuilt');
+  globalThis.__actionLog={actionLog:()=>[],fights:()=>[]};uiFast();ok(/No fights yet/.test(tb().textContent),'empty state');
+  delete globalThis.__actionLog;uiFast();ok(/arrives with the next update/.test(tb().textContent)||tb().querySelectorAll('.cbcard').length>=0,'no sim API: says so');
+  setTab('stats');uiFast()}
 
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}

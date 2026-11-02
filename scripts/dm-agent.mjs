@@ -226,7 +226,8 @@ async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n
     if (stopped()) return null;
     const st = await dmTool(base, 'dm_status');
     let why = '', evt = false;
-    if (!st.ok) why = st.offline ? 'the game is not answering (' + short(st.error, 90) + ')' : short(st.error, 90);
+    if (!st.ok && st.offline && /seat is closed/.test(st.error || '')) why = '[pace] the DM seat is closed (a new world starts with it closed unless setup chose an agent DM): press Open seat in the DM panel; waiting'
+    else if (!st.ok) why = st.offline ? 'the game is not answering (' + short(st.error, 90) + ')' : short(st.error, 90);
     else if (talkNow && talkWaiting(st).length && !(st.table && st.table.open) && Date.now() >= gapUntil) why = ''; // a member waits for an answer and no talk voice runs (#170)
     else if (target != null && st.gameMin < target && !(evt = eventDue(st, {sig: lastSig, gm: lastGm}, ev))) why = `waiting for the evening of day ${Math.floor(target / DAY) + 1} (now day ${st.day} ${st.time})`;
     else if (until && Date.now() < until) why = `next turn in ${Math.ceil((until - Date.now()) / 1000)} s`;
@@ -296,6 +297,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!s0.models.includes(rs.model)) {console.error(`[dm] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await quit(1)}
     {const {localModelNote} = await import('./pacing.mjs'); const n = await localModelNote(ol, rs.model); if (n) log('[dm] ' + n)} // another model, or ours at another num_ctx (#221)
     log(`[dm] DM seat taken | local model ${rs.model} via Ollama, num_ctx ${ol.numCtx} | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
+    {const {warmUp} = await import('./warmup.mjs'); await warmUp({base, seat: {role: 'dm'}, runner, model: rs.model, adapter: ol, log})} // the start gate (issue #222): ready = answered
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
     if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 25))}); log(`[dm] talk voice: ${rs.model} (local) answers the Fellowship's conversations with world characters`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
@@ -340,6 +342,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-dm-agent/1.0'};
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
+  {const {warmUp, claudeWarmAdapter} = await import('./warmup.mjs'); await claim(); await warmUp({base, seat: {role: 'dm'}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log})} // the start gate (issue #222)
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
     const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}

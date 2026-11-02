@@ -111,8 +111,22 @@ other. The rules:
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
 - `npm run movecheck`: class abilities (#81): `src/data/moves.js` MOVES/PASSIVES (3 active abilities with a cooldown in seconds and in rounds, 2 passives per class), the one resolver `useMove` in `src/sim/moves.js` for real-time and Table rounds, timed effects and passives in `src/sim/eff.js`, the `use_ability` agent tool, and the Abilities block (`src/ui/abilities.js`) on the Stats tab and Fellowship sheet.
 - `npm run setupcheck`, `npm run setupsmoke`: the New World setup (`src/sim/setup.js`, `src/ui/setup.js`, #133): New world opens a page to choose the Fellowship (class, name, people, mind per place) and the DM, then builds the world seeded (`init({setup})`) with agent members agent-played from the first tick and starts their runners through the relay.
-- `start-eldmoor.cmd` (Windows, double-click): starts the relay with app runners on and the dev server in two
-  windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.
+- `npm run up` (`scripts/up.mjs`) and `start-eldmoor.cmd` (Windows, double-click; it calls `node scripts\up.mjs`): one window
+  for the whole game. It starts the relay with app runners on and `--resume-runners` and the Vite dev server as child
+  processes (output prefixed and coloured `[relay]`, `[vite]`, `[up]`), then opens http://localhost:5173 once. Single keys
+  (or the word plus Enter where raw mode is missing): `u` update (`git pull --ff-only`; refused on a dirty tree outside .claude/ (agent memory never blocks it; git refuses if the pull touches a file you edited, naming it; nothing is stashed) or a
+  non-fast-forward; `npm install` only when package-lock.json changed, with Vite stopped meanwhile; then the relay restarts,
+  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `s`
+  status (relay health, runners, Ollama models loaded), `h` help, `q`/Ctrl+C quit (runners get "stop" first so they
+  release their heroes, then the relay, then Vite; the process trees are killed with `taskkill /T /F` as a last resort, so
+  no node process or port stays held; closing the window does the same). A change under `scripts/` while it runs prints
+  "relay code changed: press u (or r) to apply" (never an automatic restart mid-play). The relay keeps the running runners
+  in `logs/runners/active.json` (kind, hero, name, mind, caps; a stop from the page, a crash or a finished runner leaves the
+  list, a relay quit does not) and with `--resume-runners` (`RELAY_RESUME_RUNNERS=1`) starts them again once the page
+  reconnects and names the same heroes (same id and name, alive; a hero that is gone, renamed by a new world or dead is
+  skipped). The page's bridge reconnects by itself after a relay restart. Options: `--relay-port N`, `--vite-port N`,
+  `--no-open`, `--repo DIR` (the checkout `u` pulls). The old way, `npm run relay -- --runners` and `npm run dev` in two
+  terminals, still works. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
@@ -120,6 +134,7 @@ other. The rules:
 - `npm run lorecheck`: learning the world (#188, see "Agent player").
 - `npm run tiercheck`: tiered long-term memory (landmarks, chapters, `journal_search`, the overview, migration; see "Agent player").
 - `npm run behavior-report`, `npm run behaviorcheck`: behavior logs for review (see "Behavior logs").
+- `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player
 
@@ -144,12 +159,25 @@ is silent, and scene choices time out to the scripted branch, so the world never
   hurt, a choice, a table scene, a camp alarm: events marked `urgent=2` in `src/sim/notify.js`); once the
   minimum gap has passed (`--min-gap S`, default 20 real seconds) when the hero has unread news (an arrival,
   a vote, a party line, the narrator, an NPC); else after a heartbeat of game time (`--heartbeat MIN`,
-  default 240 game minutes). A quiet hero takes about one turn a real minute at 1x and at most one per
+  default 120 game minutes). A quiet hero takes about one turn a real minute at 1x and at most one per
   gap plus the turn at 8x; a paused world takes none; at most 2 immediate turns a real minute inside the gap.
   The runner stops when the hero dies or leaves agent play, and after `--max-fails N` (default 5) failed or
-  empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. An older relay or page
+  empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. More triggers (`src/sim/wakes.js`, `npm run wakecheck`): XP since the hero's last read is one bundled soft line ("+85 XP from 3 kills (...); 120 XP to level 4"), plus loot and quest progress and an elite kill (soft); a level up (names the ability, passive or level-10 path it opens), a rare or epic drop and a finished quest start the turn at once. Agent-played heroes only; no RNG. An older relay or page
   without `/play/pace` falls back to real time as if at 1x. A local (Ollama) runner has no turn cap unless
   `--max-turns` is given (it runs until stopped); Claude and OpenAI keep 20 turns and the budget.
+- Start gate (#222, extends the run gate #171 in `src/ui/rungate.js`): a seat is **ready** only after its runner
+  completed one warm-up model call with the model it plays (and the shared `num_ctx`, #221): before its first turn
+  every runner (hero, Fellowship member, DM; `scripts/warmup.mjs`) posts `POST /play/ready {hero|role:'dm', runner,
+  state:'warming'}`, makes one tiny structured call (Ollama `chat()` through the runner's queue, else the adapter's
+  `call()`), then `{state:'ready', ms}` or `{state:'failed', error}`. Readiness belongs to the runner that reported
+  it, so a restarted runner starts over; `/play/health` shows `heroes[].ready` (+ `warm`) and `dm.ready`, and the
+  page gets it with the links. The page holds the world (after Continue, a new world, any runner start) until every
+  living Fellowship seat and the open DM seat are ready; the banner reads "WAITING FOR MINDS · 3/5 READY" with each
+  seat's state ("loading qwen2.5:14b (40 s)", "claimed", "warm-up failed: ...") and **Start anyway** (waives the
+  seats as they are; a waived seat whose runner goes away must warm up again). Party frames and the DM frame show
+  claimed / warming up / ready / warm-up failed. `play-headless --wait-ready` holds a headless world the same way
+  (every living agent hero and the open DM seat); without the flag headless runs as before. A failed warm-up never
+  stops the runner. `npm run localcheck` (slow and crashing mock warm-ups) and `npm run uismoke` cover it.
 - Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
   game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in
   the Agent tab, with "Last agent order: N game min ago"): rest when hurt, hunt again when its last order was
@@ -229,6 +257,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   takes `prey` (a creature known by name) or whatever is around except what it learned to fear; `list_jobs` gives the
   gate's rumour, not "fits"; townsfolk warn a green blade off the next region up. Background heroes keep the scripted
   level logic and never get lore; the hooks only touch `a.player` heroes, so `npm run sim` is unchanged.
+- New world under the same ids (#219): New World reuses hero ids, so a runner that holds ids would play nobody. Hero and Fellowship runners poll `/play/health` (`watchWorld` in `scripts/pacing.mjs`) and, when a held id now names another hero (the name differs; the world instance id will be compared too once `/play/health` carries it as `world`), release their claims and exit with code 75 (`NEW_WORLD_EXIT`, `[world] a new world: ...` line). The supervisor (`scripts/runners.mjs`) restarts a runner that exits 75 with the same request after `RESTART_MS`, at most `MAX_RESTARTS` in a row without a turn; the restart sets the old sessions aside in `logs/agents/old/`. A DM runner whose seat is closed (a new world starts with it closed) says so in its `[pace]` line (the DM frame shows it) and waits for Open seat.
 - Memories (#155, `src/sim/notebook.js`): every agent hero keeps its own searchable notes with `remember {title,
   text, tags[], about?}`, `recall {query?, tag?, about?, id?, n?}` (title and tag words 3, about 2, text 1, +1 pinned,
   plus recency; a tag or about filters), `update_memory`, `forget` and `pin`; 200 notes of 600 characters, the oldest
@@ -239,7 +268,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   tools over its four note sections (search across them; `dm_status.relevant_notes`). Mirrored read-only as Markdown
   by the relay (from the page) or the headless world: `logs/agents/<world>/<heroId>-<name>/memory/` (`MEMORY.md`
   plus `<id>-<slug>.md` with front matter), the DM under `dm/memory/`; never read back. `--no-mirror` (or
-  `RELAY_MIRROR=0`) turns the files off. The Memory tab and the DM panel's **Notes** filter show them.
+  `RELAY_MIRROR=0`) turns the files off. A replaced world is purged: every world carries an instance id (`S.worldId`, new at `init()`, saved with the world, given to an older save on load; never read by `step()`), the page's hello and `play-headless` send it, and `logs/agents/<world>/.world` records the last one. A different id (a New World, an Import of another save, `--fresh`) deletes that world's hero folders and `dm/` (`purgeWorld` in `scripts/memory-mirror.mjs`) and logs `[mirror] new <world> world: purged N old memory folders`; the same id on reload purges nothing; links and anything outside `<root>/<world>` are never touched; session files are left to the runners. The Memory tab and the DM panel's **Notes** filter show them.
 - Tiered memory (#153, `src/sim/tiers.js`, `a.tiers`): agent heroes and Fellowship members keep **landmarks** outside
   every rolling cap (a companion's death, joining or leaving the Fellowship, levels 5/10/15/20, Crypt clears, a boss or
   named elite slain, a nemesis taken or paid, and entries written with `journal_write {landmark: yes}`, 3 a day; 30
@@ -266,6 +295,21 @@ is silent, and scene choices time out to the scripted branch, so the world never
   counts memories per member, the report has "Memories written per member per game day" and a `no-memories` anomaly
   after 2 game days without one (`BW.NO_NOTES_MIN`). `--no-reflect` or `AGENT_REFLECT=0` turns reflection turns off for a runner
   (the checks that count exact turns do; `--reflect` turns them back on).
+- Quest log (`src/sim/questlog.js`, the dossier's Quest tab): a hero's quests in one list, each `{id, kind: board|dm|oath, title,
+  giver, where, objective, progress, reward, status: active|held|done|failed|abandoned|expired, focus, started, ends, from}`;
+  `questLog(a) -> {active, done (newest first, 20 for agent and Fellowship heroes, 8 for scripted), focus, offered}` (read-only, no dice,
+  re-exported from `src/sim/index.js`). Kinds: board = the kill quest (`a.quest`) and town-board, townsperson and follow-up jobs; dm =
+  jobs the DM agent posted (`h.by`, "DM agent") and the scripted DM's Fellowship-first jobs (`h.ff`, "scripted DM"), and a staged scene
+  the hero sits in at the table; oath = the oath (`a.goal`) and blood debts (`a.nemesis`, at most 3 listed). Agent heroes hold up to
+  `QL.MAX` 5 quests plus oaths: `quests`, `take_quest {id}` (a board job in town, or a job offered to the hero by name anywhere; the
+  hook waits as phase `taken` for `K.MAX_DAYS` game days), `focus_quest {id}` (a job in focus is `a.adv` and the DM leads it; the
+  running one is set aside, `adv.held`: foes gone, scene kept, still goes cold; focusing the kill quest or the oath sets it aside too; a
+  held adventure is taken up again when its solo or leading hero, with nothing queued, comes within `QL.NEAR` 6 tiles of its next
+  scene), `abandon_quest {id, reason?}` (a taken job goes back on the board; a running one ends as abandoned, for the party when the
+  leader gives it up; oaths and debts refuse). `take_adventure` on a new job sets the running one aside instead of refusing. The pace
+  brief carries `quest {focus, id, others}`, every turn prompt names it (`questNote` in `scripts/pacing.mjs`). The hero's view never
+  says who made a job; scripted heroes keep one kill quest and one adventure (a seeded world is unchanged). Old saves need no migration:
+  with no `a.qlog` the running adventure, else the kill quest, is the focus.
 - `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
   the journal and a save/restore, proves a silent agent never stalls the world, and runs two
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
@@ -327,6 +371,16 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Everyone at once (owner request): `PLAY` in `src/sim/table.js` says per scene kind how it is played. `turns`
+  (elite, ambush, boss, rescue, Crypt site/room): initiative order, one act changes the next. `all` (decision =
+  every vote incl. break_camp, check, choice, staged meeting/social/trap/mystery): every member present gets the
+  scene at the same moment (a must-answer event), `your_turn` is true for each until it answers (then `wait` is
+  allowed), answers come in any order, and each live agent has its own `turnMs` nudge and `liveMs` wait side by
+  side (not summed). Once nobody is waited on, the acts resolve in Fellowship slot order (never arrival order;
+  reflexes chosen then), and a staged scene gets one combined outcome call for the DM instead of one per act.
+  Only members within shouting range (#182) of the scene's anchor (a vote: its voters) take part. `tableView`
+  adds `everyone_answers`, `answered` ("3/5") and `waiting_on`; the banner shows EVERYONE ANSWERS and
+  "3/5 answered · waiting for Fena, Maelell". A kind not in the table plays in turns.
 - Forced scene turns (#163): a local or OpenAI member whose own scene is open (the pace brief's `scene`: its
   legal option keys, incl. ready abilities by id) gets one structured answer (Ollama `format` / OpenAI strict
   json_schema: `{option: enum, line}`) and the runner sends `scene_act` itself; Claude keeps tool use, with one
@@ -637,7 +691,7 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   sim facts (scripted, or enriched once through the relay) and `fellowCard` for prompts;
   `memory.js` per-member recent memories, long-term summary and companion stances;
   `council.js` party chat, proposals and votes, `lead_to`, splitting off and the all-or-none
-  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `dmagent.js` the DM seat and its tools (#66); `staged.js` the DM agent's staged scenes and its at-the-table calls (#132).
+  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `questlog.js` the quest log (several quests per hero, one in focus); `dmagent.js` the DM seat and its tools (#66); `staged.js` the DM agent's staged scenes and its at-the-table calls (#132).
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night

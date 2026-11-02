@@ -207,7 +207,7 @@ At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/
 | --- | --- | --- | --- | --- | --- |
 | Warrior | **Warden** | Grit, Presence / Empathy | Warden's Vow (+5% Defense, +4% Health) | **Shield Cover** (ward a friend, 55%) | the one who stands guard |
 | Warrior | **Reaver** | Brawn, Reflex / Tracking | Reaver's Fury (+5% Crit, +15% opener) | **Cleaving Sweep** (90% to every foe beside you) | trades safety for killing speed |
-| Mage | **Runescribe** | Wits, Reflex / Perception | Great Runes (+5% Crit, +20% opener) | **Twin Lance** (150%, +20% crit) | the great runes |
+| Mage | **Runescribe** | Wits, Reflex / Perception | Great Runes (+5% Crit, +20% opener) | **Twin Lance** (150%, +20% crit) | writes the runes large and strikes first |
 | Mage | **Rimekeeper** | Wits, Grit / Survival | Frostbound (+4% Defense, +6% Health) | **Winter's Hold** (one foe loses 5 s) | frost that holds a foe still |
 | Hunter | **Stalker** | Insight, Reflex / Traps | Steady Aim (+7% Crit) | **Heartseeker** (240%, +20% crit) | the patient single shot |
 | Hunter | **Trapper** | Wits, Insight / Lore | Ground-Lore (+4% Defense, blows at 96%) | **Thornfield** (50% and 3 s to every foe near) | snares a whole pack |
@@ -215,6 +215,8 @@ At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/
 | Priest | **Mender** | Insight, Presence / Empathy | Tenderness (healing +20%) | **Mending Touch** (heal one friend) | gives everything to the wounded |
 | Rogue | **Cutthroat** | Reflex, Brawn / Perception | Deadly Opening (+4% Crit, +25% opener) | **Backstab** (220%, +30% crit) | lives for the opening |
 | Rogue | **Trickster** | Wits, Presence / Lore | Nimble (blows at 92%) | **Dirty Trick** (foe loses 3 s and takes 20% more for 8 s) | wins by misdirection |
+
+The **Warden** path is a living warrior's vow to stand guard over friends; it has nothing to do with the undead wardens of the Sunken Crypt (Lich-Warden Vesk and his Grave Wardens), who guard the dead. The word is shared, the calling is not. Trapper: Thornfield now also opens on one worthwhile foe (an elite, a boss, a duellist or a mob near the Trapper's level), not only on a pack; Mender: Mending Touch answers a friend below 72% health.
 
 ## Bonds and blood debts
 Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,
@@ -818,3 +820,20 @@ When night falls (21:00 to 03:00) or the company is worn thin, and the whole Fel
 ## Memorials
 
 Eldmoor remembers its dead where they fell. A hero who dies in the wild leaves a small **wayside stone** carved with their name and level, and the stones stay long after the grave-digger has cleared the common graves; the oldest are cleared first once there are sixty, but a Fellowship member's stone and a legend's are never taken. A hero who reaches **level 20**, or who falls at level 15 or higher, is given a **statue** in the square of their home town (three at most per town; a greater legend displaces the weakest) with a plaque of their name and level. When Kragmaw is slain the **lava ring of its lair cools to black rock** and a loot-cave opens at its heart, "Kragmaw's hoard", until the wyrm wakes. These are watcher-facing markers, not places heroes travel to. Code: `src/sim/memorials.js`, `src/render/memorials.js`.
+
+## Campaign seeds
+
+DM-only starting narratives, one per world map, in `docs/campaigns/` (`eldmoor.md`, `stepping.md`). The DM agent receives them as private notes when a new world begins; heroes never read them, and the DM reveals them only through play (narrate, npc_say, hooks, staged scenes, marks). Format is fixed: Premise, Threads, Characters, Plans, Secrets. Added 2026-11-01.
+
+New names (townsfolk names are rolled per world and are not canon; these placed people are):
+- **The Lantern Road**: the old road from Highgate and Grimhold to the crossroads, lined with lanternstones.
+- **Ossian Vael, the Drowned King**: lit the lanternstones from a spark of Kragmaw's fire and drowned his court in the Sunken Crypt under Lich-Warden Vesk. Source of the Drowned King's Signet.
+- **The Rookscar toll**: the Rookscar are the last road-wardens of the Drowned King; their Toll-Token is their pay-slip. Their reeve on the Mirefen road is **Black Tam Harrow** (Black Tam is an existing road-boss name).
+- **Edrin Pask**: wagon merchant, carries Shrine Candle-Stubs.
+- **Mother Ysmay**: the Causeway Hermit of Mirefen, counts a drowned king's causeway stones.
+- **Old Vrogg**: Warband sellsword with a half-burnt oath-knife.
+- **Hesper Wain**, Cairn-Keeper (Stepping Lands): last of the waymark keepers.
+- **Sister Maud Orrin**: Concord pilgrim-priest walking the Stair.
+- **The Pilgrim's Stair** (Stepping Lands): the line of waymark-cairns from Lowmark to Palereach.
+- **The Compact of Four Pages** (Stepping Lands): one page in each home town (Highgate debts, Cairnmoot the route, Grimhold the salt-song, Murkstead the names).
+- Endings named in the Eldmoor seed: **the Kept Light**, **the Dark Road**, **the Unowned Flame**.

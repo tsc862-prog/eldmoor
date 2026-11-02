@@ -48,7 +48,8 @@ import {weatherName,sightMul,isStorm} from './weather.js';
 import {record,asSrc} from './history.js';
 import {fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
-import {dmDepart,advLine,K as DMK} from './dm.js';
+import {dmDepart,advLine,K as DMK,holdAdventure,resumeAdventure,beginJob,abandonAdventure} from './dm.js';
+import {questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard} from './persona.js'; // Fellowship (#68)
 import {ev} from './notify.js';
@@ -58,7 +59,7 @@ import {tiersOf,spillEntry,ownMark,overview as journalOverview,search as journal
 import {moment,talked,REFLECT} from './reflect.js'; // reflection moments (#179)
 // making camp is a reflection moment for each agent-played member at the fire (camp.js event 'make', #178/#179)
 onCamp((kind,g,d)=>{if(kind!=='make'||!g)return;for(const id of g.ids||[])moment(S.agents.find(x=>x.id===id),'camp',d&&d.zone)});
-import {reflexMay} from './runlink.js';
+import {reflexMay,agentLive,hasLinks} from './runlink.js';
 import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead,makeMeeting,hearNote} from './council.js';
@@ -68,6 +69,7 @@ import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second i
 import {MOVES} from '../data/moves.js';
 import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,preyKey,pickPrey,npcWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
+import {actFlee,fights,actionLog} from './actlog.js';
 import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
 import {SPEC_LVL} from '../data/classes.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
@@ -84,6 +86,8 @@ export const PK={
   RATE:12,           // world-changing tool calls per game hour
   HEAR_WAKE:15,      // game minutes: an agent's line heard starts the listener's turn at most this often (#126)
   IDLE:120,          // game minutes without a command or an action before autopilot carries on for the agent (#126)
+  HOLD:180,          // game minutes at most that autopilot holds (starts nothing new) while the agent's turn is open (#240)
+  STALE:15,          // game minutes after a look before tool results say how old the agent's view is (#240)
   WAIT:[10,240],     // game minutes a wait may span
   WAIT_REAL_MS:45000,// a wait never holds the agent longer than this in real time (paused world, hidden tab)
   JOURNAL:100,JOURNAL_LEN:600,LOG:40,EV:40,EV_OUT:15,NARR:20,SAY_LEN:200, // EV_OUT: events handed back per tool result
@@ -123,9 +127,37 @@ function autopilot(a){const mh=maxHp(a),field=(a.state==='hunt'||a.state==='trav
   const o=a.playOrder;if(o&&o.kind==='hunt')return {kind:'hunt',n:o.n,k0:a.kills,flee:o.flee,prey:o.prey,auto:'hunting again (your last order: hunt '+o.n+')',label:'hunt'};
   return null}
 
+// ---- the agent's turn and its last look (issue #240) ----
+// A local model's turn can take a game hour at 1x. While the hero's turn is open (from the pace wake, or the first tool
+// call, until the runner's next pace call or a wait) autopilot finishes what it is doing (a fight resolves, a walk or a
+// rest goes on, a reflex flees) but starts nothing new: no autopilot rest or hunt, no new prey, no walk home with a full
+// pack, no following the party out of town. Capped at PK.HOLD game minutes, and off once a host says no runner holds it.
+export function turnStart(a){if(a&&a.player)a.playTurn=S.gameMin}
+export function turnEnd(a){if(a)a.playTurn=null}
+export const turnHeld=a=>!!(a&&a.player&&a.playTurn!=null&&S.gameMin-a.playTurn<PK.HOLD&&(!hasLinks()||agentLive(a)));
+const clockAt=gm=>{const m=Math.floor(gm)%1440;return 'Day '+(Math.floor(gm/1440)+1)+' '+String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
+const fighting=a=>(a.state==='fight'||a.state==='duel'||a.state==='assist')&&a.target&&alive(a.target)?a.target:null;
+const whereOf=a=>{const c=cityAt(a);return c?c.name:ZONES[zoneAt(a.x,a.y)]||'the wilds'};
+const stateWord=s=>({town:'in town',hunt:'out in the field',travel:'on the road',return:'heading home',fight:'fighting',duel:'in a duel',assist:'helping in a fight',follow:'following the party',dungeon:'in '+CRYPT.name,raid:'on a raid',ghost:'a ghost'})[s]||s;
+// What the agent saw: game time, place, state, foe, what it was doing (look, status, the turn's state header).
+export function lookSnap(a){if(!a||!a.player)return;const f=fighting(a);
+  a.playLook={gm:S.gameMin,x:a.x,y:a.y,state:a.state,where:whereOf(a),doing:a.playDoing||null,foe:f?{id:f.id,name:foeName(a,f)}:null,ev:a.playEvN||0,kills:a.kills}}
+// Why an order no longer fits: what changed since that look, or null when nothing did.
+function sinceLook(a,args){const L=a.playLook;if(!L)return null;const out=[],f=fighting(a);
+  if(L.foe&&(!f||f.id!==L.foe.id)){const t=findTarget(L.foe.id);out.push('the fight with '+L.foe.name+' is over'+(t&&!alive(t)?' ('+(t.kind==='mob'?'it is dead':L.foe.name+' has fallen')+')':''))}
+  if(a.kills>L.kills)out.push((a.kills-L.kills)+' kill'+(a.kills-L.kills>1?'s':'')+' made');
+  const w=whereOf(a);if(w!==L.where)out.push('you were in '+L.where+', now you are in '+w);else if(dist(a,L)>3)out.push('you moved '+Math.round(dist(a,L))+' tiles');
+  if(a.state!==L.state)out.push('you were '+stateWord(L.state)+', now you are '+stateWord(a.state));
+  if(a.playIdle&&a.playDoing)out.push(a.playDoing);
+  if(!out.length)return null; // nothing moved on: the refusal stands as it is
+  const tid=args&&args.target_id!=null?Number(args.target_id):null;
+  if(tid!=null&&Number.isFinite(tid)){const t=findTarget(tid);out.push(!t||(t.kind==='mob'&&t.gone)?'target #'+tid+' is gone':!alive(t)?'target #'+tid+' is dead':t.hidden?'target #'+tid+' is out of sight':dist(a,t)>sightOf(a)?'target #'+tid+' is out of sight ('+Math.round(dist(a,t))+' tiles off)':'target #'+tid+' is '+r1(dist(a,t))+' tiles away')}
+  const evs=(a.playEv||[]).filter(e=>e.n>L.ev).slice(-3).map(e=>e.t+' '+e.text);
+  return 'Since your last look ('+clockAt(L.gm)+', '+Math.round(S.gameMin-L.gm)+' game min ago): '+out.join('; ')+'.'+(evs.length?' Lately: '+evs.join(' / '):'')+' look() to see the world as it is now.'}
+
 // ---- marking ----
 export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
-  if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
+  if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
     ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');return true}
@@ -151,7 +183,8 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   // The agent stays the hero's mind; until it acts again the hero carries on its last order and does what a
   // reflex would (rest when hurt, follow the party, fight back, go home when hurt or full), never the scripted rules.
   const lastAct=a.playActAt??(a.playActAt=S.gameMin);
-  if(!cmdOf(a)&&!adv&&!tableView(a)&&S.gameMin-lastAct>=PK.IDLE){if(!a.playIdle){a.playIdle=true;ev(a,'No order from you for a while: autopilot carries on (your last order, rest when hurt, follow the party). Any command takes over.')}
+  // ...but not while the agent's turn is open (#240): it is deciding right now, so nothing new starts under it.
+  if(!cmdOf(a)&&!adv&&!tableView(a)&&S.gameMin-lastAct>=PK.IDLE&&!turnHeld(a)){if(!a.playIdle){a.playIdle=true;ev(a,'No order from you for a while: autopilot carries on (your last order, rest when hurt, follow the party). Any command takes over.')}
     const ap=autopilot(a);if(ap){a.pq=[ap];a.playAuto=ap.label}}
   else if(a.playIdle&&S.gameMin-lastAct<PK.IDLE){a.playIdle=false;a.playAuto=null}
   const cmd=cmdOf(a);
@@ -202,7 +235,7 @@ function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kil
 
 function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*dt);
   // Fellowship (#68): with nothing else to do, a member follows the leader out of town (leave_party to stay)
-  if(!cmd&&a.party&&a.party.fellow&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil){const c=homeOf(a);
+  if(!cmd&&a.party&&a.party.fellow&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil&&!turnHeld(a)){const c=homeOf(a);
     cmd={kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'town'}],last:'hunt',label:'the gate, following '+a.party.leader.name};a.pq=[cmd];ev(a,'The party is out with '+a.party.leader.name+'; you follow them out of '+c.name+'.')}
   if(cmd&&cmd.kind==='move')return travel(a,dt,cmd);
   if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||a.hp>=mh)done(a,'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
@@ -235,12 +268,13 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
     if(left<=0){done(a,'Hunt done: '+cmd.n+' kill'+(cmd.n>1?'s':'')+'. HP '+pct(a.hp,mh)+'%.');return true}
     if(a.hp<mh*PK.RETREAT*tm(a,'retreat')){done(a,'Too hurt to keep hunting ('+pct(a.hp,mh)+'% HP).');return true}
     if(isStorm(a.zone)&&!cmd.stormSaid){cmd.stormSaid=true;ev(a,'A storm rolls over '+ZONES[a.zone]+'.',true)}
+    if(cmd.auto&&turnHeld(a)){a.moving=false;a.dest=null;return true} // autopilot's hunt picks no new prey while the agent's turn is open (#240)
     a.scan-=dt;if(a.scan<=0){a.scan=.5;const m=pickPrey(a,cmd);if(m){a.target=m;a.state='fight';a.dest=null;return true}}
     if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;return true}
   if(cmd){done(a,'Cannot '+cmd.kind+' here.');return true}
   // idle reflex: a full bag goes home to be sold
   a.moving=false;
-  if(load(a)>=PK.BAG){const c=homeOf(a);a.pq=[{kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (pack full)'}];ev(a,'Your pack is full of loot; heading home to sell.',true)}
+  if(load(a)>=PK.BAG&&!turnHeld(a)){const c=homeOf(a);a.pq=[{kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (pack full)'}];ev(a,'Your pack is full of loot; heading home to sell.',true)}
   return true}
 
 function fight(a,dt,cmd){const m=a.target,mh=maxHp(a);a.cd-=dt;
@@ -261,7 +295,7 @@ function flee(a,reflex){const t=a.target,c=homeOf(a);
   a.pq=[{kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'}],last:'town',label:c.name,flee:true}];
   if(t&&t.kind==='hero'&&(a.state==='duel'||a.state==='assist')){if(t.target===a&&t.state==='duel'){t.state='hunt';t.target=null}a.target=null;a.state='return'}
   else{if(t&&t.target===a)t.target=null;a.target=null;a.state='return';if(t&&t.kind==='mob')fleeCheck(a,t)}
-  pop(a.x,a.y-.8,'FLEE','#ffb060');ev(a,(reflex?'Your nerve breaks at '+pct(a.hp,maxHp(a))+'% HP: ':'')+'Fled toward '+c.name+'.',true);
+  actFlee(a);pop(a.x,a.y-.8,'FLEE','#ffb060');ev(a,(reflex?'Your nerve breaks at '+pct(a.hp,maxHp(a))+'% HP: ':'')+'Fled toward '+c.name+'.',true);
   say(a,'flee',{mob:t&&t.kind==='mob'?mobName(t):'them'})}
 
 const alive=t=>t&&(t.kind==='mob'?t.alive&&!t.gone:t.state!=='dead');
@@ -350,7 +384,7 @@ const T={
       weather:weatherName(z),you:{hp:pct(a.hp,maxHp(a))+'%',state:a.state,doing:a.playDoing||null},sight:here?'the whole town':Math.round(sightOf(a))+' tiles',...s};
     const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv;
     const near=LANDMARKS.filter(l=>dist(a,l)<20).map(l=>l.name+' ('+r1(dist(a,l))+' tiles)');if(near.length)r.landmarks=near;
-    return r},
+    lookSnap(a);return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
     const r={ok:true,name:a.name,people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,home:c.name,level:a.lvl,
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
@@ -363,12 +397,13 @@ const T={
     if(a.party&&a.party.leader===a)r.party_lead=true;
     const cv=campView(a);if(cv)r.camp=cv;
     if(adv)r.adventure=plain(advLine(a));const ch=choiceInfo(a);if(ch)r.choice=ch;
+    {const L=questLog(a),fq=L.active.find(q=>q.focus);if(fq)r.quest_focus=fq.title+(L.active.length>1?' (and '+(L.active.length-1)+' more: quests)':'')}
     if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc;const P=a.party&&a.party.fellow?a.party:null;if(P){r.party_leader=P.leader.name;if(P.dest)r.party_heading=P.dest.label}
       const op=openProps().map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name);if(notTold(a))r.warning=NOT_TOLD;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
     // only the places this hero knows (#188); the rest of the world is learned by going there or hearing of it
     r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...placesView(a),...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];r.explore='a direction (north, south, east, west, northeast, ...) or "x,y" takes you where you have never been';
-    return r},
+    lookSnap(a);return r},
   inventory(a){const slots={};for(const k of SLOTS){const it=a.slots&&a.slots[k];slots[k]=it?itemText(it):null}
     // Only this hero's own pack (inventory, #124): stacks, spare gear, consumables and quest items, by index.
     return {ok:true,gold:a.gold,slots,capacity:{used:used(a),max:capOf(a)},items:invOf(a).list.map((e,i)=>({index:i,kind:kindOf(e),item:entryText(e)}))}},
@@ -385,6 +420,8 @@ const T={
     if(M.swing)a.cd=Math.max(a.cd,0)+1.1; // an attack ability takes the place of a weapon blow
     if(t&&t.kind==='mob'&&M.target==='foe'){if(!t.target)t.target=a;if(a.state==='hunt'||a.state==='travel'){a.state='fight';a.target=t;a.dest=null}}
     return {ok:true,result:r.text,hp:pct(a.hp,maxHp(a))+'%',cooldown_s:M.cd}},
+  combat_log(a,{n}){const k=Math.max(1,Math.min(10,Math.round(Number(n))||3)),fs=fights(a,k);
+    return {ok:true,fights:fs.map(f=>({...f,minutes_ago:Math.round(S.gameMin-f.end)})),recent:actionLog(a,{n:12}).map(e=>({min_ago:Math.round(S.gameMin-e.t),kind:e.kind,target:e.target,name:e.name,amount:e.amount,crit:e.crit||undefined}))}},
   choose_specialisation(a,{path}){const key=String(path==null?'':path).toLowerCase().replace(/[^a-z]/g,'');
     const id=specChoices(a).find(x=>x.id===key||x.name.toLowerCase().replace(/[^a-z]/g,'')===key);
     const err=specBlock(a);need(!err,err);need(id,'Not a path for a '+a.cls+'. Yours: '+specChoices(a).map(x=>x.name).join(', ')+'.');
@@ -450,17 +487,56 @@ const T={
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
     need(!(a.party&&a.party.leader!==a),'Your party leader decides which job the party takes.');
     const mine=advOf(a);
-    if(mine){need(mine.id===id,'You already have an adventure ('+mine.title+', id '+mine.id+'). Resume it with that id.');
-      a.pq=[];const ok=dmDepart(a,c);need(ok,'The adventure could not resume.');return {ok:true,resumed:mine.title,scene:plain(advLine(a))}}
+    if(mine&&mine.id===id){a.pq=[];const ok=dmDepart(a,c);need(ok,'The adventure could not resume.');return {ok:true,resumed:mine.title,scene:plain(advLine(a))}}
+    if(heldOf(a).some(v=>v.id===id)||takenOf(a).some(h=>h.id===id))return T.focus_quest(a,{id:'job:'+id}); // one you hold: focus it (the quest log)
+    if(mine)need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');
     const h=(S.adventures||[]).find(x=>x.id===id&&x.phase==='open'&&x.town===c.name);need(h,'No open job '+id+' at '+c.name+'.');
     const w=jobFit(a,h,mem);need(!w,'The job-giver turns you away: '+w+'.');
     // Offer only this job to the DM: the others are held back for the moment and the job is
     // marked as personal to this hero, so the scripted DM's pickHook takes it without a roll.
     const held=(S.adventures||[]).filter(x=>x!==h&&x.phase==='open'&&x.town===c.name);for(const x of held)x.phase='held';
-    const forWas=h.for;h.for=a.id;a.pq=[];let ok=false;
-    try{ok=dmDepart(a,c)}finally{for(const x of held)if(x.phase==='held')x.phase='open';if(h.phase==='open'||forWas==null)h.for=forWas}
-    need(ok&&a.adv===h.id,'The job-giver turned you away.');
-    const adv=advOf(a);return {ok:true,adventure:adv.title,scenes:adv.scenes.length,scene:plain(advLine(a)),note:'The adventure now leads you. Scene choices wait for choose(); fights are real.'}},
+    const forWas=h.for;h.for=a.id;a.pq=[];let ok=false,setAside=null;
+    try{if(mine)setAside=holdAdventure(a);ok=dmDepart(a,c)}finally{for(const x of held)if(x.phase==='held')x.phase='open';if(h.phase==='open'||forWas==null)h.for=forWas}
+    if(!(ok&&a.adv===h.id)){if(setAside)resumeAdventure(a,setAside);need(false,'The job-giver turned you away.')}
+    setFocus(a,jobId(h));const adv=advOf(a);return {ok:true,adventure:adv.title,scenes:adv.scenes.length,scene:plain(advLine(a)),set_aside:setAside?setAside.title:undefined,note:'The adventure now leads you. Scene choices wait for choose(); fights are real.'+(setAside?' '+setAside.title+' waits in your quest log (focus_quest to go back to it).':'')}},
+  // ---- the quest log (sim/questlog.js): several quests, one in focus ----
+  quests(a){return {ok:true,...questsView(a)}},
+  take_quest(a,{id}){const n=parseJob(id);need(n!=null,'Give a job id (job:42 or 42) from list_jobs or quests.');
+    const h=(S.adventures||[]).find(x=>x.id===n);need(h&&h.phase!=='done','No job '+n+' is open.');
+    need(!(h.phase==='taken'&&h.taker===a.id)&&!(h.phase==='active'&&(h.held===a.id||h.mem&&h.mem.includes(a.id))),'You already hold that one: focus_quest {id: "job:'+n+'"}.');
+    need(h.phase==='open','Someone else has that job.');
+    const c=homeOf(a),mine=h.for===a.id;
+    need(h.town===c.name&&(mine||inTown(a)),h.town!==c.name?'That job is posted in '+h.town+', not your town.':'Take a posted job at your town board: go home first.');
+    need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');
+    const w=jobFit(a,h,[a,...(a.party&&a.party.leader===a?partyMates(a):[])]);need(!w,'The job-giver will not give it to you: '+w+'.');
+    h.phase='taken';h.taker=a.id;h.takenAt=Math.round(S.gameMin);h.until=S.gameMin+DMK.MAX_DAYS*1440;if(h.zone!=null&&ZONES[h.zone])learnPlace(a,ZONES[h.zone],'told');
+    const q=questLog(a).active.find(x=>x.id==='job:'+n),t=q?q.title:jobText(h);record(a,'Took a job: ',{t,c:'gd'},' ('+(h.giver?h.giver.name:'the board')+').');
+    return {ok:true,took:t,id:'job:'+n,holding:heldCount(a)+'/'+QL.MAX,note:'It waits in your quest log for up to '+DMK.MAX_DAYS+' game days: focus_quest {id: "job:'+n+'"} to set out on it.'}},
+  focus_quest(a,{id}){const q=findQ(a,id);need(q,'You hold no quest "'+id+'". quests lists them.');
+    if(q.focus)return {ok:true,focus:q.title,note:'Already your focus.'};
+    need(!/^scene:/.test(q.id),'A scene at the table needs no focus: answer it with scene_act.');
+    need(!['fight','duel','assist','dungeon','raid','ghost','camp'].includes(a.state),'Not now ('+a.state+'): finish what you are in first.');
+    need(!tableView(a),'Not while a scene is open at the table.');
+    const run=advOf(a),lead=!(a.party&&a.party.leader!==a);
+    need(lead||!run,'Your party is on '+(run&&run.title)+'; your leader decides what the party pursues.');
+    const n=parseJob(q.id);
+    if(n!=null){need(lead,'In a party, the leader picks the party\'s job.');
+      const h=(S.adventures||[]).find(x=>x.id===n);need(h,'That job is gone.');let adv;
+      if(h.phase==='taken'){const r=beginJob(a,h);if(typeof r==='string')throw new Rule('You cannot set out on it now: '+r+'.');adv=r}
+      else{adv=resumeAdventure(a,h);need(adv,'That adventure is over.');if(a.state==='town')dmDepart(a,homeOf(a))}
+      a.pq=[];setFocus(a,q.id);const held=questLog(a).active.filter(x=>x.status==='held').map(x=>x.title);
+      return {ok:true,focus:adv.title,scene:plain(advLine(a))||undefined,held:held.length?held:undefined,note:'The adventure leads you now; what you set aside waits in your quest log.'}}
+    let aside=null;if(run)aside=holdAdventure(a);setFocus(a,q.id);
+    return {ok:true,focus:q.title,set_aside:aside?aside.title:undefined,note:aside?aside.title+' waits where it stands (focus_quest it, or come back near its place).':undefined}},
+  abandon_quest(a,{id,reason}){const why=clean(reason,120)||null,q=findQ(a,id);need(q,'You hold no quest "'+id+'". quests lists them.');
+    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own.');
+    need(!/^scene:/.test(q.id),'You are in that scene; it ends at the table.');
+    if(/^kill:/.test(q.id)){killAbandoned(a,why);a.quest=null;record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'The quest giver has another for you at turn_in.'}}
+    const n=parseJob(q.id),h=(S.adventures||[]).find(x=>x.id===n);need(h,'That job is gone.');
+    if(h.phase==='taken'){h.phase='open';h.taker=null;takenGone(a,h,'abandoned',why);if(S.gameMin>h.until)S.adventures.splice(S.adventures.indexOf(h),1);
+      record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'It goes back on the board.'}}
+    if(why)h.quitWhy=why;const lead=h.lead===a.id||h.held===a.id;abandonAdventure(a,h);record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');
+    return {ok:true,abandoned:q.title,note:lead?'It ends here, for anyone who was on it with you.':'You leave it to the others.'}},
   choose(a,{option}){const o=clean(option,4).toLowerCase();need(o==='a'||o==='b','Choose "a" or "b".');const adv=advOf(a),p=adv&&adv.pick;
     need(p&&adv.stage==='choose'&&!p.chosen,'No choice is waiting for you.');need(S.gameMin<p.until,'Too late: the moment passed.');
     p.chosen=o;return {ok:true,chose:o+') '+p.opts[o]}},
@@ -546,12 +622,14 @@ const T={
   send_courier(a,{to,text}){need(a.fellow,'Only a Fellowship member can hire the Fellowship courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
   scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
-    return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
+    return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
     if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&S.table.ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
     const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS}}},
 };
+// A quest the hero holds, by its id from quests (a bare number is a job id).
+function findQ(a,id){const L=questLog(a),s=String(id==null?'':id).trim(),n=parseJob(s);return L.active.find(x=>x.id===s)||(n!=null?L.active.find(x=>x.id==='job:'+n):null)||null}
 function propText(P){const v=Object.keys(P.votes||{}).length;return '#'+P.id+' '+P.kind+': '+P.details+' (by '+P.byName+', '+v+' vote'+(v===1?'':'s')+(P.status!=='open'?', '+P.result:'')+')'}
 function cmdText(c){if(c.kind==='move')return (c.flee?'flee to ':'walk to ')+c.label;if(c.kind==='hunt')return 'hunt ('+c.n+' kills)';if(c.kind==='rest')return 'rest until '+Math.round(c.until)+' game-min';if(c.kind==='fight')return 'fight #'+c.id;return c.kind}
 function entryText(e){if(isGear(e))return itemText(e)+(e.cls&&!e.epic?' ['+e.cls+' gear]':'')+', sells '+SELL_VALUE(e)+'g';
@@ -578,7 +656,10 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(meta.act){const st=a.playRate||(a.playRate=[]);while(st.length&&st[0]<S.gameMin-60)st.shift();
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}
     st.push(S.gameMin)}
+  a.playFresh=false;if(tool==='wait')turnEnd(a);else if(a.playTurn==null)turnStart(a); // the turn is open while the agent calls tools; a wait hands the world back (#240)
   let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
+  if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
+  if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
   if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'&&a.pq&&a.pq[0])a.playOrder={kind:'hunt',n:a.pq[0].n,flee:a.pq[0].flee,prey:a.pq[0].prey}} // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
   logCall(a,tool,args,r);return r}
@@ -587,7 +668,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
 export function waitOver(p){const a=hero(p.hero);if(!a||a.state==='dead'||!a.player)return true;if(S.gameMin>=p.until)return true;
   return (a.playEv||[]).some(e=>e.n>p.mark&&e.u)}
 export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:false,error:'No such hero.'};
-  const r={ok:true,waited_min:Math.round(S.gameMin-p.from)};
+  const r={ok:true,waited_min:Math.round(S.gameMin-p.from)};r.as_of=day();
   if(a.state==='dead')Object.assign(r,{ok:false,dead:true,error:a.name+' died ('+(a.cause||'fallen')+'). Hardcore: one life.'});
   else{r.why=S.gameMin>=p.until?'time passed':realOut&&tableView(a)?'the world is paused for a scene at the table':realOut?'the world is paused or slow; nothing much happened':'something needs you';
     r.hp=pct(a.hp,maxHp(a))+'%';r.state=a.state;r.doing=a.playDoing||null;const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv}
@@ -599,7 +680,7 @@ export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:fals
 function logCall(a,tool,args,r){const L=a.playLog||(a.playLog=[]);
   L.unshift({t:clockStr(),d:dayNo(),tool,args:argText(args),ok:r.ok!==false,pending:!!r.pending||undefined,text:r.pending?'waiting...':summarize(r)});if(L.length>PK.LOG)L.pop()}
 const argText=x=>{if(!x||typeof x!=='object')return '';const k=Object.keys(x);return k.length?clean(k.map(j=>j+'='+(typeof x[j]==='string'?'"'+x[j]+'"':x[j])).join(' '),120):''};
-function summarize(r){if(r.ok===false)return 'x '+clean(r.error,160);const skip={ok:1,events:1,pending:1};
+function summarize(r){if(r.ok===false)return 'x '+clean(r.error,160);const skip={ok:1,events:1,pending:1,as_of:1,since_look:1,changed:1};
   return clean(Object.keys(r).filter(k=>!skip[k]).map(k=>{const v=r[k];return k+': '+(typeof v==='string'||typeof v==='number'?v:Array.isArray(v)?v.length+' item'+(v.length===1?'':'s'):v&&typeof v==='object'?'{...}':String(v))}).join(' · '),200)}
 
 // The runner's narration (the agent's own text between tool calls), for the Agent tab.

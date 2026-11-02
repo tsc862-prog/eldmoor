@@ -179,12 +179,17 @@ function readPerson(c,p,a){const want=p.want||talkOf(p).want,R=check(a,'empathy'
 // ---- the person answers ----
 // Deliver one line from the person to everyone within earshot (and the members in the conversation), tagged with the
 // conversation so a hero's agent wakes at once (sim/player.js hearWake) and the watcher's chat panel can group it.
-function speakAs(p,c,text,by,mark){const e={t:clockStr(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc',talk:c.id,dm:true,by};if(mark)e.mark=mark;
+function speakAs(p,c,text,by,mark){const e={t:clockStr(),d:gameDay()+1,from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc',talk:c.id,dm:true,by};if(mark)e.mark=mark;
   const hs=S.agents.filter(b=>living(b)&&(dist(b,p)<=HEAR||c.heroes.includes(b.id)));if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;
   for(const b of hs){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=Math.max(p.chatCd||0,10);
   c.lines.push({who:'npc',id:p.id,name:full(p),text,t:e.t,by,...(mark?{mark}:{})});c.last=Math.round(S.gameMin);
   log([full(p)+(by==='dm-agent'?' (DM agent)':'')+': "',text,'"'+(mark?' '+mark:'')],{conv:c.id,npc:p.id,who:'npc',by,text,...(mark?{mark}:{})});return e}
+// A hail (sim/locals.js): the person opens the talk. With the DM agent listening the opening is its to voice (the call waits like
+// any other, and the scripted DM fills it if the seat goes quiet); else the scripted line is spoken now. Returns true when spoken.
+export function speakAsHail(p,c,text){const a=hero(c.heroes[0]),ms=dmBudget();
+  if(ms>0&&a){const T=talkState();c.wait={call:++T.call,hero:a.id,line:'('+full(p)+' calls out to '+a.name+': '+clean(text,CONV.LEAD_MAX)+')',gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};return false}
+  speakAs(p,c,text,'scripted');return true}
 // After an answer: the last exchange closes the conversation.
 function afterAnswer(c,p){c.wait=null;if(c.state==='open'&&c.ex>=CONV.EXCHANGES)close(c,'said what they had to say')}
 

@@ -16,6 +16,8 @@
     "uismoke": "node scripts/uismoke.mjs",
     "invcheck": "node scripts/invcheck.mjs",
     "relay": "node scripts/relay.mjs",
+    "up": "node scripts/up.mjs",
+    "upcheck": "node scripts/upcheck.mjs",
     "braincheck": "node scripts/braincheck.mjs",
     "levercheck": "node scripts/levercheck.mjs",
     "play-headless": "node scripts/play-headless.mjs",
@@ -26,6 +28,7 @@
     "openaicheck": "node scripts/openaicheck.mjs",
     "runnercheck": "node scripts/runnercheck.mjs",
     "tablecheck": "node scripts/tablecheck.mjs",
+    "localscheck": "node scripts/localscheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",
     "ratecheck": "node scripts/ratecheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",
@@ -33,11 +36,14 @@
     "dmcheck": "node scripts/dmcheck.mjs",
     "channelcheck": "node scripts/channelcheck.mjs",
     "lorecheck": "node scripts/lorecheck.mjs",
+    "wakecheck": "node scripts/wakecheck.mjs",
+    "actcheck": "node scripts/actcheck.mjs",
     "tiercheck": "node scripts/tiercheck.mjs",
     "movecheck": "node scripts/movecheck.mjs",
     "behaviorcheck": "node scripts/behaviorcheck.mjs",
     "behavior-report": "node scripts/behavior-report.mjs",
-    "bestiarycheck": "node scripts/bestiarycheck.mjs"
+    "bestiarycheck": "node scripts/bestiarycheck.mjs",
+    "questcheck": "node scripts/questcheck.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.316",

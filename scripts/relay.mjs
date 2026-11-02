@@ -24,6 +24,8 @@
 // With no key the relay still runs: Claude requests fail (scripted fallback), local models work.
 // App runners: `npm run relay -- --runners` (or RELAY_RUNNERS=1) lets the game page start and stop agent
 // runners (scripts/runners.mjs: GET /play/runner, POST /play/runner/start|stop).
+// Launcher (npm run up, scripts/up.mjs): --resume-runners restarts the last run's runners (logs/runners/active.json) once the page is back;
+// --launcher (ELDMOOR_LAUNCHER=1) makes "stop" on stdin a clean quit, since Windows has no signal to send.
 // Behavior logs (issue #129): logs/behavior/<world>/{turns,decisions,world,anomalies}.jsonl for the watcher (npm run
 // behavior-report); --no-behavior or RELAY_BEHAVIOR=0 turns them off.
 // Agent memories (issue #155): the game page's notebooks mirrored as Markdown under logs/agents/<world>/ (scripts/memory-mirror.mjs);
@@ -268,11 +270,20 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // (child processes of this relay; scripts/runners.mjs). Off by default.
   const runnersOn = process.argv.includes('--runners') || /^(1|true|yes)$/i.test(env.RELAY_RUNNERS || '');
   const sup = attachRunners(server, {play, enabled: runnersOn, origin: env.RELAY_ORIGIN || DEV_ORIGIN, base: () => `http://127.0.0.1:${port}`});
-  const quit = () => {sup.stopAll(); setTimeout(() => process.exit(0), 1500)}; // runners get a moment to let go of their heroes; exit kills the rest
-  process.on('SIGINT', quit); process.on('SIGTERM', quit);
+  // Quit: every runner gets "stop" on its stdin and a moment to let go of its heroes (they stay on the active list,
+  // logs/runners/active.json, so --resume-runners brings them back); exit kills the rest.
+  let quitting = false;
+  const quit = () => {if (quitting) return; quitting = true; sup.shutdown().then(() => setTimeout(() => process.exit(0), 200)); setTimeout(() => process.exit(0), 10000).unref()};
+  process.on('SIGINT', quit); process.on('SIGTERM', quit); process.on('SIGHUP', quit);
+  // The one-window launcher (npm run up, scripts/up.mjs) cannot send a signal that Windows delivers to a node process,
+  // so it writes "stop" on this process's stdin (and closes it when it goes away): the same clean quit.
+  if (/^(1|true|yes)$/i.test(env.ELDMOOR_LAUNCHER || '') || process.argv.includes('--launcher')) {
+    process.stdin.setEncoding('utf8'); process.stdin.on('data', d => {if (/stop/.test(d)) quit()}); process.stdin.on('end', quit); process.stdin.on('error', quit); process.stdin.resume();
+  }
   server.listen(port, '127.0.0.1', () => {
     console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}${behavior ? '  behavior logs -> ' + behavior.dir() : ''}`);
     console.log(runnersOn ? '[relay] app runners ON: the game page can start and stop agent runners (logs in logs/runners/)' : '[relay] app runners off (start with --runners to launch agent runners from the game page)');
+    if (runnersOn && (process.argv.includes('--resume-runners') || /^(1|true|yes)$/i.test(env.RELAY_RESUME_RUNNERS || ''))) sup.resume().catch(e => console.log('[runners] resume failed: ' + e.message)); // the last run's runners, once the page is back
     providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error} | num_ctx ${o.numCtx} for every local call (OLLAMA_NUM_CTX)`));
   });
 }
