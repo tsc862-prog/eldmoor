@@ -20,7 +20,7 @@
 //              (note: sim/notebook.js {id,title,text,tags,about,rk,day,t,gm,up,pin?,sec}; older saves' notes lack title and tags)
 //              day:{d, pulls, notes, intents, narr, npc}, calls:[{t,tool,args,ok}] newest first,
 //              seen:{tl, chron, log} (what dm_status last showed), stats:{calls, pulls, refused}}
-import {S,clockStr} from './state.js';
+import {S,clockStr,dayNo} from './state.js';
 import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
@@ -33,6 +33,7 @@ import {openProps} from './council.js';
 import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {ensureNpcs} from './npcs.js';
 import {stageScene,tableCall,tableAnswer,stagedView} from './staged.js';
+import {focus,focusStats} from './dmfocus.js'; // the Fellowship first (issue #165)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
 // ---- knobs ----
@@ -98,6 +99,31 @@ export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object
     if(at&&dist(a,at)<=DMA.PILE_R||z!=null&&zoneAt(a.x,a.y)===z)return a.name+' of the Fellowship is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.'}
   return null}
 
+// ---- the Fellowship first (issue #165) ----
+// A short account of what the Fellowship needs from the DM right now, and a change signature the runner watches: when it
+// differs from the one of the last turn (they arrived somewhere or set out, a scene ended, a member fell, an oath or a
+// job finished or began) a bounded extra turn is due (scripts/dm-agent.mjs eventDue). Reads only; hero notes are never read.
+function fellowshipNeeds(){const F=S.fellowship,fo=focus();if(!F||!fo)return null;
+  const th=openThreads(),props=openProps(),items=[],hurt=fo.members.filter(a=>a.state!=='town'&&!a.hidden&&a.hp<maxHp(a)*DMA.PILE_HP);
+  const field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),inTown=fo.members.length-field.length;
+  const sv=stagedView(),at=field.length?(ZONES[zoneAt(fo.x,fo.y)]||'the wilds'):(fo.town?fo.town.name:'town');
+  if(S.table)items.push('A Table scene is open: let it play; answer only calls of a scene you staged.');
+  if(props.length)items.push('A vote is open ('+props.map(P=>P.kind).join(', ')+'): leave it to them.');
+  for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them; a road home, a camp, a friendly face.');
+  const open=th.slice(0,4).map(t=>txt(t.parts));
+  for(const t of open)items.push('Open thread: '+t);
+  const adv=(S.adventures||[]).filter(v=>v.phase==='active'&&v.mem&&v.mem.some(id=>fo.ids.has(id)));
+  for(const v of adv.slice(0,2))items.push('Under way: '+(v.title||v.tpl)+' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+').');
+  if(!adv.length&&!sv.cur&&!S.table&&!props.length&&!hurt.length)items.push('Nothing is under way for them: a hook near '+at+', a rumour of a named foe on their road, or a staged scene (stage_scene near "fellowship") would give their next game hours something.');
+  const quiet=!S.table&&!props.length&&!hurt.length&&!adv.length&&!sv.cur;
+  return {summary:(field.length?field.length+' riding in '+at:'all '+fo.members.length+' in '+at)+(inTown&&field.length?', '+inTown+' in town':'')+'; '+(th.length?th.length+' open thread'+(th.length===1?'':'s'):'no open threads')+(adv.length?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(S.table?'; a Table scene is open':'')+'.',
+    where:at,riding:field.length,in_town:inTown,items,quiet,share_of_dm_actions:focusStats()}}
+// What changed for them since the last look: place, falls, scenes, finished jobs and oaths. A string; equal means nothing new.
+function fellowshipSig(){const F=S.fellowship,fo=focus();if(!F||!fo)return '';
+  const field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),z=field.length?zoneAt(fo.x,fo.y):-1,t=F.tableStats||{};
+  const done=(S.adventures||[]).filter(v=>v.phase==='done'&&v.mem&&v.mem.some(id=>fo.ids.has(id))).length,oaths=fo.members.filter(a=>a.goal&&a.goal.done).length;
+  return [z,field.length?1:0,(F.past||[]).length,t.scenes||0,done,oaths,openThreads().length,!!S.table].join('|')}
+
 // ---- the tools ----
 function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle||[],L=S.dmLog||[],F=S.fellowship;
   const sinceTl=tl.filter(e=>e.gameMin>D.seen.tl).length,i=ch.findIndex(e=>(e.t+txt(e.parts))===D.seen.chron),sinceCh=i<0?Math.min(ch.length,30):i,sinceLog=L.filter(e=>e.id>D.seen.log).length;
@@ -105,6 +131,8 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
   const sc=S.table||null,props=F?openProps():[];
   const h=Math.floor((S.gameMin%DAY)/60);
   return {ok:true,world:D.world,day:gameDay()+1,time:clockStr(),gameMin:Math.round(S.gameMin),part:h<6?'night':h<12?'morning':h<18?'afternoon':'evening',
+    fellowship_first:F?'The Fellowship comes first: read fellowship_needs, act for them, and only then shape the wider world (and only when nothing is pending for them).':null,
+    fellowship_needs:fellowshipNeeds(),fellowship_change:F?fellowshipSig():null,
     table:sc?(sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
@@ -236,7 +264,7 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   else{const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+near+'". Use a hero name or id, a town, a region name, "x,y", or "table".'};
     const r=nOf(a.radius,DMA.NARRATE_R,4,20);label=p.label;
     hs=S.agents.filter(b=>alive(b)&&!b.hidden&&(dist(b,p)<=r||p.town&&b.state==='town'&&b.town===p.town))}
-  const e={t:clockStr(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs)hearLine(b,e);
+  const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs)hearLine(b,e);
   if(S.table&&hs.some(b=>S.table.ids.includes(b.id)))S.table.narr={t:e.t,text:t}; // the banner and tableView show it
   day.narr=(day.narr||0)+1;
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
@@ -247,7 +275,7 @@ function npcSay(a){const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)retur
   const p=all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k);
   if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs for ids and names).'};
   if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return {ok:false,error:p.name+' is nowhere the heroes could hear them.'};
-  const e={t:clockStr(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
+  const e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
   const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;for(const b of hs)hearLine(b,e);
   p.bubble={text:t,life:BUBBLE};if(e.fh)p.bubble.fh=true;day.npc=(day.npc||0)+1;
   dmlog('agent',null,[(p.title?p.title+' ':'')+p.name+' (DM agent): "',t,'"'],{by:'dm-agent',voice:'npc_say',npc:p.id,text:t,heard:hs.map(b=>b.id)});

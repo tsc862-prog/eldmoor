@@ -10,3 +10,4 @@
 - [Staged scenes](staged-scenes.md) — #132: stage_scene kinds/refusals, table calls (voice/outcome/complication, 6 s, poll-live), table voice runner, test pitfalls
 - [Behavior logs](behavior-logs.md) — #129 logs/behavior/<world>/: turn-line protocol + seat check, game watch, detector thresholds, report, behaviorcheck pitfalls
 - [Agent memories](agent-memories.md) — #155 notebooks: free-form rule, ranking weights, header, caps, letter, Markdown mirror protocol
+- [DM Fellowship first](dm-fellowship-first.md) — #165 dmfocus.js, fellowship_needs/change, event cadence, scripted board rule, reserved share, dmFocus digest

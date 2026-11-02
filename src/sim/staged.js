@@ -23,7 +23,7 @@
 //   S.staged {seq, day:{d,n}, cur: rec|null, past:[short records], stats}
 //   rec {id, kind, title, frame, reason, near:{hero, label}, at:{x,y}, z, lvl, cast:{...}, labels, born, until, phase, scene, result}
 //   S.table.calls [{id, kind, about, legal?, who?, t, done, by, text, pick}] while a staged scene is open
-import {S,clockStr} from './state.js';
+import {S,clockStr,dayNo} from './state.js';
 import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {WANDER_ROLES} from '../data/npcs.js';
@@ -34,6 +34,7 @@ import {check,socialSkill} from './abilities.js';
 import {buildEncounter,spawnFoe} from './encounterbuilder.js';
 import {pull,spotErr} from './levers.js';
 import {fellows} from './fellowship.js';
+import {focus,nearMember} from './dmfocus.js';
 import {openProps,leaderOfF} from './council.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
@@ -43,6 +44,7 @@ import {TABLE,openScene,tableOn,setSceneKind,setStageHooks} from './table.js';
 // ---- knobs ----
 export const STAGE={
   PER_DAY:3,        // staged scenes the DM agent may set up per game day
+  RESERVE:1,        // ... of which this many only for a spot at the Fellowship's side (issue #165); the rest may be set far from it
   WAIT_MIN:360,     // game minutes a staged cast waits for the party before it gives up
   MEET_R:4.5,       // tiles: a member this close to the cast (or the spot) opens the scene
   SPOT_MIN:6, SPOT_MAX:10, // tiles from the member a cast that walks to them starts
@@ -88,8 +90,10 @@ const liveMob=m=>m&&m.alive&&!m.gone;
 const gameDay=()=>Math.floor(S.gameMin/DAY);
 const seatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
 
-export function stagedState(){return S.staged||(S.staged={seq:0,day:{d:-1,n:0},cur:null,past:[],stats:{staged:0,met:0,expired:0,refused:0,calls:0,answered:0,filled:0,late:0,rejected:0}})}
-const today=()=>{const G=stagedState();if(G.day.d!==gameDay())G.day={d:gameDay(),n:0};return G.day};
+export function stagedState(){return S.staged||(S.staged={seq:0,day:{d:-1,n:0,nw:0},cur:null,past:[],stats:{staged:0,met:0,expired:0,refused:0,calls:0,answered:0,filled:0,late:0,rejected:0}})}
+// A spot at the Fellowship's side (issue #165): the day keeps STAGE.RESERVE of its scenes for these.
+const nearFellow=at=>nearMember(focus(),at);
+const today=()=>{const G=stagedState();if(G.day.d!==gameDay())G.day={d:gameDay(),n:0,nw:0};return G.day};
 const recById=id=>{const G=S.staged;return G&&G.cur&&G.cur.id===id?G.cur:null};
 const recOf=sc=>sc&&sc.ctx&&sc.ctx.staged!=null?recById(sc.ctx.staged):null;
 const field=()=>fellows().filter(a=>!a.hidden&&a.state!=='town');
@@ -151,6 +155,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   // a cast walks in from out of sight; a trap or a strange place lies just ahead, where they pass
   if(W.hero){at=STATIC[kind]?spotNear(W.hero,STAGE.AHEAD_MIN,STAGE.AHEAD_MAX,W.hero.dest||null):spotNear(W.hero,STAGE.SPOT_MIN,STAGE.SPOT_MAX,W.hero.dest||null);if(!at)return refuse('no open ground near '+W.hero.name,a);label='near '+W.hero.name}
   const z=zoneAt(at.x,at.y);if(z==null||z<0)return refuse('that spot is outside every region',a);
+  if(!nearFellow(at)&&(today().nw||0)>=STAGE.PER_DAY-STAGE.RESERVE)return refuse('the last staged scene of the day is kept for the Fellowship’s own road; set this one near a member (near: "fellowship")',a);
   if(FIGHTING[kind]&&band(z)[0]>P.avg+STAGE.FAR)return refuse(ZONES[z]+' (levels '+band(z)[0]+'+) is far above the party (average level '+P.avg+')',a);
   // the cast
   const C={name:clean(cast.name,STAGE.NAME_MAX)||null,title:clean(cast.title,40)||null,want:clean(cast.want,STAGE.WANT_MAX)||null,voice:clean(cast.voice,60)||null,reveal:clean(cast.reveal,STAGE.REVEAL_MAX)||null,mobs:[],npc:null,place:null};
@@ -189,7 +194,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     const res=pull('mark_place',{kind:k,at,...(C.name?{name:C.name}:{}),hours:24},{by:'dm-agent',reason:'staged mystery: '+reason});
     if(res.ok){C.place=res.ret.id;C.name=res.ret.name}else if(!C.name)C.name='Something strange';
     C.dc=9+Math.ceil(P.avg/2)}
-  G.seq=rid;today().n++;G.stats.staged++;
+  G.seq=rid;today().n++;if(!nearFellow(at))today().nw=(today().nw||0)+1;G.stats.staged++;
   const title=clean(a.title,STAGE.TITLE_MAX)||defaultTitle(kind,C);
   const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+STAGE.WAIT_MIN),phase:'waiting',scene:null,result:null};
   G.cur=rec;
@@ -329,7 +334,7 @@ let polledAt=0;
 const live=sc=>sc.ctx.by==='dm-agent'&&seatOn()&&(sc.dmMiss||0)<STAGE.MISS_MAX&&Date.now()-polledAt<STAGE.POLL_MS;
 const npcFrom=w=>({kind:'npc',id:w.id,name:w.name,fac:w.fac});
 // A DM line at the table: every member at the scene hears it (their chat, so events and chat_read), the banner shows it.
-function say(sc,text,from){const t=clean(text,STAGE.LINE_MAX);if(!t)return;const e={t:clockStr(),from,text:t,trigger:from.kind==='dm'?'dm':'npc',...(from.kind==='dm'?{dm:true}:{}),fh:true};
+function say(sc,text,from){const t=clean(text,STAGE.LINE_MAX);if(!t)return;const e={t:clockStr(),d:dayNo(),from,text:t,trigger:from.kind==='dm'?'dm':'npc',...(from.kind==='dm'?{dm:true}:{}),fh:true};
   for(const id of sc.ids){const b=byId(id);if(!living(b))continue;(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
   if(from.kind==='npc'){const w=npcOf(from.id);if(w)w.bubble={text:t,life:BUBBLE,fh:true}}
   sc.narr={t:e.t,text:(from.kind==='npc'?from.name+': ':'')+t}}
