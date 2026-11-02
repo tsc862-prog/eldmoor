@@ -29,6 +29,7 @@ import {sightMul} from './weather.js';
 import {partyMates} from './party.js';
 import {tableView} from './table.js';
 import {openProps} from './council.js';
+import {noteWritten} from './reflect.js'; // reflection moments (#179)
 
 export const NB={
   NOTES:200,        // notes a hero keeps before the oldest unpinned is archived
@@ -176,6 +177,7 @@ export function heroMemory(a,tool,args){const b=heroBook(a),M=b.M;args=args||{};
   if(tool==='recall')return recallNotes(b,args);
   if(!spend(M))return SLOW;
   if(tool==='remember'){const r=addNote(b,{title:args.title,text:args.text,tags:args.tags,about:args.about,pin:false});if(!r.ok)return r;
+    const rf=noteWritten(a);if(rf)r.note.rf=rf; // written at a reflection moment (#179): the Memory tab marks it
     return {ok:true,remembered:view(r.note,false),notes:M.notes.length,...(r.archived?{archived:{id:r.archived.id,title:r.archived.title,note:'your oldest unpinned note was archived (recall still finds it)'}}:{})}}
   if(tool==='update_memory'){const r=updateNote(b,args.id,args);return r.ok?{ok:true,updated:view(r.note)}:r}
   if(tool==='forget'){const r=forgetNote(b,args.id);return r.ok?{ok:true,forgot:{id:r.note.id,title:r.note.title},notes:M.notes.length}:r}

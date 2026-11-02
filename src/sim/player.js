@@ -52,6 +52,7 @@ import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard} from './persona.js'; // Fellowship (#68)
 import {ev} from './notify.js';
 import {heroMemory} from './notebook.js'; // agent memories (#155)
+import {moment,REFLECT} from './reflect.js'; // reflection moments (#179)
 import {reflexMay} from './runlink.js';
 import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
@@ -451,11 +452,12 @@ const T={
     const cost=SHOP_COST(a.lvl);need(a.gold>=cost,'That costs '+cost+'g; you have '+a.gold+'g.');
     refreshEpics(a);a.gold-=cost;const it=makeItem(a.cls,k,a.lvl,zoneFor(a.lvl),{src:'Bought in '+homeOf(a).name,rare:0});
     const old=equip(a,it);if(old)addGear(a,old);a.hp=Math.min(a.hp,maxHp(a));
+    if(cost>=REFLECT.TRADE)moment(a,'trade','bought '+itemText(it)+' for '+cost+'g');
     return {ok:true,bought:itemText(it),cost,gold:a.gold,replaced:old?itemText(old)+' (now in your pack)':null}},
   sell(a,{index}){need(inTown(a),'The auction house is in town.');let tot=0,n=0;
     if(index!=null){const i=Number(index);need(i>=0&&i<used(a),'No pack entry '+index+'.');tot=sellEntry(a,i);need(tot>=0,'That cannot be sold (consumables and quest items are kept).');n=1}
     else{const s=sellLoot(a);tot=s.gold;n=s.n}
-    need(n,'Nothing to sell.');a.gold+=tot;return {ok:true,sold:n,gold_gained:tot,gold:a.gold}},
+    need(n,'Nothing to sell.');a.gold+=tot;if(tot>=REFLECT.TRADE)moment(a,'trade','sold '+n+' thing'+(n>1?'s':'')+' for '+tot+'g');return {ok:true,sold:n,gold_gained:tot,gold:a.gold}},
   equip(a,{index}){need(!['fight','duel','assist'].includes(a.state),'Not in the middle of a fight.');const i=Number(index);
     const it=invOf(a).list[i];need(isGear(it),'No gear at pack index '+index+'.');need(!it.cls||it.cls===a.cls||it.epic,'That is made for a '+it.cls+'.');need(it.ilvl<=a.lvl+INV.WEAR_OVER,'Too far above your level to wear.');
     const old=equipSpare(a,it);a.hp=Math.min(a.hp,maxHp(a));return {ok:true,wearing:itemText(it),replaced:old?itemText(old)+' (now in your pack)':null}},
@@ -464,7 +466,9 @@ const T={
     return doneQ?{ok:true,reward_gold:a.gold-g,leveled:a.lvl>l||undefined,new_quest:nq}:{ok:false,error:'Your quest is not done ('+(q?q.have+'/'+q.need:'none')+').',quest:nq}},
   read_chronicle(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||8)));return {ok:true,news:S.chronicle.slice(0,k).map(e=>e.t+' '+plain(e.parts))}},
   journal_read(a,{n}){const k=Math.min(50,Math.max(1,Math.round(Number(n)||10)));return {ok:true,entries:(a.journal||[]).slice(-k).map(e=>e.t+': '+e.text),total:(a.journal||[]).length}},
-  journal_write(a,{text}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});if(j.length>PK.JOURNAL)j.shift();return {ok:true,entries:j.length}},
+  journal_write(a,{text}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});if(j.length>PK.JOURNAL)j.shift();
+    const m=heroMemory(a,'remember',{title:t.split(/(?<=[.!?])\s/)[0].slice(0,60),text:t,tags:['journal']}); // the entry is also a memory tagged journal (#179)
+    return {ok:true,entries:j.length,...(m.ok?{memory:m.remembered.id}:{})}},
   // memories (issue #155, sim/notebook.js): the hero's own notebook only
   remember:(a,x)=>heroMemory(a,'remember',x),recall:(a,x)=>heroMemory(a,'recall',x),update_memory:(a,x)=>heroMemory(a,'update_memory',x),forget:(a,x)=>heroMemory(a,'forget',x),pin:(a,x)=>heroMemory(a,'pin',x),
   party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const no=lineRefusal(a,spokenLine(a,text,1e9).text);need(!no,no); // not the same line again, no second introduction (sim/talk.js)

@@ -12,7 +12,8 @@
 //   anomaly   idle in one place over BW.IDLE_MIN outside camp; the same state with no progress over
 //             BW.STUCK_MIN; reflex taking every agent turn of BW.SCENE_RUN scenes in a row; every agent
 //             vote by reflex for BW.VOTE_RUN proposals in a row; DM levers refused often; a danger lever
-//             pulled near a hurt member.
+//             pulled near a hurt member; an agent-played Fellowship member who wrote no memory for BW.NO_NOTES_MIN
+//             (issue #179; the digest counts memories written per member, by name).
 //   decision  each hero's Mind entry (sim/brain.js) once it settles: kind, provider, model, options,
 //             choice, outcome (applied, late, rejected, offline, superseded, overruled), latency, error.
 // Read only: it never writes S or a hero, rolls no random number and is not part of step(), so a world
@@ -38,6 +39,7 @@ export const BW={
   NEAR:14,           // ... and a danger lever within this many tiles or in its region piles on -> lever-near-hurt
   DANGER:['mark_dangerous','named_foe','custom_foe','set_condition'],
   NO_IDLE:['camp','dead','ghost'],
+  NO_NOTES_MIN:2*1440, // game minutes an agent-played Fellowship member goes without writing a memory -> no-memories (#179)
 };
 
 const day=()=>'Day '+(Math.floor(S.gameMin/1440)+1)+' '+clockStr();
@@ -55,7 +57,7 @@ export function makeWatch(){
   let base=false,lastGm=0,hour=0,dmSeen=0,scene=null,sceneRun=0,voteRun=0,refusals=[],pulls=[];
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0},
-    levers:{pulled:0,refused:0,by:{}},dmlog:{},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0});
+    levers:{pulled:0,refused:0,by:{}},dmlog:{},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{}});
   const tStats=()=>{const F=S.fellowship,t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
@@ -68,7 +70,8 @@ export function makeWatch(){
   const anomaly=(out,kind,a,text,evidence,severity='warn')=>{H.anomalies++;out.push({kind:'anomaly',rec:{kind,seat:a?'hero:'+a.id:'world',hero:a?heroRef(a):null,gameMin:Math.round(S.gameMin),clock:day(),severity,text,evidence:evidence||{}}})};
 
   function track(out,a,dt){let t=T.get(a.id);const now=S.gameMin;
-    if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt};T.set(a.id,t)}
+    if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:a.memories?a.memories.seq||0:0,noteAt:now};T.set(a.id,t)}
+    notes(out,a,t,now);
     H.share[mindOf(a)]+=dt;
     if(a.player&&a.playActAt!==t.act){t.act=a.playActAt;H.acts++}
     // idle in one place (outside camp)
@@ -80,6 +83,11 @@ export function makeWatch(){
     else if(!t.stuck&&now-t.stSince>=BW.STUCK_MIN){t.stuck=true;anomaly(out,'stuck-state',a,a.name+' has been in state '+a.state+' for '+Math.round((now-t.stSince)/60)+' game hours with no kill or level',
       {minutes:Math.round(now-t.stSince),state:a.state,place:place(a),mind:mindOf(a),doing:a.playDoing||null})}}
 
+  // memories written (issue #179): counted per member each digest; a member with none for BW.NO_NOTES_MIN is flagged
+  function notes(out,a,t,now){const seq=a.memories?a.memories.seq||0:0;
+    if(seq>t.nseq){H.memories[a.name]=(H.memories[a.name]||0)+(seq-t.nseq);t.nseq=seq;t.noteAt=now}
+    if(!a.player){t.noteAt=now;return}
+    if(a.fellow&&now-t.noteAt>=BW.NO_NOTES_MIN){anomaly(out,'no-memories',a,a.name+' has written no memory for '+Math.round((now-t.noteAt)/1440*10)/10+' game days',{minutes:Math.round(now-t.noteAt),notes:a.memories?a.memories.notes.length:0,reflections:a.reflect?a.reflect.log.length:0,mind:mindOf(a)});t.noteAt=now}}
   function dmLog(out){const L=S.dmLog||[],seq=S.dmLogSeq||0;if(seq<=dmSeen)return;
     const fresh_=L.filter(e=>e.id>dmSeen).reverse();dmSeen=seq;const now=S.gameMin;
     for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');

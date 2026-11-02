@@ -43,6 +43,7 @@ import {fellows,campaign} from './fellowship.js';
 import {partySay,leaderOfF} from './council.js';
 import {openScene} from './table.js';
 import {reflexMay} from './runlink.js';
+import {moment} from './reflect.js'; // reflection moments (#179)
 
 export const CAMP={
   MIN_CAMP:3,        // members that must be out in the field to make a camp
@@ -101,7 +102,7 @@ function makeCamp(F,L,why){const lead=L.includes(leaderOfF())?leaderOfF():L[0],s
   const zn=ZONES[zone]||'the wilds';
   ev('make',[why==='night'?'The Fellowship makes camp for the night in ':'The Fellowship, worn thin, makes camp in ',gd(zn),'.'],{why,zone:zn,at:[Math.round(sp.x),Math.round(sp.y)],members:ids.length},ids);
   log(nar(''),gd(F.name),why==='night'?' makes camp for the night in ':', worn thin, makes camp in ',gd(zn),'.');
-  for(const a of L)if(a.player)notify(a,'The Fellowship makes camp in '+zn+'. You may party_say round the fire; the watch will wake you if anything comes.',false)}
+  for(const a of L)if(a.player){notify(a,'The Fellowship makes camp in '+zn+'. You may party_say round the fire; the watch will wake you if anything comes.',false);moment(a,'camp',zn)}}
 
 function spotOf(g,i,n){const ang=i/Math.max(1,n)*Math.PI*2+.6;return {x:g.x+Math.cos(ang)*CAMP.RING,y:g.y+Math.sin(ang)*CAMP.RING*.8}}
 

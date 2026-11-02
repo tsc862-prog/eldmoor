@@ -30,6 +30,7 @@ const ABOUT = {
   'levers-refused': 'the DM\'s lever pulls refused often',
   'lever-near-hurt': 'a danger lever pulled near a badly hurt Fellowship member',
   'request-flood': 'too many tool or relay calls in a minute',
+  'no-memories': 'an agent-played Fellowship member wrote no memory for two game days',
 };
 
 export function readJsonl(dir, name, sinceMs = 0) {
@@ -130,6 +131,13 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
     L.push(`- DM log entries: ${Object.entries(dml).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}.`);
     const chat = {}; for (const w of W) for (const [k, v] of Object.entries(w.chat || {})) chat[k] = (chat[k] || 0) + v;
     L.push(`- Chat lines heard by the watched heroes, by channel: ${Object.entries(chat).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}.`);
+    // memories written per member per game day (issue #179), from the digests
+    const mem = new Map(), days = new Set();
+    for (const w of W) {const d = Math.floor((w.gameMin - 1) / 1440) + 1; for (const [k, v] of Object.entries(w.memories || {})) {days.add(d); const m = mem.get(k) || new Map(); m.set(d, (m.get(d) || 0) + v); mem.set(k, m)}}
+    for (const m of last.members || []) if (m.agent && m.role && !mem.has(m.name)) mem.set(m.name, new Map());
+    const dl = [...days].sort((a, b) => a - b).slice(-10);
+    L.push('', 'Memories written per member per game day:', '');
+    L.push(mem.size ? table(['member', ...dl.map(d => 'day ' + d), 'total'], [...mem.entries()].map(([k, m]) => [k, ...dl.map(d => m.get(d) || 0), [...m.values()].reduce((t, v) => t + v, 0)])) : '_none written_', '');
     const deaths = W.flatMap(w => (w.deaths || []).map(d => ({...d, gm: w.gameMin})));
     L.push(`- Deaths: ${deaths.length}${deaths.length ? ' (watched heroes: ' + (deaths.filter(d => d.watched || d.fellow || d.agent).map(d => d.name + ', ' + d.cause).join('; ') || 'none') + ')' : ''}.`);
     const causes = {}; for (const d of deaths) {const c = String(d.cause || '?').replace(/^(slain|killed) by /i, '').slice(0, 40); causes[c] = (causes[c] || 0) + 1}

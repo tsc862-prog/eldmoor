@@ -55,7 +55,7 @@ export function failTracker(maxFails) {
 }
 // Did a local-loop turn (scripts/local-agent.mjs result) do anything?
 // (a turn with no call, every call rejected, or a narration repeating the last one with no world-changing call is empty)
-export const localWorked = r => !!(r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.foreign);
+export const localWorked = r => !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.foreign);
 
 // makePacer({base, hero, runner, heartbeat, minGap, log, stopped}) -> {next(), turnDone(), state}
 //   next(): waits for the next turn. -> {wake:'now'|'soft'|'heartbeat', why, table, clock} or {dead} / {gone, why} / {stopped}
@@ -170,3 +170,23 @@ export async function takeClaudeSlot(base, log = () => {}, {key = process.env.EL
   return () => {if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}};
 }
 export async function withClaudeSlot(base, fn, log, opts) {const release = await takeClaudeSlot(base, log, opts); try {return await fn()} finally {release()}}
+
+// ---- reflection moments (issue #179) ----
+// The game names a moment to write memories in the state header (brief.reflect = {id, kind, why}, src/sim/reflect.js):
+// making camp, the end of a scene, a companion's death, an oath kept, a big trade, a conversation, or the end of the day.
+// The runner gives the member a short reflection turn (local/OpenAI: one forced structured answer, scripts/local-agent.mjs
+// reflectTurn; Claude: this prompt with tool use) and closes the moment with pacer.reflected(id, wrote).
+export const REFLECT_MAX = 3;
+export function reflectPrompt(r, {tools = true} = {}) {
+  const why = r && r.why ? ` (now: ${String(r.why).slice(0, 200)})` : '';
+  return `Before you rest${why}: what is worth remembering from today? ` + (tools
+    ? `Write 1-${REFLECT_MAX} memories with remember (title, text, tags; about is optional), in your own words, or answer "none" if nothing is. Anything you want to keep: a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion. Prefer remember to journal_write for this.`
+    : `Write 0-${REFLECT_MAX} memories in your own words: anything you want to keep (a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion). Answer only with the JSON object {"notes": [{"title": "...", "text": "...", "tags": ["..."], "about": "who or what it concerns, or empty"}]}; an empty list if nothing is worth keeping.`);
+}
+// Should this turn be a reflection? A due moment, no scene open, and nothing that cannot wait.
+export const reflectNow = (b, w) => !!(b && b.reflect && b.reflect.id && !b.scene && !(w && (w.wake === 'now' || w.must || w.table)));
+// Close the moment at the game (POST /play/pace {reflected, wrote}). Never throws; an older relay just ignores it.
+export async function closeReflection(base, hero, runner, id, wrote, fetchImpl = fetch) {
+  try {const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, reflected: id, wrote}), signal: AbortSignal.timeout(8000)});
+    return r.status === 200 ? await r.json() : {ok: false, error: 'HTTP ' + r.status}} catch (e) {return {ok: false, error: e.message}}
+}
