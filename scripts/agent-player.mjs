@@ -16,7 +16,7 @@
 // with a line of narration; the runner prints the tool calls, the narration and a cost line.
 // Pacing (issue #126, scripts/pacing.mjs): the next turn starts when something happens to the hero
 // (attacked, badly hurt, a choice or a scene: at once; an arrival, a vote, a party line, the narrator:
-// after the minimum gap) or after a heartbeat of game time (--heartbeat MIN, default 240 game minutes),
+// after the minimum gap) or after a heartbeat of game time (--heartbeat MIN, default 120 game minutes),
 // never sooner than --min-gap S real seconds (default 20) except for what cannot wait. A paused world
 // takes no turns. The runner stops when the hero dies or leaves agent play, and after --max-fails N
 // (default 5) failed or empty turns in a row. Each hero's session id lives in its own file, logs/agents/<heroId>.json

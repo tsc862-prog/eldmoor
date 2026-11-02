@@ -145,10 +145,10 @@ is silent, and scene choices time out to the scripted branch, so the world never
   hurt, a choice, a table scene, a camp alarm: events marked `urgent=2` in `src/sim/notify.js`); once the
   minimum gap has passed (`--min-gap S`, default 20 real seconds) when the hero has unread news (an arrival,
   a vote, a party line, the narrator, an NPC); else after a heartbeat of game time (`--heartbeat MIN`,
-  default 240 game minutes). A quiet hero takes about one turn a real minute at 1x and at most one per
+  default 120 game minutes). A quiet hero takes about one turn a real minute at 1x and at most one per
   gap plus the turn at 8x; a paused world takes none; at most 2 immediate turns a real minute inside the gap.
   The runner stops when the hero dies or leaves agent play, and after `--max-fails N` (default 5) failed or
-  empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. An older relay or page
+  empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. More triggers (`src/sim/wakes.js`, `npm run wakecheck`): XP since the hero's last read is one bundled soft line ("+85 XP from 3 kills (...); 120 XP to level 4"), plus loot and quest progress and an elite kill (soft); a level up (names the ability, passive or level-10 path it opens), a rare or epic drop and a finished quest start the turn at once. Agent-played heroes only; no RNG. An older relay or page
   without `/play/pace` falls back to real time as if at 1x. A local (Ollama) runner has no turn cap unless
   `--max-turns` is given (it runs until stopped); Claude and OpenAI keep 20 turns and the budget.
 - Start gate (#222, extends the run gate #171 in `src/ui/rungate.js`): a seat is **ready** only after its runner
