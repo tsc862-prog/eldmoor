@@ -31,7 +31,8 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
-import {pull,leverMenu,LEVERS} from './levers.js';
+import {pull,leverMenu,LEVERS,ready,activeOf} from './levers.js';
+import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
 import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
 import {openProps} from './council.js';
@@ -60,7 +61,8 @@ export const DMA={
   NARRATE_R:10,        // default radius of a narrate line around its place
 };
 const DAY=1440;
-const PILING=['mark_dangerous','custom_foe','named_foe','set_condition'];
+const PILING=['mark_dangerous','custom_foe','named_foe','set_condition','start_event'];
+const DANGER_CONDS=['bandits','migration']; // the region conditions that add danger: set_condition of these kinds, or a world event that runs as one (invasion = bandits, migration)
 
 // ---- the seat ----
 // The campaign seed: once per world, the notes start from docs/campaigns/<world>.md (notes marked from:'campaign', the premise pinned in plans).
@@ -150,7 +152,8 @@ export const dmTurnVer=()=>S.dmAgent&&S.dmAgent.tv||0;
 
 // A Fellowship member badly hurt out in the field near the pull: the DM does not pile on.
 export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object')return null;
-  if(name==='set_condition'&&!['bandits','migration'].includes(p.kind))return null;
+  if(name==='set_condition'&&!DANGER_CONDS.includes(p.kind))return null;
+  if(name==='start_event'){const ev=EVENTS[p.kind];if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
   const at=p.at&&typeof p.at==='object'&&Number.isFinite(Number(p.at.x))?{x:Number(p.at.x),y:Number(p.at.y)}:null,z=p.region!=null?regionIdx(p.region):at?zoneAt(at.x,at.y):null;
   for(const a of fellows()){if(a.state==='town'||a.hp>=maxHp(a)*DMA.PILE_HP)continue;
     if(at&&dist(a,at)<=DMA.PILE_R||z!=null&&zoneAt(a.x,a.y)===z)return a.name+' of the Fellowship is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.'}
@@ -182,6 +185,20 @@ function fellowshipSig(){const F=S.fellowship,fo=focus();if(!F||!fo)return '';
   return [z,field.length?1:0,(F.past||[]).length,t.scenes||0,done,oaths,openThreads().length,!!S.table].join('|')}
 
 // ---- the tools ----
+// World events (issue #352): the start_event pulls running now (kind, region, days left, who and why) and whether one
+// may start today; read only (S.levers, S.conditions, the Fellowship's regions), no dice. The Fellowship first: their
+// regions are named so an event goes on their road, and only once nothing is pending for them.
+function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
+  const L=S.levers,lim=def.limits||{},run=activeOf('start_event'),used=L&&L.day&&L.day.d===gameDay()?(L.day.n.start_event||0):0,d=today();
+  const running=run.map(x=>({kind:x.params&&x.params.kind||null,region:x.region!=null?ZONES[x.region]:null,days_left:Math.max(0,Math.round((x.until-S.gameMin)/144)/10),by:x.by,reason:x.reason||null}));
+  const why=!ready('start_event')?(lim.maxActive!=null&&run.length>=lim.maxActive?'a world event is already running ('+lim.maxActive+' at a time)':lim.perDay!=null&&used>=lim.perDay?'one world event has started today; try another game day':'not available')
+    :d.pulls>=DMA.PULLS_PER_DAY?'you have pulled '+DMA.PULLS_PER_DAY+' levers today':null;
+  const cooling=Object.entries(L&&L.cd||{}).filter(([k,t])=>k.startsWith('start_event:')&&t>S.gameMin).map(([k,t])=>ZONES[+k.split(':')[1]]+' '+Math.round((t-S.gameMin)/60)+'h');
+  const fo=focus(),F=S.fellowship;
+  return {running,open_today:!why,...(why?{why_not:why}:{}),kinds:Object.keys(EVENTS),per_day:lim.perDay??null,at_a_time:lim.maxActive??null,
+    regions_with_a_condition:(S.conditions||[]).map(c=>ZONES[c.z]+' ('+c.kind+')'),...(cooling.length?{cooling}:{}),
+    ...(F?{fellowship_regions:fo?[...fo.zones].map(z=>ZONES[z]):[],note:'Fellowship first: start an event only when nothing is pending for them, in a region they ride (fellowship_regions) or are headed to, and say why it serves their story.'}:{})}}
+
 function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle||[],L=S.dmLog||[],F=S.fellowship;
   const sinceTl=tl.filter(e=>e.gameMin>D.seen.tl).length,i=ch.findIndex(e=>(e.t+txt(e.parts))===D.seen.chron),sinceCh=i<0?Math.min(ch.length,30):i,sinceLog=L.filter(e=>e.id>D.seen.log).length;
   D.seen.tl=tl[0]?tl[0].gameMin:D.seen.tl;D.seen.chron=ch[0]?ch[0].t+txt(ch[0].parts):D.seen.chron;D.seen.log=L[0]?L[0].id:D.seen.log;
@@ -197,7 +214,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     fellowship:F?{name:F.name,minds:mindsOf(F),members:fellowshipMembers().map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:m.label,lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:m.label,empty:true})}:null,
     since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
-    levers_active:(S.levers&&S.levers.active||[]).length,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
+    levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
     campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
@@ -258,7 +275,7 @@ function leversRead(){const L=S.levers,d=today(),hrs=m=>Math.max(0,Math.round(m/
     note:'named_foe belongs to the scripted DM inside a running scene. post_hook may not use tpl "fallen" or spec.',
     active:(L&&L.active||[]).map(x=>({id:x.id,lever:x.name,by:x.by,region:x.region!=null?ZONES[x.region]:null,hours_left:hrs(x.until-S.gameMin),reason:x.reason})),
     pulled_today:L&&L.day&&L.day.d===gameDay()?{...L.day.n}:{},cooldowns:Object.fromEntries(Object.entries(L&&L.cd||{}).filter(([,t])=>t>S.gameMin).map(([k,t])=>[k,hrs(t-S.gameMin)+'h'])),
-    your_pulls_today:d.pulls+'/'+DMA.PULLS_PER_DAY}}
+    world_events:worldEvents(),your_pulls_today:d.pulls+'/'+DMA.PULLS_PER_DAY}}
 
 function notesRead(section){const D=dmState(),ks=section&&section!=='all'?[section]:NOTE_SECTIONS;
   if(!ks.every(k=>NOTE_SECTIONS.includes(k)))return {ok:false,error:'section must be one of all, '+NOTE_SECTIONS.join(', ')};
