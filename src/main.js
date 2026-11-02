@@ -2,7 +2,7 @@
 // Browser entry point: wires the DOM-free simulation (src/sim) to the canvas
 // renderer (src/render) and the side panels (src/ui). See CLAUDE.md for the
 // module map and who owns what.
-import {init,step,S} from './sim/index.js';
+import {init,step,S,provideCampaigns,campaignIdOf} from './sim/index.js';
 import {createRenderer} from './render/draw.js';
 import {ranked} from './ui/panels.js';
 import {select,ctl,setView} from './ui/controls.js';
@@ -17,6 +17,8 @@ import {titleWanted,showTitle} from './ui/title.js'; // Continue, New world, Loa
 // The world is built only when the owner picks Continue (or the default world) on the title screen, or at once with
 // ?continue=1 / ?skip-title=1, a queued New World setup, or a Load/Import reload. New world goes to the setup page
 // from the title and reloads into the new world, which skips the title.
+// The DM's campaign seeds (docs/campaigns/<world>.md, bundled at build time; none is fine). The sim reads the one for the world id.
+provideCampaigns(Object.fromEntries(Object.entries(import.meta.glob('../docs/campaigns/*.md',{query:'?raw',import:'default',eager:true})).filter(([p])=>!/\/_/.test(p)).map(([p,t])=>[campaignIdOf(p),t])));
 initSetup();
 let renderer=null;
 function start(kind){

@@ -32,6 +32,7 @@
     "dm": "node scripts/dm-agent.mjs",
     "dmcheck": "node scripts/dmcheck.mjs",
     "channelcheck": "node scripts/channelcheck.mjs",
+    "campaigncheck": "node scripts/campaigncheck.mjs",
     "lorecheck": "node scripts/lorecheck.mjs",
     "tiercheck": "node scripts/tiercheck.mjs",
     "movecheck": "node scripts/movecheck.mjs",

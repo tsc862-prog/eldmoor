@@ -38,6 +38,8 @@ jobs:
         run: npm run dmcheck
       - name: In-game channels (planted secrets never reach a hero)
         run: npm run channelcheck
+      - name: Campaign seed (parser, seeding, old saves)
+        run: npm run campaigncheck
       - name: Learn the world (lorecheck)
         run: npm run lorecheck
       - name: Tiered memory (landmarks, chapters, journal_search)

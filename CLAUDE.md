@@ -465,6 +465,8 @@ encounters and speak at their tables (issue #132, below).
   - Reserved share: with a Fellowship, `FOCUS.RESERVE` (about a third, at least one) of each lever's `perDay` limit and `STAGE.RESERVE` (1) of the 3 staged scenes a day are kept for pulls near the Fellowship (their regions, hall, members); world pulls hit "kept for the Fellowship" first.
   - Measure: `S.dmFocus` counts DM actions (board posts, applied levers outside adventures, staged scenes) and those that touched the Fellowship; `dm_status` shows the share, the behavior digest has `dmFocus {acts, fellow, share}`, the report prints it, and `npm run dmcheck` asserts most scripted-DM actions concern the Fellowship (about 60% over 150 game hours) and that the run is deterministic.
 
+- Campaign seed: `docs/campaigns/<world>.md` (H2 Premise, Threads, Characters, Plans, Secrets; bullets `- **Title**: text`) is parsed by `src/sim/campaign.js` and seeds the DM's notes once (`from:'campaign'`, premise pinned in plans) when a world's DM state is created, or on load for an older save with empty notes. The host hands the text over (`provideCampaigns`: Vite `?raw` glob in `src/main.js`, `scripts/campaign-files.mjs` in Node); no file, no seed. `dm_status` shows `campaign`. Heroes never see it (`npm run channelcheck`); `npm run campaigncheck`.
+
 - In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; open the
   **Dungeon Master** panel and press **Open seat**, pick the mind (Claude or a pulled local model) and
   press **Start DM**. The seat (link, runner mind, runner state and last error) shows there and as the

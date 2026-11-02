@@ -38,6 +38,7 @@ import {makeWatch} from '../src/sim/behavior.js';
 import {mirrorDirty} from '../src/sim/notebook.js';
 import {memoryMirror} from './memory-mirror.mjs';
 import {WORLD_ID} from '../src/world/map.js';
+import {loadCampaigns} from './campaign-files.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const WORLD_FILE = join(ROOT, 'logs', 'agent-world.json');
@@ -73,6 +74,7 @@ export function chooseHero({cls = null, name = null, fac = 0, skip = []} = {}) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const port = Number(opt('port', process.env.PLAY_PORT || 8789)), quiet = flag('quiet'); let speed = Math.max(.25, Math.min(8, Number(opt('speed', 1))));
+  loadCampaigns(); // the DM's campaign seed (docs/campaigns/<world>.md), before the world is built or restored
   const worldFile = opt('world', null) ? resolve(opt('world')) : WORLD_FILE;
   if (flag('resume') && existsSync(worldFile)) {
     const snap = JSON.parse(readFileSync(worldFile, 'utf8')); if (!isSave(snap)) throw new Error('not a save: ' + worldFile);
