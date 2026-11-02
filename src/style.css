@@ -77,7 +77,11 @@ div.daysep{margin:8px 0 3px}
 .ai-badge.mk-scripted{background:var(--edge);color:var(--dim)} .ai-badge.mk-agent{background:var(--gold)} .ai-badge.mk-quiet{background:var(--edge);color:var(--dim)}
 .mlink.busy{color:var(--amber)}
 /* a Fellowship member's name in chat: bold, role colour as on the party frames, lightened for the dark theme */
-.hn.fm{font-weight:bold} .hn.fm.r-tank{color:#7fa8ff} .hn.fm.r-healer{color:#8fe070} .hn.fm.r-dps{color:#ff7a70}
+.hn.fmn{font-weight:bold} .hn.fmn.r-tank{color:#7fa8ff} .hn.fmn.r-healer{color:#8fe070} .hn.fmn.r-dps{color:#ff7a70}
+/* Chat tab: one line per message, text wrapping under itself (hanging indent) */
+.log.chat li.chl{padding-left:1.6em;text-indent:-1.6em;overflow-wrap:anywhere}
+.chtag{font-family:var(--px);font-size:7px;color:var(--gold);border:1px solid var(--edge);padding:1px 3px;margin-right:5px;vertical-align:2px;text-indent:0}
+.chn{font-weight:bold} .chx{font-size:16px}
 .log li.nar{font-style:italic;border-left:2px solid rgba(242,193,78,.45);padding-left:6px} /* the Chronicler's voice */
 .tops{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .tops button{width:100%;display:grid;grid-template-columns:2ch 1fr auto;gap:8px;text-align:left;font-family:var(--mono);font-size:19px;padding:3px 8px;box-shadow:none;border-color:transparent;background:transparent}
