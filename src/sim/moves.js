@@ -13,7 +13,8 @@ import {rnd,ri} from '../core/rng.js';
 import {WALKABLE} from '../world/tiles.js';
 import {zoneAt,tileAt,dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
-import {MOVES,CLASS_MOVES,PASSIVES} from '../data/moves.js';
+import {MOVES,CLASS_MOVES,PASSIVES,SPEC_MOVES} from '../data/moves.js';
+import {specOf,ensureSpec} from './spec.js';
 import {profBonus} from '../data/abilities.js';
 import {S,clockStr} from './state.js';
 import {pop} from './effects.js';
@@ -29,7 +30,9 @@ const full=e=>e.kind==='hero'?maxHp(e):e.maxhp;
 const hpf=e=>e.hp/full(e);
 
 // ---- what a hero has ----
-export const movesOf=a=>(CLASS_MOVES[a.cls]||[]).filter(id=>MOVES[id].lvl<=(a.lvl||1));
+// A chosen specialisation (a.spec, #82) adds its own ability after the class's three.
+const specMoves=a=>specOf(a)?SPEC_MOVES[a.spec]||[]:[];
+export const movesOf=a=>[...(CLASS_MOVES[a.cls]||[]),...specMoves(a)].filter(id=>MOVES[id].lvl<=(a.lvl||1));
 export const cdLeft=(a,id)=>Math.max(0,Math.round((((a.mcd&&a.mcd[id])||0)-now())*10)/10);
 export const roundsLeft=(a,id)=>Math.max(0,(a.mcr&&a.mcr[id])||0);
 export const ready=(a,id,mode)=>mode==='round'?roundsLeft(a,id)<=0:cdLeft(a,id)<=0;
@@ -47,7 +50,7 @@ function foeSave(a,M,e){const S_=M.save;if(!S_)return false;
 // ---- validity ----
 // Returns an error string, or null when the move can be used now. t: the foe or ally (or null for self / area moves).
 export function canUse(a,id,t,mode='sec'){const M=MOVES[id];
-  if(!M||M.cls!==a.cls)return 'You have no such ability ('+id+').';
+  if(!M||M.cls!==a.cls||(M.spec&&!specMoves(a).includes(id)))return 'You have no such ability ('+id+').';
   if(M.lvl>(a.lvl||1))return M.name+' is learned at level '+M.lvl+'.';
   if(!living(a)||a.hidden)return 'You cannot use abilities now.';
   if(!ready(a,id,mode))return M.name+' is not ready ('+(mode==='round'?roundsLeft(a,id)+' more round(s)':cdLeft(a,id)+' s')+').';
@@ -91,7 +94,9 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
     if(fx.shake)for(const m of engagedNear(a,6))if(m.target===a)slow(m,fx.shake);
     if(fx.blink){const f=opt.foe&&living(opt.foe)?opt.foe:engagedNear(a,6).find(m=>m.target===a);if(f){const k=blink(a,f,fx.blink);R.moved=k;if(fx.delay)slow(f,fx.delay)}}
     break;
-  case 'ally':if(fx.taken){setEff(t,'taken',fx.taken,M.dur,M.durR,round);pop(t.x,t.y-.5,'WARDED','#c8c8e0')}break;
+  case 'ally':if(fx.taken){setEff(t,'taken',fx.taken,M.dur,M.durR,round);pop(t.x,t.y-.5,'WARDED','#c8c8e0')}
+    if(fx.heal){const H=fx.heal,h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(t))*passiveMul(a,'healMul')),was=t.hp;
+      t.hp=Math.min(maxHp(t),t.hp+h);const got=Math.round(t.hp-was);R.healed+=got;R.hit++;pop(t.x,t.y-.6,'+'+got,'#7dce5a');if(t!==a&&got>0)bondEvent(a,'heal',[t])}break;
   case 'allies':if(fx.heal){const H=fx.heal;
     for(const b of mates){if(dist(a,b)>M.range)continue;const h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(b))*passiveMul(a,'healMul')),was=b.hp;
       b.hp=Math.min(maxHp(b),b.hp+h);const got=Math.round(b.hp-was);R.healed+=got;R.hit++;pop(b.x,b.y-.6,'+'+got,'#7dce5a');if(b!==a&&got>0)bondEvent(a,'heal',[b])}}break;
@@ -111,6 +116,7 @@ function wants(a,M,ctx){const {foe,mates,f}=ctx;
   case 'selfhurt':return f<.55&&foe&&(foe.target===a||foe.kind==='hero')&&!effOn(a,'taken')?a:null;
   case 'wardally':{let best=null;for(const b of mates){if(dist(a,b)>M.range||hpf(b)>=.8||effOn(b,'taken'))continue;
       const hunted=b===a?(foe&&foe.target===a):ctx.engaged.some(m=>m.target===b);if(!hunted)continue;if(!best||hpf(b)<hpf(best))best=b}return best}
+  case 'healally':{let best=null;for(const b of mates){if(dist(a,b)>M.range||hpf(b)>=.55)continue;if(!best||hpf(b)<hpf(best))best=b}return best}
   case 'masshurt':{const hurt=mates.filter(b=>dist(a,b)<=M.range&&hpf(b)<.7);return hurt.length>=2||hurt.some(b=>hpf(b)<.4)?a:null}
   case 'burst':return foe&&foe.kind!=='hero'&&ctx.swing&&(foe.kind!=='mob'||hpf(foe)>.3)&&(!M.cost||f>.6)?foe:null;
   case 'opener':return foe&&foe.kind!=='hero'&&ctx.swing&&hpf(foe)>=.9?foe:null;
@@ -136,6 +142,7 @@ export function pickMove(a,foe,mates,swing,mode='sec'){
 // Fight hook (sim/heroes.js): use at most one move this step. Returns 'swing' when it took the weapon blow's place,
 // 'free' for any other move, null when nothing fired. Agent-played heroes decide for themselves.
 export function fightMoves(a,foe,mates,swing){if(a.player||a.hidden||!(a.lvl>0))return null;
+  if(a.lvl>=10&&!a.spec)ensureSpec(a,mates); // the scripted choice of a path (sim/spec.js, #82)
   if(!swing){if(now()<(a.mvAt||0))return null;a.mvAt=now()+.25} // free moves are looked at four times a second; a ready swing always is
   const p=pickMove(a,foe,mates,swing,'sec');if(!p)return null;
   const M=MOVES[p.id],t=M.target==='ally'||M.target==='foe'?p.target:null;
@@ -144,10 +151,10 @@ export function fightMoves(a,foe,mates,swing){if(a.player||a.hidden||!(a.lvl>0))
 // ---- views ----
 // For the dossier, the Fellowship sheet and the agent's status: one row per move and passive.
 export function abilityView(a){const rows=[];
-  for(const id of CLASS_MOVES[a.cls]||[]){const M=MOVES[id],learned=M.lvl<=(a.lvl||1);
+  for(const id of [...(CLASS_MOVES[a.cls]||[]),...specMoves(a)]){const M=MOVES[id],learned=M.lvl<=(a.lvl||1);
     rows.push({id,type:'move',name:M.name,kind:M.kind,lvl:M.lvl,learned,cd:M.cd,rounds:M.rounds,left:learned?cdLeft(a,id):0,roundsLeft:learned?roundsLeft(a,id):0,
       target:M.target,range:M.range,cost:M.cost,desc:M.desc})}
-  for(const id of Object.keys(PASSIVES).filter(k=>PASSIVES[k].cls===a.cls)){const P=PASSIVES[id];
+  for(const id of Object.keys(PASSIVES).filter(k=>PASSIVES[k].cls===a.cls&&(!PASSIVES[k].spec||(specOf(a)&&a.spec===PASSIVES[k].spec)))){const P=PASSIVES[id];
     rows.push({id,type:'passive',name:P.name,kind:'passive',lvl:P.lvl,learned:P.lvl<=(a.lvl||1),desc:P.desc})}
   return rows}
 // One-line card text shared by tooltips and agents.

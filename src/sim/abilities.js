@@ -10,6 +10,7 @@
 // ui/panels.js (Stats tab).
 import {rnd,ri,pickA} from '../core/rng.js';
 import {raceOf} from '../data/races.js';
+import {SPECS} from '../data/classes.js';
 import {
   ABILITIES,ABIL_IDS,CLASS_ABIL,SKILLS,SKILL_IDS,CLASS_SKILLS,TRADE_SKILL,TRAIT_SKILL,SOCIAL_LEAN,profBonus,GROWTH_LEVELS,SCORE_MAX,
 } from '../data/abilities.js';
@@ -40,7 +41,9 @@ export function growScores(a,lvl){
 export const baseScore=(a,k)=>a.abil&&a.abil[k]!==undefined?a.abil[k]:10;
 // Points worn items add to one score (item.bonus); 0 for a hero without slots.
 export function gearBonusOf(a,k){let n=0;const s=a.slots;if(!s)return 0;for(const x in s){const it=s[x];if(it&&it.bonus&&it.bonus[k])n+=it.bonus[k]}return n}
-export const score=(a,k)=>baseScore(a,k)+gearBonusOf(a,k);
+// Points a chosen specialisation adds (a.spec, issue #82).
+export const specBonusOf=(a,k)=>{const s=a.spec&&SPECS[a.spec];return s&&s.cls===a.cls&&s.abil[k]||0};
+export const score=(a,k)=>baseScore(a,k)+gearBonusOf(a,k)+specBonusOf(a,k);
 export const mod=(a,k)=>modOf(score(a,k));
 
 // ---- skills ----
