@@ -9,7 +9,7 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerAct, found, autoPick, TABLE} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, describeSave, markPlayer, playerAct, found, autoPick, TABLE} from '../src/sim/index.js';
 TABLE.mode = 'off'; // Watch mode: the clock checks below expect the world never to pause for the Fellowship's scenes (tablecheck covers Table mode)
 import {GOODS} from '../src/data/items.js';
 import {CRYPT} from '../src/world/map.js';
@@ -106,6 +106,9 @@ sane(`after ${RUN_MIN} minutes`);
 let A;
 try {A = snapshot(); scan(A); ok(true, 'snapshot() walks clean: no functions, canvases, NaN or live entity objects')} catch (e) {ok(false, 'snapshot(): ' + e.message); process.exit(1)}
 ok(isSave(A), 'snapshot is recognised by isSave()');
+{const d = describeSave(JSON.parse(JSON.stringify(A))), F = S.fellowship, mem = F ? Object.values(F.slots).filter((id) => id != null && S.agents.some((x) => x.id === id)) : [];
+  ok(d && d.day === Math.floor(S.gameMin / 1440) + 1 && d.min === Math.floor(S.gameMin) % 1440 && (!F || (d.fellowship.name === F.name && d.fellowship.members.length === mem.length && d.fellowship.members.every((m) => m.lvl === S.agents.find((x) => x.name === m.name).lvl))) && describeSave({}) === null,
+    'describeSave (title screen): day ' + (d && d.day) + ', ' + (d && d.fellowship ? d.fellowship.members.map((m) => m.name + ' ' + m.lvl).join(', ') : 'no Fellowship'))}
 const json = JSON.stringify(A);
 console.log(`  size after ${RUN_MIN} min (${(RUN_MIN / 4).toFixed(1)} game-days): ${kb(json)}; ${A.agents.length} heroes, ${A.mobs.length} mobs, ${A.parties.length} parties, ${(A.encounters || []).length} encounters, ${A.chronicle.length} chronicle lines`);
 const A2 = JSON.parse(json);

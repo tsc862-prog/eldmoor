@@ -100,13 +100,13 @@ let job = null, offered = null, turnedAway = 0;
 const refused = new Set();
 for (let k = 0; k < 160 && !(job && r.ok); k++) {
   r = await call('list_jobs');
-  const fit = (r.jobs || []).filter(j => j.fits && !j.resume && !refused.has(j.id));
+  const fit = (r.jobs || []).filter(j => !j.resume && !refused.has(j.id)); // no "fits" any more (#188): the job-giver decides
   const withChoice = fit.find(j => {const h = S.adventures.find(x => x.id === j.id); return h && ADV[h.tpl] && ADV[h.tpl].scenes.some(sc => sc.type === 'choice')});
   job = withChoice || (k >= 60 ? fit[0] : null) || null; r = {ok: false};
   if (job) {offered = offered || job; r = await call('take_adventure', {job_id: job.id}); if (!r.ok) {refused.add(job.id); turnedAway++; job = null}}
   if (!job) await pause(250);
 }
-ok(offered, `list_jobs offers a fitting job: ${offered && offered.job}`);
+ok(offered, `list_jobs offers a job: ${offered && offered.job}`);
 ok(job && r.ok && a.adv === job.id, `take_adventure: ${r.adventure || r.error}${turnedAway ? ' (turned away ' + turnedAway + 'x first)' : ''}`);
 ok(S.adventures.filter(h => h.phase === 'held').length === 0, 'no posted job is left held back after taking one');
 r = await call('take_adventure', {job_id: job.id}); ok(!r.ok, 'a second take is refused (not in town / already on it)');
@@ -153,10 +153,14 @@ ok(chose || !jobHasChoice, chose ? 'the adventure reached a choice and took the 
 if (a.state !== 'dead') {
   if (a.adv) {const adv = S.adventures.find(x => x.id === a.adv); if (adv && adv.phase === 'active') {adv.phase = 'done'; adv.outcome = 'failure'; a.adv = null}}
   a.hp = Math.max(a.hp, 300);
-  r = await call('move_to', {target: 'Mirefen'}); ok(r.ok || /fight/.test(r.error), 'move_to Mirefen: ' + (r.going || r.error));
+  // learn the world (#188): a place never heard of is refused, then a townsperson's word opens it
+  const L = await import('../src/sim/lore.js');
+  if (!(a.lore && a.lore.p.Mirefen)) {r = await call('move_to', {target: 'Mirefen'}); ok(!r.ok && /heard of/.test(r.error), 'move_to a region never heard of is refused: ' + r.error)}
+  L.hear(a, 'The reeds of Mirefen are thick with Boglings this season.', 'a townsperson');
+  r = await call('move_to', {target: 'Mirefen'}); ok(r.ok || /fight/.test(r.error), 'move_to Mirefen once told of it: ' + (r.going || r.error));
   await until(() => {const b = S.agents.find(x => x.id === id); return b.state === 'hunt' && !(b.pq || []).length || b.state === 'fight'}, 25, 'arriving in Mirefen');
   let target = null;
-  for (let k = 0; k < 30 && !target; k++) {r = await call('look'); target = (r.monsters || []).find(m => m.lvl <= a.lvl + 1 && !m.busy); if (!target) {await call('hunt', {count: 1}); await call('wait', {minutes: 30})}}
+  for (let k = 0; k < 30 && !target; k++) {r = await call('look'); target = (r.monsters || []).find(m => !/dangerous|more than|death|warned/.test(m.threat) && !m.busy && m.lvl === undefined); /* words, not levels (#188) */ if (!target) {await call('hunt', {count: 1}); await call('wait', {minutes: 30})}}
   const k0 = a.kills;
   if (target) {r = await call('fight', {target_id: target.id}); ok(r.ok, `fight ${r.target || r.error}`)}
   await until(() => {const b = S.agents.find(x => x.id === id); return b.kills > k0 || b.state === 'dead' || b.state === 'return'}, 30, 'the fight ending');

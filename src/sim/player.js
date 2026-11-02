@@ -66,6 +66,7 @@ import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js
 import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
+import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,preyKey,pickPrey,npcWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
 import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
 import {SPEC_LVL} from '../data/classes.js';
@@ -119,7 +120,7 @@ function since(list,k){if(!list||!list.length)return [];if(!k)return list.slice(
 function autopilot(a){const mh=maxHp(a),field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
   if(!field)return null;
   if(a.hp<mh*.6)return {kind:'rest',until:S.gameMin+60,auto:'resting while hurt',label:'rest'};
-  const o=a.playOrder;if(o&&o.kind==='hunt')return {kind:'hunt',n:o.n,k0:a.kills,flee:o.flee,auto:'hunting again (your last order: hunt '+o.n+')',label:'hunt'};
+  const o=a.playOrder;if(o&&o.kind==='hunt')return {kind:'hunt',n:o.n,k0:a.kills,flee:o.flee,prey:o.prey,auto:'hunting again (your last order: hunt '+o.n+')',label:'hunt'};
   return null}
 
 // ---- marking ----
@@ -183,17 +184,20 @@ function hearWake(a,e){const f=e.from;
   return e.party||f&&(f.kind==='dm'||f.kind==='npc')?1:0}
 // Notice what changed since the last step and turn it into events.
 function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills});const mh=maxHp(a);
+  visit(a); // learn the world (#188): the region underfoot, landmarks in sight, what the quest giver named
+  const foe=a.target&&a.target.kind==='mob'&&a.target.alive?a.target:null;if(foe&&a.state==='fight')engage(a,foe);
   if(a.lvl>w.lvl)ev(a,'Reached level '+a.lvl+'.',true);
   if(a.kills>w.kills&&a.target==null&&a.state!=='fight')ev(a,'Made a kill ('+a.kills+' in all).');
   if(a.state!==w.state){
-    if(a.state==='fight'&&a.target&&a.target.kind==='mob'&&a.target.target===a&&!(cmdOf(a)&&cmdOf(a).kind!=='move'))ev(a,'Attacked by '+(a.target.elite?'':'a level '+a.target.lvl+' ')+mobName(a.target)+'!',2);
+    if(a.state==='fight'&&a.target&&a.target.kind==='mob'&&a.target.target===a&&!(cmdOf(a)&&cmdOf(a).kind!=='move'))ev(a,'Attacked by '+foeName(a,a.target)+' ('+threatText(a,a.target)+')!',2);
     if(a.state==='duel'&&a.target)ev(a,'In a duel with '+a.target.name+' ('+FAC[a.target.fac].name+' '+a.target.cls+', level '+a.target.lvl+')!',2);
     if(a.state==='assist'&&a.target)ev(a,'Rushing to help against '+a.target.name+'.',2)}
   if(a.hp<mh*.3&&w.hp>=mh*.3)ev(a,'Badly hurt: '+pct(a.hp,mh)+'% HP.',2);
+  if(a.hp<mh*LORE.NEAR&&a.hp>0){const m=foe||(a.loreFoe!=null?S.mobs.find(x=>x.id===a.loreFoe&&x.target===a):null);if(m)nearDeath(a,m)} // a lesson (#188)
   if(a.playChoiceNew){a.playChoiceNew=false;const adv=advOf(a),p=adv&&adv.pick;
     if(p)ev(a,'A choice on '+(p.title||'your adventure')+': '+p.frame+'. a) '+p.opts.a+'  b) '+p.opts.b+'. choose() within '+Math.max(0,Math.round(p.until-S.gameMin))+' game minutes.',3)}
   const hs=since(a.history,w.hist);for(const e of hs)if(!/^Began to choose/.test(e.text))ev(a,e.text);if(a.history&&a.history.length)w.hist=key(a.history[a.history.length-1]);
-  const cs=since(a.chat,w.chat);for(const e of cs)if(e.from!==a&&!(e.from&&e.from.kind!=='npc'&&e.from.id===a.id))ev(a,heardText(e),false,hearWake(a,e));if(a.chat&&a.chat.length)w.chat=key(a.chat[a.chat.length-1]);
+  const cs=since(a.chat,w.chat);for(const e of cs)if(e.from!==a&&!(e.from&&e.from.kind!=='npc'&&e.from.id===a.id)){ev(a,heardText(e),false,hearWake(a,e));hear(a,e.text,e.from&&e.from.kind==='dm'?'the narrator':e.from&&e.from.name)} /* a lesson told is learned (#188) */if(a.chat&&a.chat.length)w.chat=key(a.chat[a.chat.length-1]);
   w.hp=a.hp;w.lvl=a.lvl;w.state=a.state;w.kills=a.kills}
 
 function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*dt);
@@ -231,7 +235,7 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
     if(left<=0){done(a,'Hunt done: '+cmd.n+' kill'+(cmd.n>1?'s':'')+'. HP '+pct(a.hp,mh)+'%.');return true}
     if(a.hp<mh*PK.RETREAT*tm(a,'retreat')){done(a,'Too hurt to keep hunting ('+pct(a.hp,mh)+'% HP).');return true}
     if(isStorm(a.zone)&&!cmd.stormSaid){cmd.stormSaid=true;ev(a,'A storm rolls over '+ZONES[a.zone]+'.',true)}
-    a.scan-=dt;if(a.scan<=0){a.scan=.5;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;return true}}
+    a.scan-=dt;if(a.scan<=0){a.scan=.5;const m=pickPrey(a,cmd);if(m){a.target=m;a.state='fight';a.dest=null;return true}}
     if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;return true}
   if(cmd){done(a,'Cannot '+cmd.kind+' here.');return true}
   // idle reflex: a full bag goes home to be sold
@@ -265,7 +269,7 @@ function findTarget(id){return S.mobs.find(m=>m.id===id)||S.agents.find(b=>b.id=
 
 // ---- what the hero is doing, for the card and the tools ----
 function doingText(a,adv,cmd){
-  if(a.state==='fight'&&a.target)return 'Fighting '+(a.target.elite?a.target.name:'a level '+a.target.lvl+' '+mobName(a.target));
+  if(a.state==='fight'&&a.target)return 'Fighting '+foeName(a,a.target);
   if(cmd){if(cmd.kind==='move')return (cmd.flee?'Fleeing to ':'Walking to ')+cmd.label;
     if(cmd.kind==='hunt')return 'Hunting in '+ZONES[zoneAt(a.x,a.y)]+' ('+Math.max(0,cmd.n-(a.kills-cmd.k0))+' to go)';
     if(cmd.kind==='rest')return 'Resting';
@@ -290,20 +294,32 @@ function plan(a,target){const t=clean(target,60).toLowerCase(),c=homeOf(a),here=
   const toField=(p,label)=>({legs:here?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}],last:'hunt',label});
   if(t==='home'||t==='town'||t===c.name.toLowerCase()){const p=c.spots&&c.spots.square||c.ah;return toTown(p,c.name)}
   const sp=townSpot(c,t);if(sp)return toTown(sp,sp.label+' in '+c.name);
+  // Places by name only when this hero knows them: its home region, where it has been, what it saw or was told (#188).
+  const unknown=n=>({error:'You have never been to '+n+' nor heard of it. Ask around (talk, the town criers, your companions), or explore a direction ("north", "east", ...) or "x,y".'});
   const z=ZONES.findIndex(n=>n.toLowerCase()===t);
-  if(z>=0){const p=zonePoint(z,null,c.gate);if(enemyNear(a,p))return {error:'That part of '+ZONES[z]+' is under an enemy town wall.'};
-    const band=REGIONS[z]&&REGIONS[z].band;const r=toField(p,ZONES[z]);if(band&&a.lvl<band[0]-2)r.warn=ZONES[z]+' is for levels '+band[0]+'-'+band[1]+'; you are level '+a.lvl+'.';return r}
-  if(t==='crypt'||t===CRYPT.name.toLowerCase()||t==='the crypt')return toField({x:CRYPT.x,y:CRYPT.y+1.4},CRYPT.name+' (the entrance)');
+  if(z>=0){if(!knowsPlace(a,ZONES[z]))return unknown(ZONES[z]);const p=zonePoint(z,null,c.gate);if(enemyNear(a,p))return {error:'That part of '+ZONES[z]+' is under an enemy town wall.'};
+    const r=toField(p,ZONES[z]);const w=placeWarn(a,ZONES[z]);if(w)r.warn=w;return r}
+  if(t==='crypt'||t===CRYPT.name.toLowerCase()||t==='the crypt'){if(!knowsPlace(a,CRYPT.name))return unknown(CRYPT.name);const r=toField({x:CRYPT.x,y:CRYPT.y+1.4},CRYPT.name+' (the entrance)');const w=placeWarn(a,CRYPT.name);if(w)r.warn=w;return r}
   const lm=LANDMARKS.find(l=>l.name.toLowerCase()===t||l.kind===t);
-  if(lm){const r=toField({x:lm.x,y:lm.y+(lm.r||1)+1},lm.name);if(lm.kind==='lair')r.warn='That is the lair of Kragmaw the Cinder Wyrm, level 20.';return r}
+  if(lm){if(!knowsPlace(a,lm.name))return unknown(lm.kind==='lair'?'that lair':lm.name);const r=toField({x:lm.x,y:lm.y+(lm.r||1)+1},lm.name);if(lm.kind==='lair')r.warn='That is the lair of Kragmaw the Cinder Wyrm. Few who go there come back.';return r}
   const town=CITY.find(x=>x.name.toLowerCase()===t);
   if(town){if(town.fac!==a.fac)return {error:town.name+' is an enemy town. You would not leave it alive.'};return toField({x:town.gate.x,y:town.gate.y},'the gate of '+town.name)}
+  // Exploring (#188): a direction walks about LORE.DIR tiles that way, into whatever lies there.
+  const dm=/^(?:explore|go|head|walk)?\s*(north|south|east|west|north-?east|north-?west|south-?east|south-?west)(?:\s+(\d+))?$/.exec(t);
+  if(dm){const k=dm[1].replace('-',''),v=DIRS[k],far=Math.min(40,Math.max(4,Number(dm[2])||LORE.DIR)),n=Math.hypot(v[0],v[1]);
+    for(let d=far;d>=3;d-=3){const p={x:Math.max(1.5,Math.min(W-2.5,a.x+v[0]/n*d)),y:Math.max(1.5,Math.min(H-2.5,a.y+v[1]/n*d))};
+      if(dist(a,p)<2.5)break;if(enemyNear(a,p)||cityAt(p))continue;const r=toField(p,k+' (about '+Math.round(dist(a,p))+' tiles)');r.explore=true;return r}
+    return {error:'You cannot go '+k+' from here: the edge of the world or an enemy town wall is that way.'}}
   const m=/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(t);
   if(m){const p={x:+m[1],y:+m[2]};if(!(p.x>=1&&p.y>=1&&p.x<W-1&&p.y<H-1))return {error:'That is off the map (0-'+W+', 0-'+H+').'};
     if(enemyNear(a,p))return {error:'That is under an enemy town wall.'};
     const ct=cityAt(p);if(ct&&ct===c)return toTown(p,'('+p.x+', '+p.y+') in '+c.name);
     return toField(p,'('+p.x+', '+p.y+') in '+(ZONES[zoneAt(p.x,p.y)]||'the wilds'))}
-  return {error:'Unknown place "'+target+'". Try a town spot (auction house, quest giver, gate, inn, smith, chapel, square), "home", a region ('+ZONES.join(', ')+'), "crypt", or "x,y".'}}
+  const named=placeNameIn(t);if(named)return unknown(named);
+  return {error:'Unknown place "'+target+'". Try a town spot (auction house, quest giver, gate, inn, smith, chapel, square), "home", a place you know ('+placesView(a).join(', ')+'), a direction ("north", "explore east"), or "x,y".'}}
+const DIRS={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0],northeast:[1,-1],northwest:[-1,-1],southeast:[1,1],southwest:[-1,1]};
+// A place name the agent used that the world has but the hero has not heard of (so the refusal does not confirm others).
+const placeNameIn=t=>{const n=[...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).find(x=>x.toLowerCase()===t);return n||null};
 
 // ---- the tools ----
 const need=(cond,msg)=>{if(!cond)throw new Rule(msg)};
@@ -318,8 +334,8 @@ function seen(a){const R=sightOf(a),here=inTown(a)?homeOf(a):null,out={heroes:[]
     if(mate)o.party=true,o.hp=pct(b.hp,maxHp(b))+'%';else if(b.hp<maxHp(b)*.5)o.wounded=true;
     if(b.guild)o.guild=b.guild.tag;out.heroes.push(o);if(out.heroes.length>=10)break}
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone)continue;
-    const o={id:m.id,name:mobName(m),lvl:m.lvl,dist:r1(dist(a,m))};if(m.elite||m.named)o.named=true;if(m.target===a)o.onYou=true;else if(m.target)o.busy=true;
-    if(m.hp<m.maxhp)o.hurt=pct(m.hp,m.maxhp)+'%';out.monsters.push(o)}
+    const o=mobView(a,m);o.dist=r1(dist(a,m));if(m.target===a)o.onYou=true;else if(m.target)o.busy=true; // described, never numbered (#188)
+    out.monsters.push(o)}
   out.monsters.sort((x,y)=>x.dist-y.dist);out.monsters=out.monsters.slice(0,10);
   if(here){ensureNpcs();for(const p of S.npcs||[])if(p.town===here.name)out.townsfolk.push({name:p.title+' '+p.name,role:p.role,dist:r1(dist(a,p))})}
   if(!out.townsfolk.length)delete out.townsfolk;
@@ -342,7 +358,7 @@ const T={
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
       oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
-      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,hunting_ground:ZONES[huntZone(a)],guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
+      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
     if(a.party&&a.party.leader===a)r.party_lead=true;
     const cv=campView(a);if(cv)r.camp=cv;
@@ -350,7 +366,8 @@ const T={
     if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc;const P=a.party&&a.party.fellow?a.party:null;if(P){r.party_leader=P.leader.name;if(P.dest)r.party_heading=P.dest.label}
       const op=openProps().map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name);if(notTold(a))r.warning=NOT_TOLD;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
-    r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...ZONES.map((n,i)=>n+(REGIONS[i]&&REGIONS[i].band?' (L'+REGIONS[i].band[0]+'-'+REGIONS[i].band[1]+')':'')),'crypt',...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];
+    // only the places this hero knows (#188); the rest of the world is learned by going there or hearing of it
+    r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...placesView(a),...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];r.explore='a direction (north, south, east, west, northeast, ...) or "x,y" takes you where you have never been';
     return r},
   inventory(a){const slots={};for(const k of SLOTS){const it=a.slots&&a.slots[k];slots[k]=it?itemText(it):null}
     // Only this hero's own pack (inventory, #124): stacks, spare gear, consumables and quest items, by index.
@@ -378,7 +395,7 @@ const T={
     need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);
     a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;return r},
+    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.explore)r.explore=true;return r},
   talk(a,{target,text}){const t=clean(target,60).toLowerCase();need(t,'Talk to whom?');
     ensureNpcs();const here=cityAt(a);
     // NPC conversations (#170): a Fellowship member's words to a person open a conversation the DM answers (sim/talk.js)
@@ -391,7 +408,8 @@ const T={
     if(p){need(dist(a,p)<=PK.TALK,p.title+' '+p.name+' is too far away ('+r1(dist(a,p))+' tiles). move_to("'+p.role+'") first.');
       if(p.fac!==a.fac)return {ok:true,who:p.title+' '+p.name,answer:'('+p.name+' looks at you with open contempt and says nothing.)'};
       const before=p.lastBark;npcSay(p,'greet',{target:a.name},{dm:true});const line=p.bubble&&p.lastBark!==before?p.bubble.text:p.bubble?p.bubble.text:null;
-      talked(a,[p.name]);return {ok:true,who:p.title+' '+p.name,answer:line||'('+p.name+' nods.)'}}
+      const warn=npcWarning(a);if(warn)hear(a,warn,p.title+' '+p.name); // a townsperson's advice (#188)
+      talked(a,[p.name]);return {ok:true,who:p.title+' '+p.name,answer:(line||'('+p.name+' nods.)')+(warn?' "'+warn+'"':'')}}
     const id=Number(target),b=S.agents.find(x=>x!==a&&x.state!=='dead'&&(x.id===id||x.name.toLowerCase()===t));
     need(b,'Nobody called "'+target+'" is here.');need(dist(a,b)<=PK.TALK*1.5,b.name+' is too far away to talk to.');
     if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
@@ -424,9 +442,10 @@ const T={
   list_jobs(a){need(inTown(a),'Jobs are posted at your town gate. Go home first.');const c=homeOf(a),mem=[a,...partyMates(a)];
     const mine=advOf(a);const out=[];
     if(mine)out.push({id:mine.id,title:mine.title,yours:true,resume:true,scene:plain(advLine(a))});
-    for(const h of (S.adventures||[]))if(h.phase==='open'&&h.town===c.name){const w=jobFit(a,h,mem);
-      out.push({id:h.id,job:jobText(h),giver:h.giver?h.giver.name:'the gate captain',where:h.zone!=null?ZONES[h.zone]:'near your hunting ground',for_you:h.for!=null?h.for===a.id:undefined,fits:!w,why_not:w||undefined,
-        expires_in_min:Math.max(0,Math.round(h.until-S.gameMin))})}
+    // the job's own words and the gate's rumour of it (#188), not whether it "fits": the job-giver decides at take_adventure
+    for(const h of (S.adventures||[]))if(h.phase==='open'&&h.town===c.name){const T=D.ADVENTURES[h.tpl],zn=h.zone!=null?ZONES[h.zone]:null;if(zn)learnPlace(a,zn,'told');
+      out.push({id:h.id,job:jobText(h),giver:h.giver?h.giver.name:'the gate captain',where:zn||'near the town',party:T&&T.size?(T.size[0]>1?'wants '+T.size[0]+' to '+T.size[1]+' blades':'one blade will do'):undefined,
+        for_you:h.for!=null?h.for===a.id:undefined,rumour:h.zone!=null?jobRumour(a,h.zone):undefined,expires_in_min:Math.max(0,Math.round(h.until-S.gameMin))})}
     return {ok:true,jobs:out,note:out.length?undefined:'Nothing posted right now; jobs refill every few game hours.'}},
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
     need(!(a.party&&a.party.leader!==a),'Your party leader decides which job the party takes.');
@@ -434,7 +453,7 @@ const T={
     if(mine){need(mine.id===id,'You already have an adventure ('+mine.title+', id '+mine.id+'). Resume it with that id.');
       a.pq=[];const ok=dmDepart(a,c);need(ok,'The adventure could not resume.');return {ok:true,resumed:mine.title,scene:plain(advLine(a))}}
     const h=(S.adventures||[]).find(x=>x.id===id&&x.phase==='open'&&x.town===c.name);need(h,'No open job '+id+' at '+c.name+'.');
-    const w=jobFit(a,h,mem);need(!w,w);
+    const w=jobFit(a,h,mem);need(!w,'The job-giver turns you away: '+w+'.');
     // Offer only this job to the DM: the others are held back for the moment and the job is
     // marked as personal to this hero, so the scripted DM's pickHook takes it without a roll.
     const held=(S.adventures||[]).filter(x=>x!==h&&x.phase==='open'&&x.town===c.name);for(const x of held)x.phase='held';
@@ -450,16 +469,18 @@ const T={
     const fb=flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100));
     if(t.kind==='mob'){need(!(t.target&&t.target!==a&&t.target.state!=='dead'),'Someone else is already fighting it.');
       a.pq=[{kind:'fight',id:t.id,flee:fb}];a.target=t;a.state='fight';a.dest=null;
-      return {ok:true,target:mobName(t)+' L'+t.lvl,warning:t.lvl>a.lvl+2?'It is '+(t.lvl-a.lvl)+' levels above you.':undefined}}
+      const pr=perceived(a,t);return {ok:true,target:foeName(a,t),threat:threatText(a,t),warning:pr==null?'You cannot tell how strong it is.':pr>=3?'You judge it '+threatText(a,t).replace(/^looks /,'')+'.':undefined}}
     need(t.kind==='hero'&&t!==a,'No such target.');need(t.fac!==a.fac,'You will not raise a hand against your own faction.');
     need(zoneAt(a.x,a.y)>=1&&zoneAt(t.x,t.y)>=1,'Thornvale is the peaceful vale: no duels there.');
     need(['hunt','travel','return','follow'].includes(t.state),t.name+' is not free to be challenged right now.');
     a.pq=[];a.state=t.state='duel';a.target=t;t.target=a;a.dest=t.dest=null;record(a,'Challenged ',t,'.');
     return {ok:true,duel:t.name+' ('+t.cls+' L'+t.lvl+')',note:'A duel runs until one falls or breaks off; you break off on your own at low HP, or flee().'}},
-  hunt(a,{count,flee_below}){need(fieldState(a)&&!inTown(a),'Hunt out in the world, not in town: move_to a region first.');need(a.state!=='return','You are heading home.');
+  hunt(a,{count,flee_below,prey}){need(fieldState(a)&&!inTown(a),'Hunt out in the world, not in town: move_to a region first.');need(a.state!=='return','You are heading home.');
     const n=Math.min(10,Math.max(1,Math.round(Number(count)||3)));
-    a.pq=[{kind:'hunt',n,k0:a.kills,flee:flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100))}];a.state='hunt';a.dest=null;
-    return {ok:true,hunting:n+' kill'+(n>1?'s':'')+' in '+ZONES[zoneAt(a.x,a.y)]}},
+    // what the hero chooses (#188): a creature it knows by name, or whatever is around that it has not learned to fear
+    let pk=null;if(prey!=null&&String(prey).trim()&&!/^(any|anything|around|whatever.*)$/i.test(String(prey).trim())){pk=preyKey(a,prey);need(pk,'You know of no creature called "'+clean(prey,40)+'". Hunt what is around (no prey), or learn its name first (fight one, look, ask around).')}
+    a.pq=[{kind:'hunt',n,k0:a.kills,prey:pk||undefined,flee:flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100))}];a.state='hunt';a.dest=null;
+    return {ok:true,hunting:n+' kill'+(n>1?'s':'')+' in '+ZONES[zoneAt(a.x,a.y)]+(pk?' ('+clean(prey,40)+' only)':' (whatever is around that you do not fear)')}},
   flee(a){need(['fight','duel','assist'].includes(a.state),'You are not in a fight.');flee(a,false);return {ok:true,fleeing_to:homeOf(a).name,hp:pct(a.hp,maxHp(a))+'%'}},
   rest(a,{minutes,hours}){if(hours!=null&&hours!==''&&a.fellow){const e=leaderRest(a,hours);if(e)throw new Rule(e);return {ok:true,camp:campView(a)&&campView(a).status||'making camp',note:'The Fellowship makes camp; sleepers get no turns but wake events.'}}
     need(a.state==='hunt'||a.state==='town'||a.state==='travel'||a.state==='follow','You cannot rest now ('+(a.state==='return'?'you are heading home; rest in town':a.state)+').');
@@ -494,7 +515,9 @@ const T={
   turn_in(a){need(inTown(a),'The quest giver is in town.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,x=a.xp,l=a.lvl;turnIn(a);
     const nq=a.quest?(MOBS[a.quest.type].q)+': '+a.quest.need+' '+MOBS[a.quest.type].pl+' in '+ZONES[MOBS[a.quest.type].z]:null;
     return doneQ?{ok:true,reward_gold:a.gold-g,leveled:a.lvl>l||undefined,new_quest:nq}:{ok:false,error:'Your quest is not done ('+(q?q.have+'/'+q.need:'none')+').',quest:nq}},
-  read_chronicle(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||8)));return {ok:true,news:S.chronicle.slice(0,k).map(e=>e.t+' '+plain(e.parts))}},
+  read_chronicle(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||8))),news=S.chronicle.slice(0,k).map(e=>e.t+' '+plain(e.parts));
+    for(const l of news)hear(a,l,'the town criers');return {ok:true,news}}, // the criers' news teaches names and places (#188)
+  lore(a,{about}){return {ok:true,...loreView(a,about),note:'What you know, in your own words: no one knows the measure of a creature until they have met it or been told.'}},
   // the journal (#153: tiers in sim/tiers.js): without n an overview (landmarks, chapter titles, latest entries) to re-ground on
   journal_read(a,{n}){if(n==null||n==='')return {ok:true,...journalOverview(a)};
     const k=Math.min(50,Math.max(1,Math.round(Number(n)||10)));return {ok:true,entries:(a.journal||[]).slice(-k).map(e=>e.t+': '+e.text),total:(a.journal||[]).length}},
@@ -556,7 +579,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}
     st.push(S.gameMin)}
   let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
-  if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'&&a.pq&&a.pq[0])a.playOrder={kind:'hunt',n:a.pq[0].n,flee:a.pq[0].flee}} // the agent's last action that went through (autopilot, #126)
+  if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'&&a.pq&&a.pq[0])a.playOrder={kind:'hunt',n:a.pq[0].n,flee:a.pq[0].flee,prey:a.pq[0].prey}} // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
   logCall(a,tool,args,r);return r}
 
