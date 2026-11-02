@@ -145,6 +145,17 @@ export const TESTWORLD={
 // ways. Not canon geography: see docs/LORE.md, "The Stepping Lands". Region fauna lives in
 // src/data/fauna.js, keyed by region id.
 const TOWN_SPOTS={quartermaster:[3.5,3.8],gate:[7.5,3.8],inn:[3.5,7.3],smith:[5.5,1.6],chapel:[8.5,1.9],square:[5.5,6.1]};
+// The Stepping Lands' Sunken Crypt (#309): three chambers of its own, pitched for Sedgewater (levels 4-9; offsets are
+// from the party's average). Bestiary species only; the boss is a Grave Warden under a name, not a new creature.
+const STEPPING_CRYPT_ROOMS=[
+  {id:'sump',name:'The Reed Sump',frame:'The crypt stair ends in a flooded sump choked with dead reeds. Something small and many-legged moves under the water-mat.',
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.10,rounds:2},
+  {id:'bonehall',name:'The Salt-Bone Hall',frame:'Fen salt has crusted the old shelves white. The bones under it are not as still as they should be, and a dry bowstring creaks in the dark.',
+    foes:[{type:'shambler',n:1},{type:'boneshot',n:1,hits:1}],lvl:0,hit:.12,rounds:2},
+  {id:'mere',name:"The Mere-Warden's Seat",frame:'The last chamber is a round pool with a stone chair standing in it. The one who sits there has watched the fen rise for a very long time.',
+    foes:[{type:'graveward',n:1,name:'Mere-Warden Hask',hits:3,atk:1.5},{type:'tombskit',n:1}],lvl:1,hit:.16,rounds:2,boss:true},
+];
+
 export const STEPPING={
   name:'Stepping Lands',
   size:{w:160,h:100},
@@ -178,7 +189,7 @@ export const STEPPING={
     {name:'Murkstead',fac:1,x0:28,y0:62,w:11,h:9,gate:'E',race:'mirekin',spots:TOWN_SPOTS},
   ],
   landmarks:[
-    {kind:'crypt',name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25,rooms:CRYPT_ROOMS},
+    {kind:'crypt',name:'The Sunken Crypt',boss:'Mere-Warden Hask',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25,rooms:STEPPING_CRYPT_ROOMS},
     {kind:'lair',name:'Kragmaw',x:140.5,y:66.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
     // Placeholder second dungeon: an entrance only, no group, boss or loot yet (see LORE.md).
     {kind:'crypt',name:'The Hollow Cairn',boss:'The Cairn-Warden',x:84.5,y:14.1,mouth:{x0:83,y0:12,w:3,h:3},exclude:3.5,cd:25},
