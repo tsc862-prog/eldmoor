@@ -74,7 +74,7 @@ for i in open_issues:
     elif "agent-ready" in labels: status = "ready"
     else: status = "backlog"
     cards.append({"n": n, "title": i["title"], "lane": lane_of(i["title"], labels), "status": status,
-                  "areas": area(labels), "epic": epic_of(i["title"]), "pr": pr_for.get(n), "size": size_of(labels), "owner": owner_of(labels)})
+                  "areas": area(labels), "epic": epic_of(i["title"]), "pr": pr_for.get(n), "size": size_of(labels), "owner": owner_of(labels), "prio": "priority:high" in labels})
 
 today = datetime.datetime.now(datetime.timezone.utc)
 for i in closed:
@@ -82,7 +82,7 @@ for i in closed:
     when = datetime.datetime.fromisoformat(i["closedAt"].replace("Z", "+00:00"))
     if (today - when).days > 3: continue
     cards.append({"n": i["number"], "title": i["title"], "lane": lane_of(i["title"], labels), "status": "done",
-                  "areas": area(labels), "epic": epic_of(i["title"]), "closedAt": i["closedAt"], "size": size_of(labels), "owner": owner_of(labels)})
+                  "areas": area(labels), "epic": epic_of(i["title"]), "closedAt": i["closedAt"], "size": size_of(labels), "owner": owner_of(labels), "prio": "priority:high" in labels})
 
 board = {
     "repo": "tsc862-prog/eldmoor",
