@@ -71,5 +71,5 @@ export function opening(o={}){
   const bg=S.agents.filter(a=>!ids.has(a.id)),lv=bg.map(a=>a.lvl);
   log({t:'Eldmoor',c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',fac(0),' and ',fac(1),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.');
   const r=found(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, agent-played from the first tick (#148)
-  if(r.ok){if(setup){applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm}}}
+  if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(profs&&Object.keys(profs).length?{profs}:{})}}}
   return r.ok?r.fellowship:null}

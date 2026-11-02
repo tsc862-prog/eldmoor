@@ -10,6 +10,7 @@
 import {fellowshipMembers,defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners} from '../sim/index.js';
 import {SLOT_KEYS} from '../sim/fellowship.js';
 import {racesOf} from '../data/races.js';
+import {PROF,PROF_IDS,MAX_PROF} from '../data/professions.js';
 import {FAC} from '../data/factions.js';
 import {CFG} from '../sim/brain.js';
 import {WORLD_ID} from '../world/map.js';
@@ -97,8 +98,17 @@ function slotCard(k){const p=st.setup.slots[k],card=el('div','scard'),top=el('di
   const rs=racesOf(st.setup.fac);
   const people=select('race:'+k,[['','any people']].concat(rs.map(r=>[r.id,r.name])),p.race||'','People');
   card.append(field('Name',row));card.append(field('People',people));
+  card.append(profControls(k,p));
   card.append(field('Mind',mindControls(k,p.mind)));
   return card}
+
+// Up to MAX_PROF professions for a place, or none chosen = "let them choose" (the hero picks in play, #259).
+function profControls(k,p){const d=el('div','sfield'),chosen=p.profs||[],row=el('div','sprofs');
+  d.append(el('span','slbl','Professions'));
+  for(const id of PROF_IDS){const on=chosen.includes(id),full=!on&&chosen.length>=MAX_PROF;
+    const b=btn(PROF[id].name,'prof',{slot:k,id},full?'dis':'');b.title=PROF[id].kind+': '+PROF[id].blurb;b.setAttribute('aria-pressed',String(on));if(full)b.disabled=true;row.append(b)}
+  d.append(row,el('div','dm sprofnote',chosen.length?chosen.map(id=>PROF[id].name).join(' and ')+' at skill 1.':'Let them choose (up to '+MAX_PROF+').'));
+  return d}
 
 function relayLine(){const s=relayState(),d=el('div','srelay '+s);
   const agentsWanted=planRunners(st.setup).length>0;
@@ -178,6 +188,9 @@ function onChange(e){const t=e.target;if(!t||!t.dataset||!t.dataset.f)return;con
 
 function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a]'):null;if(!t||t.disabled)return;const a=t.dataset.a;st.error='';
   if(a==='preset'){const r=applyPreset(t.dataset.name,st.setup,{local:localModel(),last:readLast()});if(!r){st.error='That preset is not available right now.'}else{r.seed=st.setup.seed;r.world=st.setup.world;st.setup=r}st.confirm=false}
+  else if(a==='prof'){const p=st.setup.slots[t.dataset.slot],id=t.dataset.id,l=(p.profs||[]).slice(),i=l.indexOf(id);
+    if(i>=0)l.splice(i,1);else if(l.length<MAX_PROF)l.push(id);
+    if(l.length)p.profs=l;else delete p.profs;st.confirm=false}
   else if(a==='mode'){setMode(t.dataset.who,t.dataset.mode);st.confirm=false}
   else if(a==='seedroll'){st.setup.seed=newSeed();st.confirm=false}
   else if(a==='nameroll'){rollName(t.dataset.slot);st.confirm=false}

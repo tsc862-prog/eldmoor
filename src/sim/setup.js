@@ -21,6 +21,8 @@ import {rollScores} from './abilities.js';
 import {disableBrain,MIND_PROVIDERS} from './brain.js';
 import {markPlayer} from './player.js';
 import {setDmSeat} from './dmagent.js';
+import {PROF,MAX_PROF} from '../data/professions.js';
+import {seedProfs} from './professions.js';
 
 export const SETUP_VERSION=1;
 export const CLAUDE_MODELS={haiku:'claude-haiku-5-5',sonnet:'claude-sonnet-5-5'};
@@ -56,7 +58,7 @@ export function applyPreset(name,base,ctx={}){const s=JSON.parse(JSON.stringify(
     for(const k of SLOT_KEYS)if(l.slots[k]&&l.slots[k].mind)s.slots[k]={...s.slots[k],mind:agentOnly(l.slots[k].mind)};
     if(l.dm)s.dm={...l.dm};
     // the viewer's last Fellowship, kept whole when it is of the same faction
-    if(l.fac===s.fac)for(const k of SLOT_KEYS)if(l.slots[k]){const {cls,name,race}=l.slots[k];s.slots[k]={...s.slots[k],cls,...(name?{name}:{}),...(race?{race}:{})}}
+    if(l.fac===s.fac)for(const k of SLOT_KEYS)if(l.slots[k]){const {cls,name,race,profs}=l.slots[k];s.slots[k]={...s.slots[k],cls,...(name?{name}:{}),...(race?{race}:{}),...(profs&&profs.length?{profs:profs.slice()}:{})}}
     return s}
   return null}
 
@@ -82,6 +84,7 @@ export function validateSetup(s){const out=[];
     if(p.name!=null&&p.name!==''){const n=String(p.name).trim();
       if(n.length<2||n.length>24||!/^[\p{L}][\p{L}' -]*$/u.test(n))out.push(sl.label+': a name is 2-24 letters (spaces, hyphens and apostrophes allowed).');
       else if(seen.has(n.toLowerCase()))out.push(sl.label+': "'+n+'" is used twice.');else seen.add(n.toLowerCase())}
+    if(p.profs!=null){if(!Array.isArray(p.profs)||p.profs.length>MAX_PROF||p.profs.some(id=>!PROF[id])||new Set(p.profs).size!==p.profs.length)out.push(sl.label+': pick up to '+MAX_PROF+' different professions, or let them choose.')}
     const mp=mindProblem(p.mind,sl.label);if(mp)out.push(mp)}
   if(!s.dm||!DM_MODES.includes(s.dm.mode))out.push('DM: pick scripted or agent.');
   else if(s.dm.mode==='agent'){const mp=mindProblem({...s.dm},'DM',DM_MODES);if(mp)out.push(mp)}
@@ -90,7 +93,7 @@ export function validateSetup(s){const out=[];
 // Strip a setup to the fields we read (it may come from localStorage or the URL of an older page).
 export function cleanSetup(s){if(!s||typeof s!=='object')return null;
   const m=agentOnly; // members: agents only (#148); an older page's scripted or AI mind becomes an agent
-  const slots={};for(const k of SLOT_KEYS){const p=(s.slots&&s.slots[k])||{};slots[k]={cls:p.cls,...(p.name?{name:String(p.name).trim()}:{}),...(p.race?{race:p.race}:{}),mind:m(p.mind)}}
+  const slots={};for(const k of SLOT_KEYS){const p=(s.slots&&s.slots[k])||{};slots[k]={cls:p.cls,...(p.name?{name:String(p.name).trim()}:{}),...(p.race?{race:p.race}:{}),...(Array.isArray(p.profs)&&p.profs.length?{profs:[...new Set(p.profs)].filter(id=>PROF[id]).slice(0,MAX_PROF)}:{}),mind:m(p.mind)}}
   const dm=s.dm&&s.dm.mode==='agent'?{mode:'agent',provider:s.dm.provider,model:s.dm.model}:{mode:'scripted'};
   return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,fac:s.fac|0,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),slots,dm}}
 
@@ -126,8 +129,10 @@ export function applyMinds(setup){const F=S.fellowship;if(!F)return;
   for(const [k,a] of mem){if(!a)continue;
     if(a.brain){disableBrain(a);delete a.fellowBrain}
     if(!a.player&&markPlayer(a,true))a.fellowAgent=true}
+  const chosen={};for(const [k,a] of mem){const ids=setup.slots[k]&&setup.slots[k].profs;if(a&&ids&&ids.length){chosen[k]=ids.slice();seedProfs(a,ids)}}
   F.minds='agent';F.ai=true;
-  if(setup.dm&&setup.dm.mode==='agent')setDmSeat(true)}
+  if(setup.dm&&setup.dm.mode==='agent')setDmSeat(true);
+  return chosen} // {slot:[profession ids]} the owner chose; kept in S.setup.profs for whoever fills a place later
 
 // ---- which runners a setup needs ----
 // One Fellowship runner when all five are agents on the same mind, else one hero runner per agent member;

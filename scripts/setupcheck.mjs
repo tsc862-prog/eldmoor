@@ -74,4 +74,24 @@ const run = seed => spawnSync(process.execPath, [fileURLToPath(import.meta.url),
 const a1 = run(1), a2 = run(1), b = run(2);
 ok(!!a1 && a1 === a2, 'the same seed builds the same world twice');
 ok(!!b && a1 !== b, 'another seed builds another world');
+
+// Professions per place (#259): validated, cleaned, seeded through learn(), kept for a replacement.
+{const P = await import('../src/sim/professions.js'), {offerReplacement} = await import('../src/sim/fellowship.js'), S2 = (await import('../src/sim/index.js')).S;
+ const p = JSON.parse(JSON.stringify(defaultSetup(5)));
+ ok(validateSetup(p).length === 0, 'no profession choice is valid (let them choose)');
+ p.slots.tank.profs = ['mining', 'smithing']; p.slots.healer.profs = ['herbalism'];
+ ok(validateSetup(p).length === 0 && cleanSetup(p).slots.tank.profs.join() === 'mining,smithing' && !cleanSetup(p).slots.dps1.profs, 'two for one place, one for another, none for the rest');
+ const bad = JSON.parse(JSON.stringify(p)); bad.slots.tank.profs = ['mining', 'smithing', 'fishing'];
+ ok(validateSetup(bad).some(x => /Tank/.test(x)), 'three professions are refused');
+ bad.slots.tank.profs = ['mining', 'mining']; ok(validateSetup(bad).length > 0, 'a duplicate is refused');
+ bad.slots.tank.profs = ['sorcery']; ok(validateSetup(bad).length > 0, 'an unknown profession is refused');
+ {const {disbandFellowship} = await import('../src/sim/index.js'); if (S.fellowship) disbandFellowship()} init({setup: cleanSetup(p)});
+ const ms = fellowshipMembers(), by = k => ms.find(m => m.slot === k).hero;
+ ok(P.professionsOf(by('tank')).map(x => x.id).join() === 'mining,smithing' && P.skillOf(by('tank'), 'mining') === 1, 'the chosen place seeds a.profs at skill 1');
+ ok(P.professionsOf(by('healer')).length === 1 && P.professionsOf(by('dps1')).length === 0, 'an unchosen place has none');
+ const old = by('tank'); old.hp = 0; old.state = 'dead'; S2.fellowship.slots.tank = null;
+ const r = offerReplacement('tank');
+ ok(r && r.id !== old.id && P.professionsOf(r).map(x => x.id).join() === 'mining,smithing', 'a replacement keeps the choice of the place');
+ const sn = JSON.stringify(snapshot()); ok(/"profs":\{"tank":\["mining","smithing"\]/.test(sn), 'the place choice is saved with the world');
+}
 console.log(fail ? fail + ' FAILED' : 'setupcheck passed'); process.exit(fail ? 1 : 0);

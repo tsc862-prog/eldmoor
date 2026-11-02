@@ -46,6 +46,14 @@ export function gainSkill(a, id, amount) {
   return {ok: true, skill, gained: round(p.skill - was), up: skill > Math.floor(was)};
 }
 
+// New World setup (#259): give a hero the professions the owner chose for its place. Learns the ones it lacks, up to
+// MAX_PROF; an empty or absent choice ("let them choose") changes nothing. Returns the ids now held that were asked for.
+export function seedProfs(a, ids) {
+  if (!Array.isArray(ids)) return [];
+  for (const id of ids) if (!hasProfession(a, id)) learn(a, id);
+  return ids.filter(id => hasProfession(a, id));
+}
+
 // Restore hook (save.js): keep a loaded a.profs legal. Absent stays absent (reads as []); a bad shape becomes [],
 // unknown or duplicate ids drop, skill is clamped to 1..SKILL_MAX, and at most MAX_PROF are kept.
 export function normalizeProfs(a) {
