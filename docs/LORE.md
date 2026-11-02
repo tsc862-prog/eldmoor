@@ -856,7 +856,7 @@ Names: a Fellowship is named in its faction's voice when it is founded. Concord 
 
 ### Archetypes (issue #295)
 
-Six optional temperaments a Fellowship member's persona can take in place of a generated sheet (`src/data/archetypes.js`, applied by `applyArchetype` in `src/sim/persona.js`). Each fills only the voice, wants, fears, quirk, the line never said and a default stance; class, bonds, oath, home and history are never touched. The names are generic fantasy roles.
+Six optional temperaments a Fellowship member's persona can take in place of a generated sheet (`src/data/archetypes.js`, applied by `applyArchetype` in `src/sim/persona.js`). Each fills only the voice, wants, fears, quirk, the line never said and a default stance, and records its id as the persona's `archetype`; class, bonds, oath, home and history are never touched. The names are generic fantasy roles.
 
 - **Dour Veteran**: weary, buries friends and expects more; wants the young ones home alive.
 - **Bright Idealist**: earnest, sure a road can be made safe; fears the work changes nothing.

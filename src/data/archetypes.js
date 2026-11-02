@@ -1,6 +1,6 @@
 // Fellowship archetypes (issue #295, part of #68). Pure table, append-only after the first merge.
 // An archetype fills only the persona TEXT fields of a member (voice, wants, fears, quirk, never_says)
-// plus a default stance toward companions ({other} is the companion's name). It never carries sim
+// plus a default stance template ({other} stands for a companion's name; stored as persona.stance, a template for a later UI or prompt to fill, not yet read by any prompt). It never carries sim
 // facts: class, bonds, oath, home and history stay as they are. Applied by applyArchetype in
 // src/sim/persona.js. Field lengths fit PERSONA_FIELDS and STANCE_MAX in prompts.js.
 export const ARCHETYPES={
