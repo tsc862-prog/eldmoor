@@ -267,7 +267,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   const st0 = await dmTool(base, 'dm_status');
   if (!st0.ok) {console.error('[dm] dm_status failed: ' + st0.error); await quit(1)}
-  const {sess, note} = loadDmSession(st0.world, () => ({sessionId: null, world: st0.world, system: dmSystemPrompt(st0), turns: 0, costUsd: 0, lastTotal: 0, lastGm: null}), {startNew: flag('new')});
+  const fresh = () => ({sessionId: null, world: st0.world, system: dmSystemPrompt(st0), turns: 0, costUsd: 0, lastTotal: 0, lastGm: null});
+  let {sess, note} = loadDmSession(st0.world, fresh, {startNew: flag('new')});
+  // The game clock is behind the saved session: a new world under the same name, or an older save. Set the old
+  // session aside (its notes, cadence and conversation belong to another world) and keep only the runner settings.
+  if (sess.turns && sess.lastGm != null && Number.isFinite(st0.gameMin) && st0.gameMin < sess.lastGm) {
+    const keep = sess.runner; ({sess, note} = loadDmSession(st0.world, fresh, {startNew: true})); if (keep) sess.runner = keep;
+    log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
+  }
   if (note) log('[dm] ' + note);
   sess.system = withDmFellowshipOrders(withDmMemoryOrders(sess.system)); // searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
