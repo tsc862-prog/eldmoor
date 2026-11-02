@@ -234,6 +234,26 @@ button.mini{font-size:7px;padding:3px 6px;box-shadow:none}
 .fbar button{font-size:8px;padding:5px 7px;box-shadow:none}
 .fbar button.go{border-color:var(--gold)}
 .fmsg{color:var(--amber);margin:4px 0}
+/* slim Fellowship header (owner: the panel was prime space for little value) */
+body.fellow-mode #fellowship>h2{display:none}
+body.fellow-mode #fellowship{padding:6px 10px}
+.fhline{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-width:0}
+.fhline .fname{font-size:10px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.fbadge{font-family:var(--px);font-size:7px;border:1px solid currentColor;padding:2px 4px}
+.fmeta{font-size:15px;flex:1 1 140px;min-width:0}
+.ftools2{display:flex;gap:4px;margin-left:auto}
+button.ficon{font-size:13px;line-height:1;min-width:30px;min-height:28px;padding:2px 6px;box-shadow:none}
+button.ficon[aria-pressed=true]{border-color:var(--gold);color:var(--gold)}
+button.ficon:focus-visible,.felmenu button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.felmenu{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0;padding:6px;background:var(--panel2);border:1px solid var(--red)}
+.felmenu button{font-size:8px;padding:5px 7px;box-shadow:none}
+.felmenu button.danger{border-color:var(--red);color:var(--red)}
+.fcamp{margin-top:4px}
+.felthreads{margin-top:6px}
+.fth-h{font-size:14px;margin-bottom:2px}
+.fthreads{margin:0;padding-left:0;list-style:none}
+.fthreads li{overflow-wrap:anywhere}
+.feldrawer{margin-top:8px;padding:6px;background:var(--panel2);max-height:60vh;overflow:auto;overflow-wrap:anywhere}
 .felroster{display:flex;flex-direction:column;gap:4px}
 .fm{display:grid;grid-template-columns:58px 1fr auto;gap:6px;align-items:center;background:var(--panel2);padding:4px 6px}
 .fm .ftools{display:flex;gap:4px}
