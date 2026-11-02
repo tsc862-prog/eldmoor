@@ -16,7 +16,7 @@ import {WORLD_ID} from '../world/map.js';
 import {mirrorDirty} from '../sim/notebook.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
-let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null;
+let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null,readies={};
 // The bridge is wanted while a hero is agent-played or the DM seat is open (issue #66), or a Fellowship plays with
 // relay minds (its behavior digests go to the relay's logs, issue #129).
 const wanted=()=>!!playerHero()||dmSeatOn()||(!!S.fellowship&&mindsOf(S.fellowship)!=='off');
@@ -28,6 +28,13 @@ export const bridgeStatus=()=>status; // off | connecting | connected | offline
 export const agentLink=a=>!a||!a.player?'off':status!=='connected'?status:links[a.id]||'none';
 // The mind behind a hero's runner, as its claim reports it (issue #97): {provider, model} or null.
 export const agentRunner=a=>a&&a.player&&status==='connected'&&runners[a.id]||null;
+// The start gate (issue #222): a seat's warm-up as the relay reports it ({state:'warming'|'ready'|'failed', model?, ms?, at, error?}), or null (claimed, not yet warming).
+export const agentReady=a=>a&&a.player&&status==='connected'&&readies[a.id]||null;
+export const dmReady=()=>dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.ready||null;
+// One word for a seat's readiness: 'ready' | 'warming' | 'failed' | 'claimed' (a runner holds it, no warm-up yet) | null (no runner).
+export const readyWord=(link,r)=>!(link==='connected'||link==='waiting')?null:r&&r.state?r.state:'claimed';
+export const agentReadyWord=a=>readyWord(agentLink(a),agentReady(a));
+export const dmReadyWord=()=>readyWord(dmLink(),dmReady());
 export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':''):null};
 setAgentTag(a=>runnerTag(a)); // agent chat lines carry the runner's model in the Chat tab (#126)
 // The DM seat (issue #66): open it and the page answers the DM agent's tools (sim/dmagent.js) over the
@@ -49,18 +56,18 @@ function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.sta
 const seat=id=>id!=null?playerSeat(id):playerSeat();
 function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecting';
   try{ws=new WebSocket(bridgeUrl())}catch(e){ws=null;status='offline';later();return}
-  ws.onopen=()=>{status='connected';lastHello='';links={};runners={};sentMem.clear();hello()};
+  ws.onopen=()=>{status='connected';lastHello='';links={};runners={};readies={};sentMem.clear();hello()};
   ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
     if(m.type==='call'){const a=seat(m.hero);let r;
       try{r=a?await hostCall(a.id,String(m.tool),m.args||{}):{ok:false,error:m.hero!=null?'Hero #'+m.hero+' is not agent-played in the game.':'No agent-played hero in the game.'}}catch(err){r={ok:false,error:String(err&&err.message||err)}}
       send({type:'result',id:m.id,result:r})}
     else if(m.type==='narrate'){const a=seat(m.hero);if(a)playerNarrate(a.id,String(m.text||''))}
     else if(m.type==='dmcall'){let r;try{r=dmAct(String(m.tool),m.args||{})}catch(err){r={ok:false,error:String(err&&err.message||err)}}send({type:'result',id:m.id,result:r})}
-    else if(m.type==='links'&&m.links&&typeof m.links==='object'){links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{};dmLinkInfo=m.dm&&typeof m.dm==='object'?m.dm:null}};
-  ws.onclose=()=>{ws=null;lastHello='';links={};runners={};dmLinkInfo=null;status=wanted()?'offline':'off';if(wanted())later()};
+    else if(m.type==='links'&&m.links&&typeof m.links==='object'){links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{};readies=m.ready&&typeof m.ready==='object'?m.ready:{};dmLinkInfo=m.dm&&typeof m.dm==='object'?m.dm:null}};
+  ws.onclose=()=>{ws=null;lastHello='';links={};runners={};readies={};dmLinkInfo=null;status=wanted()?'offline':'off';if(wanted())later()};
   ws.onerror=()=>{}}
 function later(){if(timer)return;timer=setTimeout(()=>{timer=null;if(wanted())connect()},4000)}
-function disconnect(){if(timer){clearTimeout(timer);timer=null}if(ws){const w=ws;ws=null;try{w.close()}catch(e){}}status='off';lastHello='';links={};runners={};dmLinkInfo=null}
+function disconnect(){if(timer){clearTimeout(timer);timer=null}if(ws){const w=ws;ws=null;try{w.close()}catch(e){}}status='off';lastHello='';links={};runners={};readies={};dmLinkInfo=null}
 
 // On page load (a restored save may hold agent-played heroes) and every few seconds after,
 // so the relay always knows which heroes are played.

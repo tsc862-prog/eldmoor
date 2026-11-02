@@ -6,12 +6,14 @@
 // wait; a structured `format` request gets the same written call instead of JSON), mock-intro (introduces
 // itself to the party with party_say every turn, then waits: the owner's screenshot), mock-loop (Ollama aborts every
 // generation: "token repeat limit reached", issue #221), mock-loop1 (aborts every call at the play temperature;
-// the cooler retry at 0.4 plays like mock-tools). Each turn it plays status,
+// the cooler retry at 0.4 plays like mock-tools), mock-slow (the start gate's warm-up call, issue #222, answers after WARM_SLOW_MS,
+// then plays like mock-tools), mock-down (every call fails: a crashed warm-up). Each turn it plays status,
 // rest 20, a bad tool (fly), wait 20, then narrates.
 // startMockOllama() -> {url, seen (every /api/chat body; seen.final counts closing calls), close()}
 import http from 'node:http';
 
-export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b'];
+export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b'];
+export const WARM_SLOW_MS = 2500; // mock-slow's warm-up answer takes this long (issue #222)
 export async function startMockOllama() {
   const seen = [];
   const plan = {
@@ -31,6 +33,13 @@ export async function startMockOllama() {
         const u = String((msgs[msgs.length - 1] || {}).content || ''), why = (u.match(/\(now: ([^)]*)\)/) || [])[1] || 'a quiet day';
         return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({notes: [{title: 'Reflection: ' + why.slice(0, 50), text: `At ${why} I took stock: the road was long and my companions held.`, tags: ['reflection', 'mock']}, {title: 'A lesson', text: 'Rest before the dark, not after it.', tags: ['lesson'], about: ''}]})}});
       }
+      if (body.format && body.format.properties && body.format.properties.ready) { // the start gate's warm-up (issue #222)
+        seen.warm = (seen.warm || 0) + 1;
+        if (body.model === 'mock-down:1b') return send(500, {error: 'model runner has unexpectedly stopped'});
+        const answer = () => send(200, {...done, message: {role: 'assistant', content: '{"ready": true}'}});
+        return body.model === 'mock-slow:1b' ? void setTimeout(answer, WARM_SLOW_MS) : answer();
+      }
+      if (body.model === 'mock-down:1b') return send(500, {error: 'model runner has unexpectedly stopped'});
       if (body.model === 'mock-loop:1b' || body.model === 'mock-loop1:1b' && body.options && body.options.temperature !== 0.4) { // the owner's live error (issue #221)
         seen.loop = (seen.loop || 0) + 1;
         return send(500, {error: 'an error was encountered while running the model: prediction aborted, token repeat limit reached'});
