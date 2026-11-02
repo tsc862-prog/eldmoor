@@ -19,7 +19,11 @@
 //   S.dmAgent {world (a tag the runner keys its session by), seat, notes:{threads,characters,plans,secrets:[note]}, seq, arch:[note], mv,
 //              (note: sim/notebook.js {id,title,text,tags,about,rk,day,t,gm,up,pin?,sec}; older saves' notes lack title and tags)
 //              day:{d, pulls, notes, intents, narr, npc}, calls:[{t,tool,args,ok}] newest first,
-//              seen:{tl, chron, log} (what dm_status last showed), stats:{calls, pulls, refused}}
+//              seen:{tl, chron, log} (what dm_status last showed), stats:{calls, pulls, refused},
+//              turns:[turn] newest first (issue #181, DMA.TURNS_KEEP), tseq, tv (created on the first call; older saves lack them)
+//              turn: {id, day, t (clock), gm0, gm1 (game minutes), open, calls, errors, reads:{tool:n}, tools:{tool:{ok,bad}}, notes, levers, staged, said, other,
+//                     and once the runner reported: turn (its number), model, provider, cost, seconds, tokensIn, tokensOut}
+//   The turn record is the DM's own data for the watcher's DM tab: no hero tool, prompt or snapshot reads it (issue #123).
 import {S,clockStr,dayNo} from './state.js';
 import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
@@ -44,6 +48,8 @@ export const DMA={
   NOTES_PER_DAY:60,    // note writes per game day (notes_write, remember, update_memory, forget, pin)
   INTENTS_PER_DAY:8,   // log_intent lines per game day
   NOTE_MAX:600, NOTES_CAP:DM_NB.PER_SEC, INTENT_MAX:200, REASON_MAX:160, // a full section archives its oldest unpinned note (#155)
+  TURNS_KEEP:40,       // DM turns kept in the per-turn record (issue #181)
+  TURN_STALE:240,      // an open turn with no call for this many game minutes is closed by the next call
   CALLS_KEEP:24,       // recent calls kept for the panels
   NEAR_R:12,           // default radius of heroes_near
   PILE_HP:.35,         // a Fellowship member below this share of HP out in the field is not piled on
@@ -105,6 +111,42 @@ function placeOf(near){const s=String(near||'').trim();if(!s)return null;
   return null}
 function remember(tool,args,ok){const D=dmState();D.stats.calls++;
   D.calls.unshift({t:clockStr(),tool,args:args&&Object.keys(args).length?JSON.stringify(args).slice(0,140):'',ok:!!ok});if(D.calls.length>DMA.CALLS_KEEP)D.calls.pop()}
+
+// ---- the per-turn record (issue #181) ----
+// Each call lands in the open turn (opened by the first call after the last turn closed); the runner closes it with
+// turn_end {turn, model, provider, cost, seconds, tokensIn, tokensOut}, sent by the relay when the seat's runner reports the turn
+// (never a DM tool: the agent cannot write it). Game time only, no dice; a silent seat records nothing.
+const READS=new Set(['dm_status','read_timeline','read_chronicle','read_dm_log','fellowship_view','heroes_near','npcs','regions','hooks','levers','notes_read','recall']);
+const NOTEW=new Set(['notes_write','remember','update_memory','forget','pin']);
+const cutT=(s,n)=>{s=clean(s,400);return s.length>n?s.slice(0,n-1)+'…':s};
+function openTurn(D){if(!Array.isArray(D.turns)){D.turns=[];D.tseq=0;D.tv=0}
+  let t=D.turns[0];if(t&&t.open&&S.gameMin-t.gm1>DMA.TURN_STALE){t.open=false}
+  if(!t||!t.open){t={id:++D.tseq,day:dayNo(),t:clockStr(),gm0:Math.round(S.gameMin),gm1:Math.round(S.gameMin),open:true,calls:0,errors:0,reads:{},tools:{},notes:[],levers:[],staged:[],said:[],other:0};
+    D.turns.unshift(t);if(D.turns.length>DMA.TURNS_KEEP)D.turns.length=DMA.TURNS_KEEP}
+  return t}
+function recordTurn(tool,args,res){const D=dmState(),t=openTurn(D);
+  res=res&&typeof res==='object'?res:{};const ok=res.ok!==false;t.calls++;t.gm1=Math.round(S.gameMin);if(!ok)t.errors++;
+  const c=t.tools[tool]||(t.tools[tool]={ok:0,bad:0});c[ok?'ok':'bad']++;
+  if(READS.has(tool)&&!NOTEW.has(tool))t.reads[tool]=(t.reads[tool]||0)+1;
+  else if(NOTEW.has(tool))t.notes.push({ok,title:cutT(args.title||args.text||(res.note&&res.note.text)||tool,60),sec:args.section||null,why:ok?null:cutT(res.error,100)});
+  else if(tool==='pull_lever')t.levers.push({ok,name:cutT(args.name,32),why:cutT(ok?(res.effect||args.reason):res.error,120)});
+  else if(tool==='stage_scene')t.staged.push({ok,kind:cutT(args.kind,16),near:cutT(args.near,24),why:ok?null:cutT(res.error,120)});
+  else if(tool==='narrate'||tool==='npc_say'||tool==='npc_offer'&&args.text)t.said.push({ok,who:tool==='narrate'?'Narrator':cutT(res.who||args.npc,24),text:cutT(args.text,140),why:ok?null:cutT(res.error,100)});
+  else if(tool==='table_answer')t.said.push({ok,who:'Table',text:cutT(args.line||args.text||args.complication||'answered a call',100),why:ok?null:cutT(res.error,100)});
+  else t.other++;
+  D.tv++}
+// The runner's report closes the open turn and carries what only it knows. A turn with no calls still gets its entry.
+function turnEnd(a){const D=dmState(),t=openTurn(D);a=a&&typeof a==='object'?a:{};
+  const num=(v,hi)=>{v=Number(v);return Number.isFinite(v)&&v>=0?Math.min(hi,v):null};
+  t.open=false;t.gm1=Math.round(S.gameMin);
+  const n=num(a.turn,1e6);if(n!=null)t.turn=Math.round(n);
+  if(a.model)t.model=clean(a.model,60);if(a.provider)t.provider=clean(a.provider,20);
+  const cost=num(a.cost,1000),sec=num(a.seconds,36000),ti=num(a.tokensIn,1e9),to=num(a.tokensOut,1e9);
+  if(cost!=null)t.cost=Math.round(cost*1e6)/1e6;if(sec!=null)t.seconds=Math.round(sec*10)/10;if(ti!=null)t.tokensIn=Math.round(ti);if(to!=null)t.tokensOut=Math.round(to);
+  D.tv++;return {ok:true,turn:t.id}}
+// For the DM tab (src/ui/dmturns.js): the record newest first, and a counter that changes whenever it does.
+export const dmTurnLog=()=>S.dmAgent&&Array.isArray(S.dmAgent.turns)?S.dmAgent.turns:[];
+export const dmTurnVer=()=>S.dmAgent&&S.dmAgent.tv||0;
 
 // A Fellowship member badly hurt out in the field near the pull: the DM does not pile on.
 export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object')return null;
@@ -319,7 +361,9 @@ function npcSay(a){const cv=convAnswer(a);if(cv)return cv;
 
 const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // One DM tool call: validated, answered, never thrown. The seat must be open.
-export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:false,error:'Unknown DM tool '+String(tool).slice(0,40)+'.'};
+export function dmAct(tool,args={}){
+  if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
+  const t=BY_NAME.get(tool);if(!t)return {ok:false,error:'Unknown DM tool '+String(tool).slice(0,40)+'.'};
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args); // a DM present: conversations wait for it a little (#170)
   try{switch(tool){
@@ -347,5 +391,5 @@ export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:f
     case 'table_answer':r=tableAnswer(args);break;
   }}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
-  if(!((tool==='table_call'||tool==='npc_call')&&r.ok&&!r.call))remember(tool,args,r.ok!==false); // an idle poll of the table is not a call worth keeping
+  if(!((tool==='table_call'||tool==='npc_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
   return r}

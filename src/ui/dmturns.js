@@ -4,6 +4,7 @@
 // small, capped (TURNS_KEEP) and kept in this browser (localStorage, per world), not in the save. A sim-side
 // record (day, cost, what it read) would let the cards survive another browser and carry the cost per turn.
 import {S} from '../sim/index.js';
+import {dmTurnLog,dmTurnVer} from '../sim/dmagent.js'; // the saved record (issue #181)
 
 export const TURNS_KEEP=40,GAP_MS=25000; // a quiet gap of 25 real seconds ends a turn
 const KEY='eldmoor.dmTurns.';
@@ -34,8 +35,9 @@ export function noteDmCall(tool,args,res,now=Date.now()){
   else t.other++;
   ver++;save()}
 
-export const dmTurns=()=>{load();return turns};
-export const dmTurnsVer=()=>{load();return ver};
+// The game's saved record when it has one (cost, model, survives another browser and a save); else this browser's page log.
+export const dmTurns=()=>{const g=dmTurnLog();if(g.length)return g;load();return turns};
+export const dmTurnsVer=()=>{load();return ver+dmTurnVer()*1000003+dmTurnLog().length};
 export function clearDmTurns(){load();turns=[];ver++;save()}
 
 // ---- cards ----
@@ -43,7 +45,9 @@ const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className
 const READ_WORD={dm_status:'status',read_timeline:'timeline',read_chronicle:'chronicle',read_dm_log:'DM log',fellowship_view:'Fellowship',heroes_near:'heroes near',npcs:'people',regions:'regions',hooks:'board',levers:'levers',notes_read:'notes',recall:'recall'};
 // One card: head (day, time, calls), then a line per kind of act that happened. Plain text, no live data.
 export function turnCard(t){const li=el('li','dmcard');li.setAttribute('data-k','t'+t.id);
-  const head=el('div','dmch');head.append(el('time',null,'D'+t.day+' '+t.t),el('span','badge b-dm b-dma','TURN'),el('span','dm',t.calls+' call'+(t.calls===1?'':'s')+(t.errors?' · '+t.errors+' refused':'')));li.append(head);
+  const head=el('div','dmch');head.append(el('time',null,'D'+t.day+' '+t.t),el('span','badge b-dm b-dma','TURN'),el('span','dm',t.calls+' call'+(t.calls===1?'':'s')+(t.errors?' · '+t.errors+' refused':'')));
+  if(t.cost!=null||t.seconds!=null||t.model)head.append(el('span','dm',[t.cost!=null?(t.cost>0?'$'+t.cost.toFixed(3):'$0'):'',t.seconds!=null?t.seconds+' s':'',t.model||''].filter(Boolean).join(' · ')));
+  li.append(head);
   const line=(label,kids,cls)=>{const r=el('div','dmcl'+(cls?' '+cls:''));r.append(el('span','dmck',label));const v=el('span','dmcv');for(const k of kids){if(typeof k==='string')v.append(k);else v.append(k)}r.append(v);li.append(r)};
   const rd=Object.entries(t.reads).map(([k,n])=>(READ_WORD[k]||k)+(n>1?' ×'+n:''));
   if(rd.length)line('Read',[rd.join(', ')]);

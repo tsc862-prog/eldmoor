@@ -15,3 +15,4 @@
 - [DM Fellowship first](dm-fellowship-first.md) — #165 dmfocus.js, fellowship_needs/change, event cadence, scripted board rule, reserved share, dmFocus digest
 - [Reflection moments](reflection-moments.md) — #179 moment kinds, budget, pace {reflect}/{reflected}, notes schema, journal->memory, pitfalls
 - [Ollama ctx + start gate](ollama-ctx-and-start-gate.md) — #221 one num_ctx (numCtxFrom), repeat-limit retry; #222 /play/ready warm-up protocol, Start anyway, --wait-ready
+- [DM turn record](dm-turn-record.md) — #181 S.dmAgent.turns ring, turn_end from relay, cards fallback

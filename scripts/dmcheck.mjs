@@ -37,6 +37,9 @@ Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; retur
 const sim = await import('../src/sim/index.js');
 const {init, step, S, snapshot, restore, dmAct, setDmSeat, dmSeatOn} = sim;
 const {DMA, pileOn} = await import('../src/sim/dmagent.js');
+const {DM_TOOLS} = await import('../src/data/dm-tools.js');
+const {attachPlay} = await import('./relay-mcp.mjs');
+const {localBackend} = await import('./play-headless.mjs');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {fellows} = await import('../src/sim/fellowship.js');
 const {ZONES, ZPTS, zoneAt} = await import('../src/world/map.js');
@@ -295,6 +298,47 @@ ok(dmAct('notes_read', {section: 'threads'}).notes.threads.length === 2, 'notes_
 run(10);
 ok(S.gameMin > snap.gameMin, 'the restored world runs on');
 
+// the per-turn record (issue #181): saved with the world, old saves load
+console.log('the per-turn record');
+{
+  const D = S.dmAgent, T0 = D.turns;
+  ok(Array.isArray(T0) && T0.length >= 1 && T0[0].calls > 0, `every call lands in a turn (${T0 && T0.length} turn, ${T0 && T0[0].calls} calls)`);
+  const open = T0[0];
+  ok(open.open && open.levers.length + open.notes.length > 0 && open.reads.dm_status >= 1 && open.tools.notes_write && open.day >= 1 && /^\d\d:\d\d$/.test(open.t) && open.gm0 <= open.gm1, 'a turn holds its day, clock, tools with ok/bad, reads, notes and levers');
+  ok(open.levers.some(l => !l.ok) && open.errors > 0, 'a refused lever shows as refused in the turn');
+  const n0 = T0.length;
+  r = dmAct('turn_end', {turn: 3, model: 'claude-sonnet-5-5', provider: 'anthropic', cost: 0.0123456789, seconds: 14.26, tokensIn: 9000, tokensOut: 400});
+  ok(r.ok && !D.turns[0].open && D.turns[0].cost === 0.012346 && D.turns[0].model === 'claude-sonnet-5-5' && D.turns[0].seconds === 14.3 && D.turns[0].turn === 3 && D.turns.length === n0, 'turn_end closes the turn with the runner cost, model and seconds');
+  ok(dmAct('turn_end', {cost: -5, seconds: 'x', model: 'm'.repeat(200)}).ok && D.turns.length === n0 + 1 && D.turns[0].cost === undefined && D.turns[0].model.length <= 60, 'a bad number is dropped, a turn with no calls still gets its entry');
+  dmAct('dm_status'); dmAct('log_intent', {text: 'next turn'});
+  ok(D.turns.length === n0 + 2 && D.turns[0].open && D.turns[0].id === D.turns[1].id + 1, 'the next call opens a new turn');
+  ok(!DM_TOOLS.some(t => t.name === 'turn_end'), 'turn_end is not a tool the agent can call');
+  for (let i = 0; i < DMA.TURNS_KEEP + 5; i++) {dmAct('turn_end', {}); dmAct('dm_status')}
+  ok(D.turns.length === DMA.TURNS_KEEP, `the record is a ring of ${DMA.TURNS_KEEP}`);
+  const snapR = JSON.parse(JSON.stringify(snapshot())); const keep = JSON.stringify(D.turns); D.turns = []; restore(snapR);
+  ok(JSON.stringify(S.dmAgent.turns) === keep, 'the turn record survives snapshot -> JSON -> restore');
+  const old = JSON.parse(JSON.stringify(snapshot())); delete old.dmAgent.turns; delete old.dmAgent.tseq; delete old.dmAgent.tv; restore(old);
+  ok(S.dmAgent.turns === undefined && dmAct('dm_status').ok && S.dmAgent.turns.length === 1 && S.dmAgent.turns[0].calls === 1, 'an older save with no record loads and starts one');
+  // the relay hands the runner's turn report to the game
+  const seen = []; const srv = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
+  const bk = localBackend(); const turns = [];
+  attachPlay(srv, {backend: {...bk, dmCall: (t, a) => (t === 'turn_end' ? turns.push(a) : 0, bk.dmCall(t, a))}, log: () => {}, behavior: {turn: x => seen.push(x), call: () => {}, event: () => {}}});
+  await new Promise(res => srv.listen(0, '127.0.0.1', res));
+  const U = `http://127.0.0.1:${srv.address().port}`;
+  const p2 = (path, body) => fetch(U + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}).then(async x => ({status: x.status, ...(await x.json())}));
+  await p2('/play/claim', {role: 'dm', runner: 'rt:1', provider: 'anthropic', model: 'claude-sonnet-5-5'});
+  const bad = await p2('/play/behavior/turn', {role: 'dm', runner: 'rt:2', rec: {turn: 1, cost: 1}});
+  ok(bad.status === 409 && !turns.length, 'only the runner holding the seat reports a turn to the game');
+  const good = await p2('/play/behavior/turn', {role: 'dm', runner: 'rt:1', rec: {turn: 7, cost: 0.02, seconds: 9, tokensIn: 100, tokensOut: 20, tools: [{name: 'dm_status', ok: true}]}});
+  ok(good.status === 200 && turns.length === 1 && turns[0].cost === 0.02 && turns[0].model === 'claude-sonnet-5-5' && S.dmAgent.turns[0].turn === 7 && S.dmAgent.turns[0].cost === 0.02, 'the relay passes the turn report (cost, model, seconds) to the game and the turn record shows it');
+  await new Promise(res => srv.close(res));
+}
+// leaks: the record is DM-only
+{
+  const src = f => readFileSync(join(ROOT, f), 'utf8');
+  ok(!['src/sim/player.js', 'src/sim/notify.js', 'src/sim/brain.js', 'src/data/player-tools.js', 'src/sim/persona.js', 'src/sim/memory.js'].some(f => existsSync(join(ROOT, f)) && /dmAgent\.turns|dmTurnLog|turn_end/.test(src(f))), 'no hero-side module reads the DM turn record');
+}
+
 // ---------------------------------------------------------------- 2b. the Fellowship first (issue #165)
 console.log('the Fellowship first');
 {const FO = await import('../src/sim/dmfocus.js'), ST = await import('../src/sim/staged.js'), {pull} = await import('../src/sim/levers.js'), DA = await import('./dm-agent.mjs');
@@ -346,8 +390,6 @@ ok(/^HASH -?\d+$/.test(h1) && h1 === h2, `a seeded world runs the same with the 
 
 // ---------------------------------------------------------------- 4. over HTTP and MCP
 console.log('relay routes');
-const {attachPlay} = await import('./relay-mcp.mjs');
-const {localBackend} = await import('./play-headless.mjs');
 const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
 const play = attachPlay(server, {backend: localBackend(), log: () => {}});
 await new Promise(res => server.listen(0, '127.0.0.1', res));

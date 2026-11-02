@@ -613,6 +613,7 @@ A hero may hold two trades, each with a skill from 1 to 100 that rises with use.
 - Gathering: Herbalism (herbs, moss, flowers), Mining (ore and stone), Skinning (hide, sinew, bone), Fishing (river, mere and sea).
 - Crafting: Alchemy (potions, cures), Smithing (weapons, armor, repairs), Leatherworking (cured hide: armor, straps, packs), Cooking (camp meals that hearten the company), Scribing (scrolls, maps).
 - Skill bands used by recipes and nodes: 1-24, 25-49, 50-74, 75-99, 100.
+- Gathering nodes (issue #255): four kinds, plain descriptions rather than proper names: Herb patch (Herbalism), Ore vein (Mining), Game trail (Skinning), Fishing spot (Fishing). They sit in the open land of every region, in the region's level band: Thornvale band 0, Mirefen 1, Cinderpass 2, Hoarfell 3 (the Stepping Lands the same ladder). Fishing spots stand on the banks of the river (Eldmoor's river runs through Thornvale, Mirefen and Hoarfell; Cinderpass has no water, so no fish); a sea coast would add more when a world has one. Nothing is gathered on a road, in a town or at the Crypt and Kragmaw's lair. A spent node grows back after a set time (herbs 4 game hours, ore 8, game trails 3, fish 2).
 
 ## Townsfolk
 Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
