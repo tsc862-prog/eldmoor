@@ -243,6 +243,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   takes `prey` (a creature known by name) or whatever is around except what it learned to fear; `list_jobs` gives the
   gate's rumour, not "fits"; townsfolk warn a green blade off the next region up. Background heroes keep the scripted
   level logic and never get lore; the hooks only touch `a.player` heroes, so `npm run sim` is unchanged.
+- New world under the same ids (#219): New World reuses hero ids, so a runner that holds ids would play nobody. Hero and Fellowship runners poll `/play/health` (`watchWorld` in `scripts/pacing.mjs`) and, when a held id now names another hero (the name differs; the world instance id will be compared too once `/play/health` carries it as `world`), release their claims and exit with code 75 (`NEW_WORLD_EXIT`, `[world] a new world: ...` line). The supervisor (`scripts/runners.mjs`) restarts a runner that exits 75 with the same request after `RESTART_MS`, at most `MAX_RESTARTS` in a row without a turn; the restart sets the old sessions aside in `logs/agents/old/`. A DM runner whose seat is closed (a new world starts with it closed) says so in its `[pace]` line (the DM frame shows it) and waits for Open seat.
 - Memories (#155, `src/sim/notebook.js`): every agent hero keeps its own searchable notes with `remember {title,
   text, tags[], about?}`, `recall {query?, tag?, about?, id?, n?}` (title and tag words 3, about 2, text 1, +1 pinned,
   plus recency; a tag or about filters), `update_memory`, `forget` and `pin`; 200 notes of 600 characters, the oldest
@@ -356,6 +357,16 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Everyone at once (owner request): `PLAY` in `src/sim/table.js` says per scene kind how it is played. `turns`
+  (elite, ambush, boss, rescue, Crypt site/room): initiative order, one act changes the next. `all` (decision =
+  every vote incl. break_camp, check, choice, staged meeting/social/trap/mystery): every member present gets the
+  scene at the same moment (a must-answer event), `your_turn` is true for each until it answers (then `wait` is
+  allowed), answers come in any order, and each live agent has its own `turnMs` nudge and `liveMs` wait side by
+  side (not summed). Once nobody is waited on, the acts resolve in Fellowship slot order (never arrival order;
+  reflexes chosen then), and a staged scene gets one combined outcome call for the DM instead of one per act.
+  Only members within shouting range (#182) of the scene's anchor (a vote: its voters) take part. `tableView`
+  adds `everyone_answers`, `answered` ("3/5") and `waiting_on`; the banner shows EVERYONE ANSWERS and
+  "3/5 answered · waiting for Fena, Maelell". A kind not in the table plays in turns.
 - Forced scene turns (#163): a local or OpenAI member whose own scene is open (the pace brief's `scene`: its
   legal option keys, incl. ready abilities by id) gets one structured answer (Ollama `format` / OpenAI strict
   json_schema: `{option: enum, line}`) and the runner sends `scene_act` itself; Claude keeps tool use, with one

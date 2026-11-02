@@ -55,6 +55,7 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: Agent player (mock agents), run: npm run playcheck}
+      - {name: Townsfolk hails, run: npm run localscheck}
       - {name: Local agent runner (mock Ollama), run: npm run localcheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
@@ -76,6 +77,7 @@ jobs:
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Learn the world, run: npm run lorecheck}
       - {name: More turn triggers, run: npm run wakecheck}
+      - {name: Action log, run: npm run actcheck}
       - {name: Tiered memory, run: npm run tiercheck}
       - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
 
