@@ -401,8 +401,16 @@ Local agent runner (part 2):
   (`<tool_call>{...}</tool_call>`) are understood.
 - Memory: the conversation is kept in the session file (`local.history`, tool results cut to 400
   characters, oldest whole turns dropped past 24k characters; the journal is the long-term memory).
-  Context asked of Ollama: 16384 tokens (`--num-ctx`, `OLLAMA_NUM_CTX`); a different `num_ctx`
-  from the relay's decision calls makes Ollama reload the model when both use it.
+  Context (#221): Ollama reloads the whole model whenever a request asks a different `num_ctx` (and one
+  without it gets the server default, 32768 on the owner's PC), so the adapter (`scripts/providers/ollama.mjs`)
+  sends one `num_ctx` on every request: the agent loop, forced scene/reflection answers (`chatAsk`), the
+  relay's decisions and writing, the DM loop and its table and talk voices. It is `OLLAMA_NUM_CTX` (default
+  16384), read in one place (`numCtxFrom`); `--num-ctx` sets it for one runner, so keep it equal to the
+  relay's. The relay log, `/health` (`providers.ollama.numCtx`), the runner start line and the runner state
+  line (`ctx 16384`) show it; a runner warns when `/api/ps` shows its model loaded at another context
+  ("Ollama holds qwen2.5:14b at 32768; runners ask 16384, so it reloads each time"). A generation Ollama
+  aborts for repeating tokens ("token repeat limit reached") is retried once from a trimmed history at
+  temperature 0.4; a second abort ends the turn empty (flag `looped`) without counting toward `--max-fails`.
 - Turn line: tool calls, seconds (and seconds in the model), model calls, tokens in/out, `$0 (local)`.
   The claim carries `{provider, model}`, so the mind row's Agent mode, the Agent tab and the Minds
   panel tag the runner (`qwen3.5:4b · local · live`); `/play/health` lists it as `heroes[].runner`.

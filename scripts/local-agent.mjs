@@ -26,7 +26,7 @@ import {PLAYER_TOOLS} from '../src/data/player-tools.js';
 
 // temperature/repeatPenalty (issue #126): a local model looping on one plan, or drifting into another language, is
 // nudged out of it; freshAfter: that many empty turns in a row and the next turn starts with a fresh context.
-export const LOCAL_DEFAULTS = {historyChars: 24000, resultChars: 1800, keptChars: 400, maxTokens: 700, numCtx: 16384, callsPerReply: 3, endOnWait: true, temperature: 0.6, repeatPenalty: 1.15, freshAfter: 2};
+export const LOCAL_DEFAULTS = {historyChars: 24000, resultChars: 1800, keptChars: 400, maxTokens: 700, callsPerReply: 3, endOnWait: true, temperature: 0.6, repeatPenalty: 1.15, freshAfter: 2};
 // A turn whose first answer is words without a tool call gets this once (issue #126: a small model narrated
 // a long-over fight for 100 turns without acting).
 export const REPROMPT = 'Act through a tool (look, status, move_to, hunt, rest, wait, ...). Words alone change nothing in the world; give one command now.';
@@ -196,8 +196,11 @@ export function scenePrompt(sc) {
 }
 // ask(system, user, schema) over the loop's chat(): Ollama `format`, OpenAI strict json_schema (chat({strict:true})).
 // timeoutMs: past the table's wait (TABLE.liveMs 120 s) the reflex has acted, so a busy Ollama is not waited on longer.
-export const chatAsk = (chat, model, {numCtx = null, strict = false, timeoutMs = 110000} = {}) => async (system, user, schema) => {
-  const r = await chat({model, messages: [{role: 'system', content: system}, {role: 'user', content: user}], format: schema, strict, maxTokens: 300, ...(numCtx ? {numCtx} : {}), temperature: 0.4, signal: AbortSignal.timeout(timeoutMs)});
+// The context size (num_ctx) is the Ollama adapter's own, the same for every local call (issue #221).
+// A generation Ollama aborts for repeating tokens (#221) is asked once more, cooler.
+export const chatAsk = (chat, model, {strict = false, timeoutMs = 110000} = {}) => async (system, user, schema) => {
+  const req = temperature => ({model, messages: [{role: 'system', content: system}, {role: 'user', content: user}], format: schema, strict, maxTokens: 300, temperature, signal: AbortSignal.timeout(timeoutMs)});
+  let r; try {r = await chat(req(0.4))} catch (e) {if (!(e && (e.repeatLimit || /repeat limit|prediction aborted/i.test(String(e.message || ''))))) throw e; r = await chat(req(0.2))}
   return {text: String(r.message && r.message.content || ''), usage: r.usage || {}, ms: r.ms || 0};
 };
 // ask() over a provider adapter's one-shot call() (Claude: scripts/providers/anthropic.mjs, output_config.format).
@@ -323,7 +326,21 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   const addCost = u => {stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false}; // paid providers (OpenAI) report a cost; Ollama's is 0
   // a run of empty turns (no call, a repeat, another language): start this one from a fresh context
   if ((L.emptyRun || 0) >= o.freshAfter) {L.history = []; L.lastNarr = null; L.emptyRun = 0; stat.fresh = true}
-  const sample = {temperature: o.temperature, repeatPenalty: o.repeatPenalty};
+  let sample = {temperature: o.temperature, repeatPenalty: o.repeatPenalty};
+  // Ollama aborts a generation that loops on repeated tokens ("token repeat limit reached", the owner's qwen2.5:14b,
+  // #221). Retry once from a trimmed context (the oldest half of the history dropped) at temperature 0.4, same num_ctx;
+  // a second loop ends the turn as empty (stat.looped), which does not count as a failed turn.
+  const ask = async req => {
+    try {return await chat(req())}
+    catch (e) {
+      const loop = e && (e.repeatLimit || /repeat limit|prediction aborted/i.test(String(e.message || '')));
+      if (!loop) throw e;
+      if (stat.loopRetried) {stat.looped = true; return null}
+      stat.loopRetried = true; on('loop', String(e.message || e).slice(0, 120));
+      L.dropped += trimHistory(L.history, Math.floor(JSON.stringify(L.history).length / 2)); sample = {...sample, temperature: 0.4};
+      try {return await chat(req())} catch (e2) {if (e2 && (e2.repeatLimit || /repeat limit|prediction aborted/i.test(String(e2.message || '')))) {stat.looped = true; return null} throw e2}
+    }
+  };
   const turnMsgs = [{role: 'user', content: prompt, turn: 1}];
   const sys = () => sess.system + (L.mode === 'json' ? '\n\n' + JSON_RULES + actionCatalogue(list) : rules);
   const tools = ollamaTools(list);
@@ -339,10 +356,10 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     return text;
   };
   for (let i = 0; i < toolTurns && !stat.dead; i++) {
-    const messages = [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)];
     let res;
-    try {res = await chat({model, messages, ...(L.mode === 'json' ? {format: actionSchema(list)} : {tools}), maxTokens: o.maxTokens, numCtx: o.numCtx, ...sample})}
+    try {res = await ask(() => ({model, messages: [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)], ...(L.mode === 'json' ? {format: actionSchema(list)} : {tools}), maxTokens: o.maxTokens, ...sample}))}
     catch (e) {if (e.noTools && L.mode !== 'json') {L.mode = stat.mode = 'json'; on('mode', 'json'); i--; continue} throw e}
+    if (!res) break; // looped twice: the turn ends empty
     stat.modelCalls++; stat.in += res.usage.in; stat.out += res.usage.out; stat.modelMs += res.ms; addCost(res.usage);
     const msg = res.message || {}, content = String(msg.content || '');
     if (L.mode === 'json') {
@@ -378,7 +395,8 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     // turn ends with one call without tools, which can only answer in words (the narration).
     if (o.endOnWait && !stat.dead && calls.some(c => c.function && c.function.name === 'wait') && /"ok":true/.test(turnMsgs[turnMsgs.length - 1].content)) {
       turnMsgs.push({role: 'user', content: 'The wait is over. End your turn now: one short sentence of narration in the third person about what you did and why.'});
-      const fin = await chat({model, messages: [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)], maxTokens: o.maxTokens, numCtx: o.numCtx, ...sample});
+      const fin = await ask(() => ({model, messages: [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)], maxTokens: o.maxTokens, ...sample}));
+      if (!fin) break;
       stat.modelCalls++; stat.in += fin.usage.in; stat.out += fin.usage.out; stat.modelMs += fin.ms; addCost(fin.usage);
       stat.narration = cleanNarration(fin.message && fin.message.content, list);
       turnMsgs.push({role: 'assistant', content: stat.narration, narr: 1}); break;
@@ -398,6 +416,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   // a narration close to the last one is a repeat; with no world-changing call it makes an empty turn (scripts/pacing.mjs localWorked)
   if (stat.narration && L.lastNarr && similar(stat.narration, L.lastNarr) >= REPEAT_SIM) stat.repeat = true;
   if (stat.narration) L.lastNarr = stat.narration.slice(0, 400);
+  if (stat.looped) L.emptyRun = Math.max(L.emptyRun || 0, o.freshAfter); else
   L.emptyRun = !stat.tools || stat.rejected >= stat.tools || (stat.repeat && !stat.acts) || stat.foreign ? (L.emptyRun || 0) + 1 : 0;
   L.dropped += trimHistory(L.history, o.historyChars);
   L.tokensIn += stat.in; L.tokensOut += stat.out; L.seconds += (Date.now() - t0) / 1000;
@@ -406,7 +425,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
 }
 
 // Marks on a turn line (issue #126): the model was told to act, or only repeated itself.
-const turnFlags = st => (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : '');
+const turnFlags = st => (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : '');
 // The cost line for a local turn: tokens and seconds, cost 0.
 export const localLine = (st, model) => `${model} (local) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | $0 (local)${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 
