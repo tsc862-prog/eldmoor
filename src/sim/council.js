@@ -86,7 +86,7 @@ export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)r
   if(kind==='crypt')yieldCrypt(F); // reserve on proposal: a background group still gathering steps aside
   campaign('council',a,' proposes to '+KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:'')+'.');
   for(const b of fellows())if(b!==a)notify(b,a.name+' proposes to '+KIND_TEXT[kind]+(d?': '+d:'')+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
-  if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'my proposal','agent');
+  if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'','agent');
   if(!(proposeHook&&proposeHook(P)))reflexFill(P);
   settleIfDone(P);return P}
 
