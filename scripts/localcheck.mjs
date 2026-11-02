@@ -416,6 +416,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // G. the owner's screenshot: members re-introduce themselves every turn. The game refuses a line an agent already said
     // (or a second introduction once they have met), and every turn's header carries what was said lately and who it met.
     {const n0 = seen.length; await sleep(300); last = Date.now();
+      {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + 1; a.y = L.y}} // together: party talk only carries a shout's range (#182)
       const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
       const q = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-intro:1b', '--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
       kids.push(q); let qo = ''; q.stdout.on('data', d => qo += d); q.stderr.on('data', d => qo += d);
@@ -430,7 +431,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const later = seen.slice(n0).filter(b => b.model === 'mock-intro:1b' && b.tools).map(b => (b.messages.filter(m => m.role === 'user' && /^Turn \d/.test(m.content)).pop() || {}).content || '').filter(Boolean);
       ok(later.some(t => /Said lately \(party and aloud, oldest first\): .*\[party\]: Hello friends! I am /.test(t) && /Companions you have met: \w+/.test(t) && /do not introduce yourself again/.test(t)), 'a later turn\'s header shows the party lines heard and the companions met');
       const mt = (await import('../src/sim/talk.js')).metNames(live[0]);
-      ok(live.slice(1).every(b => mt.includes(b.name)), `meeting is recorded in game once both have spoken in each other's hearing (${live[0].name} met ${mt.join(', ')})`);
+      ok(live.slice(1).every(b => mt.includes(b.name)), `meeting is recorded in game once both have spoken in each other's hearing (${live[0].name} met ${mt.join(', ')}; live ${live.map(b => b.name).join(', ')})`);
     }
   }
   server.close();
