@@ -677,7 +677,17 @@ function boardLog(c,h,removed,levers){const open=S.adventures.filter(x=>x.phase=
     h.src==='follow'?'follow-up to a finished job':h.data.eliteId!=null?'a living elite is about':'townsfolk request or gate writ, template drawn at random';
   dmlog('hooks',null,['Board at '+c.name+': '+h.tpl+' posted by '+(h.giver?h.giver.name:'the gate')+' ('+h.src+')',...(who?[' for ',who]:[]),
     removed.length?'; '+removed.length+' taken down.':'.'],
-    {added:[hookRow(h,'')],removed,board:open.map(x=>x.tpl+'/'+x.src).join(', '),open:open.length,why,lever:levers.map(l=>l.lever).join(', ')||null,levers},{town:c.name,heroes:who?[who.id]:[]})}
+    {added:[hookRow(h,'')],removed,board:open.map(x=>x.tpl+'/'+x.src).join(', '),open:open.length,why,lever:levers.map(l=>l.lever).join(', ')||null,levers},{town:c.name,heroes:who?[who.id]:[]});
+  if(h.ff)hallLine(c,h,who)}
+// A Fellowship-first job (h.ff) also reaches the Chronicle (#351), so the "Fellowship only" view can follow the hall board:
+// one line naming the town, the job and the member it is for (the oath-bearer, else the party's leader). Other postings stay
+// out of the Chronicle. No dice: the job's kind and region name it, not its drawn title. The giver is the townsperson who
+// pins it up; the DM (scripted or agent) is never named.
+function hallLine(c,h,who){const fo=focus();if(!fo)return;
+  const P=(S.parties||[]).find(p=>p.fellow&&p.leader&&fo.ids.has(p.leader.id)&&alive(p.leader));
+  const a=who&&fo.ids.has(who.id)?who:P?P.leader:fo.members[0];if(!a)return;
+  const T=D.ADVENTURES[h.tpl],job=(h.data&&h.data.beast?'Hunt '+h.data.beast:T&&T.name||h.tpl)+(h.zone!=null&&ZONES[h.zone]?' in '+ZONES[h.zone]:'');
+  log(gold(c.name),' hall board: '+(h.giver?h.giver.name:'the gate captain')+' posts a job for ',a,who===a?': ':' and the Fellowship: ',gold(job),'.')}
 
 // Remember where road encounters ended, so a robbed wagon can become an investigation.
 function watchWorld(){const seen=S.dmSeen.enc,E=S.encounters||[],now={};

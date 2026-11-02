@@ -1,6 +1,6 @@
 ---
 name: chronicle-focus
-description: Chronicle "Fellowship only" filter (chronicleFocus) rules: guild lines kept by exact '<TAG> Name' label of a living member's guild (#341); hall board half waited on #332
+description: Chronicle "Fellowship only" filter (chronicleFocus) rules: guild lines kept by exact '<TAG> Name' label of a living member's guild (#341); hall board ff jobs log one line from boardLog (#351)
 metadata:
   type: project
 ---
@@ -12,6 +12,10 @@ label format there must change `guildLabel` too.
 
 **Why:** the Fellowship's own guild never takes a focus (guildfocus skips it), so most kept lines are banners, joins,
 leadership and rivalries naming it, not focus changes.
-**How to apply:** the hall board half of #341 waited for PR #332 (dm.js boardLog); add it there once merged. Test cases
-live at the end of scripts/uismoke.mjs. `npm run sim` is unseeded; prove "unchanged" with `focuscheck --hash` and
+Hall board (#351): `boardLog` in dm.js calls `hallLine` only for `h.ff` hooks: one Chronicle line naming the town, the
+giver (a townsperson, never the DM), the job kind + region (T.name, not the RNG-drawn title) and the member (oath-bearer,
+else party leader) as a hero part, so chronicleFocus keeps it with no change. Untagged postings write nothing (about 1
+line a game day; ~2200 Chronicle lines per seeded hour, 24 hall lines). Chronicle text is not in any seeded hash.
+**How to apply:** guild test cases live at the end of scripts/uismoke.mjs; hall-board cases in the `--ffbounty` child of
+scripts/dmcheck.mjs. `npm run sim` is unseeded; prove "unchanged" with `focuscheck --hash` and
 `professioncheck --hash` against origin/main's file. Related: [[guild-focus]], [[guild-rivals]].
