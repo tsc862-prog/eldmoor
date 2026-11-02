@@ -53,3 +53,26 @@ export const BIOME={
 export const biomeOfZone=z=>(REGIONS[z]&&REGIONS[z].biome)||'meadow';
 // One colour per non-ground tile family for the minimap.
 export const TILE_FLAT={water:'#3468b8',road:'#a88c5c',wall:'#2e2a34',rock:'#6a605c',lava:'#e0602a',snow:'#dde4ec',swamp:'#3a5a3c'};
+
+// Spell effects (#374, render/spellfx.js): three-step ramps [highlight, body, shade] per element.
+// The kind fallbacks keep the hue of the name pop in sim/moves.js NOTE (attack orange, heal green,
+// control blue, defend pale, move violet, buff gold).
+export const SPELL={
+  rune:  ['#eef6ff','#7fb0ff','#3a5ad0'],
+  frost: ['#ffffff','#bfeaff','#5ab0e0'],
+  arcane:['#f6e8ff','#c58cff','#6a3aa0'],
+  holy:  ['#fffbe0','#ffe07a','#c8902a'],
+  leaf:  ['#d0f490','#6cc04a','#2f6a2a'],
+  bark:  ['#b08a58','#7a5632','#3e2a18'],
+  blood: ['#ffb0a0','#e8544a','#8a1a1a'],
+  steel: ['#ffffff','#c8d0e0','#6a7488'],
+  shout: ['#ffe0c0','#ff8a5a','#b0381a'],
+  song:  ['#fff4c8','#f2c14e','#a87a1a'],
+  dirge: ['#dce4f4','#8a9ac8','#3a4870'],
+  hearth:['#ffe6d6','#f0a080','#b0503a'],
+  smoke: ['#e4e4ec','#a0a0b0','#5a5a68'],
+  sand:  ['#f4e0a8','#c8a868','#7a5a30'],
+  mark:  ['#ffe6c0','#ffb060','#c05a1a'],
+  ward:  ['#f4f8ff','#a8c0f0','#4a6aa8'],
+  shadow:['#d8c8f0','#6a4a90','#24183a'],
+};
