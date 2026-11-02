@@ -12,7 +12,7 @@
 // old chronicle line, a purged mob a hero last looked at) becomes a bare reference, for
 // heroes with name and fac so the panels can still print it; restore turns those into
 // detached stubs. Functions and canvases never appear in S (savecheck asserts it).
-import {S,SAVE_VERSION} from './state.js';
+import {S,SAVE_VERSION,newWorldId} from './state.js';
 import {CRYPT} from '../world/map.js';
 import {GOODS,price} from '../data/items.js';
 import {rollScores} from './abilities.js';
@@ -103,6 +103,7 @@ export function restore(snap){
     else S[k]=v}
   for(const n in snap.GOODS||{}){const g=GOODS[n],s=snap.GOODS[n];if(!g||!s)continue;g.supply=s.supply;g.prev=s.prev!=null?s.prev:price(n)}
   if(snap.CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
+  if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
   reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
   ensureCampaign(); // an older save whose DM notes are empty gets the campaign seed once
   return S}

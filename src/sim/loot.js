@@ -7,11 +7,12 @@ import {EPICS} from '../data/items.js';
 import {blockOf} from '../data/bestiary.js';
 import {rollDrop} from './gear.js';
 import {getEpic} from './heroes.js';
+import {wakeLoot} from './wakes.js';
 import {addGood,lootSupply} from './inv.js';
 
 // Average payout per kill matches the old flat rolls: the good 72%, gold 0-0.6 x level, an item 6%, an epic 0.6%.
 export function rollLoot(a,m){if(m.add)return;const M=MOBS[m.type],B=blockOf(m.type,m.v,m.role),L=B.loot;
-  if(rnd()<L.p)addGood(a,M.loot);
+  if(rnd()<L.p){addGood(a,M.loot);wakeLoot(a,M.loot)}
   a.gold+=Math.max(1,Math.round(m.lvl*.6*rnd()*L.gold));
   rollDrop(a,m,{rate:L.gear});lootSupply(a,m); // a potion, bandage or other supply (data/items.js USES)
   if(rnd()<L.epic)getEpic(a,pickA(EPICS[M.z]),'a '+(m.name||M.name))}

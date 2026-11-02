@@ -16,7 +16,7 @@
 // with a line of narration; the runner prints the tool calls, the narration and a cost line.
 // Pacing (issue #126, scripts/pacing.mjs): the next turn starts when something happens to the hero
 // (attacked, badly hurt, a choice or a scene: at once; an arrival, a vote, a party line, the narrator:
-// after the minimum gap) or after a heartbeat of game time (--heartbeat MIN, default 240 game minutes),
+// after the minimum gap) or after a heartbeat of game time (--heartbeat MIN, default 120 game minutes),
 // never sooner than --min-gap S real seconds (default 20) except for what cannot wait. A paused world
 // takes no turns. The runner stops when the hero dies or leaves agent play, and after --max-fails N
 // (default 5) failed or empty turns in a row. Each hero's session id lives in its own file, logs/agents/<heroId>.json
@@ -50,10 +50,11 @@ import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
 import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
-import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
+import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
 import {reflectPrompt, reflectNow, closeReflection} from './pacing.mjs'; // reflection moments (#179)
 import Anthropic from '@anthropic-ai/sdk';
+import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
@@ -84,7 +85,7 @@ export function systemPrompt(st) {
     '- You act only through the tools. You know only what they tell you: what you can see nearby, what you hear, and the news.',
     '- Everyone you deal with is in the game, and so are your words: you speak with say (heard within about 7 tiles) and party_say in a party (a shout heard within about 12 tiles), and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way. Distance cuts you off: beyond shouting range your companions neither hear you nor your proposals and votes, so before you part agree where and when to meet again and remember it; only a paid courier from a town gate (send_courier) carries word farther, slowly.',
     '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns early, something needs you: read the events.',
-    '- Grow stronger: hunt what you judge you can beat, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose.',
+    '- Grow stronger: hunt what you judge you can beat, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose. You may hold several quests: quests lists them, take_quest keeps a job for later, focus_quest picks the one you pursue now (the others wait), abandon_quest gives one up; your oath is yours until kept.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice.',
     MEMORY_ORDERS,
     JOURNAL_ORDERS,
@@ -99,6 +100,9 @@ export function systemPrompt(st) {
 export const KNOWLEDGE_ORDERS = 'YOU KNOW ONLY WHAT YOU HAVE SEEN, HEARD OR BEEN TOLD. A creature you have never met is a stranger: look describes it and gives your own read of its threat, and fighting it, watching it, a warning or the town criers teach you more (its name, its measure, its tricks). You walk by name only to places you know (status.places: your home region, where you have been, what you were told of); to go anywhere else, explore a direction or "x,y". Nobody picks safe prey for you: hunt with prey you know, or what is around. Ask townsfolk and companions about places and creatures, heed warnings, share what you learn with your companions, and remember what hurt you (lore lists what you know).';
 const OLD_RULES = [[' Fight things your level or below, rest or go home when hurt,', ' Rest or go home when hurt,'], ['hunt in your level band,', 'hunt what you judge you can beat,']];
 export const withKnowledgeOrders = sys => {let s = String(sys || ''); if (s.includes('YOU KNOW ONLY WHAT YOU HAVE SEEN')) return s; for (const [a, b] of OLD_RULES) s = s.split(a).join(b); return s + '\n' + KNOWLEDGE_ORDERS};
+// Townsfolk (owner request): the turn header lists the people about ("nearby"); this line sends the agent to them.
+export const TOWN_ORDERS = 'In town, talk to the people: innkeepers have news, merchants trade, strangers have wants. A conversation can open a job or a trade. Answer when someone calls to you.';
+export const withTownOrders = sys => {const s = String(sys || ''); return s.includes('In town, talk to the people') ? s : s + '\n' + TOWN_ORDERS};
 // Memories (issue #155): the line every hero's standing orders carry; withMemoryOrders adds it to an older session's prompt.
 export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
 // Tiered memory (issue #153): landmarks, chapters and journal_search; withMemoryOrders adds this line to an older prompt too.
@@ -152,12 +156,13 @@ const sumTurns = (r0, r) => {if (r0 && r && r !== r0) for (const k of ['modelCal
 // model through scripts/local-agent.mjs. Ends the process.
 async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl, numCtx, release, beat, file, openai = null, budget = 1, pacer, pace}) {
   if (openai) return runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter: openai, budget, pacer, pace});
-  const ol = ollamaAdapter({url: ollamaUrl, defaultModel: rs.model}), s0 = await ol.status();
+  const ol = ollamaAdapter({url: ollamaUrl, defaultModel: rs.model, numCtx}), s0 = await ol.status();
   if (!s0.ok) {console.error(`[agent] Ollama at ${s0.url} is ${s0.error}. Start Ollama (https://ollama.com) or pass --ollama-url.`); await release(); process.exit(1)}
   if (!s0.models.includes(rs.model)) {console.error(`[agent] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await release(); process.exit(1)}
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
-  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)} | ${paceText(pace)}`);
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url}, num_ctx ${ol.numCtx} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)} | ${paceText(pace)}`);
+  await warmUp({base, seat: {hero: heroId}, runner: RUNNER, model: rs.model, adapter: ol, log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let ended = null, runIn = 0, runOut = 0, t0 = Date.now(), lastNote = null; const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     let r = null, w = null;
@@ -165,10 +170,10 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
     {const n = await localModelNote(ol, rs.model); if (n && n !== lastNote) console.log('[agent] ' + n); lastNote = n} // before every turn: another model on the GPU
     const b0 = await pacer.brief(); let err = null;
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
-    try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model, {numCtx: numCtx ? Number(numCtx) : null}), on}); // a reflection moment (issue #179)
-      if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model, {numCtx: numCtx ? Number(numCtx) : null}), on}); // a Fellowship member's own scene (issue #163)
+    try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a reflection moment (issue #179)
+      if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a Fellowship member's own scene (issue #163)
       if (r && r.mode !== 'reflect' && !r.tools || !r) r = sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + briefText(b0), model: rs.model, toolTurns,
-      opts: numCtx ? {numCtx: Number(numCtx)} : {}, on}))}
+      on}))}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
@@ -187,6 +192,7 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via OpenAI | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
+  await warmUp({base, seat: {hero: heroId}, runner: RUNNER, model: rs.model, adapter, log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let ended = null, runIn = 0, runOut = 0, spent = 0, unknown = false, t0 = Date.now(); const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
@@ -241,7 +247,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const moved = migrateLegacy(); if (moved) console.log('[agent] ' + moved);
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
-  sess.system = withKnowledgeOrders(withMemoryOrders(sess.system)); // memories (#155), learning the world (#188) for a session that began before them
+  sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
@@ -251,9 +257,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
     rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
-    if (!opt('model', null)) {const ol0 = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL)}), s = await ol0.status(), p = await preferLoaded(ol0, rs.model, s.models || []); if (p.note) {console.log('[agent] ' + p.note); rs.model = p.model}}
+    if (!opt('model', null)) {const ol0 = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)})}), s = await ol0.status(), p = await preferLoaded(ol0, rs.model, s.models || []); if (p.note) {console.log('[agent] ' + p.note); rs.model = p.model}}
     sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
-    await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'ollama', 20), toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: opt('num-ctx', env.OLLAMA_NUM_CTX || null), release, beat, file: SESSION_FILE, pacer, pace});
+    await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'ollama', 20), toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)}), release, beat, file: SESSION_FILE, pacer, pace});
   }
   if (rs.provider === 'openai') {
     // OpenAI plays (issue #97): the same tool loop through Chat Completions; the key stays in this process.
@@ -272,6 +278,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'};
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
+  await warmUp({base, seat: {hero: heroId}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let spent = 0, ended = null;
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}

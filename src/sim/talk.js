@@ -185,6 +185,11 @@ function speakAs(p,c,text,by,mark){const e={t:clockStr(),from:{kind:'npc',id:p.i
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=Math.max(p.chatCd||0,10);
   c.lines.push({who:'npc',id:p.id,name:full(p),text,t:e.t,by,...(mark?{mark}:{})});c.last=Math.round(S.gameMin);
   log([full(p)+(by==='dm-agent'?' (DM agent)':'')+': "',text,'"'+(mark?' '+mark:'')],{conv:c.id,npc:p.id,who:'npc',by,text,...(mark?{mark}:{})});return e}
+// A hail (sim/locals.js): the person opens the talk. With the DM agent listening the opening is its to voice (the call waits like
+// any other, and the scripted DM fills it if the seat goes quiet); else the scripted line is spoken now. Returns true when spoken.
+export function speakAsHail(p,c,text){const a=hero(c.heroes[0]),ms=dmBudget();
+  if(ms>0&&a){const T=talkState();c.wait={call:++T.call,hero:a.id,line:'('+full(p)+' calls out to '+a.name+': '+clean(text,CONV.LEAD_MAX)+')',gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};return false}
+  speakAs(p,c,text,'scripted');return true}
 // After an answer: the last exchange closes the conversation.
 function afterAnswer(c,p){c.wait=null;if(c.state==='open'&&c.ex>=CONV.EXCHANGES)close(c,'said what they had to say')}
 

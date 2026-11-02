@@ -21,7 +21,8 @@
 // --class C / --hero NAME[,NAME] / --agents N (who to play; default the highest-level living
 // Concord hero), --world FILE (default logs/agent-world.json), --resume, --quiet, --log-world NAME (the behavior logs'
 // folder, logs/behavior/<NAME>/, default <world id>-headless; issue #129; also the memory mirror's logs/agents/<NAME>/, #155),
-// --no-behavior (keep none), --no-mirror (no Markdown copy of the agents' memories). The world is
+// --wait-ready (issue #222: hold the world until every living agent hero and the open DM seat report a completed
+// warm-up model call, POST /play/ready; without it the world runs as before), --no-behavior (keep none), --no-mirror (no Markdown copy of the agents' memories). The world is
 // saved every minute and on exit, so `--resume` (and `npm run agent`, which keeps one session per
 // hero in logs/agents/) pick up where they stopped.
 import http from 'node:http';
@@ -101,8 +102,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!quiet) onLog(e => {const t = e.parts.map(p => typeof p === 'string' ? p : p && p.kind === 'hero' ? p.name : p && p.t || '').join(''); if (playerSeats().some(h => t.includes(h.name))) console.log(`[world ${e.t}] ${t}`)});
 
   const save = () => {try {mkdirSync(dirname(worldFile), {recursive: true}); writeFileSync(worldFile, JSON.stringify(snapshot()))} catch (e) {console.error('[play] save failed: ' + e.message)}};
-  let last = Date.now(), saveT = 0;
+  let last = Date.now(), saveT = 0, playRef = null, heldSig = null;
+  // --wait-ready (issue #222): the seats not ready yet, or [] (never held without the flag)
+  const notReady = () => {if (!flag('wait-ready') || !playRef) return [];
+    const out = playerSeats().filter(h => h.state !== 'dead').filter(h => {const r = playRef.readyOf(h.id); return !r || r.state !== 'ready'}).map(h => {const r = playRef.readyOf(h.id); return `${h.name}: ${r ? r.state + (r.error ? ' (' + r.error + ')' : '') : playRef.claimed(h.id) ? 'claimed' : 'no runner'}`});
+    if (dmSeatOn()) {const r = playRef.readyOf('dm'); if (!r || r.state !== 'ready') out.push(`DM: ${r ? r.state + (r.error ? ' (' + r.error + ')' : '') : playRef.claimed('dm') ? 'claimed' : 'no runner'}`)}
+    return out};
   setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now;
+    const wait = notReady(), ws = wait.join(' · ');
+    if (ws !== heldSig) {if (ws) console.log(`[play] world held, waiting for minds: ${ws}`); else if (heldSig) console.log('[play] every mind is ready: the world runs'); heldSig = ws}
+    if (wait.length) return;
     if (TABLE.drop) {if (speed > 1) {console.log(`[play] ${speed}x -> 1x: a Fellowship decision waits for its agents (${TABLE.drop.reason})`); speed = 1; TABLE.speed = 1} TABLE.drop = null} // #148
     const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) step(dt / n);
     saveT += real; if (saveT >= 60) {saveT = 0; save()}}, 50);
@@ -111,9 +120,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // Behavior logs (issue #129): runners' turn lines, the world digest and game-side anomalies under logs/behavior/<world>/.
   const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch() : null;
   const play = attachPlay(server, {behavior, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
+  playRef = play;
   if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);
   // Agent memories (issue #155): the notebooks mirrored as Markdown under logs/agents/<world>/ (--no-mirror: none); written, never read back.
   const mirror = flag('no-mirror') ? null : memoryMirror({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), sentMem = new Map();
+  if (mirror) mirror.setWorld(opt('log-world', WORLD_ID + '-headless'), S.worldId); // a fresh world purges the old one's memory folders; --resume keeps them
   const mirrorNow = () => {if (!mirror) return; try {const out = mirrorDirty(sentMem); if (out.length) {mirror.write(out); for (const o of out) sentMem.set(o.key, o.sig)}} catch (e) {console.error('[play] memory mirror: ' + e.message)}};
   if (mirror) setInterval(mirrorNow, 2000);
   // --runners (or RELAY_RUNNERS=1): runners can be started over HTTP (POST /play/runner/start), as from the game page

@@ -26,7 +26,7 @@ import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneSchema, sceneTurn, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
-import {ollamaAdapter} from './providers/ollama.mjs';
+import {ollamaAdapter, numCtxFrom} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
 
@@ -131,14 +131,15 @@ console.log('text-written calls and forced scene turns (issue #163)');
 
 // ---------------------------------------------------------------- the mock Ollama (scripts/mock-ollama.mjs)
 const {url: OLLAMA, seen, close: closeOllama} = await startMockOllama();
+let ctxFrom = 0; // where the runners' requests start in `seen` (after the adapter's own tests)
 
 console.log('ollama adapter chat (mock server)');
 {
-  const ol = ollamaAdapter({url: OLLAMA});
-  const r = await ol.chat({model: 'mock-tools:1b', messages: [{role: 'user', content: 'Begin.'}], tools: ollamaTools(), numCtx: 8192});
+  const ol = ollamaAdapter({url: OLLAMA, numCtx: 8192});
+  const r = await ol.chat({model: 'mock-tools:1b', messages: [{role: 'user', content: 'Begin.'}], tools: ollamaTools(), numCtx: 4096}); // a per-call size is ignored (#221)
   ok(r.message.tool_calls && r.usage.in === 900 && r.usage.cost === 0, 'chat returns the tool calls and token counts, cost 0');
   const last = seen[seen.length - 1];
-  ok(last.think === false && last.options.num_ctx === 8192 && last.stream === false && last.tools.length === ollamaTools().length, 'thinking off, the context size and the tools are sent');
+  ok(last.think === false && last.options.num_ctx === 8192 && last.stream === false && last.tools.length === ollamaTools().length, 'thinking off, the adapter context size (never a per-call one) and the tools are sent');
   let e = null; try {await ol.chat({model: 'mock-json:1b', messages: [{role: 'user', content: 'x'}], tools: ollamaTools()})} catch (x) {e = x}
   ok(e && e.noTools, 'a model without tool support is reported as noTools');
   // issue #126: one queue per adapter (a Fellowship runner's members share it), and a clear timeout message
@@ -155,11 +156,31 @@ console.log('ollama adapter chat (mock server)');
   const {preferLoaded, localModelNote} = await import('./pacing.mjs'), gpu = {loaded: async () => ['qwen2.5:14b']};
   const pl = await preferLoaded(gpu, 'qwen3.5:4b', ['qwen2.5:14b', 'qwen3.5:4b']);
   ok(pl.model === 'qwen2.5:14b' && /already holds qwen2.5:14b/.test(pl.note), 'with no model picked, a local runner takes the model Ollama already holds (the relay\'s minds)');
+  // issue #221: one num_ctx for every local call, read from OLLAMA_NUM_CTX (default 16384), also on call() (the relay's minds, the DM's voices)
+  ok(numCtxFrom({}) === 16384 && numCtxFrom({OLLAMA_NUM_CTX: '8192'}) === 8192 && numCtxFrom({OLLAMA_NUM_CTX: 'x'}) === 16384 && ollamaAdapter({url: OLLAMA}).numCtx === numCtxFrom(), 'OLLAMA_NUM_CTX, default 16384, is the one context size');
+  await ollamaAdapter({url: OLLAMA, numCtx: 8192}).call({system: 's', user: 'u', schema: {type: 'object', properties: {option: {type: 'string', enum: ['a']}, line: {type: 'string'}}}, maxTokens: 50, model: 'mock-intro:1b'});
+  ok(seen[seen.length - 1].options.num_ctx === 8192, 'call() (decisions, writing, the DM table and talk voices) sends it too');
+  const ctxGpu = {numCtx: 16384, held: async () => [{name: 'qwen2.5:14b', ctx: 32768}]};
+  const cn = await localModelNote(ctxGpu, 'qwen2.5:14b');
+  ok(/Ollama holds qwen2.5:14b at 32768; runners ask 16384, so it reloads each time/.test(cn || '') && !(await localModelNote({numCtx: 16384, held: async () => [{name: 'qwen2.5:14b', ctx: 16384}]}, 'qwen2.5:14b')), 'a runner warns when Ollama holds its model at another context size: ' + (cn || '').slice(0, 90));
+  // the owner's second live error (#221): "prediction aborted, token repeat limit reached". Retry once from a trimmed context at 0.4; twice: an empty turn, not a failure
+  {
+    const {localWorked, failTracker} = await import('./pacing.mjs'), olp = ollamaAdapter({url: OLLAMA}), lines = [];
+    const sess = {system: 'You are Ann.', local: {mode: 'tools', history: Array.from({length: 6}, (_, k) => [{role: 'user', content: 'Turn ' + k + ' ' + 'x'.repeat(400), turn: 1}, {role: 'assistant', content: 'ok'}]).flat(), tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0}};
+    const n0 = seen.length, h0 = sess.local.history.length;
+    const r1 = await localTurn({chat: olp.chat, call: async () => ({ok: true}), sess, prompt: 'Turn 7.', model: 'mock-loop1:1b', toolTurns: 6, on: (k, a) => {if (k === 'loop') lines.push(a)}});
+    const retry = seen.slice(n0).find(b => b.options.temperature === 0.4);
+    ok(r1.loopRetried && !r1.looped && r1.tools > 0 && lines.length === 1 && retry && retry.options.num_ctx === olp.numCtx && retry.messages.length < h0 + 2, `a repeat-limit abort is retried once, trimmed and cooler (0.4, num_ctx ${retry && retry.options.num_ctx}), and the turn plays on`);
+    const f = failTracker(2); f.ok(false);
+    const r2 = await localTurn({chat: olp.chat, call: async () => ({ok: true}), sess: {system: 'x', local: {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0}}, prompt: 'Turn 1.', model: 'mock-loop:1b', toolTurns: 6});
+    ok(r2.looped && r2.tools === 0 && localWorked(r2) === null && !f.ok(localWorked(r2)) && f.count === 1 && /repeating itself twice/.test(localLine(r2, 'mock-loop:1b')), 'twice: the turn ends empty with a clear line, and it does not count toward --max-fails');
+  }
   ok((await preferLoaded(gpu, 'qwen3.5:4b', ['qwen3.5:4b'])).model === 'qwen3.5:4b' && /evict each other/.test(await localModelNote(gpu, 'qwen3.5:4b')) && !(await localModelNote(gpu, 'qwen2.5:14b')), 'otherwise it keeps its model and warns that another one holds the GPU');
 }
 
 // ---------------------------------------------------------------- 2. the runner, end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
+ctxFrom = seen.length;
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // AGENT_REFLECT=0: no reflection turns where turn counts are exact; H passes --reflect (#179) // pacing (issue #126) kept short for the old sections
 const kids = [];
 function start(args, {wait: ready = null, env = childEnv} = {}) {
@@ -349,7 +370,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     ok(code === 0 && /3 failed or empty turns in a row/.test(R.out) && (R.out.match(/empty turn \(not in English\)/g) || []).length === 3, 'a model answering in Chinese: three empty turns, then the runner stops' + (code === 0 ? '' : '\n' + R.out.slice(-1200)));
     ok(en.length === 3, `each turn it is re-prompted once to answer in English (${en.length})`);
     ok(!/[一-鿿]/.test(R.out) && !(a.playNarr || []).some(n => /[一-鿿]/.test(n.text)) && !(a.chat || []).some(e => /[一-鿿]/.test(e.text)), 'no Chinese line reaches the runner output, the Agent tab or the chat');
-    ok(mine.every(b => b.options.temperature === 0.6 && b.options.repeat_penalty === 1.15), 'local turns sample at temperature 0.6 with a repeat penalty');
+    ok(mine.filter(b => !(b.format && b.format.properties && b.format.properties.ready)).every(b => b.options.temperature === 0.6 && b.options.repeat_penalty === 1.15), 'local turns sample at temperature 0.6 with a repeat penalty');
     ok(/fresh context/.test(R.out) && mine.some(b => b.messages.filter(m => m.role === 'assistant').length === 0 && /^Turn 3/.test((b.messages[1] || {}).content || '')), 'after two empty turns the next one starts from a fresh context');
     const sz = sim.playerAct(a.id, 'say', {text: '我将带领团队去见萨满'});
     ok(!sz.ok && /speak in English/.test(sz.error), 'the game refuses a foreign-script line: ' + sz.error);
@@ -488,6 +509,36 @@ console.log('relay links message');
   server.close();
 }
 
+// ---------------------------------------------------------------- the start gate (issue #222): play-headless --wait-ready
+console.log('start gate: --wait-ready holds the world until every mind answered a warm-up');
+{
+  ok(!/world held/.test(world.out()), 'without --wait-ready play-headless never holds the world (unchanged)');
+  const P2 = port + 650, B2 = `http://127.0.0.1:${P2}`, poll = async (f, ms = 30000) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {const h = await health(B2).catch(() => null); if (h && f(h)) return h; await sleep(100)} return null};
+  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--world', join(tmp, 'world-ready.json')], {wait: /headless world/});
+  await w2.until;
+  const [ga, gb] = (await health(B2)).heroes, by = (h, id) => h.heroes.find(x => x.id === id) || {};
+  ok(await poll(() => /world held, waiting for minds: .*no runner/.test(w2.out()), 5000), 'with --wait-ready a world with no runners is held');
+  const ra = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(ga.id), '--provider', 'ollama', '--model', 'mock-slow:1b', '--ollama-url', OLLAMA]);
+  const warming = await poll(h => by(h, ga.id).ready === 'warming', 20000);
+  ok(warming && by(warming, ga.id).warm.model === 'mock-slow:1b', '/play/health shows the slow seat warming up with its model');
+  const t0 = Date.now(), readyA = await poll(h => by(h, ga.id).ready === 'ready', 20000);
+  ok(readyA && Date.now() - t0 > 1000 && by(readyA, ga.id).warm.ms >= 2000, `it turns ready only when the slow warm-up answers (${readyA && by(readyA, ga.id).warm.ms} ms)`);
+  ok(!/every mind is ready/.test(w2.out()) && /no runner/.test(w2.out().split('waiting for minds:').pop()), 'the world stays held: the other seat has no runner');
+  const rb = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-down:1b', '--ollama-url', OLLAMA]);
+  const failed = await poll(h => by(h, gb.id).ready === 'failed', 20000);
+  ok(failed && /unexpectedly stopped/.test(by(failed, gb.id).warm.error || '') && /failed \(ollama: model runner has unexpectedly stopped/.test(w2.out()), 'a crashed warm-up is reported (failed, with the error) and keeps the world held');
+  rb.p.kill(); await poll(h => !by(h, gb.id).claimed, 40000);
+  const rb2 = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', OLLAMA]);
+  ok(await poll(() => /every mind is ready: the world runs/.test(w2.out()), 30000), 'once every seat answered its warm-up the world runs');
+  for (const k of [ra, rb2, w2]) try {k.p.kill()} catch {}
+}
+// issue #221: every request the runners sent (agent loop, closing calls, forced scene, reflection) asked one num_ctx
+{
+  const runs = seen.slice(ctxFrom), sizes = [...new Set(runs.map(b => b.options && b.options.num_ctx))];
+  const kinds = {loop: runs.filter(b => b.tools).length, words: runs.filter(b => !b.tools && !b.format).length, scene: runs.filter(b => b.format && b.format.properties && b.format.properties.option).length, reflect: runs.filter(b => b.format && b.format.properties && b.format.properties.notes).length};
+  ok(runs.length > 20 && sizes.length === 1 && sizes[0] === numCtxFrom(), `every mock Ollama request of the runners carries the same num_ctx (${sizes.join(', ')}) over ${runs.length} requests: ${JSON.stringify(kinds)}`);
+  ok(kinds.loop && kinds.words && kinds.scene && kinds.reflect, 'the agent loop, the closing call, a forced scene answer and a reflection were all among them');
+}
 for (const k of kids) try {k.kill()} catch {}
 closeOllama();
 try {rmSync(tmp, {recursive: true, force: true})} catch {}

@@ -12,6 +12,7 @@ import {tm} from '../data/traits.js';
 import {zoneFor} from '../world/map.js';
 import {log} from './chronicle.js';
 import {dmgTaken} from './stats.js';
+import {wakeLoot} from './wakes.js';
 import {addGear} from './inv.js'; // spare gear rides in the pack (sim/inv.js)
 
 // Tuning. gearScore = average item level over the seven slots * GEAR_K: a rough "how kitted" figure
@@ -115,7 +116,7 @@ export function equip(a,it){const old=a.slots[it.slot]||null;if(old)it.over={nam
 export function rollDrop(a,m,opt={}){if(!a.slots)return;if(!m.elite&&rnd()>=(opt.rate!=null?opt.rate:DROP_RATE))return;
   const M=MOBS[m.type],it=makeItem(a.cls,pickA(SLOTS),m.lvl+ri(-1,1),M?M.z:zoneFor(m.lvl),
     {src:'Dropped by '+(m.name||(M&&M.name)||'a monster'),quality:m.elite?(rnd()<.25?'rare':'fine'):undefined});
-  const cur=a.slots[it.slot];
+  wakeLoot(a,it.name,it.quality);const cur=a.slots[it.slot];
   if(cur&&(cur.epic||cur.ilvl>=it.ilvl)){addGear(a,it);return}
   const old=equip(a,it);if(old)addGear(a,old)}
 

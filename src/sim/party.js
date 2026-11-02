@@ -13,6 +13,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {MOBS} from '../data/mobs.js';
 import {maxHp,gainXp} from './heroes.js';
+import {wakeQuest} from './wakes.js';
 import {say} from './chat.js';
 import {tm} from '../data/traits.js';
 import {record} from './history.js';
@@ -66,7 +67,7 @@ export function leaveParty(a){const p=a.party;if(!p)return;p.mem.splice(p.mem.in
 // Share a kill: mates within 8 tiles get 60% of the killer's XP and quest credit; log a notable kill.
 export function shareKill(a,m,xp){const p=a.party;if(!p)return;
   const near=partyMates(a).filter(b=>dist(a,b)<=8);if(!near.length)return;
-  for(const b of near){gainXp(b,xp*.6);if(b.quest&&b.quest.type===m.type&&b.quest.have<b.quest.need)b.quest.have++}
+  for(const b of near){gainXp(b,xp*.6);if(b.quest&&b.quest.type===m.type&&b.quest.have<b.quest.need){b.quest.have++;wakeQuest(b,b.quest.have>=b.quest.need)}}
   const low=Math.min(...p.mem.map(b=>b.lvl));
   if(m.lvl-low>=4&&rnd()<.6)log(...names([a,...near]),' brought down a level ',String(m.lvl),' ',MOBS[m.type].name,' together.')}
 

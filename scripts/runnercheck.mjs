@@ -389,6 +389,17 @@ console.log('relay concurrency: queue, deadlines, 429 (mock provider)');
   relay.server.close();
 }
 
+// issue #221: the relay's minds (makeProviders -> call(), which the DM's table and talk voices also use) and the app's runners ask Ollama one num_ctx
+console.log('one num_ctx for every local call (issue #221)');
+{
+  const {makeProviders} = await import('./providers/index.mjs'), {numCtxFrom} = await import('./providers/ollama.mjs');
+  const pv = makeProviders({env: {OLLAMA_URL: mock.url}});
+  await pv.ollama.call({system: 's', user: 'u', schema: {type: 'object', properties: {option: {type: 'string', enum: ['a']}, line: {type: 'string'}}}, maxTokens: 50, model: 'mock-intro:1b'});
+  const st = await pv.ollama.status(), sizes = [...new Set(mock.seen.map(b => b.options && b.options.num_ctx))];
+  ok(mock.seen.length > 3 && sizes.length === 1 && sizes[0] === numCtxFrom(), `every mock Ollama request (app runners and the relay's call()) carries the same num_ctx: ${sizes.join(', ')} over ${mock.seen.length}`);
+  ok(st.numCtx === numCtxFrom() && makeProviders({env: {OLLAMA_URL: mock.url, OLLAMA_NUM_CTX: '8192'}}).ollama.numCtx === 8192, '/health shows the context in use, read from OLLAMA_NUM_CTX');
+}
+
 for (const p of procs) try {p.kill()} catch {}
 mock.close();
 await sleep(300);

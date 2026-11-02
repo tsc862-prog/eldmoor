@@ -20,7 +20,9 @@
 //                        holds it. provider/model (issue #97) name the mind behind the runner
 //                        (anthropic + a Claude id, ollama + a local tag) so the UI can tag it
 //   POST /play/release   {hero, runner}: the runner lets go (on exit)
-//   GET  /play/health    {connected, hero, heroes:[{id,name,alive,link,claimed,runner?}], calls}
+//   GET  /play/health    {connected, hero, heroes:[{id,name,alive,link,claimed,runner?,ready,warm?}], calls}
+//   POST /play/ready     {hero|role:'dm', runner, state:'warming'|'ready'|'failed', model?, ms?, error?}: the seat's
+//                        warm-up model call (issue #222, start gate); only the claiming runner; ready = null until then
 //   POST /play/behavior/turn {hero | role:'dm', runner, rec}: a runner's turn line for the behavior logs (issue
 //                        #129, scripts/behavior-log.mjs); only from the runner that holds the seat; the host adds
 //                        the hero's state after the turn. 404 when the host keeps no behavior logs.
@@ -105,7 +107,7 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
           if (k !== heroes.map(h => h.id + ':' + h.name + ':' + h.alive).join(',')) log(`[play] agent heroes: ${next.length ? next.map(h => h.name + ' #' + h.id + (h.alive ? '' : ' (dead)')).join(', ') : 'none'}`);
           heroes = next; lastLinks = '';
           const seat = m.dm === true || !!(m.dm && m.dm.seat); if (seat !== dmSeat) log(`[play] DM seat ${seat ? 'open' : 'closed'}`); dmSeat = seat;
-          if (onWorld && typeof m.world === 'string') onWorld(m.world); // the behavior logs' folder (issue #129)
+          if (onWorld && typeof m.world === 'string') onWorld(m.world, typeof m.worldId === 'string' ? m.worldId : null); // the behavior logs' folder (issue #129)
         } else if (m.type === 'behavior' && onBehavior && typeof m.kind === 'string') {try {onBehavior(m.kind, m.rec)} catch (e) {log('[play] behavior log: ' + e.message)}}
         else if (m.type === 'mirror' && onMirror && Array.isArray(m.seats)) {try {onMirror(m.seats)} catch (e) {log('[play] memory mirror: ' + e.message)}} // agent memories as Markdown (#155); written, never read back
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
@@ -140,7 +142,8 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
     // Runner link states for the page's Agent tab and Minds panel; sent only when they change.
     // runners: hero id -> {provider, model} of the runner holding it (issue #97), for the mind tag.
     // dm: the DM seat's link and runner ({seat, link, claimed, runner?}), issue #66.
-    links(map, runners = {}, dm = null) {const k = JSON.stringify([map, runners, dm]); if (k === lastLinks) return; lastLinks = k; send({type: 'links', links: map, runners, ...(dm ? {dm} : {})})},
+    // ready: hero id -> the seat's warm-up {state:'warming'|'ready'|'failed', model?, ms?, at, error?} (issue #222).
+    links(map, runners = {}, dm = null, ready = {}) {const k = JSON.stringify([map, runners, dm, ready]); if (k === lastLinks) return; lastLinks = k; send({type: 'links', links: map, runners, ready, ...(dm ? {dm} : {})})},
   };
 }
 
@@ -190,7 +193,7 @@ const readBody = req => new Promise((res, rej) => {
 export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null} = {}) {
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
   const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, rec, {links: links(), runners: runners()}) : false;
-  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror ? w => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w)} : null,
+  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id)} : null,
     onMirror: mirror ? seats => mirror.write(seats) : null}); // mirror: scripts/memory-mirror.mjs (issue #155)
   const stats = {calls: 0, errors: 0};
   const claims = new Map(), act = new Map(); // hero id -> {runner, at} / {last, inflight}
@@ -203,8 +206,13 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   runners = () => Object.fromEntries((be.info().heroes || []).map(h => [h.id, runnerOf(h.id)]).filter(e => e[1]));
   // the DM seat (issue #66): open in the game?, its link and its runner's mind
   const dmOpen = () => !!(be.info().dm);
-  const dmInfo = () => {const r = runnerOf(DM_KEY); return {seat: dmOpen(), link: linkOf(DM_KEY), claimed: !!claimOf(DM_KEY), ...(r ? {runner: r} : {})}};
-  const pushLinks = () => {if (be.links) be.links(links(), runners(), dmInfo())};
+  // Start gate (issue #222): a seat is ready once its runner completed one warm-up model call (POST /play/ready).
+  // Kept per seat for the runner that posted it: a new runner (a restart) starts over at 'claimed'.
+  const readies = new Map(); // hero id | DM_KEY -> {runner, state, model?, ms?, at, error?}
+  const readyOf = id => {const c = claimOf(id), r = readies.get(id); if (!c || !r || r.runner !== c.runner) return null; const {runner, ...o} = r; return o};
+  const readyMap = () => Object.fromEntries((be.info().heroes || []).map(h => [h.id, readyOf(h.id)]).filter(e => e[1]));
+  const dmInfo = () => {const r = runnerOf(DM_KEY), rd = readyOf(DM_KEY); return {seat: dmOpen(), link: linkOf(DM_KEY), claimed: !!claimOf(DM_KEY), ...(r ? {runner: r} : {}), ...(rd ? {ready: rd} : {})}};
+  const pushLinks = () => {if (be.links) be.links(links(), runners(), dmInfo(), readyMap())};
   const resolve = hero => hero != null ? hero : (defaultHero(be.info().heroes || []) || {}).id ?? null;
 
   // Every tool call goes through here: routed to one hero, counted, logged when verbose, never thrown.
@@ -296,7 +304,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         return;
       }
       if (path === '/play/health' && req.method === 'GET') {const i = be.info(), hs = i.heroes || [], d = defaultHero(hs);
-        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {})}}), dm: dmInfo(), ...stats})}
+        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id), rd = readyOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {}), ready: rd ? rd.state : null, ...(rd ? {warm: rd} : {})}}), dm: dmInfo(), ...stats})}
       if (path === '/mcp') {
         if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
         const body = await readBody(req);
@@ -311,6 +319,18 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (b.runner !== undefined) rid = runnerParam(b.runner);
       const heroClaimOf = r => r != null && [...claims.entries()].some(([k, c]) => k !== DM_KEY && c.runner === r && now() - c.at < CLAIM_MS);
       const dmAsked = role === 'dm' || b.role === 'dm';
+      // POST /play/ready {hero | role:'dm', runner, state:'warming'|'ready'|'failed', model?, ms?, error?} (issue #222): only the runner holding the seat
+      if (path === '/play/ready') {const dmSeat = dmAsked;
+        const id = dmSeat ? DM_KEY : heroParam(b.hero ?? hero), runner = typeof b.runner === 'string' ? b.runner.slice(0, 80) : rid;
+        if (id == null || Number.isNaN(id) || !runner) return send(400, {ok: false, error: 'ready needs {hero|role:"dm", runner, state}'});
+        const c = claimOf(id); if (!c || c.runner !== runner) return send(409, {ok: false, refused: true, error: 'Only the runner holding this seat reports it ready.'});
+        const state = ['warming', 'ready', 'failed'].includes(b.state) ? b.state : 'ready', prev = readies.get(id);
+        const rec = {runner, state, at: state === 'warming' || !prev || prev.runner !== runner ? now() : prev.at,
+          ...(typeof b.model === 'string' && runnerInfo({provider: 'x', model: b.model}).model ? {model: b.model} : {}), ...(Number.isFinite(Number(b.ms)) && b.ms != null ? {ms: Math.max(0, Math.round(Number(b.ms)))} : {}),
+          ...(state === 'failed' && b.error ? {error: String(b.error).replace(/sk-[\w-]{8,}/g, '[key]').slice(0, 200)} : {})};
+        readies.set(id, rec);
+        if (state !== 'warming') log(`[play] ${id === DM_KEY ? 'DM seat' : 'hero #' + id} ${state === 'ready' ? 'ready' : 'warm-up failed'}${rec.model ? ' (' + rec.model + (rec.ms != null ? ', ' + (rec.ms / 1000).toFixed(1) + ' s' : '') + ')' : ''}${rec.error ? ': ' + rec.error : ''}`);
+        pushLinks(); return send(200, {ok: true, ready: readyOf(id)})}
       if (path === '/play/behavior/turn') return send(...await behaviorTurn(b, b.hero !== undefined ? heroParam(b.hero) : hero, rid, dmAsked));
       if (path === '/play/dm') {
         if (typeof b.tool !== 'string' || !DM_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown DM tool'});
@@ -369,5 +389,5 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const claimed = id => !!claimOf(id);
   const dropRunner = prefix => {let n = 0; for (const [id, c] of claims) if (c.runner === prefix || c.runner.startsWith(prefix + ':')) {claims.delete(id); n++}
     if (n) {log(`[play] runner ${prefix} gone: ${n} claim(s) dropped`); pushLinks()} return n};
-  return {backend: be, stats, call, dmCall, dmInfo, linkOf, links, runnerOf, claimed, dropRunner, behaviorIngest, behavior};
+  return {backend: be, stats, call, dmCall, dmInfo, linkOf, links, runnerOf, readyOf, claimed, dropRunner, behaviorIngest, behavior};
 }
