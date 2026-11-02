@@ -68,7 +68,7 @@ import {DM_TOOLS} from '../src/data/dm-tools.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
-export const CLAIM_MS = 30000, LINK_MS = 20000; // a runner claim lives this long unrefreshed; a call keeps the link 'connected' this long
+export const CLAIM_MS = 45000, LINK_MS = 20000; // a runner claim lives this long unrefreshed; a call keeps the link 'connected' this long
 export const HERO_HEADER = 'x-eldmoor-hero', ROLE_HEADER = 'x-eldmoor-role', RUNNER_HEADER = 'x-eldmoor-runner', DM_KEY = 'dm'; // DM_KEY: the DM seat's key in the claim and link maps
 // A runner id from a header, query or body value (what /play/claim was given), or null.
 export const runnerParam = v => typeof v === 'string' && v.trim() ? v.trim().slice(0, 80) : null;
