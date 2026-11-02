@@ -52,7 +52,7 @@ import {nearHeroes,nearMobs} from './spatial.js';
 import {dmDepart,advLine,K as DMK,holdAdventure,resumeAdventure,beginJob,abandonAdventure,bountiesAt,bountyFor,takeBounty} from './dm.js';
 import {questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
 import {CHOICE_MIN} from './player-choice.js';
-import {fellowCard} from './persona.js'; // Fellowship (#68)
+import {fellowCard,selfView,become} from './persona.js'; // Fellowship (#68); self and become (#409)
 import {ev} from './notify.js';
 import {campView,campBlock,leaderBreak,leaderRest,onCamp} from './camp.js';
 import {heroMemory} from './notebook.js'; // agent memories (#155)
@@ -684,6 +684,9 @@ const T={
     const m=heroMemory(a,'remember',{title:t.split(/(?<=[.!?])\s/)[0].slice(0,60),text:t,tags:['journal']}); // the entry is also a memory tagged journal (#179)
     return {ok:true,entries:j.length,...(m.ok?{memory:m.remembered.id}:{}),...(lm?lm.ok?{landmark:lm.id}:{note:lm.note}:{})}},
   // memories (issue #155, sim/notebook.js): the hero's own notebook only
+  // who you are (#409, sim/persona.js): the hero's own persona, read and grown by its agent
+  self:a=>selfView(a),
+  become(a,x){const t=x&&x.text!=null?String(Array.isArray(x.text)?x.text.join(', '):x.text):'';need(!t||!notEnglish(t),'Not changed: write it in English, as everyone in Eldmoor speaks.');return become(a,x||{})},
   remember:(a,x)=>heroMemory(a,'remember',x),recall:(a,x)=>heroMemory(a,'recall',x),update_memory:(a,x)=>heroMemory(a,'update_memory',x),forget:(a,x)=>heroMemory(a,'forget',x),pin:(a,x)=>heroMemory(a,'pin',x),
   party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const no=lineRefusal(a,spokenLine(a,text,1e9).text);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
     const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);const e=a.chat&&a.chat[a.chat.length-1];agentLine(a,e);

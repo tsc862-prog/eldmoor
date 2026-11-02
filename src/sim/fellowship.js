@@ -38,7 +38,7 @@ import {moment} from './reflect.js'; // reflection moments (#179)
 import {disableBrain,askRelay} from './brain.js';
 import {markPlayer} from './player.js';
 import {seedProfs} from './professions.js';
-import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME} from './persona.js';
+import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME,keepSelf} from './persona.js';
 import {STANCE_MAX} from '../data/prompts.js';
 import {remember,memOf,refreshStances,stanceEvent,setSummariser,memorySnapshot,applyLong} from './memory.js';
 
@@ -237,9 +237,9 @@ const pending=new Set();
 export const enriching=a=>!!a&&pending.has(a.id);
 function sheets(a){const F=S.fellowship,mates=fellows();
   if(!a.backstory||!a.backstory.edited)a.backstory=buildBackstory(a,mates,F?F.name:'the Fellowship');
-  if(!a.persona||!a.persona.edited)a.persona=buildPersona(a,mates)}
+  if(!a.persona||!a.persona.edited)a.persona=keepSelf(a.persona,buildPersona(a,mates))} // what the hero made of itself (become, #409) and the owner's pins stay
 function cost(j,F){if(!F||!j)return;F.enrich.calls++;if(j.usage)F.enrich.usd=Math.round((F.enrich.usd+(+j.usage.cost||0))*1e6)/1e6;if(j.ms)F.enrich.ms=j.ms}
-const written=x=>!!x&&(x.src==='model'||x.edited); // a sheet the model (or the user) already wrote is never asked for again (#117)
+const written=x=>!!x&&(x.src==='model'||x.edited||x.selfN>0); // a sheet the model (or the user) already wrote is never asked for again (#117)
 export function enrich(a){const F=S.fellowship;if(!F||!F.ai||pending.has(a.id))return false;
   const needB=!written(a.backstory),needP=!written(a.persona);if(!needB&&!needP)return false;pending.add(a.id);
   const fid=F.id,still=()=>S.fellowship&&S.fellowship.id===fid&&a.fellow&&a.state!=='dead';
@@ -256,7 +256,7 @@ setSummariser((a,items,before,stamp)=>{const F=S.fellowship;if(!F||!F.ai||!a.fel
 
 // User edits from the Fellowship panel: plain strings, cut to the same caps the model gets.
 export function editSheet(a,which,field,text){if(!a)return false;const v=String(text==null?'':text).replace(/\r/g,'').slice(0,600);
-  if(which==='persona'){a.persona=a.persona||buildPersona(a,fellows());a.persona[field]=v;a.persona.edited=true;return true}
+  if(which==='persona'){a.persona=a.persona||buildPersona(a,fellows());a.persona[field]=field==='traits'?v.split(/[,;\n]/).map(t=>t.trim().slice(0,40)).filter(Boolean).slice(0,6):v;a.persona.edited=true;return true} // traits: a list (#409)
   if(which==='stance'){const b=byId(field);if(!b||b===a)return false;const P=a.persona=a.persona||buildPersona(a,fellows()),t=v.trim().slice(0,STANCE_MAX);
     const st=P.stances={...(P.stances||{})},by=P.stanceBy={...(P.stanceBy||{})}; // the owner's line toward one companion (#305); empty hands it back to the bond reading
     if(t){st[b.id]=t;by[b.id]='owner'}else{delete st[b.id];delete by[b.id]}P.edited=true;refreshStances(a,S.fellowship?S.fellowship.ids:[]);return true}

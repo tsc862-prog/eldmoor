@@ -710,6 +710,21 @@ console.log('start gate: ready, not just claimed');
   const m2=sim.fellows()[1];ok(a.persona.stances[m2.id]===ARCHETYPES.mercenary.stance.replace('{other}',m2.name),'sheet editor: stances name each companion');
   ok(!fb.querySelector('select[data-farch]').children.some(o=>o.value===''),'sheet editor: None is gone once one is picked');
   fb.querySelectorAll('button').find(b=>b.dataset.fact==='close').click()}
+// Agent-built personality (#409): a pin per persona field in the sheet editor; the Life view shows who they became
+{const fb=$('felbody'),P=await import('../src/sim/persona.js'),LV=await import('../src/ui/lifeview.js');
+  const a=sim.fellows()[0];let sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));
+  if(!sb){fb.querySelector('[data-fact="drawer:members"]').click();uiFast();sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id))}sb.click();
+  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null);
+  ok(pins.length===P.PERSONA_ORDER.length+1,'pins: one per persona field and one for the stances ('+pins.length+')');
+  ok(fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='beliefs')&&fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='traits'),'sheet editor: beliefs and traits boxes');
+  const pw=pins.find(i=>i.dataset.fpin==='wants');pw.checked=true;pw.dispatch('change',{target:pw});uiFast();
+  ok(P.pinned(a,'wants'),'pins: ticking the box pins the field');
+  const pw2=fb.querySelectorAll('input').find(i=>i.dataset&&i.dataset.fpin==='wants');pw2.checked=false;pw2.dispatch('change',{target:pw2});uiFast();
+  ok(!P.pinned(a,'wants'),'pins: unticking frees it');
+  fb.querySelectorAll('button').find(b=>b.dataset.fact==='close').click();
+  const was=a.player;a.player=true;sim.S.gameMin+=1440;const r=sim.playerAct(a.id,'become',{field:'fears',text:'Losing the road home.',why:'the long winter'});a.player=was;
+  const L=LV.lifeRows().find(c=>c.hero===a);
+  ok(r.ok&&L&&L.self.length>=1&&L.self[0].after==='Losing the road home.'&&L.self[0].why==='the long winter'&&/Fears/.test(L.self[0].label),'life: the persona history, newest first ('+(r.error||'')+')')}
 // Fellowship sheet editor: the stance toward each companion (#316, UI for #305) round-trips through editSheet
 {const fb=$('felbody'),{STANCE_MAX}=await import('../src/data/prompts.js'),P=await import('../src/sim/persona.js');
   const open=a=>{let b=fb.querySelectorAll('button').find(x=>x.dataset.fsheet==String(a.id));if(!b){fb.querySelector('[data-fact="drawer:members"]').click();b=fb.querySelectorAll('button').find(x=>x.dataset.fsheet==String(a.id))}b.click()};

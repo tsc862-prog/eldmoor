@@ -284,12 +284,25 @@ export const REFLECT_NOTES = 3;
 // strict: OpenAI's strict json_schema (every property required, no maxItems/maxLength; cut here instead).
 export function reflectSchema({strict = false} = {}) {
   const s = (d, n) => ({type: 'string', description: d, ...(strict ? {} : {maxLength: n})});
-  return {type: 'object', additionalProperties: false, required: ['notes'], properties: {notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
+  return {type: 'object', additionalProperties: false, required: strict ? ['notes', 'become'] : ['notes'], properties: {notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
     description: 'The memories you want to keep (0-3); empty if nothing is worth it',
     items: {type: 'object', additionalProperties: false, required: strict ? ['title', 'text', 'tags', 'about'] : ['title', 'text', 'tags'], properties: {
       title: s('A short title of your choosing', 80), text: s('The memory in your own words', 600),
       tags: {type: 'array', items: {type: 'string'}, description: 'A few tags of your choosing'},
-      about: s('Who or what it concerns (a name, a place), or empty', 60)}}}}};
+      about: s('Who or what it concerns (a name, a place), or empty', 60)}}},
+    // has this changed who you are? (issue #409): an optional change of one persona field, sent with become
+    become: {type: 'object', additionalProperties: false, required: ['field', 'text', 'why', 'about'], description: 'A change of who you are, if this moment changed you; field "none" if not',
+      properties: {field: {type: 'string', enum: ['none', ...BECOME_KEYS]}, text: s('Your new words for that part of you, or empty', 300), why: s('What changed you, or empty', 200), about: s('For a stance: who it is toward, or empty', 40)}}}};
+}
+export const BECOME_KEYS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 'beliefs', 'traits', 'stance'];
+// The persona change of a structured reflection answer, or null (none, or not given). -> {field, text, why, about?}
+export function reflectBecome(text) {
+  let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
+  const b = j && typeof j === 'object' && !Array.isArray(j) ? j.become : null;
+  if (!b || typeof b !== 'object') return null;
+  const field = String(b.field || '').trim().toLowerCase(), t = String(b.text || '').trim();
+  if (!field || field === 'none' || !t) return null;
+  return {field, text: t.slice(0, 300), why: String(b.why || '').trim().slice(0, 200) || 'a moment of reflection', ...(String(b.about || '').trim() ? {about: String(b.about).trim().slice(0, 40)} : {})};
 }
 // What the member did lately, from its own compact conversation (sess.local.history), for the reflection prompt.
 export function recentOf(sess, chars = 2400) {
@@ -312,11 +325,11 @@ export function reflectNotes(text) {
 export async function reflectTurn({ask, call, sess, moment, prompt, context = '', on = () => {}, keep = true, strict = false}) {
   const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'reflect', forced: true, calls: [], misses: 0, notes: [], moment: moment && moment.id};
   const recent = recentOf(sess), user = [recent ? 'What you did and heard lately (your own turns):\n' + recent : '', context ? context.trim() : '', prompt].filter(Boolean).join('\n\n');
-  let notes = null, note = '';
+  let notes = null, note = '', bec = null;
   for (let k = 0; k < 2 && !notes; k++) {
     const r = await ask(sess.system || '', user + note, reflectSchema({strict})), u = r.usage || {};
     stat.modelCalls++; stat.in += u.in || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
-    notes = reflectNotes(r.text);
+    notes = reflectNotes(r.text); bec = reflectBecome(r.text);
     if (!notes) {const w = parseTextCalls(r.text).filter(c => c.function.name === 'remember').map(c => c.function.arguments).filter(a => a && a.text); if (w.length) notes = w.slice(0, REFLECT_NOTES)} // remember written as text still counts
     if (!notes) {stat.misses++; note = '\n\nThat was not the JSON object. Answer only with {"notes": [...]} (an empty list for none).'}
   }
@@ -327,9 +340,15 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
     if (r && r.ok !== false) {stat.calls.push({name: 'remember', ok: true}); stat.notes.push(n.title || n.text.slice(0, 40))} else {stat.rejected++; stat.calls.push({name: 'remember', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
     if (r && r.dead) {stat.dead = true; break}
   }
+  if (bec && !stat.dead) { // the moment changed who the hero is (#409): one become, refused or not
+    on('tool', 'become', bec); stat.tools++;
+    let r; try {r = await call('become', bec)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    on('result', typeof r === 'string' ? r : JSON.stringify(r));
+    if (r && r.ok !== false) {stat.calls.push({name: 'become', ok: true}); stat.became = bec.field} else {stat.rejected++; stat.calls.push({name: 'become', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
+  }
   stat.answered = !!notes; stat.wrote = stat.notes.length;
-  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) : '';
-  if (keep && stat.wrote) {const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
+  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) + (stat.became ? ` Something in them has changed (${stat.became}).` : '') : '';
+  if (keep && (stat.wrote || stat.became)) {const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
     L.history.push({role: 'user', content: 'A moment to reflect: ' + String(moment && moment.why || ''), turn: 1}, {role: 'assistant', content: stat.narration});
     L.tokensIn += stat.in; L.tokensOut += stat.out; L.dropped += trimHistory(L.history, LOCAL_DEFAULTS.historyChars); L.seconds += (Date.now() - t0) / 1000}
   if (stat.narration) on('text', stat.narration);

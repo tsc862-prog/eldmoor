@@ -162,7 +162,9 @@ export function buildBackstory(a,mates=[],fname='the Fellowship'){const f=a.fac=
   return {src:'scripted',edited:false,at:S.gameMin,paras:{family,arms,defining,flaw,wants,joined,link:ltext},summary:summary.slice(0,BACKSTORY_FIELDS.summary),link,world:T}}
 
 export const BACKSTORY_ORDER=[['family','Family and home'],['arms','To arms'],['defining','The defining day'],['flaw','Flaw or secret'],['wants','Wants and fears'],['joined','Why they joined'],['link','Ties']];
-export const PERSONA_ORDER=[['voice','Voice'],['wants','Wants'],['fears','Fears'],['quirk','Quirk'],['never_says','Would never say']];
+export const PERSONA_ORDER=[['voice','Voice'],['wants','Wants'],['fears','Fears'],['quirk','Quirk'],['never_says','Would never say'],['beliefs','Beliefs'],['traits','Traits (self-noticed)']];
+// A persona field as text (traits are a list, #409).
+export const personaValue=(P,k)=>!P?'':k==='traits'?(Array.isArray(P.traits)?P.traits.join(', '):String(P.traits||'')):String(P[k]==null?'':P[k]);
 
 // ---- relay snapshots and validated application ----
 const compOf=(b,a)=>({id:b.id,name:b.name,cls:b.cls,people:raceOf(b).name,home:b.home||null,trade:b.trade||null,lvl:b.lvl,bond:bond(a,b),
@@ -177,8 +179,9 @@ export function backstorySnapshot(a,mates,fname){const s=buildBackstory(a,mates,
 // The relay already validated; the sim checks again (it never trusts the wire) and keeps only known companions.
 export function applyPersona(a,j,mates,model){if(!j||typeof j!=='object')return false;const out={};
   for(const k in PERSONA_FIELDS){const v=cleanText(j[k],PERSONA_FIELDS[k]);if(!v)return false;out[k]=v}
-  const old=a.persona||buildPersona(a,mates),st={...old.stances};
-  for(const b of mates){if(b===a)continue;const v=cleanText(j.stances&&j.stances[String(b.id)],STANCE_MAX);if(v)st[b.id]=v}
+  const old=a.persona||buildPersona(a,mates),st={...old.stances},mine=old.by||{},sb=old.stanceBy||{};
+  for(const k in mine)if(mine[k]==='self'&&k in out)out[k]=old[k]; // what the hero made of itself (become, #409) is never overwritten
+  for(const b of mates){if(b===a||sb[b.id]==='self')continue;const v=cleanText(j.stances&&j.stances[String(b.id)],STANCE_MAX);if(v)st[b.id]=v}
   a.persona={...old,...out,stances:st,src:'model',model:model||null,at:S.gameMin,edited:false};return true}
 export function applyBackstory(a,j,mates,model){if(!j||typeof j!=='object')return false;const paras={};
   for(const k of ['family','arms','defining','flaw','wants','joined','link']){const v=cleanText(j[k],BACKSTORY_FIELDS[k]);if(!v)return false;paras[k]=v}
@@ -209,7 +212,7 @@ export function applyArchetype(a,id,mates){const A=ARCHETYPES[id];if(!a||!A)retu
 // (as applyArchetype filled it, or the archetype template for a companion who joined later). An unedited
 // scripted persona's own stances are only the bond reading at the time it was built, so they never count.
 export function authoredStance(a,b){const P=a&&a.persona;if(!P||!b)return '';const cur=P.stances&&P.stances[b.id];
-  if(cur&&(P.src==='model'||(P.stanceBy&&P.stanceBy[b.id]==='owner')))return cur;
+  if(cur&&(P.src==='model'||(P.stanceBy&&(P.stanceBy[b.id]==='owner'||P.stanceBy[b.id]==='self'))))return cur; // 'self': the hero's own line (become, #409)
   if(P.archetype){const t=archetypeStance(P.archetype,b);if(!cur||cur===t)return t}
   return ''}
 
@@ -222,4 +225,130 @@ export function fellowCard(a){if(!a||!a.fellow)return null;const F=S.fellowship,
   if(a.backstory)c.backstory=a.backstory.summary;
   if(M){if(M.long)c.memory_long=String(M.long).slice(0,500);const r=(M.recent||[]).slice(-5).map(e=>e.text);if(r.length)c.memory_recent=r}
   if(comp.length)c.companions=comp;
+  if(P){if(P.beliefs)c.beliefs=P.beliefs;const tr=traitsOf(P);if(tr.length)c.traits=tr}
   return c}
+
+// ---- the hero's own persona (issue #409): agents build their personality over time ----
+// The archetype, the scripted sheet, the relay's one-time writing and the owner's edits are the seed; an agent-played hero
+// reads its persona with the `self` tool and revises one part of it at a time with `become {field, text, why}`.
+//   a.persona.beliefs  what the hero believes (new, free text)          a.persona.traits  self-noticed traits (new, short list)
+//   a.persona.views    {lowercase name: {name, line}}: how it sees a person who is not a hero (townsfolk, anyone named)
+//   a.persona.by       {field: 'self'}: fields the agent wrote (relay writing and a sheet rebuild never replace them)
+//   a.persona.stanceBy {heroId: 'self'|'owner'}: whose line a stance is (authoredStance counts both)
+//   a.persona.pins     {field: true}: fields the owner fixed in the sheet editor (become refuses them)
+//   a.persona.hist     [{d, gm, f, about?, before, after, why}]: the changes, oldest first, SELF.HIST kept
+//   a.persona.selfDay  {d, n, keys:[]}: today's changes (SELF.PER_DAY, one per field, a stance per person)
+// Private to the hero (in-game channels, #123): only its own tools, its own state header and its own runner's standing
+// orders read it. It dies with the hero (a replacement is a new hero). No RNG: hashes and plain data only.
+export const SELF={PER_DAY:3,HIST:40,TRAITS:6,TRAIT_LEN:40,BELIEFS:300,WHY:200,SHOW:5,LINE:260,CUT:200};
+export const SELF_FIELDS=['voice','wants','fears','quirk','never_says','beliefs','traits','stance'];
+export const SELF_LABEL={voice:'Voice',wants:'Wants',fears:'Fears',quirk:'Quirk',never_says:'Would never say',beliefs:'Beliefs',traits:'Traits',stance:'Stances'};
+const CAP={...PERSONA_FIELDS,beliefs:SELF.BELIEFS,stance:STANCE_MAX};
+const ALIAS={voice:'voice',speech:'voice',tone:'voice',want:'wants',wants:'wants',goal:'wants',goals:'wants',desire:'wants',desires:'wants',
+  fear:'fears',fears:'fears',quirk:'quirk',quirks:'quirk',habit:'quirk',neversays:'never_says',neversay:'never_says',never:'never_says',wouldneversay:'never_says',
+  belief:'beliefs',beliefs:'beliefs',believe:'beliefs',creed:'beliefs',trait:'traits',traits:'traits',stance:'stance',stances:'stance',view:'stance',views:'stance',opinion:'stance',feelings:'stance'};
+export const selfField=f=>ALIAS[String(f==null?'':f).toLowerCase().replace(/[^a-z]/g,'')]||null;
+const dayN=()=>Math.floor(S.gameMin/1440)+1;
+const cutS=(s,n)=>{s=String(s==null?'':s).replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
+export const traitsOf=P=>Array.isArray(P&&P.traits)?P.traits.filter(x=>typeof x==='string'&&x):[];
+const mateList=a=>{const F=S.fellowship;return a.fellow&&F?F.ids.filter(x=>x!=a.id).map(byId).filter(alive):[]};
+const showVal=(P,f)=>f==='traits'?traitsOf(P).join(', '):String(P[f]||'');
+
+// The hero's persona, made and migrated in place (an old save: no history, no pins). Agent-played heroes only call it.
+export function selfOf(a){if(!a)return null;const P=a.persona||(a.persona=buildPersona(a,mateList(a)));
+  if(!Array.isArray(P.hist))P.hist=[];if(!P.pins||typeof P.pins!=='object')P.pins={};if(!P.by||typeof P.by!=='object')P.by={};
+  if(!Array.isArray(P.traits))P.traits=typeof P.traits==='string'&&P.traits?P.traits.split(/[,;]/).map(x=>x.trim()).filter(Boolean):[];
+  if(typeof P.beliefs!=='string')P.beliefs='';if(!P.views||typeof P.views!=='object')P.views={};return P}
+// Is this field fixed by the owner? (stance covers every stance and view)
+export const pinned=(a,f)=>!!(a&&a.persona&&a.persona.pins&&a.persona.pins[f]);
+// The owner's pin from the sheet editor. -> true when the field is known.
+export function pinField(a,f,on){const k=selfField(f)||f;if(!a||!SELF_FIELDS.includes(k))return false;const P=selfOf(a);if(on)P.pins[k]=true;else delete P.pins[k];return true}
+// A sheet rebuilt from the sim (sim/fellowship.js sheets) keeps what the agent made of itself and the owner's pins.
+export function keepSelf(old,fresh){if(!old||!fresh)return fresh;const out={...fresh};
+  for(const k of ['hist','pins','by','views','selfDay','selfN','selfAt','beliefs','traits'])if(old[k]!==undefined)out[k]=old[k];
+  for(const k in old.by||{})if(old.by[k]==='self'&&k in PERSONA_FIELDS)out[k]=old[k];
+  const sb=old.stanceBy||{};for(const id in sb)if(sb[id]==='self'&&old.stances&&old.stances[id]){out.stances={...(out.stances||{}),[id]:old.stances[id]};out.stanceBy={...(out.stanceBy||{}),[id]:'self'}}
+  return out}
+
+// One line for every turn header: who the hero is now, from its own persona. Reads only (an absent persona is built, not stored).
+export function personaLine(a){if(!a)return '';const P=a.persona||buildPersona(a,[]);
+  const first=s=>cutS(String(s||'').split(/(?<=[.!?])\s/)[0],110),tr=traitsOf(P),bits=[first(P.voice)];
+  if(P.wants)bits.push('want: '+cutS(P.wants,80));if(P.fears)bits.push('fear: '+cutS(P.fears,60));
+  if(tr.length)bits.push('traits: '+tr.slice(0,4).join(', '));if(P.beliefs)bits.push('believe: '+cutS(P.beliefs,70));
+  return cutS(bits.filter(Boolean).join(' | '),SELF.LINE)}
+// A short signature of the persona text, so a runner knows when to refresh its standing orders.
+export function personaSig(a){const P=a&&a.persona;if(!P)return '0';let h=5381;
+  const s=[P.voice,P.wants,P.fears,P.quirk,P.never_says,P.beliefs||'',traitsOf(P).join(','),a.backstory?a.backstory.summary:''].join('|');
+  for(let i=0;i<s.length;i++)h=((h*33)^s.charCodeAt(i))>>>0;return h.toString(36)}
+// The persona as standing-order text (the Claude runners' system prompt, refreshed when personaSig changes).
+export const PERSONA_HEAD='YOUR PERSONA',PERSONA_TAIL='(end of your persona)';
+export function selfText(a){if(!a)return '';const P=a.persona||buildPersona(a,[]),tr=traitsOf(P);
+  return [PERSONA_HEAD+' (who you are now. It grows with you: self shows it, become changes one part, with a why, when your story changes you. Play from it, in this voice):',
+    '- Voice: '+P.voice,'- Wants: '+P.wants,'- Fears: '+P.fears,'- Quirk: '+P.quirk,'- Would never say: "'+P.never_says+'"',
+    P.beliefs?'- Believes: '+P.beliefs:'',tr.length?'- Traits you see in yourself: '+tr.join(', '):'',
+    a.backstory&&a.backstory.summary?'- Backstory: '+a.backstory.summary:'',PERSONA_TAIL].filter(Boolean).join('\n')}
+
+function changesToday(P){const d=dayN();if(!P.selfDay||P.selfDay.d!==d)P.selfDay={d,n:0,keys:[]};return P.selfDay}
+export const histLine=h=>'Day '+h.d+': '+(SELF_LABEL[h.f]||h.f).toLowerCase()+(h.about?' ('+h.about+')':'')+': "'+cutS(h.before||'(none)',80)+'" -> "'+cutS(h.after||'(none)',80)+'" because '+cutS(h.why,100);
+function openFields(P,T){return SELF_FIELDS.filter(f=>!P.pins[f]&&(f==='stance'||!T.keys.includes(f)))}
+
+// The `self` tool: the hero's persona in its own words (second person), what it may still change today and its recent changes.
+export function selfView(a){const P=selfOf(a),T=changesToday(P),M=a.memory,tr=traitsOf(P);
+  const stances=[];for(const b of mateList(a)){const line=(M&&M.stances&&M.stances[b.id])||authoredStance(a,b)||scriptedStance(a,b);stances.push({who:b.name,id:b.id,line,yours:!!(P.stanceBy&&P.stanceBy[b.id]==='self')})}
+  for(const id in P.stanceBy||{})if(P.stanceBy[id]==='self'&&!stances.some(s=>s.id==id)&&P.stances&&P.stances[id]){const b=byId(id);if(b)stances.push({who:b.name,id:b.id,line:P.stances[id],yours:true})}
+  const people=Object.values(P.views).map(v=>({who:v.name,line:v.line}));
+  const left=Math.max(0,SELF.PER_DAY-T.n),pins=SELF_FIELDS.filter(f=>P.pins[f]);
+  return {ok:true,who_you_are:personaLine(a),voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk,never_says:P.never_says,
+    beliefs:P.beliefs||'(none named yet)',traits:tr.length?tr:['(none named yet)'],stances,...(people.length?{people}:{}),
+    backstory:a.backstory&&a.backstory.summary?a.backstory.summary:null,...(P.archetype&&ARCHETYPES[P.archetype]?{began_as:ARCHETYPES[P.archetype].name}:{}),
+    ...(pins.length?{fixed:pins.map(f=>SELF_LABEL[f])}:{}),
+    changes_today:T.n+' of '+SELF.PER_DAY,can_change_now:left?openFields(P,T):[],
+    recent_changes:P.hist.slice(-SELF.SHOW).reverse().map(histLine),
+    how:'become {field, text, why} changes one part of you, in your own words: field one of '+SELF_FIELDS.join(', ')+'; traits take op add (default) or drop, beliefs op add appends; a stance needs about (a companion, a hero or a person by name). Up to '+SELF.PER_DAY+' changes a game day, one per field (a stance per person). Only you read this; it dies with you.'}}
+
+// The `become` tool. -> {ok:true, field, before, after, change} or {ok:false, error, ...hints}. Permissive: aliases for
+// fields, text cut to its cap (with a note), traits added or dropped, a stance toward any hero or person by name.
+export function become(a,args){const x=args&&typeof args==='object'?args:{},P=selfOf(a),T=changesToday(P);
+  const no=(error,more)=>({ok:false,error,...more});
+  const f=selfField(x.field);
+  if(!f)return no('No such part of you: "'+cutS(x.field,40)+'". Change one of: '+SELF_FIELDS.join(', ')+' (self shows them).',{fields:SELF_FIELDS});
+  if(P.pins[f])return no('Your '+SELF_LABEL[f].toLowerCase()+' is fixed by the one who keeps your sheet and cannot change now'+(f==='stance'?'':' ("'+cutS(showVal(P,f)||'as it is',100)+'")')+'. You can still change: '+SELF_FIELDS.filter(k=>!P.pins[k]).join(', ')+'.',{fixed:true});
+  const why=cleanText(x.why,SELF.WHY);
+  if(!why)return no('Say why you are changing (why: a few words of what happened or what you realised). A change of who you are needs a reason.');
+  let op=String(x.op||'').toLowerCase().trim();
+  const raw=x.text==null?'':Array.isArray(x.text)?x.text.join(', '):String(x.text);
+  if(!cleanText(raw,2000))return no('Write the new '+SELF_LABEL[f].toLowerCase()+' in text, in your own words (up to '+(f==='traits'?SELF.TRAIT_LEN+' characters a trait':CAP[f]+' characters')+').');
+  if(T.n>=SELF.PER_DAY){const m=Math.ceil(dayN()*1440-S.gameMin);return no('You have changed '+SELF.PER_DAY+' things about yourself today: let it settle. You can change again in '+m+' game minutes (a new day). Write it down with remember meanwhile.',{retry_after_min:m})}
+  // the stance: toward a hero (by name or id) or a person by name
+  let key=f,about=null,hero=null;
+  if(f==='stance'){const w=cleanText(x.about==null?'':String(x.about),40),ms=mateList(a);
+    if(!w)return no('A stance needs about: who it is toward (a companion, a hero or a person, by name)'+(ms.length?', for example "'+ms[0].name+'"':'')+'.');
+    const n=Number(w);hero=S.agents.find(b=>b.kind==='hero'&&(Number.isFinite(n)&&String(n)===w?b.id===n:b.name.toLowerCase()===w.toLowerCase()))||null;
+    if(hero===a||(!hero&&w.toLowerCase()===a.name.toLowerCase()))return no('That is you: change voice, wants, fears, quirk, never_says, beliefs or traits instead.');
+    about=hero?hero.name:w;key='stance:'+(hero?hero.id:'p:'+w.toLowerCase())}
+  if(T.keys.includes(key))return no('You already changed your '+(f==='stance'?'stance toward '+about:SELF_LABEL[f].toLowerCase())+' today; one change a day for each. Still open today: '+openFields(P,T).join(', ')+'.');
+  let before,after,note=null;
+  if(f==='traits'){before=traitsOf(P).join(', ');let L=traitsOf(P).slice();
+    const items=raw.split(/[,;\n]/).map(t=>cleanText(t,200)).filter(Boolean).map(t=>{if(t.length>SELF.TRAIT_LEN)note='a trait is cut to '+SELF.TRAIT_LEN+' characters';return t.slice(0,SELF.TRAIT_LEN).trim()});
+    if(!op)op=items.length>1?'set':'add';
+    if(op==='drop'||op==='remove'){const keep=L.filter(t=>!items.some(g=>g.toLowerCase()===t.toLowerCase()));
+      if(keep.length===L.length)return no('You hold no trait "'+(items[0]||'')+'". Your traits: '+(L.length?L.join(', '):'none yet')+'.');L=keep}
+    else if(op==='set'||op==='replace')L=items;
+    else{for(const t of items)if(!L.some(y=>y.toLowerCase()===t.toLowerCase()))L.push(t)}
+    while(L.length>SELF.TRAITS){const d=L.shift();note=(note?note+'; ':'')+'you hold at most '+SELF.TRAITS+' traits, so "'+d+'" fades'}
+    after=L.join(', ');if(after===before)return no('That is already so: your traits are '+(before||'none')+'.');P.traits=L}
+  else{let t=cleanText(raw,2000);
+    if(f==='beliefs'&&op==='add'&&P.beliefs){const add=t.slice(0,CAP[f]);t=P.beliefs.replace(/[.!?]?\s*$/,'.')+' '+add;
+      if(t.length>CAP[f]){t=t.slice(t.length-CAP[f]);const i=t.search(/[.!?]\s/);t=(i>=0&&i<t.length-add.length?t.slice(i+2):t).trim();note='the oldest of your beliefs fade to keep '+CAP[f]+' characters'}}
+    if(t.length>CAP[f]){t=t.slice(0,CAP[f]).trim();note='cut to '+CAP[f]+' characters'}
+    if(f==='stance'){if(hero){const cur=P.stances&&P.stances[hero.id];before=cur||(mateList(a).includes(hero)?scriptedStance(a,hero):'');
+        if(cur===t)return no('That is already how you see '+hero.name+'.');
+        P.stances={...(P.stances||{}),[hero.id]:t};P.stanceBy={...(P.stanceBy||{}),[hero.id]:'self'};
+        if(a.fellow&&S.fellowship&&a.memory&&S.fellowship.ids.includes(hero.id))refreshStances(a,S.fellowship.ids)}
+      else{const k=about.toLowerCase(),cur=P.views[k];before=cur?cur.line:'';if(before===t)return no('That is already how you see '+about+'.');P.views[k]={name:about,line:t}}
+      after=t}
+    else{before=String(P[f]||'');if(before===t)return no('That is already your '+SELF_LABEL[f].toLowerCase()+'.');P[f]=t;after=t}}
+  P.by[f]='self';T.n++;T.keys.push(key);P.selfN=(P.selfN||0)+1;P.selfAt=Math.round(S.gameMin);
+  const h={d:dayN(),gm:Math.round(S.gameMin),f,...(about?{about}:{}),before:cutS(before,SELF.CUT),after:cutS(after,SELF.CUT),why};
+  P.hist.push(h);while(P.hist.length>SELF.HIST)P.hist.shift();
+  return {ok:true,field:f,...(about?{about}:{}),before:h.before||'(none)',after:h.after,change:histLine(h),changes_left_today:SELF.PER_DAY-T.n,...(note?{note}:{})}}

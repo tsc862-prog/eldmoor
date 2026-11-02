@@ -22,7 +22,7 @@ import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
 import {campSummary} from '../sim/camp.js';
 import {hallBoard} from '../sim/dmfocus.js'; // the hall board's jobs for the Fellowship (#334), read-only
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
-import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype,authoredStance,scriptedStance} from '../sim/persona.js';
+import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype,authoredStance,scriptedStance,personaValue,pinField,pinned} from '../sim/persona.js';
 import {STANCE_MAX} from '../data/prompts.js'; // the stance cap the model gets (#305)
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
 import {enableBrain,disableBrain} from '../sim/brain.js';
@@ -60,7 +60,7 @@ export function renderBackstory(node,a){const B=a&&a.backstory;if(!B){node.appen
   for(const [k,label] of BACKSTORY_ORDER){const t=B.paras&&B.paras[k];if(!t)continue;const p=el('p','bio');p.append(el('span','gd',label+'. '),t);node.append(p)}
   node.append(el('div','dm',(B.src==='model'?'Written by the model'+(B.model?' ('+B.model+')':''):'Scripted from the world')+(B.edited?', edited by you':'')+'.'))}
 export function renderPersona(node,a){const P=a&&a.persona;if(!P){node.append(el('div','dm','No persona yet.'));return}
-  const kv=el('div','kv');for(const [k,label] of PERSONA_ORDER)kv.append(el('span','k',label),el('span','v',P[k]||''));node.append(kv)}
+  const kv=el('div','kv');for(const [k,label] of PERSONA_ORDER)kv.append(el('span','k',label),el('span','v',personaValue(P,k)));node.append(kv)}
 const KIND_LABEL={council:'COUNCIL',table:'TABLE',camp:'CAMP',found:'FOUND',join:'JOIN',recruit:'RECRUIT',leave:'LEAVE',adventure:'JOB',scene:'SCENE',roll:'ROLL',branch:'CHOICE',complication:'TWIST',outcome:'END',npc:'MET',fight:'FIGHT',level:'LVL',kill:'KILL',death:'DEATH',session:'DAY',note:'NOTE'};
 export function renderCampaignLog(node,o={}){const F=S.fellowship;if(!F){node.append(el('div','dm','No Fellowship.'));return}
   const days=[];for(const e of F.log){let d=days[days.length-1];if(!d||d.day!==e.day){d={day:e.day,list:[]};days.push(d)}d.list.push(e)}
@@ -177,7 +177,7 @@ function sheetView(node,a){node.replaceChildren();if(!a)return;
   abilityBlock(box,a);
   const ta=(which,k,label,v,rows)=>{const l=el('label','fta');l.append(el('span','dm',label));const t=el('textarea');t.rows=rows||2;t.value=v||'';t.dataset.fw=which;t.dataset.fk=k;l.append(t);box.append(l)};
   archRow(box,a);
-  for(const [k,label] of PERSONA_ORDER)ta('persona',k,label,a.persona&&a.persona[k],2);
+  for(const [k,label] of PERSONA_ORDER){ta('persona',k,label,personaValue(a.persona,k),2);pinBox(box.lastChild,a,k)}
   stanceBlock(box,a);
   ta('backstory','summary','Backstory summary',a.backstory&&a.backstory.summary,2);
   for(const [k,label] of BACKSTORY_ORDER)ta('backstory',k,label,a.backstory&&a.backstory.paras&&a.backstory.paras[k],3);
@@ -185,6 +185,10 @@ function sheetView(node,a){node.replaceChildren();if(!a)return;
   node.append(box)}
 
 const srcLine=a=>'Persona: '+(a.persona&&a.persona.src==='model'?'written by the model':'scripted')+(a.persona&&a.persona.edited?', edited':'')+'. Backstory: '+(a.backstory&&a.backstory.src==='model'?'written by the model':'scripted')+(a.backstory&&a.backstory.edited?', edited':'')+'.'+(enriching(a)?' The relay is still writing; saving now keeps your text.':'');
+
+// Owner pins (#409): a field pinned here is fixed; the hero's agent cannot change it with become (it is told so).
+function pinBox(host,a,k){if(!host)return;const l=el('span','fpin dm');const c=el('input');c.type='checkbox';c.dataset.fpin=k;c.checked=pinned(a,k);
+  c.title='Pin: the hero’s agent cannot change this with become';c.setAttribute('aria-label','Pin '+k.replace('_',' ')+' for '+a.name);l.append(c,' pin');host.append(l)}
 
 // Stances toward each companion (#316, the UI for #305): one box per living companion holding the line the
 // persona itself holds (the owner's, the archetype's or the model's); an empty box lets the bond reading speak,
@@ -196,7 +200,7 @@ function stanceSrc(a,b){const P=a.persona;if(!P||!authoredStance(a,b))return '';
   if(P.stanceBy&&P.stanceBy[b.id]==='owner')return 'owner';
   return P.src==='model'&&P.stances&&P.stances[b.id]?'model':P.archetype?'archetype':''}
 function stanceBlock(box,a){const mates=fellows().filter(b=>b!==a&&alive(b));if(!mates.length)return;
-  const w=el('div','fstances');w.setAttribute('data-k','stances');w.append(el('div','dm fsth','Stance toward each companion'));
+  const w=el('div','fstances');w.setAttribute('data-k','stances');const sh=el('div','dm fsth','Stance toward each companion');pinBox(sh,a,'stance');w.append(sh);
   for(const b of mates){const r=el('div','fstance');r.dataset.fst=b.id;
     const h=el('div','fsthead'),id='fst'+a.id+'_'+b.id,lb=el('label','fstname',b.name);lb.htmlFor=id;
     const tag=el('span','badge fsttag'),cnt=el('span','dm fstcount');
@@ -227,7 +231,7 @@ function archRow(box,a){const cur=a.persona&&a.persona.archetype,l=el('label','f
   l.append(s,el('span','dm farchhint',archHint(cur)));box.append(l)}
 function pickArchetype(s){const a=byId(s.dataset.farch),id=s.value;if(!a||!ARCHETYPES[id]||!applyArchetype(a,id))return false;
   editSheet(a,'persona','voice',a.persona.voice); // marks the persona as the owner's, so relay writing never replaces it
-  for(const t of sheet.querySelectorAll('textarea[data-fw="persona"]'))t.value=a.persona[t.dataset.fk]||'';
+  for(const t of sheet.querySelectorAll('textarea[data-fw="persona"]'))t.value=personaValue(a.persona,t.dataset.fk);
   const h=s.parentNode&&s.parentNode.querySelector('.farchhint');if(h)h.textContent=archHint(id);
   for(const o of [...s.children])if(o.value==='')o.remove();
   refreshSheet(a,true);
@@ -273,6 +277,7 @@ export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('fe
   root.addEventListener('input',e=>{const t=e.target;if(t&&t.dataset&&t.dataset.fw==='stance')stanceCount(t)});
   root.addEventListener('keydown',e=>{if(e.key==='Escape'&&(menuOpen||drawer)){menuOpen=false;confirmDisband=false;drawer=null;sigTop='';renderFellowship()}});
   root.addEventListener('change',e=>{const s=e.target;if(mindChange(s)){sigTop='';renderFellowship();return}
+    if(s&&s.dataset&&s.dataset.fpin!=null){const a=byId(sheetOpen);if(a&&pinField(a,s.dataset.fpin,s.checked))msg=a.name+(s.checked?': '+s.dataset.fpin.replace('_',' ')+' is pinned; the agent cannot change it.':': '+s.dataset.fpin.replace('_',' ')+' is free again for the agent to change.');sigTop='';renderFellowship();return}
     if(s&&s.dataset&&s.dataset.farch!=null){if(pickArchetype(s)){sigTop='';renderFellowship()}return}
     if(s&&s.dataset&&s.dataset.fslot){const v=s.value;draft.slots[s.dataset.fslot]=v?+v:null;sigForm='';renderFellowship()}});
   const cb=$('chronFel');if(cb)cb.addEventListener('click',()=>{focus=!focus;syncChronBtn();onFilter()});
