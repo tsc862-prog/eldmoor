@@ -70,6 +70,10 @@ export const TABLE={
   outcomeS:1.8,    // real seconds the outcome stays before the world runs on
   RESCUE:.25,      // a member below this share of max HP in a fight is a rescue moment
   dmMs:6000,       // real milliseconds the DM agent has for an at-the-table call in a scene it staged (#132); then the scripted DM fills it
+  step:'off',      // the watcher's round pace in a paused combat scene (#285): 'off' (rounds run on), 'hold' (wait after each
+                   // round until Next round, stepNext()), 'auto' (wait stepS real seconds, or Next round). Only a paused scene
+                   // at 1x ever holds, so headless runs, 3x/8x and Watch mode never do; a hold rolls no dice.
+  stepS:4,         // real seconds an 'auto' step waits after a round
 };
 export const SCENE_KINDS=['site','room','boss','elite','ambush','rescue','check','choice','decision'];
 // Staged scenes (issue #132, sim/staged.js): extra scene kinds bring their own options, reflexes, dice and
@@ -128,9 +132,18 @@ const fightOver=sc=>!!sc.end||!foeOf(sc)||!fighters(sc).length;
 const foeDue=sc=>rounds(sc)&&!sc.fd&&sc.i>=sc.foeAt;
 function foeAct(sc){for(const b of foeTurn(sc,foesOf(sc),fighters(sc))){b.rd=sc.rd;sc.beats.push(b)}}
 // The round is done: start the next one while the fight goes on (its rolls go to the DM log with the outcome). True = a new round.
-function nextRound(sc){if(fightOver(sc)||sc.rd>=TR.ROUNDS)return false;
+function nextRound(sc){if(fightOver(sc)||sc.rd>=TR.ROUNDS)return false;delete sc.sh;
   for(const a of fellows())tickRound(a);const f=foeOf(sc);if(f)tickRound(f); // a round has passed: ability cooldowns and round-long effects run down
   sc.rd++;sc.acts={};sc.i=0;sc.fd=0;startTurn(sc);return true}
+// Step mode (#285): a round is done and another will follow; hold the paused scene for the watcher (TABLE.step).
+// sc.sh = {rd, t, go}: the round it holds after, real seconds held, released. True = hold this step.
+const moreRounds=sc=>rounds(sc)&&!fightOver(sc)&&sc.rd<TR.ROUNDS;
+function stepHold(sc,dt){if(TABLE.step==='off'||!sc.pause||TABLE.speed>1||!moreRounds(sc))return false;
+  const h=sc.sh&&sc.sh.rd===sc.rd?sc.sh:(sc.sh={rd:sc.rd,t:0,go:0});if(h.go)return false;
+  h.t+=dt;if(TABLE.step==='auto'&&h.t>=TABLE.stepS){h.go=1;return false}return true}
+const holding=sc=>!!(sc&&sc.sh&&!sc.sh.go&&sc.sh.rd===sc.rd&&sc.phase==='turn'&&sc.i>=sc.ids.length&&TABLE.step!=='off');
+// The watcher's Next round (the banner's button): release a held round. True when a round was held.
+export function stepNext(){const sc=S.table;if(!holding(sc))return false;sc.sh.go=1;return true}
 // The order as names, the foe at its place (agents' notices and tableView).
 const orderNames=sc=>{const L=sc.ids.map(byId).filter(Boolean).map(a=>a.name),f=foeOf(sc);if(rounds(sc)&&f)L.splice(Math.min(sc.foeAt,L.length),0,foeName(f)+' (foe)');return L};
 export function optionsFor(sc,a){const o=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels;return L?o.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o} // the DM's own labels for a staged scene's actions
@@ -191,9 +204,9 @@ export function sceneAct(a,opt,line){const sc=S.table;if(!sc||!sc.ids.includes(a
   sc.acts[a.id]={k:o.k,line:clean(line,120),by:'agent'};return sc.acts[a.id]}
 
 // ---- turns ----
-function take(sc,a,act){const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act);
+function take(sc,a,act){delete sc.rr;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr;delete sc.rr; // a strike's roll as data (#285)
   const F=S.fellowship;if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
-  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null});
+  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(roll?{roll}:{})});
   const first=!(sc.rd>1);sc.beats[sc.beats.length-1].rd=sc.rd||1;
   if(staged(sc)&&!together(sc)&&first)STG.onBeat(sc,sc.beats[sc.beats.length-1]); // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
   if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
@@ -241,7 +254,7 @@ function runTurns(sc,dt,instant){
   const R=rounds(sc);
   for(;;){if(sc.calls&&callWait(sc,dt,instant))return true;
     if(foeDue(sc)){sc.fd=1;if(!fightOver(sc))foeAct(sc);startTurn(sc);continue} // the foe's turn at its place in the order (#276)
-    if(sc.i>=sc.ids.length){if(R&&nextRound(sc)){dt=0;continue}break}
+    if(sc.i>=sc.ids.length){if(R&&!instant&&stepHold(sc,dt))return true;if(R&&nextRound(sc)){dt=0;continue}break} // the watcher's step mode (#285)
     const a=byId(sc.ids[sc.i]);
     if(!living(a)||(COMBAT[sc.kind]&&(R?fightOver(sc)||(sc.out||[]).includes(a.id)||(sc.rd>1&&!inFight(sc,a)):!foeOf(sc)))){sc.i++;startTurn(sc);continue}
     let act=sc.acts[a.id];
@@ -376,10 +389,12 @@ function answered(sc){const L=sc.ids.map(byId).filter(living),wait=sc.resolved?[
 // What the table looks like to one member (agent tools: look, status, wait).
 // A foe's state in words for the members (#188: no HP numbers to agents; the watcher's banner still has the bars).
 const hurtWord=f=>f>=.95?'stands unhurt':f>=.6?'is hurt':f>=.25?'is badly hurt':'is close to falling';
+// The foe for a member (#285): its name and how hurt it looks, never numbers (#188).
+const foeWords=f=>({name:foeName(f),looks:f.kind==='hero'?'still stands':hurtWord(f.hp/(f.maxhp||maxHp(f)))});
 export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))return null;const cur=byId(sc.ids[sc.i]);
   const all=together(sc),live=all&&!sc.resolved&&(sc.phase==='frame'||sc.phase==='turn');
   const v={scene:sc.title,kind:sc.kind,frame:plain(sc.frame),phase:sc.phase,order:sc.ids.map(byId).filter(Boolean).map(b=>b.name),
-    ...(rounds(sc)?{round:sc.rd+' of up to '+TR.ROUNDS,initiative:orderNames(sc)}:{}),
+    ...(rounds(sc)?{round:sc.rd+' of up to '+TR.ROUNDS,initiative:orderNames(sc),...(foeOf(sc)?{foe:foeWords(foeOf(sc))}:{})}:{}),
     turn:!all&&sc.phase==='turn'&&cur?cur.name:null,your_turn:all?live&&!sc.acts[a.id]:sc.phase==='turn'&&cur===a,acted:!!sc.acts[a.id]};
   if(all){const n=answered(sc);v.everyone_answers=true;v.answered=n.done+'/'+n.of;if(live&&n.wait.length)v.waiting_on=n.wait.map(b=>b.name)} // all answer at once; once you have, you may wait
   if(!sc.acts[a.id]&&sc.phase!=='outcome')v.options=optionsFor(sc,a).map(o=>o.k+' = '+o.text);
@@ -395,16 +410,21 @@ export function decisionsWaiting(){const out=[],seen=new Set(),add=(a,what)=>{if
   for(const P of openProps())if(!(sc&&sc.ctx&&sc.ctx.prop===P.id))for(const b of waitingVoters(P))add(b,'a vote ('+P.details+')'); // a vote at the table: the scene says who it waits on
   for(const v of S.adventures||[]){if(v.phase!=='active'||!v.pick||v.pick.chosen||v.stage!=='choose')continue;const ld=byId(v.lead);if(ld&&ld.fellow)add(ld,'a choice on '+(v.title||'an adventure'))}
   return out}
+// The foe for the watcher's banner (#285): the watcher sees numbers. pack: a staged pack's creatures still standing.
+function foeBanner(sc){const f=foeOf(sc);if(!f)return null;const c=sc.ctx||{};
+  return {id:f.id,kind:f.kind,name:foeName(f),hp:Math.max(0,f.hp),maxhp:f.maxhp||maxHp(f),target:f.target&&f.target.id!=null?f.target.id:null,pack:c.mobs?foesOf(sc).length:1}}
 // What the banner shows (src/ui/table.js).
 export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc.ids[sc.i]),last=sc.beats[sc.beats.length-1];
   let who=null,line;
   const pc=sc.calls&&sc.phase==='turn'?sc.calls.find(c=>!c.done):null;
+  const hold=holding(sc)?{round:sc.rd,auto:TABLE.step==='auto',left:TABLE.step==='auto'?Math.max(0,Math.ceil(TABLE.stepS-sc.sh.t)):null}:null;
   if(sc.phase==='frame')line='The DM is setting the scene…';
+  else if(hold)line='Round '+hold.round+' is done · '+(hold.auto?'the next round in '+hold.left+' s':'Next round when you are ready');
   else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'?'giving them a voice':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.max(0,Math.ceil(TABLE.dmMs/1000-pc.t))+' s)';
   else if(sc.phase==='turn'&&together(sc)){const n=answered(sc),held=n.wait.find(b=>b.player&&!reflexMay(b)&&ownerHeld(b)),w0=n.wait.reduce((m,b)=>Math.max(m,(sc.w[b.id]&&sc.w[b.id].t)||0),0);
     line=!n.wait.length?'Everyone has answered.':n.done+'/'+n.of+' answered · waiting for '+n.wait.map(b=>b.name).join(', ')+(held?' ('+held.name+' has no runner: Restart runner, or Resume without it)':w0*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-w0))+' s before reflexes)':'')}
   else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]&&!reflexMay(cur)?(ownerHeld(cur)?cur.name+' has no runner: the table waits for you (Restart runner, or Resume without it)':cur.name+' is thinking…'+(sc.t*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-sc.t))+' s before reflexes)':'')):cur.name+' acts'}
   else line=sc.summary||'';
   return {title:sc.title,kind:sc.kind,frame:sc.frame,line,who,last:last?last.name+': '+last.text+(last.res?' ('+last.res+')':''):null,
-    order:sc.ids.map(byId).filter(Boolean),...(rounds(sc)?{round:sc.rd,rounds:TR.ROUNDS,foeAt:sc.foeAt,foe:foeOf(sc)?foeName(foeOf(sc)):null}:{}),turn:sc.phase==='turn'&&!together(sc)?sc.i:-1,all:together(sc),phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null,
+    order:sc.ids.map(byId).filter(Boolean),...(rounds(sc)?{round:sc.rd,rounds:TR.ROUNDS,foeAt:sc.foeAt,foe:foeBanner(sc),hold}:{}),turn:sc.phase==='turn'&&!together(sc)?sc.i:-1,all:together(sc),phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null,
     ...(sc.ctx&&sc.ctx.cast?{cast:sc.ctx.cast,staged:true}:{})}} // a staged scene's cast (#132)

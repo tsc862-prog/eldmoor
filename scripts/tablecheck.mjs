@@ -343,7 +343,9 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  fieldR(); let q = foeAt(8, 40); RM.forEach(x => {x.mcr = Object.assign(x.mcr || {}, {zz_test: 9})});
  const hp0 = RM.map(x => x.hp), d0 = S.dmLogSeq; let scR = elite(q);
  ok(scR && scR.rd === 1 && Number.isInteger(scR.foeAt) && scR.foeAt >= 0 && scR.foeAt <= scR.ids.length, `a combat scene opens in round 1 with the foe in the initiative order (place ${scR && scR.foeAt} of ${scR && scR.ids.length + 1})`);
- const tv = act(RM[0], 'status').table;
+ const tv = act(RM[0], 'status').table, bf = T.bannerOf().foe;
+ ok(bf && bf.id === q.id && bf.name && bf.hp === q.hp && bf.maxhp === q.maxhp && bf.target === RM[0].id && bf.pack === 1, `the banner gets the foe as data (#285): ${JSON.stringify(bf)}`);
+ ok(tv && tv.foe && tv.foe.name === bf.name && /^[a-z ]+$/.test(tv.foe.looks), `a member sees the foe by name and look, no numbers: ${JSON.stringify(tv && tv.foe)}`);
  ok(tv && Array.isArray(tv.initiative) && tv.initiative.some(n => /\(foe\)$/.test(n)) && /^1 of up to/.test(tv.round || ''), `the member sees the round and the order with the foe: ${tv && tv.initiative && tv.initiative.join(', ')}`);
  p1 = stepUntil(() => !S.table, 30);
  const fb = scR.beats.filter(b => b.by === 'foe'), mb = scR.beats.filter(b => b.by !== 'foe');
@@ -351,6 +353,10 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  const r1 = scR.beats.filter(b => b.rd === 1), fi = r1.findIndex(b => b.by === 'foe');
  ok(fi === Math.min(scR.foeAt, r1.length - 1), `in round 1 the foe acts at its place in the order (${fi})`);
  ok(fb.filter(b => b.k === 'attack').every(b => rollRe.test(b.res)) && mb.filter(b => b.k === 'strike' && !/closing in/.test(b.res)).every(b => rollRe.test(b.res)), `every attack shows its roll: ${fb[0] && fb[0].res}; ${(mb.find(b => b.k === 'strike') || {}).res}`);
+ // structured roll data on every rolled beat (#285), the same roll the text gives
+ const rolled = scR.beats.filter(b => rollRe.test(b.res || ''));
+ const same = b => {const r = b.roll, m = /^d20 (\d+)\+(\d+)=(\d+) vs AC (\d+)/.exec(b.res); return r && r.die === +m[1] && r.mod === +m[2] && r.total === +m[3] && r.vs === +m[4] && r.hit === !/: missed/.test(b.res) && r.crit === (r.die === 20) && typeof r.target === 'string' && r.target && (r.hit ? r.dmg >= 0 : r.dmg === 0)};
+ ok(rolled.length && rolled.every(same) && scR.beats.every(b => !b.roll || rollRe.test(b.res)), `every rolled beat carries {die, mod, total, vs, hit, crit, dmg, target} matching its text (${rolled.length}): ${JSON.stringify(rolled[0] && rolled[0].roll)}`);
  const dl = S.dmLog.filter(e => e.id > d0 && e.kind === 'table');
  const dt = dl[0] ? dl[0].summary.join('') : '', dr = dl[0] ? dl[0].detail.rolls : [];
  ok(dl.length === 1 && dr.every(r => r.d20 == null || (r.d20 >= 1 && r.d20 <= 20 && r.ac >= 10)) && [1, 2, 3].every(n => dt.includes('round ' + n + ': ')) && dr.filter(r => r.d20 != null).length === scR.beats.filter(b => rollRe.test(b.res || '')).length,
@@ -377,6 +383,22 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  T.TABLE.speed = 3; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
  ok(!S.table && scR.rd === TRD.TR.ROUNDS && scR.beats.filter(b => b.by === 'foe').length >= scR.rd && scR.phase === 'outcome', `at 3x the whole fight (${scR.rd} rounds) resolves at once with a summary: ${scR.summary}`);
  T.TABLE.speed = 1;
+ // (g) the watcher's step mode (#285): hold after each round until Next round; auto after stepS; 3x and instant never hold
+ T.TABLE.step = 'hold'; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
+ const held = () => !!(S.table && T.bannerOf() && T.bannerOf().hold);
+ p1 = stepUntil(held, 30); const g0 = S.gameMin, b1 = scR.beats.length;
+ ok(held() && scR.rd === 1 && /Round 1 is done/.test(T.bannerOf().line) && !T.bannerOf().hold.auto, `hold: the scene waits after round 1 (${T.bannerOf() && T.bannerOf().line})`);
+ stepUntil(() => false, 10);
+ ok(held() && scR.rd === 1 && S.gameMin === g0 && scR.beats.length === b1, `hold: 10 s later the world and the round have not moved (game min ${S.gameMin})`);
+ ok(T.stepNext() && !T.stepNext(), 'Next round releases the hold once');
+ p1 = stepUntil(held, 30);
+ ok(held() && scR.rd === 2 && scR.beats.some(b => b.rd === 2), `hold: round 2 plays and holds again (${scR.beats.filter(b => b.rd === 2).length} beats)`);
+ T.TABLE.step = 'auto'; T.TABLE.stepS = 1; const a0 = S.gameMin;
+ p1 = stepUntil(() => !S.table, 30);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS && S.gameMin > a0, `auto: the held round goes on after ${T.TABLE.stepS} s and the fight ends after round ${scR.rd} (${p1.secs.toFixed(1)} s)`);
+ T.TABLE.step = 'hold'; T.TABLE.speed = 3; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS, `at 3x step mode never holds: ${scR.rd} rounds at once`);
+ T.TABLE.speed = 1; T.TABLE.step = 'off'; T.TABLE.stepS = 4;
  // (f) the order agents answer in never changes the rolls (a child, twice)
  const me3 = fileURLToPath(import.meta.url), rf = spawnSync(process.execPath, [me3, '--rounds', 'fwd'], {encoding: 'utf8'}), rr = spawnSync(process.execPath, [me3, '--rounds', 'rev'], {encoding: 'utf8'});
  const lf3 = (rf.stdout || '').trim().split('\n').pop(), lr3 = (rr.stdout || '').trim().split('\n').pop(); if (rf.stderr) process.stderr.write(rf.stderr);
