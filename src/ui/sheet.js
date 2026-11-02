@@ -15,12 +15,22 @@ import {bond} from '../sim/bonds.js';
 import {ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS,score,mod,trained} from '../sim/abilities.js';
 import {gearScore} from '../sim/gear.js';
 import {capOf,used,countKind} from '../sim/inv.js';
-import {fmtPct} from './panels.js';
+import {fmtPct,setTab} from './panels.js';
+import * as sim from '../sim/index.js';
+import {span} from './combat.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const sg=m=>(m>=0?'+':'')+m;
 const SLOT_NAME={head:'Head',chest:'Chest',hands:'Hands',feet:'Feet',main:'Main hand',off:'Off hand',trinket:'Trinket'};
+const sumN=o=>Object.values(o||{}).reduce((s,n)=>s+(+n||0),0);
+// the last fight as one line: foe, result, dealt, taken, healed, abilities and potions (fightSummary, src/sim/actlog.js)
+function lastFight(a){const g=globalThis.__actionLog,f=g&&g.fightSummary?g.fightSummary:sim.fightSummary;
+  let s=null;try{s=typeof f==='function'?f(a):null}catch(e){s=null}
+  if(!s)return {t:'no fights yet',n:null,c:'dm'};
+  const r=Math.round,pots=sumN(s.items),abs=sumN(s.abilities);
+  return {t:(s.foe||'?')+' · '+(s.result||'?')+' · dealt '+r(s.dealt||0)+', taken '+r(s.taken||0)+', healed '+r(s.healed||0)+' · '+abs+' abilit'+(abs===1?'y':'ies')+', '+pots+' potion'+(pots===1?'':'s')+(s.end!=null&&s.start!=null?' · '+span(s.end-s.start):''),
+    n:s.start==null?0:s.start,c:s.result==='ongoing'?'hi':'',fight:a.id}}
 const qCls=it=>it.epic?'ep':it.quality==='rare'?'qr':it.quality==='fine'?'qf':'qp';
 
 // ---- the table as data: cols (members) and rows {key, group, label, cells:[{t, n (sort value), c (css)}]} ----
@@ -41,6 +51,7 @@ export function sheetRows(){const ms=fellowshipMembers(),cols=ms.map(m=>({slot:m
   row('pots','Pack','Potions',a=>{const p=a.inv?countKind(a,'potion'):0;return {t:String(p),n:p,c:p?'':'dm'}});
   row('supplies','Pack','Supplies',a=>{const L=a.inv?a.inv.list.filter(e=>e.kind==='use'&&e.id):[];const t=L.map(e=>e.id+(e.n>1?' x'+e.n:'')).join(', ');return {t:t||'none',n:L.reduce((s,e)=>s+e.n,0),c:t?'':'dm'}});
   row('quest','Pack','Quest items',a=>{const L=a.inv?a.inv.list.filter(e=>e.kind==='quest'):[];return {t:L.map(e=>e.id).join(', ')||'none',n:L.length,c:L.length?'gd':'dm'}});
+  row('fight','Record','Last fight',lastFight);
   row('gold','Record','Gold',a=>({t:a.gold+'g',n:a.gold}));
   row('kills','Record','Kills',a=>({t:String(a.kills),n:a.kills}));
   row('oath','Story','Oath',a=>{const g=a.goal;if(!g)return {t:'none',n:-1,c:'dm'};const f=g.done?1:g.need?(g.progress||0)/g.need:0;
@@ -68,7 +79,8 @@ function build(T){const tbl=el('table','shtbl'),ord=order(T);
   const tb=el('tbody');let grp='';
   for(const r of T.rows){if(r.group!==grp){grp=r.group;const gr=el('tr','shgrp'),td=el('td',null,grp);td.colSpan=T.cols.length+1;gr.append(td);tb.append(gr)}
     const tr=el('tr'),th=el('th','shrow'),b=el('button','shsort'+(sort===r.key?' on':''),r.label+(sort===r.key?(dir<0?' ▼':' ▲'):''));b.dataset.ssort=r.key;b.title='Sort the columns by '+r.label.toLowerCase();th.append(b);tr.append(th);
-    for(const i of ord){const c=r.cells[i];tr.append(el('td',c.c||null,c.t))}tb.append(tr)}
+    for(const i of ord){const c=r.cells[i],td=el('td',c.c||null);
+      if(c.fight!=null){const b=el('button','hn shfight',c.t);b.dataset.hid=c.fight;b.title='Open the Combat tab';td.append(b)}else td.textContent=c.t;tr.append(td)}tb.append(tr)}
   tbl.append(tb);return tbl}
 
 export function renderSheet(){if(!ov)return;if(!S.fellowship){if(open)closeSheet();return}if(!open)return;
@@ -82,5 +94,6 @@ export function initSheet(){ov=$('sheetov');if(!ov)return;
   body=el('div','shbody');box.append(hd,body,el('div','dm shkey','Click a row name to sort the five by it. Click a name to follow that member.'));ov.append(box);
   ov.addEventListener('click',e=>{const t=e.target;if(t===ov||(t.closest&&t.closest('[data-sclose]'))){closeSheet();return}
     const s=t.closest&&t.closest('[data-ssort]');if(s){const k=s.dataset.ssort;if(sort!==k){sort=k;dir=-1}else if(dir<0)dir=1;else sort=null;sig='';renderSheet();return}
+    if(t.closest&&t.closest('.shfight')){setTab('combat')}
     if(t.closest&&t.closest('.hn[data-hid]'))closeSheet()}); // the click bubbles on to panels.js, which follows the hero
   document.addEventListener('keydown',e=>{if(open&&e.key==='Escape')closeSheet()})}

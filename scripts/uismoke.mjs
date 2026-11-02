@@ -522,5 +522,19 @@ console.log('start gate: ready, not just claimed');
   ok(T.dmTurns().length===T.TURNS_KEEP,'the card list is capped');
   T.clearDmTurns();cp.setChatTab('chat')}
 
+// Fellowship sheet: last fight row (#241)
+{const SH=await import('../src/ui/sheet.js'),ms=sim.fellowshipMembers().filter(m=>m.hero);
+  const fx={id:7,foe:'Gnoll',start:1000,end:1002,result:'won',dealt:41.6,taken:12,healed:5,abilities:{Cleave:2,Guard:1},items:{'Health potion':1}};
+  globalThis.__actionLog={actionLog:()=>[],fights:()=>[fx],fightSummary:a=>a===ms[0].hero?fx:null};
+  const T=SH.sheetRows(),r=T.rows.find(x=>x.key==='fight');
+  ok(!!r&&r.cells.length===T.cols.length,'sheet: a "Last fight" row, one cell per member');
+  ok(/Gnoll · won · dealt 42, taken 12, healed 5 · 3 abilities, 1 potion/.test(r.cells[0].t),'sheet: foe, result, dealt, taken, healed, abilities and potions ('+r.cells[0].t+')');
+  ok(r.cells[1].t==='no fights yet','sheet: a member with no fight says so');
+  SH.openSheet();const body=document.querySelector('.shbody'),b=body.querySelector('.shfight');
+  ok(!!b&&b.dataset.hid==String(ms[0].hero.id),'sheet: the cell is a button that names the member');
+  b._same=1;SH.renderSheet();ok(body.querySelector('.shfight')._same===1,'sheet: an unchanged row is not rebuilt');
+  fx.taken=30;SH.renderSheet();ok(/taken 30/.test(body.querySelector('.shfight').textContent),'sheet: the row patches when the fight changes');
+  delete globalThis.__actionLog;SH.closeSheet()}
+
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

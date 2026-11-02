@@ -567,3 +567,7 @@ button.tbtn.danger{border-color:var(--red)}
 .dmcv{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 .dmcl.bad .dmck,.dmcl.bad .dmcv{color:#e07a6e}
 @media (max-width:920px){.dmck{flex-basis:64px}}
+
+/* Fellowship sheet: last fight row (#241) */
+.shtbl .shfight{display:block;text-align:left;font:inherit;font-size:16px;color:var(--text,inherit);background:none;border:0;padding:0;cursor:pointer;overflow-wrap:anywhere;text-decoration:underline dotted var(--dim)}
+.shtbl .shfight:hover,.shtbl .shfight:focus-visible{color:var(--gold);outline:1px solid var(--gold)}
