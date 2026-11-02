@@ -61,7 +61,7 @@ import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
+import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -162,7 +162,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       openaiChat = o.adapter.chat;
     } else if (!env.ANTHROPIC_API_KEY) {skip(h, 'plays Claude but there is no ANTHROPIC_API_KEY in the environment or .env (use --env FILE, or --provider ollama); skipped'); await release(h.id); return}
     sess.runner = rs; saveSession(sess, {url: base});
-    const m = {id: h.id, name: st.name, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai', paid: rs.provider === 'openai', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
+    const m = {id: h.id, name: st.name, world: h.world, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai', paid: rs.provider === 'openai', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
       maxTurns: turnCap(turnsAsked, rs.provider, 6), fails: failTracker(pace.maxFails)};
     members.set(h.id, m); claim(h.id);
     out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.paid ? rs.model + ' (OpenAI)' : m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'} | ${capText(m.maxTurns)}`);
@@ -310,6 +310,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
 
   // Watch the game: who is at the table, who leads, who joined (a replacement after a death).
+  watchWorld({base, known: () => new Map([...members.values()].filter(m => m.sess && !m.ended).map(m => [m.id, {name: m.name, world: m.world}])), onNew: async ch => {out(null, newWorldLine(ch)); for (const a of aborts) a.abort(); await finish('a new world'); summary(); process.exit(NEW_WORLD_EXIT)}});
   const watch = setInterval(async () => {const h = await health(base); if (!h.ok) return;
     inScene = new Set((h.heroes || []).filter(x => x.table).map(x => x.id));
     const L = (h.heroes || []).find(x => x.fellow && x.lead && x.alive); leadId = L ? L.id : leadId;

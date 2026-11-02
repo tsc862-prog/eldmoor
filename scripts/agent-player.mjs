@@ -57,7 +57,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, takeClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -233,6 +233,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   let turnAbort = null; // the Agent SDK turn in flight, so a stop ends it (and its subprocess) cleanly
   process.on('SIGINT', async () => {stopReq = true; if (turnAbort) turnAbort.abort(); await release(); process.exit(130)});
   // Started from the game (scripts/runners.mjs): a "stop" on stdin, or the relay going away, ends the run.
+  watchWorld({base, known: () => new Map([[heroId, {name: pick.hero.name, world: pick.hero.world}]]), onNew: async ch => {console.log(newWorldLine(ch)); stopReq = true; if (turnAbort) turnAbort.abort(); await release(); process.exit(NEW_WORLD_EXIT)}});
   onSupervisorStop(async why => {console.log(`[agent] ${why}: releasing the hero and stopping`); stopReq = true; if (turnAbort) turnAbort.abort(); await release(); setTimeout(() => process.exit(0), 200)});
   const st = await play(base, heroId, 'status');
   if (!st.ok) {console.error('status failed: ' + st.error); await release(); process.exit(1)}
