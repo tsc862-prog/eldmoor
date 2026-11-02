@@ -66,6 +66,13 @@ r = await call('talk', {target: 'innkeeper'}); ok(r.ok && typeof r.answer === 's
 r = await call('say', {text: 'Ale first, then the road.'}); ok(r.ok && a.bubble && a.bubble.text === 'Ale first, then the road.', 'say puts a bubble over the hero');
 r = await call('journal_write', {text: 'Day one. The innkeeper thinks I will die. I would like to disappoint him.'}); ok(r.ok && a.journal.length === 1, 'journal_write');
 r = await call('fight', {target_id: 1}); ok(!r.ok, 'fight is refused inside the town walls');
+// class abilities (#81): listed in status, used with use_ability, cooldowns hold
+{const st = await call('status'); ok(Array.isArray(st.abilities) && st.abilities.length >= 3 && st.abilities.some(l => /READY/.test(l)), `status lists the abilities (${st.abilities && st.abilities.length} learned, e.g. "${st.abilities && st.abilities[0] && st.abilities[0].slice(0, 50)}")`);
+ const foe = S.mobs.find(m => m.alive && !m.gone); const keep = {x: a.x, y: a.y}; a.x = foe.x - 1; a.y = foe.y;
+ r = await call('use_ability', {ability: 'Challenge', target_id: foe.id}); ok(r.ok && foe.target === a && /Challenge/.test(r.result), 'use_ability Challenge: ' + (r.result || r.error));
+ r = await call('use_ability', {ability: 'challenge', target_id: foe.id}); ok(!r.ok && /not ready/.test(r.error), 'a cooling ability is refused: ' + r.error);
+ r = await call('use_ability', {ability: 'Smite of Nonsense'}); ok(!r.ok && /no ability/.test(r.error), 'an unknown ability is refused');
+ a.x = keep.x; a.y = keep.y; foe.target = null; a.state = 'town'; a.target = null; a.playRate = [];} // the rate budget goes back to the rest of the check
 r = await call('buy', {slot: 'head'}); ok(r.ok || /gold|better/i.test(r.error), 'buy: ' + (r.ok ? r.bought : r.error));
 // ---- the pack (issue #124): supplies, use, give, drop, quest items ----
 {const INV = await import('../src/sim/inv.js');

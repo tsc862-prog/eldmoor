@@ -26,6 +26,7 @@ import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
 import {enableBrain,disableBrain,brainStatus,mindUser,modelTag,mindTag} from '../sim/brain.js';
 import {advLine} from '../sim/dm.js';
 import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
+import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
 import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
@@ -145,7 +146,7 @@ function story(b,a){sec(b,'Story');
   {const ad=advLine(a);if(ad){const d=el('div','meta adv');d.dataset.adv=a.adv;d.title='Open this adventure in the Dungeon Master log';parts(d,ad);b.append(d)}} // the DM's adventure and scene (sim/dm.js)
   b.append(el('div','meta',`Weather: ${weatherName(a.zone)} in ${ZONES[a.zone]}`))}
 
-function tabStats(b,a){identity(b,a);if(a.abil)scoresRow(b,a);combatBlock(b,a);skillsGrid(b,a);record_(b,a);story(b,a)}
+function tabStats(b,a){identity(b,a);if(a.abil)scoresRow(b,a);combatBlock(b,a);abilityBlock(b,a);skillsGrid(b,a);record_(b,a);story(b,a)}
 
 function tabLog(b,a){const h=(a.history||[]).slice().reverse();
   if(!h.length){b.append(el('div','dm','Nothing worth recording yet.'));return}

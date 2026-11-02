@@ -55,6 +55,8 @@ import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead} from './council.js';
 import {sceneAct,tableView} from './table.js';
+import {MOVES} from '../data/moves.js';
+import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
 
 // ---- knobs ----
@@ -322,7 +324,7 @@ const T={
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
       oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
-      hunting_ground:ZONES[huntZone(a)],guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
+      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),hunting_ground:ZONES[huntZone(a)],guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
     if(a.party&&a.party.leader===a)r.party_lead=true;
     if(adv)r.adventure=plain(advLine(a));const ch=choiceInfo(a);if(ch)r.choice=ch;
@@ -337,6 +339,16 @@ const T={
   use_item(a,{index,target_id}){const i=Number(index),e=invOf(a).list[i];need(e&&!isGear(e)&&e.kind==='use','No usable item at pack index '+index+'.');
     let on=a;if(target_id!=null&&Number(target_id)!==a.id){on=hero(Number(target_id));need(on&&on.kind==='hero'&&on.state!=='dead','No such party member.')}
     const r=useItem(a,e.id,on);need(r.ok,r.error);return {ok:true,result:r.text,hp:pct(a.hp,maxHp(a))+'%',pack:invOf(a).list.length+'/'+capOf(a)}},
+  use_ability(a,{ability,target_id}){const key=String(ability==null?'':ability).toLowerCase().replace(/[^a-z]/g,'');
+    const id=movesOf(a).find(i=>i===key||MOVES[i].name.toLowerCase().replace(/[^a-z]/g,'')===key);
+    need(id,'You have no ability "'+ability+'". Yours: '+(movesOf(a).map(i=>MOVES[i].name).join(', ')||'none yet')+'.');
+    const M=MOVES[id];let t=null;
+    if(M.target==='foe'){t=target_id!=null?findTarget(Number(target_id)):a.target;need(t&&alive(t)&&!t.hidden,'Name a living foe in sight (target_id from look), or be in a fight with one.')}
+    else if(M.target==='ally'){t=target_id!=null&&Number(target_id)!==a.id?hero(Number(target_id)):a;need(t&&t.kind==='hero'&&t.state!=='dead','No such friend.')}
+    const r=useMove(a,id,t,{mates:a.party?a.party.mem:[a],foe:a.target&&a.target.kind!=='hero'?a.target:null});need(r.ok,r.error);
+    if(M.swing)a.cd=Math.max(a.cd,0)+1.1; // an attack ability takes the place of a weapon blow
+    if(t&&t.kind==='mob'&&M.target==='foe'){if(!t.target)t.target=a;if(a.state==='hunt'||a.state==='travel'){a.state='fight';a.target=t;a.dest=null}}
+    return {ok:true,result:r.text,hp:pct(a.hp,maxHp(a))+'%',cooldown_s:M.cd}},
   drop(a,{index,count}){const r=dropEntry(a,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
   give(a,{index,hero_id,count}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');const r=giveItem(a,b,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
   move_to(a,{target}){need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
