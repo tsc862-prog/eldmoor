@@ -15,4 +15,4 @@
 - [World voice #164](world_voice.md) � S.worldVoice mutes scripted say/npcSay; scripted DM voices NPCs near members; RNG preserved
 - [Camp rest #178](camp_rest.md) — camp status text, break_camp vote/tool, rest hours, wake events, sleepers' pacing, onCamp hook
 - [Talk range #182](talk_range.md) — shout range, presence councils, couriers, reflex-party exemption, no Party chat tag
-- [Quest log](quest_log.md) — several quests per hero derived from existing state; taken/held phases agent-only; DM tags h.by/h.ff
+- [Learn the world #188](learn_the_world.md) — lore.js: no creature numbers to agents, hash read, text-scan hearing, hunt skips learned fears, known places

@@ -14,3 +14,4 @@
 - [NPC conversations](npc-conversations.md) — #170 talk.js: person record (mood/warmth/hostile), npc_call/npc_say{conv}/npc_offer, talk voice, budgets, pitfalls
 - [DM Fellowship first](dm-fellowship-first.md) — #165 dmfocus.js, fellowship_needs/change, event cadence, scripted board rule, reserved share, dmFocus digest
 - [Reflection moments](reflection-moments.md) — #179 moment kinds, budget, pace {reflect}/{reflected}, notes schema, journal->memory, pitfalls
+- [Ollama ctx + start gate](ollama-ctx-and-start-gate.md) — #221 one num_ctx (numCtxFrom), repeat-limit retry; #222 /play/ready warm-up protocol, Start anyway, --wait-ready
