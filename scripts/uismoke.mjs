@@ -107,7 +107,7 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
   else console.log('  skip picker (no select in the Fellowship panel)')}
 // Chat tab (#145, owner): one compact line, no mind badge, own-name prefix dropped, repeats collapsed
 {const sp=mem[1];sp.x=mem[0].x+1;sp.y=mem[0].y; // within shouting range (#182)
-const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});sim.playerAct(sp.id,'party_say',{text:'Hold the line at the ford.'});
+const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});(await import('../src/sim/council.js')).partySay(sp,'Hold the line at the ford.'); // a repeat said outside the agent tool (agents' own near-repeats are refused since #163)
   const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
   ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
   select(mem[0]);setTab('chat');uiFast();const ul=tb().querySelector('.log');
@@ -144,7 +144,9 @@ console.log('Agents panel');
   const btn=$('agentsBtn'),pop=$('agentsPop');uiSlow();
   ok(btn&&!btn.hidden,'the Agents button shows with a Fellowship');
   btn.click();ok(!pop.hidden&&btn.getAttribute('aria-expanded')==='true','it opens the Agents popover');
-  const ss=pop.querySelector('select[data-agsess]');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
+  // the runner poll is throttled in real time (5 s); an earlier step may have left the relay marked down, so wait for the stub to be read
+  for(let i=0;i<250&&!pop.querySelector('select[data-agsess]');i++){await wait();uiSlow()}
+  const ss=pop.querySelector('select[data-agsess]');ok(!!ss,'the popover reads the relay');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
   ok(posts.some(p=>p.url.endsWith('/play/runner/limits')&&p.body.sessionBudget===5),'the session budget is sent to the relay');
   ok(/Spent \$0\.42 of \$5\.00/.test(pop.textContent),'the spend so far shows live against the budget');
   ok(/Agents · \$0\.42 \/ \$5\.00/.test(btn.textContent),'the button carries the spend: '+btn.textContent);

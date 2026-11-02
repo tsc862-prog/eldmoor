@@ -19,7 +19,10 @@
 // the minimum gap, --min-gap S, default 20, --cadence is the old name) or after a heartbeat of game time
 // (--heartbeat MIN, default 240 game minutes). A scene opens the member's turn with a prompt to act
 // with scene_act. A silent or slow agent never stalls the table: the game gives every turn a
-// real-time budget and then acts by reflex. A member stops when it dies or leaves agent play, and
+// real-time budget and then acts by reflex. A local or OpenAI member whose own scene is open plays it as one
+// forced structured answer (Ollama format / OpenAI strict json_schema: an enum of its legal options and a
+// line) and the runner sends scene_act itself (issue #163); a Claude member keeps tool use, and a scene turn
+// of its that ends without scene_act gets one structured Claude answer instead. A member stops when it dies or leaves agent play, and
 // after --max-fails N (default 5) failed or empty turns in a row.
 // Cost controls: one overall --budget for the run's paid members (each query gets what is left; several
 // members may finish a turn in flight just past it), --max-turns per member (default 6 for Claude and
@@ -52,11 +55,13 @@ import {loadEnv, PRICES} from './relay.mjs';
 import {systemPrompt, withMemoryOrders, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
-import {localTurn, localLine, paidLine} from './local-agent.mjs';
+import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk} from './local-agent.mjs';
+import Anthropic from '@anthropic-ai/sdk';
+import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, withClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, withClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -68,6 +73,7 @@ export function fellowshipPrompt(st) {
     '',
     `FELLOWSHIP: you ride with ${f.fellowship || 'a Fellowship'} as its ${f.role || 'member'}. Four companions share your one road; their names, roles and how you see them are in status.fellowship.companions. status.fellowship also holds your voice, wants, fears, quirk, a line you would never say, your backstory and your memories: play from them, in that voice.`,
     '- Talk to your companions with party_say, a shout your companions hear only within about 12 tiles (the result says who heard and who was too far away), and catch up with party_read. DISTANCE CUTS YOU OFF: beyond that range nobody hears you, only companions within it hear a proposal or vote, and lead_to reaches only those near. If you must separate, agree aloud where and when to meet again (leave_party with where and when_hours, or a split proposal with meet_at and meet_in_hours), write it in your notes (remember), and keep to it. A paid courier (send_courier, hired at a town gate) is the only way to reach someone out of range, and it takes game hours. When you come back from a long absence, ask what you missed; when a companion returns, tell them what they missed, in your own words. Keep it short and in character. Your companions and the DM are other minds: you know only what they say in the game and what your hero sees.',
+    '- You already know your companions: do not introduce yourself again, and do not repeat a line or a question (each turn shows what was said lately). Talk to move the party forward: propose, vote, lead_to, or answer a question you were asked. The game refuses a line you already said.',
     '- Decisions that need everyone (take a job, answer a Crypt or raid call, split up) go through propose(kind, details) and vote(proposal_id, yes|no, reason). Vote on every open proposal (status.proposals, or an event) with a reason in your own voice.',
     '- The leader (status.party_leader) chooses where the party goes with lead_to; everyone else follows. If you are the leader, lead: pick hunting grounds and jobs that suit the weakest of you. leave_party splits you off for a while and costs you the others\' trust; do it only for a reason your character would have.',
     '- TABLE MODE: when status, look or wait show "table", the world is paused for a scene and every second counts. Act at once with scene_act(option, line), using one of the options listed, with a short line in your voice. Do not look around first. You may answer as soon as the scene opens; it happens on your turn. Then wait.',
@@ -120,6 +126,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const adding = new Set(); // members being added (the watcher calls addMember every second)
   let ollama = null; // the local adapter, made when the first local member joins
   let openaiChat = null; // the OpenAI adapter's chat(), set when an OpenAI member joins (all share one key and base URL)
+  let claudeAd = null; // a structured Claude call for a scene turn that ended without scene_act (issue #163); the key stays in this process
+  const claudeAdapter = () => claudeAd || (claudeAd = anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}));
   const skip = (h, why) => {out(h.name, why); members.set(h.id, {id: h.id, name: h.name, ended: 'skipped'})};
 
   async function addMember(h) {
@@ -133,7 +141,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const sys = systemPrompt(st) + '\n' + fellowshipPrompt(st);
     const {sess, note} = loadSession(h.id, st.name, () => ({sessionId: null, heroId: h.id, heroName: st.name, system: sys, turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
     if (note) out(st.name, note);
-    if (!String(sess.system || '').includes('FELLOWSHIP:')) sess.system = sys; // a hero first played solo now rides with the Fellowship
+    if (!String(sess.system || '').includes('do not introduce yourself again')) sess.system = sys; // a hero first played solo now rides with the Fellowship; older orders get the talk rule
     sess.system = withMemoryOrders(sess.system); // memories (#155) for a session that began before them
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
@@ -176,8 +184,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   async function claudeTurn(m, scene, w) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
-    const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129) and the memory line (#155)
-    const prompt = memberPrompt(m.sess.turns, scene, w) + (scene ? '' : memoryNote(b0));
+    const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129), the memory line (#155), what was said lately
+    const prompt = memberPrompt(m.sess.turns, scene, w) + (scene ? '' : memoryNote(b0) + talkText(b0));
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
     const ac = new AbortController(); aborts.add(ac);
     const q = query({prompt, options: {
@@ -213,8 +221,18 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0); tout = mu.reduce((t, u) => t + u.outputTokens, 0);
       out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${model} | ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s | tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`);
     }
+    // Claude keeps tool use at the table; a scene turn that ended without scene_act gets the forced answer once (issue #163)
+    let forced = null;
+    if ((scene || (b0 && b0.scene)) && !stopping && m.pacer) {const sc = sceneFrom((await m.pacer.brief() || {}).scene);
+      if (sc) {out(m.name, '[scene: the turn ended without scene_act; one structured answer]');
+        try {forced = await sceneTurn({ask: adapterAsk(claudeAdapter(), model, 'low'), call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, scene: sc, keep: false,
+          on: (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})} else if (k === 'tool') out(m.name, `> ${a}(${short(b, 120)})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`)}});
+          spent += forced.cost; m.cost += forced.cost; m.sess.costUsd += forced.cost; turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; m.tools += forced.tools;
+          for (const c of forced.calls) tc.tools.push(c);
+          out(m.name, `[scene answer] ${model} | ${forced.tools ? 'scene_act sent' : forced.misses + ' answers missed'} | tokens in ${forced.in} / out ${forced.out} | ${money(forced.cost)} | run ${money(spent)} of ${money(budget)}`)}
+        catch (e) {out(m.name, 'scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}}
     reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cost: turnCost,
-      flags: [...(scene ? ['scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(scene ? ['scene'] : []), ...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSession(m.sess, {url: base});
     return !failed && tools > 0;
   }
@@ -225,14 +243,23 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let r = null;
     if (!m.paid) {const n = await localModelNote(ollama, m.rs.model); if (n && n !== m.note) out(m.name, n); m.note = n} // another model on the GPU (#126)
     const b0 = m.pacer ? await m.pacer.brief() : null; let err = null;
-    try {r = await localTurn({chat: m.paid ? openaiChat : ollama.chat, call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, prompt: memberPrompt(m.sess.turns, scene, w) + briefText(b0), model: m.rs.model,
-      toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, opts: opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? {numCtx: Number(opt('num-ctx', env.OLLAMA_NUM_CTX))} : {},
-      on: (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})}
-        else if (k === 'tool') out(m.name, `> ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`);
-        else if (k === 'mode') out(m.name, `[${m.rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
+    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat, numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? Number(opt('num-ctx', env.OLLAMA_NUM_CTX)) : null;
+    const on = (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})}
+      else if (k === 'tool') out(m.name, `> ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`);
+      else if (k === 'mode') out(m.name, `[${m.rs.model} has no tool support in Ollama: switching to JSON actions]`)};
+    let sc = null;
+    try {
+      // the member's own scene is open: one structured answer, then scene_act by the runner (issue #163)
+      sc = await sceneToAnswer(b0, call, scene);
+      if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {numCtx, strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
+        if (!r.tools) out(m.name, `[scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`)}
+      const answered = b0 && 'scene' in b0 && !sc; // in the scene but already acted: an ordinary turn
+      if (!r || !r.tools) {const r0 = r; r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w) + briefText(b0), model: m.rs.model,
+        toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, opts: numCtx ? {numCtx} : {}, on});
+        if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0}}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`)}
-    m.sess.turns++; m.turns++; if (scene) m.scenes++;
-    {const lr = localRec(r); if (scene) lr.flags.push('scene');
+    m.sess.turns++; m.turns++; if (scene || sc) m.scenes++;
+    {const lr = localRec(r); if (scene || sc) lr.flags.push('scene'); if (r && r.forced) lr.flags.push('forced-scene');
       reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model: m.rs.model, turn: m.sess.turns, wake: w, brief: b0, ...lr, ...(err ? {error: err} : {})})}
     if (r) {m.tools += r.tools; m.tin += r.in; m.tout += r.out; if (r.dead) m.ended = 'dead';
       if (m.paid) {spent += r.cost; m.cost += r.cost; m.sess.costUsd = (m.sess.costUsd || 0) + r.cost;

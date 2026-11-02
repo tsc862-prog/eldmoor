@@ -59,6 +59,7 @@ const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; s
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead,makeMeeting,hearNote} from './council.js';
 import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js';
 import {sceneAct,tableView} from './table.js';
+import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
@@ -379,7 +380,8 @@ const T={
     const n=(b.chat||[]).length;say(b,'idle',{});const e=(b.chat||[])[(b.chat||[]).length-1];
     return {ok:true,who:b.name,answer:(b.chat||[]).length>n&&e&&e.from===b?e.text:'('+b.name+' is busy and does not answer.)'}},
   say(a,{text}){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);const t=L.text;need(!notEnglish(t),ENGLISH);need(a.state!=='ghost','Ghosts do not speak.');
-    agentLine(a,speak(a,t,'agent'));const heard=nearHeroes(a.x,a.y,7).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden).length;return {ok:true,said:t,heard_by:heard}},
+    const no=lineRefusal(a,t);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
+    agentLine(a,speak(a,t,'agent'));const H=nearHeroes(a.x,a.y,7).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden);noteSaid(a,t,H);return {ok:true,said:t,heard_by:H.length}},
   join_party(a,{hero_id}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');
     if(a.fellow&&b.fellow){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
     need(b.fac===a.fac,b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
@@ -472,7 +474,9 @@ const T={
   journal_write(a,{text}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});if(j.length>PK.JOURNAL)j.shift();return {ok:true,entries:j.length}},
   // memories (issue #155, sim/notebook.js): the hero's own notebook only
   remember:(a,x)=>heroMemory(a,'remember',x),recall:(a,x)=>heroMemory(a,'recall',x),update_memory:(a,x)=>heroMemory(a,'update_memory',x),forget:(a,x)=>heroMemory(a,'forget',x),pin:(a,x)=>heroMemory(a,'pin',x),
-  party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);const e=a.chat&&a.chat[a.chat.length-1];agentLine(a,e);return {ok:true,said:e?e.text:'',heard_by:e&&e.heard||[],too_far:e&&e.far&&e.far.length?e.far:undefined,note:hearNote(e)||undefined}},
+  party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const no=lineRefusal(a,spokenLine(a,text,1e9).text);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
+    const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);const e=a.chat&&a.chat[a.chat.length-1];agentLine(a,e);
+    if(e)noteSaid(a,e.text,S.agents.filter(b=>b!==a&&b.chat&&b.chat[b.chat.length-1]===e));return {ok:true,said:e?e.text:'',heard_by:e&&e.heard||[],too_far:e&&e.far&&e.far.length?e.far:undefined,note:hearNote(e)||undefined}},
   party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
   chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+e.text:heardText(e)))}},
   propose(a,{kind,details,job_id,meet_at,meet_in_hours}){need(a.fellow,'Only a Fellowship member can put something to the party.');const P=propose(a,String(kind||'').toLowerCase(),details,{job:job_id,where:meet_at,hours:meet_in_hours});
@@ -489,7 +493,9 @@ const T={
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
   scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
     return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
-  wait(a,{minutes}){const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
+  wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
+    if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&S.table.ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
+    const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS}}},
 };
 function propText(P){const v=Object.keys(P.votes||{}).length;return '#'+P.id+' '+P.kind+': '+P.details+' (by '+P.byName+', '+v+' vote'+(v===1?'':'s')+(P.status!=='open'?', '+P.result:'')+')'}
