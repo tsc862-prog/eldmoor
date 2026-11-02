@@ -267,11 +267,15 @@ console.log('declutter');
    const chipEl=cl.parentNode.children.find(c=>c.classList.contains('chatnew'));ok(chipEl&&!chipEl.hidden&&/new line/.test(chipEl.textContent),'chat panel: a "new lines" chip shows while scrolled down');
    chipEl.dispatch('click',{target:chipEl});ok(cl.scrollTop===0&&chipEl.hidden,'chat panel: the chip returns to the top');
    cl.scrollTop=0}
-  {const wb=$('chatWide');ok(!!wb&&wb.textContent==='Wider','chat panel: a width toggle');const had=document.body.classList.contains('chat-wide');
-   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')!==had&&wb.getAttribute('aria-pressed')==='true','width toggle widens the side column (body.chat-wide)');
-   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')===had,'width toggle narrows it again');
-   const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
-   ok(/--side:clamp\(340px,28vw,460px\)/.test(css)&&/grid-template-columns:minmax\(0,1fr\) var\(--side\)/.test(css)&&/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'side column is wider by default, and one column at phone width')}
+  {const wb=$('chatTall');ok(!!wb&&wb.textContent==='Taller','chat panel: a height toggle');const had=document.body.classList.contains('chat-tall');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-tall')!==had&&wb.getAttribute('aria-pressed')==='true','height toggle makes the chat taller (body.chat-tall)');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-tall')===had,'height toggle shortens it again');
+   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');const iS=html.indexOf('id="screen"'),iC=html.indexOf('id="chatSec"'),iF=html.indexOf('id="frames"'),iA=html.indexOf('id="side"');
+   ok(iF<iS&&iS<iC&&iC<iA,'chat panel follows the map in the DOM (frames, map, chat, then the side column)');
+   ok(!$('side').children.includes($('chatSec')),'chat is not in the side column');
+   const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   ok(/--side:clamp\(340px,28vw,460px\)/.test(css)&&!/chat-wide/.test(css)&&/grid-template-columns:minmax\(0,1fr\) var\(--side\)/.test(css)&&/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'side column is its normal width, and one column at phone width');
+   ok(/\.chatbox \.chatlist\{height:clamp\(/.test(css),'chat list has its own fixed height and scroll')}
   {const dossier=await import('../src/ui/panels.js');const g=dossier.chatGroups([{from:mem[1],text:'x',party:true},{from:mem[1],text:'x',party:true},{from:mem[1],text:'y'}]);
    ok(g.length===2&&g[0].n===2,'repeats still collapse to a count (x2)')}
   {const dlog=await import('../src/sim/dmlog.js');dlog.dmlog('agent',null,['The DM agent plans a quiet road.'],{by:'dm-agent'});dlog.dmlog('frame',null,['A scripted scene opens.'],{});
