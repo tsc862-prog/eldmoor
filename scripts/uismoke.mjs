@@ -743,5 +743,25 @@ console.log('start gate: ready, not just claimed');
   a.guild=null;ok(!chronicleShows(focusLine),'Fellowship only: once no member is in it, the guild line hides');
   a.guild=was;$('chronFel').click();ok(chronicleShows(otherLine),'the whole Chronicle (toggle off) shows every guild line');$('chronFel').click();
   ok(!chronicleShows(otherLine),'Fellowship only again: the unrelated guild line hides')}
+// ---- region conditions (#366): running conditions and world events, the Fellowship's road first, patched in place ----
+{const S=sim.S,keepC=S.conditions,{ensureLevers}=await import('../src/sim/levers.js');ensureLevers();const act=S.levers.active;
+  const {roadZones,leftText}=await import('../src/ui/conditions.js');const {ZONES}=await import('../src/world/map.js');
+  const cb=()=>$('condbox'),sec=$('condSec');
+  ok(!!sec&&(sec.parentNode===$('worldbody')),'conditions: the section sits in the World group');
+  S.conditions=[];uiFast();ok(!!cb()&&/No region conditions\./.test(cb().textContent),'conditions: the empty state reads plainly');
+  const road=[...roadZones()],off=ZONES.map((_,i)=>i).find(i=>!road.includes(i));
+  ok(road.length>0&&off!=null,'conditions: the Fellowship rides '+road.map(z=>ZONES[z]).join(', '));
+  const rec={id:-3661,name:'start_event',params:{kind:'invasion',region:road[0],scale:2},by:'dm-agent',born:S.gameMin,until:S.gameMin+2*1440+60};act.push(rec);
+  S.conditions=[{id:-1,kind:'festival',z:off,str:1,until:S.gameMin+300,lever:-9999},
+    {id:-2,kind:'bandits',z:road[0],str:2,until:S.gameMin+2*1440+60,lever:-3661}];
+  uiFast();const rows=()=>[...cb().querySelectorAll('li')];const r0=rows()[0],r1=rows()[1];
+  ok(rows().length===2&&/\(2\)/.test(cb().querySelector('summary').textContent),'conditions: two rows and the count');
+  ok(r0&&r0.getAttribute('data-k')==='c-2'&&/on your road/.test(r0.textContent)&&r0.textContent.includes(ZONES[road[0]]),'conditions: the Fellowship\'s region sorts first with "on your road" ('+(r0&&r0.textContent)+')');
+  ok(r0&&/Invasion/.test(r0.textContent)&&/strength 2 of 3/.test(r0.textContent)&&/2 game days left/.test(r0.textContent)&&/world event by DM agent/.test(r0.textContent),'conditions: the event row names kind, strength, days left and the DM agent');
+  ok(r1&&!/on your road/.test(r1.textContent)&&/Festival/.test(r1.textContent)&&/5 game hours left/.test(r1.textContent)&&/condition/.test(r1.textContent),'conditions: a far region shows hours under a day and no road tag ('+(r1&&r1.textContent)+')');
+  uiFast();uiFast();ok(rows()[0]===r0&&rows()[1]===r1,'conditions: rows are the same nodes when nothing changed');
+  S.conditions[1].until-=1440;uiFast();ok(rows()[0]===r0&&/1 game day left/.test(r0.textContent),'conditions: time left updates in place');
+  ok(leftText(30)==='1 game hour left'&&leftText(1440*3)==='3 game days left','conditions: time left words');
+  S.conditions=keepC;const i=act.indexOf(rec);if(i>=0)act.splice(i,1);uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

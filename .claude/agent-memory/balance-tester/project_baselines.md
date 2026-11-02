@@ -38,3 +38,8 @@ Hit sensitivity (PR): hit x0.8 15.2 clears/1.6 driven/0.0 deaths; x1.0 16.8/2.7/
 ## 2026-11-02 PR #339 start_event (festival/plague) vs main ef82241
 Seeded harness (Math.random mulberry32, seeds 11/22/33, 120 min, 28 living each). No pulls: branch == main bit-identical (20 min seed 7 and 120 min x3, same state hash). Pull at min 10 (scale 2, one event at a time: lever limit "1 start_event already active"; event outlasts a 120 min run since 120 min = 12 game h):
 - base 12.7 deaths/h, PvP 50%, median lvl 15.7; festival Thornvale 13.0/h, PvP 49%, med 15; plague Mirefen 13.7/h, PvP 33%, med 15.3. Differences within seed noise (pull perturbs RNG stream). No anomalies.
+
+## 2026-11-02 ai/fellowship-heal-moves (#347 reflex heal moves, #348 Antler Ward), 8 seeded runs x 120 min, main e0db90c vs branch
+- A (default Fellowship) F deaths/run 0.88 -> 0.00; F heal uses/run Mending Touch 0.13 -> 7.0, Chorus 0.25 -> 1.25; specs taken 6 -> 40; crawl clears 16.5 -> 18.1, wipes 0/0; world deaths/h 10.0 -> 12.4; PvP 33% -> 34%; Antler Ward world-wide 1.25 -> 36.4/run; median living lvl 15.6 -> 15.8.
+- B (forced Warrior/Wildspeaker/Skald/Mage/Hunter) F deaths 0.00 -> 0.38; Greenmend 0 -> 5.0, Lullaby 0 -> 1.25; world deaths/h 9.6 -> 11.6; PvP 38% -> 39%; Ward 0.5 -> 17; median lvl 15.6 -> 15.3. Verdict PASS.
+- Harness: scratchpad/b347/run.mjs (seeded LCG, fallen counted via facStats delta because S.fallen is capped at 15; PvP = cause /^slain by (?!a )/). Seeded world deaths/h stay ~10-12 on both sides (below 20-40 target, pre-existing).

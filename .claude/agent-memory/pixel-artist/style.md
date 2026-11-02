@@ -13,3 +13,6 @@ type: project
   marks own the extremes; labels never overlap (priority wins).
 - FAC colours equal the tank/DPS role colours (blue/red). FAC is character-builder's; flagged in ART-PLAN.
 - PR order for #176: palette -> terrain -> sprites -> labels -> lighting -> minimap, stacked branches render/*.
+- Portraits (#367): `src/render/portrait.js`, 15x18 faces shown at 2x in the party frames (`.pfport` is 30x36
+  content-box). Seeded by core/rng `hash()` of id+name (ids are reused by New World), never `rnd()`.
+  `portraitPixels(a,mode)` is DOM-free so Node can check determinism; modes '', 'dead' (grey), 'ghost' (blue).
