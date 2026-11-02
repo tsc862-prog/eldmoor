@@ -444,9 +444,11 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // G. the owner's screenshot: members re-introduce themselves every turn. The game refuses a line an agent already said
     // (or a second introduction once they have met), and every turn's header carries what was said lately and who it met.
     {const n0 = seen.length; await sleep(300); last = Date.now();
-      {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + 1; a.y = L.y}} // together: party talk only carries a shout's range (#182)
+      var {TABLE: TBL} = await import('../src/sim/table.js'), tableMode = TBL.mode; TBL.mode = 'off'; // no scene may open mid-section: it would hold the runners' turns
+      var gather = () => {const L = mem.find(a => a.state !== 'dead'); let i = 0; for (const a of mem) if (a.state !== 'dead') {a.state = 'town'; a.hidden = false; a.target = null; a.pq = []; a.dest = null; a.hp = Math.max(a.hp, a.maxhp || 0); a.x = L.x + (i++ % 3 ? 1 : 0); a.y = L.y}}; // together and in town (nothing attacks, nobody wanders off): party talk only carries a shout's range (#182)
+      gather();
       for (const a of mem) {delete a.talkSaid; delete a.talkHeard} // strangers again: the earlier sections let some members meet, which refused their first introduction (flaky)
-      const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
+      const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) {sim.step(dt / n); gather()}}, 50);
       const q = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-intro:1b', '--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
       kids.push(q); let qo = ''; q.stdout.on('data', d => qo += d); q.stderr.on('data', d => qo += d);
       const code = await Promise.race([new Promise(r => q.on('exit', r)), sleep(120000).then(() => 'timeout')]);
@@ -467,13 +469,13 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // calls remember on its own) is given a camp reflection: one forced structured answer, its notes land in the notebook
     // (stamped as a reflection), the moment is closed at the game, and the Markdown mirror folder appears.
     {const RF = await import('../src/sim/reflect.js'), NBm = await import('../src/sim/notebook.js'), {memoryMirror} = await import('./memory-mirror.mjs'), {readdirSync} = await import('node:fs');
-      const a = mem.find(x => x.state !== 'dead' && x.player); park(a); a.hp = a.maxhp || a.hp;
+      const a = mem.find(x => x.state !== 'dead' && x.player); park(a); a.hp = a.maxhp || a.hp; gather(); S.table = null; // G's Table switch stays off until the end of H
       RF.REFLECT.PER_DAY = PER_DAY; delete a.reflect; // a fresh state: no moment left over from the scenes of F
       const n0 = a.memories ? a.memories.notes.length : 0, r0 = seen.reflect || 0;
       RF.moment(a, 'camp', 'Test Hollow');
       const due = RF.reflectDue(a);
       ok(due && due.kind === 'camp' && /making camp: Test Hollow/.test(due.why), 'making camp raises a reflection moment for the member: ' + (due && due.why));
-      last = Date.now(); const tickR = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
+      last = Date.now(); const tickR = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) {sim.step(dt / n); gather()}}, 50);
       const R = runner(a, 'mock-lazy:1b', ['--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--reflect']);
       const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]); clearInterval(tickR);
       const fresh = (a.memories ? a.memories.notes : []).slice(n0), rf = fresh.filter(x => x.rf === 'camp');
@@ -487,6 +489,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const find = d => existsSync(d) ? readdirSync(d, {withFileTypes: true}).flatMap(e => e.isDirectory() ? find(join(d, e.name)) : [join(d, e.name)]) : [];
       const files = find(mroot).filter(f => /[\\/]memory[\\/]/.test(f) && f.includes(String(a.id) + '-'));
       ok(files.some(f => /reflection-making-camp/.test(f)), `the mirror folder appears with the notes (${files.length} files)`);
+      TBL.mode = tableMode;
     }
   }
   server.close();
