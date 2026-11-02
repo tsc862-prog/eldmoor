@@ -1,16 +1,17 @@
 // Game day on log times (issue #136): "D4 03:12" and a separator between days. Entries carry `d`
 // (the 1-based game day) from the sim, or a `gameMin` (mind and journal entries); an older save's
 // entry with neither shows its bare time and gets no separator.
+import {keyOf} from './stable.js'; // stable row keys: rows are patched in place (#145)
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 
 export const dayOf=e=>!e?null:e.d!=null?e.d:e.gameMin!=null?Math.floor(e.gameMin/1440)+1:null;
 // "D4 03:12" from an entry; its t may be "03:12", "D4 03:12" or "Day 4 03:12" (the time is its last five characters).
 export function stampOf(e){const d=dayOf(e),t=String((e&&e.t)||'');const clock=/\d\d:\d\d$/.test(t)?t.slice(-5):t;return d!=null?'D'+d+' '+clock:clock}
 // A day-separator element ("Day 4").
-export const daySep=(d,tag='li')=>el(tag,'daysep','Day '+d);
+export const daySep=(d,tag='li')=>{const s=el(tag,'daysep','Day '+d);s.setAttribute('data-k','day'+d);return s};
 // Append `entries` (in display order) to `parent`, built by build(e), with a separator whenever the day changes.
 export function byDay(parent,entries,build,tag='li'){let last=null;
-  for(const e of entries){const d=dayOf(e);if(d!=null&&d!==last){parent.append(daySep(d,tag));last=d}parent.append(build(e))}}
+  for(const e of entries){const d=dayOf(e);if(d!=null&&d!==last){parent.append(daySep(d,tag));last=d}const n=build(e);if(n&&n.nodeType===1&&n.getAttribute('data-k')==null)n.setAttribute('data-k',keyOf(e));parent.append(n)}}
 // Source of a Log line (issue #136), as shown: who caused the action.
 export const SRC_TEXT={agent:'agent order',autopilot:'autopilot',reflex:'reflex',ai:'AI',scripted:'scripted'};
 export const SRC_TITLE={agent:'The agent ordered this',autopilot:'Autopilot carried out the last order while the agent was silent',reflex:'The hero\'s own reflex (it breaks off, drinks, goes home) while the agent thinks',

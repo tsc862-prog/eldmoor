@@ -22,6 +22,7 @@ import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
 import {fellowshipRunnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start all five / Stop all
+import {patch,held,keyOf} from './stable.js'; // update in place, keep scroll (#145)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -52,10 +53,10 @@ const KIND_LABEL={council:'COUNCIL',table:'TABLE',camp:'CAMP',found:'FOUND',join
 export function renderCampaignLog(node,o={}){const F=S.fellowship;if(!F){node.append(el('div','dm','No Fellowship.'));return}
   const days=[];for(const e of F.log){let d=days[days.length-1];if(!d||d.day!==e.day){d={day:e.day,list:[]};days.push(d)}d.list.push(e)}
   if(!days.length){node.append(el('div','dm','Nothing yet. The log fills as the five take jobs, roll dice and bleed.'));return}
-  days.slice(0,o.days||8).forEach((d,i)=>{const box=el('details','felday');if(i===0)box.open=true;
+  days.slice(0,o.days||8).forEach((d,i)=>{const box=el('details','felday');box.setAttribute('data-k','day'+d.day);if(i===0)box.open=true;
     const n=k=>d.list.filter(e=>e.kind===k).length;
     box.append(el('summary',null,'Day '+d.day+' · '+d.list.length+' entries'+(n('death')?' · '+n('death')+' fallen':'')+(n('adventure')?' · '+n('adventure')+' job'+(n('adventure')>1?'s':''):'')));
-    const ul=el('ul','tlist');for(const e of d.list){const li=el('li');li.append(el('time',null,e.t),el('span','badge k-'+e.kind,KIND_LABEL[e.kind]||e.kind),' ');parts(li,e.parts);ul.append(li)}
+    const ul=el('ul','tlist');for(const e of d.list){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t),el('span','badge k-'+e.kind,KIND_LABEL[e.kind]||e.kind),' ');parts(li,e.parts);ul.append(li)}
     box.append(ul);node.append(box)})}
 export function renderThreads(node){const th=openThreads();if(!th.length){node.append(el('div','dm','No open threads.'));return}
   const ul=el('ul','tlist');for(const t of th){const li=el('li');parts(li,t.parts);ul.append(li)}node.append(ul)}
@@ -64,9 +65,9 @@ export function tabMemory(b,a){const M=a.memory;
   if(a.backstory&&a.backstory.summary)b.append(el('div','meta',a.backstory.summary));
   b.append(el('div','dm','Long-term'),el('p','bio',M.long||'Nothing has faded into the long memory yet.'));
   const st=Object.entries(M.stances||{});if(st.length){b.append(el('div','dm','Companions'));const ul=el('ul','log hist');
-    for(const [id,line] of st){const c=byId(id);const li=el('li');if(c)li.append(hn(c),': ');li.append(line);ul.append(li)}b.append(ul)}
+    for(const [id,line] of st){const c=byId(id);const li=el('li');li.setAttribute('data-k','c'+id);if(c)li.append(hn(c),': ');li.append(line);ul.append(li)}b.append(ul)}
   b.append(el('div','dm','Recent ('+(M.recent||[]).length+' of '+(M.n||0)+' remembered)'));
-  const ul=el('ul','log hist');for(const e of (M.recent||[]).slice().reverse()){const li=el('li');li.append(el('time',null,e.t),e.text+(e.c>1?' (x'+e.c+')':''));ul.append(li)}b.append(ul)}
+  const ul=el('ul','log hist');for(const e of (M.recent||[]).slice().reverse()){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t),e.text+(e.c>1?' (x'+e.c+')':''));ul.append(li)}b.append(ul)}
 
 // ---- the Chronicle filter ----
 let focus=true;
@@ -114,8 +115,8 @@ function topView(node){const F=S.fellowship;
   if(reqTotals.sent||reqTotals.denied){const fl=recentFailures(),r=el('div','dm','Model requests: '+rpm()+'/min · '+reqTotals.sent+' sent, '+reqTotals.failed+' failed, '+reqTotals.denied+' held back');
     if(fl.length)r.title='Recent failures: '+fl.map(f=>f.kind+(f.hero?' '+f.hero:'')+': '+f.why).join(' | ');node.append(r);
     if(fl.length)node.append(el('div','dm','Last failure: '+fl[0].kind+(fl[0].hero?' ('+fl[0].hero+')':'')+', '+fl[0].why+'. Writing backs off, scripted text stands in.'))}
-  const th=el('details','tlbox');th.append(el('summary',null,'Open threads'));renderThreads(th);node.append(th);
-  if(F.past.length){const fa=el('details','tlbox');fa.append(el('summary',null,'Fallen ('+F.past.length+')'));const ul=el('ul','tlist');
+  const th=el('details','tlbox');th.setAttribute('data-k','threads');th.append(el('summary',null,'Open threads'));renderThreads(th);node.append(th);
+  if(F.past.length){const fa=el('details','tlbox');fa.setAttribute('data-k','fallen');fa.append(el('summary',null,'Fallen ('+F.past.length+')'));const ul=el('ul','tlist');
     for(const p of F.past.slice().reverse()){const li=el('li'),a=byId(p.id);li.append('† ',a?hn(a):p.name,' · '+(ROLE_NAME[String(p.slot).replace(/\d+$/,'')]||p.slot)+', Lv '+p.lvl+' '+p.cls+', '+p.cause+', day '+p.day);ul.append(li)}fa.append(ul);node.append(fa)}}
 
 // The sheet editor is rebuilt only when it is opened, saved or closed, never on the tick, so typing is safe.
@@ -166,9 +167,9 @@ export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('fe
 export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChronBtn();
   if(!F){logBox.hidden=true;
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
-    if(sig!==sigForm){sigForm=sig;sigTop='';top.replaceChildren();formView(top)}return}
+    if(sig!==sigForm&&patch(top,n=>formView(n))){sigForm=sig;sigTop=''}return}
   logBox.hidden=false;
   const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed;
-  const picking=typeof document!=='undefined'&&document.activeElement&&document.activeElement.tagName==='SELECT'&&top.contains(document.activeElement); // never rebuild under an open picker
-  if(sig!==sigTop&&!picking){sigTop=sig;sigForm='';top.replaceChildren();topView(top)}
-  const ls=F.id+':'+(F.seq||0);if(ls!==sigLog){sigLog=ls;logBox._b.replaceChildren();renderCampaignLog(logBox._b)}}
+  // patched in place (#145): never under an open picker, a press or a scroll; open threads and days stay open
+  if(sig!==sigTop&&patch(top,n=>topView(n))){sigTop=sig;sigForm=''}
+  const ls=F.id+':'+(F.seq||0);if(ls!==sigLog&&patch(logBox._b,n=>renderCampaignLog(n)))sigLog=ls}

@@ -13,6 +13,7 @@
     "savecheck": "node scripts/savecheck.mjs",
     "setupcheck": "node scripts/setupcheck.mjs",
     "setupsmoke": "node scripts/setupsmoke.mjs . a && node scripts/setupsmoke.mjs . b",
+    "uismoke": "node scripts/uismoke.mjs",
     "invcheck": "node scripts/invcheck.mjs",
     "relay": "node scripts/relay.mjs",
     "braincheck": "node scripts/braincheck.mjs",

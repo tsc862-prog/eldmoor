@@ -10,6 +10,7 @@ import {dmSeatOn,dmAgentView} from '../sim/index.js';
 import {dmSeatSet,dmLink,dmRunnerTag,LINK_TEXT,bridgeStatus} from './player-bridge.js';
 import {dmRunnerControl,dmRunnerSig,runnerPick,runnerByKey} from './runners.js';
 import {pulledModels} from './mindpick.js';
+import {patch} from './stable.js'; // update in place (#145)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const DONE={stopped:1,crashed:1};
@@ -30,9 +31,7 @@ function controls(compact){const d=el('div','dmseat'+(compact?' compact':'')),on
 
 export function renderDmSeat(){if(!box)box=document.getElementById('dmseat');if(!box)return;
   const sig=dmSeatSig();if(sig===last)return;
-  // never rebuild under an open picker
-  if(box.contains(document.activeElement)&&document.activeElement.tagName==='SELECT')return;
-  last=sig;box.replaceChildren(controls(false))}
+  if(patch(box,b=>b.append(controls(false))))last=sig} // never under an open picker (#145)
 
 // The Minds at play row for the DM seat.
 export function dmMindRow(){if(!dmSeatOn()&&!live())return null;const li=el('li','mind dmmind'),top=el('div','mtop');
@@ -43,4 +42,4 @@ export function dmMindRow(){if(!dmSeatOn()&&!live())return null;const li=el('li'
 export function initDmSeat(after){const done=after||(()=>{});box=document.getElementById('dmseat');
   document.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('[data-dmseat]'):null;if(!t)return;e.stopPropagation();
     dmSeatSet(t.dataset.dmseat==='open');last='';renderDmSeat();done()},true);
-  renderDmSeat();setInterval(renderDmSeat,1000)}
+  renderDmSeat()} // refreshed each second by ui/app.js

@@ -32,7 +32,8 @@ import {byDay,stampOf,srcTag} from './daystamp.js'; // game day on times, action
 import {fellowRoleOf} from '../core/chatview.js';
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
-import {showMindButtons} from './mindctl.js'; // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
+import {showMindButtons} from './mindctl.js';
+import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -259,7 +260,7 @@ function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e
   if(S.fellowship){const on=worldChatter(),t=el('button','mini','World chatter: '+(on?'on':'off'));t.title='Show what background heroes say to each other (kept per viewer).';
     t.onclick=()=>{setWorldChatter(!on);renderHero()};b.append(t)}
   if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far. Turn World chatter on to see it.':'Nothing said or heard yet.'));return}
-  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));if(e.from&&e.from.kind==='dm')li.append(el('span','gd','[Narrator]'));else li.append(chatName(e.from));const tg=chatTag(e);if(tg)li.append(' ',aiBadge(tg,e.agent?'Written by the agent playing this hero':'Written by '+(e.model||'the model')));li.append(': '+e.text);ul.append(li)}b.append(ul)}
+  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));if(e.from&&e.from.kind==='dm')li.append(el('span','gd','[Narrator]'));else li.append(chatName(e.from));const tg=chatTag(e);if(tg)li.append(' ',aiBadge(tg,e.agent?'Written by the agent playing this hero':'Written by '+(e.model||'the model')));li.append(': '+e.text);ul.append(li)}b.append(ul)}
 // A Fellowship member's name stands out in chat: bold, in its party-frame role colour (Tank blue, Healer green, DPS red).
 function chatName(h){const s=hn(h),r=fellowRoleOf(h);if(r)s.className+=' fm r-'+r;return s}
 
@@ -334,26 +335,30 @@ function skeleton(root){root.replaceChildren();const hd=el('div','hd'),tabs=el('
 export function renderHero(){const root=$('hero'),a=cam.sel;
   if(!a){root.innerHTML='<div class="meta">Tap a hero on the map, or pick one from Top heroes.</div>';skel=null;return}
   const k=skel&&skel.root===root&&root.contains(skel.hd)?skel:skeleton(root);
-  const mh=maxHp(a),h=k.hd;h.replaceChildren();
-  h.append(heroName(a));
-  h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
-  h.append(el('div','doing',doing(a)));
-  h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
-  h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
+  const mh=maxHp(a);
+  // header and body are patched in place (#145): scroll, focus and open rows survive the 0.3 s tick
+  patch(k.hd,h=>{h.append(heroName(a));
+    h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
+    h.append(el('div','doing',doing(a)));
+    h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
+    h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)))});
   const mindable=hasMind(a),agentable=hasAgent(a),memable=!!a.memory,cur=tab==='mind'&&!mindable||tab==='agent'&&!agentable||tab==='memory'&&!memable?'stats':tab; // the Mind tab exists only for AI-played heroes, the Agent tab for agent-played ones
   for(const b of k.tabs.children){b.setAttribute('aria-pressed',String(b.dataset.tab===cur));if(b.dataset.tab==='mind')b.hidden=!mindable;if(b.dataset.tab==='agent')b.hidden=!agentable;if(b.dataset.tab==='memory')b.hidden=!memable}
   if(pinned&&pinned.id!==a.id)pinned=null;
-  if(cur==='mind'){const sig=mindSig(a);if(k.tb.dataset.tab!=='mind'||k.tb.dataset.sig!==sig){k.tb.replaceChildren();k.tb.dataset.tab='mind';k.tb.dataset.sig=sig;tabMind(k.tb,a)}}
-  else{k.tb.replaceChildren();k.tb.dataset.tab=cur;delete k.tb.dataset.sig;BODY[cur](k.tb,a)}
+  // a new hero or tab starts at the top; the same hero and tab keep their place
+  const who=a.id+':'+cur;if(k.tb.dataset.who!==who){k.tb.dataset.who=who;k.tb.replaceChildren();delete k.tb.dataset.sig}
+  if(cur==='mind'){const sig=mindSig(a);if(k.tb.dataset.sig!==sig&&patch(k.tb,b=>tabMind(b,a)))k.tb.dataset.sig=sig}
+  else patch(k.tb,b=>BODY[cur](b,a));
+  k.tb.dataset.tab=cur;
   if(cur!=='gear')hideTip();else if(hov)showTip()}
 
 // ---- other panels ----
-export function renderTops(){const el_=$('tops');el_.innerHTML='';ranked().slice(0,8).forEach((a,i)=>{const li=document.createElement('li');const b=document.createElement('button');
+export function renderTops(){patch($('tops'),ul=>ranked().slice(0,8).forEach((a,i)=>{const li=el('li');li.setAttribute('data-k','h'+a.id);const b=el('button');
   if(a===cam.sel)b.className='sel';const n=el('span','dm',i+1);const nm=el('span','f'+a.fac,a.name+' ');
   nm.append(el('span','dm',a.cls));const lv=el('span','lv','Lv '+a.lvl);
-  b.append(n,nm,lv);b.onclick=()=>pick(a);li.append(b);el_.append(li)})}
+  b.append(n,nm,lv);b.onclick=()=>pick(a);li.append(b);ul.append(li)}),{anchor:false})}
 
-export function renderFacs(){const el_=$('facs');const rows=[['',...FAC.map((f,i)=>`<span class="h f${i}">${f.name.toUpperCase()}</span>`)]];
+export function renderFacs(){const rows=[['',...FAC.map((f,i)=>el('span','h f'+i,f.name.toUpperCase()))]];
   const s=f=>living().filter(a=>a.fac===f);
   rows.push(['Avg level',...[0,1].map(f=>(s(f).reduce((t,a)=>t+a.lvl,0)/Math.max(1,s(f).length)).toFixed(1))]);
   rows.push(['Fallen',...[0,1].map(f=>S.facStats[f].fallen)]);
@@ -361,34 +366,35 @@ export function renderFacs(){const el_=$('facs');const rows=[['',...FAC.map((f,i
   rows.push(['Boss kills',...[0,1].map(f=>S.facStats[f].bosses)]);
   rows.push(['Treasury',...[0,1].map(f=>s(f).reduce((t,a)=>t+a.gold,0)+'g')]);
   rows.push(['Epics',...[0,1].map(f=>s(f).reduce((t,a)=>t+a.epics.length,0))]);
-  el_.innerHTML=rows.map(r=>`<div class="k">${r[0]}</div><div>${r[1]}</div><div>${r[2]}</div>`).join('')}
+  patch($('facs'),g=>{for(const r of rows){g.append(el('div','k',r[0]));for(const v of r.slice(1)){const d=el('div');d.append(typeof v==='object'?v:String(v));g.append(d)}}})}
 
 // Graveyard entries carry no hero id, so match the grave still in S.agents by name,
 // faction and time of death; recycled graves stay plain text.
-export function renderFallen(){const el_=$('fallen');if(!S.fallen.length){el_.innerHTML='<li class="dm">No one has fallen yet.</li>';return}
-  el_.innerHTML='';for(const f of S.fallen){const li=document.createElement('li');li.append(el('time',null,f.t));
+export function renderFallen(){patch($('fallen'),el_=>{if(!S.fallen.length){el_.append(el('li','dm','No one has fallen yet.'));return}
+  for(const f of S.fallen){const li=el('li');li.setAttribute('data-k',keyOf(f));li.append(el('time',null,f.t));
     const n=el('span','f'+f.fac,'† '+f.name);const a=S.agents.find(x=>x.state==='dead'&&x.name===f.name&&x.fac===f.fac&&x.diedAt===f.t);
     if(a){n.classList.add('hn');n.dataset.hid=a.id}
-    li.append(n,` · Lv ${f.lvl} ${f.cls}, ${f.cause}`);el_.append(li)}}
+    li.append(n,` · Lv ${f.lvl} ${f.cls}, ${f.cause}`);el_.append(li)}})}
 
 const gScore=g=>{const m=membersOf(g);return Math.round(m.reduce((t,a)=>t+a.lvl+a.honor*3+a.kills/25,0)+g.clears*25+g.bosses*40)};
 // Living guilds by score with leader and head count, then a count of the retired.
 export function renderGuilds(){const live=livingGuilds().map(g=>({g,m:membersOf(g),s:gScore(g)})).sort((x,y)=>y.s-x.s);
-  const ret=S.GUILDS.length-live.length;
-  $('guilds').innerHTML=(live.length?live.map(({g,m,s},i)=>{const L=leaderOf(g);
-    return `<tr><td><span class="dm">${i+1}</span> <span class="f${g.fac}">&lt;${g.tag}&gt; ${g.name}</span><br><span class="dm">${L?'led by '+L.name+' · ':''}${m.length} member${m.length===1?'':'s'}</span></td><td>${g.clears}/${g.clears+g.wipes}</td><td class="gd">${s}</td></tr>`}).join('')
-    :'<tr><td class="dm" colspan="3">No guild has been founded yet.</td></tr>')
-    +(ret?`<tr><td class="dm" colspan="3">Retired: ${ret}</td></tr>`:'')}
+  const ret=S.GUILDS.length-live.length,wide=t=>{const td=el('td','dm',t);td.colSpan=3;const tr=el('tr');tr.append(td);return tr};
+  patch($('guilds'),tb=>{if(!live.length)tb.append(wide('No guild has been founded yet.'));
+    live.forEach(({g,m,s},i)=>{const L=leaderOf(g),tr=el('tr'),td=el('td');tr.setAttribute('data-k',keyOf(g));
+      td.append(el('span','dm',String(i+1)),' ',el('span','f'+g.fac,'<'+g.tag+'> '+g.name),el('br'),el('span','dm',(L?'led by '+L.name+' · ':'')+m.length+' member'+(m.length===1?'':'s')));
+      tr.append(td,el('td',null,g.clears+'/'+(g.clears+g.wipes)),el('td','gd',String(s)));tb.append(tr)});
+    if(ret)tb.append(wide('Retired: '+ret))})}
 
-export function renderAH(){$('ah').innerHTML=Object.keys(GOODS).map(n=>{const p=price(n),d=p-GOODS[n].prev;
-  return `<tr><td>${n}</td><td class="gd">${p}g</td><td class="${d>0?'up':d<0?'down':'dm'}">${d>0?'▲'+d:d<0?'▼'+(-d):'–'}</td></tr>`}).join('')}
+export function renderAH(){patch($('ah'),tb=>{for(const n of Object.keys(GOODS)){const p=price(n),d=p-GOODS[n].prev,tr=el('tr');
+  tr.append(el('td',null,n),el('td','gd',p+'g'),el('td',d>0?'up':d<0?'down':'dm',d>0?'▲'+d:d<0?'▼'+(-d):'–'));tb.append(tr)}})}
 
 export function renderClock(){$('clock').textContent=`Day ${Math.floor(S.gameMin/1440)+1} · ${clockStr()}`}
 
 // Chronicle: render what the sim already logged, then follow new entries.
 function initChronicle(){const el_=$('log');
   const add=e=>{if(!chronicleShows(e))return;const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';li.append(el('time',null,e.t));parts(li,e.parts);
-    el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()};
+    keepView(el_,()=>{el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()})}; // a new line on top keeps the line being read in view (#145)
   const all=()=>{el_.replaceChildren();for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i])};all();
   setChronicleRefresh(all); // the Fellowship only filter toggles re-render from S.chronicle
   onLog(add)}
@@ -408,4 +414,4 @@ function initClicks(){const host=document.querySelector('.main')||document.body;
     const n=t.closest('.hn[data-hid]');if(!n)return;
     const a=S.agents.find(x=>x.id==n.dataset.hid);if(a){pick(a);if(a.state==='dead'&&n.closest('#fallen'))setTab('bio')}})}
 
-export function initPanels(){initBridge();initChronicle();initTimeline();initDmLog();initClicks();onMarketTick(renderAH);renderFacs();renderAH();renderGuilds();renderFallen();renderClock()}
+export function initPanels(){initStable();initBridge();initChronicle();initTimeline();initDmLog();initClicks();onMarketTick(renderAH);renderFacs();renderAH();renderGuilds();renderFallen();renderClock()}
