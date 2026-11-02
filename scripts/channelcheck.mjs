@@ -186,6 +186,9 @@ const argsFor = {move_to: {target: 'home'}, talk: {target: B.name}, say: {text: 
   party_say: {text: 'Aye.'}, party_read: {n: 20}, chat_read: {n: 20}, propose: {kind: 'other', details: 'A small fire tonight.'}, vote: {proposal_id: 1, vote: 'yes', reason: 'fine'},
   lead_to: {target: 'home'}, scene_act: {option: 'a'}, wait: {minutes: 10}, list_jobs: {},
   remember: {title: 'Road notes', text: 'A notes the road home.', tags: ['road', 'secret'], about: B.name}, recall: {query: 'road hide secret memory'}, update_memory: {id: 1, text: 'A rewrites the road note.'}, forget: {id: 9999}, pin: {id: 1}};
+// Learn the world (#188): a creature in sight with a planted level and HP: no hero tool, event or header may number it
+const beast = S.mobs.find(m => m.alive && !m.gone && !m.elite && !m.named); beast.x = A.x + 2.5; beast.y = A.y; beast.lvl = 37; beast.maxhp = 9137; beast.hp = 4567; beast.target = null; beast.dest = null; beast.home = {x: beast.x, y: beast.y}; beast.spawn = {x: beast.x, y: beast.y}; (await import('../src/sim/spatial.js')).rebuild();
+const beastNums = /"lvl":37|level 37|L37|9137|4567|"hurt":/;
 const first = {};
 for (const t of ['status', 'look', 'chat_read', 'party_read', 'journal_read', 'read_chronicle']) first[t] = keep('A ' + t, act(A, t, argsFor[t]));
 ok((first.chat_read.lines || []).some(l => l.includes(said.narr) && /narrator/i.test(l)) && (first.chat_read.lines || []).some(l => l.includes(said.party)), 'chat_read: the narrator and B\'s party line');
@@ -193,6 +196,11 @@ ok((first.party_read.lines || []).some(l => l.includes(said.party)), 'party_read
 ok(JSON.stringify(first.status.events || []).includes(said.narr) || JSON.stringify(first.status).includes(said.narr) || heard.some(h => h.text.includes('The narrator: ' + said.narr)), 'events: "The narrator: ..." reaches A\'s agent');
 ok(JSON.stringify(first.status.events || []).includes(said.npc) || (first.chat_read.lines || []).some(l => l.includes(said.npc)) || heard.some(h => h.text.includes(said.npc)), 'an npc_say near a member reaches that member agent (events or chat_read)');
 for (const t of PLAYER_TOOLS) if (t.name !== 'wait') keep('A ' + t.name, act(A, t.name, argsFor[t.name] || {}));
+{beast.x = A.x + 2.5; beast.y = A.y; beast.alive = true; beast.gone = false; (await import('../src/sim/spatial.js')).rebuild(); const lk = keep('A look beast', act(A, 'look')), bm = (lk.monsters || []).find(m => m.id === beast.id);
+  ok(bm && bm.lvl === undefined && bm.hurt === undefined && bm.what && bm.threat, `look describes a creature without numbers: ${JSON.stringify(bm)}`);
+  const leak = heard.filter(h => h.what.startsWith('A ') && beastNums.test(h.text)).map(h => h.what);
+  ok(!leak.length, 'no hero tool result numbers the creature (level or HP)' + (leak.length ? ': ' + leak.join(', ') : ''));
+  beast.x = A.x + 60; beast.lvl = 3; beast.maxhp = beast.hp = 73}
 keep('A journal overview', act(A, 'journal_read', {})); keep('A journal_search day 1', act(A, 'journal_search', {day: 1, n: 10})); // #153: A's own tiers only
 // A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
 for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));

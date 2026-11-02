@@ -148,6 +148,10 @@ console.log('staged scenes: refusals');
   no({kind: 'elite', cast: {level: Math.max(...L.map(a => a.lvl)) + 6}}, /far above the party/, 'a foe far above the party\'s level');
   no({kind: 'elite', cast: {foe: 'Cinder Wyrm'}}, /lives in/, 'a creature that does not live there');
   no({kind: 'meeting', cast: {role: 'drover'}}, /needs cast.want/, 'a meeting with no want');
+  const pvw = st({kind: 'elite', preview: 'true', frame: undefined, reason: undefined});
+  ok(pvw.ok && pvw.preview && /^a named /.test(pvw.cast), 'stage_scene preview returns the cast without staging: ' + (pvw.cast || pvw.error));
+  no({kind: 'elite', frame: 'A band of armed men blocks the road, their leader shouting threats.'}, /does not fit the cast\. Your elite is a named/, 'a frame of people over a creature (the refusal names the cast)');
+  no({kind: 'ambush'}, /does not fit the cast\. Your ambush is a pack of \d+/, 'a frame that names none of the creatures');
   no({kind: 'meeting', cast: {role: 'king', want: 'x'}}, /role must be one of/, 'a role no wanderer has');
   L[1].hp = maxHp(L[1]) * .2;
   no({kind: 'ambush'}, /badly hurt/, `an ambush while ${L[1].name} is at 20% HP in the field`);
@@ -161,7 +165,7 @@ console.log('staged scenes: refusals');
   S.staged.cur.phase = 'done'; S.staged.day.n = ST.STAGE.PER_DAY;
   no({}, /staged scenes today/, `past ${ST.STAGE.PER_DAY} a day`);
   S.staged.day.n = 0;
-  ok(S.dmLog.filter(e => /Staged scene refused/.test(e.summary.map(p => typeof p === 'string' ? p : p && p.t || '').join('')) && e.detail.by === 'dm-agent').length === n0 + 17, 'every refusal is in the DM log, tagged dm-agent');
+  ok(S.dmLog.filter(e => /Staged scene refused/.test(e.summary.map(p => typeof p === 'string' ? p : p && p.t || '').join('')) && e.detail.by === 'dm-agent').length === n0 + 19, 'every refusal is in the DM log, tagged dm-agent');
   ok(S.dmLog.some(e => e.kind === 'frame' && e.detail.by === 'dm-agent' && e.detail.staged === okR.staged && e.detail.reason === 'test'), 'the staging is in the DM log with its reason');
   const ds = dmAct('dm_status'); ok(ds.ok && ds.staged && /\/3$/.test(ds.staged.today), `dm_status shows the day's staged scenes (${ds.staged && ds.staged.today})`);
   const tc = dmAct('table_call'); ok(tc.ok && tc.call === null && tc.scene === null, 'table_call with nothing at the table: no call');
@@ -256,7 +260,7 @@ console.log('NPC conversations');
   r = dmAct('npc_offer', {npc: String(capt.id), kind: 'combat', text: 'Guards! Take them!'});
   ok(r.ok === false && /badly hurt/.test(r.error) && !(A.chat || []).some(e => /Take them/.test(e.text)), 'a hostile follow-up is refused while a member is badly hurt (and the line is not spoken)');
   B.hp = maxHp(B); if (S.staged) {S.staged.day.n = 0; if (S.staged.cur) S.staged.cur.phase = 'done'}
-  r = dmAct('npc_offer', {npc: String(capt.id), kind: 'combat', text: 'Then pay in blood.', frame: 'Two of the gate watch draw steel and step in.'});
+  r = dmAct('npc_offer', {npc: String(capt.id), kind: 'combat', text: 'Then pay in blood.', frame: 'At a whistle, beasts break from the brush outside the gate and bar the way.'});
   ok(r.ok && r.mark === '[combat]' && S.staged.cur && S.staged.cur.kind === 'ambush' && capt.hostile && capt.mood === 'hostile' && /outside the .* gate/.test(r.hint),
     'npc_offer combat in town stages an ambush outside the gate; the person is hostile (mood hostile, hostile true)' + (r.ok ? '' : ': ' + r.error));
   if (S.staged && S.staged.cur) S.staged.cur.phase = 'done';

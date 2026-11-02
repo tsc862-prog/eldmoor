@@ -1,0 +1,196 @@
+// Learn the world (issue #188): what an agent-played hero knows of creatures and places, learned only in the game.
+// A creature first seen is described, not numbered ("a lean, quick wolf-like beast"); a Lore or Perception read at
+// first sight (d20 from a hash, no RNG drawn) may size it up. Fighting it, killing it, its tricks, a near death, a
+// companion falling to it, a warning heard (a townsperson, a companion, the narrator, the town criers) teach more:
+// its name, its threat to this hero in words, its tricks. Places: the hero knows its home region and friendly towns,
+// and learns a region or landmark by going there or hearing of it; move_to goes only to known places, a direction
+// or coordinates (sim/player.js). Exact levels and HP are never shown to the agent; the watcher still sees all.
+//
+// Only agent-played heroes (a.player) learn; every hook returns at once for anyone else, nothing here draws from the
+// shared RNG, and nothing changes what a hero does except through the agent's own tools (hunt without prey skips
+// the creatures this hero has learned to fear). So the scripted headless sim is unchanged.
+//
+//   a.lore = {c:{key:{seen, read, rl, name, told, fought, killed, hurt, fell, warned, tricks:[], z:[], lo, hi}},
+//             p:{placeName:{how:'home'|'been'|'seen'|'told', at, hurt, fell, warned}}}
+//   key: a MOBS key, a VARIANTS key (site foes), or 'n:'+name for a named elite or an adventure's named foe.
+import {S} from './state.js';
+import {hash} from '../core/rng.js';
+import {ZONES,REGIONS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {homeOf} from '../data/races.js';
+import {MOBS,ELITES} from '../data/mobs.js';
+import {BESTIARY,VARIANTS,NAMED_KITS,ABILITIES,baseId} from '../data/bestiary.js';
+import {bestFor} from './abilities.js';
+import {ev} from './notify.js';
+import {moment} from './reflect.js';
+import {nearHeroes,nearMobs} from './spatial.js';
+import {sightMul} from './weather.js';
+
+export const LORE={
+  DC:12,          // the first-sight read (d20 + the better of Lore and Perception)
+  ELITE_DC:4,     // a named elite is harder to size up
+  ELITE_RANK:4,   // levels an elite counts above its own for the threat words
+  NEAR:.3,        // a fight that leaves the hero below this share of max HP is a near death (a lesson)
+  WITNESS:12,     // tiles: a hero this close sees another fall
+  FEAR:4,         // threat rank from which hunt without prey leaves a creature alone
+  DIR:15,         // tiles one "explore <direction>" walks
+  SNIP:110,       // characters of a warning kept
+};
+const RANKS=['beneath you','easy prey','an even match','dangerous for you','more than you can handle','certain death'];
+export const rankOf=d=>d<=-5?0:d<=-2?1:d<=1?2:d<=3?3:d<=6?4:5;
+const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
+const learner=a=>!!(a&&a.kind==='hero'&&a.player&&a.state!=='dead');
+const strHash=s=>{let h=0;for(let i=0;i<s.length;i++)h=(Math.imul(h,31)+s.charCodeAt(i))|0;return h};
+
+// ---- creatures: keys, names, descriptions (words from the bestiary's own family and role) ----
+const FAMILY={beast:'beast',vermin:'crawling thing',undead:'dead thing that walks',elemental:'thing of living rock','brute-folk':'swamp-dweller',bandit:'armed figure',wyrm:'wyrm'};
+const ROLE={skirmisher:'lean, quick',brute:'heavy, thick-hided',caster:'strange',swarm:'small',guardian:'hulking',leader:'commanding'};
+const SHAPE={wolf:'wolf-like',boar:'tusked',spider:'many-legged',bog:'squat, grey-green',golem:'stone-bodied',drake:'scaled, winged',shaghorn:'shaggy, horned',wight:'pale'};
+export const keyOf=m=>m.elite||m.named?'n:'+m.name:m.v&&VARIANTS[m.v]?m.v:baseId(m.type);
+export function realName(m){if(m.elite||m.named)return m.name+(m.title?', '+m.title:'');if(m.v&&VARIANTS[m.v])return VARIANTS[m.v].name;return MOBS[m.type]?MOBS[m.type].name:'monster'}
+function describe(m){const V=m.v&&VARIANTS[m.v],B=V||BESTIARY[baseId(m.type)]||{},fam=B.family,role=m.role||B.role,spr=MOBS[m.type]&&MOBS[m.type].spr;
+  const shape=fam==='bandit'?'':SHAPE[spr]||'';const w=[ROLE[role],shape,FAMILY[fam]||'creature'].filter(Boolean).join(' ');
+  return m.elite||m.named?'a huge, scarred '+w+', bigger than any of its kind':'a '+w}
+
+// Every creature name the world uses, for hearing: [{re, key}], singular and plural, and a last-word alias when it is
+// unique ("the lurkers nearly had me"). Built once from the creature tables; never hard-coded.
+let LEX=null;
+function lexicon(){if(LEX)return LEX;const names=[],add=(n,key)=>{if(n)names.push({n:String(n),key})};
+  for(const k of Object.keys(MOBS)){add(MOBS[k].name,k);add(MOBS[k].pl,k)}
+  for(const k of Object.keys(VARIANTS)){add(VARIANTS[k].name,k);add(VARIANTS[k].pl,k)}
+  for(const E of ELITES)if(E&&E.name)add(E.name,'n:'+E.name);
+  for(const n of Object.keys(NAMED_KITS))add(n.replace(/^the /i,''),'n:'+n);
+  const last=new Map();for(const x of names){const w=x.n.split(' ').pop();if(w.length<5||w===x.n)continue;const o=last.get(w.toLowerCase());last.set(w.toLowerCase(),o&&o!==x.key?null:x.key)}
+  for(const [w,key] of last)if(key)names.push({n:w,key});
+  names.sort((x,y)=>y.n.length-x.n.length);
+  const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  LEX={c:names.map(x=>({n:x.n,key:x.key,re:new RegExp('\\b'+esc(x.n)+'\\b','i')})),
+    p:placeNames().map(n=>({n,re:new RegExp('\\b'+esc(n)+'\\b','i')}))};
+  return LEX}
+const placeNames=()=>[...ZONES,...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).filter((n,i,A)=>A.indexOf(n)===i).sort((x,y)=>y.length-x.length);
+const keyName=key=>key.startsWith('n:')?key.slice(2):VARIANTS[key]?VARIANTS[key].name:MOBS[key]?MOBS[key].name:key;
+const keyPlural=key=>key.startsWith('n:')?key.slice(2):VARIANTS[key]?VARIANTS[key].pl:MOBS[key]?MOBS[key].pl:key;
+
+// ---- the hero's lore ----
+export function loreOf(a){if(a.lore)return a.lore;const L=a.lore={c:{},p:{}};
+  const c=homeOf(a),hz=c&&c.gate?zoneAt(c.gate.x,c.gate.y):-1;if(ZONES[hz])L.p[ZONES[hz]]={how:'home',at:Math.round(S.gameMin)};
+  const z=zoneAt(a.x,a.y);if(ZONES[z]&&!L.p[ZONES[z]])L.p[ZONES[z]]={how:'been',at:Math.round(S.gameMin)};
+  return L}
+function entry(a,key){const L=loreOf(a);return L.c[key]||(L.c[key]={tricks:[],z:[]})}
+const seenLvl=(e,m)=>{if(m.lvl==null)return;e.lo=e.lo==null?m.lvl:Math.min(e.lo,m.lvl);e.hi=e.hi==null?m.lvl:Math.max(e.hi,m.lvl)};
+const where=(e,m)=>{const z=MOBS[m.type]?MOBS[m.type].z:null;if(ZONES[z]&&!e.z.includes(ZONES[z]))e.z.push(ZONES[z])};
+const effLvl=m=>(m.lvl||1)+(m.elite||m.named?LORE.ELITE_RANK:0);
+// The first-sight read: d20 (from a hash of hero, creature and the hero's level, so a new level brings a new try) +
+// the better of Lore and Perception vs DC. Draws nothing from the shared RNG.
+function read(a,e,m,key){if(e.read||e.rl===a.lvl)return;e.rl=a.lvl;
+  const d20=1+Math.floor(hash(a.id,strHash(key),a.lvl)*20),b=bestFor([a],['lore','perception']),dc=LORE.DC+(m.elite||m.named?LORE.ELITE_DC:0);
+  if(d20+(b?b.mod:0)>=dc){e.read=1;if(b&&b.skill==='lore')e.name=1}}
+// A creature in sight. Returns its entry. First sight: noted, and read.
+export function sight(a,m){if(!learner(a)||!m||m.kind!=='mob')return null;const key=keyOf(m),e=entry(a,key),first=!e.seen;
+  if(first)e.seen=Math.round(S.gameMin);read(a,e,m,key);seenLvl(e,m);where(e,m);if(first)e.fresh=1;return e}
+// The threat rank this hero perceives for one creature, or null when it cannot tell.
+export function perceived(a,m){const e=a.lore&&a.lore.c[keyOf(m)];if(!e)return null;
+  if(e.fought||e.read)return rankOf(effLvl(m)-a.lvl);return null}
+const knowsName=e=>!!(e&&(e.name||e.told||e.fought||e.killed||e.fell));
+// What the hero calls it: its name once known, else what it looks like.
+export function foeName(a,m){if(!m)return 'something';if(m.kind==='hero')return m.name;if(m.kind==='boss')return 'Kragmaw';if(m.kind!=='mob')return m.name||'something';
+  if(!learner(a))return realName(m);const e=a.lore&&a.lore.c[keyOf(m)]||sight(a,m);return knowsName(e)?realName(m):describe(m)}
+// The words for a creature's threat to this hero.
+export function threatText(a,m){const r=perceived(a,m),e=a.lore&&a.lore.c[keyOf(m)];if(r!=null)return (e&&e.fought?'':'looks ')+RANKS[r];
+  if(e&&e.warned)return 'you were warned of it';return 'hard to judge'}
+// A creature as `look` shows it: no level, no HP numbers.
+export function mobView(a,m){const e=sight(a,m),o={id:m.id,what:foeName(a,m),threat:threatText(a,m)};
+  if(e&&e.fresh){o.new_to_you=true;delete e.fresh}
+  if(m.elite||m.named)o.named=true;if(m.hp<m.maxhp)o.wounded=m.hp<m.maxhp*.5?'badly':'lightly';return o}
+// Should hunt-without-prey leave this one alone? Only for what this hero has learned to fear.
+export function feared(a,m){const e=a.lore&&a.lore.c[keyOf(m)];if(!e)return false;const r=perceived(a,m);
+  if(r!=null)return r>=LORE.FEAR;return !!e.warned&&!e.killed}
+
+// ---- learning from experience ----
+// The hero closes with a creature (watch() in sim/player.js, once per foe): its name, a truer measure, the place.
+export function engage(a,m){if(!learner(a)||!m||m.kind!=='mob')return;const e=sight(a,m);if(!e)return;if(a.loreFoe===m.id)return;a.loreFoe=m.id;
+  const first=!e.fought;e.fought=(e.fought||0)+1;e.name=1;seenLvl(e,m);if(first)ev(a,'You learn what you face: '+realName(m)+' ('+RANKS[rankOf(effLvl(m)-a.lvl)]+').')}
+export function slain(a,m){if(!learner(a)||!m)return;const e=entry(a,keyOf(m));e.killed=(e.killed||0)+1;e.name=1;seenLvl(e,m);where(e,m)}
+// A trick the creature used on the hero (sim/mobs.js): id is an ABILITIES key, or 'pack' when it called its kin.
+export function trick(a,m,id){if(!learner(a)||!m)return;const e=entry(a,keyOf(m));if(e.tricks.includes(id))return;e.tricks.push(id);
+  ev(a,'You learn a trick of the '+foeName(a,m).replace(/^an? /,'')+': '+trickName(id)+'.')}
+const trickName=id=>id==='pack'?'it calls its kin':ABILITIES[id]?ABILITIES[id].name+' (it '+ABILITIES[id].txt+')':id;
+// A fight that left the hero below LORE.NEAR of its HP: a lesson, and a reflection moment (#179).
+export function nearDeath(a,m){if(!learner(a)||!m||m.kind!=='mob'||a.loreNear===m.id)return;a.loreNear=m.id;const e=entry(a,keyOf(m));e.hurt=(e.hurt||0)+1;e.name=1;
+  const z=ZONES[zoneAt(a.x,a.y)];if(z){const p=place(a,z,'been');p.hurt=(p.hurt||0)+1}
+  const what=realName(m);ev(a,'A hard lesson: '+(m.elite||m.named?what:'a '+what)+' nearly killed you'+(z?' in '+z:'')+'.',true);
+  moment(a,'lesson',what+' nearly killed you'+(z?' in '+z:''))}
+// A hero fell to a creature: every learner who saw it (in sight, or a companion) learns it, and where.
+export function witness(dead,m){if(!dead||!m||m.kind!=='mob')return;const z=ZONES[zoneAt(dead.x,dead.y)];
+  for(const x of nearHeroes(dead.x,dead.y,LORE.WITNESS)){if(x===dead||!learner(x)||x.hidden)continue;if(dist(x,dead)>LORE.WITNESS*sightMul(zoneAt(x.x,x.y)))continue;
+    const e=entry(x,keyOf(m));e.fell=(e.fell||0)+1;e.name=1;seenLvl(e,m);where(e,m);if(!e.warned)e.warned='You saw '+dead.name+' fall to it';
+    if(z){const p=place(x,z,'been');p.fell=(p.fell||0)+1}
+    ev(x,'You saw '+dead.name+' fall to '+(m.elite||m.named?'':'a ')+realName(m)+'. You will not forget what it can do.',true);
+    moment(x,'lesson',dead.name+' fell to '+realName(m)+(z?' in '+z:''))}}
+
+// ---- places ----
+function place(a,name,how){const L=loreOf(a),p=L.p[name];const order={told:0,seen:1,been:2,home:3};
+  if(p){if((order[how]||0)>(order[p.how]||0))p.how=how;return p}return L.p[name]={how,at:Math.round(S.gameMin)}}
+export function knowsPlace(a,name){if(!learner(a))return true;return !!loreOf(a).p[name]}
+export function learnPlace(a,name,how='told'){if(!learner(a)||!name)return;const was=!!loreOf(a).p[name];place(a,name,how);return !was}
+// Every step for an agent hero (watch() in sim/player.js): the region it stands in, landmarks in sight, its quest.
+export function visit(a){if(!learner(a))return;const z=zoneAt(a.x,a.y);if(a.loreZ!==z){a.loreZ=z;if(ZONES[z]&&learnPlace(a,ZONES[z],'been'))ev(a,'You come into '+ZONES[z]+' for the first time.');else if(ZONES[z])place(a,ZONES[z],'been')}
+  const R=12*sightMul(z);for(const l of LANDMARKS)if(dist(a,l)<=R+(l.r||1)&&learnPlace(a,l.name,'seen'))ev(a,'You see '+l.name+' with your own eyes.');
+  const q=a.quest;if(q&&a.loreQ!==q.type){a.loreQ=q.type;const M=MOBS[q.type];if(M){const e=entry(a,q.type);e.told=1;if(ZONES[M.z]){learnPlace(a,ZONES[M.z],'told');if(!e.z.includes(ZONES[M.z]))e.z.push(ZONES[M.z])}}}}
+
+// ---- learning from words heard (chat, the criers, a job, a townsperson) ----
+const WARN=/\b(beware|avoid|deadly|dangerous|danger|no place for|stay away|nearly|careful|too strong|too much for|buried|feared?|fear)\b/i;
+const DIED=n=>new RegExp('\\b(slain|killed|torn|felled|fell|died|dead|lost)\\b[^.!?]{0,30}\\b(by|to|in|at)\\s+(an?\\s+|the\\s+)?'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i');
+// Scan one line the hero heard or read. who: who said it (for the warning kept). Returns how many things it learned.
+export function hear(a,text,who){if(!learner(a))return 0;const t=String(text||'');if(t.length<4)return 0;const X=lexicon(),warn=WARN.test(t);let n=0;const done=new Set();
+  const snip=clean((who?who+': ':'')+'"'+t+'"',LORE.SNIP);
+  for(const x of X.c){if(done.has(x.key)||!x.re.test(t))continue;done.add(x.key);const e=entry(a,x.key);if(!e.told&&!knowsName(e))n++;e.told=1;
+    if((warn||DIED(x.n).test(t))&&!e.warned){e.warned=snip;n++}
+    if(!x.key.startsWith('n:')&&MOBS[x.key]&&ZONES[MOBS[x.key].z]&&X.p.some(p=>p.n===ZONES[MOBS[x.key].z]&&p.re.test(t))&&!e.z.includes(ZONES[MOBS[x.key].z]))e.z.push(ZONES[MOBS[x.key].z])}
+  for(const p of X.p){if(!p.re.test(t))continue;if(learnPlace(a,p.n,'told'))n++;const q=loreOf(a).p[p.n];if((warn||DIED(p.n).test(t))&&!q.warned&&q.how!=='home'){q.warned=snip;n++}}
+  return n}
+
+// ---- what the hero can say about it (the lore tool, status.places, move_to) ----
+function creatureLine(a,key,e){const name=knowsName(e)?keyName(key):'unnamed: '+(e.desc||'a creature you glimpsed'),out={name};
+  if(e.hi!=null&&(e.fought||e.read))out.threat=(e.fought?'':'looks ')+RANKS[rankOf(e.hi+(key.startsWith('n:')?LORE.ELITE_RANK:0)-a.lvl)];
+  else if(e.warned)out.threat='you were warned of it';else out.threat=e.seen?'hard to judge':'only heard of';
+  const k=[];if(e.fought)k.push('fought '+(e.fought===1?'once':e.fought+' times')+(e.killed?', killed '+(e.killed===1?'one':e.killed):''));else if(e.killed)k.push('killed '+(e.killed===1?'one':e.killed));
+  if(e.hurt)k.push('it nearly killed you'+(e.hurt>1?' '+e.hurt+' times':''));if(e.fell)k.push('you know of '+(e.fell===1?'one':e.fell)+' who fell to it');
+  if(e.tricks.length)k.push('tricks: '+e.tricks.map(trickName).join('; '));if(e.z.length)k.push('found in '+e.z.join(', '));
+  if(e.warned)k.push('warned: '+e.warned);if(k.length)out.known=k;return out}
+function placeLine(a,name,p){const out={place:name,how:p.how==='home'?'your home region':p.how==='been'?'you have been there':p.how==='seen'?'you have seen it':'you have heard of it'};
+  const z=ZONES.indexOf(name),k=[];if(p.hurt)k.push('you nearly died there'+(p.hurt>1?' '+p.hurt+' times':''));if(p.fell)k.push('you know of '+(p.fell===1?'one':p.fell)+' who fell there');
+  if(z>=0){let worst=null;for(const key of Object.keys(loreOf(a).c)){const e=loreOf(a).c[key];if(!e.z.includes(name)||e.hi==null||!(e.fought||e.read))continue;const r=rankOf(e.hi-a.lvl);if(!worst||r>worst.r)worst={r,n:keyPlural(key)}}
+    if(worst)k.push('the worst you know there: '+worst.n+' ('+RANKS[worst.r]+')')}
+  if(p.warned)k.push('warned: '+p.warned);if(k.length)out.notes=k;return out}
+export function loreView(a,about){const L=loreOf(a),q=clean(about,60).toLowerCase();
+  // descriptions for unnamed entries: from a living one the hero can see, else a generic word
+  for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e)&&!e.desc){const m=S.mobs.find(x=>keyOf(x)===key);if(m)e.desc=describe(m)}}
+  let cs=Object.keys(L.c).map(k=>creatureLine(a,k,L.c[k])),ps=Object.keys(L.p).map(n=>placeLine(a,n,L.p[n]));
+  if(q){cs=cs.filter(x=>x.name.toLowerCase().includes(q)||(x.known||[]).some(s=>s.toLowerCase().includes(q)));ps=ps.filter(x=>x.place.toLowerCase().includes(q)||(x.notes||[]).some(s=>s.toLowerCase().includes(q)))}
+  return {creatures:cs,places:ps,towns:CITY.filter(c=>c.fac===a.fac).map(c=>c.name)}}
+// status.places: where this hero can walk by name.
+export function placesView(a){const L=loreOf(a);return Object.keys(L.p).map(n=>{const p=L.p[n],w=[];if(p.how==='home')w.push('home');else if(p.how==='told')w.push('heard of');if(p.hurt||p.fell||p.warned)w.push('danger');return w.length?n+' ('+w.join(', ')+')':n})}
+// The hero's warning words for a known region (move_to/lead_to), or null.
+export function placeWarn(a,name){const p=a.lore&&a.lore.p[name];if(!p)return null;const l=placeLine(a,name,p);return l.notes&&l.notes.length?name+': '+l.notes.join('; ')+'.':null}
+// A creature named by the agent (hunt prey): the key of a creature it knows by name, or null.
+export function preyKey(a,name){const s=clean(name,60).toLowerCase().replace(/^(an?|the)\s+/,'');if(!s)return null;const L=loreOf(a);
+  for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e))continue;const n=keyName(key).toLowerCase(),p=keyPlural(key).toLowerCase();if(s===n||s===p||s===n.replace(/^the /,''))return key}
+  return null}
+// hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear).
+export function pickPrey(a,cmd){const R=9*sightMul(zoneAt(a.x,a.y));let best=null,bs=1e9;
+  for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a))continue;
+    if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(m.target!==a&&feared(a,m))continue;
+    const d=dist(a,m);if(d>R)continue;const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
+  if(best)sight(a,best);return best}
+
+// ---- what people say (a townsperson's advice, the gate's rumour of a job) ----
+// The next region up from this hero's level, if it is beyond them: a townsperson's warning (sim/talk.js, sim/player.js).
+export function npcWarning(a){if(!learner(a))return null;let z=-1;
+  for(let i=0;i<ZONES.length;i++){const b=REGIONS[i]&&REGIONS[i].band;if(!b||b[0]<=a.lvl+1)continue;if(z<0||b[0]<REGIONS[z].band[0])z=i}
+  if(z<0)return null;const p=a.lore&&a.lore.p[ZONES[z]];if(p&&p.warned)return null;
+  const ks=Object.keys(MOBS).filter(k=>MOBS[k].z===z);const k=ks.length?ks[Math.abs(a.id)%ks.length]:null;
+  return ZONES[z]+' is no place for green blades'+(k?': the '+MOBS[k].pl+' there have buried better than you':'')+'. Grow before you go.'}
+// The rumour at the gate about a job's region, in words.
+export function jobRumour(a,z){const b=REGIONS[z]&&REGIONS[z].band;if(!b)return 'nobody says much about it';
+  if(b[0]>a.lvl+3)return 'the captain shakes his head: no work for green blades';if(b[0]>a.lvl+1)return 'they say it will test you';
+  if(b[1]<a.lvl-3)return 'they call it easy coin';return 'they call it honest work'}

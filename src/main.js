@@ -12,13 +12,21 @@ import {renderTable} from './ui/table.js';
 import {checkRunAlerts,sync as syncRunAlert} from './ui/runalert.js'; // sound and notes when a Fellowship or DM runner stops
 import {checkRunGate} from './ui/rungate.js'; // hold the world while an agent seat is not connected (#171)
 import {initUI,uiFast,uiSlow} from './ui/app.js'; // every panel and its refresh cadence (shared with npm run uismoke)
+import {titleWanted,showTitle} from './ui/title.js'; // Continue, New world, Load: nothing runs until a choice
 
-boot(init); // restores the localStorage save when there is one, else init()
-const renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
-initUI(renderer);
-initSetup();if(bootKind()==='fresh')openSetup({first:true});else afterBoot(); // no save and no queued setup: the setup page opens over the default world; a setup boot starts its runners
-select(S.pinned&&typeof S.pinned.x==='number'?S.pinned:ranked()[0]); // keep following the saved hero
-if(S.fellowship)setView('fellow'); // the Fellowship is the story: frame it by default (#68)
+// The world is built only when the owner picks Continue (or the default world) on the title screen, or at once with
+// ?continue=1 / ?skip-title=1, a queued New World setup, or a Load/Import reload. New world goes to the setup page
+// from the title and reloads into the new world, which skips the title.
+initSetup();
+let renderer=null;
+function start(kind){
+  boot(init); // restores the localStorage save when there is one, else init()
+  renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
+  initUI(renderer);
+  if(bootKind()==='fresh'&&kind!=='default')openSetup({first:true});else afterBoot(); // no save and no queued setup: the setup page opens over the default world; a setup boot starts its runners
+  select(S.pinned&&typeof S.pinned.x==='number'?S.pinned:ranked()[0]); // keep following the saved hero
+  if(S.fellowship)setView('fellow'); // the Fellowship is the story: frame it by default (#68)
+  last=performance.now();requestAnimationFrame(frame)}
 
 let last=performance.now(),uiT=0;
 function frame(now){const real=Math.min(.1,(now-last)/1000);last=now;
@@ -29,4 +37,4 @@ function frame(now){const real=Math.min(.1,(now-last)/1000);last=now;
   renderer.draw();uiT-=real;if(uiT<=0){uiT=.3;uiFast()}
   if(Math.floor(now/1000)!==Math.floor((now-real*1000)/1000))uiSlow();
   requestAnimationFrame(frame)}
-requestAnimationFrame(frame);
+if(titleWanted())showTitle(start);else start('direct');

@@ -17,7 +17,7 @@ import {WORLDS} from '../world/spec.js';
 import {bridgeUrl,agentLink,dmLink} from './player-bridge.js';
 import {runnerByKey} from './runners.js';
 import {ctl} from './controls.js';
-import {bootKind,appliedSetup,holdSave,setNewWorldHandler,saveSummary,queueNewWorld,exportSave} from './save.js';
+import {bootKind,appliedSetup,holdSave,setNewWorldHandler,saveSummary,queueNewWorld,exportSave,exportStored,isBooted} from './save.js';
 
 const LAST_KEY='eldmoor.setup.last';
 const WORLDS_INFO=Object.fromEntries(Object.keys(WORLDS).map(id=>[id,WORLDS[id].name||id]));
@@ -29,16 +29,19 @@ const ROLE_ORDER=SLOT_KEYS;
 const MODE_TEXT={scripted:'Scripted',ai:'AI',agent:'Agent'};
 const MODE_TITLE={scripted:'The scripted rules play this hero',ai:'A language model decides through the relay (scripted when it is silent)',agent:'An agent runner plays this hero through the game tools; shown as AGENT from the first minute'};
 
-let root=null,st=null,pausedAt=null; // st: {setup, first, confirm, error, relay}
+let root=null,st=null,pausedAt=null; // st: {setup, first, confirm, error, back, confirmed}
 let relay={health:null,runner:null,at:0,busy:false};
+const relayWatchers=new Set(); // the title screen listens for relay answers too
 
 // ---- the relay: models and runners ----
 const relayBase=()=>bridgeUrl().replace(/^ws(s?):/,'http$1:').replace(/\/play\/?$/,'');
 const healthUrl=()=>CFG.url.replace(/\/decide$/,'/health');
-function pollRelay(force){if(relay.busy||typeof fetch!=='function')return;if(!force&&Date.now()-relay.at<4000)return;relay.busy=true;relay.at=Date.now();
+export function pollRelay(force){if(relay.busy||typeof fetch!=='function')return;if(!force&&Date.now()-relay.at<4000)return;relay.busy=true;relay.at=Date.now();
   const get=u=>fetch(u).then(r=>r.json()).catch(()=>null);
   Promise.all([get(healthUrl()),get(relayBase()+'/play/runner')]).then(([h,r])=>{relay.health=h&&typeof h==='object'?h:null;relay.runner=r&&typeof r==='object'?r:null})
-    .finally(()=>{relay.busy=false;if(root&&!root.hidden)syncModels()})}
+    .finally(()=>{relay.busy=false;if(root&&!root.hidden)syncModels();for(const f of relayWatchers)f()})}
+export const watchRelay=f=>{relayWatchers.add(f);return ()=>relayWatchers.delete(f)};
+export const pulledModels=()=>pulled();
 const provs=()=>relay.health&&relay.health.providers||null;
 const pulled=()=>{const o=provs()&&provs().ollama;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
 const openaiList=()=>{const o=provs()&&provs().openai;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
@@ -140,11 +143,11 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   if(st.error)fin.append(el('div','sbad',st.error));
   if(st.confirm){const sum=saveSummary(s.world),c=el('div','sconfirm');
     c.append(el('div',null,'Replace the saved '+(WORLDS_INFO[s.world]||s.world)+' world'+(sum?' (day '+sum.day+', '+sum.kb+' KB)':'')+'? It cannot be brought back unless you export it first.'));
-    const row=el('div','sbtns');if(s.world===WORLD_ID)row.append(btn('Export it first','export'));row.append(btn('Replace and start','go',{},'primary'),btn('Back','back'));c.append(row);fin.append(c)}
+    const row=el('div','sbtns');if(s.world===WORLD_ID||!isBooted())row.append(btn('Export it first','export'));row.append(btn('Replace and start','go',{},'primary'),btn('Back','back'));c.append(row);fin.append(c)}
   else{const row=el('div','sbtns'),state=relayState(),agents=planRunners(s).length>0;
     const go=btn(agents&&state!=='ready'&&state!=='checking'?'Start; I will start the runners myself':'Start','start',{},'primary');
     if(ps.length){go.classList.add('off');go.disabled=true}
-    row.append(go,btn(st.first?'Play the default world':'Cancel','cancel'));fin.append(row)}
+    row.append(go,btn(st.back?'Back':st.first?'Play the default world':'Cancel','cancel'));fin.append(row)}
   page.append(fin);
   root.replaceChildren(page)}
 
@@ -181,7 +184,7 @@ function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a
   else if(a==='start')return start();
   else if(a==='go')return go();
   else if(a==='back')st.confirm=false;
-  else if(a==='export')exportSave();
+  else if(a==='export'){if(isBooted()&&st.setup.world===WORLD_ID)exportSave();else exportStored(st.setup.world)}
   else if(a==='cancel')return cancel();
   else return;
   render()}
@@ -191,17 +194,19 @@ function rollName(k){const p=st.setup.slots[k],rs=racesOf(st.setup.fac);if(!rs.l
   for(let i=0;i<20;i++){const r=p.race||rs[Math.floor(Math.random()*rs.length)].id,n=suggestName(r,Math.random(),Math.random());if(!taken.has(n.toLowerCase())){p.name=n;return}}}
 
 function start(){if(problems().length)return;
-  if(!st.confirm&&saveSummary(st.setup.world)){st.confirm=true;render();return}
+  if(!st.confirm&&st.confirmed!==st.setup.world&&saveSummary(st.setup.world)){st.confirm=true;render();return}
   go()}
 function go(){if(problems().length)return;const s=cleanSetup(st.setup);
   try{store().setItem(LAST_KEY,JSON.stringify(s))}catch(e){}
   const err=queueNewWorld(s);if(err){st.error=err;st.confirm=false;render()}}
 
-function cancel(){close()}
+function cancel(){const back=st&&st.back;close();if(back)back()}
 function close(){if(root)root.hidden=true;holdSave(false);if(pausedAt!=null){if(ctl.speed===0)ctl.speed=pausedAt;pausedAt=null}}
 
-export function openSetup({first=false}={}){if(!root)build();
-  st={setup:initialSetup(),first,confirm:false,error:''};
+// back: opened from the title screen; Back (or Escape) closes the page and calls it. confirmed: the world whose save the
+// owner already agreed to replace on the title screen, so Start does not ask again for it.
+export function openSetup({first=false,back=null,confirmed=null}={}){if(!root)build();
+  st={setup:initialSetup(),first:first&&!back,confirm:false,error:'',back,confirmed};if(back)st.setup.world=WORLD_ID; // the map chosen on the title
   if(pausedAt==null){pausedAt=ctl.speed||1;ctl.speed=0} // the world waits while you choose
   holdSave(true);lastModelSig='';pollRelay(true);render();root.hidden=false;
   const f=root.querySelector('button');if(f&&f.focus)f.focus()}

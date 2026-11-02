@@ -77,13 +77,14 @@ export function systemPrompt(st) {
     st.oath ? `Your oath: ${st.oath}.` : '',
     traits ? `Your nature: ${traits}. Let it colour your choices.` : '',
     '',
-    'HARDCORE: you have one life. If you die, you are gone for good and your story ends. Fight things your level or below, rest or go home when hurt, and flee early rather than late. Reflexes protect you when you are slow (you break off below about 15% HP and defend yourself when attacked), but they are a last resort.',
+    'HARDCORE: you have one life. If you die, you are gone for good and your story ends. Rest or go home when hurt, and flee early rather than late. Reflexes protect you when you are slow (you break off below about 15% HP and defend yourself when attacked), but they are a last resort.',
+    KNOWLEDGE_ORDERS,
     '',
     'How to play:',
     '- You act only through the tools. You know only what they tell you: what you can see nearby, what you hear, and the news.',
     '- Everyone you deal with is in the game, and so are your words: you speak with say (heard within about 7 tiles) and party_say in a party (a shout heard within about 12 tiles), and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way. Distance cuts you off: beyond shouting range your companions neither hear you nor your proposals and votes, so before you part agree where and when to meet again and remember it; only a paid courier from a town gate (send_courier) carries word farther, slowly.',
     '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns early, something needs you: read the events.',
-    '- Grow stronger: hunt in your level band, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose.',
+    '- Grow stronger: hunt what you judge you can beat, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice.',
     MEMORY_ORDERS,
     JOURNAL_ORDERS,
@@ -93,6 +94,11 @@ export function systemPrompt(st) {
   ].filter(s => s !== null).join('\n');
 }
 
+// Learn the world (issue #188): the hero knows only what it saw, heard or was told. withKnowledgeOrders rewrites an older
+// session's prompt (its meta rules: "fight things your level or below", "hunt in your level band") into this.
+export const KNOWLEDGE_ORDERS = 'YOU KNOW ONLY WHAT YOU HAVE SEEN, HEARD OR BEEN TOLD. A creature you have never met is a stranger: look describes it and gives your own read of its threat, and fighting it, watching it, a warning or the town criers teach you more (its name, its measure, its tricks). You walk by name only to places you know (status.places: your home region, where you have been, what you were told of); to go anywhere else, explore a direction or "x,y". Nobody picks safe prey for you: hunt with prey you know, or what is around. Ask townsfolk and companions about places and creatures, heed warnings, share what you learn with your companions, and remember what hurt you (lore lists what you know).';
+const OLD_RULES = [[' Fight things your level or below, rest or go home when hurt,', ' Rest or go home when hurt,'], ['hunt in your level band,', 'hunt what you judge you can beat,']];
+export const withKnowledgeOrders = sys => {let s = String(sys || ''); if (s.includes('YOU KNOW ONLY WHAT YOU HAVE SEEN')) return s; for (const [a, b] of OLD_RULES) s = s.split(a).join(b); return s + '\n' + KNOWLEDGE_ORDERS};
 // Memories (issue #155): the line every hero's standing orders carry; withMemoryOrders adds it to an older session's prompt.
 export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
 // Tiered memory (issue #153): landmarks, chapters and journal_search; withMemoryOrders adds this line to an older prompt too.
@@ -235,7 +241,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const moved = migrateLegacy(); if (moved) console.log('[agent] ' + moved);
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
-  sess.system = withMemoryOrders(sess.system); // memories (#155) for a session that began before them
+  sess.system = withKnowledgeOrders(withMemoryOrders(sess.system)); // memories (#155), learning the world (#188) for a session that began before them
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},

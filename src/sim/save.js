@@ -105,3 +105,16 @@ export function restore(snap){
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
   reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
   return S}
+
+// ---- a short description of a save, for the title screen (read-only, never changes S) ----
+// {day, min, heroes, fellowship:{name, members:[{slot, name, cls, lvl, fac, race, skin, hair, dead}]}|null}
+const SLOT_ORDER=['tank','healer','dps1','dps2','dps3'];
+export function describeSave(snap){if(!isSave(snap))return null;
+  const byId=new Map();for(const a of snap.agents)if(a&&a.kind==='hero')byId.set(String(a.id),a);
+  const F=snap.fellowship;let fellowship=null;
+  if(F&&F.slots&&typeof F.slots==='object'){const rank=k=>{const i=SLOT_ORDER.indexOf(k);return i<0?99:i},keys=Object.keys(F.slots).sort((a,b)=>rank(a)-rank(b));
+    const members=[];for(const k of keys){const h=F.slots[k]!=null&&byId.get(String(F.slots[k]));
+      if(h)members.push({slot:k,name:h.name,cls:h.cls,lvl:h.lvl,fac:h.fac,race:h.race,skin:h.skin,hair:h.hair,dead:h.state==='dead'})}
+    fellowship={name:F.name||'',members}}
+  return {day:Math.floor(snap.gameMin/1440)+1,min:Math.floor(snap.gameMin)%1440,
+    heroes:byId.size?[...byId.values()].filter(a=>a.state!=='dead').length:0,fellowship}}

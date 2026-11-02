@@ -115,6 +115,28 @@ if (process.argv[2] === '--staged') {
     for (const id of S.staged.cur.cast.mobs) {const m = S.mobs.find(x => x.id === id); if (m && m.alive) {m.alive = false; m.gone = true}}
     run(1);
   }
+  // the frame must fit the cast (issue #211)
+  fresh();
+  const pv = dmAct('stage_scene', {kind: 'ambush', near: 'fellowship', preview: 'true'});
+  ok(pv.ok && pv.preview && /^a pack of \d+ /.test(pv.cast) && pv.creatures.length >= 2 && !pv.people, `preview shows the cast without a frame or reason: ${pv.cast || pv.error}`);
+  ok(!S.staged.cur || S.staged.cur.phase === 'done', 'a preview stages nothing (no scene, no foes, no daily count)');
+  const mobs0 = S.mobs.length, n0 = S.staged.day.n;
+  const misfit = dmAct('stage_scene', {kind: 'ambush', near: 'fellowship', frame: 'A group of armed men blocks the road ahead, their leader shouting threats.', cast: {}, reason: 'misfit'});
+  ok(misfit.ok === false && /does not fit the cast/.test(misfit.error) && misfit.error.includes(pv.cast) && /men/.test(misfit.error), `armed men over a pack of beasts is refused, naming the cast: ${misfit.error}`);
+  ok(S.mobs.length === mobs0 && S.staged.day.n === n0, 'a refused misfit spawns nothing and costs no scene');
+  ok(dmAct('stage_scene', {kind: 'ambush', near: 'fellowship', frame: 'The road is quiet and empty, and the brush is still.', cast: {}, reason: 'misfit'}).ok === false, 'a frame that never names what comes is refused too');
+  const fam = pv.creatures[0].replace(/ \(L\d+\)$/, ''), word = fam.split(' ').pop().toLowerCase();
+  const good = dmAct('stage_scene', {kind: 'ambush', near: 'fellowship', frame: `Something snorts in the brush; a ${word} breaks cover, and more behind it, with a pack leader shouldering through.`, cast: {}, reason: 'fits'});
+  ok(good.ok && good.cast.length === pv.creatures.length && good.cast.every((c, i) => c.includes(pv.creatures[i].replace(/ \(L\d+\)$/, ''))), `a fitting frame (a family word, "pack leader" allowed) is accepted and builds the previewed cast (${good.cast && good.cast.length} foes)`);
+  for (const id of S.staged.cur.cast.mobs) {const m = S.mobs.find(x => x.id === id); if (m) {m.alive = false; m.gone = true}}
+  S.staged.cur.phase = 'done'; S.staged.day.n = 0; fresh();
+  const ev = dmAct('stage_scene', {kind: 'elite', near: 'fellowship', preview: 'true'});
+  ok(ev.ok && /^a named /.test(ev.cast), `elite preview: ${ev.cast}`);
+  ok(dmAct('stage_scene', {kind: 'elite', near: 'fellowship', frame: 'A bandit captain steps out of the thorns, sword drawn.', cast: {}, reason: 'misfit'}).ok === false, 'an elite framed as a bandit captain is refused');
+  ok(dmAct('stage_scene', {kind: 'meeting', near: 'fellowship', preview: 'true'}).preview, 'preview of a kind with no creature cast just says so');
+  const cn = dmAct('stage_scene', {kind: 'elite', near: 'fellowship', frame: 'Old Greyjaw stalks out of the thorns, lame and hungry.', cast: {name: 'Old Greyjaw'}, reason: 'named'});
+  ok(cn.ok, 'an elite framed by its own given name is accepted' + (cn.ok ? '' : ': ' + cn.error));
+  if (cn.ok) {for (const id of S.staged.cur.cast.mobs) {const m = S.mobs.find(x => x.id === id); if (m) {m.alive = false; m.gone = true}} S.staged.cur.phase = 'done'; S.staged.day.n = 0}
   // a silent DM (polls, never answers): each call waits its budget, then the scripted DM; after MISS_MAX misses, at once
   fresh(); T.TABLE.dmMs = 1500;
   let r = dmAct('stage_scene', {kind: 'mystery', near: A.name, frame: 'A ring of old stones stands in the bracken, humming faintly.', cast: {}, reason: 'silent DM'});
@@ -152,8 +174,8 @@ if (process.argv[2] === '--staged') {
   ok(!S.table && S.staged.cur.phase === 'done', 'the restored scene runs to its end');
   // expiry: a cast that never meets the party gives up
   fresh(); const far = M.map(x => ({x: x.x, y: x.y}));
-  r = dmAct('stage_scene', {kind: 'ambush', near: Math.round(spot.x + 12) + ',' + Math.round(spot.y), frame: 'Something watches the road from the hedges.', cast: {}, reason: 'never met'});
-  if (!r.ok) r = dmAct('stage_scene', {kind: 'mystery', near: ZONES[zone], frame: 'Something watches the road from the hedges.', cast: {}, reason: 'never met'});
+  r = dmAct('stage_scene', {kind: 'ambush', near: Math.round(spot.x + 12) + ',' + Math.round(spot.y), frame: 'A pack watches the road from the hedges.', cast: {}, reason: 'never met'});
+  if (!r.ok) r = dmAct('stage_scene', {kind: 'mystery', near: ZONES[zone], frame: 'A pack watches the road from the hedges.', cast: {}, reason: 'never met'});
   for (const x of M) {const c = homeOf(x); x.state = 'town'; x.townStep = 2; x.wait = 9e9; x.x = c.gate.x; x.y = c.gate.y - 1}
   T.TABLE.speed = 8; const g0 = S.gameMin; while (S.gameMin - g0 < ST.STAGE.WAIT_MIN + 30) step(1 / 60);
   ok(r.ok && S.staged.cur.phase === 'done' && S.staged.cur.result === 'expired' && S.dmLog.some(e => e.kind === 'abandon' && tag(e)), `a cast nobody meets gives up after ${ST.STAGE.WAIT_MIN / 60} game hours (logged)`);
@@ -318,6 +340,7 @@ delete S.fellowship.wait; // a Crypt order waiting from the section above (crypt
 run(1);
 const FP = F_.fellowParty();
 ok(FP && FP.leader === RA, `the Fellowship musters with ${RA.name} leading (${FP && FP.mem.length} in the party)`);
+(await import('../src/sim/lore.js')).hear(RA, 'They say Mirefen lies past the river.', 'a townsperson'); // the leader has heard of it (#188)
 ok(!act(RB, 'lead_to', {target: 'Mirefen'}).ok, 'only the leader may lead');
 const ld = act(RA, 'lead_to', {target: 'Mirefen'});
 ok(ld.ok, `lead_to: ${ld.leading || ld.error}`);

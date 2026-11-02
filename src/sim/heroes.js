@@ -29,6 +29,7 @@ import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
 import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
+import {slain as loreSlain,witness as loreWitness} from './lore.js'; // learn the world (#188): agent heroes only, no RNG
 import {effMul,passiveMul} from './eff.js'; // timed effects and class passives (sim/eff.js, #81)
 import {fightMoves} from './moves.js'; // class abilities (sim/moves.js, #81)
 import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
@@ -93,6 +94,7 @@ export function killMob(a,m){m.alive=false;m.respawn=22+rnd()*20;m.target=null;a
   if(m.elite){timeline('elite',a,' slew ',{t:m.name,c:'gd'},', '+m.title+', in '+ZONES[M.z]+'.');a.eliteKills=(a.eliteKills||0)+1;log(a,' slew ',{t:m.name,c:'gd'},', ',m.title,', in ',ZONES[M.z],'!');getEpic(a,pickA(EPICS[M.z]),m.name)} // named elite: guaranteed epic from the zone table
   if(a.quest&&a.quest.type===m.type&&a.quest.have<a.quest.need)a.quest.have++;
   goalEvent(a,'kill',m);
+  if(a.player)loreSlain(a,m);
   a.target=null;a.state='hunt'}
 
 // Permanent death: graveyard entry, a recruit is scheduled, old graves recycled.
@@ -110,6 +112,7 @@ export function fall(a,cause){
 
 const GUILD_GRUDGE_LVL=12,RAID_FLEE=.15;
 export function agentDie(a,killer){
+  if(killer&&killer.kind==='mob')loreWitness(a,killer); // those who see it learn what it can do (#188)
   const lv={t:'(level '+a.lvl+')',c:'dm'};
   record(a,'Fell at level '+a.lvl+', slain by ',killer.kind==='hero'?killer:killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+MOBS[killer.type].name,'.');
   bondEvent(a,'died',[killer]);

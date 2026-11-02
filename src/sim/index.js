@@ -40,7 +40,7 @@ export {log,onLog,gold,epic,fac} from './chronicle.js';
 export {onMarketTick} from './market.js';
 export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
-export {snapshot,restore,isSave,SAVE_VERSION} from './save.js';
+export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
 export {enableBrain,disableBrain,brainStatus} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
 export {found,autoPick,disbandFellowship,fellowshipMembers,fellows,setMinds} from './fellowship.js';

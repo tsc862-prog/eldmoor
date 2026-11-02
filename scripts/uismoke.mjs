@@ -254,11 +254,15 @@ console.log('declutter');
    const chipEl=cl.parentNode.children.find(c=>c.classList.contains('chatnew'));ok(chipEl&&!chipEl.hidden&&/new line/.test(chipEl.textContent),'chat panel: a "new lines" chip shows while scrolled down');
    chipEl.dispatch('click',{target:chipEl});ok(cl.scrollTop===0&&chipEl.hidden,'chat panel: the chip returns to the top');
    cl.scrollTop=0}
-  {const wb=$('chatWide');ok(!!wb&&wb.textContent==='Wider','chat panel: a width toggle');const had=document.body.classList.contains('chat-wide');
-   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')!==had&&wb.getAttribute('aria-pressed')==='true','width toggle widens the side column (body.chat-wide)');
-   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')===had,'width toggle narrows it again');
-   const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
-   ok(/--side:clamp\(340px,28vw,460px\)/.test(css)&&/grid-template-columns:minmax\(0,1fr\) var\(--side\)/.test(css)&&/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'side column is wider by default, and one column at phone width')}
+  {const wb=$('chatTall');ok(!!wb&&wb.textContent==='Taller','chat panel: a height toggle');const had=document.body.classList.contains('chat-tall');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-tall')!==had&&wb.getAttribute('aria-pressed')==='true','height toggle makes the chat taller (body.chat-tall)');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-tall')===had,'height toggle shortens it again');
+   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');const iS=html.indexOf('id="screen"'),iC=html.indexOf('id="chatSec"'),iF=html.indexOf('id="frames"'),iA=html.indexOf('id="side"');
+   ok(iF<iS&&iS<iC&&iC<iA,'chat panel follows the map in the DOM (frames, map, chat, then the side column)');
+   ok(!$('side').children.includes($('chatSec')),'chat is not in the side column');
+   const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   ok(/--side:clamp\(340px,28vw,460px\)/.test(css)&&!/chat-wide/.test(css)&&/grid-template-columns:minmax\(0,1fr\) var\(--side\)/.test(css)&&/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'side column is its normal width, and one column at phone width');
+   ok(/\.chatbox \.chatlist\{height:clamp\(/.test(css),'chat list has its own fixed height and scroll')}
   {const dossier=await import('../src/ui/panels.js');const g=dossier.chatGroups([{from:mem[1],text:'x',party:true},{from:mem[1],text:'x',party:true},{from:mem[1],text:'y'}]);
    ok(g.length===2&&g[0].n===2,'repeats still collapse to a count (x2)')}
   {const dlog=await import('../src/sim/dmlog.js');dlog.dmlog('agent',null,['The DM agent plans a quiet road.'],{by:'dm-agent'});dlog.dmlog('frame',null,['A scripted scene opens.'],{});
@@ -308,6 +312,56 @@ console.log('run gate');
   gate.setRunFree(false);gate.checkRunGate(T0+232000);ok(ctl.held,'switching it off closes the gate again');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
   gate.setGateProbe(null);L[m3.id]='connected'}
+
+// ---- the DM frame (owner request): the DM's status beside the party frames ----
+{console.log('DM frame');
+  const posts=[];const wait=()=>new Promise(r=>setTimeout(r,30));
+  const dmr={key:'dm',kind:'dm',name:'Dungeon Master',state:'waiting',turns:4,cost:.123,provider:'ollama',model:'qwen2.5:14b',lines:['[dm] turn 4 done'],pace:'waiting for the evening of day 2',lastTurnAgo:90,error:null};
+  const relay={ok:true,enabled:true,session:{budget:null,spent:0,left:null},kinds:{},runners:[dmr]};
+  globalThis.fetch=async(url,o)=>{url=String(url);const j=v=>({ok:true,status:200,json:async()=>v});
+    if(o&&o.method==='POST'){posts.push({url,body:JSON.parse(o.body)});return j({ok:true})}
+    if(url.endsWith('/play/runner'))return j(relay);throw new Error('no route '+url)};
+  const dmf=$('frames').querySelector('.dmf'),txt=()=>dmf.textContent;
+  sim.setDmSeat(false);relay.runners=[];uiFast();
+  ok(!!dmf&&!dmf.querySelector('.dmfchip').hidden&&dmf.querySelector('.dmffull').hidden&&/DM: scripted/.test(txt())&&/Open seat/.test(txt()),'seat closed: a small "DM: scripted" chip with Open seat');
+  sim.setDmSeat(true);relay.runners=[dmr];
+  for(let i=0;i<250&&!/evening of day 2/.test(txt());i++){await wait();uiSlow();uiFast()}
+  ok(dmf.querySelector('.dmfchip').hidden&&!dmf.querySelector('.dmffull').hidden,'seat open: the frame shows, the chip goes away');
+  ok(/evening of day 2/.test(txt()),'the runner\'s wait line shows: '+dmf.querySelector('.dmfdo').textContent);
+  ok(/qwen2\.5:14b/.test(txt())&&/4 turns/.test(txt())&&/\$0\.123/.test(txt())&&/last turn 2 min ago/.test(txt()),'mind, turns, cost and last turn: '+dmf.querySelector('.dmffol').textContent);
+  ok(/Narrations 0\/12 · Levers 0\/8 · Scenes 0\/3/.test(txt())&&/Fellowship|No DM actions/.test(txt())&&/Notes \d+/.test(txt()),'daily counts against limits, Fellowship share and notes');
+  const stop=dmf.querySelector('.dmfrun').querySelectorAll('button').find(b=>b.dataset.runact==='stop');
+  ok(!!stop&&/Stop DM/.test(stop.textContent),'a running DM offers Stop DM');
+  document._ls.pointerdown.forEach(f=>f({button:0,target:stop,preventDefault(){},stopPropagation(){}}));await wait();
+  ok(posts.some(p=>p.url.endsWith('/play/runner/stop')&&p.body.key==='dm'),'Stop DM goes to the relay');
+  relay.runners=[{...dmr,state:'stopped',pace:null,lines:[]}];
+  for(let i=0;i<250&&!dmf.querySelector('.dmfrun').querySelector('[data-runact=start]');i++){await wait();uiSlow();uiFast()}
+  const start=dmf.querySelector('.dmfrun').querySelector('[data-runact=start]');ok(!!start&&/Start DM/.test(start.textContent),'a stopped DM offers Start DM');
+  document._ls.pointerdown.forEach(f=>f({button:0,target:start,preventDefault(){},stopPropagation(){}}));await wait();
+  ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'),'Start DM goes to the relay');
+  const box=$('dmlog'),wb=$('worldbox');box.open=false;wb.open=false;dmf.dispatch('click',{target:dmf.querySelector('.dmfdo')});
+  ok(box.open&&wb.open,'a click on the frame opens the Dungeon Master panel');
+  box.open=false;dmf.dispatch('click',{target:dmf.querySelector('[data-dmnotes]')});
+  ok(box.open&&(await import('../src/ui/dmpanel.js')).dmFilter()==='notes','the Notes button opens the panel on its Notes filter');
+  ok(dmf.querySelector('.dmftop').querySelector('[data-dmseat=close]'),'Close seat is on the frame');
+  const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  ok(/\.dmf\{[^}]*min-width:0/.test(css)&&/\.dmffull\{[^}]*min-width:0/.test(css)&&/overflow-wrap:anywhere/.test(css.match(/\.dmfdo\{[^}]*\}/)[0]),'phone width: the frame wraps and shrinks (no horizontal scroll)');
+  sim.setDmSeat(false)}
+
+// ---- the title screen (owner request): keyboard, and the skip params for checks and dev ----
+{console.log('title screen');
+  const title=await import('../src/ui/title.js'),save=await import('../src/ui/save.js');
+  ok(title.titleWanted('?skip-title=1')===false&&title.titleWanted('?continue=1')===false,'a skip param goes straight into the world');
+  save.holdSave(false);save.writeSave();
+  let played=[];const root=title.showTitle(k=>played.push(k));
+  ok(!root.hidden&&root.querySelector('[data-a="continue"]'),'the title shows Continue over a saved world');
+  ok(document.activeElement&&document.activeElement.dataset.a==='continue','Continue has the focus');
+  const key=(k,target=document.body)=>{for(const f of document._ls.keydown||[])f({key:k,target,preventDefault(){}})};
+  key('Enter',root.querySelector('[data-a="new"]'));ok(played.length===0,'Enter on a focused button is left to the button');
+  root.querySelector('[data-a="new"]').click();ok(/replaces the saved/.test(root.textContent),'New world asks first');
+  key('Enter');ok(played.length===0,'Enter does not Continue while the question is open');
+  key('Escape');ok(!/replaces the saved/.test(root.textContent),'Escape closes the question');
+  key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away')}
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
