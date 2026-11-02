@@ -37,10 +37,11 @@ import {bond} from './bonds.js';
 import {moment} from './reflect.js'; // reflection moments (#179)
 import {disableBrain,askRelay} from './brain.js';
 import {markPlayer} from './player.js';
+import {seedProfs} from './professions.js';
 import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME} from './persona.js';
 import {remember,memOf,refreshStances,stanceEvent,setSummariser,memorySnapshot,applyLong} from './memory.js';
 
-export const DPS=['Mage','Hunter','Rogue'];
+export const DPS=['Mage','Hunter','Rogue','Skald'];
 export const SLOTS=[{key:'tank',role:'tank',label:'Tank',cls:['Warrior']},{key:'healer',role:'healer',label:'Healer',cls:['Priest']},
   {key:'dps1',role:'dps',label:'DPS',cls:DPS},{key:'dps2',role:'dps',label:'DPS',cls:DPS},{key:'dps3',role:'dps',label:'DPS',cls:DPS}];
 export const SLOT_KEYS=SLOTS.map(s=>s.key);
@@ -208,9 +209,11 @@ export function offerReplacement(key){const F=S.fellowship;if(!F||F.slots[key]!=
   const cands=S.agents.filter(a=>eligible(a,F.fac)&&s.cls.includes(a.cls)).map(a=>({a,b:mates.reduce((t,m)=>t+bond(a,m),0),d:Math.abs(a.lvl-avg),fresh:s.role!=='dps'||!used.includes(a.cls)}))
     .sort((x,y)=>y.b-x.b||(y.fresh-x.fresh)||x.d-y.d||x.a.id-y.a.id);
   const c=cands[0];
-  if(c&&(c.b>0||c.d<=3)){join(c.a,key,c.b>0?'the DM offered the place to the hero who knew them best':'the DM offered the place to a hero of their level');return c.a}
+  if(c&&(c.b>0||c.d<=3)){join(c.a,key,c.b>0?'the DM offered the place to the hero who knew them best':'the DM offered the place to a hero of their level');placeProfs(c.a,key);return c.a}
   const cls=s.role==='dps'?(DPS.find(x=>!used.includes(x))||DPS[0]):s.cls[0];
-  const a=recruit(F.fac,cls);join(a,key,'a fresh recruit, sent for by the DM');return a}
+  const a=recruit(F.fac,cls);join(a,key,'a fresh recruit, sent for by the DM');placeProfs(a,key);return a}
+// The professions the owner chose for this place at setup (S.setup.profs, #259) pass to whoever fills it.
+function placeProfs(a,key){const p=S.setup&&S.setup.profs;if(p&&p[key])seedProfs(a,p[key])}
 
 // The record of a member whose grave was recycled before the tick saw them fall: last seen name, class and level.
 function ghost(key){const F=S.fellowship,l=(F.last||{})[key]||{},f=S.fallen.find(x=>x.name===l.name);

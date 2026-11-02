@@ -522,5 +522,101 @@ console.log('start gate: ready, not just claimed');
   ok(T.dmTurns().length===T.TURNS_KEEP,'the card list is capped');
   T.clearDmTurns();cp.setChatTab('chat')}
 
+// Fellowship sheet: last fight row (#241)
+{const SH=await import('../src/ui/sheet.js'),ms=sim.fellowshipMembers().filter(m=>m.hero);
+  const fx={id:7,foe:'Gnoll',start:1000,end:1002,result:'won',dealt:41.6,taken:12,healed:5,abilities:{Cleave:2,Guard:1},items:{'Health potion':1}};
+  globalThis.__actionLog={actionLog:()=>[],fights:()=>[fx],fightSummary:a=>a===ms[0].hero?fx:null};
+  const T=SH.sheetRows(),r=T.rows.find(x=>x.key==='fight');
+  ok(!!r&&r.cells.length===T.cols.length,'sheet: a "Last fight" row, one cell per member');
+  ok(/Gnoll · won · dealt 42, taken 12, healed 5 · 3 abilities, 1 potion/.test(r.cells[0].t),'sheet: foe, result, dealt, taken, healed, abilities and potions ('+r.cells[0].t+')');
+  ok(r.cells[1].t==='no fights yet','sheet: a member with no fight says so');
+  SH.openSheet();const body=document.querySelector('.shbody'),b=body.querySelector('.shfight');
+  ok(!!b&&b.dataset.hid==String(ms[0].hero.id),'sheet: the cell is a button that names the member');
+  b._same=1;SH.renderSheet();ok(body.querySelector('.shfight')._same===1,'sheet: an unchanged row is not rebuilt');
+  fx.taken=30;SH.renderSheet();ok(/taken 30/.test(body.querySelector('.shfight').textContent),'sheet: the row patches when the fight changes');
+  delete globalThis.__actionLog;SH.closeSheet()}
+
+// Professions block on the Stats tab (#259)
+{const h=(sim.fellowshipMembers().filter(x=>x.hero)[0]||{hero:sim.S.agents.find(a=>a.kind==='hero')}).hero;
+  const Pf=await import('../src/sim/professions.js');
+  select(h);setTab('stats');uiFast();
+  ok(/Professions/.test(tb().textContent)&&/No professions yet/.test(tb().textContent),'stats: a hero with none says "No professions yet"');
+  Pf.learn(h,'mining');Pf.learn(h,'cooking');Pf.gainSkill(h,'mining',59);
+  uiSlow();setTab('stats');uiFast();
+  const rows=tb().querySelectorAll('.prof');
+  ok(rows.length===2&&/Mining/.test(rows[0].textContent)&&/gathering/.test(rows[0].textContent)&&/60 · Journeyman/.test(rows[0].textContent),'stats: each profession with kind, skill and band ('+(rows[0]&&rows[0].textContent)+')');
+  ok(rows.length===2&&/crafting/.test(rows[1].textContent)&&/1 · Novice/.test(rows[1].textContent),'stats: a craft profession at skill 1 is Novice');
+  const bar=rows[0]&&rows[0].querySelector('.profbar i');ok(bar&&bar.style.width==='60%','stats: the bar is skill out of 100');
+  delete h.profs}
+
+// Table banner: the combat block (#277). A scene with rounds, set up by hand (no world step), rendered like main.js does.
+{const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),S=sim.S,box=$('tbanner'),spd=T.TABLE.speed;
+  const ms=sim.fellows().filter(a=>a.state!=='dead').slice(0,3),m=S.mobs.find(x=>x.alive&&!x.gone);
+  if(ms.length<2||!m)console.log('  skip combat banner (no members or no creature)');else{
+  const R=(die,mod,vs,hit,crit,dmg,target,down)=>({die,mod,total:die+mod,vs,hit:!!hit,crit:!!crit,dmg,target,down:!!down}); // beat.roll (#285)
+  const keep=S.table,hp0=ms.map(a=>a.hp),mhp=m.hp,st0=T.TABLE.step;m.hp=Math.round(m.maxhp*.6);
+  const sc={id:9001,kind:'elite',title:'Smoke fight',frame:['A brute bars the road.'],ids:ms.map(a=>a.id),i:1,phase:'turn',t:0,acts:{},ctx:{mob:m.id},pause:true,at:0,rd:2,fd:1,foeAt:1,
+    beats:[{id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 20+5=25 vs AC 14 (a natural 20): hit for 18',by:'agent',rd:1,roll:R(20,5,14,1,1,18,'Brute')},
+      {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[1].name,res:'d20 3+4=7 vs AC 15: missed',by:'foe',rd:1,roll:R(3,4,15,0,0,0,ms[1].name)},
+      {id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'roll text the banner no longer parses',by:'agent',rd:2,roll:R(12,5,14,1,0,9,'Brute')},
+      {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[0].name+' (drawn)',res:'d20 1+4=5 vs AC 15 (a natural 1): missed',by:'foe',rd:2,roll:R(1,4,15,0,0,0,ms[0].name)}]};
+  m.target=ms[0];S.table=sc;TB.renderTable(1);
+  const t=()=>box.textContent,v=TB.combatView();
+  ok(!box.hidden&&/ROUND 2\/3/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+'/'+(v&&v.of)+')');
+  const chips=box.querySelectorAll('.tci');
+  ok(chips.length===ms.length+1&&chips[1].classList.contains('foe'),'combat banner: initiative order with the foe at its place ('+chips.length+' chips)');
+  ok(chips[2].classList.contains('cur')&&/▶/.test(chips[2].textContent)&&!chips[1].classList.contains('cur'),'combat banner: the current actor is marked');
+  {const e=Math.round(m.hp/m.maxhp*100)+'%';ok(chips[1].querySelector('.tcp').textContent===e&&chips[1].querySelector('.tchp i').style.width===e,'combat banner: the foe has an HP bar and % ('+e+')')}
+  ok(chips[0].querySelector('.tchp')&&/drawn/.test(chips[0].textContent),'combat banner: members have HP bars and conditions (drawn)');
+  const rows=box.querySelectorAll('.trl');
+  ok(rows.length===2&&/Round 2/.test(box.querySelector('.trh').textContent),'combat banner: the rolls of the round in play');
+  ok(rows[0].classList.contains('hit')&&/d20 12\+5=17 vs 14/.test(rows[0].textContent)&&/HIT 9/.test(rows[0].textContent),'combat banner: a hit shows its roll and damage');
+  ok(rows[1].classList.contains('miss')&&rows[1].classList.contains('foe')&&/FUMBLE/.test(rows[1].textContent),'combat banner: the foe\'s miss on a natural 1');
+  ok(!box.querySelector('.to'),'combat banner: no duplicate plain order or last-act line');
+  const ch0=chips[0];ch0._same=1;TB.renderTable(1);ok(box.querySelector('.tci')._same===1,'combat banner: an unchanged frame is not rebuilt');
+  m.hp=Math.round(m.maxhp*.2);TB.renderTable(1);
+  ok(box.querySelector('.tci')._same===1&&box.querySelectorAll('.tci')[1].querySelector('.tcp').textContent===Math.round(m.hp/m.maxhp*100)+'%'&&box.querySelectorAll('.tci')[1].querySelector('.tchp i').className==='lo','combat banner: HP patches in place, low HP marked');
+  sc.rd=3;sc.i=0;sc.fd=0;TB.renderTable(1);
+  ok(/Last round \(2\)/.test(box.querySelector('.trh').textContent),'combat banner: at a round\'s start the last round\'s rolls show, labelled');
+  sc.beats.push({id:ms[0].id,name:ms[0].name,k:'strike',text:'Strike it',res:'d20 20+5=25 vs AC 14 (a natural 20): hit for 30, and it falls',by:'agent',rd:3,roll:R(20,5,14,1,1,30,'Brute',1)});
+  for(let i=0;i<4;i++)sc.beats.push({id:ms[1].id,name:ms[1].name,k:'heal',text:'Heal',res:'+5 to '+ms[0].name,by:'reflex',rd:3});
+  TB.renderTable(1);const r3=box.querySelectorAll('.trl');
+  ok(r3.length===4&&/1 earlier/.test(box.querySelector('.trh').textContent),'combat banner: at most 4 roll lines, the rest counted');
+  {const r0=TB.combatView().rolls[0].r;ok(!!r0&&r0.crit&&r0.down&&r0.dmg===30&&r0.target==='Brute','combat banner: the rolls are the beats roll data (crit, down, damage, target)')}
+  // the watcher's round pace (#285): the mode button cycles off/hold/auto; a held round shows Next round, which releases it
+  T.TABLE.step='off';TB.renderTable(1);let sb=box.querySelector('.tstb');
+  ok(!!sb&&/Step: off/.test(sb.textContent)&&!box.querySelector('.tnext'),'combat banner: the step button shows the round pace (off)');
+  sb.click();TB.renderTable(1);ok(T.TABLE.step==='hold'&&/Step: hold/.test(box.querySelector('.tstb').textContent),'combat banner: the step button cycles to hold');
+  const i0=sc.i;sc.i=sc.ids.length;sc.sh={rd:sc.rd,t:0,go:0};TB.renderTable(1);
+  const nx=box.querySelector('.tnext');ok(!!nx&&/Round 3 is done/.test(box.textContent),'combat banner: a held round says so and offers Next round ('+(T.bannerOf()||{}).line+')');
+  nx.click();ok(sc.sh.go===1,'combat banner: Next round releases the held round');TB.renderTable(1);ok(!box.querySelector('.tnext'),'combat banner: no Next round once released');
+  T.TABLE.step='auto';sc.sh={rd:sc.rd,t:1,go:0};TB.renderTable(1);ok(/\(3 s\)/.test((box.querySelector('.tnext')||{}).textContent||'')&&/next round in 3 s/.test(box.textContent),'combat banner: auto shows the seconds left');
+  box.querySelector('.tstb').click();ok(T.TABLE.step==='off','combat banner: the step button cycles back to off');delete sc.sh;sc.i=i0;T.TABLE.step=st0;
+  m.alive=false;sc.phase='outcome';sc.summary='The foe is down.';sc.fell=[ms[2]?ms[2].id:ms[1].id];TB.renderTable(1);
+  const ends=[...box.querySelectorAll('.tendc')].map(e=>e.textContent);
+  ok(ends.includes('The foe is down')&&ends.some(e=>/ fell$/.test(e)),'combat banner: the end reason (foe down, a member fell): '+ends.join(' | '));
+  m.alive=true;sc.end='fled';TB.renderTable(1);ok([...box.querySelectorAll('.tendc')].some(e=>e.textContent==='The foe fled'),'combat banner: a foe that ran');
+  sc.rd=null;TB.renderTable(1);ok(!box.querySelector('.tci')&&!/ROUND/.test(t())&&!box.classList.contains('tcombat'),'combat banner: a scene without rounds keeps the plain banner');
+  S.table=null;TB.renderTable(1);ok(box.hidden,'combat banner: hidden when the scene closes');
+  S.table=keep;m.hp=mhp;m.target=null;ms.forEach((a,i)=>a.hp=hp0[i]);T.TABLE.speed=spd}}
+// ---- chat in the left column on the three-column layout (owner request) ----
+{const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
+  const keep=window.innerWidth;ok(!!sim.S.fellowship,'chat left: a Fellowship stands');
+  const lst=$('chatList'),sec=$('chatSec');
+  window.innerWidth=2600;uiFast();
+  ok(where('chatSec')==='colL'&&$('colL').children[0]===sec,'2600 px: the chat is first in the left column');
+  ok(where('storySec')==='colL'&&where('worldgrp')==='colL'&&$('colL').children.indexOf($('storySec'))>0,'2600 px: Story and World sit below the chat');
+  const fb=$('chatFilter').children[1];fb.dispatch('click',{target:fb});const pressed=fb.getAttribute('aria-pressed');
+  for(const w of [1600,2600]){window.innerWidth=w;uiFast()}
+  ok($('chatList')===lst&&where('chatSec')==='colL','2600 px again: the same chat node is back in the left column');
+  ok(fb.getAttribute('aria-pressed')===pressed&&pressed==='true','a resize keeps the chat filter');
+  ok(document.body.classList.contains('chat-left')&&$('chatSide')&&!$('chatSide').hidden,'left column: the placement switch is shown');
+  const sb=$('chatSide');sb.dispatch('click',{target:sb});
+  ok(where('chatSec')==='colM'&&!document.body.classList.contains('chat-left'),'the switch puts the chat under the map at 2600 px');
+  sb.dispatch('click',{target:sb});ok(where('chatSec')==='colL','and back to the left column');
+  for(const w of [1600,390]){window.innerWidth=w;uiFast();
+    ok(where('chatSec')==='colM'&&$('colM').children.indexOf(sec)<$('colM').children.indexOf($('heroSec')),w+' px: the chat is under the map, above the hero card');
+    ok(!document.body.classList.contains('chat-left')&&$('chatSide').hidden,w+' px: no left-chat styling, no switch')}
+  window.innerWidth=keep;uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

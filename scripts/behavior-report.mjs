@@ -1,7 +1,8 @@
 // npm run behavior-report (issue #129): summarise a world's behavior logs (logs/behavior/<world>/, written by
 // scripts/behavior-log.mjs) into Markdown at logs/behavior/<world>/report.md, for the watcher and the
 // playtest-reviewer agent: top anomalies with counts and examples, per-seat health, a model comparison
-// (empty-turn rate, latency, tokens and cost per provider/model), the world digests and the decisions.
+// (empty-turn rate, latency, tokens and cost per provider/model), a mind comparison per Fellowship member and
+// provider/model (scripts/mind-compare.mjs, issue #280), the world digests and the decisions.
 //
 //   npm run behavior-report                    the world whose logs changed last
 //   npm run behavior-report -- --world eldmoor-headless
@@ -12,7 +13,8 @@
 import {readFileSync, writeFileSync, existsSync, readdirSync, statSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {behaviorRoot, FILES, ROTATE} from './behavior-log.mjs';
+import {behaviorRoot, FILES, ROTATE, scrub, legacyTokens} from './behavior-log.mjs';
+import {mindSection} from './mind-compare.mjs';
 
 const SEV = {bad: 3, warn: 2, info: 1};
 const ABOUT = {
@@ -83,26 +85,28 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   // ---- per seat ----
   L.push('## Per-seat health', '');
   const seats = new Map();
-  for (const t of T) {const k = t.seat || '?'; let s = seats.get(k); if (!s) seats.set(k, s = {seat: k, name: t.hero && t.hero.name || (k === 'dm' ? 'DM' : k), minds: new Set(), n: 0, empty: 0, repeat: 0, foreign: 0, stale: 0, refused: 0, calls: 0, failed: 0, secs: [], tin: [], tout: [], cost: 0, costKnown: false, last: null, lastNarr: null});
+  for (const t of T) {const k = t.seat || '?'; let s = seats.get(k); if (!s) seats.set(k, s = {seat: k, name: t.hero && t.hero.name || (k === 'dm' ? 'DM' : k), minds: new Set(), n: 0, empty: 0, repeat: 0, foreign: 0, stale: 0, refused: 0, calls: 0, failed: 0, secs: [], tin: [], tout: [], cr: [], cost: 0, costKnown: false, last: null, lastNarr: null});
     s.n++; s.minds.add(mind(t)); const f = new Set(t.flags || []);
     if (f.has('empty')) s.empty++; if (f.has('repeat')) s.repeat++; if (f.has('foreign')) s.foreign++; if (f.has('stale')) s.stale++; if (f.has('refused')) s.refused++;
-    s.calls += t.calls || 0; s.failed += t.failed || 0; s.secs.push(t.seconds); s.tin.push(t.tokensIn); s.tout.push(t.tokensOut);
+    s.calls += t.calls || 0; s.failed += t.failed || 0; s.secs.push(t.seconds); if (legacyTokens(t)) s.legacy = (s.legacy || 0) + 1; else {s.tin.push(t.tokensIn); s.tout.push(t.tokensOut); s.cr.push(t.cacheRead)}
     if (Number.isFinite(t.cost)) {s.cost += t.cost; s.costKnown = true}
     s.last = t.ts; if (t.narration) s.lastNarr = t.narration}
-  L.push(table(['seat', 'who', 'mind', 'turns', 'empty', 'repeat', 'foreign', 'stale', 'refused', 'calls (failed)', 'avg s', 'tokens in/out per turn', 'cost', 'last turn'],
-    [...seats.values()].map(s => [s.seat, s.name, [...s.minds].join(', '), s.n, pct(s.empty, s.n), s.repeat, s.foreign, s.stale, s.refused, `${s.calls} (${s.failed})`, f1(avg(s.secs)), `${f1(avg(s.tin))} / ${f1(avg(s.tout))}`, s.costKnown ? money(s.cost) : '-', (s.last || '').slice(0, 19)])), '');
+  L.push(table(['seat', 'who', 'mind', 'turns', 'empty', 'repeat', 'foreign', 'stale', 'refused', 'calls (failed)', 'avg s', 'tokens in/out per turn', 'cache read per turn', 'cost', 'last turn'],
+    [...seats.values()].map(s => [s.seat, s.name, [...s.minds].join(', '), s.n, pct(s.empty, s.n), s.repeat, s.foreign, s.stale, s.refused, `${s.calls} (${s.failed})`, f1(avg(s.secs)), `${f1(avg(s.tin))} / ${f1(avg(s.tout))}`, f1(avg(s.cr)), s.costKnown ? money(s.cost) : '-', (s.last || '').slice(0, 19)])), '');
   for (const s of seats.values()) if (s.lastNarr) L.push(`- ${s.name}, last narration: "${q(s.lastNarr, 200)}"`);
   L.push('');
 
   // ---- models ----
   L.push('## Model comparison', '');
   const models = new Map();
-  for (const t of T) {const k = mind(t); let m = models.get(k); if (!m) models.set(k, m = {k, seats: new Set(), n: 0, empty: 0, stale: 0, foreign: 0, err: 0, secs: [], tin: [], tout: [], cost: 0, costN: 0});
+  for (const t of T) {const k = mind(t); let m = models.get(k); if (!m) models.set(k, m = {k, seats: new Set(), n: 0, empty: 0, stale: 0, foreign: 0, err: 0, secs: [], tin: [], tout: [], cr: [], cost: 0, costN: 0, legacy: 0});
     m.n++; m.seats.add(t.hero && t.hero.name || t.seat); const f = new Set(t.flags || []); if (f.has('empty')) m.empty++; if (f.has('stale')) m.stale++; if (f.has('foreign')) m.foreign++; if (t.error) m.err++;
-    m.secs.push(t.seconds); m.tin.push(t.tokensIn); m.tout.push(t.tokensOut); if (Number.isFinite(t.cost)) {m.cost += t.cost; m.costN++}}
+    m.secs.push(t.seconds); if (legacyTokens(t)) m.legacy++; else {m.tin.push(t.tokensIn); m.tout.push(t.tokensOut); m.cr.push(t.cacheRead)} if (Number.isFinite(t.cost)) {m.cost += t.cost; m.costN++}}
   L.push('Agent turns:', '');
-  L.push(table(['provider/model', 'seats', 'turns', 'empty-turn rate', 'stale', 'foreign', 'errors', 'avg s', 'tokens in/out per turn', 'cost per turn', 'cost'],
-    [...models.values()].sort((a, b) => b.n - a.n).map(m => [m.k, [...m.seats].slice(0, 6).join(', '), m.n, pct(m.empty, m.n), m.stale, m.foreign, m.err, f1(avg(m.secs)), `${f1(avg(m.tin))} / ${f1(avg(m.tout))}`, m.costN ? money(m.cost / m.costN) : '-', m.costN ? money(m.cost) : '-'])), '');
+  L.push(table(['provider/model', 'seats', 'turns', 'empty-turn rate', 'stale', 'foreign', 'errors', 'avg s', 'tokens in/out per turn', 'cache read per turn', 'cost per turn', 'cost'],
+    [...models.values()].sort((a, b) => b.n - a.n).map(m => [m.k, [...m.seats].slice(0, 6).join(', '), m.n, pct(m.empty, m.n), m.stale, m.foreign, m.err, f1(avg(m.secs)), `${f1(avg(m.tin))} / ${f1(avg(m.tout))}`, f1(avg(m.cr)), m.costN ? money(m.cost / m.costN) : '-', m.costN ? money(m.cost) : '-'])), '');
+  const legacyN = [...models.values()].reduce((t, m) => t + m.legacy, 0);
+  if (legacyN) L.push('', `${legacyN} Claude turn line${legacyN === 1 ? '' : 's'} from before the per-turn token fix (#282) log the SDK's cumulative total and are left out of the token columns. Tokens in = uncached input; cache read and write are separate and priced differently.`);
   const rel = new Map();
   for (const d of D.filter(d => d.src === 'relay')) {const k = mind(d); let r = rel.get(k); if (!r) rel.set(k, r = {k, n: 0, fail: 0, r429: 0, tmo: 0, ms: []}); r.n++; if (!d.ok) r.fail++; if (d.status === 429) r.r429++; if (d.status === 504 || /timeout/i.test(d.error || '')) r.tmo++; r.ms.push(d.ms)}
   const game = new Map();
@@ -111,6 +115,9 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   L.push(table(['provider/model', 'calls', 'failed', '429', 'timeouts', 'avg ms'], [...rel.values()].map(r => [r.k, r.n, `${r.fail} (${pct(r.fail, r.n)})`, r.r429, r.tmo, f1(avg(r.ms))])), '');
   L.push('Single decisions (outcome in the game):', '');
   L.push(table(['provider/model', 'decisions', 'outcomes', 'avg ms'], [...game.values()].map(g => [g.k, g.n, Object.entries(g.out).map(([k, v]) => `${k} ${v}`).join(', '), f1(avg(g.ms))])), '');
+
+  // ---- minds per member (issue #280) ----
+  const mc = mindSection(T, D, W, table); L.push(...mc.lines);
 
   // ---- world ----
   L.push('## World', '');
@@ -152,7 +159,7 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   const dk = new Map();
   for (const d of D) {const k = (d.src || '?') + ' ' + (d.kind || '?'); let x = dk.get(k); if (!x) dk.set(k, x = {k, n: 0, res: {}}); x.n++; const r = d.src === 'relay' ? (d.ok ? 'answered' : 'failed ' + (d.status || '')) : d.outcome || '?'; x.res[r] = (x.res[r] || 0) + 1}
   L.push(table(['source and kind', 'count', 'results'], [...dk.values()].map(x => [x.k, x.n, Object.entries(x.res).map(([k, v]) => `${k.trim()} ${v}`).join(', ')])), '');
-  return {md: L.join('\n') + '\n', counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
+  return {md: scrub(L.join('\n') + '\n'), minds: mc.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
 }
 
 export function worlds(root) {return existsSync(root) ? readdirSync(root).filter(d => {try {return statSync(join(root, d)).isDirectory()} catch {return false}}) : []}

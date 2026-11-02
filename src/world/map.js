@@ -6,6 +6,7 @@
 import {setWorldSize} from './tiles.js';
 import {ACTIVE_SPEC,WORLD_ID} from './spec.js';
 import {buildWorld} from './gen.js';
+import {indexNodes} from './nodes.js';
 import {applyFauna} from '../data/fauna.js';
 
 // The world is chosen once (spec.js: ?world= in the browser, ELDMOOR_WORLD in Node). tiles.js already
@@ -22,3 +23,7 @@ export const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 export const riverX=WORLD.curves.river;
 export const z2X=WORLD.curves.passEdge;
 export const hoarY=WORLD.curves.frostEdge;
+
+// Gathering nodes (#255): placed by the generator from spec.nodes; lookups over them.
+export const NODES=WORLD.NODES;
+export const {nodeById,nodesIn,nodeNear}=indexNodes(NODES,WORLD.w,WORLD.h);

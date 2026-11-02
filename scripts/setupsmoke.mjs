@@ -93,7 +93,7 @@ if(mode==='a'){
   const sels=(r,f)=>all(r,'select').find(s=>s.dataset.f===f);
   const opts=f=>sels(ids.get('setup'),f).childNodes.map(o=>o.value);
   ok(JSON.stringify(opts('cls:tank'))==='["Warrior"]'&&JSON.stringify(opts('cls:healer'))==='["Priest"]','tank/healer classes fixed');
-  ok(opts('cls:dps1').join()==='Mage,Hunter,Rogue','DPS classes: '+opts('cls:dps1'));
+  ok(opts('cls:dps1').join()==='Mage,Hunter,Rogue,Skald','DPS classes: '+opts('cls:dps1'));
   ok(/Relay/.test(text(ids.get('setup'))),'relay line');
   ok(!all(ids.get('setup'),'button').some(b=>/All scripted/.test(b.textContent)),'no All scripted preset (#148: the Fellowship is always agent-played)');
   ok(all(ids.get('setup'),'.scard').every(c=>!all(c,'button').some(b=>b.dataset.a==='mode')),'no Scripted / AI buttons on a member card, only its model');
@@ -205,4 +205,18 @@ if(mode==='a'){
   ok(bar&&/Fellowship/.test(bar.textContent)&&/DM/.test(bar.textContent),'the progress bar lists the runners: '+(bar&&bar.textContent.slice(0,160)));
   ok(!/scripted/i.test(bar.textContent),'never described as scripted');
 }
+// Professions pickers on the place cards (#259)
+if(mode==='a'){setup.openSetup({first:true});await sleep(30);
+  const card=()=>all(ids.get('setup'),'.scard')[0],pb=id=>all(card(),'button').find(b=>b.dataset.a==='prof'&&b.dataset.id===id);
+  ok(/Let them choose/.test(card().textContent),'cards: "let them choose" until something is picked');
+  click(ids.get('setup'),b=>b.dataset.a==='prof'&&b.dataset.slot==='tank'&&b.dataset.id==='mining');
+  click(ids.get('setup'),b=>b.dataset.a==='prof'&&b.dataset.slot==='tank'&&b.dataset.id==='smithing');
+  ok(/Mining and Smithing at skill 1/.test(card().textContent),'cards: two picks are named');
+  ok(pb('fishing').disabled,'cards: a third is disabled');
+  click(ids.get('setup'),b=>b.dataset.a==='prof'&&b.dataset.slot==='tank'&&b.dataset.id==='mining');
+  ok(!pb('fishing').disabled&&/Smithing at skill 1/.test(card().textContent),'cards: un-picking frees a place');
+  click(ids.get('setup'),b=>b.dataset.a==='start');
+  const pend2=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
+  ok(pend2&&pend2.slots.tank.profs.join()==='smithing'&&!pend2.slots.healer.profs,'Start queues the choice for that place only');
+  localStorage.removeItem(PENDING_KEY)}
 console.log(fail?fail+' FAILED':'smoke133 '+mode+' passed');process.exit(fail?1:0);

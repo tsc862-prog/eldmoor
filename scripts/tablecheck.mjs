@@ -30,6 +30,7 @@ const {init, step, S, snapshot, restore, maxHp} = SIM;
 const P = await import('../src/sim/player.js');
 const F_ = await import('../src/sim/fellowship.js');
 const T = await import('../src/sim/table.js');
+const TRD = await import('../src/sim/tableround.js');
 const C = await import('../src/sim/council.js');
 const {CRYPT, ZONES, zoneFor, zonePoint, dist} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
@@ -73,6 +74,32 @@ if (process.argv[2] === '--simul') {
   process.exit(0);
 }
 
+// ---- the combat-rounds answer-order child (#276): five live agents answer each round, forward or reverse ----
+if (process.argv[2] === '--rounds') {
+  const rev = process.argv[3] === 'rev';
+  init({fellowship: false}); for (let i = 0; i < 30 * 60; i++) step(1 / 60);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); SIM.setRunnerLinks(() => 'connected');
+  const M = F_.fellowshipMembers().map(m => m.hero), home = homeOf(M[0]).gate, spot = zonePoint(zoneFor(8, home), null, home);
+  for (const m of S.mobs) if (m.alive && dist(m, spot) < 16) {m.alive = false; m.gone = true}
+  M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'fight'; x.hidden = false; x.dest = null; x.hp = Math.round(maxHp(x) * (.6 + i * .1)); x.pq = []});
+  const q = S.mobs.find(x => x.alive && !x.gone && !x.elite); q.x = spot.x + 1; q.y = spot.y; q.lvl = 9; q.maxhp = 2000; q.hp = 2000; q.cd = 99; q.fledOnce = true; q.target = M[0]; M.forEach(x => {x.target = q});
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  if (process.argv[3] === 'fall') { // one member alone in reach at 1 HP, a hard-hitting foe that goes first
+    M.slice(1).forEach(x => {x.x = spot.x + 40}); q.lvl = 12; q.hit = 50; const lone = M[0]; lone.hp = 1;
+    const sf = T.openScene('elite', 'Fall test', ['A brute.'], {mob: q.id}); sf.foeAt = 0; let g = 0;
+    while (S.table && g++ < 60 * 120) {const c = S.table; if (c.phase === 'turn' && !c.acts[lone.id] && lone.state !== 'dead') P.playerAct(lone.id, 'scene_act', {option: 'strike'}); step(1 / 60)}
+    const good = !S.table && lone.state === 'dead' && (sf.fell || []).includes(lone.id) && / fell./.test(sf.summary) && sf.rd <= TRD.TR.ROUNDS;
+    console.log((good ? 'FALL ok' : 'FALL bad') + ' (round ' + sf.rd + '): ' + sf.summary); process.exit(0);
+  }
+  const sc = T.openScene('elite', 'Order test', ['A brute.'], {mob: q.id}); let f = 0;
+  while (S.table && f++ < 60 * 240) {const c = S.table;
+    if (c.phase === 'turn') {const ids = rev ? c.ids.slice().reverse() : c.ids.slice(); for (const id of ids) if (!c.acts[id]) P.playerAct(id, 'scene_act', {option: 'strike'})}
+    step(1 / 60)}
+  console.log('ROUNDS ' + JSON.stringify(sc.beats.map(b => [b.id, b.rd, b.k, b.by, b.res])) + ' ' + sc.summary + ' hp:' + M.map(x => Math.round(x.hp)).join(',') + ' foe:' + Math.round(q.hp));
+  process.exit(0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -90,8 +117,12 @@ if (process.argv[2] === '--staged') {
   // A camp (the world's, not the DM's) may fall in a scene's window: its DM-log lines are not the DM's to tag.
   const home = homeOf(A).gate, zone = zoneFor(8, home), spot = zonePoint(zone, null, home);
   const place = () => M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []});
-  const fresh = () => {place(); if (S.staged) S.staged.day.n = 0; if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} // the people lever's own limits are not under test here
-    for (const m of S.mobs) if (!m.staged && dist(m, spot) < 16) {m.alive = false; m.gone = true}};
+  const fresh = () => {if (CRYPT.group) {for (const a of CRYPT.group.mem) {a.state = 'hunt'; a.hidden = false} CRYPT.group = null} CRYPT.cd = 1e6; if (S.table && S.table.ctx && S.table.ctx.staged == null) S.table = null; // a Crypt crawl the Fellowship wandered into is left, so the staged scene can open
+   place(); if (S.staged) S.staged.day.n = 0; if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} // the people lever's own limits are not under test here
+    for (const m of S.mobs) if (dist(m, spot) < 30) {m.alive = false; m.gone = true}}; // an earlier staged pack the rounds left standing goes too (#276)
+  // Kinds the world's own scripted DM, camps and adventures write untagged while the scene plays (their mix drifts with the seed and MOBS COUNTS, #287).
+  // Anything else the staged scene causes (frame, payoff, agent, table, talk, ...) must carry the by tag.
+  const UNTAGGED_KINDS = ['lever', 'camp', 'hooks', 'pick', 'roll', 'branch', 'complication'];
   const tag = e => e.detail && (e.detail.by === 'dm-agent' || e.detail.by === 'scripted');
   // mock DM: 'answer' answers every call at once, 'silent' polls but never answers, 'away' never polls
   const play = (mode, maxS = 120) => {let f = 0, opened = null, maxPause = 0;
@@ -129,7 +160,7 @@ if (process.argv[2] === '--staged') {
         `hearing someone out is an Empathy check worded as what they caught or missed (${hr.map(b => b.name + ': ' + b.res).join('; ') || 'nobody chose to hear'})`);
       ok(!/\b(success|failure)\b/.test(sc.summary || '') && (/understood|listened but missed|their word|watches them/.test(sc.summary || '')), 'the meeting\'s summary reads plainly: ' + sc.summary)}
     const mine = S.dmLog.filter(e => e.id > log0);
-    ok(mine.some(e => e.kind === 'frame' && tag(e)) && mine.some(e => e.kind === 'payoff' && tag(e)) && mine.every(e => tag(e) || ['lever', 'camp', 'hooks', 'pick'].includes(e.kind)), `DM log: ${mine.length} entries, every one tagged (${[...new Set(mine.map(e => e.kind))].join(', ')})`);
+    ok(mine.some(e => e.kind === 'frame' && tag(e)) && mine.some(e => e.kind === 'payoff' && tag(e)) && mine.every(e => tag(e) || UNTAGGED_KINDS.includes(e.kind)), `DM log: ${mine.length} entries, every one tagged (${[...new Set(mine.map(e => e.kind))].join(', ')})`);
     if (!['elite', 'ambush'].includes(kind)) ok(mine.some(e => e.kind === 'roll' && e.detail.d20 >= 1 && e.detail.dc), 'the dice decide: d20 rolls against a DC are logged');
     ok(M.every(x => x.state !== 'dead') && (kind !== 'trap' || M.every((x, i) => x.hp >= Math.min(hp0[i], Math.ceil(maxHp(x) * ST.STAGE.TRAP_FLOOR)))), 'nobody died; a trap never takes anyone below ' + ST.STAGE.TRAP_FLOOR * 100 + '% HP');
     ok(S.staged.cur.phase === 'done' && S.staged.cur.result, `the staged scene ends: ${S.staged.cur.result}`);
@@ -221,13 +252,18 @@ ok(!F_.setMinds('off') && !F_.setMinds('relay') && !P.markPlayer(rest[0], false)
 ok(SIM.agentLive(A) && SIM.agentLive(B) && rest.every(x => !SIM.agentLive(x) && SIM.reflexMay(x)), `links: ${A.name} connected (answers), ${B.name} waiting (silent); ${rest.map(x => x.name).join(', ')} no runner`);
 
 // Put the whole party in the field around a monster.
-const zone = zoneFor(8, homeOf(A).gate), spot = zonePoint(zone, null, homeOf(A).gate);
+const zone = zoneFor(8, homeOf(A).gate);
+let spot = zonePoint(zone, null, homeOf(A).gate);
+{const {campSpot} = await import('../src/sim/camp.js'); // the field spot must have camp-safe ground within reach, wherever the seed drops it (#287)
+ for (let i = 0; i < 60 && !campSpot(spot.x, spot.y); i++) spot = zonePoint(zone, null, homeOf(A).gate)}
 const place = () => {M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []})};
 const mobNear = () => {const m = S.mobs.filter(m => m.alive && !m.gone && !m.elite).sort((p, q) => dist(p, spot) - dist(q, spot))[0]; m.x = spot.x + 1; m.y = spot.y; m.hp = m.maxhp; return m};
-const startFight = (x, m) => {x.state = 'fight'; x.target = m; m.target = x; x.hp = maxHp(x) * .24; m.maxhp *= 20; m.hp = m.maxhp; m.cd = 99}; // a tough foe that holds its blow, so no one dies or flees mid-test
+const startFight = (x, m) => {x.state = 'fight'; x.target = m; m.target = x; x.hp = maxHp(x) * .24; m.maxhp *= 20; m.hp = m.maxhp; m.cd = 99; m.hit = .001}; // a tough foe whose blow barely scratches (#276: it acts at the table), so no one dies or flees mid-test
 const stepUntil = (cond, maxS) => {let f = 0, moved = 0; while (!cond() && f < 60 * maxS) {const g = S.gameMin; step(1 / 60); f++; if (S.table && S.gameMin !== g) moved = 1} return {secs: f / 60, moved}};
 
 // ---- 1. a rescue scene at 1x: the table waits for a silent but connected agent ----
+// Sections 1-2 test the turn flow in one round (TR.ROUNDS 1); section 2b plays the combat rounds (#276).
+const ROUNDS0 = TRD.TR.ROUNDS; TRD.TR.ROUNDS = 1;
 T.TABLE.speed = 1; T.TABLE.turnMs = 7000; T.TABLE.mode = 'auto';
 place(); let m = mobNear(); const victim = rest[0]; startFight(victim, m);
 T.tableTick(); // the trigger rules (step() runs them after the heroes move)
@@ -301,6 +337,81 @@ S.fellowship.tableSeen = {}; T.tableTick(); step(1 / 60);
 ok(!S.table && !T.TABLE.drop && S.fellowship.log.filter(e => e.kind === 'table').length === n0 + 1 && S.gameMin > g1, 'at 3x with no runner anywhere (reflexes only) the scene resolves in the same step, the clock running');
 link(RA, 'connected'); link(RB, 'waiting');
 
+// ---- 2b. combat rounds (#276): the foe takes its turn, every blow shows its d20, the scene ends on a fall ----
+TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
+{const fieldR = () => {field3(); RM.forEach(x => {x.state = 'fight'})};
+ const foeAt = (lvl, hpMul) => {const q = S.mobs.filter(x => x.alive && !x.gone && !x.elite && !x.staged).sort((p, r) => dist(p, spot) - dist(r, spot))[0]; q.x = spot.x + 1; q.y = spot.y; q.lvl = lvl; q.maxhp = Math.round((25 + lvl * 16) * hpMul); q.hp = q.maxhp; q.cd = 99; q.fledOnce = true; return q};
+ const elite = q => {for (const x of RM) {x.target = q} q.target = RM[0]; S.fellowship.tableSeen = {}; return T.openScene('elite', 'A test of rounds', ['Something big comes out of the brush.'], {mob: q.id})};
+ const rollRe = /^d20 \d+\+\d+=\d+ vs AC \d+/;
+ const lastTable = () => {const e = S.fellowship.log.filter(x => x.kind === 'table').pop(); return e ? e.parts.map(p => typeof p === 'string' ? p : p && p.t || '').join('') : ''};
+ // (a) everyone by reflex, a foe that lasts: three rounds, the foe in each, cooldowns down by one a round
+ for (const x of RM) link(x, 'none');
+ fieldR(); let q = foeAt(8, 40); RM.forEach(x => {x.mcr = Object.assign(x.mcr || {}, {zz_test: 9})});
+ const hp0 = RM.map(x => x.hp), d0 = S.dmLogSeq; let scR = elite(q);
+ ok(scR && scR.rd === 1 && Number.isInteger(scR.foeAt) && scR.foeAt >= 0 && scR.foeAt <= scR.ids.length, `a combat scene opens in round 1 with the foe in the initiative order (place ${scR && scR.foeAt} of ${scR && scR.ids.length + 1})`);
+ const tv = act(RM[0], 'status').table, bf = T.bannerOf().foe;
+ ok(bf && bf.id === q.id && bf.name && bf.hp === q.hp && bf.maxhp === q.maxhp && bf.target === RM[0].id && bf.pack === 1, `the banner gets the foe as data (#285): ${JSON.stringify(bf)}`);
+ ok(tv && tv.foe && tv.foe.name === bf.name && /^[a-z ]+$/.test(tv.foe.looks), `a member sees the foe by name and look, no numbers: ${JSON.stringify(tv && tv.foe)}`);
+ ok(tv && Array.isArray(tv.initiative) && tv.initiative.some(n => /\(foe\)$/.test(n)) && /^1 of up to/.test(tv.round || ''), `the member sees the round and the order with the foe: ${tv && tv.initiative && tv.initiative.join(', ')}`);
+ p1 = stepUntil(() => !S.table, 30);
+ const fb = scR.beats.filter(b => b.by === 'foe'), mb = scR.beats.filter(b => b.by !== 'foe');
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS && [1, 2, 3].every(r => fb.some(b => b.rd === r)), `the foe takes a turn in each of ${scR.rd} rounds (${fb.length} foe beats)`);
+ const r1 = scR.beats.filter(b => b.rd === 1), fi = r1.findIndex(b => b.by === 'foe');
+ ok(fi === Math.min(scR.foeAt, r1.length - 1), `in round 1 the foe acts at its place in the order (${fi})`);
+ ok(fb.filter(b => b.k === 'attack').every(b => rollRe.test(b.res)) && mb.filter(b => b.k === 'strike' && !/closing in/.test(b.res)).every(b => rollRe.test(b.res)), `every attack shows its roll: ${fb[0] && fb[0].res}; ${(mb.find(b => b.k === 'strike') || {}).res}`);
+ // structured roll data on every rolled beat (#285), the same roll the text gives
+ const rolled = scR.beats.filter(b => rollRe.test(b.res || ''));
+ const same = b => {const r = b.roll, m = /^d20 (\d+)\+(\d+)=(\d+) vs AC (\d+)/.exec(b.res); return r && r.die === +m[1] && r.mod === +m[2] && r.total === +m[3] && r.vs === +m[4] && r.hit === !/: missed/.test(b.res) && r.crit === (r.die === 20) && typeof r.target === 'string' && r.target && (r.hit ? r.dmg >= 0 : r.dmg === 0)};
+ ok(rolled.length && rolled.every(same) && scR.beats.every(b => !b.roll || rollRe.test(b.res)), `every rolled beat carries {die, mod, total, vs, hit, crit, dmg, target} matching its text (${rolled.length}): ${JSON.stringify(rolled[0] && rolled[0].roll)}`);
+ const dl = S.dmLog.filter(e => e.id > d0 && e.kind === 'table');
+ const dt = dl[0] ? dl[0].summary.join('') : '', dr = dl[0] ? dl[0].detail.rolls : [];
+ ok(dl.length === 1 && dr.every(r => r.d20 == null || (r.d20 >= 1 && r.d20 <= 20 && r.ac >= 10)) && [1, 2, 3].every(n => dt.includes('round ' + n + ': ')) && dr.filter(r => r.d20 != null).length === scR.beats.filter(b => rollRe.test(b.res || '')).length,
+   `the DM log has the scene's entry with every roll, a sentence a round (${dr.length} rolls): ${dt.slice(0, 140)}`);
+ ok(RM.every(x => x.mcr.zz_test === 9 - scR.rd), `round cooldowns count down once a round (9 -> ${RM[0].mcr.zz_test})`);
+ const hit = fb.filter(b => /: hit for/.test(b.res)).length;
+ ok(hit === 0 || RM.some((x, i) => x.hp < hp0[i]), `HP carries from round to round (${hit} foe blows landed)`);
+ ok(/\(3 rounds\.\)/.test(scR.summary) && /the foe struck \d+ times?/.test(lastTable()), `the outcome: ${scR.summary}`);
+ RM.forEach(x => {delete x.mcr.zz_test});
+ // (b) the foe falls: the scene ends in the round it goes down, with today's outcome text
+ fieldR(); q = foeAt(8, .02); q.hp = 1; scR = elite(q); p1 = stepUntil(() => !S.table, 30);
+ ok(!S.table && scR.rd === 1 && !q.alive && /^The foe is down\./.test(scR.summary), `a foe at 1 HP falls in round 1 and the scene ends: ${scR.summary}`);
+ // (c) a member falls (a child, so the main party keeps its five): the scene ends on the fall
+ const fc = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--rounds', 'fall'], {encoding: 'utf8'}), lfc = (fc.stdout || '').trim().split('\n').pop(); if (fc.stderr) process.stderr.write(fc.stderr);
+ ok(/^FALL ok/.test(lfc), 'a member who falls ends the fight: ' + lfc);
+ const RL = RM;
+ // (d) a silent agent: its reflex acts after the wait in round 1, and it is not waited for again in the later rounds
+ T.TABLE.liveMs = 1500; const quiet = RL[0]; link(quiet, 'waiting'); fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
+ p1 = stepUntil(() => !S.table, 30);
+ const qb = scR.beats.filter(b => b.id === quiet.id);
+ ok(!S.table && qb.length === scR.rd && qb.every(b => b.by === 'reflex') && p1.secs <= T.TABLE.frameS + T.TABLE.outcomeS + T.TABLE.liveMs / 1000 + 1 && (quiet.playEv || []).some(e => /table waited/.test(e.text)), `a silent agent gets a reflex each round, waited for once (${p1.secs.toFixed(1)} s for ${scR.rd} rounds)`);
+ T.TABLE.liveMs = 120000; link(quiet, 'none');
+ // (e) at 3x with reflexes only: every round resolves in one step
+ T.TABLE.speed = 3; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS && scR.beats.filter(b => b.by === 'foe').length >= scR.rd && scR.phase === 'outcome', `at 3x the whole fight (${scR.rd} rounds) resolves at once with a summary: ${scR.summary}`);
+ T.TABLE.speed = 1;
+ // (g) the watcher's step mode (#285): hold after each round until Next round; auto after stepS; 3x and instant never hold
+ T.TABLE.step = 'hold'; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
+ const held = () => !!(S.table && T.bannerOf() && T.bannerOf().hold);
+ p1 = stepUntil(held, 30); const g0 = S.gameMin, b1 = scR.beats.length;
+ ok(held() && scR.rd === 1 && /Round 1 is done/.test(T.bannerOf().line) && !T.bannerOf().hold.auto, `hold: the scene waits after round 1 (${T.bannerOf() && T.bannerOf().line})`);
+ stepUntil(() => false, 10);
+ ok(held() && scR.rd === 1 && S.gameMin === g0 && scR.beats.length === b1, `hold: 10 s later the world and the round have not moved (game min ${S.gameMin})`);
+ ok(T.stepNext() && !T.stepNext(), 'Next round releases the hold once');
+ p1 = stepUntil(held, 30);
+ ok(held() && scR.rd === 2 && scR.beats.some(b => b.rd === 2), `hold: round 2 plays and holds again (${scR.beats.filter(b => b.rd === 2).length} beats)`);
+ T.TABLE.step = 'auto'; T.TABLE.stepS = 1; const a0 = S.gameMin;
+ p1 = stepUntil(() => !S.table, 30);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS && S.gameMin > a0, `auto: the held round goes on after ${T.TABLE.stepS} s and the fight ends after round ${scR.rd} (${p1.secs.toFixed(1)} s)`);
+ T.TABLE.step = 'hold'; T.TABLE.speed = 3; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS, `at 3x step mode never holds: ${scR.rd} rounds at once`);
+ T.TABLE.speed = 1; T.TABLE.step = 'off'; T.TABLE.stepS = 4;
+ // (f) the order agents answer in never changes the rolls (a child, twice)
+ const me3 = fileURLToPath(import.meta.url), rf = spawnSync(process.execPath, [me3, '--rounds', 'fwd'], {encoding: 'utf8'}), rr = spawnSync(process.execPath, [me3, '--rounds', 'rev'], {encoding: 'utf8'});
+ const lf3 = (rf.stdout || '').trim().split('\n').pop(), lr3 = (rr.stdout || '').trim().split('\n').pop(); if (rf.stderr) process.stderr.write(rf.stderr);
+ ok(/^ROUNDS \[\[/.test(lf3) && lf3 === lr3, `combat rounds answered in initiative order and in reverse give the same rolls: ${lf3.slice(0, 160)}`);
+}
+link(RA, 'connected'); link(RB, 'waiting');
+
 // ---- 3. proposals (in town, where nothing attacks) ----
 T.TABLE.speed = 1;
 const toTown = () => RM.forEach(x => {const c = homeOf(x); x.state = 'town'; x.townStep = 2; x.wait = 9; x.x = c.gate.x; x.y = c.gate.y - 1; x.target = null; x.pq = []; x.hp = maxHp(x)});
@@ -361,7 +472,7 @@ console.log('everyone answers at once');
  const fieldAll = () => {for (const m of S.mobs) if (m.alive && !m.gone && dist(m, spot) < 16) {m.alive = false; m.gone = true}
    RM.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []; x.splitUntil = 0; x.playEv = []})};
  for (const p of S.parties.slice()) if (p.fellow) {for (const b of p.mem) b.party = null; S.parties.splice(S.parties.indexOf(p), 1)}
- fieldAll(); const lead = C.leaderOfF();
+ CP.breakCampNow('test'); fieldAll(); const lead = C.leaderOfF(); // a camp the world made on its own (game time ran in the sections above) is broken first
  const rc = CP.leaderRest(lead, 4); run(1);
  ok(!rc && CP.campOf(), 'the leader makes camp in the field' + (rc ? ': ' + rc : ''));
  T.TABLE.mode = 'auto'; for (const x of RM) x.playEv = [];

@@ -381,8 +381,8 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   Dice at the table: a strike is d20 + (level + gear*.3)/2 + the round's edge against 10 + foe level/2 (a 20 lands twice, a 1 leaves you
   open); then each foe still standing strikes once (d20 against armour) for `room.hit` of a hero's max HP, the guard-holder drawing
   most blows; real HP, a hero at zero is dead (`fall`, hardcore); no hidden wipe roll. Most members falling back withdraws the party
-  (a rearguard blow), a room not won in `rounds` drives it back, the last room won pays what the abstract run pays (`payClear` in
-  `dungeon.js`). The stair scene (`site`) still opens first and its choices tip every roll. Table Off (Watch) and groups without a
+  (a rearguard blow), a room not won in `rounds` (2 in every room, #264) drives it back; XP comes per room won (`CRAWL.ROOM_XP`: the clear payout divided by the rooms) and the last room adds `CRAWL.CLEAR_BONUS` (10%) with the gold and goods of `payClear` in
+  `dungeon.js`; reflex scouts in round 1 only for rooms of `CRAWL.SCOUT_MIN` blows or more. The stair scene (`site`) still opens first and its choices tip every roll. Table Off (Watch) and groups without a
   Fellowship member keep the abstract roll, so the background balance and a seeded no-Fellowship hash do not move. Wired through
   `setCrawlHook` in `dungeon.js` (crawl.js is imported by `sim/index.js`); state is plain data on `CRYPT.group.crawl`, saved with the
   group; the record is `S.fellowship.crawl` (runs, clears, driven, withdrawn, wipes, deaths, rooms). A world without `rooms` has no crawl.
@@ -657,7 +657,10 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   seat's text in a seat's lines, chat as counts only.
 - `npm run behavior-report [-- --world NAME | --all] [--hours N]` writes `logs/behavior/<world>/report.md`:
   top anomalies with counts and examples, per-seat health, model comparison (empty-turn rate, seconds,
-  tokens and cost per provider/model, relay failure rates, decision outcomes), the world digests.
+  tokens and cost per provider/model, relay failure rates, decision outcomes), a **Mind comparison** per Fellowship
+  member and provider/model (#280, `scripts/mind-compare.mjs`: agent turns, empty/failed, Table answers, decisions,
+  rejected, scripted fallbacks, p50/p90 latency, tokens, cost, digest hours on autopilot, close calls, deaths survived,
+  lifetimes; "-" where a member has no data), the world digests.
 - `npm run behaviorcheck` (in CI): mock runners and a timing-out relay produce every anomaly kind above on
   a headless Fellowship of silent agents; asserts they are logged and reported, that a runner cannot write
   another seat's line, keys are redacted, files rotate, the watch leaves the world unchanged, and that a

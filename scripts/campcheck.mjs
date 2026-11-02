@@ -13,13 +13,13 @@ const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 TABLE.speed = 1;
 init({fellowship: false}); run(1200); // the old start (#111): this check founds its own Fellowship
 ok(found(autoPick(0), {ai: false}).ok, 'Fellowship founded');
-let camps = 0, prev = null, sawRest = false, mid = null, maxCamped = 0, bg = 0;
+let camps = 0, prev = null, sawRest = false, mid = null, maxCamped = 0, bg = 0, dmCamp = 0; // DM log camp lines seen while it ran (the log is capped: an early one may scroll out by the end)
 for (let i = 0; i < 8 * 240 * 60; i++) {
   step(1 / 60);
   const g = S.fellowship.camp, ph = g && g.phase;
   if (ph === 'gather' && prev !== 'gather') camps++;
   if (ph === 'rest') {sawRest = true; if (!mid && g.stats.watches >= 1) mid = snapshot()}
-  prev = ph;
+  prev = ph; if (S.dmLog && S.dmLog[0] && S.dmLog[0].kind === 'camp') dmCamp = 1;
   const L = fellowshipMembers().map(m => m.hero), n = S.agents.filter(a => a.state === 'camp').length;
   maxCamped = Math.max(maxCamped, n);
   if (S.agents.some(a => a.state === 'camp' && !L.includes(a))) bg++;
@@ -28,7 +28,7 @@ const st = S.fellowship.camp.stats;
 ok(camps >= 3 && sawRest, `the Fellowship made camp ${camps} times in 8 days (${JSON.stringify(st)})`);
 ok(maxCamped <= 5 && bg === 0, 'only Fellowship members ever camp (max ' + maxCamped + ')');
 ok(st.watches >= 3 && st.talks >= 5, 'watches posted and campfire talk happened');
-ok(S.fellowship.log.some(e => e.kind === 'camp') && (S.dmLog || []).some(e => e.kind === 'camp'), 'camp events in the campaign log and the DM log');
+ok(S.fellowship.log.some(e => e.kind === 'camp') && (dmCamp || (S.dmLog || []).some(e => e.kind === 'camp')), 'camp events in the campaign log and the DM log');
 ok(S.fellowship.tableStats && S.fellowship.tableStats.scenes >= (st.spotted + st.caught - 1), 'camp ambushes opened Table scenes (' + (S.fellowship.tableStats ? S.fellowship.tableStats.scenes : 0) + ')');
 ok(!S.agents.some(a => a.state === 'camp') || (S.fellowship.camp.phase && true), 'no hero is left stuck in camp');
 ok(mid && mid.fellowship.camp.phase === 'rest', 'a snapshot was taken mid-camp');

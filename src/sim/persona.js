@@ -62,12 +62,14 @@ const WANTS={avenge:'To see {t} dead by their own hand.',avengeHero:'To settle t
   hoard:'Enough gold that hunger never comes back.',delve:'To clear the Sunken Crypt and come out alive.'};
 const FEARS={Warrior:['Being the wall that breaks first.','Living through the fight that kills the people behind them.'],Priest:['Running out of light with a friend still bleeding.','Choosing whom to heal, and choosing wrong.'],
   Mage:['The day the spell does not come.','Being caught in the open with nothing between them and the teeth.'],Hunter:['A trail that leads back to their own camp.','Missing the one shot that mattered.'],
-  Rogue:['Being seen before they are ready.','Being trusted, and failing it.']};
+  Rogue:['Being seen before they are ready.','Being trusted, and failing it.'],
+  Skald:['The song that does not carry in the dark.','Being the last voice a friend hears, and the wrong one.']};
 const QUIRKS={Warrior:['Taps their shield twice before every fight.','Sharpens a blade that is already sharp.','Counts the party at every halt, out loud.'],
   Priest:['Keeps a pebble from every grave they have stood at.','Hums the same four bars when worried.','Thanks the food, the fire and the boots, in that order.'],
   Mage:['Writes the weather in a little book each morning.','Warms their hands on spent sparks.','Talks to their staff when nobody answers.'],
   Hunter:['Never sits with their back to open ground.','Names every animal they kill, after.','Chews a grass stem on the march.'],
-  Rogue:['Flips a coin across their knuckles.','Always knows where the door is.','Pockets small things and returns them later, cleaned.']};
+  Rogue:['Flips a coin across their knuckles.','Always knows where the door is.','Pockets small things and returns them later, cleaned.'],
+  Skald:['Hums the key of the next fight under their breath.','Gives every blade in the party a name and a verse.','Taps the rhythm of the march on whatever is nearest.']};
 const NEVER=[['I am afraid.','Let them have it; it does not matter.','Run, and leave them.','Gold is gold, whoever paid in blood.'],
   ['I am sorry.','Let us talk this out.','Leave them; they are weak.','The pits were nothing.']];
 const TRAIT_NEVER={Cautious:'Charge! No plan needed.',Reckless:'Perhaps we should wait.',Loyal:'Every one for themselves.',Greedy:'Keep it, I need nothing.',Pious:'There is nothing after this.',Vengeful:'All is forgiven.',Boastful:'It was mostly luck.',Loner:'I could not do this alone.'};
@@ -117,7 +119,8 @@ const ARMS={
   Priest:['was taught the healing words by a tired chaplain in {town}','found the light on a night when a {trade} lay dying and nobody else knelt'],
   Mage:['taught themself the first spark from a borrowed book, and burned the book by accident','was apprenticed to a hedge-caster who died owing them a year of lessons'],
   Hunter:['learned the bow on the {trade} rounds, shooting what came for the stock','followed tracks out of {home} at twelve and never quite came back'],
-  Rogue:['learned the knife collecting debts for a {trade} who was owed too much','got very good at not being seen, because being seen was expensive']};
+  Rogue:['learned the knife collecting debts for a {trade} who was owed too much','got very good at not being seen, because being seen was expensive'],
+  Skald:['learned the first ballads from a {trade} who paid in songs, and found the songs paid better','sang the {town} market awake every morning until someone offered coin for silence, then for more singing']};
 const FLAW={Reckless:'charges first and counts the cost after, and the cost has been rising',Cautious:'has left a friend behind once to save their own skin, and has not told anyone',
   Greedy:'keeps a purse nobody knows about and lies about it with a straight face',Loyal:'would follow a friend into a fire they started themselves',
   Loner:'trusts nobody fully and makes sure nobody notices',Vengeful:'keeps a list, and one name on it is a name they should not hate',

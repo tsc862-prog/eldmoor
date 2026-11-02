@@ -4,3 +4,7 @@
 - [Chat lines](chat_lines.md): one compact line, no mind badge, spokenLine() in sim/council.js, 200 chars refused not cut
 - Workflow: PRs #150 -> #151, #157 -> #158 -> #159 were stacked (each needs stable.js); say "stacked on" in the body. Python edits on Windows: write with newline='\n'; the sandbox refuses bash commands containing the word "git" in heredocs, so write scripts to the scratchpad first.
 - [DM turn cards](dm_turn_cards.md): page-side per-turn cards from bridge dmcalls, localStorage, no sim record
+- [Sheet last fight](sheet_last_fight.md): #241 row on the Fellowship sheet, button opens Combat tab
+- [Professions UI](professions_ui.md): #259 Stats block, setup pickers, S.setup.profs for replacements
+- [Table combat panel](table_combat_panel.md): #277 combatView in ui/table.js, reads sc.rd/foeAt/fd/beats, roll regex, step not built
+- [Chat left column](chat_left_column.md): chat at top of left column on 3-col, placeChat in layout.js, eldmoor.chatLeft

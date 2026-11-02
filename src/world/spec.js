@@ -39,20 +39,23 @@
 //             landmark names or point names, routed with A* over tile cost.
 //   lights    {townTorches:[[dx,dy],...]} offsets from each town's x0,y0.
 //   spawn     {townPad:[px,py]} tiles around a town rect that are never spawn points.
+//   nodes     (#255) gathering nodes, placed by world/nodes.js: {respawn:{herb,ore,hide,fish: game minutes},
+//             regions:{<region id>:{herb:n,ore:n,hide:n,fish:n}}}. A node's skill band comes from its region's level
+//             band; fish stand on the shore of river water; nothing sits on roads, towns or landmarks.
 //   labels    [['TEXT',x,y],...]; omitted => one per region and town, auto-placed.
 
 // The Sunken Crypt's chambers, in the order the Fellowship meets them (sim/crawl.js). Bestiary species, no new creatures.
 const CRYPT_ROOMS=[
   {id:'stair',name:'The Weeping Stair',frame:'Water runs down the steps of the stair and something small scuttles in the dark below.',
-    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.10,rounds:4},
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.10,rounds:2},
   {id:'ossuary',name:'The Ossuary',frame:'Shelves of old bone line the walls. Some of it stands up as the light reaches it.',
-    foes:[{type:'shambler',n:2}],lvl:0,hit:.13,rounds:4},
+    foes:[{type:'shambler',n:2}],lvl:0,hit:.13,rounds:2},
   {id:'gallery',name:"The Archers' Gallery",frame:'A long gallery with arrow-slits in every pillar. Dry bowstrings creak somewhere above.',
-    foes:[{type:'boneshot',n:2},{type:'shambler',n:1}],lvl:0,hit:.13,rounds:4},
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.13,rounds:2},
   {id:'court',name:'The Drowned Court',frame:'The floor is a black mirror of still water. Grave Wardens stand in it to the knee, keeping a court that no longer sits.',
-    foes:[{type:'graveward',n:2}],lvl:1,hit:.17,rounds:5},
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.17,rounds:2},
   {id:'vigil',name:'The Vigil Chamber',frame:'The last door. Something has kept watch here a very long time, and the cold has a voice. It knows every name in the party.',
-    foes:[{type:'graveward',n:1,name:'Lich-Warden Vesk',hits:8,atk:1.6},{type:'tombskit',n:2}],lvl:2,hit:.19,rounds:6,boss:true},
+    foes:[{type:'graveward',n:1,name:'Lich-Warden Vesk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.19,rounds:2,boss:true},
 ];
 
 export const ELDMOOR={
@@ -98,6 +101,9 @@ export const ELDMOOR={
   ],
   lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]]},
   spawn:{townPad:[4,3]},
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{
+    thornvale:{herb:7,ore:4,hide:6,fish:5},mirefen:{herb:7,ore:4,hide:5,fish:5},
+    cinderpass:{herb:3,ore:7,hide:5,fish:0},hoarfell:{herb:3,ore:5,hide:5,fish:2}}},
   labels:[['THORNVALE',14,24],['MIREFEN',38,19],['CINDERPASS',63,18],['HOARFELL',52,5],['HIGHGATE',7.5,1.4],['GRIMHOLD',7.5,49.2]],
 };
 
@@ -122,6 +128,7 @@ export const TESTWORLD={
     {kind:'crypt',name:'The Barrow Gate',boss:'The Barrow Reeve',x:32.5,y:24.1,mouth:{x0:31,y0:22,w:3,h:3},exclude:3.5,cd:25},
   ],
   points:{crossroads:[26,15]},
+  nodes:{respawn:{herb:60,ore:120,hide:60,fish:30},regions:{lowmead:{herb:3,ore:2,hide:2,fish:2},greyreach:{herb:3,ore:2,hide:2,fish:2}}},
   roads:[
     {from:'Wendmere',to:'crossroads'},
     {from:'crossroads',to:'The Barrow Gate'},
@@ -193,6 +200,9 @@ export const STEPPING={
   // nearest: when picking a hunting point near a hero (or a home town), take the nearest of this
   // many random spawn points, so heroes stay local in regions too big for the Eldmoor 7-tile test.
   spawn:{townPad:[4,3],nearest:40},
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{
+    lowmark:{herb:16,ore:8,hide:12,fish:8},sedgewater:{herb:14,ore:8,hide:12,fish:6},cairnwold:{herb:12,ore:12,hide:10,fish:0},
+    cinderreach:{herb:8,ore:14,hide:10,fish:0},rimeholt:{herb:8,ore:10,hide:10,fish:0},palereach:{herb:6,ore:8,hide:8,fish:0}}},
 };
 
 // ---- choosing the world ----

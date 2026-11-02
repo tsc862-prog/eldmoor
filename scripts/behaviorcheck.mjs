@@ -185,6 +185,86 @@ ok(world.some(w => w.memories && w.memories[A.name] >= 1) && anomalies.some(x =>
 ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: memories written per member per game day');
 ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last world digest');
 
+// ---- 6b. the mind comparison (issue #280) on mock logs: two members on qwen, one on Claude, a death, writing calls ----
+{
+  const MD = join(ROOT, 'minds', 'mock'); const {mkdirSync} = await import('node:fs'); mkdirSync(MD, {recursive: true});
+  const KEY2 = 'sk-ant-api03-' + 'Qq7'.repeat(12), t0 = Date.parse('2026-11-01T10:00:00Z'), ts = m => new Date(t0 + m * 1000).toISOString();
+  const mem = (id, name, role, hp, mind, prov, model) => ({id, name, role, fellow: true, agent: true, mind, state: 'hunt', place: 'Thornvale', hp, lvl: 3, idleMin: 0, link: 'connected', runner: {provider: prov, model}});
+  const W2 = [], T2 = [], D2 = [];
+  for (let h = 1; h <= 6; h++) W2.push({ts: ts(h * 60), gameMin: 600 + h * 60, fellowship: {name: 'The Mock Band', minds: 'agent'},
+    members: [mem(1, 'Ann', 'tank', h === 3 ? 20 : 100, h % 2 ? 'agent' : 'autopilot', 'ollama', 'qwen2.5:14b'), mem(2, 'Bo', 'healer', 100, 'agent', 'anthropic', 'claude-haiku-5-5'),
+      ...(h <= 4 ? [mem(3, 'Cy', 'dps1', 90, 'scripted', 'ollama', 'qwen2.5:14b')] : [])],
+    table: {opened: 1, agentTurns: 2, reflexTurns: h === 2 ? 1 : 0}, votes: {agent: 2, reflex: 0}, deaths: h === 5 ? [{name: 'Cy', lvl: 3, cls: 'Rogue', cause: 'slain by a Bristleback Boar ' + KEY2, agent: true}] : []});
+  const turnL = (id, name, prov, model, i, o) => ({ts: ts(i * 10), seat: 'hero:' + id, hero: i % 3 ? {id, name} : null, provider: prov, model, turn: i, tools: o.tools || [{name: 'look', ok: true}], calls: (o.tools || [1]).length,
+    narration: 'SECRET-NARRATION-' + name + ' ' + KEY2, seconds: o.s, tokensIn: o.tin ?? 1000, tokensOut: 50, cacheRead: prov === 'anthropic' ? 3000 : null, cacheWrite: prov === 'anthropic' ? 200 : null, cost: o.cost ?? 0, flags: o.flags || []});
+  for (let i = 1; i <= 10; i++) T2.push(turnL(1, 'Ann', 'ollama', 'qwen2.5:14b', i, {s: i, flags: i <= 2 ? ['empty'] : i === 3 ? ['refused'] : i === 4 ? ['scene'] : [], tools: i <= 2 ? [] : i === 4 ? [{name: 'scene_act', ok: true}] : undefined}));
+  for (let i = 1; i <= 4; i++) T2.push(turnL(2, 'Bo', 'anthropic', 'claude-haiku-5-5', i, {s: 20 + i, cost: .01, tin: 4000}));
+  T2.push({ts: ts(5), seat: 'dm', hero: null, provider: 'anthropic', model: 'claude-sonnet-5-5', turn: 1, tools: [], narration: 'SECRET-DM-NOTE', seconds: 9, cost: .02, flags: ['empty']});
+  for (const [o, ms] of [['applied', 300], ['applied', 500], ['rejected', 900], ['late', 9000]]) D2.push({ts: ts(100), src: 'game', hero: {id: 2, name: 'Bo'}, kind: 'townPlan', provider: 'anthropic', model: 'claude-haiku-5-5', outcome: o, ms});
+  D2.push({ts: ts(120), src: 'relay', kind: 'memory', hero: 'Ann', provider: 'anthropic', model: 'claude-haiku-5-5', ok: true, status: 200, ms: 1500});
+  D2.push({ts: ts(121), src: 'relay', kind: 'chapter', hero: 'Ann', provider: 'anthropic', model: 'claude-haiku-5-5', ok: false, status: 504, ms: 30000});
+  writeFileSync(join(MD, FILES.world), W2.map(x => JSON.stringify(x)).join('\n') + '\n'); writeFileSync(join(MD, FILES.turn), T2.map(x => JSON.stringify(x)).join('\n') + '\n'); writeFileSync(join(MD, FILES.decision), D2.map(x => JSON.stringify(x)).join('\n') + '\n');
+  const rm = writeReport(join(ROOT, 'minds'), 'mock'), mmd = readFileSync(rm.file, 'utf8'), sec = (mmd.split('## Mind comparison')[1] || '').split('## World')[0];
+  const rowOf = n => (sec.split('\n').find(l => l.startsWith('| ' + n + ' |')) || '').split('|').slice(1, -1).map(s => s.trim());
+  const ann = rowOf('Ann'), bo = rowOf('Bo'), cy = rowOf('Cy');
+  ok(/## Mind comparison/.test(mmd) && ann.length === 20 && bo.length === 20 && cy.length === 20, 'report has a Mind comparison table with a row per member (#280)');
+  ok(ann[2] === 'ollama/qwen2.5:14b' && ann[3] === '10' && ann[4] === '2' && ann[5] === '1' && ann[6] === '1', `Ann on qwen: 10 turns (unnamed lines named from the digests), 2 empty, 1 failed, 1 Table answer: ${ann.slice(2, 7).join(' ')}`);
+  ok(ann[7] === '-' && ann[8] === '-' && ann[9] === '-' && ann[12] === '-', 'a member with no decisions shows "-", not zero');
+  ok(/2 by anthropic\/claude-haiku-5-5 \(1 failed\)/.test(ann[10]) && !sec.split('\n').some(l => l.startsWith('| Ann | tank | anthropic')), 'the relay writing Ann\'s sheet is folded into her row, not shown as her mind');
+  ok(ann[11] === '5 / 9 s' && ann[16] === '6 (3, 0)' && ann[17] === '1', `Ann: turn seconds p50/p90, digest hours with autopilot, one close call: ${ann[11]} | ${ann[16]} | ${ann[17]}`);
+  ok(bo[2] === 'anthropic/claude-haiku-5-5' && bo[7] === '4' && bo[8] === '1' && bo[9] === '2' && bo[12] === '500 / 9000 ms' && bo[15] === '$0.0400' && bo[13] === '16000 / 200' && bo[14] === '12000' && ann[14] === '-', `Bo on Claude: 4 decisions, 1 rejected, 2 fallbacks, decision ms p50/p90, cost: ${bo.slice(7, 16).join(' | ')}`);
+  ok(cy[3] === '-' && cy[16] === '4 (0, 4)' && /died: slain by a Bristleback Boar/.test(cy[19]) && ann[18] === '1' && bo[18] === '1' && cy[18] === '0', `deaths survived and lifetimes from the digests: Ann ${ann[18]}, Bo ${bo[18]}, Cy ${cy[19]}`);
+  ok(/\| ollama\/qwen2\.5:14b \| 2 \| 10 \| 2 \(20%\) \| 1 \(10%\) \|/.test(sec) && /\| anthropic\/claude-haiku-5-5 \| 2 \| 4 \|/.test(sec), 'overall per mind: qwen 10 turns 20% empty, Claude Haiku 4 turns');
+  ok(/12 by the agent, 1 by reflex/.test(sec), 'overall Table turns by agent vs reflex from the digests');
+  ok(!mmd.includes(KEY2) && sec.includes('[redacted]') && !sec.includes('SECRET-'), 'the comparison redacts keys and shows no narration or DM text');
+  ok(!/\| dm \|/.test(sec) && !sec.includes('claude-sonnet-5-5'), 'the DM seat is not a member row');
+}
+
+
+// ---- 6c. per-turn token deltas from the Agent SDK's cumulative modelUsage (issue #282) ----
+{
+  const {usageDelta} = await import('./behavior-turn.mjs');
+  const mu = (i, o, cr, cw, m = 'claude-haiku-5-5') => ({modelUsage: {[m]: {inputTokens: i, outputTokens: o, cacheReadInputTokens: cr, cacheCreationInputTokens: cw, webSearchRequests: 0, costUSD: 0, contextWindow: 200000, maxOutputTokens: 8000}}});
+  const sess = {lastTotal: 0};
+  let d = usageDelta(sess, mu(40, 300, 100000, 5000));
+  ok(d.tokensIn === 40 && d.tokensOut === 300 && d.cacheRead === 100000 && d.cacheWrite === 5000, 'a new session: the first result is that turn: ' + JSON.stringify(d));
+  sess.lastTotal = .01;
+  d = usageDelta(sess, mu(100, 700, 350000, 6000));
+  ok(d.tokensIn === 60 && d.tokensOut === 400 && d.cacheRead === 250000 && d.cacheWrite === 1000, 'cumulative totals become per-turn deltas: ' + JSON.stringify(d));
+  d = usageDelta(sess, {modelUsage: {...mu(130, 800, 600000, 6000).modelUsage, 'claude-sonnet-5-5': mu(5, 50, 0, 0, 'claude-sonnet-5-5').modelUsage['claude-sonnet-5-5']}});
+  ok(d.tokensIn === 35 && d.tokensOut === 150 && d.cacheRead === 250000 && d.cacheWrite === 0, 'a second model in the same query is summed before the difference: ' + JSON.stringify(d));
+  // a session resume: the runner restarts, the saved baseline comes back from the session file, the first result already carries the old turns
+  const resumed = JSON.parse(JSON.stringify(sess));
+  d = usageDelta(resumed, {modelUsage: {...mu(160, 900, 900000, 6500).modelUsage, 'claude-sonnet-5-5': mu(5, 50, 0, 0, 'claude-sonnet-5-5').modelUsage['claude-sonnet-5-5']}});
+  ok(d.tokensIn === 30 && d.tokensOut === 100 && d.cacheRead === 300000 && d.cacheWrite === 500, 'a resumed session reports only the new turn, not the old turns the SDK carried over: ' + JSON.stringify(d));
+  // a /clear or a fresh query: totals fall below the baseline -> a fresh count
+  d = usageDelta(resumed, mu(10, 20, 3000, 100));
+  ok(d.tokensIn === 10 && d.tokensOut === 20 && d.cacheRead === 3000 && d.cacheWrite === 100, 'totals that fell are a fresh count: ' + JSON.stringify(d));
+  // a session saved before #282 (cost history, no usage baseline): that turn is unknown, the next is exact
+  const old = {lastTotal: .5};
+  d = usageDelta(old, mu(500, 5000, 3300000, 90000));
+  ok(d.tokensIn === null && d.cacheRead === null && old.lastUsage.cacheRead === 3300000, 'an old session has no baseline: one unknown turn, never the cumulative total');
+  d = usageDelta(old, mu(520, 5200, 3350000, 90000));
+  ok(d.tokensIn === 20 && d.cacheRead === 50000, 'and the next turn is a delta');
+  // missing fields: no modelUsage -> all null, baseline untouched; a model entry without cache fields counts as 0
+  const keep = {lastTotal: 0, lastUsage: {tokensIn: 1, tokensOut: 2, cacheRead: 3, cacheWrite: 4}};
+  d = usageDelta(keep, {total_cost_usd: .1});
+  ok(d.tokensIn === null && d.tokensOut === null && d.cacheRead === null && keep.lastUsage.cacheRead === 3, 'no modelUsage: nulls, baseline kept');
+  d = usageDelta({lastTotal: 0}, {modelUsage: {'claude-haiku-5-5': {inputTokens: 12, outputTokens: 7}}});
+  ok(d.tokensIn === 12 && d.tokensOut === 7 && d.cacheRead === 0 && d.cacheWrite === 0, 'a model entry missing the cache fields counts them as 0');
+  ok(usageDelta({lastTotal: 0}, null).tokensIn === null, 'no result at all: nulls');
+  // the turn line carries the four numbers, reaches the file, and the report shows cache read apart; old lines are left out of token averages
+  const dirU = join(ROOT, 'minds2', 'u'); const {mkdirSync: mk2} = await import('node:fs'); mk2(dirU, {recursive: true});
+  const tl = (i, extra) => JSON.stringify({ts: new Date(Date.parse('2026-11-01T10:00:00Z') + i * 1000).toISOString(), seat: 'hero:2', hero: {id: 2, name: 'Bo'}, provider: 'anthropic', model: 'claude-haiku-5-5', turn: i, tools: [{name: 'look', ok: true}], calls: 1, failed: 0, narration: 'n' + i, seconds: 5, tokensOut: 100, cost: .01, flags: [], ...extra});
+  writeFileSync(join(dirU, FILES.turn), [tl(1, {tokensIn: 3300000}), tl(2, {tokensIn: 40, cacheRead: 90000, cacheWrite: 2000}), tl(3, {tokensIn: 60, cacheRead: 110000, cacheWrite: 0})].join('\n') + '\n');
+  const ru = writeReport(join(ROOT, 'minds2'), 'u'), mdu = readFileSync(ru.file, 'utf8');
+  ok(/cache read per turn/.test(mdu) && /\| 50 \/ 100 \| 100000 \|/.test(mdu) && !/3300000|1100000/.test(mdu), 'the report averages the two new lines (50 in / 100 out, 100000 cache read) and leaves the cumulative one out');
+  ok(/1 Claude turn line from before the per-turn token fix/.test(mdu), 'and says how many old lines were left out');
+  const lineW = behaviorLog({root: join(ROOT, 'minds3'), world: 'u'}); lineW.turn({seat: 'hero:2', runner: 'r', provider: 'anthropic', model: 'claude-haiku-5-5', tokensIn: 40, tokensOut: 100, cacheRead: 90000, cacheWrite: 2000, tools: []});
+  const tlines = readJsonl(join(ROOT, 'minds3', 'u'), FILES.turn);
+  ok(tlines.length === 1 && tlines[0].cacheRead === 90000 && tlines[0].cacheWrite === 2000 && tlines[0].tokensIn === 40, 'the turn line writes cacheRead and cacheWrite beside tokensIn and tokensOut');
+}
+
 // ---- 7. rotation by size ----
 {const rot = behaviorLog({root: join(ROOT, 'rot'), world: 'r', rotate: {bytes: 1500, keep: 2}});
   for (let i = 0; i < 60; i++) rot.ingest('world', {gameMin: i, members: [], pad: 'x'.repeat(80)});

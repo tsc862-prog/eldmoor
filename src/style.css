@@ -47,6 +47,10 @@ h1{font-family:var(--px);font-size:clamp(20px,4vw,30px);margin:0;color:var(--gol
   .main.cols3{flex:1;min-height:0;grid-template-columns:var(--sideL) minmax(0,1fr) var(--side);align-items:stretch}
   .main.cols3>.col{overflow-y:auto;overflow-x:hidden;min-height:0;overscroll-behavior:contain}
   .main.cols3 .screen{height:clamp(420px,62vh,1300px)}
+  /* chat at the top of the left column (owner request): it fills most of the column, Story and World scroll below it */
+  .colL>#chatSec{flex:0 0 auto}
+  body.chat-left .colL .chatbox .chatlist,body.chat-left .colL .chatdm{height:clamp(240px,calc(62vh - 170px),1000px)}
+  body.chat-left #chatTall{display:none}
 }
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
 .screen{position:relative;aspect-ratio:640/400;max-width:100%;background:#000;border:3px solid var(--edge);box-shadow:0 0 0 3px #05060c,6px 6px 0 0 #05060c;cursor:pointer;touch-action:manipulation}
@@ -498,7 +502,7 @@ button.tbtn.danger{border-color:var(--red)}
 .tfoot a{color:var(--gold)}
 .tfoot a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
-.chatwidebtn{margin-left:auto}
+.chatwidebtn{margin-left:auto}.chatsidebtn{margin-left:6px}.chatsidebtn[hidden]{display:none}
 
 /* ---- Quests tab ---- */
 .qlog{display:flex;flex-direction:column;gap:10px}
@@ -567,3 +571,60 @@ button.tbtn.danger{border-color:var(--red)}
 .dmcv{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 .dmcl.bad .dmck,.dmcl.bad .dmcv{color:#e07a6e}
 @media (max-width:920px){.dmck{flex-basis:64px}}
+
+/* Fellowship sheet: last fight row (#241) */
+.shtbl .shfight{display:block;text-align:left;font:inherit;font-size:16px;color:var(--text,inherit);background:none;border:0;padding:0;cursor:pointer;overflow-wrap:anywhere;text-decoration:underline dotted var(--dim)}
+.shtbl .shfight:hover,.shtbl .shfight:focus-visible{color:var(--gold);outline:1px solid var(--gold)}
+
+/* Professions block (#259) and the setup page's profession pickers */
+.profs{display:grid;gap:3px;min-width:0}
+.prof{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 8px;align-items:center;min-width:0;padding:1px 2px}
+.prof .profn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prof .profk{text-align:right}
+.prof .profbar{grid-column:1/2;height:5px;background:#10131f;border:1px solid var(--line,#2a3045);min-width:0}
+.prof .profbar i{display:block;height:100%;background:var(--green)}
+.prof.craft .profbar i{background:var(--gold)}
+.prof .profs-n{text-align:right;white-space:nowrap}
+.sprofs{display:flex;flex-wrap:wrap;gap:4px;min-width:0}
+.sprofs .mini[aria-pressed="true"]{outline:2px solid var(--gold)}
+.sprofs .mini.dis{opacity:.45}
+.sprofnote{min-width:0}
+/* Table combat block (#277): round, initiative chips with HP bars and conditions, roll lines, end reason */
+.tbanner .tround{color:#ffd866}
+.tbanner .tcinit{display:flex;flex-wrap:wrap;gap:3px 4px;margin-top:4px}
+.tbanner .tci{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:1px 4px;border:1px solid #3a3f58;background:rgba(20,24,40,.7);font-size:14px;white-space:nowrap}
+.tbanner .tci.cur{border-color:#ffd866;color:#ffd866}
+.tbanner .tci.foe{border-color:#7a3434;background:rgba(48,16,16,.7)}
+.tbanner .tci.foe.cur{border-color:#ff9a6a;color:#ffb38a}
+.tbanner .tci.down{opacity:.5}
+.tbanner .tcn{overflow:hidden;text-overflow:ellipsis;max-width:11em}
+.tbanner .tchp{display:inline-block;width:34px;height:5px;background:#1a1d2c;border:1px solid #2c3048;flex:none}
+.tbanner .tchp i{display:block;height:100%;background:#5fcf6a}
+.tbanner .tci.foe .tchp i{background:#d8504a}
+.tbanner .tchp i.lo{background:#ff9a3a}
+.tbanner .tcp{font-size:13px;opacity:.8;min-width:2.4em}
+.tbanner .tcc{font-size:12px;color:#c8b8ff;border:1px solid #4a4070;padding:0 3px}
+.tbanner .trolls{margin-top:4px;font-size:14px;border-top:1px solid #2c3048;padding-top:2px}
+.tbanner .trh{font-family:var(--px);font-size:7px;color:#9aa0c0;margin-bottom:1px}
+.tbanner .trl{line-height:1.1;overflow-wrap:anywhere}
+.tbanner .trl b{color:#e8e4d0;font-weight:normal}
+.tbanner .trl.foe b{color:#ffb38a}
+.tbanner .trd{color:#9aa0c0}
+.tbanner .trr{font-family:var(--px);font-size:7px;padding:0 2px}
+.tbanner .trl.hit .trr{color:#7fe08a}
+.tbanner .trl.miss .trr{color:#8a8fa8}
+.tbanner .trl.crit .trr{color:#ffd866}
+.tbanner .trr.fall{color:#ff6a5a}
+.tbanner .tend{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.tbanner .tendc{font-family:var(--px);font-size:7px;padding:2px 4px;border:1px solid #3a3f58;color:#cfd3e8}
+.tbanner .tendc.win{border-color:#4f8a56;color:#7fe08a}
+.tbanner .tendc.loss{border-color:#8a3a34;color:#ff8a7a}
+/* the watcher's round pace (#285): the banner ignores the pointer, its step buttons take it */
+.tbanner .tstep{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.tbanner .tstb{pointer-events:auto;font-family:var(--px);font-size:7px;padding:4px 6px;min-height:22px;background:#1a1d2c;color:#cfd3e8;border:1px solid #3a3f58;cursor:pointer;box-shadow:none}
+.tbanner .tstb.tnext{border-color:#ffd866;color:#ffd866}
+.tbanner .tstb:focus-visible{outline:2px solid #ffd866}
+@media (max-width:560px){.tbanner.tcombat{left:4px;right:4px;top:4px;padding:4px 6px;font-size:14px}
+  .tbanner.tcombat .tf{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .tbanner .tcn{max-width:7em}.tbanner .tchp{width:24px}.tbanner .tcc{font-size:11px}
+  .tbanner .trl:not(:nth-last-child(-n+3)){display:none}}

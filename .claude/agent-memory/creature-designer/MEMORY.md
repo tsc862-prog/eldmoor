@@ -4,3 +4,4 @@
 - [Bestiary blocks](project_bestiary_blocks.md) — #84 role calibration, ability rule (hero.cd/pos/hp only), elites/named/site foes, builder, measuring gotchas
 - [Inventory pack](project_inventory.md) — #124 a.inv design, potion tuning, sims: mob deaths -36% but total deaths flat, tooling gotchas
 - [Recipes #256](project_recipes.md) — one recipe table, MATERIALS vs GOODS (hash-neutral), craft:true USES, CRAFT_GEAR, MAT_DROPS
+- [Mid-mob pressure](project_mid_mob_pressure.md) — #154 slice: only lv/COUNTS are levers in mobs.js; 11.9 -> 14.3 deaths/h

@@ -684,6 +684,8 @@ const WEAPON={
   Hunter:[[8,2,'W'],[9,3,'W'],[9,4,'W'],[9,5,'W'],[9,6,'W'],[9,7,'W'],[8,8,'W'],[8,3,'A'],[8,7,'A']],
   Priest:[[8,0,'O'],[9,0,'O'],[8,1,'O'],[9,1,'O'],[8,2,'W'],[8,3,'W'],[8,4,'W'],[8,5,'W'],[8,6,'W'],[8,7,'W'],[8,8,'W'],[8,9,'W'],[8,10,'W']],
   Rogue:[[8,4,'W'],[8,5,'W'],[8,6,'W'],[8,7,'A'],[0,4,'W'],[0,5,'W'],[0,6,'W'],[0,7,'A']],
+  // Skald: a round-bellied lute held out to the right, a gold rose sound-hole and a long neck up past the shoulder.
+  Skald:[[9,1,'W'],[9,2,'W'],[8,3,'W'],[8,4,'O'],[9,4,'O'],[8,5,'O'],[9,5,'W'],[8,6,'O'],[9,6,'O'],[8,7,'W']],
 };
 
 // Hero: faction-coloured tabard, class weapon on the right, class headgear, and the

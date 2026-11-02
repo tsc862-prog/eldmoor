@@ -19,22 +19,25 @@ import {BESTIARY,VARIANTS,ROLES,heroTag,baseId} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
-import {maxHp,goHome,fall} from './heroes.js';
+import {maxHp,goHome,fall,gainXp} from './heroes.js';
 import {combatStats} from './stats.js';
 import {record,timeline,first} from './history.js';
 import {bestUse,useItem} from './inv.js';
 import {notify} from './notify.js';
-import {setCrawlHook,payClear} from './dungeon.js';
+import {setCrawlHook,payClear,clearXp} from './dungeon.js';
 import {tableOn,openScene,setSceneKind} from './table.js';
 
 export const CRAWL={
   GAP:4,          // seconds (world time) between one room and the next
   BREATH:.12,     // share of max HP each survivor regains on a won room
-  ROUNDS:4,       // rounds a room holds before the party is driven back, unless the room says
+  ROUNDS:2,       // rounds a room holds before the party is driven back, unless the room says
+  ROOM_XP:1,      // XP per room won, in clear payouts divided by the rooms (so a full clear pays the same total)
+  CLEAR_BONUS:.1, // the last clear then adds this share of the payout on top of the gold and goods
   RETREAT_HIT:.5, // the rearguard's blow as a party withdraws, as a share of the room's hit
   GUARD_DRAW:.7,  // chance a foe's blow goes to whoever drew the foes
   GUARD_CUT:.5,   // a drawn blow lands at this share; the holder's line cuts the rest by HOLD_CUT each
   HOLD_CUT:.25,
+  SCOUT_MIN:6,    // reflex scouts in a room's first round only when the foes need this many blows (two rounds leave no time to spare)
   DC:9,           // a strike beats d20 + skill against DC + foe level/2
   FOE_HIT:3,      // foes strike at d20 + FOE_HIT + level/2 against 10 + armour
 };
@@ -76,7 +79,7 @@ function openRound(g){const cr=g.crawl,room=roomsOf()[cr.i];
 
 // ---- the scene kind ----
 const SPECIAL={Warrior:['hold','Hold the line: the foes\' blows on the others fall short'],Priest:['ward','Ward the group with prayer: a little mending and a steadier hand for all'],
-  Rogue:['scout','Look for the gap in their guard'],Hunter:['scout','Read their movements and call the gap'],Mage:['read','Read the old wards and turn them on the foes']};
+  Rogue:['scout','Look for the gap in their guard'],Hunter:['scout','Read their movements and call the gap'],Mage:['read','Read the old wards and turn them on the foes'],Skald:['read','Sing a dirge that turns the old wards on the foes']};
 const grp=()=>CRYPT.group&&CRYPT.group.crawl?CRYPT.group:null;
 const members=g=>g.mem.filter(living);
 const lowest=g=>{let lo=null;for(const b of members(g))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
@@ -93,7 +96,7 @@ function reflex(sc,a){const g=grp();if(!g)return 'strike';const cr=g.crawl,lo=lo
   if(healer&&lo&&lo.hp<maxHp(lo)*.6)return 'heal';
   if(a.hp<mh*.2)return 'retreat';
   if(a.fellowRole==='tank'&&!cr.guard.length)return 'guard';
-  if(cr.rd===0&&SPECIAL[a.cls]&&a.fellowRole!=='tank')return SPECIAL[a.cls][0];
+  if(cr.rd===0&&SPECIAL[a.cls]&&a.fellowRole!=='tank'&&liveFoes(cr).reduce((t,f)=>t+f.hp,0)>=CRAWL.SCOUT_MIN)return SPECIAL[a.cls][0];
   return 'strike'}
 // A roll's skill: level and gear, halved, plus the round's edge (scouting, a ward, the site scene).
 const skill=(a,cr,f)=>{const bz=(f&&species(f.type))||{},tag=heroTag(a.cls),w=(bz.weak||{})[tag]||1,rs=(bz.res||{})[tag]||1;
@@ -133,7 +136,7 @@ function strikeBack(g,room,cr,rearguard){const out=[],foes=rearguard?[pickA(live
   return {fell,hits:out.filter(x=>!x.miss).length,misses:out.filter(x=>x.miss).length}}
 function outcome(sc){const g=grp();if(!g)return '';const cr=g.crawl,room=roomsOf()[cr.i];cr.stats.rounds++;let tail;
   const foes=liveFoes(cr);
-  if(!foes.length){tail='The last of them goes down.';for(const b of members(g))heal(b,maxHp(b)*CRAWL.BREATH);
+  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP/roomsOf().length))}
     if(sc.beats.some(b=>b.k==='retreat'))tail+=' Those who fell back come forward again.';
     if(cr.i+1>=roomsOf().length){cr.end='clear';cr.foes=null}
     else{cr.i++;cr.foes=null;cr.rd=0;cr.gap=CRAWL.GAP;tail+=' The way on is open.'}
@@ -155,7 +158,7 @@ function leave(g){for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.
 function finish(g){const cr=g.crawl,who={t:g.name||S.fellowship.name,c:'f'+g.fac},st=cr.stats;leave(g);
   if(cr.end==='clear'){log(who,' cleared ',gd(CRYPT.name),' room by room and destroyed ',gd(CRYPT.boss),'!');
     if(first('crypt:f'+g.fac))timeline('crypt',who,' cleared ',gd(CRYPT.name),' for the first time.');
-    payClear(g)}
+    payClear(g,CRAWL.CLEAR_BONUS)}
   else{const names=g.mem.filter(living);
     log(who,cr.driven?' were driven back from ':' withdrew from ',gd(CRYPT.name),' with the ',gd(roomsOf()[cr.i].name),' unbeaten.');
     for(const a of names){record(a,cr.driven?'Driven back from ':'Withdrew from ',gd(CRYPT.name),'.');goHome(a)}}
@@ -166,8 +169,8 @@ export function crawlLost(g){const who={t:g.name||S.fellowship.name,c:'f'+g.fac}
   log(who,' was lost in ',gd(CRYPT.name),'. No one came back up the stair.');timeline('death',who,' was lost in ',gd(CRYPT.name),' to the last man.');
   tally('wipes',g,g.crawl)}
 // The Fellowship's crawl record (S.fellowship.crawl: runs, clears, driven back, withdrawn, wipes, deaths, rooms won), for the sim summary and the checks.
-function tally(k,g,cr){const F=S.fellowship,C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0});
-  C.runs++;C[k]++;C.rooms+=cr.end==='clear'?roomsOf().length:cr.i;C.deaths+=g.mem0-g.mem.filter(living).length}
+function tally(k,g,cr){const F=S.fellowship,C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
+  C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.rooms+=cr.end==='clear'?roomsOf().length:cr.i;C.deaths+=g.mem0-g.mem.filter(living).length}
 function tick(g,dt){const cr=g.crawl;
   if(S.table)return;                                  // a scene (the stair, or a room) is open: the table runs it
   if(!g.tSite)return;                                 // the stair scene (sim/table.js tableTick) comes first
