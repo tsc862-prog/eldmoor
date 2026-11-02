@@ -27,3 +27,4 @@
 - [Table conditions #296](table_conditions.md) — stun/root/poison in eff by rounds, saves on beat.check, cleared at scene end, parley rules
 - [Guild focus #6](guild_focus.md) — Delve/Wyrmhunt/Wayfaring/Warpath hooks multiply existing rolls; GF.ON=false hash = main; Fellowship out
 - [Archetype stances #305](archetype_stances.md) — authoredStance: model/owner/archetype lines win over bond reading; stanceBy marker; event appended
+- [Fellowship scenes #325](fellowship_scenes.md) — 5-member party never fit size-3 jobs; ff jobs fit the whole Fellowship, theirs only; bounty -> ff job at gate

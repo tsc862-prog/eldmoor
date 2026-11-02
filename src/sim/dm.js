@@ -248,9 +248,9 @@ export function takeBounty(a,b){a.quest={type:b.type,need:b.need,have:0,at:Math.
 // and otherwise a townsperson's request or the gate captain's writ.
 // ---- the Fellowship first (issue #165) ----
 // The board of the Fellowship's hall always keeps one posted job that concerns them: an oath a member swore, a living
-// elite nearest their road, or a townsfolk job set in the region they are in (when its level band suits them). Deterministic:
-// no dice, the members in slot order. Returns the posted hook or null (then the ordinary draw runs).
-const forFellow=(h,fo)=>h.for!=null&&fo.ids.has(h.for)||h.zone!=null&&fo.zones.has(h.zone)||(h.data&&h.data.eliteId!=null&&(()=>{const E=S.mobs.find(m=>m.id===h.data.eliteId);return !!E&&fo.zones.has(MOBS[E.type].z)})());
+// elite nearest their road, a townsfolk job set in the region they are in (when its level band suits them), or else a job
+// on the captain's bounty for the region they hunt (#325). The members in slot order; the job's template is drawn. Every one
+// is tagged ff, and an ff job fits the whole Fellowship (fits). Returns the posted hook or null (then the ordinary draw runs).
 function fellowHook(c,fo){
   const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl));
   for(const a of fo.members){if(a.adv||a.lvl<K.MIN_LVL||S.adventures.some(h=>h.phase==='open'&&h.for===a.id))continue;
@@ -259,11 +259,27 @@ function fellowHook(c,fo){
   const E=S.mobs.filter(m=>m.elite&&m.alive&&!m.gone&&!taken(m)&&m.lvl<=hi+2).sort((p,q)=>dist(p,fo)-dist(q,fo)||p.id-q.id)[0];
   if(E&&fo.members.length>=2){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper'],ff:1},'a living elite lies near the Fellowship’s road',true)}
   const z=fo.zone!=null&&band(fo.zone)[0]<=lo&&band(fo.zone)[1]>=lo-4?fo.zone:null;
-  if(z==null)return null;
+  if(z==null)return bountyHook(c,fo);
   const tpl=pickA(Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'));const T=D.ADVENTURES[tpl],g=giverOf(c,T.givers);
   return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g,zone:z,ff:1},'a job in the region the Fellowship rides',true)}
+// The captain's bounty, with a job attached (issue #325): since #67 the Fellowship rode out on a bounty and came home less
+// often, and only to a board of jobs sized for background parties. When a bounty is posted for the region the Fellowship
+// hunts, the captain posts a Fellowship-first job in that region; the bounty stays up for everyone else.
+const BOUNTY_TPLS=Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'&&(D.ADVENTURES[k].givers||[]).includes('captain'));
+const fellowZone=fo=>{const P=(S.parties||[]).find(p=>p.fellow&&p.leader&&p.leader.state!=='dead');return P&&P.zone!=null?P.zone:huntZone(fo.members[0])};
+function bountyHook(c,fo,b){const z=fellowZone(fo);b=b||bountiesAt(c).find(x=>x.z===z);if(!b||!BOUNTY_TPLS.length)return null;
+  const h=newHook(c,pickA(BOUNTY_TPLS),'writ',{giver:{name:b.giver,role:'captain'},zone:b.z,ff:1,data:{bounty:b.id}},'the gate captain’s bounty lies in the Fellowship’s region',true);
+  if(h)bump(stats(),'ffBounty');return h}
+// An open Fellowship-first job (or one for a member) on this board: the only kind a full Fellowship party can take.
+const ffOpen=(c,fo)=>S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&(h.ff||h.for!=null&&fo.ids.has(h.for)));
+// Town gate (heroes.js, a Fellowship leader that found no job): the bounty of the region it sets out for becomes its job.
+// Returns true when the party set out on it; false leaves the ordinary bounty branch in charge. Never runs without a Fellowship.
+export function fellowBounty(a,c,z){const fo=focus();if(!fo||!a.fellow||fo.town!==c||(a.party&&a.party.leader!==a)||ffOpen(c,fo))return false;
+  const b=bountiesAt(c).find(x=>x.z===z);if(!b)return false;
+  boardLever=null;const h=bountyHook(c,fo,b);if(!h)return false;boardLog(c,h,[],boardLever?[boardLever]:[]);
+  return dmDepart(a,c)}
 function makeHook(c){const seen=S.dmSeen,fo=focus();
-  if(fo&&fo.town&&fo.town.name===c.name&&!S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&forFellow(h,fo))){const h=fellowHook(c,fo);if(h)return h}
+  if(fo&&fo.town&&fo.town.name===c.name&&!ffOpen(c,fo)){const h=fellowHook(c,fo);if(h)return h}
   const r=rnd();
   // recent deaths of this town's heroes, where they fell
   if(r<.3){const g=S.agents.find(x=>x.state==='dead'&&x.fac===c.fac&&homeOf(x)===c&&x.lvl>=3&&!seen.dead.includes(x.id)&&x.diedMin!=null&&S.gameMin-x.diedMin<1440);
@@ -299,7 +315,9 @@ function oathTpl(a){const g=a.goal;if(!g||g.done)return null;
 // Does this hook suit a party of these members, led by a?
 function fits(h,a,mem){const T=D.ADVENTURES[h.tpl],lo=Math.min(...mem.map(b=>b.lvl)),hi=Math.max(...mem.map(b=>b.lvl));
   if(h.for!=null&&!mem.some(b=>b.id===h.for))return false;
-  if(mem.length<T.size[0]||mem.length>T.size[1]||lo<Math.max(K.MIN_LVL,T.lvl))return false;
+  const whole=h.ff&&mem.some(b=>b.fellow); // a Fellowship-first job is theirs and takes the whole Fellowship (#325): the size cap is for background parties
+  if(h.ff&&!whole)return false;
+  if(mem.length<T.size[0]||(!whole&&mem.length>T.size[1])||lo<Math.max(K.MIN_LVL,T.lvl))return false;
   if(h.data.eliteId!=null){if(mem.length<2||hi<h.data.eliteLvl-2)return false;const E=S.mobs.find(m=>m.id===h.data.eliteId);if(!E||!E.alive||E.gone)return false}
   if(h.zone!=null){const b=band(h.zone),home=partyZone(a);if(h.zone!==home&&!(b[0]<=lo&&b[1]>=lo-4))return false}
   return true}
@@ -644,6 +662,8 @@ function refill(){const gone={};
   const fo=focus(),order=fo&&fo.town?[fo.town,...CITY.filter(c=>c!==fo.town)]:CITY;
   for(const c of order){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null);
     if(fo&&fo.town&&c!==fo.town&&!fo.busy&&posted.length>=K.FLOOR)continue;
+    // the Fellowship's hall keeps one job they can take on top of a full board (#325)
+    if(fo&&c===fo.town&&!fo.busy&&posted.length>=K.HOOKS&&!ffOpen(c,fo)){boardLever=null;const h=fellowHook(c,fo);if(h){boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}}
     if(posted.length<K.HOOKS){boardLever=null;const h=makeHook(c);boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}
     if(!posted.some(h=>h.zone==null)){const w=pull('withdraw_hook',{hook:posted[0].id},{by:'scripted',reason:'every posted job was tied to one region',log:false});
       boardLever=null;const h=townHook(c);boardLog(c,h,(gone[c.name]||[]).concat(w.ok?[hookRow(posted[0],'every posted job was tied to one region: oldest taken down')]:[]),[w.entry.detail].concat(boardLever?[boardLever]:[]))}}}
