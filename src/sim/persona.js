@@ -28,6 +28,7 @@ import {cleanText,PERSONA_FIELDS,STANCE_MAX,BACKSTORY_FIELDS,LINK_KINDS} from '.
 import {S} from './state.js';
 import {bond,FRIEND,CLOSE} from './bonds.js';
 import {topScores,SKILLS} from './abilities.js';
+import {ARCHETYPES} from '../data/archetypes.js';
 
 const pick=(a,salt,list)=>list[Math.floor(hash(a.id|0,salt,7)*list.length)%list.length];
 const lc=t=>t?t.charAt(0).toLowerCase()+t.slice(1):'';
@@ -185,6 +186,14 @@ export function applyBackstory(a,j,mates,model){if(!j||typeof j!=='object')retur
   const old=a.backstory||{};
   a.backstory={src:'model',model:model||null,edited:false,at:S.gameMin,paras,summary,
     link:b?{id:b.id,name:b.name,kind:LINK_KINDS.includes(j.link_kind)?j.link_kind:'oath'}:old.link||null,world:old.world||null};return true}
+
+// ---- archetypes (issue #295) ----
+// Writes only persona text: voice, wants, fears, quirk, never_says, the default stance and the
+// archetype id. Facts, stances toward named companions, class, bonds, oath, home and history are
+// never touched. No RNG; a second apply replaces the first. Returns false for an unknown id.
+export function applyArchetype(a,id){const A=ARCHETYPES[id];if(!a||!A)return false;
+  const old=a.persona||buildPersona(a,[]);
+  a.persona={...old,voice:A.voice,wants:A.wants,fears:A.fears,quirk:A.quirk,never_says:A.never_says,stance:A.stance,archetype:id};return true}
 
 // ---- the compact block prompts and the agent player get ----
 export function fellowCard(a){if(!a||!a.fellow)return null;const F=S.fellowship,P=a.persona,M=a.memory;
