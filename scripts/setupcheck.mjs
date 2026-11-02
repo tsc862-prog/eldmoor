@@ -73,6 +73,7 @@ ok(S.dmAgent && S.dmAgent.seat === true, 'an agent DM opens the DM seat');
  ok(m.tank.persona.archetype === 'zealot' && m.tank.persona.voice === ARCHETYPES.zealot.voice, 'a chosen archetype is applied at founding');
  ok(ARCHETYPE_IDS.includes(m.healer.persona.archetype) && m.healer.persona.archetype === resolveArchetype(cleanSetup(s), 'healer'), 'Random resolves to one of the six, the same one resolveArchetype names');
  ok(!m.dps1.persona.archetype, 'None leaves the persona as it was');
+ ok(m.tank.persona.edited === true && m.healer.persona.edited === true && !m.dps1.persona.edited, 'an archetype chosen at setup marks the persona as edited (relay writing never replaces it), like the panel picker');
  const others = mem.filter(x => x.hero !== m.tank).map(x => x.hero);
  ok(others.every(b => m.tank.persona.stances[b.id] === ARCHETYPES.zealot.stance.replace('{other}', b.name)), 'each companion gets the stance template with their name');
  ok(!JSON.stringify(m.tank.persona.stances).includes('{other}'), 'no {other} left in a stance');
