@@ -537,3 +537,23 @@ button.tbtn.danger{border-color:var(--red)}
 .dmfrun{min-width:0;flex:1 1 auto}
 .dmfrun button.runbtn{font-size:6px;padding:2px 4px}
 @media (max-width:560px){.dmf{font-size:14px;padding:3px 6px}.dmfact,.dmffol{font-size:14px}}
+
+/* ---- Combat tab ---- */
+.cblog{display:flex;flex-direction:column;gap:8px;min-width:0}
+.cbbar{display:flex;flex-wrap:wrap;gap:4px}
+.cbchip{font-family:var(--px);font-size:8px;padding:5px 7px;background:var(--panel2);color:var(--dim);border:1px solid var(--edge);cursor:pointer}
+.cbchip[aria-pressed="true"]{color:var(--gold);border-color:var(--gold)}
+.cbchip:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.cbtot{color:var(--dim);font-size:18px;overflow-wrap:anywhere}
+.cbcard{background:var(--panel2);border-left:3px solid var(--edge);padding:6px 8px;min-width:0;overflow-wrap:anywhere}
+.cbcard.cbres-won,.cbcard.cbres-victory{border-left-color:var(--green)}
+.cbcard.cbres-lost,.cbcard.cbres-died,.cbcard.cbres-fled{border-left-color:var(--red)}
+.cbcard>summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline;font-size:19px}
+.cbfoe{color:var(--ink)}.cbres{font-family:var(--px);font-size:8px;color:var(--dim);text-transform:uppercase}
+.cbdim{color:var(--dim);font-size:18px}
+.cbstats{display:flex;flex-wrap:wrap;gap:8px}.cbuse{flex-basis:100%;display:flex;flex-wrap:wrap;gap:2px 10px;font-size:18px}
+.cblines{margin-top:6px;display:flex;flex-direction:column;gap:1px;font-size:18px}
+.cbl{display:flex;gap:6px;min-width:0}.cbt{color:var(--dim);flex:none}.cbx{min-width:0;overflow-wrap:anywhere}
+.cb-hit{color:var(--gold)}.cb-hurt{color:var(--red)}.cb-heal,.cb-healed{color:var(--green)}.cb-item{color:var(--blue)}
+.cb-kill,.cb-death,.cb-xp,.cb-loot,.cb-level,.cb-flee,.cb-miss,.cb-dodge,.cb-block{color:var(--dim)}
+.cb-crit{font-weight:bold}

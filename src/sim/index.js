@@ -18,6 +18,7 @@ import {updMarket} from './market.js';
 import {chatTick} from './chat.js';
 import {npcsTick} from './npcs.js';
 import {talkTick} from './talk.js'; // NPC conversations (#170)
+import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
 import {guildsTick} from './guilds.js';
@@ -77,6 +78,6 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   // agent-played heroes (sim/player.js) run a reduced machine first
   partyTick();fellowshipTick(dt);councilTick();campTick(dt);tableTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
-  chatTick(dt);npcsTick(dt);talkTick();goalsTick(dt);guildsTick(dt);
+  chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}
