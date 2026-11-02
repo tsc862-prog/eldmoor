@@ -167,6 +167,41 @@ r = dmAct('log_intent', {text: 'The wagon thread will pull the party toward Mire
 ok(r.ok && S.dmLog[0].kind === 'agent' && S.dmLog[0].detail.intent, 'log_intent writes a DM agent line');
 ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
 
+// world events (issue #352): dm_status and levers show what runs and whether start_event is open today; pulls and refusals carry their reason
+{S.dmAgent.day.pulls = 0;
+  let we = dmAct('dm_status').world_events;
+  ok(we && Array.isArray(we.running) && we.running.length === 0 && we.open_today === true && we.kinds.includes('festival') && we.kinds.includes('plague') && Array.isArray(we.fellowship_regions) && /Fellowship first/.test(we.note || ''),
+    'dm_status world_events: nothing running, start_event open today, its kinds and the Fellowship\'s regions');
+  ok(JSON.stringify(dmAct('levers').world_events) === JSON.stringify(we), 'levers carries the same world_events');
+  const zc = S.conditions[0].z, zf = ZONES.findIndex((n, i) => !S.conditions.some(c => c.z === i));
+  const evReason = 'the harvest fair draws the Fellowship\'s old friends to market';
+  r = dmAct('pull_lever', {lever: 'start_event', params: {kind: 'festival', region: ZONES[zc]}, reason: 'a fair where fog already lies'});
+  const ref0 = S.dmLog[0];
+  ok(r.ok === false && /already has a condition/.test(r.error) && ref0.kind === 'lever' && ref0.detail.lever === 'start_event' && ref0.detail.by === 'dm-agent' && /rejected: .*already has a condition/.test(ref0.detail.result) && ref0.detail.reason === 'a fair where fog already lies',
+    'a start_event over a region with a condition is refused, the refusal and the reason in the DM log: ' + r.error);
+  ok(zf >= 0, 'a region with no condition for the event');
+  r = dmAct('pull_lever', {lever: 'start_event', params: {kind: 'festival', region: ZONES[zf]}, reason: evReason});
+  const ev = S.dmLog.find(e => e.kind === 'lever' && e.detail.lever === 'start_event' && e.detail.result === 'applied');
+  ok(r.ok && S.conditions.some(c => c.z === zf && c.kind === 'festival') && ev && ev.detail.by === 'dm-agent' && ev.detail.reason === evReason && ev.detail.params.kind === 'festival' && ev.detail.region === ZONES[zf],
+    `start_event: a festival in ${ZONES[zf]}, logged with its kind, region and reason` + (r.ok ? '' : ': ' + r.error));
+  we = dmAct('dm_status').world_events;
+  ok(we.running.length === 1 && we.running[0].kind === 'festival' && we.running[0].region === ZONES[zf] && we.running[0].days_left === 3 && we.running[0].reason === evReason && we.running[0].by === 'dm-agent',
+    'dm_status lists the running event: kind, region, days left and reason ' + JSON.stringify(we.running[0]));
+  ok(we.open_today === false && /already running/.test(we.why_not) && we.regions_with_a_condition.some(x => x.startsWith(ZONES[zf])), 'start_event is closed while one runs, and says why: ' + we.why_not);
+  const zp = ZONES.findIndex((n, i) => !S.conditions.some(c => c.z === i));
+  r = dmAct('pull_lever', {lever: 'start_event', params: {kind: 'plague', region: ZONES[zp >= 0 ? zp : 0]}, reason: 'a second event the same day'});
+  ok(r.ok === false && /limit/.test(r.error) && S.dmLog[0].detail.lever === 'start_event' && /rejected: limit/.test(S.dmLog[0].detail.result) && S.dmLog[0].detail.reason === 'a second event the same day',
+    'a second world event is refused over the limit, with the refusal in the DM log: ' + r.error);
+  const seenO = new WeakSet(), heard = JSON.stringify([S.chronicle, S.timeline, fellows().map(a => a.chat || [])], (k, v) => v && typeof v === 'object' ? (seenO.has(v) ? undefined : (seenO.add(v), v)) : v);
+  ok(!heard.includes(evReason), 'the event\'s reason stays in the DM log: not in the chronicle, the timeline or any member\'s chat');
+  const DAe = await import('./dm-agent.mjs'), sys = DAe.dmSystemPrompt(dmAct('dm_status'));
+  ok(/World events \(start_event/.test(sys) && /Fellowship comes first here too: consider one only when nothing is pending for them/.test(DAe.DM_EVENT_ORDERS) && /fellowship_regions/.test(DAe.DM_EVENT_ORDERS)
+    && DAe.withDmEventOrders('old prompt').includes(DAe.DM_EVENT_ORDERS) && DAe.withDmEventOrders(sys) === sys, 'the standing orders put the Fellowship first for world events (and reach an older session once)');
+  // end the event so the checks below see the world they expect
+  {const {LEVERS} = await import('../src/sim/levers.js'), rec = S.levers.active.find(x => x.name === 'start_event'); S.levers.active.splice(S.levers.active.indexOf(rec), 1); LEVERS.start_event.expire(rec); // what expiry does, without a tick
+    ok(!S.levers.active.some(x => x.name === 'start_event') && !S.conditions.some(c => c.z === zf && c.kind === 'festival') && dmAct('dm_status').world_events.running.length === 0, 'an ended event leaves world_events and its region');}
+}
+
 // ---------------------------------------------------------------- 1b. staged scenes: the rules of the seat (issue #132)
 console.log('staged scenes: refusals');
 {const ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');

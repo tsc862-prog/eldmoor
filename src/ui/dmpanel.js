@@ -23,9 +23,12 @@ export const dmAdventure=()=>advId;
 const matches=e=>{const f=FILTERS.find(([k])=>k===filter);return (!f[2]||f[2].includes(e.kind)||filter==='levers'&&!!(e.detail&&e.detail.levers)||filter==='agent'&&byAgent(e))&&(advId==null||e.advId===advId)};
 // Lever pulls in an entry (its own, or folded ones) and how long each has left: "18h left", "ended".
 const leversOf=e=>e.kind==='lever'&&e.detail&&e.detail.lever&&!e.detail.levers?[e.detail]:(e.detail&&e.detail.levers)||[];
+// A world event pull (start_event, #352) is named by its event: "festival", "plague".
+const evName=l=>l&&l.lever==='start_event'&&l.params&&typeof l.params==='object'&&l.params.kind?String(l.params.kind).slice(0,24):null;
+const eventOf=e=>{for(const l of leversOf(e)){const k=evName(l);if(k)return k+(l.region?' · '+l.region:typeof l.params.region==='string'?' · '+l.params.region.slice(0,24):'')}return null};
 const hrs=m=>{const h=Math.max(0,Math.round(m/60));return h>=24?Math.floor(h/24)+'d'+(h%24?' '+h%24+'h':''):h+'h'};
 function left(e){const out=[];for(const l of leversOf(e)){if(l.until==null)continue;
-  const live=(S.levers&&S.levers.active||[]).some(x=>x.id===l.id);out.push(l.lever+' '+(live&&l.until>S.gameMin?hrs(l.until-S.gameMin)+' left':'ended'))}return out.join(', ')}
+  const live=(S.levers&&S.levers.active||[]).some(x=>x.id===l.id);out.push((evName(l)||l.lever)+' '+(live&&l.until>S.gameMin?hrs(l.until-S.gameMin)+' left':'ended'))}return out.join(', ')}
 const dayOf=e=>Math.floor((e.gameMin||0)/1440)+1;
 const heroSpan=(id,h)=>{const s=el('span','hn f'+(h?h.fac:0),h?h.name:'#'+id);s.dataset.hid=id;return s};
 
@@ -64,7 +67,7 @@ export function renderDmLog(){if(!list)return;
   patch(list,list=>{let n=0;
   for(const e of L){if(!matches(e))continue;
     const li=el('li','tl dmrow dm-'+e.kind);li.dataset.dmid=e.id;li.setAttribute('data-k','d'+e.id);
-    li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-dm',BADGE[e.kind]||e.kind.toUpperCase()));if(byAgent(e)&&e.kind!=='agent')li.append(el('span','badge b-dm b-dma','DM AGENT'));
+    li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-dm',BADGE[e.kind]||e.kind.toUpperCase()));if(byAgent(e)&&e.kind!=='agent')li.append(el('span','badge b-dm b-dma','DM AGENT'));{const ev=eventOf(e);if(ev)li.append(el('span','badge b-dm','EVENT: '+ev.toUpperCase()))}
     const t=el('span','tx dmtx');partsTo(t,e.summary);{const r=left(e);if(r)t.append(el('span','dm',' ('+r+')'))}li.append(t);
     if(open.has(e.id))li.append(table(e));
     list.append(li);n++}
