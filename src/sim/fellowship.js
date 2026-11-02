@@ -66,9 +66,11 @@ export const fellowParty=()=>S.parties.find(p=>p.fellow)||null;
 export const roleName=a=>{const s=a&&a.fellowRole&&slotOf(a.fellowRole);return s?s.label:null};
 
 // ---- the campaign log ----
+var witnessFn; // no initializer: reach.js may set it while this module is still loading // sim/reach.js (#182): who was apart while this happened. A var, set while the import cycle loads.
+export function setWitness(f){witnessFn=f}
 export function campaign(kind,...parts){const F=S.fellowship;if(!F)return null;
   const e={id:F.seq=(F.seq||0)+1,day:day(),t:clockStr(),gameMin:Math.round(S.gameMin),kind,parts};
-  F.log.unshift(e);if(F.log.length>LOG_CAP)F.log.pop();return e}
+  F.log.unshift(e);if(F.log.length>LOG_CAP)F.log.pop();if(witnessFn)witnessFn(kind,plain(parts).slice(0,80));return e}
 // The same beat for several members at once (a shared kill, a party level-up) is one line: 'A, B and C slew ...'.
 export function campaignBy(kind,a,...tail){const F=S.fellowship;if(!F)return null;const e=F.log[0],tt=plain(tail);
   if(e&&e.kind===kind&&e.tail===tt&&Math.abs(e.gameMin-S.gameMin)<=3&&Array.isArray(e.who)&&!e.who.includes(a.id)){e.who.push(a.id);
@@ -77,6 +79,7 @@ export function campaignBy(kind,a,...tail){const F=S.fellowship;if(!F)return nul
 // Open threads: unfinished jobs, living nemeses, oaths still sworn. Computed live, not stored.
 export function openThreads(){const F=S.fellowship;if(!F)return [];const out=[],seen=new Set();
   for(const v of S.adventures||[])if(v.phase==='active'&&v.mem&&v.mem.some(id=>F.ids.includes(id)))out.push({kind:'job',parts:['Unfinished job: ',gd(v.title),' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+')']});
+  for(const p of F.plans||[])if(p.status==='open')out.push({kind:'meeting',parts:['Meeting: ',gd(p.where),' at '+p.atText+' ('+p.whoNames.join(', ')+' know)']}); // #182
   for(const a of fellows()){for(const id in a.nemesis||{}){const n=byId(id);if(alive(n)&&!seen.has(n.id)){seen.add(n.id);out.push({kind:'nemesis',parts:['Blood owed: ',n,' of the '+FAC[n.fac].name+' (',a,' swore it for '+a.nemesis[id]+')']})}}
     if(a.goal&&!a.goal.done)out.push({kind:'oath',parts:[a,' swore to ',gd(a.goal.text.charAt(0).toLowerCase()+a.goal.text.slice(1)),' ('+(a.goal.progress||0)+'/'+a.goal.need+')']})}
   return out}

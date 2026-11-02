@@ -143,7 +143,12 @@ const said = {narr: 'The fog smells of ' + secret('narr') + ' and wet stone.', p
 r = DMA.dmAct('narrate', {text: said.narr, near: A.name, radius: 6});
 ok(r.ok && r.heard_by >= 3 && r.heroes.includes(A.name) && !r.heroes.includes(B.name), `narrate near ${A.name}: heard by ${r.heard_by} (${(r.heroes || []).join(', ')})`);
 ok((A.chat || []).some(e => e.text === said.narr && e.from && e.from.kind === 'dm') && !(B.chat || []).some(e => e.text === said.narr), 'A hears the narrator; B, far away, does not');
-ok(act(B, 'party_say', {text: said.party}).ok, 'B speaks on the party channel');
+// talking takes presence (#182): B, far from A, shouts and A hears nothing; the result says who was too far
+const farLine = 'Is anyone there? ' + secret('far');
+r = act(B, 'party_say', {text: farLine});
+ok(r.ok && (r.too_far || []).includes(A.name) && !(A.chat || []).some(e => e.party && e.text === farLine) && /too far away/.test(r.note || ''), 'B shouts far from A: A does not hear it, B is told (' + (r.note || r.error) + ')');
+{const bx = {x: B.x, y: B.y}; B.x = A.x + 1; B.y = A.y; r = act(B, 'party_say', {text: said.party}); B.x = bx.x; B.y = bx.y;
+ ok(r.ok && r.heard_by.includes(A.name), 'B shouts beside A: A hears it (' + r.note + ')')}
 // an NPC: the nearest townsperson to A's home gate, with A walked next to them
 const npc = (S.npcs || []).filter(p => Number.isFinite(p.x)).sort((p, q) => dist(p, homeOf(A).gate) - dist(q, homeOf(A).gate))[0];
 const before = {x: A.x, y: A.y};
