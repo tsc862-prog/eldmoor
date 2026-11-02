@@ -120,6 +120,14 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
    uiFast();const u2=tb().querySelector('.log.chat'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
    ok(tm.some(t=>/^D\d+ \d\d:\d\d$/.test(t)),'chat: times carry the game day: '+tm.slice(0,3).join(', '));
    ok(u2.children.filter(x=>x.classList.contains('daysep')).length>=2,'chat: day separators appear where the day changes');
+   // #181: the dossier Chat tab is a per-hero filter of the chat panel's stream; the phone-width View group wraps
+   {const mine=tb().querySelector('.log.chat').textContent;h.chat.push({t:'09:00',d:d0+7,from:h,text:'Only-for-me test line.',trigger:'x'});
+    const other=mem.find(m=>m!==h&&m!==sp);other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
+    const t2=tb().querySelector('.log.chat').textContent;
+    ok(/Only-for-me/.test(t2)&&!/Only-for-other/.test(t2),'dossier chat: shows this heros slice of the stream only');
+    ok(tb().querySelector('.log.chat').children.length>0&&mine.length>0,'dossier chat: built from the stream');
+    const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+    ok(/\.group\{[^}]*flex-wrap:wrap/.test(css0),'phone width: the View button group wraps instead of widening the page')}
    const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8').match(/\.log\.chat li\.chl\{[^}]*\}/);
    ok(!!css&&!/text-indent:\s*-/.test(css[0]),'chat: no negative text-indent (the stamp cannot start left of the list box)')}}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});

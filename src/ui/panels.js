@@ -6,6 +6,7 @@
 // to the picker, which controls.js wires to select + follow.
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
+import {heroStream,sysLine} from './chatpanel.js';
 import {CITY,CRYPT,ZONES,zoneFor} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -266,7 +267,17 @@ function tabParty(b,a){const p=a.party;
     row.append(nm,meter('hp',m.hp/maxHp(m)));g.append(row)}
   b.append(g,el('div','meta',`★ leader · bound for ${ZONES[p.zone]}${p.home?' · heading home':''}`))}
 
-function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
+function tabChat(b,a){
+  // a Fellowship member: its slice of the chat panel's stream (lines it said or heard, and its proposals and votes), newest first
+  if(S.fellowship&&a.fellow){const rows=heroStream(a).reverse().slice(0,40);
+    if(!rows.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
+    const ul=el('ul','log chat');let last=null;
+    const gs=[];for(const it of rows){const p=gs[gs.length-1];
+      if(p&&it.kind==='chat'&&p.it.kind==='chat'&&p.it.e.from===it.e.from&&p.it.e.text===it.e.text&&!!p.it.e.party===!!it.e.party)p.n++;else gs.push({it,n:1})}
+    for(const {it,n} of gs){const d=it.kind==='chat'?dayOf(it.e):Math.floor(it.gm/1440)+1;if(d!=null&&d!==last){ul.append(daySep(d));last=d}
+      ul.append(it.kind==='chat'?chatLine(it.e,n):sysLine(it))}
+    b.append(el('div','meta','This hero’s part of the Fellowship chat; the Chat panel has it all.'),ul);return}
+  const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
   if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far (Settings, World chatter, shows it).':'Nothing said or heard yet.'));return}
   const ul=el('ul','log chat');chatByDay(ul,chatGroups(c));b.append(ul)}
 // Chat lines with game-day stamps and a separator between days (#168), newest first like the other tabs.

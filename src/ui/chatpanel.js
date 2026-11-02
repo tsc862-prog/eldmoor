@@ -50,6 +50,12 @@ function councilItems(){const F=S.fellowship,out=[];if(!F||!F.props)return out;
 const matches=(it)=>{if(filter==='all')return true;const c=it.kind==='chat'?catsOf(it.e):it.cats;return c.has?c.has(filter):c.includes(filter)};
 const visible=it=>it.kind!=='chat'||chatVisible(it.e,S);
 export const streamItems=()=>{ingest();return items.concat(councilItems()).filter(visible).filter(matches).sort((x,y)=>x.k-y.k||x.n-y.n)};
+// The dossier's Chat tab (#181): the same stream, filtered to one hero: what it said or heard (its own chat buffer),
+// and the council lines it proposed or voted. Oldest first like the panel; the panel's channel filter does not apply.
+export function heroStream(a){ingest();const mine=new Set(a.chat||[]);
+  return items.concat(councilItems()).filter(visible).filter(it=>it.kind==='chat'?(mine.has(it.e)||it.e.from===a):(it.who===a||it.kind==='result'&&it.P.votes&&it.P.votes[a.id]!=null))
+    .sort((x,y)=>x.k-y.k||x.n-y.n)}
+export {sysLine};
 
 function sysLine(it){const li=el('li','chl sys sys-'+it.kind);li.setAttribute('data-k',it.id);const s=stamp(it.gm);
   li.append(el('time',null,stampOf({d:s.d,t:s.t})));
