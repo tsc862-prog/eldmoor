@@ -12,6 +12,11 @@
 //      plays in JSON-action mode, and a model that is not pulled is refused cleanly.
 //   3. `npm run fellowship -- --provider ollama` plays all five members of a headless Fellowship
 //      locally with no API key, every member claimed with its local model, cost 0.
+//   1b. Issue #163: calls written into the narration (positional, tool({...}), key=value), labels cut from
+//      the narration, forced scene turns (schema = the member's options; JSON, written call, misses).
+//   4. Runner pacing on an in-process world (A-E; the autopilot part steps a held, seeded world, #159),
+//      and F: a Table scene played by mock-fumble (writes scene_act as text, then waits) resolves by the
+//      agents' choice with no table timeout.
 // Sessions go to a temporary folder (AGENT_LOGS), never to logs/agents/.
 // Usage: npm run localcheck
 import http from 'node:http';
@@ -20,7 +25,7 @@ import {mkdtempSync, readFileSync, existsSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {localTurn, cleanArgs, parseTextCall, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
+import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneSchema, sceneTurn, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
 import {ollamaAdapter} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
@@ -76,6 +81,52 @@ console.log('local agent loop (fake chat)');
   const h = []; for (let t = 0; t < 10; t++) h.push({role: 'user', content: 'Turn ' + t, turn: 1}, {role: 'assistant', content: 'y'.repeat(500)});
   const dropped = trimHistory(h, 2000);
   ok(dropped > 0 && JSON.stringify(h).length <= 2000 && h[0].turn === 1 && h[h.length - 2].content === 'Turn 9', `the history is trimmed by whole turns, oldest first (${dropped} dropped)`);
+}
+
+// ---------------------------------------------------------------- 1b. calls written as text, forced scene turns (issue #163)
+console.log('text-written calls and forced scene turns (issue #163)');
+{
+  const live = 'CallCheck identifies that Pikeora is engaged with the Bristleback Boar and needs immediate assistance.\n(scene_act("strike", "I\'ll take care of this boar."))\n---\nI strike at the Bristleback Boar to aid my companion Pikeora.';
+  const pc = parseTextCalls(live);
+  ok(pc.length === 1 && pc[0].function.name === 'scene_act' && pc[0].function.arguments.option === 'strike' && pc[0].function.arguments.line === "I'll take care of this boar.", 'the owner\'s live text, (scene_act("strike", "...")), is a call: positional values mapped onto option, line');
+  const nar = cleanNarration(live);
+  ok(!/CallCheck|scene_act|---/.test(nar) && /^Identifies that Pikeora/.test(nar) && /I strike at the Bristleback Boar/.test(nar), 'the narration loses the label, the written call and the separator: ' + JSON.stringify(nar));
+  ok(parseTextCalls('Waiting now: wait({"minutes": 30}) and then hunt(n=2).').map(c => c.function.name + JSON.stringify(c.function.arguments)).join(' ') === 'wait{"minutes":30} hunt{"n":2}', 'tool({...}) and key=value forms count too, in text order');
+  const garr = parseTextCalls('Garrwen draws.\n(scene_act(deadeye, "I\'ll take this one down with my best shot."))');
+  ok(garr.length === 1 && garr[0].function.arguments.option === 'deadeye' && /best shot/.test(garr[0].function.arguments.line) && cleanNarration('Garrwen draws.\n(scene_act(deadeye, "x"))') === 'Garrwen draws.', 'the live D2 11:34 form, an unquoted ability id as the first value, is a call too: ' + JSON.stringify(garr[0] && garr[0].function.arguments));
+  ok(parseTextCalls("I must answer with scene_act(option, line) on my turn.").length === 0 && parseTextCalls('I take a look around.').length === 0, 'bare words (the model quoting the rules) and prose are not calls');
+  ok(parseTextCalls("scene_act('guard', 'On me!')")[0].function.arguments.option === 'guard' && parseTextCalls('<tool_call>{"name":"look","arguments":{}}</tool_call>')[0].function.name === 'look', 'single quotes and <tool_call> blocks too');
+  ok(cleanNarration('scene_act: Sylanne guards the healer.') === 'Sylanne guards the healer.' && cleanNarration('Narration: The boar falls.') === 'The boar falls.' && cleanNarration('McAllister holds the line.') === 'McAllister holds the line.', 'a leading tool name or label is cut; a name is not');
+
+  // the loop: a model that writes scene_act as text and really calls wait; both run, in that order, and the shown narration is clean
+  const calls = [], texts = [], game = async (tool, args) => {calls.push([tool, args]); return {ok: true}};
+  let k = 0; const chat = async () => ({message: k++ === 0 ? {role: 'assistant', content: live, tool_calls: [{function: {name: 'wait', arguments: {minutes: 30}}}]} : {role: 'assistant', content: 'CallCheck: Sylanne struck.'}, usage: {in: 10, out: 5, cost: 0}, ms: 1});
+  const r = await localTurn({chat, call: game, sess: {system: 'You are Sylanne.'}, prompt: 'Scene.', model: 'm', on: (kind, a) => {if (kind === 'text') texts.push(a)}});
+  ok(calls.map(c => c[0]).join(',') === 'scene_act,wait' && calls[0][1].option === 'strike', 'in a turn, the call written in the text runs before the real wait: ' + calls.map(c => c[0]).join(','));
+  ok(texts.length && texts.every(t => !/CallCheck|scene_act\(/.test(t)) && r.narration === 'Sylanne struck.', 'no label or written call reaches the Agent tab: ' + JSON.stringify(texts));
+
+  // forced scene turn: the schema is the member's legal options; a JSON answer, a written call, and a miss
+  const scene = sceneFrom({scene: 'Pikeora is going down', kind: 'rescue', frame: 'Pikeora is down to 17%.', options: ['strike = Strike Bristleback Boar', 'guard = Draw it onto yourself', 'retreat = Fall back toward home'], your_turn: true});
+  ok(scene && scene.keys.join() === 'strike,guard,retreat', 'the scene keys come from the member\'s options');
+  const sch = sceneSchema(scene.keys), schS = sceneSchema(scene.keys, {strict: true});
+  ok(sch.properties.option.enum.join() === 'strike,guard,retreat' && sch.properties.line.maxLength === 200 && sch.required.join() === 'option,line' && !schS.properties.line.maxLength && schS.additionalProperties === false, 'the schema: an enum of that member\'s options and a line of at most 200 (strict OpenAI: no maxLength, cut in code)');
+  const askOf = replies => {let i = 0; const seen = []; return {seen, ask: async (system, user, schema) => {seen.push({system, user, schema}); return {text: replies[Math.min(i++, replies.length - 1)], usage: {in: 50, out: 8, cost: 0}, ms: 2}}}};
+  const acts = [], g2 = async (tool, args) => {acts.push([tool, args]); return {ok: true, chose: args.option}};
+  let A = askOf(['{"option":"guard","line":"On me, boar!"}']), sess = {system: 'You are Ivoagh.'};
+  let st = await sceneTurn({ask: A.ask, call: g2, sess, scene});
+  ok(st.forced && st.tools === 1 && st.acts === 1 && acts[0][0] === 'scene_act' && acts[0][1].option === 'guard' && acts[0][1].line === 'On me, boar!' && A.seen.length === 1, 'a JSON answer: the runner sends scene_act itself (one model call)');
+  ok(/strike = Strike Bristleback Boar/.test(A.seen[0].user) && A.seen[0].schema.properties.option.enum.length === 3 && A.seen[0].system === 'You are Ivoagh.', 'the prompt lists the options; the hero\'s own system prompt goes with it');
+  ok(sess.local.history.some(m => m.tool_calls && m.tool_calls[0].function.name === 'scene_act'), 'the choice is kept in the hero\'s own conversation');
+  A = askOf([live.replace('"strike"', '"retreat"')]); acts.length = 0;
+  st = await sceneTurn({ask: A.ask, call: g2, sess: {system: 's'}, scene});
+  ok(st.tools === 1 && acts[0][1].option === 'retreat' && st.misses === 0, 'an answer written as a call in text still counts');
+  A = askOf(['{"option":"fly","line":"x"}', '{"option":"STRIKE","line":"Now!"}']); acts.length = 0;
+  st = await sceneTurn({ask: A.ask, call: g2, sess: {system: 's'}, scene});
+  ok(st.misses === 1 && acts[0][1].option === 'strike' && /not one of the options/.test(A.seen[1].user), 'an illegal option is asked once more, then sent');
+  A = askOf(['no idea', 'still no idea']); acts.length = 0;
+  st = await sceneTurn({ask: A.ask, call: g2, sess: {system: 's'}, scene});
+  ok(st.misses === 2 && st.tools === 0 && !acts.length, 'two misses: nothing is sent (the free turn, or the table\'s reflex later)');
+  ok(/forced scene turn/.test(localLine({...st, tools: 1, misses: 0, ms: 5, modelMs: 2}, 'm')), 'the turn line says it was a forced scene turn');
 }
 
 // ---------------------------------------------------------------- the mock Ollama (scripts/mock-ollama.mjs)
@@ -196,8 +247,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   const sim = await import('../src/sim/index.js'), {localBackend, chooseHero} = await import('./play-headless.mjs');
   const {notify} = await import('../src/sim/notify.js'), {homeOf} = await import('../src/data/races.js');
   const {S} = sim, {maxHp: maxHpOf} = await import('../src/sim/heroes.js'); sim.init({fellowship: false}); for (let i = 0; i < 60 * 30; i++) sim.step(1 / 60);
-  const speed = 8; let last = Date.now();
-  const tick = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
+  let speed = 8, last = Date.now(), hold = false; // hold: a section steps the world itself (deterministic, issue #159)
+  const tick = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; if (hold) return; const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
   const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
   attachPlay(server, {backend: localBackend(), log: () => {}});
   await new Promise(r => server.listen(0, '127.0.0.1', r));
@@ -263,17 +314,30 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     ok(re.length === 2 && (R.out.match(/re-prompted to act/g) || []).length === 2 && (R.out.match(/empty turn \(no tool call\)/g) || []).length === 2 && /\[turn 6\].*fresh context/.test(R.out), `each empty turn was re-prompted once to act through a tool (${re.length}); turn 6 starts fresh`);
     const most = Math.max(...mine.map(b => b.messages.filter(m => m.role === 'assistant' && /still battling/.test(m.content || '')).length));
     ok(most <= 2, `the model's own old narrations are not fed back (at most ${most} in a request: the last turn's and this one's)`);
-    // autopilot (owner: an agent-played hero is never scripted): out in the field, hurt, with a hunt as its last order
-    const out = S.agents.find(x => x !== a && x.state === 'hunt' && !x.player && x.kind === 'hero');
-    a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15}; a.hp = Math.round(a.hp * .4) || 1;
-    ok(await until(() => a.playIdle && a.pq[0] && a.pq[0].auto, 60000), `with no order for 2 game hours autopilot carries on (${a.pq[0] && a.pq[0].auto})`);
-    ok(a.player && !a.brain && /^autopilot: /.test(a.playDoing || ''), `the agent stays the mind (agent-played, no brain): "${a.playDoing}"`);
-    a.hp = maxHpOf(a); a.pq = [];
-    ok(await until(() => a.pq[0] && a.pq[0].kind === 'hunt' || a.state === 'fight', 60000), 'mended, it carries on its last order (hunt)');
-    ok((a.playEv || []).some(e => /autopilot carries on/.test(e.text)) && !(a.playEv || []).some(e => /scripted|instinct/i.test(e.text)), 'the hero is told so, and nothing calls it scripted');
-    const r = sim.playerAct(a.id, 'say', {text: 'Enough wandering. I choose my own road again.'});
-    sim.step(1 / 60);
-    ok(r.ok && !a.playIdle, 'an action from the agent takes the reins back' + (r.ok ? '' : ': ' + r.error))}
+    // autopilot (owner: an agent-played hero is never scripted): out in the field, hurt, with a hunt as its last order.
+    // Deterministic (issue #159, it failed now and then on CI): the background clock is held and the world is stepped
+    // here from a seed; the hero stands alone (no monster may pick it, no duel); the checks read the autopilot state
+    // (a.playIdle, a.playAuto, a.playDoing) at the step it changes, not pq[0] after the world had its say.
+    const {seedRng} = await import('../src/core/rng.js'), {dist} = await import('../src/world/map.js');
+    hold = true; seedRng(159);
+    try {
+      const calm = () => {S.pvpT = 1; a.spotCd = 99; for (const m of S.mobs) {if (m.target === a) m.target = null; if (dist(m, a) < 30) m.scan = 1}
+        if (a.state === 'fight' || a.state === 'duel') {a.state = 'hunt'; a.target = null}};
+      const stepUntil = (f, gameMin) => {const end = S.gameMin + gameMin; while (S.gameMin < end) {calm(); sim.step(1 / 20); if (f()) return true} return false};
+      const out = S.agents.find(x => x !== a && x.state === 'hunt' && !x.player && x.kind === 'hero');
+      a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.dest = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15}; a.hp = Math.max(1, Math.round(maxHpOf(a) * .4));
+      // its last order nearly two game hours ago (a hurt hero heals while it stands, so the long wait is not stepped through)
+      a.playActAt = S.gameMin - 115; a.playIdle = false; a.playAuto = null;
+      const t0 = S.gameMin, idle = stepUntil(() => a.playIdle && a.playAuto === 'rest', 60);
+      ok(idle && S.gameMin - a.playActAt >= 120 && S.gameMin - t0 >= 4, `with no order for 2 game hours autopilot carries on (${a.playAuto}, after ${Math.round(S.gameMin - t0)} game min)`);
+      ok(a.player && !a.brain && /^autopilot: resting/.test(a.playDoing || ''), `the agent stays the mind (agent-played, no brain): "${a.playDoing}"`);
+      a.hp = maxHpOf(a); a.pq = [];
+      ok(stepUntil(() => a.playAuto === 'hunt' && a.pq[0] && a.pq[0].kind === 'hunt' && a.pq[0].auto, 60), `mended, it carries on its last order (${a.playAuto}: ${a.playDoing})`);
+      ok((a.playEv || []).some(e => /autopilot carries on/.test(e.text)) && !(a.playEv || []).some(e => /scripted|instinct/i.test(e.text)), 'the hero is told so, and nothing calls it scripted');
+      const r = sim.playerAct(a.id, 'say', {text: 'Enough wandering. I choose my own road again.'});
+      calm(); sim.step(1 / 60);
+      ok(r.ok && !a.playIdle, 'an action from the agent takes the reins back' + (r.ok ? '' : ': ' + r.error));
+    } finally {seedRng(null); hold = false}}
   // E. English only: a model answering in Chinese is re-prompted in English, its lines never reach the chat,
   // its empty turns get a fresh context and stop the runner; the game refuses a foreign-script line
   {const a = pick(), n0 = seen.length;
@@ -306,6 +370,69 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     chat.say(A, 'spot', {mob: 'a test wolf', level: 9}); const c2 = (A.chat || []).length;
     ok(c1 === c0 && c2 === c1, 'an agent hero voices no scripted line at all (banter, level-up, combat call)');
     sim.markPlayer(A, false); sim.markPlayer(B, false)}
+
+  // F. a Table scene played by a local model that writes scene_act as text under a made-up label and then calls wait
+  // (issue #163, the owner's live Fellowship at 01:25): the game refuses a wait on your own turn, the runner plays the
+  // member's scene turn as one structured answer and sends scene_act itself, and the scene resolves by the agents'
+  // choice (not reflex) without the table timing out; no label or written call reaches the Agent tab.
+  {const {found, autoPick, setMinds, TABLE} = sim, {openScene} = await import('../src/sim/table.js');
+    const fo = found(autoPick(0), {fac: 0, ai: false}); setMinds('agent'); S.brainOn = false;
+    ok(fo.ok && S.fellowship && S.fellowship.ids.length === 5, 'a Fellowship of five, Minds: agents' + (fo.ok ? '' : ': ' + fo.error));
+    const mem = S.fellowship.ids.map(id => S.agents.find(x => x.id === id));
+    // the game side first: no waiting out your own turn
+    {const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {}); sc0.phase = 'turn'; sc0.i = 0;
+      const first = S.agents.find(x => x.id === sc0.ids[0]), second = S.agents.find(x => x.id === sc0.ids[1]);
+      const w1 = sim.playerAct(first.id, 'wait', {minutes: 10}), w2 = sim.playerAct(second.id, 'wait', {minutes: 10});
+      ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press\.$/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
+      ok(w2.ok && w2.pending, 'a member whose turn is still to come may wait for it');
+      S.table = null;
+      // a combat scene: the brief's scene keys (the forced turn's enum) carry the member's ready class abilities by id
+      const {paceBrief} = await import('../src/sim/pace.js'), {movesOf} = await import('../src/sim/moves.js');
+      const foe = S.mobs.find(m => m.alive && !m.gone && !m.elite), hunter = mem.find(a => movesOf(a).length) || mem[0];
+      hunter.mcr = {}; // every ability ready this round (a world-dependent cooldown made this flaky)
+      const sc1 = openScene('rescue', 'A test fight', ['A beast lunges.'], {hero: hunter.id, mob: foe.id});
+      const bk = paceBrief(hunter.id).brief.scene;
+      ok(bk && bk.keys.includes('strike') && movesOf(hunter).some(id => bk.keys.includes(id)), `the forced turn's enum includes ready abilities by id (${hunter.cls}: ${bk && bk.keys.join(', ')})`);
+      S.table = null; void sc1}
+    TABLE.speed = 1; speed = 1; last = Date.now();
+    const tick1 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const n = Math.ceil(real / (1 / 60)); for (let i = 0; i < n; i++) sim.step(real / n)}, 50);
+    const p = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-fumble:1b', '--min-gap', '0', '--heartbeat', '1440', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
+    kids.push(p); let fout = ''; p.stdout.on('data', d => fout += d); p.stderr.on('data', d => fout += d);
+    const claimed = await (async () => {for (let i = 0; i < 200; i++) {const h = await health(PB).catch(() => null); if (h && h.heroes.filter(x => x.fellow && x.claimed).length === 5) return true; await sleep(100)} return false})();
+    ok(claimed, 'the Fellowship runner claims all five (mock-fumble:1b)' + (claimed ? '' : '\n' + fout.slice(-1500)));
+    await until(() => !S.table, 30000);
+    const f0 = seen.fumble || 0, t0 = Date.now(), sc = openScene('check', 'A test of nerve', ['The DM calls for a roll at the ford.'], {});
+    ok(sc && sc.pause, 'a scene opens and the world pauses for it');
+    const doneIn = await until(() => S.table !== sc, 90000) ? Date.now() - t0 : null;
+    ok(doneIn != null && doneIn < TABLE.liveMs && !sc.late, `the scene resolves without the table timing out (${doneIn == null ? 'still open' : (doneIn / 1000).toFixed(1) + ' s'}, limit ${TABLE.liveMs / 1000} s)` + (doneIn != null ? '' : '\n' + fout.slice(-2500)));
+    ok(sc.beats.length === 5 && sc.beats.every(b => b.by === 'agent' && b.k === 'press'), 'every member acted by its agent\'s choice (press), none by reflex: ' + sc.beats.map(b => b.name + ' ' + b.k + '/' + b.by).join(', '));
+    ok((seen.fumble || 0) > f0 && seen.some(b => b.model === 'mock-fumble:1b' && b.format && b.format.properties && b.format.properties.option && b.format.properties.option.enum.includes('press')), 'the scene turn asked for one structured answer with the member\'s options as the enum');
+    ok(/forced scene turn/.test(fout) && /> scene_act\(\{"option":"press"/.test(fout), 'the runner played forced scene turns and sent scene_act itself');
+    const narr = mem.flatMap(a => (a.playNarr || []).map(n => n.text));
+    ok(narr.length && !narr.some(t => /CallCheck|scene_act\s*\(|^---/m.test(t)), `no label or written call reaches the Agent tab (${narr.length} lines)`);
+    p.kill(); clearInterval(tick1);
+    {const {hostname} = await import('node:os'); for (const a of mem) await fetch(PB + '/play/release', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero: a.id, runner: `${hostname()}:${p.pid}:fellowship`})}).catch(() => {})} // a killed runner cannot let go itself
+
+    // G. the owner's screenshot: members re-introduce themselves every turn. The game refuses a line an agent already said
+    // (or a second introduction once they have met), and every turn's header carries what was said lately and who it met.
+    {const n0 = seen.length; await sleep(300); last = Date.now();
+      const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
+      const q = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-intro:1b', '--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
+      kids.push(q); let qo = ''; q.stdout.on('data', d => qo += d); q.stderr.on('data', d => qo += d);
+      const code = await Promise.race([new Promise(r => q.on('exit', r)), sleep(120000).then(() => 'timeout')]);
+      clearInterval(tick8);
+      const live = mem.filter(a => a.state !== 'dead'), refused = (qo.match(/< \{"ok":false,"error":"You (have already met your companions|already said that)/g) || []).length;
+      ok(code === 0, 'mock-intro: every member plays two turns' + (code === 0 ? '' : ' (' + code + ')\n' + qo.slice(-2000)));
+      ok(refused === live.length, `the first introduction goes through, the repeat is refused with an error the model sees (${refused} refused of ${live.length} members)` + (refused === live.length ? '' : '\n' + qo.slice(-2500)));
+      // counted from the runner's own log (the chat buffer keeps only 20 lines per hero)
+      const intros = live.map(a => (qo.match(new RegExp('\\[' + a.name + '\\] < \\{"ok":true,"said":"Hello friends! I am ', 'g')) || []).length);
+      ok(intros.every(n => n === 1), 'each member introduced itself once in the party chat: ' + intros.join(', '));
+      const later = seen.slice(n0).filter(b => b.model === 'mock-intro:1b' && b.tools).map(b => (b.messages.filter(m => m.role === 'user' && /^Turn \d/.test(m.content)).pop() || {}).content || '').filter(Boolean);
+      ok(later.some(t => /Said lately \(party and aloud, oldest first\): .*\[party\]: Hello friends! I am /.test(t) && /Companions you have met: \w+/.test(t) && /do not introduce yourself again/.test(t)), 'a later turn\'s header shows the party lines heard and the companions met');
+      const mt = (await import('../src/sim/talk.js')).metNames(live[0]);
+      ok(live.slice(1).every(b => mt.includes(b.name)), `meeting is recorded in game once both have spoken in each other's hearing (${live[0].name} met ${mt.join(', ')})`);
+    }
+  }
   server.close();
 }
 
