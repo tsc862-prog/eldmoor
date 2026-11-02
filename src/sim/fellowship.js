@@ -327,14 +327,18 @@ export function fellowshipTick(dt){const F=S.fellowship;if(!F)return;
 // ---- the Chronicle's "Fellowship only" filter ----
 // Fellowship lines (any member, past or present, or one of their adventures), plus the world's
 // major events: Kragmaw, elites in the Fellowship's current region, and deaths of their rivals.
+// Guild lines (#341) stay when they name a guild a living member belongs to: guilds.js, guildfocus.js and
+// rivals.js write a guild as the part {t:'<TAG> Name'}, so the match is on that label. Read-only, no dice.
+export const guildLabel=g=>'<'+g.tag+'> '+g.name;
 export function chronicleFocus(e){const F=S.fellowship;if(!F)return true;const ps=e.parts||[];
   const ids=new Set([...F.ids,...F.past.map(p=>p.id)]);
+  const guilds=new Set();for(const a of fellows())if(a.guild)guilds.add(guildLabel(a.guild));
   const lead=fellowParty()?fellowParty().leader:fellows()[0],z=lead?ZONES[zoneAt(lead.x,lead.y)]:null;
   const rivals=new Set();for(const a of fellows())for(const id in a.nemesis||{})rivals.add(+id);
   for(const p of ps){if(!p||typeof p!=='object')continue;
     if(p.kind==='hero'&&(ids.has(p.id)||rivals.has(p.id)))return true;
     if(p.adv!=null){const v=(S.adventures||[]).find(x=>x.id===p.adv);if(v&&v.mem&&v.mem.some(id=>ids.has(id)))return true}
-    if(typeof p.t==='string'&&(p.t===F.name||/Kragmaw/.test(p.t)))return true}
+    if(typeof p.t==='string'&&(p.t===F.name||guilds.has(p.t)||/Kragmaw/.test(p.t)))return true}
   const text=plain(ps);
   if(z&&ELITES.some(E=>text.includes(E.name))&&text.includes(z))return true;
   return false}

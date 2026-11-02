@@ -27,3 +27,4 @@
 - [Table conditions #296](table_conditions.md) — stun/root/poison in eff by rounds, saves on beat.check, cleared at scene end, parley rules
 - [Guild focus #6](guild_focus.md) — Delve/Wyrmhunt/Wayfaring/Warpath hooks multiply existing rolls; GF.ON=false hash = main; Fellowship out
 - [Archetype stances #305](archetype_stances.md) — authoredStance: model/owner/archetype lines win over bond reading; stanceBy marker; event appended
+- [Chronicle focus #341](chronicle_focus.md) — Fellowship-only filter keeps guild lines by <TAG> Name label; hall board half waits on #332
