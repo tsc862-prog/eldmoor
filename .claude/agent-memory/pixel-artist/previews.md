@@ -16,3 +16,11 @@ type: project
   Hide `#setup` (fresh profiles open the New World page) and `.ralert` (world-held banner).
   Clip `Page.captureScreenshot` to `#screen`'s rect. A fresh `--user-data-dir` per run avoids restoring a save.
 - Never touch the owner's 5173 / 8787. Only kill a process after checking its command line is yours.
+- After editing a module while the dev server runs, the page re-imports it as `?t=...`, so a CDP
+  `import('/src/render/draw.js')` gets a different instance and setZoom/cam do nothing. Restart your own vite
+  before capturing; find it by pid from a separate step (a kill filter matching a word in the same command
+  line also kills the shell running it).
+- Chrome can be spawned from a Node script too (`spawn(chrome.exe, ['--headless=new', '--remote-debugging-port=...'])`);
+  never pipe that script into `head` (EPIPE leaves Chrome running).
+- `?continue=1` on a fresh profile boots a new world in Follow Fellowship; call `ui/controls.js` `setView('map')`
+  before `setZoom`, or the follow camera overrides it.
