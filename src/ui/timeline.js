@@ -10,7 +10,7 @@ const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className
 
 // Filters by kind. Hero-facing events, boss and raid events, deaths.
 export const FILTERS=[['all','All',null],['heroes','Heroes',['level','oath','crypt','elite']],['bosses','Bosses',['boss','raid']],['deaths','Deaths',['death']]];
-const BADGE={boss:'BOSS',raid:'RAID',crypt:'CRYPT',level:'LVL',death:'DEATH',elite:'ELITE',oath:'OATH'};
+const BADGE={boss:'BOSS',raid:'RAID',crypt:'CRYPT',level:'LVL',death:'DEATH',elite:'ELITE',oath:'OATH',rival:'RIVAL',guild:'GUILD'};
 let filter='all',seen=-1,seenTop=null,box=null,list=null;
 
 export const dayOf=e=>Math.floor((e.gameMin||0)/1440)+1;

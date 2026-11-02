@@ -48,6 +48,7 @@
     "behaviorcheck": "node scripts/behaviorcheck.mjs",
     "behavior-report": "node scripts/behavior-report.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs",
+    "focuscheck": "node scripts/focuscheck.mjs",
     "questcheck": "node scripts/questcheck.mjs"
   },
   "devDependencies": {

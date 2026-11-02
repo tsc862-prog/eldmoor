@@ -136,6 +136,7 @@ other. The rules:
 - `npm run lorecheck`: learning the world (#188, see "Agent player").
 - `npm run tiercheck`: tiered long-term memory (landmarks, chapters, `journal_search`, the overview, migration; see "Agent player").
 - `npm run behavior-report`, `npm run behaviorcheck`: behavior logs for review (see "Behavior logs").
+- `npm run focuscheck`: guild focus (#6, `src/sim/guildfocus.js`): each guild's leader picks Delve (crypt), Wyrmhunt (raid), Wayfaring (DM hooks) or Warpath (PvP) from the guild's state, no dice; it multiplies or reorders existing rolls only, so `GF.ON=false` (or no guild focused) rolls exactly as before; the Fellowship's guild never takes one; changes go to the chronicle and timeline (GUILD).
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player
