@@ -48,7 +48,8 @@ import {weatherName,sightMul,isStorm} from './weather.js';
 import {record,asSrc} from './history.js';
 import {fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
-import {dmDepart,advLine,K as DMK} from './dm.js';
+import {dmDepart,advLine,K as DMK,holdAdventure,resumeAdventure,beginJob,abandonAdventure} from './dm.js';
+import {questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard} from './persona.js'; // Fellowship (#68)
 import {ev} from './notify.js';
@@ -363,6 +364,7 @@ const T={
     if(a.party&&a.party.leader===a)r.party_lead=true;
     const cv=campView(a);if(cv)r.camp=cv;
     if(adv)r.adventure=plain(advLine(a));const ch=choiceInfo(a);if(ch)r.choice=ch;
+    {const L=questLog(a),fq=L.active.find(q=>q.focus);if(fq)r.quest_focus=fq.title+(L.active.length>1?' (and '+(L.active.length-1)+' more: quests)':'')}
     if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc;const P=a.party&&a.party.fellow?a.party:null;if(P){r.party_leader=P.leader.name;if(P.dest)r.party_heading=P.dest.label}
       const op=openProps().map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name);if(notTold(a))r.warning=NOT_TOLD;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
@@ -450,17 +452,56 @@ const T={
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
     need(!(a.party&&a.party.leader!==a),'Your party leader decides which job the party takes.');
     const mine=advOf(a);
-    if(mine){need(mine.id===id,'You already have an adventure ('+mine.title+', id '+mine.id+'). Resume it with that id.');
-      a.pq=[];const ok=dmDepart(a,c);need(ok,'The adventure could not resume.');return {ok:true,resumed:mine.title,scene:plain(advLine(a))}}
+    if(mine&&mine.id===id){a.pq=[];const ok=dmDepart(a,c);need(ok,'The adventure could not resume.');return {ok:true,resumed:mine.title,scene:plain(advLine(a))}}
+    if(heldOf(a).some(v=>v.id===id)||takenOf(a).some(h=>h.id===id))return T.focus_quest(a,{id:'job:'+id}); // one you hold: focus it (the quest log)
+    if(mine)need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');
     const h=(S.adventures||[]).find(x=>x.id===id&&x.phase==='open'&&x.town===c.name);need(h,'No open job '+id+' at '+c.name+'.');
     const w=jobFit(a,h,mem);need(!w,'The job-giver turns you away: '+w+'.');
     // Offer only this job to the DM: the others are held back for the moment and the job is
     // marked as personal to this hero, so the scripted DM's pickHook takes it without a roll.
     const held=(S.adventures||[]).filter(x=>x!==h&&x.phase==='open'&&x.town===c.name);for(const x of held)x.phase='held';
-    const forWas=h.for;h.for=a.id;a.pq=[];let ok=false;
-    try{ok=dmDepart(a,c)}finally{for(const x of held)if(x.phase==='held')x.phase='open';if(h.phase==='open'||forWas==null)h.for=forWas}
-    need(ok&&a.adv===h.id,'The job-giver turned you away.');
-    const adv=advOf(a);return {ok:true,adventure:adv.title,scenes:adv.scenes.length,scene:plain(advLine(a)),note:'The adventure now leads you. Scene choices wait for choose(); fights are real.'}},
+    const forWas=h.for;h.for=a.id;a.pq=[];let ok=false,setAside=null;
+    try{if(mine)setAside=holdAdventure(a);ok=dmDepart(a,c)}finally{for(const x of held)if(x.phase==='held')x.phase='open';if(h.phase==='open'||forWas==null)h.for=forWas}
+    if(!(ok&&a.adv===h.id)){if(setAside)resumeAdventure(a,setAside);need(false,'The job-giver turned you away.')}
+    setFocus(a,jobId(h));const adv=advOf(a);return {ok:true,adventure:adv.title,scenes:adv.scenes.length,scene:plain(advLine(a)),set_aside:setAside?setAside.title:undefined,note:'The adventure now leads you. Scene choices wait for choose(); fights are real.'+(setAside?' '+setAside.title+' waits in your quest log (focus_quest to go back to it).':'')}},
+  // ---- the quest log (sim/questlog.js): several quests, one in focus ----
+  quests(a){return {ok:true,...questsView(a)}},
+  take_quest(a,{id}){const n=parseJob(id);need(n!=null,'Give a job id (job:42 or 42) from list_jobs or quests.');
+    const h=(S.adventures||[]).find(x=>x.id===n);need(h&&h.phase!=='done','No job '+n+' is open.');
+    need(!(h.phase==='taken'&&h.taker===a.id)&&!(h.phase==='active'&&(h.held===a.id||h.mem&&h.mem.includes(a.id))),'You already hold that one: focus_quest {id: "job:'+n+'"}.');
+    need(h.phase==='open','Someone else has that job.');
+    const c=homeOf(a),mine=h.for===a.id;
+    need(h.town===c.name&&(mine||inTown(a)),h.town!==c.name?'That job is posted in '+h.town+', not your town.':'Take a posted job at your town board: go home first.');
+    need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');
+    const w=jobFit(a,h,[a,...(a.party&&a.party.leader===a?partyMates(a):[])]);need(!w,'The job-giver will not give it to you: '+w+'.');
+    h.phase='taken';h.taker=a.id;h.takenAt=Math.round(S.gameMin);h.until=S.gameMin+DMK.MAX_DAYS*1440;if(h.zone!=null&&ZONES[h.zone])learnPlace(a,ZONES[h.zone],'told');
+    const q=questLog(a).active.find(x=>x.id==='job:'+n),t=q?q.title:jobText(h);record(a,'Took a job: ',{t,c:'gd'},' ('+(h.giver?h.giver.name:'the board')+').');
+    return {ok:true,took:t,id:'job:'+n,holding:heldCount(a)+'/'+QL.MAX,note:'It waits in your quest log for up to '+DMK.MAX_DAYS+' game days: focus_quest {id: "job:'+n+'"} to set out on it.'}},
+  focus_quest(a,{id}){const q=findQ(a,id);need(q,'You hold no quest "'+id+'". quests lists them.');
+    if(q.focus)return {ok:true,focus:q.title,note:'Already your focus.'};
+    need(!/^scene:/.test(q.id),'A scene at the table needs no focus: answer it with scene_act.');
+    need(!['fight','duel','assist','dungeon','raid','ghost','camp'].includes(a.state),'Not now ('+a.state+'): finish what you are in first.');
+    need(!tableView(a),'Not while a scene is open at the table.');
+    const run=advOf(a),lead=!(a.party&&a.party.leader!==a);
+    need(lead||!run,'Your party is on '+(run&&run.title)+'; your leader decides what the party pursues.');
+    const n=parseJob(q.id);
+    if(n!=null){need(lead,'In a party, the leader picks the party\'s job.');
+      const h=(S.adventures||[]).find(x=>x.id===n);need(h,'That job is gone.');let adv;
+      if(h.phase==='taken'){const r=beginJob(a,h);if(typeof r==='string')throw new Rule('You cannot set out on it now: '+r+'.');adv=r}
+      else{adv=resumeAdventure(a,h);need(adv,'That adventure is over.');if(a.state==='town')dmDepart(a,homeOf(a))}
+      a.pq=[];setFocus(a,q.id);const held=questLog(a).active.filter(x=>x.status==='held').map(x=>x.title);
+      return {ok:true,focus:adv.title,scene:plain(advLine(a))||undefined,held:held.length?held:undefined,note:'The adventure leads you now; what you set aside waits in your quest log.'}}
+    let aside=null;if(run)aside=holdAdventure(a);setFocus(a,q.id);
+    return {ok:true,focus:q.title,set_aside:aside?aside.title:undefined,note:aside?aside.title+' waits where it stands (focus_quest it, or come back near its place).':undefined}},
+  abandon_quest(a,{id,reason}){const why=clean(reason,120)||null,q=findQ(a,id);need(q,'You hold no quest "'+id+'". quests lists them.');
+    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own.');
+    need(!/^scene:/.test(q.id),'You are in that scene; it ends at the table.');
+    if(/^kill:/.test(q.id)){killAbandoned(a,why);a.quest=null;record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'The quest giver has another for you at turn_in.'}}
+    const n=parseJob(q.id),h=(S.adventures||[]).find(x=>x.id===n);need(h,'That job is gone.');
+    if(h.phase==='taken'){h.phase='open';h.taker=null;takenGone(a,h,'abandoned',why);if(S.gameMin>h.until)S.adventures.splice(S.adventures.indexOf(h),1);
+      record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'It goes back on the board.'}}
+    if(why)h.quitWhy=why;const lead=h.lead===a.id||h.held===a.id;abandonAdventure(a,h);record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');
+    return {ok:true,abandoned:q.title,note:lead?'It ends here, for anyone who was on it with you.':'You leave it to the others.'}},
   choose(a,{option}){const o=clean(option,4).toLowerCase();need(o==='a'||o==='b','Choose "a" or "b".');const adv=advOf(a),p=adv&&adv.pick;
     need(p&&adv.stage==='choose'&&!p.chosen,'No choice is waiting for you.');need(S.gameMin<p.until,'Too late: the moment passed.');
     p.chosen=o;return {ok:true,chose:o+') '+p.opts[o]}},
@@ -552,6 +593,8 @@ const T={
     const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS}}},
 };
+// A quest the hero holds, by its id from quests (a bare number is a job id).
+function findQ(a,id){const L=questLog(a),s=String(id==null?'':id).trim(),n=parseJob(s);return L.active.find(x=>x.id===s)||(n!=null?L.active.find(x=>x.id==='job:'+n):null)||null}
 function propText(P){const v=Object.keys(P.votes||{}).length;return '#'+P.id+' '+P.kind+': '+P.details+' (by '+P.byName+', '+v+' vote'+(v===1?'':'s')+(P.status!=='open'?', '+P.result:'')+')'}
 function cmdText(c){if(c.kind==='move')return (c.flee?'flee to ':'walk to ')+c.label;if(c.kind==='hunt')return 'hunt ('+c.n+' kills)';if(c.kind==='rest')return 'rest until '+Math.round(c.until)+' game-min';if(c.kind==='fight')return 'fight #'+c.id;return c.kind}
 function entryText(e){if(isGear(e))return itemText(e)+(e.cls&&!e.epic?' ['+e.cls+' gear]':'')+', sells '+SELL_VALUE(e)+'g';

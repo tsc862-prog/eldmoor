@@ -110,9 +110,28 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
   press('1',{ctrlKey:true});press('2',{metaKey:true});press('3',{altKey:true});ok(cam.sel===mem[0],'Ctrl/Meta/Alt + digit does not select');
   press('6');press('0');ok(cam.sel===mem[0],'other digits do nothing')}
 // Fellowship panel: open details stay open, the campaign log keeps its place
-{const fb=$('felbody');const th=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));
-  ok(!!th,'Open threads is there');if(th){th.open=true;select(mem[2]);tick(10);
-    const th2=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));ok(th2===th&&th2.open,'Open threads stays open across a refresh')}}
+{const fb=$('felbody');const th=fb.querySelector('.felthreads');
+  ok(!!th&&/Open threads/.test(th.textContent),'Open threads lead the Fellowship panel, always visible');
+  select(mem[2]);tick(10);ok(fb.querySelector('.felthreads')===th,'the threads box is patched in place across a refresh');
+  ok(!!fb.querySelector('.fhline')&&!fb.querySelector('details'),'the header is one line with no folded sections');
+  ok(!/Minds: agents/.test(fb.textContent),'no Minds: agents label (members are always agents)');
+  ok(!fb.querySelector('.feldrawer'),'Members and Fallen are closed by default');
+  // a thread that is not about a hero: an oath and a meeting plan show as one-liners
+  mem[0].goal={text:'Avenge Torius on Grishnak',progress:0,need:1};tick(10);uiFast();
+  ok(/swore to avenge Torius/.test(fb.querySelector('.fthreads').textContent),'an oath is a live one-liner');
+  // Disband needs a confirmation behind the ... menu
+  ok(!fb.querySelector('[data-fact=disband]'),'Disband is not on the header');
+  fb.querySelector('[data-fact=menu]').click();ok(!!fb.querySelector('[data-fact=disband]'),'the ... menu offers Disband');
+  fb.querySelector('[data-fact=disband]').click();ok(!!sim.S.fellowship&&/Yes, disband/.test(fb.textContent),'Disband asks first and the Fellowship still stands');
+  fb.querySelector('[data-fact=menu]').click();ok(!sim.S.fellowship===false&&!fb.querySelector('[data-fact=disband]'),'Cancel closes the menu without disbanding');
+  fb.querySelector('[data-fact="drawer:members"]').click();const dr=fb.querySelector('.feldrawer');
+  ok(!!dr&&!!dr.querySelector('.mindrow'),'the members drawer opens on a click');
+  if(sim.S.fellowship.past.length){fb.querySelector('[data-fact="drawer:fallen"]').click();ok(/Fallen/.test(fb.querySelector('.feldrawer').textContent),'Fallen is one click away')}
+  else ok(!fb.querySelector('[data-fact="drawer:fallen"]'),'no Fallen button while nobody has fallen');
+  fb.querySelector('[data-fact="drawer:members"]').click();
+  {const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+    ok(/\.fhline\{[^}]*flex-wrap:wrap/.test(css)&&/\.feldrawer\{[^}]*overflow-wrap:anywhere/.test(css)&&/\.fmeta\{[^}]*min-width:0/.test(css),'phone width (390px): the header wraps, the name and drawer cannot push the column wider')}
+}
 {const d=$('campaign').querySelector('details');const k=d&&d.getAttribute('data-k');
   holds('Campaign log ('+k+')',()=>$('campaign').querySelector('details[data-k='+k+'] .tlist'),{sec:60,min:3})}
 // a focused picker is never replaced
@@ -208,8 +227,8 @@ console.log('declutter');
   setGroup('story');setTab('bio');setGroup('char');setGroup('story');uiFast();ok(shown().length&&sub.children.find(b=>b.getAttribute('aria-pressed')==='true').textContent==='Bio','a group reopens on its last tab');
   ok(!$('hero').querySelector('.hd [data-ai]')&&!$('hero').querySelector('.hd [data-agent]'),'a member\'s header has no AI/Agent buttons (one mind control)');
   ok(!$('frames').querySelector('[data-mindctl]'),'the frames show the mind label, without a switch');
-  const fb=$('felbody'),mm=[...fb.querySelectorAll('details')].find(d=>/Members and minds/.test(d.textContent));
-  ok(!!mm&&!mm.open&&!!mm.querySelector('.mindrow')&&!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member\'s mind is set, folded by default');
+  const fb=$('felbody');fb.querySelector('[data-fact="drawer:members"]').click();const mm=fb.querySelector('.feldrawer');
+  ok(!!mm&&!!mm.querySelector('.mindrow')&&!mm.querySelector('[data-mmode]'),'Members and minds: the one place a member mind is set, in the drawer');fb.querySelector('[data-fact="drawer:members"]').click();
   ok(!/Model requests|Relay writing/.test(fb.textContent),'request stats are hidden unless Developer is on');
   ok(document.body.classList.contains('fellow-mode')&&!document.body.classList.contains('dev-mode'),'Minds at play is folded away (fellow-mode without dev-mode)');
   const st=$('storyTabs');ok(st&&!st.hidden&&$('storyTtl').textContent==='Story','the Story panel has Chronicle and Campaign log tabs');
@@ -325,6 +344,29 @@ console.log('run gate');
   gate.setRunFree(false);gate.checkRunGate(T0+232000);ok(ctl.held,'switching it off closes the gate again');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
   gate.setGateProbe(null);L[m3.id]='connected'}
+
+// The start gate (#222): connected is not enough; every seat must have answered one warm-up model call
+console.log('start gate: ready, not just claimed');
+{const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');
+  const F=sim.fellows(),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
+  gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'off',ready:a=>R[a.id]||null,dmReady:()=>null});
+  const T0=5e6,box=$('rgate');ctl.speed=1;gate.checkRunGate(T0);
+  ok(!ctl.held,'every seat ready: the world runs');
+  const slow=F[1],down=F[3];R[slow.id]={state:'warming',model:'qwen2.5:14b',at:Date.now()-40000};R[down.id]=null;
+  gate.checkRunGate(T0+1000);
+  ok(ctl.held&&/WAITING FOR MINDS · 3\/5 READY/.test(box.textContent),'a seat still warming up and one only claimed hold the world: '+(box.children[0]&&box.children[0].textContent));
+  ok(box.textContent.includes(slow.name+': loading qwen2.5:14b (4')&&box.textContent.includes(down.name+': claimed'),'the banner says who is loading which model (and for how long) and who is only claimed');
+  ok(/Start anyway/.test(box.textContent),'the banner offers Start anyway');
+  R[down.id]={state:'failed',error:'ollama: no answer from qwen2.5:14b in 600 s',at:0};gate.checkRunGate(T0+2000);
+  ok(ctl.held&&box.textContent.includes('warm-up failed: ollama: no answer'),'a crashed warm-up shows in the banner with its error');
+  gate.startAnyway();
+  ok(!ctl.held&&box.hidden,'Start anyway releases the world');
+  R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
+  L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+30000);
+  L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+31000);
+  ok(ctl.held&&box.textContent.includes(down.name),'a runner that went away and came back must warm up again');
+  R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
+  gate.setGateProbe(null)}
 
 // ---- the DM frame (owner request): the DM's status beside the party frames ----
 {console.log('DM frame');

@@ -34,6 +34,7 @@ import {tableTick,tableHold} from './table.js';
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
 import {opening} from './opening.js';
+import {questTick} from './questlog.js'; // several quests per hero
 
 export {S,clockStr} from './state.js';
 export {log,onLog,gold,epic,fac} from './chronicle.js';
@@ -49,6 +50,7 @@ export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} fr
 export {fellowshipStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners} from './setup.js'; // New World setup (#133)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
+export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
@@ -76,5 +78,5 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   partyTick();fellowshipTick(dt);councilTick();campTick(dt);tableTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();goalsTick(dt);guildsTick(dt);
-  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);leverTick(dt);legendsTick(dt);memorialsTick(dt);
+  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}

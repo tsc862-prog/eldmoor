@@ -54,6 +54,7 @@ import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/o
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
 import {reflectPrompt, reflectNow, closeReflection} from './pacing.mjs'; // reflection moments (#179)
 import Anthropic from '@anthropic-ai/sdk';
+import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
@@ -84,7 +85,7 @@ export function systemPrompt(st) {
     '- You act only through the tools. You know only what they tell you: what you can see nearby, what you hear, and the news.',
     '- Everyone you deal with is in the game, and so are your words: you speak with say (heard within about 7 tiles) and party_say in a party (a shout heard within about 12 tiles), and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way. Distance cuts you off: beyond shouting range your companions neither hear you nor your proposals and votes, so before you part agree where and when to meet again and remember it; only a paid courier from a town gate (send_courier) carries word farther, slowly.',
     '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns early, something needs you: read the events.',
-    '- Grow stronger: hunt what you judge you can beat, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose.',
+    '- Grow stronger: hunt what you judge you can beat, sell loot and buy gear at home, hand in quests (turn_in), take adventures from the gate (list_jobs, take_adventure) once level 4+, answer scene choices with choose. You may hold several quests: quests lists them, take_quest keeps a job for later, focus_quest picks the one you pursue now (the others wait), abandon_quest gives one up; your oath is yours until kept.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice.',
     MEMORY_ORDERS,
     JOURNAL_ORDERS,
@@ -158,6 +159,7 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url}, num_ctx ${ol.numCtx} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)} | ${paceText(pace)}`);
+  await warmUp({base, seat: {hero: heroId}, runner: RUNNER, model: rs.model, adapter: ol, log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let ended = null, runIn = 0, runOut = 0, t0 = Date.now(), lastNote = null; const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     let r = null, w = null;
@@ -187,6 +189,7 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via OpenAI | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
+  await warmUp({base, seat: {hero: heroId}, runner: RUNNER, model: rs.model, adapter, log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let ended = null, runIn = 0, runOut = 0, spent = 0, unknown = false, t0 = Date.now(); const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
@@ -272,6 +275,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'};
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
+  await warmUp({base, seat: {hero: heroId}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let spent = 0, ended = null;
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}

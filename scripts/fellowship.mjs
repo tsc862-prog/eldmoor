@@ -57,6 +57,7 @@ import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDE
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
 import Anthropic from '@anthropic-ai/sdk';
+import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
@@ -125,7 +126,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const aborts = new Set(); // Agent SDK turns in flight, ended on a stop
   const adding = new Set(); // members being added (the watcher calls addMember every second)
   let ollama = null; // the local adapter, made when the first local member joins
-  let openaiChat = null; // the OpenAI adapter's chat(), set when an OpenAI member joins (all share one key and base URL)
+  let openaiChat = null, openaiAd = null, claudeWarm = null; // the OpenAI adapter's chat(), set when an OpenAI member joins (all share one key and base URL); warm-up adapters (#222)
   let claudeAd = null; // a structured Claude call for a scene turn that ended without scene_act (issue #163); the key stays in this process
   const claudeAdapter = () => claudeAd || (claudeAd = anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}));
   const skip = (h, why) => {out(h.name, why); members.set(h.id, {id: h.id, name: h.name, ended: 'skipped'})};
@@ -159,7 +160,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       // an OpenAI member (issue #97): the same loop against Chat Completions, real cost; the key stays in this process
       const o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
       if (o.error) {skip(h, o.error + '; skipped'); await release(h.id); return}
-      openaiChat = o.adapter.chat;
+      openaiChat = o.adapter.chat; openaiAd = o.adapter;
     } else if (!env.ANTHROPIC_API_KEY) {skip(h, 'plays Claude but there is no ANTHROPIC_API_KEY in the environment or .env (use --env FILE, or --provider ollama); skipped'); await release(h.id); return}
     sess.runner = rs; saveSession(sess, {url: base});
     const m = {id: h.id, name: st.name, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai', paid: rs.provider === 'openai', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
@@ -294,6 +295,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // One member's turns, paced by the game (scripts/pacing.mjs): the first at once, then on its events or heartbeat.
   async function loop(m) {
     const pacer = makePacer({base, hero: m.id, runner: runnerId, heartbeat: pace.heartbeat, minGap: pace.minGap, log: s => out(m.name, s), stopped: () => !!(stopping || m.ended)}); m.pacer = pacer;
+    // the start gate (issue #222): one tiny call with the member's model before its first turn; the page holds the world until it answers
+    const ad = m.paid ? openaiAd : m.local ? ollama : (claudeWarm = claudeWarm || claudeWarmAdapter(env.ANTHROPIC_API_KEY));
+    await warmUp({base, seat: {hero: m.id}, runner: runnerId, model: m.rs.model, adapter: await ad, log: s => out(m.name, s)});
     let w = null;
     while (!m.ended && !stopping && m.turns < m.maxTurns) {
       // the budget binds the paid members (Claude, OpenAI); a local member plays on
