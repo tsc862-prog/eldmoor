@@ -7,7 +7,8 @@
 import {T,W,H} from '../world/tiles.js';
 import {zone,I,ZONES,LABELS} from '../world/map.js';
 import {CONDITIONS} from '../sim/levers.js';
-import {DISPO,TEXT,dispoOf} from './palette.js';
+import {TEXT} from './palette.js';
+import {toneOf,toneName} from '../core/colors.js';
 
 // Each prop: rectangles [x, y, w, h, colour] in world px relative to the foot point.
 const PROPS={
@@ -39,6 +40,6 @@ export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite,o
   for(const w of S.wanderers||[]){if(!inView(w.x*T,w.y*T,32))continue;
     const fr=w.moving?Math.floor(blink*6+w.id)%2:Math.floor(blink*1.5)%2,s=npcSprite(w,fr),px=Math.round(w.x*T),py=Math.round(w.y*T);
     ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(px,py,s.width/2,1.5,0,0,7);ctx.fill();
-    const d=dispoOf(w,S.gameMin,'neutral');if(close)dispoRing(px,py,s.width,d);
+    const t=toneOf(w,S.fellowship,S.gameMin);if(close)dispoRing(px,py,s.width,t.kind);
     ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(outlined(s),-Math.floor(s.width/2)-1,py-s.height-1);ctx.restore();
-    if(close)drawText(w.name,px,py-17,DISPO[d],12)}}
+    if(close)drawText(toneName(w,t),px,py-17,t.color||TEXT.person,12)}}

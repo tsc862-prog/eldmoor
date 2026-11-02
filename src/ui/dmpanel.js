@@ -52,6 +52,8 @@ function table(e){const t=el('table','dmkv'),b=el('tbody');
   if(e.reply)add('reply',e.reply);
   t.append(b);return t}
 
+// for the chat panel's DM agent tab (#169): the same row pieces, one place
+export const dmTable=table,dmParts=partsTo,dmByAgent=byAgent,dmBadge=e=>BADGE[e.kind]||e.kind.toUpperCase();
 function advTitle(id){const a=(S.adventures||[]).find(x=>x.id===id);return a&&a.title?a.title:'#'+id}
 
 export function renderDmLog(){if(!list)return;

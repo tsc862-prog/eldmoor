@@ -5,7 +5,8 @@
 import {W,H,T,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,SNOW,ICE} from '../world/tiles.js';
 import {tiles,zone,I,CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
-import {BIOME,TILE_FLAT,ROLE_LIGHT,MARK,TEXT,biomeOfZone} from './palette.js';
+import {BIOME,TILE_FLAT,MARK,TEXT,biomeOfZone} from './palette.js';
+import {classColor,toneOf} from '../core/colors.js';
 
 // Largest CSS size; the canvas keeps the map's aspect inside this box.
 const BOX_W=160,BOX_H=100;
@@ -33,7 +34,7 @@ function buildBase(){const cv=document.createElement('canvas');cv.width=W;cv.hei
 
 // canvas: the #minimap element. cam: the shared camera (camX/camY in world px, vw/vh the
 // view size in world px). onCenter(wx,wy) is called with a world-pixel point on click.
-const ROLE_DOT=ROLE_LIGHT,MIND_COL=MARK.mind;
+const MIND_COL=MARK.mind;
 export function createMinimap(canvas,cam,onCenter){
   const ctx=canvas.getContext('2d');let base=null,k=1;
   function resize(){const dpr=window.devicePixelRatio||1,s=Math.min(BOX_W/W,BOX_H/H),cw=Math.round(W*s),ch=Math.round(H*s);
@@ -61,9 +62,12 @@ export function createMinimap(canvas,cam,onCenter){
       edot(a.x,a.y,d,FAC[a.fac].color);ctx.globalAlpha=1}
     for(const a of S.agents){if(a.hidden||a.state==='dead'||!(a.brain||a.player))continue; // AI- or agent-played heroes get a ring
       ctx.strokeStyle=MIND_COL;ctx.lineWidth=Math.max(1,Math.round(k/2));const r=big+2;ctx.strokeRect(Math.round(a.x*k-r/2)+.5,Math.round(a.y*k-r/2)+.5,r,r)}
-    // Fellowship members (#94): bright role-coloured dots with a dark edge, on top of everyone else
+    // Fellowship members (#94): bright class-coloured dots with a dark edge, on top of everyone else
     if(S.fellowship)for(const k in S.fellowship.slots){const a=S.agents.find(x=>x.id==S.fellowship.slots[k]);if(!a||a.hidden||a.state==='dead')continue;
-      edot(a.x,a.y,big,ROLE_DOT[k.replace(/\d+$/,'')]||ROLE_DOT.dps)}
+      edot(a.x,a.y,big,classColor(a.cls))}
+    // townsfolk, placed people and foes of a scene: a small dot in the disposition colour (hollow, so never a class dot)
+    for(const p of (S.npcs||[]).concat(S.wanderers||[])){if(p.hidden)continue;const t=toneOf(p,S.fellowship,S.gameMin);if(!t.color)continue;
+      ctx.strokeStyle=t.color;ctx.lineWidth=1;ctx.strokeRect(Math.round(p.x*k-d/2)+.5,Math.round(p.y*k-d/2)+.5,d,d)}
     const sel=cam.sel;if(sel&&!sel.hidden&&sel.state!=='dead'){dot(sel.x,sel.y,big+1,'#000');dot(sel.x,sel.y,d+1,SEL_COL)}
     // view rectangle, kept inside the canvas
     const lw=Math.max(1,Math.round(k/2)),x0=Math.max(0,(cam.camX-cam.vw/2)/T*k),y0=Math.max(0,(cam.camY-cam.vh/2)/T*k);
