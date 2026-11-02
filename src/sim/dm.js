@@ -222,10 +222,10 @@ const forFellow=(h,fo)=>h.for!=null&&fo.ids.has(h.for)||h.zone!=null&&fo.zones.h
 function fellowHook(c,fo){
   const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl));
   for(const a of fo.members){if(a.adv||a.lvl<K.MIN_LVL||S.adventures.some(h=>h.phase==='open'&&h.for===a.id))continue;
-    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data},'a Fellowship member’s oath',true)}
+    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data},'a Fellowship memberâ€™s oath',true)}
   const taken=m=>S.adventures.some(h=>h.data&&h.data.eliteId===m.id&&h.phase!=='done');
   const E=S.mobs.filter(m=>m.elite&&m.alive&&!m.gone&&!taken(m)&&m.lvl<=hi+2).sort((p,q)=>dist(p,fo)-dist(q,fo)||p.id-q.id)[0];
-  if(E&&fo.members.length>=2){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper']},'a living elite lies near the Fellowship’s road',true)}
+  if(E&&fo.members.length>=2){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper']},'a living elite lies near the Fellowshipâ€™s road',true)}
   const z=fo.zone!=null&&band(fo.zone)[0]<=lo&&band(fo.zone)[1]>=lo-4?fo.zone:null;
   if(z==null)return null;
   const tpl=pickA(Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'));const T=D.ADVENTURES[tpl],g=giverOf(c,T.givers);
