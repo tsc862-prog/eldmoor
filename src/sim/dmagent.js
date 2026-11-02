@@ -20,7 +20,7 @@
 //              (note: sim/notebook.js {id,title,text,tags,about,rk,day,t,gm,up,pin?,sec}; older saves' notes lack title and tags)
 //              day:{d, pulls, notes, intents, narr, npc}, calls:[{t,tool,args,ok}] newest first,
 //              seen:{tl, chron, log} (what dm_status last showed), stats:{calls, pulls, refused}}
-import {S,clockStr} from './state.js';
+import {S,clockStr,dayNo} from './state.js';
 import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
@@ -236,7 +236,7 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   else{const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+near+'". Use a hero name or id, a town, a region name, "x,y", or "table".'};
     const r=nOf(a.radius,DMA.NARRATE_R,4,20);label=p.label;
     hs=S.agents.filter(b=>alive(b)&&!b.hidden&&(dist(b,p)<=r||p.town&&b.state==='town'&&b.town===p.town))}
-  const e={t:clockStr(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs)hearLine(b,e);
+  const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs)hearLine(b,e);
   if(S.table&&hs.some(b=>S.table.ids.includes(b.id)))S.table.narr={t:e.t,text:t}; // the banner and tableView show it
   day.narr=(day.narr||0)+1;
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
@@ -247,7 +247,7 @@ function npcSay(a){const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)retur
   const p=all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k);
   if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs for ids and names).'};
   if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return {ok:false,error:p.name+' is nowhere the heroes could hear them.'};
-  const e={t:clockStr(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
+  const e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
   const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;for(const b of hs)hearLine(b,e);
   p.bubble={text:t,life:BUBBLE};if(e.fh)p.bubble.fh=true;day.npc=(day.npc||0)+1;
   dmlog('agent',null,[(p.title?p.title+' ':'')+p.name+' (DM agent): "',t,'"'],{by:'dm-agent',voice:'npc_say',npc:p.id,text:t,heard:hs.map(b=>b.id)});
