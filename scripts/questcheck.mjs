@@ -19,7 +19,9 @@ const P = await import('../src/sim/player.js');
 const {pull} = await import('../src/sim/levers.js');
 const {homeOf} = await import('../src/data/races.js');
 const {ADVENTURES} = await import('../src/data/adventures.js');
-const {QL, questTick} = await import('../src/sim/questlog.js');
+const {QL, questTick, jobDone} = await import('../src/sim/questlog.js');
+// 'Quest completed' wakes (sim/wakes.js, w=2) posted to a hero since event number n
+const doneWakes = (h, n) => (h.playEv || []).filter(e => e.n > n && /^Quest completed/.test(e.text) && e.w === 2);
 const {paceBrief} = await import('../src/sim/pace.js');
 const {TOOL_NAMES} = await import('../src/data/player-tools.js');
 
@@ -111,8 +113,10 @@ const oath = questLog(a).active.find(q => q.kind === 'oath');
 r = call('abandon_quest', {id: oath.id}); ok(!r.ok && /oath/i.test(r.error), 'abandon_quest on an oath is refused');
 
 // abandon B (held): it ends, logged as abandoned with the hero's reason
+const nB = a.playEvN || 0;
 r = call('abandon_quest', {id: 'job:' + hB.id, reason: 'the road is too long'});
 ok(r.ok && advB.phase === 'done' && advB.why === 'abandoned', `abandon_quest B: ${r.abandoned || r.error}`);
+ok(doneWakes(a, nB).length === 0, 'an abandoned job wakes nobody');
 const dB = questLog(a).done.find(q => q.id === 'job:' + hB.id);
 ok(dB && dB.status === 'abandoned' && /too long/.test(dB.objective), `done list: B abandoned (${dB && dB.objective})`);
 
@@ -168,11 +172,20 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
 // ---- finished quests: a kill quest handed in, an oath kept ----
 {const b = S.agents.find(x => x.id === a.id);
   b.x = c.ah.x; b.y = c.ah.y; b.state = 'town'; b.pq = [];
-  if (!b.quest) call('turn_in'); b.quest.have = b.quest.need; const t = questLog(b).active.find(q => q.id.startsWith('kill:')).title;
+  if (!b.quest) call('turn_in'); b.quest.have = b.quest.need; const nT = b.playEvN || 0; const t = questLog(b).active.find(q => q.id.startsWith('kill:')).title;
   r = call('turn_in'); ok(r.ok && questLog(b).done.some(q => q.id.startsWith('kill:') && q.status === 'done' && q.title === t), `turn_in: "${t}" in the done list`);
+  ok(doneWakes(b, nT).length === 1, 'turn_in wakes the agent once (no second wake from the quest log)');
+  const nO = b.playEvN || 0;
   const n0 = questLog(b).done.length;
   if (b.goal && b.goal.type === 'hoard') {b.gold = b.goal.need + 1} else {b.goal = {type: 'hoard', tier: 0, text: 'Hold 1 gold at once', need: 1, progress: 0, done: false, at: 0}; b.gold = 5}
-  run(1); ok(questLog(b).done.length > n0 && questLog(b).done.some(q => q.kind === 'oath' && q.status === 'done'), 'a kept oath lands in the done list')}
+  run(1); ok(questLog(b).done.length > n0 && questLog(b).done.some(q => q.kind === 'oath' && q.status === 'done'), 'a kept oath lands in the done list');
+  ok(doneWakes(b, nO).length === 1 && !/\dg\)/.test(doneWakes(b, nO)[0].text), `a kept oath wakes the agent once: "${(doneWakes(b, nO)[0] || {}).text}"`);
+  // a held job that ends well wakes its hero once, with its pay
+  const v = {id: 9901, phase: 'done', tpl: 'deliver', title: 'A Letter for Nowhere', held: b.id, mem: [b.id], scenes: [{type: 'travel'}], idx: 1, z: 0, data: {}, outcome: 'success', paid: {[b.id]: 37}, started: S.gameMin - 60};
+  const nH = b.playEvN || 0; jobDone(b, v); const w = doneWakes(b, nH);
+  ok(w.length === 1 && /A Letter for Nowhere \(37g\)/.test(w[0].text), `a held job finished: one wake "${w[0] && w[0].text}"`);
+  const nF = b.playEvN || 0; jobDone(b, {...v, id: 9902, outcome: 'failure', why: 'expired'}); ok(doneWakes(b, nF).length === 0, 'a job that went cold wakes nobody');
+  const s0 = S.agents.find(x => !x.player && x.kind === 'hero'), nS = s0.playEvN || 0; jobDone(s0, {...v, id: 9903, held: null, mem: [s0.id]}); ok((s0.playEvN || 0) === nS, 'a scripted hero gets no wake')}
 
 console.log(fail ? `\n${fail} check(s) FAILED\n` : '\nAll quest log checks passed.\n');
 process.exit(fail ? 1 : 0);

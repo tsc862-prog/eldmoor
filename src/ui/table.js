@@ -1,7 +1,8 @@
 // Table mode banner and switch (issue #68, phase B). Reads sim/table.js only.
 //   banner  over the map while the Fellowship is at a scene: the scene, the DM's framing (with
 //           the dice when it is a check), initiative order with the current turn marked, whose
-//           turn it is ("Pellora is thinking… (5 s)") and the last act, then the outcome
+//           turn it is ("Pellora is thinking… (5 s)") and the last act, then the outcome; a scene where everyone
+//           answers at once shows EVERYONE ANSWERS and "3/5 answered · waiting for Fena, Maelell"
 //   switch  the View group's "Table: Auto / Off" button (Off = Watch mode, never pauses); kept
 //           per viewer in localStorage
 import {TABLE,bannerOf} from '../sim/table.js';
@@ -45,7 +46,7 @@ export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd
   const box=$('tbanner');if(!box)return;
   const b=bannerOf();if(!b){if(!box.hidden){box.hidden=true;sig=''}return}
   const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(',')].join('|');if(s===sig)return;sig=s;box.hidden=false;patch(box,box=>{
-  const tt=el('div','tt','AT THE TABLE · '+b.title.toUpperCase());if(b.paused)tt.append(el('span','tp','WORLD PAUSED'));box.append(tt);
+  const tt=el('div','tt','AT THE TABLE · '+b.title.toUpperCase());if(b.paused)tt.append(el('span','tp','WORLD PAUSED'));if(b.all)tt.append(el('span','tp','EVERYONE ANSWERS'));box.append(tt);
   box.append(el('div','tf',plain(b.frame)));
   if(b.narr)box.append(el('div','tf tnarr',b.narr)); // the DM's narrate line (issue #123)
   if(b.cast&&b.cast.length)box.append(el('div','to','Staged by the DM · '+b.cast.join(' · '))); // a staged scene's cast (issue #132)

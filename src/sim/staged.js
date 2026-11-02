@@ -285,6 +285,7 @@ function meet(rec,a){const G=S.staged,F=S.fellowship,fight=rec.kind==='elite'||r
   rec.phase='open';
   const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),dcUp:0,tally:{}};
   const pre={ids:fellows().map(b=>b.id)};say(pre,rec.frame,NARRATOR); // the frame reaches the members as narration (#123), before any line of the scene
+  ctx.anchor=a.id; // an everyone-at-once scene takes the members within shouting range of the one they met (#182)
   const sc=openScene(rec.kind,rec.title,[rec.frame],ctx);
   if(!sc){rec.phase='waiting';return false}
   rec.scene=sc.id;if(S.table===sc&&!sc.narr)sc.narr=pre.narr;
@@ -373,6 +374,11 @@ function onBeat(sc,b){const rec=recOf(sc);if(!rec)return;
   push(sc,{kind:'outcome',beat:sc.beats.length-1,who:b.name,about:b.name+' chose to '+low(b.text)+(b.res?' ('+b.res+')':'')+(b.line?' and said "'+b.line+'"':'')+'. Describe what happens, one line, true to the result.'});
   if(!sc.complicated&&sc.beats.length>=Math.max(1,Math.floor(sc.ids.length/2))){sc.complicated=true;const L=COMPLICATIONS[sc.kind];
     push(sc,{kind:'complication',legal:L.slice(),about:'Pick one complication for the rest of the scene from: '+L.map(x=>x+' ('+COMP_ABOUT[x]+')').join('; ')+'. Add one line of what the heroes notice.'})}}
+// Everyone answered at once (sim/table.js PLAY 'all'): one call to narrate the combined result, then the complication.
+function onAll(sc){const rec=recOf(sc);if(!rec||!sc.beats.length)return;
+  push(sc,{kind:'outcome',beat:'all',who:'the party',about:'Everyone answered at once: '+sc.beats.map(b=>b.name+' chose to '+low(b.text)+(b.res?' ('+b.res+')':'')+(b.line?' and said "'+b.line+'"':'')).join('; ')+'. Describe what happens to them together, one or two lines, true to every result.'});
+  if(!sc.complicated){sc.complicated=true;const L=COMPLICATIONS[sc.kind];
+    push(sc,{kind:'complication',legal:L.slice(),about:'Pick one complication for the end of the scene from: '+L.map(x=>x+' ('+COMP_ABOUT[x]+')').join('; ')+'. Add one line of what the heroes notice.'})}}
 // The table waits for the DM only while a runner is actually listening: it polled table_call within POLL_MS of real
 // time (a seat with nobody in it, or a runner that went away, gets the scripted DM at once).
 let polledAt=0;
@@ -390,7 +396,8 @@ const REVEALS=['The marks name a family that ruled here before the towns.','A co
 function fill(sc,c){const rec=recOf(sc),G=stagedState(),n=rec?rec.cast.name:'the foe';let text='',pick=null,from=NARRATOR;
   if(c.kind==='voice'){const w=rec&&npcOf(rec.cast.npc);if(w){from=npcFrom(w);text=rec.cast.want?'Hear me out. I need someone to '+low(rec.cast.want).replace(/[.!?]+$/,'')+'.':'Well met, travellers.'}
     else text=pickR(VOICE[sc.kind]||VOICE.mystery).replace('{n}',c.who||n)}
-  else if(c.kind==='outcome'){const b=sc.beats[c.beat];text=b?b.name+' moves: '+low(b.text)+(b.res?' - '+b.res:'')+'.':''}
+  else if(c.kind==='outcome'){if(c.beat==='all')text=clean(sc.beats.map(b=>b.name+' '+low(b.text)+(b.res?' ('+b.res+')':'')).join('; ')+'.',STAGE.LINE_MAX);
+    else{const b=sc.beats[c.beat];text=b?b.name+' moves: '+low(b.text)+(b.res?' - '+b.res:'')+'.':''}}
   else if(c.kind==='complication'){pick=r()<.3?'omen':'none';text=pick==='omen'?pickR(OMENS):''}
   resolve(sc,c,{text,pick,by:'scripted',from});G.stats.filled++}
 function resolve(sc,c,{text,pick,by,from}){c.done=true;c.by=by;c.text=text||'';if(pick)c.pick=pick;
@@ -407,7 +414,7 @@ function complicate(sc,pick){const rec=recOf(sc),c=sc.ctx;
   if(pick==='tremor'){c.dcUp=(c.dcUp||0)+2;return 'the remaining rolls are 2 harder'}
   return null}
 function done(sc){const rec=recOf(sc);if(rec)finish(rec,sc,sc.summary||null)}
-setStageHooks({tick,onFrame,onBeat,fill,live,done});
+setStageHooks({tick,onFrame,onBeat,onAll,fill,live,done});
 
 // ---- the DM tools ----
 // table_call: what the table asks of the DM right now (the pending call, the scene) and the staged scene's state.
