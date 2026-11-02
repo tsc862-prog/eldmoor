@@ -17,8 +17,8 @@ export const FAUNA={
   lowmark:   {tier:0,species:['wolf','boar','spider'],count:12,roadMinX:44,elite:'Hollowfang'},
   sedgewater:{tier:1,species:['bog','mudboar','lurker'],count:12,roadMinX:0,elite:'Old Mother Sedge'},
   cairnwold: {tier:1,species:['wolf','boar','shaghorn'],count:12,roadMinX:0,elite:{name:'Brask Ironhorn',title:'the Ram-King of the Cairnwold',base:'shaghorn'}},
-  cinderreach:{tier:2,species:['golem','drake'],count:14,roadMinX:0,elite:'Scoriath'},
-  rimeholt:  {tier:3,species:['rimehound','shaghorn'],count:12,roadMinX:0,elite:{name:'Whitemaw',title:'the Snow-Hound of Rimeholt',base:'rimehound'}},
+  cinderreach:{tier:2,species:['golem','drake','spider'],count:14,roadMinX:0,elite:'Scoriath'},
+  rimeholt:  {tier:3,species:['rimehound','shaghorn','wolf'],count:12,roadMinX:0,elite:{name:'Whitemaw',title:'the Snow-Hound of Rimeholt',base:'rimehound'}},
   palereach: {tier:3,species:['rimehound','shaghorn','wight'],count:11,roadMinX:0,elite:'Ulfryn Coldmarrow'},
 };
 
