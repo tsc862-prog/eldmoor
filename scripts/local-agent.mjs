@@ -103,12 +103,12 @@ export function trimHistory(h, budget) {
 
 // One turn. chat: the adapter's chat(); call(tool, args) -> game result; sess: the hero's session
 // (sess.system, sess.local); on(kind, ...): 'text' narration, 'tool' (name, args), 'result' (text),
-// 'mode' (new mode). Returns {tools, modelCalls, in, out, modelMs, ms, narration, dead, capped, rejected, mode}.
+// 'mode' (new mode). Returns {tools, modelCalls, in, out, modelMs, ms, narration, dead, capped, rejected, mode, calls:[{name, ok, error?}]}.
 // tools: the tool table (default the hero's; the DM runner passes DM_TOOLS); rules: the line appended to the system prompt.
 export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12, on = () => {}, opts = {}, tools: list = PLAYER_TOOLS, rules = LOCAL_RULES}) {
   const o = {...LOCAL_DEFAULTS, ...opts};
   const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
-  const t0 = Date.now(); let reprompted = false; const stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: L.mode};
+  const t0 = Date.now(); let reprompted = false; const stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: L.mode, calls: []};
   const addCost = u => {stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false}; // paid providers (OpenAI) report a cost; Ollama's is 0
   // a run of empty turns (no call, a repeat, another language): start this one from a fresh context
   if ((L.emptyRun || 0) >= o.freshAfter) {L.history = []; L.lastNarr = null; L.emptyRun = 0; stat.fresh = true}
@@ -123,6 +123,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
       const meta = byName(list).get(name); if (meta && meta.act && r && r.ok !== false) stat.acts++}
     const text = typeof r === 'string' ? r : JSON.stringify(r);
     on('result', text);
+    stat.calls.push(r && typeof r === 'object' && r.ok === false ? {name, ok: false, error: String(r.error || 'error').slice(0, 140), ...(r.refused ? {refused: true} : {})} : {name, ok: true}); // the behavior log's turn line (issue #129)
     if (/"dead":true/.test(text)) stat.dead = true;
     return text;
   };

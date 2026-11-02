@@ -105,6 +105,7 @@ other. The rules:
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
 - `npm run channelcheck`: the in-game channels rule (see "In-game channels").
+- `npm run behavior-report`, `npm run behaviorcheck`: behavior logs for review (see "Behavior logs").
 
 ## Agent player
 
@@ -445,6 +446,44 @@ The owner's rule: the DM and the players talk only inside the game. How it holds
   result, event, runner prompt and brain snapshot, and fails on any secret; it also proves a narrate
   line reaches members in range (and the table) and not one far away, npc_say reaches earshot, party
   chat reaches every member, and the relay keeps the seats apart.
+
+## Behavior logs (for review)
+
+Issue #129: structured, append-only JSONL for the watcher and the `playtest-reviewer` agent, never read
+by any agent, tool or the game. Under `logs/behavior/<world>/` (gitignored; each file rotates at 5 MB,
+three old files kept): `<world>` is the world id the page names (`eldmoor`, `stepping`) for the relay,
+and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavior`; the relay:
+`--no-behavior` or `RELAY_BEHAVIOR=0`).
+
+- `turns.jsonl`: one line per agent turn of a hero or the DM, sent by the runners (`agent-player`,
+  `fellowship`, `dm-agent`; `scripts/behavior-turn.mjs`) to `POST /play/behavior/turn`, accepted only from
+  the runner holding that seat: seat, provider/model, turn, wake reason, the state header before (runner)
+  and after (game), tool names with ok/error, narration, seconds, tokens, cost, flags (empty, repeat,
+  foreign, stale, refused, scene, ...).
+- `decisions.jsonl`: `src: relay` one line per `/decide` call (kind, provider, model, status, ms, error);
+  `src: game` each hero's Mind entry once settled (outcome applied, late, rejected, offline, superseded).
+- `world.jsonl`: a digest every game hour from `src/sim/behavior.js` (read-only, not part of `step()`):
+  each Fellowship member's and agent hero's mind, link, state, place, HP, level and idle time; the share
+  of game time agent / autopilot / relay mind / scripted; Table scenes and agent vs reflex turns; votes;
+  DM lever pulls and refusals by caller; DM log kinds; deaths and causes; chat lines by channel (counts).
+  The page sends it over the play bridge (`src/ui/player-bridge.js`, which now also connects while a
+  Fellowship has relay minds); `play-headless` writes it directly.
+- `anomalies.jsonl`: relay side (`scripts/behavior-log.mjs` `BD`): no tool calls for 3 turns, repeated
+  narration, not English, stale claim (a fight narrated while the game says none), every call refused,
+  relay failures (5 in 5 min: 429, timeouts, 5xx), two Ollama models at once, request floods. Game side
+  (`src/sim/behavior.js` `BW`): idle in one place 2+ game hours outside camp, the same state 6 hours with
+  no progress, reflex taking every agent turn of 2 scenes in a row, every agent vote by reflex twice,
+  DM levers refused often, a danger lever pulled near a member below 35% HP. One line per kind and seat
+  per 5 real minutes (the rest counted as `heldBack`).
+- Rules: no keys (key-shaped text is redacted, headers never logged), no tool results, prompts or another
+  seat's text in a seat's lines, chat as counts only.
+- `npm run behavior-report [-- --world NAME | --all] [--hours N]` writes `logs/behavior/<world>/report.md`:
+  top anomalies with counts and examples, per-seat health, model comparison (empty-turn rate, seconds,
+  tokens and cost per provider/model, relay failure rates, decision outcomes), the world digests.
+- `npm run behaviorcheck` (in CI): mock runners and a timing-out relay produce every anomaly kind above on
+  a headless Fellowship of silent agents; asserts they are logged and reported, that a runner cannot write
+  another seat's line, keys are redacted, files rotate, the watch leaves the world unchanged, and that a
+  real `npm run agent` with a lazy mock Ollama model lands its turns and its stale fight claim.
 
 ## Layout
 

@@ -55,6 +55,7 @@ import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine} from './local-agent.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
+import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, withClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -174,6 +175,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   async function claudeTurn(m, scene, w) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
     const prompt = memberPrompt(m.sess.turns, scene, w);
+    const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log only (issue #129)
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
     const ac = new AbortController(); aborts.add(ac);
     const q = query({prompt, options: {
@@ -189,24 +191,28 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else if (msg.type === 'system' && msg.subtype === 'compact_boundary') out(m.name, `[compacted: ${msg.compact_metadata.pre_tokens} -> ${msg.compact_metadata.post_tokens ?? '?'} tokens]`);
       else if (msg.type === 'assistant' && !msg.parent_tool_use_id) {
         for (const b of msg.message.content || []) {
-          if (b.type === 'text' && b.text.trim()) {out(m.name, b.text.trim()); post(base, '/play/narrate', {hero: m.id, text: b.text.trim(), runner: runnerId}, 5000).catch(() => {})}
-          else if (b.type === 'tool_use') {tools++; out(m.name, `> ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 120) : ''})`)}
+          if (b.type === 'text' && b.text.trim()) {out(m.name, b.text.trim()); tc.text(b.text); post(base, '/play/narrate', {hero: m.id, text: b.text.trim(), runner: runnerId}, 5000).catch(() => {})}
+          else if (b.type === 'tool_use') {tools++; tc.tool(b.name, b.id); out(m.name, `> ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 120) : ''})`)}
         }
       } else if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
-        for (const b of msg.message.content) if (b.type === 'tool_result') {const c = Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''); out(m.name, `< ${short(c, 200)}`);
+        for (const b of msg.message.content) if (b.type === 'tool_result') {const c = Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''); out(m.name, `< ${short(c, 200)}`); tc.result(b.tool_use_id, c, b.is_error);
           if (/"dead":true/.test(c)) m.ended = 'dead'}
       } else if (msg.type === 'result') result = msg;
     }} catch (e) {
       if (result && result.subtype === 'error_max_turns') out(m.name, `turn hit the model-call cap; continuing next turn`);
-      else {out(m.name, `turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); failed = true}}
+      else {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`); failed = true}}
     aborts.delete(ac);
     m.sess.turns++; m.turns++; m.tools += tools; if (scene) m.scenes++;
+    let turnCost = null, tin = null, tout = null;
     if (result) {
       const tot = result.total_cost_usd || 0, cost = tot >= m.sess.lastTotal ? tot - m.sess.lastTotal : tot; m.sess.lastTotal = tot;
-      spent += cost; m.cost += cost; m.sess.costUsd += cost;
-      const mu = Object.values(result.modelUsage || {}), tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0), tout = mu.reduce((t, u) => t + u.outputTokens, 0), cached = mu.reduce((t, u) => t + u.cacheReadInputTokens, 0);
+      spent += cost; m.cost += cost; m.sess.costUsd += cost; turnCost = cost;
+      const mu = Object.values(result.modelUsage || {}), cached = mu.reduce((t, u) => t + u.cacheReadInputTokens, 0);
+      tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0); tout = mu.reduce((t, u) => t + u.outputTokens, 0);
       out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${model} | ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s | tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`);
     }
+    reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cost: turnCost,
+      flags: [...(scene ? ['scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSession(m.sess, {url: base});
     return !failed && tools > 0;
   }
@@ -216,13 +222,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   async function localMemberTurn(m, scene, w) {
     let r = null;
     if (!m.paid) {const n = await localModelNote(ollama, m.rs.model); if (n && n !== m.note) out(m.name, n); m.note = n} // another model on the GPU (#126)
-    try {r = await localTurn({chat: m.paid ? openaiChat : ollama.chat, call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, prompt: memberPrompt(m.sess.turns, scene, w) + briefText(m.pacer ? await m.pacer.brief() : null), model: m.rs.model,
+    const b0 = m.pacer ? await m.pacer.brief() : null; let err = null;
+    try {r = await localTurn({chat: m.paid ? openaiChat : ollama.chat, call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, prompt: memberPrompt(m.sess.turns, scene, w) + briefText(b0), model: m.rs.model,
       toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, opts: opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? {numCtx: Number(opt('num-ctx', env.OLLAMA_NUM_CTX))} : {},
       on: (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})}
         else if (k === 'tool') out(m.name, `> ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`);
         else if (k === 'mode') out(m.name, `[${m.rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
-    catch (e) {out(m.name, `turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
+    catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`)}
     m.sess.turns++; m.turns++; if (scene) m.scenes++;
+    {const lr = localRec(r); if (scene) lr.flags.push('scene');
+      reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model: m.rs.model, turn: m.sess.turns, wake: w, brief: b0, ...lr, ...(err ? {error: err} : {})})}
     if (r) {m.tools += r.tools; m.tin += r.in; m.tout += r.out; if (r.dead) m.ended = 'dead';
       if (m.paid) {spent += r.cost; m.cost += r.cost; m.sess.costUsd = (m.sess.costUsd || 0) + r.cost;
         out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${paidLine(r, m.rs.model, 'openai', {run: spent})} of ${money(budget)} | member ${money(m.cost)}`)}
