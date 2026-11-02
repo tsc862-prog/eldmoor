@@ -311,7 +311,7 @@ console.log('declutter');
   {const dossier=await import('../src/ui/panels.js');const g=dossier.chatGroups([{from:mem[1],text:'x',party:true},{from:mem[1],text:'x',party:true},{from:mem[1],text:'y'}]);
    ok(g.length===2&&g[0].n===2,'repeats still collapse to a count (x2)')}
   {const dlog=await import('../src/sim/dmlog.js');dlog.dmlog('agent',null,['The DM agent plans a quiet road.'],{by:'dm-agent'});dlog.dmlog('frame',null,['A scripted scene opens.'],{});
-   $('chatTabs').children.find(b=>b.dataset.ctab==='dm').click();uiFast();const dl=$('dmChatList');
+   $('chatTabs').children.find(b=>b.dataset.ctab==='dm').click();$('dmPane').children[0].children.find(b=>b.dataset.dview==='entries').click();uiFast();const dl=$('dmChatList');
    ok(!$('dmPane').hidden&&$('chatPane').hidden,'DM tab opens beside the chat');
    ok(/plans a quiet road/.test(dl.textContent)&&!/scripted scene opens/.test(dl.textContent),'DM tab lists the DM agent\'s entries; scripted ones are hidden');
    $('dmPane').children[0].children[0].click();uiFast();ok(/scripted scene opens/.test($('dmChatList').textContent)&&!!$('dmChatList').querySelector('.dimmed'),'the Scripted DM toggle shows its entries, dimmed');
@@ -500,6 +500,26 @@ console.log('start gate: ready, not just claimed');
   delete globalThis.__actionLog;uiFast();ok(/arrives with the next update/.test(tb().textContent)||tb().querySelectorAll('.cbcard').length>=0,'no sim API: says so');
   setTab('stats');uiFast()}
 
+
+// DM per-turn cards (#181)
+{const T=await import('../src/ui/dmturns.js'),cp=await import('../src/ui/chatpanel.js');T.clearDmTurns();
+  const t0=1e6,call=(tool,args,res,dt)=>T.noteDmCall(tool,args,res,t0+dt);
+  call('dm_status',{},{ok:true},0);call('regions',{},{ok:true},500);call('notes_write',{section:'threads',text:'Watch the north road',title:'North road'},{ok:true},900);
+  call('pull_lever',{name:'set_condition'},{ok:true,effect:'bandits stir'},1200);call('pull_lever',{name:'named_foe'},{ok:false,error:'Refused: scripted only'},1500);
+  call('stage_scene',{kind:'meeting',near:'fellowship'},{ok:true},1800);call('narrate',{text:'Smoke curls over the ridge.',near:'fellowship'},{ok:true},2100);
+  call('table_call',{},{ok:true},2200);
+  call('dm_status',{},{ok:true},60000);call('npc_say',{npc:'Mara',text:'Mind the road.'},{ok:true,who:'Mara'},60500);
+  const ts=T.dmTurns();ok(ts.length===2,'calls close together are one turn; a gap starts the next ('+ts.length+')');
+  ok(ts[0].said.length===1&&ts[1].levers.length===2&&ts[1].staged.length===1&&ts[1].notes.length===1,'turns record notes, levers (applied and refused), staged scenes and spoken lines');
+  ok(ts[1].calls===7,'an idle table_call poll is not counted');
+  cp.setChatTab('dm');cp.setDmView('turns');uiFast();const tl=$('dmTurnList');
+  ok(!tl.hidden&&$('dmChatList').hidden,'Turns is the default DM view; entries are behind it');
+  const cs=tl.querySelectorAll('.dmcard');ok(cs.length===2&&/Mara/.test(cs[0].textContent)&&/North road/.test(cs[1].textContent)&&/named_foe/.test(cs[1].textContent)&&/Refused/.test(cs[1].textContent)&&/meeting near fellowship/.test(cs[1].textContent)&&/Smoke curls/.test(cs[1].textContent),'one card per turn, newest first, with its acts');
+  cs[0]._same=1;T.noteDmCall('narrate',{text:'More smoke.'},{ok:true},t0+60800);uiFast();
+  ok(tl.querySelectorAll('.dmcard')[0]._same===1&&/More smoke/.test(tl.textContent),'cards patch in place when a turn grows');
+  for(let i=0;i<60;i++){T.noteDmCall('dm_status',{},{ok:true},t0+200000+i*100000)}
+  ok(T.dmTurns().length===T.TURNS_KEEP,'the card list is capped');
+  T.clearDmTurns();cp.setChatTab('chat')}
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

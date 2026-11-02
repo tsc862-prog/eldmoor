@@ -14,13 +14,14 @@ import {daySep,dayOf,stampOf} from './daystamp.js';
 import {patch,held,keyOf} from './stable.js';
 import {classColor,DISP} from '../core/colors.js';
 import {dmTable,dmParts,dmBadge,dmByAgent} from './dmpanel.js';
+import {dmTurns,dmTurnsVer,turnCard} from './dmturns.js'; // per-turn cards (#181)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const WKEY='eldmoor.chatTall';let wide=false;try{wide=localStorage.getItem(WKEY)==='1'}catch(e){} // the chat's height under the map, per viewer
 const KEEP=400; // lines kept in the stream
 export const FILTERS=[['all','All'],['party','Party'],['aloud','Aloud'],['dm','DM'],['table','Table']];
-let filter='all',tab='chat',showScripted=false,items=[],seq=0,known=new WeakSet(),box,list,chip,newN=0,sig='',dmSig='',dmList,dmBar,openDm=new Set();
+let filter='all',tab='chat',showScripted=false,items=[],seq=0,known=new WeakSet(),box,list,chip,newN=0,sig='',dmSig='',dmList,dmBar,openDm=new Set(),dmView='turns',turnList,tSig='';
 export const chatFilter=()=>filter;
 
 // ---- the stream ----
@@ -81,7 +82,12 @@ function syncChip(){if(!chip)return;chip.hidden=newN<=0;if(newN>0)chip.textConte
 
 // ---- the DM agent tab ----
 const entries=()=>{const L=S.dmLog||[];return L.filter(e=>dmByAgent(e)||e.kind==='agent'||showScripted)};
-function renderDm(){if(!dmList)return;const L=entries(),sg=L.length+':'+(L[0]?L[0].id:0)+':'+showScripted+':'+[...openDm].join(',');
+function renderTurns(){if(!turnList)return;const T=dmTurns(),sg=dmTurnsVer()+':'+T.length;
+  if(sg===tSig)return;if(held(turnList))return;tSig=sg;
+  patch(turnList,tmp=>{let last=null;for(const t of T){if(t.day!==last){tmp.append(daySep(t.day));last=t.day}tmp.append(turnCard(t))}
+    if(!T.length)tmp.append(el('li','dm','No DM turns seen yet. Cards appear as the DM agent acts (open the DM seat in Agents, then start the DM).'))},{force:true})}
+function renderDm(){if(!dmList)return;const tv=dmView==='turns';dmList.hidden=tv;if(turnList)turnList.hidden=!tv;if(dmBar&&dmBar.firstChild)dmBar.firstChild.hidden=tv;if(tv){renderTurns();return}
+  const L=entries(),sg=L.length+':'+(L[0]?L[0].id:0)+':'+showScripted+':'+[...openDm].join(',');
   if(sg===dmSig)return;if(held(dmList))return;dmSig=sg;
   patch(dmList,tmp=>{let lastDay=null;
     for(const e of L){const agent=dmByAgent(e)||e.kind==='agent',d=dayOf(e);if(d!=null&&d!==lastDay){tmp.append(daySep(d));lastDay=d}
@@ -97,6 +103,7 @@ export function renderChatPanel(){if(!box)return;sync();if(!S.fellowship)return;
 export function setChatTab(t){if(t!=='chat'&&t!=='dm')return;tab=t;sig='';dmSig='';renderChatPanel()}
 export function setChatFilter(f){if(!FILTERS.some(([k])=>k===f))return;filter=f;sig='';for(const b of $('chatFilter').children)b.setAttribute('aria-pressed',String(b.dataset.cf===f));renderChatPanel()}
 export const chatTab=()=>tab;
+export const setDmView=v=>{if(v==='turns'||v==='entries'){const b=dmBar&&[...dmBar.children].find(x=>x.dataset.dview===v);if(b)b.click()}};
 
 export function initChatPanel(){const sec=$('chatSec');if(!sec)return;
   box=el('details','tlbox chatbox');box.id='chatbox';box.open=true;
@@ -120,8 +127,11 @@ export function initChatPanel(){const sec=$('chatSec');if(!sec)return;
   const dp=el('div');dp.id='dmPane';dp.hidden=true;
   dmBar=el('div','tfilter');const tg=el('button',null,'Scripted DM');tg.setAttribute('aria-pressed','false');tg.title='Also show the scripted DM’s entries, dimmed';
   tg.addEventListener('click',()=>{showScripted=!showScripted;tg.setAttribute('aria-pressed',String(showScripted));dmSig='';renderChatPanel()});dmBar.append(tg);
+  for(const [k,l] of [['turns','Turns'],['entries','Entries']]){const b=el('button',null,l);b.dataset.dview=k;b.setAttribute('aria-pressed',String(k===dmView));
+    b.addEventListener('click',()=>{dmView=k;dmSig='';tSig='';for(const x of dmBar.children)if(x.dataset.dview)x.setAttribute('aria-pressed',String(x.dataset.dview===k));renderChatPanel()});dmBar.append(b)}
   dmList=el('ul','tlist dmlist chatdm');dmList.id='dmChatList';
   dmList.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest||t.closest('.hn[data-hid]')||t.closest('.dmkv'))return;const r=t.closest('[data-dmid]');if(r)toggleRow(r.dataset.dmid)});
   dmList.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const r=e.target&&e.target.closest&&e.target.closest('[data-dmid]');if(r&&e.target===r){e.preventDefault();toggleRow(r.dataset.dmid)}});
-  dp.append(dmBar,dmList);box.append(pane,dp);sec.append(box);sync();renderChatPanel()}
+  turnList=el('ul','tlist dmlist chatdm dmcards');turnList.id='dmTurnList';
+  dp.append(dmBar,turnList,dmList);box.append(pane,dp);sec.append(box);sync();renderChatPanel()}
 function toggleRow(id){id=Number(id);if(openDm.has(id))openDm.delete(id);else openDm.add(id);dmSig='';renderChatPanel()}
