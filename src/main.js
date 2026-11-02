@@ -10,6 +10,7 @@ import {boot,autoSaveTick,bootKind} from './ui/save.js';
 import {initSetup,openSetup,afterBoot} from './ui/setup.js'; // the New World setup page (#133)
 import {renderTable} from './ui/table.js';
 import {checkRunAlerts,sync as syncRunAlert} from './ui/runalert.js'; // sound and notes when a Fellowship or DM runner stops
+import {every} from './ui/ticker.js'; // timers that a hidden tab does not throttle
 import {checkRunGate} from './ui/rungate.js'; // hold the world while an agent seat is not connected (#171)
 import {initUI,uiFast,uiSlow} from './ui/app.js'; // every panel and its refresh cadence (shared with npm run uismoke)
 import {titleWanted,showTitle} from './ui/title.js'; // Continue, New world, Load: nothing runs until a choice
@@ -31,12 +32,18 @@ function start(kind){
   last=performance.now();requestAnimationFrame(frame)}
 
 let last=performance.now(),uiT=0;
-function frame(now){const real=Math.min(.1,(now-last)/1000);last=now;
+// The sim half of a frame. Also run from a worker clock while the tab is hidden (rAF stops there): the world, the run
+// gate and the agents' `wait` calls keep going, so a background tab does not look like a dead game to the runners.
+function advance(real){
   checkRunGate();
   if(ctl.speed>0&&!ctl.held){let dt=real*ctl.speed;const n=Math.ceil(dt/.05);for(let i=0;i<n;i++)step(dt/n);autoSaveTick()}
   checkRunAlerts();syncRunAlert();
-  renderTable(ctl.held?0:ctl.speed); // Table mode (#68): the sim pauses for Fellowship scenes only at 1x
+  renderTable(ctl.held?0:ctl.speed)} // Table mode (#68): the sim pauses for Fellowship scenes only at 1x
+function frame(now){const real=Math.min(.1,(now-last)/1000);last=now;
+  advance(real);
   renderer.draw();uiT-=real;if(uiT<=0){uiT=.3;uiFast()}
   if(Math.floor(now/1000)!==Math.floor((now-real*1000)/1000))uiSlow();
   requestAnimationFrame(frame)}
+every(250,()=>{if(!renderer||typeof document==='undefined'||!document.hidden)return;
+  const now=performance.now(),real=Math.min(.5,(now-last)/1000);last=now;advance(real)});
 if(titleWanted())showTitle(start);else start('direct');

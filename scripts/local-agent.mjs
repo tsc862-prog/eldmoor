@@ -352,6 +352,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     const text = typeof r === 'string' ? r : JSON.stringify(r);
     on('result', text);
     stat.calls.push(r && typeof r === 'object' && r.ok === false ? {name, ok: false, error: String(r.error || 'error').slice(0, 140), ...(r.refused ? {refused: true} : {})} : {name, ok: true}); // the behavior log's turn line (issue #129)
+    if (r && typeof r === 'object' && r.ok === false && (r.offline || /did not answer in time|page went away|game is not connected/i.test(String(r.error || '')))) stat.gameDown = (stat.gameDown || 0) + 1; // the page was away, not the model's mistake
     if (/"dead":true/.test(text)) stat.dead = true;
     return text;
   };

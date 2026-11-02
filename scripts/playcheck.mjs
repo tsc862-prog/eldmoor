@@ -313,6 +313,10 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   // links age out: a quiet runner -> waiting; released or expired -> none; then free for another runner
   skew += LINK_MS + 1000; ok(await linkOf(hA) === 'waiting', 'after the calls stop, a claimed hero is waiting');
   await post('/play/release', {hero: hA.id, runner: 'runner-A'}); ok(await linkOf(hA) === 'none', 'runner A lets go -> no runner');
+  // a claim refresh that comes late (a busy relay or runner) must not flip the seat: 25 s without one is still a runner, then a refresh restores it
+  await post('/play/claim', {hero: hB.id, runner: 'runner-B'}); skew += 25000;
+  ok(await linkOf(hB) === 'waiting', 'a claim refresh 25 s late does not drop the seat (TTL ' + CLAIM_MS / 1000 + ' s)');
+  await post('/play/claim', {hero: hB.id, runner: 'runner-B'}); skew += 25000; ok(await linkOf(hB) === 'waiting', 'and a refresh restarts the clock');
   skew += CLAIM_MS + 1000; ok(await linkOf(hB) === 'none', 'a runner that stops refreshing its claim expires -> no runner');
   c = await post('/play/claim', {hero: hB.id, runner: 'runner-C'}); ok(c.status === 200, 'an expired claim frees the hero for a new runner');
   ok(play.links()[hA.id] === 'none' && play.links()[hB.id] === 'waiting', 'links() (pushed to the page) match health');
@@ -333,6 +337,9 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   // the page's globals: a WebSocket that sends the game's origin, and localStorage with the bridge URL
   globalThis.WebSocket = class extends WsClient {constructor(u) {super(u, {origin: 'http://localhost:5173'})}};
   globalThis.localStorage = {getItem: k => k === 'eldmoor.playUrl' ? `ws://127.0.0.1:${server.address().port}/play` : null};
+  // a background tab: page timers are throttled there, so the bridge sleeps on a worker clock (src/ui/ticker.js); a fake Worker counts its use
+  let workerSleeps = 0;
+  globalThis.Worker = class {constructor() {this.onmessage = null} postMessage(m) {if (m.cmd === 'sleep') {workerSleeps++; setTimeout(() => this.onmessage && this.onmessage({data: {id: m.id}}), m.ms)}} };
   const BR = await import('../src/ui/player-bridge.js');
   BR.initBridge();
   const health = async () => (await fetch(base + '/play/health')).json();
@@ -349,6 +356,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   const w = post('/play/call', {hero: hA.id, tool: 'wait', args: {minutes: 30}, runner: 'page-test'});
   await until(() => BR.agentLink(hA) === 'connected', 5, 'the link turning connected');
   ok(BR.agentLink(hA) === 'connected', 'a call in flight shows as connected on the page'); await w;
+  ok(workerSleeps > 0, 'the bridge waits for a `wait` on the worker clock, not a page timer (' + workerSleeps + ' sleeps), so a hidden tab answers on time');
   await post('/play/narrate', {hero: hB.id, text: 'Through the page.'}); await until(() => (hB.playNarr || [])[0] && hB.playNarr[0].text === 'Through the page.', 5, 'narration through the page');
   BR.agentOff(hB); await sleep(100);
   const r2 = await post('/play/call', {hero: hB.id, tool: 'look'});
@@ -358,6 +366,9 @@ driven = false; // from here on tool calls arrive over sockets; the background t
 
 // ---- one saved session per hero (issue #93) ----
 {
+  const {localWorked: lw} = await import('./pacing.mjs');
+  ok(lw({tools: 3, rejected: 3, gameDown: 3, acts: 0}) === null && lw({tools: 3, rejected: 3, acts: 0}) === false, 'turns whose calls failed because the page did not answer count as neither worked nor failed (a hidden tab never stops a runner)');
+
   const {mkdtempSync, writeFileSync: wf, existsSync: ex, readdirSync, rmSync} = await import('node:fs');
   const {tmpdir} = await import('node:os'); const {join} = await import('node:path');
   const SS = await import('./agent-sessions.mjs');
