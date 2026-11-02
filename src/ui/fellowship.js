@@ -13,6 +13,7 @@
 //   renderThreads(node)           open threads
 //   tabMemory(node, a)            the Memory tab body
 // Hero names are .hn[data-hid] spans; panels.js owns the delegated click that follows them.
+import {portrait} from '../render/sprites.js'; // face portraits (#367)
 import {FAC} from '../data/factions.js';
 import {renderNotebook} from './notebook.js'; // agent memories (#155)
 import {S} from '../sim/index.js';
@@ -40,9 +41,13 @@ const byId=id=>S.agents.find(x=>x.id==id);
 const alive=a=>a&&a.state!=='dead';
 
 // ---- exported helpers ----
+// The member's face (#379): the same portrait and mode strings as the party frames; empty places keep a blank slot.
+function rosterFace(a){const c=el('canvas','fport');c.width=15;c.height=18;if(!a)return c;
+  const s=portrait(a,a.state==='dead'?'dead':a.state==='ghost'?'ghost':'');c.width=s.width;c.height=s.height;
+  const g=c.getContext&&c.getContext('2d');if(g)g.drawImage(s,0,0);return c}
 export function renderSettings(node){const P=fellowParty(),ul=el('div','felroster');
   for(const m of fellowshipMembers()){const row=el('div','fm'),a=m.hero;
-    row.append(el('span','frole r-'+m.role,m.label));
+    row.append(rosterFace(a));row.append(el('span','frole r-'+m.role,m.label));
     if(!a){const e=el('span','dm fn','empty place');row.append(e);const tools=el('span','ftools');const b=el('button','mini','Fill');b.dataset.ffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';tools.append(b);
       const s=cam.sel;if(s&&alive(s)&&!s.fellow&&S.fellowship&&s.fac===S.fellowship.fac&&fits(m.slot,s)){const c=el('button','mini','Add '+s.name);c.dataset.fadd=m.slot;tools.append(c)}
       row.append(tools);ul.append(row);continue}

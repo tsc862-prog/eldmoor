@@ -142,6 +142,7 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
   fb.querySelector('[data-fact=menu]').click();ok(!sim.S.fellowship===false&&!fb.querySelector('[data-fact=disband]'),'Cancel closes the menu without disbanding');
   fb.querySelector('[data-fact="drawer:members"]').click();const dr=fb.querySelector('.feldrawer');
   ok(!!dr&&!!dr.querySelector('.mindrow'),'the members drawer opens on a click');
+  ok(dr.querySelectorAll('.fm .fport').length===5,'roster: each place has a face canvas (#379)');
   if(sim.S.fellowship.past.length){fb.querySelector('[data-fact="drawer:fallen"]').click();ok(/Fallen/.test(fb.querySelector('.feldrawer').textContent),'Fallen is one click away')}
   else ok(!fb.querySelector('[data-fact="drawer:fallen"]'),'no Fallen button while nobody has fallen');
   fb.querySelector('[data-fact="drawer:members"]').click();
