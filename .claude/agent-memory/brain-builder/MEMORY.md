@@ -20,3 +20,4 @@
 - [Token deltas](token-deltas.md) — #282 SDK modelUsage is cumulative; usageDelta, cacheRead/cacheWrite turn fields, legacy lines
 - [Agentkit seam](agentkit-seam.md) — #290/#294 engine vs game design doc: adapter items, registries, carve order K1-K10, risks, owner questions
 - [Earshot](earshot.md) — #395 earshot tool + brief.earshot line, shared sayHearers/shoutHearers, spatial-index test pitfall
+- [Tool quick wins](tool-quickwins.md) — #399 owner rule accept-more tools; move_to label parsing, header town, name targets, PAUSED, toolwincheck pitfalls
