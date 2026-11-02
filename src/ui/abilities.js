@@ -3,7 +3,8 @@
 // greyed until learned) and the passives, each with a tooltip like the items'. The panel rebuilds on a
 // timer, so nothing here keeps state.
 import {abilityView,abilityLine} from '../sim/moves.js';
-import {KIND_COLOR} from '../data/moves.js';
+import {KIND_COLOR,MOVES} from '../data/moves.js';
+import {effOn,effLeft} from '../sim/eff.js';
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const GLYPH={attack:'A',heal:'H',buff:'B',control:'C',defend:'D',move:'M',passive:'P'};
@@ -21,3 +22,10 @@ export function abilityBlock(node,a,{title=true}={}){const rows=abilityView(a);i
   node.append(box);
   const last=(a.moveLog||[]).slice(-1)[0];if(last)node.append(el('div','dm',last.t+' '+last.text));
   return box}
+
+// Timed ward on a member (frames, #336): the 'taken' effect set by a ward move, named by the move whose fx.taken is its
+// value (Antler Ward 4s; a Table ward counts rounds: "Antler Ward 2 rds"). Passives such as Barkskin never expire, so no chip.
+export function effectChips(a){const out=[];if(!a||!a.eff||!effOn(a,'taken')||!(a.eff.taken.v<1))return out;
+  const f=a.eff.taken,m=Object.values(MOVES).find(x=>x.fx&&x.fx.taken===f.v&&x.kind==='defend');
+  const left=effLeft(a,'taken'),t=(m?m.name:'Warded')+' '+(left>0?Math.ceil(left)+'s':f.r+(f.r===1?' rd':' rds'));
+  out.push({t,c:'good',title:m?m.desc:'Blows on them land lighter.'});return out}

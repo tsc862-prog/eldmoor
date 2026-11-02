@@ -67,6 +67,39 @@ if (process.argv[2] === '--focus') {
   process.exit(0);
 }
 
+// ---- Fellowship bounty child (issue #325): a bounty in the Fellowship's region becomes their job first ----
+if (process.argv[2] === '--ffbounty') {
+  init({fac: 0}); run(120);
+  const DM = await import('../src/sim/dm.js'), FO = await import('../src/sim/dmfocus.js'), {huntZone} = await import('../src/sim/heroes.js');
+  const {MOBS} = await import('../src/data/mobs.js');
+  const out = {}, fo = FO.focus(), c = fo && fo.town, P = (S.parties || []).find(p => p.fellow);
+  if (!c || !P) {console.log('FFB ' + JSON.stringify({setup: false})); process.exit(0)}
+  const L = P.leader, mem = [L, ...P.mem.filter(b => b !== L && b.state !== 'dead')];
+  for (const b of fellows()) {b.lvl = Math.max(b.lvl, 8); b.adv = null; b.state = 'town'; b.x = c.gate.x; b.y = c.gate.y}
+  const clearHall = () => {S.adventures = S.adventures.filter(h => !(h.phase === 'open' && h.town === c.name && (h.ff || h.for != null)))};
+  // 1. the gate: no job for them on the board, a bounty posted for the region they set out for
+  clearHall(); const z = P.zone != null ? P.zone : huntZone(L);
+  let b = DM.bountiesAt(c).find(x => x.z === z);
+  if (!b) {S.bounties.push({id: ++S.uid, town: c.name, z, type: Object.keys(MOBS).find(k => MOBS[k].z === z), need: 6, giver: 'the gate captain', born: S.gameMin, until: S.gameMin + 2000}); b = S.bounties[S.bounties.length - 1]}
+  const bg = S.agents.find(a => !a.fellow && a.state !== 'dead' && a.lvl >= 8 && !a.party) || S.agents.find(a => !a.fellow && a.state !== 'dead');
+  out.left = DM.fellowBounty(L, c, z);
+  const adv = L.adv != null ? S.adventures.find(v => v.id === L.adv) : null;
+  out.ff = !!(adv && adv.ff); out.fromBounty = !!(adv && adv.data && adv.data.bounty === b.id && adv.z === b.z);
+  out.whole = adv ? adv.mem.length : 0; out.party = mem.length;
+  out.bountyStays = S.bounties.some(x => x.id === b.id);
+  out.bgTake = adv ? DM.fitsJob({...adv, phase: 'open', for: null}, bg) : null; // a background hero cannot take a Fellowship job
+  out.bgName = bg && bg.name;
+  // 2. the hall board: full of background jobs, nothing for them; the next refresh posts one on top
+  for (const m of mem) m.adv = null; S.adventures = S.adventures.filter(v => v !== adv); clearHall();
+  while (S.adventures.filter(h => h.phase === 'open' && h.town === c.name && h.for == null).length < DM.K.HOOKS) DM.postHook(c, 'deliver', 'request', {});
+  out.boardBefore = S.adventures.filter(h => h.phase === 'open' && h.town === c.name).length;
+  S.dmHookT = 0; DM.dmTick(1);
+  const ff = S.adventures.filter(h => h.phase === 'open' && h.town === c.name && h.ff);
+  out.refillFF = ff.length; out.refillTpl = ff.map(h => h.tpl + (h.data && h.data.bounty ? '(bounty)' : h.data && h.data.eliteId != null ? '(elite)' : '')).join(',');
+  out.fitsWhole = ff.some(h => DM.fitsJob(h, L));
+  console.log('FFB ' + JSON.stringify(out)); process.exit(0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 console.log('\nEldmoor dmcheck: the DM as an agent, part 1 (mock agents)\n');
@@ -380,6 +413,16 @@ console.log('the Fellowship first');
   ok(fs_ && fs_.acts >= 6 && fs_.share > 0.5, 'with a Fellowship, most DM actions concern it: ' + (fs_ ? fs_.fellow + ' of ' + fs_.acts + ' (' + Math.round(fs_.share * 100) + '%)' : line || run1.stderr.slice(-300)));
   const run2 = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env}});
   ok((run2.stdout || '').trim() === (run1.stdout || '').trim(), 'the scripted DM is deterministic under the same seed (same actions, same share)');
+}
+
+{ // a bounty in the Fellowship's region: the scripted DM makes it their job first (issue #325)
+  const r1 = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--ffbounty'], {cwd: ROOT, encoding: 'utf8', env: {...process.env}}), line = (r1.stdout || '').trim().split(/\r?\n/).pop();
+  const m = /^FFB (\{.*\})$/.exec(line || ''), f = m ? JSON.parse(m[1]) : null;
+  ok(f && f.left && f.ff && f.fromBounty, 'a Fellowship leader at the gate with a bounty posted for its region gets a Fellowship hook (h.ff) on that bounty first and sets out on it' + (f ? '' : ': ' + (line || r1.stderr.slice(-300))));
+  ok(f && f.whole === f.party && f.party > 3, 'the Fellowship job takes the whole party (' + (f && f.whole) + ' of ' + (f && f.party) + '), past the background size cap of 3');
+  ok(f && f.bountyStays, 'the bounty stays posted for the other heroes');
+  ok(f && f.bgTake === false, 'a background hero cannot take a Fellowship job (' + (f && f.bgName) + ')');
+  ok(f && f.refillFF >= 1 && f.fitsWhole, 'a full hall board gets a Fellowship job on top at the next refresh, one the whole party fits (' + (f && f.refillTpl) + ', board ' + (f && f.boardBefore) + ')');
 }
 
 // ---------------------------------------------------------------- 3. silence never stalls the world
