@@ -22,3 +22,4 @@
 - [Table rounds #276](table_rounds.md) — foe in initiative, d20 vs 10+Def*20, 3-round cap, one DM log entry a scene, test pitfalls
 - [Table step #285](table_step.md) — TABLE.step hold/auto (paused 1x only), stepNext, beat.roll data, bannerOf().foe object
 - [Bounties #67](bounties_issue67.md) — kill-N demoted to gate-captain bounties: adventure first, not a lever, PAY_XP .35, old saves
+- [Check fixtures](check_fixtures.md) — loop changes break RNG-reliant fixtures: hold/park members, spawn mobs, assert on snapshot; run CI groups sequentially
