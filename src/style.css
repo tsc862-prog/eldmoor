@@ -278,8 +278,9 @@ button.ficon:focus-visible,.felmenu button:focus-visible{outline:2px solid var(-
 .fhall .fhmeta{display:block;font-size:15px;padding-left:8px}
 .feldrawer{margin-top:8px;padding:6px;background:var(--panel2);max-height:60vh;overflow:auto;overflow-wrap:anywhere}
 .felroster{display:flex;flex-direction:column;gap:4px}
-.fm{display:grid;grid-template-columns:58px 1fr auto;gap:6px;align-items:center;background:var(--panel2);padding:4px 6px}
+.fm{display:grid;grid-template-columns:30px 58px 1fr auto;gap:6px;align-items:center;background:var(--panel2);padding:4px 6px}
 .fm .ftools{display:flex;gap:4px}
+.fm .fport{width:30px;height:36px;image-rendering:pixelated;background:var(--panel)}
 .fm .fn{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .fm .fmind{grid-column:1/-1}
 .mindrow{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
@@ -407,6 +408,11 @@ table.shtbl{border-collapse:collapse;font-size:17px;min-width:720px;width:100%;f
 button.shsort{font-family:var(--mono);font-size:17px;background:transparent;border:0;box-shadow:none;padding:0;color:var(--dim);text-align:left}
 button.shsort:hover,button.shsort.on{color:var(--gold)}
 .shtbl td.hi{color:var(--green)} .shtbl td.lo{color:var(--red)}
+/* the member's face in its column header (#376), the party frame's portrait at 2x */
+.shtbl .shcolhd{display:flex;align-items:flex-start;gap:6px}
+.shtbl .shport{width:30px;height:36px;flex:none;image-rendering:pixelated;background:#0a0b14;border:1px solid var(--edge);padding:1px}
+.shtbl .shcoltx{min-width:0}
+@media (max-width:560px){.shtbl .shport{width:20px;height:24px}.shtbl .shcolhd{gap:4px}}
 /* the DM seat (#66): Open seat, the DM agent's mind, Start DM / Stop DM, its link */
 .dmseat{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:8px 0;min-width:0}
 .dmseat .mlink{overflow-wrap:anywhere}
@@ -662,3 +668,26 @@ button.tbtn.danger{border-color:var(--red)}
 .condrow.road .condreg{color:var(--gold)}
 .condmeta{overflow-wrap:anywhere}
 .condnone{margin-top:8px}
+
+/* ---- Fellowship sheet: Life view (#389, src/ui/lifeview.js) ---- */
+.shhead .shttl{flex:1;min-width:0}
+.shviews{display:flex;gap:4px;flex:none}
+.shviews .mini{font-size:8px;padding:6px 8px}
+.lfview{padding:8px 10px}
+.lfview[hidden],.shtblw[hidden]{display:none}
+.lfgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;align-items:start}
+.lfcard{background:var(--panel2);border:1px solid var(--edge);padding:8px;min-width:0}
+.lfhd{font-size:17px;margin-bottom:4px;overflow-wrap:anywhere}
+.lfsec{margin-top:6px}
+.lfh{font-family:var(--px);font-size:7px;color:var(--gold);letter-spacing:.1em;text-transform:uppercase;margin:6px 0 3px;font-weight:normal}
+.lflist{list-style:none;margin:0;padding:0}
+.lfrow{font-size:16px;line-height:1.15;padding:3px 0;border-bottom:1px solid var(--edge);overflow-wrap:anywhere;min-width:0}
+.lfrow:last-child{border-bottom:0}
+.lfday{color:var(--dim);margin-right:6px;white-space:nowrap}
+.lftag{font-family:var(--px);font-size:6px;color:var(--gold);border:1px solid var(--edge);padding:1px 3px;margin-right:6px;vertical-align:2px;text-transform:uppercase;white-space:nowrap}
+.lfmark.k-death .lftag,.lfmark.k-friend .lftag{color:var(--red)}
+.lfmark.k-level .lftag,.lfmark.k-own .lftag{color:var(--green)}
+.lfch[title]{cursor:help}
+.lfnone{font-size:15px;margin:2px 0}
+@media (max-width:560px){.shhead{flex-wrap:wrap}.shhead .shttl{flex-basis:100%}.lfview{padding:6px}.lfgrid{grid-template-columns:minmax(0,1fr)}}
+/* ---- end Life view ---- */

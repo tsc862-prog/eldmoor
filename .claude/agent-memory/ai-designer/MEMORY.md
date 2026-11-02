@@ -30,3 +30,4 @@
 - [Chronicle focus #341](chronicle_focus.md) — Fellowship-only filter keeps guild lines by <TAG> Name label; ff hall jobs log one line (#351)
 - [Fellowship scenes #325](fellowship_scenes.md) — 5-member party never fit size-3 jobs; ff jobs fit the whole Fellowship, theirs only; bounty -> ff job at gate
 - [Reflex moves #347/#348](reflex_moves.md) — reflex members heal with class moves only (reflexMay), reflex spec pick; Antler Ward's spec-only widened rally
+- [Table items #360](table_items.md) — use:<slug> round options via useItem, when each item is offered, same-party potions, reflex unchanged

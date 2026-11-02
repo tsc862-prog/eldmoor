@@ -184,9 +184,16 @@ console.log('Stepping crypt, three rooms');
 console.log('background groups keep the abstract roll');
 {
   const BASE = process.env.CRAWL_BASELINE_HASH;
-  const hash = () => spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--hash'], {encoding: 'utf8'}).stdout.split('\n').find(l => l.startsWith('HASH '));
-  const h1 = hash(), h2 = hash();
-  const off = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--hash-off'], {encoding: 'utf8'}).stdout.split(String.fromCharCode(10)).find(l => l.startsWith('HASH '));
+  // Each child reports its own exit status, so a native node.exe crash (no HASH line, odd exit code) is told apart from a differing hash.
+  const NL = String.fromCharCode(10), runs = [];
+  const hash = flag => {
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), flag], {encoding: 'utf8'});
+    const line = (r.stdout || '').split(NL).find(l => l.startsWith('HASH '));
+    runs.push(flag + ': ' + (line || 'NO HASH LINE') + ' | exit ' + r.status + ' signal ' + r.signal + (r.error ? ' error ' + r.error.message : '') + (line ? '' : ' | stderr: ' + String(r.stderr || '').slice(-300).trim()));
+    return line;
+  };
+  const h1 = hash('--hash'), h2 = hash('--hash'), off = hash('--hash-off');
+  if (!(h1 && h1 === h2 && h1 === off)) console.log('  child runs (seed ' + (process.env.CRAWLCHECK_SEED || 'default') + '):' + NL + '    ' + runs.join(NL + '    '));
   ok(h1 && h1 === h2, 'a seeded world without a Fellowship repeats: ' + h1);
   ok(h1 && h1 === off, 'with the crawl unplugged it hashes the same: the background does not touch it');
   ok(!BASE || h1 === 'HASH ' + BASE, 'it matches the hash on main (' + BASE + ')');

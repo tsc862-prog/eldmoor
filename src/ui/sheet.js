@@ -6,6 +6,10 @@
 // (panels.js owns the delegated click) and closes the sheet. The table scrolls sideways inside its
 // own frame on phones. While open it refreshes at the 0.3 s cadence, only when a value changed.
 // sheetRows() returns the same table as plain data for the headless smoke check.
+// A second view, Life (#389, src/ui/lifeview.js), shows each member's landmarks, chapters and journal; Side by side / Life
+// buttons in the head switch, each view keeping its own scroll position.
+// Each column header shows the member's face (#376), the same portrait and modes as the party frame
+// (dead when fallen, ghost); one canvas per hero is kept across rebuilds and redrawn only when its face changes.
 import {CLS} from '../data/classes.js';
 import {SLOTS as GEAR_SLOTS} from '../data/items.js';
 import {S} from '../sim/index.js';
@@ -18,6 +22,8 @@ import {capOf,used,countKind} from '../sim/inv.js';
 import {fmtPct,setTab} from './panels.js';
 import * as sim from '../sim/index.js';
 import {span} from './combat.js';
+import {portrait} from '../render/sprites.js'; // generated face portraits (#367, #372)
+import {renderLife,resetLife} from './lifeview.js'; // the Life view (#389)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -61,10 +67,25 @@ export function sheetRows(){const ms=fellowshipMembers(),cols=ms.map(m=>({slot:m
     row('bond_'+b.id,'Bonds','Toward '+b.name,a=>a===b?{t:'-',n:null,c:'dm'}:{t:String(Math.round(bond(a,b)*10)/10),n:bond(a,b),c:bond(a,b)>=15?'hi':bond(a,b)>=6?'':'dm'})}
   return {cols,rows}}
 
+// ---- faces: one canvas per hero, kept across table rebuilds, redrawn only when the face changes ----
+const faceMode=a=>a.state==='dead'?'dead':a.state==='ghost'?'ghost':'';
+const faces=new Map();
+function face(a){let cv=faces.get(a.id);if(!cv){cv=el('canvas','shport');cv.setAttribute('aria-hidden','true');faces.set(a.id,cv)}
+  const s=portrait(a,faceMode(a));if(cv._s!==s){cv._s=s;cv.width=s.width;cv.height=s.height;const c=cv.getContext&&cv.getContext('2d');if(c){c.clearRect(0,0,s.width,s.height);c.drawImage(s,0,0)}}
+  return cv}
+
 // ---- DOM ----
-let ov=null,box=null,body=null,open=false,sort=null,dir=-1,sig='';
+let ov=null,box=null,body=null,tblw=null,life=null,key=null,open=false,sort=null,dir=-1,sig='',view='table';
+const views={};
+const KEY={table:'Click a row name to sort the five by it. Click a name to follow that member.',life:'Landmarks newest first, chapters by days, the last 10 journal entries. Click a name to follow that member.'};
 export const sheetOpen=()=>open;
-export function openSheet(){if(!ov||!S.fellowship)return;open=true;ov.hidden=false;sig='';renderSheet();const c=ov.querySelector('.shclose');if(c&&c.focus)c.focus()}
+export const sheetView=()=>view;
+// The sheet's two views (#389): side by side (the table) and Life (src/ui/lifeview.js). Each keeps its own scroll.
+export function setSheetView(v){if(!ov||(v!=='table'&&v!=='life')||v===view){return}
+  views[view]={x:body.scrollLeft,y:body.scrollTop};view=v;tblw.hidden=v!=='table';life.hidden=v!=='life';key.textContent=KEY[v];
+  for(const b of box.querySelectorAll('[data-sview]'))b.setAttribute('aria-pressed',String(b.dataset.sview===v));
+  sig='';resetLife();renderSheet();const p=views[v]||{x:0,y:0};body.scrollLeft=p.x;body.scrollTop=p.y}
+export function openSheet(){if(!ov||!S.fellowship)return;open=true;ov.hidden=false;sig='';resetLife();renderSheet();const c=ov.querySelector('.shclose');if(c&&c.focus)c.focus()}
 export function closeSheet(){if(!ov)return;open=false;ov.hidden=true}
 
 function order(T){const idx=T.cols.map((_,i)=>i);if(!sort)return idx;const r=T.rows.find(x=>x.key===sort);if(!r)return idx;
@@ -72,9 +93,10 @@ function order(T){const idx=T.cols.map((_,i)=>i);if(!sort)return idx;const r=T.r
 
 function build(T){const tbl=el('table','shtbl'),ord=order(T);
   const thead=el('thead'),hr=el('tr');hr.append(el('th','shcorner',sort?'sorted by '+(T.rows.find(r=>r.key===sort)||{label:'?'}).label.toLowerCase():'role order'));
-  for(const i of ord){const c=T.cols[i],th=el('th','shcol');th.append(el('span','frole r-'+c.role,c.label));
-    if(c.hero){const n=el('span','hn f'+c.hero.fac,c.hero.name);n.dataset.hid=c.hero.id;th.append(el('br'),n,el('br'),el('span','dm',c.hero.cls+(c.hero.state==='dead'?' · fallen':'')))}
-    else th.append(el('br'),el('span','dm','place empty'));hr.append(th)}
+  for(const i of ord){const c=T.cols[i],th=el('th','shcol');
+    if(c.hero){const n=el('span','hn f'+c.hero.fac,c.hero.name);n.dataset.hid=c.hero.id;const tx=el('span','shcoltx');tx.append(el('span','frole r-'+c.role,c.label),el('br'),n,el('br'),el('span','dm',c.hero.cls+(c.hero.state==='dead'?' · fallen':'')));
+      const hd=el('div','shcolhd');hd.append(face(c.hero),tx);th.append(hd)}
+    else th.append(el('span','frole r-'+c.role,c.label),el('br'),el('span','dm','place empty'));hr.append(th)}
   thead.append(hr);tbl.append(thead);
   const tb=el('tbody');let grp='';
   for(const r of T.rows){if(r.group!==grp){grp=r.group;const gr=el('tr','shgrp'),td=el('td',null,grp);td.colSpan=T.cols.length+1;gr.append(td);tb.append(gr)}
@@ -84,15 +106,21 @@ function build(T){const tbl=el('table','shtbl'),ord=order(T);
   tbl.append(tb);return tbl}
 
 export function renderSheet(){if(!ov)return;if(!S.fellowship){if(open)closeSheet();return}if(!open)return;
-  const T=sheetRows(),k=sort+'|'+dir+'|'+T.cols.map(c=>c.hero?c.hero.id:'-').join(',')+'|'+T.rows.map(r=>r.cells.map(c=>c.t).join('¦')).join('§');
-  if(k===sig)return;sig=k;const x=body.scrollLeft,y=body.scrollTop;body.replaceChildren(build(T));body.scrollLeft=x;body.scrollTop=y;
-  box.querySelector('.shttl').textContent=S.fellowship.name+' · side by side'}
+  box.querySelector('.shttl').textContent=S.fellowship.name+(view==='life'?' · lives':' · side by side');
+  if(view==='life'){renderLife(life);return}
+  const T=sheetRows(),k=sort+'|'+dir+'|'+T.cols.map(c=>c.hero?c.hero.id+faceMode(c.hero):'-').join(',')+'|'+T.rows.map(r=>r.cells.map(c=>c.t).join('¦')).join('§');
+  if(k===sig)return;sig=k;const ids=new Set(T.cols.map(c=>c.hero&&c.hero.id));for(const id of faces.keys())if(!ids.has(id))faces.delete(id);const x=body.scrollLeft,y=body.scrollTop;tblw.replaceChildren(build(T));body.scrollLeft=x;body.scrollTop=y}
 
 export function initSheet(){ov=$('sheetov');if(!ov)return;
   box=el('div','shbox');box.setAttribute('role','dialog');box.setAttribute('aria-label','Fellowship sheet');
-  const hd=el('div','shhead');const cl=el('button','mini shclose','Close');cl.dataset.sclose='1';hd.append(el('span','shttl','Fellowship'),cl);
-  body=el('div','shbody');box.append(hd,body,el('div','dm shkey','Click a row name to sort the five by it. Click a name to follow that member.'));ov.append(box);
+  const hd=el('div','shhead');const cl=el('button','mini shclose','Close');cl.dataset.sclose='1';
+  const sw=el('div','shviews');sw.setAttribute('role','group');sw.setAttribute('aria-label','Sheet view');
+  for(const [v,t,tip] of [['table','Side by side','Compare the five row by row'],['life','Life','Landmarks, chapters and journal of each member']]){const b=el('button','mini',t);b.dataset.sview=v;b.title=tip;b.setAttribute('aria-pressed',String(v===view));sw.append(b)}
+  hd.append(el('span','shttl','Fellowship'),sw,cl);
+  body=el('div','shbody');tblw=el('div','shtblw');life=el('div','lfview');life.hidden=true;body.append(tblw,life);
+  key=el('div','dm shkey',KEY.table);box.append(hd,body,key);ov.append(box);
   ov.addEventListener('click',e=>{const t=e.target;if(t===ov||(t.closest&&t.closest('[data-sclose]'))){closeSheet();return}
+    const v=t.closest&&t.closest('[data-sview]');if(v){setSheetView(v.dataset.sview);return}
     const s=t.closest&&t.closest('[data-ssort]');if(s){const k=s.dataset.ssort;if(sort!==k){sort=k;dir=-1}else if(dir<0)dir=1;else sort=null;sig='';renderSheet();return}
     if(t.closest&&t.closest('.shfight')){setTab('combat')}
     if(t.closest&&t.closest('.hn[data-hid]'))closeSheet()}); // the click bubbles on to panels.js, which follows the hero
