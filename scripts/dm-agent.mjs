@@ -72,7 +72,7 @@ export function dmSystemPrompt(st) {
     DM_MEMORY_ORDERS,
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
     '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
-    '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
+    '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): for an elite or an ambush call stage_scene with preview "true" first to see the cast the game will build, then write a frame that fits it (a frame of armed men over a pack of boars is refused); you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
     '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); you do not need to do anything for that.',
     DM_FELLOWSHIP_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
@@ -123,7 +123,7 @@ export const DEFAULT_TABLE_MODEL = 'claude-haiku-5-5'; // claude-api skill (cach
 export const POLL_IDLE = 2500, POLL_HOT = 400;
 export const TABLE_SYSTEM = 'You are the Dungeon Master\'s voice at the table in Eldmoor, a hardcore fantasy world (original setting; no names from other games or books). ' +
   'A scene you staged is being played. Each request is one call: voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
-  'Write what can be seen, heard or smelled, as much as the moment needs; usually a few vivid sentences. Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
+  'Write what can be seen, heard or smelled, as much as the moment needs; usually a few vivid sentences. The Cast line is the truth: voice and describe only what it lists, and invent no one else (no men, bandits or leaders when the cast is creatures). Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
 export function tablePrompt(t) {
   const c = t.call, s = t.scene || {};
   return [`Scene: ${s.title || '?'} (${s.kind || '?'})`, s.frame ? `It began: ${s.frame}` : '', s.cast && s.cast.length ? `Cast: ${s.cast.join('; ')}` : '',
@@ -267,7 +267,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   const st0 = await dmTool(base, 'dm_status');
   if (!st0.ok) {console.error('[dm] dm_status failed: ' + st0.error); await quit(1)}
-  const {sess, note} = loadDmSession(st0.world, () => ({sessionId: null, world: st0.world, system: dmSystemPrompt(st0), turns: 0, costUsd: 0, lastTotal: 0, lastGm: null}), {startNew: flag('new')});
+  const fresh = () => ({sessionId: null, world: st0.world, system: dmSystemPrompt(st0), turns: 0, costUsd: 0, lastTotal: 0, lastGm: null});
+  let {sess, note} = loadDmSession(st0.world, fresh, {startNew: flag('new')});
+  // The game clock is behind the saved session: a new world under the same name, or an older save. Set the old
+  // session aside (its notes, cadence and conversation belong to another world) and keep only the runner settings.
+  if (sess.turns && sess.lastGm != null && Number.isFinite(st0.gameMin) && st0.gameMin < sess.lastGm) {
+    const keep = sess.runner; ({sess, note} = loadDmSession(st0.world, fresh, {startNew: true})); if (keep) sess.runner = keep;
+    log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
+  }
   if (note) log('[dm] ' + note);
   sess.system = withDmFellowshipOrders(withDmMemoryOrders(sess.system)); // searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},

@@ -74,6 +74,8 @@ export function setDmFilter(f){if(FILTERS.some(([k])=>k===f)){filter=f;renderDmL
 // Open the panel on one adventure's entries (all kinds).
 export function showAdventure(id){advId=id==null?null:Number(id);filter='all';if(bar)for(const x of bar.children)x.setAttribute('aria-pressed',String(x.dataset.dm==='all'));
   if(box){box.open=true;if(box.scrollIntoView)box.scrollIntoView({block:'nearest'})}renderDmLog()}
+// Open the Dungeon Master panel (the DM frame's click): its World group too, optionally on one filter.
+export function openDmPanel(f){const w=$('worldbox');if(w&&!w.open)w.open=true;if(f)setDmFilter(f);if(box){box.open=true;if(box.scrollIntoView)box.scrollIntoView({block:'nearest'})}renderDmLog()}
 export function toggleDmEntry(id){id=Number(id);if(open.has(id))open.delete(id);else open.add(id);renderDmLog()}
 
 export function initDmLog(){box=$('dmlog');list=$('dmlist');if(!box||!list)return;
