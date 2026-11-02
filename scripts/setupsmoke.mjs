@@ -92,7 +92,7 @@ if(mode==='a'){
   ok(/Play the default world/.test(text(root)),'first visit offers the default world');
   const sels=(r,f)=>all(r,'select').find(s=>s.dataset.f===f);
   const opts=f=>sels(ids.get('setup'),f).childNodes.map(o=>o.value);
-  ok(JSON.stringify(opts('cls:tank'))==='["Warrior"]'&&JSON.stringify(opts('cls:healer'))==='["Priest"]','tank/healer classes fixed');
+  ok(JSON.stringify(opts('cls:tank'))==='["Warrior"]'&&JSON.stringify(opts('cls:healer'))==='["Priest","Wildspeaker"]','tank class fixed, healer Priest or Wildspeaker');
   ok(opts('cls:dps1').join()==='Mage,Hunter,Rogue,Skald','DPS classes: '+opts('cls:dps1'));
   ok(/Relay/.test(text(ids.get('setup'))),'relay line');
   ok(!all(ids.get('setup'),'button').some(b=>/All scripted/.test(b.textContent)),'no All scripted preset (#148: the Fellowship is always agent-played)');

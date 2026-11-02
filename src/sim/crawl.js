@@ -79,7 +79,7 @@ function openRound(g){const cr=g.crawl,room=roomsOf()[cr.i];
 
 // ---- the scene kind ----
 const SPECIAL={Warrior:['hold','Hold the line: the foes\' blows on the others fall short'],Priest:['ward','Ward the group with prayer: a little mending and a steadier hand for all'],
-  Rogue:['scout','Look for the gap in their guard'],Hunter:['scout','Read their movements and call the gap'],Mage:['read','Read the old wards and turn them on the foes'],Skald:['read','Sing a dirge that turns the old wards on the foes']};
+  Rogue:['scout','Look for the gap in their guard'],Hunter:['scout','Read their movements and call the gap'],Mage:['read','Read the old wards and turn them on the foes'],Wildspeaker:['ward','Ask the roots for a steadier hand for all'],Skald:['read','Sing a dirge that turns the old wards on the foes']};
 const grp=()=>CRYPT.group&&CRYPT.group.crawl?CRYPT.group:null;
 const members=g=>g.mem.filter(living);
 const lowest=g=>{let lo=null;for(const b of members(g))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};

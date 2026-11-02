@@ -42,7 +42,8 @@ import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPerso
 import {remember,memOf,refreshStances,stanceEvent,setSummariser,memorySnapshot,applyLong} from './memory.js';
 
 export const DPS=['Mage','Hunter','Rogue','Skald'];
-export const SLOTS=[{key:'tank',role:'tank',label:'Tank',cls:['Warrior']},{key:'healer',role:'healer',label:'Healer',cls:['Priest']},
+export const HEALERS=['Priest','Wildspeaker'];
+export const SLOTS=[{key:'tank',role:'tank',label:'Tank',cls:['Warrior']},{key:'healer',role:'healer',label:'Healer',cls:HEALERS},
   {key:'dps1',role:'dps',label:'DPS',cls:DPS},{key:'dps2',role:'dps',label:'DPS',cls:DPS},{key:'dps3',role:'dps',label:'DPS',cls:DPS}];
 export const SLOT_KEYS=SLOTS.map(s=>s.key);
 export const LOG_CAP=300,HOLD_MAX=20,TIMEOUT={backstory:65000,persona:45000,memory:16000};
@@ -110,7 +111,7 @@ export function autoPick(fac){const pool=S.agents.filter(a=>eligible(a,fac));
   let best=null,bs=-1e9;
   for(const T of tanks.length?tanks:[null]){const team=T?[T]:[],slots={tank:T?T.id:null};
     const add=(k,cands)=>{const c=cands.filter(x=>!team.includes(x)).sort((x,y)=>score(y,team)-score(x,team)||y.lvl-x.lvl||x.id-y.id)[0];slots[k]=c?c.id:null;if(c)team.push(c)};
-    add('healer',of(['Priest']));
+    add('healer',of(HEALERS));
     for(const k of ['dps1','dps2','dps3']){const used=team.filter(b=>DPS.includes(b.cls)).map(b=>b.cls);
       const fresh=of(DPS).filter(x=>!used.includes(x.cls)&&!team.includes(x));add(k,fresh.length?fresh:of(DPS))}
     let s=team.length*100;for(const x of team)for(const y of team)if(x.id<y.id)s+=bond(x,y)*2-Math.abs(x.lvl-y.lvl)*1.5;

@@ -78,7 +78,7 @@ members meeting in the wilds duel more readily, and guildmates rush in against a
 Fellowship's guild stays out of it.
 
 ## Classes
-Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), Rogue (melee, crits), Skald (war-singer, see below).
+Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), Rogue (melee, crits), Skald (war-singer, see below), Wildspeaker (green-handed healer, see below).
 
 ## Traits
 Every hero is born with one or two of these and keeps them for life. Rogues lean
@@ -245,6 +245,26 @@ Paths at level 10:
 | **Soothsinger** | Presence, Insight / Healing | Soft Refrain (healing +15%, +5% Health) | **Lullaby of the Hearth** (heals every friend within five tiles) | sings the party back together |
 
 Skald is a generic fantasy role (the word is an old one for a poet of war); the abilities, paths and quirks here are Eldmoor's own. Soothsinger is not a Priest: the lullaby is a small mercy for a whole company, where a Priest's healing is aimed and large.
+
+## Wildspeaker (issue #83)
+The seventh class: a **Wildspeaker** is a hedge-and-hollow healer, one of the walkers who learned the green words from old gardens, field edges and the stubborn groves the roads cut through. Where a Priest asks light of the heavens, a Wildspeaker asks it of the ground: moss, bramble and root. In the Fellowship a Wildspeaker is the other choice for the Healer place (Priest or Wildspeaker). Ability score Insight (then Grit); trained in Healing, Survival, Tracking and Empathy. Sturdier than a Priest (health 52) with a shorter reach of about two and a half tiles. Mends one friend at a time and holds foes in place, where the Priest's strength is the mass mend. Banner colours: moss and teal, with a crooked staff whose head curls over like a fern.
+
+| Kind | Name | Level | Gist |
+| --- | --- | --- | --- |
+| Ability | **Briar Lash** | 1 | a whip of living bramble, 150% damage and a flinch of 0.6 s |
+| Ability | **Greenmend** | 3 | heals one friend within five tiles, 14 + 3.5 per level + 8% of their health |
+| Ability | **Rootbind** | 6 | 30% damage and the foe loses 3 s (half on a save) |
+| Passive | **Barkskin** | 2 | +5% Defense |
+| Passive | **Green Patience** | 7 | healing +10% and +4% Health |
+
+Paths at level 10:
+
+| Path | Scores / skill | Passive | Ability | Gist |
+| --- | --- | --- | --- | --- |
+| **Thornbinder** | Wits, Reflex / Tracking | Barbed Bramble (+4% Crit, +15% opener) | **Ring of Thorns** (70% damage and 1.5 s to every foe within three tiles) | calls the briars up around the fight |
+| **Springwarden** | Insight, Grit / Empathy | Evergreen (+6% Health, healing +10%) | **Antler Ward** (every friend within five tiles takes blows at 80% for 6 s) | keeps the company standing |
+
+Wildspeaker is a generic fantasy role; the abilities, paths and quirks here are Eldmoor's own. The **Springwarden** path shares the word "warden" with the Warrior's Warden path and the Crypt's Grave Wardens, and nothing else: it is a green crown over friends, not a sworn guard.
 
 ## Bonds and blood debts
 Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,
