@@ -113,6 +113,16 @@ if (S.fellowship) {
   ok(!optionsFor(sc2, f).some(o => o.k === opts[0].k), 'a used ability leaves the options until its rounds pass');
 } else ok(false, 'a Fellowship to test the Table with');
 
+// ---- Skald (issue #83): the party-wide ward and the mark ----
+{
+  const sk = mk('Skald', 8), mate = mk('Warrior', 8); mate.x = sk.x + 1; mate.y = sk.y; const fo = foeNear(sk); fo.target = mate; rebuild();
+  ok(movesOf(sk).length === 3 && movesOf(mk('Skald', 1)).length === 1, 'Skald learns Biting Verse at 1 and three verses by 8');
+  const rr = useMove(sk, 'rallyverse', null, {mates: [sk, mate], foe: fo});
+  ok(rr.ok && effOn(sk, 'taken') && effOn(mate, 'taken') && rr.hit === 2, 'Rallying Verse wards every friend in range: ' + (rr.text || rr.error));
+  const d0 = fo.hp, rd = useMove(sk, 'bitingverse', fo); ok(rd.ok && fo.hp < d0, 'Biting Verse strikes: ' + (rd.text || rd.error));
+  ok(CLASS_SPECS.Skald && CLASS_SPECS.Skald.length === 2, 'Skald has two specialisations');
+}
+
 // ---- save round trip ----
 const sv = mk('Priest', 9); useMove(sv, 'dawnward', sv); const left = cdLeft(sv, 'dawnward');
 const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);

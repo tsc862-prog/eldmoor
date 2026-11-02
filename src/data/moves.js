@@ -58,6 +58,13 @@ export const MOVES={
     fx:{dmg:1,delay:2.5},save:{abil:'grit',stat:'wits'},use:'burst',desc:'A cut at the tendon: normal damage, and the foe loses 2.5 seconds before its next blow (half on a save).'},
   smokeveil:{name:'Smoke Veil',cls:'Rogue',kind:'defend',lvl:5,cd:36,rounds:5,cost:null,target:'self',range:0,swing:false,
     fx:{taken:.5,shake:2.5},dur:4,durR:1,use:'selfhurt',desc:'A pinch of powder and the room is smoke: foes on you lose 2.5 seconds, and blows land at half for four.'},
+  // ---- Skald: the voice that carries (issue #83) ----
+  bitingverse:{name:'Biting Verse',cls:'Skald',kind:'attack',lvl:1,cd:12,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:1.7,delay:.6},use:'burst',desc:'A verse like a thrown stone: 170% damage, and the foe falters for 0.6 seconds.'},
+  rallyverse:{name:'Rallying Verse',cls:'Skald',kind:'defend',lvl:3,cd:34,rounds:5,cost:null,target:'allies',range:5,swing:false,
+    fx:{taken:.85},dur:8,durR:2,use:'rally',desc:'A marching line sung to the whole company: every friend within five tiles takes blows at 85% for eight seconds.'},
+  dirge:{name:'Dirge of Doubt',cls:'Skald',kind:'control',lvl:6,cd:24,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
+    fx:{delay:1.5,mark:1.2},dur:8,durR:2,save:{abil:'wits',stat:'presence'},use:'mark',desc:'A slow tune that gets under the guard of a foe: it loses 1.5 seconds and, for eight, every blow on it does 20% more (a save resists both).'},
   // ---- Specialisations (issue #82): one extra ability per path, learned at level 10 with the path (spec:<id>) ----
   wardencover:{name:'Shield Cover',cls:'Warrior',spec:'warden',kind:'defend',lvl:10,cd:24,rounds:4,cost:null,target:'ally',range:4,swing:false,
     fx:{taken:.55},dur:6,durR:2,use:'wardally',desc:'Step in front of a friend and lift the shield: blows on them land at 55% for six seconds.'},
@@ -77,6 +84,10 @@ export const MOVES={
     fx:{heal:{base:18,lvl:4,hp:.1}},use:'healally',desc:'A hand on one hurt friend: 18 + 4 per level + 10% of their health.'},
   backstab:{name:'Backstab',cls:'Rogue',spec:'cutthroat',kind:'attack',lvl:10,cd:14,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
     fx:{dmg:2.2,crit:.3},use:'burst',desc:'The blade goes where the armour does not: 220% damage and a 30% better chance to crit.'},
+  roaringchant:{name:'Roaring Chant',cls:'Skald',spec:'warchanter',kind:'attack',lvl:10,cd:20,rounds:3,cost:null,target:'foes',range:3,swing:false,
+    fx:{dmg:.8},use:'crowd',desc:'A war-chant that shakes the air: 80% damage to every foe within three tiles.'},
+  lullaby:{name:'Lullaby of the Hearth',cls:'Skald',spec:'soothsinger',kind:'heal',lvl:10,cd:30,rounds:5,cost:null,target:'allies',range:5,swing:false,
+    fx:{heal:{base:10,lvl:3,hp:.06}},use:'masshurt',desc:'A hearth-song for the whole company: every friend within five tiles heals 10 + 3 per level + 6% of their health.'},
   dirtytrick:{name:'Dirty Trick',cls:'Rogue',spec:'trickster',kind:'control',lvl:10,cd:22,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
     fx:{delay:3,mark:1.2},dur:8,durR:2,save:{abil:'insight',stat:'wits'},use:'mark',desc:'Sand, a feint, a shout: the foe loses 3 seconds and, for eight, every blow on it does 20% more (a save resists both).'},
 };
@@ -96,6 +107,8 @@ export const PASSIVES={
   sanctuary:{name:'Sanctuary',cls:'Priest',lvl:8,takenBelow:{hp:.5,mul:.9},desc:'Under half health, blows on you land at 90%.'},
   knifehand:{name:'Knife-Hand',cls:'Rogue',lvl:3,crit:.06,desc:'+6% Crit.'},
   slipblow:{name:'Slip the Blow',cls:'Rogue',lvl:6,taken:.95,desc:'Blows on you land at 95%: you are seldom where the weapon thought.'},
+  practisedear:{name:'Practised Ear',cls:'Skald',lvl:2,crit:.05,desc:'+5% Crit: you hear the beat of the fight.'},
+  lastverse:{name:'Last Verse',cls:'Skald',lvl:7,takenBelow:{hp:.4,mul:.9},desc:'Under 40% health, blows on you land at 90%: you sing louder when it matters.'},
   // ---- Specialisation passives (issue #82), learned with the path at level 10 ----
   wardenvow:{name:"Warden's Vow",cls:'Warrior',spec:'warden',lvl:10,defense:.05,health:.04,desc:'+5% Defense and +4% Health.'},
   reaverfury:{name:"Reaver's Fury",cls:'Warrior',spec:'reaver',lvl:10,crit:.05,openerMul:1.15,desc:'+5% Crit; the first blow on an unhurt foe does 15% more.'},
@@ -106,6 +119,8 @@ export const PASSIVES={
   zeal:{name:'Zeal',cls:'Priest',spec:'battlecleric',lvl:10,health:.06,crit:.04,desc:'+6% Health and +4% Crit.'},
   tenderness:{name:'Tenderness',cls:'Priest',spec:'mender',lvl:10,healMul:1.2,desc:'Healing done +20%.'},
   deadlyopening:{name:'Deadly Opening',cls:'Rogue',spec:'cutthroat',lvl:10,crit:.04,openerMul:1.25,desc:'+4% Crit; the first blow on an unhurt foe does 25% more.'},
+  fieldvoice:{name:'Field Voice',cls:'Skald',spec:'warchanter',lvl:10,crit:.04,openerMul:1.2,desc:'+4% Crit; the first blow on an unhurt foe does 20% more.'},
+  softrefrain:{name:'Soft Refrain',cls:'Skald',spec:'soothsinger',lvl:10,healMul:1.15,health:.05,desc:'Healing done +15% and +5% Health.'},
   nimble:{name:'Nimble',cls:'Rogue',spec:'trickster',lvl:10,taken:.92,desc:'Blows on you land at 92%.'},
 };
 

@@ -8,6 +8,8 @@ export const CLS={
   Hunter:{hp:48,atk:8,range:3.5,acc:'#7dbb4a',head:'#4e6e2c',wep:'#8a5a2a'},
   Priest:{hp:46,atk:6,range:2.6,acc:'#f0ecd8',head:'#e8e0c0',wep:'#f0e6b0',orb:'#ffe68a',heal:true},
   Rogue:{hp:50,atk:8,range:1.1,acc:'#e6d24a',head:'#2e2a30',wep:'#c8c8d0',crit:.25},
+  // Skald (#83): a war-singer. Middling health and reach; the voice is the weapon (party-wide wards and marks).
+  Skald:{hp:45,atk:7,range:2.8,acc:'#e0709c',head:'#6e3a62',wep:'#c8964a',orb:'#f0d070'},
 };
 export const CLSN=Object.keys(CLS);
 
@@ -38,6 +40,10 @@ export const SPECS={
     desc:'Lives for the opening: a deadlier first blow and a backstab that finds the gap.'},
   trickster:{name:'Trickster',cls:'Rogue',fills:'control',abil:{wits:1,presence:1},skill:'lore',lean:{Cautious:2,Loner:1,Boastful:1},
     desc:'Wins by misdirection: seldom where the blow lands, and a dirty trick that leaves a foe open.'},
+  warchanter:{name:'Warchanter',cls:'Skald',fills:'damage',abil:{presence:1,brawn:1},skill:'intimidation',lean:{Reckless:2,Boastful:2,Vengeful:1},
+    desc:'Sings the fight forward: a rolling chant that bites every foe nearby, and a louder opening verse.'},
+  soothsinger:{name:'Soothsinger',cls:'Skald',fills:'heal',abil:{presence:1,insight:1},skill:'healing',lean:{Loyal:2,Pious:1,Cautious:1},
+    desc:'Sings the party back together: a lullaby that mends the whole company and a steadier voice.'},
 };
 export const CLASS_SPECS={};
 for(const id in SPECS)(CLASS_SPECS[SPECS[id].cls]||(CLASS_SPECS[SPECS[id].cls]=[])).push(id);

@@ -65,7 +65,7 @@ export function init(o={}){
   const seeded=!!(o.setup&&o.setup.seed!=null);
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
   spawnAll();
-  for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%5],null,i*.6+rnd()*1.5);
+  for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5);
   try{opening(o)}finally{if(seeded)seedRng(null)}
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
   log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
