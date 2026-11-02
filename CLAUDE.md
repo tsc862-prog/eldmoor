@@ -239,7 +239,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   tools over its four note sections (search across them; `dm_status.relevant_notes`). Mirrored read-only as Markdown
   by the relay (from the page) or the headless world: `logs/agents/<world>/<heroId>-<name>/memory/` (`MEMORY.md`
   plus `<id>-<slug>.md` with front matter), the DM under `dm/memory/`; never read back. `--no-mirror` (or
-  `RELAY_MIRROR=0`) turns the files off. The Memory tab and the DM panel's **Notes** filter show them.
+  `RELAY_MIRROR=0`) turns the files off. A replaced world is purged: every world carries an instance id (`S.worldId`, new at `init()`, saved with the world, given to an older save on load; never read by `step()`), the page's hello and `play-headless` send it, and `logs/agents/<world>/.world` records the last one. A different id (a New World, an Import of another save, `--fresh`) deletes that world's hero folders and `dm/` (`purgeWorld` in `scripts/memory-mirror.mjs`) and logs `[mirror] new <world> world: purged N old memory folders`; the same id on reload purges nothing; links and anything outside `<root>/<world>` are never touched; session files are left to the runners. The Memory tab and the DM panel's **Notes** filter show them.
 - Tiered memory (#153, `src/sim/tiers.js`, `a.tiers`): agent heroes and Fellowship members keep **landmarks** outside
   every rolling cap (a companion's death, joining or leaving the Fellowship, levels 5/10/15/20, Crypt clears, a boss or
   named elite slain, a nemesis taken or paid, and entries written with `journal_write {landmark: yes}`, 3 a day; 30
@@ -411,8 +411,16 @@ Local agent runner (part 2):
   (`<tool_call>{...}</tool_call>`) are understood.
 - Memory: the conversation is kept in the session file (`local.history`, tool results cut to 400
   characters, oldest whole turns dropped past 24k characters; the journal is the long-term memory).
-  Context asked of Ollama: 16384 tokens (`--num-ctx`, `OLLAMA_NUM_CTX`); a different `num_ctx`
-  from the relay's decision calls makes Ollama reload the model when both use it.
+  Context (#221): Ollama reloads the whole model whenever a request asks a different `num_ctx` (and one
+  without it gets the server default, 32768 on the owner's PC), so the adapter (`scripts/providers/ollama.mjs`)
+  sends one `num_ctx` on every request: the agent loop, forced scene/reflection answers (`chatAsk`), the
+  relay's decisions and writing, the DM loop and its table and talk voices. It is `OLLAMA_NUM_CTX` (default
+  16384), read in one place (`numCtxFrom`); `--num-ctx` sets it for one runner, so keep it equal to the
+  relay's. The relay log, `/health` (`providers.ollama.numCtx`), the runner start line and the runner state
+  line (`ctx 16384`) show it; a runner warns when `/api/ps` shows its model loaded at another context
+  ("Ollama holds qwen2.5:14b at 32768; runners ask 16384, so it reloads each time"). A generation Ollama
+  aborts for repeating tokens ("token repeat limit reached") is retried once from a trimmed history at
+  temperature 0.4; a second abort ends the turn empty (flag `looped`) without counting toward `--max-fails`.
 - Turn line: tool calls, seconds (and seconds in the model), model calls, tokens in/out, `$0 (local)`.
   The claim carries `{provider, model}`, so the mind row's Agent mode, the Agent tab and the Minds
   panel tag the runner (`qwen3.5:4b · local · live`); `/play/health` lists it as `heroes[].runner`.

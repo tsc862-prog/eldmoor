@@ -26,7 +26,7 @@ import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneSchema, sceneTurn, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
-import {ollamaAdapter} from './providers/ollama.mjs';
+import {ollamaAdapter, numCtxFrom} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
 
@@ -131,14 +131,15 @@ console.log('text-written calls and forced scene turns (issue #163)');
 
 // ---------------------------------------------------------------- the mock Ollama (scripts/mock-ollama.mjs)
 const {url: OLLAMA, seen, close: closeOllama} = await startMockOllama();
+let ctxFrom = 0; // where the runners' requests start in `seen` (after the adapter's own tests)
 
 console.log('ollama adapter chat (mock server)');
 {
-  const ol = ollamaAdapter({url: OLLAMA});
-  const r = await ol.chat({model: 'mock-tools:1b', messages: [{role: 'user', content: 'Begin.'}], tools: ollamaTools(), numCtx: 8192});
+  const ol = ollamaAdapter({url: OLLAMA, numCtx: 8192});
+  const r = await ol.chat({model: 'mock-tools:1b', messages: [{role: 'user', content: 'Begin.'}], tools: ollamaTools(), numCtx: 4096}); // a per-call size is ignored (#221)
   ok(r.message.tool_calls && r.usage.in === 900 && r.usage.cost === 0, 'chat returns the tool calls and token counts, cost 0');
   const last = seen[seen.length - 1];
-  ok(last.think === false && last.options.num_ctx === 8192 && last.stream === false && last.tools.length === ollamaTools().length, 'thinking off, the context size and the tools are sent');
+  ok(last.think === false && last.options.num_ctx === 8192 && last.stream === false && last.tools.length === ollamaTools().length, 'thinking off, the adapter context size (never a per-call one) and the tools are sent');
   let e = null; try {await ol.chat({model: 'mock-json:1b', messages: [{role: 'user', content: 'x'}], tools: ollamaTools()})} catch (x) {e = x}
   ok(e && e.noTools, 'a model without tool support is reported as noTools');
   // issue #126: one queue per adapter (a Fellowship runner's members share it), and a clear timeout message
@@ -155,11 +156,31 @@ console.log('ollama adapter chat (mock server)');
   const {preferLoaded, localModelNote} = await import('./pacing.mjs'), gpu = {loaded: async () => ['qwen2.5:14b']};
   const pl = await preferLoaded(gpu, 'qwen3.5:4b', ['qwen2.5:14b', 'qwen3.5:4b']);
   ok(pl.model === 'qwen2.5:14b' && /already holds qwen2.5:14b/.test(pl.note), 'with no model picked, a local runner takes the model Ollama already holds (the relay\'s minds)');
+  // issue #221: one num_ctx for every local call, read from OLLAMA_NUM_CTX (default 16384), also on call() (the relay's minds, the DM's voices)
+  ok(numCtxFrom({}) === 16384 && numCtxFrom({OLLAMA_NUM_CTX: '8192'}) === 8192 && numCtxFrom({OLLAMA_NUM_CTX: 'x'}) === 16384 && ollamaAdapter({url: OLLAMA}).numCtx === numCtxFrom(), 'OLLAMA_NUM_CTX, default 16384, is the one context size');
+  await ollamaAdapter({url: OLLAMA, numCtx: 8192}).call({system: 's', user: 'u', schema: {type: 'object', properties: {option: {type: 'string', enum: ['a']}, line: {type: 'string'}}}, maxTokens: 50, model: 'mock-intro:1b'});
+  ok(seen[seen.length - 1].options.num_ctx === 8192, 'call() (decisions, writing, the DM table and talk voices) sends it too');
+  const ctxGpu = {numCtx: 16384, held: async () => [{name: 'qwen2.5:14b', ctx: 32768}]};
+  const cn = await localModelNote(ctxGpu, 'qwen2.5:14b');
+  ok(/Ollama holds qwen2.5:14b at 32768; runners ask 16384, so it reloads each time/.test(cn || '') && !(await localModelNote({numCtx: 16384, held: async () => [{name: 'qwen2.5:14b', ctx: 16384}]}, 'qwen2.5:14b')), 'a runner warns when Ollama holds its model at another context size: ' + (cn || '').slice(0, 90));
+  // the owner's second live error (#221): "prediction aborted, token repeat limit reached". Retry once from a trimmed context at 0.4; twice: an empty turn, not a failure
+  {
+    const {localWorked, failTracker} = await import('./pacing.mjs'), olp = ollamaAdapter({url: OLLAMA}), lines = [];
+    const sess = {system: 'You are Ann.', local: {mode: 'tools', history: Array.from({length: 6}, (_, k) => [{role: 'user', content: 'Turn ' + k + ' ' + 'x'.repeat(400), turn: 1}, {role: 'assistant', content: 'ok'}]).flat(), tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0}};
+    const n0 = seen.length, h0 = sess.local.history.length;
+    const r1 = await localTurn({chat: olp.chat, call: async () => ({ok: true}), sess, prompt: 'Turn 7.', model: 'mock-loop1:1b', toolTurns: 6, on: (k, a) => {if (k === 'loop') lines.push(a)}});
+    const retry = seen.slice(n0).find(b => b.options.temperature === 0.4);
+    ok(r1.loopRetried && !r1.looped && r1.tools > 0 && lines.length === 1 && retry && retry.options.num_ctx === olp.numCtx && retry.messages.length < h0 + 2, `a repeat-limit abort is retried once, trimmed and cooler (0.4, num_ctx ${retry && retry.options.num_ctx}), and the turn plays on`);
+    const f = failTracker(2); f.ok(false);
+    const r2 = await localTurn({chat: olp.chat, call: async () => ({ok: true}), sess: {system: 'x', local: {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0}}, prompt: 'Turn 1.', model: 'mock-loop:1b', toolTurns: 6});
+    ok(r2.looped && r2.tools === 0 && localWorked(r2) === null && !f.ok(localWorked(r2)) && f.count === 1 && /repeating itself twice/.test(localLine(r2, 'mock-loop:1b')), 'twice: the turn ends empty with a clear line, and it does not count toward --max-fails');
+  }
   ok((await preferLoaded(gpu, 'qwen3.5:4b', ['qwen3.5:4b'])).model === 'qwen3.5:4b' && /evict each other/.test(await localModelNote(gpu, 'qwen3.5:4b')) && !(await localModelNote(gpu, 'qwen2.5:14b')), 'otherwise it keeps its model and warns that another one holds the GPU');
 }
 
 // ---------------------------------------------------------------- 2. the runner, end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
+ctxFrom = seen.length;
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // AGENT_REFLECT=0: no reflection turns where turn counts are exact; H passes --reflect (#179) // pacing (issue #126) kept short for the old sections
 const kids = [];
 function start(args, {wait: ready = null, env = childEnv} = {}) {
@@ -492,6 +513,13 @@ console.log('relay links message');
   server.close();
 }
 
+// issue #221: every request the runners sent (agent loop, closing calls, forced scene, reflection) asked one num_ctx
+{
+  const runs = seen.slice(ctxFrom), sizes = [...new Set(runs.map(b => b.options && b.options.num_ctx))];
+  const kinds = {loop: runs.filter(b => b.tools).length, words: runs.filter(b => !b.tools && !b.format).length, scene: runs.filter(b => b.format && b.format.properties && b.format.properties.option).length, reflect: runs.filter(b => b.format && b.format.properties && b.format.properties.notes).length};
+  ok(runs.length > 20 && sizes.length === 1 && sizes[0] === numCtxFrom(), `every mock Ollama request of the runners carries the same num_ctx (${sizes.join(', ')}) over ${runs.length} requests: ${JSON.stringify(kinds)}`);
+  ok(kinds.loop && kinds.words && kinds.scene && kinds.reflect, 'the agent loop, the closing call, a forced scene answer and a reflection were all among them');
+}
 for (const k of kids) try {k.kill()} catch {}
 closeOllama();
 try {rmSync(tmp, {recursive: true, force: true})} catch {}

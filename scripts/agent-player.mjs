@@ -50,7 +50,7 @@ import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
 import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
-import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
+import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
 import {reflectPrompt, reflectNow, closeReflection} from './pacing.mjs'; // reflection moments (#179)
 import Anthropic from '@anthropic-ai/sdk';
@@ -152,12 +152,12 @@ const sumTurns = (r0, r) => {if (r0 && r && r !== r0) for (const k of ['modelCal
 // model through scripts/local-agent.mjs. Ends the process.
 async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl, numCtx, release, beat, file, openai = null, budget = 1, pacer, pace}) {
   if (openai) return runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter: openai, budget, pacer, pace});
-  const ol = ollamaAdapter({url: ollamaUrl, defaultModel: rs.model}), s0 = await ol.status();
+  const ol = ollamaAdapter({url: ollamaUrl, defaultModel: rs.model, numCtx}), s0 = await ol.status();
   if (!s0.ok) {console.error(`[agent] Ollama at ${s0.url} is ${s0.error}. Start Ollama (https://ollama.com) or pass --ollama-url.`); await release(); process.exit(1)}
   if (!s0.models.includes(rs.model)) {console.error(`[agent] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await release(); process.exit(1)}
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
-  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)} | ${paceText(pace)}`);
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url}, num_ctx ${ol.numCtx} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)} | ${paceText(pace)}`);
   let ended = null, runIn = 0, runOut = 0, t0 = Date.now(), lastNote = null; const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     let r = null, w = null;
@@ -165,10 +165,10 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
     {const n = await localModelNote(ol, rs.model); if (n && n !== lastNote) console.log('[agent] ' + n); lastNote = n} // before every turn: another model on the GPU
     const b0 = await pacer.brief(); let err = null;
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
-    try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model, {numCtx: numCtx ? Number(numCtx) : null}), on}); // a reflection moment (issue #179)
-      if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model, {numCtx: numCtx ? Number(numCtx) : null}), on}); // a Fellowship member's own scene (issue #163)
+    try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a reflection moment (issue #179)
+      if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a Fellowship member's own scene (issue #163)
       if (r && r.mode !== 'reflect' && !r.tools || !r) r = sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + briefText(b0), model: rs.model, toolTurns,
-      opts: numCtx ? {numCtx: Number(numCtx)} : {}, on}))}
+      on}))}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
@@ -251,9 +251,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
     rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
-    if (!opt('model', null)) {const ol0 = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL)}), s = await ol0.status(), p = await preferLoaded(ol0, rs.model, s.models || []); if (p.note) {console.log('[agent] ' + p.note); rs.model = p.model}}
+    if (!opt('model', null)) {const ol0 = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)})}), s = await ol0.status(), p = await preferLoaded(ol0, rs.model, s.models || []); if (p.note) {console.log('[agent] ' + p.note); rs.model = p.model}}
     sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
-    await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'ollama', 20), toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: opt('num-ctx', env.OLLAMA_NUM_CTX || null), release, beat, file: SESSION_FILE, pacer, pace});
+    await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'ollama', 20), toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)}), release, beat, file: SESSION_FILE, pacer, pace});
   }
   if (rs.provider === 'openai') {
     // OpenAI plays (issue #97): the same tool loop through Chat Completions; the key stays in this process.
