@@ -177,7 +177,8 @@ function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])retu
 // The scripted choice: what a member does when nobody plays it (or its agent is silent).
 export function reflexFor(sc,a){if(EXTRA[sc.kind])return EXTRA[sc.kind].reflex(sc,a);const k=sc.kind,mh=maxHp(a),hurt=a.hp<mh*.2,lo=lowest(),healer=CLS[a.cls]&&CLS[a.cls].heal;
   if(COMBAT[k]){const f=foeOf(sc),talk=rounds(sc)&&canParley(f)&&!(sc.pl||[]).includes(a.id),rooted=rounds(sc)&&condOn(a,'root');
-    if(lo&&lo.hp<maxHp(lo)*.35&&bestUse(a,'potion'))return 'potion';if(hurt&&!(healer&&lo===a)&&!rooted)return 'retreat';if(hurt&&rooted&&talk)return 'parley';if(healer&&lo&&lo.hp<maxHp(lo)*.6)return tableHealMove(a,fellows())||'heal'; // the class heal move when it is ready and fits (#347), else the plain heal
+    const low=lo&&lo.hp<maxHp(lo)*.35,hm=healer&&low?tableHealMove(a,fellows()):null;if(hm)return hm;if(low&&bestUse(a,'potion'))return 'potion'; // badly hurt: a healer's class move first, then a potion, then the plain heal below (#387)
+    if(hurt&&!(healer&&lo===a)&&!rooted)return 'retreat';if(hurt&&rooted&&talk)return 'parley';if(healer&&lo&&lo.hp<maxHp(lo)*.6)return tableHealMove(a,fellows())||'heal'; // the class heal move when it is ready and fits (#347), else the plain heal
     if(talk&&f.hp<(f.kind==='hero'?maxHp(f):f.maxhp)*.35&&trained(a,socialSkill(a)))return 'parley'; // a trained tongue offers a beaten foe its life (#296)
     if(f){const mv=pickMove(a,f,fellows(),true,'round');if(mv)return mv.id} // the scripted ability policy, in rounds (sim/moves.js)
     if(a.cls==='Warrior'&&f&&f.kind==='mob'&&f.target&&f.target!==a)return 'guard';return 'strike'}
