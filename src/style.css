@@ -261,6 +261,15 @@ button.mini{font-size:7px;padding:3px 6px;box-shadow:none}
 .ralert .rt{font-family:var(--px);font-size:8px;color:#ff9a6a;letter-spacing:.04em;margin-bottom:4px}
 .ralert .rl{margin-top:2px;overflow-wrap:anywhere}
 .ralert .rb{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+body:not(.dev-mode) #wFreeRow{display:none}
+.rgate{position:absolute;left:8px;right:8px;top:8px;max-width:620px;margin:0 auto;z-index:6;background:rgba(40,12,12,.95);border:2px solid var(--red);padding:6px 8px;color:#f4ecd0;font-size:16px;line-height:1.15}
+.rgate .rt{font-family:var(--px);font-size:8px;color:#ff9a6a;letter-spacing:.04em;margin-bottom:4px}
+.rgate .rl{margin-top:3px;overflow-wrap:anywhere}
+.rgate .rgrow{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.rgate .rgn{color:#ffd866}
+.rgate .rgw{flex:1 1 140px;min-width:0}
+.rgate .rb{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+[data-sp][aria-disabled="true"]{opacity:.45;cursor:not-allowed}
 .tbanner{position:absolute;left:8px;right:8px;top:8px;max-width:560px;margin:0 auto;background:rgba(8,10,20,.88);border:2px solid var(--edge);padding:6px 8px;pointer-events:none;color:#e8e4d0;font-size:15px;line-height:1.15}
 .tbanner .tt{font-family:var(--px);font-size:8px;color:#ffd866;letter-spacing:.04em;margin-bottom:3px}
 .tbanner .tf{opacity:.9}

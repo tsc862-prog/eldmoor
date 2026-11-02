@@ -146,9 +146,12 @@ if(mode==='a'){
   setup.initSetup();
   const t0=Date.now();ctl.speed=1;
   const p=setup.afterBoot();
-  await sleep(20);ok(ctl.speed===0,'the world waits while runners start');
+  await sleep(20);ok(ctl.speed===1,'the owner\'s speed is kept (no 6 s wait): the run gate holds the world instead');
+  const gate=await imp('src/ui/rungate.js');gate.checkRunGate(Date.now());
+  ok(ctl.held&&gate.gateMissing().length===6,'the world is held until all five members and the DM claim: '+gate.gateMissing().length+' missing');
   await p;
-  ok(ctl.speed===1,'the world resumes (waited '+(Date.now()-t0)+' ms)');
+  gate.checkRunGate(Date.now()+1500);
+  ok(ctl.held&&ctl.speed===1,'still held after the runners were started but have not claimed ('+(Date.now()-t0)+' ms)');
   const kinds=posts.map(x=>x.body.kind);
   ok(kinds.join()==='fellowship,dm','one Fellowship runner and one DM runner: '+kinds);
   ok(posts[0].body.model==='claude-haiku-5-5'&&posts[1].body.model==='claude-sonnet-5-5','models: Haiku for the five, Sonnet for the DM');
