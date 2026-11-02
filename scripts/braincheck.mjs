@@ -354,6 +354,8 @@ ok(B.stats.applied.townPlan >= 1, 'relay up: plans apply');
 mock.closeAllConnections(); await new Promise(r => mock.close(r));
 const before = B.stats.applied.townPlan, simT = S.gameMin; quietLines = 0;
 await runUntil(() => B.stats.failures >= 1 && minds().some(e => e.outcome === 'offline' && e.error === 'relay unreachable'), 10);
+// the refusal comes back on the event loop, not inside the sim steps: wait for it with a deadline, not for a number of steps
+await until(() => B.stats.failures >= 1 && minds().some(e => e.outcome === 'offline' && e.error === 'relay unreachable'), 5000);
 ok(B.stats.failures >= 1 && heroes.some(h => brainStatus(h) === 'offline'), 'connection refused -> offline (' + B.stats.failures + ' failures)');
 ok(minds().some(e => e.outcome === 'offline' && e.error === 'relay unreachable' && !e.sent), 'mind: relay unreachable -> offline, nothing echoed');
 await run(3600);
