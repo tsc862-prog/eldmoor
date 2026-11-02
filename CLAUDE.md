@@ -606,7 +606,7 @@ render or ui, so the headless harness stays stub-free.
   `src/sim/heroes.js`. Hero combat totals (Health, Attack, Defense, Crit, Speed) and their
   level terms: `combatStats` in `src/sim/stats.js`; item armor/damage rates and properties:
   `src/data/items.js`. Class table `CLS`: `src/data/classes.js`.
-- Mob stats (`maxhp: 25 + lvl*16`, hit `(3 + lvl*2) * MOB_HIT`, MOB_HIT 1.35), aggro and wander: `src/sim/mobs.js`.
+- Mob stats (`maxhp: 25 + lvl*16`, hit `(3 + lvl*2) * MOB_HIT`, MOB_HIT 1.35 for mob level 7+, ramping from level 3), aggro and wander: `src/sim/mobs.js`.
 - Boss: `maxhp` 13000, respawn 600s in `src/data/bosses.js`; hit 55-85 every 1.6s, breath every
   7s, raids need level 14+ heroes, 5+ of them or 4 with average gear 9+; raiders
   break off below 15% HP and a failed raid cools down 240s: `src/sim/boss.js`,
@@ -616,7 +616,7 @@ render or ui, so the headless harness stays stub-free.
 
 ## Known state
 
-- In a 120-minute headless run from level 1 (balance #154, 10-run mean, wide spread): about 18 deaths per hour (range 8-26), ~31% PvP, crypt about 14 deaths and ~40 clears per run; L1-5 mob deaths 6-8 per run (mobs hit 1.35x); median living level 14, top 18-20 (the first level 20 arrives around minute 80-100); Kragmaw dies about 5 times per run (13000 hp, respawn 600s). Fellowship deaths about 4 per run. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
+- In a 120-minute headless run from level 1 (balance #154, 10-run mean, wide spread): about 15 deaths per hour (range 9-25), ~34% PvP, crypt about 13 deaths and ~42 clears per run; L1-5 mob deaths about 4 per run (mobs of level 7+ hit 1.35x, ramped in from level 3); median living level 14, top 18-20 (the first level 20 arrives around minute 80-100); Kragmaw dies about 5 times per run (13000 hp, respawn 600s). Fellowship deaths about 5 per run. Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
 - The world auto-saves to localStorage every game-hour and on tab close, and restores on reload; Export/Import move it as JSON (`src/sim/save.js`, `src/ui/save.js`, `npm run savecheck`).
 
 ## Roadmap ideas
