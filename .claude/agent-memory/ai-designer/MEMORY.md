@@ -23,3 +23,4 @@
 - [Table step #285](table_step.md) — TABLE.step hold/auto (paused 1x only), stepNext, beat.roll data, bannerOf().foe object
 - [Bounties #67](bounties_issue67.md) — kill-N demoted to gate-captain bounties: adventure first, not a lever, PAY_XP .35, old saves
 - [Check fixtures](check_fixtures.md) — loop changes break RNG-reliant fixtures: hold/park members, spawn mobs, assert on snapshot; run CI groups sequentially
+- [Guild rivals #6](guild_rivals.md) — rivals.js heat sources, declare 3.5, duel x1.6/assist x1.5 multipliers, Fellowship out, rare by design
