@@ -55,7 +55,7 @@ const cell = s => String(s == null ? '' : s).replace(/\|/g, '/').replace(/\s+/g,
 const q = (s, n = 140) => {s = cell(s); return s.length > n ? s.slice(0, n) + '…' : s};
 const table = (head, rows) => rows.length ? ['| ' + head.join(' | ') + ' |', '|' + head.map(() => ' --- ').join('|') + '|', ...rows.map(r => '| ' + r.map(cell).join(' | ') + ' |')].join('\n') : '_none_';
 const day = gm => gm == null ? '?' : `day ${Math.floor(gm / 1440) + 1} ${String(Math.floor(gm % 1440 / 60)).padStart(2, '0')}:${String(Math.floor(gm % 60)).padStart(2, '0')}`;
-const mind = r => (r.provider || '?') + '/' + (r.model || '?');
+const mind = r => (r.provider || '?') + '/' + (r.model || (r.src === 'game' ? 'relay default' : '?')); // a Mind entry without a model asked the relay's default
 
 // The report for one world's folder, as Markdown.
 export function buildReport(dir, {world = null, sinceMs = 0} = {}) {

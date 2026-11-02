@@ -12,7 +12,7 @@
 //             rotate by size, and the watch changes nothing in the world (same state with and without it)
 // No model, no network beyond 127.0.0.1, nothing written under logs/ (a temporary folder). Usage: npm run behaviorcheck.
 import http from 'node:http';
-import {mkdtempSync, rmSync, readFileSync, existsSync, readdirSync} from 'node:fs';
+import {mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -130,7 +130,10 @@ for (let k = 0; k < 2; k++) {const sc = T.openScene('check', 'A narrow ledge ' +
 for (let k = 0; k < 2; k++) {const P = C.propose(A, 'other', 'rest a while ' + k, {vote: false}); ok(P && P.id, `proposal ${k + 1} put to the party`); run(25)}
 T.TABLE.mode = 'off';
 for (let k = 0; k < 3; k++) LV.pull('mark_dangerous', {at: {x: spot.x, y: spot.y}}, {by: 'dm-agent', reason: ''});
-E.hp = maxHp(E) * .2; E.state = 'hunt';
+// a spot the lever accepts (open ground, not a town or a landmark), and E standing on it, hurt
+{let p = null; for (let r = 0; r < 12 && !p; r++) for (let dx = -r; dx <= r && !p; dx++) for (const dy of [-r, r]) {const q = {x: Math.floor(spot.x) + dx + .5, y: Math.floor(spot.y) + dy + .5}; if (!LV.spotErr(q)) {p = q; break}}
+  if (p) {E.x = p.x; E.y = p.y}}
+E.hp = maxHp(E) * .2; E.state = 'hunt'; E.target = null;
 const lp = LV.pull('mark_dangerous', {at: {x: Math.floor(E.x) + .5, y: Math.floor(E.y) + .5}, r: 3, hours: 2}, {by: 'scripted', reason: 'the woods grow dark'});
 ok(lp.ok, 'a danger lever pulled where a hurt member stands' + (lp.ok ? '' : ': ' + lp.reason));
 run(45); // more game hours: stuck, more digests
@@ -164,6 +167,7 @@ ok(!world.some(w => JSON.stringify(w).includes('rest a while')), 'world digests 
 const rep = writeReport(process.env.BEHAVIOR_DIR, WORLD);
 const md = readFileSync(rep.file, 'utf8');
 ok(existsSync(rep.file), 'report.md written next to the logs');
+if (process.env.BEHAVIORCHECK_REPORT) writeFileSync(process.env.BEHAVIORCHECK_REPORT, md); // keep a copy of the sample report
 for (const k of want) ok(md.includes(k), `report names ${k}`);
 ok(/## Per-seat health/.test(md) && md.includes(A.name) && md.includes('hero:' + B.id), 'report has per-seat health with the mock seats');
 ok(/## Model comparison/.test(md) && md.includes('ollama/qwen2.5:14b') && md.includes('ollama/llama3.1:8b') && md.includes('anthropic/claude-sonnet-5-5'), 'report compares the three runner models');
