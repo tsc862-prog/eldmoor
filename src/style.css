@@ -650,3 +650,15 @@ button.tbtn.danger{border-color:var(--red)}
 .fstance textarea{font-family:var(--mono);font-size:18px;background:#0a0b14;color:var(--ink);border:1px solid var(--edge);resize:vertical;width:100%;box-sizing:border-box}
 .fstance textarea::placeholder{color:#6f7590;opacity:1}
 .fstance textarea:focus-visible,.fsthead .mini:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+/* Region conditions (#366): one row per running condition or world event, the Fellowship's road first */
+.condsec .condlist{max-height:220px;overflow-y:auto;margin-top:8px}
+.condrow{padding:4px 0;border-bottom:1px solid var(--edge);min-width:0}
+.condrow:last-child{border-bottom:0}
+.condtop{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.condsw{width:8px;height:8px;flex:0 0 8px;box-shadow:1px 1px 0 #05060c}
+.condkind{font-family:var(--px);font-size:9px;color:var(--ink);letter-spacing:.04em;text-transform:uppercase}
+.condreg{color:var(--ink);overflow-wrap:anywhere;min-width:0}
+.condroad{font-family:var(--px);font-size:7px;color:var(--gold);border:1px solid var(--gold);padding:2px 4px;white-space:nowrap}
+.condrow.road .condreg{color:var(--gold)}
+.condmeta{overflow-wrap:anywhere}
+.condnone{margin-top:8px}
