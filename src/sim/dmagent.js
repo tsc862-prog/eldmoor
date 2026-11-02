@@ -33,6 +33,7 @@ import {openProps} from './council.js';
 import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {ensureNpcs} from './npcs.js';
 import {stageScene,tableCall,tableAnswer,stagedView} from './staged.js';
+import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {focus,focusStats} from './dmfocus.js'; // the Fellowship first (issue #165)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
@@ -48,7 +49,7 @@ export const DMA={
   PILE_R:14,           // ... within this many tiles of the pull (or in its region)
   NARRATE_PER_DAY:12,  // narrate lines per game day (issue #123: the DM's voice in the game)
   NPC_SAY_PER_DAY:16,  // npc_say lines per game day
-  NARRATE_MAX:240, NPC_SAY_MAX:160,
+  NARRATE_MAX:2000, NPC_SAY_MAX:2000, // a technical ceiling for the UI and the logs only: the DM writes as much as the moment needs (owner, #170)
   NARRATE_R:10,        // default radius of a narrate line around its place
 };
 const DAY=1440;
@@ -142,11 +143,12 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
+    conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
     notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length])),relevant_notes:relevant(dmBook(D),dmContext())}} // relevant_notes: your notes that bear on the moment, {id,title} (#155)
 
 function timelineRead(n){return {ok:true,timeline:(S.timeline||[]).slice(0,nOf(n,12,1,30)).map(e=>({day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,text:txt(e.parts)}))}}
 function chronicleRead(n){return {ok:true,news:(S.chronicle||[]).slice(0,nOf(n,12,1,30)).map(e=>e.t+' '+txt(e.parts))}}
-const LOG_KINDS={hooks:['hooks','pick'],scenes:['frame','branch','camp'],rolls:['roll','complication'],outcomes:['payoff','fail','abandon','fallback'],levers:['lever'],agent:['agent']};
+const LOG_KINDS={talk:['talk'],hooks:['hooks','pick'],scenes:['frame','branch','camp'],rolls:['roll','complication'],outcomes:['payoff','fail','abandon','fallback'],levers:['lever'],agent:['agent']};
 function dmLogRead(n,kind){const k=LOG_KINDS[kind]||null,out=[];
   for(const e of S.dmLog||[]){if(k&&!(k.includes(e.kind)||kind==='agent'&&e.detail&&e.detail.by==='dm-agent'))continue;
     out.push({id:e.id,day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,town:e.town||null,adventure:e.advId,text:txt(e.summary),...(e.detail&&e.detail.by?{by:e.detail.by}:{})});
@@ -172,9 +174,9 @@ function heroesNear(near,radius){const p=placeOf(near);if(!p)return {ok:false,er
 
 const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({toward:x.to+' '+x.id,attitude:x.a}));
 function npcsRead(town){const c=town?townOf(town):null;if(town&&!c)return {ok:false,error:'No town called '+clean(town,40)+'. Towns: '+CITY.map(t=>t.name).join(', ')};
-  const folk=(S.npcs||[]).filter(n=>!c||n.town===c.name).map(n=>({id:n.id,name:n.title+' '+n.name,role:n.role,town:n.town,...(attOf(n).length?{attitudes:attOf(n)}:{})}));
+  const folk=(S.npcs||[]).filter(n=>!c||n.town===c.name).map(n=>({id:n.id,name:n.title+' '+n.name,role:n.role,town:n.town,...(attOf(n).length?{attitudes:attOf(n)}:{}),...(recordView(n)?{fellowship:recordView(n)}:{})}));
   const wand=(S.wanderers||[]).filter(w=>!c||w.town===c.name||dist(w,c.gate)<=20).map(w=>({id:w.id,name:w.title+' '+w.name,role:w.role,where:w.town||ZONES[zoneAt(w.x,w.y)],home:w.homeKind,attitude:w.attitude||'neutral',
-    ...(attOf(w).length?{attitudes:attOf(w)}:{}),placed_by_lever:w.lever||null}));
+    ...(attOf(w).length?{attitudes:attOf(w)}:{}),...(recordView(w)?{fellowship:recordView(w)}:{}),placed_by_lever:w.lever||null}));
   return {ok:true,townsfolk:folk.slice(0,60),wanderers:wand}}
 
 function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Array(ZONES.length).fill(0);
@@ -269,7 +271,26 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   day.narr=(day.narr||0)+1;
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
   return {ok:true,narrated:t,where:label,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
-function npcSay(a){const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)return {ok:false,error:'Say what?'};
+// A person by id or name (townsfolk or a DM-placed person).
+function personOf(v){ensureNpcs();const k=clean(v,60).toLowerCase(),all=[...(S.npcs||[]),...(S.wanderers||[])];
+  return all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k)||null}
+// npc_say as the answer in a conversation (#170): with conv, or to a person whose conversation waits for the DM.
+function convAnswer(a){const p=personOf(a.npc);if(!p)return null;
+  const c=a.conv!=null&&a.conv!==''?convById(a.conv):convWith(p);
+  if(a.conv!=null&&a.conv!==''&&(!c||c.npc!==p.id))return {ok:false,error:'No open conversation '+clean(a.conv,12)+' with '+p.name+' (see npc_call or dm_status conversations).'};
+  if(!c||!(c.wait||a.conv!=null&&a.conv!==''))return null;
+  return dmAnswer(c,p,a.text,{warmth:a.warmth,remember:a.remember})}
+// npc_offer (#170): one follow-up of a conversation.
+function npcOffer(a){const p=personOf(a.npc);if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs).'};
+  const c=a.conv!=null&&a.conv!==''?convById(a.conv):convWith(p);if(!c||c.npc!==p.id)return {ok:false,error:'No open conversation with '+p.name+': a follow-up belongs to a conversation a member started.'};
+  const kind=clean(a.kind,12).toLowerCase();
+  if(c.wait&&!legalOffers(c,p).includes(kind))return npcOfferApply(c,p,kind,a,'dm-agent'); // refused before the line is spoken (it says why)
+  let said=null;if(c.wait&&clean(a.text,CONV.DM_LINE_MAX)){said=dmAnswer(c,p,a.text,{});if(!said.ok)return said}
+  const r=npcOfferApply(c,p,kind,a,'dm-agent');
+  if(r.ok){const w=Number(a.warmth);if(Number.isFinite(w)&&w)warm(p,Math.max(-3,Math.min(3,Math.round(w))),'the DM: '+kind)}
+  return said?{...r,said:said.ok}:r}
+function npcSay(a){const cv=convAnswer(a);if(cv)return cv;
+  const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)return {ok:false,error:'Say what?'};
   if((day.npc||0)>=DMA.NPC_SAY_PER_DAY)return {ok:false,error:'Enough lines for the townsfolk for one game day ('+DMA.NPC_SAY_PER_DAY+').'};
   ensureNpcs();const k=clean(a.npc,60).toLowerCase(),all=[...(S.npcs||[]),...(S.wanderers||[])];
   const p=all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k);
@@ -285,7 +306,7 @@ const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // One DM tool call: validated, answered, never thrown. The seat must be open.
 export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:false,error:'Unknown DM tool '+String(tool).slice(0,40)+'.'};
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
-  args=args&&typeof args==='object'?args:{};let r;
+  args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args); // a DM present: conversations wait for it a little (#170)
   try{switch(tool){
     case 'dm_status':r=status();break;
     case 'read_timeline':r=timelineRead(args.n);break;
@@ -304,10 +325,12 @@ export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:f
     case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;
     case 'npc_say':r=npcSay(args);break;
+    case 'npc_call':r=npcCall();break;
+    case 'npc_offer':r=npcOffer(args);break;
     case 'stage_scene':r=stageScene(args);break;
     case 'table_call':r=tableCall();break;
     case 'table_answer':r=tableAnswer(args);break;
   }}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
-  if(!(tool==='table_call'&&r.ok&&!r.call))remember(tool,args,r.ok!==false); // an idle poll of the table is not a call worth keeping
+  if(!((tool==='table_call'||tool==='npc_call')&&r.ok&&!r.call))remember(tool,args,r.ok!==false); // an idle poll of the table is not a call worth keeping
   return r}
