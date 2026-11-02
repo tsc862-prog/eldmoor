@@ -1,11 +1,15 @@
 // Fellowship phase B check (issue #68): Table mode, the council and the party as one unit, with
-// mock agents (no model, no network). Five members: two agent-played (one answers, one is
-// silent), three scripted.
-//   - a rescue scene at 1x pauses the world, runs the turns in initiative order (the answering
-//     agent's act, the silent agent's reflex after the turn budget, scripted members at once) and
-//     resumes; the world never hangs; a save taken mid-scene resumes the scene
-//   - at 3x the same kind of scene resolves at once, without pausing, and is summarised
-//   - proposals: a decision scene at the table, async votes at 3x with a timeout, all votes in
+// mock agents (no model, no network). Five members, all agent-played (#148): one whose runner answers,
+// one whose runner is connected but silent, three with no runner (mock link states, sim/runlink.js).
+//   - a rescue scene at 1x pauses the world and waits for the silent but connected agent (nudged, no
+//     reflex) until it answers; reflex only for members with no runner; a runner gone holds the table
+//     until the owner resumes; a live agent that never answers falls to reflex after TABLE.liveMs;
+//     a save taken mid-scene resumes the scene
+//   - at 3x a scene with agents to decide holds and asks the host for 1x (TABLE.drop); a host that never
+//     drops resolves it after TABLE.dropS; a reflex-only table resolves at once
+//   - proposals: a decision scene that waits for the silent agent's vote; outside a scene the vote holds
+//     past PROP_MIN for a live agent (HOLD_MIN, with notices) and for an absent runner until the owner
+//     resumes; all votes in; at 3x a proposal drops to 1x and becomes a scene
 //   - lead_to: the leader leads, the party follows (the silent agent too)
 //   - the Crypt: the Fellowship is drafted all together or not at all; an agent party is asked
 //     first (a proposal) and goes together when it votes yes
@@ -148,18 +152,23 @@ for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
 const r0 = F_.found(F_.autoPick(0), {fac: 0, ai: false});
 ok(r0.ok && F_.fellows().length === 5, `founded ${S.fellowship && S.fellowship.name} with ${F_.fellows().length} members`);
 const M = F_.fellowshipMembers().map(m => m.hero);
-const [A, B, ...rest] = M; // A answers, B is silent; the rest are scripted
-F_.setMinds('agent');
-for (const x of rest) {P.markPlayer(x, false); delete x.fellowAgent}
-ok(A.player && B.player && rest.every(x => !x.player), `agents: ${A.name} (answers), ${B.name} (silent); scripted: ${rest.map(x => x.name).join(', ')}`);
+const [A, B, ...rest] = M; // A answers, B is silent but its runner holds it; the rest have no runner (#148)
+// #148: the Fellowship is always agent-played; whether a decision waits is the runner's link (the relay's claims).
+const LINK = {}, link = (x, k) => {LINK[x.id] = k}; SIM.setRunnerLinks(x => LINK[x.id] || 'none');
+const unasked = new Set(); SIM.setReflexAck(x => !unasked.has(x.id)); // the page's alert: not answered yet for these (else Resume)
+link(A, 'connected'); link(B, 'waiting');
+ok(M.every(x => x.player && x.fellowAgent) && S.fellowship.minds === 'agent', 'every member is agent-played from founding (#148)');
+ok(!F_.setMinds('off') && !F_.setMinds('relay') && !P.markPlayer(rest[0], false) && rest[0].player, 'no scripted or relay mode: setMinds refuses them, a member cannot be unmarked');
+ok(SIM.agentLive(A) && SIM.agentLive(B) && rest.every(x => !SIM.agentLive(x) && SIM.reflexMay(x)), `links: ${A.name} connected (answers), ${B.name} waiting (silent); ${rest.map(x => x.name).join(', ')} no runner`);
 
 // Put the whole party in the field around a monster.
 const zone = zoneFor(8, homeOf(A).gate), spot = zonePoint(zone, null, homeOf(A).gate);
 const place = () => {M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []})};
 const mobNear = () => {const m = S.mobs.filter(m => m.alive && !m.gone && !m.elite).sort((p, q) => dist(p, spot) - dist(q, spot))[0]; m.x = spot.x + 1; m.y = spot.y; m.hp = m.maxhp; return m};
 const startFight = (x, m) => {x.state = 'fight'; x.target = m; m.target = x; x.hp = maxHp(x) * .24; m.maxhp *= 20; m.hp = m.maxhp; m.cd = 99}; // a tough foe that holds its blow, so no one dies or flees mid-test
+const stepUntil = (cond, maxS) => {let f = 0, moved = 0; while (!cond() && f < 60 * maxS) {const g = S.gameMin; step(1 / 60); f++; if (S.table && S.gameMin !== g) moved = 1} return {secs: f / 60, moved}};
 
-// ---- 1. a rescue scene at 1x ----
+// ---- 1. a rescue scene at 1x: the table waits for a silent but connected agent ----
 T.TABLE.speed = 1; T.TABLE.turnMs = 7000; T.TABLE.mode = 'auto';
 place(); let m = mobNear(); const victim = rest[0]; startFight(victim, m);
 T.tableTick(); // the trigger rules (step() runs them after the heroes move)
@@ -167,65 +176,121 @@ let sc = S.table;
 ok(sc && sc.kind === 'rescue' && sc.pause, `a member at ${Math.round(victim.hp / maxHp(victim) * 100)}% opens a rescue scene (${sc && sc.title}), world paused`);
 ok(sc && sc.ids.length === 5 && sc.ids.every((id, i) => i === 0 || score(S.agents.find(x => x.id === sc.ids[i - 1]), 'reflex') >= score(S.agents.find(x => x.id === id), 'reflex')), 'initiative order follows Reflex (with gear)');
 const evA = (A.playEv || []).slice(-3).map(e => e.text).join(' | ');
-ok(/TABLE \(rescue\)/.test(evA) && (A.playEv || []).some(e => e.u), 'the agent gets an urgent table event with its options');
+ok(/TABLE \(rescue\)/.test(evA) && (A.playEv || []).some(e => e.w === 3), 'the agent gets a must-answer table event with its options');
 let st = act(A, 'status');
 ok(st.ok && st.table && st.table.options && st.table.options.length >= 2, `status shows the table: ${st.table && st.table.options.join('; ')}`);
 let w = act(A, 'scene_act', {option: 'strike', line: 'Hold on, I am coming!'});
 ok(w.ok && w.chose === 'strike', 'the answering agent locks in strike before its turn');
 ok(!act(A, 'scene_act', {option: 'retreat'}).ok, 'a second act in the same scene is refused');
 ok(!act(B, 'scene_act', {option: 'dance'}).ok, 'an option the scene does not offer is refused');
-const g0 = S.gameMin; let frames = 0, maxPause = 0;
-while (S.table && frames < 60 * 40) {const before = S.gameMin; step(1 / 60); frames++; if (S.table && S.gameMin !== before) maxPause = 1}
-ok(!S.table, `the scene resolved after ${(frames / 60).toFixed(1)} s of real time (silent agent budget ${T.TABLE.turnMs / 1000} s)`);
-ok(frames / 60 <= T.TABLE.frameS + T.TABLE.outcomeS + T.TABLE.turnMs / 1000 + 1, 'the scene took no longer than one turn budget plus framing (the world never hangs)');
-ok(maxPause === 0, 'the world clock stood still for the whole scene');
+const g0 = S.gameMin;
+let p1 = stepUntil(() => !S.table, 30);
+ok(S.table && S.table.phase === 'turn' && S.table.ids[S.table.i] === B.id && p1.moved === 0, `30 s on, the table still waits for ${B.name}'s silent but connected agent (no reflex, the world clock still)`);
+ok((B.playEv || []).some(e => /Still your turn/.test(e.text) && e.w === 3), 'the waiting agent was nudged again (must-answer)');
+ok(/is thinking/.test((T.bannerOf() || {}).line || ''), `the banner: ${(T.bannerOf() || {}).line}`);
+ok(act(B, 'scene_act', {option: st.table.options.map(o => o.split(' = ')[0]).includes('heal') ? 'heal' : 'strike', line: 'Sorry, I am here.'}).ok, 'the slow agent answers at last');
+p1 = stepUntil(() => !S.table, 20);
+ok(!S.table && p1.moved === 0, `then the scene resolves (${p1.secs.toFixed(1)} s more), the world clock still until then`);
 const beats = sc.beats, bA = beats.find(b => b.id === A.id), bB = beats.find(b => b.id === B.id);
-ok(bA && bA.by === 'agent' && bA.k === 'strike' && bB && bB.by === 'reflex' && rest.every(x => (beats.find(b => b.id === x.id) || {}).by === 'reflex'), `turns: ${beats.map(b => b.name + '=' + b.k + '(' + b.by + ')').join(', ')}`);
+ok(bA && bA.by === 'agent' && bA.k === 'strike' && bB && bB.by === 'agent' && rest.every(x => (beats.find(b => b.id === x.id) || {}).by === 'reflex'), `turns: ${beats.map(b => b.name + '=' + b.k + '(' + b.by + ')').join(', ')} (reflex only for members with no runner)`);
 ok(S.fellowship.log.some(e => e.kind === 'table'), 'the outcome is in the campaign log');
 step(1 / 60); ok(S.gameMin > g0, 'the world runs on after the scene');
 
+// ---- 1a. a runner gone: the table waits for the owner; Resume lets the reflexes act ----
+link(B, 'none'); unasked.add(B.id);
+place(); m = mobNear(); startFight(rest[1], m); S.fellowship.tableSeen = {}; T.tableTick(); act(A, 'scene_act', {option: 'strike'});
+ok(S.table && SIM.ownerHeld(B) && !SIM.reflexMay(B), `${B.name}'s runner is gone and the owner has not answered: held`);
+p1 = stepUntil(() => !S.table, 60); const atB = S.table && S.table.ids[S.table.i] === B.id;
+ok(S.table && atB && SIM.decisionsWaiting().some(d => d.a === B && /turn at the table/.test(d.what)) && /no runner/.test(T.bannerOf().line), `the table holds at ${B.name}'s turn and names it for the alert: ${T.bannerOf() && T.bannerOf().line}`);
+unasked.delete(B.id); p1 = stepUntil(() => !S.table, 20);
+ok(!S.table && (S.table === null), `the owner resumes: ${B.name}'s reflexes act and the scene ends (${p1.secs.toFixed(1)} s)`);
+link(B, 'waiting');
+
+// ---- 1c. a live agent that never answers: reflex after TABLE.liveMs, with a notice ----
+T.TABLE.liveMs = 4000;
+place(); m = mobNear(); startFight(rest[1], m); S.fellowship.tableSeen = {}; T.tableTick(); act(A, 'scene_act', {option: 'strike'});
+p1 = stepUntil(() => !S.table, 60);
+ok(!S.table && p1.secs <= T.TABLE.frameS + T.TABLE.outcomeS + T.TABLE.liveMs / 1000 + 1 && (B.playEv || []).some(e => /table waited/.test(e.text)), `a silent agent's turn falls to reflex after ${T.TABLE.liveMs / 1000} s, with a notice (${p1.secs.toFixed(1)} s)`);
+T.TABLE.liveMs = 120000;
+
 // ---- 1b. a save mid-scene ----
-place(); m = mobNear(); startFight(rest[1], m); T.tableTick();
+place(); m = mobNear(); startFight(rest[1], m); S.fellowship.tableSeen = {}; T.tableTick();
 ok(S.table && S.table.pause, 'a second rescue scene opens');
+act(A, 'scene_act', {option: 'strike'}); act(B, 'scene_act', {option: 'strike'});
 const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);
 ok(S.table && S.table.kind === 'rescue', 'a save taken mid-scene restores the scene');
-frames = 0; while (S.table && frames < 60 * 40) {step(1 / 60); frames++}
-ok(!S.table, `the restored scene resolves (${(frames / 60).toFixed(1)} s)`);
+p1 = stepUntil(() => !S.table, 40);
+ok(!S.table, `the restored scene resolves (${p1.secs.toFixed(1)} s)`);
 const RA = S.agents.find(x => x.id === A.id), RB = S.agents.find(x => x.id === B.id), Rrest = rest.map(x => S.agents.find(y => y.id === x.id)), RM = [RA, RB, ...Rrest];
 
-// ---- 2. the same moment at 3x: no pause, resolved and summarised at once ----
+// ---- 2. at 3x: a Fellowship decision drops the world to 1x; reflex-only tables still resolve at once ----
 T.TABLE.speed = 3;
-RM.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y; x.state = 'hunt'; x.hidden = false; x.target = null; x.hp = maxHp(x); x.pq = []});
-m = S.mobs.filter(q => q.alive && !q.gone && !q.elite)[3]; m.x = spot.x + 1; m.y = spot.y; startFight(Rrest[2], m);
-const n0 = S.fellowship.log.filter(e => e.kind === 'table').length, g1 = S.gameMin;
-T.tableTick(); step(1 / 60);
-ok(!S.table && S.fellowship.log.filter(e => e.kind === 'table').length === n0 + 1 && S.gameMin > g1, 'at 3x the scene resolves in the same step, summarised in the log, the clock running');
+const field3 = () => RM.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y; x.state = 'hunt'; x.hidden = false; x.target = null; x.hp = maxHp(x); x.pq = []});
+field3(); m = S.mobs.filter(q => q.alive && !q.gone && !q.elite)[3]; m.x = spot.x + 1; m.y = spot.y; startFight(Rrest[2], m);
+T.TABLE.drop = null; S.fellowship.tableSeen = {}; T.tableTick(); let g1 = S.gameMin; step(1 / 60);
+ok(S.table && S.table.pause && T.TABLE.drop && S.gameMin === g1, `at 3x with agents to decide, the scene holds and asks the host for 1x (${T.TABLE.drop && T.TABLE.drop.reason})`);
+T.TABLE.speed = 1; T.TABLE.drop = null; act(RA, 'scene_act', {option: 'strike'}); act(RB, 'scene_act', {option: 'strike'}); // the host drops to 1x; the agents answer
+p1 = stepUntil(() => !S.table, 30);
+ok(!S.table && S.table === null && S.fellowship.log.some(e => e.kind === 'table'), `at 1x the agents' scene runs as usual (${p1.secs.toFixed(1)} s)`);
+T.TABLE.speed = 3; field3(); m = S.mobs.filter(q => q.alive && !q.gone && !q.elite)[4]; m.x = spot.x + 1; m.y = spot.y; startFight(Rrest[2], m);
+S.fellowship.tableSeen = {}; T.tableTick(); p1 = stepUntil(() => !S.table, 30);
+ok(!S.table && p1.secs <= T.TABLE.dropS + .2, `a host that never drops: the scene resolves after ${T.TABLE.dropS} world seconds anyway (${p1.secs.toFixed(1)} s, never hangs)`);
+link(RA, 'none'); link(RB, 'none');
+field3(); m = S.mobs.filter(q => q.alive && !q.gone && !q.elite)[5]; m.x = spot.x + 1; m.y = spot.y; startFight(Rrest[2], m);
+const n0 = S.fellowship.log.filter(e => e.kind === 'table').length; g1 = S.gameMin; T.TABLE.drop = null;
+S.fellowship.tableSeen = {}; T.tableTick(); step(1 / 60);
+ok(!S.table && !T.TABLE.drop && S.fellowship.log.filter(e => e.kind === 'table').length === n0 + 1 && S.gameMin > g1, 'at 3x with no runner anywhere (reflexes only) the scene resolves in the same step, the clock running');
+link(RA, 'connected'); link(RB, 'waiting');
 
 // ---- 3. proposals (in town, where nothing attacks) ----
 T.TABLE.speed = 1;
-RM.forEach(x => {const c = homeOf(x); x.state = 'town'; x.townStep = 2; x.wait = 9; x.x = c.gate.x; x.y = c.gate.y - 1; x.target = null; x.pq = []; x.hp = maxHp(x)});
+const toTown = () => RM.forEach(x => {const c = homeOf(x); x.state = 'town'; x.townStep = 2; x.wait = 9; x.x = c.gate.x; x.y = c.gate.y - 1; x.target = null; x.pq = []; x.hp = maxHp(x)});
+toTown();
 let pr = act(RA, 'propose', {kind: 'other', details: 'Camp by the water tonight'});
 ok(pr.ok && S.table && S.table.kind === 'decision', `a proposal at 1x becomes a decision scene (${pr.proposal})`);
 const pid = Number(String(pr.proposal).match(/#(\d+)/)[1]);
-frames = 0; while (S.table && frames < 60 * 40) {step(1 / 60); frames++}
+p1 = stepUntil(() => !S.table, 20);
+ok(S.table && C.propById(pid).status === 'open', 'the decision scene waits for the silent agent\'s vote');
+ok(act(RB, 'vote', {proposal_id: pid, vote: 'no', reason: 'The water is cold.'}).ok, 'it votes with the vote tool, at its own pace');
+p1 = stepUntil(() => !S.table, 20);
 let PP = C.propById(pid);
-ok(PP && PP.status !== 'open' && Object.keys(PP.votes).length === 5 && PP.votes[RB.id].by === 'reflex' && PP.votes[RA.id].by === 'agent', `the table voted (${PP && PP.result}); the silent agent's vote fell to reflex`);
+ok(PP && PP.status !== 'open' && Object.keys(PP.votes).length === 5 && PP.votes[RB.id].by === 'agent' && PP.votes[RB.id].v === 'no' && PP.votes[RA.id].by === 'agent' && Rrest.every(x => PP.votes[x.id].by === 'reflex'), `the table voted (${PP && PP.result}); reflex only for members with no runner`);
 ok(S.fellowship.log.some(e => e.kind === 'council' && /settles it/.test(e.parts.map(p => typeof p === 'string' ? p : '').join(''))), 'the leader settles it in the campaign log');
-T.TABLE.speed = 3;
+// outside a scene (Watch mode): the vote holds past PROP_MIN for a live agent while the world runs on
+T.TABLE.mode = 'off';
 pr = act(RA, 'propose', {kind: 'split', details: 'Each of us hunts alone until dusk'});
 const pid2 = Number(String(pr.proposal).match(/#(\d+)/)[1]);
-ok(pr.ok && !S.table && Object.keys(C.propById(pid2).votes).length === 4, 'at 3x the scripted members vote at once; the agents have until the timeout');
-let g2 = S.gameMin; while (C.propById(pid2).status === 'open' && S.gameMin - g2 < 200) step(1 / 60);
+ok(pr.ok && !S.table && Object.keys(C.propById(pid2).votes).length === 4 && !C.propById(pid2).votes[RB.id], 'outside a scene the members with no runner vote at once by reflex; the agent\'s vote is waited for');
+ok((RB.playEv || []).some(e => /waits for your vote/.test(e.text) && e.w === 3), 'the waiting agent is nudged at once (a must-answer event for its pacing)');
+let g2 = S.gameMin; while (C.propById(pid2).status === 'open' && S.gameMin - g2 < C.COUNCIL.PROP_MIN + 60) step(1 / 60);
+ok(C.propById(pid2).status === 'open' && S.gameMin - g2 >= C.COUNCIL.PROP_MIN + 59 && (RB.playEv || []).some(e => /still waits for you/.test(e.text)), `past PROP_MIN the vote still waits for a live agent, with a notice (the world ran on ${Math.round(S.gameMin - g2)} game minutes)`);
+while (C.propById(pid2).status === 'open' && S.gameMin - g2 < C.COUNCIL.PROP_MIN + C.COUNCIL.HOLD_MIN + 30) step(1 / 60);
 PP = C.propById(pid2);
-ok(PP.status === 'failed' && /time ran out/.test(PP.result), `a silent agent never holds a vote open: ${PP.result}`);
+ok(PP.status !== 'open' && /waited for/.test(PP.result) && PP.votes[RB.id].by === 'reflex', `after HOLD_MIN more it settles by reflex: ${PP.result}`);
+link(RB, 'none'); unasked.add(RB.id);
 pr = act(RA, 'propose', {kind: 'other', details: 'Buy rope in town'});
 const pid3 = Number(String(pr.proposal).match(/#(\d+)/)[1]);
-const v = act(RB, 'vote', {proposal_id: pid3, vote: 'no', reason: 'We have rope.'});
-PP = C.propById(pid3);
+g2 = S.gameMin; while (S.gameMin - g2 < C.COUNCIL.PROP_MIN + C.COUNCIL.HOLD_MIN + 30) step(1 / 60);
+ok(C.propById(pid3).status === 'open' && SIM.decisionsWaiting().some(d => d.a === RB && /vote/.test(d.what)), 'a runner gone and the owner not asked: the vote holds (and names the member for the alert)');
+unasked.delete(RB.id); step(1 / 60); PP = C.propById(pid3);
+ok(PP.status !== 'open' && PP.votes[RB.id].by === 'reflex', `the owner resumes: its reflexes vote at once (${PP.result})`);
+link(RB, 'waiting');
+pr = act(RA, 'propose', {kind: 'other', details: 'Mend the nets'});
+const pid4 = Number(String(pr.proposal).match(/#(\d+)/)[1]);
+const v = act(RB, 'vote', {proposal_id: pid4, vote: 'no', reason: 'We have rope.'});
+PP = C.propById(pid4);
 ok(v.ok && PP.status !== 'open' && /everyone voted/.test(PP.result), `all votes in settles it at once: ${PP.result}`);
-ok(!act(rest[0].player ? rest[0] : RB, 'vote', {proposal_id: pid3, vote: 'yes'}).ok, 'a settled proposal takes no more votes');
+ok(!act(RB, 'vote', {proposal_id: pid4, vote: 'yes'}).ok, 'a settled proposal takes no more votes');
 ok(act(RA, 'party_say', {text: 'Rope it is, then.'}).ok && Rrest.every(x => (x.chat || []).some(e => e.party && e.text === 'Rope it is, then.')), 'party_say reaches every member');
 ok(act(RB, 'party_read', {n: 5}).lines.some(l => /Rope it is/.test(l)), 'party_read shows it');
+// at 3x with Table on, a proposal drops the world to 1x and becomes a decision scene
+T.TABLE.mode = 'auto'; T.TABLE.speed = 3; T.TABLE.drop = null;
+pr = act(RA, 'propose', {kind: 'other', details: 'Sing on the road'});
+ok(pr.ok && S.table && S.table.kind === 'decision' && S.table.pause && T.TABLE.drop, 'at 3x a proposal asks the host for 1x and opens a decision scene (never auto-resolved)');
+{const pid5 = Number(String(pr.proposal).match(/#(\d+)/)[1]); T.TABLE.speed = 1; T.TABLE.drop = null; act(RB, 'vote', {proposal_id: pid5, vote: 'yes'});
+ stepUntil(() => C.propById(pid5).status !== 'open', 20); PP = C.propById(pid5);
+ ok(PP.status !== 'open' && PP.votes[RB.id].by === 'agent', `and resolves once the agents have voted (${PP.result})`);
+ for (let k = 0; k < 600 && S.table; k++) {for (const x of [RA, RB]) if (S.table && !S.table.acts[x.id] && S.table.ids.includes(x.id)) {const o = act(x, 'status').table; if (o && o.options) act(x, 'scene_act', {option: o.options[0].split(' = ')[0]})} step(1 / 60)}} // let any scene that followed end
 
 // ---- 4. lead_to ----
 T.TABLE.mode = 'off'; T.TABLE.speed = 1;
@@ -250,12 +315,12 @@ ok(((RA.bonds || {})[RB.id] || 0) === Math.max(-10, bond0 - C.COUNCIL.BOND_COST)
 act(RB, 'join_party', {hero_id: RA.id});
 
 // ---- 5. the Crypt: all together or not at all ----
-T.TABLE.mode = 'auto'; T.TABLE.speed = 3;
+T.TABLE.mode = 'off'; T.TABLE.speed = 1; // outside Table mode: the Crypt call is a proposal the agents answer with vote
 const reset = () => {if (CRYPT.group) for (const a of CRYPT.group.mem) {a.state = 'hunt'; a.hidden = false} CRYPT.group = null; CRYPT.cd = 0};
 // everyone of the faction safe in town (in the Crypt pool, and nothing attacks them there)
 const field = () => {for (const a of S.agents) if (a.fac === 0 && a.state !== 'dead') {const c = homeOf(a); a.lvl = a.fellow ? 8 : 6; a.state = 'town'; a.townStep = 2; a.wait = 9; a.x = c.gate.x; a.y = c.gate.y - 1; a.target = null; a.pq = []; a.hidden = false; a.raid = false; a.hp = maxHp(a)}};
-F_.setMinds('relay');
-ok(RM.every(x => !x.player), 'Minds back to relay: every member scripted again');
+for (const x of RM) link(x, 'none');
+ok(RM.every(x => x.player && SIM.reflexMay(x)), 'no runner holds any member: their reflexes play them and vote (#148)');
 field(); const others = S.agents.filter(a => a.fac === 0 && !a.fellow && a.state !== 'dead').slice(0, 2); for (const a of others) a.lvl = 8;
 let formed = null; for (let k = 0; k < 400 && !formed; k++) {reset(); field(); for (const a of others) a.lvl = 8; S.dmLogSeq = S.dmLogSeq; step(1 / 60); const g = CRYPT.group; if (g && g.fac === 0) formed = g.mem.slice();}
 ok(formed && F_.fellows().every(a => formed.includes(a)), `a Crypt call drafts the whole Fellowship together (${formed && formed.map(a => a.name + (a.fellow ? '*' : '')).join(', ')})`);
@@ -264,7 +329,7 @@ let split = false; for (let k = 0; k < 400; k++) {reset(); field(); for (const a
 ok(!split, 'with one member unable to go, none of them is drafted');
 ok(S.fellowship.log.some(e => e.kind === 'council' && /not all of/.test(e.parts.map(p => typeof p === 'string' ? p : '').join(''))), 'the log says they stayed together');
 // an agent party is asked, not drafted
-F_.setMinds('agent'); reset(); field(); for (const a of others) a.lvl = 8; S.fellowship.cool = {};
+for (const x of RM) link(x, 'waiting'); reset(); field(); for (const a of others) a.lvl = 8; S.fellowship.cool = {};
 let prop = null; for (let k = 0; k < 400 && !prop; k++) {reset(); field(); for (const a of others) a.lvl = 8; step(1 / 60); prop = C.openProps().find(q => q.kind === 'crypt'); if (CRYPT.group && CRYPT.group.mem.some(a => a.fellow)) break}
 ok(prop && !(CRYPT.group && CRYPT.group.mem.some(a => a.fellow)), `an agent-played Fellowship gets a proposal instead of a draft: "${prop && prop.details}"`);
 reset(); field();
@@ -275,7 +340,7 @@ ok(F_.fellows().every(a => a.state === 'dungeon'), 'agent members stay in the Cr
 
 // ---- 5c. priority (#135): a gathering group steps aside; a group inside means we go next, the cooldown waived ----
 {const D = await import('../src/sim/dungeon.js');
- reset(); field(); F_.setMinds('relay'); S.fellowship.cool = {}; S.fellowship.wait = {};
+ reset(); field(); for (const x of RM) link(x, 'none'); S.fellowship.cool = {}; S.fellowship.wait = {};
  const bg = S.agents.filter(a => a.fac === 0 && !a.fellow && a.state !== 'dead').slice(0, 4); for (const a of bg) a.lvl = 8;
  const voteCrypt = () => {const q = C.propose(C.leaderOfF(), 'crypt', 'Down we go.', {vote: 'yes'}); for (const a of F_.fellows()) if (q.status === 'open' && !q.votes[a.id]) C.castVote(a, q.id, 'yes', '', 'agent'); return q};
  D.musterCrypt(bg, 0, null, 'Hollow Cleavers'); const before = CRYPT.group;

@@ -51,6 +51,7 @@ import {dmDepart,advLine,K as DMK} from './dm.js';
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard} from './persona.js'; // Fellowship (#68)
 import {ev} from './notify.js';
+import {reflexMay} from './runlink.js';
 import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead} from './council.js';
@@ -114,6 +115,7 @@ export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
     ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');return true}
+  if(a.fellow&&a.state!=='dead')return false; // the Fellowship is always agent-played (#148): a member is handed back only by leaving
   a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);return true}
 export const isPlayer=a=>!!(a&&a.player);
 
@@ -122,6 +124,10 @@ export const isPlayer=a=>!!(a&&a.player);
 // ghosts, a consented crypt or raid, following a party leader, and the DM-led legs of an adventure).
 export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   watch(a);
+  // A Fellowship member whose runner is gone, once the owner said go on (or with no host at all: the headless sim,
+  // play-headless before a runner claims it): its reflexes play it whole, the scripted rules, until a runner holds
+  // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
+  if(a.fellow&&reflexMay(a)){a.playIdle=false;a.playDoing='reflexes (no runner)';return false}
   // Drafts the agent did not ask for: a crypt group or a raid muster. Step back out.
   if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a call to '+CRYPT.name+' (you go only where you choose).')}
   if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a raid muster on Kragmaw.')}

@@ -4,7 +4,7 @@ description: #111 rules for a fresh world - default Fellowship at level 1, backg
 metadata:
   type: project
 ---
-A fresh world (init(), never restore) runs `opening()` in src/sim/opening.js (2026-11-01, #111): the default Fellowship (faction rolled per seed, autoPick of the level-1 roster, found({ai:false}), F.minds='off') stays level 1 in its hall; every other hero is seeded by `season()` with `seedLevel` from heroes.js to a START_BANDS level (30% 1-3, 36% 4-7, 24% 8-11, 10% 12-15), stratified per faction, hunting in zoneFor(level, home gate), with gear, gold, kills and a history line.
+A fresh world (init(), never restore) runs `opening()` in src/sim/opening.js (2026-11-01, #111): the default Fellowship (faction rolled per seed, autoPick of the level-1 roster, found({ai:false}), every member agent-played since #148) stays level 1 in its hall; every other hero is seeded by `season()` with `seedLevel` from heroes.js to a START_BANDS level (30% 1-3, 36% 4-7, 24% 8-11, 10% 12-15), stratified per faction, hunting in zoneFor(level, home gate), with gear, gold, kills and a history line.
 
 **Why:** owner wants the Fellowship to be the story from minute one, in a world that already has veterans.
 

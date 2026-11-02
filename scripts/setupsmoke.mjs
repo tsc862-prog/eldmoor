@@ -95,7 +95,9 @@ if(mode==='a'){
   ok(JSON.stringify(opts('cls:tank'))==='["Warrior"]'&&JSON.stringify(opts('cls:healer'))==='["Priest"]','tank/healer classes fixed');
   ok(opts('cls:dps1').join()==='Mage,Hunter,Rogue','DPS classes: '+opts('cls:dps1'));
   ok(/Relay/.test(text(ids.get('setup'))),'relay line');
-  click(ids.get('setup'),b=>/All agents/.test(b.textContent));
+  ok(!all(ids.get('setup'),'button').some(b=>/All scripted/.test(b.textContent)),'no All scripted preset (#148: the Fellowship is always agent-played)');
+  ok(all(ids.get('setup'),'.scard').every(c=>!all(c,'button').some(b=>b.dataset.a==='mode')),'no Scripted / AI buttons on a member card, only its model');
+  click(ids.get('setup'),b=>/DM on Sonnet/.test(b.textContent));
   let r2=ids.get('setup');
   ok(all(r2,'.scard').every(c=>/Agent/.test(c.textContent)),'All agents preset: every card Agent');
   ok(/Fellowship runner/.test(text(r2))&&/DM runner/.test(text(r2)),'plan: one Fellowship runner + DM runner: '+text(r2).match(/On Start:[^.]*\./));

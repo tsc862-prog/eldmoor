@@ -2,8 +2,10 @@
 // When the Fellowship reaches a moment that matters, the game becomes a table: at 1x the world
 // clock stops (sim/index.js step() runs only this scene), the DM frames the scene, the members act
 // in initiative order (Reflex score, highest first) and the DM narrates the outcome; then the world
-// runs on. At 3x and 8x nothing pauses: the scene resolves at once and is summarised in a line or
-// two. Mode 'off' (Watch mode) never opens a scene. Only the Fellowship ever pauses the world.
+// runs on. At 3x and 8x a scene whose members' agents decide asks the host to drop the world to 1x
+// (TABLE.drop, #148) and pauses; only a scene where every member acts by reflex (no runner, and the
+// owner said go on) resolves at once and is summarised in a line or two. Mode 'off' (Watch mode)
+// never opens a scene. Only the Fellowship ever pauses the world.
 //
 // Triggers (tableTick, once per step after the council):
 //   site / room  the Fellowship's Crypt group goes in, and reaches the inner chamber
@@ -14,10 +16,13 @@
 //   check        a DM check on one of the Fellowship's adventures (social, trap, lore, travel)
 //   choice       a choice scene on their adventure (sim/player-choice.js asks through setFellowChoice)
 //   decision     a council proposal that needs everyone (sim/council.js setProposeHook)
-// Turns: a scripted member acts at once by reflex; an agent-played member gets an urgent event and
-// TABLE.turnMs of real time to answer with scene_act (it may also answer early, before its turn);
-// a silent agent gets its reflex. A scene can never hang: every wait is bounded in real seconds
-// and the scene ends if the Fellowship, the foe or the adventure goes away.
+// Turns (#148: the Fellowship is always agent-played, and every choice is its agent's): a member whose
+// runner holds it (link connected or waiting, sim/runlink.js) gets a must-answer event and the table
+// waits for its scene_act (it may also answer early, before its turn), nudged again after TABLE.turnMs,
+// for up to TABLE.liveMs of real time, then its reflex acts with a notice. A member whose runner is gone
+// holds the table until the owner answers the page's runner-stop alert (Restart, or Resume: reflexes
+// then act at once); with no host (headless sim, checks) a member without a runner acts by reflex at
+// once. The scene ends if the Fellowship, the foe or the adventure goes away.
 // Scene state is plain data on S.table (ids only), so a save taken mid-scene resumes it.
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
@@ -34,13 +39,17 @@ import {sayOk,setSpeedSource} from './throttle.js';
 import {score} from './abilities.js';
 import {bestUse,useItem} from './inv.js'; // a potion in a scene (scene_act option potion)
 import {fellows,fellowParty,campaign} from './fellowship.js';
-import {setProposeHook,castVote,resolveProp,reflexVote,propById,leaderOfF} from './council.js';
+import {setProposeHook,castVote,resolveProp,reflexVote,propById,leaderOfF,openProps,waitingVoters} from './council.js';
 import {setFellowChoice} from './player-choice.js';
+import {reflexMay,ownerHeld} from './runlink.js';
 
 export const TABLE={
   mode:'auto',     // 'auto' (the trigger rules) or 'off' (Watch mode: never a scene); the View group switch
   speed:1,         // the world speed the host runs at (main.js / play-headless set it); above 1 nothing pauses
-  turnMs:7000,     // real milliseconds an agent-played member has for its turn (owner: 6-8 s)
+  turnMs:7000,     // real milliseconds into a member's turn before its agent is nudged again (#148: the table waits)
+  liveMs:120000,   // real milliseconds the table waits for a live agent's turn before its reflex acts, with a notice (#148)
+  dropS:5,         // world seconds a scene waits for the host to drop 3x/8x to 1x before it resolves at once anyway
+  drop:null,       // {reason}: a Fellowship decision asks the host (page or play-headless) for 1x; the host clears it
   frameS:1.6,      // real seconds the DM's framing stays on the banner before the first turn
   outcomeS:1.8,    // real seconds the outcome stays before the world runs on
   RESCUE:.25,      // a member below this share of max HP in a fight is a rescue moment
@@ -70,6 +79,11 @@ let seed=0x1f2e3d4c;const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7ffff
 export const tableOn=()=>!!S.fellowship&&TABLE.mode!=='off';
 setSpeedSource(()=>TABLE.speed);
 export const canPause=()=>tableOn()&&TABLE.speed<=1;
+// #148: do these members' agents (or the owner, for an absent runner) have the say? Then the moment waits.
+export const agentsDecide=L=>L.some(a=>a&&a.player&&a.state!=='dead'&&!reflexMay(a));
+// Ask the host to drop to 1x at a Fellowship decision (3x/8x never auto-resolve the agents' choices).
+export function requestDrop(reason){if(TABLE.speed>1)TABLE.drop={reason:clean(reason,80)}}
+const holdOk=L=>tableOn()&&(TABLE.speed<=1||agentsDecide(L));
 export const scene=()=>S.table||null;
 export const inScene=a=>!!(S.table&&a&&S.table.ids.includes(a.id));
 
@@ -109,10 +123,11 @@ export function reflexFor(sc,a){if(EXTRA[sc.kind])return EXTRA[sc.kind].reflex(s
 function initiative(L){const rf=a=>score(a,'reflex')||10;return L.slice().sort((x,y)=>rf(y)-rf(x)||x.id-y.id)}
 function open(kind,title,frame,ctx={}){const F=S.fellowship;if(!F||S.table)return null;const L=fellows().filter(a=>!(kind==='site'||kind==='room')||(CRYPT.group&&CRYPT.group.mem.includes(a)));
   if(!L.length)return null;
-  const sc={id:F.tableSeq=(F.tableSeq||0)+1,kind,title:clean(title,80),frame,ids:initiative(L).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:canPause(),at:Math.round(S.gameMin)};
+  const sc={id:F.tableSeq=(F.tableSeq||0)+1,kind,title:clean(title,80),frame,ids:initiative(L).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin)};
+  if(sc.pause)requestDrop(sc.title);
   S.table=sc;F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
   const order=sc.ids.map(byId).filter(Boolean).map(a=>a.name).join(', ');
-  for(const a of L)if(a.player)notify(a,'TABLE ('+kind+'): '+plain(frame)+' Initiative: '+order+'. Your options: '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. Answer with scene_act(option, line) now or on your turn ('+Math.round(TABLE.turnMs/1000)+' s).',3);
+  for(const a of L)if(a.player)notify(a,'TABLE ('+kind+'): '+plain(frame)+' Initiative: '+order+'. Your options: '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. Answer with scene_act(option, line) now or on your turn; the table waits for you.',3);
   if(!sc.pause){finishAll(sc);return sc}
   return sc}
 
@@ -132,7 +147,7 @@ function take(sc,a,act){const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,
   sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null});
   if(staged(sc))STG.onBeat(sc,sc.beats[sc.beats.length-1]);
   if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
-  else if(!a.player)voice(sc,a,act.k);
+  else if(reflexMay(a))voice(sc,a,act.k); // a member whose runner is gone acts (and speaks) by reflex (#148)
   remember(a,'table',sc.title+': I chose to '+o.text.charAt(0).toLowerCase()+o.text.slice(1)+(res?' ('+res+')':'')+'.')}
 const LINES={strike:['Now, while it turns!','Hit it together.','Mine. Leave this one to me.'],guard:['Here! Look at me!','On me. Get behind.','Come on, then.'],
   heal:['Hold still. Breathe.','Not yet. Not today.','Stay with us.'],retreat:['Back! Fall back!','Not like this. Go.','I am done in. Pull back.'],
@@ -165,16 +180,21 @@ function apply(sc,a,act){if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act)
   case 'a':case 'b':case 'yes':case 'no':if(sc.kind==='decision')castVote(a,sc.ctx.prop,k,act.line||'',act.by);return null;
   default:return null}}
 
-function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;if(!a||!a.player||sc.acts[a.id])return;
-  notify(a,'YOUR TURN at the table ('+sc.title+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line) within '+Math.round(TABLE.turnMs/1000)+' s.',3)}
+function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;sc.nudge=0;if(!a||!a.player||sc.acts[a.id])return;
+  notify(a,'YOUR TURN at the table ('+sc.title+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line); the table waits for you.',3)}
 // Advance the turn pointer as far as it can go this step. Returns true while an agent is thinking.
 function runTurns(sc,dt,instant){
   for(;;){if(sc.calls&&callWait(sc,dt,instant))return true;
     if(sc.i>=sc.ids.length)break;const a=byId(sc.ids[sc.i]);
     if(!living(a)||(COMBAT[sc.kind]&&!foeOf(sc))){sc.i++;startTurn(sc);continue}
     let act=sc.acts[a.id];
-    if(!act&&a.player&&!instant){sc.t+=dt;if(sc.t*1000<TABLE.turnMs)return true;act=null}
-    if(!act){const k=reflexFor(sc,a);act=sc.acts[a.id]={k,line:'',by:'reflex'};if(a.player)notify(a,'Your turn passed; your reflexes chose: '+k+'.',false)}
+    if(!act&&sc.kind==='decision'){const P=propById(sc.ctx.prop),v=P&&P.votes[a.id];if(v&&v.by!=='reflex')act=sc.acts[a.id]={k:v.v,line:v.reason||'',by:'agent'}} // voted with the vote tool meanwhile
+    // #148: the table waits for the member's agent; a runner that is gone waits for the owner (the page's alert)
+    if(!act&&a.player&&!instant&&!reflexMay(a)){if(ownerHeld(a))return true;
+      sc.t+=dt;if(!sc.nudge&&sc.t*1000>=TABLE.turnMs){sc.nudge=1;notify(a,'Still your turn at the table ('+sc.title+'): the party waits for you. scene_act(option, line).',3)}
+      if(sc.t*1000<TABLE.liveMs)return true;sc.late=(sc.late||0)+1}
+    if(!act){const k=reflexFor(sc,a),late=a.player&&!reflexMay(a);act=sc.acts[a.id]={k,line:'',by:'reflex'};
+      if(a.player)notify(a,late?'The table waited '+Math.round(TABLE.liveMs/1000)+' s for you; your reflexes chose: '+k+'.':'Your turn passed; your reflexes chose: '+k+'.',false)}
     take(sc,a,act);sc.i++;if(sc.i<sc.ids.length)startTurn(sc);dt=0}
   return false}
 // A staged scene's DM calls, oldest first: the DM agent's answer, or a wait of up to TABLE.dmMs at 1x, or
@@ -209,7 +229,12 @@ function finishAll(sc){frameCalls(sc);runTurns(sc,0,true);outcome(sc);S.table=nu
 export function tableHold(dt){const sc=S.table;if(!sc)return false;
   if(!S.fellowship||!fellows().length){S.table=null;return false}
   if(!sc.pause)return false;
-  if(!canPause()){finishAll(sc);return false} // sped up or switched to Watch mode mid-scene: resolve now
+  if(!tableOn()){finishAll(sc);return false} // switched to Watch mode mid-scene: resolve now
+  // sped up mid-scene (or opened at 3x/8x): while the members' agents decide, ask the host for 1x and hold; a host that
+  // does not answer within TABLE.dropS world seconds, or a table where only reflexes act, resolves at once (#148)
+  if(TABLE.speed>1){if(sc.phase!=='outcome'&&agentsDecide(sc.ids.map(byId))){requestDrop(sc.title);sc.dropT=(sc.dropT||0)+dt;if(sc.dropT<TABLE.dropS)return true}
+    finishAll(sc);return false}
+  sc.dropT=0;
   if(sc.kind==='decision'&&!propById(sc.ctx.prop)){S.table=null;return false}
   if(sc.phase==='frame'){sc.t+=dt;if(sc.t<TABLE.frameS)return true;sc.phase='turn';sc.i=0;frameCalls(sc);startTurn(sc);dt=0}
   if(sc.phase==='turn'){if(runTurns(sc,dt,false))return true;outcome(sc);return true}
@@ -246,12 +271,13 @@ export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks 
 
 // ---- the hooks ----
 // A new council proposal: a decision scene when the world can pause; else the votes run async.
-setProposeHook(P=>{if(!canPause()||S.table)return false;const by=byId(P.by);
+setProposeHook(P=>{const L=fellows();if(agentsDecide(L))requestDrop('a vote: '+P.details); // #148: 3x/8x drop to 1x at a decision
+  if(!holdOk(L)||S.table)return false;const by=byId(P.by);
   const sc=open('decision','Put to the party: '+P.details,[by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id});
   if(sc)for(const id in P.votes)if(sc.ids.includes(+id))sc.acts[id]={k:P.votes[id].v,line:P.votes[id].reason||'',by:P.votes[id].by==='reflex'?'reflex':'agent'}; // a vote already cast counts as that member's turn
   return !!sc});
 // A choice scene on a Fellowship adventure: the whole table chooses (undefined: the usual path).
-setFellowChoice((adv,sc,a,spec)=>{if(!canPause())return undefined;
+setFellowChoice((adv,sc,a,spec)=>{if(!holdOk(fellows()))return undefined;
   const tp=adv.tablePick;if(tp&&tp.k===adv.idx){adv.tablePick=null;return tp.br}
   if(S.table){if(S.table.kind==='choice'&&S.table.ctx.adv===adv.id){adv.stage='choose';return 'wait'}return undefined}
   const d=adv.data||{},fill=s=>String(s||'').replace(/\{(\w+)\}/g,(m,k)=>{const v=d[k]!=null?d[k]:d[k.toLowerCase()];return typeof v==='string'?v:k==='who'?a.name:'the '+k.toLowerCase()});
@@ -265,17 +291,24 @@ export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))ret
   const v={scene:sc.title,kind:sc.kind,frame:plain(sc.frame),phase:sc.phase,order:sc.ids.map(byId).filter(Boolean).map(b=>b.name),
     turn:sc.phase==='turn'&&cur?cur.name:null,your_turn:sc.phase==='turn'&&cur===a,acted:!!sc.acts[a.id]};
   if(!sc.acts[a.id]&&sc.phase!=='outcome')v.options=optionsFor(sc,a).map(o=>o.k+' = '+o.text);
-  if(v.your_turn)v.seconds_left=Math.max(0,Math.round((TABLE.turnMs/1000-sc.t)*10)/10);
+  if(v.your_turn)v.waiting_for_you=true; // #148: the table waits for your scene_act (a reflex only after a long wait)
   if(sc.beats.length)v.so_far=sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':''));
   if(sc.narr)v.narrator=sc.narr.text; // the DM's narrate line at this table (issue #123)
   if(sc.summary)v.outcome=sc.summary;return v}
+// The Fellowship's decisions that wait on a member's agent right now (#148), for the page's runner-stop alert:
+// [{a, what}] for the member whose turn holds the table and every member an open vote or an adventure choice waits for.
+export function decisionsWaiting(){const out=[],seen=new Set(),add=(a,what)=>{if(a&&!seen.has(a.id)&&a.player&&!reflexMay(a)){seen.add(a.id);out.push({a,what})}};
+  const sc=S.table;if(sc&&sc.pause&&sc.phase==='turn'){const cur=byId(sc.ids[sc.i]);if(cur&&!sc.acts[cur.id])add(cur,'a turn at the table ('+sc.title+')')}
+  for(const P of openProps())for(const b of waitingVoters(P))add(b,'a vote ('+P.details+')');
+  for(const v of S.adventures||[]){if(v.phase!=='active'||!v.pick||v.pick.chosen||v.stage!=='choose')continue;const ld=byId(v.lead);if(ld&&ld.fellow)add(ld,'a choice on '+(v.title||'an adventure'))}
+  return out}
 // What the banner shows (src/ui/table.js).
 export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc.ids[sc.i]),last=sc.beats[sc.beats.length-1];
   let who=null,line;
   const pc=sc.calls&&sc.phase==='turn'?sc.calls.find(c=>!c.done):null;
   if(sc.phase==='frame')line='The DM is setting the scene…';
   else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'?'giving them a voice':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.max(0,Math.ceil(TABLE.dmMs/1000-pc.t))+' s)';
-  else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]?cur.name+' is thinking… ('+Math.max(0,Math.ceil(TABLE.turnMs/1000-sc.t))+' s)':cur.name+' acts'}
+  else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]&&!reflexMay(cur)?(ownerHeld(cur)?cur.name+' has no runner: the table waits for you (Restart runner, or Resume without it)':cur.name+' is thinking…'+(sc.t*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-sc.t))+' s before reflexes)':'')):cur.name+' acts'}
   else line=sc.summary||'';
   return {title:sc.title,kind:sc.kind,frame:sc.frame,line,who,last:last?last.name+': '+last.text+(last.res?' ('+last.res+')':''):null,
     order:sc.ids.map(byId).filter(Boolean),turn:sc.phase==='turn'?sc.i:-1,phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null,

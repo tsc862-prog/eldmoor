@@ -69,7 +69,8 @@ const r0 = F_.found(F_.autoPick(0), {fac: 0, ai: false});
 ok(r0.ok && F_.fellows().length === 5, `founded ${S.fellowship && S.fellowship.name} (5 members)`);
 F_.setMinds('agent'); S.brainOn = true;
 const M = F_.fellowshipMembers().map(m => m.hero), [A, B, Cm, Dm, E] = M;
-T.TABLE.mode = 'off'; T.TABLE.turnMs = 600; T.TABLE.frameS = .2; T.TABLE.outcomeS = .2; T.TABLE.speed = 1;
+T.TABLE.mode = 'off'; T.TABLE.turnMs = 300; T.TABLE.liveMs = 600; T.TABLE.frameS = .2; T.TABLE.outcomeS = .2; T.TABLE.speed = 1;
+C.COUNCIL.HOLD_MIN = 0; // #148: a live agent's turn and vote wait (TABLE.liveMs, COUNCIL.HOLD_MIN); short here, so silent agents fall to reflex
 // A and B out in the field, C and D idle in town, E in the field hurt later
 const city = homeOf(A), mid = {x: (city.x0 + city.x1) / 2 + .5, y: (city.y0 + city.y1) / 2 + .5};
 const zone = zoneFor(8, city.gate), spot = zonePoint(zone, null, city.gate);
@@ -90,7 +91,10 @@ pump(); // baseline
 // ---- 2. mock runners: turn lines with known faults ----
 const cA = await post('/play/claim', {hero: A.id, runner: 'mock-A', provider: 'ollama', model: 'qwen2.5:14b'});
 const cB = await post('/play/claim', {hero: B.id, runner: 'mock-B', provider: 'ollama', model: 'llama3.1:8b'});
-ok(cA.status === 200 && cB.status === 200, 'two mock runners claimed A and B');
+// C and D are held by silent runners too (#148: a member with no runner plays by reflex, the scripted rules; a held
+// one only autopilots, so these two sit in town)
+const cC = await post('/play/claim', {hero: Cm.id, runner: 'mock-C', provider: 'anthropic', model: 'claude-haiku-5-5'}), cD = await post('/play/claim', {hero: Dm.id, runner: 'mock-D', provider: 'anthropic', model: 'claude-haiku-5-5'});
+ok(cA.status === 200 && cB.status === 200 && cC.status === 200 && cD.status === 200, 'four mock runners claimed A, B, C and D');
 const KEY = 'sk-ant-api03-' + 'Zx9'.repeat(12);
 const turn = (hero, runner, rec) => reportTurn(base, {hero, runner, ...rec});
 const brief = h => ({state: h.state, hp: '100%', level: h.lvl, place: ZONES[zoneAt(h.x, h.y)], foe: null, news: []});
