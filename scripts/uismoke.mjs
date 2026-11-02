@@ -372,8 +372,8 @@ console.log('start gate: ready, not just claimed');
   gate.startAnyway();
   ok(!ctl.held&&box.hidden,'Start anyway releases the world');
   R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
-  L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+30000);
-  L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+31000);
+  L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+40000);
+  L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+41000);
   ok(ctl.held&&box.textContent.includes(down.name),'a runner that went away and came back must warm up again');
   R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
   gate.setGateProbe(null)}
