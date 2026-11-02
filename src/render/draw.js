@@ -12,8 +12,8 @@
 //   A wheel, drag or minimap click in follow mode drops to the free camera at the
 //   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
-import {W,H,T} from '../world/tiles.js';
-import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS} from '../world/map.js';
+import {W,H,T,LAVA} from '../world/tiles.js';
+import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
@@ -27,7 +27,7 @@ import {drawCamp,drawCampLight} from './camp.js';
 import {drawMemorials} from './memorials.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
-import {TEXT,MARK} from './palette.js';
+import {TEXT,MARK,LIGHT} from './palette.js';
 import {CITY} from '../world/map.js';
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
@@ -70,6 +70,18 @@ export function centerOn(wx,wy){const z=currentZoom();freeCam(z<ZOOMS[1]?2.6:z);
 export function screenToWorld(clientX,clientY){const r=cvRef.getBoundingClientRect();
   return {x:((clientX-r.left)*cam.dpr-cam.offX)/cam.sc/T,y:((clientY-r.top)*cam.dpr-cam.offY)/cam.sc/T}}
 
+// Lava light for the night pass: one pixel per tile, each tile's share of lava in a 5x5 window,
+// scaled up with smoothing so whole lava fields glow softly. Built once (two variants: with and
+// without Kragmaw's ring, which cools while the wyrm is dead). Any world size, any number of fields.
+const glowC={};
+function lavaGlow(cooled){const k=cooled?1:0;if(glowC[k])return glowC[k];
+  const lair=LANDMARKS.find(l=>l.kind==='lair'),c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),img=x.createImageData(W,H),d=img.data;
+  const lava=(tx,ty)=>tx>=0&&ty>=0&&tx<W&&ty<H&&tiles[I(tx,ty)]===LAVA&&!(cooled&&lair&&Math.hypot(tx+.5-lair.x,ty+.5-lair.y)<=lair.r+1)?1:0;
+  const C=LIGHT.lava;
+  for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){let n=0;for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++)n+=lava(tx+i,ty+j)*(i||j?1:3);
+    if(!n)continue;const o=(ty*W+tx)*4;d[o]=C[0];d[o+1]=C[1];d[o+2]=C[2];d[o+3]=Math.min(255,n*16)}
+  x.putImageData(img,0,0);return glowC[k]=c}
+
 export function createRenderer(cv,screenEl){
   const ctx=cv.getContext('2d');cvRef=cv;
   const miniEl=document.getElementById('minimap');
@@ -91,6 +103,8 @@ export function createRenderer(cv,screenEl){
       const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12;let hit=false;
       for(let k=0;k<BOX.length;k+=4)if(BOX[k]<x1&&BOX[k+2]>x0&&BOX[k+1]<y1&&BOX[k+3]>y0){hit=true;break}
       if(hit)continue;BOX.push(x0,y0,x1,y1);drawText(L.t,L.x,L.y,L.col,L.css)}}
+  // A radial light of colour c=[r,g,b] and strength a at world (x,y), radius r (lighter pass).
+  function glow(x,y,r,c,a){const g=ctx.createRadialGradient(x,y,0,x,y,r),k=c[0]+','+c[1]+','+c[2];g.addColorStop(0,'rgba('+k+','+a+')');g.addColorStop(1,'rgba('+k+',0)');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
   function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()}
 
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
@@ -153,16 +167,24 @@ export function createRenderer(cv,screenEl){
       if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=e.kind==='boss'?28:12;
         ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
     }
-    // effects
-    for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;const x=(p.x0+(p.x1-p.x0)*t)*T,y=(p.y0+(p.y1-p.y0)*t)*T;if(!inView(x,y,8))continue;ctx.fillStyle=p.col;ctx.fillRect(Math.round(x),Math.round(y),3,2)}
+    // effects: bolts leave a short fading trail; the boss's breath ring
+    for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;if(!inView(p.x0*T,p.y0*T,96))continue;ctx.fillStyle=p.col;
+        for(let k=2;k>=0;k--){const tk=Math.max(0,t-k*.12),x=(p.x0+(p.x1-p.x0)*tk)*T,y=(p.y0+(p.y1-p.y0)*tk)*T;ctx.globalAlpha=k?.25*(3-k):1;ctx.fillRect(Math.round(x),Math.round(y),k?2:3,2)}
+        ctx.globalAlpha=1}
       if(p.type==='ring'){if(!inView(p.x*T,p.y*T,96))continue;ctx.strokeStyle='rgba(255,140,40,'+p.life+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x*T,p.y*T,(1-p.life/.6)*72+8,0,7);ctx.stroke()}}
-    // night
-    const dk=darkness();if(dk>0){ctx.fillStyle='rgba(8,10,40,'+dk+')';ctx.fillRect(0,0,W*T,H*T);
+    // weather sits on the ground, so it goes under the night: fog no longer brightens midnight
+    drawWeather(ctx,S,cam,blink);
+    // night: a blue wash, then light added back (lighter): lava fields glow, torches flicker,
+    // crypt mouths breathe a faint green, the camp fire (camp.js)
+    const dk=darkness();if(dk>0){const N=LIGHT.night;ctx.fillStyle='rgba('+N[0]+','+N[1]+','+N[2]+','+dk+')';ctx.fillRect(0,0,W*T,H*T);
       ctx.globalCompositeOperation='lighter';
-      for(const L of LIGHTS){const r=L.big?92:28;if(!inView(L.x*T,L.y*T,r))continue;const g=ctx.createRadialGradient(L.x*T,L.y*T,0,L.x*T,L.y*T,r);g.addColorStop(0,'rgba(255,170,70,'+(dk*.7)+')');g.addColorStop(1,'rgba(255,170,70,0)');ctx.fillStyle=g;ctx.fillRect(L.x*T-r,L.y*T-r,r*2,r*2)}
+      const lg=lavaGlow(!S.boss.alive);ctx.globalAlpha=dk*.65;ctx.imageSmoothingEnabled=true;ctx.drawImage(lg,0,0,W,H,0,0,W*T,H*T);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1;
+      const now=performance.now()/1000;
+      for(const L of LIGHTS){const r=L.big?92:28;if(!inView(L.x*T,L.y*T,r))continue;const fl=L.big?1:.86+.14*Math.sin(now*7.3+L.x*3.1)*Math.sin(now*3.1+L.y);
+        glow(L.x*T,L.y*T,r*(L.big?1:.94+.06*fl),LIGHT.torch,dk*.7*fl)}
+      for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,40))glow(x,y,26,LIGHT.crypt,dk*(.35+.1*Math.sin(now*1.3)))}
       drawCampLight(ctx,S,dk,inView);
       ctx.globalCompositeOperation='source-over'}
-    drawWeather(ctx,S,cam,blink);
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
     // that would overlap a placed label is dropped, so a crowd shows its most important names.
     //   far (zoom < 2): regions (pale, larger), towns and landmarks (gold), Fellowship names.
