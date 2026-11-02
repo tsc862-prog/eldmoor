@@ -4,3 +4,4 @@
 - [Dynamic guilds](project_dynamic_guilds.md) — guilds founded by heroes, null-safe a.guild, numeric ids, save v2
 - [Stat model (#88)](project_stat_model.md) — six scores only, combatStats totals+breakdowns, item armor/damage/bonus/property, calibration method
 - [Class abilities (#81)](project_class_abilities.md) — data/moves.js + sim/moves.js resolver (sec and round modes), eff.js, balance tweaks, test gotchas
+- [Professions core](project_professions.md) — #254: a.profs (not a.prof), API in sim/professions.js, 9 ids, max 2

@@ -30,6 +30,7 @@ jobs:
       - {name: Pack and inventory, run: npm run invcheck}
       - {name: Bestiary, run: npm run bestiarycheck}
       - {name: Class abilities and specialisations, run: npm run movecheck}
+      - {name: Professions, run: npm run professioncheck}
       - {name: DM levers, run: npm run levercheck}
       - {name: New World setup, run: npm run setupcheck}
       - name: Headless sim (10 game-hours)
