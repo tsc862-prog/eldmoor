@@ -51,5 +51,4 @@ jobs:
           ok=$(gh api "repos/$REPO/commits/$head/check-runs?check_name=CI%20ok" --jq '.check_runs | sort_by(.completed_at) | last | .conclusion')
           if [ "$ok" != success ]; then echo "#$pr: CI ok is '$ok' on $head, waiting"; exit 0; fi
           gh pr merge "$pr" -R "$REPO" --merge
-          # a merge made with GITHUB_TOKEN starts no push workflow, so run CI on main explicitly
-          gh workflow run ci.yml -R "$REPO" --ref main || true
+          # no extra CI run on main after a merge: the PR's own run already tested it (saves Actions minutes)

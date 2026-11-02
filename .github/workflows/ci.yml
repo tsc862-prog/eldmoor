@@ -3,8 +3,16 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: ['docs/**', '.claude/**', '**/*.md']
   pull_request:
+    paths-ignore: ['docs/**', '.claude/**', '**/*.md']
   workflow_dispatch:
+
+# Actions minutes are billed on this private repo: a new push to a PR cancels its older run, and changes
+# that touch only docs, agent notes or Markdown run no CI at all.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Parallel groups: a run takes as long as its slowest group, not the sum. "CI ok" is the one check the
 # auto-merge workflow (automerge.yml) waits for. Add a new check as a step in a group; a new job must also
