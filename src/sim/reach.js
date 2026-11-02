@@ -6,7 +6,7 @@
 //   couriers     the one way to reach someone out of range: a paid courier hired at a town gate who takes game
 //                hours to arrive (D&D style: slow, costs gold, arrives as an in-game event and a chat line).
 // Plain data, saved with the world: F.plans [{id,where,at,atText,made,by,byName,who,whoNames,status}], F.post [{id,from,to,text,sent,due,cost}].
-import {S,clockStr} from './state.js';
+import {S,clockStr,dayNo} from './state.js';
 import {dist,zoneAt} from '../world/map.js';
 import {sightMul} from './weather.js';
 import {fellows,fellowParty,campaign,setWitness} from './fellowship.js';
@@ -99,7 +99,7 @@ export function reachTick(){const F=S.fellowship;if(!F)return;absence(F);
     for(const m of F.post){if(S.gameMin<m.due){keep.push(m);continue}
       const from=S.agents.find(x=>x.id===m.from),to=S.agents.find(x=>x.id===m.to);
       if(!living(to)){if(living(from))notify(from,'Your courier came back: '+m.toName+' has fallen. The message was not delivered.',true);continue}
-      const e={t:clockStr(),from,text:m.text,trigger:'courier',party:true,courier:true,heard:[to.name],far:[]};
+      const e={t:clockStr(),d:dayNo(),from,text:m.text,trigger:'courier',party:true,courier:true,heard:[to.name],far:[]};
       (to.chat||(to.chat=[])).push(e);if(to.chat.length>20)to.chat.shift();
       notify(to,'A courier finds you with word from '+m.fromName+' (sent '+stamp(m.sent)+'): "'+m.text+'"',true,2);
       remember(to,'courier',m.fromName+' sent word by courier: "'+m.text.slice(0,100)+'".');
