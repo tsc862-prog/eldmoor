@@ -76,6 +76,7 @@ jobs:
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Learn the world, run: npm run lorecheck}
       - {name: More turn triggers, run: npm run wakecheck}
+      - {name: Action log, run: npm run actcheck}
       - {name: Tiered memory, run: npm run tiercheck}
       - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
 

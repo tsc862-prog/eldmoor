@@ -41,6 +41,7 @@ export {log,onLog,gold,epic,fac} from './chronicle.js';
 export {onMarketTick} from './market.js';
 export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
+export {actionLog,fightSummary,fights} from './actlog.js'; // action log (recording only)
 export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
 export {enableBrain,disableBrain,brainStatus} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
