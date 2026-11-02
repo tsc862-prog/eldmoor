@@ -14,8 +14,12 @@
 //   tally(e)       bump S.dmFocus {acts, fellow, day:{d,acts,fellow}} for a countable entry
 //   share()        the share of DM actions that touched the Fellowship (null before any)
 //   pullTouches(name, p, z)  does a lever pull concern the Fellowship (for the reserved daily share)?
+//   hallHooks(town)  the open hooks on that board that concern the Fellowship (the hall's own first), raw; [] without one
+//   hallBoard()    the watcher's rows for the hall board's Fellowship jobs (who posted it included; never hero-facing)
+//   hallTitle(h)   a hook's title as the board shows it
 import {S} from './state.js';
-import {ZONES,CITY,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,zoneAt,dist} from '../world/map.js';
+import * as ADV from '../data/adventures.js'; // pure table: job names for the board titles
 
 export const FOCUS={
   RESERVE:.34,   // share of a lever's per-day limit (and of the staged scenes) kept for the Fellowship
@@ -80,3 +84,24 @@ export function pullTouches(name,p,z,f=focus()){if(!f)return false;p=p&&typeof p
 
 // The size of the share a limit keeps for the Fellowship: none for a limit of 1, else at least one.
 export const reserveOf=limit=>limit>=2?Math.max(1,Math.floor(limit*FOCUS.RESERVE)):0;
+
+// The hall board's jobs for the Fellowship (issues #326, #334). One selection for the agents' turn brief (sim/pace.js,
+// which names only what the posting says) and the watcher's Fellowship panel (which may say who posted it): an open
+// hook on that town's board that is for one of the five, the scripted DM's Fellowship job (ff), or tied to a region
+// they ride or work in; a job for someone outside the Fellowship never. The hall's own Fellowship jobs first, then by
+// age. Reads S only, no RNG.
+export function hallHooks(town,f=focus()){if(!f||!town)return [];
+  const mine=h=>h.ff||(h.for!=null&&f.ids.has(h.for))||(h.zone!=null&&f.zones.has(h.zone));
+  const L=(S.adventures||[]).filter(h=>h.phase==='open'&&h.town===town&&(h.for==null||f.ids.has(h.for))&&mine(h));
+  return L.sort((x,y)=>(y.ff?1:0)-(x.ff?1:0)||x.id-y.id)}
+const plainText=p=>Array.isArray(p)?p.map(x=>typeof x==='string'?x:x&&x.kind==='hero'?x.name:x&&x.t||'').join(''):String(p||'');
+export const hallTitle=h=>{const T=ADV.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return String(h.title||(T.name||h.tpl)+(th?': '+plainText(th):'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')).slice(0,90)};
+// Rows for the watcher: {id, title, region, band:[lo,hi]|null, day, by, oath:{id,name}|null, elite:{name,lvl,alive}|null, giver}.
+export function hallBoard(){const F=S.fellowship;if(!F)return [];
+  return hallHooks(F.hall).map(h=>{const z=h.zone!=null&&h.zone>=0?h.zone:null,R=z!=null&&REGIONS?REGIONS[z]:null,d=h.data||{};
+    const who=h.for!=null?S.agents.find(a=>a.id===h.for):null;
+    const E=d.eliteId!=null?S.mobs&&S.mobs.find(m=>m.id===d.eliteId):null;
+    return {id:h.id,title:hallTitle(h),region:z!=null?ZONES[z]:null,band:R&&R.band?[R.band[0],R.band[1]]:null,
+      day:Math.floor((h.born||0)/DAY)+1,by:h.by==='dm-agent'?'DM agent':h.ff?'scripted DM':'town board',
+      oath:who?{id:who.id,name:who.name}:null,elite:d.beast?{name:d.beast,lvl:d.eliteLvl==null?null:d.eliteLvl,alive:!!E}:null,
+      giver:h.giver&&h.giver.name||null}})}

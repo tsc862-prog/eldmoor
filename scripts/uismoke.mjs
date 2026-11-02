@@ -669,6 +669,24 @@ console.log('start gate: ready, not just claimed');
     ok(P.authoredStance(b,o)===''&&!(b.persona.stanceBy||{})[o.id]&&tag(o).hidden&&b.memory.stances[o.id].startsWith(P.scriptedStance(b,o)),'stances: an empty box on Save hands it back to the bond reading')}
   else console.log('  skip stances on a scripted persona (none at hand)');
   fb.querySelectorAll('button').find(x=>x.dataset.fact==='close').click()}
+// ---- the hall board (#334): the hall's jobs for the Fellowship, empty and filled, patched in place ----
+{const fb=$('felbody'),S=sim.S,F=S.fellowship,keep=S.adventures;S.adventures=[];uiFast();
+  const hb=()=>fb.querySelector('.felhall');
+  ok(!!hb()&&/No job for the Fellowship on the hall board\./.test(hb().textContent),'hall board: the empty state reads plainly');
+  const {REGIONS,ZONES}=await import('../src/world/map.js');const z=REGIONS.findIndex(r=>r&&r.band);
+  const other=S.agents.find(a=>!a.fellow&&a.state!=='dead');
+  S.adventures=[
+    {id:900001,phase:'open',town:F.hall,tpl:'hunt',src:'oath',for:mem[0].id,zone:z,ff:1,data:{thing:'the grey wolf'},born:1440*2+60,giver:{name:'Old Brannoc'}},
+    {id:900002,phase:'open',town:F.hall,tpl:'hunt',src:'rumour',for:null,zone:z,by:'dm-agent',data:{beast:'Grimtooth',eliteLvl:7,eliteId:-1},born:1440*3},
+    {id:900003,phase:'open',town:F.hall,tpl:'hunt',src:'request',for:other?other.id:-5,zone:z,data:{},born:1440},
+    {id:900004,phase:'open',town:'Elsewhere',tpl:'hunt',src:'request',for:null,zone:z,ff:1,data:{},born:1440}];
+  uiFast();const box=hb(),rows=box?[...box.querySelectorAll('li')]:[];
+  ok(rows.length===2&&/Hall board \(2\)/.test(box.textContent),'hall board: two Fellowship jobs listed (not a stranger’s, not another town’s)');
+  ok(rows[0]&&new RegExp(mem[0].name+'’s oath').test(rows[0].textContent)&&/by scripted DM/.test(rows[0].textContent)&&/posted day 3/.test(rows[0].textContent)&&rows[0].textContent.includes(ZONES[z])&&/Lv \d+-\d+/.test(rows[0].textContent),'hall board: the oath row names region, band, day, oath and poster');
+  ok(rows[1]&&/elite Grimtooth \(Lv 7\), slain/.test(rows[1].textContent)&&/by DM agent/.test(rows[1].textContent),'hall board: the elite row names the elite and the DM agent');
+  uiFast();ok(hb()===box,'hall board: patched in place when nothing changed');
+  const {hallHooks}=await import('../src/sim/dmfocus.js');ok(hallHooks(F.hall).map(h=>h.id).join()==='900001,900002','hall board: one selection with the agents’ brief');
+  S.adventures=keep;uiFast();ok(!!hb()&&!hb().querySelector('[data-k="hj900001"]'),'hall board: back to the world’s own board')}
 // ---- guild rows (#327): focus reason and rival heat in tooltips ----
 {const live=sim.S.GUILDS.filter(g=>!g.retired);
   const fel=live.find(g=>sim.S.agents.some(a=>a.guild===g&&a.fellow&&a.state!=='dead'));
