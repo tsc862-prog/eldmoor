@@ -177,6 +177,23 @@ if (S.fellowship) {
   ws.player = false;
 }
 
+// ---- Antler Ward fires for one hurt, hunted friend (#348); Rallying Verse keeps its company trigger ----
+{
+  const sw = mk('Wildspeaker', 10), mate = mk('Warrior', 10); mate.fac = sw.fac; mate.x = sw.x + 1; mate.y = sw.y; mate.eff = {};
+  chooseSpec(sw, 'springwarden'); for (const m of S.mobs) if (m.target === sw || m.target === mate) m.target = null; // only our foe hunts them
+  const fo = foeNear(sw); fo.target = mate; mate.hp = combatStats(mate).health * .65; sw.hp = combatStats(sw).health; sw.eff = {}; rebuild();
+  const p = pickMove(sw, fo, [sw, mate], false);
+  ok(p && p.id === 'antlerward', 'a Springwarden wards the company when one friend in reach is hunted and below 70%: ' + (p && p.id));
+  mate.hp = combatStats(mate).health * .9; ok((pickMove(sw, fo, [sw, mate], false) || {}).id !== 'antlerward', 'not while that friend is still hale');
+  mate.hp = combatStats(mate).health * .65; fo.target = null; rebuild(); ok((pickMove(sw, fo, [sw, mate], false) || {}).id !== 'antlerward', 'nor when nothing hunts them');
+  // the duel: the foe in hand is a hero
+  const du = mk('Warrior', 10); du.fac = 1 - sw.fac; du.target = sw; sw.hp = combatStats(sw).health * .6; sw.mcd = {};
+  ok((pickMove(sw, du, [sw], false) || {}).id === 'antlerward', 'and in a duel, once the Springwarden is below 70%');
+  const sk = mk('Skald', 10); sk.fac = mate.fac; sk.x = mate.x - 1; sk.y = mate.y; sk.hp = combatStats(sk).health; sk.eff = {}; for (const m of S.mobs) if (m.target === sk || m.target === mate) m.target = null; const fo2 = foeNear(sk); fo2.target = mate; mate.hp = combatStats(mate).health * .65; rebuild();
+  ok((pickMove(sk, fo2, [sk, mate], false) || {}).id !== 'rallyverse', 'Rallying Verse still waits for the company moment (two hunted, or one below half)');
+  const r = useMove(sw, 'antlerward', null, {mates: [sw, mate]}); ok(r.ok && effOn(mate, 'taken'), 'Antler Ward wards the friend: ' + (r.text || r.error));
+}
+
 // ---- save round trip ----
 const sv = mk('Priest', 9); useMove(sv, 'dawnward', sv); const left = cdLeft(sv, 'dawnward');
 const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);

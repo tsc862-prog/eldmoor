@@ -125,7 +125,10 @@ function wants(a,M,ctx){const {foe,mates,f}=ctx;
       const hunted=b===a?(foe&&foe.target===a):ctx.engaged.some(m=>m.target===b);if(!hunted)continue;if(!best||hpf(b)<hpf(best))best=b}return best}
   case 'healally':{let best=null;for(const b of mates){if(dist(a,b)>M.range||hpf(b)>=(M.spec?.72:.55))continue;if(!best||hpf(b)<hpf(best))best=b}return best}
   // A song for the company: two or more friends in reach are being hunted and none already warded, or one of them is under half health.
-  case 'rally':{const near=mates.filter(b=>dist(a,b)<=M.range&&ctx.engaged.some(m=>m.target===b));return near.length>=2&&near.some(b=>!effOn(b,'taken'))||near.some(b=>hpf(b)<.5&&!effOn(b,'taken'))?a:null}
+  // A path's ward (Antler Ward, #348) also answers one friend in reach, hunted by a monster nearby or by the foe in hand
+  // (a duellist too), who is below 70% and not yet warded: one Springwarden a world rarely saw the company moment.
+  case 'rally':{const near=mates.filter(b=>dist(a,b)<=M.range&&ctx.engaged.some(m=>m.target===b));if(near.length>=2&&near.some(b=>!effOn(b,'taken'))||near.some(b=>hpf(b)<.5&&!effOn(b,'taken')))return a;
+    if(!M.spec)return null;return mates.some(b=>dist(a,b)<=M.range&&hpf(b)<.7&&!effOn(b,'taken')&&(near.includes(b)||(foe&&foe.target===b)))?a:null}
   case 'masshurt':{const hurt=mates.filter(b=>dist(a,b)<=M.range&&hpf(b)<.7);return hurt.length>=2||hurt.some(b=>hpf(b)<.4)?a:null}
   // A spread of cords for the Trapper: two foes in reach, one worth the cords (elite, boss, a duellist, or a mob near the hunter's level) still fresh, or any foe once the hunter is below 70% health.
   case 'pack':{const near=ctx.engaged.filter(m=>dist(a,m)<=M.range);return near.length>=2||(foe&&near.includes(foe)&&(foe.elite||foe.kind==='boss'||foe.kind==='hero'||(foe.lvl||1)>=(a.lvl||1)-2)&&hpf(foe)>.5)||(foe&&foe.kind==='mob'&&near.includes(foe)&&f<.7)?a:null}
