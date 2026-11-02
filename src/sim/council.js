@@ -18,7 +18,7 @@
 // Plain data, saved with the world: F.props [{id,kind,details,by,at,until,votes,status,result}],
 // F.accept {crypt|raid: gameMin until a passed call stands}, a.splitUntil, a.cryptOk / a.raidOk.
 import {CRYPT,dist} from '../world/map.js';
-import {S,clockStr} from './state.js';
+import {S,clockStr,dayNo} from './state.js';
 import {log} from './chronicle.js';
 import {maxHp} from './heroes.js';
 import {leaveParty,partyMates} from './party.js';
@@ -51,7 +51,7 @@ export const leaderOfF=()=>{const P=fellowParty();if(P&&living(P.leader)&&P.lead
 const wordCut=(t,n)=>{if(t.length<=n)return t;const c=t.slice(0,n-1),i=c.lastIndexOf(' ');return (i>n*.6?c.slice(0,i):c).replace(/[\s,.;:]+$/,'')+'…'};
 export function partySay(a,text){let L=spokenLine(a,text);if(L.error&&/^Too long/.test(L.error)&&!a.player)L={text:wordCut(spokenLine(a,text,1e9).text,COUNCIL.SAY_LEN)};if(L.error)return L.error;const t=L.text;
   const mates=a.fellow?fellows().filter(b=>b!==a):partyMates(a);if(!mates.length)return 'You have no party to talk to.';
-  const e={t:clockStr(),from:a,text:t,trigger:'party',party:true},heard=new Set([a]);
+  const e={t:clockStr(),d:dayNo(),from:a,text:t,trigger:'party',party:true},heard=new Set([a]);
   const hear=b=>{if(heard.has(b))return;heard.add(b);(b.chat||(b.chat=[])).push(e);if(b.chat.length>20)b.chat.shift()};
   (a.chat||(a.chat=[])).push(e);if(a.chat.length>20)a.chat.shift();
   for(const b of mates)hear(b);
@@ -86,7 +86,7 @@ export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)r
   if(kind==='crypt')yieldCrypt(F); // reserve on proposal: a background group still gathering steps aside
   campaign('council',a,' proposes to '+KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:'')+'.');
   for(const b of fellows())if(b!==a)notify(b,a.name+' proposes to '+KIND_TEXT[kind]+(d?': '+d:'')+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
-  if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'my proposal','agent');
+  if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'','agent');
   if(!(proposeHook&&proposeHook(P)))reflexFill(P);
   settleIfDone(P);return P}
 
