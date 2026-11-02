@@ -51,12 +51,9 @@ export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} fr
 export {fellowshipStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners} from './setup.js'; // New World setup (#133)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
-<<<<<<< HEAD
 import {ensureCampaign} from './dmagent.js';
 export {provideCampaigns,parseCampaign,campaignIdOf} from './campaign.js'; // the campaign seed
-=======
 export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus
->>>>>>> origin/main
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
