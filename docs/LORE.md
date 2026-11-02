@@ -207,7 +207,7 @@ At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/
 | --- | --- | --- | --- | --- | --- |
 | Warrior | **Warden** | Grit, Presence / Empathy | Warden's Vow (+5% Defense, +4% Health) | **Shield Cover** (ward a friend, 55%) | the one who stands guard |
 | Warrior | **Reaver** | Brawn, Reflex / Tracking | Reaver's Fury (+5% Crit, +15% opener) | **Cleaving Sweep** (90% to every foe beside you) | trades safety for killing speed |
-| Mage | **Runescribe** | Wits, Reflex / Perception | Great Runes (+5% Crit, +20% opener) | **Twin Lance** (150%, +20% crit) | the great runes |
+| Mage | **Runescribe** | Wits, Reflex / Perception | Great Runes (+5% Crit, +20% opener) | **Twin Lance** (150%, +20% crit) | writes the runes large and strikes first |
 | Mage | **Rimekeeper** | Wits, Grit / Survival | Frostbound (+4% Defense, +6% Health) | **Winter's Hold** (one foe loses 5 s) | frost that holds a foe still |
 | Hunter | **Stalker** | Insight, Reflex / Traps | Steady Aim (+7% Crit) | **Heartseeker** (240%, +20% crit) | the patient single shot |
 | Hunter | **Trapper** | Wits, Insight / Lore | Ground-Lore (+4% Defense, blows at 96%) | **Thornfield** (50% and 3 s to every foe near) | snares a whole pack |
@@ -215,6 +215,8 @@ At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/
 | Priest | **Mender** | Insight, Presence / Empathy | Tenderness (healing +20%) | **Mending Touch** (heal one friend) | gives everything to the wounded |
 | Rogue | **Cutthroat** | Reflex, Brawn / Perception | Deadly Opening (+4% Crit, +25% opener) | **Backstab** (220%, +30% crit) | lives for the opening |
 | Rogue | **Trickster** | Wits, Presence / Lore | Nimble (blows at 92%) | **Dirty Trick** (foe loses 3 s and takes 20% more for 8 s) | wins by misdirection |
+
+The **Warden** path is a living warrior's vow to stand guard over friends; it has nothing to do with the undead wardens of the Sunken Crypt (Lich-Warden Vesk and his Grave Wardens), who guard the dead. The word is shared, the calling is not. Trapper: Thornfield now also opens on one worthwhile foe (an elite, a boss, a duellist or a mob near the Trapper's level), not only on a pack; Mender: Mending Touch answers a friend below 72% health.
 
 ## Bonds and blood debts
 Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,
