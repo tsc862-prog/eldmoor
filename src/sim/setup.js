@@ -142,7 +142,7 @@ export function applyMinds(setup){const F=S.fellowship;if(!F)return;
     if(a.brain){disableBrain(a);delete a.fellowBrain}
     if(!a.player&&markPlayer(a,true))a.fellowAgent=true}
   const chosen={};for(const [k,a] of mem){const ids=setup.slots[k]&&setup.slots[k].profs;if(a&&ids&&ids.length){chosen[k]=ids.slice();seedProfs(a,ids)}}
-  for(const [k,a] of mem){const id=a&&resolveArchetype(setup,k);if(id)applyArchetype(a,id)} // the persona voice the owner chose (#295)
+  for(const [k,a] of mem){const id=a&&resolveArchetype(setup,k);if(id&&applyArchetype(a,id))a.persona.edited=true} // the persona voice the owner chose (#295); marked as the owner's, like the panel picker, so relay writing never replaces it
   F.minds='agent';F.ai=true;
   if(setup.dm&&setup.dm.mode==='agent')setDmSeat(true);
   return chosen} // {slot:[profession ids]} the owner chose; kept in S.setup.profs for whoever fills a place later
