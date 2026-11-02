@@ -155,6 +155,8 @@ hurt.state = 'hunt'; hurt.hp = maxHp(hurt) * .2;
 const pile = pileOn('mark_dangerous', {at: {x: hurt.x + 1, y: hurt.y}});
 r = dmAct('pull_lever', {lever: 'mark_dangerous', params: {at: {x: Math.round(hurt.x) + 1, y: Math.round(hurt.y)}}, reason: 'more wolves'});
 ok(!!pile && r.ok === false && /does not pile on/.test(r.error), `danger next to ${hurt.name} at 20% HP is refused`);
+ok(!!pileOn('set_condition', {region: hz, kind: 'migration'}) && !pileOn('set_condition', {region: hz, kind: 'festival'}), 'a danger condition over the region of the hurt member piles on; a festival does not');
+ok(!!pileOn('start_event', {region: hz, kind: 'migration'}) && !pileOn('start_event', {region: hz, kind: 'festival'}) && !pileOn('start_event', {region: hz, kind: 'plague'}), 'a world event that runs as a danger condition (migration, invasion once it exists) piles on; festival and plague do not');
 hurt.hp = maxHp(hurt);
 ok(!pileOn('mark_dangerous', {at: {x: hurt.x + 1, y: hurt.y}}) && hz != null, 'once healed, the same pull is no longer a pile-on');
 // the agent's own daily cap

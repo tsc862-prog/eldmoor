@@ -61,7 +61,8 @@ export const DMA={
   NARRATE_R:10,        // default radius of a narrate line around its place
 };
 const DAY=1440;
-const PILING=['mark_dangerous','custom_foe','named_foe','set_condition'];
+const PILING=['mark_dangerous','custom_foe','named_foe','set_condition','start_event'];
+const DANGER_CONDS=['bandits','migration']; // the region conditions that add danger: set_condition of these kinds, or a world event that runs as one (invasion = bandits, migration)
 
 // ---- the seat ----
 // The campaign seed: once per world, the notes start from docs/campaigns/<world>.md (notes marked from:'campaign', the premise pinned in plans).
@@ -151,7 +152,8 @@ export const dmTurnVer=()=>S.dmAgent&&S.dmAgent.tv||0;
 
 // A Fellowship member badly hurt out in the field near the pull: the DM does not pile on.
 export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object')return null;
-  if(name==='set_condition'&&!['bandits','migration'].includes(p.kind))return null;
+  if(name==='set_condition'&&!DANGER_CONDS.includes(p.kind))return null;
+  if(name==='start_event'){const ev=EVENTS[p.kind];if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
   const at=p.at&&typeof p.at==='object'&&Number.isFinite(Number(p.at.x))?{x:Number(p.at.x),y:Number(p.at.y)}:null,z=p.region!=null?regionIdx(p.region):at?zoneAt(at.x,at.y):null;
   for(const a of fellows()){if(a.state==='town'||a.hp>=maxHp(a)*DMA.PILE_HP)continue;
     if(at&&dist(a,at)<=DMA.PILE_R||z!=null&&zoneAt(a.x,a.y)===z)return a.name+' of the Fellowship is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.'}
