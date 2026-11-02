@@ -25,6 +25,7 @@ import {heroRelevant} from './notebook.js'; // the notes that matter now (#155)
 import {reflectDue} from './reflect.js'; // reflection moments (#179)
 import {asleep,campView} from './camp.js';
 import {foeName} from './lore.js'; // the foe as the hero knows it, never its level (#188)
+import {questBrief} from './questlog.js'; // the focused quest and how many others
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60]}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -66,6 +67,7 @@ export function paceBrief(id){const a=hero(Number(id));
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a), // what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
+    quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
