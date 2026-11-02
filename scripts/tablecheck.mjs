@@ -207,6 +207,70 @@ if (process.argv[2] === '--parley') {
   process.exit(fail ? 1 : 0);
 }
 
+// ---- an item from the pack as a round's act (#360), in a child with a fresh world: node scripts/tablecheck.mjs --use ----
+if (process.argv[2] === '--use') {
+  const E = await import('../src/sim/eff.js'), INV = await import('../src/sim/inv.js'), {actionLog} = await import('../src/sim/actlog.js');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
+  init({fellowship: false}); run(30);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); SIM.setRunnerLinks(() => 'connected');
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  let M = F_.fellowshipMembers().map(m => m.hero); const home = homeOf(M[0]).gate, spot = zonePoint(zoneFor(8, home), null, home);
+  const byId = id => S.agents.find(x => x.id === id);
+  for (const m of S.mobs) if (m.alive && dist(m, spot) < 16) {m.alive = false; m.gone = true}
+  const setup = () => {const q = S.mobs.find(m => m.alive && !m.gone && !m.elite && !m.used && !TRD.canParley(m)); q.used = true; M = M.map(x => byId(x.id));
+    M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'fight'; x.hidden = false; x.dest = null; x.hp = maxHp(x); x.pq = []; x.target = q; x.eff = {}; x.mcr = {}; x.wardT = 0; x.potCd = 0; x.inv = {list: []}});
+    q.x = spot.x + 1; q.y = spot.y; q.lvl = 9; q.maxhp = 4000; q.hp = 4000; q.cd = 99; q.fledOnce = true; q.hit = .001; q.target = M[0]; q.eff = {}; q.ab = [];
+    S.fellowship.tableSeen = {}; const sc = T.openScene('elite', 'Pack test', ['Something stirs in the reeds.'], {mob: q.id}); sc.foeAt = sc.ids.length;
+    let g = 0; while (S.table && S.table.phase === 'frame' && g++ < 600) step(1 / 60); return sc};
+  const close = () => {T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto'};
+  const uses = (sc, a) => T.optionsFor(sc, a).filter(o => o.k.startsWith('use:'));
+  const tableText = () => {const e = S.dmLog.filter(x => x.kind === 'table')[0]; return e ? e.summary.join('') : ''};
+
+  // (a) nothing usable in a fight (an empty pack, or only bandages, rations, a torch), and a potion with nobody hurt: no option
+  let sc = setup(); const A = byId(sc.ids[0]);
+  ok(!uses(sc, A).length, 'an empty pack offers no use option');
+  INV.addUse(A, 'Linen Bandage', 2); INV.addUse(A, 'Trail Ration', 1); INV.addUse(A, 'Pitch Torch', 1); INV.addUse(A, 'Redroot Draught', 1);
+  ok(!uses(sc, A).length, `bandages, rations, a torch and a potion with nobody hurt: nothing to use (${T.optionsFor(sc, A).map(o => o.k).join(', ')})`);
+  // (b) hurt: the potion is offered by name (status too); scene_act takes the item's name; drunk once, logged, on the banner and in the DM log
+  A.hp = Math.round(maxHp(A) * .5); const o = uses(sc, A), tv = P.playerAct(A.id, 'status', {}).table;
+  ok(o.length === 1 && o[0].k === 'use:redroot-draught' && /^Use Redroot Draught on yourself \(50%; heals 35%\)$/.test(o[0].text) && tv && tv.options.some(s => /^use:redroot-draught = Use Redroot Draught/.test(s)), `a hurt member is offered its potion: ${o[0] && o[0].k} = ${o[0] && o[0].text}`);
+  const ans = P.playerAct(A.id, 'scene_act', {option: 'use:Redroot Draught', line: 'One swallow.'});
+  ok(ans && !ans.error, 'scene_act use:<item name> is accepted' + (ans && ans.error ? ': ' + ans.error : ''));
+  const hp0 = A.hp; let g = 0; while (S.table && !sc.beats.some(b => b.id === A.id) && g++ < 600) step(1 / 60);
+  const ub = sc.beats.find(b => b.id === A.id);
+  ok(ub && ub.k === 'use:redroot-draught' && ub.use && ub.use.item === 'Redroot Draught' && ub.use.ok && ub.use.healed > 0 && /^Drank Redroot Draught: \+\d+ health/.test(ub.res) && !ub.roll, `the beat names the item and its effect: ${ub && ub.text} (${ub && ub.res})`);
+  ok(INV.count(A, 'Redroot Draught') === 0 && A.hp > hp0 && INV.count(A, 'Linen Bandage') === 2, `used once and gone from the pack (+${Math.round(A.hp - hp0)} health)`);
+  const il = actionLog(A, {kinds: ['item']}); ok(il.length && il[il.length - 1].name === 'Redroot Draught', 'the action log has the item');
+  const bl = T.bannerOf(); ok(sc.beats[sc.beats.length - 1] === ub && bl && /^.+: Use Redroot Draught on yourself .*\(Drank Redroot Draught: \+\d+ health\.\)$/.test(bl.last || ''), `the banner line names it: ${bl && bl.last}`);
+  ok(!uses(sc, A).length, 'nothing left to use: the option is gone');
+  let k = 0; while (S.table && k++ < 60 * 60) {const c = S.table; if (c.phase === 'turn') for (const id of c.ids) if (!c.acts[id]) P.playerAct(id, 'scene_act', {option: 'strike'}); step(1 / 60)}
+  ok(!S.table && new RegExp(A.name + ' uses Redroot Draught \\(\\+\\d+ health\\)').test(tableText()), `the DM log has it: ${(tableText().match(/[^:;.]*uses Redroot[^;.]*/) || [''])[0]}`);
+  // (c) a companion's potion for the hurt member; a bare 'use' takes the first item offered
+  sc = setup(); const [C, D] = sc.ids.map(byId); INV.addUse(D, 'Redroot Draught', 2); C.hp = Math.round(maxHp(C) * .3);
+  const pty = C.party, dty = D.party; D.party = null; ok(!uses(sc, D).length, 'out of one party: no potion for the other'); C.party = D.party = pty || {id: 'usecheck', mem: [C, D]};
+  const od = uses(sc, D); ok(od.length === 1 && new RegExp('^Use Redroot Draught on ' + C.name + ' \\(30%').test(od[0].text), `a full-health member offers its potion to the hurt one: ${od[0] && od[0].text}`);
+  const bare = P.playerAct(D.id, 'scene_act', {option: 'use'}); ok(bare && !bare.error && sc.acts[D.id] && sc.acts[D.id].k === 'use:redroot-draught', 'a bare use picks the item offered');
+  const c0 = C.hp, r1 = TRD.useInRound(sc, D, 'use:redroot-draught', C); ok(C.hp > c0 && INV.count(D, 'Redroot Draught') === 1 && /^Gave Redroot Draught to /.test(r1), `given across the table: ${r1}`);
+  C.party = pty; D.party = dty;
+  close();
+  // (d) an antidote for the round's poison, a warding scroll while no ward holds, a recall scroll out of the fight (not when rooted)
+  sc = setup(); const [X, Y, Z] = sc.ids.map(byId);
+  INV.addUse(X, 'Bogroot Antidote', 1); ok(!uses(sc, X).length, 'an antidote with no poison: not offered');
+  E.setCond(X, 'poison', 2, 99, 5, null); const ox = uses(sc, X); ok(ox.length === 1 && ox[0].k === 'use:bogroot-antidote', `poisoned: the antidote is offered (${ox[0] && ox[0].text})`);
+  const rx = TRD.useInRound(sc, X, 'use:bogroot-antidote', null); ok(!E.condOn(X, 'poison') && INV.count(X, 'Bogroot Antidote') === 0 && sc.ru && sc.ru.item === 'Bogroot Antidote', `the poison is drawn out: ${rx}`);
+  INV.addUse(Y, 'Scroll of the Steadfast Hour', 1); ok(uses(sc, Y).length === 1, `a warding scroll is offered: ${uses(sc, Y)[0] && uses(sc, Y)[0].text}`);
+  const ry = TRD.useInRound(sc, Y, 'use:scroll-of-the-steadfast-hour', null); ok(Y.wardT > 0 && INV.count(Y, 'Scroll of the Steadfast Hour') === 0, `the ward holds: ${ry}`);
+  INV.addUse(Y, 'Scroll of the Steadfast Hour', 1); ok(!uses(sc, Y).length, 'a second ward is not offered while one holds');
+  INV.addUse(Z, 'Scroll of Hearthward', 1); E.setCond(Z, 'root', 2, 99, 0, null); ok(!uses(sc, Z).length, 'rooted: no recall scroll');
+  E.endCond(Z, 'root'); ok(uses(sc, Z).length === 1, 'free again: the recall scroll is offered');
+  const rz = TRD.useInRound(sc, Z, 'use:scroll-of-hearthward', null); ok(Z.state === 'return' && (sc.out || []).includes(Z.id) && INV.count(Z, 'Scroll of Hearthward') === 0, `read out of the fight: ${rz}`);
+  close();
+  console.log('USE ' + (fail ? 'FAIL ' + fail : 'OK'));
+  process.exit(fail ? 1 : 0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -525,6 +589,11 @@ link(RA, 'connected'); link(RB, 'waiting');
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--parley'], {encoding: 'utf8'});
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
   ok(ch.status === 0 && /PARLEY OK/.test(ch.stdout || ''), 'parley and conditions: a legal action on talkers only, its dice in the banner and the DM log, a 20 yields, a 1 holds; four conditions across rounds, a save mid-scene, all gone with the scene')}
+
+// ---- 2d. an item from the pack as a round's act (#360): a fresh world in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--use'], {encoding: 'utf8'});
+  if (ch.status !== 0) process.stderr.write((ch.stdout || '') + (ch.stderr || ''));
+  ok(ch.status === 0 && /USE OK/.test(ch.stdout || ''), 'a potion or scroll from the pack in a Table round: offered only when it would do something, used once, named in the beat, the banner, the action log and the DM log')}
 
 // ---- 3. proposals (in town, where nothing attacks) ----
 T.TABLE.speed = 1;
