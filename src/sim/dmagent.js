@@ -25,6 +25,7 @@ import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
+import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
 import {pull,leverMenu,LEVERS} from './levers.js';
 import {maxHp} from './heroes.js';
@@ -56,8 +57,21 @@ const DAY=1440;
 const PILING=['mark_dangerous','custom_foe','named_foe','set_condition'];
 
 // ---- the seat ----
-export function dmState(){return S.dmAgent||(S.dmAgent={world:'w'+Math.round(S.gameMin)+'-'+(S.uid||0),seat:false,notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,[]])),seq:0,
-  day:{d:-1,pulls:0,notes:0,intents:0},calls:[],seen:{tl:0,chron:'',log:0},stats:{calls:0,pulls:0,refused:0}})}
+// The campaign seed: once per world, the notes start from docs/campaigns/<world>.md (notes marked from:'campaign', the premise pinned in plans).
+// A new world seeds when its DM state is created; an older save only when its notes are empty. No RNG; the caps of the books apply.
+export function seedCampaign(D){
+  if(D.campaign)return D.campaign;const text=campaignText();if(!text)return null;
+  const empty=NOTE_SECTIONS.every(k=>!D.notes[k].length)&&!(D.arch&&D.arch.length);
+  if(!empty)return D.campaign={loaded:false,sections:{}};
+  const c=parseCampaign(text),b=dmBook(D),got={};
+  for(const k of NOTE_SECTIONS){got[k]=0;for(const it of c[k]){if(D.notes[k].length>=DMA.NOTES_CAP)break;
+    const r=addNote(b,{title:it.title,text:it.text,tags:it.tags,sec:k,pin:it.pin},DMA.NOTE_MAX);if(r.ok){r.note.from='campaign';got[k]++}}}
+  return D.campaign={loaded:true,sections:got}}
+// Called by init() and restore(): a world with a campaign file gets its DM notes now, so the watcher and the mirror see them.
+export function ensureCampaign(){if(!campaignText())return;const D=dmState();if(!D.campaign)seedCampaign(D)}
+export function dmState(){if(S.dmAgent)return S.dmAgent;const D=newDm();S.dmAgent=D;seedCampaign(D);return D}
+function newDm(){return {world:'w'+Math.round(S.gameMin)+'-'+(S.uid||0),seat:false,notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,[]])),seq:0,
+  day:{d:-1,pulls:0,notes:0,intents:0},calls:[],seen:{tl:0,chron:'',log:0},stats:{calls:0,pulls:0,refused:0}}}
 export const dmSeatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
 // Open or close the DM seat (the DM panel's "DM agent" button, play-headless --dm). Notes stay either way.
 export function setDmSeat(on){const D=dmState();on=!!on;if(D.seat===on)return on;D.seat=on;
@@ -144,6 +158,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     levers_active:(S.levers&&S.levers.active||[]).length,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
+    campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
     notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length])),relevant_notes:relevant(dmBook(D),dmContext())}} // relevant_notes: your notes that bear on the moment, {id,title} (#155)
 
 function timelineRead(n){return {ok:true,timeline:(S.timeline||[]).slice(0,nOf(n,12,1,30)).map(e=>({day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,text:txt(e.parts)}))}}
