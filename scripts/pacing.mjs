@@ -142,7 +142,8 @@ export function briefText(b) {
 export function talkText(b) {
   if (!b) return '';
   const heard = Array.isArray(b.heard) ? b.heard : [], met = Array.isArray(b.met) ? b.met : [];
-  return (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
+  const near = Array.isArray(b.nearby) ? b.nearby : [];
+  return (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
     (met.length ? `\nCompanions you have met: ${met.join(', ')}. You know each other: do not introduce yourself again or repeat a line; talk to move the party forward (propose, vote, lead_to, or answer a question you were asked).` : '');
 }
 
@@ -204,3 +205,30 @@ export async function closeReflection(base, hero, runner, id, wrote, fetchImpl =
   try {const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, reflected: id, wrote}), signal: AbortSignal.timeout(8000)});
     return r.status === 200 ? await r.json() : {ok: false, error: 'HTTP ' + r.status}} catch (e) {return {ok: false, error: e.message}}
 }
+
+// A new world under the same ids (issue #219). A runner holds heroes by id; a New World can hand the same ids to
+// other heroes, and a runner that keeps its claims then plays nobody. worldChanged() names the held heroes whose
+// identity changed. Identity today: the hero's name for its id (and the world instance id, once /play/health carries
+// it as `world`: both sides must have one). Swap the test here when the game names the world.
+import {NEW_WORLD_EXIT} from './runners.mjs';
+export {NEW_WORLD_EXIT};
+export function worldChanged(known, heroes) {
+  const out = [];
+  for (const [id, k] of known) {const h = (heroes || []).find(x => x.id === id);
+    if (h && (h.name !== k.name || (k.world != null && h.world != null && h.world !== k.world))) out.push({id, was: k.name, now: h.name});}
+  return out;
+}
+// watchWorld({base, known: () => Map(id -> {name, world?}), onNew(changed), every, fetchImpl}) -> stop()
+// Polls /play/health; on the first change calls onNew once (the runner releases its heroes and exits NEW_WORLD_EXIT).
+export function watchWorld({base, known, onNew, every = 3000, fetchImpl = fetch}) {
+  let done = false;
+  const t = setInterval(async () => {
+    if (done) return;
+    const h = await fetchImpl(base + '/play/health', {signal: AbortSignal.timeout(4000)}).then(r => r.json()).catch(() => null);
+    if (!h || !h.ok) return;
+    const ch = worldChanged(known(), h.heroes); if (ch.length && !done) {done = true; clearInterval(t); onNew(ch)}
+  }, every);
+  t.unref();
+  return () => {done = true; clearInterval(t)};
+}
+export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}) so the runner starts again for the current members; the old sessions are set aside in logs/agents/old/.`;

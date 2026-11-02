@@ -15,6 +15,8 @@ export function setRunnerLinks(fn){linkFn=typeof fn==='function'?fn:null}
 // fn(a) -> true when the owner let reflexes decide for a hero whose runner is gone; null = always (no owner to ask)
 export function setReflexAck(fn){ackFn=typeof fn==='function'?fn:null}
 const LIVE={connected:1,waiting:1};
+// A host reports runner links (the page, play-headless); without one (npm run sim, the checks) nobody can say a runner left.
+export const hasLinks=()=>!!linkFn;
 export const runnerLink=a=>!a||!a.player?'off':linkFn?String(linkFn(a)||'none'):'none';
 // A runner holds this hero: its decisions wait for it.
 export const agentLive=a=>!!(a&&a.player&&a.state!=='dead'&&LIVE[runnerLink(a)]);

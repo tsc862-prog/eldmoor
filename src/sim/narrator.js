@@ -22,6 +22,7 @@ import {S} from './state.js';
 import {log,fac} from './chronicle.js';
 import {pop} from './effects.js';
 import {agentDie,strike,maxHp} from './heroes.js';
+import {actHurt} from './actlog.js';
 import {weatherKind,sightMul} from './weather.js';
 import {record} from './history.js';
 import {nearHeroes} from './spatial.js';
@@ -85,7 +86,7 @@ export function scoutCheck(a,m){ensure();
   if(a.scoutTgt===m&&S.nar.t-a.scoutT<SCOUT_RECHECK)return;a.scoutTgt=m;a.scoutT=S.nar.t;
   const ambush=m.target===a;if(!ambush&&m.lvl<a.lvl+2)return;
   const z=MOBS[m.type].z,mod=bestFor([a],['perception','stealth']).mod,dc=10+z*2+(sightMul(z)<1?3:0),r=d20(),ok=r+mod>=dc;
-  let dmg=0;if(ok){m.cd=1.3;if(dist(a,m)<=CLS[a.cls].range+.5){strike(a,m);a.cd=1.1}else a.cd=0}else{dmg=3+m.lvl*2;a.hp=Math.max(1,a.hp-dmg);pop(a.x,a.y-.6,String(dmg),'#ff6a5a')}
+  let dmg=0;if(ok){m.cd=1.3;if(dist(a,m)<=CLS[a.cls].range+.5){strike(a,m);a.cd=1.1}else a.cd=0}else{dmg=3+m.lvl*2;a.hp=Math.max(1,a.hp-dmg);actHurt(a,m,dmg,'surprise');pop(a.x,a.y-.6,String(dmg),'#ff6a5a')}
   a.scoutOk=ok;S.narStats.scouts[ok?0:1]++;const nm=mobNames(m),plain=m.elite?m.name:MOBS[m.type].name;
   record(a,(ok?'Spotted ':'Was surprised by ')+(m.elite?'':'a ')+plain+' ('+rollStr(r,mod,dc)+').');
   if(rnd()<SHOW_SCOUT&&(canSpeak()||(!ok&&a.hp<maxHp(a)*.5))) // only a hit that leaves the hero under half health jumps the cap
@@ -96,7 +97,7 @@ export function scoutCheck(a,m){ensure();
 // at flee health that can still kill, and a death here is always narrated.
 export function fleeCheck(a,m){ensure();if(a.state!=='return'||!m||!m.alive)return;
   const mod=skillMod(a,'athletics'),r=d20(),ok=r+mod>=FLEE_DC;let dmg=0;
-  if(!ok){dmg=Math.max(1,Math.round((3+m.lvl*2)*m.hit*(.8+rnd()*.4)*dmgTaken(a)*FLEE_GLANCE));a.hp-=dmg;pop(a.x,a.y-.6,String(dmg),'#ff6a5a')}
+  if(!ok){dmg=Math.max(1,Math.round((3+m.lvl*2)*m.hit*(.8+rnd()*.4)*dmgTaken(a)*FLEE_GLANCE));a.hp-=dmg;actHurt(a,m,dmg,'parting blow');pop(a.x,a.y-.6,String(dmg),'#ff6a5a')}
   const dead=a.hp<=0;S.narStats.flees[ok?0:1]++;if(dead)S.narStats.fleeDeaths++;
   const nm=mobNames(m),plain=m.elite?m.name:'a '+MOBS[m.type].name;
   record(a,(ok?'Got clear of ':'Was caught fleeing ')+plain+' ('+rollStr(r,mod,FLEE_DC)+').');
