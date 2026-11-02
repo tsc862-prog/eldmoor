@@ -50,7 +50,8 @@ export function spawnAll(){for(const t in COUNTS)for(let i=0;i<COUNTS[t];i++)spa
   S.zoneLastHero=ZONES.map(()=>S.gameMin);
   S.eco={t:ECO.tick,eliteT:60,empty:ZONES.map(()=>false),eliteNext:ZONES.map(()=>0),stats:{extra:0,culled:0,eliteSpawns:0,eliteKills:0,eliteDeaths:0}}}
 
-function spawnElite(z){const E=ELITES[z],m=spawnMob(E.base,E);S.eco.stats.eliteSpawns++;
+function spawnElite(z){const E=ELITES[z];if(!E)return; // no row for this zone (#308): skip, never throw
+  const m=spawnMob(E.base,E);S.eco.stats.eliteSpawns++;
   log('Rumours spread of ',{t:m.name,c:'gd'},', ',E.title,', stalking ',ZONES[z],'.');timeline('elite',{t:m.name,c:'gd'},', '+E.title+', began stalking '+ZONES[z]+'.')}
 
 // Slide a mob's home toward the nearest road tile of its zone, never across a zone border.
