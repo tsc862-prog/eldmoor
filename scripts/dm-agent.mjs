@@ -35,6 +35,7 @@ import {hostname} from 'node:os';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
 import {loadDmSession, saveDmSession, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
+import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {paceSettings, turnCap, capText, failTracker, localWorked, takeClaudeSlot} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -153,12 +154,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
       const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
-      let r = null;
+      let r = null, err = null;
       try {r = await localTurn({chat: ol.chat, call: (tool, args) => dmTool(base, tool, args), sess, prompt: dmTurnPrompt(sess.turns, st), model: rs.model, toolTurns, tools: DM_TOOLS, rules,
         opts: {...(numCtx ? {numCtx: Number(numCtx)} : {}), endOnWait: false},
         on: (k, a, b) => {if (k === 'text') log(`  DM: ${a}`); else if (k === 'tool') log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') log(`    < ${short(a, 220)}`)}})}
-      catch (e) {console.error(`[dm] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
+      catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
       sess.turns++; sess.lastGm = st.gameMin; lastEnd = Date.now();
+      reportTurn(base, {role: 'dm', runner, provider: 'ollama', model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
       if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
       saveSess();
       if (fails.ok(localWorked(r))) ended = fails.why();
@@ -179,7 +181,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
     const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
-    const t0 = Date.now(); let tools = 0, result = null, limited = false, failed = null;
+    const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const q = query({prompt: dmTurnPrompt(sess.turns, st), options: {
@@ -197,11 +199,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else if (m.type === 'assistant' && !m.parent_tool_use_id) {
         if (m.error === 'rate_limit' || m.error === 'overloaded') {limited = true; failed = m.error}
         for (const b of m.message.content || []) {
-          if (b.type === 'text' && b.text.trim()) log(`  DM: ${b.text.trim()}`);
-          else if (b.type === 'tool_use') {tools++; log(`  > ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 140) : ''})`)}
+          if (b.type === 'text' && b.text.trim()) {log(`  DM: ${b.text.trim()}`); tc.text(b.text)}
+          else if (b.type === 'tool_use') {tools++; tc.tool(b.name, b.id); log(`  > ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 140) : ''})`)}
         }
       } else if (m.type === 'user' && Array.isArray(m.message?.content)) {
-        for (const b of m.message.content) if (b.type === 'tool_result') log(`    < ${short(Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''), 220)}`);
+        for (const b of m.message.content) if (b.type === 'tool_result') {const c = Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''); log(`    < ${short(c, 220)}`); tc.result(b.tool_use_id, c, b.is_error)}
       } else if (m.type === 'result') result = m;
     }} catch (e) {
       const msg = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300);
@@ -209,13 +211,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else if (isRateLimit(msg) || limited) failed = failed || 'rate_limit';
       else {console.error(`[dm] turn failed: ${msg}`); failed = failed || 'error'}}
     freeSlot();
+    let turnCost = null, tin = null, tout = null;
     if (result) {
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
-      spent += cost; sess.costUsd += cost;
-      const mu = Object.values(result.modelUsage || {}), tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0), tout = mu.reduce((t, u) => t + u.outputTokens, 0), cached = mu.reduce((t, u) => t + u.cacheReadInputTokens, 0);
+      spent += cost; sess.costUsd += cost; turnCost = cost;
+      const mu = Object.values(result.modelUsage || {}), cached = mu.reduce((t, u) => t + u.cacheReadInputTokens, 0);
+      tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0); tout = mu.reduce((t, u) => t + u.outputTokens, 0);
       if (result.is_error && isRateLimit(JSON.stringify(result.errors || result.result || ''))) failed = failed || 'rate_limit';
       log(`[turn ${sess.turns + 1}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
+    reportTurn(base, {role: 'dm', runner, provider: rs.provider, model, turn: sess.turns + 1, gameMin: st.gameMin ?? null, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cost: turnCost,
+      flags: result && result.subtype !== 'success' ? [result.subtype] : [], ...(failed ? {error: failed === 'rate_limit' || failed === 'overloaded' ? '429 ' + failed : failed} : {})});
     // A rate-limited turn that did nothing is retried after a growing pause; a turn that got work done counts.
     if (failed && failed !== 'error' && !tools) {const s = BACKOFF[Math.min(backoff, BACKOFF.length - 1)]; backoff++; log(`[dm] rate limited (${failed}); backing off ${s} s before trying the turn again`); saveSess(); await sleep(s * 1000); continue}
     backoff = 0; sess.turns++; sess.lastGm = st.gameMin; turn++; lastEnd = Date.now();

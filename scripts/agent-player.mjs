@@ -53,6 +53,7 @@ import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine} from './local-agent.mjs';
 import {openaiRunner} from './agent-chat.mjs';
+import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, takeClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -122,11 +123,13 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
     let r = null, w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     {const n = await localModelNote(ol, rs.model); if (n && n !== lastNote) console.log('[agent] ' + n); lastNote = n} // before every turn: another model on the GPU
-    try {r = await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(await pacer.brief()), model: rs.model, toolTurns,
+    const b0 = await pacer.brief(); let err = null;
+    try {r = await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns,
       opts: numCtx ? {numCtx: Number(numCtx)} : {},
       on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
-    catch (e) {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
+    catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
+    reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
     if (r) {runIn += r.in; runOut += r.out; if (r.dead) ended = 'the hero is dead'; console.log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
     saveSess();
     if (fails.ok(localWorked(r)) && !ended) ended = fails.why();
@@ -147,10 +150,12 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
     if (spent >= budget) {ended = 'budget reached'; break}
     let r = null, w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
-    try {r = await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(await pacer.brief()), model: rs.model, toolTurns,
+    const b0 = await pacer.brief(); let err = null;
+    try {r = await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns,
       on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)}})}
-    catch (e) {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
+    catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
+    reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
     if (r) {runIn += r.in; runOut += r.out; spent += r.cost; sess.costUsd = (sess.costUsd || 0) + r.cost; if (!r.costKnown) unknown = true; if (r.dead) ended = 'the hero is dead';
       console.log(`[turn ${sess.turns}] ${paidLine(r, rs.model, 'openai', {run: spent, session: sess.costUsd})}`)}
     saveSess();
@@ -228,6 +233,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     const prompt = turnPrompt(sess.turns, w);
+    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // for the behavior log only (issue #129): a Claude turn's prompt does not carry the brief
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
@@ -245,25 +251,29 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else if (m.type === 'system' && m.subtype === 'compact_boundary') console.log(`  [compacted: ${m.compact_metadata.pre_tokens} -> ${m.compact_metadata.post_tokens ?? '?'} tokens]`);
       else if (m.type === 'assistant' && !m.parent_tool_use_id) {
         for (const b of m.message.content || []) {
-          if (b.type === 'text' && b.text.trim()) {console.log(`  ${st.name}: ${b.text.trim()}`); narrate(base, heroId, b.text.trim())}
-          else if (b.type === 'tool_use') {tools++; console.log(`  > ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 120) : ''})`)}
+          if (b.type === 'text' && b.text.trim()) {console.log(`  ${st.name}: ${b.text.trim()}`); narrate(base, heroId, b.text.trim()); tc.text(b.text)}
+          else if (b.type === 'tool_use') {tools++; tc.tool(b.name, b.id); console.log(`  > ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 120) : ''})`)}
         }
       } else if (m.type === 'user' && Array.isArray(m.message?.content)) {
-        for (const b of m.message.content) if (b.type === 'tool_result') {const c = Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''); console.log(`    < ${short(c, 220)}`);
+        for (const b of m.message.content) if (b.type === 'tool_result') {const c = Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''); console.log(`    < ${short(c, 220)}`); tc.result(b.tool_use_id, c, b.is_error);
           if (/"dead":true/.test(c)) ended = 'the hero is dead'}
       } else if (m.type === 'result') result = m;
     }} catch (e) {
       // Running out of tool turns (--tool-turns) only ends this turn; the next one resumes the session.
       if (result && result.subtype === 'error_max_turns') console.log(`[agent] turn hit the ${toolTurns} model-call cap; continuing next turn`);
-      else {console.error(`[agent] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`); failed = true}}
+      else {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`); failed = true}}
     freeSlot(); pacer.turnDone(); sess.turns++;
+    let turnCost = null, tin = null, tout = null;
     if (result) {
       // total_cost_usd is cumulative for the session when resumed; take the part this turn added.
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
-      spent += cost; sess.costUsd += cost;
-      const mu = Object.values(result.modelUsage || {}), tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0), tout = mu.reduce((t, u) => t + u.outputTokens, 0), cached = mu.reduce((t, u) => t + u.cacheReadInputTokens, 0);
+      spent += cost; sess.costUsd += cost; turnCost = cost;
+      const mu = Object.values(result.modelUsage || {}), cached = mu.reduce((t, u) => t + u.cacheReadInputTokens, 0);
+      tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0); tout = mu.reduce((t, u) => t + u.outputTokens, 0);
       console.log(`[turn ${sess.turns}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
+    reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cost: turnCost,
+      flags: result && result.subtype !== 'success' ? [result.subtype] : [], ...(err ? {error: err} : {})});
     saveSess();
     if (fails.ok(!failed && tools > 0) && !ended) ended = fails.why();
   }

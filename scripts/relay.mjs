@@ -24,6 +24,8 @@
 // With no key the relay still runs: Claude requests fail (scripted fallback), local models work.
 // App runners: `npm run relay -- --runners` (or RELAY_RUNNERS=1) lets the game page start and stop agent
 // runners (scripts/runners.mjs: GET /play/runner, POST /play/runner/start|stop).
+// Behavior logs (issue #129): logs/behavior/<world>/{turns,decisions,world,anomalies}.jsonl for the watcher (npm run
+// behavior-report); --no-behavior or RELAY_BEHAVIOR=0 turns them off.
 // Verbose log: `npm run relay -- --verbose` (or RELAY_VERBOSE=1) appends one JSON line per
 // call to logs/relay.jsonl: {ts, kind, hero, system, user, response, usage, ms}. Never the key or headers.
 // Limits: 2.5 s per model call (hard abort; local models 8 s, see LOCAL_TIMEOUT), small max_tokens per kind, body <= 32 KB,
@@ -35,7 +37,8 @@ import {dirname, join} from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {FAC} from '../src/data/factions.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs'; // agent player: /mcp, /play (issue #75)
-import {attachRunners} from './runners.mjs'; // app runners: the page starts and stops agent runners (--runners)
+import {attachRunners} from './runners.mjs';
+import {behaviorLog} from './behavior-log.mjs'; // behavior logs for the watcher (issue #129) // app runners: the page starts and stops agent runners (--runners)
 import {makeProviders, PROVIDERS, isLocal, MODEL_RE, DEFAULT_MODEL, PRICES, costOf} from './providers/index.mjs';
 import {makeLimiter, rateLimitOf} from './providers/limiter.mjs'; // per-provider concurrency (the org's concurrent-request cap) // Mixed minds (#97): one adapter per provider
 import {KINDS, OPTION_KINDS, WRITE_KINDS, systemFor, schemaFor, MAX_TOKENS, promptId, cleanReason, cleanText, PERSONA_FIELDS, STANCE_MAX, BACKSTORY_FIELDS, LINK_KINDS, MEMORY_LONG_MAX} from '../src/data/prompts.js';
@@ -144,7 +147,9 @@ const cap = (t, n = ECHO_MAX) => t.length > n ? t.slice(0, n) + '…[cut]' : t;
 // providers: {name: adapter} (scripts/providers/); default built from client and the environment.
 // localTimeout: {decide, write} ms for local providers (a writing kind gets at least its KIND_TIMEOUT).
 // limits: {provider: makeLimiter()} (default: Anthropic at ANTHROPIC_CONCURRENCY); {} turns limiting off.
-export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null, providers = null, localTimeout = LOCAL_TIMEOUT, limits = makeLimits()} = {}) {
+// onDecide({kind, hero, provider, model, ok, status, ms, choice?, error?}): every /decide call as answered, for the
+// behavior logs (issue #129, scripts/behavior-log.mjs relayDecision); never the prompt, the reply text or a key.
+export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null, providers = null, localTimeout = LOCAL_TIMEOUT, limits = makeLimits(), onDecide = null} = {}) {
   providers = providers || makeProviders({anthropicClient: client || null, model});
   const stats = {requests: 0, errors: 0, inTok: 0, outTok: 0, cost: 0, byProvider: {}};
   const vlog = rec => {
@@ -221,12 +226,15 @@ export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MOD
       let body; try {body = JSON.parse(Buffer.concat(chunks).toString('utf8'))} catch {return send(400, {error: 'bad json'})}
       const bad = checkRequest(body); if (bad) return send(400, {error: bad});
       stats.requests++;
-      try {send(200, await decide(body))}
+      const t0 = Date.now(), seen = r => {if (onDecide) try {onDecide({kind: body.kind, hero: body.snapshot.name || null, ...r, ms: Date.now() - t0})} catch {}};
+      try {const out = await decide(body); send(200, out); seen({provider: out.provider, model: out.model, ok: true, status: 200, choice: out.choice ?? (out.crypt != null ? String(out.crypt) : null)})}
       catch (e) {
         stats.errors++;
         const timeout = isAbort(e);
         log(`[relay] ${body.kind} ${body.snapshot.name || ''} ${e.who ? e.who.provider + '/' + e.who.model : ''} failed: ${timeout ? (e.queued ? 'dropped in the queue (deadline passed)' : 'timeout') : e.message}`);
-        send(timeout ? 504 : e.rateLimited ? 429 : 502, {error: timeout ? (e.queued ? 'timeout (queued: the provider was busy)' : 'timeout') : e.rateLimited ? 'rate limited by the provider' : String(e.message || e).slice(0, 200), ...(e.sent ? {sent: e.sent} : {}), ...(e.who || {})});
+        const status = timeout ? 504 : e.rateLimited ? 429 : 502;
+        seen({provider: e.who ? e.who.provider : body.provider || 'anthropic', model: e.who ? e.who.model : body.model || null, ok: false, status, error: timeout ? 'timeout' : e.rateLimited ? 'rate limited (429)' : String(e.message || e).slice(0, 160)});
+        send(status, {error: timeout ? (e.queued ? 'timeout (queued: the provider was busy)' : 'timeout') : e.rateLimited ? 'rate limited by the provider' : String(e.message || e).slice(0, 200), ...(e.sent ? {sent: e.sent} : {}), ...(e.who || {})});
       }
     });
   });
@@ -246,8 +254,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const localTimeout = {decide: Number(env.RELAY_LOCAL_TIMEOUT) || LOCAL_TIMEOUT.decide, write: Number(env.RELAY_LOCAL_WRITE_TIMEOUT) || LOCAL_TIMEOUT.write};
   const kindModel = env.RELAY_WRITE_MODEL ? {persona: env.RELAY_WRITE_MODEL, backstory: env.RELAY_WRITE_MODEL} : KIND_MODEL;
   const limits = makeLimits(env);
-  const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose, providers, localTimeout, limits});
-  const play = attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null}); // agent player: MCP at /mcp, the game page at ws /play
+  // Behavior logs (issue #129): logs/behavior/<world>/ (the world the game page names); off with --no-behavior or RELAY_BEHAVIOR=0.
+  const behavior = process.argv.includes('--no-behavior') || /^(0|false|no|off)$/i.test(env.RELAY_BEHAVIOR || '') ? null : behaviorLog({world: env.ELDMOOR_WORLD || 'eldmoor', log: console.log});
+  const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose, providers, localTimeout, limits, onDecide: behavior ? behavior.relayDecision : null});
+  const play = attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null, behavior}); // agent player: MCP at /mcp, the game page at ws /play
   // App runners: with --runners (or RELAY_RUNNERS=1) the game page may start and stop agent runners
   // (child processes of this relay; scripts/runners.mjs). Off by default.
   const runnersOn = process.argv.includes('--runners') || /^(1|true|yes)$/i.test(env.RELAY_RUNNERS || '');
@@ -255,7 +265,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const quit = () => {sup.stopAll(); setTimeout(() => process.exit(0), 1500)}; // runners get a moment to let go of their heroes; exit kills the rest
   process.on('SIGINT', quit); process.on('SIGTERM', quit);
   server.listen(port, '127.0.0.1', () => {
-    console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}`);
+    console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}${behavior ? '  behavior logs -> ' + behavior.dir() : ''}`);
     console.log(runnersOn ? '[relay] app runners ON: the game page can start and stop agent runners (logs in logs/runners/)' : '[relay] app runners off (start with --runners to launch agent runners from the game page)');
     providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error}`));
   });
