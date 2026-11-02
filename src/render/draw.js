@@ -13,7 +13,7 @@
 //   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
 import {W,H,T} from '../world/tiles.js';
-import {LAIR,CRYPT,LIGHTS,LABELS} from '../world/map.js';
+import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
@@ -26,6 +26,7 @@ import {drawCamp,drawCampLight} from './camp.js';
 import {drawMemorials} from './memorials.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
+import {ROLE,TEXT,MARK,roleOf} from './palette.js';
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false};
@@ -33,7 +34,7 @@ export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,d
 const FOLLOW_VIEW=460;
 // Entities and labels this many world px outside the view are not drawn.
 const MARGIN=48;
-export const ROLE_COL={tank:'#5b8ff2',healer:'#7dce5a',dps:'#e8544a'}; // Fellowship role colours, as the .frole badges
+export const ROLE_COL=ROLE; // Fellowship role colours, as the .frole badges (palette.js)
 const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a20'};
 
 // ---- camera control (module level so the UI and tools can drive it) ----
@@ -77,7 +78,7 @@ export function createRenderer(cv,screenEl){
 
   function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
-  function shadow(x,y,w){ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()}
+  function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()}
 
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
   // pixels so neighbouring chunks never show a seam at fractional scales.
@@ -104,7 +105,7 @@ export function createRenderer(cv,screenEl){
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
-    if(S.boss.alive&&inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle='#ffe27a';for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
+    if(S.boss.alive&&inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle=MARK.ember;for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
     const close=cam.close=sc>=cam.fit*2;
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
@@ -131,11 +132,11 @@ export function createRenderer(cv,screenEl){
       ctx.drawImage(s,-Math.floor(s.width/2),py-s.height);ctx.restore();ctx.globalAlpha=1;
       const top=py-s.height;
       // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
-      if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle='#ffe040';ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
+      if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle=MARK.quest;ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
         else if(e.role==='quartermaster'){ctx.fillStyle='#f2c14e';ctx.fillRect(px-2,top-8,4,4);ctx.fillStyle='#8a6a1a';ctx.fillRect(px-1,top-6,2,1)}}
-      if(e===sel){ctx.fillStyle=Math.floor(blink*3)%2?'#f2c14e':'#fff2b0';ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
+      if(e===sel){ctx.fillStyle=Math.floor(blink*3)%2?MARK.sel:MARK.selHi;ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
       if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=e.kind==='boss'?28:12;
-        ctx.fillStyle='#000';ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?'#3fbf4a':'#e0483e';ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
+        ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
     }
     // effects
     for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;const x=(p.x0+(p.x1-p.x0)*t)*T,y=(p.y0+(p.y1-p.y0)*t)*T;if(!inView(x,y,8))continue;ctx.fillStyle=p.col;ctx.fillRect(Math.round(x),Math.round(y),3,2)}
@@ -148,30 +149,32 @@ export function createRenderer(cv,screenEl){
       ctx.globalCompositeOperation='source-over'}
     drawWeather(ctx,S,cam,blink);
     // labels: region names when zoomed out, nameplates when close
-    const LM=MARGIN*4;
+    const LM=MARGIN*4,inMap=(y,css)=>{const s=css*cam.dpr/sc;return clamp(y,s*.9,H*T-s*.25)}; // keep labels at the map's edge inside it
     if(!close){
-      for(const[t,x,y]of LABELS)if(inView(x*T,y*T,LM))drawText(t,x*T,y*T,'#f4ecd0',13);
-      if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))drawText('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,'#ffb060',12);
-      if(inView(CRYPT.x*T,CRYPT.y*T,LM))drawText(CRYPT.group&&CRYPT.group.phase==='inside'?'CRYPT · '+CRYPT.group.mem.length+' INSIDE':'SUNKEN CRYPT',CRYPT.x*T,40.4*T,'#9ae0b8',12)}
+      for(const[t,x,y]of LABELS)if(inView(x*T,y*T,LM))drawText(t,x*T,inMap(y*T,13),TEXT.label,13);
+      if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))drawText('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,TEXT.elite,12);
+      for(const L of LANDMARKS){if(L.kind!=='crypt'||!L.mouth||!inView(L.x*T,L.y*T,LM))continue; // every crypt, labelled just above its mouth
+        const g=CRYPT&&L.name===CRYPT.name&&CRYPT.group&&CRYPT.group.phase==='inside'?CRYPT.group:null;
+        drawText(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12)}}
     else{
-      if(CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,41*T-4,'#9ae0b8',14);
+      if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14);
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
-        const dead=a.state==='dead';drawText((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?'#f2c14e':dead?'#9a98ac':FAC[a.fac].color,14)}
-      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40))drawText(p.name,p.x*T,p.y*T-17,'#d8c890',12); // townsfolk nameplates
+        const dead=a.state==='dead';drawText((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14)}
+      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40))drawText(p.name,p.x*T,p.y*T-17,TEXT.person,12); // townsfolk nameplates
       drawBubbles(ctx,S,cam,drawText);
-      for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;drawText(m.name,m.x*T,m.y*T-17,'#ffb060',14)} // named elite nameplate
-      if(boss.alive&&inView(boss.x*T,boss.y*T,LM))drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,'#ffb060',15);
+      for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;drawText(m.name,m.x*T,m.y*T-17,TEXT.elite,14)} // named elite nameplate
+      if(boss.alive&&inView(boss.x*T,boss.y*T,LM))drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,TEXT.elite,15);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     // The Fellowship (#94): a role marker over each member and their name at any zoom (close views already
     // name everyone), plus a dashed ring around the party in Follow Fellowship.
     if(S.fellowship){const px1=cam.dpr/sc,F=S.fellowship,mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
       if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
-        ctx.save();ctx.strokeStyle='rgba(242,193,78,.55)';ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
-      for(const a of mem){if(!inView(a.x*T,a.y*T,40))continue;const role=a.fellowRole?String(a.fellowRole).replace(/\d+$/,''):'dps',col=ROLE_COL[role]||ROLE_COL.dps;
+        ctx.save();ctx.strokeStyle=MARK.party;ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
+      for(const a of mem){if(!inView(a.x*T,a.y*T,40))continue;const col=ROLE[roleOf(a)]||ROLE.dps;
         const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-(close?17:14)-(close?16:15)*px1-m;
-        ctx.fillStyle='#05060c';ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
+        ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
-        if(!close)drawText(a.name,a.x*T,a.y*T-14,a===sel?'#f2c14e':'#fff2d0',13)}}
+        if(!close)drawText(a.name,a.x*T,a.y*T-14,a===sel?MARK.sel:TEXT.hero,13)}}
     if(mini)mini.draw(S);
   }
 

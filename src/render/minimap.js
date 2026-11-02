@@ -5,19 +5,19 @@
 import {W,H,T,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,SNOW,ICE} from '../world/tiles.js';
 import {tiles,zone,I} from '../world/map.js';
 import {FAC} from '../data/factions.js';
+import {BIOME,TILE_FLAT,ROLE_LIGHT,MARK,TEXT,biomeOfZone} from './palette.js';
 
 // Largest CSS size; the canvas keeps the map's aspect inside this box.
 const BOX_W=160,BOX_H=100;
-const PAL={grass:'#3f8a3a',swamp:'#3a5a3c',rock:'#6a605c',lava:'#e0602a',snow:'#dde4ec',water:'#3468b8',road:'#a88c5c',wall:'#2e2a34'};
+// Colours come from the shared palette: flat tile families, and ground and forest by the
+// region's biome (never by zone index), so a new region only needs a biome.
 const BY_TILE=[];
-BY_TILE[SWAMP]=BY_TILE[MUD]=BY_TILE[SGRASS]=PAL.swamp;BY_TILE[ROCK]=BY_TILE[PEAK]=PAL.rock;BY_TILE[LAVA]=PAL.lava;
-BY_TILE[SNOW]=BY_TILE[ICE]=PAL.snow;BY_TILE[RIVER]=PAL.water;BY_TILE[ROAD]=BY_TILE[BRIDGE]=BY_TILE[FLOOR]=PAL.road;BY_TILE[WALL]=PAL.wall;
-// Forest reads as a darker shade of the zone's ground, so woods stay visible at two pixels a tile.
-const FOREST_BY_ZONE=['#2a6e2c','#2c4a2a','#4a4642','#1e4f44'];
-const colourFor=(t,z)=>t===TREE?(FOREST_BY_ZONE[z]||'#2a6e2c'):(BY_TILE[t]||PAL.grass);
+BY_TILE[SWAMP]=BY_TILE[MUD]=BY_TILE[SGRASS]=TILE_FLAT.swamp;BY_TILE[ROCK]=BY_TILE[PEAK]=TILE_FLAT.rock;BY_TILE[LAVA]=TILE_FLAT.lava;
+BY_TILE[SNOW]=BY_TILE[ICE]=TILE_FLAT.snow;BY_TILE[RIVER]=TILE_FLAT.water;BY_TILE[ROAD]=BY_TILE[BRIDGE]=BY_TILE[FLOOR]=TILE_FLAT.road;BY_TILE[WALL]=TILE_FLAT.wall;
+const colourFor=(t,z)=>{const b=BIOME[biomeOfZone(z)]||BIOME.meadow;return t===TREE?b.forest:(BY_TILE[t]||b.ground)};
 const rgbC={};const rgb=s=>rgbC[s]||(rgbC[s]=[parseInt(s.slice(1,3),16),parseInt(s.slice(3,5),16),parseInt(s.slice(5,7),16)]);
 
-const BOSS_COL='#ff6a5a',ELITE_COL='#ffb060',SEL_COL='#f2c14e',GHOST_ALPHA=.45;
+const BOSS_COL='#ff6a5a',ELITE_COL=TEXT.elite,SEL_COL=MARK.sel,GHOST_ALPHA=.45;
 
 // Paint the W x H base image once.
 function buildBase(){const cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d');
@@ -27,8 +27,7 @@ function buildBase(){const cv=document.createElement('canvas');cv.width=W;cv.hei
 
 // canvas: the #minimap element. cam: the shared camera (camX/camY in world px, vw/vh the
 // view size in world px). onCenter(wx,wy) is called with a world-pixel point on click.
-const ROLE_DOT={tank:'#8fb4ff',healer:'#a6f07a',dps:'#ff7a6a'}; // brighter cuts of the Fellowship role colours
-const MIND_COL='#7fd6c2'; // same teal as the AI-played badge
+const ROLE_DOT=ROLE_LIGHT,MIND_COL=MARK.mind;
 export function createMinimap(canvas,cam,onCenter){
   const ctx=canvas.getContext('2d');let base=null,k=1;
   function resize(){const dpr=window.devicePixelRatio||1,s=Math.min(BOX_W/W,BOX_H/H),cw=Math.round(W*s),ch=Math.round(H*s);

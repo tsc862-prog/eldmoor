@@ -5,7 +5,7 @@
 import {T} from '../world/tiles.js';
 import {bubbleVisible,fellowRoleOf} from '../core/chatview.js';
 
-const ROLE_COL={tank:'#7fa8ff',healer:'#8fe070',dps:'#ff7a70'}; // the party frames' role colours, lightened for the dark bubble
+import {ROLE_LIGHT as ROLE_COL,TEXT} from './palette.js'; // the role colours, lightened for the dark bubble
 
 const CSS=12,LINE=20,MAXL=3,FADE=.6;
 
@@ -27,5 +27,5 @@ export function drawBubbles(ctx,S,cam,drawText){
     ctx.fillStyle='rgba(10,10,22,.86)';
     if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill()}else ctx.fillRect(x0,top,bw,bh);
     ctx.beginPath();ctx.moveTo(px-pad*.6,bottom);ctx.lineTo(px+pad*.6,bottom);ctx.lineTo(px,bottom+pad*.7);ctx.fill();
-    lines.forEach((l,i)=>drawText(l,px,top+pad*.6+lh*(i+.85),role&&i===0?ROLE_COL[role]:'#f4ecd0',CSS));
+    lines.forEach((l,i)=>drawText(l,px,top+pad*.6+lh*(i+.85),role&&i===0?ROLE_COL[role]:TEXT.label,CSS));
     ctx.globalAlpha=1}}

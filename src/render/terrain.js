@@ -3,8 +3,9 @@
 // Owned by world-builder (textures) together with render (chunk cache).
 import {hash,vnoise} from '../core/rng.js';
 import {W,H,T,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
-import {tiles,zone,I,CITY,CRYPT} from '../world/map.js';
+import {tiles,zone,I,CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
+import {biomeOfZone} from './palette.js';
 
 const rgbC={};const rgb=s=>rgbC[s]||(rgbC[s]=[parseInt(s.slice(1,3),16),parseInt(s.slice(3,5),16),parseInt(s.slice(5,7),16)]);
 const pk=(a,h)=>a[Math.floor(h*a.length)%a.length];
@@ -38,8 +39,8 @@ export function texel(t,tx,ty,px,py){
         if((Math.abs(dx)===1&&dy===0)||(dx===0&&Math.abs(dy)===1))return c>.66?'#f4e06a':c>.33?'#f08ab0':'#f4f4f8';
         if(dx===0&&(dy===2||dy===3))return '#2a6a28';if(dx===1&&dy===3)return '#3f8a3a'}
       return grass(x,y,h)}
-    case TREE:{const zt=zone[I(tx,ty)];
-      if(zt===3){ // Hoarfell pine: tiered blue-green spire, snow on the cap and lit tiers, trunk, on snow
+    case TREE:{const bio=biomeOfZone(zone[I(tx,ty)]); // tree kind by the region's biome, never its index
+      if(bio==='tundra'){ // Hoarfell pine: tiered blue-green spire, snow on the cap and lit tiers, trunk, on snow
         const dx=px-7.5;if(py<=11){const hw=.6+py*.6;
           if(Math.abs(dx)<hw){const tier=py%4;
             if(py<=2)return '#eef2f8';
@@ -50,7 +51,7 @@ export function texel(t,tx,ty,px,py){
         else if(px===7||px===8)return px===7?'#3a2a20':'#241810';
         if(py>=12&&px>=9&&px<=11)return '#c8d2de';
         return snowBase(x,y,h)}
-      if(zt===1){ // Mirefen swamp tree: wide olive canopy, hanging moss strands, crooked trunk, on wet grass
+      if(bio==='fen'){ // Mirefen swamp tree: wide olive canopy, hanging moss strands, crooked trunk, on wet grass
         const dx=px-7.5,dy=py-5.5,r2=(dx*dx)/58+(dy*dy)/27;
         if(r2<1){if(r2>.74)return '#2a3a1e';if(dx+dy*1.2<-3.2)return '#7a9a44';if(dx+dy>3.2)return '#34502a';return h>.88?'#5a7a3a':pk(['#4e6e2e','#46642a','#4a6a2c'],h)}
         if((px===2||px===5||px===10||px===13)&&py>=8&&py<=(px%2?11:10))return '#5a7a34';
@@ -196,9 +197,9 @@ function decorate(tctx,x0,y0,x1,y1){
     for(const gy of [5,8]){const gx=12*T+6+ox,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}
     for(let i=0;i<3;i++){const gx=4*T+i*12+ox,gyy=8*T+dy+4;R(gx+1,gyy,4,1,'#5a5a66');R(gx,gyy+1,6,7,'#5a5a66');R(gx+1,gyy+1,4,1,'#6e6e7a');R(gx+2,gyy+3,2,2,'#3a3a46');R(gx-1,gyy+8,8,1,'#3a3a46')}
   }
-  // the dungeon mouth (the Sunken Crypt), drawn over its 3x3 rock patch
-  const mo=CRYPT&&CRYPT.mouth;
+  // dungeon mouths (every crypt landmark: the Sunken Crypt, the Hollow Cairn...), each over its 3x3 rock patch
+  for(const L of LANDMARKS){const mo=L.kind==='crypt'&&L.mouth;
   if(mo&&hits(mo.x0,mo.y0,mo.x1+1,mo.y1+1,x0,y0,x1,y1)){const x=mo.x0*T,y=mo.y0*T;R(x+6,y+2,36,30,'#4a4652');R(x+6,y+2,36,4,'#78748a');R(x+6,y+2,4,30,'#78748a');R(x+38,y+2,4,30,'#78748a');
   R(x+10,y+6,28,1,'#2e2a34');R(x+16,y+12,16,20,'#0a0810');R(x+15,y+11,18,1,'#2e2a34');R(x+22,y+8,4,2,'#7ad0a0');R(x+23,y+9,2,1,'#c8ffd8');
-  R(x+12,y+28,4,4,'#e8e4d8');R(x+32,y+28,4,4,'#e8e4d8');R(x+13,y+29,1,1,'#0a0810');R(x+15,y+29,1,1,'#0a0810');R(x+33,y+29,1,1,'#0a0810');R(x+35,y+29,1,1,'#0a0810')}
+  R(x+12,y+28,4,4,'#e8e4d8');R(x+32,y+28,4,4,'#e8e4d8');R(x+13,y+29,1,1,'#0a0810');R(x+15,y+29,1,1,'#0a0810');R(x+33,y+29,1,1,'#0a0810');R(x+35,y+29,1,1,'#0a0810')}}
 }
