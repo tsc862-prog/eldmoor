@@ -31,7 +31,7 @@ const T = await import('../src/sim/table.js');
 const C = await import('../src/sim/council.js');
 const LV = await import('../src/sim/levers.js');
 const BR = await import('../src/sim/brain.js');
-const {makeWatch} = await import('../src/sim/behavior.js');
+const {makeWatch, BW} = await import('../src/sim/behavior.js');
 const {zoneFor, zonePoint, ZONES, zoneAt, CITY} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
@@ -128,6 +128,9 @@ rs.close();
 // Mind decisions: a few scripted heroes with the brain on and a relay that cannot be reached
 BR.setFetch(() => Promise.reject(new Error('unreachable')));
 const brainy = S.agents.filter(a => a.state !== 'dead' && !a.fellow && !a.player).slice(0, 12); for (const a of brainy) SIM.enableBrain(a);
+BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
+const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
+ok(memA.ok, 'A wrote a memory (#179)');
 run(30); // 3 game hours: C and D sit in town
 T.TABLE.mode = 'auto';
 for (let k = 0; k < 2; k++) {const sc = T.openScene('check', 'A narrow ledge ' + (k + 1), ['The path crumbles.'], {}); ok(!!sc && sc.pause, `scene ${k + 1} opened and paused the world`); run(6);}
@@ -153,7 +156,7 @@ ok(turns.length === 9, `9 turn lines (6 for A, 2 for B, 1 for the DM; none forge
 ok(!turns.some(t => /FORGED/.test(t.narration)), 'no forged line in turns.jsonl');
 ok(turns.filter(t => t.seat === 'hero:' + A.id).every(t => t.after && t.after.state), 'hero turn lines carry the state after the turn (from the game)');
 ok(turns.some(t => t.seat === 'dm' && t.cost === .012), 'the DM turn line carries its cost');
-const want = ['no-tool-calls', 'repeated-narration', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
+const want = ['no-memories', 'no-tool-calls', 'repeated-narration', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
 for (const k of want) ok(kinds.has(k), `anomaly logged: ${k}`);
 ok(world.length >= 6 && world.every(w => Array.isArray(w.members) && w.members.length === 5), `${world.length} hourly digests with the five members`);
 const lastW = world[world.length - 1] || {};
@@ -178,6 +181,8 @@ for (const k of want) ok(md.includes(k), `report names ${k}`);
 ok(/## Per-seat health/.test(md) && md.includes(A.name) && md.includes('hero:' + B.id), 'report has per-seat health with the mock seats');
 ok(/## Model comparison/.test(md) && md.includes('ollama/qwen2.5:14b') && md.includes('ollama/llama3.1:8b') && md.includes('anthropic/claude-sonnet-5-5'), 'report compares the three runner models');
 ok(/\| ollama\/qwen2\.5:14b \| [^|]+ \| 6 \| 50% \|/.test(md), 'report: qwen ran 6 turns, half of them empty');
+ok(world.some(w => w.memories && w.memories[A.name] >= 1) && anomalies.some(x => x.kind === 'no-memories' && x.hero && x.hero.id !== A.id), 'digests count memories written per member (#179)');
+ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: memories written per member per game day');
 ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last world digest');
 
 // ---- 7. rotation by size ----

@@ -57,7 +57,7 @@ function seats(){const out=new Map();for(const m of fellowshipMembers())if(m.her
 
 export function makeWatch(){
   let base=false,lastGm=0,hour=0,dmSeen=0,scene=null,sceneRun=0,voteRun=0,refusals=[],pulls=[];
-  const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map();
+  const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0},
     levers:{pulled:0,refused:0,by:{}},dmlog:{},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{}});
   const tStats=()=>{const F=S.fellowship,t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
@@ -65,6 +65,7 @@ export function makeWatch(){
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
   function baseline(){base=true;lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
     T.clear();seenProps.clear();emitted.clear();H=fresh();tLast=tStats();
+    seq0.clear();for(const a of seats())seq0.set(a.id,a.memories?a.memories.seq||0:0); // notes written before a seat is first tracked still count (#179)
     for(const e of S.fallen||[])seenFallen.add(e);
     for(const a of seats())for(const e of a.chat||[])seenChat.add(e);
     for(const P of (S.fellowship&&S.fellowship.props)||[])if(P.status!=='open')seenProps.add(P.id);
@@ -72,7 +73,7 @@ export function makeWatch(){
   const anomaly=(out,kind,a,text,evidence,severity='warn')=>{H.anomalies++;out.push({kind:'anomaly',rec:{kind,seat:a?'hero:'+a.id:'world',hero:a?heroRef(a):null,gameMin:Math.round(S.gameMin),clock:day(),severity,text,evidence:evidence||{}}})};
 
   function track(out,a,dt){let t=T.get(a.id);const now=S.gameMin;
-    if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:a.memories?a.memories.seq||0:0,noteAt:now};T.set(a.id,t)}
+    if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:seq0.has(a.id)?seq0.get(a.id):a.memories?a.memories.seq||0:0,noteAt:now};T.set(a.id,t)}
     notes(out,a,t,now);
     H.share[mindOf(a)]+=dt;
     if(a.player&&a.playActAt!==t.act){t.act=a.playActAt;H.acts++}

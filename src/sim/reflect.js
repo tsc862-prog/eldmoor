@@ -4,7 +4,7 @@
 //
 //   a.reflect = {seq, cur:{id, why:[..], gm}|null, d, n, dusk, last, ev, log:[{id, why, gm, day, wrote}]}
 //     cur   a moment raised by the world (moment(a, why)): making camp, the end of a Table scene, a companion's death,
-//           an oath kept, a big trade, a conversation (#170 calls moment(a,'talk', ...)); several close together merge.
+//           an oath kept, a big trade, a conversation (talked(): REFLECT.TALK lines to others); several close together merge.
 //     dusk  the last game day whose evening reflection is done (one a day, offered from REFLECT.DUSK, only when
 //           something happened since the last reflection).
 //     d, n  the game day and the reflections done on it (REFLECT.PER_DAY at most, whatever their kind).
@@ -29,6 +29,8 @@ export const REFLECT={
   LOG:12,       // past reflections kept for the Agent tab
   TRADE:150,    // gold in one buy or sell that makes a big trade
   NOTES:3,      // notes a reflection asks for at most
+  TALK:4,       // lines an agent hero says to others (say, party_say, talk_to) within TALK_MIN that make a conversation
+  TALK_MIN:180, // game minutes a conversation's lines must fall within
 };
 export const KINDS={camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day'};
 
@@ -42,6 +44,13 @@ function stateOf(a){const R=a.reflect||(a.reflect={seq:0,cur:null,d:0,n:0,dusk:0
 export function moment(a,kind,detail){if(!live(a))return;const R=stateOf(a),gm=Math.round(S.gameMin),why=clean((KINDS[kind]||kind)+(detail?': '+detail:''),140);
   if(R.cur&&gm-R.cur.gm<=REFLECT.TTL){if(!R.cur.why.includes(why))R.cur.why.push(why);if(R.cur.why.length>REFLECT.WHY)R.cur.why.shift();R.cur.kind=R.cur.kind||kind;return}
   R.cur={id:'m'+(++R.seq),kind,why:[why],gm}}
+
+// A line the agent hero said or asked (say, party_say, talk_to). TALK lines to others within TALK_MIN make a
+// conversation worth a reflection (until #170 brings full NPC conversations, which can call moment(a,'talk',...)).
+// names: who heard or answered, as the hero saw them.
+export function talked(a,names){if(!live(a))return;const R=stateOf(a),gm=Math.round(S.gameMin),L=(names||[]).map(n=>clean(n,24)).filter(Boolean);if(!L.length)return;
+  const T=R.talk&&gm-R.talk.gm<=REFLECT.TALK_MIN?R.talk:(R.talk={n:0,gm,who:[]});T.n++;for(const n of L)if(!T.who.includes(n)&&T.who.length<4)T.who.push(n);
+  if(T.n>=REFLECT.TALK){moment(a,'talk','with '+T.who.join(', '));R.talk=null}}
 
 // The moment due now for this hero, or null. Pure read: nothing changes.
 export function reflectDue(a){if(!live(a)||!a.reflect&&!duskDue(a,null))return null;const R=a.reflect||{n:0,d:0,last:-1e9,cur:null,dusk:0,ev:0},gm=S.gameMin,d=dayNo(gm);

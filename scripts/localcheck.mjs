@@ -247,7 +247,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   const sim = await import('../src/sim/index.js'), {localBackend, chooseHero} = await import('./play-headless.mjs');
   const {notify} = await import('../src/sim/notify.js'), {homeOf} = await import('../src/data/races.js');
   const {S} = sim, {maxHp: maxHpOf} = await import('../src/sim/heroes.js'); sim.init({fellowship: false});
-  const {REFLECT} = await import('../src/sim/reflect.js'), PER_DAY = REFLECT.PER_DAY; REFLECT.PER_DAY = 0; // no reflection moments in A-G (their turn counts are exact); H turns them on (#179) for (let i = 0; i < 60 * 30; i++) sim.step(1 / 60);
+  const {REFLECT} = await import('../src/sim/reflect.js'), PER_DAY = REFLECT.PER_DAY; REFLECT.PER_DAY = 0; // no reflection moments in A-G (their turn counts are exact); H turns them on (#179)
+  for (let i = 0; i < 60 * 30; i++) sim.step(1 / 60);
   let speed = 8, last = Date.now(), hold = false; // hold: a section steps the world itself (deterministic, issue #159)
   const tick = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; if (hold) return; const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
   const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});

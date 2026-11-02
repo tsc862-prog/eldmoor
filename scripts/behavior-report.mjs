@@ -135,7 +135,7 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
     L.push(`- Chat lines heard by the watched heroes, by channel: ${Object.entries(chat).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}.`);
     // memories written per member per game day (issue #179), from the digests
     const mem = new Map(), days = new Set();
-    for (const w of W) {const d = Math.floor((w.gameMin - 1) / 1440) + 1; for (const [k, v] of Object.entries(w.memories || {})) {days.add(d); const m = mem.get(k) || new Map(); m.set(d, (m.get(d) || 0) + v); mem.set(k, m)}}
+    for (const w of W) {const d = Math.floor((w.gameMin - 1) / 1440) + 1; days.add(d); for (const [k, v] of Object.entries(w.memories || {})) { const m = mem.get(k) || new Map(); m.set(d, (m.get(d) || 0) + v); mem.set(k, m)}}
     for (const m of last.members || []) if (m.agent && m.role && !mem.has(m.name)) mem.set(m.name, new Map());
     const dl = [...days].sort((a, b) => a - b).slice(-10);
     L.push('', 'Memories written per member per game day:', '');
