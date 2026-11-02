@@ -21,9 +21,12 @@ export const S={
   raidOn:[false,false],raidT:40,pvpT:0,mktT:0,
   gameMin:15*60,  // game clock in minutes; 1 real second at 1x = 6 game minutes
   uid:0,
+  worldId:'',     // one id per world instance, new at init() and kept by saves; hosts use it to tell a new world from a reload (memory mirror purge). Not simulation state: never read by step().
   pinned:null,    // the hero the watcher is following; its grave is never recycled
 };
 // Save-file format version (sim/save.js). Bump it and add a migration there when the shape of S changes.
 export const SAVE_VERSION=6;
+// A fresh world instance id. Deliberately not from the seeded rng, so a seeded world keeps its dice.
+export const newWorldId=()=>'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 export const dayNo=()=>Math.floor(S.gameMin/1440)+1; // game day, 1-based (the UI shows D4 03:12 with it)
 export const clockStr=()=>{const m=Math.floor(S.gameMin)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};

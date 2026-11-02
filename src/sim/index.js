@@ -3,7 +3,7 @@
 import {rnd,seedRng} from '../core/rng.js';
 import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
-import {S} from './state.js';
+import {S,newWorldId} from './state.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
 import {makeHero,updAgent} from './heroes.js';
@@ -54,6 +54,7 @@ export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as 
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
 // o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
 export function init(o={}){
+  S.worldId=newWorldId(); // a new world instance (hosts purge the old world's memory mirror on a new id)
   const seeded=!!(o.setup&&o.setup.seed!=null);
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
   spawnAll();

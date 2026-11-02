@@ -334,6 +334,31 @@ act(C1, 'forget', {id: id1});
 {const out = flush(); ok(out.length === 1 && out[0].key === 'hero:' + C1.id && !readdirSync(dirOf(C1)).some(f => f.startsWith(id1 + '-')), 'only the changed seat is written again; a forgotten note loses its file')}
 {const runners = ['agent-player.mjs', 'fellowship.mjs', 'local-agent.mjs', 'dm-agent.mjs', 'agent-sessions.mjs', 'pacing.mjs'].map(f => readFileSync(new URL('./' + f, import.meta.url), 'utf8')).join('\n');
   ok(!/memory-mirror|MEMORY\.md/.test(runners), 'no runner opens the mirror: it is never read back into a prompt')}
+// a replaced world: a new instance id purges that world's old folders; a reload (same id) and other worlds stay
+{const {mkdirSync, writeFileSync, symlinkSync, mkdtempSync: mk} = await import('node:fs');
+  ok(typeof S.worldId === 'string' && S.worldId.length >= 6, 'the world carries an instance id (S.worldId)');
+  const wid = S.worldId, MR = join(LOGS, 'check');
+  ok(!existsSync(join(MR, '.world')), 'no instance mark before the mirror is told the id');
+  const m1 = MM.memoryMirror({root: LOGS, world: 'check'}); m1.setWorld('check', wid);
+  ok(readFileSync(join(MR, '.world'), 'utf8').trim() === wid && !existsSync(dirOf(B)), 'the first sighting of an unmarked (older) folder records the id and clears what it holds')
+  m1.write(NBm.mirrorDirty(new Map()));
+  ok(existsSync(dirOf(B)) && existsSync(join(MR, 'dm', 'memory')), 'the mirror writes under the marked world');
+  const m2 = MM.memoryMirror({root: LOGS, world: 'check'}); m2.setWorld('check', wid); // a reload: same id
+  ok(existsSync(dirOf(B)) && existsSync(join(MR, 'dm', 'memory')), 'the same instance on reload purges nothing');
+  // another world's folder, a stray file and a folder outside the root must survive
+  mkdirSync(join(LOGS, 'other', '7-keep', 'memory'), {recursive: true}); writeFileSync(join(LOGS, 'other', '7-keep', 'memory', 'MEMORY.md'), 'x');
+  writeFileSync(join(MR, 'notes.txt'), 'keep'); mkdirSync(join(MR, 'sessions'));
+  const outside = mk(join(tmpdir(), 'eldmoor-outside-')); writeFileSync(join(outside, 'precious.txt'), 'keep');
+  let linked = false; try {symlinkSync(outside, join(MR, '9-link'), 'junction'); linked = true} catch {}
+  const logged = []; const m3 = MM.memoryMirror({root: LOGS, world: 'check', log: l => logged.push(l)}); m3.setWorld('check', 'wNEW' + wid);
+  ok(!existsSync(dirOf(B)) && !existsSync(join(MR, 'dm')), 'a new instance id purges the old hero folders and dm/');
+  ok(readFileSync(join(MR, '.world'), 'utf8').trim() === 'wNEW' + wid, 'and records the new id');
+  ok(logged.some(l => /\[mirror\] new check world: purged \d+ old memory folders/.test(l)), 'one relay line says how many folders were purged');
+  ok(existsSync(join(LOGS, 'other', '7-keep', 'memory', 'MEMORY.md')) && existsSync(join(MR, 'notes.txt')) && existsSync(join(MR, 'sessions')), 'another world, stray files and other folders are never removed');
+  ok(!linked || (existsSync(join(outside, 'precious.txt'))), 'a link or junction is never followed: what is outside the root survives');
+  const bad = MM.purgeWorld(LOGS, '..', 'wZZZZ1'), bad2 = MM.purgeWorld(LOGS, 'a/b', 'wZZZZ1'), bad3 = MM.purgeWorld(LOGS, 'check', '../../x');
+  ok(!bad.changed && !bad2.changed && !bad3.changed && existsSync(join(LOGS, 'other')), 'a path-like world name or id is refused and removes nothing');
+  rmSync(outside, {recursive: true, force: true})}
 // save: the notebooks are character knowledge, saved with the world
 {const before = JSON.stringify([C1.memories, nh.memories, S.dmAgent.notes, S.dmAgent.arch, S.fellowship.letters || {}]), cid = C1.id, nid = nh.id;
   SIM.restore(JSON.parse(JSON.stringify(SIM.snapshot())));
