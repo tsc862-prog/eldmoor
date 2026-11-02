@@ -262,7 +262,7 @@ function start(args, {wait = null, env = childEnv} = {}) {
 const port = 19300 + Math.floor(Math.random() * 500), BASE = `http://127.0.0.1:${port}`;
 console.log(`end to end: headless world --runners on port ${port}, mock Ollama`);
 {
-  const world = start(['scripts/play-headless.mjs', '--port', String(port), '--agents', '2', '--quiet', '--speed', '8', '--runners', '--world', join(tmp, 'world.json')], {wait: /headless world/});
+  const world = start(['scripts/play-headless.mjs', '--port', String(port), '--agents', '2', '--quiet', '--speed', '8', '--runners', '--world', join(tmp, 'world.json')], {wait: /^\[play\] headless world at /m});
   ok(await world.ready, 'the headless world is up');
   const [hA, hB] = (await req(BASE, '/play/health')).heroes;
   let s = await req(BASE, '/play/runner/start', {method: 'POST', origin: PAGE, body: {hero: hA.id, provider: 'ollama', model: 'mock-tools:1b', maxTurns: 60}});
@@ -303,7 +303,7 @@ console.log(`end to end: headless world --runners on port ${port}, mock Ollama`)
 console.log('end to end: a Fellowship runner');
 {
   const fport = port + 1, FB = `http://127.0.0.1:${fport}`;
-  const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '8', '--runners', '--world', join(tmp, 'fworld.json')], {wait: /headless world/});
+  const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '8', '--runners', '--world', join(tmp, 'fworld.json')], {wait: /^\[play\] headless world at /m});
   ok(await fw.ready, 'a headless Fellowship world is up');
   let s = await req(FB, '/play/runner/start', {method: 'POST', origin: PAGE, body: {kind: 'fellowship', provider: 'ollama', model: 'mock-tools:1b', maxTurns: 20}});
   ok(s.status === 200 && s.runner.key === 'fellowship', 'Start all five: one Fellowship runner');
