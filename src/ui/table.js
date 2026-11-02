@@ -6,6 +6,7 @@
 //           per viewer in localStorage
 import {TABLE,bannerOf} from '../sim/table.js';
 import {S} from '../sim/index.js';
+import {patch} from './stable.js'; // update in place (#145)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -43,10 +44,10 @@ export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd
   if(S.table){if(S.table.id!==lastScene){lastScene=S.table.id;if(TABLE.speed<=1)chime(S.table.kind)}}else lastScene=null;
   const box=$('tbanner');if(!box)return;
   const b=bannerOf();if(!b){if(!box.hidden){box.hidden=true;sig=''}return}
-  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(',')].join('|');if(s===sig)return;sig=s;box.hidden=false;box.replaceChildren();
+  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(',')].join('|');if(s===sig)return;sig=s;box.hidden=false;patch(box,box=>{
   const tt=el('div','tt','AT THE TABLE · '+b.title.toUpperCase());if(b.paused)tt.append(el('span','tp','WORLD PAUSED'));box.append(tt);
   box.append(el('div','tf',plain(b.frame)));
   if(b.narr)box.append(el('div','tf tnarr',b.narr)); // the DM's narrate line (issue #123)
   if(b.cast&&b.cast.length)box.append(el('div','to','Staged by the DM · '+b.cast.join(' · '))); // a staged scene's cast (issue #132)
   const o=el('div','to');b.order.forEach((a,i)=>{if(i)o.append(' · ');o.append(i===b.turn?el('b',null,'▶ '+a.name):a.name)});box.append(o);
-  box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome')box.append(el('div','to',b.last))}
+  box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome')box.append(el('div','to',b.last))},{force:true})}

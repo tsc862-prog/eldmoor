@@ -4,6 +4,7 @@
 // adventure (the hero card's "Adventure:" line calls it). Rebuilds only when the log, the
 // filter or an expanded entry changes; one pass over at most 200 entries.
 import {S} from '../sim/index.js';
+import {patch,held} from './stable.js'; // update in place, keep scroll (#145)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -54,16 +55,16 @@ function advTitle(id){const a=(S.adventures||[]).find(x=>x.id===id);return a&&a.
 
 export function renderDmLog(){if(!list)return;
   const L=S.dmLog||[],sig=L.length+':'+(L[0]?L[0].id:0)+':'+filter+':'+advId+':'+open.size+':'+[...open].join(',')+(filter==='levers'?':'+Math.floor(S.gameMin/60):'');
-  if(sig===seen)return;seen=sig;
+  if(sig===seen)return;if(held(list))return;seen=sig;
   if(chip){chip.replaceChildren();if(advId!=null){chip.hidden=false;chip.append('Adventure: '+advTitle(advId)+' ');const x=el('button',null,'show all');x.dataset.dmclear='1';chip.append(x)}else chip.hidden=true}
-  list.replaceChildren();let n=0;
+  patch(list,list=>{let n=0;
   for(const e of L){if(!matches(e))continue;
-    const li=el('li','tl dmrow dm-'+e.kind);li.dataset.dmid=e.id;
+    const li=el('li','tl dmrow dm-'+e.kind);li.dataset.dmid=e.id;li.setAttribute('data-k','d'+e.id);
     li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-dm',BADGE[e.kind]||e.kind.toUpperCase()));if(byAgent(e)&&e.kind!=='agent')li.append(el('span','badge b-dm b-dma','DM AGENT'));
     const t=el('span','tx dmtx');partsTo(t,e.summary);{const r=left(e);if(r)t.append(el('span','dm',' ('+r+')'))}li.append(t);
     if(open.has(e.id))li.append(table(e));
     list.append(li);n++}
-  if(!n)list.append(el('li','dm','Nothing logged yet.'))}
+  if(!n)list.append(el('li','dm','Nothing logged yet.'))},{force:true})}
 
 export function setDmFilter(f){if(FILTERS.some(([k])=>k===f)){filter=f;renderDmLog();if(bar)for(const x of bar.children)x.setAttribute('aria-pressed',String(x.dataset.dm===f))}}
 // Open the panel on one adventure's entries (all kinds).
@@ -79,5 +80,4 @@ export function initDmLog(){box=$('dmlog');list=$('dmlist');if(!box||!list)retur
   list.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest||t.closest('.hn[data-hid]')||t.closest('.dmkv'))return;
     const r=t.closest('[data-dmid]');if(r)toggleDmEntry(r.dataset.dmid)});
   if(chip)chip.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-dmclear]')){advId=null;renderDmLog()}});
-  renderDmLog();
-  setInterval(renderDmLog,1000)}
+  renderDmLog()} // refreshed each second by ui/app.js
