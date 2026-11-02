@@ -10,11 +10,15 @@
 import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,S,dmAct,dmSeatOn,setDmSeat} from '../sim/index.js';
 import {hostCall} from '../sim/player-host.js';
 import {setAgentTag} from '../sim/chat.js';
+import {makeWatch} from '../sim/behavior.js';
+import {mindsOf} from '../sim/fellowship.js';
+import {WORLD_ID} from '../world/map.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
 let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null;
-// The bridge is wanted while a hero is agent-played or the DM seat is open (issue #66).
-const wanted=()=>!!playerHero()||dmSeatOn();
+// The bridge is wanted while a hero is agent-played or the DM seat is open (issue #66), or a Fellowship plays with
+// relay minds (its behavior digests go to the relay's logs, issue #129).
+const wanted=()=>!!playerHero()||dmSeatOn()||(!!S.fellowship&&mindsOf(S.fellowship)!=='off');
 export const bridgeUrl=()=>{try{return localStorage.getItem('eldmoor.playUrl')||DEFAULT_URL}catch(e){return DEFAULT_URL}};
 export const bridgeStatus=()=>status; // off | connecting | connected | offline
 // One hero's agent link: 'connected' (its runner is calling tools), 'waiting' (a runner holds
@@ -39,8 +43,8 @@ export function agentOn(a){if(!a||a.state==='dead')return false;
 export function agentOff(a){markPlayer(a,false);if(!wanted())disconnect();else hello()}
 
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id))}:{})})),dm={seat:dmSeatOn()},k=JSON.stringify([hs,dm]);
-  if(k===lastHello&&status==='connected')return;lastHello=k;send({type:'hello',heroes:hs,dm,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
+function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id))}:{})})),dm={seat:dmSeatOn()},k=JSON.stringify([hs,dm,WORLD_ID]);
+  if(k===lastHello&&status==='connected')return;lastHello=k;send({type:'hello',heroes:hs,dm,world:WORLD_ID,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
 const seat=id=>id!=null?playerSeat(id):playerSeat();
 function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecting';
   try{ws=new WebSocket(bridgeUrl())}catch(e){ws=null;status='offline';later();return}
@@ -59,4 +63,14 @@ function disconnect(){if(timer){clearTimeout(timer);timer=null}if(ws){const w=ws
 
 // On page load (a restored save may hold agent-played heroes) and every few seconds after,
 // so the relay always knows which heroes are played.
-export function initBridge(){if(wanted())connect();setInterval(()=>{if(wanted()){if(!ws)connect();else hello()}},3000)}
+export function initBridge(){if(wanted())connect();setInterval(()=>{if(wanted()){if(!ws)connect();else hello()}},3000);
+  setInterval(behaviorTick,BEHAVIOR_MS)}
+
+// Behavior logs (issue #129): the world digest, game-side anomalies and settled Mind decisions (sim/behavior.js) go to
+// the relay over this socket, which writes logs/behavior/<world>/ for the watcher. Read-only on the world; held
+// (up to BEHAVIOR_HOLD records) while the socket is down, dropped beyond that. Never sent to any agent.
+const BEHAVIOR_MS=500,BEHAVIOR_HOLD=200,watch=makeWatch(),held=[];
+function behaviorTick(){let out;try{out=watch.tick()}catch(e){return}
+  for(const o of out){held.push(o);if(held.length>BEHAVIOR_HOLD)held.shift()}
+  if(!ws||ws.readyState!==1||status!=='connected')return;
+  while(held.length){const o=held.shift();send({type:'behavior',kind:o.kind,rec:o.rec})}}

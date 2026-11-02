@@ -32,6 +32,8 @@
     "dmcheck": "node scripts/dmcheck.mjs",
     "channelcheck": "node scripts/channelcheck.mjs",
     "movecheck": "node scripts/movecheck.mjs",
+    "behaviorcheck": "node scripts/behaviorcheck.mjs",
+    "behavior-report": "node scripts/behavior-report.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs"
   },
   "devDependencies": {

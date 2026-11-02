@@ -19,7 +19,8 @@
 // Options: --port (or PLAY_PORT, default 8789), --speed (world speed, default 1),
 // --warm N (fast-forward N real minutes at 1x before choosing heroes, default 0),
 // --class C / --hero NAME[,NAME] / --agents N (who to play; default the highest-level living
-// Concord hero), --world FILE (default logs/agent-world.json), --resume, --quiet. The world is
+// Concord hero), --world FILE (default logs/agent-world.json), --resume, --quiet, --log-world NAME (the behavior logs'
+// folder, logs/behavior/<NAME>/, default <world id>-headless; issue #129), --no-behavior (keep none). The world is
 // saved every minute and on exit, so `--resume` (and `npm run agent`, which keeps one session per
 // hero in logs/agents/) pick up where they stopped.
 import http from 'node:http';
@@ -31,6 +32,9 @@ import {onLog} from '../src/sim/chronicle.js';
 import {hostCall} from '../src/sim/player-host.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
 import {attachRunners} from './runners.mjs';
+import {behaviorLog} from './behavior-log.mjs';
+import {makeWatch} from '../src/sim/behavior.js';
+import {WORLD_ID} from '../src/world/map.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const WORLD_FILE = join(ROOT, 'logs', 'agent-world.json');
@@ -94,7 +98,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     saveT += real; if (saveT >= 60) {saveT = 0; save()}}, 50);
 
   const server = http.createServer((req, res) => {res.writeHead(404, {'content-type': 'application/json'}); res.end('{"error":"not found"}')});
-  const play = attachPlay(server, {backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
+  // Behavior logs (issue #129): runners' turn lines, the world digest and game-side anomalies under logs/behavior/<world>/.
+  const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch() : null;
+  const play = attachPlay(server, {behavior, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
+  if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);
   // --runners (or RELAY_RUNNERS=1): runners can be started over HTTP (POST /play/runner/start), as from the game page
   const sup = attachRunners(server, {play, enabled: flag('runners') || /^(1|true|yes)$/i.test(process.env.RELAY_RUNNERS || ''), log: quiet ? () => {} : console.log, base: () => `http://127.0.0.1:${port}`});
   server.listen(port, '127.0.0.1', () => console.log(`[play] headless world at ${speed}x; MCP http://127.0.0.1:${port}/mcp  (plain: POST /play/call)\n[play] run one agent per hero: npm run agent -- --url http://127.0.0.1:${port} --hero <name>`));

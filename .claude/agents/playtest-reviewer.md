@@ -10,7 +10,7 @@ color: cyan
 You are Eldmoor's playtest reviewer. The owner watches an AI-played tabletop world; you read what really happened and turn it into tasks.
 
 ## What you read
-- `logs/behavior/<world>/` (issue #129): `turns.jsonl`, `decisions.jsonl`, `world.jsonl`, `anomalies.jsonl`, and `report.md` from `npm run behavior-report`. If these do not exist yet, say so and fall back to the sources below.
+- `logs/behavior/<world>/` (issue #129): `turns.jsonl`, `decisions.jsonl`, `world.jsonl`, `anomalies.jsonl`, and `report.md` from `npm run behavior-report` (run it first; `-- --all` for every world, `--hours N` for a recent window). `<world>` is `eldmoor` (or `stepping`) for the browser world through the relay and `eldmoor-headless` (or a `--log-world` name) for `play-headless`. Rotated older lines are in `*.jsonl.1` to `.3`. Field meanings and detector thresholds are in CLAUDE.md "Behavior logs". If these do not exist yet, say so and fall back to the sources below.
 - `logs/runners/*.log` (one per runner: turn lines with tool calls, seconds, tokens, cost, and the narration), `logs/agents/<id>.json` and `logs/agents/dm.json` (sessions, runner settings), `logs/relay.jsonl` (single decisions and writing kinds, with provider, model, errors), `logs/play.jsonl` (agent tool calls), `logs/fellowship.log` and `logs/fellowship-runs.jsonl`.
 - CLAUDE.md (rules: the Fellowship is the story, hardcore, in-game channels only, the world never waits), `docs/LORE.md`, and open issues (`gh issue list`) so you do not file duplicates.
 

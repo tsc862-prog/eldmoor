@@ -46,8 +46,17 @@ export const TABLE={
   frameS:1.6,      // real seconds the DM's framing stays on the banner before the first turn
   outcomeS:1.8,    // real seconds the outcome stays before the world runs on
   RESCUE:.25,      // a member below this share of max HP in a fight is a rescue moment
+  dmMs:6000,       // real milliseconds the DM agent has for an at-the-table call in a scene it staged (#132); then the scripted DM fills it
 };
 export const SCENE_KINDS=['site','room','boss','elite','ambush','rescue','check','choice','decision'];
+// Staged scenes (issue #132, sim/staged.js): extra scene kinds bring their own options, reflexes, dice and
+// outcome; a scene the DM agent staged (ctx.staged) also carries at-the-table DM calls (sc.calls), each
+// waited for up to TABLE.dmMs at 1x and filled by the scripted DM on silence. Registered, not imported, so
+// this file does not depend on staged.js.
+const EXTRA={};let STG=null;
+export function setSceneKind(k,h){EXTRA[k]=h;if(!SCENE_KINDS.includes(k))SCENE_KINDS.push(k)}
+export function setStageHooks(h){STG=h}
+const staged=sc=>!!(STG&&sc&&sc.ctx&&sc.ctx.staged!=null);
 const COOL={rescue:90,boss:240,ambush:120,check:0,elite:100000}; // game minutes before the same moment opens a scene again
 const COMBAT={elite:1,ambush:1,boss:1,rescue:1};
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
@@ -70,10 +79,12 @@ export const inScene=a=>!!(S.table&&a&&S.table.ids.includes(a.id));
 const SPECIAL={Warrior:['hold','Hold the line at the front'],Priest:['ward','Ward the group with prayer'],Rogue:['scout','Scout ahead in the dark'],Hunter:['scout','Scout ahead and read the tracks'],Mage:['read','Read the old wards on the walls']};
 const SITE_BONUS={hold:.45,ward:.45,scout:.45,read:.45,press:.3,careful:.15};
 function foeOf(sc){const c=sc.ctx||{};if(sc.kind==='boss')return S.boss&&S.boss.alive?S.boss:null;
+  if(c.mobs){for(const id of c.mobs){const m=S.mobs.find(x=>x.id===id);if(m&&m.alive&&!m.gone)return m}return null} // a staged pack: the first still standing
   if(c.mob!=null){const m=S.mobs.find(x=>x.id===c.mob);return m&&m.alive&&!m.gone?m:null}
   if(c.foe!=null){const b=byId(c.foe);return living(b)?b:null}return null}
 const lowest=()=>{let lo=null;for(const b of fellows())if(!b.hidden||inScene(b))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
-export function optionsFor(sc,a){if(!sc||!a)return [];const k=sc.kind;
+export function optionsFor(sc,a){const o=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels;return L?o.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o} // the DM's own labels for a staged scene's actions
+function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])return EXTRA[k].options(sc,a);
   if(COMBAT[k]){const f=foeOf(sc),fn=f?(f.kind==='hero'?f.name:mobName(f)):'the foe',lo=lowest(),o=[{k:'strike',text:'Strike '+fn}];
     if(f&&f.kind!=='boss')o.push({k:'guard',text:'Draw '+fn+' onto yourself'});
     if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
@@ -88,7 +99,7 @@ export function optionsFor(sc,a){if(!sc||!a)return [];const k=sc.kind;
   return []}
 
 // The scripted choice: what a member does when nobody plays it (or its agent is silent).
-export function reflexFor(sc,a){const k=sc.kind,mh=maxHp(a),hurt=a.hp<mh*.2,lo=lowest(),healer=CLS[a.cls]&&CLS[a.cls].heal;
+export function reflexFor(sc,a){if(EXTRA[sc.kind])return EXTRA[sc.kind].reflex(sc,a);const k=sc.kind,mh=maxHp(a),hurt=a.hp<mh*.2,lo=lowest(),healer=CLS[a.cls]&&CLS[a.cls].heal;
   if(COMBAT[k]){if(lo&&lo.hp<maxHp(lo)*.35&&bestUse(a,'potion'))return 'potion';if(hurt&&!(healer&&lo===a))return 'retreat';if(healer&&lo&&lo.hp<maxHp(lo)*.6)return 'heal';
     const f=foeOf(sc);if(f){const mv=pickMove(a,f,fellows(),true,'round');if(mv)return mv.id} // the scripted ability policy, in rounds (sim/moves.js)
     if(a.cls==='Warrior'&&f&&f.kind==='mob'&&f.target&&f.target!==a)return 'guard';return 'strike'}
@@ -124,6 +135,7 @@ export function sceneAct(a,opt,line){const sc=S.table;if(!sc||!sc.ids.includes(a
 function take(sc,a,act){const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act);
   const F=S.fellowship;if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
   sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null});
+  if(staged(sc))STG.onBeat(sc,sc.beats[sc.beats.length-1]);
   if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
   else if(!a.player)voice(sc,a,act.k);
   remember(a,'table',sc.title+': I chose to '+o.text.charAt(0).toLowerCase()+o.text.slice(1)+(res?' ('+res+')':'')+'.')}
@@ -141,7 +153,7 @@ function voice(sc,a,k){const pool=LINES[k];if(!pool||a.hidden)return;const text=
       if(still)speak(a,t||text,'table',!!t)}).catch(()=>{});return}
   speak(a,text,'table')}
 
-function apply(sc,a,act){const f=foeOf(sc),k=act.k;
+function apply(sc,a,act){if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act);const f=foeOf(sc),k=act.k;
   switch(k){
   case 'strike':if(!f)return 'the foe was already gone';if(a.hidden&&f.kind!=='boss')return 'out of reach';
     if(f.kind==='mob'&&['hunt','follow','travel','fight','return'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}
@@ -164,13 +176,22 @@ function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;if(!a||!a.player||sc.ac
   notify(a,'YOUR TURN at the table ('+sc.title+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line) within '+Math.round(TABLE.turnMs/1000)+' s.',3)}
 // Advance the turn pointer as far as it can go this step. Returns true while an agent is thinking.
 function runTurns(sc,dt,instant){
-  while(sc.i<sc.ids.length){const a=byId(sc.ids[sc.i]);
+  for(;;){if(sc.calls&&callWait(sc,dt,instant))return true;
+    if(sc.i>=sc.ids.length)break;const a=byId(sc.ids[sc.i]);
     if(!living(a)||(COMBAT[sc.kind]&&!foeOf(sc))){sc.i++;startTurn(sc);continue}
     let act=sc.acts[a.id];
     if(!act&&a.player&&!instant){sc.t+=dt;if(sc.t*1000<TABLE.turnMs)return true;act=null}
     if(!act){const k=reflexFor(sc,a);act=sc.acts[a.id]={k,line:'',by:'reflex'};if(a.player)notify(a,'Your turn passed; your reflexes chose: '+k+'.',false)}
     take(sc,a,act);sc.i++;if(sc.i<sc.ids.length)startTurn(sc);dt=0}
   return false}
+// A staged scene's DM calls, oldest first: the DM agent's answer, or a wait of up to TABLE.dmMs at 1x, or
+// the scripted DM's fill (at once at 3x/8x, when the seat is empty or the DM keeps missing). True = waiting.
+function callWait(sc,dt,instant){if(!STG)return false;
+  for(const c of sc.calls){if(c.done)continue;
+    if(!instant&&sc.pause&&STG.live(sc)){c.t+=dt;if(c.t*1000<TABLE.dmMs)return true;sc.dmMiss=(sc.dmMiss||0)+1}
+    STG.fill(sc,c);dt=0}
+  return false}
+const frameCalls=sc=>{if(staged(sc)&&!sc.framed){sc.framed=true;STG.onFrame(sc)}};
 
 // ---- the outcome ----
 function outcome(sc){const L=sc.beats,F=S.fellowship,by=k=>L.filter(b=>b.k===k).map(b=>b.name);let tail='';
@@ -182,13 +203,15 @@ function outcome(sc){const L=sc.beats,F=S.fellowship,by=k=>L.filter(b=>b.k===k).
   else if(COMBAT[sc.kind]){const f=foeOf(sc),fl=by('retreat');tail=(f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?'stands at '+Math.max(0,Math.round(f.hp/(f.maxhp||maxHp(f))*100))+'%':'still stands'):'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')}
   else if(sc.kind==='site'||sc.kind==='room'){const g=CRYPT.group;tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
   else if(sc.kind==='check')tail='The road goes on.';
+  else if(EXTRA[sc.kind])tail=EXTRA[sc.kind].outcome(sc)||'';
   const what=L.map(b=>b.name+' '+(b.k==='a'||b.k==='b'||b.k==='yes'||b.k==='no'?'says '+b.text.toLowerCase():b.text.charAt(0).toLowerCase()+b.text.slice(1))+(b.res?' ('+b.res+')':'')+(b.by==='reflex'&&byId(b.id)&&byId(b.id).player?' [reflex]':'')).join('; ');
   sc.summary=tail;sc.phase='outcome';sc.t=0;
   if(F){campaign('table',gd(sc.title),': '+what+'. '+tail);
     log(nar(''),gd(F.name),' at the table: '+sc.title+'. '+tail)}
   if(COMBAT[sc.kind]){for(const a of fellows())tickRound(a);const f=foeOf(sc);if(f)tickRound(f)} // a round has passed: ability cooldowns and round-long effects run down
-  for(const a of fellows())notify(a,'The scene ends: '+sc.title+'. '+tail,true)}
-function finishAll(sc){runTurns(sc,0,true);outcome(sc);S.table=null}
+  for(const a of fellows())notify(a,'The scene ends: '+sc.title+'. '+tail,true);
+  if(staged(sc))STG.done(sc)}
+function finishAll(sc){frameCalls(sc);runTurns(sc,0,true);outcome(sc);S.table=null}
 
 // ---- once per step: the paused scene (sim/index.js calls this first; true = skip the world) ----
 export function tableHold(dt){const sc=S.table;if(!sc)return false;
@@ -196,7 +219,7 @@ export function tableHold(dt){const sc=S.table;if(!sc)return false;
   if(!sc.pause)return false;
   if(!canPause()){finishAll(sc);return false} // sped up or switched to Watch mode mid-scene: resolve now
   if(sc.kind==='decision'&&!propById(sc.ctx.prop)){S.table=null;return false}
-  if(sc.phase==='frame'){sc.t+=dt;if(sc.t<TABLE.frameS)return true;sc.phase='turn';sc.i=0;startTurn(sc);dt=0}
+  if(sc.phase==='frame'){sc.t+=dt;if(sc.t<TABLE.frameS)return true;sc.phase='turn';sc.i=0;frameCalls(sc);startTurn(sc);dt=0}
   if(sc.phase==='turn'){if(runTurns(sc,dt,false))return true;outcome(sc);return true}
   if(sc.phase==='outcome'){sc.t+=dt;if(sc.t<TABLE.outcomeS)return true;S.table=null;return false}
   S.table=null;return false}
@@ -204,7 +227,8 @@ export function tableHold(dt){const sc=S.table;if(!sc)return false;
 // ---- triggers ----
 const seen=(key,cool)=>{const F=S.fellowship,m=F.tableSeen||(F.tableSeen={}),t=m[key];if(t!=null&&S.gameMin-t<cool)return true;m[key]=S.gameMin;
   const ks=Object.keys(m);if(ks.length>60)delete m[ks[0]];return false};
-export function tableTick(){const F=S.fellowship;if(!F||S.table||!tableOn())return;const L=fellows();if(!L.length)return;
+export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks to the party, meets it (a scene) or gives up (#132)
+  const F=S.fellowship;if(!F||S.table||!tableOn())return;const L=fellows();if(!L.length)return;
   // rescue: a member below RESCUE in a fight
   for(const a of L){if(!['fight','duel','assist','raid'].includes(a.state)||a.hp>=maxHp(a)*TABLE.RESCUE)continue;
     if(seen('rescue:'+a.id,COOL.rescue))continue;const f=a.target;
@@ -256,8 +280,11 @@ export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))ret
 // What the banner shows (src/ui/table.js).
 export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc.ids[sc.i]),last=sc.beats[sc.beats.length-1];
   let who=null,line;
+  const pc=sc.calls&&sc.phase==='turn'?sc.calls.find(c=>!c.done):null;
   if(sc.phase==='frame')line='The DM is setting the scene…';
+  else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'?'giving them a voice':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.max(0,Math.ceil(TABLE.dmMs/1000-pc.t))+' s)';
   else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]?cur.name+' is thinking… ('+Math.max(0,Math.ceil(TABLE.turnMs/1000-sc.t))+' s)':cur.name+' acts'}
   else line=sc.summary||'';
   return {title:sc.title,kind:sc.kind,frame:sc.frame,line,who,last:last?last.name+': '+last.text+(last.res?' ('+last.res+')':''):null,
-    order:sc.ids.map(byId).filter(Boolean),turn:sc.phase==='turn'?sc.i:-1,phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null}}
+    order:sc.ids.map(byId).filter(Boolean),turn:sc.phase==='turn'?sc.i:-1,phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null,
+    ...(sc.ctx&&sc.ctx.cast?{cast:sc.ctx.cast,staged:true}:{})}} // a staged scene's cast (#132)

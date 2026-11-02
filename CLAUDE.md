@@ -45,8 +45,9 @@ Dedicated subagents live in `.claude/agents/`. Delegate to them by area:
 | `brain-builder` | Model-played heroes: decision-policy interface, local relay, prompts, fallbacks; generated narrator and chatter modes |
 | `pm` | Backlog triage, issues and labels, priority order, briefs for next pickups, board snapshot and status summaries (no code, no merges, no dispatch) |
 | `playtest-reviewer` | Reads DM and character behavior logs (runner logs, sessions, relay, `logs/behavior/`) after play and files evidenced issues (no code, no merges) |
+| `ui-designer` | The watcher interface: layout, panels, dossier tabs, Fellowship panel and frames, Table banner, Agent/Mind/Chat tabs, setup page, styles, scrolling, phone width |
 
-Models per agent (set in each agent's frontmatter): Opus for `ai-designer` and `brain-builder` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review), Haiku for `pm` (triage and board), Sonnet for `playtest-reviewer`. Quick read-only checks (a short lore pass, a board sync) may run on Haiku by overriding `model` on the call; full originality reviews stay on Sonnet. Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
+Models per agent (set in each agent's frontmatter): Opus for `ai-designer`, `brain-builder` and `ui-designer` (shared-file behaviour and runtime model code), Sonnet for `world-builder`, `creature-designer`, `character-builder`, `lore-keeper`, `balance-tester` (bounded work checked by sims and review), Haiku for `pm` (triage and board), Sonnet for `playtest-reviewer`. Quick read-only checks (a short lore pass, a board sync) may run on Haiku by overriding `model` on the call; full originality reviews stay on Sonnet. Escalate a single task to Opus by overriding `model` on the Agent call; use Fable only for hard architecture.
 
 For a feature that spans areas (for example a new zone with new monsters), plan it,
 hand each part to its owner, then have `lore-keeper` check names and
@@ -105,6 +106,7 @@ other. The rules:
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
 - `npm run channelcheck`: the in-game channels rule (see "In-game channels").
+- `npm run behavior-report`, `npm run behaviorcheck`: behavior logs for review (see "Behavior logs").
 
 ## Agent player
 
@@ -362,7 +364,8 @@ with no key and no network.
 An AI agent can sit in the DM seat between scenes: it reads the world, keeps campaign notes and shapes
 what comes next through the world levers; the scripted DM keeps running beside it, unchanged. It never
 controls a hero and never kills anyone by fiat (no lever touches HP, level or life, and a pull that piles
-danger onto a badly hurt Fellowship member out in the field is refused). Fast at-the-table calls are part 2.
+danger onto a badly hurt Fellowship member out in the field is refused). It can also stage narrated
+encounters and speak at their tables (issue #132, below).
 
 - In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; open the
   **Dungeon Master** panel and press **Open seat**, pick the mind (Claude or a pulled local model) and
@@ -395,6 +398,30 @@ danger onto a badly hurt Fellowship member out in the field is refused). Fast at
 - `npm run dmcheck` (in CI): tools, notes, limits and refusals, save/restore, a silent seat leaves a
   seeded world identical, relay routes and MCP, the browser bridge, and the runner end to end on a mock Ollama.
 
+### Staged scenes and the DM at the table (issue #132)
+
+- `stage_scene {kind, near, frame, title?, cast?, reason}` (`src/sim/staged.js`): `elite` (a named foe built
+  from the bestiary at a level bounded by the party's: at most `STAGE.LVL_UP` 2 above its average, asking for
+  more than 3 above is refused), `ambush` (a pack of the region's creatures from the encounter builder),
+  `meeting` and `social` (a person with a want, placed through `create_npc`), `trap` (hidden; a d20 save, never
+  below 10% HP) and `mystery` (a `mark_place` marker; a Lore/Perception roll uncovers `cast.reveal`). `near`:
+  "fellowship", a member, "x,y", a place or a region. The cast walks to the member (or waits at the place;
+  a trap or a strange place lies just ahead of them) and a Table scene opens when they meet; the frame
+  reaches the members as narration. `cast.choices` relabels the legal Table actions only. Refused: more than
+  3 a game day, one still pending, an open scene or vote, a fight or trap while a member out in the field is
+  below 35% HP, a foe far above the party, a creature not of that region, a town. All of it in the DM log
+  with the DM AGENT tag; the banner shows the staged cast.
+- At the table: the DM is asked short calls (`table_call` / `table_answer`): voice the person or foe, describe
+  each member's act (true to the dice), and pick one complication from a legal set (`none`, `omen`, and per
+  kind `falter`/`reinforce`, `rival`, `tremor`). Each call has `TABLE.dmMs` (6 s) at 1x, and only while the
+  runner is polling; then the scripted DM fills it, and after 2 misses it fills the rest at once. At 3x/8x
+  every slot is scripted and the scene resolves in one step.
+- Runner: `npm run dm` answers the calls with a table voice (one structured call each: `claude-haiku-5-5` by
+  default, `--table-model`/`DM_TABLE_MODEL`; with Ollama the seat's own model; `--no-table-voice` leaves them to
+  the scripted DM). Its cost counts toward `--budget`; a `[table]` line per call.
+- `npm run tablecheck` stages every kind with a mock DM (and a silent one, no runner, 3x, a save mid-scene,
+  expiry); `npm run dmcheck` covers the refusals and the table voice over `/play/dm`.
+
 ## In-game channels (issue #123)
 
 The owner's rule: the DM and the players talk only inside the game. How it holds:
@@ -420,6 +447,44 @@ The owner's rule: the DM and the players talk only inside the game. How it holds
   result, event, runner prompt and brain snapshot, and fails on any secret; it also proves a narrate
   line reaches members in range (and the table) and not one far away, npc_say reaches earshot, party
   chat reaches every member, and the relay keeps the seats apart.
+
+## Behavior logs (for review)
+
+Issue #129: structured, append-only JSONL for the watcher and the `playtest-reviewer` agent, never read
+by any agent, tool or the game. Under `logs/behavior/<world>/` (gitignored; each file rotates at 5 MB,
+three old files kept): `<world>` is the world id the page names (`eldmoor`, `stepping`) for the relay,
+and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavior`; the relay:
+`--no-behavior` or `RELAY_BEHAVIOR=0`).
+
+- `turns.jsonl`: one line per agent turn of a hero or the DM, sent by the runners (`agent-player`,
+  `fellowship`, `dm-agent`; `scripts/behavior-turn.mjs`) to `POST /play/behavior/turn`, accepted only from
+  the runner holding that seat: seat, provider/model, turn, wake reason, the state header before (runner)
+  and after (game), tool names with ok/error, narration, seconds, tokens, cost, flags (empty, repeat,
+  foreign, stale, refused, scene, ...).
+- `decisions.jsonl`: `src: relay` one line per `/decide` call (kind, provider, model, status, ms, error);
+  `src: game` each hero's Mind entry once settled (outcome applied, late, rejected, offline, superseded).
+- `world.jsonl`: a digest every game hour from `src/sim/behavior.js` (read-only, not part of `step()`):
+  each Fellowship member's and agent hero's mind, link, state, place, HP, level and idle time; the share
+  of game time agent / autopilot / relay mind / scripted; Table scenes and agent vs reflex turns; votes;
+  DM lever pulls and refusals by caller; DM log kinds; deaths and causes; chat lines by channel (counts).
+  The page sends it over the play bridge (`src/ui/player-bridge.js`, which now also connects while a
+  Fellowship has relay minds); `play-headless` writes it directly.
+- `anomalies.jsonl`: relay side (`scripts/behavior-log.mjs` `BD`): no tool calls for 3 turns, repeated
+  narration, not English, stale claim (a fight narrated while the game says none), every call refused,
+  relay failures (5 in 5 min: 429, timeouts, 5xx), two Ollama models at once, request floods. Game side
+  (`src/sim/behavior.js` `BW`): idle in one place 2+ game hours outside camp, the same state 6 hours with
+  no progress, reflex taking every agent turn of 2 scenes in a row, every agent vote by reflex twice,
+  DM levers refused often, a danger lever pulled near a member below 35% HP. One line per kind and seat
+  per 5 real minutes (the rest counted as `heldBack`).
+- Rules: no keys (key-shaped text is redacted, headers never logged), no tool results, prompts or another
+  seat's text in a seat's lines, chat as counts only.
+- `npm run behavior-report [-- --world NAME | --all] [--hours N]` writes `logs/behavior/<world>/report.md`:
+  top anomalies with counts and examples, per-seat health, model comparison (empty-turn rate, seconds,
+  tokens and cost per provider/model, relay failure rates, decision outcomes), the world digests.
+- `npm run behaviorcheck` (in CI): mock runners and a timing-out relay produce every anomaly kind above on
+  a headless Fellowship of silent agents; asserts they are logged and reported, that a runner cannot write
+  another seat's line, keys are redacted, files rotate, the watch leaves the world unchanged, and that a
+  real `npm run agent` with a lazy mock Ollama model lands its turns and its stale fight claim.
 
 ## Layout
 
@@ -466,7 +531,7 @@ The owner's rule: the DM and the players talk only inside the game. How it holds
   sim facts (scripted, or enriched once through the relay) and `fellowCard` for prompts;
   `memory.js` per-member recent memories, long-term summary and companion stances;
   `council.js` party chat, proposals and votes, `lead_to`, splitting off and the all-or-none
-  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `dmagent.js` the DM seat and its tools (#66).
+  Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `dmagent.js` the DM seat and its tools (#66); `staged.js` the DM agent's staged scenes and its at-the-table calls (#132).
 - `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
   `terrain.js` per-pixel tile textures into an offscreen canvas;
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night

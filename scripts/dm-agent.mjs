@@ -28,6 +28,9 @@
 // --provider anthropic|ollama (or DM_PROVIDER), --model (or DM_MODEL; default claude-sonnet-5-5, or the
 // Ollama default), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
 // --claude-concurrency is accepted (the runner supervisor passes it) and changes nothing: always one call.
+// Table voice (issue #132): --table-model (or DM_TABLE_MODEL; default claude-haiku-5-5 with Anthropic, the seat's model with
+// Ollama) answers the at-the-table calls of the scenes the DM stages; --no-table-voice leaves them to the scripted DM.
+// A table call's cost counts toward --budget and the session, with its own line.
 import {mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
@@ -35,6 +38,7 @@ import {hostname} from 'node:os';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
 import {loadDmSession, saveDmSession, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
+import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {paceSettings, turnCap, capText, failTracker, localWorked, takeClaudeSlot} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -59,6 +63,8 @@ export function dmSystemPrompt(st) {
     '- Keep notes: open threads (unresolved things), characters (recurring people and their wants), plans (what you are setting up), secrets (what the heroes do not know yet). Read them back at the start of a turn and keep them current; they are your memory.',
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
     '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
+    '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
+    '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); you do not need to do anything for that.',
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '',
@@ -79,6 +85,54 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // The game minute a turn may start after, for a cadence: the next evening, or null (real seconds).
 export const nextEvening = gm => {const d = Math.floor(gm / DAY), e = d * DAY + EVENING; return gm < e ? e : e + DAY};
 export const isRateLimit = s => /\b429\b|rate.?limit|overloaded|\b529\b/i.test(String(s || ''));
+
+// ---- the table voice (issue #132) ----
+// While a scene the DM agent staged is at the table, the game puts short calls to the DM (table_call): voice the
+// person or foe, describe a member's action, pick one complication from a legal set. Each has a few seconds
+// (TABLE.dmMs, 6 s) before the scripted DM fills it, far too short for an agent turn, so this loop answers them
+// with one structured model call each (Haiku 5.5 by default for Anthropic, the seat's own model for Ollama) and
+// table_answer. It polls the table cheaply (no model) every POLL_IDLE ms, every POLL_HOT ms while a staged scene
+// waits or runs. A late, failed or refused answer changes nothing: the scripted DM already has the slot.
+export const DEFAULT_TABLE_MODEL = 'claude-haiku-5-5'; // claude-api skill (cached 2026-10-06): Haiku 5.5, $0.10 in / $0.50 out per 1M tokens
+export const POLL_IDLE = 2500, POLL_HOT = 400;
+export const TABLE_SYSTEM = 'You are the Dungeon Master\'s voice at the table in Eldmoor, a hardcore fantasy world (original setting; no names from other games or books). ' +
+  'A scene you staged is being played. Each request is one call: voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
+  'Write one vivid sentence of what can be seen, heard or smelled, at most 200 characters. Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
+export function tablePrompt(t) {
+  const c = t.call, s = t.scene || {};
+  return [`Scene: ${s.title || '?'} (${s.kind || '?'})`, s.frame ? `It began: ${s.frame}` : '', s.cast && s.cast.length ? `Cast: ${s.cast.join('; ')}` : '',
+    s.order && s.order.length ? `At the table: ${s.order.join(', ')}` : '', s.so_far && s.so_far.length ? `So far: ${s.so_far.join(' | ')}` : '', s.said && s.said.length ? `Already said: ${s.said.join(' | ')}` : '',
+    `Call ${c.id} (${c.kind}${c.who ? ', ' + c.who : ''}): ${c.about}`, c.legal ? `Legal picks: ${c.legal.join(', ')}` : ''].filter(Boolean).join('\n');
+}
+export const tableSchema = c => ({type: 'object', properties: {text: {type: 'string'}, pick: {type: 'string', enum: c.legal ? c.legal.slice() : ['']}}, required: ['text', 'pick'], additionalProperties: false});
+// adapter: a scripts/providers adapter ({call({system,user,schema,maxTokens,model,effort,timeoutMs})}). Returns {stop()}.
+export function tableVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = POLL_IDLE, pollHot = POLL_HOT}) {
+  let done = false, seen = 0;
+  const loop = async () => {
+    while (!done && !stopped()) {
+      const t = await tool(base, 'table_call');
+      const hot = !!(t && t.ok && (t.scene || t.staged));
+      if (t && t.ok && t.call && t.call.id !== seen && t.call.seconds_left > .8) {
+        seen = t.call.id; const c = t.call, t0 = Date.now();
+        try {
+          const ms = Math.max(800, c.seconds_left * 1000 - 400); // past the call's budget the answer is worthless: abort it (the Ollama adapter honours only the signal)
+          const r = await adapter.call({system: TABLE_SYSTEM, user: tablePrompt(t), schema: tableSchema(c), maxTokens: 160, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+          let j = null; try {j = JSON.parse(r.text)} catch {}
+          onCost(r.usage || {});
+          if (!j || typeof j.text !== 'string') log(`[table] call ${c.id} ${c.kind}: the model's reply was not JSON; the scripted DM fills it`);
+          else {
+            const a = await tool(base, 'table_answer', {call: c.id, text: j.text, ...(c.legal ? {pick: j.pick} : {})});
+            log(`[table] call ${c.id} ${c.kind}${a.pick ? ' ' + a.pick : ''}: ${a.ok ? '"' + short(a.said || '', 140) + '"' : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s, ${r.usage ? r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+          }
+        } catch (e) {log(`[table] call ${c.id} ${c.kind}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM fills it`)}
+        continue;
+      }
+      await sleep(hot ? pollHot : pollIdle);
+    }
+  };
+  const p = loop().catch(e => log(`[table] voice stopped: ${short(String(e && e.message || e), 120)}`));
+  return {stop: () => {done = true; return p}};
+}
 
 // Wait until the cadence allows a turn and nothing is pending. Returns the fresh status, or null on stop.
 // gapUntil: the earliest real time (ms) the next turn may start (the minimum gap, issue #126).
@@ -150,15 +204,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!s0.models.includes(rs.model)) {console.error(`[dm] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await quit(1)}
     log(`[dm] DM seat taken | local model ${rs.model} via Ollama | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
     const numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null);
+    if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
       const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
-      let r = null;
+      let r = null, err = null;
       try {r = await localTurn({chat: ol.chat, call: (tool, args) => dmTool(base, tool, args), sess, prompt: dmTurnPrompt(sess.turns, st), model: rs.model, toolTurns, tools: DM_TOOLS, rules,
         opts: {...(numCtx ? {numCtx: Number(numCtx)} : {}), endOnWait: false},
         on: (k, a, b) => {if (k === 'text') log(`  DM: ${a}`); else if (k === 'tool') log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') log(`    < ${short(a, 220)}`)}})}
-      catch (e) {console.error(`[dm] turn failed: ${String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300)}`)}
+      catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
       sess.turns++; sess.lastGm = st.gameMin; lastEnd = Date.now();
+      reportTurn(base, {role: 'dm', runner, provider: 'ollama', model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
       if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
       saveSess();
       if (fails.ok(localWorked(r))) ended = fails.why();
@@ -170,6 +226,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   if (!env.ANTHROPIC_API_KEY) {console.error('[dm] No ANTHROPIC_API_KEY in the environment or .env (use --env FILE), or play the DM locally with --provider ollama.'); await quit(1)}
   const {query} = await import('@anthropic-ai/claude-agent-sdk');
+  let tableCost = 0;
+  if (!flag('no-table-voice')) {
+    const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
+    const tableModel = opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL);
+    tableVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: tableModel}), model: tableModel, log, stopped: () => stopping,
+      onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
+    log(`[dm] table voice: ${tableModel} answers the calls of staged scenes`);
+  }
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
   const {model, effort} = rs;
   log(`[dm] DM seat taken | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
@@ -179,7 +243,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
     const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
-    const t0 = Date.now(); let tools = 0, result = null, limited = false, failed = null;
+    const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const q = query({prompt: dmTurnPrompt(sess.turns, st), options: {
@@ -197,11 +261,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else if (m.type === 'assistant' && !m.parent_tool_use_id) {
         if (m.error === 'rate_limit' || m.error === 'overloaded') {limited = true; failed = m.error}
         for (const b of m.message.content || []) {
-          if (b.type === 'text' && b.text.trim()) log(`  DM: ${b.text.trim()}`);
-          else if (b.type === 'tool_use') {tools++; log(`  > ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 140) : ''})`)}
+          if (b.type === 'text' && b.text.trim()) {log(`  DM: ${b.text.trim()}`); tc.text(b.text)}
+          else if (b.type === 'tool_use') {tools++; tc.tool(b.name, b.id); log(`  > ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 140) : ''})`)}
         }
       } else if (m.type === 'user' && Array.isArray(m.message?.content)) {
-        for (const b of m.message.content) if (b.type === 'tool_result') log(`    < ${short(Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''), 220)}`);
+        for (const b of m.message.content) if (b.type === 'tool_result') {const c = Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''); log(`    < ${short(c, 220)}`); tc.result(b.tool_use_id, c, b.is_error)}
       } else if (m.type === 'result') result = m;
     }} catch (e) {
       const msg = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300);
@@ -209,13 +273,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else if (isRateLimit(msg) || limited) failed = failed || 'rate_limit';
       else {console.error(`[dm] turn failed: ${msg}`); failed = failed || 'error'}}
     freeSlot();
+    let turnCost = null, tin = null, tout = null;
     if (result) {
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
-      spent += cost; sess.costUsd += cost;
-      const mu = Object.values(result.modelUsage || {}), tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0), tout = mu.reduce((t, u) => t + u.outputTokens, 0), cached = mu.reduce((t, u) => t + u.cacheReadInputTokens, 0);
+      spent += cost; sess.costUsd += cost; turnCost = cost;
+      const mu = Object.values(result.modelUsage || {}), cached = mu.reduce((t, u) => t + u.cacheReadInputTokens, 0);
+      tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0); tout = mu.reduce((t, u) => t + u.outputTokens, 0);
       if (result.is_error && isRateLimit(JSON.stringify(result.errors || result.result || ''))) failed = failed || 'rate_limit';
       log(`[turn ${sess.turns + 1}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
+    reportTurn(base, {role: 'dm', runner, provider: rs.provider, model, turn: sess.turns + 1, gameMin: st.gameMin ?? null, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cost: turnCost,
+      flags: result && result.subtype !== 'success' ? [result.subtype] : [], ...(failed ? {error: failed === 'rate_limit' || failed === 'overloaded' ? '429 ' + failed : failed} : {})});
     // A rate-limited turn that did nothing is retried after a growing pause; a turn that got work done counts.
     if (failed && failed !== 'error' && !tools) {const s = BACKOFF[Math.min(backoff, BACKOFF.length - 1)]; backoff++; log(`[dm] rate limited (${failed}); backing off ${s} s before trying the turn again`); saveSess(); await sleep(s * 1000); continue}
     backoff = 0; sess.turns++; sess.lastGm = st.gameMin; turn++; lastEnd = Date.now();
@@ -223,6 +291,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (fails.ok(!failed && tools > 0)) ended = fails.why();
   }
   clearInterval(beat); await release();
-  log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}, session ${money(sess.costUsd)}. Session saved to ${dmSessionPath()}.`);
+  log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}${tableCost ? ' (table voice ' + money(tableCost) + ')' : ''}, session ${money(sess.costUsd)}. Session saved to ${dmSessionPath()}.`);
   process.exit(0);
 }
