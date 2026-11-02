@@ -488,7 +488,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   m.alive = false; m.target = null; c.target = null; const home = homeOf(c); c.x = home.ah.x; c.y = home.ah.y; c.state = 'town';
   for (let i = 0; i < 500; i++) step(1 / 60); // about 50 game minutes
   r = P.playerAct(c.id, 'fight', {target_id: m.id});
-  ok(!r.ok && /You can only pick a fight/.test(r.error) && /Since your last look \(Day \d+ \d\d:\d\d, \d+ game min ago\)/.test(r.error) && /fight with .* is over/.test(r.error) && r.error.includes('now you are in ' + home.name) && /target #\d+ is (dead|gone|out of sight)/.test(r.error), // (the dead foe's slot may have respawned far off)
+  ok(!r.ok && /You can only pick a fight/.test(r.error) && /Since your last look \(Day \d+ \d\d:\d\d, \d+ game min ago\)/.test(r.error) && /fight with .* is over/.test(r.error) && r.error.includes('now you are in ' + home.name) && /target #\d+ is (dead|gone|out of sight|[\d.]+ tiles away)/.test(r.error), // (the dead foe's slot may have respawned, alive and elsewhere, within the 50 game min)
     'a stale order is refused with what changed: ' + r.error);
   ok(r.changed && /game min since your last look/.test(r.since_look || '') && r.as_of, `and says how old the view is (${r.since_look})`);
   P.playerAct(c.id, 'look'); r = P.playerAct(c.id, 'fight', {target_id: m.id});
