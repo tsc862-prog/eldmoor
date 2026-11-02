@@ -21,7 +21,7 @@
 // Usage: npm run localcheck
 import http from 'node:http';
 import {spawn} from 'node:child_process';
-import {mkdtempSync, readFileSync, existsSync, rmSync} from 'node:fs';
+import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -370,11 +370,26 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     ok(code === 0 && /3 failed or empty turns in a row/.test(R.out) && (R.out.match(/empty turn \(not in English\)/g) || []).length === 3, 'a model answering in Chinese: three empty turns, then the runner stops' + (code === 0 ? '' : '\n' + R.out.slice(-1200)));
     ok(en.length === 3, `each turn it is re-prompted once to answer in English (${en.length})`);
     ok(!/[一-鿿]/.test(R.out) && !(a.playNarr || []).some(n => /[一-鿿]/.test(n.text)) && !(a.chat || []).some(e => /[一-鿿]/.test(e.text)), 'no Chinese line reaches the runner output, the Agent tab or the chat');
-    ok(mine.every(b => b.options.temperature === 0.6 && b.options.repeat_penalty === 1.15), 'local turns sample at temperature 0.6 with a repeat penalty');
+    ok(mine.filter(b => !(b.format && b.format.properties && b.format.properties.ready)).every(b => b.options.temperature === 0.6 && b.options.repeat_penalty === 1.15), 'local turns sample at temperature 0.6 with a repeat penalty');
     ok(/fresh context/.test(R.out) && mine.some(b => b.messages.filter(m => m.role === 'assistant').length === 0 && /^Turn 3/.test((b.messages[1] || {}).content || '')), 'after two empty turns the next one starts from a fresh context');
     const sz = sim.playerAct(a.id, 'say', {text: '我将带领团队去见萨满'});
     ok(!sz.ok && /speak in English/.test(sz.error), 'the game refuses a foreign-script line: ' + sz.error);
     sim.markPlayer(a, false)}
+
+  // I. a New World reuses the hero's id for another hero (issue #219): the runner notices, releases its claim and
+  // exits with code 75 (the supervisor starts it again); the next run sets the old session aside and takes a turn
+  {const a = pick(), oldName = a.name;
+    const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '0', '--new']);
+    ok(await until(() => R.turns.length >= 1, 30000) && existsSync(join(tmp, 'agents', a.id + '.json')), 'a runner plays and keeps its session for the hero');
+    a.name = 'Newcomer'; // the same id, another hero
+    const code = await Promise.race([R.done, sleep(15000).then(() => 'timeout')]);
+    ok(code === 75 && /\[world\] a new world: #\d+ was .*, now Newcomer/.test(R.out), `a runner whose hero was renamed under its id exits for the supervisor (code ${code})`);
+    ok(!(await health(PB)).heroes.find(h => h.id === a.id).claimed, 'and has released its claim');
+    const R2 = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '0', '--max-turns', '1']);
+    ok(await until(() => R2.turns.length >= 1, 30000) && await Promise.race([R2.done, sleep(15000).then(() => 'timeout')]) === 0, 'the restarted runner takes a turn for the new hero');
+    const oldDir = join(tmp, 'agents', 'old'), moved = existsSync(oldDir) ? readdirSync(oldDir).filter(f => f.startsWith(a.id + '-' + oldName.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 40) + '-')) : [];
+    ok(moved.length >= 1 && JSON.parse(readFileSync(join(tmp, 'agents', a.id + '.json'), 'utf8')).heroName === 'Newcomer', 'the old session is in logs/agents/old/ and the new one is for the new name');
+    a.name = oldName; sim.markPlayer(a, false)}
 
   // D. hearing: an agent's line wakes the agent heroes who hear it, at most once per few game minutes each
   {clearInterval(tick);
@@ -403,11 +418,13 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     ok(fo.ok && S.fellowship && S.fellowship.ids.length === 5, 'a Fellowship of five, Minds: agents' + (fo.ok ? '' : ': ' + fo.error));
     const mem = S.fellowship.ids.map(id => S.agents.find(x => x.id === id));
     // the game side first: no waiting out your own turn
-    {const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {}); sc0.phase = 'turn'; sc0.i = 0;
+    {{const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
+      const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0;
       const first = S.agents.find(x => x.id === sc0.ids[0]), second = S.agents.find(x => x.id === sc0.ids[1]);
       const w1 = sim.playerAct(first.id, 'wait', {minutes: 10}), w2 = sim.playerAct(second.id, 'wait', {minutes: 10});
       ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press\.$/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
-      ok(w2.ok && w2.pending, 'a member whose turn is still to come may wait for it');
+      ok(!w2.ok && /^It is your turn at the table/.test(w2.error), 'a check is answered by everyone at once: every member who has not answered is on turn');
+      ok(sim.playerAct(second.id, 'scene_act', {option: 'press'}).ok && sim.playerAct(second.id, 'wait', {minutes: 10}).ok, 'once a member has answered, it may wait for the others');
       S.table = null;
       // a combat scene: the brief's scene keys (the forced turn's enum) carry the member's ready class abilities by id
       const {paceBrief} = await import('../src/sim/pace.js'), {movesOf} = await import('../src/sim/moves.js');
@@ -416,7 +433,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const sc1 = openScene('rescue', 'A test fight', ['A beast lunges.'], {hero: hunter.id, mob: foe.id});
       const bk = paceBrief(hunter.id).brief.scene;
       ok(bk && bk.keys.includes('strike') && movesOf(hunter).some(id => bk.keys.includes(id)), `the forced turn's enum includes ready abilities by id (${hunter.cls}: ${bk && bk.keys.join(', ')})`);
-      S.table = null; void sc1}
+      sc1.phase = 'turn'; sc1.i = 0; {const later = S.agents.find(x => x.id === sc1.ids[1]), w3 = sim.playerAct(later.id, 'wait', {minutes: 10});
+        ok(w3.ok && w3.pending, 'in a fight (turns in order) a member whose turn is still to come may wait for it')}
+      S.table = null}
     TABLE.speed = 1; speed = 1; last = Date.now();
     const tick1 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const n = Math.ceil(real / (1 / 60)); for (let i = 0; i < n; i++) sim.step(real / n)}, 50);
     const p = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-fumble:1b', '--min-gap', '0', '--heartbeat', '1440', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
@@ -424,7 +443,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const claimed = await (async () => {for (let i = 0; i < 200; i++) {const h = await health(PB).catch(() => null); if (h && h.heroes.filter(x => x.fellow && x.claimed).length === 5) return true; await sleep(100)} return false})();
     ok(claimed, 'the Fellowship runner claims all five (mock-fumble:1b)' + (claimed ? '' : '\n' + fout.slice(-1500)));
     await until(() => !S.table, 30000);
-    const f0 = seen.fumble || 0, t0 = Date.now(), sc = openScene('check', 'A test of nerve', ['The DM calls for a roll at the ford.'], {});
+    {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
+    const f0 = seen.fumble || 0, t0 = Date.now(), sc = openScene('check', 'A test of nerve', ['The DM calls for a roll at the ford.'], {anchor: mem.find(a => a.state !== 'dead').id});
     ok(sc && sc.pause, 'a scene opens and the world pauses for it');
     const doneIn = await until(() => S.table !== sc, 90000) ? Date.now() - t0 : null;
     ok(doneIn != null && doneIn < TABLE.liveMs && !sc.late, `the scene resolves without the table timing out (${doneIn == null ? 'still open' : (doneIn / 1000).toFixed(1) + ' s'}, limit ${TABLE.liveMs / 1000} s)` + (doneIn != null ? '' : '\n' + fout.slice(-2500)));
@@ -439,9 +459,11 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // G. the owner's screenshot: members re-introduce themselves every turn. The game refuses a line an agent already said
     // (or a second introduction once they have met), and every turn's header carries what was said lately and who it met.
     {const n0 = seen.length; await sleep(300); last = Date.now();
-      {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + 1; a.y = L.y}} // together: party talk only carries a shout's range (#182)
+      var {TABLE: TBL} = await import('../src/sim/table.js'), tableMode = TBL.mode; TBL.mode = 'off'; // no scene may open mid-section: it would hold the runners' turns
+      var gather = () => {const L = mem.find(a => a.state !== 'dead'); let i = 0; for (const a of mem) if (a.state !== 'dead') {a.state = 'town'; a.hidden = false; a.target = null; a.pq = []; a.dest = null; a.hp = Math.max(a.hp, a.maxhp || 0); a.x = L.x + (i++ % 3 ? 1 : 0); a.y = L.y}}; // together and in town (nothing attacks, nobody wanders off): party talk only carries a shout's range (#182)
+      gather();
       for (const a of mem) {delete a.talkSaid; delete a.talkHeard} // strangers again: the earlier sections let some members meet, which refused their first introduction (flaky)
-      const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
+      const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) {sim.step(dt / n); gather()}}, 50);
       const q = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-intro:1b', '--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
       kids.push(q); let qo = ''; q.stdout.on('data', d => qo += d); q.stderr.on('data', d => qo += d);
       const code = await Promise.race([new Promise(r => q.on('exit', r)), sleep(120000).then(() => 'timeout')]);
@@ -462,13 +484,13 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // calls remember on its own) is given a camp reflection: one forced structured answer, its notes land in the notebook
     // (stamped as a reflection), the moment is closed at the game, and the Markdown mirror folder appears.
     {const RF = await import('../src/sim/reflect.js'), NBm = await import('../src/sim/notebook.js'), {memoryMirror} = await import('./memory-mirror.mjs'), {readdirSync} = await import('node:fs');
-      const a = mem.find(x => x.state !== 'dead' && x.player); park(a); a.hp = a.maxhp || a.hp;
+      const a = mem.find(x => x.state !== 'dead' && x.player); park(a); a.hp = a.maxhp || a.hp; gather(); S.table = null; // G's Table switch stays off until the end of H
       RF.REFLECT.PER_DAY = PER_DAY; delete a.reflect; // a fresh state: no moment left over from the scenes of F
       const n0 = a.memories ? a.memories.notes.length : 0, r0 = seen.reflect || 0;
       RF.moment(a, 'camp', 'Test Hollow');
       const due = RF.reflectDue(a);
       ok(due && due.kind === 'camp' && /making camp: Test Hollow/.test(due.why), 'making camp raises a reflection moment for the member: ' + (due && due.why));
-      last = Date.now(); const tickR = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
+      last = Date.now(); const tickR = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) {sim.step(dt / n); gather()}}, 50);
       const R = runner(a, 'mock-lazy:1b', ['--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--reflect']);
       const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]); clearInterval(tickR);
       const fresh = (a.memories ? a.memories.notes : []).slice(n0), rf = fresh.filter(x => x.rf === 'camp');
@@ -482,6 +504,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const find = d => existsSync(d) ? readdirSync(d, {withFileTypes: true}).flatMap(e => e.isDirectory() ? find(join(d, e.name)) : [join(d, e.name)]) : [];
       const files = find(mroot).filter(f => /[\\/]memory[\\/]/.test(f) && f.includes(String(a.id) + '-'));
       ok(files.some(f => /reflection-making-camp/.test(f)), `the mirror folder appears with the notes (${files.length} files)`);
+      TBL.mode = tableMode;
     }
   }
   server.close();
@@ -509,6 +532,29 @@ console.log('relay links message');
   server.close();
 }
 
+// ---------------------------------------------------------------- the start gate (issue #222): play-headless --wait-ready
+console.log('start gate: --wait-ready holds the world until every mind answered a warm-up');
+{
+  ok(!/world held/.test(world.out()), 'without --wait-ready play-headless never holds the world (unchanged)');
+  const P2 = port + 650, B2 = `http://127.0.0.1:${P2}`, poll = async (f, ms = 30000) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {const h = await health(B2).catch(() => null); if (h && f(h)) return h; await sleep(100)} return null};
+  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--world', join(tmp, 'world-ready.json')], {wait: /headless world/});
+  await w2.until;
+  const [ga, gb] = (await health(B2)).heroes, by = (h, id) => h.heroes.find(x => x.id === id) || {};
+  ok(await poll(() => /world held, waiting for minds: .*no runner/.test(w2.out()), 5000), 'with --wait-ready a world with no runners is held');
+  const ra = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(ga.id), '--provider', 'ollama', '--model', 'mock-slow:1b', '--ollama-url', OLLAMA]);
+  const warming = await poll(h => by(h, ga.id).ready === 'warming', 20000);
+  ok(warming && by(warming, ga.id).warm.model === 'mock-slow:1b', '/play/health shows the slow seat warming up with its model');
+  const t0 = Date.now(), readyA = await poll(h => by(h, ga.id).ready === 'ready', 20000);
+  ok(readyA && Date.now() - t0 > 1000 && by(readyA, ga.id).warm.ms >= 2000, `it turns ready only when the slow warm-up answers (${readyA && by(readyA, ga.id).warm.ms} ms)`);
+  ok(!/every mind is ready/.test(w2.out()) && /no runner/.test(w2.out().split('waiting for minds:').pop()), 'the world stays held: the other seat has no runner');
+  const rb = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-down:1b', '--ollama-url', OLLAMA]);
+  const failed = await poll(h => by(h, gb.id).ready === 'failed', 20000);
+  ok(failed && /unexpectedly stopped/.test(by(failed, gb.id).warm.error || '') && /failed \(ollama: model runner has unexpectedly stopped/.test(w2.out()), 'a crashed warm-up is reported (failed, with the error) and keeps the world held');
+  rb.p.kill(); await poll(h => !by(h, gb.id).claimed, 40000);
+  const rb2 = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', OLLAMA]);
+  ok(await poll(() => /every mind is ready: the world runs/.test(w2.out()), 30000), 'once every seat answered its warm-up the world runs');
+  for (const k of [ra, rb2, w2]) try {k.p.kill()} catch {}
+}
 // issue #221: every request the runners sent (agent loop, closing calls, forced scene, reflection) asked one num_ctx
 {
   const runs = seen.slice(ctxFrom), sizes = [...new Set(runs.map(b => b.options && b.options.num_ctx))];

@@ -8,6 +8,7 @@ import {S} from './state.js';
 import {log,fac} from './chronicle.js';
 import {pop} from './effects.js';
 import {maxHp,gainXp,getEpic,goHome,agentDie} from './heroes.js';
+import {actHurt} from './actlog.js';
 import {dmgTaken} from './stats.js';
 import {raidPull,goalEvent} from './goals.js';
 import {record,timeline} from './history.js';
@@ -26,9 +27,9 @@ export function updBoss(dt){const boss=S.boss,agents=S.agents,T=tplOf(boss);
   boss.cd-=dt;boss.breath-=dt;boss.t=(boss.t||0)+dt;
   const ph=phaseOf(T,boss.hp/boss.maxhp),en=T.enrage&&boss.t>T.enrage.after?T.enrage.hit:1,hm=(ph.hit||1)*en,A=T.abilities[0];
   if(ph.name!==boss.phase){if(boss.phase&&ph.say)log({t:T.name,c:'gd'},': ',ph.say);boss.phase=ph.name}
-  if(boss.cd<=0){boss.cd=T.attack.cd*(ph.cd||1);const t=pickA(eng);boss.face=t.x>boss.x?1:-1;const d=Math.round((T.attack.dmg[0]+rnd()*T.attack.dmg[1])*hm*dmgTaken(t));t.hp-=d;pop(t.x,t.y-.6,String(d),'#ff6a5a');if(t.hp<=0)agentDie(t,boss)}
+  if(boss.cd<=0){boss.cd=T.attack.cd*(ph.cd||1);const t=pickA(eng);boss.face=t.x>boss.x?1:-1;const d=Math.round((T.attack.dmg[0]+rnd()*T.attack.dmg[1])*hm*dmgTaken(t));t.hp-=d;actHurt(t,boss,d);pop(t.x,t.y-.6,String(d),'#ff6a5a');if(t.hp<=0)agentDie(t,boss)}
   if(boss.breath<=0){boss.breath=A.cd;S.fx.push({type:'ring',x:boss.x,y:boss.y-.5,life:.6});
-    for(const t of eng){if(t.state!=='raid'||dist(t,boss)>A.radius)continue;const d=Math.round((A.dmg[0]+rnd()*A.dmg[1])*hm);t.hp-=d;pop(t.x,t.y-.6,String(d),A.color||'#ffa040');if(t.hp<=0)agentDie(t,boss)}}
+    for(const t of eng){if(t.state!=='raid'||dist(t,boss)>A.radius)continue;const d=Math.round((A.dmg[0]+rnd()*A.dmg[1])*hm);t.hp-=d;actHurt(t,boss,d,'breath');pop(t.x,t.y-.6,String(d),A.color||'#ffa040');if(t.hp<=0)agentDie(t,boss)}}
   if(boss.hp<=0){boss.alive=false;boss.respawn=T.respawn;boss.t=0;boss.phase=null;const f=boss.dmg[0]>=boss.dmg[1]?0:1;S.facStats[f].bosses++;
     log('The lava ring around the lair cools to black rock; the hoard lies open until the wyrm wakes.'); // memorials: render/memorials.js draws the cooled lair while the boss is dead
     log(fac(f),' slew ',{t:T.full,c:'gd'},'!');timeline('boss',fac(f),' slew ',{t:T.full,c:'gd'},'.');

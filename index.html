@@ -33,7 +33,8 @@
   </header>
 
   <div class="main">
-    <div class="col">
+    <aside class="col colL" id="colL" hidden aria-label="Story and world"></aside>
+    <div class="col colM" id="colM">
       <div class="frames" id="frames" hidden aria-label="Fellowship party frames"></div>
       <div class="screen" id="screen">
         <canvas id="cv" aria-label="Map of Eldmoor showing heroes and monsters"></canvas>
@@ -74,13 +75,13 @@
         </details>
       </div>
       <section class="panel chatdock" id="chatSec" aria-live="off" hidden></section>
-      <section class="panel" aria-live="off">
+      <section class="panel" id="heroSec" aria-live="off">
         <h2>Hero</h2>
         <div class="hero" id="hero"></div>
       </section>
     </div>
 
-    <aside class="col" id="side">
+    <aside class="col colR" id="side">
       <section class="panel fel" id="fellowship" aria-live="off" data-o="1">
         <h2>Fellowship</h2>
         <div id="felbody"></div>

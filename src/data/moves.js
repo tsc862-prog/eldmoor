@@ -70,7 +70,7 @@ export const MOVES={
   heartseeker:{name:'Heartseeker',cls:'Hunter',spec:'stalker',kind:'attack',lvl:10,cd:20,rounds:3,cost:null,target:'foe',range:'weapon',swing:true,
     fx:{dmg:2.4,crit:.2},use:'burst',desc:'One arrow, all the patience: 240% damage with a 20% better chance to crit.'},
   thornfield:{name:'Thornfield',cls:'Hunter',spec:'trapper',kind:'control',lvl:10,cd:28,rounds:4,cost:null,target:'foes',range:3.5,swing:false,
-    fx:{dmg:.5,delay:3},save:{abil:'reflex',stat:'insight'},use:'crowd',desc:'Cords and thorn across the whole pack: every foe nearby takes 50% damage and loses 3 seconds (half on a save).'},
+    fx:{dmg:.5,delay:3},save:{abil:'reflex',stat:'insight'},use:'pack',desc:'Cords and thorn across the whole pack: every foe nearby takes 50% damage and loses 3 seconds (half on a save).'},
   dawnbrand:{name:'Dawnbrand',cls:'Priest',spec:'battlecleric',kind:'attack',lvl:10,cd:16,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
     fx:{dmg:2.1,delay:1.2},use:'burst',desc:'The faith made a hammer: 210% damage, and the foe reels for 1.2 seconds.'},
   mendingtouch:{name:'Mending Touch',cls:'Priest',spec:'mender',kind:'heal',lvl:10,cd:12,rounds:2,cost:null,target:'ally',range:5,swing:false,

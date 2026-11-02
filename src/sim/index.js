@@ -18,6 +18,7 @@ import {updMarket} from './market.js';
 import {chatTick} from './chat.js';
 import {npcsTick} from './npcs.js';
 import {talkTick} from './talk.js'; // NPC conversations (#170)
+import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
 import {guildsTick} from './guilds.js';
@@ -41,6 +42,7 @@ export {log,onLog,gold,epic,fac} from './chronicle.js';
 export {onMarketTick} from './market.js';
 export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
+export {actionLog,fightSummary,fights} from './actlog.js'; // action log (recording only)
 export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
 export {enableBrain,disableBrain,brainStatus} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
@@ -77,6 +79,6 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   // agent-played heroes (sim/player.js) run a reduced machine first
   partyTick();fellowshipTick(dt);councilTick();campTick(dt);tableTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
-  chatTick(dt);npcsTick(dt);talkTick();goalsTick(dt);guildsTick(dt);
+  chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}

@@ -159,12 +159,25 @@ is silent, and scene choices time out to the scripted branch, so the world never
   hurt, a choice, a table scene, a camp alarm: events marked `urgent=2` in `src/sim/notify.js`); once the
   minimum gap has passed (`--min-gap S`, default 20 real seconds) when the hero has unread news (an arrival,
   a vote, a party line, the narrator, an NPC); else after a heartbeat of game time (`--heartbeat MIN`,
-  default 240 game minutes). A quiet hero takes about one turn a real minute at 1x and at most one per
+  default 120 game minutes). A quiet hero takes about one turn a real minute at 1x and at most one per
   gap plus the turn at 8x; a paused world takes none; at most 2 immediate turns a real minute inside the gap.
   The runner stops when the hero dies or leaves agent play, and after `--max-fails N` (default 5) failed or
-  empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. An older relay or page
+  empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. More triggers (`src/sim/wakes.js`, `npm run wakecheck`): XP since the hero's last read is one bundled soft line ("+85 XP from 3 kills (...); 120 XP to level 4"), plus loot and quest progress and an elite kill (soft); a level up (names the ability, passive or level-10 path it opens), a rare or epic drop and a finished quest start the turn at once. Agent-played heroes only; no RNG. An older relay or page
   without `/play/pace` falls back to real time as if at 1x. A local (Ollama) runner has no turn cap unless
   `--max-turns` is given (it runs until stopped); Claude and OpenAI keep 20 turns and the budget.
+- Start gate (#222, extends the run gate #171 in `src/ui/rungate.js`): a seat is **ready** only after its runner
+  completed one warm-up model call with the model it plays (and the shared `num_ctx`, #221): before its first turn
+  every runner (hero, Fellowship member, DM; `scripts/warmup.mjs`) posts `POST /play/ready {hero|role:'dm', runner,
+  state:'warming'}`, makes one tiny structured call (Ollama `chat()` through the runner's queue, else the adapter's
+  `call()`), then `{state:'ready', ms}` or `{state:'failed', error}`. Readiness belongs to the runner that reported
+  it, so a restarted runner starts over; `/play/health` shows `heroes[].ready` (+ `warm`) and `dm.ready`, and the
+  page gets it with the links. The page holds the world (after Continue, a new world, any runner start) until every
+  living Fellowship seat and the open DM seat are ready; the banner reads "WAITING FOR MINDS · 3/5 READY" with each
+  seat's state ("loading qwen2.5:14b (40 s)", "claimed", "warm-up failed: ...") and **Start anyway** (waives the
+  seats as they are; a waived seat whose runner goes away must warm up again). Party frames and the DM frame show
+  claimed / warming up / ready / warm-up failed. `play-headless --wait-ready` holds a headless world the same way
+  (every living agent hero and the open DM seat); without the flag headless runs as before. A failed warm-up never
+  stops the runner. `npm run localcheck` (slow and crashing mock warm-ups) and `npm run uismoke` cover it.
 - Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
   game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in
   the Agent tab, with "Last agent order: N game min ago"): rest when hurt, hunt again when its last order was
@@ -244,6 +257,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   takes `prey` (a creature known by name) or whatever is around except what it learned to fear; `list_jobs` gives the
   gate's rumour, not "fits"; townsfolk warn a green blade off the next region up. Background heroes keep the scripted
   level logic and never get lore; the hooks only touch `a.player` heroes, so `npm run sim` is unchanged.
+- New world under the same ids (#219): New World reuses hero ids, so a runner that holds ids would play nobody. Hero and Fellowship runners poll `/play/health` (`watchWorld` in `scripts/pacing.mjs`) and, when a held id now names another hero (the name differs; the world instance id will be compared too once `/play/health` carries it as `world`), release their claims and exit with code 75 (`NEW_WORLD_EXIT`, `[world] a new world: ...` line). The supervisor (`scripts/runners.mjs`) restarts a runner that exits 75 with the same request after `RESTART_MS`, at most `MAX_RESTARTS` in a row without a turn; the restart sets the old sessions aside in `logs/agents/old/`. A DM runner whose seat is closed (a new world starts with it closed) says so in its `[pace]` line (the DM frame shows it) and waits for Open seat.
 - Memories (#155, `src/sim/notebook.js`): every agent hero keeps its own searchable notes with `remember {title,
   text, tags[], about?}`, `recall {query?, tag?, about?, id?, n?}` (title and tag words 3, about 2, text 1, +1 pinned,
   plus recency; a tag or about filters), `update_memory`, `forget` and `pin`; 200 notes of 600 characters, the oldest
@@ -357,6 +371,16 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Everyone at once (owner request): `PLAY` in `src/sim/table.js` says per scene kind how it is played. `turns`
+  (elite, ambush, boss, rescue, Crypt site/room): initiative order, one act changes the next. `all` (decision =
+  every vote incl. break_camp, check, choice, staged meeting/social/trap/mystery): every member present gets the
+  scene at the same moment (a must-answer event), `your_turn` is true for each until it answers (then `wait` is
+  allowed), answers come in any order, and each live agent has its own `turnMs` nudge and `liveMs` wait side by
+  side (not summed). Once nobody is waited on, the acts resolve in Fellowship slot order (never arrival order;
+  reflexes chosen then), and a staged scene gets one combined outcome call for the DM instead of one per act.
+  Only members within shouting range (#182) of the scene's anchor (a vote: its voters) take part. `tableView`
+  adds `everyone_answers`, `answered` ("3/5") and `waiting_on`; the banner shows EVERYONE ANSWERS and
+  "3/5 answered · waiting for Fena, Maelell". A kind not in the table plays in turns.
 - Forced scene turns (#163): a local or OpenAI member whose own scene is open (the pace brief's `scene`: its
   legal option keys, incl. ready abilities by id) gets one structured answer (Ollama `format` / OpenAI strict
   json_schema: `{option: enum, line}`) and the runner sends `scene_act` itself; Claude keeps tool use, with one

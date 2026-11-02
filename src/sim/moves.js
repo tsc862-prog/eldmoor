@@ -22,6 +22,7 @@ import {strike,maxHp} from './heroes.js';
 import {mod} from './abilities.js';
 import {bondEvent} from './bonds.js';
 import {nearMobs} from './spatial.js';
+import {actAbility,actHeal} from './actlog.js';
 import {setEff,effOn,effLeft,passivesOf,passiveMul,eachRound} from './eff.js';
 
 const now=()=>S.gameMin/6;
@@ -96,12 +97,13 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
     break;
   case 'ally':if(fx.taken){setEff(t,'taken',fx.taken,M.dur,M.durR,round);pop(t.x,t.y-.5,'WARDED','#c8c8e0')}
     if(fx.heal){const H=fx.heal,h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(t))*passiveMul(a,'healMul')),was=t.hp;
-      t.hp=Math.min(maxHp(t),t.hp+h);const got=Math.round(t.hp-was);R.healed+=got;R.hit++;pop(t.x,t.y-.6,'+'+got,'#7dce5a');if(t!==a&&got>0)bondEvent(a,'heal',[t])}break;
+      t.hp=Math.min(maxHp(t),t.hp+h);const got=Math.round(t.hp-was);R.healed+=got;R.hit++;actHeal(a,t,got,M.name);pop(t.x,t.y-.6,'+'+got,'#7dce5a');if(t!==a&&got>0)bondEvent(a,'heal',[t])}break;
   case 'allies':if(fx.heal){const H=fx.heal;
     for(const b of mates){if(dist(a,b)>M.range)continue;const h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(b))*passiveMul(a,'healMul')),was=b.hp;
-      b.hp=Math.min(maxHp(b),b.hp+h);const got=Math.round(b.hp-was);R.healed+=got;R.hit++;pop(b.x,b.y-.6,'+'+got,'#7dce5a');if(b!==a&&got>0)bondEvent(a,'heal',[b])}}break;
+      b.hp=Math.min(maxHp(b),b.hp+h);const got=Math.round(b.hp-was);R.healed+=got;R.hit++;actHeal(a,b,got,M.name);pop(b.x,b.y-.6,'+'+got,'#7dce5a');if(b!==a&&got>0)bondEvent(a,'heal',[b])}}break;
   }
   R.text=M.name+(t&&t!==a?' on '+(t.name||(t.kind==='boss'?'Kragmaw':'the foe')):'')+(R.dmg?' ('+R.dmg+' damage)':'')+(R.healed?' (healed '+R.healed+')':'')+(R.taunt?' (it turns on you)':'')+(R.saved?' ('+R.saved+' resisted)':'')+(R.kill?', and it falls':'');
+  actAbility(a,M.name,t,R.dmg||R.healed||null);
   const st=S.moveStats||(S.moveStats={uses:{},dmg:0,healed:0});st.uses[id]=(st.uses[id]||0)+1;st.dmg+=R.dmg;st.healed+=R.healed;
   const lg=a.moveLog||(a.moveLog=[]);lg.push({t:clockStr(),id,text:R.text});if(lg.length>8)lg.shift();
   return {ok:true,text:R.text,swing:!!M.swing,...R}}
@@ -116,8 +118,10 @@ function wants(a,M,ctx){const {foe,mates,f}=ctx;
   case 'selfhurt':return f<.55&&foe&&(foe.target===a||foe.kind==='hero')&&!effOn(a,'taken')?a:null;
   case 'wardally':{let best=null;for(const b of mates){if(dist(a,b)>M.range||hpf(b)>=.8||effOn(b,'taken'))continue;
       const hunted=b===a?(foe&&foe.target===a):ctx.engaged.some(m=>m.target===b);if(!hunted)continue;if(!best||hpf(b)<hpf(best))best=b}return best}
-  case 'healally':{let best=null;for(const b of mates){if(dist(a,b)>M.range||hpf(b)>=.55)continue;if(!best||hpf(b)<hpf(best))best=b}return best}
+  case 'healally':{let best=null;for(const b of mates){if(dist(a,b)>M.range||hpf(b)>=(M.spec?.72:.55))continue;if(!best||hpf(b)<hpf(best))best=b}return best}
   case 'masshurt':{const hurt=mates.filter(b=>dist(a,b)<=M.range&&hpf(b)<.7);return hurt.length>=2||hurt.some(b=>hpf(b)<.4)?a:null}
+  // A spread of cords for the Trapper: two foes in reach, one worth the cords (elite, boss, a duellist, or a mob near the hunter's level) still fresh, or any foe once the hunter is below 70% health.
+  case 'pack':{const near=ctx.engaged.filter(m=>dist(a,m)<=M.range);return near.length>=2||(foe&&near.includes(foe)&&(foe.elite||foe.kind==='boss'||foe.kind==='hero'||(foe.lvl||1)>=(a.lvl||1)-2)&&hpf(foe)>.5)||(foe&&foe.kind==='mob'&&near.includes(foe)&&f<.7)?a:null}
   case 'burst':return foe&&foe.kind!=='hero'&&ctx.swing&&(foe.kind!=='mob'||hpf(foe)>.3)&&(!M.cost||f>.6)?foe:null;
   case 'opener':return foe&&foe.kind!=='hero'&&ctx.swing&&hpf(foe)>=.9?foe:null;
   case 'pressed':return foe&&foe.kind==='mob'&&f<.65&&foe.target===a&&dist(a,foe)<2.2?a:null;

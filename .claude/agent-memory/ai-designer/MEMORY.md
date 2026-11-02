@@ -15,4 +15,6 @@
 - [World voice #164](world_voice.md) � S.worldVoice mutes scripted say/npcSay; scripted DM voices NPCs near members; RNG preserved
 - [Camp rest #178](camp_rest.md) — camp status text, break_camp vote/tool, rest hours, wake events, sleepers' pacing, onCamp hook
 - [Talk range #182](talk_range.md) — shout range, presence councils, couriers, reflex-party exemption, no Party chat tag
+- [Table everyone-at-once](table_simultaneous.md) — PLAY kind table, slot-order resolution, parallel waits, presence, staged combined DM call
 - [Quest log](quest_log.md) — several quests per hero derived from existing state; taken/held phases agent-only; DM tags h.by/h.ff
+- [Action log #248](action_log.md) — actlog.js non-enumerable ring, fight settling, unrecorded kinds, hash proof

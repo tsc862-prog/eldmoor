@@ -16,7 +16,7 @@
 // with a line of narration; the runner prints the tool calls, the narration and a cost line.
 // Pacing (issue #126, scripts/pacing.mjs): the next turn starts when something happens to the hero
 // (attacked, badly hurt, a choice or a scene: at once; an arrival, a vote, a party line, the narrator:
-// after the minimum gap) or after a heartbeat of game time (--heartbeat MIN, default 240 game minutes),
+// after the minimum gap) or after a heartbeat of game time (--heartbeat MIN, default 120 game minutes),
 // never sooner than --min-gap S real seconds (default 20) except for what cannot wait. A paused world
 // takes no turns. The runner stops when the hero dies or leaves agent play, and after --max-fails N
 // (default 5) failed or empty turns in a row. Each hero's session id lives in its own file, logs/agents/<heroId>.json
@@ -54,10 +54,11 @@ import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/o
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
 import {reflectPrompt, reflectNow, closeReflection} from './pacing.mjs'; // reflection moments (#179)
 import Anthropic from '@anthropic-ai/sdk';
+import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, takeClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -99,6 +100,9 @@ export function systemPrompt(st) {
 export const KNOWLEDGE_ORDERS = 'YOU KNOW ONLY WHAT YOU HAVE SEEN, HEARD OR BEEN TOLD. A creature you have never met is a stranger: look describes it and gives your own read of its threat, and fighting it, watching it, a warning or the town criers teach you more (its name, its measure, its tricks). You walk by name only to places you know (status.places: your home region, where you have been, what you were told of); to go anywhere else, explore a direction or "x,y". Nobody picks safe prey for you: hunt with prey you know, or what is around. Ask townsfolk and companions about places and creatures, heed warnings, share what you learn with your companions, and remember what hurt you (lore lists what you know).';
 const OLD_RULES = [[' Fight things your level or below, rest or go home when hurt,', ' Rest or go home when hurt,'], ['hunt in your level band,', 'hunt what you judge you can beat,']];
 export const withKnowledgeOrders = sys => {let s = String(sys || ''); if (s.includes('YOU KNOW ONLY WHAT YOU HAVE SEEN')) return s; for (const [a, b] of OLD_RULES) s = s.split(a).join(b); return s + '\n' + KNOWLEDGE_ORDERS};
+// Townsfolk (owner request): the turn header lists the people about ("nearby"); this line sends the agent to them.
+export const TOWN_ORDERS = 'In town, talk to the people: innkeepers have news, merchants trade, strangers have wants. A conversation can open a job or a trade. Answer when someone calls to you.';
+export const withTownOrders = sys => {const s = String(sys || ''); return s.includes('In town, talk to the people') ? s : s + '\n' + TOWN_ORDERS};
 // Memories (issue #155): the line every hero's standing orders carry; withMemoryOrders adds it to an older session's prompt.
 export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
 // Tiered memory (issue #153): landmarks, chapters and journal_search; withMemoryOrders adds this line to an older prompt too.
@@ -158,6 +162,7 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | local model ${rs.model} via Ollama ${s0.url}, num_ctx ${ol.numCtx} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)} | ${paceText(pace)}`);
+  await warmUp({base, seat: {hero: heroId}, runner: RUNNER, model: rs.model, adapter: ol, log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let ended = null, runIn = 0, runOut = 0, t0 = Date.now(), lastNote = null; const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     let r = null, w = null;
@@ -187,6 +192,7 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via OpenAI | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
+  await warmUp({base, seat: {hero: heroId}, runner: RUNNER, model: rs.model, adapter, log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let ended = null, runIn = 0, runOut = 0, spent = 0, unknown = false, t0 = Date.now(); const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
@@ -233,6 +239,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   let turnAbort = null; // the Agent SDK turn in flight, so a stop ends it (and its subprocess) cleanly
   process.on('SIGINT', async () => {stopReq = true; if (turnAbort) turnAbort.abort(); await release(); process.exit(130)});
   // Started from the game (scripts/runners.mjs): a "stop" on stdin, or the relay going away, ends the run.
+  watchWorld({base, known: () => new Map([[heroId, {name: pick.hero.name, world: pick.hero.world}]]), onNew: async ch => {console.log(newWorldLine(ch)); stopReq = true; if (turnAbort) turnAbort.abort(); await release(); process.exit(NEW_WORLD_EXIT)}});
   onSupervisorStop(async why => {console.log(`[agent] ${why}: releasing the hero and stopping`); stopReq = true; if (turnAbort) turnAbort.abort(); await release(); setTimeout(() => process.exit(0), 200)});
   const st = await play(base, heroId, 'status');
   if (!st.ok) {console.error('status failed: ' + st.error); await release(); process.exit(1)}
@@ -241,7 +248,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const moved = migrateLegacy(); if (moved) console.log('[agent] ' + moved);
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
-  sess.system = withKnowledgeOrders(withMemoryOrders(sess.system)); // memories (#155), learning the world (#188) for a session that began before them
+  sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
@@ -272,6 +279,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'};
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
+  await warmUp({base, seat: {hero: heroId}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let spent = 0, ended = null;
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
