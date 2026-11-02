@@ -89,10 +89,11 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
   if(M.cost&&M.cost.hp)a.hp-=maxHp(a)*M.cost.hp;
   const R={dmg:0,kill:false,saved:0,healed:0,taunt:false,hit:0,text:''},fx=M.fx,mates=(opt.mates||[a]).filter(b=>living(b)&&b.fac===a.fac);
   pop(a.x,a.y-.9,M.name.toUpperCase(),NOTE[M.kind]||'#ffffff');
+  const ox=a.x,oy=a.y,hits=[]; // where the caster stood and the foes an area move reached, for the spell effect (#374)
   switch(M.target){
   case 'foe':onFoe(a,M,t,round,R,id);R.hit=1;break;
-  case 'foes':{S.fx.push({type:'ring',x:a.x,y:a.y-.5,life:.5});const list=engagedNear(a,M.range);if(t&&living(t)&&!list.includes(t)&&t.kind!=='hero')list.push(t);
-    for(const e of list.slice(0,5)){onFoe(a,M,e,round,R,id);R.hit++}break}
+  case 'foes':{const list=engagedNear(a,M.range);if(t&&living(t)&&!list.includes(t)&&t.kind!=='hero')list.push(t);
+    for(const e of list.slice(0,5)){onFoe(a,M,e,round,R,id);R.hit++;hits.push(e)}break}
   case 'self':if(fx.taken){setEff(a,'taken',fx.taken,M.dur,M.durR,round);pop(a.x,a.y-.5,'WARDED','#c8c8e0')}
     if(fx.shake)for(const m of engagedNear(a,6))if(m.target===a)slow(m,fx.shake);
     if(fx.blink){const f=opt.foe&&living(opt.foe)?opt.foe:engagedNear(a,6).find(m=>m.target===a);if(f){const k=blink(a,f,fx.blink);R.moved=k;if(fx.delay)slow(f,fx.delay)}}
@@ -105,6 +106,9 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
     for(const b of mates){if(dist(a,b)>M.range)continue;const h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(b))*passiveMul(a,'healMul')),was=b.hp;
       b.hp=Math.min(maxHp(b),b.hp+h);const got=Math.round(b.hp-was);R.healed+=got;R.hit++;actHeal(a,b,got,M.name);pop(b.x,b.y-.6,'+'+got,'#7dce5a');if(b!==a&&got>0)bondEvent(a,'heal',[b])}}break;
   }
+  // The spell effect (#374, drawn by render/spellfx.js): the move, where the caster stood and stands, and every one it touched. No dice.
+  const pts=[];for(const e of M.target==='foes'?hits:M.target==='allies'?mates.filter(b=>dist(a,b)<=M.range):[t||a])pts.push(e.x,e.y);
+  S.fx.push({type:'spell',id,kind:M.kind,x:ox,y:oy,ex:a.x,ey:a.y,r:typeof M.range==='number'?M.range:0,pts,life:1});
   R.text=M.name+(t&&t!==a?' on '+(t.name||(t.kind==='boss'?'Kragmaw':'the foe')):'')+(R.dmg?' ('+R.dmg+' damage)':'')+(R.healed?' (healed '+R.healed+')':'')+(R.taunt?' (it turns on you)':'')+(R.saved?' ('+R.saved+' resisted)':'')+(R.cond?' ('+R.cond.map(c=>CONDITIONS[c].name.toLowerCase()).join(', ')+')':'')+(R.kill?', and it falls':'');
   actAbility(a,M.name,t,R.dmg||R.healed||null);
   const st=S.moveStats||(S.moveStats={uses:{},dmg:0,healed:0});st.uses[id]=(st.uses[id]||0)+1;st.dmg+=R.dmg;st.healed+=R.healed;
