@@ -276,6 +276,14 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Forced scene turns (#163): a local or OpenAI member whose own scene is open (the pace brief's `scene`: its
+  legal option keys, incl. ready abilities by id) gets one structured answer (Ollama `format` / OpenAI strict
+  json_schema: `{option: enum, line}`) and the runner sends `scene_act` itself; Claude keeps tool use, with one
+  structured answer after a scene turn that missed. `wait` on your own scene turn is refused; calls written as
+  text (`scene_act(deadeye, "...")`, `tool({...})`) run, and labels like "CallCheck" are cut from narration.
+- Talk (`src/sim/talk.js`): an agent's `say`/`party_say` that repeats one of its last 5 lines, or a second
+  introduction once members have met (both spoke in each other's hearing), is refused; every turn header
+  carries the last 8 lines heard and the companions met.
 
 ## Model providers (Mixed minds, issue #97)
 

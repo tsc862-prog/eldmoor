@@ -51,7 +51,9 @@ import {loadEnv, PRICES} from './relay.mjs';
 import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
-import {localTurn, localLine, paidLine} from './local-agent.mjs';
+import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk} from './local-agent.mjs';
+import Anthropic from '@anthropic-ai/sdk';
+import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, takeClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
@@ -113,6 +115,18 @@ async function between(pacer) {
   return {w};
 }
 
+// A Fellowship member's own Table scene, played as one structured answer and scene_act by the runner (issue #163).
+// -> the turn record, or null when no scene waits for this hero. A record with no tool call (the model missed twice)
+// is handed to the free turn, which adds its numbers (sumTurns).
+async function forcedScene({b0, w, base, heroId, sess, ask, strict = false, keep = true, on}) {
+  const call = (tool, args) => play(base, heroId, tool, args), sc = await sceneToAnswer(b0, call, !!(w && w.table));
+  if (!sc) return null;
+  const r = await sceneTurn({ask, call, sess, scene: sc, on, strict, keep});
+  if (!r.tools) console.log(`  [scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`);
+  return r;
+}
+const sumTurns = (r0, r) => {if (r0 && r && r !== r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0; return r};
+
 // The local runner (issue #97 part 2): the same turns, claims and session file, played by an Ollama
 // model through scripts/local-agent.mjs. Ends the process.
 async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollamaUrl, numCtx, release, beat, file, openai = null, budget = 1, pacer, pace}) {
@@ -129,9 +143,10 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     {const n = await localModelNote(ol, rs.model); if (n && n !== lastNote) console.log('[agent] ' + n); lastNote = n} // before every turn: another model on the GPU
     const b0 = await pacer.brief(); let err = null;
-    try {r = await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns,
-      opts: numCtx ? {numCtx: Number(numCtx)} : {},
-      on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)}})}
+    const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
+    try {r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model, {numCtx: numCtx ? Number(numCtx) : null}), on}); // a Fellowship member's own scene (issue #163)
+      if (!r || !r.tools) r = sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns,
+      opts: numCtx ? {numCtx: Number(numCtx)} : {}, on}))}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
@@ -156,8 +171,9 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
     let r = null, w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     const b0 = await pacer.brief(); let err = null;
-    try {r = await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns,
-      on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)}})}
+    const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
+    try {r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a Fellowship member's own scene (issue #163)
+      if (!r || !r.tools) r = sumTurns(r, await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + briefText(b0), model: rs.model, toolTurns, on}))}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
@@ -278,8 +294,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       tin = mu.reduce((t, u) => t + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0); tout = mu.reduce((t, u) => t + u.outputTokens, 0);
       console.log(`[turn ${sess.turns}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens in ${tin} (${cached} cached) / out ${tout} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
+    // Claude keeps tool use at the table; a scene turn that ended without scene_act gets one structured answer (issue #163)
+    let forced = null;
+    if (((b0 && b0.scene) || (w && w.table)) && !stopReq && sceneFrom(((await pacer.brief()) || {}).scene)) {
+      console.log('  [scene: the turn ended without scene_act; one structured answer]');
+      try {forced = await forcedScene({b0: await pacer.brief(), w, base, heroId, sess, ask: adapterAsk(anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}), model, 'low'), keep: false,
+        on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${short(b, 120)})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)}});
+        if (forced) {spent += forced.cost; sess.costUsd += forced.cost; turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; for (const c of forced.calls) tc.tools.push(c);
+          console.log(`[scene answer] ${model} | ${forced.tools ? 'scene_act sent' : forced.misses + ' answers missed'} | tokens in ${forced.in} / out ${forced.out} | ${money(forced.cost)} | run ${money(spent)}`)}}
+      catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cost: turnCost,
-      flags: result && result.subtype !== 'success' ? [result.subtype] : [], ...(err ? {error: err} : {})});
+      flags: [...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSess();
     if (fails.ok(!failed && tools > 0) && !ended) ended = fails.why();
   }

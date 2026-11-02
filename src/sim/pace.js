@@ -15,7 +15,8 @@
 // member's notebook, sim/notebook.js), so a world with no runner is unchanged.
 import {S,clockStr} from './state.js';
 import {wakeLevel} from './notify.js';
-import {tableView} from './table.js';
+import {tableView,optionsFor} from './table.js';
+import {heardLines,metNames} from './talk.js';
 import {maxHp} from './heroes.js';
 import {ZONES,zoneAt} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
@@ -58,4 +59,9 @@ export function paceBrief(id){const a=hero(Number(id));
   const foe=fighting?(t.kind==='hero'?t.name:t.elite||t.named?t.name:(MOBS[t.type]&&MOBS[t.type].name||'a monster')+(t.lvl?' (level '+t.lvl+')':'')):null;
   const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
-    foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a)}}} // memories: the hero's own notes most relevant now, {id, title} only (#155)
+    foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a), // memories: the hero's own notes most relevant now, {id, title} only (#155)
+    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a)}}} // what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
+// The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
+// texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
+function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(S.table,a).map(o=>o.k);if(!keys.length)return null;
+  return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[]}}
