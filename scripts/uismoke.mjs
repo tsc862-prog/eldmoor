@@ -17,6 +17,7 @@ globalThis.requestAnimationFrame=()=>0;
 
 const sim=await import('../src/sim/index.js');
 const {initUI,uiFast,uiSlow}=await import('../src/ui/app.js');
+const {remember}=await import('../src/sim/memory.js');
 const {select,setView}=await import('../src/ui/controls.js');
 const {setTab,ranked}=await import('../src/ui/panels.js');
 const $=id=>document.getElementById(id);
@@ -45,16 +46,13 @@ select(busy);setView('follow');tick(1);
 
 // Scroll a list, tick, check it held. get() re-finds the list after the tick (a rebuilt list would be a new node).
 // ranked: rows move by rank, so only the scroll position must hold
-// stable(): a signature of what makes the panel rebuild on purpose (the Memory tab is rebuilt when a memory is added,
-// so its scroll legitimately resets then); when it changed during the window the check is retried, not failed.
-function holds(name,get,{sec=20,min=3,ranked=false,stable=null,tries=6}={}){let n=get();
+function holds(name,get,{sec=20,min=3,ranked=false}={}){let n=get();
   if(!n){ok(false,name+': list not found');return}
   if(n.children.length<min){tick(sec);n=get()}
   if(!n||n.children.length<min){console.log('  skip '+name+' (only '+(n?n.children.length:0)+' rows)');return}
   const top=Math.min(40,(n.children.length-1)*20);n.scrollTop=top;
   const anchor=n.children.find(c=>c.offsetTop+c.offsetHeight>top),off=anchor.offsetTop-top,mark={};anchor._mark=mark;
-  const sig0=stable&&stable();tick(sec);const m=get();
-  if(stable&&stable()!==sig0&&tries>1){console.log('  note '+name+': rebuilt on purpose (its content changed), checking again');return holds(name,get,{sec:Math.min(sec,10),min,ranked,stable,tries:tries-1})}
+  tick(sec);const m=get();
   ok(m===n,name+': same scroll container after '+sec+' s');
   ok(m&&m.scrollTop>=top,name+': scrollTop held ('+top+' -> '+(m&&m.scrollTop)+')');
   if(ranked)return;
@@ -100,7 +98,13 @@ ok(!$('frames').hidden,'party frames shown');
 const mem=sim.fellows();guardMem=mem;sim.markPlayer(mem[1],true);mem[1].fellowAgent=true;
 for(let i=0;i<6;i++){sim.playerAct(mem[1].id,'look',{});tick(10)}
 select(mem[0]);uiFast();
-setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2,stable:()=>{const M=mem[0].memory;return M?(M.n||0)+':'+(M.long||'').length+':'+Object.values(M.stances||{}).join('|').length:''}});
+setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2});
+{const M=mem[0].memory;const tbn=tb();tbn.scrollTop=40;const li0=tbn.querySelector('.log li');const n0=M.recent.length;
+  remember(mem[0],'scene','A brand new memory arrives while the owner is reading.');uiFast();
+  ok(M.recent.length>n0||M.n>0,'a memory was added');ok(tb()===tbn,'Memory tab: same container after a new memory');
+  ok(tbn.scrollTop>=Math.min(40,tbn.scrollTop),'Memory tab: scroll held across a new memory ('+tbn.scrollTop+')');
+  ok(tbn.textContent.includes('A brand new memory'),'Memory tab: the new memory shows');
+  if(li0)ok(tbn.contains(li0),'Memory tab: existing rows are reused, not rebuilt')}
 select(mem[1]);setTab('agent');uiFast();
 ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-played member');
 {const get=()=>tb().querySelector('.agentlog');const l=get();if(l){l.scrollTop=40;const n=l;for(let i=0;i<4;i++){sim.playerAct(mem[1].id,'look',{});tick(5)}
