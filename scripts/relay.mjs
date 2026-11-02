@@ -14,7 +14,7 @@
 //     200 {choice?, crypt?, line?, reason?, sent, usage:{in,out,cost}, provider, model}   (cryptCall: {crypt, reason})
 //     4xx/5xx {error:'...', sent?, provider?, model?}   (the sim treats any error as "scripted")
 //   GET  /health   {ok, model, requests, cost, byProvider:{name:{requests,errors,inTok,outTok,cost,ms}},
-//                   providers:{anthropic:{ok,models}, ollama:{ok,url,models (pulled, from /api/tags),error?}, openai, google}, localTimeout}
+//                   providers:{anthropic:{ok,models}, ollama:{ok,url,models (pulled, from /api/tags),numCtx (#221),error?}, openai, google}, localTimeout}
 //
 // Providers: scripts/providers/ (anthropic.mjs = the Claude call, ollama.mjs = local models at OLLAMA_URL,
 // default http://localhost:11434, cost 0; openai.mjs = OpenAI Chat Completions; google.mjs is a stub until built).
@@ -273,6 +273,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   server.listen(port, '127.0.0.1', () => {
     console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}${behavior ? '  behavior logs -> ' + behavior.dir() : ''}`);
     console.log(runnersOn ? '[relay] app runners ON: the game page can start and stop agent runners (logs in logs/runners/)' : '[relay] app runners off (start with --runners to launch agent runners from the game page)');
-    providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error}`));
+    providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error} | num_ctx ${o.numCtx} for every local call (OLLAMA_NUM_CTX)`));
   });
 }
