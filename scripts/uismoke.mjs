@@ -234,6 +234,33 @@ console.log('declutter');
   const pT=click('party');ok(/Stream test line/.test(pT)&&/proposes:/.test(pT)&&!/Well met/.test(pT),'chat panel: Party filter shows party lines and the council');
   ok(!!$('chatLegend')&&/hostile/.test($('chatLegend').textContent),'chat panel: a colour legend');
   click('all');
+  // newest on top (owner): the panel, the day separators, and a held scroll
+  {const lis=()=>cl.children.filter(c=>c.tagName==='LI'&&!c.classList.contains('daysep'));
+   const stamps=()=>lis().map(l=>{const m=/D(\d+) (\d\d):(\d\d)/.exec(l.querySelector('time').textContent);return m?(+m[1]-1)*1440+(+m[2])*60+(+m[3]):0});
+   const sd=stamps();ok(sd.every((v,i)=>i===0||sd[i-1]>=v),'chat panel: newest line on top, times never increase down the list');
+   ok(cl.children[0].classList.contains('daysep'),'chat panel: a day separator heads the newest day block');
+   const di=cl.children.map((c,i)=>c.classList.contains('daysep')?i:-1).filter(i=>i>=0);
+   ok(di.every(i=>cl.children[i+1]&&!cl.children[i+1].classList.contains('daysep')),'chat panel: each separator sits above the day newest line');
+   ok(cl.scrollTop===0,'chat panel opens at the top');
+   mem[1].chat.push({t:'06:00',d:50,from:mem[1],text:'Top test A.',party:true,heard:[]});uiFast();
+   ok(lis()[0].textContent.includes('Top test A.'),'chat panel: at the top, a new line appears first');
+   for(let i=0;i<30;i++)mem[1].chat.push({t:'06:'+String(1+i).padStart(2,'0'),d:50,from:mem[1],text:'Filler line '+i+'.',party:true,heard:[]});uiFast();
+   cl.scrollTop=100;const read=cl.children.find(c=>c.offsetTop+c.offsetHeight>100),off=read.offsetTop-100,mark={};read._mark=mark;
+   mem[1].chat.push({t:'07:59',d:50,from:mem[1],text:'Arrives while reading.',party:true,heard:[]});mem[1].chat.push({t:'07:58',d:50,from:mem[1],text:'Arrives too.',party:true,heard:[]});
+   // lines sort by time: a later stamp lands on top
+   mem[1].chat.push({t:'08:30',d:50,from:mem[1],text:'Newest while reading.',party:true,heard:[]});
+   uiFast();uiFast();
+   ok(cl.scrollTop>=100&&cl.children.includes(read)&&read.offsetTop-cl.scrollTop===off,'chat panel: scrolled down, the line being read does not move when new lines arrive on top ('+off+' -> '+(read.offsetTop-cl.scrollTop)+')');
+   const chipEl=cl.parentNode.children.find(c=>c.classList.contains('chatnew'));ok(chipEl&&!chipEl.hidden&&/new line/.test(chipEl.textContent),'chat panel: a "new lines" chip shows while scrolled down');
+   chipEl.dispatch('click',{target:chipEl});ok(cl.scrollTop===0&&chipEl.hidden,'chat panel: the chip returns to the top');
+   cl.scrollTop=0}
+  {const wb=$('chatWide');ok(!!wb&&wb.textContent==='Wider','chat panel: a width toggle');const had=document.body.classList.contains('chat-wide');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')!==had&&wb.getAttribute('aria-pressed')==='true','width toggle widens the side column (body.chat-wide)');
+   wb.dispatch('click',{target:wb});ok(document.body.classList.contains('chat-wide')===had,'width toggle narrows it again');
+   const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   ok(/--side:clamp\(340px,28vw,460px\)/.test(css)&&/grid-template-columns:minmax\(0,1fr\) var\(--side\)/.test(css)&&/@media \(max-width:920px\)\{\.main\{grid-template-columns:minmax\(0,1fr\)\}\}/.test(css),'side column is wider by default, and one column at phone width')}
+  {const dossier=await import('../src/ui/panels.js');const g=dossier.chatGroups([{from:mem[1],text:'x',party:true},{from:mem[1],text:'x',party:true},{from:mem[1],text:'y'}]);
+   ok(g.length===2&&g[0].n===2,'repeats still collapse to a count (x2)')}
   {const dlog=await import('../src/sim/dmlog.js');dlog.dmlog('agent',null,['The DM agent plans a quiet road.'],{by:'dm-agent'});dlog.dmlog('frame',null,['A scripted scene opens.'],{});
    $('chatTabs').children.find(b=>b.dataset.ctab==='dm').click();uiFast();const dl=$('dmChatList');
    ok(!$('dmPane').hidden&&$('chatPane').hidden,'DM tab opens beside the chat');

@@ -2,8 +2,8 @@
 // DM agent's actions as a sibling tab. A side-column panel under the Fellowship panel, open by default.
 //   Chat tab   party lines, members speaking aloud, the Narrator and DM-voiced characters, Table scene lines, and
 //              the party's proposals, votes and results as small system lines. Filters: All, Party, Aloud, DM, Table.
-//              Oldest first, newest at the bottom. It follows new lines while the owner is at the bottom; scrolled up
-//              it leaves the view alone and shows a "N new lines" chip. Rows are patched in place (stable.js).
+//              Newest first, newest on top (owner). At the top, new lines simply appear there; scrolled down to read
+//              older lines the line being read stays put and a "N new lines" chip scrolls back up. Rows are patched in place (stable.js).
 //   DM agent   the DM agent's entries from the DM log (intent, notes, levers pulled or refused, scenes, narration),
 //              newest first, one line each, a click opens the detail; the scripted DM's entries are behind a toggle, dimmed.
 // Pure view: reads S, the sim never imports this. The dossier's Chat tab uses the same line builder (panels.chatLine).
@@ -17,6 +17,7 @@ import {dmTable,dmParts,dmBadge,dmByAgent} from './dmpanel.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
+const WKEY='eldmoor.chatWide';let wide=false;try{wide=localStorage.getItem(WKEY)==='1'}catch(e){} // the side column's width, per viewer
 const KEEP=400; // lines kept in the stream
 export const FILTERS=[['all','All'],['party','Party'],['aloud','Aloud'],['dm','DM'],['table','Table']];
 let filter='all',tab='chat',showScripted=false,items=[],seq=0,known=new WeakSet(),box,list,chip,newN=0,sig='',dmSig='',dmList,dmBar,openDm=new Set();
@@ -51,7 +52,7 @@ const matches=(it)=>{if(filter==='all')return true;const c=it.kind==='chat'?cats
 const visible=it=>it.kind!=='chat'||chatVisible(it.e,S);
 export const streamItems=()=>{ingest();return items.concat(councilItems()).filter(visible).filter(matches).sort((x,y)=>x.k-y.k||x.n-y.n)};
 // The dossier's Chat tab (#181): the same stream, filtered to one hero: what it said or heard (its own chat buffer),
-// and the council lines it proposed or voted. Oldest first like the panel; the panel's channel filter does not apply.
+// and the council lines it proposed or voted. Newest first like the panel; the panel's channel filter does not apply.
 export function heroStream(a){ingest();const mine=new Set(a.chat||[]);
   return items.concat(councilItems()).filter(visible).filter(it=>it.kind==='chat'?(mine.has(it.e)||it.e.from===a):(it.who===a||it.kind==='result'&&it.P.votes&&it.P.votes[a.id]!=null))
     .sort((x,y)=>x.k-y.k||x.n-y.n)}
@@ -63,19 +64,20 @@ function sysLine(it){const li=el('li','chl sys sys-'+it.kind);li.setAttribute('d
   li.append(it.text);return li}
 
 // ---- rendering the Chat tab ----
-function atBottom(){return !list||list.scrollTop+list.clientHeight>=list.scrollHeight-6}
-function renderChat(){if(!list)return;const rows=streamItems(),last=rows.length?rows[rows.length-1]:null;
+function atTop(){return !list||list.scrollTop<=6}
+const rowsIn=()=>Array.from(list.children||[]).filter(c=>!(c.classList&&c.classList.contains('daysep'))).length;
+function renderChat(){if(!list)return;const rows=streamItems().reverse(),last=rows.length?rows[0]:null; // newest first
   const s=filter+':'+rows.length+':'+(last?(last.id||keyOf(last.e)):'')+':'+rows.map(r=>r.kind==='prop'||r.kind==='result'?r.text:'').join('').length+':'+(S.fellowship?1:0);
   if(s===sig)return;if(held(list))return;sig=s;
-  const bottom=atBottom(),before=list.querySelectorAll?list.querySelectorAll('li:not(.daysep)').length:0;
+  const top=atTop(),before=rowsIn();
   patch(list,tmp=>{let lastDay=null;
     for(const it of rows){const d=it.kind==='chat'?dayOf(it.e):Math.floor(it.gm/1440)+1;if(d!=null&&d!==lastDay){tmp.append(daySep(d));lastDay=d}
       tmp.append(it.kind==='chat'?chatLine(it.e,1):sysLine(it))}
-    if(!rows.length)tmp.append(el('li','dm','Nothing said yet.'))},{force:true,anchor:false});
-  const after=list.querySelectorAll?list.querySelectorAll('li:not(.daysep)').length:0;
-  if(bottom){list.scrollTop=list.scrollHeight;newN=0}else if(after>before)newN+=after-before;
+    if(!rows.length)tmp.append(el('li','dm','Nothing said yet.'))},{force:true}); // anchored: scrolled down, the line being read stays put
+  const after=rowsIn();
+  if(top){list.scrollTop=0;newN=0}else if(after>before)newN+=after-before;
   syncChip()}
-function syncChip(){if(!chip)return;chip.hidden=newN<=0;if(newN>0)chip.textContent=newN+' new line'+(newN>1?'s':'')+' ↓'}
+function syncChip(){if(!chip)return;chip.hidden=newN<=0;if(newN>0)chip.textContent=newN+' new line'+(newN>1?'s':'')+' ↑'}
 
 // ---- the DM agent tab ----
 const entries=()=>{const L=S.dmLog||[];return L.filter(e=>dmByAgent(e)||e.kind==='agent'||showScripted)};
@@ -101,6 +103,9 @@ export function initChatPanel(){const sec=$('chatSec');if(!sec)return;
   const sum=el('summary',null,'Chat');box.append(sum);
   const tabs=el('div','tfilter');tabs.id='chatTabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Chat or DM agent');
   for(const [k,l] of [['chat','Chat'],['dm','DM agent']]){const b=el('button',null,l);b.dataset.ctab=k;b.setAttribute('role','tab');b.addEventListener('click',()=>setChatTab(k));tabs.append(b)}
+  {const w=el('button','chatwidebtn','Wider');w.id='chatWide';w.title='Make the side column wider (remembered)';
+   const apply=()=>{document.body.classList.toggle('chat-wide',wide);w.setAttribute('aria-pressed',String(wide));w.textContent=wide?'Narrower':'Wider'};
+   w.addEventListener('click',()=>{wide=!wide;try{localStorage.setItem(WKEY,wide?'1':'0')}catch(e){}apply()});tabs.append(w);apply()}
   box.append(tabs);
   const pane=el('div');pane.id='chatPane';
   const fb=el('div','tfilter');fb.id='chatFilter';fb.setAttribute('role','group');fb.setAttribute('aria-label','Chat filter');
@@ -109,8 +114,8 @@ export function initChatPanel(){const sec=$('chatSec');if(!sec)return;
   const lg=el('div','chatlegend dm');lg.id='chatLegend';lg.append('Names: class colour = member; underlined = others: ');
   for(const k of ['hostile','neutral','friendly']){const s=el('span','npcn npc-'+k,k);s.style.color=DISP[k].color;lg.append(s,' ')}
   const wrap=el('div','chatwrap');list=el('ul','log chat chatlist');list.id='chatList';list.tabIndex=0;list.setAttribute('role','log');list.setAttribute('aria-label','Fellowship chat');
-  chip=el('button','chatnew','new lines');chip.hidden=true;chip.addEventListener('click',()=>{list.scrollTop=list.scrollHeight;newN=0;syncChip()});
-  list.addEventListener('scroll',()=>{if(atBottom()){newN=0;syncChip()}});
+  chip=el('button','chatnew','new lines');chip.hidden=true;chip.addEventListener('click',()=>{list.scrollTop=0;newN=0;syncChip()});
+  list.addEventListener('scroll',()=>{if(atTop()){newN=0;syncChip()}});
   wrap.append(list,chip);pane.append(fb,lg,wrap);
   const dp=el('div');dp.id='dmPane';dp.hidden=true;
   dmBar=el('div','tfilter');const tg=el('button',null,'Scripted DM');tg.setAttribute('aria-pressed','false');tg.title='Also show the scripted DM’s entries, dimmed';
