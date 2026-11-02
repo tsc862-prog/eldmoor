@@ -56,6 +56,9 @@ export const CLAUDE_SLOTS = 3, LEASE_MS = 15 * 60000, LEASE_WAIT_MS = 20000;
 // fit whatever the setting: a runner for a Fellowship member, the Fellowship runner or the DM is refused only
 // when SEATS such runners already run.
 export const SEATS = 6;
+// A runner that finds its heroes belong to a new world (same ids, other heroes; issue #219) exits with this code; the
+// supervisor then starts it again with the same request after RESTART_MS (at most MAX_RESTARTS in a row without a turn).
+export const NEW_WORLD_EXIT = 75, RESTART_MS = 1500, MAX_RESTARTS = 5;
 // The Claude model a runner started from the app plays when neither the request nor the hero's saved settings name
 // one (the owner's cost ask, #126): Haiku. Terminal runners keep their own default (Sonnet). AGENT_MODEL / DM_MODEL
 // in the relay's environment override it.
@@ -220,12 +223,15 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (r.done) return;
       if (r.partial) take('\n', false);
       r.done = true; r.ended = now(); r.exit = code; clearTimeout(r.killT);
-      r.state = r.stopping || code === 0 ? 'stopped' : 'crashed';
+      const nw = code === NEW_WORLD_EXIT && !r.stopping;
+      r.state = r.stopping || code === 0 || nw ? 'stopped' : 'crashed'; if (nw) r.stopWhy = 'a new world: starting again for its heroes';
       if (r.state === 'crashed') r.error = r.lastErr || (code == null ? 'the process could not start' : 'exited with code ' + code);
       write(`=== ${new Date().toISOString()} ${r.state}${code != null ? ' (exit ' + code + ')' : ''}${r.error ? ': ' + r.error : ''}`);
       log(`[runners] ${r.key} ${r.name} ${r.state}${r.error ? ': ' + r.error : ''} (${r.turns} turns${r.cost ? ', $' + r.cost.toFixed(4) : ''})`);
       if (r.pid) play.dropRunner(`${host}:${r.pid}`); // its claims, in case it could not release them
       dropLeases(r.key);
+      if (nw && (req.restarts || 0) < MAX_RESTARTS) {const next = {...req, restarts: r.turns ? 1 : (req.restarts || 0) + 1}; log(`[runners] ${r.key} sees a new world: starting it again`);
+        setTimeout(() => {if (table.get(req.key) !== r) return; const o = start(next); if (o.error) log(`[runners] restart of ${r.key} failed: ${o.error}`)}, RESTART_MS)}
       const done = [...table.values()].filter(x => x.done); // keep a few finished runners for the page
       if (done.length > KEEP_DONE) table.delete(done[0].key);
     }
