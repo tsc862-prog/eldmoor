@@ -17,7 +17,7 @@
 // #126, scripts/pacing.mjs): a member's next turn starts when something happens to it (a scene at the
 // table, a choice, an attack, low HP: at once; a party line, a vote, an arrival, the narrator: after
 // the minimum gap, --min-gap S, default 20, --cadence is the old name) or after a heartbeat of game time
-// (--heartbeat MIN, default 240 game minutes). A scene opens the member's turn with a prompt to act
+// (--heartbeat MIN, default 120 game minutes). A scene opens the member's turn with a prompt to act
 // with scene_act. A silent or slow agent never stalls the table: the game gives every turn a
 // real-time budget and then acts by reflex. A local or OpenAI member whose own scene is open plays it as one
 // forced structured answer (Ollama format / OpenAI strict json_schema: an enum of its legal options and a
