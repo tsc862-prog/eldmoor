@@ -103,8 +103,8 @@ function topView(node){const F=S.fellowship;
   node.append(h);
   const bar=el('div','fbar');
   const fol=el('button',null,'Follow');fol.dataset.fact='follow';fol.setAttribute('aria-pressed',String(cam.view==='fellow'));
-  const md=mindsOf(F),ai=el('button',null,'Minds: '+(md==='relay'&&fellows().some(a=>a.player)?'mixed':({off:'scripted',relay:'relay',agent:'agents'})[md]));ai.dataset.fact='ai';
-  ai.title=md==='off'?'Scripted rules only. Click: the relay plays the members (npm run relay).':md==='relay'?'The relay plays the members and writes their sheets (scripted when it is down). Click: one AI agent per member (npm run fellowship).':'Each member is agent-played: run npm run fellowship to start their agents (reflexes act while they are silent). Click: back to scripted.';
+  const md=mindsOf(F),ai=el('span','mini','Minds: agents'); // always agents (#148): the choice is the model, on the runners below
+  ai.title='Every member is played by its own agent, always. Pick the model for all five here (Start all five) or per member on its row. Between decisions they auto-play; every decision waits for its agent, and a member whose runner is gone waits for you (the runner-stop alert).';
   const db=el('button',null,confirmDisband?'Really disband?':'Disband');db.dataset.fact='disband';
   bar.append(fol,ai,db);node.append(bar);
   // Minds: agents -> the members' runners can be started from here (the relay runs them; --runners)
@@ -149,7 +149,6 @@ function act(t){const F=S.fellowship;msg='';
     draft.slots={tank:null,healer:null,dps1:null,dps2:null,dps3:null};focus=true;onFilter();setViewHook('fellow');return}
   if(!F)return;
   if(k==='follow'){setViewHook(cam.view==='fellow'?'map':'fellow');return}
-  if(k==='ai'){const nx=MINDS[(MINDS.indexOf(mindsOf(F))+1)%MINDS.length];setMinds(nx);campaign('note','The watcher set the members’ minds to '+({off:'the scripted rules',relay:'the relay',agent:'their own agents'})[nx]+'.');return}
   if(k==='disband'){if(!confirmDisband){confirmDisband=true;return}confirmDisband=false;disbandFellowship();sheetOpen=null;sheetView(sheet,null);onFilter();setViewHook('map');return}
   if(k==='save'){const a=byId(sheetOpen);if(a)for(const ta of sheet.querySelectorAll('textarea[data-fw]'))editSheet(a,ta.dataset.fw,ta.dataset.fk,ta.value);msg='Sheet saved.';sheetView(sheet,a);return}
   if(k==='close'){sheetOpen=null;sheetView(sheet,null)}}

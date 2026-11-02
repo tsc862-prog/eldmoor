@@ -69,7 +69,8 @@ const r0 = F_.found(F_.autoPick(0), {fac: 0, ai: false});
 ok(r0.ok && F_.fellows().length === 5, `founded ${S.fellowship && S.fellowship.name} (5 members)`);
 F_.setMinds('agent'); S.brainOn = true;
 const M = F_.fellowshipMembers().map(m => m.hero), [A, B, Cm, Dm, E] = M;
-T.TABLE.mode = 'off'; T.TABLE.turnMs = 600; T.TABLE.frameS = .2; T.TABLE.outcomeS = .2; T.TABLE.speed = 1;
+T.TABLE.mode = 'off'; T.TABLE.turnMs = 300; T.TABLE.liveMs = 600; T.TABLE.frameS = .2; T.TABLE.outcomeS = .2; T.TABLE.speed = 1;
+C.COUNCIL.HOLD_MIN = 0; // #148: a live agent's turn and vote wait (TABLE.liveMs, COUNCIL.HOLD_MIN); short here, so silent agents fall to reflex
 // A and B out in the field, C and D idle in town, E in the field hurt later
 const city = homeOf(A), mid = {x: (city.x0 + city.x1) / 2 + .5, y: (city.y0 + city.y1) / 2 + .5};
 const zone = zoneFor(8, city.gate), spot = zonePoint(zone, null, city.gate);
@@ -90,7 +91,10 @@ pump(); // baseline
 // ---- 2. mock runners: turn lines with known faults ----
 const cA = await post('/play/claim', {hero: A.id, runner: 'mock-A', provider: 'ollama', model: 'qwen2.5:14b'});
 const cB = await post('/play/claim', {hero: B.id, runner: 'mock-B', provider: 'ollama', model: 'llama3.1:8b'});
-ok(cA.status === 200 && cB.status === 200, 'two mock runners claimed A and B');
+// C and D are held by silent runners too (#148: a member with no runner plays by reflex, the scripted rules; a held
+// one only autopilots, so these two sit in town)
+const cC = await post('/play/claim', {hero: Cm.id, runner: 'mock-C', provider: 'anthropic', model: 'claude-haiku-5-5'}), cD = await post('/play/claim', {hero: Dm.id, runner: 'mock-D', provider: 'anthropic', model: 'claude-haiku-5-5'});
+ok(cA.status === 200 && cB.status === 200 && cC.status === 200 && cD.status === 200, 'four mock runners claimed A, B, C and D');
 const KEY = 'sk-ant-api03-' + 'Zx9'.repeat(12);
 const turn = (hero, runner, rec) => reportTurn(base, {hero, runner, ...rec});
 const brief = h => ({state: h.state, hp: '100%', level: h.lvl, place: ZONES[zoneAt(h.x, h.y)], foe: null, news: []});
@@ -133,6 +137,7 @@ for (let k = 0; k < 3; k++) LV.pull('mark_dangerous', {at: {x: spot.x, y: spot.y
 // a spot the lever accepts (open ground, not a town or a landmark), and E standing on it, hurt
 {let p = null; for (let r = 0; r < 12 && !p; r++) for (let dx = -r; dx <= r && !p; dx++) for (const dy of [-r, r]) {const q = {x: Math.floor(spot.x) + dx + .5, y: Math.floor(spot.y) + dy + .5}; if (!LV.spotErr(q)) {p = q; break}}
   if (p) {E.x = p.x; E.y = p.y}}
+await post('/play/claim', {hero: E.id, runner: 'mock-E', provider: 'anthropic', model: 'claude-haiku-5-5'}); // #148: held by a runner, E autopilots (rests) where it stands; with none its reflexes would walk it home
 E.hp = maxHp(E) * .2; E.state = 'hunt'; E.target = null;
 const lp = LV.pull('mark_dangerous', {at: {x: Math.floor(E.x) + .5, y: Math.floor(E.y) + .5}, r: 3, hours: 2}, {by: 'scripted', reason: 'the woods grow dark'});
 ok(lp.ok, 'a danger lever pulled where a hurt member stands' + (lp.ok ? '' : ': ' + lp.reason));

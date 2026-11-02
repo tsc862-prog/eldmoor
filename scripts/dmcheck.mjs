@@ -247,6 +247,7 @@ console.log('the browser bridge (src/ui/player-bridge.js)');
   globalThis.WebSocket = class extends WsClient {constructor(u) {super(u, {origin: 'http://localhost:5173'})}};
   globalThis.localStorage = {getItem: k => k === 'eldmoor.playUrl' ? `ws://127.0.0.1:${srv.address().port}/play` : null};
   const BR = await import('../src/ui/player-bridge.js');
+  sim.disbandFellowship(); // #148: Fellowship members are always agent-played; this part needs a world with no agent hero
   for (const a of S.agents) if (a.player) BR.agentOff(a);
   ok(BR.dmLink() === 'off' && BR.bridgeStatus() === 'off', 'seat closed, no agent hero: the page stays off the relay');
   BR.dmSeatSet(true);

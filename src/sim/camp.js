@@ -42,6 +42,7 @@ import {sayOk} from './throttle.js';
 import {fellows,campaign} from './fellowship.js';
 import {partySay,leaderOfF} from './council.js';
 import {openScene} from './table.js';
+import {reflexMay} from './runlink.js';
 
 export const CAMP={
   MIN_CAMP:3,        // members that must be out in the field to make a camp
@@ -146,7 +147,7 @@ function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors+
 function talk(F,g,L){if(L.length<2)return;
   // agents say only what their agents say (issue #126): with no scripted member at the fire, no scripted line is
   // voiced; the agents hear once that the fire is lit and talk if they like (they hear each other, sim/player.js)
-  const pool=L.filter(a=>!a.player);
+  const pool=L.filter(a=>reflexMay(a)); // #148: a member's words are its agent's; only one whose runner is gone (owner's leave) talks by reflex
   if(!pool.length){if(!g.agentTalk){g.agentTalk=1;for(const a of L)notify(a,'The fire is lit and the night is quiet: talk round it if you like (party_say); your companions hear you.',false,1)}return}
   g.stats.talks++;
   const h=Math.floor(S.gameMin),sp=pool[Math.floor(hash(h,g.start,5)*pool.length)%pool.length];
@@ -158,11 +159,11 @@ function talk(F,g,L){if(L.length<2)return;
   const zn=ZONES[g.zone]||'the wilds',pool2=CAMP_LINES[topic],said=g.said||(g.said=[]);let ix=Math.floor(hash(h,sp.id,10)*pool2.length)%pool2.length;for(let k=0;k<pool2.length&&said.includes(topic+ix);k++)ix=(ix+1)%pool2.length; // no line twice in a camp while others remain
   said.push(topic+ix);if(said.length>8)said.shift();const text=fill(pool2[ix],sp,other,zn);
   const asked=sp.brain&&F.ai&&S.brainOn!==false&&sayOk(sp); // speed-aware chatter cap (#117)
-  const say=t=>{partySay(sp,t);remember(sp,'camp','Round the fire I said: "'+t+'"');for(const b of others)if(!b.player&&hash(h,b.id,11)<.5)remember(b,'camp',sp.name+' said at the fire: "'+(t.length>70?t.slice(0,68)+'..':t)+'"')};
+  const say=t=>{partySay(sp,t);remember(sp,'camp','Round the fire I said: "'+t+'"');for(const b of others)if(reflexMay(b)&&hash(h,b.id,11)<.5)remember(b,'camp',sp.name+' said at the fire: "'+(t.length>70?t.slice(0,68)+'..':t)+'"')};
   const finish=()=>{
     if(topic==='quarrel'){g.stats.quarrels++;for(const [x,y] of [[sp,other],[other,sp]]){x.bonds=x.bonds||{};x.bonds[y.id]=Math.max(-10,bond(x,y)-1)}
       stanceEvent(sp,other,'Snapped at '+other.name+' round the fire.');stanceEvent(other,sp,'Was sharp with me round the fire.');
-      const rp=QUARREL_REPLY[Math.floor(hash(h,other.id,12)*QUARREL_REPLY.length)%QUARREL_REPLY.length];if(!other.player)partySay(other,rp)
+      const rp=QUARREL_REPLY[Math.floor(hash(h,other.id,12)*QUARREL_REPLY.length)%QUARREL_REPLY.length];if(reflexMay(other))partySay(other,rp)
       campaign('camp',sp,' and ',other,' snap at each other over the fire, then let it lie.')}
     else if(topic==='song'||topic==='story')campaign('camp',sp,topic==='song'?' leads a song round the fire.':' tells a story round the fire.')};
   if(asked){const gen=g.start;askRelay('say',snapshotFor(sp,'say',{trigger:'camp',ctx:{topic,place:zn,kind:g.why}}),4000).then(j=>{

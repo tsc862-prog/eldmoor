@@ -5,7 +5,13 @@
 // and a bar names who stopped and why, with Restart runner / Resume without it / Dismiss, plus a
 // distinct alert sound. A runner you stop yourself only gets a quiet note. Background heroes'
 // runners never pause the world. The option "Alert on runner stop" is kept per viewer.
-import {S,dmSeatOn} from '../sim/index.js';
+// The Fellowship is always agent-played (#148): its decisions wait for each member's runner (sim/runlink.js). This
+// module tells the sim each member's link (from the relay's claims) and whether the owner let reflexes decide for a
+// member whose runner is gone. A decision that waits on such a member (a turn at the table, a vote, an adventure
+// choice) raises the same alert after a short grace: Restart starts its runner, Resume lets reflexes decide for it
+// until a runner holds it again. With the alert option off, reflexes decide at once for a member without a runner.
+// It also answers the sim's request to drop 3x/8x to 1x at a Fellowship decision (TABLE.drop).
+import {S,dmSeatOn,TABLE,setRunnerLinks,setReflexAck,agentLive,ownerHeld,decisionsWaiting} from '../sim/index.js';
 import {allRunners,userStopped,watchRunners,startRunner,DONE_STATE} from './runners.js';
 import {agentLink,dmLink,bridgeStatus} from './player-bridge.js';
 import {ctl} from './controls.js';
@@ -19,6 +25,7 @@ export const alertOn=()=>on;
 const UP={starting:1,live:1,waiting:1};
 const prevState={},prevLink={},recent={};
 let alerts=[],prevSpeed=null,noteT=0,checkAt=0,busy=false,msg='';
+const acked=new Set(),heldSince={},HELD_GRACE=5000,NORUN_GRACE=20000; // members whose reflexes may decide (Resume); when a held decision raises the alert
 const byId=id=>S.agents.find(x=>x.id==id);
 const isMember=a=>!!(a&&a.fellow);
 
@@ -50,19 +57,21 @@ function renderBar(){const box=$('ralert');if(!box)return;
   const bt=el('div','rb');
   const mk=(label,act,title)=>{const b=el('button','mini',label);b.dataset.ralert=act;b.title=title;b.onclick=()=>doAct(act);return b};
   bt.append(mk('Restart runner','restart','Start the runner again with the same mind and settings, then resume'),
-    mk('Resume without it','resume','Unpause; the hero stays agent-played and autopilot carries on'),
+    mk('Resume without it','resume','Unpause; the hero stays agent-played, autopilot carries on, and its reflexes make its decisions until a runner holds it again'),
     mk('Dismiss','dismiss','Hide this bar (the world stays paused)'));
   box.append(bt)}
 
 export async function doAct(act){
   if(act==='dismiss'){alerts=[];msg='';renderBar();return}
-  if(act==='resume'){alerts=[];msg='';if(prevSpeed!=null){setSpeed(prevSpeed);prevSpeed=null}renderBar();return}
+  if(act==='resume'){ackAll();alerts=[];msg='';if(prevSpeed!=null){setSpeed(prevSpeed);prevSpeed=null}renderBar();return}
   if(act==='restart'&&!busy){busy=true;msg='Restarting…';renderBar();let bad='';
     for(const x of alerts){const r=await startRunner(x.kind,x.kind==='hero'?x.hero:undefined);if(!r.ok)bad=bad||(x.who+': '+r.error)}
     busy=false;
     if(bad){msg=bad;renderBar();return}
     alerts=[];msg='';if(prevSpeed!=null){setSpeed(prevSpeed);prevSpeed=null}renderBar()}}
 
+// Resume without it: reflexes decide for these members until a runner holds them again (#148).
+function ackAll(){for(const x of alerts){if(x.kind==='hero'&&x.hero!=null)acked.add(+x.hero);if(x.kind==='fellowship')for(const id of (S.fellowship&&S.fellowship.ids)||[])acked.add(+id)}}
 function raise(evs){
   for(const e of evs){if(!alerts.some(x=>x.key===e.key))alerts.push(e);recent[e.key]=Date.now()}
   if(prevSpeed==null&&ctl.speed>0)prevSpeed=ctl.speed;
@@ -70,8 +79,9 @@ function raise(evs){
 
 function note(text){msg=text;noteT=Date.now();if(!alerts.length)renderBar()}
 
-// Call every frame; checks at most once a second.
+// Call every frame; checks at most once a second (the speed drop at once).
 export function checkRunAlerts(){
+  if(TABLE.drop){const why=TABLE.drop.reason;TABLE.drop=null;if(ctl.speed>1){setSpeed(1);note('Back to 1x: a Fellowship decision waits for its agents ('+why+').')}}
   if(msg&&!alerts.length&&Date.now()-noteT>6000){msg='';renderBar()}
   if(Date.now()-checkAt<1000)return;checkAt=Date.now();
   const members=(S.fellowship&&S.agents.filter(a=>a.fellow&&a.player))||[],dm=dmSeatOn();
@@ -93,11 +103,22 @@ export function checkRunAlerts(){
         evs.push({key:'hero:'+a.id,kind:'hero',hero:a.id,who:a.name,why:'no runner is calling tools for this hero any more'})}
     if(dm){const k=dmLink(),p=prevLink.dm;prevLink.dm=k;
       if((p==='connected'||p==='waiting')&&k==='none'&&!userStopped('dm')&&!(recent.dm>Date.now()-30000))evs.push({key:'dm',kind:'dm',who:'The DM runner',why:'no DM runner is attached any more'})}}
+  // a member with no runner and no leave for its reflexes (#148): it only autopilots, and its decisions hold. Ask the
+  // owner after a short grace when a decision waits on it, else after NORUN_GRACE (a new world, a reload, a relay down)
+  for(const id of [...acked])if(agentLive(byId(id))||!byId(id)||!byId(id).fellow)acked.delete(id); // a runner holds it again: its agent decides
+  const held=new Set(),waits=new Map(decisionsWaiting().map(d=>[d.a.id,d.what]));
+  const setupOpen=!!($("setup")&&!$("setup").hidden); // the New World page is up: its own launch reports the runners
+  for(const a of members){if(setupOpen||!ownerHeld(a))continue;held.add(a.id);const t=heldSince[a.id]||(heldSince[a.id]=Date.now()),k='hero:'+a.id,what=waits.get(a.id);
+    if(Date.now()-t>=(what?HELD_GRACE:NORUN_GRACE)&&!evs.some(e=>e.key===k)&&!alerts.some(x=>x.key===k)&&!(recent['held:'+a.id]>Date.now()-60000)){recent['held:'+a.id]=Date.now();
+      evs.push({key:k,kind:'hero',hero:a.id,who:a.name,why:what?'no runner plays this member, and '+what+' waits for its agent':'no runner plays this member (it only autopilots; its decisions wait)'})}}
+  for(const id in heldSince)if(!held.has(+id))delete heldSince[id];
   // one Fellowship runner stopping covers all five
   let out=evs;if(evs.some(e=>e.kind==='fellowship'))out=evs.filter(e=>e.kind!=='hero'||!isMember(byId(e.hero)));
   if(out.length&&on)raise(out)}
 
 export function initRunAlert(){
+  setRunnerLinks(a=>agentLink(a));                       // the relay's claims: connected / waiting = a runner holds the hero
+  setReflexAck(a=>!on||acked.has(a.id));                 // reflexes for a runner-less member only with the owner's leave
   const b=$('vRal');if(b){b.onclick=()=>{on=!on;try{localStorage.setItem(KEY,on?'on':'off')}catch(_){}sync()}}
   sync()}
 export function sync(){const b=$('vRal');if(!b)return;b.hidden=!S.fellowship&&!dmSeatOn();b.textContent='Alert on runner stop: '+(on?'on':'off');b.setAttribute('aria-pressed',String(on))}
