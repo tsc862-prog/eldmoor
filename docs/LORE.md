@@ -266,6 +266,12 @@ Sample lines:
 
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
+  - **The crawl** (#65): when the Fellowship goes down, the Crypt is played as five chambers in order, each one a Table scene (background groups still make the single roll). Creatures are the Crypt's own: Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens and Lich-Warden Vesk. Levels 7-12.
+    - **The Weeping Stair** (level 7+): water runs down the steps, Tomb Skitters scuttle in the dark below.
+    - **The Ossuary**: shelves of old bone; Crypt Shamblers stand up from them.
+    - **The Archers' Gallery**: a long gallery of arrow-slits and dry bowstrings; Bone Archers and a Shambler.
+    - **The Drowned Court**: a floor of black still water, Grave Wardens standing in it to the knee (the court Ossian Vael drowned).
+    - **The Vigil Chamber**: the last door; Lich-Warden Vesk with Tomb Skitters at his feet.
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 20, raided by 5-6 heroes of level 14+ (or four well-geared ones).
 
 ### The Stepping Lands (test continent, not the home map)

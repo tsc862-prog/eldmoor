@@ -32,6 +32,7 @@ import {playerUpd} from './player.js';
 import {fellowshipTick} from './fellowship.js';
 import {councilTick} from './council.js';
 import {tableTick,tableHold} from './table.js';
+import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Table (#65)
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
 import {opening} from './opening.js';

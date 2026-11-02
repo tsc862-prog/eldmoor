@@ -16,6 +16,8 @@ import {brainOk} from './brain.js';
 import {unitDraft,cryptHold,cryptReserved} from './council.js';
 import {notify} from './notify.js';
 
+// The dungeon crawl (sim/crawl.js, #65) registers itself here; without it (or without a Fellowship in the group) the single roll below runs.
+let CRAWL=null;export const setCrawlHook=h=>{CRAWL=h};
 const tagOf=(gu,f,name)=>gu?{t:'<'+gu.tag+'> '+gu.name,c:'f'+f}:name?{t:name,c:'f'+f}:{t:'A '+FAC[f].name+' group',c:'f'+f};
 // A group sets out for the Crypt (also called by sim/council.js when the Fellowship votes to go).
 export function musterCrypt(mem,f,main,name){
@@ -29,6 +31,11 @@ export function yieldCrypt(F){const g=CRYPT.group;if(!g||g.phase!=='gather'||g.m
   for(const a of g.mem){a.state='hunt';a.dest=null;a.target=null;record(a,'Stepped aside at ',{t:CRYPT.name,c:'gd'},' for the Fellowship.');notify(a,'Your group steps aside at '+CRYPT.name+' to let the Fellowship go first; you go back to hunting.',true)}
   log(tagOf(g.guild,g.fac,g.name),' step aside at the mouth of ',{t:CRYPT.name,c:'gd'},' to let ',{t:F.name,c:'gd'},' go first.');
   CRYPT.group=null;return true}
+// What a cleared Crypt pays each member (the abstract roll and the Fellowship's crawl alike).
+export function payClear(g){
+  for(const a of g.mem)record(a,'Cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'.');
+  for(const a of g.mem){gainXp(a,250+a.lvl*20);a.gold+=25+ri(0,20);a.kills+=ri(8,14);addGood(a,'Grave Dust',3);addUse(a,'Marrowmend Tonic',1);
+    if(rnd()<.25)getEpic(a,pickA(DG_EPICS),CRYPT.boss);goalEvent(a,'crypt');goHome(a)}}
 export function dungeonCheck(dt){const agents=S.agents;
   const g=CRYPT.group;
   if(!g){if(cryptHold())return; // the Fellowship's call holds the Crypt (reserved, or waiting with the cooldown waived)
@@ -41,12 +48,13 @@ export function dungeonCheck(dt){const agents=S.agents;
     if(CRYPT.group||cryptReserved()||mem.length<4)return; // the Fellowship may have just taken or reserved the Crypt
     musterCrypt(mem,f,gu&&mem.filter(a=>a.guild===gu).length>=3?gu:null,mem.some(a=>a.fellow)&&S.fellowship?S.fellowship.name:null);return}
   g.mem=g.mem.filter(a=>a.state==='dungeon');
-  if(!g.mem.length){CRYPT.group=null;return}
+  if(!g.mem.length){if(g.crawl&&CRAWL)CRAWL.lost(g);CRYPT.group=null;return} // a crawl whose last hero fell at the table
   g.t-=dt;
   if(g.phase==='gather'){const here=g.mem.filter(a=>dist(a,CRYPT)<2.4);
     if(here.length===g.mem.length||(g.t<=0&&here.length>=3)){g.mem.filter(a=>!here.includes(a)).forEach(a=>{a.state='hunt'});g.mem=here;
-      here.forEach(a=>{a.hidden=true;a.x=CRYPT.x;a.y=CRYPT.y;a.moving=false});g.phase='inside';g.t=30+rnd()*20}
+      here.forEach(a=>{a.hidden=true;a.x=CRYPT.x;a.y=CRYPT.y;a.moving=false});g.phase='inside';g.t=30+rnd()*20;if(CRAWL&&g.mem.some(a=>a.fellow))CRAWL.start(g)}
     else if(g.t<=0){g.mem.forEach(a=>a.state='hunt');CRYPT.group=null}return}
+  if(g.crawl&&CRAWL){CRAWL.tick(g,dt);return} // the Fellowship goes room by room at the Table (sim/crawl.js)
   if(g.t>0)return;
   const n=g.mem.length,avg=g.mem.reduce((t,a)=>t+a.lvl+a.gear*.3,0)/n;
   const pw=avg+(g.mem.some(a=>a.cls==='Priest')?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+n*.6+(g.bonus||0)+Math.min(1.5,cryptDraughts(g.mem)/n*.6); // g.bonus: the Fellowship's choices at the table (sim/table.js); the draughts the party drinks below (sim/inv.js)
@@ -54,9 +62,7 @@ export function dungeonCheck(dt){const agents=S.agents;
   for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6}
   if(ok){if(g.guild)g.guild.clears++;log(who,' cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'!');
     if(first('crypt:'+(g.guild?g.guild.tag:'f'+g.fac)))timeline('crypt',who,' cleared ',{t:CRYPT.name,c:'gd'},' for the first time.');
-    for(const a of g.mem)record(a,'Cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'.');
-    for(const a of g.mem){gainXp(a,250+a.lvl*20);a.gold+=25+ri(0,20);a.kills+=ri(8,14);addGood(a,'Grave Dust',3);addUse(a,'Marrowmend Tonic',1);
-      if(rnd()<.25)getEpic(a,pickA(DG_EPICS),CRYPT.boss);goalEvent(a,'crypt');goHome(a)}}
+    payClear(g)}
   else{if(g.guild)g.guild.wipes++;const lost=[];
     for(const a of g.mem)record(a,'The group wiped in ',{t:CRYPT.name,c:'gd'},'.');
     for(const a of g.mem){if(rnd()<.40){lost.push(a);fall(a,'lost in '+CRYPT.name)}else goHome(a)}

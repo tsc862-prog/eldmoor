@@ -130,6 +130,9 @@ export function buildWorld(spec){
     for(const [gx,gy] of c.gateTiles)tiles[I(gx,gy)]=FLOOR}
 
   // landmarks
+  // A dungeon's chambers (#65): plain data, checked for shape here; the creature types are the bestiary's (checked by crawlcheck).
+  const roomsOf=L=>{const rs=L.rooms||[];if(!Array.isArray(rs))throw new Error('world spec: rooms of '+L.name+' must be a list');
+    rs.forEach((r,i)=>{if(!r||!r.name||!Array.isArray(r.foes)||!r.foes.length||!r.foes.every(f=>f&&f.type&&f.n>=1))throw new Error('world spec: room '+i+' of '+L.name+' needs a name and foes [{type,n}]')});return rs};
   const LANDMARKS=[];let LAIR=null,CRYPT=null;
   for(const L of spec.landmarks||[]){
     if(L.kind==='lair'){const r=L.r||5.4,inner=L.inner||4,m=L.mouth||'W';
@@ -140,8 +143,9 @@ export function buildWorld(spec){
       const o={kind:'lair',name:L.name,x:L.x,y:L.y,r,exclude:L.exclude||0,light:L.light||null};LANDMARKS.push(o);if(!LAIR)LAIR={x:L.x,y:L.y,name:L.name}}
     else if(L.kind==='crypt'){const mo=L.mouth,mouth=mo?{x0:mo.x0,y0:mo.y0,x1:mo.x0+mo.w-1,y1:mo.y0+mo.h-1}:null;
       if(mouth)for(let y=mouth.y0;y<=mouth.y1;y++)for(let x=mouth.x0;x<=mouth.x1;x++)if(x>=0&&y>=0&&x<w&&y<h)tiles[I(x,y)]=ROCK;
-      const o={kind:'crypt',name:L.name,boss:L.boss,x:L.x,y:L.y,mouth,exclude:L.exclude||0,light:L.light||null};LANDMARKS.push(o);
-      if(!CRYPT)CRYPT={name:L.name,boss:L.boss,x:L.x,y:L.y,group:null,cd:L.cd===undefined?25:L.cd,mouth}}
+      const rooms=roomsOf(L);
+      const o={kind:'crypt',name:L.name,boss:L.boss,x:L.x,y:L.y,mouth,exclude:L.exclude||0,light:L.light||null,rooms};LANDMARKS.push(o);
+      if(!CRYPT)CRYPT={name:L.name,boss:L.boss,x:L.x,y:L.y,group:null,cd:L.cd===undefined?25:L.cd,mouth,rooms}}
     else throw new Error('world spec: unknown landmark kind '+L.kind)}
 
   // roads: polylines are painted as drawn; {from,to,via} endpoints are routed.

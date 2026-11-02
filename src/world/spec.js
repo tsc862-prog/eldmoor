@@ -27,7 +27,12 @@
 //             out relative to the gate side (sim/npcs.js, data/npcs.js).
 //             npcs: role ids staffed here (default: every role in data/npcs.js).
 //   landmarks {kind:'lair', name, x, y, r, inner, mouth:'W'|'E'|'N'|'S', exclude, light}
-//             {kind:'crypt', name, boss, x, y, mouth:{x0,y0,w,h}, exclude, cd}
+//             {kind:'crypt', name, boss, x, y, mouth:{x0,y0,w,h}, exclude, cd, rooms}
+//             rooms (#65, optional): the dungeon's chambers in order, played room by room at the Table by
+//             the Fellowship (sim/crawl.js; background groups keep the one abstract roll). Each room:
+//             {id, name, frame, foes:[{type, n, name?, hits?, atk?}], lvl (foe level offset from the
+//             party's average), hit (share of a hero's max HP a foe's blow takes), rounds (rounds
+//             before the party is driven back)}. type is a bestiary key (data/bestiary.js).
 //   points    named waypoints that roads may reference.
 //   roads     either a polyline [[x,y],...] painted as-is, or
 //             {from, to, via:[...]} where endpoints are town names (their gate),
@@ -35,6 +40,20 @@
 //   lights    {townTorches:[[dx,dy],...]} offsets from each town's x0,y0.
 //   spawn     {townPad:[px,py]} tiles around a town rect that are never spawn points.
 //   labels    [['TEXT',x,y],...]; omitted => one per region and town, auto-placed.
+
+// The Sunken Crypt's chambers, in the order the Fellowship meets them (sim/crawl.js). Bestiary species, no new creatures.
+const CRYPT_ROOMS=[
+  {id:'stair',name:'The Weeping Stair',frame:'Water runs down the steps of the stair and something small scuttles in the dark below.',
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.10,rounds:4},
+  {id:'ossuary',name:'The Ossuary',frame:'Shelves of old bone line the walls. Some of it stands up as the light reaches it.',
+    foes:[{type:'shambler',n:2}],lvl:0,hit:.13,rounds:4},
+  {id:'gallery',name:"The Archers' Gallery",frame:'A long gallery with arrow-slits in every pillar. Dry bowstrings creak somewhere above.',
+    foes:[{type:'boneshot',n:2},{type:'shambler',n:1}],lvl:0,hit:.13,rounds:4},
+  {id:'court',name:'The Drowned Court',frame:'The floor is a black mirror of still water. Grave Wardens stand in it to the knee, waiting for a court that never came.',
+    foes:[{type:'graveward',n:2}],lvl:1,hit:.17,rounds:5},
+  {id:'vigil',name:'The Vigil Chamber',frame:'The last door. The cold here has a voice, and it knows every name in the party.',
+    foes:[{type:'graveward',n:1,name:'Lich-Warden Vesk',hits:8,atk:1.6},{type:'tombskit',n:2}],lvl:2,hit:.19,rounds:6,boss:true},
+];
 
 export const ELDMOOR={
   name:'Eldmoor',
@@ -67,7 +86,7 @@ export const ELDMOOR={
   ],
   landmarks:[
     {kind:'lair',name:'Kragmaw',x:71.5,y:25.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
-    {kind:'crypt',name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:44.5,y:43.1,mouth:{x0:43,y0:41,w:3,h:3},exclude:3.5,cd:25},
+    {kind:'crypt',name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:44.5,y:43.1,mouth:{x0:43,y0:41,w:3,h:3},exclude:3.5,cd:25,rooms:CRYPT_ROOMS},
   ],
   points:{crossroads:[40,25]},
   roads:[
@@ -152,7 +171,7 @@ export const STEPPING={
     {name:'Murkstead',fac:1,x0:28,y0:62,w:11,h:9,gate:'E',race:'mirekin',spots:TOWN_SPOTS},
   ],
   landmarks:[
-    {kind:'crypt',name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25},
+    {kind:'crypt',name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25,rooms:CRYPT_ROOMS},
     {kind:'lair',name:'Kragmaw',x:140.5,y:66.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
     // Placeholder second dungeon: an entrance only, no group, boss or loot yet (see LORE.md).
     {kind:'crypt',name:'The Hollow Cairn',boss:'The Cairn-Warden',x:84.5,y:14.1,mouth:{x0:83,y0:12,w:3,h:3},exclude:3.5,cd:25},

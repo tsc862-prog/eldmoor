@@ -79,7 +79,7 @@ const COMBAT={elite:1,ambush:1,boss:1,rescue:1};
 // How each kind is played. 'turns': members act one by one in initiative order, because one act changes the next
 // (combat rounds, the Crypt's chambers). 'all': everyone present answers at once, resolved in slot order. A kind
 // not listed plays in turns.
-export const PLAY={elite:'turns',ambush:'turns',boss:'turns',rescue:'turns',site:'turns',room:'turns',
+export const PLAY={elite:'turns',ambush:'turns',boss:'turns',rescue:'turns',site:'turns',room:'turns',crawl:'turns',
   decision:'all',check:'all',choice:'all',meeting:'all',social:'all',trap:'all',mystery:'all'};
 const together=sc=>!!sc&&sc.all===true;
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
@@ -145,7 +145,7 @@ function initiative(L){const rf=a=>score(a,'reflex')||10;return L.slice().sort((
 function present(kind,ctx){const L=fellows();if(kind==='decision'){const P=propById(ctx.prop);return P?voters(P):L}
   const an=byId(ctx.anchor!=null?ctx.anchor:ctx.hero),h=an&&L.includes(an)?an:leaderOfF();return h?L.filter(b=>b===h||inRange(h,b)):L}
 function open(kind,title,frame,ctx={}){const F=S.fellowship;if(!F||S.table)return null;const all=PLAY[kind]==='all';
-  const L=all?present(kind,ctx):fellows().filter(a=>!(kind==='site'||kind==='room')||(CRYPT.group&&CRYPT.group.mem.includes(a)));
+  const L=all?present(kind,ctx):fellows().filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||(CRYPT.group&&CRYPT.group.mem.includes(a)));
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,kind,title:clean(title,80),frame,ids:(all?L:initiative(L)).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin),...(all?{all:true,w:{}}:{})};
   if(sc.pause)requestDrop(sc.title);
@@ -313,7 +313,7 @@ export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks 
   // the Crypt: going in, and the inner chamber
   const g=CRYPT.group;if(g&&g.phase==='inside'&&g.mem.some(a=>a.fellow)){
     if(!g.tSite){g.tSite=1;open('site',CRYPT.name,['The stair goes down into ',gd(CRYPT.name),'. Water drips; something below has heard the door.'],{});return}
-    if(!g.tRoom&&g.t<12){g.tRoom=1;open('room','The inner chamber',['The last door of ',gd(CRYPT.name),'. Beyond it waits ',gd(CRYPT.boss),'.'],{});return}}
+    if(!g.tRoom&&g.t<12&&!g.crawl){g.tRoom=1;open('room','The inner chamber',['The last door of ',gd(CRYPT.name),'. Beyond it waits ',gd(CRYPT.boss),'.'],{});return}}
   // a DM check on one of their adventures
   const D=S.dmLog||[];if(F.tableDm==null)F.tableDm=S.dmLogSeq||0;
   if(D.length&&D[0].id>F.tableDm){let hit=null;for(const e of D){if(e.id<=F.tableDm)break;if(e.kind==='roll'&&e.detail&&e.detail.sceneType!=='fight'&&(e.heroes||[]).some(id=>F.ids.includes(id)))hit=e}
