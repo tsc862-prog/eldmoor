@@ -1,4 +1,4 @@
-// World events (#10, part 1): the DM lever start_event runs a festival or a plague over a region.
+// World events (#10 part 1, #335): the DM lever start_event runs a festival or a plague over a region.
 // An event is the existing region condition (levers.js CONDITIONS) held for a fixed time, so the
 // lever's limits, cooldown and DM log all apply and the effects stay what those hooks already do:
 // quieter road encounters, merchants or pilgrims, townsfolk talk more or keep indoors. Nothing here

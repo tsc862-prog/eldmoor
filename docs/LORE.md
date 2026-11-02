@@ -870,7 +870,7 @@ granted or refused, goes into the DM log.
 - **Danger.** Mark a stretch of road dangerous (more Rookscar ambushes, a few more of the
   region's own beasts, never stronger than the region allows) or cleared (ambushes there become
   quiet shrines, and the local dens move out past its edge), for up to two days.
-- **Conditions.** Lay one condition over a region for up to three days: bandits on the roads,
+- **Conditions.** Lay one condition over a region for up to three days (a festival or plague started with start_event runs 3 to 9 days, see World events): bandits on the roads,
   plague (townsfolk keep indoors, the roads fill with lost pilgrims), a festival (talkative
   townsfolk, merchants instead of ambushes), a migration (more beasts on the move) or fog-bound
   skies (everyone sees less).
