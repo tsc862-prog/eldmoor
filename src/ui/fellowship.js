@@ -19,6 +19,7 @@ import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
 import {campSummary} from '../sim/camp.js';
+import {hallBoard} from '../sim/dmfocus.js'; // the hall board's jobs for the Fellowship (#334), read-only
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype,authoredStance,scriptedStance} from '../sim/persona.js';
 import {STANCE_MAX} from '../data/prompts.js'; // the stance cap the model gets (#305)
@@ -138,6 +139,7 @@ function topView(node){const F=S.fellowship;
   else{const ul=el('ul','tlist fthreads');th.slice(0,moreThreads?th.length:THREADS).forEach((t,i)=>{const li=el('li','th-'+t.kind);li.setAttribute('data-k','th'+i);parts(li,t.parts);ul.append(li)});box.append(ul);
     if(th.length>THREADS){const mb=el('button','mini',moreThreads?'Show fewer':'+'+(th.length-THREADS)+' more');mb.dataset.fact='more';box.append(mb)}}
   node.append(box);
+  hallView(node);
   if(drawer==='members'){const mm=el('div','feldrawer felmem');mm.setAttribute('data-k','members');mm.append(el('div','fth-h dm','Members and minds'));
     const md=mindsOf(F); // always agents (#148): the choice is the model, on the runners below
     if(md==='agent'){const rc=fellowshipRunnerControl();if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels(),openaiModels()),rc.firstChild);mm.append(rc)}
@@ -148,6 +150,20 @@ function topView(node){const F=S.fellowship;
   if(devMode()&&(reqTotals.sent||reqTotals.denied)){const fl=recentFailures(),r=el('div','dm','Model requests: '+rpm()+'/min · '+reqTotals.sent+' sent, '+reqTotals.failed+' failed, '+reqTotals.denied+' held back');
     if(fl.length)r.title='Recent failures: '+fl.map(f=>f.kind+(f.hero?' '+f.hero:'')+': '+f.why).join(' | ');node.append(r);
     if(fl.length)node.append(el('div','dm','Last failure: '+fl[0].kind+(fl[0].hero?' ('+fl[0].hero+')':'')+', '+fl[0].why+'. Writing backs off, scripted text stands in.'))}}
+
+// The hall board (#334): the posted jobs that concern the Fellowship, one row each: the title, then region, level
+// band, the day it was posted, whose oath or which elite it is, and who posted it (the watcher may see that; the
+// heroes' brief never says it).
+const hallMeta=r=>[r.region,r.band?'Lv '+r.band[0]+'-'+r.band[1]:null,'posted day '+r.day,
+  r.oath?r.oath.name+'’s oath':null,r.elite?'elite '+r.elite.name+(r.elite.lvl!=null?' (Lv '+r.elite.lvl+')':'')+(r.elite.alive?'':', slain'):null,
+  'by '+r.by].filter(Boolean).join(' · ');
+const hallSig=()=>hallBoard().map(r=>r.id+':'+r.title+':'+hallMeta(r)).join('~');
+function hallView(node){const L=hallBoard(),box=el('div','felhall');box.setAttribute('data-k','hall');
+  box.append(el('div','fth-h dm','Hall board'+(L.length?' ('+L.length+')':'')));
+  if(!L.length){box.append(el('div','dm','No job for the Fellowship on the hall board.'));node.append(box);return}
+  const ul=el('ul','tlist fhall');for(const r of L){const li=el('li');li.setAttribute('data-k','hj'+r.id);
+    li.append(el('span','fhtitle',r.title),el('span','dm fhmeta',hallMeta(r)));if(r.giver)li.title='Posted for '+r.giver;ul.append(li)}
+  box.append(ul);node.append(box)}
 
 // The sheet editor is rebuilt only when it is opened, saved or closed, never on the tick, so typing is safe.
 function sheetView(node,a){node.replaceChildren();if(!a)return;
@@ -262,7 +278,7 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm&&patch(top,n=>formView(n))){sigForm=sig;sigTop=''}return}
   if(logBox!==$('campaign'))logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+menuOpen+'|'+drawer+'|'+moreThreads+'|'+openThreads().map(t=>plainOf(t.parts)).join('~')+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+(campSummary()||'')+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+menuOpen+'|'+drawer+'|'+moreThreads+'|'+openThreads().map(t=>plainOf(t.parts)).join('~')+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+(campSummary()||'')+'|'+hallSig()+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
   // patched in place (#145): never under an open picker, a press or a scroll; open threads and days stay open
   if(sig!==sigTop&&patch(top,n=>topView(n))){sigTop=sig;sigForm=''}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog&&patch(logBox._b,n=>renderCampaignLog(n)))sigLog=ls}

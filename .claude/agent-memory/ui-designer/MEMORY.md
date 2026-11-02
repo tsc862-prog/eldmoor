@@ -10,3 +10,4 @@
 - [Chat left column](chat_left_column.md): chat at top of left column on 3-col, placeChat in layout.js, eldmoor.chatLeft
 - [Archetype picker](archetype_picker.md): setup + sheet editor pickers, stance fill rule, editor marks persona edited vs relay
 - [Stance editor](stance_editor.md): #316 per-companion stance rows on the sheet editor, Save skips unchanged boxes, refreshed in place
+- [Hall board](hall_board.md): #334 block in the Fellowship panel, hallHooks/hallBoard in sim/dmfocus.js shared with pace.js

@@ -27,7 +27,7 @@ import {asleep,campView} from './camp.js';
 import {localsNear} from './locals.js'; // people about, with a short hook each
 import {foeName} from './lore.js'; // the foe as the hero knows it, never its level (#188)
 import {questBrief} from './questlog.js'; // the focused quest and how many others
-import {focus} from './dmfocus.js'; // where the Fellowship rides (#165), for the hall jobs that concern it
+import {focus,hallHooks,hallTitle} from './dmfocus.js'; // where the Fellowship rides (#165), the hall jobs that concern it (#326)
 import {homeOf} from '../data/races.js';
 import * as ADV from '../data/adventures.js';
 
@@ -80,13 +80,9 @@ export function paceBrief(id){const a=hero(Number(id));
 // PACE.HALL, the hall's own Fellowship jobs first. {} when the hero is no member, is not in town, or nothing is posted.
 function hallBrief(a){if(!a.fellow||a.state!=='town'||!S.fellowship)return {};const f=focus();if(!f)return {};
   const town=homeOf(a);if(!town||town.name!==S.fellowship.hall)return {};
-  const mine=h=>h.ff||(h.for!=null&&f.ids.has(h.for))||(h.zone!=null&&f.zones.has(h.zone));
-  const L=(S.adventures||[]).filter(h=>h.phase==='open'&&h.town===town.name&&(h.for==null||f.ids.has(h.for))&&mine(h));
+  const L=hallHooks(town.name,f); // one selection with the watcher's Fellowship panel (#334)
   if(!L.length)return {};
-  L.sort((x,y)=>(y.ff?1:0)-(x.ff?1:0)||x.id-y.id);
   return {hall:L.slice(0,PACE.HALL).map(h=>{const o={id:'job:'+h.id,title:hallTitle(h)};if(h.giver&&h.giver.name)o.giver=h.giver.name;const r=hallPay(a,h);if(r)o.reward=r;return o})}}
-const plainText=p=>Array.isArray(p)?p.map(x=>typeof x==='string'?x:x&&x.kind==='hero'?x.name:x&&x.t||'').join(''):String(p||'');
-const hallTitle=h=>{const T=ADV.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return String(h.title||(T.name||h.tpl)+(th?': '+plainText(th):'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')).slice(0,90)};
 function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;const g=Math.round((6+a.lvl*3)*T.pay.gold*(h.data&&h.data.payMul||1));
   return 'about '+g+'g and XP'+(T.pay.honor?', '+T.pay.honor+' honor':'')+(T.pay.gear>=.35?', maybe gear':'')} // the quest log's payText (sim/questlog.js), same words as list_jobs/quests
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
