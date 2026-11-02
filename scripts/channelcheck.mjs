@@ -6,7 +6,8 @@
 // a hero, while the in-game channels do:
 //   secrets  DM notes (secrets and threads), DM log intent, a lever reason, the DM log's model
 //            prompt, another member's journal, memories (recent and long), persona and backstory,
-//            mind (a brain prompt), runner narration (Agent tab) and saved session prompt
+//            mind (a brain prompt), runner narration (Agent tab) and saved session prompt, the notebooks of
+//            issue #155 (another member's memories, a fallen member's private note, the DM's remember)
 //   hero     every hero tool result (status, look, chat_read, party_read, journal_read, events,
 //            wait, scene views ...), the runner prompts (system prompt, Fellowship orders, turn
 //            prompts) and the brain snapshots (townPlan, say, fightOrFlee, cryptCall, persona,
@@ -16,9 +17,13 @@
 //            earshot; party chat reaches every member
 //   relay    a claimed hero answers only its runner; heroes have no DM tools and the DM no hero
 //            tools; one runner never holds a hero and the DM seat; /play/health carries no text
+//   memories (issue #155) remember, recall (word, tag, about, id), update_memory, forget, pin, the state
+//            header's notes, the caps (200 notes, 600 characters, archive, pins, writes a day), the letter a
+//            fallen member leaves (and nothing else of theirs), the Markdown mirror, snapshot -> restore, and
+//            the DM's tools never showing a hero's notes
 // No model, no network beyond 127.0.0.1. Usage: npm run channelcheck (CHANNELCHECK_SEED to vary).
 import http from 'node:http';
-import {mkdtempSync, rmSync} from 'node:fs';
+import {mkdtempSync, rmSync, existsSync, readdirSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -36,7 +41,13 @@ const DMA = await import('../src/sim/dmagent.js');
 const BR = await import('../src/sim/brain.js');
 const PE = await import('../src/sim/persona.js');
 const ME = await import('../src/sim/memory.js');
-const {zoneFor, zonePoint, dist, ZONES} = await import('../src/world/map.js');
+const NBm = await import('../src/sim/notebook.js');
+const PC = await import('../src/sim/pace.js');
+const HE = await import('../src/sim/heroes.js');
+const MM = await import('./memory-mirror.mjs');
+const {memoryNote} = await import('./pacing.mjs');
+const {dmTurnPrompt} = await import('./dm-agent.mjs');
+const {zoneFor, zonePoint, dist, ZONES, zoneAt} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
 const {PLAYER_TOOLS} = await import('../src/data/player-tools.js');
 const {systemPrompt, turnPrompt} = await import('./agent-player.mjs');
@@ -106,6 +117,11 @@ P.playerNarrate(B.id, 'B thinks ' + plant('bNarration'));
 const bs = SS.loadSession(B.id, B.name, () => ({sessionId: 's-b', heroId: B.id, heroName: B.name, system: 'You are B. ' + plant('bPrompt'), turns: 3, costUsd: 0, lastTotal: 0})).sess; SS.saveSession(bs, {});
 // and what A's companions keep about A stays theirs too: a rest member's private journal
 ok(act(rest[0], 'journal_write', {text: 'Of A I think ' + plant('mateJournal')}).ok, 'a third member\'s journal');
+// the notebooks (issue #155): every seat's own, the DM's included
+ok(act(B, 'remember', {title: 'What I hide', text: 'My memory ' + plant('bNote'), tags: ['secret'], about: A.name}).ok, 'B\'s memories (remember)');
+ok(act(rest[0], 'remember', {title: 'About the others', text: 'Of A I note ' + plant('mateNote'), tags: ['party'], about: A.name}).ok, 'a third member\'s memories');
+ok(act(rest[2], 'remember', {title: 'Private', text: 'Hidden ' + plant('deadNote'), tags: ['secret']}).ok, 'a member who will fall keeps a private note');
+ok(DMA.dmAct('remember', {title: 'The fogbound road', text: 'DM memory ' + plant('dmMemory'), tags: ['fog'], about: A.name, section: 'plans'}).ok, 'DM memories (remember, plans)');
 ok(DMA.dmAct('notes_read').notes.secrets.some(x => x.text.includes(SECRETS.dmSecret)) && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.dmIntent)), 'the DM still reads its own notes and log (the check is not vacuous)');
 
 // ---------------------------------------------------------------- 2. the in-game channels
@@ -131,13 +147,18 @@ run(2); // let the watch() step turn heard lines into events
 const argsFor = {move_to: {target: 'home'}, talk: {target: B.name}, say: {text: 'Well met.'}, join_party: {hero_id: B.id}, take_adventure: {job_id: 1}, choose: {option: 'a'},
   fight: {target_id: 0}, hunt: {count: 1}, rest: {minutes: 10}, buy: {}, sell: {index: 99}, equip: {index: 99}, read_chronicle: {n: 20}, journal_read: {n: 50}, journal_write: {text: 'A writes.'},
   party_say: {text: 'Aye.'}, party_read: {n: 20}, chat_read: {n: 20}, propose: {kind: 'other', details: 'A small fire tonight.'}, vote: {proposal_id: 1, vote: 'yes', reason: 'fine'},
-  lead_to: {target: 'home'}, scene_act: {option: 'a'}, wait: {minutes: 10}, list_jobs: {}};
+  lead_to: {target: 'home'}, scene_act: {option: 'a'}, wait: {minutes: 10}, list_jobs: {},
+  remember: {title: 'Road notes', text: 'A notes the road home.', tags: ['road', 'secret'], about: B.name}, recall: {query: 'road hide secret memory'}, update_memory: {id: 1, text: 'A rewrites the road note.'}, forget: {id: 9999}, pin: {id: 1}};
 const first = {};
 for (const t of ['status', 'look', 'chat_read', 'party_read', 'journal_read', 'read_chronicle']) first[t] = keep('A ' + t, act(A, t, argsFor[t]));
 ok((first.chat_read.lines || []).some(l => l.includes(said.narr) && /narrator/i.test(l)) && (first.chat_read.lines || []).some(l => l.includes(said.party)), 'chat_read: the narrator and B\'s party line');
 ok((first.party_read.lines || []).some(l => l.includes(said.party)), 'party_read: B\'s party line');
 ok(JSON.stringify(first.status.events || []).includes(said.narr) || JSON.stringify(first.status).includes(said.narr) || heard.some(h => h.text.includes('The narrator: ' + said.narr)), 'events: "The narrator: ..." reaches A\'s agent');
 for (const t of PLAYER_TOOLS) if (t.name !== 'wait') keep('A ' + t.name, act(A, t.name, argsFor[t.name] || {}));
+// A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
+for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));
+ok(act(A, 'recall', {n: 20}).notes.every(n => n.title === 'Road notes'), 'A\'s recall finds only A\'s own note, whatever it asks');
+{const br = keep('A pace brief', PC.paceBrief(A.id)); keep('A memory line', memoryNote(br.brief)); keep('A brief text', SIM.S && br.brief ? JSON.stringify(br.brief) : '')}
 // a wait, finished by the host the way sim/player-host.js does
 const w = act(A, 'wait', {minutes: 10}); run(3); keep('A wait', P.finishWait(w.pending, true));
 for (const x of [rest[0], rest[1]]) for (const t of ['status', 'chat_read', 'party_read', 'look']) keep(x.name + ' ' + t, act(x, t, argsFor[t]));
@@ -203,11 +224,84 @@ ok(x.status === 403, 'MCP role=dm with a hero header is refused');
 const mcp = (hero, runner, name, args) => fetch(base + '/mcp', {method: 'POST', headers: {'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-eldmoor-hero': String(hero.id), 'x-eldmoor-runner': runner}, body: JSON.stringify({jsonrpc: '2.0', id: 2, method: 'tools/call', params: {name, arguments: args || {}}})}).then(r => r.json()).then(j => JSON.parse(j.result.content[0].text));
 for (const t of ['status', 'chat_read', 'party_read', 'journal_read', 'look']) keep('MCP A ' + t, await mcp(A, 'run-A', t, argsFor[t]));
 x = await mcp(B, 'run-A', 'journal_read', {n: 50}); keep('MCP run-A for B', x); ok(x.ok === false && x.refused, 'over MCP too: run-A cannot play B');
+x = await mcp(B, 'run-A', 'recall', {n: 20}); keep('MCP run-A recalls for B', x); ok(x.ok === false && x.refused, 'run-A cannot recall B\'s memories (refused)');
+x = await post('/play/call', {hero: B.id, tool: 'recall', args: {query: 'hide'}, runner: 'run-A'}); keep('run-A /play/call recall for B', x.body); ok(x.status === 409, 'nor over /play/call (409)');
+x = await mcp(A, 'run-A', 'remember', {title: 'Over MCP', text: 'Tags as a list.', tags: ['mcp', 'list']}); keep('MCP A remember', x); ok(x.ok && x.remembered.tags.join() === 'mcp,list', 'MCP remember takes tags as a list');
+x = await mcp(A, 'run-A', 'recall', {tag: 'mcp'}); keep('MCP A recall', x); ok(x.ok && x.notes.length === 1, 'MCP recall by tag');
 const health = await (await fetch(base + '/play/health')).json(); keep('/play/health', health);
 ok(health.heroes.length === 5 && !/QZX/.test(JSON.stringify(health)), '/play/health: ids, names and links only, no text');
 server.close();
 
-// ---------------------------------------------------------------- 6. the verdict
+// ---------------------------------------------------------------- 6. memories (issue #155)
+console.log('memories: tools, ranking, header, caps, the letter, the mirror, save');
+const C1 = rest[1], mem = (t, a2) => keep(C1.name + ' ' + t, act(C1, t, a2));
+const m1 = mem('remember', {title: 'Debt to ' + B.name, text: 'I owe ' + B.name + ' ten gold for the draught.', tags: ['debt', 'gold'], about: B.name});
+ok(m1.ok && /hero/.test(m1.remembered.about) && m1.remembered.tags.join() === 'debt,gold', 'remember: a titled, tagged note about a companion');
+const m2 = mem('remember', {title: 'Wolves at the ford', text: 'A pack hunts the river crossing at night.', tags: 'danger, wolves', about: ZONES[zoneAt(C1.x, C1.y)]});
+mem('remember', {title: 'Plan for the crypt', text: 'Buy torches before we go down. Gold is short.', tags: ['plan']});
+let rc = mem('recall', {query: 'gold'}); ok(rc.ok && rc.found === 2 && rc.notes[0].title.startsWith('Debt'), 'recall by word: a title or tag match ranks above a text match');
+rc = mem('recall', {tag: 'wolves'}); ok(rc.notes.length === 1 && rc.notes[0].id === m2.remembered.id, 'recall by tag (comma-separated tags are split)');
+rc = mem('recall', {about: String(B.id)}); ok(rc.notes.length === 1 && rc.notes[0].id === m1.remembered.id, 'recall by about: an id finds the note written with the name');
+rc = mem('recall', {query: 'crypt torches'}); ok(rc.notes[0].title === 'Plan for the crypt', 'recall: best match first');
+const id1 = m1.remembered.id;
+ok(mem('update_memory', {id: id1, text: 'Paid ' + B.name + ' back in full.'}).ok && mem('recall', {id: id1}).notes[0].text.startsWith('Paid'), 'update_memory rewrites a note');
+ok(mem('pin', {id: id1}).ok && mem('recall', {}).notes[0].id === id1, 'pin: a pinned note comes first');
+{const br = PC.paceBrief(C1.id).brief, line = memoryNote(br);
+  ok(br.memories.length >= 1 && br.memories.length <= 3 && br.memories.some(x => x.id === m2.remembered.id) && br.memories.every(x => Object.keys(x).join() === 'id,title'), `the state header lists up to 3 notes, title and id only (${br.memories.map(x => x.title).join('; ')})`);
+  ok(line.includes('#' + m2.remembered.id) && !line.includes('river crossing'), 'the turn prompt line carries titles, never the text')}
+ok(mem('forget', {id: m2.remembered.id}).ok && !mem('recall', {tag: 'wolves'}).notes.length && !mem('forget', {id: m2.remembered.id}).ok, 'forget removes a note for good');
+ok(!mem('update_memory', {id: id1, text: ''}).ok && !mem('remember', {title: 'x'}).ok && !mem('pin', {id: 4242}).ok, 'empty text and unknown ids are refused');
+// caps
+NBm.NB.WRITES_PER_DAY = 1e6;
+for (let i = 0; i < 205; i++) act(C1, 'remember', {title: 'Filler ' + i, text: 'f'.repeat(700), tags: ['f' + i]});
+const M1 = C1.memories;
+ok(M1.notes.length === NBm.NB.NOTES && M1.arch.length > 0, `cap: ${M1.notes.length} notes kept, ${M1.arch.length} archived`);
+ok(M1.notes.every(n => n.text.length <= NBm.NB.LEN) && M1.notes.some(n => n.id === id1), 'notes are capped at 600 characters; the pinned note is never archived');
+rc = act(C1, 'recall', {tag: 'f0'}); ok(rc.notes.length === 1 && rc.notes[0].archived, 'recall still finds an archived note, marked archived');
+ok(act(C1, 'pin', {id: rc.notes[0].id}).ok && M1.notes.some(n => n.id === rc.notes[0].id) && M1.notes.length === NBm.NB.NOTES, 'pinning an archived note brings it back (the next oldest goes)');
+NBm.NB.WRITES_PER_DAY = 60; M1.day.w = 60;
+ok(!act(C1, 'remember', {title: 'One more', text: 'Too many.'}).ok && act(C1, 'recall', {query: 'paid'}).ok, 'writes a day are capped; recall still works');
+M1.day.w = 0;
+// the letter: a member's pinned "letter" outlives them; nothing else does
+const D2 = rest[2], slot = D2.fellowRole;
+const lt = act(D2, 'remember', {title: 'To whoever comes next', text: 'Trust the healer and keep to the river road.', tags: ['letter']});
+const lp = act(D2, 'pin', {id: lt.remembered.id}); ok(lp.ok && /letter/.test(lp.note || ''), 'pin a note tagged "letter": sealed for the Fellowship');
+HE.fall(D2, 'a test of the hardcore rule'); run(2);
+const nh = S.agents.find(x => x.id === S.fellowship.slots[slot]);
+ok(nh && nh !== D2 && nh.player, `${D2.name} fell; ${nh && nh.name} takes the place, agent-played`);
+ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');
+{const br = keep(nh.name + ' brief', PC.paceBrief(nh.id)).brief;
+  ok(br.memories.some(x => /letter from/i.test(x.title)), 'the replacement\'s state header shows the letter');
+  const all = keep(nh.name + ' recall', act(nh, 'recall', {n: 20}));
+  ok(all.notes.length === 1 && all.notes[0].pinned && /river road/.test(all.notes[0].text) && all.notes[0].tags.includes('letter'), 'the replacement finds the letter, pinned, and nothing else of the fallen');
+  keep(nh.name + ' recall secret', act(nh, 'recall', {tag: 'secret'}))}
+// the DM's side: its notes, never a hero's
+{const st = DMA.dmAct('dm_status'), dmSide = JSON.stringify([st, DMA.dmAct('fellowship_view'), DMA.dmAct('recall', {n: 20}), DMA.dmAct('recall', {query: 'hide note private others debt'}), DMA.dmAct('notes_read')]);
+  ok(!['bNote', 'mateNote', 'deadNote'].some(k => dmSide.includes(SECRETS[k])) && !dmSide.includes('river road'), 'the DM\'s tools never show a hero\'s memories');
+  ok(st.relevant_notes.some(x => x.title === 'The fogbound road') && dmTurnPrompt(3, st).includes('The fogbound road'), 'dm_status names the DM notes that bear on the Fellowship, and so does its turn prompt');
+  const rr = DMA.dmAct('recall', {query: 'innkeeper'}); ok(rr.ok && rr.notes.some(n => n.section === 'secrets'), 'DM recall searches across sections (notes_write notes too)')}
+// the mirror: Markdown for the owner, never read back
+const mir = MM.memoryMirror({root: LOGS, world: 'check'}), sentM = new Map();
+const flush = () => {const out = NBm.mirrorDirty(sentM); mir.write(out); for (const o of out) sentM.set(o.key, o.sig); return out};
+flush();
+const dirOf = h => join(LOGS, 'check', h.id + '-' + MM.slug(h.name, 30), 'memory');
+ok(existsSync(join(dirOf(B), 'MEMORY.md')) && existsSync(join(dirOf(B), '1-what-i-hide.md')), 'mirror: logs/agents/<world>/<id>-<name>/memory/ with MEMORY.md and <id>-<slug>.md');
+{const f = readFileSync(join(dirOf(B), '1-what-i-hide.md'), 'utf8');
+  ok(/^---\nid: 1\ntitle: "What I hide"\ntags: \["secret"\]\nabout: ".+"\nday: \d+/.test(f) && f.includes(SECRETS.bNote), 'front matter (title, tags, about, game day) and the text')}
+ok(existsSync(join(LOGS, 'check', 'dm', 'memory', 'MEMORY.md')) && readdirSync(join(LOGS, 'check', 'dm', 'memory')).some(f => /the-fogbound-road/.test(f)), 'the DM\'s notes go under dm/');
+ok(/Fallen/.test(readFileSync(join(dirOf(D2), 'MEMORY.md'), 'utf8')), 'a fallen hero\'s index says the notes died with them');
+act(C1, 'forget', {id: id1});
+{const out = flush(); ok(out.length === 1 && out[0].key === 'hero:' + C1.id && !readdirSync(dirOf(C1)).some(f => f.startsWith(id1 + '-')), 'only the changed seat is written again; a forgotten note loses its file')}
+{const runners = ['agent-player.mjs', 'fellowship.mjs', 'local-agent.mjs', 'dm-agent.mjs', 'agent-sessions.mjs', 'pacing.mjs'].map(f => readFileSync(new URL('./' + f, import.meta.url), 'utf8')).join('\n');
+  ok(!/memory-mirror|MEMORY\.md/.test(runners), 'no runner opens the mirror: it is never read back into a prompt')}
+// save: the notebooks are character knowledge, saved with the world
+{const before = JSON.stringify([C1.memories, nh.memories, S.dmAgent.notes, S.dmAgent.arch, S.fellowship.letters || {}]), cid = C1.id, nid = nh.id;
+  SIM.restore(JSON.parse(JSON.stringify(SIM.snapshot())));
+  const c2 = S.agents.find(x => x.id === cid), n2 = S.agents.find(x => x.id === nid);
+  ok(JSON.stringify([c2.memories, n2.memories, S.dmAgent.notes, S.dmAgent.arch, S.fellowship.letters || {}]) === before, 'notebooks, archives and the DM\'s notes survive snapshot -> JSON -> restore');
+  ok(P.playerAct(cid, 'recall', {tag: 'f3'}).notes.length === 1 && DMA.dmAct('recall', {tag: 'fog'}).notes.length === 1, 'recall works on the restored world')}
+
+// ---------------------------------------------------------------- 7. the verdict
 console.log('the verdict');
 const L = leaks();
 ok(Object.keys(SECRETS).length >= 20, `${Object.keys(SECRETS).length} secrets planted`);

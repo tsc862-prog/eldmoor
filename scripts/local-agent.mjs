@@ -42,12 +42,12 @@ export const LOCAL_RULES = '\n\nHow your turns work here: call one tool at a tim
 const BY_NAME = new Map(PLAYER_TOOLS.map(t => [t.name, t]));
 // Another tool table (the DM's, src/data/dm-tools.js, issue #66) can be passed as `list` / `tools`.
 const MAPS = new WeakMap(); const byName = list => {if (!list || list === PLAYER_TOOLS) return BY_NAME; let m = MAPS.get(list); if (!m) {m = new Map(list.map(t => [t.name, t])); MAPS.set(list, m)} return m};
-const jsonType = a => a.type === 'integer' ? 'integer' : a.type === 'number' ? 'number' : a.type === 'object' ? 'object' : 'string';
+const jsonType = a => a.type === 'integer' ? 'integer' : a.type === 'number' ? 'number' : a.type === 'object' ? 'object' : a.type === 'array' ? 'array' : 'string';
 
 // The tool table as Ollama function tools.
 export function ollamaTools(list = PLAYER_TOOLS) {
   return list.map(t => ({type: 'function', function: {name: t.name, description: t.desc, parameters: {type: 'object',
-    properties: Object.fromEntries(Object.entries(t.args || {}).map(([k, a]) => [k, {type: jsonType(a), description: a.desc || k, ...(a.enum ? {enum: a.enum} : {})}])),
+    properties: Object.fromEntries(Object.entries(t.args || {}).map(([k, a]) => [k, {type: jsonType(a), description: a.desc || k, ...(a.type === 'array' ? {items: {type: 'string'}} : {}), ...(a.enum ? {enum: a.enum} : {})}])),
     required: Object.entries(t.args || {}).filter(([, a]) => !a.optional).map(([k]) => k)}}}));
 }
 
@@ -62,6 +62,7 @@ export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
     let v = a[k];
     if (v == null || v === '') {if (!spec.optional) return {error: `${name} needs "${k}" (${spec.desc || k})`}; continue}
     if (spec.type === 'object') {if (typeof v === 'string') {try {v = JSON.parse(v)} catch {return {error: `"${k}" must be a JSON object`}} } if (!v || typeof v !== 'object' || Array.isArray(v)) return {error: `"${k}" must be an object`}}
+    else if (spec.type === 'array') {if (typeof v === 'string') {const t = v.trim(); try {v = t.startsWith('[') ? JSON.parse(t) : t.split(',')} catch {v = t.split(',')}} if (!Array.isArray(v)) v = [v]; v = v.map(x => String(x).trim()).filter(Boolean).slice(0, 12)}
     else if (spec.type === 'integer' || spec.type === 'number') {const n = Number(v); if (!Number.isFinite(n)) return {error: `"${k}" must be a number`}; v = spec.type === 'integer' ? Math.round(n) : n}
     else v = typeof v === 'string' ? v : typeof v === 'object' ? JSON.stringify(v) : String(v);
     if (spec.enum && !spec.enum.includes(v)) return {error: `"${k}" must be one of ${spec.enum.join(', ')}`};

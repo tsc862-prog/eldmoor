@@ -1,6 +1,6 @@
 // Agent player (issues #75, #68): the tools an AI agent uses to play one hero. Pure data, shared by
 // the MCP server (scripts/relay-mcp.mjs), the headless host and the docs. Each tool:
-//   {name, desc, act, args:{argName:{type:'string'|'integer'|'number', desc, optional?, enum?}}}
+//   {name, desc, act, args:{argName:{type:'string'|'integer'|'number'|'array' (of strings), desc, optional?, enum?}}}
 // act: true for tools that change the world (rate limited per game hour), false for reads.
 // The game side is src/sim/player.js; every call only ever touches the agent's own hero.
 // In-game only (issue #123): a hero's tools answer with what its character perceives (sight, earshot,
@@ -33,6 +33,14 @@ export const PLAYER_TOOLS=[
   {name:'read_chronicle',act:false,desc:'The latest news of the world as the town criers tell it (newest first).',args:{n:{type:'integer',desc:'How many lines (1-20, default 8)',optional:true}}},
   {name:'journal_read',act:false,desc:'Read your own journal (newest last).',args:{n:{type:'integer',desc:'How many entries (1-50, default 10)',optional:true}}},
   {name:'journal_write',act:false,desc:'Write a short journal entry in your hero\'s voice (max 600 characters). It is saved with the world.',args:{text:{type:'string',desc:'The entry'}}},
+  // ---- memories (issue #155): your own searchable notes, saved with the world; they die with you ----
+  {name:'remember',act:false,desc:'Write down anything you want to keep, in your own words and with your own title and tags (for example a promise, a debt, a grudge, a name, a place, a plan, a hunch). Searchable later with recall. Max 600 characters; you keep about 200 (the oldest unpinned one is archived when full). Only you ever read them, and they die with you.',
+    args:{title:{type:'string',desc:'A short title (a few words), e.g. "Debt to Merel"'},text:{type:'string',desc:'The memory, in your own words'},tags:{type:'array',desc:'A few tags, e.g. ["debt","highgate"]',optional:true},about:{type:'string',desc:'Who or what it is about: a hero (name or id), a townsperson, a town, a region, a place, or "quest <id>"',optional:true}}},
+  {name:'recall',act:false,desc:'Search your memories: by words (query), a tag, who or what they are about, or one id. Best matches first (title and tags weigh most, then about, then the text; pinned and recent ones a little more). Without arguments: your most recent and pinned ones. Check them before decisions that touch people or places you know.',
+    args:{query:{type:'string',desc:'Words to look for',optional:true},tag:{type:'string',desc:'Only memories with this tag',optional:true},about:{type:'string',desc:'Only memories about this hero, person, place or quest',optional:true},id:{type:'integer',desc:'One memory by id',optional:true},n:{type:'integer',desc:'How many (1-20, default 5)',optional:true}}},
+  {name:'update_memory',act:false,desc:'Rewrite one of your memories (by id from recall), e.g. when a debt is paid or a plan changes.',args:{id:{type:'integer',desc:'Memory id'},text:{type:'string',desc:'The new text'},title:{type:'string',desc:'A new title',optional:true},tags:{type:'array',desc:'New tags',optional:true}}},
+  {name:'forget',act:false,desc:'Let one memory go for good (by id).',args:{id:{type:'integer',desc:'Memory id'}}},
+  {name:'pin',act:false,desc:'Pin a memory (by id) so it is never archived and comes up first; on "no" unpins it. At most 20 pinned. In the Fellowship, a pinned memory tagged "letter" is your letter to the party: if you fall, whoever takes your place finds it.',args:{id:{type:'integer',desc:'Memory id'},on:{type:'string',enum:['yes','no'],desc:'yes to pin (default), no to unpin',optional:true}}},
   // ---- the Fellowship (issue #68, phase B): party chat, the council, leading, and Table mode ----
   {name:'party_say',act:true,desc:'Say a line on the party channel (up to 200 characters; longer is refused; do not start with your own name, the game shows who speaks): every member of your party hears it wherever they are (in the Fellowship, all five). Shows in their Chat tabs and as your speech bubble.',args:{text:{type:'string',desc:'What you say to the party'}}},
   {name:'chat_read',act:false,desc:'What you heard lately, newest last: lines said out loud near you, the party channel, townsfolk, and the narrator describing what is around you. Everything anyone tells you arrives in the game like this.',args:{n:{type:'integer',desc:'How many lines (1-20, default 10)',optional:true}}},

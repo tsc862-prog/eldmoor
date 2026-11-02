@@ -61,6 +61,7 @@ export function dmSystemPrompt(st) {
     '- Change the world with pull_lever only, with a one-sentence reason (the watcher reads it in the DM log). Few, deliberate pulls: 1-3 a turn is plenty; none is fine when the story is already moving. Levers have limits and cooldowns; a refusal is information, not an error to fight.',
     '- The scripted DM keeps posting jobs and running adventures beside you. Build on what it does; do not flood the boards.',
     '- Keep notes: open threads (unresolved things), characters (recurring people and their wants), plans (what you are setting up), secrets (what the heroes do not know yet). Read them back at the start of a turn and keep them current; they are your memory.',
+    DM_MEMORY_ORDERS,
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
     '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
     '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
@@ -71,9 +72,13 @@ export function dmSystemPrompt(st) {
     'Each turn: dm_status, notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, levers as needed), update notes, pull at most a few levers, and end with one short sentence of what you prepared.',
   ].join('\n');
 }
+// Searchable notes (issue #155): the DM's standing-orders line; withDmMemoryOrders adds it to an older session's prompt.
+export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything you want to find again, free-form (your own title, text and tags; about and section optional), recall by words, tag, about or id across all sections before you build on a person, place or thread, update_memory, forget, and pin the few that must never be archived. dm_status lists the notes that bear on the moment.';
+export const withDmMemoryOrders = sys => /\bYour notes are searchable\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_MEMORY_ORDERS;
+const notesNow = st => st && Array.isArray(st.relevant_notes) && st.relevant_notes.length ? ` Notes that may matter now: ${st.relevant_notes.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id}).` : '';
 export const dmTurnPrompt = (turns, st) => turns === 0
   ? 'You take the DM seat. Orient yourself: dm_status, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
-  : `Day ${st.day}, ${st.time} (${st.part}). ${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign.`;
+  : `Day ${st.day}, ${st.time} (${st.part}). ${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign.${notesNow(st)}`;
 
 const post = (base, path, body, ms) => fetch(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(ms)});
 // Every DM call names the role and this runner (the id it claimed the seat with), issue #123.
@@ -185,6 +190,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!st0.ok) {console.error('[dm] dm_status failed: ' + st0.error); await quit(1)}
   const {sess, note} = loadDmSession(st0.world, () => ({sessionId: null, world: st0.world, system: dmSystemPrompt(st0), turns: 0, costUsd: 0, lastTotal: 0, lastGm: null}), {startNew: flag('new')});
   if (note) log('[dm] ' + note);
+  sess.system = withDmMemoryOrders(sess.system); // searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
