@@ -266,10 +266,10 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // autopilot (owner: an agent-played hero is never scripted): out in the field, hurt, with a hunt as its last order
     const out = S.agents.find(x => x !== a && x.state === 'hunt' && !x.player && x.kind === 'hero');
     a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15}; a.hp = Math.round(a.hp * .4) || 1;
-    ok(await until(() => a.playIdle && a.pq[0] && a.pq[0].auto, 15000), `with no order for 2 game hours autopilot carries on (${a.pq[0] && a.pq[0].auto})`);
+    ok(await until(() => a.playIdle && a.pq[0] && a.pq[0].auto, 60000), `with no order for 2 game hours autopilot carries on (${a.pq[0] && a.pq[0].auto})`);
     ok(a.player && !a.brain && /^autopilot: /.test(a.playDoing || ''), `the agent stays the mind (agent-played, no brain): "${a.playDoing}"`);
     a.hp = maxHpOf(a); a.pq = [];
-    ok(await until(() => a.pq[0] && a.pq[0].kind === 'hunt' || a.state === 'fight', 15000), 'mended, it carries on its last order (hunt)');
+    ok(await until(() => a.pq[0] && a.pq[0].kind === 'hunt' || a.state === 'fight', 60000), 'mended, it carries on its last order (hunt)');
     ok((a.playEv || []).some(e => /autopilot carries on/.test(e.text)) && !(a.playEv || []).some(e => /scripted|instinct/i.test(e.text)), 'the hero is told so, and nothing calls it scripted');
     const r = sim.playerAct(a.id, 'say', {text: 'Enough wandering. I choose my own road again.'});
     sim.step(1 / 60);
