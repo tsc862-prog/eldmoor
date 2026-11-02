@@ -73,6 +73,20 @@ if (argv[0] === '--stepping') {
   sok(seen.every((s, i) => i === 0 || s.room >= seen[i - 1].room), 'no scene goes back a room');
   sok(order.length === 3 && order[2] === 2, 'all three rooms were reached, the boss room last');
   sok(S.fellowship.crawl.clears >= 1 && !CRYPT.group && !S.table, 'the Fellowship cleared the crypt and the table and group are free again');
+  {
+    const R = descend(14); const rs = crawl(R, {act: () => 'retreat', maxS: 300});
+    sok(rs.length === 1 && rs[0].room === 0, 'a retreat withdraws the party at the first room (the sump)');
+    sok(!CRYPT.group && !S.table && R.some(a => a.state !== 'dead') && R.filter(a => a.state !== 'dead').every(a => a.state === 'return'), 'survivors go home, group and table are free');
+  }
+  {
+    const W = descend(14); const saved = CRYPT.rooms[0], orig = JSON.stringify(saved);
+    CRYPT.rooms[0] = {...saved, foes: [{type: 'tombskit', n: 14}], hit: 4};
+    try {
+      crawl(W, {act: () => 'strike', maxS: 300});
+      sok(W.every(a => a.state === 'dead') && W.every(a => /felled by/.test(a.cause || '')), 'a wipe: everyone falls and each death names the foe');
+      sok(!CRYPT.group && !S.table, 'after the wipe the group and table are cleared');
+    } finally {CRYPT.rooms[0] = JSON.parse(orig)}
+  }
   console.log('SIG ' + signature(M, seen));
   process.exit(sk.n ? 1 : 0);
 }
