@@ -571,7 +571,7 @@ function start(args, ready) {
 }
 const port = 18100 + Math.floor(Math.random() * 500), BASE = `http://127.0.0.1:${port}`;
 try {
-  const world = start(['scripts/play-headless.mjs', '--port', String(port), '--dm', '--agents', '0', '--quiet', '--speed', '4', '--world', join(tmp, 'world.json')], /headless world/);
+  const world = start(['scripts/play-headless.mjs', '--port', String(port), '--dm', '--agents', '0', '--quiet', '--speed', '4', '--world', join(tmp, 'world.json')], /^\[play\] headless world at /m);
   await world.until;
   h = await (await fetch(BASE + '/play/health')).json();
   ok(h.dm && h.dm.seat && h.heroes.length === 0, 'play-headless --dm --agents 0: the DM seat open, no agent hero');

@@ -195,7 +195,7 @@ const port = 18700 + Math.floor(Math.random() * 600), BASE = `http://127.0.0.1:$
 const health = base => fetch(base + '/play/health').then(r => r.json());
 
 console.log('npm run agent -- --provider ollama (mock Ollama, headless world on port ' + port + ')');
-const world = start(['scripts/play-headless.mjs', '--port', String(port), '--agents', '2', '--quiet', '--speed', '8', '--world', join(tmp, 'world.json')], {wait: /headless world/});
+const world = start(['scripts/play-headless.mjs', '--port', String(port), '--agents', '2', '--quiet', '--speed', '8', '--world', join(tmp, 'world.json')], {wait: /^\[play\] headless world at /m});
 await world.until;
 const h0 = await health(BASE), [hA, hB] = h0.heroes;
 ok(h0.heroes.length === 2, `two agent heroes: ${hA.name} #${hA.id}, ${hB.name} #${hB.id}`);
@@ -239,7 +239,7 @@ world.p.kill();
 console.log('npm run fellowship -- --provider ollama (headless Fellowship, no API key)');
 {
   const fport = port + 1, FB = `http://127.0.0.1:${fport}`;
-  const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '8', '--world', join(tmp, 'fworld.json')], {wait: /headless world/});
+  const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '8', '--world', join(tmp, 'fworld.json')], {wait: /^\[play\] headless world at /m});
   await fw.until;
   const hf = await health(FB), fellows = hf.heroes.filter(x => x.fellow);
   ok(fellows.length === 5, 'five agent-played Fellowship members');
@@ -548,7 +548,7 @@ console.log('start gate: --wait-ready holds the world until every mind answered 
 {
   ok(!/world held/.test(world.out()), 'without --wait-ready play-headless never holds the world (unchanged)');
   const P2 = port + 650, B2 = `http://127.0.0.1:${P2}`, poll = async (f, ms = 30000) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {const h = await health(B2).catch(() => null); if (h && f(h)) return h; await sleep(100)} return null};
-  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--world', join(tmp, 'world-ready.json')], {wait: /headless world/});
+  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--world', join(tmp, 'world-ready.json')], {wait: /^\[play\] headless world at /m});
   await w2.until;
   const [ga, gb] = (await health(B2)).heroes, by = (h, id) => h.heroes.find(x => x.id === id) || {};
   ok(await poll(() => /world held, waiting for minds: .*no runner/.test(w2.out()), 5000), 'with --wait-ready a world with no runners is held');
