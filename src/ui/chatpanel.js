@@ -17,7 +17,7 @@ import {dmTable,dmParts,dmBadge,dmByAgent} from './dmpanel.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
-const WKEY='eldmoor.chatWide';let wide=false;try{wide=localStorage.getItem(WKEY)==='1'}catch(e){} // the side column's width, per viewer
+const WKEY='eldmoor.chatTall';let wide=false;try{wide=localStorage.getItem(WKEY)==='1'}catch(e){} // the chat's height under the map, per viewer
 const KEEP=400; // lines kept in the stream
 export const FILTERS=[['all','All'],['party','Party'],['aloud','Aloud'],['dm','DM'],['table','Table']];
 let filter='all',tab='chat',showScripted=false,items=[],seq=0,known=new WeakSet(),box,list,chip,newN=0,sig='',dmSig='',dmList,dmBar,openDm=new Set();
@@ -103,8 +103,8 @@ export function initChatPanel(){const sec=$('chatSec');if(!sec)return;
   const sum=el('summary',null,'Chat');box.append(sum);
   const tabs=el('div','tfilter');tabs.id='chatTabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Chat or DM agent');
   for(const [k,l] of [['chat','Chat'],['dm','DM agent']]){const b=el('button',null,l);b.dataset.ctab=k;b.setAttribute('role','tab');b.addEventListener('click',()=>setChatTab(k));tabs.append(b)}
-  {const w=el('button','chatwidebtn','Wider');w.id='chatWide';w.title='Make the side column wider (remembered)';
-   const apply=()=>{document.body.classList.toggle('chat-wide',wide);w.setAttribute('aria-pressed',String(wide));w.textContent=wide?'Narrower':'Wider'};
+  {const w=el('button','chatwidebtn','Taller');w.id='chatTall';w.title='Make the chat under the map taller (remembered)';
+   const apply=()=>{document.body.classList.toggle('chat-tall',wide);w.setAttribute('aria-pressed',String(wide));w.textContent=wide?'Shorter':'Taller'};
    w.addEventListener('click',()=>{wide=!wide;try{localStorage.setItem(WKEY,wide?'1':'0')}catch(e){}apply()});tabs.append(w);apply()}
   box.append(tabs);
   const pane=el('div');pane.id='chatPane';

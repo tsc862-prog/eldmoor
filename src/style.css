@@ -31,7 +31,7 @@ button.agbtn{font-size:9px;padding:7px 9px}
 h1{font-family:var(--px);font-size:clamp(20px,4vw,30px);margin:0;color:var(--gold);letter-spacing:.04em;text-shadow:3px 3px 0 #6a3a10;text-wrap:balance}
 .sub{color:var(--dim);margin-top:6px}
 .clock{font-family:var(--px);font-size:11px;color:var(--ink);background:var(--panel);border:2px solid var(--edge);padding:8px 10px;font-variant-numeric:tabular-nums}
-:root{--side:clamp(340px,28vw,460px)}body.chat-wide{--side:clamp(420px,42vw,640px)}
+:root{--side:clamp(340px,28vw,460px)}
 .main{display:grid;grid-template-columns:minmax(0,1fr) var(--side);gap:14px;align-items:start}
 @media (max-width:920px){.main{grid-template-columns:minmax(0,1fr)}}
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
@@ -423,13 +423,13 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .abils .ab .abcd i{display:block;height:100%;background:var(--gold)}
 /* Fellowship chat panel (#169) */
 .chatbox .chatwrap{position:relative}
-.chatbox .chatlist{max-height:300px;margin-top:6px}
+.chatbox .chatlist{height:clamp(150px,26vh,300px);max-height:none;margin-top:6px}body.chat-tall .chatbox .chatlist,body.chat-tall .chatdm{height:clamp(260px,46vh,560px)}
 .chatbox .chatlegend{margin:4px 0 0;font-size:15px}
 .chatnew{position:absolute;right:8px;top:6px;font-family:var(--px);font-size:7px;padding:5px 8px;background:var(--gold);color:#1a1408;border:2px solid #05060c;cursor:pointer}
 .log.chat li.chl.sys{color:var(--dim);font-size:15px;line-height:1.1}
 .log.chat li.chl.sys .hn{font-weight:normal}
 .log.chat li.chl.sys-result{color:var(--gold)}
-.chatdm{max-height:300px;overflow-y:auto}
+.chatdm{height:clamp(150px,26vh,300px);overflow-y:auto}
 .chatdm li.dimmed{opacity:.55}
 .chatdm li[role=button]{cursor:pointer}
 .chatdm li:focus-visible,.chatlist:focus-visible,.chatnew:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
