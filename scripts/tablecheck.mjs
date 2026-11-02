@@ -55,7 +55,8 @@ if (process.argv[2] === '--staged') {
   for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
   F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(true);
   const M = F_.fellowshipMembers().map(m => m.hero), A = M[0];
-  F_.setMinds('agent'); for (const x of M.slice(1)) {P.markPlayer(x, false); delete x.fellowAgent} // A is agent-played (and answers), the rest scripted
+  // #148: every member is agent-played; with no runner link they all play by reflex (A's answers come from play() below).
+  // A camp (the world's, not the DM's) may fall in a scene's window: its DM-log lines are not the DM's to tag.
   const home = homeOf(A).gate, zone = zoneFor(8, home), spot = zonePoint(zone, null, home);
   const place = () => M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []});
   const fresh = () => {place(); if (S.staged) S.staged.day.n = 0; if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} // the people lever's own limits are not under test here
@@ -92,7 +93,7 @@ if (process.argv[2] === '--staged') {
     if (CAST[kind].choices) ok(sc.beats.some(b => Object.values(CAST[kind].choices).includes(b.text)), 'the DM\'s own label for a legal action shows at the table');
     if (kind === 'meeting' || kind === 'social') ok((A.chat || []).some(e => e.from.kind === 'npc' && /^DM line/.test(e.text)), 'the voice call is said by the person, in the game');
     const mine = S.dmLog.filter(e => e.id > log0);
-    ok(mine.some(e => e.kind === 'frame' && tag(e)) && mine.some(e => e.kind === 'payoff' && tag(e)) && mine.every(e => tag(e) || e.kind === 'lever'), `DM log: ${mine.length} entries, every one tagged (${[...new Set(mine.map(e => e.kind))].join(', ')})`);
+    ok(mine.some(e => e.kind === 'frame' && tag(e)) && mine.some(e => e.kind === 'payoff' && tag(e)) && mine.every(e => tag(e) || e.kind === 'lever' || e.kind === 'camp'), `DM log: ${mine.length} entries, every one tagged (${[...new Set(mine.map(e => e.kind))].join(', ')})`);
     if (!['elite', 'ambush'].includes(kind)) ok(mine.some(e => e.kind === 'roll' && e.detail.d20 >= 1 && e.detail.dc), 'the dice decide: d20 rolls against a DC are logged');
     ok(M.every(x => x.state !== 'dead') && (kind !== 'trap' || M.every((x, i) => x.hp >= Math.min(hp0[i], Math.ceil(maxHp(x) * ST.STAGE.TRAP_FLOOR)))), 'nobody died; a trap never takes anyone below ' + ST.STAGE.TRAP_FLOOR * 100 + '% HP');
     ok(S.staged.cur.phase === 'done' && S.staged.cur.result, `the staged scene ends: ${S.staged.cur.result}`);

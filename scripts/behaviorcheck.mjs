@@ -137,6 +137,7 @@ for (let k = 0; k < 3; k++) LV.pull('mark_dangerous', {at: {x: spot.x, y: spot.y
 // a spot the lever accepts (open ground, not a town or a landmark), and E standing on it, hurt
 {let p = null; for (let r = 0; r < 12 && !p; r++) for (let dx = -r; dx <= r && !p; dx++) for (const dy of [-r, r]) {const q = {x: Math.floor(spot.x) + dx + .5, y: Math.floor(spot.y) + dy + .5}; if (!LV.spotErr(q)) {p = q; break}}
   if (p) {E.x = p.x; E.y = p.y}}
+await post('/play/claim', {hero: E.id, runner: 'mock-E', provider: 'anthropic', model: 'claude-haiku-5-5'}); // #148: held by a runner, E autopilots (rests) where it stands; with none its reflexes would walk it home
 E.hp = maxHp(E) * .2; E.state = 'hunt'; E.target = null;
 const lp = LV.pull('mark_dangerous', {at: {x: Math.floor(E.x) + .5, y: Math.floor(E.y) + .5}, r: 3, hours: 2}, {by: 'scripted', reason: 'the woods grow dark'});
 ok(lp.ok, 'a danger lever pulled where a hurt member stands' + (lp.ok ? '' : ': ' + lp.reason));
