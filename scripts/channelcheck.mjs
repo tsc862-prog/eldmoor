@@ -46,7 +46,7 @@ const NBm = await import('../src/sim/notebook.js');
 const PC = await import('../src/sim/pace.js');
 const HE = await import('../src/sim/heroes.js');
 const MM = await import('./memory-mirror.mjs');
-const {memoryNote} = await import('./pacing.mjs');
+const {memoryNote, claudeBrief} = await import('./pacing.mjs');
 const {dmTurnPrompt} = await import('./dm-agent.mjs');
 const {zoneFor, zonePoint, dist, ZONES, zoneAt} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
@@ -209,7 +209,7 @@ keep('A journal overview', act(A, 'journal_read', {})); keep('A journal_search d
 // A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
 for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));
 ok(act(A, 'recall', {n: 20}).notes.every(n => n.title === 'Road notes' || n.title === 'A writes.'), 'A\'s recall finds only A\'s own notes (its note and its journal entry, #179), whatever it asks');
-{const br = keep('A pace brief', PC.paceBrief(A.id)); keep('A memory line', memoryNote(br.brief)); keep('A brief text', SIM.S && br.brief ? JSON.stringify(br.brief) : '')}
+{const br = keep('A pace brief', PC.paceBrief(A.id)); keep('A memory line', memoryNote(br.brief)); keep('A Claude turn header', claudeBrief(br.brief)); keep('A brief text', SIM.S && br.brief ? JSON.stringify(br.brief) : '')}
 // a wait, finished by the host the way sim/player-host.js does
 const w = act(A, 'wait', {minutes: 10}); run(3); keep('A wait', P.finishWait(w.pending, true));
 for (const x of [rest[0], rest[1]]) for (const t of ['status', 'chat_read', 'party_read', 'look', 'earshot']) keep(x.name + ' ' + t, act(x, t, argsFor[t]));

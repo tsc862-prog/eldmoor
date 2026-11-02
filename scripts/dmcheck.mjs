@@ -161,6 +161,20 @@ ok(dmAct('pull_lever', {lever: 'named_foe', params: {}, reason: 'x'}).ok === fal
 ok(dmAct('pull_lever', {lever: 'set_condition', params: {region: 1}, reason: ''}).ok === false, 'a pull without a reason is refused');
 ok(dmAct('pull_lever', {lever: 'kill_hero', params: {}, reason: 'x'}).ok === false, 'an unknown lever is refused');
 ok(dmAct('pull_lever', {lever: 'set_condition', params: '{not json', reason: 'x'}).ok === false, 'params that are not an object are refused');
+// errors that carry the fix (issue #401): the lever's contract, the lever names, a lever called as a tool
+{const pulls1 = S.dmAgent.day.pulls;
+  r = dmAct('pull_lever', {lever: 'kill_hero', params: {}, reason: 'x'}); ok(/levers: .*set_condition.*post_hook|levers: .*post_hook.*set_condition/.test(r.error), 'an unknown lever lists the lever names: ' + r.error.slice(0, 90));
+  r = dmAct('pull_lever', {lever: 'set_condition', params: {region: ZONES[4] || ZONES[0]}, reason: 'fog'});
+  ok(r.ok === false && /kind is required/.test(r.error) && /set_condition takes params: region \(a region: .*\), kind \(/.test(r.error) && r.usage, 'a pull shaped wrong names the lever\'s params and legal values: ' + r.error.slice(0, 160));
+  r = dmAct('pull_lever', {lever: 'set_condition', params: {region: 1}, reason: ''}); ok(/reason is required/.test(r.error) && /pull_lever \{"lever":"set_condition"/.test(r.error), 'a pull without a reason says how to call it');
+  r = dmAct('pull_lever', {lever: 'set_condition', region: ZONES[4] || ZONES[0], kind: 'no-such-weather', reason: 'fog'});
+  ok(r.ok === false && /kind must be one of/.test(r.error), 'lever params given beside lever and reason are read as params (the refusal is about the value, not a missing key)');
+  r = dmAct('pull_lever', {lever: 'mark_dangerous', params: {x: -5, y: -5}, reason: 'x,y given flat'});
+  ok(r.ok === false && !/at is required/.test(r.error), 'a point given as x,y is read as the lever\'s point: ' + r.error.slice(0, 80));
+  S.dmAgent.day.pulls = pulls1;
+  r = dmAct('post_hook', {town: 'x'}); ok(r.ok === false && /pull_lever \{"lever":"post_hook"/.test(r.error) && /post_hook takes params: town/.test(r.error), 'a lever name called as a tool points to pull_lever with its params: ' + r.error.slice(0, 120));
+  r = dmAct('create_npc_placeholder', {}); ok(r.ok === false && /looks like the lever create_npc/.test(r.error), 'a made-up tool that contains a lever name points to that lever');
+  r = dmAct('fly', {}); ok(r.ok === false && /Tools: dm_status/.test(r.error) && /go through pull_lever/.test(r.error), 'an unknown DM tool lists the tools');}
 // pile-on: a badly hurt Fellowship member out in the field
 const hurt = fellows()[0], hz = zoneAt(hurt.x, hurt.y);
 hurt.state = 'hunt'; hurt.hp = maxHp(hurt) * .2;
@@ -230,6 +244,13 @@ console.log('staged scenes: refusals');
   no({frame: 'Mist.'}, /frame/, 'no real frame');
   no({cast: [1, 2]}, /cast must be an object/, 'a cast that is not an object');
   no({near: 'Nowhere-at-all'}, /unknown place/, 'an unknown place');
+  // the refusals carry the fix (issue #401): the legal places, the call's contract; a landmark is a place
+  {const {LANDMARKS} = await import('../src/world/map.js');
+    no({near: 'Nowhere-at-all'}, new RegExp('a member \\(' + L[0].name + '.*a landmark \\(' + LANDMARKS[0].name + '.*or a region \\(' + ZONES[0]), 'an unknown place lists members, landmarks and regions');
+    no({near: 'Nowhere-at-all'}, /stage_scene takes: kind \(elite\|ambush/, 'and the call\'s contract');
+    no({reason: ''}, /reason \(one sentence/, 'a missing reason names the call\'s contract');
+    const lm = LANDMARKS[LANDMARKS.length - 1], pl = st({kind: 'elite', preview: 'true', near: lm.name.replace(/^The /, ''), frame: undefined});
+    ok(pl.ok && pl.preview, `a landmark is a place to stage near ("${lm.name.replace(/^The /, '')}"): ` + (pl.cast || pl.error))}
   no({near: CITYN()}, /not inside/, 'inside a town');
   const stranger = S.agents.find(a => !a.fellow && a.state !== 'dead');
   no({near: stranger.name}, /only the Fellowship/, 'a hero outside the Fellowship');
@@ -253,7 +274,7 @@ console.log('staged scenes: refusals');
   S.staged.cur.phase = 'done'; S.staged.day.n = ST.STAGE.PER_DAY;
   no({}, /staged scenes today/, `past ${ST.STAGE.PER_DAY} a day`);
   S.staged.day.n = 0;
-  ok(S.dmLog.filter(e => /Staged scene refused/.test(e.summary.map(p => typeof p === 'string' ? p : p && p.t || '').join('')) && e.detail.by === 'dm-agent').length === n0 + 19, 'every refusal is in the DM log, tagged dm-agent');
+  ok(S.dmLog.filter(e => /Staged scene refused/.test(e.summary.map(p => typeof p === 'string' ? p : p && p.t || '').join('')) && e.detail.by === 'dm-agent').length === n0 + 22, 'every refusal is in the DM log, tagged dm-agent');
   ok(S.dmLog.some(e => e.kind === 'frame' && e.detail.by === 'dm-agent' && e.detail.staged === okR.staged && e.detail.reason === 'test'), 'the staging is in the DM log with its reason');
   const ds = dmAct('dm_status'); ok(ds.ok && ds.staged && /\/3$/.test(ds.staged.today), `dm_status shows the day's staged scenes (${ds.staged && ds.staged.today})`);
   const tc = dmAct('table_call'); ok(tc.ok && tc.call === null && tc.scene === null, 'table_call with nothing at the table: no call');
@@ -318,7 +339,7 @@ console.log('NPC conversations');
   r = dmAct('npc_offer', {npc: String(smith.id), conv: call.call.conv, kind: 'job', text: 'Bring back what the carters lost and I will pay.', tpl: 'relic'});
   ok(r.ok && r.mark === '[job posted]' && (S.adventures || []).filter(h => h.phase === 'open' && h.for === A.id).length === jobs0 + 1, `npc_offer job: ${r.hint}`);
   act(A, 'say', {text: 'Then we are agreed.'}); call = dmAct('npc_call');
-  r = dmAct('npc_say', {npc: String(smith.id), conv: call.call.conv, text: 'Agreed. Go.'});
+  r = dmAct('npc_say', {conv: call.call.conv, text: 'Agreed. Go.'}); // conv alone names the person (issue #401)
   ok(r.ok && r.ended && !TK.convWith(smith), `after ${TK.CONV.EXCHANGES} exchanges the conversation ends (${r.ended})`);
   ok(S.talks.past[0] && S.talks.past[0].offers.join() === 'trade,rumour,job', 'the past conversation keeps its follow-ups');
   // a polled but silent DM: the scripted DM answers after the budget
@@ -361,6 +382,12 @@ console.log('NPC conversations');
     const nr = dmAct('narrate', {text: long, near: A.name}), ns = dmAct('npc_say', {npc: String(smith.id), text: long});
     ok(nr.ok && nr.narrated === long && ns.ok && ns.said === long && long.length > 600, `narrate and npc_say keep a ${long.length}-character line whole`);
     ok(dmAct('npc_say', {npc: String(smith.id), text: 'x'.repeat(5000)}).said.length === DMA.NPC_SAY_MAX, `with a technical ceiling of ${DMA.NPC_SAY_MAX} characters`)}
+  // names as models write them (issue #401): spaces dropped, a near miss names the closest people
+  {const squeezed = (smith.title + smith.name).replace(/\s+/g, ''), ns = dmAct('npc_say', {npc: squeezed, text: 'Mind the forge.'});
+    ok(ns.ok && ns.who === smith.title + ' ' + smith.name, `npc_say finds "${squeezed}" ignoring spaces`);
+    const miss = dmAct('npc_say', {npc: smith.name.slice(0, -1) + 'q', text: 'x'});
+    ok(miss.ok === false && /Did you mean .*\(id /.test(miss.error) && miss.did_you_mean.some(p => p.id === smith.id), 'a near miss names the closest people with ids: ' + miss.error.slice(0, 120));
+    const none = dmAct('npc_say', {text: 'x'}); ok(none.ok === false && /npc is required/.test(none.error) && /conv alone/.test(none.error), 'no npc and no conv says what npc takes')}
   // saved with the world
   const snapT = JSON.parse(JSON.stringify(snapshot())); restore(snapT);
   const cap2 = S.npcs.find(p => p.id === capt.id), sm2 = S.npcs.find(p => p.id === smith.id);

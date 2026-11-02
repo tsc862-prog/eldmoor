@@ -241,3 +241,13 @@ export function watchWorld({base, known, onNew, every = 3000, fetchImpl = fetch}
   return () => {done = true; clearInterval(t)};
 }
 export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}) so the runner starts again for the current members; the old sessions are set aside in logs/agents/old/.`;
+
+// Claude turns (issue #401): the same fresh state header the local turns get (briefText: state, HP, place, foe, news,
+// memories, what was said lately), without its generic last line, plus the turn order. A Claude turn used to open with
+// 2-4 reads and loop wait/look/party_read until the call cap (44% of turns). scene: a table turn, header only.
+export const CLAUDE_TURN_ORDER = 'Act: give one command (or answer what is asked of you), then wait. When wait returns, act on its events if they need you, otherwise end your turn with one short sentence of narration; do not look again unless the events say the world changed.';
+export function claudeBrief(b, {scene = false} = {}) {
+  const t = briefText(b).replace(/\nAct through the tools[^\n]*$/, '');
+  if (scene) return t;
+  return t + (t ? '\nThis turn: the header above is fresh from the game, so do not open with status, look or party_read unless you need ids or detail it lacks. ' : '\nThis turn: ') + CLAUDE_TURN_ORDER;
+}

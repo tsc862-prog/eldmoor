@@ -24,7 +24,7 @@
 //   rec {id, kind, title, frame, reason, near:{hero, label}, at:{x,y}, z, lvl, cast:{...}, labels, born, until, phase, scene, result}
 //   S.table.calls [{id, kind, about, legal?, who?, t, done, by, text, pick}] while a staged scene is open
 import {S,clockStr,dayNo} from './state.js';
-import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {BESTIARY} from '../data/bestiary.js';
 import {WANDER_ROLES} from '../data/npcs.js';
@@ -107,10 +107,12 @@ const band=z=>REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];
 // Entries name no heroes (heroes: []): the Fellowship's campaign log and memories (fellowship.js readDm) take
 // the scene from the Table's own outcome, in the world's words, never the DM's bookkeeping ("staged", reasons).
 const LOG=(kind,summary,detail)=>dmlog(kind,null,summary,{by:'dm-agent',...detail},{heroes:[]});
-function refuse(why,a){if(a&&a.preview)return {ok:false,error:'Refused: '+why}; // a preview stages nothing, so it leaves no trace
+// The call's contract, added to the refusals of a call shaped wrong (issue #401), so the next call can be right.
+export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark or a region), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, choices); with preview "true" only kind, near and reason are needed';
+function refuse(why,a,usage){const err='Refused: '+why+(usage?'. '+STAGE_USAGE:'');if(a&&a.preview)return {ok:false,error:err}; // a preview stages nothing, so it leaves no trace
   const G=stagedState();G.stats.refused++;
   LOG('agent',['Staged scene refused: '+why+(a&&a.kind?' ('+clean(a.kind,12)+')':'')+'.'],{staged:null,kind:a&&a.kind?clean(a.kind,12):null,reason:clean(a&&a.reason,STAGE.REASON_MAX),result:'rejected: '+why});
-  return {ok:false,error:'Refused: '+why}}
+  return {ok:false,error:err}}
 
 // ---- where ----
 // A free spot min-max tiles from c: ahead toward `toward` if it can, else around; in c's own region if it can
@@ -130,22 +132,27 @@ function whereOf(near){const s=clean(near,60),lo=s.toLowerCase();
   const h=fellows().find(a=>String(a.id)===s||a.name.toLowerCase()===lo);
   if(h){if(h.hidden||h.state==='town'||h.state==='dungeon')return {err:h.name+' is '+(h.state==='town'?'in town':'out of reach')+' right now'};return {hero:h}}
   if(S.agents.some(a=>a.name.toLowerCase()===lo||String(a.id)===s))return {err:'only the Fellowship meets staged scenes; '+s+' is not one of them'};
-  if(CITY.some(c=>c.name.toLowerCase()===lo))return {err:'a staged scene happens out in the world, not inside '+s+'; pick a road spot or a region'};
+  const town=CITY.find(c=>c.name.toLowerCase()===lo);if(town){const tz=zoneAt(town.gate.x,town.gate.y);
+    return {err:'a staged scene happens out in the world, not inside '+town.name+'; pick a road spot ("x,y") or a region'+(tz!=null&&tz>=0?' (near: "'+ZONES[tz]+'")':'')}}
   const pl=(S.places||[]).find(p=>p.name.toLowerCase()===lo);if(pl){const at=spotNear(pl,1,3)||{x:pl.x,y:pl.y};return {at,label:'at '+pl.name}}
+  // a landmark (the Sunken Crypt, Kragmaw): the ground just outside it (issue #401)
+  const lm=LANDMARKS.find(l=>{const n=l.name.toLowerCase();return n===lo||n.replace(/^the /,'')===lo.replace(/^the /,'')});
+  if(lm){const e=(lm.exclude||0)+1,at=spotNear(lm,e,e+4);return at?{at,label:'near '+lm.name}:{err:'no open ground near '+lm.name}}
   const z=ZONES.findIndex(n=>n.toLowerCase()===lo);if(z>=0){const P=ZPTS[z]||[];if(!P.length)return {err:'no ground to stage on in '+ZONES[z]};
     let x=0,y=0;for(const p of P){x+=p.x;y+=p.y}const c={x:x/P.length,y:y/P.length},at=spotErr(c)?spotNear(c,1,6):{x:Math.round(c.x*10)/10,y:Math.round(c.y*10)/10};
     return at?{at,label:'in '+ZONES[z]}:{err:'no open ground in the middle of '+ZONES[z]}}
-  return {err:'unknown place "'+s+'" (a member\'s name or id, "fellowship", "x,y", a place name or a region)'}}
+  const pls=(S.places||[]).map(p=>p.name).filter(Boolean).slice(0,8);
+  return {err:'unknown place "'+s+'". near takes "fellowship", a member ('+fellows().map(a=>a.name).join(', ')+'), "x,y", a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+')'+(pls.length?', a place ('+pls.join(', ')+')':'')+' or a region ('+ZONES.join(', ')+')'}}
 
 // ---- staging (the DM tool stage_scene) ----
 // a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, trap, place, choices:{act:label}}, reason}
 export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),F=S.fellowship,seed0=seed,pv=a.preview===true||a.preview==='true';
   const kind=String(a.kind||'').toLowerCase().trim(),reason=clean(a.reason,STAGE.REASON_MAX);
   let cast=a.cast;if(typeof cast==='string'){try{cast=cast.trim()?JSON.parse(cast):{}}catch(e){cast=null}}if(cast==null)cast={};
-  if(!STAGE_KINDS.includes(kind))return refuse('kind must be one of '+STAGE_KINDS.join(', '),a);
-  if(typeof cast!=='object'||Array.isArray(cast))return refuse('cast must be an object',a);
-  if(!pv&&!reason)return refuse('a reason is required (one sentence, for the DM log)',a);
-  const frame=clean(a.frame,STAGE.FRAME_MAX);if(!pv&&frame.length<12)return refuse('the frame (what the heroes see as it begins) is missing or too short',a);
+  if(!STAGE_KINDS.includes(kind))return refuse('kind must be one of '+STAGE_KINDS.join(', '),a,1);
+  if(typeof cast!=='object'||Array.isArray(cast))return refuse('cast must be an object such as {"foe":"wolf","name":"Greyjaw"}',a,1);
+  if(!pv&&!reason)return refuse('a reason is required (one sentence, for the DM log)',a,1);
+  const frame=clean(a.frame,STAGE.FRAME_MAX);if(!pv&&frame.length<12)return refuse('the frame (what the heroes see as it begins) is missing or too short',a,1);
   if(!F||!fellows().length)return refuse('no Fellowship rides in this world',a);
   if(!pv){
   if(S.table)return refuse('a Table scene is open; stage the next one when it is over',a);
@@ -154,7 +161,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   if(today().n>=STAGE.PER_DAY)return refuse(STAGE.PER_DAY+' staged scenes today already; the world needs room to breathe',a)}
   if(!pv&&FIGHTING[kind]){const h=fellows().find(b=>b.state!=='town'&&!b.hidden&&b.hp<maxHp(b)*STAGE.PILE_HP);
     if(h)return refuse(h.name+' of the Fellowship is badly hurt ('+pct(h)+'% HP) out in the field: no staged '+kind+' until they recover',a)}
-  const W=whereOf(a.near);if(W.err)return refuse(W.err,a);
+  const W=whereOf(a.near);if(W.err)return refuse(W.err,a,/^unknown place/.test(W.err));
   const P=partyLvl();
   let at=W.at,label=W.label;
   // a cast walks in from out of sight; a trap or a strange place lies just ahead, where they pass

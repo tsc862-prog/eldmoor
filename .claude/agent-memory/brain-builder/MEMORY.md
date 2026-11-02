@@ -21,3 +21,4 @@
 - [Agentkit seam](agentkit-seam.md) — #290/#294 engine vs game design doc: adapter items, registries, carve order K1-K10, risks, owner questions
 - [Earshot](earshot.md) — #395 earshot tool + brief.earshot line, shared sayHearers/shoutHearers, spatial-index test pitfall
 - [Tool quick wins](tool-quickwins.md) — #399 owner rule accept-more tools; move_to label parsing, header town, name targets, PAUSED, toolwincheck pitfalls
+- [Tool quick wins C](tool-quickwins-c.md) — #401 leverUsage errors, lever-as-tool hint, fenced json calls, claudeBrief header for Claude turns, check pitfalls
