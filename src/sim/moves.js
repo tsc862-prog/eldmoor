@@ -8,13 +8,15 @@
 // cooldowns, so a Table use and a field use share one gate.
 //
 // Attack moves ("swing" in the data) take the place of a weapon blow; every other move is a free action.
-// Agent-played heroes (a.player) choose their own moves (tool use_ability); the policy never fires for them.
+// Agent-played heroes (a.player) choose their own moves (tool use_ability). Only when reflexes may decide for one (its runner
+// is gone, or no host: npm run sim) does the policy heal for it, with its class heal moves (reflexHeal, #347).
 import {rnd,ri} from '../core/rng.js';
 import {WALKABLE} from '../world/tiles.js';
 import {zoneAt,tileAt,dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
 import {MOVES,CLASS_MOVES,PASSIVES,SPEC_MOVES,MOVE_CONDS,CONDITIONS} from '../data/moves.js';
-import {specOf,ensureSpec} from './spec.js';
+import {specOf,ensureSpec,specBlock,pickSpec,chooseSpec} from './spec.js';
+import {reflexMay} from './runlink.js';
 import {profBonus} from '../data/abilities.js';
 import {S,clockStr} from './state.js';
 import {pop} from './effects.js';
@@ -136,8 +138,9 @@ function wants(a,M,ctx){const {foe,mates,f}=ctx;
   default:return null}}
 
 // The move the scripted hero reaches for, or null: free moves first, then a striking one when the swing is ready.
-export function pickMove(a,foe,mates,swing,mode='sec'){
-  const ids=movesOf(a).filter(id=>ready(a,id,mode));if(!ids.length)return null;
+// only(M): an optional filter on the moves looked at (a reflex member heals only, #347).
+export function pickMove(a,foe,mates,swing,mode='sec',only=null){
+  const ids=movesOf(a).filter(id=>ready(a,id,mode)&&(!only||only(MOVES[id])));if(!ids.length)return null;
   const live=(mates||[a]).filter(b=>living(b)&&b.fac===a.fac);
   const engaged=engagedNear(a,6);if(foe&&foe.kind==='boss'&&!engaged.includes(foe))engaged.push(foe);
   const ctx={foe,mates:live.includes(a)?live:[a,...live],swing,engaged,mh:maxHp(a),f:hpf(a)};
@@ -150,12 +153,27 @@ export function pickMove(a,foe,mates,swing,mode='sec'){
 
 // Fight hook (sim/heroes.js): use at most one move this step. Returns 'swing' when it took the weapon blow's place,
 // 'free' for any other move, null when nothing fired. Agent-played heroes decide for themselves.
-export function fightMoves(a,foe,mates,swing){if(a.player||a.hidden||!(a.lvl>0))return null;
+export function fightMoves(a,foe,mates,swing){if(a.hidden||!(a.lvl>0))return null;
+  if(a.player)return reflexHeal(a,foe,mates);
   if(a.lvl>=10&&!a.spec)ensureSpec(a,mates); // the scripted choice of a path (sim/spec.js, #82)
   if(!swing){if(now()<(a.mvAt||0))return null;a.mvAt=now()+.25} // free moves are looked at four times a second; a ready swing always is
   const p=pickMove(a,foe,mates,swing,'sec');if(!p)return null;
   const M=MOVES[p.id],t=M.target==='ally'||M.target==='foe'?p.target:null;
   const r=useMove(a,p.id,t,{mates,foe});return r.ok?(M.swing?'swing':'free'):null}
+
+// A heal move, for a reflex choice (#347): the class or path heal a member reaches for, through the same policy
+// (healally / masshurt thresholds) as a background healer.
+export const isHealMove=M=>M.kind==='heal';
+// An agent-played hero on reflex (reflexMay: its runner is gone and the owner let reflexes decide, or no host at all) heals
+// with its class heal move the way a scripted healer does: same policy, cooldowns, action log. Strikes, control and wards
+// stay the agent's. A reflex member at level 10 with no path takes the scripted one, so a Priest can learn Mending Touch.
+function reflexHeal(a,foe,mates){if(!reflexMay(a))return null;
+  if(a.lvl>=10&&!a.spec&&!specBlock(a)){const id=pickSpec(a,mates);if(id)chooseSpec(a,id,{by:'script'})}
+  if(now()<(a.mvAt||0))return null;a.mvAt=now()+.25;
+  const p=pickMove(a,foe,mates,false,'sec',isHealMove);if(!p)return null;
+  const M=MOVES[p.id],r=useMove(a,p.id,M.target==='ally'?p.target:null,{mates,foe});return r.ok?'free':null}
+// At the Table (sim/table.js reflexFor): the ready heal move a reflex healer uses on its lowest friend, or null.
+export function tableHealMove(a,mates){const p=pickMove(a,null,mates,false,'round',isHealMove);return p?p.id:null}
 
 // ---- views ----
 // For the dossier, the Fellowship sheet and the agent's status: one row per move and passive.

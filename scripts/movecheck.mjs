@@ -4,11 +4,13 @@
 import {init, step, S, snapshot, restore} from '../src/sim/index.js';
 import {MOVES, PASSIVES, CLASS_MOVES, CLASS_PASSIVES, KINDS} from '../src/data/moves.js';
 import {CLS} from '../src/data/classes.js';
-import {movesOf, useMove, canUse, pickMove, tickRound, cdLeft, roundsLeft, abilityView} from '../src/sim/moves.js';
+import {movesOf, useMove, canUse, pickMove, tickRound, cdLeft, roundsLeft, abilityView, fightMoves} from '../src/sim/moves.js';
+import {setRunnerLinks} from '../src/sim/runlink.js';
+import {actionLog} from '../src/sim/actlog.js';
 import {combatStats, dmgTaken} from '../src/sim/stats.js';
 import {effOn} from '../src/sim/eff.js';
 import {rebuild} from '../src/sim/spatial.js';
-import {optionsFor, TABLE} from '../src/sim/table.js';
+import {optionsFor, reflexFor, TABLE} from '../src/sim/table.js';
 import {SPECS, CLASS_SPECS, SPEC_LVL} from '../src/data/classes.js';
 import {SPEC_MOVES, SPEC_PASSIVES} from '../src/data/moves.js';
 import {chooseSpec, specBlock, pickSpec, ensureSpec} from '../src/sim/spec.js';
@@ -132,6 +134,47 @@ if (S.fellowship) {
   const d0 = fo.hp, rd = useMove(ws, 'briarlash', fo); ok(rd.ok && fo.hp < d0, 'Briar Lash strikes: ' + (rd.text || rd.error));
   const rb = useMove(ws, 'rootbind', fo); ok(rb.ok, 'Rootbind holds a foe: ' + (rb.text || rb.error));
   ok(CLASS_SPECS.Wildspeaker && CLASS_SPECS.Wildspeaker.length === 2, 'Wildspeaker has two specialisations');
+}
+
+// ---- a reflex Fellowship healer heals with its class move (#347) ----
+{
+  const uses = id => (S.moveStats && S.moveStats.uses[id]) || 0;
+  const mem = S.agents.filter(x => x.fellow && x.state !== 'dead' && x.state !== 'ghost' && !x.hidden);
+  const hl = mem.find(x => CLS[x.cls].heal), mate = mem.find(x => x !== hl);
+  if (hl && mate) {
+    for (const b of mem) b.hp = combatStats(b).health;
+    hl.lvl = 12; delete hl.spec; hl.mcd = {}; hl.mcr = {}; hl.mvAt = 0; hl.hp = combatStats(hl).health;
+    mate.x = hl.x + 1; mate.y = hl.y; mate.hp = combatStats(mate).health * .5; const fo = foeNear(hl); fo.target = mate; rebuild();
+    ok(hl.player, `the Fellowship ${hl.cls} is agent-played`);
+    setRunnerLinks(() => 'connected'); const h0 = mate.hp;
+    ok(fightMoves(hl, fo, mem, false) === null && mate.hp === h0 && !hl.spec, 'with its runner there, the agent keeps its moves and its path');
+    setRunnerLinks(null);
+    ok(fightMoves(hl, fo, mem, false) === 'free' && !!hl.spec && mate.hp > h0, `on reflex it takes a path (${hl.spec}) and heals with a class move (${(hl.moveLog || []).map(x => x.id).join(', ')})`);
+    // the Mender's own heal, through useMove: cooldown, the action log, once per cooldown
+    for (const b of mem) b.hp = combatStats(b).health;
+    const seat = hl;
+    {const bg = seat.cls === 'Priest' ? null : mk('Priest', 12), hl = bg || seat; // a background Priest stands in on reflex when the seat is another healer
+      if (bg) {bg.player = true; bg.fac = mate.fac; bg.x = mate.x - 1; bg.y = mate.y; rebuild()}
+      delete hl.spec; chooseSpec(hl, 'mender'); hl.mcd = {}; hl.mcr = {}; hl.mvAt = 0; mate.hp = combatStats(mate).health * .5; const n0 = uses('mendingtouch');
+      ok(fightMoves(hl, fo, mem, false) === 'free' && uses('mendingtouch') === n0 + 1 && cdLeft(hl, 'mendingtouch') > 0, 'a reflex Mender heals with Mending Touch, and it cools down');
+      ok(actionLog(hl, {kinds: ['heal']}).some(e => e.name === 'Mending Touch' && e.target === mate.name), 'the heal is in the action log, named');
+      hl.mvAt = 0; mate.hp = combatStats(mate).health * .5; fightMoves(hl, fo, mem, false); ok(uses('mendingtouch') === n0 + 1, 'not again while it cools down');
+      // at the Table: the reflex heal is the class move when it is ready, the plain heal when it is not
+      hl.mcd = {}; hl.mcr = {}; mate.hp = combatStats(mate).health * .45;
+      const sc3 = {kind: 'elite', ctx: {mob: fo.id}, ids: [hl.id], acts: {}, beats: []};
+      ok(reflexFor(sc3, hl) === 'mendingtouch', 'at the Table a reflex Mender heals with Mending Touch: ' + reflexFor(sc3, hl));
+      hl.mcr.mendingtouch = 2; ok(reflexFor(sc3, hl) === 'heal', 'and with the plain heal while it cools down');
+      if (bg) bg.player = false;
+    }
+    for (const b of mem) b.hp = combatStats(b).health;
+  } else ok(false, 'a Fellowship healer to test reflex heals with');
+  // a reflex Wildspeaker (an agent-played hero with no runner) mends with Greenmend
+  const ws = mk('Wildspeaker', 8), hu = mk('Warrior', 8); hu.fac = ws.fac; hu.x = ws.x + 1; hu.y = ws.y; hu.hp = combatStats(hu).health * .4; const fo = foeNear(ws); rebuild();
+  ws.player = true; ws.mvAt = 0; const g0 = uses('greenmend'), hh = hu.hp;
+  ok(fightMoves(ws, fo, [ws, hu], false) === 'free' && uses('greenmend') === g0 + 1 && hu.hp > hh, 'a reflex Wildspeaker heals with Greenmend');
+  ws.mvAt = 0; ws.mcd = {}; hu.hp = combatStats(hu).health * .4; const hp1 = fo.hp;
+  ok(fightMoves(ws, fo, [ws, hu], true) !== 'swing' && fo.hp === hp1, 'on reflex it heals, but strikes and control stay with the agent');
+  ws.player = false;
 }
 
 // ---- save round trip ----
