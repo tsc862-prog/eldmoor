@@ -38,6 +38,8 @@ jobs:
         run: npm run dmcheck
       - name: In-game channels (planted secrets never reach a hero)
         run: npm run channelcheck
+      - name: Learn the world (lorecheck)
+        run: npm run lorecheck
       - name: Behavior logs (mock runners, known anomalies logged and reported)
         run: npm run behaviorcheck
       - name: Headless sim (10 game-hours)
