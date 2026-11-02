@@ -16,6 +16,7 @@ import {MOBS} from '../data/mobs.js';
 import {GOODS,price,EPIC_ITEMS,PROPS,USES,QUEST_ITEMS,useLines} from '../data/items.js';
 import {capOf,used as packUsed,isGear} from '../sim/inv.js'; // the pack (#124)
 import {combatStats} from '../sim/stats.js';
+import {gearScore} from '../sim/gear.js';
 import {S,clockStr,maxHp,xpNeed,onLog,onMarketTick} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {weatherName} from '../sim/weather.js';
@@ -93,10 +94,8 @@ export function setTab(t){if(TABS.some(([k])=>k===t)){tab=t;lastIn[groupOf(t)]=t
 export function setGroup(g){const G=GROUPS.find(x=>x[0]===g);if(!G)return;const a=cam.sel,ok_=k=>!a||tabShown(a,k);
   const inG=TABS.map(([k])=>k).filter(k=>groupOf(k)===g&&ok_(k));setTab(inG.includes(lastIn[g])?lastIn[g]:inG[0]||'stats')}
 
-// Gear score: the gear module's own number when it has merged (a.gearScore), else the
-// mean item level of the seven slots, else the legacy a.gear counter.
-// TODO(#20): swap in gearScore(a) from sim/gear.js once that module is on main.
-const gearScoreOf=a=>typeof a.gearScore==='number'?a.gearScore:a.slots?Math.round(SLOTS.reduce((t,[k])=>t+(a.slots[k]?a.slots[k].ilvl||0:0),0)/SLOTS.length):a.gear;
+// Gear score: the gear module's own number, rounded to one decimal like the brain snapshot (#362).
+const gearScoreOf=a=>Math.round(gearScore(a)*10)/10;
 
 // ---- Stats tab (issue #88) ----
 // Six sections, top to bottom: Identity, Scores, Combat, Skills, Record, Story. The six scores are the
