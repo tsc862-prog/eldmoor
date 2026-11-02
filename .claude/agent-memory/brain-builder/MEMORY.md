@@ -23,3 +23,4 @@
 - [Tool quick wins](tool-quickwins.md) — #399 owner rule accept-more tools; move_to label parsing, header town, name targets, PAUSED, toolwincheck pitfalls
 - [Tool quick wins C](tool-quickwins-c.md) — #401 leverUsage errors, lever-as-tool hint, fenced json calls, claudeBrief header for Claude turns, check pitfalls
 - [Own persona](own-persona.md) — #409 self/become tools, limits, self/owner markers, header line + standing-order block, reflection become
+- [Hunt where](hunt-where.md) — #411 hunt {where} via plan(), [move,hunt] queue, lazy k0, zonePoint enemy-wall retry, hash-compare recipe
