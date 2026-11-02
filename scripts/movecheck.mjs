@@ -36,7 +36,8 @@ for (const id in PASSIVES) {const P = PASSIVES[id]; ok(P.name && P.cls in CLS &&
 // ---- the resolver ----
 init({fellowship: false}); for (let i = 0; i < 600; i++) step(1 / 60);
 const used = new Set();
-const mk = (cls, lvl) => {const a = S.agents.find(x => x.cls === cls && x.kind === 'hero' && !used.has(x.id) && !x.hidden && !x.player && x.state !== 'dead' && x.state !== 'ghost'); used.add(a.id); a.lvl = lvl; delete a.spec; a.hp = combatStats(a).health; a.mcd = {}; a.mcr = {}; a.eff = {}; return a};
+const mk = (cls, lvl) => {const pick = u => S.agents.find(x => x.cls === cls && x.kind === 'hero' && !u.has(x.id) && !x.hidden && !x.player && x.state !== 'dead' && x.state !== 'ghost'); const a = pick(used) || pick(new Set()); // the roster has few of each class: reuse one when all are taken
+   used.add(a.id); a.lvl = lvl; delete a.spec; a.hp = combatStats(a).health; a.mcd = {}; a.mcr = {}; a.eff = {}; return a};
 const usedM = new Set();
 const foeNear = a => {const m = S.mobs.find(x => x.alive && !x.gone && !x.elite && !usedM.has(x.id)); usedM.add(m.id); m.x = a.x + 1; m.y = a.y; m.lvl = Math.max(1, a.lvl - 2); m.maxhp = 400; m.hp = 400; m.target = a; m.cd = 0; rebuild(); return m};
 
@@ -121,6 +122,16 @@ if (S.fellowship) {
   ok(rr.ok && effOn(sk, 'taken') && effOn(mate, 'taken') && rr.hit === 2, 'Rallying Verse wards every friend in range: ' + (rr.text || rr.error));
   const d0 = fo.hp, rd = useMove(sk, 'bitingverse', fo); ok(rd.ok && fo.hp < d0, 'Biting Verse strikes: ' + (rd.text || rd.error));
   ok(CLASS_SPECS.Skald && CLASS_SPECS.Skald.length === 2, 'Skald has two specialisations');
+}
+
+// ---- Wildspeaker (issue #83): the single-target mend and the root ----
+{
+  const ws = mk('Wildspeaker', 8), hurt = mk('Warrior', 8); hurt.x = ws.x + 1; hurt.y = ws.y; hurt.hp = 5; const fo = foeNear(ws); rebuild();
+  ok(movesOf(ws).length === 3 && movesOf(mk('Wildspeaker', 1)).length === 1, 'Wildspeaker learns Briar Lash at 1 and three abilities by 8');
+  const h = useMove(ws, 'greenmend', hurt, {mates: [ws, hurt], foe: fo}); ok(h.ok && hurt.hp > 5, 'Greenmend heals one friend: ' + (h.text || h.error));
+  const d0 = fo.hp, rd = useMove(ws, 'briarlash', fo); ok(rd.ok && fo.hp < d0, 'Briar Lash strikes: ' + (rd.text || rd.error));
+  const rb = useMove(ws, 'rootbind', fo); ok(rb.ok, 'Rootbind holds a foe: ' + (rb.text || rb.error));
+  ok(CLASS_SPECS.Wildspeaker && CLASS_SPECS.Wildspeaker.length === 2, 'Wildspeaker has two specialisations');
 }
 
 // ---- save round trip ----

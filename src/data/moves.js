@@ -65,6 +65,13 @@ export const MOVES={
     fx:{taken:.85},dur:8,durR:2,use:'rally',desc:'A marching line sung to the whole company: every friend within five tiles takes blows at 85% for eight seconds.'},
   dirge:{name:'Dirge of Doubt',cls:'Skald',kind:'control',lvl:6,cd:24,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
     fx:{delay:1.5,mark:1.2},dur:8,durR:2,save:{abil:'wits',stat:'presence'},use:'mark',desc:'A slow tune that gets under the guard of a foe: it loses 1.5 seconds and, for eight, every blow on it does 20% more (a save resists both).'},
+  // ---- Wildspeaker: the green hand (issue #83) ----
+  briarlash:{name:'Briar Lash',cls:'Wildspeaker',kind:'attack',lvl:1,cd:12,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:1.5,delay:.6},use:'burst',desc:'A whip of living bramble: 150% damage, and the foe flinches for 0.6 seconds.'},
+  greenmend:{name:'Greenmend',cls:'Wildspeaker',kind:'heal',lvl:3,cd:14,rounds:2,cost:null,target:'ally',range:5,swing:false,
+    fx:{heal:{base:14,lvl:3.5,hp:.08}},use:'healally',desc:'Moss and a murmur on one hurt friend: 14 + 3.5 per level + 8% of their health.'},
+  rootbind:{name:'Rootbind',cls:'Wildspeaker',kind:'control',lvl:6,cd:26,rounds:4,cost:null,target:'foe',range:'weapon',swing:false,
+    fx:{dmg:.3,delay:3},save:{abil:'reflex',stat:'insight'},use:'snare',desc:'Roots rise round the feet of the foe: 30% damage and it loses 3 seconds before its next blow (half on a save).'},
   // ---- Specialisations (issue #82): one extra ability per path, learned at level 10 with the path (spec:<id>) ----
   wardencover:{name:'Shield Cover',cls:'Warrior',spec:'warden',kind:'defend',lvl:10,cd:24,rounds:4,cost:null,target:'ally',range:4,swing:false,
     fx:{taken:.55},dur:6,durR:2,use:'wardally',desc:'Step in front of a friend and lift the shield: blows on them land at 55% for six seconds.'},
@@ -88,6 +95,10 @@ export const MOVES={
     fx:{dmg:.8},use:'crowd',desc:'A war-chant that shakes the air: 80% damage to every foe within three tiles.'},
   lullaby:{name:'Lullaby of the Hearth',cls:'Skald',spec:'soothsinger',kind:'heal',lvl:10,cd:30,rounds:5,cost:null,target:'allies',range:5,swing:false,
     fx:{heal:{base:10,lvl:3,hp:.06}},use:'masshurt',desc:'A hearth-song for the whole company: every friend within five tiles heals 10 + 3 per level + 6% of their health.'},
+  thornring:{name:'Ring of Thorns',cls:'Wildspeaker',spec:'thornbinder',kind:'control',lvl:10,cd:22,rounds:3,cost:null,target:'foes',range:3,swing:false,
+    fx:{dmg:.7,delay:1.5},save:{abil:'reflex',stat:'insight'},use:'crowd',desc:'Briars burst from the ground round you: every foe within three tiles takes 70% damage and loses 1.5 seconds (half on a save).'},
+  antlerward:{name:'Antler Ward',cls:'Wildspeaker',spec:'springwarden',kind:'defend',lvl:10,cd:32,rounds:5,cost:null,target:'allies',range:5,swing:false,
+    fx:{taken:.8},dur:6,durR:2,use:'rally',desc:'A crown of green antlers over the company: every friend within five tiles takes blows at 80% for six seconds.'},
   dirtytrick:{name:'Dirty Trick',cls:'Rogue',spec:'trickster',kind:'control',lvl:10,cd:22,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
     fx:{delay:3,mark:1.2},dur:8,durR:2,save:{abil:'insight',stat:'wits'},use:'mark',desc:'Sand, a feint, a shout: the foe loses 3 seconds and, for eight, every blow on it does 20% more (a save resists both).'},
 };
@@ -107,6 +118,8 @@ export const PASSIVES={
   sanctuary:{name:'Sanctuary',cls:'Priest',lvl:8,takenBelow:{hp:.5,mul:.9},desc:'Under half health, blows on you land at 90%.'},
   knifehand:{name:'Knife-Hand',cls:'Rogue',lvl:3,crit:.06,desc:'+6% Crit.'},
   slipblow:{name:'Slip the Blow',cls:'Rogue',lvl:6,taken:.95,desc:'Blows on you land at 95%: you are seldom where the weapon thought.'},
+  barkskin:{name:'Barkskin',cls:'Wildspeaker',lvl:2,defense:.05,desc:'+5% Defense: the skin toughens like bark.'},
+  greenpatience:{name:'Green Patience',cls:'Wildspeaker',lvl:7,healMul:1.1,health:.04,desc:'Healing done +10% and +4% Health.'},
   practisedear:{name:'Practised Ear',cls:'Skald',lvl:2,crit:.05,desc:'+5% Crit: you hear the beat of the fight.'},
   lastverse:{name:'Last Verse',cls:'Skald',lvl:7,takenBelow:{hp:.5,mul:.9},desc:'Under half health, blows on you land at 90%: you sing louder when it matters.'},
   // ---- Specialisation passives (issue #82), learned with the path at level 10 ----
@@ -121,6 +134,8 @@ export const PASSIVES={
   deadlyopening:{name:'Deadly Opening',cls:'Rogue',spec:'cutthroat',lvl:10,crit:.04,openerMul:1.25,desc:'+4% Crit; the first blow on an unhurt foe does 25% more.'},
   fieldvoice:{name:'Field Voice',cls:'Skald',spec:'warchanter',lvl:10,crit:.04,openerMul:1.2,desc:'+4% Crit; the first blow on an unhurt foe does 20% more.'},
   softrefrain:{name:'Soft Refrain',cls:'Skald',spec:'soothsinger',lvl:10,healMul:1.15,health:.05,desc:'Healing done +15% and +5% Health.'},
+  barbedbramble:{name:'Barbed Bramble',cls:'Wildspeaker',spec:'thornbinder',lvl:10,crit:.04,openerMul:1.15,desc:'+4% Crit; the first blow on an unhurt foe does 15% more.'},
+  evergreen:{name:'Evergreen',cls:'Wildspeaker',spec:'springwarden',lvl:10,health:.06,healMul:1.1,desc:'+6% Health and healing done +10%.'},
   nimble:{name:'Nimble',cls:'Rogue',spec:'trickster',lvl:10,taken:.92,desc:'Blows on you land at 92%.'},
 };
 
