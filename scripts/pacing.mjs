@@ -14,7 +14,7 @@
 // heartbeat at 1x, never less than the gap.
 // Safety stop: failTracker(maxFails) counts failed or empty turns in a row (a turn that threw, made no
 // tool call, or had every call rejected); the runner stops after maxFails of them.
-export const PACE_DEFAULTS = {heartbeat: 240, minGap: 20, maxFails: 5};
+export const PACE_DEFAULTS = {heartbeat: 120, minGap: 20, maxFails: 5};
 // Another local model held by Ollama (the relay's minds, another runner) evicts ours on a single GPU: say so.
 export async function localModelNote(adapter, model) {
   const held = adapter && adapter.loaded ? await adapter.loaded() : null, others = (held || []).filter(m => m !== model);
