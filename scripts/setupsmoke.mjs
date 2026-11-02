@@ -93,7 +93,7 @@ if(mode==='a'){
   const sels=(r,f)=>all(r,'select').find(s=>s.dataset.f===f);
   const opts=f=>sels(ids.get('setup'),f).childNodes.map(o=>o.value);
   ok(JSON.stringify(opts('cls:tank'))==='["Warrior"]'&&JSON.stringify(opts('cls:healer'))==='["Priest"]','tank/healer classes fixed');
-  ok(opts('cls:dps1').join()==='Mage,Hunter,Rogue','DPS classes: '+opts('cls:dps1'));
+  ok(opts('cls:dps1').join()==='Mage,Hunter,Rogue,Skald','DPS classes: '+opts('cls:dps1'));
   ok(/Relay/.test(text(ids.get('setup'))),'relay line');
   ok(!all(ids.get('setup'),'button').some(b=>/All scripted/.test(b.textContent)),'no All scripted preset (#148: the Fellowship is always agent-played)');
   ok(all(ids.get('setup'),'.scard').every(c=>!all(c,'button').some(b=>b.dataset.a==='mode')),'no Scripted / AI buttons on a member card, only its model');

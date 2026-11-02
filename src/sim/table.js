@@ -110,7 +110,7 @@ export const scene=()=>S.table||null;
 export const inScene=a=>!!(S.table&&a&&S.table.ids.includes(a.id));
 
 // ---- options a member has at its turn ----
-const SPECIAL={Warrior:['hold','Hold the line at the front'],Priest:['ward','Ward the group with prayer'],Rogue:['scout','Scout ahead in the dark'],Hunter:['scout','Scout ahead and read the tracks'],Mage:['read','Read the old wards on the walls']};
+const SPECIAL={Warrior:['hold','Hold the line at the front'],Priest:['ward','Ward the group with prayer'],Rogue:['scout','Scout ahead in the dark'],Hunter:['scout','Scout ahead and read the tracks'],Mage:['read','Read the old wards on the walls'],Skald:['read','Sing the old verses on the walls and hear what they warn of']};
 const SITE_BONUS={hold:.45,ward:.45,scout:.45,read:.45,press:.3,careful:.15};
 function foeOf(sc){const c=sc.ctx||{};if(sc.kind==='boss')return S.boss&&S.boss.alive?S.boss:null;
   if(c.mobs){for(const id of c.mobs){const m=S.mobs.find(x=>x.id===id);if(m&&m.alive&&!m.gone)return m}return null} // a staged pack: the first still standing

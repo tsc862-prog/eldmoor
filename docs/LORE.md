@@ -70,7 +70,7 @@ retired. Names and 2-3 letter tags are unique among living guilds and generated 
   may reappear in the Chronicle as history or be worn again by a new banner.
 
 ## Classes
-Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), Rogue (melee, crits).
+Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), Rogue (melee, crits), Skald (war-singer, see below).
 
 ## Traits
 Every hero is born with one or two of these and keeps them for life. Rogues lean
@@ -217,6 +217,26 @@ At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/
 | Rogue | **Trickster** | Wits, Presence / Lore | Nimble (blows at 92%) | **Dirty Trick** (foe loses 3 s and takes 20% more for 8 s) | wins by misdirection |
 
 The **Warden** path is a living warrior's vow to stand guard over friends; it has nothing to do with the undead wardens of the Sunken Crypt (Lich-Warden Vesk and his Grave Wardens), who guard the dead. The word is shared, the calling is not. Trapper: Thornfield now also opens on one worthwhile foe (an elite, a boss, a duellist or a mob near the Trapper's level), not only on a pack; Mender: Mending Touch answers a friend below 72% health.
+
+## Skald (issue #83)
+The sixth class: a **Skald** is a war-singer, one of the road-poets who march behind a shield wall and make the fight easier to bear. Not a healer and not a mage: the voice is the weapon, and the work is done to the whole company at once. In the Fellowship a Skald is a DPS pick (Mage, Hunter, Rogue or Skald); the three DPS places still prefer three different classes. Ability score Presence (then Wits); trained in Persuasion, Lore, Intimidation and Perception. Mid health, a medium reach of about three tiles, no armour training (by canon light gear, hide and cloth like a Rogue; the gear tables in `src/data/items.js` do not list the Skald yet). Banner colours: rose and plum, with a gold-bodied lute carried on the right.
+
+| Kind | Name | Level | Gist |
+| --- | --- | --- | --- |
+| Verse | **Biting Verse** | 1 | a sung blow, 170% damage and a flinch of 0.6 s |
+| Verse | **Rallying Verse** | 3 | the whole company within five tiles takes blows at 85% for 8 s |
+| Verse | **Dirge of Doubt** | 6 | one foe loses 1.5 s and takes 20% more for 8 s (a save resists) |
+| Passive | **Practised Ear** | 2 | +5% Crit |
+| Passive | **Last Verse** | 7 | under half health, blows land at 90% |
+
+Paths at level 10:
+
+| Path | Scores / skill | Passive | Ability | Gist |
+| --- | --- | --- | --- | --- |
+| **Warchanter** | Presence, Brawn / Intimidation | Field Voice (+4% Crit, +20% opener) | **Roaring Chant** (80% to every foe within three tiles) | sings the fight forward |
+| **Soothsinger** | Presence, Insight / Healing | Soft Refrain (healing +15%, +5% Health) | **Lullaby of the Hearth** (heals every friend within five tiles) | sings the party back together |
+
+Skald is a generic fantasy role (the word is an old one for a poet of war); the abilities, paths and quirks here are Eldmoor's own. Soothsinger is not a Priest: the lullaby is a small mercy for a whole company, where a Priest's healing is aimed and large.
 
 ## Bonds and blood debts
 Heroes who fight side by side grow fond of each other (`src/sim/bonds.js`). Shared kills,

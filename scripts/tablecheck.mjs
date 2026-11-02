@@ -117,7 +117,8 @@ if (process.argv[2] === '--staged') {
   // A camp (the world's, not the DM's) may fall in a scene's window: its DM-log lines are not the DM's to tag.
   const home = homeOf(A).gate, zone = zoneFor(8, home), spot = zonePoint(zone, null, home);
   const place = () => M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []});
-  const fresh = () => {place(); if (S.staged) S.staged.day.n = 0; if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} // the people lever's own limits are not under test here
+  const fresh = () => {if (CRYPT.group) {for (const a of CRYPT.group.mem) {a.state = 'hunt'; a.hidden = false} CRYPT.group = null} CRYPT.cd = 1e6; if (S.table && S.table.ctx && S.table.ctx.staged == null) S.table = null; // a Crypt crawl the Fellowship wandered into is left, so the staged scene can open
+   place(); if (S.staged) S.staged.day.n = 0; if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} // the people lever's own limits are not under test here
     for (const m of S.mobs) if (dist(m, spot) < 30) {m.alive = false; m.gone = true}}; // an earlier staged pack the rounds left standing goes too (#276)
   const tag = e => e.detail && (e.detail.by === 'dm-agent' || e.detail.by === 'scripted');
   // mock DM: 'answer' answers every call at once, 'silent' polls but never answers, 'away' never polls
@@ -443,7 +444,7 @@ console.log('everyone answers at once');
  const fieldAll = () => {for (const m of S.mobs) if (m.alive && !m.gone && dist(m, spot) < 16) {m.alive = false; m.gone = true}
    RM.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []; x.splitUntil = 0; x.playEv = []})};
  for (const p of S.parties.slice()) if (p.fellow) {for (const b of p.mem) b.party = null; S.parties.splice(S.parties.indexOf(p), 1)}
- fieldAll(); const lead = C.leaderOfF();
+ CP.breakCampNow('test'); fieldAll(); const lead = C.leaderOfF(); // a camp the world made on its own (game time ran in the sections above) is broken first
  const rc = CP.leaderRest(lead, 4); run(1);
  ok(!rc && CP.campOf(), 'the leader makes camp in the field' + (rc ? ': ' + rc : ''));
  T.TABLE.mode = 'auto'; for (const x of RM) x.playEv = [];
