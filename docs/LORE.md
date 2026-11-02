@@ -357,7 +357,7 @@ Sample lines:
 - **The Sunken Crypt of the Stepping Lands** (level 4-9, Sedgewater): the same dungeon name, but the crawl here is three chambers of its own (#309), proving the rooms are data per world. Creatures are the Crypt species (Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens).
   - **The Reed Sump**: a flooded stair-foot choked with dead reeds; Tomb Skitters under the water-mat.
   - **The Salt-Bone Hall**: shelves crusted white with fen salt; a Crypt Shambler and a Bone Archer.
-  - **The Mere-Warden's Seat**: a round pool with a stone chair in it; the boss room. **Mere-Warden Hask** (a Grave Warden, level 4-9 band) keeps the watch while the fen rises, with a Tomb Skitter at his feet.
+  - **The Mere-Warden's Seat**: a round pool with a stone chair in it; the boss room. **Mere-Warden Hask** (a Grave Warden, pitched for the 4-9 band though the species starts at level 7; deliberate, he is a named exception) keeps the watch while the fen rises, with a Tomb Skitter at his feet.
 - **The Hollow Cairn** (level 8-13, Cairnwold): placeholder second dungeon. Only the entrance exists today; it has no group runs, boss fight or loot. Its warden, **The Cairn-Warden**, is reserved for the future dungeon.
 - **Brask Ironhorn, the Ram-King of the Cairnwold** (Cairnwold elite, level 15, kin Tundra Shaghorn): a crag-ram with one horn snapped and the other grown into his own shoulder. Placeholder.
 - **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.

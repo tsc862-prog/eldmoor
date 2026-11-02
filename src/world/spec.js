@@ -189,7 +189,7 @@ export const STEPPING={
     {name:'Murkstead',fac:1,x0:28,y0:62,w:11,h:9,gate:'E',race:'mirekin',spots:TOWN_SPOTS},
   ],
   landmarks:[
-    {kind:'crypt',name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25,rooms:STEPPING_CRYPT_ROOMS},
+    {kind:'crypt',name:'The Sunken Crypt',boss:'Mere-Warden Hask',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25,rooms:STEPPING_CRYPT_ROOMS},
     {kind:'lair',name:'Kragmaw',x:140.5,y:66.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
     // Placeholder second dungeon: an entrance only, no group, boss or loot yet (see LORE.md).
     {kind:'crypt',name:'The Hollow Cairn',boss:'The Cairn-Warden',x:84.5,y:14.1,mouth:{x0:83,y0:12,w:3,h:3},exclude:3.5,cd:25},
