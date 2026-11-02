@@ -38,6 +38,7 @@ export const SKILLS={
   athletics:   {name:'Athletics',   abil:'brawn',   desc:'Run, climb, haul and break away.'},
   survival:    {name:'Survival',    abil:'grit',    desc:'Weather, forage and the long road.'},
   perception:  {name:'Perception',  abil:'insight', desc:'Notice the thing that is about to happen.'},
+  empathy:     {name:'Empathy',     abil:'insight', desc:'Read a person: what they want, what they fear, what they leave unsaid.'}, // hearing someone out (#170)
 };
 export const SKILL_IDS=Object.keys(SKILLS);
 

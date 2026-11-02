@@ -1,0 +1,116 @@
+// The Fellowship chat panel (#169): the whole conversation in one stream, always one click away, plus the
+// DM agent's actions as a sibling tab. A side-column panel under the Fellowship panel, open by default.
+//   Chat tab   party lines, members speaking aloud, the Narrator and DM-voiced characters, Table scene lines, and
+//              the party's proposals, votes and results as small system lines. Filters: All, Party, Aloud, DM, Table.
+//              Oldest first, newest at the bottom. It follows new lines while the owner is at the bottom; scrolled up
+//              it leaves the view alone and shows a "N new lines" chip. Rows are patched in place (stable.js).
+//   DM agent   the DM agent's entries from the DM log (intent, notes, levers pulled or refused, scenes, narration),
+//              newest first, one line each, a click opens the detail; the scripted DM's entries are behind a toggle, dimmed.
+// Pure view: reads S, the sim never imports this. The dossier's Chat tab uses the same line builder (panels.chatLine).
+import {S} from '../sim/index.js';
+import {chatVisible} from '../core/chatview.js';
+import {chatLine,chatName,liveOf} from './panels.js';
+import {daySep,dayOf,stampOf} from './daystamp.js';
+import {patch,held,keyOf} from './stable.js';
+import {classColor,DISP} from '../core/colors.js';
+import {dmTable,dmParts,dmBadge,dmByAgent} from './dmpanel.js';
+
+const $=id=>document.getElementById(id);
+const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
+const KEEP=400; // lines kept in the stream
+export const FILTERS=[['all','All'],['party','Party'],['aloud','Aloud'],['dm','DM'],['table','Table']];
+let filter='all',tab='chat',showScripted=false,items=[],seq=0,known=new WeakSet(),box,list,chip,newN=0,sig='',dmSig='',dmList,dmBar,openDm=new Set();
+export const chatFilter=()=>filter;
+
+// ---- the stream ----
+const minOf=e=>{const m=/(\d\d):(\d\d)$/.exec(String(e.t||''));return m?(+m[1])*60+(+m[2]):null};
+const sortKey=e=>e.d!=null&&minOf(e)!=null?(e.d-1)*1440+minOf(e):S.gameMin; // an old entry with no day sorts by when it was first seen
+// A line's categories (the filters), from what the sim tagged it with.
+export function catsOf(e){const f=e.from||{},c=new Set();
+  if(e.party)c.add('party');
+  if(e.dm||f.kind==='dm'||f.kind==='npc'||e.trigger==='dm'||e.trigger==='npc')c.add('dm');
+  if(e.scene)c.add('table');
+  if(!c.has('party')&&!c.has('dm')&&!e.scene)c.add('aloud');
+  return c}
+function ingest(){for(const a of S.agents){if(!a.fellow||!a.chat)continue;for(const e of a.chat){if(known.has(e))continue;known.add(e);items.push({k:sortKey(e),n:++seq,kind:'chat',e})}}
+  items.sort((x,y)=>x.k-y.k||x.n-y.n);if(items.length>KEEP)items.splice(0,items.length-KEEP)}
+// The council as system lines, made from the proposals themselves (no second record): "Garrwen proposes: ... [job · vote open]",
+// "Kerin votes yes: reason" (the proposer's own automatic yes is left out), "Passed 4-1".
+const stamp=gm=>({d:Math.floor(gm/1440)+1,t:String(Math.floor(gm%1440/60)).padStart(2,'0')+':'+String(Math.floor(gm%60)).padStart(2,'0')});
+function councilItems(){const F=S.fellowship,out=[];if(!F||!F.props)return out;
+  for(const P of F.props){const by=S.agents.find(a=>a.id===P.by),st=P.status==='open'?'vote open':P.status;
+    out.push({k:P.at,n:-3,kind:'prop',id:'p'+P.id,P,who:by||{name:P.byName||'?'},cats:['party'],text:' proposes: '+P.details+' ['+P.kind+' · '+st+']',gm:P.at});
+    for(const id in P.votes){const v=P.votes[id],h=S.agents.find(a=>String(a.id)===String(id));if(!h)continue;
+      if(h.id===P.by&&v.v==='yes'&&!v.reason)continue;
+      const gm=v.at!=null?v.at:P.done!=null?P.done:P.at;
+      out.push({k:gm,n:-2,kind:'vote',id:'v'+P.id+'-'+id,P,who:h,cats:['party'],text:' votes '+v.v+(v.reason?': '+v.reason:''),gm})}
+    if(P.status!=='open'&&P.result){const m=/^(Passed|Failed) (\d+-\d+)/.exec(P.result);
+      out.push({k:P.done!=null?P.done:P.at,n:-1,kind:'result',id:'r'+P.id,P,cats:['party'],text:m?m[1]+' '+m[2]:P.status==='passed'?'Passed':'Failed',gm:P.done!=null?P.done:P.at})}}
+  return out}
+const matches=(it)=>{if(filter==='all')return true;const c=it.kind==='chat'?catsOf(it.e):it.cats;return c.has?c.has(filter):c.includes(filter)};
+const visible=it=>it.kind!=='chat'||chatVisible(it.e,S);
+export const streamItems=()=>{ingest();return items.concat(councilItems()).filter(visible).filter(matches).sort((x,y)=>x.k-y.k||x.n-y.n)};
+
+function sysLine(it){const li=el('li','chl sys sys-'+it.kind);li.setAttribute('data-k',it.id);const s=stamp(it.gm);
+  li.append(el('time',null,stampOf({d:s.d,t:s.t})));
+  if(it.who){const n=chatName(it.who);n.classList.remove('chn');li.append(n)}
+  li.append(it.text);return li}
+
+// ---- rendering the Chat tab ----
+function atBottom(){return !list||list.scrollTop+list.clientHeight>=list.scrollHeight-6}
+function renderChat(){if(!list)return;const rows=streamItems(),last=rows.length?rows[rows.length-1]:null;
+  const s=filter+':'+rows.length+':'+(last?(last.id||keyOf(last.e)):'')+':'+rows.map(r=>r.kind==='prop'||r.kind==='result'?r.text:'').join('').length+':'+(S.fellowship?1:0);
+  if(s===sig)return;if(held(list))return;sig=s;
+  const bottom=atBottom(),before=list.querySelectorAll?list.querySelectorAll('li:not(.daysep)').length:0;
+  patch(list,tmp=>{let lastDay=null;
+    for(const it of rows){const d=it.kind==='chat'?dayOf(it.e):Math.floor(it.gm/1440)+1;if(d!=null&&d!==lastDay){tmp.append(daySep(d));lastDay=d}
+      tmp.append(it.kind==='chat'?chatLine(it.e,1):sysLine(it))}
+    if(!rows.length)tmp.append(el('li','dm','Nothing said yet.'))},{force:true,anchor:false});
+  const after=list.querySelectorAll?list.querySelectorAll('li:not(.daysep)').length:0;
+  if(bottom){list.scrollTop=list.scrollHeight;newN=0}else if(after>before)newN+=after-before;
+  syncChip()}
+function syncChip(){if(!chip)return;chip.hidden=newN<=0;if(newN>0)chip.textContent=newN+' new line'+(newN>1?'s':'')+' ↓'}
+
+// ---- the DM agent tab ----
+const entries=()=>{const L=S.dmLog||[];return L.filter(e=>dmByAgent(e)||e.kind==='agent'||showScripted)};
+function renderDm(){if(!dmList)return;const L=entries(),sg=L.length+':'+(L[0]?L[0].id:0)+':'+showScripted+':'+[...openDm].join(',');
+  if(sg===dmSig)return;if(held(dmList))return;dmSig=sg;
+  patch(dmList,tmp=>{let lastDay=null;
+    for(const e of L){const agent=dmByAgent(e)||e.kind==='agent',d=dayOf(e);if(d!=null&&d!==lastDay){tmp.append(daySep(d));lastDay=d}
+      const li=el('li','tl dmrow dm-'+e.kind+(agent?'':' dimmed'));li.dataset.dmid=e.id;li.setAttribute('data-k','d'+e.id);li.tabIndex=0;li.setAttribute('role','button');li.setAttribute('aria-expanded',String(openDm.has(e.id)));
+      li.append(el('time',null,stampOf(e)),el('span','badge b-dm'+(agent?' b-dma':''),dmBadge(e)));const t=el('span','tx dmtx');dmParts(t,e.summary);li.append(t);
+      if(openDm.has(e.id))li.append(dmTable(e));tmp.append(li)}
+    if(!L.length)tmp.append(el('li','dm','The DM agent has not acted yet (open the DM seat in Agents, then npm run dm).'))},{force:true})}
+
+function sync(){const F=!!S.fellowship,sec=$('chatSec');if(!sec)return;if(sec.hidden===F)sec.hidden=!F;
+  $('chatPane').hidden=tab!=='chat';$('dmPane').hidden=tab!=='dm';
+  for(const b of $('chatTabs').children)b.setAttribute('aria-pressed',String(b.dataset.ctab===tab))}
+export function renderChatPanel(){if(!box)return;sync();if(!S.fellowship)return;if(tab==='chat')renderChat();else renderDm()}
+export function setChatTab(t){if(t!=='chat'&&t!=='dm')return;tab=t;sig='';dmSig='';renderChatPanel()}
+export function setChatFilter(f){if(!FILTERS.some(([k])=>k===f))return;filter=f;sig='';for(const b of $('chatFilter').children)b.setAttribute('aria-pressed',String(b.dataset.cf===f));renderChatPanel()}
+export const chatTab=()=>tab;
+
+export function initChatPanel(){const sec=$('chatSec');if(!sec)return;
+  box=el('details','tlbox chatbox');box.id='chatbox';box.open=true;
+  const sum=el('summary',null,'Chat');box.append(sum);
+  const tabs=el('div','tfilter');tabs.id='chatTabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Chat or DM agent');
+  for(const [k,l] of [['chat','Chat'],['dm','DM agent']]){const b=el('button',null,l);b.dataset.ctab=k;b.setAttribute('role','tab');b.addEventListener('click',()=>setChatTab(k));tabs.append(b)}
+  box.append(tabs);
+  const pane=el('div');pane.id='chatPane';
+  const fb=el('div','tfilter');fb.id='chatFilter';fb.setAttribute('role','group');fb.setAttribute('aria-label','Chat filter');
+  for(const [k,l] of FILTERS){const b=el('button',null,l);b.dataset.cf=k;b.setAttribute('aria-pressed',String(k===filter));b.addEventListener('click',()=>setChatFilter(k));fb.append(b)}
+  // the colour key: member = class colour, others = disposition colour with an underline (a shape as well as a colour)
+  const lg=el('div','chatlegend dm');lg.id='chatLegend';lg.append('Names: class colour = member; underlined = others: ');
+  for(const k of ['hostile','neutral','friendly']){const s=el('span','npcn npc-'+k,k);s.style.color=DISP[k].color;lg.append(s,' ')}
+  const wrap=el('div','chatwrap');list=el('ul','log chat chatlist');list.id='chatList';list.tabIndex=0;list.setAttribute('role','log');list.setAttribute('aria-label','Fellowship chat');
+  chip=el('button','chatnew','new lines');chip.hidden=true;chip.addEventListener('click',()=>{list.scrollTop=list.scrollHeight;newN=0;syncChip()});
+  list.addEventListener('scroll',()=>{if(atBottom()){newN=0;syncChip()}});
+  wrap.append(list,chip);pane.append(fb,lg,wrap);
+  const dp=el('div');dp.id='dmPane';dp.hidden=true;
+  dmBar=el('div','tfilter');const tg=el('button',null,'Scripted DM');tg.setAttribute('aria-pressed','false');tg.title='Also show the scripted DM’s entries, dimmed';
+  tg.addEventListener('click',()=>{showScripted=!showScripted;tg.setAttribute('aria-pressed',String(showScripted));dmSig='';renderChatPanel()});dmBar.append(tg);
+  dmList=el('ul','tlist dmlist chatdm');dmList.id='dmChatList';
+  dmList.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest||t.closest('.hn[data-hid]')||t.closest('.dmkv'))return;const r=t.closest('[data-dmid]');if(r)toggleRow(r.dataset.dmid)});
+  dmList.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const r=e.target&&e.target.closest&&e.target.closest('[data-dmid]');if(r&&e.target===r){e.preventDefault();toggleRow(r.dataset.dmid)}});
+  dp.append(dmBar,dmList);box.append(pane,dp);sec.append(box);sync();renderChatPanel()}
+function toggleRow(id){id=Number(id);if(openDm.has(id))openDm.delete(id);else openDm.add(id);dmSig='';renderChatPanel()}
