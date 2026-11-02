@@ -435,7 +435,18 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       ok(bk && bk.keys.includes('strike') && movesOf(hunter).some(id => bk.keys.includes(id)), `the forced turn's enum includes ready abilities by id (${hunter.cls}: ${bk && bk.keys.join(', ')})`);
       sc1.phase = 'turn'; sc1.i = 0; {const later = S.agents.find(x => x.id === sc1.ids[1]), w3 = sim.playerAct(later.id, 'wait', {minutes: 10});
         ok(w3.ok && w3.pending, 'in a fight (turns in order) a member whose turn is still to come may wait for it')}
-      S.table = null}
+      S.table = null
+      // the hall board in the brief (issue #326): a member in town sees the hall's jobs for the Fellowship, never who posted them
+      {const {memoryNote} = await import('./pacing.mjs'), {homeOf} = await import('../src/data/races.js'), ADV = await import('../src/data/adventures.js');
+        const m = mem.find(a => a.state !== 'dead' && homeOf(a).name === S.fellowship.hall), keep = S.adventures, st = m.state, other = S.agents.find(x => !x.fellow && x.state !== 'dead');
+        const tpl = Object.keys(ADV.ADVENTURES)[0], mk = (id, o) => ({id, tpl, phase: 'open', town: S.fellowship.hall, until: S.gameMin + 600, born: S.gameMin, ...o});
+        S.adventures = [mk(99901, {ff: 1, by: 'dm-agent', title: 'Hall test job', giver: {name: 'Test Warden'}}), mk(99902, {for: other.id, title: 'Not theirs'})]; m.state = 'town';
+        const hb = paceBrief(m.id).brief, line = memoryNote(hb);
+        ok(hb.hall && hb.hall.length === 1 && hb.hall[0].id === 'job:99901' && hb.hall[0].giver === 'Test Warden' && /Posted at your hall for the Fellowship: job:99901 "Hall test job" from Test Warden/.test(line) && !/DM|scripted/.test(JSON.stringify(hb.hall) + line),
+          'a member in town sees the hall job for the Fellowship (id, title, giver, reward), not who posted it nor another hero\'s job: ' + line.trim());
+        S.adventures = [mk(99902, {for: other.id, title: 'Not theirs'})]; const nb = paceBrief(m.id).brief;
+        ok(!('hall' in nb) && !/Posted at your hall/.test(memoryNote(nb)), 'with no Fellowship job posted the brief carries no hall block');
+        S.adventures = keep; m.state = st}}
     TABLE.speed = 1; speed = 1; last = Date.now();
     const tick1 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const n = Math.ceil(real / (1 / 60)); for (let i = 0; i < n; i++) sim.step(real / n)}, 50);
     const p = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-fumble:1b', '--min-gap', '0', '--heartbeat', '1440', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
