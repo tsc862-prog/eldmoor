@@ -18,3 +18,4 @@
 - [DM turn record](dm-turn-record.md) — #181 S.dmAgent.turns ring, turn_end from relay, cards fallback
 - [Mind comparison](mind-comparison.md) — #280 behavior-report per-member mind table: row keys, columns, real qwen vs Claude numbers, token pitfall
 - [Token deltas](token-deltas.md) — #282 SDK modelUsage is cumulative; usageDelta, cacheRead/cacheWrite turn fields, legacy lines
+- [Agentkit seam](agentkit-seam.md) — #290/#294 engine vs game design doc: adapter items, registries, carve order K1-K10, risks, owner questions
