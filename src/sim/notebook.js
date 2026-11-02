@@ -16,7 +16,8 @@
 //     checked but length and count. The prompts name promises, debts, grudges ... as examples only.
 //   - Caps: NB.NOTES notes of NB.LEN characters (DM: DM_NB.PER_SEC a section); a new note over the cap
 //     archives the oldest unpinned one (kept in arch, NB.ARCH at most, still found by recall, marked archived);
-//     pinned notes are never archived (NB.PINS at most).
+//     pinned notes are never archived (NB.PINS at most). A hero's note dropped from a full archive folds into its
+//     chapters (sim/tiers.js, #153), so journal_search still finds its words.
 //   - Hardcore: the notebook dies with the hero. The dead hero's tools all answer "dead" (sim/player.js), its
 //     replacement starts with an empty one. One exception, chosen for the Fellowship: a member's newest pinned
 //     note tagged "letter" is sealed for the party (S.fellowship.letters[slot]); when that member has fallen,
@@ -30,6 +31,7 @@ import {partyMates} from './party.js';
 import {tableView} from './table.js';
 import {openProps} from './council.js';
 import {noteWritten} from './reflect.js'; // reflection moments (#179)
+import {spillNote,tiersView} from './tiers.js'; // tiered memory (#153): an archived note past NB.ARCH goes to the chapters
 
 export const NB={
   NOTES:200,        // notes a hero keeps before the oldest unpinned is archived
@@ -52,7 +54,7 @@ const hero=id=>S.agents.find(x=>x.id===id)||null;
 // ---- the books ----
 // A book is a thin view over a store: {secs, list(sec), arch, next(), touch(), cap, pins, kind}.
 export const notebookOf=a=>{const M=a.memories||(a.memories={seq:0,notes:[],arch:[],v:0,day:{d:0,w:0}});deliverLetter(a,M);return M};
-function heroBook(a){const M=notebookOf(a);return {kind:'hero',secs:['notes'],list:()=>M.notes,arch:M.arch,next:()=>++M.seq,touch:()=>{M.v=(M.v||0)+1;syncLetter(a)},cap:NB.NOTES,M}}
+function heroBook(a){const M=notebookOf(a);return {kind:'hero',secs:['notes'],list:()=>M.notes,arch:M.arch,next:()=>++M.seq,touch:()=>{M.v=(M.v||0)+1;syncLetter(a)},cap:NB.NOTES,M,a}}
 export function dmBook(D){if(!D.arch)D.arch=[];for(const k in D.notes)for(const n of D.notes[k])if(n.sec!==k)n.sec=k; // each DM note knows its section (older saves' do not)
   return {kind:'dm',secs:Object.keys(D.notes),list:s=>D.notes[s],arch:D.arch,next:()=>++D.seq,touch:()=>{D.mv=(D.mv||0)+1},cap:DM_NB.PER_SEC}}
 const allOf=b=>{const out=[];for(const s of b.secs)for(const n of b.list(s))out.push(n);return out};
@@ -83,7 +85,7 @@ const titleOf=(t,text)=>clean(t,NB.TITLE)||clean(text,NB.TITLE).replace(/\s\S*$/
 // ---- write ----
 // Make room in a list of `cap`: archive the oldest unpinned note (by last update). -> the archived note, or null when all are pinned.
 function makeRoom(b,L,sec){if(L.length<b.cap)return {};let k=-1;for(let i=0;i<L.length;i++)if(!L[i].pin&&(k<0||(L[i].up??L[i].gm??0)<(L[k].up??L[k].gm??0)))k=i;
-  if(k<0)return {full:true};const n=L.splice(k,1)[0];n.arch=true;n.sec=sec;b.arch.push(n);while(b.arch.length>NB.ARCH)b.arch.shift();return {archived:n}}
+  if(k<0)return {full:true};const n=L.splice(k,1)[0];n.arch=true;n.sec=sec;b.arch.push(n);while(b.arch.length>NB.ARCH){const gone=b.arch.shift();if(b.a)spillNote(b.a,gone)}return {archived:n}}
 function restoreNote(b,f){if(!f.arch)return null;const L=b.list(f.sec)||b.list(b.secs[0]),room=makeRoom(b,L,f.sec);if(room.full)return 'Your notes are full of pinned ones: unpin one first.';
   b.arch.splice(b.arch.indexOf(f.n),1);delete f.n.arch;if(b.kind==='hero')delete f.n.sec;L.push(f.n);f.L=L;f.arch=false;return null}
 export function addNote(b,{title,text,tags,about,sec,pin},len=NB.LEN){const t=clean(text,len);if(!t)return {ok:false,error:'Remember what? Give text (and a short title).'};
@@ -108,9 +110,7 @@ export function pinNote(b,id,on=true){const f=find(b,id);if(!f)return {ok:false,
   if(on)f.n.pin=true;else delete f.n.pin;b.touch();return {ok:true,note:f.n}}
 
 // ---- search ----
-// Words of a text: lower case, letters and digits, 3+ characters, minus the commonest words.
-const STOP=new Set('the and for with that this from have has had was were are you your our their them they his her him she its not but all any can will would into onto out about who what when where why how than then there here one two some more most very just also over under after before again'.split(' '));
-export const words=s=>String(s||'').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w=>w.length>=3&&!STOP.has(w));
+import {words} from './words.js';export {words}; // the search words, shared with sim/tiers.js (#153)
 const hit=(qs,ws)=>{let k=0;for(const q of qs)if(ws.some(w=>w===q||q.length>=4&&w.startsWith(q)||w.length>=4&&q.startsWith(w)))k++;return k};
 const recency=n=>2/(1+Math.max(0,S.gameMin-(n.up??n.gm??0))/DAY); // 2 today, 1 a day ago, .5 three days ago
 // recall: query words in the title (3) and tags (3), the about line (2) and the text (1); a tag or about filter
@@ -201,10 +201,10 @@ function deliverLetter(a,M){const F=S.fellowship;if(!F||!F.letters||!a.fellow||!
 // Seats whose notebook changed since `sent` (a Map of seat key -> signature the host keeps), as plain payloads.
 // The host marks them sent itself after writing. Agent-played heroes (living or dead) and the DM seat.
 export function mirrorDirty(sent){const out=[];
-  for(const id of S.playerHeroes||[]){const a=hero(id);if(!a||!a.memories)continue;const M=a.memories,dead=a.state==='dead';
-    const sig=(M.v||0)+':'+(dead?1:0)+':'+a.name,key='hero:'+a.id;if(sent.get(key)===sig)continue;
+  for(const id of S.playerHeroes||[]){const a=hero(id);if(!a||!a.memories&&!a.tiers)continue;const M=a.memories||{notes:[],arch:[]},dead=a.state==='dead',T=a.tiers;
+    const sig=(M.v||0)+':'+(dead?1:0)+':'+a.name+(T?':'+T.seq+'.'+T.marks.length+'.'+T.chapters.map(c=>c.stamp+c.src).join(',')+'.'+T.pend.length:''),key='hero:'+a.id;if(sent.get(key)===sig)continue;
     out.push({key,sig,seat:{kind:'hero',id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,dead,died:dead?(a.diedAt||null):null,cause:dead?(a.cause||null):null,
-      fellow:!!(a.fellow||a.fellowPast),notes:M.notes.map(n=>view(n)),arch:M.arch.map(n=>view(n))}})}
+      fellow:!!(a.fellow||a.fellowPast),notes:M.notes.map(n=>view(n)),arch:M.arch.map(n=>view(n)),tiers:tiersView(a)}})}
   const D=S.dmAgent;if(D&&D.notes){const sig=String(D.mv||0)+':'+Object.values(D.notes).reduce((t,l)=>t+l.length,0),key='dm';
     if(sent.get(key)!==sig)out.push({key,sig,seat:{kind:'dm',sections:Object.fromEntries(Object.entries(D.notes).map(([k,l])=>[k,l.map(n=>view({...n,title:n.title||titleOf(null,n.text)}))])),arch:(D.arch||[]).map(n=>view({...n,title:n.title||titleOf(null,n.text)}))}})}
   return out}

@@ -4,10 +4,11 @@
 // a hero's faction. The relay sends it with a JSON schema (structured output), so the
 // model only ever answers with a choice from the options the sim itself computed.
 
-export const KINDS=['townPlan','cryptCall','fightOrFlee','say','persona','backstory','memory']; // closed set: the relay refuses any other kind
+export const KINDS=['townPlan','cryptCall','fightOrFlee','say','persona','backstory','memory','chapter']; // closed set: the relay refuses any other kind
 // Fellowship writing kinds (issue #68): one-time character work, not in-the-moment decisions.
 // They use a writer's preamble instead of WORLD, a stronger model tier and a longer timeout (relay.mjs).
-export const WRITE_KINDS=['persona','backstory','memory'];
+export const WRITE_KINDS=['persona','backstory','memory','chapter'];
+export const CHAPTER_TITLE_MAX=60,CHAPTER_TEXT_MAX=320; // a journal chapter (#153, sim/tiers.js TIER.TITLE and TIER.CH_LEN)
 // Kinds that answer from a closed list of options the sim sends (snapshot.options).
 export const OPTION_KINDS=['townPlan','fightOrFlee'];
 
@@ -48,6 +49,7 @@ const WKIND={
   persona:'Task: a persona sheet the hero is played from. "voice": how they talk, one or two sentences (under 160 characters). "wants": what they want most, one sentence. "fears": what they fear most, one sentence. "quirk": one concrete habit or tic. "never_says": one short line, in quotes-free plain text, that this hero would never say aloud. "stances": for each companion in snapshot.companions, keyed by that companion’s id, one line (under 100 characters) on how this hero sees them, using the bond score, shared home, backstory link and history given. Every field is short; no lists, no line breaks.',
   backstory:'Task: a backstory in six short paragraphs (each 2-3 sentences, under 330 characters): "family" (family and home: the real hamlet, trade and people from the sheet), "arms" (how they came to arms and to their class), "defining" (one defining event tied to the living world: use snapshot.world.elite, snapshot.world.rival or snapshot.world.place by name), "flaw" (a flaw or a secret), "wants" (what they want and what they fear), "joined" (why they joined this Fellowship, snapshot.fellowship). Also one explicit tie to a companion: "link_hero" is the exact name of one hero in snapshot.companions (prefer snapshot.suggest_link if given), "link_kind" says what kind of tie, and "link" is one or two sentences naming them (an old debt, a shared hometown, a rivalry, kin, a rescue or an oath). "summary" is one sentence (under 200 characters) that sums the hero up for a stranger.',
   memory:'Task: compress the hero’s memories into one long-term summary, first person, in the hero’s own voice (snapshot.voice). Keep what matters for the future: deaths of companions, debts and grudges, who saved whom, oaths, big wins and losses, names of foes still living. Merge snapshot.long (older summary) with snapshot.items (newer memories, oldest first). "long" is at most six sentences, under 700 characters, no lists, no line breaks.',
+  chapter:'Task: one chapter of the hero’s life story, from the older journal lines and notes in snapshot.items (oldest first) covering snapshot.days. First person, in the hero’s own voice (snapshot.voice). Keep the names of people, places and foes, deaths, oaths, debts, wins and losses; leave out errands. "title": a short chapter title, under '+CHAPTER_TITLE_MAX+' characters. "text": at most three sentences, under '+CHAPTER_TEXT_MAX+' characters, no lists, no line breaks.',
 };
 
 export function systemFor(kind,fac){
@@ -57,12 +59,12 @@ export function systemFor(kind,fac){
 
 // Prompt version: bump when any system text or schema changes, so a logged prompt can be
 // matched to the code that built it (the relay echoes it as sent.id, e.g. "townPlan@2").
-export const PROMPT_VERSION=5; // 3: leadParty note in townPlan, cryptCall kind for party followers; 4: persona, backstory, memory kinds (#68); 5: say speaks in the Fellowship persona, table trigger (#68 B)
+export const PROMPT_VERSION=6; // 3: leadParty note in townPlan, cryptCall kind for party followers; 4: persona, backstory, memory kinds (#68); 5: say speaks in the Fellowship persona, table trigger (#68 B); 6: chapter kind (#153)
 export const promptId=kind=>kind+'@'+PROMPT_VERSION;
 
 // Output token caps per kind (the relay passes them as max_tokens). townPlan and
 // fightOrFlee have room for the reason sentence (about 30 tokens) on top of the choice.
-export const MAX_TOKENS={townPlan:110,cryptCall:90,fightOrFlee:130,say:60,persona:1200,backstory:2400,memory:500};
+export const MAX_TOKENS={townPlan:110,cryptCall:90,fightOrFlee:130,say:60,persona:1200,backstory:2400,memory:500,chapter:300};
 export const REASON_MAX=120; // characters kept after validation
 // A reason is optional: one line of plain text, at most REASON_MAX characters, or null.
 // Shared by the relay and the sim so both apply the same rule.
@@ -92,6 +94,7 @@ export function schemaFor(kind,options,snap={}){
     if(comps.length){props.link_hero={type:'string',enum:comps.map(c=>c.name)};props.link_kind={type:'string',enum:LINK_KINDS};req.push('link_hero','link_kind')}
     return{type:'object',properties:props,required:req,additionalProperties:false}}
   if(kind==='memory')return{type:'object',properties:{long:str('First person, under '+MEMORY_LONG_MAX+' characters.')},required:['long'],additionalProperties:false};
+  if(kind==='chapter')return{type:'object',properties:{title:str('Under '+CHAPTER_TITLE_MAX+' characters.'),text:str('First person, under '+CHAPTER_TEXT_MAX+' characters.')},required:['title','text'],additionalProperties:false};
   const enumOf=o=>({type:'string',enum:o});
   // String length limits are not supported in structured-output schemas, so the length lives
   // in the description and the prompt, and both relay and sim truncate to REASON_MAX.

@@ -46,6 +46,15 @@ function indexMarkdown(seat, rows) {
     '', `## Archived (${arch.length})`, ...(arch.length ? arch.map(line) : ['- none']), ''].join('\n');
 }
 
+// Tiered memory (issue #153): the hero's landmarks and the chapters its older journal entries and notes became.
+export function lifeMarkdown(seat) {
+  const T = seat.tiers, marks = Array.isArray(T.marks) ? T.marks.slice(0, 60) : [], chs = Array.isArray(T.chapters) ? T.chapters.slice(0, 60) : [];
+  return [`# ${str(seat.name, 40)}: landmarks and chapters`, '', '> A read-only mirror; the game never reads it back.', '',
+    `## Landmarks (${marks.length})`, ...(marks.length ? marks.map(m => `- day ${intOr(m.day, '?')} (${str(m.k, 16)}): ${str(m.text, 240)}`) : ['- none']), '',
+    `## Chapters (${chs.length})`, ...(chs.length ? chs.flatMap(c => [`### ${intOr(c.n, '?')}. ${str(c.title || 'Untitled', 80)} (days ${intOr(c.d0, '?')}-${intOr(c.d1, '?')}, ${str(c.src, 12)})`, '', str(c.text, 400), '']) : ['- none', '']),
+    `Lines waiting for the next chapter: ${intOr(T.pend, 0)}`, ''].join('\n');
+}
+
 export function memoryMirror({root = MIRROR_ROOT(), world = 'eldmoor', log = () => {}} = {}) {
   let w = slug(world, 40); const cache = new Map(), stats = {writes: 0, removed: 0, seats: 0, errors: 0};
   const put = (file, text) => {if (cache.get(file) === text) return; writeFileSync(file, text); cache.set(file, text); stats.writes++};
@@ -65,6 +74,7 @@ export function memoryMirror({root = MIRROR_ROOT(), world = 'eldmoor', log = () 
     for (const r of rows.slice(0, MAX_NOTES)) {if (!r.n || typeof r.n !== 'object') continue; r.file = noteFile(r.n); keep.add(r.file); put(join(dir, r.file), noteMarkdown(r.n, r.sec))}
     put(join(dir, 'MEMORY.md'), indexMarkdown(seat, rows.filter(r => r.file)));
     for (const f of readdirSync(dir)) if (FILE_RE.test(f) && !keep.has(f)) {try {unlinkSync(join(dir, f)); cache.delete(join(dir, f)); stats.removed++} catch {}}
+    if (seat.kind === 'hero' && seat.tiers && typeof seat.tiers === 'object') put(join(dir, 'LIFE.md'), lifeMarkdown(seat));
     stats.seats++;
   }
   return {
