@@ -669,5 +669,22 @@ console.log('start gate: ready, not just claimed');
     ok(P.authoredStance(b,o)===''&&!(b.persona.stanceBy||{})[o.id]&&tag(o).hidden&&b.memory.stances[o.id].startsWith(P.scriptedStance(b,o)),'stances: an empty box on Save hands it back to the bond reading')}
   else console.log('  skip stances on a scripted persona (none at hand)');
   fb.querySelectorAll('button').find(x=>x.dataset.fact==='close').click()}
+// ---- guild rows (#327): focus reason and rival heat in tooltips ----
+{const live=sim.S.GUILDS.filter(g=>!g.retired);
+  const fel=live.find(g=>sim.S.agents.some(a=>a.guild===g&&a.fellow&&a.state!=='dead'));
+  const plain=live.filter(g=>g!==fel);const g1=plain[0],g2=plain.find(g=>g.fac!==g1.fac);
+  if(g1&&g2){g1.focus='crypt';
+    const k=g1.id<g2.id?g1.id+':'+g2.id:g2.id+':'+g1.id;
+    sim.S.rivals=sim.S.rivals||{heat:{},on:{},last:{},t:0,stats:{declared:0,ended:0,duels:0,assists:0,heat:{}}};
+    sim.S.rivals.on[k]={since:0,why:'test'};sim.S.rivals.heat[k]=5.5;uiSlow();
+    const rows=[...$('guilds').children];
+    const row=rows.find(r=>r.textContent.includes(g1.name));
+    const fw=row&&[...row.querySelectorAll('span')].find(x=>x.textContent==='Delve');
+    ok(fw&&/Crypt/.test(fw.title),'guild rows: the focus word carries its reason as a tooltip');
+    const rv=row&&[...row.querySelectorAll('span')].find(x=>x.textContent==='<'+g2.tag+'>');
+    ok(rv&&/heat 5\.5 of 8/.test(rv.title),'guild rows: a rival carries its heat as a tooltip');
+    delete g1.focus;delete sim.S.rivals.on[k];delete sim.S.rivals.heat[k]}
+  if(fel){uiSlow();const row=[...$('guilds').children].find(r=>r.textContent.includes(fel.name));
+    ok(row&&/none \(Fellowship member\)/.test(row.textContent),'guild rows: a Fellowship guild reads none (Fellowship member)')}}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
