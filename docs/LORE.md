@@ -818,3 +818,20 @@ When night falls (21:00 to 03:00) or the company is worn thin, and the whole Fel
 ## Memorials
 
 Eldmoor remembers its dead where they fell. A hero who dies in the wild leaves a small **wayside stone** carved with their name and level, and the stones stay long after the grave-digger has cleared the common graves; the oldest are cleared first once there are sixty, but a Fellowship member's stone and a legend's are never taken. A hero who reaches **level 20**, or who falls at level 15 or higher, is given a **statue** in the square of their home town (three at most per town; a greater legend displaces the weakest) with a plaque of their name and level. When Kragmaw is slain the **lava ring of its lair cools to black rock** and a loot-cave opens at its heart, "Kragmaw's hoard", until the wyrm wakes. These are watcher-facing markers, not places heroes travel to. Code: `src/sim/memorials.js`, `src/render/memorials.js`.
+
+## Campaign seeds
+
+DM-only starting narratives, one per world map, in `docs/campaigns/` (`eldmoor.md`, `stepping.md`). The DM agent receives them as private notes when a new world begins; heroes never read them, and the DM reveals them only through play (narrate, npc_say, hooks, staged scenes, marks). Format is fixed: Premise, Threads, Characters, Plans, Secrets. Added 2026-11-01.
+
+New names (townsfolk names are rolled per world and are not canon; these placed people are):
+- **The Lantern Road**: the old road from Highgate and Grimhold to the crossroads, lined with lanternstones.
+- **Ossian Vael, the Drowned King**: lit the lanternstones from a spark of Kragmaw's fire and drowned his court in the Sunken Crypt under Lich-Warden Vesk. Source of the Drowned King's Signet.
+- **The Rookscar toll**: the Rookscar are the last road-wardens of the Drowned King; their Toll-Token is their pay-slip. Their reeve on the Mirefen road is **Black Tam Harrow** (Black Tam is an existing road-boss name).
+- **Edrin Pask**: wagon merchant, carries Shrine Candle-Stubs.
+- **Mother Ysmay**: the Causeway Hermit of Mirefen, counts a drowned king's causeway stones.
+- **Old Vrogg**: Warband sellsword with a half-burnt oath-knife.
+- **Hesper Wain**, Cairn-Keeper (Stepping Lands): last of the waymark keepers.
+- **Sister Maud Orrin**: Concord pilgrim-priest walking the Stair.
+- **The Pilgrim's Stair** (Stepping Lands): the line of waymark-cairns from Lowmark to Palereach.
+- **The Compact of Four Pages** (Stepping Lands): one page in each home town (Highgate debts, Cairnmoot the route, Grimhold the salt-song, Murkstead the names).
+- Endings named in the Eldmoor seed: **the Kept Light**, **the Dark Road**, **the Unowned Flame**.
