@@ -49,7 +49,7 @@ import {notify} from './notify.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
 import {sayOk} from './throttle.js';
 import {fellows,campaign} from './fellowship.js';
-import {partySay,leaderOfF,setCampHook} from './council.js';
+import {partySay,leaderOfF,setCampHook,openProps} from './council.js';
 import {openScene} from './table.js';
 import {reflexMay} from './runlink.js';
 import {advCampable} from './dm.js'; // a night camp may fall between an adventure's scenes (#325)
@@ -122,6 +122,11 @@ export function campView(a){const g=campOf();if(!g||!a||a.state!=='camp')return 
   return {phase:'rest',kind:g.why,status:(sl?'Asleep by the fire':'On watch (until '+wEnd+')')+' · '+e.text,asleep:sl,ends:e.text,left_min:e.left==null?null:Math.round(e.left),mended:e.mended,
     on_watch:w?w.name+' (until '+wEnd+')':null,asleep_names:L.filter(x=>x.id!==g.watcher).map(x=>x.name),
     you_can:'propose break_camp (the party votes)'+(leaderOfF()===a?', or break_camp yourself as leader':'')+'; nothing else needs doing while you sleep'}}
+// Why an order cannot go through at camp, and the legal way on (#400): the leader breaks camp, the others vote on it.
+export function campBlock(a){const g=campOf();if(!g||!a||a.state!=='camp')return null;const lead=leaderOfF(),L=members(g);
+  const e=g.phase==='rest'&&L.length?endOf(g,L).text:'making camp',O=openProps().find(P=>P.kind==='break_camp');
+  const how=lead===a?'You lead: break_camp to move on now':O?'A break_camp proposal is open: vote('+O.id+', yes) to move on':"propose {kind:'break_camp'} to put moving on to the vote"+(lead?' (or ask '+lead.name+', who leads, to break_camp)':'');
+  return 'The Fellowship is camped ('+e+'; leader: '+(lead?lead.name:'none')+'). '+how+', or wait: the camp ends by itself.'}
 // One line for the Fellowship panel (rounded so the panel does not rebuild every minute): the end, who sleeps, who watches.
 export function campSummary(){const g=campOf();if(!g)return null;const L=members(g);if(!L.length)return null;
   if(g.phase==='gather')return 'Making camp: the company walks to the fire';
