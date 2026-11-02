@@ -27,8 +27,11 @@ import {asleep,campView} from './camp.js';
 import {localsNear} from './locals.js'; // people about, with a short hook each
 import {foeName} from './lore.js'; // the foe as the hero knows it, never its level (#188)
 import {questBrief} from './questlog.js'; // the focused quest and how many others
+import {focus} from './dmfocus.js'; // where the Fellowship rides (#165), for the hall jobs that concern it
+import {homeOf} from '../data/races.js';
+import * as ADV from '../data/adventures.js';
 
-export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60]}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
+export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
 const hero=id=>S.agents.find(x=>x.id===id)||null;
 const day=()=>'Day '+(Math.floor(S.gameMin/1440)+1)+' '+clockStr();
@@ -68,8 +71,24 @@ export function paceBrief(id){const a=hero(Number(id));
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook), // what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
+    ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
     quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
+// The hall's open jobs that concern the Fellowship (issue #326), as the board shows them to a member standing in town:
+// a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting
+// says (id, title, giver, reward), never who posted it behind the scenes (in-game channels, #123). Reads only; at most
+// PACE.HALL, the hall's own Fellowship jobs first. {} when the hero is no member, is not in town, or nothing is posted.
+function hallBrief(a){if(!a.fellow||a.state!=='town'||!S.fellowship)return {};const f=focus();if(!f)return {};
+  const town=homeOf(a);if(!town||town.name!==S.fellowship.hall)return {};
+  const mine=h=>h.ff||(h.for!=null&&f.ids.has(h.for))||(h.zone!=null&&f.zones.has(h.zone));
+  const L=(S.adventures||[]).filter(h=>h.phase==='open'&&h.town===town.name&&(h.for==null||f.ids.has(h.for))&&mine(h));
+  if(!L.length)return {};
+  L.sort((x,y)=>(y.ff?1:0)-(x.ff?1:0)||x.id-y.id);
+  return {hall:L.slice(0,PACE.HALL).map(h=>{const o={id:'job:'+h.id,title:hallTitle(h)};if(h.giver&&h.giver.name)o.giver=h.giver.name;const r=hallPay(a,h);if(r)o.reward=r;return o})}}
+const plainText=p=>Array.isArray(p)?p.map(x=>typeof x==='string'?x:x&&x.kind==='hero'?x.name:x&&x.t||'').join(''):String(p||'');
+const hallTitle=h=>{const T=ADV.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return String(h.title||(T.name||h.tpl)+(th?': '+plainText(th):'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')).slice(0,90)};
+function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;const g=Math.round((6+a.lvl*3)*T.pay.gold*(h.data&&h.data.payMul||1));
+  return 'about '+g+'g and XP'+(T.pay.honor?', '+T.pay.honor+' honor':'')+(T.pay.gear>=.35?', maybe gear':'')} // the quest log's payText (sim/questlog.js), same words as list_jobs/quests
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
 function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(S.table,a).map(o=>o.k);if(!keys.length)return null;

@@ -14,3 +14,9 @@ Built 2026-11-01 on branch ai/dm-fellowship-first (PR "Closes #165"). Owner prin
 - Reserve: levers.js day.nf counts non-Fellowship pulls per lever; refused with "kept for the Fellowship" once perDay - reserveOf(perDay) used; staged.js STAGE.RESERVE 1 (day.nw counts stagings away from members).
 - Behavior digest: world rec dmFocus {acts, fellow, share}; report line; behaviorcheck assertion.
 - Pitfalls: python on Windows reads/writes cp1252 - a non-ASCII char I inserted (the right quote) became an invalid UTF-8 byte; use node/Edit for edits with such characters (utf8check.cjs approach: decode fatal). tablecheck section 4 ("musters with ... leading") is state-fragile: a Crypt order waiting in S.fellowship.wait sends them down at the gate; the check now clears it. `headless sim` is unseeded Math.random, so compare totals, not exact numbers. The agent sandbox refuses node -e / sed with runtime-built programs that mention git-like forms; use Edit or script files.
+
+## Hall board in the member brief (#326, 2026-11-02)
+- Before #326 the pace brief had no board at all (only `quest` focus + `nearby` locals); list_jobs was the only way to see hooks.
+- `paceBrief` adds `hall: [{id:'job:N', title, giver?, reward?}]` (max `PACE.HALL` 3) only when: a.fellow, state 'town', homeOf(a) is S.fellowship.hall, and open jobs at the hall concern them (h.ff, h.for a member, or h.zone in dmfocus `focus().zones`); jobs for a non-member skipped; ff first. Key absent otherwise (no empty block).
+- `hallNote(b)` in pacing.mjs rides inside `memoryNote` (so local briefText and Claude prompts both get it). Selection may use h.ff/h.by but output never says who posted (channels). Reward text duplicates questlog payText (not exported; pace.js kept to its file).
+- localcheck section F asserts it; localcheck's start-gate section (port+650) flakes with ECONNREFUSED under load; rerun.

@@ -151,12 +151,19 @@ export function talkText(b) {
 // recall them. Every turn prompt carries it (local turns inside briefText, Claude turns on their own); '' when none.
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return questNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return questNote(b) + hallNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The quest in focus and how many others the hero holds (brief.quest, src/sim/questlog.js); every turn prompt carries it with the memories.
 export function questNote(b) {
   const q = b && b.quest;
   return q && q.focus ? `\nYour quest in focus: ${String(q.focus).slice(0, 120)}${q.others ? ` (and ${q.others} more you hold: quests lists them, focus_quest switches)` : ''}.` : '';
+}
+
+// The hall board's open jobs for the Fellowship (brief.hall, issue #326): only for a member in town, only when there are some.
+export function hallNote(b) {
+  const h = b && Array.isArray(b.hall) ? b.hall : [];
+  return h.length ? `
+Posted at your hall for the Fellowship: ${h.map(x => `${x.id} "${String(x.title || '').slice(0, 90)}"${x.giver ? ' from ' + x.giver : ''}${x.reward ? ' (' + x.reward + ')' : ''}`).join('; ')} (take_quest {id} holds one; the party leader sets out with take_adventure).` : '';
 }
 
 // The line a turn prompt carries about why it started (the hero's own events only, issue #123).
