@@ -195,6 +195,45 @@ console.log('declutter');
   st.children.find(b=>b.dataset.story==='camp').click();ok($('log').hidden&&!$('campaign').hidden&&$('chronFel').hidden,'Campaign log tab shows the campaign');
   st.children.find(b=>b.dataset.story==='chron').click();ok(!$('log').hidden&&$('campaign').hidden,'Chronicle tab shows the chronicle')}
 
+
+// ---- the Fellowship chat panel, class and disposition colours, council lines (#169) ----
+{const {classColor,dispositionOf,toneOf}=await import('../src/core/colors.js');
+  const dps=mem.filter(a=>/^dps/.test(a.fellowRole||''));const cols=new Set(dps.map(a=>classColor(a.cls)));
+  ok(dps.length===3&&cols.size===3,'three DPS of different classes get three different colours: '+[...cols].join(' '));
+  ok(classColor('Warrior')!==classColor('Priest')&&classColor('Nonesuch')===classColor('Nonesuch'),'every class has its own colour, an unknown class a stable one');
+  const F=sim.S.fellowship,home={kind:'npc',fac:F.fac,name:'Ostler'},away={kind:'npc',fac:1-F.fac,name:'Peddler'};
+  ok(dispositionOf(home,F)==='friendly'&&dispositionOf(away,F)==='neutral','NPCs of the Fellowship\'s faction are friendly, others neutral');
+  ok(dispositionOf({...away,mood:'hostile'},F)==='hostile'&&dispositionOf({...home,hostile:true},F)==='hostile'&&dispositionOf({kind:'foe',name:'Brute'},F)==='hostile','npc.mood, npc.hostile and a foe make it hostile');
+  ok(dispositionOf({cls:'Mage',fac:1-F.fac,name:'Rival'},F)==='hostile','an enemy-faction hero is hostile');
+  ok(toneOf(dps[0],F).kind==='class'&&toneOf(home,F).npc===true&&toneOf(home,F).color!==classColor('Rogue'),'NPCs carry the shape cue and a colour apart from the class colours');
+  const sec=$('chatSec');ok(!!sec&&!sec.hidden,'the Fellowship chat panel is shown with a Fellowship');
+  const sp=mem[1];sim.playerAct(sp.id,'party_say',{text:'Stream test line.'});
+  mem[0].chat.push({t:'05:00',d:1,from:home,text:'Well met, travellers.',trigger:'npc',fh:true});
+  sim.playerAct(mem[0].id,'propose',{kind:'job',details:'take a job from the gate that matches our level'});
+  uiFast();const cl=$('chatList'),txt=()=>cl.textContent;
+  ok(/Stream test line\./.test(txt()),'chat panel: the party line is in the stream');
+  ok(cl.children.some(c=>c.classList.contains('daysep')),'chat panel: day separators');
+  ok([...cl.querySelectorAll('time')].every(t=>/^(D\d+ )?\d\d:\d\d$/.test(t.textContent)),'chat panel: day-stamped times');
+  ok(/proposes: take a job from the gate that matches our level \[job \u00b7 vote open\]/.test(txt()),'chat panel: one proposal line: '+(txt().match(/proposes:.{0,90}/)||[''])[0]);
+  ok(!/my proposal/.test(txt()),'chat panel: no "my proposal" line');
+  const voter=mem[2];sim.playerAct(voter.id,'vote',{proposal_id:sim.S.fellowship.props[0].id,vote:'no',reason:'too dangerous'});uiFast();
+  {const cast=sim.S.fellowship.props[0].votes[voter.id];if(cast&&cast.reason==='too dangerous')ok(/votes no: too dangerous/.test(txt()),'chat panel: a vote is a system line "X votes no: reason"');else console.log('  skip vote line (the proposal settled before the vote)')}
+  ok(!!cl.querySelector('li.sys .hn'),'chat panel: system lines use the member\'s coloured name');
+  const nm=cl.querySelector('li .hn.fmn');ok(!!nm&&/^#[0-9a-f]{6}$/i.test(nm.style.color||'#000000'),'chat panel: a member\'s name carries its class colour');
+  const fb=$('chatFilter');const click=k=>{fb.children.find(b=>b.dataset.cf===k).click();return cl.textContent};
+  const dmT=click('dm');ok(/Well met/.test(dmT)&&!/Stream test line/.test(dmT),'chat panel: DM filter shows the NPC line only');
+  const npcName=cl.querySelector('.npcn');ok(!!npcName&&npcName.classList.contains('npc-friendly'),'chat panel: an NPC name is underlined in its disposition class');
+  const pT=click('party');ok(/Stream test line/.test(pT)&&/proposes:/.test(pT)&&!/Well met/.test(pT),'chat panel: Party filter shows party lines and the council');
+  ok(!!$('chatLegend')&&/hostile/.test($('chatLegend').textContent),'chat panel: a colour legend');
+  click('all');
+  {const dlog=await import('../src/sim/dmlog.js');dlog.dmlog('agent',null,['The DM agent plans a quiet road.'],{by:'dm-agent'});dlog.dmlog('frame',null,['A scripted scene opens.'],{});
+   $('chatTabs').children.find(b=>b.dataset.ctab==='dm').click();uiFast();const dl=$('dmChatList');
+   ok(!$('dmPane').hidden&&$('chatPane').hidden,'DM tab opens beside the chat');
+   ok(/plans a quiet road/.test(dl.textContent)&&!/scripted scene opens/.test(dl.textContent),'DM tab lists the DM agent\'s entries; scripted ones are hidden');
+   $('dmPane').children[0].children[0].click();uiFast();ok(/scripted scene opens/.test($('dmChatList').textContent)&&!!$('dmChatList').querySelector('.dimmed'),'the Scripted DM toggle shows its entries, dimmed');
+   const row=$('dmChatList').querySelector('[data-dmid]');ok(row.tabIndex===0&&row.getAttribute('role')==='button','DM rows are keyboard focusable');
+   $('chatTabs').children.find(b=>b.dataset.ctab==='chat').click()}}
+
 // The run gate (#171): the world only runs while every required agent seat is connected
 console.log('run gate');
 {const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');

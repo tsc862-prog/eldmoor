@@ -30,7 +30,7 @@ import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
 import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
 import {mindLabel,chatTag} from './mindlabel.js'; // the one mind label (issue #136)
 import {byDay,stampOf,srcTag,dayOf,daySep} from './daystamp.js'; // game day on times, action sources (issue #136)
-import {fellowRoleOf} from '../core/chatview.js';
+import {toneOf,DISP} from '../core/colors.js'; // class and disposition colours (one palette)
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
 import {notebookSig} from './notebook.js'; // agent memories (#155)
@@ -283,7 +283,15 @@ export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k'
 export function chatGroups(lines){const out=[];for(const e of lines){const p=out[out.length-1];
   if(p&&p.e.from===e.from&&p.e.text===e.text&&!!p.e.party===!!e.party)p.n++;else out.push({e,n:1})}return out}
 // A Fellowship member's name stands out in chat: bold, in its party-frame role colour (Tank blue, Healer green, DPS red).
-function chatName(h){const s=hn(h),r=fellowRoleOf(h);s.classList.add('chn');if(r)s.classList.add('fmn','r-'+r);return s}
+// A name in chat: a Fellowship member in its class colour, bold; an NPC, foe or enemy hero in its disposition colour,
+// muted and underlined (a shape as well as a colour), so it never reads as a class (owner, #169). One palette: core/colors.js.
+export function liveOf(f){if(!f||f.kind!=='npc')return f;return (S.npcs||[]).find(p=>p.id===f.id)||(S.wanderers||[]).find(p=>p.id===f.id)||f}
+export function chatName(h){const npc=h&&h.kind==='npc',t=toneOf(liveOf(h),S.fellowship);let s;
+  if(npc){s=el('span','hn',h.name)}else s=hn(h);
+  s.classList.add('chn');
+  if(t.kind==='class'){s.classList.add('fmn');s.style.color=t.color}
+  else if(t.npc){s.classList.add('npcn','npc-'+t.kind);s.style.color=t.color;s.title=DISP[t.kind].label+' toward the Fellowship'}
+  return s}
 
 // ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};

@@ -8,6 +8,7 @@
 // Cheap rendering: a frame's skeleton is built when the hero in its place changes; every 0.3 s
 // tick (renderFrames, from main.js) writes only the text, widths and classes that changed.
 // frameRows() returns the same content as plain text for the headless smoke check.
+import {classColor} from '../core/colors.js'; // a member's name and top edge in its class colour
 import {FAC} from '../data/factions.js';
 import {ZONES} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
@@ -70,13 +71,13 @@ export function frameRows(){return fellowshipMembers().map(m=>{const a=m.hero;
 let root=null,list=null,tip=null,tipFor=null,tipXY=[0,0];
 const frames={}; // slot -> {node, hid, refs}
 
-function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
+function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;if(a)f.style.borderTopColor=classColor(a.cls);
   const r={};
   if(!a){f.classList.add('empty');f.append(el('span','frole r-'+m.role,m.label));r.empty=el('div','pfempty','Place empty');r.past=el('div','dm pfpast');
     const b=el('button','mini','Fill');b.dataset.pffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';f.append(r.empty,r.past,b);return {node:f,hid:null,r}}
   f.tabIndex=0;f.setAttribute('role','button');f.dataset.hid=a.id;
   const top=el('div','pftop');r.port=el('canvas','pfport');r.port.width=10;r.port.height=12;
-  const id=el('div','pfid');r.name=el('div','pfname f'+a.fac);r.star=el('span','gd','★ ');r.nm=el('span',null,a.name);r.name.append(r.star,r.nm);
+  const id=el('div','pfid');r.name=el('div','pfname f'+a.fac);r.star=el('span','gd','★ ');r.nm=el('span',null,a.name);r.nm.style.color=classColor(a.cls);r.name.append(r.star,r.nm);
   const sub=el('div','pfsub');sub.append(el('span','frole r-'+m.role,m.label),' ');r.sub=el('span','dm');sub.append(r.sub);id.append(r.name,sub);
   top.append(r.port,id);
   const hp=el('div','meter hp pfhp');r.hpi=document.createElement('i');r.hpt=el('span','pfhpt');hp.append(r.hpi,r.hpt);
