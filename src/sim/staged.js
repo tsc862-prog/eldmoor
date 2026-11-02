@@ -26,6 +26,7 @@
 import {S,clockStr,dayNo} from './state.js';
 import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
+import {BESTIARY} from '../data/bestiary.js';
 import {WANDER_ROLES} from '../data/npcs.js';
 import {TRAPS} from '../data/encounter-tables.js';
 import {dmlog} from './dmlog.js';
@@ -106,7 +107,8 @@ const band=z=>REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];
 // Entries name no heroes (heroes: []): the Fellowship's campaign log and memories (fellowship.js readDm) take
 // the scene from the Table's own outcome, in the world's words, never the DM's bookkeeping ("staged", reasons).
 const LOG=(kind,summary,detail)=>dmlog(kind,null,summary,{by:'dm-agent',...detail},{heroes:[]});
-function refuse(why,a){const G=stagedState();G.stats.refused++;
+function refuse(why,a){if(a&&a.preview)return {ok:false,error:'Refused: '+why}; // a preview stages nothing, so it leaves no trace
+  const G=stagedState();G.stats.refused++;
   LOG('agent',['Staged scene refused: '+why+(a&&a.kind?' ('+clean(a.kind,12)+')':'')+'.'],{staged:null,kind:a&&a.kind?clean(a.kind,12):null,reason:clean(a&&a.reason,STAGE.REASON_MAX),result:'rejected: '+why});
   return {ok:false,error:'Refused: '+why}}
 
@@ -137,19 +139,20 @@ function whereOf(near){const s=clean(near,60),lo=s.toLowerCase();
 
 // ---- staging (the DM tool stage_scene) ----
 // a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, trap, place, choices:{act:label}}, reason}
-export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),F=S.fellowship;
+export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),F=S.fellowship,seed0=seed,pv=a.preview===true||a.preview==='true';
   const kind=String(a.kind||'').toLowerCase().trim(),reason=clean(a.reason,STAGE.REASON_MAX);
   let cast=a.cast;if(typeof cast==='string'){try{cast=cast.trim()?JSON.parse(cast):{}}catch(e){cast=null}}if(cast==null)cast={};
   if(!STAGE_KINDS.includes(kind))return refuse('kind must be one of '+STAGE_KINDS.join(', '),a);
   if(typeof cast!=='object'||Array.isArray(cast))return refuse('cast must be an object',a);
-  if(!reason)return refuse('a reason is required (one sentence, for the DM log)',a);
-  const frame=clean(a.frame,STAGE.FRAME_MAX);if(frame.length<12)return refuse('the frame (what the heroes see as it begins) is missing or too short',a);
+  if(!pv&&!reason)return refuse('a reason is required (one sentence, for the DM log)',a);
+  const frame=clean(a.frame,STAGE.FRAME_MAX);if(!pv&&frame.length<12)return refuse('the frame (what the heroes see as it begins) is missing or too short',a);
   if(!F||!fellows().length)return refuse('no Fellowship rides in this world',a);
+  if(!pv){
   if(S.table)return refuse('a Table scene is open; stage the next one when it is over',a);
   if(openProps().length)return refuse('a party vote is open; let them settle it first',a);
   if(G.cur&&G.cur.phase!=='done')return refuse('your staged '+G.cur.kind+' "'+G.cur.title+'" is still '+(G.cur.phase==='waiting'?'waiting for the party':'running')+'; one at a time',a);
-  if(today().n>=STAGE.PER_DAY)return refuse(STAGE.PER_DAY+' staged scenes today already; the world needs room to breathe',a);
-  if(FIGHTING[kind]){const h=fellows().find(b=>b.state!=='town'&&!b.hidden&&b.hp<maxHp(b)*STAGE.PILE_HP);
+  if(today().n>=STAGE.PER_DAY)return refuse(STAGE.PER_DAY+' staged scenes today already; the world needs room to breathe',a)}
+  if(!pv&&FIGHTING[kind]){const h=fellows().find(b=>b.state!=='town'&&!b.hidden&&b.hp<maxHp(b)*STAGE.PILE_HP);
     if(h)return refuse(h.name+' of the Fellowship is badly hurt ('+pct(h)+'% HP) out in the field: no staged '+kind+' until they recover',a)}
   const W=whereOf(a.near);if(W.err)return refuse(W.err,a);
   const P=partyLvl();
@@ -157,8 +160,8 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   // a cast walks in from out of sight; a trap or a strange place lies just ahead, where they pass
   if(W.hero){at=STATIC[kind]?spotNear(W.hero,STAGE.AHEAD_MIN,STAGE.AHEAD_MAX,W.hero.dest||null):spotNear(W.hero,STAGE.SPOT_MIN,STAGE.SPOT_MAX,W.hero.dest||null);if(!at)return refuse('no open ground near '+W.hero.name,a);label='near '+W.hero.name}
   const z=zoneAt(at.x,at.y);if(z==null||z<0)return refuse('that spot is outside every region',a);
-  if(!nearFellow(at)&&(today().nw||0)>=STAGE.PER_DAY-STAGE.RESERVE)return refuse('the last staged scene of the day is kept for the Fellowship’s own road; set this one near a member (near: "fellowship")',a);
-  if(FIGHTING[kind]&&band(z)[0]>P.avg+STAGE.FAR)return refuse(ZONES[z]+' (levels '+band(z)[0]+'+) is far above the party (average level '+P.avg+')',a);
+  if(!pv&&!nearFellow(at)&&(today().nw||0)>=STAGE.PER_DAY-STAGE.RESERVE)return refuse('the last staged scene of the day is kept for the Fellowship’s own road; set this one near a member (near: "fellowship")',a);
+  if(!pv&&FIGHTING[kind]&&band(z)[0]>P.avg+STAGE.FAR)return refuse(ZONES[z]+' (levels '+band(z)[0]+'+) is far above the party (average level '+P.avg+')',a);
   // the cast
   const C={name:clean(cast.name,STAGE.NAME_MAX)||null,title:clean(cast.title,40)||null,want:clean(cast.want,STAGE.WANT_MAX)||null,voice:clean(cast.voice,60)||null,reveal:clean(cast.reveal,STAGE.REVEAL_MAX)||null,mobs:[],npc:null,place:null};
   const labels={},ignored=[];
@@ -173,14 +176,26 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     if(cast.foe!=null&&cast.foe!==''){const f=String(cast.foe).toLowerCase().trim(),ks=Object.keys(MOBS).filter(k=>MOBS[k].z===z);
       foeKey=ks.find(k=>k.toLowerCase()===f)||ks.find(k=>MOBS[k].name.toLowerCase()===f)||null;
       if(!foeKey)return refuse('no '+clean(cast.foe,30)+' lives in '+ZONES[z]+' (there: '+[...new Set(ks.map(k=>MOBS[k].name))].join(', ')+')',a)}}
-  const rid=G.seq+1;
+  // the creatures of a fight, decided before anything is spawned: a preview shows them, the frame is checked against them
+  let plan=null;
   if(kind==='elite'){const type=foeKey||(buildEncounter('den',z,lvl,1,{rng:r,n:[1,1],lvlBand:[lvl,lvl],mono:true,variants:false}).foes[0]||{}).type||Object.keys(MOBS).find(k=>MOBS[k].z===z);
     if(!type)return refuse('no creature lives in '+ZONES[z],a);
-    const m=spawnFoe({type,roleOv:'leader',lvl,hpMul:1.5,hitMul:1.1});
-    m.name=C.name||('The '+MOBS[type].name+' of '+ZONES[z]);if(C.title)m.title=C.title;m.named=true;place(m,at);m.staged=rid;C.mobs.push(m.id);C.name=m.name}
+    plan=[{type,lvl}]}
   else if(kind==='ambush'){const E=buildEncounter('road',z,P.avg,Math.max(2,P.n),{rng:r,n:[2,STAGE.PACK_MAX-1],lvlBand:[Math.max(1,P.avg-2),Math.max(1,P.avg)],mono:true,variants:false});
     if(!E.foes.length)return refuse('nothing in '+ZONES[z]+' could spring an ambush',a);
-    E.foes.forEach((f,i)=>{if(foeKey)f.type=foeKey;f.lvl=Math.min(f.lvl,lvl+1);const m=spawnFoe(f);place(m,{x:at.x+(i%3-1)*.8,y:at.y+Math.floor(i/3)*.8});m.staged=rid;C.mobs.push(m.id)});
+    plan=E.foes.map(f=>{if(foeKey)f.type=foeKey;f.lvl=Math.min(f.lvl,lvl+1);return f})}
+  if(plan){plan.forEach(f=>{f.name=MOBS[f.type]?MOBS[f.type].name:f.name||f.type;f.family=(BESTIARY[f.type]&&BESTIARY[f.type].family)||f.family||''});
+    if(pv){seed=seed0;return {ok:true,preview:true,kind,where:label+' in '+ZONES[z],region:ZONES[z],cast:castPlan(kind,plan),creatures:plan.map(f=>f.name+' (L'+f.lvl+')'),level:lvl,party_level:P.avg,
+      people:planHasPeople(plan),note:'Nothing is staged yet. Write a frame that fits this cast (name the creature, or its kind such as '+famWords(plan).slice(0,3).join(', ')+'), then call stage_scene again without preview.'}}
+    const bad=frameMisfit(frame,plan,cast.name,kind);if(bad){seed=seed0;return refuse(bad,a)}}
+  else if(pv){const here=[...new Set(Object.keys(MOBS).filter(k=>MOBS[k].z===z).map(k=>MOBS[k].name))];
+    return {ok:true,preview:true,kind,where:label+' in '+ZONES[z],region:ZONES[z],cast:null,creatures_here:here,note:'A '+kind+' has no creature cast: you describe it with cast and frame. Nothing is staged.'}}
+  const rid=G.seq+1;
+  if(kind==='elite'){const type=plan[0].type;
+    const m=spawnFoe({type,roleOv:'leader',lvl,hpMul:1.5,hitMul:1.1});
+    m.name=C.name||('The '+MOBS[type].name+' of '+ZONES[z]);if(C.title)m.title=C.title;m.named=true;place(m,at);m.staged=rid;C.mobs.push(m.id);C.name=m.name}
+  else if(kind==='ambush'){
+    plan.forEach((f,i)=>{const m=spawnFoe(f);place(m,{x:at.x+(i%3-1)*.8,y:at.y+Math.floor(i/3)*.8});m.staged=rid;C.mobs.push(m.id)});
     C.foe=MOBS[mobOf(C.mobs[0]).type].name;if(!C.name)C.name=C.foe+(C.mobs.length>1?' pack':'')}
   else if(kind==='meeting'||kind==='social'){const roles=WANDER_ROLES.map(x=>x.id),role=String(cast.role||'stranger').toLowerCase();
     if(!roles.includes(role))return refuse('cast.role must be one of '+roles.join(', '),a);
@@ -205,6 +220,27 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   return {ok:true,staged:rid,kind,title,where:label+' in '+ZONES[z],at:rec.at,cast:castLine(rec),...(lvl!=null?{level:lvl,party_level:P.avg}:{}),
     choices:STAGE_ACTS[kind].map(k=>k+(labels[k]?' = '+labels[k]:'')),...(ignored.length?{ignored_choices:ignored,note:'Choices must map to the legal actions: '+STAGE_ACTS[kind].join(', ')+'.'}:{}),
     waits_until_h:Math.round(STAGE.WAIT_MIN/60),scenes_today:today().n+'/'+STAGE.PER_DAY}}
+// ---- does the frame fit the cast? (issue #211) ----
+// A frame that names people over a cast of beasts (or never names what comes) is refused with the actual cast,
+// so the table never opens on "armed men" and then a boar. Lenient: a creature's name, any word of it (3+ letters,
+// plural or not), its family word or a general word for creatures passes; people words are refused only when the cast has no people.
+const PEOPLE=/\b(men|man|women|woman|people|folk|bandits?|brigands?|soldiers?|guards?|guardsm[ae]n|warriors?|raiders?|outlaws?|thugs?|cultists?|mercenar(?:y|ies)|sellswords?|robbers?|highwaym[ae]n|knights?|archers?|swordsm[ae]n|captains?|chieftains?|leader|boss|travell?ers?|villagers?|hooded|riders?)\b/i;
+const FAM_WORDS={beast:['beast','animal'],vermin:['vermin','crawler','insect'],undead:['undead','dead','wight','ghoul','bones'],elemental:['elemental','stone','ember'],'brute-folk':['brute'],bandit:['bandit','raider'],wyrm:['wyrm','dragon','drake','serpent']};
+const GENERIC=['creature','monster','pack','herd','brood','swarm','figure','shape','shadow','eyes','howl','growl','snort','claw','fang','hoof','tusk','paw','teeth','horn'];
+const plural=n=>/(s|x|ch|sh)$/i.test(n)?n+'es':/fe?$/i.test(n)?n.replace(/fe?$/i,'ves'):n+'s';
+const planHasPeople=plan=>plan.some(f=>f.family==='bandit'||PEOPLE.test(f.name));
+const famWords=plan=>{const o=[];for(const f of plan){for(const w of f.name.toLowerCase().split(/\s+/))if(w.length>=3&&!o.includes(w))o.push(w);for(const w of FAM_WORDS[f.family]||[])if(!o.includes(w))o.push(w)}return o};
+function castPlan(kind,plan){const g=new Map();for(const f of plan){const e=g.get(f.name)||{n:0,lo:99,hi:0};e.n++;e.lo=Math.min(e.lo,f.lvl);e.hi=Math.max(e.hi,f.lvl);g.set(f.name,e)}
+  const parts=[...g].map(([n,e])=>(kind==='elite'?'a named '+n:e.n+' '+(e.n>1?plural(n):n))+' (L'+(e.lo===e.hi?e.lo:e.lo+'-'+e.hi)+')');
+  return (kind==='ambush'?'a pack of ':'')+(parts.length<2?parts.join(''):parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1])}
+function frameMisfit(frame,plan,castName,kind){const f=' '+frame.toLowerCase().replace(/pack leader|herd leader|alpha|leader of the (pack|herd)/g,'pack')+' ';
+  const words=famWords(plan).concat(GENERIC);if(castName)for(const w of castName.toLowerCase().split(/\s+/))if(w.length>=4&&!['the','old'].includes(w))words.push(w);
+  const named=words.some(w=>f.includes(w)||f.includes(plural(w)))||plan.some(x=>f.includes(x.name.toLowerCase())||f.includes(plural(x.name).toLowerCase()));
+  const ppl=!planHasPeople(plan)&&PEOPLE.exec(f);
+  if(named&&!ppl)return null;
+  const own=kind==='elite'?'Your elite is '+castPlan(kind,plan):'Your ambush is '+castPlan(kind,plan);
+  return 'the frame does not fit the cast. '+own+(ppl?', not people: no "'+ppl[1]+'" in this scene':'')+'. Write the frame for '+(plan.length>1?'them':'it')+' (name the creature, or say '+famWords(plan).slice(0,3).join(', ')+') and try again, or call stage_scene with preview:true to see the cast first';
+}
 function place(m,p){m.x=p.x;m.y=p.y;m.home={x:p.x,y:p.y};m.spawn={x:p.x,y:p.y};m.dest=null;m.target=null;m.hpl=m.hp}
 function defaultTitle(kind,C){return kind==='ambush'?'Ambush: '+C.name:kind==='trap'?'A trap on the road':kind==='mystery'?C.name:C.name||cap(kind)}
 function castLine(rec){const C=rec.cast,out=[];
@@ -331,7 +367,7 @@ const push=(sc,c)=>{const G=stagedState();(sc.calls||(sc.calls=[])).push({id:sc.
 function onFrame(sc){const rec=recOf(sc);if(!rec)return;const C=rec.cast,w=npcOf(C.npc),m=C.mobs.map(mobOf).find(liveMob);
   push(sc,{kind:'voice',who:w?C.name:m?m.name||MOBS[m.type].name:'the narrator',
     about:w?'Voice '+C.name+' as the scene opens: one line they say out loud'+(C.want?' (they want: '+C.want+')':'')+(C.voice?', in this voice: '+C.voice:'')+'.':
-      m?'Describe '+(m.name||MOBS[m.type].name)+' (level '+m.lvl+(C.mobs.length>1?', with '+(C.mobs.length-1)+' more':'')+') as it comes on: one line of what the heroes see and hear.':
+      m?'Describe '+(m.name||MOBS[m.type].name)+' (level '+m.lvl+(C.mobs.length>1?', with '+(C.mobs.length-1)+' more':'')+') as it comes on: one line of what the heroes see and hear (a creature, not a person; the cast is '+castLine(rec).join('; ')+').':
       'Describe '+C.name+' as the heroes reach it: one line of what they see, hear or smell.'})}
 function onBeat(sc,b){const rec=recOf(sc);if(!rec)return;
   push(sc,{kind:'outcome',beat:sc.beats.length-1,who:b.name,about:b.name+' chose to '+low(b.text)+(b.res?' ('+b.res+')':'')+(b.line?' and said "'+b.line+'"':'')+'. Describe what happens, one line, true to the result.'});
