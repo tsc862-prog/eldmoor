@@ -521,7 +521,7 @@ function finish(adv,outcome,why){if(adv.phase!=='active')return;outcome=outcome|
   bump(stats().done,adv.tpl);stats().outcome[outcome]++;
   const key=why==='death'?'death':why==='expired'?'expired':why==='abandoned'?'abandoned':why==='gone'?null:outcome;
   const pay=[];let gp=0,item=null;
-  if(k>0)for(const b of mem){const g=Math.round((6+b.lvl*3)*T.pay.gold*k*(adv.data.payMul||1));b.gold+=g;gp=Math.max(gp,g);gainXp(b,xpNeed(b.lvl)*T.pay.xp*K.PAY_XP*k);
+  if(k>0)for(const b of mem){const g=Math.round((6+b.lvl*3)*T.pay.gold*k*(adv.data.payMul||1));b.gold+=g;(adv.paid||(adv.paid={}))[b.id]=g;/* the quest log wake names the pay */gp=Math.max(gp,g);gainXp(b,xpNeed(b.lvl)*T.pay.xp*K.PAY_XP*k);
     if(outcome==='success'){b.honor+=T.pay.honor;
       if(b===L||adv.flags.item||rnd()<T.pay.gear){const it=rewardItem(b,adv);if(it&&b===L)item=it}}
     record(b,(outcome==='success'?'Saw through ':'Half finished ')+adv.title+' for '+g+'g.');}
