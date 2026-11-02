@@ -47,7 +47,7 @@ fresh();
 const need0 = Math.round(60 * Math.pow(5, 1.45));
 for (const n of ['Bristleback Boar', 'Bristleback Boar', 'Mire Leech']) {W.wakeKill(a, mob(n)); HE.gainXp(a, 30)}
 const xpEv = a.playEv.filter(e => /XP/.test(e.text));
-ok(xpEv.length === 1 && /\+90 XP from 3 kills \(Bristleback Boar x2, Mire Leech\); \d+ XP to level 6/.test(xpEv[0].text), `one bundled XP line: "${xpEv[0] && xpEv[0].text}"`);
+ok(xpEv.length === 1 && /\+90 XP from 3 kills \(Bristleback Boar x2, Mire Leech\); \d+ XP to advance/.test(xpEv[0].text), `one bundled XP line: "${xpEv[0] && xpEv[0].text}"`);
 ok(wakeLevel(xpEv[0]) === 1, 'XP news is soft (waits for the minimum gap)');
 a.playEvSeen = xpEv[0].n; W.wakeKill(a, mob('Mire Leech')); HE.gainXp(a, 10);
 ok(a.playEv.filter(e => /XP/.test(e.text)).length === 2 && /\+10 XP from 1 kill \(Mire Leech\)/.test(lastEv().text), 'after the agent read it, a new bundle starts');

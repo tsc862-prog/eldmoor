@@ -26,7 +26,7 @@ export function wakeKill(a,m){if(!a.player)return;const X=bundle(a),nm=foeName(a
 export function wakeXp(a,x,need){if(!a.player)return;const X=bundle(a);
   X.xp+=Math.round(x);
   const from=X.kills?' from '+X.kills+' kill'+(X.kills>1?'s':'')+' ('+list(X.names)+')':'';
-  pend(a,'xp','+'+X.xp+' XP'+from+(a.lvl<20?'; '+Math.max(0,need-a.xp)+' XP to level '+(a.lvl+1):''),1);
+  pend(a,'xp','+'+X.xp+' XP'+from+(a.lvl<20?'; '+Math.max(0,need-a.xp)+' XP to advance':''),1);
   X.n=a.playPend.xp}
 
 // What a level opens: abilities, passives, the specialisation choice.
