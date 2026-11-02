@@ -20,7 +20,7 @@ const PROPS={
 };
 const FIRE=['#ffb040','#ff7020'];
 
-export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite}=o,close=cam.close;
+export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite,outlined,dispoRing}=o,close=cam.close;
   // region conditions: a faint wash over the region's tiles in view (close), a line under its label (far)
   for(const c of S.conditions||[]){const C=CONDITIONS[c.kind];if(!C)continue;
     if(close){const x0=Math.max(0,Math.floor((cam.camX-cam.vw/2)/T)),x1=Math.min(W-1,Math.ceil((cam.camX+cam.vw/2)/T)),
@@ -40,5 +40,6 @@ export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite}=
   for(const w of S.wanderers||[]){if(!inView(w.x*T,w.y*T,32))continue;
     const fr=w.moving?Math.floor(blink*6+w.id)%2:Math.floor(blink*1.5)%2,s=npcSprite(w,fr),px=Math.round(w.x*T),py=Math.round(w.y*T);
     ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(px,py,s.width/2,1.5,0,0,7);ctx.fill();
-    ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(s,-Math.floor(s.width/2),py-s.height);ctx.restore();
-    if(close){const t=toneOf(w,S.fellowship);drawText(toneName(w,t),px,py-17,t.color||TEXT.person,12)}}}
+    const t=toneOf(w,S.fellowship,S.gameMin);if(close)dispoRing(px,py,s.width,t.kind);
+    ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(outlined(s),-Math.floor(s.width/2)-1,py-s.height-1);ctx.restore();
+    if(close)drawText(toneName(w,t),px,py-17,t.color||TEXT.person,12)}}

@@ -31,19 +31,23 @@ const KINDS=['hostile','neutral','friendly'];
 // Reads, in order: npc.hostile, npc.mood and npc.attitude (an NPC conversation's outcome, #170, or a DM
 // placed person's attitude), then the defaults: an enemy-faction hero or a foe of an open hostile scene is
 // hostile; townsfolk and placed people of the Fellowship's faction are friendly; others neutral.
-export function dispositionOf(x,F){
+// `now` (S.gameMin, optional): the DM's attitude entries (`x.att`, levers.js `set_attitude`) count while they last;
+// a hostile one wins, 'wary' reads as neutral. This is the one place a map ring, nameplate, bubble or minimap dot learns it.
+export function dispositionOf(x,F,now){
   if(!x||x.fellow||x.kind==='dm')return null;
   if(x.hostile===true)return 'hostile';
-  const m=x.mood!=null?x.mood:x.attitude;if(KINDS.includes(m))return m;
+  let wary=false;for(const e of x.att||[]){if(now!=null&&e.until!=null&&e.until<=now)continue;if(e.a==='hostile')return 'hostile';if(e.a==='wary'||e.a==='neutral')wary=true}
+  let m=x.mood!=null?x.mood:x.attitude;if(m==='wary')m='neutral';if(KINDS.includes(m))return m;
+  if(wary)return 'neutral';
   if(x.kind==='foe'||x.kind==='mob'||x.sceneFoe)return 'hostile';
   if(x.cls&&x.fac!=null)return F&&x.fac!==F.fac?'hostile':null; // a hero: enemy faction is hostile, a fellow-faction hero keeps the faction colour
   if(F&&x.fac!=null)return x.fac===F.fac?'friendly':'neutral';
   return 'neutral'}
 // How to draw `x`: {kind:'class'|'hostile'|'neutral'|'friendly'|null, color, npc}. `npc` is true when the
 // shape cue (underline, brackets) applies. A hero with no class colour and no disposition gives kind null.
-export function toneOf(x,F){
+export function toneOf(x,F,now){
   if(x&&x.fellow&&x.cls)return {kind:'class',color:classColor(x.cls),npc:false};
-  const d=dispositionOf(x,F);if(d)return {kind:d,color:DISP[d].color,npc:true};
+  const d=dispositionOf(x,F,now);if(d)return {kind:d,color:DISP[d].color,npc:true};
   return {kind:null,color:null,npc:false}}
 // Text for a map label or bubble header: NPCs and foes in [brackets].
 export const toneName=(x,t)=>t&&t.npc?'['+x.name+']':x.name;

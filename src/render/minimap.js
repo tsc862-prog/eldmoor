@@ -55,7 +55,7 @@ export function createMinimap(canvas,cam,onCenter){
     if(S.fellowship)for(const k in S.fellowship.slots){const a=S.agents.find(x=>x.id==S.fellowship.slots[k]);if(!a||a.hidden||a.state==='dead')continue;
       dot(a.x,a.y,big+2,'#05060c');dot(a.x,a.y,big,classColor(a.cls))}
     // townsfolk, placed people and foes of a scene: a small dot in the disposition colour (hollow, so never a class dot)
-    for(const p of (S.npcs||[]).concat(S.wanderers||[])){if(p.hidden)continue;const t=toneOf(p,S.fellowship);if(!t.color)continue;
+    for(const p of (S.npcs||[]).concat(S.wanderers||[])){if(p.hidden)continue;const t=toneOf(p,S.fellowship,S.gameMin);if(!t.color)continue;
       ctx.strokeStyle=t.color;ctx.lineWidth=1;ctx.strokeRect(Math.round(p.x*k-d/2)+.5,Math.round(p.y*k-d/2)+.5,d,d)}
     const sel=cam.sel;if(sel&&!sel.hidden&&sel.state!=='dead'){dot(sel.x,sel.y,big+1,'#000');dot(sel.x,sel.y,d+1,SEL_COL)}
     // view rectangle, kept inside the canvas
