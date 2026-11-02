@@ -34,6 +34,20 @@ h1{font-family:var(--px);font-size:clamp(20px,4vw,30px);margin:0;color:var(--gol
 :root{--side:clamp(340px,28vw,460px)}
 .main{display:grid;grid-template-columns:minmax(0,1fr) var(--side);gap:14px;align-items:start}
 @media (max-width:920px){.main{grid-template-columns:minmax(0,1fr)}}
+.colL[hidden]{display:none}
+/* Wide screens (owner request): full width from 1600px, a taller map from 1200px, three columns from 2200px
+   (left: Story and World, middle: frames, map, chat, right: Fellowship and the hero). */
+@media (min-width:1200px){.screen{aspect-ratio:auto;height:clamp(380px,70vh,1200px)}}
+@media (min-width:1600px){body{padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
+  .shell{max-width:none}:root{--side:clamp(380px,24vw,620px)}}
+@media (min-width:2200px){
+  :root{--sideL:clamp(420px,20vw,700px);--side:clamp(440px,22vw,760px)}
+  html,body{overflow:hidden;height:100%}body{box-sizing:border-box;padding-block:12px}
+  .shell{height:100%}
+  .main.cols3{flex:1;min-height:0;grid-template-columns:var(--sideL) minmax(0,1fr) var(--side);align-items:stretch}
+  .main.cols3>.col{overflow-y:auto;overflow-x:hidden;min-height:0;overscroll-behavior:contain}
+  .main.cols3 .screen{height:clamp(420px,62vh,1300px)}
+}
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
 .screen{position:relative;aspect-ratio:640/400;max-width:100%;background:#000;border:3px solid var(--edge);box-shadow:0 0 0 3px #05060c,6px 6px 0 0 #05060c;cursor:pointer;touch-action:manipulation}
 .screen canvas{display:block;width:100%;height:100%;image-rendering:pixelated}

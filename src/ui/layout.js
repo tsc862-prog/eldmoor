@@ -12,12 +12,27 @@ import {syncDevBtn} from './mindctl.js';
 const $=id=>document.getElementById(id);
 let mode=null;
 
-export function applyLayout(){const fel=!!S.fellowship;if(fel===mode)return;mode=fel;
+// Three columns from 2200 CSS px (owner request): Story and the World group move to the left column,
+// the hero card to the right column under the Fellowship panel. Moved, never rebuilt; below 2200 they go back.
+export const WIDE3=2200;
+let cols=0;
+export const columnCount=()=>{const w=window.innerWidth||0;return w>=WIDE3?3:w>920?2:1};
+function restoreColumns(){if(cols!==3){cols=0;return}
+  const side=$('side'),colM=$('colM'),mi=$('mindsSec');cols=0;
+  colM.append($('heroSec'));side.insertBefore($('storySec'),mi||null);side.append($('worldgrp'))}
+function placeColumns(){const want=(S.fellowship&&columnCount()===3)?3:(columnCount()===1?1:2);if(want===cols)return;
+  const side=$('side'),colL=$('colL'),main=side&&side.parentNode;if(!side||!colL||!main||!$('colM'))return;
+  if(want!==3)restoreColumns();
+  cols=want;main.classList.toggle('cols3',want===3);colL.hidden=want!==3;
+  if(want===3){colL.append($('storySec'));colL.append($('worldgrp'));side.append($('heroSec'))}}
+let rs=0;if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('resize',()=>{clearTimeout(rs);rs=setTimeout(placeColumns,100)});
+export function applyLayout(){const fel=!!S.fellowship;if(fel!==mode)restoreColumns();
+  if(fel===mode){placeColumns();return}mode=fel;
   const side=$('side'),grp=$('worldgrp'),wb=$('worldbody');if(!side||!grp||!wb)return;
   document.body.classList.toggle('fellow-mode',fel);
   if(fel){const ws=[...side.querySelectorAll(':scope > section[data-world]')].sort((x,y)=>+x.dataset.world - +y.dataset.world);for(const s of ws)wb.append(s);grp.hidden=false;side.append(grp)}
   else{const ws=[...wb.children];for(const s of ws)side.append(s);grp.hidden=true;
     const all=[...side.querySelectorAll(':scope > section[data-o]')].sort((x,y)=>+x.dataset.o - +y.dataset.o);for(const s of all)side.append(s);side.append(grp)}
-  syncDevBtn()}
+  placeColumns();syncDevBtn()}
 
 export const layoutMode=()=>mode;
