@@ -40,6 +40,9 @@ const {DMA, pileOn} = await import('../src/sim/dmagent.js');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {fellows} = await import('../src/sim/fellowship.js');
 const {ZONES, ZPTS, zoneAt} = await import('../src/world/map.js');
+// a spot well inside its region (not within 11 tiles of a border): a staged cast lands 6-10 tiles away, and over a border it would stand in ground far above a level-2 party, which changes which refusal comes first
+const innerPoint = (zonePoint, zoneAt, z, home) => {let p; for (let i = 0; i < 300; i++) {p = zonePoint(z, null, home); if ([[11, 0], [-11, 0], [0, 11], [0, -11]].every(([dx, dy]) => zoneAt(p.x + dx, p.y + dy) === z)) return p} return p};
+
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 
 // ---- determinism child: a seeded world, the seat open (silent) or not, hashed ----
@@ -131,7 +134,7 @@ ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
 // ---------------------------------------------------------------- 1b. staged scenes: the rules of the seat (issue #132)
 console.log('staged scenes: refusals');
 {const ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
-  const L = fellows(), home = homeOf(L[0]).gate, spot = zonePoint(zoneFor(Math.max(1, L[0].lvl), home), null, home);
+  const L = fellows(), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
   L.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)});
   T.TABLE.mode = 'off'; // nothing opens on its own while the refusals are tried
   const frame = 'Mist lies on the road, and something moves in it.', st = (a) => dmAct('stage_scene', {kind: 'mystery', near: 'fellowship', frame, cast: {}, reason: 'test', ...a});
@@ -381,7 +384,7 @@ ok(h.dm.link === 'connected', 'after a call the seat shows connected');
   await c.close()}
 // the runner's table voice (issue #132): a mock model answers the calls of a staged scene over /play/dm
 {const {tableVoice} = await import('./dm-agent.mjs'), T = await import('../src/sim/table.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
-  const L = fellows(), home = homeOf(L[0]).gate, spot = zonePoint(zoneFor(Math.max(1, L[0].lvl), home), null, home);
+  const L = fellows(), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
   L.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)});
   if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} if (S.staged) {S.staged.day.n = 0; if (S.staged.cur) S.staged.cur.phase = 'done'}
   T.TABLE.mode = 'auto'; T.TABLE.speed = 1; S.table = null;
