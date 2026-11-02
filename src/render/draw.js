@@ -27,6 +27,8 @@ import {drawMemorials} from './memorials.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {ROLE,TEXT,MARK,DISPO,roleOf,dispoOf} from './palette.js';
+import {CITY} from '../world/map.js';
+const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false};
@@ -80,6 +82,15 @@ export function createRenderer(cv,screenEl){
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
   // A thin disposition ellipse at the feet (close zoom only), the same colours as the UI.
   function dispoRing(x,y,w,d){ctx.strokeStyle=DISPO[d]||DISPO.neutral;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
+  // Label queue: lab() records, flushLabels() places by priority with overlap rejection in screen px.
+  // The queue and box arrays are reused across frames.
+  const LQ=[],POOL=[],BOX=[];
+  function lab(t,x,y,col,css,pri){const n=LQ.length,L=POOL[n]||(POOL[n]={});L.t=t;L.x=x;L.y=y;L.col=col;L.css=css;L.pri=pri;L.i=n;LQ.push(L)}
+  function flushLabels(sc){LQ.sort((a,b)=>b.pri-a.pri||a.i-b.i);BOX.length=0;
+    for(const L of LQ){const s=L.css*cam.dpr;ctx.font=s+'px VT323, monospace';const w=ctx.measureText(L.t).width,sx=L.x*sc+cam.offX,sy=L.y*sc+cam.offY;
+      const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12;let hit=false;
+      for(let k=0;k<BOX.length;k+=4)if(BOX[k]<x1&&BOX[k+2]>x0&&BOX[k+1]<y1&&BOX[k+3]>y0){hit=true;break}
+      if(hit)continue;BOX.push(x0,y0,x1,y1);drawText(L.t,L.x,L.y,L.col,L.css)}}
   function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()}
 
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
@@ -152,25 +163,32 @@ export function createRenderer(cv,screenEl){
       drawCampLight(ctx,S,dk,inView);
       ctx.globalCompositeOperation='source-over'}
     drawWeather(ctx,S,cam,blink);
-    // labels: region names when zoomed out, nameplates when close
-    const LM=MARGIN*4,inMap=(y,css)=>{const s=css*cam.dpr/sc;return clamp(y,s*.9,H*T-s*.25)}; // keep labels at the map's edge inside it
+    // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
+    // that would overlap a placed label is dropped, so a crowd shows its most important names.
+    //   far (zoom < 2): regions (pale, larger), towns and landmarks (gold), Fellowship names.
+    //   close: the selected hero, Fellowship, Kragmaw, elites, wary or hostile folk, then other heroes;
+    //   townsfolk and friendly strangers only when near (zoom 4 or a follow camera).
+    const LM=MARGIN*4,near=close&&(following()||sc>=cam.fit*3.5),inMap=(y,css)=>{const s=css*cam.dpr/sc;return clamp(y,s*.9,H*T-s*.25)};
+    LQ.length=0;
     if(!close){
-      for(const[t,x,y]of LABELS)if(inView(x*T,y*T,LM))drawText(t,x*T,inMap(y*T,13),TEXT.label,13);
-      if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))drawText('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,TEXT.elite,12);
+      for(const[t,x,y]of LABELS)if(inView(x*T,y*T,LM)){const town=TOWNS.has(t);lab(t,x*T,inMap(y*T,town?13:15),town?TEXT.place:TEXT.region,town?13:15,town?6:3)}
+      if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-14,MARK.sel,13,10); // the followed hero is named at any zoom
+      if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))lab('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,TEXT.elite,12,5);
       for(const L of LANDMARKS){if(L.kind!=='crypt'||!L.mouth||!inView(L.x*T,L.y*T,LM))continue; // every crypt, labelled just above its mouth
         const g=CRYPT&&L.name===CRYPT.name&&CRYPT.group&&CRYPT.group.phase==='inside'?CRYPT.group:null;
-        drawText(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12)}}
+        lab(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
     else{
-      if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))drawText(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14);
+      if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))lab(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14,7);
+      const fel=S.fellowship?new Set(Object.values(S.fellowship.slots).map(String)):null;
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
-        const dead=a.state==='dead';drawText((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14)}
-      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const d=dispoOf(p,S.gameMin);drawText(p.name,p.x*T,p.y*T-17,d==='friendly'?TEXT.person:DISPO[d],12)} // townsfolk nameplates; a wary or hostile one in its colour
-      drawBubbles(ctx,S,cam,drawText);
-      for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;drawText(m.name,m.x*T,m.y*T-17,TEXT.elite,14)} // named elite nameplate
-      if(boss.alive&&inView(boss.x*T,boss.y*T,LM))drawText('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,TEXT.elite,15);
-      for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
-    // The Fellowship (#94): a role marker over each member and their name at any zoom (close views already
-    // name everyone), plus a dashed ring around the party in Follow Fellowship.
+        const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
+        lab((dead?'† ':'')+a.name,a.x*T,a.y*T-17,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14,a===sel?10:fel&&fel.has(String(a.id))?8:dead?1:4)}
+      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const d=dispoOf(p,S.gameMin);if(d==='friendly'&&!near)continue; // townsfolk nameplates; a wary or hostile one in its colour at any close zoom
+        lab(p.name,p.x*T,p.y*T-17,d==='friendly'?TEXT.person:DISPO[d],12,d==='friendly'?2:5)}
+      for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-17,TEXT.elite,14,6)} // named elite nameplate
+      if(boss.alive&&inView(boss.x*T,boss.y*T,LM))lab('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28,TEXT.elite,15,9)}
+    // The Fellowship (#94): a role marker over each member and their name at any zoom (close views
+    // queue the names above), plus a dashed ring around the party in Follow Fellowship.
     if(S.fellowship){const px1=cam.dpr/sc,F=S.fellowship,mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
       if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
         ctx.save();ctx.strokeStyle=MARK.party;ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
@@ -178,7 +196,10 @@ export function createRenderer(cv,screenEl){
         const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-(close?17:14)-(close?16:15)*px1-m;
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
-        if(!close)drawText(a.name,a.x*T,a.y*T-14,a===sel?MARK.sel:TEXT.hero,13)}}
+        if(!close)lab(a.name,a.x*T,a.y*T-14,a===sel?MARK.sel:TEXT.hero,13,a===sel?10:7)}}
+    flushLabels(sc);
+    if(close){drawBubbles(ctx,S,cam,drawText);
+      for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(mini)mini.draw(S);
   }
 

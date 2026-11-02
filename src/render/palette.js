@@ -27,7 +27,8 @@ export const classColor=cls=>(CLS[cls]&&CLS[cls].acc)||UI.ink;
 
 // Map text. VT323 with a one-pixel black shadow everywhere.
 export const TEXT={
-  label:'#f4ecd0',   // region names, bubble text
+  label:'#f4ecd0',   // bubble text
+  region:'#e8e0c8',  // region names, larger than the rest
   place:'#f2c14e',   // towns and landmarks
   person:'#d8c890',  // townsfolk, plaques, place names
   elite:'#ffb060',   // named elites and Kragmaw
