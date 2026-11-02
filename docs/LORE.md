@@ -266,7 +266,7 @@ The sixth class: a **Skald** is a war-singer, one of the road-poets who march be
 | Verse | **Rallying Verse** | 3 | the whole company within five tiles takes blows at 85% for 8 s |
 | Verse | **Dirge of Doubt** | 6 | one foe loses 1.5 s and takes 20% more for 8 s (a save resists) |
 | Passive | **Practised Ear** | 2 | +5% Crit |
-| Passive | **Last Verse** | 7 | under half health, blows land at 90% |
+| Passive | **Last Verse** | 7 | under half health, blows land at 80% |
 
 Paths at level 10:
 

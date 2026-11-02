@@ -74,7 +74,12 @@ export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
     if (v == null || v === '') {if (!spec.optional) return {error: `${name} needs "${k}" (${spec.desc || k})`}; continue}
     if (spec.type === 'object') {if (typeof v === 'string') {try {v = JSON.parse(v)} catch {return {error: `"${k}" must be a JSON object`}} } if (!v || typeof v !== 'object' || Array.isArray(v)) return {error: `"${k}" must be an object`}}
     else if (spec.type === 'array') {if (typeof v === 'string') {const t = v.trim(); try {v = t.startsWith('[') ? JSON.parse(t) : t.split(',')} catch {v = t.split(',')}} if (!Array.isArray(v)) v = [v]; v = v.map(x => String(x).trim()).filter(Boolean).slice(0, 12)}
-    else if (spec.type === 'integer' || spec.type === 'number') {const n = Number(v); if (!Number.isFinite(n)) return {error: `"${k}" must be a number`}; v = spec.type === 'integer' ? Math.round(n) : n}
+    else if (spec.type === 'integer' || spec.type === 'number') {const n = Number(v);
+      if (!Number.isFinite(n)) { // a name where an id goes (#399): hand it to the tool's name argument when it has one
+        const alt = /_id$/.test(k) && typeof v === 'string' && ['target', 'to', 'who'].find(x => t.args[x] && t.args[x].type === 'string' && a[x] == null);
+        if (alt) {out[alt] = v.trim().slice(0, 60); continue}
+        return {error: `"${k}" must be a number`}}
+      v = spec.type === 'integer' ? Math.round(n) : n}
     else v = typeof v === 'string' ? v : typeof v === 'object' ? JSON.stringify(v) : String(v);
     if (spec.enum && !spec.enum.includes(v)) return {error: `"${k}" must be one of ${spec.enum.join(', ')}`};
     out[k] = v;
@@ -401,7 +406,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     const text = typeof r === 'string' ? r : JSON.stringify(r);
     on('result', text);
     stat.calls.push(r && typeof r === 'object' && r.ok === false ? {name, ok: false, error: String(r.error || 'error').slice(0, 140), ...(r.refused ? {refused: true} : {})} : {name, ok: true}); // the behavior log's turn line (issue #129)
-    if (r && typeof r === 'object' && r.ok === false && (r.offline || /did not answer in time|page went away|game is not connected/i.test(String(r.error || '')))) stat.gameDown = (stat.gameDown || 0) + 1; // the page was away, not the model's mistake
+    if (r && typeof r === 'object' && r.ok === false && (r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')))) stat.gameDown = (stat.gameDown || 0) + 1; // the page was away, not the model's mistake
     if (/"dead":true/.test(text)) stat.dead = true;
     return text;
   };

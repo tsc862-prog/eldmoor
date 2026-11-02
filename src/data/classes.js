@@ -9,7 +9,7 @@ export const CLS={
   Priest:{hp:46,atk:6,range:2.6,acc:'#f0ecd8',head:'#e8e0c0',wep:'#f0e6b0',orb:'#ffe68a',heal:true},
   Rogue:{hp:50,atk:8,range:1.1,acc:'#e6d24a',head:'#2e2a30',wep:'#c8c8d0',crit:.25},
   // Skald (#83): a war-singer. Middling health and reach; the voice is the weapon (party-wide wards and marks).
-  Skald:{hp:50,atk:7,range:2.8,acc:'#e0709c',head:'#6e3a62',wep:'#c8964a',orb:'#f0d070'},
+  Skald:{hp:54,atk:7,range:2.8,acc:'#e0709c',head:'#6e3a62',wep:'#c8964a',orb:'#f0d070'},
   // Wildspeaker (#83): a hedge-and-hollow healer. Sturdier and shorter-reached than a Priest; mends one friend at a time, roots foes in place.
   Wildspeaker:{hp:52,atk:6,range:2.4,acc:'#4fc9a0',head:'#2f6b58',wep:'#9a7a4a',orb:'#b8f090',heal:true},
 };
