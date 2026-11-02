@@ -108,11 +108,16 @@ export function texel(t,tx,ty,px,py){
         if(((px*5+py*3+ty*7+tx*3)%19)===0)return '#4a423e';
         if(((px*3+py*7+tx*5)%23)===0)return '#8a807a';
         return pk(['#7a706a','#746a64','#6e6460'],h)}
-      const top=1+Math.abs(dx)*1.6;
-      if(py>=top){if(py<top+2.4&&top<6.5)return dx<0?'#eef0f6':'#c8cede';
-        if(px===7||px===8)return '#7a706a';
-        if(dx<0)return h>.9?'#aaa09a':'#9a908a';return h>.9?'#64605c':'#5a524e'}
-      return pk(['#6e6460','#655c58'],h)}
+      // top of a massif: one ridge line across the whole range (a tent wave plus noise, so
+      // neighbouring tiles join into peaks and saddles), snow on the crest, faces lit where the
+      // ridge rises to the right (they face the top-left light) and shadowed where it falls
+      const r=ridgeAt(tx,ty,px),slope=ridgeAt(tx,ty,px+1)-ridgeAt(tx,ty,px-1),depth=py-r;
+      if(depth<0)return groundOf(biomeOfZone(zone[I(tx,ty)]),x,y,h);
+      const capped=r<6||biomeOfZone(zone[I(tx,ty)])==='tundra';
+      if(capped&&depth<2.6-slope*.4)return slope<-.2?'#f4f6fa':slope>.2?'#c0c8d8':'#e2e6ee';
+      if(slope<-.2)return depth<1?'#c4bab4':h>.85?'#b4aaa4':'#a0968e';
+      if(slope>.2)return depth<1?'#6a625e':h>.9?'#4e4642':'#443c38';
+      return depth<1?'#8a807a':pk(['#7a706a','#746a64','#6e6460'],h)}
     case LAVA:{ // glowing cells separated by dark crust, with a stray spark
       const n=vnoise(x/4,y/4,41);
       if(n>.62)return n>.7?'#3a1c16':'#5a2a1c';
@@ -146,6 +151,42 @@ export function texel(t,tx,ty,px,py){
       return h>.9?'#9a6a3c':((py>>2)&1)?'#8a5a32':'#7a4e2a'}
   }return '#000'}
 function isWater(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return true;const t=tiles[I(tx,ty)];return t===RIVER||t===BRIDGE}
+const isPeak=(tx,ty)=>tx>=0&&ty>=0&&tx<W&&ty<H&&tiles[I(tx,ty)]===PEAK;
+// Ridge height (the first rock row, 0..15) at local column px of the top peak tile (tx,ty). A tent wave
+// of 26 px plus value noise, continuous in world x; at the range's open ends it slopes down to the foot.
+function ridgeAt(tx,ty,px){const x=tx*16+px,ph=hash(0,ty,5)*26,t=Math.abs((((x+ph)/26)%1)*2-1),n=vnoise(x/17,ty*1.7,19);
+  let r=1+t*7+n*4;
+  if(!isPeak(tx-1,ty))r=Math.max(r,14-px*1.3);
+  if(!isPeak(tx+1,ty))r=Math.max(r,14-(15-px)*1.3);
+  return r}
+// Plain ground of a biome, behind a ridge.
+function groundOf(bio,x,y,h){return bio==='tundra'?snowBase(x,y,h):bio==='ash'?pk(['#6e6460','#655c58','#5f5652','#6a605c'],h):bio==='fen'?pk(SGP,h):grass(x,y,h)}
+
+
+// ---- tile cohesion ----
+// Ground tiles bleed into their neighbours over a ragged, noise-shaped band up to three pixels
+// deep, so biome and road edges stop being tile-aligned squares. Objects (trees, peaks, walls,
+// floors, the river and bridges) keep their crisp edges. Same-family pairs (grass and meadow)
+// never blend. The neighbour's colour comes from its own texel at the same world pixel, so
+// ruts, drifts and noise run on across the seam.
+const BLEND=new Uint8Array(16);for(const t of [G,FLOWER,SGRASS,MUD,SNOW,ICE,ROCK,ROAD,LAVA,SWAMP])BLEND[t]=1;
+const fam=t=>t===FLOWER?G:t;
+const EDGE=[.42,.6,.78]; // noise threshold by distance to the edge: nearer edges bleed more
+const tileOr=(tx,ty)=>tx<0||ty<0||tx>=W||ty>=H?-1:tiles[I(tx,ty)];
+function pixel(t,tx,ty,px,py){
+  if(BLEND[t]){let d=3,n=-1,ox=0,oy=0;
+    if(px<d){const k=tileOr(tx-1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=px;n=k;ox=-1;oy=0}}
+    if(15-px<d){const k=tileOr(tx+1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=15-px;n=k;ox=1;oy=0}}
+    if(py<d){const k=tileOr(tx,ty-1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=py;n=k;ox=0;oy=-1}}
+    if(15-py<d){const k=tileOr(tx,ty+1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=15-py;n=k;ox=0;oy=1}}
+    if(n>=0){const x=tx*16+px,y=ty*16+py;if(vnoise(x/2.3,y/2.3,93)>EDGE[d])return texel(n,tx+ox,ty+oy,px-ox*16,py-oy*16)}}
+  return texel(t,tx,ty,px,py)}
+// Light from the top left: ground just below or right of a mountain lies in its shadow, and
+// the foot of a massif darkens where it meets the ground.
+function shade(t,tx,ty,px,py){
+  if(t===PEAK)return isPeak(tx,ty+1)||py<14?1:.82;
+  if(t===WALL||t===FLOOR)return 1;
+  let k=1;if(py<3&&isPeak(tx,ty-1))k=.72+py*.08;if(px<2&&isPeak(tx-1,ty))k=Math.min(k,.8+px*.08);return k}
 
 // ---- chunks ----
 // The map is painted in CH x CH tile canvases, each on its first request, and cached
@@ -164,7 +205,8 @@ function paintChunk(cx,cy){
   const c=cv.getContext('2d');
   const img=c.createImageData(cw*T,ch*T),d=img.data;
   for(let j=0;j<ch;j++)for(let i=0;i<cw;i++){const tx=tx0+i,ty=ty0+j,t=tiles[I(tx,ty)];
-    for(let py=0;py<T;py++)for(let px=0;px<T;px++){const col=rgb(texel(t,tx,ty,px,py)),o=((j*T+py)*stride+i*T+px)*4;d[o]=col[0];d[o+1]=col[1];d[o+2]=col[2];d[o+3]=255}}
+    for(let py=0;py<T;py++)for(let px=0;px<T;px++){const col=rgb(pixel(t,tx,ty,px,py)),o=((j*T+py)*stride+i*T+px)*4,k=shade(t,tx,ty,px,py);
+      d[o]=col[0]*k;d[o+1]=col[1]*k;d[o+2]=col[2]*k;d[o+3]=255}}
   c.putImageData(img,0,0);
   // decorations are painted in world pixels; the translated context clips them to this chunk
   c.translate(-tx0*T,-ty0*T);
