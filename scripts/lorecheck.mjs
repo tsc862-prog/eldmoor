@@ -22,6 +22,7 @@ const F_ = await import('../src/sim/fellowship.js');
 const PC = await import('../src/sim/pace.js');
 const RF = await import('../src/sim/reflect.js');
 const HE = await import('../src/sim/heroes.js');
+const MO = await import('../src/sim/mobs.js');
 const {speak} = await import('../src/sim/chat.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {ZONES, REGIONS, CRYPT, LANDMARKS, zoneAt, zonePoint, dist} = await import('../src/world/map.js');
@@ -109,7 +110,9 @@ r = act(A, 'hunt', {prey: 'Snow Gryphon'}); ok(!r.ok && /know of no creature/.te
 r = act(A, 'hunt', {prey: MOBS[upKey].name}); ok(r.ok && A.pq[0].prey === upKey, `hunt a creature known by name: ${r.hunting}`);
 A.pq = [];
 // hunt without prey leaves what the hero fears: a warned creature close, a harmless one farther
-const near = S.mobs.find(m => m.alive && !m.gone && m.type === upKey), meek = S.mobs.find(m => m.alive && !m.gone && m.type === mob.type && m !== mob);
+// the world's own mobs when about, else fresh ones (the fixture must not depend on what the RNG left alive)
+const spawnOne = type => {const m = MO.spawnMob(type); if (!S.mobs.includes(m)) S.mobs.push(m); return m};
+const near = S.mobs.find(m => m.alive && !m.gone && m.type === upKey) || spawnOne(upKey), meek = S.mobs.find(m => m.alive && !m.gone && m.type === mob.type && m !== mob) || spawnOne(mob.type);
 near.x = A.x + 2; near.y = A.y; near.target = null; meek.x = A.x + 5; meek.y = A.y; meek.target = null; rebuild();
 const pick = L.pickPrey(A, {kind: 'hunt', n: 1});
 ok(pick === meek, `hunt without prey passes over the ${MOBS[upKey].name} it was warned of and picks ${pick && MOBS[pick.type].name}`);
