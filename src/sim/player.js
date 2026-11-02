@@ -66,6 +66,8 @@ import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
+import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
+import {SPEC_LVL} from '../data/classes.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
 
 // ---- knobs ----
@@ -339,7 +341,7 @@ const T={
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
       oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
-      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),hunting_ground:ZONES[huntZone(a)],guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
+      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,hunting_ground:ZONES[huntZone(a)],guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
     if(a.party&&a.party.leader===a)r.party_lead=true;
     const cv=campView(a);if(cv)r.camp=cv;
@@ -365,6 +367,10 @@ const T={
     if(M.swing)a.cd=Math.max(a.cd,0)+1.1; // an attack ability takes the place of a weapon blow
     if(t&&t.kind==='mob'&&M.target==='foe'){if(!t.target)t.target=a;if(a.state==='hunt'||a.state==='travel'){a.state='fight';a.target=t;a.dest=null}}
     return {ok:true,result:r.text,hp:pct(a.hp,maxHp(a))+'%',cooldown_s:M.cd}},
+  choose_specialisation(a,{path}){const key=String(path==null?'':path).toLowerCase().replace(/[^a-z]/g,'');
+    const id=specChoices(a).find(x=>x.id===key||x.name.toLowerCase().replace(/[^a-z]/g,'')===key);
+    const err=specBlock(a);need(!err,err);need(id,'Not a path for a '+a.cls+'. Yours: '+specChoices(a).map(x=>x.name).join(', ')+'.');
+    const r=chooseSpec(a,id.id,{by:'agent'});need(r.ok,r.error);return {ok:true,result:r.text}},
   drop(a,{index,count}){const r=dropEntry(a,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
   give(a,{index,hero_id,count}){const b=hero(Number(hero_id));need(b&&b!==a&&b.state!=='dead','No such hero.');const r=giveItem(a,b,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
   move_to(a,{target}){need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
