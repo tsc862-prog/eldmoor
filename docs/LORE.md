@@ -604,20 +604,25 @@ Materials come from gathering nodes by kind (herb, ore, hide, fish; never by pos
 
 | Material | Kind | Where it is found | Flavour |
 | --- | --- | --- | --- |
-| Redroot Leaf | herb | Thornvale | What the herbwives boil for the Redroot Draught. Bitter, red to the stem. |
-| Rushpulp | herb | Thornvale and Mirefen reedbeds | Beaten reed fibre; scribes press it into rough paper. |
-| Hearthbloom | herb | Thornvale and Mirefen | A small orange flower that opens only near a warm hand. |
-| Rimebloom | herb | Hoarfell | Pale blue, grows through frost and tastes of it. |
-| Tin Ore | ore | Thornvale | Soft, dull and plentiful. Every smith's first lesson. |
-| Bogiron Ore | ore | Mirefen | Rust-red nodules dredged from peat; fights back against the hammer. |
-| Cinderite | ore | Cinderpass | Black glassy ore that is warm to the touch long after it was dug. |
-| Icevein Ore | ore | Hoarfell | Blue-streaked rock that never quite thaws. |
-| Wolf Sinew | hide | wolves | Dried and twisted into thread and bindings. |
-| Mudback Bristle | hide | Mudback Boar | Coarse and stiff; stitched into straps and pack edges. |
-| Shaghorn Horn | hide | Tundra Shaghorn | A ridged horn, polished into toggles and trim. |
-| River Perch | fish | rivers | Common, quick to cook, better than nothing. |
-| Mere Eel | fish | Mirefen meres | Slick, muddy, and said to be best cooked quickly and not looked at. |
-| Tarn Whitefish | fish | Hoarfell tarns | Firm cold-water fish with pale flesh. |
+| Redroot Leaf | herb | gathered (herb nodes, #255), skill band 0 | What the herbwives boil for the Redroot Draught. Bitter, red to the stem. |
+| Rushpulp | herb | gathered (herb nodes, #255), band 0 | Beaten reed fibre; scribes press it into rough paper. |
+| Hearthbloom | herb | gathered (herb nodes, #255), band 1 | A small orange flower that opens only near a warm hand. |
+| Rimebloom | herb | gathered (herb nodes, #255), band 3 | Pale blue, grows through frost and tastes of it. |
+| Tin Ore | ore | gathered (ore nodes, #255), band 0 | Soft, dull and plentiful. Every smith's first lesson. |
+| Bogiron Ore | ore | gathered (ore nodes, #255), band 1 | Rust-red nodules dredged from peat; fights back against the hammer. |
+| Cinderite | ore | gathered (ore nodes, #255), band 2; also dropped by Cinder Golems (30%, Cinderpass) | Black glassy ore that is warm to the touch long after it was dug. |
+| Icevein Ore | ore | gathered (ore nodes, #255), band 3 | Blue-streaked rock that never quite thaws. |
+| Wolf Sinew | hide | Timber Wolves (Thornvale, 25%, taken by a Skinner); also gathered (hide nodes, #255), band 0 | Dried and twisted into thread and bindings. |
+| Mudback Bristle | hide | Mudback Boars (Mirefen, 25%, taken by a Skinner); also gathered (hide nodes, #255), band 1 | Coarse and stiff; stitched into straps and pack edges. |
+| Shaghorn Horn | hide | Tundra Shaghorns (Hoarfell, 20%, taken by a Skinner); also gathered (hide nodes, #255), band 3 | A ridged horn, polished into toggles and trim. |
+| River Perch | fish | gathered (fish nodes, #255), band 0 | Common, quick to cook, better than nothing. |
+| Mere Eel | fish | Boglings (Mirefen, 15%, dropped whole); also gathered (fish nodes, #255), band 1 | Slick, muddy, and said to be best cooked quickly and not looked at. |
+| Tarn Whitefish | fish | gathered (fish nodes, #255), band 3 | Firm cold-water fish with pale flesh. |
+
+Source rule: the data fixes a material's node kind and skill band, never a place. Zone names above come only from where
+the dropping creature lives (`MOBS` zone index 0 Thornvale, 1 Mirefen, 2 Cinderpass, 3 Hoarfell). Only five creatures
+carry `MAT_DROPS`: wolf, mudboar, shaghorn, bog, golem. The trade goods recipes also eat (Wolf Pelt, Thick Hide, Fen
+Moss, Venom Sac, Ember Core, Rime Pelt, Hoar Wool) are ordinary creature loot, not in this table.
 
 **Crafted consumables** (`USES` rows with `craft:true`):
 
