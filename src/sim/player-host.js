@@ -24,7 +24,7 @@ export async function hostCall(heroId,tool,args,{poll=100,nap=sleep,now=()=>Date
 // with wake:null so the runner asks again. Reads only; logs nothing in the Agent tab.
 export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now()}={}){
   const p=args&&typeof args==='object'?args:{},me=()=>S.agents.find(x=>x.id===Number(heroId));
-  if(p.brief){const r=paceBrief(heroId),a=me();if(r&&r.ok&&a&&a.playFresh){a.playFresh=false;lookSnap(a)}return r} // the state header for a turn prompt, at once; the one a runner reads after its wake is the agent's view of the world (#240; the relay's after-turn brief for the behavior log is not)
+  if(p.brief){const r=paceBrief(heroId,{self:!!p.self}),a=me();if(r&&r.ok&&a&&a.playFresh){a.playFresh=false;lookSnap(a)}return r} // the state header for a turn prompt, at once; the one a runner reads after its wake is the agent's view of the world (#240; the relay's after-turn brief for the behavior log is not)
   if(p.reflected!=null){const a=S.agents.find(x=>x.id===Number(heroId));return a&&a.player?reflectDone(a,String(p.reflected),p.wrote):{ok:false,error:'not agent-played'}} // a reflection closed (#179)
   const t0=now(),rm=Number(p.realMs),realMs=Math.min(PACE.REAL_MAX,Number.isFinite(rm)&&rm>=0&&p.realMs!==null?rm:PACE.REAL_MS);
   const q={since:Number.isFinite(Number(p.since))&&p.since!==null?Number(p.since):paceIdle(heroId,null).since,minutes:p.minutes,wake:p.wake==='now'||p.wake==='must'?p.wake:'all',reflect:!!p.reflect};

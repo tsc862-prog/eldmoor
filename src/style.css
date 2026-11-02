@@ -692,5 +692,7 @@ button.tbtn.danger{border-color:var(--red)}
 .lfmark.k-level .lftag,.lfmark.k-own .lftag{color:var(--green)}
 .lfch[title]{cursor:help}
 .lfnone{font-size:15px;margin:2px 0}
+.lfself .lfwhy{color:var(--dim)}
+.fpin{font-size:14px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;align-self:flex-end}.fpin input{margin:0;accent-color:var(--gold)}
 @media (max-width:560px){.shhead{flex-wrap:wrap}.shhead .shttl{flex-basis:100%}.lfview{padding:6px}.lfgrid{grid-template-columns:minmax(0,1fr)}}
 /* ---- end Life view ---- */

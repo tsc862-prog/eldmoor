@@ -122,6 +122,10 @@ ME.memOf(B).long = (ME.memOf(B).long || '') + ' Long ago ' + plant('bLong') + '.
 B.persona = {...(B.persona || PE.buildPersona(B, M)), wants: 'B wants ' + plant('bWants'), fears: 'B fears ' + plant('bFears'), voice: 'B speaks ' + plant('bVoice')};
 B.backstory = {...(B.backstory || PE.buildBackstory(B, M, S.fellowship.name)), summary: 'B is ' + plant('bSummary')};
 B.backstory.paras = {...B.backstory.paras, flaw: 'B hides ' + plant('bFlaw')};
+// the persona B grows itself (issue #409): its own beliefs, traits, a stance toward A and why, all private to B
+ok(act(B, 'become', {field: 'beliefs', text: 'B believes ' + plant('bBelief'), why: 'B changed because ' + plant('bWhy')}).ok, 'B changes its own beliefs (become)');
+ok(act(B, 'become', {field: 'traits', text: 'B is ' + plant('bTrait').slice(0, 30), why: 'B noticed'}).ok, 'B notes a trait of its own');
+ok(act(B, 'become', {field: 'stance', about: A.name, text: 'Of A, B thinks ' + plant('bStanceA'), why: 'B judged ' + plant('bStanceWhy')}).ok, 'B changes its stance toward A');
 B.mind = [{id: 1, t: 'D1 08:00', kind: 'townPlan', snapshot: {secret: plant('bMind')}, sent: {user: 'prompt ' + plant('bMindPrompt')}, outcome: 'applied'}];
 P.playerNarrate(B.id, 'B thinks ' + plant('bNarration'));
 const bs = SS.loadSession(B.id, B.name, () => ({sessionId: 's-b', heroId: B.id, heroName: B.name, system: 'You are B. ' + plant('bPrompt'), turns: 3, costUsd: 0, lastTotal: 0})).sess; SS.saveSession(bs, {});
@@ -188,6 +192,7 @@ const argsFor = {move_to: {target: 'home'}, talk: {target: B.name}, say: {text: 
   fight: {target_id: 0}, hunt: {count: 1}, rest: {minutes: 10}, buy: {}, sell: {index: 99}, equip: {index: 99}, read_chronicle: {n: 20}, journal_read: {n: 50}, journal_write: {text: 'A writes.'},
   journal_search: {query: 'diary turning point road old line filler ' + SECRETS.bJournal + ' ' + SECRETS.bLandmark + ' ' + SECRETS.bChapter},
   party_say: {text: 'Aye.'}, party_read: {n: 20}, chat_read: {n: 20}, propose: {kind: 'other', details: 'A small fire tonight.'}, vote: {proposal_id: 1, vote: 'yes', reason: 'fine'},
+  become: {field: 'traits', text: 'watchful', why: 'A keeps the night watch'},
   lead_to: {target: 'home'}, scene_act: {option: 'a'}, wait: {minutes: 10}, list_jobs: {},
   remember: {title: 'Road notes', text: 'A notes the road home.', tags: ['road', 'secret'], about: B.name}, recall: {query: 'road hide secret memory'}, update_memory: {id: 1, text: 'A rewrites the road note.'}, forget: {id: 9999}, pin: {id: 1}};
 // Learn the world (#188): a creature in sight with a planted level and HP: no hero tool, event or header may number it
@@ -209,6 +214,7 @@ keep('A journal overview', act(A, 'journal_read', {})); keep('A journal_search d
 // A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
 for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));
 ok(act(A, 'recall', {n: 20}).notes.every(n => n.title === 'Road notes' || n.title === 'A writes.'), 'A\'s recall finds only A\'s own notes (its note and its journal entry, #179), whatever it asks');
+keep('A self brief', PC.paceBrief(A.id, {self: true})); // the persona text for A's standing orders (#409): A's own only
 {const br = keep('A pace brief', PC.paceBrief(A.id)); keep('A memory line', memoryNote(br.brief)); keep('A Claude turn header', claudeBrief(br.brief)); keep('A brief text', SIM.S && br.brief ? JSON.stringify(br.brief) : '')}
 // a wait, finished by the host the way sim/player-host.js does
 const w = act(A, 'wait', {minutes: 10}); run(3); keep('A wait', P.finishWait(w.pending, true));

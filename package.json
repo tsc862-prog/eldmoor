@@ -12,6 +12,7 @@
     "worldcheck": "node scripts/worldcheck.mjs",
     "savecheck": "node scripts/savecheck.mjs",
     "archetypecheck": "node scripts/archetypecheck.mjs",
+    "personacheck": "node scripts/personacheck.mjs",
     "setupcheck": "node scripts/setupcheck.mjs",
     "setupsmoke": "node scripts/setupsmoke.mjs . a && node scripts/setupsmoke.mjs . b && node scripts/setupsmoke.mjs . c",
     "uismoke": "node scripts/uismoke.mjs",

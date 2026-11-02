@@ -30,6 +30,7 @@ import {foeName} from './lore.js'; // the foe as the hero knows it, never its le
 import {questBrief} from './questlog.js'; // the focused quest and how many others
 import {focus,hallHooks,hallTitle} from './dmfocus.js'; // where the Fellowship rides (#165), the hall jobs that concern it (#326)
 import {homeOf} from '../data/races.js';
+import {personaLine,personaSig,selfText} from './persona.js'; // who the hero is now, one line (#409)
 import * as ADV from '../data/adventures.js';
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
@@ -62,7 +63,8 @@ export function paceIdle(id,since){const a=hero(Number(id));return {ok:true,wake
 
 // The hero's state right now, for the top of a turn prompt: what it is doing, HP, where, its foe, and the
 // news it has not read yet (not consumed: the next tool call still hands them over).
-export function paceBrief(id){const a=hero(Number(id));
+// self: also the whole persona as standing-order text (brief.self), for a Claude runner whose personaV changed (#409).
+export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
   if(!a||a.kind!=='hero')return {ok:false,gone:true,error:'No such hero.'};
   if(a.state==='dead')return {ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+'). Hardcore: one life.'};
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
@@ -74,6 +76,7 @@ export function paceBrief(id){const a=hero(Number(id));
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),earshot:earshotLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
     quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
+    persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}), // the hero's own persona (#409): one line for the header, a signature, and on request the full text
     reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The hall's open jobs that concern the Fellowship (issue #326), as the board shows them to a member standing in town:
 // a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting

@@ -28,6 +28,7 @@ jobs:
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: Fellowship archetypes, run: npm run archetypecheck}
+      - {name: Agent-built personality, run: npm run personacheck}
       - {name: Pack and inventory, run: npm run invcheck}
       - {name: Bestiary, run: npm run bestiarycheck}
       - {name: Class abilities and specialisations, run: npm run movecheck}
