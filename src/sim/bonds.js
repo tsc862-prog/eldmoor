@@ -20,6 +20,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {record} from './history.js';
 import {say} from './chat.js';
+import {rivalKill} from './rivals.js';
 
 export const FRIEND=6,CLOSE=15,CAP=30,NEAR=8,DAY=1440;
 const GAIN={kill:1,heal:2,assist:3,party:2,avenge:3};
@@ -60,6 +61,7 @@ function mourn(a,killer){const fr=friendsOf(a);if(!fr.length)return;
 // A hero has been slain by a hero: close friends inherit the killer as nemesis, friends
 // half the time. Called from agentDie after the guildmates' grudge is set.
 export function inheritGrudge(a,killer){if(!killer||killer.kind!=='hero')return;
+  rivalKill(a,killer); // guild rivalry heat (sim/rivals.js, #6)
   for(const x of friendsOf(a)){if(x.fac===killer.fac)continue;
     const close=bond(a,x)>=CLOSE;if(!close&&rnd()<.5)continue;
     if(!x.nemesis[killer.id])stats().inherited++;

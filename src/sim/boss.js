@@ -14,6 +14,7 @@ import {raidPull,goalEvent} from './goals.js';
 import {record,timeline} from './history.js';
 import {bossPull} from './narrator.js';
 import {unitDraft,raidReserve} from './council.js';
+import {rivalDeed} from './rivals.js';
 
 const RAID_COOLDOWN=240,RAID_LVL=14,RAID_FULL=5,RAID_GEAR=9; // entry level, party size that needs no gear check, average gear score otherwise
 // Runs the template's phases, signature moves and enrage; Kragmaw has one phase, one breath and no enrage,
@@ -35,6 +36,7 @@ export function updBoss(dt){const boss=S.boss,agents=S.agents,T=tplOf(boss);
     log(fac(f),' slew ',{t:T.full,c:'gd'},'!');timeline('boss',fac(f),' slew ',{t:T.full,c:'gd'},'.');
     for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')record(a,'Slew ',{t:T.full,c:'gd'},'!');
     const gs=new Set();for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid')gs.add(a.guild);gs.delete(null);gs.forEach(g=>g.bosses++);
+    const foes=[];for(const a of agents)if(a.raid&&a.fac!==f&&a.guild)foes.push(a.guild);gs.forEach(g=>rivalDeed('boss',g,foes)); // contested kills stoke rivalries (sim/rivals.js)
     for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid'){gainXp(a,T.loot.xp);a.gold+=T.loot.gold;if(rnd()<T.loot.p)getEpic(a,pickA(T.loot.epics),T.loot.src);goalEvent(a,'boss')}
     for(const a of agents)if(a.raid){a.raid=false;goHome(a)}}}
 
