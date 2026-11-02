@@ -22,6 +22,7 @@ import {localsTick} from './locals.js'; // arrival news and hails for the Fellow
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
 import {guildsTick} from './guilds.js';
+import {rivalsTick} from './rivals.js';
 import {rebuild} from './spatial.js';
 import {bondsTick} from './bonds.js';
 import {brainTick} from './brain.js';
@@ -83,6 +84,6 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   // agent-played heroes (sim/player.js) run a reduced machine first
   partyTick();fellowshipTick(dt);councilTick();campTick(dt);tableTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
-  chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);
+  chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}

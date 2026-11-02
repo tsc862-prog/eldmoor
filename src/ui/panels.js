@@ -24,6 +24,7 @@ import {biography} from './biography.js';
 import {initTimeline} from './timeline.js';
 import {initDmLog,showAdventure} from './dmpanel.js';
 import {livingGuilds,membersOf,leaderOf} from '../sim/guilds.js';
+import {rivalsOf} from '../sim/rivals.js';
 import {enableBrain,disableBrain,brainStatus,mindUser,modelTag,mindTag} from '../sim/brain.js';
 import {advLine} from '../sim/dm.js';
 import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
@@ -435,6 +436,7 @@ export function renderGuilds(){const live=livingGuilds().map(g=>({g,m:membersOf(
   patch($('guilds'),tb=>{if(!live.length)tb.append(wide('No guild has been founded yet.'));
     live.forEach(({g,m,s},i)=>{const L=leaderOf(g),tr=el('tr'),td=el('td');tr.setAttribute('data-k',keyOf(g));
       td.append(el('span','dm',String(i+1)),' ',el('span','f'+g.fac,'<'+g.tag+'> '+g.name),el('br'),el('span','dm',(L?'led by '+L.name+' · ':'')+m.length+' member'+(m.length===1?'':'s')));
+      const rv=rivalsOf(g);if(rv.length){td.append(el('br'),el('span','dm','Rivals: '));rv.forEach((h,j)=>td.append(j?el('span','dm',', '):'',el('span','f'+h.fac,'<'+h.tag+'>')))} // declared rivalries (sim/rivals.js, #6)
       tr.append(td,el('td',null,g.clears+'/'+(g.clears+g.wipes)),el('td','gd',String(s)));tb.append(tr)});
     if(ret)tb.append(wide('Retired: '+ret))})}
 

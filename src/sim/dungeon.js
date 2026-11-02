@@ -15,6 +15,7 @@ import {livingGuilds} from './guilds.js';
 import {brainOk} from './brain.js';
 import {unitDraft,cryptHold,cryptReserved} from './council.js';
 import {notify} from './notify.js';
+import {rivalDeed} from './rivals.js';
 
 // The dungeon crawl (sim/crawl.js, #65) registers itself here; without it (or without a Fellowship in the group) the single roll below runs.
 let CRAWL=null;export const setCrawlHook=h=>{CRAWL=h};
@@ -61,7 +62,8 @@ export function dungeonCheck(dt){const agents=S.agents;
   const pw=avg+(g.mem.some(a=>a.cls==='Priest')?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+n*.6+(g.bonus||0)+Math.min(1.5,cryptDraughts(g.mem)/n*.6); // g.bonus: the Fellowship's choices at the table (sim/table.js); the draughts the party drinks below (sim/inv.js)
   const ok=rnd()<clamp((pw-8)/8,.15,.92),who=tagOf(g.guild,g.fac,g.name);
   for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6}
-  if(ok){if(g.guild)g.guild.clears++;log(who,' cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'!');
+  if(ok){if(g.guild){g.guild.clears++;rivalDeed('crypt',g.guild)} // a clear close behind an enemy guild's stokes a rivalry (sim/rivals.js)
+    log(who,' cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'!');
     if(first('crypt:'+(g.guild?g.guild.tag:'f'+g.fac)))timeline('crypt',who,' cleared ',{t:CRYPT.name,c:'gd'},' for the first time.');
     payClear(g)}
   else{if(g.guild)g.guild.wipes++;const lost=[];

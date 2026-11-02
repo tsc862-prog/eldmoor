@@ -69,6 +69,14 @@ retired. Names and 2-3 letter tags are unique among living guilds and generated 
   (DR), **Bloodfang** (BF) and **Ashen Fist** (AF), are no longer seeded. They are old names that
   may reappear in the Chronicle as history or be worn again by a new banner.
 
+**Rivalries** (issue #6, `src/sim/rivals.js`): two guilds of opposing factions that keep spilling each
+other's blood (a veteran of level 12+ cut down counts most) or contest the same prize (clearing the
+Sunken Crypt, or slaying Kragmaw, within a day of each other) declare a rivalry. The Chronicle and the
+timeline carry the declaration ("<FW> The Fenwatch and <BG> The Bonegnash declare a rivalry: ...")
+and its end, when the blood cools or a banner falls; the guild panel lists each guild's rivals. Rival
+members meeting in the wilds duel more readily, and guildmates rush in against a rival sooner. The
+Fellowship's guild stays out of it.
+
 ## Classes
 Warrior (armored melee), Mage (ranged burst), Hunter (ranged), Priest (healer), Rogue (melee, crits), Skald (war-singer, see below).
 
