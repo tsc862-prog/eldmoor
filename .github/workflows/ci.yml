@@ -26,6 +26,8 @@ jobs:
         run: npm run savecheck
       - name: Model request rate (counting mock relay)
         run: npm run ratecheck
+      - name: Brain policy and relay (mock model)
+        run: npm run braincheck
       - name: Local agent runner (mock Ollama)
         run: npm run localcheck
       - name: OpenAI provider (mock OpenAI, no key)
