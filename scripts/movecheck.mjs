@@ -104,6 +104,7 @@ init({fellowship: true}); for (let i = 0; i < 60; i++) step(1 / 60); used.clear(
 if (S.fellowship) {
   TABLE.mode = 'auto';
   const f = S.agents.find(x => x.fellow && x.state !== 'dead'), mob = S.mobs.find(x => x.alive && !x.gone);
+  f.mcd = {}; f.mcr = {}; // abilities used during the warm-up steps may still be cooling down (seed-dependent on CI)
   const sc2 = {kind: 'elite', ctx: {mob: mob.id}, ids: [f.id], acts: {}, beats: []}; // a combat scene's shape; no need to run one
   const opts = optionsFor(sc2, f).filter(o => MOVES[o.k]);
   ok(opts.length >= 1, 'a combat scene lists ready abilities as options: ' + optionsFor(sc2, f).map(o => o.k).join(', ') + ' (' + f.cls + ' L' + f.lvl + ')');
