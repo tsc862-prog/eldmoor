@@ -11,3 +11,4 @@
 - [Behavior logs](behavior-logs.md) — #129 logs/behavior/<world>/: turn-line protocol + seat check, game watch, detector thresholds, report, behaviorcheck pitfalls
 - [Table turns](table-turns.md) — #163/#159: forced structured scene turns, text-call parsing, wait refusal, talk.js no-repeat/met, brief scene/heard/met
 - [Agent memories](agent-memories.md) — #155 notebooks: free-form rule, ranking weights, header, caps, letter, Markdown mirror protocol
+- [DM Fellowship first](dm-fellowship-first.md) — #165 dmfocus.js, fellowship_needs/change, event cadence, scripted board rule, reserved share, dmFocus digest

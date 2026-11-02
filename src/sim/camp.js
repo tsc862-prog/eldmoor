@@ -17,6 +17,15 @@
 //   talk      every TALK_MIN a line in the party channel (sim/council.js partySay): scripted from
 //             src/data/camp.js, or the brain 'say' kind for relay-minded members; quarrels cost a
 //             bond point, shared talk grows bonds
+//   status    campStatus(a) is the hero's `doing` line ("Asleep by the fire · camping until dawn (05:30) · 3 h 10 m
+//             left", "On watch (until 01:00) ..."); campView(a) is the same as data for the agent's status and turn header
+//   ending    a night camp breaks at dawn once mended; when everyone is mended before dawn each member gets a wake
+//             event (break camp now or sleep till dawn?); any member may propose `break_camp` (sim/council.js, the vote
+//             settles it) and the leader may `break_camp` outright; the leader's `rest {hours}` makes a camp for a set
+//             time (why 'rest'). Every member gets a turn-starting event when camp breaks (not on an ambush: the alarm is one)
+//   sleeping  a sleeper's agent gets no soft turns (sim/pace.js asleep()), only wake events; one woken by an ambush is groggy
+//             for the first round (its swing cooldown is not ready). onCamp(fn) hears 'make','rest','mended','break',
+//             'spotted','caught' for the reflection memories (#179)
 //   logs      campaign log, chronicle, DM log (kind 'camp'), member memories
 // State is plain data on S.fellowship.camp (ids only), saved with the world.
 import {rnd,ri,hash} from '../core/rng.js';
@@ -40,10 +49,9 @@ import {notify} from './notify.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
 import {sayOk} from './throttle.js';
 import {fellows,campaign} from './fellowship.js';
-import {partySay,leaderOfF} from './council.js';
+import {partySay,leaderOfF,setCampHook} from './council.js';
 import {openScene} from './table.js';
 import {reflexMay} from './runlink.js';
-import {moment} from './reflect.js'; // reflection moments (#179)
 
 export const CAMP={
   MIN_CAMP:3,        // members that must be out in the field to make a camp
@@ -68,6 +76,9 @@ const byId=id=>S.agents.find(x=>x.id==id)||null;
 const hourNow=()=>(S.gameMin/60)%24;
 const LOOSE=['hunt','travel','follow'];
 const fill=(s,a,o,zone)=>String(s).replace(/\{(\w+)\}/g,(m,k)=>k==='other'?(o?o.name:'friend'):k==='zone'?zone:k==='town'?homeOf(a).name:m);
+const listeners=[];
+export const onCamp=f=>{if(typeof f==='function')listeners.push(f)}; // fn(kind, camp, detail), for reflection memories (#179)
+const emit=(kind,g,d)=>{for(const f of listeners){try{f(kind,g,d||{})}catch(e){}}};
 export const campOf=()=>{const F=S.fellowship;return F&&F.camp&&F.camp.phase?F.camp:null};
 export const isCamped=a=>!!(a&&a.state==='camp');
 
@@ -89,30 +100,60 @@ function wantCamp(L){const h=hourNow();
   return avg<CAMP.WORN_AVG||Math.min(...f)<CAMP.WORN_ONE?'worn':null}
 
 function say_(a,text,k){if(!a||a.state==='dead')return;partySay(a,text);remember(a,k||'camp',text.length>90?text.slice(0,88)+'..':text)}
-const ev=(kind,parts,detail,ids)=>{campaign('camp',...parts);dmlog('camp',null,parts,{camp:kind,...detail},{heroes:ids})};
+const ev=(kind,parts,detail,ids)=>{campaign('camp',...parts);dmlog('camp',null,parts,{camp:kind,...detail},{heroes:ids});if(kind!=='make'&&kind!=='break')emit(kind,S.fellowship&&S.fellowship.camp,detail)};
 const members=g=>g.ids.map(byId).filter(a=>a&&a.state==='camp');
 
+// ---- status: how long the rest lasts, who sleeps and who watches ----
+const pad=n=>String(n).padStart(2,'0');
+const hhmm=m=>{const x=((Math.round(m)%1440)+1440)%1440;return pad(Math.floor(x/60))+':'+pad(x%60)};
+const dur=m=>{m=Math.max(0,Math.round(m));const h=Math.floor(m/60);return h?h+' h '+(m%60)+' m':m+' m'};
+function endOf(g,L){const now=S.gameMin,low=Math.min(...L.map(a=>a.hp/maxHp(a))),pct=Math.round(low*100);
+  if(g.why==='rest'&&g.hours)return {text:'resting until '+hhmm(g.restAt+g.hours*60)+' · '+dur(g.restAt+g.hours*60-now)+' left',left:g.restAt+g.hours*60-now,mended:low>=CAMP.MENDED};
+  if(g.why==='night'){const h=hourNow();
+    if(h>=CAMP.DAWN&&h<12)return {text:'resting until mended · '+pct+'%',left:null,mended:low>=CAMP.MENDED};
+    const left=((CAMP.DAWN-h+24)%24)*60;return {text:'camping until dawn ('+hhmm(CAMP.DAWN*60)+') · '+dur(left)+' left'+(low>=CAMP.MENDED?', all mended':''),left,mended:low>=CAMP.MENDED}}
+  return {text:'resting until mended · '+pct+'%',left:Math.max(0,g.restAt+CAMP.WORN_MAX-now),mended:low>=CAMP.MENDED}}
+// Is this camper asleep (camp is resting and it is not the one on watch)?
+export function asleep(a){const g=campOf();return !!(g&&g.phase==='rest'&&a&&a.state==='camp'&&a.id!==g.watcher)}
+export function campView(a){const g=campOf();if(!g||!a||a.state!=='camp')return null;const L=members(g);
+  if(g.phase==='gather')return {phase:'gather',status:'Walking to the camp fire',asleep:false};
+  const e=endOf(g,L),w=byId(g.watcher),wEnd=hhmm(g.restAt+(g.watchIdx+1)*CAMP.WATCH_MIN),sl=asleep(a);
+  return {phase:'rest',kind:g.why,status:(sl?'Asleep by the fire':'On watch (until '+wEnd+')')+' · '+e.text,asleep:sl,ends:e.text,left_min:e.left==null?null:Math.round(e.left),mended:e.mended,
+    on_watch:w?w.name+' (until '+wEnd+')':null,asleep_names:L.filter(x=>x.id!==g.watcher).map(x=>x.name),
+    you_can:'propose break_camp (the party votes)'+(leaderOfF()===a?', or break_camp yourself as leader':'')+'; nothing else needs doing while you sleep'}}
+// One line for the Fellowship panel (rounded so the panel does not rebuild every minute): the end, who sleeps, who watches.
+export function campSummary(){const g=campOf();if(!g)return null;const L=members(g);if(!L.length)return null;
+  if(g.phase==='gather')return 'Making camp: the company walks to the fire';
+  const e=endOf(g,L),w=byId(g.watcher),r10=e.text.replace(/(\d+) h (\d+) m/,(m,h,mm)=>h+' h '+Math.floor(mm/10)*10+' m').replace(/ · (\d+) m left/,(m,mm)=>' · '+Math.ceil(mm/10)*10+' m left').replace(/(\d+)%/,(m,p)=>Math.floor(p/5)*5+'%');
+  return 'Camp: '+r10+(w?' · on watch: '+w.name+' (until '+hhmm(g.restAt+(g.watchIdx+1)*CAMP.WATCH_MIN)+')':'')+' · asleep: '+L.filter(x=>x!==w).map(x=>x.name).join(', ')}
+export const campStatus=a=>{const v=campView(a);return v?v.status:null};
+const refreshDoing=L=>{for(const a of L)a.playDoing=campStatus(a)};
+
 // ---- making and breaking camp ----
-function makeCamp(F,L,why){const lead=L.includes(leaderOfF())?leaderOfF():L[0],sp=campSpot(lead.x,lead.y);if(!sp)return;
+function makeCamp(F,L,why,hours){const lead=L.includes(leaderOfF())?leaderOfF():L[0],sp=campSpot(lead.x,lead.y);if(!sp)return;
   const zone=zoneAt(sp.x,sp.y),ids=L.map(a=>a.id);
-  const g=F.camp={phase:'gather',why,x:sp.x,y:sp.y,zone,ids,start:Math.round(S.gameMin),restAt:0,nextRoll:0,nextTalk:0,nextBond:0,watchIdx:-1,
+  const g=F.camp={phase:'gather',why,hours:hours||0,x:sp.x,y:sp.y,zone,ids,start:Math.round(S.gameMin),restAt:0,nextRoll:0,nextTalk:0,nextBond:0,watchIdx:-1,
     cd:F.camp&&F.camp.cd||0,stats:F.camp&&F.camp.stats||{camps:0,watches:0,visitors:0,spotted:0,caught:0,talks:0,quarrels:0}};
   g.stats.camps++;
   L.forEach((a,i)=>{a.state='camp';a.camp=i;a.dest=null;a.target=null;a.moving=false;if(a.pq)a.pq=[]});
   const zn=ZONES[zone]||'the wilds';
-  ev('make',[why==='night'?'The Fellowship makes camp for the night in ':'The Fellowship, worn thin, makes camp in ',gd(zn),'.'],{why,zone:zn,at:[Math.round(sp.x),Math.round(sp.y)],members:ids.length},ids);
-  log(nar(''),gd(F.name),why==='night'?' makes camp for the night in ':', worn thin, makes camp in ',gd(zn),'.');
-  for(const a of L)if(a.player){notify(a,'The Fellowship makes camp in '+zn+'. You may party_say round the fire; the watch will wake you if anything comes.',false);moment(a,'camp',zn)}}
+  ev('make',[why==='night'?'The Fellowship makes camp for the night in ':why==='rest'?'The Fellowship makes camp to rest a while in ':'The Fellowship, worn thin, makes camp in ',gd(zn),'.'],{why,zone:zn,at:[Math.round(sp.x),Math.round(sp.y)],members:ids.length},ids);
+  log(nar(''),gd(F.name),why==='night'?' makes camp for the night in ':why==='rest'?' makes camp to rest a while in ':', worn thin, makes camp in ',gd(zn),'.');
+  emit('make',g,{why,zone:zn});
+  for(const a of L)if(a.player)notify(a,'The Fellowship makes camp in '+zn+(why==='rest'?' for '+g.hours+' hours':'')+'. You may party_say round the fire; the watch will wake you if anything comes. Camp status shows who sleeps, who watches and when it ends; propose break_camp to move on early.',false)}
 
 function spotOf(g,i,n){const ang=i/Math.max(1,n)*Math.PI*2+.6;return {x:g.x+Math.cos(ang)*CAMP.RING,y:g.y+Math.sin(ang)*CAMP.RING*.8}}
 
 function breakCamp(F,why){const g=F.camp;if(!g||!g.phase)return;const L=members(g);
-  for(const a of L){a.state='hunt';a.dest=null;a.camp=undefined;a.moving=false}
+  for(const a of L){a.state='hunt';a.dest=null;a.camp=undefined;a.moving=false;a.playDoing=null}
   for(const id of g.ids){const a=byId(id);if(a&&a.state==='camp'){a.state='hunt';a.camp=undefined}}
   g.cd=Math.round(S.gameMin)+CAMP.COOL;g.phase=null;
   const ids=g.ids.slice();
-  if(why==='dawn'||why==='mended'){ev('break',[why==='dawn'?'The Fellowship breaks camp at first light and takes the road.':'The Fellowship, mended, breaks camp and takes the road.'],{why,rested:Math.round(S.gameMin-g.start)},ids);
-    log(nar(''),gd(F.name),' breaks camp and takes the road.');for(const a of L)remember(a,'camp','We broke camp rested and took the road.')}
+  if(why==='dawn'||why==='mended'||why==='rested'||why==='called'){ev('break',[why==='dawn'?'The Fellowship breaks camp at first light and takes the road.':why==='rested'?'The Fellowship has rested its time and breaks camp.':why==='called'?'The Fellowship breaks camp early, by agreement, and takes the road.':'The Fellowship, mended, breaks camp and takes the road.'],{why,rested:Math.round(S.gameMin-g.start)},ids);
+    log(nar(''),gd(F.name),' breaks camp and takes the road.');for(const a of L)remember(a,'camp','We broke camp '+(why==='called'?'early, by our own call,':'rested')+' and took the road.')}
+  // every member gets a turn-starting event so the agents act instead of idling on autopilot; an ambush has its own alarm
+  if(why!=='ambush')for(const a of L)notify(a,'Camp is broken ('+(why==='dawn'?'first light':why==='called'?'by the party\'s call':why==='rested'?'the rest is done':why==='mended'?'everyone is mended':'the camp fell apart')+'). You are on your feet: decide what to do next.',true,2);
+  emit('break',g,{why})
   g.ids=[]}
 
 // ---- visitors: an ambush on the watch ----
@@ -140,6 +181,7 @@ function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors+
   for(const a of wake){remember(a,'camp',spot.pass?w.name+' raised the alarm: '+foeName+' came out of the dark.':'We were caught at camp by '+foeName+'.');
     if(a.player)notify(a,'ALARM at camp: '+foeName+' is on us. '+(spot.pass?w.name+' raised the alarm in time.':'The watch failed.'),2)}
   breakCamp(F,'ambush');
+  for(const a of wake)if(a!==w)a.cd=Math.max(a.cd||0,2.4); // a sleeper woken by the alarm is groggy for the first round
   if(useHero){const b=foeHero;for(const a of wake)a.state='hunt';w.state='duel';w.target=b;b.state='duel';b.target=w;b.dest=null}
   else{m.target=spot.pass?w:victim;for(const a of wake){a.state='fight';a.target=m;a.dest=null}
     openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at the Fellowship\'s camp in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id})}}
@@ -191,7 +233,9 @@ export function campTick(dt){const F=S.fellowship;
     L.forEach((a,i)=>{const p=spotOf(g,i,L.length);if(!moveTo(a,p.x,p.y,dt,2.4))all=false;a.face=g.x>a.x?1:-1});
     if(all||now-g.start>CAMP.GATHER_MAX){g.phase='rest';g.restAt=Math.round(now);g.nextRoll=now+CAMP.ROLL_MIN;g.nextTalk=now+20;g.nextBond=now+180;g.watchIdx=-1;
       for(const a of L){a.moving=false;campMeal(a)}
-      for(const a of L)if(!g.lit&&a.inv&&a.inv.list.length)campLight(a)}
+      for(const a of L)if(!g.lit&&a.inv&&a.inv.list.length)campLight(a)
+      emit('rest',g,{why:g.why})}
+    refreshDoing(L);
     return}
   // rest: heal, watches, rolls, talk
   for(const a of L){const mh=maxHp(a);a.hp=Math.min(mh,a.hp+mh*CAMP.CAMP_HEAL*dt);a.face=g.x>a.x?1:-1}
@@ -204,5 +248,24 @@ export function campTick(dt){const F=S.fellowship;
   if(now>=g.nextRoll){g.nextRoll=now+CAMP.ROLL_MIN;
     if(rnd()<CAMP.AMBUSH_P+.02*g.zone){visitor(F,g,byId(g.watcher)||w);return}}
   const full=L.every(a=>a.hp>=maxHp(a)*CAMP.MENDED),h=hourNow();
-  if(g.why==='night'){if(full&&h>=CAMP.DAWN&&h<12)breakCamp(F,'dawn')}
+  refreshDoing(L);
+  if(g.why==='night'&&full&&!g.mendedNote&&!(h>=CAMP.DAWN&&h<12)){g.mendedNote=1;emit('mended',g,{});
+    for(const a of L)notify(a,'Everyone is rested. Break camp now (propose break_camp, or break_camp if you lead) or sleep till dawn ('+hhmm(CAMP.DAWN*60)+')? If nobody speaks up the camp holds till dawn.',true,2)}
+  if(g.why==='rest'){if(now>=g.restAt+g.hours*60)breakCamp(F,'rested')}
+  else if(g.why==='night'){if(full&&h>=CAMP.DAWN&&h<12)breakCamp(F,'dawn')}
   else if(full||now-g.restAt>CAMP.WORN_MAX)breakCamp(F,'mended')}
+
+// ---- the party's call: break camp early, or rest for a set time ----
+export function breakCampNow(why='called'){const F=S.fellowship,g=F&&F.camp;if(!g||!g.phase)return false;breakCamp(F,why);return true}
+setCampHook(breakCampNow);
+// The leader's `break_camp` tool.
+export function leaderBreak(a){const F=S.fellowship,g=F&&F.camp;if(!g||!g.phase)return 'There is no camp to break.';if(!a||leaderOfF()!==a)return 'Only the leader ('+(leaderOfF()?leaderOfF().name:'?')+') breaks camp outright; propose break_camp to put it to the vote.';
+  campaign('camp',a,' calls the camp to break.');breakCamp(F,'called');return null}
+// The leader's `rest {hours}`: make camp now for a set time (1-8 game hours) wherever the company is.
+export function leaderRest(a,hours){const F=S.fellowship;if(!F||!a||!a.fellow)return 'Only a Fellowship member makes camp.';
+  if(F.camp&&F.camp.phase)return 'The Fellowship is already camped; propose break_camp to move on early.';
+  if(leaderOfF()!==a)return 'Only the leader ('+(leaderOfF()?leaderOfF().name:'?')+') calls a camp; ask them, or rest here yourself with rest {minutes}.';
+  if(S.table)return 'Not now: a scene is under way.';
+  const L=fellows(),E=L.filter(eligible);if(L.length<CAMP.MIN_CAMP||E.length<CAMP.MIN_CAMP||E.length<L.length-1)return 'The company is not all out on the road together (hunting, travelling or following); get them together first.';
+  if(E.some(x=>dist(x,a)>14))return 'The company is spread too far apart to make camp together.';
+  const h=Math.min(8,Math.max(1,Math.round(Number(hours)||2)));makeCamp(F,E,'rest',h);return F.camp&&F.camp.phase?null:'No safe ground to camp near here.'}

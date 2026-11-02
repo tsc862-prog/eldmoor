@@ -298,6 +298,7 @@ T.TABLE.mode = 'off'; T.TABLE.speed = 1;
 const hall = homeOf(RA);
 RM.forEach(x => {x.x = hall.gate.x; x.y = hall.gate.y - 1; x.state = 'town'; x.townStep = 2; x.wait = 0; x.target = null; x.hp = maxHp(x); x.pq = []; delete x.splitUntil});
 RA.lvl = 9; for (const p of S.parties.slice()) if (p.fellow) {for (const b of p.mem) b.party = null; S.parties.splice(S.parties.indexOf(p), 1)}
+delete S.fellowship.wait; // a Crypt order waiting from the section above (cryptHold) would send them down at the gate: this check is about the muster
 run(1);
 const FP = F_.fellowParty();
 ok(FP && FP.leader === RA, `the Fellowship musters with ${RA.name} leading (${FP && FP.mem.length} in the party)`);

@@ -26,6 +26,6 @@ export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now(
   const p=args&&typeof args==='object'?args:{};if(p.brief)return paceBrief(heroId); // the state header for a turn prompt, at once
   if(p.reflected!=null){const a=S.agents.find(x=>x.id===Number(heroId));return a&&a.player?reflectDone(a,String(p.reflected),p.wrote):{ok:false,error:'not agent-played'}} // a reflection closed (#179)
   const t0=now(),rm=Number(p.realMs),realMs=Math.min(PACE.REAL_MAX,Number.isFinite(rm)&&rm>=0&&p.realMs!==null?rm:PACE.REAL_MS);
-  const q={since:Number.isFinite(Number(p.since))&&p.since!==null?Number(p.since):paceIdle(heroId,null).since,minutes:p.minutes,wake:p.wake==='now'||p.wake==='must'?p.wake:'all'};
+  const q={since:Number.isFinite(Number(p.since))&&p.since!==null?Number(p.since):paceIdle(heroId,null).since,minutes:p.minutes,wake:p.wake==='now'||p.wake==='must'?p.wake:'all',reflect:!!p.reflect};
   for(;;){const r=paceCheck(heroId,q);if(r)return r;
     if(now()-t0>=realMs)return paceIdle(heroId,q.since);await nap(poll)}}

@@ -22,6 +22,7 @@ import {ZONES,zoneAt} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {heroRelevant} from './notebook.js'; // the notes that matter now (#155)
 import {reflectDue} from './reflect.js'; // reflection moments (#179)
+import {asleep,campView} from './camp.js';
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60]}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -29,7 +30,8 @@ const hero=id=>S.agents.find(x=>x.id===id)||null;
 const day=()=>'Day '+(Math.floor(S.gameMin/1440)+1)+' '+clockStr();
 
 // One look: a wake answer, or null to keep waiting. Errors (dead, gone) end the runner.
-export function paceCheck(id,{since=null,minutes=240,wake='all'}={}){const a=hero(Number(id));
+// reflect: the runner plays reflection moments (#179): a due one starts a turn (soft, even for a sleeper: "before you rest").
+export function paceCheck(id,{since=null,minutes=240,wake='all',reflect=false}={}){const a=hero(Number(id));
   if(!a||a.kind!=='hero')return {ok:false,gone:true,error:'No such hero.'};
   if(a.state==='dead')return {ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+'). Hardcore: one life.'};
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
@@ -37,13 +39,14 @@ export function paceCheck(id,{since=null,minutes=240,wake='all'}={}){const a=her
   const out=(w,why,must)=>({ok:true,wake:w,why:why||null,...(must?{must:true}:{}),gameMin:Math.round(S.gameMin),since:from,clock:day(),table:!!tv});
   const tv=tableView(a);
   if(tv&&!tv.acted&&tv.phase!=='outcome')return out('now','a scene at the table: '+tv.scene,true);
-  const seen=a.playEvSeen||0;let soft=null,now=null;
-  for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=3)return out('now',e.text,true);if(l===2&&!now)now=e;if(l===1&&!soft)soft=e}
+  const seen=a.playEvSeen||0,sleeping=asleep(a);let soft=null,now=null; // a sleeper's agent gets no soft turns and no heartbeat: only wake events (#178)
+  for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=3)return out('now',e.text,true);if(l===2&&!now)now=e;if(l===1&&!soft&&!sleeping)soft=e}
   if(wake==='must')return null;
   if(now)return out('now',now.text);
   if(wake==='now')return null;
   if(soft)return out('soft',soft.text);
-  if(S.gameMin>=from+m)return out('heartbeat',m+' game minutes passed');
+  if(reflect){const r=reflectDue(a);if(r)return out('soft','a moment to reflect: '+r.why)}
+  if(!sleeping&&S.gameMin>=from+m)return out('heartbeat',m+' game minutes passed');
   return null}
 
 // The answer when the real-time cap ran out with nothing to wake for: the runner asks again.
@@ -59,9 +62,9 @@ export function paceBrief(id){const a=hero(Number(id));
   const foe=fighting?(t.kind==='hero'?t.name:t.elite||t.named?t.name:(MOBS[t.type]&&MOBS[t.type].name||'a monster')+(t.lvl?' (level '+t.lvl+')':'')):null;
   const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
-    foe,autopilot:!!a.playIdle,table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a), // memories: the hero's own notes most relevant now, {id, title} only (#155)
-    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),
-    reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected} // what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
+    foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a), // memories: the hero's own notes most relevant now, {id, title} only (#155)
+    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a), // what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
+    reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
 function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(S.table,a).map(o=>o.k);if(!keys.length)return null;

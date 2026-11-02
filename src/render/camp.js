@@ -9,7 +9,9 @@ export function drawCamp(ctx,S,cam,o){const g=camp(S);if(!g)return;const {inView
   // bedrolls
   const ids=g.ids||[];ids.forEach((id,i)=>{const a=S.agents.find(x=>x.id===id);if(!a||a.state!=='camp')return;
     const ang=i/Math.max(1,ids.length)*Math.PI*2+.6,bx=Math.round(g.x*T+Math.cos(ang)*T*1.15)-5,by=Math.round(g.y*T+Math.sin(ang)*T*.92)+3;
-    ctx.fillStyle='#2a2430';ctx.fillRect(bx-1,by-1,12,6);ctx.fillStyle=id===g.watcher?'#6a5a40':'#7a4a3a';ctx.fillRect(bx,by,10,4);ctx.fillStyle='#d8c8a0';ctx.fillRect(bx,by,3,4)});
+    ctx.fillStyle='#2a2430';ctx.fillRect(bx-1,by-1,12,6);ctx.fillStyle=id===g.watcher?'#6a5a40':'#7a4a3a';ctx.fillRect(bx,by,10,4);ctx.fillStyle='#d8c8a0';ctx.fillRect(bx,by,3,4);
+    if(id!==g.watcher&&g.phase==='rest'){const t=(blink*.8+i*.31)%1,zx=bx+8+Math.round(t*3),zy=by-4-Math.round(t*7); // a small z drifts up from each sleeper (#178)
+      ctx.fillStyle='rgba(200,215,255,'+(1-t*.8).toFixed(2)+')';ctx.fillRect(zx,zy,3,1);ctx.fillRect(zx+1,zy+1,1,1);ctx.fillRect(zx,zy+2,3,1)}});
   // stone ring and logs
   ctx.fillStyle='#4a4650';for(let k=0;k<8;k++){const a=k/8*Math.PI*2;ctx.fillRect(Math.round(cx+Math.cos(a)*6)-1,Math.round(cy+Math.sin(a)*4.5)-1,3,2)}
   ctx.fillStyle='#3a2616';ctx.fillRect(cx-4,cy+1,8,2);ctx.fillStyle='#5a3a20';ctx.fillRect(cx-3,cy,6,2);

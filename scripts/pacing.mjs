@@ -65,7 +65,7 @@ export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbe
   const st = {waiting: false, wake: null};
   async function pace(wake, realMs) {
     try {
-      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, since, minutes: heartbeat, wake, realMs}), signal: AbortSignal.timeout(realMs + 20000)});
+      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, since, minutes: heartbeat, wake, realMs, reflect: true}), signal: AbortSignal.timeout(realMs + 20000)});
       if (r.status === 404) return {unsupported: true};
       const j = await r.json().catch(() => ({ok: false, error: 'bad answer'}));
       if (j && j.ok === false && /unknown tool pace|not found/i.test(String(j.error || ''))) return {unsupported: true};

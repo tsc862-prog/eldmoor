@@ -7,6 +7,7 @@
 //   world     a digest every game hour: each Fellowship member's and agent hero's state, place, HP, level and
 //             time idle; the share of game time each mind ran them (agent order, autopilot, relay mind,
 //             scripted); Table scenes opened and resolved; DM lever pulls and refusals, DM log entries by kind;
+//             dmFocus: DM actions (board posts, applied levers, staged scenes) this hour and how many touched the Fellowship, with the share (issue #165);
 //             deaths and their causes; chat lines heard by those heroes, counted by channel; votes by agent
 //             and by reflex; Mind decisions by outcome.
 //   anomaly   idle in one place over BW.IDLE_MIN outside camp; the same state with no progress over
@@ -24,6 +25,7 @@ import {ZONES,zoneAt,dist} from '../world/map.js';
 import {maxHp} from './heroes.js';
 import {fellowshipMembers,mindsOf} from './fellowship.js';
 import {playerSeats} from './player.js';
+import {focus,touches,countable} from './dmfocus.js';
 
 export const BW={
   DIGEST_MIN:60,     // game minutes between world digests
@@ -57,7 +59,7 @@ export function makeWatch(){
   let base=false,lastGm=0,hour=0,dmSeen=0,scene=null,sceneRun=0,voteRun=0,refusals=[],pulls=[];
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0},
-    levers:{pulled:0,refused:0,by:{}},dmlog:{},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{}});
+    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{}});
   const tStats=()=>{const F=S.fellowship,t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
@@ -90,7 +92,8 @@ export function makeWatch(){
     if(a.fellow&&now-t.noteAt>=BW.NO_NOTES_MIN){anomaly(out,'no-memories',a,a.name+' has written no memory for '+Math.round((now-t.noteAt)/1440*10)/10+' game days',{minutes:Math.round(now-t.noteAt),notes:a.memories?a.memories.notes.length:0,reflections:a.reflect?a.reflect.log.length:0,mind:mindOf(a)});t.noteAt=now}}
   function dmLog(out){const L=S.dmLog||[],seq=S.dmLogSeq||0;if(seq<=dmSeen)return;
     const fresh_=L.filter(e=>e.id>dmSeen).reverse();dmSeen=seq;const now=S.gameMin;
-    for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');
+    const fo=focus();
+    for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;if(fo&&countable(e)){H.dmFocus.acts++;if(touches(e,fo))H.dmFocus.fellow++}if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');
       const ok=d.result==='applied';H.levers[ok?'pulled':'refused']++;const b=H.levers.by[by]||(H.levers.by[by]={pulled:0,refused:0});b[ok?'pulled':'refused']++;
       pulls.push(now);if(!ok)refusals.push(now);
       if(ok&&BW.DANGER.includes(d.lever)){const P=d.params||{},at=Number.isFinite(+P.x)&&Number.isFinite(+P.y)?{x:+P.x,y:+P.y}:null;
@@ -128,7 +131,7 @@ export function makeWatch(){
     out.push({kind:'world',rec:{gameMin:Math.round(S.gameMin),clock:day(),minutes:BW.DIGEST_MIN,
       fellowship:F?{name:F.name,minds:mindsOf(F)}:null,
       members:seats().map(a=>{const t=T.get(a.id);return {id:a.id,name:a.name,role:a.fellowRole||null,fellow:!!a.fellow,agent:!!a.player,mind:mindOf(a),state:a.state,doing:a.playDoing||null,place:place(a),hp:pct(a),lvl:a.lvl,idleMin:t?Math.round(S.gameMin-t.since):0}}),
-      ...H,table:{...H.table,open:!!S.table}}});H=fresh()}
+      ...H,dmFocus:{...H.dmFocus,share:H.dmFocus.acts?Math.round(100*H.dmFocus.fellow/H.dmFocus.acts)/100:null},table:{...H.table,open:!!S.table}}});H=fresh()}
 
   return {
     tick(){const out=[];
