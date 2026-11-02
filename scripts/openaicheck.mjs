@@ -151,7 +151,7 @@ const port = 19300 + Math.floor(Math.random() * 500), BASE = `http://127.0.0.1:$
 const health = base => fetch(base + '/play/health').then(r => r.json());
 
 console.log('npm run agent -- --provider openai (mock OpenAI, headless world on port ' + port + ')');
-const world = start(['scripts/play-headless.mjs', '--port', String(port), '--agents', '2', '--quiet', '--speed', '8', '--world', join(tmp, 'world.json')], {wait: /headless world/});
+const world = start(['scripts/play-headless.mjs', '--port', String(port), '--agents', '2', '--quiet', '--speed', '8', '--world', join(tmp, 'world.json')], {wait: /^\[play\] headless world at /m});
 await world.until;
 const h0 = await health(BASE), [hA, hB] = h0.heroes;
 {
@@ -189,7 +189,7 @@ world.p.kill();
 console.log('npm run fellowship -- --provider openai (headless Fellowship, mock OpenAI)');
 {
   const fport = port + 1, FB = `http://127.0.0.1:${fport}`;
-  const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '8', '--world', join(tmp, 'fworld.json')], {wait: /headless world/});
+  const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '8', '--world', join(tmp, 'fworld.json')], {wait: /^\[play\] headless world at /m});
   await fw.until;
   const run = start(['scripts/fellowship.mjs', '--url', FB, '--provider', 'openai', '--model', 'gpt-6-luna', '--max-turns', '1', '--cadence', '0', '--budget', '1']);
   const seen = new Set(); let tags = 0; // members claim, play one turn and release at their own pace: count every member seen tagged

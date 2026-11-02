@@ -72,6 +72,9 @@ if (process.argv[2] === '--ffbounty') {
   init({fac: 0}); run(120);
   const DM = await import('../src/sim/dm.js'), FO = await import('../src/sim/dmfocus.js'), {huntZone} = await import('../src/sim/heroes.js');
   const {MOBS} = await import('../src/data/mobs.js');
+  const {onLog} = await import('../src/sim/chronicle.js'), {chronicleFocus} = await import('../src/sim/fellowship.js'), {CITY} = await import('../src/world/map.js');
+  const heard = []; onLog(e => heard.push(e)); // Chronicle lines (#351): a Fellowship hall posting writes one, others none
+  const hallLines = () => heard.filter(e => e.parts.some(p => typeof p === 'string' && /hall board:/.test(p)));
   const out = {}, fo = FO.focus(), c = fo && fo.town, P = (S.parties || []).find(p => p.fellow);
   if (!c || !P) {console.log('FFB ' + JSON.stringify({setup: false})); process.exit(0)}
   const L = P.leader, mem = [L, ...P.mem.filter(b => b !== L && b.state !== 'dead')];
@@ -89,11 +92,20 @@ if (process.argv[2] === '--ffbounty') {
   out.bountyStays = S.bounties.some(x => x.id === b.id);
   out.bgTake = adv ? DM.fitsJob({...adv, phase: 'open', for: null}, bg) : null; // a background hero cannot take a Fellowship job
   out.bgName = bg && bg.name;
+  out.gateLines = hallLines().length;
   // 2. the hall board: full of background jobs, nothing for them; the next refresh posts one on top
   for (const m of mem) m.adv = null; S.adventures = S.adventures.filter(v => v !== adv); clearHall();
   while (S.adventures.filter(h => h.phase === 'open' && h.town === c.name && h.for == null).length < DM.K.HOOKS) DM.postHook(c, 'deliver', 'request', {});
   out.boardBefore = S.adventures.filter(h => h.phase === 'open' && h.town === c.name).length;
+  const others = CITY.filter(x => x !== c); S.adventures = S.adventures.filter(h => !(h.phase === 'open' && others.some(x => x.name === h.town))); // their boards post too
+  heard.length = 0; const ids0 = new Set(S.adventures.map(h => h.id));
   S.dmHookT = 0; DM.dmTick(1);
+  const posted = S.adventures.filter(h => h.phase === 'open' && !ids0.has(h.id));
+  out.postedFF = posted.filter(h => h.ff).length; out.postedOther = posted.filter(h => !h.ff).length;
+  const hl = hallLines(); out.hallLines = hl.length;
+  out.lineNames = hl.every(e => e.parts.some(p => p && p.kind === 'hero' && fo.ids.has(p.id)) && e.parts.some(p => p && p.t === c.name));
+  out.lineKept = hl.every(e => chronicleFocus(e)); out.lineNoDm = hl.every(e => !/DM|dungeon master/i.test(e.parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('')));
+  out.lineText = hl.length ? hl[0].parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('') : '';
   const ff = S.adventures.filter(h => h.phase === 'open' && h.town === c.name && h.ff);
   out.refillFF = ff.length; out.refillTpl = ff.map(h => h.tpl + (h.data && h.data.bounty ? '(bounty)' : h.data && h.data.eliteId != null ? '(elite)' : '')).join(',');
   out.fitsWhole = ff.some(h => DM.fitsJob(h, L));
@@ -155,6 +167,8 @@ hurt.state = 'hunt'; hurt.hp = maxHp(hurt) * .2;
 const pile = pileOn('mark_dangerous', {at: {x: hurt.x + 1, y: hurt.y}});
 r = dmAct('pull_lever', {lever: 'mark_dangerous', params: {at: {x: Math.round(hurt.x) + 1, y: Math.round(hurt.y)}}, reason: 'more wolves'});
 ok(!!pile && r.ok === false && /does not pile on/.test(r.error), `danger next to ${hurt.name} at 20% HP is refused`);
+ok(!!pileOn('set_condition', {region: hz, kind: 'migration'}) && !pileOn('set_condition', {region: hz, kind: 'festival'}), 'a danger condition over the region of the hurt member piles on; a festival does not');
+ok(!!pileOn('start_event', {region: hz, kind: 'migration'}) && !pileOn('start_event', {region: hz, kind: 'festival'}) && !pileOn('start_event', {region: hz, kind: 'plague'}), 'a world event that runs as a danger condition (migration, invasion once it exists) piles on; festival and plague do not');
 hurt.hp = maxHp(hurt);
 ok(!pileOn('mark_dangerous', {at: {x: hurt.x + 1, y: hurt.y}}) && hz != null, 'once healed, the same pull is no longer a pile-on');
 // the agent's own daily cap
@@ -166,6 +180,41 @@ ok(nums() === n0, 'no hero\'s level, XP or life changed through the DM tools');
 r = dmAct('log_intent', {text: 'The wagon thread will pull the party toward Mirefen.'});
 ok(r.ok && S.dmLog[0].kind === 'agent' && S.dmLog[0].detail.intent, 'log_intent writes a DM agent line');
 ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
+
+// world events (issue #352): dm_status and levers show what runs and whether start_event is open today; pulls and refusals carry their reason
+{S.dmAgent.day.pulls = 0;
+  let we = dmAct('dm_status').world_events;
+  ok(we && Array.isArray(we.running) && we.running.length === 0 && we.open_today === true && we.kinds.includes('festival') && we.kinds.includes('plague') && Array.isArray(we.fellowship_regions) && /Fellowship first/.test(we.note || ''),
+    'dm_status world_events: nothing running, start_event open today, its kinds and the Fellowship\'s regions');
+  ok(JSON.stringify(dmAct('levers').world_events) === JSON.stringify(we), 'levers carries the same world_events');
+  const zc = S.conditions[0].z, zf = ZONES.findIndex((n, i) => !S.conditions.some(c => c.z === i));
+  const evReason = 'the harvest fair draws the Fellowship\'s old friends to market';
+  r = dmAct('pull_lever', {lever: 'start_event', params: {kind: 'festival', region: ZONES[zc]}, reason: 'a fair where fog already lies'});
+  const ref0 = S.dmLog[0];
+  ok(r.ok === false && /already has a condition/.test(r.error) && ref0.kind === 'lever' && ref0.detail.lever === 'start_event' && ref0.detail.by === 'dm-agent' && /rejected: .*already has a condition/.test(ref0.detail.result) && ref0.detail.reason === 'a fair where fog already lies',
+    'a start_event over a region with a condition is refused, the refusal and the reason in the DM log: ' + r.error);
+  ok(zf >= 0, 'a region with no condition for the event');
+  r = dmAct('pull_lever', {lever: 'start_event', params: {kind: 'festival', region: ZONES[zf]}, reason: evReason});
+  const ev = S.dmLog.find(e => e.kind === 'lever' && e.detail.lever === 'start_event' && e.detail.result === 'applied');
+  ok(r.ok && S.conditions.some(c => c.z === zf && c.kind === 'festival') && ev && ev.detail.by === 'dm-agent' && ev.detail.reason === evReason && ev.detail.params.kind === 'festival' && ev.detail.region === ZONES[zf],
+    `start_event: a festival in ${ZONES[zf]}, logged with its kind, region and reason` + (r.ok ? '' : ': ' + r.error));
+  we = dmAct('dm_status').world_events;
+  ok(we.running.length === 1 && we.running[0].kind === 'festival' && we.running[0].region === ZONES[zf] && we.running[0].days_left === 3 && we.running[0].reason === evReason && we.running[0].by === 'dm-agent',
+    'dm_status lists the running event: kind, region, days left and reason ' + JSON.stringify(we.running[0]));
+  ok(we.open_today === false && /already running/.test(we.why_not) && we.regions_with_a_condition.some(x => x.startsWith(ZONES[zf])), 'start_event is closed while one runs, and says why: ' + we.why_not);
+  const zp = ZONES.findIndex((n, i) => !S.conditions.some(c => c.z === i));
+  r = dmAct('pull_lever', {lever: 'start_event', params: {kind: 'plague', region: ZONES[zp >= 0 ? zp : 0]}, reason: 'a second event the same day'});
+  ok(r.ok === false && /limit/.test(r.error) && S.dmLog[0].detail.lever === 'start_event' && /rejected: limit/.test(S.dmLog[0].detail.result) && S.dmLog[0].detail.reason === 'a second event the same day',
+    'a second world event is refused over the limit, with the refusal in the DM log: ' + r.error);
+  const seenO = new WeakSet(), heard = JSON.stringify([S.chronicle, S.timeline, fellows().map(a => a.chat || [])], (k, v) => v && typeof v === 'object' ? (seenO.has(v) ? undefined : (seenO.add(v), v)) : v);
+  ok(!heard.includes(evReason), 'the event\'s reason stays in the DM log: not in the chronicle, the timeline or any member\'s chat');
+  const DAe = await import('./dm-agent.mjs'), sys = DAe.dmSystemPrompt(dmAct('dm_status'));
+  ok(/World events \(start_event/.test(sys) && /Fellowship comes first here too: consider one only when nothing is pending for them/.test(DAe.DM_EVENT_ORDERS) && /fellowship_regions/.test(DAe.DM_EVENT_ORDERS)
+    && DAe.withDmEventOrders('old prompt').includes(DAe.DM_EVENT_ORDERS) && DAe.withDmEventOrders(sys) === sys, 'the standing orders put the Fellowship first for world events (and reach an older session once)');
+  // end the event so the checks below see the world they expect
+  {const {LEVERS} = await import('../src/sim/levers.js'), rec = S.levers.active.find(x => x.name === 'start_event'); S.levers.active.splice(S.levers.active.indexOf(rec), 1); LEVERS.start_event.expire(rec); // what expiry does, without a tick
+    ok(!S.levers.active.some(x => x.name === 'start_event') && !S.conditions.some(c => c.z === zf && c.kind === 'festival') && dmAct('dm_status').world_events.running.length === 0, 'an ended event leaves world_events and its region');}
+}
 
 // ---------------------------------------------------------------- 1b. staged scenes: the rules of the seat (issue #132)
 console.log('staged scenes: refusals');
@@ -422,6 +471,9 @@ console.log('the Fellowship first');
   ok(f && f.whole === f.party && f.party > 3, 'the Fellowship job takes the whole party (' + (f && f.whole) + ' of ' + (f && f.party) + '), past the background size cap of 3');
   ok(f && f.bountyStays, 'the bounty stays posted for the other heroes');
   ok(f && f.bgTake === false, 'a background hero cannot take a Fellowship job (' + (f && f.bgName) + ')');
+  ok(f && f.gateLines === 1, 'the bounty job at the gate writes one Chronicle hall-board line (#351): ' + (f && f.gateLines));
+  ok(f && f.hallLines === f.postedFF && f.hallLines >= 1 && f.postedOther >= 1, 'a Fellowship posting writes one Chronicle line each, other boards none (' + (f && f.hallLines) + ' lines, ' + (f && f.postedFF) + ' ff, ' + (f && f.postedOther) + ' other)');
+  ok(f && f.lineNames && f.lineKept && f.lineNoDm, 'the line names the town and a member, the Fellowship-only view keeps it, and it never names the DM: ' + (f && f.lineText));
   ok(f && f.refillFF >= 1 && f.fitsWhole, 'a full hall board gets a Fellowship job on top at the next refresh, one the whole party fits (' + (f && f.refillTpl) + ', board ' + (f && f.boardBefore) + ')');
 }
 
@@ -571,7 +623,7 @@ function start(args, ready) {
 }
 const port = 18100 + Math.floor(Math.random() * 500), BASE = `http://127.0.0.1:${port}`;
 try {
-  const world = start(['scripts/play-headless.mjs', '--port', String(port), '--dm', '--agents', '0', '--quiet', '--speed', '4', '--world', join(tmp, 'world.json')], /headless world/);
+  const world = start(['scripts/play-headless.mjs', '--port', String(port), '--dm', '--agents', '0', '--quiet', '--speed', '4', '--world', join(tmp, 'world.json')], /^\[play\] headless world at /m);
   await world.until;
   h = await (await fetch(BASE + '/play/health')).json();
   ok(h.dm && h.dm.seat && h.heroes.length === 0, 'play-headless --dm --agents 0: the DM seat open, no agent hero');

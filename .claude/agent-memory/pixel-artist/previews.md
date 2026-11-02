@@ -29,3 +29,6 @@ type: project
   members moved side by side; ctl.speed=0 keeps them on (the clock stops, so real-time seconds never run out).
   For a before/after, copy the edited files aside, `git show origin/main:<file> > <file>`, restart your vite, capture, copy back.
 - Killing headless Chrome by its PID with `taskkill //PID n //T //F` takes its child tree too (all yours).
+- Region conditions (#354): stage them by setting `S.conditions=[{id,kind:'festival'|'plague'|...,z,str:1,until:S.gameMin+99999,lever:-1}]`
+  from `import('/src/sim/state.js')` (lever -1 has no record, so nothing expires it; speed 0 anyway). Any edit while
+  your vite runs still breaks setZoom for the next capture: restart vite after every edit, not just once.

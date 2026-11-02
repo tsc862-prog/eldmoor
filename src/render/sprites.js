@@ -711,3 +711,52 @@ export function npcSprite(p,frame=0){
   frame=frame?1:0;const R=npcRole(p.role),rows=SPR[R&&R.spr]||SPR.npc,pal=(R&&(R.pal[p.fac]||R.pal[0]))||{R:'#7a4ab8',A:'#5a3a88',M:'#c8ccd4',W:'#8a6a3a'};
   const key='n'+p.role+p.fac+(p.skin||'')+(p.hair||'')+frame;if(sprCache[key])return sprCache[key];
   return sprite(key,rows[frame],{H:pal.H||p.hair||'#2a2020',S:p.skin||FAC[p.fac].skin[0],R:pal.R,A:pal.A,M:pal.M,W:pal.W,D:'#241c18'})}
+
+// World events (#354, sim/events.js): a festival hangs banners and bunting on every town in its region
+// (drawn by places.js at close zoom). The banner is a pole with a swallowtail flag in the town's faction
+// colour (B body, L lit edge, D shaded edge; light from the top left) with a gold band and boss; frame 1
+// is the breeze. Pole 'P' wood, 'Y' gold finial, 'K' the foot. The flag points right; mirror for the left.
+export const BANNER=[[
+  'Y.......',
+  'PLLLBBB.',
+  'PLGGGGD.',
+  'PLBBBBD.',
+  'PBBGBBD.',
+  'PBBBBBD.',
+  'PBBD.BD.',
+  'PBD...D.',
+  'P.......',
+  'P.......',
+  'P.......',
+  'P.......',
+  'P.......',
+  'P.......',
+  'K.......'],[
+  'Y.......',
+  'PLLLB...',
+  'PLGGGBB.',
+  'PLBBBGGD',
+  'PBBGBBBD',
+  'PBBBBBBD',
+  'PBBD.BBD',
+  'PBD...BD',
+  'P.......',
+  'P.......',
+  'P.......',
+  'P.......',
+  'P.......',
+  'P.......',
+  'K.......']];
+export function bannerSprite(fac,frame=0){const f=FAC[fac]||FAC[0];
+  return sprite('banner'+fac+(frame?1:0),BANNER[frame?1:0],{Y:'#ffe27a',P:'#8a6a3a',K:'#4a3420',B:f.color,D:f.dark,L:'#cfe0ff',G:'#f2c14e'})}
+// Bunting: a sagging cord (wpx world px long, sag 4 px) with four-pixel pennants every 7 px in
+// alternating festival colours; frame 1 flicks every other pennant's tip. Generated as pixel strings,
+// cached per length and frame.
+const BUNT_COLS='rgby';
+export function buntingSprite(wpx,frame=0){frame=frame?1:0;const key='bunt'+wpx+'.'+frame;if(sprCache[key])return sprCache[key];
+  const h=8,rows=Array.from({length:h},()=>Array(wpx).fill('.'));
+  const sagAt=i=>Math.round(4*(1-((2*i/(wpx-1))-1)**2));
+  for(let i=0;i<wpx;i++)rows[sagAt(i)][i]='S';
+  for(let i=4,n=0;i+3<wpx-3;i+=7,n++){const y=sagAt(i+1)+1,c=BUNT_COLS[n%4];if(y+2>=h)continue;
+    for(let k=0;k<4;k++)rows[y][i+k]=c;rows[y+1][i+1]=rows[y+1][i+2]=c;rows[y+2][frame&&n%2?i+2:i+1]=c}
+  return sprite(key,rows.map(r=>r.join('')),{S:'#3a2a1a',r:'#e8544a',g:'#7dce5a',b:'#5b8ff2',y:'#f2c14e'})}

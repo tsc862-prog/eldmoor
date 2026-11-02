@@ -22,7 +22,7 @@ const {select,setView}=await import('../src/ui/controls.js');
 const {setTab,ranked}=await import('../src/ui/panels.js');
 const $=id=>document.getElementById(id);
 
-let fail=0;const ok=(c,m)=>{if(c)console.log('  ok   '+m);else{console.error('  FAIL '+m);fail++}};
+let fail=0;const failed=[];const ok=(c,m)=>{if(c)console.log('  ok   '+m);else{console.error('  FAIL '+m);failed.push(m);fail++}};
 
 sim.init();
 if(sim.S.fellowship)sim.disbandFellowship(); // the first half runs without one
@@ -130,8 +130,11 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
   ok(!/Minds: agents/.test(fb.textContent),'no Minds: agents label (members are always agents)');
   ok(!fb.querySelector('.feldrawer'),'Members and Fallen are closed by default');
   // a thread that is not about a hero: an oath and a meeting plan show as one-liners
-  mem[0].goal={text:'Avenge Torius on Grishnak',progress:0,need:1};tick(10);uiFast();
-  ok(/swore to avenge Torius/.test(fb.querySelector('.fthreads').textContent),'an oath is a live one-liner');
+  // set the oath after the ticks, on a member who still stands: a member who fell in those ticks is replaced by a new object
+  tick(10);const oathHero=sim.fellows()[0],keepAdv=sim.S.adventures;sim.S.adventures=[]; // the threads box is capped and the world's own jobs come first
+  oathHero.goal={text:'Avenge Torius on Grishnak',progress:0,need:1};uiFast();
+  ok(/swore to avenge Torius/.test(fb.querySelector('.fthreads').textContent),'an oath is a live one-liner (member '+oathHero.name+' '+oathHero.state+', threads: '+fb.querySelector('.fthreads').textContent.slice(0,120)+')');
+  sim.S.adventures=keepAdv;
   // Disband needs a confirmation behind the ... menu
   ok(!fb.querySelector('[data-fact=disband]'),'Disband is not on the header');
   fb.querySelector('[data-fact=menu]').click();ok(!!fb.querySelector('[data-fact=disband]'),'the ... menu offers Disband');
@@ -251,7 +254,8 @@ console.log('declutter');
 
 // ---- the Fellowship chat panel, class and disposition colours, council lines (#169) ----
 {const {classColor,dispositionOf,toneOf}=await import('../src/core/colors.js');
-  const dps=mem.filter(a=>/^dps/.test(a.fellowRole||''));const cols=new Set(dps.map(a=>classColor(a.cls)));
+  // the living members: a fallen one in `mem` has lost its fellow flag
+  const dps=sim.fellows().filter(a=>/^dps/.test(a.fellowRole||''));const cols=new Set(dps.map(a=>classColor(a.cls)));
   ok(dps.length===3&&cols.size===3,'three DPS of different classes get three different colours: '+[...cols].join(' '));
   ok(classColor('Warrior')!==classColor('Priest')&&classColor('Nonesuch')===classColor('Nonesuch'),'every class has its own colour, an unknown class a stable one');
   const F=sim.S.fellowship,home={kind:'npc',fac:F.fac,name:'Ostler'},away={kind:'npc',fac:1-F.fac,name:'Peddler'};
@@ -632,8 +636,10 @@ console.log('start gate: ready, not just claimed');
   window.innerWidth=keep;uiFast()}
 // Fellowship sheet editor: the Archetype select (#295 follow-up) rewrites the persona boxes in place and fills stances
 {const fb=$('felbody'),{ARCHETYPES}=await import('../src/data/archetypes.js');
-  fb.querySelector('[data-fact="drawer:members"]').click();const a=sim.fellows()[0];
-  const sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));sb.click();
+  if(!fb.querySelector('.feldrawer'))fb.querySelector('[data-fact="drawer:members"]').click();
+  uiFast(); // a member who fell since the last refresh has a new id: the row must be drawn for the member we pick
+  const a=sim.fellows()[0];
+  const sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));ok(!!sb,'sheet editor: the drawer has a Sheet button for '+a.name+' (#'+a.id+')');if(!sb)throw new Error('no Sheet button');sb.click();
   const sel=fb.querySelector('select[data-farch]');
   ok(!!sel&&sel.children.length===7&&sel.value==='','sheet editor: an Archetype select, None until one is picked');
   const voice=()=>fb.querySelectorAll('textarea').find(t=>t.dataset.fw==='persona'&&t.dataset.fk==='voice');const box0=voice();
@@ -687,9 +693,13 @@ console.log('start gate: ready, not just claimed');
   ok(!!hb()&&/No job for the Fellowship on the hall board\./.test(hb().textContent),'hall board: the empty state reads plainly');
   const {REGIONS,ZONES}=await import('../src/world/map.js');const z=REGIONS.findIndex(r=>r&&r.band);
   const other=S.agents.find(a=>!a.fellow&&a.state!=='dead');
+  // the agents' brief (no ff, no hero) is the Fellowship's only by region, and where the Fellowship rides drifts with the world
+  // and the machine's timing: ask the focus for a region they are in rather than assuming the first banded one
+  const {focus}=await import('../src/sim/dmfocus.js');const fz=[...(focus()||{zones:[]}).zones].find(r=>REGIONS[r]&&REGIONS[r].band);
+  ok(fz!=null,'hall board: the Fellowship stands in a banded region (zones '+[...(focus()||{zones:[]}).zones]+')');
   S.adventures=[
     {id:900001,phase:'open',town:F.hall,tpl:'hunt',src:'oath',for:mem[0].id,zone:z,ff:1,data:{thing:'the grey wolf'},born:1440*2+60,giver:{name:'Old Brannoc'}},
-    {id:900002,phase:'open',town:F.hall,tpl:'hunt',src:'rumour',for:null,zone:z,by:'dm-agent',data:{beast:'Grimtooth',eliteLvl:7,eliteId:-1},born:1440*3},
+    {id:900002,phase:'open',town:F.hall,tpl:'hunt',src:'rumour',for:null,zone:fz!=null?fz:z,by:'dm-agent',data:{beast:'Grimtooth',eliteLvl:7,eliteId:-1},born:1440*3},
     {id:900003,phase:'open',town:F.hall,tpl:'hunt',src:'request',for:other?other.id:-5,zone:z,data:{},born:1440},
     {id:900004,phase:'open',town:'Elsewhere',tpl:'hunt',src:'request',for:null,zone:z,ff:1,data:{},born:1440}];
   uiFast();const box=hb(),rows=box?[...box.querySelectorAll('li')]:[];
@@ -702,7 +712,8 @@ console.log('start gate: ready, not just claimed');
 // ---- guild rows (#327): focus reason and rival heat in tooltips ----
 {const live=sim.S.GUILDS.filter(g=>!g.retired);
   const fel=live.find(g=>sim.S.agents.some(a=>a.guild===g&&a.fellow&&a.state!=='dead'));
-  const plain=live.filter(g=>g!==fel);const g1=plain[0],g2=plain.find(g=>g.fac!==g1.fac);
+  // every guild with a living Fellowship member shows 'none (Fellowship member)', not just the first one found
+  const plain=live.filter(g=>!sim.S.agents.some(a=>a.guild===g&&a.fellow&&a.state!=='dead'));const g1=plain[0],g2=plain.find(g=>g.fac!==g1.fac);
   if(g1&&g2){g1.focus='crypt';
     const k=g1.id<g2.id?g1.id+':'+g2.id:g2.id+':'+g1.id;
     sim.S.rivals=sim.S.rivals||{heat:{},on:{},last:{},t:0,stats:{declared:0,ended:0,duels:0,assists:0,heat:{}}};
@@ -710,11 +721,27 @@ console.log('start gate: ready, not just claimed');
     const rows=[...$('guilds').children];
     const row=rows.find(r=>r.textContent.includes(g1.name));
     const fw=row&&[...row.querySelectorAll('span')].find(x=>x.textContent==='Delve');
-    ok(fw&&/Crypt/.test(fw.title),'guild rows: the focus word carries its reason as a tooltip');
+    ok(fw&&/Crypt/.test(fw.title),'guild rows: the focus word carries its reason as a tooltip (row: '+(row&&row.textContent)+')');
     const rv=row&&[...row.querySelectorAll('span')].find(x=>x.textContent==='<'+g2.tag+'>');
     ok(rv&&/heat 5\.5 of 8/.test(rv.title),'guild rows: a rival carries its heat as a tooltip');
     delete g1.focus;delete sim.S.rivals.on[k];delete sim.S.rivals.heat[k]}
   if(fel){uiSlow();const row=[...$('guilds').children].find(r=>r.textContent.includes(fel.name));
     ok(row&&/none \(Fellowship member\)/.test(row.textContent),'guild rows: a Fellowship guild reads none (Fellowship member)')}}
+// ---- the Chronicle's Fellowship-only view keeps guild lines for the Fellowship (#341) ----
+{const {chronicleShows}=await import('../src/ui/fellowship.js');const {chronicleFocus,guildLabel}=await import('../src/sim/fellowship.js');
+  const a=mem.find(x=>x.state!=='dead'),was=a.guild;
+  const ours={id:-341,tag:'OWN',name:'Oathbound Test',fac:a.fac,retired:false},theirs={id:-342,tag:'ELS',name:'Elsewhere Test',fac:1-a.fac,retired:false};
+  a.guild=ours;const tg=g=>({t:guildLabel(g),c:'f'+g.fac}),stranger=sim.S.agents.find(x=>!x.fellow&&x.state!=='dead'&&!mem.some(m=>(m.nemesis||{})[x.id]));
+  const e=(...parts)=>({t:'12:00',parts});
+  const focusLine=e(tg(ours),' turns its banner to the ',{t:'Delve',c:'gd'},'.'),otherLine=e(tg(theirs),' goes ',{t:'Wayfaring',c:'gd'},'.');
+  const rivalLine=e(tg(theirs),' and ',tg(ours),' declare a rivalry: blood on the road.');
+  ok(chronicleShows(focusLine)&&chronicleFocus(focusLine),'Fellowship only: a guild line naming a member\'s guild shows');
+  ok(chronicleShows(rivalLine),'Fellowship only: a rivalry naming the member\'s guild shows');
+  ok(!chronicleShows(otherLine),'Fellowship only: an unrelated guild line stays hidden');
+  ok(chronicleShows(e(a,' slays a wolf.'))&&chronicleShows(e({t:'Kragmaw',c:'gd'},' stirs.')),'Fellowship only: member and Kragmaw lines still show');
+  if(stranger)ok(!chronicleShows(e(stranger,' slays a wolf.')),'Fellowship only: a stranger\'s line stays hidden');
+  a.guild=null;ok(!chronicleShows(focusLine),'Fellowship only: once no member is in it, the guild line hides');
+  a.guild=was;$('chronFel').click();ok(chronicleShows(otherLine),'the whole Chronicle (toggle off) shows every guild line');$('chronFel').click();
+  ok(!chronicleShows(otherLine),'Fellowship only again: the unrelated guild line hides')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
