@@ -19,7 +19,7 @@ import {tmpdir, hostname} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {attachPlay} from './relay-mcp.mjs';
-import {attachRunners, checkStart, runnerArgs, MAX_RUNNERS, SEATS, RUNNER_KINDS, HOW} from './runners.mjs';
+import {attachRunners, checkStart, runnerArgs, MAX_RUNNERS, SEATS, RUNNER_KINDS, HOW, NEW_WORLD_EXIT, RESTART_MS} from './runners.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -132,6 +132,14 @@ console.log('runner routes (fake children)');
   ok(v.state === 'crashed' && /not reachable/.test(v.error) && v.exit === 1, 'a crash shows its last error line: ' + (v && v.error));
   const logTxt = readFileSync(join(tmp, 'runners', 'hero-2.log'), 'utf8');
   ok(/start hero H2/.test(logTxt) && /crashed \(exit 1\)/.test(logTxt) && !/sk-test/.test(logTxt), 'the log file has the start line, the output and the end, and never the key');
+  // a runner that sees a new world exits with NEW_WORLD_EXIT: the supervisor starts it again with the same request (issue #219)
+  {const k3 = kids[2], n0 = kids.length; k3.stdout.emit('data', '[world] a new world: #3 was H3, now Zed. Releasing the heroes and exiting (code 75)\n'); k3.emit('exit', NEW_WORLD_EXIT);
+    ok(await until(async () => kids.length > n0, 5000), 'a runner that exits for a new world is started again');
+    const kn = kids[n0]; v = (await req(on.base, '/play/runner')).runners.find(r => r.key === 'hero:3');
+    ok(kn && kn.args.join(' ') === k3.args.join(' ') && v && v.pid === kn.pid && !v.error, 'the same command line (same hero and mind), no error shown');
+    const old = readFileSync(join(tmp, 'runners', 'hero-3.log'), 'utf8');
+    ok(/stopped \(exit 75\)/.test(old) && !/crashed/.test(old), 'a new world is a stop in the log, not a crash');
+    const n1 = kids.length; kn.emit('exit', 0); await sleep(RESTART_MS + 400); ok(kids.length === n1, 'a normal exit is not restarted'); k3.killed = kn.killed = true}
   // a runner that ignores stop is killed after the grace period (skipped: shortened via a direct kill)
   s = await req(on.base, '/play/runner/stop', {method: 'POST', body: {key: 'nope'}, origin: PAGE});
   ok(s.status === 404, 'stopping an unknown runner says so');

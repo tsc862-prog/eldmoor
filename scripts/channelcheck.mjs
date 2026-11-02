@@ -234,13 +234,14 @@ ok(snaps.persona.companions.some(c => c.name === B.name) && !snaps.persona.compa
 // ---------------------------------------------------------------- 4. the Table: narration on the banner and in the view
 console.log('the Table');
 T.TABLE.mode = 'auto'; T.TABLE.speed = 1;
-const sc = T.openScene('check', 'A narrow stair', ['The stair goes down.'], {});
+const sc = T.openScene('check', 'A narrow stair', ['The stair goes down.'], {anchor: A.id}); // everyone at once: those within shouting range of A (#182)
 ok(!!sc && S.table, 'a scene is open');
 r = DMA.dmAct('narrate', {text: said.table, near: 'table'});
 ok(r.ok && r.heard_by === S.table.ids.length, `narrate "table": every member at the table hears it (${r.heard_by})`);
 const tv = act(A, 'look'); keep('A look at the table', tv);
 ok(tv.table && tv.table.narrator === said.table && T.bannerOf().narr === said.table, 'the line shows in the Table banner and in each member\'s table view');
-ok((B.chat || []).some(e => e.text === said.table), 'B, at the table, hears it too (the scene is where they are)');
+ok(sc.ids.includes(rest[0].id) && (rest[0].chat || []).some(e => e.text === said.table), 'a companion at the table with A hears it too (the scene is where they are)');
+ok(!sc.ids.includes(B.id) && !(B.chat || []).some(e => e.text === said.table), 'B, far away, is not at the table (#182) and does not hear it');
 keep('A status at the table', act(A, 'status'));
 {const own = JSON.stringify(act(B, 'status')), other = Object.entries(SECRETS).filter(([k]) => !k.startsWith('b')).filter(([, v]) => own.includes(v)).map(([k]) => k);
   ok(own.includes(SECRETS.bWants) && !other.length, 'B\'s own status carries B\'s own sheet and memories, and nothing of the DM\'s or another member\'s' +(other.length ? ': ' + other.join(', ') : ''))}
