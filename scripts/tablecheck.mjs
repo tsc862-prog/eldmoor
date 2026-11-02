@@ -42,6 +42,17 @@ if (process.argv[2] === '--hash') {
   console.log('HASH ' + h + ' table:' + (S.table ? 1 : 0) + ' fellowship:' + (S.fellowship ? 1 : 0)); process.exit(0);
 }
 
+// ---- determinism child with a split Fellowship (#182): shouts, a meeting plan and a courier, hashed ----
+if (process.argv[2] === '--hash-talk') {
+  init(); for (let i = 0; i < 60 * 60; i++) step(1 / 60);
+  const L = F_.fellows(), a = L[0], b = L[L.length - 1], g = homeOf(a).gate;
+  for (const x of L) {x.x = g.x; x.y = g.y - 1; x.state = 'town'} b.x = g.x < 40 ? g.x + 30 : g.x - 30; a.gold = 100;
+  C.makeMeeting(a, 'the ford', 4); P.playerAct(a.id, 'send_courier', {to: b.name, text: 'Come to the ford.'}); C.partySay(a, 'Onward.');
+  for (let i = 0; i < 120 * 60; i++) step(1 / 60);
+  let h = Math.round(S.gameMin); for (const x of S.agents) h = (Math.imul(h, 31) + x.lvl * 1000 + Math.round(x.xp) + Math.round(x.x * 10) * 7 + Math.round(x.hp) + (x.chat || []).length) | 0;
+  const Fs = S.fellowship; console.log('HASH ' + h + ' plans:' + (Fs.plans || []).map(p => p.status).join(',') + ' post:' + (Fs.post || []).length); process.exit(0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -431,6 +442,9 @@ ok(F_.fellows().every(a => a.state === 'dungeon'), 'agent members stay in the Cr
 // ---- 6. determinism without a Fellowship ----
 const me = fileURLToPath(import.meta.url), h1 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim(), h2 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim();
 ok(/^HASH -?\d+ table:0 fellowship:0$/.test(h1) && h1 === h2, `no Fellowship: two seeded 3-minute runs are identical (${h1})`);
+{const t1 = spawnSync(process.execPath, [me, '--hash-talk'], {encoding: 'utf8'}), t2 = spawnSync(process.execPath, [me, '--hash-talk'], {encoding: 'utf8'});
+  const x1 = (t1.stdout || '').trim().split('\n').pop(), x2 = (t2.stdout || '').trim().split('\n').pop(); if (t1.stderr) process.stderr.write(t1.stderr);
+  ok(/^HASH -?\d+ plans:\w+ post:0$/.test(x1) && x1 === x2, `a split Fellowship (shouts, a plan, a courier): two seeded runs are identical (${x1})`)}
 
 console.log(fail ? `\n${fail} check(s) FAILED\n` : '\nAll table checks passed.\n');
 process.exit(fail ? 1 : 0);

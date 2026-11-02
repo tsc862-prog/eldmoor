@@ -271,7 +271,7 @@ function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e
   const ul=el('ul','log chat');chatByDay(ul,chatGroups(c));b.append(ul)}
 // Chat lines with game-day stamps and a separator between days (#168), newest first like the other tabs.
 export function chatByDay(ul,groups){let last=null;for(const g of groups){const d=dayOf(g.e);if(d!=null&&d!==last){ul.append(daySep(d));last=d}ul.append(chatLine(g.e,g.n))}}
-// One compact line per message (#145, owner): "02:52 [Party] Nevith: text", the text wrapping under itself.
+// One compact line per message (#145, owner): "02:52 Nevith: text", the text wrapping under itself; a party shout reads "Nevith shouts: text (Kerin, Lorwyn)" (#182, no channel tag).
 // No mind badge: the Mind and Agent tabs say who plays a hero; the model is in the name's hover title.
 export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,stampOf(e)));
   if(e.from&&e.from.kind==='dm')li.append(el('span','gd chn','Narrator'));else{const s=chatName(e.from),tg=chatTag(e);if(tg)s.title=(e.agent?'Agent-played':'AI-played')+(e.model?' · '+e.model.replace(/^Agent \((.*)\)$/,'$1'):'');li.append(s)}

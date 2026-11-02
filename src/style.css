@@ -104,7 +104,6 @@ div.daysep{margin:8px 0 3px}
 /* The stamp sits in a fixed gutter ("D3 13:57" is 8 characters of VT323), so no negative text-indent is needed: nothing can start left of the box (#168). */
 .log.chat li.chl{position:relative;padding-left:9ch;overflow-wrap:anywhere}
 .log.chat li.chl>time{position:absolute;left:0;top:0;margin:0;white-space:nowrap}
-.chtag{font-family:var(--px);font-size:7px;color:var(--gold);border:1px solid var(--edge);padding:1px 3px;margin-right:5px;vertical-align:2px;text-indent:0}
 .chn{font-weight:bold} .chx{font-size:16px}
 .log li.nar{font-style:italic;border-left:2px solid rgba(242,193,78,.45);padding-left:6px} /* the Chronicler's voice */
 .tops{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
