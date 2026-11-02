@@ -120,6 +120,9 @@ if (process.argv[2] === '--staged') {
   const fresh = () => {if (CRYPT.group) {for (const a of CRYPT.group.mem) {a.state = 'hunt'; a.hidden = false} CRYPT.group = null} CRYPT.cd = 1e6; if (S.table && S.table.ctx && S.table.ctx.staged == null) S.table = null; // a Crypt crawl the Fellowship wandered into is left, so the staged scene can open
    place(); if (S.staged) S.staged.day.n = 0; if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} // the people lever's own limits are not under test here
     for (const m of S.mobs) if (dist(m, spot) < 30) {m.alive = false; m.gone = true}}; // an earlier staged pack the rounds left standing goes too (#276)
+  // Kinds the world's own scripted DM, camps and adventures write untagged while the scene plays (their mix drifts with the seed and MOBS COUNTS, #287).
+  // Anything else the staged scene causes (frame, payoff, agent, table, talk, ...) must carry the by tag.
+  const UNTAGGED_KINDS = ['lever', 'camp', 'hooks', 'pick', 'roll', 'branch', 'complication'];
   const tag = e => e.detail && (e.detail.by === 'dm-agent' || e.detail.by === 'scripted');
   // mock DM: 'answer' answers every call at once, 'silent' polls but never answers, 'away' never polls
   const play = (mode, maxS = 120) => {let f = 0, opened = null, maxPause = 0;
@@ -157,7 +160,7 @@ if (process.argv[2] === '--staged') {
         `hearing someone out is an Empathy check worded as what they caught or missed (${hr.map(b => b.name + ': ' + b.res).join('; ') || 'nobody chose to hear'})`);
       ok(!/\b(success|failure)\b/.test(sc.summary || '') && (/understood|listened but missed|their word|watches them/.test(sc.summary || '')), 'the meeting\'s summary reads plainly: ' + sc.summary)}
     const mine = S.dmLog.filter(e => e.id > log0);
-    ok(mine.some(e => e.kind === 'frame' && tag(e)) && mine.some(e => e.kind === 'payoff' && tag(e)) && mine.every(e => tag(e) || ['lever', 'camp', 'hooks', 'pick'].includes(e.kind)), `DM log: ${mine.length} entries, every one tagged (${[...new Set(mine.map(e => e.kind))].join(', ')})`);
+    ok(mine.some(e => e.kind === 'frame' && tag(e)) && mine.some(e => e.kind === 'payoff' && tag(e)) && mine.every(e => tag(e) || UNTAGGED_KINDS.includes(e.kind)), `DM log: ${mine.length} entries, every one tagged (${[...new Set(mine.map(e => e.kind))].join(', ')})`);
     if (!['elite', 'ambush'].includes(kind)) ok(mine.some(e => e.kind === 'roll' && e.detail.d20 >= 1 && e.detail.dc), 'the dice decide: d20 rolls against a DC are logged');
     ok(M.every(x => x.state !== 'dead') && (kind !== 'trap' || M.every((x, i) => x.hp >= Math.min(hp0[i], Math.ceil(maxHp(x) * ST.STAGE.TRAP_FLOOR)))), 'nobody died; a trap never takes anyone below ' + ST.STAGE.TRAP_FLOOR * 100 + '% HP');
     ok(S.staged.cur.phase === 'done' && S.staged.cur.result, `the staged scene ends: ${S.staged.cur.result}`);
@@ -249,7 +252,10 @@ ok(!F_.setMinds('off') && !F_.setMinds('relay') && !P.markPlayer(rest[0], false)
 ok(SIM.agentLive(A) && SIM.agentLive(B) && rest.every(x => !SIM.agentLive(x) && SIM.reflexMay(x)), `links: ${A.name} connected (answers), ${B.name} waiting (silent); ${rest.map(x => x.name).join(', ')} no runner`);
 
 // Put the whole party in the field around a monster.
-const zone = zoneFor(8, homeOf(A).gate), spot = zonePoint(zone, null, homeOf(A).gate);
+const zone = zoneFor(8, homeOf(A).gate);
+let spot = zonePoint(zone, null, homeOf(A).gate);
+{const {campSpot} = await import('../src/sim/camp.js'); // the field spot must have camp-safe ground within reach, wherever the seed drops it (#287)
+ for (let i = 0; i < 60 && !campSpot(spot.x, spot.y); i++) spot = zonePoint(zone, null, homeOf(A).gate)}
 const place = () => {M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x); x.pq = []})};
 const mobNear = () => {const m = S.mobs.filter(m => m.alive && !m.gone && !m.elite).sort((p, q) => dist(p, spot) - dist(q, spot))[0]; m.x = spot.x + 1; m.y = spot.y; m.hp = m.maxhp; return m};
 const startFight = (x, m) => {x.state = 'fight'; x.target = m; m.target = x; x.hp = maxHp(x) * .24; m.maxhp *= 20; m.hp = m.maxhp; m.cd = 99; m.hit = .001}; // a tough foe whose blow barely scratches (#276: it acts at the table), so no one dies or flees mid-test
