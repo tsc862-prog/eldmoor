@@ -60,7 +60,8 @@ onCamp((kind,g,d)=>{if(kind!=='make'||!g)return;for(const id of g.ids||[])moment
 import {reflexMay} from './runlink.js';
 import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
-import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead} from './council.js';
+import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,splitOff,followLead,makeMeeting,hearNote} from './council.js';
+import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js';
 import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
@@ -344,7 +345,7 @@ const T={
     const cv=campView(a);if(cv)r.camp=cv;
     if(adv)r.adventure=plain(advLine(a));const ch=choiceInfo(a);if(ch)r.choice=ch;
     if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc;const P=a.party&&a.party.fellow?a.party:null;if(P){r.party_leader=P.leader.name;if(P.dest)r.party_heading=P.dest.label}
-      const op=openProps().map(propText);if(op.length)r.proposals=op;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
+      const op=openProps().map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name);if(notTold(a))r.warning=NOT_TOLD;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
     r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...ZONES.map((n,i)=>n+(REGIONS[i]&&REGIONS[i].band?' (L'+REGIONS[i].band[0]+'-'+REGIONS[i].band[1]+')':'')),'crypt',...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];
     return r},
@@ -407,8 +408,11 @@ const T={
     a.party=p;a.partyOk=true;for(const m of p.mem)if(m.lvl>p.leader.lvl)p.leader=m;
     record(a,'Joined ',b,' on the road.');record(b,a.name+' joined them.');
     return {ok:true,party:p.mem.map(x=>x.name),leader:p.leader.name}},
-  leave_party(a){if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');splitOff(a,false);a.partyOk=false;
-      return {ok:true,note:'You go your own way for a while ('+Math.round((a.splitUntil-S.gameMin)/60)+' game hours); your companions think less of you for it. join_party with a companion to come back sooner.'}}
+  leave_party(a,{where,when_hours}){if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');
+      // a meeting plan (#182): made aloud before parting, so it is recorded only for those who hear it
+      let plan=null;if(where||when_hours){plan=makeMeeting(a,where,when_hours);if(plan.error)throw new Rule(plan.error)}
+      splitOff(a,false);a.partyOk=false;
+      return {ok:true,plan:plan?'Meet at '+plan.where+' at '+plan.atText+' (they know: '+plan.whoNames.join(', ')+')':undefined,note:'You go your own way for a while ('+Math.round((a.splitUntil-S.gameMin)/60)+' game hours); your companions think less of you for it.'+(plan?'':' You made no plan to meet again, and out of shouting range (about '+REACH.SHOUT+' tiles) no one will hear you: next time give where and when_hours.')+' join_party with a companion to come back sooner.'}}
     need(a.party,'You are not in a party.');leaveParty(a);a.partyOk=false;return {ok:true}},
   list_jobs(a){need(inTown(a),'Jobs are posted at your town gate. Go home first.');const c=homeOf(a),mem=[a,...partyMates(a)];
     const mine=advOf(a);const out=[];
@@ -492,11 +496,11 @@ const T={
   remember:(a,x)=>heroMemory(a,'remember',x),recall:(a,x)=>heroMemory(a,'recall',x),update_memory:(a,x)=>heroMemory(a,'update_memory',x),forget:(a,x)=>heroMemory(a,'forget',x),pin:(a,x)=>heroMemory(a,'pin',x),
   party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const no=lineRefusal(a,spokenLine(a,text,1e9).text);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
     const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);const e=a.chat&&a.chat[a.chat.length-1];agentLine(a,e);
-    if(e){const H=S.agents.filter(b=>b!==a&&b.chat&&b.chat[b.chat.length-1]===e);noteSaid(a,e.text,H);talked(a,H.map(b=>b.name))}return {ok:true,said:e?e.text:'',heard_by:n}},
+    if(e){const H=S.agents.filter(b=>b!==a&&b.chat&&b.chat[b.chat.length-1]===e);noteSaid(a,e.text,H);talked(a,H.map(b=>b.name))}return {ok:true,said:e?e.text:'',heard_by:e&&e.heard||[],too_far:e&&e.far&&e.far.length?e.far:undefined,note:hearNote(e)||undefined}},
   party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
   chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+e.text:heardText(e)))}},
-  propose(a,{kind,details,job_id}){need(a.fellow,'Only a Fellowship member can put something to the party.');const P=propose(a,String(kind||'').toLowerCase(),details,{job:job_id});
-    if(typeof P==='string')throw new Rule(P);return {ok:true,proposal:propText(P),status:P.status,note:P.status==='open'?'The others vote; the leader settles it when all have voted or in '+Math.round(P.until-S.gameMin)+' game minutes.':P.result}},
+  propose(a,{kind,details,job_id,meet_at,meet_in_hours}){need(a.fellow,'Only a Fellowship member can put something to the party.');const P=propose(a,String(kind||'').toLowerCase(),details,{job:job_id,where:meet_at,hours:meet_in_hours});
+    if(typeof P==='string')throw new Rule(P);return {ok:true,proposal:propText(P),status:P.status,note:P.status==='open'?'The others vote; the leader settles it when all have voted or in '+Math.round(P.until-S.gameMin)+' game minutes.'+(P.absent&&P.absent.length?' Out of shouting range, so not asked: '+nameList(S.agents.filter(x=>P.absent.includes(x.id)))+'.':''):P.result}},
   vote(a,{proposal_id,vote,reason}){need(a.fellow,'Only Fellowship members vote.');const P=propById(proposal_id);need(P,'No proposal '+proposal_id+'.');
     const sc=tableView(a);if(sc&&sc.kind==='decision'&&!sc.acted&&S.table&&S.table.ctx.prop===P.id){const x=sceneAct(a,vote,reason);if(typeof x==='string')throw new Rule(x);return {ok:true,voted:x.k,note:'Counted at the table on your turn.'}}
     const x=castVote(a,P.id,vote,reason,'agent');if(typeof x==='string')throw new Rule(x);return {ok:true,voted:String(vote).toLowerCase(),proposal:propText(P)}},
@@ -504,7 +508,9 @@ const T={
   lead_to(a,{target}){need(a.fellow&&a.party&&a.party.fellow,'You are not with the Fellowship.');need(a.party.leader===a,'Only the leader ('+a.party.leader.name+') leads the party.');
     need(legal.includes(a.state),'You cannot lead from here ('+a.state+').');need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};if(p.warn)r.warning=p.warn;return r},
+    const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};const far=outOfRange(a);if(far.length)r.not_told=nameList(far)+' too far away to hear the order; they stay where they are until you are together or a courier reaches them.';if(p.warn)r.warning=p.warn;return r},
+  send_courier(a,{to,text}){need(a.fellow,'Only a Fellowship member can hire the Fellowship courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
+    return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
   scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
     return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)

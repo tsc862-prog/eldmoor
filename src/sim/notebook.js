@@ -209,3 +209,5 @@ export function mirrorDirty(sent){const out=[];
     if(sent.get(key)!==sig)out.push({key,sig,seat:{kind:'dm',sections:Object.fromEntries(Object.entries(D.notes).map(([k,l])=>[k,l.map(n=>view({...n,title:n.title||titleOf(null,n.text)}))])),arch:(D.arch||[]).map(n=>view({...n,title:n.title||titleOf(null,n.text)}))}})}
   return out}
 export {titleOf};
+// A system-written memory in a hero's own notebook (a meeting plan, #182).
+export const addHeroNote=(a,fields)=>addNote(heroBook(a),fields);
