@@ -239,7 +239,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   tools over its four note sections (search across them; `dm_status.relevant_notes`). Mirrored read-only as Markdown
   by the relay (from the page) or the headless world: `logs/agents/<world>/<heroId>-<name>/memory/` (`MEMORY.md`
   plus `<id>-<slug>.md` with front matter), the DM under `dm/memory/`; never read back. `--no-mirror` (or
-  `RELAY_MIRROR=0`) turns the files off. The Memory tab and the DM panel's **Notes** filter show them.
+  `RELAY_MIRROR=0`) turns the files off. A replaced world is purged: every world carries an instance id (`S.worldId`, new at `init()`, saved with the world, given to an older save on load; never read by `step()`), the page's hello and `play-headless` send it, and `logs/agents/<world>/.world` records the last one. A different id (a New World, an Import of another save, `--fresh`) deletes that world's hero folders and `dm/` (`purgeWorld` in `scripts/memory-mirror.mjs`) and logs `[mirror] new <world> world: purged N old memory folders`; the same id on reload purges nothing; links and anything outside `<root>/<world>` are never touched; session files are left to the runners. The Memory tab and the DM panel's **Notes** filter show them.
 - Tiered memory (#153, `src/sim/tiers.js`, `a.tiers`): agent heroes and Fellowship members keep **landmarks** outside
   every rolling cap (a companion's death, joining or leaving the Fellowship, levels 5/10/15/20, Crypt clears, a boss or
   named elite slain, a nemesis taken or paid, and entries written with `journal_write {landmark: yes}`, 3 a day; 30

@@ -14,8 +14,8 @@
 //
 // memoryMirror({root, world, log}) -> {setWorld(w), write(seats), dir(), stats}
 //   seats: [{key, sig, seat}] from mirrorDirty(), or bare seat payloads. Never throws.
-import {mkdirSync, writeFileSync, readdirSync, unlinkSync} from 'node:fs';
-import {join, dirname} from 'node:path';
+import {mkdirSync, writeFileSync, readdirSync, unlinkSync, lstatSync, readFileSync, rmSync, realpathSync} from 'node:fs';
+import {join, dirname, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,8 +55,39 @@ export function lifeMarkdown(seat) {
     `Lines waiting for the next chapter: ${intOr(T.pend, 0)}`, ''].join('\n');
 }
 
+// A new world on the same map (New World, Import of another save, headless --fresh) must not leave the old world's
+// folders behind. Each world carries an instance id (S.worldId, saved with it); the mirror keeps the id it last saw in
+// logs/agents/<world>/.world and, on a different one (or none: folders from before this existed), deletes the hero
+// folders (<id>-<name>) and dm/ of that world's folder only. A reload sends the same id and purges nothing. Never
+// follows a link, never leaves <root>/<world>, never touches files it does not recognise.
+export const WORLD_MARK = '.world', ID_RE = /^[A-Za-z0-9_-]{4,64}$/, SEAT_DIR_RE = /^(\d+-[a-z0-9-]*|dm)$/;
+export function purgeWorld(root, world, id, log = () => {}) {
+  const out = {purged: 0, changed: false};
+  try {
+    if (!ID_RE.test(String(id || '')) || !/^[a-z0-9-]+$/.test(world)) return out;
+    const base = resolve(root, world); if (dirname(base) !== resolve(root)) return out; // exactly <root>/<world>
+    let st = null; try {st = lstatSync(base)} catch {}
+    const mark = () => writeFileSync(join(base, WORLD_MARK), id + String.fromCharCode(10));
+    if (!st) {mkdirSync(base, {recursive: true}); mark(); out.changed = true; return out}
+    if (st.isSymbolicLink() || !st.isDirectory()) return out; // a link or a file in its place: leave it alone
+    if (realpathSync(base) !== base && realpathSync(base).toLowerCase() !== base.toLowerCase()) return out;
+    let last = null; try {last = readFileSync(join(base, WORLD_MARK), 'utf8').trim()} catch {}
+    if (last === id) return out;
+    for (const f of readdirSync(base)) {
+      if (!SEAT_DIR_RE.test(f)) continue;
+      const p = join(base, f); if (!p.startsWith(base + sep)) continue;
+      let s; try {s = lstatSync(p)} catch {continue}
+      if (s.isSymbolicLink() || !s.isDirectory()) continue; // never follow a link or junction
+      try {rmSync(p, {recursive: true, force: true}); out.purged++} catch (e) {log('[mirror] could not purge ' + f + ': ' + e.message)}
+    }
+    mark(); out.changed = true;
+    if (last !== null || out.purged) log(`[mirror] new ${world} world: purged ${out.purged} old memory folders`);
+  } catch (e) {log('[mirror] purge: ' + e.message)}
+  return out;
+}
+
 export function memoryMirror({root = MIRROR_ROOT(), world = 'eldmoor', log = () => {}} = {}) {
-  let w = slug(world, 40); const cache = new Map(), stats = {writes: 0, removed: 0, seats: 0, errors: 0};
+  let w = slug(world, 40), lastId = null; const cache = new Map(), stats = {writes: 0, removed: 0, seats: 0, errors: 0};
   const put = (file, text) => {if (cache.get(file) === text) return; writeFileSync(file, text); cache.set(file, text); stats.writes++};
   function seatDir(seat) {
     if (seat.kind === 'dm') return join(root, w, 'dm', 'memory');
@@ -78,7 +109,9 @@ export function memoryMirror({root = MIRROR_ROOT(), world = 'eldmoor', log = () 
     stats.seats++;
   }
   return {
-    setWorld(x) {const s = slug(x, 40); if (s && s !== w) {w = s; cache.clear()}},
+    // x: the world's name; id: its instance id (S.worldId). A new id purges that world's old folders (purgeWorld).
+    setWorld(x, id = null) {const s = slug(x, 40); if (s && s !== w) {w = s; cache.clear()}
+      if (id && id !== lastId) {lastId = id; const r = purgeWorld(root, w, id, log); if (r.purged) stats.purged = (stats.purged || 0) + r.purged; if (r.purged || r.changed) cache.clear()}},
     dir: () => join(root, w),
     stats,
     write(seats) {
