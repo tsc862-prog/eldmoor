@@ -14,3 +14,4 @@
 - [Fellowship always agents](fellowship_always_agents.md) — #148: runlink.js gate (live waits, owner hold, reflex = scripted), 3x drop, check mocks
 - [World voice #164](world_voice.md) � S.worldVoice mutes scripted say/npcSay; scripted DM voices NPCs near members; RNG preserved
 - [Camp rest #178](camp_rest.md) — camp status text, break_camp vote/tool, rest hours, wake events, sleepers' pacing, onCamp hook
+- [Talk range #182](talk_range.md) — shout range, presence councils, couriers, reflex-party exemption, no Party chat tag
