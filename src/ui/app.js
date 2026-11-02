@@ -22,12 +22,13 @@ import {renderTimeline} from './timeline.js';
 import {renderDmLog} from './dmpanel.js';
 import {setView} from './controls.js';
 import {initAgents,renderAgents} from './agents.js'; // agent limits and spend (#145)
+import {initSettings} from './settings.js'; // the Settings popover and the World menu (#145)
 
 export function initUI(renderer){
   initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initTable();initRunAlert();
   initSheet();initFrames();applyLayout();
   const minds=()=>{renderHero();renderFrames();renderFellowship();renderMinds()};
-  initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents()}
+  initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents();initSettings(()=>renderHero())}
 
 export function uiFast(){applyLayout();renderHero();renderClock();renderFellowship();renderFrames();renderSheet()}
 export function uiSlow(){renderTops();renderFacs();renderGuilds();renderFallen();renderMinds();renderTimeline();renderLegends();renderDmLog();renderDmSeat();renderAgents()}

@@ -137,5 +137,17 @@ console.log('Agents panel');
   for(const f of document._ls.keydown||[])f({key:'Escape'});
   ok(pop.hidden&&btn.getAttribute('aria-expanded')==='false','Escape closes it')}
 
+// Quieter bars (#145): the viewing switches in Settings, Save/Load/... under one World menu
+console.log('bars');
+{const bar=document.querySelector('.bar');const visible=bar.querySelectorAll('button').filter(b=>{for(let e=b;e&&e!==bar;e=e.parentNode){if(e.hidden)return false;if(e.tagName==='DETAILS'&&!e.open&&e!==b.parentNode)return false;if(e.tagName==='DIV'&&e.classList.contains('wdrop')&&!e.parentNode.open)return false}return true});
+  ok(visible.length<=10,'the bar under the map shows '+visible.length+' buttons (was 17 with a Fellowship)');
+  const wm=$('wmenu');ok(wm&&!wm.open&&wm.contains($('wSave'))&&wm.contains($('wNew')),'Save, Load, Export, Import and New world fold under the World menu');
+  const sp=$('setPop'),sb=$('setBtn');ok(sp.contains($('vTab'))&&sp.contains($('vRal'))&&sp.contains($('vSnd'))&&sp.contains($('wDev'))&&sp.contains($('vChat')),'the viewing switches live in Settings');
+  sb.click();ok(!sp.hidden&&sb.getAttribute('aria-expanded')==='true','Settings opens');
+  const vc=$('vChat'),was=localStorage.getItem('eldmoor.worldChatter');vc.click();
+  ok(localStorage.getItem('eldmoor.worldChatter')!==was&&/World chatter: (on|off)/.test(vc.textContent),'World chatter switches from Settings and is kept per viewer');vc.click();
+  for(const f of document._ls.keydown||[])f({key:'Escape'});ok(sp.hidden&&sb.getAttribute('aria-expanded')==='false','Escape closes Settings');
+  ok(!tb().querySelector('button.mini')||!/World chatter/.test(tb().textContent),'the Chat tab no longer carries its own World chatter switch')}
+
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

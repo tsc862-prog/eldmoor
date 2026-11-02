@@ -109,9 +109,24 @@ div.daysep{margin:8px 0 3px}
 .minimap{position:absolute;right:8px;bottom:8px;width:160px;height:100px;border:2px solid var(--edge);background:#000;image-rendering:pixelated;cursor:crosshair;box-shadow:2px 2px 0 #05060c;opacity:.92}
 .screen.drag{cursor:grabbing}
 button.zoom{min-width:34px;padding-left:6px;padding-right:6px}
-/* World group: save status text next to the Save/Load/Export/Import buttons (ui/save.js) */
-.group.world .status{font-family:var(--mono);font-size:16px;color:var(--dim);margin-left:6px;white-space:nowrap}
-.group.world .status:empty{display:none}
+/* World menu (#145): Save/Load/Export/Import/New world folded under one button, the save status inside (ui/save.js) */
+.wmenu{position:relative}
+.wmenu>summary{list-style:none;font-family:var(--px);font-size:10px;color:var(--ink);background:var(--panel2);border:2px solid var(--edge);padding:8px 10px;cursor:pointer;box-shadow:2px 2px 0 #05060c}
+.wmenu>summary::-webkit-details-marker{display:none}
+.wmenu>summary::after{content:" \25BE";color:var(--dim)}
+.wmenu>summary:hover{border-color:var(--gold)} .wmenu>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.wmenu[open]>summary{border-color:var(--gold)}
+.wdrop{position:absolute;z-index:44;top:calc(100% + 4px);left:0;display:flex;flex-direction:column;gap:4px;background:var(--panel);border:2px solid var(--gold);box-shadow:4px 4px 0 #05060c;padding:8px;min-width:170px}
+.wdrop .status{font-family:var(--mono);font-size:16px;color:var(--dim)}
+.wdrop .status:empty{display:none}
+@media (max-width:560px){.wdrop{position:fixed;left:16px;right:16px;top:auto;bottom:16px}}
+/* Settings popover (#145): the viewing switches, one row each */
+.setrow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center}
+.setrow:has(>button[hidden]){display:none}
+.setrow button{font-size:8px;padding:6px 8px;white-space:nowrap}
+.setrow .dm{font-size:16px}
+/* a Fellowship rides: the pitch under the title has done its job */
+.fellow-mode .sub{display:none}
 /* Item tooltips and the pinned detail in the Gear tab (ui/panels.js, issue #52) */
 .qp{color:#fff} .qf{color:var(--green)} .qr{color:#6fb4ff}
 .gear [data-slot]{cursor:pointer}

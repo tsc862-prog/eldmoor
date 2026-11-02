@@ -257,9 +257,7 @@ function tabParty(b,a){const p=a.party;
   b.append(g,el('div','meta',`★ leader · bound for ${ZONES[p.zone]}${p.home?' · heading home':''}`))}
 
 function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
-  if(S.fellowship){const on=worldChatter(),t=el('button','mini','World chatter: '+(on?'on':'off'));t.title='Show what background heroes say to each other (kept per viewer).';
-    t.onclick=()=>{setWorldChatter(!on);renderHero()};b.append(t)}
-  if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far. Turn World chatter on to see it.':'Nothing said or heard yet.'));return}
+  if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far (Settings, World chatter, shows it).':'Nothing said or heard yet.'));return}
   const ul=el('ul','log chat');for(const e of c){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));if(e.from&&e.from.kind==='dm')li.append(el('span','gd','[Narrator]'));else li.append(chatName(e.from));const tg=chatTag(e);if(tg)li.append(' ',aiBadge(tg,e.agent?'Written by the agent playing this hero':'Written by '+(e.model||'the model')));li.append(': '+e.text);ul.append(li)}b.append(ul)}
 // A Fellowship member's name stands out in chat: bold, in its party-frame role colour (Tank blue, Healer green, DPS red).
 function chatName(h){const s=hn(h),r=fellowRoleOf(h);if(r)s.className+=' fm r-'+r;return s}
