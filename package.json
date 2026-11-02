@@ -42,6 +42,8 @@
     "actcheck": "node scripts/actcheck.mjs",
     "tiercheck": "node scripts/tiercheck.mjs",
     "movecheck": "node scripts/movecheck.mjs",
+    "professioncheck": "node scripts/professioncheck.mjs",
+    "nodecheck": "node scripts/nodecheck.mjs",
     "behaviorcheck": "node scripts/behaviorcheck.mjs",
     "behavior-report": "node scripts/behavior-report.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs",

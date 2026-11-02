@@ -5,6 +5,7 @@
 // spec, so several worlds can be built side by side (scripts/worldcheck.mjs).
 // Owned by world-builder.
 import {hash,vnoise,fbm,clamp,pickA} from '../core/rng.js';
+import {placeNodes} from './nodes.js';
 import {G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE,WALKABLE} from './tiles.js';
 
 // ---- biomes: tile painters. n and n2 are the two fbm fields of the spec seeds.
@@ -199,7 +200,8 @@ export function buildWorld(spec){
     ...regions.map((r,i)=>[r.name.toUpperCase(),Math.round(centroid[i].x),Math.round(centroid[i].y)]),
     ...CITY.map(c=>[c.name.toUpperCase(),(c.x0+c.x1+1)/2,c.y0>2?c.y1+2.2:c.y0-.6])];
 
-  return{name:spec.name,w,h,I,tiles,zone,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
+  const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS},spec); // gathering nodes (#255): an overlay list, not tiles
+  return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
     REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT,ROUTES,
     zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,
     road:pts=>paintPolyline(world,pts)}}
