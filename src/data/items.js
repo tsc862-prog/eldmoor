@@ -9,8 +9,20 @@ export const DG_EPICS=["Vesk's Phylactery Shard","Drowned King's Signet","Cryptb
 export const GOODS={};
 [['Grave Dust',18],['Wolf Pelt',4],['Boar Tusk',5],['Silk Bundle',7],['Fen Moss',9],['Thick Hide',11],['Venom Sac',14],['Ember Core',22],['Cinder Scale',26],['Rime Pelt',30],['Hoar Wool',34],['Wight Marrow',40]]
   .forEach(([n,b])=>GOODS[n]={base:b,supply:ri(2,14),prev:0});
-export const price=n=>{const g=GOODS[n];return Math.max(1,Math.round(g.base*clamp(1.5-g.supply*.035,.35,1.8)))};
+// Gathered materials (issue #256, epic #238): what the herb, ore, hide and fish nodes (#255) and a few creature drops
+// (data/bestiary.js MAT_DROPS) yield, and what recipes (data/recipes.js) consume. A separate table from GOODS on
+// purpose: the market and the DM's price lever walk GOODS, so a new row there would change the scripted world.
+// `kind` is the gathering node kind (herb, ore, hide, fish; creature drops are hide or ore), `band` the skill
+// band (professions.js skillBand) needed to gather it. Supply is fixed, not rolled, until gathering is wired (#257).
+export const MATERIALS={};
+[['Redroot Leaf','herb',0,3],['Rushpulp','herb',0,3],['Hearthbloom','herb',1,9],['Rimebloom','herb',3,30],
+ ['Tin Ore','ore',0,4],['Bogiron Ore','ore',1,10],['Cinderite','ore',2,20],['Icevein Ore','ore',3,32],
+ ['Wolf Sinew','hide',0,4],['Mudback Bristle','hide',1,9],['Shaghorn Horn','hide',3,33],
+ ['River Perch','fish',0,3],['Mere Eel','fish',1,8],['Tarn Whitefish','fish',3,24]]
+  .forEach(([n,kind,band,b])=>MATERIALS[n]={kind,band,base:b,supply:6,prev:0});
+export const price=n=>{const g=GOODS[n]||MATERIALS[n];return Math.max(1,Math.round(g.base*clamp(1.5-g.supply*.035,.35,1.8)))};
 for(const n in GOODS)GOODS[n].prev=price(n);
+for(const n in MATERIALS)MATERIALS[n].prev=price(n);
 
 // ---- slot equipment (issue #20) ----
 // Seven slots per hero. An item is {name, ilvl, zone, slot, epic}. Names are "<material> <slot noun>":
@@ -126,7 +138,15 @@ export const USES={
   'Bogroot Antidote':  {kind:'antidote',price:8, lvl:3, drop:2, flavour:'A grey paste that draws venom and rot out of a wound.'},
   'Scroll of Hearthward':{kind:'scroll',effect:'recall',price:25,lvl:4,drop:.5,flavour:'Read aloud, it pulls the reader to their home gate in one breath.'},
   'Scroll of the Steadfast Hour':{kind:'scroll',effect:'ward',ward:.25,price:22,lvl:6,drop:.5,flavour:'A short-lived ward; blows land softer while the ink holds.'},
-  "Wayfarer's Pack":   {kind:'pack',  slots:8,price:60,lvl:5,drop:0,flavour:'Stitched leather with a frame of ash. Carries what two ordinary packs would.'}};
+  "Wayfarer's Pack":   {kind:'pack',  slots:8,price:60,lvl:5,drop:0,flavour:'Stitched leather with a frame of ash. Carries what two ordinary packs would.'},
+  // Crafted only (issue #256): `craft:true` rows are never dropped (drop 0), never sold at a shop and never stocked by a
+  // person; they come from data/recipes.js. tier 0 keeps them out of the shop's potion ladder. `buff` is a camp meal's
+  // short effect {stat (a PROPS stat), v, mins}, read by crafting and camp code (#258).
+  'Rimeblood Elixir':  {kind:'potion', heal:.7, price:60,lvl:15,tier:0,drop:0,craft:true,flavour:'Rimebloom steeped in hearthbloom wine; it burns going down and mends what a drake has torn.'},
+  'Spit-Roast Perch':  {kind:'ration',heal:.25,price:7, lvl:1, drop:0,craft:true,buff:{stat:'speed',v:.03,mins:60},flavour:'A river perch turned over the coals until the skin crackles. Quick hands at supper.'},
+  'Fenmire Eel Stew':  {kind:'ration',heal:.35,price:18,lvl:6, drop:0,craft:true,buff:{stat:'defense',v:.04,mins:120},flavour:'Eel, fen moss and patience. The fen-folk swear it keeps the damp out of the bones.'},
+  'Tarn Whitefish Chowder':{kind:'ration',heal:.45,price:32,lvl:12,drop:0,craft:true,buff:{stat:'health',v:.06,mins:180},flavour:'Thick with whitefish and salt, scalding in a tin cup. Lasts the whole of a cold watch.'},
+  'Hoarfell Survey Chart':{kind:'map',reveal:'region',price:40,lvl:12,drop:0,craft:true,flavour:'Ink on scraped hide: the safe fords, the thin ice and the old cairns of the Hoarfell, drawn by someone who walked them.'}};
 // What a consumable does, as tooltip lines [css, text] (src/ui/panels.js prints them like gear stats).
 export function useLines(id){const U=USES[id],o=[];if(!U)return o;
   if(U.heal)o.push(['ar','Heals '+Math.round(U.heal*100)+'% of max health'+(U.kind==='bandage'?', out of combat':U.kind==='ration'?', at camp':'')]);
@@ -136,7 +156,9 @@ export function useLines(id){const U=USES[id],o=[];if(!U)return o;
   if(U.effect==='recall')o.push(['bn','Carries the reader to their home gate']);
   if(U.effect==='ward')o.push(['pr','Blows taken -'+Math.round(U.ward*100)+'% for '+INV.WARD_SECS+' s']);
   if(U.kind==='pack')o.push(['bn','+'+U.slots+' pack slots (one pack)']);
-  if(U.lvl>1)o.push(['dm','Sold from level '+U.lvl]);
+  if(U.buff)o.push(['pr','Meal: +'+Math.round(U.buff.v*100)+'% '+U.buff.stat+' for '+U.buff.mins+' min']);
+  if(U.craft)o.push(['dm','Crafted, not sold (usable from level '+U.lvl+')']);
+  else if(U.lvl>1)o.push(['dm','Sold from level '+U.lvl]);
   return o}
 // Quest items the DM's hand can place (sim/levers.js give_token). Adventures also hand out their own
 // carried object under its job text ("a sealed letter"); those have no row here. Never sold, never given.
@@ -146,3 +168,12 @@ export const QUEST_ITEMS={
   'Cairn-Door Key':{flavour:'Cold iron, notched twice. It fits no lock in any town.'},
   'Shrine Candle-Stub':{flavour:'Lit once at a wayside shrine; the wick still remembers.'}};
 
+// Crafted gear (issue #256). The recipe output id names a pattern; the item is made when crafted (#258) with the
+// crafter's class noun for `slot`, named "<material> <slot noun>" like all gear, at `ilvl` and `quality`, src 'Crafted'.
+// ilvl never exceeds the item level the same band's creatures drop, so crafting adds choice and a gold sink, not a spike.
+export const CRAFT_GEAR={
+  'Tinforged Weapon': {slot:'main', ilvl:5, quality:'fine',material:'Tinforged'},
+  'Bogiron Handguard':{slot:'hands',ilvl:10,quality:'fine',material:'Bogiron'},
+  'Ashsteel Cuirass': {slot:'chest',ilvl:17,quality:'rare',material:'Ashsteel'},
+  'Wolfhide Cowl':    {slot:'head', ilvl:4, quality:'fine',material:'Wolfhide'},
+  'Hoarfrost Greatcoat':{slot:'chest',ilvl:18,quality:'rare',material:'Hoarfrost'}};

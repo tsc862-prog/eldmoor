@@ -43,6 +43,7 @@
     "tiercheck": "node scripts/tiercheck.mjs",
     "movecheck": "node scripts/movecheck.mjs",
     "professioncheck": "node scripts/professioncheck.mjs",
+    "recipecheck": "node scripts/recipecheck.mjs",
     "behaviorcheck": "node scripts/behaviorcheck.mjs",
     "behavior-report": "node scripts/behavior-report.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs",
