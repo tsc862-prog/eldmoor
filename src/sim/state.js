@@ -26,7 +26,7 @@ export const S={
 };
 // Save-file format version (sim/save.js). Bump it and add a migration there when the shape of S changes.
 export const SAVE_VERSION=6;
-// A fresh world instance id. Deliberately not from the seeded rng, so a seeded world keeps its dice.
-export const newWorldId=()=>'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+// A fresh world instance id. Deliberately not from the seeded rng or Math.random (a stubbed Math.random must not shift), so a seeded world keeps its dice.
+export const newWorldId=()=>'w'+Date.now().toString(36)+[...globalThis.crypto.getRandomValues(new Uint8Array(5))].map(b=>b.toString(36).padStart(2,'0')).join('').slice(0,6);
 export const dayNo=()=>Math.floor(S.gameMin/1440)+1; // game day, 1-based (the UI shows D4 03:12 with it)
 export const clockStr=()=>{const m=Math.floor(S.gameMin)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
