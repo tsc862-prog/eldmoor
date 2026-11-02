@@ -24,7 +24,7 @@
 //     while one runs, the DM (sim/dm.js) leads the hero between scenes and asks for scene
 //     choices through sim/player-choice.js, with a timeout so the world never waits.
 //   - World-changing tools are rate limited (RATE per game hour).
-// Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.memories (#155),
+// Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
 import {W,H} from '../world/tiles.js';
 import {CITY,ZONES,REGIONS,LANDMARKS,CRYPT,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
@@ -54,6 +54,7 @@ import {fellowCard} from './persona.js'; // Fellowship (#68)
 import {ev} from './notify.js';
 import {campView,leaderBreak,leaderRest,onCamp} from './camp.js';
 import {heroMemory} from './notebook.js'; // agent memories (#155)
+import {tiersOf,spillEntry,ownMark,overview as journalOverview,search as journalSearch} from './tiers.js'; // tiered memory (#153)
 import {moment,talked,REFLECT} from './reflect.js'; // reflection moments (#179)
 // making camp is a reflection moment for each agent-played member at the fire (camp.js event 'make', #178/#179)
 onCamp((kind,g,d)=>{if(kind!=='make'||!g)return;for(const id of g.ids||[])moment(S.agents.find(x=>x.id===id),'camp',d&&d.zone)});
@@ -488,10 +489,14 @@ const T={
     const nq=a.quest?(MOBS[a.quest.type].q)+': '+a.quest.need+' '+MOBS[a.quest.type].pl+' in '+ZONES[MOBS[a.quest.type].z]:null;
     return doneQ?{ok:true,reward_gold:a.gold-g,leveled:a.lvl>l||undefined,new_quest:nq}:{ok:false,error:'Your quest is not done ('+(q?q.have+'/'+q.need:'none')+').',quest:nq}},
   read_chronicle(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||8)));return {ok:true,news:S.chronicle.slice(0,k).map(e=>e.t+' '+plain(e.parts))}},
-  journal_read(a,{n}){const k=Math.min(50,Math.max(1,Math.round(Number(n)||10)));return {ok:true,entries:(a.journal||[]).slice(-k).map(e=>e.t+': '+e.text),total:(a.journal||[]).length}},
-  journal_write(a,{text}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});if(j.length>PK.JOURNAL)j.shift();
+  // the journal (#153: tiers in sim/tiers.js): without n an overview (landmarks, chapter titles, latest entries) to re-ground on
+  journal_read(a,{n}){if(n==null||n==='')return {ok:true,...journalOverview(a)};
+    const k=Math.min(50,Math.max(1,Math.round(Number(n)||10)));return {ok:true,entries:(a.journal||[]).slice(-k).map(e=>e.t+': '+e.text),total:(a.journal||[]).length}},
+  journal_search:(a,x)=>journalSearch(a,x||{}),
+  journal_write(a,{text,landmark}){const t=clean(text,PK.JOURNAL_LEN);need(t,'Write what?');const j=a.journal||(a.journal=[]);tiersOf(a);j.push({t:day(),gameMin:Math.round(S.gameMin),text:t});while(j.length>PK.JOURNAL)spillEntry(a,j.shift()); // the oldest entry folds into a chapter (#153)
+    const lm=landmark===true||/^(true|yes)$/i.test(String(landmark||''))?ownMark(a,t):null;
     const m=heroMemory(a,'remember',{title:t.split(/(?<=[.!?])\s/)[0].slice(0,60),text:t,tags:['journal']}); // the entry is also a memory tagged journal (#179)
-    return {ok:true,entries:j.length,...(m.ok?{memory:m.remembered.id}:{})}},
+    return {ok:true,entries:j.length,...(m.ok?{memory:m.remembered.id}:{}),...(lm?lm.ok?{landmark:lm.id}:{note:lm.note}:{})}},
   // memories (issue #155, sim/notebook.js): the hero's own notebook only
   remember:(a,x)=>heroMemory(a,'remember',x),recall:(a,x)=>heroMemory(a,'recall',x),update_memory:(a,x)=>heroMemory(a,'update_memory',x),forget:(a,x)=>heroMemory(a,'forget',x),pin:(a,x)=>heroMemory(a,'pin',x),
   party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const no=lineRefusal(a,spokenLine(a,text,1e9).text);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
