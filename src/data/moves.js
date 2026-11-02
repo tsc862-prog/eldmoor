@@ -58,6 +58,27 @@ export const MOVES={
     fx:{dmg:1,delay:2.5},save:{abil:'grit',stat:'wits'},use:'burst',desc:'A cut at the tendon: normal damage, and the foe loses 2.5 seconds before its next blow (half on a save).'},
   smokeveil:{name:'Smoke Veil',cls:'Rogue',kind:'defend',lvl:5,cd:36,rounds:5,cost:null,target:'self',range:0,swing:false,
     fx:{taken:.5,shake:2.5},dur:4,durR:1,use:'selfhurt',desc:'A pinch of powder and the room is smoke: foes on you lose 2.5 seconds, and blows land at half for four.'},
+  // ---- Specialisations (issue #82): one extra ability per path, learned at level 10 with the path (spec:<id>) ----
+  wardencover:{name:'Shield Cover',cls:'Warrior',spec:'warden',kind:'defend',lvl:10,cd:24,rounds:4,cost:null,target:'ally',range:4,swing:false,
+    fx:{taken:.55},dur:6,durR:2,use:'wardally',desc:'Step in front of a friend and lift the shield: blows on them land at 55% for six seconds.'},
+  reavercleave:{name:'Cleaving Sweep',cls:'Warrior',spec:'reaver',kind:'attack',lvl:10,cd:20,rounds:3,cost:null,target:'foes',range:2.2,swing:false,
+    fx:{dmg:.9},use:'crowd',desc:'A wide sweep that bites every foe at your side: 90% damage to each.'},
+  twinlance:{name:'Twin Lance',cls:'Mage',spec:'runescribe',kind:'attack',lvl:10,cd:14,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:1.5,crit:.2},use:'burst',desc:'Two runes thrown as one: 150% damage and a 20% better chance to crit.'},
+  winterhold:{name:"Winter's Hold",cls:'Mage',spec:'rimekeeper',kind:'control',lvl:10,cd:26,rounds:4,cost:null,target:'foe',range:'weapon',swing:false,
+    fx:{dmg:.3,delay:5},save:{abil:'grit',stat:'wits'},use:'snare',desc:'The cold closes on one foe: 30% damage and it loses 5 seconds before its next blow (half on a save).'},
+  heartseeker:{name:'Heartseeker',cls:'Hunter',spec:'stalker',kind:'attack',lvl:10,cd:20,rounds:3,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:2.4,crit:.2},use:'burst',desc:'One arrow, all the patience: 240% damage with a 20% better chance to crit.'},
+  thornfield:{name:'Thornfield',cls:'Hunter',spec:'trapper',kind:'control',lvl:10,cd:28,rounds:4,cost:null,target:'foes',range:3.5,swing:false,
+    fx:{dmg:.5,delay:3},save:{abil:'reflex',stat:'insight'},use:'crowd',desc:'Cords and thorn across the whole pack: every foe nearby takes 50% damage and loses 3 seconds (half on a save).'},
+  dawnbrand:{name:'Dawnbrand',cls:'Priest',spec:'battlecleric',kind:'attack',lvl:10,cd:16,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:2.1,delay:1.2},use:'burst',desc:'The faith made a hammer: 210% damage, and the foe reels for 1.2 seconds.'},
+  mendingtouch:{name:'Mending Touch',cls:'Priest',spec:'mender',kind:'heal',lvl:10,cd:12,rounds:2,cost:null,target:'ally',range:5,swing:false,
+    fx:{heal:{base:18,lvl:4,hp:.1}},use:'healally',desc:'A hand on one hurt friend: 18 + 4 per level + 10% of their health.'},
+  backstab:{name:'Backstab',cls:'Rogue',spec:'cutthroat',kind:'attack',lvl:10,cd:14,rounds:2,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:2.2,crit:.3},use:'burst',desc:'The blade goes where the armour does not: 220% damage and a 30% better chance to crit.'},
+  dirtytrick:{name:'Dirty Trick',cls:'Rogue',spec:'trickster',kind:'control',lvl:10,cd:22,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
+    fx:{delay:3,mark:1.2},dur:8,durR:2,save:{abil:'insight',stat:'wits'},use:'mark',desc:'Sand, a feint, a shout: the foe loses 3 seconds and, for eight, every blow on it does 20% more (a save resists both).'},
 };
 
 // Passives: always on from the level they are learned at. Keys (read by sim/stats.js and sim/moves.js):
@@ -75,13 +96,26 @@ export const PASSIVES={
   sanctuary:{name:'Sanctuary',cls:'Priest',lvl:8,takenBelow:{hp:.5,mul:.9},desc:'Under half health, blows on you land at 90%.'},
   knifehand:{name:'Knife-Hand',cls:'Rogue',lvl:3,crit:.06,desc:'+6% Crit.'},
   slipblow:{name:'Slip the Blow',cls:'Rogue',lvl:6,taken:.95,desc:'Blows on you land at 95%: you are seldom where the weapon thought.'},
+  // ---- Specialisation passives (issue #82), learned with the path at level 10 ----
+  wardenvow:{name:"Warden's Vow",cls:'Warrior',spec:'warden',lvl:10,defense:.05,health:.04,desc:'+5% Defense and +4% Health.'},
+  reaverfury:{name:"Reaver's Fury",cls:'Warrior',spec:'reaver',lvl:10,crit:.05,openerMul:1.15,desc:'+5% Crit; the first blow on an unhurt foe does 15% more.'},
+  greatrunes:{name:'Great Runes',cls:'Mage',spec:'runescribe',lvl:10,crit:.05,openerMul:1.2,desc:'+5% Crit; the first blow on an unhurt foe does 20% more.'},
+  frostbound:{name:'Frostbound',cls:'Mage',spec:'rimekeeper',lvl:10,defense:.04,health:.06,desc:'+4% Defense and +6% Health: the cold is on your side.'},
+  steadyaim:{name:'Steady Aim',cls:'Hunter',spec:'stalker',lvl:10,crit:.07,desc:'+7% Crit.'},
+  groundlore:{name:'Ground-Lore',cls:'Hunter',spec:'trapper',lvl:10,defense:.04,taken:.96,desc:'+4% Defense and blows on you land at 96%.'},
+  zeal:{name:'Zeal',cls:'Priest',spec:'battlecleric',lvl:10,health:.06,crit:.04,desc:'+6% Health and +4% Crit.'},
+  tenderness:{name:'Tenderness',cls:'Priest',spec:'mender',lvl:10,healMul:1.2,desc:'Healing done +20%.'},
+  deadlyopening:{name:'Deadly Opening',cls:'Rogue',spec:'cutthroat',lvl:10,crit:.04,openerMul:1.25,desc:'+4% Crit; the first blow on an unhurt foe does 25% more.'},
+  nimble:{name:'Nimble',cls:'Rogue',spec:'trickster',lvl:10,taken:.92,desc:'Blows on you land at 92%.'},
 };
 
 // Per class, in the order a policy considers them (first ready and wanted wins).
 export const CLASS_MOVES={};
 export const CLASS_PASSIVES={};
-for(const id in MOVES){const c=MOVES[id].cls;(CLASS_MOVES[c]||(CLASS_MOVES[c]=[])).push(id)}
-for(const id in PASSIVES){const c=PASSIVES[id].cls;(CLASS_PASSIVES[c]||(CLASS_PASSIVES[c]=[])).push(id)}
+// Specialisation rows (spec:<id>, issue #82) are kept apart so the base class lists stay at three and two.
+export const SPEC_MOVES={},SPEC_PASSIVES={};
+for(const id in MOVES){const M=MOVES[id];if(M.spec){(SPEC_MOVES[M.spec]||(SPEC_MOVES[M.spec]=[])).push(id);continue}(CLASS_MOVES[M.cls]||(CLASS_MOVES[M.cls]=[])).push(id)}
+for(const id in PASSIVES){const P=PASSIVES[id];if(P.spec){(SPEC_PASSIVES[P.spec]||(SPEC_PASSIVES[P.spec]=[])).push(id);continue}(CLASS_PASSIVES[P.cls]||(CLASS_PASSIVES[P.cls]=[])).push(id)}
 export const KINDS=['attack','heal','buff','control','defend','move'];
 // Tooltip colour per kind (ui/abilities.js).
 export const KIND_COLOR={attack:'#ff8a5a',heal:'#7dce5a',buff:'#f2c14e',control:'#9ad0ff',defend:'#c8c8e0',move:'#c58cff'};
