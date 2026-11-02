@@ -6,7 +6,9 @@
 //   (a choice times out to the scripted branch, the world keeps running), the rate limit, the
 //   MCP and /play/call endpoints over HTTP, two agents playing two heroes at once through one
 //   relay (issue #93: per-hero routing, runner claims and link states), one session file per
-//   hero, and a dead hero's answers. The mock agent's waits drive game time themselves, so the
+//   hero, a Fellowship member's conversation with a townsperson (issue #170: the scripted DM answers a
+//   silent seat, a mock DM answers through npc_call / npc_say / npc_offer, trade with the person, the talk
+//   goes on with say and ends after a few exchanges or when the member walks off), and a dead hero's answers. The mock agent's waits drive game time themselves, so the
 //   run depends on the seed (PLAYCHECK_SEED), not on how fast the machine is.
 // Usage: npm run playcheck
 import http from 'node:http';
@@ -371,6 +373,38 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   RS = SS.runnerSettings({runner: {provider: 'ollama', model: 'llama'}}, {provider: 'anthropic'}, D).runner; ok(RS.provider === 'anthropic' && RS.model === D.model, 'switching provider drops the old provider\'s model');
   rmSync(logs, {recursive: true, force: true});
 }
+
+// ---- NPC conversations (issue #170): a Fellowship member talks to a townsperson ----
+{paused = true;
+  const F_ = await import('../src/sim/fellowship.js'), DMA = await import('../src/sim/dmagent.js'), TK = await import('../src/sim/talk.js');
+  for (const x of S.agents) if (x.fac === 1 && x.state !== 'dead') {x.lvl = Math.max(x.lvl, 6); x.hp = maxHp(x)}
+  const fr = F_.found(F_.autoPick(1), {fac: 1, ai: false}); F_.setMinds('agent');
+  const m = F_.fellows()[0], home = homeOf(m), mc = (tool, args) => hostCall(m.id, tool, args, hostOpts());
+  const per = role => S.npcs.find(q => q.town === home.name && q.role === role);
+  const stand = (q, dx = 1) => {for (const x of F_.fellows()) {x.x = home.gate.x + 25; x.y = home.gate.y} m.state = 'town'; m.town = home.name; m.x = q.x + dx; m.y = q.y; m.pq = []; m.target = null; m.playRate = []};
+  ok(fr.ok && m && m.fellow && m.player, `a Fellowship to talk with (${S.fellowship && S.fellowship.name}, ${m && m.name})`);
+  // the seat is closed: the scripted DM answers from the role
+  const qm = per('quartermaster'); stand(qm);
+  r = await call('look'); // the other hero's view is untouched
+  r = await mc('talk', {target: 'quartermaster', text: 'Rope and bandages, if you have them.'});
+  ok(r.ok && r.answer && r.follow_up === '[trade opened]', `the scripted DM answers as ${r.who}: "${r.answer}" ${r.follow_up}`);
+  m.gold = 100; r = await mc('buy', {npc: qm.name, item: 'Linen Bandage'}); ok(r.ok && r.from === qm.title + ' ' + qm.name, `bought from the person: ${r.bought || r.error}`);
+  r = await mc('say', {text: 'And what do you hear of the roads?'}); ok(r.ok && r.to === qm.title + ' ' + qm.name && r.answer, `say goes on with the conversation: "${r.answer}"`);
+  r = await mc('say', {text: 'Thank you.'}); r = await mc('say', {text: 'Farewell, then.'});
+  ok(r.ok && r.ended && !TK.convWith(qm), `after ${TK.CONV.EXCHANGES} exchanges it ends`);
+  // the DM agent sits in: npc_call, npc_say {conv}, npc_offer
+  DMA.setDmSeat(true); const sm = per('smith'); stand(sm);
+  DMA.dmAct('npc_call'); r = await mc('talk', {target: sm.name, text: 'Is the forge hot today?'});
+  ok(r.ok && r.waiting, 'with the DM agent listening, the line waits for it');
+  const c = DMA.dmAct('npc_call').call;
+  ok(c && c.line === 'Is the forge hot today?' && c.member.name === m.name, 'npc_call shows the member\'s line');
+  DMA.dmAct('npc_say', {npc: String(sm.id), conv: c.conv, text: 'Hot enough to mend what you broke.'});
+  DMA.dmAct('npc_offer', {npc: String(sm.id), kind: 'trade'});
+  r = await mc('chat_read', {n: 5}); ok(r.ok && r.lines.some(l => /Hot enough to mend/.test(l)), 'the member reads the answer with chat_read');
+  ok(m.playEv.some(e => /\[trade opened\]/.test(e.text)), 'and the follow-up as an event');
+  // walking away ends it; the scripted DM picks up again when the seat goes quiet
+  m.x = sm.x + 15; step(1 / 60); ok(!TK.convWith(sm), 'walking off ends the conversation');
+  DMA.setDmSeat(false); F_.disbandFellowship(); paused = false}
 
 // ---- hardcore: a dead hero only answers that it is dead ----
 {

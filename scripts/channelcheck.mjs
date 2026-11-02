@@ -126,6 +126,19 @@ ok(DMA.dmAct('notes_read').notes.secrets.some(x => x.text.includes(SECRETS.dmSec
 
 // ---------------------------------------------------------------- 2. the in-game channels
 console.log('in-game: narrate, npc_say, party chat');
+// NPC conversations (#170): A talks to a townsperson; the DM answers through npc_say {conv} and keeps a private note on
+// the person's record (remember). The answer reaches A in the game; the record stays the DM's; the call shows the DM only
+// what A said, never a member's journal, memories or persona.
+{const np = (S.npcs || []).filter(p => Number.isFinite(p.x)).sort((p, q) => dist(p, homeOf(A).gate) - dist(q, homeOf(A).gate))[0], at0 = {x: A.x, y: A.y};
+  if (np) {A.x = np.x + 1; A.y = np.y; A.playRate = []; delete np.snub;
+    const t = keep('talk with ' + np.name, act(A, 'talk', {target: String(np.name), text: 'Good evening. Anything I should know?'}));
+    const cv = S.talks && S.talks.cur.find(c => c.npc === np.id);
+    const viewC = JSON.stringify(DMA.dmAct('npc_call')) + JSON.stringify(DMA.dmAct('dm_status').conversations);
+    ok(t.ok && !Object.entries(SECRETS).some(([k, v]) => /^(b|mate|dead)/.test(k) && viewC.includes(v)), 'a conversation: the DM\'s view carries no member\'s private notes');
+    if (cv) {r = DMA.dmAct('npc_say', {npc: String(np.id), conv: cv.id, text: 'Keep to the lit roads, friend.', remember: 'Owes the DM ' + plant('npcRecord')}); ok(r.ok, 'the DM answers in the conversation and notes it on the person\'s record')}
+    else {np.fmem = np.fmem || {talks: 0, last: null, notes: []}; np.fmem.notes.push({d: 1, t: '00:00', text: 'Owes the DM ' + plant('npcRecord')}); ok(true, 'the conversation closed; the record note is planted directly')}
+    ok(JSON.stringify(DMA.dmAct('npcs')).includes(SECRETS.npcRecord), 'the DM reads the person\'s record (the check is not vacuous)')}
+  A.x = at0.x; A.y = at0.y; A.playRate = []}
 const said = {narr: 'The fog smells of ' + secret('narr') + ' and wet stone.', party: 'Hold the line, ' + secret('party') + '!', npc: 'Mind the north road, ' + secret('npc') + '.', table: 'Water drips in the dark ' + secret('table') + '.'};
 r = DMA.dmAct('narrate', {text: said.narr, near: A.name, radius: 6});
 ok(r.ok && r.heard_by >= 3 && r.heroes.includes(A.name) && !r.heroes.includes(B.name), `narrate near ${A.name}: heard by ${r.heard_by} (${(r.heroes || []).join(', ')})`);

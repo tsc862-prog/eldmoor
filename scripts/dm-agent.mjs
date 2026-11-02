@@ -31,6 +31,10 @@
 // Table voice (issue #132): --table-model (or DM_TABLE_MODEL; default claude-haiku-5-5 with Anthropic, the seat's model with
 // Ollama) answers the at-the-table calls of the scenes the DM stages; --no-table-voice leaves them to the scripted DM.
 // A table call's cost counts toward --budget and the session, with its own line.
+// Talk voice (issue #170): --talk-model (or DM_TALK_MODEL; default the table model) answers the Fellowship's conversations with
+// world characters (npc_call -> npc_say {conv} + npc_offer); --no-talk-voice leaves them to DM turns (a waiting conversation then starts
+// a turn at once, after the minimum gap) and the scripted DM. --talk-budget S: real seconds the game waits for the talk voice
+// per answer (4-30; default 8 with Anthropic, 25 with a local model).
 import {mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
@@ -119,7 +123,7 @@ export const DEFAULT_TABLE_MODEL = 'claude-haiku-5-5'; // claude-api skill (cach
 export const POLL_IDLE = 2500, POLL_HOT = 400;
 export const TABLE_SYSTEM = 'You are the Dungeon Master\'s voice at the table in Eldmoor, a hardcore fantasy world (original setting; no names from other games or books). ' +
   'A scene you staged is being played. Each request is one call: voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
-  'Write one vivid sentence of what can be seen, heard or smelled, at most 200 characters. Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
+  'Write what can be seen, heard or smelled, as much as the moment needs; usually a few vivid sentences. Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
 export function tablePrompt(t) {
   const c = t.call, s = t.scene || {};
   return [`Scene: ${s.title || '?'} (${s.kind || '?'})`, s.frame ? `It began: ${s.frame}` : '', s.cast && s.cast.length ? `Cast: ${s.cast.join('; ')}` : '',
@@ -138,7 +142,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
         seen = t.call.id; const c = t.call, t0 = Date.now();
         try {
           const ms = Math.max(800, c.seconds_left * 1000 - 400); // past the call's budget the answer is worthless: abort it (the Ollama adapter honours only the signal)
-          const r = await adapter.call({system: TABLE_SYSTEM, user: tablePrompt(t), schema: tableSchema(c), maxTokens: 160, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+          const r = await adapter.call({system: TABLE_SYSTEM, user: tablePrompt(t), schema: tableSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
           let j = null; try {j = JSON.parse(r.text)} catch {}
           onCost(r.usage || {});
           if (!j || typeof j.text !== 'string') log(`[table] call ${c.id} ${c.kind}: the model's reply was not JSON; the scripted DM fills it`);
@@ -156,9 +160,66 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
   return {stop: () => {done = true; return p}};
 }
 
+// ---- the talk voice (issue #170) ----
+// When a Fellowship member talks to a world character, the game puts a must-answer call to the DM (npc_call): the person,
+// what they want and know, their record of the Fellowship, the member's line and the conversation so far. The game waits
+// a few seconds (CONV.VOICE_MS, 8 s) while this loop is polling, then the scripted DM answers from the person's role. Like
+// the table voice: one structured model call per exchange (Haiku 5.5 by default, the seat's model with Ollama), then
+// npc_say {conv} and at most one npc_offer. A late, failed or refused answer changes nothing: the scripted DM has it.
+export const TALK_POLL_IDLE = 1500, TALK_POLL_HOT = 400;
+export const TALK_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), voicing one of its people. ' +
+  'A hero of the Fellowship is talking to them. Answer as that person, in their own voice, as much as the moment needs (usually a few sentences), true to their role, mood, what they want and what they know. ' +
+  'You may add one follow-up from the legal list: trade (they open their stock), rumour (a lead the hero can act on: put it in about, and a region name if it has a place), job (work posted for the hero), combat (they turn hostile; only when the hero truly provoked it), blessing (priests and hermits), leave (they end it), or none. ' +
+  'Most answers need none; a merchant asked about goods trades, a worried person may give a rumour or a job. Never decide what the hero thinks or does. ' +
+  'warmth is how this line changes their feeling for the Fellowship (-1, 0 or 1; -3 or 3 for something big). remember is a short note for their own record (a promise, a debt) or "". ' +
+  'Reply as JSON {"text": "...", "offer": "...", "about": "...", "region": "...", "warmth": "0", "remember": ""}.';
+export function talkPrompt(c) {
+  const n = c.npc || {}, m = c.member || {};
+  return [`You are ${n.name} (${n.role}, ${n.faction}, in ${n.where}). You want: ${n.want}. Your mood toward the Fellowship: ${n.mood}${n.warmth != null ? ' (warmth ' + n.warmth + ')' : ''}.`,
+    n.knows && n.knows.length ? `You know: ${n.knows.join(' | ')}` : '', n.record && n.record.notes && n.record.notes.length ? `Your record of them: ${n.record.notes.join(' | ')}` : '',
+    m.name ? `Speaking to you: ${m.name}, a level ${m.lvl} ${m.cls}${m.role ? ' (' + m.role + ')' : ''} of the Fellowship.` : '',
+    c.so_far && c.so_far.length ? `So far: ${c.so_far.join(' | ')}` : '', `Exchange ${c.exchange}. ${m.name || 'They'} says: "${c.line}"`,
+    `Legal follow-ups: ${(c.offers || []).join(', ')}, none${c.offered_this_exchange ? ' (one already given this exchange: use none)' : ''}.`].filter(Boolean).join('\n');
+}
+export const talkSchema = c => ({type: 'object', properties: {text: {type: 'string'}, offer: {type: 'string', enum: [...(c.offered_this_exchange ? [] : c.offers || []), 'none']},
+  about: {type: 'string'}, region: {type: 'string'}, warmth: {type: 'string', enum: ['-3', '-1', '0', '1', '3']}, remember: {type: 'string'}}, required: ['text', 'offer', 'about', 'region', 'warmth', 'remember'], additionalProperties: false});
+// budgetS: the real seconds the game should wait for this voice per answer (npc_call {budget_s}); a local model needs more than Haiku.
+export function talkVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = TALK_POLL_IDLE, pollHot = TALK_POLL_HOT, budgetS = 8}) {
+  let done = false, seen = 0;
+  const loop = async () => {
+    while (!done && !stopped()) {
+      const t = await tool(base, 'npc_call', {budget_s: budgetS});
+      const c = t && t.ok && t.call;
+      if (c && c.call !== seen && c.seconds_left > .8) {
+        seen = c.call; const t0 = Date.now(), who = c.npc && c.npc.id;
+        try {
+          const ms = Math.max(800, c.seconds_left * 1000 - 400);
+          const r = await adapter.call({system: TALK_SYSTEM, user: talkPrompt(c), schema: talkSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+          let j = null; try {j = JSON.parse(r.text)} catch {}
+          onCost(r.usage || {});
+          if (!j || typeof j.text !== 'string' || !j.text.trim()) log(`[talk] conv ${c.conv}: the model's reply was not usable; the scripted DM answers`);
+          else {
+            const said = await tool(base, 'npc_say', {npc: String(who), conv: c.conv, text: j.text, ...(Number(j.warmth) ? {warmth: Number(j.warmth)} : {}), ...(j.remember ? {remember: j.remember} : {})});
+            let off = null;
+            if (said.ok && j.offer && j.offer !== 'none') off = await tool(base, 'npc_offer', {npc: String(who), conv: c.conv, kind: j.offer, ...(j.about ? {about: j.about} : {}), ...(j.region ? {region: j.region} : {})});
+            log(`[talk] ${c.npc.name} to ${c.member ? c.member.name : '?'}: ${said.ok ? '"' + short(j.text, 140) + '"' : 'x ' + short(said.error, 100)}${off ? (off.ok ? ' ' + off.mark : ' (' + j.offer + ' refused: ' + short(off.error, 80) + ')') : ''} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+          }
+        } catch (e) {log(`[talk] conv ${c.conv}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM answers`)}
+        continue;
+      }
+      await sleep(t && t.ok && t.open && t.open.length ? pollHot : pollIdle);
+    }
+  };
+  const p = loop().catch(e => log(`[talk] voice stopped: ${short(String(e && e.message || e), 120)}`));
+  return {stop: () => {done = true; return p}};
+}
+// A conversation waiting for the DM while no talk voice runs: the turn starts at once and its prompt names it (#170).
+export const talkWaiting = st => st && Array.isArray(st.conversations) ? st.conversations.filter(c => c.waiting) : [];
+export const talkNote = st => {const w = talkWaiting(st); return w.length ? ` A Fellowship member is talking to someone and waits for an answer: ${w.map(c => `${c.member} to ${c.npc} (conv ${c.conv}): "${c.line}"`).join('; ')}. First answer as that person: npc_call, then npc_say {npc, conv, text} and at most one npc_offer; then go on with your turn.` : ''};
+
 // Wait until the cadence allows a turn and nothing is pending. Returns the fresh status, or null on stop.
 // gapUntil: the earliest real time (ms) the next turn may start (the minimum gap, issue #126).
-async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n: 0}, log, stopped, gapUntil = 0}) {
+async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n: 0}, log, stopped, gapUntil = 0, talkNow = false}) {
   const target = cadence === 'evening' && lastGm != null ? nextEvening(lastGm) : null, until = Math.max(gapUntil, cadence !== 'evening' && lastGm != null ? Date.now() + Number(cadence) * 1000 : 0);
   let said = '';
   for (;;) {
@@ -166,6 +227,7 @@ async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n
     const st = await dmTool(base, 'dm_status');
     let why = '', evt = false;
     if (!st.ok) why = st.offline ? 'the game is not answering (' + short(st.error, 90) + ')' : short(st.error, 90);
+    else if (talkNow && talkWaiting(st).length && !(st.table && st.table.open) && Date.now() >= gapUntil) why = ''; // a member waits for an answer and no talk voice runs (#170)
     else if (target != null && st.gameMin < target && !(evt = eventDue(st, {sig: lastSig, gm: lastGm}, ev))) why = `waiting for the evening of day ${Math.floor(target / DAY) + 1} (now day ${st.day} ${st.time})`;
     else if (until && Date.now() < until) why = `next turn in ${Math.ceil((until - Date.now()) / 1000)} s`;
     else if (st.pending) why = st.table && st.table.open ? 'a Table scene is running' : 'a party vote is open';
@@ -228,11 +290,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] DM seat taken | local model ${rs.model} via Ollama | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
     const numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null);
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
+    if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 25))}); log(`[dm] talk voice: ${rs.model} (local) answers the Fellowship's conversations with world characters`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
-      const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
+      const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
       let r = null, err = null;
-      try {r = await localTurn({chat: ol.chat, call: (tool, args) => dmTool(base, tool, args), sess, prompt: dmTurnPrompt(sess.turns, st), model: rs.model, toolTurns, tools: DM_TOOLS, rules,
+      try {r = await localTurn({chat: ol.chat, call: (tool, args) => dmTool(base, tool, args), sess, prompt: dmTurnPrompt(sess.turns, st) + talkNote(st), model: rs.model, toolTurns, tools: DM_TOOLS, rules,
         opts: {...(numCtx ? {numCtx: Number(numCtx)} : {}), endOnWait: false},
         on: (k, a, b) => {if (k === 'text') log(`  DM: ${a}`); else if (k === 'tool') log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') log(`    < ${short(a, 220)}`)}})}
       catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
@@ -257,6 +320,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] table voice: ${tableModel} answers the calls of staged scenes`);
   }
+  if (!flag('no-talk-voice')) {
+    const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
+    const talkModel = opt('talk-model', env.DM_TALK_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
+    talkVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: talkModel}), model: talkModel, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 8)),
+      onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
+    log(`[dm] talk voice: ${talkModel} answers the Fellowship's conversations with world characters`);
+  }
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
   const {model, effort} = rs;
   log(`[dm] DM seat taken | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
@@ -265,11 +335,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil()}); if (!st) {ended = 'the seat closed'; break}
+    const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
-    const q = query({prompt: dmTurnPrompt(sess.turns, st), options: {
+    const q = query({prompt: dmTurnPrompt(sess.turns, st) + talkNote(st), options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?role=dm&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': runner}, timeout: 30000}},
