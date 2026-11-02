@@ -401,3 +401,12 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .nwitem.ok{color:var(--green)}
 .nwitem.bad{color:var(--red)}
 @media (max-width:520px){.scards,.sgrid{grid-template-columns:minmax(0,1fr)}}
+/* class abilities (issue #81): dossier Stats tab and Fellowship sheet */
+.abils{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 10px;min-width:0}
+.abils .ab{position:relative;display:flex;align-items:center;gap:6px;min-width:0;padding:1px 2px}
+.abils .ab.off{opacity:.45}
+.abils .ab .abi{flex:none;width:14px;height:14px;line-height:14px;text-align:center;color:#10131f;font-size:13px;font-weight:bold}
+.abils .ab .abn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.abils .ab .abr{flex:none}
+.abils .ab .abcd{position:absolute;left:0;right:0;bottom:0;height:2px}
+.abils .ab .abcd i{display:block;height:100%;background:var(--gold)}

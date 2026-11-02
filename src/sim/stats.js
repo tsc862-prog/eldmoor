@@ -17,6 +17,7 @@ import {CLS} from '../data/classes.js';
 import {CLASS_ABIL,ABILITIES} from '../data/abilities.js';
 import {SLOTS,PROPS,USES} from '../data/items.js';
 import {mod} from './abilities.js';
+import {passiveSum,effMul,passiveTaken} from './eff.js'; // class passives and timed effects (sim/eff.js, #81)
 
 // ---- tuning (calibrated against the pre-#88 formulas; see the PR for the band averages) ----
 export const SWING=1.1;              // seconds between blows at speed 1
@@ -54,6 +55,7 @@ function build(a){
   H('class',a.cls+' base',c.hp);H('level','Level '+l,lvlHp(l));H('score:grit','Grit '+sg(gm)+' x '+l,gm*l);
   if(ne)H('epic',ne+' epic'+(ne>1?'s':'')+' looted',ne*EPIC_HP);
   if(P.vital){const v=hp*PROPS.vital.v*P.vital;H('property','vital'+(P.vital>1?' x'+P.vital:'')+' (+'+Math.round(PROPS.vital.v*P.vital*100)+'%)',v)}
+  const pHp=passiveSum(a,'health');if(pHp)H('passive','Passives (+'+Math.round(pHp*100)+'%)',hp*pHp);
   // Attack
   const pm=mod(a,prim);let atk=0;
   const A=(src,label,v)=>{bd.attack.push({src,label,value:r1(v)});atk+=v};
@@ -62,17 +64,19 @@ function build(a){
   if(ne)A('epic',ne+' epic'+(ne>1?'s':'')+' looted',ne*EPIC_ATK);
   // Defense: class armour and item armor multiply (each turns aside a share of what is left), warding adds, capped.
   const cd=c.def||0,ad=Math.min(DEF_CAP,g.armor*ARMOR_RATE),wd=(P.warding||0)*PROPS.warding.v;
-  let def=1-(1-cd)*(1-ad);
+  let def=1-(1-cd)*(1-ad);const pd=passiveSum(a,'defense');
   if(cd)bd.defense.push({src:'class',label:a.cls+' training',value:cd});
   if(g.armor)bd.defense.push({src:'gear',label:g.armor+' armor',value:def-cd});
   if(wd){bd.defense.push({src:'property','label':'warding'+(P.warding>1?' x'+P.warding:''),value:wd});def+=wd}
+  if(pd){bd.defense.push({src:'passive',label:'Passives',value:pd});def+=pd}
   if(def>DEF_CAP){bd.defense.push({src:'cap',label:'cap '+pct(DEF_CAP),value:DEF_CAP-def});def=DEF_CAP}
   // Crit
   const rm=mod(a,'reflex'),cc=c.crit||BASE_CRIT,rc=(rm-CRIT_REF)*CRIT_PER,kc=(P.keen||0)*PROPS.keen.v;
   const lc=lvlCrit(l);bd.crit.push({src:'class',label:a.cls+' base',value:cc});if(lc)bd.crit.push({src:'level',label:'Level '+l+' (seasoned)',value:lc});
   bd.crit.push({src:'score:reflex',label:'Reflex '+sg(rm),value:rc});
   if(kc)bd.crit.push({src:'property',label:'keen'+(P.keen>1?' x'+P.keen:''),value:kc});
-  const crit=Math.max(0,cc+lc+rc+kc);
+  const pc=passiveSum(a,'crit');if(pc)bd.crit.push({src:'passive',label:'Passives',value:pc});
+  const crit=Math.max(0,cc+lc+rc+kc+pc);
   // Speed
   const sw=(P.swift||0)*PROPS.swift.v,speed=(c.spd||1)+sw;
   bd.speed.push({src:'class',label:a.cls+' swing',value:c.spd||1});
@@ -91,4 +95,4 @@ export function combatStats(a){const k=sig(a),e=cache.get(a);if(e&&same(e,a,k))r
   const s=a.slots,items=s?SLOTS.map(x=>s[x]||null):null,v=build(a);
   cache.set(a,{k,items,lv:items?items.map(it=>it?it.ilvl:0):null,v});return v}
 // Damage multiplier for a blow landing on this hero.
-export const dmgTaken=a=>(1-combatStats(a).defense)*(a.wardT>0?1-USES['Scroll of the Steadfast Hour'].ward:1); // a warding scroll (sim/inv.js) softens every blow while it holds
+export const dmgTaken=a=>(1-combatStats(a).defense)*(a.wardT>0?1-USES['Scroll of the Steadfast Hour'].ward:1)*effMul(a,'taken')*passiveTaken(a,a.hp/combatStats(a).health); // Ward of Dawn, Bastion and the class passives (sim/eff.js, #81); a warding scroll (sim/inv.js) softens every blow while it holds

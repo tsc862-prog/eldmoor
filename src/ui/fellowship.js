@@ -20,6 +20,7 @@ import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME} from '../sim/persona.js';
 import {enableBrain,disableBrain} from '../sim/brain.js';
+import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
 import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
 import {fellowshipRunnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start all five / Stop all
 import {devMode} from './mindctl.js'; // request stats are a developer surface (#145)
@@ -132,6 +133,7 @@ function topView(node){const F=S.fellowship;
 function sheetView(node,a){node.replaceChildren();if(!a)return;
   const box=el('div','fsheet');box.append(el('div','fname',a.name+'’s sheet'));
   box.append(el('div','dm','Persona: '+(a.persona&&a.persona.src==='model'?'written by the model':'scripted')+(a.persona&&a.persona.edited?', edited':'')+'. Backstory: '+(a.backstory&&a.backstory.src==='model'?'written by the model':'scripted')+(a.backstory&&a.backstory.edited?', edited':'')+'.'+(enriching(a)?' The relay is still writing; saving now keeps your text.':'')));
+  abilityBlock(box,a);
   const ta=(which,k,label,v,rows)=>{const l=el('label','fta');l.append(el('span','dm',label));const t=el('textarea');t.rows=rows||2;t.value=v||'';t.dataset.fw=which;t.dataset.fk=k;l.append(t);box.append(l)};
   for(const [k,label] of PERSONA_ORDER)ta('persona',k,label,a.persona&&a.persona[k],2);
   ta('backstory','summary','Backstory summary',a.backstory&&a.backstory.summary,2);

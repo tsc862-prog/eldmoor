@@ -29,6 +29,8 @@ import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
 import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
+import {effMul,passiveMul} from './eff.js'; // timed effects and class passives (sim/eff.js, #81)
+import {fightMoves} from './moves.js'; // class abilities (sim/moves.js, #81)
 import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
 import {dmDepart,dmTravel,dmHunt} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 
@@ -128,18 +130,22 @@ export function agentDie(a,killer){
   else if(killer.kind==='boss'){log(a,' ',lv,' was incinerated by ',{t:'Kragmaw',c:'gd'},'.');fall(a,'incinerated by Kragmaw')}
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
 
-export function strike(a,t){
-  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4);const crit=rnd()<combatStats(a).crit;if(crit)d*=1.8;
+// o: an ability's blow (sim/moves.js): {mul: damage multiplier, crit: extra crit chance}. Returns the damage dealt.
+export function strike(a,t,o){
+  const c=CLS[a.cls];let d=atkOf(a)*(.8+rnd()*.4)*(o&&o.mul||1);const crit=rnd()<combatStats(a).crit+(o&&o.crit||0);if(crit)d*=1.8;
+  if(t.hp>=(t.kind==='hero'?maxHp(t):t.maxhp)*.95)d*=passiveMul(a,'openerMul'); // Opening Rune
+  d*=effMul(t,'mark'); // Quarry Mark
   if(a.blessed){d*=1.2;a.blessed=0} // wayside shrine blessing: one strike at +20% (sim/encounters.js)
   if(t.kind==='hero')d*=.6*dmgTaken(t);
   d=Math.round(d);t.hp-=d;if(c.range>2)bolt(a,t,c.orb||c.acc);
   pop(t.x,t.y-.6,crit?d+'!':String(d),crit?'#ffe060':'#ffffff');
-  if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return}
-  if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}}
+  if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return d}
+  if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}
+  return d}
 
 export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){tendAlly(a,list);return}let low=null; // spell on cooldown: a potion for a member nearly down (sim/inv.js)
   for(const b of list){if(b.state==='ghost'||dist(a,b)>4)continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
-  if(low){const h=Math.round(20+a.lvl*5);low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;if(low!==a)bondEvent(a,'heal',[low])}}
+  if(low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'healMul'));low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;if(low!==a)bondEvent(a,'heal',[low])}}
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
@@ -202,8 +208,9 @@ export function updAgent(a,dt){
     const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
     if(d>r){moveTo(a,m.x,m.y,dt,2.4);break}a.moving=false;
     if(!m.target)m.target=a;
-    priestHeal(a,a.party?a.party.mem:[a]);
-    if(a.cd<=0){strike(a,m);a.cd=1.1}
+    const mates=a.party?a.party.mem:[a];priestHeal(a,mates);
+    const mv=fightMoves(a,m,mates,a.cd<=0); // class abilities: free ones at once, a striking one in place of the blow
+    if(a.cd<=0){if(mv!=='swing')strike(a,m);a.cd=1.1}
     fightAid(a,m); // potion, antidote, ward or Hearthward from the pack (sim/inv.js)
     brainFight(a,m,mh); // BRAIN: optional earlier bail-out at 50% HP for AI-played heroes
     if(a.state==='fight'&&a.hp<mh*.22*tm(a,'flee')&&rnd()<dt*1.2){m.target=null;goHome(a);pop(a.x,a.y-.8,'FLEE','#ffb060')}
@@ -216,7 +223,7 @@ export function updAgent(a,dt){
   case 'duel':{const b=a.target;if(!b||b.state!=='duel'||b.target!==a){a.state='hunt';a.target=null;break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
     if(d>r){moveTo(a,b.x,b.y,dt,2.4);break}a.moving=false;priestHeal(a,[a]);
-    if(a.cd<=0){strike(a,b);a.cd=1.1}
+    {const mv=fightMoves(a,b,[a],a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,b);a.cd=1.1}}
     fightAid(a,b); // a potion in a duel too
     // Caution: break off at 20% HP, or at 50% when outnumbered (helpers on you, none on your foe).
     const outn=S.agents.some(g=>g.state==='assist'&&g.target===a)&&!S.agents.some(g=>g.state==='assist'&&g.target===b);
@@ -226,7 +233,7 @@ export function updAgent(a,dt){
   case 'assist':{const b=a.target;if(!b||b.state!=='duel'){regroup(a,b&&b.state!=='dead'?b:null,a.regNext);break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;if(d>r){moveTo(a,b.x,b.y,dt,2.8);break}a.moving=false;
     if(b.target&&b.target.kind==='hero')priestHeal(a,[b.target,a,...partyMates(a)]);
-    if(a.cd<=0){strike(a,b);a.cd=1.1}break}
+    {const mv=fightMoves(a,b,[a,...partyMates(a)],a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,b);a.cd=1.1}}break}
   case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx;
     moveTo(a,CRYPT.x+(k%3-1)*.9,CRYPT.y+.6+Math.floor(k/3)*.7,dt,2.6);break}
   case 'raid':{if(!boss.alive){a.raid=false;goHome(a);break}
@@ -234,7 +241,7 @@ export function updAgent(a,dt){
     const idx=a.raidIdx,ang=Math.PI*(.55+idx*.18),rr=Math.min(CLS[a.cls].range+.9,3.2);
     const px=boss.x+Math.cos(ang)*rr*-1,py=boss.y-.3+Math.sin(ang)*rr*(idx%2?1:-1)*.8;
     if(dist(a,boss)>rr+.6){moveTo(a,px,py,dt,2.4);break}a.moving=false;a.face=boss.x>a.x?1:-1;
-    priestHeal(a,S.agents.filter(b=>b.raid&&b.fac===a.fac));
-    if(a.cd<=0){strike(a,boss);a.cd=1.1}
+    const raiders=S.agents.filter(b=>b.raid&&b.fac===a.fac);priestHeal(a,raiders);
+    {const mv=fightMoves(a,boss,raiders,a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,boss);a.cd=1.1}}
     fightAid(a,boss);break}
   }}
