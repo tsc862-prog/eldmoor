@@ -309,5 +309,20 @@ console.log('run gate');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
   gate.setGateProbe(null);L[m3.id]='connected'}
 
+// ---- the title screen (owner request): keyboard, and the skip params for checks and dev ----
+{console.log('title screen');
+  const title=await import('../src/ui/title.js'),save=await import('../src/ui/save.js');
+  ok(title.titleWanted('?skip-title=1')===false&&title.titleWanted('?continue=1')===false,'a skip param goes straight into the world');
+  save.holdSave(false);save.writeSave();
+  let played=[];const root=title.showTitle(k=>played.push(k));
+  ok(!root.hidden&&root.querySelector('[data-a="continue"]'),'the title shows Continue over a saved world');
+  ok(document.activeElement&&document.activeElement.dataset.a==='continue','Continue has the focus');
+  const key=(k,target=document.body)=>{for(const f of document._ls.keydown||[])f({key:k,target,preventDefault(){}})};
+  key('Enter',root.querySelector('[data-a="new"]'));ok(played.length===0,'Enter on a focused button is left to the button');
+  root.querySelector('[data-a="new"]').click();ok(/replaces the saved/.test(root.textContent),'New world asks first');
+  key('Enter');ok(played.length===0,'Enter does not Continue while the question is open');
+  key('Escape');ok(!/replaces the saved/.test(root.textContent),'Escape closes the question');
+  key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away')}
+
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

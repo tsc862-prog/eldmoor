@@ -135,6 +135,52 @@ if(mode==='a'){
   localStorage.setItem(SAVE_KEY,'x');
   setup.openSetup({first:false});click(ids.get('setup'),b=>b.dataset.a==='cancel');
   ok(ids.get('setup').hidden&&localStorage.getItem(SAVE_KEY)==='x','Cancel closes the page and keeps the save');
+}else if(mode==='c'){
+  // the title screen: shown before any world exists; Continue only with a save; New world asks before replacing one
+  const title=await imp('src/ui/title.js');const save=await imp('src/ui/save.js');
+  ok(title.titleWanted('')===true,'the title is wanted on a plain page load');
+  ok(title.titleWanted('?continue=1')===false&&title.titleWanted('?skip-title=1')===false&&title.titleWanted('?title=0')===false,'?continue=1, ?skip-title=1 and ?title=0 go straight in');
+  setup.initSetup();
+  let played=[];title.showTitle(k=>played.push(k));
+  let t=ids.get('title');
+  ok(t&&!t.hidden&&title.titleOpen(),'the title shows on load');
+  ok(!save.isBooted()&&sim.S.agents.length===0,'no world is built or restored behind it');
+  ok(!all(t,'button').some(b=>b.dataset.a==='continue'),'no Continue without a save');
+  ok(all(t,'button').some(b=>b.dataset.a==='new'&&b.classList.contains('primary')),'New world is the first choice without a save');
+  ok(all(t,'button').some(b=>b.dataset.a==='load')&&all(t,'button').some(b=>b.dataset.a==='default'),'Load from file and the default world are offered');
+  ok(all(t,'button').filter(b=>b.dataset.a==='map').map(b=>b.textContent).join('|').includes('Stepping Lands'),'the map choice lists Eldmoor and the Stepping Lands');
+  click(t,b=>b.dataset.a==='new');
+  let sp=ids.get('setup');
+  ok(sp&&!sp.hidden&&t.hidden,'New world (no save) opens the setup page at once');
+  ok(all(sp,'button').some(b=>b.dataset.a==='cancel'&&b.textContent==='Back'),'the setup page offers Back to the title');
+  click(sp,b=>b.dataset.a==='cancel');
+  ok(sp.hidden&&!t.hidden&&played.length===0,'Back returns to the title, still no world');
+  click(t,b=>b.dataset.a==='default');
+  ok(played.join()==='default'&&!ids.get('title').parentNode,'the default world plays and the title goes away');
+  // a saved world
+  sim.init();save.writeSave();
+  const sum=save.saveSummary('eldmoor');
+  ok(sum&&sum.fellowship&&sum.fellowship.members.length===5&&sum.at,'saveSummary reads the day, the Fellowship and the time it was saved');
+  played=[];title.showTitle(k=>played.push(k));t=ids.get('title');
+  const cont=all(t,'button').find(b=>b.dataset.a==='continue');
+  ok(cont&&cont.classList.contains('primary'),'Continue shows with a save, first');
+  const line=t.querySelector('.tsave').textContent;
+  ok(/^Eldmoor · Day \d+, \d\d:\d\d · /.test(line)&&sum.fellowship.members.every(m=>line.includes(m.name+' '+m.lvl))&&/saved just now/.test(line),'the save line: '+line);
+  ok(!all(t,'button').some(b=>b.dataset.a==='default'),'no default world when a save exists');
+  click(t,b=>b.dataset.a==='new');
+  ok(/replaces the saved Eldmoor world/.test(t.textContent)&&ids.get('setup').hidden&&!localStorage.getItem(PENDING_KEY),'New world asks before replacing the save');
+  ok(all(t,'button').some(b=>b.dataset.a==='export'),'and offers to export it first');
+  click(t,b=>b.dataset.a==='back');
+  ok(!/replaces the saved/.test(t.textContent)&&!!localStorage.getItem(SAVE_KEY),'Back keeps the save');
+  click(t,b=>b.dataset.a==='new');click(t,b=>b.dataset.a==='replace');
+  sp=ids.get('setup');ok(!sp.hidden&&t.hidden,'Set up a new world opens the setup page');
+  reloads=0;click(sp,b=>b.dataset.a==='start');
+  ok(reloads===1&&!localStorage.getItem(SAVE_KEY)&&!!localStorage.getItem(PENDING_KEY),'Start does not ask a second time: the save goes and the setup is queued');
+  ok(title.titleWanted('')===false,'the reload into the queued setup skips the title');
+  localStorage.removeItem(PENDING_KEY);
+  // Continue
+  save.holdSave(false);save.writeSave();played=[];title.showTitle(k=>played.push(k));t=ids.get('title');
+  click(t,b=>b.dataset.a==='continue');ok(played.join()==='continue','Continue resumes the save');
 }else{
   const s=sim.cleanSetup(sim.applyPreset('claude',sim.defaultSetup(777,'eldmoor',0)));
   localStorage.setItem(PENDING_KEY,JSON.stringify(s));
