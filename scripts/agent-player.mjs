@@ -90,8 +90,8 @@ export function systemPrompt(st) {
 }
 
 // Memories (issue #155): the line every hero's standing orders carry; withMemoryOrders adds it to an older session's prompt.
-export const MEMORY_ORDERS = '- Keep memories: when you make or hear a promise, owe or are owed something, gain a grudge or a friend, learn a name, a place or a plan worth keeping, write it with remember (a short title, the text, a few tags, about: who or what). Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
-export const withMemoryOrders = sys => /\bremember \(a short title/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + MEMORY_ORDERS;
+export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
+export const withMemoryOrders = sys => /- Keep memories: /.test(String(sys || '')) ? sys : String(sys || '') + '\n' + MEMORY_ORDERS;
 
 // Every call names its hero and this runner (the id it claimed with), so the relay routes it to that
 // hero only and refuses it for a hero another runner holds (issue #123).

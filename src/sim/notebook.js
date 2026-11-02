@@ -12,6 +12,8 @@
 // Rules:
 //   - Seats stay apart (issue #123): a hero's tools touch only its own notebook, the DM's only the DM's; no
 //     snapshot, prompt, other seat's tool or DM tool reads another notebook (scripts/channelcheck.mjs).
+//   - Free-form: a note is whatever the agent chooses to keep (any title, text and tags; about optional); nothing is
+//     checked but length and count. The prompts name promises, debts, grudges ... as examples only.
 //   - Caps: NB.NOTES notes of NB.LEN characters (DM: DM_NB.PER_SEC a section); a new note over the cap
 //     archives the oldest unpinned one (kept in arch, NB.ARCH at most, still found by recall, marked archived);
 //     pinned notes are never archived (NB.PINS at most).
