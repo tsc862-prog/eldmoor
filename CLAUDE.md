@@ -360,7 +360,11 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   `lead_to` moves those in range; a Crypt or raid call needs everyone together (a reflex-only party, as in `npm run sim`,
   moves as one and is not held to it). `leave_party {where, when_hours}` and a `split` proposal's `meet_at`/`meet_in_hours`
   record a meeting plan (an open thread, plus a memory for those who heard it). `send_courier` (hired at a town gate,
-  a few gold by distance, about 1.5 h plus 6 min a tile) is the one way to reach someone out of range. A member back after
+  a few gold by distance, about 1.5 h plus 6 min a tile) is the one way to reach someone out of range. `earshot` (read-only, #395, `src/sim/earshot.js`) tells a hero before it
+  speaks who would hear `say` (heroes and townsfolk within 7), which companions a shout reaches today (the range and why fog or
+  storm shortens it), who is close enough to `talk` to (4) and which companions are out of range (names only, the courier hint),
+  from the same hearer sets `say` and `party_say` use (`sayHearers` in `chat.js`, `shoutHearers` in `council.js`); every turn
+  header carries it as one short "In earshot: ..." line (`brief.earshot`, absent when nobody is near). A member back after
   2+ hours apart: one present companion is told what was missed and asked to say it; the returner is told only to ask.
   The standing orders (`scripts/fellowship.mjs`, `scripts/agent-player.mjs`) say that distance cuts them off. The Chat tab
   shows a shout as "Kerin shouts: ..." with a dim "(Lorwyn, Fena)" of who heard, or "Kerin calls out, but no one is near";

@@ -194,7 +194,7 @@ const argsFor = {move_to: {target: 'home'}, talk: {target: B.name}, say: {text: 
 const beast = S.mobs.find(m => m.alive && !m.gone && !m.elite && !m.named); beast.x = A.x + 2.5; beast.y = A.y; beast.lvl = 37; beast.maxhp = 9137; beast.hp = 4567; beast.target = null; beast.dest = null; beast.home = {x: beast.x, y: beast.y}; beast.spawn = {x: beast.x, y: beast.y}; (await import('../src/sim/spatial.js')).rebuild();
 const beastNums = /"lvl":37|level 37|L37|9137|4567|"hurt":/;
 const first = {};
-for (const t of ['status', 'look', 'chat_read', 'party_read', 'journal_read', 'read_chronicle']) first[t] = keep('A ' + t, act(A, t, argsFor[t]));
+for (const t of ['status', 'look', 'chat_read', 'party_read', 'journal_read', 'read_chronicle', 'earshot']) first[t] = keep('A ' + t, act(A, t, argsFor[t]));
 ok((first.chat_read.lines || []).some(l => l.includes(said.narr) && /narrator/i.test(l)) && (first.chat_read.lines || []).some(l => l.includes(said.party)), 'chat_read: the narrator and B\'s party line');
 ok((first.party_read.lines || []).some(l => l.includes(said.party)), 'party_read: B\'s party line');
 ok(JSON.stringify(first.status.events || []).includes(said.narr) || JSON.stringify(first.status).includes(said.narr) || heard.some(h => h.text.includes('The narrator: ' + said.narr)), 'events: "The narrator: ..." reaches A\'s agent');
@@ -212,7 +212,7 @@ ok(act(A, 'recall', {n: 20}).notes.every(n => n.title === 'Road notes' || n.titl
 {const br = keep('A pace brief', PC.paceBrief(A.id)); keep('A memory line', memoryNote(br.brief)); keep('A Claude turn header', claudeBrief(br.brief)); keep('A brief text', SIM.S && br.brief ? JSON.stringify(br.brief) : '')}
 // a wait, finished by the host the way sim/player-host.js does
 const w = act(A, 'wait', {minutes: 10}); run(3); keep('A wait', P.finishWait(w.pending, true));
-for (const x of [rest[0], rest[1]]) for (const t of ['status', 'chat_read', 'party_read', 'look']) keep(x.name + ' ' + t, act(x, t, argsFor[t]));
+for (const x of [rest[0], rest[1]]) for (const t of ['status', 'chat_read', 'party_read', 'look', 'earshot']) keep(x.name + ' ' + t, act(x, t, argsFor[t]));
 // B (far): its own journal is its own; the narration did not reach it
 const bc = act(B, 'chat_read', {n: 20}); ok(!JSON.stringify(bc).includes(said.narr), 'B\'s chat_read has no narration it could not hear');
 ok(JSON.stringify(act(B, 'journal_read', {n: 50})).includes(SECRETS.bJournal), 'B still reads its own journal');
@@ -274,7 +274,7 @@ x = await post('/play/narrate', {hero: A.id, text: 'whisper', role: 'dm'}); ok(x
 x = await fetch(base + '/mcp?role=dm', {method: 'POST', headers: {'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-eldmoor-hero': String(A.id), 'x-eldmoor-runner': 'run-DM'}, body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/list', params: {}})});
 ok(x.status === 403, 'MCP role=dm with a hero header is refused');
 const mcp = (hero, runner, name, args) => fetch(base + '/mcp', {method: 'POST', headers: {'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-eldmoor-hero': String(hero.id), 'x-eldmoor-runner': runner}, body: JSON.stringify({jsonrpc: '2.0', id: 2, method: 'tools/call', params: {name, arguments: args || {}}})}).then(r => r.json()).then(j => JSON.parse(j.result.content[0].text));
-for (const t of ['status', 'chat_read', 'party_read', 'journal_read', 'look']) keep('MCP A ' + t, await mcp(A, 'run-A', t, argsFor[t]));
+for (const t of ['status', 'chat_read', 'party_read', 'journal_read', 'look', 'earshot']) keep('MCP A ' + t, await mcp(A, 'run-A', t, argsFor[t]));
 x = await mcp(B, 'run-A', 'journal_read', {n: 50}); keep('MCP run-A for B', x); ok(x.ok === false && x.refused, 'over MCP too: run-A cannot play B');
 x = await mcp(B, 'run-A', 'recall', {n: 20}); keep('MCP run-A recalls for B', x); ok(x.ok === false && x.refused, 'run-A cannot recall B\'s memories (refused)');
 x = await post('/play/call', {hero: B.id, tool: 'recall', args: {query: 'hide'}, runner: 'run-A'}); keep('run-A /play/call recall for B', x.body); ok(x.status === 409, 'nor over /play/call (409)');

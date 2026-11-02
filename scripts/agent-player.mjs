@@ -58,7 +58,7 @@ import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, claudeBrief, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -287,7 +287,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0);
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
