@@ -284,7 +284,7 @@ ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last
   const env = {...process.env, AGENT_LOGS: HL, BEHAVIOR_DIR: '', ANTHROPIC_API_KEY: '', OLLAMA_URL: mock.url, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0', RELAY_VERBOSE: ''};
   const kid = (args) => {const p = spawn(process.execPath, args, {cwd: join(HERE, '..'), env, stdio: ['ignore', 'pipe', 'pipe']}); let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d); return {p, out: () => out, done: new Promise(r => p.on('exit', r))}};
   const w = kid(['scripts/play-headless.mjs', '--port', String(port), '--agents', '1', '--quiet', '--speed', '8', '--world', join(HL, 'world.json'), '--log-world', 'real']);
-  for (let i = 0; i < 200 && !/headless world/.test(w.out()); i++) await new Promise(r => setTimeout(r, 100));
+  for (let i = 0; i < 200 && !/^\[play\] headless world at /m.test(w.out()); i++) await new Promise(r => setTimeout(r, 100));
   const h = await fetch(HB + '/play/health').then(r => r.json()).catch(() => ({heroes: []})), hero = (h.heroes || [])[0];
   ok(!!hero, `headless world up with agent hero ${hero && hero.name}`);
   if (hero) {
