@@ -228,7 +228,8 @@ if (process.argv[2] === '--staged') {
   fresh(); const far = M.map(x => ({x: x.x, y: x.y}));
   r = {ok: false}; for (const [dx, dy] of [[12, 0], [-12, 0], [0, 12], [0, -12], [9, 9], [-9, -9]]) {if (r.ok) break; r = dmAct('stage_scene', {kind: 'ambush', near: Math.round(spot.x + dx) + ',' + Math.round(spot.y + dy), frame: 'A pack watches the road from the hedges.', cast: {}, reason: 'never met'})} // the roster (every class added) moves the spot: try a few offsets
   if (!r.ok) r = dmAct('stage_scene', {kind: 'mystery', near: ZONES[zone], frame: 'A pack watches the road from the hedges.', cast: {}, reason: 'never met'});
-  for (const x of M) {const c = homeOf(x); x.state = 'town'; x.townStep = 2; x.wait = 9e9; x.x = c.gate.x; x.y = c.gate.y - 1}
+  // hold the live members: the save test above restored the world, so M holds the heroes from before the restore
+  for (const x of F_.fellowshipMembers().map(m => m.hero)) {const c = homeOf(x); x.state = 'town'; x.townStep = 2; x.wait = 9e9; x.target = null; x.dest = null; x.x = c.gate.x; x.y = c.gate.y - 1}
   T.TABLE.speed = 8; const g0 = S.gameMin; while (S.gameMin - g0 < ST.STAGE.WAIT_MIN + 30) step(1 / 60);
   ok(r.ok && S.staged.cur.phase === 'done' && S.staged.cur.result === 'expired' && S.dmLog.some(e => e.kind === 'abandon' && tag(e)), `a cast nobody meets gives up after ${ST.STAGE.WAIT_MIN / 60} game hours (logged)`);
   ok(S.staged.cur.cast.mobs.every(id => {const m = S.mobs.find(x => x.id === id); return !m || m.gone}), 'and its foes leave the map');

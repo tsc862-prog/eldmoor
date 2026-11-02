@@ -59,7 +59,9 @@ ok(!/\(L\d+-\d+\)/.test(J(st.places)) && st.hunting_ground === undefined, 'no le
 let r = act(A, 'move_to', {target: ZONES[up]});
 ok(!r.ok && /never been to|heard of/.test(r.error), `move_to an unheard-of region is refused: ${r.error}`);
 r = act(A, 'move_to', {target: CRYPT.name}); ok(!r.ok, 'move_to an unheard-of landmark is refused');
-r = act(A, 'move_to', {target: 'explore north'}); ok(r.ok && r.explore, `a direction is always open: ${r.going}`);
+// toward the middle of the map: the roster can seat A by the edge, where that way is (rightly) refused as the world's end
+{const {H} = await import('../src/world/tiles.js'); const way = A.y < H / 2 ? 'south' : 'north';
+  r = act(A, 'move_to', {target: 'explore ' + way}); ok(r.ok && r.explore, `a direction is always open: ${r.going}`)}
 r = act(A, 'move_to', {target: Math.round(spot.x + 3) + ',' + Math.round(spot.y)}); ok(r.ok, 'coordinates are always open');
 r = act(A, 'move_to', {target: ZONES[home]}); ok(r.ok, 'the home region is known');
 A.pq = []; A.state = 'hunt';
