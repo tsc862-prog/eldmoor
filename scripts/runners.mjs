@@ -41,6 +41,7 @@ import {join, dirname, relative} from 'node:path';
 import {hostname} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {LOGS, RUNNER_PROVIDERS, sessionPath} from './agent-sessions.mjs';
+import {numCtxFrom} from './providers/ollama.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Claude slots: concurrent Claude turns the app's runners may run (env RUNNER_CLAUDE_MAX, at least 1). A
@@ -178,6 +179,8 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       turns: r.turns, cost: Math.round(r.cost * 10000) / 10000, provider: (mind && mind.provider) || r.provider || null, model: (mind && mind.model) || r.model || null,
       capTurns: r.capTurns ?? null, capBudget: r.capBudget ?? null, stopWhy: r.stopWhy || null,
       maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' : r.local ? 'until stopped' : 'up to ' + RUNNER_KINDS[r.kind].defaults.maxTurns + ' turns' + (r.kind === 'fellowship' ? ' each' : ''),
+      // issue #221: the context size every local call asks (children inherit OLLAMA_NUM_CTX), and the runner's warning when Ollama holds the model at another
+      ...(((mind && mind.provider) || r.provider) === 'ollama' ? {numCtx: numCtxFrom(env), ctxWarn: (r.lines.filter(l => /runners ask \d+, so it reloads/.test(l)).pop() || '').replace(/^.*?note: /, '') || null} : {}),
       ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
       log: relative(ROOT, r.logFile).replace(/\\/g, '/')};
   }

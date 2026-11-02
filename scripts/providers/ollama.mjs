@@ -21,7 +21,15 @@ export const OLLAMA_URL = 'http://localhost:11434';
 export const OLLAMA_MODEL = 'qwen2.5:14b';
 const envNum = (k, d) => {const v = typeof process !== 'undefined' && process.env ? Number(process.env[k]) : NaN; return Number.isFinite(v) && v > 0 ? v : d};
 export const CHAT_TIMEOUT_S = envNum('OLLAMA_CHAT_TIMEOUT', 600), OLLAMA_PARALLEL = envNum('OLLAMA_PARALLEL', 1);
+// One context size for every local call (issue #221). Ollama reloads the whole model whenever a request asks a
+// different num_ctx than the one it was loaded with, and a request without num_ctx gets the server's default
+// (32768 on the owner's PC) while the agent loop asked 16384: a Fellowship runner, a DM runner and the relay's
+// minds on one GPU thrashed the model and hit the 600 s timeout. So the adapter sends num_ctx on EVERY request
+// (call() and chat()), read from one place: OLLAMA_NUM_CTX, default 16384. Callers never pick their own.
+export const NUM_CTX_DEFAULT = 16384;
+export const numCtxFrom = (env = typeof process !== 'undefined' ? process.env : {}) => {const v = Math.round(Number(env && env.OLLAMA_NUM_CTX)); return Number.isFinite(v) && v >= 512 ? v : NUM_CTX_DEFAULT};
 
+export const REPEAT_LIMIT_RE = /repeat limit|prediction aborted/i;
 const fail = (msg, raw) => Object.assign(new Error(msg), raw != null ? {raw} : {});
 
 // POST JSON with one overall timeout and no headers timeout of its own (a local model may think for minutes).
@@ -40,7 +48,8 @@ function postJson(url, body, timeoutMs, signal) {
   });
 }
 
-export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, keepAlive = '30m', fetchImpl = globalThis.fetch, statusTtl = 10000, chatTimeoutMs = CHAT_TIMEOUT_S * 1000, parallel = OLLAMA_PARALLEL, chatPost = null} = {}) {
+export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, keepAlive = '30m', fetchImpl = globalThis.fetch, statusTtl = 10000, chatTimeoutMs = CHAT_TIMEOUT_S * 1000, parallel = OLLAMA_PARALLEL, chatPost = null, numCtx = numCtxFrom()} = {}) {
+  const ctx = Number(numCtx) >= 512 ? Math.round(Number(numCtx)) : NUM_CTX_DEFAULT;
   const base = String(url).replace(/\/+$/, '');
   let cached = null, cachedAt = 0;
   const noThink = new Set(); // models that rejected the think field
@@ -48,16 +57,21 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
   let live = 0; const queue = [];
   const take = () => live < parallel ? (live++, Promise.resolve()) : new Promise(r => queue.push(r)).then(() => {live++});
   const give = () => {live--; const n = queue.shift(); if (n) n()};
+  async function held() {
+    try {const r = await fetchImpl(base + '/api/ps', {signal: AbortSignal.timeout(2000)}); if (!r.ok) return null; const j = await r.json();
+      return (Array.isArray(j && j.models) ? j.models : []).filter(m => m && typeof (m.name || m.model) === 'string')
+        .map(m => ({name: m.name || m.model, ctx: Number(m.context_length) > 0 ? Number(m.context_length) : null}))} catch {return null}
+  }
   const posting = chatPost || ((u, b, signal) => postJson(u, b, chatTimeoutMs, signal));
   return {
-    name: 'ollama', local: true, url: base, defaultModel,
+    name: 'ollama', local: true, url: base, defaultModel, numCtx: ctx,
     configured: () => true,
     queued: () => queue.length,
-    // The models Ollama holds in memory now (GET /api/ps), or null when it does not answer.
-    async loaded() {
-      try {const r = await fetchImpl(base + '/api/ps', {signal: AbortSignal.timeout(2000)}); if (!r.ok) return null; const j = await r.json();
-        return (Array.isArray(j && j.models) ? j.models : []).map(m => m && (m.name || m.model)).filter(n => typeof n === 'string')} catch {return null}
-    },
+    // The models Ollama holds in memory now (GET /api/ps) with the context each was loaded at:
+    // [{name, ctx}] (ctx null when this Ollama does not report context_length), or null when it does not answer.
+    held,
+    // The names only (older callers).
+    async loaded() {const h = await held(); return h ? h.map(m => m.name) : null},
     // Reachable or not, and which models are pulled (GET /api/tags). Cached for statusTtl ms.
     async status() {
       if (cached && Date.now() - cachedAt < statusTtl) return cached;
@@ -67,9 +81,9 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
         const models = (Array.isArray(j && j.models) ? j.models : []).map(m => m && (m.name || m.model)).filter(n => typeof n === 'string').sort();
-        cached = {ok: true, url: base, models, default: defaultModel};
+        cached = {ok: true, url: base, models, default: defaultModel, numCtx: ctx};
       } catch (e) {
-        cached = {ok: false, url: base, models: [], default: defaultModel, error: e.name === 'AbortError' ? 'not reachable (timeout)' : 'not reachable (' + String(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
+        cached = {ok: false, url: base, models: [], default: defaultModel, numCtx: ctx, error: e.name === 'AbortError' ? 'not reachable (timeout)' : 'not reachable (' + String(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
       } finally {clearTimeout(t)}
       cachedAt = Date.now();
       return cached;
@@ -81,7 +95,7 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
         format: schema,
         // Local tokenizers differ from Claude's and cost nothing: give the reply some headroom over the
         // per-kind cap so a slightly wordier model is not cut off.
-        options: {num_predict: Math.round(maxTokens * 2)},
+        options: {num_predict: Math.round(maxTokens * 2), num_ctx: ctx},
         messages: [{role: 'system', content: system}, {role: 'user', content: user}],
       };
       const post = () => fetchImpl(base + '/api/chat', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal});
@@ -99,11 +113,12 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
     // messages: Ollama chat messages (system/user/assistant with tool_calls/tool); tools: Ollama
     // function tools, or format: a JSON schema for the JSON-action fallback. Returns {message,
     // usage:{in,out,cost:0}, model, ms, done}. A model without tool support fails with e.noTools.
-    async chat({model, messages, tools, format, maxTokens = 600, numCtx = null, temperature = null, repeatPenalty = null, signal}) {
+    // num_ctx is always the adapter's own (issue #221); a per-call numCtx is ignored on purpose.
+    async chat({model, messages, tools, format, maxTokens = 600, temperature = null, repeatPenalty = null, signal}) {
       const mdl = model || defaultModel, t0 = Date.now();
       const body = {model: mdl, stream: false, keep_alive: keepAlive, ...(noThink.has(mdl) ? {} : {think: false}), messages,
         ...(tools ? {tools} : {}), ...(format ? {format} : {}),
-        options: {num_predict: maxTokens, ...(numCtx ? {num_ctx: numCtx} : {}), ...(temperature != null ? {temperature} : {}), ...(repeatPenalty != null ? {repeat_penalty: repeatPenalty} : {})}};
+        options: {num_predict: maxTokens, num_ctx: ctx, ...(temperature != null ? {temperature} : {}), ...(repeatPenalty != null ? {repeat_penalty: repeatPenalty} : {})}};
       const post = async () => {
         try {return await posting(base + '/api/chat', body, signal)}
         catch (e) {const code = e && (e.code || e.cause && e.cause.code);
@@ -117,7 +132,8 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
         if (!r.ok && 'think' in body && /think/i.test(String(j && j.error))) {noThink.add(mdl); delete body.think; r = await post(); j = null; try {j = await r.json()} catch {}}
       } finally {give()}
       if (!r.ok) {const msg = String(j && j.error || 'HTTP ' + r.status);
-        throw Object.assign(fail('ollama: ' + msg.slice(0, 160)), {noTools: !!tools && /does not support tools|tools? (are|is) not supported/i.test(msg), status: r.status})}
+        // repeatLimit: Ollama aborted a generation that looped on repeated tokens ("prediction aborted, token repeat limit reached", live 2026-11-01)
+        throw Object.assign(fail('ollama: ' + msg.slice(0, 160)), {noTools: !!tools && /does not support tools|tools? (are|is) not supported/i.test(msg), repeatLimit: REPEAT_LIMIT_RE.test(msg), status: r.status})}
       const message = j && j.message && typeof j.message === 'object' ? j.message : {role: 'assistant', content: ''};
       return {message, usage: {in: +(j && j.prompt_eval_count) || 0, out: +(j && j.eval_count) || 0, cost: 0}, model: (j && j.model) || mdl, ms: Date.now() - t0, done: j && j.done_reason || null};
     },

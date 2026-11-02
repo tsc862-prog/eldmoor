@@ -100,6 +100,7 @@ export function stateLine(r,k){if(note[k])return note[k];
   if(r.turns&&r.turnsPerMin!=null)bits.push(r.turnsPerMin+'/min');if(r.lastTurnAgo!=null&&!DONE[r.state])bits.push('last '+ago(r.lastTurnAgo));if(r.turnCap&&!DONE[r.state])bits.push(r.turnCap);
   const other=r.provider==='ollama'&&r.model&&!DONE[r.state]?mindsLocal().find(m=>m!==r.model):null; // #126: two local models evict each other on one GPU
   if(other)bits.push('minds use '+other+': on one GPU the two models evict each other, use one');
+  if(r.numCtx&&!DONE[r.state])bits.push('ctx '+r.numCtx);if(r.ctxWarn&&!DONE[r.state])bits.push(r.ctxWarn); // #221: one num_ctx for every local call
   if(r.state==='crashed'&&r.error)bits.push(r.error);return bits.join(' · ')}
 // The local models the relay's minds (AI-played heroes) use, refreshed every few seconds.
 let mlAt=0,ml=[];

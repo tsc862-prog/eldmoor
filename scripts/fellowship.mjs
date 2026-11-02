@@ -54,7 +54,7 @@ import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
 import {systemPrompt, withMemoryOrders, withKnowledgeOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
-import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
+import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
 import Anthropic from '@anthropic-ai/sdk';
 import {anthropicAdapter} from './providers/anthropic.mjs';
@@ -151,7 +151,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
       rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null;
       // one adapter, so one Ollama queue for every local member (OLLAMA_PARALLEL, default 1)
-      if (!ollama) {ollama = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL)}); const n = await localModelNote(ollama, rs.model); if (n) out(null, n)}
+      if (!ollama) {ollama = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)})}); out(null, `Ollama num_ctx ${ollama.numCtx} for every local call (OLLAMA_NUM_CTX)`); const n = await localModelNote(ollama, rs.model); if (n) out(null, n)}
       const s = await ollama.status();
       if (!opt('model', null) && s.ok) {const p = await preferLoaded(ollama, rs.model, s.models); if (p.note) {out(h.name, p.note); rs.model = p.model}}
       if (!s.ok || !s.models.includes(rs.model)) {skip(h, s.ok ? `local model ${rs.model} is not pulled (pulled: ${s.models.join(', ') || 'none'}; ollama pull ${rs.model}); skipped` : `Ollama at ${s.url} is ${s.error}; skipped`); await release(h.id); return}
@@ -187,10 +187,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   // A local or OpenAI member's reflection: one forced structured answer of 0-3 notes, sent with remember by the runner.
   async function localReflect(m, b0, w) {
-    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat, numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? Number(opt('num-ctx', env.OLLAMA_NUM_CTX)) : null;
+    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat;
     const on = (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})} else if (k === 'tool') out(m.name, `> ${a}(${short(b, 120)})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`)};
     let r = null, err = null; out(m.name, `[reflection: ${b0.reflect.why}]`);
-    try {r = await reflectTurn({ask: chatAsk(chat, m.rs.model, {numCtx, strict: m.paid}), strict: m.paid, call, sess: m.sess, moment: b0.reflect, prompt: reflectPrompt(b0.reflect, {tools: false}), context: briefText(b0), on})}
+    try {r = await reflectTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), strict: m.paid, call, sess: m.sess, moment: b0.reflect, prompt: reflectPrompt(b0.reflect, {tools: false}), context: briefText(b0), on})}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `reflection failed: ${err}`)}
     await closeReflection(base, m.id, runnerId, b0.reflect.id, r ? r.wrote : 0); // closed even when missed: one try per moment
     m.sess.turns++; m.turns++; m.reflections = (m.reflections || 0) + 1;
@@ -265,7 +265,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let r = null;
     if (!m.paid) {const n = await localModelNote(ollama, m.rs.model); if (n && n !== m.note) out(m.name, n); m.note = n} // another model on the GPU (#126)
     const b0 = m.pacer ? await m.pacer.brief() : null; let err = null;
-    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat, numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? Number(opt('num-ctx', env.OLLAMA_NUM_CTX)) : null;
+    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat;
     const on = (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})}
       else if (k === 'tool') out(m.name, `> ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`);
       else if (k === 'mode') out(m.name, `[${m.rs.model} has no tool support in Ollama: switching to JSON actions]`)};
@@ -273,11 +273,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     try {
       // the member's own scene is open: one structured answer, then scene_act by the runner (issue #163)
       sc = await sceneToAnswer(b0, call, scene);
-      if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {numCtx, strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
+      if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
         if (!r.tools) out(m.name, `[scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`)}
       const answered = b0 && 'scene' in b0 && !sc; // in the scene but already acted: an ordinary turn
       if (!r || !r.tools) {const r0 = r; r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns)) + briefText(b0), model: m.rs.model,
-        toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, opts: numCtx ? {numCtx} : {}, on});
+        toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, on});
         if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0}}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`)}
     m.sess.turns++; m.turns++; if (scene || sc) m.scenes++;

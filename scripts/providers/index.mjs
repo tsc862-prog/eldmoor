@@ -3,7 +3,7 @@
 //   PROVIDERS        the provider names the relay accepts in a request, in display order
 //   isLocal(name)    a local provider: no cost, longer timeouts
 import {anthropicAdapter} from './anthropic.mjs';
-import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './ollama.mjs';
+import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './ollama.mjs';
 import {openaiAdapter} from './openai.mjs';
 import {googleAdapter} from './google.mjs';
 export {anthropicAdapter, ollamaAdapter, openaiAdapter, googleAdapter, OLLAMA_URL, OLLAMA_MODEL};
@@ -21,7 +21,7 @@ export const tryJson = t => {if (typeof t !== 'string') return null; try {return
 export function makeProviders({anthropicClient = null, model, env = process.env, fetchImpl = globalThis.fetch} = {}) {
   return {
     anthropic: anthropicAdapter({client: anthropicClient, ...(model ? {defaultModel: model} : {})}),
-    ollama: ollamaAdapter({url: env.OLLAMA_URL || OLLAMA_URL, defaultModel: env.OLLAMA_MODEL || OLLAMA_MODEL, fetchImpl}),
+    ollama: ollamaAdapter({url: env.OLLAMA_URL || OLLAMA_URL, defaultModel: env.OLLAMA_MODEL || OLLAMA_MODEL, fetchImpl, numCtx: numCtxFrom(env)}), // one num_ctx with the runners (issue #221)
     openai: openaiAdapter({apiKey: env.OPENAI_API_KEY || null, baseUrl: env.OPENAI_BASE_URL || undefined, defaultModel: env.OPENAI_MODEL || null, fetchImpl}),
     google: googleAdapter({apiKey: env.GOOGLE_API_KEY || null}),
   };

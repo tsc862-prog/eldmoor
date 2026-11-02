@@ -105,7 +105,7 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
           if (k !== heroes.map(h => h.id + ':' + h.name + ':' + h.alive).join(',')) log(`[play] agent heroes: ${next.length ? next.map(h => h.name + ' #' + h.id + (h.alive ? '' : ' (dead)')).join(', ') : 'none'}`);
           heroes = next; lastLinks = '';
           const seat = m.dm === true || !!(m.dm && m.dm.seat); if (seat !== dmSeat) log(`[play] DM seat ${seat ? 'open' : 'closed'}`); dmSeat = seat;
-          if (onWorld && typeof m.world === 'string') onWorld(m.world); // the behavior logs' folder (issue #129)
+          if (onWorld && typeof m.world === 'string') onWorld(m.world, typeof m.worldId === 'string' ? m.worldId : null); // the behavior logs' folder (issue #129)
         } else if (m.type === 'behavior' && onBehavior && typeof m.kind === 'string') {try {onBehavior(m.kind, m.rec)} catch (e) {log('[play] behavior log: ' + e.message)}}
         else if (m.type === 'mirror' && onMirror && Array.isArray(m.seats)) {try {onMirror(m.seats)} catch (e) {log('[play] memory mirror: ' + e.message)}} // agent memories as Markdown (#155); written, never read back
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
@@ -190,7 +190,7 @@ const readBody = req => new Promise((res, rej) => {
 export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null} = {}) {
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
   const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, rec, {links: links(), runners: runners()}) : false;
-  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror ? w => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w)} : null,
+  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id)} : null,
     onMirror: mirror ? seats => mirror.write(seats) : null}); // mirror: scripts/memory-mirror.mjs (issue #155)
   const stats = {calls: 0, errors: 0};
   const claims = new Map(), act = new Map(); // hero id -> {runner, at} / {last, inflight}
