@@ -76,7 +76,7 @@ jobs:
       - {name: Table mode and staged scenes, run: npm run tablecheck}
       - {name: Camp and rest, run: npm run campcheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
-      - {name: Campaign seed (parser, seeding, old saves), run: npm run campaigncheck}
+      - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: Action log, run: npm run actcheck}
