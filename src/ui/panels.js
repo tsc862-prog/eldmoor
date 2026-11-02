@@ -27,6 +27,9 @@ import {enableBrain,disableBrain,brainStatus,mindUser,modelTag,mindTag} from '..
 import {advLine} from '../sim/dm.js';
 import {mod,score,baseScore,gearBonusOf,skillMod,skillParts,trained,ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS} from '../sim/abilities.js';
 import {tabAgent,hasAgent} from './agent-tab.js'; // agent player (issue #75)
+import {mindLabel,chatTag} from './mindlabel.js'; // the one mind label (issue #136)
+import {byDay,stampOf,srcTag} from './daystamp.js'; // game day on times, action sources (issue #136)
+import {fellowRoleOf} from '../core/chatview.js';
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
 import {showMindButtons} from './mindctl.js'; // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
@@ -149,7 +152,7 @@ function tabStats(b,a){identity(b,a);if(a.abil)scoresRow(b,a);combatBlock(b,a);s
 
 function tabLog(b,a){const h=(a.history||[]).slice().reverse();
   if(!h.length){b.append(el('div','dm','Nothing worth recording yet.'));return}
-  const ul=el('ul','log hist');for(const e of h){const li=el('li');li.append(el('time',null,e.t));parts(li,e.parts||[e.text]);ul.append(li)}b.append(ul)}
+  const ul=el('ul','log hist');byDay(ul,h,e=>{const li=el('li');li.append(el('time',null,stampOf(e)));const s=srcTag(e);if(s)li.append(s,' ');parts(li,e.parts||[e.text]);return li});b.append(ul)}
 
 // ---- item tooltip and pinned detail (issue #52) ----
 // One tooltip div is reused for every hover; it lives on <body>, so the 0.3s tab rebuilds never
@@ -256,16 +259,17 @@ function tabChat(b,a){const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e
   if(S.fellowship){const on=worldChatter(),t=el('button','mini','World chatter: '+(on?'on':'off'));t.title='Show what background heroes say to each other (kept per viewer).';
     t.onclick=()=>{setWorldChatter(!on);renderHero()};b.append(t)}
   if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far. Turn World chatter on to see it.':'Nothing said or heard yet.'));return}
-  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));if(e.from&&e.from.kind==='dm')li.append(el('span','gd','[Narrator]'));else li.append(hn(e.from));if(e.ai)li.append(' ',aiBadge('AI',e.model?'Written by '+e.model:null));li.append(': '+e.text);if(e.model)li.append(' ',el('span','mmodel',e.model));ul.append(li)}b.append(ul)}
+  const ul=el('ul','log chat');for(const e of c){const li=el('li');li.append(el('time',null,e.t));if(e.party)li.append(el('span','gd','[Party] '));if(e.from&&e.from.kind==='dm')li.append(el('span','gd','[Narrator]'));else li.append(chatName(e.from));const tg=chatTag(e);if(tg)li.append(' ',aiBadge(tg,e.agent?'Written by the agent playing this hero':'Written by '+(e.model||'the model')));li.append(': '+e.text);ul.append(li)}b.append(ul)}
+// A Fellowship member's name stands out in chat: bold, in its party-frame role colour (Tank blue, Healer green, DPS red).
+function chatName(h){const s=hn(h),r=fellowRoleOf(h);if(r)s.className+=' fm r-'+r;return s}
 
 // ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
 function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
-  if(st!=='off'&&!a.player)d.append(' ',aiBadge('AI-played'+(st==='offline'?' (quiet)':''),'This hero\'s choices come from a language model via the local relay; the scripted rules take over whenever it is silent.'));
-  if(!showMindButtons(a)){if(a.player)d.append(' ',aiBadge('Agent','An AI agent plays this hero through the relay.'));return d}
+  {const ml=mindLabel(a),bd=aiBadge(ml.text,ml.title);bd.classList.add('mk-'+ml.kind);d.append(' ',bd)} // the one mind label (issue #136)
+  if(!showMindButtons(a))return d;
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);
   // Agent player (issue #75): an AI agent with its own session plays this hero through MCP tools.
-  if(a.player)d.append(' ',aiBadge('Agent','An AI agent plays this hero through the relay (npm run agent); reflexes keep it alive while the agent is silent.'));
   if(a.state!=='dead'){const g=el('button','ai-toggle',a.player?'Agent off':'Agent');g.dataset.agent='1';g.title=a.player?'Return this hero to the scripted rules':'Let an AI agent play this hero (npm run relay, then npm run agent)';d.append(' ',g)}
   return d}
 function tabBio(b,a){if(a.backstory){renderBackstory(b,a);b.append(el('div','dm','The record'))} // a Fellowship member's backstory first (#68)
@@ -312,11 +316,11 @@ function tabMind(b,a){const m=a.mind||[];
   b.append(el('div','meta',a.brain?'Choices asked of the model ('+mindTag(a)+'), newest first. Tap a row for details.':'No longer AI-played; the last choices it made:'));
   if(!m.length){b.append(el('div','dm','No decisions yet. The hero asks at the town gate, in hard fights and when it has something to say.'));return}
   const list=el('div','mind');
-  for(const e of m){const isOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===e.id;
+  byDay(list,m,e=>{const isOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===e.id;
     const row=el('div','mrow'+(isOpen?' open':'')),h=el('div','mh');h.dataset.mind=e.id;
     mindRow(e).forEach((t,i)=>{if(i)h.append(el('span','dm',' \u00b7 '));h.append(el('span',i===0?'dm':i===3&&(e.reason||e.line)?'mq':null,t))});
     h.append(el('span','dm',' \u00b7 '),el('span','mo mo-'+e.outcome,e.outcome));
-    row.append(h);if(isOpen)mindDetail(row,a,e);list.append(row)}
+    row.append(h);if(isOpen)mindDetail(row,a,e);return row},'div');
   b.append(list)}
 const BODY={stats:tabStats,log:tabLog,bio:tabBio,gear:tabGear,inv:tabInv,party:tabParty,chat:tabChat,mind:tabMind,agent:tabAgent,memory:tabMemory};
 

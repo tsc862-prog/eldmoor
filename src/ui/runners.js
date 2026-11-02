@@ -28,6 +28,15 @@ function poll(want,now){want=want||playerSeats().length>0;if(!want||inFlight||ty
   inFlight=true;fetchedAt=Date.now();
   fetch(base()).then(r=>r.json()).then(j=>{info=j&&typeof j==='object'?j:null;up=!!info}).catch(()=>{info=null;up=false})
     .finally(()=>{inFlight=false;const k=JSON.stringify([up,info]);if(k!==lastSig){lastSig=k;onUpdate()}})}
+// Ollama busy (issue #136): a local-model runner whose latest pacing or log line says Ollama is busy or loading the model.
+export function ollamaBusy(a){const r=runnerFor(a);if(!r||DONE[r.state]||r.provider!=='ollama')return false;
+  const re=/ollama is busy|busy or loading|loading the model/i;return re.test(r.pace||'')||(r.lines||[]).slice(-2).some(l=>re.test(l))}
+// For the runner-stop alert (ui/runalert.js).
+const userStop={};
+export const DONE_STATE=DONE;
+export const allRunners=()=>info&&info.runners?info.runners:[];
+export const userStopped=k=>!!userStop[k]&&Date.now()-userStop[k]<120000; // a Stop pressed here: not an alarm
+export const watchRunners=()=>poll(true);
 export const runnersEnabled=()=>!!(info&&info.enabled);
 export const runnerByKey=k=>info&&info.runners?info.runners.find(r=>r.key===k)||null:null;
 export function runnerFor(a){if(!a||!info||!info.runners)return null;const own=runnerByKey('hero:'+a.id);
@@ -40,9 +49,9 @@ async function send(path,body){
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
 // pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
 const pickBody=k=>{const p=picks[k]||'',t=turnPicks[k]?{maxTurns:Number(turnPicks[k])}:{};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:{}),...t}};
-export async function startRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';
+export async function startRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';delete userStop[k];
   const r=await send('/start',{kind,...(hero!=null?{hero}:{}),...pickBody(k)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
-export async function stopRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';
+export async function stopRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';userStop[k]=Date.now();
   const r=await send('/stop',{key:k});if(!r.ok)note[k]=r.error;poll(true,true);return r}
 export async function stopAllFellows(){const ids=(S.fellowship&&S.fellowship.ids)||[];await stopRunner('fellowship');
   for(const id of ids){const r=runnerByKey('hero:'+id);if(r&&!DONE[r.state])await stopRunner('hero',id)}}

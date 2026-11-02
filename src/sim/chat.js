@@ -15,11 +15,11 @@ import {brainLine} from './brain.js';
 export const COOL=20,URGENT=3,HEAR=7,CAP=20,BUBBLE=3,BANTER=60;
 const URGENT_TRIGGERS={mourn:1,epic:1,duel:1,kill:1};
 // An agent-played hero says only what its agent says (issue #126): no scripted bark, banter or call at all.
-// Its own lines (say, party_say, a table line) are marked here for the watcher's Chat tab: "AGENT · <runner
+// Its own lines (say, party_say, a table line) are marked here for the watcher's Chat tab: "Agent (<runner
 // model>" (e.ai stays for model-written mind lines). The tag comes from the host (the page knows each runner's
 // model, src/ui/player-bridge.js); heroes never read it (chat_read and events carry the text only).
 let agentTag=()=>null;export function setAgentTag(fn){agentTag=typeof fn==='function'?fn:()=>null}
-export function agentLine(a,e){if(!e||e.from!==a)return e;e.agent=true;delete e.ai;const t=agentTag(a);e.model='AGENT · '+(t||'agent');return e}
+export function agentLine(a,e){if(!e||e.from!==a)return e;e.agent=true;delete e.ai;const t=agentTag(a);e.model='Agent ('+(t||'agent')+')';return e}
 
 // Private LCG so picking lines never perturbs the gameplay RNG.
 let seed=0x2545f491;
