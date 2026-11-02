@@ -75,8 +75,10 @@ export function ecologyTick(dt){const E=S.eco;
 // whose `when` holds, else bites. Effects touch only the mob, the hero's attack timer, position and hp, so
 // heroes.js needs no hooks. unit = the mob's own bite before variance.
 const MOB_HIT=1.35; // #154: mobs from level 7 bite 1.35x (deaths floor); ramps in from level 3 so level 1-3 heroes are not hit harder
-const unitOf=m=>(3+m.lvl*2)*m.hit*(1+(MOB_HIT-1)*Math.min(1,Math.max(0,(m.lvl-3)/4)));
-function hurt(t,m,dm){if(dm<=0||t.state==='dead'||t.state==='ghost')return;dm=Math.max(1,Math.round(dm*dmgTaken(t)));t.hp-=dm;pop(t.x,t.y-.6,String(dm),'#ff6a5a');
+const hitRamp=m=>1+(MOB_HIT-1)*Math.min(1,Math.max(0,(m.lvl-3)/4));
+const unitOf=m=>(3+m.lvl*2)*m.hit*hitRamp(m);
+function hurt(t,m,dm){if(dm<=0||t.state==='dead'||t.state==='ghost')return;if(t.fellow)dm/=hitRamp(m); // the Fellowship keeps the old bite (#154: the world is deadlier, the story is not ground down)
+  dm=Math.max(1,Math.round(dm*dmgTaken(t)));t.hp-=dm;pop(t.x,t.y-.6,String(dm),'#ff6a5a');
   if(t.hp<=0){if(m.elite)S.eco.stats.eliteDeaths++;agentDie(t,m)}}
 const alliesHurt=m=>nearMobs(m.x,m.y,6,o=>o!==m&&o.alive&&!o.gone&&o.hp<o.maxhp*.5)[0]||null;
 const packNear=m=>nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&(o.target||m.target)).length>0;
