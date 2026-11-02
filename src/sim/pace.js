@@ -24,6 +24,7 @@ import {notTold,NOT_TOLD} from './reach.js';
 import {heroRelevant} from './notebook.js'; // the notes that matter now (#155)
 import {reflectDue} from './reflect.js'; // reflection moments (#179)
 import {asleep,campView} from './camp.js';
+import {localsNear} from './locals.js'; // people about, with a short hook each
 import {foeName} from './lore.js'; // the foe as the hero knows it, never its level (#188)
 import {questBrief} from './questlog.js'; // the focused quest and how many others
 
@@ -66,7 +67,7 @@ export function paceBrief(id){const a=hero(Number(id));
   const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:ZONES[zoneAt(a.x,a.y)]||null,
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
-    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a), // what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
+    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook), // what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
