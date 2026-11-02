@@ -608,6 +608,12 @@ console.log('start gate: ready, not just claimed');
   ok(rows[0].classList.contains('hit')&&/d20 12\+5=17 vs 14/.test(rows[0].textContent)&&/HIT 9/.test(rows[0].textContent),'combat banner: a hit shows its roll and damage');
   ok(rows[1].classList.contains('miss')&&rows[1].classList.contains('foe')&&/FUMBLE/.test(rows[1].textContent),'combat banner: the foe\'s miss on a natural 1');
   ok(!box.querySelector('.to'),'combat banner: no duplicate plain order or last-act line');
+  {const E=await import('../src/sim/eff.js'),MV=await import('../src/data/moves.js'),mk=Object.keys(MV.MOVES)[0],nb=sc.beats.length;
+    sc.beats.push({id:ms[1].id,name:ms[1].name,k:mk,text:'Ability',res:'',by:'agent',rd:2});E.setCond(ms[1],'stun',2,12,0,null);E.setCond(ms[0],'root',2,12,0,null);TB.renderTable(1);
+    const cs=box.querySelectorAll('.tci');
+    ok(/stunned|stun/i.test(cs[2].textContent)&&/root/i.test(cs[0].textContent),'combat banner: stun and root show as chips ('+cs[2].textContent+' / '+cs[0].textContent+')');
+    ok((cs[2].querySelector('.tcm')||{}).textContent===MV.MOVES[mk].name&&!cs[0].querySelector('.tcm'),'combat banner: the move used this round shows by name on its member only');
+    E.endCond(ms[1],'stun');E.endCond(ms[0],'root');sc.beats.length=nb;TB.renderTable(1)}
   const ch0=chips[0];ch0._same=1;TB.renderTable(1);ok(box.querySelector('.tci')._same===1,'combat banner: an unchanged frame is not rebuilt');
   m.hp=Math.round(m.maxhp*.2);TB.renderTable(1);
   ok(box.querySelector('.tci')._same===1&&box.querySelectorAll('.tci')[1].querySelector('.tcp').textContent===Math.round(m.hp/m.maxhp*100)+'%'&&box.querySelectorAll('.tci')[1].querySelector('.tchp i').className==='lo','combat banner: HP patches in place, low HP marked');

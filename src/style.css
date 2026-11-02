@@ -668,3 +668,7 @@ button.tbtn.danger{border-color:var(--red)}
 .condrow.road .condreg{color:var(--gold)}
 .condmeta{overflow-wrap:anywhere}
 .condnone{margin-top:8px}
+
+/* ---- Table banner: round moves per member (#390) ---- */
+.tbanner .tcm{font-size:12px;color:#ffd878;border:1px solid #6a5a2a;padding:0 3px;overflow-wrap:anywhere}
+.tbanner .tci{flex-wrap:wrap}
