@@ -181,22 +181,22 @@ Active abilities each have a cooldown in seconds and a matching cooldown in roun
 | Class | Ability (level) | Kind | What it does |
 | --- | --- | --- | --- |
 | Warrior | **Challenge** (1) | control | Bellows a monster off a hurt friend and onto the Warrior. |
-| Warrior | **Dig In** (4) | defend | Shield planted: blows land at 60% for six seconds. |
+| Warrior | **Bastion** (4) | defend | Shield planted: blows land at 60% for six seconds. |
 | Warrior | **Reckless Blow** (7) | attack | 190% damage for 5% of the Warrior's own health. |
 | Mage | **Rune Lance** (1) | attack | 200% damage. |
 | Mage | **Rime Ring** (3) | control | Frost around the Mage: 60% damage and a lost 2.5 s to every foe nearby (half on a save). |
 | Mage | **Flicker Step** (6) | move | Steps three and a half tiles out of the fight; the foe loses 1.5 s. |
-| Hunter | **Held-Breath Shot** (1) | attack | 180% damage, +30% crit chance. |
+| Hunter | **Dead-Eye Shot** (1) | attack | 180% damage, +30% crit chance. |
 | Hunter | **Gorse Snare** (3) | control | A thorn-cord noose: 40% damage, the foe loses 3.5 s (half on a save). |
 | Hunter | **Quarry Mark** (6) | control | For eight seconds every blow on the quarry does 25% more. |
 | Priest | **Ward of Dawn** (2) | defend | Blows on a friend land at 70% for eight seconds. |
 | Priest | **Searing Word** (4) | attack | 170% damage; the foe flinches 0.8 s. |
 | Priest | **Chorus of Mending** (6) | heal | Heals every friend within five tiles. |
-| Rogue | **Waylay** (1) | attack | 280% damage, only on a fresh, unhurt foe. |
+| Rogue | **Ambush** (1) | attack | 280% damage, only on a fresh, unhurt foe. |
 | Rogue | **Sinew Cut** (3) | attack | Normal damage; the foe loses 2.5 s (half on a save). |
 | Rogue | **Smoke Veil** (5) | defend | Foes on the Rogue lose 2.5 s; blows land at half for four seconds. |
 
-Passives: Warrior **Unbowed** (4, under 35% health blows land at 80%) and **Stout Heart** (8, +6% Health); Mage **Rune Memory** (3, +6% Crit) and **Opening Rune** (6, +30% on the first blow at an unhurt foe); Hunter **Hawk-Eyed** (2, +5% Crit) and **Trail-Wise** (7, +4% Defense); Priest **Gentle Hands** (1, healing +15%) and **Last Mercy** (8, under half health blows land at 90%); Rogue **Knife-Hand** (3, +6% Crit) and **Slip the Blow** (6, blows land at 95%).
+Passives: Warrior **Unbowed** (4, under 35% health blows land at 80%) and **Stout Heart** (8, +6% Health); Mage **Rune Memory** (3, +6% Crit) and **Opening Rune** (6, +30% on the first blow at an unhurt foe); Hunter **Hawk-Eyed** (2, +5% Crit) and **Trail-Wise** (7, +4% Defense); Priest **Gentle Hands** (1, healing +15%) and **Sanctuary** (8, under half health blows land at 90%); Rogue **Knife-Hand** (3, +6% Crit) and **Slip the Blow** (6, blows land at 95%).
 
 Saves: a control ability that can be resisted lets the foe roll d20 plus its modifier (a monster's is a quarter of its level, elites +2, Kragmaw +4) against 8 + the caster's stat modifier + training. Scripted heroes use abilities by simple class rules (a Warrior taunts a monster that is mauling a hurt friend; a Priest wards the friend in danger and sings the Chorus when two or more are hurt; a Rogue opens with Ambush; heroes keep attack abilities out of duels with each other). Agent-played heroes choose with the `use_ability` tool.
 

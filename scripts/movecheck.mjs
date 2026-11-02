@@ -40,9 +40,9 @@ ok(movesOf(w).length === 3 && movesOf(mk('Warrior', 3)).length === 1, 'abilities
 ok(canUse(w, 'bastion', null) === null && /not learned|learned at/.test(canUse(mk('Warrior', 3), 'bastion', null) || ''), 'a move above your level is refused');
 ok(/no such ability/i.test(canUse(w, 'runelance', m) || ''), 'another class\'s move is refused');
 let r = useMove(w, 'bastion', null); const hit = dmgTaken(w);
-ok(r.ok && effOn(w, 'taken') && cdLeft(w, 'bastion') > 20, `Dig In: ${r.text}; cooldown ${cdLeft(w, 'bastion')} s`);
+ok(r.ok && effOn(w, 'taken') && cdLeft(w, 'bastion') > 20, `Bastion: ${r.text}; cooldown ${cdLeft(w, 'bastion')} s`);
 ok(!useMove(w, 'bastion', null).ok, 'a cooling ability is refused in seconds');
-w.eff = {}; const open = dmgTaken(w); ok(hit < open, `Dig In lowers damage taken (${hit.toFixed(2)} < ${open.toFixed(2)})`);
+w.eff = {}; const open = dmgTaken(w); ok(hit < open, `Bastion lowers damage taken (${hit.toFixed(2)} < ${open.toFixed(2)})`);
 const hp0 = m.hp; r = useMove(w, 'recklessblow', m); ok(r.ok && m.hp < hp0 && w.hp < combatStats(w).health, `Reckless Blow: ${r.text}; cost paid`);
 const ally2 = mk('Priest', 8); ally2.x = w.x + 1; ally2.y = w.y; m.target = ally2; w.hp = combatStats(w).health;
 r = useMove(w, 'challenge', m); ok(r.ok && m.target === w, 'Challenge turns a monster off a friend: ' + r.text);
