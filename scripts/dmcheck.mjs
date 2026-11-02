@@ -72,6 +72,9 @@ if (process.argv[2] === '--ffbounty') {
   init({fac: 0}); run(120);
   const DM = await import('../src/sim/dm.js'), FO = await import('../src/sim/dmfocus.js'), {huntZone} = await import('../src/sim/heroes.js');
   const {MOBS} = await import('../src/data/mobs.js');
+  const {onLog} = await import('../src/sim/chronicle.js'), {chronicleFocus} = await import('../src/sim/fellowship.js'), {CITY} = await import('../src/world/map.js');
+  const heard = []; onLog(e => heard.push(e)); // Chronicle lines (#351): a Fellowship hall posting writes one, others none
+  const hallLines = () => heard.filter(e => e.parts.some(p => typeof p === 'string' && /hall board:/.test(p)));
   const out = {}, fo = FO.focus(), c = fo && fo.town, P = (S.parties || []).find(p => p.fellow);
   if (!c || !P) {console.log('FFB ' + JSON.stringify({setup: false})); process.exit(0)}
   const L = P.leader, mem = [L, ...P.mem.filter(b => b !== L && b.state !== 'dead')];
@@ -89,11 +92,20 @@ if (process.argv[2] === '--ffbounty') {
   out.bountyStays = S.bounties.some(x => x.id === b.id);
   out.bgTake = adv ? DM.fitsJob({...adv, phase: 'open', for: null}, bg) : null; // a background hero cannot take a Fellowship job
   out.bgName = bg && bg.name;
+  out.gateLines = hallLines().length;
   // 2. the hall board: full of background jobs, nothing for them; the next refresh posts one on top
   for (const m of mem) m.adv = null; S.adventures = S.adventures.filter(v => v !== adv); clearHall();
   while (S.adventures.filter(h => h.phase === 'open' && h.town === c.name && h.for == null).length < DM.K.HOOKS) DM.postHook(c, 'deliver', 'request', {});
   out.boardBefore = S.adventures.filter(h => h.phase === 'open' && h.town === c.name).length;
+  const others = CITY.filter(x => x !== c); S.adventures = S.adventures.filter(h => !(h.phase === 'open' && others.some(x => x.name === h.town))); // their boards post too
+  heard.length = 0; const ids0 = new Set(S.adventures.map(h => h.id));
   S.dmHookT = 0; DM.dmTick(1);
+  const posted = S.adventures.filter(h => h.phase === 'open' && !ids0.has(h.id));
+  out.postedFF = posted.filter(h => h.ff).length; out.postedOther = posted.filter(h => !h.ff).length;
+  const hl = hallLines(); out.hallLines = hl.length;
+  out.lineNames = hl.every(e => e.parts.some(p => p && p.kind === 'hero' && fo.ids.has(p.id)) && e.parts.some(p => p && p.t === c.name));
+  out.lineKept = hl.every(e => chronicleFocus(e)); out.lineNoDm = hl.every(e => !/DM|dungeon master/i.test(e.parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('')));
+  out.lineText = hl.length ? hl[0].parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('') : '';
   const ff = S.adventures.filter(h => h.phase === 'open' && h.town === c.name && h.ff);
   out.refillFF = ff.length; out.refillTpl = ff.map(h => h.tpl + (h.data && h.data.bounty ? '(bounty)' : h.data && h.data.eliteId != null ? '(elite)' : '')).join(',');
   out.fitsWhole = ff.some(h => DM.fitsJob(h, L));
@@ -459,6 +471,9 @@ console.log('the Fellowship first');
   ok(f && f.whole === f.party && f.party > 3, 'the Fellowship job takes the whole party (' + (f && f.whole) + ' of ' + (f && f.party) + '), past the background size cap of 3');
   ok(f && f.bountyStays, 'the bounty stays posted for the other heroes');
   ok(f && f.bgTake === false, 'a background hero cannot take a Fellowship job (' + (f && f.bgName) + ')');
+  ok(f && f.gateLines === 1, 'the bounty job at the gate writes one Chronicle hall-board line (#351): ' + (f && f.gateLines));
+  ok(f && f.hallLines === f.postedFF && f.hallLines >= 1 && f.postedOther >= 1, 'a Fellowship posting writes one Chronicle line each, other boards none (' + (f && f.hallLines) + ' lines, ' + (f && f.postedFF) + ' ff, ' + (f && f.postedOther) + ' other)');
+  ok(f && f.lineNames && f.lineKept && f.lineNoDm, 'the line names the town and a member, the Fellowship-only view keeps it, and it never names the DM: ' + (f && f.lineText));
   ok(f && f.refillFF >= 1 && f.fitsWhole, 'a full hall board gets a Fellowship job on top at the next refresh, one the whole party fits (' + (f && f.refillTpl) + ', board ' + (f && f.boardBefore) + ')');
 }
 
