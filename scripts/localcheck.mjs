@@ -386,7 +386,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const first = S.agents.find(x => x.id === sc0.ids[0]), second = S.agents.find(x => x.id === sc0.ids[1]);
       const w1 = sim.playerAct(first.id, 'wait', {minutes: 10}), w2 = sim.playerAct(second.id, 'wait', {minutes: 10});
       ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press\.$/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
-      ok(w2.ok && w2.pending, 'a member whose turn is still to come may wait for it');
+      ok(!w2.ok && /^It is your turn at the table/.test(w2.error), 'a check is answered by everyone at once: every member who has not answered is on turn');
+      ok(sim.playerAct(second.id, 'scene_act', {option: 'press'}).ok && sim.playerAct(second.id, 'wait', {minutes: 10}).ok, 'once a member has answered, it may wait for the others');
       S.table = null;
       // a combat scene: the brief's scene keys (the forced turn's enum) carry the member's ready class abilities by id
       const {paceBrief} = await import('../src/sim/pace.js'), {movesOf} = await import('../src/sim/moves.js');
@@ -395,7 +396,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const sc1 = openScene('rescue', 'A test fight', ['A beast lunges.'], {hero: hunter.id, mob: foe.id});
       const bk = paceBrief(hunter.id).brief.scene;
       ok(bk && bk.keys.includes('strike') && movesOf(hunter).some(id => bk.keys.includes(id)), `the forced turn's enum includes ready abilities by id (${hunter.cls}: ${bk && bk.keys.join(', ')})`);
-      S.table = null; void sc1}
+      sc1.phase = 'turn'; sc1.i = 0; {const later = S.agents.find(x => x.id === sc1.ids[1]), w3 = sim.playerAct(later.id, 'wait', {minutes: 10});
+        ok(w3.ok && w3.pending, 'in a fight (turns in order) a member whose turn is still to come may wait for it')}
+      S.table = null}
     TABLE.speed = 1; speed = 1; last = Date.now();
     const tick1 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const n = Math.ceil(real / (1 / 60)); for (let i = 0; i < n; i++) sim.step(real / n)}, 50);
     const p = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-fumble:1b', '--min-gap', '0', '--heartbeat', '1440', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
@@ -403,7 +406,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const claimed = await (async () => {for (let i = 0; i < 200; i++) {const h = await health(PB).catch(() => null); if (h && h.heroes.filter(x => x.fellow && x.claimed).length === 5) return true; await sleep(100)} return false})();
     ok(claimed, 'the Fellowship runner claims all five (mock-fumble:1b)' + (claimed ? '' : '\n' + fout.slice(-1500)));
     await until(() => !S.table, 30000);
-    const f0 = seen.fumble || 0, t0 = Date.now(), sc = openScene('check', 'A test of nerve', ['The DM calls for a roll at the ford.'], {});
+    {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
+    const f0 = seen.fumble || 0, t0 = Date.now(), sc = openScene('check', 'A test of nerve', ['The DM calls for a roll at the ford.'], {anchor: mem.find(a => a.state !== 'dead').id});
     ok(sc && sc.pause, 'a scene opens and the world pauses for it');
     const doneIn = await until(() => S.table !== sc, 90000) ? Date.now() - t0 : null;
     ok(doneIn != null && doneIn < TABLE.liveMs && !sc.late, `the scene resolves without the table timing out (${doneIn == null ? 'still open' : (doneIn / 1000).toFixed(1) + ' s'}, limit ${TABLE.liveMs / 1000} s)` + (doneIn != null ? '' : '\n' + fout.slice(-2500)));
