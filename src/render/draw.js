@@ -25,6 +25,7 @@ import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
 import {drawCamp,drawCampLight} from './camp.js';
 import {drawMemorials} from './memorials.js';
+import {drawConditions} from './conditions.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {TEXT,MARK,LIGHT} from './palette.js';
@@ -166,6 +167,7 @@ export function createRenderer(cv,screenEl){
       if(e===sel){ctx.fillStyle=Math.floor(blink*3)%2?MARK.sel:MARK.selHi;ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
       if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=e.kind==='boss'?28:12;
         ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
+      if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     }
     // effects: bolts leave a short fading trail; the boss's breath ring
     for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;if(!inView(p.x0*T,p.y0*T,96))continue;ctx.fillStyle=p.col;

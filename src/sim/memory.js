@@ -10,7 +10,7 @@
 // party events (refreshStances). Everything is plain data saved with the hero.
 import {S,clockStr} from './state.js';
 import {MEMORY_LONG_MAX,cleanText} from '../data/prompts.js';
-import {scriptedStance} from './persona.js';
+import {scriptedStance,authoredStance} from './persona.js';
 import {speedNow,blocked} from './throttle.js';
 import {memoryLine} from './tiers.js'; // landmarks (#153): a companion's death, a joining
 
@@ -50,13 +50,14 @@ export function compress(a){const M=memOf(a);const items=M.recent.splice(0,COMPR
 // A model summary arrives: use it only if no later fold happened in the meantime.
 export function applyLong(a,text,stamp){const M=memOf(a);if(M.longAt!==stamp)return false;const v=cleanText(text,MEMORY_LONG_MAX);if(!v)return false;M.long=v;M.longSrc='model';return true}
 
-// Stances: the model's first impression (a.persona.stances) until the bond moves; then the
-// scripted reading of bond, hamlet and backstory link, plus a note from the latest shared event.
-export function refreshStances(a,ids){const M=memOf(a),P=a.persona;
+// Stances: a line the persona holds itself (model-written, owner-written or the archetype's, #305:
+// authoredStance) stands, with a note from the latest shared event; otherwise the scripted reading of
+// bond, hamlet and backstory link (it drifts as the bond moves), plus that note.
+export function refreshStances(a,ids){const M=memOf(a);
   for(const id in M.stances)if(!ids.some(x=>x==id))delete M.stances[id]; // only current companions
   for(const id of ids){if(id==a.id)continue;const b=byId(id);if(!b||b.state==='dead'){delete M.stances[id];continue}
-    const s=scriptedStance(a,b),ev=M.events&&M.events[id];
-    M.stances[id]=(P&&P.src==='model'&&P.stances&&P.stances[id]&&!ev?P.stances[id]:s+(ev?' '+ev:'')).slice(0,160)}}
+    const s=authoredStance(a,b)||scriptedStance(a,b),ev=M.events&&M.events[id];
+    M.stances[id]=(s+(ev?' '+ev:'')).slice(0,160)}}
 // A party event between two members (healed, saved, quarrelled) colours the stance until the next one.
 export function stanceEvent(a,b,text){if(!a||!b||a===b)return;const M=memOf(a);(M.events||(M.events={}))[b.id]=String(text).slice(0,80)}
 

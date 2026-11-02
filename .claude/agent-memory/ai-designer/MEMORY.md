@@ -26,3 +26,4 @@
 - [Guild rivals #6](guild_rivals.md) — rivals.js heat sources, declare 3.5, duel x1.6/assist x1.5 multipliers, Fellowship out, rare by design
 - [Table conditions #296](table_conditions.md) — stun/root/poison in eff by rounds, saves on beat.check, cleared at scene end, parley rules
 - [Guild focus #6](guild_focus.md) — Delve/Wyrmhunt/Wayfaring/Warpath hooks multiply existing rolls; GF.ON=false hash = main; Fellowship out
+- [Archetype stances #305](archetype_stances.md) — authoredStance: model/owner/archetype lines win over bond reading; stanceBy marker; event appended
