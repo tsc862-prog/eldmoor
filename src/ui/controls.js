@@ -13,7 +13,7 @@ export function fellowFrame(){const L=fellows().filter(a=>!a.hidden);if(!L.lengt
 cam.frame=fellowFrame;
 
 const $=id=>document.getElementById(id);
-export const ctl={speed:1};
+export const ctl={speed:1,held:false}; // held: the run gate (ui/rungate.js) keeps the world paused; speed stays the owner's wish
 let R=null; // the renderer (camera API), set by initControls
 // Drags shorter than this (CSS px) are clicks.
 const DRAG_PX=4;
@@ -30,7 +30,8 @@ export function setView(v){cam.view=v;if(v==='map'&&R)R.setZoom(1);syncView()}
 export function select(a){cam.sel=a;S.pinned=a;if(a){cam.camX=a.x*T;cam.camY=a.y*T}renderHero();renderTops();if(cam.view==='follow')setView('follow')}
 
 export function initControls(renderer){R=renderer;
-  document.querySelectorAll('[data-sp]').forEach(b=>b.addEventListener('click',()=>{ctl.speed=+b.dataset.sp;document.querySelectorAll('[data-sp]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))}));
+  document.querySelectorAll('[data-sp]').forEach(b=>b.addEventListener('click',()=>{if(ctl.held&&+b.dataset.sp>0)return; // the run gate: only Pause works while a seat is missing
+    ctl.speed=+b.dataset.sp;document.querySelectorAll('[data-sp]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))}));
   $('vMap').onclick=()=>setView('map');
   $('vFol').onclick=()=>{if(!cam.sel)select(ranked()[0]);setView('follow')};
   if($('vFel'))$('vFel').onclick=()=>setView(fellows().length?'fellow':'map');

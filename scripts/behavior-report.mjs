@@ -126,6 +126,8 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
     L.push(`- Votes of agent members: ${sum(w => w.votes && w.votes.agent)} by the agent, ${sum(w => w.votes && w.votes.reflex)} by reflex.`);
     const by = {}; for (const w of W) for (const [k, v] of Object.entries(w.levers && w.levers.by || {})) {const b = by[k] || (by[k] = {pulled: 0, refused: 0}); b.pulled += v.pulled || 0; b.refused += v.refused || 0}
     L.push(`- DM levers: ${sum(w => w.levers && w.levers.pulled)} pulled, ${sum(w => w.levers && w.levers.refused)} refused${Object.keys(by).length ? ' (' + Object.entries(by).map(([k, v]) => `${k} ${v.pulled}/${v.refused}`).join(', ') + ' pulled/refused)' : ''}.`);
+    const fa = sum(w => w.dmFocus && w.dmFocus.acts), ff = sum(w => w.dmFocus && w.dmFocus.fellow);
+    if (fa) L.push('- DM actions (board posts, applied levers, staged scenes) that touched the Fellowship: ' + ff + ' of ' + fa + ' (' + pct(ff, fa) + ').');
     const dml = {}; for (const w of W) for (const [k, v] of Object.entries(w.dmlog || {})) dml[k] = (dml[k] || 0) + v;
     L.push(`- DM log entries: ${Object.entries(dml).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}.`);
     const chat = {}; for (const w of W) for (const [k, v] of Object.entries(w.chat || {})) chat[k] = (chat[k] || 0) + v;

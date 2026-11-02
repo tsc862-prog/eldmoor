@@ -40,6 +40,20 @@ let syncAt=0;function syncSession(){const s=info&&info.enabled&&info.session;if(
 // Ollama busy (issue #136): a local-model runner whose latest pacing or log line says Ollama is busy or loading the model.
 export function ollamaBusy(a){const r=runnerFor(a);if(!r||DONE[r.state]||r.provider!=='ollama')return false;
   const re=/ollama is busy|busy or loading|loading the model/i;return re.test(r.pace||'')||(r.lines||[]).slice(-2).some(l=>re.test(l))}
+// The runner's own reason: "stopped after N turns (reason)", else the crash error, else a keyword in its last lines.
+export function reasonOf(r,a){
+  if(a&&a.state==='dead')return 'the hero died';
+  const L=(r.lines||[]).slice(-6);
+  const m=[...L].reverse().map(l=>l.match(/stopped after \d+ turns[^()]*\(([^)]+)\)/)).find(Boolean);
+  if(r.state==='crashed'){const last=r.error||L[L.length-1]||(r.exit!=null?'exit '+r.exit:'');return 'crashed'+(last?': '+String(last).slice(0,160):'')}
+  if(m)return m[1];
+  const t=L.join(' ');
+  if(/budget/i.test(t))return 'budget reached';
+  if(/turn cap|max.?turns|reached .*turns/i.test(t))return 'turn cap reached';
+  if(/empty|failed turns/i.test(t))return '5 empty or failed turns';
+  if(/left agent play|not agent-played/i.test(t))return 'the hero left agent play';
+  return 'the runner ended'+(r.exit!=null?' (exit '+r.exit+')':'')}
+
 // For the runner-stop alert (ui/runalert.js).
 const userStop={};
 export const DONE_STATE=DONE;
@@ -134,7 +148,7 @@ export function runnerPick(k,models,openai){const s=el('select','msel');s.datase
 
 export function initRunners(after){const done=after||(()=>{});
   const act=async t=>{const k=t.dataset.runkind,h=t.dataset.runhero!=null?+t.dataset.runhero:null,a=t.dataset.runact;
-    if(a==='start')startRunner(k,h).then(done);else if(a==='stop')stopRunner(k,h).then(done);else if(a==='stopall')stopAllFellows().then(done);done()};
+    if(a==='start')startRunner(k,h).then(done);else if(a==='stop')stopRunner(k,h).then(done);else if(a==='stopall')stopAllFellows().then(done);else if(a==='restart')stopRunner(k,h).then(()=>startRunner(k,h)).then(done);done()};
   // pointerdown as well as click: the hero card is rebuilt several times a second, which can swallow a click
   let downAt=0;
   document.addEventListener('pointerdown',e=>{if(e.button!==0)return;const t=e.target&&e.target.closest?e.target.closest('[data-runact]'):null;if(!t)return;e.preventDefault();e.stopPropagation();downAt=Date.now();act(t)},true);
