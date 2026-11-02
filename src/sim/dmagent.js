@@ -278,7 +278,7 @@ const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // One DM tool call: validated, answered, never thrown. The seat must be open.
 export function dmAct(tool,args={}){const t=BY_NAME.get(tool);if(!t)return {ok:false,error:'Unknown DM tool '+String(tool).slice(0,40)+'.'};
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
-  args=args&&typeof args==='object'?args:{};let r;dmHeard(tool); // a DM present: conversations wait for it a little (#170)
+  args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args); // a DM present: conversations wait for it a little (#170)
   try{switch(tool){
     case 'dm_status':r=status();break;
     case 'read_timeline':r=timelineRead(args.n);break;

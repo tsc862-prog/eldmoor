@@ -53,6 +53,7 @@ export const CONV={
   DM_LINES_PER_DAY:40,// the DM agent's conversation lines per game day (the Fellowship's own share, apart from npc_say's 16)
   DM_OFFERS_PER_DAY:12,// the DM agent's follow-ups per game day
   VOICE_MS:8000,      // real ms the game waits for the DM's fast voice (its runner polled npc_call recently)
+  VOICE_MIN:4000, VOICE_MAX:30000, // the range a voice may ask for with npc_call {budget_s} (a local model needs longer)
   TURN_MS:40000,      // real ms it waits when only a DM turn is running (a DM tool call recently, no voice)
   POLL_MS:6000,       // real ms: a DM poll or call this recent counts as a DM listening
   WAIT_GM:720,        // game minutes a call may wait at most, whatever the clock (a paused tab, a stuck runner)
@@ -108,12 +109,14 @@ export function recordView(p){if(p.warmth==null&&!p.fmem)return null;const R=rec
 // The game waits for the DM agent only while it is there: its fast voice polled npc_call (VOICE_MS), or it made a
 // DM call recently (a turn under way: TURN_MS). Date.now is read only with the seat open, so a seeded world
 // without a DM agent is untouched.
-let voiceAt=0,actAt=0;
-export function dmHeard(tool){actAt=Date.now();if(tool==='npc_call')voiceAt=actAt}
+let voiceAt=0,actAt=0,voiceMs=0;
+// tool: the DM tool called; args.budget_s on npc_call: the real seconds the voice says it needs per answer (a local model
+// is slower than Haiku), held to VOICE_MIN..VOICE_MAX.
+export function dmHeard(tool,args){actAt=Date.now();if(tool==='npc_call'){voiceAt=actAt;const b=Number(args&&args.budget_s);voiceMs=Number.isFinite(b)&&b>0?Math.max(CONV.VOICE_MIN,Math.min(CONV.VOICE_MAX,b*1000)):0}}
 const seatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
 function dmBudget(){if(!seatOn())return 0;const now=Date.now(),d=today();
   if(d.lines>=CONV.DM_LINES_PER_DAY)return 0;
-  if(now-voiceAt<CONV.POLL_MS)return CONV.VOICE_MS;if(now-actAt<CONV.POLL_MS)return CONV.TURN_MS;return 0}
+  if(now-voiceAt<CONV.POLL_MS)return voiceMs||CONV.VOICE_MS;if(now-actAt<CONV.POLL_MS)return CONV.TURN_MS;return 0}
 
 // ---- finding who a member speaks to ----
 const people=()=>{ensureNpcs();return [...(S.npcs||[]),...(S.wanderers||[])].filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))};
@@ -159,7 +162,7 @@ export function talkTo(a,p,text){const T=talkState(),d=today();
   p.face=a.x>p.x?1:-1;
   log([a.name+' to '+full(p)+': "',line,'"'],{conv:c.id,npc:p.id,hero:a.id,who:'member',text:line});
   const ms=dmBudget();
-  if(ms>0){c.wait={call:++T.call,hero:a.id,line,gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.VOICE_MS?'voice':'turn'};
+  if(ms>0){c.wait={call:++T.call,hero:a.id,line,gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};
     return {ok:true,who:full(p),said:line,...(read?{read}:{}),waiting:true,note:p.name+' is thinking it over: their answer comes as a line you hear (chat_read, or the next events).'}}
   const out=scripted(c,p,a);return {ok:true,who:full(p),said:line,...(read?{read}:{}),answer:out.text,...(out.mark?{follow_up:out.mark}:{}),...(out.hint?{note:out.hint}:{}),...(c.state==='done'?{ended:true}:{})}}
 

@@ -228,6 +228,9 @@ console.log('NPC conversations');
   const tw = Date.now(); while (Date.now() - tw < 90) {} step(1 / 60);
   ok(S.talks.stats.late >= 1 && (A.chat || []).some(e => e.talk && e.from.id === inn.id && e.by === 'scripted'), 'past the budget the scripted DM answers for them (late counted)');
   TK.CONV.VOICE_MS = 8000;
+  {away(); clear(); const bd = npc('bard'); beside(A, bd); dmAct('npc_call', {budget_s: 20}); act(A, 'talk', {target: 'bard', text: 'A song?'});
+    const cw = TK.convWith(bd); ok(cw && cw.wait && cw.wait.ms === 20000, 'a slower voice asks for a longer wait (npc_call budget_s 20 -> 20 s)');
+    dmAct('npc_call', {budget_s: 999}); clear(); act(A, 'talk', {target: 'bard', text: 'Another?'}); const cx = TK.convWith(bd); ok(cx && cx.wait && cx.wait.ms === TK.CONV.VOICE_MAX, `held to at most ${TK.CONV.VOICE_MAX / 1000} s`); clear()}
   // blessing (priests and hermits only), leave
   away(); clear(); const pr = npc('priest'); beside(A, pr); dmAct('npc_call');
   act(A, 'talk', {target: 'priest', text: 'Will you bless us before the road?'}); call = dmAct('npc_call'); A.blessed = 0;

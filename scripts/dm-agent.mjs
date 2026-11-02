@@ -33,7 +33,8 @@
 // A table call's cost counts toward --budget and the session, with its own line.
 // Talk voice (issue #170): --talk-model (or DM_TALK_MODEL; default the table model) answers the Fellowship's conversations with
 // world characters (npc_call -> npc_say {conv} + npc_offer); --no-talk-voice leaves them to DM turns (a waiting conversation then starts
-// a turn at once, after the minimum gap) and the scripted DM.
+// a turn at once, after the minimum gap) and the scripted DM. --talk-budget S: real seconds the game waits for the talk voice
+// per answer (4-30; default 8 with Anthropic, 25 with a local model).
 import {mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
@@ -165,11 +166,12 @@ export function talkPrompt(c) {
 }
 export const talkSchema = c => ({type: 'object', properties: {text: {type: 'string'}, offer: {type: 'string', enum: [...(c.offered_this_exchange ? [] : c.offers || []), 'none']},
   about: {type: 'string'}, region: {type: 'string'}, warmth: {type: 'string', enum: ['-3', '-1', '0', '1', '3']}, remember: {type: 'string'}}, required: ['text', 'offer', 'about', 'region', 'warmth', 'remember'], additionalProperties: false});
-export function talkVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = TALK_POLL_IDLE, pollHot = TALK_POLL_HOT}) {
+// budgetS: the real seconds the game should wait for this voice per answer (npc_call {budget_s}); a local model needs more than Haiku.
+export function talkVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = TALK_POLL_IDLE, pollHot = TALK_POLL_HOT, budgetS = 8}) {
   let done = false, seen = 0;
   const loop = async () => {
     while (!done && !stopped()) {
-      const t = await tool(base, 'npc_call');
+      const t = await tool(base, 'npc_call', {budget_s: budgetS});
       const c = t && t.ok && t.call;
       if (c && c.call !== seen && c.seconds_left > .8) {
         seen = c.call; const t0 = Date.now(), who = c.npc && c.npc.id;
@@ -271,7 +273,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] DM seat taken | local model ${rs.model} via Ollama | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
     const numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null);
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
-    if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] talk voice: ${rs.model} (local) answers the Fellowship's conversations with world characters`)}
+    if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 25))}); log(`[dm] talk voice: ${rs.model} (local) answers the Fellowship's conversations with world characters`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
       const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
@@ -304,7 +306,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!flag('no-talk-voice')) {
     const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
     const talkModel = opt('talk-model', env.DM_TALK_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
-    talkVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: talkModel}), model: talkModel, log, stopped: () => stopping,
+    talkVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: talkModel}), model: talkModel, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 8)),
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] talk voice: ${talkModel} answers the Fellowship's conversations with world characters`);
   }
