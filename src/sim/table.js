@@ -52,6 +52,7 @@ import {setFellowChoice} from './player-choice.js';
 import {reflexMay,ownerHeld} from './runlink.js';
 import {MOVES} from '../data/moves.js';
 import {movesOf,ready,useMove,pickMove,tickRound} from './moves.js'; // class abilities, round cooldowns (#81)
+import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName} from './tableround.js'; // combat rounds: the foe's turn and the dice (#276)
 
 export const TABLE={
   mode:'auto',     // 'auto' (the trigger rules) or 'off' (Watch mode: never a scene); the View group switch
@@ -111,6 +112,22 @@ function foeOf(sc){const c=sc.ctx||{};if(sc.kind==='boss')return S.boss&&S.boss.
   if(c.mob!=null){const m=S.mobs.find(x=>x.id===c.mob);return m&&m.alive&&!m.gone?m:null}
   if(c.foe!=null){const b=byId(c.foe);return living(b)?b:null}return null}
 const lowest=()=>{let lo=null;for(const b of fellows())if(!b.hidden||inScene(b))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
+// Combat rounds (#276): a combat scene plays up to TR.ROUNDS rounds; the foe acts at its place in the order (sc.foeAt).
+// A scene saved before rounds (no sc.rd) plays its one pass as it did. The fight is over when the foe falls, runs or
+// yields (sc.end), or no member is left in it (fallen, fallen back, or out of reach).
+const rounds=sc=>!!(sc&&COMBAT[sc.kind]&&sc.rd!=null);
+function foesOf(sc){const c=sc.ctx||{};if(c.mobs)return c.mobs.map(id=>S.mobs.find(x=>x.id===id)).filter(m=>m&&m.alive&&!m.gone);const f=foeOf(sc);return f?[f]:[]}
+function inFight(sc,a){const f=foeOf(sc);return !!f&&living(a)&&!a.hidden&&!(sc.out||[]).includes(a.id)&&dist(a,f)<=TR.REACH&&(f.kind!=='boss'||a.state==='raid')}
+const fighters=sc=>sc.ids.map(byId).filter(a=>inFight(sc,a));
+const fightOver=sc=>!!sc.end||!foeOf(sc)||!fighters(sc).length;
+const foeDue=sc=>rounds(sc)&&!sc.fd&&sc.i>=sc.foeAt;
+function foeAct(sc){for(const b of foeTurn(sc,foesOf(sc),fighters(sc))){b.rd=sc.rd;sc.beats.push(b)}}
+// The round is done: start the next one while the fight goes on (its rolls go to the DM log with the outcome). True = a new round.
+function nextRound(sc){if(fightOver(sc)||sc.rd>=TR.ROUNDS)return false;
+  for(const a of fellows())tickRound(a);const f=foeOf(sc);if(f)tickRound(f); // a round has passed: ability cooldowns and round-long effects run down
+  sc.rd++;sc.acts={};sc.i=0;sc.fd=0;startTurn(sc);return true}
+// The order as names, the foe at its place (agents' notices and tableView).
+const orderNames=sc=>{const L=sc.ids.map(byId).filter(Boolean).map(a=>a.name),f=foeOf(sc);if(rounds(sc)&&f)L.splice(Math.min(sc.foeAt,L.length),0,foeName(f)+' (foe)');return L};
 export function optionsFor(sc,a){const o=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels;return L?o.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o} // the DM's own labels for a staged scene's actions
 function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])return EXTRA[k].options(sc,a);
   if(COMBAT[k]){const f=foeOf(sc),fn=f?(f.kind==='hero'?f.name:mobName(f)):'the foe',lo=lowest(),o=[{k:'strike',text:'Strike '+fn}];
@@ -148,9 +165,10 @@ function open(kind,title,frame,ctx={}){const F=S.fellowship;if(!F||S.table)retur
   const L=all?present(kind,ctx):fellows().filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||(CRYPT.group&&CRYPT.group.mem.includes(a)));
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,kind,title:clean(title,80),frame,ids:(all?L:initiative(L)).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin),...(all?{all:true,w:{}}:{})};
+  if(COMBAT[kind]){sc.rd=1;sc.fd=0;sc.foeAt=foeSlot(sc.ids.map(byId),foeOf(sc))} // the foe joins the initiative order (#276)
   if(sc.pause)requestDrop(sc.title);
   S.table=sc;F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
-  const order=sc.ids.map(byId).filter(Boolean).map(a=>a.name).join(', ');
+  const order=orderNames(sc).join(', ');
   for(const a of L)if(a.player)notify(a,'TABLE ('+kind+'): '+plain(frame)+(all?' Everyone answers at once, each for themselves ('+order+').':' Initiative: '+order+'.')+' Your options: '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+
     (all?'. Answer with scene_act(option, line) now; the table waits for everyone.':'. Answer with scene_act(option, line) now or on your turn; the table waits for you.'),3);
   if(!sc.pause){finishAll(sc);return sc}
@@ -171,10 +189,11 @@ export function sceneAct(a,opt,line){const sc=S.table;if(!sc||!sc.ids.includes(a
 function take(sc,a,act){const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act);
   const F=S.fellowship;if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
   sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null});
-  if(staged(sc)&&!together(sc))STG.onBeat(sc,sc.beats[sc.beats.length-1]); // everyone at once: one combined DM call after all (STG.onAll)
+  const first=!(sc.rd>1);sc.beats[sc.beats.length-1].rd=sc.rd||1;
+  if(staged(sc)&&!together(sc)&&first)STG.onBeat(sc,sc.beats[sc.beats.length-1]); // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
   if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
-  else if(reflexMay(a))voice(sc,a,act.k); // a member whose runner is gone acts (and speaks) by reflex (#148)
-  remember(a,'table',sc.title+': I chose to '+o.text.charAt(0).toLowerCase()+o.text.slice(1)+(res?' ('+res+')':'')+'.')}
+  else if(reflexMay(a)&&first)voice(sc,a,act.k); // a member whose runner is gone acts (and speaks) by reflex (#148)
+  if(first)remember(a,'table',sc.title+': I chose to '+o.text.charAt(0).toLowerCase()+o.text.slice(1)+(res?' ('+res+')':'')+'.')}
 const LINES={strike:['Now, while it turns!','Hit it together.','Mine. Leave this one to me.'],guard:['Here! Look at me!','On me. Get behind.','Come on, then.'],
   heal:['Hold still. Breathe.','Not yet. Not today.','Stay with us.'],retreat:['Back! Fall back!','Not like this. Go.','I am done in. Pull back.'],
   hold:['Shields up, eyes front.'],ward:['Light keep us in the dark.'],scout:['Wait here. I will look.'],read:['These marks are old. Mind the third step.'],
@@ -193,12 +212,13 @@ function apply(sc,a,act){if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act)
   switch(k){
   case 'strike':if(!f)return 'the foe was already gone';if(a.hidden&&f.kind!=='boss')return 'out of reach';
     if(f.kind==='mob'&&['hunt','follow','travel','fight','return'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}
-    if(dist(a,f)>9)return 'closing in';{const h=f.hp;strike(a,f);return 'hit for '+Math.max(0,Math.round(h-f.hp))}
+    if(dist(a,f)>TR.REACH)return 'closing in';if(rounds(sc))return memberStrike(sc,a,f); // the attack roll against Defense (#276)
+    {const h=f.hp;strike(a,f);return 'hit for '+Math.max(0,Math.round(h-f.hp))}
   case 'guard':if(!f)return 'nothing to guard against';if(f.kind==='mob'){f.target=a;if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}return 'drew it on'}
     if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&a.fac!==f.fac){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
   case 'heal':{const lo=lowest();if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
   case 'potion':{const lo=lowest(),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});return r.ok?'+'+r.healed+' to '+lo.name:r.error}
-  case 'retreat':if(a.raid){a.raid=false}if(f&&f.target===a)f.target=null;if(a.state==='duel'&&f&&f.target===a&&f.kind==='hero'){f.state='hunt';f.target=null}
+  case 'retreat':if(rounds(sc))(sc.out||(sc.out=[])).push(a.id);if(a.raid){a.raid=false}if(f&&f.target===a)f.target=null;if(a.state==='duel'&&f&&f.target===a&&f.kind==='hero'){f.state='hunt';f.target=null}
     if(a.state!=='dungeon'){goHome(a);if(a.player)a.pq=[]}return 'fell back';
   case 'hold':case 'ward':case 'scout':case 'read':case 'press':case 'careful':{const g=CRYPT.group;if(!g)return null;g.bonus=Math.round(((g.bonus||0)+SITE_BONUS[k])*100)/100;
     if(k==='ward')for(const b of g.mem)b.hp=Math.min(maxHp(b),b.hp+maxHp(b)*.1);return '+'+SITE_BONUS[k]}
@@ -209,18 +229,23 @@ function apply(sc,a,act){if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act)
   }}
 
 function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;sc.nudge=0;if(!a||!a.player||sc.acts[a.id])return;
-  notify(a,'YOUR TURN at the table ('+sc.title+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line); the table waits for you.',3)}
+  if(rounds(sc)&&(foeDue(sc)||fightOver(sc)||(sc.rd>1&&!inFight(sc,a))))return; // the foe goes first, or the fight is over, or this member is out of it
+  notify(a,'YOUR TURN at the table ('+sc.title+(rounds(sc)?', round '+sc.rd:'')+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line); the table waits for you.',3)}
 // Advance the turn pointer as far as it can go this step. Returns true while an agent is thinking.
 function runTurns(sc,dt,instant){
+  const R=rounds(sc);
   for(;;){if(sc.calls&&callWait(sc,dt,instant))return true;
-    if(sc.i>=sc.ids.length)break;const a=byId(sc.ids[sc.i]);
-    if(!living(a)||(COMBAT[sc.kind]&&!foeOf(sc))){sc.i++;startTurn(sc);continue}
+    if(foeDue(sc)){sc.fd=1;if(!fightOver(sc))foeAct(sc);startTurn(sc);continue} // the foe's turn at its place in the order (#276)
+    if(sc.i>=sc.ids.length){if(R&&nextRound(sc)){dt=0;continue}break}
+    const a=byId(sc.ids[sc.i]);
+    if(!living(a)||(COMBAT[sc.kind]&&(R?fightOver(sc)||(sc.out||[]).includes(a.id)||(sc.rd>1&&!inFight(sc,a)):!foeOf(sc)))){sc.i++;startTurn(sc);continue}
     let act=sc.acts[a.id];
     if(!act&&sc.kind==='decision'){const P=propById(sc.ctx.prop),v=P&&P.votes[a.id];if(v&&v.by!=='reflex')act=sc.acts[a.id]={k:v.v,line:v.reason||'',by:'agent'}} // voted with the vote tool meanwhile
     // #148: the table waits for the member's agent; a runner that is gone waits for the owner (the page's alert)
-    if(!act&&a.player&&!instant&&!reflexMay(a)){if(ownerHeld(a))return true;
+    // a live agent that already ran out the clock once in this fight is not waited for again in its later rounds (#276)
+    if(!act&&a.player&&!instant&&!reflexMay(a)&&!(sc.lw&&sc.lw.includes(a.id))){if(ownerHeld(a))return true;
       sc.t+=dt;if(!sc.nudge&&sc.t*1000>=TABLE.turnMs){sc.nudge=1;notify(a,'Still your turn at the table ('+sc.title+'): the party waits for you. scene_act(option, line).',3)}
-      if(sc.t*1000<TABLE.liveMs)return true;sc.late=(sc.late||0)+1}
+      if(sc.t*1000<TABLE.liveMs)return true;sc.late=(sc.late||0)+1;if(R)(sc.lw||(sc.lw=[])).push(a.id)}
     if(!act){const k=reflexFor(sc,a),late=a.player&&!reflexMay(a);act=sc.acts[a.id]={k,line:'',by:'reflex'};
       if(a.player)notify(a,late?'The table waited '+Math.round(TABLE.liveMs/1000)+' s for you; your reflexes chose: '+k+'.':'Your turn passed; your reflexes chose: '+k+'.',false)}
     take(sc,a,act);sc.i++;if(sc.i<sc.ids.length)startTurn(sc);dt=0}
@@ -263,11 +288,15 @@ function outcome(sc){const L=sc.beats,F=S.fellowship,by=k=>L.filter(b=>b.k===k).
     const adv=(S.adventures||[]).find(v=>v.id===sc.ctx.adv);
     if(adv&&adv.phase==='active'){adv.tablePick={k:sc.ctx.k,br};if(adv.stage==='choose')adv.stage='go';const ld=byId(adv.lead);if(ld&&(ld.state==='hunt'||ld.state==='travel')){ld.state='travel';ld.dest=null}}}
   else if(sc.kind==='decision'){const P=resolveProp(propById(sc.ctx.prop),'voted at the table');tail=P&&P.result?P.result+'.':''}
-  else if(COMBAT[sc.kind]){const f=foeOf(sc),fl=by('retreat');tail=(f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?hurtWord(f.hp/(f.maxhp||maxHp(f))):'still stands'):'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')}
+  else if(COMBAT[sc.kind]){if(rounds(sc))flushRolls(sc);const f=foeOf(sc),fl=by('retreat'),fell=(sc.fell||[]).map(byId).filter(Boolean).map(b=>b.name);
+    tail=(sc.end==='yield'&&f?foeName(f)+' yields and breaks off':sc.end==='fled'&&f?foeName(f)+' breaks away and runs':f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?hurtWord(f.hp/(f.maxhp||maxHp(f))):'still stands'):'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')+
+      (fell.length?' '+fell.join(' and ')+' fell.':'')+(sc.rd>1?' ('+sc.rd+' rounds.)':'')}
   else if(sc.kind==='site'||sc.kind==='room'){const g=CRYPT.group;tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
   else if(sc.kind==='check')tail='The road goes on.';
   else if(EXTRA[sc.kind])tail=EXTRA[sc.kind].outcome(sc)||'';
-  const what=L.map(b=>b.name+' '+(b.k==='a'||b.k==='b'||b.k==='yes'||b.k==='no'?'says '+b.text.toLowerCase():b.text.charAt(0).toLowerCase()+b.text.slice(1))+(b.res?' ('+b.res+')':'')+(b.by==='reflex'&&byId(b.id)&&byId(b.id).player?' [reflex]':'')).join('; ');
+  const foeB=L.filter(b=>b.by==='foe'&&b.k==='attack'),mine=L.filter(b=>b.by!=='foe');
+  const what=mine.map(b=>b.name+' '+(b.k==='a'||b.k==='b'||b.k==='yes'||b.k==='no'?'says '+b.text.toLowerCase():b.text.charAt(0).toLowerCase()+b.text.slice(1))+(b.res?' ('+b.res+')':'')+(b.by==='reflex'&&byId(b.id)&&byId(b.id).player?' [reflex]':'')).join('; ')+
+    (foeB.length?'; the foe struck '+foeB.length+' time'+(foeB.length>1?'s':'')+', '+foeB.filter(b=>/: hit/.test(b.res||'')).length+' landed':'');
   sc.summary=tail;sc.phase='outcome';sc.t=0;
   if(F){campaign('table',gd(sc.title),': '+what+'. '+tail);
     log(nar(''),gd(F.name),' at the table: '+sc.title+'. '+tail)}
@@ -345,6 +374,7 @@ const hurtWord=f=>f>=.95?'stands unhurt':f>=.6?'is hurt':f>=.25?'is badly hurt':
 export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))return null;const cur=byId(sc.ids[sc.i]);
   const all=together(sc),live=all&&!sc.resolved&&(sc.phase==='frame'||sc.phase==='turn');
   const v={scene:sc.title,kind:sc.kind,frame:plain(sc.frame),phase:sc.phase,order:sc.ids.map(byId).filter(Boolean).map(b=>b.name),
+    ...(rounds(sc)?{round:sc.rd+' of up to '+TR.ROUNDS,initiative:orderNames(sc)}:{}),
     turn:!all&&sc.phase==='turn'&&cur?cur.name:null,your_turn:all?live&&!sc.acts[a.id]:sc.phase==='turn'&&cur===a,acted:!!sc.acts[a.id]};
   if(all){const n=answered(sc);v.everyone_answers=true;v.answered=n.done+'/'+n.of;if(live&&n.wait.length)v.waiting_on=n.wait.map(b=>b.name)} // all answer at once; once you have, you may wait
   if(!sc.acts[a.id]&&sc.phase!=='outcome')v.options=optionsFor(sc,a).map(o=>o.k+' = '+o.text);
@@ -371,5 +401,5 @@ export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc
   else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]&&!reflexMay(cur)?(ownerHeld(cur)?cur.name+' has no runner: the table waits for you (Restart runner, or Resume without it)':cur.name+' is thinking…'+(sc.t*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-sc.t))+' s before reflexes)':'')):cur.name+' acts'}
   else line=sc.summary||'';
   return {title:sc.title,kind:sc.kind,frame:sc.frame,line,who,last:last?last.name+': '+last.text+(last.res?' ('+last.res+')':''):null,
-    order:sc.ids.map(byId).filter(Boolean),turn:sc.phase==='turn'&&!together(sc)?sc.i:-1,all:together(sc),phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null,
+    order:sc.ids.map(byId).filter(Boolean),...(rounds(sc)?{round:sc.rd,rounds:TR.ROUNDS,foeAt:sc.foeAt,foe:foeOf(sc)?foeName(foeOf(sc)):null}:{}),turn:sc.phase==='turn'&&!together(sc)?sc.i:-1,all:together(sc),phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null,
     ...(sc.ctx&&sc.ctx.cast?{cast:sc.ctx.cast,staged:true}:{})}} // a staged scene's cast (#132)
