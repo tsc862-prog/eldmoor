@@ -417,6 +417,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // (or a second introduction once they have met), and every turn's header carries what was said lately and who it met.
     {const n0 = seen.length; await sleep(300); last = Date.now();
       {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + 1; a.y = L.y}} // together: party talk only carries a shout's range (#182)
+      for (const a of mem) {delete a.talkSaid; delete a.talkHeard} // strangers again: the earlier sections let some members meet, which refused their first introduction (flaky)
       const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
       const q = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-intro:1b', '--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
       kids.push(q); let qo = ''; q.stdout.on('data', d => qo += d); q.stderr.on('data', d => qo += d);
