@@ -177,8 +177,10 @@ export const STEPPING={
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'river'},{kind:'west-of-curve',curve:'cinderEdge'},{kind:'north-of-curve',curve:'frostLine'}]}},
     {id:'cinderreach',name:'Cinderreach',band:[12,16],biome:'ash',mask:{kind:'east-of-curve',curve:'cinderEdge'}},
     {id:'rimeholt',name:'Rimeholt',band:[15,19],biome:'tundra',
+      sky:[['clear',.45],['snow',.2],['squall',.35]], // squalls off the ridge
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'cinderEdge'},{kind:'west-of-curve',curve:'paleEdge'},{kind:'north-of-curve',curve:'frostLine'}]}},
     {id:'palereach',name:'Palereach',band:[18,22],biome:'tundra',far:true,
+      sky:[['clear',.5],['fog',.35],['snow',.15]], // fog-bound far north
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'paleEdge'},{kind:'north-of-curve',curve:'frostLine'}]}},
   ],
   river:{curve:'river',width:2},

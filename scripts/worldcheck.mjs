@@ -45,7 +45,17 @@ function roadConnected(w, a, b) {
   return false;
 }
 
+import {skyFor, WEATHER} from '../src/sim/weather.js';
 let fail = 0;
+// Region skies (#318): a Stepping region with a sky follows its own table; the rest follow their biome.
+{
+  const sw = buildWorld(STEPPING), pale = sw.REGIONS.find(r => r.id === 'palereach'), low = sw.REGIONS.find(r => r.id === 'lowmark');
+  const kinds = skyFor(pale).map(o => o[0]);
+  if (!kinds.includes('fog') || kinds.includes('squall')) {console.error('FAIL: Palereach sky does not follow its own table'); fail++}
+  if (sw.REGIONS.some(r => r.sky && r.sky.some(o => !WEATHER[o[0]]))) {console.error('FAIL: a region sky names an unknown weather kind'); fail++}
+  if (skyFor(low).map(o => o[0]).join() !== 'clear,rain,drizzle') {console.error('FAIL: Lowmark sky is not its biome table'); fail++}
+  if (ELDMOOR.regions.some(r => r.sky)) {console.error('FAIL: Eldmoor regions must not name a sky'); fail++}
+}
 const eld = report(ELDMOOR);
 const zh = fnv(eld.zone), th = fnv(eld.tiles);
 if (zh !== SNAPSHOT.zone) {console.error(`FAIL: Eldmoor zone array hash ${zh} != snapshot ${SNAPSHOT.zone}`); fail++}
