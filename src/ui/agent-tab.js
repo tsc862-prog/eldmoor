@@ -7,6 +7,7 @@ import {mindLabel,linkOf} from './mindlabel.js'; // the one mind label (issue #1
 import {byDay,stampOf} from './daystamp.js'; // game day on times
 import {S} from '../sim/index.js';
 import {runnerControl} from './runners.js'; // app runners: Start / Stop from the page
+import {reflectView} from '../sim/reflect.js'; // reflection moments (#179)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const STATUS={connected:'connected to the relay',connecting:'connecting to the relay…',offline:'relay not reachable (start npm run relay, then npm run agent)',off:'not connected'};
@@ -23,6 +24,8 @@ export function tabAgent(b,a){
   else b.append(el('div','meta','No longer agent-played. What the agent did and wrote:'));
   if(a.playDoing)b.append(el('div','doing',a.playDoing));
   // who acts (issue #126): the agent's orders, or autopilot carrying on while it is silent; never the scripted rules
+  {const R=reflectView(a);if(a.player&&R){const l=R.last;b.append(el('div','meta','Reflections today: '+R.today+'/'+R.perDay+(l?' · last: '+l.why+' (day '+l.day+'), '+l.wrote+' memor'+(l.wrote===1?'y':'ies')+' written':'')+(R.due?' · due now: '+R.due.why:'')))}}
+  if(a.player&&a.memories){const fresh=a.memories.notes.filter(n=>S.gameMin-(n.gm??-1e9)<=360).slice(-3);if(fresh.length)b.append(el('div','meta','New memories: '+fresh.map(n=>'#'+n.id+' '+n.title+(n.rf?' (reflection)':'')).join(' · ')))}
   if(a.player&&a.playActAt!=null){const m=Math.max(0,Math.round(S.gameMin-a.playActAt));b.append(el('div','meta','Last agent order: '+(m<60?m+' game min':Math.round(m/60)+' game h')+' ago'+(a.playIdle?' · autopilot is carrying on until the agent acts':'')))}
   const adv=a.adv&&S.adventures?S.adventures.find(v=>v.id===a.adv&&v.phase==='active'):null,p=adv&&adv.stage==='choose'&&adv.pick;
   if(p&&!p.chosen){const d=el('div','meta adv');d.append('Choice waiting: '+p.frame+' — a) '+p.opts.a+' · b) '+p.opts.b+' ('+Math.max(0,Math.round(p.until-S.gameMin))+' min left)');b.append(d)}

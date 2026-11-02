@@ -12,6 +12,17 @@ export function sprite(key,rows,map){if(sprCache[key])return sprCache[key];const
   const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
   rows.forEach((r,j)=>[...r].forEach((ch,i)=>{if(ch!=='.'&&map[ch]){x.fillStyle=map[ch];x.fillRect(i,j,1,1)}}));return sprCache[key]=c}
 
+// A sprite with a one-pixel dark outline around its opaque pixels (2 px wider and taller), cached
+// per source canvas. Entities (heroes, monsters, townsfolk, the boss) are drawn outlined so they
+// read on any ground: pale wights on snow, boars on mud (docs/ART-PLAN.md).
+const outCache=new WeakMap();
+export function outlined(c,col='#100c16'){let o=outCache.get(c);if(o)return o;
+  const w=c.width+2,h=c.height+2;o=document.createElement('canvas');o.width=w;o.height=h;const x=o.getContext('2d');
+  const m=document.createElement('canvas');m.width=w;m.height=h;const mx=m.getContext('2d');
+  for(const [dx,dy] of [[0,1],[2,1],[1,0],[1,2]])mx.drawImage(c,dx,dy);
+  mx.globalCompositeOperation='source-in';mx.fillStyle=col;mx.fillRect(0,0,w,h);
+  x.globalAlpha=.85;x.drawImage(m,0,0);x.globalAlpha=1;x.drawImage(c,1,1);outCache.set(c,o);return o}
+
 export const SPR={
   // wolf / rimehound 12x8: G fur, E eye. Head right, tail left.
   wolf:[[
@@ -648,8 +659,9 @@ export const SPR={
 };
 
 // Hero body 10x12: class helm or hood (H) with the people's hair (R) showing at its
-// rim and over the ears, skin (S) with eye (E), class accent pauldrons and chest
-// emblem (A), faction tabard (B) with darker trim (D), legs (L), boots (K).
+// rim and over the ears, skin (S) with eye (E), class accent (A, CLS.acc, the UI's class
+// colour) on the pauldrons, chest emblem and belt, faction tabard (B) with darker trim (D),
+// legs (L), boots (K). Class reads from the accent and weapon, faction from the tabard.
 // Columns 8-9 are free for the weapon drawn by heroSprite.
 const HERO_BODY=[
   "..HHHH....",
@@ -661,7 +673,7 @@ const HERO_BODY=[
   "SDBBBBDS..",
   ".DBABBD...",
   ".DBBBBD...",
-  "..DDDD....",
+  "..AAAA....",
   "...LLLL...",
   "...KKKK..."];
 const HERO_LEGS1=["..LL..LL..",".KK....KK."];

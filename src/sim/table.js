@@ -33,6 +33,7 @@ import {log} from './chronicle.js';
 import {strike,maxHp,goHome} from './heroes.js';
 import {speak,agentLine} from './chat.js';
 import {notify} from './notify.js';
+import {moment} from './reflect.js'; // reflection moments (#179)
 import {remember} from './memory.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
 import {sayOk,setSpeedSource} from './throttle.js';
@@ -229,7 +230,7 @@ function outcome(sc){const L=sc.beats,F=S.fellowship,by=k=>L.filter(b=>b.k===k).
   if(F){campaign('table',gd(sc.title),': '+what+'. '+tail);
     log(nar(''),gd(F.name),' at the table: '+sc.title+'. '+tail)}
   if(COMBAT[sc.kind]){for(const a of fellows())tickRound(a);const f=foeOf(sc);if(f)tickRound(f)} // a round has passed: ability cooldowns and round-long effects run down
-  for(const a of fellows())notify(a,'The scene ends: '+sc.title+'. '+tail,true);
+  for(const a of fellows()){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id))moment(a,'scene',sc.title)} // reflection moment (#179)
   if(staged(sc))STG.done(sc)}
 function finishAll(sc){frameCalls(sc);runTurns(sc,0,true);outcome(sc);S.table=null}
 

@@ -1,0 +1,2 @@
+- [Looking at the world view](previews.md) — vite ignores .claude worktrees (use a scratch config), headless Chrome via PowerShell + CDP, camera and clock control
+- [Art style and palette](style.md) — palette.js contract with the UI, biome-keyed art, style rules, #176 PR order

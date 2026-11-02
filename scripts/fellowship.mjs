@@ -55,13 +55,13 @@ import {loadEnv, PRICES} from './relay.mjs';
 import {systemPrompt, withMemoryOrders, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL} from './providers/ollama.mjs';
-import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk} from './local-agent.mjs';
+import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
 import Anthropic from '@anthropic-ai/sdk';
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, withClaudeSlot, localModelNote, preferLoaded} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
@@ -72,7 +72,7 @@ export function fellowshipPrompt(st) {
   return [
     '',
     `FELLOWSHIP: you ride with ${f.fellowship || 'a Fellowship'} as its ${f.role || 'member'}. Four companions share your one road; their names, roles and how you see them are in status.fellowship.companions. status.fellowship also holds your voice, wants, fears, quirk, a line you would never say, your backstory and your memories: play from them, in that voice.`,
-    '- Talk to your companions with party_say (they hear you wherever they are) and catch up with party_read. Keep it short and in character. Your companions and the DM are other minds: you know only what they say in the game and what your hero sees.',
+    '- Talk to your companions with party_say, a shout your companions hear only within about 12 tiles (the result says who heard and who was too far away), and catch up with party_read. DISTANCE CUTS YOU OFF: beyond that range nobody hears you, only companions within it hear a proposal or vote, and lead_to reaches only those near. If you must separate, agree aloud where and when to meet again (leave_party with where and when_hours, or a split proposal with meet_at and meet_in_hours), write it in your notes (remember), and keep to it. A paid courier (send_courier, hired at a town gate) is the only way to reach someone out of range, and it takes game hours. When you come back from a long absence, ask what you missed; when a companion returns, tell them what they missed, in your own words. Keep it short and in character. Your companions and the DM are other minds: you know only what they say in the game and what your hero sees.',
     '- You already know your companions: do not introduce yourself again, and do not repeat a line or a question (each turn shows what was said lately). Talk to move the party forward: propose, vote, lead_to, or answer a question you were asked. The game refuses a line you already said.',
     '- Decisions that need everyone (take a job, answer a Crypt or raid call, split up) go through propose(kind, details) and vote(proposal_id, yes|no, reason). Vote on every open proposal (status.proposals, or an event) with a reason in your own voice.',
     '- The leader (status.party_leader) chooses where the party goes with lead_to; everyone else follows. If you are the leader, lead: pick hunting grounds and jobs that suit the weakest of you. leave_party splits you off for a while and costs you the others\' trust; do it only for a reason your character would have.',
@@ -177,15 +177,35 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const slot = scene => claudeMax && claudeLive >= claudeMax ? new Promise(r => {if (scene) claudeQ.unshift(r); else claudeQ.push(r)}).then(() => {claudeLive++}) : (claudeLive++, Promise.resolve());
   const free = () => {claudeLive--; const n = claudeQ.shift(); if (n) n()};
   // -> whether the turn did anything (a failed or empty turn counts toward the --max-fails stop)
+  // Reflection moments (issue #179): when the game names one (brief.reflect: camp, a scene's end, a death, an oath, a
+  // big trade, a conversation, the end of the day) and nothing cannot wait, this turn is a short reflection instead.
   async function turn(m, scene, w) {
-    if (m.local) return localMemberTurn(m, scene, w);
+    const b = !scene && m.pacer ? await m.pacer.brief() : null, refl = reflectNow(b, w) ? b.reflect : null;
+    if (m.local) return refl ? localReflect(m, b, w) : localMemberTurn(m, scene, w);
     await slot(scene);
-    try {return await withClaudeSlot(base, () => claudeTurn(m, scene, w), s => out(m.name, s), {stopped: () => !!stopping})} finally {free()}
+    try {return await withClaudeSlot(base, () => claudeTurn(m, scene, w, refl), s => out(m.name, s), {stopped: () => !!stopping})} finally {free()}
   }
-  async function claudeTurn(m, scene, w) {
+  // A local or OpenAI member's reflection: one forced structured answer of 0-3 notes, sent with remember by the runner.
+  async function localReflect(m, b0, w) {
+    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat, numCtx = opt('num-ctx', env.OLLAMA_NUM_CTX || null) ? Number(opt('num-ctx', env.OLLAMA_NUM_CTX)) : null;
+    const on = (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})} else if (k === 'tool') out(m.name, `> ${a}(${short(b, 120)})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`)};
+    let r = null, err = null; out(m.name, `[reflection: ${b0.reflect.why}]`);
+    try {r = await reflectTurn({ask: chatAsk(chat, m.rs.model, {numCtx, strict: m.paid}), strict: m.paid, call, sess: m.sess, moment: b0.reflect, prompt: reflectPrompt(b0.reflect, {tools: false}), context: briefText(b0), on})}
+    catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `reflection failed: ${err}`)}
+    await closeReflection(base, m.id, runnerId, b0.reflect.id, r ? r.wrote : 0); // closed even when missed: one try per moment
+    m.sess.turns++; m.turns++; m.reflections = (m.reflections || 0) + 1;
+    reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model: m.rs.model, turn: m.sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
+    if (r) {m.tools += r.tools; m.tin += r.in; m.tout += r.out; m.notes = (m.notes || 0) + r.wrote; if (r.dead) m.ended = 'dead';
+      if (m.paid) {spent += r.cost; m.cost += r.cost; m.sess.costUsd = (m.sess.costUsd || 0) + r.cost; out(m.name, `[turn ${m.turns}, reflection] ${paidLine(r, m.rs.model, 'openai', {run: spent})} of ${money(budget)} | member ${money(m.cost)}`)}
+      else out(m.name, `[turn ${m.turns}, reflection] ${localLine(r, m.rs.model)} | member tokens ${m.tin} / ${m.tout}`)}
+    saveSession(m.sess, {url: base});
+    return localWorked(r);
+  }
+  async function claudeTurn(m, scene, w, refl = null) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
     const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129), the memory line (#155), what was said lately
-    const prompt = memberPrompt(m.sess.turns, scene, w) + (scene ? '' : memoryNote(b0) + talkText(b0));
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : memberPrompt(m.sess.turns, scene, w) + (scene ? '' : memoryNote(b0) + talkText(b0)); // a reflection (#179): the same prompt, with tool use
+    if (refl) out(m.name, `[reflection: ${refl.why}]`);
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
     const ac = new AbortController(); aborts.add(ac);
     const q = query({prompt, options: {
@@ -193,7 +213,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       model, effort: m.rs.effort, systemPrompt: m.sess.system, resume: m.sess.sessionId || undefined,
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${m.id}&runner=${encodeURIComponent(runnerId)}`, headers: {'X-Eldmoor-Hero': String(m.id), 'X-Eldmoor-Runner': runnerId}, timeout: 90000}},
       tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
-      settings: {autoCompactEnabled: true}, maxTurns: scene ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
+      settings: {autoCompactEnabled: true}, maxTurns: scene || refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv,
     }});
     try {for await (const msg of q) {
@@ -231,10 +251,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
           for (const c of forced.calls) tc.tools.push(c);
           out(m.name, `[scene answer] ${model} | ${forced.tools ? 'scene_act sent' : forced.misses + ' answers missed'} | tokens in ${forced.in} / out ${forced.out} | ${money(forced.cost)} | run ${money(spent)} of ${money(budget)}`)}
         catch (e) {out(m.name, 'scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}}
+    let wrote = 0; if (refl) {wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; m.notes = (m.notes || 0) + wrote; m.reflections = (m.reflections || 0) + 1;
+      await closeReflection(base, m.id, runnerId, refl.id, wrote); out(m.name, `[reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cost: turnCost,
-      flags: [...(scene ? ['scene'] : []), ...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(scene ? ['scene'] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSession(m.sess, {url: base});
-    return !failed && tools > 0;
+    return !failed && (tools > 0 || !!refl);
   }
 
   // A local member's turn (issue #97 part 2): the small tool loop against Ollama, same tools, prompts,
@@ -307,8 +329,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   function summary() {
     const rows = [...members.values()].filter(m => m.sess);
     out(null, `Run over${stopping ? ' (' + stopping + ')' : ''}: ${money(spent)} in all.`);
-    for (const m of rows) out(null, `  ${m.name.padEnd(12)} ${String(m.role || '').padEnd(7)} ${m.turns} turns (${m.scenes} at the table), ${m.tools} tool calls, ${m.paid ? money(m.cost) + ', tokens ' + m.tin + ' in / ' + m.tout + ' out' : m.local ? '$0 (local), tokens ' + m.tin + ' in / ' + m.tout + ' out' : money(m.cost)} | session ${money(m.sess.costUsd)} | ${m.rs.model}${m.paid ? ' (OpenAI)' : m.local ? ' (local)' : followerModel ? ' / ' + followerModel : ''}`);
-    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, spent, budget, maxTurns: turnsAsked != null ? Number(turnsAsked) : null, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: m.paid ? 'openai' : 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
+    for (const m of rows) out(null, `  ${m.name.padEnd(12)} ${String(m.role || '').padEnd(7)} ${m.turns} turns (${m.scenes} at the table), ${m.tools} tool calls, ${m.notes || 0} memories in ${m.reflections || 0} reflections, ${m.paid ? money(m.cost) + ', tokens ' + m.tin + ' in / ' + m.tout + ' out' : m.local ? '$0 (local), tokens ' + m.tin + ' in / ' + m.tout + ' out' : money(m.cost)} | session ${money(m.sess.costUsd)} | ${m.rs.model}${m.paid ? ' (OpenAI)' : m.local ? ' (local)' : followerModel ? ' / ' + followerModel : ''}`);
+    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, spent, budget, maxTurns: turnsAsked != null ? Number(turnsAsked) : null, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, reflections: m.reflections || 0, notes: m.notes || 0, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: m.paid ? 'openai' : 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
     for (const mdl of new Set(rows.map(m => m.rs.model).concat(followerModel ? [followerModel] : []))) if (PRICES[mdl]) out(null, `  list price ${mdl}: $${PRICES[mdl].in} in / $${PRICES[mdl].out} out per 1M tokens`);
   }
   process.exit(0);
