@@ -382,6 +382,18 @@ console.log('start gate: ready, not just claimed');
   R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
   gate.setGateProbe(null)}
 
+// ---- timed ward chips on the party frames (#336) ----
+{console.log('ward chips');const {setEff}=await import('../src/sim/eff.js');const {effectChips}=await import('../src/ui/abilities.js');
+  const a=mem[0],chips=()=>[...$('frames').querySelector('.pf[data-hid="'+a.id+'"]').querySelectorAll('.chip')].map(c=>c.textContent);
+  const gm=sim.S.gameMin;delete a.eff;uiFast();
+  ok(!chips().some(t=>/Ward|Warded/.test(t)),'no effect, no ward chip');
+  setEff(a,'taken',.8,6);uiFast();
+  ok(chips().some(t=>/^Antler Ward [1-6]s$/.test(t)),'Antler Ward chip with seconds left: '+chips());
+  ok(effectChips(a)[0].title===(await import('../src/data/moves.js')).MOVES.antlerward.desc,'chip tooltip is the move description');
+  sim.S.gameMin=gm+6*7;uiFast();ok(!chips().some(t=>/Antler/.test(t)),'the chip goes when the effect ends');
+  setEff(a,'taken',.8,0,2,true);uiFast();ok(chips().some(t=>/Antler Ward 2 rds/.test(t)),'a Table ward shows rounds left: '+chips());
+  delete a.eff;sim.S.gameMin=gm;uiFast()}
+
 // ---- the DM frame (owner request): the DM's status beside the party frames ----
 {console.log('DM frame');
   const posts=[];const wait=()=>new Promise(r=>setTimeout(r,30));

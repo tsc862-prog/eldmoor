@@ -21,6 +21,7 @@ import {cam} from '../render/draw.js';
 import {doing,combatRows} from './panels.js';
 import {select,setView} from './controls.js';
 import {mindOf,mindText,mindTitle} from './mindctl.js'; // the frame shows the mind; it is set in Members and minds (#145)
+import {effectChips} from './abilities.js';
 import {openSheet} from './sheet.js';
 import {runnerControl,runnerSig} from './runners.js'; // app runners: Start / Stop on an agent-played member
 import {mountDmFrame,renderDmFrame} from './dmframe.js'; // the DM beside the party (owner request)
@@ -50,6 +51,7 @@ export function chipsOf(a){const out=[];if(!a)return out;
   if(a.state==='ghost')out.push({t:'GHOST',c:'dim',title:'Running back as a ghost.'});
   if(a.blessed)out.push({t:'BLESSED',c:'good',title:'The next strike lands at +20% (a wayside shrine or a crypt blessing).'});
   const mh=maxHp(a);if(a.state!=='ghost'&&a.hp<mh*.35)out.push({t:'WOUNDED',c:'bad',title:'Below a third of their health.'});
+  out.push(...effectChips(a));
   if(a.hidden&&a.state==='dungeon')out.push({t:'IN CRYPT',c:'crypt',title:'Inside the Sunken Crypt.'});
   const c=conditionAt(a.zone);if(c&&CONDITIONS[c.kind])out.push({t:CONDITIONS[c.kind].label.toUpperCase(),c:'cond',title:CONDITIONS[c.kind].about+' (over '+ZONES[c.z]+')',col:CONDITIONS[c.kind].col});
   const owed=Object.keys(a.nemesis||{}).filter(id=>{const n=byId(id);return n&&n.state!=='dead'}).length;if(owed)out.push({t:'BLOOD OWED',c:'warn',title:'Sworn to avenge a guildmate.'});
