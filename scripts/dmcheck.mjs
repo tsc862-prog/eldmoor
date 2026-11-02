@@ -308,7 +308,7 @@ console.log('the Fellowship first');
   ok(/Fellowship first:/.test(DA.dmTurnPrompt(2, {...r, day: 3, part: 'day'})) && /The Fellowship comes first/.test(DA.dmSystemPrompt(r)) && /The Fellowship comes first/.test(DA.withDmFellowshipOrders('old prompt')), 'the standing orders and every turn prompt start with the Fellowship');
   // the reserved share of the daily limits
   const far = ZONES.map((_, z) => z).find(z => !fo.zones.has(z) && (ZPTS[z] || []).length);
-  const zp = ZPTS[far][0], L0 = S.levers; L0.day.d = -1;
+  const md = p => Math.min(...fo.members.map(m => Math.hypot(m.x - p.x, m.y - p.y))), zp = ZPTS[far].slice().sort((p, q) => md(q) - md(p))[0], L0 = S.levers; // the point farthest from every member (the company may be spread, camp rest) L0.day.d = -1;
   const fn = z => pull('mark_cleared', {at: {x: zp.x, y: zp.y}, r: 3, hours: 4}, {by: 'scripted', reason: 'test'});
   S.levers.day = {d: Math.floor(S.gameMin / 1440), n: {mark_cleared: 4}, rz: {}, nf: {mark_cleared: 4}};
   const rf = fn();
