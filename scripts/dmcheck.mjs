@@ -439,6 +439,10 @@ console.log('the Fellowship first');
   ok(DA.eventDue(st, {sig: 'a', gm: 3000}, {day: 3, n: 0}) === true, 'cadence: a changed situation makes an extra turn due');
   ok(!DA.eventDue({...st, fellowship_change: 'a'}, {sig: 'a', gm: 3000}, {}) && !DA.eventDue(st, {sig: 'a', gm: 3000}, {day: 3, n: DA.EVENT_MAX}) && !DA.eventDue(st, {sig: 'a', gm: 3950}, {}) && !DA.eventDue(st, {sig: null, gm: 3000}, {}), 'cadence: nothing new, the day cap and the minimum gap each hold it back');
   ok(/Fellowship first:/.test(DA.dmTurnPrompt(2, {...r, day: 3, part: 'day'})) && /The Fellowship comes first/.test(DA.dmSystemPrompt(r)) && /The Fellowship comes first/.test(DA.withDmFellowshipOrders('old prompt')), 'the standing orders and every turn prompt start with the Fellowship');
+  {const {WANDER_ROLES} = await import('../src/data/npcs.js'), sysC = DA.dmSystemPrompt(r), C = DA.DM_CALL_ORDERS;
+    ok(sysC.includes(C) && DA.withDmCallOrders('old prompt').includes(C) && DA.withDmCallOrders(sysC) === sysC
+      && WANDER_ROLES.every(w => C.includes(w.id)) && /stage_scene needs kind, near, frame and reason/.test(C) && /never two together/.test(C) && /npc_say and npc_offer always need npc/.test(C) && /whole Fellowship is in town/.test(C),
+      'the standing orders spell out whole calls, exact places and people, and no staging in town (#388), and reach an older session once');}
   // the reserved share of the daily limits
   const far = ZONES.map((_, z) => z).find(z => !fo.zones.has(z) && (ZPTS[z] || []).length);
   const md = p => Math.min(...fo.members.map(m => Math.hypot(m.x - p.x, m.y - p.y))), zp = ZPTS[far].slice().sort((p, q) => md(q) - md(p))[0], L0 = S.levers; // the point farthest from every member (the company may be spread, camp rest) L0.day.d = -1;
