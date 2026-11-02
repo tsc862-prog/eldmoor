@@ -96,6 +96,19 @@ select(mem[1]);setTab('agent');uiFast();
 ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-played member');
 {const get=()=>tb().querySelector('.agentlog');const l=get();if(l){l.scrollTop=40;const n=l;for(let i=0;i<4;i++){sim.playerAct(mem[1].id,'look',{});tick(5)}
   ok(get()===n&&n.scrollTop>=40,'Agent tab tool calls: same list, scroll held while calls arrive ('+n.scrollTop+')')}else ok(false,'Agent tab tool calls: list not found')}
+// Keys 1-5 select the member in that party slot
+{const {cam}=await import('../src/render/draw.js');
+  const press=(k,o={})=>{let pd=false;for(const f of document._ls.keydown||[])f({key:k,target:document.body,preventDefault(){pd=true},...o});return pd};
+  const hints=[...$('frames').querySelectorAll('.pfkey')].map(n=>n.textContent).join();
+  ok(hints==='1,2,3,4,5','party frames carry the key hints 1..5: '+hints);
+  ok($('frames').querySelector('.pfkey').title==='Press 1-5 to select','key hint tooltip');
+  select(mem[0]);press('2');ok(cam.sel===mem[1]&&cam.view==='follow','key 2 selects slot 2 and follows');
+  press('4',{code:'Numpad4'});ok(cam.sel===sim.fellows()[3],'key 4 selects slot 4');
+  press('Digit5'.slice(5),{});ok(cam.sel===sim.fellows()[4],'key 5 selects slot 5');
+  select(mem[0]);press('3',{target:{tagName:'INPUT'}});ok(cam.sel===mem[0],'typing 3 in an input does not select');
+  press('3',{target:{tagName:'TEXTAREA'}});press('3',{target:{tagName:'DIV',isContentEditable:true}});ok(cam.sel===mem[0],'textarea and contenteditable ignored');
+  press('1',{ctrlKey:true});press('2',{metaKey:true});press('3',{altKey:true});ok(cam.sel===mem[0],'Ctrl/Meta/Alt + digit does not select');
+  press('6');press('0');ok(cam.sel===mem[0],'other digits do nothing')}
 // Fellowship panel: open details stay open, the campaign log keeps its place
 {const fb=$('felbody');const th=[...fb.querySelectorAll('details')].find(d=>/Open threads/.test(d.textContent));
   ok(!!th,'Open threads is there');if(th){th.open=true;select(mem[2]);tick(10);
@@ -189,7 +202,7 @@ console.log('declutter');
   const gr=$('hero').querySelector('.tgroups'),sub=$('hero').querySelector('.tsub'),shown=()=>sub.children.filter(b=>!b.hidden).map(b=>b.textContent);
   ok(gr&&gr.children.map(b=>b.textContent).join()==='Character,Story,Mind','three dossier groups: '+(gr&&gr.children.map(b=>b.textContent)));
   ok(shown().join()==='Stats,Gear,Pack','Character: Stats, Gear, Pack (no Party for a member: the frames are the party): '+shown());
-  setGroup('story');uiFast();ok(shown().join()==='Log,Bio,Memory','Story: Log, Bio, Memory: '+shown());
+  setGroup('story');uiFast();ok(shown().join()==='Quests,Log,Bio,Memory','Story: Quests, Log, Bio, Memory: '+shown());
   setGroup('mind');uiFast();ok(shown().includes('Chat')&&shown().includes('Agent'),'Mind: Chat and Agent for the agent-played member: '+shown());
   setGroup('char');uiFast();ok(tb().querySelector('[data-cstat]'),'Character opens on Stats');
   setGroup('story');setTab('bio');setGroup('char');setGroup('story');uiFast();ok(shown().length&&sub.children.find(b=>b.getAttribute('aria-pressed')==='true').textContent==='Bio','a group reopens on its last tab');
@@ -385,6 +398,27 @@ console.log('start gate: ready, not just claimed');
   key('Enter');ok(played.length===0,'Enter does not Continue while the question is open');
   key('Escape');ok(!/replaces the saved/.test(root.textContent),'Escape closes the question');
   key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away')}
+
+// ---- the Quests tab (owner request): groups, focus, folded Done, held scroll ----
+{select(busy);const mk=(id,kind,extra={})=>({id,kind,title:'T '+id,giver:'G',where:'W',objective:'Do '+id,progress:kind==='oath'?{have:1,need:3}:null,reward:'5g',status:'active',focus:false,started:0,ends:sim.S.gameMin+3000,from:'scripted',...extra});
+  const log={active:[mk('b1','board'),mk('b2','board'),mk('d1','dm',{from:'agent'}),mk('d2','dm'),mk('o1','oath',{focus:true}),mk('o2','oath')],
+    done:[mk('x1','board',{status:'done'}),mk('x2','dm',{status:'failed'}),mk('x3','oath',{status:'expired'})],focus:'o1'};
+  globalThis.__questLog=()=>log;
+  setTab('quests');uiFast();
+  const hasTab=[...$('hero').querySelectorAll('button')].some(b=>b.dataset.tab==='quests'&&!b.hidden);
+  ok(hasTab,'Quests tab shows');
+  const q=()=>tb().querySelectorAll('.qrow');
+  ok(tb().querySelectorAll('.qb-board').length>=2&&tb().querySelectorAll('.qb-dm').length>=2&&tb().querySelectorAll('.qb-oath').length>=2,'groups render all three kinds');
+  ok(/From the DM/.test(tb().textContent)&&/Oaths/.test(tb().textContent)&&/Quests/.test(tb().textContent),'group headings');
+  const first=tb().querySelector('.qrow');ok(first&&first.className.includes('qfocus')&&/▶/.test(first.textContent)&&/T o1/.test(first.textContent),'the focused quest is pinned on top with a marker');
+  ok(/from the DM agent/.test(tb().textContent)&&/from the scripted DM/.test(tb().textContent),'DM quests say which DM made them');
+  const dn=tb().querySelector('details.qdone');ok(dn&&!dn.getAttribute('open')&&/Done \(3\)/.test(dn.textContent),'Done is folded');
+  const r0=tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent));r0._same=1;
+  holds('Quests tab',tb,{sec:10,min:3});
+  ok(tb().querySelectorAll('.qrow').find(r=>/T b2/.test(r.textContent))._same===1,'Quests tab: rows are patched, not rebuilt');
+  log.active=[];log.done=[];uiFast();ok(/No quests yet/.test(tb().textContent),'empty state');
+  delete globalThis.__questLog;setTab('stats');uiFast()}
+
 
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

@@ -75,11 +75,14 @@ export function frameRows(){return fellowshipMembers().map(m=>{const a=m.hero;
 let root=null,list=null,tip=null,tipFor=null,tipXY=[0,0];
 const frames={}; // slot -> {node, hid, refs}
 
+const slotNo=m=>fellowshipMembers().findIndex(x=>x.slot===m.slot)+1;
 function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;if(a)f.style.borderTopColor=classColor(a.cls);
   const r={};
   if(!a){f.classList.add('empty');f.append(el('span','frole r-'+m.role,m.label));r.empty=el('div','pfempty','Place empty');r.past=el('div','dm pfpast');
-    const b=el('button','mini','Fill');b.dataset.pffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';f.append(r.empty,r.past,b);return {node:f,hid:null,r}}
+    const b=el('button','mini','Fill');b.dataset.pffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';f.append(r.empty,r.past,b);
+    const k=el('span','pfkey',String(slotNo(m)));k.title='Press 1-5 to select';k.setAttribute('aria-hidden','true');f.append(k);return {node:f,hid:null,r}}
   f.tabIndex=0;f.setAttribute('role','button');f.dataset.hid=a.id;
+  r.key=el('span','pfkey',String(slotNo(m)));r.key.title='Press 1-5 to select';r.key.setAttribute('aria-hidden','true');f.append(r.key);
   const top=el('div','pftop');r.port=el('canvas','pfport');r.port.width=10;r.port.height=12;
   const id=el('div','pfid');r.name=el('div','pfname f'+a.fac);r.star=el('span','gd','★ ');r.nm=el('span',null,a.name);r.nm.style.color=classColor(a.cls);r.name.append(r.star,r.nm);
   const sub=el('div','pfsub');sub.append(el('span','frole r-'+m.role,m.label),' ');r.sub=el('span','dm');sub.append(r.sub);id.append(r.name,sub);
@@ -117,7 +120,19 @@ function showTip(a){if(!tip){tip=el('div','itip floating pftip');tip.setAttribut
   tipFor=a;const k=a.id+'|'+combatRows(a).map(r=>r[2]).join('|')+'|'+topSkills(a).join('|');if(tip._k!==k){tip._k=k;tip.replaceChildren(...tipBody(a))}tip.style.display='block';placeTip()}
 function hideTip(){tipFor=null;if(tip)tip.style.display='none'}
 
+
+// Keys 1-5 (owner request): the member in that party slot, as a click on its frame does. Ignored while typing,
+// behind the title or setup pages, and with Ctrl/Alt/Meta held.
+export function partyKey(e){if(e.ctrlKey||e.altKey||e.metaKey||e.defaultPrevented)return false;
+  let n=/^[1-5]$/.test(e.key||'')?+e.key:(/^Numpad[1-5]$/.test(e.code||'')?+e.code.slice(6):0);if(!n)return false;
+  const t=e.target,tn=t&&t.tagName?String(t.tagName).toUpperCase():'';
+  if(tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT'||(t&&(t.isContentEditable||t.contentEditable==='true')))return false;
+  for(const id of ['title','setup']){const o=document.getElementById(id);if(o&&!o.hidden)return false}
+  if(!S.fellowship)return false;
+  const m=fellowshipMembers()[n-1],a=m&&m.hero;if(!a)return false;
+  hideTip();select(a);setView('follow');return true}
 export function initFrames(){root=$('frames');if(!root)return;
+  document.addEventListener('keydown',e=>{if(partyKey(e))e.preventDefault()});
   const head=el('div','frhead');const ttl=el('span','frttl');root._ttl=ttl;
   const cmp=el('button','mini','Compare the five');cmp.dataset.pfsheet='1';cmp.title='Side by side: scores, combat, skills, gear, oaths and bonds';
   head.append(ttl,cmp);list=el('div','frlist');root.append(head,list);mountDmFrame(root);

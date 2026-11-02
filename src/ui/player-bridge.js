@@ -51,8 +51,9 @@ export function agentOn(a){if(!a||a.state==='dead')return false;
 export function agentOff(a){markPlayer(a,false);if(!wanted())disconnect();else hello()}
 
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id))}:{})})),dm={seat:dmSeatOn()},k=JSON.stringify([hs,dm,WORLD_ID]);
-  if(k===lastHello&&status==='connected')return;lastHello=k;send({type:'hello',heroes:hs,dm,world:WORLD_ID,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
+function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id))}:{})})),dm={seat:dmSeatOn()},k=JSON.stringify([hs,dm,WORLD_ID,S.worldId]);
+  if(k===lastHello&&status==='connected')return;lastHello=k;if(S.worldId!==sentWid){sentWid=S.worldId;sentMem.clear()}
+  send({type:'hello',heroes:hs,dm,world:WORLD_ID,worldId:S.worldId||null,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
 const seat=id=>id!=null?playerSeat(id):playerSeat();
 function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecting';
   try{ws=new WebSocket(bridgeUrl())}catch(e){ws=null;status='offline';later();return}
@@ -86,6 +87,6 @@ function behaviorTick(){let out;try{out=watch.tick()}catch(e){return}
 // Agent memories (issue #155): the notebooks that changed (sim/notebook.js mirrorDirty) go to the relay, which writes them as
 // Markdown under logs/agents/<world>/ for the owner (scripts/memory-mirror.mjs). Only while connected; everything is sent
 // again after a reconnect. The relay never sends any of it back, and no agent reads those files.
-const MIRROR_MS=2000,sentMem=new Map();
+const MIRROR_MS=2000,sentMem=new Map();let sentWid=null;
 function mirrorTick(){if(!ws||ws.readyState!==1||status!=='connected')return;let out;try{out=mirrorDirty(sentMem)}catch(e){return}
   if(!out.length)return;send({type:'mirror',seats:out.map(o=>o.seat)});for(const o of out)sentMem.set(o.key,o.sig)}

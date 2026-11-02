@@ -122,6 +122,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);
   // Agent memories (issue #155): the notebooks mirrored as Markdown under logs/agents/<world>/ (--no-mirror: none); written, never read back.
   const mirror = flag('no-mirror') ? null : memoryMirror({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), sentMem = new Map();
+  if (mirror) mirror.setWorld(opt('log-world', WORLD_ID + '-headless'), S.worldId); // a fresh world purges the old one's memory folders; --resume keeps them
   const mirrorNow = () => {if (!mirror) return; try {const out = mirrorDirty(sentMem); if (out.length) {mirror.write(out); for (const o of out) sentMem.set(o.key, o.sig)}} catch (e) {console.error('[play] memory mirror: ' + e.message)}};
   if (mirror) setInterval(mirrorNow, 2000);
   // --runners (or RELAY_RUNNERS=1): runners can be started over HTTP (POST /play/runner/start), as from the game page
