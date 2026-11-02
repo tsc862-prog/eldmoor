@@ -65,7 +65,7 @@ export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbe
   const st = {waiting: false, wake: null};
   async function pace(wake, realMs) {
     try {
-      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, since, minutes: heartbeat, wake, realMs, reflect: true}), signal: AbortSignal.timeout(realMs + 20000)});
+      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, since, minutes: heartbeat, wake, realMs, reflect: REFLECT_ON}), signal: AbortSignal.timeout(realMs + 20000)});
       if (r.status === 404) return {unsupported: true};
       const j = await r.json().catch(() => ({ok: false, error: 'bad answer'}));
       if (j && j.ok === false && /unknown tool pace|not found/i.test(String(j.error || ''))) return {unsupported: true};
@@ -177,6 +177,8 @@ export async function withClaudeSlot(base, fn, log, opts) {const release = await
 // The runner gives the member a short reflection turn (local/OpenAI: one forced structured answer, scripts/local-agent.mjs
 // reflectTurn; Claude: this prompt with tool use) and closes the moment with pacer.reflected(id, wrote).
 export const REFLECT_MAX = 3;
+// Reflections are on unless AGENT_REFLECT=0 or --no-reflect (--reflect turns them on again); checks that count exact turns turn them off.
+export const REFLECT_ON = process.argv.includes('--reflect') || !(process.env.AGENT_REFLECT === '0' || process.argv.includes('--no-reflect'));
 export function reflectPrompt(r, {tools = true} = {}) {
   const why = r && r.why ? ` (now: ${String(r.why).slice(0, 200)})` : '';
   return `Before you rest${why}: what is worth remembering from today? ` + (tools
@@ -184,7 +186,7 @@ export function reflectPrompt(r, {tools = true} = {}) {
     : `Write 0-${REFLECT_MAX} memories in your own words: anything you want to keep (a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion). Answer only with the JSON object {"notes": [{"title": "...", "text": "...", "tags": ["..."], "about": "who or what it concerns, or empty"}]}; an empty list if nothing is worth keeping.`);
 }
 // Should this turn be a reflection? A due moment, no scene open, and nothing that cannot wait.
-export const reflectNow = (b, w) => !!(b && b.reflect && b.reflect.id && !b.scene && !(w && (w.wake === 'now' || w.must || w.table)));
+export const reflectNow = (b, w) => !!(REFLECT_ON && b && b.reflect && b.reflect.id && !b.scene && !(w && (w.wake === 'now' || w.must || w.table)));
 // Close the moment at the game (POST /play/pace {reflected, wrote}). Never throws; an older relay just ignores it.
 export async function closeReflection(base, hero, runner, id, wrote, fetchImpl = fetch) {
   try {const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, reflected: id, wrote}), signal: AbortSignal.timeout(8000)});

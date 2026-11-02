@@ -198,7 +198,7 @@ ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last
 {
   const {startMockOllama} = await import('./mock-ollama.mjs'), {spawn} = await import('node:child_process');
   const mock = await startMockOllama(), port = 18000 + Math.floor(Math.random() * 600), HB = `http://127.0.0.1:${port}`, HL = join(ROOT, 'hl');
-  const env = {...process.env, AGENT_LOGS: HL, BEHAVIOR_DIR: '', ANTHROPIC_API_KEY: '', OLLAMA_URL: mock.url, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', RELAY_VERBOSE: ''};
+  const env = {...process.env, AGENT_LOGS: HL, BEHAVIOR_DIR: '', ANTHROPIC_API_KEY: '', OLLAMA_URL: mock.url, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0', RELAY_VERBOSE: ''};
   const kid = (args) => {const p = spawn(process.execPath, args, {cwd: join(HERE, '..'), env, stdio: ['ignore', 'pipe', 'pipe']}); let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d); return {p, out: () => out, done: new Promise(r => p.on('exit', r))}};
   const w = kid(['scripts/play-headless.mjs', '--port', String(port), '--agents', '1', '--quiet', '--speed', '8', '--world', join(HL, 'world.json'), '--log-world', 'real']);
   for (let i = 0; i < 200 && !/headless world/.test(w.out()); i++) await new Promise(r => setTimeout(r, 100));

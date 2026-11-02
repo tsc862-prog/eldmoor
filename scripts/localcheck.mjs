@@ -160,7 +160,7 @@ console.log('ollama adapter chat (mock server)');
 
 // ---------------------------------------------------------------- 2. the runner, end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
-const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30'}; // pacing (issue #126) kept short for the old sections
+const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // AGENT_REFLECT=0: no reflection turns where turn counts are exact; H passes --reflect (#179) // pacing (issue #126) kept short for the old sections
 const kids = [];
 function start(args, {wait: ready = null, env = childEnv} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe']});
@@ -446,7 +446,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const due = RF.reflectDue(a);
       ok(due && due.kind === 'camp' && /making camp: Test Hollow/.test(due.why), 'making camp raises a reflection moment for the member: ' + (due && due.why));
       last = Date.now(); const tickR = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
-      const R = runner(a, 'mock-lazy:1b', ['--max-turns', '2', '--min-gap', '0', '--heartbeat', '30']);
+      const R = runner(a, 'mock-lazy:1b', ['--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--reflect']);
       const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]); clearInterval(tickR);
       const fresh = (a.memories ? a.memories.notes : []).slice(n0), rf = fresh.filter(x => x.rf === 'camp');
       ok(code === 0 && (seen.reflect || 0) > r0, 'the runner asked the lazy model for one structured reflection' + (code === 0 ? '' : ' (' + code + ')\n' + R.out.slice(-2000)));

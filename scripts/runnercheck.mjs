@@ -242,7 +242,7 @@ console.log('runner routes (fake children)');
 // ---------------------------------------------------------------- 3. end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
 const mock = await startMockOllama();
-const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: mock.url, RELAY_RUNNERS: '', AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30'}; // pacing (issue #126) kept short
+const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: mock.url, RELAY_RUNNERS: '', AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // pacing (issue #126) kept short
 const procs = [];
 function start(args, {wait = null, env = childEnv} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe']}); procs.push(p);

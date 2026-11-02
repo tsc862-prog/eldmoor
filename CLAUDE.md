@@ -239,7 +239,8 @@ is silent, and scene choices time out to the scripted branch, so the world never
   tagged `journal` (title from its first sentence), so the journal is searchable with `recall`. Shown in the Agent tab
   (reflections today, the last one, new memories) and the Memory tab (NEW and REFLECTION badges); the behavior digest
   counts memories per member, the report has "Memories written per member per game day" and a `no-memories` anomaly
-  after 2 game days without one (`BW.NO_NOTES_MIN`).
+  after 2 game days without one (`BW.NO_NOTES_MIN`). `--no-reflect` or `AGENT_REFLECT=0` turns reflection turns off for a runner
+  (the checks that count exact turns do; `--reflect` turns them back on).
 - `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
   the journal and a save/restore, proves a silent agent never stalls the world, and runs two
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
