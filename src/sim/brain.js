@@ -54,6 +54,7 @@ import {topScores} from './abilities.js';
 import {combatStats} from './stats.js';
 import {fellowCard} from './persona.js';
 import * as TH from './throttle.js';
+import {setChapterWriter,applyChapter} from './tiers.js';
 
 export const CFG={url:'http://127.0.0.1:8787/decide',timeoutMs:3000,localTimeoutMs:9000,localWriteMs:35000,offlineSec:60,
   planTtl:900,fightTtl:20,sayFresh:4,aiQuietTable:true,sayGap:25,maxPerHour:240,quietMin:60,sight:12};
@@ -244,6 +245,10 @@ export function askRelay(kind,snapshot,timeoutMs=CFG.timeoutMs,hero=null){
       if(j&&typeof j==='object'&&!j.error&&st<400){TH.ok(kind,hero);return {...j,ms:Date.now()-w0}}
       TH.fail(kind,hero,(st===429?'429 ':'')+(j&&j.error?String(j.error):'relay error '+st));return null}).catch(()=>{if(!over){over=true;TH.fail(kind,hero,'unreachable')}return null});
   return Promise.race([go,late]).finally(()=>clearTimeout(timer))}
+// Journal chapters (#153, sim/tiers.js): the scripted digest is in place at once; the relay may rewrite it (kind
+// 'chapter') for an agent-played hero or a Fellowship member whose Fellowship has relay writing on. Never awaited.
+setChapterWriter((a,snap,stamp)=>{const F=S.fellowship;if(!(a.player||a.fellow&&F&&F.ai)||a.state==='dead')return;
+  askRelay('chapter',snap,16000,a).then(j=>{if(j)applyChapter(a,stamp,j)}).catch(()=>{})});
 // Keep the relay's echo of the prompt; the user content is dropped when it is exactly the snapshot.
 function keepSent(e,x){if(!x||typeof x!=='object')return;const user=typeof x.user==='string'?x.user:null;
   const same=user!=null&&user===JSON.stringify(e.snapshot);
