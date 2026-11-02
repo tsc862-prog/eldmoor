@@ -15,7 +15,8 @@ import {TABLE,bannerOf,stepNext} from '../sim/table.js';
 import {S} from '../sim/index.js';
 import {TR} from '../sim/tableround.js';
 import {maxHp} from '../sim/heroes.js';
-import {effOn} from '../sim/eff.js';
+import {effOn,condOn} from '../sim/eff.js';
+import {CONDITIONS} from '../data/moves.js';
 import {patch} from './stable.js'; // update in place (#145)
 
 const $=id=>document.getElementById(id);
@@ -55,17 +56,19 @@ const byId=id=>S.agents.find(x=>x.id==id)||null;
 const pct=(hp,mx)=>mx>0?Math.max(0,Math.min(100,Math.round(hp/mx*100))):0;
 // Conditions worth a glance: timed effects (sim/eff.js), who the foe has drawn, who fell or fell back.
 function condsOf(a,sc,f){const c=[];if(a.state==='dead')return ['fallen'];if((sc.out||[]).includes(a.id))c.push('fell back');
-  if(effOn(a,'taken'))c.push(a.eff.taken.v<1?'warded':'exposed');if(effOn(a,'mark'))c.push('marked');if(f&&f.target===a.id)c.push('drawn');return c}
+  if(effOn(a,'taken'))c.push(a.eff.taken.v<1?'warded':'exposed');if(effOn(a,'mark'))c.push('marked');
+  for(const id of ['stun','root','poison'])if(condOn(a,id))c.push(CONDITIONS[id].name.toLowerCase()); // Table conditions (#296)
+  if(f&&f.target===a.id)c.push('drawn');return c}
 // The block as plain data (also the change signature): null outside a combat scene with rounds.
 // The foe (bannerOf().foe: name, hp, maxhp, target id, pack) and each roll (beat.roll) come from the sim as data (#285).
 export function combatView(){const sc=S.table;if(!sc||sc.rd==null)return null;const b=bannerOf(),f=b&&b.foe,cur=b&&b.who;
   const foeNow=sc.phase==='turn'&&!sc.fd&&sc.i>=sc.foeAt&&!!f;
   const mem=sc.ids.map(byId).filter(Boolean).map(a=>({name:a.name,hp:pct(a.hp,maxHp(a)),cond:condsOf(a,sc,f),cur:!foeNow&&a===cur,down:a.state==='dead'||(sc.out||[]).includes(a.id)}));
-  const foe=f?{name:f.name,foe:true,hp:pct(f.hp,f.maxhp),cond:f.pack>1?['pack of '+f.pack]:[],cur:foeNow,down:false}:null;
+  const foe=f?{name:f.name,foe:true,hp:pct(f.hp,f.maxhp),cond:[...(f.pack>1?['pack of '+f.pack]:[]),...(f.conds||[]).map(id=>CONDITIONS[id].name.toLowerCase())],cur:foeNow,down:false}:null;
   const order=mem.slice();if(foe)order.splice(Math.min(sc.foeAt,order.length),0,foe);
   // the rolls of the round in play; at a round's start (nothing rolled yet) the last round's, marked as such
   let rd=sc.rd;if(rd>1&&!sc.beats.some(x=>(x.rd||1)===rd))rd--;
-  const rolls=sc.beats.filter(x=>(x.rd||1)===rd).map(x=>({by:x.name,foe:x.by==='foe',text:x.text,res:x.res||'',r:x.roll||null}));
+  const rolls=sc.beats.filter(x=>(x.rd||1)===rd).map(x=>({by:x.name,foe:x.by==='foe',text:x.text,res:x.res||'',r:x.roll||null,c:x.check||null}));
   let ends=null;if(sc.phase==='outcome'){ends=[];const fell=(sc.fell||[]).map(byId).filter(Boolean).map(a=>a.name),back=sc.beats.filter(x=>x.k==='retreat').map(x=>x.name);
     if(sc.end==='yield')ends.push(['The foe yields','win']);else if(sc.end==='fled')ends.push(['The foe fled','win']);else if(!f)ends.push(['The foe is down','win']);
     for(const n of fell)ends.push([n+' fell','loss']);for(const n of back)ends.push([n+' fell back','']);
@@ -81,10 +84,12 @@ function combatBlock(box,c){
   box.append(o);
   if(!c.rolls.length)return;const L=el('div','trolls'),hid=Math.max(0,c.rolls.length-SHOW);
   L.append(el('div','trh',(c.prev?'Last round ('+c.rolled+')':'Round '+c.rolled)+(hid?' · '+hid+' earlier':'')));
-  for(const x of c.rolls.slice(-SHOW)){const r=x.r,row=el('div','trl'+(x.foe?' foe':'')+(r?r.crit?' crit':r.hit?' hit':' miss':''));
+  for(const x of c.rolls.slice(-SHOW)){const r=x.r,row=el('div','trl'+(x.foe?' foe':'')+(r?r.crit?' crit':r.hit?' hit':' miss':x.c?x.c.hit?' hit':' miss':''));
     row.append(el('b',null,x.by),' '+x.text+' ');
     if(r){row.append(el('span','trd','d20 '+r.die+'+'+r.mod+'='+r.total+' vs '+r.vs),' ',el('span','trr',r.crit?'CRIT '+r.dmg:r.hit?'HIT '+r.dmg:r.die===1?'FUMBLE':'MISS'));
       if(r.down)row.append(' ',el('span','trr fall','FALLS'))}
+    else if(x.c){const k=x.c,w=k.kind==='parley'?{yield:'YIELDS',flee:'RUNS',hold:'HOLDS'}[k.result]:k.hit?'SAVED':'HELD'; // a parley or a save (#296)
+      row.append(el('span','trd',(k.kind==='parley'?k.skill+' ':'save ')+'d20 '+k.die+(k.mod<0?'':'+')+k.mod+'='+k.total+' vs DC '+k.vs),' ',el('span','trr',w))}
     else if(x.res)row.append(el('span','trd',x.res));
     L.append(row)}
   box.append(L)}

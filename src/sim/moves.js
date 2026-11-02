@@ -13,7 +13,7 @@ import {rnd,ri} from '../core/rng.js';
 import {WALKABLE} from '../world/tiles.js';
 import {zoneAt,tileAt,dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
-import {MOVES,CLASS_MOVES,PASSIVES,SPEC_MOVES} from '../data/moves.js';
+import {MOVES,CLASS_MOVES,PASSIVES,SPEC_MOVES,MOVE_CONDS,CONDITIONS} from '../data/moves.js';
 import {specOf,ensureSpec} from './spec.js';
 import {profBonus} from '../data/abilities.js';
 import {S,clockStr} from './state.js';
@@ -23,7 +23,7 @@ import {mod} from './abilities.js';
 import {bondEvent} from './bonds.js';
 import {nearMobs} from './spatial.js';
 import {actAbility,actHeal} from './actlog.js';
-import {setEff,effOn,effLeft,passivesOf,passiveMul,eachRound} from './eff.js';
+import {setEff,effOn,effLeft,passivesOf,passiveMul,eachRound,setCond} from './eff.js';
 
 const now=()=>S.gameMin/6;
 const living=e=>e&&(e.kind==='hero'?e.state!=='dead'&&e.state!=='ghost':e.kind==='boss'?e.alive:e.alive&&!e.gone);
@@ -70,11 +70,13 @@ function blink(a,from,d){const dx=a.x-from.x,dy=a.y-from.y,n=Math.hypot(dx,dy)||
   for(let k=d;k>=1;k-=.5){const x=a.x+dx/n*k,y=a.y+dy/n*k;if(WALKABLE.includes(tileAt(x,y))&&zoneAt(x,y)===zoneAt(a.x,a.y)){a.x=x;a.y=y;return k}}return 0}
 const slow=(e,sec)=>{if(!sec)return;e.cd=(e.cd||0)+(e.kind==='boss'?sec/2:sec)}
 
-function onFoe(a,M,e,round,R){const fx=M.fx;if(!living(e))return;
+function onFoe(a,M,e,round,R,id){const fx=M.fx;if(!living(e))return;
   if(fx.dmg){const d=strike(a,e,{mul:fx.dmg,crit:fx.crit});R.dmg+=Math.round(d||0);if(!living(e)){R.kill=true;return}}
   let saved=false;if(M.save&&(fx.delay||fx.mark)){saved=foeSave(a,M,e);if(saved){R.saved++;pop(e.x,e.y-1,'RESISTED','#ffffff')}}
   if(fx.delay)slow(e,saved?fx.delay/2:fx.delay);
   if(fx.mark&&!saved){setEff(e,'mark',fx.mark,M.dur,M.durR,round);pop(e.x,e.y-1,'MARKED','#ffb060')}
+  // At the Table a control move that got past the save leaves a condition (#296), its DC the same as the save's; real time never.
+  const C=round&&M.save&&!saved&&MOVE_CONDS[id];if(C){setCond(e,C,CONDITIONS[C].rounds,8+mod(a,M.save.stat)+profBonus(a.lvl||1),0,a.id);(R.cond||(R.cond=[])).includes(C)||R.cond.push(C)}
   if(fx.taunt&&e.kind==='mob'&&e.target!==a){e.target=a;e.dest=null;R.taunt=true;
     if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=e;a.dest=null}}}
 
@@ -88,9 +90,9 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
   const R={dmg:0,kill:false,saved:0,healed:0,taunt:false,hit:0,text:''},fx=M.fx,mates=(opt.mates||[a]).filter(b=>living(b)&&b.fac===a.fac);
   pop(a.x,a.y-.9,M.name.toUpperCase(),NOTE[M.kind]||'#ffffff');
   switch(M.target){
-  case 'foe':onFoe(a,M,t,round,R);R.hit=1;break;
+  case 'foe':onFoe(a,M,t,round,R,id);R.hit=1;break;
   case 'foes':{S.fx.push({type:'ring',x:a.x,y:a.y-.5,life:.5});const list=engagedNear(a,M.range);if(t&&living(t)&&!list.includes(t)&&t.kind!=='hero')list.push(t);
-    for(const e of list.slice(0,5)){onFoe(a,M,e,round,R);R.hit++}break}
+    for(const e of list.slice(0,5)){onFoe(a,M,e,round,R,id);R.hit++}break}
   case 'self':if(fx.taken){setEff(a,'taken',fx.taken,M.dur,M.durR,round);pop(a.x,a.y-.5,'WARDED','#c8c8e0')}
     if(fx.shake)for(const m of engagedNear(a,6))if(m.target===a)slow(m,fx.shake);
     if(fx.blink){const f=opt.foe&&living(opt.foe)?opt.foe:engagedNear(a,6).find(m=>m.target===a);if(f){const k=blink(a,f,fx.blink);R.moved=k;if(fx.delay)slow(f,fx.delay)}}
@@ -103,7 +105,7 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
     for(const b of mates){if(dist(a,b)>M.range)continue;const h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(b))*passiveMul(a,'healMul')),was=b.hp;
       b.hp=Math.min(maxHp(b),b.hp+h);const got=Math.round(b.hp-was);R.healed+=got;R.hit++;actHeal(a,b,got,M.name);pop(b.x,b.y-.6,'+'+got,'#7dce5a');if(b!==a&&got>0)bondEvent(a,'heal',[b])}}break;
   }
-  R.text=M.name+(t&&t!==a?' on '+(t.name||(t.kind==='boss'?'Kragmaw':'the foe')):'')+(R.dmg?' ('+R.dmg+' damage)':'')+(R.healed?' (healed '+R.healed+')':'')+(R.taunt?' (it turns on you)':'')+(R.saved?' ('+R.saved+' resisted)':'')+(R.kill?', and it falls':'');
+  R.text=M.name+(t&&t!==a?' on '+(t.name||(t.kind==='boss'?'Kragmaw':'the foe')):'')+(R.dmg?' ('+R.dmg+' damage)':'')+(R.healed?' (healed '+R.healed+')':'')+(R.taunt?' (it turns on you)':'')+(R.saved?' ('+R.saved+' resisted)':'')+(R.cond?' ('+R.cond.map(c=>CONDITIONS[c].name.toLowerCase()).join(', ')+')':'')+(R.kill?', and it falls':'');
   actAbility(a,M.name,t,R.dmg||R.healed||null);
   const st=S.moveStats||(S.moveStats={uses:{},dmg:0,healed:0});st.uses[id]=(st.uses[id]||0)+1;st.dmg+=R.dmg;st.healed+=R.healed;
   const lg=a.moveLog||(a.moveLog=[]);lg.push({t:clockStr(),id,text:R.text});if(lg.length>8)lg.shift();

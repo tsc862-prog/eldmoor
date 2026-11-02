@@ -18,7 +18,11 @@ import {tm} from '../data/traits.js';
 import {S} from './state.js';
 import {strike,maxHp,agentDie,goHome} from './heroes.js';
 import {combatStats,dmgTaken} from './stats.js';
-import {score} from './abilities.js';
+import {score,mod,check,socialSkill} from './abilities.js';
+import {profBonus} from '../data/abilities.js';
+import {CONDITIONS,FX_CONDS} from '../data/moves.js';
+import {ABILITIES as TRICKS} from '../data/bestiary.js';
+import {setCond,condOn,endCond} from './eff.js';
 import {blk,mobBlow} from './mobs.js';
 import {actHurt} from './actlog.js';
 import {dmlog} from './dmlog.js';
@@ -43,14 +47,18 @@ export function reflexOf(x){if(x.kind==='hero')return score(x,'reflex')||10;if(x
 // Where the foe stands in the order: the number of members (already in initiative order) who go before it.
 export function foeSlot(L,f){if(!f)return L.length;const fr=reflexOf(f);let n=0;
   for(const a of L){const ar=score(a,'reflex')||10;if(ar>fr||(ar===fr&&a.id<f.id))n++}return n}
-export function roll(att,t){const d=ri(1,20),b=hitOf(att),ac=acOf(t);return {d,b,ac,hit:d===20||(d!==1&&d+b>=ac),crit:d===20}}
+export function roll(att,t,adj=0){const d=ri(1,20),b=hitOf(att)+adj,ac=acOf(t);return {d,b,ac,hit:d===20||(d!==1&&d+b>=ac),crit:d===20}}
 // The roll as data for the watcher's banner (#285): {die, mod, total, vs, hit, crit, dmg, target, down}; the beat's res text
 // keeps the same roll in words for logs and agents.
 export const rollData=(R,dmg,target,down)=>({die:R.d,mod:R.b,total:R.d+R.b,vs:R.ac,hit:R.hit,crit:R.crit,dmg:dmg||0,target,down:!!down});
-export const rollText=R=>'d20 '+R.d+'+'+R.b+'='+(R.d+R.b)+' vs AC '+R.ac+(R.crit?' (a natural 20)':R.d===1?' (a natural 1)':'');
+export const rollText=R=>'d20 '+R.d+sg(R.b)+'='+(R.d+R.b)+' vs AC '+R.ac+(R.crit?' (a natural 20)':R.d===1?' (a natural 1)':'');
+const sg=n=>(n<0?'':'+')+n;
 // One line of the round's DM log entry.
 function note(sc,by,at,R,dmg,extra){(sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by,at,d20:R?R.d:null,bonus:R?R.b:null,ac:R?R.ac:null,hit:R?R.hit:true,dmg:dmg||0,...(extra?{note:extra}:{})})}
-const lineOf=r=>r.by+(r.d20==null?' '+(r.note||'acts')+' on '+r.at:' at '+r.at+': d20 '+r.d20+'+'+r.bonus+' vs AC '+r.ac+(r.hit?', '+r.dmg+' damage':', miss'))+(r.d20!=null&&r.note?' ('+r.note+')':'');
+// Parley and condition saves (#296) keep their die as `die` (not d20, which is an attack roll against AC).
+const lineOf=r=>r.kind==='parley'?r.by+' parleys with '+r.at+' ('+r.skill+' d20 '+r.die+sg(r.mod)+' vs DC '+r.dc+'): '+r.note
+  :r.kind==='save'?r.by+', '+r.note+' (save d20 '+r.die+sg(r.mod)+' vs DC '+r.dc+(r.pass?': it ends':': it holds')+')'
+  :r.kind==='poison'?r.by+' takes '+r.dmg+' from the poison'+(r.note?' ('+r.note+')':''):r.by+(r.d20==null?' '+(r.note||'acts')+' on '+r.at:' at '+r.at+': d20 '+r.d20+'+'+r.bonus+' vs AC '+r.ac+(r.hit?', '+r.dmg+' damage':', miss'))+(r.d20!=null&&r.note?' ('+r.note+')':'');
 // Fold the scene's rolls into one DM log entry, a sentence per round (kind 'table': not an adventure roll, so it opens no
 // check scene; one entry a scene keeps the capped DM log readable).
 export function flushRolls(sc){const L=sc.rl;if(!L||!L.length)return;sc.rl=[];const rs=[...new Set(L.map(r=>r.rd))];
@@ -68,17 +76,95 @@ export function memberStrike(sc,a,f){const R=roll(a,f);
 // Returns beats ({id:'foe', name, k, text, res, by:'foe', roll?}) and sets sc.end ('fled', 'yield') when the foe breaks off.
 export function foeTurn(sc,fs,L){const out=[];
   for(const f of fs){if(!f)continue;const nm=name(f);
+    if(condOn(f,'stun')){const b=stunCheck(sc,f,nm);out.push(b);if(b.k==='stunned')continue} // a stun is checked on its holder's turn (#296)
     if(f.kind==='hero'&&f.state!=='dead'&&f.hp<maxHp(f)*TR.YIELD*tm(f,'flee')){yieldHero(f,L);sc.end='yield';out.push(beat(nm,'yield','Yields and breaks off',null));note(sc,nm,'the fight',null,0,'yields');break}
-    if(f.kind==='mob'&&fs.length===1&&!f.elite&&!f.fledOnce&&(blk(f).beh||{}).flee&&f.hp<f.maxhp*blk(f).beh.flee){f.fledOnce=true;f.fled=2.5;sc.end='fled';out.push(beat(nm,'flee','Breaks away and runs',null));note(sc,nm,'the fight',null,0,'flees');break}
+    if(f.kind==='mob'&&fs.length===1&&!f.elite&&!f.fledOnce&&!condOn(f,'root')&&(blk(f).beh||{}).flee&&f.hp<f.maxhp*blk(f).beh.flee){f.fledOnce=true;f.fled=2.5;sc.end='fled';out.push(beat(nm,'flee','Breaks away and runs',null));note(sc,nm,'the fight',null,0,'flees');break} // a rooted beast cannot run
     const live=L.filter(b=>b.state!=='dead'&&b.hp>0);if(!live.length)break;
     if(f.kind==='boss'){out.push(...bossTurn(sc,f,live));continue}
-    const t=targetOf(f,live),R=roll(f,t);let res,rd;
-    if(!R.hit){res=rollText(R)+': missed';note(sc,nm,t.name,R,0);rd=rollData(R,0,t.name)}
+    const t=targetOf(f,live),rooted=condOn(f,'root'),R=roll(f,t,rooted?-COND.ROOT_HIT:0),wd=condOn(t,'ward')?' (warded)':'';let res,rd;
+    if(!R.hit){res=rollText(R)+': missed'+(rooted?' (rooted)':'');note(sc,nm,t.name,R,0);rd=rollData(R,0,t.name)}
     else{const dmg=f.kind==='hero'?heroBlow(f,t,R.crit):mobBlow(f,t,R.crit?1.5:1);const down=t.state==='dead';
-      res=rollText(R)+': hit for '+dmg+(down?'; '+t.name+' falls':'');note(sc,nm,t.name,R,dmg,down?'down':null);rd=rollData(R,dmg,t.name,down);if(down)(sc.fell||(sc.fell=[])).push(t.id)}
+      res=rollText(R)+': hit for '+dmg+wd+(down?'; '+t.name+' falls':'');note(sc,nm,t.name,R,dmg,down?'down':wd?'warded':null);rd=rollData(R,dmg,t.name,down);if(down)(sc.fell||(sc.fell=[])).push(t.id)
+      else{const c=trickCond(sc,f,t,dmg);if(c)res+='; '+c}}
     out.push(beat(nm,'attack','Strikes at '+t.name+(f.target===t?' (drawn)':''),res,rd))}
   return out}
 const beat=(nm,k,text,res,roll)=>({id:'foe',name:nm,k,text,res,by:'foe',...(roll?{roll}:{})});
+
+// ---- conditions (#296): stunned, rooted, poisoned, warded ----
+// Laid by a member's control move (sim/moves.js, on a failed save) or by a creature's own trick when its blow lands
+// (data/moves.js FX_CONDS over the bestiary's abilities: venom poisons, a web or a mire roots, a bellow or a gore
+// stuns), at most once every COND.TRICK_GAP rounds per creature, with a save to shrug it off. Each is checked as a
+// dice line: a stun on the holder's turn (fail: the turn is lost), a root and a poison at the end of every round
+// (poison bites first; pass: it ends early), and every condition runs out with its rounds. Warded is the ward moves'
+// round-counted 'taken' effect: no save, the banner badges it and a blow on it says so. table.js clears every
+// condition when the scene ends, so none leaks into the real-time fight.
+export const COND={
+  ROOT_HIT:2,     // a rooted creature's attack roll is this much worse (it cannot step in)
+  TRICK_GAP:2,    // rounds between one creature's condition tricks in a scene
+  POISON:.35,     // a creature's poison bites for this share of the blow that laid it, each round (at most 20% of max HP)
+};
+const condName=id=>CONDITIONS[id].name.toLowerCase();
+// Saves and parleys are checks, not attack rolls: their data rides on beat.check ({kind:'save'|'parley', die, mod, total, vs,
+// hit (passed), crit, ...}), beat.roll stays the attack roll against AC (#285).
+// A save: d20 + the holder's modifier (a hero: the condition's ability + training; a creature: a quarter of its level,
+// +2 elite, +4 Kragmaw, as sim/moves.js foeSave) against the DC it was laid with. A 20 always saves, a 1 never.
+const saveMod=(e,abil)=>e.kind==='hero'?mod(e,abil)+profBonus(e.lvl||1):Math.floor((e.lvl||1)/4)+(e.elite?2:0)+(e.kind==='boss'?4:0);
+function condSave(e,id){const f=e.eff[id],d=ri(1,20),m=saveMod(e,CONDITIONS[id].save||'grit'),dc=f.dc||10;return {die:d,mod:m,total:d+m,dc,pass:d===20||(d!==1&&d+m>=dc),crit:d===20}}
+const saveText=V=>'save d20 '+V.die+sg(V.mod)+'='+V.total+' vs DC '+V.dc;
+const saveData=(V,id,who)=>({kind:'save',cond:id,die:V.die,mod:V.mod,total:V.total,vs:V.dc,hit:V.pass,crit:V.crit,dmg:0,target:who,down:false});
+const saveNote=(sc,by,id,V,what)=>(sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by,at:by,kind:'save',cond:id,die:V.die,mod:V.mod,dc:V.dc,pass:V.pass,note:what});
+// The stunned one's turn: the save, then the stun is spent either way. Returns the beat ({k:'stunned'} = the turn is lost).
+export function stunCheck(sc,e,nm){const V=condSave(e,'stun');endCond(e,'stun');const who=nm||e.name;
+  saveNote(sc,who,'stun',V,V.pass?'shakes off the stun':'stunned, loses the turn');
+  return {id:e.kind==='hero'?e.id:'foe',name:who,k:V.pass?'unstun':'stunned',text:V.pass?'Shakes off the stun':'Stunned: loses the turn',res:saveText(V)+(V.pass?': shaken off':': held'),by:e.kind==='hero'?'cond':'foe',check:saveData(V,'stun',who)}}
+// A creature's trick when its blow lands: the first condition its abilities can leave, the target's save to shrug it off.
+function trickCond(sc,f,t,dmg){if(f.kind!=='mob'||t.state==='dead')return null;const g=sc.cg||(sc.cg={});if(g[f.id]!=null&&sc.rd-g[f.id]<COND.TRICK_GAP)return null;
+  let id=null,ab=null;for(const k of f.ab||[]){const A=TRICKS[k];if(A&&FX_CONDS[A.fx]&&!condOn(t,FX_CONDS[A.fx])){id=FX_CONDS[A.fx];ab=A;break}}if(!id)return null;g[f.id]=sc.rd;
+  const dc=10+Math.floor((f.lvl||1)/2)+(f.elite||f.named?2:0);setCond(t,id,CONDITIONS[id].rounds,dc,id==='poison'?Math.max(1,Math.round(dmg*COND.POISON)):0,f.id);
+  const V=condSave(t,id);saveNote(sc,t.name,id,V,ab.name+': '+(V.pass?'shrugs it off':condName(id)));
+  if(V.pass){endCond(t,id);return t.name+' shrugs off its '+ab.name+' ('+saveText(V)+')'}
+  return ab.txt+' '+t.name+': '+condName(id)+' ('+saveText(V)+')'}
+// The end of a round: poison bites, then rooted and poisoned holders save to end it; what is left runs down a round.
+// Returns beats (by 'cond': not a member's act). A hero the poison kills falls to whoever laid it.
+export function roundEnd(sc,L,fs){const out=[];
+  for(const e of [...L,...fs]){if(!e||(e.kind==='hero'?e.state==='dead':!e.alive))continue;const nm=e.kind==='hero'?e.name:name(e),me=e.kind==='hero'?e.id:'foe';
+    if(condOn(e,'poison')){const P=e.eff.poison,src=P.by!=null?(S.mobs.find(m=>m.id===P.by)||S.agents.find(x=>x.id===P.by)||null):null,mx=e.kind==='hero'?maxHp(e):e.maxhp||1;
+      const d=Math.max(1,Math.min(P.v||1,Math.round(mx*.2)));e.hp-=d;if(e.hp<=0&&!src)e.hp=1;if(e.kind==='hero'&&src)actHurt(e,src,d,'venom');const down=e.hp<=0;
+      if(down&&e.kind==='hero'){agentDie(e,src);(sc.fell||(sc.fell=[])).push(e.id)}
+      (sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by:nm,at:nm,kind:'poison',dmg:d,note:down?'down':null});
+      out.push({id:me,name:nm,k:'poison',text:'The poison bites',res:d+' damage'+(down?'; '+nm+' falls':''),by:'cond'});if(down)continue}
+    for(const id of ['poison','root']){if(!condOn(e,id))continue;const V=condSave(e,id);
+      if(V.pass)endCond(e,id);else if(--e.eff[id].r<=0)endCond(e,id);
+      saveNote(sc,nm,id,V,id==='root'?(V.pass?'breaks free of the roots':'still rooted'):(V.pass?'purges the poison':'still poisoned'));
+      out.push({id:me,name:nm,k:id,text:id==='root'?(V.pass?'Breaks free':'Still rooted'):(V.pass?'Purges the poison':'Still poisoned'),res:saveText(V)+(V.pass?': it ends':': it holds')+(!V.pass&&!condOn(e,id)?', then wears off':''),by:'cond',check:saveData(V,id,nm)})}}
+  return out}
+
+// ---- parley (#296): talk an intelligent foe down ----
+// Who talks back: an enemy hero, and the creature families with speech (data/bestiary.js FAMILIES). Kragmaw never.
+const TALKERS=['bandit','brute-folk'];
+export const canParley=f=>!!f&&(f.kind==='hero'?f.state!=='dead':f.kind==='mob'&&f.alive&&TALKERS.includes(blk(f).family));
+// The foe's temper as a DC: 12, +3 an elite or named one (+1 a leader), +2 a bold enemy hero, + its level over the
+// speaker's (at most 5); -3 below half its health, -6 below a quarter; -1 with three in the fight, -2 with four or more.
+export function temperOf(f,a,n){const hf=f.hp/(f.kind==='hero'?maxHp(f):f.maxhp||1);let dc=12;
+  if(f.kind==='hero')dc+=tm(f,'bold')>1?2:0;else dc+=(f.elite||f.named?3:0)+(blk(f).role==='leader'?1:0);
+  dc+=Math.max(0,Math.min(5,lvlOf(f)-(a.lvl||1)));dc-=hf<.25?6:hf<.5?3:0;dc-=n>=4?2:n>=3?1:0;return dc}
+// A say-check through the staged social path's skills (persuasion or intimidation, sim/abilities.js socialSkill) against
+// the temper. Yield: a 20 or 5 over, or any pass on a rooted foe that cannot run (it stands down for good); flee: a pass
+// (it breaks away and runs, and may come back); hold: a fail (it fights on, and turns on the one who spoke).
+export function parley(sc,a,fs,L){const f=fs[0],nm=name(f),skill=socialSkill(a),dc=temperOf(f,a,L.length),R=check(a,skill,dc,{nat:true});
+  (sc.pl||(sc.pl=[])).push(a.id);
+  const out=R.nat===20||(R.pass&&(R.total-dc>=5||condOn(f,'root')))?'yield':R.pass?'flee':'hold';
+  if(out==='yield'){for(const g of fs)standDown(g,L);sc.end='yield';sc.talk=a.name}
+  else if(out==='flee'){for(const g of fs)runOff(g,L);sc.end='fled';sc.talk=a.name}
+  else if(f.kind==='mob'){f.target=a;f.dest=null}
+  const word=out==='yield'?'it yields':out==='flee'?'it breaks away and runs':'it will not hear it';
+  (sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by:a.name,at:nm,kind:'parley',skill,die:R.d20,mod:R.mod,dc,pass:R.pass,result:out,note:word});
+  sc.rc={kind:'parley',skill,result:out,die:R.d20,mod:R.mod,total:R.total,vs:dc,hit:R.pass,crit:R.d20===20,dmg:0,target:nm,down:false};
+  return skill+' d20 '+R.d20+sg(R.mod)+'='+R.total+' vs DC '+dc+(R.nat===20?' (a natural 20)':R.nat===1?' (a natural 1)':'')+': '+word}
+// Stands down: a creature goes home and leaves the party be for two game hours (mobs.js and findMob skip it); a hero yields.
+function standDown(g,L){if(g.kind==='hero'){yieldHero(g,L);return}
+  g.target=null;g.pack=false;g.dest=g.home?{...g.home}:null;g.spared=S.gameMin+120;for(const b of L)if(b.target===g&&b.state==='fight'){b.state='hunt';b.target=null}}
+function runOff(g,L){if(g.kind==='hero'){yieldHero(g,L);return}g.fledOnce=true;g.fled=5}
 // The member it has drawn (guard, a taunt, the one it was already fighting), else the lowest share of HP in reach.
 function targetOf(f,L){const d=f.target&&L.includes(f.target)?f.target:null;if(d)return d;
   let lo=null;for(const b of L)if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo)||(b.hp/maxHp(b)===lo.hp/maxHp(lo)&&b.id<lo.id))lo=b;return lo}
