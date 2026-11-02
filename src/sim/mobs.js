@@ -90,7 +90,7 @@ function useAbility(m,t){for(const id of m.ab||[]){const A=ABILITIES[id];if(!A||
   m.abcd[id]=A.cd;const u=unitOf(m);
   switch(A.fx){
     case 'frenzy':m.frenzy=A.dur;pop(m.x,m.y-.8,'FRENZY','#ff8a5a');continue; // a free action: the bite still lands
-    case 'poison':{const dps=A.dmg*u/A.dur,d=(m.dots||(m.dots=[])).find(x=>x.h===t&&x.id===id);if(d){d.rem=A.dur;d.dps=dps}else m.dots.push({h:t,id,rem:A.dur,dps});pop(t.x,t.y-.9,'POISON','#7dce5a');break}
+    case 'poison':{const dps=A.dmg*u/A.dur/(t.fellow?hitRamp(m):1),d=(m.dots||(m.dots=[])).find(x=>x.h===t&&x.id===id);if(d){d.rem=A.dur;d.dps=dps}else m.dots.push({h:t,id,rem:A.dur,dps});pop(t.x,t.y-.9,'POISON','#7dce5a');break}
     case 'slow':case 'root':case 'fear':t.cd+=A.lose;hurt(t,m,A.dmg*u);pop(t.x,t.y-.9,A.fx==='slow'?'SLOWED':A.fx==='root'?'ROOTED':'FEAR','#9ad0ff');break;
     case 'knockback':{hurt(t,m,A.dmg*u);if(t.hp>0){const dx=t.x-m.x,dy=t.y-m.y,d=Math.hypot(dx,dy)||1,nx=t.x+dx/d*A.push,ny=t.y+dy/d*A.push;
       if(WALKABLE.includes(tileAt(nx,ny))&&zoneAt(nx,ny)===zoneAt(t.x,t.y)){t.x=nx;t.y=ny}t.cd+=A.lose;pop(t.x,t.y-.9,'KNOCKED BACK','#ffd080')}break}
