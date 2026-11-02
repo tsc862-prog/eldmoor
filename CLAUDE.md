@@ -111,8 +111,22 @@ other. The rules:
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
 - `npm run movecheck`: class abilities (#81): `src/data/moves.js` MOVES/PASSIVES (3 active abilities with a cooldown in seconds and in rounds, 2 passives per class), the one resolver `useMove` in `src/sim/moves.js` for real-time and Table rounds, timed effects and passives in `src/sim/eff.js`, the `use_ability` agent tool, and the Abilities block (`src/ui/abilities.js`) on the Stats tab and Fellowship sheet.
 - `npm run setupcheck`, `npm run setupsmoke`: the New World setup (`src/sim/setup.js`, `src/ui/setup.js`, #133): New world opens a page to choose the Fellowship (class, name, people, mind per place) and the DM, then builds the world seeded (`init({setup})`) with agent members agent-played from the first tick and starts their runners through the relay.
-- `start-eldmoor.cmd` (Windows, double-click): starts the relay with app runners on and the dev server in two
-  windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.
+- `npm run up` (`scripts/up.mjs`) and `start-eldmoor.cmd` (Windows, double-click; it calls `node scripts\up.mjs`): one window
+  for the whole game. It starts the relay with app runners on and `--resume-runners` and the Vite dev server as child
+  processes (output prefixed and coloured `[relay]`, `[vite]`, `[up]`), then opens http://localhost:5173 once. Single keys
+  (or the word plus Enter where raw mode is missing): `u` update (`git pull --ff-only`; refused on a dirty tree or a
+  non-fast-forward; `npm install` only when package-lock.json changed, with Vite stopped meanwhile; then the relay restarts,
+  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `s`
+  status (relay health, runners, Ollama models loaded), `h` help, `q`/Ctrl+C quit (runners get "stop" first so they
+  release their heroes, then the relay, then Vite; the process trees are killed with `taskkill /T /F` as a last resort, so
+  no node process or port stays held; closing the window does the same). A change under `scripts/` while it runs prints
+  "relay code changed: press u (or r) to apply" (never an automatic restart mid-play). The relay keeps the running runners
+  in `logs/runners/active.json` (kind, hero, name, mind, caps; a stop from the page, a crash or a finished runner leaves the
+  list, a relay quit does not) and with `--resume-runners` (`RELAY_RESUME_RUNNERS=1`) starts them again once the page
+  reconnects and names the same heroes (same id and name, alive; a hero that is gone, renamed by a new world or dead is
+  skipped). The page's bridge reconnects by itself after a relay restart. Options: `--relay-port N`, `--vite-port N`,
+  `--no-open`, `--repo DIR` (the checkout `u` pulls). The old way, `npm run relay -- --runners` and `npm run dev` in two
+  terminals, still works. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
