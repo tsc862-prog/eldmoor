@@ -59,7 +59,8 @@ export const STAGE={
   TRAP_FLOOR:.1,    // a sprung trap never takes a member below this share of max HP
   PACK_MAX:6,       // foes in a staged ambush (a reinforcement included)
   MISS_MAX:2,       // missed at-the-table calls before the scripted DM fills the rest of the scene at once
-  FRAME_MAX:280, TITLE_MAX:60, LINE_MAX:2000, NAME_MAX:32, // LINE_MAX: a technical ceiling for the DM's lines at the table, not a style limit (owner, #170) WANT_MAX:140, REVEAL_MAX:200, LABEL_MAX:60, REASON_MAX:160,
+  FRAME_MAX:280, TITLE_MAX:60, LINE_MAX:2000, NAME_MAX:32, // LINE_MAX: a technical ceiling for the DM's lines at the table, not a style limit (owner, #170)
+  WANT_MAX:160, REVEAL_MAX:200, LABEL_MAX:60, REASON_MAX:160,
   PAST_KEEP:8,
 };
 export const STAGE_KINDS=['elite','ambush','meeting','trap','mystery','social'];
