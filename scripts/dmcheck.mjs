@@ -461,10 +461,16 @@ console.log('the Fellowship first');
   G.day = {d: -1, n: 0, nw: 0}; G.cur = null;
 }
 { // the scripted DM, alone, with a Fellowship: most of what it does concerns them, and it is deterministic
-  const run1 = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env}}), line = (run1.stdout || '').trim().split(/\r?\n/).pop();
-  const m = /^FOCUS (\{.*\}) H/.exec(line), fs_ = m ? JSON.parse(m[1]) : null;
-  ok(fs_ && fs_.acts >= 6 && fs_.share > 0.5, 'with a Fellowship, most DM actions concern it: ' + (fs_ ? fs_.fellow + ' of ' + fs_.acts + ' (' + Math.round(fs_.share * 100) + '%)' : line || run1.stderr.slice(-300)));
-  const run2 = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env}});
+  // one seeded world is a single draw (a small change to hero dice moves the share by 15 points), so pool three seeds
+  const focusRun = sd => spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env, DMCHECK_SEED: String(sd)}});
+  const runs = [66, 1, 2].map(sd => ({sd, r: focusRun(sd)})), parsed = runs.map(({sd, r}) => {
+    const line = (r.stdout || '').trim().split(/\r?\n/).pop(), m = /^FOCUS (\{.*\}) H/.exec(line);
+    return {sd, st: m ? JSON.parse(m[1]) : null, line: line || r.stderr.slice(-300)};
+  });
+  const good = parsed.filter(p => p.st), acts = good.reduce((t, p) => t + p.st.acts, 0), fel = good.reduce((t, p) => t + p.st.fellow, 0), share = acts ? fel / acts : 0;
+  ok(good.length === parsed.length && acts >= 18 && share > 0.5,
+    'with a Fellowship, most DM actions concern it (pooled over seeds 66, 1, 2): ' + fel + ' of ' + acts + ' (' + Math.round(share * 100) + '%); ' + parsed.map(p => p.st ? 'seed ' + p.sd + ' ' + p.st.fellow + '/' + p.st.acts + ' (' + Math.round(p.st.share * 100) + '%)' : 'seed ' + p.sd + ' ' + p.line).join(', '));
+  const run1 = runs[0].r, run2 = focusRun(66);
   ok((run2.stdout || '').trim() === (run1.stdout || '').trim(), 'the scripted DM is deterministic under the same seed (same actions, same share)');
 }
 
