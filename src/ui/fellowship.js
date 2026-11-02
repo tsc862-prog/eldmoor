@@ -20,7 +20,8 @@ import {cam} from '../render/draw.js';
 import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
 import {campSummary} from '../sim/camp.js';
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
-import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype} from '../sim/persona.js';
+import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype,authoredStance,scriptedStance} from '../sim/persona.js';
+import {STANCE_MAX} from '../data/prompts.js'; // the stance cap the model gets (#305)
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
@@ -151,15 +152,49 @@ function topView(node){const F=S.fellowship;
 // The sheet editor is rebuilt only when it is opened, saved or closed, never on the tick, so typing is safe.
 function sheetView(node,a){node.replaceChildren();if(!a)return;
   const box=el('div','fsheet');box.append(el('div','fname',a.name+'’s sheet'));
-  box.append(el('div','dm','Persona: '+(a.persona&&a.persona.src==='model'?'written by the model':'scripted')+(a.persona&&a.persona.edited?', edited':'')+'. Backstory: '+(a.backstory&&a.backstory.src==='model'?'written by the model':'scripted')+(a.backstory&&a.backstory.edited?', edited':'')+'.'+(enriching(a)?' The relay is still writing; saving now keeps your text.':'')));
+  box.append(el('div','dm fsrc',srcLine(a)));
   abilityBlock(box,a);
   const ta=(which,k,label,v,rows)=>{const l=el('label','fta');l.append(el('span','dm',label));const t=el('textarea');t.rows=rows||2;t.value=v||'';t.dataset.fw=which;t.dataset.fk=k;l.append(t);box.append(l)};
   archRow(box,a);
   for(const [k,label] of PERSONA_ORDER)ta('persona',k,label,a.persona&&a.persona[k],2);
+  stanceBlock(box,a);
   ta('backstory','summary','Backstory summary',a.backstory&&a.backstory.summary,2);
   for(const [k,label] of BACKSTORY_ORDER)ta('backstory',k,label,a.backstory&&a.backstory.paras&&a.backstory.paras[k],3);
   const bar=el('div','fbar');const sv=el('button','go','Save sheet');sv.dataset.fact='save';const cl=el('button',null,'Close');cl.dataset.fact='close';bar.append(sv,cl);box.append(bar);
   node.append(box)}
+
+const srcLine=a=>'Persona: '+(a.persona&&a.persona.src==='model'?'written by the model':'scripted')+(a.persona&&a.persona.edited?', edited':'')+'. Backstory: '+(a.backstory&&a.backstory.src==='model'?'written by the model':'scripted')+(a.backstory&&a.backstory.edited?', edited':'')+'.'+(enriching(a)?' The relay is still writing; saving now keeps your text.':'');
+
+// Stances toward each companion (#316, the UI for #305): one box per living companion holding the line the
+// persona itself holds (the owner's, the archetype's or the model's); an empty box lets the bond reading speak,
+// shown as the placeholder. Save writes only the boxes that changed, so an archetype or model line is never
+// turned into the owner's by saving something else. Rows are filled in place after Save, Reset and an
+// archetype pick, never rebuilt, so scroll and focus stay where they are.
+const stanceHint=a=>a.persona&&a.persona.archetype?'Empty = the archetype line, else the bond decides.':'Empty = the bond decides.';
+function stanceSrc(a,b){const P=a.persona;if(!P||!authoredStance(a,b))return '';
+  if(P.stanceBy&&P.stanceBy[b.id]==='owner')return 'owner';
+  return P.src==='model'&&P.stances&&P.stances[b.id]?'model':P.archetype?'archetype':''}
+function stanceBlock(box,a){const mates=fellows().filter(b=>b!==a&&alive(b));if(!mates.length)return;
+  const w=el('div','fstances');w.setAttribute('data-k','stances');w.append(el('div','dm fsth','Stance toward each companion'));
+  for(const b of mates){const r=el('div','fstance');r.dataset.fst=b.id;
+    const h=el('div','fsthead'),id='fst'+a.id+'_'+b.id,lb=el('label','fstname',b.name);lb.htmlFor=id;
+    const tag=el('span','badge fsttag'),cnt=el('span','dm fstcount');
+    const rs=el('button','mini','Reset');rs.dataset.fstreset=b.id;rs.title='Drop your line: the bond reading (or the archetype line) speaks again';rs.setAttribute('aria-label','Reset '+a.name+'’s stance toward '+b.name);
+    h.append(lb,el('span','dm fstcls',b.cls),tag,cnt,rs);
+    const t=el('textarea');t.id=id;t.rows=2;t.setAttribute('maxlength',String(STANCE_MAX));t.dataset.fw='stance';t.dataset.fk=String(b.id);
+    r.append(h,t);w.append(r);fillStance(r,a,b)}
+  w.append(el('div','dm fsthint',stanceHint(a)));
+  box.append(w)}
+function fillStance(r,a,b){const t=r.querySelector('textarea'),v=authoredStance(a,b),src=stanceSrc(a,b);
+  t.value=v;t.dataset.orig=v;t.placeholder=scriptedStance(a,b);
+  const tag=r.querySelector('.fsttag');tag.textContent=src;tag.hidden=!src;tag.className='badge fsttag'+(src?' st-'+src:'');
+  r.querySelector('[data-fstreset]').hidden=src!=='owner';stanceCount(t)}
+function stanceCount(t){const r=t.closest('.fstance'),c=r&&r.querySelector('.fstcount');if(c)c.textContent=t.value.length+'/'+STANCE_MAX}
+// After Save, Reset or an archetype pick: the rows and the source line patched in place (with keep, a box
+// holding typed but unsaved text is left alone).
+function refreshSheet(a,keep){if(!sheet)return;const s=sheet.querySelector('.fsrc');if(s)s.textContent=srcLine(a);
+  for(const r of sheet.querySelectorAll('.fstance')){const b=byId(r.dataset.fst),t=r.querySelector('textarea');if(!b||!t)continue;if(keep&&t.value!==t.dataset.orig)continue;fillStance(r,a,b)}
+  const h=sheet.querySelector('.fsthint');if(h)h.textContent=stanceHint(a)}
 
 // Archetype (#295): picking one rewrites the persona text through applyArchetype and fills the five persona
 // boxes in place (the backstory boxes keep whatever is typed there). The hint is the archetype's voice.
@@ -174,6 +209,7 @@ function pickArchetype(s){const a=byId(s.dataset.farch),id=s.value;if(!a||!ARCHE
   for(const t of sheet.querySelectorAll('textarea[data-fw="persona"]'))t.value=a.persona[t.dataset.fk]||'';
   const h=s.parentNode&&s.parentNode.querySelector('.farchhint');if(h)h.textContent=archHint(id);
   for(const o of [...s.children])if(o.value==='')o.remove();
+  refreshSheet(a,true);
   msg=ARCHETYPES[id].name+' applied to '+a.name+'. Edit the boxes and Save to change the words.';return true}
 
 function act(t){const F=S.fellowship;msg='';
@@ -181,6 +217,8 @@ function act(t){const F=S.fellowship;msg='';
   if(t.dataset.ffac!=null){draft.fac=+t.dataset.ffac;draft.slots={tank:null,healer:null,dps1:null,dps2:null,dps3:null};sigForm='';return}
   if(t.dataset.ffill){offerReplacement(t.dataset.ffill);return}
   if(t.dataset.fadd){const s=cam.sel;if(s&&join(s,t.dataset.fadd,'chosen by the watcher'))msg=s.name+' joins.';return}
+  if(t.dataset.fstreset!=null){const a=byId(sheetOpen),b=byId(t.dataset.fstreset),r=t.closest('.fstance');if(!a||!b||!r)return;
+    editSheet(a,'stance',b.id,'');fillStance(r,a,b);refreshSheet(a,true);r.querySelector('textarea').focus();msg=a.name+'’s stance toward '+b.name+' is reset.';return}
   if(t.dataset.fsheet){sheetOpen=+t.dataset.fsheet;sheetView(sheet,byId(sheetOpen));return}
   if(t.dataset.fremove){const a=byId(t.dataset.fremove);if(a){leave(a,'sent away by the watcher');msg=a.name+' leaves. Fill the empty place, or add a hero.'}return}
   const k=t.dataset.fact;
@@ -198,7 +236,8 @@ function act(t){const F=S.fellowship;msg='';
   if(k==='more'){moreThreads=!moreThreads;return}
   if(k&&k.startsWith('drawer:')){const w=k.slice(7);drawer=drawer===w?null:w;return}
   if(k==='disband'){if(!confirmDisband){confirmDisband=true;return}confirmDisband=false;menuOpen=false;drawer=null;disbandFellowship();sheetOpen=null;sheetView(sheet,null);onFilter();setViewHook('map');return}
-  if(k==='save'){const a=byId(sheetOpen);if(a)for(const ta of sheet.querySelectorAll('textarea[data-fw]'))editSheet(a,ta.dataset.fw,ta.dataset.fk,ta.value);msg='Sheet saved.';sheetView(sheet,a);return}
+  if(k==='save'){const a=byId(sheetOpen);if(a){for(const ta of sheet.querySelectorAll('textarea[data-fw]')){if(ta.dataset.fw==='stance'&&ta.value===ta.dataset.orig)continue;editSheet(a,ta.dataset.fw,ta.dataset.fk,ta.value)}
+    refreshSheet(a,false)}msg='Sheet saved.';return} // in place: scroll, focus and the boxes stay
   if(k==='close'){sheetOpen=null;sheetView(sheet,null)}}
 
 let setViewHook=()=>{};
@@ -210,6 +249,7 @@ export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('fe
   const st=$('storyTabs');if(st)st.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-story]');if(!b)return;story=b.dataset.story;syncChronBtn()});
   root.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('button'):null;if(!t||!root.contains(t))return;
     if(t.closest('.hn'))return;act(t);sigTop='';sigForm='';renderFellowship()});
+  root.addEventListener('input',e=>{const t=e.target;if(t&&t.dataset&&t.dataset.fw==='stance')stanceCount(t)});
   root.addEventListener('keydown',e=>{if(e.key==='Escape'&&(menuOpen||drawer)){menuOpen=false;confirmDisband=false;drawer=null;sigTop='';renderFellowship()}});
   root.addEventListener('change',e=>{const s=e.target;if(mindChange(s)){sigTop='';renderFellowship();return}
     if(s&&s.dataset&&s.dataset.farch!=null){if(pickArchetype(s)){sigTop='';renderFellowship()}return}

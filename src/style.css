@@ -633,3 +633,15 @@ button.tbtn.danger{border-color:var(--red)}
 .fsheet .farch .msel{font-family:var(--mono);font-size:18px;background:#0a0b14;color:var(--ink);border:1px solid var(--edge);max-width:100%;width:100%;box-sizing:border-box}
 .fsheet .farch .msel:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
 .farchhint{overflow-wrap:anywhere;line-height:1.1}
+/* stance toward each companion (#316) */
+.fstances{display:flex;flex-direction:column;gap:4px;margin:4px 0}
+.fstance{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fsthead{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;min-width:0}
+.fstname{font-family:var(--px);font-size:8px;color:var(--ink);overflow-wrap:anywhere}
+.fstcls{font-size:16px}
+.fsthead .badge{margin-right:0}.fsthead [hidden]{display:none}
+.fsttag.st-owner{color:var(--gold)}.fsttag.st-archetype{color:#7fd6c2}.fsttag.st-model{color:#a9b3ff}
+.fstcount{margin-left:auto;font-size:16px}
+.fstance textarea{font-family:var(--mono);font-size:18px;background:#0a0b14;color:var(--ink);border:1px solid var(--edge);resize:vertical;width:100%;box-sizing:border-box}
+.fstance textarea::placeholder{color:#6f7590;opacity:1}
+.fstance textarea:focus-visible,.fsthead .mini:focus-visible{outline:2px solid var(--gold);outline-offset:1px}

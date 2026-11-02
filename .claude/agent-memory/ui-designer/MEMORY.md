@@ -9,3 +9,4 @@
 - [Table combat panel](table_combat_panel.md): #277 combatView in ui/table.js, reads sc.rd/foeAt/fd/beats, roll regex, step not built
 - [Chat left column](chat_left_column.md): chat at top of left column on 3-col, placeChat in layout.js, eldmoor.chatLeft
 - [Archetype picker](archetype_picker.md): setup + sheet editor pickers, stance fill rule, editor marks persona edited vs relay
+- [Stance editor](stance_editor.md): #316 per-companion stance rows on the sheet editor, Save skips unchanged boxes, refreshed in place

@@ -633,5 +633,41 @@ console.log('start gate: ready, not just claimed');
   const m2=sim.fellows()[1];ok(a.persona.stances[m2.id]===ARCHETYPES.mercenary.stance.replace('{other}',m2.name),'sheet editor: stances name each companion');
   ok(!fb.querySelector('select[data-farch]').children.some(o=>o.value===''),'sheet editor: None is gone once one is picked');
   fb.querySelectorAll('button').find(b=>b.dataset.fact==='close').click()}
+// Fellowship sheet editor: the stance toward each companion (#316, UI for #305) round-trips through editSheet
+{const fb=$('felbody'),{STANCE_MAX}=await import('../src/data/prompts.js'),P=await import('../src/sim/persona.js');
+  const open=a=>{let b=fb.querySelectorAll('button').find(x=>x.dataset.fsheet==String(a.id));if(!b){fb.querySelector('[data-fact="drawer:members"]').click();b=fb.querySelectorAll('button').find(x=>x.dataset.fsheet==String(a.id))}b.click()};
+  const [a,m2,m3]=sim.fellows();open(a);
+  const rows=()=>fb.querySelectorAll('.fstance'),row=b=>rows().find(r=>r.dataset.fst==String(b.id)),box=b=>row(b).querySelector('textarea'),tag=b=>row(b).querySelector('.fsttag'),rst=b=>row(b).querySelector('[data-fstreset]');
+  ok(rows().length===sim.fellows().length-1,'stances: one row per living companion ('+rows().length+')');
+  const t2=box(m2),arch=P.archetypeStance('mercenary',m2);
+  ok(t2.dataset.fw==='stance'&&t2.dataset.fk===String(m2.id)&&t2.getAttribute('maxlength')===String(STANCE_MAX),'stances: a capped box saved through data-fw="stance"');
+  ok(t2.value===arch&&!tag(m2).hidden&&tag(m2).textContent==='archetype'&&rst(m2).hidden,'stances: the archetype line is filled in and tagged, no Reset');
+  ok(row(m2).querySelector('.fstcount').textContent===arch.length+'/'+STANCE_MAX,'stances: the counter reads the length');
+  ok(t2.placeholder===P.scriptedStance(a,m2),'stances: the bond reading is the placeholder');
+  const sc=fb;sc.scrollTop=37;const t3=box(m3),v3=t3.value;
+  t2.value='Owes me a drink and knows it.';t2.dispatch('input',{target:t2});
+  ok(row(m2).querySelector('.fstcount').textContent==='29/'+STANCE_MAX,'stances: the counter follows typing');
+  const save=fb.querySelectorAll('button').find(x=>x.dataset.fact==='save');save.focus();save.click();uiFast();
+  ok(a.persona.stances[m2.id]==='Owes me a drink and knows it.'&&a.persona.stanceBy[m2.id]==='owner','stances: Save writes through editSheet as the owner line');
+  ok(String(a.memory.stances[m2.id]||'').startsWith('Owes me a drink'),'stances: the member memory reads the new line at once');
+  ok(!(a.persona.stanceBy||{})[m3.id]&&box(m3).value===v3,'stances: an untouched box is not turned into the owner line');
+  ok(box(m2)===t2&&tag(m2).textContent==='owner'&&!rst(m2).hidden,'stances: the same box, now tagged owner with a Reset');
+  ok(sc.scrollTop===37&&document.activeElement===save,'stances: Save keeps scroll and focus');
+  t2.value='x'.repeat(STANCE_MAX+40);save.click();uiFast();
+  ok(a.persona.stances[m2.id].length===STANCE_MAX,'stances: a long line is cut to STANCE_MAX');
+  rst(m2).click();uiFast();
+  ok(!(a.persona.stanceBy||{})[m2.id]&&box(m2).value===arch&&tag(m2).textContent==='archetype','stances: Reset hands the stance back (the archetype line here)');
+  ok(document.activeElement===box(m2),'stances: Reset moves focus to the box');
+  fb.querySelectorAll('button').find(x=>x.dataset.fact==='close').click();
+  // a member with no archetype: empty means the bond decides
+  const b=m2;open(b);const o=sim.fellows().find(x=>x!==b&&!(b.persona&&b.persona.archetype)&&!(b.persona&&b.persona.stanceBy||{})[x.id]);
+  if(b.persona&&!b.persona.archetype&&b.persona.src!=='model'&&o){const t=box(o);
+    ok(t.value===''&&tag(o).hidden,'stances: a scripted stance shows an empty box and no tag');
+    t.value='Too quiet by half.';fb.querySelectorAll('button').find(x=>x.dataset.fact==='save').click();uiFast();
+    ok(P.authoredStance(b,o)==='Too quiet by half.'&&tag(o).textContent==='owner','stances: an owner line on a scripted persona');
+    box(o).value='';fb.querySelectorAll('button').find(x=>x.dataset.fact==='save').click();uiFast();
+    ok(P.authoredStance(b,o)===''&&!(b.persona.stanceBy||{})[o.id]&&tag(o).hidden&&b.memory.stances[o.id].startsWith(P.scriptedStance(b,o)),'stances: an empty box on Save hands it back to the bond reading')}
+  else console.log('  skip stances on a scripted persona (none at hand)');
+  fb.querySelectorAll('button').find(x=>x.dataset.fact==='close').click()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
