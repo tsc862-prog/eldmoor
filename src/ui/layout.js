@@ -8,6 +8,7 @@
 // Fellowship is data-o on every section.
 import {S} from '../sim/index.js';
 import {syncDevBtn} from './mindctl.js';
+import {mountConditions,renderConditions} from './conditions.js'; // region conditions, a world panel (#366)
 
 const $=id=>document.getElementById(id);
 let mode=null;
@@ -42,7 +43,7 @@ function placeColumns(){const want=(S.fellowship&&columnCount()===3)?3:(columnCo
   if(want===3){colL.append($('storySec'));colL.append($('worldgrp'));side.append($('heroSec'))}
   placeChat()}
 let rs=0;if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('resize',()=>{clearTimeout(rs);rs=setTimeout(placeColumns,100)});
-export function applyLayout(){const fel=!!S.fellowship;if(fel!==mode)restoreColumns();
+export function applyLayout(){mountConditions();renderConditions();const fel=!!S.fellowship;if(fel!==mode)restoreColumns();
   if(fel===mode){placeColumns();return}mode=fel;
   const side=$('side'),grp=$('worldgrp'),wb=$('worldbody');if(!side||!grp||!wb)return;
   document.body.classList.toggle('fellow-mode',fel);
