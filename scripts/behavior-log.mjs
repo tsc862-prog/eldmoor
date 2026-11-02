@@ -123,7 +123,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     const line = {seat, hero: rec.hero || null, runner: rec.runner || null, provider: rec.provider || null, model: rec.model || null, turn: rec.turn ?? S.turns,
       gameMin: rec.gameMin ?? null, clock: rec.clock || null, wake: rec.wake || null, brief: rec.brief || null, after: rec.after || null,
       tools: tools.map(t => ({name: cut(t.name, 40), ok: !!t.ok, ...(t.ok ? {} : {error: cut(t.error, 140)}), ...(t.refused ? {refused: true} : {})})),
-      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, cost: rec.cost ?? null, flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
+      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, cost: rec.cost ?? null, flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
     write('turn', line);
     sawModel(line.provider, line.model, seat);
     // detectors
@@ -166,3 +166,6 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
   }
   return {turn, relayDecision, call, ingest, anomaly, setWorld(w) {const n = worldName(w); if (n !== cur) {cur = n; seats.clear()} return cur}, get world() {return cur}, dir: dirOf, counts};
 }
+
+// A Claude turn line written before issue #282 has no cacheRead field and its tokensIn is the SDK's cumulative total (millions); readers leave it out of token averages.
+export const legacyTokens = t => t.provider === 'anthropic' && !('cacheRead' in t) && Number.isFinite(t.tokensIn);

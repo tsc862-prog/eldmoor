@@ -28,6 +28,24 @@ export function turnCollector() {
     get narration() {return narr.length ? narr[narr.length - 1] : ''},
   };
 }
+// Agent SDK usage (issue #282). The result's `modelUsage` is CUMULATIVE for the query() call and, on a resumed session,
+// already carries the earlier turns (sdk.d.ts: "read the latest result rather than summing"), so summing it per turn logged
+// ~3.3M tokens. This takes the difference from the totals saved on the session (`sess.lastUsage`, like `lastTotal` for cost)
+// and reports four numbers per turn: tokensIn = uncached input, cacheRead, cacheWrite, tokensOut. A total that went down
+// (a /clear, a new query) is a fresh count. A session saved before this field with cost history (lastTotal > 0) has no baseline: that one
+// turn reports null and sets it. No usable modelUsage -> all null, baseline untouched.
+export function usageDelta(sess, result) {
+  const none = {tokensIn: null, tokensOut: null, cacheRead: null, cacheWrite: null};
+  const mu = result && result.modelUsage && typeof result.modelUsage === 'object' ? Object.values(result.modelUsage).filter(u => u && typeof u === 'object') : [];
+  if (!mu.length) return none;
+  const n = v => Number.isFinite(v) && v > 0 ? v : 0, sum = k => mu.reduce((t, u) => t + n(u[k]), 0);
+  const cur = {tokensIn: sum('inputTokens'), tokensOut: sum('outputTokens'), cacheRead: sum('cacheReadInputTokens'), cacheWrite: sum('cacheCreationInputTokens')};
+  const last = sess.lastUsage; sess.lastUsage = cur;
+  if (!last) return sess.lastTotal > 0 ? none : cur; // call before the cost baseline moves
+  const reset = Object.keys(cur).some(k => cur[k] < (last[k] || 0));
+  const d = {}; for (const k of Object.keys(cur)) d[k] = reset ? cur[k] : cur[k] - (last[k] || 0);
+  return d;
+}
 // A local-loop turn (scripts/local-agent.mjs result) -> the record's numbers and flags.
 export function localRec(r) {
   if (!r) return {tools: [], narration: '', flags: ['failed']};

@@ -257,7 +257,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     if (dm) {const c = claimOf(DM_KEY); if (!c || c.runner !== rid) return [409, {ok: false, refused: true, error: 'Only the runner holding the DM seat writes its turns.'}];
       behavior.turn({...rec, seat: 'dm', hero: null, runner: rid, provider: (c.info && c.info.provider) || rec.provider, model: (c.info && c.info.model) || rec.model});
       // the game keeps the DM's per-turn record (issue #181): this turn's cost, model and seconds close it (DM-only data, never shown to heroes)
-      if (be.dmCall) try {Promise.resolve(be.dmCall('turn_end', {turn: rec.turn, model: (c.info && c.info.model) || rec.model, provider: (c.info && c.info.provider) || rec.provider, cost: rec.cost, seconds: rec.seconds, tokensIn: rec.tokensIn, tokensOut: rec.tokensOut})).catch(() => {})} catch {}
+      if (be.dmCall) try {Promise.resolve(be.dmCall('turn_end', {turn: rec.turn, model: (c.info && c.info.model) || rec.model, provider: (c.info && c.info.provider) || rec.provider, cost: rec.cost, seconds: rec.seconds, tokensIn: rec.tokensIn, tokensOut: rec.tokensOut, cacheRead: rec.cacheRead, cacheWrite: rec.cacheWrite})).catch(() => {})} catch {}
       return [200, {ok: true}]}
     if (hero == null || Number.isNaN(hero)) return [400, {ok: false, error: 'turn needs the hero id'}];
     const c = claimOf(hero); if (!c || c.runner !== rid) return [409, {ok: false, refused: true, error: `Only the runner holding hero #${hero} writes its turns.`}];
