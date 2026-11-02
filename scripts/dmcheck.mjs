@@ -14,6 +14,13 @@
 //      a badly hurt member before a fight or trap, an open scene or vote, one at a time, per day), all in
 //      the DM log tagged dm-agent; dm_status and table_call with nothing staged. In part 4 the runner's table
 //      voice (scripts/dm-agent.mjs tableVoice, mock model) answers a staged meeting's calls over /play/dm.
+//   1c. NPC conversations (issue #170): a member's talk opens a conversation; a mock DM answers a greeting
+//      with each follow-up (trade then buy/sell with the person, rumour with a map marker, job on the board,
+//      blessing, leave, combat as a staged ambush), a silent seat is answered by the scripted DM at once, a
+//      polled-but-silent DM after the budget, a multi-exchange conversation closes after CONV.EXCHANGES, a hostile
+//      follow-up is refused while a member is badly hurt, the person's record (mood, warmth, hostile, notes) is
+//      readable and saved, and npc_call never carries a member's private notes. In part 4 the runner's talk voice
+//      (scripts/dm-agent.mjs talkVoice, mock model) answers a conversation over /play/dm.
 //   5. The runner end to end: `npm run dm -- --provider ollama` against a mock Ollama and a headless
 //      world opened with --dm: it claims the seat, reads, writes a note, pulls a lever, gets one
 //      refused, prints a cost line per turn and keeps its session in logs/agents/dm.json (resumed next run).
@@ -154,6 +161,110 @@ console.log('staged scenes: refusals');
   T.TABLE.mode = 'auto'}
 function CITYN() {return S.agents.length && (S.fellowship.hall || 'Highgate')}
 
+// ---------------------------------------------------------------- 1c. NPC conversations (issue #170)
+console.log('NPC conversations');
+{const TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), F_ = await import('../src/sim/fellowship.js');
+  const {homeOf} = await import('../src/data/races.js'), {SLOTS} = await import('../src/data/items.js');
+  const L = fellows(), A = L[0], B = L[1], c0 = homeOf(A);
+  F_.setMinds('agent'); for (const x of L) x.hp = maxHp(x);
+  const npc = role => S.npcs.find(p => p.town === c0.name && p.role === role);
+  const beside = (a, p, dx = 1) => {a.state = 'town'; a.town = c0.name; a.x = p.x + dx; a.y = p.y; a.pq = []; a.target = null; a.dest = null; a.hidden = false};
+  const away = () => {for (const x of L) {x.x = c0.gate.x + 30; x.y = c0.gate.y}};
+  const act = (a, tool, args) => {a.playRate = []; return P.playerAct(a.id, tool, args || {})};
+  const clear = () => {TK.CONV.PER_DAY = 99; for (const c of (S.talks ? S.talks.cur.slice() : [])) {c.state = 'done'; S.talks.cur.splice(S.talks.cur.indexOf(c), 1)} for (const p of S.npcs) {delete p.snub; delete p.trade}};
+  const secret = 'QZXjournal' + Math.floor(Math.random() * 1e9).toString(36) + 'Q';
+  P.playerAct(A.id, 'journal_write', {text: 'Private: ' + secret}); P.playerAct(A.id, 'remember', {title: 'mine', text: 'Private memory ' + secret});
+  // a silent seat: the DM agent is not polling, so the scripted DM answers at once from the role
+  away(); clear(); const qm = npc('quartermaster'); beside(A, qm); setDmSeat(false); // nobody in the seat
+  let r = act(A, 'talk', {target: 'quartermaster', text: 'Good day. What do you have for the road?'});
+  ok(r.ok && r.answer && !r.waiting && r.follow_up === '[trade opened]', `a silent seat: the scripted DM answers at once, ${qm.title} opens their stock ("${r.answer}")`);
+  ok(/^You read .*: they want |^You listen to .*, but cannot tell what they really want\.$/.test(r.read || '') && S.dmLog.some(e => e.kind === 'talk' && e.detail.skill === 'empathy'), `the member reads the person (Empathy on Insight): "${r.read}"`);
+  ok(qm.trade && qm.mood && typeof qm.warmth === 'number', `the person's record: mood ${qm.mood}, warmth ${qm.warmth}`);
+  setDmSeat(true);
+  A.x = c0.gate.x + 8; A.y = c0.gate.y; A.state = 'hunt'; A.gold = 200;
+  r = act(A, 'buy', {npc: qm.name, item: 'Linen Bandage', count: 2});
+  ok(r.ok === false && /too far/.test(r.error), 'buying from them out of reach is refused');
+  beside(A, qm); A.state = 'hunt'; // standing by them, but not "in town": the trade goes through the person
+  r = act(A, 'buy', {npc: qm.name, item: 'Linen Bandage', count: 2}); ok(r.ok && /Linen Bandage x2/.test(r.bought), `buy {npc} from the person: ${r.bought} for ${r.cost}g`);
+  const invM = await import('../src/sim/inv.js'); invM.addGood(A, Object.keys((await import('../src/data/items.js')).GOODS)[0], 2);
+  r = act(A, 'sell', {npc: qm.name}); ok(r.ok && r.gold_gained > 0, `sell {npc} to the person: ${r.sold} item(s) for ${r.gold_gained}g`);
+  ok(S.dmLog.some(e => e.kind === 'talk' && e.detail.trade), 'the trade is in the DM log');
+  // the DM agent listening: the member's line waits for it; npc_call carries what it needs and nothing private
+  away(); clear(); const smith = npc('smith'); beside(A, smith);
+  dmAct('npc_call'); r = act(A, 'talk', {target: smith.name, text: 'Can you mend this blade by nightfall?'});
+  ok(r.ok && r.waiting && !r.answer, 'with the DM voice polling, the member\'s line waits for the DM');
+  let call = dmAct('npc_call'); const cl = call.call;
+  ok(cl && cl.npc.name === smith.title + ' ' + smith.name && cl.member.name === A.name && cl.line === 'Can you mend this blade by nightfall?' && cl.offers.includes('trade') && cl.npc.want && cl.so_far.length,
+    `npc_call: ${cl && cl.npc.name}, ${cl && cl.npc.role}, wants "${cl && cl.npc.want}", offers ${cl && cl.offers.join('/')}`);
+  ok(typeof cl.member.read_them === 'boolean', `the DM sees whether the member read them (read_them ${cl.member.read_them})`);
+  ok(!JSON.stringify(call).includes(secret) && !JSON.stringify(dmAct('dm_status')).includes(secret), 'npc_call and dm_status never carry a member\'s journal or memories');
+  ok(dmAct('dm_status').conversations.some(c => c.waiting && c.conv === cl.conv), 'dm_status lists the waiting conversation');
+  const npcSay0 = S.dmAgent.day.npc || 0;
+  r = dmAct('npc_say', {npc: String(smith.id), conv: cl.conv, text: 'By nightfall, if you pay for the charcoal.', warmth: 1, remember: 'Promised the tank a mended blade by nightfall.'});
+  ok(r.ok && r.answered && (S.dmAgent.day.npc || 0) === npcSay0, 'npc_say {conv} answers the member (outside the 16 npc_say lines a day)');
+  step(1 / 60); ok((A.chat || []).some(e => e.talk === cl.conv && /charcoal/.test(e.text)) && A.playEv.some(e => /charcoal/.test(e.text) && e.w === 2), 'the member hears the answer in the game (chat, and an event that wakes them at once)');
+  r = dmAct('npc_offer', {npc: String(smith.id), kind: 'trade'}); ok(r.ok && r.mark === '[trade opened]', 'npc_offer trade: [trade opened]');
+  ok((A.chat || []).some(e => e.talk === cl.conv && e.mark === '[trade opened]'), 'the mark sits on the person\'s line (for the chat panel)');
+  r = dmAct('npc_offer', {npc: String(smith.id), kind: 'rumour', about: 'x'}); ok(r.ok === false && /one follow-up per exchange/.test(r.error), 'a second follow-up in the same exchange is refused');
+  ok(dmAct('npcs', {town: c0.name}).townsfolk.some(n => n.id === smith.id && n.fellowship && n.fellowship.notes.some(t => /nightfall/.test(t))), 'npcs shows the person\'s record of the Fellowship (the promise)');
+  // more exchanges: a rumour with a map marker, then a job, then the conversation closes
+  act(A, 'say', {text: 'What do you hear from the roads?'}); call = dmAct('npc_call');
+  const region = S.fellowship && (await import('../src/world/map.js')).ZONES[1];
+  r = dmAct('npc_offer', {npc: String(smith.id), conv: call.call.conv, kind: 'rumour', text: 'Ore carts stopped coming from the hills.', about: 'The ore road is blocked by something big; the carters will not go.', region});
+  ok(r.ok && r.mark === '[rumour]' && (r.place == null || S.places.some(q => q.id === r.place)), `npc_offer rumour (with text as the answer): ${r.hint}`);
+  ok(A.playEv.some(e => /\[rumour\]/.test(e.text)) && (A.memory && A.memory.recent.some(m => /ore road/.test(m.text))), 'the lead reaches the member as an event and in their memory');
+  act(A, 'say', {text: 'Is there work for us?'}); call = dmAct('npc_call');
+  const jobs0 = (S.adventures || []).filter(h => h.phase === 'open' && h.for === A.id).length;
+  r = dmAct('npc_offer', {npc: String(smith.id), conv: call.call.conv, kind: 'job', text: 'Bring back what the carters lost and I will pay.', tpl: 'relic'});
+  ok(r.ok && r.mark === '[job posted]' && (S.adventures || []).filter(h => h.phase === 'open' && h.for === A.id).length === jobs0 + 1, `npc_offer job: ${r.hint}`);
+  act(A, 'say', {text: 'Then we are agreed.'}); call = dmAct('npc_call');
+  r = dmAct('npc_say', {npc: String(smith.id), conv: call.call.conv, text: 'Agreed. Go.'});
+  ok(r.ok && r.ended && !TK.convWith(smith), `after ${TK.CONV.EXCHANGES} exchanges the conversation ends (${r.ended})`);
+  ok(S.talks.past[0] && S.talks.past[0].offers.join() === 'trade,rumour,job', 'the past conversation keeps its follow-ups');
+  // a polled but silent DM: the scripted DM answers after the budget
+  away(); clear(); const inn = npc('innkeeper'); beside(A, inn); TK.CONV.VOICE_MS = 60;
+  dmAct('npc_call'); r = act(A, 'talk', {target: 'innkeeper', text: 'Any news?'});
+  ok(r.waiting, 'the DM is polling: the line waits');
+  const tw = Date.now(); while (Date.now() - tw < 90) {} step(1 / 60);
+  ok(S.talks.stats.late >= 1 && (A.chat || []).some(e => e.talk && e.from.id === inn.id && e.by === 'scripted'), 'past the budget the scripted DM answers for them (late counted)');
+  TK.CONV.VOICE_MS = 8000;
+  // blessing (priests and hermits only), leave
+  away(); clear(); const pr = npc('priest'); beside(A, pr); dmAct('npc_call');
+  act(A, 'talk', {target: 'priest', text: 'Will you bless us before the road?'}); call = dmAct('npc_call'); A.blessed = 0;
+  ok(call.call.offers.includes('blessing'), 'a priest may bless');
+  r = dmAct('npc_offer', {npc: String(pr.id), kind: 'blessing', text: 'Kneel, then.'}); ok(r.ok && A.blessed === 1, 'npc_offer blessing: the member is blessed');
+  act(A, 'say', {text: 'One more thing, father.'}); dmAct('npc_call');
+  r = dmAct('npc_offer', {npc: String(pr.id), kind: 'leave', text: 'Another time.'});
+  ok(r.ok && r.mark === '[leaves]' && !TK.convWith(pr), 'npc_offer leave ends it');
+  r = act(A, 'talk', {target: 'priest', text: 'Wait!'}); ok(r.ok && r.ended && /turns away/.test(r.answer), 'and they will not talk to that member for a while');
+  // combat: refused while a member near is badly hurt; then a staged ambush, and the person turns hostile
+  away(); clear(); const capt = npc('captain'); beside(A, capt); beside(B, capt, 1.6); dmAct('npc_call');
+  act(A, 'talk', {target: 'captain', text: 'Your gate tax is robbery.'}); call = dmAct('npc_call');
+  B.hp = maxHp(B) * .2; const cc = dmAct('npc_call').call;
+  ok(!cc.offers.includes('combat'), 'combat is not among the legal follow-ups while a member near is badly hurt');
+  r = dmAct('npc_offer', {npc: String(capt.id), kind: 'combat', text: 'Guards! Take them!'});
+  ok(r.ok === false && /badly hurt/.test(r.error) && !(A.chat || []).some(e => /Take them/.test(e.text)), 'a hostile follow-up is refused while a member is badly hurt (and the line is not spoken)');
+  B.hp = maxHp(B); if (S.staged) {S.staged.day.n = 0; if (S.staged.cur) S.staged.cur.phase = 'done'}
+  r = dmAct('npc_offer', {npc: String(capt.id), kind: 'combat', text: 'Then pay in blood.', frame: 'Two of the gate watch draw steel and step in.'});
+  ok(r.ok && r.mark === '[combat]' && S.staged.cur && S.staged.cur.kind === 'ambush' && capt.hostile && capt.mood === 'hostile' && /outside the .* gate/.test(r.hint),
+    'npc_offer combat in town stages an ambush outside the gate; the person is hostile (mood hostile, hostile true)' + (r.ok ? '' : ': ' + r.error));
+  if (S.staged && S.staged.cur) S.staged.cur.phase = 'done';
+  // background heroes stay silent: a non-member agent hero's talk keeps the old greeting
+  const bg = S.agents.find(a => !a.fellow && a.state !== 'dead' && a.fac === A.fac);
+  if (bg) {P.markPlayer(bg, true); beside(bg, smith, -1); const n0 = S.talks.stats.opened; r = P.playerAct(bg.id, 'talk', {target: 'smith'});
+    ok(r.ok && S.talks.stats.opened === n0 && !r.waiting, 'a background hero\'s talk opens no conversation (the old greeting)'); P.markPlayer(bg, false)}
+  // no style cap on what the DM says (owner): long lines pass whole, up to a technical ceiling
+  {const long = 'The rain has not stopped for three days and the ford is running high. '.repeat(9).trim(); beside(A, smith);
+    const nr = dmAct('narrate', {text: long, near: A.name}), ns = dmAct('npc_say', {npc: String(smith.id), text: long});
+    ok(nr.ok && nr.narrated === long && ns.ok && ns.said === long && long.length > 600, `narrate and npc_say keep a ${long.length}-character line whole`);
+    ok(dmAct('npc_say', {npc: String(smith.id), text: 'x'.repeat(5000)}).said.length === DMA.NPC_SAY_MAX, `with a technical ceiling of ${DMA.NPC_SAY_MAX} characters`)}
+  // saved with the world
+  const snapT = JSON.parse(JSON.stringify(snapshot())); restore(snapT);
+  const cap2 = S.npcs.find(p => p.id === capt.id), sm2 = S.npcs.find(p => p.id === smith.id);
+  ok(sm2.fmem && sm2.fmem.notes.length && typeof sm2.warmth === 'number' && S.talks && S.talks.past.length, 'the people\'s records and the conversations survive snapshot -> JSON -> restore');
+  if (cap2.hostile) ok(cap2.mood === 'hostile', 'a hostile person stays hostile after a reload');
+  away(); clear()}
+
 // ---------------------------------------------------------------- 2. save and restore
 console.log('save and restore');
 const before = JSON.stringify(S.dmAgent.notes), day0 = S.dmAgent.day.pulls;
@@ -228,7 +339,25 @@ ok(h.dm.link === 'connected', 'after a call the seat shows connected');
   ok(sc && calls.length && mine.length >= Math.ceil(calls.length / 2), `the table voice answered ${mine.length} of ${calls.length} calls in ${((Date.now() - t0) / 1000).toFixed(1)} s (the scripted DM filled ${calls.length - mine.length})`);
   ok(asked.length && /Call \d+ \(voice/.test(asked[0]) && /drover/i.test(asked[0]), 'its prompt carries the scene and the call');
   ok(lines.some(l => /^\[table\] call \d+ /.test(l)), 'a log line per call: ' + (lines[0] || ''));
-  ok(fellows().some(a => (a.chat || []).some(e => /^Mock line/.test(e.text))), 'the members hear the DM\'s lines in the game')}
+  ok(fellows().some(a => (a.chat || []).some(e => /^Mock line/.test(e.text))), 'the members hear the DM\'s lines in the game')
+
+  {const wid = S.staged.cur && S.staged.cur.cast.npc; ok(wid != null && S.talks && (S.talks.cur.some(c => c.npc === wid) || S.talks.past.some(c => c.npc === wid)), 'the staged meeting leaves the way open for words (a conversation with the drover)')}}
+// the talk voice answers a member's words over /play/dm (issue #170)
+{const {talkVoice} = await import('./dm-agent.mjs'), TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), {homeOf} = await import('../src/data/races.js');
+  const A = fellows()[0], c0 = homeOf(A), qm = S.npcs.find(p => p.town === c0.name && p.role === 'quartermaster');
+  for (const c of (S.talks ? S.talks.cur.slice() : [])) {c.state = 'done'; S.talks.cur.splice(S.talks.cur.indexOf(c), 1)} delete qm.snub;
+  for (const x of fellows()) {x.x = c0.gate.x + 30; x.y = c0.gate.y}
+  A.state = 'town'; A.x = qm.x + 1; A.y = qm.y; A.pq = []; A.hidden = false;
+  const asked = [], lines = [];
+  const adapter = {call: async ({user, schema}) => {asked.push(user); return {text: JSON.stringify({text: 'Mock: salt pork and rope, friend, at honest weight.', offer: schema.properties.offer.enum.includes('trade') ? 'trade' : 'none', about: '', region: '', warmth: '1', remember: 'Sold them rope.'}), usage: {in: 400, out: 30, cost: 0}}}};
+  const v = talkVoice({base: B, adapter, model: 'mock', log: s => lines.push(s), pollIdle: 5, pollHot: 5, tool: (b, tool, args) => post('/play/dm', {tool, args, runner: 'test:1'})});
+  await new Promise(res => setTimeout(res, 50));
+  const r0 = P.playerAct(A.id, 'talk', {target: 'quartermaster', text: 'Have you rope and salt pork?'});
+  const t0 = Date.now(); while (Date.now() - t0 < 10000 && !(A.chat || []).some(e => /^Mock: salt pork/.test(e.text))) {step(1 / 60); await new Promise(res => setTimeout(res, 2))}
+  await v.stop();
+  ok(r0.waiting && (A.chat || []).some(e => /^Mock: salt pork/.test(e.text) && e.by === 'dm-agent' && e.mark === '[trade opened]'), `the talk voice answered as ${qm.title} ${qm.name} with a trade in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  ok(asked.length && /rope and salt pork/.test(asked[0]) && /You want:/.test(asked[0]), 'its prompt carries the person and the member\'s line');
+  ok(lines.some(l => /^\[talk\] /.test(l)), 'a log line per answer: ' + (lines[0] || ''))}
 r = await post('/play/release', {role: 'dm', runner: 'test:1'});
 setDmSeat(false);
 r = await post('/play/claim', {role: 'dm', runner: 'test:3'});

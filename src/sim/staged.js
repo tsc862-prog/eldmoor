@@ -39,6 +39,7 @@ import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {TABLE,openScene,tableOn,setSceneKind,setStageHooks} from './table.js';
+import {talkFromScene} from './talk.js'; // NPC conversations (#170)
 
 // ---- knobs ----
 export const STAGE={
@@ -55,7 +56,7 @@ export const STAGE={
   TRAP_FLOOR:.1,    // a sprung trap never takes a member below this share of max HP
   PACK_MAX:6,       // foes in a staged ambush (a reinforcement included)
   MISS_MAX:2,       // missed at-the-table calls before the scripted DM fills the rest of the scene at once
-  FRAME_MAX:280, TITLE_MAX:60, LINE_MAX:200, NAME_MAX:32, WANT_MAX:140, REVEAL_MAX:200, LABEL_MAX:60, REASON_MAX:160,
+  FRAME_MAX:280, TITLE_MAX:60, LINE_MAX:2000, NAME_MAX:32, // LINE_MAX: a technical ceiling for the DM's lines at the table, not a style limit (owner, #170) WANT_MAX:140, REVEAL_MAX:200, LABEL_MAX:60, REASON_MAX:160,
   PAST_KEEP:8,
 };
 export const STAGE_KINDS=['elite','ambush','meeting','trap','mystery','social'];
@@ -68,7 +69,7 @@ const COMP_ABOUT={none:'nothing changes',omen:'a sign or a sound, words only',fa
   rival:'the person turns one step colder (the next words are harder)',tremor:'the place turns against them: the remaining rolls are 2 harder'};
 const FIGHTING={elite:1,ambush:1,trap:1}; // kinds the pile-on rule guards
 const STATIC={trap:1,mystery:1}; // kinds with no one to walk: they wait where the party passes
-const SKILL={hear:'perception',spot:'perception',disarm:'traps',round:'survival',study:'lore',search:'perception',parley:'persuasion',press:'intimidation'};
+const SKILL={hear:'empathy',spot:'perception',disarm:'traps',round:'survival',study:'lore',search:'perception',parley:'persuasion',press:'intimidation'};
 const ATT=['hostile','wary','neutral','friendly'],ATT_DC={hostile:3,wary:1,neutral:0,friendly:-2};
 const NARRATOR={kind:'dm',name:'The Narrator'}; // the same stub sim/dmagent.js narrates with
 const DAY=1440;
@@ -79,6 +80,7 @@ const pickR=a=>a[Math.floor(r()*a.length)];
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f<>{}]+/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
 const low=s=>s?s.charAt(0).toLowerCase()+s.slice(1):s;
+const names=ids=>{const L=ids.map(id=>byId(id)).filter(Boolean).map(b=>b.name);return L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1]};
 const byId=id=>S.agents.find(x=>x.id===id)||null;
 const living=a=>a&&a.kind==='hero'&&a.state!=='dead';
 const pct=a=>Math.round(100*a.hp/Math.max(1,maxHp(a)));
@@ -182,7 +184,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     if(!C.want)return refuse('a '+kind+' needs cast.want: what this person wants from the party',a);
     const res=pull('create_npc',{role,...(C.name?{name:C.name.slice(0,24)}:{}),faction:['concord','warband','neutral'].includes(fac)?fac:'neutral',home:'camp',at,attitude:att,hours:12},{by:'dm-agent',reason:'staged '+kind+': '+reason});
     if(!res.ok)return refuse('the people lever said no: '+res.reason,a);
-    const w=res.ret;w.staged=rid;C.npc=w.id;C.name=w.title+' '+w.name;C.attitude=att}
+    const w=res.ret;w.staged=rid;if(C.want)w.want=C.want;C.npc=w.id;C.name=w.title+' '+w.name;C.attitude=att}
   else if(kind==='trap'){const t=TRAPS.find(x=>x.id===String(cast.trap||'').toLowerCase())||pickR(TRAPS.filter(x=>x.dmg>0));
     C.trap={id:t.id,name:t.name,dmg:t.dmg};C.dc=8+Math.ceil(P.avg/2)+1;if(!C.name)C.name=cap(t.name)}
   else if(kind==='mystery'){const k=['shrine','cairn_door','ruin'].includes(String(cast.place||'').toLowerCase())?String(cast.place).toLowerCase():'shrine';
@@ -255,6 +257,7 @@ function finish(rec,sc,why){if(rec.phase==='done')return;rec.phase='done';rec.re
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.alive&&!m.gone){m.gone=true;m.target=null}}
   LOG('payoff',['Staged ',gd(rec.kind),' ',gd(rec.title),' ends: '+clean(rec.result,180)],{staged:rec.id,kind:rec.kind,result:rec.result,calls:sc&&sc.calls?sc.calls.map(c=>({kind:c.kind,by:c.by,...(c.pick?{pick:c.pick}:{})})):null,heroes:sc?sc.ids:[]});
   const F=S.fellowship;if(F)F.tableDm=S.dmLogSeq||0; // the scene's own rolls do not reopen the table as a DM check
+  if(sc&&(rec.kind==='meeting'||rec.kind==='social')&&rec.cast.npc!=null){const w=npcOf(rec.cast.npc);if(w&&w.attitude!=='hostile')talkFromScene(w,sc.ids)} // the members' next words go on with it (#170)
   retire(rec)}
 function retire(rec){const G=S.staged;G.past.unshift({id:rec.id,kind:rec.kind,title:rec.title,day:Math.floor(rec.born/DAY)+1,result:rec.result});if(G.past.length>STAGE.PAST_KEEP)G.past.pop()}
 
@@ -278,7 +281,11 @@ function applyNew(sc,a,act){const k=act.k,T=sc.ctx.tally;T[k]=T[k]||{n:0,win:0,w
   if(k==='pass'||k==='leave')return null;
   if(k==='help'){T.help.win++;return 'gives their word'}
   let dc=dcOf(sc);if(sc.kind==='trap'&&sc.ctx.spotted&&(k==='disarm'||k==='round'))dc-=2;
-  const R=roll(sc,a,k,dc);if(R.pass)T[k].win++;
+  const R=roll(sc,a,k,dc);if(R.pass){T[k].win++;(T[k].won||(T[k].won=[])).push(a.id)}
+  // hearing someone out (#170): everyone listens; the roll is whether they caught what lies under the words
+  if(k==='hear'){const rec=recOf(sc),n=nameOf(sc),w=rec&&(rec.cast.reveal||rec.cast.want),d=' ('+R.total+' vs '+R.dc+')';
+    if(R.pass){notify(a,'You read '+n+(w?': '+w:'')+'.',true);if(w)remember(a,'table','At '+sc.title+' I understood '+n+': '+w);return 'understood '+n+(w?': '+w:'')+d}
+    notify(a,'You heard '+n+' out, but missed what lies under the words.',true);return 'listened, but missed what '+n+' truly wants'+d}
   if(sc.kind==='trap'){if(k==='spot'&&R.pass)sc.ctx.spotted=true;if(k==='disarm'){if(R.pass)sc.ctx.disarmed=true;else{const h=spring(sc,a);sc.ctx.sprung=(sc.ctx.sprung||[]).concat(a.id);return res(R)+'; it springs on them (-'+h+')'}}
     if(k==='round'&&R.pass)(sc.ctx.safe||(sc.ctx.safe=[])).push(a.id)}
   if(sc.kind==='mystery'&&R.pass&&!sc.ctx.found){sc.ctx.found=a.id;const rec=recOf(sc),t=rec&&rec.cast.reveal||pickR(REVEALS);sc.ctx.reveal=t;
@@ -291,10 +298,12 @@ function reflexNew(sc,a){const k=sc.kind,hurt=a.hp<maxHp(a)*.3;
   if(k==='mystery')return a.cls==='Mage'||a.cls==='Priest'?'study':'search';
   return null}
 function outcomeNew(sc){const rec=recOf(sc),T=sc.ctx.tally,w=npcOf(sc.ctx.npc),n=nameOf(sc),win=x=>T[x]?T[x].win:0;
-  if(sc.kind==='meeting'){const helped=win('help'),heard=win('hear');
+  if(sc.kind==='meeting'){const helped=win('help'),heard=win('hear'),H=T.hear||{who:[],won:[]},got=H.won||[],missed=H.who.filter(id=>!got.includes(id)),want=rec&&rec.cast.want;
     const att=helped?'friendly':heard?(w&&ATT.indexOf(w.attitude)<2?'neutral':w?w.attitude:'neutral'):w?w.attitude:'neutral';setAtt(w,att);
     if(helped&&rec&&rec.cast.want)for(const id of sc.ids){const b=byId(id);if(living(b))remember(b,'table','We gave our word to '+n+': '+rec.cast.want+'.')}
-    return helped?n+' has their word: the Fellowship will help ('+(rec&&rec.cast.want||'as asked')+').':heard?n+' is glad to be heard, and watches them go.':n+' watches them ride on.'}
+    const parts=[];if(helped)parts.push(names(T.help.who)+' gave '+n+' their word ('+(want||'as asked')+')');if(got.length)parts.push(names(got)+' understood '+n+(want&&!helped?' ('+want+')':''));
+    if(missed.length)parts.push(names(missed)+' listened but missed the point');
+    return parts.length?parts.join('; ')+'.'+(helped?'':heard?' '+n+' is glad to be heard, and watches them go.':' '+n+' watches them go.'):n+' watches them ride on.'}
   if(sc.kind==='social'){const p=win('parley'),q=win('press'),tried=(T.parley?T.parley.n:0)+(T.press?T.press.n:0);
     const cur=w?w.attitude:'neutral',i=ATT.indexOf(cur);
     let att=cur,t;if(p){att='friendly';t=n+' comes round.'}else if(q){att=i>1?'wary':cur;t=n+' gives way, and will not forget it.'}else if(tried){att=ATT[Math.max(0,i-1)];t=n+' is not moved, and likes them less for trying.'}else t='They walk away from '+n+'.';
@@ -379,7 +388,7 @@ export function tableAnswer(a){a=a&&typeof a==='object'?a:{};const G=stagedState
   const c=(sc.calls||[]).find(x=>x.id===id);if(!c)return no('no call '+(a.call==null?'':a.call)+' in this scene (see table_call)');
   if(c.done)return no('too late: the '+(c.by==='scripted'?'scripted DM':'DM')+' already answered call '+id,true);
   if(c.kind==='complication'){if(!pick||!c.legal.includes(pick))return no('pick must be one of '+c.legal.join(', '))}
-  else if(!text)return no('say something (one line, at most '+STAGE.LINE_MAX+' characters)');
+  else if(!text)return no('say something');
   const rec=recOf(sc),w=rec&&npcOf(rec.cast.npc);
   resolve(sc,c,{text,pick:c.kind==='complication'?pick:null,by:'dm-agent',from:c.kind==='voice'&&w?npcFrom(w):NARRATOR});G.stats.answered++;
   return {ok:true,call:id,kind:c.kind,said:text,...(c.pick?{pick:c.pick}:{}),next:(sc.calls||[]).some(x=>!x.done)?'another call is waiting (table_call)':null}}
