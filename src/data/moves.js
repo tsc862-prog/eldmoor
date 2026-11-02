@@ -121,7 +121,7 @@ export const PASSIVES={
   barkskin:{name:'Barkskin',cls:'Wildspeaker',lvl:2,defense:.05,desc:'+5% Defense: the skin toughens like bark.'},
   greenpatience:{name:'Green Patience',cls:'Wildspeaker',lvl:7,healMul:1.1,health:.04,desc:'Healing done +10% and +4% Health.'},
   practisedear:{name:'Practised Ear',cls:'Skald',lvl:2,crit:.05,desc:'+5% Crit: you hear the beat of the fight.'},
-  lastverse:{name:'Last Verse',cls:'Skald',lvl:7,takenBelow:{hp:.5,mul:.9},desc:'Under half health, blows on you land at 90%: you sing louder when it matters.'},
+  lastverse:{name:'Last Verse',cls:'Skald',lvl:7,takenBelow:{hp:.5,mul:.8},desc:'Under half health, blows on you land at 80%: you sing louder when it matters.'},
   // ---- Specialisation passives (issue #82), learned with the path at level 10 ----
   wardenvow:{name:"Warden's Vow",cls:'Warrior',spec:'warden',lvl:10,defense:.05,health:.04,desc:'+5% Defense and +4% Health.'},
   reaverfury:{name:"Reaver's Fury",cls:'Warrior',spec:'reaver',lvl:10,crit:.05,openerMul:1.15,desc:'+5% Crit; the first blow on an unhurt foe does 15% more.'},

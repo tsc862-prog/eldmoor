@@ -546,7 +546,7 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  ok(/\(3 rounds\.\)/.test(scR.summary) && /the foe struck \d+ times?/.test(lastTable()), `the outcome: ${scR.summary}`);
  RM.forEach(x => {delete x.mcr.zz_test});
  // (b) the foe falls: the scene ends in the round it goes down, with today's outcome text
- fieldR(); q = foeAt(8, .02); q.hp = 1; scR = elite(q); p1 = stepUntil(() => !S.table, 30);
+ fieldR(); q = foeAt(8, .02); q.hp = 1; scR = elite(q); scR.pl = RM.map(x => x.id); /* each member has already parleyed (#296 once a fight): a reflex member would talk a 1 HP foe down, and this asserts the strike */ p1 = stepUntil(() => !S.table, 30);
  ok(!S.table && scR.rd === 1 && !q.alive && /^The foe is down\./.test(scR.summary), `a foe at 1 HP falls in round 1 and the scene ends: ${scR.summary}`);
  // (c) a member falls (a child, so the main party keeps its five): the scene ends on the fall
  const fc = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--rounds', 'fall'], {encoding: 'utf8'}), lfc = (fc.stdout || '').trim().split('\n').pop(); if (fc.stderr) process.stderr.write(fc.stderr);
