@@ -13,7 +13,8 @@ import {cryptPull,goalEvent} from './goals.js';
 import {record,timeline,first} from './history.js';
 import {livingGuilds} from './guilds.js';
 import {brainOk} from './brain.js';
-import {unitDraft} from './council.js';
+import {unitDraft,cryptHold,cryptReserved} from './council.js';
+import {notify} from './notify.js';
 
 const tagOf=(gu,f,name)=>gu?{t:'<'+gu.tag+'> '+gu.name,c:'f'+f}:name?{t:name,c:'f'+f}:{t:'A '+FAC[f].name+' group',c:'f'+f};
 // A group sets out for the Crypt (also called by sim/council.js when the Fellowship votes to go).
@@ -22,15 +23,22 @@ export function musterCrypt(mem,f,main,name){
   CRYPT.group={fac:f,mem,guild:main,phase:'gather',t:30};if(name)CRYPT.group.name=name;
   for(const a of mem)record(a,'Joined a group for ',{t:CRYPT.name,c:'gd'},'.');
   log(tagOf(main,f,name),' formed a group for ',{t:CRYPT.name,c:'gd'},'.')}
+// A background group still gathering gives way to the Fellowship (#135): back to hunting. A group already
+// inside is left alone (the Fellowship goes next, see council.js cryptHold). True when one stepped aside.
+export function yieldCrypt(F){const g=CRYPT.group;if(!g||g.phase!=='gather'||g.mem.some(a=>a.fellow))return false;
+  for(const a of g.mem){a.state='hunt';a.dest=null;a.target=null;record(a,'Stepped aside at ',{t:CRYPT.name,c:'gd'},' for the Fellowship.');notify(a,'Your group steps aside at '+CRYPT.name+' to let the Fellowship go first; you go back to hunting.',true)}
+  log(tagOf(g.guild,g.fac,g.name),' step aside at the mouth of ',{t:CRYPT.name,c:'gd'},' to let ',{t:F.name,c:'gd'},' go first.');
+  CRYPT.group=null;return true}
 export function dungeonCheck(dt){const agents=S.agents;
   const g=CRYPT.group;
-  if(!g){CRYPT.cd-=dt;if(CRYPT.cd>0)return;CRYPT.cd=20+rnd()*25;
+  if(!g){if(cryptHold())return; // the Fellowship's call holds the Crypt (reserved, or waiting with the cooldown waived)
+    CRYPT.cd-=dt;if(CRYPT.cd>0)return;CRYPT.cd=20+rnd()*25;
     const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&a.lvl>=7&&!a.raid&&['hunt','travel','town','return'].includes(a.state)&&brainOk(a,'crypt'));
     const cands=livingGuilds().filter(x=>x.fac===f&&pool.filter(a=>a.guild===x).length>=3),gu=cands.length?pickA(cands):null; // none: the unguilded mixed pool below
     let mem=pool.filter(a=>gu&&a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
     if(mem.length<5)mem=mem.concat(pool.filter(a=>!mem.includes(a)).sort((x,y)=>cryptPull(y)-cryptPull(x)).slice(0,5-mem.length));
     mem=unitDraft(mem,pool,5,'crypt'); // the Fellowship (#68) goes all together or not at all; unchanged without one
-    if(mem.length<4)return;
+    if(CRYPT.group||cryptReserved()||mem.length<4)return; // the Fellowship may have just taken or reserved the Crypt
     musterCrypt(mem,f,gu&&mem.filter(a=>a.guild===gu).length>=3?gu:null,mem.some(a=>a.fellow)&&S.fellowship?S.fellowship.name:null);return}
   g.mem=g.mem.filter(a=>a.state==='dungeon');
   if(!g.mem.length){CRYPT.group=null;return}

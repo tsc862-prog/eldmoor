@@ -24,9 +24,9 @@ import {bond} from './bonds.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {fellows,fellowParty,campaign} from './fellowship.js';
-import {musterCrypt} from './dungeon.js';
+import {musterCrypt,yieldCrypt} from './dungeon.js';
 
-export const COUNCIL={PROP_MIN:120,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:120,HEAR:7};
+export const COUNCIL={PROP_MIN:120,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,WAIT_MIN:480,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:120,HEAR:7};
 export const PROP_KINDS=['job','crypt','raid','split','other'];
 const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',other:'decide'};
 const gd=t=>({t,c:'gd'});
@@ -71,6 +71,7 @@ export function propose(a,kind,details,o={}){const F=F_();if(!F||!a||!a.fellow)r
   const P={id:F.propSeq=(F.propSeq||0)+1,kind,details:d||KIND_TEXT[kind],by:a.id,byName:a.name,at:Math.round(S.gameMin),until:S.gameMin+COUNCIL.PROP_MIN,votes:{},status:'open',result:null,src:o.src||'member'};
   if(o.job!=null)P.job=Number(o.job);
   (F.props||(F.props=[])).unshift(P);if(F.props.length>COUNCIL.PROPS_MAX)F.props.pop();
+  if(kind==='crypt')yieldCrypt(F); // reserve on proposal: a background group still gathering steps aside
   campaign('council',a,' proposes to '+KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:'')+'.');
   for(const b of fellows())if(b!==a)notify(b,a.name+' proposes to '+KIND_TEXT[kind]+(d?': '+d:'')+'. vote('+P.id+', yes|no, reason).',true);
   if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'my proposal','agent');
@@ -95,12 +96,32 @@ export function resolveProp(P,why){if(!P||P.status!=='open')return P;const L=fel
   if(pass)carryOut(P);else if(P.kind==='crypt'||P.kind==='raid'){F.cool=F.cool||{};F.cool[P.kind]=S.gameMin+COUNCIL.CALL_COOL}
   return P}
 
+// Priority (#135): the Fellowship comes first at the Crypt and the Kragmaw muster. A proposal that is open or
+// passed-and-waiting (F.wait[kind] = game minute until which the call stands) keeps background groups from forming.
+export const cryptReserved=()=>openProps().some(P=>P.kind==='crypt');
+const waiting=(F,k)=>F&&F.wait&&F.wait[k]>S.gameMin;
+function setWait(F,k){(F.wait||(F.wait={}))[k]=S.gameMin+COUNCIL.WAIT_MIN}
+// The faction whose raid muster is reserved for the Fellowship, or -1.
+export function raidReserve(){const F=F_();return F&&(openProps().some(P=>P.kind==='raid')||waiting(F,'raid'))?F.fac:-1}
+function cryptReady(L){return L.every(b=>b.lvl>=7&&['hunt','travel','town','return','follow'].includes(b.state))}
+function goCrypt(F,L){for(const b of L)if(b.player)b.cryptOk=true;
+  musterCrypt(L,F.fac,null,F.name);campaign('council',gd(F.name),' sets out for ',gd(CRYPT.name),' together.')}
+// Called by dungeonCheck while no group holds the Crypt. True: the Crypt is the Fellowship's (reserved or just launched); the
+// background must not form a group. A waiting Fellowship goes the moment the Crypt is free and everyone can, the cooldown waived.
+export function cryptHold(){const F=F_();if(!F)return false;
+  if(F.wait&&F.wait.crypt){if(!waiting(F,'crypt')){delete F.wait.crypt;campaign('council',gd(F.name),' gives up waiting at ',gd(CRYPT.name),'.');return false}
+    const L=fellows();if(L.length&&cryptReady(L)){delete F.wait.crypt;goCrypt(F,L);log(gd(F.name),' go down into ',gd(CRYPT.name),' as the way clears.');return true}return true}
+  return cryptReserved()}
 function carryOut(P){const F=F_(),L=fellows();
-  if(P.kind==='crypt'){if(CRYPT.group){P.result+='; the Crypt was taken by another group';return}
-    if(L.some(b=>b.lvl<7||!['hunt','travel','town','return','follow'].includes(b.state))){P.result+='; not everyone could go';return}
-    for(const b of L)if(b.player)b.cryptOk=true;
-    musterCrypt(L,F.fac,null,F.name);campaign('council',gd(F.name),' sets out for ',gd(CRYPT.name),' together.')}
-  else if(P.kind==='raid'){(F.accept||(F.accept={})).raid=S.gameMin+COUNCIL.ACCEPT_MIN;for(const b of L)if(b.player)b.raidOk=true}
+  if(P.kind==='crypt'){const mine=CRYPT.group&&CRYPT.group.mem.some(a=>a.fellow);if(mine){P.result+='; we are already on our way';return}
+    yieldCrypt(F);
+    if(CRYPT.group||!cryptReady(L)){setWait(F,'crypt');const inside=!!CRYPT.group;
+      P.result+=inside?'; another group is inside, we go when they come out':'; not everyone can go yet, we go as soon as we can';
+      campaign('council',gd(F.name),inside?' wait for the group inside ':' ready themselves for ',gd(CRYPT.name),'.');
+      if(inside)log(gd(F.name),' wait at the mouth of ',gd(CRYPT.name),' for the group inside to come out.');
+      for(const b of L)notify(b,inside?'Another group is inside '+CRYPT.name+'. The vote stands: you go the moment they come out.':'The vote stands: you go to '+CRYPT.name+' as soon as everyone can.',true);return}
+    goCrypt(F,L)}
+  else if(P.kind==='raid'){setWait(F,'raid');(F.accept||(F.accept={})).raid=S.gameMin+COUNCIL.ACCEPT_MIN;for(const b of L)if(b.player)b.raidOk=true}
   else if(P.kind==='split'){for(const b of L)splitOff(b,true);campaign('council',gd(F.name),' splits up for a while, by agreement.')}
   else if(P.kind==='job'){const lead=leaderOfF();if(lead)notify(lead,'The party agreed to take '+(P.job!=null?'job '+P.job:'a job')+'. As leader, take_adventure('+(P.job!=null?P.job:'id')+') at the gate.',true)}}
 
@@ -127,7 +148,7 @@ export function unitDraft(list,pool,n,kind){const top=list.slice(0,n),F=F_();if(
   const L=fellows(),ready=L.length>0&&L.every(free),agents=L.filter(a=>a.player);
   const accepted=!agents.length||(F.accept&&F.accept[kind]>S.gameMin);
   if(ready&&accepted){for(const a of agents){if(kind==='crypt')a.cryptOk=true;else a.raidOk=true}
-    if(F.accept)delete F.accept[kind];
+    if(F.accept)delete F.accept[kind];if(F.wait)delete F.wait[kind];
     const out=L.slice();for(const a of top.concat(pool))if(out.length<n&&!a.fellow&&!out.includes(a))out.push(a);
     campaign('council','The call to '+(kind==='crypt'?CRYPT.name:'raid Kragmaw')+' came; ',gd(F.name),' answers it together.');return out}
   if(ready&&!(F.cool&&F.cool[kind]>S.gameMin)&&!openProps().some(P=>P.kind===kind)){const lead=leaderOfF();

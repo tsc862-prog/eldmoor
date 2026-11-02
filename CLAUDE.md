@@ -97,6 +97,7 @@ other. The rules:
   model re-prompted and stopped, the scripted takeover of an idle hero).
 - `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
+- `npm run setupcheck`, `npm run setupsmoke`: the New World setup (`src/sim/setup.js`, `src/ui/setup.js`, #133): New world opens a page to choose the Fellowship (class, name, people, mind per place) and the DM, then builds the world seeded (`init({setup})`) with agent members agent-played from the first tick and starts their runners through the relay.
 - `start-eldmoor.cmd` (Windows, double-click): starts the relay with app runners on and the dev server in two
   windows through `npm.cmd` (PowerShell's execution policy never matters) and opens the game.
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
