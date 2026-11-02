@@ -28,7 +28,7 @@ export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agent
   // Chance duels: each free Concord hero rolls against every free Warband hero within 3 tiles (sight-scaled), in id order.
   for(const a of free){if(a.fac!==0)continue;const r=3*sightMul(zoneAt(a.x,a.y));
     for(const b of nearHeroes(a.x,a.y,r)){if(!freeSet.has(b)||b.fac!==1||a.state==='duel'||b.state==='duel')continue;
-      if(dist(a,b)<r&&Math.abs(a.lvl-b.lvl)<=2&&rnd()<.0375*tm(a,'bold')*tm(b,'bold')){a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null}}}
+      if(dist(a,b)<r&&Math.abs(a.lvl-b.lvl)<=2&&rnd()<.03*tm(a,'bold')*tm(b,'bold')){a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null}}}
   for(const a of agents){if(a.state==='duel'&&a.target){if(a.histDuel!==a.target){a.histDuel=a.target;record(a,'Dueled ',a.target,' in '+ZONES[zoneAt(a.x,a.y)]+'.')}}else a.histDuel=null}
   for(const a of agents)if(a.state==='duel'&&a.target)duelBark(a,a.target);
   // Assists: free guildmates within 8 tiles of a dueller roll to rush in; the first to pass goes.
