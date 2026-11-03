@@ -188,17 +188,27 @@ if (process.argv[2] === '--arrival') {
   const rec = S.fellowship.log.find(e => e.kind === 'recruit');
   ok(rec && /at the table/.test(txt(rec)) && /spoke against it/.test(txt(rec)), `the oath is sworn at the table; the objection is spoken, not a veto (${rec && txt(rec)})`);
   ok(sc.calls.length === 2 && sc.calls[0].by === 'dm-agent' && sc.calls[1].by === 'scripted' && sc.calls[1].kind === 'oath', 'the silent DM\'s oath call is filled by the scripted DM');
+  const fills = why => (S.dmLog || []).filter(e => e.kind === 'agent' && e.detail && e.detail.fill && e.detail.scene === 'arrival' && e.detail.why === why);
+  ok(fills('slow').some(e => e.detail.call === 'oath'), 'the reflex fill is logged in the DM log (fill, why: slow) (#561)');
   const lt = P.playerAct(nh.id, 'recall', {tag: 'letter'});
   ok(lt.ok && lt.notes.some(n => /river road/.test(n.text)), 'the fallen member\'s letter reaches the newcomer');
-  // the scripted DM voices it when the seat is closed; at camp the newcomer sits at the fire
+  // the DM runner is gone (#561: no seat-closed story mode; the seat stays open): its reflexes voice the newcomer and the oath; at camp the newcomer sits at the fire
   const CM = await import('../src/sim/camp.js'), field2 = () => {for (const x of F_.fellows()) {x.state = 'hunt'; x.x = home.gate.x + 12 + (x.id % 3) * .5; x.y = home.gate.y + 2; x.hidden = false; x.dest = null; x.target = null; x.pq = []}};
-  setDmSeat(false); const d2 = M[4], s2 = d2.fellowRole; field2();
+  const DR = await import('../src/sim/dmreflex.js'); let dmUp = true; DR.setDmAlive(() => dmUp); DR.gone(); // the runner still holds the seat, but polls nothing (busy in a turn)
+  const d2 = M[4], s2 = d2.fellowRole; field2();
   HE.fall(d2, 'a second test'); step(1 / 60); field2();
   const why = CM.leaderRest(T.leaderOfF ? T.leaderOfF() : C.leaderOfF(), 4), camp = S.fellowship.camp; ok(!why && camp && camp.phase, 'the company makes camp out on the road' + (why ? ' (' + why + ')' : ''));
   g = 0; while (!(S.table && S.table.kind === 'arrival') && g++ < 240) step(1 / 60); const sc2 = S.table, nh2 = byId(S.fellowship.slots[s2]);
   ok(sc2 && nh2 && nh2.state === 'camp' && camp.ids.includes(nh2.id), 'at camp the newcomer is placed at the camp\'s edge and sits at the fire');
+  ok(SIM.dmSeatOn(), 'the seat stays open: a played world always has a DM agent (#561)');
+  {let k = 0; while (S.table === sc2 && sc2.phase === 'frame' && k++ < 600) step(1 / 60)} for (let k = 0; k < 60; k++) step(1 / 60); // past the frame, then a second of the voice call
+  ok(sc2 && sc2.calls && sc2.calls[0] && !sc2.calls[0].done && sc2.calls[0].t > 0, 'a runner that holds the seat but is busy is waited for (its bounded TABLE.dmMs)');
+  dmUp = false; DR.gone(); step(1 / 60); // the runner is gone (the host saw its claim drop)
+  ok(sc2 && sc2.calls[0].done && sc2.calls[0].by === 'scripted', 'the runner gone: its reflex fills the waiting call at once');
   if (sc2) P.playerAct(live.id, 'scene_act', {option: 'greet'}); g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
-  ok(sc2 && sc2.calls.length === 2 && sc2.calls.every(c => c.by === 'scripted'), 'with the seat closed the scripted DM voices the newcomer and the oath');
+  ok(sc2 && sc2.calls.length === 2 && sc2.calls.every(c => c.by === 'scripted'), 'with the DM runner gone its reflexes voice the newcomer and the oath');
+  ok(fills('slow').some(e => e.detail.call === 'voice') && fills('gone').some(e => e.detail.call === 'oath'), 'each fill is logged: the voice it waited for (slow), the oath nobody listened to (gone)');
+  DR.setDmAlive(null);
   S.fellowship.camp = null; for (const x of F_.fellows()) x.state = 'town';
   // no host: the replacement takes the place at once, as always
   SIM.setRunnerLinks(null); const d3 = F_.fellows().find(x => x !== live && x.fellowRole !== 'tank'), s3 = d3.fellowRole;
@@ -666,7 +676,9 @@ if (process.argv[2] === '--talk') {
   clear(); beside(A, inn); SIM.setDmSeat(true); TK.setDmAlive(() => true);
   r = talk(A, inn, 'Good evening.'); const cw = S.talks.cur.find(c => c.wait);
   ok(r.waiting && cw && cw.wait.ms === TK.CONV.GRACE_MS, 'a live but busy DM is waited for (' + (cw && cw.wait.ms) + ' ms)');
-  TK.setDmAlive(null); SIM.setDmSeat(false); clear();
+  TK.setDmAlive(null); SIM.dmGone(); SIM.step(1 / 60); // its runner is gone (#561): the reflex answers now, not at the end of the grace
+  ok(cw && !cw.wait && S.dmLog.some(e => e.kind === 'talk' && e.detail.conv === cw.id && e.detail.fill && e.detail.why === 'slow'), 'the DM runner gone mid-wait: its reflex answers at once (logged: fill, why slow) (#561)');
+  SIM.setDmSeat(false); clear();
   // Table off (Watch mode): never a scene
   away(); clear(); T.TABLE.mode = 'off'; beside(A, smith); r = talk(A, smith, 'Let us haggle over the price.'); ok(r.ok && !S.table && r.answer, 'Table off: a bargain stays a plain talk');
   T.TABLE.mode = 'auto';

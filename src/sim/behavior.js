@@ -124,6 +124,7 @@ export function makeWatch(opts={}){
     if(e.kind==='lever'){if(d.result==='applied'){K[/hook/.test(String(d.lever))&&ag?'board':'levers'][ag?'agent':'scripted']++}}
     else if(e.kind==='hooks'){if(d.added&&d.added.length)K.board.scripted++}
     else if(e.kind==='branch')K.branch.scripted++;
+    else if(e.kind==='agent'&&d.call&&d.scene&&d.staged==null)K.table[ag?'agent':'scripted']++; // session zero and an arrival at the table (#561; staged calls count from S.staged.stats)
     else if(e.kind==='agent'){if(d.voice)K.voice.agent++;else if(d.staged!=null&&!d.call&&!d.result)K.staged.agent++}}
   function dmSeat(out,dt){const on=!!(S.dmAgent&&S.dmAgent.seat),link=on&&dmLinkFn?String(dmLinkFn()||'none'):null;
     const st=!on?'closed':!dmLinkFn?'unknown':link==='connected'?'live':link==='waiting'?'waiting':'norunner';H.dmShare.seat[st]+=dt;

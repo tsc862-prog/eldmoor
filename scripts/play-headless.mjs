@@ -30,7 +30,7 @@ import http from 'node:http';
 import {existsSync, readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks, planOpening, openingDue, beginPrep, endPrep, prepTick, prepView, prepActive, setPrepHost, setGateHold} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks, planOpening, openingDue, beginPrep, endPrep, prepTick, prepView, prepActive, setPrepHost, setGateHold, setDmAlive} from '../src/sim/index.js';
 import {onLog} from '../src/sim/chronicle.js';
 import {hostCall} from '../src/sim/player-host.js';
 import {sceneDue} from '../src/sim/scenewait.js';
@@ -144,6 +144,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch({dmLink: () => playRef && playRef.claimed('dm') ? 'connected' : 'none'}) : null;
   const play = attachPlay(server, {behavior, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
   playRef = play;
+  setDmAlive(() => dmSeatOn() && playRef.claimed('dm')); // a claimed DM seat is a live runner: its calls wait their bounded time, then its reflexes fill (#561)
   if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);
   // Agent memories (issue #155): the notebooks mirrored as Markdown under logs/agents/<world>/ (--no-mirror: none); written, never read back.
   const mirror = flag('no-mirror') ? null : memoryMirror({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), sentMem = new Map();

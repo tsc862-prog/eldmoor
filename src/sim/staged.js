@@ -45,6 +45,7 @@ import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {TABLE,openScene,tableOn,setSceneKind,setStageHooks} from './table.js';
 import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
+import {heard,tableLive,fillWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {talkFromScene} from './talk.js'; // NPC conversations (#170)
 import {SETTINGS,SETTING_IDS} from '../data/settings.js'; // scene maps (#431): the rooms a meeting or social scene plays in
 
@@ -99,7 +100,6 @@ const mobOf=id=>S.mobs.find(m=>m.id===id)||null;
 const npcOf=id=>(S.wanderers||[]).find(w=>w.id===id)||null;
 const liveMob=m=>m&&m.alive&&!m.gone;
 const gameDay=()=>Math.floor(S.gameMin/DAY);
-const seatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
 
 export function stagedState(){return S.staged||(S.staged={seq:0,day:{d:-1,n:0,nw:0},cur:null,past:[],stats:{staged:0,met:0,expired:0,refused:0,calls:0,answered:0,filled:0,late:0,rejected:0}})}
 // A spot at the Fellowship's side (issue #165): the day keeps STAGE.RESERVE of its scenes for these.
@@ -465,10 +465,10 @@ function onAll(sc){const rec=recOf(sc);if(!rec||!sc.beats.length)return;
   push(sc,{kind:'outcome',beat:'all',who:'the party',about:'Everyone answered at once: '+sc.beats.map(b=>b.name+' chose to '+low(b.text)+(b.res?' ('+b.res+')':'')+(b.line?' and said "'+b.line+'"':'')).join('; ')+'. Describe what happens to them together, one or two lines, true to every result.'});
   if(!sc.complicated){sc.complicated=true;const L=COMPLICATIONS[sc.kind];
     push(sc,{kind:'complication',legal:L.slice(),about:'Pick one complication for the end of the scene from: '+L.map(x=>x+' ('+COMP_ABOUT[x]+')').join('; ')+'. Add one line of what the heroes notice.'})}}
-// The table waits for the DM only while a runner is actually listening: it polled table_call within POLL_MS of real
-// time (a seat with nobody in it, or a runner that went away, gets the scripted DM at once).
-let polledAt=0;
-const live=sc=>sc.ctx.by==='dm-agent'&&seatOn()&&(sc.dmMiss||0)<STAGE.MISS_MAX&&Date.now()-polledAt<STAGE.POLL_MS;
+// The table waits for the DM while its runner is listening (it polled table_call within POLL_MS of real time, or the host
+// says a runner holds the seat), at most TABLE.dmMs a call and STAGE.MISS_MAX missed calls a scene; then the DM's reflexes
+// (the scripted lines below) fill it (sim/dmreflex.js, #561). A runner that went away gets the reflexes at once.
+const live=sc=>tableLive(sc,STAGE.MISS_MAX,STAGE.POLL_MS); // any staged scene, whoever staged it (#561: the DM is always an agent)
 const npcFrom=w=>({kind:'npc',id:w.id,name:w.name,fac:w.fac});
 // A DM line at the table: every member at the scene hears it (their chat, so events and chat_read), the banner shows it.
 function say(sc,text,from){const t=clean(text,STAGE.LINE_MAX);if(!t)return;const e={t:clockStr(),d:dayNo(),from,text:t,scene:true,trigger:from.kind==='dm'?'dm':'npc',...(from.kind==='dm'?{dm:true}:{}),fh:true};
@@ -489,7 +489,7 @@ function fill(sc,c){const rec=recOf(sc),G=stagedState(),n=rec?rec.cast.name:'the
 function resolve(sc,c,{text,pick,by,from}){c.done=true;c.by=by;c.text=text||'';if(pick)c.pick=pick;
   let effect=null;if(c.kind==='complication')effect=complicate(sc,c.pick||'none');
   if(text)say(sc,text,from||NARRATOR);
-  if(c.kind!=='outcome'||by==='dm-agent')LOG('agent',['At the table ('+c.kind+(c.pick?': '+c.pick:'')+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{staged:sc.ctx.staged,call:c.kind,pick:c.pick||null,text,effect,...(by==='scripted'?{by:'scripted',fill:true}:{})})}
+  LOG('agent',['At the table ('+c.kind+(c.pick?': '+c.pick:'')+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{staged:sc.ctx.staged,call:c.kind,pick:c.pick||null,text,effect,...(by==='scripted'?{by:'scripted',fill:true,why:fillWhy(c)}:{})})} // every reflex fill is logged (#561)
 function complicate(sc,pick){const rec=recOf(sc),c=sc.ctx;
   if(pick==='falter'){const m=(c.mobs||[]).map(mobOf).find(liveMob);if(m&&m.hp<m.maxhp*.5){m.fled=2.5;return (m.name||MOBS[m.type].name)+' breaks off for a moment'}return 'the foe stands firm (above half its health)'}
   if(pick==='reinforce'){if(!rec)return null;const alive=(c.mobs||[]).map(mobOf).filter(liveMob);if(!alive.length||alive.length>=STAGE.PACK_MAX)return 'nothing more comes';
@@ -504,7 +504,7 @@ setStageHooks({tick,onFrame,onBeat,onAll,fill,live,done});
 
 // ---- the DM tools ----
 // table_call: what the table asks of the DM right now (the pending call, the scene) and the staged scene's state.
-export function tableCall(){polledAt=Date.now();const G=S.staged,rec=G&&G.cur&&G.cur.phase!=='done'?G.cur:null,sc=findScene(x=>x.ctx&&x.ctx.staged!=null);
+export function tableCall(){heard('table');const G=S.staged,rec=G&&G.cur&&G.cur.phase!=='done'?G.cur:null,sc=findScene(x=>x.ctx&&x.ctx.staged!=null);
   const c=sc&&sc.calls?sc.calls.find(x=>!x.done):null;
   const out={ok:true,staged:rec?{id:rec.id,kind:rec.kind,title:rec.title,phase:rec.phase,near:rec.near.label,cast:castLine(rec),hours_left:Math.max(0,Math.round((rec.until-S.gameMin)/60))}:null,
     scene:sc?{title:sc.title,kind:sc.kind,frame:rec?rec.frame:'',order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+', '+pct(b)+'% HP)'),

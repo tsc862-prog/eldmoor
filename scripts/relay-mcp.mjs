@@ -127,7 +127,7 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
     // A DM tool call (issue #66), answered by the page through src/sim/dmagent.js.
     dmCall(tool, args) {
       if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
-      if (!dmSeat) return Promise.resolve({ok: false, error: 'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent").', offline: true});
+      if (!dmSeat) return Promise.resolve({ok: false, error: 'The DM seat is closed: the page opens it for the world it plays.', offline: true});
       const id = ++seq;
       return new Promise(res => {
         const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, CALL_MS);
@@ -363,7 +363,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         if (path === '/play/release') {if (held && held.runner === runner) {claims.delete(DM_KEY); log('[play] runner let go of the DM seat'); pushLinks()} return send(200, {ok: true})}
         if (held && held.runner !== runner) return send(409, {ok: false, error: `The DM seat already has a live runner (${held.runner}). One DM at a time.`});
         if (heroClaimOf(runner)) return send(409, {ok: false, error: 'This runner plays a hero; the DM seat needs a runner of its own (seats stay apart).'});
-        if (!dmOpen()) return send(404, {ok: false, error: 'The DM seat is closed in this world. Open it in the game (Dungeon Master panel: "DM agent"), or start play-headless with --dm.'});
+        if (!dmOpen()) return send(404, {ok: false, error: 'The DM seat is closed in this world: the page opens it for the world it plays; headless: start play-headless with --dm.'});
         const info = runnerInfo(b) || (held && held.info) || null;
         if (!held) log(`[play] runner ${runner} took the DM seat${info ? ' (' + info.provider + (info.model ? ' ' + info.model : '') + ')' : ''}`);
         claims.set(DM_KEY, {runner, at: now(), info}); pushLinks();

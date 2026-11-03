@@ -49,3 +49,4 @@
 - [Runner labels](runner-labels.md) — #563 label flip cause (6-turn cap release vs supervisor list), left members, implied ready, no turn caps, labelcheck
 - [CI correctness](ci-correctness.md) — #573 hashcheck source+hash-guard, rulescheck allowlist, merge_group, pitfalls
 - [CI observation](ci-observation.md) — #574 flake hunt, nightly mock run + thresholds, shoot.mjs, red-main alarm, helpers, pitfalls
+- [DM reflexes](dm-reflexes.md) — #561 dmreflex.js heard/alive/gone, no seat-closed paths, fill why slow|gone, dmShare arrival, RNG test pitfall

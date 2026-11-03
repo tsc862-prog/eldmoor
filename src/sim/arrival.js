@@ -46,6 +46,7 @@ import {tm} from '../data/traits.js';
 import {CAP as CHAT_CAP} from './chat.js';
 import {hasLinks,runnerLink,agentLive} from './runlink.js';
 import {prepActive} from './prep.js';
+import {heard,tableLive,fillWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {TABLE,openScene,setSceneKind,tableOn,sceneFor} from './table.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {fellows,fellowParty,seatRecruit,setArrivalHook,lcRoleOf} from './fellowship.js';
@@ -195,9 +196,7 @@ function settleArrival(C,ctx,beats){const a=byId(ctx.recruit);if(!a)return '';co
   return a.name+' swears the oath'+(obj.length?'; '+names(obj)+' spoke against it, and it stands':'')+'.'}
 
 // ---- the scene kinds and the DM's calls ----
-let polledAt=0;
-const seatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
-const live=sc=>seatOn()&&(sc.dmMiss||0)<ARRIVE.MISS_MAX&&Date.now()-polledAt<ARRIVE.POLL_MS;
+const live=sc=>tableLive(sc,ARRIVE.MISS_MAX,ARRIVE.POLL_MS); // the DM is listening (#561: no seat-closed path; silence = the reflex fill)
 const push=(sc,c)=>{(sc.calls||(sc.calls=[])).push({id:sc.callSeq=(sc.callSeq||0)+1,t:0,done:false,by:null,...c})};
 function say(sc,text,from){const t=clean(text,ARRIVE.LINE_MAX);if(!t)return;const e={t:clockStr(),d:dayNo(),from,text:t,scene:true,trigger:'dm',dm:true,fh:true};
   const ids=sc.ids.concat(sc.ctx&&sc.ctx.recruit!=null?[sc.ctx.recruit]:[]);
@@ -229,13 +228,13 @@ const DM_ARRIVE={
   done(){},
 };
 function resolve(sc,c,{text,by}){c.done=true;c.by=by;c.text=text||'';if(text)say(sc,text,NARRATOR);
-  dmlog('agent',null,['At the table ('+sc.kind+', '+c.kind+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{by,call:c.kind,scene:sc.kind,text,...(by==='scripted'?{fill:true}:{})},{heroes:[]})}
+  dmlog('agent',null,['At the table ('+sc.kind+', '+c.kind+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{by,call:c.kind,scene:sc.kind,text,...(by==='scripted'?{fill:true,why:fillWhy(c)}:{})},{heroes:[]})}
 setSceneKind('opening',{options:optsOpening,reflex:reflexOpening,apply:applyOpening,outcome:sc=>settleOpening(companyById(sc.company)||S.fellowship,sc.ctx,sc.beats,sc.title),dm:DM_OPEN});
 setSceneKind('arrival',{options:optsArrival,reflex:reflexArrival,apply:applyArrival,outcome:sc=>settleArrival(companyById(sc.company)||S.fellowship,sc.ctx,sc.beats),dm:DM_ARRIVE});
 
 // ---- the DM's tools for these scenes (sim/dmagent.js hands table_call / table_answer here while one is at the table) ----
 export const ourScene=()=>findScene(sc=>sc.kind==='opening'||sc.kind==='arrival'); // any company's (#518)
-export function sceneCall(){polledAt=Date.now();const sc=ourScene();if(!sc)return null;const c=(sc.calls||[]).find(x=>!x.done)||null;
+export function sceneCall(){heard('table');const sc=ourScene();if(!sc)return null;const c=(sc.calls||[]).find(x=>!x.done)||null;
   const out={ok:true,staged:null,scene:{title:sc.title,kind:sc.kind,frame:plain(sc.frame),order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+')'),
     so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.kind==='arrival'?castOf(sc):[]},call:null};
   if(c)out.call={id:c.id,kind:c.kind,about:c.about,who:c.who||null,seconds_left:sc.pause&&live(sc)?Math.max(0,Math.round((TABLE.dmMs/1000-c.t)*10)/10):0,max_chars:ARRIVE.LINE_MAX};
