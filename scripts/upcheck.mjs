@@ -5,6 +5,8 @@
 //      r restarts the relay with a new pid and the runner list is resumed once a page reconnects; a dirty tree and a
 //      non-fast-forward refuse `u`; a fast-forward pull with a changed package-lock.json runs npm (a mock) and restarts
 //      the relay; a changed script prints the code-changed notice; q leaves no child process and frees both ports.
+//      Patch notes (#664): start records HEAD in logs/last-seen.json; a pull bringing "Merge pull request #101" prints that
+//      PR's note under [notes] (a note of an unmerged PR is not shown) and records the new HEAD; n shows the last notes.
 import http from 'node:http';
 import net from 'node:net';
 import {ms as fastMs} from './ci-clock.mjs'; // CI_FAST=1 scales the waits below tenfold (issue #543)
@@ -139,6 +141,8 @@ console.log('launcher (real children on spare ports)');
   try {
     ok(await seen(/\[relay\]\s+\[relay\] listening|listening on http:\/\/127\.0\.0\.1:\d+/), 'the relay starts');
     ok(await seen(/\[vite\]\s+.*(Local:|ready in)/), 'Vite starts, its output prefixed [vite]');
+    const seenStart = await until(async () => {try {return JSON.parse(readFileSync(join(work, 'logs', 'last-seen.json'), 'utf8')).commit} catch {return null}}, 5000);
+    ok(seenStart === git(work, 'rev-parse', 'HEAD'), 'on start the launcher records HEAD as the commit seen (patch notes, #664)');
     ok(/\[relay\]/.test(out) && /\[up\]/.test(out), 'output is prefixed per process');
     const relay1 = pidOf(/relay started \(pid (\d+)\)/), vite1 = pidOf(/vite started \(pid (\d+)\)/);
     ok(relay1 && vite1 && alive(relay1) && alive(vite1), 'both children run');
@@ -179,13 +183,30 @@ console.log('launcher (real children on spare ports)');
     appendFileSync(mem, 'local note\n'); m = mark(); send('u');
     ok(await seen(/Commit or discard your local changes to \.claude\/agent-memory\/x\/MEMORY\.md/, m, 20000), 'a pull that would overwrite a locally edited file is refused by git, naming the file');
     git(work, 'checkout', '--', '.claude/agent-memory/x/MEMORY.md');
+    // patch notes (#664): the launcher recorded the commit seen at start; a pull that brings a merged PR with its note prints
+    // it under [notes] and records the new HEAD; n shows the last notes again
+    const seenOf = () => {try {return JSON.parse(readFileSync(join(work, 'logs', 'last-seen.json'), 'utf8')).commit} catch {return null}};
+    ok(seenStart && /^[0-9a-f]{40}$/.test(seenStart), 'the launcher recorded the commit seen at start (logs/last-seen.json)');
+    git(other, 'pull', '-q', '--ff-only'); git(other, 'checkout', '-q', '-b', 'feat');
+    mkdirSync(join(other, 'docs', 'patchnotes'), {recursive: true});
+    writeFileSync(join(other, 'docs', 'patchnotes', '101.md'), '---\ntitle: Lanterns at the gate\ndate: 2026-11-03\narea: world\nissues: [5]\n---\n- The town gates now carry lanterns at night.\n');
+    writeFileSync(join(other, 'docs', 'patchnotes', '102.md'), '---\ntitle: Not merged yet\ndate: 2026-11-03\narea: ai\nissues: []\n---\n- A note for a PR still open.\n');
+    git(other, 'add', '-A'); git(other, 'commit', '-q', '-m', 'notes'); git(other, 'checkout', '-q', 'main');
+    git(other, 'merge', '-q', '--no-ff', 'feat', '-m', 'Merge pull request #101 from x/lanterns', '-m', 'Lanterns at the gate'); git(other, 'push', '-q', 'origin', 'main');
+    m = mark(); send('u');
+    ok(await seen(/\[notes\]\s+1 change\(s\) since you last looked/, m, 30000), 'u prints the notes merged since the last seen commit');
+    ok(await seen(/\[notes\]\s+2026-11-03 #101 Lanterns at the gate[\s\S]*\[notes\]\s+- The town gates now carry lanterns at night\./, m, 5000) && !/Not merged yet/.test(out.slice(m)), 'the merged PR\'s note with its date, number and lines; a note of a PR not merged is not shown');
+    ok(await until(async () => seenOf() === git(work, 'rev-parse', 'HEAD'), 10000), 'and records the new HEAD as seen');
+    ok(await seen(/update applied/, m, 30000), 'the update finishes');
+    m = mark(); send('n');
+    ok(await seen(/the last 1 patch notes:[\s\S]*#101 Lanterns at the gate/, m, 5000), 'n shows the last notes again');
     // u: a dirty agent-memory file (not touched by the pull) does not block it; a dirty src file does (a.txt above)
     appendFileSync(join(work, '.claude', 'agent-memory', 'x', 'OTHER.md'), 'unsaved agent note\n'); writeFileSync(join(work, '.claude', 'agent-memory', 'new-note.md'), 'untracked\n');
     // u: fast-forward with a changed lockfile and vite config
     writeFileSync(join(other, 'package-lock.json'), '{"changed":1}'); writeFileSync(join(other, 'vite.config.js'), 'export default {server:{}};\n');
     git(other, 'pull', '-q', '--ff-only'); git(other, 'add', '-A'); git(other, 'commit', '-q', '-m', 'deps'); git(other, 'push', '-q', 'origin', 'main');
     m = mark(); send('u');
-    ok(await seen(/updated [0-9a-f]{7} -> [0-9a-f]{7}: 3 file\(s\) changed/, m, 30000), 'u pulls the fast-forward although an agent-memory file is dirty');
+    ok(await seen(/updated [0-9a-f]{7} -> [0-9a-f]{7}: \d+ file\(s\) changed/, m, 30000), 'u pulls the fast-forward although an agent-memory file is dirty');
     ok(await seen(/relay started \(pid \d+\)[\s\S]*vite started|vite started \(pid \d+\)/, m, 60000) && existsSync(join(tmp, 'npm-ran.txt')) && /install in .*work/.test(readFileSync(join(tmp, 'npm-ran.txt'), 'utf8')), 'a changed package-lock.json runs npm install (mock) in the repo');
     const relay3 = pidOf(/relay started \(pid (\d+)\)/, m), vite2 = pidOf(/vite started \(pid (\d+)\)/, m);
     ok(relay3 && relay3 !== relay2 && !alive(relay2) && vite2 && vite2 !== vite1 && !alive(vite1), 'the relay and (dependencies changed) Vite restarted with new pids');

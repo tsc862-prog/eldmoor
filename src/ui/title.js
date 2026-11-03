@@ -7,12 +7,16 @@
 // Continue (with a line on the save), New world (the setup page of #133, asking first when it replaces a save),
 // Load from file (Import), the map (Eldmoor / Stepping Lands: a reload with ?world=) and the relay's status.
 // Enter plays the first choice (Continue when there is a save, else New world).
+// What's new (#664): the patch notes (docs/patchnotes/*.md, a Vite ?raw glob handed over by main.js through provideNotes)
+// that this viewer has not read, newest first: three expanded, the rest behind a "more" fold, a NEW badge until read
+// (Got it, or any choice that leaves the title). Read notes are kept per viewer in localStorage with the build's commit.
 import {WORLD_ID} from '../world/map.js';
 import {WORLDS} from '../world/spec.js';
 import {FAC} from '../data/factions.js';
 import {heroSprite,outlined} from '../render/sprites.js';
 import {saveSummary,exportStored,importFile,takeSkipTitle,hasPending,afterReset} from './save.js';
 import {openSetup,pollRelay,watchRelay,relayState,pulledModels} from './setup.js';
+import {notesFrom,noteLabel} from './patchnotes.js';
 
 const HELP_URL='https://github.com/tsc862-prog/eldmoor#readme';
 const DEFAULT_FIVE=['Warrior','Priest','Mage','Hunter','Rogue'];
@@ -39,6 +43,29 @@ export function saveLine(sum,id=WORLD_ID){if(!sum)return '';const parts=[worldNa
   return parts.join(' · ')}
 
 let root=null,st=null,timer=0,unwatch=null,playFn=null;
+
+// ---- What's new (#664) ----
+const NOTES_KEY='eldmoor.notesSeen',BUILD=typeof __COMMIT__!=='undefined'?String(__COMMIT__):'';
+let NOTES=[];
+export function provideNotes(map){NOTES=notesFrom(map)}
+const store=()=>{try{return typeof localStorage!=='undefined'?localStorage:null}catch(e){return null}};
+function seenNotes(){try{const j=JSON.parse(store().getItem(NOTES_KEY)||'null');return j&&Array.isArray(j.ids)?j:null}catch(e){return null}}
+export function unreadNotes(){const s=seenNotes(),ids=new Set(s?s.ids:[]);return NOTES.filter(n=>!ids.has(n.id)).reverse()} // newest first
+export function markNotesRead(){if(!NOTES.length)return;try{store().setItem(NOTES_KEY,JSON.stringify({ids:NOTES.map(n=>n.id),commit:BUILD,at:Date.now()}))}catch(e){}}
+function noteEl(n){const d=el('div','tnote');const h=el('div','tnh');h.append(el('span','tnn',noteLabel(n)),el('span','tnt',n.title),el('span','tnd',n.date));d.append(h);
+  const ul=el('ul','tnl');for(const l of n.lines)ul.append(el('li',null,l));d.append(ul);return d}
+function newsBlock(){const unread=unreadNotes(),list=unread.length?unread:NOTES.slice().reverse().slice(0,3);if(!list.length)return null;
+  const box=el('section','tnews'+(unread.length?' unread':''));box.setAttribute('aria-label',"What's new");
+  const head=el('div','tnhead');const h=el('h2','tnttl',"What's new");if(unread.length)h.append(el('span','tnew','NEW'));head.append(h);
+  if(unread.length){const b=btn('Got it','notesread','tnread');b.title='Mark these notes read';head.append(b)}
+  else{const b=btn(st.notesOpen?'Hide':'Show the latest','notesmore','tnread');b.setAttribute('aria-expanded',String(!!st.notesOpen));head.append(b)}
+  box.append(head);
+  if(!unread.length){if(st.notesOpen)for(const n of list)box.append(noteEl(n));return box}
+  for(const n of list.slice(0,3))box.append(noteEl(n));
+  const rest=list.slice(3);
+  if(rest.length){const b=btn(st.notesOpen?'Fewer':rest.length+' more','notesmore','tnmore');b.setAttribute('aria-expanded',String(!!st.notesOpen));box.append(b);
+    if(st.notesOpen)for(const n of rest)box.append(noteEl(n))}
+  return box}
 
 function btn(label,a,cls){const b=el('button','tbtn'+(cls?' '+cls:''),label);b.type='button';b.dataset.a=a;return b}
 
@@ -78,6 +105,7 @@ function render(){const page=el('div','tpage'),sum=st.sum;
   menu.append(btn('Load from file','load'));
   if(!sum)menu.append(btn('Watch the default world','default'));
   page.append(menu);
+  const news=newsBlock();if(news)page.append(news);
   if(st.msg)page.append(el('div','tmsg',st.msg));
   const rl=el('div','trelay');rl.append(el('span','sdot'),el('span','trtext',''));page.append(rl);
   const foot=el('div','tfoot');foot.append(el('span',null,'Enter: '+(sum?'Continue':'New world')+' · '));
@@ -91,11 +119,13 @@ function hide(){if(root)root.hidden=true;if(timer){clearInterval(timer);timer=0}
 function show(){root.hidden=false;st.ask=false;st.msg='';st.sum=saveSummary(WORLD_ID);render();
   if(!timer&&typeof setInterval==='function')timer=setInterval(()=>pollRelay(),3000);pollRelay(true);focus(st.sum?'continue':'new')}
 
-function play(kind){hide();if(unwatch){unwatch();unwatch=null}if(root){root.remove();root=null}const f=playFn;playFn=null;if(f)f(kind)}
-function newWorld(confirmed){hide();openSetup({back:()=>show(),confirmed:confirmed?WORLD_ID:null})}
+function play(kind){markNotesRead();hide();if(unwatch){unwatch();unwatch=null}if(root){root.remove();root=null}const f=playFn;playFn=null;if(f)f(kind)}
+function newWorld(confirmed){markNotesRead();hide();openSetup({back:()=>show(),confirmed:confirmed?WORLD_ID:null})}
 
 function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a]'):null;if(!t||!root||!root.contains(t))return;const a=t.dataset.a;
   if(a==='continue')return play('continue');
+  if(a==='notesread'){markNotesRead();st.notesOpen=false;render();focus(st.sum?'continue':'new');return}
+  if(a==='notesmore'){st.notesOpen=!st.notesOpen;render();focus('notesmore');return}
   if(a==='default')return afterReset(()=>play('default')); // a world reset stops the runners first (#691)
   if(a==='new'){if(st.sum){st.ask=true;render();focus('export');return}return newWorld(false)}
   if(a==='replace')return newWorld(true);

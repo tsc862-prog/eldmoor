@@ -76,7 +76,7 @@ console.log('runner routes (fake children)');
   const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
   const heroes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(id => ({id, name: 'H' + id, alive: true}));
   let dmSeat = true; // the game's DM seat (#66): a DM runner starts only while it is open
-  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat})};
+  const be = {call: async () => ({ok: true}), dmCall: async t => t === 'table_call' ? {ok: true, call: {id: 1, kind: 'frame', seconds_left: 8}} : {ok: true}, narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat})}; // a frame call waits for the DM's voice (#682)
   const kids = [];
   const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 40000 + kids.length; k.cmd = cmd; k.args = args; k.opts = opts; k.got = '';
     k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d; if (exitOnStop && /stop/.test(d)) setTimeout(() => k.emit('exit', 0), 5)}});
@@ -226,6 +226,15 @@ console.log('runner routes (fake children)');
   ok((await req(sl.base, '/play/runner/slot', {method: 'POST', body: {key: 'nope'}})).status === 404, 'only a live runner of this supervisor may lease a slot');
   kids[n0 + 1].emit('exit', 0); await sleep(20);
   ok((await req(sl.base, '/play/runner')).claude.used === 0, 'a runner that exits gives its slot back');
+  {const {DM_FIRST_MS} = await import('./runners.mjs');
+    await req(sl.base, '/play/dm', {method: 'POST', body: {tool: 'table_call', args: {}, role: 'dm'}}); // the DM's voice picks up a call
+    let t = Date.now(); const y = await req(sl.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:1'}}), waited = Date.now() - t;
+    ok(y.ok && waited >= DM_FIRST_MS - 50, `a hero's slot request yields to the DM's pending voice call first (${waited} ms, #682)`);
+    await req(sl.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: y.lease}});
+    await req(sl.base, '/play/dm', {method: 'POST', body: {tool: 'table_answer', args: {call: 1, text: 'x'}, role: 'dm'}}); // answered
+    t = Date.now(); const z = await req(sl.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:1'}});
+    ok(z.ok && Date.now() - t < 500, 'once the DM has answered, a slot is leased at once');
+    await req(sl.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: z.lease}})}
   sl.sup.killAll(); sl.server.close();
   // six minds: the Fellowship's five as hero runners and the DM start together, whatever the caps
   {for (const h of heroes) h.fellow = h.id <= 5;

@@ -72,6 +72,7 @@ import {DM_TOOLS} from '../src/data/dm-tools.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
+export const DM_VOICE_MS = 10000; // the longest a voice call counts as pending without its answer (#682)
 export const DM_WAIT_MAX = 25000; // the longest long poll of table_call / npc_call / ruling_call {wait_ms} (#680; src/sim/player-host.js DM_WAIT.MAX)
 // What an agent hears while the game page is away (#399): a pause in the world, not advice to a human ("Press Agent ...", which
 // models read as something they must do). offline:true marks it for the runners (not the model's mistake, scripts/local-agent.mjs).
@@ -275,6 +276,11 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     vlog({ts: new Date().toISOString(), hero: id, tool, args, result: r, ms: now() - t0});
     return r;
   }
+  // The DM's voice is answering a call (#682): a voice poll handed it a call (table/talk/ruling) and its answer has not come
+  // yet. The runner supervisor lets a hero's Claude slot request yield DM_FIRST_MS meanwhile (scripts/runners.mjs).
+  let dmVoiceAt = 0;
+  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say']);
+  const dmVoiceBusy = () => dmVoiceAt > 0 && now() - dmVoiceAt < DM_VOICE_MS;
   // A DM tool call (issue #66): counted, logged, never thrown.
   async function dmCall(tool, args) {
     const t0 = now(); stats.calls++;
@@ -290,6 +296,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     a.inflight--; a.last = now(); pushLinks();
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
+    if (VOICE_POLLS.has(tool) && r.ok && r.call && Number(r.call.seconds_left) > 0) dmVoiceAt = now(); else if (VOICE_ANSWERS.has(tool) && (tool !== 'npc_say' || (args && args.conv != null))) dmVoiceAt = 0;
     if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
     log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'}${note} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
@@ -445,5 +452,5 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const dropRunner = prefix => {let n = 0; for (const [id, c] of claims) if (c.runner === prefix || c.runner.startsWith(prefix + ':')) {claims.delete(id); act.delete(id); n++}
     if (n) {log(`[play] runner ${prefix} gone: ${n} claim(s) dropped`); pushLinks()} return n};
   const holderOf = id => {const c = claimOf(id); return c ? c.runner : null}; // the runner id holding a seat (the supervisor matches its children by host:pid, #563)
-  return {backend: be, stats, call, dmCall, dmInfo, linkOf, links, runnerOf, readyOf, claimed, holderOf, dropRunner, behaviorIngest, behavior};
+  return {backend: be, stats, call, dmCall, dmVoiceBusy, dmInfo, linkOf, links, runnerOf, readyOf, claimed, holderOf, dropRunner, behaviorIngest, behavior};
 }
