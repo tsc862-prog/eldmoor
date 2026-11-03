@@ -224,7 +224,8 @@ try {
     await world.until;
     const [hA, hB] = (await health()).heroes;
     const run = start(['scripts/agent-player.mjs', '--url', BASE, '--hero', String(hA.id), '--provider', 'google', '--model', G38, '--max-turns', '2', '--budget', '1']);
-    let tagged = null; for (let i = 0; i < 100 && !tagged; i++) {await sleep(100); const h = await health().catch(() => null); const x = h && h.heroes.find(y => y.id === hA.id); if (x && x.runner) tagged = x}
+    let tagged = null, exited = false; run.done.then(() => {exited = true});
+    for (let i = 0; i < 600 && !exited && !tagged; i++) {await sleep(100); const h = await health().catch(() => null); const x = h && h.heroes.find(y => y.id === hA.id); if (x && x.runner) tagged = x}
     ok(tagged && tagged.runner.provider === 'google' && tagged.runner.model === G38, 'while it runs, the claim tags the runner: ' + (tagged && JSON.stringify(tagged.runner)));
     const code = await run.done, out = run.out();
     ok(code === 0, 'the google runner exits cleanly' + (code ? '\n' + out.slice(-1500) : ''));
@@ -242,15 +243,16 @@ try {
     const port = 19920 + Math.floor(Math.random() * 30), BASE = `http://127.0.0.1:${port}`;
     const world = start(['scripts/play-headless.mjs', '--port', String(port), '--dm', '--agents', '0', '--quiet', '--speed', '4', '--world', join(tmp, 'dmworld.json')], {wait: /^\[play\] headless world at /m});
     await world.until;
-    const dm = start(['scripts/dm-agent.mjs', '--url', BASE, '--provider', 'google', '--model', G38, '--max-turns', '1', '--cadence', '5', '--claude-concurrency', '1']);
-    let live = null; for (let i = 0; i < 60 && !(live && live.runner); i++) {await sleep(100); const h = await fetch(BASE + '/play/health').then(r => r.json()).catch(() => null); live = h && h.dm}
+    const dm = start(['scripts/dm-agent.mjs', '--url', BASE, '--provider', 'google', '--model', G38, '--max-turns', '2', '--cadence', '5', '--claude-concurrency', '1']);
+    let live = null, exited = false; dm.done.then(() => {exited = true});
+    for (let i = 0; i < 600 && !exited && !(live && live.runner); i++) {await sleep(100); const h = await fetch(BASE + '/play/health').then(r => r.json()).catch(() => null); live = h && h.dm}
     ok(live && live.claimed && live.runner && live.runner.provider === 'google' && live.runner.model === G38, 'while it runs, the DM seat is claimed and tagged google ' + (live && live.runner && live.runner.model));
     const code = await dm.done, out = dm.out();
     ok(code === 0, 'the Gemini DM exits cleanly after --max-turns' + (code === 0 ? '' : '\n' + out.slice(-1500)));
     ok(/DM seat taken \| model gemini-3\.8-flash via Gemini \(free tier\)/.test(out) && /> dm_status\(\)/.test(out) && /table voice: gemini-3\.8-flash \(Gemini\)/.test(out) && /ruling voice: gemini-3\.8-flash \(Gemini\)/.test(out), 'it reads through the DM tools, with Gemini table, talk and ruling voices');
     ok(/\[turn 1\] gemini-3\.8-flash \(google\) .*\| turn \$0\.0000/.test(out) && /\(Gemini free tier\)/.test(out), 'a cost line per turn and the run total');
     const f = join(tmp, 'agents', 'dm.json'), s = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null;
-    ok(s && s.turns === 1 && s.runner.provider === 'google' && s.runner.model === G38 && s.local && s.local.history.length > 0, 'logs/agents/dm.json keeps runner {provider: google, model}, the turn and the conversation');
+    ok(s && s.turns === 2 && s.runner.provider === 'google' && s.runner.model === G38 && s.local && s.local.history.length > 0, 'logs/agents/dm.json keeps runner {provider: google, model}, the turns and the conversation');
     ok(!out.includes(KEY), 'the key is not in the DM output');
     world.p.kill();
   }
