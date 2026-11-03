@@ -24,7 +24,13 @@ import {xpNeed,maxHp,seedLevel} from './heroes.js';
 import {makeItem,syncGear} from './gear.js';
 import {record,first} from './history.js';
 import {found,autoPick} from './fellowship.js';
-import {pickSetup,applyMinds,cleanSetup} from './setup.js';
+import {pickSetup,pickApart,applyMinds,cleanSetup,groupsOf,startOf,resolveArchetype} from './setup.js';
+import {foundCompany,campaign} from './company.js';
+import {markPlayer} from './player.js';
+import {disableBrain} from './brain.js';
+import {seedProfs} from './professions.js';
+import {applyArchetype} from './persona.js';
+import {setDmSeat} from './dmagent.js';
 
 // Starting levels of background heroes: weight per band, levels spread evenly inside a band.
 // About 30% greenhorns (1-3), 36% journeymen (4-7), 24% seasoned (8-11), 10% veterans (12-15).
@@ -64,12 +70,41 @@ export function opening(o={}){
   const setup=o.setup?cleanSetup(o.setup):null; // New World setup (sim/setup.js, #133): chosen classes, names, peoples and minds
   if(!setup&&!fellowshipStart(o)){
     log('Twenty-eight new heroes of ',fac(0),' and ',fac(1),' arrive in ',{t:'Eldmoor',c:'gd'},'. Every one of them is level 1.');return null}
+  if(setup&&setup.mode==='apart')return openApart(setup);
   const ff=setup?setup.fac:o.fac!=null?o.fac:rnd()<.5?0:1,pick=setup?pickSetup(setup):autoPick(ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
+  seasonOthers(ids);
+  const r=found(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, agent-played from the first tick (#148)
+  if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(profs&&Object.keys(profs).length?{profs}:{})}}}
+  return r.ok?r.fellowship:null}
+
+// Everyone not chosen starts part-way through a career (START_BANDS), then the line about the worn roads.
+function seasonOthers(ids){
   for(let f=0;f<FAC.length;f++){const hs=S.agents.filter(a=>a.fac===f&&!ids.has(a.id)&&a.state!=='dead');
     for(let i=hs.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[hs[i],hs[j]]=[hs[j],hs[i]]} // shuffle, so level does not follow class order
     hs.forEach((a,i)=>season(a,startLevel((i+rnd())/hs.length)))}
   const bg=S.agents.filter(a=>!ids.has(a.id)),lv=bg.map(a=>a.lvl);
-  log({t:'Eldmoor',c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',fac(0),' and ',fac(1),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.');
-  const r=found(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, agent-played from the first tick (#148)
-  if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(profs&&Object.keys(profs).length?{profs}:{})}}}
-  return r.ok?r.fellowship:null}
+  log({t:'Eldmoor',c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',fac(0),' and ',fac(1),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.')}
+
+// Apart (setup v2, #453): every hero sets out from its own start town, one company per group, a company of one for
+// a hero with no group. Level 1 in town, or seasoned to the low end of its start region's band and out hunting
+// there. Every hero agent-played from the first tick (#148). Returns the first company.
+function openApart(setup){
+  const ids=pickApart(setup),hs=ids.map(id=>S.agents.find(a=>a.id===id));
+  seasonOthers(new Set(ids));
+  const made=[];
+  for(const g of groupsOf(setup)){const lead=hs[g[0]],st=startOf(lead,setup.heroes[g[0]]),town=st.town,group=g.map(i=>hs[i]);
+    for(const a of group){a.town=town.name;a.x=town.x0+2+rnd()*7;a.y=town.y0+4+rnd()*3;a.state='town';a.dest=null}
+    if(st.lvl>1)for(const a of group){season(a,st.lvl);
+      if(st.zone!=null&&a.zone!==st.zone){const p=zonePoint(st.zone,null,town.gate);a.zone=st.zone;a.x=p.x;a.y=p.y}}
+    else for(const a of group)record(a,'Set out from '+town.name+(group.length>1?' with '+group.filter(b=>b!==a).map(b=>b.name).join(' and '):' alone')+'.');
+    const r=foundCompany(group,{hall:town.name,name:group.length>1?group.map(b=>b.name).join(' and '):group[0].name});
+    if(!r.ok)continue;made.push(r.company);
+    for(const a of group){if(a.brain){disableBrain(a);delete a.fellowBrain}markPlayer(a,true)}
+    for(const i of g){const h=setup.heroes[i],a=hs[i];if(h.profs&&h.profs.length)seedProfs(a,h.profs);
+      const id=resolveArchetype(setup,i);if(id&&applyArchetype(a,id,group.filter(b=>b!==a)))a.persona.edited=true}
+    const who=group.flatMap((b,i)=>i?[i===group.length-1?' and ':', ',b]:[b]),line=[...who,group.length>1?' set out together from '+town.name+'.':' sets out alone from '+town.name+'.'];
+    campaign(r.company,'found',...line);log(...line)}
+  if(made.length&&S.followId==null)S.followId=made[0].id;
+  if(setup.dm&&setup.dm.mode==='agent')setDmSeat(true);
+  S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,mode:'apart',dm:setup.dm};
+  return made[0]||null}
