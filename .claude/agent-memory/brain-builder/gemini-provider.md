@@ -20,3 +20,5 @@ Gemini landed as provider `google` (label "Gemini", tag `<model> · google`) in 
 
 **Why:** owner's free Google account = the second zero-cost mind after Ollama.
 **How to apply:** new OpenAI-compatible providers go through these hooks, not forks of openai.mjs. Live latency/cost per decision not measured yet (no key used); measure on first live run. Related: [[mixed-minds]], [[agent-player]].
+
+Merged with #688 (#677 model lists and price labels): google gets `allow: modelListFrom(env, 'GOOGLE_MODELS')`; openaiAdapter options `priceOf` (sort; Gemini = its PRICES) and `labelOf` (shown price; Gemini free tier -> {in:0,out:0} for free-tier models, paid-only keep their price). `shapeList(models, allow, priceOf, labelOf)` returns prices only when a labelOf exists. UI lists carry `.prices` (googleModels, setup googleList) for `priceLabel`.
