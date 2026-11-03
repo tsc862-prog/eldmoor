@@ -30,7 +30,7 @@ const call = (a, t, x) => {a.playRate = []; return playerAct(a.id, t, x || {})};
 console.log('\nEldmoor craftcheck\n');
 
 reseed(0x3a4e5 ^ 11); init({fellowship: true});
-const F = S.fellowship, M = F.ids.map(id => S.agents.find(x => x.id === id));
+const F = (await import('../src/sim/company.js')).slotted(), M = F.ids.map(id => S.agents.find(x => x.id === id));
 const [a, b] = M;
 const home = CITY.find(c => c.fac === a.fac);
 const toTown = h => {h.state = 'town'; h.x = home.ah.x; h.y = home.ah.y; h.pq = []; h.target = null};

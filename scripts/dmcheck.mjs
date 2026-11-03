@@ -198,6 +198,8 @@ if (process.argv[2] === '--companies') {
   // 1. hall boards: every company idle in town at its hall, the boards emptied of hall jobs; one refresh posts one per company
   for (const C of [five, pair, solo]) for (const a of CO.members(C)) {const c = CITY.find(t => t.name === C.hall); a.adv = null; a.state = 'town'; a.x = c.gate.x; a.y = c.gate.y; a.lvl = Math.max(a.lvl, 6)}
   S.adventures = S.adventures.filter(h => h.phase !== 'open');
+  // idle means idle: a member still listed on an adventure under way (a.adv cleared above) would make its company busy
+  {const ids = new Set([five, pair, solo].flatMap(C => C.ids)); for (const h of S.adventures) if (h.phase === 'active' && h.mem && h.mem.some(id => ids.has(id))) {h.phase = 'done'; h.ended = S.gameMin}}
   S.dmHookT = 0; DM.dmTick(1);
   const ffs = S.adventures.filter(h => h.phase === 'open' && h.ff);
   const jobOf = C => ffs.filter(h => h.cid === C.id);
