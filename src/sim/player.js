@@ -68,7 +68,7 @@ import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js
 import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
-import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,knownMark,learnJob,preyKey,pickPrey,npcWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
+import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,npcWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
 import {actFlee,fights,actionLog} from './actlog.js';
 import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
@@ -424,11 +424,63 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
     if(enemyNear(a,p))return {error:'That is under an enemy town wall.'};
     const ct=cityAt(p);if(ct&&ct===c)return toTown(p,'('+p.x+', '+p.y+') in '+c.name);
     return toField(p,'('+p.x+', '+p.y+') in '+(ZONES[zoneAt(p.x,p.y)]||'the wilds'))}
+  const mk=markInSight(a,t);if(mk)return toField({x:mk.x,y:mk.y},mk.name); // a DM-marked place in sight (#414)
   const named=placeNameIn(t);if(named)return unknown(named);
   return null}
 const DIRS={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0],northeast:[1,-1],northwest:[-1,-1],southeast:[1,1],southwest:[-1,1]};
 // A place name the agent used that the world has but the hero has not heard of (so the refusal does not confirm others).
 const placeNameIn=t=>{const n=[...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).find(x=>x.toLowerCase()===t);return n||null};
+
+// ---- places (#414): the places this hero knows, nearest first, with direction, distance and what it learned there ----
+// Read only and dice-free. Only the hero's known set (the same knownNames move_to and hunt resolve, #188/#399/#411) plus
+// a DM-marked place it can see right now; never DM notes, lever reasons or numbers it could not know.
+const COMPASS=['east','southeast','south','southwest','west','northwest','north','northeast'];
+const compass=(dx,dy)=>Math.hypot(dx,dy)<1.5?'here':COMPASS[((Math.round(Math.atan2(dy,dx)/(Math.PI/4))%8)+8)%8];
+const PL={MAX:12,MIN_PER_TILE:3}; // rough game minutes a tile on foot (roads faster, marsh and snow slower)
+const walkTime=d=>{const m=d*PL.MIN_PER_TILE;return d<1.5?'you are there':m<50?'under an hour on foot':m<90?'about an hour on foot':'about '+Math.round(m/60)+' hours on foot'};
+// DM-marked places (mark_place) the hero sees with its own eyes now; move_to takes them by name while in sight.
+const markInSight=(a,name)=>(S.places||[]).find(p=>p&&p.name&&(name==null||p.name.toLowerCase()===name)&&dist(a,p)<=sightOf(a))||null;
+function knownPlaces(a,from){const L=a.lore&&a.lore.p?a.lore.p:null,c=homeOf(a),out=[];
+  const at=(name,kind,p,how,go)=>{const dx=p.x-from.x,dy=p.y-from.y,d=Math.hypot(dx,dy);out.push({name,kind,how,dir:compass(dx,dy),tiles:Math.round(d),travel:walkTime(d),go:go||name})};
+  for(const name of knownNames(a)){
+    const town=CITY.find(x=>x.name===name);if(town){at(name,'town',town.gate,town===c?'your home town':'a town of your people');continue}
+    const p=L&&L[name],how=!p?'you know of it':p.how==='home'?'your home region':p.how==='been'?'you have been there':p.how==='seen'?'you have seen it':'only heard of it';
+    const z=ZONES.indexOf(name);
+    if(z>=0){const pts=ZPTS[z]||[];let best=null,bd=Infinity;const st=Math.max(1,Math.floor(pts.length/60));
+      for(let i=0;i<pts.length;i+=st){const d=Math.hypot(pts[i].x-from.x,pts[i].y-from.y);if(d<bd){bd=d;best=pts[i]}}
+      if(zoneAt(from.x,from.y)===z)best={x:from.x,y:from.y};if(!best)continue;at(name,'region',best,how);continue}
+    const lm=LANDMARKS.find(l=>l.name===name)||(CRYPT&&CRYPT.name===name?CRYPT:null);
+    if(lm){at(lm.kind==='lair'?name+"'s lair":name,'landmark',lm,how,name);continue}
+    const mk=p&&p.dm!=null?(S.places||[]).find(x=>x.id===p.dm):null;if(mk)at(name,'place',mk,how)} // a DM place it learned (#423)
+  for(const m of (S.places||[]))if(m&&m.name&&dist(a,m)<=sightOf(a)&&!out.some(x=>x.name===m.name))at(m.name,'place',m,'in sight now: '+(m.kind||'a marked place'));
+  return out}
+function placesList(a,{about,kind,near}={}){const L=loreOf(a);
+  let from=a,fromLabel='where you stand';const nr=clean(near,60).trim();
+  if(nr){const all=knownPlaces(a,a),q=nr.toLowerCase().replace(/^(?:the)\s+/,''),m=/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(nr);
+    if(m)from={x:+m[1],y:+m[2]};
+    else{const hit=all.find(x=>x.name.toLowerCase()===q||x.go.toLowerCase()===q)||all.find(x=>x.name.toLowerCase().includes(q));
+      if(!hit)return {ok:false,error:'You know no place called "'+nr+'". Places you know: '+all.map(x=>x.name).slice(0,10).join(', ')+'.'};
+      const town=CITY.find(x=>x.name===hit.go),lm=LANDMARKS.find(l=>l.name===hit.go)||(CRYPT&&CRYPT.name===hit.go?CRYPT:null),z=ZONES.indexOf(hit.go),mk=markInSight(a,hit.go.toLowerCase());
+      from=town?town.gate:lm?lm:mk?mk:z>=0&&ZPTS[z]&&ZPTS[z].length?ZPTS[z][Math.floor(ZPTS[z].length/2)]:a;fromLabel=hit.name}
+    if(m)fromLabel='('+from.x+', '+from.y+')'}
+  let list=knownPlaces(a,from);
+  // what the hero learned there, in its own words (lore.js placeLine via placeWarn; creatures by the lore's own lines)
+  const lv=loreView(a),keys=Object.keys(L.c);
+  for(const x of list){const w=placeWarn(a,x.go);if(w)x.learned=w.slice(x.go.length+2).replace(/\.$/,'');
+    const z=ZONES.indexOf(x.go);if(z>=0){x.word=jobRumour(a,z);const cs=[];keys.forEach((k,i)=>{const e=L.c[k];if(e&&e.z&&e.z.includes(x.go)&&lv.creatures[i])cs.push(lv.creatures[i].threat&&lv.creatures[i].threat!=='only heard of'?lv.creatures[i].name+' ('+lv.creatures[i].threat+')':lv.creatures[i].name)});if(cs.length)x.creatures=cs.slice(0,6)}
+    if(x.kind==='landmark'&&LANDMARKS.some(l=>l.kind==='lair'&&l.name===x.go))x.learned=(x.learned?x.learned+'; ':'')+'the lair of Kragmaw the Cinder Wyrm: few who go there come back'}
+  const k=clean(kind,20).toLowerCase().trim().replace(/s$/,'');
+  if(k){const kk=k==='city'||k==='home'?'town':k==='dungeon'||k==='crypt'||k==='lair'?'landmark':k==='marker'||k==='spot'?'place':k;
+    if(!['town','region','landmark','place'].includes(kk))return {ok:false,error:'kind is one of town, region, landmark or place (a marked spot in sight).'};list=list.filter(x=>x.kind===kk)}
+  const q=clean(about,60).toLowerCase().trim();
+  if(q)list=list.filter(x=>x.name.toLowerCase().includes(q)||x.kind===q||(x.learned||'').toLowerCase().includes(q)||(x.creatures||[]).some(s=>s.toLowerCase().includes(q)));
+  list.sort((x,y)=>x.tiles-y.tiles||(x.name<y.name?-1:1));const total=list.length;list=list.slice(0,PL.MAX);
+  const r={ok:true,from:fromLabel,places:list.map(x=>{const o={name:x.name,kind:x.kind,known:x.how,way:x.dir==='here'?'here':x.dir+', '+x.tiles+' tiles ('+x.travel+')'};
+    if(x.word)o.word=x.word;if(x.creatures)o.creatures=x.creatures;if(x.learned)o.learned=x.learned;if(x.go!==x.name)o.go=x.go;return o})};
+  if(total>list.length)r.more=total-list.length+' more (filter with kind, about or near)';
+  if(!list.length)r.note=q||k?'No place you know fits that. places with no arguments lists all you know.':'You know no places yet.';
+  r.use='move_to or hunt {where} takes any name here (or its go); a direction ("north") or "x,y" reaches places you have never heard of.';
+  return r}
 
 // ---- the tools ----
 const need=(cond,msg)=>{if(!cond)throw new Rule(msg)};
@@ -705,6 +757,7 @@ const T={
     takeBounty(a,b);return {ok:true,new_bounty:bt(a.quest),reward:'about '+(4+a.lvl*3)+'g and XP, paid here when done'}},
   read_chronicle(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||8))),news=S.chronicle.slice(0,k).map(e=>e.t+' '+plain(e.parts));
     for(const l of news)hear(a,l,'the town criers');return {ok:true,news}}, // the criers' news teaches names and places (#188)
+  places:(a,x)=>placesList(a,x||{}), // #414: known places, nearest first
   lore(a,{about}){return {ok:true,...loreView(a,about),note:'What you know, in your own words: no one knows the measure of a creature until they have met it or been told.'}},
   // the journal (#153: tiers in sim/tiers.js): without n an overview (landmarks, chapter titles, latest entries) to re-ground on
   journal_read(a,{n}){if(n==null||n==='')return {ok:true,...journalOverview(a)};

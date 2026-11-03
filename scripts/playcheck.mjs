@@ -185,6 +185,28 @@ if (a.state !== 'dead') {
   const L = await import('../src/sim/lore.js');
   if (!(a.lore && a.lore.p.Mirefen)) {r = await call('move_to', {target: 'Mirefen'}); ok(!r.ok && /heard of/.test(r.error), 'move_to a region never heard of is refused: ' + r.error)}
   L.hear(a, 'The reeds of Mirefen are thick with Boglings this season.', 'a townsperson');
+  // places (#414): the known set only, nearest first, words not numbers; every name it gives works in move_to and hunt
+  {const pv = await call('places'), names = (pv.places || []).map(p => p.name), blob = JSON.stringify(pv.places);
+    ok(pv.ok && names.includes('Mirefen') && /heard of|been there/.test(pv.places.find(p => p.name === 'Mirefen').known), 'places lists Mirefen once heard of: ' + names.join(', '));
+    const unknownP = ['Cinderpass', 'Hoarfell', 'The Sunken Crypt', 'Kragmaw'].find(n => !L.knowsPlace(a, n));
+    ok(!unknownP || !blob.includes(unknownP), 'places never names a place the hero does not know (' + unknownP + ')');
+    ok(!/\b(lvl|level|hp)\b/i.test(blob) && pv.places.every(p => /^(here|(north|south|east|west|northeast|northwest|southeast|southwest), \d+ tiles)/.test(p.way)), 'places gives direction and tiles, no levels: ' + pv.places.map(p => p.name + ' ' + p.way).join('; '));
+    ok(pv.places.every((p, i, A) => i === 0 || (A[i - 1].way === 'here' || +((p.way.match(/(\d+) tiles/) || [0, 0])[1]) >= +((A[i - 1].way.match(/(\d+) tiles/) || [0, 0])[1]))), 'places are nearest first');
+    const towns = await call('places', {kind: 'town'}); ok(towns.ok && towns.places.length && towns.places.every(p => p.kind === 'town'), 'places {kind: town}: ' + towns.places.map(p => p.name).join(', '));
+    const near = await call('places', {near: 'Mirefen', about: 'Mirefen'}); ok(near.ok && near.from === 'Mirefen' && near.places[0].way === 'here', 'places {near, about} measures from Mirefen');
+    for (const p of pv.places) {a.playRate = []; const rr = await call('move_to', {target: p.go || p.name}); ok(rr.ok || /fight|wall/.test(rr.error), 'move_to takes the places name ' + p.name + ': ' + (rr.going || rr.error))}
+    // a marked place (the DM's mark_place) is listed only while in sight, and move_to takes it then
+    if (!S.places) S.places = []; const mk = {id: 999901, kind: 'ruin', name: 'Weeping Cairn', x: a.x + 3, y: a.y, z: 0, born: S.gameMin, until: S.gameMin + 600}, far = {id: 999902, kind: 'ruin', name: 'Hidden Barrow', x: a.x > 40 ? 2 : 78, y: a.y, z: 0, born: S.gameMin, until: S.gameMin + 600}; S.places.push(mk, far);
+    const pm = await call('places', {kind: 'place'}); ok(pm.ok && pm.places.some(p => p.name === 'Weeping Cairn') && !JSON.stringify(pm).includes('Hidden Barrow'), 'places shows a marked place in sight, not one out of sight: ' + pm.places.map(p => p.name + ' (' + p.known + ')').join(', '));
+    a.playRate = []; const rm = await call('move_to', {target: 'Weeping Cairn'}); ok(rm.ok, 'move_to takes the marked place in sight: ' + (rm.going || rm.error));
+    a.playRate = []; const rf = await call('move_to', {target: 'Hidden Barrow'}); ok(!rf.ok, 'move_to refuses a marked place out of sight, never heard of');
+    // #423: once heard named, the out-of-sight place is known: places lists it and move_to takes it
+    L.hear(a, 'Old Brenna swears the Hidden Barrow stands open again.', 'a townsperson');
+    const ph = await call('places', {kind: 'place'}), hbp = (ph.places || []).find(p => p.name === 'Hidden Barrow');
+    ok(hbp && /heard of/.test(hbp.known), 'places lists the marked place once heard of: ' + (hbp ? hbp.known + ', ' + hbp.way : 'missing'));
+    a.playRate = []; const rh = await call('move_to', {target: 'Hidden Barrow'}); ok(rh.ok, 'move_to takes the marked place out of sight once heard of: ' + (rh.going || rh.error));
+    S.places = S.places.filter(p => p !== mk && p !== far);
+    a.playRate = []; a.pq = []}
   r = await call('move_to', {target: 'Mirefen'}); ok(r.ok || /fight/.test(r.error), 'move_to Mirefen once told of it: ' + (r.going || r.error));
   await until(() => {const b = S.agents.find(x => x.id === id); return b.state === 'hunt' && !(b.pq || []).length || b.state === 'fight'}, 25, 'arriving in Mirefen');
   let target = null;
