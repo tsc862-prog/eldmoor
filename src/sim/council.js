@@ -55,7 +55,8 @@ const living=a=>a&&a.state!=='dead';
 // A company's walking group (a S.parties row with p.company) and its leader: the party's leader while it rides with
 // them, else the highest-level member (first in C.ids on a tie). A solo leads itself.
 const partyOfC=C=>C?S.parties.find(p=>p.company===C.id)||null:null;
-export function leaderOfC(C){if(!C)return null;const P=partyOfC(C),L=members(C);if(P&&living(P.leader)&&L.includes(P.leader))return P.leader;
+export function leaderOfC(C){if(!C)return null;const P=partyOfC(C),A=members(C),N=A.filter(b=>b.companion==null),L=N.length?N:A; // a scripted companion never leads (#442)
+  if(P&&living(P.leader)&&L.includes(P.leader))return P.leader;
   let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}
 export const leaderOfF=C=>leaderOfC(C===undefined?S.fellowship:C); // no argument: the Fellowship (old callers)
 export const leaderFor=a=>leaderOfC(companyOf(a));

@@ -66,6 +66,7 @@ import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote} from './council.js';
 import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js';
+import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
 import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
@@ -702,6 +703,10 @@ function seen(a){const R=sightOf(a),here=inTown(a)?homeOf(a):null,out={heroes:[]
 function choiceInfo(a){const adv=advOf(a),p=adv&&adv.pick;if(!p||p.chosen||adv.stage!=='choose')return null;
   return {adventure:adv.title,scene:p.frame,options:{a:p.opts.a,b:p.opts.b},minutes_left:Math.max(0,Math.round(p.until-S.gameMin))}}
 
+// A hero of your faction in sight, by id or name (join_party, invite): the hero, or a Rule naming who is in sight.
+function sideHero(a,hero_id,who){const n=nameKey(who!=null&&who!==''?who:hero_id),i=idIn(hero_id)??idIn(who),seen=()=>nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a));
+  const b=i!=null?hero(i):seen().find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
+  need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(seen().slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');return b}
 const T={
   look(a){const z=zoneAt(a.x,a.y),here=inTown(a)?homeOf(a):null,s=seen(a);
     const r={ok:true,time:day()+' ('+dayPart()+')',where:here?'inside '+here.name+' ('+FAC[here.fac].name+')':(ZONES[z]||'the wilds'),pos:[r1(a.x),r1(a.y)],
@@ -800,6 +805,7 @@ const T={
     const b=i!=null?hero(i):nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
     need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');
     if(a.fellow&&b.fellow){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
+    {const r=askToJoin(a,b);if(r)return r} // toward an agent hero or a company's companion: an offer to that company's leader (#442)
     need(b.fac===a.fac,b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
     need(Math.abs(b.lvl-a.lvl)<=3,'Too far apart in level (more than 3).');need(!['dungeon','raid','duel','ghost'].includes(b.state),b.name+' is busy.');
     need(tm(b,'social')||b.player,b.name+' is a loner and will not travel with anyone.');
@@ -811,6 +817,10 @@ const T={
     a.party=p;a.partyOk=true;for(const m of p.mem)if(m.lvl>p.leader.lvl)p.leader=m;
     record(a,'Joined ',b,' on the road.');record(b,a.name+' joined them.');
     return {ok:true,party:p.mem.map(x=>x.name),leader:p.leader.name}},
+  // companies (#442): an offer to ride together, said aloud; the one asked answers with accept or decline
+  invite(a,{hero_id,name,who,text}){const b=sideHero(a,hero_id,name!=null&&name!==''?name:who);return offerInvite(a,b,text)},
+  accept(a,{offer_id}){return offerAccept(a,{offer_id})},
+  decline(a,{offer_id,text}){return offerDecline(a,{offer_id,text})},
   leave_party(a,{where,when_hours}){if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');
       // a meeting plan (#182): made aloud before parting, so it is recorded only for those who hear it
       let plan=null;if(where||when_hours){plan=makeMeeting(a,where,when_hours);if(plan.error)throw new Rule(plan.error)}
