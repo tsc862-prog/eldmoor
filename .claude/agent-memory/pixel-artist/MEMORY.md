@@ -3,3 +3,4 @@
 - [Spell effects](spellfx.md) — #374 sim->render spell fx contract, real-time pool, staging shots with spellDebug.freeze
 - [Dungeon view](dungeonview.md) — #85 interior generator + overlay contract, last-run tracking, staging a mid-crawl shot
 - [Scene maps](scenemaps.md) — #431 outdoor real-terrain cut vs generated indoor settings, slice plan, staging scene shots
+- [Terrain autotile](autotile.md) — #177 slice 2: asset tables, dual-grid corner pieces, prop variants by tile hash, fixture previews
