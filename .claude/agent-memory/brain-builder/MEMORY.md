@@ -62,4 +62,5 @@
 - [Patch notes](patch-notes.md) — #664 docs/patchnotes/<PR>.md format+lint, rulescheck rule 6/no-notes, launcher last-seen, title What's new
 - [DM undo + flat](dm-undo-flat.md) — #636 undo/dismiss/unstage, ten flat lever tools, D.last, takeBack, caps, test pitfalls
 - [Rumours and titles](rumour-bestow.md) — seed_rumour and bestow DM tools (#637, #638)
+- [Runner acted + models](runner-acted-models.md) — #681 sceneDue/answeredScene, #677 OPENAI_MODELS, price sort and labels
 - [DM voice long-poll](dm-voice-longpoll.md) — #680 wait_ms long polls via hostDm, budget from pickup (callDeadline, +4 s cap), frameMs 8 s, voicecheck numbers

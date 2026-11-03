@@ -51,7 +51,7 @@ import {loadEnv, PRICES} from './relay.mjs';
 import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, inheritRunner, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
-import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
+import {localTurn, localLine, paidLine, sceneToAnswer, sceneDue, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
 import {reflectPrompt, reflectNow, closeReflection} from './pacing.mjs'; // reflection moments (#179)
 import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
@@ -142,7 +142,7 @@ async function between(pacer) {
 // -> the turn record, or null when no scene waits for this hero. A record with no tool call (the model missed twice)
 // is handed to the free turn, which adds its numbers (sumTurns).
 async function forcedScene({b0, w, base, heroId, sess, ask, strict = false, keep = true, on}) {
-  const call = (tool, args) => play(base, heroId, tool, args), sc = await sceneToAnswer(b0, call, !!(w && w.table));
+  const call = (tool, args) => play(base, heroId, tool, args), sc = await sceneToAnswer(b0, call, !!(w && w.table), sess);
   if (!sc) return null;
   const r = await sceneTurn({ask, call, sess, scene: sc, on, strict, keep});
   if (!r.tools) console.log(`  [scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`);
@@ -312,7 +312,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const sceneS = [], sceneOn = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${short(b, 120)})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
     // Scene first (issue #515): the hero's own scene is open as the turn starts: one structured answer sends scene_act before
     // anything else (a short tool budget was spent before it, live). Answered: that is the turn.
-    if (!refl && b0 && sceneFrom(b0.scene)) {let first = null;
+    if (!refl && b0 && sceneDue(b0.scene, sess)) {let first = null;
       try {first = await forcedScene({b0, w, base, heroId, sess, ask: adapterAsk(anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}), model, 'low'), keep: false, on: sceneOn})}
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}
       if (first && first.tools) {freeSlot(); pacer.turnDone(); sess.turns++; spent += first.cost; sess.costUsd += first.cost;
@@ -357,7 +357,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }
     // Claude keeps tool use at the table; a scene turn that ended without scene_act gets one structured answer (issue #163)
     let forced = null;
-    if (!stopReq && sceneFrom(((await pacer.brief()) || {}).scene)) { // whatever the turn started on: the scene may have opened mid-turn (#515)
+    if (!stopReq && sceneDue(((await pacer.brief()) || {}).scene, sess)) { // whatever the turn started on: the scene may have opened mid-turn (#515)
       console.log('  [scene: the turn ended without scene_act; one structured answer]');
       try {forced = await forcedScene({b0: await pacer.brief(), w, base, heroId, sess, ask: adapterAsk(anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}), model, 'low'), keep: false,
         on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${short(b, 120)})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)}});
