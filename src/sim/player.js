@@ -74,6 +74,7 @@ import {waitsNote,waitedS} from './scenewait.js'; // a scene that waits on you, 
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
 import {lineRefusal,noteSaid,publicAnswer} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
+import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,intentView,waitish} from './intent.js'; // the hero's stated aim (#535)
 import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,placeMemory,roadsLine,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,feared,keyOf,sight,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
 import {actFlee,fights,actionLog} from './actlog.js';
@@ -153,6 +154,7 @@ function autopilot(a){const mh=maxHp(a),field=(a.state==='hunt'||a.state==='trav
   if(a.hp<mh*PK.RETREAT*tm(a,'retreat'))return home('too hurt to stay out');
   if(a.hp<mh*.6)return creatureNear(a,PK.REST_CLEAR)?home('hurt, and creatures close by'):{kind:'rest',until:S.gameMin+60,auto:'resting while hurt',label:'rest'};
   if(isStorm(z))return home('a storm over '+ZONES[z]);
+  const ip=intentPilot(a);if(ip)return ip; // the hero's stated aim (#535) is the standing order where it maps to one
   const o=a.playOrder;if(o&&o.kind==='hunt'&&fits(a,z))return {kind:'hunt',n:o.n,k0:a.kills,flee:o.flee,prey:o.prey,wary:true,ground:z,auto:'hunting again (your last order: hunt '+o.n+')',label:'hunt'};
   if(leaderOf(a))return null; // a follower keeps to its leader out here (the follow state); one whose leader stayed in town hunts on
   if(load(a)>=PK.BAG)return {kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (pack full)',auto:'heading home to sell (pack full)'};
@@ -196,12 +198,53 @@ function townPilot(a){const mh=maxHp(a),c=homeOf(a);
   if(a.hp<mh*PK.READY)return {kind:'rest',until:S.gameMin+30,auto:'resting before heading out'}; // #487: out only near full health
   if(load(a)>=TP.LOOT)return {kind:'sell',auto:'selling your loot'};
   const pk=bestPotion(a);if(pk&&potionsHeld(a)<TP.POTIONS&&a.gold>=USES[pk].price*2&&used(a)<capOf(a))return {kind:'buy',item:pk,n:TP.POTIONS-potionsHeld(a),auto:'buying '+pk};
+  const ip=intentPilot(a);if(ip)return ip; // the stated aim (#535) before waiting for a leader or the habits below
   const L=a.party&&a.party.leader!==a&&a.party.leader.state!=='dead'?a.party.leader:null;
   if(L&&S.gameMin-(a.playActAt||0)<PK.IDLE+TP.WAIT)return null; // wait for the leader a while: it follows them out (town())
   const z=groundFor(a);if(z==null)return null;const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
   const o=a.playOrder&&a.playOrder.kind==='hunt'?a.playOrder:null,n=o?o.n:TP.HUNT;
   const why=o?'your last order: hunt '+o.n:L?L.name+' is still in town; hunting nearby':'it suits your strength';
   return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'heading out to '+ZONES[z]+' to hunt ('+why+')'},{kind:'hunt',n,flee:o?o.flee:undefined,prey:o?o.prey:undefined,wary:true,ground:z,auto:'hunting in '+ZONES[z]+' ('+why+')'}]}
+
+// ---- the stated aim (issue #535) ----
+// What autopilot carries on for an aim (sim/intent.js), where it maps to one: walk on to its place, hunt its ground (one that
+// fits, wary as ever), wait where it is. A follow aim is the standing follow order (a.playOrder, #445). Safety comes first:
+// autopilot only gets here once hurt, storm and full-pack checks passed, and an aim that is done maps to nothing.
+function intentPilot(a){if(!aimHeld(a))return null;const I=a.intent,o=I.order;if(!o)return null;const why=' (your aim: '+clean(I.goal,60)+')';
+  if(o.kind==='wait')return {kind:'rest',until:S.gameMin+60,auto:'waiting where you are'+why,label:'rest'};
+  if(o.kind==='move'){if(o.to&&dist(a,o.to)<=INTENT.NEAR)return null;let p=o.target?plan(a,o.target):null;
+    if((!p||p.error)&&o.to&&o.last!=='town')p=toFieldOf(a,o.to,o.label);if(!p||p.error)return null;
+    return {kind:'move',legs:p.legs,last:p.last,label:p.label,auto:'carrying on to '+p.label+why}}
+  if(o.kind==='hunt'){const z=o.ground!=null?ZONES.indexOf(o.ground):zoneAt(a.x,a.y);if(z<0||!fits(a,z))return null;
+    const h={kind:'hunt',n:o.n||TP.HUNT,flee:o.flee,prey:o.prey,wary:true,ground:z,auto:'hunting in '+ZONES[z]+why,label:'hunt'};
+    if(zoneAt(a.x,a.y)===z&&!cityAt(a)&&!inTown(a)){h.k0=a.kills;return h}
+    const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
+    return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'heading to '+ZONES[z]+why},h]}
+  return null}
+// The order an aim maps to: the command the agent just gave (or carries out now), else what the goal's words name.
+function orderOf(a,c,target){if(!c||c.auto)return null;
+  if(c.kind==='move'&&!c.flee){const e=(c.legs||[])[c.legs.length-1];return e?{kind:'move',label:c.label,target:target||null,to:{x:e.x,y:e.y},last:c.last}:null}
+  if(c.kind==='hunt'){const m=(a.pq||[]).find(x=>x.kind==='move'),g=m&&ZONES.includes(m.label)?m.label:ZONES[zoneAt(a.x,a.y)]||null;return {kind:'hunt',n:c.n,k0:a.kills,flee:c.flee,prey:c.prey,ground:g}}
+  if(c.kind==='follow'){if(!a.playOrder||a.playOrder.kind!=='follow')a.playOrder={kind:'follow',id:c.id,until:c.until,h:c.h};return {kind:'follow',id:c.id,name:c.name}}
+  if(c.kind==='rest')return {kind:'wait'};
+  return null}
+function goalOrder(a,goal){const g=String(goal||'').toLowerCase();if(waitish(g))return {kind:'wait'};
+  const f=/\bfollow(?:ing)?\s+([a-z' -]+)/.exec(g);if(f){const w=f[1].trim().split(/\s+/)[0];const b=S.agents.find(x=>x!==a&&x.kind==='hero'&&x.state!=='dead'&&x.name.toLowerCase().split(' ')[0]===w&&!x.hidden&&dist(a,x)<=sightOf(a));
+    if(b&&!followRefusal(a,b)){a.playOrder={kind:'follow',id:b.id};return {kind:'follow',id:b.id,name:b.name}}}
+  const hit=knownNames(a).filter(n=>n&&new RegExp('(^|[^a-z])'+reEsc(n.toLowerCase())+'($|[^a-z])').test(g)).sort((x,y)=>y.length-x.length)[0];
+  const huntish=/\b(hunt|hunting|kill|slay|grind|level|xp)\b/.test(g);
+  if(hit){if(huntish&&ZONES.includes(hit))return {kind:'hunt',n:TP.HUNT,k0:a.kills,ground:hit};
+    const p=planOne(a,hit.toLowerCase());if(p&&!p.error){const e=p.legs[p.legs.length-1];return {kind:'move',label:p.label,target:hit,to:{x:e.x,y:e.y},last:p.last}}}
+  if(huntish&&!inTown(a)&&!cityAt(a))return {kind:'hunt',n:TP.HUNT,k0:a.kills,ground:ZONES[zoneAt(a.x,a.y)]||null};
+  return null}
+// The leader's shout (#535): a company leader's new aim reaches the companions in shouting range as a party line, and
+// each who heard it carries it in its header (a.heardAim). Nothing else of the aim leaves the hero.
+function shoutAim(a){const C=companyOf(a);if(!C||C.ids.length<2||leaderFor(a)!==a||a.state==='ghost')return null;const I=a.intent;
+  const text=clean(I.goal+(I.why?', '+I.why:''),PK.SAY_LEN);if(!text||notEnglish(text)||a.aimShout===text)return null;
+  const n=partySay(a,text);if(typeof n==='string')return null;a.aimShout=text;const e=a.chat&&a.chat[a.chat.length-1];if(!e)return null;e.aim=true;agentLine(a,e);
+  const H=S.agents.filter(b=>b!==a&&b.chat&&b.chat[b.chat.length-1]===e);noteSaid(a,e.text,H);
+  for(const b of H)if(companyOf(b)===C)b.heardAim={id:a.id,name:a.name,text:e.text,at:Math.round(S.gameMin)};
+  return {heard_by:e.heard||[],too_far:e.far&&e.far.length?e.far:undefined}}
 
 // ---- the agent's turn and its last look (issue #240) ----
 // A local model's turn can take a game hour at 1x. While the hero's turn is open (from the pace wake, or the first tool
@@ -247,7 +290,7 @@ export const isPlayer=a=>!!(a&&a.player);
 // Returns true when it handled the step; false hands it to updAgent (duels, assists, regroups,
 // ghosts, a consented crypt or raid, following a party leader, and the DM-led legs of an adventure).
 export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
-  watch(a);
+  watch(a);intentWatch(a); // progress toward the stated aim (#535)
   // A Fellowship member whose runner is gone, once the owner said go on (or with no host at all: the headless sim,
   // play-headless before a runner claims it): its reflexes play it whole, the scripted rules, until a runner holds
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
@@ -1115,8 +1158,18 @@ const T={
       odds:c.chance>=.7?'a sure hand':c.chance>=.5?'likely':'a stretch for your skill',note:'wait() while you work; an attack interrupts and you go back to it after the fight.'}},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
     if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&sceneOf(a).ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
-    const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
-    return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS}}},
+    let m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
+    const noAim=!aimHeld(a)&&m>INTENT.WAIT_NOAIM;if(noAim)m=INTENT.WAIT_NOAIM; // waiting needs a reason and a limit (#535)
+    return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS,...(noAim?{limit:'You have no aim stated, so the wait is held to '+INTENT.WAIT_NOAIM+' game minutes. intent {goal, why, until} says what you wait for.'}:{})}}},
+  // the stated aim (#535, sim/intent.js): read it, state it, or set it down
+  intent(a,{goal,why,until,done}={}){const g=goal!=null?String(goal).trim():'';
+    if(/^(yes|true|done|kept|abandon(ed)?|drop(ped)?)$/i.test(String(done==null?'':done))||/^(done|none|nothing)$/i.test(g))return endIntent(a,why);
+    if(!g)return intentView(a,leaderFor(a));
+    need(!notEnglish(g+' '+(why||'')),'Not set: say it in English, as everyone in Eldmoor speaks.');
+    const c=a.pq&&a.pq[0],order=orderOf(a,c&&!c.auto?(c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c):null)||goalOrder(a,g);
+    const r=setIntent(a,{goal:g,why,until},order);if(r.ok===false)throw new Rule(r.error);
+    const sh=shoutAim(a);if(sh){r.shouted=sh.heard_by.length?'heard by '+sh.heard_by.join(', '):'no one was near enough to hear';if(sh.too_far)r.too_far=sh.too_far}
+    return r},
 };
 // A quest the hero holds, by its id from quests (a bare number is a job id).
 function findQ(a,id){const L=questLog(a),s=String(id==null?'':id).trim(),n=parseJob(s);return L.active.find(x=>x.id===s)||(n!=null?L.active.find(x=>x.id==='job:'+n):null)||null}
@@ -1187,6 +1240,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
   if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
+    if((tool==='move_to'||tool==='hunt'||tool==='follow'||tool==='rest')&&a.intent&&!a.intent.done&&!a.intent.order){const c=a.pq&&a.pq[0];attachOrder(a,orderOf(a,c&&c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c,tool==='move_to'?args&&args.target:null))} // a command under an aim with none becomes its order (#535)
     if(tool==='follow'){const f=a.pq[0];a.playOrder={kind:'follow',id:f.id,until:f.until,h:f.h}}else if(a.playOrder&&a.playOrder.kind==='follow'&&(a.pq&&a.pq[0])!==q0)a.playOrder=null} // a new order ends a standing follow (#445) // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
   if(!r.pending&&tool!=='scene_act'){const tv=tableView(a),n=tv&&tv.options?waitsNote(a,tv.options):null;if(n)r.table_waits=n} // a turn in flight when the scene opened learns of it at its next call (#515)
@@ -1199,7 +1253,7 @@ export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:fals
   const r={ok:true,waited_min:Math.round(S.gameMin-p.from)};r.as_of=day();
   if(a.state==='dead')Object.assign(r,{ok:false,dead:true,error:a.name+' died ('+(a.cause||'fallen')+'). Hardcore: one life.'});
   else{r.why=S.gameMin>=p.until?'time passed':realOut&&tableView(a)?'the world is paused for a scene at the table':realOut?'the world is paused or slow; nothing much happened':'something needs you';
-    r.hp=pct(a.hp,maxHp(a))+'%';r.state=a.state;r.doing=a.playDoing||null;const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv){r.table=tv;const n=tv.options?waitsNote(a,tv.options):null;if(n)r.table_waits=n}}
+    if(p.limit)r.limit=p.limit;r.hp=pct(a.hp,maxHp(a))+'%';r.state=a.state;r.doing=a.playDoing||null;const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv){r.table=tv;const n=tv.options?waitsNote(a,tv.options):null;if(n)r.table_waits=n}}
   const evs=takeEvents(a);if(evs.length)r.events=evs;
   const e=(a.playLog||[])[0];if(e&&e.tool==='wait'&&e.pending){e.pending=false;e.text=summarize(r)}
   return r}

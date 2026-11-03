@@ -38,6 +38,12 @@ ok(p2.indexOf(ORDERS_TAIL) < p2.indexOf('YOUR PERSONA') && p3.split('YOUR PERSON
 const q = withSituationOrders('base\nYOUR PERSONA\nv\n(end of your persona)');
 ok(q.indexOf(ORDERS_HEAD) < q.indexOf('YOUR PERSONA'), 'a new block goes before an existing persona block');
 
-// the tools the orders name exist (intent does not exist yet)
+// the tools the orders name exist; the aim is the intent tool now (#535), not "your stated aim"
 const names = new Set(TOOL_NAMES);
+ok(names.has('intent') && /intent \{goal, why, until\}/.test(ORDERS_FULL) && /intent \{goal, why, until\}/.test(ORDERS_SHORT) && !/stated aim/.test(ORDERS_FULL) && !/say your aim aloud/.test(ORDERS_FULL), 'the orders name the intent tool for the aim (#535), in both variants');
+ok(/What are you trying to do now\?/.test(ORDERS_FULL), 'the full orders say to answer the stale-aim question with intent first');
+const named = new Set([...(ORDERS_FULL + ' ' + ORDERS_SHORT).matchAll(/\b([a-z]+(?:_[a-z]+)+|intent|hunt|wait|vote|look|status|rest|say|earshot|companions|follow|lore|places|buy|sell|talk|become|remember)\b/g)].map(m => m[1]));
+const missing = [...named].filter(n => n.includes('_') && !names.has(n) && !/^(when_hours|job_id|offer_id|meet_at|hero_id)$/.test(n));
+ok(!missing.length, 'every snake_case tool the orders name exists' + (missing.length ? ': missing ' + missing.join(', ') : ''));
+if (bad) {console.log(`\norderscheck: ${bad} failed`); process.exit(1)} else console.log('\norderscheck: all ok');
 

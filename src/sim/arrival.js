@@ -44,7 +44,7 @@ import {remember} from './memory.js';
 import {bond} from './bonds.js';
 import {tm} from '../data/traits.js';
 import {CAP as CHAT_CAP} from './chat.js';
-import {hasLinks,runnerLink} from './runlink.js';
+import {hasLinks,runnerLink,agentLive} from './runlink.js';
 import {prepActive} from './prep.js';
 import {TABLE,openScene,setSceneKind,tableOn,sceneFor} from './table.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
@@ -56,6 +56,7 @@ export const ARRIVE={
   MISS_MAX:2,     // missed calls before the scripted DM fills the rest of the scene at once
   LINE_MAX:2000,  // a technical ceiling for the DM's lines
   WAIT_DAYS:4,    // a recruit waits this many game days for a camp or a town, then arrives wherever the company is
+  HEIR_WAIT:60,   // game minutes a solo's heir's opening waits for a runner to hold the heir (a new hero id), then plays without one
 };
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
 const byId=id=>S.agents.find(x=>x.id==id)||null;
@@ -149,7 +150,11 @@ setCompanyDeathHook((C,a)=>{if(!hosted()||!a||!a.player)return;
   if(!LIVE[runnerLink(a)])return; // a solo nobody was playing leaves no heir behind (its replacement is the world's usual recruit)
   reserve(a.fac,a.cls);const h=makeHero(a.fac,a.cls,null,1);h.succeeds=a.id;markPlayer(h,true);const N=soloFor(h);
   if(N&&C.letters){N.letters={};for(const k in C.letters){const l=C.letters[k];if(l&&l.from===a.id)N.letters[k]={...l}}}
-  if(N)(S.opening||(S.opening={queue:[]})).queue.push({company:N.id,kind:'heir',fallen:a.name,cause:a.cause||null})});
+  if(N)(S.opening||(S.opening={queue:[]})).queue.push({company:N.id,kind:'heir',fallen:a.name,cause:a.cause||null,since:Math.round(S.gameMin)})});
+// An heir's opening waits (up to HEIR_WAIT) until a runner holds the new hero, so the scene is its agent's and not settled
+// unseen the moment it is made; a session-zero opening has the start gate for that (ui/rungate.js).
+function heirReady(q){if(q.kind!=='heir')return true;const C=companyById(q.company),h=C&&members(C)[0];
+  return !h||agentLive(h)||S.gameMin-(q.since||0)>=ARRIVE.HEIR_WAIT}
 // Settled: out of the Crypt, a raid and every fight, and at a camp or in town.
 function settled(C){const L=memOf(C);if(!L.length)return false;const g=CRYPT.group;
   if(g&&g.mem.some(a=>L.includes(a)))return false;
@@ -245,7 +250,8 @@ export function sceneAnswer(a){a=a&&typeof a==='object'?a:{};const sc=ourScene()
 export function sessionTick(){const O=S.opening,CS=S.companies;
   if(!(O&&O.queue&&O.queue.length)&&!(CS&&CS.some(C=>C.arrivals&&C.arrivals.length)))return; // the common case: nothing to open
   if(!hosted()){if(O&&!O.queue.length)delete S.opening;return}
-  if(O&&O.queue&&O.queue.length){if(prepActive()||sceneFor(companyById(O.queue[0].company)))return;const q=O.queue.shift();if(!O.queue.length)delete S.opening;openOpening(q);return}
+  if(O&&O.queue&&O.queue.length){if(prepActive())return;const i=O.queue.findIndex(q=>heirReady(q)&&!sceneFor(companyById(q.company)));
+    if(i>=0){const q=O.queue.splice(i,1)[0];if(!O.queue.length)delete S.opening;openOpening(q);return}}
   for(const C of companies()){if(!C.arrivals||!C.arrivals.length||sceneFor(C))continue; // each company its own table (#518)
     const where=settled(C)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!(CRYPT.group&&CRYPT.group.mem.some(a=>memOf(C).includes(a)))?'town':false);if(!where)continue;
     const q=C.arrivals.shift();if(!C.arrivals.length)delete C.arrivals;openArrival(C,q,where);return}}

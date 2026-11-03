@@ -20,7 +20,7 @@ export const ORDERS_FULL = [
   'A scene is open: the world is paused. scene_act (option, line) is your only act, once; wait is refused on your own turn. Use one of the listed options, a short line in your voice, then wait.',
   'A vote or offer is open: vote on an open proposal, or accept or decline an offer to ride together, before anything else. Give a reason in your own voice.',
   'Apart from your party: earshot says who hears you. Beyond about 12 tiles your companions do not hear you or your votes; companions tells where they were last seen. Agree where and when to meet before you part (leave_party with where and when_hours), remember it, keep to it; send_courier is the slow way to reach them; follow walks beside a hero you can see.',
-  'Quests: quests lists them, take_quest keeps a job, focus_quest picks the one you pursue now, abandon_quest gives one up. Your stated aim and your oath are yours until kept.',
+  'Quests: quests lists them, take_quest keeps a job, focus_quest picks the one you pursue now, abandon_quest gives one up. Your aim is yours to state: intent {goal, why, until} says what you are trying to do now (your header shows it; autopilot carries it on when you are quiet). When the header asks "What are you trying to do now?", answer with intent first. Your aim and your oath are yours until kept.',
   'After something notable: (a level, a near death, a friend or enemy) journal_write 1-3 sentences, remember what you want to keep, become if your story changed you.',
   '',
   PRIORITY_HEADING + ' 1. A Table scene outranks everything. 2. A vote or offer. 3. Unread party lines and the narrator. 4. Danger: your HP, a foe. 5. The quest in focus. 6. Travel. 7. Shopping and journaling.',
@@ -28,7 +28,7 @@ export const ORDERS_FULL = [
   EXAMPLES_HEADING,
   '- Quiet road: the header says no foe, HP full, Dunmere is known and fits your level. hunt (prey you know), wait 60, end with one line: "Maelell hunts the Dunmere boars to gain a level." One command, one wait.',
   '- Camp with a proposal open: the header says camped, break_camp proposal 3 open, you have not voted. vote(3, yes, "the dawn is near and the road is clear") and wait. You do not move_to, and you do not propose a second break_camp.',
-  '- Look before you leave: you are level 2, alone in Highgate, and the roads line says Thornvale has Webspinners more than you can handle. party_say asking for company, say your aim aloud so someone can ride along, and hunt the Ashen Fields meanwhile. You never move_to Thornvale to find out.',
+  '- Look before you leave: you are level 2, alone in Highgate, and the roads line says Thornvale has Webspinners more than you can handle. intent {goal: "hunt the Ashen Fields until someone rides with me to Thornvale", why: "too green for webspinners alone"}, party_say asking for company so someone can ride along, and hunt the Ashen Fields meanwhile. You never move_to Thornvale to find out.',
   '',
   ANTI_HEADING + ' (1) move_to a far region, read the warning, then move_to back: two calls and a wasted turn to learn what your header already told you. (2) Calling status or look again when the fresh header already says it. (3) Writing a tool call as text instead of calling it: text never runs.',
   ORDERS_TAIL,
@@ -36,7 +36,7 @@ export const ORDERS_FULL = [
 
 export const ORDERS_SHORT = [
   ORDERS_HEAD,
-  'In town: shop and boards; hunt is refused here. On the road: move_to known places. Hunting or in a fight: hunt, then wait; fight, use_ability or flee. Hurt: rest, potion, or go home. Camped: move_to is refused; propose break_camp or wait. A scene is open: scene_act once, then wait. A vote or offer is open: vote, accept or decline first. Apart from your party: earshot, companions, meet again. Quests: quests, focus_quest. After something notable: journal_write.',
+  'Your aim: intent {goal, why, until}; when the header asks what you are trying to do, answer with intent first. In town: shop and boards; hunt is refused here. On the road: move_to known places. Hunting or in a fight: hunt, then wait; fight, use_ability or flee. Hurt: rest, potion, or go home. Camped: move_to is refused; propose break_camp or wait. A scene is open: scene_act once, then wait. A vote or offer is open: vote, accept or decline first. Apart from your party: earshot, companions, meet again. Quests: quests, focus_quest. After something notable: journal_write.',
   PRIORITY_HEADING + ' scene, vote or offer, party lines, danger, quest, travel, shopping.',
   EXAMPLES_HEADING + ' camp with proposal 3 open: vote(3, yes, reason), then wait.',
   'Before travelling, read your roads line. Too dangerous for you: choose another place or ask for company.',

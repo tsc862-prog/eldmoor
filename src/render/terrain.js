@@ -6,6 +6,17 @@ import {W,H,T,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRAS
 import {tiles,zone,I,CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {biomeOfZone} from './palette.js';
+import {assetPixels,onAssets} from './assets.js';
+
+// Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
+// procedural texel. A tile asset repeats every w x h world pixels (a 32x32 patch spans 2x2 tiles); a missing
+// or not yet loaded asset, or a transparent pixel of it, falls back to the procedural texel below. Every id
+// here or in ASSET_LATER needs a manifest entry whose hook names that table (npm run artcheck checks both ways).
+export const ASSET_TILES={'tile:grass':G,'tile:meadow':FLOWER,'tile:fen-grass':SGRASS,'tile:swamp':SWAMP,'tile:mud':MUD,'tile:ash-rock':ROCK,'tile:snow':SNOW,'tile:ice':ICE};
+// Generated now, drawn later: road, water and the transition pieces need the slice-2 autotile rules (direction, banks,
+// which edge). Until then their fallback is today's procedural texel and edge blend, so these ids change nothing yet.
+export const ASSET_LATER={'tile:road':ROAD,'tile:water':RIVER,'autotile:grass-road':[G,ROAD],'autotile:bank-water':[G,RIVER],'autotile:meadow-fen':[G,SGRASS],'autotile:fen-ash':[SGRASS,ROCK],'autotile:ash-snow':[ROCK,SNOW]};
+const TILE_ASSET=[];for(const [id,t] of Object.entries(ASSET_TILES))TILE_ASSET[t]=id;
 
 const rgbC={};const rgb=s=>rgbC[s]||(rgbC[s]=[parseInt(s.slice(1,3),16),parseInt(s.slice(3,5),16),parseInt(s.slice(5,7),16)]);
 const pk=(a,h)=>a[Math.floor(h*a.length)%a.length];
@@ -25,7 +36,9 @@ const SGP=['#46622f','#3d5729','#42602c','#4a6632'];
 
 // Colour of pixel (px,py) inside tile (tx,ty) of type t. px,py are 0..15.
 export function texel(t,tx,ty,px,py){
-  const x=tx*16+px,y=ty*16+py,h=hash(x,y,3);
+  const x=tx*16+px,y=ty*16+py;
+  if(TILE_ASSET[t]){const A=assetPixels(TILE_ASSET[t]);if(A){const c=A.hex[(y%A.h)*A.w+x%A.w];if(c)return c}}
+  const h=hash(x,y,3);
   switch(t){
     case G:{ // grass with tufts and a pebble
       for(const [ax,ay] of anchors(tx,ty,100,2,2,13)){const dx=px-ax,dy=py-ay;
@@ -195,6 +208,7 @@ function shade(t,tx,ty,px,py){
 export const CH=32;
 export const CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
 const chunks=new Map();
+onAssets(()=>chunks.clear()); // a tile asset arrived (or the index changed): repaint on the next request
 
 // Cached canvas for chunk (cx,cy): min(CH,W-cx*CH)*T by min(CH,H-cy*CH)*T pixels.
 export function getChunk(cx,cy){const k=cy*CHUNKS_X+cx;let c=chunks.get(k);if(!c){c=paintChunk(cx,cy);chunks.set(k,c)}return c}

@@ -68,6 +68,7 @@ jobs:
       - {name: Gathering nodes, run: npm run nodecheck}
       - {name: Recipes, run: npm run recipecheck}
       - {name: Professions, run: npm run professioncheck}
+      - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
       - {name: New World setup, run: npm run setupcheck}
 
   ui:
@@ -162,7 +163,7 @@ jobs:
       - run: npm ci
       - {name: Brain policy and relay (mock model), run: npm run braincheck}
       - {name: Table mode and staged scenes, run: npm run tablecheck}
-      - {name: Companies (invite and accept; scripted companions), run: npm run companycheck}
+      - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}

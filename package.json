@@ -38,7 +38,7 @@
     "localscheck": "node scripts/localscheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",
     "sightcheck": "node scripts/sightcheck.mjs",
-    "companycheck": "node scripts/companycheck.mjs",
+    "companycheck": "node scripts/companycheck.mjs && node scripts/companycheck-apart.mjs",
     "ratecheck": "node scripts/ratecheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",
     "dm": "node scripts/dm-agent.mjs",
@@ -62,6 +62,11 @@
     "bestiarycheck": "node scripts/bestiarycheck.mjs",
     "focuscheck": "node scripts/focuscheck.mjs",
     "questcheck": "node scripts/questcheck.mjs",
+    "artcheck": "node scripts/artcheck.mjs",
+    "art:gen": "node scripts/art/gen.mjs",
+    "art:daily": "node scripts/art/daily.mjs",
+    "art:accept": "node scripts/art/accept.mjs",
+    "art:sheet": "node scripts/art/sheet.mjs",
     "labelcheck": "node scripts/labelcheck.mjs"
   },
   "devDependencies": {

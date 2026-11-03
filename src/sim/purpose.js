@@ -107,9 +107,10 @@ function scriptedPurpose(a,agent){const c=town(a),adv=advOf(a);
 // The purpose of a hero (any hero, any mind). Never throws on a half-built hero: the UI calls it every tick.
 export function purposeOf(a){if(!a)return make({kind:'town',goal:''});
   try{let p=a.state==='dead'||a.state==='ghost'?scriptedPurpose(a,false):a.player?agentPurpose(a):scriptedPurpose(a,false)||make({kind:'town',goal:a.state?a.state[0].toUpperCase()+a.state.slice(1):''});
-    const I=a.player?a.intent:null; // a stated intent (#535): the agent's own words win the why
-    if(I&&a.state!=='dead'){const t=typeof I==='string'?I:I.text||I.why||I.goal||'';if(t){p.why='says: '+String(t).slice(0,140);p.line=p.goal+(p.target?' → '+p.target:'')+' · '+p.why}
-      if(typeof I==='object'&&I.at&&!p.to&&I.at.x!=null){p.to={x:I.at.x,y:I.at.y,label:I.target||'',mark:'place'};p.path=[pt(I.at)]}}
+    const I=a.player&&a.intent&&!a.intent.done?a.intent:null; // a stated intent (#535, sim/intent.js: {goal, why, order, done}): the agent's own words win the why
+    if(I&&a.state!=='dead'){const t=typeof I==='string'?I:I.text||(I.goal?I.goal+(I.why?' ('+I.why+')':''):I.why)||'';if(t){p.why='says: '+String(t).slice(0,140);p.line=p.goal+(p.target?' → '+p.target:'')+' · '+p.why}
+      const at=typeof I==='object'?I.at||(I.order&&I.order.kind==='move'?I.order.to:null):null,lab=I.target||(I.order&&I.order.label)||'';
+      if(at&&!p.to&&at.x!=null){p.to={x:at.x,y:at.y,label:lab,mark:'place'};p.path=[pt(at)]}}
     return p}
   catch(e){return make({kind:'town',goal:a.state||''})}}
 // The small icon over a hero's head: the purpose's kind, grouped into the seven the View toggle shows.
