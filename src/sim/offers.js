@@ -18,15 +18,19 @@ import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {tm} from '../data/traits.js';
 import {COMPANION_LINES} from '../data/companions.js';
-import {PARTY,companyOf,members,minds,soloFor,joinCompany,dissolveCompany,linkParty,campaign,LOG_CAP} from './company.js';
+import {PARTY,companyOf,members,minds,isSolo,leaveCompany,soloFor,joinCompany,dissolveCompany,linkParty,campaign,LOG_CAP} from './company.js';
 import {leaveParty} from './party.js';
 import {speak,agentLine,sayHearers} from './chat.js';
 import {ev} from './notify.js';
 import {record} from './history.js';
 import {log} from './chronicle.js';
 import {bondEvent} from './bonds.js';
-import {spokenLine,leaderOfC,openProps} from './council.js';
-import {inRange} from './reach.js';
+import {spokenLine,leaderOfC,openProps,COUNCIL} from './council.js';
+import {bond} from './bonds.js';
+import {remember} from './memory.js';
+import {notify} from './notify.js';
+import {earshot} from './earshot.js';
+import {inRange,placeNear,stamp} from './reach.js';
 import {notEnglish} from './lang.js';
 import {tableView} from './table.js';
 
@@ -208,3 +212,41 @@ function walk(C,M){const ld=lead(C);if(!ld)return;let P=S.parties.find(p=>p.comp
     for(const b of mem)b.party=P;S.parties.push(P)}
   else if(!P.home)for(const b of M)if(!b.party&&can(b)&&near(b)){P.mem.push(b);b.party=P}
   if(ld.state==='town')for(const b of M)if(isCompanion(b)&&b.state==='town'&&b.townStep===2)b.wait=Math.max(b.wait||0,.5)}
+
+// ---- leave_party {for_good: yes} (#443): a member leaves its company for good and rides alone, a new solo ----
+// The old company's log gets a `leave` line (far companions learn of it on rejoining, reach.js AWAY.KINDS); each
+// companion left behind thinks less of the leaver (COUNCIL.BOND_COST, both ways, as a split does). A company never
+// ends with zero heroes through this: a leave needs a company of two or more.
+export function leaveForGood(a){const C=companyOf(a);
+  if(!C||isSolo(C))return no('You ride alone already.');
+  if(C.slots)return no('The Fellowship rides as five sworn places; split off for a while (leave_party with a plan) rather than leaving for good.');
+  if(tableView(a))return no('Not while a scene is open at the table: act in it first (scene_act).');
+  if(OFFER.BUSY.includes(a.state))return no('Not while you are '+busyWord[a.state]+'.');
+  if(OFFER.FIGHT.includes(a.state))return no('Not in the middle of a fight.');
+  const rest=members(C).filter(b=>b!==a);
+  for(const b of rest){for(const [x,y] of [[a,b],[b,a]]){(x.bonds||(x.bonds={}));x.bonds[y.id]=Math.max(-10,bond(x,y)-COUNCIL.BOND_COST)}
+    remember(b,'leave',a.name+' left us for good and rides alone now.');notify(b,a.name+' has left the company for good.',false)}
+  campaign(C,'leave',a,' left the company for good.');
+  if(a.party)leaveParty(a);leaveCompany(a);a.partyOk=false;delete a.catchUp;delete a.apartSince;delete a.missed;delete a.splitUntil;
+  record(a,'Left ',gd(C.name),' for good and rode on alone.');remember(a,'leave','I left '+C.name+' for good. I ride alone now.');
+  const S1=soloFor(a);
+  return {ok:true,company:S1?S1.name:undefined,left:C.name,note:'You ride alone now, a company of one. Your former companions think less of you for it. Use invite or join_party to ride with someone again.'}}
+
+// ---- companions: the company as this hero knows it (#443) ----
+// Names, classes and where each was last seen, only as 'beside you' or 'last seen near <place>' with how long ago: never
+// coordinates, HP, state or what mind plays them (in-game channels, #123). Folds in earshot (who a say or a shout reaches).
+export function companionsView(a){const C=companyOf(a);if(!C||isSolo(C)){const r={ok:true,alone:true,note:'You ride alone. invite someone within '+OFFER.JOIN+' tiles, or join_party, to ride together.'};
+    const ofs=offersBrief(a);if(ofs)r.offers_to_you=ofs;const es=earshot(a);if(es&&es.ok)r.earshot=es;return r}
+  const seen=a.seen||{},now=S.gameMin;
+  const riders=members(C).filter(b=>b!==a).map(b=>{const o={name:b.name,class:b.cls,level:b.lvl+0};
+    if(isCompanion(b))o.rides_as='companion';
+    if(inRange(a,b))o.at='beside you';
+    else{const e=seen[b.id];if(e){const h=Math.max(0,Math.round((now-e.at)/60*10)/10);o.at='last seen near '+e.where+(h>=.2?', '+h+' game hours ago':' just now')}else o.at='not seen since you joined'}
+    return o});
+  const L=leaderOfC(C),r={ok:true,company:C.name,riders,leader:L?(L===a?'you':L.name):null,size:C.ids.length};
+  const plans=(C.plans||[]).filter(p=>p.status==='open'&&p.who.includes(a.id)).map(p=>'Meet at '+p.where+' at '+p.atText);if(plans.length)r.meeting_plans=plans;
+  const post=(C.post||[]).filter(m=>m.from===a.id).map(m=>'Courier to '+m.toName+', due '+stamp(m.due));if(post.length)r.couriers_out=post;
+  const ofs=offersBrief(a);if(ofs)r.offers_to_you=ofs;
+  const mine=offersFrom(a).map(o=>{const t=hero(o.to);return 'Your offer to '+(t?t.name:'someone')+' stands until '+hhmm(o.until)});if(mine.length)r.your_offers=mine;
+  const es=earshot(a);if(es&&es.ok)r.earshot=es;
+  return r}

@@ -9,7 +9,7 @@
 //                hours to arrive (D&D style: slow, costs gold, arrives as an in-game event and a chat line).
 // Plain data, saved with the world on each company: C.plans [{id,where,at,atText,made,by,byName,who,whoNames,status}], C.post [{id,from,to,text,sent,due,cost}].
 import {S,clockStr,dayNo} from './state.js';
-import {dist,zoneAt} from '../world/map.js';
+import {dist,zoneAt,ZONES,CITY} from '../world/map.js';
 import {sightMul} from './weather.js';
 import {companyOf,companies,members,mates,campaign,setWitness} from './company.js';
 import {remember} from './memory.js';
@@ -73,7 +73,7 @@ export function sendCourier(a,to,text){const F=companyOf(a);if(!F)return {error:
 // member is back after AWAY_MIN game minutes the game tells ONE present member what was missed and asks them to
 // say it; the returner is only told to ask. The facts never reach the returner except through what is said in
 // game (#123); if nobody speaks to them within TOLD_WAIT minutes their turn header says they have not been told.
-export const AWAY={MIN:120,TOLD_WAIT:30,TTL:720,KINDS:['council','scene','npc','death','outcome','recruit','complication']};
+export const AWAY={MIN:120,TOLD_WAIT:30,TTL:720,KINDS:['council','scene','npc','death','outcome','recruit','complication','leave']};
 export function witness(kind,label,C){if(!AWAY.KINDS.includes(kind))return;
   for(const b of members(C===undefined?S.fellowship:C))if(b.apartSince!=null){const M=b.missed||(b.missed=[]);if(M.length&&M[M.length-1].l===label)continue;M.push({k:kind,l:label});if(M.length>12)M.shift()}}
 setWitness(witness);
@@ -100,7 +100,14 @@ function absence(F){const L=members(F);
   for(const b of L)if(b.catchUp&&S.gameMin>=b.catchUp.at+AWAY.TTL)delete b.catchUp}
 
 export function reachTick(){for(const C of companies())reachOne(C)}
-function reachOne(F){absence(F);
+// Who a hero last saw, and near what (#443): a.seen = {companionId: {at, where}}, refreshed each tick for every companion
+// in shouting range; it is the hero's own knowledge, so it is read back only as 'beside you' or 'last seen near <place>'.
+const inCity=p=>CITY.find(c=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5)||null;
+export const placeNear=p=>{const c=inCity(p);return c?c.name:(ZONES[zoneAt(p.x,p.y)]||'the wilds')};
+function noteSeen(F){const L=members(F);if(L.length<2)return;
+  for(const a of L)if(a.player)for(const b of L)if(b!==a&&inRange(a,b)){const s=a.seen||(a.seen={}),e=s[b.id];
+    if(!e||e.at!==Math.round(S.gameMin)){const w=placeNear(b);s[b.id]={at:Math.round(S.gameMin),where:w}}}}
+function reachOne(F){absence(F);noteSeen(F);
   // couriers: due messages arrive as events and chat lines; a fallen reader gets only a grave
   if(F.post&&F.post.length){const keep=[];
     for(const m of F.post){if(S.gameMin<m.due){keep.push(m);continue}
