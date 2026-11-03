@@ -73,7 +73,7 @@ import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js
 import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
 import {sceneAct,tableView} from './table.js';
 import {sceneOf} from './scenes.js'; // the hero's own company's scene (#518)
-import {waitsNote,waitedS} from './scenewait.js'; // a scene that waits on you, said in every tool result; how long it waited (#515)
+import {waitsNote,waitedS,FRAMING} from './scenewait.js'; // a scene that waits on you, said in every tool result; how long it waited (#515)
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
 import {passOnTo,gateWord} from './rumours.js'; // what the town is saying (seed_rumour, #637)
 import {titleOf,styled} from './epithet.js'; // a name given for a deed (bestow, #638)
@@ -1250,7 +1250,8 @@ const T={
     record(a,'Pinned a notice at ',c.name,'.');return {ok:true,posted:n.text,town:c.name,lapses_in_days:SIGHT.NOTICE_DAYS,note:'Anyone who reads the board at '+c.name+' learns your name and this text. Ask for them at the inn.'}},
   send_courier(a,{to,text}){need(companyOf(a),'Only an agent hero can hire a courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
-  scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
+  scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(x===FRAMING)return {ok:false,error:x,offline:true,waiting_for:'the DM'}; // not a failed turn (#682)
+    if(typeof x==='string')throw new Rule(x);const v=tableView(a);
     return {ok:true,chose:x.k,said:x.line||undefined,waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   // ---- professions and gathering (#257): only the caller's own hero ----
   recipes(a,{profession}={}){let id=null;if(profession!=null&&String(profession).trim()){id=profKey(profession);

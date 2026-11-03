@@ -15,8 +15,16 @@ import {sceneOf} from './scenes.js'; // the member's own company's scene (#518: 
 
 export const SW={EXTRA_MS:90000}; // at most this much longer (real ms) for a live member its runner reports as queued
 
+// The DM sets the scene first (#682, owner decision): while a paused scene is in its frame phase, or its opening DM call
+// (the frame or the first voice, marked op when the scene's DM hook posts it) is still unanswered, no member is woken, due or
+// may act. Then the members are woken with the final frame (sc.wk: who has been told; table.js wakeStep, staggered by seat in
+// an everyone-answers scene). A scene with no wk (not paused, or from an older save) holds no one.
+export const framing=sc=>!!(sc&&sc.pause&&!sc.resolved&&(sc.phase==='frame'||sc.phase==='turn'&&(sc.calls||[]).some(c=>c.op&&!c.done)));
+export const unwoken=(sc,a)=>!!(sc&&a&&sc.wk&&!sc.wk.done&&!sc.wk[a.id]);
+export const heldBack=(sc,a)=>framing(sc)||unwoken(sc,a);
+export const FRAMING='The DM is still setting the scene; wait for the frame.';
 // (in a turns scene a member whose turn has passed cannot answer any more, as sceneAct says: not due)
-const unanswered=(sc,a)=>!!(sc&&a&&sc.ids.includes(a.id)&&!sc.acts[a.id]&&sc.phase!=='outcome'&&sc.phase!=='done'&&!(sc.all&&sc.resolved)&&(sc.all||sc.phase!=='turn'||sc.ids.indexOf(a.id)>=sc.i));
+const unanswered=(sc,a)=>!!(sc&&a&&sc.ids.includes(a.id)&&!sc.acts[a.id]&&sc.phase!=='outcome'&&sc.phase!=='done'&&!(sc.all&&sc.resolved)&&(sc.all||sc.phase!=='turn'||sc.ids.indexOf(a.id)>=sc.i)&&!heldBack(sc,a));
 // The open scene still waits for this member's answer (any phase before the outcome; it may answer early).
 export const sceneDue=a=>unanswered(sceneOf(a),a);
 
