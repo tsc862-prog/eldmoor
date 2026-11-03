@@ -31,6 +31,7 @@ import {createMinimap} from './minimap.js';
 import {syncSpells,drawSpells} from './spellfx.js';
 import {TEXT,MARK,LIGHT} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
+import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
@@ -91,7 +92,7 @@ export function createRenderer(cv,screenEl){
   const mini=miniEl&&miniEl.getContext?createMinimap(miniEl,cam,centerOn):null;
   function resize(){const r=screenEl.getBoundingClientRect();cam.dpr=window.devicePixelRatio||1;cv.width=Math.max(1,Math.round(r.width*cam.dpr));cv.height=Math.max(1,Math.round(r.height*cam.dpr));
     cam.fit=Math.min(cv.width/(W*T),cv.height/(H*T));if(mini)mini.resize()}
-  new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();
+  new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();initSceneView();
 
   function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
@@ -121,17 +122,26 @@ export function createRenderer(cv,screenEl){
 
   let blink=0;
   function draw(){
-    trackCrawl();if(dungeonOpen()){drawDungeon(performance.now()/1000);return} // the dungeon view covers the world; skip drawing it
+    trackCrawl();sceneTick(cam);if(dungeonOpen()){drawDungeon(performance.now()/1000);return} // the dungeon view covers the world; skip drawing it
+    if(drawSceneView(performance.now()/1000))return; // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
-    const sel=cam.sel,fr=framed(),follow=following();
-    cam.sc=fr?cam.sc+(frameScale(fr)-cam.sc)*.08:follow?followScale():cam.fit*cam.zoom;const sc=cam.sc;
+    const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height));
+    if(cut){ // an outdoor scene (#431): the camera frames the scene's cut of the world below the banner and above the bar
+      const top=cut.top*cam.dpr,bot=cut.bottom*cam.dpr,want=Math.max(cam.fit*2,Math.min(cv.width/(cut.w*T),Math.max(40,cv.height-top-bot)/(cut.h*T)));
+      const first=!cam.cut;cam.cut=true;cam.sc=first?want:cam.sc+(want-cam.sc)*.15;
+      const tx=cut.cx*T,ty=cut.cy*T-(top-bot)/2/cam.sc;if(first){cam.camX=tx;cam.camY=ty}else{cam.camX+=(tx-cam.camX)*.15;cam.camY+=(ty-cam.camY)*.15}
+      cam.vw=cv.width/cam.sc;cam.vh=cv.height/cam.sc}
+    else{cam.cut=false;
+    cam.sc=fr?cam.sc+(frameScale(fr)-cam.sc)*.08:follow?followScale():cam.fit*cam.zoom;
     if(fr){cam.camX+=(fr.x*T-cam.camX)*.1;cam.camY+=(fr.y*T-cam.camY)*.1}
     else if(follow){cam.camX+=(sel.x*T-cam.camX)*.12;cam.camY+=(sel.y*T-cam.camY)*.12}
-    clampCam();const vw=cam.vw,vh=cam.vh;
+    clampCam()}
+    const sc=cam.sc,vw=cam.vw,vh=cam.vh;
     cam.offX=Math.round((vw/2-cam.camX)*sc);cam.offY=Math.round((vh/2-cam.camY)*sc);
     const vx0=cam.camX-vw/2,vy0=cam.camY-vh/2,vx1=vx0+vw,vy1=vy0+vh;
     const inView=(x,y,m)=>x>vx0-m&&x<vx1+m&&y>vy0-m&&y<vy1+m;
+    if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
     drawTerrain(sc);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
     // lava shimmer: embers drifting around the lair ring
@@ -142,6 +152,7 @@ export function createRenderer(cv,screenEl){
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
     drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite,outlined,dispoRing}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
     drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
+    if(cut)drawSceneRings(ctx,cam,cut); // who is in the scene: a ring at their feet (#431)
     const fxNow=performance.now()/1000;syncSpells(fx,fxNow,inView);drawSpells(ctx,0,close,inView,fxNow); // spell effects on the ground: rings, roots, briars (#374)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
     const ents=[];
@@ -182,7 +193,7 @@ export function createRenderer(cv,screenEl){
     drawWeather(ctx,S,cam,blink);
     // night: a blue wash, then light added back (lighter): lava fields glow, torches flicker,
     // crypt mouths breathe a faint green, the camp fire (camp.js)
-    const dk=darkness();if(dk>0){const N=LIGHT.night;ctx.fillStyle='rgba('+N[0]+','+N[1]+','+N[2]+','+dk+')';ctx.fillRect(0,0,W*T,H*T);
+    const dk=darkness();if(dk>0){const N=LIGHT.night;ctx.fillStyle='rgba('+N[0]+','+N[1]+','+N[2]+','+dk+')';if(cut&&cut.edge)ctx.fillRect(vx0,vy0,vw,vh);else ctx.fillRect(0,0,W*T,H*T); // an outdoor scene's arena past the edge darkens too
       ctx.globalCompositeOperation='lighter';
       const lg=lavaGlow(!S.boss.alive);ctx.globalAlpha=dk*.65;ctx.imageSmoothingEnabled=true;ctx.drawImage(lg,0,0,W,H,0,0,W*T,H*T);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1;
       const now=performance.now()/1000;
@@ -229,6 +240,7 @@ export function createRenderer(cv,screenEl){
     flushLabels(sc);
     if(close){drawBubbles(ctx,S,cam,drawText);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
+    if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
     if(mini)mini.draw(S);
   }
 

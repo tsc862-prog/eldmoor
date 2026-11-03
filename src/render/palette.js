@@ -90,3 +90,29 @@ export const DUNGEON={
   fog:'rgba(4,4,10,.9)', fogA:230,       // over chambers the party has not reached
   cur:UI.gold, clear:UI.green, boss:UI.red, flame:'#ffd866', ghost:[120,230,170],
 };
+// Scene settings (#431, data/settings.js theme keys): each a DUNGEON-shaped ramp table for render/interior.js, plus
+// beam (timber framing), rug [field, border, figure], glass (window panes) and bars (iron). Warm wood and plaster
+// in town, cold stone below ground, tarred oak in a hold. Light from the top left as everywhere.
+const T0={void:[6,6,11],water:[[110,170,200],[46,92,120],[26,58,80]],stair:[[150,140,124],[112,104,92],[56,50,44]],
+  dais:[[168,160,144],[136,128,114],[88,82,72]],rune:[230,196,110],wood:[[150,108,64],[110,76,42],[66,44,24]],moss:null,
+  beam:[[124,86,50],[92,62,34],[56,36,20]],glass:[[200,226,240],[120,170,210],[70,110,150]],bars:[[160,160,172],[96,96,108],[38,38,46]],
+  rug:[[150,52,46],[96,32,34],[226,184,104]],hall:[[120,110,98],[96,88,78],[70,64,56]],fogA:0,cur:UI.gold,flame:'#ffd866',ghost:[120,230,170]};
+export const THEMES={
+  house:{...T0,floor:[[184,136,84],[152,108,62],[110,76,44]],mortar:[66,44,26],
+    wallFace:[[226,212,182],[200,184,152],[150,134,106]],wallTop:[[78,58,42],[58,42,30],[40,28,20]]},
+  tavern:{...T0,floor:[[156,110,66],[126,86,50],[90,60,34]],mortar:[50,32,18],rug:[[60,90,70],[36,58,44],[200,170,90]],
+    wallFace:[[204,184,146],[174,154,118],[126,108,84]],wallTop:[[66,48,34],[48,34,24],[32,22,16]],beam:[[110,74,42],[80,52,28],[48,30,16]]},
+  chapel:{...T0,floor:[[184,180,168],[156,152,142],[118,114,106]],mortar:[86,82,78],rug:[[60,80,150],[38,48,100],[226,196,110]],
+    wallFace:[[196,188,172],[164,156,142],[118,110,100]],wallTop:[[70,66,72],[52,48,56],[36,34,40]],dais:[[196,190,176],[168,160,146],[116,110,100]],
+    glass:[[240,200,120],[150,90,190],[70,120,200]]},
+  cellar:{...T0,floor:[[124,116,104],[100,92,82],[72,66,58]],mortar:[40,36,32],moss:[84,96,70],
+    wallFace:[[118,108,94],[90,82,70],[60,54,46]],wallTop:[[44,40,36],[32,30,26],[22,20,18]],stair:[[140,130,116],[106,98,86],[52,46,40]]},
+  cell:{...T0,floor:[[116,120,112],[92,96,90],[64,68,62]],mortar:[36,38,36],
+    wallFace:[[108,104,110],[82,78,86],[56,52,60]],wallTop:[[40,38,44],[30,28,34],[20,18,24]]},
+  shrine:{...T0,floor:[[140,148,126],[112,120,100],[80,86,70]],mortar:[44,50,40],moss:[96,140,80],
+    wallFace:[[126,128,114],[96,98,86],[64,66,56]],wallTop:[[42,46,40],[30,34,28],[20,24,20]],dais:[[160,166,146],[130,136,118],[88,92,78]],rune:[140,230,170]},
+  hold:{...T0,floor:[[150,108,68],[120,84,50],[84,58,32]],mortar:[34,22,14],
+    wallFace:[[128,92,56],[98,70,40],[64,44,24]],wallTop:[[46,32,20],[34,24,14],[22,16,10]],beam:[[104,72,42],[76,52,28],[46,30,16]]},
+};
+// The scene view's marks (render/sceneview.js): the outdoor cut's frame, the dimmed world past it, the turn chevron.
+export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,person:UI.amber};

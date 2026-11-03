@@ -2,3 +2,4 @@
 - [Art style and palette](style.md) — palette.js contract with the UI, biome-keyed art, style rules, #176 PR order
 - [Spell effects](spellfx.md) — #374 sim->render spell fx contract, real-time pool, staging shots with spellDebug.freeze
 - [Dungeon view](dungeonview.md) — #85 interior generator + overlay contract, last-run tracking, staging a mid-crawl shot
+- [Scene maps](scenemaps.md) — #431 outdoor real-terrain cut vs generated indoor settings, slice plan, staging scene shots
