@@ -161,7 +161,9 @@ export function strike(a,t,o){
 
 export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){tendAlly(a,list);return}let low=null; // spell on cooldown: a potion for a member nearly down (sim/inv.js)
   for(const b of list){if(b.state==='ghost'||dist(a,b)>4)continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
-  if(low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'healMul'));low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;actHeal(a,low,h,'Heal');if(low!==a)bondEvent(a,'heal',[low])}}
+  if(low)healOne(a,low)}
+// One cast of the class heal on one hero (priestHeal's pick, or a gambit's target, #617).
+export function healOne(a,low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'healMul'));low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;actHeal(a,low,h,'Heal');if(low!==a)bondEvent(a,'heal',[low])}
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
