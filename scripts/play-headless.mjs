@@ -116,6 +116,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now;
     const wait = notReady(), ws = wait.join(' · ');
     if (ws !== heldSig) {if (ws) console.log(`[play] world held, waiting for minds: ${ws}`); else if (heldSig) console.log('[play] every mind is ready: the world runs'); heldSig = ws}
+    if (prepping && !prepActive()) {const v = prepView(); console.log(`[play] the DM's prep is over (${v.why}: ${v.calls} calls, ${v.seconds} s)`); prepping = false} // prep_done may come just before its runner leaves
     if (wait.length) return;
     // the DM's prep (issue #437) with --wait-ready: once per ready DM runner, the full one before session zero, a short one on
     // --resume or for a DM runner started again; the world stays held until the DM ends it, a cap ends it or the seat goes
@@ -124,7 +125,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       prepTick(); if (prepActive() && !liveDm) endPrep('seat');
       if (!prepActive() && liveDm) {const k = JSON.stringify(rd); if (k !== prepSig) {prepSig = k; if (openingDue() || ran) {const v = beginPrep(openingDue() ? 'opening' : 'resume'); console.log(`[play] the DM prepares the table (${v.kind}: at most ${v.max_calls} calls, ${v.max_seconds} s)`)}}}
       if (prepActive()) {prepping = true; return}
-      if (prepping) {const v = prepView(); console.log(`[play] the DM's prep is over (${v.why}: ${v.calls} calls, ${v.seconds} s): the world runs`); prepping = false}
     }
     ran = true;
     if (TABLE.drop) {if (speed > 1) {console.log(`[play] ${speed}x -> 1x: a Fellowship decision waits for its agents (${TABLE.drop.reason})`); speed = 1; TABLE.speed = 1} TABLE.drop = null} // #148

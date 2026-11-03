@@ -1024,12 +1024,12 @@ try {
     const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--dm', '--agents', '0', '--quiet', '--speed', '4', '--wait-ready', '--resume', '--world', wf], /^\[play\] headless world at /m);
     await w2.until;
     const d2 = start(['scripts/dm-agent.mjs', '--url', B2, '--provider', 'ollama', '--model', 'mock-dm:1b', '--max-turns', '1', '--cadence', '5', '--ollama-url', OLLAMA, '--new']);
-    const c3 = await d2.done, o3 = d2.out(), wo = w2.out();
+    const c3 = await d2.done, o3 = d2.out(); for (let k = 0; k < 50 && !/prep is over/.test(w2.out()); k++) await new Promise(r => setTimeout(r, 100)); const wo = w2.out();
     ok(c3 === 0 && /preparing the table \(resume\): at most 10 calls/.test(o3) && /prep over: done/.test(o3), 'Continue: the DM runner takes the short prep (half the calls) and ends it with prep_done' + (c3 === 0 ? '' : '\n' + o3.slice(-1500)));
-    ok(/the DM prepares the table \(resume/.test(wo) && /the DM's prep is over \(done/.test(wo), 'play-headless --wait-ready holds the world for the prep and runs once it is over');
+    ok(/the DM prepares the table \(resume/.test(wo) && /the DM's prep is over \(done/.test(wo), 'play-headless --wait-ready holds the world for the prep and runs once it is over' + (/prep is over/.test(wo) ? '' : '\n' + wo.slice(-1200)));
     const d3 = start(['scripts/dm-agent.mjs', '--url', B2, '--provider', 'ollama', '--model', 'mock-loop:1b', '--max-turns', '1', '--cadence', '5', '--ollama-url', OLLAMA, '--new']);
-    const c4 = await d3.done, o4 = d3.out(), wo2 = w2.out();
-    ok(c4 === 0 && /preparing the table \(resume\)/.test(o4) && /the DM's prep is over \(calls: 10 calls/.test(wo2), 'a DM runner started again gets a short prep too; a model that loops on calls is stopped by the call cap' + (c4 === 0 ? '' : '\n' + o4.slice(-1500)));
+    const c4 = await d3.done, o4 = d3.out(); for (let k = 0; k < 50 && !/prep is over [(]calls/.test(w2.out()); k++) await new Promise(r => setTimeout(r, 100)); const wo2 = w2.out(); // the world's pipe may lag the runner's exit
+    ok(c4 === 0 && /preparing the table \(resume\)/.test(o4) && /the DM's prep is over \(calls: 10 calls/.test(wo2), 'a DM runner started again gets a short prep too; a model that loops on calls is stopped by the call cap' + (c4 === 0 && /calls: 10/.test(wo2) ? '' : '\n' + o4.slice(-1500) + '\nWORLD ' + wo2.slice(-800)));
     w2.p.kill();
     const w3 = start(['scripts/play-headless.mjs', '--port', String(P2 + 1), '--agents', '0', '--dm', '--quiet', '--speed', '4', '--resume', '--world', wf], /^\[play\] headless world at /m);
     await w3.until;
