@@ -35,3 +35,4 @@
 - [localcheck autopilot flake](localcheck-autopilot-flake.md) — pin hp/spot until idle; soft wake by kind not text
 - [Whisper and dream](whisper-dream.md) — #523 whisper/dream DM tools: delivery, limits, leans-close via table.narr, check pitfalls
 - [DM fairness](dm-fairness.md) — #451 fairness()/fairRefusal, staged per company (PER_DAY 2+n, company:<id>), starve-test caveat
+- [Art pipeline](art-pipeline.md) — #177 HF Inference Providers shapes (fal-ai LoRA), candidates, quota stop rules, daily/accept/queue protocol, pitfalls

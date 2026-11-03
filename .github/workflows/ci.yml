@@ -34,6 +34,7 @@ jobs:
       - {name: Bestiary, run: npm run bestiarycheck}
       - {name: Class abilities and specialisations, run: npm run movecheck}
       - {name: Professions, run: npm run professioncheck}
+      - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
       - {name: Recipes, run: npm run recipecheck}
       - {name: Gathering nodes, run: npm run nodecheck}
       - {name: Gathering, run: npm run gathercheck}
