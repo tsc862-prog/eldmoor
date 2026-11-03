@@ -574,6 +574,18 @@ console.log('mixed minds: routing by hero');
   // writing kinds (Fellowship sheets) use the member's mind too
   const w = await B.askRelay('memory', {fac: 'Warband', name: Lo.name}, 50, Lo);
   ok(w && w.long && w.provider === 'ollama' && w.model === 'qwen2.5:14b' && w.usage.cost === 0, 'askRelay(kind, snap, timeout, hero): the member\'s local model writes; a 50 ms timeout is stretched for local');
+  // an agent-played hero's writing kinds follow its runner (#478): chapter and persona go out as ollama + the runner's model
+  {const seen = []; B.setFetch(async (url, opt) => {seen.push(JSON.parse(opt.body)); return {ok: true, status: 200, json: async () => ({long: 'x', title: 't', text: 'x', usage: {in: 1, out: 1, cost: 0}})}});
+   const P = {...A, id: 'p478', player: true}; delete P.brainCfg; let rm = {provider: 'ollama', model: 'qwen2.5:14b'}; B.setRunnerMind(h => h === P ? rm : null);
+   await B.askRelay('chapter', {fac: 'Warband', name: 'P'}, 500, P); await B.askRelay('persona', {fac: 'Warband', name: 'P'}, 500, P);
+   ok(seen.length === 2 && seen.every(q => q.provider === 'ollama' && q.model === 'qwen2.5:14b'), 'agent hero with a local runner: chapter and persona requests carry provider ollama and its model');
+   P.brainCfg = {provider: 'openai', model: 'gpt-x'}; B.resetBrain(); seen.length = 0; await B.askRelay('chapter', {fac: 'Warband', name: 'P'}, 500, P);
+   ok(seen[0] && seen[0].provider === 'openai', 'an explicit brainCfg wins over the runner');
+   delete P.brainCfg; rm = null; B.resetBrain(); seen.length = 0; await B.askRelay('chapter', {fac: 'Warband', name: 'P'}, 500, P);
+   ok(seen[0] && !('provider' in seen[0]), 'no runner: no provider sent (relay default)');
+   rm = {provider: 'ollama', model: 'm'}; B.resetBrain(); seen.length = 0; const Q = {...P, player: false}; await B.askRelay('chapter', {fac: 'Warband', name: 'Q'}, 500, Q);
+   ok(seen[0] && !('provider' in seen[0]), 'a hero not agent-played ignores the runner mind');
+   B.setRunnerMind(null); B.setFetch(null); B.resetBrain()}
   const {speak} = await import('../src/sim/chat.js');
   speak(Lo, 'Mud and patience.', 'kill', 'qwen2.5:14b · local'); const ce = Lo.chat[Lo.chat.length - 1];
   ok(ce.ai === true && ce.model === 'qwen2.5:14b · local', 'Chat entry records the model tag');

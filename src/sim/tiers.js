@@ -144,7 +144,7 @@ function mergeOldest(T){const [p,q]=T.chapters.splice(0,2);const strip=t=>String
   m.text=cut(daysOf(m.d0,m.d1)+': '+strip(p.text)+' '+strip(q.text),TIER.CH_LEN);m.stamp=m.n+':'+m.items+':'+m.d1+':m';T.chapters.unshift(m)}
 // The relay's rewrite (kind 'chapter'): applied only while the chapter it was asked for is unchanged.
 export function applyChapter(a,stamp,j){const T=a&&a.tiers;if(!T||!j)return false;const c=T.chapters.find(c=>c.stamp===stamp);if(!c)return false;
-  const ti=clean(j.title,TIER.TITLE),tx=clean(j.text,TIER.CH_LEN);if(!tx)return false;c.text=tx;if(ti)c.title=ti;c.src='model';return true}
+  const ti=clean(j.title,TIER.TITLE),tx=clean(j.text,TIER.CH_LEN);if(!tx)return false;c.text=tx;if(ti)c.title=ti;c.src='model';if(typeof j.model==='string')c.model=j.model.slice(0,100);return true}
 export const chapterSnapshot=(a,c,items)=>({name:a.name,fac:a.fac,voice:a.persona?a.persona.voice:null,days:daysOf(c.d0,c.d1),items:items.map(i=>'Day '+i.day+': '+cut(i.text,200))});
 
 // ---- the hero's tools (sim/player.js hands these on; the hero is always the caller's own) ----

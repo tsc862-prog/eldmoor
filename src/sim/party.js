@@ -43,8 +43,8 @@ const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.len
 
 // Called when a hero finishes the quest-giver step and again while lingering at the gate.
 // Returns 'wait' when a Warrior should hold at the gate a little longer for a Priest.
-export function seekParty(a){if(a.party||a.fellow||!tm(a,'social'))return; // Loners never form or join a party; Fellowship members muster with their own (sim/fellowship.js)
-  const cand=S.agents.filter(b=>b!==a&&!b.party&&!b.fellow&&tm(b,'social')&&b.fac===a.fac&&homeOf(b)===homeOf(a)&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2); // same home town: a party musters in one gate
+export function seekParty(a){if(a.party||a.fellow||a.companion!=null||!tm(a,'social'))return; // a company's companion (#442) rides with its company // Loners never form or join a party; Fellowship members muster with their own (sim/fellowship.js)
+  const cand=S.agents.filter(b=>b!==a&&!b.party&&!b.fellow&&b.companion==null&&tm(b,'social')&&b.fac===a.fac&&homeOf(b)===homeOf(a)&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2); // same home town: a party musters in one gate
   if(!cand.length)return;
   if(a.cls==='Warrior'&&a.linger>0&&!cand.some(b=>CLS[b.cls]&&CLS[b.cls].heal))return 'wait';
   const isHeal=c=>!!(CLS[c.cls]&&CLS[c.cls].heal),want=isHeal(a)?c=>c.cls==='Warrior':a.cls==='Warrior'?isHeal:()=>false;
