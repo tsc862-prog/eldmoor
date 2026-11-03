@@ -1048,8 +1048,13 @@ console.log('start gate: ready, not just claimed');
   const free=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead'&&!CO.companyOf(a)&&!a.fellow);
   const fac=[0,1].find(f=>free.filter(a=>a.fac===f).length>=10),same=free.filter(a=>a.fac===fac);
   const [p0,p1]=same,q0=free.find(a=>a!==p0&&a!==p1),q1=free.find(a=>a!==p0&&a!==p1&&a!==q0);
+  const CPN=await import('../src/ui/chatpanel.js'),shout=(h)=>({from:h,text:'Hold!',party:true,heard:[],d:1,t:'09:00'});
+  ok(CPN.shoutCompany(shout(p0))===''&&!/\(/.test(CPN.shoutLine(shout(F.slots&&S.agents.find(x=>x.id===F.slots.tank)||p0)).textContent),'chat: a together world (one company) names no company on a shout');
   const pair=CO.foundCompany([p0,p1],{name:'The Smoke Pair'}).company,s1=CO.foundCompany([q0]).company,s2=CO.foundCompany([q1]).company;
   ok(!!pair&&!!s1&&!!s2&&CO.companies().length===4,'companies: a pair and two solos founded beside the Fellowship');
+  {const tk=S.agents.find(x=>x.id===F.slots.tank),ln=CPN.shoutLine(shout(p0)).textContent;
+    ok(CPN.shoutCompany(shout(p0))==='The Smoke Pair'&&CPN.shoutCompany(shout(tk))===F.name&&/ \(The Smoke Pair\) calls out/.test(ln),'chat: with several companies a shout names its company: '+ln);
+    ok(CPN.shoutCompany({from:p0,text:'x',party:false})===''&&CPN.shoutCompany({from:p0,text:'x',party:true,courier:true})==='','chat: an aloud line and a courier name no company')}
   const fr0=$('frames').querySelector('.pf[data-hid="'+F.slots.tank+'"]');uiFast();
   let G=FR.frameGroupRows();
   ok(G.length===3&&G[0].title===F.name&&G[0].followed&&G[1].title==='The Smoke Pair'&&G[1].names.join()===p0.name+','+p1.name&&G[2].alone&&G[2].names.join()===q0.name+','+q1.name,'companies: rows are the followed Fellowship, the pair, then Alone with both solos: '+G.map(g=>g.title+'['+g.names.join(',')+']').join(' | '));
