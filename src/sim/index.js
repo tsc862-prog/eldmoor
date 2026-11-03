@@ -42,6 +42,7 @@ import {playerUpd} from './player.js';
 import {slotsTick,resetCompanyWatch} from './company.js'; // the slotted company's muster, watch and replacement (#588)
 import {councilTick} from './council.js';
 import {hireTick} from './hire.js'; // hired companions (#634): days up, dismissals, the fallen mourned
+import {challengeTick} from './challenge.js'; // honour duels (#633): an unanswered challenge lapses; registers the duel scene kind
 import {companionTick} from './offers.js'; // offers lapse, companies of 2+ keep a walking party, companions (#442)
 import {tableTick,tableHold,resetTableSeed} from './table.js';
 import {holdTick} from './gambithold.js';
@@ -120,7 +121,7 @@ export function step(dt){rulingTick(); // a ruling the DM let lapse is filled ev
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first
-  partyTick();slotsTick(dt);companionTick();hireTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  partyTick();slotsTick(dt);companionTick();hireTick();challengeTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);outpostsTick(dt);dungeonCheck(dt);siteTick(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
