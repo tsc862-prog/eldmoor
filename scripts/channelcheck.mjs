@@ -317,6 +317,23 @@ S.table = null; T.TABLE.mode = 'off';
   {const bg = S.agents.find(h => !h.player && h.state !== 'dead'); ok(!bg || !DMA.dmAct('dream', {hero: bg.name, text: 'x'}).ok, 'a dream is for agent heroes only')}
 }
 
+// the downed (#658): B goes down beside A. A hears that B is down and where, and nothing of B's own: no journal, memory,
+// persona, mind or reflection, and not the save tally. B's reflection moment is B's alone.
+{const {rebuild} = await import('../src/sim/spatial.js'), RF = await import('../src/sim/reflect.js');
+  const keepB = {x: B.x, y: B.y, state: B.state, hp: B.hp}, keepA = {x: A.x, y: A.y, state: A.state};
+  const m = S.mobs.find(q => q.alive && !q.gone && !q.elite && !q.named) || S.mobs[0];
+  A.state = 'hunt'; A.x = B.x + 2; A.y = B.y; B.state = 'hunt'; A.playEvSeen = A.playEvN || 0; rebuild();
+  B.hp = -3; HE.agentDie(B, m);
+  ok(B.state === 'downed', 'B is down beside A');
+  const evA = keep('A events after B went down', (A.playEv || []).filter(e => e.n > (A.playEvSeen || 0)).map(e => e.text).join(' | '));
+  ok(new RegExp(B.name + ' is down and dying').test(evA) && !/death save|failure|success|lying in the dark/i.test(evA), 'A hears that B is down and where, never B\'s saves or B\'s reflection');
+  keep('A look at downed B', act(A, 'look')); keep('A brief with B down', PC.paceBrief(A.id));
+  ok(RF.reflectDue(B) && RF.reflectDue(B).kind === 'downed' && !(RF.reflectDue(A) && RF.reflectDue(A).kind === 'downed'), 'the reflection in the dark is B\'s, not A\'s');
+  keep('A tend B', act(A, 'tend', {who: B.name}));
+  ok(!leaks().length, 'nothing private leaks through a downing' + (leaks().length ? ': ' + leaks().join(', ') : ''));
+  for (const h of S.agents) if (h.aid === B.id) {h.aid = null; h.aidHow = null; h.state = 'hunt'}
+  B.down = null; Object.assign(B, keepB, {hp: maxHp(B), state: keepB.state === 'downed' ? 'hunt' : keepB.state}); Object.assign(A, keepA); if (B.reflect) B.reflect.cur = null; rebuild()}
+
 // ---------------------------------------------------------------- 5. the relay: seats stay apart
 console.log('relay and MCP');
 const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
