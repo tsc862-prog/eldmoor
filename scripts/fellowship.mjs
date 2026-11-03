@@ -220,14 +220,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const b = !scene && m.pacer ? await m.pacer.brief() : null, refl = reflectNow(b, w) ? b.reflect : null;
       if (m.local) return await (refl ? localReflect(m, b, w) : localMemberTurn(m, scene, w));
       await slot(scene || m.due);
-      try {return await withClaudeSlot(base, () => claudeTurn(m, scene, w, refl), s => out(m.name, s), {stopped: () => !!stopping})} finally {free()}
+      m.slotWait = true; // #687: the supervisor's slot wait watches the member's own scene (served first, the table told)
+      try {return await withClaudeSlot(base, () => {m.slotWait = false; return claudeTurn(m, scene, w, refl)}, s => out(m.name, s), {stopped: () => !!stopping, due: () => !!m.due, onDue: () => reportQueued(m, 'slot')})} finally {m.slotWait = false; free()}
     } finally {m.inTurn = false}
   }
   // A member's own scene answer waits behind other work in this runner (its turn in flight, or other members' calls on the one
   // model queue): tell the game once per scene, so the table waits a bounded extra time for it (issue #515).
-  async function reportQueued(m) {
+  async function reportQueued(m, why) {
     if (m.qSent || m.ended || stopping) return; m.qSent = true;
-    const r = await post(base, '/play/pace', {hero: m.id, runner: runnerId, queued: true}, 4000).then(x => x.json()).catch(() => null);
+    why = why || (m.slotWait ? 'slot' : m.inTurn ? 'turn' : 'queue'); // what the answer waits behind (#687)
+    const r = await post(base, '/play/pace', {hero: m.id, runner: runnerId, queued: true, why}, 4000).then(x => x.json()).catch(() => null);
     if (r && r.queued) out(m.name, `[scene] answer queued behind other work: the table waits up to ${r.extra_s} s more (${r.scene})`);
   }
   // A local or OpenAI member's reflection: one forced structured answer of 0-3 notes, sent with remember by the runner.
