@@ -36,6 +36,7 @@ const ABOUT = {
   'no-flee-rule': 'an agent hero ran with gambits that hold no flee rule (flee_home or retreat_to), its own call (#617)',
   'no-aim': 'an agent hero had no stated aim (intent) for two game hours outside camp and town rest (#535)',
   'dm-scripted': 'the DM agent answered under half of the answerable calls (talk, table voice, slots) over two game hours while its seat was held; the scripted DM filled the rest (#541)',
+  'hold-expired': 'a gambit hold stopped the world and the agent did not act within its limit (#630)',
   'scene-missed': 'a live member did not answer its Table scene in time: the table waited, then its reflex acted (#515)',
 };
 
