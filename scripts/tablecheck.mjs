@@ -478,6 +478,97 @@ const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 const act = (a, tool, args) => P.playerAct(a.id, tool, args || {});
 
+// ---- talk escalates to a Table scene (issue #407), in a child with a fresh world: node scripts/tablecheck.mjs --talk ----
+// Plain talk (greetings, small talk, buying, rumours, a blessing) never opens a scene; an offer that needs an answer, a
+// bargain asked for, a matter for the company in earshot and a tense word each open one 'talk' scene for the members
+// present, answered everyone-at-once with accept / decline / bargain / leave; once per conversation and reason; Table off
+// never. Members have no runner (reflex), A answers with scene_act; no DM in the seat (the scripted person answers).
+if (process.argv[2] === '--talk') {
+  const TK = await import('../src/sim/talk.js'), TS = await import('../src/sim/talkscene.js');
+  init({fellowship: false}); run(30);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  F_.found(F_.autoPick(0), {fac: 0, ai: false});
+  const M = F_.fellowshipMembers().map(m => m.hero), A = M[0], c0 = homeOf(A);
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto'; TK.CONV.PER_DAY = 99;
+  const npc = role => S.npcs.find(p => p.town === c0.name && p.role === role);
+  const beside = (a, p, dx = 1, dy = 0) => {a.state = 'town'; a.town = c0.name; a.x = p.x + dx; a.y = p.y + dy; a.pq = []; a.target = null; a.dest = null; a.hidden = false; a.hp = maxHp(a)};
+  const away = () => {for (const x of M) {x.x = c0.gate.x + 30; x.y = c0.gate.y; x.state = 'hunt'; x.pq = []}};
+  const clear = () => {let f = 0; while (S.table && f++ < 60 * 60) step(1 / 60); for (const c of (S.talks ? S.talks.cur.slice() : [])) {c.state = 'done'; S.talks.cur.splice(S.talks.cur.indexOf(c), 1)}
+    for (const p of S.npcs) {delete p.snub; delete p.trade; p.warmth = 0; delete p.hostile; p.mood = 'neutral'} if (S.fellowship) delete S.fellowship.talkScenes};
+  const talk = (a, p, text) => {a.playRate = []; return act(a, 'talk', {target: String(p.name), ...(text != null ? {text} : {})})};
+  const talks = () => (S.dmLog || []).filter(e => e.kind === 'talk' && e.detail && e.detail.scene != null).length;
+  const nm = id => (S.agents.find(x => x.id === id) || {}).name;
+  // plays the open talk scene out: A answers `pick`, the rest by reflex. Returns the scene.
+  const playOut = pick => {const sc = S.table; let f = 0;
+    while (S.table && f++ < 60 * 60) {if ((S.table.phase === 'frame' || S.table.phase === 'turn') && !S.table.resolved && !S.table.acts[A.id] && S.table.ids.includes(A.id)) act(A, 'scene_act', {option: pick, line: 'Hear me out.'}); step(1 / 60)}
+    return sc};
+  console.log('talk escalates to the table (#407)');
+  ok(T.PLAY.talk === 'all' && T.SCENE_KINDS.includes('talk'), 'the talk kind is registered and played everyone-at-once');
+
+  // plain talk never opens a scene, even with companions in earshot
+  away(); clear(); let n0 = talks();
+  const smith = npc('smith'), inn = npc('innkeeper'), qm = npc('quartermaster'), pr = npc('priest'), cap = npc('captain');
+  beside(A, smith); beside(M[1], smith, -1); beside(M[2], smith, 0, 1);
+  let r = talk(A, smith); ok(r.ok && !S.table && !r.table, 'a greeting opens no scene');
+  r = talk(A, smith, 'Good day. What do you have for the road?'); ok(r.ok && !S.table, 'small talk and a trade offer open no scene' + (r.follow_up ? ' (' + r.follow_up + ')' : ''));
+  A.gold = 200; act(A, 'buy', {npc: smith.name, slot: 'weapon'}); ok(!S.table, 'buying opens no scene');
+  r = talk(A, smith, 'We are glad to meet you, friend.'); ok(r.ok && !S.table, 'a "we" with companions near, but no matter for them, opens no scene');
+  clear(); beside(A, inn); r = talk(A, inn, 'Any news from the roads?'); ok(r.ok && !S.table, 'asking for news (a rumour) opens no scene');
+  clear(); beside(A, pr); r = talk(A, pr, 'Will you bless us before the road?'); ok(r.ok && !S.table, 'a blessing opens no scene');
+  ok(talks() === n0, 'no talk scene in the DM log');
+
+  // a bargain asked for
+  away(); clear(); beside(A, smith); beside(M[1], smith, -1); n0 = talks();
+  r = talk(A, smith, 'Could we strike a deal on the price of that blade?');
+  let sc = S.table;
+  ok(r.ok && /scene at the table/.test(r.table || '') && !r.answer && sc && sc.kind === 'talk' && sc.ctx.why === 'bargain' && sc.all && sc.pause, `a bargain asked for opens a paused talk scene: "${sc && sc.title}"`);
+  ok(sc && sc.ids.includes(A.id) && sc.ids.includes(M[1].id) && sc.company === S.fellowship.id, `the company present is at the table (${sc && sc.ids.map(nm).join(', ')})`);
+  const tv = act(A, 'status').table;
+  ok(tv && tv.everyone_answers && tv.options.map(o => o.split(' = ')[0]).join() === 'accept,decline,bargain,leave', 'options: ' + (tv && tv.options.join('; ')));
+  ok((A.playEv || []).some(e => /TABLE \(talk\)/.test(e.text)), 'the member is told at once (a must-answer event)');
+  const said0 = (A.chat || []).length, ids0 = sc.ids.length;
+  sc = playOut('bargain'); const ab = sc.beats.find(b => b.id === A.id) || {};
+  ok(!S.table && sc.beats.length === ids0 && ab.k === 'bargain' && /(success|failure), \d+ vs \d+/.test(ab.res || ''), `A bargains with a d20 (${ab.res}); the outcome: ${sc.summary}`);
+  ok((A.chat || []).slice(said0).some(e => e.from && e.from.id === smith.id && e.talk), 'the person answers the company in the conversation (scripted, no DM in the seat)');
+  ok(talks() === n0 + 1 && S.dmLog.some(e => e.kind === 'talk' && e.detail.table === 'bargain' && e.detail.d20 != null), 'the scene and the roll are in the DM log');
+  r = talk(A, smith, 'Surely we can haggle a little more?'); ok(r.ok && !S.table, 'the same conversation does not bargain at the table twice');
+
+  // an offer that needs an answer: the captain's job
+  away(); clear(); beside(A, cap);
+  r = talk(A, cap, 'Good day, captain.'); sc = S.table;
+  ok(r.ok && sc && sc.kind === 'talk' && sc.ctx.why === 'offer' && sc.ctx.hook != null && sc.ids.join() === String(A.id), `the captain's job opens a talk scene for the one present: "${sc && sc.title}" (${r.follow_up || r.error || ''})`);
+  if (sc) {sc = playOut('accept'); const h = S.adventures.find(x => x.id === sc.ctx.hook);
+    ok(!S.table && sc.ctx.result === 'yes' && h && (h.phase === 'taken' && h.taker === A.id || /take_quest/.test(sc.summary)), `accepted: ${sc.summary}`)}
+
+  // a matter for the company in earshot
+  away(); clear(); beside(A, inn); beside(M[1], inn, -1); beside(M[2], inn, 0, 1);
+  r = talk(A, inn, 'Will you hire our company to guard the cellar?'); sc = S.table;
+  ok(sc && sc.kind === 'talk' && sc.ctx.why === 'party' && [A, M[1], M[2]].every(x => sc.ids.includes(x.id)), `the company in earshot gets a say: ${sc && sc.ids.map(nm).join(', ')} at "${sc && sc.title}"`);
+  if (sc) {const n3 = sc.ids.length; sc = playOut('decline'); ok(!S.table && sc.beats.length === n3 && sc.beats.find(b => b.id === A.id).by === 'agent' && sc.summary, `resolved together: ${sc.summary}`)}
+  // alone, the same words stay a talk
+  away(); clear(); beside(A, inn); r = talk(A, inn, 'Will you hire our company to guard the cellar?'); ok(r.ok && !S.table, 'alone, a matter for the company stays a plain talk');
+
+  // tense: threat words, and a hostile person
+  away(); clear(); beside(A, qm); r = talk(A, qm, 'Stand aside, or else.'); sc = S.table;
+  ok(sc && sc.ctx.why === 'tense', `a threat turns it tense: "${sc && sc.title}"`);
+  if (sc) {sc = playOut('leave'); ok(!S.table && sc.ctx.result === 'gone' && !TK.convWith(qm), `walking away ends the conversation: ${sc.summary}`)}
+  clear(); beside(A, qm); qm.warmth = -8; qm.mood = 'hostile'; r = talk(A, qm, 'Good morning.'); sc = S.table;
+  ok(sc && sc.ctx.why === 'tense', 'a hostile person: even a plain good morning is tense');
+  playOut('decline');
+
+  // Table off (Watch mode): never a scene
+  away(); clear(); T.TABLE.mode = 'off'; beside(A, smith); r = talk(A, smith, 'Let us haggle over the price.'); ok(r.ok && !S.table && r.answer, 'Table off: a bargain stays a plain talk');
+  T.TABLE.mode = 'auto';
+  // the limit per day
+  away(); clear(); TS.ESC.PER_DAY = 0; beside(A, smith); r = talk(A, smith, 'Let us haggle over the price.'); ok(r.ok && !S.table, 'past the daily limit a bargain stays a plain talk'); TS.ESC.PER_DAY = 6;
+  // a save mid-scene resumes it
+  away(); clear(); beside(A, smith); talk(A, smith, 'Name your price, smith.'); const id0 = S.table && S.table.id;
+  restore(JSON.parse(JSON.stringify(snapshot())));
+  ok(S.table && S.table.id === id0 && S.table.kind === 'talk', 'a save mid-scene keeps the talk scene');
+  playOut('accept'); ok(!S.table, 'and it plays out after the restore');
+  console.log(fail ? fail + ' FAILED' : 'TALK OK'); process.exit(fail ? 1 : 0);
+}
+
 // ---- staged scenes (issue #132), in a child with a fresh world: node scripts/tablecheck.mjs --staged ----
 if (process.argv[2] === '--staged') {
   const {dmAct, setDmSeat} = SIM;
@@ -1061,6 +1152,10 @@ ok(F_.fellows().every(a => a.state === 'dungeon'), 'agent members stay in the Cr
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
   ok(ch.status === 0 && /STAGED OK/.test(ch.stdout || ''), 'staged scenes: every kind with a mock DM, a silent DM, no runner, 3x, a save mid-scene, expiry')}
 
+// ---- 5c. talk escalates to a Table scene (issue #407): a fresh world in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--talk'], {encoding: 'utf8', env: {...process.env}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /TALK OK/.test(ch.stdout || ''), 'talk scenes: plain talk never opens one; an offer, a bargain, a matter for the company and a tense word do, for those present')}
 // ---- 5d. session zero and arrivals (#437, #452): a fresh world in a child ----
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--arrival'], {encoding: 'utf8', env: {...process.env}});
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);

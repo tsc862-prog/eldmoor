@@ -1,5 +1,6 @@
-// Party frames (issue #94): five compact frames above the map, one per Fellowship place in role
-// order (Tank, Healer, DPS x3). Each shows a sprite portrait, name, role and class, level, health
+// Party frames (issue #94): compact frames above the map, one per Fellowship place in role
+// order (Tank, Healer, DPS x3). Companies (#456): one row of frames per company, the followed one first, solos sharing
+// an "Alone" row (src/ui/companyview.js frameGroups); a row head names each company once there is more than one. Each shows a sprite portrait, name, role and class, level, health
 // with numbers, what the member is doing, their target, conditions and blessings, who plays them
 // (scripted / AI / agent with its link state) with a control to switch it, and the dead or
 // replaced state of the place. Click a frame: select that member and centre the camera on them.
@@ -13,13 +14,15 @@ import {FAC} from '../data/factions.js';
 import {ZONES} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
-import {fellowshipMembers,fellowParty,offerReplacement} from '../sim/fellowship.js';
+import {fellowParty,offerReplacement} from '../sim/fellowship.js';
+import {companies,leaderOf} from '../sim/company.js'; // companies (#456): a row of frames each
+import {frameGroups,followedCompany,followedMembers,companyLabel,followCompany,MAX_HEROES} from './companyview.js';
 import {conditionAt,CONDITIONS} from '../sim/levers.js';
 import {SKILLS,SKILL_IDS,skillMod,trained} from '../sim/abilities.js';
 import {portrait} from '../render/sprites.js'; // generated face portraits (#367)
 import {cam} from '../render/draw.js';
 import {doing,combatRows} from './panels.js';
-import {select,setView} from './controls.js';
+import {select,setView,syncFollow} from './controls.js';
 import {mindOf,mindText,mindTitle} from './mindctl.js'; // the frame shows the mind; it is set in Members and minds (#145)
 import {effectChips} from './abilities.js';
 import {openSheet} from './sheet.js';
@@ -65,26 +68,36 @@ const today=()=>Math.floor(S.gameMin/1440)+1;
 export const potText=a=>{const n=a&&a.inv?countKind(a,'potion'):0;return n?n+(n===1?' potion':' potions'):''};
 export function replacedLine(slot){const p=before(slot);return p&&p.day>=today()-1?'Took the place of † '+p.name+' ('+p.cause+')':''}
 
-// The whole strip as text: one entry per place.
-export function frameRows(){return fellowshipMembers().map(m=>{const a=m.hero;
-  if(!a){const p=before(m.slot);return {role:m.label,empty:true,text:m.label+' · place empty'+(p?' · † '+p.name+', '+p.cause:'')}}
+// The whole strip as text: one entry per place, in display order (frameGroups: the followed company first, the
+// Alone row of solos last), each with its row's title.
+export function frameRows(){const out=[];for(const g of frameGroups()){const lead=leadOf(g);for(const m of g.cols){const a=m.hero;
+  if(!a){const p=before(m.slot);out.push({row:g.title,role:m.label,empty:true,text:m.label+' · place empty'+(p?' · † '+p.name+', '+p.cause:'')});continue}
   const mh=maxHp(a);
-  return {role:m.label,name:a.name,cls:a.cls,lvl:a.lvl,hp:Math.max(0,Math.round(a.hp))+' / '+mh,status:doing(a),target:targetOf(a),
-    chips:chipsOf(a).map(c=>c.t),pots:potText(a),mind:mindLine(a),replaced:replacedLine(m.slot),lead:!!(fellowParty()&&fellowParty().leader===a),
-    hover:combatRows(a).map(r=>r[1]+' '+r[2]).concat(['Skills: '+topSkills(a).join(', ')])}})}
+  out.push({row:g.title,role:m.label,name:a.name,cls:a.cls,lvl:a.lvl,hp:Math.max(0,Math.round(a.hp))+' / '+mh,status:doing(a),target:targetOf(a),
+    chips:chipsOf(a).map(c=>c.t),pots:potText(a),mind:mindLine(a),replaced:replacedLine(m.slot),lead:lead===a,
+    hover:combatRows(a).map(r=>r[1]+' '+r[2]).concat(['Skills: '+topSkills(a).join(', ')])})}}
+  return out}
+// The rows themselves, for the smoke and the Companies panel: [{title, alone, followed, n, room, names}].
+export const frameGroupRows=()=>frameGroups().map(g=>({title:g.title,alone:g.alone,followed:g.followed,n:g.n,room:roomOf(g),names:g.cols.map(m=>m.hero?m.hero.name:'-')}));
+// How many more a company may take: none for the Alone row and for the Fellowship's five fixed places.
+const roomOf=g=>g.alone||!g.C||g.C.slots?0:Math.max(0,MAX_HEROES-g.n);
+// The star: the Fellowship's walking leader as before; any other company of two or more its agent leader; none for solos.
+function leadOf(g){if(g.alone||!g.C)return null;if(g.C.slots&&S.fellowship===g.C){const P=fellowParty();return P?P.leader:null}return leaderOf(g.C)}
+// Every place shown, in display order (keys 1-9 pick them).
+const shown=()=>frameGroups().flatMap(g=>g.cols);
 
 // ---- DOM ----
-let root=null,list=null,tip=null,tipFor=null,tipXY=[0,0];
-const frames={}; // slot -> {node, hid, refs}
-
-const slotNo=m=>fellowshipMembers().findIndex(x=>x.slot===m.slot)+1;
+let root=null,wrap=null,tip=null,tipFor=null,tipXY=[0,0];
+const frames={}; // place key -> {node, hid, r}
+const rows={};   // row key -> {node, head, name, room, mark, list}
+const KEY_TIP=n=>'Press 1-'+Math.max(1,Math.min(9,n))+' to select';
 function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;if(a)f.style.borderTopColor=classColor(a.cls);
   const r={};
   if(!a){f.classList.add('empty');f.append(el('span','frole r-'+m.role,m.label));r.empty=el('div','pfempty','Place empty');r.past=el('div','dm pfpast');
     const b=el('button','mini','Fill');b.dataset.pffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';f.append(r.empty,r.past,b);
-    const k=el('span','pfkey',String(slotNo(m)));k.title='Press 1-5 to select';k.setAttribute('aria-hidden','true');f.append(k);return {node:f,hid:null,r}}
+    r.key=el('span','pfkey');r.key.setAttribute('aria-hidden','true');f.append(r.key);return {node:f,hid:null,r}}
   f.tabIndex=0;f.setAttribute('role','button');f.dataset.hid=a.id;
-  r.key=el('span','pfkey',String(slotNo(m)));r.key.title='Press 1-5 to select';r.key.setAttribute('aria-hidden','true');f.append(r.key);
+  r.key=el('span','pfkey');r.key.setAttribute('aria-hidden','true');f.append(r.key);
   const top=el('div','pftop');r.port=el('canvas','pfport');r.port.width=15;r.port.height=18;
   const id=el('div','pfid');r.name=el('div','pfname f'+a.fac);r.star=el('span','gd','★ ');r.nm=el('span',null,a.name);r.nm.style.color=classColor(a.cls);r.name.append(r.star,r.nm);
   const sub=el('div','pfsub');sub.append(el('span','frole r-'+m.role,m.label),' ');r.sub=el('span','dm');sub.append(r.sub);id.append(r.name,sub);
@@ -96,13 +109,14 @@ function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
   f.append(top,hp,r.doing,r.tgt,r.chips,r.rep,foot,r.run);
   return {node:f,hid:a.id,r}}
 
-function update(fr,m){const a=m.hero,r=fr.r;
+function update(fr,m,lead,no,total){const a=m.hero,r=fr.r;
+  setText(r.key,no<=9?String(no):'');setAttr(r.key,'title',no<=9?KEY_TIP(total):null);
   if(!a){const p=before(m.slot);setText(r.past,p?'† '+p.name+', Lv '+p.lvl+' '+p.cls+', '+p.cause:'');return}
-  const dead=a.state==='dead',mh=maxHp(a),P=fellowParty();
+  const dead=a.state==='dead',mh=maxHp(a);
   setCls(fr.node,'pf r-'+m.role+(cam.sel===a?' sel':'')+(dead?' dead':a.state==='ghost'?' ghost':'')+(a.hp<mh*.35&&!dead?' low':''));
   // portrait: redraw only when the face itself changes (ghost, fallen, a new hero)
   const s=portrait(a,dead?'dead':a.state==='ghost'?'ghost':'');if(r.port._s!==s){r.port._s=s;r.port.width=s.width;r.port.height=s.height;const c=r.port.getContext&&r.port.getContext('2d');if(c){c.clearRect(0,0,s.width,s.height);c.drawImage(s,0,0)}}
-  r.star.hidden=!(P&&P.leader===a);
+  r.star.hidden=lead!==a;
   setText(r.sub,'Lv '+a.lvl+' '+a.cls);
   const w=dead?0:Math.max(0,Math.min(100,a.hp/mh*100));if(r.hpi._w!==w){r.hpi._w=w;r.hpi.style.width=w.toFixed(1)+'%'}
   setText(r.hpt,dead?'fallen':Math.max(0,Math.round(a.hp))+' / '+mh);
@@ -111,6 +125,20 @@ function update(fr,m){const a=m.hero,r=fr.r;
   setText(r.rep,replacedLine(m.slot));setText(r.pot,dead?'':potText(a));
   setText(r.mind,mindLine(a));setCls(r.mind,'pfmind m-'+mindOf(a));setAttr(r.mind,'title',mindTitle(a));
   const rk=dead||!a.player?'':runnerSig(a);if(r.run._k!==rk){r.run._k=rk;r.run.replaceChildren();if(rk)r.run.append(runnerControl(a))}}
+
+// A company row: a head (shown only when there is more than one row) and the frames. A company's head names it, says how
+// many ride with it and how many more it may take ('+3'), and follows it on a click; the Alone row's head only names it.
+function buildRow(g){const node=el('div','frrow'),R={node};node.dataset.row=g.key;
+  if(g.alone){R.head=el('div','frrh alone');R.name=el('span','frrn','Alone');R.room=el('span','frrc dm');R.head.append(R.name,R.room)}
+  else{R.head=el('button','frrh');R.head.type='button';R.head.dataset.pffollow=g.C.id;R.name=el('span','frrn');R.room=el('span','frrc dm');R.mark=el('span','frrf','FOLLOWED');R.head.append(R.name,R.room,R.mark)}
+  R.list=el('div','frlist');node.append(R.head,R.list);return R}
+function updateRow(R,g,multi){R.head.hidden=!multi;setText(R.name,g.title);
+  if(g.alone){setText(R.room,g.n===1?'one hero on their own':g.n+' heroes, each on their own');return}
+  const room=roomOf(g);setText(R.room,g.n+' riding'+(room?' · +'+room:''));
+  setAttr(R.room,'title',g.C.slots?'Five places: Tank, Healer and three DPS':room?'Room for '+room+' more: a company holds at most '+MAX_HEROES+' heroes (its agents invite on their own)':'Full: a company holds at most '+MAX_HEROES+' heroes');
+  R.mark.hidden=!g.followed;setAttr(R.head,'aria-pressed',String(!!g.followed));
+  setAttr(R.head,'title',g.followed?'The company you follow: the camera, the sheet and the Table banner follow it':'Follow '+g.title+': the camera frames it and the sheet shows it');
+  setCls(R.list,'frlist'+(g.cols.length>5&&!g.alone?' wide':''))}
 
 // ---- hover: combat totals and top skills ----
 function tipBody(a){const d=[];d.push(el('div','in f'+a.fac,a.name+' · Lv '+a.lvl+' '+a.cls));
@@ -123,39 +151,51 @@ function showTip(a){if(!tip){tip=el('div','itip floating pftip');tip.setAttribut
 function hideTip(){tipFor=null;if(tip)tip.style.display='none'}
 
 
-// Keys 1-5 (owner request): the member in that party slot, as a click on its frame does. Ignored while typing,
-// behind the title or setup pages, and with Ctrl/Alt/Meta held.
+// Keys 1-9 (owner request): the hero in that place, counting the frames in display order (the followed company first),
+// as a click on its frame does. Ignored while typing, behind the title or setup pages, and with Ctrl/Alt/Meta held.
 export function partyKey(e){if(e.ctrlKey||e.altKey||e.metaKey||e.defaultPrevented)return false;
-  let n=/^[1-5]$/.test(e.key||'')?+e.key:(/^Numpad[1-5]$/.test(e.code||'')?+e.code.slice(6):0);if(!n)return false;
+  let n=/^[1-9]$/.test(e.key||'')?+e.key:(/^Numpad[1-9]$/.test(e.code||'')?+e.code.slice(6):0);if(!n)return false;
   const t=e.target,tn=t&&t.tagName?String(t.tagName).toUpperCase():'';
   if(tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT'||(t&&(t.isContentEditable||t.contentEditable==='true')))return false;
   for(const id of ['title','setup']){const o=document.getElementById(id);if(o&&!o.hidden)return false}
-  if(!S.fellowship)return false;
-  const m=fellowshipMembers()[n-1],a=m&&m.hero;if(!a)return false;
+  const m=shown()[n-1],a=m&&m.hero;if(!a)return false;
   hideTip();select(a);setView('follow');return true}
 export function initFrames(){root=$('frames');if(!root)return;
   document.addEventListener('keydown',e=>{if(partyKey(e))e.preventDefault()});
   const head=el('div','frhead');const ttl=el('span','frttl');root._ttl=ttl;
-  const cmp=el('button','mini','Compare the five');cmp.dataset.pfsheet='1';cmp.title='Side by side: scores, combat, skills, gear, oaths and bonds';
-  head.append(ttl,cmp);list=el('div','frlist');root.append(head,list);mountDmFrame(root);
+  const cmp=el('button','mini','Compare the five');cmp.dataset.pfsheet='1';cmp.title='Side by side: scores, combat, skills, gear, oaths and bonds';root._cmp=cmp;
+  head.append(ttl,cmp);wrap=el('div','frrows');root.append(head,wrap);mountDmFrame(root);
   root.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
     if(t.closest('[data-pfsheet]')){openSheet();return}
+    const fol=t.closest('[data-pffollow]');if(fol){followCompany(companies().find(C=>String(C.id)===fol.dataset.pffollow));setView('fellow');renderFrames();return}
     const fill=t.closest('[data-pffill]');if(fill){offerReplacement(fill.dataset.pffill);renderFrames();return}
     if(t.closest('button'))return;
     const f=t.closest('.pf[data-hid]');if(!f)return;const a=byId(f.dataset.hid);if(a){hideTip();select(a);setView('follow')}});
   root.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const f=e.target&&e.target.closest&&e.target.closest('.pf[data-hid]');if(!f||e.target!==f)return;e.preventDefault();const a=byId(f.dataset.hid);if(a){select(a);setView('follow')}});
-  list.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;tipXY=[e.clientX,e.clientY];
+  wrap.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;tipXY=[e.clientX,e.clientY];
     const f=e.target&&e.target.closest?e.target.closest('.pf[data-hid]'):null,a=f?byId(f.dataset.hid):null;if(!a||a.state==='dead'){if(tipFor)hideTip();return}
     if(tipFor!==a)showTip(a);else placeTip()});
-  list.addEventListener('pointerleave',hideTip);
+  wrap.addEventListener('pointerleave',hideTip);
   renderFrames()}
 
-export function renderFrames(){if(!root)return;const F=S.fellowship;
-  if(!F){if(!root.hidden){root.hidden=true;list.replaceChildren();for(const k in frames)delete frames[k];hideTip()}return}
-  root.hidden=false;setText(root._ttl,F.name);renderDmFrame();
-  const ms=fellowshipMembers();
-  ms.forEach((m,i)=>{const hid=m.hero?m.hero.id:null;let fr=frames[m.slot];
-    if(!fr||fr.hid!==hid){const nf=build(m);if(fr&&fr.node.parentNode===list)list.replaceChild(nf.node,fr.node);fr=frames[m.slot]=nf}
-    if(list.children[i]!==fr.node)list.insertBefore(fr.node,list.children[i]||null);
-    update(fr,m)});
-  if(tipFor)showTip(tipFor)}
+function clear(){wrap.replaceChildren();for(const k in frames)delete frames[k];for(const k in rows)delete rows[k];hideTip()}
+// Patched in place: a row, and a frame in it, is built once and moved only when the order changes (a new follow, a join).
+export function renderFrames(){if(!root)return;syncFollow();const G=frameGroups();
+  if(!G.length){if(!root.hidden){root.hidden=true;clear()}return}
+  root.hidden=false;renderDmFrame();
+  const multi=G.length>1,F=followedCompany(),fc=followedMembers();
+  // one row: the company's name as the title, as before; several: each row names itself
+  setText(root._ttl,multi?companies().length+' companies':G[0].alone&&G[0].n===1?companyLabel(F):G[0].title);
+  setText(root._cmp,fc.length===5?'Compare the five':'Side by side');setAttr(root._cmp,'title','Side by side'+(F?' ('+companyLabel(F)+')':'')+': scores, combat, skills, gear, oaths and bonds');
+  root._cmp.hidden=!fc.length;
+  const total=G.reduce((n,g)=>n+g.cols.length,0),seenRow=new Set(),seen=new Set();let no=0;
+  G.forEach((g,gi)=>{let R=rows[g.key];if(!R)R=rows[g.key]=buildRow(g);seenRow.add(g.key);
+    if(wrap.children[gi]!==R.node)wrap.insertBefore(R.node,wrap.children[gi]||null);
+    updateRow(R,g,multi);const lead=leadOf(g);
+    g.cols.forEach((m,i)=>{const hid=m.hero?m.hero.id:null;let fr=frames[m.slot];seen.add(m.slot);
+      if(!fr||fr.hid!==hid){const nf=build(m);if(fr&&fr.node.parentNode)fr.node.parentNode.replaceChild(nf.node,fr.node);fr=frames[m.slot]=nf}
+      if(R.list.children[i]!==fr.node)R.list.insertBefore(fr.node,R.list.children[i]||null);
+      update(fr,m,lead,++no,total)})});
+  for(const k in frames)if(!seen.has(k)){frames[k].node.remove();delete frames[k]}
+  for(const k in rows)if(!seenRow.has(k)){rows[k].node.remove();delete rows[k]}
+  if(tipFor){if(tipFor.state==='dead'||!Object.values(frames).some(f=>f.hid===tipFor.id))hideTip();else showTip(tipFor)}}

@@ -15,3 +15,5 @@
 - [Sheet faces](sheet_faces.md): #376 portraits in the sheet column headers, canvas Map kept across rebuilds
 - [Life view](life_view.md): #389 Side by side / Life switch on the sheet, lifeview.js reads tiersView (never tiersOf)
 - [Table legibility](table_legibility.md): #471 banner title/chips/rows, sceneHead in core, scene-cut label plates and stacking
+- [Company frames](company_frames.md): #456 rows per company, Alone row, follow cycle, companyview.js helper for #457
+- [Chat company](chat_company.md): #506 shouts name the company when 2+ exist, shoutLine/shoutCompany in chatpanel.js

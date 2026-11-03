@@ -13,6 +13,8 @@ import {chatLine,chatName,liveOf} from './panels.js';
 import {daySep,dayOf,stampOf} from './daystamp.js';
 import {patch,held,keyOf} from './stable.js';
 import {classColor,DISP} from '../core/colors.js';
+import {companies,companyOf} from '../sim/company.js';
+import {companyLabel} from './companyview.js';
 import {dmTable,dmParts,dmBadge,dmByAgent} from './dmpanel.js';
 import {dmTurns,dmTurnsVer,turnCard} from './dmturns.js'; // per-turn cards (#181)
 
@@ -57,6 +59,10 @@ export const streamItems=()=>{ingest();return items.concat(councilItems()).filte
 export function heroStream(a){ingest();const mine=new Set(a.chat||[]);
   return items.concat(councilItems()).filter(visible).filter(it=>it.kind==='chat'?(mine.has(it.e)||it.e.from===a):(it.who===a||it.kind==='result'&&it.P.votes&&it.P.votes[a.id]!=null))
     .sort((x,y)=>x.k-y.k||x.n-y.n)}
+// A shout names its company when more than one exists (#506): "Kerin (Ashen Road) shouts: ...". '' in a together world.
+export function shoutCompany(e){if(!e||!e.party||e.courier||!e.from||e.from.kind==='dm'||companies().length<2)return '';const C=companyOf(e.from);return C?companyLabel(C):''}
+export function shoutLine(e){const li=chatLine(e,1),c=shoutCompany(e);
+  if(c){const nm=li.children&&li.children[1],sp=el('span','dm chco',' ('+c+')');if(nm&&li.insertBefore)li.insertBefore(sp,nm.nextSibling||null);else li.append(sp)}return li}
 export {sysLine};
 
 function sysLine(it){const li=el('li','chl sys sys-'+it.kind);li.setAttribute('data-k',it.id);const s=stamp(it.gm);
@@ -68,12 +74,12 @@ function sysLine(it){const li=el('li','chl sys sys-'+it.kind);li.setAttribute('d
 function atTop(){return !list||list.scrollTop<=6}
 const rowsIn=()=>Array.from(list.children||[]).filter(c=>!(c.classList&&c.classList.contains('daysep'))).length;
 function renderChat(){if(!list)return;const rows=streamItems().reverse(),last=rows.length?rows[0]:null; // newest first
-  const s=filter+':'+rows.length+':'+(last?(last.id||keyOf(last.e)):'')+':'+rows.map(r=>r.kind==='prop'||r.kind==='result'?r.text:'').join('').length+':'+(S.fellowship?1:0);
+  const s=filter+':'+rows.length+':'+(last?(last.id||keyOf(last.e)):'')+':'+rows.map(r=>r.kind==='prop'||r.kind==='result'?r.text:'').join('').length+':'+(S.fellowship?1:0)+':'+companies().map(C=>C.id+companyLabel(C)).join(',');
   if(s===sig)return;if(held(list))return;sig=s;
   const top=atTop(),before=rowsIn();
   patch(list,tmp=>{let lastDay=null;
     for(const it of rows){const d=it.kind==='chat'?dayOf(it.e):Math.floor(it.gm/1440)+1;if(d!=null&&d!==lastDay){tmp.append(daySep(d));lastDay=d}
-      tmp.append(it.kind==='chat'?chatLine(it.e,1):sysLine(it))}
+      tmp.append(it.kind==='chat'?shoutLine(it.e):sysLine(it))}
     if(!rows.length)tmp.append(el('li','dm','Nothing said yet.'))},{force:true}); // anchored: scrolled down, the line being read stays put
   const after=rowsIn();
   if(top){list.scrollTop=0;newN=0}else if(after>before)newN+=after-before;

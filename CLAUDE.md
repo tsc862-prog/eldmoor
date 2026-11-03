@@ -436,6 +436,11 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   Only members within shouting range (#182) of the scene's anchor (a vote: its voters) take part. `tableView`
   adds `everyone_answers`, `answered` ("3/5") and `waiting_on`; the banner shows EVERYONE ANSWERS and
   "3/5 answered · waiting for Fena, Maelell". A kind not in the table plays in turns.
+- Talk scenes (#407, `src/sim/talkscene.js`): a member's `talk` becomes a short Table scene of kind `talk` (PLAY 'all', the
+  company present, options accept / decline / bargain / leave) only at a decision: a job offered, a bargain asked for, a matter
+  for the company with companions in earshot, or a tense word (a hostile person, a threat). Greetings, small talk, buying,
+  rumours and blessings never do. Once per conversation and reason, `ESC.PER_DAY` 6 a company a game day; the person then
+  answers through the conversation (the DM agent's voice when listening, else scripted). Rules in one place: `ESC`/`escalation()`.
 - Forced scene turns (#163): a local or OpenAI member whose own scene is open (the pace brief's `scene`: its
   legal option keys, incl. ready abilities by id) gets one structured answer (Ollama `format` / OpenAI strict
   json_schema: `{option: enum, line}`) and the runner sends `scene_act` itself; Claude keeps tool use, with one

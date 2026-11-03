@@ -18,6 +18,7 @@ import {updMarket} from './market.js';
 import {chatTick} from './chat.js';
 import {npcsTick} from './npcs.js';
 import {talkTick} from './talk.js'; // NPC conversations (#170)
+import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
