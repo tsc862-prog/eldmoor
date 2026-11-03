@@ -20,7 +20,7 @@
 //     chapters (sim/tiers.js, #153), so journal_search still finds its words.
 //   - Hardcore: the notebook dies with the hero. The dead hero's tools all answer "dead" (sim/player.js), its
 //     replacement starts with an empty one. One exception, chosen for the Fellowship: a member's newest pinned
-//     note tagged "letter" is sealed for the party (S.fellowship.letters[slot]); when that member has fallen,
+//     note tagged "letter" is sealed for the party (C.letters[slot] on the Fellowship's company, #438); when that member has fallen,
 //     the next hero to take the slot finds it as a pinned note "A letter from <name>". Nothing else crosses.
 //   - Relevance is keyword scoring, deterministic (see score/relevant below); no embeddings, no model.
 import {S,clockStr} from './state.js';

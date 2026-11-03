@@ -31,7 +31,7 @@ ok(st.watches >= 3 && st.talks >= 5, 'watches posted and campfire talk happened'
 ok(S.fellowship.log.some(e => e.kind === 'camp') && (dmCamp || (S.dmLog || []).some(e => e.kind === 'camp')), 'camp events in the campaign log and the DM log');
 ok(S.fellowship.tableStats && S.fellowship.tableStats.scenes >= (st.spotted + st.caught - 1), 'camp ambushes opened Table scenes (' + (S.fellowship.tableStats ? S.fellowship.tableStats.scenes : 0) + ')');
 ok(!S.agents.some(a => a.state === 'camp') || (S.fellowship.camp.phase && true), 'no hero is left stuck in camp');
-ok(mid && mid.fellowship.camp.phase === 'rest', 'a snapshot was taken mid-camp');
+ok(mid && mid.companies.find(c => c.slots).camp.phase === 'rest', 'a snapshot was taken mid-camp'); // saves carry companies (#438)
 restore(JSON.parse(JSON.stringify(mid)));
 const g2 = S.fellowship.camp, L2 = fellowshipMembers().map(m => m.hero);
 ok(g2.phase === 'rest' && L2.filter(a => a.state === 'camp').length === g2.ids.length, 'restored camp keeps its sleepers');

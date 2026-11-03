@@ -1,6 +1,7 @@
 // Parties: 2-3 same-faction heroes of similar level who leave town together,
 // follow their leader, join each other's fights and share XP. Owned by ai-designer.
-// A party is {id, fac, leader, mem, zone, home} on S.parties; each hero has a.party.
+// A party is {id, fac, leader, mem, zone, home} on S.parties; each hero has a.party. A company's walking group
+// (sim/company.js, #402) is a party with p.company set; p.fellow is a read-only accessor for the Fellowship's.
 // Rules: form in town after the quest-giver step (within 2 levels; a Priest prefers a
 // Warrior, a Warrior lingers a few seconds for a Priest); leader = highest level;
 // dissolve on a death, a level gap over 3, or when the party heads home together;
@@ -90,7 +91,7 @@ export function partyTick(){
       else if(b.state==='dungeon'||b.state==='raid'||(b.state==='town'&&p.home))leaveParty(b)}
     if(!S.parties.includes(p))continue;
     for(const b of p.mem)if(b.lvl>p.leader.lvl||!p.mem.includes(p.leader))p.leader=b;
-    const lv=p.mem.map(b=>b.lvl);if(!p.fellow&&Math.max(...lv)-Math.min(...lv)>3){disband(p);continue} // the Fellowship (p.fellow) holds together across levels
+    const lv=p.mem.map(b=>b.lvl);if(p.company==null&&Math.max(...lv)-Math.min(...lv)>3){disband(p);continue} // a company's party (p.company) holds together across levels
     if(p.brawl&&!p.mem.some(b=>b.state==='assist'||b.state==='duel')){p.brawl=false;const foe=nearestFoe(p.leader,10);
       for(const b of p.mem)if(loose(b))regroup(b,foe)}
     // Heading home: everyone who is loose turns back; followers keep to the leader's side on the way.
