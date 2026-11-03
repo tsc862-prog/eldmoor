@@ -72,11 +72,13 @@ export function convertBag(a){const inv=newInv();
 const mkt=id=>GOODS[id]||MATERIALS[id]||null;
 // Town: sell trade goods and every spare piece except up to KEEP_SPARES that are still too high to wear.
 // Returns {gold, goods, n} and removes what was sold. Consumables and quest items stay.
-export function sellLoot(a){const inv=invOf(a);let gold=0,goods=0,n=0;
+// hold (optional, #258): {material id: units} a crafter holds back for its recipes.
+export function sellLoot(a,hold){const inv=invOf(a);let gold=0,goods=0,n=0;const left=hold?{...hold}:null;
   const keep=inv.list.filter(e=>isGear(e)&&e.ilvl>a.lvl+INV.WEAR_OVER&&(!e.cls||e.cls===a.cls)).sort((x,y)=>y.ilvl-x.ilvl).slice(0,INV.KEEP_SPARES);
   inv.list=inv.list.filter(e=>{
     if(isGear(e)){if(keep.includes(e))return true;gold+=SELL_VALUE(e);n++;return false}
-    if(e.kind==='good'&&mkt(e.id)){for(let i=0;i<e.n;i++){gold+=price(e.id);mkt(e.id).supply++}goods+=e.n;n+=e.n;return false}
+    if(e.kind==='good'&&mkt(e.id)){const k=left&&left[e.id]>0?Math.min(e.n,left[e.id]):0;if(k)left[e.id]-=k;const s=e.n-k;
+      for(let i=0;i<s;i++){gold+=price(e.id);mkt(e.id).supply++}goods+=s;n+=s;if(k){e.n=k;return true}return false}
     return true});
   return {gold,goods,n}}
 // One entry by index (agent tool): returns gold, or -1 when it cannot be sold.
@@ -121,9 +123,11 @@ export function useItem(a,id,on,o={}){const U=USES[id];on=on||a;
   let res;
   switch(U.kind){
   case 'potion':{if(on.hp>=mh)return err((on===a?'You are':on.name+' is')+' not hurt.');a.potCd=INV.POT_CD;const h=heal();stat('drunk');res=okay((on===a?'Drank ':'Gave ')+id+(on===a?'':' to '+on.name)+': +'+h+' health.',{healed:h})}break;
-  case 'bandage':case 'ration':{if(on.hp>=mh)return err((on===a?'You are':on.name+' is')+' not hurt.');
+  case 'bandage':case 'ration':{const fed=U.buff&&!(on.meal&&on.meal.until>S.gameMin); // a crafted meal (#258) is worth eating whole: its buff
+    if(on.hp>=mh&&!fed)return err((on===a?'You are':on.name+' is')+(U.buff?' still full from a meal.':' not hurt.'));
     if(inFight(on)||inFight(a))return err('Not in the middle of a fight.');
-    const h=heal();stat(U.kind==='ration'?'ate':'bound');res=okay((U.kind==='ration'?'Ate a ':'Bound wounds with a ')+id+(on===a?'':' for '+on.name)+': +'+h+' health.',{healed:h})}break;
+    const h=on.hp<mh?heal():0;if(fed)on.meal={id,stat:U.buff.stat,v:U.buff.v,until:Math.round(S.gameMin)+U.buff.mins};
+    stat(U.kind==='ration'?'ate':'bound');res=okay((U.kind==='ration'?'Ate a ':'Bound wounds with a ')+id+(on===a?'':' for '+on.name)+': +'+h+' health'+(fed?', and +'+Math.round(U.buff.v*100)+'% '+U.buff.stat+' for '+U.buff.mins+' game minutes':'')+'.',{healed:h})}break;
   case 'torch':{const F=companyOf(a),g=F&&F.camp&&F.camp.phase?F.camp:null;/* the hero's own company's fire (#439) */if(!g||a.state!=='camp')return err('A torch is lit at a camp.');if(g.lit)return err('The camp is already lit.');g.lit=true;stat('lit');res=okay('Lit a pitch torch at the camp: the watch sees farther.')}break;
   case 'antidote':{if(!venomOn(a))return err('You are not poisoned.');cureVenom(a);stat('cured');res=okay('Drew the venom out with '+id+'.')}break;
   case 'scroll':
@@ -159,7 +163,8 @@ export function tendAlly(a,list){const inv=a.inv;if(!inv||!inv.list.length||a.po
   for(const b of list){if(b===a||b.state==='ghost'||b.state==='dead'||dist(a,b)>GIVE_RANGE)continue;if(b.hp<maxHp(b)*.35&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
   return low?useItem(a,id,low).ok:false}
 // At camp: supper for the hurt, and a torch lit for the watch.
-export function campMeal(a){const inv=a.inv;if(!inv||!inv.list.length)return;
+export function campMeal(a,o={}){const inv=a.inv;if(!inv||!inv.list.length)return;
+  if(o.meals!==false&&!(a.meal&&a.meal.until>S.gameMin))for(const e of inv.list)if(e.kind==='use'&&USES[e.id]&&USES[e.id].buff){useItem(a,e.id);return} // a crafted meal first (#258)
   if(a.hp<maxHp(a)*.85&&has(a,'Trail Ration'))useItem(a,'Trail Ration')}
 export function campLight(a){const inv=a.inv;if(inv&&has(a,'Pitch Torch'))useItem(a,'Pitch Torch')}
 
@@ -191,8 +196,9 @@ export function lootSupply(a,m){if(m.add)return;
 // ---- giving (agent tool give, party only) ----
 export function giveItem(a,b,i,n=1){const L=invOf(a).list,e=L[i];
   if(!e)return err('No pack entry '+i+'.');if(!b||b===a||b.kind!=='hero'||b.state==='dead'||b.state==='ghost')return err('No such hero to give to.');
-  if(!a.party||b.party!==a.party)return err('You can only give to a member of your party.');
-  if(dist(a,b)>GIVE_RANGE)return err(b.name+' is too far away ('+Math.round(dist(a,b))+' tiles; '+GIVE_RANGE+' at most).');
+  const C=companyOf(a);if(!((a.party&&b.party===a.party)||(C&&companyOf(b)===C)))return err('You can only give to a companion (your party or company).'); // #258: a company mate counts, as for party_say (#182)
+  if(b.hidden)return err('You cannot find '+b.name+' to hand anything over.');
+  if(dist(a,b)>GIVE_RANGE)return err(b.name+' is too far away ('+Math.round(dist(a,b))+' tiles; '+GIVE_RANGE+' at most, close enough to talk). A shout carries words, not things: walk over first.');
   if(isGear(e)){if(e.cls&&e.cls!==b.cls&&!e.epic)return err(e.name+' is made for a '+e.cls+'.');if(room(b)<=0)return err(b.name+"'s pack is full.");
     L.splice(i,1);addGear(b,e);stat('given');return okay('Gave '+e.name+' to '+b.name+'.')}
   if(e.kind==='quest')return err('A quest item is bound to its bearer.');
