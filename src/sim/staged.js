@@ -33,7 +33,7 @@ import {dmlog} from './dmlog.js';
 import {maxHp} from './heroes.js';
 import {check,socialSkill} from './abilities.js';
 import {buildEncounter,spawnFoe} from './encounterbuilder.js';
-import {pull,spotErr} from './levers.js';
+import {pull,spotErr,takeBack} from './levers.js';
 import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
 import {focus,focuses,nearMember} from './dmfocus.js';
 import {companies,companyOf,companyById,members as coMembers,slotHeroes,slotKeyOf,slotted} from './company.js'; // staging per company (#451)
@@ -389,6 +389,20 @@ function expire(rec){const G=S.staged;G.stats.expired++;
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.gone){m.alive=false;m.gone=true;m.target=null}}
   LOG('abandon',['Staged ',gd(rec.kind),' ',gd(rec.title),' never met '+coName(recCo(rec))+'; the cast moves on.'],{staged:rec.id,kind:rec.kind,result:'expired'});
   rec.phase='done';rec.result='expired';retire(rec)}
+// Take a staged scene back before the Table has opened it (issue #636, the DM's unstage): the cast walks off (mobs gone, a
+// placed person sent away, a mystery's marker taken down), the scene is logged as unstaged. Refused once it is open.
+export function unstage(which){const G=S.staged,rec=G&&G.cur&&G.cur.phase!=='done'?G.cur:null;
+  if(!rec)return {ok:false,reason:'no staged scene is pending'};
+  const w=which==null||which===''?null:String(which).trim().toLowerCase();
+  if(w&&w!==String(rec.id)&&w!==String(rec.title).toLowerCase()&&w!==rec.kind)return {ok:false,reason:'your pending scene is #'+rec.id+' "'+rec.title+'" ('+rec.kind+'), not "'+clean(which,40)+'"'};
+  if(rec.phase!=='waiting')return {ok:false,reason:'the Table has opened "'+rec.title+'"; it runs to its end'};
+  for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.gone){m.alive=false;m.gone=true;m.target=null}}
+  if(rec.cast.npc!=null){const wn=npcOf(rec.cast.npc);if(wn){const t=wn.lever!=null?takeBack(wn.lever):{ok:false};if(!t.ok&&S.wanderers.includes(wn))S.wanderers.splice(S.wanderers.indexOf(wn),1)}}
+  if(rec.cast.place!=null){const pl=(S.places||[]).find(x=>x.id===rec.cast.place);if(pl&&pl.lever!=null){const t=takeBack(pl.lever);if(!t.ok)S.places.splice(S.places.indexOf(pl),1)}}
+  G.stats.unstaged=(G.stats.unstaged||0)+1;
+  LOG('abandon',['DM agent takes back staged ',gd(rec.kind),' ',gd(rec.title),'; the cast moves on.'],{staged:rec.id,kind:rec.kind,result:'unstaged'});
+  rec.phase='done';rec.result='unstaged';retire(rec);
+  return {ok:true,staged:rec.id,kind:rec.kind,title:rec.title}}
 function finish(rec,sc,why){if(rec.phase==='done')return;rec.phase='done';rec.result=why||(sc&&sc.summary)||'done';
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.alive&&!m.gone){m.gone=true;m.target=null}}
   LOG('payoff',['Staged ',gd(rec.kind),' ',gd(rec.title),' ends: '+clean(rec.result,180)],{staged:rec.id,kind:rec.kind,result:rec.result,calls:sc&&sc.calls?sc.calls.map(c=>({kind:c.kind,by:c.by,...(c.pick?{pick:c.pick}:{})})):null,heroes:sc?sc.ids:[]});
