@@ -21,7 +21,7 @@
 // unique across companies. Only the Fellowship's proposals open a Table decision scene until #440 (table per company).
 // Plain data, saved with the world on each company: C.props [{id,kind,details,by,at,until,votes,status,result}],
 // C.accept {crypt|raid: gameMin until a passed call stands}, a.splitUntil, a.cryptOk / a.raidOk.
-import {CRYPT,dist} from '../world/map.js';
+import {CRYPT,LAIR,REGIONS,zoneAt,dist} from '../world/map.js';
 import {S,clockStr,dayNo} from './state.js';
 import {log} from './chronicle.js';
 import {maxHp} from './heroes.js';
@@ -114,6 +114,10 @@ export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
   case 'break_camp':{const C=propCompany(P)||companyOf(a),g=C&&C.camp;return g&&g.phase&&members(C).every(b=>b.hp>=maxHp(b)*.9)?'yes':'no'}
   default:return 'yes'}}
 
+// No level gate (#449): a green company is never refused the Crypt or Kragmaw, it is warned (the #448 sign's words) in the proposal everyone hears.
+const GREEN_WARN='Those who went below were tried blades; you are not.';
+function greenWarn(F,kind){if(kind!=='crypt'&&kind!=='raid')return '';const at=kind==='crypt'?CRYPT:LAIR,R=at&&REGIONS[zoneAt(at.x,at.y)],b=R&&R.band;
+  return b&&members(F).some(m=>m.lvl<b[0])?' '+(kind==='crypt'?GREEN_WARN:'Those who went to the lair were tried blades; you are not.'):''}
 export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return 'Only a member of a company can put something to the party.';
   if(!PROP_KINDS.includes(kind))return 'Kind must be one of: '+PROP_KINDS.join(', ')+'.';
   if(isSolo(F)&&kind!=='break_camp')return SOLO;
@@ -124,7 +128,7 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   // presence (#182): only members within shouting range hear a proposal and vote; the absent hear of it on rejoining
   const away=members(F).filter(b=>b!==a&&!inRange(a,b));
   if(away.length&&NEED_ALL.includes(kind)&&o.src!=='call')return 'The '+KIND_TEXT[kind]+' takes the whole '+word(F)+' together; '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear. Gather first, or send a courier.';
-  const P={id:nextPropId(F),kind,details:d||KIND_TEXT[kind],by:a.id,byName:a.name,at:Math.round(S.gameMin),until:S.gameMin+COUNCIL.PROP_MIN,votes:{},status:'open',result:null,src:o.src||'member'};
+  const P={id:nextPropId(F),kind,details:(d||KIND_TEXT[kind])+greenWarn(F,kind),by:a.id,byName:a.name,at:Math.round(S.gameMin),until:S.gameMin+COUNCIL.PROP_MIN,votes:{},status:'open',result:null,src:o.src||'member'};
   if(away.length)P.absent=away.map(b=>b.id);
   if(kind==='split'&&o.where)P.meet={where:clean(o.where,60),hours:o.hours}; // the plan to meet again, recorded if the split passes
   if(o.job!=null)P.job=Number(o.job);
@@ -192,7 +196,7 @@ const waiting=(F,k)=>F&&F.wait&&F.wait[k]>S.gameMin;
 function setWait(F,k){(F.wait||(F.wait={}))[k]=S.gameMin+COUNCIL.WAIT_MIN}
 // The faction whose raid muster is reserved for a company, or -1.
 export function raidReserve(){for(const C of companies())if(openProps(C).some(P=>P.kind==='raid')||waiting(C,'raid'))return C.fac;return -1}
-function cryptReady(L,C){return L.every(b=>b.lvl>=7&&['hunt','travel','town','return','follow'].includes(b.state))&&gathered(L,C)} // the whole company, in shouting range of each other (#182)
+function cryptReady(L,C){return L.every(b=>['hunt','travel','town','return','follow'].includes(b.state))&&gathered(L,C)} // the whole company, in shouting range of each other (#182)
 function goCrypt(F,L){for(const b of L)if(b.player)b.cryptOk=true;
   musterCrypt(L,F.fac,null,F.name);clog(F,'council',gd(F.name),' sets out for ',gd(CRYPT.name),' together.')}
 // Called by dungeonCheck while no group holds the Crypt. True: the Crypt is the Fellowship's (reserved or just launched); the
@@ -243,7 +247,7 @@ export function followLead(lead,label){const P=lead.party;if(!P||P.leader!==lead
 // one this is exactly list.slice(0,n). Members of other companies are never drafted piecemeal.
 export function unitDraft(list,pool,n,kind){const top=list.slice(0,n),hit=top.find(inUnit),F=hit?companyOf(hit):null;if(!F)return top;
   // a member following the leader counts as free to answer (the pools only list hunt/travel/town/return)
-  const lvl=kind==='crypt'?7:14,free=a=>pool.includes(a)||(a.state==='follow'&&a.lvl>=lvl&&!a.raid);
+  const free=a=>pool.includes(a)||(a.state==='follow'&&!a.raid);
   const L=members(F),ready=L.length>0&&L.every(free)&&gathered(L,F),agents=L.filter(a=>a.player);
   const accepted=!agents.length||(F.accept&&F.accept[kind]>S.gameMin);
   if(ready&&accepted){for(const a of agents){if(kind==='crypt')a.cryptOk=true;else a.raidOk=true}

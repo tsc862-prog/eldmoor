@@ -154,7 +154,7 @@ export function talkText(b) {
 // recall them. Every turn prompt carries it (local turns inside briefText, Claude turns on their own); '' when none.
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return personaNote(b) + questNote(b) + hallNote(b) + companyNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return personaNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.
 export const personaNote = b => b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '';
@@ -189,6 +189,14 @@ export function companyNote(b) {
   const offers = o.length ? `\nOffers to ride together, open to you: ${o.map(offer).join('; ')} (accept {offer_id} or decline {offer_id}).` : '';
   const comp = c && c.name ? `\nYour company: ${c.name} (${c.size} heroes${c.leader ? ', ' + c.leader + ' leads' : ''})${c.with_you && c.with_you.length ? '; within shouting range: ' + c.with_you.join(', ') : ''}${c.apart && c.apart.length ? '; apart: ' + c.apart.join(', ') : ''}.` : '';
   return offers + comp;
+}
+
+// Whom the hero follows and who walks with it (brief.follow, src/sim/follow.js, issue #445): words only, never positions.
+export function followNote(b) {
+  const f = b && b.follow; if (!f) return '';
+  return (f.following ? `
+You are ${String(f.following).slice(0, 160)} (any other order ends it).` : '') + (Array.isArray(f.followed_by) && f.followed_by.length ? `
+Walking with you (following, not in your company): ${f.followed_by.join(', ')}.` : '');
 }
 
 // The hall board's open jobs for the Fellowship (brief.hall, issue #326): only for a member in town, only when there are some.
