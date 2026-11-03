@@ -58,7 +58,7 @@ ok(S0.length >= 4 && S1.length >= 4 && roads[0].length > 0 && bad, `found legal 
 console.log('\nforbidden effects');
 for (const k of ['hp', 'xp', 'stats', 'cls', 'loot', 'item', 'revive', 'kill']) {let threw = false; try {register({name: 'evil_' + k, params: {[k]: {type: 'int'}}, apply: () => ({ok: true})})} catch (e) {threw = true} ok(threw && !LEVERS['evil_' + k], `register() refuses a lever with a '${k}' parameter`)}
 {let threw = false; try {register({name: 'xp', params: {}, apply: () => ({ok: true})})} catch (e) {threw = true} ok(threw, 'register() refuses a lever named xp')}
-ok(Object.values(LEVERS).every(d => Object.keys(d.params).every(k => !/^(hp|maxhp|xp|stats?|cls|class|gold|item|loot|epic|gear|lvl)$/.test(k) || (k === 'lvl' && ['mark_dangerous', 'mark_cleared', 'named_foe', 'custom_foe'].includes(d.name)))), 'no lever parameter names a hero number (lvl only as a monster or area level)');
+ok(Object.values(LEVERS).every(d => Object.keys(d.params).every(k => !/^(hp|maxhp|xp|stats?|cls|class|gold|loot|epic|gear|lvl)$/.test(k) || (k === 'item' && ['give_item', 'take_item'].includes(d.name)) || (k === 'lvl' && ['mark_dangerous', 'mark_cleared', 'named_foe', 'custom_foe'].includes(d.name)))), 'no lever parameter names a hero number (lvl only as a monster or area level)');
 const heroNums = () => JSON.stringify(S.agents.map(a => [a.id, a.hp, a.xp, a.lvl, a.cls, a.state, a.gold, a.honor, a.gear, (a.epics || []).length, JSON.stringify(a.abil || null), JSON.stringify(a.eq || null)]));
 const before = heroNums();
 
@@ -175,6 +175,39 @@ provide('createSite', (p) => ({ok: true, effect: {stub: p.theme}}));
   advance(31); const y = pull('custom_foe', {base, region: 0, at: S0[4], levels: 2, swap: {pair: ['nope', 'nope']}}, by); ok(!y.ok, 'custom_foe: the bestiary refuses a bad swap: ' + y.reason);
   advance(31); ok(pull('custom_foe', {base, region: 0, at: S0[4]}, by).ok, 'custom_foe: a second in the region');
   advance(31); rej('custom_foe', {base, region: 0, at: S0[3]}, /per region per game day|special foes today/, 'custom_foe: the region cap');}
+
+// ---- give_item / take_item (issue #524) ----
+console.log('\ngive_item and take_item');
+{const inv = await import('../src/sim/inv.js'), {QUEST_ITEMS, USES, EPICS} = await import('../src/data/items.js');
+  const h = S.agents.find(a => a.kind === 'hero' && a.state !== 'dead' && a.slots); h.state = 'town'; h.lvl = Math.max(h.lvl, 6);
+  const pn = S.npcs[0]; const home = {x: pn.x, y: pn.y}; h.x = pn.x + 1; h.y = pn.y; S.levers.day = {}; S.levers.cd = {};
+  const q = Object.keys(QUEST_ITEMS)[0], u = Object.keys(USES).find(k => USES[k].kind === 'potion');
+  rej('give_item', {hero: h.id, item: 'Nonesuch'}, /unknown item/, 'give_item: an unknown id');
+  rej('give_item', {hero: h.id, item: EPICS[0][0]}, /epic/, 'give_item: never an epic');
+  rej('give_item', {hero: 999999, item: q}, /no such living hero/, 'give_item: no such hero');
+  rej('give_item', {hero: h.id, item: 'chest', ilvl: h.lvl + 1}, /above/, 'give_item: gear above the hero’s level');
+  h.state = 'fight'; rej('give_item', {hero: h.id, item: q}, /in a fight/, 'give_item: not in a fight'); h.state = 'town';
+  h.x = home.x + 30; h.y = home.y; rej('give_item', {hero: h.id, item: q, by: pn.id}, /earshot/, 'give_item: the giver is out of earshot'); h.x = home.x + 1; h.y = home.y;
+  rej('give_item', {hero: h.id, item: q, by: 999999}, /no such person/, 'give_item: no such giver');
+  let x = pull('give_item', {hero: h.id, item: q, by: pn.id}, by);
+  ok(x.ok && inv.has(h, q) && x.effect.by === ((pn.title ? pn.title + ' ' : '') + pn.name), 'give_item: a person hands over a quest item: ' + JSON.stringify(x.effect));
+  rej('give_item', {hero: h.id, item: q}, /already carries/, 'give_item: a quest item is not given twice');
+  x = pull('give_token', {hero: h.id, token: 'Not A Token'}, by); ok(!x.ok, 'give_token is folded in: an unknown token is still refused');
+  x = pull('take_item', {hero: h.id, item: q, by: pn.id}, by); ok(x.ok && !inv.has(h, q), 'take_item: a person takes the quest item back');
+  x = pull('give_token', {hero: h.id, token: q}, by); ok(x.ok && inv.has(h, q), 'give_token still works, as give_item (found where the hero stands: ' + x.effect.by + ')');
+  x = pull('take_token', {hero: h.id, token: q}, by); ok(x.ok && !inv.has(h, q), 'take_token still works, as take_item');
+  x = pull('give_item', {hero: h.id, item: u}, by); ok(x.ok && inv.count(h, u) >= 1, 'give_item: a consumable (' + u + ')');
+  rej('take_item', {hero: h.id, item: u}, /only a quest item/, 'take_item: not a consumable');
+  rej('take_item', {hero: h.id, item: 'head'}, /gear/, 'take_item: not gear');
+  S.levers.day = {}; const gold0 = h.gold, g0 = inv.spares(h).length;
+  x = pull('give_item', {hero: h.id, item: 'head', ilvl: h.lvl}, by); const sp = inv.spares(h);
+  ok(x.ok && sp.length === g0 + 1 && sp[sp.length - 1].ilvl === h.lvl && !sp[sp.length - 1].epic && h.gold === gold0, 'give_item: one plain gear piece at the hero’s level, not an epic');
+  rej('give_item', {hero: h.id, item: 'feet'}, /gear piece per game day/, 'give_item: one gear piece a day');
+  S.levers.day = {}; ok(pull('give_item', {hero: h.id, item: 'feet'}, by).ok, 'give_item: gear again the next day');
+  S.levers.day = {}; for (let i = 0; i < 4; i++) pull('give_item', {hero: h.id, item: u}, by);
+  rej('give_item', {hero: h.id, item: u}, /per game day|full/, 'give_item: 4 a game day');
+  ok(pull('give_item', {hero: h.id, item: u}, by).ok === false && S.dmLog[0].detail.lever === 'give_item', 'the refusal is in the DM log');
+  inv.take(h, 'use', u, inv.count(h, u));}
 
 // ---- limits and cooldowns ----
 console.log('\nlimits and cooldowns');

@@ -490,6 +490,28 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
     for (let i = 0; i < lim + 2 && far.length; i++) {const z = far[i % far.length]; S.dmAgent.day.pulls = 0; S.levers.cd = {}; // cooldowns waved through, so the daily share is what stops it
       r = dmAct('place_person', {role: 'drover', near: ZONES[z], reason: 'a drover far off'}); if (r.ok) made++; else if (/kept for the Fellowship/.test(r.error)) {got = r; break}}
     ok(!!got && /^Refused: limit/.test(got.error) && !got.usage, 'the Fellowship\'s reserved share holds for place_person far from them (' + made + ' made, limit ' + lim + ', reserve ' + reserveOf(lim) + '): ' + (got ? got.error : 'never refused'));}
+  // give_item / take_item (issue #524): flat tools over the levers, the hero told at once, the item in the pack
+  {const inv = await import('../src/sim/inv.js'), {QUEST_ITEMS} = await import('../src/data/items.js');
+    const h = L[0], q = Object.keys(QUEST_ITEMS)[1], pn = S.npcs[0], pos = {x: pn.x, y: pn.y}, nm = pn.name, gt = DM_TOOLS.filter(t => ['give_item', 'take_item'].includes(t.name));
+    ok(gt.length === 2 && gt.every(t => t.act && t.args.reason && !t.args.reason.optional && /pull_lever/.test(t.desc)), 'give_item and take_item are DM tools with a reason');
+    const fresh = () => {S.dmAgent.day.pulls = 0; S.levers.cd = {}; S.levers.day.n = {}; S.levers.day.nf = {}; S.levers.day.rz = {}};
+    fresh(); pn.x = h.x + 1; pn.y = h.y; const ev0 = h.playEvN || 0, nInv = inv.questItems(h).length;
+    r = dmAct('give_item', {hero: h.name, item: q.toLowerCase(), by: nm, reason: 'a keepsake for their road'});
+    const ev = (h.playEv || [])[h.playEv ? h.playEv.length - 1 : 0];
+    ok(r.ok && inv.has(h, q) && inv.questItems(h).length === nInv + 1 && lastLever().detail.lever === 'give_item' && lastLever().detail.by === 'dm-agent' && (h.playEvN || 0) === ev0 + 1 && ev.u === 1 && ev.text.includes(nm) && /into your hand/.test(ev.text) && ev.text.includes(q),
+      'give_item: a person in earshot hands over a quest item; urgent event, item in the pack, DM log' + (r.ok ? '' : ': ' + r.error));
+    r = dmAct('give_item', {hero: h.name, item: q, by: nm, reason: 'again'}); ok(r.ok === false && /already carries/.test(r.error), 'give_item: not twice: ' + (r.error || '').slice(0, 60));
+    pn.x = h.x + 30; r = dmAct('take_item', {hero: h.name, item: q, by: nm, reason: 'too far'}); ok(r.ok === false && /earshot/.test(r.error), 'take_item: the person must be in earshot');
+    pn.x = h.x + 1; r = dmAct('take_item', {hero: h.name, item: q, by: nm, reason: 'a toll paid'}); ok(r.ok && !inv.has(h, q) && h.playEv[h.playEv.length - 1].text.includes('takes'), 'take_item: the person takes it back');
+    r = dmAct('give_item', {hero: h.name, item: q, reason: 'a find'}); ok(r.ok && /Half-buried/.test(h.playEv[h.playEv.length - 1].text), 'give_item without by: found where the hero stands');
+    r = dmAct('pull_lever', {lever: 'take_token', params: {hero: h.id, token: q}, reason: 'the old lever name'}); ok(r.ok && !inv.has(h, q), 'take_token is folded into take_item (via pull_lever)');
+    r = dmAct('give_item', {hero: h.name, item: 'chest', ilvl: h.lvl + 2, reason: 'too good'}); ok(r.ok === false && /above/.test(r.error), 'give_item: gear above the hero’s level is refused');
+    r = dmAct('give_item', {hero: h.name, item: "Kragmaw's Molten Eye", reason: 'an epic'}); ok(r.ok === false && /epic/.test(r.error), 'give_item: an epic is refused');
+    fresh(); const sp0 = inv.spares(h).length; r = dmAct('give_item', {hero: h.name, item: 'hands', reason: 'a plain gauntlet'});
+    r = r.ok ? dmAct('give_item', {hero: h.name, item: 'feet', reason: 'a second piece'}) : r;
+    ok(r.ok === false && /gear piece per game day/.test(r.error) && inv.spares(h).length === sp0 + 1, 'give_item: one plain gear piece a day');
+    h.state = 'fight'; fresh(); r = dmAct('give_item', {hero: h.name, item: q, reason: 'in a fight'}); ok(r.ok === false && /in a fight/.test(r.error), 'give_item: not in a fight'); h.state = 'hunt';
+    pn.x = pos.x; pn.y = pos.y; fresh()}
   // the DM agent's own daily cap
   S.dmAgent.day.pulls = DMA.PULLS_PER_DAY;
   for (const [t, a] of [['post_hook', {town: hall, tpl: 'deliver', reason: 'cap'}], ['place_person', {role: 'peddler', near: hall, reason: 'cap'}], ['mark_place', {kind: 'cairn_door', near: LANDMARKS[0].name, reason: 'cap'}]]) {
