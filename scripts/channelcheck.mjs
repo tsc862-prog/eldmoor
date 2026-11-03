@@ -118,6 +118,15 @@ ok(markedPlace && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.placeReas
 r = DMA.dmAct('give_item', {hero: A.name, item: 'Shrine Candle-Stub', reason: 'Gift ' + plant('giftReason')});
 ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.giftReason)) && (A.playEv || []).some(e => /Candle-Stub/.test(e.text) && !e.text.includes(SECRETS.giftReason)), 'a given item: the hero is told of the item, its reason is in the DM log only' + (r.ok ? '' : ': ' + r.error));
 // a staged scene (issue #132): its reason is the DM's own (DM log only); the frame and the person's want are said in the game
+// seed_rumour and bestow (#637, #638): the words reach heroes, the reason and the why stay in the DM log; nobody hears who seeded it
+{const town = homeOf(A).name; r = DMA.dmAct('seed_rumour', {town, text: 'A drover swears he saw lights on the old ridge road.', reason: 'Rumour ' + plant('rumourReason')});
+  ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.rumourReason)), 'a seeded rumour: its reason in the DM log' + (r.ok ? '' : ': ' + r.error));
+  r = DMA.dmAct('bestow', {hero: A.name, title: 'Ridgewalker', why: 'Bestowed ' + plant('bestowWhy')});
+  ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.bestowWhy)) && (A.playEv || []).some(e => /Ridgewalker/.test(e.text) && !e.text.includes(SECRETS.bestowWhy)), 'a name given: the hero hears it, the why stays in the DM log' + (r.ok ? '' : ': ' + r.error));
+  const ax = A.x, ay = A.y, st = A.state, tw = A.town; const c = homeOf(A); A.x = c.gate.x; A.y = c.gate.y; A.state = 'town'; A.town = town;
+  const lj = keep('list_jobs after a rumour', act(A, 'list_jobs'));
+  ok(lj.ok && (lj.word_at_the_gate || []).some(l => /lights on the old ridge road/.test(l)) && !/\bDM\b|dungeon master|seed/i.test(JSON.stringify(lj.word_at_the_gate)), 'the gate passes the rumour on without saying who started it');
+  A.x = ax; A.y = ay; A.state = st; A.town = tw}
 r = DMA.dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A drover waits by the road with a lame ox.', cast: {role: 'drover', want: 'a hand with the ox'}, reason: 'Stage ' + plant('stageReason')});
 ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), 'a staged scene\'s reason in the DM log' + (r.ok ? '' : ': ' + r.error));
 // a ruling on a free action (issue #522): the hero hears the text, the roll and what changed; the DM's note stays in its log
@@ -217,7 +226,7 @@ const argsFor = {move_to: {target: 'home'}, inspect: {who: B.name}, talk: {targe
   remember: {title: 'Road notes', text: 'A notes the road home.', tags: ['road', 'secret'], about: B.name}, recall: {query: 'road hide secret memory'}, update_memory: {id: 1, text: 'A rewrites the road note.'}, forget: {id: 9999}, pin: {id: 1}};
 // Learn the world (#188): a creature in sight with a planted level and HP: no hero tool, event or header may number it
 const beast = S.mobs.find(m => m.alive && !m.gone && !m.elite && !m.named); beast.x = A.x + 2.5; beast.y = A.y; beast.lvl = 37; beast.maxhp = 9137; beast.hp = 4567; beast.target = null; beast.dest = null; beast.home = {x: beast.x, y: beast.y}; beast.spawn = {x: beast.x, y: beast.y}; (await import('../src/sim/spatial.js')).rebuild();
-const beastNums = /"lvl":37|level 37|L37|9137|4567|"hurt":/;
+const beastNums = /"lvl":37\b|level 37\b|\bL37\b|\b9137\b|\b4567\b|"hurt":/;
 const first = {};
 for (const t of ['status', 'look', 'chat_read', 'party_read', 'journal_read', 'read_chronicle', 'earshot']) first[t] = keep('A ' + t, act(A, t, argsFor[t]));
 ok((first.chat_read.lines || []).some(l => l.includes(said.narr) && /narrator/i.test(l)) && (first.chat_read.lines || []).some(l => l.includes(said.party)), 'chat_read: the narrator and B\'s party line');
