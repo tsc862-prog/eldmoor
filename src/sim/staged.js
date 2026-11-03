@@ -44,6 +44,7 @@ import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {TABLE,openScene,tableOn,setSceneKind,setStageHooks} from './table.js';
+import {setProps} from './props.js';
 import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
 import {heard,tableLive,fillWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {talkFromScene} from './talk.js'; // NPC conversations (#170)
@@ -125,7 +126,7 @@ const band=z=>REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];
 // the scene from the Table's own outcome, in the world's words, never the DM's bookkeeping ("staged", reasons).
 const LOG=(kind,summary,detail)=>dmlog(kind,null,summary,{by:'dm-agent',...detail},{heroes:[]});
 // The call's contract, added to the refusals of a call shaped wrong (issue #401), so the next call can be right.
-export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark or a region), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, choices); with preview "true" only kind, near and reason are needed';
+export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark or a region), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, item (an object the first prop of the frame holds, found with search), choices); with preview "true" only kind, near and reason are needed';
 function refuse(why,a,usage){const err='Refused: '+why+(usage?'. '+STAGE_USAGE:'');if(a&&a.preview)return {ok:false,error:err}; // a preview stages nothing, so it leaves no trace
   const G=stagedState();G.stats.refused++;
   LOG('agent',['Staged scene refused: '+why+(a&&a.kind?' ('+clean(a.kind,12)+')':'')+'.'],{staged:null,kind:a&&a.kind?clean(a.kind,12):null,reason:clean(a&&a.reason,STAGE.REASON_MAX),result:'rejected: '+why});
@@ -202,7 +203,7 @@ const inTown=(c,p)=>!!(c&&p)&&p.x>=c.x0-STAGE.TOWN_PAD&&p.x<=c.x1+1+STAGE.TOWN_P
 const townOf=n=>CITY.find(c=>c.name===n)||null;
 
 // ---- staging (the DM tool stage_scene) ----
-// a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, trap, place, choices:{act:label}}, reason}
+// a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, item, trap, place, choices:{act:label}}, reason} (cast.item: a give_item name the frame's first prop holds; search finds it)
 export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),F=S.fellowship||companies()[0]||null,seed0=seed,pv=a.preview===true||a.preview==='true';
   const kind=String(a.kind||'').toLowerCase().trim(),reason=clean(a.reason,STAGE.REASON_MAX);
   let cast=a.cast;if(typeof cast==='string'){try{cast=cast.trim()?JSON.parse(cast):{}}catch(e){cast=null}}if(cast==null)cast={};
@@ -245,7 +246,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
       if(h)return refuse(h.name+' of '+coName(cmp)+' is badly hurt ('+pct(h)+'% HP) out in the field: no staged '+kind+' for them until they recover',a)}}
   if(!pv&&FIGHTING[kind]&&band(z)[0]>P.avg+STAGE.FAR)return refuse(ZONES[z]+' (levels '+band(z)[0]+'+) is far above the party (average level '+P.avg+')',a);
   // the cast
-  const C={name:clean(cast.name,STAGE.NAME_MAX)||null,title:clean(cast.title,40)||null,want:clean(cast.want,STAGE.WANT_MAX)||null,voice:clean(cast.voice,60)||null,reveal:clean(cast.reveal,STAGE.REVEAL_MAX)||null,mobs:[],npc:null,place:null};
+  const C={name:clean(cast.name,STAGE.NAME_MAX)||null,title:clean(cast.title,40)||null,want:clean(cast.want,STAGE.WANT_MAX)||null,voice:clean(cast.voice,60)||null,reveal:clean(cast.reveal,STAGE.REVEAL_MAX)||null,item:clean(cast.item,40)||null,mobs:[],npc:null,place:null};
   const labels={},ignored=[];
   if(cast.choices!=null){if(typeof cast.choices!=='object'||Array.isArray(cast.choices))return refuse('cast.choices must be an object {action: label}',a);
     for(const k in cast.choices){const kk=String(k).toLowerCase(),t=clean(cast.choices[k],STAGE.LABEL_MAX);if(STAGE_ACTS[kind].includes(kk)&&t)labels[kk]=t;else ignored.push(k)}}
@@ -374,7 +375,7 @@ function meet(rec,a){const G=S.staged,F=S.fellowship,fight=rec.kind==='elite'||r
   ctx.anchor=a.id; // an everyone-at-once scene takes the members within shouting range of the one they met (#182)
   const sc=openScene(rec.kind,rec.title,[rec.frame],ctx);
   if(!sc){rec.phase='waiting';return false}
-  rec.scene=sc.id;if(S.table===sc&&!sc.narr)sc.narr=pre.narr;
+  rec.scene=sc.id;if(S.table===sc&&!sc.narr)sc.narr=pre.narr;setProps(sc,rec.cast.item); // the frame's props as data (#592)
   return false}
 
 function expire(rec){const G=S.staged;G.stats.expired++;

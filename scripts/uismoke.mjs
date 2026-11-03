@@ -1049,7 +1049,12 @@ console.log('the DM prepares the table');
     ok(spokenOf('Hear me out. I need someone to find my ox.','Hesk')==='Hear me out. I need someone to find my ox.'&&spokenOf('The candle gutters.','Hesk')===null&&spokenOf('(whispered) go','Hesk')===null&&unrole('Hear Stranger Father Corvane out',[fc])==='Hear Father Corvane out','#536 spoken: speech kept, prose and stage directions dropped, roles removed');
     ok(sv.sceneItem(sc)==='candle','#536 props: the frame\'s candle stub becomes the scene\'s item');
     {const LV=await import('../src/sim/levers.js'),st0=mem[0].state;mem[0].state='town';const rg=LV.pull('give_item',{hero:mem[0].id,item:'Shrine Candle-Stub'},{by:'agent',reason:'uismoke'});mem[0].state=st0;
-      ok(rg.ok&&sc.given==='Shrine Candle-Stub'&&sv.sceneItem(sc)===null,'#524 props: give_item of the scene item marks it given, the speaker no longer holds it'+(rg.ok?'':': '+rg.reason));delete sc.given;ok(sv.sceneItem(sc)==='candle','#524 props: without the flag the candle is drawn again')}
+      ok(rg.ok&&sc.given==='Shrine Candle-Stub'&&sv.sceneItem(sc)===null,'#524 props: give_item of the scene item marks it given, the speaker no longer holds it'+(rg.ok?'':': '+rg.reason));ok(sc.props&&sc.props[0].id==='candle'&&sc.props[0].gone===true,'#592 props: the scene carries sc.props as data and giving the item marks the prop gone');
+      delete sc.given;for(const p of sc.props)delete p.gone;ok(sv.sceneItem(sc)==='candle','#524 props: with the prop back the candle is drawn again')}
+    {const SR=await import('../src/sim/search.js'),LV=await import('../src/sim/levers.js'),h=mem[0],st0=h.state;sc.props=[{id:'candle',name:'the candle stub',item:'Chapel Tithe-Seal'}];
+      const ex=SR.examineView(h,{what:'candle'});ok(ex.ok&&/candle/.test(ex.text)&&ex.hint,'#592 examine: a prop at the hero own scene is described ('+(ex.text||ex.error)+')');
+      const sr=SR.searchAct(h,{what:'candle stub'});ok(sr.ok&&sr.result==='found'&&/Tithe/i.test(sr.found||'')&&!sc.props[0].item&&!sc.props[0].gone,'#592 search: the item comes through the give_item path ('+JSON.stringify(sr)+')');
+      const sr2=SR.searchAct(h,{what:'candle'});ok(sr2.ok&&sr2.result==='nothing','#592 search: a second search finds nothing more');delete sc.props}
     const g0=S.gameMin;S.gameMin=Math.floor(g0/1440)*1440+12*60;const day=sv.sceneDark(sc,.15);S.gameMin=Math.floor(g0/1440)*1440+23*60;const night=sv.sceneDark(sc,.15);
     const plainSc={...sc,frame:['A quiet word.'],title:'A word'};S.gameMin=Math.floor(g0/1440)*1440+12*60;const lit=sv.sceneDark(plainSc,.15);S.gameMin=g0;
     ok(night>day&&day>lit&&lit===.15,'#536 light: darker at night ('+night+') and when the frame says guttering ('+day+' vs '+lit+')');
