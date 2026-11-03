@@ -39,6 +39,7 @@ import {fightMoves} from './moves.js'; // class abilities (sim/moves.js, #81)
 import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
 import {killDone,killAbandoned,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
 import {dmDepart,dmTravel,dmHunt,BOUNTY,bountyFor,takeBounty,fellowBounty} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
+import {townCraft,keepFor} from './craft.js'; // crafting (#258): a scripted crafter makes what it wants in town before the sale
 import {gatherTick} from './gather.js'; // gathering (#257): a scripted hunter works a node of its trade now and then
 import {inSlots} from './company.js'; // the slotted company (#588)
 
@@ -164,8 +165,8 @@ export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){ten
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
-// Town: wear a better spare, pass spares to a party member they suit, sell goods and the rest, buy gear, then stock the pack.
-export function sellAndShop(a){const c=homeOf(a);autoEquip(a);passSpares(a);const sold=sellLoot(a),tot=sold.gold,n=sold.goods;a.gold+=tot;
+// Town: craft (#258), wear a better spare, pass spares to a party member they suit, sell goods and the rest, buy gear, then stock the pack.
+export function sellAndShop(a){const c=homeOf(a);townCraft(a);autoEquip(a);passSpares(a);const sold=sellLoot(a,keepFor(a)),tot=sold.gold,n=sold.goods;a.gold+=tot; // craft first (#258): it uses the materials the sale would take
   if(n>=6&&rnd()<.35)log(a,' sold ',String(n),' goods at the ',c.name,' auction house for ',gold(tot+'g'),'.');
   if(shopUpgrade(a))a.hp=maxHp(a);
   restock(a)}

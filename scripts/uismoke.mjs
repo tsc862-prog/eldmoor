@@ -1212,7 +1212,7 @@ console.log('the DM prepares the table');
     [...tabs().children].find(b=>b.dataset.fact==='tab:all').click();uiFast();
     ok(fb.querySelectorAll('.fco').length===CO.companies().length,'Companies panel: the All tab lists every company');
     [...tabs().children].find(b=>b.dataset.fact==='tab:'+F.id).click();uiFast();
-    ok(/Fellowship|Wardens/.test(fb.querySelector('.fhline').textContent)&&!!fb.querySelector('[data-fact=menu]'),'Companies panel: the Fellowship tab keeps its menu');
+    ok(fb.querySelector('.fhline').textContent.includes(F.name)&&!!fb.querySelector('[data-fact=menu]'),'Companies panel: the Fellowship tab keeps its menu');
     ok(/Companies only/.test($('chronFel').textContent),'Chronicle filter reads Companies only');
     [...tabs().children][0].click()}
   // back to one company: one row again, no heads
