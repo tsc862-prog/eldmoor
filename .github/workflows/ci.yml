@@ -179,6 +179,7 @@ jobs:
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}
       - {name: Tool quick wins, run: npm run toolwincheck}
+      - {name: Pay and mark tools, run: npm run paymarkcheck}
       - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: Action log, run: npm run actcheck}
