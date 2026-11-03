@@ -205,3 +205,48 @@ export function resetGambits(a,{preset,why}={}){const p=String(preset==null||pre
   if(!PRESETS.includes(p))return err(a,'Presets: '+PRESETS.join(', ')+' (class: how your class has always played; cautious: also flee below 35%; empty: no rules at all).');
   return edit(a,'reset',why,L=>{const P=presetFor(a.cls,p).map(r=>clone(r));L.splice(0,L.length,...P);stats().resets++;return {text:'rules reset to the '+p+' preset ('+P.length+' rules)'}})}
 export {GAMBIT,CONDS,ACTS};
+
+// ---- how a hero's list differs from its class preset (issue #679; read-only, no RNG, for the watcher) ----
+// Rules are matched by identity (when + and + then and their arguments): an exact match is the preset rule (kept, or
+// turned off when the preset had it on); then a rule with the same id and the same when or then, or the same when/and/then
+// with other arguments, is that preset rule changed; the rest are added; preset rules left over are dropped. Among the
+// matched rules, those outside the longest run kept in the preset's relative order are moved, up or down. The safety kinds
+// (flee, potion, defend) are flagged when gone (no rule of the kind on any more: 'off' when one is only turned off, else
+// 'gone') or weakened (a preset rule of the kind dropped, off or changed while another of the kind still stands).
+const argKey=o=>o?Object.keys(o).sort().map(k=>k+'='+o[k]).join(','):'';
+const idKey=r=>r.when+'('+argKey(r.w)+')&'+(r.and||'')+'('+argKey(r.w2)+')>'+r.then+'('+argKey(r.t)+')';
+const shapeKey=r=>r.when+'&'+(r.and||'')+'>'+r.then;
+// the hero's last edit of rule id since its last reset (the hover shows its day and why)
+const histFor=(a,id)=>{const H=a.gambitHist||[];for(let i=H.length-1;i>=0;i--){const h=H[i];if(h.kind==='reset')return null;const m=/\brule (\d+)\b/.exec(h.text||'');
+  if(m&&+m[1]===id)return {day:h.d,kind:h.kind,text:h.text,...(h.why?{why:h.why}:{})}}return null};
+const safeOf=r=>ACTS[r.then]&&ACTS[r.then].safety||null;
+export function gambitDiff(a){const P=presetFor(a.cls),L=rulesOf(a),free=new Set(P.map((_,i)=>i)),pair=new Array(L.length).fill(-1);
+  const take=(i,test)=>{let best=-1;for(const j of free)if(test(P[j])){if(P[j].id===L[i].id){best=j;break}if(best<0)best=j}if(best>=0){free.delete(best);pair[i]=best}};
+  for(let i=0;i<L.length;i++)take(i,p=>idKey(p)===idKey(L[i]));
+  for(let i=0;i<L.length;i++)if(pair[i]<0)take(i,p=>p.id===L[i].id&&(p.then===L[i].then||p.when===L[i].when));
+  for(let i=0;i<L.length;i++)if(pair[i]<0)take(i,p=>shapeKey(p)===shapeKey(L[i]));
+  // moved: the matched rules outside the longest increasing run of their preset positions, in the hero's order
+  const mi=[];for(let i=0;i<L.length;i++)if(pair[i]>=0)mi.push(i);
+  const len=mi.map(()=>1),prev=mi.map(()=>-1);let bi=-1;
+  for(let x=0;x<mi.length;x++){for(let y=0;y<x;y++)if(pair[mi[y]]<pair[mi[x]]&&len[y]+1>len[x]){len[x]=len[y]+1;prev[x]=y}if(bi<0||len[x]>len[bi])bi=x}
+  const keep=new Set();for(let x=bi;x>=0;x=prev[x])keep.add(mi[x]);
+  const rankH=new Map(mi.map((i,k)=>[i,k])),rankP=new Map([...mi].sort((u,v)=>pair[u]-pair[v]).map((i,k)=>[i,k]));
+  const rules=L.map((r,i)=>{const j=pair[i],p=j>=0?P[j]:null,on=r.on!==false,s=safeOf(r);
+    const status=!p?'added':idKey(p)!==idKey(r)?'changed':on!==(p.on!==false)?(on?'changed':'off'):'same';
+    const moved=p&&!keep.has(i)?(rankH.get(i)<rankP.get(i)?'up':'down'):null;
+    const o={id:r.id,order:i+1,rule:ruleText(r),on,status,moved,...(s?{safety:s}:{})};
+    if(p&&(status!=='same'||moved))o.preset={id:p.id,order:j+1,rule:ruleText(p),on:p.on!==false,...(safeOf(p)?{safety:safeOf(p)}:{})};
+    if(status!=='same'||moved){const h=histFor(a,r.id);if(h)o.edit=h}
+    return o});
+  const dropped=[...free].sort((x,y)=>x-y).map(j=>{const s=safeOf(P[j]),o={id:P[j].id,order:j+1,rule:ruleText(P[j]),on:P[j].on!==false,status:'dropped',...(s?{safety:s}:{})},h=histFor(a,P[j].id);if(h)o.edit=h;return o});
+  const counts={added:0,changed:0,moved:0,off:0,dropped:dropped.length};for(const r of rules){if(r.status!=='same')counts[r.status]++;if(r.moved)counts.moved++}
+  const safety={};for(const k of ['flee','potion','defend']){if(!P.some(r=>r.on!==false&&safeOf(r)===k))continue;
+    if(!L.some(r=>r.on!==false&&safeOf(r)===k))safety[k]=L.some(r=>safeOf(r)===k)?'off':'gone';
+    else if(rules.some(r=>r.preset&&r.preset.on&&r.preset.safety===k&&(r.status==='changed'||r.status==='off'))||dropped.some(r=>r.safety===k&&r.on))safety[k]='weakened'}
+  const unchanged=!rules.some(r=>r.status!=='same'||r.moved)&&!dropped.length;
+  const parts=['added','changed','moved','off','dropped'].filter(k=>counts[k]).map(k=>counts[k]+' '+(k==='off'?'turned off':k));
+  for(const k of Object.keys(safety))parts.push(k+' rule '+safety[k]);
+  const summary=unchanged?(a.gambits?'own list, same as the '+a.cls+' preset':'class preset, unchanged'):'differs from the '+a.cls+' preset: '+parts.join(', ');
+  return {cls:a.cls,edited:!!a.gambits,unchanged,counts,safety,rules,dropped,summary}}
+// a rule of the hero's own list that is not in its class preset as written (the purpose line says "by its own rule")
+export const ownRule=(a,id)=>{if(!a||!a.gambits)return false;const r=a.gambits.find(x=>x.id===id);return !!r&&!presetFor(a.cls).some(p=>idKey(p)===idKey(r))};
