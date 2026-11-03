@@ -21,6 +21,7 @@
     "invcheck": "node scripts/invcheck.mjs",
     "relay": "node scripts/relay.mjs",
     "up": "node scripts/up.mjs",
+    "notes": "node scripts/patchnotes.mjs",
     "upcheck": "node scripts/upcheck.mjs",
     "braincheck": "node scripts/braincheck.mjs",
     "levercheck": "node scripts/levercheck.mjs",
