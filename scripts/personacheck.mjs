@@ -4,8 +4,9 @@
 // changes who the hero is, privacy between companions, and no RNG.
 // Usage: npm run personacheck
 import {init, S, snapshot, restore, markPlayer, playerAct} from '../src/sim/index.js';
+import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 import * as PE from '../src/sim/persona.js';
-import {fellows, editSheet} from '../src/sim/fellowship.js';
+import {editSheet} from '../src/sim/company.js';
 import {paceBrief} from '../src/sim/pace.js';
 import {briefText, claudeBrief, personaNote, withPersona, refreshPersona, reflectPrompt} from './pacing.mjs';
 import {reflectSchema, reflectBecome, reflectTurn} from './local-agent.mjs';
@@ -19,7 +20,7 @@ const nextDay = () => {S.gameMin = (Math.floor(S.gameMin / 1440) + 1) * 1440 + 8
 
 init();
 const rng0 = JSON.stringify(S.rng ?? null);
-const [A, B, C] = fellows();
+const [A, B, C] = SLT.slotHeroes(SLT.slotted());
 ok(A && B && C, 'a founded Fellowship');
 for (const h of [A, B]) markPlayer(h, true);
 
@@ -32,7 +33,7 @@ ok(Array.isArray(r.stances) && r.stances.some(s => s.who === B.name && s.line), 
 ok(r.changes_today === '0 of 3' && r.can_change_now.includes('beliefs') && /become/.test(r.how), 'self: what it may change today and how');
 ok(Array.isArray(A.persona.hist) && A.persona.hist.length === 0, 'an old persona migrates: an empty history');
 // a hero outside the Fellowship gets a persona too
-const solo = S.agents.find(h => h.kind === 'hero' && !h.fellow && h.state !== 'dead'); markPlayer(solo, true); delete solo.persona;
+const solo = S.agents.find(h => h.kind === 'hero' && !SLT.inSlots(h) && h.state !== 'dead'); markPlayer(solo, true); delete solo.persona;
 r = act(solo, 'self'); ok(r.ok && solo.persona && r.voice && r.stances.length === 0, 'a solo agent hero: a persona built on first self');
 
 console.log('become');
@@ -97,12 +98,12 @@ ok(act(A, 'self').recent_changes.length === PE.SELF.SHOW && /^Day \d+: quirk:/.t
 
 console.log('relay writing and sheets keep it');
 const mine = A.persona.fears, model = {voice: 'Model voice.', wants: 'Model wants.', fears: 'Model fears.', quirk: 'Model quirk.', never_says: 'Model line.', stances: {[B.id]: 'Model stance.', [C.id]: 'Model stance C.'}};
-ok(PE.applyPersona(A, model, fellows(), 'test-model') && A.persona.fears === mine && A.persona.stances[B.id].startsWith('Owes me a life') && A.persona.hist.length === PE.SELF.HIST, 'applyPersona never overwrites the hero\'s own fields, stances or history');
+ok(PE.applyPersona(A, model, SLT.slotHeroes(SLT.slotted()), 'test-model') && A.persona.fears === mine && A.persona.stances[B.id].startsWith('Owes me a life') && A.persona.hist.length === PE.SELF.HIST, 'applyPersona never overwrites the hero\'s own fields, stances or history');
 ok(A.persona.voice === 'Model voice.', 'fields the hero never touched still take relay writing');
 {const before = JSON.stringify({f: A.persona.fears, h: A.persona.hist, t: A.persona.traits, b: A.persona.beliefs});
- A.persona.edited = false; const fresh = PE.keepSelf(A.persona, PE.buildPersona(A, fellows()));
+ A.persona.edited = false; const fresh = PE.keepSelf(A.persona, PE.buildPersona(A, SLT.slotHeroes(SLT.slotted())));
  ok(JSON.stringify({f: fresh.fears, h: fresh.hist, t: fresh.traits, b: fresh.beliefs}) === before && fresh.stances[B.id].startsWith('Owes me a life'), 'a rebuilt sheet keeps the hero\'s own words, history and pins')}
-ok(editSheet(A, 'persona', 'traits', 'calm, kind') && PE.traitsOf(A.persona).join(',') === 'calm,kind', 'the owner edits traits as a list');
+ok(SLT.editSheet(A, 'persona', 'traits', 'calm, kind') && PE.traitsOf(A.persona).join(',') === 'calm,kind', 'the owner edits traits as a list');
 
 console.log('the header and the standing orders');
 {const b = paceBrief(A.id).brief, full = paceBrief(A.id, {self: true}).brief;

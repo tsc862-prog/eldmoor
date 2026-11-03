@@ -3,9 +3,10 @@
 // deterministic and the world's random stream is not touched.
 // Usage: npm run archetypecheck
 import {init, S} from '../src/sim/index.js';
+import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 import {applyArchetype, buildPersona, factsOf, fellowCard, scriptedStance, archetypeStance} from '../src/sim/persona.js';
 import {refreshStances, stanceEvent} from '../src/sim/memory.js';
-import {editSheet, fellows} from '../src/sim/fellowship.js';
+import {editSheet} from '../src/sim/company.js';
 import {ARCHETYPES, ARCHETYPE_IDS} from '../src/data/archetypes.js';
 import {PERSONA_FIELDS, STANCE_MAX} from '../src/data/prompts.js';
 
@@ -52,9 +53,9 @@ ok(JSON.stringify(h2.persona) === JSON.stringify(h3.persona), 'deterministic');
 ok(applyArchetype(hero, 'nope') === false, 'unknown id refused');
 ok(JSON.stringify(S.rng ?? null) === snapRng, 'random stream untouched');
 // #305: archetype and owner stances reach the members' prompts; the bond reading still drifts for the rest
-{init(); const F = S.fellowship, [A, B, C, D] = fellows(), rng0 = JSON.stringify(S.rng ?? null);
+{init(); const F = SLT.slotted(), [A, B, C, D] = SLT.slotHeroes(SLT.slotted()), rng0 = JSON.stringify(S.rng ?? null);
  const card = (a, b) => (fellowCard(a).companions || []).find(l => l.startsWith(b.name + ' ')) || '';
- const refresh = () => {for (const a of fellows()) refreshStances(a, F.ids)};
+ const refresh = () => {for (const a of SLT.slotHeroes(SLT.slotted())) refreshStances(a, F.ids)};
  ok(A && B && C && D, 'a founded Fellowship of five');
  ok(A.memory.stances[B.id] === scriptedStance(A, B), 'unedited scripted stance reads the bond');
  const drift = () => {for (const a of [A, C]) for (const b of [B, D]) (a.bonds || (a.bonds = {}))[b.id] = 20; refresh()};
@@ -69,14 +70,14 @@ ok(JSON.stringify(S.rng ?? null) === snapRng, 'random stream untouched');
  ok(A.memory.stances[B.id] === line + ' Pulled me out of the river.', 'a shared event colours the archetype stance');
  delete A.persona.stances[D.id]; refresh();
  ok(A.memory.stances[D.id] === archetypeStance('coward', D), 'a companion with no line of its own gets the archetype template');
- ok(editSheet(C, 'stance', D.id, 'Never trusts their maps.') === true, 'owner stance edit accepted');
+ ok(SLT.editSheet(C, 'stance', D.id, 'Never trusts their maps.') === true, 'owner stance edit accepted');
  ok(card(C, D).endsWith(': Never trusts their maps.') && C.persona.edited, 'owner stance reaches the prompt');
  C.bonds[D.id] = 0; refresh();
  ok(C.memory.stances[D.id] === 'Never trusts their maps.', 'owner stance holds when the bond moves');
  ok(C.memory.stances[B.id] === scriptedStance(C, B), 'other stances of an edited persona still drift');
- editSheet(C, 'stance', D.id, '');
+ SLT.editSheet(C, 'stance', D.id, '');
  ok(C.memory.stances[D.id] === scriptedStance(C, D), 'an emptied owner stance hands back to the bond reading');
- ok(editSheet(C, 'stance', C.id, 'x') === false, 'no stance toward oneself');
+ ok(SLT.editSheet(C, 'stance', C.id, 'x') === false, 'no stance toward oneself');
  const back = JSON.parse(JSON.stringify(A.persona)); A.persona = back; refresh();
  ok(A.memory.stances[D.id] === archetypeStance('coward', D), 'archetype stances survive a save round trip');
  A.persona = {...A.persona, src: 'model', archetype: undefined, stances: {[B.id]: 'Owes them a horse.'}}; A.memory.events = {}; refresh();

@@ -7,7 +7,7 @@
 // file is the form, the relay status and the runner launch. Choices are remembered per viewer in localStorage
 // (eldmoor.setup.last). Starting reloads the page into the new world (ui/save.js queueNewWorld), where
 // init({setup}) builds it, so every panel starts from state as for any boot.
-import {fellowshipMembers,defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,asV2} from '../sim/index.js';
+import {defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,asV2} from '../sim/index.js';
 import {companies,slotMembers,slotted,SLOT_KEYS} from '../sim/company.js';
 import {S} from '../sim/state.js';
 import {slotsOf,groupsOf,MAX_HEROES,CLASSIC,seatCap,seatNote} from '../sim/setup.js';

@@ -4,6 +4,7 @@
 let seed = 0x5eed64;
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const P_ = await import('../src/sim/player.js');
 const {init, step, S, found, autoPick, snapshot, restore, TABLE, fellowshipMembers} = SIM;
 let fail = 0;
@@ -12,38 +13,38 @@ const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 
 TABLE.speed = 1;
 init({fellowship: false}); run(1200); // the old start (#111): this check founds its own Fellowship
-ok(found(autoPick(0), {ai: false}).ok, 'Fellowship founded');
+ok(SLT.foundSlots(SLT.autoPick(0), {ai: false}).ok, 'Fellowship founded');
 let camps = 0, prev = null, sawRest = false, mid = null, maxCamped = 0, bg = 0, dmCamp = 0; // DM log camp lines seen while it ran (the log is capped: an early one may scroll out by the end)
 for (let i = 0; i < 8 * 240 * 60; i++) {
   step(1 / 60);
-  const g = S.fellowship.camp, ph = g && g.phase;
+  const g = SLT.slotted().camp, ph = g && g.phase;
   if (ph === 'gather' && prev !== 'gather') camps++;
   if (ph === 'rest') {sawRest = true; if (!mid && g.stats.watches >= 1) mid = snapshot()}
   prev = ph; if (S.dmLog && S.dmLog[0] && S.dmLog[0].kind === 'camp') dmCamp = 1;
-  const L = fellowshipMembers().map(m => m.hero), n = S.agents.filter(a => a.state === 'camp').length;
+  const L = SLT.slotMembers(SLT.slotted()).map(m => m.hero), n = S.agents.filter(a => a.state === 'camp').length;
   maxCamped = Math.max(maxCamped, n);
   if (S.agents.some(a => a.state === 'camp' && !L.includes(a))) bg++;
 }
-const st = S.fellowship.camp.stats;
+const st = SLT.slotted().camp.stats;
 ok(camps >= 3 && sawRest, `the Fellowship made camp ${camps} times in 8 days (${JSON.stringify(st)})`);
 ok(maxCamped <= 5 && bg === 0, 'only Fellowship members ever camp (max ' + maxCamped + ')');
 ok(st.watches >= 3 && st.talks >= 5, 'watches posted and campfire talk happened');
-ok(S.fellowship.log.some(e => e.kind === 'camp') && (dmCamp || (S.dmLog || []).some(e => e.kind === 'camp')), 'camp events in the campaign log and the DM log');
-ok(S.fellowship.tableStats && S.fellowship.tableStats.scenes >= (st.spotted + st.caught - 1), 'camp ambushes opened Table scenes (' + (S.fellowship.tableStats ? S.fellowship.tableStats.scenes : 0) + ')');
-ok(!S.agents.some(a => a.state === 'camp') || (S.fellowship.camp.phase && true), 'no hero is left stuck in camp');
+ok(SLT.slotted().log.some(e => e.kind === 'camp') && (dmCamp || (S.dmLog || []).some(e => e.kind === 'camp')), 'camp events in the campaign log and the DM log');
+ok(SLT.slotted().tableStats && SLT.slotted().tableStats.scenes >= (st.spotted + st.caught - 1), 'camp ambushes opened Table scenes (' + (SLT.slotted().tableStats ? SLT.slotted().tableStats.scenes : 0) + ')');
+ok(!S.agents.some(a => a.state === 'camp') || (SLT.slotted().camp.phase && true), 'no hero is left stuck in camp');
 ok(mid && mid.companies.find(c => c.slots).camp.phase === 'rest', 'a snapshot was taken mid-camp'); // saves carry companies (#438)
 restore(JSON.parse(JSON.stringify(mid)));
-const g2 = S.fellowship.camp, L2 = fellowshipMembers().map(m => m.hero);
+const g2 = SLT.slotted().camp, L2 = SLT.slotMembers(SLT.slotted()).map(m => m.hero);
 ok(g2.phase === 'rest' && L2.filter(a => a.state === 'camp').length === g2.ids.length, 'restored camp keeps its sleepers');
 run(40 * 60 / 60 * 2);
-ok(S.agents.every(a => a.state !== 'camp' || (S.fellowship.camp.ids || []).includes(a.id)), 'after restore every sleeper belongs to the camp');
+ok(S.agents.every(a => a.state !== 'camp' || (SLT.slotted().camp.ids || []).includes(a.id)), 'after restore every sleeper belongs to the camp');
 
 // ---- #178: status text, break_camp vote, leader break, rest {hours}, wake events ----
 const CAMPM = await import('../src/sim/camp.js'), CO = await import('../src/sim/council.js');
 const {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
-const members = () => fellowshipMembers().map(m => m.hero).filter(a => a && a.state !== 'dead');
+const members = () => SLT.slotMembers(SLT.slotted()).map(m => m.hero).filter(a => a && a.state !== 'dead');
 const gather = () => {
-  let n = 0; while (S.fellowship.camp && S.fellowship.camp.phase && n++ < 40) run(30);
+  let n = 0; while (SLT.slotted().camp && SLT.slotted().camp.phase && n++ < 40) run(30);
   for (let n = 0; n < 60 && members().some(a => a.hidden || a.adv || a.raid); n++) run(10); // wait out a crypt run or a raid in progress (the check assumes the company is out on the road)
   S.table = null; const L = members(), lead = CO.leaderOfF();
   {const g = homeOf(lead).gate, p = zonePoint(zoneFor(3, g), null, g); lead.x = p.x; lead.y = p.y} // out in quiet home fields: camp ground is never in or by a town, the lair or the Crypt
@@ -55,8 +56,8 @@ ok(M.length >= 3, 'members to camp (' + M.length + ')');
 ok(typeof CAMPM.leaderRest(M.find(a => a !== LD), 2) === 'string', 'rest {hours} by a non-leader is refused');
 const err = CAMPM.leaderRest(LD, 3);
 ok(err === null, 'leader rest {hours} makes camp: ' + err);
-for (let i = 0; i < 40 && S.fellowship.camp.phase !== 'rest'; i++) run(10);
-const g3 = S.fellowship.camp;
+for (let i = 0; i < 40 && SLT.slotted().camp.phase !== 'rest'; i++) run(10);
+const g3 = SLT.slotted().camp;
 ok(g3 && g3.phase === 'rest' && g3.why === 'rest' && g3.hours === 3, 'a set-time camp is resting');
 const sleepers = M.filter(a => CAMPM.asleep(a)), watcher = M.find(a => a.id === g3.watcher);
 ok(watcher && sleepers.length === M.length - 1, 'one on watch, the rest asleep');
@@ -80,20 +81,20 @@ ok(PA.paceCheck(watcher.id, {since: S.gameMin - 9999, minutes: 5}) !== null, 'th
 const asker = sleepers[0];
 ok(typeof CO.propose(asker, 'break_camp', 'We are rested.', {vote: 'yes'}) !== 'string', 'break_camp can be proposed');
 for (const a of M) if (a !== asker) CO.castVote(a, CO.openProps()[0] ? CO.openProps()[0].id : 0, 'yes', 'on we go', 'agent');
-ok(!S.fellowship.camp.phase && M.every(a => a.state !== 'camp'), 'a passed break_camp vote breaks the camp early');
+ok(!SLT.slotted().camp.phase && M.every(a => a.state !== 'camp'), 'a passed break_camp vote breaks the camp early');
 ok(M.every(a => a.playEv.some(e => /Camp is broken/.test(e.text) && e.w === 2)), 'every member got a turn-starting event when camp broke');
 ok(M.every(a => !a.playDoing || !/Asleep|On watch/.test(a.playDoing)), 'camp doing text cleared');
 // leader break
 ({L: M, lead: LD} = gather());
 ok(CAMPM.leaderRest(LD, 4) === null, 'second camp');
-for (let i = 0; i < 40 && S.fellowship.camp.phase !== 'rest'; i++) run(10);
+for (let i = 0; i < 40 && SLT.slotted().camp.phase !== 'rest'; i++) run(10);
 ok(typeof CAMPM.leaderBreak(M.find(a => a !== LD)) === 'string', 'only the leader breaks camp outright');
-ok(CAMPM.leaderBreak(LD) === null && !S.fellowship.camp.phase, 'the leader breaks camp');
+ok(CAMPM.leaderBreak(LD) === null && !SLT.slotted().camp.phase, 'the leader breaks camp');
 // ---- #400: orders refused at camp say how to go on; a second break_camp is a yes; vote refusals name the open one ----
 {const RL = await import('../src/sim/runlink.js');
 ({L: M, lead: LD} = gather());
 ok(CAMPM.leaderRest(LD, 4) === null, '#400 camp');
-for (let i = 0; i < 40 && S.fellowship.camp.phase !== 'rest'; i++) run(10);
+for (let i = 0; i < 40 && SLT.slotted().camp.phase !== 'rest'; i++) run(10);
 RL.setRunnerLinks(a => 'connected'); // live agents: their votes wait, so the proposal stays open
 const others = M.filter(a => a !== LD), [m1, m2] = others, act = (a, t, x) => P_.playerAct(a.id, t, x || {});
 let r = act(m1, 'move_to', {target: 'home'});
@@ -125,8 +126,8 @@ ok(act(m1, 'propose', {kind: 'other', details: 'Sing a song'}).ok, 'an other pro
 r = act(m2, 'propose', {kind: 'other', details: 'Tell a tale'});
 ok(!r.ok && /is already open\. Vote on it with vote\(\d+, yes\|no\), or wait for it to settle \(about \d+ game min\)/.test(r.error), 'a duplicate kind names the open proposal: ' + r.error);
 for (const a of M) for (const P of CO.openProps()) if (!P.votes[a.id]) {const v = act(a, 'vote', {proposal_id: P.id, vote: P.kind === 'break_camp' ? 'yes' : 'no'}); if (!v.ok) console.log('    vote', a.name, P.id, v.error.slice(0, 120))}
-for (let i = 0; i < 60 && (S.table || S.fellowship.camp.phase); i++) run(1); // the votes are counted at the table (an all-at-once decision scene)
-ok(BP.status === 'passed' && !S.fellowship.camp.phase && M.every(a => a.state !== 'camp'), 'the seconded break_camp passed and broke camp');
+for (let i = 0; i < 60 && (S.table || SLT.slotted().camp.phase); i++) run(1); // the votes are counted at the table (an all-at-once decision scene)
+ok(BP.status === 'passed' && !SLT.slotted().camp.phase && M.every(a => a.state !== 'camp'), 'the seconded break_camp passed and broke camp');
 r = act(m1, 'vote', {proposal_id: BP.id, vote: 'yes'});
 ok(!r.ok && /already passed .*nothing to vote on\. No proposal is open/.test(r.error), 'a vote on a settled proposal says so: ' + r.error);
 r = act(m1, 'propose', {kind: 'break_camp'});
@@ -138,17 +139,17 @@ ok(CAMPM.leaderRest(LD, 1) === null, 'third camp, one hour');
 // No visitor this hour: an ambush breaks camp early by design (covered above), and whether the watch's roll comes up
 // in this hour depends on how the seeded dice fell earlier in the run, which any sim change upstream shifts (#347).
 const ambushP = CAMPM.CAMP.AMBUSH_P; CAMPM.CAMP.AMBUSH_P = -1;
-for (let i = 0; i < 40 && S.fellowship.camp.phase !== 'rest'; i++) run(10);
-const t0 = S.gameMin; for (let i = 0; i < 60 && S.fellowship.camp.phase; i++) run(10);
+for (let i = 0; i < 40 && SLT.slotted().camp.phase !== 'rest'; i++) run(10);
+const t0 = S.gameMin; for (let i = 0; i < 60 && SLT.slotted().camp.phase; i++) run(10);
 CAMPM.CAMP.AMBUSH_P = ambushP;
-ok(!S.fellowship.camp.phase && S.gameMin - t0 < 90 && S.gameMin - t0 >= 50, 'a one-hour rest ends on time (' + Math.round(S.gameMin - t0) + ' game min)');
+ok(!SLT.slotted().camp.phase && S.gameMin - t0 < 90 && S.gameMin - t0 >= 50, 'a one-hour rest ends on time (' + Math.round(S.gameMin - t0) + ' game min)');
 ok(M.every(a => a.playEv.some(e => /Camp is broken/.test(e.text))), 'wake event after a timed rest too');
 ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused with no camp');
 
 // ---- #439 (epic #402): council, reach and camp for a company of any size; solo rules ----
 {const CM = await import('../src/sim/company.js'), RL = await import('../src/sim/runlink.js'), {dist} = await import('../src/world/map.js');
   ({L: M, lead: LD} = gather());
-  const F = S.fellowship, act = (a, t, x) => P_.playerAct(a.id, t, x || {});
+  const F = SLT.slotted(), act = (a, t, x) => P_.playerAct(a.id, t, x || {});
   const free = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && a.fac === F.fac && !CM.companyOf(a) && !a.player && !a.hidden && !a.raid);
   const [A, B, Z] = free;
   ok(A && B && Z, 'three free heroes of the faction for a pair and a solo');

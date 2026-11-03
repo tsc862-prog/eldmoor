@@ -19,9 +19,10 @@ if (phase) {
   const reseed = n => {let s = n >>> 0; Math.random = () => {s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296}};
   reseed(phase === 'fp' ? 0xabc : 0x117a);
   const SIM = await import('../src/sim/index.js');
+  const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
   const B = await import('../src/sim/brain.js');
   const T = await import('../src/sim/throttle.js').catch(() => null); // absent on code from before #117 (for before/after counts)
-  const FEL = await import('../src/sim/fellowship.js');
+  const FEL = await import('../src/sim/company.js');
   const {init, step, S, found, autoPick, snapshot, restore, TABLE, fellowshipMembers} = SIM;
   const yieldLoop = () => new Promise(r => setImmediate(r));
   let simSec = 0, log = [];
@@ -42,25 +43,25 @@ if (phase) {
   for (let i = 0; i < 1200 * 60; i++) step(1 / 60); // the old start (as campcheck does)
   const out = {};
   if (phase === 'fp') {
-    found(autoPick(0), {ai: false});
+    SLT.foundSlots(SLT.autoPick(0), {ai: false});
     for (let i = 0; i < 600 * 60; i++) step(1 / 60);
     out.fp = JSON.stringify(S.agents.map(a => [a.id, a.state, a.lvl, a.xp, Math.round(a.x * 100), Math.round(a.y * 100), a.deaths, a.kills, a.gold]));
   } else {
     log = []; simSec = 0; B.resetBrain();
-    if (!found(autoPick(0), {ai: true}).ok) throw new Error('found failed');
+    if (!SLT.foundSlots(SLT.autoPick(0), {ai: true}).ok) throw new Error('found failed');
     await yieldLoop();
     out.found = log.length;
     await play(DAYS, SPEED);
-    out.past = S.fellowship ? S.fellowship.past.length : 0; // members lost and replaced in the run (each replacement is a new member and is enriched once)
+    out.past = SLT.slotted() ? SLT.slotted().past.length : 0; // members lost and replaced in the run (each replacement is a new member and is enriched once)
     out.sim = simSec; out.log = log; out.totals = T ? JSON.parse(JSON.stringify(T.totals)) : {sent: log.length, failed: 0}; out.rpm = T ? T.rpm() : 0; out.fails = T ? T.recentFailures() : []; // totals copied: the restore phase below may send more (the live object would count those too)
     if (phase === 'ok') {
       const snap = JSON.parse(JSON.stringify(snapshot()));
       log = []; restore(snap); await play(0.02, SPEED);
       out.restoreSent = log.length;
       out.restoreSheets = log.filter(e => e[0] === 'persona' || e[0] === 'backstory').length;
-      const m0 = fellowshipMembers()[0].hero;
+      const m0 = SLT.slotMembers(SLT.slotted())[0].hero;
       m0.persona = {...(m0.persona || {}), src: 'model'}; m0.backstory = {...(m0.backstory || {}), src: 'model'};
-      log = []; out.reask = FEL.enrich(m0) !== false || log.length > 0;
+      log = []; out.reask = SLT.enrich(SLT.slotted(), m0) !== false || log.length > 0;
     }
   }
   console.log('RESULT ' + JSON.stringify(out));

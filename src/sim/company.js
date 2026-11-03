@@ -8,13 +8,10 @@
 //   with p.company set. S.companiesPast keeps the record of companies that ended; S.followId is the company the
 //   watcher follows (default: the first).
 //
-// The Fellowship is a name a company carries. Until the later slices land, the classic five-slot Fellowship is the
-// one company that still has `slots` (tank/healer/dps1-3), and the old names stay as shims over this module:
-//   S.fellowship         an accessor on S: that company (null when there is none). Not saved under its own key.
-//   a.fellow, a.fellowRole   accessors on its members (installed by linkHero): derived from the company, never saved.
-//   p.fellow             an accessor on its party (linkParty).
-// So every screen and check that reads them keeps working, while saves carry only S.companies / a.company / p.company.
-// Solos never become "the Fellowship" through the shim: only a company with slots stands behind S.fellowship.
+// The Fellowship is a name a company carries: the classic five places are the `slots` option of a company (the slots
+// section below, #588). slotted() names the company that has them (null when there is none); read membership with
+// inSlots(a), slotKeyOf(a) and partySlotted(p). Saves carry only S.companies / a.company / p.company (the old
+// S.fellowship, a.fellow, a.fellowRole and p.fellow accessors are gone; save.js migrates v6 saves that stored them).
 import {S,clockStr} from './state.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
@@ -60,22 +57,17 @@ export const isSolo=C=>!!C&&C.ids.length===1;
 export function leaderOf(C){const L=members(C).filter(a=>a.player);if(!L.length)return null;
   const tb=a=>L.reduce((t,b)=>t+(b===a?0:bond(a,b)),0);
   return L.slice().sort((x,y)=>y.lvl-x.lvl||tb(y)-tb(x)||x.id-y.id)[0]}
-// The company the watcher follows; the shim behind S.fellowship is the five-slot one (see the header).
+// The company the watcher follows; slotted() is the five-slot one (the followed company when it has slots).
 export const followed=()=>companyById(S.followId)||companies()[0]||null;
 export function fellowshipCompany(){const f=followed();if(f&&f.slots)return f;return (S.companies||[]).find(C=>C.slots)||null}
 
-// ---- the shims ----
 // The one company that carries the five slots stands in the list; any other slotted company leaves it (null: none).
 function setSlotCompany(v){const L=list();for(let i=L.length-1;i>=0;i--)if(L[i].slots&&L[i]!==v)L.splice(i,1);
   if(v&&!L.includes(v)){L.push(v);L.sort((x,y)=>x.id-y.id)}}
-Object.defineProperty(S,'fellowship',{enumerable:false,configurable:true,get:()=>fellowshipCompany(),set:setSlotCompany});
-const FELLOW={enumerable:false,configurable:true,get(){const C=companyOf(this);return !!(C&&C.slots)}};
-const ROLE={enumerable:false,configurable:true,get(){const C=companyOf(this);if(!C||!C.slots)return undefined;for(const k in C.slots)if(C.slots[k]===this.id)return k;return undefined}};
-export function linkHero(a){if(!a||typeof a!=='object')return a;const d=Object.getOwnPropertyDescriptor(a,'fellow');if(d&&d.get)return a;
-  delete a.fellow;delete a.fellowRole;delete a.fellowFrom;Object.defineProperty(a,'fellow',FELLOW);Object.defineProperty(a,'fellowRole',ROLE);return a}
-const PFELLOW={enumerable:false,configurable:true,get(){const C=companyById(this.company);return !!(C&&C.slots)}};
-export function linkParty(p){if(!p||typeof p!=='object')return p;const d=Object.getOwnPropertyDescriptor(p,'fellow');if(d&&d.get)return p;
-  delete p.fellow;Object.defineProperty(p,'fellow',PFELLOW);return p}
+// A member or a company party: drop the fields older saves or the old accessors left behind (#588). Kept as the
+// one place a hero or party joins a company, so later per-company caches have a hook.
+export function linkHero(a){if(a&&typeof a==='object'){delete a.fellow;delete a.fellowRole;delete a.fellowFrom}return a}
+export function linkParty(p){if(p&&typeof p==='object')delete p.fellow;return p}
 
 // ---- the campaign log (any company) ----
 var witnessFn; // no initializer: reach.js may set it while this module is still loading (an import cycle)
@@ -157,7 +149,7 @@ export function relinkCompanies(){if(!Array.isArray(S.companies))S.companies=[];
 // DPS (one of each class preferred, repeats allowed). Such a company also keeps seed (its name's hash seed), from
 // ({heroId: home town before joining}: members lodge in its hall so they muster at one gate), last ({slot: last seen
 // member}), dmSeen, ai (relay sheet writing), minds ('agent'), enrich ({calls,ok,fail,usd,ms}) and hold. Its C.ids stay
-// in slot order. At most one company carries slots (S.fellowship names it until #588's later steps remove the shim).
+// in slot order. At most one company carries slots: slotted().
 // How it runs (slotsTick, once per step; a no-op without one):
 //   muster   the members form one party (p.company) in town; party.js keeps the usual follow / shared XP / heal
 //            behaviour, never dissolves it on a level gap and never lets a member join another party
