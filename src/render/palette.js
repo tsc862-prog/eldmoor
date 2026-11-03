@@ -113,7 +113,18 @@ export const THEMES={
     wallFace:[[126,128,114],[96,98,86],[64,66,56]],wallTop:[[42,46,40],[30,34,28],[20,24,20]],dais:[[160,166,146],[130,136,118],[88,92,78]],rune:[140,230,170]},
   hold:{...T0,floor:[[150,108,68],[120,84,50],[84,58,32]],mortar:[34,22,14],
     wallFace:[[128,92,56],[98,70,40],[64,44,24]],wallTop:[[46,32,20],[34,24,14],[22,16,10]],beam:[[104,72,42],[76,52,28],[46,30,16]]},
+  // a raid arena (#85, world/interior.js buildArena): ash-grey basalt, scorched rock walls, the lava ring (water = the melt
+  // [bright seam, body, shore glow], crust = its cooled plates), embers in the floor's cracks, a gold hoard mound (dais)
+  lair:{...T0,floor:[[92,84,86],[70,62,66],[50,43,48]],mortar:[28,20,22],ember:[255,120,40],
+    hall:[[104,92,88],[82,72,70],[58,50,50]],wallFace:[[112,80,70],[82,56,50],[52,34,32]],wallTop:[[44,28,28],[32,20,20],[20,12,14]],
+    water:[[255,206,96],[222,92,28],[150,44,22]],crust:[[78,36,30],[40,20,20]],stair:[[120,108,102],[92,82,78],[46,40,40]],
+    dais:[[214,170,82],[170,128,56],[112,80,38]],rune:[255,214,110]},
 };
+// Kragmaw (#85: the world and the raid arena share it): R hide, W wing membranes, E eyes, T teeth, D claws.
+export const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a20'};
+// The raid arena's marks (render/raidview.js): the breath's telegraph and wave, the boss's bar, broke-off and fallen marks.
+export const RAID={breath:[255,140,40],wave:[255,200,90],bar:'#c8402e',barHi:'#ff7a50',barBack:'#24100e',phase:UI.amber,
+  fled:'#ffd070',fell:'#e0584a',add:UI.red,ring:'rgba(255,120,40,.35)'};
 // The scene view's marks (render/sceneview.js): the outdoor cut's frame, the dimmed world past it, the turn chevron.
 export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,person:UI.amber};
 

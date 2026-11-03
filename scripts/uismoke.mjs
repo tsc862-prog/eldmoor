@@ -1004,6 +1004,43 @@ console.log('the DM prepares the table');
   box().querySelector('.dghbtn').click();ok(box().querySelector('.dghist').hidden,'dungeon history: and closes it');
   dv.closeDungeon();ok(dv.dungeonSite()===null,'dungeon view: closed, the minimap has no mark');
   a.state=was;CRYPT.group=keep;uiFast()}
+// ---- the raid arena (#85, raid slice): Kragmaw's lair in the dungeon view's frame, the raid read live, its history ----
+{const dv=await import('../src/render/dungeonview.js'),rv=await import('../src/render/raidview.js'),{LANDMARKS}=await import('../src/world/map.js'),{buildArena,IT}=await import('../src/world/interior.js'),again=await import('../src/world/interior.js?again3');
+  const S=sim.S,B=S.boss,L=LANDMARKS.find(l=>l.kind==='lair');ok(!!L&&L.inner>0&&!!L.opening,'raid arena: the lair landmark carries its floor radius and opening');
+  const m=buildArena(L),m2=again.buildArena(L),A=m.arena,at=(x,y)=>m.tiles[Math.floor(y)*m.w+Math.floor(x)];
+  ok(m!==m2&&m.seed===m2.seed&&m.w===m2.w&&m.tiles.every((t,i)=>t===m2.tiles[i])&&JSON.stringify(m.props)===JSON.stringify(m2.props),'raid arena: the same arena from a fresh build ('+m.w+'x'+m.h+')');
+  ok(at(A.cx,A.cy)===IT.FLOOR&&m.tiles.includes(IT.WATER)&&m.tiles.includes(IT.DAIS)&&m.tiles.includes(IT.STAIR)&&m.props.some(p=>p.kind==='hoard'),'raid arena: a rock floor, the lava ring, the hoard and the way in');
+  ok(at(A.cx+(A.inner+.7)*A.k*A.dir[1],A.cy+(A.inner+.7)*A.k*A.dir[0])===IT.WATER&&at(A.cx+(A.inner+.7)*A.k*A.dir[0],A.cy+(A.inner+.7)*A.k*A.dir[1])===IT.HALL,'raid arena: lava beside the floor, the causeway on the opening side');
+  ok(dv.lairAt(L.x+1,L.y)===L&&!dv.lairAt(L.x+L.r+3,L.y),'raid arena: a click on the lair finds it, beside it does not');
+  dv.initDungeonView();const box=()=>$('dungeon'),lis=()=>[...box().querySelectorAll('li')];
+  const keep={raidOn:S.raidOn.slice(),hp:B.hp,alive:B.alive,breath:B.breath},crew=S.agents.filter(a=>a.fac===0&&a.state!=='dead'&&!a.hidden&&a.kind==='hero').slice(0,5),was=crew.map(a=>({x:a.x,y:a.y,state:a.state,raid:a.raid,raidIdx:a.raidIdx,hp:a.hp}));
+  ok(dv.openDungeon(L)&&!box().hidden&&box().classList.contains('raid')&&dv.dungeonSite()===L,'raid arena: opens over the map in the dungeon view’s frame, the minimap reads the lair');
+  let st=dv.refreshDungeon();ok(st.phase==='quiet'&&/sleeps on its hoard/.test(st.status)&&/LAIR/.test(box().querySelector('.dgname').textContent),'raid arena: quiet with no raid ('+st.status+')');
+  crew.forEach((a,i)=>{a.raid=true;a.raidIdx=i;a.state='raid';const ang=Math.PI*(.55+i*.18);a.x=B.x-Math.cos(ang)*2.2;a.y=B.y-.3+Math.sin(ang)*2.2*(i%2?1:-1)*.8});
+  crew[4].x=L.x-L.r-1;crew[4].y=L.y; // still on the way in
+  S.raidOn[0]=true;B.hp=B.maxhp*.6;B.breath=1.2;rv.trackRaid();st=dv.refreshDungeon();
+  ok(st.phase==='raid'&&st.engaged===4&&st.approach===1&&/60%/.test(st.status)&&/4 fighting, 1 on the way/.test(st.status)&&/Cinder Breath in 2 s/.test(st.status),'raid arena: the boss’s HP, who fights and who walks in, the breath to come ('+st.status+')');
+  ok(st.raiders.filter(r=>r.eng).every(r=>[IT.FLOOR,IT.DAIS].includes(at(r.x,r.y)))&&[IT.HALL,IT.STAIR,IT.FLOOR].includes(at(st.raiders[4].x,st.raiders[4].y)),'raid arena: the fighters stand on the floor round the wyrm, the late one on the causeway');
+  ok(lis().length===5&&lis().every(li=>li.classList.contains('raider'))&&/CONCORD RAID|RAID/.test(box().querySelector('.dgname').textContent),'raid arena: one row per raider on the bar ('+box().querySelector('.dgname').textContent+')');
+  let d=rv.raidDetail('boss',st);ok(d&&/HP \d+\/\d+/.test(d.stateText)&&d.foes.some(t=>/Phase: /.test(t))&&d.foes.some(t=>/Next Cinder Breath/.test(t))&&d.foes.some(t=>/No adds|adds? in the lair/.test(t)),'raid arena: the boss detail (HP, phase, breath, adds): '+d.foes.join(' | '));
+  lis()[0].click();ok(!box().querySelector('.dgpin').hidden&&box().querySelector('.dgpin').textContent.includes(crew[0].name)&&/Fighting/.test(box().querySelector('.dgpin').textContent),'raid arena: a click on a raider pins its detail');
+  lis()[0].click();ok(box().querySelector('.dgpin').hidden,'raid arena: a second click unpins it');
+  crew[1].raid=false;crew[2].state='dead';rv.trackRaid();st=dv.refreshDungeon();
+  ok(st.gone.some(g=>g.why==='broke'&&g.id===crew[1].id)&&st.gone.some(g=>g.why==='fell'&&g.id===crew[2].id)&&st.falls.length===1&&/1 broke off/.test(st.status)&&/1 fell/.test(st.status),'raid arena: who broke off and who fell ('+st.status+')');
+  ok(lis().some(li=>li.classList.contains('lost')&&li.textContent.includes(crew[2].name))&&lis().some(li=>/fled/.test(li.textContent)),'raid arena: the bar marks the fled and the fallen');
+  // the hero card of a raider has View the raid; the timeline's raid lines have Inside
+  crew[2].state=was[2].state;select(crew[0]);uiFast();const link=[...$('hero').querySelectorAll('.dglink')].find(b=>/raid/i.test(b.textContent));
+  ok(!!link&&link.dataset.dungeon===L.name,'raid arena: the hero card of a raider has View the raid');
+  dv.closeDungeon();if(link){link.click();ok(dv.dungeonOpen()&&dv.dungeonSite()===L,'raid arena: View the raid opens it')}
+  S.raidOn[0]=false;for(const a of crew)a.raid=false;rv.trackRaid();const H=rv.raidHistory();st=dv.refreshDungeon();
+  ok(H.length>=1&&/Beaten off at 60%/.test(H[0].outcome)&&H[0].lines[0].includes(crew[0].name)&&H[0].lines[1].includes(crew[1].name)&&H[0].lines[2].includes(crew[2].name),'raid arena: the history keeps who mustered, fled and fell ('+H[0].outcome+'; '+H[0].lines.join(' / ')+')');
+  ok(st.phase==='quiet'&&/Last raid/.test(st.status),'raid arena: quiet again, with the last raid ('+st.status+')');
+  box().querySelector('.dghbtn').click();ok(!box().querySelector('.dghist').hidden&&/Beaten off/.test(box().querySelector('.dghist').textContent),'raid arena: the History button opens the raids');box().querySelector('.dghbtn').click();
+  B.alive=false;B.respawn=300;st=dv.refreshDungeon();ok(st.phase==='dead'&&/wakes in about 30 game hours/.test(st.status),'raid arena: a slain wyrm’s cold lair ('+st.status+')');
+  S.timeline.unshift({t:'12:00',gameMin:S.gameMin,kind:'raid',parts:['A raid.']});uiSlow();const tl=$('tlist')&&$('tlist').querySelector('[data-dungeon]');
+  ok(!!tl&&tl.dataset.dungeon===L.name,'raid arena: a raid line on the timeline has Inside');S.timeline.shift();
+  dv.closeDungeon();ok(dv.dungeonSite()===null&&!box().classList.contains('raid')||box().hidden,'raid arena: closed');
+  S.raidOn=keep.raidOn;B.hp=keep.hp;B.alive=keep.alive;B.breath=keep.breath;crew.forEach((a,i)=>Object.assign(a,was[i]));uiFast();uiSlow()}
 // ---- scene maps (#431, slice 1): settings as data, the indoor generator, the scene view's terrain cut and rooms ----
 {const sv=await import('../src/render/sceneview.js'),{buildSetting,IT}=await import('../src/world/interior.js'),again=await import('../src/world/interior.js?again2');
   const {SETTINGS,SETTING_IDS}=await import('../src/data/settings.js'),{CITY}=await import('../src/world/map.js'),S=sim.S;

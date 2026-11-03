@@ -763,6 +763,10 @@ button.tbtn.danger{border-color:var(--red)}
 .dgroom.lost{color:var(--red)}
 .dgroom.unexplored{opacity:.7}
 .dgroom.boss:not(.cleared):not(.current){color:#ffb060}
+.dgview.raid .dgname{color:#ffb060}
+.dgview.raid .dghbtn{color:#ffb060;border-color:#6a3a20}
+.dgroom.raider::before{content:'';display:inline-block;width:7px;height:7px;margin-right:4px;background:var(--cc,var(--dim));box-shadow:1px 1px 0 #05060c}
+.dgroom.raider.lost{text-decoration:line-through;text-decoration-thickness:1px}
 .dglink{font-family:var(--px);font-size:7px;padding:3px 6px;margin-left:4px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer;vertical-align:middle}
 .dghbtn{font-family:var(--px);font-size:7px;padding:5px 7px;min-height:26px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer}
 .dghbtn[aria-expanded=true]{color:var(--gold);border-color:var(--gold)}
