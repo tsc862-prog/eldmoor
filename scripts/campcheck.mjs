@@ -65,6 +65,13 @@ ok(/^On watch \(until \d\d:\d\d\)/.test(watcher.playDoing || ''), 'watcher doing
 const cv = P_.playerAct(sleepers[0].id, 'status', {});
 ok(cv.camp && cv.camp.asleep && cv.camp.on_watch && cv.camp.asleep_names.length === M.length - 1, 'agent status carries the camp: ' + JSON.stringify(cv.camp && cv.camp.status));
 ok(/Camp: resting until .* on watch: .* asleep: /.test(CAMPM.campSummary() || ''), 'Fellowship panel line: ' + CAMPM.campSummary());
+{ // a camp with no watch times (staged / hand-made) never prints NaN (#475)
+  const keep = {restAt: g3.restAt, watchIdx: g3.watchIdx}; delete g3.restAt; delete g3.watchIdx;
+  const sm = CAMPM.campSummary() || '', vw = CAMPM.campView(sleepers[0]);
+  ok(/on watch: \S+ .{1,3} asleep/.test(sm) && !/NaN|until \d\d:\d\d\)/.test(sm), 'no watch times: summary omits the watch end: ' + sm);
+  ok(vw && vw.on_watch === watcher.name && !/NaN/.test(JSON.stringify(vw)), 'no watch times: campView has no NaN: ' + (vw && vw.on_watch));
+  g3.restAt = keep.restAt; g3.watchIdx = keep.watchIdx;
+}
 const PA = await import('../src/sim/pace.js');
 sleepers[0].playEv.push({n: 900, t: '00:00', text: 'a party line', e: 0, w: 1}); // soft
 ok(PA.paceCheck(sleepers[0].id, {since: S.gameMin - 9999, minutes: 5}) === null, 'a sleeper gets no soft or heartbeat turn');
