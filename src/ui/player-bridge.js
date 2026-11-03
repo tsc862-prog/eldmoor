@@ -7,7 +7,7 @@
 // panel. The runner's narration arrives here too and is kept on its hero.
 // The world never waits on the bridge: a disconnected or silent agent just leaves its hero to
 // its reflexes. Reconnects every few seconds while an agent-played hero is alive.
-import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,S,dmAct,dmSeatOn,setDmSeat} from '../sim/index.js';
+import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,S,dmAct,dmSeatOn,setDmSeat,prepView} from '../sim/index.js';
 import {hostCall} from '../sim/player-host.js';
 import {setAgentTag} from '../sim/chat.js';
 import {makeWatch} from '../sim/behavior.js';
@@ -55,7 +55,7 @@ export function agentOn(a){if(!a||a.state==='dead')return false;
 export function agentOff(a){markPlayer(a,false);if(!wanted())disconnect();else hello()}
 
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!sceneOf(a),...(sceneDue(a)?{due:true}:{})}:{})})),dm={seat:dmSeatOn()},k=JSON.stringify([hs,dm,WORLD_ID,S.worldId]);
+function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.succeeds!=null?{succeeds:a.succeeds}:{}),...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!sceneOf(a),...(sceneDue(a)?{due:true}:{})}:{})})),pv=prepView(),dm={seat:dmSeatOn(),...(pv.state!=='idle'?{prep:{state:pv.state,kind:pv.kind,calls:pv.calls,max_calls:pv.max_calls,...(pv.why?{why:pv.why}:{})}}:{})},k=JSON.stringify([hs,dm,WORLD_ID,S.worldId]); // succeeds: a recruit's fallen predecessor (#452); prep: the DM's prep (#437)
   if(k===lastHello&&status==='connected')return;lastHello=k;if(S.worldId!==sentWid){sentWid=S.worldId;sentMem.clear()}
   send({type:'hello',heroes:hs,dm,world:WORLD_ID,worldId:S.worldId||null,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
 const seat=id=>id!=null?playerSeat(id):playerSeat();
@@ -83,7 +83,7 @@ export function initBridge(){if(wanted())connect();every(3000,()=>{if(wanted()){
 // Behavior logs (issue #129): the world digest, game-side anomalies and settled Mind decisions (sim/behavior.js) go to
 // the relay over this socket, which writes logs/behavior/<world>/ for the watcher. Read-only on the world; held
 // (up to BEHAVIOR_HOLD records) while the socket is down, dropped beyond that. Never sent to any agent.
-const BEHAVIOR_MS=500,BEHAVIOR_HOLD=200,watch=makeWatch(),held=[];
+const BEHAVIOR_MS=500,BEHAVIOR_HOLD=200,watch=makeWatch({dmLink:()=>dmLink()}),held=[];
 function behaviorTick(){let out;try{out=watch.tick()}catch(e){return}
   for(const o of out){held.push(o);if(held.length>BEHAVIOR_HOLD)held.shift()}
   if(!ws||ws.readyState!==1||status!=='connected')return;

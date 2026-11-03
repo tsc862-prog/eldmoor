@@ -41,10 +41,13 @@ import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {moment} from './reflect.js'; // a dream is a reflection moment (#523)
 import {ensureNpcs} from './npcs.js';
 import {stageScene,tableCall,tableAnswer,stagedView,STAGE} from './staged.js';
+import {sceneCall,sceneAnswer,ourScene,openingDue} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
+import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
 import {openThreads as companyThreads} from './company.js';
 import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
+import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
 // ---- knobs ----
@@ -172,6 +175,11 @@ export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object
 // A short account of what the Fellowship needs from the DM right now, and a change signature the runner watches: when it
 // differs from the one of the last turn (they arrived somewhere or set out, a scene ended, a member fell, an oath or a
 // job finished or began) a bounded extra turn is due (scripts/dm-agent.mjs eventDue). Reads only; hero notes are never read.
+// The new reads where they help (#558): words unheard, and what a member carries that a scene could use.
+function seeItems(fo,D){listen(D);const out=[],mine=fo.members.map(a=>a.id);
+  const k=earOf(D).lines.filter(l=>!l.h&&mine.includes(l.wid)).length;if(k)out.push('They spoke '+k+' line'+(k===1?'':'s')+' you have not heard (hear {company}): what they plan, fear or ask for.');
+  for(const a of fo.members.slice(0,5)){const q=carriesOf(a).quest_items;if(q.length)out.push(a.name+' carries '+q.slice(0,2).join(', ')+'.')}
+  return out.slice(0,3)}
 function fellowshipNeeds(){const F=S.fellowship,fo=focus();if(!F||!fo)return null;
   const th=openThreads(),props=openProps(),items=[],hurt=fo.members.filter(a=>a.state!=='town'&&!a.hidden&&a.hp<maxHp(a)*DMA.PILE_HP);
   const field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),inTown=fo.members.length-field.length;
@@ -181,6 +189,7 @@ function fellowshipNeeds(){const F=S.fellowship,fo=focus();if(!F||!fo)return nul
   for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them; a road home, a camp, a friendly face.');
   const open=th.slice(0,4).map(t=>txt(t.parts));
   for(const t of open)items.push('Open thread: '+t);
+  for(const x of seeItems(fo,dmState()))items.push(x);
   const adv=(S.adventures||[]).filter(v=>v.phase==='active'&&v.mem&&v.mem.some(id=>fo.ids.has(id)));
   for(const v of adv.slice(0,2))items.push('Under way: '+(v.title||v.tpl)+' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+').');
   if(!adv.length&&!sv.cur&&!S.table&&!props.length&&!hurt.length)items.push('Nothing is under way for them: a hook near '+at+', a rumour of a named foe on their road, or a staged scene ('+(field.length?'stage_scene near "fellowship"':'in town: stage_scene kind meeting or social with at "'+at+'" and a setting')+') would give their next game hours something.');
@@ -210,6 +219,7 @@ export function companiesNeeds(){const fs=focuses();if(!fs.length)return [];cons
     if(pend.vote)items.push('A vote is open among them: leave it to them.');
     for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them.');
     for(const t of th.slice(0,2))items.push('Open thread: '+txt(t.parts));
+    for(const x of seeItems(fo,dmState()).slice(0,2))items.push(x);
     const quiet=!pend.scene&&!pend.vote&&!hurt.length&&!fo.busy;
     if(quiet)items.push('Nothing is under way for them: a hook on their road near '+at+(fo.town?' or on the '+fo.town.name+' board':'')+', a person, or a staged scene near one of them.');
     const why=must?NEED_WHY[0]:pend.scene||pend.vote?NEED_WHY[1]:hurt.length?NEED_WHY[2]:since==null?'no DM action for them yet':NEED_WHY[3];
@@ -240,6 +250,7 @@ function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
 // companies_needs is shown once a company other than the Fellowship rides (with the Fellowship alone dm_status reads as before).
 const manyCompanies=()=>{const fs=focuses();return fs.length>1||fs.length===1&&!fs[0].company.slots};
 export const COMPANIES_FIRST='Every company is a thread: serve the company at the head of companies_needs first (the followed company first only when it must choose), then each other company in turn, the one longest without you next; a split-off member is a thread of its own, and a solo is the most fragile.';
+const unheardOf=D=>{const u=unheard(D),n=u.reduce((t,r)=>t+r.lines,0);return {total:n,by_company:u,...(n?{note:'Words were said aloud that you have not heard: read hear first.'}:{})}};
 function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle||[],L=S.dmLog||[],F=S.fellowship;
   const sinceTl=tl.filter(e=>e.gameMin>D.seen.tl).length,i=ch.findIndex(e=>(e.t+txt(e.parts))===D.seen.chron),sinceCh=i<0?Math.min(ch.length,30):i,sinceLog=L.filter(e=>e.id>D.seen.log).length;
   D.seen.tl=tl[0]?tl[0].gameMin:D.seen.tl;D.seen.chron=ch[0]?ch[0].t+txt(ch[0].parts):D.seen.chron;D.seen.log=L[0]?L[0].id:D.seen.log;
@@ -249,12 +260,14 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     fellowship_first:F?'The Fellowship comes first: read fellowship_needs, act for them, and only then shape the wider world (and only when nothing is pending for them).':null,
     fellowship_needs:fellowshipNeeds(),fellowship_change:companiesSig(),
     ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
-    table:sc?(sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
+    prep:{...prepView(),...(openingDue()?{opening_due:true}:{})}, // #437: while it runs the world is held for you; end it with prep_done
+    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
+      :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
     proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,
     fellowship:F?{name:F.name,minds:mindsOf(F),members:fellowshipMembers().map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:m.label,lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:m.label,empty:true})}:null,
-    since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
+    unheard:unheardOf(D),since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
@@ -274,9 +287,9 @@ function dmLogRead(n,kind){const k=LOG_KINDS[kind]||null,out=[];
 function fellowshipView(){const F=S.fellowship;if(!F)return {ok:true,fellowship:null,note:'No Fellowship rides in this world yet.'};
   const members=fellowshipMembers().map(m=>{const a=m.hero;if(!a)return {role:m.label,empty:true};
     const P=a.persona||{},M=a.memory||{};
-    return {...heroLine(a),role:m.label,persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
+    return {...heroLine(a),...sightOf(a),role:m.label,persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
       oath:a.goal&&!a.goal.done?a.goal.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
-      stances:Object.fromEntries(Object.entries(M.stances||{}).slice(0,6).map(([id,s])=>{const b=S.agents.find(x=>String(x.id)===String(id));return [b?b.name:'#'+id,String(s).slice(0,120)]}))}});
+      stances:Object.fromEntries(Object.entries(M.stances||{}).filter(([id])=>!(P.stanceBy&&P.stanceBy[id]==='self')).slice(0,6).map(([id,s])=>{const b=S.agents.find(x=>String(x.id)===String(id));return [b?b.name:'#'+id,String(s).slice(0,120)]}))}});
   return {ok:true,fellowship:{name:F.name,faction:facName(F.fac),hall:F.hall||null,founded_day:F.day||null,minds:mindsOf(F),members,
     open_threads:openThreads().map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:openProps().map(P=>({id:P.id,kind:P.kind,details:P.details||null,by:P.by||null})),
     campaign_log:(F.log||[]).slice(0,10).map(e=>'D'+e.day+' '+e.t+' '+txt(e.parts)),fallen:(F.past||[]).slice(-5).map(p=>p.name||('#'+p.id))}}}
@@ -285,17 +298,17 @@ function fellowshipView(){const F=S.fellowship;if(!F)return {ok:true,fellowship:
 // did something for it. Personas and memories stay in fellowship_view (the Fellowship) and are never shown for the others.
 function companiesView(){const fs=focuses(),fol=followedCompany();if(!fs.length)return {ok:true,companies:[],note:'No company rides in this world yet.'};
   return {ok:true,companies:fs.map(fo=>{const C=fo.company;return {id:C.id,name:C.name||null,fellowship:!!C.slots,followed:C===fol,faction:facName(C.fac),hall:C.hall||null,size:fo.members.length,solo:fo.members.length===1,
-    members:fo.members.map(a=>({...heroLine(a),oath:a.goal&&!a.goal.done?a.goal.text:null})),busy:fo.busy,regions:[...fo.zones].map(z=>ZONES[z]),
+    members:fo.members.map(a=>({...heroLine(a),...sightOf(a),oath:a.goal&&!a.goal.done?a.goal.text:null})),busy:fo.busy,regions:[...fo.zones].map(z=>ZONES[z]),
     open_threads:companyThreads(C).map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:(C.props||[]).filter(P=>P.status==='open').map(P=>({id:P.id,kind:P.kind,details:P.details||null})),
     campaign_log:(C.log||[]).slice(0,6).map(e=>'D'+e.day+' '+e.t+' '+txt(e.parts)),fallen:(C.past||[]).slice(-5).map(p=>p.name||('#'+p.id)),
     last_dm_action_min_ago:touchedAt(C)==null?null:Math.max(0,Math.round(S.gameMin-touchedAt(C))),dm_actions:(S.dmFocus&&S.dmFocus.by&&S.dmFocus.by[C.id])||0}}),
     needs_order:companiesNeeds().map(r=>r.id)}}
 
 function heroesNear(near,radius){const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+clean(near,40)+'". Use a hero name or id, a town, a region name, or "x,y".'};
-  const r=nOf(radius,DMA.NEAR_R,4,30),hs=[];
+  const r=nOf(radius,DMA.NEAR_R,4,30),hs=[],co=new Set(focuses().flatMap(f=>f.members.map(a=>a.id)));
   for(const a of S.agents){if(!alive(a)||a.hidden)continue;if(p.town?!(a.state==='town'&&a.town===p.town)&&dist(a,p)>r:dist(a,p)>r)continue;hs.push(a)}
   hs.sort((x,y)=>dist(x,p)-dist(y,p));const parties=new Map();for(const a of hs)if(a.party&&!parties.has(a.party.id))parties.set(a.party.id,a.party);
-  return {ok:true,place:p.label,radius:r,heroes:hs.slice(0,24).map(heroLine),more:Math.max(0,hs.length-24),
+  return {ok:true,place:p.label,radius:r,heroes:hs.slice(0,24).map(a=>co.has(a.id)?{...heroLine(a),...sightOf(a)}:heroLine(a)),more:Math.max(0,hs.length-24),
     parties:[...parties.values()].map(P=>({id:P.id,leader:P.leader?P.leader.name:null,members:(P.members||[]).filter(alive).map(b=>b.name),fellowship:!!P.fellow}))}}
 
 const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({toward:x.to+' '+x.id,attitude:x.a}));
@@ -531,7 +544,8 @@ function dream(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)return
   dmlog('agent',null,['Dream for '+h.name+' (DM agent), when they next sleep'],{by:'dm-agent',voice:'dream',hero:h.id});
   return {ok:true,dream_for:h.name,note:'Delivered when '+h.name+' wakes from camp or an inn rest.'}}
 const sleeping=h=>h.state==='camp'||h.state==='town'&&Array.isArray(h.pq)&&!!h.pq[0]&&h.pq[0].kind==='rest';
-export function dreamTick(){const D=S.dmAgent,L=D&&D.dreams;if(!L||!L.length)return;
+export function dreamTick(){const D=S.dmAgent;if(D&&D.seat&&(D.earAt==null||S.gameMin-D.earAt>=3||S.gameMin<D.earAt)){D.earAt=S.gameMin;listen(D)} // the DM hears what is said aloud (#558)
+  const L=D&&D.dreams;if(!L||!L.length)return;
   for(let i=L.length-1;i>=0;i--){const d=L[i],h=byIdA(d.hero);
     if(!h||!alive(h)){L.splice(i,1);continue}
     if(sleeping(h)){d.slept=true;continue}
@@ -583,10 +597,24 @@ function npcSay(a){const p0=personFor(a);if(p0)a={...a,npc:String(p0.id)};const 
   dmlog('agent',null,[(p.title?p.title+' ':'')+p.name+' (DM agent): "',t,'"'],{by:'dm-agent',voice:'npc_say',npc:p.id,text:t,heard:hs.map(b=>b.id)});
   return {ok:true,who:(p.title?p.title+' ':'')+p.name,said:t,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
 
+// The DM ends its prep (#437): the host lets the world run and the opening scene opens.
+function prepDone(a){const t=clean(a&&a.summary,DMA.INTENT_MAX);if(!prepActive())return {ok:true,prep:prepView(),note:'No prep is running; nothing to end.'};
+  const v0=prepView();endPrep('done');dmlog('agent',null,['DM prep done ('+v0.kind+', '+v0.calls+' calls, '+v0.seconds+' s)'+(t?': '+t:'.')],{by:'dm-agent',prep:v0.kind,calls:v0.calls,seconds:v0.seconds,text:t||null},{heroes:[]});
+  return {ok:true,prep:prepView(),note:'The table opens now.'}}
 const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // A tool name that is not a DM tool (issue #401): a lever name called as a tool (post_hook, mark_place, create_npc,
 // or create_npc_placeholder) is pointed at pull_lever with that lever's contract; anything else lists the tools.
 const flatOf=lv=>Object.keys(FLAT_LEVERS).find(t=>FLAT_LEVERS[t]===lv)||null;
+// survey: the ground around a point; near reads like the place tools' (a hero, "fellowship", "x,y", a town, a region, a landmark, a place)
+function surveyRead(near,radius){const s=clean(near,60),lo=s.toLowerCase();if(!s)return {ok:false,error:'survey needs near: '+NEAR_FORMS+'.'};
+  let p=placeOf(s);
+  if(!p&&(lo==='fellowship'||lo==='party'||lo==='the fellowship')){const fo=focus();if(fo)p={x:fo.x,y:fo.y,label:'around the Fellowship'}}
+  if(!p){const lm=LANDMARKS.find(l=>l.name.toLowerCase()===lo||l.name.toLowerCase().replace(/^the /,'')===lo.replace(/^the /,''));if(lm)p={x:lm.x,y:lm.y,label:'around '+lm.name}}
+  if(!p){const pl=(S.places||[]).find(q=>(q.name||'').toLowerCase()===lo||String(q.id)===s);if(pl)p={x:pl.x,y:pl.y,label:'around '+pl.name}}
+  if(!p)return {ok:false,error:'Unknown place "'+s+'". '+nearTakes()};
+  return surveyAt(p,radius)}
+// A place tool that was refused for the ground names survey as the fix (#558).
+const GROUND_ERR=/open ground|walkable|tiles of|inside|too close|off the map|unknown place|not a road|on the |outside /i;
 export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();
   const lv=LEVERS[lo]?lo:Object.keys(LEVERS).filter(n=>lo.includes(n)).sort((x,y)=>y.length-x.length)[0];
   if(lv&&leverNames().includes(lv))return {ok:false,error:'"'+s+'" is not a tool'+(lv===lo?'':'; it looks like the lever '+lv)+'. Levers are pulled through pull_lever: pull_lever {"lever":"'+lv+'","params":{...},"reason":"one sentence"}. '+leverUsage(lv)+'.'+(flatOf(lv)?' Or call '+flatOf(lv)+' (flat arguments): '+FLAT_USAGE[flatOf(lv)]+'.':''),hint:'pull_lever',lever:lv,usage:leverUsage(lv)};
@@ -596,7 +624,8 @@ export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
   const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
-  args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args); // a DM present: conversations wait for it a little (#170)
+  args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
+  const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
   try{switch(tool){
     case 'dm_status':r=status();break;
     case 'read_timeline':r=timelineRead(args.n);break;
@@ -609,6 +638,9 @@ export function dmAct(tool,args={}){
     case 'regions':r=regionsRead();break;
     case 'hooks':r=hooksRead(args.town,args.region);break;
     case 'levers':r=leversRead();break;
+    case 'hear':r=hearRead(dmState(),args);break;
+    case 'survey':r=surveyRead(args.near,args.radius);break;
+    case 'world_standing':r=worldStanding();break;
     case 'notes_read':r=notesRead(args.section);break;
     case 'notes_write':r=notesWrite(args);break;
     case 'pull_lever':r=pullLever(args);break;
@@ -622,9 +654,12 @@ export function dmAct(tool,args={}){
     case 'npc_call':r=npcCall();break;
     case 'npc_offer':r=npcOffer(args);break;
     case 'stage_scene':r=stageScene(args);break;
-    case 'table_call':r=tableCall();break;
-    case 'table_answer':r=tableAnswer(args);break;
+    case 'table_call':r=sceneCall()||tableCall();break;
+    case 'table_answer':r=sceneAnswer(args)||tableAnswer(args);break;
+    case 'prep_done':r=prepDone(args);break;
   }}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
+  if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
+  if(prepping&&!prepActive()&&tool!=='prep_done'&&r&&typeof r==='object')r={...r,prep:'Your prep is over (its '+(prepView().why==='calls'?'calls':'time')+' ran out): the table opens now. End this turn.'};
   if(!((tool==='table_call'||tool==='npc_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
   return r}

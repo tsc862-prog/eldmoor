@@ -41,6 +41,7 @@ import {companionTick} from './offers.js'; // offers lapse, companies of 2+ keep
 import {tableTick,tableHold} from './table.js';
 import './events.js'; // DM world events: festival and plague (#10)
 import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Table (#65)
+import {sessionTick,planOpening} from './arrival.js'; // session zero (#437) and a fallen member's recruit (#452)
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
 import {opening} from './opening.js';
@@ -66,6 +67,8 @@ export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as 
 import {ensureCampaign,dreamTick} from './dmagent.js';
 export {provideCampaigns,parseCampaign,campaignIdOf} from './campaign.js'; // the campaign seed
 export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus
+export {planOpening,openingDue,openingPending,arrivalsView,ARRIVE} from './arrival.js'; // session zero and arrivals (#437, #452)
+export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost} from './prep.js'; // the DM's prep before the table opens (#437)
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
@@ -84,6 +87,7 @@ export function init(o={}){resetWorld();
   spawnAll();
   for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5);
   try{opening(o)}finally{if(seeded)seedRng(null)}
+  if(o.setup)planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
   log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
   log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
@@ -98,7 +102,7 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first
-  partyTick();fellowshipTick(dt);companionTick();councilTick();campTick(dt);tableTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  partyTick();fellowshipTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
