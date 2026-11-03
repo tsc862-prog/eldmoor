@@ -752,6 +752,15 @@ Thornvale tier); the other material words are the existing ones under Equipment.
 | Scribing | scroll-steadfast | 2 | Rushpulp, Venom Sac | Scroll of the Steadfast Hour |
 | Scribing | chart-hoarfell | 3 | 3 Rushpulp, Venom Sac | Hoarfell Survey Chart |
 
+**Where things are made (issue #258).** Every recipe can be made at the workshops of a friendly town; at a camp fire only
+cooking and alchemy (a meal over the coals, a draught in a pot). A crafted piece of gear takes the crafter's class noun
+(or the class of the companion it was made for): a smith's Tinforged Weapon comes out as a Tinforged Longsword for a
+Warrior, a Tinforged Mace for a Priest. It carries its maker's name ("Crafted by Kerin"), so a gift between companions
+is remembered. A camp meal mends a little and gives a short edge (a quicker hand, a tougher hide, more stamina) that
+fades within a few hours; a hero eats one meal at a time. Herbalists tend toward alchemy (scholars among them toward
+scribing), miners toward the forge, skinners toward leatherwork and fishers toward the cook-pot; a crafter short of
+herbs or ore buys them at the auction house.
+
 Name check (2026-11-02): all of the above pass; no franchise proper nouns, no duplicates inside canon. Nits: "Fenmire"
 sits one letter-shuffle from the zone Mirefen (kept as the cook's joke, but never use it as a place name); Rimebloom and
 Rimeblood differ by one syllable (plant and potion, kept); "Shaghorn Horn" repeats itself, acceptable as a trade-name.
