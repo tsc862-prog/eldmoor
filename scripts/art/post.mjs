@@ -1,10 +1,6 @@
-// Post-processing for generated art (#177): a model image becomes a game asset. Steps, in order:
-//   1. transparent background (sprites, props): flood-fill from the border over pixels near the corner colour;
-//   2. downscale to the asset's pixel grid, one cell per output pixel ('mode': the most common palette colour
-//      in the cell, crisp; 'mean': the cell's average, softer);
-//   3. quantise every pixel to the asset's palette (colours from src/render/palette.js plus the manifest's extras);
-//   4. optional 1px outline around opaque pixels, in palette MARK.outline unless the entry names one.
-// Pure functions over {w, h, data: Uint8Array RGBA}; no I/O, no randomness, so the same input gives the same PNG.
+// Post-processing building blocks for generated art (#177): palette resolution, nearest-colour quantiser, background
+// clearing, block downscale (mode or mean) and the 1px outline. The chain that uses them, which keeps the model's
+// texture, is post-texture.mjs (postProcess). Pure functions over {w, h, data: Uint8Array RGBA}; no I/O, no randomness.
 
 const HEX=/^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 export const hexToRgb=s=>{s=s.slice(1);if(s.length===3)s=s.replace(/./g,c=>c+c);return [parseInt(s.slice(0,2),16),parseInt(s.slice(2,4),16),parseInt(s.slice(4,6),16)]};
@@ -57,10 +53,3 @@ export function outline(img,color){
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(op(x,y))continue;if(op(x+1,y)||op(x-1,y)||op(x,y+1)||op(x,y-1)){const o=(y*w+x)*4;d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=255}}
   return {w,h,data:d}}
 
-// The whole chain for one manifest entry. pal = resolved colour list; outlineColor from palette MARK.outline.
-export function postProcess(img,entry,pal,outlineColor){
-  const p=entry.post||{};const [W,H]=entry.size;
-  let im=img;if(p.transparent)im=clearBackground(im,p.bgTolerance??40);
-  im=downscale(im,W,H,pal,p.downscale||'mode');
-  if(p.outline)im=outline(im,p.outlineColor||outlineColor);
-  return im}

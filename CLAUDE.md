@@ -148,19 +148,26 @@ other. The rules:
 - `npm run archetypecheck`: Fellowship archetypes (#295, `src/data/archetypes.js`, `applyArchetype` in `src/sim/persona.js`): six archetypes picked on the setup page or the sheet, their stances toward each companion reaching prompts (#305), owner stances, no RNG.
 - `npm run personacheck`: agent-built personality (#409): the `self`/`become` tools, daily limits, owner pins, the persona history, relay writing never overwriting the hero's own words, the turn-header line and the standing-order block, a reflection that changes the persona, privacy, save/restore and old saves, no RNG.
 - Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, size, priority, prompt, seed, palette paths into
-  `src/render/palette.js`, the renderer hook naming its procedural fallback) and the candidate models (pixel-art LoRAs
-  on fal-ai through Hugging Face Inference Providers). `npm run art:daily` (`daily.mjs`; `-- --now` to run at once,
-  `--max N`, `ART_MAX_CALLS`, `--dry-run`) generates missing assets in priority order until the free allowance is used
-  up (402, a quota 429/403, rate headers at 0), into `assets/incoming/<date>/` with a contact sheet; state in
+  `src/render/palette.js`, the renderer hook naming its procedural fallback), the candidate models (pixel-art LoRAs
+  on fal-ai through Hugging Face Inference Providers) and `allowance.monthlyUsd`. `npm run art:daily` (`daily.mjs`;
+  `-- --now` to run at once, `--max N`, `ART_MAX_CALLS`, `ART_DAILY_BUDGET`/`--budget`, `--dry-run`) generates missing
+  assets in priority order into `assets/incoming/<date>/` with a contact sheet, and stops at the day's share of the
+  monthly credits (monthlyUsd / days in the month; HF gives free accounts no Inference Providers credits and PRO $2.00 a
+  month, about $0.01 an image with pixel-xl), at the month's total, or when the provider refuses (402, a quota 429/403,
+  rate headers at 0). It keeps every provider image as it came under `assets/incoming/<date>/raw/` before
+  post-processing, and `npm run art:reprocess -- <date>|all [keys]` re-runs post-processing on them with no call. State in
   `assets/queue.json` (gitignored), one line a run in `logs/art.log` (the launcher's `s` shows it); refused models fall
   through to the next candidate and the one that answers is pinned. `npm run art:accept -- <ids>|all` (`--reject`,
-  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scriptsartschedule.cmd [HH:MM]`
+  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scripts\art\schedule.cmd [HH:MM]`
   registers the daily Windows task. `npm run art:gen` generates straight into `assets/`, `npm run art:sheet` writes
-  the contact sheet. Post-processing (`post.mjs`, zero-dependency PNG codec `png.mjs`): background, downscale to the
-  pixel grid, quantise to the palette, outline. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until
-  loaded or when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names
-  the road, water and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against
-  a mock Hugging Face server.
+  the contact sheet. Post-processing (`post-texture.mjs` on the building blocks of `post.mjs`, zero-dependency PNG codec
+  `png.mjs`): find the model's pixel grid and sample cell centres (the image at its own pixel scale, ~128 px from 1024),
+  a seamless crop for tiles (base tiles are 32x32 patches) or a scaled subject for sprites, tone match and quantise to
+  the palette (widened with shades, optional ordered dither), outline; an output under `post.minColors` (4 for tiles)
+  is rejected as flat, not written. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until loaded or
+  when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names the road, water
+  and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against a mock Hugging
+  Face server and a pixel-art fixture.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player
