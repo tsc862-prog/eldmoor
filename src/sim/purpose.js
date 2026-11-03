@@ -88,7 +88,8 @@ function scriptedPurpose(a,agent){const c=town(a),adv=advOf(a);
   case 'duel':if(a.target)return make({kind:'fight',goal:'Duelling',target:a.target.name,why:a.nemesis&&a.nemesis[a.target.id]?'a blood debt':'a chance meeting on the road'});break;
   case 'assist':return make({kind:'fight',goal:'Rushing to help',target:a.target?a.target.name:'a guildmate',why:'a guildmate under attack',to:a.target?{x:a.target.x,y:a.target.y,label:a.target.name,mark:'foe'}:null});
   case 'raid':return make({kind:'raid',goal:'Raiding',target:'Kragmaw',why:'the wyrm’s hoard',to:LAIR?{x:LAIR.x,y:LAIR.y,label:'Kragmaw’s lair',mark:'foe'}:null});
-  case 'dungeon':return a.hidden?make({kind:'delve',goal:'Delving',target:CRYPT.name,why:'toward '+CRYPT.boss})
+  case 'dungeon':{const st=a.siteIn!=null&&S.sites?S.sites.list.find(x=>x.id===a.siteIn):null;if(st&&a.hidden)return make({kind:'delve',goal:'Delving',target:st.name,why:'toward '+st.boss})} // a DM-made site (#69)
+    return a.hidden?make({kind:'delve',goal:'Delving',target:CRYPT.name,why:'toward '+CRYPT.boss})
     :make({kind:'wait',goal:'Waiting for a group',target:CRYPT.name,why:'a Crypt run',wait:{x:CRYPT.x,y:CRYPT.y,label:CRYPT.name},to:{x:CRYPT.x,y:CRYPT.y,label:CRYPT.name,mark:'place'}});
   case 'camp':return make({kind:'rest',goal:'Resting at camp',target:zn(a),why:a.playDoing&&!a.player?a.playDoing:'the company camps'});
   case 'regroup':return make({kind:'flee',goal:'Pulling back',target:a.dest?zn(a.dest):'',why:'after a skirmish',to:a.dest?{x:a.dest.x,y:a.dest.y,label:'regroup',mark:'place'}:null});

@@ -166,6 +166,9 @@ const scMem=sc=>memOf(sceneCompany(sc));
 // only swap the autopilot's cautious reflexes for the table's and stop the clock for nothing. The Fellowship keeps
 // its reflex-only scenes (its seeded hashes and record count on them).
 const atTable=C=>!!C&&(C===slotted()||agentsDecide(memOf(C)));
+export const companyAtTable=atTable; // sim/sites.js (#69): a site's crawl runs at the table only for a company with the say
+// Who is down in the dungeon a crawl scene belongs to: a DM-made site's group (ctx.site, #69) or the Crypt's.
+const dunMem=ctx=>{const id=ctx&&ctx.site;if(id!=null){const D=((S.sites&&S.sites.list)||[]).find(x=>x.id===id);return D&&D.group?D.group.mem:[]}return CRYPT.group?CRYPT.group.mem:[]};
 // Why a company may not put something to a vote at the table: a solo has no one to ask. null = it may.
 export function voteRefusal(C){return C&&!C.slots&&isSolo(C)?SOLO_VOTE:null}
 setSpeedSource(()=>TABLE.speed);
@@ -290,7 +293,7 @@ export function scaleElite(F,L,ctx){const m=ctx&&ctx.mob!=null?S.mobs.find(x=>x.
 function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||sceneFor(F))return null;const all=PLAY[kind]==='all';
   if(kind==='decision'&&voteRefusal(F))return null; // a solo has no one to vote with (#440)
   if(!atTable(F))return null; // no agent of this company has the say: it plays on by reflex (#440)
-  const L=(all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||(CRYPT.group&&CRYPT.group.mem.includes(a)))).filter(a=>!(ctx.skip||[]).includes(a.id)); // skip: the newcomer of an arrival (#452), voiced by the DM
+  const L=(all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||dunMem(ctx).includes(a))).filter(a=>!(ctx.skip||[]).includes(a.id)); // skip: the newcomer of an arrival (#452), voiced by the DM
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,company:F.id,kind,title:clean(title,80),frame,ids:(all?L:initiative(L)).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin),...(all?{all:true,w:{}}:{})};
   if(kind==='elite')scaleElite(F,L,ctx);
