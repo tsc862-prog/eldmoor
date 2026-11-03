@@ -45,6 +45,7 @@ import {companies,companyById,members,leaderOf,slotted} from '../sim/company.js'
 import {followedCompany,followCompany} from './companyview.js'; // whose table it is (#456)
 import {setView} from './controls.js';
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
+import {downView,pips} from './downview.js'; // the downed at the table: their tally on the chip, each death save as a roll line (#659)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -85,7 +86,7 @@ export function initTable(){
 const byId=id=>S.agents.find(x=>x.id==id)||null;
 const pct=(hp,mx)=>mx>0?Math.max(0,Math.min(100,Math.round(hp/mx*100))):0;
 // Conditions worth a glance: timed effects (sim/eff.js), who the foe has drawn, who fell or fell back.
-function condsOf(a,sc,f){const c=[];if(a.state==='dead')return ['fallen'];if((sc.out||[]).includes(a.id))c.push('fell back');
+function condsOf(a,sc,f){const c=[];if(a.state==='dead')return ['fallen'];if(a.state==='downed')return [a.down&&a.down.stable?'stable':'downed'];if((sc.out||[]).includes(a.id))c.push('fell back');
   if(effOn(a,'taken'))c.push(a.eff.taken.v<1?'warded':'exposed');if(effOn(a,'mark'))c.push('marked');
   for(const id of ['stun','root','poison'])if(condOn(a,id))c.push(CONDITIONS[id].name.toLowerCase()); // Table conditions (#296)
   if(f&&f.target===a.id)c.push('drawn');return c}
@@ -93,7 +94,7 @@ function condsOf(a,sc,f){const c=[];if(a.state==='dead')return ['fallen'];if((sc
 // The foe (bannerOf().foe: name, hp, maxhp, target id, pack) and each roll (beat.roll) come from the sim as data (#285).
 export function combatView(){const sc=S.table;if(!sc||sc.rd==null)return null;const b=bannerOf(),f=b&&b.foe,cur=b&&b.who;
   const foeNow=sc.phase==='turn'&&!sc.fd&&sc.i>=sc.foeAt&&!!f;
-  const mem=sc.ids.map(byId).filter(Boolean).map(a=>({name:styled(a),hp:pct(a.hp,maxHp(a)),cond:condsOf(a,sc,f),cur:!foeNow&&a===cur,down:a.state==='dead'||(sc.out||[]).includes(a.id)}));
+  const mem=sc.ids.map(byId).filter(Boolean).map(a=>({name:styled(a),hp:pct(a.hp,maxHp(a)),cond:condsOf(a,sc,f),cur:!foeNow&&a===cur,down:a.state==='dead'||(sc.out||[]).includes(a.id),dn:dnOf(sc,a)}));
   const foe=f?{name:f.name,foe:true,hp:pct(f.hp,f.maxhp),cond:[...(f.pack>1?['pack of '+f.pack]:[]),...(f.conds||[]).map(id=>CONDITIONS[id].name.toLowerCase())],cur:foeNow,down:false}:null;
   // the round in play (or the last one at a round's start): the class move each member used, by name (#390)
   let rd0=sc.rd;if(rd0>1&&!sc.beats.some(x=>(x.rd||1)===rd0))rd0--;
@@ -106,16 +107,25 @@ export function combatView(){const sc=S.table;if(!sc||sc.rd==null)return null;co
   let ends=null;if(sc.phase==='outcome'&&sc.kind==='duel')ends=[[sc.summary||'The duel is over','win']]; // an honour duel has no foe (#633)
   else if(sc.phase==='outcome'){ends=[];const fell=(sc.fell||[]).map(byId).filter(Boolean).map(a=>a.name),back=sc.beats.filter(x=>x.k==='retreat').map(x=>x.name);
     if(sc.end==='yield')ends.push(['The foe yields','win']);else if(sc.end==='fled')ends.push(['The foe fled','win']);else if(!f)ends.push(['The foe is down','win']);
-    for(const n of fell)ends.push([n+' fell','loss']);for(const n of back)ends.push([n+' fell back','']);
+    for(const n of fell)ends.push([n+' fell','loss']);
+    for(const id of new Set(sc.up||[])){const a=byId(id);if(a&&a.state!=='dead'&&a.state!=='downed')ends.push([a.name+' is up again','win'])} // #654: brought back at the table
+    for(const a of sc.ids.map(byId))if(a&&a.state==='downed')ends.push([a.name+(a.down&&a.down.stable?' lies stable':' still bleeds'),'loss']);for(const n of back)ends.push([n+' fell back','']);
     if(f&&!sc.end)ends.push([sc.rd>=TR.ROUNDS?TR.ROUNDS+' rounds: the fight goes on':'The foe still stands',''])}
   return {round:sc.rd,of:TR.ROUNDS,order,rolls,rolled:rd,prev:rd!==sc.rd,ends,step:TABLE.step,hold:b.hold||null}}
+// A downed member's tally at the table (#659): {s, f, of, stable}; the failures that end them as the last save said (#654's
+// beat carries the table's count), else the world's (four with a healer near).
+function dnOf(sc,a){const v=downView(a);if(!v)return null;let of=v.of;for(let i=sc.beats.length-1;i>=0;i--){const c=sc.beats[i].check;if(c&&c.kind==='death'&&sc.beats[i].id===a.id){if(c.of)of=c.of;break}}
+  return {s:v.s,f:v.f,of,of3:v.of3,stable:v.stable}}
+// A death save's verdict on its roll line (#654 beat check.kind 'death': die, vs, hit, crit, down, s, f, of).
+function deathWord(k){if(k.down)return 'DIES';if(k.crit||k.die===20)return 'UP ON 1 HP';if(k.hit&&k.s>=3)return 'STABLE';if(k.hit)return 'SAVED';return k.die===1?'2 FAILURES':'FAILED'}
 const SHOW=4; // roll lines in view (the phone shows the last 3)
 function combatBlock(box,c){
   const o=el('div','tcinit');o.setAttribute('role','list');o.setAttribute('aria-label','Initiative order');
-  for(const x of c.order){const ch=el('span','tci'+(x.foe?' foe':'')+(x.cur?' cur':'')+(x.down?' down':''));ch.setAttribute('role','listitem');
+  for(const x of c.order){const ch=el('span','tci'+(x.foe?' foe':'')+(x.cur?' cur':'')+(x.down?' down':'')+(x.dn?x.dn.stable?' dn stable':' dn':''));ch.setAttribute('role','listitem');
     ch.append(el('span','tcn',(x.cur?'▶ ':'')+x.name));const bar=el('span','tchp'),i=el('i');i.style.width=x.hp+'%';if(x.hp<25)i.className='lo';bar.append(i);
-    ch.setAttribute('aria-label',x.name+(x.foe?' (foe)':'')+', '+x.hp+'% health'+(x.cond.length?', '+x.cond.join(', '):'')+(x.mv?', used '+x.mv:'')+(x.cur?', acting now':''));
-    ch.append(bar,el('span','tcp',x.hp+'%'));for(const k of x.cond)ch.append(el('span','tcc',k));if(x.mv)ch.append(el('span','tcm',x.mv));o.append(ch)}
+    ch.setAttribute('aria-label',x.name+(x.foe?' (foe)':'')+', '+x.hp+'% health'+(x.cond.length?', '+x.cond.join(', '):'')+(x.dn?', '+x.dn.s+' of '+x.dn.of3+' saves, '+x.dn.f+' of '+x.dn.of+' failures':'')+(x.mv?', used '+x.mv:'')+(x.cur?', acting now':''));
+    ch.append(bar,el('span','tcp',x.hp+'%'));
+    if(x.dn){const t=el('span','tcdn');t.title=x.dn.s+' of '+x.dn.of3+' death saves made, '+x.dn.f+' of '+x.dn.of+' failures';t.append(el('span','pips ok',pips(x.dn.s,x.dn.of3)),el('span','pips bad',pips(x.dn.f,x.dn.of)));ch.append(t)}for(const k of x.cond)ch.append(el('span','tcc',k));if(x.mv)ch.append(el('span','tcm',x.mv));o.append(ch)}
   box.append(o);
   if(!c.rolls.length)return;const L=el('div','trolls'),hid=Math.max(0,c.rolls.length-SHOW);
   L.append(el('div','trh',(c.prev?'Last round ('+c.rolled+')':'Round '+c.rolled)+(hid?' · '+hid+' earlier':'')));
@@ -123,6 +133,9 @@ function combatBlock(box,c){
     row.append(el('b',null,x.by),' '+x.text+' ');
     if(r){row.append(el('span','trd','d20 '+r.die+'+'+r.mod+'='+r.total+' vs '+r.vs),' ',el('span','trr',r.crit?'CRIT '+r.dmg:r.hit?'HIT '+r.dmg:r.die===1?'FUMBLE':'MISS'));
       if(r.down)row.append(' ',el('span','trr fall','FALLS'))}
+    else if(x.c&&x.c.kind==='death'){const k=x.c,w=deathWord(k);row.className='trl death'+(k.down?' fall':k.hit?' hit':' miss'); // a death save (#654), each as it is rolled (#659)
+      row.append(el('span','trd','death save d20 '+k.die+' vs DC '+k.vs),' ',el('span','trr'+(k.down?' fall':''),w));
+      if(!k.down&&!(k.crit||k.die===20)&&k.s!=null){const t=el('span','tcdn');t.title=k.s+' of 3 saves, '+k.f+' of '+(k.of||3)+' failures';t.append(el('span','pips ok',pips(k.s,3)),el('span','pips bad',pips(k.f,k.of||3)));row.append(' ',t)}}
     else if(x.c){const k=x.c,w=k.kind==='parley'?{yield:'YIELDS',flee:'RUNS',hold:'HOLDS'}[k.result]:k.hit?'SAVED':'HELD'; // a parley or a save (#296)
       row.append(el('span','trd',(k.kind==='parley'?k.skill+' ':'save ')+'d20 '+k.die+(k.mod<0?'':'+')+k.mod+'='+k.total+' vs DC '+k.vs),' ',el('span','trr',w))}
     else if(x.res)row.append(el('span','trd',x.res));
@@ -187,6 +200,7 @@ const secs=n=>Math.max(0,Math.ceil(n))+' s';
 export function memberRows(){const sc=S.table;if(!sc||sc.rd!=null)return null;const out=[],live=sc.phase==='turn'||sc.phase==='frame';
   sc.ids.forEach((id,i)=>{const a=byId(id);if(!a)return;const act=sc.acts&&sc.acts[id],r={id,name:styled(a),cls:a.cls,color:classColor(a.cls),st:'',ans:'',tone:'',full:'',line:'',by:'',timer:''};
     if(a.state==='dead')r.st='fallen';
+    else if(a.state==='downed'){const v=downView(a);r.st='down';r.timer=v?pips(v.s,v.of3)+' '+pips(v.f,v.of):''} // #659
     else if(act){Object.assign(r,answerOf(sc,a,act));r.st='done';r.line=act.line||'';r.by=act.by||''}
     else if(!live||sc.resolved)r.st='out';
     else if(sc.all||sc.ids[sc.i]===id){const t=sc.all?((sc.w&&sc.w[id]&&sc.w[id].t)||0):sc.t||0;
@@ -196,7 +210,7 @@ export function memberRows(){const sc=S.table;if(!sc||sc.rd!=null)return null;co
     else r.st=i<sc.i?'out':'next';
     out.push(r)});
   return out}
-const ST_TXT={wait:'thinking',held:'no runner',reflex:'reflex',turn:'acting',next:'to act',fallen:'fallen',out:'no answer'};
+const ST_TXT={wait:'thinking',held:'no runner',reflex:'reflex',turn:'acting',next:'to act',fallen:'fallen',out:'no answer',down:'downed'};
 function rowsBlock(box,rows,b){const all=!!b.all,n=rows.filter(r=>r.st==='done').length,of=rows.filter(r=>r.st!=='fallen').length;
   const L=el('div','tmem');L.setAttribute('role','list');L.setAttribute('aria-label',all?'Answers':'Turn order');
   L.append(el('div','tmh',all?'Answers '+n+'/'+of:'Turn order'));
