@@ -108,6 +108,7 @@ const eUp = A.lore.c[upKey], pUp = A.lore.p[ZONES[up]];
 ok(eUp && eUp.told && eUp.warned && /Beware/.test(eUp.warned), `a warning heard in earshot names the creature and marks it: ${eUp && eUp.warned}`);
 ok(pUp && pUp.how === 'told' && pUp.warned, `and teaches the place (${ZONES[up]}: ${pUp && pUp.how})`);
 r = act(A, 'move_to', {target: ZONES[up]});
+if (r.ok && r.stops_short) r = act(A, 'move_to', {target: ZONES[up]}); // the road crosses a region far above A: the first walk stops at its edge (#465), the same call again goes on
 ok(r.ok && r.warning && /warned/.test(r.warning), `move_to a place heard of works, with the warning: ${r.warning}`);
 A.pq = []; A.state = 'hunt';
 r = act(A, 'hunt', {prey: 'Snow Gryphon'}); ok(!r.ok && /know of no creature/.test(r.error), 'hunt prey nobody told of is refused');

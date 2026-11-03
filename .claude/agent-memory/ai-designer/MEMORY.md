@@ -34,3 +34,4 @@
 - [Camp refusals #400](camp_refusals.md) — campBlock text, second break_camp = yes vote, non-leader break_camp proposes, refusals name the next call
 - [Sim perf #433](sim_perf.md) — hash-identical speedups: within() box+hypot, non-enumerable hero caches, LOD flag off by default
 - [Emergent parties #402](emergent_parties.md) — company 8 heroes/5 minds, together default forever, followed-only pause, arrival scene, no crypt level gate
+- [Town autopilot #466/#465](town_autopilot.md) — autopilot acts in town (inn, sell, potions, hunt fitting ground); danger-edge stop 5+ levels up, force/repeat
