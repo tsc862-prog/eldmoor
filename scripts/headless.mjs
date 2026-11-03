@@ -17,6 +17,7 @@ const lv = alive.map((a) => a.lvl).sort((a, b) => b - a);
 console.log(`\nEldmoor headless run: ${minutes} min at 1x\n`);
 console.log('Living heroes:', alive.length, '| levels:', lv.join(' '));
 console.log('Fallen:', S.facStats.map((f) => f.fallen).join(' / '), '(Concord / Warband)');
+{const D=S.downStats||{downed:0,stable:0,revived:0,rose:0,woke:0,stabilized:0,died:0,why:{}};const w=D.why||{};console.log('Downed (#626): '+D.downed+' downings | up again '+(D.revived+D.rose+D.woke)+' (revived '+D.revived+', rose on a 20 '+D.rose+', woke stable '+D.woke+') | stabilized by a friend '+D.stabilized+', stable '+D.stable+' | died while down '+D.died+' (failed saves '+(w.fails||0)+', alone '+(w.alone||0)+') | slain outright: finished by a hero '+(w.finish||0)+', past full health '+(w.massive||0))}
 console.log('Honor:', S.facStats.map((f) => f.honor).join(' / '), '| Boss kills:', S.facStats.map((f) => f.bosses).join(' / '));
 console.log('Guilds (clears/wipes/bosses):', S.GUILDS.filter((g) => !g.retired).map((g) => `${g.tag} ${g.clears}/${g.wipes}/${g.bosses}`).join('  '), '| retired', S.GUILDS.filter((g) => g.retired).length, '| unguilded alive', alive.filter((a) => !a.guild).length, '| events', JSON.stringify(S.guildStats || {}));
 console.log('Rivalries:', JSON.stringify(S.rivals ? S.rivals.stats : {}), '| active', S.rivals ? Object.keys(S.rivals.on).map((k) => k.split(':').map((id) => (S.GUILDS.find((g) => g.id === Number(id)) || {}).tag).join(' vs ')).join(', ') || 'none' : 'none');
