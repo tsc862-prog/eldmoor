@@ -76,6 +76,8 @@ import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abi
 import {actFlee,fights,actionLog} from './actlog.js';
 import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
 import {SPEC_LVL} from '../data/classes.js';
+import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfession,unlearnProfession,profKey} from './gather.js'; // professions and gathering (#257)
+import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
 
 // ---- knobs ----
@@ -278,13 +280,13 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   default:return false}}
 
 // A line the hero heard (sim/chat.js, council.js party chat, an NPC, the DM's narrate), as the agent reads it.
-const heardText=e=>e.from&&e.from.kind==='dm'?'The narrator: '+e.text:(e.party?'[party] ':'')+(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"';
+const heardText=e=>e.dream?e.text:e.from&&e.from.kind==='dm'?'The narrator: '+e.text:(e.party?'[party] ':'')+(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"';
 // Hearing (issue #126): a line from an agent-played hero (aloud in earshot, or on the party channel) starts the
 // listener's turn promptly (2), at most once per PK.HEAR_WAKE game minutes per listener so two agents cannot
 // talk each other into turns forever; the narrator, an NPC or a scripted companion's party line wake after the gap (1).
 function hearWake(a,e){const f=e.from;
   if(f&&f.kind==='hero'&&f.player){if(S.gameMin-(a.playHeardAt??-1e9)>=PK.HEAR_WAKE){a.playHeardAt=S.gameMin;return 2}return 0}
-  if(e.talk)return 2; // a person answering the hero in a conversation (#170): a turn at once
+  if(e.talk||e.dream)return 2; // a person answering the hero in a conversation (#170): a turn at once
   return e.party||f&&(f.kind==='dm'||f.kind==='npc')?1:0}
 // Notice what changed since the last step and turn it into events.
 function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills});const mh=maxHp(a);
@@ -350,6 +352,7 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
     // a wary hunt that walked PK.ROAM legs without finding prey it can take ranges across its whole ground for the next one
     if(!a.dest||cmd.wary&&gz!==a.zone&&zoneAt(a.dest.x,a.dest.y)!==gz){const far=cmd.wary&&(cmd.dry||0)>=PK.ROAM;a.dest=zonePoint(gz,far?null:a);if(far)cmd.dry=0}
     if(moveTo(a,a.dest.x,a.dest.y,dt,1.8)){a.dest=null;if(cmd.wary)cmd.dry=(cmd.dry||0)+1}return true}
+  if(cmd&&cmd.kind==='gather'){const t=gatherCmd(a,dt,cmd,moveTo);if(t)done(a,t);return true} // walk to the node, work it, try (sim/gather.js, #257)
   if(cmd){done(a,'Cannot '+cmd.kind+' here.');return true}
   // idle reflex: a full bag goes home to be sold
   a.moving=false;
@@ -405,6 +408,7 @@ function doingText(a,adv,cmd){
   if(cmd){if(cmd.kind==='move')return (cmd.flee?'Fleeing to ':'Walking to ')+cmd.label;
     if(cmd.kind==='hunt')return 'Hunting in '+ZONES[zoneAt(a.x,a.y)]+' ('+Math.max(0,cmd.n-(cmd.k0==null?0:a.kills-cmd.k0))+' to go)';
     if(cmd.kind==='rest')return 'Resting';
+    if(cmd.kind==='gather')return 'Gathering at a '+String(cmd.label||'node').toLowerCase();
     if(cmd.kind==='fight')return 'Closing on a foe'}
   if(adv){if(adv.stage==='choose')return 'Weighing a choice on '+adv.title;return 'On an adventure: '+adv.title}
   if(a.state==='town')return 'Waiting in '+homeOf(a).name;
@@ -1059,6 +1063,38 @@ const T={
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
   scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
     return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
+  // ---- professions and gathering (#257): only the caller's own hero ----
+  recipes(a,{profession}={}){let id=null;if(profession!=null&&String(profession).trim()){id=profKey(profession);
+      need(id,'There is no profession called "'+clean(profession,40)+'". Leave it out for all of yours, or name one: herbalism, mining, skinning, fishing, alchemy, smithing, leatherworking, cooking, scribing.')}
+    return recipesView(a,id)},
+  learn_profession(a,{id,profession}={}){const v=id!=null&&String(id).trim()!==''?id:profession;
+    need(v!=null&&String(v).trim()!=='','Which profession? learn_profession {id: "herbalism"} (recipes lists them all and what each does).');
+    const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac);
+    const r=learnProfession(a,v,{inTown:here});need(r.ok,r.why+(r.why&&/^Trainers/.test(r.why)&&ct&&ct.fac!==a.fac?' '+ct.name+' is not a town of your side.':''));return r},
+  unlearn_profession(a,{id,profession}={}){const v=id!=null&&String(id).trim()!==''?id:profession;
+    need(v!=null&&String(v).trim()!=='','Which profession? unlearn_profession {id: "<one you hold>"}; recipes lists yours. Its skill is lost for good.');
+    need(!(a.pq||[]).some(c=>c.kind==='gather'),'You are gathering right now; let it finish (wait) or give another order first.');
+    const r=unlearnProfession(a,v);need(r.ok,r.why);return r},
+  nodes(a,{kind}={}){const R=sightOf(a),k=kind!=null&&String(kind).trim()?String(kind).toLowerCase().trim():null;
+    const kk=k?(['herb','ore','hide','fish'].find(x=>k.startsWith(x))||({herbalism:'herb',mining:'ore',skinning:'hide',fishing:'fish'})[profKey(k)]||null):null;
+    need(!k||kk,'kind is one of herb, ore, hide or fish (or leave it out for every kind).');
+    if(inTown(a)||cityAt(a))return {ok:true,nodes:[],note:'No gathering spot lies inside the walls: herb patches, ore veins, game trails and fishing spots are out in the world.'};
+    const L=nodesView(a,R,kk);
+    const r={ok:true,sight:Math.round(R)+' tiles',nodes:L};
+    if(!L.length)r.note='No gathering spot'+(kk?' of that kind':'')+' in sight. Walk on and look again.';
+    else r.how='gather {node: "<node id>"} walks you there and works it (about '+GATHER.MIN+' game minutes at the spot).';
+    return r},
+  gather(a,{node,kind}={}){const v=node!=null&&String(node).trim()!==''?node:kind;
+    need(!inTown(a)&&!cityAt(a),'Nothing is gathered inside the walls: herb patches, ore veins, game trails and fishing spots lie out in the world. Walk out (move_to or hunt {where}), then nodes and gather.');
+    need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');
+    need(!['fight','duel','assist'].includes(a.state),'You are in a fight. Finish it or flee() first.');
+    need(fieldState(a),'You cannot gather now ('+a.state+').');
+    const p=pickNode(a,v,sightOf(a));need(p.node,p.why);const n=p.node,c=canGather(a,n);
+    need(c.ok,c.why+(c.need?' learn_profession {id: "'+c.need+'"} at a trainer in town'+((a.profs||[]).length>=2?' (you hold two already: unlearn_profession one first)':'')+'.':''));
+    a.pq=[{kind:'gather',node:n.id,label:n.name}];if(a.state!=='hunt')a.state='hunt';a.dest=null;
+    const d=Math.round(dist(a,n)*10)/10;
+    return {ok:true,gathering:n.name+' ('+n.id+')',material:c.mat,distance:d,takes:'about '+Math.round(GATHER.MIN+d*3)+' game minutes',
+      odds:c.chance>=.7?'a sure hand':c.chance>=.5?'likely':'a stretch for your skill',note:'wait() while you work; an attack interrupts and you go back to it after the fight.'}},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
     if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&S.table.ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
     const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
@@ -1099,7 +1135,7 @@ function packFind(a,raw,verb='Give'){let q=normName(raw),count;
   if(count==='all')count=isGear(first)?1:hit.reduce((t,i)=>t+L[i].n,0);
   return {index:hit[0],all:hit,name:entryName(first),count}}
 function entryText(e){if(isGear(e))return itemText(e)+(e.cls&&!e.epic?' ['+e.cls+' gear]':'')+', sells '+SELL_VALUE(e)+'g';
-  if(e.kind==='good')return e.id+' x'+e.n+(GOODS[e.id]?' (sells for about '+price(e.id)+'g each)':'');
+  if(e.kind==='good')return e.id+' x'+e.n+(GOODS[e.id]||MATERIALS[e.id]?' (sells for about '+price(e.id)+'g each'+(MATERIALS[e.id]?'; a crafting material':'')+')':'');
   if(e.kind==='use')return e.id+' x'+e.n+' ('+useLines(e.id).map(l=>l[1]).join('; ')+')';
   return e.id+' (quest item: cannot be sold, dropped or given)'}
 function itemText(it){if(!it)return null;const st=itemStats(it);return it.name+' (ilvl '+it.ilvl+(it.epic?', epic':it.quality&&it.quality!=='plain'?', '+it.quality:'')+(it.slot?', '+it.slot:'')+': '+Object.keys(st).map(k=>'+'+st[k]+' '+k).join(' ')+(it.property?' '+it.property:'')+')'}

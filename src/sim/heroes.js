@@ -38,6 +38,7 @@ import {fightMoves} from './moves.js'; // class abilities (sim/moves.js, #81)
 import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hooks (sim/brain.js): scripted unless a.brain
 import {killDone,killAbandoned,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
 import {dmDepart,dmTravel,dmHunt,BOUNTY,bountyFor,takeBounty,fellowBounty} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
+import {gatherTick} from './gather.js'; // gathering (#257): a scripted hunter works a node of its trade now and then
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45)*(1+.8*Math.min(1,Math.max(0,(l-9)/7)))); // veterans: L10-16 ramp to +80% (balance #107)
@@ -207,6 +208,7 @@ export function updAgent(a,dt){
     if(a.party)priestHeal(a,mates);
     if(a.hp<mh*.45*tm(a,'retreat')||load(a)>=Math.round(8*tm(a,'greed'))||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.hp<maxHp(b)*.3)||isStorm(a.zone)){goHome(a);break}
     if(steerClear(a,dt,moveTo))break;
+    if(gatherTick(a,dt,moveTo))break; // at a node (sim/gather.js): still 'hunt', so mobs, duels and the party see a hunter
     a.scan-=dt;if(a.scan<=0){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
     if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
   // Party member at the leader's side: heals, picks off nearby mobs, joins the leader's fights (party tick),

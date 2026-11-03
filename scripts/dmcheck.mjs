@@ -36,7 +36,7 @@ let seed = 0x9e3779b9 ^ (Number(process.env.DMCHECK_SEED) || 66);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const sim = await import('../src/sim/index.js');
 const {init, step, S, snapshot, restore, dmAct, setDmSeat, dmSeatOn} = sim;
-const {DMA, pileOn} = await import('../src/sim/dmagent.js');
+const {DMA, pileOn, dreamTick} = await import('../src/sim/dmagent.js');
 const {DM_TOOLS} = await import('../src/data/dm-tools.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
@@ -197,6 +197,63 @@ if (process.argv[2] === '--focus-companies') {
   console.log('FOCUS ' + JSON.stringify(focusStats()) + ' BY ' + JSON.stringify(F.by || {}) + ' H ' + Math.round(S.gameMin));
   process.exit(0);
 }
+// ---- DM fairness (issue #451): the fairness refusal of the reserved share, per-company staged scenes ----
+// Puts the three companies in the field (the five followed, the pair served a moment ago, the solo starved) and tries the lever
+// reserve and stage_scene against them.
+if (process.argv[2] === '--fairness') {
+  init({fac: 0}); run(120);
+  const FO = await import('../src/sim/dmfocus.js'), ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {pull} = await import('../src/sim/levers.js');
+  const {pair, solo, five, p1, p2, s1, CO} = await addCompanies(), out = {};
+  const {zonePoint, zoneFor, zoneAt} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
+  solo.name = 'the Lone Blade'; s1.lvl = 4; T.TABLE.mode = 'off'; S.table = null; S.props = [];
+  const at = [CO.members(five), CO.members(pair), CO.members(solo)];
+  // three well-separated spots in a region each, every member afield and healthy
+  [0, 1, 2].forEach(i => {const L = at[i], home = homeOf(L[0]).gate, z = zoneFor(Math.max(1, L[0].lvl), home), sp = innerPoint(zonePoint, zoneAt, z, home);
+    L.forEach((x, j) => {x.x = sp.x + j * .6; x.y = sp.y; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)})});
+  const fs = FO.focuses(); out.n = fs.length;
+  // 1. fairness(): the pair was served a moment ago, the solo not for 8 hours, the five (followed) 3 hours ago
+  S.dmFocus = S.dmFocus || {acts: 0, fellow: 0, day: {d: -1, acts: 0, fellow: 0}}; S.dmFocus.last = {[five.id]: S.gameMin - 180, [pair.id]: S.gameMin - 30, [solo.id]: S.gameMin - 480};
+  let fr = FO.fairness(); out.spread = fr.spread; out.starved = fr.starved.map(r => r.name).join(',');
+  const fo1 = FO.fairness([fs[0]]); out.one = fo1.spread === null && fo1.starved.length === 0 && FO.fairRefusal('mark_cleared', {at: {x: 1, y: 1}}, null, [fs[0]]) === null;
+  const day = () => {S.levers.day = {d: Math.floor(S.gameMin / 1440), n: {mark_cleared: 4}, rz: {}, nf: {mark_cleared: 4}}}; // 6 a day, 2 reserved: only the reserve is left
+  const at2 = L => ({at: {x: L[0].x, y: L[0].y}, r: 3, hours: 4});
+  day(); let r = pull('mark_cleared', at2(at[1]), {by: 'scripted', reason: 'test'}); out.pairRefused = !r.ok && /kept for the Lone Blade first/.test(r.reason); out.pairWhy = r.reason;
+  day(); r = pull('mark_cleared', at2(at[2]), {by: 'scripted', reason: 'test'}); out.soloOk = !(r.reason && /kept for/.test(r.reason)); out.soloWhy = r.reason || 'pulled';
+  day(); r = pull('mark_cleared', at2(at[0]), {by: 'scripted', reason: 'test'}); out.followedOk = !(r.reason && /kept for/.test(r.reason)); out.followedWhy = r.reason || 'pulled';
+  S.dmFocus.last[pair.id] = S.gameMin - 300; day(); r = pull('mark_cleared', at2(at[1]), {by: 'scripted', reason: 'test'}); out.staleOk = !(r.reason && /kept for/.test(r.reason)); // not served in the last 240 min: no refusal
+  S.dmFocus.last[pair.id] = S.gameMin - 30; S.levers.day = {d: Math.floor(S.gameMin / 1440), n: {mark_cleared: 2}, rz: {}, nf: {}}; r = pull('mark_cleared', at2(at[1]), {by: 'scripted', reason: 'test'}); out.roomOk = !(r.reason && /kept for/.test(r.reason)); // more than the reserve left
+  S.dmFocus.last[solo.id] = S.gameMin - 10; day(); r = pull('mark_cleared', at2(at[1]), {by: 'scripted', reason: 'test'}); out.noStarvedOk = !(r.reason && /kept for/.test(r.reason)); // nobody starved
+  S.dmFocus.last[solo.id] = S.gameMin - 480; S.levers.day = {d: -1, n: {}, rz: {}, nf: {}};
+  // 2. staged scenes: 2 + companies a day, one kept per company, the level bounded by that company's party
+  out.perDay = ST.STAGE.PER_DAY;
+  const frame = 'Mist lies on the road, and something moves in it.', st = a => ST.stageScene({kind: 'mystery', frame, cast: {}, reason: 'test', ...a});
+  S.staged = null; for (const m of S.mobs) if (m.staged != null) m.gone = true;
+  let x = st({kind: 'elite', near: 'company:' + solo.id, cast: {level: 9}, preview: true}); out.soloFar = !x.ok && /far above the party \(average level 4/.test(x.error || ''); out.soloFarWhy = x.error;
+  x = st({kind: 'elite', near: 'company:' + solo.id, cast: {level: 5}, preview: true}); out.soloOkLvl = !!x.ok && x.level <= 6; out.soloLvl = x.ok ? x.level + '/' + x.party_level : x.error;
+  x = st({kind: 'elite', near: 'company:' + five.id, cast: {level: 9}, preview: true}); out.fiveSees = !/far above the party \(average level 4/.test(x.error || '');
+  x = st({near: 'company:' + solo.id}); out.resolved = !!x.ok && S.staged.cur.company === solo.id && s1.id === S.staged.cur.near.hero; out.resolvedWhy = x.error || 'staged';
+  // the cast waits for that company's member (and no one else's), and the day counts the solo's scene
+  out.dayC = (S.staged.day.c || {})[solo.id] || 0; S.staged.cur.phase = 'done';
+  out.unknown = (st({near: 'company:999'}).error || '').includes('no company 999');
+  // per-day: n at 4 of 5, the pair and the five not yet staged for: the last two scenes are theirs
+  S.staged.day.n = 4; S.staged.day.c = {[solo.id]: 2}; S.staged.day.nw = 0;
+  x = st({near: 'company:' + solo.id}); out.reserveHeld = !x.ok && /kept for/.test(x.error || ''); out.reserveWhy = x.error;
+  S.staged.day.n = 3; S.staged.day.c = {[solo.id]: 2, [five.id]: 1}; x = st({near: 'company:' + pair.id}); out.lastOk = !!x.ok; out.lastWhy = x.error || 'staged';
+  S.staged.cur.phase = 'done';
+  // pile: the solo badly hurt: no staged fight for it, the pair's is not held up by that
+  S.staged.day = {d: Math.floor(S.gameMin / 1440), n: 0, nw: 0}; s1.hp = Math.floor(maxHp(s1) * .2);
+  x = st({kind: 'trap', near: 'company:' + solo.id}); out.pileSolo = !x.ok && /badly hurt/.test(x.error || ''); out.pileWhy = x.error;
+  x = st({kind: 'trap', near: 'company:' + pair.id}); out.pilePair = !!x.ok; out.pilePairWhy = x.error || 'staged';
+  console.log('FAIR ' + JSON.stringify(out)); process.exit(0);
+}
+// The scripted DM with three companies over 150 game hours, sampled every game hour: does any company in the field go unserved for FOCUS.STARVE_MIN?
+if (process.argv[2] === '--starve') {
+  init({fac: 0}); run(60); await addCompanies();
+  const FO = await import('../src/sim/dmfocus.js'); let worst = 0, who = '', samples = 0; const hrs = {}, first = {};
+  for (let h = 0; h < 150; h++) {run(10); if (h < 7) continue; samples++; const f = FO.fairness(); for (const r of f.rows) {if (r.field > 0 && r.since > worst) {worst = r.since; who = r.name} if (r.field > 0 && r.since >= 360) {hrs[r.name] = (hrs[r.name] || 0) + 1; if (first[r.name] == null) first[r.name] = h}}}
+  console.log('STARVE ' + JSON.stringify({hrs, first, worst, who, samples, starvedNow: FO.fairness().starved.length, by: (S.dmFocus || {}).by || {}})); process.exit(0);
+}
+
 // companies_needs, neediest first: one case per rule, plus the signature, the view and the standing orders
 if (process.argv[2] === '--needs') {
   init({fac: 0}); run(120); setDmSeat(true);
@@ -679,6 +736,26 @@ console.log('NPC conversations');
     const nr = dmAct('narrate', {text: long, near: A.name}), ns = dmAct('npc_say', {npc: String(smith.id), text: long});
     ok(nr.ok && nr.narrated === long && ns.ok && ns.said === long && long.length > 600, `narrate and npc_say keep a ${long.length}-character line whole`);
     ok(dmAct('npc_say', {npc: String(smith.id), text: 'x'.repeat(5000)}).said.length === DMA.NPC_SAY_MAX, `with a technical ceiling of ${DMA.NPC_SAY_MAX} characters`)}
+  // whisper and dream (#523): reach, day limits, delivery on waking
+  {beside(A, smith); beside(B, smith, 20); S.table = null;
+    const near = dmAct('whisper', {hero: A.name, text: 'The ledger is false.', as: String(smith.id)});
+    ok(near.ok && (A.chat || []).some(e => e.text === '(whispered) The ledger is false.' && e.from.id === smith.id && e.from.kind === 'npc') && !(B.chat || []).some(e => /ledger is false/.test(e.text)), 'whisper as a placed person within 4 tiles reaches that hero alone');
+    const far = dmAct('whisper', {hero: B.name, text: 'x', as: String(smith.id)}); ok(far.ok === false && /too far/.test(far.error), 'too far from the person: refused (' + far.error.slice(0, 60) + ')');
+    ok(dmAct('whisper', {hero: A.name, text: 'x'}).ok === false && dmAct('whisper', {hero: 'Nobody Atall', text: 'x'}).ok === false && dmAct('whisper', {hero: A.name, text: ' '}).ok === false, 'no scene and no person, an unknown hero and empty text are refused');
+    S.table = {ids: [A.id, B.id]}; const sc = dmAct('whisper', {hero: B.name, text: 'The captain lies.'});
+    ok(sc.ok && (B.chat || []).some(e => e.text === '(whispered) The captain lies.') && !(A.chat || []).some(e => /captain lies/.test(e.text)) && /Someone leans close to /.test(S.table.narr.text) && !/captain lies/.test(S.table.narr.text), 'in an open Table scene: only the target hears it; the table shows "leans close", not the words');
+    let n = 2; while (dmAct('whisper', {hero: A.name, text: 'again'}).ok) n++; ok(n === DMA.WHISPER_PER_DAY, 'whispers stop at ' + DMA.WHISPER_PER_DAY + ' a game day (' + n + ')'); S.table = null;
+    const d1 = dmAct('dream', {hero: A.name, text: 'A grey tide climbs the stair.'}), d2 = dmAct('dream', {hero: A.name, text: 'A bell without a rope.'}), d3 = dmAct('dream', {hero: A.name, text: 'third'});
+    ok(d1.ok && d2.ok && d3.ok === false && /Enough dreams/.test(d3.error), 'two dreams a game day, the third refused');
+    const bg2 = S.agents.find(h => !h.player && !h.fellow && h.state !== 'dead'); ok(!bg2 || dmAct('dream', {hero: bg2.name, text: 'x'}).ok === false, 'only agent heroes dream');
+    dreamTick(); ok(!(A.chat || []).some(e => /You dream/.test(e.text)), 'a dream waits while the hero is awake');
+    A.state = 'camp'; dreamTick(); ok(!(A.chat || []).some(e => /You dream/.test(e.text)), 'and while it sleeps');
+    A.state = 'hunt'; dreamTick(); const dr = (A.chat || []).filter(e => /^You dream: /.test(e.text));
+    ok(dr.length === 2 && dr[0].dream, 'on waking from camp both dreams arrive as "You dream: ..."');
+    P.markPlayer(A, true); beside(A, smith); dmAct('dream', {hero: A.name, text: 'Salt on the tongue.'}) ; S.dmAgent.day.dr = 0; dmAct('dream', {hero: A.name, text: 'Salt on the tongue.'});
+    A.pq = [{kind: 'rest', until: S.gameMin + 60}]; dreamTick(); A.pq = []; dreamTick();
+    ok(/Salt on the tongue/.test(A.chat[A.chat.length - 1].text), 'a rest at an inn delivers a dream when it ends');
+    S.dmAgent.day.wh = 0; S.dmAgent.day.dr = 0}
   // names as models write them (issue #401): spaces dropped, a near miss names the closest people
   {const squeezed = (smith.title + smith.name).replace(/\s+/g, ''), ns = dmAct('npc_say', {npc: squeezed, text: 'Mind the forge.'});
     ok(ns.ok && ns.who === smith.title + ' ' + smith.name, `npc_say finds "${squeezed}" ignoring spaces`);
@@ -819,6 +896,19 @@ console.log('the Fellowship first');
   const fr = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus-companies'], {cwd: ROOT, encoding: 'utf8'}), fl = (fr.stdout || '').trim().split(/\r?\n/).pop(), fm = /^FOCUS (\{.*\}) BY (\{.*\}) H/.exec(fl || '');
   const fst = fm ? JSON.parse(fm[1]) : null, by = fm ? JSON.parse(fm[2]) : {};
   ok(fst && fst.acts >= 18 && fst.share >= 0.6 && Object.keys(by).length >= 3, 'with three companies over 150 game hours, at least 60% of the scripted DM\'s actions concern some company, each of them touched: ' + (fm ? fst.fellow + '/' + fst.acts + ' (' + Math.round(fst.share * 100) + '%) by ' + JSON.stringify(by) : fl || (fr.stderr || '').slice(-300)));
+}
+
+{ // DM fairness between companies (issue #451): the reserved share gives way to a starved company, staged scenes per company
+  const kid2 = (arg, tag) => {const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), arg], {cwd: ROOT, encoding: 'utf8', timeout: 240000}), l = (r.stdout || '').trim().split(/\r?\n/).pop(), m2 = new RegExp('^' + tag + ' (\{.*\})').exec(l); return m2 ? JSON.parse(m2[1]) : {err: l || (r.stderr || '').slice(-300)}};
+  const f = kid2('--fairness', 'FAIR');
+  ok(!f.err && f.n === 3 && f.spread === 450 && f.starved === 'the Lone Blade', 'fairness() reports the spread (longest minus shortest minutes since the DM served a company) and the starved companies (in the field, 360 minutes unserved): ' + (f.err || f.spread + ' / ' + f.starved));
+  ok(f.pairRefused && f.soloOk && f.followedOk && f.staleOk && f.roomOk && f.noStarvedOk && f.one, 'with only the reserve left, a pull for a company served in the last 240 minutes is refused "kept for <company> first" while another is starved; not the starved one, the followed one, one served longer ago, with room left, with nobody starved, or with one company (' + (f.err || f.pairWhy) + ')');
+  ok(f.perDay === 5 && f.soloFar && f.soloOkLvl && f.fiveSees, 'STAGE.PER_DAY is 2 + companies; a staged elite for a solo at level 4 is bounded by that solo (level 9 refused, at most 6), not by the five: ' + (f.err || f.soloFarWhy + ' / ' + f.soloLvl));
+  ok(f.resolved && f.dayC === 1 && f.unknown, 'stage_scene near "company:<id>" resolves to that company\'s member and counts toward its day; an unknown company is refused: ' + (f.err || f.resolvedWhy));
+  ok(f.reserveHeld && f.lastOk, 'one staged scene a day is kept for each company that has had none: ' + (f.err || f.reserveWhy));
+  ok(f.pileSolo && f.pilePair, 'a staged fight or trap waits only for the targeted company\'s hurt members: ' + (f.err || f.pileWhy));
+  const sv = kid2('--starve', 'STARVE');
+  ok(!sv.err && sv.worst <= 1440 && Object.keys(sv.by).length >= 3 && sv.starvedNow === 0, 'with three companies over 150 game hours the scripted DM never leaves one in the field unserved for a whole game day (longest ' + (sv.err || sv.worst + ' min, ' + sv.who) + ')');
 }
 
 { // solo-sized jobs (issue #447): only while an agent solo exists, band-checked, paid less

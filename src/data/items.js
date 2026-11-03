@@ -40,7 +40,8 @@ export const SLOT_NOUNS={
   Mage:{head:'Cowl',chest:'Robe',hands:'Wraps',feet:'Sandals',main:'Staff',off:'Grimoire',trinket:'Charm'},
   Priest:{head:'Circlet',chest:'Vestment',hands:'Mitts',feet:'Slippers',main:'Mace',off:'Censer',trinket:'Reliquary'},
   Hunter:{head:'Hood',chest:'Jerkin',hands:'Gloves',feet:'Treads',main:'Hatchet',off:'Longbow',trinket:'Talisman'},
-  Rogue:{head:'Mask',chest:'Vest',hands:'Grips',feet:'Softboots',main:'Dagger',off:'Shiv',trinket:'Lockcharm'}};
+  Rogue:{head:'Mask',chest:'Vest',hands:'Grips',feet:'Softboots',main:'Dagger',off:'Shiv',trinket:'Lockcharm'},
+  Skald:{head:'Cap',chest:'Doublet',hands:'Bracers',feet:'Marchboots',main:'Warhorn',off:'Songstone',trinket:'Lutecharm'}};
 // Which slot each named epic occupies when looted.
 export const EPIC_SLOT={
   'Fang of the Old Wood':'main','Thornheart Longbow':'off','Bramblecrown':'head',
@@ -59,16 +60,16 @@ export const epicZone=n=>{const z=EPICS.findIndex(l=>l.includes(n));return z>=0?
 // armor:    head, chest, hands, feet and a Warrior's shield. Summed armor becomes Defense (sim/stats.js).
 // damage:   the main hand, and a Hunter's longbow (a ranged off hand). Summed damage adds to Attack.
 // bonus:    points added to ability scores while worn ("+2 Brawn"): fine items one +1, rare items two
-//           +1 or one +2; trinkets and the other off hands (tome, censer, shiv) a +1 at every quality.
+//           +1 or one +2; trinkets and the other off hands (tome, censer, shiv, songstone) a +1 at every quality.
 // property: rare items and most epics carry one word from PROPS.
 // Armor and damage scale with item level and quality; bonuses and properties do not.
 export const ARMOR_PER_ILVL=1;    // armor points per item level, before slot and class weights
 export const DAMAGE_PER_ILVL=.68; // weapon damage per item level, before the class split
 export const ARMOR_SLOT={head:1.2,chest:1.6,hands:.6,feet:.6,off:1}; // `off` only for a class with a shield
 // Plate, leather and cloth: how much armor a class's pieces carry.
-export const ARMOR_CLASS={Warrior:1,Hunter:.3,Rogue:.25,Mage:.2,Priest:.25};
+export const ARMOR_CLASS={Warrior:1,Hunter:.3,Rogue:.25,Mage:.2,Priest:.25,Skald:.25};
 // Which slots carry damage for each class, and their share. Hunters split it between hatchet and longbow.
-export const WEAPON_SLOTS={Warrior:{main:1},Mage:{main:1},Priest:{main:1},Rogue:{main:1},Hunter:{main:.5,off:.5}};
+export const WEAPON_SLOTS={Warrior:{main:1},Mage:{main:1},Priest:{main:1},Rogue:{main:1},Skald:{main:1},Hunter:{main:.5,off:.5}};
 export const SHIELD_CLASS={Warrior:true};
 // Rare properties: one word, one effect, added to the combat total named in `stat`.
 export const PROPS={

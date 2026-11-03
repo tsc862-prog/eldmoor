@@ -306,6 +306,24 @@ if (comp && comp.ids.length > 1) {
     ok(CN.leaderOfC(M2) !== zc, 'the companion still does not lead');
   }
 }
+// ---- elites scale to the company that meets them (#502) ----
+{
+  const T = await import('../src/sim/table.js');
+  const f = (n, avg, lvl) => T.eliteFactor(n, avg, lvl);
+  ok(f(5, 10, 10).hp === 1 && f(5, 10, 10).hit === 1, 'a full five meets an elite as written');
+  ok(f(1, 10, 10).hp < f(2, 10, 10).hp && f(2, 10, 10).hp < f(4, 10, 10).hp && f(4, 10, 10).hp < 1, 'a solo and a pair meet it scaled down, a smaller company more');
+  ok(f(2, 8, 13).hp < f(2, 8, 9).hp, 'an elite far over the company level is cut more');
+  const heroes = S.agents.filter(h => living(h)).slice(0, 5);
+  const mk = () => {const m = S.mobs.find(x => x.alive && !x.gone); m.elite = true; m.maxhp = m.hp = 1000; m.hit = 1; m.lvl = heroes[0].lvl; delete m.scaled; return m};
+  let m = mk(); T.scaleElite({id: 99}, heroes.slice(0, 2), {mob: m.id});
+  ok(m.scaled && m.maxhp < 1000 && m.hp === m.maxhp && m.hit < 1, 'a pair elite is scaled down: ' + m.maxhp + ' hp, hit ' + m.hit.toFixed(2));
+  const pair = m.maxhp; T.scaleElite({id: 99}, heroes.slice(0, 1), {mob: m.id});
+  ok(m.maxhp === pair, 'scaled once only');
+  m = mk(); T.scaleElite({id: 99}, heroes.slice(0, 1), {mob: m.id});
+  ok(m.maxhp < pair, 'a solo meets it lighter than a pair: ' + m.maxhp);
+  m = mk(); T.scaleElite({id: 99, slots: true}, heroes.slice(0, 2), {mob: m.id});
+  ok(m.maxhp === 1000 && !m.scaled, 'the five-slot company is never scaled');
+}
 // ---- the Fellowship keeps its roster ----
 const fr = found(autoPick(1), {ai: false});
 ok(fr.ok, 'a Fellowship founded');
@@ -319,6 +337,23 @@ r = act(FM, 'propose', {kind: 'merge', company: out.name});
 ok(!r.ok, 'a Fellowship member cannot propose a merge: ' + r.error);
 r = act(FM, 'propose', {kind: 'expel', hero_id: CO.members(S.fellowship)[1].name});
 ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
+
+// ---- scripted recruiting never takes a company hero (#510) ----
+{
+  init({fellowship: false}); run(120);
+  const {seekParty} = await import('../src/sim/party.js');
+  const hs = S.agents.filter(b => living(b) && !b.fellow && !b.companion && !b.player && b.company == null);
+console.log('POOL',hs.length,[...new Set(hs.map(b=>b.fac+homeOf(b).name))]);
+  const hm = homeOf(hs.find(b => hs.filter(c => homeOf(c) === homeOf(b) && c.fac === b.fac).length >= 3)); const grp = hs.filter(b => homeOf(b) === hm && b.fac === hs.find(c => homeOf(c) === hm).fac);
+  const seeker = grp[0], solo = grp[1], other = grp[2];
+  for (const b of [seeker, solo, other]) {if (b.party) leaveParty(b); b.state = 'town'; b.lvl = seeker.lvl; b.linger = 0; b.traits = b.traits}
+  markPlayer(solo, true);
+  ok(CO.companyOf(solo), 'the solo is in a company');
+  const before = S.parties.length; let tries = 0;
+  for (let i = 0; i < 30 && !seeker.party; i++, tries++) {if (!solo.party) {} seekParty(seeker)}
+  ok(!solo.party && !(seeker.party && seeker.party.mem.includes(solo)), 'a company solo near a forming scripted party is never recruited');
+  if (seeker.party) leaveParty(seeker);
+}
 
 console.log(fail ? `\ncompanycheck: ${fail} failure(s)` : '\ncompanycheck: all ok');
 process.exit(fail ? 1 : 0);

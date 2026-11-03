@@ -797,6 +797,10 @@ button.tbtn.danger{border-color:var(--red)}
 .sswitch .mini[aria-pressed="true"],.spresets .mini[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:var(--gold)}
 .sswitch .slbl:not(:first-child){margin-left:10px}
 @media (max-width:520px){.sswitch .slbl:not(:first-child){margin-left:0;flex-basis:100%}}
+/* #458: another company's scene on the live clock: one line, a button that follows that company */
+.tbanner.tlive{padding:4px 6px;max-width:min(520px,calc(100% - 16px));background:rgba(8,10,20,.88)}
+.tbanner .tlvb{pointer-events:auto;display:block;width:100%;text-align:left;font-family:inherit;font-size:18px;line-height:1.1;padding:3px 6px;min-height:28px;background:#1e1a10;color:var(--gold);border:1px solid #6a5a2a;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:none;letter-spacing:0;box-shadow:none}
+.tbanner .tlvb:hover,.tbanner .tlvb:focus-visible{border-color:var(--gold);outline:none}
 
 /* Companies panel (#457): tab per company plus All, and the All rows */
 .fcotabs{margin:0 0 6px}

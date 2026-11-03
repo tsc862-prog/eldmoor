@@ -45,6 +45,7 @@ import {sessionTick,planOpening} from './arrival.js'; // session zero (#437) and
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
 import {opening} from './opening.js';
+import {resetMats} from './gather.js'; // gathered materials at the auction house (#257)
 import {questTick} from './questlog.js'; // several quests per hero
 
 export {S,clockStr} from './state.js';
@@ -62,7 +63,7 @@ export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} fr
 export {fellowshipStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,resolveArchetype,slotsView,asV2,MODES,SHAPE_PRESETS,MIND_PRESETS,SEATS,seatCap,seatNote} from './setup.js'; // New World setup (#133; v2 #453)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
-import {ensureCampaign} from './dmagent.js';
+import {ensureCampaign,dreamTick} from './dmagent.js';
 export {provideCampaigns,parseCampaign,campaignIdOf} from './campaign.js'; // the campaign seed
 export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus
 export {planOpening,openingDue,openingPending,arrivalsView,ARRIVE} from './arrival.js'; // session zero and arrivals (#437, #452)
@@ -79,6 +80,7 @@ function resetWorld(){resetS();
   CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[])}
 export function init(o={}){resetWorld();
   S.worldId=newWorldId(); // a new world instance (hosts purge the old world's memory mirror on a new id)
+  resetMats(); // a new world's auction house opens with the materials table's stock
   const seeded=!!(o.setup&&o.setup.seed!=null);
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
   spawnAll();
@@ -102,5 +104,5 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   partyTick();fellowshipTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
-  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
+  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}
