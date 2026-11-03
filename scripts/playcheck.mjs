@@ -101,7 +101,25 @@ r = await call('buy', {slot: 'head'}); ok(r.ok || /gold|better/i.test(r.error), 
  r = await call('drop', {index: qi.index}); ok(!r.ok && /quest/i.test(r.error), 'a quest item cannot be dropped');
  r = await call('sell', {index: qi.index}); ok(!r.ok, 'a quest item cannot be sold');
  r = await call('give', {index: qi.index, hero_id: other.id}); ok(!r.ok, 'a quest item cannot be given');
- INV.take(a, 'quest', 'Cairn-Door Key', 1); a.hp = maxHp(a);}
+ INV.take(a, 'quest', 'Cairn-Door Key', 1); a.hp = maxHp(a);
+ // give by item name (#412): a companion in the same party beside the hero; exact, kind, count prefix, ambiguity, no match
+ {const pal = S.agents.find(x => x !== a && x.kind === 'hero' && x.state !== 'dead' && x.fac === a.fac && !x.party);
+  const keep = {party: a.party, px: pal.x, py: pal.y, pparty: pal.party, pinv: JSON.stringify(pal.inv || null), ainv: JSON.stringify(a.inv)};
+  const tmp = {id: -412, mem: [a, pal]}; a.party = pal.party = tmp; pal.x = a.x + 1; pal.y = a.y;
+  INV.addUse(a, 'Redroot Draught', 3); INV.addUse(a, 'Trail Ration', 3); INV.addUse(a, 'Scroll of Hearthward', 1); INV.addUse(a, 'Scroll of the Steadfast Hour', 1);
+  const cnt = (h, idn) => INV.count(h, idn), r0 = cnt(pal, 'Redroot Draught'), t0 = cnt(pal, 'Trail Ration'), s0 = cnt(pal, 'Scroll of Hearthward');
+  a.playRate = []; r = await call('give', {item: 'redroot draught', to: pal.name, count: 2}); ok(r.ok && cnt(pal, 'Redroot Draught') === r0 + 2 && /Gave 2 Redroot Draught/.test(r.result), 'give by name, any case: ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {item: '2 rations', to: pal.name}); ok(r.ok && cnt(pal, 'Trail Ration') === t0 + 2, 'give "2 rations" (count and plural in the name): ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {item: 'potion', hero_id: pal.id}); ok(r.ok && /Redroot/.test(r.result), 'give "potion" finds the potion: ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {item: 'scroll', to: pal.name}); ok(!r.ok && /matches 2/.test(r.error) && /\d+: Scroll of Hearthward/.test(r.error) && /\d+: Scroll of the Steadfast Hour/.test(r.error), 'an ambiguous name lists the matches with indexes: ' + r.error);
+  a.playRate = []; r = await call('give', {item: 'hearth', to: pal.name}); ok(r.ok && cnt(pal, 'Scroll of Hearthward') === s0 + 1, 'a partial name: ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {item: 'Moonwater', to: pal.name}); ok(!r.ok && /nothing called/.test(r.error) && /Your pack: 0: /.test(r.error), 'a missing item lists the pack: ' + r.error);
+  a.playRate = []; r = await call('give', {to: pal.name}); ok(!r.ok && /Give what/.test(r.error), 'give without item or index asks for one: ' + r.error);
+  const ix = (await call('inventory')).items.find(e => /Trail Ration/.test(e.item)).index;
+  a.playRate = []; r = await call('give', {index: ix, to: pal.name}); ok(r.ok && /Trail Ration/.test(r.result), 'the pack index still works: ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {index: ix, item: 'Redroot Draught', to: pal.name}); ok(!r.ok && /not "Redroot Draught"/.test(r.error), 'index and a different item name are refused: ' + r.error);
+  a.playRate = []; INV.addQuest(a, 'Cairn-Door Key'); r = await call('give', {item: 'cairn-door key', to: pal.name}); ok(!r.ok && /bound/.test(r.error), 'a quest item named is still bound: ' + r.error);
+  a.party = keep.party; pal.party = keep.pparty; pal.x = keep.px; pal.y = keep.py; pal.inv = JSON.parse(keep.pinv) || undefined; if (!pal.inv) delete pal.inv; a.inv = JSON.parse(keep.ainv); a.playRate = [];}}
 
 // ---- a posted job with a choice scene ----
 // Prefer a job with a choice scene; take it, and if the job-giver turns the hero away (the DM's

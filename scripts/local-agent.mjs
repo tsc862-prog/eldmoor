@@ -76,7 +76,7 @@ export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
     else if (spec.type === 'array') {if (typeof v === 'string') {const t = v.trim(); try {v = t.startsWith('[') ? JSON.parse(t) : t.split(',')} catch {v = t.split(',')}} if (!Array.isArray(v)) v = [v]; v = v.map(x => String(x).trim()).filter(Boolean).slice(0, 12)}
     else if (spec.type === 'integer' || spec.type === 'number') {const n = Number(v);
       if (!Number.isFinite(n)) { // a name where an id goes (#399): hand it to the tool's name argument when it has one
-        const alt = /_id$/.test(k) && typeof v === 'string' && ['target', 'to', 'who'].find(x => t.args[x] && t.args[x].type === 'string' && a[x] == null);
+        const alt = typeof v === 'string' && (/_id$/.test(k) ? ['target', 'to', 'who'] : k === 'index' ? ['item'] : []).find(x => t.args[x] && t.args[x].type === 'string' && a[x] == null); // give's index as a name (#412)
         if (alt) {out[alt] = v.trim().slice(0, 60); continue}
         return {error: `"${k}" must be a number`}}
       v = spec.type === 'integer' ? Math.round(n) : n}
