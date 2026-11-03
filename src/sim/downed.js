@@ -27,6 +27,7 @@ import {count,take,bestUse,useItem} from './inv.js';
 import {nearDeath} from './lore.js';
 import {held,sceneOf} from './scenes.js';
 import {maxHp,moveTo,healOne,slay} from './heroes.js';
+import {pvpDowned} from './mercy.js'; // finish or spare (#657)
 
 export const DOWN={
   TICK:10,          // game minutes between death saves away from a table
@@ -62,7 +63,6 @@ export const reviveBonus=t=>isDown(t)?Math.round(maxHp(t)*R.HEALER_BONUS):0;
 export function goDown(a,killer){
   if(!a||a.kind!=='hero'||!killer)return false;
   if(isDown(a))return false;                                            // already down: a blow that reaches here finishes them
-  if(killer.kind==='hero'){stats().why.finish++;return false}           // PvP: the victor finishes them (spare comes with #657)
   if(a.hidden||a.state==='dungeon')return false;                        // below ground: the Crypt's own rules
   if(sceneOf(a))return false;                                           // at a Table scene: as before until the rescue scene (#654)
   if(-a.hp>=maxHp(a)){stats().why.massive++;return false}               // a blow from zero past full health
@@ -71,11 +71,12 @@ export function goDown(a,killer){
   a.hp=0;a.state='downed';a.target=null;a.dest=null;a.moving=false;a.raid=false;a.aid=null;
   pop(a.x,a.y-.8,'DOWN','#ff6a5a');
   if(killer.kind==='mob')nearDeath(a,killer); // lore: what nearly killed them (#188)
-  record(a,'Went down at level '+a.lvl+' to ',killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+mobName(killer),'.');
+  record(a,'Went down at level '+a.lvl+' to ',killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:killer.kind==='hero'?killer:'a '+mobName(killer),'.');
   if(a.lvl>=10||a.company!=null)log(a,' is down, bleeding, in the grass.');
   ev(a,'You are down: you lie bleeding at zero health. Death saves every '+R.TICK+' game minutes; three failures and you die.',2);
   for(const b of nearKin(a,R.REACH))ev(b,a.name+' is down and dying nearby!',2);
   callHelp(a);
+  if(killer.kind==='hero')pvpDowned(a,killer); // the victor finishes or spares (sim/mercy.js, #657)
   return true}
 const mobName=m=>m.kind==='mob'&&MOBS[m.type]?MOBS[m.type].name:m.name||'foe';
 
@@ -86,11 +87,11 @@ function killerOf(a){const b=a.down&&a.down.by||{};
   return S.mobs.find(m=>m.id===b.id)||{kind:'mob',id:b.id,type:b.type&&MOBS[b.type]?b.type:Object.keys(MOBS)[0],lvl:a.lvl,x:a.x,y:a.y,alive:false}}
 
 function die(a,why){const st=stats();st.died++;st.why[why]=(st.why[why]||0)+1;
-  const k=killerOf(a);
+  const k=killerOf(a),bled=a.down&&a.down.by&&a.down.by.kind==='hero';
   if(why==='alone')record(a,'Bled out with no one near.');
   for(const b of S.agents)if(b.aid===a.id){b.aid=null;if(b.state==='aid'){b.state='hunt';b.dest=null}}
   a.down=null;a.hp=0;
-  slay(a,k)}
+  slay(a,k,bled?{bled:true}:null)}  // left to bleed by an enemy hero: no honour to anyone (#657)
 
 function rise(a,how){const st=stats();if(how==='revived')st.revived++;else if(how==='rose')st.rose++;else st.woke++;
   a.hp=Math.max(1,a.hp);a.down=null;a.state='hunt';a.target=null;a.dest=null;a.cd=Math.max(a.cd,1);

@@ -45,6 +45,7 @@ import {scriptedBuy,scriptedList} from './market.js'; // hero-to-hero trades (#1
 import {townCraft,keepFor,townSmith} from './craft.js'; // crafting (#258): a scripted crafter makes what it wants in town before the sale
 import {gatherTick} from './gather.js'; // gathering (#257): a scripted hunter works a node of its trade now and then
 import {inSlots} from './company.js'; // the slotted company (#588)
+import {mercyCount} from './mercy.js'; // finish or spare (#657)
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45)*(1+.8*Math.min(1,Math.max(0,(l-9)/7)))); // veterans: L10-16 ramp to +80% (balance #107)
@@ -128,25 +129,32 @@ export function fall(a,cause){
 const GUILD_GRUDGE_LVL=12,RAID_FLEE=.15;
 // A hero at zero HP: downed first when it may be (sim/downed.js), else slain. slay() is the one road to fall().
 export function agentDie(a,killer){if(goDown(a,killer))return;slay(a,killer)}
-export function slay(a,killer){
-  actDeath(a,killer);if(killer.kind==='hero')actKill(killer,a);
+// o.finish: a hero finished them where they lay (sim/mercy.js): the whole guild swears, as for a veteran. o.bled: they
+// bled out after an enemy hero downed them: nobody gets the honour, the XP or the gold (#657, owner answer 3 on #626).
+export function slay(a,killer,o){o=o||{};
+  if(killer.kind==='hero'&&!o.bled&&!o.finish&&a.state==='downed')o.finish=true; // any blow on the downed is a finish
+  if(o.finish)mercyCount('finished');else if(o.bled)mercyCount('bled');
+  actDeath(a,killer);if(killer.kind==='hero'&&!o.bled)actKill(killer,a);
   if(killer&&killer.kind==='mob')loreWitness(a,killer); // those who see it learn what it can do (#188)
   const lv={t:'(level '+a.lvl+')',c:'dm'};
   record(a,'Fell at level '+a.lvl+', slain by ',killer.kind==='hero'?killer:killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+MOBS[killer.type].name,'.');
   bondEvent(a,'died',[killer]);
   for(const x of nearHeroes(a.x,a.y,10))if(x!==a&&x.state!=='dead'&&((a.guild&&x.guild===a.guild)||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
-  if(killer.kind==='hero'){const oh=outpostHonor(a);killer.honor+=oh;S.facStats[killer.fac].honor+=oh;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
+  if(killer.kind==='hero'&&o.bled){log(a,' ',lv,' bled out in ',ZONES[zoneAt(a.x,a.y)],', left where ',killer,' struck them down.');
+    S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild).forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name});
+    inheritGrudge(a,killer);fall(a,'bled out after '+killer.name+' struck them down')}
+  else if(killer.kind==='hero'){const oh=outpostHonor(a);killer.honor+=oh;S.facStats[killer.fac].honor+=oh;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
     killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
     say(killer,'kill',{target:a.name});
-    record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':'Killed ',a,' (level '+a.lvl+').');
+    record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':o.finish?'Finished ':'Killed ',a,' (level '+a.lvl+')'+(o.finish&&!killer.nemesis[a.id]?' where they lay':'')+'.');
     avenged(killer,a);
     if(killer.nemesis[a.id]){debtDone(killer,a);log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
-    else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
+    else log(killer,o.finish?' finished ':' killed ',a,' ',lv,o.finish?' where they lay':'',' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild);
-    mates.forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran swears the whole guild; lesser deaths bind just their party
+    mates.forEach(x=>{if(o.finish||a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran, or one finished where they lay (#657), swears the whole guild; lesser deaths bind just their party
     inheritGrudge(a,killer);
     goalEvent(killer,'slay',a);
-    if(mates.length&&a.guild&&a.lvl>=4)log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
+    if(mates.length&&a.guild&&(a.lvl>=4||o.finish))log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
     fall(a,'slain by '+killer.name);}
   else if(killer.kind==='boss'){log(a,' ',lv,' was incinerated by ',{t:'Kragmaw',c:'gd'},'.');fall(a,'incinerated by Kragmaw')}
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}

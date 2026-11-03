@@ -84,6 +84,7 @@ import {enterSiteTool} from './sites.js'; // DM-made dungeon sites (#69)
 import {noticeHeroes,sighted} from './sighthero.js'; // heroes coming into sight (#570)
 import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,intentView,waitish} from './intent.js'; // the hero's stated aim (#535)
 import {pay as payGold} from './pay.js'; // pay (#628)
+import {finishTool,spareTool} from './mercy.js'; // finish or spare a downed enemy (#657)
 import {markPlace,unmarkPlace,markAt,markHow,hearMarks} from './marks.js'; // mark (#632)
 import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,placeMemory,roadsLine,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,feared,keyOf,sight,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
@@ -941,6 +942,8 @@ const T={
   pay(a,{to,gold,why}){need(!['fight','duel','assist'].includes(a.state),'You are in a fight. Pay when it is over.');need(a.state!=='ghost','Ghosts carry no gold.');
     if(why!=null&&String(why).trim())need(!notEnglish(String(why)),ENGLISH);
     const r=payGold(a,{to,gold,why});need(!r.error,r.error);return r},
+  finish(a,{hero}){need(a.state!=='ghost'&&a.state!=='dead','You cannot.');const r=finishTool(a,hero);need(!r.error,r.error);return r},
+  spare(a,{hero}){need(a.state!=='ghost'&&a.state!=='dead','You cannot.');const r=spareTool(a,hero);need(!r.error,r.error);return r},
   mark(a,{name,note,what}){need(a.state!=='ghost','Ghosts leave no marks.');for(const t of [name,note])if(t!=null&&String(t).trim())need(!notEnglish(String(t)),ENGLISH);
     const r=markPlace(a,{name,note,what});need(!r.error,r.error);return r},
   unmark(a,{name}){const r=unmarkPlace(a,{name});need(!r.error,r.error);return r},
