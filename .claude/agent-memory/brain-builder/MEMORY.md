@@ -57,3 +57,4 @@
 - [Scene props](scene-props.md) — #592 sc.props data, examine/search/give_item hooks, cast.item, pitfalls
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
 - [DM when/watch](dm-when-watch.md) — #635 deferred actions on triggers + DM-chosen wakes: dmwhen.js, run() hook, eventDue watch, test child, pitfalls
+- [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls

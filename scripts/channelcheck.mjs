@@ -411,6 +411,23 @@ ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');
   ok(!personaTxt.some(k => sight.includes(SECRETS[k])) && !privates.some(k => sight.includes(SECRETS[k])), 'carries, quests and knows are public facts: no persona, memory or journal text');
   ok(!newReads.includes(said.narr.slice(0, 12) + 'x') && !JSON.stringify(hr.lines).includes(SECRETS.narr), 'the narrator\'s own lines are not "heard" from the companies');
 }
+// whisper and emote (#627): the words reach one hero within 2 tiles; bystanders see only a veiled line; the far member nothing; the DM's hear nothing
+{const SP = await import('../src/sim/spatial.js'), sW = secret('whisper'), sE = secret('emote'), W0 = rest[0], W1 = rest[1];
+  park(A, spot); park(W0, {x: spot.x + 1, y: spot.y}); park(W1, {x: spot.x, y: spot.y + 1}); park(B, far); SP.rebuild(); for (const x of [A, W0, W1, B]) x.playRate = [];
+  const bn = [A, W0, W1, B].map(x => (x.chat || []).length);
+  r = act(A, 'whisper', {to: W0.name, text: 'Do not tell the others: ' + sW}); ok(r.ok && r.whispered_to === W0.name && r.seen_by.includes(W1.name), 'A whispers to a companion 1 tile away');
+  const rc = act(W0, 'chat_read', {}), bc = act(W1, 'chat_read', {}), fc = act(B, 'chat_read', {});
+  ok(JSON.stringify(rc).includes(sW) && rc.lines.some(l => /^\S+ \(whispered\) /.test(l) || /\(whispered\)/.test(l)), 'the target hears it marked whispered');
+  ok(!JSON.stringify(bc).includes(sW) && bc.lines.some(l => /leans close/.test(l)), 'a bystander sees only that A leans close');
+  ok((B.chat || []).length === bn[3] && !JSON.stringify(fc).includes(sW), 'the far member sees and hears nothing');
+  keep('bystander chat_read', bc); keep('far chat_read', fc); keep('bystander header', PC.paceBrief(W1.id)); keep('bystander events', W1.playEv || []);
+  keep('bystander earshot', act(W1, 'earshot')); keep('bystander party_read', act(W1, 'party_read', {}));
+  ok(!JSON.stringify(DMA.dmAct('hear', {n: 200})).includes(sW) && !JSON.stringify([DMA.dmAct('dm_status'), DMA.dmAct('fellowship_view'), DMA.dmAct('read_dm_log', {})]).includes(sW), 'the DM does not hear a whisper');
+  r = act(B, 'whisper', {to: A.name, text: 'Too far.'}); ok(!r.ok && /away|near/.test(r.error), 'a whisper to someone out of reach is refused');
+  r = act(A, 'emote', {text: 'sharpens his blade ' + sE}); ok(r.ok && r.seen_by.length === 2, 'A emotes');
+  const ec = act(W1, 'chat_read', {}); ok(ec.lines.some(l => l.includes('*') && l.includes(sE)), 'a bystander sees the act in italics'); keep('emote chat_read (bystander)', ec);
+  ok(!(B.chat || []).some(e => e.emote) && !JSON.stringify(DMA.dmAct('hear', {n: 200})).includes(sE), 'the far member and the DM see no emote');
+  ok((A.bubble || {}).text === '*sharpens his blade ' + sE + '*', 'the emote shows as a bubble')}
 // the mirror: Markdown for the owner, never read back
 const mir = MM.memoryMirror({root: LOGS, world: 'check'}), sentM = new Map();
 const flush = () => {const out = NBm.mirrorDirty(sentM); mir.write(out); for (const o of out) sentM.set(o.key, o.sig); return out};
