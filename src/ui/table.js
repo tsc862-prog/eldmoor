@@ -11,6 +11,9 @@
 //           its own after TABLE.stepS seconds); kept per viewer in localStorage. The rolls are the beats' roll data.
 //   switch  the View group's "Table: Auto / Off" button (Off = Watch mode, never pauses); kept
 //           per viewer in localStorage
+// Companies (#456): with more than one company the chip row starts with whose table it is ("At the table: Dovas and
+// Ilsa", "Ketter, alone"); a scene of a company the watcher does not follow makes it a button that follows that company.
+// One company (the default world) shows no name, as before.
 // Legibility (#471): a short pixel-font title (the kind and a few words, sceneHead), the status tags as a chip row of their
 // own, the full question as wrapping body text, and outside combat one row per member (memberRows): name in class colour,
 // answered or waiting, the vote or option chosen, and the nudge or reflex timer. Combat keeps its initiative chips.
@@ -25,6 +28,9 @@ import {maxHp} from '../sim/heroes.js';
 import {effOn,condOn} from '../sim/eff.js';
 import {CONDITIONS,MOVES} from '../data/moves.js';
 import {patch} from './stable.js'; // update in place (#145)
+import {companies,companyById} from '../sim/company.js';
+import {followedCompany,followCompany} from './companyview.js'; // whose table it is (#456)
+import {setView} from './controls.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -112,7 +118,11 @@ function stepRow(box,c){const d=el('div','tstep'),m=el('button','tstb',STEP_TXT[
   box.append(d)}
 function onBox(e){const t=e.target&&e.target.closest?e.target.closest('[data-act]'):null;if(!t)return;
   if(t.dataset.act==='step'){TABLE.step=STEPS[(STEPS.indexOf(TABLE.step)+1)%STEPS.length];try{localStorage.setItem(STEP,TABLE.step)}catch(_){}sig=''}
-  else if(t.dataset.act==='next'){stepNext();sig=''}}
+  else if(t.dataset.act==='next'){stepNext();sig=''}
+  else if(t.dataset.act==='follow'){followCompany(companyById(+t.dataset.co));setView('fellow');sig=''}}
+// Whose table it is, or null with one company (#456): {text, id, followed}.
+export function tableOwner(b){if(!b||b.company==null||companies().length<2)return null;const name=b.companyName||'A company',F=followedCompany();
+  return {text:b.solo?name+', alone':'At the table: '+name,id:b.company,followed:!!F&&F.id===b.company}}
 function endBlock(box,c){if(!c.ends||!c.ends.length)return;const d=el('div','tend');d.setAttribute('aria-label','How the fight ended');
   for(const [t,k] of c.ends)d.append(el('span','tendc'+(k?' '+k:''),t));box.append(d)}
 
@@ -161,12 +171,14 @@ export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd
   if(S.table){if(S.table.id!==lastScene){lastScene=S.table.id;if(TABLE.speed<=1)chime(S.table.kind)}}else lastScene=null;
   const box=$('tbanner');if(!box)return;if(!box._tstep){box._tstep=1;box.addEventListener('click',onBox)}
   const b=bannerOf();if(!b){if(!box.hidden){box.hidden=true;sig=''}return}
-  const c=combatView(),rows=c?null:memberRows(),hd=sceneHead(b.kind,b.title),chips=sceneChips(b,c);
-  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
+  const c=combatView(),rows=c?null:memberRows(),hd=sceneHead(b.kind,b.title),chips=sceneChips(b,c),own=tableOwner(b);
+  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):'',own?own.text+own.followed:''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
   const tt=el('div','tt'),th=el('span','tth',hd.head.toUpperCase());th.title=b.title;tt.append(th);box.append(tt);
   if(S.table&&(S.table.kind==='crawl'||S.table.kind==='site')){const v=el('button','tstb tdg','View the crypt ▸');v.type='button';v.dataset.dungeon='';v.title='Open the dungeon view';tt.append(v)} // #85
   else if(S.table){const v=el('button','tscn','Scene map ▸');v.type='button';v.dataset.scene='';v.title='Show the scene on its own map, or back to the world';tt.append(v)} // scene maps (#431)
-  if(chips.length){const ch=el('div','tchips');for(const x of chips)ch.append(el('span','tp t'+x.k,x.t.toUpperCase()));box.append(ch)}
+  if(chips.length||own){const ch=el('div','tchips');
+    if(own){const o=el(own.followed?'span':'button','tco'+(own.followed?'':' tcob'),own.text);if(!own.followed){o.type='button';o.dataset.act='follow';o.dataset.co=own.id;o.title='Follow this company: the camera, the frames and the sheet turn to it'}ch.append(o)}
+    for(const x of chips)ch.append(el('span','tp t'+x.k,x.t.toUpperCase()));box.append(ch)}
   const fr=plain(b.frame);if(hd.cut&&!fr.toLowerCase().includes(hd.full.toLowerCase()))box.append(el('div','tq',hd.full)); // the whole title when the pixel title cut it and the frame does not say it
   box.append(el('div','tf',fr));
   if(b.narr)box.append(el('div','tf tnarr',b.narr)); // the DM's narrate line (issue #123)
