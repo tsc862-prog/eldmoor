@@ -28,6 +28,8 @@ export const FOCUS={
   RESERVE:.34,   // share of a lever's per-day limit (and of the staged scenes) kept for the Fellowship
   NEAR:16,       // tiles from a member: a pull or a staged spot this close concerns the Fellowship
   MIN_ACTS:6,    // actions before the share means anything (dmcheck, the digest)
+  STARVE_MIN:360, // game minutes without a DM action for a company in the field before it counts as starved (#451)
+  FAIR_MIN:240,   // a company touched this recently gives way to a starved one when only the reserve is left (#451)
 };
 const DAY=1440;
 const alive=a=>a&&a.state!=='dead';
@@ -113,6 +115,25 @@ export function pullTouches(name,p,z,f=focus()){if(!f)return false;p=p&&typeof p
 // Does a lever pull concern any company (the reserved share is kept for every company alike; fairness between them is #451)?
 export const pullTouchesAny=(name,p,z,fs=focuses())=>fs.some(f=>pullTouches(name,p,z,f));
 export const reserveOf=limit=>limit>=2?Math.max(1,Math.floor(limit*FOCUS.RESERVE)):0;
+export const companyCount=()=>companyList().length;
+const coName=C=>C.slots?'the Fellowship':C.name||'company '+C.id;
+
+// Fairness between companies (#451): minutes since the DM last did something for each company (a company never touched counts
+// from the start of the world), the spread between the longest and the shortest, and the companies starved: in the field with no
+// DM action for FOCUS.STARVE_MIN. Read-only, no RNG. {spread, rows:[{cid, name, since, field}], starved:[{cid, name, since}]}; spread null below two companies.
+export function fairness(fs=focuses()){
+  const rows=fs.map(f=>{const t=touchedAt(f.company);return {cid:f.cid,name:coName(f.company),since:Math.round(S.gameMin-(t==null?0:t)),field:f.field}});
+  const sinces=rows.map(r=>r.since);
+  return {spread:rows.length>1?Math.max(...sinces)-Math.min(...sinces):null,rows,starved:rows.filter(r=>r.field>0&&r.since>=FOCUS.STARVE_MIN).map(r=>({cid:r.cid,name:r.name,since:r.since}))}}
+// The fairness refusal of a lever pull (levers.js reserveOf's caller, only when just the reserve is left): a pull that touches
+// companies the DM served in the last FOCUS.FAIR_MIN minutes, and none of them the followed one, gives way while another
+// company is starved. Returns the refusal text or null. One company never refuses.
+export function fairRefusal(name,p,z,fs=focuses()){if(fs.length<2)return null;
+  const hit=fs.filter(f=>pullTouches(name,p,z,f));if(!hit.length||hit.some(f=>f===fs[0]))return null; // fs[0] is the followed company
+  const recent=f=>{const t=touchedAt(f.company);return t!=null&&S.gameMin-t<FOCUS.FAIR_MIN};
+  if(!hit.every(recent))return null;
+  const st=fairness(fs).starved.filter(r=>!hit.some(f=>f.cid===r.cid));
+  return st.length?'kept for '+st[0].name+' first':null}
 
 // The hall board's jobs for the Fellowship (issues #326, #334). One selection for the agents' turn brief (sim/pace.js,
 // which names only what the posting says) and the watcher's Fellowship panel (which may say who posted it): an open
