@@ -15,6 +15,8 @@ import {companyOf,companies,members,mates,campaign,setWitness} from './company.j
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {addHeroNote} from './notebook.js';
+import {metHero,knownPlace} from './sightings.js';
+import {FAC} from '../data/factions.js';
 
 export const REACH={SHOUT:12,MIN:5,PLAN_MIN_H:1,PLAN_MAX_H:48,PLAN_GRACE:720,PLANS_MAX:8,
   COURIER_BASE:90,COURIER_PER_TILE:6,FEE_BASE:3,FEE_TILE:10,COURIER_MAX:3,TEXT:200};
@@ -52,16 +54,18 @@ export const openPlans=C=>{if(C===undefined)C=S.fellowship;return ((C&&C.plans)|
 // ---- couriers ----
 export const courierCost=d=>REACH.FEE_BASE+Math.ceil(d/REACH.FEE_TILE);
 export const courierDelay=d=>REACH.COURIER_BASE+Math.round(d*REACH.COURIER_PER_TILE);
-export function sendCourier(a,to,text){const F=companyOf(a);if(!F)return {error:'Only a member of a company can hire its courier.'};
-  if(F.ids.length<2)return {error:'You ride alone: there is no companion to send word to.'};
+export function sendCourier(a,to,text){const F=companyOf(a);if(!F)return {error:'Only an agent hero can hire a courier.'};
   if(a.state!=='town')return {error:'Couriers are hired at your town gate. Go home first.'};
-  const key=String(to==null?'':to).trim().toLowerCase(),b=members(F).find(x=>x!==a&&(x.name.toLowerCase()===key||String(x.id)===key));
-  if(!b)return {error:'No living companion called "'+clean(to,30)+'" in '+word(F)+'.'};
-  if(inRange(a,b))return {error:b.name+' is close enough to hear you: use party_say.'};
+  const key=String(to==null?'':to).trim().toLowerCase(),mate=members(F).find(x=>x!==a&&(x.name.toLowerCase()===key||String(x.id)===key)),b=mate||metHero(a,key);
+  // any hero you have met by name (#446): your company, or someone you spoke with in earshot
+  if(!b)return {error:'You have never met "'+clean(to,30)+'": a courier carries word only to someone you know by name (talk to them first, or ride with them).'};
+  if(b.fac!==a.fac)return {error:'No courier of your town will carry word to the '+FAC[b.fac].name+'.'};
+  if(inRange(a,b))return {error:b.name+' is close enough to hear you: use '+(mate?'party_say':'say')+'.'};
   const t=clean(text,REACH.TEXT+1);if(!t)return {error:'Send what?'};
   if(t.length>REACH.TEXT)return {error:'Too long: keep it under '+REACH.TEXT+' characters.'};
   const P=F.post||(F.post=[]);if(P.filter(m=>m.from===a.id).length>=REACH.COURIER_MAX)return {error:'You already have '+REACH.COURIER_MAX+' couriers out.'};
-  const d=dist(a,b),cost=courierCost(d);if(a.gold<cost)return {error:'A courier to '+b.name+' costs '+cost+'g; you have '+a.gold+'g.'};
+  // priced by distance to where you last knew them (a companion: where they are), never their position now
+  const at=mate?b:knownPlace(a,b)||b,d=dist(a,at),cost=courierCost(d);if(a.gold<cost)return {error:'A courier to '+b.name+' costs '+cost+'g; you have '+a.gold+'g.'};
   a.gold-=cost;const m={id:F.postSeq=(F.postSeq||0)+1,from:a.id,fromName:a.name,to:b.id,toName:b.name,text:t,sent:Math.round(S.gameMin),due:Math.round(S.gameMin+courierDelay(d)),cost};P.push(m);
   remember(a,'courier','I paid '+cost+'g for a courier to carry word to '+b.name+': "'+t.slice(0,80)+'".');
   campaign(F,'council',a,' pays a courier to carry word to ',b,'.');
