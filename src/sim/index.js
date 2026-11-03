@@ -43,6 +43,7 @@ import {tableTick,tableHold} from './table.js';
 import './events.js'; // DM world events: festival and plague (#10)
 import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Table (#65)
 import {sessionTick,planOpening} from './arrival.js';
+import './vision.js'; // a vision the DM stages: its Table scene kind (#639)
 import {iqTick} from './interrogate.js'; // a yielded foe questioned at the table (#431 slice 3)
 import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
 import {legendsTick} from './legends.js';

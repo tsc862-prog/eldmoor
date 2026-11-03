@@ -158,7 +158,7 @@ const shortOpt=t=>String(t||'').split(/ \(|: /)[0].replace(/^Ability, /,'');
 // Cut at a word, never inside one (#536).
 export const cutWords=(t,n=28)=>{t=String(t==null?'':t).trim();if(t.length<=n)return t;const i=t.lastIndexOf(' ',n);return (i>=n/3?t.slice(0,i):t.slice(0,n)).replace(/[,;:.\s]+$/,'')+'…'};
 // A staged scene's actions in a few words (the sim's text names the person in full: "Offer Father Corvane your help").
-const SHORT={hear:'Hear them out',help:'Offer help',pass:'Ride on',leave:'Leave',parley:'Talk them round',press:'Lean on them',spot:'Look for the trigger',disarm:'Work it loose',round:'Lead the others round',study:'Study the marks',search:'Search the place'};
+const SHORT={hear:'Hear them out',help:'Offer help',pass:'Ride on',leave:'Leave',parley:'Talk them round',press:'Lean on them',spot:'Look for the trigger',disarm:'Work it loose',round:'Lead the others round',study:'Study the marks',search:'Search the place',see:'Say what you see',turn_away:'Turn away'};
 export function shortLabel(sc,k,text){const c=sc&&sc.ctx,L=c&&c.labels;if(L&&L[k])return cutWords(L[k]);
   if(c&&c.staged!=null&&SHORT[k])return k==='leave'&&sc.kind==='social'?'Walk away':SHORT[k];
   return cutWords(shortOpt(text))}
