@@ -7,3 +7,4 @@
 - [Dungeon crawl](project_dungeon_crawl.md) — #65 Crypt room by room as Table scenes from spec rooms; tuning numbers, VARIANTS gotcha, test injection
 - [Crawl pace](project_crawl_pace.md) — #264: rounds 2, XP per room, room hits retuned so 2 rounds can win
 - [Gathering nodes](project_gathering_nodes.md) — #255 nodes overlay from spec.nodes, bands, shore fish, lazy S.nodes respawn, nodecheck
+- [Crypt stair sign](project_crypt_stair_sign.md) — #448 sign/captain text on crypt spec, lore read, no level gate
