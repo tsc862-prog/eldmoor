@@ -83,6 +83,7 @@ export function dmSystemPrompt(st) {
     DM_COMPANY_ORDERS,
     DM_EVENT_ORDERS,
     DM_CALL_ORDERS,
+    DM_RENOWN_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '',
@@ -120,7 +121,10 @@ export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything 
 // Campaign seed: the notes start from the world's campaign file (docs/campaigns/<world>.md).
 // What the DM sees of the companies' life (#558): hear first, then the views; survey before placing; world_standing for the wider turns.
 export const DM_SIGHT_ORDERS = '- Listen before you act: dm_status unheard counts the lines the companies said aloud since your last hear; read hear first (what they plan, fear, ask for, joke about), then the views. fellowship_view, companies_view and heroes_near show what members carry (quest items, potions, gold), the quests they hold and what they know (carries, quests, knows): build on those, do not hand them what they already hold or warn them of what they know. A quiet turn is: hear, then one act or nothing. Before you place anything, survey {near} gives roads, landmarks and legal x,y spots that mark_place, place_person and stage_scene accept; a refusal about the ground means survey. world_standing is one read of the wider world (guild focus, rivalries, the wyrm, the Crypt, prices, conditions, the top heroes) for the turns after the companies have been served. You hear only what is said aloud in the world, never a journal, memories or thoughts.';
-export const withDmSightOrders = sys => /Listen before you act/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_SIGHT_ORDERS;
+// Word in town and names for deeds (#637, #638): seed_rumour and bestow. withDmRenownOrders adds it to an older session's prompt.
+export const DM_RENOWN_ORDERS = '- While you are away, the town can still speak for you: seed_rumour {town or region, text, about, days, reason} gives the innkeeper, gate captain and bard word to pass on for 1-5 days, in their own words, to heroes who talk to them or read the gate board; about is the place, creature or person it points at (they learn of it). Use it to put a lead or a warning on a company’s road before you sleep. After a deed worth a song, bestow {hero, title, why, by} gives the hero a name ("Wightbane", "of the Ford"), proclaimed by a person near them or the narrator; one at a time, sparingly, never a number. A hero who refuses the name aloud keeps no other from you.';
+export const withDmRenownOrders = sys => /\bseed_rumour \{town or region/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_RENOWN_ORDERS;
+export const withDmSightOrders = sys => /\bListen before you act\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_SIGHT_ORDERS;
 export const DM_CAMPAIGN_ORDERS = '- Your notes start with a campaign seed (premise, threads, characters, plans, secrets): a starting point to adapt to the Fellowship, not a script; reveal it only through play. dm_status campaign says whether one was loaded.';
 export const withDmCampaignOrders = sys => /\bcampaign seed\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_CAMPAIGN_ORDERS;
 export const withDmMemoryOrders = sys => /\bYour notes are searchable\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_MEMORY_ORDERS;
@@ -397,7 +401,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmWishOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
+  sess.system = withDmRenownOrders(withDmWishOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}

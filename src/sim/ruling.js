@@ -38,6 +38,8 @@ import {notEnglish} from './lang.js';
 import {record} from './history.js';
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 import {dmAlive,goneEpoch} from './dmreflex.js'; // the one place that knows whether the DM listens (#561)
+import {spokenAbout} from './epithet.js'; // a hero refusing a name given (#638)
+
 
 export const ATTEMPT={
   PER_HOUR:3,        // attempts per hero per game hour (the DM is not asked to rule on every step)
@@ -110,7 +112,7 @@ export function attempt(a,args={}){const what=clean(args.what,1e4),how=clean(arg
   if(sceneOf(a))return {ok:false,error:'You are in a Table scene: try it there with scene_act {option: "attempt", line: "what you try"}.'};
   if(FIGHT_STATES.includes(a.state))return {ok:false,error:'You are in a fight: strike, use_ability, use_item or flee. attempt is for outside a fight round (in a Table scene, scene_act attempt).'};
   rate(a).push(S.gameMin);
-  agentLine(a,speak(a,what+(how?' ('+how+')':''),'attempt')); // the act said aloud: companions in earshot see what was tried
+  agentLine(a,speak(a,what+(how?' ('+how+')':''),'attempt'));spokenAbout(a,what); // refusing a name given aloud (#638) // the act said aloud: companions in earshot see what was tried
   const r=open(a,what,how,at,null);
   if(r.state==='wait')return {ok:true,attempt:what,ruling:'The DM weighs it (up to '+Math.round(r.ms/1000)+' s); the ruling comes as an event and in your chat.',call:r.id,attempts_left_this_hour:attemptsLeft(a)};
   return {ok:true,attempt:what,...heroView(r),attempts_left_this_hour:attemptsLeft(a)}}
