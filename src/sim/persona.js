@@ -356,6 +356,10 @@ export function become(a,args){const x=args&&typeof args==='object'?args:{},P=se
   P.hist.push(h);while(P.hist.length>SELF.HIST)P.hist.shift();
   return {ok:true,field:f,...(about?{about}:{}),before:h.before||'(none)',after:h.after,change:histLine(h),changes_left_today:SELF.PER_DAY-T.n,...(note?{note}:{})}}
 
+// A change the hero made to itself outside become (its gambits' safety rules, #617): one line in the persona history, not
+// one of the day's become changes.
+export function histNote(a,f,before,after,why){if(!a)return;const P=selfOf(a);P.hist.push({d:dayN(),gm:Math.round(S.gameMin),f,before:cutS(before,SELF.CUT),after:cutS(after,SELF.CUT),why:cutS(why,200)});while(P.hist.length>SELF.HIST)P.hist.shift()}
+
 // ---- stories told (#571) ----
 // A story a hero tells of its own past round the fire becomes part of its backstory: a.told [{d, gm, text, to:[names]}]
 // (SELF.TOLD kept), a "told: ..." line in its persona history (not one of its daily changes), and every turn header reminds it

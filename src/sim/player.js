@@ -39,7 +39,7 @@ import {PLAYER_TOOLS} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
 import {soloFor,companyOf,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
-import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,findMob,turnIn,huntZone} from './heroes.js';
+import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
 import {partyMates,leaderOf,leaveParty} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {earshot} from './earshot.js'; // who hears you now (#395)
@@ -85,10 +85,13 @@ import {SPEC_LVL} from '../data/classes.js';
 import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfession,unlearnProfession,profKey} from './gather.js'; // professions and gathering (#257)
 import {craftTool,smithTool} from './craft.js'; // crafting (#258)
 import {MATERIALS} from '../data/items.js';
-import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
+import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid,bestUse} from './inv.js'; // the pack (#124)
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
 import {attempt as attemptRuled} from './ruling.js'; // free actions ruled by the DM (#522)
 import {worldHeld,holdLine} from './prep.js'; // the world held before play (#559)
+import {defineGambits,idlePick,fightRules,reflexPick,HOLD,gambitRec,ruleText,GAMBIT,gambitsView,setGambit,moveGambit,toggleGambit,dropGambit,resetGambits,onSafetyChange} from './gambits.js'; // the hero's own rules (#617)
+import {histNote} from './persona.js';
+onSafetyChange((a,before,after,why)=>histNote(a,'gambits',before,after,why)); // a safety rule changed: the persona history says so (#617)
 
 // ---- knobs ----
 export const PK={
@@ -152,22 +155,10 @@ function since(list,k){if(!list||!list.length)return [];if(!k)return list.slice(
 // #487: with the scripted heroes' caution. A hurt hero walks home to heal (it rests out here only when no creature is
 // close), a storm sends it home, and every hunt autopilot starts is wary (field(), fight()): it keeps to one ground,
 // takes only prey it sizes up as an even match or less, and breaks off at PK.WARY_FLEE.
-function autopilot(a){const mh=maxHp(a),field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
-  if((field||a.state==='town')&&a.hp>=mh*PK.RETREAT*tm(a,'retreat')){const fo=standingFollow(a);if(fo)return fo} // a standing follow order (#445): fall in behind them again
-  if(a.state==='town')return townPilot(a);
-  if(!field)return null;
-  const c=homeOf(a),z=zoneAt(a.x,a.y),home=why=>({kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'}],last:'town',label:c.name,auto:'heading home to '+c.name+' ('+why+')'});
-  if(a.hp<mh*PK.RETREAT*tm(a,'retreat'))return home('too hurt to stay out');
-  if(a.hp<mh*.6)return creatureNear(a,PK.REST_CLEAR)?home('hurt, and creatures close by'):{kind:'rest',until:S.gameMin+60,auto:'resting while hurt',label:'rest'};
-  if(isStorm(z))return home('a storm over '+ZONES[z]);
-  const ip=intentPilot(a);if(ip)return ip; // the hero's stated aim (#535) is the standing order where it maps to one
-  const o=a.playOrder;if(o&&o.kind==='hunt'&&fits(a,z))return {kind:'hunt',n:o.n,k0:a.kills,flee:o.flee,prey:o.prey,wary:true,ground:z,auto:'hunting again (your last order: hunt '+o.n+')',label:'hunt'};
-  if(leaderOf(a))return null; // a follower keeps to its leader out here (the follow state); one whose leader stayed in town hunts on
-  if(load(a)>=PK.BAG)return {kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (pack full)',auto:'heading home to sell (pack full)'};
-  const b=bandOf(z),g=groundFor(a),holds=b&&a.lvl>=b[0]&&(b[1]==null||a.lvl<=b[1]);
-  if(fits(a,z)&&(g==null||g===z||holds))return {kind:'hunt',n:TP.HUNT,k0:a.kills,wary:true,ground:z,auto:'hunting in '+ZONES[z]+' (it suits your strength)',label:'hunt'};
-  if(g!=null&&g!==z){const p=planOne(a,ZONES[g].toLowerCase());if(p&&!p.error)return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'moving on to '+ZONES[g]+' ('+ZONES[z]+(fits(a,z)?' is not your ground':' is beyond you')+')'},{kind:'hunt',n:TP.HUNT,wary:true,ground:g,auto:'hunting in '+ZONES[g]+' (it suits your strength)'}]}
-  return home('this land is beyond you')}
+function autopilot(a){const field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
+  if(!field&&a.state!=='town')return null;
+  return idlePick(a,{town:a.state==='town',field}); // the hero's gambits (#617): its class preset is the policy above, rule for rule
+}
 // A living creature within r tiles (resting out in the open is only safe without one).
 const creatureNear=(a,r)=>nearMobs(a.x,a.y,r).some(m=>m.alive&&!m.gone&&!m.hidden&&dist(a,m)<=r);
 // Wary prey (#487): the nearest creature on the hunting ground that this hero sizes up as an even match or less (no named
@@ -198,20 +189,6 @@ function groundFor(a){const g=a.playGround;if(g!=null&&ZONES[g]&&fits(a,g)&&know
   const h=huntZone(a);return h!=null&&ZONES[h]&&knowsPlace(a,ZONES[h])?h:null}
 const potionsHeld=a=>invOf(a).list.reduce((n,e)=>n+(!isGear(e)&&USES[e.id]&&USES[e.id].kind==='potion'?e.n||1:0),0);
 const bestPotion=a=>Object.keys(USES).filter(k=>{const U=USES[k];return U.kind==='potion'&&!U.craft&&U.lvl<=a.lvl}).sort((x,y)=>USES[y].lvl-USES[x].lvl)[0]||null;
-function townPilot(a){const mh=maxHp(a),c=homeOf(a);
-  if(inSlots(a)&&openProps().length)return null; // a vote is open: the party is deciding, autopilot waits with it
-  if(a.hp<mh*.6){const inn=c.spots&&c.spots.inn||c.ah;return [{kind:'move',legs:[{x:inn.x,y:inn.y,st:'town'}],last:'town',label:'the inn in '+c.name,auto:'walking to the inn to rest (hurt)'},{kind:'rest',until:S.gameMin+60,auto:'resting at the inn'}]}
-  if(a.hp<mh*PK.READY)return {kind:'rest',until:S.gameMin+30,auto:'resting before heading out'}; // #487: out only near full health
-  if(load(a)>=TP.LOOT)return {kind:'sell',auto:'selling your loot'};
-  const pk=bestPotion(a);if(pk&&potionsHeld(a)<TP.POTIONS&&a.gold>=USES[pk].price*2&&used(a)<capOf(a))return {kind:'buy',item:pk,n:TP.POTIONS-potionsHeld(a),auto:'buying '+pk};
-  const ip=intentPilot(a);if(ip)return ip; // the stated aim (#535) before waiting for a leader or the habits below
-  const L=a.party&&a.party.leader!==a&&a.party.leader.state!=='dead'?a.party.leader:null;
-  if(L&&S.gameMin-(a.playActAt||0)<PK.IDLE+TP.WAIT)return null; // wait for the leader a while: it follows them out (town())
-  const z=groundFor(a);if(z==null)return null;const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
-  const o=a.playOrder&&a.playOrder.kind==='hunt'?a.playOrder:null,n=o?o.n:TP.HUNT;
-  const why=o?'your last order: hunt '+o.n:L?L.name+' is still in town; hunting nearby':'it suits your strength';
-  return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'heading out to '+ZONES[z]+' to hunt ('+why+')'},{kind:'hunt',n,flee:o?o.flee:undefined,prey:o?o.prey:undefined,wary:true,ground:z,auto:'hunting in '+ZONES[z]+' ('+why+')'}]}
-
 // ---- the stated aim (issue #535) ----
 // What autopilot carries on for an aim (sim/intent.js), where it maps to one: walk on to its place, hunt its ground (one that
 // fits, wary as ever), wait where it is. A follow aim is the standing follow order (a.playOrder, #445). Safety comes first:
@@ -228,6 +205,89 @@ function intentPilot(a){if(!aimHeld(a))return null;const I=a.intent,o=I.order;if
     const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
     return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'heading to '+ZONES[z]+why},h]}
   return null}
+// ---- gambits (issue #617): what each rule does for this hero ----
+// The conditions that need this module's knobs and every action. Each action is a piece of the policy autopilot and the
+// reflexes followed before #617, unchanged, so the class preset (data/gambits.js) plays as before; an action that cannot
+// run here returns null and the next rule is tried. ctx: {town, field} between turns, {m, cmd, list} in a fight.
+const homeCmd=(a,why)=>{const c=homeOf(a);return {kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'}],last:'town',label:c.name,auto:'heading home to '+c.name+' ('+why+')'}};
+function homeWhy(a,r){const z=zoneAt(a.x,a.y),w=r.and&&r.when==='always'?r.and:r.when;
+  if(w==='self_hp_below')return 'too hurt to stay out';if(w==='storm')return 'a storm over '+ZONES[z];if(w==='storm_or_fog')return 'storm or fog over '+ZONES[z];
+  if(w==='always')return 'this land is beyond you';return 'your rule: '+ruleText(r)}
+const gLeader=a=>a.party&&a.party.leader!==a&&a.party.leader.state!=='dead'?a.party.leader:null;
+const gZone=(a,v)=>{if(v==null||v==='')return null;const z=ZONES.findIndex(n=>n&&n.toLowerCase()===String(v).toLowerCase().trim());return z>=0&&knowsPlace(a,ZONES[z])&&fits(a,z)?z:-1};
+const gAlly=(a,who,ctx)=>{if(ctx.hit&&ctx.hit!==true)return ctx.hit;const w=String(who||'').toLowerCase();if(w==='self')return a;if(w==='leader')return leaderFor(a)||gLeader(a);
+  const L=(ctx.list||(a.party?a.party.mem:[a])).filter(b=>b.state!=='dead'&&b.state!=='ghost'&&dist(a,b)<=sightOf(a));
+  if(w&&w!=='weakest_ally')return L.find(b=>b.name.toLowerCase().split(' ')[0]===w.split(' ')[0])||null;
+  let low=null;for(const b of L)if(!low||b.hp/maxHp(b)<low.hp/maxHp(low))low=b;return low};
+const gOnce=(a,r,k,gap)=>{const g=gambitRec(a,true);const t=g.once[k+r.id];if(t!=null&&S.gameMin-t<gap)return false;g.once[k+r.id]=S.gameMin;return true};
+defineGambits({
+  conds:{
+    pack_full:(a,w)=>load(a)>=(w.n!=null&&Number.isFinite(Number(w.n))?Math.max(1,Math.round(Number(w.n))):PK.BAG),
+    potions_below:(a,w)=>potionsHeld(a)<Math.max(1,Math.min(9,Math.round(Number(w.n))||1)),
+    no_potions:a=>potionsHeld(a)===0,
+    no_quest_in_focus:a=>!questLog(a).focus,
+    quest_target_in_sight:a=>{const q=a.quest;if(!q||q.have>=q.need)return false;const R=sightOf(a);return nearMobs(a.x,a.y,R).some(m=>m.alive&&!m.gone&&!m.hidden&&m.type===q.type&&dist(a,m)<=R)},
+    node_ready:(a,w)=>{if(inTown(a)||cityAt(a))return false;const p=pickNode(a,w.kind||'',sightOf(a));return !!(p&&p.node&&canGather(a,p.node).ok)},
+    // the flee mark of the fight reflex, as before #617: PK.FLEE, the hunt order's flee_below, autopilot's wary marks (#487)
+    past_flee_mark:(a,w,ctx)=>{const m=ctx&&ctx.m,cmd=ctx&&ctx.cmd;if(!m)return false;
+      const wary=a.playIdle||cmd&&cmd.wary,wv=(m.lvl>a.lvl+PK.WARY_UP||m.elite||m.named?PK.WARY_OUT:PK.WARY_FLEE)*tm(a,'flee');
+      const fb=cmd&&cmd.flee!=null?(wary?Math.max(cmd.flee,wv):cmd.flee):wary?wv:PK.FLEE;return a.hp<maxHp(a)*fb}},
+  acts:{
+    // ---- in a fight ----
+    heal:(a,t,ctx)=>{if(!CLS[a.cls].heal)return null;const r=ctx.rule;
+      if(r.when==='always'&&!r.and&&!t.who){const h=a.healCd,p=a.potCd;priestHeal(a,ctx.list);return a.healCd!==h||a.potCd!==p} // its own judgement, as before
+      if(a.healCd>0)return null;const b=gAlly(a,t.who,ctx);if(!b||b.state==='ghost'||dist(a,b)>4||b.hp>=maxHp(b))return null;healOne(a,b);return true},
+    defend:(a,t,ctx)=>{if(a.cd>0)return null;strike(a,ctx.m);a.cd=1.1;return true},
+    drink_potion:(a,t,ctx)=>{const r=ctx.rule;
+      if(r.when==='always'&&!r.and)return asSrc('reflex',()=>fightAid(a,ctx.m)); // reflex: a potion or ward from the pack keeps the hero up while the agent thinks (sim/inv.js)
+      if(a.potCd>0)return null;const id=bestUse(a,'potion');if(!id)return null;return asSrc('reflex',()=>useItem(a,id)).ok||null},
+    flee_home:a=>{if(a.state!=='fight')return null;asSrc('reflex',()=>flee(a,true));return 'end'},
+    retreat_to:(a,t)=>{if(a.state!=='fight')return null;const to=String(t.to||'town').toLowerCase();let p=null,label=null;
+      if(to==='leader'){const L=leaderFor(a)||gLeader(a);if(L&&L!==a&&L.state!=='dead'&&!L.hidden){p={x:L.x,y:L.y};label=L.name}}
+      else if(to==='camp'){const C=companyOf(a),g=C&&C.camp;if(g&&g.phase){p={x:g.x,y:g.y};label='the camp'}}
+      if(to!=='town'&&!p)return null;asSrc('reflex',()=>flee(a,true));
+      if(p&&a.state==='return')a.pq=[{kind:'move',legs:[{x:p.x,y:p.y,st:'return'}],last:'hunt',label,flee:true}];return 'end'},
+    use_ability:(a,t,ctx)=>{const key=String(t.id||'').toLowerCase().replace(/[^a-z]/g,'');const id=movesOf(a).find(i=>i===key||MOVES[i].name.toLowerCase().replace(/[^a-z]/g,'')===key);if(!id)return null;
+      const M=MOVES[id],w=String(t.target||'').toLowerCase();let on=null;
+      if(M.target==='foe')on=ctx.m;else if(M.target==='ally'){on=w==='foe'?null:gAlly(a,w===''?'self':w,ctx);if(!on)return null}
+      const r=useMove(a,id,on,{mates:ctx.list,foe:ctx.m});if(!r||!r.ok)return null;if(M.swing)a.cd=Math.max(a.cd,0)+1.1;return true},
+    guard:(a,t,ctx)=>{const b=gAlly(a,t.who,ctx);if(!b||b===a)return null;
+      const x=nearMobs(b.x,b.y,4).find(m=>m.alive&&!m.gone&&m.target===b&&dist(a,m)<=6);if(!x)return null;x.target=a;return true},
+    // ---- both ----
+    hold_position:(a,t,ctx)=>ctx.m?'end':HOLD,
+    shout:(a,t,ctx)=>{const text=clean(t.text,120);if(!text||notEnglish(text)||!gOnce(a,ctx.rule,'s',GAMBIT.SHOUT_GAP))return null;const n=partySay(a,text);if(typeof n==='string')return null;
+      const e=a.chat&&a.chat[a.chat.length-1];if(e)agentLine(a,e);return ctx.m?true:HOLD},
+    wake_me:(a,t,ctx)=>{if(!gOnce(a,ctx.rule,'w',GAMBIT.WAKE_GAP))return null;ev(a,'Your rule calls you: '+ruleText(ctx.rule)+'.',2);return ctx.m?true:HOLD},
+    // ---- between turns ----
+    follow_order:a=>a.hp>=maxHp(a)*PK.RETREAT*tm(a,'retreat')?standingFollow(a):null, // a standing follow order (#445): fall in behind them again
+    follow_leader:(a,t,ctx)=>{if(ctx.field)return leaderOf(a)?HOLD:null; // a follower keeps to its leader out here (the follow state); one whose leader stayed in town hunts on
+      const L=gLeader(a);return L&&S.gameMin-(a.playActAt||0)<PK.IDLE+TP.WAIT?HOLD:null}, // in town: wait for the leader a while; it follows them out (town())
+    rest:(a,t,ctx)=>{const min=Math.min(240,Math.max(10,Math.round(Number(t.minutes))||60));
+      if(ctx.town){if(t.inn&&t.inn!=='no'){const c=homeOf(a),inn=c.spots&&c.spots.inn||c.ah;return [{kind:'move',legs:[{x:inn.x,y:inn.y,st:'town'}],last:'town',label:'the inn in '+c.name,auto:'walking to the inn to rest (hurt)'},{kind:'rest',until:S.gameMin+min,auto:'resting at the inn'}]}
+        return {kind:'rest',until:S.gameMin+min,auto:'resting before heading out'}} // #487: out only near full health
+      return creatureNear(a,PK.REST_CLEAR)?homeCmd(a,'hurt, and creatures close by'):{kind:'rest',until:S.gameMin+min,auto:'resting while hurt',label:'rest'}},
+    go_home:(a,t,ctx)=>ctx.field?homeCmd(a,homeWhy(a,ctx.rule)):null,
+    sell_loot:(a,t,ctx)=>{if(ctx.town)return {kind:'sell',auto:'selling your loot'};const c=homeOf(a);
+      const cmd={kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (pack full)'};
+      if(!ctx.reflex)cmd.auto='heading home to sell (pack full)';return cmd},
+    buy_potions:(a,t,ctx)=>{if(!ctx.town)return null;const n=Math.min(6,Math.max(1,Math.round(Number(t.n))||TP.POTIONS)),pk=bestPotion(a),held=potionsHeld(a);
+      return pk&&held<n&&a.gold>=USES[pk].price*n&&used(a)<capOf(a)?{kind:'buy',item:pk,n:n-held,auto:'buying '+pk}:null},
+    pursue_aim:a=>intentPilot(a)||null, // the hero's stated aim (#535) is the standing order where it maps to one
+    hunt_again:(a,t,ctx)=>{if(!ctx.field)return null;const o=a.playOrder,z=zoneAt(a.x,a.y);
+      return o&&o.kind==='hunt'&&fits(a,z)?{kind:'hunt',n:o.n,k0:a.kills,flee:o.flee,prey:o.prey,wary:true,ground:z,auto:'hunting again (your last order: hunt '+o.n+')',label:'hunt'}:null},
+    hunt_here:(a,t,ctx)=>{if(!ctx.field)return null;const z=zoneAt(a.x,a.y),b=bandOf(z),g=groundFor(a),holds=b&&a.lvl>=b[0]&&(b[1]==null||a.lvl<=b[1]);
+      return fits(a,z)&&(g==null||g===z||holds)?{kind:'hunt',n:TP.HUNT,k0:a.kills,wary:true,ground:z,auto:'hunting in '+ZONES[z]+' (it suits your strength)',label:'hunt'}:null},
+    hunt_region:(a,t,ctx)=>{const gz=gZone(a,t.region);if(gz===-1)return null;
+      if(ctx.town){const z=gz!=null?gz:groundFor(a);if(z==null)return null;const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
+        const L=gLeader(a),o=a.playOrder&&a.playOrder.kind==='hunt'?a.playOrder:null,n=o?o.n:TP.HUNT;
+        const why=o?'your last order: hunt '+o.n:L?L.name+' is still in town; hunting nearby':'it suits your strength';
+        return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'heading out to '+ZONES[z]+' to hunt ('+why+')'},{kind:'hunt',n,flee:o?o.flee:undefined,prey:o?o.prey:undefined,wary:true,ground:z,auto:'hunting in '+ZONES[z]+' ('+why+')'}]}
+      const z=zoneAt(a.x,a.y),g=gz!=null?gz:groundFor(a);if(g==null||g===z)return null;const p=planOne(a,ZONES[g].toLowerCase());if(!p||p.error)return null;
+      return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'moving on to '+ZONES[g]+' ('+ZONES[z]+(fits(a,z)?' is not your ground':' is beyond you')+')'},{kind:'hunt',n:TP.HUNT,wary:true,ground:g,auto:'hunting in '+ZONES[g]+' (it suits your strength)'}]},
+    make_camp:(a,t,ctx)=>{if(!ctx.field)return null;const C=companyOf(a);if(!C||leaderFor(a)!==a||(C.camp&&C.camp.phase))return null;return leaderRest(a,t.hours||2)==null?HOLD:null},
+    gather:(a,t,ctx)=>{if(!ctx.field||!fieldState(a))return null;const p=pickNode(a,t.kind||'',sightOf(a));if(!p||!p.node||!canGather(a,p.node).ok)return null;
+      return {kind:'gather',node:p.node.id,label:p.node.name,auto:'gathering at a '+String(p.node.name).toLowerCase()}},
+  }});
 // The order an aim maps to: the command the agent just gave (or carries out now), else what the goal's words name.
 function orderOf(a,c,target){if(!c||c.auto)return null;
   if(c.kind==='move'&&!c.flee){const e=(c.legs||[])[c.legs.length-1];return e?{kind:'move',label:c.label,target:target||null,to:{x:e.x,y:e.y},last:c.last}:null}
@@ -412,7 +472,7 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
   if(cmd){done(a,'Cannot '+cmd.kind+' here.');return true}
   // idle reflex: a full bag goes home to be sold
   a.moving=false;
-  if(load(a)>=PK.BAG&&!turnHeld(a)){const c=homeOf(a);a.pq=[{kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (pack full)'}];ev(a,'Your pack is full of loot; heading home to sell.',true)}
+  if(!turnHeld(a)){const r=reflexPick(a,{field:true,town:false});if(r){a.pq=Array.isArray(r)?r:[r];ev(a,r.why||'Your pack is full of loot; heading home to sell.',true);delete r.why}} // the pack reflex: the hero's sell_loot gambits (#617)
   return true}
 
 function fight(a,dt,cmd){const m=a.target,mh=maxHp(a);a.cd-=dt;
@@ -422,11 +482,9 @@ function fight(a,dt,cmd){const m=a.target,mh=maxHp(a);a.cd-=dt;
   const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
   if(d>r){moveTo(a,m.x,m.y,dt,2.4);return true}a.moving=false;
   if(!m.target)m.target=a;
-  priestHeal(a,a.party?a.party.mem:[a]);
-  if(a.cd<=0){strike(a,m);a.cd=1.1}
-  asSrc('reflex',()=>fightAid(a,m)); // reflex: a potion or ward from the pack keeps the hero up while the agent thinks (sim/inv.js)
-  if(a.state==='fight'){const wary=a.playIdle||cmd&&cmd.wary,w=(m.lvl>a.lvl+PK.WARY_UP||m.elite||m.named?PK.WARY_OUT:PK.WARY_FLEE)*tm(a,'flee'); // autopilot breaks off as early as a scripted hero, sooner from a foe above it (#487)
-    const fb=cmd&&cmd.flee!=null?(wary?Math.max(cmd.flee,w):cmd.flee):wary?w:PK.FLEE;if(a.hp<mh*fb)asSrc('reflex',()=>flee(a,true))}
+  // The hero's fight gambits (#617), every moment in order. The class preset is the old fixed sequence: the class heal
+  // (priestHeal), a blow when the weapon is ready, the pack's reflex (sim/inv.js fightAid), and the flee mark (past_flee_mark).
+  fightRules(a,{m,cmd,list:a.party?a.party.mem:[a]});
   return true}
 
 // Break off: a monster lets go (one parting blow is rolled), a duel ends in a pull-back.
@@ -1195,6 +1253,13 @@ const T={
     const noAim=!aimHeld(a)&&m>INTENT.WAIT_NOAIM;if(noAim)m=INTENT.WAIT_NOAIM; // waiting needs a reason and a limit (#535)
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS,...(noAim?{limit:'You have no aim stated, so the wait is held to '+INTENT.WAIT_NOAIM+' game minutes. intent {goal, why, until} says what you wait for.'}:{})}}},
   // the stated aim (#535, sim/intent.js): read it, state it, or set it down
+  // gambits (#617): the hero's own rules; edits never refused for being unwise, only for words outside the vocabulary or the day's limit
+  gambits(a,{vocabulary}={}){return gambitsView(a,{vocab:/^(yes|true|1)$/i.test(String(vocabulary||''))})},
+  set_gambit(a,args={}){const r=setGambit(a,args);need(r.ok,r.error);return r},
+  move_gambit(a,args={}){const r=moveGambit(a,args);need(r.ok,r.error);return r},
+  toggle_gambit(a,args={}){const r=toggleGambit(a,args);need(r.ok,r.error);return r},
+  drop_gambit(a,args={}){const r=dropGambit(a,args);need(r.ok,r.error);return r},
+  reset_gambits(a,args={}){const r=resetGambits(a,args);need(r.ok,r.error);return r},
   intent(a,{goal,why,until,done}={}){const g=goal!=null?String(goal).trim():'';
     if(/^(yes|true|done|kept|abandon(ed)?|drop(ped)?)$/i.test(String(done==null?'':done))||/^(done|none|nothing)$/i.test(g))return endIntent(a,why);
     if(!g)return intentView(a,leaderFor(a));

@@ -49,6 +49,7 @@
     "campaigncheck": "node scripts/campaigncheck.mjs",
     "lorecheck": "node scripts/lorecheck.mjs",
     "townpilotcheck": "node scripts/townpilotcheck.mjs",
+    "gambitcheck": "node scripts/gambitcheck.mjs",
     "toolwincheck": "node scripts/toolwincheck.mjs",
     "attemptcheck": "node scripts/attemptcheck.mjs",
     "wakecheck": "node scripts/wakecheck.mjs",
