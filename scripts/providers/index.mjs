@@ -5,7 +5,7 @@
 import {anthropicAdapter} from './anthropic.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './ollama.mjs';
 import {openaiAdapter, hfAdapter, hfModelList} from './openai.mjs';
-import {googleAdapter} from './google.mjs';
+import {googleAdapter, googleFromEnv} from './google.mjs';
 export {anthropicAdapter, ollamaAdapter, openaiAdapter, hfAdapter, googleAdapter, OLLAMA_URL, OLLAMA_MODEL};
 export {DEFAULT_MODEL, PRICES, costOf} from './anthropic.mjs';
 
@@ -29,6 +29,6 @@ export function makeProviders({anthropicClient = null, model, env = process.env,
     ollama: ollamaAdapter({url: env.OLLAMA_URL || OLLAMA_URL, defaultModel: env.OLLAMA_MODEL || OLLAMA_MODEL, fetchImpl, numCtx: numCtxFrom(env)}), // one num_ctx with the runners (issue #221)
     openai: openaiAdapter({apiKey: env.OPENAI_API_KEY || null, baseUrl: env.OPENAI_BASE_URL || undefined, defaultModel: env.OPENAI_MODEL || null, allow: modelListFrom(env, 'OPENAI_MODELS'), fetchImpl}),
     huggingface: hfAdapter({apiKey: env.HF_TOKEN || null, baseUrl: env.HF_BASE_URL || undefined, defaultModel: env.HF_MODEL || null, models: modelListFrom(env, 'HF_MODELS', hfModelList(env)), fetchImpl}), // Hugging Face router, free allowance only (#552)
-    google: googleAdapter({apiKey: env.GOOGLE_API_KEY || null}),
+    google: googleFromEnv(env, {fetchImpl, allow: modelListFrom(env, 'GOOGLE_MODELS')}), // Gemini through Google's OpenAI-compatible endpoint, native generateContent where it falls short (#672)
   };
 }

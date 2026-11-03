@@ -90,7 +90,7 @@ export const setFetch=f=>{fetchOverride=f}; // tests only
 // (Claude). Saved with the hero. Local providers get longer timeouts and cost nothing.
 export const MIND_PROVIDERS=['anthropic','ollama','openai','huggingface','google'];
 export const LOCAL_PROVIDERS={ollama:1};
-export const PROVIDER_LABEL={anthropic:'Claude',ollama:'Local (Ollama)',openai:'OpenAI',huggingface:'Hugging Face',google:'Google'};
+export const PROVIDER_LABEL={anthropic:'Claude',ollama:'Local (Ollama)',openai:'OpenAI',huggingface:'Hugging Face',google:'Gemini'};
 const MODEL_OK=/^[A-Za-z0-9][\w.:\/+-]{0,99}$/;
 export function mindCfg(a){const c=a&&a.brainCfg;if(!c||typeof c!=='object'||!MIND_PROVIDERS.includes(c.provider))return null;
   const o={provider:c.provider};if(typeof c.model==='string'&&MODEL_OK.test(c.model))o.model=c.model;if(c.effort==='low'||c.effort==='medium'||c.effort==='high')o.effort=c.effort;return o}
@@ -107,7 +107,7 @@ export function writeCfg(a){const c=mindCfg(a);if(c||!a||!a.player||!runnerMindF
 const isLocalMind=a=>{const c=mindCfg(a);return !!(c&&LOCAL_PROVIDERS[c.provider])};
 // Short label for a model: "qwen2.5:14b · local", "claude-haiku-5-5". From an entry (what answered) or a setting.
 export function modelTag(x){if(!x)return null;const m=x.model,p=x.provider;
-  if(!m)return p&&p!=='anthropic'?(PROVIDER_LABEL[p]||p):null;return m+(LOCAL_PROVIDERS[p]?' · local':p==='openai'?' · openai':p==='huggingface'?' · huggingface':'')}
+  if(!m)return p&&p!=='anthropic'?(PROVIDER_LABEL[p]||p):null;return m+(LOCAL_PROVIDERS[p]?' · local':p&&p!=='anthropic'?' · '+p:'')} // 'gpt-6-luna · openai', 'gemini-3.8-flash · google'
 // The hero's current mind as a tag: its setting, or 'Claude' for the relay default.
 export const mindTag=a=>{const c=mindCfg(a);return c?modelTag(c)||PROVIDER_LABEL[c.provider]:'Claude'};
 

@@ -597,7 +597,7 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   prints whether Ollama is reachable and which models are pulled; `GET /health` lists the same
   under `providers`.
 - Pick a mind per background hero (Developer toggle; company members are always agents, #148): Scripted / AI / Agent, and
-  for AI a provider (Claude, Local (Ollama), OpenAI, Google) and a model picked from what the relay
+  for AI a provider (Claude, Local (Ollama), OpenAI, Hugging Face, Gemini) and a model picked from what the relay
   reports. The setting is `a.brainCfg = {provider, model}` on the hero (same shape as the agent
   runner's `runner` settings), saved with the world; the brain sends it with every request for
   that hero, Fellowship sheets included.
@@ -612,7 +612,7 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   (for example `qwen2.5:14b · local`), and the relay log and `--verbose` log record provider and model.
 - Adapters live in `scripts/providers/` (one interface: `call({system, user, schema, maxTokens,
   model, effort})`; Ollama and OpenAI also have `chat({messages, tools|format})` for the agent loop).
-  Google is a stub that reports "not configured" until built.
+  Google (Gemini) is the OpenAI adapter with other options, see below.
 
 Local agent runner (part 2):
 
@@ -731,6 +731,55 @@ only `model`, `max_tokens`, `messages` and the structured-output/tools fields, n
   runner waits" (kind `quota`, never retried); other 429s pause the limiter (`RELAY_HF_CONCURRENCY`, default 4, `queues.huggingface`).
 - Agent play is the OpenAI path (`--provider huggingface --model <id>`, `openaiRunner` in `scripts/agent-chat.mjs`, same loop, forced scene answers
   and reflections); no Claude slot, keeps the kind's turn cap and budget caps. `npm run hfcheck` (in CI) runs it all against a mock router.
+
+### Google (Gemini) (issue #672)
+
+The fifth mind provider, id `google` (label "Gemini", tag `<model> · google`, for example `gemini-3.8-flash · google`): Gemini's
+OpenAI-compatible Chat Completions surface (`https://generativelanguage.googleapis.com/v1beta/openai`, the AI Studio key as a bearer) is
+`scripts/providers/openai.mjs` with other options (`googleAdapter`/`GOOGLE_OPTS` in `scripts/providers/google.mjs`, the #552 pattern), with the
+native `generateContent` call as a fallback where the compat layer falls short.
+
+Owner setup:
+
+1. Create a key at https://aistudio.google.com/apikey (a free Google account is enough; the free tier needs no billing).
+2. Add `GOOGLE_API_KEY=...` to `.env` (ignored by git; read only by the relay and the runners, never printed, scrubbed from errors).
+   Optional: `GOOGLE_MODEL=<id>` (a default; none in code), `GOOGLE_MODELS=a,b` (an allow list for the pickers, as `OPENAI_MODELS`, #677), `GOOGLE_TIER=paid` (a billed key: cost from the price table; default free),
+   `GOOGLE_NATIVE=1` (every structured call through `generateContent`), `GOOGLE_BASE_URL`, `RELAY_GOOGLE_CONCURRENCY` (default 4),
+   `RELAY_GOOGLE_RPM` (space calls to the key's requests-per-minute quota; 0, the default, means no spacing).
+3. Restart the relay. `GET /health` lists `providers.google` (the chat models `GET /models` returns for the key, `free: true`) and
+   `queues.google`; the mind row (AI), the Start runner picker, the setup page and the DM seat's picker fill from it, cheapest first by the paid price, labelled "$0.00 / $0.00 per 1M" on the free tier (the table's price on the paid tier or for a paid-only model). Or from a terminal:
+   `npm run agent -- --hero <name|id> --provider google --model gemini-3.8-flash`, `npm run fellowship -- --provider google --model <id>`,
+   `npm run dm -- --provider google --model <id>` (saved as `runner: {provider: 'google', model}`; later runs need only `--hero`).
+
+- Free tier = the budget: on the free tier every call costs $0 (tokens are still counted and shown) and a used-up daily quota reads "Gemini free
+  quota used up for today; the hero plays scripted / the runner waits" (kind `quota`, never retried; daily quotas reset at midnight Pacific).
+  A per-minute 429 is a rate limit: the relay's limiter pauses for the retry delay Google names (writing kinds retry, decisions drop to scripted),
+  a runner waits. 401/403, or Google's 400 "API key not valid", read "bad or missing GOOGLE_API_KEY".
+- How many minds the free tier carries: Google's rate-limit page (read 2026-11-03) does not print the free tier's numbers; they are shown per key
+  in AI Studio. Each agent turn is several model calls (6-12 in the local runs), so divide the key's requests per minute by
+  about 10 for the members that can think at once, and its requests per day by the calls a member makes in a session; set `RELAY_GOOGLE_RPM` to the
+  key's per-minute limit so relay decisions never trip it. Watch the relay log for "free tier per-minute quota" lines.
+- Models and prices: read from https://ai.google.dev/gemini-api/docs/pricing on 2026-11-03 (`PRICES` in `google.mjs`, Standard tier, prompts up
+  to 200k, output including thinking tokens): gemini-3.8-flash and gemini-3.6-flash $0.75 / $3.75 per 1M (doubling 2027-01-01), gemini-3.5-flash-lite
+  $0.30 / $2.50, gemini-3.1-flash-lite $0.25 / $1.50, gemini-3-flash-preview $0.50 / $3, gemini-2.5-flash-lite $0.10 / $0.40, gemini-2.5-flash
+  $0.30 / $2.50 and gemini-2.5-pro $1.25 / $10 (both deprecated, routed to 3.8 Flash / 3.5 Flash-Lite on 2026-12-01), all with a free tier;
+  gemini-4-argon ($2 / $10) and gemini-3.1-pro-preview ($2 / $12) are paid only. A model not in the table reports cost "unknown" on the paid tier.
+- Requests carry only `model`, `messages`, `max_tokens`, `reasoning_effort`, and `response_format` or `tools`. Thinking: `reasoning_effort` "none"
+  on the 2.5 Flash models, "low" on the others (the 3.x models cannot turn it off), and `max_tokens` gets 1024 tokens of headroom, because
+  thinking spends output tokens before the answer; output tokens are counted as total minus prompt, so thinking is in them.
+- Native fallback (`nativeCaller`): a strict schema the compat layer rejects (400 naming the schema or `response_format`) is asked again through
+  `POST /v1beta/models/<model>:generateContent` (`x-goog-api-key` header; `systemInstruction`, `contents`, `generationConfig {maxOutputTokens,
+  responseMimeType: application/json, responseJsonSchema}`), remembered per model (decisions, writing, forced scene answers and reflections);
+  usage from `usageMetadata` (thoughts counted as output), `MAX_TOKENS` -> "reply cut off", a safety finish or a blocked prompt -> "model refused".
+  Tool calls stay on the compat path.
+- Thought signatures: Gemini 3 tool calls carry `extra_content.google.thought_signature`; the loop sends it back within the turn and drops it from
+  the kept history and the session file. A 400 naming a missing signature is asked once more with the tool calls written out as text.
+- Agent play is the OpenAI path (`openaiRunner` -> `googleRunner` in `scripts/agent-chat.mjs`, the same loop, forced scene answers, reflections,
+  state header, English re-prompt, `--max-fails`); no Claude slot; it keeps the budget cap (spent stays $0 on the free tier). The DM plays it through
+  the same loop as a local DM (table, talk and ruling voices on the seat's Gemini model, 8 s budgets). `npm run googlecheck` (in CI) runs it all
+  against a mock Gemini server, with no key and no network.
+- Caveats: Google calls the OpenAI compatibility beta ("still in beta while we extend feature support"); the free quotas are not printed on
+  Google's pages and change with the tier, so read them in AI Studio; check the AI Studio terms for how free-tier prompts are used.
 
 ## DM agent (issue #66, part 1)
 

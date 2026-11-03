@@ -29,15 +29,20 @@ const unanswered=(sc,a)=>!!(sc&&a&&sc.ids.includes(a.id)&&!sc.acts[a.id]&&sc.pha
 export const sceneDue=a=>unanswered(sceneOf(a),a);
 
 // A runner's report: the member's answer is queued (on) or no longer (off). -> the pace answer.
-export function markQueued(a,on){const sc=sceneOf(a);
+// why (#687): what the answer waits behind, 'slot' (a Claude slot under the supervisor), 'turn' (its own turn in flight) or
+// 'queue' (other members' calls on the runner's model queue); kept per scene (sc.qw) for the scene-missed cause.
+export const QUEUE_WHY=['slot','turn','queue'];
+export function markQueued(a,on,why){const sc=sceneOf(a);
   if(!a||!a.player)return {ok:false,error:'not agent-played'};
   if(!on){if(sc&&sc.q)sc.q=sc.q.filter(id=>id!==a.id);return {ok:true,queued:false}}
   if(!unanswered(sc,a))return {ok:true,queued:false,why:'no scene waits for you'};
-  const q=sc.q||(sc.q=[]);if(!q.includes(a.id))q.push(a.id);
+  const q=sc.q||(sc.q=[]);if(!q.includes(a.id))q.push(a.id);if(QUEUE_WHY.includes(why))(sc.qw||(sc.qw={}))[a.id]=why;
   return {ok:true,queued:true,scene:sc.title,extra_s:Math.round(SW.EXTRA_MS/1000)}}
 // The real-time wait the table gives this live member: its base (TABLE.liveMs), plus the bounded extra when queued.
 export const liveLimit=(sc,a,base)=>base+(sc&&sc.q&&a&&sc.q.includes(a.id)?SW.EXTRA_MS:0);
 // The table ran out of time for a live member: its reflex acts (the behavior watch reports it).
+// Why a live member missed its scene (#687), for the scene-missed anomaly and the report.
+export function missCause(sc,id){const w=sc&&sc.qw&&sc.qw[id];return w==='slot'?'waiting for a slot':w==='turn'?'mid-turn':w==='queue'?'model queue':sc&&sc.q&&sc.q.includes(id)?'queued':'no answer'}
 export function missed(sc,a){if(!sc||!a)return;const L=sc.miss||(sc.miss=[]);if(!L.includes(a.id))L.push(a.id)}
 // Table seconds the scene had waited on this member when it answered (0 before its turn in a turns scene).
 export function waitedS(sc,a){if(!sc||!a)return 0;const t=sc.all?(sc.w&&sc.w[a.id]?sc.w[a.id].t:0):sc.phase==='turn'&&sc.ids[sc.i]===a.id?sc.t:0;
