@@ -49,5 +49,5 @@ function gambitBlock(b,a){const L=rulesOf(a),g=gambitRec(a),last=g&&g.last;
   const head=el('div','dm','Gambits'+(a.gambits?' (own list)':' (class preset)'));b.append(head);
   if(last){const r=L.find(x=>x.id===last.id);b.append(el('div','meta','Fired by gambit: '+(r?ruleText(r):last.when+' -> '+last.then)+' · '+Math.max(0,Math.round(S.gameMin-last.at))+' game min ago'))}
   if(noFlee(a))b.append(el('div','meta warn','No flee rule: nothing breaks this hero off a losing fight.'));
-  const ol=el('ol','log gambits');for(const r of L){const li=el('li',(r.on===false?'dm':'')+(last&&last.id===r.id?' gd':''),'#'+r.id+' '+ruleText(r)+(r.on===false?' (off)':''));ol.append(li)}b.append(ol);
+  const ol=el('ol','log gambits');for(const r of L){const li=el('li',(r.on===false?'dm':'')+(last&&last.id===r.id?' gd':''),'#'+r.id+' '+ruleText(r)+(r.on===false?' (off)':'')+(S.gambitHold&&S.gambitHold.id===a.id&&S.gambitHold.rid===r.id?' (HOLDING THE WORLD)':''));ol.append(li)}b.append(ol);
   const H=(a.gambitHist||[]).slice(-3).reverse();if(H.length)b.append(el('div','meta','Edits: '+H.map(h=>'day '+h.d+' '+h.text+(h.safety?' [safety]':'')+(h.why?' ('+h.why+')':'')).join(' · ')))}
