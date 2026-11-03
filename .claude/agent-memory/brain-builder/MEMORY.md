@@ -35,4 +35,6 @@
 - [localcheck autopilot flake](localcheck-autopilot-flake.md) — pin hp/spot until idle; soft wake by kind not text
 - [Whisper and dream](whisper-dream.md) — #523 whisper/dream DM tools: delivery, limits, leans-close via table.narr, check pitfalls
 - [DM fairness](dm-fairness.md) — #451 fairness()/fairRefusal, staged per company (PER_DAY 2+n, company:<id>), starve-test caveat
+- [Give item](give-item.md) — #524 give_item/take_item levers, token alias, flat tools, allow:['item'], ilvl, pitfalls
 - [Scene waits](scene-waits.md) — #515 table_waits, urgent Ollama queue, free-turn interrupt, Claude scene-first, pace {queued} extra wait, scene-missed, sceneS
+- [Standing orders](standing-orders.md) — #531 orders.mjs situations block, short local variant, withSituationOrders, orderscheck

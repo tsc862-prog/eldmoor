@@ -57,6 +57,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
+import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
+export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
@@ -82,9 +84,10 @@ export function systemPrompt(st) {
     KNOWLEDGE_ORDERS,
     '',
     'How to play:',
+    '- Trust the fresh header: each turn starts with one from the game (state, HP, place, foe, roads, news), so do not call status or look again for what it already says.',
     '- You act only through the tools. You know only what they tell you: what you can see nearby, what you hear, and the news.',
     '- Everyone you deal with is in the game, and so are your words: you speak with say (heard within about 7 tiles) and party_say in a party (a shout heard within about 12 tiles), and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way. Distance cuts you off: beyond shouting range your companions neither hear you nor your proposals and votes, so before you part agree where and when to meet again and remember it; only a paid courier from a town gate (send_courier) carries word farther, slowly.',
-    '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns, act on its events if they need you, otherwise end your turn; its events are your news, so do not look again unless they say the world changed. Each turn starts with a fresh header from the game (state, HP, place, foe, news): trust it rather than reading status again.',
+    '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns, act on its events if they need you, otherwise end your turn; its events are your news, so do not look again unless they say the world changed. Trust the fresh header rather than reading status again.',
     '- Grow stronger: hunt what you judge you can beat, sell loot and buy gear at home, take adventures from the gate (list_jobs, take_adventure) once level 4+ (the main road), and if you like take and hand in the gate captain’s bounties (turn_in), answer scene choices with choose. You may hold several quests: quests lists them, take_quest keeps a job for later, focus_quest picks the one you pursue now (the others wait), abandon_quest gives one up; your oath is yours until kept.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice.',
     MEMORY_ORDERS,
@@ -93,6 +96,7 @@ export function systemPrompt(st) {
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
+    ORDERS_FULL,
   ].filter(s => s !== null).join('\n');
 }
 
@@ -259,11 +263,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
   sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
+  sess.system = withSituationOrders(sess.system, false); // situations (#531); the local variant is set once the runner's provider is known
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
   if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama or openai.`); await release(); process.exit(1)}
+  sess.system = withSituationOrders(sess.system, rs.provider === 'ollama'); // the short variant for a local model (#531)
   if (rs.provider === 'ollama') {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;

@@ -52,3 +52,4 @@
 - [Merge vote scene #500](merge_vote_scene.md) — paired merge proposal gets its own company's decision scene, queued behind the first
 - [No level gate #449](no_level_gate.md) — companies pooled for Crypt/raid at any level, green warning in proposal text, reflex vote keeps floor, hash moved
 - [Elite company scale #502](elite_company_scale.md) — scaleElite at scene open for non-slots companies under 5; crawl counts by crew/5
+- [Roads knowledge #539](roads_knowledge.md) — brief.roads line, place reasons, memory wording, last-level rating, witness needs sight

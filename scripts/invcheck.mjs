@@ -88,6 +88,12 @@ r = pull('give_token', {hero: lh.id, token: 'Rookscar Toll-Token'}, {by: 'script
 r = pull('take_token', {hero: lh.id, token: 'Rookscar Toll-Token'}, {by: 'scripted', reason: 'invcheck'}); ok(r.ok && !INV.has(lh, 'Rookscar Toll-Token'), 'take_token takes it back');
 r = pull('give_token', {hero: lh.id, token: 'Not A Token'}, {by: 'scripted'}); ok(!r.ok, 'an unknown token is refused');
 
+r = pull('give_item', {hero: lh.id, item: 'Marrowmend Tonic'}, {by: 'scripted', reason: 'invcheck'}); ok(r.ok && INV.count(lh, 'Marrowmend Tonic') === 1, 'give_item puts a consumable in the pack');
+{const sp0 = INV.spares(lh).length; r = pull('give_item', {hero: lh.id, item: 'chest', ilvl: lh.lvl}, {by: 'scripted', reason: 'invcheck'}); ok(r.ok && INV.spares(lh).length === sp0 + 1 && INV.spares(lh)[sp0].ilvl === lh.lvl && !INV.spares(lh)[sp0].epic, 'give_item puts one plain gear piece in the pack as spare gear')}
+lh.inv.list.length = 0; while (INV.room(lh) > 0) INV.addUse(lh, 'Linen Bandage', 1);
+r = pull('give_item', {hero: lh.id, item: 'Cairn-Door Key'}, {by: 'scripted', reason: 'invcheck'}); ok(!r.ok && /full/.test(r.reason), 'give_item into a full pack is refused');
+lh.inv = INV.newInv();
+
 // ---- the Table ----
 console.log('the table');
 {const {fellows} = await import('../src/sim/fellowship.js'); const F = fellows(); const t = F[0], u = F[1]; for (const x of F) {x.hp = maxHp(x); x.inv = INV.newInv()}

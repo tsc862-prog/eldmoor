@@ -16,7 +16,7 @@ on:
 # CI_FAST=1 (scripts/ci-clock.mjs, issue #543) scales the real-time waits inside the check scripts about tenfold.
 # The nightly run and a manual run with real_timing leave it off.
 env:
-  CI_FAST: '0'
+  CI_FAST: ${{ (github.event_name == 'schedule' || inputs.real_timing) && '0' || '1' }}
 
 # A new push to a PR cancels its older run. Every PR runs CI, so the required "CI ok" check (branch
 # protection on main) always reports and GitHub's auto-merge (gh pr merge --auto) can act.
@@ -45,13 +45,6 @@ jobs:
       - {name: Pack and inventory, run: npm run invcheck}
       - {name: Bestiary, run: npm run bestiarycheck}
       - {name: Class abilities and specialisations, run: npm run movecheck}
-      - {name: Professions, run: npm run professioncheck}
-      - {name: Recipes, run: npm run recipecheck}
-      - {name: Gathering nodes, run: npm run nodecheck}
-      - {name: Gathering, run: npm run gathercheck}
-      - {name: DM levers, run: npm run levercheck}
-      - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
-      - {name: New World setup, run: npm run setupcheck}
       - name: Headless sim (10 game-hours)
         run: npm run sim -- 10 | tee sim.txt
       - name: Sanity-check the sim summary
@@ -60,6 +53,22 @@ jobs:
           test "$(grep -o 'Living heroes: [0-9]*' sim.txt | grep -o '[0-9]*$')" -gt 0
       - uses: actions/upload-artifact@v4
         with: {name: sim-summary, path: sim.txt}
+
+  world:
+    name: World levers, gathering, setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: DM levers, run: npm run levercheck}
+      - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
+      - {name: Gathering, run: npm run gathercheck}
+      - {name: Gathering nodes, run: npm run nodecheck}
+      - {name: Recipes, run: npm run recipecheck}
+      - {name: Professions, run: npm run professioncheck}
+      - {name: New World setup, run: npm run setupcheck}
 
   ui:
     name: Watcher UI
@@ -83,6 +92,7 @@ jobs:
       - {name: Agent player (mock agents), run: npm run playcheck}
       - {name: Townsfolk hails, run: npm run localscheck}
       - {name: Table scene waits (slow mock members), run: npm run scenewaitcheck}
+      - {name: Hero standing orders, run: npm run orderscheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
@@ -162,12 +172,13 @@ jobs:
   ok:
     name: CI ok
     if: always()
-    needs: [core, ui, agents, local, launcher, rate, dm, minds-a, minds-b]
+    needs: [core, world, ui, agents, local, launcher, rate, dm, minds-a, minds-b]
     runs-on: ubuntu-latest
     steps:
       - name: Every group passed
         run: |
           test "${{ needs.core.result }}" = success
+          test "${{ needs.world.result }}" = success
           test "${{ needs.ui.result }}" = success
           test "${{ needs.agents.result }}" = success
           test "${{ needs.local.result }}" = success
