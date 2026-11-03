@@ -6,3 +6,4 @@
 - [Recipes #256](project_recipes.md) — one recipe table, MATERIALS vs GOODS (hash-neutral), craft:true USES, CRAFT_GEAR, MAT_DROPS
 - [Mid-mob pressure](project_mid_mob_pressure.md) — #154 slice: only lv/COUNTS are levers in mobs.js; 11.9 -> 14.3 deaths/h
 - [Smith temper #13](project_smith.md) — gold sink: +1 ilvl per temper, caps, no repair, hooks
+- [Hero trades #14](project_hero_trades.md) — order book S.listings, fee/lapse, scripted buy/sell, auction_* tools
