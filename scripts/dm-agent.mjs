@@ -83,6 +83,7 @@ export function dmSystemPrompt(st) {
     DM_EVENT_ORDERS,
     DM_CALL_ORDERS,
     DM_WHEN_ORDERS,
+    DM_BETWEEN_ORDERS,
     DM_RENOWN_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
@@ -112,6 +113,12 @@ export const DM_CALL_ORDERS = [
   '- Name places and people exactly. near is one thing: a member\'s name or id, a town, a region, or "x,y" alone, never two together ("Highgate, 10,20" is refused); "fellowship" works for stage_scene, place_person and mark_place, while narrate takes a member\'s name or "table" instead. A landmark such as the Sunken Crypt is not a place name; use its region. npc_say and npc_offer always need npc: the id from npcs, or npc from the place_person (effect.npc from the create_npc pull) that placed them; never a name you made up or wrote differently.',
   '- When the whole Fellowship is in town, stage_scene near "fellowship" is refused (fights, traps and mysteries happen out in the world). A meeting or social scene can still be set there: pass at (their town, or a building in it, such as "the inn in <town>") instead of near, and a setting (house, tavern, chapel, cellar, cell, shrine or hold; dm_status staged.settings lists them); the person waits there and the scene opens in that room. Or speak through a townsperson there (npc_say), place a person in their town, or note the scene in your plans and stage it once they ride out.',
 ].join('\n');
+// What you can do between scenes (issue #636): every lever as a tool, and taking things back. withDmBetweenOrders adds it to an older session's prompt.
+export const DM_BETWEEN_ORDERS = [
+  '- What you can do between scenes, one tool each (all with a reason; each lever tool counts as a pull with the same limits, cooldowns and Fellowship share as pull_lever, which still works): post_hook or withdraw_hook (jobs on a board), place_person or retire_person (a visitor comes or goes; how says what the town says of them), set_attitude (a person warms or turns on a hero, the Fellowship or a faction), mark_place (a ruin, camp, shrine or tower), mark_danger (an area turns dangerous, or with cleared "yes" quiet), set_condition (bandits, plague, festival, migration, fog over a region), price_shock (a good dearer or cheaper), start_event (a festival, plague, migration or invasion), custom_foe (one special creature near a place), create_site (a dungeon site) and nudge_relation (two parties warm or cool), give_item and take_item (an object changes hands), stage_scene (a narrated encounter), narrate, npc_say, whisper and dream (your voice).',
+  '- Take back what you started instead of repeating a refused call: undo reaches your last pull or placement within 3 game hours (a job, person, marker, area, condition, attitude, foe or unopened scene; not items, prices or relations), unstage cancels a staged scene the Table has not opened (the cast walks off), dismiss ends one of your markers or areas early. A refusal that says one staged scene is pending means unstage it or wait; do not ask again. Taking back is logged and capped at 6 a game day.'
+].join('\n');
+export const withDmBetweenOrders = sys => /\bWhat you can do between scenes\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_BETWEEN_ORDERS;
 export const withDmCallOrders = sys => /\bSend every call whole\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_CALL_ORDERS;
 // Deferred actions and chosen wakes (issue #635): one example each; withDmWhenOrders adds the line to an older session's prompt.
 export const DM_WHEN_ORDERS = '- You act between your turns with when and watch. when leaves an action behind for a trigger (a hero or company entering a region or town, coming near a place or person, talking to someone, falling below some health, a named foe dying, a job reaching a scene, camp, nightfall, daybreak, an hour, hours passing, a level, an oath kept): for example when {trigger: "enter_region", on: {"region": "Mirefen", "company": "fellowship"}, action: "narrate", args: {"text": "Fog rolls off the black water; somewhere a bell tolls once.", "near": "{who}"}, reason: "the bog announces itself"}. It runs through the same tool when it fires, so limits and refusals apply then; whens lists them, unwhen cancels. watch chooses what wakes you early: watch {trigger: "talks_to", on: {"npc": "Mara"}, note: "she knows of the stolen seal"} starts your next turn when a hero talks to her, and the turn prompt says so. Set a few that serve your plans; at most 6 of each.';
@@ -412,7 +419,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmRenownOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
+  sess.system = withDmRenownOrders(withDmBetweenOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
