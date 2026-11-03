@@ -217,9 +217,10 @@ export function answerMarks(sc=S.table){const o={};if(!sc||sc.phase==='outcome')
   return o}
 // How dim the room is: the setting's own dimness, deeper at night and dusk, and as the frame tells it.
 const DARKW=/\b(dark|darkness|gloom|gloomy|shadow(s|ed|y)?|gutter(s|ing|ed)?|dim(ly|ming)?|unlit|pitch|black|midnight|night|moonless|guttering)\b/i,BRIGHTW=/\b(sunlit|sunlight|bright|blazing|lamplit|well[- ]lit|noon|daylight)\b/i;
+export const DARK_CAP=.55; // owner request: a room never goes near-black, whatever the hour and the frame (setting dark + night + gloom, capped)
 export function sceneDark(sc=S.table,base=0){const h=(((S.gameMin||0)%1440)+1440)%1440/60,said=(sc?[sc.title,plain(sc.frame)].join(' '):'');
   let d=base+(h<5||h>=21?.3:h<7||h>=19?.15:0);if(DARKW.test(said))d+=.2;if(BRIGHTW.test(said))d-=.15;
-  return Math.max(0,Math.min(.8,Math.round(d*100)/100))}
+  return Math.max(0,Math.min(DARK_CAP,Math.round(d*100)/100))}
 // The one item the frame or the person's words name, drawn as a small lit prop in front of the speaker. Order matters:
 // the first kind whose words appear wins.
 export function sceneItem(sc=S.table){const p=liveProps(sc)[0];return p?p.id:null} // from sc.props (sim/props.js, #592); a prop whose item was handed to a hero (give_item, #524) is gone
