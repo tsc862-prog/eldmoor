@@ -160,7 +160,7 @@ const V = S.agents.find(b => b !== A && b !== B && b !== D && b.fac === 0 && b.s
 const killer = S.mobs.find(m => m.alive && !m.gone && !m.elite && m.type === upKey);
 park(V, {x: A.x + 3, y: A.y}); rebuild();
 const ek0 = (A.lore.c[upKey] && A.lore.c[upKey].fell) || 0;
-HE.agentDie(V, killer);
+HE.slay(V, killer); // the death itself (a full-health hero would only be downed by agentDie, #626)
 ok(A.lore.c[upKey].fell === ek0 + 1 && (A.playEv || []).some(e => e.text.includes('You saw ' + V.name + ' fall')), `seeing ${V.name} fall to it teaches it (${MOBS[upKey].name})`);
 
 // ---------------------------------------------------------------- 6. the Fellowship shares lore by talking (in range)
