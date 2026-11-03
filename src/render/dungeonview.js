@@ -19,7 +19,7 @@ import {S} from '../sim/state.js';
 import {companyById,slotted} from '../sim/company.js';
 import {drawInterior} from './interior.js';
 import {foeKind,foeAt} from './dgfoes.js';
-import {T} from '../world/tiles.js';
+import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {classColor} from '../core/colors.js';
 
 let root=null,cv=null,ctx=null,nameEl=null,statEl=null,listEl=null,tipEl=null,pinEl=null,histEl=null,histBtn=null,site=null,open=false,inited=false,sig='';

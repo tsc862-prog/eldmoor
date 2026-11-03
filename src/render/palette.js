@@ -5,6 +5,7 @@
 // The first group must match src/style.css (--gold, --blue, --red, --amber, --green, --ink,
 // --dim): a colour that means something in the panels means the same on the map.
 import {REGIONS} from '../world/map.js';
+import {FAC} from '../data/factions.js';
 
 export const UI={gold:'#f2c14e',blue:'#5b8ff2',red:'#e8544a',amber:'#f0a040',green:'#7dce5a',ink:'#ece6d2',dim:'#8f8ca8',bg:'#0d0e19'};
 
@@ -124,3 +125,35 @@ export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,
 // What a hero is trying to do (#534, render/purposefx.js): the intent icon over a head and the followed or hovered hero's
 // path, tether and wait line, one colour per kind (the purpose line in the panels uses the same hues).
 export const INTENT={hunt:'#f2c14e',job:'#ffe040',wait:'#d9c27a',follow:'#9ad0ff',rest:'#7fd6c2',home:'#c8b4ff',flee:'#ff7050',fight:'#ffb060',travel:'#ece6d2',plate:'rgba(8,10,20,.85)'};
+
+// ---- tiers (#177, render/tile.js) ----
+// The generated art is quantised to these colours plus shades. The 8-bit palette above stays the procedural fallback's;
+// the 32 px tier widens each asset's palette with shades of its own colours (post-processing: post.minPalette, else the
+// tier's minPalette), the 64 tier with more. factors scale RGB, in the order shades are added.
+export const TIER_SHADES={
+  32:{minPalette:10,factors:[.85,1.15,.7,1.3,.55,1.45]},
+  64:{minPalette:16,factors:[.9,1.1,.8,1.2,.7,1.3,.6,1.4,.5,1.5]},
+};
+const hx=v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0');
+// hex scaled by f per channel ('#3f8a3a', .85 -> a darker shade).
+export const shadeHex=(hex,f)=>'#'+[1,3,5].map(i=>hx(parseInt(hex.slice(i,i+2),16)*f)).join('');
+export const shadesOf=(hex,tier=32)=>[hex,...((TIER_SHADES[tier]||TIER_SHADES[32]).factors).map(f=>shadeHex(hex,f))];
+
+// Generated hero and creature sheets (#177 slice 4): one light from the top left, a one-pixel outline, and these ramps.
+// Hero sheets are drawn in the first faction's tabard (key) and recoloured per faction at draw time (recolour), so every
+// faction reads in its own colour without a sheet per faction; skin ramps come from the peoples' skins.
+export const SPRITE={
+  outline:[MARK.outline],
+  key:[FAC[0].color,FAC[0].dark],
+  skin:FAC.flatMap(f=>f.skin.slice(0,3)),
+  hair:['#2a2020','#5a3a20','#8a6a3a','#d8c890'],
+  leather:['#7a5632','#5a3a20','#3e2a18'],
+  steel:['#e8ecf4','#c8d0e0','#8a94a8','#5a6478'],
+  cloth:['#ece6d2','#a89a80','#5a4a3a'],
+  gold:['#ffe27a','#f2c14e','#a87a1a'],
+};
+// Colour swaps from the key faction to faction fac (the key colours and their tier shades), cached.
+const swapC=[];
+export function recolour(fac){if(swapC[fac])return swapC[fac];const m={},to=FAC[fac]||FAC[0];
+  if(to!==FAC[0])for(const tier of Object.keys(TIER_SHADES))for(const k of ['color','dark']){const a=shadesOf(FAC[0][k],+tier),b=shadesOf(to[k],+tier);a.forEach((c,i)=>{m[c]=b[i]})}
+  return swapC[fac]=m}

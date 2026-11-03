@@ -53,8 +53,9 @@ export function toneMatch(img,colors){const P=colors.map(hexToRgb),{w,h,data}=im
     for(let i=0;i<w*h;i++){const o=i*4+c;out[o]=Math.max(0,Math.min(255,Math.round((data[o]-im)*k+pm)))}}
   return {w,h,data:out}}
 // Widen a short palette with lighter and darker shades of its own colours (a ramp needs 6+ steps to show texture).
-export function expandPalette(colors,min=6){const out=[...colors];
-  for(const f of [.85,1.15,.7,1.3])for(const c of colors){if(out.length>=min)break;out.push(rgbToHex(hexToRgb(c).map(v=>Math.max(0,Math.min(255,Math.round(v*f))))))}
+// Shade factors in order (the tier's, src/render/palette.js TIER_SHADES, so a recoloured key colour's shades match).
+export function expandPalette(colors,min=6,factors=[.85,1.15,.7,1.3]){const out=[...colors];
+  for(const f of factors)for(const c of colors){if(out.length>=min)break;out.push(rgbToHex(hexToRgb(c).map(v=>Math.max(0,Math.min(255,Math.round(v*f))))))}
   return [...new Set(out)]}
 const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5].map(v=>v/16-.5);
 export function quantise(img,colors,{dither=0}={}){const q=quantiser(colors),P=colors.map(hexToRgb),{w,h,data}=img,out=new Uint8Array(w*h*4),cl=v=>Math.max(0,Math.min(255,Math.round(v)));
@@ -67,8 +68,10 @@ export class FlatError extends Error{constructor(n,min,notes){super(`flat: ${n} 
 
 // The whole chain for one manifest entry. pal = resolved colour list; outlineColor from palette MARK.outline.
 // Returns {w, h, data, notes} (notes: grid found, native size, crop, seam, colours) or throws FlatError.
-export function postProcess(img,entry,pal,outlineColor,{hint=8}={}){
-  const p=entry.post||{},[W,H]=entry.size,tile=entry.kind==='tile'||entry.kind==='autotile';
+// opts: hint (the model's pixel grid at this tier), tier (picks entry.sizes[tier]; an entry with a plain size [w,h] is
+// taken as is), minPalette and factors (the tier's palette widening; post.minPalette wins).
+export function postProcess(img,entry,pal,outlineColor,{hint=8,tier=32,minPalette=6,factors}={}){
+  const p=entry.post||{},[W,H]=(entry.sizes&&entry.sizes[tier])||entry.size,tile=entry.kind==='tile'||entry.kind==='autotile';
   const g=detectGrid(img,p.grid||hint);let native=sampleCells(img,g),im;
   const notes={grid:g.found?`${g.x.s}x${g.y.s}`:`none (used ${g.x.s})`,native:`${native.w}x${native.h}`};
   if(tile&&(p.fit||'crop')==='crop'){const c=seamlessCrop(native,W,H);im=c;notes.crop=c.at;notes.seam=Math.round(c.seam)}
@@ -76,7 +79,7 @@ export function postProcess(img,entry,pal,outlineColor,{hint=8}={}){
     im=native.w>W||native.h>H?downscale(native,W,H,pal,p.downscale||'mode'):nearestScale(native,Math.max(1,Math.floor(Math.min(W/native.w,H/native.h))));
     if(im.w!==W||im.h!==H){const pad={w:W,h:H,data:new Uint8Array(W*H*4)},ox=Math.floor((W-im.w)/2),oy=Math.floor((H-im.h)/2);
       for(let y=0;y<im.h&&y+oy<H;y++)for(let x=0;x<im.w&&x+ox<W;x++){const s=(y*im.w+x)*4,o=((y+oy)*W+x+ox)*4;for(let k=0;k<4;k++)pad.data[o+k]=im.data[s+k]}im=pad}}
-  const colors=expandPalette(pal,p.minPalette??6);
+  const colors=expandPalette(pal,p.minPalette??minPalette,factors);
   if(p.tone!==false)im=toneMatch(im,colors);
   im=quantise(im,colors,{dither:p.dither??0});
   if(p.outline)im=outline(im,p.outlineColor||outlineColor);

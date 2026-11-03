@@ -6,6 +6,10 @@
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
 import {npcRole} from '../data/npcs.js';
+import {MOBS} from '../data/mobs.js';
+import {PROC_SCALE,ART,SHEET} from './tile.js';
+import {assetPixels,onAssets} from './assets.js';
+import {recolour} from './palette.js';
 
 const sprCache={};
 export function sprite(key,rows,map){if(sprCache[key])return sprCache[key];const w=Math.max(...rows.map(r=>r.length)),h=rows.length;
@@ -763,3 +767,37 @@ export function buntingSprite(wpx,frame=0){frame=frame?1:0;const key='bunt'+wpx+
 
 // Fellowship face portraits (#367): generated head-and-shoulders faces, see portrait.js.
 export {portrait,portraitPixels,PORTRAIT_W,PORTRAIT_H} from './portrait.js';
+
+// ---- the 32 px tier on the world map (#177, render/tile.js) ----
+// A procedural sprite drawn on the world map: scaled up by PROC_SCALE to stand as tall as a generated 32x48 frame and
+// painted at art resolution (PROC_SCALE*ART art pixels per sprite pixel) with a one-art-pixel outline, so it sits beside
+// generated art with the same line weight. Cached per source canvas. Draw it at its size / ART world units.
+const bigCache=new WeakMap(),bigOut=new WeakMap();
+export function worldSprite(c,outline=true){const m=outline?bigOut:bigCache;let o=m.get(c);if(o)return o;
+  const k=PROC_SCALE*ART,b=document.createElement('canvas');b.width=c.width*k;b.height=c.height*k;const x=b.getContext('2d');
+  x.imageSmoothingEnabled=false;x.drawImage(c,0,0,b.width,b.height);o=outline?outlined(b):b;m.set(c,o);return o}
+
+// Generated sprite sheets (#177 slice 4, scripts/art/manifest.json kind 'sprite'): one sheet per hero class and per
+// creature, SHEET.cols frames (stand, step, other step) by SHEET.rows directions (down, left, right, up), each frame
+// SPRITE_TILES tiles at the current tier (32x48 at 32). The procedural sprite above is the fallback for any id with no
+// sheet loaded. Hero sheets are drawn in the first faction's colours and recoloured per faction (palette.js SPRITE).
+const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-');
+export const ASSET_SPRITES={};
+for(const cls of Object.keys(CLS))ASSET_SPRITES['sprite:hero-'+slug(cls)]={kind:'hero',cls};
+for(const key of Object.keys(MOBS))ASSET_SPRITES['sprite:mob-'+slug(key)]={kind:'mob',type:key};
+const heroId=cls=>'sprite:hero-'+slug(cls),mobId=type=>'sprite:mob-'+slug(type);
+const sheetC=new Map();
+// The sheet canvas for id in faction fac's colours, or null while it is missing or loading.
+function sheetOf(id,fac){const key=id+'|'+fac;let c=sheetC.get(key);if(c!==undefined)return c;
+  const A=assetPixels(id);if(!A)return null; // not cached: it may still arrive
+  const swap=recolour(fac);c=document.createElement('canvas');c.width=A.w;c.height=A.h;const x=c.getContext('2d'),img=x.createImageData(A.w,A.h);
+  for(let i=0;i<A.w*A.h;i++){const h=A.hex[i];if(!h)continue;const s=swap[h]||h,o=i*4;img.data[o]=parseInt(s.slice(1,3),16);img.data[o+1]=parseInt(s.slice(3,5),16);img.data[o+2]=parseInt(s.slice(5,7),16);img.data[o+3]=255}
+  x.putImageData(img,0,0);sheetC.set(key,c);return c}
+onAssets(()=>sheetC.clear());
+// One frame of the entity's generated sheet: {img, sx, sy, fw, fh} in art pixels, or null (draw the procedural sprite).
+// dir: 0 down, 1 left, 2 right, 3 up; col: 0 stand, 1 step, 2 other step.
+const FR={img:null,sx:0,sy:0,fw:0,fh:0};
+export function sheetFrame(e,dir,col){
+  const id=e.kind==='hero'?heroId(e.cls):e.kind==='mob'?mobId(e.type):null;if(!id)return null;
+  const c=sheetOf(id,e.kind==='hero'?e.fac:0);if(!c)return null;
+  FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}

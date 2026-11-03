@@ -8,13 +8,31 @@
 // PNGs load lazily, the first time a renderer asks for one; onAssets(fn) tells a renderer that an asset
 // arrived (terrain.js repaints its cached chunks).
 
+//
+// Tiers (#177, render/tile.js): every index entry carries the tier it was made for (`tier: 32` or 64; key `<id>@<tier>`,
+// file `<kind>/<tier>/<name>.png`). Only the entries of the renderer's tier (TILE) are used; an id with no entry of that
+// tier is absent, so its renderer draws the procedural version scaled to TILE. An entry without a tier (made before
+// tiers) counts as the 32 tier.
+import {TILE} from './tile.js';
+
 let INDEX={},URLS={};
 const imgs=new Map(),pix=new Map(),subs=new Set();
 
-// index: the parsed assets/index.json ({assets: {id: {file, w, h, ...}}}) or null; urls: {file: url}.
-export function provideAssets(index,urls){
-  INDEX=(index&&index.assets)||{};URLS=urls||{};imgs.clear();pix.clear();
+export const LEGACY_TIER=32;
+// The tier of an index entry (key 'tile:grass@32' or the entry's own tier; none: LEGACY_TIER).
+export function tierOf(key,a){if(a&&Number.isInteger(a.tier))return a.tier;const m=/@(\d+)$/.exec(key||'');return m?Number(m[1]):LEGACY_TIER}
+// The entries of one tier from an index's assets, keyed by asset id.
+export function entriesFor(assets,tier=TILE){const out={};
+  for(const [k,a] of Object.entries(assets||{})){if(tierOf(k,a)!==tier)continue;const id=(a&&a.id)||k.replace(/@\d+$/,'');out[id]={...a,id,tier}}
+  return out}
+
+// index: the parsed assets/index.json ({assets: {key: {id, tier, file, w, h, ...}}}) or null; urls: {file: url}.
+export function provideAssets(index,urls,tier=TILE){
+  INDEX=entriesFor(index&&index.assets,tier);URLS=urls||{};imgs.clear();pix.clear();
   for(const f of subs)f(null)}
+// The tier the loaded index was filtered to, and an asset's index entry (null when absent at that tier).
+export const assetTier=()=>TILE;
+export const assetEntry=id=>INDEX[id]||null;
 
 export function onAssets(fn){subs.add(fn);return ()=>subs.delete(fn)}
 const fire=id=>{for(const f of subs){try{f(id)}catch(e){console.warn('[assets]',e)}}};

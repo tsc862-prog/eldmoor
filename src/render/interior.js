@@ -13,7 +13,7 @@
 //   one frame of it with the scene's people, the speaker's bubble and the turn chevron; #536 adds the arc staging, the
 //   answer marks (answerMark), name plates, light from the frame and time of day, the scene's item and bubbles kept off props.
 // Style (docs/ART-PLAN.md): light from the top left, ground in mid values, entities outlined and owning the extremes.
-import {T} from '../world/tiles.js';
+import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {IT} from '../world/interior.js';
 import {hash} from '../core/rng.js';
 import {DUNGEON as D,DUNGEON,THEMES,TEXT,MARK} from './palette.js';

@@ -4,11 +4,12 @@
 // line under the region label when zoomed out, and DM-placed people (S.wanderers) with the
 // townsfolk sprites. Names show in follow and close zoom. Called once from draw.js before the
 // entity loop, so heroes walk over the markers. Owned by ai-designer.
-import {T,W,H} from '../world/tiles.js';
+import {W,H} from '../world/tiles.js';
+import {U as T,PROC_SCALE,ART,HEAD} from './tile.js';
 import {zone,I,ZONES,LABELS,CITY} from '../world/map.js';
 import {CONDITIONS} from '../sim/levers.js';
 import {TEXT} from './palette.js';
-import {bannerSprite,buntingSprite} from './sprites.js';
+import {bannerSprite,buntingSprite,worldSprite} from './sprites.js';
 import {hash} from '../core/rng.js';
 import {toneOf,toneName} from '../core/colors.js';
 import {slotted} from '../sim/company.js'; // the slotted company (#588)
@@ -70,7 +71,8 @@ export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite,o
   // DM-placed people
   for(const w of S.wanderers||[]){if(!inView(w.x*T,w.y*T,32))continue;
     const fr=w.moving?Math.floor(blink*6+w.id)%2:Math.floor(blink*1.5)%2,s=npcSprite(w,fr),px=Math.round(w.x*T),py=Math.round(w.y*T);
-    ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(px,py,s.width/2,1.5,0,0,7);ctx.fill();
-    const t=toneOf(w,slotted(),S.gameMin);if(close)dispoRing(px,py,s.width,t.kind);
-    ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(outlined(s),-Math.floor(s.width/2)-1,py-s.height-1);ctx.restore();
-    if(close)drawText(toneName(w,t),px,py-17,t.color||TEXT.person,12)}}
+    const sw=s.width*PROC_SCALE,sh=s.height*PROC_SCALE,o=worldSprite(s); // scaled to the 32x48 entity size (render/tile.js)
+    ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(px,py,sw/2,1.5,0,0,7);ctx.fill();
+    const t=toneOf(w,slotted(),S.gameMin);if(close)dispoRing(px,py,sw,t.kind);
+    ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-1/ART,py-sh-1/ART,o.width/ART,o.height/ART);ctx.restore();
+    if(close)drawText(toneName(w,t),px,py-HEAD,t.color||TEXT.person,12)}}

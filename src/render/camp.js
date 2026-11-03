@@ -1,7 +1,7 @@
 // The Fellowship's campfire (issue #64): stone ring, logs, flickering flame, drifting sparks, bedrolls
 // at each camper's spot, and a warm pool of light at night. Procedural, no image assets. Reads
 // every company's camp (C.camp, sim/camp.js; two companies light two fires, #439); draws nothing when there is none.
-const T=16;
+import {U as T} from './tile.js'; // world units a tile (render/tile.js)
 // A scene that broke out at a camp (#431 slice 3: the fireside, an ambush on the watch, questions at the fire) keeps its fire
 // drawn while it lasts, even when the ambush broke the camp: the bedrolls lie where they were left.
 const atScene=S=>{const out=[];for(const sc of [S.table,...Object.values(S.tables||{})]){const p=sc&&sc.ctx&&sc.ctx.camp;if(p&&!(S.companies||[]).some(C=>C.camp&&C.camp.phase&&Math.abs(C.camp.x-p.x)<.01&&Math.abs(C.camp.y-p.y)<.01))out.push({x:p.x,y:p.y,ids:sc.ids,phase:'scene',left:true})}return out};
