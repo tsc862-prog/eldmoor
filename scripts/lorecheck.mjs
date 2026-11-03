@@ -272,5 +272,50 @@ console.log('roads knowledge (#539)');
       ok(((W.lore.c[k2] && W.lore.c[k2].fell) || 0) === b0, 'a death inside the Crypt is not witnessed from outside'); V2.hidden = false } }
 }
 
+// ---- search and examine (#525) ----
+{ console.log('\nsearch and examine');
+  const Q = S.agents.find(x => x.id === A.id); // the world was restored above: use the live hero
+  const G = S.agents.find(x => x.kind === 'hero' && x.state !== 'dead' && x !== Q && x.fac === Q.fac) || Q;
+  const gold0 = Q.gold;
+  const spot2 = zonePoint(home, null, c.gate);
+  park(Q, spot2); rebuild();
+  S.places = S.places || [];
+  const mk = {id: ++S.uid, kind: 'shrine', name: 'the whisper stone', x: spot2.x + 1, y: spot2.y, z: home, born: S.gameMin, until: S.gameMin + 5000, reveal: 'Q name is scratched under the moss: Orlen Vale.', cache: '25 gold'};
+  S.places.push(mk);
+  const ex = act(Q, 'examine', {what: 'whisper stone'});
+  ok(ex.ok && /shrine/.test(ex.text) && !/Orlen/.test(J(ex)), 'examine describes the place and does not give up the secret');
+  const far = {id: ++S.uid, kind: 'ruin', name: 'the far hall', x: spot2.x + 30, y: spot2.y, z: home, born: S.gameMin, until: S.gameMin + 5000, reveal: 'x'};
+  S.places.push(far);
+  ok(act(Q, 'search', {what: 'the far hall'}).ok === false, 'a place out of sight is refused');
+  ok(act(Q, 'search', {what: 'nothing at all'}).ok === false, 'an unknown target is refused with what is in sight');
+  const rng0 = Math.random();
+  // find an attempt that fails and one that succeeds by varying the hero id-independent key: use two markers
+  let okRes = null, noRes = null;
+  for (let i = 0; i < 40 && !(okRes && noRes); i++) {
+    const m2 = {id: ++S.uid, kind: 'shrine', name: 'stone ' + i, x: spot2.x + 1, y: spot2.y + (i % 3) * 0.1, z: home, born: S.gameMin, until: S.gameMin + 5000, reveal: 'Secret ' + i};
+    S.places = [m2]; Q.srch = {}; Q.pq = []; Q.gold = gold0;
+    const r = act(Q, 'search', {what: m2.name});
+    if (r.result === 'found' && !okRes) okRes = {r, m2}; else if (r.result === 'nothing' && !noRes) noRes = {r, m2};
+  }
+  ok(okRes && /Secret/.test(okRes.r.found) && okRes.r.took_min === 20, 'a successful search reveals the marker secret and takes 20 minutes');
+  ok(okRes && /Secret/.test(J(L.placeMemory(Q, okRes.m2.name) || L.loreView(Q).places)), 'the find is kept in the hero lore');
+  ok(noRes && !/Secret/.test(J(noRes.r)) && noRes.r.note, 'a failed search reveals nothing and says the spot is searched');
+  if (noRes) { S.places = [noRes.m2]; Q.srch = {}; Q.pq = []; act(Q, 'search', {what: noRes.m2.name}); Q.pq = [];
+    const again = act(Q, 'search', {what: noRes.m2.name}); ok(again.ok === false && /come back/.test(again.error), 'a searched spot is on cooldown');
+    S.gameMin += 400; const later = act(Q, 'search', {what: noRes.m2.name}); ok(later.ok !== false, 'the cooldown lapses'); }
+  // cache
+  S.places = [mk]; Q.srch = {}; Q.pq = []; Q.gold = gold0; delete mk.cacheBy;
+  let got = false; for (let i = 0; i < 30 && !got; i++) { Q.srch = {}; Q.pq = []; S.gameMin += 400; act(Q, 'search', {what: mk.name}); got = !!mk.cacheBy }
+  ok(got && Q.gold === gold0 + 25, 'a cache of gold is handed over once');
+  Q.srch = {}; Q.pq = []; S.gameMin += 400; const B2 = act(Q, 'search', {what: mk.name}); ok(Q.gold === gold0 + 25, 'the cache is not paid twice');
+  ok(Q.pq[0] && Q.pq[0].search, 'a search keeps the hero busy');
+  ok(S.dmLog.some(e => e.kind === 'search' && /whisper stone/.test(e.summary.join(''))), 'the DM log records the search');
+  // determinism: same hero, spot and attempt give the same roll
+  const sp = (s) => { Q.srch = {}; Q.pq = []; S.places = [mk]; delete mk.cacheBy; S.gameMin += 400; return act(Q, 'search', {what: mk.name}).result };
+  ok(sp() === sp(), 'the roll is a function of hero, spot and attempt');
+  // not for background heroes
+  ok(P.playerAct(G.id, 'search', {}).ok === false || G.player, 'a scripted hero cannot use it');
+  S.places = []; }
+
 console.log(fail ? `\nlorecheck: ${fail} FAILED\n` : '\nlorecheck: all ok\n');
 process.exit(fail ? 1 : 0);

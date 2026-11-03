@@ -134,6 +134,8 @@ export function witness(dead,m){if(!dead||!m||m.kind!=='mob')return;const z=ZONE
 // ---- places ----
 function place(a,name,how){const L=loreOf(a),p=L.p[name];const order={told:0,seen:1,been:2,home:3};
   if(p){if((order[how]||0)>(order[p.how]||0))p.how=how;return p}return L.p[name]={how,at:Math.round(S.gameMin)}}
+// What a hero found searching a marked place (sim/search.js, #525): kept in its place entry and told by lore.
+export function found(a,name,text,dmId){if(!learner(a)||!name)return;const e=place(a,name,'seen');if(dmId!=null&&e.dm==null)e.dm=dmId;e.found=clean(text,LORE.SNIP*2)}
 export function knowsPlace(a,name){if(!learner(a))return true;return !!loreOf(a).p[name]}
 export function learnPlace(a,name,how='told'){if(!learner(a)||!name)return;const was=!!loreOf(a).p[name];place(a,name,how);return !was}
 
@@ -206,7 +208,7 @@ function dangerWhy(a,name,p){if(!p)return null;const w=[];if(p.hurt)w.push('you 
 function placeLine(a,name,p){const out={place:name,how:p.how==='home'?'your home region':p.how==='been'?'you have been there':p.how==='seen'?'you have seen it':'you have heard of it'};
   const z=ZONES.indexOf(name),k=[];if(p.hurt)k.push('you nearly died there'+(p.hurt>1?' '+p.hurt+' times':''));if(p.fell)k.push('you know of '+(p.fell===1?'one':p.fell)+' who fell there');
   if(z>=0){const worst=worstIn(a,name);if(worst)k.push('the worst you know there: '+worst.n+' ('+RANKS[worst.r]+')')}
-  if(p.warned)k.push('warned: '+p.warned);if(k.length)out.notes=k;return out}
+  if(p.warned)k.push('warned: '+p.warned);if(p.found)k.push('you searched it and found: '+p.found);if(k.length)out.notes=k;return out}
 export function loreView(a,about){const L=loreOf(a),q=clean(about,60).toLowerCase();
   // descriptions for unnamed entries: from a living one the hero can see, else a generic word
   for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e)&&!e.desc){const m=S.mobs.find(x=>keyOf(x)===key);if(m)e.desc=describe(m)}}
