@@ -53,10 +53,20 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
   const base = String(url).replace(/\/+$/, '');
   let cached = null, cachedAt = 0;
   const noThink = new Set(); // models that rejected the think field
-  // the chat queue: at most `parallel` requests in flight, the rest wait in order
+  // the chat queue: at most `parallel` requests in flight, the rest wait in order. An urgent request (a Table scene
+  // answer, issue #515) goes ahead of every ordinary one still waiting (after earlier urgent ones); a request whose signal
+  // aborts while it waits leaves the queue (a member's free turn given up for its scene answer).
   let live = 0; const queue = [];
-  const take = () => live < parallel ? (live++, Promise.resolve()) : new Promise(r => queue.push(r)).then(() => {live++});
-  const give = () => {live--; const n = queue.shift(); if (n) n()};
+  const take = (urgent = false, signal = null) => {
+    if (live < parallel && !queue.length) {live++; return Promise.resolve()}
+    return new Promise((res, rej) => {
+      const e = {urgent: !!urgent, go: () => {if (signal) signal.removeEventListener('abort', gone); live++; res()}};
+      const gone = () => {const i = queue.indexOf(e); if (i >= 0) queue.splice(i, 1); rej(Object.assign(new Error('ollama: the request was withdrawn while it waited in the queue'), {name: 'AbortError', withdrawn: true}))};
+      if (signal) {if (signal.aborted) return gone(); signal.addEventListener('abort', gone, {once: true})}
+      if (urgent) {let i = 0; while (i < queue.length && queue[i].urgent) i++; queue.splice(i, 0, e)} else queue.push(e);
+    });
+  };
+  const give = () => {live--; const n = queue.shift(); if (n) n.go()};
   async function held() {
     try {const r = await fetchImpl(base + '/api/ps', {signal: AbortSignal.timeout(2000)}); if (!r.ok) return null; const j = await r.json();
       return (Array.isArray(j && j.models) ? j.models : []).filter(m => m && typeof (m.name || m.model) === 'string')
@@ -67,6 +77,7 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
     name: 'ollama', local: true, url: base, defaultModel, numCtx: ctx,
     configured: () => true,
     queued: () => queue.length,
+    busy: () => live + queue.length, // requests in flight or waiting (issue #515: a runner reports a member queued for its scene)
     // The models Ollama holds in memory now (GET /api/ps) with the context each was loaded at:
     // [{name, ctx}] (ctx null when this Ollama does not report context_length), or null when it does not answer.
     held,
@@ -114,7 +125,7 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
     // function tools, or format: a JSON schema for the JSON-action fallback. Returns {message,
     // usage:{in,out,cost:0}, model, ms, done}. A model without tool support fails with e.noTools.
     // num_ctx is always the adapter's own (issue #221); a per-call numCtx is ignored on purpose.
-    async chat({model, messages, tools, format, maxTokens = 600, temperature = null, repeatPenalty = null, signal}) {
+    async chat({model, messages, tools, format, maxTokens = 600, temperature = null, repeatPenalty = null, signal, urgent = false}) {
       const mdl = model || defaultModel, t0 = Date.now();
       const body = {model: mdl, stream: false, keep_alive: keepAlive, ...(noThink.has(mdl) ? {} : {think: false}), messages,
         ...(tools ? {tools} : {}), ...(format ? {format} : {}),
@@ -126,7 +137,7 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
           if (code === 'ECONNREFUSED') throw fail(`ollama: not reachable at ${base} (is Ollama running?)`);
           throw fail('ollama: ' + String(e && e.message || e).slice(0, 160))}};
       let r, j = null;
-      await take();
+      await take(urgent, signal);
       try {
         r = await post(); try {j = await r.json()} catch {}
         if (!r.ok && 'think' in body && /think/i.test(String(j && j.error))) {noThink.add(mdl); delete body.think; r = await post(); j = null; try {j = await r.json()} catch {}}

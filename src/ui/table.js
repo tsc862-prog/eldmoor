@@ -21,11 +21,18 @@
 // Legibility (#471): a short pixel-font title (the kind and a few words, sceneHead), the status tags as a chip row of their
 // own, the full question as wrapping body text, and outside combat one row per member (memberRows): name in class colour,
 // answered or waiting, the vote or option chosen, and the nudge or reflex timer. Combat keeps its initiative chips.
+// Scene map polish (#536): a placed person is named without their role ("Father Corvane", the role "stranger" a dim word
+// after the name on the staged line; unrole cleans lines written before); an option shows as a short label (shortLabel:
+// the DM's own label, else a few words per action, never cut mid-word) with the full text on hover; the DM's lines at the
+// table are a short list (narrLines: the last NARR_KEEP of the scene, so a whisper's "leans close" no longer replaces the
+// person's words). With the indoor scene map open the banner docks beside the map (below it on a phone; style.css
+// .screen.scin).
 import {TABLE,bannerOf,stepNext,optionsFor,pauseAll,setPauseAll} from '../sim/table.js';
 import {reflexMay,ownerHeld} from '../sim/runlink.js';
 import {classColor} from '../core/colors.js';
 import {sceneHead} from '../core/scenehead.js';
 export {sceneHead};
+import {unrole} from '../core/spoken.js';
 import {S} from '../sim/index.js';
 import {TR} from '../sim/tableround.js';
 import {maxHp} from '../sim/heroes.js';
@@ -141,10 +148,29 @@ function endBlock(box,c){if(!c.ends||!c.ends.length)return;const d=el('div','ten
 // The status tags as data: [{t, k}] (k: round | paused | all).
 export function sceneChips(b,c){const o=[];if(c)o.push({t:'Round '+c.round+'/'+c.of,k:'round'});if(b.paused)o.push({t:'World paused',k:'paused'});if(b.all)o.push({t:'Everyone answers',k:'all'});return o}
 const shortOpt=t=>String(t||'').split(/ \(|: /)[0].replace(/^Ability, /,'');
+// Cut at a word, never inside one (#536).
+export const cutWords=(t,n=28)=>{t=String(t==null?'':t).trim();if(t.length<=n)return t;const i=t.lastIndexOf(' ',n);return (i>=n/3?t.slice(0,i):t.slice(0,n)).replace(/[,;:.\s]+$/,'')+'…'};
+// A staged scene's actions in a few words (the sim's text names the person in full: "Offer Father Corvane your help").
+const SHORT={hear:'Hear them out',help:'Offer help',pass:'Ride on',leave:'Leave',parley:'Talk them round',press:'Lean on them',spot:'Look for the trigger',disarm:'Work it loose',round:'Lead the others round',study:'Study the marks',search:'Search the place'};
+export function shortLabel(sc,k,text){const c=sc&&sc.ctx,L=c&&c.labels;if(L&&L[k])return cutWords(L[k]);
+  if(c&&c.staged!=null&&SHORT[k])return k==='leave'&&sc.kind==='social'?'Walk away':SHORT[k];
+  return cutWords(shortOpt(text))}
+// Placed people at the scene (#536): their role titles are not part of their names.
+function peopleAt(sc){const id=sc&&sc.ctx&&sc.ctx.npc;if(id==null)return [];const w=(S.wanderers||[]).find(x=>x.id===id);return w&&w.title&&w.name?[{title:w.title,name:w.name,role:w.title}]:[]}
 function answerOf(sc,a,act){if(sc.kind==='decision'&&(act.k==='yes'||act.k==='no'))return {ans:act.k.toUpperCase(),tone:act.k};
   if(act.k==='stunned')return {ans:'Stunned',tone:'no'};
   let o=null;try{o=optionsFor(sc,a).find(x=>x.k===act.k)}catch(_){}
-  return {ans:o?shortOpt(o.text):String(act.k||'').replace(/^use:/,'use '),tone:'opt',full:o?o.text:''}}
+  const full=o?unrole(o.text,peopleAt(sc)):'';
+  return {ans:o?shortLabel(sc,act.k,full):String(act.k||'').replace(/^use:/,'use '),tone:'opt',full}}
+// The DM's lines at this table, oldest first (#536): sc.narr holds only the latest, so the banner keeps the last few per
+// scene; the frame itself (said as the first line) is not repeated.
+const NARR_KEEP=4;let narrLog={id:null,lines:[],last:null};
+export function narrLines(sc=S.table){if(!sc){narrLog={id:null,lines:[],last:null};return []}
+  if(narrLog.id!==sc.id)narrLog={id:sc.id,lines:[],last:null};
+  const n=sc.narr,key=n?n.t+'|'+n.text:null;
+  if(n&&n.text&&key!==narrLog.last){narrLog.last=key;const t=unrole(n.text,peopleAt(sc)),fr=plain(sc.frame).trim();
+    if(t.trim()!==fr&&narrLog.lines[narrLog.lines.length-1]!==t){narrLog.lines.push(t);if(narrLog.lines.length>NARR_KEEP)narrLog.lines.shift()}}
+  return narrLog.lines.slice()}
 const secs=n=>Math.max(0,Math.ceil(n))+' s';
 // One row per member at a scene without combat rounds: {id, name, color, st, ans, tone, line, by, timer}, in the scene's order.
 // st: done (answered or acted), wait (an agent is thinking), held (no runner: the owner decides), reflex (plays by reflex),
@@ -185,19 +211,19 @@ export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd
   const ll=liveLine(b);box.classList.toggle('tlive',!!ll);
   if(ll){const s='live|'+ll.text+'|'+ll.id;if(s===sig)return;sig=s;box.hidden=false;box.classList.remove('tcombat');patch(box,box=>{
     const o=el('button','tlvb',ll.text+' ▸');o.type='button';o.dataset.act='live';o.dataset.co=ll.id;o.title='Follow this company: its scene then pauses the world and opens here';box.append(o)},{force:true});return}
-  const c=combatView(),rows=c?null:memberRows(),hd=sceneHead(b.kind,b.title),chips=sceneChips(b,c),own=tableOwner(b);
-  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):'',own?own.text+own.followed:''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
+  const c=combatView(),rows=c?null:memberRows(),hd=sceneHead(b.kind,b.title),chips=sceneChips(b,c),own=tableOwner(b),ppl=peopleAt(S.table),narrs=narrLines(S.table);
+  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,narrs.join('¦'),b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):'',own?own.text+own.followed:''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
   const tt=el('div','tt'),th=el('span','tth',hd.head.toUpperCase());th.title=b.title;tt.append(th);box.append(tt);
   if(S.table&&(S.table.kind==='crawl'||S.table.kind==='site')){const v=el('button','tstb tdg','View the crypt ▸');v.type='button';v.dataset.dungeon='';v.title='Open the dungeon view';tt.append(v)} // #85
   else if(S.table){const v=el('button','tscn','Scene map ▸');v.type='button';v.dataset.scene='';v.title='Show the scene on its own map, or back to the world';tt.append(v)} // scene maps (#431)
   if(chips.length||own){const ch=el('div','tchips');
     if(own){const o=el(own.followed?'span':'button','tco'+(own.followed?'':' tcob'),own.text);if(!own.followed){o.type='button';o.dataset.act='follow';o.dataset.co=own.id;o.title='Follow this company: the camera, the frames and the sheet turn to it'}ch.append(o)}
     for(const x of chips)ch.append(el('span','tp t'+x.k,x.t.toUpperCase()));box.append(ch)}
-  const fr=plain(b.frame);if(hd.cut&&!fr.toLowerCase().includes(hd.full.toLowerCase()))box.append(el('div','tq',hd.full)); // the whole title when the pixel title cut it and the frame does not say it
+  const fr=unrole(plain(b.frame),ppl);if(hd.cut&&!fr.toLowerCase().includes(hd.full.toLowerCase()))box.append(el('div','tq',hd.full)); // the whole title when the pixel title cut it and the frame does not say it
   box.append(el('div','tf',fr));
-  if(b.narr)box.append(el('div','tf tnarr',b.narr)); // the DM's narrate line (issue #123)
-  if(b.cast&&b.cast.length)box.append(el('div','to','Staged by the DM · '+b.cast.join(' · '))); // a staged scene's cast (issue #132)
+  if(narrs.length){const L=el('ul','tnarrs');L.setAttribute('aria-label','At the table');narrs.forEach((t,i)=>{const li=el('li','tf tnarr'+(i<narrs.length-1?' old':''),t);li.dataset.k='n'+i;L.append(li)});box.append(L)} // the DM's lines at the table (#123), the last few (#536)
+  if(b.cast&&b.cast.length){const o=el('div','to tcast','Staged by the DM');for(const x of b.cast){const u=unrole(x,ppl),p=ppl.find(q=>u===q.name||u.startsWith(q.name+' ('));o.append(' · ',u);if(p)o.append(' ',el('span','trole',p.role.toLowerCase()))}box.append(o)} // a staged scene's cast (#132), the role a dim word (#536)
   if(c){combatBlock(box,c);box.append(el('div','tl',b.line));if(!c.ends)stepRow(box,c);endBlock(box,c);return} // the roll lines take the last-act line's place
   if(rows&&rows.length)rowsBlock(box,rows,b);
   const hint=rows&&b.all&&b.phase==='turn'&&/^\d+\/\d+ answered/.test(b.line)?(b.line.match(/\(([^()]*no runner[^()]*)\)$/)||[])[1]:null; // the rows say who waits; keep only what to do
-  if(hint)box.append(el('div','tl',hint));else if(!rowsSay(b,rows))box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome'&&!b.all)box.append(el('div','to',b.last))},{force:true})}
+  if(hint)box.append(el('div','tl',hint));else if(!rowsSay(b,rows))box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome'&&!b.all)box.append(el('div','to',unrole(b.last,ppl)))},{force:true})}

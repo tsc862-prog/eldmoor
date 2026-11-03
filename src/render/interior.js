@@ -10,7 +10,8 @@
 //   party:[hero], at: 'stair'|null, spot: the room the party stands in when it is not cur}. Read-only: nothing here touches the sim.
 // Scene settings (#431): interiorTexture also paints a setting from buildSetting (its theme, floor and wall styles, rug,
 //   bars, a two-course back wall and the furniture of render/furniture.js); drawSetting(ctx, box, m, st, now, dpr) draws
-//   one frame of it with the scene's people, the speaker's bubble and the turn chevron.
+//   one frame of it with the scene's people, the speaker's bubble and the turn chevron; #536 adds the arc staging, the
+//   answer marks (answerMark), name plates, light from the frame and time of day, the scene's item and bubbles kept off props.
 // Style (docs/ART-PLAN.md): light from the top left, ground in mid values, entities outlined and owning the extremes.
 import {T} from '../world/tiles.js';
 import {IT} from '../world/interior.js';
@@ -24,6 +25,7 @@ import {classColor,DISP,toneOf} from '../core/colors.js';
 import {drawConditions} from './conditions.js';
 import {drawFoes} from './dgfoes.js';
 import {maxHp} from '../sim/heroes.js';
+import {spokenOf,unrole} from '../core/spoken.js';
 
 const PS={close:true,sc:1,dpr:1,offX:0,offY:0}; // the camera the condition glyphs read (a reused object, no per-frame allocation)
 const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
@@ -205,48 +207,110 @@ function text(ctx,t,x,y,col,css,dpr,sc){const s=css*dpr/sc;ctx.font=s+'px VT323,
 
 // ---- a scene setting (#431): one frame of the room with the scene's people in it ----
 // st (render/sceneview.js): {party:[hero], cast:[entity] (a townsperson, a foe or an enemy hero), speaker:{e, text}|null,
-//   cur: the member whose turn it is or null, busy}. The party stands in a row at the room's party spot facing the cast,
-//   the first of the cast at its spot (on its seat in a cell), the rest beside it. Read-only like the dungeon view.
+//   cur: the member whose turn it is or null, busy, marks:{id:'think'|'done'|'turn'}, dark: the room's dimness (night and
+//   the frame, #536), item: a kind of ITEM_ART the frame names, people:[{title,name}] (role titles to drop from lines)}.
+// Staging (#536): the first of the cast on its spot (the step, the chair), the rest beside it; the party in a loose arc in
+// front of it, each member turned toward it. Read-only like the dungeon view.
 const DAYGLOW=[190,215,255];
+// Where the members stand: an arc below the speaker's spot (radius about 2.4 tiles, squashed for the top-down view),
+// spread wider for a bigger party, kept on the room's floor.
+export function arcSpots(n,c,room){const out=[];if(!n)return out;const R=Math.max(2.2,Math.min(3.2,.62*(n-1)+1.6)),span=Math.min(Math.PI*2/3,(n-1)*Math.max(.6,1.8/R)); // neighbours at least ~1.6 tiles apart, so their names never touch
+  for(let k=0;k<n;k++){const t=Math.PI/2-(n>1?(k/(n-1)-.5)*span:0),x=c.x+Math.cos(t)*R,y=c.y+Math.sin(t)*R*.9+.2;
+    out.push({x:Math.max(room.x+.5,Math.min(room.x+room.w-.5,x)),y:Math.max(c.y+1.4,Math.min(room.y+room.h-.15,y))})}
+  return out}
+// The rectangles (world px) of a setting's props, cached per setting: what a speech bubble keeps clear of.
+const rectCache=new WeakMap();
+function propRects(m){let r=rectCache.get(m);if(r)return r;r=[];
+  for(const p of m.props){if(p.kind==='pew'||p.kind==='bench')continue; // the floor the people stand among
+    const P=propOf(p.kind);if(!P)continue;const rows=P.make?P.make(p.len?p.len*16-2:0):P.rows;if(!rows||!rows.length)continue;
+    r.push({x:p.x*T+P.ox,y:p.y*T+P.oy,w:rows[0].length,h:rows.length,k:FOCUS[p.kind]||(P.light?.5:1)})}
+  rectCache.set(m,r);return r}
+const FOCUS={altar:4,idol:4,hearth:3,table:2,longtable:2,basin:2,throne:4,sarcophagus:4}; // what a line must never hide
+const over=(a,b)=>Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
+// A small item the scene names (#536), drawn lit on the floor beside the speaker.
+export const ITEM_ART={
+  candle:{rows:['.F.','FYF','.Y.','WWW','WWD','DDD'],map:{F:'#ff8a3a',Y:'#ffd866',W:'#e8e0c8',D:'#6a6070'}},
+  letter:{rows:['LLLLLLL','LMMMMML','LSSSSML','LMRRMML','LLLLLLL'],map:{L:'#f0e6c8',M:'#d8ccaa',S:'#8a7a5a',R:'#b03030'}},
+  key:{rows:['.YY....','Y..Y...','.YYYYYY','....Y.Y'],map:{Y:'#e0c050'}},
+  ring:{rows:['.G.','GWG','Y.Y','.Y.'],map:{G:'#7ad0ff',W:'#ffffff',Y:'#e0c050'}},
+  pouch:{rows:['.SS.','LMML','MMMS','MMMS','.SS.'],map:{L:'#b08050',M:'#8a5a32',S:'#5a3a20'}},
+  book:{rows:['RRRRRR','RWWWWS','RWWWWS','RRRRRS'],map:{R:'#7a2a3a',W:'#e8e0c8',S:'#3a1a20'}},
+  vial:{rows:['.D.','.W.','GGG','GgG','.G.'],map:{D:'#6a4a30',W:'#d8e0e8',G:'#40b070',g:'#a0f0c0'}},
+  dagger:{rows:['W......','.W.....','..W....','...WW..','....YD.','.....DD'],map:{W:'#d8dce8',Y:'#e0c050',D:'#5a3a20'}},
+  map:{rows:['LLLLLLL','LMRMMML','LMMMGML','LMGMMRL','LLLLLLL'],map:{L:'#e8d8a8',M:'#c8b888',R:'#b03030',G:'#4a8a4a'}},
+  lantern:{rows:['.D.','DDD','DYD','DYD','DDD'],map:{D:'#3a3440',Y:'#ffd866'}},
+};
+// The part of a setting worth showing (world px): the walls and floor, without the empty margin round them.
+const cropCache=new WeakMap();
+export function settingCrop(m){let c=cropCache.get(m);if(c)return c;let x0=m.w,y0=m.h,x1=-1,y1=-1;
+  for(let y=0;y<m.h;y++)for(let x=0;x<m.w;x++)if(m.tiles[y*m.w+x]!==IT.VOID){if(x<x0)x0=x;if(y<y0)y0=y;if(x>x1)x1=x;if(y>y1)y1=y}
+  if(x1<0){x0=0;y0=0;x1=m.w-1;y1=m.h-1}
+  c={x:x0*T,y:y0*T,w:(x1-x0+1)*T,h:(y1-y0+1)*T};cropCache.set(m,c);return c}
+// The scale a setting is drawn at in box (device px): whole numbers, so every texel is the same size (#536); below 1 only
+// when the box is tiny.
+export function settingScale(box,m){const c=settingCrop(m),f=Math.min(box.w/c.w,box.h/c.h);return f>=1?Math.floor(f):Math.max(.25,Math.floor(f*4)/4)}
 export function drawSetting(ctx,box,m,st,now,dpr=1){
-  const tex=interiorTexture(m);let sc=Math.min(box.w/(m.w*T),box.h/(m.h*T));if(sc>=2)sc=Math.floor(sc);else if(sc>1)sc=Math.floor(sc*4)/4;
-  const ox=Math.round(box.x+(box.w-m.w*T*sc)/2),oy=Math.round(box.y+(box.h-m.h*T*sc)/2),W=m.w*T,H=m.h*T;
-  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(tex,0,0,tex.width,tex.height,ox,oy,Math.round(W*sc),Math.round(H*sc));
+  const tex=interiorTexture(m),cr=settingCrop(m),sc=settingScale(box,m); // the room fills the box at a whole-number scale, crisp (#536)
+  const ox=Math.round(box.x+(box.w-cr.w*sc)/2-cr.x*sc),oy=Math.round(box.y+(box.h-cr.h*sc)/2-cr.y*sc),W=m.w*T,H=m.h*T;
+  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(tex,cr.x,cr.y,cr.w,cr.h,ox+cr.x*sc,oy+cr.y*sc,cr.w*sc,cr.h*sc);
   ctx.setTransform(sc,0,0,sc,ox,oy);
-  // the room's own dimness, then its fire, candles, lamps and daylight added back
-  if(m.dark>0){ctx.fillStyle='rgba(8,8,22,'+m.dark+')';ctx.fillRect(0,0,W,H)}
+  // the room's own dimness (deeper at night and when the frame says so), then its fire, candles, lamps and daylight added back
+  const dark=st.dark!=null?st.dark:m.dark||0,night=Math.max(0,dark-(m.dark||0));
+  if(dark>0){ctx.fillStyle='rgba(8,8,22,'+dark+')';ctx.fillRect(cr.x,cr.y,cr.w,cr.h)}
   const G=glowSprite();ctx.save();ctx.beginPath();ctx.rect(T,T,W-2*T,H-2*T);ctx.clip();ctx.globalCompositeOperation='lighter'; // light stays inside the walls
-  for(const p of m.props){const P=propOf(p.kind);if(!P||!P.light)continue;const R=P.light==='crypt'?44:P.light==='day'?36:p.kind==='hearth'?50:30;
+  for(const p of m.props){const P=propOf(p.kind);if(!P||!P.light)continue;if(P.light==='day'&&night>.2)continue; // no daylight through the windows at night
+    const R=(P.light==='crypt'?44:P.light==='day'?36:p.kind==='hearth'?50:30)*(1+night*.8);
     const f=P.light==='day'?.55:.72+.28*Math.sin(now*7+p.x*1.7+p.y)*Math.sin(now*3.1+p.x);
     const cx=p.x*T+P.ox+(P.rows?P.rows[0].length:16)/2,cy=p.y*T+P.oy+(P.light==='day'?12:6);
     ctx.globalAlpha=Math.max(0,f);ctx.drawImage(G[P.light],cx-R,cy-R,R*2,R*2)}
   ctx.restore();ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
-  // who stands where
-  const ents=[],sp=m.spots,party=st.party||[],cast=st.cast||[],n=party.length,room=m.rooms[0];
-  const per=Math.max(1,Math.min(n,Math.floor((room.w-.5)/1.2))),rows=Math.ceil(n/per);
-  party.forEach((a,k)=>{const r=Math.floor(k/per),inRow=Math.min(per,n-r*per),i=k-r*per;
-    ents.push({e:a,x:Math.max(room.x+.5,Math.min(room.x+room.w-.5,sp.party.x+(i-(inRow-1)/2)*1.2+(r&1)*.6)),y:Math.min(room.y+room.h-.15,sp.party.y+r*.95-(rows-1)*.45),hero:true})});
+  // who stands where: the speaker on its spot, the party in an arc before it, turned toward it
+  const ents=[],sp=m.spots,party=st.party||[],cast=st.cast||[],room=m.rooms[0],c0=sp.cast[0]||{x:room.x+room.w/2,y:room.y+1};
+  const arc=arcSpots(party.length,c0,room);
+  party.forEach((a,k)=>ents.push({e:a,x:arc[k].x,y:arc[k].y,hero:true,flip:arc[k].x>c0.x+.2}));
   cast.forEach((e,k)=>{const c=sp.cast[Math.min(k,sp.cast.length-1)],off=k<sp.cast.length?0:(k-sp.cast.length+1);
-    ents.push({e,x:c.x+(off?(off&1?1:-1)*Math.ceil(off/2)*1.3:0),y:c.y+(off?.25:0),cast:true})});
+    ents.push({e,x:c.x+(off?(off&1?1:-1)*Math.ceil(off/2)*1.3:0),y:c.y+(off?.25:0),cast:true,flip:true})});
   ents.sort((a,b)=>a.y-b.y);
   const fr=Math.floor(now*1.6)&1,pseudo={close:true,sc,dpr,offX:ox,offY:oy};
+  // the item, on the floor beside the speaker, softly lit and outlined in gold (drawn before the people)
+  const art=st.item&&ITEM_ART[st.item];if(art){const s=outlined(sprite('it-'+st.item,art.rows,art.map)),ix=Math.round(c0.x*T+10),iy=Math.round(c0.y*T),pulse=.55+.3*Math.sin(now*3);
+    ctx.globalCompositeOperation='lighter';ctx.globalAlpha=pulse;ctx.drawImage(G.warm,ix+s.width/2-14,iy-s.height/2-14,28,28);ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
+    ctx.drawImage(s,ix,iy-s.height);ctx.strokeStyle=MARK.sel;ctx.globalAlpha=pulse;ctx.lineWidth=dpr/sc;ctx.strokeRect(ix-1.5,iy-s.height-1.5,s.width+3,s.height+3);ctx.globalAlpha=1}
   for(const q of ents){const e=q.e,s=spriteOf(e,st.busy&&e===st.cur?fr:0);if(!s)continue;
     const px=Math.round(q.x*T),py=Math.round(q.y*T),o=outlined(s),top=py-s.height;q.px=px;q.top=top;
     ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,s.width/2,1.6,0,0,7);ctx.fill();
     if(q.cast||q.hero){const col=q.hero?classColor(e.cls):castColor(e);ctx.strokeStyle=col;ctx.globalAlpha=.8;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(px,py-.5,s.width/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
-    ctx.save();ctx.translate(px,0);if(q.cast)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)-1,top-1);ctx.restore();
+    ctx.save();ctx.translate(px,0);if(q.flip)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)-1,top-1);ctx.restore();
     if(e.eff)drawConditions(ctx,null,pseudo,e,px,py,top,now);}
-  // the member whose turn it is: a gold chevron over the head
-  for(const q of ents)if(q.e===st.cur&&q.top!=null){const y=q.top-7+Math.round(Math.sin(now*5));ctx.fillStyle=MARK.edge;ctx.fillRect(q.px-3,y-1,7,4);ctx.fillStyle=MARK.sel;ctx.fillRect(q.px-2,y,5,1);ctx.fillRect(q.px-1,y+1,3,1);ctx.fillRect(q.px,y+2,1,1)}
-  // names at a constant CSS size under the feet, the room's name over its back wall
-  const compact=T*sc/dpr<14;
+  // over the heads: the gold chevron for the one acting, "..." for a member still thinking, a tick once answered
+  const marks=st.marks||{};
+  for(const q of ents){if(q.top==null)continue;const k=q.e===st.cur?'turn':q.hero?marks[q.e.id]:null;if(k)answerMark(ctx,q.px,q.top-2,k,now)}
+  // names in one place, under the feet on a dark plate, at a constant CSS size
+  const compact=T*sc/dpr<14,big=T*sc/dpr>=32,fs=big?14:12; // a room seen at 2x and up reads at 14 px
   for(const q of ents){if(q.top==null)continue;const e=q.e,col=q.hero?classColor(e.cls):castColor(e);if(compact&&!q.cast&&e!==st.cur)continue;
-    text(ctx,nameOf(e),q.x*T,q.y*T+11*dpr/sc,col,12,dpr,sc)}
-  // the speaker's bubble (the latest line at this table), and any member's own bubble from the chat
-  const said=new Set();
-  if(st.speaker&&st.speaker.e){const q=ents.find(r=>r.e===st.speaker.e);if(q&&q.top!=null){bubble(ctx,q.px,q.top-3*dpr/sc,headOf(q.e),q.hero?classColor(q.e.cls):castColor(q.e),st.speaker.text,dpr,sc,1);said.add(q.e)}}
-  for(const q of ents){const b=q.e.bubble;if(said.has(q.e)||q.top==null||!b||b.life<=0)continue;bubble(ctx,q.px,q.top-3*dpr/sc,headOf(q.e),q.hero?classColor(q.e.cls):castColor(q.e),b.text,dpr,sc,Math.min(1,b.life/.6))}
+    plate(ctx,nameOf(e),q.x*T,q.y*T+2*dpr/sc,col,fs,dpr,sc)}
+  // the speaker's bubble (only words said out loud, core/spoken.js), and any member's own bubble from the chat; each
+  // takes the first place over the head that keeps the room's furniture clear (above, then beside it right or left)
+  const said=new Set(),rects=propRects(m);
+  const place=(q,head,col,text,alpha)=>{const sz=bubbleSize(ctx,head,text,dpr,sc,fs),y=q.top-8,bottom=y-sz.pad*.7,gap=sz.pad*2;let best=0,bo=1e9;
+    for(const dx of [0,sz.bw/2+gap,-(sz.bw/2+gap),sz.bw/2,-sz.bw/2]){const r={x:q.px+dx-sz.bw/2,y:bottom-sz.bh,w:sz.bw,h:sz.bh};let o=0;for(const p of rects)o+=over(r,p)*p.k;
+      if(r.x<cr.x-T||r.x+r.w>cr.x+cr.w+T)o+=1e6;if(o<bo){bo=o;best=dx}if(!o)break}
+    bubble(ctx,q.px,y,head,col,text,dpr,sc,alpha,best,fs)};
+  if(st.speaker&&st.speaker.e){const q=ents.find(r=>r.e===st.speaker.e);if(q&&q.top!=null){place(q,headOf(q.e),q.hero?classColor(q.e.cls):castColor(q.e),st.speaker.text,1);said.add(q.e)}}
+  for(const q of ents){const b=q.e.bubble;if(said.has(q.e)||q.top==null||!b||b.life<=0)continue;const t=spokenOf(unrole(b.text,st.people),nameOf(q.e));if(!t)continue;
+    place(q,headOf(q.e),q.hero?classColor(q.e.cls):castColor(q.e),t,Math.min(1,b.life/.6))}
   ctx.setTransform(1,0,0,1,0,0);return {sc,ox,oy}}
+
+// A mark over a head (current transform; x the head's centre, y just above it): 'turn' the gold chevron, 'think' three
+// dots that take turns, 'done' a green tick, each on a dark plate. Shared with the outdoor cut (render/sceneview.js).
+export function answerMark(ctx,x,y,k,now){x=Math.round(x);
+  if(k==='turn'){y=Math.round(y-4+Math.sin(now*5));ctx.fillStyle=MARK.edge;ctx.fillRect(x-3,y-1,7,4);ctx.fillStyle=MARK.sel;ctx.fillRect(x-2,y,5,1);ctx.fillRect(x-1,y+1,3,1);ctx.fillRect(x,y+2,1,1);return}
+  y=Math.round(y-6);ctx.fillStyle=MARK.edge;ctx.fillRect(x-5,y-1,11,7);
+  if(k==='think'){const i=Math.floor(now*3)%3;for(let d=0;d<3;d++){ctx.fillStyle=d===i?'#ffffff':'#8a90b0';ctx.fillRect(x-4+d*3,y+2,2,2)}return}
+  if(k==='done'){ctx.fillStyle='#7fe08a';for(const [a,b] of [[-3,2],[-2,3],[-1,4],[0,3],[1,2],[2,1],[3,0]])ctx.fillRect(x+a,y+b,1,1)}}
+// A name on a dark plate (#536: one spot under the feet, readable at any scale), centred on x with its top at y.
+function plate(ctx,t,x,y,col,css,dpr,sc){const s=css*dpr/sc;ctx.font=s+'px VT323, monospace';const w=ctx.measureText(t).width,p=s*.2;
+  ctx.fillStyle='rgba(6,6,14,.8)';ctx.fillRect(x-w/2-p,y,w+2*p,s*.86);ctx.textAlign='center';ctx.fillStyle=col;ctx.fillText(t,x,y+s*.68)}
 
 // A scene entity's sprite: a hero, a townsperson (S.wanderers / S.npcs) or a creature.
 function spriteOf(e,fr){if(!e)return null;
@@ -261,13 +325,16 @@ function castColor(e){if(e.kind==='mob'||e.kind==='boss')return DISP.hostile.col
 // A speech bubble over (x, y) in the current transform (sc world-to-device, dpr): a dark rounded box with the speaker's
 // name in its colour and up to three wrapped lines. Shared by the outdoor cut (render/sceneview.js).
 const BL=22,BMAX=3;
-function wrapLine(t){const out=[];let cur='';for(const w of String(t).split(' ')){if(cur&&(cur+' '+w).length>BL){out.push(cur);cur=w}else cur=cur?cur+' '+w:w}
-  if(cur)out.push(cur);if(out.length>BMAX){out.length=BMAX;out[BMAX-1]=out[BMAX-1].slice(0,BL-1).trimEnd()+'…'}return out}
-export function bubble(ctx,x,y,head,headCol,body,dpr,sc,alpha=1){const s=12*dpr/sc,lh=s*.8,pad=s*.3,lines=(head?[head]:[]).concat(wrapLine(body));
-  ctx.font=s+'px VT323, monospace';let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
-  const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=y-pad*.7,top=bottom-bh,x0=x-bw/2;
+function wrapLine(t,bl=BL,bmax=BMAX){const out=[];let cur='';for(const w of String(t).split(' ')){if(cur&&(cur+' '+w).length>bl){out.push(cur);cur=w}else cur=cur?cur+' '+w:w}
+  if(cur)out.push(cur);if(out.length>bmax){out.length=bmax;out[bmax-1]=out[bmax-1].slice(0,bl-1).trimEnd()+'…'}return out}
+// css: the text size in CSS px (12 on the world map; a scene room seen at 2x and up uses 14 with longer lines, #536).
+export function bubbleSize(ctx,head,body,dpr,sc,css=12){const s=css*dpr/sc,lh=s*.8,pad=s*.3,lines=(head?[head]:[]).concat(css>12?wrapLine(body,28,4):wrapLine(body));
+  ctx.font=s+'px VT323, monospace';let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);return {bw:w+pad*2,bh:lines.length*lh+pad*1.2,pad,lines,s,lh}}
+// dx (#536) moves the box sideways off the head (the tail still points at x), so a line never covers the altar.
+export function bubble(ctx,x,y,head,headCol,body,dpr,sc,alpha=1,dx=0,css=12){const {bw,bh,pad,lines,lh}=bubbleSize(ctx,head,body,dpr,sc,css);
+  const bottom=y-pad*.7,top=bottom-bh,x0=x+dx-bw/2,tx=Math.max(x0+pad*1.2,Math.min(x0+bw-pad*1.2,x));
   ctx.globalAlpha=alpha;ctx.fillStyle='#0a0a16'; // opaque, edged in the speaker's colour (#471)
   if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill();if(headCol){ctx.strokeStyle=headCol;ctx.lineWidth=dpr/sc;ctx.stroke()}}else ctx.fillRect(x0,top,bw,bh);
   ctx.fillStyle='#0a0a16';
-  ctx.beginPath();ctx.moveTo(x-pad*.6,bottom);ctx.lineTo(x+pad*.6,bottom);ctx.lineTo(x,bottom+pad*.7);ctx.fill();
-  lines.forEach((l,i)=>text(ctx,l,x,top+pad*.6+lh*(i+.85),head&&i===0?headCol:TEXT.label,12,dpr,sc));ctx.globalAlpha=1}
+  ctx.beginPath();ctx.moveTo(tx-pad*.6,bottom);ctx.lineTo(tx+pad*.6,bottom);ctx.lineTo(x,bottom+pad*.7);ctx.fill();
+  lines.forEach((l,i)=>text(ctx,l,x0+bw/2,top+pad*.6+lh*(i+.85),head&&i===0?headCol:TEXT.label,css,dpr,sc));ctx.globalAlpha=1}

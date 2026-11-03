@@ -107,6 +107,8 @@ other. The rules:
 - `npm run localcheck`: the local agent runner against a mock Ollama (see "Model providers"), and runner
   pacing (turns per game hour on a quiet world, a notification starts a turn at once, the failure stop, a lazy
   model re-prompted and stopped, the scripted takeover of an idle hero).
+- `npm run scenewaitcheck`: Table scene waits (#515): the Ollama queue puts scene answers first, a free turn gives way to its
+  scene, `table_waits`/`waited_s`/`{queued}`/`scene-missed`, and five slow mock members answering an everyone-at-once scene in time.
 - `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
 - `npm run crawlcheck`: the dungeon crawl (#65, see "Dungeon crawl" below): rooms as spec data, a Fellowship crawl opening room scenes in order, retreat, driven back and wipe at the table's dice, save mid-crawl, 8x, seeded determinism, and a seeded background world that repeats (`CRAWL_BASELINE_HASH=<hash from main>` asserts it equals main's).
@@ -423,6 +425,16 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   json_schema: `{option: enum, line}`) and the runner sends `scene_act` itself; Claude keeps tool use, with one
   structured answer after a scene turn that missed. `wait` on your own scene turn is refused; calls written as
   text (`scene_act(deadeye, "...")`, `tool({...})`) run, and labels like "CallCheck" are cut from narration.
+- Scene first (#515, `src/sim/scenewait.js`): every tool result (and a wait) of a member whose own scene waits carries
+  `table_waits` ("A Table scene waits on you ...: answer with scene_act now (options ...)"); a local/OpenAI free turn stops
+  there (or at once when the runner's watch of `/play/health` `heroes[].due` sees it; a model call waiting or in flight is
+  withdrawn) and the forced answer follows in the same turn; forced answers go `urgent` to the front of the runner's Ollama
+  queue; a Claude member whose scene is open at turn start answers it first with one structured call, and after any turn
+  the runner checks the scene again. A runner whose member's answer waits behind other work (its turn in flight, a busy
+  queue, the Claude slots) sends `POST /play/pace {queued:true}` once per scene; the table then waits up to `SW.EXTRA_MS`
+  (90 s) more for that live member (`sc.q`). A live member the table still times out is `sc.miss` -> the `scene-missed`
+  anomaly. `scene_act` returns `waited_s` (turn lines `sceneS`; the report's "Table scene answers": p50/p90 per mind,
+  answers and misses per member). `npm run scenewaitcheck` (five slow mock members on one queue, a member mid-turn).
 - Talk (`src/sim/talk.js`): an agent's `say`/`party_say` that repeats one of its last 5 lines, or a second
   introduction once members have met (both spoke in each other's hearing), is refused; every turn header
   carries the last 8 lines heard and the companions met.
@@ -585,7 +597,7 @@ encounters and speak at their tables (issue #132, below).
   `read_timeline`, `read_chronicle`, `read_dm_log`, `fellowship_view`, `heroes_near`, `npcs`,
   `regions`, `hooks`, `levers`, `notes_read`, `notes_write` (threads, characters, plans, secrets; saved
   with the world in `S.dmAgent`), `pull_lever` (`pull(name, params, {by:'dm-agent', reason})`; at most
-  `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's), the flat lever tools `post_hook {town, tpl, giver?, reward?, region?, place?, for?}`, `place_person {role, near, name?, faction?, want?, attitude?, hours?, spot?}` (create_npc) and `mark_place {kind, near, name?, hours?}` (#413: each with a reason, `near` read like `stage_scene`'s, pulled through pull_lever's path, so the same caps, limits, Fellowship reserve and DM log),
+  `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's), the flat lever tools `post_hook {town, tpl, giver?, reward?, region?, place?, for?}`, `place_person {role, near, name?, faction?, want?, attitude?, hours?, spot?}` (create_npc) , `mark_place {kind, near, name?, hours?}`, and `give_item {hero, item, by?, ilvl?}` / `take_item {hero, item, by?}` (#524: a quest item, token or consumable, or one plain gear piece a day at or below the hero's level, never an epic; `by` a person within 7 tiles hands it over, else it is found; take is quest items only; refused in a fight; urgent-1 event; `give_token`/`take_token` are now aliases) (#413: each with a reason, `near` read like `stage_scene`'s, pulled through pull_lever's path, so the same caps, limits, Fellowship reserve and DM log),
   `log_intent`, and its in-game voice `narrate` (`{text, near, radius?}`: heroes near a hero, town,
   region or "x,y", or everyone at the open Table scene, hear it in their Chat tab and the Table banner;
   12 a game day) and `npc_say` (`{npc, text}`: a townsperson or placed person speaks to whoever is within
@@ -673,7 +685,8 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   relay failures (5 in 5 min: 429, timeouts, 5xx), two Ollama models at once, request floods. Game side
   (`src/sim/behavior.js` `BW`): idle in one place 2+ game hours outside camp, the same state 6 hours with
   no progress, reflex taking every agent turn of 2 scenes in a row, every agent vote by reflex twice,
-  DM levers refused often, a danger lever pulled near a member below 35% HP. One line per kind and seat
+  DM levers refused often, a danger lever pulled near a member below 35% HP, `scene-missed` (a live member's Table turn
+  taken by its reflex after the wait, #515). One line per kind and seat
   per 5 real minutes (the rest counted as `heldBack`).
 - Rules: no keys (key-shaped text is redacted, headers never logged), no tool results, prompts or another
   seat's text in a seat's lines, chat as counts only.
