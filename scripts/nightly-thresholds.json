@@ -1,0 +1,18 @@
+{
+  "_doc": "Thresholds for the nightly long run (scripts/nightly-run.mjs, workflow nightly-run.yml, issue #574). The run plays a headless Fellowship with mock local minds (no paid API, no Ollama) and fails when one is crossed; the failure opens or updates the issue 'Nightly agent run failed'. Change a number here in the same PR that moves the behaviour it guards. idle is judged by maxIdleGameHours, not a count (the mock minds only wait, so short idles are expected); reflex-votes, no-aim and repeated-narration are properties of the mocks and are not limited.",
+  "maxAutopilotShare": 0.5,
+  "maxIdleGameHours": 12,
+  "minTableScenes": 1,
+  "maxDeaths": 3,
+  "maxEmptyTurnRate": 0.5,
+  "minTurns": 10,
+  "maxAnomalies": {
+    "stuck-state": 0,
+    "stale-claim": 0,
+    "refused-calls": 2,
+    "reflex-scenes": 5,
+    "scene-missed": 3,
+    "relay-failures": 0,
+    "request-flood": 0
+  }
+}
