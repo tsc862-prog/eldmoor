@@ -431,6 +431,8 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
 }
 
 const strip = m => {const o ={role: m.role, content: m.content || ''}; if (m.tool_calls) o.tool_calls = m.tool_calls; if (m.tool_name) o.tool_name = m.tool_name; return o};
+// Gemini thought signatures (#672) go back only within their turn: the kept history (and the session file) drops them.
+const noSig = m => m.tool_calls && m.tool_calls.some(c => c && c.extra_content) ? {...m, tool_calls: m.tool_calls.map(c => ({function: c.function}))} : m;
 const cut = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
 // Drop the oldest whole turns (a turn starts at a message marked turn:1) until the history fits.
 export function trimHistory(h, budget) {
@@ -537,7 +539,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     if (!calls && (!stat.tools || notEnglish(content)) && !reprompted && i < toolTurns - 1) {reprompted = stat.reprompted = true; turnMsgs.push({role: 'assistant', content: notEnglish(content) ? '(not in English)' : cut(said || content, 300), narr: 1}, {role: 'user', content: notEnglish(content) ? REPROMPT_EN : REPROMPT}); continue}
     if (!calls) {stat.narration = said; turnMsgs.push({role: 'assistant', content: stat.narration, narr: 1}); break}
     calls = calls.slice(0, o.callsPerReply);
-    turnMsgs.push({role: 'assistant', content: said, tool_calls: calls.map(c => ({function: {name: c.function && c.function.name, arguments: c.function && c.function.arguments || {}}}))});
+    turnMsgs.push({role: 'assistant', content: said, tool_calls: calls.map(c => ({function: {name: c.function && c.function.name, arguments: c.function && c.function.arguments || {}}, ...(c.extra_content ? {extra_content: c.extra_content} : {})}))}); // extra_content: a Gemini thought signature, sent back within this turn (#672)
     if (said && !notEnglish(said)) on('text', said);
     for (const c of calls) {
       const name = String(c.function && c.function.name || '');
@@ -571,7 +573,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   // the model's own past narrations are not fed back (a small model copies them instead of looking): only this turn's stays
   const lastNarr = turnMsgs.filter(m => m.narr).pop();
   L.history = L.history.filter(m => !m.narr);
-  L.history.push(...turnMsgs.filter(m => !m.narr || m === lastNarr));
+  L.history.push(...turnMsgs.filter(m => !m.narr || m === lastNarr).map(noSig));
   // a narration close to the last one is a repeat; with no world-changing call it makes an empty turn (scripts/pacing.mjs localWorked)
   if (stat.narration && L.lastNarr && similar(stat.narration, L.lastNarr) >= REPEAT_SIM) stat.repeat = true;
   if (stat.narration) L.lastNarr = stat.narration.slice(0, 400);

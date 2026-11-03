@@ -24,7 +24,7 @@
 //
 // Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (optional; default until stopped), --min-gap S, --max-fails N, --budget USD
 // (default 1.00, this run), --cadence evening|S, --tool-turns N (model calls per turn, default 16),
-// --provider anthropic|ollama (or DM_PROVIDER), --model (or DM_MODEL; default claude-sonnet-5-5, or the
+// --provider anthropic|ollama|google (or DM_PROVIDER; google = Gemini through the same tool loop as Ollama, #672), --model (or DM_MODEL; default claude-sonnet-5-5, or the
 // Ollama default), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
 // --claude-concurrency is accepted (the runner supervisor passes it) and changes nothing: always one call.
 // Table voice (issue #132): --table-model (or DM_TABLE_MODEL; default claude-haiku-5-5 with Anthropic, the seat's model with
@@ -48,7 +48,7 @@ import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.m
 import {paceSettings, turnCap, capText, failTracker, localWorked, takeClaudeSlot} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const DM_PROVIDERS = ['anthropic', 'ollama'];
+export const DM_PROVIDERS = ['anthropic', 'ollama', 'google'];
 export const DEFAULT_DM_MODEL = 'claude-sonnet-5-5'; // claude-api skill (cached 2026-10-06): Sonnet 5.5, $2 in / $10 out per 1M tokens
 export const EVENING = 18 * 60, DAY = 1440, POLL_MS = 4000, BACKOFF = [30, 60, 120, 240, 600];
 // Fellowship-change turns (issue #165): between evenings, a turn is also due when the Fellowship's situation changed (dm_status
@@ -400,31 +400,44 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   sess.system = withDmRenownOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
-  if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
+  if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic, ollama or google.`); await quit(1)}
   const saveSess = () => saveDmSession(sess, {url: base});
   let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;
   const maxTurns = turnCap(turnsAsked, rs.provider, 12), fails = failTracker(pace.maxFails), gapUntil = () => lastEnd ? lastEnd + pace.minGap * 1000 : 0;
   const t00 = Date.now();
 
-  if (rs.provider === 'ollama') {
+  if (rs.provider === 'ollama' || rs.provider === 'google') {
     // A local model sits in the seat (Mixed minds): the tool loop of scripts/local-agent.mjs over the DM tools. No key, cost 0.
+    // Gemini (#672) plays through the same loop with its own adapter (GOOGLE_API_KEY from this process's .env; free tier cost 0).
+    const gem = rs.provider === 'google';
     const {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} = await import('./providers/ollama.mjs');
-    const {localTurn, localLine} = await import('./local-agent.mjs');
+    const {localTurn, localLine, paidLine} = await import('./local-agent.mjs');
+    let ol = null, spentG = 0;
+    if (gem) {
+      const {openaiRunner} = await import('./agent-chat.mjs'), o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
+      if (o.error) {console.error('[dm] ' + o.error); await quit(1)}
+      if (o.note) log('[dm] ' + o.note);
+      ol = o.adapter; sess.runner = rs; mind = {provider: 'google', model: rs.model}; await claim();
+      log(`[dm] DM seat taken | model ${rs.model} via Gemini (${ol.tier} tier) | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
+    } else {
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
     rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null; sess.runner = rs; mind = {provider: 'ollama', model: rs.model}; await claim();
-    const ol = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), defaultModel: rs.model, numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)})}), s0 = await ol.status();
+    ol = ollamaAdapter({url: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), defaultModel: rs.model, numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)})}); const s0 = await ol.status();
     if (!s0.ok) {console.error(`[dm] Ollama at ${s0.url} is ${s0.error}. Start Ollama or pass --ollama-url.`); await quit(1)}
     if (!s0.models.includes(rs.model)) {console.error(`[dm] model ${rs.model} is not pulled in Ollama (pulled: ${s0.models.join(', ') || 'none'}). Run: ollama pull ${rs.model}, or pick one with --model.`); await quit(1)}
     {const {localModelNote} = await import('./pacing.mjs'); const n = await localModelNote(ol, rs.model); if (n) log('[dm] ' + n)} // another model, or ours at another num_ctx (#221)
     log(`[dm] DM seat taken | local model ${rs.model} via Ollama, num_ctx ${ol.numCtx} | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
+    }
+    const where = gem ? ' (Gemini)' : ' (local)', onCost = gem ? u => {const c = u && u.cost || 0; spentG += c; sess.costUsd = (sess.costUsd || 0) + c} : undefined;
     {const {warmUp} = await import('./warmup.mjs'); await warmUp({base, seat: {role: 'dm'}, runner, model: rs.model, adapter: ol, log})} // the start gate (issue #222): ready = answered
-    if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
-    if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 25))}); log(`[dm] talk voice: ${rs.model} (local) answers the Fellowship's conversations with world characters`)}
-    if (!flag('no-ruling-voice')) {rulingVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || 25))}); log(`[dm] ruling voice: ${rs.model} (local) rules on the heroes' free actions`)}
+    if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost}); log(`[dm] table voice: ${rs.model}${where} answers the calls of staged scenes`)}
+    if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || (gem ? 8 : 25)))}); log(`[dm] talk voice: ${rs.model}${where} answers the Fellowship's conversations with world characters`)}
+    if (!flag('no-ruling-voice')) {rulingVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || (gem ? 8 : 25)))}); log(`[dm] ruling voice: ${rs.model}${where} rules on the heroes' free actions`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
     if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
+      if (gem && spentG >= budget) {ended = 'budget reached'; break}
       const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
       let r = null, err = null;
       const prepping = st === prepSt && !!prepSt, prepAt = Date.now();
@@ -437,13 +450,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
       if (prepping) {const d = await dmTool(base, 'prep_done', {summary: 'prepared the table'}); log(`[dm] prep over: ${d.ok ? (d.prep && d.prep.why) || 'done' : short(d.error, 80)}`); prepSt = null}
       sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; lastEnd = Date.now();
-      reportTurn(base, {role: 'dm', runner, provider: 'ollama', model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
-      if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
+      reportTurn(base, {role: 'dm', runner, provider: rs.provider, model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
+      if (r && gem) {runIn += r.in; runOut += r.out; spentG += r.cost || 0; sess.costUsd = (sess.costUsd || 0) + (r.cost || 0); log(`[turn ${sess.turns}] ${paidLine(r, rs.model, 'google', {run: spentG, session: sess.costUsd})}`)}
+      else if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
       saveSess();
       if (fails.ok(localWorked(r))) ended = fails.why();
     }
     clearInterval(beat); await release();
-    log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t00) / 1000).toFixed(0)} s, $0 (local). Session saved to ${dmSessionPath()}.`);
+    log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t00) / 1000).toFixed(0)} s, ${gem ? money(spentG) + ' (Gemini ' + ol.tier + ' tier)' : '$0 (local)'}. Session saved to ${dmSessionPath()}.`);
     process.exit(0);
   }
 

@@ -53,6 +53,7 @@ export const pulledModels=()=>pulled();
 const provs=()=>relay.health&&relay.health.providers||null;
 const pulled=()=>{const o=provs()&&provs().ollama;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
 const hfList=()=>{const o=provs()&&provs().huggingface;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
+const googleList=()=>{const o=provs()&&provs().google;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
 const openaiList=()=>{const o=provs()&&provs().openai;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
 // The one local model: what the relay reports loaded (a "loaded" list from Ollama's /api/ps, when exposed), else the first pulled.
 export function localModel(){const o=provs()&&provs().ollama;if(!o||!o.ok)return '';const l=Array.isArray(o.loaded)&&o.loaded.length?o.loaded[0]:null;
@@ -61,10 +62,10 @@ export function localModel(){const o=provs()&&provs().ollama;if(!o||!o.ok)return
 export function relayState(){if(!relay.health&&!relay.runner)return relay.at?'offline':'checking';
   if(!relay.runner)return 'offline';return relay.runner.enabled?'ready':'norunners'}
 export const modelOptions=()=>[['anthropic:'+CLAUDE_MODELS.haiku,'Claude Haiku'],['anthropic:'+CLAUDE_MODELS.sonnet,'Claude Sonnet']]
-  .concat(pulled().map(m=>['ollama:'+m,m+' · local'])).concat(openaiList().map(m=>['openai:'+m,m+' · openai'])).concat(hfList().map(m=>['huggingface:'+m,m+' · huggingface']));
+  .concat(pulled().map(m=>['ollama:'+m,m+' · local'])).concat(openaiList().map(m=>['openai:'+m,m+' · openai'])).concat(hfList().map(m=>['huggingface:'+m,m+' · huggingface'])).concat(googleList().map(m=>['google:'+m,m+' · google']));
 const split=v=>{const i=String(v).indexOf(':');return i<0?{provider:v,model:''}:{provider:v.slice(0,i),model:v.slice(i+1)}};
 const joinMind=m=>m&&m.provider?m.provider+':'+(m.model||''):'';
-const labelOf=m=>{const o=modelOptions().find(x=>x[0]===joinMind(m));return o?o[1]:m&&m.model?m.model+(m.provider==='ollama'?' · local':m.provider==='openai'?' · openai':m.provider==='huggingface'?' · huggingface':''):'no model'};
+const labelOf=m=>{const o=modelOptions().find(x=>x[0]===joinMind(m));return o?o[1]:m&&m.model?m.model+(m.provider==='ollama'?' · local':m.provider&&m.provider!=='anthropic'?' · '+m.provider:''):'no model'};
 
 // ---- state ----
 // Together rides the five places in slot order (card key = slot key, hero index = place); Apart lists heroes by index (card key "0".."4").
