@@ -494,5 +494,5 @@ export function lineRefusal(a,text){if(!a||!a.player)return null;
 export function noteSaid(a,text,listeners){if(!a||!a.player)return;const L=a.talkSaid||(a.talkSaid=[]);L.push(String(text).slice(0,200));if(L.length>TALK.LAST)L.shift();
   for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1;noteKnownAt(b,a);noteKnownAt(a,b)}}
 export function heardLines(a,n=TALK.HEARD){const cut=t=>t.length>TALK.CUT?t.slice(0,TALK.CUT-1)+'…':t;
-  return (a.chat||[]).filter(e=>e.from&&(e.party||e.trigger==='agent'||e.from.kind==='hero')).slice(-n)
-    .map(e=>e.t+' '+(e.from===a?'(you)':e.from.name||'?')+(e.party?' [party]':'')+': '+cut(String(e.text||'')))}
+  return (a.chat||[]).filter(e=>e.from&&(e.party||e.trigger==='agent'||e.from.kind==='hero'||e.whisper||e.emote)).slice(-n)
+    .map(e=>e.t+' '+(e.from===a?'(you)':e.from.name||'?')+(e.party?' [party]':'')+(e.whisper?' [whispered]':'')+': '+(e.emote?'*':'')+cut(String(e.text||''))+(e.emote?'*':''))}

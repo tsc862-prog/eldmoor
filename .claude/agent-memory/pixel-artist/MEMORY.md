@@ -6,3 +6,4 @@
 - [Terrain autotile](autotile.md) — #177 slice 2: asset tables, dual-grid corner pieces, prop variants by tile hash, fixture previews
 - [Art tiers](tiletiers.md) — #177 32 px TILE vs 16 unit U split, tier keys @32/@64, sprite sheets and faction recolour
 - [Raid arena](raidarena.md) — #85 lair as interior in the dungeon frame, raid record, staging a raid shot (rAF before capture)
+- [Towns and landmarks](towns.md) — #177 slice 3: townart.js pieces, faction styles in data/townart.js, wall is tile kind, Node raster check
