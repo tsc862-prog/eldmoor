@@ -65,7 +65,7 @@ import {withSituationOrders} from './orders.mjs';
 import {systemPrompt, withMemoryOrders, withKnowledgeOrders, withTownOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, inheritRunner, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
-import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
+import {localTurn, localLine, paidLine, sceneToAnswer, sceneDue, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
 import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
@@ -257,7 +257,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // Scene first (issue #515): the member's own scene is open as the turn starts. One structured answer (the member's model, effort
     // low) sends scene_act before anything else, so a short tool budget is never spent before it (Haiku ended scene turns on
     // error_max_turns). Answered: the turn is that answer. Missed twice: the turn plays with tool use as before.
-    const sc0 = !refl && b0 ? sceneFrom(b0.scene) : null;
+    const sc0 = !refl && b0 ? sceneDue(b0.scene, m.sess) : null;
     if (sc0) {const first = await claudeScene(m, model, sc0, tc);
       if (first && first.tools) {m.sess.turns++; m.turns++; m.scenes++; m.tools += first.tools;
         reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: first.narration || '', seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: first.in, tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['scene', 'forced-scene', 'scene-first']});
@@ -300,7 +300,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // Claude keeps tool use at the table; a scene turn that ended without scene_act gets the forced answer once (issue #163)
     // (issue #515: also when the scene opened while the turn was in flight, not only when it started at the table)
     let forced = null;
-    if (!stopping && m.pacer) {const sc = sceneFrom((await m.pacer.brief() || {}).scene);
+    if (!stopping && m.pacer) {const sc = sceneDue((await m.pacer.brief() || {}).scene, m.sess);
       if (sc) {out(m.name, '[scene: the turn ended without scene_act; one structured answer]');
         forced = await claudeScene(m, model, sc, tc);
         if (forced) {turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; m.tools += forced.tools; if (forced.sceneS) sceneS.push(...forced.sceneS)}}}
@@ -336,7 +336,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let sc = null;
     try {
       // the member's own scene is open: one structured answer, then scene_act by the runner (issue #163)
-      sc = await sceneToAnswer(b0, call, scene);
+      sc = await sceneToAnswer(b0, call, scene, m.sess);
       if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
         if (!r.tools) out(m.name, `[scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`)}
       const answered = b0 && 'scene' in b0 && !sc; // in the scene but already acted: an ordinary turn
@@ -344,7 +344,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, on, interrupt: free && !m.due ? () => !!m.due : null}); // a free turn gives way to the member's own scene opening meanwhile (#515)
         if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0;
         // its scene opened mid-turn: the forced answer comes next, ahead of the other members' calls (issue #515)
-        if (r.sceneJump && !stopping) {const sj = await sceneToAnswer(m.pacer ? await m.pacer.brief() : null, call, true);
+        if (r.sceneJump && !stopping) {const sj = await sceneToAnswer(m.pacer ? await m.pacer.brief() : null, call, true, m.sess);
           if (sj) {out(m.name, `[scene: ${sj.title} opened mid-turn; answering it first]`); sc = sj; r = joinTurns(r, await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sj, on, strict: m.paid}))}}}}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`)}
     m.sess.turns++; m.turns++; if (scene || sc) m.scenes++;
