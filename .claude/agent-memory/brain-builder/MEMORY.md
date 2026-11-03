@@ -59,3 +59,4 @@
 - [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
 - [DM undo + flat](dm-undo-flat.md) — #636 undo/dismiss/unstage, ten flat lever tools, D.last, takeBack, caps, test pitfalls
 - [Rumours and titles](rumour-bestow.md) — seed_rumour and bestow DM tools (#637, #638)
+- [Gemini provider](gemini-provider.md) — #672 google id: openaiAdapter hooks, native fallback, free tier cost 0, signatures, error map, DM path
