@@ -7,6 +7,7 @@
 //      the relay; a changed script prints the code-changed notice; q leaves no child process and frees both ports.
 import http from 'node:http';
 import net from 'node:net';
+import {ms as fastMs} from './ci-clock.mjs'; // CI_FAST=1 scales the waits below tenfold (issue #543)
 import {spawn, spawnSync} from 'node:child_process';
 import {EventEmitter} from 'node:events';
 import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync, rmSync} from 'node:fs';
@@ -108,7 +109,7 @@ console.log('launcher (real children on spare ports)');
   const ORIGIN = `http://localhost:${VP}`;
   let out = '';
   const proc = spawn(process.execPath, ['scripts/up.mjs', '--relay-port', String(RP), '--vite-port', String(VP), '--no-open', '--repo', work], {cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'],
-    env: {...process.env, AGENT_LOGS: logs, UP_NPM_CLI: mockNpm, UP_GRACE_MS: '15000', NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9'}});
+    env: {...process.env, AGENT_LOGS: logs, UP_NPM_CLI: mockNpm, UP_GRACE_MS: String(fastMs(15000, 3000)), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9'}});
   proc.stdout.on('data', d => {out += d}); proc.stderr.on('data', d => {out += d});
   let exited = null; proc.on('exit', c => {exited = c});
   const send = s => proc.stdin.write(s + '\n');
