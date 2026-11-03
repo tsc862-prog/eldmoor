@@ -390,6 +390,26 @@ console.log('start gate: ready, not just claimed');
   R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
   gate.setGateProbe(null)}
 
+// The DM prepares the table (#437): once every seat is ready, a ready DM runner holds the world for one bounded prep
+console.log('the DM prepares the table');
+{const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js'),{dmFrameData}=await import('../src/ui/dmframe.js');
+  const F=sim.fellows(),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
+  const turns0=sim.S.dmAgent&&sim.S.dmAgent.turns?sim.S.dmAgent.turns.slice():null; // the DM calls below are not a turn for the DM tab's check further down
+  let dmR={state:'ready',model:'qwen2.5:14b',ms:700,at:1};sim.setDmSeat(true);
+  gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'connected',ready:a=>R[a.id]||null,dmReady:()=>dmR});
+  const T0=9e6,box=$('rgate');ctl.speed=1;gate.checkRunGate(T0);
+  ok(ctl.held&&/THE DM PREPARES THE TABLE · \d+ S · 0\/10 CALLS/.test(box.textContent),'every seat ready: the world stays held while the DM prepares ('+(box.children[0]&&box.children[0].textContent)+')');
+  ok(/Start anyway/.test(box.textContent)&&/re-reads where the companies are/.test(box.textContent),'the banner keeps Start anyway and says what the DM does (a Continue: the short prep)');
+  ok(/preparing/.test(dmFrameData().mind),'the DM frame shows preparing: '+dmFrameData().mind);
+  sim.dmAct('regions');sim.dmAct('levers');gate.checkRunGate(T0+1000);ok(/2\/10 CALLS/.test(box.textContent),'the banner counts the calls');
+  gate.startAnyway();ok(!ctl.held&&box.hidden&&sim.prepView().why==='anyway','Start anyway ends the prep and the world runs');
+  gate.checkRunGate(T0+2000);ok(!ctl.held,'the same runner gets no second prep');
+  dmR={state:'ready',model:'qwen2.5:14b',ms:650,at:2};gate.checkRunGate(T0+3000);ok(ctl.held&&/PREPARES/.test(box.textContent),'a DM runner started again gets a short prep');
+  sim.dmAct('prep_done',{summary:'ok'});gate.checkRunGate(T0+4000);ok(!ctl.held&&sim.prepView().why==='done','prep_done releases the world');
+  sim.setDmSeat(false);dmR={state:'ready',model:'x',ms:1,at:3};gate.checkRunGate(T0+5000);ok(!ctl.held&&!sim.prepActive(),'the seat closed: no prep');
+  if(sim.S.dmAgent){if(turns0)sim.S.dmAgent.turns=turns0;else delete sim.S.dmAgent.turns}
+  gate.setGateProbe(null)}
+
 // ---- timed ward chips on the party frames (#336) ----
 {console.log('ward chips');const {setEff}=await import('../src/sim/eff.js');const {effectChips}=await import('../src/ui/abilities.js');
   const a=mem[0],chips=()=>[...$('frames').querySelector('.pf[data-hid="'+a.id+'"]').querySelectorAll('.chip')].map(c=>c.textContent);

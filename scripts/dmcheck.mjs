@@ -82,6 +82,22 @@ if (process.argv[2] === '--hash') {
   console.log('HASH ' + h); process.exit(0);
 }
 
+// ---- session zero child (issue #437): the opening framed by the DM agent's call, or by the scripted DM with the seat closed ----
+if (process.argv[2] === '--opening') {
+  const A = await import('../src/sim/arrival.js'), T = await import('../src/sim/table.js'), F_ = await import('../src/sim/fellowship.js'), PL = await import('../src/sim/player.js');
+  const closed = process.argv[3] === 'closed';
+  init({fellowship: false}); run(10);
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(!closed); sim.setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  if (!closed) {const D = S.dmAgent; D.notes.plans.push({id: 9001, title: 'The Lanterns', text: 'PREMISE-PLANTED the road lights are failing.', tags: ['premise'], pin: true}, {id: 9002, title: 'Opening beats', text: 'Day 1: a dark shrine.', tags: ['openings']})}
+  A.planOpening(); step(1 / 60); const sc = S.table;
+  let call = null, k = 0; while (S.table && S.table.phase === 'frame' && k++ < 600) {if (!closed) dmAct('table_call'); step(1 / 60)}
+  if (!closed) {const t = dmAct('table_call'); call = t.call; if (call) dmAct('table_answer', {call: call.id, text: 'The hall smells of wet wool and lamp oil.'})}
+  k = 0; while (S.table && k++ < 60 * 60) step(1 / 60);
+  const heard = F_.fellows().map(a => (a.chat || []).map(e => e.text).join(' | ')).join(' || '), tools = JSON.stringify(F_.fellows().map(a => [PL.playerAct(a.id, 'status'), PL.playerAct(a.id, 'look')]));
+  console.log('OPENING ' + JSON.stringify({kind: sc && sc.kind, title: sc && sc.title, call: call && call.kind, premise: !!(call && /PREMISE-PLANTED/.test(call.about)), by: sc && sc.calls ? sc.calls.map(c => c.by) : [], dmLine: /wet wool/.test(heard), scripted: sc && sc.calls && sc.calls[0] && sc.calls[0].by === 'scripted' && heard.includes(sc.calls[0].text.slice(0, 30)), leak: heard.includes('PREMISE-PLANTED') || tools.includes('PREMISE-PLANTED'), summary: sc && sc.summary}));
+  process.exit(0);
+}
+
 // ---- Fellowship-first child (issue #165): a seeded world with a Fellowship, the scripted DM alone, the share printed ----
 if (process.argv[2] === '--focus') {
   init({fac: 0}); run(1500);
@@ -1092,11 +1108,12 @@ const plan = [['dm_status', {}], ['notes_write', {section: 'plans', op: 'add', t
 const seen = [];
 const mock = http.createServer((req, res) => {
   const send = (code, o) => {res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(o))};
-  if (req.url === '/api/tags') return send(200, {models: [{name: 'mock-dm:1b', model: 'mock-dm:1b'}]});
+  if (req.url === '/api/tags') return send(200, {models: [{name: 'mock-dm:1b', model: 'mock-dm:1b'}, {name: 'mock-loop:1b', model: 'mock-loop:1b'}]});
   if (req.url !== '/api/chat') return send(404, {error: 'not found'});
   let b = ''; req.on('data', c => b += c); req.on('end', () => {const body = JSON.parse(b); seen.push(body);
     const msgs = body.messages, last = msgs.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0).pop(), n = msgs.slice(last + 1).filter(m => m.role === 'assistant').length;
     const done = {done: true, done_reason: 'stop', prompt_eval_count: 1200, eval_count: 30, model: body.model};
+    if (body.model === 'mock-loop:1b' && body.tools) return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: 'regions', arguments: {}}}]}}); // a model that never stops calling
     if (n >= plan.length) return send(200, {...done, message: {role: 'assistant', content: 'The DM set a fair in motion and noted the pilgrim road.'}});
     const [name, args] = plan[n]; send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name, arguments: args}}]}})});
 });
@@ -1139,6 +1156,31 @@ try {
   const sizes = [...new Set(seen.map(b => b.options && b.options.num_ctx))];
   ok(seen.length && sizes.length === 1 && sizes[0] === 16384, `every DM loop request asks one num_ctx (${sizes.join(', ')}; issue #221)`);
   world.p.kill();
+  // the DM's prep before the table opens (issue #437): a resumed world (Continue) held for a short prep with --wait-ready
+  {const P2 = port + 1, B2 = `http://127.0.0.1:${P2}`, wf = join(tmp, 'world-prep.json');
+    writeFileSync(wf, JSON.stringify(snapshot())); // the world of this check, saved: a Continue
+    const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--dm', '--agents', '0', '--quiet', '--speed', '4', '--wait-ready', '--resume', '--world', wf], /^\[play\] headless world at /m);
+    await w2.until;
+    const d2 = start(['scripts/dm-agent.mjs', '--url', B2, '--provider', 'ollama', '--model', 'mock-dm:1b', '--max-turns', '1', '--cadence', '5', '--ollama-url', OLLAMA, '--new']);
+    const c3 = await d2.done, o3 = d2.out(); for (let k = 0; k < 50 && !/prep is over/.test(w2.out()); k++) await new Promise(r => setTimeout(r, 100)); const wo = w2.out();
+    ok(c3 === 0 && /preparing the table \(resume\): at most 10 calls/.test(o3) && /prep over: done/.test(o3), 'Continue: the DM runner takes the short prep (half the calls) and ends it with prep_done' + (c3 === 0 ? '' : '\n' + o3.slice(-1500)));
+    ok(/the DM prepares the table \(resume/.test(wo) && /the DM's prep is over \(done/.test(wo), 'play-headless --wait-ready holds the world for the prep and runs once it is over' + (/prep is over/.test(wo) ? '' : '\n' + wo.slice(-1200)));
+    const d3 = start(['scripts/dm-agent.mjs', '--url', B2, '--provider', 'ollama', '--model', 'mock-loop:1b', '--max-turns', '1', '--cadence', '5', '--ollama-url', OLLAMA, '--new']);
+    const c4 = await d3.done, o4 = d3.out(); for (let k = 0; k < 50 && !/prep is over [(]calls/.test(w2.out()); k++) await new Promise(r => setTimeout(r, 100)); const wo2 = w2.out(); // the world's pipe may lag the runner's exit
+    ok(c4 === 0 && /preparing the table \(resume\)/.test(o4) && /the DM's prep is over \(calls: 10 calls/.test(wo2), 'a DM runner started again gets a short prep too; a model that loops on calls is stopped by the call cap' + (c4 === 0 && /calls: 10/.test(wo2) ? '' : '\n' + o4.slice(-1500) + '\nWORLD ' + wo2.slice(-800)));
+    w2.p.kill();
+    const w3 = start(['scripts/play-headless.mjs', '--port', String(P2 + 1), '--agents', '0', '--dm', '--quiet', '--speed', '4', '--resume', '--world', wf], /^\[play\] headless world at /m);
+    await w3.until;
+    const d4 = start(['scripts/dm-agent.mjs', '--url', `http://127.0.0.1:${P2 + 1}`, '--provider', 'ollama', '--model', 'mock-dm:1b', '--max-turns', '1', '--cadence', '5', '--ollama-url', OLLAMA, '--new']);
+    const c5 = await d4.done, o5 = d4.out();
+    ok(c5 === 0 && !/preparing the table/.test(o5) && !/prepares the table/.test(w3.out()), 'no host holding the world for it (no --wait-ready): no prep, the runner goes straight to its turn');
+    w3.p.kill()}
+  // session zero framed: by the DM agent's call (the premise in its call only), or by the scripted DM with the seat closed
+  {const run1 = arg => {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--opening', arg], {encoding: 'utf8'}); if (ch.stderr) process.stderr.write(ch.stderr); const l = (ch.stdout || '').split('\n').find(x => x.startsWith('OPENING ')); return l ? JSON.parse(l.slice(8)) : {}};
+    const o = run1('seat'), c = run1('closed');
+    ok(o.kind === 'opening' && /^SESSION ZERO/.test(o.title) && o.call === 'frame' && o.premise && o.dmLine && o.by[0] === 'dm-agent', 'session zero: the DM agent frames the opening (its call carries the campaign premise)');
+    ok(!o.leak && !c.leak, 'the premise reaches no hero tool or chat; only what the DM says at the table');
+    ok(c.kind === 'opening' && c.by[0] === 'scripted' && c.scripted && /Before them|board is bare/.test(c.summary || ''), 'with the seat closed the scripted DM frames it from the hall, the day and the first board job')}
 } catch (e) {ok(false, 'runner section: ' + (e.message || e))}
 for (const k of kids) try {k.kill()} catch {}
 mock.close();

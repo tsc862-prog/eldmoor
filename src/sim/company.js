@@ -20,7 +20,8 @@ import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {bond} from './bonds.js';
 
-export const PARTY={MAX:8,MINDS:5,OFFER_MIN:60}; // OFFER_MIN: game minutes an offer to ride together stands (sim/offers.js, #442)
+export const PARTY={MAX:8,MINDS:5,OFFER_MIN:60,LETTER_DAYS:3}; // OFFER_MIN: game minutes an offer to ride together stands (sim/offers.js, #442);
+// LETTER_DAYS: a fallen member's letter waits this long for a joiner of their class, then goes to the next joiner (#452)
 export const DPS=['Mage','Hunter','Rogue','Skald'];
 export const HEALERS=['Priest','Wildspeaker'];
 export const LOG_CAP=300;
@@ -97,7 +98,7 @@ export function foundCompany(ids,o={}){const hs=(ids||[]).map(x=>typeof x==='obj
   const L=list();L.push(C);L.sort((x,y)=>x.id-y.id);
   for(const a of hs){attach(C,a);C.ids.push(a.id)}
   return {ok:true,company:C}}
-export function joinCompany(C,a){const bad=refuseJoin(C,a);if(bad)return {ok:false,error:bad};attach(C,a);C.ids.push(a.id);return {ok:true,company:C}}
+export function joinCompany(C,a){const bad=refuseJoin(C,a);if(bad)return {ok:false,error:bad};attach(C,a);C.ids.push(a.id);(C.joined||(C.joined={}))[a.id]=Math.round(S.gameMin);return {ok:true,company:C}} // joined: for the letters (#452)
 // A hero leaves its company (it never ends with zero heroes: an emptied company is dissolved). Returns the old company.
 export function leaveCompany(a,o={}){const C=companyOf(a);if(a&&a.company!=null)delete a.company;if(!C)return null;
   C.ids=C.ids.filter(id=>id!==a.id);if(C.slots)for(const k in C.slots)if(C.slots[k]===a.id)C.slots[k]=null;
@@ -119,9 +120,15 @@ export function dissolveCompany(C,why){const L=list(),i=L.indexOf(C);if(i<0)retu
 // Every agent-played hero in exactly one company: a solo for one who has none. The five-slot Fellowship's deaths go
 // through fellowship.js (onDeath and the replacement); other companies just drop their dead and end when empty.
 export function soloFor(a){if(!alive(a)||!a.player||companyOf(a))return companyOf(a);const r=foundCompany([a]);return r.ok?r.company:null}
+// A death in a company other than the five-slot Fellowship goes to the death hook (sim/arrival.js, #452): in a world with
+// runners the seat is refilled through an arrival scene, and a solo's heir starts at home; with no host nothing changes.
+let deathHook=null;
+export function setCompanyDeathHook(f){deathHook=typeof f==='function'?f:null}
 export function companyTick(){const L=S.companies;if(!L||!L.length)return;
   for(const C of L.slice()){if(C.slots)continue;let gone=false;
-    for(const id of C.ids){const a=byId(id);if(!alive(a)){gone=true;if(a){if(a.company===C.id)delete a.company;C.past.push({id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,cause:a.cause||'lost',day:day()})}}}
+    for(const id of C.ids){const a=byId(id);if(!alive(a)){gone=true;if(a){if(a.company===C.id)delete a.company;C.past.push({id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,cause:a.cause||'lost',day:day()});
+      if(C.letters)for(const k in C.letters){const l=C.letters[k];if(l&&l.from===a.id&&l.fell==null)l.fell=Math.round(S.gameMin)}
+      if(deathHook)deathHook(C,a)}}}
     if(gone){C.ids=C.ids.filter(id=>alive(byId(id)));if(!C.ids.length)dissolveCompany(C)}}}
 // After a load: the accessors on members and company parties, and the one-company rule for agent heroes.
 export function relinkCompanies(){if(!Array.isArray(S.companies))S.companies=[];
