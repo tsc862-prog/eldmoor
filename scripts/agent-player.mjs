@@ -302,13 +302,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
-    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
+    let b0 = await pacer.brief(); const tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
     const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
-    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
+    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, // under the app supervisor: one of the Claude slots for this turn
+      due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, // #687: its own scene opened meanwhile
+      onDue: async () => {const r = await (await fetch(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero: heroId, runner: RUNNER, queued: true, why: 'slot'}), signal: AbortSignal.timeout(4000)})).json();
+        if (r && r.queued) console.log(`[scene] answer queued behind a Claude slot: the table waits up to ${r.extra_s} s more (${r.scene})`)}});
+    if (freeSlot.scene) b0 = await pacer.brief(); // the scene came up while it waited: answer it first (#687)
     const sceneS = [], sceneOn = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${short(b, 120)})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
     // Scene first (issue #515): the hero's own scene is open as the turn starts: one structured answer sends scene_act before
     // anything else (a short tool budget was spent before it, live). Answered: that is the turn.

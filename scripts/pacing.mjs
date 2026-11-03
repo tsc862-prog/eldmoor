@@ -238,17 +238,30 @@ export function wakeNote(w) {
 // for the turn and release it after, so any number of Claude runners can be started (five members and
 // the DM) while at most RUNNER_CLAUDE_MAX talk to the API at once. Outside the supervisor (a terminal
 // runner) or when the supervisor does not answer, the turn just runs.
-export async function takeClaudeSlot(base, log = () => {}, {key = process.env.ELDMOOR_RUNNER_KEY, stopped = () => false, fetchImpl = fetch} = {}) {
-  if (!key || !base) return () => {};
-  const post = (path, body, ms) => fetchImpl(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(ms)});
-  let lease = null, said = false;
+// #687: due() says whether the member's own Table scene waits for its answer (the /play/health watch). While the runner waits for
+// a slot it asks every DUE_POLL_MS; once due, onDue() runs once (the runner tells the game its answer is queued: POST /play/pace
+// {queued:true, why:'slot'}) and the request is asked again with scene:true, which the supervisor serves first. The release
+// function carries .scene = true when the scene came up while waiting, so the turn answers it first.
+export const DUE_POLL_MS = 1000;
+export async function takeClaudeSlot(base, log = () => {}, {key = process.env.ELDMOOR_RUNNER_KEY, stopped = () => false, fetchImpl = fetch, due = null, onDue = null} = {}) {
+  if (!key || !base) return Object.assign(() => {}, {scene: false});
+  const post = (path, body, ms, signal) => fetchImpl(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms)});
+  const isDue = async () => {try {return !!(due && await due())} catch {return false}};
+  let lease = null, said = false, scene = await isDue(), told = false, waitedFor = false;
   while (!stopped()) {
-    let j = null; try {const r = await post('/play/runner/slot', {key}, 30000); j = r.status === 200 ? await r.json() : null} catch {}
+    const ac = new AbortController();
+    const watch = due ? setInterval(async () => {if (!(await isDue())) return; waitedFor = true;
+      if (!told) {told = true; try {if (onDue) await onDue()} catch {}}
+      if (!scene) {scene = true; ac.abort()}}, DUE_POLL_MS) : null;
+    let j = null, cut = false;
+    try {const r = await post('/play/runner/slot', {key, ...(scene ? {scene: true} : {})}, 30000, ac.signal); j = r.status === 200 ? await r.json() : null} catch {cut = ac.signal.aborted}
+    if (watch) clearInterval(watch);
+    if (cut) {log('[pace] its own Table scene opened while it waited for a Claude slot: asking again, scene first'); continue}
     if (!j) break; // no supervisor here: run without a lease
-    if (j.ok) {lease = j.lease; if (said) log('[pace] got a Claude slot'); break}
+    if (j.ok) {lease = j.lease; if (said) log('[pace] got a Claude slot' + (waitedFor ? ' (scene first)' : '')); break}
     if (!said) {said = true; log(`[pace] waiting for a Claude slot (all ${j.slots} in use; RUNNER_CLAUDE_MAX)`)}
   }
-  return () => {if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}};
+  return Object.assign(() => {if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}}, {scene: waitedFor});
 }
 export async function withClaudeSlot(base, fn, log, opts) {const release = await takeClaudeSlot(base, log, opts); try {return await fn()} finally {release()}}
 
