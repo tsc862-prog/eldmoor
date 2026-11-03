@@ -446,7 +446,7 @@ register({name:'create_site',stub:'createSite',about:'A DM-made dungeon site (#6
   params:{theme:{type:'str',max:24},region:{type:'region'},band:{type:'int',min:1,max:60},size:{type:'enum',values:['small','medium','large'],def:'small'},raid:{type:'bool',def:false}},
   limits:{maxActive:2,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.createSite(p,ctx),describe:p=>p.theme+' site in '+ZONES[p.region]});
 register({name:'start_event',stub:'startEvent',about:'A world event (#10).',params:{kind:{type:'str',max:24},region:{type:'region'},scale:{type:'int',min:1,max:3,def:1}},
-  limits:{maxActive:1,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.startEvent(p,ctx),expire(rec){S.conditions=(S.conditions||[]).filter(c=>c.lever!==rec.id)},describe:p=>p.kind+' in '+ZONES[p.region]});
+  limits:{maxActive:1,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.startEvent(p,ctx),expire(rec){if(IMPL.endEvent)IMPL.endEvent(rec);S.conditions=(S.conditions||[]).filter(c=>c.lever!==rec.id)},describe:p=>p.kind+' in '+ZONES[p.region]});
 register({name:'nudge_relation',stub:'nudgeRelation',about:'Shift how two parties of the world regard each other (#11).',params:{a:{type:'str',max:24},b:{type:'str',max:24},delta:{type:'int',min:-2,max:2}},
   limits:{perDay:2},cooldown:720,apply:(p,ctx)=>IMPL.nudgeRelation(p,ctx),describe:p=>p.a+' / '+p.b+' '+(p.delta>0?'+':'')+p.delta});
 
