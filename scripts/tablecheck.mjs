@@ -375,6 +375,7 @@ if (process.argv[2] === '--companies') {
   let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
   const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
   init({fellowship: false}); run(30);
+  CRYPT.cd = 1e9; S.raidT = 1e9; // these fixture companies are green: no Crypt or raid call while the scenes are tested (no level gate, #449)
   const LINK = {}; SIM.setRunnerLinks(x => LINK[x.id] || 'none');
   T.TABLE.speed = 1; T.TABLE.mode = 'auto';
   const pool = S.agents.filter(a => a.kind === 'hero' && a.fac === 0 && a.state !== 'dead' && a.state !== 'dungeon' && a.state !== 'raid').slice(0, 4);
@@ -1159,8 +1160,8 @@ ok(RM.every(x => x.player && SIM.reflexMay(x)), 'no runner holds any member: the
 field(); const others = S.agents.filter(a => a.fac === 0 && !a.fellow && a.state !== 'dead').slice(0, 2); for (const a of others) a.lvl = 8;
 let formed = null; for (let k = 0; k < 400 && !formed; k++) {reset(); field(); for (const a of others) a.lvl = 8; S.dmLogSeq = S.dmLogSeq; step(1 / 60); const g = CRYPT.group; if (g && g.fac === 0) formed = g.mem.slice();}
 ok(formed && F_.fellows().every(a => formed.includes(a)), `a Crypt call drafts the whole Fellowship together (${formed && formed.map(a => a.name + (a.fellow ? '*' : '')).join(', ')})`);
-reset(); field(); for (const a of others) a.lvl = 8; RM[4].lvl = 6; // one member cannot go
-let split = false; for (let k = 0; k < 400; k++) {reset(); field(); for (const a of others) a.lvl = 8; RM[4].lvl = 6; step(1 / 60); const g = CRYPT.group; if (g && g.mem.some(a => a.fellow)) {split = true; break}}
+reset(); field(); for (const a of others) a.lvl = 8; RM[4].state = 'ghost'; // one member cannot go (busy: no level floor, #449)
+let split = false; for (let k = 0; k < 400; k++) {reset(); field(); for (const a of others) a.lvl = 8; RM[4].state = 'ghost'; step(1 / 60); const g = CRYPT.group; if (g && g.mem.some(a => a.fellow)) {split = true; break}}
 ok(!split, 'with one member unable to go, none of them is drafted');
 ok(S.fellowship.log.some(e => e.kind === 'council' && /not all of/.test(e.parts.map(p => typeof p === 'string' ? p : '').join(''))), 'the log says they stayed together');
 // an agent party is asked, not drafted

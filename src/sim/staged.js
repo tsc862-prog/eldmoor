@@ -285,7 +285,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     if(!C.want)return refuse('a '+kind+' needs cast.want: what this person wants from the party',a);
     const res=pull('create_npc',{role,...(C.name?{name:C.name.slice(0,24)}:{}),faction:['concord','warband','neutral'].includes(fac)?fac:'neutral',...(town?{home:'town',town:town.name,spot}:{home:'camp',at}),attitude:att,hours:town?Math.ceil(STAGE.TOWN_WAIT_MIN/60)+6:12},{by:'dm-agent',reason:'staged '+kind+': '+reason});
     if(!res.ok)return refuse('the people lever said no: '+res.reason,a);
-    const w=res.ret;w.staged=rid;if(C.want)w.want=C.want;C.npc=w.id;C.name=w.title+' '+w.name;C.attitude=att}
+    const w=res.ret;w.staged=rid;if(C.want)w.want=C.want;C.npc=w.id;C.name=w.name;C.role=w.title;C.attitude=att}
   else if(kind==='trap'){const t=TRAPS.find(x=>x.id===String(cast.trap||'').toLowerCase())||pickR(TRAPS.filter(x=>x.dmg>0));
     C.trap={id:t.id,name:t.name,dmg:t.dmg};C.dc=8+Math.ceil(P.avg/2)+1;if(!C.name)C.name=cap(t.name)}
   else if(kind==='mystery'){const k=['shrine','cairn_door','ruin'].includes(String(cast.place||'').toLowerCase())?String(cast.place).toLowerCase():'shrine';

@@ -15,6 +15,8 @@
 //                        'now'|'soft'|'heartbeat'}) or after realMs with wake null; not a tool, does
 //                        not count as activity for the link state, never consumes the hero's events;
 //                        {brief:true} answers at once with the hero's state header for a turn prompt
+//                        {queued:true} (issue #515): the member's scene answer waits behind other work in its
+//                        runner; the table waits a bounded extra time for it (src/sim/scenewait.js)
 //   POST /play/claim     {hero, runner, provider?, model?}: a runner binds itself to one hero (and
 //                        refreshes the claim every few seconds); 409 when another live runner
 //                        holds it. provider/model (issue #97) name the mind behind the runner
@@ -89,7 +91,7 @@ const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(
 // A hero id from a header, query or body value: a positive integer, null when absent, NaN when bad.
 export const heroParam = v => v == null || v === '' ? null : /^\d{1,9}$/.test(String(v).trim()) ? Number(String(v).trim()) : NaN;
 const cleanHeroes = list => (Array.isArray(list) ? list : []).filter(h => h && typeof h === 'object' && Number.isInteger(h.id))
-  .slice(0, 64).map(h => ({id: h.id, name: String(h.name || '').slice(0, 40), alive: h.alive !== false, ...(Number.isInteger(h.succeeds) ? {succeeds: h.succeeds} : {}), ...(h.fellow ? {fellow: true, role: String(h.role || '').slice(0, 12) || null, lead: !!h.lead, table: !!h.table} : {})})); // fellow/role/lead: Fellowship members (#68), for npm run fellowship
+  .slice(0, 64).map(h => ({id: h.id, name: String(h.name || '').slice(0, 40), alive: h.alive !== false, ...(Number.isInteger(h.succeeds) ? {succeeds: h.succeeds} : {}), ...(h.fellow ? {fellow: true, role: String(h.role || '').slice(0, 12) || null, lead: !!h.lead, table: !!h.table, ...(h.due ? {due: true} : {})} : {})})); // fellow/role/lead: Fellowship members (#68), for npm run fellowship
 // The hero a call without a hero id goes to (the old single-hero path).
 export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes.length - 1] || null);
 
@@ -369,7 +371,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (path === '/play/pace') {const id = hero;
         if (id == null) return send(400, {ok: false, error: 'pace needs the hero id'});
         const holder = heldBy(id, rid); if (holder) return send(409, refusedSeat(id, holder));
-        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
+        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.queued != null ? {queued: !!a.queued} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
         let r; try {r = await be.call(id, 'pace', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
         return send(200, r && typeof r === 'object' ? r : {ok: false, error: 'no answer'})}
       if (path === '/play/narrate') {const id = resolve(hero);

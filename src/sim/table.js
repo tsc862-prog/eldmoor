@@ -66,6 +66,7 @@ import {setProposeHook,castVote,resolveProp,reflexVote,propById,propCompany,lead
 import {inRange} from './reach.js';
 import {setFellowChoice} from './player-choice.js';
 import {reflexMay,ownerHeld} from './runlink.js';
+import {liveLimit,missed} from './scenewait.js'; // a queued live member gets a bounded extra wait; a timed-out one is reported (#515)
 import {MOVES} from '../data/moves.js';
 import {movesOf,ready,useMove,pickMove,tickRound,tableHealMove} from './moves.js'; // class abilities, round cooldowns (#81)
 import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName,roundEnd,stunCheck,canParley,parley,useOptions,useInRound,useNote,useSlug} from './tableround.js'; // combat rounds: the foe's turn and the dice (#276); conditions and parley (#296)
@@ -332,7 +333,7 @@ function runTurns(sc,dt,instant){
     // a live agent that already ran out the clock once in this fight is not waited for again in its later rounds (#276)
     if(!act&&a.player&&!instant&&!reflexMay(a)&&!(sc.lw&&sc.lw.includes(a.id))){if(ownerHeld(a))return true;
       sc.t+=dt;if(!sc.nudge&&sc.t*1000>=TABLE.turnMs){sc.nudge=1;notify(a,'Still your turn at the table ('+sc.title+'): the party waits for you. scene_act(option, line).',3)}
-      if(sc.t*1000<TABLE.liveMs)return true;sc.late=(sc.late||0)+1;if(R)(sc.lw||(sc.lw=[])).push(a.id)}
+      if(sc.t*1000<liveLimit(sc,a,TABLE.liveMs))return true;sc.late=(sc.late||0)+1;missed(sc,a);if(R)(sc.lw||(sc.lw=[])).push(a.id)}
     if(!act){const k=reflexFor(sc,a),late=a.player&&!reflexMay(a);act=sc.acts[a.id]={k,line:'',by:'reflex'};
       if(a.player)notify(a,late?'The table waited '+Math.round(TABLE.liveMs/1000)+' s for you; your reflexes chose: '+k+'.':'Your turn passed; your reflexes chose: '+k+'.',false)}
     take(sc,a,act);sc.i++;if(sc.i<sc.ids.length)startTurn(sc);dt=0}
@@ -349,7 +350,7 @@ function runAll(sc,dt,instant){
       const w=sc.w[id]||(sc.w[id]={t:0,nudge:0});if(w.late)continue;
       if(ownerHeld(a)){hold=true;continue}
       w.t+=dt;if(!w.nudge&&w.t*1000>=TABLE.turnMs){w.nudge=1;notify(a,'The table still waits for your answer ('+sc.title+'): scene_act(option, line).',3)}
-      if(w.t*1000<TABLE.liveMs)hold=true;else{w.late=1;sc.late=(sc.late||0)+1}}
+      if(w.t*1000<liveLimit(sc,a,TABLE.liveMs))hold=true;else{w.late=1;sc.late=(sc.late||0)+1;missed(sc,a)}}
     if(sc.calls&&callWait(sc,dt,instant))return true; // the DM's opening voice, side by side with the members' answers
     if(hold)return true;
     sc.resolved=true;

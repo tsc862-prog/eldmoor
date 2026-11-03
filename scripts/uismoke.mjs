@@ -995,7 +995,7 @@ console.log('the DM prepares the table');
   const cut=sv.sceneCut();
   ok(sv.sceneOpen()&&sv.sceneMode()==='outdoor'&&!box().hidden&&box().classList.contains('scout')&&$('screen').classList.contains('scopen'),'scene maps: an ambush opens the terrain cut over the world');
   ok(!!cut&&cut.foes.includes(wild)&&mem.every(a=>cut.members.includes(a))&&Math.abs(cut.cx-m0.x)<cut.w/2&&Math.abs(cut.cy-m0.y)<cut.h/2,'scene maps: the cut frames the members where they stand and the foe ('+(cut?Math.round(cut.w)+'x'+Math.round(cut.h)+' tiles':'none')+')'+(cut&&mem.every(a=>cut.members.includes(a))&&cut.foes.includes(wild)?'':' -- saw foe '+wild.name+' '+wild.state+' hidden='+wild.hidden+' alive='+wild.alive+' at '+Math.round(wild.x)+','+Math.round(wild.y)+', members in cut '+(cut?cut.members.length:0)+'/'+mem.length+', foes '+(cut?cut.foes.length:0)));
-  ok([...box().querySelectorAll('li')].some(li=>li.textContent===wild.name)&&/AMBUSH/.test(box().querySelector('.dgname').textContent),'scene maps: the bar names the scene and who is in it');
+  ok([...box().querySelectorAll('li')].some(li=>li.textContent===wild.name)&&/to act|acts/.test(box().querySelector('.dgname').textContent)&&!/AMBUSH/i.test(box().querySelector('.dgname').textContent),'scene maps: the bar says whose turn it is (not the title) and who is in it ('+box().querySelector('.dgname').textContent+')');
   box().querySelector('.dgback').click();sv.sceneTick(FOL);
   ok(!sv.sceneOpen()&&box().hidden&&!$('screen').classList.contains('scopen'),'scene maps: Back to world closes it, and it stays closed for that scene');
   sv.openSceneView();ok(sv.sceneOpen(),'scene maps: it opens again by hand');S.table=null;sv.sceneTick(FOL);
@@ -1006,7 +1006,44 @@ console.log('the DM prepares the table');
   S.table=scene('meeting','A word at the inn',{npc:npc.id,anchor:m0.id,staged:null});S.table.all=true;S.table.w={};sv.sceneTick(FOL);
   let sp=sv.sceneSpec();
   ok(sv.sceneOpen()&&sv.sceneMode()==='indoor'&&sp.setting==='tavern'&&sp.cast.includes(npc)&&!box().classList.contains('scout'),'scene maps: a town meeting opens an indoor setting ('+(sp&&sp.where)+')');
-  ok(new RegExp(c.name).test(box().querySelector('.dgstat').textContent)&&[...box().querySelectorAll('li')].some(li=>li.textContent==='Mara'),'scene maps: the bar says where and lists the person met');
+  ok(new RegExp(c.name).test(box().querySelector('.dgstat').textContent)&&/^Answers 0\/\d/.test(box().querySelector('.dgname').textContent)&&box().querySelector('.scwho').hidden,'scene maps: indoors the bar carries the answer count and the place; the names are on the map ('+box().querySelector('.dgname').textContent+' · '+box().querySelector('.dgstat').textContent+')');
+  ok($('screen').classList.contains('scin'),'scene maps: an indoor scene docks the banner beside the map (#screen.scin)');
+  // ---- #536: names without the role, quote bubbles, short labels, answer marks, the narration list, the docked layout ----
+  {const TB=await import('../src/ui/table.js'),{spokenOf,unrole}=await import('../src/core/spoken.js'),IR=await import('../src/render/interior.js');
+    const fc={id:++S.uid,kind:'npc',wander:true,role:'stranger',fac:c.fac,name:'Father Corvane',title:'Stranger',x:c.gate.x+1,y:c.gate.y-1,state:'post',att:[],met:{}};S.wanderers=S.wanderers.concat([fc]);
+    const sc=scene('meeting','The Last Wax',{npc:fc.id,anchor:m0.id,staged:7,cast:['Stranger Father Corvane'],labels:{help:'Offer to carry the candle down into the crypt for him tonight'}});
+    sc.frame=['Stranger Father Corvane sets down a guttering candle stub on the altar.'];sc.all=true;sc.w={};S.table=sc;sv.sceneTick(FOL);
+    sc.acts[mem[0].id]={k:'hear',line:'Tell us.',by:'agent'};sc.acts[mem[1].id]={k:'help',line:'',by:'agent'};
+    sc.narr={t:'09:00',text:'Father Corvane: He turns the stub in his fingers. "Will you carry it down for me?"'};sv.sceneTick(FOL);
+    const sp=sv.sceneSpeaker();ok(!!sp&&sp.e===fc&&sp.text==='Will you carry it down for me?','#536 bubble: the speaker\'s bubble carries only the quoted words ('+(sp&&sp.text)+')');
+    TB.renderTable(1);const tb=$('tbanner'),txt=tb.textContent;
+    ok(!/Stranger Father Corvane/.test(txt)&&/Father Corvane sets down/.test(txt),'#536 names: the frame names the person without the role');
+    const cast=tb.querySelector('.tcast');ok(!!cast&&/Staged by the DM · Father Corvane/.test(cast.textContent)&&!!cast.querySelector('.trole')&&cast.querySelector('.trole').textContent==='stranger','#536 names: the staged line names the person, the role a dim word ('+(cast&&cast.textContent)+')');
+    const rows=[...tb.querySelectorAll('.tmr')],a0=rows[0]&&rows[0].querySelector('.tma'),a1=rows[1]&&rows[1].querySelector('.tma');
+    ok(!!a0&&a0.textContent==='Hear them out'&&/Hear .* out/.test(a0.title),'#536 labels: a staged action shows a short label, the full text on hover ('+(a0&&a0.textContent+' / '+a0.title)+')');
+    const lab=sc.ctx.labels.help,cut=a1&&a1.textContent;ok(!!cut&&cut.endsWith('…')&&lab.startsWith(cut.slice(0,-1))&&lab[cut.length-1]===' '&&cut.length<=29&&a1.title===lab,'#536 labels: the DM\'s long label is cut at a word, never inside one ('+cut+')');
+    ok(TB.cutWords('Offer to carry the candle')==='Offer to carry the candle'&&TB.cutWords('Supercalifragilisticexpialidocious-and-then-some words',20).length<=21,'#536 labels: a short label is kept whole, an unbroken one is still bounded');
+    const mk=sv.answerMarks(sc);ok(mk[mem[0].id]==='done'&&mk[mem[1].id]==='done'&&mem.slice(2).every(a=>a.state==='dead'||mk[a.id]==='think'),'#536 marks: a tick over those who answered, "..." over those still thinking');
+    ok(/^Answers 2\/\d+/.test(sv.barStatus(sc)),'#536 bar: the answer count ('+sv.barStatus(sc)+')');
+    sc.w[mem[2].id]={t:(await import("../src/sim/table.js")).TABLE.turnMs/1000+3};ok(/reflex in \d+ s/.test(sv.barStatus(sc)),'#536 bar: the timer once the nudge has gone ('+sv.barStatus(sc)+')');
+    sc.narr={t:'09:01',text:'Stranger Father Corvane leans close to '+mem[0].name+'.'};sv.sceneTick(FOL);TB.renderTable(1);
+    const nl=[...tb.querySelectorAll('.tnarrs li')].map(li=>li.textContent);
+    ok(nl.length===2&&/Will you carry it down/.test(nl[0])&&/^Father Corvane leans close/.test(nl[1]),'#536 narration: a whisper\'s line joins the list, the person\'s words stay ('+nl.join(' | ')+')');
+    ok(!sv.sceneSpeaker()||sv.sceneSpeaker().text==='Will you carry it down for me?','#536 bubble: a DM line is not a bubble');
+    sc.narr={t:'09:02',text:'Father Corvane: Father Corvane sets the stub down and waits.'};sv.sceneTick(FOL);ok(!sv.sceneSpeaker(),'#536 bubble: prose about the person clears the bubble (no quote, no bubble)');
+    ok(spokenOf('Hear me out. I need someone to find my ox.','Hesk')==='Hear me out. I need someone to find my ox.'&&spokenOf('The candle gutters.','Hesk')===null&&spokenOf('(whispered) go','Hesk')===null&&unrole('Hear Stranger Father Corvane out',[fc])==='Hear Father Corvane out','#536 spoken: speech kept, prose and stage directions dropped, roles removed');
+    ok(sv.sceneItem(sc)==='candle','#536 props: the frame\'s candle stub becomes the scene\'s item');
+    {const LV=await import('../src/sim/levers.js'),st0=mem[0].state;mem[0].state='town';const rg=LV.pull('give_item',{hero:mem[0].id,item:'Shrine Candle-Stub'},{by:'agent',reason:'uismoke'});mem[0].state=st0;
+      ok(rg.ok&&sc.given==='Shrine Candle-Stub'&&sv.sceneItem(sc)===null,'#524 props: give_item of the scene item marks it given, the speaker no longer holds it'+(rg.ok?'':': '+rg.reason));delete sc.given;ok(sv.sceneItem(sc)==='candle','#524 props: without the flag the candle is drawn again')}
+    const g0=S.gameMin;S.gameMin=Math.floor(g0/1440)*1440+12*60;const day=sv.sceneDark(sc,.15);S.gameMin=Math.floor(g0/1440)*1440+23*60;const night=sv.sceneDark(sc,.15);
+    const plainSc={...sc,frame:['A quiet word.'],title:'A word'};S.gameMin=Math.floor(g0/1440)*1440+12*60;const lit=sv.sceneDark(plainSc,.15);S.gameMin=g0;
+    ok(night>day&&day>lit&&lit===.15,'#536 light: darker at night ('+night+') and when the frame says guttering ('+day+' vs '+lit+')');
+    const arc=IR.arcSpots(5,{x:6,y:3},{x:1,y:1,w:10,h:8});ok(arc.length===5&&arc.every(p=>p.y>3.5)&&new Set(arc.map(p=>p.x.toFixed(2))).size===5&&Math.abs(arc[0].x-6+(arc[4].x-6))<.01,'#536 staging: the party stands in an arc before the speaker, facing it');
+    const desk=sv.roomBox({left:0,top:0,right:1000,bottom:600},{left:612,top:8,right:992,bottom:552,width:380,height:544},48,1),phone=sv.roomBox({left:0,top:0,right:390,bottom:640},{left:6,top:330,right:384,bottom:592,width:378,height:262},40,1);
+    ok(desk.x+desk.w<=604&&desk.h>=530&&phone.y+phone.h<=326&&phone.w>=370,'#536 layout: the room fills the space beside the docked banner (desktop '+desk.w+'x'+desk.h+', 390 px '+phone.w+'x'+phone.h+')');
+    const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');ok(/\.screen\.scin \.tbanner\{[^}]*right:8px[^}]*overflow-y:auto/.test(css)&&/max-width:700px\)\{\.screen\.scin \.tbanner\{[^}]*top:auto/.test(css),'#536 layout: the banner docks beside the map on a desktop and below it at 390 px');
+    S.wanderers=S.wanderers.filter(w=>w!==fc);S.table=null;TB.renderTable(1);sv.sceneTick(FOL)}
+  S.table=scene('meeting','A word at the inn',{npc:npc.id,anchor:m0.id,staged:null});S.table.all=true;S.table.w={};sv.sceneTick(FOL);
   S.table=null;sv.sceneTick(FOL);ok(!sv.sceneOpen(),'scene maps: the room closes with the scene');
   S.table=scene('social','Questioning the suspect',{npc:npc.id,anchor:m0.id});ok(sv.sceneSpec().setting==='cell','scene maps: the scene\'s words pick the room (questioning: the cell)');
   S.table=scene('social','A quiet word',{npc:npc.id,anchor:m0.id});ok(sv.sceneSpec().setting==='tavern','scene maps: with no words in the title, the person picks it (an innkeeper: the tavern)');
@@ -1161,5 +1198,59 @@ console.log('the DM prepares the table');
   for(const C of [pair,s1,s2])CO.dissolveCompany(C);S.followId=keepFollow;uiFast();
   ok(rowEls().length===1&&rowEls()[0].querySelector('.frrh').hidden&&pfs().length===5&&vf.textContent==='Fellowship','companies: back to one company, the strip is as before ('+rowEls().length+' rows, '+pfs().length+' frames, '+vf.textContent+', '+CO.companies().map(C=>C.name+':'+C.ids.length).join(',')+')');
   cam.sel=keepSel;setView(keepView==='fellow'?'fellow':'map');uiFast()}
+// ---- what each hero is trying to do (#534): the purpose line, the map tooltip, overlays for the followed/hovered only ----
+{console.log('purpose line');const S=sim.S,P=await import('../src/sim/purpose.js'),PV=await import('../src/ui/purposeview.js'),FX=await import('../src/render/purposefx.js');
+  const {cam}=await import('../src/render/draw.js'),{CITY,ZONES,zoneAt}=await import('../src/world/map.js'),{MOBS}=await import('../src/data/mobs.js');
+  const live=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead'&&!a.hidden),keepSel=cam.sel,keepView=cam.view;
+  const sig=()=>JSON.stringify(S.agents.map(a=>[a.id,a.state,a.x,a.y,a.hp,a.dest,a.pq&&a.pq.length,a.target&&a.target.id]));
+  // a scripted hunter with a bounty
+  const hunter=live.find(a=>!a.player&&!a.fellow&&!a.adv&&!a.party),type=Object.keys(MOBS)[0];
+  const kh={state:hunter.state,quest:hunter.quest};hunter.state='hunt';hunter.quest={type,need:6,have:2};
+  const ph=P.purposeOf(hunter);ok(ph.kind==='hunt'&&/^Hunting/.test(ph.line)&&ph.line.includes(ZONES[zoneAt(hunter.x,hunter.y)])&&/bounty: 2\/6/.test(ph.line),'purpose: a scripted hunter reads goal → region · bounty ('+ph.line+')');
+  // an agent follower (the follow command of #445, read from the queue)
+  const [lead,fol,waiter,trav]=mem.filter(a=>a.state!=='dead');for(const a of [fol,waiter,trav])if(!a.player)sim.markPlayer(a,true);
+  const kf={pq:fol.pq,state:fol.state,x:fol.x,y:fol.y};fol.state='hunt';fol.x=lead.x+3;fol.y=lead.y;fol.pq=[{kind:'follow',id:lead.id}];
+  const pf=P.purposeOf(fol);ok(pf.kind==='follow'&&pf.line.startsWith('Following → '+lead.name+' (3 tiles)')&&pf.tether&&pf.tether.id===lead.id,'purpose: an agent follower names whom it follows, how far, and tethers ('+pf.line+')');
+  // a waiting hero: in town, the party leader still there
+  const c=CITY.find(t=>t.fac===waiter.fac)||CITY[0],kw={state:waiter.state,party:waiter.party,pq:waiter.pq,act:waiter.playActAt,x:waiter.x,y:waiter.y};
+  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;waiter.x=c.gate.x;waiter.y=c.gate.y;
+  const pw=P.purposeOf(waiter);ok(pw.kind==='wait'&&pw.line.startsWith('Waiting for '+lead.name)&&/40 min/.test(pw.line)&&pw.wait&&pw.wait.id===lead.id,'purpose: a waiting hero names whom it waits for and how long ('+pw.line+')');
+  // a traveller on a walk order
+  const kt={pq:trav.pq,state:trav.state},dest={x:c.gate.x+6,y:c.gate.y+4};trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
+  const pt=P.purposeOf(trav);ok(pt.kind==='travel'&&pt.line.startsWith('Walking → the old mill')&&pt.path.length===2&&pt.to&&pt.to.x===dest.x,'purpose: a traveller names where it walks, with its road ('+pt.line+')');
+  // autopilot says so; a stated intent (#535) wins the why
+  trav.playIdle=true;trav.pq[0].auto='heading out to hunt (your last order: hunt 3)';ok(/· autopilot: its last order: hunt 3$/.test(P.purposeOf(trav).line),'purpose: autopilot says so and why, in the third person ('+P.purposeOf(trav).line+')');trav.playIdle=false;
+  trav.intent={text:'meet the miller before dusk'};ok(/says: meet the miller before dusk/.test(P.purposeOf(trav).why),'purpose: a stated intent (a.intent, #535) is the why');delete trav.intent;
+  const s0=sig();for(const a of S.agents)P.purposeOf(a);ok(sig()===s0,'purpose: read-only (no hero changed by asking every hero)');
+  // shown on the frames and in the dossier header
+  uiFast();const fr=$('frames').querySelector('.pf[data-hid="'+fol.id+'"] .pfdo');ok(!!fr&&fr.textContent===P.purposeOf(fol).line&&fr.title===fr.textContent&&fr.classList.contains('p-follow'),'frames: the purpose line, full text as its title ('+(fr&&fr.textContent)+')');
+  ok((await import('../src/ui/frames.js')).frameRows().some(r=>r.name===waiter.name&&/^Waiting for/.test(r.purpose)),'frameRows carries the purpose');
+  select(trav);uiFast();const hp=$('hero').querySelector('.doing .purp');ok(!!hp&&hp.textContent===P.purposeOf(trav).line,'dossier header: the purpose line ('+(hp&&hp.textContent)+')');
+  // phone width: a cut line opens in full on a tap and stays open through the 0.3 s patch; an uncut one ignores the tap
+  const h2=$('hero').querySelector('.doing .purp');Object.defineProperty(h2,'scrollWidth',{value:500,configurable:true});Object.defineProperty(h2,'clientWidth',{value:200,configurable:true});
+  h2.click();ok(h2.classList.contains('open'),'phone: a tap opens a cut purpose line');uiFast();ok($('hero').querySelector('.doing .purp').classList.contains('open'),'phone: it stays open through the patch');
+  $('hero').querySelector('.doing .purp').click();uiFast();ok(!$('hero').querySelector('.doing .purp').classList.contains('open'),'phone: a second tap closes it');
+  const f2=$('frames').querySelector('.pf[data-hid="'+fol.id+'"] .pfdo');ok(!PV.tapPurpose(f2),'frames: a tap on an uncut line is left to the frame (select)');
+  // the map tooltip
+  PV.hoverHero(waiter,10,10);ok(cam.hover===waiter&&/Waiting for/.test(PV.mapTipText())&&PV.mapTipText().includes(waiter.name),'map tooltip: the hovered hero and its purpose');
+  uiFast();ok(/Waiting for/.test(PV.mapTipText()),'map tooltip refreshes on the tick');PV.hoverHero(null);ok(cam.hover==null&&PV.mapTipText()==='','map tooltip hides');
+  // overlays: only the followed or hovered hero's road, tether or wait line
+  const mk=()=>{const L={starts:[],strokes:0};return {L,ctx:new Proxy({},{get:(o,k)=>k==='moveTo'?(x,y)=>L.starts.push([x,y]):k==='stroke'?()=>L.strokes++:typeof o[k]!=='undefined'?o[k]:()=>{},set:(o,k,v)=>{o[k]=v;return true}})}};
+  const T=16,from=(a,L)=>L.starts.filter(([x,y])=>Math.abs(x-a.x*T)<1e-6&&Math.abs(y-(a.y*T-3))<1e-6).length;
+  cam.sel=null;cam.hover=null;let m=mk();FX.drawPurposeGround(m.ctx,S,cam,{drawText:()=>{},blink:0});ok(m.L.strokes===0,'overlays: nothing drawn with no followed or hovered hero');
+  cam.sel=trav;cam.dpr=1;cam.sc=2;m=mk();const lab=[];FX.drawPurposeGround(m.ctx,S,cam,{drawText:t=>lab.push(t),blink:0});
+  ok(m.L.strokes>=1&&from(trav,m.L)>=1,'overlays: the followed traveller gets its dotted road, from itself');ok(lab.includes('the old mill'),'overlays: the marker names what is there');
+  cam.sel=fol;cam.hover=waiter;m=mk();FX.drawPurposeGround(m.ctx,S,cam,{drawText:()=>{},blink:0});
+  ok(from(fol,m.L)>=1&&from(waiter,m.L)>=1&&from(trav,m.L)===0&&from(hunter,m.L)===0,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else');
+  // intent icons: close zoom with the switch on; off hides them except the focused hero's hourglass
+  const cnt=(a,close)=>{let n=0;const ctx=new Proxy({},{get:(o,k)=>k==='fillRect'?()=>n++:typeof o[k]!=='undefined'?o[k]:()=>{},set:(o,k,v)=>{o[k]=v;return true}});FX.drawIntentIcon(ctx,S,cam,a,0,0,12,close);return n};
+  const vi=$('vIcons');PV.setIcons(true);ok(cnt(hunter,true)>0&&cnt(hunter,false)===0,'icons: a hunter’s icon at close zoom, none far out');
+  vi.click();ok(cam.icons===false&&vi.getAttribute('aria-pressed')==='false'&&/off/.test(vi.textContent)&&localStorage.getItem('eldmoor.intentIcons')==='0','icons: the Settings switch turns them off and remembers');
+  ok(cnt(hunter,true)===0,'icons: off hides them');ok(cnt(waiter,true)>0&&cnt(waiter,false)>0,'icons: the hovered waiting hero keeps its hourglass, any zoom');
+  vi.click();ok(cam.icons===true,'icons: back on');
+  // restore
+  Object.assign(hunter,{state:kh.state,quest:kh.quest});Object.assign(fol,{pq:kf.pq,state:kf.state,x:kf.x,y:kf.y});
+  Object.assign(waiter,{state:kw.state,party:kw.party,pq:kw.pq,playActAt:kw.act,x:kw.x,y:kw.y});Object.assign(trav,{pq:kt.pq,state:kt.state});
+  cam.hover=null;cam.sel=keepSel;setView(keepView==='fellow'?'fellow':'map');uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
