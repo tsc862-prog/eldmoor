@@ -129,3 +129,13 @@ export function blockOf(type,variant,role){
 // Damage multiplier a creature takes from a damage tag (resistances below 1, weaknesses above).
 export const tagMul=(res,weak,tag)=>((res&&res[tag])||1)*((weak&&weak[tag])||1);
 export const heroTag=cls=>DMG_TAGS[cls]||'physical';
+
+// Crafting materials a creature may leave beside its trade good (issue #256, epic #238). Rows keyed by the MOBS key
+// (Stepping clones resolve through baseId); `p` is the chance per kill, `skinning` marks hide a Skinner takes from the
+// body (others drop whole). Data only: loot.js reads it when gathering lands (#257). Materials live in items.js MATERIALS.
+export const MAT_DROPS={
+  wolf:     {id:'Wolf Sinew',      p:.25,skinning:true},
+  mudboar:  {id:'Mudback Bristle', p:.25,skinning:true},
+  shaghorn: {id:'Shaghorn Horn',   p:.2, skinning:true},
+  bog:      {id:'Mere Eel',        p:.15},
+  golem:    {id:'Cinderite',       p:.3}};

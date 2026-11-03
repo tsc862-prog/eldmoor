@@ -841,8 +841,8 @@ const T={
   buy(a,{slot,item,count,npc}){const tr=npc!=null&&npc!==''||!inTown(a)?traderFor(a,npc,PK.TALK):null; // a person who opened their stock (#170)
     if(tr){need(!tr.error,tr.error);const r=npcBuy(a,tr,{slot,item,count});need(!r.error,r.error);return r}
     need(inTown(a),'The smiths are in town.');
-    if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>x.toLowerCase()===String(item).toLowerCase());
-      need(id,'Not sold here. For sale: '+Object.keys(USES).filter(x=>USES[x].lvl<=a.lvl).map(x=>x+' ('+USES[x].price+'g)').join(', ')+'.');
+    if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>!USES[x].craft&&x.toLowerCase()===String(item).toLowerCase());
+      need(id,'Not sold here. For sale: '+Object.keys(USES).filter(x=>!USES[x].craft&&USES[x].lvl<=a.lvl).map(x=>x+' ('+USES[x].price+'g)').join(', ')+'.');
       const U=USES[id];need(U.lvl<=a.lvl,id+' is sold from level '+U.lvl+'.');const n=Math.min(10,Math.max(1,Math.round(Number(count)||1)));
       need(a.gold>=U.price,'That costs '+U.price+'g each; you have '+a.gold+'g.');
       if(U.kind==='pack'){need(!invOf(a).pack,'You already carry a Wayfarer\'s Pack.');a.gold-=U.price;invOf(a).pack=1;return {ok:true,bought:id,cost:U.price,gold:a.gold,capacity:capOf(a)}}

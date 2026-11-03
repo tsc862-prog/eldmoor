@@ -641,6 +641,7 @@ An item remembers where it came from (`src`: "Dropped by Hollowfang", "Bought in
 
 ## Trade goods
 Wolf Pelt, Boar Tusk, Silk Bundle, Fen Moss, Thick Hide, Venom Sac, Ember Core, Cinder Scale, Rime Pelt, Hoar Wool, Wight Marrow, Grave Dust.
+Crafting materials (Redroot Leaf, Tin Ore, River Perch and the rest) are a separate list; see "Recipes and crafting materials".
 
 Base prices climb with zone: Thornvale 4-7, Mirefen 9-14, Grave Dust 18, Cinderpass 22-26, Hoarfell 30-40.
 
@@ -684,6 +685,73 @@ A hero may hold two trades, each with a skill from 1 to 100 that rises with use.
 - Crafting: Alchemy (potions, cures), Smithing (weapons, armor, repairs), Leatherworking (cured hide: armor, straps, packs), Cooking (camp meals that hearten the company), Scribing (scrolls, maps).
 - Skill bands used by recipes and nodes: 1-24, 25-49, 50-74, 75-99, 100.
 - Gathering nodes (issue #255): four kinds, plain descriptions rather than proper names: Herb patch (Herbalism), Ore vein (Mining), Game trail (Skinning), Fishing spot (Fishing). They sit in the open land of every region, in the region's level band: Thornvale band 0, Mirefen 1, Cinderpass 2, Hoarfell 3 (the Stepping Lands the same ladder). Fishing spots stand on the banks of the river (Eldmoor's river runs through Thornvale, Mirefen and Hoarfell; Cinderpass has no water, so no fish); a sea coast would add more when a world has one. Nothing is gathered on a road, in a town or at the Crypt and Kragmaw's lair. A spent node grows back after a set time (herbs 4 game hours, ore 8, game trails 3, fish 2).
+
+### Recipes and crafting materials (issue #256)
+Crafting materials (`MATERIALS` in `src/data/items.js`) are a separate list from the trade goods above: trade goods are
+sold to the auction house as loot, materials are gathered or dropped and consumed by recipes. A recipe may use both
+(Wolf Pelt, Thick Hide, Fen Moss, Venom Sac, Ember Core, Rime Pelt and Hoar Wool are trade goods that recipes also eat).
+Materials come from gathering nodes by kind (herb, ore, hide, fish; never by position) and from creature drops
+(`MAT_DROPS` in `src/data/bestiary.js`).
+
+| Material | Kind | Where it is found | Flavour |
+| --- | --- | --- | --- |
+| Redroot Leaf | herb | gathered (herb nodes, #255), skill band 0 | What the herbwives boil for the Redroot Draught. Bitter, red to the stem. |
+| Rushpulp | herb | gathered (herb nodes, #255), band 0 | Beaten reed fibre; scribes press it into rough paper. |
+| Hearthbloom | herb | gathered (herb nodes, #255), band 1 | A small orange flower that opens only near a warm hand. |
+| Rimebloom | herb | gathered (herb nodes, #255), band 3 | Pale blue, grows through frost and tastes of it. |
+| Tin Ore | ore | gathered (ore nodes, #255), band 0 | Soft, dull and plentiful. Every smith's first lesson. |
+| Bogiron Ore | ore | gathered (ore nodes, #255), band 1 | Rust-red nodules dredged from peat; fights back against the hammer. |
+| Cinderite | ore | gathered (ore nodes, #255), band 2; also dropped by Cinder Golems (30%, Cinderpass) | Black glassy ore that is warm to the touch long after it was dug. |
+| Icevein Ore | ore | gathered (ore nodes, #255), band 3 | Blue-streaked rock that never quite thaws. |
+| Wolf Sinew | hide | Timber Wolves (Thornvale, 25%, taken by a Skinner); also gathered (hide nodes, #255), band 0 | Dried and twisted into thread and bindings. |
+| Mudback Bristle | hide | Mudback Boars (Mirefen, 25%, taken by a Skinner); also gathered (hide nodes, #255), band 1 | Coarse and stiff; stitched into straps and pack edges. |
+| Shaghorn Horn | hide | Tundra Shaghorns (Hoarfell, 20%, taken by a Skinner); also gathered (hide nodes, #255), band 3 | A ridged horn, polished into toggles and trim. |
+| River Perch | fish | gathered (fish nodes, #255), band 0 | Common, quick to cook, better than nothing. |
+| Mere Eel | fish | Boglings (Mirefen, 15%, dropped whole); also gathered (fish nodes, #255), band 1 | Slick, muddy, and said to be best cooked quickly and not looked at. |
+| Tarn Whitefish | fish | gathered (fish nodes, #255), band 3 | Firm cold-water fish with pale flesh. |
+
+Source rule: the data fixes a material's node kind and skill band, never a place. Zone names above come only from where
+the dropping creature lives (`MOBS` zone index 0 Thornvale, 1 Mirefen, 2 Cinderpass, 3 Hoarfell). Only five creatures
+carry `MAT_DROPS`: wolf, mudboar, shaghorn, bog, golem. The trade goods recipes also eat (Wolf Pelt, Thick Hide, Fen
+Moss, Venom Sac, Ember Core, Rime Pelt, Hoar Wool) are ordinary creature loot, not in this table.
+
+**Crafted consumables** (`USES` rows with `craft:true`):
+
+| Name | What it is |
+| --- | --- |
+| Rimeblood Elixir | A potion of rimebloom and hearthbloom; warms the blood against the cold. |
+| Spit-Roast Perch | A camp meal on a stick. Plain and honest. |
+| Fenmire Eel Stew | A camp meal; the name is the camp cook's joke, the recipe is serious. |
+| Tarn Whitefish Chowder | A camp meal; the best the Hoarfell camps can offer. |
+| Hoarfell Survey Chart | A scribed map of the high country that tells a reader where they are. |
+
+**Crafted gear** (`CRAFT_GEAR`): Tinforged Weapon, Bogiron Handguard, Ashsteel Cuirass, Wolfhide Cowl, Hoarfrost Greatcoat.
+Tinforged is a new material word (tin-forged, the plain first alloy of a new smith, sitting below Bogiron in the
+Thornvale tier); the other material words are the existing ones under Equipment.
+
+**Recipes** (`src/data/recipes.js`, one table for all five crafting trades; the smith of #13 adds prices on top of it, not a second table). Band is the skill band needed (0 = 1-24, 1 = 25-49, 2 = 50-74, 3 = 75-99).
+
+| Trade | Recipe id | Band | Uses | Makes |
+| --- | --- | --- | --- | --- |
+| Alchemy | draught-redroot | 0 | 2 Redroot Leaf | Redroot Draught |
+| Alchemy | tonic-marrowmend | 2 | Hearthbloom, Fen Moss | Marrowmend Tonic |
+| Alchemy | elixir-rimeblood | 3 | Rimebloom, Hearthbloom | Rimeblood Elixir |
+| Smithing | forge-tinforged | 0 | 3 Tin Ore, Wolf Sinew | Tinforged Weapon |
+| Smithing | forge-bogiron | 2 | 3 Bogiron Ore, Thick Hide | Bogiron Handguard |
+| Smithing | forge-ashsteel | 3 | 3 Cinderite, Icevein Ore, 2 Ember Core | Ashsteel Cuirass |
+| Leatherworking | cure-wolfhide | 0 | 2 Wolf Pelt, 2 Wolf Sinew | Wolfhide Cowl |
+| Leatherworking | stitch-pack | 2 | 2 Thick Hide, 2 Mudback Bristle | Wayfarer's Pack |
+| Leatherworking | cure-hoarfrost | 3 | 3 Rime Pelt, 2 Hoar Wool, Shaghorn Horn | Hoarfrost Greatcoat |
+| Cooking | meal-perch | 0 | 2 River Perch | Spit-Roast Perch |
+| Cooking | meal-eel-stew | 2 | Mere Eel, Fen Moss | Fenmire Eel Stew |
+| Cooking | meal-chowder | 3 | Tarn Whitefish, Redroot Leaf | Tarn Whitefish Chowder |
+| Scribing | scroll-hearthward | 0 | 2 Rushpulp, Redroot Leaf | Scroll of Hearthward |
+| Scribing | scroll-steadfast | 2 | Rushpulp, Venom Sac | Scroll of the Steadfast Hour |
+| Scribing | chart-hoarfell | 3 | 3 Rushpulp, Venom Sac | Hoarfell Survey Chart |
+
+Name check (2026-11-02): all of the above pass; no franchise proper nouns, no duplicates inside canon. Nits: "Fenmire"
+sits one letter-shuffle from the zone Mirefen (kept as the cook's joke, but never use it as a place name); Rimebloom and
+Rimeblood differ by one syllable (plant and potion, kept); "Shaghorn Horn" repeats itself, acceptable as a trade-name.
 
 ## Townsfolk
 Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
