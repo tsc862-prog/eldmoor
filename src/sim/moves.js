@@ -21,6 +21,7 @@ import {profBonus} from '../data/abilities.js';
 import {S,clockStr} from './state.js';
 import {pop} from './effects.js';
 import {strike,maxHp} from './heroes.js';
+import {reviveBonus} from './downed.js'; // a heal on the downed brings them up higher (#626)
 import {mod} from './abilities.js';
 import {bondEvent} from './bonds.js';
 import {nearMobs} from './spatial.js';
@@ -101,11 +102,11 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
     if(fx.blink){const f=opt.foe&&living(opt.foe)?opt.foe:engagedNear(a,6).find(m=>m.target===a);if(f){const k=blink(a,f,fx.blink);R.moved=k;if(fx.delay)slow(f,fx.delay)}}
     break;
   case 'ally':if(fx.taken){setEff(t,'taken',fx.taken,M.dur,M.durR,round);pop(t.x,t.y-.5,'WARDED','#c8c8e0')}
-    if(fx.heal){const H=fx.heal,h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(t))*passiveMul(a,'healMul')),was=t.hp;
+    if(fx.heal){const H=fx.heal,h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(t))*passiveMul(a,'healMul'))+reviveBonus(t),was=t.hp;
       t.hp=Math.min(maxHp(t),t.hp+h);const got=Math.round(t.hp-was);R.healed+=got;R.hit++;actHeal(a,t,got,M.name);pop(t.x,t.y-.6,'+'+got,'#7dce5a');if(t!==a&&got>0)bondEvent(a,'heal',[t])}break;
   case 'allies':if(fx.taken){for(const b of mates){if(dist(a,b)>M.range)continue;setEff(b,'taken',fx.taken,M.dur,M.durR,round);R.hit++;pop(b.x,b.y-.5,'WARDED','#e0709c')}}
     if(fx.heal){const H=fx.heal;
-    for(const b of mates){if(dist(a,b)>M.range)continue;const h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(b))*passiveMul(a,'healMul')),was=b.hp;
+    for(const b of mates){if(dist(a,b)>M.range)continue;const h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(b))*passiveMul(a,'healMul'))+reviveBonus(b),was=b.hp;
       b.hp=Math.min(maxHp(b),b.hp+h);const got=Math.round(b.hp-was);R.healed+=got;R.hit++;actHeal(a,b,got,M.name);pop(b.x,b.y-.6,'+'+got,'#7dce5a');if(b!==a&&got>0)bondEvent(a,'heal',[b])}}break;
   }
   // The spell effect (#374, drawn by render/spellfx.js): the move, where the caster stood and stands, and every one it touched. No dice.
