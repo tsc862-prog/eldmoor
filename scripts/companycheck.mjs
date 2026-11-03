@@ -202,5 +202,90 @@ ok(!r.ok && /Fellowship/.test(r.error), 'the Fellowship takes no one in by invit
 r = act(FM, 'leave_party', {for_good: true});
 ok(!r.ok && /Fellowship/.test(r.error), 'a Fellowship member cannot leave for good: ' + r.error);
 
+// ---- follow (#445): walk at a hero's side without joining; lost them; autopilot keeps a standing follow ----
+{
+  const FW = await import('../src/sim/follow.js'), {dist} = await import('../src/world/map.js'), {W: MW, H: MH} = await import('../src/world/tiles.js');
+  const fg = homeOf(S.agents.find(a => a.fac === 0)).gate, at = {x: fg.x + 4, y: fg.y + 4};
+  const cl = (v, m) => Math.max(1, Math.min(m - 2, v));
+  const put = (a, dx, dy) => {a.x = cl(at.x + dx, MW); a.y = cl(at.y + dy, MH); a.state = 'hunt'; a.dest = null; a.target = null; a.hidden = false; a.pq = []; rebuild()};
+  const side = S.agents.filter(a => living(a) && a.fac === 0 && !a.adv && !a.fellow && !a.player && a.companion == null && !CO.companyOf(a) && a.state !== 'dungeon' && a.state !== 'raid').sort((x, y) => y.lvl - x.lvl || x.id - y.id);
+  const L = side[0], F = side[1], X = side[2];
+  const HZ = await import('../src/sim/heroes.js');
+  for (const a of [L, F, X]) {if (a.party) leaveParty(a); markPlayer(a, true); HZ.seedLevel(a, 12); a.hp = HZ.maxHp(a)} // sturdy enough for the fields by the gate
+  put(L, 0, 0); put(F, 2, 0); put(X, 3, 1);
+  // refusals
+  put(L, 30, 0); r = act(F, 'follow', {hero_id: L.id}); put(L, 0, 0);
+  ok(!r.ok && /not in sight/.test(r.error), 'follow refuses a hero out of sight: ' + r.error);
+  const foe = S.agents.find(b => living(b) && b.fac === 1 && b.state !== 'dungeon' && b.state !== 'raid'), fs = {x: foe.x, y: foe.y};
+  foe.x = F.x + 1; foe.y = F.y + 1; rebuild(); r = act(F, 'follow', {hero_id: foe.id}); foe.x = fs.x; foe.y = fs.y; rebuild();
+  ok(!r.ok && /other side/.test(r.error), 'another faction outside a town is refused: ' + r.error);
+  r = act(F, 'follow', {name: F.name}); ok(!r.ok, 'following yourself is refused');
+  {
+    const comp = S.agents.find(b => living(b) && b.fac === 0 && !b.player && !b.fellow && b.companion == null && !CO.companyOf(b) && b.state !== 'dungeon' && b.state !== 'raid' && b !== L && b !== F && b !== X);
+    if (comp.party) leaveParty(comp); const CX = CO.companyOf(X); comp.companion = CX.id; CO.joinCompany(CX, comp);
+    put(comp, 3, 2); run(1); put(X, 3, 1); put(comp, 3, 2); put(L, 0, 0); put(F, 2, 0);
+    const rx = act(X, 'follow', {hero_id: L.id});
+    ok(!rx.ok && /lead your company/.test(rx.error || ''), 'a leader of a company of 2+ is refused: ' + (rx.error || 'went through'));
+    X.pq = [];
+  }
+  // follow by name: the followed hero is told, look lists it
+  r = act(F, 'follow', {name: L.name.split(' ')[0]});
+  ok(r.ok && r.following === L.name && F.pq[0].kind === 'follow', 'follow by name goes through: ' + (r.note || r.error));
+  ok(L.playEv.some(e => e.text === F.name + ' falls in behind you.' && !e.w), 'the followed hero gets a soft event');
+  const lk = act(L, 'look'); ok((lk.walks_with_you || []).some(t => t.startsWith(F.name)), 'look lists the follower as walking with you');
+  ok(/following/.test(act(F, 'look').following || ''), 'the follower\'s look says whom it follows');
+  const fb = paceBrief(F.id).brief.follow, lb = paceBrief(L.id).brief.follow;
+  ok(fb && /following/.test(fb.following) && lb && lb.followed_by.includes(F.name), 'the state headers carry the follow line both ways');
+  const {followNote} = await import('./pacing.mjs');
+  ok(/You are following/.test(followNote(paceBrief(F.id).brief)) && /Walking with you/.test(followNote(paceBrief(L.id).brief)), 'the runner prompt names it');
+  // a long walk: the follower keeps pace on autopilot (no order for hours), never joins, votes or shouts
+  const way = [[18, 8], [4, 16], [20, 2], [0, 10], [14, 14]].map(([dx, dy]) => cl(at.x + dx, MW) + ',' + cl(at.y + dy, MH));
+  let wi = 0, cps = 0, lost = 0;
+  F.playActAt = S.gameMin - 1000;
+  const partyLines = () => S.agents.reduce((n, b) => n + (b.chat || []).filter(e => e.from === F && e.party).length, 0), pl0 = partyLines();
+  act(L, 'move_to', {target: way[wi++ % way.length], force: 'yes'});
+  for (let i = 0; i < 60 * 60; i++) {
+    step(1 / 60); L.playActAt = S.gameMin;
+    if (!living(L) || !living(F)) break;
+    if (!(L.pq && L.pq.length) && L.state !== 'fight') act(L, 'move_to', {target: way[wi++ % way.length], force: 'yes'});
+    if (i % 10 === 0) {cps++; if (!FW.seesHero(F, L)) lost++}
+  }
+  ok(living(L) && living(F), 'both lived through the walk');
+  ok(cps > 300 && lost / cps < .05, 'autopilot keeps pace: out of sight at ' + lost + '/' + cps + ' checkpoints (' + Math.round(lost / cps * 1000) / 10 + '%), legs walked ' + wi);
+  ok(F.pq[0] && F.pq[0].kind === 'follow', 'the follow order still stands after an hour of game time');
+  ok(!F.party && CO.isSolo(CO.companyOf(F)) && !CO.companyOf(L).ids.includes(F.id), 'the follower joined no party or company');
+  ok(partyLines() === pl0 && !CN.openProps(CO.companyOf(L)).length, 'no party shout or vote from the follower');
+  // autopilot keeps a standing follow: a reflex took the command away, the hero is in sight
+  put(L, 0, 0); put(F, 2, 0); F.playActAt = S.gameMin - 1000; run(1);
+  ok(F.pq[0] && F.pq[0].kind === 'follow' && F.pq[0].auto, 'autopilot falls in behind them again (standing order)');
+  // a save mid-follow
+  restore(JSON.parse(JSON.stringify(snapshot())));
+  const L2 = S.agents.find(b => b.id === L.id), F2 = S.agents.find(b => b.id === F.id);
+  ok(F2.pq[0] && F2.pq[0].kind === 'follow' && F2.playOrder && F2.playOrder.kind === 'follow', 'a save keeps the follow');
+  // lost them: walk to the last seen spot, then stop and say so
+  run(1);
+  const seenAt = {x: L2.x, y: L2.y}, away = () => {L2.x = cl(seenAt.x + (seenAt.x > MW / 2 ? -40 : 40), MW); L2.y = seenAt.y; L2.pq = []; L2.state = 'hunt'; L2.target = null; L2.playActAt = S.gameMin};
+  away(); rebuild();
+  const n0 = F2.playEvN; let k = 0;
+  while (FW.followCmd(F2) && k++ < 60 * 30) {step(1 / 60); away()}
+  const le = F2.playEv.find(e => e.n > n0 && /lost sight of/.test(e.text));
+  ok(le && le.w === 2, 'lost them is an urgent event: ' + (le && le.text));
+  ok(le && /near [A-Z]/.test(le.text) && !/\d+(\.\d+)?\s*,\s*\d+/.test(le.text), 'it names a place, never coordinates');
+  ok(dist(F2, seenAt) < 1.5, 'the follower walked to the last seen spot first (' + Math.round(dist(F2, seenAt) * 10) / 10 + ' tiles off)');
+  ok(!F2.pq.length && !F2.playOrder, 'the follow order is over (autopilot will not take it up)');
+  ok(L2.playEv.some(e => e.text === F2.name + ' has fallen behind.'), 'the followed hero is told the follower fell behind');
+  // hours: the follow ends when they run out; another order ends it at once
+  put(L2, 0, 0); put(F2, 2, 0); r = act(F2, 'follow', {hero_id: L2.id, hours: 1}); ok(r.ok && r.hours === 1, 'follow for an hour');
+  const t1 = S.gameMin; while (S.gameMin < t1 + 62) {step(1 / 60); L2.playActAt = S.gameMin}
+  ok(!FW.followCmd(F2) && F2.playEv.some(e => /hour you gave are up/.test(e.text)), 'the follow ends when the hours run out');
+  put(L2, 0, 0); put(F2, 2, 0); act(F2, 'follow', {hero_id: L2.id}); r = act(F2, 'rest', {minutes: 30});
+  ok(r.ok && !FW.followCmd(F2) && !(F2.playOrder && F2.playOrder.kind === 'follow'), 'another order ends the follow and its standing order');
+  // the Crypt: a hero gone below is out of sight; the follower goes to the stair, then stops
+  put(L2, 0, 0); put(F2, 2, 0); act(F2, 'follow', {hero_id: L2.id}); run(1); L2.hidden = true; k = 0;
+  while (FW.followCmd(F2) && k++ < 60 * 20) {step(1 / 60); L2.hidden = true; L2.playActAt = S.gameMin}
+  ok(!FW.followCmd(F2) && F2.playEv.filter(e => /lost sight of/.test(e.text)).length >= 2, 'a hero gone hidden is lost after the last seen spot');
+  L2.hidden = false;
+}
+
 console.log(fail ? `\ncompanycheck: ${fail} failure(s)` : '\ncompanycheck: all ok');
 process.exit(fail ? 1 : 0);
