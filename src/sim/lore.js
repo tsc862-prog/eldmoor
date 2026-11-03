@@ -24,6 +24,7 @@ import {bestFor} from './abilities.js';
 import {ev} from './notify.js';
 import {moment} from './reflect.js';
 import {nearHeroes,nearMobs} from './spatial.js';
+import {held} from './scenes.js';
 import {sightMul} from './weather.js';
 
 export const LORE={
@@ -230,7 +231,7 @@ export function preyKey(a,name){const s=clean(name,60).toLowerCase().replace(/^(
   return null}
 // hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear).
 export function pickPrey(a,cmd){const R=9*sightMul(zoneAt(a.x,a.y));let best=null,bs=1e9;
-  for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a))continue;
+  for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a)||held(m))continue; // held in a scene (#518)
     if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(m.target!==a&&feared(a,m))continue;
     const d=dist(a,m);if(d>R)continue;const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
   if(best)sight(a,best);return best}

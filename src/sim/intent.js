@@ -12,6 +12,7 @@
 // Private to the hero (in-game channels, #123): only a leader's shout leaves it, as a party line heard in range.
 import {S} from './state.js';
 import {dist} from '../world/map.js';
+import {sceneOf} from './scenes.js'; // the hero's own company scene (#518)
 
 export const INTENT={
   STALE:120,      // game minutes without progress before the aim is stale and the next turn asks again
@@ -69,7 +70,7 @@ export function intentWatch(a){const I=a.intent;if(!I||I.done)return;const now=S
   if(o&&o.kind==='move'&&o.to&&dist(a,o.to)<=INTENT.NEAR){I.done={at:Math.round(now),why:'you reached '+o.label};return}
   if(o&&o.kind==='hunt'&&o.n&&(a.kills||0)-(o.k0||0)>=o.n){I.done={at:Math.round(now),why:o.n+' kills made'};return}
   if(o&&o.kind==='follow'){const b=S.agents.find(x=>x.id===o.id);if(!b||b.state==='dead'){I.done={at:Math.round(now),why:o.name+' is gone'};return}}
-  const busy=a.state==='camp'||a.state==='fight'||a.state==='duel'||a.state==='dungeon'||a.state==='raid'||(S.table&&S.table.ids&&S.table.ids.includes(a.id));
+  const busy=a.state==='camp'||a.state==='fight'||a.state==='duel'||a.state==='dungeon'||a.state==='raid'||!!sceneOf(a);
   const moved=(a.kills||0)!==s.kills||(a.xp||0)!==s.xp||a.lvl!==s.lvl||dist(a,s)>=INTENT.STEP||(a.adv||null)!==s.adv||advIdx(a)!==s.idx;
   if(busy||moved||(o&&o.kind==='wait')){I.prog=Math.round(now);if(moved)I.snap=snapOf(a)}}
 
@@ -86,7 +87,7 @@ export function leaderAimLine(a,leader){const h=a&&a.heardAim;if(!h||!leader||le
 
 // The pace header's aim (sim/pace.js): {line, state, ask, why?, wait_limit?, leader?}. ask: the next turn asks first
 // "What are you trying to do now?" (the aim is done, stale, or was never stated).
-export function aimBrief(a,leader){const st=aimState(a),I=a.intent,o={state:st,line:aimLine(a),ask:st!=='set'};
+export function aimBrief(a,leader){const st=aimState(a),I=a.intent,sc=!!sceneOf(a),o={state:st,line:aimLine(a),ask:st!=='set'&&!sc}; // its own scene comes first: no ask while it sits in one
   if(st==='none')o.why='you have not said what you are trying to do';
   else if(st==='done')o.why='your last aim is done ('+I.done.why+')';
   else if(st==='stale')o.why='no progress toward it for '+mins(S.gameMin-(I.prog??I.set));

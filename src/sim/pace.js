@@ -16,6 +16,7 @@
 import {S,clockStr} from './state.js';
 import {wakeLevel} from './notify.js';
 import {tableView,optionsFor} from './table.js';
+import {sceneOf} from './scenes.js';
 import {heardLines,metNames} from './talk.js';
 import {maxHp} from './heroes.js';
 import {ZONES,zoneAt,CITY} from '../world/map.js';
@@ -98,7 +99,7 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
   return 'about '+g+'g and XP'+(T.pay.honor?', '+T.pay.honor+' honor':'')+(T.pay.gear>=.35?', maybe gear':'')} // the quest log's payText (sim/questlog.js), same words as list_jobs/quests
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
-function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(S.table,a).map(o=>o.k);if(!keys.length)return null;
+function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
   return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[]}}
 // Where the hero stands, for the header (#399): a town by name when it is inside one ("Highgate (town; Lowmark around it)"), so
 // an agent waiting in town no longer reads the region and calls hunt there. The same words move_to reads back.

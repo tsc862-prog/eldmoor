@@ -34,6 +34,7 @@ import './fellowship.js'; // load order: keep the module graph as before (an imp
 import {companyOf,companyById,companies,members,isSolo,campaign as clog} from './company.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
 import {reflexMay,ownerHeld} from './runlink.js';
+import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {inRange,together,outOfRange,nameList,makePlan,reachTick,toldBy,REACH} from './reach.js';
 
 export const COUNCIL={PROP_MIN:120,HOLD_MIN:600,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,WAIT_MIN:480,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:200,HEAR:7,SHOUT:REACH.SHOUT}; // SHOUT: how far party_say carries, in tiles (issue #182, sim/reach.js)
@@ -156,7 +157,7 @@ export function castVote(a,id,v,reason,by='agent'){const C=companyOf(a),P=propBy
 // Members a reflex may vote for (no runner, and the owner said go on; or no host): they vote at once.
 // Who a proposal reaches (#182): the living members who were within shouting range when it was made, and any who have rejoined since.
 export const voters=P=>members(propCompany(P)).filter(b=>!(P.absent||[]).includes(b.id)&&!(P.kind==='expel'&&P.target===b.id)); // the one an expel vote is about hears it and may speak, but does not vote (#444)
-const atTable=P=>!!(S.table&&S.table.ctx&&S.table.ctx.prop===P.id);
+const atTable=P=>!!findScene(sc=>sc.ctx&&sc.ctx.prop===P.id); // any company's open scene (#518)
 function reflexFill(P){for(const b of voters(P))if(!P.votes[b.id]&&reflexMay(b)&&P.status==='open')castVote(b,P.id,reflexVote(b,P),'','reflex')}
 // Who the open vote still waits for: members without a vote whose agent (or owner) has the say (#148).
 export const waitingVoters=P=>P&&P.status==='open'?voters(P).filter(b=>!P.votes[b.id]&&!reflexMay(b)):[];

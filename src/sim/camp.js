@@ -57,6 +57,7 @@ import {sayOk} from './throttle.js';
 import {companyOf,companies,members as cMembers,campaign} from './company.js';
 import {partySay,leaderOfC,setCampHook,openProps} from './council.js';
 import {openScene} from './table.js';
+import {sceneOf} from './scenes.js';
 import {reflexMay} from './runlink.js';
 import {advCampable} from './dm.js'; // a night camp may fall between an adventure's scenes (#325)
 
@@ -300,7 +301,7 @@ export function leaderBreak(a){const F=companyOf(a),g=F&&F.camp;if(!g||!g.phase)
 export function leaderRest(a,hours){const F=companyOf(a);if(!F||!a)return 'Only a member of a company makes camp.';
   if(F.camp&&F.camp.phase)return the(F)+' is already camped; '+(F.ids.length>1?'propose break_camp':'break_camp')+' to move on early.';
   const ld=leaderOfC(F);if(ld!==a)return 'Only the leader ('+(ld?ld.name:'?')+') calls a camp; ask them, or rest here yourself with rest {minutes}.';
-  if(S.table)return 'Not now: a scene is under way.';
+  if(F.ids.some(id=>sceneOf({id})))return 'Not now: a scene is under way.'; // the company's own scene (#518)
   const L=cMembers(F),E=L.filter(eligible),min=minCamp(F);if(L.length<min||E.length<min||E.length<L.length-1)return F.ids.length>1?'The company is not all out on the road together (hunting, travelling or following); get them together first.':'You can make camp only out on the road (hunting, travelling or following).';
   if(E.some(x=>dist(x,a)>14))return 'The company is spread too far apart to make camp together.';
   const h=Math.min(8,Math.max(1,Math.round(Number(hours)||2)));makeCamp(F,E,'rest',h);return F.camp&&F.camp.phase?null:'No safe ground to camp near here.'}
