@@ -49,6 +49,7 @@
 - [init() reset #507](init_reset.md) — resetS/resetWorld, initcheck, what to reset when adding stores
 - [Talk escalation #407](talk_escalation.md) — talkscene.js ESC rules: offer/bargain/party/tense, once per conv+reason, company present, test pitfalls
 - [seekParty companies #510](seekparty_companies.md) — scripted recruiting skips company heroes; raw a.company check, no company.js import
-- [Merge vote scene #500](merge_vote_scene.md) — paired merge proposal gets its own company's decision scene, queued behind the first
+- [Merge vote scene #500](merge_vote_scene.md) — paired merge proposal gets its own company's decision scene (since #518 opens at once beside the first)
 - [No level gate #449](no_level_gate.md) — companies pooled for Crypt/raid at any level, green warning in proposal text, reflex vote keeps floor, hash moved
 - [Elite company scale #502](elite_company_scale.md) — scaleElite at scene open for non-slots companies under 5; crawl counts by crew/5
+- [Engaged scenes #518](engaged_scenes.md) — S.table primary + S.tables per company, sceneOf/sceneFor, ENG hold for live-clock scenes, test pitfalls

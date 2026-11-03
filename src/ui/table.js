@@ -27,7 +27,9 @@
 // table are a short list (narrLines: the last NARR_KEEP of the scene, so a whisper's "leans close" no longer replaces the
 // person's words). With the indoor scene map open the banner docks beside the map (below it on a phone; style.css
 // .screen.scin).
-import {TABLE,bannerOf,stepNext,optionsFor,pauseAll,setPauseAll} from '../sim/table.js';
+// Several scenes (#518): every other company's open scene is one more line under the banner ("Scene at Mirefen: Dovas and
+// company", a button that follows that company), so the watcher sees every live table at once.
+import {TABLE,bannerOf,stepNext,optionsFor,pauseAll,setPauseAll,openScenes} from '../sim/table.js';
 import {reflexMay,ownerHeld} from '../sim/runlink.js';
 import {classColor} from '../core/colors.js';
 import {sceneHead} from '../core/scenehead.js';
@@ -136,6 +138,9 @@ function onBox(e){const t=e.target&&e.target.closest?e.target.closest('[data-act
   else if(t.dataset.act==='follow'||t.dataset.act==='live'){followCompany(companyById(+t.dataset.co));setView('fellow');sig=''}}
 // Whose table it is, or null with one company (#456): {text, id, followed}.
 // The one-line banner of a scene on the live clock (#458), or null: {text, id}.
+// Every other company's open scene as a line (#518): the same words as a live scene's line.
+export function otherLines(){const out=[];for(const sc of openScenes().slice(1)){const x=liveLine({...bannerOf(sc),live:true});if(x)out.push(x)}return out}
+function liveBtn(box,x){const o=el('button','tlvb',x.text+' ▸');o.type='button';o.dataset.act='live';o.dataset.co=x.id;o.title='Follow this company: its scene then pauses the world and opens here';box.append(o)}
 export function liveLine(b){if(!b||!b.live||b.company==null)return null;const C=companyById(b.company),L=C?members(C):[],lead=C?leaderOf(C)||L[0]:null;
   const who=lead?(L.length>1?lead.name+' and company':lead.name+', alone'):(b.companyName||'A company');
   return {text:'Scene at '+(b.where||'the road')+': '+who,id:b.company}}
@@ -208,11 +213,11 @@ export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd
   const box=$('tbanner');if(!box)return;if(!box._tstep){box._tstep=1;box.addEventListener('click',onBox)}
   const b=bannerOf();if(!b){lastScene=null;if(!box.hidden){box.hidden=true;sig=''}return}
   if(S.table.id!==lastScene&&!b.live){lastScene=S.table.id;if(TABLE.speed<=1)chime(S.table.kind)} // chime when the scene stops the world, also on following into it
-  const ll=liveLine(b);box.classList.toggle('tlive',!!ll);
-  if(ll){const s='live|'+ll.text+'|'+ll.id;if(s===sig)return;sig=s;box.hidden=false;box.classList.remove('tcombat');patch(box,box=>{
-    const o=el('button','tlvb',ll.text+' ▸');o.type='button';o.dataset.act='live';o.dataset.co=ll.id;o.title='Follow this company: its scene then pauses the world and opens here';box.append(o)},{force:true});return}
+  const ll=liveLine(b),more=otherLines(),ms=more.map(x=>x.text+'/'+x.id).join('|');box.classList.toggle('tlive',!!ll);
+  if(ll){const s='live|'+ll.text+'|'+ll.id+'|'+ms;if(s===sig)return;sig=s;box.hidden=false;box.classList.remove('tcombat');patch(box,box=>{
+    for(const x of [ll,...more])liveBtn(box,x)},{force:true});return}
   const c=combatView(),rows=c?null:memberRows(),hd=sceneHead(b.kind,b.title),chips=sceneChips(b,c),own=tableOwner(b),ppl=peopleAt(S.table),narrs=narrLines(S.table);
-  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,narrs.join('¦'),b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):'',own?own.text+own.followed:''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
+  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,ms,narrs.join('¦'),b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):'',own?own.text+own.followed:''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
   const tt=el('div','tt'),th=el('span','tth',hd.head.toUpperCase());th.title=b.title;tt.append(th);box.append(tt);
   if(S.table&&(S.table.kind==='crawl'||S.table.kind==='site')){const v=el('button','tstb tdg','View the crypt ▸');v.type='button';v.dataset.dungeon='';v.title='Open the dungeon view';tt.append(v)} // #85
   else if(S.table){const v=el('button','tscn','Scene map ▸');v.type='button';v.dataset.scene='';v.title='Show the scene on its own map, or back to the world';tt.append(v)} // scene maps (#431)
@@ -223,7 +228,8 @@ export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd
   box.append(el('div','tf',fr));
   if(narrs.length){const L=el('ul','tnarrs');L.setAttribute('aria-label','At the table');narrs.forEach((t,i)=>{const li=el('li','tf tnarr'+(i<narrs.length-1?' old':''),t);li.dataset.k='n'+i;L.append(li)});box.append(L)} // the DM's lines at the table (#123), the last few (#536)
   if(b.cast&&b.cast.length){const o=el('div','to tcast','Staged by the DM');for(const x of b.cast){const u=unrole(x,ppl),p=ppl.find(q=>u===q.name||u.startsWith(q.name+' ('));o.append(' · ',u);if(p)o.append(' ',el('span','trole',p.role.toLowerCase()))}box.append(o)} // a staged scene's cast (#132), the role a dim word (#536)
-  if(c){combatBlock(box,c);box.append(el('div','tl',b.line));if(!c.ends)stepRow(box,c);endBlock(box,c);return} // the roll lines take the last-act line's place
+  if(c){combatBlock(box,c);box.append(el('div','tl',b.line));if(!c.ends)stepRow(box,c);endBlock(box,c);for(const x of more)liveBtn(box,x);return} // the roll lines take the last-act line's place
   if(rows&&rows.length)rowsBlock(box,rows,b);
   const hint=rows&&b.all&&b.phase==='turn'&&/^\d+\/\d+ answered/.test(b.line)?(b.line.match(/\(([^()]*no runner[^()]*)\)$/)||[])[1]:null; // the rows say who waits; keep only what to do
-  if(hint)box.append(el('div','tl',hint));else if(!rowsSay(b,rows))box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome'&&!b.all)box.append(el('div','to',unrole(b.last,ppl)))},{force:true})}
+  if(hint)box.append(el('div','tl',hint));else if(!rowsSay(b,rows))box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome'&&!b.all)box.append(el('div','to',unrole(b.last,ppl)));
+  for(const x of more)liveBtn(box,x)},{force:true})} // other companies' scenes, a line each (#518)

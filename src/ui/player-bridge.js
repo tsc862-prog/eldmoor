@@ -15,7 +15,8 @@ import {noteDmCall} from './dmturns.js'; // per-turn cards of the DM tab (#181)
 import {mindsOf} from '../sim/fellowship.js';
 import {WORLD_ID} from '../world/map.js';
 import {mirrorDirty} from '../sim/notebook.js';
-import {sceneDue} from '../sim/scenewait.js'; // health: a member's scene still waits for its answer (#515)
+import {sceneDue} from '../sim/scenewait.js';
+import {sceneOf} from '../sim/scenes.js'; // health: a member's scene still waits for its answer (#515)
 import {sleep as wsleep,every} from './ticker.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
@@ -54,7 +55,7 @@ export function agentOn(a){if(!a||a.state==='dead')return false;
 export function agentOff(a){markPlayer(a,false);if(!wanted())disconnect();else hello()}
 
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id)),...(sceneDue(a)?{due:true}:{})}:{})})),dm={seat:dmSeatOn()},k=JSON.stringify([hs,dm,WORLD_ID,S.worldId]);
+function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!sceneOf(a),...(sceneDue(a)?{due:true}:{})}:{})})),dm={seat:dmSeatOn()},k=JSON.stringify([hs,dm,WORLD_ID,S.worldId]);
   if(k===lastHello&&status==='connected')return;lastHello=k;if(S.worldId!==sentWid){sentWid=S.worldId;sentMem.clear()}
   send({type:'hello',heroes:hs,dm,world:WORLD_ID,worldId:S.worldId||null,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
 const seat=id=>id!=null?playerSeat(id):playerSeat();
