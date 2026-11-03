@@ -33,17 +33,19 @@
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
 import {clamp} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
-import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
-import {GOODS,QUEST_ITEMS} from '../data/items.js';
-import {addQuest,take} from './inv.js';
+import {GOODS,QUEST_ITEMS,USES,EPICS,BOSS_EPICS,DG_EPICS,SLOTS} from '../data/items.js';
+import {addQuest,addUse,addGear,take,room,count} from './inv.js';
+import {makeItem} from './gear.js';
+import {notify} from './notify.js';
 import {RACES} from '../data/races.js';
 import {npcRole,WANDER_ROLES} from '../data/npcs.js';
 import {BEAST,ADVENTURES} from '../data/adventures.js';
 import {S} from './state.js';
 import {dmlog} from './dmlog.js';
 import {focuses,pullTouchesAny,reserveOf,fairRefusal} from './dmfocus.js'; // the companies' reserved share of the daily limits (issues #165, #450)
-import {timeline} from './history.js';
+import {timeline,record} from './history.js';
 import {npcSay,ensureNpcs} from './npcs.js';
 import {moveTo} from './heroes.js';
 import {spawnMob} from './mobs.js';
@@ -62,6 +64,8 @@ export const LK={
   ECO_T:5,           // real seconds between lever ecology passes
   TL_PER_DAY:2,      // timeline entries the levers may write per game day
   REASON_MAX:160,
+  EAR:7,             // tiles within which a person can hand a hero an item (give_item by)
+  GEAR_PER_DAY:1,    // plain gear pieces give_item may hand out a game day
 };
 const BY=['scripted','model','agent','dm-agent']; // dm-agent: the DM played by an agent (sim/dmagent.js, issue #66)
 const DAY=1440;
@@ -132,7 +136,7 @@ export const LEVERS={};
 const IMPL={}; // implementations other systems provide for the stub levers (a future createSite, startEvent, nudgeRelation)
 export function register(def){
   if(!def||typeof def.name!=='string'||typeof def.apply!=='function')throw new Error('lever needs a name and apply()');
-  for(const k in def.params||{})if(FORBIDDEN.test(k))throw new Error('lever '+def.name+': parameter '+k+' is not allowed (heroes’ numbers, life and loot are off limits)');
+  for(const k in def.params||{})if(FORBIDDEN.test(k)&&!(def.allow||[]).includes(k))throw new Error('lever '+def.name+': parameter '+k+' is not allowed (heroes’ numbers, life and loot are off limits)');
   if(FORBIDDEN.test(def.name))throw new Error('lever name '+def.name+' is not allowed');
   def.params=def.params||{};def.limits=def.limits||{};def.cooldown=def.cooldown||0;LEVERS[def.name]=def;return def}
 // Another system provides an implementation a stub lever calls (provide('createSite', fn)).
@@ -155,7 +159,7 @@ export const leverNames=()=>Object.values(LEVERS).filter(d=>!d.stub||IMPL[d.stub
 // pull(name, params, {by, reason, adv, log}) -> {ok, id, effect, until, ret} or {ok:false, reason}.
 // adv: the adventure this pull belongs to (for the DM log). log:false hands the log entry's data
 // back as `entry` instead of writing it, for a caller that folds it into its own entry.
-export function pull(name,raw,o={}){const L=ensureLevers(),def=LEVERS[name],by=o.by,reason=typeof o.reason==='string'?o.reason.trim().slice(0,LK.REASON_MAX):'';
+export function pull(name,raw,o={}){raw=aliasRaw(name,raw);name=leverAlias(name);const L=ensureLevers(),def=LEVERS[name],by=o.by,reason=typeof o.reason==='string'?o.reason.trim().slice(0,LK.REASON_MAX):'';
   const fail=why=>{bump(L.stats.rejected,name);bump(L.stats.why,why.split(':')[0].slice(0,40));
     const res={ok:false,reason:why},det={lever:name,by:BY.includes(by)?by:String(by),params:raw&&typeof raw==='object'?JSON.parse(JSON.stringify(raw)):raw,reason,result:'rejected: '+why};
     const sum=['Lever ',gd(name),' refused: '+why+(reason?' (wanted: '+reason+')':'')+'.'];
@@ -229,7 +233,7 @@ register({name:'create_npc',about:'Place a person in the world: a visitor in tow
       attitude:p.attitude,att:[],lever:ctx.id,z:zoneAt(at.x,at.y)};
     if(p.towardParty!=null)w.att.push({to:'party',id:p.towardParty,a:p.attitude,until:null,lever:ctx.id});
     S.wanderers.push(w);
-    return {ok:true,effect:{npc:w.id,name:w.title+' '+name,at:{x:at.x,y:at.y},where:c?c.name:ZONES[w.z]},until:S.gameMin+p.hours*60,ret:w}},
+    return {ok:true,effect:{npc:w.id,name,title:w.title,at:{x:at.x,y:at.y},where:c?c.name:ZONES[w.z]},until:S.gameMin+p.hours*60,ret:w}},
   expire(rec){const i=S.wanderers.findIndex(w=>w.lever===rec.id);if(i>=0)S.wanderers.splice(i,1)},
   describe:p=>(p.attitude!=='neutral'?p.attitude+' ':'')+p.role+(p.name?' '+p.name:'')+(p.home==='town'?' in '+p.town:' at a '+p.home+' in '+(p.at?ZONES[zoneAt(p.at.x,p.at.y)]:'the wilds'))});
 
@@ -338,19 +342,64 @@ register({name:'withdraw_hook',about:'Take an open job down from a board.',param
   apply(p){const h=withdrawHook(p.hook);return h?{ok:true,effect:{hook:h.id,tpl:h.tpl,town:h.town}}:{ok:false,effect:'could not take it down'}},
   describe:p=>'hook #'+p.hook+' taken down'});
 
-// Quest items: a token from the quest-item table (data/items.js QUEST_ITEMS) put in a hero's pack, or taken back. They carry no
-// numbers and cannot be sold, dropped or given (sim/inv.js); an adventure or the DM can look for them.
-const livingHero=id=>{const a=S.agents.find(x=>x.id===id);return a&&a.kind==='hero'&&a.state!=='dead'?a:null};
-register({name:'give_token',about:'Put a quest item (a key, a seal, a token) in the hero pack: it opens nothing by itself, but jobs and townsfolk can ask for it.',
-  params:{hero:{type:'id'},token:{type:'enum',values:Object.keys(QUEST_ITEMS)}},limits:{perDay:6},cooldown:0,
-  check(p){const a=livingHero(p.hero);return !a?'no such living hero':a.inv&&a.inv.list.some(e=>e.kind==='quest'&&e.id===p.token)?a.name+' already carries it':null},
-  apply(p){const a=livingHero(p.hero);addQuest(a,p.token,null);return {ok:true,effect:{hero:a.name,token:p.token}}},
-  describe:p=>p.token+' to hero #'+p.hero});
-register({name:'take_token',about:'Take a quest item back out of the hero pack.',
-  params:{hero:{type:'id'},token:{type:'enum',values:Object.keys(QUEST_ITEMS)}},limits:{perDay:6},cooldown:0,
-  check(p){const a=livingHero(p.hero);return !a?'no such living hero':!(a.inv&&a.inv.list.some(e=>e.kind==='quest'&&e.id===p.token))?a.name+' does not carry it':null},
-  apply(p){const a=livingHero(p.hero);take(a,'quest',p.token,1);return {ok:true,effect:{hero:a.name,token:p.token}}},
-  describe:p=>p.token+' taken from hero #'+p.hero});
+// Hand a hero an object, or take one back (issue #524; the old give_token / take_token levers are folded in: pull() reads them as
+// give_item / take_item with item = token). item: a quest item or token (data/items.js QUEST_ITEMS), a consumable (USES), or a slot
+// name (head|chest|hands|feet|main|off|trinket) for one plain piece of gear at lvl (default the hero's own, never above it, never
+// an epic: the DM shapes, it does not power up; at most LK.GEAR_PER_DAY a game day). by: a person (npc id) within LK.EAR tiles of
+// the hero hands it over; without by it is found where the hero stands. Refused in a fight, with a full pack, for a stranger too far.
+// Quest items and tokens carry no numbers and cannot be sold, dropped or given to a companion (sim/inv.js).
+const livingHero=id=>{const a=S.agents.find(x=>x.id===id);return a&&a.kind==='hero'&&a.state!=='dead'&&a.state!=='ghost'?a:null};
+const FIGHT_STATES=['fight','duel','assist','raid'];
+const EPIC_NAMES=new Set([...EPICS.flat(),...BOSS_EPICS,...DG_EPICS]);
+const lc=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+// item text -> {kind:'quest'|'use'|'gear', id} or {err}
+function itemOf(text){const t=lc(text);if(!t)return {err:'item is required'};
+  const q=Object.keys(QUEST_ITEMS).find(k=>lc(k)===t);if(q)return {kind:'quest',id:q};
+  const u=Object.keys(USES).find(k=>lc(k)===t);if(u)return {kind:'use',id:u};
+  const g=SLOTS.find(k=>k===t);if(g)return {kind:'gear',id:g};
+  if([...EPIC_NAMES].some(n=>lc(n)===t))return {err:'an epic is earned, not handed out'};
+  if(Object.keys(GOODS).some(k=>lc(k)===t))return {err:'trade goods are not handed out'};
+  return {err:'unknown item "'+String(text).slice(0,40)+'"; a quest item ('+Object.keys(QUEST_ITEMS).join(', ')+'), a consumable ('+Object.keys(USES).slice(0,8).join(', ')+', ...) or a gear slot ('+SLOTS.join('|')+')'}}
+const earOf=(a,by)=>{if(by==null)return null;const n=anyNpc(by);return n?{n,near:dist(a,n)<=LK.EAR}:{n:null}};
+const personName=n=>(n.title?n.title+' ':'')+n.name;
+const withArt=s=>(/^[aeiou]/i.test(s)?'an ':'a ')+s;
+function itemCheck(p,give){const a=livingHero(p.hero);if(!a)return 'no such living hero';
+  if(FIGHT_STATES.includes(a.state))return a.name+' is in a fight';
+  const it=itemOf(p.item);if(it.err)return it.err;
+  const e=earOf(a,p.by);if(e){if(!e.n)return 'no such person to hand it over';if(!e.near)return personName(e.n)+' is not within earshot of '+a.name+' (within '+LK.EAR+' tiles)'}
+  if(give){
+    if(it.kind==='quest'){if(a.inv&&a.inv.list.some(x=>x.kind==='quest'&&x.id===it.id))return a.name+' already carries it';if(room(a)<=0)return a.name+'’s pack is full'}
+    else if(it.kind==='use'){if(!count(a,it.id)&&room(a)<=0)return a.name+'’s pack is full'}
+    else{if(!a.slots)return a.name+' wears no gear';if(p.ilvl!=null&&p.ilvl>a.lvl)return 'a piece of level '+p.ilvl+' is above '+a.name+'’s level '+a.lvl;
+      if((today().n.give_item_gear||0)>=LK.GEAR_PER_DAY)return 'limit: '+LK.GEAR_PER_DAY+' gear piece per game day';if(room(a)<=0)return a.name+'’s pack is full'}}
+  else{if(it.kind!=='quest')return it.kind==='gear'?'gear cannot be taken back':'consumables cannot be taken back; only a quest item or a token';
+    if(!(a.inv&&a.inv.list.some(x=>x.kind==='quest'&&x.id===it.id)))return a.name+' does not carry it'}
+  return null}
+const FLAVOUR=it=>it.kind==='quest'?QUEST_ITEMS[it.id].flavour:it.kind==='use'?(USES[it.id].flavour||''):'';
+register({name:'give_item',allow:['item'],about:'Put one object in a hero’s pack: a quest item or token, a consumable, or one plain piece of gear for a slot (at ilvl, never above the hero’s level, never an epic; '+LK.GEAR_PER_DAY+' a game day). by: a person within earshot hands it over, else it is found where the hero stands. Not in a fight.',
+  params:{hero:{type:'id'},item:{type:'str',max:40},by:{type:'id',opt:true},ilvl:{type:'int',min:1,max:60,opt:true}},limits:{perDay:4},cooldown:0,
+  check:p=>itemCheck(p,true),
+  apply(p){const a=livingHero(p.hero),it=itemOf(p.item),e=earOf(a,p.by),who=e&&e.n?personName(e.n):null;let name=it.id,got;
+    if(it.kind==='quest')got=addQuest(a,it.id,null);else if(it.kind==='use')got=addUse(a,it.id,1);
+    else{const lvl=p.ilvl!=null?p.ilvl:a.lvl,g=makeItem(a.cls,it.id,lvl,zoneFor(lvl),{quality:'plain',src:who?'Given by '+who:'Found'});got=addGear(a,g);name=g.name;bump(today().n,'give_item_gear')}
+    if(!got)return {ok:false,effect:'the pack would not take it'};
+    const fl=FLAVOUR(it),line=(who?who+' presses '+withArt(name)+' into your hand.':'Half-buried in the dirt where you stand: '+name+'.')+(fl?' '+fl:'');
+    {const sc=S.table;if(sc&&Array.isArray(sc.ids)&&sc.ids.includes(a.id))sc.given=name} // a scene prop the speaker held is now the hero's (render: sceneItem)
+    notify(a,line,1);record(a,'Given: ',name+(who?' (from '+who+')':' (found)'));
+    return {ok:true,effect:{hero:a.name,item:name,kind:it.kind,by:who||'found'}}},
+  describe:p=>p.item+' to hero #'+p.hero});
+register({name:'take_item',allow:['item'],about:'Take a quest item or token out of a hero’s pack (a toll paid, a key surrendered); by: a person within earshot takes it. Refused for gear and consumables, and in a fight.',
+  params:{hero:{type:'id'},item:{type:'str',max:40},by:{type:'id',opt:true}},limits:{perDay:4},cooldown:0,
+  check:p=>itemCheck(p,false),
+  apply(p){const a=livingHero(p.hero),it=itemOf(p.item),e=earOf(a,p.by),who=e&&e.n?personName(e.n):null;take(a,'quest',it.id,1);
+    notify(a,who?who+' takes the '+it.id+' from you.':'You leave the '+it.id+' behind.',1);record(a,'Gave up: ',it.id+(who?' (to '+who+')':''));
+    return {ok:true,effect:{hero:a.name,item:it.id,by:who||'left behind'}}},
+  describe:p=>p.item+' taken from hero #'+p.hero});
+// the old token levers, folded in
+const ALIAS={give_token:'give_item',take_token:'take_item'};
+export const leverAlias=name=>ALIAS[name]||name;
+const aliasRaw=(name,raw)=>{if(!ALIAS[name]||!raw||typeof raw!=='object')return raw;const q={...raw};if('token' in q){q.item=q.token;delete q.token}return q};
+export const aliasParams=aliasRaw;
 
 // Foes for an adventure scene: one monster of the region raised to a named foe, its level kept
 // to the region's band. The adventure owns it (dm.js places it and tags it m.adv).

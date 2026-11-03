@@ -12,7 +12,17 @@
 // browser), returns to the world when the scene ends, and "Back to world" closes it for that scene. The Table banner's
 // "Scene map" button (data-scene) opens it by hand. Everything here reads S; nothing writes it.
 //
+// Polish (#536): the speaker's bubble carries only the quoted words (core/spoken.js), never action prose; an indoor scene
+// docks the Table banner beside the map (below it on a phone, #screen.scin) and the room fills the rest at a whole-number
+// scale; the members stand in an arc facing the person (render/interior.js); each member's answer state shows over the
+// head ("..." thinking, a tick once answered: answerMarks); the room is darker at night and when the frame says so
+// (sceneDark); an item the frame names is a small lit prop (sceneItem); the bar carries the answer count, the timer and
+// the place (barStatus), not the title.
+//
 // Exports (DOM-free where it matters, so the stub-DOM smoke can drive them):
+//   sceneSpeaker()    the line the speaker's bubble carries {e, text} or null
+//   barStatus(sc), answerMarks(sc), sceneDark(sc, base), sceneItem(sc)   the bar's status line, {id: 'think'|'done'|'turn'},
+//                     the room's dimness 0..0.8, the item kind the frame names or null
 //   sceneSpec(sc)     {mode, kind, title, members, cast, anchor:{x,y}, town, setting, key, where} for a scene, or null
 //   pickSetting(sc, town, people)   the settings row id an indoor scene plays in
 //   sceneTick(cam)    once a frame (draw.js): auto open/close, the speaker, the dungeon hand-off
@@ -24,12 +34,14 @@ import {CITY,CRYPT,ZONES,zoneAt} from '../world/map.js';
 import {W,H,T,G,SNOW,ROCK,SGRASS} from '../world/tiles.js';
 import {SETTINGS,SETTING_IDS} from '../data/settings.js';
 import {buildSetting} from '../world/interior.js';
-import {drawSetting,bubble} from './interior.js';
+import {drawSetting,bubble,answerMark} from './interior.js';
 import {texel} from './terrain.js';
 import {openDungeon,closeDungeon,dungeonOpen} from './dungeonview.js';
 import {biomeOfZone,SCENE,MARK,TEXT} from './palette.js';
 import {classColor,DISP} from '../core/colors.js';
 import {sceneHead} from '../core/scenehead.js';
+import {TABLE} from '../sim/table.js';
+import {spokenOf,unrole} from '../core/spoken.js';
 
 const KEY='eldmoor.sceneMaps';
 const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social']);
@@ -73,6 +85,7 @@ export function sceneSpec(sc=S.table){if(!sc)return null;
 // ---- state ----
 let open=false,openId=null,spec=null,dismissed=null,seenId=null,autoDg=false,dgShut=false,speaker=null,lastBeats=0,lastNarr=null;
 export const sceneOpen=()=>open;
+export const sceneSpeaker=()=>speaker; // {e, text} the bubble shows, or null (#536)
 export const sceneMode=()=>open&&spec?spec.mode:null;
 export const sceneAuto=()=>auto;
 export function setSceneAuto(on){auto=!!on;try{localStorage.setItem(KEY,auto?'auto':'off')}catch(_){}syncBtn()}
@@ -84,16 +97,19 @@ export function openSceneView(sc=S.table){const sp=sceneSpec(sc);if(!sp)return f
   if(sp.mode==='dungeon'){autoDg=true;dgShut=false;return openDungeon(CRYPT)}
   if(!root&&!build())return false;
   open=true;openId=sc.id;spec=sp;sig='';root.hidden=false;root.classList.toggle('scout',sp.mode==='outdoor');root.dataset.mode=sp.mode;
-  const scr=document.getElementById('screen');if(scr)scr.classList.add('scopen');
+  const scr=document.getElementById('screen');if(scr){scr.classList.add('scopen');scr.classList.toggle('scin',sp.mode==='indoor')}
   speaker=null;lastBeats=Math.max(0,sc.beats.length-1);lastNarr=null;track(sc);refreshScene();return true}
 export function closeSceneView(byUser){if(byUser&&openId!=null)dismissed=openId;open=false;openId=null;spec=null;
-  if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr)scr.classList.remove('scopen')}
+  if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr){scr.classList.remove('scopen');scr.classList.remove('scin')}}
 
-// The latest line at the table: a member's line in a beat, or the DM voicing the scene's person (sc.narr).
+// The latest line at the table: a member's line in a beat, or the scene's person speaking through the DM (sc.narr,
+// "Name: text"). Only the quoted words become a bubble (#536); prose about the person ("Father Corvane sets down the
+// candle stub.") clears it, and the DM's own narration stays in the banner's list, not on the map.
+const peopleOf=sp=>(sp?sp.cast:[]).filter(e=>e&&e.title&&e.name);
 function track(sc){const nb=sc.beats.length;
-  for(let i=lastBeats;i<nb;i++){const b=sc.beats[i];if(b&&b.line){const a=byId(b.id);if(a)speaker={e:a,text:b.line,t:clock()}}}lastBeats=nb;
-  const nt=sc.narr&&sc.narr.text;if(nt&&nt!==lastNarr){lastNarr=nt;const who=spec&&spec.cast.find(e=>e.name&&nt.startsWith(e.name+': '));
-    speaker=who?{e:who,text:nt.slice(who.name.length+2),t:clock()}:{e:null,dm:true,text:nt,t:clock()}}}
+  for(let i=lastBeats;i<nb;i++){const b=sc.beats[i];if(b&&b.line){const a=byId(b.id),t=a&&spokenOf(b.line,a.name);if(t)speaker={e:a,text:t,t:clock()}}}lastBeats=nb;
+  const nt=sc.narr&&sc.narr.text;if(nt&&nt!==lastNarr){lastNarr=nt;const u=unrole(nt,peopleOf(spec)),who=spec&&spec.cast.find(e=>e.name&&u.startsWith(e.name+': '));
+    if(who){const t=spokenOf(u.slice(who.name.length+2),who.name);speaker=t?{e:who,text:t,t:clock()}:speaker&&speaker.e===who?null:speaker}}}
 const clock=()=>typeof performance!=='undefined'?performance.now()/1000:Date.now()/1000;
 
 // Once a frame: open on a new scene of the followed Fellowship, close when it ends, keep the speaker.
@@ -101,7 +117,7 @@ export function sceneTick(cam){const sc=S.table;
   if(sc&&sc.id!==seenId){seenId=sc.id;if(auto&&follows(cam,sc)&&dismissed!==sc.id){const sp=sceneSpec(sc);
     if(sp&&sp.mode==='dungeon'){if(!dgShut&&!dungeonOpen()){autoDg=true;openDungeon(CRYPT)}}else if(sp)openSceneView(sc)}}
   if(!sc)seenId=null;
-  if(open){if(!sc||sc.id!==openId)closeSceneView(false);else{spec=sceneSpec(sc);track(sc)}}
+  if(open){if(!sc||sc.id!==openId)closeSceneView(false);else{spec=sceneSpec(sc);track(sc);const scr=document.getElementById('screen');if(scr&&spec)scr.classList.toggle('scin',spec.mode==='indoor')}}
   if(autoDg){const g=CRYPT&&CRYPT.group,inside=!!(g&&g.mem&&g.mem.some(a=>a.fellow));
     if(!dungeonOpen()&&inside)dgShut=true; // Back to world during the crawl: not again until it is over
     if(!inside){if(dungeonOpen())closeDungeon();autoDg=false;dgShut=false}}
@@ -134,6 +150,8 @@ export function drawSceneRings(ctx,cam,cut){const px1=cam.dpr/cam.sc; // under t
   ctx.globalAlpha=1}
 export function drawSceneMarks(ctx,cam,cut,now){const sc=cam.sc;
   if(cut.cur&&live(cut.cur)){const px1=cam.dpr/sc,m=Math.max(3,5*px1),x=Math.round(cut.cur.x*T),y=Math.round(cut.cur.y*T-17-16*px1-2*m-px1-7+Math.sin(now*5));ctx.fillStyle=MARK.edge;ctx.fillRect(x-4,y-1,9,5);ctx.fillStyle=SCENE.turn;ctx.fillRect(x-3,y,7,1);ctx.fillRect(x-2,y+1,5,1);ctx.fillRect(x-1,y+2,3,1);ctx.fillRect(x,y+3,1,1)}
+  {const mk=answerMarks(S.table),px1=cam.dpr/sc,m=Math.max(3,5*px1); // "..." while a member thinks, a tick once answered (#536)
+    for(const e of cut.members){const k=mk[e.id];if(!live(e)||(k!=='think'&&k!=='done')||e===cut.cur)continue;answerMark(ctx,e.x*T,Math.round(e.y*T-17-16*px1-2*m-px1-1),k,now)}}
   const s=cut.speaker;if(s&&s.e&&live(s.e)&&!(s.e.bubble&&s.e.bubble.life>0)){const e=s.e,hero=e.kind==='hero';
     bubble(ctx,e.x*T,e.y*T-18,hero?e.name.toUpperCase():'['+(e.name||'?')+']',hero&&e.fellow?classColor(e.cls):e.kind==='mob'||hero?DISP.hostile.color:DISP.neutral.color,s.text,cam.dpr,sc,Math.min(1,(SPEAK_S-(clock()-s.t))/.6))}
   // screen space: dim outside the cut, a thin gold frame with corner brackets
@@ -160,22 +178,62 @@ export function initSceneView(){if(inited||typeof document==='undefined')return;
   document.addEventListener('keydown',e=>{if(open&&e.key==='Escape')closeSceneView(true)});
   const b=document.getElementById('vScene');if(b)b.onclick=()=>setSceneAuto(!auto);syncBtn()}
 
-// The bar: the scene's short title (core/scenehead.js; the banner has the whole question, #471), where it is, and who is there (members in class colour, the cast in theirs).
-export function refreshScene(){if(!root||!open||!spec)return null;const sp=spec,people=sp.members.concat(sp.cast);
-  const s=sp.title+'|'+sp.where+'|'+people.map(e=>e.id+(live(e)?'':'x')).join(',')+'|'+(speaker&&speaker.dm?speaker.text:'');if(s===sig)return sp;sig=s;
-  nameEl.textContent=sceneHead(sp.kind,sp.title).head.toUpperCase();nameEl.title=sp.title||'';statEl.textContent=sp.where+(speaker&&speaker.dm?' · '+speaker.text:'');
-  whoEl.textContent='';for(const e of people){const li=mk('li','scp'+(live(e)?'':' gone'),e.kind==='mob'?(e.name||'foe'):e.name||'?');
-    li.style.color=e.kind==='hero'&&e.fellow?classColor(e.cls):e.kind==='mob'||e.kind==='boss'||e.kind==='hero'?DISP.hostile.color:DISP.neutral.color;whoEl.append(li)}
+// ---- what the map and the bar show besides the room (#536) ----
+const secs=n=>Math.max(0,Math.ceil(n))+' s';
+// The waiting timer of a scene: seconds waited, or the time left before reflexes once the nudge has gone out.
+function timerOf(sc){if(!sc||sc.phase!=='turn')return '';let t=0;
+  if(sc.all){for(const id of sc.ids)if(!(sc.acts&&sc.acts[id])){const w=sc.w&&sc.w[id];t=Math.max(t,(w&&w.t)||0)}}else t=sc.t||0;
+  return t*1000>=TABLE.turnMs?'reflex in '+secs(TABLE.liveMs/1000-t):t>=1?secs(t):''}
+// The bar's status: the answer count (everyone at once) or whose turn it is, and the timer.
+export function barStatus(sc=S.table){if(!sc)return '';const alive=sc.ids.map(byId).filter(a=>a&&a.state!=='dead'),n=alive.filter(a=>sc.acts&&sc.acts[a.id]).length,tm=timerOf(sc);
+  if(sc.phase==='frame')return 'Setting the scene';
+  if(sc.phase==='outcome'||sc.resolved)return 'Scene ends';
+  if(sc.all)return 'Answers '+n+'/'+alive.length+(tm?' · '+tm:'');
+  const cur=byId(sc.ids[sc.i]);return (cur?cur.name+(sc.acts&&sc.acts[cur.id]?' acts':' to act'):'Turn '+(sc.i+1))+(tm?' · '+tm:'')}
+// Over each member's head: 'done' once answered, 'think' while an agent's answer is awaited (everyone at once), 'turn'
+// for the one acting in a turn-by-turn scene (the gold chevron).
+export function answerMarks(sc=S.table){const o={};if(!sc||sc.phase==='outcome')return o;
+  sc.ids.forEach((id,i)=>{const a=byId(id);if(!a||a.state==='dead')return;if(sc.acts&&sc.acts[id])o[id]='done';else if(sc.phase==='turn'||sc.phase==='frame'){if(sc.all)o[id]='think';else if(i===sc.i)o[id]='turn'}});
+  return o}
+// How dim the room is: the setting's own dimness, deeper at night and dusk, and as the frame tells it.
+const DARKW=/\b(dark|darkness|gloom|gloomy|shadow(s|ed|y)?|gutter(s|ing|ed)?|dim(ly|ming)?|unlit|pitch|black|midnight|night|moonless|guttering)\b/i,BRIGHTW=/\b(sunlit|sunlight|bright|blazing|lamplit|well[- ]lit|noon|daylight)\b/i;
+export function sceneDark(sc=S.table,base=0){const h=(((S.gameMin||0)%1440)+1440)%1440/60,said=(sc?[sc.title,plain(sc.frame)].join(' '):'');
+  let d=base+(h<5||h>=21?.3:h<7||h>=19?.15:0);if(DARKW.test(said))d+=.2;if(BRIGHTW.test(said))d-=.15;
+  return Math.max(0,Math.min(.8,Math.round(d*100)/100))}
+// The one item the frame or the person's words name, drawn as a small lit prop in front of the speaker. Order matters:
+// the first kind whose words appear wins.
+const ITEMS=[['candle',/\bcandle(s|[- ]stub)?|taper|wax\b/i],['letter',/\b(letter|note|missive|parchment|scroll|deed|writ)\b/i],['key',/\bkeys?\b/i],
+  ['ring',/\b(ring|signet|locket|amulet|pendant)\b/i],['pouch',/\b(pouch|purse|coin(s)?|gold)\b/i],['book',/\b(book|tome|ledger|journal|diary)\b/i],
+  ['vial',/\b(vial|phial|potion|bottle|flask)\b/i],['dagger',/\b(dagger|knife|blade)\b/i],['map',/\bmap\b/i],['lantern',/\blantern\b/i]];
+export function sceneItem(sc=S.table){if(!sc)return null;const said=[sc.title,plain(sc.frame),sc.narr&&sc.narr.text].join(' ');for(const [k,re] of ITEMS)if(re.test(said))return sc.given&&re.test(sc.given)?null:k;return null} // sc.given: the DM handed that item to a hero in the scene (give_item, #524), so it is no longer drawn by the speaker
+
+// The bar: the answer count and the timer, then where it is; outdoors also who is there (members in class colour, the
+// cast in theirs). The scene's title lives in the banner (#536: one place per fact).
+export function refreshScene(){if(!root||!open||!spec)return null;const sp=spec,people=sp.members.concat(sp.cast),stat=barStatus(S.table),indoor=sp.mode==='indoor';
+  const s=stat+'|'+sp.where+'|'+sp.mode+'|'+people.map(e=>e.id+(live(e)?'':'x')).join(',');if(s===sig)return sp;sig=s;
+  nameEl.textContent=stat;nameEl.title=sp.title||'';statEl.textContent=sp.where;whoEl.hidden=indoor;
+  if(!indoor){whoEl.textContent='';for(const e of people){const li=mk('li','scp'+(live(e)?'':' gone'),e.kind==='mob'?(e.name||'foe'):e.name||'?');
+    li.style.color=e.kind==='hero'&&e.fellow?classColor(e.cls):e.kind==='mob'||e.kind==='boss'||e.kind==='hero'?DISP.hostile.color:DISP.neutral.color;whoEl.append(li)}}
+  else whoEl.textContent='';
+  const bar=root.querySelector('.dgbar'),scr=document.getElementById('screen');if(bar&&scr&&scr.style&&scr.style.setProperty)scr.style.setProperty('--scbar',(bar.offsetHeight+8)+'px');
   return sp}
+
+// The room's box inside the view (device px): the view less the bar and, when the banner is docked beside or below the
+// map (#536), less the banner: the larger of the area left of it and the area above it.
+export function roomBox(r,ban,barH,dpr){const pad=r.right-r.left<600?4:8; /* a phone keeps every pixel for a whole-number scale */let x0=r.left+pad,y0=r.top+pad,x1=r.right-pad,y1=r.bottom-barH-pad;
+  if(ban&&ban.width>0&&ban.height>0){const left=Math.max(0,ban.left-pad-x0)*(y1-y0),above=Math.max(0,ban.top-pad-y0)*(x1-x0);
+    if(left>=above&&left>0)x1=Math.min(x1,ban.left-pad);else if(above>0)y1=Math.min(y1,ban.top-pad);else y0=Math.max(y0,ban.bottom+pad)}
+  return {x:Math.round((x0-r.left)*dpr),y:Math.round((y0-r.top)*dpr),w:Math.max(1,Math.round((x1-x0)*dpr)),h:Math.max(1,Math.round((y1-y0)*dpr))}}
 
 // One indoor frame (draw.js calls it instead of the world while an indoor scene is open).
 export function drawSceneView(now){if(!open||!root||!spec||spec.mode!=='indoor'||!ctx)return false;refreshScene();
   const dpr=window.devicePixelRatio||1,r=root.getBoundingClientRect(),Wd=Math.max(1,Math.round(r.width*dpr)),Hd=Math.max(1,Math.round(r.height*dpr));
   if(cv.width!==Wd||cv.height!==Hd){cv.width=Wd;cv.height=Hd}
-  const ban=document.getElementById('tbanner'),top=ban&&!ban.hidden?(ban.offsetHeight+12)*dpr:8*dpr,bar=root.querySelector('.dgbar'),bot=(bar?bar.offsetHeight:0)*dpr+8*dpr;
+  const ban=document.getElementById('tbanner'),bar=root.querySelector('.dgbar'),box=roomBox(r,ban&&!ban.hidden?ban.getBoundingClientRect():null,bar?bar.offsetHeight:0,dpr);
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='rgb(6,6,11)';ctx.fillRect(0,0,Wd,Hd);
   const m=buildSetting(spec.setting,spec.key),sc=S.table,cur=sc&&!sc.all&&sc.phase==='turn'?byId(sc.ids[sc.i]):null;
-  drawSetting(ctx,{x:8*dpr,y:top,w:Wd-16*dpr,h:Math.max(40,Hd-top-bot)},m,{party:spec.members.filter(a=>a.state!=='dead'),cast:spec.cast.filter(live),speaker,cur,busy:!!sc&&sc.phase==='turn'},now,dpr);
+  drawSetting(ctx,box,m,{party:spec.members.filter(a=>a.state!=='dead'),cast:spec.cast.filter(live),speaker,cur,busy:!!sc&&sc.phase==='turn',
+    marks:answerMarks(sc),dark:sceneDark(sc,m.dark||0),item:sceneItem(sc),people:peopleOf(spec)},now,dpr);
   return true}
 // Outdoor: the bar only (the world shows through); refreshed from draw.js each frame.
 export function refreshOutdoor(){if(open&&spec&&spec.mode==='outdoor')refreshScene()}

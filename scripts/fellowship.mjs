@@ -22,7 +22,12 @@
 // real-time budget and then acts by reflex. A local or OpenAI member whose own scene is open plays it as one
 // forced structured answer (Ollama format / OpenAI strict json_schema: an enum of its legal options and a
 // line) and the runner sends scene_act itself (issue #163); a Claude member keeps tool use, and a scene turn
-// of its that ends without scene_act gets one structured Claude answer instead. A member stops when it dies or leaves agent play, and
+// of its that ends without scene_act gets one structured Claude answer instead. Scene first (issue #515): a forced scene answer jumps
+// the runner's one model queue (Ollama's, and the Claude slot queue); a member whose own scene opens while its free turn is in flight
+// gives that turn up at once (the game's table_waits line in a tool result, or this runner's watch of /play/health) and answers
+// the scene next; a Claude member whose scene is open when its turn starts answers it first with one structured call; and while a
+// member's answer waits behind other work the runner tells the game (POST /play/pace {queued:true}), so the table waits a bounded
+// extra time for it instead of acting by reflex. A member stops when it dies or leaves agent play, and
 // after --max-fails N (default 5) failed or empty turns in a row.
 // Cost controls: one overall --budget for the run's paid members (each query gets what is left; several
 // members may finish a turn in flight just past it), --max-turns per member (default 6 for Claude and
@@ -52,10 +57,11 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
+import {withSituationOrders} from './orders.mjs';
 import {systemPrompt, withMemoryOrders, withKnowledgeOrders, withTownOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
 import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
-import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
+import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
 import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
@@ -147,6 +153,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
     if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama or openai); skipped`); await release(h.id); return}
+    sess.system = withSituationOrders(sess.system, rs.provider === 'ollama'); // the short variant for a local model (#531)
     if (rs.provider === 'ollama') {
       // a local member (issue #97 part 2): plays through scripts/local-agent.mjs, no key, cost 0
       if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
@@ -181,10 +188,20 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // Reflection moments (issue #179): when the game names one (brief.reflect: camp, a scene's end, a death, an oath, a
   // big trade, a conversation, the end of the day) and nothing cannot wait, this turn is a short reflection instead.
   async function turn(m, scene, w) {
-    const b = !scene && m.pacer ? await m.pacer.brief() : null, refl = reflectNow(b, w) ? b.reflect : null;
-    if (m.local) return refl ? localReflect(m, b, w) : localMemberTurn(m, scene, w);
-    await slot(scene);
-    try {return await withClaudeSlot(base, () => claudeTurn(m, scene, w, refl), s => out(m.name, s), {stopped: () => !!stopping})} finally {free()}
+    m.inTurn = true;
+    try {
+      const b = !scene && m.pacer ? await m.pacer.brief() : null, refl = reflectNow(b, w) ? b.reflect : null;
+      if (m.local) return await (refl ? localReflect(m, b, w) : localMemberTurn(m, scene, w));
+      await slot(scene || m.due);
+      try {return await withClaudeSlot(base, () => claudeTurn(m, scene, w, refl), s => out(m.name, s), {stopped: () => !!stopping})} finally {free()}
+    } finally {m.inTurn = false}
+  }
+  // A member's own scene answer waits behind other work in this runner (its turn in flight, or other members' calls on the one
+  // model queue): tell the game once per scene, so the table waits a bounded extra time for it (issue #515).
+  async function reportQueued(m) {
+    if (m.qSent || m.ended || stopping) return; m.qSent = true;
+    const r = await post(base, '/play/pace', {hero: m.id, runner: runnerId, queued: true}, 4000).then(x => x.json()).catch(() => null);
+    if (r && r.queued) out(m.name, `[scene] answer queued behind other work: the table waits up to ${r.extra_s} s more (${r.scene})`);
   }
   // A local or OpenAI member's reflection: one forced structured answer of 0-3 notes, sent with remember by the runner.
   async function localReflect(m, b0, w) {
@@ -209,6 +226,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : memberPrompt(m.sess.turns, scene, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns) + claudeBrief(b0)); // a reflection (#179): the same prompt, with tool use
     if (refl) out(m.name, `[reflection: ${refl.why}]`);
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
+    // Scene first (issue #515): the member's own scene is open as the turn starts. One structured answer (the member's model, effort
+    // low) sends scene_act before anything else, so a short tool budget is never spent before it (Haiku ended scene turns on
+    // error_max_turns). Answered: the turn is that answer. Missed twice: the turn plays with tool use as before.
+    const sc0 = !refl && b0 ? sceneFrom(b0.scene) : null;
+    if (sc0) {const first = await claudeScene(m, model, sc0, tc);
+      if (first && first.tools) {m.sess.turns++; m.turns++; m.scenes++; m.tools += first.tools;
+        reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: first.narration || '', seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: first.in, tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['scene', 'forced-scene', 'scene-first']});
+        saveSession(m.sess, {url: base}); return true}}
     const ac = new AbortController(); aborts.add(ac);
     const q = query({prompt, options: {
       abortController: ac,
@@ -218,6 +243,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       settings: {autoCompactEnabled: true}, maxTurns: scene || refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv,
     }});
+    const sceneS = [];
     try {for await (const msg of q) {
       if (msg.type === 'system' && msg.subtype === 'init') {m.sess.sessionId = msg.session_id; saveSession(m.sess, {url: base})}
       else if (msg.type === 'system' && msg.subtype === 'compact_boundary') out(m.name, `[compacted: ${msg.compact_metadata.pre_tokens} -> ${msg.compact_metadata.post_tokens ?? '?'} tokens]`);
@@ -228,6 +254,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         }
       } else if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
         for (const b of msg.message.content) if (b.type === 'tool_result') {const c = Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''); out(m.name, `< ${short(c, 200)}`); tc.result(b.tool_use_id, c, b.is_error);
+          {const ws = /"chose":/.test(c) && c.match(/"waited_s":\s*([\d.]+)/); if (ws) sceneS.push(Number(ws[1]))} // the table's wait when it answered (issue #515)
           if (/"dead":true/.test(c)) m.ended = 'dead'}
       } else if (msg.type === 'result') result = msg;
     }} catch (e) {
@@ -243,21 +270,29 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${model} | ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s | tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | turn ${money(cost)} | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`);
     }
     // Claude keeps tool use at the table; a scene turn that ended without scene_act gets the forced answer once (issue #163)
+    // (issue #515: also when the scene opened while the turn was in flight, not only when it started at the table)
     let forced = null;
-    if ((scene || (b0 && b0.scene)) && !stopping && m.pacer) {const sc = sceneFrom((await m.pacer.brief() || {}).scene);
+    if (!stopping && m.pacer) {const sc = sceneFrom((await m.pacer.brief() || {}).scene);
       if (sc) {out(m.name, '[scene: the turn ended without scene_act; one structured answer]');
-        try {forced = await sceneTurn({ask: adapterAsk(claudeAdapter(), model, 'low'), call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, scene: sc, keep: false,
-          on: (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})} else if (k === 'tool') out(m.name, `> ${a}(${short(b, 120)})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`)}});
-          spent += forced.cost; m.cost += forced.cost; m.sess.costUsd += forced.cost; turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; m.tools += forced.tools;
-          for (const c of forced.calls) tc.tools.push(c);
-          out(m.name, `[scene answer] ${model} | ${forced.tools ? 'scene_act sent' : forced.misses + ' answers missed'} | tokens in ${forced.in} / out ${forced.out} | ${money(forced.cost)} | run ${money(spent)} of ${money(budget)}`)}
-        catch (e) {out(m.name, 'scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}}
+        forced = await claudeScene(m, model, sc, tc);
+        if (forced) {turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; m.tools += forced.tools; if (forced.sceneS) sceneS.push(...forced.sceneS)}}}
     let wrote = 0; if (refl) {wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; m.notes = (m.notes || 0) + wrote; m.reflections = (m.reflections || 0) + 1;
       await closeReflection(base, m.id, runnerId, refl.id, wrote); out(m.name, `[reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
-    reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost,
+    reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sceneS.length ? {sceneS} : {}),
       flags: [...(scene ? ['scene'] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSession(m.sess, {url: base});
     return !failed && (tools > 0 || !!refl);
+  }
+
+  // One structured Claude answer to the member's own scene (issue #163; #515: also first thing in a turn). Cost counted into the run.
+  async function claudeScene(m, model, sc, tc) {
+    try {const r = await sceneTurn({ask: adapterAsk(claudeAdapter(), model, 'low'), call: (tool, args) => play(base, m.id, tool, args), sess: m.sess, scene: sc, keep: false,
+        on: (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})} else if (k === 'tool') out(m.name, `> ${a}(${short(b, 120)})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`)}});
+      spent += r.cost; m.cost += r.cost; m.sess.costUsd += r.cost;
+      for (const c of r.calls) tc.tools.push(c);
+      out(m.name, `[scene answer] ${model} | ${r.tools ? 'scene_act sent' : r.misses + ' answers missed'} | tokens in ${r.in} / out ${r.out} | ${money(r.cost)} | run ${money(spent)} of ${money(budget)}`);
+      return r}
+    catch (e) {out(m.name, 'scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200)); return null}
   }
 
   // A local member's turn (issue #97 part 2): the small tool loop against Ollama, same tools, prompts,
@@ -277,9 +312,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
         if (!r.tools) out(m.name, `[scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`)}
       const answered = b0 && 'scene' in b0 && !sc; // in the scene but already acted: an ordinary turn
-      if (!r || !r.tools) {const r0 = r; r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns)) + briefText(b0), model: m.rs.model,
-        toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, on});
-        if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0}}
+      if (!r || !r.tools) {const r0 = r, free = !sc && !(scene && !answered); r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns)) + briefText(b0), model: m.rs.model,
+        toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, on, interrupt: free && !m.due ? () => !!m.due : null}); // a free turn gives way to the member's own scene opening meanwhile (#515)
+        if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0;
+        // its scene opened mid-turn: the forced answer comes next, ahead of the other members' calls (issue #515)
+        if (r.sceneJump && !stopping) {const sj = await sceneToAnswer(m.pacer ? await m.pacer.brief() : null, call, true);
+          if (sj) {out(m.name, `[scene: ${sj.title} opened mid-turn; answering it first]`); sc = sj; r = joinTurns(r, await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sj, on, strict: m.paid}))}}}}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`)}
     m.sess.turns++; m.turns++; if (scene || sc) m.scenes++;
     {const lr = localRec(r); if (scene || sc) lr.flags.push('scene'); if (r && r.forced) lr.flags.push('forced-scene');
@@ -317,6 +355,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   watchWorld({base, known: () => new Map([...members.values()].filter(m => m.sess && !m.ended).map(m => [m.id, {name: m.name, world: m.world}])), onNew: async ch => {out(null, newWorldLine(ch)); for (const a of aborts) a.abort(); await finish('a new world'); summary(); process.exit(NEW_WORLD_EXIT)}});
   const watch = setInterval(async () => {const h = await health(base); if (!h.ok) return;
     inScene = new Set((h.heroes || []).filter(x => x.table).map(x => x.id));
+    // scene first (issue #515): whose own scene waits for an answer; one queued behind other work is reported to the game
+    const due = new Set((h.heroes || []).filter(x => x.due).map(x => x.id));
+    for (const m of members.values()) {if (!m.sess || m.ended) continue; m.due = due.has(m.id); if (!m.due) {m.qSent = false; continue}
+      if (m.inTurn || (m.local && !m.paid && ollama && ollama.busy() > 0) || (!m.local && claudeMax && claudeLive >= claudeMax)) reportQueued(m)}
     const L = (h.heroes || []).find(x => x.fellow && x.lead && x.alive); leadId = L ? L.id : leadId;
     for (const x of fellowsOf(h)) if (!members.has(x.id) && !stopping) addMember(x);
     }, 1000);

@@ -245,5 +245,32 @@ console.log('crypt stair');
   ok(L.captainWarning(B) === null, 'no warning once the hero is inside the region band');
 }
 
+// ---------------------------------------------------------------- 539. roads: the hero knows its danger before it moves
+console.log('roads knowledge (#539)');
+{
+  const R = ZONES[up], other = ZONES.find((n, i) => i !== up && i !== home);
+  const T = S.agents.find(x => x.player && x.state !== 'dead' && x.kind === 'hero' && x !== A) || A;
+  T.lore = T.lore || {c: {}, p: {}}; L.learnPlace(T, R, 'told');
+  const key = Object.keys(MOBS).find(k => MOBS[k].z === up);
+  T.lore.p[R].fell = 1; T.lore.p[R].how = 'been';
+  T.lore.c[key] = {tricks: [], z: [R], fought: 2, hi: T.lvl + 9, last: T.lvl + 1, lo: T.lvl, name: 1};
+  const line = L.roadsLine(T);
+  ok(typeof line === 'string' && line.includes(R) && line.length <= 261 && /fell there/.test(line), `roads line names the region and why: ${line}`);
+  const hb = PC.paceBrief(T.id).brief; ok(hb.roads === line, 'brief.roads carries it');
+  const pn = L.placesView(T).find(x => x.startsWith(R)); ok(/danger: .*fell there/.test(pn), `places give a reason: ${pn}`);
+  ok(/dangerous for you|an even match|more than/.test(L.placeWarn(T, R)) && !new RegExp('certain death').test(L.placeWarn(T, R)), `worst rated at the last level seen, not the highest: ${L.placeWarn(T, R)}`);
+  ok(L.placeMemory(T, R).startsWith('You remember ' + R + ':'), 'move_to warning reads as memory');
+  const clean = S.agents.find(x => x.player && x.kind === 'hero' && x !== T && x.state !== 'dead');
+  const { memoryNote } = await import('./pacing.mjs');
+  ok(/What you know of the roads: /.test(memoryNote({roads: line})) && memoryNote({}) === memoryNote({roads: null}), 'the runner header carries the line, absent when empty');
+  // witness needs sight
+  const W = S.agents.find(x => x.player && x.kind === 'hero' && x.state !== 'dead' && x !== T && x !== A && x.fac === T.fac) || B, V2 = S.agents.find(b => b !== W && b.kind === 'hero' && b.state !== 'dead' && !b.player);
+  if (W && V2) { W.lore = W.lore || {c: {}, p: {}}; const k2 = Object.keys(MOBS).find(k => MOBS[k].z === up); const kl = S.mobs.find(m => m.alive && !m.gone && !m.elite && m.type === k2);
+    if (kl) { park(V2, {x: W.x + 40, y: W.y}); rebuild(); const b0 = (W.lore.c[k2] && W.lore.c[k2].fell) || 0; L.witness(V2, kl);
+      ok(((W.lore.c[k2] && W.lore.c[k2].fell) || 0) === b0, 'a death 40 tiles away is not witnessed');
+      park(V2, {x: W.x + 3, y: W.y}); V2.hidden = true; rebuild(); L.witness(V2, kl);
+      ok(((W.lore.c[k2] && W.lore.c[k2].fell) || 0) === b0, 'a death inside the Crypt is not witnessed from outside'); V2.hidden = false } }
+}
+
 console.log(fail ? `\nlorecheck: ${fail} FAILED\n` : '\nlorecheck: all ok\n');
 process.exit(fail ? 1 : 0);

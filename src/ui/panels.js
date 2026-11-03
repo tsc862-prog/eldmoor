@@ -42,6 +42,7 @@ import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fe
 import {showMindButtons,devMode} from './mindctl.js';
 import {tabQuests} from './quests.js'; // the Quests tab
 import {tabCombat} from './combat.js'; // the Combat tab
+import {setPurpose,isOpen} from './purposeview.js'; // the purpose line in the header (#534)
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
@@ -392,7 +393,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   // header and body are patched in place (#145): scroll, focus and open rows survive the 0.3 s tick
   patch(k.hd,h=>{h.append(heroName(a));
     h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
-    const dg=el('div','doing',doing(a));if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=CRYPT.name;b.title='Open the dungeon view';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
+    const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=CRYPT.name;b.title='Open the dungeon view';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
     h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
     h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)))});
   const cur=tabShown(a,tab)?tab:'stats',grp=groupOf(cur);

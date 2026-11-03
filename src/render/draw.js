@@ -34,11 +34,12 @@ import {TEXT,MARK,LIGHT} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
+import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
 const SCENE_LIGHT=[255,232,196]; // the light under a Table scene's people at night (#471)
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
-export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null};
+export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null,hover:null,icons:true}; // hover, icons: the hovered hero and the Intent icons switch in Settings (#534, render/purposefx.js)
 // Follow view shows about 460 world pixels (29 tiles) across the screen.
 const FOLLOW_VIEW=460;
 // Entities and labels this many world px outside the view are not drawn.
@@ -159,6 +160,7 @@ export function createRenderer(cv,screenEl){
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
     drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite,outlined,dispoRing}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
     drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
+    if(!cut)drawPurposeGround(ctx,S,cam,{drawText,blink}); // the followed or hovered hero's road, tether or wait line, under the entities
     if(cut)drawSceneRings(ctx,cam,cut); // who is in the scene: a ring at their feet (#431)
     const fxNow=performance.now()/1000;syncSpells(fx,fxNow,inView);drawSpells(ctx,0,close,inView,fxNow); // spell effects on the ground: rings, roots, briars (#374)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
@@ -189,6 +191,7 @@ export function createRenderer(cv,screenEl){
       if(e===sel){ctx.fillStyle=Math.floor(blink*3)%2?MARK.sel:MARK.selHi;ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
       if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=e.kind==='boss'?28:12;
         ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
+      if(e.kind==='hero'&&!cut)drawIntentIcon(ctx,S,cam,e,px,top,s.width,close); // the intent icon at the right shoulder (#534)
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     }
     // effects: bolts leave a short fading trail; the boss's breath ring

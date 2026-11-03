@@ -36,3 +36,6 @@
 - [Whisper and dream](whisper-dream.md) — #523 whisper/dream DM tools: delivery, limits, leans-close via table.narr, check pitfalls
 - [DM fairness](dm-fairness.md) — #451 fairness()/fairRefusal, staged per company (PER_DAY 2+n, company:<id>), starve-test caveat
 - [Art pipeline](art-pipeline.md) — #177 HF Inference Providers shapes (fal-ai LoRA), candidates, quota stop rules, daily/accept/queue protocol, pitfalls
+- [Give item](give-item.md) — #524 give_item/take_item levers, token alias, flat tools, allow:['item'], ilvl, pitfalls
+- [Scene waits](scene-waits.md) — #515 table_waits, urgent Ollama queue, free-turn interrupt, Claude scene-first, pace {queued} extra wait, scene-missed, sceneS
+- [Standing orders](standing-orders.md) — #531 orders.mjs situations block, short local variant, withSituationOrders, orderscheck
