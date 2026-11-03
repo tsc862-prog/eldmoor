@@ -29,6 +29,7 @@
 // .screen.scin).
 // Several scenes (#518): every other company's open scene is one more line under the banner ("Scene at Mirefen: Dovas and
 // company", a button that follows that company), so the watcher sees every live table at once.
+import {initVoice,renderVoice} from './sound.js';
 import {TABLE,bannerOf,stepNext,optionsFor,pauseAll,setPauseAll,openScenes} from '../sim/table.js';
 import {reflexMay,ownerHeld} from '../sim/runlink.js';
 import {classColor} from '../core/colors.js';
@@ -72,6 +73,7 @@ function syncPause(){const b=$('vPause'),r=b&&b.closest?b.closest('.setrow'):nul
   if(r&&r.hidden===show)r.hidden=!show;const t='Pause: '+(on?'any company':'followed');if(b.textContent!==t){b.textContent=t;b.setAttribute('aria-pressed',String(on))}}
 function syncBtn(){const b=$('vTab');if(!b)return;b.hidden=!S.fellowship;b.textContent='Table: '+(TABLE.mode==='off'?'Off':'Auto');b.setAttribute('aria-pressed',String(TABLE.mode!=='off'))}
 export function initTable(){
+  initVoice({gate:()=>snd&&gesture}); // narrator voice (#554): plays only behind the Sound switch, after a click
   try{const v=localStorage.getItem(KEY);if(v==='off'||v==='auto')TABLE.mode=v}catch(_){}
   try{const v=localStorage.getItem(STEP);if(STEPS.includes(v))TABLE.step=v}catch(_){}
   const b=$('vTab');if(b)b.onclick=()=>{TABLE.mode=TABLE.mode==='off'?'auto':'off';try{localStorage.setItem(KEY,TABLE.mode)}catch(_){}syncBtn()};
@@ -211,7 +213,7 @@ function rowsBlock(box,rows,b){const all=!!b.all,n=rows.filter(r=>r.st==='done')
 const rowsSay=(b,rows)=>!!rows&&b.phase==='turn'&&(b.all?/^\d+\/\d+ answered/.test(b.line)&&!/no runner/.test(b.line):/is thinking/.test(b.line||''));
 
 // Called every frame with the host's speed: the sim pauses only at 1x.
-export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd();syncPause();
+export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd();syncPause();renderVoice(speed);
   const box=$('tbanner');if(!box)return;if(!box._tstep){box._tstep=1;box.addEventListener('click',onBox)}
   const b=bannerOf();if(!b){lastScene=null;if(!box.hidden){box.hidden=true;sig=''}return}
   if(S.table.id!==lastScene&&!b.live){lastScene=S.table.id;if(TABLE.speed<=1)chime(S.table.kind)} // chime when the scene stops the world, also on following into it
