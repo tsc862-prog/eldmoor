@@ -76,7 +76,7 @@ const DAY=1440;
 const FORBIDDEN=/^(hp|maxhp|xp|lvl_?up|level_?up|stats?|abil|cls|class|hardcore|kill|slay|revive|resurrect|save_?hero|loot|item|epic|gold_?grant|gear)$/i;
 
 // Private LCG for cosmetic picks (names, looks, strolls): never perturbs the gameplay RNG.
-let seed=0x2545f491;
+const SEED0=0x2545f491;let seed=SEED0;export const resetLeverSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 const pickR=a=>a[Math.floor(r()*a.length)];
 

@@ -152,7 +152,8 @@ const mobName=m=>m.kind==='boss'?m.name:m.elite||m.named?m.name:MOBS[m.type]?MOB
 const plain=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join('');
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 // Private LCG for line picks: the gameplay RNG is never touched by flavour.
-let seed=0x1f2e3d4c;const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+const SEED0=0x1f2e3d4c;let seed=SEED0;export const resetTableSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
+const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
 export const tableOn=()=>(!!slotted()||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
 // The scene's company and its members. The Fellowship keeps its slot order (slotHeroes(slotted())); any other company its join order.

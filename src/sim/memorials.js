@@ -15,7 +15,7 @@ import {inSlots} from './company.js'; // the slotted company (#588)
 
 export const GRAVE_CAP=60,STATUE_CAP=3,STATUE_LVL=20,STATUE_FALL_LVL=15;
 const SLOTS=[[-1.7,-.5],[1.7,-.5],[0,1.3]]; // offsets from the square spot, one per statue
-let acc=0;
+let acc=0;export const resetMemorials=()=>{acc=0}; // a new world starts the timer over (#674)
 
 // The Legends hall's score when the hero is recorded there (sim/legends.js), else a quick estimate.
 export const legendScore=a=>{const e=((S.legends&&S.legends.list)||[]).find(x=>x.id===a.id);return e?e.score:a.lvl*10+(a.eliteKills||0)*3+(a.honor||0)*2+(a.gear||0)};

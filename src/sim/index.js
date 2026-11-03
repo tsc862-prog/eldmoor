@@ -18,14 +18,14 @@ import {updBoss,raidCheck} from './boss.js';
 import {pvpCheck} from './pvp.js';
 import {dungeonCheck} from './dungeon.js';
 import {updMarket} from './market.js';
-import {chatTick} from './chat.js';
-import {npcsTick} from './npcs.js';
-import {talkTick} from './talk.js'; // NPC conversations (#170)
+import {chatTick,resetChatSeed} from './chat.js';
+import {npcsTick,resetNpcSeed} from './npcs.js';
+import {talkTick,resetTalkSeed} from './talk.js'; // NPC conversations (#170)
 import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {installRumourLever} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever} from './epithet.js'; // bestow (#638)
-import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
+import {localsTick,resetLocals} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
 import {guildsTick} from './guilds.js';
@@ -33,15 +33,16 @@ import {rivalsTick} from './rivals.js';
 import {focusTick} from './guildfocus.js'; // guild focus (#6)
 import {rebuild} from './spatial.js';
 import {bondsTick} from './bonds.js';
-import {brainTick} from './brain.js';
+import {brainTick,resetBrain} from './brain.js';
 import {dmTick} from './dm.js';
-import {leverTick} from './levers.js';
-import {memorialsTick} from './memorials.js';
+import {leverTick,resetLeverSeed} from './levers.js';
+import {resetStagedSeed} from './staged.js';
+import {memorialsTick,resetMemorials} from './memorials.js';
 import {playerUpd} from './player.js';
-import {slotsTick} from './company.js'; // the slotted company's muster, watch and replacement (#588)
+import {slotsTick,resetCompanyWatch} from './company.js'; // the slotted company's muster, watch and replacement (#588)
 import {councilTick} from './council.js';
 import {companionTick} from './offers.js'; // offers lapse, companies of 2+ keep a walking party, companions (#442)
-import {tableTick,tableHold} from './table.js';
+import {tableTick,tableHold,resetTableSeed} from './table.js';
 import {holdTick} from './gambithold.js';
 export {holdResume,holdView,holdRelease} from './gambithold.js';
 import './events.js'; // DM world events: festival and plague (#10)
@@ -90,7 +91,8 @@ const GOODS0={};for(const n in GOODS)GOODS0[n]={supply:GOODS[n].supply,prev:GOOD
 const CRYPT_CD0=CRYPT.cd;
 function resetWorld(){resetS();
   for(const n in GOODS0){GOODS[n].supply=GOODS0[n].supply;GOODS[n].prev=GOODS0[n].prev}
-  CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[])}
+  CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[]);
+  resetCompanyWatch();resetLocals();resetMemorials();resetBrain();resetChatSeed();resetNpcSeed();resetTalkSeed();resetLeverSeed();resetTableSeed();resetStagedSeed()} // the modules' private random streams start over with a world (#674)
 export function init(o={}){resetWorld();
   S.worldId=newWorldId(); // a new world instance (hosts purge the old world's memory mirror on a new id)
   resetMats(); // a new world's auction house opens with the materials table's stock
