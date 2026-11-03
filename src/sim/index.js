@@ -49,7 +49,7 @@ export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
 export {actionLog,fightSummary,fights} from './actlog.js'; // action log (recording only)
 export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
-export {enableBrain,disableBrain,brainStatus} from './brain.js';
+export {enableBrain,disableBrain,brainStatus,setRunnerMind} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
 export {found,autoPick,disbandFellowship,fellowshipMembers,fellows,setMinds} from './fellowship.js';
 export {TABLE,bannerOf,decisionsWaiting} from './table.js';
