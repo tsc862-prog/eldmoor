@@ -176,7 +176,7 @@ export function aimNote(b) {
   return `\n${AIM_ASK} ${line ? 'Your aim was: ' + line + '; ' + why : why.charAt(0).toUpperCase() + why.slice(1)}. Say it first with intent {goal, why, until} (one call), then act on it.${m.wait_limit ? ' Until you do, ' + String(m.wait_limit).replace(/^with no aim, /, '') + '.' : ''}` + lead;
 }
 // Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.
-export const personaNote = b => b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '';
+export const personaNote = b => (b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '') + (b && typeof b.told === 'string' && b.told ? `\n${b.told.slice(0, 500)}` : ''); // #571: what it told of its past round the fire
 // The persona in the standing orders (issue #409): the block between PERSONA_HEAD and PERSONA_TAIL (src/sim/persona.js
 // selfText) replaced, or appended. text '' leaves the orders as they are.
 const P_HEAD = 'YOUR PERSONA', P_TAIL = '(end of your persona)';

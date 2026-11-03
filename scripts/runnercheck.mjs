@@ -254,6 +254,59 @@ console.log('runner routes (fake children)');
   rmSync(tmp, {recursive: true, force: true});
 }
 
+// ---------------------------------------------------------------- 2b. company runners (#460), fake children
+console.log('company runners (fake children, #460)');
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-co-'));
+  const heroes = [{id: 1, name: 'Ann', alive: true, company: 7, companyName: '', size: 2, lead: true}, {id: 2, name: 'Bo', alive: true, company: 7, companyName: '', size: 2, lead: false}, {id: 3, name: 'Cy', alive: true, company: 8, companyName: 'Cy', size: 1}];
+  const c = checkStart({kind: 'company', company: 7}, heroes), byHero = checkStart({kind: 'company', hero: 2}, heroes);
+  ok(c.req && c.req.key === 'company:7' && c.req.company === 7 && c.req.budget === 2 && c.req.maxTurns === null && /Ann and Bo/.test(c.req.name), 'a company runner: key company:<id>, $2.00, no turn cap, named for its members');
+  ok(byHero.req && byHero.req.key === 'company:7', 'a company runner may be asked for by one of its members');
+  ok(checkStart({kind: 'company', company: 99}, heroes).code === 404 && checkStart({kind: 'company'}, heroes).code === 400, 'an unknown company, or none named, is refused');
+  ok(runnerArgs({...c.req, provider: 'ollama', model: 'm'}, 'u').join(' ').startsWith('scripts/fellowship.mjs --url u --company 7'), 'it runs scripts/fellowship.mjs --company <id>');
+  {const paid = [{key: 'company:7', kind: 'company', company: 7, provider: 'anthropic'}, {key: 'hero:3', kind: 'hero', hero: 3, provider: 'anthropic'}, {key: 'hero:20', kind: 'hero', hero: 20, provider: 'anthropic'}];
+    const hs = [...heroes, {id: 20, name: 'Ed', alive: true, company: 20, size: 1}, {id: 21, name: 'Fi', alive: true, company: 21, size: 1}, {id: 22, name: 'Gu', alive: true, company: 22, size: 1}];
+    ok(checkStart({hero: 21, provider: 'anthropic'}, hs, {running: paid}).req && checkStart({hero: 22, provider: 'anthropic'}, hs, {running: [...paid, {key: 'hero:21', kind: 'hero', provider: 'anthropic'}]}).code === 429, 'a company runner takes one seat per living member (2 + 3 paid seats: a sixth is refused)')}
+
+  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes, dm: false})};
+  const kids = [];
+  const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 50000 + kids.length; k.args = args; k.got = '';
+    k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d}});
+    k.kill = () => {setTimeout(() => k.emit('exit', null), 5)}; kids.push(k); return k};
+  const server = http.createServer((q, r) => {r.writeHead(404); r.end('{}')});
+  const play = attachPlay(server, {backend: be, log: () => {}});
+  const sup = attachRunners(server, {play, enabled: true, log: () => {}, spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '10'}});
+  await new Promise(r => server.listen(0, '127.0.0.1', r)); const B = `http://127.0.0.1:${server.address().port}`;
+  let s = await req(B, '/play/runner/start', {method: 'POST', body: {kind: 'company', company: 7, provider: 'ollama', model: 'mock-tools:1b'}});
+  const k = kids[0];
+  ok(s.status === 200 && s.runner.key === 'company:7' && k.args.includes('--company') && k.args[k.args.indexOf('--company') + 1] === '7', 'Start <company>: one company runner spawned with --company 7');
+  const rid = hostname() + ':' + k.pid + ':company';
+  for (const id of [1, 2]) await req(B, '/play/claim', {method: 'POST', body: {hero: id, runner: rid, provider: 'ollama', model: 'mock-tools:1b'}});
+  let v = (await req(B, '/play/runner')).runners.find(r => r.key === 'company:7');
+  ok(v && v.heroes.join() === '1,2' && v.state === 'waiting' && v.model === 'mock-tools:1b', `it plays both members (${v && v.heroes}, ${v && v.state})`);
+  s = await req(B, '/play/runner/start', {method: 'POST', body: {hero: 1, provider: 'ollama', model: 'm'}});
+  ok(s.status === 409, 'a hero runner for a member the company runner holds is refused');
+  // Bo leaves the company and rides alone: the company runner lets go, the supervisor gives Bo a hero runner with its mind
+  sup.adopt(); heroes[1] = {...heroes[1], company: 9, size: 1}; heroes[0] = {...heroes[0], size: 1};
+  await req(B, '/play/release', {method: 'POST', body: {hero: 2, runner: rid}});
+  const got = sup.adopt();
+  const kb = kids.find(x => x.args.includes('--hero') && x.args[x.args.indexOf('--hero') + 1] === '2');
+  ok(got.includes('hero:2') && kb && kb.args.includes('mock-tools:1b'), 'a member who left the company gets a hero runner with the company runner\'s mind');
+  ok(sup.adopt().length === 0, 'once only');
+  // a solo's heir: Cy's hero runner ends with Cy's death; the recruit who succeeds Cy gets a hero runner of the same mind
+  s = await req(B, '/play/runner/start', {method: 'POST', body: {hero: 3, provider: 'ollama', model: 'mock-heir:1b'}});
+  const kc = kids[kids.length - 1];
+  heroes[2] = {...heroes[2], alive: false}; kc.emit('exit', 0); await sleep(20);
+  ok(sup.adopt().length === 0, 'no heir yet: nothing started');
+  heroes.push({id: 4, name: 'Di', alive: true, succeeds: 3, company: 10, companyName: 'Di', size: 1});
+  const h2 = sup.adopt(), kd = kids[kids.length - 1];
+  ok(h2.includes('hero:4') && kd.args.includes('mock-heir:1b'), 'a solo\'s heir gets a hero runner with the fallen hero\'s mind (the seat restarts)');
+  // a stop from the page is never restarted
+  s = await req(B, '/play/runner/stop', {method: 'POST', body: {kind: 'company', company: 7}});
+  ok(s.status === 200 && s.runner.state === 'stopping' && k.got === 'stop\n', 'Stop <company> stops the company runner');
+  server.close();
+}
+
 // ---------------------------------------------------------------- 3. end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
 const mock = await startMockOllama();
@@ -321,6 +374,15 @@ console.log('end to end: a Fellowship runner');
   await req(FB, '/play/runner/stop', {method: 'POST', origin: PAGE, body: {kind: 'fellowship'}});
   const st = await until(async () => {const x = (await req(FB, '/play/runner')).runners.find(y => y.key === 'fellowship'); return x && x.state === 'stopped' ? x : null}, 20000);
   ok(st && (await req(FB, '/play/health')).heroes.every(h => !h.claimed), 'Stop all: stopped, every member free');
+  // the same five as a company runner (#460): kind company, the company named by one of its members
+  const h0 = (await req(FB, '/play/health')).heroes, m0 = h0.find(h => h.fellow);
+  ok(m0 && Number.isInteger(m0.company) && h0.filter(h => h.company === m0.company).length === 5, '/play/health names each member\'s company');
+  s = await req(FB, '/play/runner/start', {method: 'POST', origin: PAGE, body: {kind: 'company', hero: m0 && m0.id, provider: 'ollama', model: 'mock-tools:1b'}});
+  ok(s.status === 200 && s.runner.key === 'company:' + (m0 && m0.company), 'a company runner for the Fellowship\'s company starts');
+  const cr = await until(async () => {const x = (await req(FB, '/play/runner')).runners.find(y => y.key === 'company:' + m0.company); return x && x.heroes.length === 5 && x.turns >= 5 ? x : null}, 90000);
+  ok(cr && (await req(FB, '/play/health')).heroes.filter(h => h.claimed).length === 5, `the company runner plays all five (${cr && cr.turns} turns so far)`);
+  await req(FB, '/play/runner/stop', {method: 'POST', origin: PAGE, body: {kind: 'company', company: m0 && m0.company}});
+  ok(await until(async () => {const x = (await req(FB, '/play/runner')).runners.find(y => y.key === 'company:' + m0.company); return x && x.state === 'stopped'}, 20000), 'the company runner stops');
   fw.p.kill();
 }
 
