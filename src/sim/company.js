@@ -20,7 +20,7 @@ import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {bond} from './bonds.js';
 
-export const PARTY={MAX:8,MINDS:5};
+export const PARTY={MAX:8,MINDS:5,OFFER_MIN:60}; // OFFER_MIN: game minutes an offer to ride together stands (sim/offers.js, #442)
 export const DPS=['Mage','Hunter','Rogue','Skald'];
 export const HEALERS=['Priest','Wildspeaker'];
 export const LOG_CAP=300;
