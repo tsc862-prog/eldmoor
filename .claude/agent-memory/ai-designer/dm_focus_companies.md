@@ -16,7 +16,9 @@ DM focus across companies (#450, merged via PR from `ai/dm-focus-companies`, 202
 - `dm.js`: every ff job gets `h.cid`. The five keep their exact draws (same template pick, same reasons), other companies
   draw only templates their lowest member can take (`T.lvl<=lo`), skip below `K.MIN_LVL`, and an elite hunt needs a walking party of
   2+ (a company without a party could never take it: `fits` needs mem>=2). `fits`: another company's ff job ignores `T.size[0]` (a
-  solo takes its own hall job). Boards that are nobody's hall hold at `K.FLOOR` while ANY company is idle.
+  solo takes its own hall job). Boards that are nobody's hall hold at `K.FLOOR` while NO company has a job under way
+  (every company idle; "any idle" starved the background whenever a solo loafed). Even so, a solo-only world draws differently:
+  townpilotcheck's silent level-1 life moved from seed 3 to 4 (main already lost it on seeds 1, 6, 7).
   **Why:** with only the Fellowship every branch reduces to the old code, so professioncheck/tablecheck/dmcheck hashes and the
   --focus shares stayed identical (verified against main 4ee5a73).
 - `companies_needs` order (issue text beats the doc): followed company only when it must choose (own open scene or vote), then any

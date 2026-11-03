@@ -289,7 +289,8 @@ if (a.state !== 'dead') {
       const e = (S.dmLog || []).find(v => v.kind === 'branch' && v.advId === adv.id); ok(e && e.detail.why !== 'player choice', 'the timed-out branch is logged as the DM\'s own' + (e ? '' : ' [adv ' + JSON.stringify(x && {phase: x.phase, outcome: x.outcome, stage: x.stage, idx: x.idx, pto: x.pickTimedOut, pick: x.pick}) + ' hero ' + b.state + ' ev ' + JSON.stringify((b.playEv || []).slice(-5).map(v => v.text)) + ' hp ' + Math.round(b.hp) + ' log ' + JSON.stringify((S.dmLog || []).filter(v => v.advId === adv.id).slice(-4).map(v => [v.kind, v.detail])) + ']'))}
     else ok(true, 'second job had no choice scene; timeout path covered by the first');
   } else ok(true, 'no second job posted; skipped the silent-choice case');
-  const gm0 = S.gameMin; run(120); ok(S.gameMin > gm0 + 700, 'the world kept running with an agent that never answered');
+  // the first hero is kept alive meanwhile (its tools are tested over HTTP below; where the world sends it is a seed's draw)
+  const gm0 = S.gameMin; for (let i = 0; i < 120 * 60; i++) {step(1 / 60); const a0 = S.agents.find(x => x.id === id); if (a0 && a0.state !== 'dead' && a0.hp < maxHp(a0) * .5) a0.hp = maxHp(a0)} ok(S.gameMin > gm0 + 700, 'the world kept running with an agent that never answered');
   paused = false;
 }
 

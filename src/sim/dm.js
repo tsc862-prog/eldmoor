@@ -671,9 +671,9 @@ function refill(){const gone={};
   // Fellowship first (issue #165): its hall's board is filled first; other boards fill beyond a floor of one posted job only
   // while the Fellowship has a job under way (then the world's background hooks are not starved, and not ahead of the story).
   // Every company a thread (#450): each company's hall is filled first (the followed company's first) and keeps one job for
-  // each company it is the hall of; boards that are nobody's hall hold at the floor while some company has nothing under way.
+  // each company it is the hall of; boards that are nobody's hall hold at the floor while no company has a job under way.
   const fs=focuses(),halls=[];for(const f of fs)if(f.town&&!halls.includes(f.town))halls.push(f.town);
-  const order=halls.length?[...halls,...CITY.filter(c=>!halls.includes(c))]:CITY,idle=fs.some(f=>!f.busy);
+  const order=halls.length?[...halls,...CITY.filter(c=>!halls.includes(c))]:CITY,idle=fs.every(f=>!f.busy);
   for(const c of order){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null&&!h.solo);
     const here=fs.filter(f=>f.town===c),fo=here[0]||null;
     if(halls.length&&!fo&&idle&&posted.length>=K.FLOOR)continue;
