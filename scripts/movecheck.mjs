@@ -144,7 +144,7 @@ if (S.fellowship) {
   const hl = mem.find(x => CLS[x.cls].heal), mate = mem.find(x => x !== hl);
   if (hl && mate) {
     for (const b of mem) b.hp = combatStats(b).health;
-    hl.lvl = 12; delete hl.spec; hl.mcd = {}; hl.mcr = {}; hl.mvAt = 0; hl.hp = combatStats(hl).health;
+    hl.lvl = 12; hl.traits = ['Pious']; delete hl.spec; // Pious leans to the Mender path, so the pick does not depend on the world's seed hl.mcd = {}; hl.mcr = {}; hl.mvAt = 0; hl.hp = combatStats(hl).health;
     mate.x = hl.x + 1; mate.y = hl.y; mate.hp = combatStats(mate).health * .5; const fo = foeNear(hl); fo.target = mate; rebuild();
     ok(hl.player, `the Fellowship ${hl.cls} is agent-played`);
     setRunnerLinks(() => 'connected'); const h0 = mate.hp;
@@ -198,6 +198,7 @@ if (S.fellowship) {
   ok((pickMove(sw, du, [sw], false) || {}).id === 'antlerward', 'and in a duel, once the Springwarden is below 70%');
   const sk = mk('Skald', 10); sk.fac = mate.fac; sk.x = mate.x - 1; sk.y = mate.y; sk.hp = combatStats(sk).health; sk.eff = {}; for (const m of S.mobs) if (m.target === sk || m.target === mate) m.target = null; const fo2 = foeNear(sk); fo2.target = mate; mate.hp = combatStats(mate).health * .65; rebuild();
   ok((pickMove(sk, fo2, [sk, mate], false) || {}).id !== 'rallyverse', 'Rallying Verse still waits for the company moment (two hunted, or one below half)');
+  mate.fac = sw.fac; mate.x = sw.x + 1; mate.y = sw.y; mate.eff = {}; // the duellist above may be this same hero (few of a class in a fresh world)
   const r = useMove(sw, 'antlerward', null, {mates: [sw, mate]}); ok(r.ok && effOn(mate, 'taken'), 'Antler Ward wards the friend: ' + (r.text || r.error));
 }
 

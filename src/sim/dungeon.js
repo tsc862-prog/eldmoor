@@ -15,6 +15,7 @@ import {record,timeline,first} from './history.js';
 import {livingGuilds} from './guilds.js';
 import {brainOk} from './brain.js';
 import {unitDraft,cryptHold,cryptReserved} from './council.js';
+import {companyOf} from './company.js';
 import {notify} from './notify.js';
 import {rivalDeed} from './rivals.js';
 import {cryptWeight,focusCount} from './guildfocus.js';
@@ -31,7 +32,7 @@ export function musterCrypt(mem,f,main,name){
   log(tagOf(main,f,name),' formed a group for ',{t:CRYPT.name,c:'gd'},'.')}
 // A background group still gathering gives way to the Fellowship (#135): back to hunting. A group already
 // inside is left alone (the Fellowship goes next, see council.js cryptHold). True when one stepped aside.
-export function yieldCrypt(F){const g=CRYPT.group;if(!g||g.phase!=='gather'||g.mem.some(a=>a.fellow))return false;
+export function yieldCrypt(F){const g=CRYPT.group;if(!g||g.phase!=='gather'||g.mem.some(a=>companyOf(a)))return false;
   for(const a of g.mem){a.state='hunt';a.dest=null;a.target=null;record(a,'Stepped aside at ',{t:CRYPT.name,c:'gd'},' for the Fellowship.');notify(a,'Your group steps aside at '+CRYPT.name+' to let the Fellowship go first; you go back to hunting.',true)}
   log(tagOf(g.guild,g.fac,g.name),' step aside at the mouth of ',{t:CRYPT.name,c:'gd'},' to let ',{t:F.name,c:'gd'},' go first.');
   CRYPT.group=null;return true}
@@ -52,15 +53,16 @@ export function dungeonCheck(dt){const agents=S.agents;
     let mem=pool.filter(a=>gu&&a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
     if(mem.length<5)mem=mem.concat(pool.filter(a=>!mem.includes(a)).sort((x,y)=>cryptPull(y)-cryptPull(x)).slice(0,5-mem.length));
     mem=unitDraft(mem,pool,5,'crypt'); // the Fellowship (#68) goes all together or not at all; unchanged without one
-    if(CRYPT.group||cryptReserved()||mem.length<4)return; // the Fellowship may have just taken or reserved the Crypt
+    const co=mem.map(companyOf).find(Boolean),need=co?Math.min(4,co.ids.length):4; // a drafted company of 2 or 3 may go with fill-ins; a Fellowship (5) needs 4 as before
+    if(CRYPT.group||cryptReserved()||mem.length<need)return; // the Fellowship may have just taken or reserved the Crypt
     if(gu&&cryptWeight(gu)>1&&mem.filter(a=>a.guild===gu).length>=3)focusCount('crypt');
-    musterCrypt(mem,f,gu&&mem.filter(a=>a.guild===gu).length>=3?gu:null,mem.some(a=>a.fellow)&&S.fellowship?S.fellowship.name:null);return}
+    musterCrypt(mem,f,gu&&mem.filter(a=>a.guild===gu).length>=3?gu:null,co?co.name:null);return}
   g.mem=g.mem.filter(a=>a.state==='dungeon');
   if(!g.mem.length){if(g.crawl&&CRAWL)CRAWL.lost(g);CRYPT.group=null;return} // a crawl whose last hero fell at the table
   g.t-=dt;
   if(g.phase==='gather'){const here=g.mem.filter(a=>dist(a,CRYPT)<2.4);
     if(here.length===g.mem.length||(g.t<=0&&here.length>=3)){g.mem.filter(a=>!here.includes(a)).forEach(a=>{a.state='hunt'});g.mem=here;
-      here.forEach(a=>{a.hidden=true;a.x=CRYPT.x;a.y=CRYPT.y;a.moving=false});g.phase='inside';g.t=30+rnd()*20;if(CRAWL&&g.mem.some(a=>a.fellow))CRAWL.start(g)}
+      here.forEach(a=>{a.hidden=true;a.x=CRYPT.x;a.y=CRYPT.y;a.moving=false});g.phase='inside';g.t=30+rnd()*20;if(CRAWL&&g.mem.some(a=>companyOf(a)))CRAWL.start(g)}
     else if(g.t<=0){g.mem.forEach(a=>a.state='hunt');CRYPT.group=null}return}
   if(g.crawl&&CRAWL){CRAWL.tick(g,dt);return} // the Fellowship goes room by room at the Table (sim/crawl.js)
   if(g.t>0)return;

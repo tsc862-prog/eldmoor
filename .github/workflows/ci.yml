@@ -27,6 +27,7 @@ jobs:
       - {name: Static build, run: npm run build}
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Save/load round trip, run: npm run savecheck}
+      - {name: init() reset, run: npm run initcheck}
       - {name: Fellowship archetypes, run: npm run archetypecheck}
       - {name: Agent-built personality, run: npm run personacheck}
       - {name: Pack and inventory, run: npm run invcheck}
@@ -35,6 +36,7 @@ jobs:
       - {name: Professions, run: npm run professioncheck}
       - {name: Recipes, run: npm run recipecheck}
       - {name: Gathering nodes, run: npm run nodecheck}
+      - {name: Gathering, run: npm run gathercheck}
       - {name: DM levers, run: npm run levercheck}
       - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
       - {name: New World setup, run: npm run setupcheck}

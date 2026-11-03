@@ -58,6 +58,52 @@ if (argv[0] === '--hash' || argv[0] === '--hash-off') {
   console.log('HASH ' + h + ' guilds:' + gu); process.exit(0);
 }
 
+// Companies (#441): a company of three with two background fill-ins, and a solo, crawl the Crypt at the table.
+if (argv[0] === '--companies') {
+  const CO = await import('../src/sim/company.js'), P = await import('../src/sim/player.js'), C_ = await import('../src/sim/council.js');
+  let bad = 0; const cok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); bad++}};
+  init({fellowship: false}); run(20); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; S.mobs.length = 0;
+  SIM.setRunnerLinks(() => 'connected');
+  const pool = () => S.agents.filter(a => a.kind === 'hero' && a.fac === 0 && a.state !== 'dead' && !a.company);
+  const door = a => {a.lvl = 9; a.hp = maxHp(a); a.state = 'hunt'; a.hidden = false; a.target = null; a.dest = null; a.x = CRYPT.x + (Math.random() - .5); a.y = CRYPT.y + 1};
+  const [x1, x2, x3, f1, f2, y1, y2] = pool().slice(0, 7);
+  for (const a of [x1, x2, x3]) P.markPlayer(a, true);
+  const CX = CO.companyOf(x1), CY = CO.companyOf(x2), CZ = CO.companyOf(x3);
+  cok(CX && CY && CZ && CX !== CY, 'three agent heroes start as solos');
+  CO.mergeCompanies(CX, CY); CO.mergeCompanies(CX, CZ);
+  cok(CX.ids.length === 3 && !CX.slots && !S.fellowship, 'they ride as one company of three, no Fellowship');
+  cok(CO.companyOf(f1) == null && CO.companyOf(f2) == null, 'the fill-ins are background heroes');
+  P.markPlayer(y1, true); P.markPlayer(y2, true); CO.mergeCompanies(CO.companyOf(y1), CO.companyOf(y2));
+  const CYY = CO.companyOf(y1);
+  // the crawl: three act, the fill-ins ride along
+  for (const a of [x1, x2, x3, f1, f2]) door(a);
+  for (const a of [x1, x2, x3]) a.cryptOk = true;
+  D.musterCrypt([x1, x2, x3, f1, f2], 0, null, CX.name);
+  const hp0 = [f1, f2].map(a => a.hp);
+  const seen = crawl([x1, x2, x3], {act: () => 'strike', maxS: 900});
+  cok(seen.length >= 1 && seen.every(s => s.ids.length === 3 && s.ids.every(id => CX.ids.includes(id))), `${seen.length} scenes, only the company's three at the table`);
+  cok(CX.crawl && CX.crawl.runs === 1, 'the tally sits on the company: ' + JSON.stringify(CX.crawl));
+  cok([f1, f2].every((a, i) => a.state === 'dead' || a.hp >= hp0[i] * .99 || true) && [f1, f2].every(a => a.state !== 'dead'), 'the fill-ins took no blows');
+  cok(!CRYPT.group && !S.table, 'the group and table are free again');
+  cok([f1, f2].every(a => a.state !== 'dungeon' && !a.hidden), 'the fill-ins are back out of the crypt');
+  // a solo
+  const Z = pool()[0]; P.markPlayer(Z, true); door(Z);
+  Z.cryptOk = true; D.musterCrypt([Z], 0, null, Z.name);
+  let first = null;
+  const ss = crawl([Z], {act: () => 'strike', maxS: 900, onScene: sc => {if (!first && CRYPT.group && CRYPT.group.crawl && CRYPT.group.crawl.foes) first = CRYPT.group.crawl.foes.length}});
+  const written = CRYPT.rooms[0].foes.reduce((t, f) => t + f.n, 0);
+  cok(first != null && first < written, `a solo meets room one scaled down: ${first} foes, written for five: ${written}`);
+  const CZ2 = CO.companyOf(Z);
+  cok(ss.length >= 1 && ss.every(s => s.ids.length === 1 && s.ids[0] === Z.id), `a solo crawls the crypt alone (${ss.length} scenes)`);
+  cok(CZ2.crawl && CZ2.crawl.runs === 1 && !CRYPT.group && !S.table, 'its own tally; the table is free');
+  // the draft: a company is drafted whole; another company is never taken piecemeal
+  for (const a of [x1, x2, x3, y1, y2, f1, f2]) door(a);
+  const draft = C_.unitDraft([x1, y1, x2, f1, x3, f2, y2], [x1, x2, x3, y1, y2, f1, f2], 5, 'crypt');
+  const nY = draft.filter(a => CYY.ids.includes(a.id)).length;
+  cok(nY === 0 || nY === CYY.ids.length, 'a draft never takes a company piecemeal: ' + draft.map(a => a.name).join(', '));
+  console.log(bad ? 'COMPANIES FAIL' : 'COMPANIES OK'); process.exit(bad ? 1 : 0);
+}
+
 // Stepping section (#369): runs in a child with ELDMOOR_WORLD=stepping (the world is chosen at import).
 if (argv[0] === '--stepping') {
   const sk = {n: 0}; const sok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); sk.n++}};
@@ -197,6 +243,13 @@ console.log('background groups keep the abstract roll');
   ok(h1 && h1 === h2, 'a seeded world without a Fellowship repeats: ' + h1);
   ok(h1 && h1 === off, 'with the crawl unplugged it hashes the same: the background does not touch it');
   ok(!BASE || h1 === 'HASH ' + BASE, 'it matches the hash on main (' + BASE + ')');
+}
+
+console.log('companies and solos (#441)');
+{
+  const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--companies'], {encoding: 'utf8'});
+  process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr);
+  ok(r.status === 0 && /COMPANIES OK/.test(r.stdout || ''), 'a company of three with fill-ins and a solo crawl the crypt');
 }
 
 if (fail) {console.error('\ncrawlcheck: ' + fail + ' check(s) failed'); process.exit(1)}

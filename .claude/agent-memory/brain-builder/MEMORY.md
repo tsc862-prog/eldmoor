@@ -33,4 +33,6 @@
 - [Local DM + narration](local-dm-narration.md) — #467/#468 nearform.js place shapes, localTurn breaker + minute cap, echo/junk-call/CJK cleanup, dmcheck pitfalls
 - [Stage setting](stage-setting.md) — #431 slice 2: stage_scene setting/at, fitSetting scripted pick, town meeting trigger, sceneSpec ctx.town, check pitfalls
 - [localcheck autopilot flake](localcheck-autopilot-flake.md) — pin hp/spot until idle; soft wake by kind not text
+- [Whisper and dream](whisper-dream.md) — #523 whisper/dream DM tools: delivery, limits, leans-close via table.narr, check pitfalls
+- [DM fairness](dm-fairness.md) — #451 fairness()/fairRefusal, staged per company (PER_DAY 2+n, company:<id>), starve-test caveat
 - [Scene waits](scene-waits.md) — #515 table_waits, urgent Ollama queue, free-turn interrupt, Claude scene-first, pace {queued} extra wait, scene-missed, sceneS

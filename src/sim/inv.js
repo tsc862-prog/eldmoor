@@ -10,7 +10,7 @@
 // Owned by creature-designer.
 import {rnd} from '../core/rng.js';
 import {actItem,actHeal} from './actlog.js';
-import {INV,USES,GOODS,price} from '../data/items.js';
+import {INV,USES,GOODS,MATERIALS,price} from '../data/items.js';
 import {tm} from '../data/traits.js';
 import {S} from './state.js';
 import {pop} from './effects.js';
@@ -68,19 +68,21 @@ export function convertBag(a){const inv=newInv();
   a.inv=inv;delete a.bag;return inv}
 
 // ---- selling ----
+// The auction-house row of a trade good: GOODS, or a gathered material (MATERIALS, #257), carried as a 'good' stack.
+const mkt=id=>GOODS[id]||MATERIALS[id]||null;
 // Town: sell trade goods and every spare piece except up to KEEP_SPARES that are still too high to wear.
 // Returns {gold, goods, n} and removes what was sold. Consumables and quest items stay.
 export function sellLoot(a){const inv=invOf(a);let gold=0,goods=0,n=0;
   const keep=inv.list.filter(e=>isGear(e)&&e.ilvl>a.lvl+INV.WEAR_OVER&&(!e.cls||e.cls===a.cls)).sort((x,y)=>y.ilvl-x.ilvl).slice(0,INV.KEEP_SPARES);
   inv.list=inv.list.filter(e=>{
     if(isGear(e)){if(keep.includes(e))return true;gold+=SELL_VALUE(e);n++;return false}
-    if(e.kind==='good'&&GOODS[e.id]){for(let i=0;i<e.n;i++){gold+=price(e.id);GOODS[e.id].supply++}goods+=e.n;n+=e.n;return false}
+    if(e.kind==='good'&&mkt(e.id)){for(let i=0;i<e.n;i++){gold+=price(e.id);mkt(e.id).supply++}goods+=e.n;n+=e.n;return false}
     return true});
   return {gold,goods,n}}
 // One entry by index (agent tool): returns gold, or -1 when it cannot be sold.
 export function sellEntry(a,i){const L=invOf(a).list,e=L[i];if(!e)return -1;
   if(isGear(e)){L.splice(i,1);return SELL_VALUE(e)}
-  if(e.kind==='good'&&GOODS[e.id]){let g=0;for(let k=0;k<e.n;k++){g+=price(e.id);GOODS[e.id].supply++}L.splice(i,1);return g}
+  if(e.kind==='good'&&mkt(e.id)){let g=0;for(let k=0;k<e.n;k++){g+=price(e.id);mkt(e.id).supply++}L.splice(i,1);return g}
   return -1}
 
 // ---- wearing spares ----
