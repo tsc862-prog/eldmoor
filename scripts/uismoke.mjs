@@ -611,6 +611,7 @@ console.log('start gate: ready, not just claimed');
 // Professions block on the Stats tab (#259)
 {const h=(sim.fellowshipMembers().filter(x=>x.hero)[0]||{hero:sim.S.agents.find(a=>a.kind==='hero')}).hero;
   const Pf=await import('../src/sim/professions.js');
+  const keepP=h.profs;h.profs=[]; // a hero with none (scripted heroes take up a gathering trade at level 3 since #257, so the seeded world's hero may hold one)
   select(h);setTab('stats');uiFast();
   ok(/Professions/.test(tb().textContent)&&/No professions yet/.test(tb().textContent),'stats: a hero with none says "No professions yet"');
   Pf.learn(h,'mining');Pf.learn(h,'cooking');Pf.gainSkill(h,'mining',59);
@@ -619,7 +620,7 @@ console.log('start gate: ready, not just claimed');
   ok(rows.length===2&&/Mining/.test(rows[0].textContent)&&/gathering/.test(rows[0].textContent)&&/60 · Journeyman/.test(rows[0].textContent),'stats: each profession with kind, skill and band ('+(rows[0]&&rows[0].textContent)+')');
   ok(rows.length===2&&/crafting/.test(rows[1].textContent)&&/1 · Novice/.test(rows[1].textContent),'stats: a craft profession at skill 1 is Novice');
   const bar=rows[0]&&rows[0].querySelector('.profbar i');ok(bar&&bar.style.width==='60%','stats: the bar is skill out of 100');
-  delete h.profs}
+  if(keepP===undefined)delete h.profs;else h.profs=keepP}
 
 // Table banner: the combat block (#277). A scene with rounds, set up by hand (no world step), rendered like main.js does.
 {const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),S=sim.S,box=$('tbanner'),spd=T.TABLE.speed;
@@ -1106,6 +1107,13 @@ console.log('start gate: ready, not just claimed');
   ok(!!own&&own.tagName!=='BUTTON','banner: the followed company\'s name is plain text');
   S.table={...sc,id:7002,company:pair.id,ids:[p0.id,p1.id]};TB.renderTable(1);own=$('tbanner').querySelector('.tco');
   ok(!!own&&own.textContent==='At the table: The Smoke Pair','banner: a company\'s scene says At the table: <name>');
+  // followed pause (#458): another company's scene on the live clock is one line that follows that company
+  {CV.followCompany(s1);const T=await import('../src/sim/table.js');S.table={...sc,id:7003,company:pair.id,ids:[p0.id,p1.id],pause:true};TB.renderTable(1);
+   const lv=$('tbanner').querySelector('.tlvb');ok(!!lv&&lv.tagName==='BUTTON'&&/^Scene at .+: .+ and company/.test(lv.textContent)&&!$('tbanner').querySelector('.tt'),'banner: an unfollowed scene on the live clock is one line ('+(lv&&lv.textContent)+')');
+   lv.click();TB.renderTable(1);ok(CV.followedCompany()===pair&&!$('tbanner').querySelector('.tlvb')&&!!$('tbanner').querySelector('.tt')&&/WORLD PAUSED/.test($('tbanner').textContent),'banner: the line follows that company and its full banner opens, the world paused');
+   const vp=$('vPause');ok(!!vp&&vp.textContent==='Pause: followed'&&!vp.closest('.setrow').hidden,'settings: Pause: followed shows with several companies');
+   vp.click();ok(S.pauseAll===true&&vp.textContent==='Pause: any company'&&vp.getAttribute('aria-pressed')==='true','settings: the switch turns on pause for any company');
+   vp.click();ok(!('pauseAll' in S)&&T.pauseAll()===false,'settings: and off again, no key left on S')}
   S.table=keepT;TB.renderTable(1);
   // phone width: the rows wrap and shrink (no horizontal scroll)
   const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');

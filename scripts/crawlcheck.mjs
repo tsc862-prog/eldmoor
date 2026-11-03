@@ -89,7 +89,10 @@ if (argv[0] === '--companies') {
   // a solo
   const Z = pool()[0]; P.markPlayer(Z, true); door(Z);
   Z.cryptOk = true; D.musterCrypt([Z], 0, null, Z.name);
-  const ss = crawl([Z], {act: () => 'strike', maxS: 900});
+  let first = null;
+  const ss = crawl([Z], {act: () => 'strike', maxS: 900, onScene: sc => {if (!first && CRYPT.group && CRYPT.group.crawl && CRYPT.group.crawl.foes) first = CRYPT.group.crawl.foes.length}});
+  const written = CRYPT.rooms[0].foes.reduce((t, f) => t + f.n, 0);
+  cok(first != null && first < written, `a solo meets room one scaled down: ${first} foes, written for five: ${written}`);
   const CZ2 = CO.companyOf(Z);
   cok(ss.length >= 1 && ss.every(s => s.ids.length === 1 && s.ids[0] === Z.id), `a solo crawls the crypt alone (${ss.length} scenes)`);
   cok(CZ2.crawl && CZ2.crawl.runs === 1 && !CRYPT.group && !S.table, 'its own tally; the table is free');

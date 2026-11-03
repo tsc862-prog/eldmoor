@@ -52,6 +52,7 @@
     "professioncheck": "node scripts/professioncheck.mjs",
     "recipecheck": "node scripts/recipecheck.mjs",
     "nodecheck": "node scripts/nodecheck.mjs",
+    "gathercheck": "node scripts/gathercheck.mjs",
     "behaviorcheck": "node scripts/behaviorcheck.mjs",
     "behavior-report": "node scripts/behavior-report.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs",
