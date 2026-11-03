@@ -29,7 +29,7 @@ import http from 'node:http';
 import {existsSync, readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks, planOpening, openingDue, beginPrep, endPrep, prepTick, prepView, prepActive, setPrepHost} from '../src/sim/index.js';
 import {onLog} from '../src/sim/chronicle.js';
 import {hostCall} from '../src/sim/player-host.js';
 import {sceneDue} from '../src/sim/scenewait.js'; // health: a member's scene still waits for its answer (#515)
@@ -62,7 +62,7 @@ export function localBackend(hostOpts) {
       return a ? hostCall(a.id, tool, args, hostOpts) : Promise.resolve({ok: false, error: heroId != null ? `Hero #${heroId} is not agent-played.` : 'No agent-played hero.', offline: true})},
     dmCall: (tool, args) => Promise.resolve(dmAct(tool, args)), // the DM seat (issue #66): answered at once, no waits
     narrate: (heroId, text) => {const a = heroId != null ? playerSeat(heroId) : playerSeat(); if (a) playerNarrate(a.id, text)},
-    info: () => ({connected: true, dm: dmSeatOn(), heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', ...(a.fellow ? {fellow: true, role: a.fellowRole || null, lead: !!(a.party && a.party.fellow && a.party.leader === a), table: !!(S.table && S.table.ids.includes(a.id)), ...(sceneDue(a) ? {due: true} : {})} : {})}))}),
+    info: () => ({connected: true, dm: dmSeatOn(), ...(prepView().state !== 'idle' ? {dmPrep: prepView()} : {}), heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', ...(a.succeeds != null ? {succeeds: a.succeeds} : {}), ...(a.fellow ? {fellow: true, role: a.fellowRole || null, lead: !!(a.party && a.party.fellow && a.party.leader === a), table: !!(S.table && S.table.ids.includes(a.id)), ...(sceneDue(a) ? {due: true} : {})} : {})}))}),
   };
 }
 
@@ -98,12 +98,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   for (let k = 0; !S.fellowship && playerSeats().filter(a => a.state !== 'dead').length < want && k < 16; k++) {
     const a = chooseHero({cls: opt('class', null), fac: k % 2}); if (!a) break; markPlayer(a, true)}
   if (flag('dm')) {setDmSeat(true); console.log('[play] DM seat open: npm run dm -- --url http://127.0.0.1:' + port)}
+  // Session zero (issue #437): a new world opens with one opening Table scene per company once the world first runs (after
+  // the start gate and the DM's prep with --wait-ready). --session-zero turns it on here; a setup world from the page has it.
+  const resumed = flag('resume') && existsSync(worldFile);
+  if (flag('wait-ready')) setPrepHost(true); // the DM's prep holds this world too (#437)
+  if (flag('session-zero') && !resumed && planOpening()) console.log('[play] session zero: the opening scene opens when the world first runs');
   if (!playerSeats().length && !dmSeatOn()) throw new Error('no hero to play');
   for (const h of playerSeats()) console.log(`[play] agent hero: ${h.name} (#${h.id}), level ${h.lvl} ${h.cls} of ${h.fac ? 'the Warband' : 'the Concord'}${h.state === 'dead' ? ' (dead)' : ''}`);
   if (!quiet) onLog(e => {const t = e.parts.map(p => typeof p === 'string' ? p : p && p.kind === 'hero' ? p.name : p && p.t || '').join(''); if (playerSeats().some(h => t.includes(h.name))) console.log(`[world ${e.t}] ${t}`)});
 
   const save = () => {try {mkdirSync(dirname(worldFile), {recursive: true}); writeFileSync(worldFile, JSON.stringify(snapshot()))} catch (e) {console.error('[play] save failed: ' + e.message)}};
-  let last = Date.now(), saveT = 0, playRef = null, heldSig = null;
+  let last = Date.now(), saveT = 0, playRef = null, heldSig = null, prepSig = null, prepping = false, ran = resumed;
   // --wait-ready (issue #222): the seats not ready yet, or [] (never held without the flag)
   const notReady = () => {if (!flag('wait-ready') || !playRef) return [];
     const out = playerSeats().filter(h => h.state !== 'dead').filter(h => {const r = playRef.readyOf(h.id); return !r || r.state !== 'ready'}).map(h => {const r = playRef.readyOf(h.id); return `${h.name}: ${r ? r.state + (r.error ? ' (' + r.error + ')' : '') : playRef.claimed(h.id) ? 'claimed' : 'no runner'}`});
@@ -112,14 +117,24 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now;
     const wait = notReady(), ws = wait.join(' · ');
     if (ws !== heldSig) {if (ws) console.log(`[play] world held, waiting for minds: ${ws}`); else if (heldSig) console.log('[play] every mind is ready: the world runs'); heldSig = ws}
+    if (prepping && !prepActive()) {const v = prepView(); console.log(`[play] the DM's prep is over (${v.why}: ${v.calls} calls, ${v.seconds} s)`); prepping = false} // prep_done may come just before its runner leaves
     if (wait.length) return;
+    // the DM's prep (issue #437) with --wait-ready: once per ready DM runner, the full one before session zero, a short one on
+    // --resume or for a DM runner started again; the world stays held until the DM ends it, a cap ends it or the seat goes
+    if (flag('wait-ready') && playRef) {
+      const rd = dmSeatOn() ? playRef.readyOf('dm') : null, liveDm = rd && rd.state === 'ready' && playRef.claimed('dm');
+      prepTick(); if (prepActive() && !liveDm) endPrep('seat');
+      if (!prepActive() && liveDm) {const k = JSON.stringify(rd); if (k !== prepSig) {prepSig = k; if (openingDue() || ran) {const v = beginPrep(openingDue() ? 'opening' : 'resume'); console.log(`[play] the DM prepares the table (${v.kind}: at most ${v.max_calls} calls, ${v.max_seconds} s)`)}}}
+      if (prepActive()) {prepping = true; return}
+    }
+    ran = true;
     if (TABLE.drop) {if (speed > 1) {console.log(`[play] ${speed}x -> 1x: a Fellowship decision waits for its agents (${TABLE.drop.reason})`); speed = 1; TABLE.speed = 1} TABLE.drop = null} // #148
     const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) step(dt / n);
     saveT += real; if (saveT >= 60) {saveT = 0; save()}}, 50);
 
   const server = http.createServer((req, res) => {res.writeHead(404, {'content-type': 'application/json'}); res.end('{"error":"not found"}')});
   // Behavior logs (issue #129): runners' turn lines, the world digest and game-side anomalies under logs/behavior/<world>/.
-  const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch() : null;
+  const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch({dmLink: () => playRef && playRef.claimed('dm') ? 'connected' : 'none'}) : null;
   const play = attachPlay(server, {behavior, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
   playRef = play;
   if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);

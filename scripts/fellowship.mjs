@@ -59,7 +59,7 @@ import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
 import {withSituationOrders} from './orders.mjs';
 import {systemPrompt, withMemoryOrders, withKnowledgeOrders, withTownOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
-import {migrateLegacy, loadSession, saveSession, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
+import {migrateLegacy, loadSession, saveSession, runnerSettings, inheritRunner, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
 import Anthropic from '@anthropic-ai/sdk';
@@ -148,6 +148,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const sys = systemPrompt(st) + '\n' + fellowshipPrompt(st);
     const {sess, note} = loadSession(h.id, st.name, () => ({sessionId: null, heroId: h.id, heroName: st.name, system: sys, turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
     if (note) out(st.name, note);
+    if (inheritRunner(sess, h.succeeds)) out(st.name, `plays with the runner settings of the companion whose place they took (#${h.succeeds}): ${sess.runner.provider} ${sess.runner.model || ''}`); // #452
     if (!String(sess.system || '').includes('do not introduce yourself again')) sess.system = sys; // a hero first played solo now rides with the Fellowship; older orders get the talk rule
     sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},

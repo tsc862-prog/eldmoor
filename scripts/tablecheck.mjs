@@ -20,6 +20,9 @@
 //   - companies (#440, a child with a fresh world): solos get their own scenes (a rescue with the foe's round), two
 //     companies due in one tick open lowest id first and the other next tick from its queue, a company of two answers
 //     everyone-at-once in any order and resolves in join order, a solo's vote is refused
+//   - session zero and arrivals (#437, #452, a child with a fresh world): the DM prep holds the opening, the DM frames it, a
+//     silent member reflex shows its persona line, introductions count as met; a death waits for an arrival scene at the next
+//     town or camp (never in the Crypt), the DM or the scripted DM voices the newcomer, the oath, the letter; no host = at once
 //   - without a Fellowship, two seeded runs are identical (determinism)
 // Usage: npm run tablecheck   (TABLECHECK_SEED to vary the world)
 import {spawnSync} from 'node:child_process';
@@ -101,6 +104,93 @@ if (process.argv[2] === '--rounds') {
     step(1 / 60)}
   console.log('ROUNDS ' + JSON.stringify(sc.beats.map(b => [b.id, b.rd, b.k, b.by, b.res])) + ' ' + sc.summary + ' hp:' + M.map(x => Math.round(x.hp)).join(',') + ' foe:' + Math.round(q.hp));
   process.exit(0);
+}
+
+// ---- session zero and arrivals (#437, #452), in a child with a fresh world: node scripts/tablecheck.mjs --arrival ----
+if (process.argv[2] === '--arrival') {
+  const {dmAct, setDmSeat} = SIM, A = await import('../src/sim/arrival.js'), PR = await import('../src/sim/prep.js'), HE = await import('../src/sim/heroes.js'), TK = await import('../src/sim/talk.js');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)}, byId = id => S.agents.find(x => x.id === id);
+  const txt = e => e.parts.map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '').join('');
+  init({fellowship: false}); run(20);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(true);
+  const M = F_.fellowshipMembers().map(m => m.hero), live = M[1], LINK = {[live.id]: 'connected'};
+  SIM.setRunnerLinks(x => LINK[x.id] || 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  const home = homeOf(M[0]);
+  const inTown = () => {for (const [i, x] of M.entries()) if (x.state !== 'dead') {x.state = 'town'; x.townStep = 1; x.x = home.gate.x - 1 - (i % 3) * .4; x.y = home.gate.y + (i % 2) * .4; x.hidden = false; x.target = null; x.dest = null; x.pq = []}};
+  inTown(); step(1 / 60);
+  // session zero: the prep holds the opening; then the DM frames it, members introduce themselves, the leader is contested
+  ok(!A.openingPending(), 'a world founded without a setup plans no opening');
+  A.planOpening(); PR.beginPrep('opening');
+  ok(A.openingDue() && PR.prepView().state === 'running' && PR.prepView().max_calls === PR.PREP.CALLS, 'session zero is due and the DM prepares (full caps)');
+  run(2); ok(!S.table, 'no opening scene while the DM prepares');
+  dmAct('dm_status'); dmAct('notes_read'); ok(PR.prepView().calls === 2, 'DM tool calls during the prep are counted');
+  dmAct('table_call'); ok(PR.prepView().calls === 2, 'an idle table_call poll is not counted');
+  const pd = dmAct('prep_done', {summary: 'Plans written.'}); ok(pd.ok && PR.prepView().state === 'done' && PR.prepView().why === 'done', 'prep_done ends the prep');
+  step(1 / 60); let sc = S.table;
+  ok(sc && sc.kind === 'opening' && /^SESSION ZERO · /.test(sc.title) && sc.all && sc.pause, `the opening scene opens, everyone at once, paused (${sc && sc.title})`);
+  ok(!A.openingPending() && !S.opening, 'one company: the opening queue is empty');
+  const frameOut = () => {let k = 0; while (S.table && S.table.phase === 'frame' && k++ < 600) {dmAct('table_call'); step(1 / 60)}}; // the runner polls while the DM frames
+  frameOut(); let tc = dmAct('table_call');
+  ok(tc.ok && tc.call && tc.call.kind === 'frame' && /Session zero/.test(tc.call.about) && tc.scene.kind === 'opening', 'the DM is asked to frame the opening (table_call)');
+  const fr = dmAct('table_answer', {call: tc.call.id, text: 'Rain on the hall roof; five strangers and one long table.'});
+  ok(fr.ok && M.every(x => (x.chat || []).some(e => /five strangers/.test(e.text))), 'the DM framing reaches every member at the table');
+  ok(P.playerAct(live.id, 'scene_act', {option: 'lead', line: 'I will lead if you will have me.'}).ok && sc.acts[live.id].k === 'lead', 'a live agent offers to lead');
+  let g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
+  ok(!S.table && sc.beats.length === M.length, 'every member acted at the opening');
+  const refl = sc.beats.find(b => b.by === 'reflex' && b.k === 'introduce');
+  ok(refl && /introduces themself: .+, a .+ of /.test(refl.res || ''), `a silent agent's reflex shows its persona line (${refl && refl.res})`);
+  ok(/keeps the head of the table|leads/.test(sc.summary), `the leader is contested and keeps the lead (${sc.summary})`);
+  ok(M.every(a => M.every(b => a === b || TK.metIds(a).includes(b.id))), 'introductions at the opening count as met');
+  ok(S.fellowship.log.some(e => e.kind === 'session' && /SESSION ZERO/.test(txt(e))), 'the campaign log has the session zero line');
+  // the Continue prep: half the caps; the time cap ends it; the call cap ends it
+  let clk = 0; PR.setPrepClock(() => clk); PR.beginPrep('resume');
+  ok(PR.prepView().max_calls === Math.round(PR.PREP.CALLS * PR.PREP.SHORT) && PR.prepView().kind === 'resume', 'a Continue prep has half the calls');
+  clk = PR.PREP.MS; PR.prepTick(); ok(!PR.prepActive() && PR.prepView().why === 'time', 'the time cap ends it');
+  PR.beginPrep('opening'); for (let i = 0; i < PR.PREP.CALLS; i++) dmAct('regions');
+  ok(!PR.prepActive() && PR.prepView().why === 'calls', `the call cap ends it (${PR.PREP.CALLS} calls)`); PR.setPrepClock(null);
+  // the arrival: a death queues the recruit; nothing opens in the Crypt; it opens in town
+  const dead = M[3], slot = dead.fellowRole;
+  const wr = P.playerAct(dead.id, 'remember', {title: 'For whoever comes', text: 'Keep the river road.', tags: ['letter']});
+  ok(wr.ok && P.playerAct(dead.id, 'pin', {id: wr.remembered.id}).ok, 'a member seals a letter');
+  const lo = Math.min(...M.filter(x => x !== dead).map(x => x.lvl));
+  const inCrypt = () => {CRYPT.group = {phase: 'inside', mem: M.filter(x => x !== dead), t: 30, tSite: 1, tRoom: 1}; for (const x of M) if (x !== dead) {x.state = 'dungeon'; x.hidden = true}}; // no stair or chamber scene in this test
+  inCrypt();
+  HE.fall(dead, 'a test of the hardcore rule'); step(1 / 60);
+  ok(S.fellowship.slots[slot] == null && (S.fellowship.arrivals || []).length === 1 && S.fellowship.arrivals[0].cls === dead.cls, 'with runners, the seat waits for an arrival (the fallen member\'s class)');
+  ok(!S.recruits.some(r => r.fac === dead.fac && r.cls === dead.cls), 'the world\'s background recruit of that class is the newcomer (not made twice)');
+  for (let k = 0; k < 120; k++) {inCrypt(); step(1 / 60)} ok(!(S.table && S.table.kind === 'arrival') && S.fellowship.arrivals.length === 1, 'no arrival scene while the company is in the Crypt');
+  CRYPT.group = null; inTown(); for (const x of M) x.hidden = false;
+  g = 0; while (!(S.table && S.table.kind === 'arrival') && g++ < 120) step(1 / 60); sc = S.table;
+  const nh = byId(S.fellowship.slots[slot]);
+  ok(sc && sc.kind === 'arrival' && sc.all && nh && !sc.ids.includes(nh.id), `in town the arrival scene opens; the newcomer is voiced, not in the answers (${sc && sc.title})`);
+  ok(nh && nh.cls === dead.cls && nh.lvl === Math.max(1, lo - 2) && nh.player && nh.succeeds === dead.id, `the recruit: same class, seeded 2 under the lowest (L${nh && nh.lvl}), agent-played, succeeds the fallen`);
+  ok(nh && dist(nh, home.gate) < 1.5, 'the newcomer is placed at the town gate');
+  frameOut(); tc = dmAct('table_call'); ok(tc.call && tc.call.kind === 'voice' && tc.call.who === nh.name && tc.scene.cast.length === 1, 'the DM voices the newcomer (table_call voice, the cast names them)');
+  dmAct('table_answer', {call: tc.call.id, text: nh.name + ' ducks under the lintel: "I was told there was a place."'});
+  ok(P.playerAct(live.id, 'scene_act', {option: 'object', line: 'No one fills that seat so fast.'}).ok && sc.acts[live.id].k === 'object', 'a live member objects');
+  g = 0; while (S.table && g++ < 60 * 60) {step(1 / 60); dmAct('table_call')} // the DM keeps polling but stays silent on the oath: the scripted DM fills it
+  const rec = S.fellowship.log.find(e => e.kind === 'recruit');
+  ok(rec && /at the table/.test(txt(rec)) && /spoke against it/.test(txt(rec)), `the oath is sworn at the table; the objection is spoken, not a veto (${rec && txt(rec)})`);
+  ok(sc.calls.length === 2 && sc.calls[0].by === 'dm-agent' && sc.calls[1].by === 'scripted' && sc.calls[1].kind === 'oath', 'the silent DM\'s oath call is filled by the scripted DM');
+  const lt = P.playerAct(nh.id, 'recall', {tag: 'letter'});
+  ok(lt.ok && lt.notes.some(n => /river road/.test(n.text)), 'the fallen member\'s letter reaches the newcomer');
+  // the scripted DM voices it when the seat is closed; at camp the newcomer sits at the fire
+  const CM = await import('../src/sim/camp.js'), field2 = () => {for (const x of F_.fellows()) {x.state = 'hunt'; x.x = home.gate.x + 12 + (x.id % 3) * .5; x.y = home.gate.y + 2; x.hidden = false; x.dest = null; x.target = null; x.pq = []}};
+  setDmSeat(false); const d2 = M[4], s2 = d2.fellowRole; field2();
+  HE.fall(d2, 'a second test'); step(1 / 60); field2();
+  const why = CM.leaderRest(T.leaderOfF ? T.leaderOfF() : C.leaderOfF(), 4), camp = S.fellowship.camp; ok(!why && camp && camp.phase, 'the company makes camp out on the road' + (why ? ' (' + why + ')' : ''));
+  g = 0; while (!(S.table && S.table.kind === 'arrival') && g++ < 240) step(1 / 60); const sc2 = S.table, nh2 = byId(S.fellowship.slots[s2]);
+  ok(sc2 && nh2 && nh2.state === 'camp' && camp.ids.includes(nh2.id), 'at camp the newcomer is placed at the camp\'s edge and sits at the fire');
+  if (sc2) P.playerAct(live.id, 'scene_act', {option: 'greet'}); g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
+  ok(sc2 && sc2.calls.length === 2 && sc2.calls.every(c => c.by === 'scripted'), 'with the seat closed the scripted DM voices the newcomer and the oath');
+  S.fellowship.camp = null; for (const x of F_.fellows()) x.state = 'town';
+  // no host: the replacement takes the place at once, as always
+  SIM.setRunnerLinks(null); const d3 = F_.fellows().find(x => x !== live && x.fellowRole !== 'tank'), s3 = d3.fellowRole;
+  HE.fall(d3, 'a third test'); step(1 / 60);
+  ok(S.fellowship.slots[s3] != null && !(S.fellowship.arrivals || []).length && !S.table, 'with no host (npm run sim) the seat is refilled at once, no scene');
+  console.log(fail ? 'ARRIVAL FAILED ' + fail : 'ARRIVAL OK'); process.exit(fail ? 1 : 0);
 }
 
 // ---- parley and conditions (#296), in a child with a fresh world: node scripts/tablecheck.mjs --parley ----
@@ -510,6 +600,25 @@ if (process.argv[2] === '--talk') {
   ok(sc && sc.ctx.why === 'tense', 'a hostile person: even a plain good morning is tense');
   playOut('decline');
 
+  // the scripted answer reads the question (#540): public knowledge only, the warning when it fits, tagged, a grace for a busy DM
+  away(); clear(); T.TABLE.mode = 'auto'; TS.ESC.PER_DAY = 99; beside(A, cap);
+  const lastNpc = () => [...(A.chat || [])].reverse().find(e => e.from && e.from.kind === 'npc');
+  r = talk(A, cap, 'Do you have any quests or information on Old Mother Sedge?');
+  ok(r.ok && !S.table && /Never heard of Old Mother Sedge\. Try the inn/.test(r.answer || ''), 'an unknown name: "' + (r.answer || r.table || r.error) + '"');
+  ok(/board/i.test(r.answer || '') && !/Report,|Short words|green blades|Crypt/.test(r.answer || ''), 'the same line also gets the board, no greeting, no Crypt warning');
+  ok(lastNpc() && lastNpc().by === 'scripted', 'the scripted answer is tagged by:scripted in the hero chat');
+  clear(); beside(A, inn); const cnt = S.npcs.find(p => p.role === 'smith' && p.town === c0.name);
+  r = talk(A, inn, 'Where is ' + cnt.name + '?'); ok(r.ok && !S.table && (r.answer || '').includes(cnt.name), 'a named townsperson is placed: "' + r.answer + '"');
+  clear(); beside(A, inn); r = talk(A, inn, 'How far is Cinderpass?'); ok(/Cinderpass lies/.test(r.answer || ''), 'a named region is answered: "' + r.answer + '"');
+  clear(); beside(A, inn); r = talk(A, inn, 'What about the Sunken Crypt?'); ok(/Crypt/.test(r.answer || ''), 'a question about the Crypt gets the Crypt');
+  clear(); beside(A, inn); r = talk(A, inn, 'Anything new on the roads?'); ok(r.ok && !/Crypt|green blades/.test(r.answer || r.follow_up || ''), 'an unrelated question on a second meeting carries no Crypt warning: "' + r.answer + '"');
+  clear(); beside(A, inn); const sec = 'ZQXSECRETNOTE'; S.dmAgent = S.dmAgent || {}; S.dmAgent.notes = {threads: [{title: sec, text: sec}], characters: [{title: sec, text: sec}]};
+  r = talk(A, inn, 'Do you know of any secrets, plans or threads?'); ok(!(r.answer || '').includes(sec) && !(A.chat || []).some(e => String(e.text).includes(sec)), 'no DM note reaches a townsfolk answer');
+  // a live but busy DM: the game waits a grace before the scripted answer
+  clear(); beside(A, inn); SIM.setDmSeat(true); TK.setDmAlive(() => true);
+  r = talk(A, inn, 'Good evening.'); const cw = S.talks.cur.find(c => c.wait);
+  ok(r.waiting && cw && cw.wait.ms === TK.CONV.GRACE_MS, 'a live but busy DM is waited for (' + (cw && cw.wait.ms) + ' ms)');
+  TK.setDmAlive(null); SIM.setDmSeat(false); clear();
   // Table off (Watch mode): never a scene
   away(); clear(); T.TABLE.mode = 'off'; beside(A, smith); r = talk(A, smith, 'Let us haggle over the price.'); ok(r.ok && !S.table && r.answer, 'Table off: a bargain stays a plain talk');
   T.TABLE.mode = 'auto';
@@ -1110,6 +1219,10 @@ ok(F_.fellows().every(a => a.state === 'dungeon'), 'agent members stay in the Cr
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--talk'], {encoding: 'utf8', env: {...process.env}});
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
   ok(ch.status === 0 && /TALK OK/.test(ch.stdout || ''), 'talk scenes: plain talk never opens one; an offer, a bargain, a matter for the company and a tense word do, for those present')}
+// ---- 5d. session zero and arrivals (#437, #452): a fresh world in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--arrival'], {encoding: 'utf8', env: {...process.env}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /ARRIVAL OK/.test(ch.stdout || ''), 'session zero (prep, DM frame, introductions, met) and arrivals (never in the Crypt, DM or scripted voice, the oath, the letter, no host = at once)')}
 
 // ---- 6. determinism without a Fellowship ----
 const me = fileURLToPath(import.meta.url), h1 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim(), h2 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim();
