@@ -317,14 +317,41 @@ body:not(.dev-mode) #wFreeRow{display:none}
 .rgate .rgw{flex:1 1 140px;min-width:0}
 .rgate .rb{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 [data-sp][aria-disabled="true"]{opacity:.45;cursor:not-allowed}
-.tbanner{position:absolute;left:8px;right:8px;top:8px;max-width:560px;margin:0 auto;background:rgba(8,10,20,.88);border:2px solid var(--edge);padding:6px 8px;pointer-events:none;color:#e8e4d0;font-size:15px;line-height:1.15}
-.tbanner .tt{font-family:var(--px);font-size:8px;color:#ffd866;letter-spacing:.04em;margin-bottom:3px}
-.tbanner .tf{opacity:.9}
-.tbanner .tnarr{margin-top:3px;font-style:italic;color:#d8c8a0}
-.tbanner .tl{margin-top:3px;color:#9ad0ff}
-.tbanner .to{margin-top:3px;font-size:13px;opacity:.85}
+.tbanner{position:absolute;left:8px;right:8px;top:8px;max-width:600px;margin:0 auto;background:rgba(8,10,20,.95);border:2px solid var(--edge);box-shadow:0 2px 0 rgba(0,0,0,.5);padding:7px 10px 8px;pointer-events:none;color:#f0ecdc;font-size:18px;line-height:1.12}
+@media (min-width:1100px){.tbanner{max-width:min(780px,calc(100% - 16px))}}
+/* #471: a short pixel title on one line with the scene map button at its end, the tags as chips on their own row, the question as body text */
+.tbanner .tt{display:flex;align-items:center;gap:8px;font-family:var(--px);font-size:9px;color:#ffd866;letter-spacing:.04em;margin-bottom:4px;min-width:0}
+.tbanner .tth{flex:1 1 auto;min-width:0;overflow:hidden;line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tbanner .tchips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px}
+.tbanner .tp{font-family:var(--px);font-size:7px;line-height:1;padding:3px 5px;border:1px solid #6a3a2a;background:#2a1612;color:#ffb08a}
+.tbanner .tp.tall{border-color:#3a5a7a;background:#121e2c;color:#9ad0ff}
+.tbanner .tp.tround{border-color:#6a5a2a;background:#241e0e;color:#ffd866}
+.tbanner .tq{color:#ffe9a8;margin-bottom:2px;overflow-wrap:anywhere}
+.tbanner .tf{color:#f0ecdc;overflow-wrap:anywhere}
+.tbanner .tnarr{margin-top:3px;font-style:italic;color:#e8d8b0}
+.tbanner .tl{margin-top:4px;color:#a8d8ff}
+.tbanner .to{margin-top:3px;font-size:16px;color:#c8cce0}
 .tbanner .to b{color:#ffd866;font-weight:normal}
-.tbanner .tp{font-family:var(--px);font-size:7px;color:#ff9a6a;margin-left:6px}
+/* one row per member (#471): swatch, name in class colour, the answer or the state, their line, the timer */
+.tbanner .tmem{margin-top:6px;border-top:1px solid #2c3048;padding-top:4px;display:flex;flex-direction:column;gap:2px}
+.tbanner .tmh{font-family:var(--px);font-size:7px;color:#9aa0c0;margin-bottom:2px}
+.tbanner .tmr{display:flex;align-items:center;gap:6px;min-width:0;font-size:17px;line-height:1.1}
+.tbanner .tmsw{flex:none;width:8px;height:8px;border:1px solid #000}
+.tbanner .tmn{flex:none;width:6.5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbanner .tma{flex:none;max-width:12em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;border:1px solid #4a5070;color:#e8e4d0;background:#181c2c}
+.tbanner .tma.yes{border-color:#4f8a56;color:#8af09a;background:#122216;font-family:var(--px);font-size:8px;padding:2px 5px}
+.tbanner .tma.no{border-color:#8a3a34;color:#ff9a8a;background:#2a1412;font-family:var(--px);font-size:8px;padding:2px 5px}
+.tbanner .tmby{flex:none;font-size:14px;color:#9aa0c0}
+.tbanner .tms{flex:none;color:#9aa0c0}
+.tbanner .st-wait .tms{color:#a8d8ff}
+.tbanner .st-turn .tms{color:#ffd866}
+.tbanner .st-held .tms{color:#ff9a6a}
+.tbanner .st-fallen,.tbanner .st-out{opacity:.6}
+.tbanner .tmq{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d8c8a0;font-style:italic}
+.tbanner .tmt{flex:none;color:#9aa0c0;font-size:15px;white-space:nowrap}
+.tbanner .st-wait .tmt:not(:empty){color:#ffd866}
+@media (max-width:560px){.tbanner{font-size:16px;padding:6px 8px}
+  .tbanner .tmr{font-size:16px;gap:5px}.tbanner .tmn{width:6em}.tbanner .tma{max-width:8em}.tbanner .tmt{font-size:14px}}
 /* Legends hall (ui/legends.js, issue #17) */
 ul.legends{list-style:none;margin:8px 0 0;padding:0;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
 ul.legends li.lg{line-height:1.1;cursor:default}
@@ -603,7 +630,7 @@ button.tbtn.danger{border-color:var(--red)}
 /* Table combat block (#277): round, initiative chips with HP bars and conditions, roll lines, end reason */
 .tbanner .tround{color:#ffd866}
 .tbanner .tcinit{display:flex;flex-wrap:wrap;gap:3px 4px;margin-top:4px}
-.tbanner .tci{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:1px 4px;border:1px solid #3a3f58;background:rgba(20,24,40,.7);font-size:14px;white-space:nowrap}
+.tbanner .tci{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:1px 4px;border:1px solid #3a3f58;background:rgba(20,24,40,.7);font-size:16px;white-space:nowrap}
 .tbanner .tci.cur{border-color:#ffd866;color:#ffd866}
 .tbanner .tci.foe{border-color:#7a3434;background:rgba(48,16,16,.7)}
 .tbanner .tci.foe.cur{border-color:#ff9a6a;color:#ffb38a}
@@ -613,9 +640,9 @@ button.tbtn.danger{border-color:var(--red)}
 .tbanner .tchp i{display:block;height:100%;background:#5fcf6a}
 .tbanner .tci.foe .tchp i{background:#d8504a}
 .tbanner .tchp i.lo{background:#ff9a3a}
-.tbanner .tcp{font-size:13px;opacity:.8;min-width:2.4em}
+.tbanner .tcp{font-size:15px;opacity:.8;min-width:2.4em}
 .tbanner .tcc{font-size:12px;color:#c8b8ff;border:1px solid #4a4070;padding:0 3px}
-.tbanner .trolls{margin-top:4px;font-size:14px;border-top:1px solid #2c3048;padding-top:2px}
+.tbanner .trolls{margin-top:4px;font-size:16px;border-top:1px solid #2c3048;padding-top:2px}
 .tbanner .trh{font-family:var(--px);font-size:7px;color:#9aa0c0;margin-bottom:1px}
 .tbanner .trl{line-height:1.1;overflow-wrap:anywhere}
 .tbanner .trl b{color:#e8e4d0;font-weight:normal}
@@ -637,7 +664,7 @@ button.tbtn.danger{border-color:var(--red)}
 .tbanner .tstb:focus-visible{outline:2px solid #ffd866}
 @media (max-width:560px){.tbanner.tcombat{left:4px;right:4px;top:4px;padding:4px 6px;font-size:14px}
   .tbanner.tcombat .tf{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .tbanner .tcn{max-width:7em}.tbanner .tchp{width:24px}.tbanner .tcc{font-size:11px}
+  .tbanner .tcn{max-width:7em}.tbanner .tchp{width:24px}.tbanner .tcc{font-size:11px}.tbanner .tci,.tbanner .trolls{font-size:14px}
   .tbanner .trl:not(:nth-last-child(-n+3)){display:none}}
 /* Persona archetypes (#295): the setup page's hint under the select and the sheet editor's select */
 .sarchnote{min-width:0;overflow-wrap:anywhere;line-height:1.1}
@@ -701,7 +728,8 @@ button.tbtn.danger{border-color:var(--red)}
 .dgview{position:absolute;inset:0;background:#06060b;cursor:default;display:flex;flex-direction:column;justify-content:flex-end}
 .dgview[hidden]{display:none}
 .dgview .dgcv{position:absolute;inset:0;width:100%;height:100%}
-.screen.dgopen .minimap,.screen.dgopen .hint{display:none}
+.screen.dgopen .hint{display:none}
+.screen.dgopen .minimap{bottom:calc(var(--dgbar,70px) + 10px);opacity:.85}
 .dgbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:5px 8px;background:rgba(8,10,20,.88);border-top:2px solid var(--edge)}
 .dgback{font-family:var(--px);font-size:8px;padding:5px 8px;min-height:26px;background:#1a1d2c;color:var(--gold);border:1px solid var(--gold);cursor:pointer}
 .dgback:focus-visible,.dglink:focus-visible{outline:2px solid var(--gold)}
@@ -714,10 +742,25 @@ button.tbtn.danger{border-color:var(--red)}
 .dgroom.unexplored{opacity:.7}
 .dgroom.boss:not(.cleared):not(.current){color:#ffb060}
 .dglink{font-family:var(--px);font-size:7px;padding:3px 6px;margin-left:4px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer;vertical-align:middle}
-.tbanner .tdg{margin-left:6px;color:#9ae0b8;border-color:#3a5a4a}
+.dghbtn{font-family:var(--px);font-size:7px;padding:5px 7px;min-height:26px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer}
+.dghbtn[aria-expanded=true]{color:var(--gold);border-color:var(--gold)}
+.dghbtn:focus-visible,.dgroom:focus-visible,.dgx:focus-visible{outline:2px solid var(--gold)}
+.dgroom{cursor:pointer}.dgroom.pinned{text-decoration:underline;text-underline-offset:3px}
+.dgtip,.dgpin,.dghist{position:absolute;z-index:2;max-width:min(290px,70%);background:rgba(8,10,20,.94);border:2px solid var(--edge);padding:6px 9px;font-size:16px;line-height:1.12;color:#e8e4d0;box-shadow:2px 2px 0 #05060c}
+.dgtip[hidden],.dgpin[hidden],.dghist[hidden]{display:none}
+.dgtip{pointer-events:none;z-index:3}
+.dgpin{left:8px;top:calc(var(--dgtop,8px) + 4px);border-color:var(--gold)}
+.dghist{right:8px;top:calc(var(--dgtop,8px) + 4px);max-height:55%;overflow:auto;border-color:#3a5a4a}
+.dgdt{font-family:var(--px);font-size:8px;color:#9ae0b8;margin-bottom:3px;line-height:1.35}
+.dgdk{color:var(--gold);margin-bottom:3px}.dgdf{color:var(--dim);margin-bottom:3px;font-style:italic}
+.dgdh{font-family:var(--px);font-size:7px;line-height:1.5;color:var(--dim);margin:5px 0 2px}
+.dgdl{padding-left:6px;border-left:2px solid #2a3040;margin-bottom:1px}
+.dgx{position:absolute;right:3px;top:3px;width:22px;height:22px;font-family:var(--px);font-size:8px;background:#1a1d2c;color:var(--dim);border:1px solid var(--edge);cursor:pointer}
+.dgpin{padding-right:30px}
+.tbanner .tdg{flex:none;margin-left:auto;color:#9ae0b8;border-color:#3a5a4a}
 @media (max-width:600px){.dgrooms{display:none}.dgtxt{font-size:14px;flex-basis:160px}}
 /* The scene view (#431, render/sceneview.js): an indoor setting like the dungeon view; outdoors only the bar, the world shows through */
-.tbanner .tscn{pointer-events:auto;font-family:var(--px);font-size:7px;padding:4px 6px;min-height:22px;margin-left:6px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer}
+.tbanner .tscn{flex:none;pointer-events:auto;font-family:var(--px);font-size:7px;padding:4px 6px;min-height:22px;margin-left:auto;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer}
 .tbanner .tscn:focus-visible{outline:2px solid #ffd866}
 .scview.scout{background:transparent}
 .scview.scout .dgcv{display:none}
@@ -725,3 +768,8 @@ button.tbtn.danger{border-color:var(--red)}
 .scview .dgname{color:var(--gold)}
 .scwho .scp.gone{opacity:.5;text-decoration:line-through}
 @media (max-width:600px){.scview .scwho{display:flex;font-size:13px}.screen.scopen{aspect-ratio:auto;height:min(82vh,640px)}} /* a phone gets a taller map while a scene is shown */
+/* setup page: Together / Apart switch and hero count (#454) */
+.sswitch{gap:8px}
+.sswitch .mini[aria-pressed="true"],.spresets .mini[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:var(--gold)}
+.sswitch .slbl:not(:first-child){margin-left:10px}
+@media (max-width:520px){.sswitch .slbl:not(:first-child){margin-left:0;flex-basis:100%}}

@@ -411,7 +411,12 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       if (!out) throw new Error('autopilot fixture: no hunting hero outside the towns');
       a.adv = null; a.playTurn = null; a.cryptOk = false; a.raidOk = false; invOf(a).list.length = 0;
       const seenNow = () => `state=${a.state} at ${a.x.toFixed(1)},${a.y.toFixed(1)} town=${inTownish(a)} hp=${Math.round(a.hp)}/${maxHpOf(a)} idle=${a.playIdle} auto=${a.playAuto} doing="${a.playDoing}" pq=${JSON.stringify((a.pq || []).map(c => c.kind + (c.auto ? '/' + c.auto : '')))} sinceAct=${Math.round(S.gameMin - a.playActAt)} turn=${a.playTurn} party=${!!a.party} adv=${a.adv} pack=${invOf(a).list.length}`;
-      a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.dest = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15}; a.hp = Math.max(1, Math.round(maxHpOf(a) * .4));
+      a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.dest = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15};
+      // hurt, but not so badly that autopilot walks home (#487: below the retreat line it does, and with a creature close by
+      // too): between the hero's retreat line and 60%, with the creatures near this spot out of sight for the section
+      const {tm} = await import('../src/data/traits.js'), {PK} = await import('../src/sim/player.js');
+      a.hp = Math.max(1, Math.round(maxHpOf(a) * (Math.max(PK.RETREAT * tm(a, 'retreat'), .3) + .6) / 2));
+      const veiled = S.mobs.filter(m => !m.hidden && dist(m, a) < PK.REST_CLEAR + 3); for (const m of veiled) m.hidden = true;
       // its last order nearly two game hours ago (a hurt hero heals while it stands, so the long wait is not stepped through)
       a.playActAt = S.gameMin - 115; a.playIdle = false; a.playAuto = null;
       const t0 = S.gameMin, idle = stepUntil(() => a.playIdle && a.playAuto === 'rest', 60);
@@ -419,6 +424,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       ok(a.player && !a.brain && /^autopilot: resting/.test(a.playDoing || ''), `the agent stays the mind (agent-played, no brain): "${a.playDoing}" ${seenNow()}`);
       a.hp = maxHpOf(a); a.pq = [];
       ok(stepUntil(() => a.playAuto === 'hunt' && a.pq[0] && a.pq[0].kind === 'hunt' && a.pq[0].auto, 60), `mended, it carries on its last order (${a.playAuto}: ${a.playDoing}; ${seenNow()})`);
+      for (const m of veiled) m.hidden = false;
       ok((a.playEv || []).some(e => /autopilot carries on/.test(e.text)) && !(a.playEv || []).some(e => /scripted|instinct/i.test(e.text)), 'the hero is told so, and nothing calls it scripted');
       const r = sim.playerAct(a.id, 'say', {text: 'Enough wandering. I choose my own road again.'});
       calm(); sim.step(1 / 60);
