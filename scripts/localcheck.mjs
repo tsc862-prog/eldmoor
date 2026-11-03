@@ -454,8 +454,13 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       // 8x ticker above run on the clock): a field spot well outside every town (autopilot only acts in the field), an empty
       // pack (a full one walks home), no party, adventure or open turn. The Table, DM and crypt states are cleared too.
       const inTownish = p => CITY.some(c => p.x >= c.x0 - 6 && p.x <= c.x1 + 7 && p.y >= c.y0 - 6 && p.y <= c.y1 + 7);
-      const out = S.agents.find(x => x !== a && x.state === 'hunt' && !x.player && x.kind === 'hero' && !inTownish(x));
-      if (!out) throw new Error('autopilot fixture: no hunting hero outside the towns');
+      // The region must fit the hero (#690): autopilot "moves on" from one whose lowest level is more than TP.FIT_UP (1) above the
+      // hero's (player.js `fits`), so the spot is a hunter's in a fitting region, else a field point of the first fitting region.
+      const {REGIONS, ZPTS, zoneAt: zoneOf} = await import('../src/world/map.js');
+      const fitsHero = p => {const b = REGIONS[zoneOf(p.x, p.y)]; return !!(b && b.band && b.band[0] <= a.lvl + 1)};
+      let out = S.agents.find(x => x !== a && x.state === 'hunt' && !x.player && x.kind === 'hero' && !inTownish(x) && fitsHero(x));
+      if (!out) {const z = REGIONS.findIndex((R, i) => R.band && R.band[0] <= a.lvl + 1 && ZPTS[i].some(p => !inTownish(p))); if (z >= 0) out = ZPTS[z].filter(p => !inTownish(p))[0]}
+      if (!out) throw new Error('autopilot fixture: no field spot in a region that fits the hero');
       a.adv = null; a.playTurn = null; a.cryptOk = false; a.raidOk = false; invOf(a).list.length = 0;
       const seenNow = () => `state=${a.state} at ${a.x.toFixed(1)},${a.y.toFixed(1)} town=${inTownish(a)} hp=${Math.round(a.hp)}/${maxHpOf(a)} idle=${a.playIdle} auto=${a.playAuto} doing="${a.playDoing}" pq=${JSON.stringify((a.pq || []).map(c => c.kind + (c.auto ? '/' + c.auto : '')))} sinceAct=${Math.round(S.gameMin - a.playActAt)} turn=${a.playTurn} party=${!!a.party} adv=${a.adv} pack=${invOf(a).list.length}`;
       a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.dest = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15};
