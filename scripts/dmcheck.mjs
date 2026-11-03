@@ -323,6 +323,25 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
   for (const [t, a] of [['post_hook', {town: hall, tpl: 'deliver', reason: 'cap'}], ['place_person', {role: 'peddler', near: hall, reason: 'cap'}], ['mark_place', {kind: 'cairn_door', near: LANDMARKS[0].name, reason: 'cap'}]]) {
     r = dmAct(t, a); ok(r.ok === false && /pulled \d+ levers today/.test(r.error), t + ' past DMA.PULLS_PER_DAY is refused: ' + r.error.slice(0, 80));}
   S.dmAgent.day.pulls = 0;
+  // issue #467: the place shapes a local model sends ({"x":..} objects, stringified or not, [x,y], "Town,dx,dy") land a marker
+  {const gate = (CITY.find(c => c.name === hall) || CITY[0]).gate, tn = (CITY.find(c => c.name === hall) || CITY[0]).name, sx = Math.round(spot.x), sy = Math.round(spot.y);
+    const fresh = () => {S.dmAgent.day.pulls = 0; S.levers.cd = {}; S.levers.day.n.mark_place = 0; S.levers.day.n.create_npc = 0; S.levers.day.nf = {}; S.levers.day.rz = {}};
+    const shapes = [{x: sx, y: sy}, JSON.stringify({x: sx, y: sy}), `[${sx}, ${sy}]`, `(${sx},${sy})`, `${tn},${+(sx - gate.x).toFixed(1)},${+(sy - gate.y).toFixed(1)}`, `${tn}, ${+(sx - gate.x).toFixed(1)}, ${+(sy - gate.y).toFixed(1)}`];
+    for (const near of shapes) {fresh(); r = dmAct('mark_place', {kind: 'cairn_door', near, reason: 'a shape test'});
+      const p = r.ok && S.places.find(q => q.id === r.effect.place);
+      ok(r.ok && p && Math.hypot(p.x - sx, p.y - sy) < 4.5, 'mark_place near ' + JSON.stringify(near) + ' lands by ' + sx + ',' + sy + (r.ok ? ' (at ' + r.at.x + ',' + r.at.y + ')' : ': ' + r.error));
+      if (p) S.places = S.places.filter(q => q !== p)}
+    fresh(); r = dmAct('place_person', {role: 'hermit', near: {x: sx, y: sy}, reason: 'a shape test'});
+    ok(r.ok && Math.hypot(r.at.x - sx, r.at.y - sy) < 6, 'place_person takes a point object too' + (r.ok ? '' : ': ' + r.error));
+    if (r.ok) {S.wanderers = S.wanderers.filter(x => x.id !== r.npc); S.levers.active = S.levers.active.filter(x => x.id !== r.id)} // later checks count the active people
+    fresh(); r = dmAct('mark_place', {kind: 'ruin', near: tn + ',20,-15', reason: 'the live shape'});
+    ok(r.ok || /no open ground/.test(r.error), '"' + tn + ',20,-15" is read as a spot off ' + tn + ' (kept on the map), not an unknown place: ' + (r.ok ? 'at ' + r.at.x + ',' + r.at.y : r.error.slice(0, 100)));
+    if (r.ok) S.places = S.places.filter(q => q.id !== r.effect.place);
+    fresh(); r = dmAct('mark_place', {kind: 'ruin', near: '{"x":-5,"y":0}', reason: 'an offset with no town'});
+    ok(r.ok === false && /no open ground at -5,0/.test(r.error) && /<town>,dx,dy/.test(r.error), 'a point off the map says how to write an offset: ' + r.error.slice(0, 140));
+    fresh(); r = dmAct('mark_place', {kind: 'ruin', near: tn + ',400,400', reason: 'far off'});
+    ok(r.ok === false && /off the map as an offset from/.test(r.error), 'an offset far past the edge is refused with the map size: ' + r.error.slice(0, 120));
+    fresh()}
   ok(nums() === n1, 'no hero\'s level, XP or life changed through the flat tools');
 }
 
