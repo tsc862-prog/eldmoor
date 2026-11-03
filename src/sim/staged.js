@@ -87,7 +87,8 @@ const NARRATOR={kind:'dm',name:'The Narrator'}; // the same stub sim/dmagent.js 
 const DAY=1440;
 const gd=t=>({t,c:'gd'});
 // Private LCG for flavour and spots: the gameplay RNG only rolls the dice of the scene itself.
-let seed=0x51a6ed13;const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+const SEED0=0x51a6ed13;let seed=SEED0;export const resetStagedSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
+const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 const pickR=a=>a[Math.floor(r()*a.length)];
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f<>{}]+/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
