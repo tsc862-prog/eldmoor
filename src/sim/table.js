@@ -107,7 +107,7 @@ const COMBAT={elite:1,ambush:1,boss:1,rescue:1};
 // (combat rounds, the Crypt's chambers). 'all': everyone present answers at once, resolved in slot order. A kind
 // not listed plays in turns.
 export const PLAY={elite:'turns',ambush:'turns',boss:'turns',rescue:'turns',site:'turns',room:'turns',crawl:'turns',
-  decision:'all',check:'all',choice:'all',meeting:'all',social:'all',trap:'all',mystery:'all'};
+  decision:'all',check:'all',choice:'all',meeting:'all',social:'all',trap:'all',mystery:'all',talk:'all'}; // talk: a conversation turned decision (#407, sim/talkscene.js)
 const together=sc=>!!sc&&sc.all===true;
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
 const byId=id=>S.agents.find(x=>x.id==id)||null;
