@@ -112,6 +112,31 @@ if (process.argv[2] === '--ffbounty') {
   console.log('FFB ' + JSON.stringify(out)); process.exit(0);
 }
 
+// ---- solo-sized jobs child (issue #447): boards keep one job for a single hero while an agent solo exists ----
+if (process.argv[2] === '--solo') {
+  const withSolo = process.argv[3] !== 'none', lvl = Number(process.argv[4]) || 6;
+  init({fellowship: false}); run(60);
+  const DM = await import('../src/sim/dm.js'), {CITY, REGIONS} = await import('../src/world/map.js'), {markPlayer} = await import('../src/sim/player.js');
+  const {soloFor} = await import('../src/sim/company.js'), ADV = await import('../src/data/adventures.js');
+  const out = {};
+  let solo = null;
+  if (withSolo) {
+    solo = S.agents.find(a => a.kind === 'hero' && a.fac === 0 && a.state !== 'dead' && !a.party && !a.company);
+    solo.lvl = lvl; solo.adv = null; markPlayer(solo, true); out.company = !!soloFor(solo);
+  }
+  S.adventures = []; S.dmHookT = 0; DM.dmTick(1);
+  const open = S.adventures.filter(h => h.phase === 'open'), mine = CITY.filter(c => solo && c.fac === solo.fac);
+  const soloJobs = open.filter(h => h.solo);
+  out.total = soloJobs.length; out.boards = mine.length > 0 && mine.every(c => soloJobs.some(h => h.town === c.name));
+  out.otherFac = soloJobs.some(h => !mine.some(c => c.name === h.town));
+  out.solos = soloJobs.every(h => ADV.ADVENTURES[h.tpl].size[0] <= 1);
+  out.band = soloJobs.every(h => ADV.ADVENTURES[h.tpl].lvl <= lvl && (h.zone == null || REGIONS[h.zone].band[0] <= lvl));
+  out.fits = solo ? soloJobs.every(h => DM.fitsJob(h, solo)) : null;
+  out.payMul = soloJobs.length ? soloJobs.every(h => h.data.payMul === DM.K.SOLO_PAY && DM.K.SOLO_PAY < 1) : null;
+  const n1 = soloJobs.length; S.dmHookT = 0; DM.dmTick(1); out.again = S.adventures.filter(h => h.phase === 'open' && h.solo).length === n1;
+  console.log('SOLO ' + JSON.stringify(out)); process.exit(0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 console.log('\nEldmoor dmcheck: the DM as an agent, part 1 (mock agents)\n');
@@ -323,6 +348,25 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
   for (const [t, a] of [['post_hook', {town: hall, tpl: 'deliver', reason: 'cap'}], ['place_person', {role: 'peddler', near: hall, reason: 'cap'}], ['mark_place', {kind: 'cairn_door', near: LANDMARKS[0].name, reason: 'cap'}]]) {
     r = dmAct(t, a); ok(r.ok === false && /pulled \d+ levers today/.test(r.error), t + ' past DMA.PULLS_PER_DAY is refused: ' + r.error.slice(0, 80));}
   S.dmAgent.day.pulls = 0;
+  // issue #467: the place shapes a local model sends ({"x":..} objects, stringified or not, [x,y], "Town,dx,dy") land a marker
+  {const gate = (CITY.find(c => c.name === hall) || CITY[0]).gate, tn = (CITY.find(c => c.name === hall) || CITY[0]).name, sx = Math.round(spot.x), sy = Math.round(spot.y);
+    const fresh = () => {S.dmAgent.day.pulls = 0; S.levers.cd = {}; S.levers.day.n.mark_place = 0; S.levers.day.n.create_npc = 0; S.levers.day.nf = {}; S.levers.day.rz = {}};
+    const shapes = [{x: sx, y: sy}, JSON.stringify({x: sx, y: sy}), `[${sx}, ${sy}]`, `(${sx},${sy})`, `${tn},${+(sx - gate.x).toFixed(1)},${+(sy - gate.y).toFixed(1)}`, `${tn}, ${+(sx - gate.x).toFixed(1)}, ${+(sy - gate.y).toFixed(1)}`];
+    for (const near of shapes) {fresh(); r = dmAct('mark_place', {kind: 'cairn_door', near, reason: 'a shape test'});
+      const p = r.ok && S.places.find(q => q.id === r.effect.place);
+      ok(r.ok && p && Math.hypot(p.x - sx, p.y - sy) < 4.5, 'mark_place near ' + JSON.stringify(near) + ' lands by ' + sx + ',' + sy + (r.ok ? ' (at ' + r.at.x + ',' + r.at.y + ')' : ': ' + r.error));
+      if (p) S.places = S.places.filter(q => q !== p)}
+    fresh(); r = dmAct('place_person', {role: 'hermit', near: {x: sx, y: sy}, reason: 'a shape test'});
+    ok(r.ok && Math.hypot(r.at.x - sx, r.at.y - sy) < 6, 'place_person takes a point object too' + (r.ok ? '' : ': ' + r.error));
+    if (r.ok) {S.wanderers = S.wanderers.filter(x => x.id !== r.npc); S.levers.active = S.levers.active.filter(x => x.id !== r.id)} // later checks count the active people
+    fresh(); r = dmAct('mark_place', {kind: 'ruin', near: tn + ',20,-15', reason: 'the live shape'});
+    ok(r.ok || /no open ground/.test(r.error), '"' + tn + ',20,-15" is read as a spot off ' + tn + ' (kept on the map), not an unknown place: ' + (r.ok ? 'at ' + r.at.x + ',' + r.at.y : r.error.slice(0, 100)));
+    if (r.ok) S.places = S.places.filter(q => q.id !== r.effect.place);
+    fresh(); r = dmAct('mark_place', {kind: 'ruin', near: '{"x":-5,"y":0}', reason: 'an offset with no town'});
+    ok(r.ok === false && /no open ground at -5,0/.test(r.error) && /<town>,dx,dy/.test(r.error), 'a point off the map says how to write an offset: ' + r.error.slice(0, 140));
+    fresh(); r = dmAct('mark_place', {kind: 'ruin', near: tn + ',400,400', reason: 'far off'});
+    ok(r.ok === false && /off the map as an offset from/.test(r.error), 'an offset far past the edge is refused with the map size: ' + r.error.slice(0, 120));
+    fresh()}
   ok(nums() === n1, 'no hero\'s level, XP or life changed through the flat tools');
 }
 
@@ -595,6 +639,18 @@ console.log('the Fellowship first');
     'with a Fellowship, most DM actions concern it (pooled over seeds 66, 1, 2): ' + fel + ' of ' + acts + ' (' + Math.round(share * 100) + '%); ' + parsed.map(p => p.st ? 'seed ' + p.sd + ' ' + p.st.fellow + '/' + p.st.acts + ' (' + Math.round(p.st.share * 100) + '%)' : 'seed ' + p.sd + ' ' + p.line).join(', '));
   const run1 = runs[0].r, run2 = focusRun(66);
   ok((run2.stdout || '').trim() === (run1.stdout || '').trim(), 'the scripted DM is deterministic under the same seed (same actions, same share)');
+}
+
+{ // solo-sized jobs (issue #447): only while an agent solo exists, band-checked, paid less
+  const soloRun = a => spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--solo', ...a], {cwd: ROOT, encoding: 'utf8'});
+  const get = a => {const r = soloRun(a), l = (r.stdout || '').trim().split(/\r?\n/).pop(), m2 = /^SOLO (\{.*\})$/.exec(l); return m2 ? JSON.parse(m2[1]) : {err: l || (r.stderr || '').slice(-300)}};
+  const s6 = get(['solo', '6']), s4 = get(['solo', '4']), none = get(['none']), low = get(['solo', '2']);
+  ok(!s6.err && s6.company && s6.total >= 1 && s6.boards, 'with an agent company of one, every board of its faction keeps a solo-sized job (' + JSON.stringify(s6) + ')');
+  ok(!s6.otherFac && s6.solos && s6.again, 'solo jobs stay on the faction boards of the solo, size 1, and are not posted twice');
+  ok(s6.band && s6.fits && s4.band && s4.fits, 'a solo never sees a job above its level (level 6 and level 4), and every posted solo job fits it');
+  ok(s6.payMul === true, 'solo pay is lower: the job carries a payMul below 1 (a party of five is paid per head at the template rate)');
+  ok(!none.err && none.total === 0, 'with no agent solo in the world, no solo job is posted (the together world is untouched)');
+  ok(!low.err && low.total === 0, 'a solo below the adventure level (MIN_LVL) is offered none');
 }
 
 { // a bounty in the Fellowship's region: the scripted DM makes it their job first (issue #325)

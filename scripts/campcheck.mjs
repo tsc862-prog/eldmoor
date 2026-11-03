@@ -144,6 +144,79 @@ CAMPM.CAMP.AMBUSH_P = ambushP;
 ok(!S.fellowship.camp.phase && S.gameMin - t0 < 90 && S.gameMin - t0 >= 50, 'a one-hour rest ends on time (' + Math.round(S.gameMin - t0) + ' game min)');
 ok(M.every(a => a.playEv.some(e => /Camp is broken/.test(e.text))), 'wake event after a timed rest too');
 ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused with no camp');
+
+// ---- #439 (epic #402): council, reach and camp for a company of any size; solo rules ----
+{const CM = await import('../src/sim/company.js'), RL = await import('../src/sim/runlink.js'), {dist} = await import('../src/world/map.js');
+  ({L: M, lead: LD} = gather());
+  const F = S.fellowship, act = (a, t, x) => P_.playerAct(a.id, t, x || {});
+  const free = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && a.fac === F.fac && !CM.companyOf(a) && !a.player && !a.hidden && !a.raid);
+  const [A, B, Z] = free;
+  ok(A && B && Z, 'three free heroes of the faction for a pair and a solo');
+  const field = (L, at) => {for (const a of L) {if (a.party) SIM.leaveParty ? SIM.leaveParty(a) : null; a.x = at.x; a.y = at.y; a.state = 'hunt'; a.adv = null; a.dest = null; a.target = null; a.pq = []; a.hp = Math.round(a.maxhp || a.hp); a.splitUntil = 0; a.player = true; a.playEv = []}};
+  field([A, B, Z], LD); A.lvl = Math.max(A.lvl, B.lvl + 1); // A leads the pair (highest level, no party)
+  const pair = CM.foundCompany([A, B]).company, solo = CM.foundCompany([Z]).company;
+  ok(pair && solo && pair.ids.length === 2 && CM.isSolo(solo), 'a company of two and a company of one');
+  ok(CO.leaderOfC(pair) === A && CO.leaderFor(Z) === Z, 'the pair\'s leader is its highest level; a solo leads itself');
+  // a company of 2 votes; the leader breaks the tie
+  RL.setRunnerLinks(a => 'connected'); // live agents: votes wait for them
+  let P = CO.propose(A, 'other', 'Cross the river at dawn', {vote: 'yes'});
+  ok(P && P.id && P.status === 'open' && CO.voters(P).length === 2 && CO.openProps(pair).includes(P) && !CO.openProps(F).includes(P), 'the pair\'s proposal is theirs alone (#' + P.id + ')');
+  ok(!S.table, 'no Table scene opens for another company\'s vote (the table per company is #440)');
+  ok(Object.keys(F.props || {}).length === 0 || !(F.props || []).some(Q => Q.id === P.id), 'proposal ids are unique across companies');
+  let r = act(M[0], 'vote', {proposal_id: P.id, vote: 'no'});
+  ok(!r.ok && /No proposal/.test(r.error), 'a Fellowship member cannot vote on another company\'s proposal: ' + r.error);
+  r = act(B, 'vote', {proposal_id: P.id, vote: 'no', reason: 'too cold'});
+  ok(r.ok && P.status === 'passed' && /1-1, .*breaking the tie/.test(P.result) && P.result.includes(A.name), 'a company of 2 votes and the leader breaks the tie: ' + P.result);
+  ok(pair.log.some(e => e.kind === 'council'), 'the vote is in the pair\'s own campaign log');
+  P = CO.propose(B, 'other', 'Rest a day', {vote: 'yes'}); act(A, 'vote', {proposal_id: P.id, vote: 'no'});
+  ok(P.status === 'failed' && /1-1/.test(P.result), 'the leader\'s no breaks a tie the other way: ' + P.result);
+  // a solo cannot propose; it decides
+  for (const k of ['job', 'crypt', 'split', 'other']) {const x = CO.propose(Z, k, 'x'); ok(x === CO.SOLO, 'a solo\'s ' + k + ' proposal is refused: ' + x)}
+  r = act(Z, 'propose', {kind: 'job', details: 'the wolves'});
+  ok(!r.ok && /You ride alone: decide and act/.test(r.error), 'the propose tool tells a solo to decide: ' + r.error);
+  r = act(Z, 'vote', {proposal_id: 1, vote: 'yes'});
+  ok(!r.ok && /You ride alone/.test(r.error), 'a solo has nothing to vote on');
+  ok(act(Z, 'send_courier', {to: A.name, text: 'hello'}).ok === false, 'a solo has no companion to send a courier to');
+  // reach: the pair's shout is their channel; the Fellowship member beside them does not hear it as party talk
+  M[0].x = A.x; M[0].y = A.y; M[0].chat = []; B.chat = [];
+  CO.partySay(A, 'Keep close.');
+  ok((B.chat || []).some(e => e.party && e.text === 'Keep close.') && (M[0].chat || []).every(e => !e.party || e.heard.indexOf(M[0].name) < 0), 'party_say is the company\'s channel; a stranger in earshot only overhears');
+  B.x = A.x + 40; B.y = A.y; ok(CO.shoutHearers(A).far.includes(B), 'out of range: the pair is apart'); B.x = A.x; B.y = A.y;
+  // two companies camp at once, in the same place: two fires
+  const ambushP2 = CAMPM.CAMP.AMBUSH_P; CAMPM.CAMP.AMBUSH_P = -1;
+  ok(CAMPM.leaderRest(LD, 4) === null, 'the Fellowship makes camp');
+  ok(CAMPM.leaderRest(B, 2) !== null && CAMPM.leaderRest(A, 2) === null, 'the pair makes its own camp (its leader calls it) beside them');
+  for (let i = 0; i < 40 && !(F.camp.phase === 'rest' && pair.camp.phase === 'rest'); i++) run(10);
+  ok(F.camp.phase === 'rest' && pair.camp.phase === 'rest' && F.camp !== pair.camp && pair.camp.ids.length === 2 && dist(F.camp, pair.camp) < 3, 'two companies in one place each light their own fire');
+  ok(M.every(a => a.state === 'camp') && A.state === 'camp' && B.state === 'camp' && CAMPM.campOf(A) === pair.camp && CAMPM.campOf(M[0]) === F.camp, 'each sleeper belongs to its own camp');
+  ok(CAMPM.minCamp(F) === 3 && CAMPM.minCamp(pair) === 2 && CAMPM.minCamp(solo) === 1, 'MIN_CAMP is min(3, the company\'s places)');
+  ok(CAMPM.leaderBreak(A) === null && !pair.camp.phase && F.camp.phase === 'rest' && M.every(a => a.state === 'camp'), 'the pair breaks its camp; the Fellowship sleeps on');
+  ok(CAMPM.leaderBreak(LD) === null && !F.camp.phase, 'then the Fellowship breaks its own');
+  // a one-person camp: slower mending, sleeps every other watch, an ambush in its sleep finds it unroused
+  Z.x = LD.x; Z.y = LD.y; Z.state = 'hunt';
+  r = act(Z, 'rest', {hours: 3});
+  ok(r.ok && solo.camp && solo.camp.phase && solo.camp.solo === 1, 'rest {hours} makes a solo camp: ' + JSON.stringify(r));
+  for (let i = 0; i < 40 && solo.camp.phase !== 'rest'; i++) run(10);
+  const mh = SIM.maxHp ? SIM.maxHp(Z) : Z.maxhp; Z.hp = Math.round(mh * .2); const h0 = Z.hp; step(1 / 60);
+  const got = Z.hp - h0, want = mh * CAMPM.CAMP.CAMP_HEAL * CAMPM.CAMP.SOLO_HEAL / 60;
+  ok(Math.abs(got - want) < 1e-6, 'a one-person camp heals at SOLO_HEAL of CAMP_HEAL (' + got.toFixed(3) + ' vs ' + want.toFixed(3) + ' a tick)');
+  const g = solo.camp;
+  ok(g.watcher === Z.id && !CAMPM.asleep(Z) && /keeps watch alone/.test(solo.log[0] && solo.log[0].parts.map(p => p.name || p).join('') || ''), 'first watch: the solo keeps it itself');
+  g.restAt = S.gameMin - CAMPM.CAMP.WATCH_MIN - 1; run(1);
+  ok(g.watchIdx % 2 === 1 && CAMPM.asleep(Z) && CAMPM.campView(Z).asleep, 'second watch: the solo sleeps, no one watching');
+  r = act(Z, 'move_to', {target: 'home'});
+  ok(!r.ok && /camped alone .*break_camp to move on now/.test(r.error), 'a camped solo is told to break_camp: ' + r.error);
+  CAMPM.CAMP.AMBUSH_P = 2; g.nextRoll = S.gameMin; const c0 = g.stats.caught; Z.hp = mh; step(1 / 60);
+  ok(g.stats.caught === c0 + 1 && !g.phase, 'an ambush on the sleeping solo finds it unroused (the same Perception roll, no dice added)');
+  CAMPM.CAMP.AMBUSH_P = ambushP2; for (const m of S.mobs) if (m.target === Z) m.target = null; Z.state = 'hunt'; Z.target = null;
+  // break_camp works for a solo leader
+  Z.hp = mh; ok(act(Z, 'rest', {hours: 2}).ok, 'a second solo camp');
+  CAMPM.CAMP.AMBUSH_P = -1; for (let i = 0; i < 40 && solo.camp.phase !== 'rest'; i++) run(10); CAMPM.CAMP.AMBUSH_P = ambushP2;
+  r = act(Z, 'break_camp');
+  ok(r.ok && r.broke_camp && !solo.camp.phase && Z.state !== 'camp', 'break_camp works for a solo leader: ' + JSON.stringify(r));
+  RL.setRunnerLinks(null);
+  for (const a of [A, B, Z]) {CM.leaveCompany(a); a.player = false}
+  ok(!CM.companyById(pair.id) && !CM.companyById(solo.id), 'test companies dissolved');}
 for (const a of M) a.player = false;
 console.log(fail ? fail + ' check(s) FAILED' : 'campcheck passed');
 process.exit(fail ? 1 : 0);
