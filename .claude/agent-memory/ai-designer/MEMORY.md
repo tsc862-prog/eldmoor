@@ -65,3 +65,4 @@
 - [Fold Fellowship #588](fold_fellowship.md) — slot model in company.js (slots option); shims and fellowship.js deleted, rulescheck guards; SLT in scripts
 - [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut
 - [Talk setting #431](talk_setting.md) — talk scenes open on tavern/chapel/smithy/gate by where the person stands; field keeps the cut
+- [Gambits #617](gambits.md) — per-hero rules run by autopilot/fight reflex; presets = old policy rule for rule; hashcheck autopilot row guards it

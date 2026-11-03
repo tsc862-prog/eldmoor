@@ -3,7 +3,7 @@
 // origin/main) into a temp dir (never a worktree), runs the same probes there and compares.
 // Usage: npm run hashcheck [-- --against origin/main] [--md FILE] [--json FILE] [--only a,b] [--no-compare]
 // Exit: 0 all equal (or no comparison), 2 at least one hash moved, 1 a probe failed to run.
-// Probes that need no flag of their own live in this file (company, world); the rest call the check scripts' own
+// Probes that need no flag of their own live in this file (company, world, autopilot); the rest call the check scripts' own
 // hash modes (professioncheck --hash, tablecheck --hash/--hash-talk, crawlcheck --hash, dmcheck --hash, focuscheck --hash).
 // This file is copied into the extracted base, so both sides run the same probe code against their own src/.
 import {spawn, spawnSync} from 'node:child_process';
@@ -33,6 +33,19 @@ if (argv[0] === '--child') {
     for (const a of SIM.S.agents) feed([a.id, a.lvl, a.xp, a.kills, a.gold, a.state, a.x.toFixed(2), a.y.toFixed(2), a.hp.toFixed(1)].join(','));
     console.log('HASH ' + h); process.exit(0);
   }
+  if (which === 'autopilot') { // agent heroes left on autopilot (#617: their gambit presets must play exactly as the old fixed policy)
+    const SIM = await imp('../src/sim/index.js'), P = await imp('../src/sim/player.js');
+    let h = 5381; const feed = s => {for (let i = 0; i < s.length; i++) h = (Math.imul(h, 33) ^ s.charCodeAt(i)) >>> 0};
+    for (const fellowship of [false, true]) {
+      SIM.init({fellowship}); for (let i = 0; i < 60 * 20; i++) SIM.step(1 / 60);
+      const pick = SIM.S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.player).sort((x, y) => x.id - y.id).filter((a, i) => i % 3 === 0).slice(0, 12);
+      for (const a of pick) {P.markPlayer(a, true); a.playActAt = SIM.S.gameMin - 200}
+      pick[0].playOrder = {kind: 'hunt', n: 4};
+      for (let i = 0; i < 300 * 60; i++) {SIM.step(1 / 60); if (i % 600 === 0) for (const a of pick) feed([a.id, a.state, a.x.toFixed(2), a.y.toFixed(2), Math.round(a.hp), a.pq && a.pq[0] ? a.pq[0].kind + (a.pq[0].auto || '') : '-'].join(','))}
+      for (const a of SIM.S.agents) feed([a.id, a.lvl, a.xp, a.kills, a.gold, a.state, a.x.toFixed(2), a.y.toFixed(2), a.hp.toFixed(1)].join(','));
+    }
+    console.log('HASH ' + h); process.exit(0);
+  }
   console.error('unknown child ' + which); process.exit(1);
 }
 
@@ -48,6 +61,7 @@ const PROBES = [
     const l = out.split(/\r?\n/).find(x => x.startsWith('{')); if (!l) return null;
     try {const j = JSON.parse(l); return 'hash ' + j.hash + ' guilds ' + j.guilds + ' focused ' + j.focused} catch { return null }}},
   {id: 'companycheck (no company)', args: ['scripts/hashcheck.mjs', '--child', 'company'], read: lines(/^HASH /)},
+  {id: 'autopilot (agent heroes, #617)', args: ['scripts/hashcheck.mjs', '--child', 'autopilot'], read: lines(/^HASH /)},
   {id: 'worldcheck (Eldmoor map)', args: ['scripts/hashcheck.mjs', '--child', 'world'], read: lines(/^HASH /)},
 ];
 const only = opt('--only') ? opt('--only').split(',') : null;
