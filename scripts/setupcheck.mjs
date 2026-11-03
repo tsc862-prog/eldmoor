@@ -8,7 +8,7 @@
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {init, S, validateSetup, defaultSetup, applyPreset, cleanSetup, fellowshipMembers, snapshot} from '../src/sim/index.js';
-import {asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION} from '../src/sim/setup.js';
+import {seatCap, seatNote, asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION} from '../src/sim/setup.js';
 import {companies, members} from '../src/sim/company.js';
 import {CITY, REGIONS} from '../src/world/map.js';
 
@@ -69,7 +69,13 @@ bad(t => t.heroes[D1].archetype = 'jester', 'an unknown archetype (#295)');
 bad(t => t.heroes[D2].fac = 0, 'together needs one faction', /one faction/);
 bad(t => t.heroes.pop(), 'together rides as the five for now (four heroes refused)', /Together/);
 bad(t => t.heroes = [], 'at least one hero', /at least one/);
-bad(t => {t.mode = 'apart'; t.heroes.push({cls: 'Mage', fac: 1, mind: t.heroes[0].mind})}, 'at most five heroes for now', /At most 5/);
+bad(t => {t.mode = 'apart'; t.heroes.push({cls: 'Mage', fac: 1, mind: t.heroes[0].mind})}, 'a sixth paid-mind hero (seat cap, #455)', /Seats full: 6 heroes, but only 5/);
+{const loc=(n,mixed)=>{const t=JSON.parse(JSON.stringify(s));t.mode='apart';t.heroes=Array.from({length:n},(_,i)=>({cls:'Mage',fac:1,name:'Loc'+String.fromCharCode(97+i),mind:{mode:'agent',provider:'ollama',model:'qwen2.5:14b'}}));if(mixed)t.heroes[0].mind={mode:'agent',provider:'openai',model:'gpt-6-luna'};return t};
+ ok(validateSetup(loc(10)).length===0,'ten local-mind heroes are accepted: '+validateSetup(loc(10)).join(' | '));
+ ok(seatCap(loc(10))===10&&seatNote(loc(10))!==''&&seatNote(loc(5))==='','the turn-time warning shows past five local minds only');
+ ok(validateSetup(loc(11)).some(m=>/At most 10/.test(m)),'eleven heroes are refused');
+ ok(validateSetup(loc(6,true)).some(m=>/Seats full/.test(m)),'ten-seat cap needs every mind local: six with one OpenAI is refused');
+ ok(validateSetup(loc(5,true)).length===0,'five with one paid mind is fine')}
 bad(t => t.mode = 'scattered', 'an unknown mode');
 bad(t => {t.mode = 'apart'; t.heroes[D3].cls = 'Necromancer'}, 'an unknown class', /pick a class/);
 bad(t => {t.mode = 'apart'; t.heroes[T].start = {town: 'Highgate'}}, 'a start town of the other faction', /not a town of/);
