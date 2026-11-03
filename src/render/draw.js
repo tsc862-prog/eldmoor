@@ -122,7 +122,7 @@ export function createRenderer(cv,screenEl){
 
   let blink=0;
   function draw(){
-    trackCrawl();sceneTick(cam);if(dungeonOpen()){drawDungeon(performance.now()/1000);return} // the dungeon view covers the world; skip drawing it
+    trackCrawl();sceneTick(cam);if(dungeonOpen()){drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
     if(drawSceneView(performance.now()/1000))return; // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);

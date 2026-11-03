@@ -701,7 +701,8 @@ button.tbtn.danger{border-color:var(--red)}
 .dgview{position:absolute;inset:0;background:#06060b;cursor:default;display:flex;flex-direction:column;justify-content:flex-end}
 .dgview[hidden]{display:none}
 .dgview .dgcv{position:absolute;inset:0;width:100%;height:100%}
-.screen.dgopen .minimap,.screen.dgopen .hint{display:none}
+.screen.dgopen .hint{display:none}
+.screen.dgopen .minimap{bottom:calc(var(--dgbar,70px) + 10px);opacity:.85}
 .dgbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:5px 8px;background:rgba(8,10,20,.88);border-top:2px solid var(--edge)}
 .dgback{font-family:var(--px);font-size:8px;padding:5px 8px;min-height:26px;background:#1a1d2c;color:var(--gold);border:1px solid var(--gold);cursor:pointer}
 .dgback:focus-visible,.dglink:focus-visible{outline:2px solid var(--gold)}
@@ -715,6 +716,21 @@ button.tbtn.danger{border-color:var(--red)}
 .dgroom.boss:not(.cleared):not(.current){color:#ffb060}
 .dglink{font-family:var(--px);font-size:7px;padding:3px 6px;margin-left:4px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer;vertical-align:middle}
 .tbanner .tdg{margin-left:6px;color:#9ae0b8;border-color:#3a5a4a}
+.dghbtn{font-family:var(--px);font-size:7px;padding:5px 7px;min-height:26px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer}
+.dghbtn[aria-expanded=true]{color:var(--gold);border-color:var(--gold)}
+.dghbtn:focus-visible,.dgroom:focus-visible,.dgx:focus-visible{outline:2px solid var(--gold)}
+.dgroom{cursor:pointer}.dgroom.pinned{text-decoration:underline;text-underline-offset:3px}
+.dgtip,.dgpin,.dghist{position:absolute;z-index:2;max-width:min(290px,70%);background:rgba(8,10,20,.94);border:2px solid var(--edge);padding:6px 9px;font-size:16px;line-height:1.12;color:#e8e4d0;box-shadow:2px 2px 0 #05060c}
+.dgtip[hidden],.dgpin[hidden],.dghist[hidden]{display:none}
+.dgtip{pointer-events:none;z-index:3}
+.dgpin{left:8px;top:calc(var(--dgtop,8px) + 4px);border-color:var(--gold)}
+.dghist{right:8px;top:calc(var(--dgtop,8px) + 4px);max-height:55%;overflow:auto;border-color:#3a5a4a}
+.dgdt{font-family:var(--px);font-size:8px;color:#9ae0b8;margin-bottom:3px;line-height:1.35}
+.dgdk{color:var(--gold);margin-bottom:3px}.dgdf{color:var(--dim);margin-bottom:3px;font-style:italic}
+.dgdh{font-family:var(--px);font-size:7px;line-height:1.5;color:var(--dim);margin:5px 0 2px}
+.dgdl{padding-left:6px;border-left:2px solid #2a3040;margin-bottom:1px}
+.dgx{position:absolute;right:3px;top:3px;width:22px;height:22px;font-family:var(--px);font-size:8px;background:#1a1d2c;color:var(--dim);border:1px solid var(--edge);cursor:pointer}
+.dgpin{padding-right:30px}
 @media (max-width:600px){.dgrooms{display:none}.dgtxt{font-size:14px;flex-basis:160px}}
 /* The scene view (#431, render/sceneview.js): an indoor setting like the dungeon view; outdoors only the bar, the world shows through */
 .tbanner .tscn{pointer-events:auto;font-family:var(--px);font-size:7px;padding:4px 6px;min-height:22px;margin-left:6px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer}
