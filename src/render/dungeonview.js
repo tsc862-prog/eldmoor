@@ -16,6 +16,7 @@
 import {CRYPT,LANDMARKS} from '../world/map.js';
 import {buildInterior} from '../world/interior.js';
 import {S} from '../sim/state.js';
+import {companyById} from '../sim/company.js';
 import {drawInterior} from './interior.js';
 import {foeKind,foeAt} from './dgfoes.js';
 import {T} from '../world/tiles.js';
@@ -25,12 +26,16 @@ let root=null,cv=null,ctx=null,nameEl=null,statEl=null,listEl=null,tipEl=null,pi
 let fit=null,hov={room:-1,foe:null,x:0,y:0},pin=-1,histOpen=false,tipSig='',topPx=-1,barPx=-1; // fit: where the last frame put the interior (for pointer maths)
 const roomsOf=s=>(s&&s.rooms)||[];
 const live=s=>!!(CRYPT&&s&&s.name===CRYPT.name);
-const who=g=>g.name||(g.guild?'<'+g.guild.tag+'> '+g.guild.name:'A group');
+const who=(g,cr)=>{const C=coOf(cr||g.crawl);return g.name||(C&&C.name)||whoG(g)};
+const whoG=g=>g.name||(g.guild?'<'+g.guild.tag+'> '+g.guild.name:'A group');
 
 // ---- how the last crawl ended (the sim clears CRYPT.group at once; S.fellowship.crawl keeps counts only) ----
 const KINDS=['clears','driven','withdrawn','wipes'],END={clears:'clear',driven:'driven',withdrawn:'withdrawn',wipes:'wiped'};
 const lastRun={};let watch=null;
-const tallyNow=()=>{const C=S.fellowship&&S.fellowship.crawl;return KINDS.map(k=>C?C[k]||0:0)};
+// The company in a group's live crawl (#441: cr.co); a crawl with none (older, or the abstract roll) reads as the Fellowship's.
+const coOf=cr=>cr&&cr.co!=null?companyById(cr.co):null;
+const crewOf=(g,cr)=>{const C=coOf(cr);return C&&C.ids?g.mem.filter(a=>C.ids.includes(a.id)):g.mem};
+const tallyNow=co=>{const H=co||S.fellowship,C=H&&H.crawl;return KINDS.map(k=>C?C[k]||0:0)};
 // Every crawl this page has seen, newest last (session memory): {site, who, day, party:[{name,cls}], rooms:{i:{rounds, result}},
 // falls:[{name,cls,room}], reached, end}. Filled from the live crawl each frame, so a page opened mid-crawl has the rest.
 const runs=[];let cur=null;
@@ -44,10 +49,10 @@ function closeRun(end){if(!cur)return;cur.end=end||'ended';
   else for(let j=0;j<cur.reached;j++){const q=cur.rooms[j]||(cur.rooms[j]={rounds:0,result:''});if(!q.result)q.result='cleared'}
   runs.push(cur);if(runs.length>24)runs.shift();cur=null}
 export function trackCrawl(){const g=CRYPT&&CRYPT.group,cr=g&&g.crawl;
-  if(cr){watch={name:CRYPT.name,i:cr.i,end:cr.end,driven:!!cr.driven,tally:watch&&watch.name===CRYPT.name&&watch.tally||tallyNow(),who:who(g),day:Math.floor(S.gameMin/1440)+1};
-    if(!cur||cur.site!==CRYPT.name)cur={site:CRYPT.name,who:watch.who,day:watch.day,party:g.mem.map(a=>({name:a.name,cls:a.cls})),rooms:{},falls:[],fell:{},reached:0,end:null};
+  if(cr){watch={name:CRYPT.name,i:cr.i,end:cr.end,driven:!!cr.driven,co:coOf(cr),tally:watch&&watch.name===CRYPT.name&&watch.tally||tallyNow(coOf(cr)),who:who(g),day:Math.floor(S.gameMin/1440)+1};
+    if(!cur||cur.site!==CRYPT.name)cur={site:CRYPT.name,who:watch.who,day:watch.day,party:crewOf(g,cr).map(a=>({name:a.name,cls:a.cls})),rooms:{},falls:[],fell:{},reached:0,end:null};
     noteRun(g,cr);return}
-  if(!watch)return;const now=tallyNow(),k=KINDS.find((_,j)=>now[j]>watch.tally[j]);
+  if(!watch)return;const now=tallyNow(watch.co),k=KINDS.find((_,j)=>now[j]>watch.tally[j]);
   const end=k?END[k]:watch.end==='clear'?'clear':watch.end==='wiped'?'wiped':watch.end==='retreat'?(watch.driven?'driven':'withdrawn'):null;
   if(end)lastRun[watch.name]={end,i:end==='clear'?roomsOf(CRYPT).length:watch.i,who:watch.who,day:watch.day};closeRun(end);watch=null}
 
@@ -60,11 +65,11 @@ function foeSummary(foes){let n=0;for(const f of foes)if(f.hp>0)n++;if(foes===su
 
 // ---- the live state as data ----
 export function stateOf(s=site||CRYPT){const rooms=roomsOf(s),n=rooms.length,g=live(s)?CRYPT.group:null,cr=g&&g.crawl;
-  const st={phase:'empty',fog:-1,cur:-1,round:'',party:[],at:null,busy:false,cleared:rooms.map(()=>false),status:'',rooms:[]};
+  const st={company:'',phase:'empty',fog:-1,cur:-1,round:'',party:[],at:null,busy:false,cleared:rooms.map(()=>false),status:'',rooms:[]};
   const living=a=>a&&a.state!=='dead';
   if(g&&g.phase==='gather'){st.phase='gather';st.status=who(g)+' gather at the mouth ('+g.mem.length+').'}
   else if(g&&!cr){st.phase='roll';st.party=g.mem.filter(living);st.at='stair';st.cur=0;st.status=who(g)+' are inside ('+st.party.length+'); their run is settled by one roll.'}
-  else if(cr){st.party=g.mem.filter(living);st.busy=!!S.table;const room=rooms[cr.i]||{};
+  else if(cr){st.party=crewOf(g,cr).filter(living);st.company=coOf(cr)?coOf(cr).name:'';st.busy=!!S.table;const room=rooms[cr.i]||{};
     if(cr.end==='clear'){st.phase='clear';st.cleared=rooms.map(()=>true);st.cur=-1;st.spot=n-1;st.fog=-1;st.status=who(g)+' cleared every chamber!'}
     else{st.phase=g.tSite?'crawl':'stair';st.fog=cr.i;st.cur=cr.i;for(let i=0;i<cr.i;i++)st.cleared[i]=true;
       if(!g.tSite){st.at='stair';st.status=who(g)+' at the stair: the table decides how they go down.'}
@@ -163,8 +168,8 @@ export function cryptAt(x,y){for(const L of LANDMARKS){const m=L.kind==='crypt'&
 
 // The bar and the room list: patched only when the words change.
 export function refreshDungeon(){if(!root||!open)return null;const st=stateOf(site);
-  const s=st.status+'|'+st.rooms.map(r=>r.state).join(',')+'|'+pin+'|'+histOpen+'|'+(st.foes?st.foes.map(f=>f.hp).join():'')+'|'+runs.length+(cur?cur.reached+':'+cur.falls.length:'');if(s===sig)return st;sig=s;
-  nameEl.textContent=String(site.name||'Dungeon').toUpperCase();statEl.textContent=st.status;
+  const s=st.company+'|'+st.status+'|'+st.rooms.map(r=>r.state).join(',')+'|'+pin+'|'+histOpen+'|'+(st.foes?st.foes.map(f=>f.hp).join():'')+'|'+runs.length+(cur?cur.reached+':'+cur.falls.length:'');if(s===sig)return st;sig=s;
+  nameEl.textContent=String(site.name||'Dungeon').toUpperCase()+(st.company?' · '+st.company.toUpperCase():'');statEl.textContent=st.status;
   const lis=listEl.children;while(lis.length>st.rooms.length)listEl.removeChild(lis[lis.length-1]);
   st.rooms.forEach((r,i)=>{let li=listEl.children[i];if(!li){li=mk('li');listEl.append(li)}
     const label=(st.fog>=0&&i>st.fog?'?':r.name.replace(/^the /i,''))+(r.boss?' ☠':''),word={cleared:'cleared',current:'in progress',unexplored:'not reached yet',lost:'turned back here',room:''}[r.state];

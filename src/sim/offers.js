@@ -18,14 +18,14 @@ import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {tm} from '../data/traits.js';
 import {COMPANION_LINES} from '../data/companions.js';
-import {PARTY,companyOf,members,minds,isSolo,leaveCompany,soloFor,joinCompany,dissolveCompany,linkParty,campaign,LOG_CAP} from './company.js';
+import {PARTY,companyOf,companies,members,minds,isSolo,leaveCompany,soloFor,joinCompany,mergeCompanies,dissolveCompany,linkParty,campaign,LOG_CAP} from './company.js';
 import {leaveParty} from './party.js';
 import {speak,agentLine,sayHearers} from './chat.js';
 import {ev} from './notify.js';
 import {record} from './history.js';
 import {log} from './chronicle.js';
 import {bondEvent} from './bonds.js';
-import {spokenLine,leaderOfC,openProps,COUNCIL} from './council.js';
+import {spokenLine,leaderOfC,openProps,propById,propCompany,setGroupHook,COUNCIL} from './council.js';
 import {bond} from './bonds.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
@@ -55,6 +55,7 @@ export const offersFrom=a=>allOffers().filter(o=>o.from===a.id&&live(o)).sort((x
 function dropOffer(o){for(const C of S.companies||[])if(C.offers){const i=C.offers.indexOf(o);if(i>=0){C.offers.splice(i,1);if(!C.offers.length)delete C.offers;return}}}
 // The company's leader for these verbs: an agent member, never a companion (council.js leaderOfC).
 const lead=C=>leaderOfC(C);
+const nm=C=>C.name||((lead(C)||members(C)[0]||{name:'The'}).name+'’s company');
 const words=C=>C.ids.length>1?C.name+' ('+C.ids.length+')':'you alone';
 // What the hero's runner sees in its state header (sim/pace.js): offers open to it, by id.
 export function offersBrief(a){const L=offersTo(a);if(!L.length)return null;
@@ -250,3 +251,73 @@ export function companionsView(a){const C=companyOf(a);if(!C||isSolo(C)){const r
   const mine=offersFrom(a).map(o=>{const t=hero(o.to);return 'Your offer to '+(t?t.name:'someone')+' stands until '+hhmm(o.until)});if(mine.length)r.your_offers=mine;
   const es=earshot(a);if(es&&es.ok)r.earshot=es;
   return r}
+
+// ---- propose {kind: expel | merge} (#444): the council's two grouping kinds, registered with council.js ----
+// prepare(a, F, kind, o) -> {error} or {details, fields, other?}: the refusals, before anything is opened. expel(P) and
+// merge(P) carry a passed vote out. No RNG.
+const find=(x,C)=>{const k=String(x==null?'':x).trim().toLowerCase();if(!k)return null;
+  return (C?members(C):S.agents.filter(alive)).find(b=>String(b.id)===k||b.name.toLowerCase()===k)||null};
+function prepareExpel(a,F,o){
+  if(F.slots)return no(FELLOW);
+  if(F.ids.length<=2)return no('A company of two cannot put one of its own out by vote; leave instead (leave_party {for_good: yes}).');
+  const t=find(o.hero,F)||find(o.details,F);
+  if(!t)return no('Name the companion to expel (hero_id: a name or id of someone riding with you). Companions: '+members(F).filter(b=>b!==a).map(b=>b.name).join(', ')+'.');
+  if(t===a)return no('You cannot expel yourself; leave_party {for_good: yes} if you mean to go.');
+  if(!inRange(a,t))return no(t.name+' is too far away to hear it (the vote is spoken to their face, within about '+COUNCIL.SHOUT+' tiles). Gather first.');
+  if(tableView(t))return no(t.name+' is in the middle of a scene at the table; wait for it to end.');
+  if(OFFER.BUSY.includes(t.state))return no(t.name+' is '+busyWord[t.state]+'; wait until they are free.');
+  return {details:'expel '+t.name,fields:{target:t.id,targetName:t.name}}}
+function prepareMerge(a,F,o){
+  if(F.slots)return no(FELLOW);
+  const h=find(o.company),B=h?companyOf(h):companies().find(c=>c.name.toLowerCase()===String(o.company||'').trim().toLowerCase())||null;
+  if(!B)return no('Name the leader (or the company) you want to join with: propose {kind: "merge", company: "<name>"}.');
+  if(B===F)return no('That is your own company.');
+  if(B.slots)return no(FELLOW);
+  if(B.fac!==F.fac)return no(nm(B)+' is of the '+FAC[B.fac].name+'; a company is of one faction.');
+  if(isSolo(B)){const x=members(B)[0];return no((x?x.name:B.name)+' rides alone; merging is for two companies. invite {name: "'+(x?x.name:B.name)+'"} instead.')}
+  if(F.ids.length+B.ids.length>PARTY.MAX)return no('Together you would be '+(F.ids.length+B.ids.length)+' heroes; a company holds at most '+PARTY.MAX+'.');
+  if(minds(F).length+minds(B).length>PARTY.MINDS)return no('Together you would have '+(minds(F).length+minds(B).length)+' who choose their own road; a company holds at most '+PARTY.MINDS+' of them.');
+  const la=lead(F),lb=lead(B);if(!la||!lb)return no('One of the companies has no one to speak for it.');
+  if(!inRange(la,lb))return no(la.name+' and '+lb.name+', the two leaders, must be within shouting range (about '+COUNCIL.SHOUT+' tiles) of each other. move_to the other company first.');
+  if(tableView(la)||tableView(lb))return no('A scene is open at the table for one of the companies; finish it first.');
+  if(openProps(B).some(P=>P.kind==='merge'))return no(nm(B)+' already has a merge vote open; wait for it to settle.');
+  if(pending(F)||pending(B))return no(pending(F)||'The other company is answering a call to the Crypt or a raid; wait until that is settled.');
+  return {details:'ride together with '+nm(B),fields:{},other:B}}
+// -> {error} or the plan (no() wraps errors as {ok:false,error}).
+export const prepare=(a,F,kind,o)=>kind==='expel'?prepareExpel(a,F,o):prepareMerge(a,F,o);
+
+// A passed expel: the target leaves with a bond cost on both sides and rides on alone (a companion simply parts).
+export function expel(P){const C=propCompany(P),t=hero(P.target);if(!C||!alive(t)||!C.ids.includes(t.id)){P.result+='; but they were already gone';return}
+  if(isCompanion(t)){release(C,t,'sent away by the company');P.result+='; '+t.name+' is sent away';return}
+  const rest=members(C).filter(b=>b!==t);
+  for(const b of rest){for(const [x,y] of [[t,b],[b,t]]){(x.bonds||(x.bonds={}));x.bonds[y.id]=Math.max(-10,bond(x,y)-COUNCIL.BOND_COST)}
+    remember(b,'expel',t.name+' was put out of the company by our vote.');notify(b,t.name+' is out of the company by your vote.',false)}
+  campaign(C,'expel',t,' was put out of the company by vote.');
+  if(t.party)leaveParty(t);leaveCompany(t);t.partyOk=false;delete t.catchUp;delete t.apartSince;delete t.missed;delete t.splitUntil;
+  record(t,'Was put out of ',gd(C.name),' by vote and rode on alone.');remember(t,'expel','The company voted me out. I ride alone now.');
+  if(t.player)ev(t,'The company has voted you out. You ride alone now; invite or join_party to ride with someone again.',true);
+  log(t,' was put out of ',gd(C.name),' by vote.');soloFor(t);P.result+='; '+t.name+' leaves'}
+
+// A passed merge: the second passing side carries it out. The larger company keeps its id and name (a tie keeps the
+// older id); the smaller one's log folds in and its members ride with the larger now.
+export function merge(P){const Q=propById(P.pair),here=propCompany(P),there=Q&&propCompany(Q);
+  if(!Q||!there||!here){P.result+='; the other company is gone';return}
+  if(P.merged||Q.merged)return;
+  if(Q.status==='open'){P.result+='; waiting for '+there.name+' to vote';return}
+  if(Q.status!=='passed')return;
+  const [A,B]=here.ids.length>there.ids.length||(here.ids.length===there.ids.length&&here.id<there.id)?[here,there]:[there,here];
+  const bad=A.slots||B.slots?FELLOW:A.ids.length+B.ids.length>PARTY.MAX?'together they would be too many':minds(A).length+minds(B).length>PARTY.MINDS?'together they would have too many minds':null;
+  if(bad){P.result+='; but '+bad;Q.result+='; but '+bad;return}
+  for(const b of members(B))if(b.party&&b.party.company===B.id)leaveParty(b);
+  const moved=members(B);
+  if(B.log.length){for(const e of B.log)A.log.push({...e,folded:B.id});A.log.sort((x,y)=>(y.gameMin||0)-(x.gameMin||0));if(A.log.length>LOG_CAP)A.log.length=LOG_CAP}
+  const bn=B.name,r=mergeCompanies(A,B);if(!r.ok){P.result+='; but '+r.error;return}
+  P.merged=Q.merged=true;P.result+='; one company now';Q.result+='; one company now';
+  for(const b of moved){if(isCompanion(b))b.companion=A.id;else b.partyOk=true;delete b.splitUntil}
+  const M=members(A),L=lead(A)||M[0];
+  campaign(A,'merge',gd(bn),' and ',gd(A.name),' ride as one company now ('+M.length+').');
+  if(L)bondEvent(L,'party',M);
+  for(const b of M){record(b,gd(bn),' and ',gd(A.name),' ride as one company now.');remember(b,'merge',bn+' and '+A.name+' became one company: '+M.map(x=>x.name).join(', ')+'.');
+    if(b.player)ev(b,'Your company and '+bn+' ride as one now ('+M.map(x=>x.name).join(', ')+'); '+(L?L.name:'the leader')+' leads.',true)}
+  log(gd(bn),' and ',gd(A.name),' ride as one company now.')}
+setGroupHook({prepare,expel,merge});
