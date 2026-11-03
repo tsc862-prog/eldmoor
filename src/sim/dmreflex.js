@@ -31,3 +31,10 @@ export const goneEpoch=()=>epoch;
 export const tableLive=(sc,missMax,pollMs)=>(sc.dmMiss||0)<missMax&&(heardWithin('table',pollMs)||dmAlive());
 // Why a call is being filled by the scripted DM: it waited (c.t > 0) and the DM stayed silent, or nobody listened.
 export const fillWhy=c=>c&&c.t>0?'slow':'gone';
+// The budget clock starts at pickup (#680): a call's answer time counts from the moment a runner first reads it (seen), not
+// from when the game posted it, so a slow poll costs nothing; a hard cap of the budget plus PICKUP_MS from the post still
+// ends the wait for a runner that never picks it up. All in one unit (ms of Date.now, or seconds of a scene's clock).
+export const PICKUP_MS=4000;
+export const callDeadline=(open,ms,seen,pickup=PICKUP_MS)=>seen!=null?Math.min(seen+ms,open+ms+pickup):open+ms+pickup;
+// Words for a scripted fill after a wait (the DM log): never picked up, or picked up and not answered in time.
+export const lateWhy=seen=>seen!=null?'no answer in time':'late pickup';

@@ -42,10 +42,10 @@ import {leaderOf as companyLead} from './company.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
-import {TABLE,openScene,tableOn,setSceneKind,setStageHooks,kindHooks} from './table.js';
+import {TABLE,openScene,tableOn,setSceneKind,setStageHooks,kindHooks,callSeen,callLeft} from './table.js';
 import {setProps} from './props.js';
 import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
-import {heard,tableLive,fillWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
+import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {talkFromScene} from './talk.js'; // NPC conversations (#170)
 import {SETTINGS,SETTING_IDS} from '../data/settings.js'; // scene maps (#431): the rooms a meeting or social scene plays in
 
@@ -512,7 +512,7 @@ function fill(sc,c){const rec=recOf(sc),G=stagedState(),n=rec?rec.cast.name:'the
 function resolve(sc,c,{text,pick,by,from}){c.done=true;c.by=by;c.text=text||'';if(pick)c.pick=pick;
   let effect=null;if(c.kind==='complication')effect=complicate(sc,c.pick||'none');
   if(text)say(sc,text,from||NARRATOR);
-  LOG('agent',['At the table ('+c.kind+(c.pick?': '+c.pick:'')+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{staged:sc.ctx.staged,call:c.kind,pick:c.pick||null,text,effect,...(by==='scripted'?{by:'scripted',fill:true,why:fillWhy(c)}:{})})} // every reflex fill is logged (#561)
+  LOG('agent',['At the table ('+c.kind+(c.pick?': '+c.pick:'')+'): ',text||'-',by==='scripted'?' [scripted fill'+(c.t>0?': '+lateWhy(c.seen):'')+']':''],{staged:sc.ctx.staged,call:c.kind,pick:c.pick||null,text,effect,...(by==='scripted'?{by:'scripted',fill:true,why:fillWhy(c),...(c.t>0?{late:lateWhy(c.seen)}:{})}:{})})} // every reflex fill is logged (#561)
 function complicate(sc,pick){const rec=recOf(sc),c=sc.ctx;
   if(pick==='falter'){const m=(c.mobs||[]).map(mobOf).find(liveMob);if(m&&m.hp<m.maxhp*.5){m.fled=2.5;return (m.name||MOBS[m.type].name)+' breaks off for a moment'}return 'the foe stands firm (above half its health)'}
   if(pick==='reinforce'){if(!rec)return null;const alive=(c.mobs||[]).map(mobOf).filter(liveMob);if(!alive.length||alive.length>=STAGE.PACK_MAX)return 'nothing more comes';
@@ -533,8 +533,9 @@ export function tableCall(){heard('table');const G=S.staged,rec=G&&G.cur&&G.cur.
     scene:sc?{title:sc.title,kind:sc.kind,frame:rec?rec.frame:'',order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+', '+pct(b)+'% HP)'),
       so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.ctx.cast||[]}:null,
     call:null};
-  if(c){const waiting=sc.pause&&live(sc);out.call={id:c.id,kind:c.kind,about:c.about,...(c.legal?{legal:c.legal}:{}),...(c.who?{who:c.who}:{}),
-    seconds_left:waiting?Math.max(0,Math.round((TABLE.dmMs/1000-c.t)*10)/10):0,max_chars:STAGE.LINE_MAX}}
+  if(c){const waiting=sc.pause&&live(sc);if(waiting)callSeen(c); // the budget starts at pickup (#680)
+    out.call={id:c.id,kind:c.kind,about:c.about,...(c.legal?{legal:c.legal}:{}),...(c.who?{who:c.who}:{}),
+    seconds_left:waiting?callLeft(c):0,max_chars:STAGE.LINE_MAX}}
   return out}
 // table_answer: {call, text, pick}. Late, unknown or illegal answers are refused (and counted); the slot stays the scripted DM's.
 export function tableAnswer(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),sc=findScene(x=>x.ctx&&x.ctx.staged!=null);

@@ -84,6 +84,7 @@ import {condOn,condsOf,clearRounds} from './eff.js';
 import {CONDITIONS} from '../data/moves.js';
 import {socialSkill,trained} from './abilities.js';
 import {DOWN,isDown,tableSave,stabilizeAt,upAgain,reviveBonus,bleedingOf,stabText} from './downed.js'; // the downed at the table (#654)
+import {PICKUP_MS,callDeadline,goneEpoch} from './dmreflex.js'; // the DM call budget counts from pickup (#680)
 
 export const TABLE={
   mode:'auto',     // 'auto' (the trigger rules) or 'off' (Watch mode: never a scene); the View group switch
@@ -96,6 +97,9 @@ export const TABLE={
   outcomeS:1.8,    // real seconds the outcome stays before the world runs on
   RESCUE:.25,      // a member below this share of max HP in a fight is a rescue moment
   dmMs:6000,       // real milliseconds the DM agent has for an at-the-table call in a scene it staged (#132); then the scripted DM fills it
+                   // (#680: counted from the moment its runner first reads the call, never past dmMs + pickupMs from the post)
+  pickupMs:PICKUP_MS, // real ms a posted call may wait for a runner to pick it up before its own budget starts (#680)
+  frameMs:8000,    // ... the budget of the frame call of session zero and of a newcomer's arrival (the owner waits for those)
   step:'off',      // the watcher's round pace in a paused combat scene (#285): 'off' (rounds run on), 'hold' (wait after each
                    // round until Next round, stepNext()), 'auto' (wait stepS real seconds, or Next round). Only a paused scene
                    // at 1x ever holds, so headless runs, 3x/8x and Watch mode never do; a hold rolls no dice.
@@ -457,9 +461,18 @@ function runAll(sc,dt,instant){
 // the scripted DM's fill (at once at 3x/8x, when the seat is empty or the DM keeps missing). True = waiting.
 function callWait(sc,dt,instant){const H=dmOf(sc);if(!H)return false;
   for(const c of sc.calls){if(c.done)continue;
-    if(!instant&&sc.pause&&H.live(sc)){c.t+=dt;if(c.t*1000<TABLE.dmMs)return true;sc.dmMiss=(sc.dmMiss||0)+1}
+    if(!instant&&sc.pause&&(H.live(sc)||callPicked(c))){c.t+=dt;if(c.t<callEnd(c))return true;sc.dmMiss=(sc.dmMiss||0)+1}
     H.fill(sc,c);dt=0}
   return false}
+// A DM call's clock (#680), in the scene's seconds (c.t runs only while the DM is waited for): its budget (c.ms, else
+// TABLE.dmMs) counts from the moment a runner first read it (c.seen, table_call), capped at budget + pickupMs from the post.
+export const callMs=c=>c&&c.ms>0?c.ms:TABLE.dmMs;
+export const callEnd=c=>callDeadline(0,callMs(c)/1000,c.seen,TABLE.pickupMs/1000);
+export const callLeft=c=>Math.max(0,Math.round((callEnd(c)-(c.t||0))*10)/10);
+// A runner read the call (table_call): its budget starts now. A picked-up call is waited for to its deadline even while the
+// runner is busy answering (not polling), unless the runner went away since (dmreflex gone()).
+export function callSeen(c){if(c&&c.seen==null){c.seen=c.t||0;c.ep=goneEpoch()}}
+const callPicked=c=>c.seen!=null&&c.ep===goneEpoch();
 const frameCalls=sc=>{const H=dmOf(sc);if(H&&H.onFrame&&!sc.framed){sc.framed=true;H.onFrame(sc)}};
 
 // ---- the outcome ----
@@ -636,7 +649,7 @@ export function bannerOf(sc=S.table){if(!sc)return null;const cur=byId(sc.ids[sc
   const hold=holding(sc)?{round:sc.rd,auto:TABLE.step==='auto',left:TABLE.step==='auto'?Math.max(0,Math.ceil(TABLE.stepS-sc.sh.t)):null}:null;
   if(sc.phase==='frame')line='The DM is setting the scene…';
   else if(hold)line='Round '+hold.round+' is done · '+(hold.auto?'the next round in '+hold.left+' s':'Next round when you are ready');
-  else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'||pc.kind==='oath'?'giving them a voice':pc.kind==='frame'?'setting the table':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.max(0,Math.ceil(TABLE.dmMs/1000-pc.t))+' s)';
+  else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'||pc.kind==='oath'?'giving them a voice':pc.kind==='frame'?'setting the table':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.ceil(callLeft(pc))+' s)';
   else if(sc.phase==='turn'&&together(sc)){const n=answered(sc),held=n.wait.find(b=>b.player&&!reflexMay(b)&&ownerHeld(b)),w0=n.wait.reduce((m,b)=>Math.max(m,(sc.w[b.id]&&sc.w[b.id].t)||0),0);
     line=!n.wait.length?'Everyone has answered.':n.done+'/'+n.of+' answered · waiting for '+n.wait.map(b=>b.name).join(', ')+(held?' ('+held.name+' has no runner: Restart runner, or Resume without it)':w0*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-w0))+' s before reflexes)':'')}
   else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]&&!reflexMay(cur)?(ownerHeld(cur)?cur.name+' has no runner: the table waits for you (Restart runner, or Resume without it)':cur.name+' is thinking…'+(sc.t*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-sc.t))+' s before reflexes)':'')):cur.name+' acts'}
