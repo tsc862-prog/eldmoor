@@ -25,8 +25,9 @@ Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; retur
 const ROOT = mkdtempSync(join(tmpdir(), 'eldmoor-behavior-')); process.env.AGENT_LOGS = ROOT; process.env.BEHAVIOR_DIR = join(ROOT, 'behavior');
 
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {init, step, S, maxHp} = SIM;
-const F_ = await import('../src/sim/fellowship.js');
+const F_ = await import('../src/sim/company.js');
 const T = await import('../src/sim/table.js');
 const C = await import('../src/sim/council.js');
 const LV = await import('../src/sim/levers.js');
@@ -52,8 +53,8 @@ console.log('\nEldmoor behaviorcheck: behavior logs for the watcher (issue #129)
 {
   const url = f => pathToFileURL(join(HERE, f)).href;
   const prog = `let s=777;Math.random=()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296};
-    const {init,step,S,setMinds}=await import(${JSON.stringify(url('../src/sim/index.js'))});const {makeWatch}=await import(${JSON.stringify(url('../src/sim/behavior.js'))});
-    init({fac:0});if(S.fellowship)setMinds('agent');const w=process.argv.includes('watch')?makeWatch():null;let n=0;
+    const {init,step,S}=await import(${JSON.stringify(url('../src/sim/index.js'))});const SLT=await import(${JSON.stringify(url('../src/sim/company.js'))});const {makeWatch}=await import(${JSON.stringify(url('../src/sim/behavior.js'))});
+    init({fac:0});if(SLT.slotted())SLT.setSlotMinds(SLT.slotted(), 'agent');const w=process.argv.includes('watch')?makeWatch():null;let n=0;
     for(let i=0;i<5400;i++){step(1/60);if(w&&i%10===0)n+=w.tick().length}
     console.log(JSON.stringify({n,h:JSON.stringify(S.agents.map(a=>[a.id,Math.round(a.x*1e3),Math.round(a.y*1e3),Math.round(a.hp*1e3),a.lvl,a.state,a.xp]))+S.gameMin.toFixed(4)+(S.dmLogSeq||0)}))`;
   const one = (...a) => {const r = spawnSync(process.execPath, ['--input-type=module', '-e', prog, ...a], {encoding: 'utf8', env: {...process.env, ANTHROPIC_API_KEY: ''}}); try {return JSON.parse(r.stdout.trim().split('\n').pop())} catch {return {h: 'error: ' + (r.stderr || '').slice(0, 200)}}};
@@ -65,10 +66,10 @@ console.log('\nEldmoor behaviorcheck: behavior logs for the watcher (issue #129)
 reseed(0x5eed4129);
 init({fellowship: false}); for (let i = 0; i < 3600; i++) step(1 / 60);
 for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
-const r0 = F_.found(F_.autoPick(0), {fac: 0, ai: false});
-ok(r0.ok && F_.fellows().length === 5, `founded ${S.fellowship && S.fellowship.name} (5 members)`);
-F_.setMinds('agent'); S.brainOn = true;
-const M = F_.fellowshipMembers().map(m => m.hero), [A, B, Cm, Dm, E] = M;
+const r0 = SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false});
+ok(r0.ok && SLT.slotHeroes(SLT.slotted()).length === 5, `founded ${SLT.slotted() && SLT.slotted().name} (5 members)`);
+SLT.setSlotMinds(SLT.slotted(), 'agent'); S.brainOn = true;
+const M = SLT.slotMembers(SLT.slotted()).map(m => m.hero), [A, B, Cm, Dm, E] = M;
 T.TABLE.mode = 'off'; T.TABLE.turnMs = 300; T.TABLE.liveMs = 600; T.TABLE.frameS = .2; T.TABLE.outcomeS = .2; T.TABLE.speed = 1;
 C.COUNCIL.HOLD_MIN = 0; // #148: a live agent's turn and vote wait (TABLE.liveMs, COUNCIL.HOLD_MIN); short here, so silent agents fall to reflex
 // A and B out in the field, C and D idle in town, E in the field hurt later
@@ -128,7 +129,7 @@ rs.close();
 // ---- 4. the game: idle and stuck in town, reflex scenes and votes, levers ----
 // Mind decisions: a few scripted heroes with the brain on and a relay that cannot be reached
 BR.setFetch(() => Promise.reject(new Error('unreachable')));
-const brainy = S.agents.filter(a => a.state !== 'dead' && !a.fellow && !a.player).slice(0, 12); for (const a of brainy) SIM.enableBrain(a);
+const brainy = S.agents.filter(a => a.state !== 'dead' && !SLT.inSlots(a) && !a.player).slice(0, 12); for (const a of brainy) SIM.enableBrain(a);
 // four of them stand in their town, so they ask a town plan now (out in the field a hero asks only when it comes home; #67)
 for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.ah.y; a.state = 'town'; a.townStep = 0; a.wait = .5; a.target = null; a.dest = null}
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
@@ -193,9 +194,9 @@ ok(world.some(w => w.memories && w.memories[A.name] >= 1) && anomalies.some(x =>
 ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: memories written per member per game day');
 ok(world.some(w => w.intents && w.intents[A.name] >= 1) && anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id !== A.id) && !anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id === A.id), 'digests count aims stated per hero; no-aim flags the silent ones, not A (#535)');
 ok(/Aims stated \(intent\) per hero per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: aims stated per hero per game day');
-ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last world digest');
+ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the last world digest');
 // ---- per company (issue #460): the digest names every company, its size, minds and deaths; members carry their company ----
-{const FC = S.fellowship.id, wc = world.filter(w => Array.isArray(w.companies));
+{const FC = SLT.slotted().id, wc = world.filter(w => Array.isArray(w.companies));
   ok(wc.length === world.length && wc.every(w => w.companies.some(c => c.id === FC && c.fellowship && c.size >= 1 && c.minds >= 1 && Number.isInteger(c.deaths))), 'every digest lists the companies: the Fellowship\'s with its size, minds and deaths this hour (#460)');
   ok(lastW.members.every(m => m.company === FC), 'digest members carry their company id');
   ok(/## Companies/.test(md) && md.split('## Companies')[1].includes('#' + FC + ' (Fellowship)'), 'the report has a Companies section with the Fellowship\'s row');}

@@ -11,6 +11,7 @@ import {TEXT} from './palette.js';
 import {bannerSprite,buntingSprite} from './sprites.js';
 import {hash} from '../core/rng.js';
 import {toneOf,toneName} from '../core/colors.js';
+import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
 // Each prop: rectangles [x, y, w, h, colour] in world px relative to the foot point.
 const PROPS={
@@ -70,6 +71,6 @@ export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite,o
   for(const w of S.wanderers||[]){if(!inView(w.x*T,w.y*T,32))continue;
     const fr=w.moving?Math.floor(blink*6+w.id)%2:Math.floor(blink*1.5)%2,s=npcSprite(w,fr),px=Math.round(w.x*T),py=Math.round(w.y*T);
     ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(px,py,s.width/2,1.5,0,0,7);ctx.fill();
-    const t=toneOf(w,S.fellowship,S.gameMin);if(close)dispoRing(px,py,s.width,t.kind);
+    const t=toneOf(w,slotted(),S.gameMin);if(close)dispoRing(px,py,s.width,t.kind);
     ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(outlined(s),-Math.floor(s.width/2)-1,py-s.height-1);ctx.restore();
     if(close)drawText(toneName(w,t),px,py-17,t.color||TEXT.person,12)}}

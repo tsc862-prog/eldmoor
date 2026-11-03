@@ -8,9 +8,9 @@
 //     its next start (the row says which).
 // Limits are kept per viewer (localStorage, ui/runners.js). The relay enforces them (scripts/runners.mjs).
 import {S,playerSeats,dmSeatOn} from '../sim/index.js';
-import {mindsOf} from '../sim/fellowship.js';
 import {runnerByKey,allRunners,runnersEnabled,relayUp,kindInfo,pickOf,limitOf,limitNote,setLimit,sessionInfo,setSessionBudget,stateLine,watchRunners,HOW_TEXT,DONE_STATE,BUDGETS} from './runners.js';
 import {patch} from './stable.js';
+import {inSlots,slotted,mindsOf} from '../sim/company.js'; // the slotted company (#588)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -20,8 +20,8 @@ let btn=null,pop=null,body=null,isOpen=false;
 
 // The runners the game can start or has running: [{key, kind, name, hero}]
 export function agentRows(){const out=[],seen=new Set(),add=(key,kind,name,hero)=>{if(seen.has(key))return;seen.add(key);out.push({key,kind,name,hero})};
-  const F=S.fellowship;if(F&&(mindsOf(F)==='agent'||runnerByKey('fellowship')))add('fellowship','fellowship','The Fellowship (all five)');
-  for(const a of playerSeats())if(a.state!=='dead')add('hero:'+a.id,'hero',a.name+(a.fellow?' ★':''),a.id);
+  const F=slotted();if(F&&(mindsOf(F)==='agent'||runnerByKey('fellowship')))add('fellowship','fellowship','The Fellowship (all five)');
+  for(const a of playerSeats())if(a.state!=='dead')add('hero:'+a.id,'hero',a.name+(inSlots(a)?' ★':''),a.id);
   if(dmSeatOn()||runnerByKey('dm'))add('dm','dm','Dungeon Master');
   for(const r of allRunners())if(!DONE_STATE[r.state])add(r.key,r.kind,r.name||r.key,r.hero);
   return out}
@@ -65,7 +65,7 @@ function build(n){
 
 function btnText(){const s=sessionInfo();return 'Agents'+(s.spent?' · '+usd(s.spent)+(s.budget!=null?' / '+usd(s.budget):''):'')}
 export function renderAgents(){if(!btn)return;const t=btnText();if(btn.textContent!==t)btn.textContent=t;
-  btn.hidden=!(S.fellowship||playerSeats().length||dmSeatOn()||allRunners().length);if(btn.hidden&&isOpen)closeAgents();
+  btn.hidden=!(slotted()||playerSeats().length||dmSeatOn()||allRunners().length);if(btn.hidden&&isOpen)closeAgents();
   if(isOpen){watchRunners();patch(body,build)}}
 export function openAgents(){if(!pop)return;isOpen=true;pop.hidden=false;btn.setAttribute('aria-expanded','true');renderAgents();const f=pop.querySelector('button,select');if(f&&f.focus)f.focus()}
 export function closeAgents(){if(!pop)return;isOpen=false;pop.hidden=true;btn.setAttribute('aria-expanded','false')}

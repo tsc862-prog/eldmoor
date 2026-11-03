@@ -7,7 +7,7 @@ import {paceCheck,paceIdle,paceBrief,PACE} from './pace.js';
 import {reflectDone} from './reflect.js';
 import {markQueued,sceneDue} from './scenewait.js';
 import {S} from './state.js';
-import {companyOf,leaderOf} from './company.js';
+import {companyOf,leaderOf,inSlots,partySlotted,slotKeyOf} from './company.js';
 import {sceneOf} from './scenes.js';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -41,7 +41,7 @@ export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now(
 // (a solo is a company of one): its id, name and size, and for a company of two or more who leads it, whether the hero
 // sits at a scene (table) and whether its own scene still waits for its answer (due, #515). Game state only (#123).
 export function seatInfo(a){const o={id:a.id,name:a.name,alive:a.state!=='dead',...(a.succeeds!=null?{succeeds:a.succeeds}:{})};
-  if(a.fellow)Object.assign(o,{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!sceneOf(a),...(sceneDue(a)?{due:true}:{})});
+  if(inSlots(a))Object.assign(o,{fellow:true,role:slotKeyOf(a)||null,lead:!!(a.party&&partySlotted(a.party)&&a.party.leader===a),table:!!sceneOf(a),...(sceneDue(a)?{due:true}:{})});
   const C=companyOf(a);if(C){o.company=C.id;o.companyName=C.name||null;o.size=C.ids.length;
-    if(!a.fellow&&C.ids.length>1){o.lead=leaderOf(C)===a;o.table=!!sceneOf(a);if(sceneDue(a))o.due=true}}
+    if(!inSlots(a)&&C.ids.length>1){o.lead=leaderOf(C)===a;o.table=!!sceneOf(a);if(sceneDue(a))o.due=true}}
   return o}

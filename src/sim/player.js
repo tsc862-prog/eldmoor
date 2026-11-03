@@ -37,7 +37,7 @@ import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../dat
 import * as D from '../data/adventures.js';
 import {PLAYER_TOOLS} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
-import {soloFor,companyOf,leaveCompany} from './company.js'; // every agent hero rides in exactly one company (#438)
+import {soloFor,companyOf,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,findMob,turnIn,huntZone} from './heroes.js';
 import {partyMates,leaderOf,leaveParty} from './party.js';
@@ -86,6 +86,7 @@ import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfessio
 import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
+import {attempt as attemptRuled} from './ruling.js'; // free actions ruled by the DM (#522)
 import {worldHeld,holdLine} from './prep.js'; // the world held before play (#559)
 
 // ---- knobs ----
@@ -197,7 +198,7 @@ function groundFor(a){const g=a.playGround;if(g!=null&&ZONES[g]&&fits(a,g)&&know
 const potionsHeld=a=>invOf(a).list.reduce((n,e)=>n+(!isGear(e)&&USES[e.id]&&USES[e.id].kind==='potion'?e.n||1:0),0);
 const bestPotion=a=>Object.keys(USES).filter(k=>{const U=USES[k];return U.kind==='potion'&&!U.craft&&U.lvl<=a.lvl}).sort((x,y)=>USES[y].lvl-USES[x].lvl)[0]||null;
 function townPilot(a){const mh=maxHp(a),c=homeOf(a);
-  if(a.fellow&&openProps().length)return null; // a vote is open: the party is deciding, autopilot waits with it
+  if(inSlots(a)&&openProps().length)return null; // a vote is open: the party is deciding, autopilot waits with it
   if(a.hp<mh*.6){const inn=c.spots&&c.spots.inn||c.ah;return [{kind:'move',legs:[{x:inn.x,y:inn.y,st:'town'}],last:'town',label:'the inn in '+c.name,auto:'walking to the inn to rest (hurt)'},{kind:'rest',until:S.gameMin+60,auto:'resting at the inn'}]}
   if(a.hp<mh*PK.READY)return {kind:'rest',until:S.gameMin+30,auto:'resting before heading out'}; // #487: out only near full health
   if(load(a)>=TP.LOOT)return {kind:'sell',auto:'selling your loot'};
@@ -285,7 +286,7 @@ export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
     ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');soloFor(a);return true}
-  if(a.fellow&&a.state!=='dead')return false; // the Fellowship is always agent-played (#148): a member is handed back only by leaving
+  if(inSlots(a)&&a.state!=='dead')return false; // the Fellowship is always agent-played (#148): a member is handed back only by leaving
   a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
   {const C=companyOf(a);if(C&&!C.slots)leaveCompany(a)} // out of agent play: a solo's company ends with it
   return true}
@@ -299,11 +300,11 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   // A Fellowship member whose runner is gone, once the owner said go on (or with no host at all: the headless sim,
   // play-headless before a runner claims it): its reflexes play it whole, the scripted rules, until a runner holds
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
-  if(a.fellow&&reflexMay(a)){a.playIdle=false;a.playDoing='reflexes (no runner)';return false}
+  if(inSlots(a)&&reflexMay(a)){a.playIdle=false;a.playDoing='reflexes (no runner)';return false}
   // Drafts the agent did not ask for: a crypt group or a raid muster. Step back out.
   if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a call to '+CRYPT.name+' (you go only where you choose).')}
   if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a raid muster on Kragmaw.')}
-  if(a.party&&!a.partyOk&&!a.party.fellow){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')} // the Fellowship's own party is always theirs
+  if(a.party&&!a.partyOk&&!partySlotted(a.party)){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')} // the Fellowship's own party is always theirs
   const adv=advOf(a);
   // Autopilot (issue #126): no command and no action for PK.IDLE game minutes, outside an adventure or a scene.
   // The agent stays the hero's mind; until it acts again the hero carries on its last order and does what a
@@ -328,7 +329,7 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   case 'travel':case 'hunt':
     if(cmd)return a.state==='travel'||cmd.kind==='move'?travel(a,dt,cmd):field(a,dt,cmd);
     if(driving)return false; // the DM leads the adventure's legs (dmTravel / dmHunt)
-    if((a.partyOk||(a.party&&a.party.fellow))&&leaderOf(a)){a.state='follow';a.dest=null;return false}
+    if((a.partyOk||(a.party&&partySlotted(a.party)))&&leaderOf(a)){a.state='follow';a.dest=null;return false}
     if(a.state==='travel'){a.state='hunt';a.dest=null}
     return field(a,dt,null);
   default:return false}}
@@ -362,7 +363,7 @@ function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kil
 
 function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*dt);
   // Fellowship (#68): with nothing else to do, a member follows the leader out of town (leave_party to stay)
-  if(!cmd&&a.party&&a.party.fellow&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil&&!turnHeld(a)){const c=homeOf(a);
+  if(!cmd&&a.party&&partySlotted(a.party)&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil&&!turnHeld(a)){const c=homeOf(a);
     cmd={kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'town'}],last:'hunt',label:'the gate, following '+a.party.leader.name};a.pq=[cmd];ev(a,'The party is out with '+a.party.leader.name+'; you follow them out of '+c.name+'.')}
   if(cmd&&cmd.kind==='move')return travel(a,dt,cmd);
   if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||(!cmd.search&&a.hp>=mh))done(a,cmd.search?'You finish searching.':'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
@@ -715,7 +716,7 @@ function heroDoing(a,b){const t=b.target&&alive(b.target)?(b.target===a?'you':fo
 function heroLook(a,b){const self=b===a,o={ok:true,kind:'hero',name:b.name,who:raceOf(b).name+' '+b.cls+', level '+b.lvl,
     faction:FAC[b.fac].name+(self?'':b.fac===a.fac?' (your side)':' (the other side: they may attack you)'),looks:HURT(b.hp,maxHp(b)),doing:heroDoing(a,b)};
   if(b.guild)o.guild='<'+b.guild.tag+'> '+b.guild.name;
-  if(b.fellow&&b.fellowRole){const L={tank:'Tank',healer:'Healer'}[b.fellowRole]||'DPS';o.fellowship='of the Fellowship ('+L+')'}
+  if(inSlots(b)&&slotKeyOf(b)){const L={tank:'Tank',healer:'Healer'}[slotKeyOf(b)]||'DPS';o.fellowship='of the Fellowship ('+L+')'}
   const w=SLOTS.map(k=>b.slots&&b.slots[k]).filter(Boolean).map(gearWord);o.wears=w.length?w:'plain clothes, no gear to speak of';
   if(self){o.note='This is you. status has your numbers, inventory your pack.';return o}
   o.distance=r1(dist(a,b))+' tiles';const ties=[];
@@ -731,7 +732,7 @@ function personLook(a,p){const o={ok:true,kind:'person',name:fullName(p),role:p.
     where:p.town?'in '+p.town:ZONES[zoneAt(p.x,p.y)]||'the wilds',distance:r1(dist(a,p))+' tiles'};
   // only what shows: open hostility, the mood learned by talking, or the other side's coldness. Never their record or wants.
   o.mood=p.hostile?'hostile: they have turned against the Fellowship':p.fmem&&p.fmem.talks>0&&p.mood?p.mood+' (from talking with them)':(p.fac===0||p.fac===1)&&p.fac!==a.fac?'cold: they serve the other side':'not known: you have not spoken with them';
-  if(p.trade&&p.trade.until>S.gameMin&&a.fellow&&p.trade.fac===a.fac)o.trade='open with you: shop {npc: "'+p.name+'"}';
+  if(p.trade&&p.trade.until>S.gameMin&&inSlots(a)&&p.trade.fac===a.fac)o.trade='open with you: shop {npc: "'+p.name+'"}';
   o.next=dist(a,p)<=PK.TALK?'talk {target: "'+p.name+'"}':'move_to {target: "'+(p.wander?Math.round(p.x)+','+Math.round(p.y):p.role)+'"}, then talk';
   return o}
 function creatureLook(a,m){const v=mobView(a,m),o={ok:true,kind:'creature',what:v.what,threat:v.threat,looks:HURT(m.hp,m.maxhp)};
@@ -819,7 +820,7 @@ const T={
     const cv=campView(a);if(cv)r.camp=cv;
     if(adv)r.adventure=plain(advLine(a));const ch=choiceInfo(a);if(ch)r.choice=ch;
     {const L=questLog(a),fq=L.active.find(q=>q.focus);if(fq)r.quest_focus=fq.title+(L.active.length>1?' (and '+(L.active.length-1)+' more: quests)':'')}
-    if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc;const P=a.party&&a.party.fellow?a.party:null;if(P){r.party_leader=P.leader.name;if(P.dest)r.party_heading=P.dest.label}
+    if(inSlots(a)){const fc=fellowCard(a);if(fc)r.fellowship=fc;const P=a.party&&partySlotted(a.party)?a.party:null;if(P){r.party_leader=P.leader.name;if(P.dest)r.party_heading=P.dest.label}
       const op=openProps(companyOf(a)).map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name);if(notTold(a))r.warning=NOT_TOLD;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
     else{const C=companyOf(a);if(C&&C.ids.length>1){const op=openProps(C).map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name)}} // any company of two or more (#439)
     if(!r.table){const tv=tableView(a);if(tv)r.table=tv} // any company's scene, a solo's too (#440)
@@ -873,7 +874,7 @@ const T={
   talk(a,{target,text}){const t=clean(target,60).toLowerCase();need(t,'Talk to whom?');
     ensureNpcs();const here=cityAt(a);
     // NPC conversations (#170): a Fellowship member's words to a person open a conversation the DM answers (sim/talk.js)
-    if(a.fellow&&S.fellowship){const q=findPerson(a,target,PK.TALK);
+    if(inSlots(a)&&slotted()){const q=findPerson(a,target,PK.TALK);
       if(q&&q.far)throw new Rule(q.far.title+' '+q.far.name+' is too far away ('+r1(q.d)+' tiles). move_to("'+(q.far.wander?Math.round(q.far.x)+','+Math.round(q.far.y):q.far.role)+'") first.');
       if(q&&(q.wander||q.fac===a.fac)){need(a.state!=='ghost','Ghosts do not speak.');let line='';
         if(text!=null&&String(text).trim()){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);need(!notEnglish(L.text),ENGLISH);line=L.text;agentLine(a,speak(a,line,'agent'))}
@@ -891,6 +892,7 @@ const T={
     if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
     talked(a,[b.name]);const n=(b.chat||[]).length;say(b,'idle',{});const e=(b.chat||[])[(b.chat||[]).length-1];
     return {ok:true,who:b.name,answer:(b.chat||[]).length>n&&e&&e.from===b?e.text:'('+b.name+' is busy and does not answer.)'}},
+  attempt(a,{what,how,at}){return attemptRuled(a,{what,how,at})}, // anything the tools never named; the DM rules on it (#522)
   say(a,{text}){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);const t=L.text;need(!notEnglish(t),ENGLISH);need(a.state!=='ghost','Ghosts do not speak.');
     const no=lineRefusal(a,t);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
     agentLine(a,speak(a,t,'agent'));const H=sayHearers(a);noteSaid(a,t,H);talked(a,H.map(b=>b.name));const heard=H.length;
@@ -899,7 +901,7 @@ const T={
   join_party(a,{hero_id,who}){const n=nameKey(who!=null&&who!==''?who:hero_id),i=idIn(hero_id)??idIn(who);
     const b=i!=null?hero(i):nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
     need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');
-    if(a.fellow&&b.fellow){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
+    if(inSlots(a)&&inSlots(b)){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
     {const r=askToJoin(a,b);if(r)return r} // toward an agent hero or a company's companion: an offer to that company's leader (#442)
     need(b.fac===a.fac,b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
     need(Math.abs(b.lvl-a.lvl)<=3,'Too far apart in level (more than 3).');need(!['dungeon','raid','duel','ghost'].includes(b.state),b.name+' is busy.');
@@ -926,7 +928,7 @@ const T={
     const cmd=startFollow(a,b,hours);a.pq=[cmd];a.dest=null;if(a.state==='follow')a.state='hunt';
     return {ok:true,following:b.name,...(cmd.until!=null?{hours:cmd.h}:{}),note:'You walk at the side of '+b.name+(cmd.until!=null?' for '+cmd.h+' hour'+(cmd.h>1?'s':''):' until you give another order')+' (move_to, hunt, fight or rest end it). You do not ride in their company: no shared XP, votes or party shouts. If you lose sight of them you go to where you last saw them, then stop.'}},
   leave_party(a,{where,when_hours,for_good}){if(for_good===true||/^(yes|true|1)$/i.test(String(for_good==null?'':for_good))){const r=leaveForGood(a);if(!r.ok)throw new Rule(r.error);return r}
-    if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');
+    if(inSlots(a)){need(!a.splitUntil,'You have already gone your own way.');
       // a meeting plan (#182): made aloud before parting, so it is recorded only for those who hear it
       let plan=null;if(where||when_hours){plan=makeMeeting(a,where,when_hours);if(plan.error)throw new Rule(plan.error)}
       splitOff(a,false);a.partyOk=false;
@@ -1050,7 +1052,7 @@ const T={
     return {ok:true,hunting:what+' in '+ZONES[zoneAt(a.x,a.y)]}},
   flee(a){need(['fight','duel','assist'].includes(a.state),'You are not in a fight.');flee(a,false);return {ok:true,fleeing_to:homeOf(a).name,hp:pct(a.hp,maxHp(a))+'%'}},
   rest(a,{minutes,hours}){if(a.state==='camp'){const v=campView(a);return {ok:true,camp:'You rest at camp'+(v&&v.ends?': '+v.ends:'')+'.',note:campBlock(a)}} // resting is what camp is (#400)
-    if(hours!=null&&hours!==''&&companyOf(a)){const e=leaderRest(a,hours);if(e)throw new Rule(e);return {ok:true,camp:campView(a)&&campView(a).status||'making camp',note:(a.fellow?'The Fellowship makes':'You make')+' camp; sleepers get no turns but wake events.'}} // any company, a solo too (#439)
+    if(hours!=null&&hours!==''&&companyOf(a)){const e=leaderRest(a,hours);if(e)throw new Rule(e);return {ok:true,camp:campView(a)&&campView(a).status||'making camp',note:(inSlots(a)?'The Fellowship makes':'You make')+' camp; sleepers get no turns but wake events.'}} // any company, a solo too (#439)
     need(a.state==='hunt'||a.state==='town'||a.state==='travel'||a.state==='follow','You cannot rest now ('+(a.state==='return'?'you are heading home; rest in town':a.state)+').');
     if(a.state==='travel'||a.state==='follow')a.state='hunt'; // stop walking and sit down where you are
     const m=Math.min(240,Math.max(10,Math.round(Number(minutes)||60)));a.pq=[{kind:'rest',until:S.gameMin+m}];a.dest=null;return {ok:true,resting_min:m}},
@@ -1138,8 +1140,8 @@ const T={
       const P=propose(a,'break_camp','',{});if(typeof P==='string')throw new Rule(P);
       return {ok:true,proposal:propText(P),status:P.status,note:'Only the leader ('+(leaderFor(a)?leaderFor(a).name:'none')+') breaks camp outright, so your call went to the vote as proposal #'+P.id+' (your vote: yes).'+(P.status==='open'?'':' '+P.result)}}
     const e=leaderBreak(a);if(e)throw new Rule(e);return {ok:true,broke_camp:true}},
-  lead_to(a,{target}){need(!a.fellow||a.state!=='camp',campBlock(a)||'The Fellowship is camped.');
-    need(a.fellow&&a.party&&a.party.fellow,'You are not with the Fellowship.');need(a.party.leader===a,'Only the leader ('+a.party.leader.name+') leads the party.');
+  lead_to(a,{target}){need(!inSlots(a)||a.state!=='camp',campBlock(a)||'The Fellowship is camped.');
+    need(inSlots(a)&&a.party&&partySlotted(a.party),'You are not with the Fellowship.');need(a.party.leader===a,'Only the leader ('+a.party.leader.name+') leads the party.');
     need(legal.includes(a.state),'You cannot lead from here ('+a.state+').');need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
     const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};const far=outOfRange(a);if(far.length)r.not_told=nameList(far)+' too far away to hear the order; they stay where they are until you are together or a courier reaches them.';if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;return r},

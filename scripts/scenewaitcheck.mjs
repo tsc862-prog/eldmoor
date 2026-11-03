@@ -72,13 +72,13 @@ console.log('B. the local loop gives a free turn up for its scene');
 // ---------------------------------------------------------------- C. the game side
 console.log('C. the game: waits note, waited_s, queued extra wait, scene-missed');
 const sim = await import('../src/sim/index.js');
-const {S, TABLE, found, autoPick, setMinds, setRunnerLinks} = sim, {openScene} = await import('../src/sim/table.js');
+const {S, TABLE, setRunnerLinks} = sim, {openScene} = await import('../src/sim/table.js'), SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {SW, sceneDue} = await import('../src/sim/scenewait.js'), {makeWatch} = await import('../src/sim/behavior.js'), {hostCall} = await import('../src/sim/player-host.js');
 sim.init({fellowship: false});
 for (let i = 0; i < 60 * 10; i++) sim.step(1 / 60);
-const fo = found(autoPick(0), {fac: 0, ai: false}); setMinds('agent'); S.brainOn = false;
-ok(fo.ok && S.fellowship.ids.length === 5, 'a Fellowship of five, Minds: agents');
-const mem = S.fellowship.ids.map(id => S.agents.find(x => x.id === id));
+const fo = SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); SLT.setSlotMinds(SLT.slotted(), 'agent'); S.brainOn = false;
+ok(fo.ok && SLT.slotted().ids.length === 5, 'a Fellowship of five, Minds: agents');
+const mem = SLT.slotted().ids.map(id => S.agents.find(x => x.id === id));
 const gather = () => {const L = mem.find(a => a.state !== 'dead'); let i = 0; for (const a of mem) if (a.state !== 'dead') {a.state = 'town'; a.hidden = false; a.target = null; a.pq = []; a.dest = null; a.hp = Math.max(a.hp, a.maxhp || 0); a.x = L.x + (i++ % 3 ? .5 : 0); a.y = L.y}};
 {
   const liveMs0 = TABLE.liveMs, extra0 = SW.EXTRA_MS; TABLE.liveMs = 2000; SW.EXTRA_MS = 3000;

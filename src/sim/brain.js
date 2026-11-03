@@ -55,6 +55,7 @@ import {combatStats} from './stats.js';
 import {fellowCard} from './persona.js';
 import * as TH from './throttle.js';
 import {setChapterWriter,applyChapter} from './tiers.js';
+import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
 export const CFG={url:'http://127.0.0.1:8787/decide',timeoutMs:3000,localTimeoutMs:9000,localWriteMs:35000,offlineSec:60,
   planTtl:900,fightTtl:20,sayFresh:4,aiQuietTable:true,sayGap:25,maxPerHour:240,quietMin:60,sight:12};
@@ -155,7 +156,7 @@ export function snapshotFor(a,kind,extra={}){
   if(nm.length)s.nemesis=nm;
   const ch=(a.chat||[]).slice(-5).map(e=>clip(e.from&&e.from.name,16)+': '+clip(e.text,80));if(ch.length)s.chat=ch;
   const hi=(a.history||[]).slice(-3).map(e=>clip(e.text,90));if(hi.length)s.history=hi;
-  if(a.fellow){const fc=fellowCard(a);if(fc)s.fellow=fc} // Fellowship (#68): persona, backstory summary, memory and companion stances
+  if(inSlots(a)){const fc=fellowCard(a);if(fc)s.fellow=fc} // Fellowship (#68): persona, backstory summary, memory and companion stances
   s.kind=kind;
   if(kind==='townPlan'){s.options=townOptions(a).map(i=>ZONES[i]);s.cryptOpen=a.lvl>=7;if(a.party&&a.party.leader===a)s.leadParty=true}
   else if(kind==='cryptCall'){s.cryptOpen=true;if(a.party)s.leader=a.party.leader.name}
@@ -254,7 +255,7 @@ export function askRelay(kind,snapshot,timeoutMs=CFG.timeoutMs,hero=null){
   return Promise.race([go,late]).finally(()=>clearTimeout(timer))}
 // Journal chapters (#153, sim/tiers.js): the scripted digest is in place at once; the relay may rewrite it (kind
 // 'chapter') for an agent-played hero or a Fellowship member whose Fellowship has relay writing on. Never awaited.
-setChapterWriter((a,snap,stamp)=>{const F=S.fellowship;if(!(a.player||a.fellow&&F&&F.ai)||a.state==='dead')return;
+setChapterWriter((a,snap,stamp)=>{const F=slotted();if(!(a.player||inSlots(a)&&F&&F.ai)||a.state==='dead')return;
   askRelay('chapter',snap,16000,a).then(j=>{if(j)applyChapter(a,stamp,j)}).catch(()=>{})});
 // Keep the relay's echo of the prompt; the user content is dropped when it is exactly the snapshot.
 function keepSent(e,x){if(!x||typeof x!=='object')return;const user=typeof x.user==='string'?x.user:null;

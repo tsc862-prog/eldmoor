@@ -34,8 +34,7 @@
 import {S,clockStr} from './state.js';
 import {ZONES,zoneAt,dist} from '../world/map.js';
 import {maxHp} from './heroes.js';
-import {fellowshipMembers} from './fellowship.js';
-import {companies,minds} from './company.js'; // per-company digest (#460)
+import {companies,minds,inSlots,slotKeyOf,slotMembers,slotted} from './company.js'; // per-company digest (#460)
 import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
 import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
@@ -69,7 +68,7 @@ const byId=id=>S.agents.find(x=>x.id===id)||null;
 const mindOf=a=>a.player?(a.playIdle?'autopilot':'agent'):a.brain?'relay':'scripted';
 const channelOf=e=>e.party?'party':e.from&&e.from.kind==='dm'?'dm':e.from&&e.from.kind==='npc'?'npc':e.trigger==='table'?'table':e.agent?'agent':e.ai?'mind':'scripted';
 // The heroes the watch follows: Fellowship members and agent-played heroes, living.
-function seats(){const out=new Map();for(const m of fellowshipMembers())if(m.hero&&m.hero.state!=='dead')out.set(m.hero.id,m.hero);
+function seats(){const out=new Map();for(const m of slotMembers(slotted()))if(m.hero&&m.hero.state!=='dead')out.set(m.hero.id,m.hero);
   for(const a of playerSeats())if(a.state!=='dead')out.set(a.id,a);return [...out.values()]}
 
 // The DM's answerable calls, read from counters the game already keeps (S.talks.stats, S.staged.stats, S.dmStats): never written here.
@@ -83,7 +82,7 @@ export function makeWatch(opts={}){
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map(),iseq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
     levers:{pulled:0,refused:0,by:{}},dmlog:{},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{}});
-  const tStats=()=>{const F=S.fellowship,t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
+  const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
   function baseline(){base=true;lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
@@ -93,7 +92,7 @@ export function makeWatch(opts={}){
     for(const e of S.fallen||[])seenFallen.add(e);
     coSeen.clear();coDeaths={};for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
     for(const a of seats())for(const e of a.chat||[])seenChat.add(e);
-    for(const P of (S.fellowship&&S.fellowship.props)||[])if(P.status!=='open')seenProps.add(P.id);
+    for(const P of (slotted()&&slotted().props)||[])if(P.status!=='open')seenProps.add(P.id);
     for(const a of S.agents)if(a.mind)emitted.set(a.id,new Set(a.mind.filter(e=>e.outcome!=='pending').map(e=>e.id)))}
   const anomaly=(out,kind,a,text,evidence,severity='warn')=>{H.anomalies++;out.push({kind:'anomaly',rec:{kind,seat:a?'hero:'+a.id:'world',hero:a?heroRef(a):null,gameMin:Math.round(S.gameMin),clock:day(),severity,text,evidence:evidence||{}}})};
 
@@ -115,7 +114,7 @@ export function makeWatch(opts={}){
   function notes(out,a,t,now){const seq=a.memories?a.memories.seq||0:0;
     if(seq>t.nseq){H.memories[a.name]=(H.memories[a.name]||0)+(seq-t.nseq);t.nseq=seq;t.noteAt=now}
     if(!a.player){t.noteAt=now;return}
-    if(a.fellow&&now-t.noteAt>=BW.NO_NOTES_MIN){anomaly(out,'no-memories',a,a.name+' has written no memory for '+Math.round((now-t.noteAt)/1440*10)/10+' game days',{minutes:Math.round(now-t.noteAt),notes:a.memories?a.memories.notes.length:0,reflections:a.reflect?a.reflect.log.length:0,mind:mindOf(a)});t.noteAt=now}}
+    if(inSlots(a)&&now-t.noteAt>=BW.NO_NOTES_MIN){anomaly(out,'no-memories',a,a.name+' has written no memory for '+Math.round((now-t.noteAt)/1440*10)/10+' game days',{minutes:Math.round(now-t.noteAt),notes:a.memories?a.memories.notes.length:0,reflections:a.reflect?a.reflect.log.length:0,mind:mindOf(a)});t.noteAt=now}}
   // aims stated (issue #535): counted per hero each digest; an agent hero with none held for BW.NO_AIM_MIN outside camp and
   // town rest is flagged (again every BW.NO_AIM_MIN while it lasts)
   function aims(out,a,t,now){const seq=a.intentSeq||0;if(t.iseq==null)t.iseq=seq;if(t.aimAt==null)t.aimAt=now;
@@ -149,7 +148,7 @@ export function makeWatch(opts={}){
       const ok=d.result==='applied';H.levers[ok?'pulled':'refused']++;const b=H.levers.by[by]||(H.levers.by[by]={pulled:0,refused:0});b[ok?'pulled':'refused']++;
       pulls.push(now);if(!ok)refusals.push(now);
       if(ok&&BW.DANGER.includes(d.lever)){const P=d.params||{},at=Number.isFinite(+P.x)&&Number.isFinite(+P.y)?{x:+P.x,y:+P.y}:null;
-        for(const a of seats())if(a.fellow&&a.hp<maxHp(a)*BW.HURT&&a.state!=='town'&&((d.region&&place(a)===d.region)||(at&&dist(a,at)<=BW.NEAR))){
+        for(const a of seats())if(inSlots(a)&&a.hp<maxHp(a)*BW.HURT&&a.state!=='town'&&((d.region&&place(a)===d.region)||(at&&dist(a,at)<=BW.NEAR))){
           anomaly(out,'lever-near-hurt',a,'Lever '+d.lever+' ('+by+') pulled '+(d.region?'in '+d.region:'near '+a.name)+' while '+a.name+' is at '+pct(a)+'% HP',{lever:d.lever,by,region:d.region||null,hp:pct(a),reason:String(d.reason||'').slice(0,120)},'bad');break}}}
     refusals=refusals.filter(t=>now-t<=BW.REFUSE_WIN);pulls=pulls.filter(t=>now-t<=BW.REFUSE_WIN);
     if(refusals.length>=BW.REFUSE_N&&refusals.length*2>=pulls.length){anomaly(out,'levers-refused',null,refusals.length+' of '+pulls.length+' lever pulls refused in '+Math.round(BW.REFUSE_WIN/60)+' game hours',
@@ -166,7 +165,7 @@ export function makeWatch(opts={}){
         if(sceneRun>=BW.SCENE_RUN){anomaly(out,'reflex-scenes',null,'Reflex took every agent turn at the table for '+sceneRun+' scenes in a row (last: '+scene.title+')',{scenes:sceneRun,last:scene.title,kind:scene.kind,members:mine.map(b=>b.name)},'bad');sceneRun=0}}}
     scene=sc||null}
 
-  function votes(out){const F=S.fellowship;if(!F||!F.props)return;
+  function votes(out){const F=slotted();if(!F||!F.props)return;
     for(const P of F.props.slice().reverse()){if(P.status==='open'||seenProps.has(P.id))continue;seenProps.add(P.id);
       const mine=Object.entries(P.votes||{}).filter(([id])=>{const a=byId(Number(id));return a&&a.player});
       for(const [,v] of mine)H.votes[v.by==='reflex'?'reflex':'agent']++;
@@ -181,13 +180,13 @@ export function makeWatch(opts={}){
   function heard(){for(const a of seats())for(const e of a.chat||[]){if(seenChat.has(e))continue;seenChat.add(e);const c=channelOf(e);H.chat[c]=(H.chat[c]||0)+1}}
   function deaths(){const mine=new Map(seats().map(a=>[a.name,a]));for(const e of S.fallen||[]){if(seenFallen.has(e))continue;seenFallen.add(e);
     const was=S.agents.find(x=>x.name===e.name&&x.state==='dead'),co=was?coSeen.get(was.id):undefined;if(co!=null)coDeaths[co]=(coDeaths[co]||0)+1;
-    H.deaths.push({name:e.name,lvl:e.lvl,cls:e.cls,cause:e.cause||null,...(co!=null?{company:co}:{}),...(was&&was.fellow?{fellow:true}:{}),...(was&&was.player?{agent:true}:{}),...(mine.has(e.name)?{watched:true}:{})})}}
+    H.deaths.push({name:e.name,lvl:e.lvl,cls:e.cls,cause:e.cause||null,...(co!=null?{company:co}:{}),...(was&&inSlots(was)?{fellow:true}:{}),...(was&&was.player?{agent:true}:{}),...(mine.has(e.name)?{watched:true}:{})})}}
 
-  function digest(out){const F=S.fellowship;
+  function digest(out){const F=slotted();
     out.push({kind:'world',rec:{gameMin:Math.round(S.gameMin),clock:day(),minutes:BW.DIGEST_MIN,
       fellowship:F?{name:F.name,minds:'agent'}:null, // always agent-played (#148)
       companies:companyDigest(),
-      members:seats().map(a=>{const t=T.get(a.id);return {id:a.id,name:a.name,role:a.fellowRole||null,fellow:!!a.fellow,company:a.company??null,agent:!!a.player,mind:mindOf(a),state:a.state,doing:a.playDoing||null,place:place(a),hp:pct(a),lvl:a.lvl,idleMin:t?Math.round(S.gameMin-t.since):0}}),
+      members:seats().map(a=>{const t=T.get(a.id);return {id:a.id,name:a.name,role:slotKeyOf(a)||null,fellow:!!inSlots(a),company:a.company??null,agent:!!a.player,mind:mindOf(a),state:a.state,doing:a.playDoing||null,place:place(a),hp:pct(a),lvl:a.lvl,idleMin:t?Math.round(S.gameMin-t.since):0}}),
       ...H,dmShare:{...H.dmShare,agentShare:(()=>{const K=H.dmShare.kinds;let a=0,b=0;for(const k of ['talk','table','slot']){a+=K[k].agent;b+=K[k].scripted}return a+b?Math.round(100*a/(a+b))/100:null})()},dmFocus:{...H.dmFocus,share:H.dmFocus.acts?Math.round(100*H.dmFocus.fellow/H.dmFocus.acts)/100:null},table:{...H.table,open:!!S.table}}});H=fresh();coDeaths={}}
   function companyDigest(){const L=companies().map(C=>({id:C.id,name:C.name||null,size:C.ids.length,minds:minds(C).length,deaths:coDeaths[C.id]||0,...(C.slots?{fellowship:true}:{})}));
     for(const id in coDeaths)if(!L.some(c=>c.id===+id))L.push({id:+id,name:null,size:0,minds:0,deaths:coDeaths[id],ended:true});return L}

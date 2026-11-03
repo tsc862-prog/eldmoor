@@ -7,14 +7,13 @@
 // file is the form, the relay status and the runner launch. Choices are remembered per viewer in localStorage
 // (eldmoor.setup.last). Starting reloads the page into the new world (ui/save.js queueNewWorld), where
 // init({setup}) builds it, so every panel starts from state as for any boot.
-import {fellowshipMembers,defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,asV2} from '../sim/index.js';
-import {companies} from '../sim/company.js';
+import {defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,asV2} from '../sim/index.js';
+import {companies,slotMembers,slotted,SLOT_KEYS} from '../sim/company.js';
 import {S} from '../sim/state.js';
 import {slotsOf,groupsOf,MAX_HEROES,CLASSIC,seatCap,seatNote} from '../sim/setup.js';
 import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
-import {SLOT_KEYS} from '../sim/fellowship.js';
 import {racesOf} from '../data/races.js';
 import {PROF,PROF_IDS,MAX_PROF} from '../data/professions.js';
 import {FAC} from '../data/factions.js';
@@ -315,7 +314,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 export async function afterBoot(){const setup=appliedSetup();if(!setup||bootKind()!=='setup')return;
   const v2=asV2(setup),pl=plan(v2);if(!pl.length)return;
   // The hero a runner plays: together by its place, apart by its index (companies are founded in group order, members in group order).
-  const mem=Object.fromEntries(fellowshipMembers().map(m=>[m.slot,m.hero])),byIdx={};
+  const mem=Object.fromEntries(slotMembers(slotted()).map(m=>[m.slot,m.hero])),byIdx={};
   if(v2.mode==='apart'){const flat=groupsOf(v2).flat(),ids=companies().flatMap(C=>C.ids);flat.forEach((i,n)=>{byIdx[i]=ids[n]!=null?S.agents.find(a=>a.id===ids[n]):null})}
   const heroOf=r=>r.slot?mem[r.slot]:byIdx[r.index]||null,coHeroes=r=>(r.heroes||[]).map(i=>byIdx[i]||null); // a company runner: its members by index (#460)
   const coId=r=>{const h=coHeroes(r).find(Boolean);return h&&h.company!=null?h.company:null};

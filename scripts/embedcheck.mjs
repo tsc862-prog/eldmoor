@@ -20,6 +20,7 @@ Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; retur
 const LOGS = mkdtempSync(join(tmpdir(), 'eldmoor-embed-')); process.env.AGENT_LOGS = LOGS;
 
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {init, step, S, snapshot, setDmSeat} = SIM;
 const P = await import('../src/sim/player.js');
 const NB = await import('../src/sim/notebook.js');
@@ -38,7 +39,7 @@ console.log('\nEldmoor embedcheck: recall and journal_search by meaning (mock Ol
 
 init({fellowship: false});
 for (let i = 0; i < 600; i++) step(1 / 60);
-const live = S.agents.filter(h => h.state !== 'dead' && !h.fellow && !h.hidden);
+const live = S.agents.filter(h => h.state !== 'dead' && !SLT.inSlots(h) && !h.hidden);
 const A = live[0], B = live[1];
 P.markPlayer(A, true); P.markPlayer(B, true); setDmSeat(true);
 const WORLD = 'embedtest';

@@ -30,6 +30,7 @@ import {bond,FRIEND,CLOSE} from './bonds.js';
 import {topScores,SKILLS} from './abilities.js';
 import {ARCHETYPES} from '../data/archetypes.js';
 import {refreshStances} from './memory.js'; // a cycle (memory.js reads scriptedStance); only called at run time
+import {inSlots,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
 
 const pick=(a,salt,list)=>list[Math.floor(hash(a.id|0,salt,7)*list.length)%list.length];
 const lc=t=>t?t.charAt(0).toLowerCase()+t.slice(1):'';
@@ -37,7 +38,7 @@ const alive=x=>x&&x.state!=='dead';
 const byId=id=>S.agents.find(x=>x.id==id);
 const W=f=>f===1; // Warband voice
 export const ROLE_NAME={tank:'Tank',healer:'Healer',dps:'Damage'};
-const roleOf=a=>a.fellowRole?String(a.fellowRole).replace(/\d+$/,''):a.cls==='Warrior'?'tank':(CLS[a.cls]&&CLS[a.cls].heal)?'healer':'dps';
+const roleOf=a=>slotKeyOf(a)?String(slotKeyOf(a)).replace(/\d+$/,''):a.cls==='Warrior'?'tank':(CLS[a.cls]&&CLS[a.cls].heal)?'healer':'dps';
 const tradeOf=a=>a.trade||pick(a,11,TRADES[a.fac]||TRADES[0]);
 const nemesisOf=a=>Object.keys(a.nemesis||{}).map(byId).filter(alive);
 const goalTarget=a=>a.goal&&a.goal.target?a.goal.target:null;
@@ -199,13 +200,13 @@ export function applyBackstory(a,j,mates,model){if(!j||typeof j!=='object')retur
 // kept. No RNG; a second apply replaces the first. Returns false for an unknown id.
 export const archetypeStance=(id,b)=>{const A=ARCHETYPES[id];return A&&b?A.stance.replace(/\{other\}/g,b.name).slice(0,STANCE_MAX):''};
 export function applyArchetype(a,id,mates){const A=ARCHETYPES[id];if(!a||!A)return false;
-  const old=a.persona||buildPersona(a,[]),F=S.fellowship;
-  if(!mates)mates=a.fellow&&F?F.ids.filter(x=>x!=a.id).map(byId).filter(alive):[];
+  const old=a.persona||buildPersona(a,[]),F=slotted();
+  if(!mates)mates=inSlots(a)&&F?F.ids.filter(x=>x!=a.id).map(byId).filter(alive):[];
   const st={...(old.stances||{})},filler=old.src!=='model'&&!old.edited; // an unedited scripted persona's stances are all scripted lines (their bond reading drifts)
   for(const b of mates){if(!b||b===a)continue;const cur=st[b.id];
     if(!cur||filler||cur===scriptedStance(a,b)||(old.archetype&&cur===archetypeStance(old.archetype,b)))st[b.id]=archetypeStance(id,b)}
   a.persona={...old,voice:A.voice,wants:A.wants,fears:A.fears,quirk:A.quirk,never_says:A.never_says,stance:A.stance,stances:st,archetype:id};
-  if(a.fellow&&F&&a.memory)refreshStances(a,F.ids); // the members' prompts read the new lines at once (#305)
+  if(inSlots(a)&&F&&a.memory)refreshStances(a,F.ids); // the members' prompts read the new lines at once (#305)
   return true}
 // The stance a persona itself holds toward b (#305), or '' when the scripted bond reading should speak:
 // a model-written persona's line, one the owner wrote (stanceBy[id]==='owner'), or the archetype's line
@@ -217,7 +218,7 @@ export function authoredStance(a,b){const P=a&&a.persona;if(!P||!b)return '';con
   return ''}
 
 // ---- the compact block prompts and the agent player get ----
-export function fellowCard(a){if(!a||!a.fellow)return null;const F=S.fellowship,P=a.persona,M=a.memory;
+export function fellowCard(a){if(!a||!inSlots(a))return null;const F=slotted(),P=a.persona,M=a.memory;
   const comp=(F?F.ids:[]).filter(id=>id!==a.id).map(byId).filter(alive).map(b=>{const st=(M&&M.stances&&M.stances[b.id])||(P&&P.stances&&P.stances[b.id])||'';
     return b.name+' ('+(ROLE_NAME[roleOf(b)]||b.cls)+', '+b.cls+' L'+b.lvl+')'+(st?': '+st:'')});
   const c={fellowship:F?F.name:null,role:ROLE_NAME[roleOf(a)]};
@@ -252,7 +253,7 @@ export const selfField=f=>ALIAS[String(f==null?'':f).toLowerCase().replace(/[^a-
 const dayN=()=>Math.floor(S.gameMin/1440)+1;
 const cutS=(s,n)=>{s=String(s==null?'':s).replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
 export const traitsOf=P=>Array.isArray(P&&P.traits)?P.traits.filter(x=>typeof x==='string'&&x):[];
-const mateList=a=>{const F=S.fellowship;return a.fellow&&F?F.ids.filter(x=>x!=a.id).map(byId).filter(alive):[]};
+const mateList=a=>{const F=slotted();return inSlots(a)&&F?F.ids.filter(x=>x!=a.id).map(byId).filter(alive):[]};
 const showVal=(P,f)=>f==='traits'?traitsOf(P).join(', '):String(P[f]||'');
 
 // The hero's persona, made and migrated in place (an old save: no history, no pins). Agent-played heroes only call it.
@@ -264,7 +265,7 @@ export function selfOf(a){if(!a)return null;const P=a.persona||(a.persona=buildP
 export const pinned=(a,f)=>!!(a&&a.persona&&a.persona.pins&&a.persona.pins[f]);
 // The owner's pin from the sheet editor. -> true when the field is known.
 export function pinField(a,f,on){const k=selfField(f)||f;if(!a||!SELF_FIELDS.includes(k))return false;const P=selfOf(a);if(on)P.pins[k]=true;else delete P.pins[k];return true}
-// A sheet rebuilt from the sim (sim/fellowship.js sheets) keeps what the agent made of itself and the owner's pins.
+// A sheet rebuilt from the sim (sim/company.js sheets) keeps what the agent made of itself and the owner's pins.
 export function keepSelf(old,fresh){if(!old||!fresh)return fresh;const out={...fresh};
   for(const k of ['hist','pins','by','views','selfDay','selfN','selfAt','beliefs','traits'])if(old[k]!==undefined)out[k]=old[k];
   for(const k in old.by||{})if(old.by[k]==='self'&&k in PERSONA_FIELDS)out[k]=old[k];
@@ -346,7 +347,7 @@ export function become(a,args){const x=args&&typeof args==='object'?args:{},P=se
     if(f==='stance'){if(hero){const cur=P.stances&&P.stances[hero.id];before=cur||(mateList(a).includes(hero)?scriptedStance(a,hero):'');
         if(cur===t)return no('That is already how you see '+hero.name+'.');
         P.stances={...(P.stances||{}),[hero.id]:t};P.stanceBy={...(P.stanceBy||{}),[hero.id]:'self'};
-        if(a.fellow&&S.fellowship&&a.memory&&S.fellowship.ids.includes(hero.id))refreshStances(a,S.fellowship.ids)}
+        if(inSlots(a)&&slotted()&&a.memory&&slotted().ids.includes(hero.id))refreshStances(a,slotted().ids)}
       else{const k=about.toLowerCase(),cur=P.views[k];before=cur?cur.line:'';if(before===t)return no('That is already how you see '+about+'.');P.views[k]={name:about,line:t}}
       after=t}
     else{before=String(P[f]||'');if(before===t)return no('That is already your '+SELF_LABEL[f].toLowerCase()+'.');P[f]=t;after=t}}

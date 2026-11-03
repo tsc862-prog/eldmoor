@@ -17,10 +17,11 @@ let seed = 0x10ce0188 ^ (Number(process.env.LORECHECK_SEED) || 7);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {init, step, S, maxHp, snapshot, restore} = SIM;
 const P = await import('../src/sim/player.js');
 const L = await import('../src/sim/lore.js');
-const F_ = await import('../src/sim/fellowship.js');
+const F_ = await import('../src/sim/company.js');
 const PC = await import('../src/sim/pace.js');
 const RF = await import('../src/sim/reflect.js');
 const HE = await import('../src/sim/heroes.js');
@@ -164,8 +165,8 @@ ok(A.lore.c[upKey].fell === ek0 + 1 && (A.playEv || []).some(e => e.text.include
 
 // ---------------------------------------------------------------- 6. the Fellowship shares lore by talking (in range)
 console.log('a lesson told is learned');
-const F = F_.found(F_.autoPick(0), {fac: 0, ai: false}); F_.setMinds('agent');
-const M = F_.fellowshipMembers().map(m => m.hero);
+const F = SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); SLT.setSlotMinds(SLT.slotted(), 'agent');
+const M = SLT.slotMembers(SLT.slotted()).map(m => m.hero);
 ok(F.ok && M.length === 5 && M.every(x => x.player), 'a Fellowship of five agent heroes');
 const fspot = zonePoint(home, null, c.gate);
 M.forEach((x, i) => park(x, i < 3 ? {x: fspot.x + i * .8, y: fspot.y} : {x: fspot.x > 40 ? 3 : 76, y: fspot.y > 25 ? 3 : 46}));
@@ -234,7 +235,7 @@ noNums('the events', A2.playEv);
 // ---------------------------------------------------------------- the Crypt stair sign and the captain (#448)
 console.log('crypt stair');
 {
-  const B = S.agents.find(x => x.id !== A2.id && x.kind === 'hero' && x.state !== 'dead' && !x.fellow);
+  const B = S.agents.find(x => x.id !== A2.id && x.kind === 'hero' && x.state !== 'dead' && !SLT.inSlots(x));
   B.lvl = 1; B.hp = maxHp(B); P.markPlayer(B, true); B.lore = null; B.loreZ = null;
   B.x = CRYPT.x; B.y = CRYPT.y + 3; B.state = 'hunt'; B.hidden = false;
   L.visit(B);

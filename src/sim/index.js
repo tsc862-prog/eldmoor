@@ -21,6 +21,7 @@ import {updMarket} from './market.js';
 import {chatTick} from './chat.js';
 import {npcsTick} from './npcs.js';
 import {talkTick} from './talk.js'; // NPC conversations (#170)
+import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
@@ -35,7 +36,7 @@ import {dmTick} from './dm.js';
 import {leverTick} from './levers.js';
 import {memorialsTick} from './memorials.js';
 import {playerUpd} from './player.js';
-import {fellowshipTick} from './fellowship.js';
+import {slotsTick} from './company.js'; // the slotted company's muster, watch and replacement (#588)
 import {councilTick} from './council.js';
 import {companionTick} from './offers.js'; // offers lapse, companies of 2+ keep a walking party, companions (#442)
 import {tableTick,tableHold} from './table.js';
@@ -59,7 +60,7 @@ export {actionLog,fightSummary,fights} from './actlog.js'; // action log (record
 export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
 export {enableBrain,disableBrain,brainStatus,setRunnerMind} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
-export {found,autoPick,disbandFellowship,fellowshipMembers,fellows,setMinds} from './fellowship.js';
+export {foundSlots,autoPick,disbandSlots,slotMembers,slotHeroes,setSlotMinds,slotted} from './company.js'; // the five places (#588)
 export {TABLE,bannerOf,decisionsWaiting} from './table.js';
 export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} from './runlink.js'; // the Fellowship's decisions wait for its runners (#148)
 export {fellowshipStart,START_BANDS} from './opening.js';
@@ -97,14 +98,15 @@ export function init(o={}){resetWorld();
 }
 
 // Advance the world by dt real seconds at 1x (6 game minutes per second).
-export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
+export function step(dt){rulingTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
+  if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
   S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first
-  partyTick();fellowshipTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  partyTick();slotsTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);

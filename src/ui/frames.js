@@ -14,8 +14,7 @@ import {FAC} from '../data/factions.js';
 import {ZONES} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
-import {fellowParty,offerReplacement} from '../sim/fellowship.js';
-import {companies,leaderOf} from '../sim/company.js'; // companies (#456): a row of frames each
+import {companies,leaderOf,slotParty,slotted,offerReplacement} from '../sim/company.js'; // companies (#456): a row of frames each
 import {frameGroups,followedCompany,followedMembers,companyLabel,followCompany,MAX_HEROES} from './companyview.js';
 import {conditionAt,CONDITIONS} from '../sim/levers.js';
 import {SKILLS,SKILL_IDS,skillMod,trained} from '../sim/abilities.js';
@@ -74,7 +73,7 @@ export function chipsOf(a){const out=[];if(!a)return out;
   return out}
 export function topSkills(a,n=3){return SKILL_IDS.slice().sort((x,y)=>skillMod(a,y)-skillMod(a,x)||trained(a,y)-trained(a,x)).slice(0,n).map(k=>(trained(a,k)?'* ':'')+SKILLS[k].name+' '+sg(skillMod(a,k)))}
 // The member who held this place before, when the place has turned over (the DM's replacement).
-function before(slot){const F=S.fellowship;if(!F)return null;for(let i=F.past.length-1;i>=0;i--)if(F.past[i].slot===slot)return F.past[i];return null}
+function before(slot){const F=slotted();if(!F)return null;for(let i=F.past.length-1;i>=0;i--)if(F.past[i].slot===slot)return F.past[i];return null}
 const today=()=>Math.floor(S.gameMin/1440)+1;
 // Potions carried, as frame text: "3 potions" (empty when none).
 export const potText=a=>{const n=a&&a.inv?countKind(a,'potion'):0;return n?n+(n===1?' potion':' potions'):''};
@@ -94,7 +93,7 @@ export const frameGroupRows=()=>frameGroups().map(g=>({title:g.title,alone:g.alo
 // How many more a company may take: none for the Alone row and for the Fellowship's five fixed places.
 const roomOf=g=>g.alone||!g.C||g.C.slots?0:Math.max(0,MAX_HEROES-g.n);
 // The star: the Fellowship's walking leader as before; any other company of two or more its agent leader; none for solos.
-function leadOf(g){if(g.alone||!g.C)return null;if(g.C.slots&&S.fellowship===g.C){const P=fellowParty();return P?P.leader:null}return leaderOf(g.C)}
+function leadOf(g){if(g.alone||!g.C)return null;if(g.C.slots&&slotted()===g.C){const P=slotParty(slotted());return P?P.leader:null}return leaderOf(g.C)}
 // Every place shown, in display order (keys 1-9 pick them).
 const shown=()=>frameGroups().flatMap(g=>g.cols);
 
@@ -179,7 +178,7 @@ export function initFrames(){root=$('frames');if(!root)return;
   root.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
     if(t.closest('[data-pfsheet]')){openSheet();return}
     const fol=t.closest('[data-pffollow]');if(fol){followCompany(companies().find(C=>String(C.id)===fol.dataset.pffollow));setView('fellow');renderFrames();return}
-    const fill=t.closest('[data-pffill]');if(fill){offerReplacement(fill.dataset.pffill);renderFrames();return}
+    const fill=t.closest('[data-pffill]');if(fill){offerReplacement(slotted(),fill.dataset.pffill);renderFrames();return}
     if(t.closest('button'))return;
     const pu=t.closest('.purp');if(pu&&tapPurpose(pu))return; // a cut purpose line opens in full on a tap (phone width)
     const f=t.closest('.pf[data-hid]');if(!f)return;const a=byId(f.dataset.hid);if(a){hideTip();select(a);setView('follow');showDock('hero')}});

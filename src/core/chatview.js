@@ -5,11 +5,12 @@
 // tags a line `fh` (heard by, or spoken by, a member) and a bubble the same way. No Fellowship: all shown.
 const KEY='eldmoor.worldChatter';
 let on=false;try{on=localStorage.getItem(KEY)==='1'}catch(_){}
-// A Fellowship member's role for name colouring ('tank', 'healer', 'dps'), else null (issue #136).
-export const fellowRoleOf=a=>a&&a.fellow&&a.fellowRole?String(a.fellowRole).replace(/\d+$/,''):null;
+// The company with the five places (sim/company.js slotted(), #588), read from S so this view module never imports sim.
+const slotF=S=>(S.companies||[]).find(C=>C.slots)||null;
+const member=(a,F)=>!!(a&&F&&a.company===F.id&&F.ids.includes(a.id));
 export const worldChatter=()=>on;
 export function setWorldChatter(v){on=!!v;try{localStorage.setItem(KEY,on?'1':'0')}catch(_){}}
 // Line `e` (an entry in a chat buffer): shown to the watcher?
-export const chatVisible=(e,S)=>!S.fellowship||on||!!(e.party||e.dm||e.fh||(e.from&&e.from.fellow));
+export const chatVisible=(e,S)=>{const F=slotF(S);return !F||on||!!(e.party||e.dm||e.fh||member(e.from,F))};
 // A bubble over `a` (a.bubble.fh set by the sim); a member's own bubble always shows.
-export const bubbleVisible=(a,S)=>!S.fellowship||on||!!(a.fellow||(a.bubble&&a.bubble.fh)||a.kind==='dm');
+export const bubbleVisible=(a,S)=>{const F=slotF(S);return !F||on||!!(member(a,F)||(a.bubble&&a.bubble.fh)||a.kind==='dm')};

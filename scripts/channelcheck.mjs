@@ -33,9 +33,10 @@ Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; retur
 const LOGS = mkdtempSync(join(tmpdir(), 'eldmoor-channel-')); process.env.AGENT_LOGS = LOGS; // session files go here, never into logs/
 
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {init, step, S, maxHp} = SIM;
 const P = await import('../src/sim/player.js');
-const F_ = await import('../src/sim/fellowship.js');
+const F_ = await import('../src/sim/company.js');
 const T = await import('../src/sim/table.js');
 const C = await import('../src/sim/council.js');
 const DMA = await import('../src/sim/dmagent.js');
@@ -75,10 +76,10 @@ const {WORLD_ID: WID} = await import('../src/world/map.js');
 SIM.provideCampaigns({[WID]: ['## Premise', '- **Premise**: The premise holds ' + plant('campPremise') + '.', '## Threads', '- **T**: A thread ' + plant('campThread') + '.', '## Characters', '- **C**: A person ' + plant('campChar') + '.', '## Plans', '- **P**: A plan ' + plant('campPlan') + '.', '## Secrets', '- **S**: The secret ' + plant('campSecret') + '. tags: x'].join(String.fromCharCode(10))});
 init({fellowship: false}); run(60);
 for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
-const r0 = F_.found(F_.autoPick(0), {fac: 0, ai: false});
-ok(r0.ok && F_.fellows().length === 5, `founded ${S.fellowship && S.fellowship.name} (5 members)`);
-F_.setMinds('agent');
-const M = F_.fellowshipMembers().map(m => m.hero);
+const r0 = SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false});
+ok(r0.ok && SLT.slotHeroes(SLT.slotted()).length === 5, `founded ${SLT.slotted() && SLT.slotted().name} (5 members)`);
+SLT.setSlotMinds(SLT.slotted(), 'agent');
+const M = SLT.slotMembers(SLT.slotted()).map(m => m.hero);
 const [A, B] = M, rest = M.slice(2);
 ok(M.every(x => x.player), `every member agent-played; A = ${A.name}, B = ${B.name}`);
 DMA.setDmSeat(true);
@@ -119,6 +120,11 @@ ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.giftReason)) && 
 // a staged scene (issue #132): its reason is the DM's own (DM log only); the frame and the person's want are said in the game
 r = DMA.dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A drover waits by the road with a lame ox.', cast: {role: 'drover', want: 'a hand with the ox'}, reason: 'Stage ' + plant('stageReason')});
 ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), 'a staged scene\'s reason in the DM log' + (r.ok ? '' : ': ' + r.error));
+// a ruling on a free action (issue #522): the hero hears the text, the roll and what changed; the DM's note stays in its log
+{DMA.dmAct('ruling_call', {budget_s: 10}); A.playRate = []; A.attempts = []; const at = act(A, 'attempt', {what: 'I knock three times on the milestone and listen.'});
+  const ru = at.call ? DMA.dmAct('ruling_answer', {call: at.call, skill: 'perception', dc: 'fair', effects: ['none'], fail_effects: ['none'], text: 'A hollow echo answers.', fail_text: 'Only stone.', note: 'Ruling ' + plant('rulingNote')}) : {ok: false, error: at.error || 'no call'};
+  keep('attempt result', at); keep('ruling events', A.playEv || []);
+  ok(ru.ok && S.dmLog.some(e => JSON.stringify(e.detail || {}).includes(SECRETS.rulingNote)), 'a ruling: its note is in the DM log only' + (ru.ok ? '' : ': ' + ru.error))}
 S.dmLog[0].prompt = 'DM model prompt ' + plant('dmPrompt'); S.dmLog[0].reply = 'DM model reply ' + plant('dmReply');
 ok(act(B, 'journal_write', {text: 'Dear diary, ' + plant('bJournal')}).ok, 'B\'s journal');
 // tiered memory (issue #153): B's own landmark and a chapter of B's older lines stay B's
@@ -129,7 +135,7 @@ ok(act(B, 'journal_write', {text: 'A turning point: ' + plant('bLandmark'), land
 ME.remember(B, 'scene', 'I remember ' + plant('bMemory'));
 ME.memOf(B).long = (ME.memOf(B).long || '') + ' Long ago ' + plant('bLong') + '.';
 B.persona = {...(B.persona || PE.buildPersona(B, M)), wants: 'B wants ' + plant('bWants'), fears: 'B fears ' + plant('bFears'), voice: 'B speaks ' + plant('bVoice')};
-B.backstory = {...(B.backstory || PE.buildBackstory(B, M, S.fellowship.name)), summary: 'B is ' + plant('bSummary')};
+B.backstory = {...(B.backstory || PE.buildBackstory(B, M, SLT.slotted().name)), summary: 'B is ' + plant('bSummary')};
 B.backstory.paras = {...B.backstory.paras, flaw: 'B hides ' + plant('bFlaw')};
 // the persona B grows itself (issue #409): its own beliefs, traits, a stance toward A and why, all private to B
 ok(act(B, 'become', {field: 'beliefs', text: 'B believes ' + plant('bBelief'), why: 'B changed because ' + plant('bWhy')}).ok, 'B changes its own beliefs (become)');
@@ -187,7 +193,7 @@ ok(!(B.chat || []).some(e => e.text === said.npc), 'B, out of earshot, does not'
 // speaks only as the scripted DM (tagged dm), and the old chatter comes back with S.worldVoice = 'scripted'
 {const {say} = await import('../src/sim/chat.js'), {npcSay} = await import('../src/sim/npcs.js');
   ok(S.worldVoice === 'dm', 'the world voice defaults to the DM');
-  const bg = S.agents.find(h => !h.fellow && !h.player && h.state !== 'dead' && h.state !== 'ghost');
+  const bg = S.agents.find(h => !SLT.inSlots(h) && !h.player && h.state !== 'dead' && h.state !== 'ghost');
   if (bg) {const n0 = (bg.chat || []).length; bg.chatCd = 0; say(bg, 'idle', {}); say(bg, 'kill', {mob: 'Boar', level: 3});
     ok((bg.chat || []).length === n0 && !bg.bubble, 'a background hero speaks no scripted line while the flag is on');
     S.worldVoice = 'scripted'; bg.chatCd = 0; say(bg, 'kill', {mob: 'Boar', level: 3});
@@ -255,7 +261,7 @@ ok(!/QZX/.test(memberPrompt(0, false) + memberPrompt(3, true) + turnPrompt(2)), 
 // the brain snapshots for A (a model-played hero sees only these)
 BR.enableBrain(A);
 const snaps = {townPlan: BR.snapshotFor(A, 'townPlan'), say: BR.snapshotFor(A, 'say', {trigger: 'idle', ctx: {}}), fightOrFlee: BR.snapshotFor(A, 'fightOrFlee', {mob: S.mobs.find(m => m.alive)}), cryptCall: BR.snapshotFor(A, 'cryptCall'),
-  persona: PE.personaSnapshot(A, F_.fellows(), S.fellowship.name), backstory: PE.backstorySnapshot(A, F_.fellows(), S.fellowship.name),
+  persona: PE.personaSnapshot(A, SLT.slotHeroes(SLT.slotted()), SLT.slotted().name), backstory: PE.backstorySnapshot(A, SLT.slotHeroes(SLT.slotted()), SLT.slotted().name),
   memory: ME.memorySnapshot(A, ME.memOf(A).recent, ME.memOf(A).long), card: PE.fellowCard(A)};
 for (const [k, v] of Object.entries(snaps)) keep('A snapshot ' + k, v);
 BR.disableBrain(A);
@@ -364,14 +370,14 @@ NBm.NB.WRITES_PER_DAY = 60; M1.day.w = 60;
 ok(!act(C1, 'remember', {title: 'One more', text: 'Too many.'}).ok && act(C1, 'recall', {query: 'paid'}).ok, 'writes a day are capped; recall still works');
 M1.day.w = 0;
 // the letter: a member's pinned "letter" outlives them; nothing else does
-const D2 = rest[2], slot = D2.fellowRole;
+const D2 = rest[2], slot = SLT.slotKeyOf(D2);
 const lt = act(D2, 'remember', {title: 'To whoever comes next', text: 'Trust the healer and keep to the river road.', tags: ['letter']});
 const lp = act(D2, 'pin', {id: lt.remembered.id}); ok(lp.ok && /letter/.test(lp.note || ''), 'pin a note tagged "letter": sealed for the Fellowship');
 HE.fall(D2, 'a test of the hardcore rule'); run(2);
 // a world with runner links (the relay section above) refills the seat through an arrival scene at the next town or camp (#452): bring them home
-for (let k = 0; k < 60 * 60 && S.fellowship.slots[slot] == null; k++) {if (S.fellowship.arrivals && !S.table) for (const x of S.agents.filter(b => b.fellow && b.state !== 'dead')) {const g = homeOf(x).gate; x.state = 'town'; x.townStep = 1; x.x = g.x - 1; x.y = g.y; x.hidden = false} step(1 / 60)}
+for (let k = 0; k < 60 * 60 && SLT.slotted().slots[slot] == null; k++) {if (SLT.slotted().arrivals && !S.table) for (const x of S.agents.filter(b => SLT.inSlots(b) && b.state !== 'dead')) {const g = homeOf(x).gate; x.state = 'town'; x.townStep = 1; x.x = g.x - 1; x.y = g.y; x.hidden = false} step(1 / 60)}
 while (S.table) step(1 / 60);
-const nh = S.agents.find(x => x.id === S.fellowship.slots[slot]);
+const nh = S.agents.find(x => x.id === SLT.slotted().slots[slot]);
 ok(nh && nh !== D2 && nh.player, `${D2.name} fell; ${nh && nh.name} takes the place, agent-played`);
 ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');
 {const br = keep(nh.name + ' brief', PC.paceBrief(nh.id)).brief;
@@ -440,10 +446,10 @@ act(C1, 'forget', {id: id1});
   ok(!bad.changed && !bad2.changed && !bad3.changed && existsSync(join(LOGS, 'other')), 'a path-like world name or id is refused and removes nothing');
   rmSync(outside, {recursive: true, force: true})}
 // save: the notebooks are character knowledge, saved with the world
-{const before = JSON.stringify([C1.memories, nh.memories, S.dmAgent.notes, S.dmAgent.arch, S.fellowship.letters || {}]), cid = C1.id, nid = nh.id;
+{const before = JSON.stringify([C1.memories, nh.memories, S.dmAgent.notes, S.dmAgent.arch, SLT.slotted().letters || {}]), cid = C1.id, nid = nh.id;
   SIM.restore(JSON.parse(JSON.stringify(SIM.snapshot())));
   const c2 = S.agents.find(x => x.id === cid), n2 = S.agents.find(x => x.id === nid);
-  ok(JSON.stringify([c2.memories, n2.memories, S.dmAgent.notes, S.dmAgent.arch, S.fellowship.letters || {}]) === before, 'notebooks, archives and the DM\'s notes survive snapshot -> JSON -> restore');
+  ok(JSON.stringify([c2.memories, n2.memories, S.dmAgent.notes, S.dmAgent.arch, SLT.slotted().letters || {}]) === before, 'notebooks, archives and the DM\'s notes survive snapshot -> JSON -> restore');
   ok(P.playerAct(cid, 'recall', {tag: 'f3'}).notes.length === 1 && DMA.dmAct('recall', {tag: 'fog'}).notes.length === 1, 'recall works on the restored world')}
 
 // ---------------------------------------------------------------- 7. the verdict

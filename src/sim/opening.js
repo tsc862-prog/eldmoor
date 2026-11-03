@@ -4,7 +4,7 @@
 // and lets the other heroes start part-way through their careers, so the five set out into a world
 // that already has veterans, middling hunters and greenhorns in it:
 //   - the Fellowship: one faction (rolled per seed), the "form one for me" pick (autoPick) of its
-//     level-1 roster, founded with found() in the leader's home town, every member agent-played (#148:
+//     level-1 roster, founded with foundSlots() in the leader's home town, every member agent-played (#148:
 //     autopilot and reflexes until their runners claim them). They start at level 1 like everyone used to.
 //   - background heroes: a starting level drawn from START_BANDS (stratified per faction, so both
 //     factions get the same spread), placed hunting in the region that fits that level (zoneFor,
@@ -23,9 +23,8 @@ import {log,fac} from './chronicle.js';
 import {xpNeed,maxHp,seedLevel} from './heroes.js';
 import {makeItem,syncGear} from './gear.js';
 import {record,first} from './history.js';
-import {found,autoPick} from './fellowship.js';
 import {pickSetup,pickApart,applyMinds,cleanSetup,groupsOf,startOf,resolveArchetype} from './setup.js';
-import {foundCompany,campaign} from './company.js';
+import {foundCompany,campaign,foundSlots,autoPick} from './company.js';
 import {markPlayer} from './player.js';
 import {disableBrain} from './brain.js';
 import {seedProfs} from './professions.js';
@@ -73,7 +72,7 @@ export function opening(o={}){
   if(setup&&setup.mode==='apart')return openApart(setup);
   const ff=setup?setup.fac:o.fac!=null?o.fac:rnd()<.5?0:1,pick=setup?pickSetup(setup):autoPick(ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
   seasonOthers(ids);
-  const r=found(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, agent-played from the first tick (#148)
+  const r=foundSlots(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, agent-played from the first tick (#148)
   if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(profs&&Object.keys(profs).length?{profs}:{})}}}
   return r.ok?r.fellowship:null}
 

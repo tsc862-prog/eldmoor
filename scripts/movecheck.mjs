@@ -2,6 +2,7 @@
 // (real-time seconds and Table rounds), passives reach the stat model, and the state survives a save.
 // Usage: npm run movecheck
 import {init, step, S, snapshot, restore} from '../src/sim/index.js';
+import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 import {MOVES, PASSIVES, CLASS_MOVES, CLASS_PASSIVES, KINDS} from '../src/data/moves.js';
 import {CLS} from '../src/data/classes.js';
 import {movesOf, useMove, canUse, pickMove, tickRound, cdLeft, roundsLeft, abilityView, fightMoves} from '../src/sim/moves.js';
@@ -105,9 +106,9 @@ for (const id in SPECS) {const P = SPECS[id];
 
 // ---- the Table offers abilities ----
 init({fellowship: true}); for (let i = 0; i < 60; i++) step(1 / 60); used.clear(); usedM.clear();
-if (S.fellowship) {
+if (SLT.slotted()) {
   TABLE.mode = 'auto';
-  const f = S.agents.find(x => x.fellow && x.state !== 'dead'), mob = S.mobs.find(x => x.alive && !x.gone);
+  const f = S.agents.find(x => SLT.inSlots(x) && x.state !== 'dead'), mob = S.mobs.find(x => x.alive && !x.gone);
   f.mcd = {}; f.mcr = {}; // abilities used during the warm-up steps may still be cooling down (seed-dependent on CI)
   const sc2 = {kind: 'elite', ctx: {mob: mob.id}, ids: [f.id], acts: {}, beats: []}; // a combat scene's shape; no need to run one
   const opts = optionsFor(sc2, f).filter(o => MOVES[o.k]);
@@ -140,7 +141,7 @@ if (S.fellowship) {
 // ---- a reflex Fellowship healer heals with its class move (#347) ----
 {
   const uses = id => (S.moveStats && S.moveStats.uses[id]) || 0;
-  const mem = S.agents.filter(x => x.fellow && x.state !== 'dead' && x.state !== 'ghost' && !x.hidden);
+  const mem = S.agents.filter(x => SLT.inSlots(x) && x.state !== 'dead' && x.state !== 'ghost' && !x.hidden);
   const hl = mem.find(x => CLS[x.cls].heal), mate = mem.find(x => x !== hl);
   if (hl && mate) {
     for (const b of mem) b.hp = combatStats(b).health;

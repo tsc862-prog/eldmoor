@@ -17,7 +17,8 @@ import http from 'node:http';
 let seed = 0x9e3779b9 ^ (Number(process.env.PLAYCHECK_SEED) || 75);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 
-const {init, step, S, snapshot, restore, maxHp} = await import('../src/sim/index.js');
+const {init, setDmSeat, step, S, snapshot, restore, maxHp} = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {homeOf} = await import('../src/data/races.js');
 const {ADVENTURES: ADV} = await import('../src/data/adventures.js');
 const P = await import('../src/sim/player.js');
@@ -52,7 +53,7 @@ const hostOpts = () => driven ? {nap: advance, now: () => vclock} : undefined;
 // for 1) in which one background hero is agent-played and its turn is held open and closed again by its tool calls.
 if (process.argv[2] === '--fp') {
   init({fellowship: process.argv[3] === '1'}); run(1);
-  const h = S.agents.find(x => x.fac === 0 && !x.fellow && x.state !== 'dead'); P.markPlayer(h, true); P.playerAct(h.id, 'look');
+  const h = S.agents.find(x => x.fac === 0 && !SLT.inSlots(x) && x.state !== 'dead'); P.markPlayer(h, true); P.playerAct(h.id, 'look');
   for (let i = 0; i < 4 * 600; i++) {step(1 / 60); if (i === 1500) P.playerAct(h.id, 'wait', {minutes: 30})}
   console.log(JSON.stringify({t: S.gameMin, uid: S.uid, a: S.agents.map(x => [x.id, x.state, x.lvl, Math.round(x.xp), Math.round(x.x * 100), Math.round(x.y * 100), Math.round(x.hp), x.kills, x.gold, x.playTurn ?? null])}));
   process.exit(0);
@@ -186,6 +187,7 @@ if (a.state !== 'town') {const t = await call('turn_in', {}); ok(!t.ok && /gate 
 let chose = false, saved = false, fought = false;
 function saveRestore(when) {
   paused = true;
+  setDmSeat(true); // a real world has its DM seat open (#520); a closed seat converts on restore
   const snap = JSON.parse(JSON.stringify(snapshot()));
   run(1);
   restore(snap); a = S.agents.find(x => x.id === id);
@@ -520,13 +522,13 @@ driven = false; // from here on tool calls arrive over sockets; the background t
 }
 // ---- NPC conversations (issue #170): a Fellowship member talks to a townsperson ----
 {paused = true;
-  const F_ = await import('../src/sim/fellowship.js'), DMA = await import('../src/sim/dmagent.js'), TK = await import('../src/sim/talk.js');
+  const F_ = await import('../src/sim/company.js'), DMA = await import('../src/sim/dmagent.js'), TK = await import('../src/sim/talk.js');
   for (const x of S.agents) if (x.fac === 1 && x.state !== 'dead') {x.lvl = Math.max(x.lvl, 6); x.hp = maxHp(x)}
-  const fr = F_.found(F_.autoPick(1), {fac: 1, ai: false}); F_.setMinds('agent');
-  const m = F_.fellows()[0], home = homeOf(m), mc = (tool, args) => hostCall(m.id, tool, args, hostOpts());
+  const fr = SLT.foundSlots(SLT.autoPick(1), {fac: 1, ai: false}); SLT.setSlotMinds(SLT.slotted(), 'agent');
+  const m = SLT.slotHeroes(SLT.slotted())[0], home = homeOf(m), mc = (tool, args) => hostCall(m.id, tool, args, hostOpts());
   const per = role => S.npcs.find(q => q.town === home.name && q.role === role);
-  const stand = (q, dx = 1) => {for (const x of F_.fellows()) {x.x = home.gate.x + 25; x.y = home.gate.y} m.state = 'town'; m.town = home.name; m.x = q.x + dx; m.y = q.y; m.pq = []; m.target = null; m.playRate = []};
-  ok(fr.ok && m && m.fellow && m.player, `a Fellowship to talk with (${S.fellowship && S.fellowship.name}, ${m && m.name})`);
+  const stand = (q, dx = 1) => {for (const x of SLT.slotHeroes(SLT.slotted())) {x.x = home.gate.x + 25; x.y = home.gate.y} m.state = 'town'; m.town = home.name; m.x = q.x + dx; m.y = q.y; m.pq = []; m.target = null; m.playRate = []};
+  ok(fr.ok && m && SLT.inSlots(m) && m.player, `a Fellowship to talk with (${SLT.slotted() && SLT.slotted().name}, ${m && m.name})`);
   // the seat is closed: the scripted DM answers from the role
   const qm = per('quartermaster'); stand(qm);
   r = await call('look'); // the other hero's view is untouched
@@ -553,7 +555,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   m.x = sm.x + 15; step(1 / 60); ok(!TK.convWith(sm), 'walking off ends the conversation');
   // ---- earshot (issue #395): who hears you, before you speak; the same sets say and party_say use ----
   {const {paceBrief} = await import('../src/sim/pace.js'), {zoneAt} = await import('../src/world/map.js'), R = await import('../src/sim/reach.js');
-    const [, f2, f3, ...rest] = F_.fellows(); stand(qm); m.state = 'town'; const z = zoneAt(m.x, m.y), wz = S.weather && S.weather[z], wk = wz && wz.k;
+    const [, f2, f3, ...rest] = SLT.slotHeroes(SLT.slotted()); stand(qm); m.state = 'town'; const z = zoneAt(m.x, m.y), wz = S.weather && S.weather[z], wk = wz && wz.k;
     if (wz) wz.k = 'clear';
     f2.x = m.x + 2; f2.y = m.y; f3.x = m.x + 9; f3.y = m.y; for (const x of [f2, f3]) {x.pq = []; x.target = null}
     step(1 / 60); // the spatial index say uses is rebuilt each step
@@ -571,20 +573,20 @@ driven = false; // from here on tool calls arrive over sockets; the background t
       ok(s2.ok && (s2.too_far || []).includes(f3.name) && !s2.heard_by.includes(f3.name), 'and party_say agrees: too far in the fog');
       wz.k = wk}
     // alone, with nobody near: no line in the header
-    for (const x of F_.fellows()) if (x !== m) {x.x = home.gate.x + 30; x.y = home.gate.y}
+    for (const x of SLT.slotHeroes(SLT.slotted())) if (x !== m) {x.x = home.gate.x + 30; x.y = home.gate.y}
     const far = {x: m.x, y: m.y};
     const {earshotLine} = await import('../src/sim/earshot.js');
     let spot = null; for (let dx = -30; dx <= 30 && !spot; dx += 3) for (let dy = -20; dy <= 20 && !spot; dy += 3) {m.x = far.x + dx; m.y = far.y + dy; if (m.x > 1 && m.y > 1 && m.x < 78 && m.y < 48 && !earshotLine(m)) spot = [m.x, m.y]}
     b = spot && paceBrief(m.id).brief; ok(spot && b && b.earshot === null, 'with nobody near, the header carries no earshot line');
     m.x = far.x; m.y = far.y}
-  DMA.setDmSeat(false); F_.disbandFellowship(); paused = false}
+  DMA.setDmSeat(false); SLT.disbandSlots(SLT.slotted()); paused = false}
 
 // ---- stale orders (issue #240): autopilot holds during the agent's turn, the hold has a cap, and an order the
 // world moved past is refused with what changed since the agent's last look ----
 {
   paused = true;
   const {hostPace} = await import('../src/sim/player-host.js'), {dist} = await import('../src/world/map.js'), {leaveParty} = await import('../src/sim/party.js');
-  const c = S.agents.find(x => x.fac === 1 && x.state !== 'dead' && !x.player && !x.fellow && !x.adv);
+  const c = S.agents.find(x => x.fac === 1 && x.state !== 'dead' && !x.player && !SLT.inSlots(x) && !x.adv);
   if (c.party) leaveParty(c); P.markPlayer(c, true);
   const out = S.agents.find(x => x !== c && x.state === 'hunt' && !x.player && x.kind === 'hero');
   const calm = () => {S.pvpT = 1; c.spotCd = 99; for (const m of S.mobs) {if (m.target === c) m.target = null; if (dist(m, c) < 30) m.scan = 1}
@@ -629,7 +631,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
 {
   paused = true;
   const {ZONES, zoneAt} = await import('../src/world/map.js');
-  const h = S.agents.find(x => x.id !== id && x.kind === 'hero' && !x.player && !x.fellow && x.state === 'town' && x.lvl <= 6) || S.agents.find(x => x.id !== id && x.kind === 'hero' && !x.player && x.state === 'town');
+  const h = S.agents.find(x => x.id !== id && x.kind === 'hero' && !x.player && !SLT.inSlots(x) && x.state === 'town' && x.lvl <= 6) || S.agents.find(x => x.id !== id && x.kind === 'hero' && !x.player && x.state === 'town');
   const hc = homeOf(h); h.pq = []; h.target = null; h.hp = maxHp(h);
   ok(P.markPlayer(h, true), `marked ${h.name} agent-played for hunt {where}`);
   const ground = ZONES[zoneAt(hc.gate.x, hc.gate.y)];
@@ -657,7 +659,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   const {INTENT, aimState} = await import('../src/sim/intent.js'), {companyOf} = await import('../src/sim/company.js'), {leaderFor} = await import('../src/sim/council.js');
   const {makeWatch, BW} = await import('../src/sim/behavior.js'), {rebuild} = await import('../src/sim/spatial.js'), {leaveParty} = await import('../src/sim/party.js');
   const act = (h, tool, args) => {h.playRate = []; return P.playerAct(h.id, tool, args || {})};
-  const free = x => x.id !== id && x.kind === 'hero' && !x.player && !x.fellow && !x.adv && !x.hidden && !['dead', 'ghost', 'dungeon', 'raid', 'duel'].includes(x.state);
+  const free = x => x.id !== id && x.kind === 'hero' && !x.player && !SLT.inSlots(x) && !x.adv && !x.hidden && !['dead', 'ghost', 'dungeon', 'raid', 'duel'].includes(x.state);
   const fac = [0, 1].find(f => S.agents.filter(x => free(x) && x.fac === f).length >= 3), pool = S.agents.filter(x => free(x) && x.fac === fac);
   const h = pool[0], hc = homeOf(h); if (h.party) leaveParty(h); h.pq = []; h.target = null; h.hp = maxHp(h); h.x = hc.ah.x; h.y = hc.ah.y; h.state = 'town'; h.dest = null;
   ok(P.markPlayer(h, true), `marked ${h.name} agent-played for intent`);

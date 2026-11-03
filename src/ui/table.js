@@ -42,7 +42,7 @@ import {maxHp} from '../sim/heroes.js';
 import {effOn,condOn} from '../sim/eff.js';
 import {CONDITIONS,MOVES} from '../data/moves.js';
 import {patch} from './stable.js'; // update in place (#145)
-import {companies,companyById,members,leaderOf} from '../sim/company.js';
+import {companies,companyById,members,leaderOf,slotted} from '../sim/company.js';
 import {followedCompany,followCompany} from './companyview.js'; // whose table it is (#456)
 import {setView} from './controls.js';
 
@@ -67,11 +67,11 @@ function chime(kind){if(!snd||!gesture||!ctx||ctx.state!=='running')return;
 export function alertCue(){if(!snd||!gesture||!ctx||ctx.state!=='running')return;
   try{const t0=ctx.currentTime+.02;[[440,0],[349.23,.14],[261.63,.28]].forEach(([f,dt])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type='sawtooth';o.frequency.value=f;
     g.gain.setValueAtTime(0,t0+dt);g.gain.linearRampToValueAtTime(.05,t0+dt+.02);g.gain.exponentialRampToValueAtTime(.0008,t0+dt+.16);o.connect(g).connect(ctx.destination);o.start(t0+dt);o.stop(t0+dt+.2)})}catch(_){}}
-function syncSnd(){const b=$('vSnd');if(!b)return;b.hidden=!S.fellowship;b.textContent='Sound: '+(snd?'on':'off');b.setAttribute('aria-pressed',String(snd))}
+function syncSnd(){const b=$('vSnd');if(!b)return;b.hidden=!slotted();b.textContent='Sound: '+(snd?'on':'off');b.setAttribute('aria-pressed',String(snd))}
 
 function syncPause(){const b=$('vPause'),r=b&&b.closest?b.closest('.setrow'):null;if(!b)return;const on=pauseAll(),show=companies().length>1;
   if(r&&r.hidden===show)r.hidden=!show;const t='Pause: '+(on?'any company':'followed');if(b.textContent!==t){b.textContent=t;b.setAttribute('aria-pressed',String(on))}}
-function syncBtn(){const b=$('vTab');if(!b)return;b.hidden=!S.fellowship;b.textContent='Table: '+(TABLE.mode==='off'?'Off':'Auto');b.setAttribute('aria-pressed',String(TABLE.mode!=='off'))}
+function syncBtn(){const b=$('vTab');if(!b)return;b.hidden=!slotted();b.textContent='Table: '+(TABLE.mode==='off'?'Off':'Auto');b.setAttribute('aria-pressed',String(TABLE.mode!=='off'))}
 export function initTable(){
   initVoice({gate:()=>snd&&gesture}); // narrator voice (#554): plays only behind the Sound switch, after a click
   try{const v=localStorage.getItem(KEY);if(v==='off'||v==='auto')TABLE.mode=v}catch(_){}

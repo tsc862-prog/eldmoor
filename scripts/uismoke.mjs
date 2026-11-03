@@ -16,6 +16,7 @@ globalThis.fetch=()=>Promise.reject(new Error('no relay in the smoke'));
 globalThis.requestAnimationFrame=()=>0;
 
 const sim=await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {initUI,uiFast,uiSlow}=await import('../src/ui/app.js');
 const {remember}=await import('../src/sim/memory.js');
 const {select,setView}=await import('../src/ui/controls.js');
@@ -28,7 +29,7 @@ let fail=0;const failed=[];const ok=(c,m)=>{if(c)console.log('  ok   '+m);else{c
 // member alive, a foe in the open or a stranger in range sees the same world each time (the unseeded smoke flaked, #477).
 const {seedRng}=await import('../src/core/rng.js');seedRng(477);
 sim.init();
-if(sim.S.fellowship)sim.disbandFellowship(); // the first half runs without one
+if(SLT.slotted())SLT.disbandSlots(SLT.slotted()); // the first half runs without one
 const renderer={onCamChange(){},setZoom(){},stepZoom:(z)=>z,currentZoom:()=>1,zoomAt(){},panBy(){},screenToWorld:()=>({x:0,y:0})};
 initUI(renderer);
 // The DM is always an agent (#559): the page opens the DM seat of the world it plays and the start gate counts it. The
@@ -101,10 +102,10 @@ holds('Top heroes',()=>$('tops'),{ranked:true});
   window._setSelection(null);tick(1);ok(true,'selection released (rows: '+before+' -> '+l.children.length+')')}
 
 console.log('with a Fellowship');
-const slots=sim.autoPick(0);const r=sim.found(slots,{fac:0,ai:false});ok(r&&r.ok!==false,'Fellowship founded');
+const slots=SLT.autoPick(0);const r=SLT.foundSlots(slots,{fac:0,ai:false});ok(r&&r.ok!==false,'Fellowship founded');
 tick(1);
 ok(!$('frames').hidden,'party frames shown');
-const mem=sim.fellows();guardMem=mem;sim.markPlayer(mem[1],true);mem[1].fellowAgent=true;
+const mem=SLT.slotHeroes(SLT.slotted());guardMem=mem;sim.markPlayer(mem[1],true);mem[1].fellowAgent=true;
 for(let i=0;i<6;i++){sim.playerAct(mem[1].id,'look',{});tick(10)}
 select(mem[0]);uiFast();
 setTab('memory');uiFast();holds('Memory tab',()=>tb().querySelector('.log'),{sec:60,min:2});
@@ -125,8 +126,8 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
   ok(hints==='1,2,3,4,5','party frames carry the key hints 1..5: '+hints);
   ok($('frames').querySelector('.pfkey').title==='Press 1-5 to select','key hint tooltip');
   select(mem[0]);press('2');ok(cam.sel===mem[1]&&cam.view==='follow','key 2 selects slot 2 and follows');
-  press('4',{code:'Numpad4'});ok(cam.sel===sim.fellows()[3],'key 4 selects slot 4');
-  press('Digit5'.slice(5),{});ok(cam.sel===sim.fellows()[4],'key 5 selects slot 5');
+  press('4',{code:'Numpad4'});ok(cam.sel===SLT.slotHeroes(SLT.slotted())[3],'key 4 selects slot 4');
+  press('Digit5'.slice(5),{});ok(cam.sel===SLT.slotHeroes(SLT.slotted())[4],'key 5 selects slot 5');
   select(mem[0]);press('3',{target:{tagName:'INPUT'}});ok(cam.sel===mem[0],'typing 3 in an input does not select');
   press('3',{target:{tagName:'TEXTAREA'}});press('3',{target:{tagName:'DIV',isContentEditable:true}});ok(cam.sel===mem[0],'textarea and contenteditable ignored');
   press('1',{ctrlKey:true});press('2',{metaKey:true});press('3',{altKey:true});ok(cam.sel===mem[0],'Ctrl/Meta/Alt + digit does not select');
@@ -140,19 +141,19 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
   ok(!fb.querySelector('.feldrawer'),'Members and Fallen are closed by default');
   // a thread that is not about a hero: an oath and a meeting plan show as one-liners
   // set the oath after the ticks, on a member who still stands: a member who fell in those ticks is replaced by a new object
-  tick(10);const oathHero=sim.fellows()[0],keepAdv=sim.S.adventures;sim.S.adventures=[]; // the threads box is capped and the world's own jobs come first
+  tick(10);const oathHero=SLT.slotHeroes(SLT.slotted())[0],keepAdv=sim.S.adventures;sim.S.adventures=[]; // the threads box is capped and the world's own jobs come first
   oathHero.goal={text:'Avenge Torius on Grishnak',progress:0,need:1};uiFast();
   ok(/swore to avenge Torius/.test(fb.querySelector('.fthreads').textContent),'an oath is a live one-liner (member '+oathHero.name+' '+oathHero.state+', threads: '+fb.querySelector('.fthreads').textContent.slice(0,120)+')');
   sim.S.adventures=keepAdv;
   // Disband needs a confirmation behind the ... menu
   ok(!fb.querySelector('[data-fact=disband]'),'Disband is not on the header');
   fb.querySelector('[data-fact=menu]').click();ok(!!fb.querySelector('[data-fact=disband]'),'the ... menu offers Disband');
-  fb.querySelector('[data-fact=disband]').click();ok(!!sim.S.fellowship&&/Yes, disband/.test(fb.textContent),'Disband asks first and the Fellowship still stands');
-  fb.querySelector('[data-fact=menu]').click();ok(!sim.S.fellowship===false&&!fb.querySelector('[data-fact=disband]'),'Cancel closes the menu without disbanding');
+  fb.querySelector('[data-fact=disband]').click();ok(!!SLT.slotted()&&/Yes, disband/.test(fb.textContent),'Disband asks first and the Fellowship still stands');
+  fb.querySelector('[data-fact=menu]').click();ok(!SLT.slotted()===false&&!fb.querySelector('[data-fact=disband]'),'Cancel closes the menu without disbanding');
   fb.querySelector('[data-fact="drawer:members"]').click();const dr=fb.querySelector('.feldrawer');
   ok(!!dr&&!!dr.querySelector('.mindrow'),'the members drawer opens on a click');
   ok(dr.querySelectorAll('.fm .fport').length===5,'roster: each place has a face canvas (#379)');
-  if(sim.S.fellowship.past.length){fb.querySelector('[data-fact="drawer:fallen"]').click();ok(/Fallen/.test(fb.querySelector('.feldrawer').textContent),'Fallen is one click away')}
+  if(SLT.slotted().past.length){fb.querySelector('[data-fact="drawer:fallen"]').click();ok(/Fallen/.test(fb.querySelector('.feldrawer').textContent),'Fallen is one click away')}
   else ok(!fb.querySelector('[data-fact="drawer:fallen"]'),'no Fallen button while nobody has fallen');
   fb.querySelector('[data-fact="drawer:members"]').click();
   {const css=(await import('node:fs')).readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
@@ -265,10 +266,10 @@ console.log('declutter');
 // ---- the Fellowship chat panel, class and disposition colours, council lines (#169) ----
 {const {classColor,dispositionOf,toneOf}=await import('../src/core/colors.js');
   // the living members: a fallen one in `mem` has lost its fellow flag
-  const dps=sim.fellows().filter(a=>/^dps/.test(a.fellowRole||''));const cols=new Set(dps.map(a=>classColor(a.cls)));
+  const dps=SLT.slotHeroes(SLT.slotted()).filter(a=>/^dps/.test(SLT.slotKeyOf(a)||''));const cols=new Set(dps.map(a=>classColor(a.cls)));
   ok(dps.length===3&&cols.size===3,'three DPS of different classes get three different colours: '+[...cols].join(' '));
   ok(classColor('Warrior')!==classColor('Priest')&&classColor('Nonesuch')===classColor('Nonesuch'),'every class has its own colour, an unknown class a stable one');
-  const F=sim.S.fellowship,home={kind:'npc',fac:F.fac,name:'Ostler'},away={kind:'npc',fac:1-F.fac,name:'Peddler'};
+  const F=SLT.slotted(),home={kind:'npc',fac:F.fac,name:'Ostler'},away={kind:'npc',fac:1-F.fac,name:'Peddler'};
   ok(dispositionOf(home,F)==='friendly'&&dispositionOf(away,F)==='neutral','NPCs of the Fellowship\'s faction are friendly, others neutral');
   ok(dispositionOf({...away,mood:'hostile'},F)==='hostile'&&dispositionOf({...home,hostile:true},F)==='hostile'&&dispositionOf({kind:'foe',name:'Brute'},F)==='hostile','npc.mood, npc.hostile and a foe make it hostile');
   ok(dispositionOf({cls:'Mage',fac:1-F.fac,name:'Rival'},F)==='hostile','an enemy-faction hero is hostile');
@@ -283,8 +284,8 @@ console.log('declutter');
   ok([...cl.querySelectorAll('time')].every(t=>/^(D\d+ )?\d\d:\d\d$/.test(t.textContent)),'chat panel: day-stamped times');
   ok(/proposes: take a job from the gate that matches our level \[job \u00b7 vote open\]/.test(txt()),'chat panel: one proposal line: '+(txt().match(/proposes:.{0,90}/)||[''])[0]);
   ok(!/my proposal/.test(txt()),'chat panel: no "my proposal" line');
-  const voter=mem[2];sim.playerAct(voter.id,'vote',{proposal_id:sim.S.fellowship.props[0].id,vote:'no',reason:'too dangerous'});uiFast();
-  {const cast=sim.S.fellowship.props[0].votes[voter.id];if(cast&&cast.reason==='too dangerous')ok(/votes no: too dangerous/.test(txt()),'chat panel: a vote is a system line "X votes no: reason"');else console.log('  skip vote line (the proposal settled before the vote)')}
+  const voter=mem[2];sim.playerAct(voter.id,'vote',{proposal_id:SLT.slotted().props[0].id,vote:'no',reason:'too dangerous'});uiFast();
+  {const cast=SLT.slotted().props[0].votes[voter.id];if(cast&&cast.reason==='too dangerous')ok(/votes no: too dangerous/.test(txt()),'chat panel: a vote is a system line "X votes no: reason"');else console.log('  skip vote line (the proposal settled before the vote)')}
   ok(!!cl.querySelector('li.sys .hn'),'chat panel: system lines use the member\'s coloured name');
   const nm=cl.querySelector('li .hn.fmn');ok(!!nm&&/^#[0-9a-f]{6}$/i.test(nm.style.color||'#000000'),'chat panel: a member\'s name carries its class colour');
   const fb=$('chatFilter');const click=k=>{fb.children.find(b=>b.dataset.cf===k).click();return cl.textContent};
@@ -335,13 +336,13 @@ console.log('declutter');
 // The run gate (#171): the world only runs while every required agent seat is connected
 console.log('run gate');
 {const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');
-  for(const m of sim.fellows())sim.markPlayer(m,true);
-  const L={};for(const m of sim.fellows())L[m.id]='connected';let dm='off';
+  for(const m of SLT.slotHeroes(SLT.slotted()))sim.markPlayer(m,true);
+  const L={};for(const m of SLT.slotHeroes(SLT.slotted()))L[m.id]='connected';let dm='off';
   gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>dm});
   const T0=1e6,box=$('rgate'),sp=n=>$('sp'+n),press=n=>sp(n).dispatch('click',{target:sp(n)});
   ctl.speed=1;gate.checkRunGate(T0);
   ok(!ctl.held&&box.hidden,'all five connected: the world runs and no bar shows');
-  const m3=sim.fellows()[2];L[m3.id]='none';
+  const m3=SLT.slotHeroes(SLT.slotted())[2];L[m3.id]='none';
   gate.checkRunGate(T0+5000);ok(!ctl.held,'a short blip (5 s) does not close the gate');
   gate.checkRunGate(T0+25000);ok(!ctl.held,'a 25 s blip does not close the gate either');
   gate.checkRunGate(T0+35000);
@@ -376,7 +377,7 @@ console.log('run gate');
 // The start gate (#222): connected is not enough; every seat must have answered one warm-up model call
 console.log('start gate: ready, not just claimed');
 {const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');
-  const F=sim.fellows(),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
+  const F=SLT.slotHeroes(SLT.slotted()),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
   gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'off',ready:a=>R[a.id]||null,dmReady:()=>null});
   const T0=5e6,box=$('rgate');ctl.speed=1;gate.checkRunGate(T0);
   ok(!ctl.held,'every seat ready: the world runs');
@@ -399,7 +400,7 @@ console.log('start gate: ready, not just claimed');
 // The DM prepares the table (#437): once every seat is ready, a ready DM runner holds the world for one bounded prep
 console.log('the DM prepares the table');
 {const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js'),{dmFrameData}=await import('../src/ui/dmframe.js');
-  const F=sim.fellows(),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
+  const F=SLT.slotHeroes(SLT.slotted()),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
   const turns0=sim.S.dmAgent&&sim.S.dmAgent.turns?sim.S.dmAgent.turns.slice():null; // the DM calls below are not a turn for the DM tab's check further down
   let dmR={state:'ready',model:'qwen2.5:14b',ms:700,at:1};sim.setDmSeat(true);
   gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'connected',ready:a=>R[a.id]||null,dmReady:()=>dmR});
@@ -513,7 +514,7 @@ console.log('the DM prepares the table');
   const cols=()=>{uiFast();return $('colL').hidden?($('side').parentNode.className.includes('cols3')?-1:0):3};
   const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
   const keep=window.innerWidth;
-  ok(!!sim.S.fellowship,'wide layout: a Fellowship stands for the column checks');
+  ok(!!SLT.slotted(),'wide layout: a Fellowship stands for the column checks');
   for(const [w,n,st,hr] of [[1000,2,'side','colM'],[1600,2,'side','colM'],[2400,3,'colL','side'],[390,1,'side','colM'],[1000,2,'side','colM']]){
     window.innerWidth=w;uiFast();
     ok(columnCount()===n,w+' px: '+n+' column(s)');
@@ -578,7 +579,7 @@ console.log('the DM prepares the table');
   T.clearDmTurns();cp.setChatTab('chat')}
 
 // Fellowship sheet: last fight row (#241)
-{const SH=await import('../src/ui/sheet.js'),ms=sim.fellowshipMembers().filter(m=>m.hero);
+{const SH=await import('../src/ui/sheet.js'),ms=SLT.slotMembers(SLT.slotted()).filter(m=>m.hero);
   const fx={id:7,foe:'Gnoll',start:1000,end:1002,result:'won',dealt:41.6,taken:12,healed:5,abilities:{Cleave:2,Guard:1},items:{'Health potion':1}};
   globalThis.__actionLog={actionLog:()=>[],fights:()=>[fx],fightSummary:a=>a===ms[0].hero?fx:null};
   const T=SH.sheetRows(),r=T.rows.find(x=>x.key==='fight');
@@ -592,7 +593,7 @@ console.log('the DM prepares the table');
   delete globalThis.__actionLog;SH.closeSheet()}
 
 // Fellowship sheet: each member's face in its column header (#376), the party frame's portrait and modes
-{const SH=await import('../src/ui/sheet.js'),{portrait}=await import('../src/render/sprites.js'),ms=sim.fellowshipMembers().filter(m=>m.hero);
+{const SH=await import('../src/ui/sheet.js'),{portrait}=await import('../src/render/sprites.js'),ms=SLT.slotMembers(SLT.slotted()).filter(m=>m.hero);
   const T0=JSON.stringify(SH.sheetRows().rows.map(r=>[r.key,r.cells.map(c=>c.t)]));
   SH.openSheet();const body=document.querySelector('.shbody'),ports=()=>body.querySelectorAll('.shport');
   ok(ports().length===ms.length,'sheet faces: one portrait per member column ('+ports().length+'/'+ms.length+')');
@@ -609,7 +610,7 @@ console.log('the DM prepares the table');
   ok(!SH.sheetRows().cols.some(c=>'face' in c||'portrait' in c),'sheet faces: no face in the row data');
   SH.closeSheet()}
 // Fellowship sheet: the Life view (#389), landmarks newest first, chapters with days, last 10 journal entries, patched in place
-{const SH=await import('../src/ui/sheet.js'),LV=await import('../src/ui/lifeview.js'),ms=sim.fellowshipMembers().filter(m=>m.hero);
+{const SH=await import('../src/ui/sheet.js'),LV=await import('../src/ui/lifeview.js'),ms=SLT.slotMembers(SLT.slotted()).filter(m=>m.hero);
   const a=ms[0].hero,b=ms[1].hero,keepT=a.tiers,keepJ=a.journal,keepTb=b.tiers,keepJb=b.journal;
   delete b.tiers;b.journal=[];
   a.tiers={v:1,seq:3,marks:[{id:1,k:'level',w:3,day:2,gm:1440,text:'Reached level 5.',key:'x1'},{id:2,k:'death',w:5,day:4,gm:4320,text:'Watched Brann fall in the crypt.',key:'x2'}],
@@ -620,7 +621,7 @@ console.log('the DM prepares the table');
   ok(!!btn('life')&&btn('table').getAttribute('aria-pressed')==='true'&&lf().hidden,'life: the sheet opens side by side, with a Life button');
   body.scrollTop=37;btn('life').click();
   ok(SH.sheetView()==='life'&&!lf().hidden&&ov.querySelector('.shtblw').hidden&&btn('life').getAttribute('aria-pressed')==='true','life: Life shows the life cards and hides the table');
-  const cards=()=>lf().querySelectorAll('.lfcard');ok(cards().length===sim.fellowshipMembers().length,'life: one card per Fellowship place ('+cards().length+')');
+  const cards=()=>lf().querySelectorAll('.lfcard');ok(cards().length===SLT.slotMembers(SLT.slotted()).length,'life: one card per Fellowship place ('+cards().length+')');
   const c0=cards()[0],marks=c0.querySelectorAll('.lfmark'),chs=c0.querySelectorAll('.lfch'),ents=c0.querySelectorAll('.lfent');
   ok(marks.length===2&&/Watched Brann/.test(marks[0].textContent)&&/Day 4/.test(marks[0].textContent)&&/level 5/.test(marks[1].textContent),'life: landmarks newest first, with their day');
   ok(chs.length===1&&/Ch\. 1 · Days 1-3/.test(chs[0].textContent)&&/the road out of Highgate/.test(chs[0].textContent)&&!/Days 1-3:/.test(chs[0].textContent),'life: chapter title with its days ('+chs[0].textContent+')');
@@ -644,7 +645,7 @@ console.log('the DM prepares the table');
   a.tiers=keepT;a.journal=keepJ;if(keepTb)b.tiers=keepTb;b.journal=keepJb;SH.closeSheet()}
 
 // Professions block on the Stats tab (#259)
-{const h=(sim.fellowshipMembers().filter(x=>x.hero)[0]||{hero:sim.S.agents.find(a=>a.kind==='hero')}).hero;
+{const h=(SLT.slotMembers(SLT.slotted()).filter(x=>x.hero)[0]||{hero:sim.S.agents.find(a=>a.kind==='hero')}).hero;
   const Pf=await import('../src/sim/professions.js');
   const keepP=h.profs;h.profs=[]; // a hero with none (scripted heroes take up a gathering trade at level 3 since #257, so the seeded world's hero may hold one)
   select(h);setTab('stats');uiFast();
@@ -659,7 +660,7 @@ console.log('the DM prepares the table');
 
 // Table banner: the combat block (#277). A scene with rounds, set up by hand (no world step), rendered like main.js does.
 {const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),S=sim.S,box=$('tbanner'),spd=T.TABLE.speed;
-  const ms=sim.fellows().filter(a=>a.state!=='dead').slice(0,3),m=S.mobs.find(x=>x.alive&&!x.gone);
+  const ms=SLT.slotHeroes(SLT.slotted()).filter(a=>a.state!=='dead').slice(0,3),m=S.mobs.find(x=>x.alive&&!x.gone);
   if(ms.length<2||!m)console.log('  skip combat banner (no members or no creature)');else{
   const R=(die,mod,vs,hit,crit,dmg,target,down)=>({die,mod,total:die+mod,vs,hit:!!hit,crit:!!crit,dmg,target,down:!!down}); // beat.roll (#285)
   const keep=S.table,hp0=ms.map(a=>a.hp),mhp=m.hp,st0=T.TABLE.step;m.hp=Math.round(m.maxhp*.6);
@@ -715,7 +716,7 @@ console.log('the DM prepares the table');
   S.table=keep;m.hp=mhp;m.target=null;ms.forEach((a,i)=>a.hp=hp0[i]);T.TABLE.speed=spd}}
 // Table banner legibility (#471): a short pixel title, the tags as chips, the question as body text, one row per member.
 {const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),RL=await import('../src/sim/runlink.js'),{classColor}=await import('../src/core/colors.js');
-  const S=sim.S,box=$('tbanner'),ms=sim.fellows().filter(a=>a.state!=='dead');
+  const S=sim.S,box=$('tbanner'),ms=SLT.slotHeroes(SLT.slotted()).filter(a=>a.state!=='dead');
   if(ms.length<3)console.log('  skip banner legibility (no Fellowship)');else{
   const keep=S.table,det='make camp here by the old road and start our watch before the moon is up';
   ok(TB.sceneHead('decision','Put to the party: '+det).head==='Vote · make camp here…','banner: the title is the kind plus a few words ('+TB.sceneHead('decision','Put to the party: '+det).head+')');
@@ -758,7 +759,7 @@ console.log('the DM prepares the table');
   RL.setRunnerLinks(null);RL.setReflexAck(null);S.table=keep;TB.renderTable(1)}}
 // ---- chat in the left column on the three-column layout (owner request) ----
 {const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
-  const keep=window.innerWidth;ok(!!sim.S.fellowship,'chat left: a Fellowship stands');
+  const keep=window.innerWidth;ok(!!SLT.slotted(),'chat left: a Fellowship stands');
   const lst=$('chatList'),sec=$('chatSec');
   window.innerWidth=2400;uiFast();
   ok(where('chatSec')==='colL'&&$('colL').children[0]===sec,'2400 px: the chat is first in the left column');
@@ -779,7 +780,7 @@ console.log('the DM prepares the table');
 {const fb=$('felbody'),{ARCHETYPES}=await import('../src/data/archetypes.js');
   if(!fb.querySelector('.feldrawer'))fb.querySelector('[data-fact="drawer:members"]').click();
   uiFast(); // a member who fell since the last refresh has a new id: the row must be drawn for the member we pick
-  const a=sim.fellows()[0];
+  const a=SLT.slotHeroes(SLT.slotted())[0];
   const sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));ok(!!sb,'sheet editor: the drawer has a Sheet button for '+a.name+' (#'+a.id+')');if(!sb)throw new Error('no Sheet button');sb.click();
   const sel=fb.querySelector('select[data-farch]');
   ok(!!sel&&sel.children.length===7&&sel.value==='','sheet editor: an Archetype select, None until one is picked');
@@ -789,12 +790,12 @@ console.log('the DM prepares the table');
   ok(a.persona.archetype==='mercenary'&&a.persona.voice===ARCHETYPES.mercenary.voice&&a.persona.edited,'sheet editor: picking one applies it and marks the persona as the owner choice');
   ok(voice()===box0&&box0.value===ARCHETYPES.mercenary.voice&&typed.value==='typed but not saved','sheet editor: the persona boxes change in place, typed text elsewhere is kept');
   ok(fb.querySelector('.farchhint').textContent.includes(ARCHETYPES.mercenary.voice),'sheet editor: the hint shows the archetype voice');
-  const m2=sim.fellows()[1];ok(a.persona.stances[m2.id]===ARCHETYPES.mercenary.stance.replace('{other}',m2.name),'sheet editor: stances name each companion');
+  const m2=SLT.slotHeroes(SLT.slotted())[1];ok(a.persona.stances[m2.id]===ARCHETYPES.mercenary.stance.replace('{other}',m2.name),'sheet editor: stances name each companion');
   ok(!fb.querySelector('select[data-farch]').children.some(o=>o.value===''),'sheet editor: None is gone once one is picked');
   fb.querySelectorAll('button').find(b=>b.dataset.fact==='close').click()}
 // Agent-built personality (#409): a pin per persona field in the sheet editor; the Life view shows who they became
 {const fb=$('felbody'),P=await import('../src/sim/persona.js'),LV=await import('../src/ui/lifeview.js');
-  const a=sim.fellows()[0];let sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));
+  const a=SLT.slotHeroes(SLT.slotted())[0];let sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));
   if(!sb){fb.querySelector('[data-fact="drawer:members"]').click();uiFast();sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id))}sb.click();
   const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null);
   ok(pins.length===P.PERSONA_ORDER.length+1,'pins: one per persona field and one for the stances ('+pins.length+')');
@@ -810,9 +811,9 @@ console.log('the DM prepares the table');
 // Fellowship sheet editor: the stance toward each companion (#316, UI for #305) round-trips through editSheet
 {const fb=$('felbody'),{STANCE_MAX}=await import('../src/data/prompts.js'),P=await import('../src/sim/persona.js');
   const open=a=>{let b=fb.querySelectorAll('button').find(x=>x.dataset.fsheet==String(a.id));if(!b){fb.querySelector('[data-fact="drawer:members"]').click();b=fb.querySelectorAll('button').find(x=>x.dataset.fsheet==String(a.id))}b.click()};
-  const [a,m2,m3]=sim.fellows();open(a);
+  const [a,m2,m3]=SLT.slotHeroes(SLT.slotted());open(a);
   const rows=()=>fb.querySelectorAll('.fstance'),row=b=>rows().find(r=>r.dataset.fst==String(b.id)),box=b=>row(b).querySelector('textarea'),tag=b=>row(b).querySelector('.fsttag'),rst=b=>row(b).querySelector('[data-fstreset]');
-  ok(rows().length===sim.fellows().length-1,'stances: one row per living companion ('+rows().length+')');
+  ok(rows().length===SLT.slotHeroes(SLT.slotted()).length-1,'stances: one row per living companion ('+rows().length+')');
   const t2=box(m2),arch=P.archetypeStance('mercenary',m2);
   ok(t2.dataset.fw==='stance'&&t2.dataset.fk===String(m2.id)&&t2.getAttribute('maxlength')===String(STANCE_MAX),'stances: a capped box saved through data-fw="stance"');
   ok(t2.value===arch&&!tag(m2).hidden&&tag(m2).textContent==='archetype'&&rst(m2).hidden,'stances: the archetype line is filled in and tagged, no Reset');
@@ -834,7 +835,7 @@ console.log('the DM prepares the table');
   ok(document.activeElement===box(m2),'stances: Reset moves focus to the box');
   fb.querySelectorAll('button').find(x=>x.dataset.fact==='close').click();
   // a member with no archetype: empty means the bond decides
-  const b=m2;open(b);const o=sim.fellows().find(x=>x!==b&&!(b.persona&&b.persona.archetype)&&!(b.persona&&b.persona.stanceBy||{})[x.id]);
+  const b=m2;open(b);const o=SLT.slotHeroes(SLT.slotted()).find(x=>x!==b&&!(b.persona&&b.persona.archetype)&&!(b.persona&&b.persona.stanceBy||{})[x.id]);
   if(b.persona&&!b.persona.archetype&&b.persona.src!=='model'&&o){const t=box(o);
     ok(t.value===''&&tag(o).hidden,'stances: a scripted stance shows an empty box and no tag');
     t.value='Too quiet by half.';fb.querySelectorAll('button').find(x=>x.dataset.fact==='save').click();uiFast();
@@ -844,11 +845,11 @@ console.log('the DM prepares the table');
   else console.log('  skip stances on a scripted persona (none at hand)');
   fb.querySelectorAll('button').find(x=>x.dataset.fact==='close').click()}
 // ---- the hall board (#334): the hall's jobs for the Fellowship, empty and filled, patched in place ----
-{const fb=$('felbody'),S=sim.S,F=S.fellowship,keep=S.adventures;S.adventures=[];uiFast();
+{const fb=$('felbody'),S=sim.S,F=SLT.slotted(),keep=S.adventures;S.adventures=[];uiFast();
   const hb=()=>fb.querySelector('.felhall');
   ok(!!hb()&&/No job for the Fellowship on the hall board\./.test(hb().textContent),'hall board: the empty state reads plainly');
   const {REGIONS,ZONES}=await import('../src/world/map.js');const z=REGIONS.findIndex(r=>r&&r.band);
-  const other=S.agents.find(a=>!a.fellow&&a.state!=='dead');
+  const other=S.agents.find(a=>!SLT.inSlots(a)&&a.state!=='dead');
   // the agents' brief (no ff, no hero) is the Fellowship's only by region, and where the Fellowship rides drifts with the world
   // and the machine's timing: ask the focus for a region they are in rather than assuming the first banded one
   const {focus}=await import('../src/sim/dmfocus.js');const fz=[...(focus()||{zones:[]}).zones].find(r=>REGIONS[r]&&REGIONS[r].band);
@@ -867,9 +868,9 @@ console.log('the DM prepares the table');
   S.adventures=keep;uiFast();ok(!!hb()&&!hb().querySelector('[data-k="hj900001"]'),'hall board: back to the world’s own board')}
 // ---- guild rows (#327): focus reason and rival heat in tooltips ----
 {const live=sim.S.GUILDS.filter(g=>!g.retired);
-  const fel=live.find(g=>sim.S.agents.some(a=>a.guild===g&&a.fellow&&a.state!=='dead'));
+  const fel=live.find(g=>sim.S.agents.some(a=>a.guild===g&&SLT.inSlots(a)&&a.state!=='dead'));
   // every guild with a living Fellowship member shows 'none (Fellowship member)', not just the first one found
-  const plain=live.filter(g=>!sim.S.agents.some(a=>a.guild===g&&a.fellow&&a.state!=='dead'));const g1=plain[0],g2=plain.find(g=>g.fac!==g1.fac);
+  const plain=live.filter(g=>!sim.S.agents.some(a=>a.guild===g&&SLT.inSlots(a)&&a.state!=='dead'));const g1=plain[0],g2=plain.find(g=>g.fac!==g1.fac);
   if(g1&&g2){g1.focus='crypt';
     const k=g1.id<g2.id?g1.id+':'+g2.id:g2.id+':'+g1.id;
     sim.S.rivals=sim.S.rivals||{heat:{},on:{},last:{},t:0,stats:{declared:0,ended:0,duels:0,assists:0,heat:{}}};
@@ -884,10 +885,10 @@ console.log('the DM prepares the table');
   if(fel){uiSlow();const row=[...$('guilds').children].find(r=>r.textContent.includes(fel.name));
     ok(row&&/none \(Fellowship member\)/.test(row.textContent),'guild rows: a Fellowship guild reads none (Fellowship member)')}}
 // ---- the Chronicle's Fellowship-only view keeps guild lines for the Fellowship (#341) ----
-{const {chronicleShows}=await import('../src/ui/fellowship.js');const {chronicleFocus,guildLabel}=await import('../src/sim/fellowship.js');
+{const {chronicleShows}=await import('../src/ui/fellowship.js');const {chronicleFocus, guildLabel}=await import('../src/sim/company.js');
   const a=mem.find(x=>x.state!=='dead'),was=a.guild;
   const ours={id:-341,tag:'OWN',name:'Oathbound Test',fac:a.fac,retired:false},theirs={id:-342,tag:'ELS',name:'Elsewhere Test',fac:1-a.fac,retired:false};
-  a.guild=ours;const tg=g=>({t:guildLabel(g),c:'f'+g.fac}),stranger=sim.S.agents.find(x=>x.kind==='hero'&&!x.fellow&&x.state!=='dead'&&!(sim.S.fellowship.past||[]).some(p=>p.id===x.id)&&!sim.fellows().some(m=>(m.nemesis||{})[x.id])); // not a member, a former member or a member's rival
+  a.guild=ours;const tg=g=>({t:guildLabel(g),c:'f'+g.fac}),stranger=sim.S.agents.find(x=>x.kind==='hero'&&!SLT.inSlots(x)&&x.state!=='dead'&&!(SLT.slotted().past||[]).some(p=>p.id===x.id)&&!SLT.slotHeroes(SLT.slotted()).some(m=>(m.nemesis||{})[x.id])); // not a member, a former member or a member's rival
   const e=(...parts)=>({t:'12:00',parts});
   const focusLine=e(tg(ours),' turns its banner to the ',{t:'Delve',c:'gd'},'.'),otherLine=e(tg(theirs),' goes ',{t:'Wayfaring',c:'gd'},'.');
   const rivalLine=e(tg(theirs),' and ',tg(ours),' declare a rivalry: blood on the road.');
@@ -895,7 +896,7 @@ console.log('the DM prepares the table');
   ok(chronicleShows(rivalLine),'Fellowship only: a rivalry naming the member\'s guild shows');
   ok(!chronicleShows(otherLine),'Fellowship only: an unrelated guild line stays hidden');
   ok(chronicleShows(e(a,' slays a wolf.'))&&chronicleShows(e({t:'Kragmaw',c:'gd'},' stirs.')),'Fellowship only: member and Kragmaw lines still show');
-  if(stranger){const shown=chronicleShows(e(stranger,' slays a wolf.'));ok(!shown,'Fellowship only: a stranger\'s line stays hidden'+(shown?' -- saw '+stranger.name+' id '+stranger.id+' fellow='+stranger.fellow+' past='+JSON.stringify((sim.S.fellowship.past||[]).map(p=>p.id))+' ids='+JSON.stringify(sim.S.fellowship.ids):''))}
+  if(stranger){const shown=chronicleShows(e(stranger,' slays a wolf.'));ok(!shown,'Fellowship only: a stranger\'s line stays hidden'+(shown?' -- saw '+stranger.name+' id '+stranger.id+' fellow='+SLT.inSlots(stranger)+' past='+JSON.stringify((SLT.slotted().past||[]).map(p=>p.id))+' ids='+JSON.stringify(SLT.slotted().ids):''))}
   a.guild=null;ok(!chronicleShows(focusLine),'Fellowship only: once no member is in it, the guild line hides');
   a.guild=was;$('chronFel').click();ok(chronicleShows(otherLine),'the whole Chronicle (toggle off) shows every guild line');$('chronFel').click();
   ok(!chronicleShows(otherLine),'Fellowship only again: the unrelated guild line hides')}
@@ -943,14 +944,14 @@ console.log('the DM prepares the table');
   { // a non-Fellowship company's crawl (#502): the crew is the company, fill-ins ride along unseen, the bar names it, the tally is its own
     const {companies}=await import('../src/sim/company.js'),all=S.agents.filter(x=>x.kind==='hero'&&x.state!=='dead'),crew=all.slice(0,2),fill=all[2];
     const Co={id:9901,name:'The Ember Road',fac:crew[0].fac,ids:crew.map(x=>x.id),crawl:{runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0}};
-    S.companies=(S.companies||[]).concat([Co]);const fk=S.fellowship&&S.fellowship.crawl;
+    S.companies=(S.companies||[]).concat([Co]);const fk=SLT.slotted()&&SLT.slotted().crawl;
     CRYPT.group={phase:'inside',mem:crew.concat(fill?[fill]:[]),tSite:true,crawl:{i:ci,rd:0,gap:0,foes:[{hp:1}],end:null,co:Co.id,crew:crew.length}};
     st=dv.refreshDungeon();
     ok(st.party.length===crew.length&&st.company==='The Ember Road'&&/THE EMBER ROAD/.test(box().querySelector('.dgname').textContent),'dungeon view: a non-Fellowship company crawl names the company and shows only its crew ('+box().querySelector('.dgname').textContent+')');
     CRYPT.group.crawl.end='retreat';st=dv.refreshDungeon();ok(/The Ember Road fall back/.test(st.status),'dungeon view: the status names the company ('+st.status+')');
     CRYPT.group.crawl.end='clear';dv.trackCrawl();CRYPT.group=null;Co.crawl.clears++;dv.trackCrawl();st=dv.refreshDungeon();
     ok(/Last run/.test(st.status)&&/The Ember Road cleared/.test(st.status),'dungeon view: that company tally ends its run as a clear ('+st.status+')');
-    S.companies=S.companies.filter(x=>x!==Co);if(fk===undefined&&S.fellowship)delete S.fellowship.crawl}
+    S.companies=S.companies.filter(x=>x!==Co);if(fk===undefined&&SLT.slotted())delete SLT.slotted().crawl}
   box().querySelector('.dgback').click();ok(box().hidden&&!dv.dungeonOpen()&&!$('screen').classList.contains('dgopen'),'dungeon view: Back to world closes it');
   const a=mem[0],was={state:a.state,hidden:a.hidden};a.state='dungeon';a.hidden=true;select(a);uiFast();const link=$('hero').querySelector('.dglink');
   ok(!!link,'dungeon view: the hero card of a hero inside has View inside');if(link){link.click();ok(dv.dungeonOpen(),'dungeon view: View inside opens it')}
@@ -1000,10 +1001,10 @@ console.log('the DM prepares the table');
   ok(good===SETTING_IDS.length,'scene maps: every setting ('+SETTING_IDS.length+') builds walled, with its people on the floor, furnished, the same from a fresh build');
   ok(buildSetting('tavern','Highgate|7').seed!==buildSetting('tavern','Highgate|8').seed,'scene maps: another scene in the same town gets another room');
   sv.initSceneView();
-  const mem=S.agents.filter(a=>a.kind==='hero'&&a.fellow&&a.state!=='dead').slice(0,5),m0=mem[0],box=()=>$('sceneview');
+  const mem=S.agents.filter(a=>a.kind==='hero'&&SLT.inSlots(a)&&a.state!=='dead').slice(0,5),m0=mem[0],box=()=>$('sceneview');
   const keepPos=mem.map(a=>[a.x,a.y,a.hidden]);
   // an ambush in the open: the terrain cut around the members and the foe
-  const seen=a=>a.kind==='hero'&&!a.fellow&&a.state!=='dead'&&!a.hidden&&a.alive!==false, wild=S.agents.find(a=>seen(a)&&!CITY.some(c=>a.x>=c.x0-4&&a.x<=c.x1+5&&a.y>=c.y0-4&&a.y<=c.y1+5))||S.agents.find(seen); // a foe the cut can see: not dead, not hidden inside the Crypt or a raid
+  const seen=a=>a.kind==='hero'&&!SLT.inSlots(a)&&a.state!=='dead'&&!a.hidden&&a.alive!==false, wild=S.agents.find(a=>seen(a)&&!CITY.some(c=>a.x>=c.x0-4&&a.x<=c.x1+5&&a.y>=c.y0-4&&a.y<=c.y1+5))||S.agents.find(seen); // a foe the cut can see: not dead, not hidden inside the Crypt or a raid
   mem.forEach((a,k)=>{a.x=wild.x-2+k;a.y=wild.y+1;a.hidden=false});
   let sid=5000;const scene=(kind,title,ctx)=>({id:++sid,kind,title,frame:[title],ids:mem.map(a=>a.id),i:0,phase:'turn',t:0,acts:{},beats:[],ctx,pause:true,at:S.gameMin});
   S.table=scene('ambush','Ambush: '+wild.name,{foe:wild.id,anchor:m0.id});sv.sceneTick(FOL);
@@ -1097,11 +1098,11 @@ console.log('the DM prepares the table');
   setView('follow');ok(cam.region===rz&&cam.view==='follow'&&sel.value===String(rz),'region view: Follow still works inside the filter');
   sel.value='';sel.dispatch('change',{target:sel});
   ok(cam.region==null&&ranked().length===all&&rows().length===2,'region view: All regions clears the filter on heroes and conditions');
-  ok(!far||chronicleShows({t:'1',parts:[far,' slays a wolf.']})||S.fellowship,'region view: the chronicle shows every line again');
+  ok(!far||chronicleShows({t:'1',parts:[far,' slays a wolf.']})||SLT.slotted(),'region view: the chronicle shows every line again');
   S.conditions=keepC;setView('map');uiFast()}
 // camp watch end: a camp with no restAt/watchIdx must not show "until NaN:NaN" (#475)
 {const {campLine}=await import('../src/ui/fellowship.js');const {campSummary}=await import('../src/sim/camp.js');
-  const F=sim.S.fellowship,mem=sim.fellowshipMembers().map(m=>m.hero).filter(Boolean),keep=F.camp,ks=mem.map(a=>a.state);
+  const F=SLT.slotted(),mem=SLT.slotMembers(SLT.slotted()).map(m=>m.hero).filter(Boolean),keep=F.camp,ks=mem.map(a=>a.state);
   mem.forEach(a=>{a.state='camp'});
   F.camp={phase:'rest',why:'night',hours:0,ids:mem.map(a=>a.id),watcher:mem[0].id};
   ok(!/NaN/.test(campSummary()||''),'camp watch: the sim line has no NaN for a camp with no watch times');
@@ -1112,7 +1113,7 @@ console.log('the DM prepares the table');
 // ---- companies (#456): a row of frames per company, solos in one Alone row, the follow cycle, the sheet, the banner ----
 {const S=sim.S,CO=await import('../src/sim/company.js'),FR=await import('../src/ui/frames.js'),CV=await import('../src/ui/companyview.js');
   const SH=await import('../src/ui/sheet.js'),LV=await import('../src/ui/lifeview.js'),TB=await import('../src/ui/table.js'),{cam}=await import('../src/render/draw.js');
-  const F=S.fellowship,keepFollow=S.followId,keepView=cam.view,keepSel=cam.sel,keepT=S.table,keepW=window.innerWidth;
+  const F=SLT.slotted(),keepFollow=S.followId,keepView=cam.view,keepSel=cam.sel,keepT=S.table,keepW=window.innerWidth;
   const rowEls=()=>$('frames').querySelectorAll('.frrow'),pfs=()=>$('frames').querySelectorAll('.pf'),vf=$('vFel');
   const press=k=>{for(const f of document._ls.keydown||[])f({key:k,target:document.body,preventDefault(){}})};
   S.followId=F.id;uiFast();
@@ -1124,7 +1125,7 @@ console.log('the DM prepares the table');
   ok(vf.textContent==='Fellowship'&&!vf.hidden,'companies: the follow button reads Fellowship with one company');
   ok(TB.tableOwner({company:F.id,companyName:F.name,solo:false})===null,'companies: the banner names no company while there is one');
   // a pair and two solos (the pair of one faction; every hero alive and not in the Fellowship)
-  const free=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead'&&!CO.companyOf(a)&&!a.fellow);
+  const free=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead'&&!CO.companyOf(a)&&!SLT.inSlots(a));
   const fac=[0,1].find(f=>free.filter(a=>a.fac===f).length>=10),same=free.filter(a=>a.fac===fac);
   const [p0,p1]=same,q0=free.find(a=>a!==p0&&a!==p1),q1=free.find(a=>a!==p0&&a!==p1&&a!==q0);
   const CPN=await import('../src/ui/chatpanel.js'),shout=(h)=>({from:h,text:'Hold!',party:true,heard:[],d:1,t:'09:00'});
@@ -1224,7 +1225,7 @@ console.log('the DM prepares the table');
   const live=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead'&&!a.hidden),keepSel=cam.sel,keepView=cam.view;
   const sig=()=>JSON.stringify(S.agents.map(a=>[a.id,a.state,a.x,a.y,a.hp,a.dest,a.pq&&a.pq.length,a.target&&a.target.id]));
   // a scripted hunter with a bounty
-  const hunter=live.find(a=>!a.player&&!a.fellow&&!a.adv&&!a.party),type=Object.keys(MOBS)[0];
+  const hunter=live.find(a=>!a.player&&!SLT.inSlots(a)&&!a.adv&&!a.party),type=Object.keys(MOBS)[0];
   const kh={state:hunter.state,quest:hunter.quest};hunter.state='hunt';hunter.quest={type,need:6,have:2};
   const ph=P.purposeOf(hunter);ok(ph.kind==='hunt'&&/^Hunting/.test(ph.line)&&ph.line.includes(ZONES[zoneAt(hunter.x,hunter.y)])&&/bounty: 2\/6/.test(ph.line),'purpose: a scripted hunter reads goal → region · bounty ('+ph.line+')');
   // an agent follower (the follow command of #445, read from the queue)
@@ -1274,9 +1275,9 @@ console.log('the DM prepares the table');
   cam.hover=null;cam.sel=keepSel;setView(keepView==='fellow'?'fellow':'map');uiFast()}
 // ---- the dock at 3440x1440 (#546): map first, one dock with four tabs, story-following defaults, frames carry the glance ----
 {console.log('dock (3440 px)');const L=await import('../src/ui/layout.js'),C=await import('../src/ui/controls.js'),CV=await import('../src/ui/companyview.js');
-  const {cam}=await import('../src/render/draw.js'),{companies,companyOf}=await import('../src/sim/company.js'),S=sim.S;
+  const {cam}=await import('../src/render/draw.js'),{companies, companyOf}=await import('../src/sim/company.js'),S=sim.S;
   const keepW=window.innerWidth,keepSel=cam.sel,keepPin=S.pinned;
-  ok(!!S.fellowship||companies().length>0,'dock: a company stands');
+  ok(!!SLT.slotted()||companies().length>0,'dock: a company stands');
   window.innerWidth=3440;uiFast();
   const side=$('side'),bar=$('dockTabs'),off=id=>$(id).classList.contains('doff');
   ok(L.docked()&&document.body.classList.contains('docked')&&side.parentNode.className.includes('dock')&&!side.parentNode.className.includes('cols3')&&$('colL').hidden,'3440 px: the dock layout (two columns, no left column)');
@@ -1287,7 +1288,7 @@ console.log('the DM prepares the table');
   ok(localStorage.getItem('eldmoor.dock')==='chat','the dock tab is remembered');
   {const r=$('chatTabs');ok(r.contains($('chatFilter'))&&!!r.children.find(b=>b.dataset.ctab==='dm')&&$('chatLegend').hidden&&/class colour/.test($('chatFilter').title||''),'chat: one row (channel chips and the DM agent toggle), the colour key a tooltip')}
   // the default hero: the followed company's leader, not a random background hero
-  const F=CV.followedCompany(),lead=CV.storyLead(F),bg=S.agents.find(a=>a.state!=='dead'&&!a.fellow&&!a.player&&!companyOf(a));
+  const F=CV.followedCompany(),lead=CV.storyLead(F),bg=S.agents.find(a=>a.state!=='dead'&&!SLT.inSlots(a)&&!a.player&&!companyOf(a));
   ok(!!lead&&F.ids.includes(lead.id),'the story lead is a member of the followed company ('+(lead&&lead.name)+')');
   S.pinned=bg;ok(C.startHero()===lead,'a saved background pick gives way to the followed company’s leader');
   S.pinned=lead;ok(C.startHero()===lead,'a saved member pick is kept');

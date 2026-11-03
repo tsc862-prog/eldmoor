@@ -14,6 +14,7 @@ import {agentOn,agentOff,agentLink,runnerTag} from './player-bridge.js';
 import {mindLabel,linkOf} from './mindlabel.js'; // the one mind label (issue #136)
 import {S} from '../sim/index.js';
 import {runnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start / Stop from the page
+import {inSlots} from '../sim/company.js'; // the slotted company (#588)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 let health=null,fetchedAt=0,inFlight=false,ver=0;
@@ -35,7 +36,7 @@ export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ve
 
 export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   const row=el('div','mindrow'),mode=modeOf(a);
-  if(a.fellow){const ml=mindLabel(a),n=el('span','dm mnote',ml.text);n.title=ml.title+' A Fellowship member is always played by its agent; choose the model its runner plays with.';row.append(n);
+  if(inSlots(a)){const ml=mindLabel(a),n=el('span','dm mnote',ml.text);n.title=ml.title+' A Fellowship member is always played by its agent; choose the model its runner plays with.';row.append(n);
     const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,pulledModels(),openaiModels(),hfModels()));row.append(r);
     node.append(row);return}
   const seg=el('span','mseg');
@@ -63,10 +64,10 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   node.append(row)}
 
 export function mindAct(t){if(!t||!t.dataset||!t.dataset.mmode)return false;
-  const a=byHid(t.dataset.mhid);if(!a||a.state==='dead'||a.fellow)return true;const k=t.dataset.mmode; // a member stays an agent (#148)
+  const a=byHid(t.dataset.mhid);if(!a||a.state==='dead'||inSlots(a))return true;const k=t.dataset.mmode; // a member stays an agent (#148)
   if(k==='scripted'){if(a.player)agentOff(a);disableBrain(a);delete a.fellowBrain;delete a.fellowAgent}
-  else if(k==='ai'){if(a.player)agentOff(a);delete a.fellowAgent;if(!a.brain&&enableBrain(a)&&a.fellow)a.fellowBrain=true}
-  else if(k==='agent'&&!a.player){if(a.brain){disableBrain(a);delete a.fellowBrain}if(agentOn(a)&&a.fellow)a.fellowAgent=true}
+  else if(k==='ai'){if(a.player)agentOff(a);delete a.fellowAgent;if(!a.brain&&enableBrain(a)&&inSlots(a))a.fellowBrain=true}
+  else if(k==='agent'&&!a.player){if(a.brain){disableBrain(a);delete a.fellowBrain}if(agentOn(a)&&inSlots(a))a.fellowAgent=true}
   return true}
 
 export function mindChange(s){if(!s||!s.dataset)return false;

@@ -361,6 +361,7 @@ console.log('npm run fellowship -- --provider ollama (headless Fellowship, no AP
 console.log('runner pacing (in-process world at 8x, mock Ollama)');
 {
   const sim = await import('../src/sim/index.js'), {localBackend, chooseHero} = await import('./play-headless.mjs');
+  const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
   const {notify} = await import('../src/sim/notify.js'), {homeOf} = await import('../src/data/races.js');
   const {S} = sim, {maxHp: maxHpOf} = await import('../src/sim/heroes.js'); sim.init({fellowship: false});
   const {REFLECT} = await import('../src/sim/reflect.js'), PER_DAY = REFLECT.PER_DAY; REFLECT.PER_DAY = 0; // no reflection moments in A-G (their turn counts are exact); H turns them on (#179)
@@ -527,15 +528,15 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   // member's scene turn as one structured answer and sends scene_act itself, and the scene resolves by the agents'
   // choice (not reflex) without the table timing out; no label or written call reaches the Agent tab.
   {const {found, autoPick, setMinds, TABLE} = sim, {openScene} = await import('../src/sim/table.js');
-    const fo = found(autoPick(0), {fac: 0, ai: false}); setMinds('agent'); S.brainOn = false;
-    ok(fo.ok && S.fellowship && S.fellowship.ids.length === 5, 'a Fellowship of five, Minds: agents' + (fo.ok ? '' : ': ' + fo.error));
-    const mem = S.fellowship.ids.map(id => S.agents.find(x => x.id === id));
+    const fo = SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); SLT.setSlotMinds(SLT.slotted(), 'agent'); S.brainOn = false;
+    ok(fo.ok && SLT.slotted() && SLT.slotted().ids.length === 5, 'a Fellowship of five, Minds: agents' + (fo.ok ? '' : ': ' + fo.error));
+    const mem = SLT.slotted().ids.map(id => S.agents.find(x => x.id === id));
     // the game side first: no waiting out your own turn
     {{const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
       const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0;
       const first = S.agents.find(x => x.id === sc0.ids[0]), second = S.agents.find(x => x.id === sc0.ids[1]);
       const w1 = sim.playerAct(first.id, 'wait', {minutes: 10}), w2 = sim.playerAct(second.id, 'wait', {minutes: 10});
-      ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press\.( Since your last look|$)/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
+      ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press(, attempt)?.( Since your last look|$)/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
       ok(!w2.ok && /^It is your turn at the table/.test(w2.error), 'a check is answered by everyone at once: every member who has not answered is on turn');
       ok(sim.playerAct(second.id, 'scene_act', {option: 'press'}).ok && sim.playerAct(second.id, 'wait', {minutes: 10}).ok, 'once a member has answered, it may wait for the others');
       S.table = null;
@@ -551,8 +552,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       S.table = null
       // the hall board in the brief (issue #326): a member in town sees the hall's jobs for the Fellowship, never who posted them
       {const {memoryNote} = await import('./pacing.mjs'), {homeOf} = await import('../src/data/races.js'), ADV = await import('../src/data/adventures.js');
-        const m = mem.find(a => a.state !== 'dead' && homeOf(a).name === S.fellowship.hall), keep = S.adventures, st = m.state, other = S.agents.find(x => !x.fellow && x.state !== 'dead');
-        const tpl = Object.keys(ADV.ADVENTURES)[0], mk = (id, o) => ({id, tpl, phase: 'open', town: S.fellowship.hall, until: S.gameMin + 600, born: S.gameMin, ...o});
+        const m = mem.find(a => a.state !== 'dead' && homeOf(a).name === SLT.slotted().hall), keep = S.adventures, st = m.state, other = S.agents.find(x => !SLT.inSlots(x) && x.state !== 'dead');
+        const tpl = Object.keys(ADV.ADVENTURES)[0], mk = (id, o) => ({id, tpl, phase: 'open', town: SLT.slotted().hall, until: S.gameMin + 600, born: S.gameMin, ...o});
         S.adventures = [mk(99901, {ff: 1, by: 'dm-agent', title: 'Hall test job', giver: {name: 'Test Warden'}}), mk(99902, {for: other.id, title: 'Not theirs'})]; m.state = 'town';
         const hb = paceBrief(m.id).brief, line = memoryNote(hb);
         ok(hb.hall && hb.hall.length === 1 && hb.hall[0].id === 'job:99901' && hb.hall[0].giver === 'Test Warden' && /Posted at your hall for the Fellowship: job:99901 "Hall test job" from Test Warden/.test(line) && !/DM|scripted/.test(JSON.stringify(hb.hall) + line),

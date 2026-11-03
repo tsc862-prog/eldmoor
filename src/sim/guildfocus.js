@@ -32,6 +32,7 @@ import {cryptPull,raidPull} from './goals.js';
 import {rivalsOf} from './rivals.js';
 import {CRYPT_LVL} from './dungeon.js';
 import {RAID_LVL} from './boss.js';
+import {inSlots} from './company.js'; // the slotted company (#588)
 
 export const GF={ON:true,EVERY:1440,STICK:.75,CRYPT_W:3,RAID_CORE:3,TAKE:.98,DUEL:1.3,ASSIST:1.3,TICK:30};
 export const FOCI=['open','crypt','raid','adventure','pvp'];
@@ -39,12 +40,12 @@ export const FOCUS_NAME={open:'No focus',crypt:'Delve',raid:'Wyrmhunt',adventure
 
 const stats=()=>S.focusStats||(S.focusStats={set:0,changed:0,by:{},duels:0,assists:0,crypt:0,raids:0,hooks:0});
 const tagTxt=g=>({t:'<'+g.tag+'> '+g.name,c:'f'+g.fac});
-const hasFellow=g=>S.agents.some(a=>a.guild===g&&a.fellow&&a.state!=='dead');
+const hasFellow=g=>S.agents.some(a=>a.guild===g&&inSlots(a)&&a.state!=='dead');
 const blood=a=>!!(a.goal&&!a.goal.done&&(a.goal.type==='rival'||a.goal.type==='avengeHero'));
 const bossName=()=>(BOSSES[(S.boss&&S.boss.tpl)||'kragmaw']||{name:'the wyrm'}).name;
 
 // The focus steering hero a (or 'open': unguilded, the Fellowship, focus off).
-export function focusOf(a){if(!GF.ON||!a||a.fellow||!a.guild||a.guild.retired)return 'open';return a.guild.focus||'open'}
+export function focusOf(a){if(!GF.ON||!a||inSlots(a)||!a.guild||a.guild.retired)return 'open';return a.guild.focus||'open'}
 export const guildFocus=g=>!GF.ON||!g||g.retired?'open':g.focus||'open';
 export const isFocus=(a,f)=>focusOf(a)===f;
 export function focusCount(kind){stats()[kind]++}
@@ -99,5 +100,5 @@ export function raidCore(cand){if(!GF.ON)return false;const n=new Map();
 // dm.js dmDepart: the chance this leader takes a fitting hook (base: the DM's K.TAKE).
 export const takeChance=(a,base)=>focusOf(a)==='adventure'?Math.max(base,GF.TAKE):base;
 // pvp.js: the chance-duel multiplier for a and b (a Warpath member on either side), and the assist multiplier for guildmate g.
-export const duelFocus=(a,b)=>a.fellow||b.fellow?1:focusOf(a)==='pvp'||focusOf(b)==='pvp'?GF.DUEL:1;
-export const assistFocus=(g,foe)=>foe&&foe.fellow?1:focusOf(g)==='pvp'?GF.ASSIST:1;
+export const duelFocus=(a,b)=>inSlots(a)||inSlots(b)?1:focusOf(a)==='pvp'||focusOf(b)==='pvp'?GF.DUEL:1;
+export const assistFocus=(g,foe)=>foe&&inSlots(foe)?1:focusOf(g)==='pvp'?GF.ASSIST:1;

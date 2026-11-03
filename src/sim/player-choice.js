@@ -13,6 +13,7 @@
 import {S} from './state.js';
 import {notify} from './notify.js';
 import {reflexMay,ownerHeld} from './runlink.js';
+import {inSlots} from './company.js'; // the slotted company (#588)
 
 export const CHOICE_MIN=180; // game minutes a choice waits (30 real seconds at 1x)
 // #148: a Fellowship member's choice waits for its agent: CHOICE_HOLD more game minutes (with a nudge) while its
@@ -25,7 +26,7 @@ var fellowChoice; // hoisted: registered while the import cycle loads
 export function setFellowChoice(f){fellowChoice=f}
 
 export function playerBranch(adv,sc,a,spec){
-  if(a&&a.fellow&&fellowChoice){const t=fellowChoice(adv,sc,a,spec);if(t!==undefined)return t}
+  if(a&&inSlots(a)&&fellowChoice){const t=fellowChoice(adv,sc,a,spec);if(t!==undefined)return t}
   if(!a||!a.player)return null;
   let p=adv.pick;
   // A stale wait (the hero went home mid-choice and came back) starts over; sim/player.js sets
@@ -37,7 +38,7 @@ export function playerBranch(adv,sc,a,spec){
     a.playChoiceNew=true; // sim/player.js turns this into an urgent event
   }
   if(p.chosen==='a'||p.chosen==='b'){const c=p.chosen;adv.pick=null;return c}
-  if(S.gameMin>=p.until&&a.fellow&&!reflexMay(a)&&(ownerHeld(a)||!p.held)){const held=ownerHeld(a);p.until=S.gameMin+(held?10:CHOICE_HOLD);
+  if(S.gameMin>=p.until&&inSlots(a)&&!reflexMay(a)&&(ownerHeld(a)||!p.held)){const held=ownerHeld(a);p.until=S.gameMin+(held?10:CHOICE_HOLD);
     if(!held&&!p.held){p.held=1;notify(a,'The choice on '+(p.title||'your adventure')+' still waits for you: '+p.opts.a+' (a) or '+p.opts.b+' (b).',3)}
     adv.stage='choose';return 'wait'}
   if(S.gameMin>=p.until){adv.pick=null;adv.pickTimedOut=(adv.pickTimedOut||0)+1;return null}

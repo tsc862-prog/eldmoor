@@ -30,8 +30,8 @@ import {nearHeroes} from './spatial.js';
 import {bond} from './bonds.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
-import './fellowship.js'; // load order: keep the module graph as before (an import cycle runs through table.js and staged.js)
-import {companyOf,companyById,companies,members,isSolo,campaign as clog} from './company.js';
+import './company.js'; // load order: keep the module graph as before (an import cycle runs through table.js and staged.js)
+import {companyOf,companyById,companies,members,isSolo,campaign as clog,slotted} from './company.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
 import {reflexMay,ownerHeld} from './runlink.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
@@ -59,7 +59,7 @@ const partyOfC=C=>C?S.parties.find(p=>p.company===C.id)||null:null;
 export function leaderOfC(C){if(!C)return null;const P=partyOfC(C),A=members(C),N=A.filter(b=>b.companion==null),L=N.length?N:A; // a scripted companion never leads (#442)
   if(P&&living(P.leader)&&L.includes(P.leader))return P.leader;
   let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}
-export const leaderOfF=C=>leaderOfC(C===undefined?S.fellowship:C); // no argument: the Fellowship (old callers)
+export const leaderOfF=C=>leaderOfC(C===undefined?slotted():C); // no argument: the Fellowship (old callers)
 export const leaderFor=a=>leaderOfC(companyOf(a));
 const word=C=>C&&C.slots?'Fellowship':'company'; // the five-slot company keeps its old wording
 // A company that drafts as one unit: the Fellowship, or any company of two or more.

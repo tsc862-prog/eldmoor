@@ -9,7 +9,8 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {init, step, S, snapshot, restore, isSave, describeSave, markPlayer, playerAct, found, autoPick, TABLE} from '../src/sim/index.js';
+import {init, setDmSeat, step, S, snapshot, restore, isSave, describeSave, markPlayer, playerAct, autoPick, TABLE} from '../src/sim/index.js';
+import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 TABLE.mode = 'off'; // Watch mode: the clock checks below expect the world never to pause for the Fellowship's scenes (tablecheck covers Table mode)
 import {GOODS} from '../src/data/items.js';
 import {CRYPT} from '../src/world/map.js';
@@ -57,15 +58,15 @@ function sane(label) {
   ok(S.agents.every((a) => a.guild === null || S.GUILDS.includes(a.guild)), `${label}: every hero's guild is null or a GUILDS entry (${S.GUILDS.filter((g) => !g.retired).length} living, ${S.GUILDS.filter((g) => g.retired).length} retired, ${S.agents.filter((a) => !a.guild && a.state !== 'dead').length} unguilded alive)`);
   ok(new Set(S.GUILDS.map((g) => g.id)).size === S.GUILDS.length && S.GUILDS.every((g) => g.id <= S.guildSeq), `${label}: guild ids unique and below guildSeq ${S.guildSeq}`);
   ok(S.agents.every((a) => !a.target || a.target.kind), `${label}: hero targets are entities`);
-  {const F = S.fellowship; ok(!!F && F.ids.length >= 4 && F.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a && a.fellow && a.state !== 'dead' && a.persona && a.backstory && a.memory && Array.isArray(a.memory.recent)}) && F.log.length > 0, `${label}: Fellowship ${F ? F.name + ' with ' + F.ids.length + ' members, ' + F.log.length + ' log entries, ' + F.past.length + ' fallen' : 'missing'}`)}
-  ok(S.agents.filter((a) => a.player).every((a) => Array.isArray(a.journal) && Array.isArray(a.pq) && (a.fellow || a.state === 'dead' || a.journal.length >= 1)),`${label}: ${S.agents.filter((a) => a.player).length} agent-played hero(es) keep journal and queue`);
-  ok(S.fellowship.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a && a.player && !a.brain}) && S.fellowship.minds === 'agent', `${label}: every Fellowship member is agent-played (#148)`);
+  {const F = SLT.slotted(); ok(!!F && F.ids.length >= 4 && F.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a && SLT.inSlots(a) && a.state !== 'dead' && a.persona && a.backstory && a.memory && Array.isArray(a.memory.recent)}) && F.log.length > 0, `${label}: Fellowship ${F ? F.name + ' with ' + F.ids.length + ' members, ' + F.log.length + ' log entries, ' + F.past.length + ' fallen' : 'missing'}`)}
+  ok(S.agents.filter((a) => a.player).every((a) => Array.isArray(a.journal) && Array.isArray(a.pq) && (SLT.inSlots(a) || a.state === 'dead' || a.journal.length >= 1)),`${label}: ${S.agents.filter((a) => a.player).length} agent-played hero(es) keep journal and queue`);
+  ok(SLT.slotted().ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a && a.player && !a.brain}) && SLT.slotted().minds === 'agent', `${label}: every Fellowship member is agent-played (#148)`);
 }
 
 // A world hash that ignores company ids (a migrated save numbers its companies afresh).
 function fixHash() {let h = 5381; const feed = (x) => {const t = String(x); for (let i = 0; i < t.length; i++) h = (Math.imul(h, 33) ^ t.charCodeAt(i)) >>> 0};
-  for (const a of S.agents) feed([a.id, a.lvl, a.xp, a.gold, a.state, a.x.toFixed(2), a.y.toFixed(2), a.hp.toFixed(1), !!a.fellow, a.fellowRole || '', a.party ? a.party.id + ':' + !!a.party.fellow : '', a.splitUntil || '', companyOf(a) ? companyOf(a).name : ''].join(','));
-  const F = S.fellowship; feed(F ? [F.name, F.ids.join('.'), Object.values(F.slots).join('.'), F.log.length, F.seed].join('|') : 'none');
+  for (const a of S.agents) feed([a.id, a.lvl, a.xp, a.gold, a.state, a.x.toFixed(2), a.y.toFixed(2), a.hp.toFixed(1), !!SLT.inSlots(a), SLT.slotKeyOf(a) || '', a.party ? a.party.id + ':' + !!SLT.partySlotted(a.party) : '', a.splitUntil || '', companyOf(a) ? companyOf(a).name : ''].join(','));
+  const F = SLT.slotted(); feed(F ? [F.name, F.ids.join('.'), Object.values(F.slots).join('.'), F.log.length, F.seed].join('|') : 'none');
   const t = S.table; feed(t ? [t.id, t.kind, t.ids.join('.'), t.i, t.phase, t.beats.length, !!t.resolved].join('|') : 'no table');
   feed(S.companies.map((c) => c.name + ':' + c.ids.join('.')).join(';')); return h}
 
@@ -97,11 +98,12 @@ if (args[0] === '--restore') {
 // ---- main phase ----
 console.log(`\nEldmoor savecheck: ${RUN_MIN} min, snapshot, round-trip, restore, ${MORE_MIN} more\n`);
 init();
+setDmSeat(true); // every real world has its DM seat open (#520); a closed seat converts on restore, checked below
 // An agent-played hero (issue #75) with a journal and a command in its queue rides along.
 {const p = S.agents.find((a) => a.state !== 'dead');
   ok(markPlayer(p, true) && playerAct(p.id, 'journal_write', {text: 'Savecheck was here.'}).ok && playerAct(p.id, 'move_to', {target: 'home'}).ok !== undefined, `agent-played hero ${p.name} with a journal entry`)}
 // The Fellowship (issue #68) rides along: five heroes with personas, backstories, memories and a campaign log (relay off).
-{const r = S.fellowship ? {ok: true} : found(autoPick(0), {ai: false}); ok(r.ok && S.fellowship, 'Fellowship founded: ' + (r.ok ? S.fellowship.name + (S.agents.some((a) => !a.fellow && a.lvl > 1) ? ' (new-world start, #111)' : '') : r.error))}
+{const r = SLT.slotted() ? {ok: true} : SLT.foundSlots(SLT.autoPick(0), {ai: false}); ok(r.ok && SLT.slotted(), 'Fellowship founded: ' + (r.ok ? SLT.slotted().name + (S.agents.some((a) => !SLT.inSlots(a) && a.lvl > 1) ? ' (new-world start, #111)' : '') : r.error))}
 run(TWO_DAYS_MIN);
 const twoDays = JSON.stringify(snapshot());
 console.log(`  size after ${TWO_DAYS_MIN} min (2 game-days): ${kb(twoDays)}`);
@@ -124,7 +126,7 @@ sane(`after ${RUN_MIN} minutes`);
 let A;
 try {A = snapshot(); scan(A); ok(true, 'snapshot() walks clean: no functions, canvases, NaN or live entity objects')} catch (e) {ok(false, 'snapshot(): ' + e.message); process.exit(1)}
 ok(isSave(A), 'snapshot is recognised by isSave()');
-{const d = describeSave(JSON.parse(JSON.stringify(A))), F = S.fellowship, mem = F ? Object.values(F.slots).filter((id) => id != null && S.agents.some((x) => x.id === id)) : [];
+{const d = describeSave(JSON.parse(JSON.stringify(A))), F = SLT.slotted(), mem = F ? Object.values(F.slots).filter((id) => id != null && S.agents.some((x) => x.id === id)) : [];
   ok(d && d.day === Math.floor(S.gameMin / 1440) + 1 && d.min === Math.floor(S.gameMin) % 1440 && (!F || (d.fellowship.name === F.name && d.fellowship.members.length === mem.length && d.fellowship.members.every((m) => m.lvl === S.agents.find((x) => x.name === m.name).lvl))) && describeSave({}) === null,
     'describeSave (title screen): day ' + (d && d.day) + ', ' + (d && d.fellowship ? d.fellowship.members.map((m) => m.name + ' ' + m.lvl).join(', ') : 'no Fellowship'))}
 const json = JSON.stringify(A);
@@ -157,26 +159,36 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
 {const old = JSON.parse(json), OF = old.companies.find((c) => c.slots); OF.minds = 'off'; OF.ai = false;
   for (const h of old.agents) if (OF.ids.includes(h.id)) {h.player = false; delete h.fellowAgent}
   old.playerHeroes = (old.playerHeroes || []).filter((id) => !OF.ids.includes(id));
-  restore(old); const was = S.fellowship.ids.filter((id) => S.agents.find((x) => x.id === id).player).length; step(1 / 60);
-  const F = S.fellowship, txt = F.log.map((e) => e.parts.map((p) => typeof p === 'string' ? p : '').join('')).join('\n');
+  restore(old); const was = SLT.slotted().ids.filter((id) => S.agents.find((x) => x.id === id).player).length; step(1 / 60);
+  const F = SLT.slotted(), txt = F.log.map((e) => e.parts.map((p) => typeof p === 'string' ? p : '').join('')).join('\n');
   ok(was === 0 && F.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a.player && a.fellowAgent}) && F.minds === 'agent' && /always agent-played now/.test(txt), `an older save with scripted members restores agent-played, with a notice (${F.ids.length} converted)`)}
+
+// The DM is always an agent (#562): an older save with a closed seat, no DM state or a scripted-DM setup restores with the seat open and a notice.
+{const dmText = () => (S.dmLog || []).map((e) => (e.summary || []).filter((p) => typeof p === 'string').join('')).join(' ');
+  const closed = JSON.parse(json); closed.dmAgent.seat = false; closed.setup = {world: 'eldmoor', seed: 1, fac: 'concord', dm: {mode: 'scripted'}};
+  restore(closed); step(1 / 60);
+  ok(S.dmAgent.seat === true && S.setup.dm.mode === 'agent' && S.setup.dm.provider && S.setup.dm.model && /always an agent now/.test(dmText()), 'an older save with a closed seat and a scripted-DM setup restores with the seat open, an agent DM in its setup and a notice');
+  const none = JSON.parse(json); delete none.dmAgent; restore(none);
+  ok(S.dmAgent && S.dmAgent.seat === true && /no DM seat/.test(dmText()), 'a save from before the DM agent gets the seat open');
+  const n0 = S.dmLog.length; const again = snapshot(); restore(JSON.parse(JSON.stringify(again)));
+  ok(S.dmLog.length === n0 && S.dmAgent.seat === true, 'a converted world restores again without a second notice')}
 
 // ---- companies (#402, #438): the v7 shape, and a v6 save (a Fellowship, a split member, a scene open at the table) ----
 {restore(JSON.parse(json));
-  if (!companies().some((C) => C.ids.length === 1 && !C.slots)) markPlayer(S.agents.find((a) => a.state !== 'dead' && !a.player && !a.fellow), true); // a solo rides along (the first one may have fallen)
+  if (!companies().some((C) => C.ids.length === 1 && !C.slots)) markPlayer(S.agents.find((a) => a.state !== 'dead' && !a.player && !SLT.inSlots(a)), true); // a solo rides along (the first one may have fallen)
   const v7 = snapshot(), txt = JSON.stringify(v7);
   ok(v7.version === 7 && Array.isArray(v7.companies) && !('fellowship' in v7) && !/"fellow(Role|From)?":/.test(JSON.stringify([v7.agents, v7.parties])),
-    `v7 save: ${v7.companies.length} companies, no fellowship key, no a.fellow / a.fellowRole / a.fellowFrom / p.fellow`);
+    `v7 save: ${v7.companies.length} companies, no fellowship key, no fellow, fellowRole or fellowFrom on heroes and no fellow on parties`);
   const live = S.agents.filter((a) => a.player && a.state !== 'dead');
   ok(live.length > 0 && live.every((a) => companyOf(a) && S.companies.filter((C) => C.ids.includes(a.id)).length === 1),
     `every agent-played hero rides in exactly one company (${live.length}; solos: ${companies().filter((C) => C.ids.length === 1).map((C) => C.name).join(', ') || 'none'})`);
-  ok(S.fellowship && S.fellowship.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a.fellow && a.fellowRole && a.company === S.fellowship.id}) && S.parties.filter((p) => p.fellow).every((p) => p.company === S.fellowship.id),
-    'the shims: S.fellowship, a.fellow, a.fellowRole and p.fellow read through the company');
+  ok(SLT.slotted() && SLT.slotted().ids.every((id) => {const a = S.agents.find((x) => x.id === id); return SLT.inSlots(a) && SLT.slotKeyOf(a) && a.company === SLT.slotted().id}) && S.parties.filter((p) => SLT.partySlotted(p)).every((p) => p.company === SLT.slotted().id) && !('fellowship' in S) && S.agents.every((a) => !('fellow' in a) && !('fellowRole' in a)) && S.parties.every((p) => !('fellow' in p)),
+    'the slot reads (slotted, inSlots, slotKeyOf, partySlotted) go through the company, and the old accessors are gone (#588)');
   const d = describeSave(JSON.parse(txt));
-  ok(d && d.companies.length === S.companies.length && d.fellowship && d.fellowship.name === S.fellowship.name, 'describeSave lists the companies (' + d.companies.map((c) => c.name + ' ' + c.members.length).join(', ') + ')');
+  ok(d && d.companies.length === S.companies.length && d.fellowship && d.fellowship.name === SLT.slotted().name, 'describeSave lists the companies (' + d.companies.map((c) => c.name + ' ' + c.members.length).join(', ') + ')');
 }
 {TABLE.mode = 'auto'; // a scene stays open at the table (world paused at 1x) so the save is taken mid-scene
-  const F = S.fellowship, mem = F.ids.map((id) => S.agents.find((x) => x.id === id)), lead = mem.reduce((x, y) => y.lvl > x.lvl ? y : x);
+  const F = SLT.slotted(), mem = F.ids.map((id) => S.agents.find((x) => x.id === id)), lead = mem.reduce((x, y) => y.lvl > x.lvl ? y : x);
   const split = mem.find((b) => b !== lead && b.state !== 'dead'); splitOff(split, true);
   const foe = S.mobs.filter((m) => m.alive).sort((x, y) => Math.hypot(x.x - lead.x, x.y - lead.y) - Math.hypot(y.x - lead.x, y.y - lead.y))[0];
   if (S.table) S.table = null;
@@ -193,7 +205,7 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   if (v6.companiesPast) v6.fellowshipsPast = v6.companiesPast;
   if (v6.table) delete v6.table.company; // a v6 scene had no company (#440)
   delete v6.companies; delete v6.companySeq; delete v6.followId; delete v6.companiesPast; v6.version = 6;
-  ok(!/"company":/.test(JSON.stringify(v6)) && v6.fellowship.slots && v6.table, 'fixture: a v6 save with a Fellowship, a.fellow / p.fellow and an open table');
+  ok(!/"company":/.test(JSON.stringify([v6.agents, v6.parties, v6.table])) && v6.fellowship.slots && v6.table, 'fixture: a v6 save with a Fellowship, a.fellow / p.fellow and an open table');
   restore(JSON.parse(JSON.stringify(v7))); const a7 = JSON.parse(JSON.stringify(snapshot()));
   restore(JSON.parse(JSON.stringify(v6))); const a6 = JSON.parse(JSON.stringify(snapshot()));
   for (const s of [a7, a6]) for (const c of s.companies) if (!c.slots) {delete c.founded; delete c.day} // a solo made by the migration is founded at load (a v6 save has no record of it)
@@ -209,7 +221,7 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
     if (solo.has(s.followId)) s.followId = solo.get(s.followId); delete s.companySeq}
   const d6 = diff(a7, a6);
   ok(!d6 && !!S.table, 'the v6 save restores to the same world as the v7 one (snapshots deep-equal but for when the solos were founded, the scene still open)' + (d6 ? ' -- ' + d6 : ''));
-  ok(S.agents.filter((a) => a.player && a.state !== 'dead').every((a) => companyOf(a)) && S.companies.every((c) => c.ids.length <= PARTY.MAX) && S.followId === S.fellowship.id,
+  ok(S.agents.filter((a) => a.player && a.state !== 'dead').every((a) => companyOf(a)) && S.companies.every((c) => c.ids.length <= PARTY.MAX) && S.followId === SLT.slotted().id,
     'after the v6 migration every agent hero rides in a company and the Fellowship is followed');
   // Running on is compared in fresh processes: module-level timers and caches are not part of a save, so two restores in
   // one process drift apart even from the same file.
@@ -231,7 +243,7 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   ok(!foundCompany([x, y]).ok, 'a company of two factions is refused');
   const nine = free(0).slice(0, 9); ok(nine.length < 9 || !foundCompany(nine).ok, 'a company of nine is refused');
   const r = foundCompany([x]); const C = r.company;
-  ok(r.ok && isSolo(C) && x.company === C.id && members(C)[0] === x && !x.fellow, `a solo: ${x.name}`);
+  ok(r.ok && isSolo(C) && x.company === C.id && members(C)[0] === x && !SLT.inSlots(x), `a solo: ${x.name}`);
   ok(!joinCompany(C, y).ok, 'joining across factions is refused');
   const more = free(0).slice(0, 7); for (const b of more) joinCompany(C, b);
   ok(C.ids.length === Math.min(8, 1 + more.length) && mates(x).length === C.ids.length - 1, `${C.ids.length} heroes ride together`);

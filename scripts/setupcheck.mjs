@@ -7,7 +7,8 @@
 // Usage: npm run setupcheck      (internal: --child <seed> [v1|apart] prints a world signature)
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {init, S, validateSetup, defaultSetup, applyPreset, cleanSetup, fellowshipMembers, snapshot} from '../src/sim/index.js';
+import {init, S, validateSetup, defaultSetup, applyPreset, cleanSetup, snapshot} from '../src/sim/index.js';
+import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 import {seatCap, seatNote, asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION} from '../src/sim/setup.js';
 import {companies, members} from '../src/sim/company.js';
 import {CITY, REGIONS} from '../src/world/map.js';
@@ -27,7 +28,7 @@ const chosenV1 = seed => {const s = chosen(seed), slots = {};
   ['tank', 'healer', 'dps1', 'dps2', 'dps3'].forEach((k, i) => {const {fac, ...p} = s.heroes[i]; slots[k] = p});
   return {v: 1, world: s.world, seed: s.seed, fac: s.fac, slots, dm: s.dm}};
 const apartOf = seed => {const s = applyPreset('pairs-and-solo', chosen(seed)); s.heroes[D3].start = {town: 'home', region: 'Mirefen'}; return s};
-const sigOf = () => JSON.stringify([S.fellowship && S.fellowship.name, fellowshipMembers().map(m => [m.slot, m.hero.name, m.hero.cls, m.hero.race, m.hero.lvl, m.hero.x.toFixed(2), !!m.hero.player, !!m.hero.brain, m.hero.persona && m.hero.persona.archetype || null]),
+const sigOf = () => JSON.stringify([SLT.slotted() && SLT.slotted().name, SLT.slotMembers(SLT.slotted()).map(m => [m.slot, m.hero.name, m.hero.cls, m.hero.race, m.hero.lvl, m.hero.x.toFixed(2), !!m.hero.player, !!m.hero.brain, m.hero.persona && m.hero.persona.archetype || null]),
   companies().map(C => [C.name, C.hall, members(C).map(a => [a.name, a.cls, a.lvl, a.x.toFixed(2), a.state, !!a.player])]), S.agents.length, S.agents.map(a => a.lvl).join('')]);
 
 if (process.argv[2] === '--child') {const seed = +process.argv[3], k = process.argv[4];
@@ -37,7 +38,7 @@ if (process.argv[2] === '--facts') {const k = process.argv[3], P = await import(
   const st = k === 'apart' ? cleanSetup(apartOf(4242)) : k === 'five' ? cleanSetup(applyPreset('five-solos', defaultSetup(9, 'eldmoor', 0))) : (() => {const a = applyPreset('solo', defaultSetup(6)); a.heroes[0].profs = ['mining']; return cleanSetup(a)})();
   init({setup: st}); const Cs = companies(), hs = Cs.flatMap(C => members(C).map(a => ({a, C})));
   const pair = Cs[0] ? members(Cs[0]) : [];
-  console.log('FACTS ' + JSON.stringify({valid: validateSetup(st).join(' | '), fellowship: !!S.fellowship, members: fellowshipMembers().length, sizes: Cs.map(C => C.ids.length).join(),
+  console.log('FACTS ' + JSON.stringify({valid: validateSetup(st).join(' | '), fellowship: !!SLT.slotted(), members: SLT.slotMembers(SLT.slotted()).length, sizes: Cs.map(C => C.ids.length).join(),
     heroes: hs.map(({a, C}) => ({name: a.name, cls: a.cls, fac: a.fac, lvl: a.lvl, zone: a.zone, state: a.state, town: a.town, hall: C.hall, x: a.x, y: a.y, player: !!a.player, brain: !!a.brain})),
     cos: Cs.map(C => ({fac: C.fac, hall: C.hall, cls: members(C).map(a => a.cls).join()})), follow: !!Cs[0] && S.followId === Cs[0].id, setup: S.setup, seat: !!(S.dmAgent && S.dmAgent.seat),
     arch: !!(pair[0] && pair[0].persona && pair[0].persona.archetype === 'zealot' && pair[1] && pair[0].persona.stances[pair[1].id]),
@@ -142,14 +143,14 @@ ok(validateSetup(applyPreset('five-solos', defaultSetup(3))).length === 0 && val
 
 // ---- building: together ----
 init({setup: cleanSetup(s)});
-const mem = fellowshipMembers(), m = Object.fromEntries(mem.map(x => [x.slot, x.hero]));
+const mem = SLT.slotMembers(SLT.slotted()), m = Object.fromEntries(mem.map(x => [x.slot, x.hero]));
 ok(mem.length === 5 && mem.every(x => x.hero && x.hero.fac === 1 && x.hero.lvl === 1), 'five level-1 members of the chosen faction');
 ok(m.tank.cls === 'Warrior' && m.healer.cls === 'Priest' && ['dps1', 'dps2', 'dps3'].every(k => m[k].cls === 'Rogue'), 'chosen classes (three Rogues)');
 ok(m.dps1.name === 'Vexa' && m.dps3.name === 'Orrak', 'chosen names');
 ok(m.dps1.race === 'thornhide' && m.tank.race === 'ashfolk', 'chosen peoples');
 ok(mem.every(x => x.hero.player && x.hero.fellowAgent && !x.hero.brain), 'every member is agent-played from the first tick (never scripted, no relay brain)');
-ok(S.fellowship.minds === 'agent', 'Minds: agents');
-ok(companies().length === 1 && companies()[0] === S.fellowship, 'together: one company, the Fellowship');
+ok(SLT.slotted().minds === 'agent', 'Minds: agents');
+ok(companies().length === 1 && companies()[0] === SLT.slotted(), 'together: one company, the Fellowship');
 ok(S.dmAgent && S.dmAgent.seat === true, 'the DM seat is open from the first tick');
 // Archetypes (#295 follow-up): the pick is applied at founding, Random comes from the seed (no RNG), stances name companions
 {const {ARCHETYPES, ARCHETYPE_IDS} = await import('../src/data/archetypes.js');
@@ -201,7 +202,7 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  const p = facts('soloprof'); ok(p.sizes === '1' && p.mining === 1, 'apart: a hero\'s chosen profession is seeded too')}
 
 // Professions per place (#259): validated, cleaned, seeded through learn(), kept for a replacement.
-{const P = await import('../src/sim/professions.js'), {offerReplacement} = await import('../src/sim/fellowship.js'), S2 = (await import('../src/sim/index.js')).S;
+{const P = await import('../src/sim/professions.js'), {offerReplacement} = await import('../src/sim/company.js'), S2 = (await import('../src/sim/index.js')).S;
  const p = JSON.parse(JSON.stringify(defaultSetup(5)));
  ok(validateSetup(p).length === 0, 'no profession choice is valid (let them choose)');
  p.heroes[T].profs = ['mining', 'smithing']; p.heroes[H].profs = ['herbalism'];
@@ -210,12 +211,12 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  ok(validateSetup(bad).some(x => /Tank/.test(x)), 'three professions are refused');
  bad.heroes[T].profs = ['mining', 'mining']; ok(validateSetup(bad).length > 0, 'a duplicate is refused');
  bad.heroes[T].profs = ['sorcery']; ok(validateSetup(bad).length > 0, 'an unknown profession is refused');
- {const {disbandFellowship} = await import('../src/sim/index.js'); if (S.fellowship) disbandFellowship()} init({setup: cleanSetup(p)});
- const ms = fellowshipMembers(), by = k => ms.find(m => m.slot === k).hero;
+ {const {} = await import('../src/sim/index.js'); if (SLT.slotted()) SLT.disbandSlots(SLT.slotted())} init({setup: cleanSetup(p)});
+ const ms = SLT.slotMembers(SLT.slotted()), by = k => ms.find(m => m.slot === k).hero;
  ok(P.professionsOf(by('tank')).map(x => x.id).join() === 'mining,smithing' && P.skillOf(by('tank'), 'mining') === 1, 'the chosen place seeds a.profs at skill 1');
  ok(P.professionsOf(by('healer')).length === 1 && P.professionsOf(by('dps1')).length === 0, 'an unchosen place has none');
- const old = by('tank'); old.hp = 0; old.state = 'dead'; S2.fellowship.slots.tank = null;
- const r = offerReplacement('tank');
+ const old = by('tank'); old.hp = 0; old.state = 'dead'; SLT.slotted().slots.tank = null;
+ const r = SLT.offerReplacement(SLT.slotted(), 'tank');
  ok(r && r.id !== old.id && P.professionsOf(r).map(x => x.id).join() === 'mining,smithing', 'a replacement keeps the choice of the place');
  const sn = JSON.stringify(snapshot()); ok(/"profs":\{"tank":\["mining","smithing"\]/.test(sn), 'the place choice is saved with the world');
 }
