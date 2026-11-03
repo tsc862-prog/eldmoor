@@ -57,3 +57,4 @@
 - [Scene props](scene-props.md) — #592 sc.props data, examine/search/give_item hooks, cast.item, pitfalls
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
 - [Tool map](tool-map.md) — #640 toolmap.mjs generated tool inventory in hero/DM orders, groups, budget, orderscheck assertions
+- [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
