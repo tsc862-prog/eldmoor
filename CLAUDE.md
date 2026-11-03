@@ -96,6 +96,7 @@ other. The rules:
 - **Names go through lore.** Anything newly named (zone, creature, item, NPC,
   guild, quest) is added to `docs/LORE.md` in the same PR, and `lore-keeper`
   checks originality before merge.
+- **Every PR carries its patch note** (#664): `docs/patchnotes/<PR number>.md` (front matter `title`, `date`, `area`, `issues`, then 1-6 `- ` lines) is part of the PR, written for the owner as a player: what he will see or can do now, in plain words, no file or function names or hashes ("Nothing you will notice: ..." for CI and tests). `npm run rulescheck` fails a PR without it unless it has the label `no-notes`; the launcher (`n`, and on start and after `u`), `npm run notes` and the title screen's What's new show them.
 - **Numbers go through balance.** Changes to stats, mobs, bosses, XP or AI get a
   `balance-tester` report before merge.
 - **Issues are the queue.** Work is tracked as GitHub issues labelled
@@ -112,7 +113,7 @@ other. The rules:
   levels, deaths, honor, guild dungeon results and boss state.
 - `npm run build`: static build into `dist/`.
 - Worlds: Eldmoor (80x50) by default; `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node selects the 160x100 Stepping Lands test continent (saves are kept per world).
-- Title screen (`src/ui/title.js`): the page opens on Continue (with a line on the save), New world (the setup page), Load from file and the map choice; no world is built or restored until a choice. `?continue=1` (or `?skip-title=1`) boots straight in as before; a queued New World setup and a Load/Import reload skip it too.
+- Title screen (`src/ui/title.js`): the page opens on Continue (with a line on the save, and a What's new block of the patch notes this viewer has not read, NEW until Got it, #664), New world (the setup page), Load from file and the map choice; no world is built or restored until a choice. `?continue=1` (or `?skip-title=1`) boots straight in as before; a queued New World setup and a Load/Import reload skip it too.
 - New worlds (#111): `init()` founds the default Fellowship (level 1, home town, Minds scripted) and starts the other heroes at levels 1-15 in fitting zones (`src/sim/opening.js`, `START_BANDS`). `ELDMOOR_FELLOWSHIP=0` in Node, `?fellowship=0` in the browser or `init({fellowship:false})` keeps the old all-level-1 start for balance baselines; checks that found their own Fellowship use it.
 - `npm run hashcheck` (#573, `scripts/hashcheck.mjs`): the one source of the seeded hashes PRs quote (professioncheck with and without the Fellowship, tablecheck --hash and --hash-talk, crawlcheck, dmcheck seat closed and open, focuscheck, the no-company world, the Eldmoor map). It runs them here and on `git archive origin/main` extracted to a temp dir (never a worktree) and prints both side by side; exit 2 when one moved. The CI job `hash-guard` comments that table on every PR and fails when a hash moved unless the PR has the label `hash-change-ok` (add the label, then re-run the job). Quote its table in PRs, not hand-run hashes.
 - `npm run rulescheck` (#573): src/sim, src/world and src/data never import src/render or src/ui; no zone, faction or town name literals outside src/data and src/world (known ones in `scripts/rulescheck.allow.json`, with a reason); the append-only tables (MOBS, EPICS, GOODS, CLS, the world specs' regions and towns, ...) keep every existing row in place against origin/main; every `scripts/*check.mjs` with an npm script is a step in ci.yml. CI also runs on `merge_group` for GitHub's merge queue.
@@ -137,7 +138,8 @@ other. The rules:
   processes (output prefixed and coloured `[relay]`, `[vite]`, `[up]`), then opens http://localhost:5173 once. Single keys
   (or the word plus Enter where raw mode is missing): `u` update (`git pull --ff-only`; refused on a dirty tree outside .claude/ (agent memory never blocks it; git refuses if the pull touches a file you edited, naming it; nothing is stashed) or a
   non-fast-forward; `npm install` only when package-lock.json changed, with Vite stopped meanwhile; then the relay restarts,
-  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `s`
+  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `n` the last 10 patch notes (on start and after `u` it prints every note merged since
+  the commit last seen, `logs/last-seen.json`, #664), `s`
   status (relay health, runners, Ollama models loaded), `h` help, `q`/Ctrl+C quit (runners get "stop" first so they
   release their heroes, then the relay, then Vite; the process trees are killed with `taskkill /T /F` as a last resort, so
   no node process or port stays held; closing the window does the same). A change under `scripts/` while it runs prints
@@ -684,6 +686,12 @@ Owner setup:
    or play an agent with `npm run agent -- --hero <name|id> --provider openai --model <id>` (saved in the
    hero's session file; later runs need only `--hero`), or `npm run fellowship -- --provider openai --model <id>`.
    Tags read like `gpt-6-luna · openai`.
+
+Model lists (#677): `OPENAI_MODELS=a,b` in `.env` makes `providers.openai.models` exactly that list, in that order, checked once against the
+key's `/models` (an id the key cannot use is dropped, with `dropped` in `/health` and a line in the relay log); unset, the key's chat models come
+cheapest first from `PRICES` (unpriced last). `/health` also carries `prices` (per 1M tokens) and the pickers label each model ("gpt-6-luna · $0.10 /
+$0.50 per 1M", "price unknown"). `ANTHROPIC_MODELS` narrows the Claude list the same way, `HF_MODELS` as before (one helper, `modelListFrom` in
+`scripts/providers/index.mjs`). Recommended: `OPENAI_MODELS=gpt-6-luna,gpt-6.1-terra`.
 
 Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pick any model from your
 own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per

@@ -42,7 +42,12 @@ jobs:
       - name: Fetch origin/main for the append-only table check
         run: git fetch --depth=1 origin +main:refs/remotes/origin/main
       - {name: Static build, run: npm run build}
-      - {name: Repo rules (layering and name literals and append-only tables and CI coverage), run: npm run rulescheck}
+      - name: Repo rules (layering and name literals and append-only tables and CI coverage and patch notes)
+        run: npm run rulescheck
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          GH_TOKEN: ${{ github.token }}
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: init() reset, run: npm run initcheck}
@@ -211,11 +216,15 @@ jobs:
           node scripts/hashcheck.mjs --against origin/main --md hashes.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
           exit 0
-      - name: Comment the hash table
+      - name: Quote the patch note above the hash table (issue 664)
+        run: |
+          node scripts/patchnotes.mjs --quote "${{ github.event.pull_request.number }}" > comment.md
+          cat hashes.md >> comment.md 2>/dev/null || true
+      - name: Comment the patch note and hash table
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/pr-comment.mjs "${{ github.event.pull_request.number }}" eldmoor-hash-guard hashes.md
+        run: node scripts/pr-comment.mjs "${{ github.event.pull_request.number }}" eldmoor-hash-guard comment.md
       - name: Fail when a hash moved without the label
         env:
           GH_TOKEN: ${{ github.token }}

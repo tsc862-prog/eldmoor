@@ -52,6 +52,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // The relay itself keeps RELAY_ANTHROPIC_CONCURRENCY (default 2) for brain calls; keep the sum of the two
 // within the API org's concurrent-request limit (default 2 + 3 = 5). Local (Ollama) runners take none.
 export const CLAUDE_SLOTS = 3, LEASE_MS = 15 * 60000, LEASE_WAIT_MS = 20000;
+export const DM_FIRST_MS = 2000; // a hero runner asking for a Claude slot while the DM's voice answers a call waits this long first (#682)
 // At most MAX_RUNNERS at once (env RELAY_MAX_RUNNERS). SEATS: the Fellowship's five and the DM, which always
 // fit whatever the setting: a runner for a Fellowship member, the Fellowship runner or the DM is refused only
 // when SEATS such runners already run.
@@ -453,6 +454,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (path === '/play/runner/slot') {
       const key = typeof b.key === 'string' ? b.key : '', r = table.get(key);
       if (!r || r.done) return send(404, {ok: false, error: 'no such live runner'});
+      if (key !== 'dm' && play && play.dmVoiceBusy && play.dmVoiceBusy()) await new Promise(r => setTimeout(r, DM_FIRST_MS)); // the DM's voice first (#682)
       grantNext();
       if (leases.size < claudeMax && !waiters.length) {const id = 'L' + (++leaseSeq); leases.set(id, {key, at: now()}); return send(200, {ok: true, lease: id, slots: claudeMax})}
       const id = await new Promise(res => {const w = {key, res}; w.t = setTimeout(() => {const i = waiters.indexOf(w); if (i >= 0) waiters.splice(i, 1); res(null)}, LEASE_WAIT_MS); waiters.push(w)});

@@ -14,7 +14,7 @@ import {checkRunAlerts,sync as syncRunAlert} from './ui/runalert.js'; // sound a
 import {every} from './ui/ticker.js'; // timers that a hidden tab does not throttle
 import {checkRunGate} from './ui/rungate.js'; // hold the world while an agent seat is not connected (#171)
 import {initUI,uiFast,uiSlow} from './ui/app.js'; // every panel and its refresh cadence (shared with npm run uismoke)
-import {titleWanted,showTitle} from './ui/title.js'; // Continue, New world, Load: nothing runs until a choice
+import {titleWanted,showTitle,provideNotes} from './ui/title.js'; // Continue, New world, Load: nothing runs until a choice
 import {slotted} from './sim/company.js'; // the slotted company (#588)
 
 // The world is built only when the owner picks Continue (or the default world) on the title screen, or at once with
@@ -22,6 +22,8 @@ import {slotted} from './sim/company.js'; // the slotted company (#588)
 // from the title and reloads into the new world, which skips the title.
 // The DM's campaign seeds (docs/campaigns/<world>.md, bundled at build time; none is fine). The sim reads the one for the world id.
 provideCampaigns(Object.fromEntries(Object.entries(import.meta.glob('../docs/campaigns/*.md',{query:'?raw',import:'default',eager:true})).filter(([p])=>!/\/_/.test(p)).map(([p,t])=>[campaignIdOf(p),t])));
+// Patch notes (#664): docs/patchnotes/*.md for the title screen's What's new, bundled the same way.
+provideNotes(import.meta.glob('../docs/patchnotes/*.md',{query:'?raw',import:'default',eager:true}));
 // Generated art (#177): assets/index.json and the PNG URLs under assets/ (served as static files; an absent folder is an
 // empty index and every renderer draws procedurally). The PNGs themselves load lazily, on first use (render/assets.js).
 provideAssets(Object.values(import.meta.glob('../assets/index.json',{import:'default',eager:true}))[0]||null,
