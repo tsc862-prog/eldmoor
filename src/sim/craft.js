@@ -26,7 +26,8 @@ import {USES,CRAFT_GEAR,SLOT_NOUNS,INV,MATERIALS,price} from '../data/items.js';
 import {CLS} from '../data/classes.js';
 import {professionsOf,skillOf,hasProfession,learn,gainSkill,skillBand} from './professions.js';
 import {invOf,room,count,take,addUse,addGood,addGear,isGear,useItem,countKind} from './inv.js';
-import {makeItem} from './gear.js';
+import {makeItem,itemArmor,itemDamage,refreshEpics,syncGear} from './gear.js';
+import {SLOTS,QUALITY} from '../data/items.js';
 import {zoneFor} from '../world/map.js';
 import {record} from './history.js';
 import {log,gold} from './chronicle.js';
@@ -184,3 +185,43 @@ export function campCraft(a){if(!a||a.state!=='camp')return 0;let k=0;
 export function fireRecipes(a){const o=[];for(const p of craftProfs(a)){if(!FIRE_PROFS.includes(p.id))continue;
   for(const r of recipesFor(p.id,skillBand(Math.max(1,p.skill))))if(canCraft(a,r,{where:'camp'}).ok)o.push(r.id+' ('+r.out.id+')')}
   return o}
+
+// ---- the town smith (issue #13): upgrades, the gold sink ----
+// For gold alone a smith tempers a worn piece one item level up (armor and damage follow; score bonuses and the property stay).
+// Never above the level cap (hero level + OVER), at most MAX_UP times per piece, dearer for finer pieces and each step. Epics
+// are refused: they already grow with their bearer (gear.js refreshEpics). Gear does not wear, so there is nothing to repair.
+// Scripted heroes use it in town (townSmith, from sellAndShop, after supplies) only with gold to spare above KEEP. No RNG.
+export const SMITH={MAX_UP:3,OVER:2,BASE:12,RARITY:{plain:1,fine:1.5,rare:2.5},STEP:.5,KEEP:150,PER_VISIT:2};
+export const smithCost=it=>Math.round(SMITH.BASE*(it.ilvl+1)*(SMITH.RARITY[it.quality]||1)*(1+(it.up||0)*SMITH.STEP));
+// {ok:true, cost} or {ok:false, why}
+export function canSmith(a,it){if(!it)return {ok:false,why:'Nothing is worn there.'};
+  if(it.epic)return {ok:false,why:it.name+' is an epic: it grows with you; the smith can add nothing.'};
+  if((it.up||0)>=SMITH.MAX_UP)return {ok:false,why:it.name+' has been tempered '+SMITH.MAX_UP+' times already; the metal will take no more.'};
+  const cap=a.lvl+SMITH.OVER;if(it.ilvl>=cap)return {ok:false,why:it.name+' (item level '+it.ilvl+') is already at your cap of '+cap+'; the smith cannot go past your level.'};
+  const cost=smithCost(it);if((a.gold||0)<cost)return {ok:false,why:'Tempering '+it.name+' costs '+cost+'g; you have '+(a.gold||0)+'g.',cost};
+  return {ok:true,cost}}
+export function smithUpgrade(a,it){const c=canSmith(a,it);if(!c.ok)return c;
+  const cls=it.cls||a.cls,Q=QUALITY[it.quality]||QUALITY.plain,was=it.ilvl;a.gold-=c.cost;it.ilvl++;it.up=(it.up||0)+1;
+  if(it.armor!=null){const v=itemArmor(cls,it.slot,it.ilvl,Q.mult);if(v)it.armor=v}
+  if(it.damage!=null){const v=itemDamage(cls,it.slot,it.ilvl,Q.mult);if(v)it.damage=v}
+  syncGear(a);const st=stat('smithed');st.smithGold=(st.smithGold||0)+c.cost;
+  record(a,'The smith tempered ',{t:it.name,c:'gd'},' to item level '+it.ilvl+' for '+c.cost+'g.');
+  return {ok:true,cost:c.cost,from:was,to:it.ilvl,name:it.name,up:it.up,gold:a.gold}}
+// A worn piece by slot ("main", "chest") or by name; null when none matches.
+export function wornFor(a,v){const s=norm(v);if(!s||!a.slots)return null;const L=SLOTS.map(k=>a.slots[k]).filter(Boolean);
+  return L.find(it=>norm(it.slot)===s||norm(it.name)===s)||L.find(it=>norm(it.name).includes(s))||null}
+// Agent tool smith {item, do}: inTown says the hero stands in a friendly town.
+export function smithTool(a,{item,do:what}={},{inTown}={}){const d=String(what==null?'upgrade':what).toLowerCase();
+  if(d==='repair')return {ok:false,why:'Gear does not wear in Eldmoor, so there is nothing to repair. Use do: "upgrade" to have the smith temper a piece.'};
+  if(d!=='upgrade')return {ok:false,why:'do is "upgrade" (or "repair", which needs nothing here).'};
+  if(!inTown)return {ok:false,why:'The smith works in a friendly town.'};
+  refreshEpics(a);const it=wornFor(a,item);if(!it)return {ok:false,why:'Which worn piece? item is a slot ('+SLOTS.join(', ')+') or its name.'};
+  const r=smithUpgrade(a,it);if(!r.ok)return {ok:false,why:r.why};
+  return {ok:true,result:'The smith tempers '+r.name+' from item level '+r.from+' to '+r.to+' for '+r.cost+'g (tempered '+r.up+'/'+SMITH.MAX_UP+').',gold:r.gold,
+    next:canSmith(a,it).ok?'Another temper would cost '+smithCost(it)+'g.':null}}
+// Scripted: in town, with gold to spare, temper the weakest eligible worn pieces.
+export function townSmith(a){if(a.player||!a.slots)return 0;refreshEpics(a);let k=0;
+  while(k<SMITH.PER_VISIT){const L=SLOTS.map(s=>a.slots[s]).filter(it=>it&&!it.epic&&(it.up||0)<SMITH.MAX_UP&&it.ilvl<a.lvl+SMITH.OVER).sort((x,y)=>x.ilvl-y.ilvl);
+    const it=L[0];if(!it||a.gold-smithCost(it)<SMITH.KEEP||!smithUpgrade(a,it).ok)break;k++}
+  return k}
+

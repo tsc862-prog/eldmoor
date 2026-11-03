@@ -150,6 +150,26 @@ const ag = M[2]; ag.lvl = 8; ag.profs = [{id: 'herbalism', skill: 10}]; ag.gold 
 ok(townCraft(ag) === 0 && !ag.profs.some(p => p.id === 'alchemy') && campCraft(ag) === 0, 'an agent-played hero never learns or crafts by script');
 ok(recipeKey('Redroot Draught').r.id === 'draught-redroot', 'recipes resolve by what they make');
 
+console.log('\nsmith (issue #13)');
+{const {SMITH, smithCost, townSmith} = await import('../src/sim/craft.js');
+ const s = M[3]; s.player = true; s.lvl = 10; s.gold = 2000; toTown(s);
+ const w = s.slots.main || (s.slots.main = {name: 'Test Blade', ilvl: 8, slot: 'main', quality: 'plain', cls: s.cls, damage: 5});
+ w.epic = false; w.ilvl = 8; w.up = 0; w.quality = 'plain'; w.cls = s.cls;
+ let r = call(s, 'smith', {item: 'main'});
+ ok(r.ok && w.ilvl === 9 && w.up === 1 && s.gold < 2000, 'the smith tempers a worn piece one level: ' + (r.result || r.error));
+ ok(!call(s, 'smith', {item: 'main', do: 'repair'}).ok, 'repair is refused (gear does not wear)');
+ w.ilvl = s.lvl + SMITH.OVER; ok(!call(s, 'smith', {item: 'main'}).ok, 'never above the level cap');
+ w.ilvl = 8; w.up = SMITH.MAX_UP; ok(!call(s, 'smith', {item: 'main'}).ok, 'at most ' + SMITH.MAX_UP + ' tempers per piece');
+ w.up = 0; s.gold = 3; ok(!call(s, 'smith', {item: 'main'}).ok, 'refused without the gold');
+ ok(smithCost({ilvl: 8, quality: 'rare', up: 0}) > smithCost({ilvl: 8, quality: 'plain', up: 0}), 'finer pieces cost more');
+ s.gold = 2000; s.x = field.x; s.y = field.y; s.state = 'hunt'; ok(!call(s, 'smith', {item: 'main'}).ok, 'refused out in the field');
+ s.slots.trinket = {name: 'Test Relic', ilvl: s.lvl + 3, slot: 'trinket', quality: 'epic', epic: true, cls: s.cls}; toTown(s);
+ ok(!call(s, 'smith', {item: 'trinket'}).ok, 'epics are refused (they grow with their bearer)');
+ const sc = M[4]; sc.player = false; sc.lvl = 10; sc.gold = 1500; for (const k of ['head', 'chest']) sc.slots[k] = {name: 'Test ' + k, ilvl: 7, slot: k, quality: 'plain', cls: sc.cls, armor: 5}; const before = sc.gold;
+ const n = townSmith(sc); ok(n > 0 && sc.gold < before && sc.gold >= SMITH.KEEP, 'a scripted hero with spare gold tempers (' + n + ' tempers, ' + (before - sc.gold) + 'g)');
+ sc.gold = 100; ok(townSmith(sc) === 0, 'and not without gold to spare');
+ const ag2 = M[2]; ag2.player = true; ag2.gold = 5000; ok(townSmith(ag2) === 0, 'never by script for an agent-played hero');}
+
 console.log('\nsave');
 restore(JSON.parse(snap));
 const a2 = S.agents.find(x => x.id === a.id);
