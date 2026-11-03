@@ -31,6 +31,12 @@ sim.init();
 if(sim.S.fellowship)sim.disbandFellowship(); // the first half runs without one
 const renderer={onCamChange(){},setZoom(){},stepZoom:(z)=>z,currentZoom:()=>1,zoomAt(){},panBy(){},screenToWorld:()=>({x:0,y:0})};
 initUI(renderer);
+// The DM is always an agent (#559): the page opens the DM seat of the world it plays and the start gate counts it. The
+// smoke plays without runners, so it closes the seat again (the panel's Close seat, until #560) and lets nothing hold.
+ok(sim.dmSeatOn(),'the page opens the DM seat of the world it plays (#559)');
+{const gate=await import('../src/ui/rungate.js');ok(gate.gateMissing().some(m=>m.kind==='dm'),'the start gate counts the DM seat (#559)');
+ ok(sim.worldHeld()==='gate','while the gate holds, the sim knows it (agent tools refused, no paced turns, #559)');
+ sim.setDmSeat(false);gate.checkRunGate(Date.now()+5000);ok(!sim.worldHeld()&&!gate.ensureDmSeat(),'closed for the smoke: nothing holds, and the page does not reopen the seat of the same world')}
 let clockS=0;
 // The Fellowship half needs its five members alive, visible and together (hardcore: a member who dies is replaced by
 // a new object, and one who enters the Crypt is hidden, which silently drops every shout and made the chat cases flaky).
@@ -380,7 +386,7 @@ console.log('start gate: ready, not just claimed');
   ok(box.textContent.includes(slow.name+': loading qwen2.5:14b (4')&&box.textContent.includes(down.name+': claimed'),'the banner says who is loading which model (and for how long) and who is only claimed');
   ok(/Start anyway/.test(box.textContent),'the banner offers Start anyway');
   R[down.id]={state:'failed',error:'ollama: no answer from qwen2.5:14b in 600 s',at:0};gate.checkRunGate(T0+2000);
-  ok(ctl.held&&box.textContent.includes('warm-up failed: ollama: no answer'),'a crashed warm-up shows in the banner with its error');
+  ok(ctl.held&&!gate.gateMissing().some(m=>m.hero===down.id)&&box.textContent.includes(slow.name),'a failed warm-up whose runner is there counts as active (owner, #559): only the seat still warming holds');
   gate.startAnyway();
   ok(!ctl.held&&box.hidden,'Start anyway releases the world');
   R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');

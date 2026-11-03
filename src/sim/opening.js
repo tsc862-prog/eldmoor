@@ -105,6 +105,6 @@ function openApart(setup){
     const who=group.flatMap((b,i)=>i?[i===group.length-1?' and ':', ',b]:[b]),line=[...who,group.length>1?' set out together from '+town.name+'.':' sets out alone from '+town.name+'.'];
     campaign(r.company,'found',...line);log(...line)}
   if(made.length&&S.followId==null)S.followId=made[0].id;
-  if(setup.dm&&setup.dm.mode==='agent')setDmSeat(true);
+  setDmSeat(true); // the DM is always an agent (#520): the seat is open from the first tick
   S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,mode:'apart',dm:setup.dm};
   return made[0]||null}

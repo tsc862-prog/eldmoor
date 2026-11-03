@@ -63,6 +63,8 @@ bad(t => t.heroes[D2].name = 'Vexa', 'a name used twice', /used twice/);
 bad(t => t.heroes[D2].name = '12', 'a name that is not letters');
 bad(t => t.heroes[D2].race = 'hallowan', 'a people of the other faction');
 bad(t => t.dm = {mode: 'agent', provider: 'ollama'}, 'a DM agent with no model');
+bad(t => t.dm = {mode: 'scripted'}, 'a scripted DM (#520: the DM is always an agent)', /DM is always an agent/);
+bad(t => delete t.dm, 'no DM mind at all (#559: the DM mind is required)', /DM/);
 bad(t => t.fac = 7, 'an unknown faction');
 bad(t => t.heroes[D1].archetype = 'jester', 'an unknown archetype (#295)');
 // v2 rules (#453)
@@ -101,7 +103,12 @@ ok(PRESETS.includes('classic') && PRESETS.includes('five-solos') && PRESETS.incl
 ok(applyPreset('scripted', s) === null, 'there is no All scripted preset (#148)');
 ok(defaultSetup(1).heroes.every(p => p.mind.mode === 'agent') && defaultSetup(1).mode === 'together' && validateSetup(defaultSetup(1)).length === 0, 'the default setup: together, every hero an agent (Haiku), valid');
 const hk = applyPreset('haiku', s);
-ok(hk.heroes.every(p => p.mind.mode === 'agent' && /haiku/.test(p.mind.model)) && hk.dm.mode === 'scripted', 'All agents on Haiku, DM scripted');
+ok(hk.heroes.every(p => p.mind.mode === 'agent' && /haiku/.test(p.mind.model)) && hk.dm.mode === 'agent' && /haiku/.test(hk.dm.model), 'All on Haiku, the DM too (#520: no scripted DM)');
+ok(defaultSetup(1).dm.mode === 'agent' && defaultSetup(1).dm.provider === 'anthropic' && /haiku/.test(defaultSetup(1).dm.model), 'the default setup seats a DM agent (Haiku)');
+{const old = chosenV1(4242); old.dm = {mode: 'scripted'}; const c = cleanSetup(old);
+ ok(c.dm.mode === 'agent' && /haiku/.test(c.dm.model) && validateSetup(c).length === 0 && validateSetup(old).some(x => /DM is always an agent/.test(x)), 'an older setup with a scripted DM cleans to the default DM agent (and is refused raw)');
+ ok(applyPreset('last', s, {last: old}).dm.mode === 'agent', 'Last used turns a remembered scripted DM into an agent');
+ ok(cleanSetup({...old, dm: {mode: 'agent', provider: 'ollama', model: 'qwen2.5:14b'}}).dm.model === 'qwen2.5:14b', 'a chosen DM model survives cleaning')}
 {const old = chosenV1(4242); old.slots.dps2.mind = {mode: 'scripted'}; old.slots.dps1.mind = {mode: 'ai', provider: 'ollama', model: 'qwen2.5:14b'};
  const c = cleanSetup(old); ok(c.heroes[D2].mind.mode === 'agent' && /haiku/.test(c.heroes[D2].mind.model) && c.heroes[D1].mind.mode === 'agent' && c.heroes[D1].mind.model === 'qwen2.5:14b' && validateSetup(c).length === 0, 'an older setup with scripted/AI members cleans to agents');
  ok(applyPreset('last', s, {last: old}).heroes[D2].mind.mode === 'agent', 'Last used turns a remembered scripted member into an agent')}
@@ -124,13 +131,14 @@ ok(validateSetup(applyPreset('five-solos', defaultSetup(3))).length === 0 && val
 
 // ---- runners ----
 {const same = applyPreset('haiku', s);
- ok(planRunners(same).map(r => r.kind).join() === 'fellowship', 'together, one mind: one Fellowship runner');
+ ok(planRunners(same).map(r => r.kind).join() === 'fellowship,dm', 'together, one mind: one Fellowship runner, plus the DM runner (always, #559)');
+ ok(planRunners({...same, dm: {mode: 'scripted'}}).some(r => r.kind === 'dm' && /haiku/.test(r.model)), 'a raw setup with a scripted DM still plans a DM runner (the default mind)');
  const pl = planRunners(cleanSetup(s)); ok(pl.filter(r => r.kind === 'hero').length === 5 && pl.filter(r => r.kind === 'hero').map(r => r.slot).join() === 'tank,healer,dps1,dps2,dps3' && pl.some(r => r.kind === 'dm'), 'together, mixed models: one runner per member (with its place), plus the DM');
  ok(planRunners(chosenV1(4242)).length === pl.length, 'planRunners reads a v1 setup');
- const a5 = planRunners(applyPreset('five-solos', same)); ok(a5.length === 5 && a5.every(r => r.kind === 'hero' && r.index != null), 'five solos: one hero runner each');
- const ap = planRunners(applyPreset('pairs-and-solo', same)); ok(ap.map(r => r.kind).join() === 'company,company,hero' && ap[0].heroes.join() === '0,1' && ap[1].heroes.join() === '2,3' && ap[2].index === 4, 'two pairs and a solo, one mind: a company runner per pair, a hero runner for the solo');
+ const a5 = planRunners(applyPreset('five-solos', same)).filter(r => r.kind !== 'dm'); ok(a5.length === 5 && a5.every(r => r.kind === 'hero' && r.index != null), 'five solos: one hero runner each');
+ const ap = planRunners(applyPreset('pairs-and-solo', same)); ok(ap.map(r => r.kind).join() === 'company,company,hero,dm' && ap[0].heroes.join() === '0,1' && ap[1].heroes.join() === '2,3' && ap[2].index === 4, 'two pairs and a solo, one mind: a company runner per pair, a hero runner for the solo');
  const mx = applyPreset('pairs-and-solo', same); mx.heroes[1].mind = {mode: 'agent', provider: 'ollama', model: 'qwen2.5:14b'};
- ok(planRunners(mx).map(r => r.kind).join() === 'hero,hero,company,hero', 'a pair of two minds: hero runners')}
+ ok(planRunners(mx).map(r => r.kind).join() === 'hero,hero,company,hero,dm', 'a pair of two minds: hero runners')}
 
 // ---- building: together ----
 init({setup: cleanSetup(s)});
@@ -142,7 +150,7 @@ ok(m.dps1.race === 'thornhide' && m.tank.race === 'ashfolk', 'chosen peoples');
 ok(mem.every(x => x.hero.player && x.hero.fellowAgent && !x.hero.brain), 'every member is agent-played from the first tick (never scripted, no relay brain)');
 ok(S.fellowship.minds === 'agent', 'Minds: agents');
 ok(companies().length === 1 && companies()[0] === S.fellowship, 'together: one company, the Fellowship');
-ok(S.dmAgent && S.dmAgent.seat === true, 'an agent DM opens the DM seat');
+ok(S.dmAgent && S.dmAgent.seat === true, 'the DM seat is open from the first tick');
 // Archetypes (#295 follow-up): the pick is applied at founding, Random comes from the seed (no RNG), stances name companions
 {const {ARCHETYPES, ARCHETYPE_IDS} = await import('../src/data/archetypes.js');
  ok(m.tank.persona.archetype === 'zealot' && m.tank.persona.voice === ARCHETYPES.zealot.voice, 'a chosen archetype is applied at founding');
@@ -183,7 +191,8 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  ok(solo && solo.name === 'Orrak' && solo.lvl === REGIONS[mire].band[0] && solo.zone === mire && solo.state === 'hunt', 'a start region seasons the hero to its band low and puts it out hunting there: ' + JSON.stringify(solo));
  ok(f.follow === true, 'the watcher follows the first company');
  ok(f.setup && f.setup.mode === 'apart' && f.setup.seed === 4242, 'S.setup records the apart start');
- ok(f.seat === true, 'apart: an agent DM opens the seat');
+ ok(f.seat === true, 'apart: the DM seat is open from the first tick');
+ ok(facts('five').seat === true, 'a setup made from the default (DM on Haiku) opens the seat too');
  ok(f.arch === true, 'apart: the archetype is applied with the company mates as companions');
  ok(f.logs === true, 'each company\'s log opens with its setting out');
  ok(f.snapCos === 3, 'the apart world snapshots its companies');

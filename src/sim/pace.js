@@ -26,6 +26,7 @@ import {heroRelevant} from './notebook.js'; // the notes that matter now (#155)
 import {reflectDue} from './reflect.js'; // reflection moments (#179)
 import {asleep,campView} from './camp.js';
 import {localsNear} from './locals.js';
+import {sightLine} from './sighthero.js'; // companions in sight beyond earshot (#570)
 import {earshotLine} from './earshot.js'; // who hears you now, one line (#395) // people about, with a short hook each
 import {foeName,roadsLine} from './lore.js'; // the foe as the hero knows it, never its level (#188)
 import {questBrief} from './questlog.js'; // the focused quest and how many others
@@ -37,6 +38,7 @@ import {followBrief} from './follow.js'; // who the hero follows and who follows
 import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
 import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
 import {leaderFor} from './council.js';
+import {worldHeld} from './prep.js'; // the world held before play (#559)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -49,6 +51,7 @@ export function paceCheck(id,{since=null,minutes=240,wake='all',reflect=false}={
   if(!a||a.kind!=='hero')return {ok:false,gone:true,error:'No such hero.'};
   if(a.state==='dead')return {ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+'). Hardcore: one life.'};
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
+  if(worldHeld())return null; // the start gate or the DM's prep holds the world (#559): no turn until it runs
   const from=Number.isFinite(Number(since))&&since!==null?Number(since):S.gameMin,m=Math.min(PACE.MIN[1],Math.max(PACE.MIN[0],Number(minutes)||240));
   const out=(w,why,must)=>({ok:true,wake:w,why:why||null,...(must?{must:true}:{}),gameMin:Math.round(S.gameMin),since:from,clock:day(),table:!!tv});
   const tv=tableView(a);
@@ -78,7 +81,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
   const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:placeOf(a),
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
-    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),earshot:earshotLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
+    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),earshot:earshotLine(a),insight:sightLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
     quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}), // the hero's own persona (#409): one line for the header, a signature, and on request the full text

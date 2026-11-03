@@ -1,0 +1,68 @@
+name: UI screenshots
+
+# Not a required check: a look at the watcher on pull requests that touch the UI or the renderer. It builds the page, serves
+# it with vite preview, drives headless Chrome (scripts/shoot.mjs) at 3440x1440 and 1280x800, uploads the PNGs as an
+# artifact and comments the first views on the PR. The images live on the orphan branch ci-shots (one folder per PR) so
+# the comment can show them inline; that branch is written by this job only.
+on:
+  pull_request:
+    paths:
+      - 'src/ui/**'
+      - 'src/render/**'
+      - 'index.html'
+      - 'src/style.css'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shots-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shots:
+    name: Screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CHROME_NO_SANDBOX: '1'
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - name: Serve the build and take the screenshots
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 --strictPort > preview.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173/ > /dev/null && break; sleep 1; done
+          node scripts/shoot.mjs http://127.0.0.1:4173/ shots
+      - uses: actions/upload-artifact@v4
+        id: art
+        with: {name: ui-screenshots, path: shots/*.png, retention-days: 14}
+      - name: Publish the images and comment on the PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          pr="${{ github.event.pull_request.number }}"; sha="${{ github.event.pull_request.head.sha }}"
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git clone --depth=1 --branch ci-shots "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pub 2>/dev/null || { mkdir pub; git -C pub init -q -b ci-shots; git -C pub remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"; }
+          rm -rf "pub/pr-$pr"; mkdir -p "pub/pr-$pr"; cp shots/*.png "pub/pr-$pr/"
+          git -C pub add -A; git -C pub commit -q -m "screenshots for PR $pr at ${sha:0:7}" || true
+          git -C pub push -q origin ci-shots
+          raw="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/ci-shots/pr-$pr"
+          {
+            echo "### Watcher screenshots (${sha:0:7})"
+            echo
+            echo "[All views as an artifact](${{ steps.art.outputs.artifact-url }}) - 3440x1440 title, default, follow the Fellowship, bottom, and 1280x800."
+            echo
+            echo "![default view 3440x1440]($raw/default-3440.png?v=${sha:0:7})"
+            echo
+            echo "![follow the Fellowship]($raw/follow-3440.png?v=${sha:0:7})"
+          } > shots-comment.md
+          node scripts/pr-comment.mjs "$pr" eldmoor-ui-screenshots shots-comment.md
