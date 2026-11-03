@@ -26,11 +26,12 @@ const provs=()=>health&&health.providers||null;
 // Local models pulled in Ollama, from the relay's /health (empty when unknown).
 export const pulledModels=()=>{poll();const o=provs()&&provs().ollama;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
 // Chat models the OpenAI key can use, from the relay's /health (empty until the relay reports OpenAI configured).
-export const openaiModels=()=>{poll();const o=provs()&&provs().openai;return o&&o.ok&&Array.isArray(o.models)?o.models.slice():[]};
+import {priceLabel} from './pricelabel.js';
+export const openaiModels=()=>{poll();const o=provs()&&provs().openai,l=o&&o.ok&&Array.isArray(o.models)?o.models.slice():[];l.prices=o&&o.prices;return l}; // .prices: the pickers' price labels (#677)
 // The curated, verified Hugging Face models (#552; /health providers.huggingface.models); HF_MODEL's default first.
 export const hfModels=()=>{poll();const o=provs()&&provs().huggingface;if(!(o&&o.ok&&Array.isArray(o.models)))return [];const l=o.models.slice();if(o.default&&!l.includes(o.default))l.unshift(o.default);return l};
 // Gemini chat models the key can use (#672; /health providers.google.models); GOOGLE_MODEL's default first.
-export const googleModels=()=>{poll();const o=provs()&&provs().google;if(!(o&&o.ok&&Array.isArray(o.models)))return [];const l=o.models.slice();if(o.default&&!l.includes(o.default))l.unshift(o.default);return l};
+export const googleModels=()=>{poll();const o=provs()&&provs().google;if(!(o&&o.ok&&Array.isArray(o.models)))return [];const l=o.models.slice();if(o.default&&!l.includes(o.default))l.unshift(o.default);l.prices=o.prices;return l}; // .prices: price labels (#677; $0 on the free tier)
 const byHid=id=>S.agents.find(x=>x.id==id);
 const modeOf=a=>a.player?'agent':a.brain?'ai':'scripted';
 
@@ -54,7 +55,7 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
     if(c.provider==='anthropic')ms.append(new Option('default',''));
     else if(!c.model)ms.append(new Option(st&&st.default?st.default+' (default)':c.provider==='openai'||c.provider==='huggingface'||c.provider==='google'?'pick a model':'default',''));
     if(c.model&&!list.includes(c.model))list.unshift(c.model);
-    for(const m of list){const o=new Option(m+(st&&st.ok&&c.provider!=='anthropic'&&!st.models.includes(m)?c.provider==='openai'||c.provider==='huggingface'||c.provider==='google'?' (not in list)':' (not pulled)':''),m);if(m===c.model)o.selected=true;ms.append(o)}
+    for(const m of list){const o=new Option(m+priceLabel(st,m)+(st&&st.ok&&c.provider!=='anthropic'&&!st.models.includes(m)?c.provider==='openai'||c.provider==='huggingface'||c.provider==='google'?' (not in list)':' (not pulled)':''),m);if(m===c.model)o.selected=true;ms.append(o)}
     row.append(ps,ms);
     const note=!P?'relay not answering':st&&!st.ok?String(st.error||'not available'):LOCAL_PROVIDERS[c.provider]?(list.length?'local · free':'no models pulled (ollama pull qwen2.5:14b)'):c.provider==='openai'?(c.model||st&&st.default?'billed by OpenAI':'pick a model (billed by OpenAI)'):c.provider==='huggingface'?(c.model||st&&st.default?'shares the free allowance with the art pipeline':'pick a model (shares the free allowance with the art pipeline)'):c.provider==='google'?(c.model||st&&st.default?(st&&st.free?'free tier · daily quota':'billed by Google'):'pick a model (Gemini)'):'';
     if(note)row.append(el('span','dm mnote',note))}

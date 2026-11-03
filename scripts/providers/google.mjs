@@ -130,11 +130,14 @@ export function googleAdapter({apiKey = null, baseUrl = GOOGLE_URL, defaultModel
   const nat = nativeCaller({apiKey, base: nativeBase, fetchImpl}); nat.always = !!nativeAlways;
   const ad = openaiAdapter({...GOOGLE_OPTS, ...o, apiKey, baseUrl: base, defaultModel, fetchImpl, free,
     costFn: free ? () => 0 : costOf, mapError: googleError(free), native: nat,
+    // picker (#677): sorted by the paid price, labelled with what a call costs here ($0 / $0 on the free tier; a paid-only model keeps its price)
+    priceOf: priceFor, labelOf: free ? m => {const p = priceFor(m); return p && FREE_MODELS.some(f => f === m || String(m).startsWith(f + '-')) ? {in: 0, out: 0} : p} : priceFor,
     note: free ? 'free tier: no bill; per-minute and daily quotas (see AI Studio)' : 'paid tier: billed by Google',
     onBadRequest: (err, body) => Array.isArray(body.messages) && body.messages.some(m => m.tool_calls) && /thought[_ ]?signature/i.test(err.apiMessage || '') ? {...body, messages: flattenCalls(body.messages)} : null});
   ad.tier = free ? 'free' : 'paid';
   return ad;
 }
-// From the environment (the relay, the runners): GOOGLE_API_KEY, GOOGLE_MODEL, GOOGLE_BASE_URL, GOOGLE_TIER, GOOGLE_NATIVE.
+// From the environment (the relay, the runners): GOOGLE_API_KEY, GOOGLE_MODEL, GOOGLE_BASE_URL, GOOGLE_TIER, GOOGLE_NATIVE; the relay adds
+// GOOGLE_MODELS (an allow list through modelListFrom, #677).
 export const googleFromEnv = (env, o = {}) => googleAdapter({apiKey: env.GOOGLE_API_KEY || null, baseUrl: env.GOOGLE_BASE_URL || undefined, defaultModel: env.GOOGLE_MODEL || null,
   tier: googleTier(env), nativeAlways: /^(1|true|yes)$/i.test(String(env.GOOGLE_NATIVE || '')), ...o});

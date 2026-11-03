@@ -685,6 +685,12 @@ Owner setup:
    hero's session file; later runs need only `--hero`), or `npm run fellowship -- --provider openai --model <id>`.
    Tags read like `gpt-6-luna · openai`.
 
+Model lists (#677): `OPENAI_MODELS=a,b` in `.env` makes `providers.openai.models` exactly that list, in that order, checked once against the
+key's `/models` (an id the key cannot use is dropped, with `dropped` in `/health` and a line in the relay log); unset, the key's chat models come
+cheapest first from `PRICES` (unpriced last). `/health` also carries `prices` (per 1M tokens) and the pickers label each model ("gpt-6-luna · $0.10 /
+$0.50 per 1M", "price unknown"). `ANTHROPIC_MODELS` narrows the Claude list the same way, `HF_MODELS` as before (one helper, `modelListFrom` in
+`scripts/providers/index.mjs`). Recommended: `OPENAI_MODELS=gpt-6-luna,gpt-6.1-terra`.
+
 Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pick any model from your
 own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
 1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
@@ -734,11 +740,11 @@ Owner setup:
 
 1. Create a key at https://aistudio.google.com/apikey (a free Google account is enough; the free tier needs no billing).
 2. Add `GOOGLE_API_KEY=...` to `.env` (ignored by git; read only by the relay and the runners, never printed, scrubbed from errors).
-   Optional: `GOOGLE_MODEL=<id>` (a default; none in code), `GOOGLE_TIER=paid` (a billed key: cost from the price table; default free),
+   Optional: `GOOGLE_MODEL=<id>` (a default; none in code), `GOOGLE_MODELS=a,b` (an allow list for the pickers, as `OPENAI_MODELS`, #677), `GOOGLE_TIER=paid` (a billed key: cost from the price table; default free),
    `GOOGLE_NATIVE=1` (every structured call through `generateContent`), `GOOGLE_BASE_URL`, `RELAY_GOOGLE_CONCURRENCY` (default 4),
    `RELAY_GOOGLE_RPM` (space calls to the key's requests-per-minute quota; 0, the default, means no spacing).
 3. Restart the relay. `GET /health` lists `providers.google` (the chat models `GET /models` returns for the key, `free: true`) and
-   `queues.google`; the mind row (AI), the Start runner picker, the setup page and the DM seat's picker fill from it. Or from a terminal:
+   `queues.google`; the mind row (AI), the Start runner picker, the setup page and the DM seat's picker fill from it, cheapest first by the paid price, labelled "$0.00 / $0.00 per 1M" on the free tier (the table's price on the paid tier or for a paid-only model). Or from a terminal:
    `npm run agent -- --hero <name|id> --provider google --model gemini-3.8-flash`, `npm run fellowship -- --provider google --model <id>`,
    `npm run dm -- --provider google --model <id>` (saved as `runner: {provider: 'google', model}`; later runs need only `--hero`).
 

@@ -39,6 +39,17 @@ export const PRICES = {
 // A dated snapshot (gpt-4o-2024-08-06) is priced as its family when the table has no row for the snapshot itself.
 export const priceFor = model => {const m = String(model || ''); return PRICES[m] || PRICES[m.replace(/-\d{4}-\d{2}-\d{2}$/, '')] || null};
 // -> number, or null when the model is not in the table (the caller reports 'unknown').
+// The picker list (#677): with an allow list (OPENAI_MODELS) exactly those the key can use, in the order given, the rest
+// reported as dropped; without one the key's chat models cheapest first (input + output price), unpriced last.
+// prices: {id: {in, out}} per 1M tokens for the listed models that have a row, for the picker's labels (OpenAI only).
+// labelOf: the price shown beside each model (default priceOf for the OpenAI table, none for another priceOf unless given; Gemini, #672).
+export function shapeList(models, allow = null, priceOf = priceFor, labelOf = priceOf === priceFor ? priceFor : null) {
+  const have = new Set(models), dropped = allow && allow.length ? allow.filter(m => !have.has(m)) : [];
+  let list = allow && allow.length ? allow.filter(m => have.has(m)) : models.slice();
+  if (!(allow && allow.length)) { const cost = m => { const p = priceOf(m); return p ? p.in + p.out : Infinity }; list = list.map((m, i) => [m, i]).sort((a, b) => cost(a[0]) - cost(b[0]) || a[1] - b[1]).map(x => x[0]) }
+  const prices = {}; if (labelOf) for (const m of list) { const p = labelOf(m); if (p) prices[m] = {in: p.in, out: p.out} }
+  return {models: list, dropped, prices: labelOf ? prices : null};
+}
 export const costOf = (model, inTok, outTok) => {const p = priceFor(model); return p ? (inTok * p.in + outTok * p.out) / 1e6 : null};
 
 // Chat-capable models out of GET /models (which also lists embeddings, speech, images, moderation ...).
@@ -79,6 +90,9 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
   onBadRequest = null, // (err, body) -> a body to send instead, or null (asked once per request)
   native = null, // {structured(body, {signal, error})}: a native endpoint for strict schemas the compat layer rejects
   modelId = id => id, // a listed model id as the picker shows it
+  allow = null, // an allow list (OPENAI_MODELS, GOOGLE_MODELS; #677)
+  priceOf = priceFor, // a model's {in, out} per 1M for sorting the picker list (#677)
+  labelOf = undefined, // the price shown beside it (default: priceOf for OpenAI, none otherwise); Gemini's free tier shows $0
 } = {}) {
   const base = String(baseUrl || OPENAI_URL).replace(/\/+$/, '');
   const noEffort = new Set(); // models that rejected reasoning_effort
@@ -185,8 +199,8 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
         let j = null; try {j = await r.json()} catch {}
         if (!r.ok) throw apiError(r.status, j, r.headers);
         const models = (Array.isArray(j && j.data) ? j.data : []).map(m => m && typeof m.id === 'string' ? modelId(m.id) : null).filter(id => typeof id === 'string' && modelFilter(id)).sort();
-        const pick = defaultModel ? null : 'pick a model (' + keyName.replace(/_(API_KEY|TOKEN)$/, '') + '_MODEL sets a default)';
-        cached = {ok: true, models, default: defaultModel || null, ...(free ? {free: true} : {}), ...(pick || statusNote ? {note: [statusNote, pick].filter(Boolean).join('; ')} : {})};
+        const listed = shapeList(models, allow, priceOf, labelOf === undefined ? (priceOf === priceFor ? priceFor : null) : labelOf), pick = defaultModel ? null : 'pick a model (' + keyName.replace(/_(API_KEY|TOKEN)$/, '') + '_MODEL sets a default)';
+        cached = {ok: true, models: listed.models, ...(listed.prices ? {prices: listed.prices} : {}), ...(listed.dropped.length ? {dropped: listed.dropped} : {}), default: defaultModel || null, ...(free ? {free: true} : {}), ...(pick || statusNote ? {note: [statusNote, pick].filter(Boolean).join('; ')} : {})};
       } catch (e) {
         cached = {ok: false, models: [], default: defaultModel || null, error: e.name === 'AbortError' ? 'not reachable (timeout)' : e.kind ? e.message.replace(name + ': ', '') : 'not reachable (' + scrub(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
       } finally {clearTimeout(t)}

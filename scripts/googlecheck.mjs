@@ -27,6 +27,7 @@ import {checkStart} from './runners.mjs';
 import {DM_PROVIDERS} from './dm-agent.mjs';
 import {MIND_PROVIDERS, PROVIDER_LABEL, modelTag} from '../src/sim/brain.js';
 import {SETUP_PROVIDERS} from '../src/sim/setup.js';
+import {priceLabel} from '../src/ui/pricelabel.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0;
@@ -99,6 +100,11 @@ console.log('google adapter (mock Gemini, compat path)');
   ok(ad.name === 'google' && ad.label === 'Gemini' && !ad.local && ad.free && ad.tier === 'free' && ad.configured() && ad.defaultModel === null, 'named google, label Gemini, remote, free tier by default, no default model in code');
   const s = await ad.status();
   ok(s.ok && JSON.stringify(s.models) === JSON.stringify([G25, NOSCHEMA, SIG, G38].sort()) && s.free === true && /free tier/.test(s.note) && /GOOGLE_MODEL/.test(s.note), 'status: GET /models filtered to chat models, "models/" stripped, free tier and the pick-a-model note');
+  ok(JSON.stringify(s.models) === JSON.stringify([G25, SIG, NOSCHEMA, G38]) && s.prices && s.prices[G38].in === 0 && s.prices[G38].out === 0 && priceLabel(s, G38) === ' · $0.00 / $0.00 per 1M', 'picker list cheapest first by the paid price (#677); free tier labels read $0 / $0');
+  const ps = await mk({tier: 'paid'}).status();
+  ok(ps.prices[G38].in === PRICES[G38].in && ps.prices[G38].out === PRICES[G38].out && priceLabel(ps, G38) === ' · $0.75 / $3.75 per 1M', 'paid tier labels carry the price table');
+  const al = await mk({allow: [G38, 'gemini-9-nope']}).status();
+  ok(JSON.stringify(al.models) === JSON.stringify([G38]) && al.dropped.join() === 'gemini-9-nope', 'an allow list keeps exactly the listed models the key can use and reports the rest as dropped');
   const r = await ad.call({system: 'You are a hero.', user: '{"x":1}', schema, maxTokens: 60, model: G38}), q = lastC();
   ok(r.text === '{"line":"The fen keeps its counsel."}' && r.usage.in === 900 && r.usage.out === 120 && r.usage.cost === 0 && r.usage.costKnown === true, 'a decision: thinking tokens counted as output (total - prompt), cost $0 on the free tier');
   ok(q.model === G38 && q.max_tokens === 60 + HEADROOM && q.reasoning_effort === 'low' && q.response_format.type === 'json_schema' && q.response_format.json_schema.strict === true, 'request: strict json_schema, max_tokens + thinking headroom, reasoning_effort low');
@@ -185,6 +191,8 @@ console.log('google through the relay');
   ok(j.providers.google.ok && j.providers.google.models.includes(G38) && !j.providers.google.models.some(m => /embedding|live|image/.test(m)) && j.providers.google.default === G38 && j.providers.google.free && !j.providers.google.local && j.queues.google, '/health lists the chat models, the default, the free tier and the queue');
   ok(!lines.concat([JSON.stringify(j)]).some(l => l.includes(KEY)), 'the key appears in no log line or /health');
   await new Promise(r => mr.server.close(r));
+  const gp = makeProviders({env: {...env, GOOGLE_MODELS: G25 + ',' + G38}}).google, gs = await gp.status();
+  ok(JSON.stringify(gs.models) === JSON.stringify([G25, G38]), 'GOOGLE_MODELS narrows the list through modelListFrom (in the order given)');
 }
 
 console.log('runner checks and mind tables');
