@@ -16,6 +16,9 @@ export const GAMBIT={
   WAKE_GAP:30,   // game minutes between two wake_me calls of one rule
   LOG:12,        // fired rules kept per hero (for the Agent tab)
   HIST:30,       // edits kept per hero
+  HOLD_MAX_S:120,// real seconds a hold waits for the agent's next acting call (#630)
+  HOLD_PER_DAY:4,// holds a game day per hero
+  HOLD_GAP:60,   // game minutes between two holds of one rule
 };
 
 // Conditions. args: name -> description (all numbers are whole). fight: true when it reads the foe of the fight.
@@ -72,6 +75,7 @@ export const ACTS={
   follow_order:{phase:'idle',desc:'Fall in behind the hero your standing follow order names (only when not too hurt to travel).'},
   hunt_again:{phase:'idle',desc:'Out in the field: carry on your last hunt order on the ground you stand on (if it still suits you).'},
   pursue_aim:{phase:'idle',desc:'Carry on your stated aim (intent): walk on to its place, hunt its ground, follow, or wait.'},
+  hold:{phase:'both',desc:'Call your own mind AND stop the world at 1x until your next acting call (or 120 real seconds, or your runner is gone): for the moment you cannot afford to be late to. At most 4 a game day, one an hour per rule; no effect at a Table scene (it already waits).'},
 };
 
 // Presets: today's autopilot and reflexes written out as rules, in the order the hard-coded policy checked them, so an
