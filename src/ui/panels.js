@@ -37,6 +37,7 @@ import {mindLabel,chatTag} from './mindlabel.js'; // the one mind label (issue #
 import {byDay,stampOf,srcTag,dayOf,daySep} from './daystamp.js'; // game day on times, action sources (issue #136)
 import {toneOf,DISP} from '../core/colors.js'; // class and disposition colours (one palette)
 import {agentOn,agentOff,initBridge} from './player-bridge.js';
+import {inRegion} from './region.js'; // region view (#430): the lists narrow to the picked region
 import {tabMemory,renderBackstory,chronicleShows,setChronicleRefresh} from './fellowship.js'; // the Fellowship (#68)
 import {showMindButtons,devMode} from './mindctl.js';
 import {tabQuests} from './quests.js'; // the Quests tab
@@ -49,7 +50,7 @@ let pick=()=>{};
 export function setPicker(f){pick=f}
 
 export const living=()=>S.agents.filter(a=>a.state!=='dead');
-export const ranked=()=>living().sort((a,b)=>b.lvl-a.lvl||b.xp-a.xp||b.kills-a.kills);
+export const ranked=()=>living().filter(inRegion).sort((a,b)=>b.lvl-a.lvl||b.xp-a.xp||b.kills-a.kills);
 
 // ---- small DOM helpers ----
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};

@@ -137,6 +137,96 @@ if (process.argv[2] === '--solo') {
   console.log('SOLO ' + JSON.stringify(out)); process.exit(0);
 }
 
+// ---- every company a thread (issue #450): the Fellowship, a Concord pair and a Warband solo; hall jobs, needs order, orders ----
+// Builds the extra companies in a seeded Fellowship world: two Concord heroes as a pair (hall Highgate, the Fellowship's too)
+// and one Warband hero riding alone (hall Grimhold).
+async function addCompanies() {
+  const {markPlayer} = await import('../src/sim/player.js'), CO = await import('../src/sim/company.js');
+  const free = fac => S.agents.filter(a => a.kind === 'hero' && a.fac === fac && !['dead', 'dungeon', 'raid'].includes(a.state) && !a.hidden && !a.party && !a.company && !a.fellow);
+  const [p1, p2] = free(0), s1 = free(1)[0];
+  for (const a of [p1, p2, s1]) {a.lvl = Math.max(a.lvl, 6); a.adv = null; markPlayer(a, true)}
+  const pair = CO.companyOf(p1); CO.leaveCompany(p2); CO.joinCompany(pair, p2); pair.name = 'the Ashen Pair';
+  return {pair, solo: CO.companyOf(s1), five: S.fellowship, p1, p2, s1, CO};
+}
+if (process.argv[2] === '--companies') {
+  init({fac: 0}); run(120);
+  const DM = await import('../src/sim/dm.js'), FO = await import('../src/sim/dmfocus.js'), {CITY} = await import('../src/world/map.js'), DA = await import('./dm-agent.mjs');
+  const {pair, solo, five, p1, s1, CO} = await addCompanies(), out = {};
+  out.made = !!(pair && solo && five && pair.ids.length === 2 && solo.ids.length === 1 && pair.hall !== solo.hall);
+  const fs = FO.focuses(); out.focuses = fs.map(f => f.cid).join(','); out.followedFirst = fs[0] && fs[0].company === CO.followed();
+  out.shim = FO.focus() && FO.focus().company === five;
+  // 1. hall boards: every company idle in town at its hall, the boards emptied of hall jobs; one refresh posts one per company
+  for (const C of [five, pair, solo]) for (const a of CO.members(C)) {const c = CITY.find(t => t.name === C.hall); a.adv = null; a.state = 'town'; a.x = c.gate.x; a.y = c.gate.y; a.lvl = Math.max(a.lvl, 6)}
+  S.adventures = S.adventures.filter(h => h.phase !== 'open');
+  S.dmHookT = 0; DM.dmTick(1);
+  const ffs = S.adventures.filter(h => h.phase === 'open' && h.ff);
+  const jobOf = C => ffs.filter(h => h.cid === C.id);
+  out.hallJobs = [five, pair, solo].map(C => jobOf(C).length).join(',');
+  out.onHall = [five, pair, solo].every(C => jobOf(C).every(h => h.town === C.hall));
+  out.hallHooks = [five, pair, solo].every(C => {const f = FO.focusOf(C), L = FO.hallHooks(C.hall, f).map(h => h.id); return jobOf(C).every(h => L.includes(h.id)) && L.every(id => {const h = S.adventures.find(x => x.id === id); return !h.ff || h.cid === C.id})});
+  const sj = jobOf(solo)[0], pj = jobOf(pair)[0];
+  out.soloFits = !!(sj && DM.fitsJob(sj, s1)); out.pairFits = !!(pj && DM.fitsJob(pj, p1));
+  const bg = S.agents.find(a => a.kind === 'hero' && a.fac === 1 && a.state !== 'dead' && !a.company && a.lvl >= 6);
+  out.bgRefused = !!(sj && bg && !DM.fitsJob(sj, bg)); out.fiveRefused = !!(pj && !DM.fitsJob(pj, CO.members(five)[0]));
+  S.dmHookT = 0; DM.dmTick(1); out.again = [five, pair, solo].map(C => S.adventures.filter(h => h.phase === 'open' && h.ff && h.cid === C.id).length).join(',');
+  // 2. the share: a hall posting for the pair touches the pair alone, and stamps its last DM action
+  const e = (S.dmLog || []).find(x => x.kind === 'hooks' && x.detail && x.detail.added && x.detail.added[0] && x.detail.added[0].cid === pair.id);
+  out.pairId = pair.id; out.touches = e ? FO.touchesWhich(e).join(',') : 'none'; out.pairStamped = S.dmFocus.last && S.dmFocus.last[pair.id] != null && S.dmFocus && S.dmFocus.by && S.dmFocus.by[pair.id] >= 1;
+  console.log('COMPANIES ' + JSON.stringify(out)); process.exit(0);
+}
+// The scripted DM with three companies over 150 game hours: the share of its actions that concern some company.
+if (process.argv[2] === '--focus-companies') {
+  init({fac: 0}); run(60); await addCompanies(); run(1440);
+  const {focusStats} = await import('../src/sim/dmfocus.js'), F = S.dmFocus || {};
+  console.log('FOCUS ' + JSON.stringify(focusStats()) + ' BY ' + JSON.stringify(F.by || {}) + ' H ' + Math.round(S.gameMin));
+  process.exit(0);
+}
+// companies_needs, neediest first: one case per rule, plus the signature, the view and the standing orders
+if (process.argv[2] === '--needs') {
+  init({fac: 0}); run(120); setDmSeat(true);
+  const {CITY} = await import('../src/world/map.js'), DA = await import('./dm-agent.mjs'), DAG = await import('../src/sim/dmagent.js');
+  const {pair, solo, five, p1, s1, CO} = await addCompanies(), out = {};
+  S.followId = five.id; S.table = null;
+  const calm = () => {for (const C of [five, pair, solo]) {C.props = []; for (const a of CO.members(C)) {const c = CITY.find(t => t.name === C.hall); a.adv = null; a.state = 'town'; a.x = c.gate.x; a.y = c.gate.y; a.hp = maxHp(a)}}
+    S.adventures = S.adventures.filter(h => h.phase !== 'active')};
+  const order = () => {const st = dmAct('dm_status'); return (st.companies_needs || []).map(r => r.id === five.id ? 'F' : r.id === pair.id ? 'P' : r.id === solo.id ? 'S' : '?').join('')};
+  const why = () => (dmAct('dm_status').companies_needs || [])[0].why;
+  calm(); const now = Math.round(S.gameMin), T = (S.dmFocus || (S.dmFocus = {acts: 0, fellow: 0, day: {d: -1, acts: 0, fellow: 0}})).last || (S.dmFocus.last = {});
+  // size: every company touched at the same minute -> the solo, the pair, then the five
+  T[five.id] = T[pair.id] = T[solo.id] = now; out.size = order();
+  // longest since the DM touched them: the five 9h ago, the pair 3h, the solo just now
+  T[five.id] = now - 540; T[pair.id] = now - 180; out.longest = order(); out.longestWhy = why();
+  // never touched counts as the longest
+  delete T[pair.id]; out.never = order();
+  // hurt in the field outranks time: the solo, touched just now, is out and badly hurt
+  T[pair.id] = now - 180; s1.state = 'hunt'; s1.x += 6; s1.hp = Math.round(maxHp(s1) * .2); out.hurt = order(); out.hurtWhy = why();
+  // a pending vote outranks hurt: the pair has an open proposal
+  pair.props = [{id: 1, kind: 'other', details: 'test', status: 'open', votes: {}}]; out.vote = order(); out.voteWhy = why();
+  // the followed company comes first only when it must choose: the five's own vote; without one it waits its turn
+  five.props = [{id: 1, kind: 'other', details: 'test', status: 'open', votes: {}}]; out.followed = order(); out.followedWhy = why();
+  pair.props = []; S.followId = pair.id; out.notFollowed = order();
+  S.followId = five.id; calm();
+  // the signature joins one per company, and a solo's move alone changes it
+  const sig1 = dmAct('dm_status').fellowship_change; s1.state = 'hunt'; s1.x += 8; const sig2 = dmAct('dm_status').fellowship_change;
+  out.sig = typeof sig1 === 'string' && sig1.split('|').length > 8 && sig1 !== sig2 && sig1.includes(solo.id + ':');
+  calm();
+  // the view and the standing orders
+  const v = dmAct('companies_view');
+  out.view = v.ok && v.companies.length === 3 && v.companies.every(c => c.members.every(m => !('persona' in m) && !('memory_recent' in m))) && v.needs_order.length === 3;
+  const st = dmAct('dm_status');
+  out.first = typeof st.companies_first === 'string' && /Every company is a thread/.test(st.companies_first);
+  const sys = DA.dmSystemPrompt(st);
+  out.orders = sys.includes(DA.DM_COMPANY_ORDERS) && /a solo\'s road gets a hook before the five get a third/.test(DA.DM_COMPANY_ORDERS) && /longest without you/.test(DA.DM_COMPANY_ORDERS)
+    && DA.withDmCompanyOrders('old prompt').includes(DA.DM_COMPANY_ORDERS) && DA.withDmCompanyOrders(sys) === sys;
+  const tp = DA.dmTurnPrompt(2, {...st, day: 3, part: 'day'});
+  out.prompt = /Companies, neediest first: /.test(tp) && tp.includes(s1.name) && /Fellowship first:/.test(tp);
+  // pile-on reaches every company's members, not only the Fellowship's
+  s1.state = 'hunt'; s1.hp = Math.round(maxHp(s1) * .2);
+  const pile = pileOn('mark_dangerous', {at: {x: Math.round(s1.x), y: Math.round(s1.y)}, radius: 3});
+  out.pile = typeof pile === 'string' && pile.includes(s1.name) && /riding alone/.test(pile);
+  console.log('NEEDS ' + JSON.stringify(out)); process.exit(0);
+}
+
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 console.log('\nEldmoor dmcheck: the DM as an agent, part 1 (mock agents)\n');
@@ -422,6 +512,52 @@ console.log('staged scenes: refusals');
   T.TABLE.mode = 'auto'}
 function CITYN() {return S.agents.length && (S.fellowship.hall || 'Highgate')}
 
+// ---------------------------------------------------------------- 1b2. staged scenes in a setting (issue #431, slice 2)
+console.log('staged scenes: settings and towns');
+{const ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {SETTING_IDS} = await import('../src/data/settings.js'), {CITY} = await import('../src/world/map.js');
+  const L = fellows(), F = S.fellowship, hall = CITY.find(c => c.name === F.hall) || CITY.find(c => c.fac === F.fac), enemy = CITY.find(c => c.fac !== F.fac);
+  T.TABLE.mode = 'off'; S.staged.cur = null; S.staged.day.n = 0; S.staged.day.nw = 0; S.table = null;
+  const meet = (a) => dmAct('stage_scene', {kind: 'meeting', frame: 'A woman in a grey shawl waits with a cup she has not touched.', cast: {role: 'stranger', want: 'news of her brother'}, reason: 'settings test', ...a});
+  const no = (a, re, m) => {const x = meet(a); ok(x.ok === false && re.test(x.error), m + ': ' + (x.error || 'staged!').replace(/^Refused: /, '').slice(0, 160))};
+  no({near: 'fellowship', setting: 'throne room'}, new RegExp('unknown setting "throne room"; setting takes one of: ' + SETTING_IDS.join('.*')), 'an unknown setting is refused with every valid one');
+  no({at: 'Nowhere-town'}, /unknown town in at .*at takes a town \(/, 'an unknown town in at is refused with the towns');
+  no({at: 'the barbican in ' + hall.name}, new RegExp('no building "barbican" in ' + hall.name + '.*inn'), 'an unknown building is refused with the town\'s buildings');
+  if (enemy) no({at: enemy.name}, /enemy town/, 'a town of the other faction is refused');
+  ok(ST.settingOf('Ship\'s hold').id === 'hold' && ST.settingOf('a tavern back room').id === 'tavern' && ST.settingOf('interrogation').id === 'cell' && ST.settingOf('').id === undefined, 'a setting is read from its key, its name or a plain word');
+  ok(ST.atOf(hall.name + ' forge').spot === 'smith' && ST.atOf('the inn in ' + hall.name).spot === 'inn' && ST.atOf(hall.name).spot === null, 'at reads a town alone or a building in it');
+  // outdoor kinds ignore it, with a note
+  const pv = dmAct('stage_scene', {kind: 'elite', near: 'fellowship', preview: 'true', reason: 'x', setting: 'house'});
+  ok(pv.ok && /setting was ignored/.test(pv.setting_note || ''), 'an elite ignores setting, with a note: ' + (pv.setting_note || pv.error));
+  const pv2 = dmAct('stage_scene', {kind: 'mystery', near: 'fellowship', preview: 'true', reason: 'x', setting: 'chapel', at: hall.name});
+  ok(pv2.ok && /both were ignored/.test(pv2.note || '') && !pv2.setting, 'a mystery ignores setting and at, with a note: ' + (pv2.note || pv2.error));
+  // the whole Fellowship in town: near "fellowship" points to at
+  L.forEach(x => {x.state = 'town'; x.town = hall.name; x.x = hall.spots.square.x; x.y = hall.spots.square.y; x.hidden = false; x.target = null; x.dest = null});
+  no({near: 'fellowship'}, /whole Fellowship is in town.*pass at/, 'a meeting near the Fellowship when all are in town points to at');
+  // set in town with a named room: the person waits at the building; the scene opens in that room when a member is in town
+  L.forEach(x => {x.x = hall.gate.x + 25; x.y = hall.gate.y; x.state = 'hunt'});
+  const r = meet({at: 'the chapel in ' + hall.name, setting: 'chapel'});
+  ok(r.ok && r.setting === 'chapel' && r.where === 'A chapel in ' + hall.name && !r.setting_picked && r.waits_until_h === ST.STAGE.TOWN_WAIT_MIN / 60, 'a meeting is staged in a town, in a chapel: ' + (r.where || r.error));
+  const w = S.wanderers.find(x => x.staged === r.staged);
+  ok(w && w.town === hall.name && Math.hypot(w.x - hall.spots.chapel.x, w.y - hall.spots.chapel.y) < .01, 'the person waits at the chapel in ' + hall.name);
+  ok(dmAct('dm_status').staged.cur.setting === 'chapel', 'dm_status names the staged scene\'s setting');
+  T.TABLE.mode = 'auto'; T.tableTick(); ok(!S.table, 'nobody of the Fellowship is in town: the scene waits');
+  L[0].x = hall.spots.square.x; L[0].y = hall.spots.square.y; L[0].state = 'town'; T.tableTick();
+  ok(S.table && S.table.kind === 'meeting' && S.table.ctx.setting === 'chapel' && S.table.ctx.town === hall.name && S.table.ids.includes(L[0].id), 'a member in town opens the scene in that setting (ctx.setting, ctx.town)');
+  S.table = null; T.tableTick(); S.table = null; S.staged.cur.phase = 'done';
+  const drop = () => {const gone = S.wanderers.filter(x => x.staged != null && x.staged >= r.staged); S.levers.active = S.levers.active.filter(a => !gone.some(g => g.lever === a.id)); S.wanderers = S.wanderers.filter(x => !gone.includes(x))};
+  drop(); // the people lever keeps 6 at most
+  // no setting named: the game picks one that fits (a meeting with no words for a room: the tavern back room, at the inn)
+  S.staged.day.n = 0; S.staged.day.nw = 0; for (const k in S.levers.cd) if (k.startsWith('create_npc')) delete S.levers.cd[k]; L[0].x = hall.gate.x + 25; L[0].state = 'hunt';
+  const r2 = meet({at: hall.name, title: 'A quiet word'});
+  const w2 = r2.ok && S.wanderers.find(x => x.staged === r2.staged);
+  ok(r2.ok && r2.setting === 'tavern' && r2.setting_picked && w2 && Math.hypot(w2.x - hall.spots.inn.x, w2.y - hall.spots.inn.y) < .01, 'with no setting the game picks a fitting one (a meeting: the tavern back room, at the inn): ' + (r2.where || r2.error));
+  ok(ST.fitSetting('social', {frame: 'The prisoner is brought up in chains for questioning.'}) === 'cell' && ST.fitSetting('social', {}) === 'house' && ST.fitSetting('meeting', {spot: 'chapel'}) === 'chapel', 'the scripted pick: the building, then the words, then the kind');
+  if (r2.ok) S.staged.cur.phase = 'done';
+  const ds = dmAct('dm_status').staged;
+  ok(SETTING_IDS.every(k => ds.settings[k]) && /setting/.test(ds.settings_note) && /at \(a town/.test(ds.settings_note), 'dm_status lists the settings and how to set a scene in a town');
+  drop(); S.staged.day.n = 0; S.staged.day.nw = 0; for (const k in S.levers.cd) if (k.startsWith('create_npc')) delete S.levers.cd[k];
+  L.forEach(x => {x.state = 'hunt'; x.hp = maxHp(x)})}
+
 // ---------------------------------------------------------------- 1c. NPC conversations (issue #170)
 console.log('NPC conversations');
 {const TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), F_ = await import('../src/sim/fellowship.js');
@@ -478,6 +614,11 @@ console.log('NPC conversations');
   const jobs0 = (S.adventures || []).filter(h => h.phase === 'open' && h.for === A.id).length;
   r = dmAct('npc_offer', {npc: String(smith.id), conv: call.call.conv, kind: 'job', text: 'Bring back what the carters lost and I will pay.', tpl: 'relic'});
   ok(r.ok && r.mark === '[job posted]' && (S.adventures || []).filter(h => h.phase === 'open' && h.for === A.id).length === jobs0 + 1, `npc_offer job: ${r.hint}`);
+  // a job needs an answer (#407): it opens a talk scene; the DM agent voices the person's reply to the company's choice
+  ok(r.table && S.table && S.table.kind === 'talk' && S.table.ctx.why === 'offer', 'the job offered opens a talk scene at the table (#407)');
+  {let f = 0; while (S.table && f++ < 60 * 60) step(1 / 60)}
+  call = dmAct('npc_call'); ok(!S.table && call.call && /at the table/.test(call.call.line || ''), `the DM is asked to voice the answer: ${call.call && call.call.line}`);
+  dmAct('npc_say', {conv: call.call.conv, text: 'Good. Then go.'});
   act(A, 'say', {text: 'Then we are agreed.'}); call = dmAct('npc_call');
   r = dmAct('npc_say', {conv: call.call.conv, text: 'Agreed. Go.'}); // conv alone names the person (issue #401)
   ok(r.ok && r.ended && !TK.convWith(smith), `after ${TK.CONV.EXCHANGES} exchanges the conversation ends (${r.ended})`);
@@ -639,6 +780,29 @@ console.log('the Fellowship first');
     'with a Fellowship, most DM actions concern it (pooled over seeds 66, 1, 2): ' + fel + ' of ' + acts + ' (' + Math.round(share * 100) + '%); ' + parsed.map(p => p.st ? 'seed ' + p.sd + ' ' + p.st.fellow + '/' + p.st.acts + ' (' + Math.round(p.st.share * 100) + '%)' : 'seed ' + p.sd + ' ' + p.line).join(', '));
   const run1 = runs[0].r, run2 = focusRun(66);
   ok((run2.stdout || '').trim() === (run1.stdout || '').trim(), 'the scripted DM is deterministic under the same seed (same actions, same share)');
+}
+
+{ // every company a thread (issue #450): hall jobs per company, companies_needs neediest first, the standing orders, the share
+  const kid = (arg, tag) => {const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), arg], {cwd: ROOT, encoding: 'utf8'}), l = (r.stdout || '').trim().split(/\r?\n/).pop(), m2 = new RegExp('^' + tag + ' (\\{.*\\})').exec(l); return m2 ? JSON.parse(m2[1]) : {err: l || (r.stderr || '').slice(-400)}};
+  const c = kid('--companies', 'COMPANIES');
+  ok(!c.err && c.made && c.followedFirst && c.shim && c.focuses.split(',').length === 3, 'focuses(): one record per company, the followed company first; focus() still names the Fellowship (' + (c.err || c.focuses) + ')');
+  ok(c.hallJobs === '1,1,1' && c.onHall && c.hallHooks, 'the scripted DM posts one hall job per company on its own hall board, h.cid set, hallHooks shows each its own (' + (c.err || c.hallJobs) + ')');
+  ok(c.soloFits && c.pairFits && c.bgRefused && c.fiveRefused, 'a company\'s hall job fits that company whatever its size (a solo too) and nobody else');
+  ok(c.again === '1,1,1', 'the next refresh posts no second job for a company that has one (' + c.again + ')');
+  ok(c.touches === String(c.pairId) && c.pairStamped, 'a hall posting for the pair concerns the pair alone, and stamps its last DM action (' + c.touches + ')');
+  const n = kid('--needs', 'NEEDS');
+  ok(!n.err && n.size === 'SPF', 'companies_needs: with equal time since the DM, the smaller first (a solo is the most fragile): ' + (n.err || n.size));
+  ok(n.longest === 'FPS' && n.longestWhy === 'longest without you' && n.never === 'PFS', 'companies_needs: then the company longest without a DM action first, never touched the longest: ' + n.longest + ' / ' + n.never);
+  ok(n.hurt === 'SFP' && /hurt/.test(n.hurtWhy), 'companies_needs: members badly hurt in the field outrank time: ' + n.hurt);
+  ok(n.vote === 'PSF' && /pending/.test(n.voteWhy), 'companies_needs: a pending scene or vote outranks the hurt: ' + n.vote);
+  ok(n.followed === 'FPS' && /must choose/.test(n.followedWhy) && n.notFollowed === 'FSP', 'companies_needs: the followed company first only when it must choose (' + n.followed + '; not followed: ' + n.notFollowed + ')');
+  ok(n.sig, 'fellowship_change is one signature per company joined with |, and a solo\'s move alone changes it');
+  ok(n.view && n.first, 'companies_view lists every company (no persona or memories); dm_status says every company is a thread');
+  ok(n.orders && n.prompt, 'the standing orders: every company a thread, the one longest without you first, a solo\'s road gets a hook before the five get a third (and reach an older session once); the turn prompt names the companies');
+  ok(n.pile, 'the DM does not pile on a badly hurt solo either');
+  const fr = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus-companies'], {cwd: ROOT, encoding: 'utf8'}), fl = (fr.stdout || '').trim().split(/\r?\n/).pop(), fm = /^FOCUS (\{.*\}) BY (\{.*\}) H/.exec(fl || '');
+  const fst = fm ? JSON.parse(fm[1]) : null, by = fm ? JSON.parse(fm[2]) : {};
+  ok(fst && fst.acts >= 18 && fst.share >= 0.6 && Object.keys(by).length >= 3, 'with three companies over 150 game hours, at least 60% of the scripted DM\'s actions concern some company, each of them touched: ' + (fm ? fst.fellow + '/' + fst.acts + ' (' + Math.round(fst.share * 100) + '%) by ' + JSON.stringify(by) : fl || (fr.stderr || '').slice(-300)));
 }
 
 { // solo-sized jobs (issue #447): only while an agent solo exists, band-checked, paid less

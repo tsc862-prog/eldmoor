@@ -43,6 +43,7 @@ import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {TABLE,openScene,tableOn,setSceneKind,setStageHooks} from './table.js';
 import {talkFromScene} from './talk.js'; // NPC conversations (#170)
+import {SETTINGS,SETTING_IDS} from '../data/settings.js'; // scene maps (#431): the rooms a meeting or social scene plays in
 
 // ---- knobs ----
 export const STAGE={
@@ -63,6 +64,8 @@ export const STAGE={
   FRAME_MAX:280, TITLE_MAX:60, LINE_MAX:2000, NAME_MAX:32, // LINE_MAX: a technical ceiling for the DM's lines at the table, not a style limit (owner, #170)
   WANT_MAX:160, REVEAL_MAX:200, LABEL_MAX:60, REASON_MAX:160,
   PAST_KEEP:8,
+  TOWN_WAIT_MIN:720, // game minutes a person staged in a town (at) waits there for the party
+  TOWN_PAD:1,       // tiles round a town's walls that count as being in it (the scene opens when a member is there)
 };
 export const STAGE_KINDS=['elite','ambush','meeting','trap','mystery','social'];
 const COMBAT_ACTS=['strike','guard','heal','potion','retreat'];
@@ -146,6 +149,42 @@ function whereOf(near){const nt=nearText(near);if(nt.err)return {err:nt.err};con
   const pls=(S.places||[]).map(p=>p.name).filter(Boolean).slice(0,8);
   return {err:'unknown place "'+s+'". near takes "fellowship", a member ('+fellows().map(a=>a.name).join(', ')+'), "x,y", a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+')'+(pls.length?', a place ('+pls.join(', ')+')':'')+' or a region ('+ZONES.join(', ')+')'}}
 
+// ---- the setting and the town (scene maps, issue #431 slice 2) ----
+// A meeting or social scene may play in a room from data/settings.js (setting) and in a real town, at one of its
+// buildings (at). The outdoor kinds keep the ground where they happen and ignore both, with a note.
+export const INDOOR_STAGE={meeting:1,social:1};
+const SET_ALIAS={home:'house',cottage:'house',farmhouse:'house','back room':'tavern','tavern back room':'tavern',inn:'tavern',alehouse:'tavern',
+  temple:'chapel',church:'chapel','interrogation cell':'cell','interrogation room':'cell',interrogation:'cell',prison:'cell',jail:'cell',gaol:'cell',
+  ship:'hold',"ship's hold":'hold','ships hold':'hold',boat:'hold'};
+const settingList=()=>SETTING_IDS.map(k=>{const n=low(SETTINGS[k].name.replace(/^an? /i,''));return n===k?k:k+' ('+n+')'}).join(', ');
+// v: a settings key, its name ("a tavern back room") or a plain alias. {id} | {err} | {} when none was asked.
+export function settingOf(v){if(v==null||v==='')return {};const s=clean(v,40).toLowerCase().replace(/^(an?|the)\s+/,'').replace(/[’]/g,"'");
+  if(!s)return {};if(SETTINGS[s])return {id:s};
+  const byName=SETTING_IDS.find(k=>SETTINGS[k].name.toLowerCase().replace(/^an?\s+/,'')===s);if(byName)return {id:byName};
+  if(SET_ALIAS[s])return {id:SET_ALIAS[s]};
+  return {err:'unknown setting "'+clean(v,40)+'"; setting takes one of: '+settingList()}}
+// The buildings of a town a scene can be set at (the town spots of world/gen.js) and the words that name them.
+const BLDG_ALIAS={inn:'inn',tavern:'inn',alehouse:'inn',smith:'smith',smithy:'smith',forge:'smith',quartermaster:'quartermaster',stores:'quartermaster',
+  chapel:'chapel',temple:'chapel',church:'chapel',square:'square',market:'square','market square':'square',gate:'gate',gatehouse:'gate'};
+const BLDG_SET={inn:'tavern',chapel:'chapel'}; // a building that is itself a setting
+// at: a town ("Highgate"), or a building in it ("the inn in Highgate", "Highgate chapel", "Highgate, forge"). {town, spot} | {err} | {}.
+export function atOf(v){if(v==null||v==='')return {};const s=clean(v,60).toLowerCase();if(!s)return {};
+  const c=CITY.find(t=>s.includes(t.name.toLowerCase()));
+  if(!c)return {err:'unknown town in at "'+clean(v,60)+'"; at takes a town ('+CITY.map(t=>t.name).join(', ')+'), optionally with a building ('+[...new Set(Object.values(BLDG_ALIAS))].join(', ')+'), such as "the inn in '+(CITY[0]?CITY[0].name:'town')+'"'};
+  const rest=s.replace(c.name.toLowerCase(),' ').replace(/\b(the|in|at|of|by)\b|[,.]/g,' ').replace(/\s+/g,' ').trim();
+  if(!rest)return {town:c,spot:null};
+  const hit=Object.keys(BLDG_ALIAS).find(w=>new RegExp('\\b'+w+'\\b').test(rest)),k=BLDG_ALIAS[rest]||(hit?BLDG_ALIAS[hit]:null);
+  if(!k||!c.spots||!c.spots[k])return {err:'no building "'+rest+'" in '+c.name+'; at takes '+c.name+' alone or one of its buildings: '+Object.keys(c.spots||{}).join(', ')};
+  return {town:c,spot:k}}
+// The room a meeting or social scene plays in when the DM names none (the scripted pick): the building it is set at
+// (the inn: the tavern back room; the chapel), then the words of the title, frame, want and role (data/settings.js
+// words), then a tavern back room for a meeting and a house for a social call. No dice.
+export function fitSetting(kind,{spot,title,frame,want,role}={}){if(spot&&BLDG_SET[spot])return BLDG_SET[spot];
+  for(const w of [[title,frame].join(' '),[want,role].join(' ')])for(const id of SETTING_IDS)if(SETTINGS[id].words&&SETTINGS[id].words.test(w||''))return id;
+  return kind==='meeting'?'tavern':'house'}
+const inTown=(c,p)=>!!(c&&p)&&p.x>=c.x0-STAGE.TOWN_PAD&&p.x<=c.x1+1+STAGE.TOWN_PAD&&p.y>=c.y0-STAGE.TOWN_PAD&&p.y<=c.y1+1+STAGE.TOWN_PAD;
+const townOf=n=>CITY.find(c=>c.name===n)||null;
+
 // ---- staging (the DM tool stage_scene) ----
 // a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, trap, place, choices:{act:label}}, reason}
 export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),F=S.fellowship,seed0=seed,pv=a.preview===true||a.preview==='true';
@@ -163,13 +202,22 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   if(today().n>=STAGE.PER_DAY)return refuse(STAGE.PER_DAY+' staged scenes today already; the world needs room to breathe',a)}
   if(!pv&&FIGHTING[kind]){const h=fellows().find(b=>b.state!=='town'&&!b.hidden&&b.hp<maxHp(b)*STAGE.PILE_HP);
     if(h)return refuse(h.name+' of the Fellowship is badly hurt ('+pct(h)+'% HP) out in the field: no staged '+kind+' until they recover',a)}
-  const W=whereOf(a.near);if(W.err)return refuse(W.err,a,/^unknown place/.test(W.err));
+  // the room and the town (#431): a meeting or social scene may name a setting and a town or building; the rest ignore them
+  const notes=[],given=v=>v!=null&&v!=='';let setId=null,town=null,spot=null,named=false,picked=false;
+  if(INDOOR_STAGE[kind]){const st=settingOf(a.setting);if(st.err)return refuse(st.err,a);setId=st.id||null;
+    const tw=atOf(a.at);if(tw.err)return refuse(tw.err,a);
+    if(tw.town){if(F.fac!=null&&tw.town.fac!=null&&tw.town.fac!==F.fac)return refuse(tw.town.name+' is an enemy town: the Fellowship would not be met there; pick one of their own ('+CITY.filter(c=>c.fac===F.fac).map(c=>c.name).join(', ')+')',a);
+      town=tw.town;named=!!tw.spot;if(!setId){setId=fitSetting(kind,{spot:tw.spot,title:a.title,frame,want:cast.want,role:cast.role});picked=true}spot=tw.spot||(setId==='tavern'?'inn':setId==='chapel'?'chapel':'square')}}
+  else if(given(a.setting)||given(a.at))notes.push('setting and at are for meeting and social scenes; '+(/^[aeiou]/.test(kind)?'an ':'a ')+kind+' plays on the ground where it happens, so '+(given(a.setting)&&given(a.at)?'both were':given(a.setting)?'setting was':'at was')+' ignored');
+  const W=town?{at:{x:town.spots[spot].x,y:town.spots[spot].y},label:(named?'at the '+spot+' in ':'in ')+town.name}:whereOf(a.near);
+  if(W.err)return refuse(W.err+(INDOOR_STAGE[kind]&&/in town|not inside/.test(W.err)?' (or, for a '+kind+' in town, pass at: the town or a building in it, such as "the inn in '+(focus()&&focus().town?focus().town.name:CITY[0].name)+'")':''),a,/^unknown place/.test(W.err));
   const P=partyLvl();
   let at=W.at,label=W.label;
   // a cast walks in from out of sight; a trap or a strange place lies just ahead, where they pass
   if(W.hero){at=STATIC[kind]?spotNear(W.hero,STAGE.AHEAD_MIN,STAGE.AHEAD_MAX,W.hero.dest||null):spotNear(W.hero,STAGE.SPOT_MIN,STAGE.SPOT_MAX,W.hero.dest||null);if(!at)return refuse('no open ground near '+W.hero.name,a);label='near '+W.hero.name}
-  const z=zoneAt(at.x,at.y);if(z==null||z<0)return refuse('that spot is outside every region',a);
-  if(!pv&&!nearFellow(at)&&(today().nw||0)>=STAGE.PER_DAY-STAGE.RESERVE)return refuse('the last staged scene of the day is kept for the Fellowship’s own road; set this one near a member (near: "fellowship")',a);
+  const z=town?zoneAt(town.gate.x,town.gate.y):zoneAt(at.x,at.y);if(z==null||z<0)return refuse('that spot is outside every region',a);
+  const fo=focus(),forThem=nearFellow(at)||!!(town&&fo&&fo.town===town);
+  if(!pv&&!forThem&&(today().nw||0)>=STAGE.PER_DAY-STAGE.RESERVE)return refuse('the last staged scene of the day is kept for the Fellowship’s own road; set this one near a member (near: "fellowship")',a);
   if(!pv&&FIGHTING[kind]&&band(z)[0]>P.avg+STAGE.FAR)return refuse(ZONES[z]+' (levels '+band(z)[0]+'+) is far above the party (average level '+P.avg+')',a);
   // the cast
   const C={name:clean(cast.name,STAGE.NAME_MAX)||null,title:clean(cast.title,40)||null,want:clean(cast.want,STAGE.WANT_MAX)||null,voice:clean(cast.voice,60)||null,reveal:clean(cast.reveal,STAGE.REVEAL_MAX)||null,mobs:[],npc:null,place:null};
@@ -194,11 +242,11 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     if(!E.foes.length)return refuse('nothing in '+ZONES[z]+' could spring an ambush',a);
     plan=E.foes.map(f=>{if(foeKey)f.type=foeKey;f.lvl=Math.min(f.lvl,lvl+1);return f})}
   if(plan){plan.forEach(f=>{f.name=MOBS[f.type]?MOBS[f.type].name:f.name||f.type;f.family=(BESTIARY[f.type]&&BESTIARY[f.type].family)||f.family||''});
-    if(pv){seed=seed0;return {ok:true,preview:true,kind,where:label+' in '+ZONES[z],region:ZONES[z],cast:castPlan(kind,plan),creatures:plan.map(f=>f.name+' (L'+f.lvl+')'),level:lvl,party_level:P.avg,
+    if(pv){seed=seed0;return {ok:true,preview:true,kind,where:label+' in '+ZONES[z],...(notes.length?{setting_note:notes.join('; ')}:{}),region:ZONES[z],cast:castPlan(kind,plan),creatures:plan.map(f=>f.name+' (L'+f.lvl+')'),level:lvl,party_level:P.avg,
       people:planHasPeople(plan),note:'Nothing is staged yet. Write a frame that fits this cast (name the creature, or its kind such as '+famWords(plan).slice(0,3).join(', ')+'), then call stage_scene again without preview.'}}
     const bad=frameMisfit(frame,plan,cast.name,kind);if(bad){seed=seed0;return refuse(bad,a)}}
   else if(pv){const here=[...new Set(Object.keys(MOBS).filter(k=>MOBS[k].z===z).map(k=>MOBS[k].name))];
-    return {ok:true,preview:true,kind,where:label+' in '+ZONES[z],region:ZONES[z],cast:null,creatures_here:here,note:'A '+kind+' has no creature cast: you describe it with cast and frame. Nothing is staged.'}}
+    return {ok:true,preview:true,kind,where:whereLine(label,z,town,setId),region:ZONES[z],cast:null,creatures_here:here,...(setId?{setting:setId}:{}),note:'A '+kind+' has no creature cast: you describe it with cast and frame. Nothing is staged.'+(notes.length?' Note: '+notes.join('; ')+'.':'')}}
   const rid=G.seq+1;
   if(kind==='elite'){const type=plan[0].type;
     const m=spawnFoe({type,roleOv:'leader',lvl,hpMul:1.5,hitMul:1.1});
@@ -211,7 +259,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     const att=String(cast.attitude||(kind==='social'?'wary':'neutral')).toLowerCase();if(!ATT.includes(att))return refuse('cast.attitude must be one of '+ATT.join(', '),a);
     const fac=String(cast.faction||'neutral').toLowerCase();
     if(!C.want)return refuse('a '+kind+' needs cast.want: what this person wants from the party',a);
-    const res=pull('create_npc',{role,...(C.name?{name:C.name.slice(0,24)}:{}),faction:['concord','warband','neutral'].includes(fac)?fac:'neutral',home:'camp',at,attitude:att,hours:12},{by:'dm-agent',reason:'staged '+kind+': '+reason});
+    const res=pull('create_npc',{role,...(C.name?{name:C.name.slice(0,24)}:{}),faction:['concord','warband','neutral'].includes(fac)?fac:'neutral',...(town?{home:'town',town:town.name,spot}:{home:'camp',at}),attitude:att,hours:town?Math.ceil(STAGE.TOWN_WAIT_MIN/60)+6:12},{by:'dm-agent',reason:'staged '+kind+': '+reason});
     if(!res.ok)return refuse('the people lever said no: '+res.reason,a);
     const w=res.ret;w.staged=rid;if(C.want)w.want=C.want;C.npc=w.id;C.name=w.title+' '+w.name;C.attitude=att}
   else if(kind==='trap'){const t=TRAPS.find(x=>x.id===String(cast.trap||'').toLowerCase())||pickR(TRAPS.filter(x=>x.dmg>0));
@@ -222,13 +270,17 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     C.dc=9+Math.ceil(P.avg/2)}
   G.seq=rid;today().n++;if(!nearFellow(at))today().nw=(today().nw||0)+1;G.stats.staged++;
   const title=clean(a.title,STAGE.TITLE_MAX)||defaultTitle(kind,C);
-  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+STAGE.WAIT_MIN),phase:'waiting',scene:null,result:null};
+  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN)),phase:'waiting',scene:null,result:null,
+    ...(setId?{setting:setId}:{}),...(town?{town:town.name,spot}:{})};
+  const where=whereLine(label,z,town,setId);if(ignored.length)notes.push('choices must map to the legal actions: '+STAGE_ACTS[kind].join(', '));
   G.cur=rec;
-  LOG('frame',['DM agent stages ',gd(kind),': ',gd(title),' '+label+' in '+ZONES[z]+(lvl!=null?' (level '+lvl+', party '+P.avg+')':'')+' - '+reason+'.'],
-    {staged:rid,kind,title,frame,reason,cast:castLine(rec),at:rec.at,region:ZONES[z],lvl,party:P.avg,...(Object.keys(labels).length?{labels}:{}),...(ignored.length?{ignored}:{})});
-  return {ok:true,staged:rid,kind,title,where:label+' in '+ZONES[z],at:rec.at,cast:castLine(rec),...(lvl!=null?{level:lvl,party_level:P.avg}:{}),
-    choices:STAGE_ACTS[kind].map(k=>k+(labels[k]?' = '+labels[k]:'')),...(ignored.length?{ignored_choices:ignored,note:'Choices must map to the legal actions: '+STAGE_ACTS[kind].join(', ')+'.'}:{}),
-    waits_until_h:Math.round(STAGE.WAIT_MIN/60),scenes_today:today().n+'/'+STAGE.PER_DAY}}
+  LOG('frame',['DM agent stages ',gd(kind),': ',gd(title),' '+where+(lvl!=null?' (level '+lvl+', party '+P.avg+')':'')+' - '+reason+'.'],
+    {staged:rid,kind,title,frame,reason,cast:castLine(rec),at:rec.at,region:ZONES[z],lvl,party:P.avg,...(setId?{setting:setId,picked}:{}),...(town?{town:town.name,spot}:{}),...(Object.keys(labels).length?{labels}:{}),...(ignored.length?{ignored}:{})});
+  return {ok:true,staged:rid,kind,title,where,at:rec.at,cast:castLine(rec),...(setId?{setting:setId,setting_name:SETTINGS[setId].name,...(picked?{setting_picked:'you named no setting; the game picked one that fits'}:{})}:{}),...(lvl!=null?{level:lvl,party_level:P.avg}:{}),
+    choices:STAGE_ACTS[kind].map(k=>k+(labels[k]?' = '+labels[k]:'')),...(ignored.length?{ignored_choices:ignored}:{}),...(notes.length?{note:cap(notes.join('; '))+'.'}:{}),
+    waits_until_h:Math.round((rec.until-rec.born)/60),scenes_today:today().n+'/'+STAGE.PER_DAY}}
+// "A tavern back room in Highgate", "at the inn in Highgate", "near Kerin in Thornvale", "A house near Kerin in Thornvale".
+function whereLine(label,z,town,setId){return town?(setId?SETTINGS[setId].name+' in '+town.name:label):(setId?SETTINGS[setId].name+' ':'')+label+' in '+ZONES[z]}
 // ---- does the frame fit the cast? (issue #211) ----
 // A frame that names people over a cast of beasts (or never names what comes) is refused with the actual cast,
 // so the table never opens on "armed men" and then a boar. Lenient: a creature's name, any word of it (3+ letters,
@@ -267,7 +319,7 @@ function tick(){const G=S.staged;if(!G||!G.cur)return false;const rec=G.cur;
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.alive&&!m.gone){m.gone=true;m.target=null}}
   const fight=rec.kind==='elite'||rec.kind==='ambush';
   if(S.gameMin>=rec.until||!S.fellowship||!fellows().length||fight&&!rec.cast.mobs.some(id=>liveMob(mobOf(id)))||rec.cast.npc!=null&&!npcOf(rec.cast.npc)){expire(rec);return false}
-  const A=anchorOf(rec),L=field();
+  const T=rec.town?townOf(rec.town):null,A=anchorOf(rec),L=T?fellows().filter(b=>living(b)&&!b.hidden&&inTown(T,b)):field(); // set in a town (#431): whoever of them is in it
   // a staged fight or trap holds back while a member out in the field is badly hurt (the pile-on rule, at the meeting too)
   if(FIGHTING[rec.kind]&&L.some(b=>b.hp<maxHp(b)*STAGE.PILE_HP)){for(const id of rec.cast.mobs){const m=mobOf(id);if(liveMob(m)&&!m.target)m.dest=null}return false}
   // walk the cast to the member it was staged near (a cast left far behind starts again nearer)
@@ -278,7 +330,7 @@ function tick(){const G=S.staged;if(!G||!G.cur)return false;const rec=G.cur;
     else{for(const id of rec.cast.mobs){const m=mobOf(id);if(liveMob(m)&&!m.target){m.home={x:h.x,y:h.y};m.dest={x:h.x,y:h.y}}}
       const w=rec.cast.npc!=null?npcOf(rec.cast.npc):null;if(w){w.home={x:h.x,y:h.y};w.stroll={x:h.x,y:h.y}}}}
   // the meeting
-  const met=L.find(b=>dist(b,A)<=STAGE.MEET_R||rec.cast.mobs.some(id=>{const m=mobOf(id);return liveMob(m)&&m.target===b}));
+  const met=T?L[0]:L.find(b=>dist(b,A)<=STAGE.MEET_R||rec.cast.mobs.some(id=>{const m=mobOf(id);return liveMob(m)&&m.target===b}));
   if(!met)return false;
   if(S.table||openProps().length)return false; // the table is busy: the cast waits a moment longer
   return meet(rec,met)}
@@ -292,7 +344,7 @@ function meet(rec,a){const G=S.staged,F=S.fellowship,fight=rec.kind==='elite'||r
   LOG('frame',['Staged ',gd(rec.kind),' meets the Fellowship: ',gd(rec.title),' ('+a.name+' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+').'],{staged:rec.id,kind:rec.kind,met:a.id});
   if(!tableOn()){finish(rec,null,'played out in the world (Table mode is off)');return false}
   rec.phase='open';
-  const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),dcUp:0,tally:{}};
+  const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{}),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),dcUp:0,tally:{}};
   const pre={ids:fellows().map(b=>b.id)};say(pre,rec.frame,NARRATOR); // the frame reaches the members as narration (#123), before any line of the scene
   ctx.anchor=a.id; // an everyone-at-once scene takes the members within shouting range of the one they met (#182)
   const sc=openScene(rec.kind,rec.title,[rec.frame],ctx);
@@ -450,6 +502,10 @@ export function tableAnswer(a){a=a&&typeof a==='object'?a:{};const G=stagedState
   resolve(sc,c,{text,pick:c.kind==='complication'?pick:null,by:'dm-agent',from:c.kind==='voice'&&w?npcFrom(w):NARRATOR});G.stats.answered++;
   return {ok:true,call:id,kind:c.kind,said:text,...(c.pick?{pick:c.pick}:{}),next:(sc.calls||[]).some(x=>!x.done)?'another call is waiting (table_call)':null}}
 // For dm_status and the panels.
-export function stagedView(){const G=S.staged;if(!G)return {today:'0/'+STAGE.PER_DAY,cur:null};const rec=G.cur&&G.cur.phase!=='done'?G.cur:null;
-  return {today:(G.day.d===gameDay()?G.day.n:0)+'/'+STAGE.PER_DAY,cur:rec?{id:rec.id,kind:rec.kind,title:rec.title,phase:rec.phase,near:rec.near.label,hours_left:Math.max(0,Math.round((rec.until-S.gameMin)/60))}:null,
+// settings: the rooms a meeting or social scene can be set in (stage_scene setting) and how to set one in a town (at).
+export const SETTINGS_NOTE='A meeting or social scene can play in a room: stage_scene setting (one of the keys in settings) and at (a town of theirs, or a building in it: inn, smith, quartermaster, chapel, square, gate), such as at "the inn in '+(CITY[0]?CITY[0].name:'town')+'" with setting "tavern". Name no setting and the game picks one that fits. Elite, ambush, trap and mystery play on the ground where they happen and ignore both.';
+const settingRows=()=>Object.fromEntries(SETTING_IDS.map(k=>[k,SETTINGS[k].name]));
+export function stagedView(){const G=S.staged;if(!G)return {today:'0/'+STAGE.PER_DAY,cur:null,settings:settingRows(),settings_note:SETTINGS_NOTE};const rec=G.cur&&G.cur.phase!=='done'?G.cur:null;
+  return {today:(G.day.d===gameDay()?G.day.n:0)+'/'+STAGE.PER_DAY,cur:rec?{id:rec.id,kind:rec.kind,title:rec.title,phase:rec.phase,near:rec.near.label,hours_left:Math.max(0,Math.round((rec.until-S.gameMin)/60)),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{})}:null,
+    settings:settingRows(),settings_note:SETTINGS_NOTE,
     past:G.past.slice(0,4).map(p=>({kind:p.kind,title:p.title,day:p.day,result:p.result}))}}

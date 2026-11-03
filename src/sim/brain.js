@@ -96,6 +96,13 @@ export function mindCfg(a){const c=a&&a.brainCfg;if(!c||typeof c!=='object'||!MI
 // Set (or clear, with null or provider 'anthropic' and no model) the hero's mind; returns the stored value.
 export function setMind(a,cfg){if(!a)return null;const c=cfg&&MIND_PROVIDERS.includes(cfg.provider)?mindCfg({brainCfg:cfg}):null;
   if(!c||(c.provider==='anthropic'&&!c.model&&!c.effort))delete a.brainCfg;else a.brainCfg=c;return a.brainCfg||null}
+// Writing mind (#478): an agent-played hero's relay writing requests (chapter, persona, backstory, memory) follow the
+// runner that holds it (the host reports {provider, model} from the relay's claims) unless an explicit a.brainCfg is set.
+let runnerMindFn=null;
+export function setRunnerMind(fn){runnerMindFn=typeof fn==='function'?fn:null}
+export function writeCfg(a){const c=mindCfg(a);if(c||!a||!a.player||!runnerMindFn)return c;
+  const r=runnerMindFn(a);if(!r||typeof r!=='object'||!MIND_PROVIDERS.includes(r.provider))return null;
+  const o={provider:r.provider};if(typeof r.model==='string'&&MODEL_OK.test(r.model))o.model=r.model;return o}
 const isLocalMind=a=>{const c=mindCfg(a);return !!(c&&LOCAL_PROVIDERS[c.provider])};
 // Short label for a model: "qwen2.5:14b · local", "claude-haiku-5-5". From an entry (what answered) or a setting.
 export function modelTag(x){if(!x)return null;const m=x.model,p=x.provider;
@@ -233,7 +240,7 @@ function ask(a,kind,extra,onOk,ctx){
 // (relay down, timeout, {error}, kill switch). The caller validates and applies; nothing waits.
 // hero (optional): whose mind writes it (a.brainCfg: provider and model); a local mind gets at least CFG.localWriteMs.
 export function askRelay(kind,snapshot,timeoutMs=CFG.timeoutMs,hero=null){
-  const mc=mindCfg(hero);if(mc&&LOCAL_PROVIDERS[mc.provider])timeoutMs=Math.max(timeoutMs,CFG.localWriteMs);
+  const mc=writeCfg(hero);if(mc&&LOCAL_PROVIDERS[mc.provider])timeoutMs=Math.max(timeoutMs,CFG.localWriteMs);
   if(S.brainOn===false||!(fetchOverride||typeof fetch==='function'))return Promise.resolve(null);
   if(TH.blocked(kind,hero)){TH.denied(kind);return Promise.resolve(null)} // backing off after a failed answer (#117)
   const ac=typeof AbortController==='function'?new AbortController():null,w0=Date.now();

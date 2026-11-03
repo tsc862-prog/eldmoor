@@ -33,6 +33,7 @@ import {ADVENTURES} from '../data/adventures.js';
 import {homeOf} from '../data/races.js';
 import {ROLE_TALK,DEFAULT_TALK,ROLE_JOB,ROLE_STOCK,DEFAULT_STOCK,TALK_LINES} from '../data/talk-lines.js';
 import {dmlog} from './dmlog.js';
+import {noteKnownAt} from './sightings.js';
 import {pull,spotErr,attitudeOf,LK} from './levers.js';
 import {maxHp,huntZone} from './heroes.js';
 import {check} from './abilities.js';
@@ -93,6 +94,11 @@ export function talkState(){return S.talks||(S.talks={seq:0,call:0,cur:[],past:[
   stats:{opened:0,lines:0,dm:0,scripted:0,late:0,offers:{},refused:0}})}
 function today(){const T=talkState();if(T.day.d!==gameDay())T.day={d:gameDay(),lines:0,offers:0,opened:0};return T.day}
 const log=(summary,detail)=>dmlog('talk',null,summary,{...detail,by:detail.by==='dm-agent'?'dm-agent':'scripted',...(detail.by&&detail.by!=='dm-agent'&&detail.by!=='scripted'?{from:detail.by}:{})},{heroes:[]}); // by: who spoke (the DM agent, or the scripted DM and the game around it) // heroes [] on purpose (see staged.js): readDm would carry DM bookkeeping into the campaign log
+
+// ---- escalation to a Table scene (#407, rules in sim/talkscene.js) ----
+// The hook gets (c, p, a, {line} | {offer, hook}) and returns {note} when the talk became a scene, else null.
+let escHook=null;
+export function setTalkEscalation(f){escHook=f}
 
 // ---- the person's record of the Fellowship ----
 const ATT_WARM={hostile:-5,wary:-2,neutral:0,friendly:4};
@@ -162,6 +168,8 @@ export function talkTo(a,p,text){const T=talkState(),d=today();
   c.lines.push({who:'member',id:a.id,name:a.name,text:line,t:clockStr()});c.ex++;c.last=Math.round(S.gameMin);T.stats.lines++;
   p.face=a.x>p.x?1:-1;
   log([a.name+' to '+full(p)+': "',line,'"'],{conv:c.id,npc:p.id,hero:a.id,who:'member',text:line});
+  const esc=escHook&&escHook(c,p,a,{line:clean(text,CONV.LINE_MAX)}); // a decision: the company answers at the table (#407)
+  if(esc)return {ok:true,who:full(p),said:line,...(read?{read}:{}),table:esc.note};
   const ms=dmBudget();
   if(ms>0){c.wait={call:++T.call,hero:a.id,line,gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};
     return {ok:true,who:full(p),said:line,...(read?{read}:{}),waiting:true,note:p.name+' is thinking it over: their answer comes as a line you hear (chat_read, or the next events).'}}
@@ -278,7 +286,8 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
   for(const b of mem){const e=(b.chat||[]).slice().reverse().find(x=>x.talk===c.id&&x.from&&x.from.id===p.id);if(e&&!e.mark)e.mark=mark;notify(b,mark+' '+hint,true,2)}
   log(['Follow-up from '+full(p)+' ',mark,by==='dm-agent'?' (DM agent)':'',': '+hint],{conv:c.id,npc:p.id,kind,by,mark,...extra});
   if(kind==='leave'||kind==='combat')close(c,kind==='combat'?'it came to blows':'they walked off');
-  return {ok:true,kind,mark,hint,...extra,mood:p.mood}}
+  const esc=kind==='job'&&escHook?escHook(c,p,a,{offer:kind,hook:extra.hook}):null; // an offer that needs an answer (#407)
+  return {ok:true,kind,mark,hint,...extra,mood:p.mood,...(esc?{table:esc.note}:{})}}
 
 // A spot of open ground just past the clear ground outside a town's gate (away from the town's centre).
 function outsideGate(c){const cx=(c.x0+c.x1+1)/2,cy=(c.y0+c.y1+1)/2,dx=c.gate.x-cx,dy=c.gate.y-cy,n=Math.hypot(dx,dy)||1;
@@ -361,6 +370,14 @@ function close(c,why){if(c.state==='done')return;c.state='done';c.wait=null;c.wh
   for(const id of c.heroes){const b=hero(id);if(living(b))remember(b,'talk','Talked with '+c.name+what+'.')}
   log(['Conversation with '+c.name+' ends: '+why+what+'.'],{conv:c.id,npc:c.npc,end:why})}
 
+// After a talk scene at the table (#407): the person answers the company's choice. With the DM agent listening the answer is
+// its to voice (the call waits like any other; `fill` is spoken if it stays silent); else the scripted line now. A closed
+// conversation gets the scripted line at once.
+export function sceneReply(c,p,a,what,fill){const t=clean(fill,CONV.DM_LINE_MAX);const ms=c.state==='open'&&a?dmBudget():0;
+  if(ms>0){const T=talkState();c.wait={call:++T.call,hero:a.id,line:'(at the table: '+clean(what,CONV.LEAD_MAX)+')',gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice',fill:t};return 'dm'}
+  if(t)speakAs(p,c,t,'scripted');return 'scripted'}
+export function endTalk(c,why){close(c,why)}
+
 // A staged meeting or social scene ended with the person still there: the members' next words continue it (#132).
 export function talkFromScene(w,ids,line){if(!w||!S.fellowship)return null;const T=talkState();if(convWith(w))return convWith(w);
   const hs=(ids||[]).map(hero).filter(b=>living(b)&&b.fellow);if(!hs.length)return null;
@@ -373,7 +390,7 @@ export function talkTick(){const T=S.talks;if(!T)return;
   for(const c of T.cur.slice()){const p=npcById(c.npc);
     if(!p){close(c,'they are gone');continue}
     if(c.wait){const live=seatOn()&&(Date.now()-c.wait.real<c.wait.ms)&&today().lines<CONV.DM_LINES_PER_DAY&&S.gameMin-c.wait.gm<CONV.WAIT_GM;
-      if(!live){const a=hero(c.wait.hero);if(living(a))scripted(c,p,a);else close(c,'nobody is left to answer');continue}}
+      if(!live){const a=hero(c.wait.hero);if(c.wait.fill){T.stats.scripted++;speakAs(p,c,c.wait.fill,'scripted');afterAnswer(c,p)}else if(living(a))scripted(c,p,a);else close(c,'nobody is left to answer');continue}}
     const near=c.heroes.map(hero).filter(b=>living(b)&&dist(b,p)<=CONV.LEAVE_R);
     if(!near.length)close(c,'the Fellowship moved on');
     else if(!c.wait&&S.gameMin-c.last>CONV.IDLE_GM)close(c,'the talk ran out')}
@@ -406,7 +423,7 @@ export function lineRefusal(a,text){if(!a||!a.player)return null;
   if(isIntro(a,text)&&metIds(a).length)return MSG_INTRO;
   return null}
 export function noteSaid(a,text,listeners){if(!a||!a.player)return;const L=a.talkSaid||(a.talkSaid=[]);L.push(String(text).slice(0,200));if(L.length>TALK.LAST)L.shift();
-  for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1}}
+  for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1;noteKnownAt(b,a);noteKnownAt(a,b)}}
 export function heardLines(a,n=TALK.HEARD){const cut=t=>t.length>TALK.CUT?t.slice(0,TALK.CUT-1)+'…':t;
   return (a.chat||[]).filter(e=>e.from&&(e.party||e.trigger==='agent'||e.from.kind==='hero')).slice(-n)
     .map(e=>e.t+' '+(e.from===a?'(you)':e.from.name||'?')+(e.party?' [party]':'')+': '+cut(String(e.text||'')))}

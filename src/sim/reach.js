@@ -9,12 +9,14 @@
 //                hours to arrive (D&D style: slow, costs gold, arrives as an in-game event and a chat line).
 // Plain data, saved with the world on each company: C.plans [{id,where,at,atText,made,by,byName,who,whoNames,status}], C.post [{id,from,to,text,sent,due,cost}].
 import {S,clockStr,dayNo} from './state.js';
-import {dist,zoneAt} from '../world/map.js';
+import {dist,zoneAt,ZONES,CITY} from '../world/map.js';
 import {sightMul} from './weather.js';
 import {companyOf,companies,members,mates,campaign,setWitness} from './company.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {addHeroNote} from './notebook.js';
+import {metHero,knownPlace} from './sightings.js';
+import {FAC} from '../data/factions.js';
 
 export const REACH={SHOUT:12,MIN:5,PLAN_MIN_H:1,PLAN_MAX_H:48,PLAN_GRACE:720,PLANS_MAX:8,
   COURIER_BASE:90,COURIER_PER_TILE:6,FEE_BASE:3,FEE_TILE:10,COURIER_MAX:3,TEXT:200};
@@ -52,16 +54,18 @@ export const openPlans=C=>{if(C===undefined)C=S.fellowship;return ((C&&C.plans)|
 // ---- couriers ----
 export const courierCost=d=>REACH.FEE_BASE+Math.ceil(d/REACH.FEE_TILE);
 export const courierDelay=d=>REACH.COURIER_BASE+Math.round(d*REACH.COURIER_PER_TILE);
-export function sendCourier(a,to,text){const F=companyOf(a);if(!F)return {error:'Only a member of a company can hire its courier.'};
-  if(F.ids.length<2)return {error:'You ride alone: there is no companion to send word to.'};
+export function sendCourier(a,to,text){const F=companyOf(a);if(!F)return {error:'Only an agent hero can hire a courier.'};
   if(a.state!=='town')return {error:'Couriers are hired at your town gate. Go home first.'};
-  const key=String(to==null?'':to).trim().toLowerCase(),b=members(F).find(x=>x!==a&&(x.name.toLowerCase()===key||String(x.id)===key));
-  if(!b)return {error:'No living companion called "'+clean(to,30)+'" in '+word(F)+'.'};
-  if(inRange(a,b))return {error:b.name+' is close enough to hear you: use party_say.'};
+  const key=String(to==null?'':to).trim().toLowerCase(),mate=members(F).find(x=>x!==a&&(x.name.toLowerCase()===key||String(x.id)===key)),b=mate||metHero(a,key);
+  // any hero you have met by name (#446): your company, or someone you spoke with in earshot
+  if(!b)return {error:'You have never met "'+clean(to,30)+'": a courier carries word only to someone you know by name (talk to them first, or ride with them).'};
+  if(b.fac!==a.fac)return {error:'No courier of your town will carry word to the '+FAC[b.fac].name+'.'};
+  if(inRange(a,b))return {error:b.name+' is close enough to hear you: use '+(mate?'party_say':'say')+'.'};
   const t=clean(text,REACH.TEXT+1);if(!t)return {error:'Send what?'};
   if(t.length>REACH.TEXT)return {error:'Too long: keep it under '+REACH.TEXT+' characters.'};
   const P=F.post||(F.post=[]);if(P.filter(m=>m.from===a.id).length>=REACH.COURIER_MAX)return {error:'You already have '+REACH.COURIER_MAX+' couriers out.'};
-  const d=dist(a,b),cost=courierCost(d);if(a.gold<cost)return {error:'A courier to '+b.name+' costs '+cost+'g; you have '+a.gold+'g.'};
+  // priced by distance to where you last knew them (a companion: where they are), never their position now
+  const at=mate?b:knownPlace(a,b)||b,d=dist(a,at),cost=courierCost(d);if(a.gold<cost)return {error:'A courier to '+b.name+' costs '+cost+'g; you have '+a.gold+'g.'};
   a.gold-=cost;const m={id:F.postSeq=(F.postSeq||0)+1,from:a.id,fromName:a.name,to:b.id,toName:b.name,text:t,sent:Math.round(S.gameMin),due:Math.round(S.gameMin+courierDelay(d)),cost};P.push(m);
   remember(a,'courier','I paid '+cost+'g for a courier to carry word to '+b.name+': "'+t.slice(0,80)+'".');
   campaign(F,'council',a,' pays a courier to carry word to ',b,'.');
@@ -73,7 +77,7 @@ export function sendCourier(a,to,text){const F=companyOf(a);if(!F)return {error:
 // member is back after AWAY_MIN game minutes the game tells ONE present member what was missed and asks them to
 // say it; the returner is only told to ask. The facts never reach the returner except through what is said in
 // game (#123); if nobody speaks to them within TOLD_WAIT minutes their turn header says they have not been told.
-export const AWAY={MIN:120,TOLD_WAIT:30,TTL:720,KINDS:['council','scene','npc','death','outcome','recruit','complication']};
+export const AWAY={MIN:120,TOLD_WAIT:30,TTL:720,KINDS:['council','scene','npc','death','outcome','recruit','complication','leave']};
 export function witness(kind,label,C){if(!AWAY.KINDS.includes(kind))return;
   for(const b of members(C===undefined?S.fellowship:C))if(b.apartSince!=null){const M=b.missed||(b.missed=[]);if(M.length&&M[M.length-1].l===label)continue;M.push({k:kind,l:label});if(M.length>12)M.shift()}}
 setWitness(witness);
@@ -100,7 +104,14 @@ function absence(F){const L=members(F);
   for(const b of L)if(b.catchUp&&S.gameMin>=b.catchUp.at+AWAY.TTL)delete b.catchUp}
 
 export function reachTick(){for(const C of companies())reachOne(C)}
-function reachOne(F){absence(F);
+// Who a hero last saw, and near what (#443): a.seen = {companionId: {at, where}}, refreshed each tick for every companion
+// in shouting range; it is the hero's own knowledge, so it is read back only as 'beside you' or 'last seen near <place>'.
+const inCity=p=>CITY.find(c=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5)||null;
+export const placeNear=p=>{const c=inCity(p);return c?c.name:(ZONES[zoneAt(p.x,p.y)]||'the wilds')};
+function noteSeen(F){const L=members(F);if(L.length<2)return;
+  for(const a of L)if(a.player)for(const b of L)if(b!==a&&inRange(a,b)){const s=a.seen||(a.seen={}),e=s[b.id];
+    if(!e||e.at!==Math.round(S.gameMin)){const w=placeNear(b);s[b.id]={at:Math.round(S.gameMin),where:w}}}}
+function reachOne(F){absence(F);noteSeen(F);
   // couriers: due messages arrive as events and chat lines; a fallen reader gets only a grave
   if(F.post&&F.post.length){const keep=[];
     for(const m of F.post){if(S.gameMin<m.due){keep.push(m);continue}

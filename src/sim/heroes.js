@@ -2,6 +2,7 @@
 // machine (town, travel, hunt, follow, fight, return, ghost, duel, assist, regroup, dungeon, raid).
 // Party behaviour (forming, following, joining fights, shared XP) lives in party.js.
 // Owned by ai-designer (behaviour) and character-builder (stat formulas).
+import {writeSighting} from './sightings.js';
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {SPEED} from '../world/tiles.js';
 import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
@@ -195,7 +196,7 @@ export function updAgent(a,dt){
         if(a.fellow&&fellowBounty(a,c,tz)){brainJob(a);break} // the Fellowship first (#325): the captain's bounty for its region becomes a Fellowship job
         chooseBounty(a,c,tz); // no adventure: the captain's bounty for that region, if the hero wants it (issue #67)
         say(a,'depart',{zone:ZONES[tz]});
-        a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate)}}break}
+        a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate);if(a.player)writeSighting(a,ZONES[tz],c.name)}}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     if(a.adv&&dmTravel(a,dt))break; // DM: walking to the adventure's next scene
     if(checkEncounter(a,dt))break; // road encounter in reach: detour and resolve (sim/encounters.js)

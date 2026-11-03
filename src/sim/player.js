@@ -65,7 +65,9 @@ import {reflexMay,agentLive,hasLinks} from './runlink.js';
 import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote} from './council.js';
+import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sightings.js';
 import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js';
+import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
 import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
@@ -117,6 +119,9 @@ const sightOf=a=>PK.SIGHT*sightMul(zoneAt(a.x,a.y));
 const inRect=(c,p,pad=0)=>p.x>=c.x0-pad&&p.x<=c.x1+1+pad&&p.y>=c.y0-pad&&p.y<=c.y1+1+pad;
 const cityAt=p=>CITY.find(c=>inRect(c,p,.5))||null;
 const inTown=a=>a.state==='town';
+const zoneName=p=>{const l=p.legs&&p.legs[p.legs.length-1];return l&&ZONES[zoneAt(l.x,l.y)]||''};
+// the innkeeper repeats who has passed the gate (#446)
+function innRumour(a,r){const L=sightingLines(a,homeOf(a).name);if(!L.length)return;for(const x of L)if(x.bound)learnPlace(a,x.bound,'told');r.rumours=L.map(x=>x.text)}
 const cmdOf=a=>a.pq&&a.pq.length?a.pq[0]:null;
 const legal=['town','hunt','travel','return','fight','follow','regroup','duel','assist'];
 
@@ -734,6 +739,10 @@ function seen(a){const R=sightOf(a),here=inTown(a)?homeOf(a):null,out={heroes:[]
 function choiceInfo(a){const adv=advOf(a),p=adv&&adv.pick;if(!p||p.chosen||adv.stage!=='choose')return null;
   return {adventure:adv.title,scene:p.frame,options:{a:p.opts.a,b:p.opts.b},minutes_left:Math.max(0,Math.round(p.until-S.gameMin))}}
 
+// A hero of your faction in sight, by id or name (join_party, invite): the hero, or a Rule naming who is in sight.
+function sideHero(a,hero_id,who){const n=nameKey(who!=null&&who!==''?who:hero_id),i=idIn(hero_id)??idIn(who),seen=()=>nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a));
+  const b=i!=null?hero(i):seen().find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
+  need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(seen().slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');return b}
 const T={
   look(a){const z=zoneAt(a.x,a.y),here=inTown(a)?homeOf(a):null,s=seen(a);
     const r={ok:true,time:day()+' ('+dayPart()+')',where:here?'inside '+here.name+' ('+FAC[here.fac].name+')':(ZONES[z]||'the wilds'),pos:[r1(a.x),r1(a.y)],
@@ -757,6 +766,7 @@ const T={
     if(a.fellow){const fc=fellowCard(a);if(fc)r.fellowship=fc;const P=a.party&&a.party.fellow?a.party:null;if(P){r.party_leader=P.leader.name;if(P.dest)r.party_heading=P.dest.label}
       const op=openProps(companyOf(a)).map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name);if(notTold(a))r.warning=NOT_TOLD;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
     else{const C=companyOf(a);if(C&&C.ids.length>1){const op=openProps(C).map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name)}} // any company of two or more (#439)
+    if(!r.table){const tv=tableView(a);if(tv)r.table=tv} // any company's scene, a solo's too (#440)
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
     // only the places this hero knows (#188); the rest of the world is learned by going there or hearing of it
     r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...placesView(a),...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];r.explore='a direction (north, south, east, west, northeast, ...) or "x,y" takes you where you have never been';
@@ -801,7 +811,7 @@ const T={
     need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p0=plan(a,target);if(p0.error)throw new Rule(p0.error);
     const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // a region far above the hero: stop at its edge first (#465)
-    a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
+    if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
     const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;
     if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;return r},
   talk(a,{target,text}){const t=clean(target,60).toLowerCase();need(t,'Talk to whom?');
@@ -811,13 +821,13 @@ const T={
       if(q&&q.far)throw new Rule(q.far.title+' '+q.far.name+' is too far away ('+r1(q.d)+' tiles). move_to("'+(q.far.wander?Math.round(q.far.x)+','+Math.round(q.far.y):q.far.role)+'") first.');
       if(q&&(q.wander||q.fac===a.fac)){need(a.state!=='ghost','Ghosts do not speak.');let line='';
         if(text!=null&&String(text).trim()){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);need(!notEnglish(L.text),ENGLISH);line=L.text;agentLine(a,speak(a,line,'agent'))}
-        const r=talkTo(a,q,line);need(!r.error,r.error);talked(a,[q.name]);return r}}
+        const r=talkTo(a,q,line);need(!r.error,r.error);talked(a,[q.name]);if(q.role==='innkeeper')innRumour(a,r);return r}}
     const p=(S.npcs||[]).find(p=>(!here||p.town===here.name)&&(p.name.toLowerCase()===t||p.role===t||p.title.toLowerCase()===t||(p.title+' '+p.name).toLowerCase()===t));
     if(p){need(dist(a,p)<=PK.TALK,p.title+' '+p.name+' is too far away ('+r1(dist(a,p))+' tiles). move_to("'+p.role+'") first.');
       if(p.fac!==a.fac)return {ok:true,who:p.title+' '+p.name,answer:'('+p.name+' looks at you with open contempt and says nothing.)'};
       const before=p.lastBark;npcSay(p,'greet',{target:a.name},{dm:true});const line=p.bubble&&p.lastBark!==before?p.bubble.text:p.bubble?p.bubble.text:null;
       const warn=(p.role==='captain'&&captainWarning(a))||npcWarning(a);if(warn)hear(a,warn,p.title+' '+p.name); // a townsperson's advice (#188); the captain warns of the Crypt (#448)
-      talked(a,[p.name]);return {ok:true,who:p.title+' '+p.name,answer:(line||'('+p.name+' nods.)')+(warn?' "'+warn+'"':'')}}
+      talked(a,[p.name]);const rr={ok:true,who:p.title+' '+p.name,answer:(line||'('+p.name+' nods.)')+(warn?' "'+warn+'"':'')};if(p.role==='innkeeper')innRumour(a,rr);return rr}
     const id=Number(target),b=S.agents.find(x=>x!==a&&x.state!=='dead'&&(x.id===id||x.name.toLowerCase()===t));
     need(b,'Nobody called "'+target+'" is here.');need(dist(a,b)<=PK.TALK*1.5,b.name+' is too far away to talk to.');
     if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
@@ -832,6 +842,7 @@ const T={
     const b=i!=null?hero(i):nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
     need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');
     if(a.fellow&&b.fellow){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
+    {const r=askToJoin(a,b);if(r)return r} // toward an agent hero or a company's companion: an offer to that company's leader (#442)
     need(b.fac===a.fac,b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
     need(Math.abs(b.lvl-a.lvl)<=3,'Too far apart in level (more than 3).');need(!['dungeon','raid','duel','ghost'].includes(b.state),b.name+' is busy.');
     need(tm(b,'social')||b.player,b.name+' is a loner and will not travel with anyone.');
@@ -843,7 +854,13 @@ const T={
     a.party=p;a.partyOk=true;for(const m of p.mem)if(m.lvl>p.leader.lvl)p.leader=m;
     record(a,'Joined ',b,' on the road.');record(b,a.name+' joined them.');
     return {ok:true,party:p.mem.map(x=>x.name),leader:p.leader.name}},
-  leave_party(a,{where,when_hours}){if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');
+  // companies (#442): an offer to ride together, said aloud; the one asked answers with accept or decline
+  invite(a,{hero_id,name,who,text}){const b=sideHero(a,hero_id,name!=null&&name!==''?name:who);return offerInvite(a,b,text)},
+  accept(a,{offer_id}){return offerAccept(a,{offer_id})},
+  decline(a,{offer_id,text}){return offerDecline(a,{offer_id,text})},
+  companions(a){return companionsView(a)}, // #443: the company as the hero knows it (read-only)
+  leave_party(a,{where,when_hours,for_good}){if(for_good===true||/^(yes|true|1)$/i.test(String(for_good==null?'':for_good))){const r=leaveForGood(a);if(!r.ok)throw new Rule(r.error);return r}
+    if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');
       // a meeting plan (#182): made aloud before parting, so it is recorded only for those who hear it
       let plan=null;if(where||when_hours){plan=makeMeeting(a,where,when_hours);if(plan.error)throw new Rule(plan.error)}
       splitOff(a,false);a.partyOk=false;
@@ -857,7 +874,8 @@ const T={
       out.push({id:h.id,job:jobText(h),giver:h.giver?h.giver.name:'the gate captain',where:zn||'near the town',party:T&&T.size?(T.size[0]>1?'wants '+T.size[0]+' to '+T.size[1]+' blades':'one blade will do'):undefined,
         for_you:h.for!=null?h.for===a.id:undefined,rumour:h.zone!=null?jobRumour(a,h.zone):undefined,expires_in_min:Math.max(0,Math.round(h.until-S.gameMin))})}
     const bounties=bountiesAt(c).filter(b=>MOBS[b.type]).map(b=>({bounty:MOBS[b.type].q,kill:b.need+' '+MOBS[b.type].pl,where:ZONES[b.z],giver:b.giver,yours:a.quest&&a.quest.bounty===b.id||undefined,expires_in_min:Math.max(0,Math.round(b.until-S.gameMin))}));
-    return {ok:true,jobs:out,bounties:bounties.length?bounties:undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
+    const sg=sightingLines(a,c.name),nt=noticesAt(a,c.name);for(const x of sg)if(x.bound)learnPlace(a,x.bound,'told');
+    return {ok:true,jobs:out,bounties:bounties.length?bounties:undefined,sightings:sg.length?sg.map(x=>x.text):undefined,notices:nt.length?nt.map(({poster,...r})=>r):undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
     need(!(a.party&&a.party.leader!==a),'In the Fellowship the party decides: propose {kind:"job", job_id:'+(Number.isFinite(id)?id:'N')+'} (vote; the leader settles it).');
     const mine=advOf(a);
@@ -1020,10 +1038,10 @@ const T={
   party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
   earshot(a){return earshot(a)}, // read-only (#395): the same hearer sets say and party_say use
   chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+e.text:heardText(e)))}},
-  propose(a,{kind,details,job_id,meet_at,meet_in_hours}){need(companyOf(a),'Only a member of a company can put something to the party.');const k=String(kind||'').toLowerCase();
+  propose(a,{kind,details,job_id,meet_at,meet_in_hours,hero_id,company}){need(companyOf(a),'Only a member of a company can put something to the party.');const k=String(kind||'').toLowerCase();
     // a second break_camp while one is open is a yes on it (#400): the agent wants exactly what is already asked
     if(k==='break_camp'){const O=openProps(companyOf(a)).find(P=>P.kind==='break_camp');if(O)return secondBreak(a,O,details)}
-    const P=propose(a,k,details,{job:job_id,where:meet_at,hours:meet_in_hours});
+    const P=propose(a,k,details,{job:job_id,where:meet_at,hours:meet_in_hours,hero:hero_id,company});
     if(typeof P==='string')throw new Rule(P);return {ok:true,proposal:propText(P),status:P.status,note:P.status==='open'?'The others vote; the leader settles it when all have voted or in '+Math.round(P.until-S.gameMin)+' game minutes.'+(P.absent&&P.absent.length?' Out of shouting range, so not asked: '+nameList(S.agents.filter(x=>P.absent.includes(x.id)))+'.':''):P.result}},
   vote(a,{proposal_id,vote,reason}){const C=companyOf(a);need(C&&C.ids.length>1,C?'You ride alone: there is nothing to vote on.':'Only members of a company vote.');const P=propById(proposal_id,C);need(P,noProposal(proposal_id,C));
     const sc=tableView(a);if(sc&&sc.kind==='decision'&&!sc.acted&&S.table&&S.table.ctx.prop===P.id){const x=sceneAct(a,vote,reason);if(typeof x==='string')throw new Rule(x);return {ok:true,voted:x.k,note:'Counted at the table on your turn.'}}
@@ -1039,7 +1057,9 @@ const T={
     need(legal.includes(a.state),'You cannot lead from here ('+a.state+').');need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
     const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};const far=outOfRange(a);if(far.length)r.not_told=nameList(far)+' too far away to hear the order; they stay where they are until you are together or a courier reaches them.';if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;return r},
-  send_courier(a,{to,text}){need(companyOf(a),'Only a member of a company can hire its courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
+  post_notice(a,{text}){need(inTown(a),'Notices are pinned at your town board. Go home first.');need(!notEnglish(text),ENGLISH);const c=homeOf(a),n=postNotice(a,text,c.name);need(!n.error,n.error);
+    record(a,'Pinned a notice at ',c.name,'.');return {ok:true,posted:n.text,town:c.name,lapses_in_days:SIGHT.NOTICE_DAYS,note:'Anyone who reads the board at '+c.name+' learns your name and this text. Ask for them at the inn.'}},
+  send_courier(a,{to,text}){need(companyOf(a),'Only an agent hero can hire a courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
   scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
     return {ok:true,chose:x.k,said:x.line||undefined,note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},

@@ -31,7 +31,7 @@ import {bond} from './bonds.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import './fellowship.js'; // load order: keep the module graph as before (an import cycle runs through table.js and staged.js)
-import {companyOf,companies,members,isSolo,campaign as clog} from './company.js';
+import {companyOf,companyById,companies,members,isSolo,campaign as clog} from './company.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
 import {reflexMay,ownerHeld} from './runlink.js';
 import {inRange,together,outOfRange,nameList,makePlan,reachTick,toldBy,REACH} from './reach.js';
@@ -41,8 +41,8 @@ const NEED_ALL=['crypt','raid']; // calls that take the whole company, together
 export const SOLO='You ride alone: decide and act (take_adventure; lead_to is move_to for you).';
 // The whole company in shouting range of each other (#182). A party its reflexes play whole (no live agent, no runner; the headless sim) moves as one unit and is not held to it.
 const gathered=(L,C)=>!L.some(b=>!reflexMay(b))||together(L,leaderOfC(C));
-export const PROP_KINDS=['job','crypt','raid','split','break_camp','other'];
-const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide'};
+export const PROP_KINDS=['job','crypt','raid','split','break_camp','other','expel','merge'];
+const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide',expel:'put a companion out of the company',merge:'ride together with another company'};
 const gd=t=>({t,c:'gd'});
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 // A spoken line (#145): whitespace folded, a leading "<own name>:" / "<own name> here," dropped (the game already
@@ -55,7 +55,8 @@ const living=a=>a&&a.state!=='dead';
 // A company's walking group (a S.parties row with p.company) and its leader: the party's leader while it rides with
 // them, else the highest-level member (first in C.ids on a tie). A solo leads itself.
 const partyOfC=C=>C?S.parties.find(p=>p.company===C.id)||null:null;
-export function leaderOfC(C){if(!C)return null;const P=partyOfC(C),L=members(C);if(P&&living(P.leader)&&L.includes(P.leader))return P.leader;
+export function leaderOfC(C){if(!C)return null;const P=partyOfC(C),A=members(C),N=A.filter(b=>b.companion==null),L=N.length?N:A; // a scripted companion never leads (#442)
+  if(P&&living(P.leader)&&L.includes(P.leader))return P.leader;
   let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}
 export const leaderOfF=C=>leaderOfC(C===undefined?S.fellowship:C); // no argument: the Fellowship (old callers)
 export const leaderFor=a=>leaderOfC(companyOf(a));
@@ -97,8 +98,9 @@ export const propCompany=P=>P?companies().find(c=>propsOf(c).includes(P))||null:
 function nextPropId(F){let n=F.propSeq||0;for(const c of companies())if((c.propSeq||0)>n)n=c.propSeq;return F.propSeq=n+1}
 // sim/table.js turns a new proposal into a decision scene when it can pause. A hoisted function and
 // a var without initializer, because table.js registers it while the import cycle is still loading.
-var proposeHook,campHook;
+var proposeHook,campHook,groupHook;
 export function setProposeHook(f){proposeHook=f}
+export function setGroupHook(f){groupHook=f} // sim/offers.js (#444): prepare/expel/merge for the expel and merge kinds
 export function setCampHook(f){campHook=f} // sim/camp.js: break the camp when a break_camp vote passes
 
 // How a member votes by reflex: its runner is gone (and the owner said go on), or its agent let HOLD_MIN pass.
@@ -107,6 +109,8 @@ export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
   case 'crypt':return a.lvl>=7&&!hurt?'yes':'no';
   case 'raid':return a.lvl>=14&&!hurt?'yes':'no';
   case 'split':return 'no';
+  case 'merge':{const O=companyById(P.other);return O&&members(O).some(m=>bond(a,m)<0)?'no':'yes'} // a grudge against anyone in the other company says no
+  case 'expel':{const t=S.agents.find(x=>x.id===P.target);return t&&bond(a,t)<0?'yes':'no'}
   case 'break_camp':{const C=propCompany(P)||companyOf(a),g=C&&C.camp;return g&&g.phase&&members(C).every(b=>b.hp>=maxHp(b)*.9)?'yes':'no'}
   default:return 'yes'}}
 
@@ -114,8 +118,9 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   if(!PROP_KINDS.includes(kind))return 'Kind must be one of: '+PROP_KINDS.join(', ')+'.';
   if(isSolo(F)&&kind!=='break_camp')return SOLO;
   if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break: the '+word(F)+' is not camped. Go on with move_to'+(leaderOfC(F)===a&&!isSolo(F)?' or lead_to':'')+'.';
+  let ex=null;if(kind==='expel'||kind==='merge'){if(!groupHook)return 'Not available here.';ex=groupHook.prepare(a,F,kind,o);if(ex.error)return ex.error}
   {const O=openProps(F).find(P=>P.kind===kind);if(O)return 'Proposal '+propLine(O)+' is already open. Vote on it with vote('+O.id+', yes|no), or wait for it to settle'+leftText(O)+' before proposing another.'}
-  const d=clean(details,200);if(!d&&kind==='other')return 'Say what you propose.';
+  const d=ex?ex.details:clean(details,200);if(!d&&kind==='other')return 'Say what you propose.';
   // presence (#182): only members within shouting range hear a proposal and vote; the absent hear of it on rejoining
   const away=members(F).filter(b=>b!==a&&!inRange(a,b));
   if(away.length&&NEED_ALL.includes(kind)&&o.src!=='call')return 'The '+KIND_TEXT[kind]+' takes the whole '+word(F)+' together; '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear. Gather first, or send a courier.';
@@ -123,12 +128,15 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   if(away.length)P.absent=away.map(b=>b.id);
   if(kind==='split'&&o.where)P.meet={where:clean(o.where,60),hours:o.hours}; // the plan to meet again, recorded if the split passes
   if(o.job!=null)P.job=Number(o.job);
+  if(ex)Object.assign(P,ex.fields);
   (F.props||(F.props=[])).unshift(P);if(F.props.length>COUNCIL.PROPS_MAX)F.props.pop();
+  if(kind==='merge')pairMerge(P,F,ex.other,a);
   if(kind==='crypt')yieldCrypt(F); // reserve on proposal: a background group still gathering steps aside
-  clog(F,'council',a,' proposes to '+KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:'')+'.'+(away.length?' '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear.':''));
-  for(const b of voters(P))if(b!==a)notify(b,a.name+' proposes to '+KIND_TEXT[kind]+(d?': '+d:'')+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
+  clog(F,'council',a,' proposes to '+(ex?d:KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:''))+'.'+(away.length?' '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear.':''));
+  if(P.target){const t=S.agents.find(x=>x.id===P.target);if(t)notify(t,a.name+' proposes to put you out of the company. You may speak for yourself (party_say), but you do not vote.',3)}
+  for(const b of voters(P))if(b!==a)notify(b,a.name+' proposes to '+(ex?d:KIND_TEXT[kind]+(d?': '+d:''))+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
   if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'','agent');
-  if(!(F===S.fellowship&&proposeHook&&proposeHook(P)))reflexFill(P); // a Table decision scene: the Fellowship's only until #440
+  if(!(proposeHook&&proposeHook(P)))reflexFill(P); // a Table decision scene for the proposer's company (#440)
   settleIfDone(P);return P}
 
 // Refusal texts that name the open proposals and the legal next step (#400): agents act on them instead of retrying.
@@ -137,12 +145,12 @@ const leftText=P=>{const m=Math.max(0,Math.round(P.until-S.gameMin));return ' (a
 export function openNote(C){const O=openProps(C);return O.length?'Open now: '+O.map(P=>propLine(P)+', vote('+P.id+', yes|no)').join('; ')+'.':'No proposal is open; put one to the party with propose {kind, details}.'}
 export const noProposal=(id,C)=>'No proposal '+id+'. '+openNote(C);
 export function castVote(a,id,v,reason,by='agent'){const C=companyOf(a),P=propById(id,C);if(!P)return noProposal(id,C);if(P.status!=='open')return 'Proposal '+propLine(P)+' is already '+P.status+(P.result?' ('+P.result+')':'')+'; there is nothing to vote on. '+openNote(C);
-  if(!C)return 'Only members vote.';if(!voters(P).includes(a))return 'You are too far from the others to hear this proposal; it reaches you when you rejoin them (or by courier).';v=String(v||'').toLowerCase();if(v!=='yes'&&v!=='no')return 'Vote yes or no: vote('+P.id+', yes|no, reason).';
+  if(!C)return 'Only members vote.';if(P.kind==='expel'&&P.target===a.id)return 'The vote is about you: speak for yourself (party_say), but you do not vote.';if(!voters(P).includes(a))return 'You are too far from the others to hear this proposal; it reaches you when you rejoin them (or by courier).';v=String(v||'').toLowerCase();if(v!=='yes'&&v!=='no')return 'Vote yes or no: vote('+P.id+', yes|no, reason).';
   P.votes[a.id]={v,reason:clean(reason,120),by,at:Math.round(S.gameMin)};settleIfDone(P);return P}
 
 // Members a reflex may vote for (no runner, and the owner said go on; or no host): they vote at once.
 // Who a proposal reaches (#182): the living members who were within shouting range when it was made, and any who have rejoined since.
-export const voters=P=>members(propCompany(P)).filter(b=>!(P.absent||[]).includes(b.id));
+export const voters=P=>members(propCompany(P)).filter(b=>!(P.absent||[]).includes(b.id)&&!(P.kind==='expel'&&P.target===b.id)); // the one an expel vote is about hears it and may speak, but does not vote (#444)
 const atTable=P=>!!(S.table&&S.table.ctx&&S.table.ctx.prop===P.id);
 function reflexFill(P){for(const b of voters(P))if(!P.votes[b.id]&&reflexMay(b)&&P.status==='open')castVote(b,P.id,reflexVote(b,P),'','reflex')}
 // Who the open vote still waits for: members without a vote whose agent (or owner) has the say (#148).
@@ -160,7 +168,19 @@ export function resolveProp(P,why){if(!P||P.status!=='open')return P;const F=pro
   log(gd(F?F.name:'The company'),' put it to a vote: '+P.details+'. '+(pass?'Agreed':'Refused')+', '+yes+' to '+no+'.');
   for(const b of L){remember(b,'council','We voted on "'+P.details+'": '+(pass?'agreed':'refused')+' '+yes+'-'+no+'; I said '+P.votes[b.id].v+'.');notify(b,'The vote on "'+P.details+'" '+(pass?'passed':'failed')+' '+yes+'-'+no+'.',true)}
   if(pass)carryOut(P);else if(F&&(P.kind==='crypt'||P.kind==='raid')){F.cool=F.cool||{};F.cool[P.kind]=S.gameMin+COUNCIL.CALL_COOL}
+  else if(P.kind==='merge')failPair(P);
   return P}
+
+// Merge (#444): two linked proposals, one in each company (P.pair is the other's id). Both must pass; if either fails, both fail.
+function pairMerge(P,A,B,a){const lb=leaderOfC(B),Q={id:nextPropId(B),kind:'merge',details:'ride together with '+(A.name||a.name+'’s company'),by:a.id,byName:a.name,at:P.at,until:P.until,votes:{},status:'open',result:null,src:'pair',pair:P.id,other:A.id};
+  P.pair=Q.id;P.other=B.id;Q.absent=members(B).filter(b=>lb&&b!==lb&&!inRange(lb,b)).map(b=>b.id);
+  (B.props||(B.props=[])).unshift(Q);if(B.props.length>COUNCIL.PROPS_MAX)B.props.pop();
+  clog(B,'council',a,' of '+A.name+' offers to ride with us: '+A.name+' and '+B.name+' would be one company.');
+  for(const b of voters(Q))notify(b,a.name+' of '+A.name+' ('+A.ids.length+') offers to join their company with ours. The party waits for your vote: vote('+Q.id+', yes|no, reason).',3);
+  reflexFill(Q)}
+function failPair(P){const Q=propById(P.pair);if(!Q||Q.merged||Q.status==='failed')return;const was=Q.status;Q.status='failed';Q.result='Failed: '+(propCompany(P)?propCompany(P).name:'the other company')+' refused';Q.done=Math.round(S.gameMin);
+  const C=propCompany(Q);if(C){clog(C,'council','The other company did not agree; ',gd(C.name),' rides on as it was.');for(const b of voters(Q))notify(b,'The merge fell through: the other company refused.',true)}
+  void was}
 
 // Priority (#135): a company's call comes first at the Crypt and the Kragmaw muster. A proposal that is open or
 // passed-and-waiting (C.wait[kind] = game minute until which the call stands) keeps background groups from forming.
@@ -195,6 +215,7 @@ function carryOut(P){const F=propCompany(P),L=members(F);if(!F)return;
     if(pl&&!pl.error)P.result+='; we meet at '+pl.where+' at '+pl.atText;
     for(const b of voters(P))splitOff(b,true);clog(F,'council',gd(F.name),' splits up for a while, by agreement.');
     for(const b of voters(P))notify(b,(pl&&!pl.error?'You part by agreement; the plan is to meet at '+pl.where+' at '+pl.atText+'.':'You part by agreement with no plan to meet again. Out of shouting range (about '+REACH.SHOUT+' tiles) you cannot talk except by a courier from a town gate.'),3)}
+  else if(P.kind==='expel'||P.kind==='merge'){if(groupHook)groupHook[P.kind](P)}
   else if(P.kind==='job'){const lead=leaderOfC(F);if(lead)notify(lead,'The party agreed to take '+(P.job!=null?'job '+P.job:'a job')+'. As leader, take_adventure('+(P.job!=null?P.job:'id')+') at the gate.',true)}}
 
 // ---- moving as a party ----

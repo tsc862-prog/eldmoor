@@ -41,7 +41,8 @@ import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {ensureNpcs} from './npcs.js';
 import {stageScene,tableCall,tableAnswer,stagedView,STAGE} from './staged.js';
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
-import {focus,focusStats} from './dmfocus.js'; // the Fellowship first (issue #165)
+import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
+import {openThreads as companyThreads} from './company.js';
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
 // ---- knobs ----
@@ -119,7 +120,7 @@ function remember(tool,args,ok){const D=dmState();D.stats.calls++;
 // Each call lands in the open turn (opened by the first call after the last turn closed); the runner closes it with
 // turn_end {turn, model, provider, cost, seconds, tokensIn, tokensOut}, sent by the relay when the seat's runner reports the turn
 // (never a DM tool: the agent cannot write it). Game time only, no dice; a silent seat records nothing.
-const READS=new Set(['dm_status','read_timeline','read_chronicle','read_dm_log','fellowship_view','heroes_near','npcs','regions','hooks','levers','notes_read','recall']);
+const READS=new Set(['dm_status','read_timeline','read_chronicle','read_dm_log','fellowship_view','companies_view','heroes_near','npcs','regions','hooks','levers','notes_read','recall']);
 const NOTEW=new Set(['notes_write','remember','update_memory','forget','pin']);
 const cutT=(s,n)=>{s=clean(s,400);return s.length>n?s.slice(0,n-1)+'…':s};
 function openTurn(D){if(!Array.isArray(D.turns)){D.turns=[];D.tseq=0;D.tv=0}
@@ -156,8 +157,10 @@ export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object
   if(name==='set_condition'&&!DANGER_CONDS.includes(p.kind))return null;
   if(name==='start_event'){const ev=EVENTS[p.kind];if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
   const at=p.at&&typeof p.at==='object'&&Number.isFinite(Number(p.at.x))?{x:Number(p.at.x),y:Number(p.at.y)}:null,z=p.region!=null?regionIdx(p.region):at?zoneAt(at.x,at.y):null;
-  for(const a of fellows()){if(a.state==='town'||a.hp>=maxHp(a)*DMA.PILE_HP)continue;
-    if(at&&dist(a,at)<=DMA.PILE_R||z!=null&&zoneAt(a.x,a.y)===z)return a.name+' of the Fellowship is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.'}
+  const fs=focuses(),five=new Set(fellows()),coOf=a=>fs.find(f=>f.ids.has(a.id)),who=a=>{if(five.has(a))return ' of the Fellowship';const f=coOf(a);return f&&f.members.length>1?' of '+(f.company.name||'a company'):' (riding alone)'};
+  const L=[...fellows(),...fs.flatMap(f=>f.members).filter(a=>!five.has(a))]; // the Fellowship as before, then every other company's members (#450)
+  for(const a of L){if(a.state==='town'||a.hp>=maxHp(a)*DMA.PILE_HP)continue;
+    if(at&&dist(a,at)<=DMA.PILE_R||z!=null&&zoneAt(a.x,a.y)===z)return a.name+who(a)+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.'}
   return null}
 
 // ---- the Fellowship first (issue #165) ----
@@ -175,15 +178,44 @@ function fellowshipNeeds(){const F=S.fellowship,fo=focus();if(!F||!fo)return nul
   for(const t of open)items.push('Open thread: '+t);
   const adv=(S.adventures||[]).filter(v=>v.phase==='active'&&v.mem&&v.mem.some(id=>fo.ids.has(id)));
   for(const v of adv.slice(0,2))items.push('Under way: '+(v.title||v.tpl)+' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+').');
-  if(!adv.length&&!sv.cur&&!S.table&&!props.length&&!hurt.length)items.push('Nothing is under way for them: a hook near '+at+', a rumour of a named foe on their road, or a staged scene (stage_scene near "fellowship") would give their next game hours something.');
+  if(!adv.length&&!sv.cur&&!S.table&&!props.length&&!hurt.length)items.push('Nothing is under way for them: a hook near '+at+', a rumour of a named foe on their road, or a staged scene ('+(field.length?'stage_scene near "fellowship"':'in town: stage_scene kind meeting or social with at "'+at+'" and a setting')+') would give their next game hours something.');
   const quiet=!S.table&&!props.length&&!hurt.length&&!adv.length&&!sv.cur;
   return {summary:(field.length?field.length+' riding in '+at:'all '+fo.members.length+' in '+at)+(inTown&&field.length?', '+inTown+' in town':'')+'; '+(th.length?th.length+' open thread'+(th.length===1?'':'s'):'no open threads')+(adv.length?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(S.table?'; a Table scene is open':'')+'.',
     where:at,riding:field.length,in_town:inTown,items,quiet,share_of_dm_actions:focusStats()}}
 // What changed for them since the last look: place, falls, scenes, finished jobs and oaths. A string; equal means nothing new.
-function fellowshipSig(){const F=S.fellowship,fo=focus();if(!F||!fo)return '';
-  const field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),z=field.length?zoneAt(fo.x,fo.y):-1,t=F.tableStats||{};
+function sigOf(fo){const F=fo.company,field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),z=field.length?zoneAt(fo.x,fo.y):-1,t=F.tableStats||{};
   const done=(S.adventures||[]).filter(v=>v.phase==='done'&&v.mem&&v.mem.some(id=>fo.ids.has(id))).length,oaths=fo.members.filter(a=>a.goal&&a.goal.done).length;
-  return [z,field.length?1:0,(F.past||[]).length,t.scenes||0,done,oaths,openThreads().length,!!S.table].join('|')}
+  return [z,field.length?1:0,(F.past||[]).length,t.scenes||0,done,oaths,companyThreads(F).length,!!S.table].join('|')}
+// One signature per company joined with | (#450): any company's change makes a DM event turn due. One company: its own
+// (the Fellowship alone reads exactly as before).
+export function companiesSig(){const fs=focuses();if(!fs.length)return null;return fs.length===1?sigOf(fs[0]):fs.map(f=>f.cid+':'+sigOf(f)).join('|')}
+
+// ---- every company a thread (#450) ----
+// What each company needs from the DM, neediest first: the followed company when it must choose (a scene or vote of its own
+// is open); then any company with a pending scene or vote; then one with members badly hurt out in the field; then the one
+// longest without a DM action for it (touchedAt; never = longest); then the smaller (a solo is the most fragile); then id.
+// Read only: game state, never hero notes.
+const pendingOf=fo=>({scene:!!(S.table&&(S.table.ids||[]).some(id=>fo.ids.has(id))),vote:(fo.company.props||[]).some(P=>P.status==='open')});
+export const NEED_WHY=['the followed company must choose','a scene or vote is pending','members badly hurt in the field','longest without you','the most fragile'];
+export function companiesNeeds(){const fs=focuses();if(!fs.length)return [];const fol=followedCompany();
+  const rows=fs.map(fo=>{const C=fo.company,pend=pendingOf(fo),field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),hurt=field.filter(a=>a.hp<maxHp(a)*DMA.PILE_HP);
+    const at=field.length?(ZONES[zoneAt(fo.x,fo.y)]||'the wilds'):(fo.town?fo.town.name:'town'),th=companyThreads(C),since=touchedAt(C)==null?null:Math.max(0,Math.round(S.gameMin-touchedAt(C)));
+    const n=fo.members.length,label=C.slots?'the Fellowship':n===1?fo.members[0].name+' (riding alone)':(C.name||'a company of '+n),items=[],must=C===fol&&(pend.scene||pend.vote);
+    if(pend.scene)items.push('A Table scene of theirs is open: let it play.');
+    if(pend.vote)items.push('A vote is open among them: leave it to them.');
+    for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them.');
+    for(const t of th.slice(0,2))items.push('Open thread: '+txt(t.parts));
+    const quiet=!pend.scene&&!pend.vote&&!hurt.length&&!fo.busy;
+    if(quiet)items.push('Nothing is under way for them: a hook on their road near '+at+(fo.town?' or on the '+fo.town.name+' board':'')+', a person, or a staged scene near one of them.');
+    const why=must?NEED_WHY[0]:pend.scene||pend.vote?NEED_WHY[1]:hurt.length?NEED_WHY[2]:since==null?'no DM action for them yet':NEED_WHY[3];
+    return {id:C.id,company:label,size:n,solo:n===1,followed:C===fol,hall:fo.town?fo.town.name:null,where:at,riding:field.length,
+      pending:pend.scene?'scene':pend.vote?'vote':null,hurt:hurt.length,busy:fo.busy,since_dm_min:since,open_threads:th.length,
+      summary:(field.length?field.length+' riding in '+at:(n===1?'in ':'all '+n+' in ')+at)+(fo.busy?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(since==null?'; nothing from you yet':'; your last act for them '+Math.round(since/60)+'h ago')+'.',
+      items:items.slice(0,4),quiet,why,
+      _k:[must?0:1,pend.scene||pend.vote?0:1,hurt.length?0:1,-(since==null?Infinity:since),n,C.id]}});
+  rows.sort((x,y)=>{for(let i=0;i<x._k.length;i++)if(x._k[i]!==y._k[i])return x._k[i]<y._k[i]?-1:1;return 0});
+  for(const r of rows)delete r._k;
+  return rows}
 
 // ---- the tools ----
 // World events (issue #352): the start_event pulls running now (kind, region, days left, who and why) and whether one
@@ -200,6 +232,9 @@ function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
     regions_with_a_condition:(S.conditions||[]).map(c=>ZONES[c.z]+' ('+c.kind+')'),...(cooling.length?{cooling}:{}),
     ...(F?{fellowship_regions:fo?[...fo.zones].map(z=>ZONES[z]):[],note:'Fellowship first: start an event only when nothing is pending for them, in a region they ride (fellowship_regions) or are headed to, and say why it serves their story.'}:{})}}
 
+// companies_needs is shown once a company other than the Fellowship rides (with the Fellowship alone dm_status reads as before).
+const manyCompanies=()=>{const fs=focuses();return fs.length>1||fs.length===1&&!fs[0].company.slots};
+export const COMPANIES_FIRST='Every company is a thread: serve the company at the head of companies_needs first (the followed company first only when it must choose), then each other company in turn, the one longest without you next; a split-off member is a thread of its own, and a solo is the most fragile.';
 function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle||[],L=S.dmLog||[],F=S.fellowship;
   const sinceTl=tl.filter(e=>e.gameMin>D.seen.tl).length,i=ch.findIndex(e=>(e.t+txt(e.parts))===D.seen.chron),sinceCh=i<0?Math.min(ch.length,30):i,sinceLog=L.filter(e=>e.id>D.seen.log).length;
   D.seen.tl=tl[0]?tl[0].gameMin:D.seen.tl;D.seen.chron=ch[0]?ch[0].t+txt(ch[0].parts):D.seen.chron;D.seen.log=L[0]?L[0].id:D.seen.log;
@@ -207,7 +242,8 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
   const h=Math.floor((S.gameMin%DAY)/60);
   return {ok:true,world:D.world,day:gameDay()+1,time:clockStr(),gameMin:Math.round(S.gameMin),part:h<6?'night':h<12?'morning':h<18?'afternoon':'evening',
     fellowship_first:F?'The Fellowship comes first: read fellowship_needs, act for them, and only then shape the wider world (and only when nothing is pending for them).':null,
-    fellowship_needs:fellowshipNeeds(),fellowship_change:F?fellowshipSig():null,
+    fellowship_needs:fellowshipNeeds(),fellowship_change:companiesSig(),
+    ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
     table:sc?(sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
@@ -239,6 +275,16 @@ function fellowshipView(){const F=S.fellowship;if(!F)return {ok:true,fellowship:
   return {ok:true,fellowship:{name:F.name,faction:facName(F.fac),hall:F.hall||null,founded_day:F.day||null,minds:mindsOf(F),members,
     open_threads:openThreads().map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:openProps().map(P=>({id:P.id,kind:P.kind,details:P.details||null,by:P.by||null})),
     campaign_log:(F.log||[]).slice(0,10).map(e=>'D'+e.day+' '+e.t+' '+txt(e.parts)),fallen:(F.past||[]).slice(-5).map(p=>p.name||('#'+p.id))}}}
+
+// Every company (#450): who rides in it, where, its hall, open threads and votes, the latest campaign lines and when you last
+// did something for it. Personas and memories stay in fellowship_view (the Fellowship) and are never shown for the others.
+function companiesView(){const fs=focuses(),fol=followedCompany();if(!fs.length)return {ok:true,companies:[],note:'No company rides in this world yet.'};
+  return {ok:true,companies:fs.map(fo=>{const C=fo.company;return {id:C.id,name:C.name||null,fellowship:!!C.slots,followed:C===fol,faction:facName(C.fac),hall:C.hall||null,size:fo.members.length,solo:fo.members.length===1,
+    members:fo.members.map(a=>({...heroLine(a),oath:a.goal&&!a.goal.done?a.goal.text:null})),busy:fo.busy,regions:[...fo.zones].map(z=>ZONES[z]),
+    open_threads:companyThreads(C).map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:(C.props||[]).filter(P=>P.status==='open').map(P=>({id:P.id,kind:P.kind,details:P.details||null})),
+    campaign_log:(C.log||[]).slice(0,6).map(e=>'D'+e.day+' '+e.t+' '+txt(e.parts)),fallen:(C.past||[]).slice(-5).map(p=>p.name||('#'+p.id)),
+    last_dm_action_min_ago:touchedAt(C)==null?null:Math.max(0,Math.round(S.gameMin-touchedAt(C))),dm_actions:(S.dmFocus&&S.dmFocus.by&&S.dmFocus.by[C.id])||0}}),
+    needs_order:companiesNeeds().map(r=>r.id)}}
 
 function heroesNear(near,radius){const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+clean(near,40)+'". Use a hero name or id, a town, a region name, or "x,y".'};
   const r=nOf(radius,DMA.NEAR_R,4,30),hs=[];
@@ -512,6 +558,7 @@ export function dmAct(tool,args={}){
     case 'read_chronicle':r=chronicleRead(args.n);break;
     case 'read_dm_log':r=dmLogRead(args.n,args.kind);break;
     case 'fellowship_view':r=fellowshipView();break;
+    case 'companies_view':r=companiesView();break;
     case 'heroes_near':r=heroesNear(args.near,args.radius);break;
     case 'npcs':r=npcsRead(args.town,args.region);break;
     case 'regions':r=regionsRead();break;
