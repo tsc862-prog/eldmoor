@@ -15,7 +15,7 @@ import {nearHeroes} from './spatial.js';
 import {combatStats} from './stats.js';
 const maxHp=a=>combatStats(a).health;
 
-export const OP={ON:true,RATE:2,AURA:6,HEAL:.012,NEAR:2,GO_P:.25,STEP:.5};
+export const OP={ON:true,RATE:1,AURA:6,HEAL:.012,NEAR:2,GO_P:.1,STEP:.5};
 const alive=a=>a.state!=='dead'&&a.state!=='town'&&a.state!=='camp'&&a.state!=='ghost'&&a.hp>0;
 
 function st(){if(!S.outposts||S.outposts.world!==S.worldId||typeof S.outposts.o!=='object')S.outposts={world:S.worldId,t:0,flips:0,o:{}};
