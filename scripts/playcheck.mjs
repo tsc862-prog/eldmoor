@@ -79,6 +79,22 @@ r = await call('move_to', {target: 'inn'}); ok(r.ok, `move_to inn (${r.going})`)
 await until(() => !(S.agents.find(x => x.id === id).pq || []).length, 20, 'reaching the inn');
 r = await call('talk', {target: 'innkeeper'}); ok(r.ok && typeof r.answer === 'string' && r.answer.length > 5, `the innkeeper answers: "${r.answer && r.answer.slice(0, 60)}"`);
 r = await call('say', {text: 'Ale first, then the road.'}); ok(r.ok && a.bubble && a.bubble.text === 'Ale first, then the road.', 'say puts a bubble over the hero');
+// whisper and emote (#627): reach, limits, refusals; only the target hears the words
+{const SP = await import('../src/sim/spatial.js'), other = S.agents.find(x => x !== a && !x.player && x.state !== 'dead' && x.fac === a.fac);
+  a.playRate = []; r = await call('emote', {text: 'Kerin spits in the fire'}); ok(r.ok && r.emoted === 'Kerin spits in the fire' && a.bubble && /spits in the fire/.test(a.bubble.text), 'emote shows a bubble and returns the act');
+  a.playRate = []; r = await call('emote', {text: 'x'.repeat(130)}); ok(!r.ok && /Too long/.test(r.error), 'a long emote is refused');
+  a.playRate = []; r = await call('emote', {text: '   '}); ok(!r.ok, 'an empty emote is refused');
+  a.playRate = []; r = await call('whisper', {to: 'Nobody Here', text: 'psst'}); ok(!r.ok && /Nobody called/.test(r.error), 'whisper to nobody near is refused');
+  if (other) {const ox = {x: other.x, y: other.y}; other.x = a.x + 1; other.y = a.y; other.hidden = false; other.state = 'town'; SP.rebuild(); a.talkSaid = [];
+    a.playRate = []; r = await call('whisper', {to: other.name, text: 'Meet me at the gate at dusk.'}); ok(r.ok && r.whispered_to === other.name, 'whisper reaches a hero 1 tile away');
+    ok((other.chat || []).some(e => e.whisper && e.text === 'Meet me at the gate at dusk.') && !(S.agents.filter(x => x !== a && x !== other).some(x => (x.chat || []).some(e => e.whisper))), 'only the target holds the words');
+    a.playRate = []; r = await call('whisper', {to: other.name, text: 'Meet me at the gate at dusk.'}); ok(!r.ok && /already said/.test(r.error), 'the same whisper again is refused');
+    let lim = null; for (let k = 0; k < 8 && !lim; k++) {a.playRate = []; const x = await call('whisper', {to: other.name, text: ['Wolves howl north.', 'Rain comes tomorrow.', 'Trust nobody tonight.', 'Gold buys silence.', 'Ale tastes sour.', 'Horses seem restless.', 'Smoke over Thornvale.', 'Dusk brings ravens.'][k]}); if (!x.ok) lim = x}
+    ok(lim && /Enough whispers/.test(lim.error), 'the hourly whisper limit holds: ' + (lim && lim.error));
+    other.x = a.x + 3; SP.rebuild(); a.playRate = []; a.whispAt = []; r = await call('whisper', {to: other.name, text: 'Come closer please.'}); ok(!r.ok && /tiles away/.test(r.error), 'a whisper past 2 tiles is refused');
+    r = await call('earshot'); ok(r.ok && Array.isArray(r.whisper) && r.whisper_range === 2, 'earshot reports who is close enough to whisper to');
+    other.x = ox.x; other.y = ox.y; SP.rebuild()}
+  a.emoteAt = []; a.playRate = []}
 r = await call('journal_write', {text: 'Day one. The innkeeper thinks I will die. I would like to disappoint him.'}); ok(r.ok && a.journal.length === 1, 'journal_write');
 r = await call('fight', {target_id: 1}); ok(!r.ok, 'fight is refused inside the town walls');
 // class abilities (#81): listed in status, used with use_ability, cooldowns hold

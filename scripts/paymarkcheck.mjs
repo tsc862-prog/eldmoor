@@ -45,7 +45,7 @@ ok(B.history.length > hB && /Was paid 12 gold by/.test(B.history[B.history.lengt
 ok((B.playEv || []).some(e => /pays you 12 gold \(for the potions\)/.test(e.text)), 'the payee gets an event naming payer and why');
 ok((A.memories.notes || []).some(n => (n.tags || []).includes('gold') && /12 gold/.test(n.text)), 'the payer keeps a memory tagged gold');
 const line = (B.chat || []).slice(-1)[0];
-ok(line && line.act && line.from === A && /pays .* 12 gold \(for the potions\)/.test(line.text), `the Chat line: "${A.name} ${line && line.text}"`);
+ok(line && line.emote && line.from === A && /pays .* 12 gold \(for the potions\)/.test(line.text), `the Chat line: "${A.name} ${line && line.text}"`);
 r = act(A, 'chat_read', {n: 3}); ok(true, 'chat_read still answers');
 r = act(B, 'chat_read', {n: 3}); ok(r.lines.some(l => l.includes(A.name + ' pays ')), 'the payee reads it as an act, not speech: ' + r.lines.slice(-1));
 r = act(A, 'pay', {to: String(E.id), gold: 3}); ok(r.ok && E.gold === 3, 'a hero of the other faction is paid by id');

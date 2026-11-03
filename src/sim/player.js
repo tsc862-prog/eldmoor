@@ -43,6 +43,7 @@ import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
 import {partyMates,leaderOf,leaveParty} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
+import {whisperTo,emoteAct} from './aside.js'; // whisper and emote (#627)
 import {earshot} from './earshot.js'; // who hears you now (#395)
 import {npcSay,ensureNpcs} from './npcs.js';
 import {talkTo,addressed,findPerson,traderFor,npcBuy,npcSell,stockOf,tradePrice,metIds} from './talk.js'; // NPC conversations (#170)
@@ -399,7 +400,7 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   default:return false}}
 
 // A line the hero heard (sim/chat.js, council.js party chat, an NPC, the DM's narrate), as the agent reads it.
-const heardText=e=>e.dream?e.text:e.act&&e.from?e.from.name+' '+e.text:e.from&&e.from.kind==='dm'?'The narrator: '+e.text:(e.party?'[party] ':'')+(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"';
+const heardText=e=>e.whisper?'(whispered) '+(e.from&&e.from.name||'Someone')+': '+e.text:e.emote?'*'+(e.from&&e.from.name||'Someone')+' '+e.text+'*':e.dream?e.text:e.from&&e.from.kind==='dm'?'The narrator: '+e.text:(e.party?'[party] ':'')+(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"';
 // Hearing (issue #126): a line from an agent-played hero (aloud in earshot, or on the party channel) starts the
 // listener's turn promptly (2), at most once per PK.HEAR_WAKE game minutes per listener so two agents cannot
 // talk each other into turns forever; the narrator, an NPC or a scripted companion's party line wake after the gap (1).
@@ -968,6 +969,8 @@ const T={
     agentLine(a,speak(a,t,'agent'));const H=sayHearers(a);noteSaid(a,t,H);talked(a,H.map(b=>b.name));const heard=H.length;
     const to=addressed(a,t);if(to){const r=talkTo(a,to,t);if(!r.error)return {...r,heard_by:heard,to:r.who}} // said to a person: the conversation goes on (#170)
     return {ok:true,said:t,heard_by:heard}},
+  whisper(a,args){return whisperTo(a,args)}, // a line only one hero within 2 tiles hears (#627)
+  emote(a,args){return emoteAct(a,args)}, // a wordless act seen by those in earshot (#627)
   join_party(a,{hero_id,who}){const n=nameKey(who!=null&&who!==''?who:hero_id),i=idIn(hero_id)??idIn(who);
     const b=i!=null?hero(i):nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
     need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');
@@ -1210,7 +1213,7 @@ const T={
     if(e){const H=S.agents.filter(b=>b!==a&&b.chat&&b.chat[b.chat.length-1]===e);noteSaid(a,e.text,H);talked(a,H.map(b=>b.name))}return {ok:true,said:e?e.text:'',heard_by:e&&e.heard||[],too_far:e&&e.far&&e.far.length?e.far:undefined,note:hearNote(e)||undefined}},
   party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
   earshot(a){return earshot(a)}, // read-only (#395): the same hearer sets say and party_say use
-  chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+e.text:heardText(e)))}},
+  chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+(e.whisper?'(whispered to '+e.toName+') ':e.emote&&!e.veil?'*':'')+e.text+(e.emote&&!e.veil?'*':''):heardText(e)))}},
   propose(a,{kind,details,job_id,meet_at,meet_in_hours,hero_id,company}){need(companyOf(a),'Only a member of a company can put something to the party.');const k=String(kind||'').toLowerCase();
     // a second break_camp while one is open is a yes on it (#400): the agent wants exactly what is already asked
     if(k==='break_camp'){const O=openProps(companyOf(a)).find(P=>P.kind==='break_camp');if(O)return secondBreak(a,O,details)}
