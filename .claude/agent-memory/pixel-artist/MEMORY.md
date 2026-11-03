@@ -4,3 +4,4 @@
 - [Dungeon view](dungeonview.md) — #85 interior generator + overlay contract, last-run tracking, staging a mid-crawl shot
 - [Scene maps](scenemaps.md) — #431 outdoor real-terrain cut vs generated indoor settings, slice plan, staging scene shots
 - [Terrain autotile](autotile.md) — #177 slice 2: asset tables, dual-grid corner pieces, prop variants by tile hash, fixture previews
+- [Art tiers](tiletiers.md) — #177 32 px TILE vs 16 unit U split, tier keys @32/@64, sprite sheets and faction recolour

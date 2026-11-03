@@ -157,10 +157,20 @@ other. The rules:
 - `npm run focuscheck`: guild focus (#6, `src/sim/guildfocus.js`): each guild's leader picks Delve (crypt), Wyrmhunt (raid), Wayfaring (DM hooks) or Warpath (PvP) from the guild's state, no dice; it multiplies or reorders existing rolls only, so `GF.ON=false` (or no guild focused) rolls exactly as before; the Fellowship's guild never takes one; changes go to the chronicle and timeline (GUILD).
 - `npm run archetypecheck`: Fellowship archetypes (#295, `src/data/archetypes.js`, `applyArchetype` in `src/sim/persona.js`): six archetypes picked on the setup page or the sheet, their stances toward each companion reaching prompts (#305), owner stances, no RNG.
 - `npm run personacheck`: agent-built personality (#409): the `self`/`become` tools, daily limits, owner pins, the persona history, relay writing never overwriting the hero's own words, the turn-header line and the standing-order block, a reflection that changes the persona, privacy, save/restore and old saves, no RNG.
-- Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, size, priority, prompt, seed, palette paths into
+- Art tiers (#177, owner decision 2026-11-03: 32 px tiles now, a cheap path to 64): `src/render/tile.js` is the one place
+  for the tile size: `TILE` (art pixels a tile, 32; tiers 32 and 64), `U` (world units a tile, 16 = world `T`: positions,
+  camera, labels, effects and the procedural art) and `ART` = TILE/U. Terrain chunks are painted at TILE while any terrain
+  asset is loaded (the procedural 16 px texel scaled up wherever no asset covers a pixel) and at U otherwise; `CH` keeps a
+  chunk about 1024 art px square. Entities stand 32x48 at the 32 tier (`SPRITE_TILES`, `HEAD` for nameplates): generated
+  sheets (`sprites.js` `ASSET_SPRITES`, `sheetFrame`: 3 frames by 4 directions, the hero tabard recoloured per faction from
+  `palette.js` `SPRITE.key`) else the procedural sprite scaled by `PROC_SCALE` (`worldSprite`, a one-art-pixel outline).
+  `palette.js` `TIER_SHADES` widens asset palettes per tier. Upgrading to 64: set `TILE=64`, run
+  `npm run art:daily -- --tier 64` (same manifest, prompts and seeds), accept the set, re-base `FOLLOW_TILES`.
+- Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, `sizes` per tier, priority, prompt, seed, palette paths into
   `src/render/palette.js`, the renderer hook naming its procedural fallback), the candidate models (pixel-art LoRAs
   on fal-ai through Hugging Face Inference Providers) and `allowance.monthlyUsd`. `npm run art:daily` (`daily.mjs`;
-  `-- --now` to run at once, `--max N`, `ART_MAX_CALLS`, `ART_DAILY_BUDGET`/`--budget`, `--dry-run`) generates missing
+  `-- --now` to run at once, `--tier 32|64` (default `TILE`; the tier's LoRA scale, pixel grid and palette widening from
+  the manifest's `tiers`: 0.55 / grid 4 at 32, 0.2 / grid 2 at 64), `--max N`, `ART_MAX_CALLS`, `ART_DAILY_BUDGET`/`--budget`, `--dry-run`) generates missing
   assets in priority order into `assets/incoming/<date>/` with a contact sheet, and stops at the day's share of the
   monthly credits (monthlyUsd / days in the month; HF gives free accounts no Inference Providers credits and PRO $2.00 a
   month, about $0.01 an image with pixel-xl), at the month's total, or when the provider refuses (402, a quota 429/403,
@@ -168,16 +178,18 @@ other. The rules:
   post-processing, and `npm run art:reprocess -- <date>|all [keys]` re-runs post-processing on them with no call. State in
   `assets/queue.json` (gitignored), one line a run in `logs/art.log` (the launcher's `s` shows it); refused models fall
   through to the next candidate and the one that answers is pinned. `npm run art:accept -- <ids>|all` (`--reject`,
-  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scripts\art\schedule.cmd [HH:MM]`
+  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. Index and queue keys are
+  `<id>@<tier>` (files `assets/<kind>/<tier>/<name>.png`, entries carry `tier`; keys from before tiers read as 32). `scripts\art\schedule.cmd [HH:MM]`
   registers the daily Windows task. `npm run art:gen` generates straight into `assets/`, `npm run art:sheet` writes
   the contact sheet. Post-processing (`post-texture.mjs` on the building blocks of `post.mjs`, zero-dependency PNG codec
   `png.mjs`): find the model's pixel grid and sample cell centres (the image at its own pixel scale, ~128 px from 1024),
-  a seamless crop for tiles (base tiles are 32x32 patches) or a scaled subject for sprites, tone match and quantise to
+  a seamless crop for tiles (one tile at the tier: 32x32 at 32) or a scaled subject for sprites, tone match and quantise to
   the palette (widened with shades, optional ordered dither), outline; an output under `post.minColors` (4 for tiles)
   is rejected as flat, not written. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until loaded or
-  when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names the road, water
-  and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against a mock Hugging
-  Face server and a pixel-art fixture.
+  when absent; only entries of the renderer's tier are used, so a missing tier draws the procedural art scaled to TILE),
+  `onAssets`; `terrain.js` `ASSET_TILES`, `ASSET_ROAD`, `ASSET_EDGES` (dual-grid transition pieces, one tile each) and
+  `ASSET_PROPS` draw from assets at TILE resolution. `npm run artcheck` (CI) checks it all against a mock Hugging Face
+  server and fixtures (`scripts/art/fixtures.mjs`), incl. tier selection, the scaled fallback and `--tier 64`.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player
@@ -910,8 +922,8 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   `memory.js` per-member recent memories, long-term summary and companion stances;
   `council.js` party chat, proposals and votes, `lead_to`, splitting off and the all-or-none
   Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `questlog.js` the quest log (several quests per hero, one in focus); `dmagent.js` the DM seat and its tools (#66); `staged.js` the DM agent's staged scenes and its at-the-table calls (#132).
-- `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
-  `terrain.js` per-pixel tile textures into an offscreen canvas;
+- `src/render/`: `tile.js` the tile size (`TILE`, `U`, `ART`); `sprites.js` pixel-string sprites, `heroSprite` and the
+  generated sheets; `terrain.js` per-pixel tile textures into cached chunks at TILE (or U with no terrain asset);
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
   overlay with torch light, labels at constant CSS size.
 - `src/ui/`: `panels.js` hero card, factions, chronicle, graveyard, guilds,
