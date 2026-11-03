@@ -137,6 +137,7 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   for(const b of voters(P))if(b!==a)notify(b,a.name+' proposes to '+(ex?d:KIND_TEXT[kind]+(d?': '+d:''))+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
   if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'','agent');
   if(!(proposeHook&&proposeHook(P)))reflexFill(P); // a Table decision scene for the proposer's company (#440)
+  if(P.pair){const Q=propById(P.pair);if(Q&&!(proposeHook&&proposeHook(Q)))reflexFill(Q)} // the paired merge proposal gets its own company's scene (#500)
   settleIfDone(P);return P}
 
 // Refusal texts that name the open proposals and the legal next step (#400): agents act on them instead of retrying.
@@ -177,7 +178,7 @@ function pairMerge(P,A,B,a){const lb=leaderOfC(B),Q={id:nextPropId(B),kind:'merg
   (B.props||(B.props=[])).unshift(Q);if(B.props.length>COUNCIL.PROPS_MAX)B.props.pop();
   clog(B,'council',a,' of '+A.name+' offers to ride with us: '+A.name+' and '+B.name+' would be one company.');
   for(const b of voters(Q))notify(b,a.name+' of '+A.name+' ('+A.ids.length+') offers to join their company with ours. The party waits for your vote: vote('+Q.id+', yes|no, reason).',3);
-  reflexFill(Q)}
+}
 function failPair(P){const Q=propById(P.pair);if(!Q||Q.merged||Q.status==='failed')return;const was=Q.status;Q.status='failed';Q.result='Failed: '+(propCompany(P)?propCompany(P).name:'the other company')+' refused';Q.done=Math.round(S.gameMin);
   const C=propCompany(Q);if(C){clog(C,'council','The other company did not agree; ',gd(C.name),' rides on as it was.');for(const b of voters(Q))notify(b,'The merge fell through: the other company refused.',true)}
   void was}

@@ -1041,6 +1041,7 @@ console.log('start gate: ready, not just claimed');
   // the default together world: one company, one row, no row head, the five frames, the button and banner as before
   ok(CO.companies().length===1&&FR.frameGroupRows().length===1&&FR.frameGroupRows()[0].title===F.name,'companies: the default world shows one company in one row');
   ok(rowEls().length===1&&rowEls()[0].querySelector('.frrh').hidden&&pfs().length===5,'companies: one row of five frames, no row head (looks as before)');
+  ok(!$('felbody').querySelector('.fcotabs'),'Companies panel: one company, no tab bar');
   ok($('frames').querySelector('.frttl').textContent===F.name&&$('frames').querySelector('[data-pfsheet]').textContent==='Compare the five','companies: the title is the Fellowship\'s name, Compare the five');
   ok(vf.textContent==='Fellowship'&&!vf.hidden,'companies: the follow button reads Fellowship with one company');
   ok(TB.tableOwner({company:F.id,companyName:F.name,solo:false})===null,'companies: the banner names no company while there is one');
@@ -1119,6 +1120,22 @@ console.log('start gate: ready, not just claimed');
   ok(/@media \(max-width:920px\)\{\.frlist,\.frlist\.wide\{grid-template-columns:repeat\(3,/.test(css),'phone width: every row, eight included, is three frames across');
   ok(/#vFel\{[^}]*max-width:[^}]*text-overflow:ellipsis/.test(css),'phone width: the Follow <company> button is cut, not widened');
   window.innerWidth=390;uiFast();ok(rowEls().length===3&&pfs().length===15,'phone width: the rows still render (390 px)');window.innerWidth=keepW;
+  // the Companies panel (#457): a tab per company plus All; one company reads without a tab bar
+  {const fb=$('felbody'),tabs=()=>fb.querySelector('.fcotabs'),CP=await import('../src/ui/fellowship.js');uiFast();
+    ok(!!tabs()&&tabs().children.length===CO.companies().length+1,'Companies panel: a tab per company plus All ('+(tabs()?tabs().children.length:0)+')');
+    ok(/Companies/.test(document.getElementById('fellowship').querySelector('h2').textContent),'Companies panel: titled Companies');
+    const tb=[...tabs().children].find(b=>b.dataset.fact==='tab:'+pair.id);tb.click();uiFast();
+    ok(/The Smoke Pair/.test(fb.querySelector('.fhline').textContent)&&!fb.querySelector('[data-fact=menu]'),'Companies panel: the pair tab shows its own header, no Disband menu');
+    ok(!!fb.querySelector('.felhall')&&!!fb.querySelector('.felthreads'),'Companies panel: a company tab has its hall board and open threads');
+    fb.querySelector('[data-fact="drawer:members"]').click();uiFast();
+    ok(/Start The Smoke Pair|Stop The Smoke Pair|No agent-played/.test(fb.querySelector('.feldrawer').textContent),'Companies panel: runner buttons name the company');
+    fb.querySelector('[data-fact="drawer:members"]').click();
+    [...tabs().children].find(b=>b.dataset.fact==='tab:all').click();uiFast();
+    ok(fb.querySelectorAll('.fco').length===CO.companies().length,'Companies panel: the All tab lists every company');
+    [...tabs().children].find(b=>b.dataset.fact==='tab:'+F.id).click();uiFast();
+    ok(/Fellowship|Wardens/.test(fb.querySelector('.fhline').textContent)&&!!fb.querySelector('[data-fact=menu]'),'Companies panel: the Fellowship tab keeps its menu');
+    ok(/Companies only/.test($('chronFel').textContent),'Chronicle filter reads Companies only');
+    [...tabs().children][0].click()}
   // back to one company: one row again, no heads
   for(const C of [pair,s1,s2])CO.dissolveCompany(C);S.followId=keepFollow;uiFast();
   ok(rowEls().length===1&&rowEls()[0].querySelector('.frrh').hidden&&pfs().length===5&&vf.textContent==='Fellowship','companies: back to one company, the strip is as before ('+rowEls().length+' rows, '+pfs().length+' frames, '+vf.textContent+', '+CO.companies().map(C=>C.name+':'+C.ids.length).join(',')+')');

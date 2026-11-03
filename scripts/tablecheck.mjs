@@ -402,6 +402,28 @@ if (process.argv[2] === '--companies') {
   const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);
   ok(S.table && S.table.company === CU.id && T.sceneCompany(S.table) === CO.companyById(CU.id), 'a save mid-scene keeps the scene\'s company');
   close();
+  // (g) a merge proposal puts a decision scene to each company: the proposer's now, the other's queued (#500)
+  {
+    const [gx, gy, gu, gv] = [X, Y, U, V].map(h => S.agents.find(q => q.id === h.id)), gCX = CO.companyOf(gx), gCY = CO.companyOf(gy), gCU = CO.companyOf(gu);
+    const mgXY = CO.mergeCompanies(gCX, gCY); ok(mgXY.ok, 'the first pair rides as one company');
+    for (const [h, dx] of [[gx, 0], [gy, 1], [gu, 3], [gv, 4]]) {h.x = spot.x + dx; h.y = spot.y - 8; h.state = 'hunt'; h.dest = null; h.target = null; h.hp = maxHp(h); h.hidden = false; LINK[h.id] = 'connected'; h.partyOk = true}
+    for (const h of [gx, gy, gu, gv]) for (const o of [gx, gy, gu, gv]) if (h !== o) (h.bonds || (h.bonds = {}))[o.id] = 1;
+    close();
+    const rm = P.playerAct(gx.id, 'propose', {kind: 'merge', company: gu.name});
+    ok(rm.ok, 'the merge is proposed: ' + JSON.stringify(rm).slice(0, 90));
+    ok(S.table && S.table.kind === 'decision' && S.table.company === gCX.id, 'the proposer company has the decision scene now (company ' + (S.table && S.table.company) + ')');
+    const pj = gCU.props.find(q => q.kind === 'merge');
+    ok(pj && gCU.tableQ && gCU.tableQ.kind === 'decision' && gCU.tableQ.ctx.prop === pj.id, 'the other company decision scene waits in its queue, keyed by its own proposal');
+    ok(gCU.props.find(q => q.kind === 'merge') && !CO.isSolo(gCU) && gCU.id !== gCX.id, 'the paired proposal sits in the other company');
+    for (const h of [gx, gy]) P.playerAct(h.id, 'scene_act', {option: 'yes'});
+    {let g = 0; while ((!S.table || S.table.company !== gCU.id) && g++ < 60 * 40) step(1 / 60)}
+    ok(S.table && S.table.kind === 'decision' && S.table.company === gCU.id && S.table.ctx.prop === pj.id, 'the other company decision scene opens when the table frees (company ' + (S.table && S.table.company) + ')');
+    for (const h of [gu, gv]) P.playerAct(h.id, 'scene_act', {option: 'yes'});
+    {let g = 0; while (S.table && g++ < 60 * 40) step(1 / 60)}
+    ok(!S.table, 'both scenes settle');
+    close();
+  }
+
   console.log(fail ? fail + ' FAILED' : 'COMPANIES OK'); process.exit(fail ? 1 : 0);
 }
 

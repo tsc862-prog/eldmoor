@@ -84,10 +84,15 @@ async function send(path,body){
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
 // pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
 const pickBody=k=>{const p=picks[k]||'',L=limitOf(k),t={...(L.turns?{maxTurns:Number(L.turns)}:{}),...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:{}),...t}};
-export async function startRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';delete userStop[k];
-  const r=await send('/start',{kind,...(hero!=null?{hero}:{}),...pickBody(k)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
+export async function startRunner(kind,hero,pickKey){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';delete userStop[k];
+  const r=await send('/start',{kind,...(hero!=null?{hero}:{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
 export async function stopRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';userStop[k]=Date.now();
   const r=await send('/stop',{key:k});if(!r.ok)note[k]=r.error;poll(true,true);return r}
+// A company that is not the five-place Fellowship has no runner of its own: Start <company> starts a hero runner for
+// each agent-played member that has none, Stop <company> stops them (#457). pick: the company's picker key, 'co:<id>'.
+const coHeroes=C=>(C?C.ids:[]).map(id=>S.agents.find(a=>a.id===id)).filter(a=>a&&a.state!=='dead'&&a.player);
+export async function startCompany(C){for(const a of coHeroes(C)){const x=runnerByKey('hero:'+a.id);if(!x||DONE[x.state])await startRunner('hero',a.id,'co:'+C.id)}}
+export async function stopCompany(C){for(const a of coHeroes(C)){const x=runnerByKey('hero:'+a.id);if(x&&!DONE[x.state])await stopRunner('hero',a.id)}}
 export async function stopAllFellows(){const ids=(S.fellowship&&S.fellowship.ids)||[];await stopRunner('fellowship');
   for(const id of ids){const r=runnerByKey('hero:'+id);if(r&&!DONE[r.state])await stopRunner('hero',id)}}
 
@@ -122,12 +127,21 @@ export function runnerControl(a,{line=true}={}){poll();const d=el('span','runctl
   if(line){const s=el('span','dm runstate r-'+(r&&!note[k]?r.state:'none'),' '+stateLine(r,k));s.title=tip(r,4);d.append(s)}
   return d}
 
-export function fellowshipRunnerControl(){poll(true);const d=el('div','runctl fbar');const r=runnerByKey('fellowship'),on=r&&!DONE[r.state];
+export function fellowshipRunnerControl(name){poll(true);const d=el('div','runctl fbar');const r=runnerByKey('fellowship'),on=r&&!DONE[r.state];
   const others=((S.fellowship&&S.fellowship.ids)||[]).some(id=>{const x=runnerByKey('hero:'+id);return x&&!DONE[x.state]});
-  if(!on){const b=button('Start all five','start','fellowship',null,info&&!info.enabled?HOW_TEXT:'One runner plays every agent-played member (npm run fellowship, started by the relay)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
+  if(!on){const b=button('Start '+(name||'the Fellowship'),'start','fellowship',null,info&&!info.enabled?HOW_TEXT:'One runner plays every agent-played member (npm run fellowship, started by the relay)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   if(on||others)d.append(button('Stop all','stopall','fellowship',null,'Stop the Fellowship runner and every member\'s own runner'));
   const s=el('span','dm runstate r-'+(r&&!note.fellowship?r.state:'none'),stateLine(r,'fellowship'));s.title=tip(r,6);d.append(s);
   return d}
+
+// Start <company> / Stop <company> for a company with no Fellowship runner: hero runners for its agent-played members.
+export function companyRunnerControl(C){poll(true);const d=el('div','runctl fbar'),L=coHeroes(C),name=C.name||(L.length===1?L[0].name:'the company');
+  const live=L.filter(a=>{const x=runnerByKey('hero:'+a.id);return x&&!DONE[x.state]});
+  if(!L.length){d.append(el('span','dm runstate','No agent-played hero here.'));return d}
+  if(live.length<L.length){const b=button('Start '+name,'startco',null,null,info&&!info.enabled?HOW_TEXT:'Start a hero runner for each agent-played member of this company that has none');b.dataset.runco=String(C.id);if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
+  if(live.length){const b=button('Stop '+name,'stopco',null,null,'Stop the hero runners of this company (reflexes play on)');b.dataset.runco=String(C.id);d.append(b)}
+  d.append(el('span','dm runstate r-'+(live.length?'live':'none'),live.length+' of '+L.length+' runners on'));return d}
+export const companyRunnerSig=C=>{poll(true);return coHeroes(C).map(a=>{const x=runnerByKey('hero:'+a.id);return a.id+(x?x.state+x.turns+(x.model||''):'-')}).join(',')+':'+up+':'+(info?info.enabled:'?')};
 
 // The DM agent's runner (#66): Start DM / Stop DM and its state, for the DM panel and the Minds panel's
 // DM row (src/ui/dmseat.js). It plays no hero, so it polls whether or not a hero is agent-played.
@@ -148,7 +162,8 @@ export function runnerPick(k,models,openai){const s=el('select','msel');s.datase
   const w=el('span','runpick');w.append(s);return w}
 
 export function initRunners(after){const done=after||(()=>{});
-  const act=async t=>{const k=t.dataset.runkind,h=t.dataset.runhero!=null?+t.dataset.runhero:null,a=t.dataset.runact;
+  const act=async t=>{if(t.dataset.runco!=null){const C=(S.companies||[]).find(x=>x.id===+t.dataset.runco);if(C){if(t.dataset.runact==='startco')startCompany(C).then(done);else stopCompany(C).then(done)}done();return}
+    const k=t.dataset.runkind,h=t.dataset.runhero!=null?+t.dataset.runhero:null,a=t.dataset.runact;
     if(a==='start')startRunner(k,h).then(done);else if(a==='stop')stopRunner(k,h).then(done);else if(a==='stopall')stopAllFellows().then(done);else if(a==='restart')stopRunner(k,h).then(()=>startRunner(k,h)).then(done);done()};
   // pointerdown as well as click: the hero card is rebuilt several times a second, which can swallow a click
   let downAt=0;

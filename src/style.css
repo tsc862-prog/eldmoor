@@ -801,3 +801,11 @@ button.tbtn.danger{border-color:var(--red)}
 .tbanner.tlive{padding:4px 6px;max-width:min(520px,calc(100% - 16px));background:rgba(8,10,20,.88)}
 .tbanner .tlvb{pointer-events:auto;display:block;width:100%;text-align:left;font-family:inherit;font-size:18px;line-height:1.1;padding:3px 6px;min-height:28px;background:#1e1a10;color:var(--gold);border:1px solid #6a5a2a;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:none;letter-spacing:0;box-shadow:none}
 .tbanner .tlvb:hover,.tbanner .tlvb:focus-visible{border-color:var(--gold);outline:none}
+
+/* Companies panel (#457): tab per company plus All, and the All rows */
+.fcotabs{margin:0 0 6px}
+.fcotabs button{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.felall .fco{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-width:0;padding:4px 0;border-bottom:1px solid var(--line,#2a2a3a)}
+.felall .fconame{font-family:var(--px);font-size:9px;padding:4px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.felall .fco .runctl{flex-basis:100%}
+.fcoTag{font-size:inherit}

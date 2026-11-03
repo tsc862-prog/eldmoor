@@ -62,7 +62,7 @@ import {score} from './abilities.js';
 import {bestUse,useItem} from './inv.js'; // a potion in a scene (scene_act option potion)
 import {fellows} from './fellowship.js';
 import {companyById,companyOf,companies,members,leaderOf,isSolo,campaign,followed} from './company.js'; // scenes belong to a company (#440)
-import {setProposeHook,castVote,resolveProp,reflexVote,propById,leaderOfF,openProps,waitingVoters,voters} from './council.js';
+import {setProposeHook,castVote,resolveProp,reflexVote,propById,propCompany,leaderOfF,openProps,waitingVoters,voters} from './council.js';
 import {inRange} from './reach.js';
 import {setFellowChoice} from './player-choice.js';
 import {reflexMay,ownerHeld} from './runlink.js';
@@ -431,6 +431,7 @@ function due(C,L){
   return null}
 // A queued moment that no longer holds (#440): too old, its member gone or out of the fight, its foe gone.
 function stale(C,q){if(S.gameMin-q.at>TABLE.queueMin)return true;const c=q.ctx||{},L=memOf(C);
+  if(q.kind==='decision'){const P=propById(c.prop);return !P||P.status!=='open'}
   if(c.hero!=null){const a=byId(c.hero);if(!living(a)||!L.includes(a)||q.kind==='rescue'&&!FIGHTING.includes(a.state))return true}
   if(c.mob!=null){const m=S.mobs.find(x=>x.id===c.mob);if(!m||!m.alive||m.gone)return true}
   if(c.foe!=null&&!living(byId(c.foe)))return true;
@@ -452,8 +453,9 @@ export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks 
 
 // ---- the hooks ----
 // A new council proposal: a decision scene when the world can pause; else the votes run async.
-setProposeHook(P=>{const C=companyOf(byId(P.by))||S.fellowship,L=memOf(C);if(voteRefusal(C))return false;if(agentsDecide(L))requestDrop('a vote: '+P.details); // #148: 3x/8x drop to 1x at a decision
-  if(!holdOk(L)||S.table)return false;const by=byId(P.by);
+setProposeHook(P=>{const C=propCompany(P)||companyOf(byId(P.by))||S.fellowship,L=memOf(C);if(voteRefusal(C))return false;if(agentsDecide(L))requestDrop('a vote: '+P.details); // #148: 3x/8x drop to 1x at a decision
+  if(!holdOk(L))return false;const by=byId(P.by);
+  if(S.table){if(P.src==='pair'&&!C.tableQ&&atTable(C)){C.tableQ={kind:'decision',title:'Put to the party: '+P.details,frame:[gd('The other company'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],ctx:{prop:P.id},at:Math.round(S.gameMin)};return true}return false} // a merge's second scene waits its turn (#500)
   const sc=open('decision','Put to the party: '+P.details,[by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id},C);
   if(sc)for(const id in P.votes)if(sc.ids.includes(+id))sc.acts[id]={k:P.votes[id].v,line:P.votes[id].reason||'',by:P.votes[id].by==='reflex'?'reflex':'agent'}; // a vote already cast counts as that member's turn
   return !!sc});
