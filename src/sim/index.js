@@ -23,6 +23,8 @@ import {npcsTick} from './npcs.js';
 import {talkTick} from './talk.js'; // NPC conversations (#170)
 import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
+import {installRumourLever} from './rumours.js'; // seed_rumour (#637)
+import {installBestowLever} from './epithet.js'; // bestow (#638)
 import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
@@ -76,6 +78,8 @@ export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath 
 export {planOpening,openingDue,openingPending,arrivalsView,ARRIVE} from './arrival.js'; // session zero and arrivals (#437, #452)
 export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost,setGateHold,worldHeld,holdLine} from './prep.js'; // the DM's prep before the table opens (#437)
 
+installRumourLever();installBestowLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
+
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
 // o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
@@ -101,6 +105,7 @@ export function init(o={}){resetWorld();
 }
 
 // Advance the world by dt real seconds at 1x (6 game minutes per second).
+import {outpostsTick} from './outposts.js';
 export function step(dt){rulingTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
   if(holdTick(dt)){updFx(dt);return} // a gambit hold stops the clock until the agent acts (#630)
   if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
@@ -111,7 +116,7 @@ export function step(dt){rulingTick(); // a ruling the DM let lapse is filled ev
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first
   partyTick();slotsTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
-  updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
+  updBoss(dt);raidCheck(dt);pvpCheck(dt);outpostsTick(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}

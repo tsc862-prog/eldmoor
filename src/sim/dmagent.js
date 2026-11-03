@@ -50,6 +50,8 @@ import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js';
 import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf} from './company.js';
 import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
 import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
+import {installRumourLever,rumoursView} from './rumours.js'; // seed_rumour (#637)
+import {installBestowLever,epithetView} from './epithet.js'; // bestow (#638)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
 // ---- knobs ----
@@ -116,7 +118,7 @@ const regionIdx=v=>{if(Number.isInteger(v)&&v>=0&&v<ZONES.length)return v;if(typ
 const townOf=v=>typeof v==='string'?CITY.find(c=>c.name.toLowerCase()===v.trim().toLowerCase())||null:null;
 const where=a=>a.state==='town'?'in '+(a.town||'town'):a.state==='dead'?'dead':'in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+' at '+Math.round(a.x)+','+Math.round(a.y);
 const heroLine=a=>({id:a.id,name:a.name,lvl:a.lvl,cls:a.cls,faction:facName(a.fac),hp:pct(a)+'%',doing:a.state,where:where(a),party:a.party?a.party.id:null,
-  ...(inSlots(a)?{fellowship:slotKeyOf(a)||true}:{}),...(a.adv?{adventure:a.adv}:{})});
+  ...(inSlots(a)?{fellowship:slotKeyOf(a)||true}:{}),...(a.adv?{adventure:a.adv}:{}),...(a.epithet?{epithet:epithetView(a)}:{})}); // a name given (#638)
 // The centre of a region (the mean of its spawn points), for heroes_near.
 const centreOf=z=>{const P=ZPTS[z]||[];if(!P.length)return null;let x=0,y=0;for(const p of P){x+=p.x;y+=p.y}return {x:x/P.length,y:y/P.length}};
 function placeOf(near){const nt=nearText(near);if(nt.err)return null;const s=String(nt.s||'').trim();if(!s)return null;
@@ -348,7 +350,8 @@ function hooksRead(town,region){const Q=readScope('hooks',town,region);if(Q.err)
   return {ok:true,...scopeHead(Q),open_jobs:A.filter(v=>v.phase==='open').map(h=>({id:h.id,town:h.town,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,region:h.zone==null?'any':ZONES[h.zone],
       ...(h.for!=null?{for:hn(h.for)}:{}),hours_left:Math.max(0,Math.round((h.until-S.gameMin)/60))})),
     under_way:A.filter(v=>v.phase==='active').map(v=>({id:v.id,title:v.title,tpl:v.tpl,town:v.town,leader:hn(v.lead),members:v.mem.map(hn),scene:(v.idx||0)+1,of:(v.scenes||[]).length,away:!!v.away})),
-    recently_done:A.filter(v=>v.phase==='done').slice(-5).map(v=>({id:v.id,title:v.title,outcome:v.outcome||null}))}}
+    recently_done:A.filter(v=>v.phase==='done').slice(-5).map(v=>({id:v.id,title:v.title,outcome:v.outcome||null})),
+    rumours:rumoursView().filter(r=>!Q.label||r.towns.some(n=>Q.towns.includes(n)))}} // what the townsfolk pass on (seed_rumour, #637)
 
 function leversRead(){const L=S.levers,d=today(),hrs=m=>Math.max(0,Math.round(m/60));
   return {ok:true,levers:leverMenu().filter(l=>l.available&&l.name!=='named_foe').map(l=>({name:l.name,about:l.about,params:l.params,limits:l.limits,cooldown_min:l.cooldown})),
@@ -609,6 +612,24 @@ function npcSay(a){const p0=personFor(a);if(p0)a={...a,npc:String(p0.id)};const 
 function prepDone(a){const t=clean(a&&a.summary,DMA.INTENT_MAX);if(!prepActive())return {ok:true,prep:prepView(),note:'No prep is running; nothing to end.'};
   const v0=prepView();endPrep('done');dmlog('agent',null,['DM prep done ('+v0.kind+', '+v0.calls+' calls, '+v0.seconds+' s)'+(t?': '+t:'.')],{by:'dm-agent',prep:v0.kind,calls:v0.calls,seconds:v0.seconds,text:t||null},{heroes:[]});
   return {ok:true,prep:prepView(),note:'The table opens now.'}}
+// ---- seed_rumour (#637) and bestow (#638): flat lever tools like post_hook, through pullLever (caps, reserve, DM log) ----
+const RENOWN_USAGE={
+  seed_rumour:'seed_rumour takes: town (a town: '+CITY.map(c=>c.name).join('|')+') or region (a region: '+ZONES.join('|')+'), text (160 characters, as townsfolk say it), about? (a place, region, creature or person), days? (1-5), who? (innkeeper|captain|bard), reason',
+  bestow:'bestow takes: hero (a hero by name or id), title (2-24 characters: "Wightbane", "of the Ford"), why (one sentence, the DM log only), by? (a person within 7 tiles of the hero, by name or id)'};
+function renownTool(tool,a){a=a&&typeof a==='object'?a:{};installRumourLever();installBestowLever();const usage=RENOWN_USAGE[tool],via={tool,usage};
+  const reason=clean(tool==='bestow'?a.why||a.reason:a.reason||a.why,DMA.REASON_MAX);
+  const no=(why,params)=>leverRefuse(tool,why,usage+'. The lever: '+leverUsage(tool),reason,params||{},via);
+  const str=(v,n)=>typeof v==='string'?clean(v,n)||undefined:v,opt=(k,v)=>v==null||v===''?{}:{[k]:v};
+  let params;
+  if(tool==='seed_rumour'){const t=clean(a.town,40),g=clean(a.region,40);let town=t?townOf(t):null,region=g||undefined;
+    if(t&&!town){const z=regionIdx(t);if(z==null)return no('town: no town or region called "'+t+'"; towns: '+CITY.map(c=>c.name).join(', ')+'; regions: '+ZONES.join(', '));region=ZONES[z]}
+    const d=a.days==null||a.days===''?undefined:Number.isFinite(Number(a.days))?Math.round(Number(a.days)):a.days;
+    params={...(town?{town:town.name}:{}),...opt('region',region),text:typeof a.text==='string'?String(a.text):a.text,...opt('about',str(a.about,60)),...opt('days',d),...opt('who',str(a.who,12)&&String(a.who).toLowerCase().trim())}}
+  else{const h=heroOf(a.hero);if(!h)return no('hero: no living hero called "'+clean(a.hero,40)+'" (see heroes_near or fellowship_view)');
+    let by;if(a.by!=null&&a.by!==''){const q=personOf(a.by);if(!q)return no('by: no person called "'+clean(a.by,40)+'" (see npcs)');by=q.id}
+    params={hero:h.id,title:typeof a.title==='string'?a.title:a.title,...opt('by',by)}}
+  const r=pullLever({lever:tool,params,reason},via);if(!r.ok)return r;const e=r.effect||{};
+  return {...r,tool,...(tool==='seed_rumour'?{rumour:e.rumour,towns:e.towns,tellers:e.tellers,days:e.days,note:'The tellers pass it on in their own words; nobody learns where it started. hooks lists the live rumours.'}:{known_as:e.known_as,by:e.by,heard_by:e.heard_by})}}
 const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // A tool name that is not a DM tool (issue #401): a lever name called as a tool (post_hook, mark_place, create_npc,
 // or create_npc_placeholder) is pointed at pull_lever with that lever's contract; anything else lists the tools.
@@ -681,6 +702,7 @@ function run(tool,args){let r;
     case 'whens':case 'watches':r=whensView();break;
     case 'unwhen':r=whenCancel('when',args.id);break;
     case 'unwatch':r=whenCancel('watch',args.id);break;
+    case 'seed_rumour':case 'bestow':r=renownTool(tool,args);break; // #637, #638
   }
   return r}
 
