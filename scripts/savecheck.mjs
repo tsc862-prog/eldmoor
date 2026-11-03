@@ -196,6 +196,15 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   restore(JSON.parse(JSON.stringify(v7))); const a7 = JSON.parse(JSON.stringify(snapshot()));
   restore(JSON.parse(JSON.stringify(v6))); const a6 = JSON.parse(JSON.stringify(snapshot()));
   for (const s of [a7, a6]) for (const c of s.companies) if (!c.slots) {delete c.founded; delete c.day} // a solo made by the migration is founded at load (a v6 save has no record of it)
+  // Solo ids follow the order they were founded in a v7 world and the agent order in a migration, so they differ by luck of the seed:
+  // name each company by its members (the Fellowship by its slots) before comparing, and drop the id counter and the array order.
+  for (const s of [a7, a6]) {const key = new Map(s.companies.map((c) => [c.id, c.slots ? 'fellowship' : 'solo:' + c.ids.join(',')]));
+    for (const c of s.companies) c.id = key.get(c.id);
+    for (const h of s.agents) if (h.company != null && key.has(h.company)) h.company = key.get(h.company);
+    for (const p of s.parties || []) if (p.company != null && key.has(p.company)) p.company = key.get(p.company);
+    if (s.followId != null && key.has(s.followId)) s.followId = key.get(s.followId);
+    for (const c of s.companies) if (c.slots) for (const k of Object.keys(c.from || {})) if (!c.ids.map(String).includes(k)) delete c.from[k]; // a v6 hero carries its home town only while it is a member
+    delete s.companySeq; s.companies.sort((x, y) => x.id < y.id ? -1 : x.id > y.id ? 1 : 0)}
   const d6 = diff(a7, a6);
   ok(!d6 && !!S.table, 'the v6 save restores to the same world as the v7 one (snapshots deep-equal but for when the solos were founded, the scene still open)' + (d6 ? ' -- ' + d6 : ''));
   ok(S.agents.filter((a) => a.player && a.state !== 'dead').every((a) => companyOf(a)) && S.companies.every((c) => c.ids.length <= PARTY.MAX) && S.followId === S.fellowship.id,
