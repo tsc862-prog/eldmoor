@@ -33,6 +33,7 @@
     "crawlcheck": "node scripts/crawlcheck.mjs",
     "localscheck": "node scripts/localscheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",
+    "sightcheck": "node scripts/sightcheck.mjs",
     "companycheck": "node scripts/companycheck.mjs",
     "ratecheck": "node scripts/ratecheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",

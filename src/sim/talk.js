@@ -33,6 +33,7 @@ import {ADVENTURES} from '../data/adventures.js';
 import {homeOf} from '../data/races.js';
 import {ROLE_TALK,DEFAULT_TALK,ROLE_JOB,ROLE_STOCK,DEFAULT_STOCK,TALK_LINES} from '../data/talk-lines.js';
 import {dmlog} from './dmlog.js';
+import {noteKnownAt} from './sightings.js';
 import {pull,spotErr,attitudeOf,LK} from './levers.js';
 import {maxHp,huntZone} from './heroes.js';
 import {check} from './abilities.js';
@@ -406,7 +407,7 @@ export function lineRefusal(a,text){if(!a||!a.player)return null;
   if(isIntro(a,text)&&metIds(a).length)return MSG_INTRO;
   return null}
 export function noteSaid(a,text,listeners){if(!a||!a.player)return;const L=a.talkSaid||(a.talkSaid=[]);L.push(String(text).slice(0,200));if(L.length>TALK.LAST)L.shift();
-  for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1}}
+  for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1;noteKnownAt(b,a);noteKnownAt(a,b)}}
 export function heardLines(a,n=TALK.HEARD){const cut=t=>t.length>TALK.CUT?t.slice(0,TALK.CUT-1)+'…':t;
   return (a.chat||[]).filter(e=>e.from&&(e.party||e.trigger==='agent'||e.from.kind==='hero')).slice(-n)
     .map(e=>e.t+' '+(e.from===a?'(you)':e.from.name||'?')+(e.party?' [party]':'')+': '+cut(String(e.text||'')))}
