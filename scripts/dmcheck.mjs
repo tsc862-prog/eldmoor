@@ -413,7 +413,7 @@ ok(dmAct('pull_lever', {lever: 'set_condition', params: '{not json', reason: 'x'
   r = dmAct('pull_lever', {lever: 'mark_dangerous', params: {x: -5, y: -5}, reason: 'x,y given flat'});
   ok(r.ok === false && !/at is required/.test(r.error), 'a point given as x,y is read as the lever\'s point: ' + r.error.slice(0, 80));
   S.dmAgent.day.pulls = pulls1;
-  r = dmAct('set_condition', {region: 'x'}); ok(r.ok === false && /pull_lever \{"lever":"set_condition"/.test(r.error) && /set_condition takes params: region/.test(r.error), 'a lever name called as a tool points to pull_lever with its params: ' + r.error.slice(0, 120));
+  r = dmAct('mark_cleared', {region: 'x'}); ok(r.ok === false && /pull_lever \{"lever":"mark_cleared"/.test(r.error) && /mark_cleared takes params: at/.test(r.error), 'a lever name called as a tool points to pull_lever with its params: ' + r.error.slice(0, 120));
   r = dmAct('create_npc', {role: 'hermit'}); ok(r.ok === false && /pull_lever \{"lever":"create_npc"/.test(r.error) && /Or call place_person \(flat arguments\): place_person takes: role/.test(r.error), 'a lever with a flat tool (create_npc) points to pull_lever and to place_person');
   r = dmAct('create_npc_placeholder', {}); ok(r.ok === false && /looks like the lever create_npc/.test(r.error), 'a made-up tool that contains a lever name points to that lever');
   r = dmAct('fly', {}); ok(r.ok === false && /Tools: dm_status/.test(r.error) && /go through pull_lever/.test(r.error), 'an unknown DM tool lists the tools');}
@@ -557,6 +557,80 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
     ok(r.ok === false && /gear piece per game day/.test(r.error) && inv.spares(h).length === sp0 + 1, 'give_item: one plain gear piece a day');
     h.state = 'fight'; fresh(); r = dmAct('give_item', {hero: h.name, item: q, reason: 'in a fight'}); ok(r.ok === false && /in a fight/.test(r.error), 'give_item: not in a fight'); h.state = 'hunt';
     pn.x = pos.x; pn.y = pos.y; fresh()}
+  // undo, dismiss, unstage and the remaining levers as flat tools (issue #636)
+  {const DA = await import('./dm-agent.mjs'), {GOODS} = await import('../src/data/items.js'); const fresh = () => {S.dmAgent.day.pulls = 0; S.dmAgent.day.undos = 0; S.levers.cd = {}; S.levers.day.n = {}; S.levers.day.nf = {}; S.levers.day.rz = {}; S.worldEvent = null};
+    const NEW = ['retire_person', 'withdraw_hook', 'set_attitude', 'set_condition', 'price_shock', 'mark_danger', 'start_event', 'nudge_relation', 'custom_foe', 'create_site', 'undo', 'dismiss', 'unstage'];
+    ok(NEW.every(n => DM_TOOLS.some(t => t.name === n && t.act && t.args.reason && !t.args.reason.optional)), 'the thirteen new DM tools are listed, each with a reason: ' + NEW.length);
+    const sysP = DA.dmSystemPrompt({}); ok(NEW.every(n => sysP.includes(n)) && DA.withDmBetweenOrders('old prompt').includes(DA.DM_BETWEEN_ORDERS) && DA.withDmBetweenOrders(sysP) === sysP, 'the standing orders name every new tool (and reach an older session)');
+    const entry = (lv) => S.dmLog.find(e => e.kind === 'lever' && e.detail.lever === lv);
+    const h0 = L[0]; L.forEach(x => {x.hp = maxHp(x)}); fresh();
+    // undo: a placed person, a marker, a job
+    r = dmAct('place_person', {role: 'hermit', near: 'fellowship', name: 'Odo Undo', reason: 'a lead'}); const npcId = r.npc;
+    ok(r.ok && S.wanderers.some(w => w.id === npcId), 'undo setup: a person placed');
+    r = dmAct('undo', {reason: 'not now'});
+    ok(r.ok && r.undone === 'create_npc' && !S.wanderers.some(w => w.id === npcId) && entry('undo').detail.result === 'undone' && entry('undo').detail.by === 'dm-agent' && entry('undo').detail.reason === 'not now', 'undo takes back the placed person, logged by dm-agent' + (r.ok ? '' : ': ' + r.error));
+    r = dmAct('undo', {reason: 'again'}); ok(r.ok === false && /nothing to take back/.test(r.error), 'a second undo has nothing to reach: ' + (r.error || '').slice(0, 60));
+    r = dmAct('undo', {}); ok(r.ok === false && /reason is required/.test(r.error), 'undo needs a reason');
+    r = dmAct('mark_place', {kind: 'ruin', near: 'fellowship', reason: 'a ruin'}); const plId = r.effect && r.effect.place;
+    ok(r.ok && S.places.some(p => p.id === plId), 'undo setup: a marker');
+    r = dmAct('undo', {reason: 'wrong ruin'}); ok(r.ok && !S.places.some(p => p.id === plId), 'undo takes the marker down');
+    fresh(); r = dmAct('post_hook', {town: hall, tpl: 'deliver', reason: 'a parcel'}); const hkId = r.effect && r.effect.hook;
+    r = dmAct('undo', {reason: 'no parcel'}); ok(r.ok && !S.adventures.some(h => h.id === hkId), 'undo takes the job off the board');
+    fresh(); r = dmAct('post_hook', {town: hall, tpl: 'deliver', reason: 'a parcel'}); const hk2 = S.adventures.find(h => h.id === r.effect.hook); hk2.phase = 'taken';
+    r = dmAct('undo', {reason: 'late'}); ok(r.ok === false && /no longer open/.test(r.error) && S.adventures.includes(hk2), 'undo cannot take down a job a hero already took'); S.adventures.splice(S.adventures.indexOf(hk2), 1);
+    fresh(); r = dmAct('price_shock', {good: Object.keys(GOODS)[0], direction: 'down', reason: 'a glut'}); ok(r.ok && entry('price_shock').detail.by === 'dm-agent', 'price_shock flat tool pulls the lever');
+    r = dmAct('undo', {reason: 'prices stay'}); ok(r.ok === false && /cannot be taken back/.test(r.error), 'a price shock cannot be undone: ' + (r.error || '').slice(0, 70));
+    fresh(); r = dmAct('mark_place', {kind: 'ruin', near: 'fellowship', reason: 'a ruin'}); S.dmAgent.last.at -= DMA.UNDO_MIN + 30;
+    r = dmAct('undo', {reason: 'too late'}); ok(r.ok === false && /game hours old/.test(r.error), 'undo reaches back only DMA.UNDO_MIN game minutes');
+    // dismiss: a marker by name, an area by id, and what it refuses
+    r = dmAct('dismiss', {place: S.places[S.places.length - 1].name, reason: 'enough'}); ok(r.ok && r.dismissed, 'dismiss ends a marker early by name: ' + (r.ok ? r.dismissed : r.error));
+    r = dmAct('dismiss', {place: 'the moon', reason: 'x'}); ok(r.ok === false && /no place or area/.test(r.error), 'dismiss an unknown place is refused');
+    S.places.push({id: 990001, kind: 'camp', name: 'World Camp', x: 1, y: 1, z: 0, born: 0, until: 1e9}); r = dmAct('dismiss', {place: 'World Camp', reason: 'x'});
+    ok(r.ok === false && /belongs to the world/.test(r.error), 'dismiss leaves the world\'s own markers'); S.places = S.places.filter(p => p.id !== 990001);
+    fresh(); r = dmAct('mark_danger', {near: 'fellowship', reason: 'wolves about'}); const mk = r.ok && S.marks.find(m => m.kind === 'danger' && m.lever === r.id);
+    ok(r.ok && r.area === 'dangerous' && mk && entry('mark_dangerous').detail.by === 'dm-agent', 'mark_danger marks a dangerous area through the lever' + (r.ok ? '' : ': ' + r.error));
+    r = dmAct('dismiss', {place: String(mk && mk.id), reason: 'wolves gone'}); ok(r.ok && !S.marks.some(m => m.id === mk.id), 'dismiss ends the area by id');
+    fresh(); r = dmAct('mark_danger', {near: 'fellowship', cleared: 'yes', reason: 'swept'}); ok(r.ok && r.area === 'cleared' && S.marks.some(m => m.kind === 'cleared'), 'mark_danger cleared "yes" marks a cleared area'); dmAct('dismiss', {place: String(S.marks.find(m => m.kind === 'cleared').id), reason: 'done'});
+    // unstage
+    fresh(); if (S.staged && S.staged.cur) S.staged.cur.phase = 'done'; if (S.staged) S.staged.day = {d: -1, n: 0, nw: 0};
+    r = dmAct('unstage', {reason: 'nothing'}); ok(r.ok === false && /no staged scene is pending/.test(r.error), 'unstage with nothing pending is refused');
+    r = dmAct('stage_scene', {kind: 'mystery', near: 'fellowship', frame: 'Mist lies on the road, and something moves in it.', cast: {}, reason: 'a lead'});
+    if (r.ok) {const rid = r.staged, pl = S.places.length;
+      r = dmAct('unstage', {scene: 'nonsense', reason: 'x'}); ok(r.ok === false && /not "nonsense"/.test(r.error), 'unstage names the scene it holds when asked for another');
+      r = dmAct('unstage', {reason: 'the party moved on'});
+      ok(r.ok && r.unstaged === rid && S.staged.cur.phase === 'done' && S.staged.cur.result === 'unstaged' && S.places.length === pl - 1 && entry('unstage').detail.by === 'dm-agent', 'unstage cancels the pending scene, takes its marker down and logs it' + (r.ok ? '' : ': ' + r.error));
+      r = dmAct('stage_scene', {kind: 'mystery', near: 'fellowship', frame: 'Mist lies on the road, and something moves in it.', cast: {}, reason: 'again'}); ok(r.ok, 'a new scene can be staged after unstage' + (r.ok ? '' : ': ' + r.error));
+      if (r.ok) {S.staged.cur.phase = 'open'; r = dmAct('unstage', {reason: 'too late'}); ok(r.ok === false && /Table has opened/.test(r.error), 'unstage is refused once the Table has opened the scene'); S.staged.cur.phase = 'waiting'; dmAct('unstage', {reason: 'cleanup'})}}
+    else ok(false, 'unstage setup: stage_scene was refused: ' + r.error);
+    fresh(); r = dmAct('stage_scene', {kind: 'mystery', near: 'fellowship', frame: 'Mist lies on the road, and something moves in it.', cast: {}, reason: 'again'});
+    if (r.ok) {r = dmAct('undo', {reason: 'changed my mind'}); ok(r.ok && r.undone === 'stage_scene' && S.staged.cur.result === 'unstaged', 'undo also takes back the last staged scene')}
+    // daily cap on taking back
+    fresh(); S.dmAgent.day.undos = DMA.UNDOS_PER_DAY; r = dmAct('undo', {reason: 'x'}); ok(r.ok === false && /taken back \d+ things today/.test(r.error), 'taking back is capped per game day'); S.dmAgent.day.undos = 0;
+    // the remaining lever tools: each pulls its lever by dm-agent, or is refused by the lever with its contract
+    const pn = S.npcs[0]; fresh();
+    r = dmAct('set_attitude', {npc: pn.name, to: h0.name, attitude: 'wary', hours: 6, reason: 'a rumour spread'}); ok(r.ok && entry('set_attitude').detail.by === 'dm-agent' && (pn.att || []).some(x => x.to === 'hero' && x.id === h0.id && x.a === 'wary'), 'set_attitude: a person turns wary toward a hero' + (r.ok ? '' : ': ' + r.error));
+    fresh(); r = dmAct('set_attitude', {npc: pn.name, to: 'Nobody', attitude: 'wary', reason: 'x'}); ok(r.ok === false && /to: no living hero, faction or party/.test(r.error) && /set_attitude takes: npc/.test(r.error), 'set_attitude to nobody is refused with its contract');
+    fresh(); r = dmAct('set_condition', {region: ZONES[0], kind: 'festival', hours: 6, reason: 'a feast'}); ok(r.ok && entry('set_condition').detail.by === 'dm-agent' && (S.conditions || []).some(c => c.kind === 'festival'), 'set_condition: a festival over a region' + (r.ok ? '' : ': ' + r.error));
+    r = dmAct('undo', {reason: 'no feast'}); ok(r.ok && !(S.conditions || []).some(c => c.kind === 'festival'), 'undo ends the condition');
+    fresh(); r = dmAct('set_condition', {region: 'Nowhere', kind: 'festival', reason: 'x'}); ok(r.ok === false && /set_condition takes: region/.test(r.error) && /region must be a region/.test(r.error), 'set_condition with a bad region is refused with its contract');
+    fresh(); const freeZ = ZONES.find((n, i) => !(S.conditions || []).some(c => c.z === i)); r = dmAct('start_event', {kind: 'festival', region: freeZ, reason: 'harvest'}); ok(r.ok && entry('start_event').detail.by === 'dm-agent', 'start_event: a festival' + (r.ok ? '' : ': ' + r.error));
+    S.worldEvent = null; S.conditions = (S.conditions || []).filter(c => !c.lever); S.levers.active = S.levers.active.filter(x => x.name !== 'start_event'); fresh(); r = dmAct('start_event', {kind: 'earthquake', region: freeZ, reason: 'x'}); ok(r.ok === false && /unknown event kind/.test(r.error), 'start_event with an unknown kind is refused: ' + r.error);
+    fresh(); r = dmAct('nudge_relation', {a: 'x', b: 'y', delta: 1, reason: 'cool'}); ok(r.ok === false && /not available yet|nudge_relation/.test(r.error) && entry('nudge_relation').detail.by === 'dm-agent', 'nudge_relation goes through the lever path (and says so when its system is missing)');
+    fresh(); r = dmAct('create_site', {theme: 'barrow', region: ZONES[0], band: 3, reason: 'a barrow'}); ok(entry('create_site').detail.by === 'dm-agent', 'create_site goes through the lever path: ' + (r.ok ? 'made' : r.error.slice(0, 60)));
+    {const {MOBS} = await import('../src/data/mobs.js'), base = Object.keys(MOBS).find(k => MOBS[k].z === zoneAt(spot.x, spot.y) && !k.includes('@')) || Object.keys(MOBS)[0];
+      fresh(); r = dmAct('custom_foe', {base, near: 'fellowship', name: 'Old Testfang', levels: 1, reason: 'a legend'}); const mob = r.ok && S.mobs.find(m => m.lever === r.id);
+      ok(r.ok && mob && entry('custom_foe').detail.by === 'dm-agent', 'custom_foe: a special foe near them' + (r.ok ? '' : ': ' + r.error));
+      if (mob) {mob.target = h0; r = dmAct('undo', {reason: 'no foe'}); ok(r.ok === false && /already in a fight/.test(r.error), 'undo will not remove a foe already in a fight'); mob.target = null;
+        r = dmAct('undo', {reason: 'no foe'}); ok(r.ok && mob.gone, 'undo removes a foe not yet in a fight')}}
+    fresh(); r = dmAct('retire_person', {npc: 'Nobody At All', reason: 'x'}); ok(r.ok === false && /retire_person takes: npc/.test(r.error), 'retire_person with an unknown person is refused with its contract');
+    fresh(); r = dmAct('place_person', {role: 'peddler', near: 'fellowship', name: 'Pell Gone', reason: 'a visitor'}); const pg = r.npc; const ch0 = (S.chronicle || []).length;
+    r = dmAct('retire_person', {npc: String(pg), how: 'left for the coast', reason: 'their errand is done'}); ok(r.ok && !S.wanderers.some(w => w.id === pg) && entry('retire_npc').detail.by === 'dm-agent', 'retire_person sends them away' + (r.ok ? '' : ': ' + r.error));
+    r = dmAct('retire_person', {npc: S.npcs[0].name, reason: 'townsfolk'}); ok(r.ok === false && /townsfolk keep their posts/.test(r.error), 'retire_person refuses townsfolk');
+    fresh(); r = dmAct('post_hook', {town: hall, tpl: 'deliver', reason: 'a parcel'}); const wh = r.effect.hook;
+    r = dmAct('withdraw_hook', {hook: wh, why: 'the parcel was found', reason: 'solved'}); ok(r.ok && r.why && !S.adventures.some(h => h.id === wh), 'withdraw_hook takes an open job down');
+    r = dmAct('withdraw_hook', {hook: wh, reason: 'again'}); ok(r.ok === false && /no such hook/.test(r.error) && /withdraw_hook takes: hook/.test(r.error), 'withdraw_hook of a gone job is refused');
+    fresh(); S.dmAgent.day.pulls = DMA.PULLS_PER_DAY; r = dmAct('set_condition', {region: ZONES[0], kind: 'festival', reason: 'cap'}); ok(r.ok === false && /pulled \d+ levers today/.test(r.error), 'the flat lever tools share the daily pull cap');
+    fresh(); S.conditions = []; S.worldEvent = null; if (S.staged) {S.staged.day = {d: -1, n: 0, nw: 0}; if (S.staged.cur) S.staged.cur.phase = 'done'}}
   // the DM agent's own daily cap
   S.dmAgent.day.pulls = DMA.PULLS_PER_DAY;
   for (const [t, a] of [['post_hook', {town: hall, tpl: 'deliver', reason: 'cap'}], ['place_person', {role: 'peddler', near: hall, reason: 'cap'}], ['mark_place', {kind: 'cairn_door', near: LANDMARKS[0].name, reason: 'cap'}]]) {
