@@ -501,8 +501,19 @@ const T={
     const err=specBlock(a);need(!err,err);need(id,'Not a path for a '+a.cls+'. Yours: '+specChoices(a).map(x=>x.name).join(', ')+'.');
     const r=chooseSpec(a,id.id,{by:'agent'});need(r.ok,r.error);return {ok:true,result:r.text}},
   drop(a,{index,count}){const r=dropEntry(a,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
-  give(a,{index,hero_id,to,count}){need((hero_id!=null&&hero_id!=='')||(to!=null&&to!==''),'Give to whom? hero_id or to (a companion\'s name). '+friendList(a));
-    const b=friendBy(a,hero_id,to);need(b&&b!==a&&b.state!=='dead','No such companion'+givenAs(hero_id,to)+'. '+friendList(a));const r=giveItem(a,b,Number(index),count);need(r.ok,r.error);return {ok:true,result:r.text}},
+  give(a,{index,item,hero_id,to,count}){need((hero_id!=null&&hero_id!=='')||(to!=null&&to!==''),'Give to whom? hero_id or to (a companion\'s name). '+friendList(a));
+    const b=friendBy(a,hero_id,to);need(b&&b!==a&&b.state!=='dead','No such companion'+givenAs(hero_id,to)+'. '+friendList(a));
+    // the item by pack index or by name (#412): "Redroot Draught", "potion", "2 rations", a partial name
+    const hasI=index!=null&&index!=='',hasN=item!=null&&String(item).trim()!=='';let i,n=count;
+    if(hasI&&!hasN&&!Number.isFinite(Number(index)))item=String(index); // a name sent as the index
+    else if(hasI&&!hasN){i=Number(index)}
+    if(item!=null&&String(item).trim()!==''){const m=packFind(a,item);need(!m.error,m.error);
+      if(hasI&&hasN&&Number.isFinite(Number(index))&&Number(index)!==m.index&&!m.all.includes(Number(index)))
+        throw new Rule('Pack index '+index+' is not "'+clean(String(item),40)+'" ('+m.name+' is at index '+m.index+'). Give index or item, not both. '+packList(a));
+      i=m.index;if((n==null||n==='')&&m.count!=null)n=m.count}
+    need(i!=null&&Number.isFinite(i),'Give what? item (a name, like "Redroot Draught" or "2 rations") or index (from inventory). '+packList(a));
+    need(invOf(a).list[i],'No pack entry '+i+'. '+packList(a));
+    const r=giveItem(a,b,i,n==null||n===''?1:n);need(r.ok,r.error);return {ok:true,result:r.text}},
   move_to(a,{target}){need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
     need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);
@@ -750,6 +761,31 @@ function secondBreak(a,P,reason){const had=P.votes[a.id]&&P.votes[a.id].v==='yes
     note:P.status==='open'?'The proposal to break camp was already open, so your call counts as a yes. The leader settles it when all have voted.':P.result}}
 function propText(P){const v=Object.keys(P.votes||{}).length;return '#'+P.id+' '+P.kind+': '+P.details+' (by '+P.byName+', '+v+' vote'+(v===1?'':'s')+(P.status!=='open'?', '+P.result:'')+')'}
 function cmdText(c){if(c.kind==='move')return (c.flee?'flee to ':'walk to ')+c.label;if(c.kind==='hunt')return 'hunt ('+c.n+' kills)';if(c.kind==='rest')return 'rest until '+Math.round(c.until)+' game-min';if(c.kind==='fight')return 'fight #'+c.id;return c.kind}
+// A pack entry by name (#412, give): case-insensitive, exact name first, then a consumable kind ("potion") or a
+// partial name; "2 rations" or "all rations" also sets the count. Copied inventory text ("Redroot Draught x3 (...)") reads too.
+// Returns {index, all, name, count?} or {error} listing the matches (with pack indexes) or what the pack holds.
+const entryName=e=>isGear(e)?e.name:e.id;
+const normName=t=>String(t).toLowerCase().replace(/\([^)]*\)?/g,' ').replace(/\[[^\]]*\]?/g,' ').replace(/[^a-z0-9' ]+/g,' ').replace(/'/g,'').replace(/\s+/g,' ').trim();
+const oneWord=w=>w.length>3&&/ies$/.test(w)?w.slice(0,-3)+'y':w.length>3&&/(ch|sh|x|ss)es$/.test(w)?w.slice(0,-2):w.length>3&&/[^s]s$/.test(w)?w.slice(0,-1):w;
+const singular=t=>t.split(' ').map(oneWord).join(' ');
+function packList(a){const L=invOf(a).list;if(!L.length)return 'Your pack is empty.';
+  return 'Your pack: '+L.slice(0,5).map((e,i)=>i+': '+entryName(e)+(isGear(e)?'':' x'+e.n)).join('; ')+(L.length>5?'; and '+(L.length-5)+' more (inventory lists them all)':'')+'.'}
+function packFind(a,raw){let q=normName(raw),count;
+  const lead=q.match(/^(\d+|all|every|my)\s+(?:of\s+)?(?:the\s+|my\s+)?(.+)$/);if(lead){if(/^\d+$/.test(lead[1]))count=Number(lead[1]);else if(lead[1]!=='my')count='all';q=lead[2]}
+  q=q.replace(/\s+x\s*\d+$/,'').replace(/^(a|an|the|some)\s+/,'').trim();
+  if(!q)return {error:'Give what? Name an item from your pack. '+packList(a)};
+  const L=invOf(a).list,sq=singular(q),words=sq.split(' ');const tiers=[[],[],[]];
+  L.forEach((e,i)=>{const nm=normName(entryName(e)),sn=singular(nm);
+    if(nm===q||sn===sq)tiers[0].push(i);
+    else if(!isGear(e)&&e.kind==='use'&&USES[e.id]&&(USES[e.id].kind===sq||USES[e.id].kind===q))tiers[1].push(i);
+    else if(sn.includes(sq)||words.every(w=>sn.split(' ').some(x=>x.startsWith(w))))tiers[2].push(i)});
+  let hit=tiers.find(t=>t.length);
+  if(!hit)return {error:'You carry nothing called "'+clean(String(raw),40)+'". '+packList(a)};
+  if(hit.length>1){const free=hit.filter(i=>isGear(L[i])||L[i].kind!=='quest');if(free.length)hit=free} // a quest item never goes, so it never makes a name ambiguous
+  const first=L[hit[0]],same=hit.every(i=>!isGear(L[i])&&!isGear(first)&&L[i].id===first.id); // two stacks of one thing are one thing
+  if(hit.length>1&&!same)return {error:'"'+clean(String(raw),40)+'" matches '+hit.length+' things in your pack: '+hit.map(i=>i+': '+entryName(L[i])+(isGear(L[i])?'':' x'+L[i].n)).join('; ')+'. Give the one you mean by its index, or its full name.'};
+  if(count==='all')count=isGear(first)?1:hit.reduce((t,i)=>t+L[i].n,0);
+  return {index:hit[0],all:hit,name:entryName(first),count}}
 function entryText(e){if(isGear(e))return itemText(e)+(e.cls&&!e.epic?' ['+e.cls+' gear]':'')+', sells '+SELL_VALUE(e)+'g';
   if(e.kind==='good')return e.id+' x'+e.n+(GOODS[e.id]?' (sells for about '+price(e.id)+'g each)':'');
   if(e.kind==='use')return e.id+' x'+e.n+' ('+useLines(e.id).map(l=>l[1]).join('; ')+')';
