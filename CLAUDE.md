@@ -685,6 +685,12 @@ Owner setup:
    hero's session file; later runs need only `--hero`), or `npm run fellowship -- --provider openai --model <id>`.
    Tags read like `gpt-6-luna · openai`.
 
+Model lists (#677): `OPENAI_MODELS=a,b` in `.env` makes `providers.openai.models` exactly that list, in that order, checked once against the
+key's `/models` (an id the key cannot use is dropped, with `dropped` in `/health` and a line in the relay log); unset, the key's chat models come
+cheapest first from `PRICES` (unpriced last). `/health` also carries `prices` (per 1M tokens) and the pickers label each model ("gpt-6-luna · $0.10 /
+$0.50 per 1M", "price unknown"). `ANTHROPIC_MODELS` narrows the Claude list the same way, `HF_MODELS` as before (one helper, `modelListFrom` in
+`scripts/providers/index.mjs`). Recommended: `OPENAI_MODELS=gpt-6-luna,gpt-6.1-terra`.
+
 Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pick any model from your
 own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
 1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
