@@ -40,7 +40,7 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - name: Fetch origin/main for the append-only table check
-        run: git fetch --depth=1 origin main:refs/remotes/origin/main
+        run: git fetch --depth=1 origin +main:refs/remotes/origin/main
       - {name: Static build, run: npm run build}
       - {name: Repo rules (layering and name literals and append-only tables and CI coverage), run: npm run rulescheck}
       - {name: World spec snapshot check, run: npm run worldcheck}
@@ -194,7 +194,7 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - name: Fetch origin/main
-        run: git fetch --depth=1 origin main:refs/remotes/origin/main
+        run: git fetch --depth=1 origin +main:refs/remotes/origin/main
       - name: Compare the seeded hashes with main
         id: hashes
         run: |
