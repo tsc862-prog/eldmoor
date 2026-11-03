@@ -1,11 +1,11 @@
 ---
 name: hf-provider
-description: #552 Hugging Face router as mind provider `hf`: openaiAdapter options, free-tier rules, touchpoints, hfcheck
+description: #552 provider `huggingface` (router): openaiAdapter options, curated verified model list, estimated_cost, json_object fallback, touchpoints, hfcheck
 metadata:
   type: project
 ---
 
-`hf` = `openaiAdapter` with options (`HF_OPTS`/`hfAdapter` in scripts/providers/openai.mjs): name/label/keyName HF_TOKEN, `free` (cost 0, known; 402 or 429 about credits -> kind `quota`, "hf: free allowance used up"), `sendEffort:false`, `tokensField:'max_tokens'`, no model filter. Base https://router.huggingface.co/v1, env HF_TOKEN / HF_MODEL / HF_BASE_URL.
+`huggingface` = `openaiAdapter` with options (`HF_OPTS`/`hfAdapter`, scripts/providers/openai.mjs): HF_TOKEN, `max_tokens`, no reasoning_effort, cost from `usage.estimated_cost` (unknown when absent), `models` curated (`HF_MODELS` default four, `HF_MODELS=` env overrides via `hfModelList`) verified once by `status()` with one tiny call per model (drops `model_not_supported`), strict json_schema then json_object fallback (`withSchema`), 400 about tools -> `noTools` (JSON-actions loop). 402 / credit 429 -> kind quota "Hugging Face allowance used up (recharge is off)...".
 
-**Why:** owner keeps no payment method and wants the free allowance used fully (#177); never send provider/billing options.
-**How to apply:** touchpoints are providers/index.mjs (PROVIDERS, makeProviders), relay makeLimits (hf, RELAY_HF_CONCURRENCY 2), agent-sessions RUNNER_PROVIDERS, agent-chat `openaiRunner` (routes rs.provider==='hf'), agent-player/fellowship (`openai||hf`), brain.js MIND_PROVIDERS, setup.js SETUP_PROVIDERS, UI pickers (hfModels, first 80). hf is not local (runners keep budget/turn caps) and takes no Claude slot. Test: `npm run hfcheck` (own mock router, free port). Pitfalls: checkStart returns `{req}`; heroes need `alive:true`; python edits of CRLF files are fine in text mode.
+**Why:** owner keeps recharge off; the free allowance is shared with the art pipeline (#177), so never send billing options and do not spend calls: runners (`hfRunner` in agent-chat.mjs) skip the status check; only the relay verifies at start.
+**How to apply:** touchpoints providers/index.mjs, relay makeLimits (RELAY_HF_CONCURRENCY 4) and start log, agent-sessions RUNNER_PROVIDERS, agent-player/fellowship (`openai||huggingface`), brain.js, setup.js, UI pickers (hfModels). Not local, no Claude slot. `paidLine` prints 6 decimals under $0.0001. Test: `npm run hfcheck`. Pitfalls: checkStart returns `{req}`, heroes need `alive:true`; long bash heredocs with quotes can break, use the Write tool; python text-mode edits of CRLF files keep CRLF.

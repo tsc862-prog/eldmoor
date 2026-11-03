@@ -28,6 +28,7 @@
     "agent": "node scripts/agent-player.mjs",
     "playcheck": "node scripts/playcheck.mjs",
     "localcheck": "node scripts/localcheck.mjs",
+    "orderscheck": "node scripts/orderscheck.mjs",
     "scenewaitcheck": "node scripts/scenewaitcheck.mjs",
     "openaicheck": "node scripts/openaicheck.mjs",
     "hfcheck": "node scripts/hfcheck.mjs",

@@ -10,6 +10,7 @@ import {followedCompany,followedMembers,companyLabel,followNext} from './company
 import {regionBox,regionList,getRegion,setRegion} from './region.js'; // region view (#430)
 import {renderConditions} from './conditions.js';
 import {refreshChronicle} from './fellowship.js';
+import {hoverHero} from './purposeview.js'; // the map tooltip: what the hovered hero is trying to do (#534)
 
 // Follow Fellowship (#68), Follow <company> (#456): frame every living member of the followed company who is out in the
 // open (not inside the Crypt).
@@ -52,6 +53,9 @@ function initRegionPicker(){const vr=$('vReg');if(!vr)return;
   for(const r of regionList()){const o=document.createElement('option');o.value=String(r.i);o.textContent=r.name;vr.append(o)}
   vr.onchange=()=>pickRegion(vr.value)}
 
+// The living hero nearest a world point (tiles), within a pick radius that shrinks as the view zooms in; null for none.
+export function heroAt(wx,wy){let best=null,bd=cam.view==='follow'?1.2:Math.max(1.2,2.2/cam.zoom);
+  for(const a of S.agents){if(a.hidden||a.state==='dead')continue;const d=Math.hypot(a.x-wx,a.y-.4-wy);if(d<bd){bd=d;best=a}}return best}
 export function select(a){cam.sel=a;S.pinned=a;if(a){cam.camX=a.x*T;cam.camY=a.y*T}renderHero();renderTops();if(cam.view==='follow')setView('follow')}
 
 export function initControls(renderer){R=renderer;
@@ -73,7 +77,10 @@ export function initControls(renderer){R=renderer;
   // drag: pan; a press that moves less than DRAG_PX stays a click
   let drag=null,dragged=false;
   scr.addEventListener('pointerdown',e=>{if(e.button!==undefined&&e.button!==0)return;drag={id:e.pointerId,x:e.clientX,y:e.clientY};dragged=false});
-  scr.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  // hover (a mouse only): the nearest hero under the pointer gets the purpose tooltip and its map overlays (render/purposefx.js)
+  scr.addEventListener('pointermove',e=>{if(drag||(e.pointerType&&e.pointerType!=='mouse'))return;const w=renderer.screenToWorld(e.clientX,e.clientY);hoverHero(heroAt(w.x,w.y),e.clientX,e.clientY)});
+  scr.addEventListener('pointerleave',()=>hoverHero(null));
+  scr.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;if(cam.hover)hoverHero(null);const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
     if(!dragged){if(Math.hypot(dx,dy)<DRAG_PX)return;dragged=true;scr.classList.add('drag');if(scr.setPointerCapture)try{scr.setPointerCapture(e.pointerId)}catch(_){}}
     renderer.panBy(dx,dy);drag.x=e.clientX;drag.y=e.clientY});
   const endDrag=e=>{if(!drag||(e.pointerId!==undefined&&e.pointerId!==drag.id))return;drag=null;scr.classList.remove('drag')};
@@ -81,7 +88,7 @@ export function initControls(renderer){R=renderer;
   // click: select the nearest hero (the pick radius shrinks as the view zooms in)
   scr.addEventListener('click',e=>{if(dragged){dragged=false;return}
     const {x:wx,y:wy}=renderer.screenToWorld(e.clientX,e.clientY);
-    let best=null,bd=cam.view==='follow'?1.2:Math.max(1.2,2.2/cam.zoom);for(const a of S.agents){if(a.hidden||a.state==='dead')continue;const d=Math.hypot(a.x-wx,a.y-.4-wy);if(d<bd){bd=d;best=a}}
+    const best=heroAt(wx,wy);
     if(best){select(best);setView('follow')}else{const L=cryptAt(wx,wy);if(L)openDungeon(L)}});
   syncView();
 }

@@ -113,6 +113,9 @@ for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2], [3, 1], [-3, -1], [1, 
   r = DMA.dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'shrine', at: {x: Math.round(A.x) + dx, y: Math.round(A.y) + dy}, name: 'Quiet Cairn'}, reason: 'Mark ' + (SECRETS.placeReason || plant('placeReason'))});
   if (r.ok) {markedPlace = 'Quiet Cairn'; break}}
 ok(markedPlace && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.placeReason)), 'a DM place marked beside A, its reason in the DM log' + (markedPlace ? '' : ': ' + r.error));
+// give_item (issue #524): the hero is told what it holds, never the DM's reason; the reason stays in the DM log
+r = DMA.dmAct('give_item', {hero: A.name, item: 'Shrine Candle-Stub', reason: 'Gift ' + plant('giftReason')});
+ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.giftReason)) && (A.playEv || []).some(e => /Candle-Stub/.test(e.text) && !e.text.includes(SECRETS.giftReason)), 'a given item: the hero is told of the item, its reason is in the DM log only' + (r.ok ? '' : ': ' + r.error));
 // a staged scene (issue #132): its reason is the DM's own (DM log only); the frame and the person's want are said in the game
 r = DMA.dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A drover waits by the road with a lame ox.', cast: {role: 'drover', want: 'a hand with the ox'}, reason: 'Stage ' + plant('stageReason')});
 ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), 'a staged scene\'s reason in the DM log' + (r.ok ? '' : ': ' + r.error));

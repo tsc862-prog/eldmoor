@@ -38,13 +38,13 @@ export const dmReady=()=>dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInf
 export const readyWord=(link,r)=>!(link==='connected'||link==='waiting')?null:r&&r.state?r.state:'claimed';
 export const agentReadyWord=a=>readyWord(agentLink(a),agentReady(a));
 export const dmReadyWord=()=>readyWord(dmLink(),dmReady());
-export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':r.provider==='hf'?' · hf':''):null};
+export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':r.provider==='huggingface'?' · huggingface':''):null};
 setAgentTag(a=>runnerTag(a)); // agent chat lines carry the runner's model in the Chat tab (#126)
 // The DM seat (issue #66): open it and the page answers the DM agent's tools (sim/dmagent.js) over the
 // same WebSocket. dmLink(): 'connected' | 'waiting' | 'none' as for a hero, or the bridge's own state.
 export function dmSeatSet(on){setDmSeat(on);if(on){connect();hello()}else{hello();if(!wanted())disconnect()}}
 export const dmLink=()=>!dmSeatOn()?'off':status!=='connected'?status:dmLinkInfo&&dmLinkInfo.link||'none';
-export const dmRunnerTag=()=>{const r=dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.runner;return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':r.provider==='hf'?' · hf':''):null};
+export const dmRunnerTag=()=>{const r=dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.runner;return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':r.provider==='huggingface'?' · huggingface':''):null};
 export const LINK_TEXT={connected:'agent connected',waiting:'agent waiting (runner idle)',none:'no runner',connecting:'connecting to the relay…',offline:'relay offline',off:'not connected'};
 
 // Make a an agent-played hero (alongside any others) and connect.

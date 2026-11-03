@@ -152,9 +152,12 @@ export function talkText(b) {
 
 // Your own notes that bear on the moment (issue #155, src/sim/notebook.js relevant): title and id only, so the model can
 // recall them. Every turn prompt carries it (local turns inside briefText, Claude turns on their own); '' when none.
+// The roads line (brief.roads, src/sim/lore.js roadsLine, #539): what the hero knows of where it is, where it goes and the places it knows to fear.
+export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
+What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return personaNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return personaNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.
 export const personaNote = b => b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '';
