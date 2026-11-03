@@ -591,7 +591,9 @@ button.tbtn.danger{border-color:var(--red)}
 .dmftop{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;min-width:0}
 .dmflbl{font-family:var(--px);font-size:9px;color:var(--gold);letter-spacing:.06em}
 .dmfmind{color:var(--dim);overflow-wrap:anywhere}
-.dmftop .mini{margin-left:auto}
+.dmfalert{color:#ff9b8a;border-left:3px solid #ff9b8a;padding-left:6px;overflow-wrap:anywhere}
+.dmfalert[hidden]{display:none}
+.dmseat .dmnotes{margin-left:auto}
 .dmfdo{color:#d9c27a;overflow-wrap:anywhere}
 .dmfdo:empty,.dmfstg:empty{display:none}
 .dmfact,.dmffol,.dmfstg{color:var(--dim);overflow-wrap:anywhere}
