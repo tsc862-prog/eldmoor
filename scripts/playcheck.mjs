@@ -643,7 +643,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   r = P.playerAct(h.id, 'hunt', {});
   ok(!r.ok && r.error.includes(hc.name) && r.error.includes('hunt {where: "') && /walks you to/.test(r.error), 'hunt in town names the nearest known ground and the call: ' + r.error);
   r = P.playerAct(h.id, 'hunt', {where: 'Glimmerdeep Hollow'});
-  ok(!r.ok && /Hunting grounds you know: /.test(r.error) && (r.error.split('Hunting grounds you know: ')[1] || '').split(',').length <= 3, 'hunt at an unknown place is refused with up to three known grounds: ' + r.error);
+  ok(!r.ok && /Hunting grounds you know: /.test(r.error) && (r.error.split('Hunting grounds you know: ')[1] || '').split('.')[0].split(',').length <= 3, 'hunt at an unknown place is refused with up to three known grounds: ' + r.error);
   r = P.playerAct(h.id, 'hunt', {where: ground + ' Webspinner Grounds'}); h.pq = [];
   ok(r.ok && r.note && r.note.includes(ground), 'a known region inside longer words reads as that region, as move_to does: ' + (r.note || r.error));
   r = P.playerAct(h.id, 'hunt', {where: 'inn'});
