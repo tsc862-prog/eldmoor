@@ -674,6 +674,49 @@ console.log('start gate: ready, not just claimed');
   sc.rd=null;TB.renderTable(1);ok(!box.querySelector('.tci')&&!/ROUND/.test(t())&&!box.classList.contains('tcombat'),'combat banner: a scene without rounds keeps the plain banner');
   S.table=null;TB.renderTable(1);ok(box.hidden,'combat banner: hidden when the scene closes');
   S.table=keep;m.hp=mhp;m.target=null;ms.forEach((a,i)=>a.hp=hp0[i]);T.TABLE.speed=spd}}
+// Table banner legibility (#471): a short pixel title, the tags as chips, the question as body text, one row per member.
+{const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),RL=await import('../src/sim/runlink.js'),{classColor}=await import('../src/core/colors.js');
+  const S=sim.S,box=$('tbanner'),ms=sim.fellows().filter(a=>a.state!=='dead');
+  if(ms.length<3)console.log('  skip banner legibility (no Fellowship)');else{
+  const keep=S.table,det='make camp here by the old road and start our watch before the moon is up';
+  ok(TB.sceneHead('decision','Put to the party: '+det).head==='Vote · make camp here…','banner: the title is the kind plus a few words ('+TB.sceneHead('decision','Put to the party: '+det).head+')');
+  ok(TB.sceneHead('ambush','Ambush: Gorran').head==='Ambush · Gorran'&&!TB.sceneHead('ambush','Ambush: Gorran').cut,'banner: a short title is not cut');
+  ok(TB.sceneHead('check',"The Miller's Debt: a check").head==="Check · The Miller's Debt…",'banner: a long title stops at its colon');
+  RL.setRunnerLinks(a=>a===ms[3]?'none':'waiting');RL.setReflexAck(()=>false);
+  const w={};ms.forEach((a,i)=>w[a.id]={t:i===2?9:3.2,nudge:0});
+  const sc={id:9101,kind:'decision',title:'Put to the party: '+det,frame:[ms[0],' puts it to the party: ',{t:det,c:'gd'},'. Everyone votes.'],ids:ms.map(a=>a.id),i:0,phase:'turn',t:0,
+    acts:{[ms[0].id]:{k:'yes',line:'',by:'agent'},[ms[1].id]:{k:'no',line:'Taking the watch instead',by:'agent'}},beats:[],ctx:{prop:-1},pause:true,at:0,all:true,w};
+  S.table=sc;TB.renderTable(1);
+  const tt=box.querySelector('.tt'),th=box.querySelector('.tth');
+  ok(!box.hidden&&th&&th.textContent==='VOTE · MAKE CAMP HERE…','banner: the pixel title is short ('+(th&&th.textContent)+')');
+  ok(tt&&!/WORLD PAUSED|EVERYONE ANSWERS/.test(tt.textContent)&&!!tt.querySelector('[data-scene]'),'banner: the title row holds only the title and the scene map button');
+  const chips=[...box.querySelectorAll('.tchips .tp')].map(e=>e.textContent);
+  ok(chips.join('|')==='WORLD PAUSED|EVERYONE ANSWERS','banner: the tags are chips on their own row ('+chips.join(', ')+')');
+  const tf=box.querySelector('.tf');ok(tf&&tf.textContent.includes(det)&&!box.querySelector('.tq'),'banner: the whole question is the body text, said once');
+  const rows=[...box.querySelectorAll('.tmem .tmr')],rd=TB.memberRows();
+  ok(rows.length===ms.length&&rd.length===ms.length,'banner: one row per member ('+rows.length+')');
+  ok(/Answers 2\/5/.test(box.querySelector('.tmh').textContent.replace(String(ms.length),'5')),'banner: the rows count the answers ('+box.querySelector('.tmh').textContent+')');
+  ok(rows[0].querySelector('.tmn').textContent===ms[0].name&&rows[0].querySelector('.tmn').style.color===classColor(ms[0].cls)&&rows[0].querySelector('.tmsw').style.background===classColor(ms[0].cls),'banner: a row names the member in its class colour');
+  ok(rows[0].querySelector('.tma.yes').textContent==='YES'&&rows[1].querySelector('.tma.no').textContent==='NO','banner: a row shows the vote cast (YES, NO)');
+  ok(/Taking the watch instead/.test(rows[1].querySelector('.tmq').textContent),'banner: a row carries what the member said');
+  ok(rows[2].classList.contains('st-wait')&&/reflex in 111 s/.test(rows[2].querySelector('.tmt').textContent),'banner: a nudged member shows the reflex timer ('+rows[2].querySelector('.tmt').textContent+')');
+  ok(rows[4]&&rows[4].classList.contains('st-wait')&&rows[4].querySelector('.tmt').textContent==='4 s','banner: a thinking member shows how long ('+(rows[4]&&rows[4].querySelector('.tmt').textContent)+')');
+  ok(rows[3].classList.contains('st-held')&&/no runner/.test(rows[3].textContent),'banner: a member with no runner says so');
+  ok(!/answered · waiting for/.test(box.textContent)&&/has no runner: Restart runner/.test((box.querySelector('.tl')||{}).textContent||''),'banner: the waiting list is not said twice (rows only); what to do about a missing runner stays');
+  const r0=rows[0];r0._same=1;w[ms[4].id].t=5.4;TB.renderTable(1);
+  ok(box.querySelector('.tmr')._same===1&&box.querySelectorAll('.tmr')[4].querySelector('.tmt').textContent==='6 s','banner: a ticking timer patches the row in place');
+  sc.acts[ms[2].id]={k:'yes',line:'',by:'reflex'};TB.renderTable(1);
+  ok(/reflex/.test(box.querySelectorAll('.tmr')[2].querySelector('.tmby').textContent),'banner: a reflex answer is marked as one');
+  // a turn-by-turn scene without rounds: the order as rows, the one acting marked
+  const sc2={id:9102,kind:'site',title:'The Sunken Crypt',frame:['The stair goes down.'],ids:ms.map(a=>a.id),i:1,phase:'turn',t:2,acts:{[ms[0].id]:{k:'press',line:'',by:'agent'}},beats:[],ctx:{},pause:true,at:0};
+  S.table=sc2;TB.renderTable(1);const r2=[...box.querySelectorAll('.tmr')];
+  ok(box.querySelector('.tmh').textContent==='Turn order'&&r2[1].classList.contains('st-turn')&&/▶/.test(r2[1].textContent)&&r2[2].classList.contains('st-next'),'banner: a turn-by-turn scene lists the turn order with the one acting marked');
+  ok(/Press on/.test(r2[0].querySelector('.tma').textContent),'banner: an option chosen shows in words ('+r2[0].querySelector('.tma').textContent+')');
+  ok(!box.querySelector('.tchips .tall'),'banner: no EVERYONE ANSWERS chip in a turn-by-turn scene');
+  // a cut title whose words the frame does not carry: the whole title as body text
+  const sc3={...sc,id:9103,kind:'check',title:"The Miller's Debt: a sound under the mill floor",frame:['The DM calls for a roll.'],acts:{},w:{}};S.table=sc3;TB.renderTable(1);
+  ok(box.querySelector('.tq')&&/a sound under the mill floor/.test(box.querySelector('.tq').textContent),'banner: a cut title still shows in full as body text');
+  RL.setRunnerLinks(null);RL.setReflexAck(null);S.table=keep;TB.renderTable(1)}}
 // ---- chat in the left column on the three-column layout (owner request) ----
 {const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
   const keep=window.innerWidth;ok(!!sim.S.fellowship,'chat left: a Fellowship stands');

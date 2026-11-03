@@ -19,7 +19,8 @@ import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
 import {sprite,SPR,heroSprite,npcSprite,outlined} from './sprites.js';
 import {classColor,toneOf,toneName,DISP} from '../core/colors.js';
-import {drawBubbles} from './bubbles.js';
+import {drawBubbles,bubbleBoxes} from './bubbles.js';
+import {bubbleVisible} from '../core/chatview.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
@@ -33,6 +34,7 @@ import {TEXT,MARK,LIGHT} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
+const SCENE_LIGHT=[255,232,196]; // the light under a Table scene's people at night (#471)
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
@@ -100,13 +102,18 @@ export function createRenderer(cv,screenEl){
   function dispoRing(x,y,w,d){ctx.strokeStyle=(DISP[d]||DISP.neutral).color;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
   // Label queue: lab() records, flushLabels() places by priority with overlap rejection in screen px.
   // The queue and box arrays are reused across frames.
-  const LQ=[],POOL=[],BOX=[];
-  function lab(t,x,y,col,css,pri){const n=LQ.length,L=POOL[n]||(POOL[n]={});L.t=t;L.x=x;L.y=y;L.col=col;L.css=css;L.pri=pri;L.i=n;LQ.push(L)}
-  function flushLabels(sc){LQ.sort((a,b)=>b.pri-a.pri||a.i-b.i);BOX.length=0;
-    for(const L of LQ){const s=L.css*cam.dpr;ctx.font=s+'px VT323, monospace';const w=ctx.measureText(L.t).width,sx=L.x*sc+cam.offX,sy=L.y*sc+cam.offY;
-      const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12;let hit=false;
-      for(let k=0;k<BOX.length;k+=4)if(BOX[k]<x1&&BOX[k+2]>x0&&BOX[k+1]<y1&&BOX[k+3]>y0){hit=true;break}
-      if(hit)continue;BOX.push(x0,y0,x1,y1);drawText(L.t,L.x,L.y,L.col,L.css)}}
+  // A label may carry other heights to try before it is dropped (alt, world y) and a dark plate behind it (pl): a Table
+  // scene's people stack instead of vanishing and stay readable at night (#471). RES: screen boxes kept clear (bubbles).
+  const LQ=[],POOL=[],BOX=[],RES=[];
+  function lab(t,x,y,col,css,pri,alt,pl){const n=LQ.length,L=POOL[n]||(POOL[n]={});L.t=t;L.x=x;L.y=y;L.col=col;L.css=css;L.pri=pri;L.i=n;L.alt=alt||null;L.pl=!!pl;LQ.push(L)}
+  function flushLabels(sc){LQ.sort((a,b)=>b.pri-a.pri||a.i-b.i);BOX.length=0;for(const v of RES)BOX.push(v);RES.length=0;
+    for(const L of LQ){const s=L.css*cam.dpr;ctx.font=s+'px VT323, monospace';const w=ctx.measureText(L.t).width,sx=L.x*sc+cam.offX;
+      for(let j=-1;j<(L.alt?L.alt.length:0);j++){const y=j<0?L.y:L.alt[j],sy=y*sc+cam.offY;
+        const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12;let hit=false;
+        for(let k=0;k<BOX.length;k+=4)if(BOX[k]<x1&&BOX[k+2]>x0&&BOX[k+1]<y1&&BOX[k+3]>y0){hit=true;break}
+        if(hit)continue;BOX.push(x0,y0,x1,y1);
+        if(L.pl){ctx.fillStyle='rgba(8,10,20,.82)';ctx.fillRect((x0-cam.offX)/sc,(y0-1-cam.offY)/sc,(x1-x0)/sc,(y1-y0+3)/sc)}
+        drawText(L.t,L.x,y,L.col,L.css);break}}}
   // A radial light of colour c=[r,g,b] and strength a at world (x,y), radius r (lighter pass).
   function glow(x,y,r,c,a){const g=ctx.createRadialGradient(x,y,0,x,y,r),k=c[0]+','+c[1]+','+c[2];g.addColorStop(0,'rgba('+k+','+a+')');g.addColorStop(1,'rgba('+k+',0)');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
   function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()}
@@ -201,6 +208,7 @@ export function createRenderer(cv,screenEl){
         glow(L.x*T,L.y*T,r*(L.big?1:.94+.06*fl),LIGHT.torch,dk*.7*fl)}
       for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,40))glow(x,y,26,LIGHT.crypt,dk*(.35+.1*Math.sin(now*1.3)))}
       drawCampLight(ctx,S,dk,inView);
+      if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-7,22,SCENE_LIGHT,dk*.6); // a Table scene's people keep a pool of light at night (#471)
       ctx.globalCompositeOperation='source-over'}
     drawSpells(ctx,1,close,inView,fxNow); // spell effects in the air, over the night wash: they carry their own light (#374)
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
@@ -219,10 +227,14 @@ export function createRenderer(cv,screenEl){
         lab(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
     else{
       if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))lab(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14,7);
-      const fel=S.fellowship?new Set(Object.values(S.fellowship.slots).map(String)):null;
+      const fel=S.fellowship?new Set(Object.values(S.fellowship.slots).map(String)):null,lh=14*cam.dpr/sc;
+      if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
-        lab((dead?'† ':'')+a.name,a.x*T,a.y*T-17-condLift(a,cam),a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14,a===sel?10:fel&&fel.has(String(a.id))?8:dead?1:4)}
+        const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),y=a.y*T-17-condLift(a,cam);
+        if(inCut&&a.bubble&&a.bubble.life>0&&bubbleVisible(a,S))continue; // its bubble names it already: one label per member
+        if(inCut){lab(a.name,a.x*T,y,a.fellow?classColor(a.cls):FAC[a.fac].color,14,a.fellow?9:8,[y-lh*1.05,a.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
+        lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14,a===sel?10:fel&&fel.has(String(a.id))?8:dead?1:4)}
       for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,S.fellowship,S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
         lab(toneName(p,t),p.x*T,p.y*T-17-condLift(p,cam),t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
       for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-17-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
@@ -232,7 +244,7 @@ export function createRenderer(cv,screenEl){
     if(S.fellowship){const px1=cam.dpr/sc,F=S.fellowship,mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
       if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
         ctx.save();ctx.strokeStyle=MARK.party;ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
-      for(const a of mem){if(!inView(a.x*T,a.y*T,40))continue;const col=classColor(a.cls); // a member's marker: its class colour (one palette, core/colors.js)
+      for(const a of mem){if(!inView(a.x*T,a.y*T,40)||(cut&&cut.members.includes(a)))continue;const col=classColor(a.cls); // in a Table scene the ring and the class-coloured name mark them (#471) // a member's marker: its class colour (one palette, core/colors.js)
         const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-(close?17:14)-(close?16:15)*px1-m-condLift(a,cam);
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();

@@ -14,3 +14,4 @@
 - [Conditions panel](conditions_panel.md): #366 world panel from S.conditions, mounted by layout.js, road first via focus()
 - [Sheet faces](sheet_faces.md): #376 portraits in the sheet column headers, canvas Map kept across rebuilds
 - [Life view](life_view.md): #389 Side by side / Life switch on the sheet, lifeview.js reads tiersView (never tiersOf)
+- [Table legibility](table_legibility.md): #471 banner title/chips/rows, sceneHead in core, scene-cut label plates and stacking
