@@ -2,7 +2,10 @@
 //   town     an agent-played hero idle in town (no order, no scene) carries on: rests at the inn when hurt, sells its loot,
 //            buys a potion or two, then walks out to a ground that fits its level and hunts; never takes a job, Crypt or raid
 //   follow   a company member whose leader stays in town waits for them first, then hunts near town on its own
-//   silent   a level-1 agent hero left alone in town (no runner turns at all) reaches level 3 within 24 game hours
+//   caution  (#487) autopilot rests before heading out, heads home when hurt (rests in the field only with nothing close),
+//            hunts only what it can take on its own ground, breaks off sooner from a foe above it; agent orders untouched
+//   silent   a level-1 agent hero left alone in town (no runner turns at all) lives and reaches level 2 within 24 game hours
+//            (level 3 before #487; the wary autopilot levels about as fast as a scripted level-1 hero, 2-3 a day)
 //   edge     a walk (move_to "explore <dir>", hunt {where}) into a region 5+ levels above the hero stops at its edge once,
 //            with the danger in words; the same call again (or force: "yes") goes on; leaving a party leader says so
 //   world    background heroes are never touched (their seeded hash: node scripts/professioncheck.mjs --hash)
@@ -46,7 +49,7 @@ const goal = A.pq[0] && A.pq[0].label;
 ok(goal && ZONES.some((n, z) => n === goal && band(z)[0] <= A.lvl + 1), `to a ground that fits level ${A.lvl}: ${goal}`);
 ok((A.playEv || []).some(e => /^Autopilot: heading out/.test(e.text)), 'and the hero is told so in an event');
 run(12);
-ok(!inTownRect(A) && ['hunt', 'travel', 'fight'].includes(A.state), `it leaves town (${A.state} in ${ZONES[zoneAt(A.x, A.y)]})`);
+ok(!inTownRect(A) && ['hunt', 'travel', 'fight', 'return'].includes(A.state), `it leaves town (${A.state} in ${ZONES[zoneAt(A.x, A.y)]})`);
 ok(!A.adv && !A.quest && !A.cryptOk && !A.raidOk, 'and takes no job, bounty, Crypt or raid on its own');
 
 fresh(A); A.hp = maxHp(A) * .3; idle(A); run(.05);
@@ -108,11 +111,41 @@ r = act(A, 'move_to', {target: Math.round(spot.x) + ',' + Math.round(spot.y + 20
 ok(r.ok && r.apart && new RegExp(B.name).test(r.apart), `walking away from the leader says so: ${r.apart || JSON.stringify(r)}`);
 S.parties = S.parties.filter(p => p !== p2); A.party = B.party = null; A.pq = [];
 
+// ---------------------------------------------------------------- caution (#487)
+console.log('caution');
+fresh(A); A.hp = maxHp(A) * .75; idle(A); run(.05);
+ok((A.pq || [])[0] && A.pq[0].kind === 'rest' && /before heading out/.test(A.pq[0].auto), 'not near full health in town: rests before heading out');
+// a clear patch of Thornvale (the level-1 region) away from both towns
+let field0 = null;
+for (let y = 2; y < 48 && !field0; y++) for (let x = 2; x < 76 && !field0; x++) {const z0 = zoneAt(x, y); if (!band(z0) || band(z0)[0] > 1) continue;
+  if (CITY.some(t => Math.hypot(t.gate.x - x, t.gate.y - y) < 10 || (x >= t.x0 - 4 && x <= t.x1 + 4 && y >= t.y0 - 4 && y <= t.y1 + 4))) continue; let edge = false; for (let d = -8; d <= 8 && !edge; d += 2) if (zoneAt(x + d, y) !== z0 || zoneAt(x, y + d) !== z0) edge = true; if (!edge) field0 = {x, y, z: z0}}
+const cleared = new Set(), clearAround = p => {for (const m of S.mobs) if (dist(m, p) < 16) {m.alive = false; m.gone = true; m.target = null; cleared.add(m)} rebuild()};
+const place = (type, lvl, dx) => {const m = S.mobs.find(x => x.type === type && !(x.elite || x.named) && !x.placed); m.placed = true; m.alive = true; m.gone = false; m.hidden = false; m.target = null; m.lvl = lvl; m.hp = m.maxhp;
+  m.x = field0.x + dx; m.y = field0.y; m.home = {x: m.x, y: m.y}; m.dest = null; m.scan = 999; m.wait = 999; return m};
+const inField = (hp = 1) => {fresh(A); for (const p of S.parties) p.mem = p.mem.filter(b => b !== A); A.traits = []; A.x = field0.x; A.y = field0.y; A.state = 'hunt'; A.hp = maxHp(A) * hp; idle(A); clearAround(field0)};
+ok(!!field0, `a clear field in ${field0 && ZONES[field0.z]}`);
+inField(.4); run(.05);
+ok((A.pq || [])[0] && A.pq[0].kind === 'move' && /too hurt/.test(A.pq[0].auto), `badly hurt in the field: heads home ("${A.pq[0] && A.pq[0].auto}")`);
+inField(.55); run(.05);
+ok((A.pq || [])[0] && A.pq[0].kind === 'rest', 'hurt with no creature close: rests where it stands');
+inField(.55); place('wolf', 1, 3); rebuild(); run(.05);
+ok((A.pq || [])[0] && A.pq[0].kind === 'move' && /creatures close/.test(A.pq[0].auto), 'hurt with a creature close: heads home to heal instead');
+inField(); const big = place('spider', 6, 1.2), small = place('wolf', 1, 2.4); rebuild(); const k0 = A.kills; run(.8);
+ok((A.target === small || (!small.alive && A.kills > k0)) && A.target !== big && big.target !== A, `a wary hunt leaves a creature far above it alone and takes the one it can (${A.target ? A.target.type + ' ' + A.target.lvl : A.kills > k0 ? 'slew the wolf' : 'none'})`);
+ok((A.pq || [])[0] && A.pq[0].wary && A.pq[0].ground === field0.z, 'the hunt keeps to its ground');
+inField(); big.alive = true; big.gone = false; big.hp = big.maxhp; big.target = A; A.target = big; A.state = 'fight'; big.x = A.x + .5; big.y = A.y; A.hp = maxHp(A) * .45; rebuild(); run(.05);
+ok(A.state === 'return' && A.target == null, 'jumped by a creature far above it: autopilot breaks off below half health');
+inField(); A.lore = null; place('spider', 6, 1.5); rebuild(); A.playActAt = S.gameMin; A.playIdle = false; r = act(A, 'hunt', {}); run(.8);
+ok(r.ok && A.target && A.target.type === 'spider', 'the agent\'s own hunt order is untouched: it takes what the agent sends it at');
+A.target = null; A.pq = []; A.state = 'hunt';
+for (const m of S.mobs) if (m.placed) {m.placed = false; m.scan = 0; m.wait = 0}
+for (const m of cleared) {m.alive = true; m.gone = false; m.target = null; m.hp = m.maxhp} rebuild(); // the field as it was
+
 // ---------------------------------------------------------------- silent
 console.log('silent');
 fresh(A); idle(A); const l0 = A.lvl, t0 = S.gameMin;
 while (S.gameMin - t0 < 24 * 60 && A.state !== 'dead') {run(5); if (!A.playIdle) idle(A)}
-ok(A.state !== 'dead' && A.lvl >= 3, `a level-1 agent hero left alone in town reaches level ${A.lvl} in 24 game hours (${A.kills} kills, ${A.state} in ${ZONES[zoneAt(A.x, A.y)]})`);
+ok(A.state !== 'dead' && A.lvl >= 2, `a level-1 agent hero left alone in town reaches level ${A.lvl} in 24 game hours (${A.kills} kills, ${A.state} in ${ZONES[zoneAt(A.x, A.y)]})`);
 ok(!A.adv && !A.quest, 'still no job or bounty it did not take');
 void l0; void xpNeed;
 
