@@ -193,8 +193,10 @@ export function heroMemory(a,tool,args){const b=heroBook(a),M=b.M;args=args||{};
 // scene, the heir of a solo), else the next joiner of the writer's class, else the next joiner once PARTY.LETTER_DAYS
 // game days have passed since the fall. An older save's letters (keyed by slot) read the same way.
 const lettersOf=C=>C&&C.letters||null;
-function syncLetter(a){const C=companyOf(a);if(!C||a.state==='dead')return;const L=C.letters||(C.letters={});
+function syncLetter(a){const C=companyOf(a);if(!C||a.state==='dead')return;
   const n=(a.memories.notes||[]).filter(x=>x.pin&&(x.tags||[]).includes('letter')).sort((p,q)=>(q.up||0)-(p.up||0)||q.id-p.id)[0];
+  if(!n&&!C.letters)return; // letters only where one was ever sealed (a save carries no empty map)
+  const L=C.letters||(C.letters={});
   for(const k of Object.keys(L))if(L[k]&&L[k].from===a.id&&k!==String(a.id))delete L[k]; // an older save's slot key
   if(n)L[a.id]={from:a.id,name:a.name,cls:a.cls,...(a.fellowRole?{slot:a.fellowRole}:{}),title:n.title,text:n.text,day:n.day};else delete L[a.id]}
 const joinedAt=(C,a)=>C.joined&&C.joined[a.id]!=null?C.joined[a.id]:null;

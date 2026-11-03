@@ -43,3 +43,4 @@
 - [Town autopilot #466/#465](town_autopilot.md) — autopilot acts in town (inn, sell, potions, hunt fitting ground); danger-edge stop 5+ levels up, force/repeat
 - [Autopilot caution #487](autopilot_caution.md) — wary autopilot hunts (ground, prey <= lvl+2, flee .22/.5, home when hurt); 5/40 -> 39/40 green survival
 - [Leave and companions #443](leave_companions.md) — leave_party for_good in offers.js, companions tool, a.seen last-seen record, AWAY leave
+- [Arrival and session zero #452/#437](arrival_session_zero.md) — arrival/opening scenes gated on hasLinks, DM prep caps and host flag, newcomer voiced by DM, letters per company

@@ -343,6 +343,9 @@ const D2 = rest[2], slot = D2.fellowRole;
 const lt = act(D2, 'remember', {title: 'To whoever comes next', text: 'Trust the healer and keep to the river road.', tags: ['letter']});
 const lp = act(D2, 'pin', {id: lt.remembered.id}); ok(lp.ok && /letter/.test(lp.note || ''), 'pin a note tagged "letter": sealed for the Fellowship');
 HE.fall(D2, 'a test of the hardcore rule'); run(2);
+// a world with runner links (the relay section above) refills the seat through an arrival scene at the next town or camp (#452): bring them home
+for (let k = 0; k < 60 * 60 && S.fellowship.slots[slot] == null; k++) {if (S.fellowship.arrivals && !S.table) for (const x of S.agents.filter(b => b.fellow && b.state !== 'dead')) {const g = homeOf(x).gate; x.state = 'town'; x.townStep = 1; x.x = g.x - 1; x.y = g.y; x.hidden = false} step(1 / 60)}
+while (S.table) step(1 / 60);
 const nh = S.agents.find(x => x.id === S.fellowship.slots[slot]);
 ok(nh && nh !== D2 && nh.player, `${D2.name} fell; ${nh && nh.name} takes the place, agent-played`);
 ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');

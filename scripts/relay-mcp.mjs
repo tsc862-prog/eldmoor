@@ -89,13 +89,13 @@ const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(
 // A hero id from a header, query or body value: a positive integer, null when absent, NaN when bad.
 export const heroParam = v => v == null || v === '' ? null : /^\d{1,9}$/.test(String(v).trim()) ? Number(String(v).trim()) : NaN;
 const cleanHeroes = list => (Array.isArray(list) ? list : []).filter(h => h && typeof h === 'object' && Number.isInteger(h.id))
-  .slice(0, 64).map(h => ({id: h.id, name: String(h.name || '').slice(0, 40), alive: h.alive !== false, ...(h.fellow ? {fellow: true, role: String(h.role || '').slice(0, 12) || null, lead: !!h.lead, table: !!h.table} : {})})); // fellow/role/lead: Fellowship members (#68), for npm run fellowship
+  .slice(0, 64).map(h => ({id: h.id, name: String(h.name || '').slice(0, 40), alive: h.alive !== false, ...(Number.isInteger(h.succeeds) ? {succeeds: h.succeeds} : {}), ...(h.fellow ? {fellow: true, role: String(h.role || '').slice(0, 12) || null, lead: !!h.lead, table: !!h.table} : {})})); // fellow/role/lead: Fellowship members (#68), for npm run fellowship
 // The hero a call without a hero id goes to (the old single-hero path).
 export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes.length - 1] || null);
 
 // ---- the browser backend: one page at a time over a WebSocket, serving all its agent heroes ----
 export function browserBackend({log = () => {}, onBehavior = null, onWorld = null, onMirror = null} = {}) {
-  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false;
+  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false, dmPrep = null;
   const waiting = new Map();
   const send = o => {if (sock && sock.readyState === 1) sock.send(JSON.stringify(o))};
   return {
@@ -111,15 +111,16 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
           if (k !== heroes.map(h => h.id + ':' + h.name + ':' + h.alive).join(',')) log(`[play] agent heroes: ${next.length ? next.map(h => h.name + ' #' + h.id + (h.alive ? '' : ' (dead)')).join(', ') : 'none'}`);
           heroes = next; lastLinks = '';
           const seat = m.dm === true || !!(m.dm && m.dm.seat); if (seat !== dmSeat) log(`[play] DM seat ${seat ? 'open' : 'closed'}`); dmSeat = seat;
+          dmPrep = m.dm && m.dm.prep && typeof m.dm.prep === 'object' ? {state: String(m.dm.prep.state || '').slice(0, 12), kind: String(m.dm.prep.kind || '').slice(0, 12), calls: Number(m.dm.prep.calls) || 0, max_calls: Number(m.dm.prep.max_calls) || 0, ...(m.dm.prep.why ? {why: String(m.dm.prep.why).slice(0, 12)} : {})} : null; // the DM's prep (#437)
           if (onWorld && typeof m.world === 'string') onWorld(m.world, typeof m.worldId === 'string' ? m.worldId : null); // the behavior logs' folder (issue #129)
         } else if (m.type === 'behavior' && onBehavior && typeof m.kind === 'string') {try {onBehavior(m.kind, m.rec)} catch (e) {log('[play] behavior log: ' + e.message)}}
         else if (m.type === 'mirror' && onMirror && Array.isArray(m.seats)) {try {onMirror(m.seats)} catch (e) {log('[play] memory mirror: ' + e.message)}} // agent memories as Markdown (#155); written, never read back
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
       });
-      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; log('[play] game page disconnected');
+      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; dmPrep = null; log('[play] game page disconnected');
         for (const [id, w] of waiting) {clearTimeout(w.t); w.res(paused('page went away')); waiting.delete(id)}});
     },
-    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat}),
+    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat, ...(dmPrep ? {dmPrep} : {})}),
     // A DM tool call (issue #66), answered by the page through src/sim/dmagent.js.
     dmCall(tool, args) {
       if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
@@ -215,7 +216,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const readies = new Map(); // hero id | DM_KEY -> {runner, state, model?, ms?, at, error?}
   const readyOf = id => {const c = claimOf(id), r = readies.get(id); if (!c || !r || r.runner !== c.runner) return null; const {runner, ...o} = r; return o};
   const readyMap = () => Object.fromEntries((be.info().heroes || []).map(h => [h.id, readyOf(h.id)]).filter(e => e[1]));
-  const dmInfo = () => {const r = runnerOf(DM_KEY), rd = readyOf(DM_KEY); return {seat: dmOpen(), link: linkOf(DM_KEY), claimed: !!claimOf(DM_KEY), ...(r ? {runner: r} : {}), ...(rd ? {ready: rd} : {})}};
+  const dmInfo = () => {const r = runnerOf(DM_KEY), rd = readyOf(DM_KEY), pp = be.info().dmPrep; return {seat: dmOpen(), link: linkOf(DM_KEY), claimed: !!claimOf(DM_KEY), ...(r ? {runner: r} : {}), ...(rd ? {ready: rd} : {}), ...(pp ? {prep: pp} : {})}}; // prep: the DM's prep before the table opens (#437)
   const pushLinks = () => {if (be.links) be.links(links(), runners(), dmInfo(), readyMap())};
   const resolve = hero => hero != null ? hero : (defaultHero(be.info().heroes || []) || {}).id ?? null;
 

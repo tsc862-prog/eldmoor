@@ -14,7 +14,10 @@ export const PREP={MS:90000,CALLS:20,SHORT:.5}; // DM_PREP_MS, DM_PREP_CALLS (ow
 const IDLE={table_call:1,npc_call:1,prep_done:1,turn_end:1};
 let P=null; // {kind, since, calls, maxCalls, ms, state:'running'|'done', why, ended}
 let last=null; // the last prep that ended, for the panels and the checks
-let clock=()=>Date.now();
+let clock=()=>Date.now(),host=false;
+// A host that holds the world for the prep (the page's run gate, play-headless --wait-ready) says so, so a DM runner knows
+// to wait for it before its first turn; with no such host no prep ever starts and the runner does not wait.
+export const setPrepHost=v=>{host=!!v};
 export const setPrepClock=f=>{clock=typeof f==='function'?f:()=>Date.now()}; // test seam
 export const prepActive=()=>!!(P&&P.state==='running');
 // Start a prep: kind 'opening' (full caps) or 'resume' (half). Returns the view. A running prep is left as it is.
@@ -30,7 +33,8 @@ export function prepCall(tool){if(!prepActive()||IDLE[tool])return;P.calls++;if(
 export function prepTick(){if(prepActive()&&clock()-P.since>=P.ms)endPrep('time')}
 // What the seat, the banner and /play/health see.
 export function prepView(){const now=clock();
-  if(prepActive())return {state:'running',kind:P.kind,calls:P.calls,max_calls:P.maxCalls,seconds:Math.round((now-P.since)/1000),max_seconds:Math.round(P.ms/1000),seconds_left:Math.max(0,Math.round((P.ms-(now-P.since))/1000))};
-  return last?{state:'done',kind:last.kind,why:last.why,calls:last.calls,max_calls:last.maxCalls,seconds:Math.round((last.ended-last.since)/1000)}:{state:'idle'}}
+  if(prepActive())return {host:true,state:'running',kind:P.kind,calls:P.calls,max_calls:P.maxCalls,seconds:Math.round((now-P.since)/1000),max_seconds:Math.round(P.ms/1000),seconds_left:Math.max(0,Math.round((P.ms-(now-P.since))/1000))};
+  const h=host?{host:true}:{};
+  return last?{...h,state:'done',kind:last.kind,why:last.why,calls:last.calls,max_calls:last.maxCalls,seconds:Math.round((last.ended-last.since)/1000)}:{...h,state:'idle'}}
 export const lastPrep=()=>last?{...last}:null;
 export function resetPrep(){P=null;last=null}

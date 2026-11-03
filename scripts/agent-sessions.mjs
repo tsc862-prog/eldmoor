@@ -57,6 +57,14 @@ export function runnerSettings(sess, overrides = {}, defaults = {}) {
   return {runner: r, changed};
 }
 
+// A recruit who took a fallen hero's place (issue #452: /play/health heroes[].succeeds) plays with the fallen hero's runner
+// settings until it has its own: read from the predecessor's session file (never written). Returns true when it took them.
+export function inheritRunner(sess, fromId, logs = LOGS) {
+  if (!sess || (sess.runner && typeof sess.runner === 'object') || !Number.isInteger(fromId)) return false;
+  const s = readJson(sessionPath(fromId, logs)); if (!s || !s.runner || typeof s.runner !== 'object') return false;
+  sess.runner = {...s.runner}; sess.inherited = fromId; return true;
+}
+
 // Which hero a runner takes, from /play/health's heroes ([{id,name,alive,link}]):
 // --hero NAME|ID names one (case-insensitive name, or id); without it the first living hero
 // with no live runner (link 'none'). Returns {hero} or {error} with the list to choose from.

@@ -389,6 +389,30 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Session zero and arrivals (#437, #452, `src/sim/arrival.js`, `src/sim/prep.js`): one mechanism, two Table scenes played
+  everyone at once (`PLAY` `opening`/`arrival`). Only in a world whose host reports runner links (the page, play-headless;
+  `hasLinks`), so `npm run sim` and the seeded hashes are unchanged. **Session zero**: a setup world (`init({setup})`, or
+  `play-headless --session-zero`) plans one opening per company (`S.opening.queue`, the followed company first). Once the start
+  gate is ready the DM **prepares** while the world stays held: one bounded turn (`PREP.MS` 90 s, `PREP.CALLS` 20 tool calls,
+  counted in `dmagent.js`; idle table polls and `prep_done` do not count; half of both on Continue or for a DM runner started
+  again), ended by `prep_done`, a cap, Start anyway or the seat going away. The banner reads "THE DM PREPARES THE TABLE · 12 S ·
+  3/20 CALLS" with Start anyway, the DM frame "preparing", `/play/health` `dm.prep`, `dm_status` `prep` (`host`, `opening_due`).
+  No prep with the seat closed, without a ready DM runner, or with no host holding the world (play-headless without
+  `--wait-ready`); a DM runner waits for the prep only when `prep.host` says one will come. Then the opening scene opens
+  ("SESSION ZERO · <company>"): the DM frames it through `table_call` (its call carries the campaign premise and opening beats,
+  DM-only), else the scripted DM from the hall, the day, the oaths, the hall's first job and the gate captain's writ; members
+  introduce themselves (a silent agent's reflex shows its persona line) and the leader may yield or be challenged; the
+  introductions count as met (`talk.js`), the leader is told the first move. A solo's opening is the gate captain and a rumour.
+  **Arrivals** (owner decision 5 on PR #406): a fallen member's seat is refilled through a scene at the company's next camp or
+  town, never in the Crypt, a raid or a fight (`C.arrivals`; the world's background recruit of that class is reserved). The
+  recruit (the fallen member's class, `SEED_BEHIND` under the lowest living member, agent-played, `a.succeeds` = the fallen id)
+  is made and placed at the camp's edge or the town gate as the scene opens; the DM voices them (`table_call` voice, then the
+  oath), the scripted DM when the seat is closed or silent; members greet, question, object (spoken, not a veto) or keep
+  silent; the oath is sworn at the table (`campaign('recruit')`). Runners give the newcomer the fallen member's runner settings
+  (`inheritRunner`, `/play/health` `heroes[].succeeds`). A solo's death leaves an heir at level 1 at home, a company of one,
+  with a short opening (owner answer 2). Letters (`C.letters`, any company, keyed by writer): to whoever takes the writer's
+  place, else the next joiner of their class, else the next joiner after `PARTY.LETTER_DAYS` 3. `tablecheck` (its `--arrival`
+  child), `dmcheck` (prep caps, Continue, no host, the frame), `uismoke` (the banner).
 - Dungeon crawl (#65, `src/sim/crawl.js`): when the Fellowship is in the group that goes down a dungeon whose spec lists
   `rooms` (`CRYPT.rooms`, from the landmark in `src/world/spec.js`; add chambers as data: `{id, name, frame, foes:[{type, n,
   name?, hits?, atk?}], lvl, hit, rounds, boss?}`, `type` a bestiary key incl. site foes), the run goes room by room instead of the one

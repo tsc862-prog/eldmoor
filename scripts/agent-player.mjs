@@ -48,7 +48,7 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
-import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
+import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, inheritRunner, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn} from './local-agent.mjs';
@@ -251,6 +251,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const moved = migrateLegacy(); if (moved) console.log('[agent] ' + moved);
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
+  if (inheritRunner(sess, pick.hero && pick.hero.succeeds)) console.log(`[agent] plays with the runner settings of the hero whose place it took (#${pick.hero.succeeds}): ${sess.runner.provider} ${sess.runner.model || ''}`); // #452
   sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
