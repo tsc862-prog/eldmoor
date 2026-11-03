@@ -112,13 +112,17 @@ export function killMob(a,m){actKill(a,m);m.alive=false;m.respawn=22+rnd()*20;m.
   if(a.player)loreSlain(a,m);
   a.target=null;a.state='hunt'}
 
-// Permanent death: graveyard entry, a recruit is scheduled, old graves recycled.
+// Permanent death: graveyard entry, a recruit is scheduled, old graves recycled. An agent hero's will executes here, on the
+// final death only (sim/will.js, #631; set by sim/index.js); scripted heroes have none.
+let fallHook=null;
+export function setFallHook(f){fallHook=typeof f==='function'?f:null}
 export function fall(a,cause){
   a.deaths++;a.state='dead';a.cause=cause;a.diedAt=clockStr();a.hp=0;a.target=null;a.raid=false;a.moving=false;a.hidden=false;a.dest=null;
   if(a.party)disband(a.party);
   for(const m of S.mobs)if(m.target===a)m.target=null;
   S.facStats[a.fac].fallen++;
   S.fallen.unshift({name:a.name,fac:a.fac,lvl:a.lvl,cls:a.cls,cause,t:a.diedAt});if(S.fallen.length>15)S.fallen.pop();
+  if(a.will&&fallHook)fallHook(a);
   goalEvent(a,'died');
   if(a.lvl>=10&&!/^lost in/.test(cause))timeline('death',a,' fell at level '+a.lvl+' ('+cause+').'+(a.lvl>=15?' A legend ends.':''));
   S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8});
