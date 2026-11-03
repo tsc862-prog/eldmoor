@@ -72,6 +72,7 @@ import {DM_TOOLS} from '../src/data/dm-tools.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
+export const DM_WAIT_MAX = 25000; // the longest long poll of table_call / npc_call / ruling_call {wait_ms} (#680; src/sim/player-host.js DM_WAIT.MAX)
 // What an agent hears while the game page is away (#399): a pause in the world, not advice to a human ("Press Agent ...", which
 // models read as something they must do). offline:true marks it for the runners (not the model's mistake, scripts/local-agent.mjs).
 export const PAUSED = 'The world is paused or reloading; wait and try again (your runner picks up when it is back).';
@@ -129,8 +130,9 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
       if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
       if (!dmSeat) return Promise.resolve({ok: false, error: 'The DM seat is closed: the page opens it for the world it plays.', offline: true});
       const id = ++seq;
+      const held = Math.min(DM_WAIT_MAX, Math.max(0, Number(args && args.wait_ms) || 0)); // a long-polled voice call (#680) is held by the page up to wait_ms
       return new Promise(res => {
-        const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, CALL_MS);
+        const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, CALL_MS + held);
         waiting.set(id, {res, t});
         send({type: 'dmcall', id, tool, args: args || {}});
       });

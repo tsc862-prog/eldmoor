@@ -54,6 +54,7 @@
     "toolwincheck": "node scripts/toolwincheck.mjs",
     "paymarkcheck": "node scripts/paymarkcheck.mjs",
     "attemptcheck": "node scripts/attemptcheck.mjs",
+    "voicecheck": "node scripts/voicecheck.mjs",
     "wakecheck": "node scripts/wakecheck.mjs",
     "actcheck": "node scripts/actcheck.mjs",
     "tiercheck": "node scripts/tiercheck.mjs",

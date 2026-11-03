@@ -832,8 +832,10 @@ console.log('NPC conversations');
   away(); clear(); const inn = npc('innkeeper'); beside(A, inn); TK.CONV.VOICE_MS = 60;
   dmAct('npc_call'); r = act(A, 'talk', {target: 'innkeeper', text: 'Any news?'});
   ok(r.waiting, 'the DM is polling: the line waits');
+  dmAct('npc_call'); // picked up: its budget starts now (#680)
   const tw = Date.now(); while (Date.now() - tw < 90) {} step(1 / 60);
   ok(S.talks.stats.late >= 1 && (A.chat || []).some(e => e.talk && e.from.id === inn.id && e.by === 'scripted'), 'past the budget the scripted DM answers for them (late counted)');
+  ok(S.dmLog.some(e => e.kind === 'talk' && e.detail && e.detail.fill && e.detail.late === 'no answer in time'), 'the scripted answer is logged: no answer in time (#680)');
   TK.CONV.VOICE_MS = 8000;
   {away(); clear(); const bd = npc('bard'); beside(A, bd); dmAct('npc_call', {budget_s: 20}); act(A, 'talk', {target: 'bard', text: 'A song?'});
     const cw = TK.convWith(bd); ok(cw && cw.wait && cw.wait.ms === 20000, 'a slower voice asks for a longer wait (npc_call budget_s 20 -> 20 s)');
