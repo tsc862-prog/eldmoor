@@ -20,5 +20,5 @@ the last safe point once (`a.playDare {z,t}`), warning in words (biome FEEL, pla
 warn then allow, never a hard block. `apartNote` says when a walk leaves a non-following leader out of shout range.
 
 **How to apply:** only `a.player` heroes reach this code, so the seeded hash (professioncheck --hash) must stay equal to
-main. Fixtures that walk a low hero across a high region now get `stops_short` first (lorecheck had one; call again).
+main. Fixtures that walk a low hero across a high region now get `stops_short` first (lorecheck had one; call again). Fixtures that need a member idle/stuck in town must keep it there through its agent (behaviorcheck: runner orders rest hourly), since autopilot now walks out.
 Check: `npm run townpilotcheck`. Related: [[turn_hold]], [[learn_the_world]], [[emergent_parties]].
