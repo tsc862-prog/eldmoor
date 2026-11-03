@@ -536,7 +536,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const mem = SLT.slotted().ids.map(id => S.agents.find(x => x.id === id));
     // the game side first: no waiting out your own turn
     {{const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
-      const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0;
+      const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0; delete sc0.wk; // the scene set and its members woken (#682)
       const first = S.agents.find(x => x.id === sc0.ids[0]), second = S.agents.find(x => x.id === sc0.ids[1]);
       const w1 = sim.playerAct(first.id, 'wait', {minutes: 10}), w2 = sim.playerAct(second.id, 'wait', {minutes: 10});
       ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press(, attempt)?.( Since your last look|$)/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
@@ -548,6 +548,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const foe = S.mobs.find(m => m.alive && !m.gone && !m.elite), hunter = mem.find(a => movesOf(a).length) || mem[0];
       hunter.mcr = {}; // every ability ready this round (a world-dependent cooldown made this flaky)
       const sc1 = openScene('rescue', 'A test fight', ['A beast lunges.'], {hero: hunter.id, mob: foe.id});
+      sc1.phase = 'turn'; delete sc1.wk; // the scene set and its members woken (#682)
       const bk = paceBrief(hunter.id).brief.scene;
       ok(bk && bk.keys.includes('strike') && movesOf(hunter).some(id => bk.keys.includes(id)), `the forced turn's enum includes ready abilities by id (${hunter.cls}: ${bk && bk.keys.join(', ')})`);
       sc1.phase = 'turn'; sc1.i = 0; {const later = S.agents.find(x => x.id === sc1.ids[1]), w3 = sim.playerAct(later.id, 'wait', {minutes: 10});
