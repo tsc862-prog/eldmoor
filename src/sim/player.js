@@ -93,6 +93,7 @@ import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid,bestUse} from './inv.js'; // the pack (#124)
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
 import {attempt as attemptRuled} from './ruling.js'; // free actions ruled by the DM (#522)
+import {holdStart,holdAnswered} from './gambithold.js'; // a gambit hold stops the world until the agent acts (#630)
 import {worldHeld,holdLine} from './prep.js'; // the world held before play (#559)
 import {defineGambits,idlePick,fightRules,reflexPick,HOLD,gambitRec,ruleText,GAMBIT,gambitsView,setGambit,moveGambit,toggleGambit,dropGambit,resetGambits,onSafetyChange} from './gambits.js'; // the hero's own rules (#617)
 import {histNote} from './persona.js';
@@ -263,6 +264,7 @@ defineGambits({
     shout:(a,t,ctx)=>{const text=clean(t.text,120);if(!text||notEnglish(text)||!gOnce(a,ctx.rule,'s',GAMBIT.SHOUT_GAP))return null;const n=partySay(a,text);if(typeof n==='string')return null;
       const e=a.chat&&a.chat[a.chat.length-1];if(e)agentLine(a,e);return ctx.m?true:HOLD},
     wake_me:(a,t,ctx)=>{if(!gOnce(a,ctx.rule,'w',GAMBIT.WAKE_GAP))return null;ev(a,'Your rule calls you: '+ruleText(ctx.rule)+'.',2);return ctx.m?true:HOLD},
+    hold:(a,t,ctx)=>{if(!gOnce(a,ctx.rule,'h',GAMBIT.HOLD_GAP))return null;ev(a,'Your rule holds the world for you: '+ruleText(ctx.rule)+'. Act (any acting tool) to let it run on.',2);holdStart(a,ctx.rule);return ctx.m?true:HOLD}, // #630: wake_me that also stops the clock
     // ---- between turns ----
     follow_order:a=>a.hp>=maxHp(a)*PK.RETREAT*tm(a,'retreat')?standingFollow(a):null, // a standing follow order (#445): fall in behind them again
     follow_leader:(a,t,ctx)=>{if(ctx.field)return leaderOf(a)?HOLD:null; // a follower keeps to its leader out here (the follow state); one whose leader stayed in town hunts on
@@ -1372,7 +1374,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   const q0=a.pq&&a.pq[0];let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
-  if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
+  if(meta.act&&r&&r.ok!==false){holdAnswered(a);a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
     if((tool==='move_to'||tool==='hunt'||tool==='follow'||tool==='rest')&&a.intent&&!a.intent.done&&!a.intent.order){const c=a.pq&&a.pq[0];attachOrder(a,orderOf(a,c&&c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c,tool==='move_to'?args&&args.target:null))} // a command under an aim with none becomes its order (#535)
     if(tool==='follow'){const f=a.pq[0];a.playOrder={kind:'follow',id:f.id,until:f.until,h:f.h}}else if(a.playOrder&&a.playOrder.kind==='follow'&&(a.pq&&a.pq[0])!==q0)a.playOrder=null} // a new order ends a standing follow (#445) // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
