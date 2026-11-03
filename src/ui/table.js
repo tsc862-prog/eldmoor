@@ -103,7 +103,8 @@ export function combatView(){const sc=S.table;if(!sc||sc.rd==null)return null;co
   // the rolls of the round in play; at a round's start (nothing rolled yet) the last round's, marked as such
   let rd=sc.rd;if(rd>1&&!sc.beats.some(x=>(x.rd||1)===rd))rd--;
   const rolls=sc.beats.filter(x=>(x.rd||1)===rd).map(x=>({by:x.name,foe:x.by==='foe',text:x.text,res:x.res||'',r:x.roll||null,c:x.check||null}));
-  let ends=null;if(sc.phase==='outcome'){ends=[];const fell=(sc.fell||[]).map(byId).filter(Boolean).map(a=>a.name),back=sc.beats.filter(x=>x.k==='retreat').map(x=>x.name);
+  let ends=null;if(sc.phase==='outcome'&&sc.kind==='duel')ends=[[sc.summary||'The duel is over','win']]; // an honour duel has no foe (#633)
+  else if(sc.phase==='outcome'){ends=[];const fell=(sc.fell||[]).map(byId).filter(Boolean).map(a=>a.name),back=sc.beats.filter(x=>x.k==='retreat').map(x=>x.name);
     if(sc.end==='yield')ends.push(['The foe yields','win']);else if(sc.end==='fled')ends.push(['The foe fled','win']);else if(!f)ends.push(['The foe is down','win']);
     for(const n of fell)ends.push([n+' fell','loss']);for(const n of back)ends.push([n+' fell back','']);
     if(f&&!sc.end)ends.push([sc.rd>=TR.ROUNDS?TR.ROUNDS+' rounds: the fight goes on':'The foe still stands',''])}

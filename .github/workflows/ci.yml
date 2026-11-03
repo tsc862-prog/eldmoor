@@ -191,6 +191,7 @@ jobs:
       - {name: Tool quick wins, run: npm run toolwincheck}
       - {name: Pay and mark tools, run: npm run paymarkcheck}
       - {name: Hire tool, run: npm run hirecheck}
+      - {name: Challenge tool (honour duels at the table), run: npm run challengecheck}
       - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
       - {name: DM voices long-poll and answer in time (issue 680), run: npm run voicecheck}
       - {name: More turn triggers, run: npm run wakecheck}
