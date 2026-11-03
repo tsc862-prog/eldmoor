@@ -768,6 +768,10 @@ button.tbtn.danger{border-color:var(--red)}
 .scview .dgname{color:var(--gold)}
 .scwho .scp.gone{opacity:.5;text-decoration:line-through}
 @media (max-width:600px){.scview .scwho{display:flex;font-size:13px}.screen.scopen{aspect-ratio:auto;height:min(82vh,640px)}} /* a phone gets a taller map while a scene is shown */
+/* region picker in the View group (#430) */
+#vReg{font-family:var(--px);font-size:10px;color:var(--ink);background:var(--panel2);border:2px solid var(--edge);padding:8px 6px;max-width:100%;min-width:0;box-shadow:2px 2px 0 #05060c}
+#vReg:hover{border-color:var(--gold)}
+#vReg:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 /* setup page: Together / Apart switch and hero count (#454) */
 .sswitch{gap:8px}
 .sswitch .mini[aria-pressed="true"],.spresets .mini[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:var(--gold)}

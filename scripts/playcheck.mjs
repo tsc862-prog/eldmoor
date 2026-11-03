@@ -21,6 +21,7 @@ const {init, step, S, snapshot, restore, maxHp} = await import('../src/sim/index
 const {homeOf} = await import('../src/data/races.js');
 const {ADVENTURES: ADV} = await import('../src/data/adventures.js');
 const P = await import('../src/sim/player.js');
+(await import('../src/sim/table.js')).TABLE.mode = 'off'; // an agent solo gets Table scenes (#440, tested in tablecheck); this check is about the tools, so the world never pauses for one
 const {hostCall} = await import('../src/sim/player-host.js');
 const {CHOICE_MIN} = await import('../src/sim/player-choice.js');
 const {setDmPolicy} = await import('../src/sim/dm.js');

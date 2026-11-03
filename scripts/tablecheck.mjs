@@ -17,6 +17,9 @@
 //     ambush, meeting, trap, mystery, social); the cast meets the party and a paused scene opens;
 //     a mock DM answers every at-the-table call; a silent DM is filled by the scripted DM after
 //     its budget (then at once); no runner = no wait; 3x resolves at once; a save mid-scene; expiry
+//   - companies (#440, a child with a fresh world): solos get their own scenes (a rescue with the foe's round), two
+//     companies due in one tick open lowest id first and the other next tick from its queue, a company of two answers
+//     everyone-at-once in any order and resolves in join order, a solo's vote is refused
 //   - without a Fellowship, two seeded runs are identical (determinism)
 // Usage: npm run tablecheck   (TABLECHECK_SEED to vary the world)
 import {spawnSync} from 'node:child_process';
@@ -272,6 +275,115 @@ if (process.argv[2] === '--use') {
 }
 
 let fail = 0;
+// ---- scenes keyed by company (#440), in a child with a fresh world: node scripts/tablecheck.mjs --companies ----
+// Solos (companies of one) made by markPlayer, no Fellowship: a solo rescue with its foe's round, two companies due in
+// one tick (lower id first, the other queued for the next tick, its cooldown key kept), a stale queued moment dropped,
+// everyone at once for a company of two (any answer order, resolved in join order), a solo's one-answer scene and the
+// solo vote refusal.
+if (process.argv[2] === '--companies') {
+  const CO = await import('../src/sim/company.js'), INV = await import('../src/sim/inv.js');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
+  init({fellowship: false}); run(30);
+  const LINK = {}; SIM.setRunnerLinks(x => LINK[x.id] || 'none');
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  const pool = S.agents.filter(a => a.kind === 'hero' && a.fac === 0 && a.state !== 'dead' && a.state !== 'dungeon' && a.state !== 'raid').slice(0, 4);
+  const enemy = S.agents.find(a => a.kind === 'hero' && a.fac === 1 && a.state !== 'dead' && a.state !== 'dungeon' && a.state !== 'raid');
+  ok(pool.length === 4 && enemy, `four Concord heroes and a Warband foe to test with (${pool.map(a => a.name).join(', ')}; ${enemy && enemy.name})`);
+  for (const a of pool) {a.lvl = 8; a.hp = maxHp(a); P.markPlayer(a, true)}
+  const [X, Y, U, V] = pool, CX = CO.companyOf(X), CY = CO.companyOf(Y);
+  ok(CX && CY && CO.isSolo(CX) && CO.isSolo(CY) && CX.id < CY.id && !S.fellowship, `each agent hero is a solo company (${CX && CX.id}, ${CY && CY.id}); no Fellowship`);
+  ok(T.tableOn(), 'tableOn: any company counts, a Fellowship is not needed');
+  const home = homeOf(X).gate, spot = zonePoint(zoneFor(8, home), null, home);
+  for (const m of S.mobs) if (m.alive && dist(m, spot) < 20) {m.alive = false; m.gone = true}
+  const beast = () => {const m = S.mobs.find(q => q.alive && !q.gone && !q.elite && !q.used); m.used = true; m.x = spot.x + 1; m.y = spot.y; m.maxhp = 4000; m.hp = 4000; m.cd = 99; m.hit = .001; m.fledOnce = true; m.eff = {}; m.ab = []; return m};
+  const fightAt = (a, f, dx, low = .2) => {a.x = spot.x + dx; a.y = spot.y; a.hidden = false; a.dest = null; a.pq = []; a.state = f.kind === 'hero' ? 'duel' : 'fight'; a.target = f; f.target = a; a.hp = Math.round(maxHp(a) * low); a.eff = {}; a.mcr = {}; if (f.kind === 'mob') {f.x = a.x + 1; f.y = a.y}};
+  const close = () => {T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto'};
+  const toTurns = () => {let g = 0; while (S.table && S.table.phase === 'frame' && g++ < 600) step(1 / 60)};
+
+  // (a) a solo rescue at its own low HP: the foe's round, and every round option
+  INV.addUse(X, 'Redroot Draught', 1);
+  enemy.x = spot.x + 1; enemy.y = spot.y; enemy.hp = maxHp(enemy) * 3; enemy.state = 'duel'; enemy.target = X; enemy.hidden = false;
+  fightAt(X, enemy, 0); LINK[X.id] = 'connected';
+  T.tableTick(); let sc = S.table;
+  ok(sc && sc.kind === 'rescue' && sc.company === CX.id && sc.ids.length === 1 && sc.ids[0] === X.id && sc.pause, `a solo below ${Math.round(T.TABLE.RESCUE * 100)}% opens its own rescue scene (company ${sc && sc.company}, roster ${sc && sc.ids.map(id => S.agents.find(a => a.id === id).name)})`);
+  ok(sc && sc.foeAt != null && sc.rd === 1, 'the foe joins the one-member initiative order');
+  toTurns();
+  const keys = sc ? T.optionsFor(sc, X).map(o => o.k) : [];
+  const abil = keys.filter(k => !['strike', 'guard', 'heal', 'potion', 'parley', 'retreat'].includes(k) && !k.startsWith('use:'));
+  ok(['strike', 'guard', 'potion', 'parley', 'retreat'].every(k => keys.includes(k)) && abil.length > 0, `its options: ${keys.join(', ')}`);
+  const tv = P.playerAct(X.id, 'status').table;
+  ok(tv && tv.your_turn !== undefined && tv.options && tv.round, `the solo sees its table in status (round ${tv && tv.round})`);
+  const bn = T.bannerOf(); ok(bn && bn.company === CX.id && bn.solo === true, 'the banner names the scene\'s company (a solo)');
+  const dw = T.decisionsWaiting(); ok(dw.some(d => d.a === X && d.company === CX.id), 'decisionsWaiting carries the company');
+  ok(P.playerAct(X.id, 'scene_act', {option: 'strike', line: 'Not today.'}).ok, 'the solo strikes'); delete LINK[X.id]; // later rounds by reflex
+  {let g = 0; while (S.table && g++ < 60 * 30) step(1 / 60)}
+  ok(!S.table && sc.beats.some(b => b.by === 'foe') && sc.beats.some(b => b.id === X.id && b.by === 'agent'), `the foe's round is rolled: ${sc.beats.map(b => b.name + '=' + b.k).join(', ')}`);
+  ok(CX.log.some(e => e.kind === 'table') && (CX.tableStats || {}).scenes >= 1, 'the outcome lands in the solo company\'s own log and stats');
+  close(); enemy.state = 'hunt'; enemy.target = null; X.state = 'hunt'; X.target = null; // the duel would open an ambush scene next
+
+  // (b) two companies due in one tick: the lower id opens, the other waits in its queue and opens on the next tick the
+  // table is free (both agents live, so both come to the table)
+  T.TABLE.speed = 1; CX.tableSeen = {}; CY.tableSeen = {}; LINK[X.id] = 'connected'; LINK[Y.id] = 'connected';
+  const m1 = beast(), m2 = beast(); fightAt(X, m1, 0); fightAt(Y, m2, 3);
+  const g0 = (CX.tableStats || {}).scenes || 0;
+  T.tableTick();
+  ok(S.table && S.table.company === CX.id && (CX.tableStats || {}).scenes === g0 + 1 && !((CY.tableStats || {}).scenes), `tick 1: ${X.name}'s company (id ${CX.id}) opens first`);
+  ok(CY.tableQ && CY.tableQ.kind === 'rescue' && CY.tableSeen['rescue:' + Y.id] != null, `${Y.name}'s company waits in its queue, its cooldown key kept`);
+  const q0 = CY.tableQ; T.tableTick(); ok(CY.tableQ === q0 && S.table.company === CX.id, 'a company with a queued moment is not looked at again (no third), the open scene holds the table');
+  close(); fightAt(Y, m2, 3); T.tableTick();
+  ok(S.table && S.table.company === CY.id && !CY.tableQ && (CY.tableStats || {}).scenes === 1, 'next tick with the table free: the queued scene opens');
+  close();
+  {const has = (Cc, n) => Cc.log.some(e => e.kind === 'table' && JSON.stringify(e.parts).includes(n + ' is going down'));
+   ok(has(CY, Y.name) && !has(CX, Y.name) && has(CX, X.name), 'each scene lands in its own company\'s log')}
+  // a queued moment that went stale is dropped and its key unset
+  CX.tableSeen = {}; CY.tableSeen = {}; fightAt(X, m1, 0); fightAt(Y, m2, 3); T.tableTick();
+  ok(S.table && S.table.company === CX.id && CY.tableQ, 'with a paused scene open, the next company\'s moment waits in its queue');
+  close(); X.state = 'hunt'; X.target = null;
+  Y.hp = maxHp(Y); Y.state = 'hunt'; Y.target = null; T.tableTick();
+  ok(!CY.tableQ && CY.tableSeen['rescue:' + Y.id] == null && !S.table, 'a stale queued moment (out of the fight) is dropped, its cooldown key unset');
+  // a solo with no runner (no agent has the say) is not taken to the table: it plays on by its autopilot's reflexes
+  delete LINK[X.id]; delete LINK[Y.id]; CX.tableSeen = {}; fightAt(X, m1, 0); T.tableTick();
+  ok(!S.table && !CX.tableQ && CX.tableSeen['rescue:' + X.id] == null && T.openScene('check', 'x', ['x'], {anchor: X.id}) === null, 'a solo with no runner gets no scene (it plays on, as with the Table off), and no cooldown key is spent');
+  X.hp = maxHp(X); X.state = 'hunt'; X.target = null;
+
+  // (c) everyone at once, a company of two: answers in any order, resolved in join order
+  const CU = CO.companyOf(U), CV = CO.companyOf(V); const mg = CO.mergeCompanies(CU, CV);
+  ok(mg.ok && CU.ids.length === 2 && CU.ids[0] === U.id && CU.ids[1] === V.id, `${U.name} and ${V.name} ride as one company (join order ${CU.ids})`);
+  for (const [i, a] of [U, V].entries()) {a.x = spot.x + i * .6; a.y = spot.y + 4; a.state = 'hunt'; a.target = null; a.hp = maxHp(a); a.hidden = false; LINK[a.id] = 'connected'}
+  sc = T.openScene('check', 'A rope bridge', ['The planks are rotten.'], {anchor: V.id});
+  ok(sc && sc.company === CU.id && sc.all && sc.ids.join() === CU.ids.join(), 'an everyone-at-once scene for the pair: both at the table, join order');
+  toTurns();
+  ok(P.playerAct(V.id, 'scene_act', {option: 'press', line: 'Go.'}).ok, `${V.name} answers first`);
+  {let g = 0; while (S.table && g++ < 60 * 3) step(1 / 60)}
+  ok(S.table && /1\/2 answered/.test((T.bannerOf() || {}).line || ''), `the table waits for the other: ${(T.bannerOf() || {}).line}`);
+  ok(P.playerAct(U.id, 'scene_act', {option: 'steady', line: 'Easy.'}).ok, `${U.name} answers second`);
+  {let g = 0; while (S.table && g++ < 60 * 30) step(1 / 60)}
+  const order = sc.beats.filter(b => b.by !== 'foe').map(b => b.id);
+  ok(!S.table && order.join() === CU.ids.join(), `resolved in join order (${sc.beats.map(b => b.name + '=' + b.k).join(', ')}), not answer order`);
+
+  // (d) a solo's everyone-at-once scene is one answer
+  LINK[Y.id] = 'connected'; Y.x = spot.x; Y.y = spot.y - 4; Y.state = 'hunt';
+  sc = T.openScene('check', 'A locked door', ['Old iron, older rust.'], {anchor: Y.id});
+  ok(sc && sc.company === CY.id && sc.ids.length === 1 && sc.all, 'a solo\'s everyone-at-once scene has one seat');
+  toTurns(); ok(P.playerAct(Y.id, 'scene_act', {option: 'press'}).ok, 'it answers');
+  {let g = 0; while (S.table && g++ < 60 * 10) step(1 / 60)}
+  ok(!S.table && sc.beats.length === 1 && sc.resolved, 'one answer resolves it');
+
+  // (e) a vote-style call with a solo is refused
+  ok(T.voteRefusal(CY) === T.SOLO_VOTE && T.voteRefusal(CU) === null, `a solo has no one to vote with: "${T.SOLO_VOTE}"`);
+  ok(T.openScene('decision', 'Put to the party: rest', ['x'], {prop: 1}, CY) === null && !S.table, 'no decision scene opens for a solo');
+  const pr = C.propose(Y, 'other', 'Rest here tonight');
+  ok(typeof pr === 'string' && !S.table && !C.openProps().length, `a solo's proposal is refused: ${pr}`);
+
+  // (f) save mid-scene: the scene keeps its company
+  sc = T.openScene('check', 'A cold trail', ['Tracks in the frost.'], {anchor: U.id});
+  const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);
+  ok(S.table && S.table.company === CU.id && T.sceneCompany(S.table) === CO.companyById(CU.id), 'a save mid-scene keeps the scene\'s company');
+  close();
+  console.log(fail ? fail + ' FAILED' : 'COMPANIES OK'); process.exit(fail ? 1 : 0);
+}
+
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 const act = (a, tool, args) => P.playerAct(a.id, tool, args || {});
@@ -599,6 +711,11 @@ link(RA, 'connected'); link(RB, 'waiting');
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--use'], {encoding: 'utf8'});
   if (ch.status !== 0) process.stderr.write((ch.stdout || '') + (ch.stderr || ''));
   ok(ch.status === 0 && /USE OK/.test(ch.stdout || ''), 'a potion or scroll from the pack in a Table round: offered only when it would do something, used once, named in the beat, the banner, the action log and the DM log')}
+
+// ---- 2e. scenes keyed by company (#440): solos and a company of two, a fresh world in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--companies'], {encoding: 'utf8'});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /COMPANIES OK/.test(ch.stdout || ''), 'scenes keyed by company: a solo rescue with its foe round, two companies in one tick (queue), a pair answering at once in join order, a solo vote refused')}
 
 // ---- 3. proposals (in town, where nothing attacks) ----
 T.TABLE.speed = 1;

@@ -129,7 +129,7 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   clog(F,'council',a,' proposes to '+KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:'')+'.'+(away.length?' '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear.':''));
   for(const b of voters(P))if(b!==a)notify(b,a.name+' proposes to '+KIND_TEXT[kind]+(d?': '+d:'')+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
   if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'','agent');
-  if(!(F===S.fellowship&&proposeHook&&proposeHook(P)))reflexFill(P); // a Table decision scene: the Fellowship's only until #440
+  if(!(proposeHook&&proposeHook(P)))reflexFill(P); // a Table decision scene for the proposer's company (#440)
   settleIfDone(P);return P}
 
 // Refusal texts that name the open proposals and the legal next step (#400): agents act on them instead of retrying.

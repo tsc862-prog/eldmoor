@@ -37,8 +37,10 @@
 - [Company model #438](company_model.md) — company.js, accessor shims (S.fellowship, a.fellow, p.fellow), companySeq ids, save v7, hash proof
 - [Setup v2 #453](setup_v2.md) — together = the five places, apart = company per group, v1 migration by index, slotsView, hash proof
 - [Emergent parties #402](emergent_parties.md) — company 8 heroes/5 minds, together default forever, followed-only pause, arrival scene, no crypt level gate
+- [Table per company #440](table_per_company.md) — sc.company, one S.table, per-company queue C.tableQ, solo scenes, SOLO_VOTE, hash proof
 - [Council per company #439](council_company.md) — leader rule kept for hashes, SOLO refusal, unique prop ids, solo camp (no auto-camp), Fellowship-only scenes until #440
 - [Offers and companions #442](offers_companions.md) — offers on the maker's company, hash-picked scripted answers, companionTick party, Fellowship refused
 - [Town autopilot #466/#465](town_autopilot.md) — autopilot acts in town (inn, sell, potions, hunt fitting ground); danger-edge stop 5+ levels up, force/repeat
 - [DM focus per company #450](dm_focus_companies.md) — focuses(), h.cid hall jobs, companies_needs order, any-company reserve, Fellowship path hash-identical
 - [Autopilot caution #487](autopilot_caution.md) — wary autopilot hunts (ground, prey <= lvl+2, flee .22/.5, home when hurt); 5/40 -> 39/40 green survival
+- [Leave and companions #443](leave_companions.md) — leave_party for_good in offers.js, companions tool, a.seen last-seen record, AWAY leave

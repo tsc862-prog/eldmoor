@@ -60,6 +60,7 @@ function migrateCompanies(snap){let seq=0;const companies=[],day=Math.floor((sna
   if(F&&typeof F==='object'){const C={...F,id:++seq,seed:F.id,from:{}};const ids=new Set((F.ids||[]).map(String));
     for(const a of heroes){if(ids.has(String(a.id))){a.company=C.id;if(a.fellowFrom!=null)C.from[a.id]=a.fellowFrom}}
     for(const p of snap.parties||[])if(p&&p.fellow)p.company=C.id;
+    if(snap.table&&typeof snap.table==='object'&&snap.table.company==null)snap.table.company=C.id; // an open scene was the Fellowship's (#440)
     companies.push(C);snap.followId=C.id}
   for(const a of heroes){delete a.fellow;delete a.fellowRole;delete a.fellowFrom}
   for(const p of snap.parties||[])if(p)delete p.fellow;

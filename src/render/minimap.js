@@ -36,8 +36,15 @@ function buildBase(){const cv=document.createElement('canvas');cv.width=W;cv.hei
 // canvas: the #minimap element. cam: the shared camera (camX/camY in world px, vw/vh the
 // view size in world px). onCenter(wx,wy) is called with a world-pixel point on click.
 const MIND_COL=MARK.mind;
+// A W x H overlay: dark over every tile outside region z, a bright edge on the tiles that border it.
+function buildShade(z){const cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d'),img=c.createImageData(W,H),d=img.data;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const k=I(x,y),o=k*4;
+    if(zone[k]!==z){d[o+3]=150;continue}
+    const edge=x===0||y===0||x===W-1||y===H-1||zone[I(x-1,y)]!==z||zone[I(x+1,y)]!==z||zone[I(x,y-1)]!==z||zone[I(x,y+1)]!==z;
+    if(edge){d[o]=d[o+1]=d[o+2]=255;d[o+3]=200}}
+  c.putImageData(img,0,0);return cv}
 export function createMinimap(canvas,cam,onCenter){
-  const ctx=canvas.getContext('2d');let base=null,k=1;
+  const ctx=canvas.getContext('2d');let base=null,k=1,shade=null,shadeFor=null;
   function resize(){const dpr=window.devicePixelRatio||1,s=Math.min(BOX_W/W,BOX_H/H),cw=Math.round(W*s),ch=Math.round(H*s);
     canvas.style.width=cw+'px';canvas.style.height=ch+'px';canvas.width=Math.max(1,Math.round(cw*dpr));canvas.height=Math.max(1,Math.round(ch*dpr));k=canvas.width/W}
   resize();
@@ -52,6 +59,8 @@ export function createMinimap(canvas,cam,onCenter){
     if(!base)base=buildBase();
     ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;
     ctx.drawImage(base,0,0,W,H,0,0,canvas.width,canvas.height);
+    if(cam.region!=null){ // the picked region (#430): everything else dims, the region keeps its colour
+      if(shadeFor!==cam.region){shade=buildShade(cam.region);shadeFor=cam.region}ctx.drawImage(shade,0,0,W,H,0,0,canvas.width,canvas.height)}
     const d=Math.max(2,Math.round(k)),big=d+2;
     // landmarks: crypt mouths in crypt green, Kragmaw's lair as a ring (the boss dot sits inside while it lives)
     for(const L of LANDMARKS){if(L.kind==='crypt'&&L.mouth)edot((L.mouth.x0+L.mouth.x1+1)/2,(L.mouth.y0+L.mouth.y1+1)/2,big,TEXT.crypt);
