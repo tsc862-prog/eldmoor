@@ -25,3 +25,4 @@
 - [Own persona](own-persona.md) — #409 self/become tools, limits, self/owner markers, header line + standing-order block, reflection become
 - [Hunt where](hunt-where.md) — #411 hunt {where} via plan(), [move,hunt] queue, lazy k0, zonePoint enemy-wall retry, hash-compare recipe
 - [Give by name](give-by-name.md) — #412 give item by name: match tiers, count prefix, ambiguity rule, cleanArgs index->item
+- [Places tool](places-tool.md) — #414 places: knownNames + markers in sight, way/word/creatures/learned, heredoc backslash pitfall
