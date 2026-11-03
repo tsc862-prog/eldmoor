@@ -27,7 +27,7 @@
 import {S,clockStr} from './state.js';
 import {ZONES,CITY,zoneAt,dist} from '../world/map.js';
 import {nearHeroes} from './spatial.js';
-import {sightMul} from './weather.js';
+import {sightFor} from './weather.js';
 import {partyMates} from './party.js';
 import {companyOf,PARTY} from './company.js'; // letters belong to the company (#452)
 import {tableView} from './table.js';
@@ -162,7 +162,7 @@ const addRef=(c,ref,name)=>{if(ref)c.refs.add(ref);if(name&&!c.names.includes(na
 export function heroContext(a){const c=ctxNew(),z=zoneAt(a.x,a.y);
   if(ZONES[z])addRef(c,'region:'+ZONES[z],ZONES[z]);
   const town=CITY.find(t=>a.x>=t.x0-.5&&a.x<=t.x1+1.5&&a.y>=t.y0-.5&&a.y<=t.y1+1.5);if(town)addRef(c,'town:'+town.name,town.name);
-  const r=NB.SIGHT*sightMul(z);
+  const r=NB.SIGHT*sightFor(a,z);
   for(const b of partyMates(a))addRef(c,'hero:'+b.id,b.name);
   for(const b of nearHeroes(a.x,a.y,r,b=>b!==a&&b.state!=='dead'&&!b.hidden).slice(0,12))addRef(c,'hero:'+b.id,b.name);
   for(const p of [...(S.npcs||[]),...(S.wanderers||[])])if(Number.isFinite(p.x)&&dist(p,a)<=6)addRef(c,'npc:'+p.id,p.name);
