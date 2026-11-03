@@ -36,6 +36,7 @@ import {setAttemptHooks,TABLE} from './table.js';
 import {dmlog} from './dmlog.js';
 import {notEnglish} from './lang.js';
 import {record} from './history.js';
+import {dmAlive,goneEpoch} from './dmreflex.js'; // the one place that knows whether the DM listens (#561)
 
 export const ATTEMPT={
   PER_HOUR:3,        // attempts per hero per game hour (the DM is not asked to rule on every step)
@@ -78,11 +79,14 @@ export function rulingState(){return S.rulings||(S.rulings={seq:0,cur:[],past:[]
 function today(){const R=rulingState(),d=Math.floor(S.gameMin/1440);if(R.day.d!==d)R.day={d,asked:0,dm:0,scripted:0,refused:0};return R.day}
 
 // ---- is the DM listening? ----
-// Its ruling voice polled ruling_call within POLL_MS. Module state only (never saved, never read by step()).
-let polledAt=0,pollMs=0;
-export function rulingHeard(budgetS){polledAt=Date.now();const b=Number(budgetS);pollMs=Number.isFinite(b)&&b>0?Math.max(ATTEMPT.BUDGET_MIN,Math.min(ATTEMPT.BUDGET_MAX,b))*1000:0}
-export function rulingGone(){polledAt=0;pollMs=0}
-const listening=()=>polledAt>0&&Date.now()-polledAt<ATTEMPT.POLL_MS&&!!(S.dmAgent&&S.dmAgent.seat);
+// Its ruling voice polled ruling_call within POLL_MS, or the host says a runner holds the seat (sim/dmreflex.js dmAlive: a busy
+// runner still gets its bounded TABLE.dmMs). The runner gone (dmreflex gone(), the seat closing) ends every wait at once.
+// Module state only (never saved, never read by step()).
+let polledAt=0,pollMs=0,epoch=0;
+export function rulingHeard(budgetS){polledAt=Date.now();epoch=goneEpoch();const b=Number(budgetS);pollMs=Number.isFinite(b)&&b>0?Math.max(ATTEMPT.BUDGET_MIN,Math.min(ATTEMPT.BUDGET_MAX,b))*1000:0}
+const goneNow=()=>{if(epoch!==goneEpoch()){epoch=goneEpoch();polledAt=0;pollMs=0;return true}return false};
+const polled=()=>polledAt>0&&Date.now()-polledAt<ATTEMPT.POLL_MS;
+const listening=()=>{goneNow();return !!(S.dmAgent&&S.dmAgent.seat)&&(polled()||dmAlive())};
 const budget=()=>pollMs||TABLE.dmMs;
 
 // ---- the hero's side ----
@@ -124,8 +128,9 @@ function fill(r,why){if(r.state!=='wait')return;const a=hero(r.hero);if(!alive(a
 
 // Once per step (sim/index.js, before the Table hold): waits that ran out are filled; a ruled request outside a scene is applied.
 export function rulingTick(){const R=S.rulings;if(!R||!R.cur.length)return;
+  const gone=goneNow()||!(S.dmAgent&&S.dmAgent.seat);
   for(const r of R.cur.slice()){
-    if(r.state==='wait'&&(Date.now()-r.real>=r.ms||S.gameMin-r.gm>=ATTEMPT.WAIT_GM||!(S.dmAgent&&S.dmAgent.seat)))fill(r,'slow');
+    if(r.state==='wait'&&(gone||Date.now()-r.real>=r.ms||S.gameMin-r.gm>=ATTEMPT.WAIT_GM))fill(r,gone?'gone':'slow');
     if(r.state==='ruled'&&r.scene==null)resolve(r);
     else if(r.state==='ruled'&&r.scene!=null&&S.gameMin-r.gm>=ATTEMPT.WAIT_GM*4)close(r,'lapsed')}} // a scene that ended first
 
@@ -311,6 +316,6 @@ setAttemptHooks({
     rate(a).push(S.gameMin);return open(a,clean(line,ATTEMPT.WHAT_MAX),'','',sc).id},
   // true while the DM is still weighing it (the table waits, bounded); instant (3x/8x, a scene not pausing) fills at once
   hold(sc,act,instant){const R=S.rulings,r=R&&R.cur.find(x=>x.id===act.rid);if(!r||r.state!=='wait')return false;
-    if(instant||Date.now()-r.real>=r.ms||!listening()&&Date.now()-polledAt>=ATTEMPT.POLL_MS){fill(r,instant?'gone':'slow');return false}return true},
+    const g=goneNow()||!(S.dmAgent&&S.dmAgent.seat);if(instant||g||Date.now()-r.real>=r.ms){fill(r,instant||g?'gone':'slow');return false}return true},
   apply(sc,a,act){const R=S.rulings,r=R&&R.cur.find(x=>x.id===act.rid);if(!r)return 'nothing came of it';if(r.state==='wait')fill(r,'slow');
     const res=resolve(r);return res?(res.pass?'success':'failure')+', '+res.roll+(res.effects.length?'; '+res.effects.join(' '):''):'nothing came of it'}});

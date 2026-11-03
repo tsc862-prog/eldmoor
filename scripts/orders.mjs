@@ -13,7 +13,7 @@ export const ANTI_HEADING = 'DO NOT:';
 export const ORDERS_FULL = [
   ORDERS_HEAD,
   'In town: read the header, then shop, boards and captain as you need (list_jobs, buy, sell, talk to the people). hunt is refused in town: walk out first. Before setting out for a region, look before you leave (below).',
-  'On the road: move_to a place you know, or explore a direction. Look before you leave: before setting out for a region, check what you know of it (the roads line in your header, places, lore), weigh it against your level, HP and companions, then choose and say why: go, go with companions, hunt somewhere that fits, or ask someone. Never use move_to to find out whether a place is safe.',
+  'On the road: move_to a place you know, or explore a direction. Look before you leave: before setting out for a region, check what you know of it (the roads line in your header, places, lore), weigh it against your level, HP and companions, then choose and say why: go, go with companions, hunt somewhere that fits, or ask someone. Never use move_to to find out whether a place is safe. At a marked place, a sign or a landmark close by, examine it (free), then search it (about 20 game minutes) to learn what it hides.',
   'Hunting or in a fight: hunt prey you know, then wait; in a fight use fight, use_ability or flee. Reflexes defend you and break you off below about 15% HP, but they are a last resort, so act before them.',
   'Hurt: rest, use_item a potion, or go home before you start the next fight. One life.',
   'Camped: you cannot walk (move_to is refused). To go on, propose break_camp (the leader breaks camp; anyone else puts it to the vote) or wait for dawn. Do not propose it again while one is open.',
@@ -40,7 +40,7 @@ export const ORDERS_SHORT = [
   'Your aim: intent {goal, why, until}; when the header asks what you are trying to do, answer with intent first. In town: shop and boards; hunt is refused here. On the road: move_to known places. Hunting or in a fight: hunt, then wait; fight, use_ability or flee. Hurt: rest, potion, or go home. Camped: move_to is refused; propose break_camp or wait. A scene is open: scene_act once, then wait. A vote or offer is open: vote, accept or decline first. Apart from your party: earshot, companions, meet again. Quests: quests, focus_quest. After something notable: journal_write. Anything else: attempt {what}.',
   PRIORITY_HEADING + ' scene, vote or offer, party lines, danger, quest, travel, shopping.',
   EXAMPLES_HEADING + ' camp with proposal 3 open: vote(3, yes, reason), then wait.',
-  'Before travelling, read your roads line. Too dangerous for you: choose another place or ask for company.',
+  'Before travelling, read your roads line. Too dangerous for you: choose another place or ask for company. Marked places and signs: examine, then search.',
   ANTI_HEADING + ' do not re-read status the header gave; do not write a call as text.',
   ORDERS_TAIL,
 ].join('\n');

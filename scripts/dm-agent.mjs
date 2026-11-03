@@ -342,7 +342,7 @@ async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n
     if (stopped()) return null;
     const st = await dmTool(base, 'dm_status');
     let why = '', evt = false;
-    if (!st.ok && st.offline && /seat is closed/.test(st.error || '')) why = '[pace] the DM seat is closed (a new world starts with it closed unless setup chose an agent DM): press Open seat in the DM panel; waiting'
+    if (!st.ok && st.offline && /seat is closed/.test(st.error || '')) why = '[pace] the DM seat is closed (the game opens it when a world is played; the DM is always an agent): waiting'
     else if (!st.ok) why = st.offline ? 'the game is not answering (' + short(st.error, 90) + ')' : short(st.error, 90);
     else if (talkNow && talkWaiting(st).length && !(st.table && st.table.open) && Date.now() >= gapUntil) why = ''; // a member waits for an answer and no talk voice runs (#170)
     else if (target != null && st.gameMin < target && !(evt = eventDue(st, {sig: lastSig, gm: lastGm}, ev))) why = `waiting for the evening of day ${Math.floor(target / DAY) + 1} (now day ${st.day} ${st.time})`;
@@ -367,7 +367,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   const health = await fetch(base + '/play/health', {signal: AbortSignal.timeout(5000)}).then(r => r.json()).catch(e => ({error: e.message}));
   if (!health.ok || !health.connected) {console.error(`[dm] The game at ${base} is not ready: ${health.error || 'no game page connected'}. Start the relay (npm run relay) and open the game, or run play-headless --dm.`); process.exit(1)}
-  if (!health.dm || !health.dm.seat) {console.error('[dm] The DM seat is closed. In the game, open the Dungeon Master panel and press "DM agent" (or start play-headless with --dm).'); process.exit(1)}
+  if (!health.dm || !health.dm.seat) {console.error('[dm] The DM seat is closed: no world is played with it open (the page opens it for every world; headless: play-headless --dm).'); process.exit(1)}
   const runner = `${hostname()}:${process.pid}:dm`; RUNNER = runner;
   let mind = {};
   const claim = () => post(base, '/play/claim', {role: 'dm', runner, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));

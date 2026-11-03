@@ -66,6 +66,7 @@ export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} fr
 export {fellowshipStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,resolveArchetype,slotsView,asV2,MODES,SHAPE_PRESETS,MIND_PRESETS,SEATS,seatCap,seatNote} from './setup.js'; // New World setup (#133; v2 #453)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
+export {setDmAlive,gone as dmGone,dmAlive} from './dmreflex.js'; // the DM's reflexes: the host's word on its runner (#561)
 import {ensureCampaign,dreamTick} from './dmagent.js';
 export {provideCampaigns,parseCampaign,campaignIdOf} from './campaign.js'; // the campaign seed
 export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus

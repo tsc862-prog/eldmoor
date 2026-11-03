@@ -4,7 +4,7 @@
 // (sightMul), and true storms (isStorm) send hunting heroes home. Owned by
 // world-builder. DOM-free; the renderer reads weatherKind() to draw it.
 import {rnd} from '../core/rng.js';
-import {ZONES,REGIONS} from '../world/map.js';
+import {ZONES,REGIONS,CITY} from '../world/map.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {sightLever} from './levers.js';
@@ -52,3 +52,16 @@ export const weatherName=z=>WEATHER[weatherKind(z)].name;
 export const speedMul=z=>WEATHER[weatherKind(z)].speed;
 export const sightMul=z=>WEATHER[weatherKind(z)].sight*sightLever(z); // a fog-bound condition (DM lever) closes in on top of the sky
 export const isStorm=z=>WEATHER[weatherKind(z)].storm;
+
+// Night shortens sight (#583). A factor of NIGHT.MIN at full night (21:00-05:00), ramping down through dusk (18-21) and
+// back up through dawn (05-08); 1 by day. Torchlit towns are exempt. From the game clock only, no RNG. Applied to
+// agent-played heroes only (sightFor), so the scripted world (mobs, duels, findMob) is unchanged.
+export const NIGHT={MIN:.6,DUSK:18,DARK:21,LIGHT:5,DAY:8};
+export function nightMul(min=S.gameMin){const h=(min/60)%24;
+  if(h>=NIGHT.DARK||h<NIGHT.LIGHT)return NIGHT.MIN;
+  if(h>=NIGHT.DUSK)return 1-(1-NIGHT.MIN)*(h-NIGHT.DUSK)/(NIGHT.DARK-NIGHT.DUSK);
+  if(h<NIGHT.DAY)return NIGHT.MIN+(1-NIGHT.MIN)*(h-NIGHT.LIGHT)/(NIGHT.DAY-NIGHT.LIGHT);
+  return 1}
+export const inLitTown=p=>CITY.some(c=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5);
+// The one sight multiplier for a hero in zone z: weather and fog-bound, and for an agent hero the night too.
+export const sightFor=(a,z)=>sightMul(z)*(a&&a.player&&!inLitTown(a)?nightMul():1);

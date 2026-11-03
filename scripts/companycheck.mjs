@@ -16,7 +16,7 @@ const {companyNote} = await import('./pacing.mjs');
 const {homeOf} = await import('../src/data/races.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {leaveParty} = await import('../src/sim/party.js');
-const {zoneAt} = await import('../src/world/map.js');
+const {zoneAt, CITY} = await import('../src/world/map.js');
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -457,6 +457,7 @@ console.log('POOL',hs.length,[...new Set(hs.map(b=>b.fac+homeOf(b).name))]);
   for (const b of [W, Cm, Mt, Sk]) markPlayer(b, true);
   const put = (a, dx, dy) => {a.x = sp.x + dx; a.y = sp.y + dy; a.state = 'hunt'; a.dest = null; a.target = null; a.hidden = false; a.pq = []; rebuild()};
   const evs = (a, re) => (a.playEv || []).filter(e => re.test(e.text));
+  S.gameMin = Math.ceil(S.gameMin / 1440) * 1440 + 12 * 60; // noon: the sight cases below start in daylight (#583)
   put(W, 0, 0); put(Cm, 40, 0); put(Mt, 40, 5); put(Sk, 0, -40); put(Sc, 40, 40);
   CO.mergeCompanies(CO.companyOf(W), CO.companyOf(Cm));
   SH.noticeHeroes(W); // the first look is the baseline
@@ -476,6 +477,17 @@ console.log('POOL',hs.length,[...new Set(hs.map(b=>b.fac+homeOf(b).name))]);
   S.gameMin += 61; put(Cm, 40, 0); SH.noticeHeroes(W); put(Cm, 9, 0); SH.noticeHeroes(W);
   ok(evs(W, /You see /).length === 2, 'in fog a companion 9 tiles off is not seen');
   S.conditions = [];
+  // night shortens sight (#583): noon 12, midnight 7.2, dusk and dawn between; a scripted hero and a lit town keep it
+  {const t0 = S.gameMin, day0 = (Math.floor(t0 / 1440) + 1) * 1440, at = h => {S.gameMin = day0 + h * 60};
+    at(12); const noon = SH.sightRange(W); at(0); const mid = SH.sightRange(W); at(19.5); const dusk = SH.sightRange(W); at(6.5); const dawn = SH.sightRange(W);
+    ok(Math.abs(noon - 12) < 1e-9 && Math.abs(mid - 7.2) < 1e-9, 'sight at noon ' + noon.toFixed(1) + ', at midnight ' + mid.toFixed(1));
+    ok(dusk > mid && dusk < noon && dawn > mid && dawn < noon, 'dusk ' + dusk.toFixed(1) + ' and dawn ' + dawn.toFixed(1) + ' ramp between');
+    at(0); put(Cm, 40, 0); SH.noticeHeroes(W); const n0 = evs(W, /You see /).length; put(Cm, 9, 0); SH.noticeHeroes(W);
+    ok(evs(W, /You see /).length === n0 && SH.sightLine(W) === null, 'at midnight a companion 9 tiles off is not seen');
+    at(12); put(Cm, 40, 0); SH.noticeHeroes(W); S.gameMin += 61; put(Cm, 9, 0); SH.noticeHeroes(W);
+    ok(evs(W, /You see /).length === n0 + 1, 'at noon the same companion is seen');
+    const lit = CITY[0]; at(0); W.x = lit.x0 + 1; W.y = lit.y0 + 1; rebuild(); ok(Math.abs(SH.sightRange(W) - 12) < 1e-9, 'a torchlit town keeps full sight at midnight');
+    W.player = false; put(W, 0, 0); ok(Math.abs(SH.sightRange(W) - 12) < 1e-9, 'a scripted hero is unchanged at midnight'); W.player = true; at(13); put(W, 0, 0); put(Cm, 40, 0); SH.noticeHeroes(W)}
   // a hero it has spoken with is soft news; a stranger is nothing; a scripted hero gets none
   put(Cm, 40, 0); W.talkHeard = {[Mt.id]: 1}; Mt.talkHeard = {[W.id]: 1}; put(Mt, 40, 5); SH.noticeHeroes(W); put(Mt, -7, 3); SH.noticeHeroes(W);
   e = evs(W, new RegExp('You see ' + Mt.name)); ok(e.length === 1 && wakeLevel(e[0]) === 0, 'a hero it has spoken with: soft news');

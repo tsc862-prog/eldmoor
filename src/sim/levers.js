@@ -377,6 +377,12 @@ function itemCheck(p,give){const a=livingHero(p.hero);if(!a)return 'no such livi
     if(!(a.inv&&a.inv.list.some(x=>x.kind==='quest'&&x.id===it.id)))return a.name+' does not carry it'}
   return null}
 const FLAVOUR=it=>it.kind==='quest'?QUEST_ITEMS[it.id].flavour:it.kind==='use'?(USES[it.id].flavour||''):'';
+// An object found where the hero stands (a cache a hero searched out, sim/search.js #525): the give_item path without the lever's
+// limits. A quest item or consumable by name, or one plain piece of gear for a slot at the hero's level. Returns {name} or {err}.
+export function foundItem(a,text){const it=itemOf(text);if(it.err)return {err:it.err};if(room(a)<=0)return {err:'pack full'};let got,name=it.id;
+  if(it.kind==='quest'){if(a.inv&&a.inv.list.some(x=>x.kind==='quest'&&x.id===it.id))return {err:'carried'};got=addQuest(a,it.id,null)}else if(it.kind==='use')got=addUse(a,it.id,1);
+  else{const g=makeItem(a.cls,it.id,a.lvl,zoneFor(a.lvl),{quality:'plain',src:'Found'});got=addGear(a,g);name=g.name}
+  if(!got)return {err:'pack would not take it'};const fl=FLAVOUR(it);notify(a,'Found: '+name+(fl?' '+fl:''),1);record(a,'Found: ',name);return {name}}
 register({name:'give_item',allow:['item'],about:'Put one object in a hero’s pack: a quest item or token, a consumable, or one plain piece of gear for a slot (at ilvl, never above the hero’s level, never an epic; '+LK.GEAR_PER_DAY+' a game day). by: a person within earshot hands it over, else it is found where the hero stands. Not in a fight.',
   params:{hero:{type:'id'},item:{type:'str',max:40},by:{type:'id',opt:true},ilvl:{type:'int',min:1,max:60,opt:true}},limits:{perDay:4},cooldown:0,
   check:p=>itemCheck(p,true),

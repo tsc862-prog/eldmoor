@@ -43,6 +43,7 @@ import {remember} from './memory.js';
 import {CAP as CHAT_CAP,BUBBLE,HEAR} from './chat.js';
 import {ensureNpcs} from './npcs.js';
 import {stageScene} from './staged.js';
+import {heard,since,dmAlive,goneEpoch} from './dmreflex.js'; // the DM's reflexes (#561)
 import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
 import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
@@ -117,21 +118,21 @@ export function recordView(p){if(p.warmth==null&&!p.fmem)return null;const R=rec
   return {mood:p.mood,warmth:p.warmth,...(p.hostile?{hostile:true}:{}),talks:R.talks,...(R.last!=null?{last_day:Math.floor(R.last/DAY)+1}:{}),notes:R.notes.map(n=>'D'+n.d+' '+n.text)}}
 
 // ---- the DM listening ----
-// The game waits for the DM agent only while it is there: its fast voice polled npc_call (VOICE_MS), or it made a
-// DM call recently (a turn under way: TURN_MS). Date.now is read only with the seat open, so a seeded world
-// without a DM agent is untouched.
-let voiceAt=0,actAt=0,voiceMs=0;
+// The game waits for the DM agent while it listens: its fast voice polled npc_call (VOICE_MS), or it made a DM call
+// recently (a turn under way: TURN_MS), or its runner is alive but busy (GRACE_MS). Then the DM's reflexes answer (the
+// scripted line; sim/dmreflex.js, #561: the DM is always an agent, there is no seat-closed path). A world no DM runner ever
+// spoke to never waits, so a seeded world without one is untouched.
+let voiceMs=0;
 // tool: the DM tool called; args.budget_s on npc_call: the real seconds the voice says it needs per answer (a local model
 // is slower than Haiku), held to VOICE_MIN..VOICE_MAX.
-export function dmHeard(tool,args){actAt=Date.now();if(tool==='npc_call'){voiceAt=actAt;const b=Number(args&&args.budget_s);voiceMs=Number.isFinite(b)&&b>0?Math.max(CONV.VOICE_MIN,Math.min(CONV.VOICE_MAX,b*1000)):0}}
-const seatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
+export function dmHeard(tool,args){heard(tool==='npc_call'?'voice':'act');if(tool==='npc_call'){const b=Number(args&&args.budget_s);voiceMs=Number.isFinite(b)&&b>0?Math.max(CONV.VOICE_MIN,Math.min(CONV.VOICE_MAX,b*1000)):0}}
 // A live but busy DM (#540): its runner is alive (the host says so, setDmAlive) or it was heard within BUSY_MS, but it is not
 // polling right now (queued behind other calls): the game waits GRACE_MS before the scripted DM answers, like a queued member (#515).
-let aliveFn=null;export function setDmAlive(f){aliveFn=typeof f==='function'?f:null}
-function dmBudget(){if(!seatOn())return 0;const now=Date.now(),d=today();
-  if(d.lines>=CONV.DM_LINES_PER_DAY)return 0;
-  if(now-voiceAt<CONV.POLL_MS)return voiceMs||CONV.VOICE_MS;if(now-actAt<CONV.POLL_MS)return CONV.TURN_MS;
-  if((aliveFn&&aliveFn())||(actAt&&now-actAt<CONV.BUSY_MS))return CONV.GRACE_MS;return 0}
+export {setDmAlive} from './dmreflex.js';
+function dmBudget(){const v=since('voice'),t=since('act'),alive=dmAlive();
+  const ms=v<CONV.POLL_MS?voiceMs||CONV.VOICE_MS:t<CONV.POLL_MS?CONV.TURN_MS:alive||t<CONV.BUSY_MS?CONV.GRACE_MS:0;
+  if(!ms)return 0; // nobody listening: the reflex answers at once (and today() is never touched)
+  return today().lines>=CONV.DM_LINES_PER_DAY?0:ms}
 
 // ---- finding who a member speaks to ----
 const people=()=>{ensureNpcs();return [...(S.npcs||[]),...(S.wanderers||[])].filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))};
@@ -180,7 +181,7 @@ export function talkTo(a,p,text){const T=talkState(),d=today();
   const esc=escHook&&escHook(c,p,a,{line:clean(text,CONV.LINE_MAX)}); // a decision: the company answers at the table (#407)
   if(esc)return {ok:true,who:full(p),said:line,...(read?{read}:{}),table:esc.note};
   const ms=dmBudget();
-  if(ms>0){c.wait={call:++T.call,hero:a.id,line,gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};
+  if(ms>0){c.wait={call:++T.call,hero:a.id,line,gm:Math.round(S.gameMin),real:Date.now(),ep:goneEpoch(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};
     return {ok:true,who:full(p),said:line,...(read?{read}:{}),waiting:true,note:p.name+' is thinking it over: their answer comes as a line you hear (chat_read, or the next events).'}}
   const out=scripted(c,p,a);return {ok:true,who:full(p),said:line,...(read?{read}:{}),answer:out.text,...(out.mark?{follow_up:out.mark}:{}),...(out.hint?{note:out.hint}:{}),...(c.state==='done'?{ended:true}:{})}}
 
@@ -201,11 +202,11 @@ function speakAs(p,c,text,by,mark){const e={t:clockStr(),d:gameDay()+1,from:{kin
   for(const b of hs){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=Math.max(p.chatCd||0,10);
   c.lines.push({who:'npc',id:p.id,name:full(p),text,t:e.t,by,...(mark?{mark}:{})});c.last=Math.round(S.gameMin);
-  log([full(p)+(by==='dm-agent'?' (DM agent)':'')+': "',text,'"'+(mark?' '+mark:'')],{conv:c.id,npc:p.id,who:'npc',by,text,...(mark?{mark}:{})});return e}
+  log([full(p)+(by==='dm-agent'?' (DM agent)':'')+': "',text,'"'+(mark?' '+mark:'')],{conv:c.id,npc:p.id,who:'npc',by,text,...(mark?{mark}:{}),...(by==='scripted'?{fill:true,why:c.wait?'slow':'gone'}:{})});return e} // a scripted answer is the DM's reflex (#561)
 // A hail (sim/locals.js): the person opens the talk. With the DM agent listening the opening is its to voice (the call waits like
 // any other, and the scripted DM fills it if the seat goes quiet); else the scripted line is spoken now. Returns true when spoken.
 export function speakAsHail(p,c,text){const a=hero(c.heroes[0]),ms=dmBudget();
-  if(ms>0&&a){const T=talkState();c.wait={call:++T.call,hero:a.id,line:'('+full(p)+' calls out to '+a.name+': '+clean(text,CONV.LEAD_MAX)+')',gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};return false}
+  if(ms>0&&a){const T=talkState();c.wait={call:++T.call,hero:a.id,line:'('+full(p)+' calls out to '+a.name+': '+clean(text,CONV.LEAD_MAX)+')',gm:Math.round(S.gameMin),real:Date.now(),ep:goneEpoch(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};return false}
   speakAs(p,c,text,'scripted');return true}
 // After an answer: the last exchange closes the conversation.
 function afterAnswer(c,p){c.wait=null;if(c.state==='open'&&c.ex>=exMax(c))close(c,'said what they had to say')}
@@ -442,7 +443,7 @@ function close(c,why){if(c.state==='done')return;c.state='done';c.wait=null;c.wh
 // its to voice (the call waits like any other; `fill` is spoken if it stays silent); else the scripted line now. A closed
 // conversation gets the scripted line at once.
 export function sceneReply(c,p,a,what,fill){const t=clean(fill,CONV.DM_LINE_MAX);const ms=c.state==='open'&&a?dmBudget():0;
-  if(ms>0){const T=talkState();c.wait={call:++T.call,hero:a.id,line:'(at the table: '+clean(what,CONV.LEAD_MAX)+')',gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice',fill:t};return 'dm'}
+  if(ms>0){const T=talkState();c.wait={call:++T.call,hero:a.id,line:'(at the table: '+clean(what,CONV.LEAD_MAX)+')',gm:Math.round(S.gameMin),real:Date.now(),ep:goneEpoch(),ms,by:ms===CONV.TURN_MS?'turn':'voice',fill:t};return 'dm'}
   if(t)speakAs(p,c,t,'scripted');return 'scripted'}
 export function endTalk(c,why){close(c,why)}
 
@@ -457,7 +458,7 @@ export function talkFromScene(w,ids,line){if(!w||!S.fellowship)return null;const
 export function talkTick(){const T=S.talks;if(!T)return;
   for(const c of T.cur.slice()){const p=npcById(c.npc);
     if(!p){close(c,'they are gone');continue}
-    if(c.wait){const live=seatOn()&&(Date.now()-c.wait.real<c.wait.ms)&&today().lines<CONV.DM_LINES_PER_DAY&&S.gameMin-c.wait.gm<CONV.WAIT_GM;
+    if(c.wait){const live=!(goneEpoch()>(c.wait.ep|0))&&(Date.now()-c.wait.real<c.wait.ms)&&today().lines<CONV.DM_LINES_PER_DAY&&S.gameMin-c.wait.gm<CONV.WAIT_GM;
       if(!live){const a=hero(c.wait.hero);if(c.wait.fill){T.stats.scripted++;speakAs(p,c,c.wait.fill,'scripted');afterAnswer(c,p)}else if(living(a))scripted(c,p,a);else close(c,'nobody is left to answer');continue}}
     const near=c.heroes.map(hero).filter(b=>living(b)&&dist(b,p)<=CONV.LEAVE_R);
     if(!near.length)close(c,'the Fellowship moved on');

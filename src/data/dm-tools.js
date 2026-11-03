@@ -59,6 +59,7 @@ export const DM_TOOLS=[
   {name:'mark_place',act:true,desc:'Put a marker on the map (the mark_place lever, with flat arguments): a ruin, camp, shrine, cairn door or watchtower on open ground near a place. near: "fellowship", a member or hero, "x,y", a town (outside its gate), a place, a landmark or a region. Markers never change terrain. Counts as a lever pull: same limits, cooldown and DM log as pull_lever, which is still there for every other lever.',
     args:{kind:{type:'string',enum:['ruin','camp','shrine','cairn_door','watchtower'],desc:'What stands there'},near:{type:'string',desc:'"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region'},
       name:{type:'string',desc:'Its name (max 32; default a name of the region)',optional:true},hours:{type:'integer',desc:'How long it stays (12-336, default 72)',optional:true},
+      reveal:{type:'string',desc:'A secret a hero learns by searching it (search, a Lore or Perception roll; max 200)',optional:true},cache:{type:'string',desc:'Something hidden there for a hero who searches it well: gold ("20 gold", at most 60) or a quest item, consumable or gear slot as give_item takes it',optional:true},
       reason:{type:'string',desc:'Why, in one sentence (shown in the DM log)'}}},
   // The DM's voice in the game (issue #123): the only way the DM speaks to the heroes. Heard by the heroes in range
   // (their Chat tab, their agents' chat_read and events, the Table banner while a scene is open); never a message to an agent.

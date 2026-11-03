@@ -15,7 +15,7 @@
 //                command away (fled home, camp) and the hero is in sight again, it falls in behind them once more.
 import {S} from './state.js';
 import {CITY,dist,zoneAt} from '../world/map.js';
-import {sightMul} from './weather.js';
+import {sightFor} from './weather.js';
 import {moveTo,maxHp} from './heroes.js';
 import {ev,notify} from './notify.js';
 import {placeNear} from './reach.js';
@@ -23,7 +23,7 @@ import {nearHeroes} from './spatial.js';
 
 export const FOLLOW={SIGHT:12,GAP:1.2,NEAR:1.7,PACE:2.5,HURRY:2.9,MAX_H:12}; // SIGHT = PK.SIGHT in sim/player.js
 const hero=id=>S.agents.find(x=>x.id===id)||null;
-const sight=a=>FOLLOW.SIGHT*sightMul(zoneAt(a.x,a.y));
+const sight=a=>FOLLOW.SIGHT*sightFor(a,zoneAt(a.x,a.y));
 const cityOf=p=>CITY.find(c=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5)||null;
 const alive=b=>!!(b&&b.state!=='dead');
 // The follower can see b now: alive, not hidden (the Crypt), within its sight (or in the same town).

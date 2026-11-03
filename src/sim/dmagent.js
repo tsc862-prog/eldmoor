@@ -41,7 +41,8 @@ import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {moment} from './reflect.js'; // a dream is a reflection moment (#523)
 import {ensureNpcs} from './npcs.js';
 import {stageScene,tableCall,tableAnswer,stagedView,STAGE} from './staged.js';
-import {rulingCall,rulingAnswer,rulingSummary,rulingGone} from './ruling.js'; // free actions the DM rules on (#522)
+import {rulingCall,rulingAnswer,rulingSummary} from './ruling.js'; // free actions the DM rules on (#522)
+import {gone as dmGone} from './dmreflex.js'; // the DM's reflexes (#561)
 import {sceneCall,sceneAnswer,ourScene,openingDue} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
 import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
@@ -92,10 +93,11 @@ export function dmState(){if(S.dmAgent)return S.dmAgent;const D=newDm();S.dmAgen
 function newDm(){return {world:'w'+Math.round(S.gameMin)+'-'+(S.uid||0),seat:false,notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,[]])),seq:0,
   day:{d:-1,pulls:0,notes:0,intents:0},calls:[],seen:{tl:0,chron:'',log:0},stats:{calls:0,pulls:0,refused:0}}}
 export const dmSeatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
-// Open or close the DM seat (the DM panel's "DM agent" button, play-headless --dm). Notes stay either way.
-export function setDmSeat(on){const D=dmState();on=!!on;if(D.seat===on)return on;D.seat=on;if(!on)rulingGone(); // nobody rules any more: attempts are ruled by the scripted DM at once (#522)
-  
-  dmlog('agent',null,[on?'The DM seat is open: an agent DM may sit in (npm run dm).':'The DM seat is closed: the scripted DM runs alone.'],{by:'dm-agent',seat:on});return on}
+// Open or close the DM seat. A played world opens it from its first tick (#559: the DM is always an agent); play-headless
+// --dm opens it, and only a world with no host (npm run sim, the checks) leaves it closed. Closing it means the runner is
+// gone: every call waiting for the DM is filled by its reflexes at once (sim/dmreflex.js, #561). Notes stay either way.
+export function setDmSeat(on){const D=dmState();on=!!on;if(!on)dmGone();if(D.seat===on)return on;D.seat=on;
+  dmlog('agent',null,[on?'The DM seat is open: the DM agent sits in (npm run dm).':'The DM seat is closed: its reflexes answer for the DM until a runner holds the seat again.'],{by:'dm-agent',seat:on});return on}
 // For the panels: the seat's recent calls and today's counts.
 export const dmAgentView=()=>S.dmAgent?{seat:S.dmAgent.seat,calls:S.dmAgent.calls.slice(0,8),day:{...S.dmAgent.day},stats:{...S.dmAgent.stats}}:null;
 
@@ -441,7 +443,7 @@ const FLAT_USAGE={
   place_person:'place_person takes: role (peddler|hermit|drover|sellsword|minstrel|stranger), near ('+NEAR_FORMS+'), name?, faction? (concord|warband|neutral), want?, attitude? (hostile|wary|neutral|friendly), hours? (6-168), spot? (in a town: inn|smith|quartermaster|chapel|square|gate), reason',
   give_item:'give_item takes: hero (a hero by name or id), item (a quest item or token, a consumable, or a gear slot head|chest|hands|feet|main|off|trinket), by? (a person in earshot, by name or id), ilvl? (gear only, never above the hero’s level), reason',
   take_item:'take_item takes: hero (a hero by name or id), item (a quest item or token), by? (a person in earshot, by name or id), reason',
-  mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reason'};
+  mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reveal? (a secret a search uncovers), cache? (gold or an item hidden there), reason'};
 // A walkable spot between min and max tiles of c (rings outward, no dice), clear of towns, landmarks and, by gap, other places.
 function openSpot(c,min,max,gap){const R=q=>Math.round(q*10)/10,okAt=q=>!spotErr(q)&&!(gap&&(S.places||[]).some(p=>dist(p,q)<gap));
   if(min<=0&&okAt({x:R(c.x),y:R(c.y)}))return {x:R(c.x),y:R(c.y)};
@@ -490,6 +492,7 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};const lever=FLAT_LEVERS
   else {const W=nearSpot(a.near,{min:1,max:5,gap:LK.PLACE_GAP,townSpot:true});
     if(W.err||!W.at)return no((W.err||'no open ground outside '+W.town+'’s gate')+' (mark_place needs at: a point {x,y} on open ground, '+LK.PLACE_GAP+' tiles from other places); '+nearTakes());
     params={kind:str(a.kind,16),at:W.at,...opt('name',str(a.name,32)),...opt('hours',int(a.hours))}}
+  if(tool==='mark_place'){const rv=clean(a.reveal,200),ca=clean(a.cache,60);if(rv||ca)via.after=r=>{if(r.ret){if(rv)r.ret.reveal=rv;if(ca)r.ret.cache=ca}}} // what a hero's search finds there (sim/search.js, #525)
   const want=tool==='place_person'?clean(a.want,STAGE.WANT_MAX||160):'';
   if(want)via.after=r=>{if(r.ret)r.ret.want=want}; // what they want from heroes, read by conversations (talk.js), as a staged meeting sets it
   const r=pullLever({lever,params,reason},via);if(!r.ok)return r;
@@ -627,7 +630,7 @@ export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
   const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
   if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
-  if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
+  if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
   const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
   try{switch(tool){

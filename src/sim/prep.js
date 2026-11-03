@@ -4,7 +4,8 @@
 // The sequence of a new world: the start gate is ready (every seat ready or waived, src/ui/rungate.js) -> the DM
 // prepares -> the opening Table scene (sim/arrival.js) -> the clock runs. While the DM prepares, the host keeps the
 // world held (the page's gate, play-headless --wait-ready), so what the DM reads cannot go stale.
-//   - Only with the DM seat open and its runner there. A closed seat: no prep; the scripted DM frames the opening.
+//   - Only with its runner there (the DM is always an agent, #559/#561). With no runner (the owner resumed without one, or a
+//     host with no gate) there is no prep, and the DM's reflexes frame the opening (sim/arrival.js, sim/dmreflex.js).
 //   - Bounded hard: PREP.MS real milliseconds and PREP.CALLS tool calls (idle table/npc polls and prep_done do not
 //     count). Whichever comes first ends it, as does the DM ending its turn (prep_done) or the owner's Start anyway.
 //   - A new world gets the full prep ('opening'); Continue and a DM runner started again mid-session get a short one

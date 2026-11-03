@@ -83,12 +83,12 @@ if (process.argv[2] === '--hash') {
   console.log('HASH ' + h); process.exit(0);
 }
 
-// ---- session zero child (issue #437): the opening framed by the DM agent's call, or by the scripted DM with the seat closed ----
+// ---- session zero child (issue #437): the opening framed by the DM agent's call, or by the DM's reflexes when no runner listens (#561: the seat is always open) ----
 if (process.argv[2] === '--opening') {
   const A = await import('../src/sim/arrival.js'), T = await import('../src/sim/table.js'), F_ = await import('../src/sim/fellowship.js'), PL = await import('../src/sim/player.js');
-  const closed = process.argv[3] === 'closed';
+  const closed = process.argv[3] === 'silent'; // the seat open, nobody polling it
   init({fellowship: false}); run(10);
-  F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(!closed); sim.setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(true); sim.setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
   if (!closed) {const D = S.dmAgent; D.notes.plans.push({id: 9001, title: 'The Lanterns', text: 'PREMISE-PLANTED the road lights are failing.', tags: ['premise'], pin: true}, {id: 9002, title: 'Opening beats', text: 'Day 1: a dark shrine.', tags: ['openings']})}
   A.planOpening(); step(1 / 60); const sc = S.table;
   let call = null, k = 0; while (S.table && S.table.phase === 'frame' && k++ < 600) {if (!closed) dmAct('table_call'); step(1 / 60)}
@@ -693,10 +693,10 @@ console.log('NPC conversations');
   const clear = () => {TK.CONV.PER_DAY = 99; for (const c of (S.talks ? S.talks.cur.slice() : [])) {c.state = 'done'; S.talks.cur.splice(S.talks.cur.indexOf(c), 1)} for (const p of S.npcs) {delete p.snub; delete p.trade}};
   const secret = 'QZXjournal' + Math.floor(Math.random() * 1e9).toString(36) + 'Q';
   P.playerAct(A.id, 'journal_write', {text: 'Private: ' + secret}); P.playerAct(A.id, 'remember', {title: 'mine', text: 'Private memory ' + secret});
-  // a silent seat: the DM agent is not polling, so the scripted DM answers at once from the role
-  away(); clear(); const qm = npc('quartermaster'); beside(A, qm); setDmSeat(false); // nobody in the seat
+  // the DM runner gone (#561: the seat stays open): nobody is polling, so the DM's reflex answers at once from the role
+  away(); clear(); const qm = npc('quartermaster'); beside(A, qm); sim.dmGone(); // the host saw the runner's claim drop
   let r = act(A, 'talk', {target: 'quartermaster', text: 'Good day. What do you have for the road?'});
-  ok(r.ok && r.answer && !r.waiting && r.follow_up === '[trade opened]', `a silent seat: the scripted DM answers at once, ${qm.title} opens their stock ("${r.answer}")`);
+  ok(r.ok && r.answer && !r.waiting && r.follow_up === '[trade opened]', `the DM runner gone: its reflex answers at once, ${qm.title} opens their stock ("${r.answer}")`);
   ok(/^You read .*: they want |^You listen to .*, but cannot tell what they really want\.$/.test(r.read || '') && S.dmLog.some(e => e.kind === 'talk' && e.detail.skill === 'empathy'), `the member reads the person (Empathy on Insight): "${r.read}"`);
   ok(qm.trade && qm.mood && typeof qm.warmth === 'number', `the person's record: mood ${qm.mood}, warmth ${qm.warmth}`);
   setDmSeat(true);
@@ -1253,12 +1253,12 @@ try {
     const c5 = await d4.done, o5 = d4.out();
     ok(c5 === 0 && !/preparing the table/.test(o5) && !/prepares the table/.test(w3.out()), 'no host holding the world for it (no --wait-ready): no prep, the runner goes straight to its turn');
     w3.p.kill()}
-  // session zero framed: by the DM agent's call (the premise in its call only), or by the scripted DM with the seat closed
+  // session zero framed: by the DM agent's call (the premise in its call only), or by the DM's reflexes with no runner listening (#561)
   {const run1 = arg => {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--opening', arg], {encoding: 'utf8'}); if (ch.stderr) process.stderr.write(ch.stderr); const l = (ch.stdout || '').split('\n').find(x => x.startsWith('OPENING ')); return l ? JSON.parse(l.slice(8)) : {}};
-    const o = run1('seat'), c = run1('closed');
+    const o = run1('seat'), c = run1('silent');
     ok(o.kind === 'opening' && /^SESSION ZERO/.test(o.title) && o.call === 'frame' && o.premise && o.dmLine && o.by[0] === 'dm-agent', 'session zero: the DM agent frames the opening (its call carries the campaign premise)');
     ok(!o.leak && !c.leak, 'the premise reaches no hero tool or chat; only what the DM says at the table');
-    ok(c.kind === 'opening' && c.by[0] === 'scripted' && c.scripted && /Before them|board is bare/.test(c.summary || ''), 'with the seat closed the scripted DM frames it from the hall, the day and the first board job')}
+    ok(c.kind === 'opening' && c.by[0] === 'scripted' && c.scripted && /Before them|board is bare/.test(c.summary || ''), 'with no DM runner listening its reflexes frame it from the hall, the day and the first board job (the seat open: no seat-closed mode, #561)')}
 } catch (e) {ok(false, 'runner section: ' + (e.message || e))}
 for (const k of kids) try {k.kill()} catch {}
 mock.close();
