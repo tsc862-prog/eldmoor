@@ -69,7 +69,7 @@ import {localTurn, localLine, paidLine, sceneToAnswer, sceneDue, sceneTurn, chat
 import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
-import {openaiRunner} from './agent-chat.mjs';
+import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
@@ -157,7 +157,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const aborts = new Set(); // Agent SDK turns in flight, ended on a stop
   const adding = new Set(); // members being added (the watcher calls addMember every second)
   let ollama = null; // the local adapter, made when the first local member joins
-  let openaiChat = null, openaiAd = null, claudeWarm = null; // the OpenAI adapter's chat(), set when an OpenAI member joins (all share one key and base URL); warm-up adapters (#222)
+  let claudeWarm = null; // warm-up adapters (#222); an OpenAI, Hugging Face or Gemini member keeps its own adapter (m.ad)
   let claudeAd = null; // a structured Claude call for a scene turn that ended without scene_act (issue #163); the key stays in this process
   const claudeAdapter = () => claudeAd || (claudeAd = anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}));
   const skip = (h, why) => {out(h.name, why); members.set(h.id, {id: h.id, name: h.name, ended: 'skipped'})};
@@ -168,6 +168,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     try {await addMember1(h)} finally {adding.delete(h.id)}
   }
   async function addMember1(h) {
+    let compatAd = null; // this member's OpenAI, Hugging Face or Gemini adapter
     const c = await claim(h.id); if (c.status !== 200) {out(h.name, 'skipped: ' + (c.error || 'could not claim')); members.set(h.id, {id: h.id, name: h.name, ended: 'claimed elsewhere'}); return}
     const st = await play(base, h.id, 'status'); if (!st.ok) {out(h.name, 'status failed: ' + st.error); await release(h.id); return}
     const sys = systemPrompt(st) + '\n' + (cid != null && !st.fellowship ? companyPrompt(st, coOf(await health(base))) : fellowshipPrompt(st));
@@ -178,7 +179,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
-    if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama, openai or huggingface); skipped`); await release(h.id); return}
+    if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama, openai, huggingface or google); skipped`); await release(h.id); return}
     sess.system = withSituationOrders(sess.system, rs.provider === 'ollama'); // the short variant for a local model (#531)
     if (rs.provider === 'ollama') {
       // a local member (issue #97 part 2): plays through scripts/local-agent.mjs, no key, cost 0
@@ -189,17 +190,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const s = await ollama.status();
       if (!opt('model', null) && s.ok) {const p = await preferLoaded(ollama, rs.model, s.models); if (p.note) {out(h.name, p.note); rs.model = p.model}}
       if (!s.ok || !s.models.includes(rs.model)) {skip(h, s.ok ? `local model ${rs.model} is not pulled (pulled: ${s.models.join(', ') || 'none'}; ollama pull ${rs.model}); skipped` : `Ollama at ${s.url} is ${s.error}; skipped`); await release(h.id); return}
-    } else if (rs.provider === 'openai' || rs.provider === 'huggingface') {
+    } else if (isCompat(rs.provider)) {
       // an OpenAI member (issue #97): the same loop against Chat Completions, real cost; the key stays in this process
       const o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
       if (o.error) {skip(h, o.error + '; skipped'); await release(h.id); return}
-      openaiChat = o.adapter.chat; openaiAd = o.adapter;
+      if (o.note) out(st.name, o.note); compatAd = o.adapter;
     } else if (!env.ANTHROPIC_API_KEY) {skip(h, 'plays Claude but there is no ANTHROPIC_API_KEY in the environment or .env (use --env FILE, or --provider ollama); skipped'); await release(h.id); return}
     sess.runner = rs; saveSession(sess, {url: base});
-    const m = {id: h.id, name: st.name, world: h.world, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai' || rs.provider === 'huggingface', paid: rs.provider === 'openai' || rs.provider === 'huggingface', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
+    const m = {id: h.id, name: st.name, world: h.world, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || isCompat(rs.provider), paid: isCompat(rs.provider), ad: isCompat(rs.provider) ? compatAd : null, turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
       maxTurns: turnCap(turnsAsked, rs.provider, 6), fails: failTracker(pace.maxFails)};
     members.set(h.id, m); claim(h.id);
-    out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.paid ? rs.model + (rs.provider === 'huggingface' ? ' (Hugging Face)' : ' (OpenAI)') : m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'} | ${capText(m.maxTurns)}`);
+    out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.paid ? rs.model + ' (' + compatLabel(rs.provider) + ')' : m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'} | ${capText(m.maxTurns)}`);
     loop(m).catch(e => {m.ended = 'error: ' + e.message; out(m.name, 'loop failed: ' + e.message)});
   }
 
@@ -231,7 +232,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   // A local or OpenAI member's reflection: one forced structured answer of 0-3 notes, sent with remember by the runner.
   async function localReflect(m, b0, w) {
-    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat;
+    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? m.ad.chat : ollama.chat;
     const on = (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})} else if (k === 'tool') out(m.name, `> ${a}(${short(b, 120)})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`)};
     let r = null, err = null; out(m.name, `[reflection: ${b0.reflect.why}]`);
     try {r = await reflectTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), strict: m.paid, call, sess: m.sess, moment: b0.reflect, prompt: reflectPrompt(b0.reflect, {tools: false}), context: briefText(b0), on})}
@@ -327,7 +328,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let r = null;
     if (!m.paid) {const n = await localModelNote(ollama, m.rs.model); if (n && n !== m.note) out(m.name, n); m.note = n} // another model on the GPU (#126)
     const b0 = m.pacer ? await m.pacer.brief() : null; let err = null;
-    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? openaiChat : ollama.chat;
+    const call = (tool, args) => play(base, m.id, tool, args), chat = m.paid ? m.ad.chat : ollama.chat;
     const on = (k, a, b) => {if (k === 'text') {out(m.name, a); post(base, '/play/narrate', {hero: m.id, text: a, runner: runnerId}, 5000).catch(() => {})}
       else if (k === 'tool') out(m.name, `> ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') out(m.name, `< ${short(a, 200)}`);
       else if (k === 'mode') out(m.name, `[${m.rs.model} has no tool support in Ollama: switching to JSON actions]`)};
@@ -360,7 +361,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   async function loop(m) {
     const pacer = makePacer({base, hero: m.id, runner: runnerId, heartbeat: pace.heartbeat, minGap: pace.minGap, log: s => out(m.name, s), stopped: () => !!(stopping || m.ended)}); m.pacer = pacer;
     // the start gate (issue #222): one tiny call with the member's model before its first turn; the page holds the world until it answers
-    const ad = m.paid ? openaiAd : m.local ? ollama : (claudeWarm = claudeWarm || claudeWarmAdapter(env.ANTHROPIC_API_KEY));
+    const ad = m.paid ? m.ad : m.local ? ollama : (claudeWarm = claudeWarm || claudeWarmAdapter(env.ANTHROPIC_API_KEY));
     await warmUp({base, seat: {hero: m.id}, runner: runnerId, model: m.rs.model, adapter: await ad, log: s => out(m.name, s)});
     let w = null;
     while (!m.ended && !stopping && m.turns < m.maxTurns) {
