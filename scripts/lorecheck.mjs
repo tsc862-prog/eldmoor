@@ -9,6 +9,8 @@
 //             a direction or coordinates; status.places lists only known places, with no level bands
 //   hunting   hunt prey must be a creature known by name; hunt without prey leaves feared creatures alone
 //   jobs      list_jobs gives the job's words and the gate's rumour, never "fits"
+//   dm places a DM-marked place (S.places) is learned when seen, heard named or told by a job (#423), never with its
+//             reason; move_to and hunt {where} take it then; it fades with the marker; background heroes learn none
 //   rest      background heroes never get lore; a.lore survives snapshot -> restore
 // No model, no network. Usage: npm run lorecheck (LORECHECK_SEED to vary).
 let seed = 0x10ce0188 ^ (Number(process.env.LORECHECK_SEED) || 7);
@@ -172,6 +174,51 @@ r = act(M[0], 'party_say', {text: `Mind the ${MOBS[wight].pl}: deadly, all of th
 ok(r.ok, `party_say: ${r.said}`); run(0.1);
 ok(M[1].lore.c[wight] && M[1].lore.c[wight].warned && M[2].lore.c[wight] && M[2].lore.c[wight].told, `companions in range learn the ${MOBS[wight].name}`);
 ok(!M[3].lore.c[wight] && !M[4].lore.c[wight], 'companions out of range learn nothing');
+
+// ---------------------------------------------------------------- 6b. DM-marked places (#423): seen, heard, told by a job
+console.log('DM-marked places');
+{const LV = await import('../src/sim/levers.js'), actA = (t, x) => {A.playRate = []; return act(A, t, x)};
+  if (!S.places) S.places = [];
+  park(A, spot); park(B, {x: spot.x + 1.5, y: spot.y}); rebuild(); run(0.05);
+  const farX = spot.x > 40 ? 3 : 76, mk = (name, x, y) => {const p = {id: ++S.uid, kind: 'shrine', name, x, y, z: zoneAt(x, y), born: S.gameMin, until: S.gameMin + 600, lever: -1}; S.places.push(p); return p};
+  const seenP = mk('Weeping Cairn', spot.x + 3, spot.y), heardP = mk('the Hidden Barrow', farX, spot.y), jobP = mk('Lantern Hollow', farX, spot.y > 25 ? 4 : 45);
+  r = actA('move_to', {target: 'Hidden Barrow'}); ok(!r.ok && /Unknown place/.test(r.error), 'move_to a DM place out of sight and never heard of is refused: ' + r.error);
+  A.pq = []; A.state = 'hunt'; run(0.05);
+  ok(A.lore.p['Weeping Cairn'] && A.lore.p['Weeping Cairn'].how === 'seen' && (A.playEv || []).some(e => e.text.includes('You see Weeping Cairn')), 'a DM place in sight is seen (lore and an event)');
+  ok(!A.lore.p['the Hidden Barrow'] && !A.lore.p['Lantern Hollow'], 'places out of sight are not learned');
+  speak(B, 'Folk whisper of the Hidden Barrow past the hills. Beware it after dark.', 'idle'); run(0.05);
+  const hb = A.lore.p['the Hidden Barrow'];
+  ok(hb && hb.how === 'told' && hb.warned, 'a DM place named in earshot is heard of, with the warning: ' + (hb && hb.warned));
+  st = actA('status'); ok(st.places.some(p => p.startsWith('the Hidden Barrow')), 'status.places lists it: ' + st.places.filter(p => /Barrow|Cairn/.test(p)).join(', '));
+  r = actA('move_to', {target: 'Hidden Barrow'}); ok(r.ok && /Hidden Barrow/.test(r.going) && /warned/.test(r.warning || ''), 'move_to takes it once heard of ("the" optional), with the warning: ' + (r.going || r.error));
+  A.pq = []; A.state = 'hunt';
+  r = actA('hunt', {where: 'the Hidden Barrow'}); ok(r.ok, 'hunt {where} takes it too: ' + (r.hunting || r.going || r.error)); A.pq = []; A.state = 'hunt';
+  ok(actA('lore', {about: 'Barrow'}).places.some(p => p.place === 'the Hidden Barrow' && p.how === 'you have heard of it'), 'the lore tool lists it');
+  // told by a job: the DM posts one at A's board that names a place
+  park(A, {x: c.gate.x, y: c.gate.y - 1}, 'town');
+  const board = (S.adventures || []).filter(h => h.phase === 'open' && h.town === c.name); for (const h of board.slice(LV.LK.BOARD_MAX - 2)) h.phase = 'held';
+  const secretReason = 'ZQX-REASON-423';
+  r = LV.pull('post_hook', {town: c.name, tpl: 'relic', giver: 'priest', target: jobP.id}, {by: 'dm-agent', reason: secretReason});
+  ok(r.ok, 'the DM posts a job at ' + c.name + ' that names Lantern Hollow' + (r.ok ? '' : ': ' + r.error));
+  r = actA('list_jobs');
+  ok(A.lore.p['Lantern Hollow'] && A.lore.p['Lantern Hollow'].how === 'told', 'list_jobs tells of the place the job names');
+  r = actA('move_to', {target: 'lantern hollow'}); ok(r.ok, 'move_to takes the job-told place: ' + (r.going || r.error)); A.pq = [];
+  for (const h of board) if (h.phase === 'held') h.phase = 'open';
+  // a job offered to the hero by name, anywhere: known without reading the board
+  const offerP = mk('Sunk Mill', farX, spot.y > 25 ? 8 : 41); park(A, spot); rebuild();
+  const hold2 = (S.adventures || []).filter(h => h.phase === 'open' && h.town === c.name); for (const h of hold2.slice(LV.LK.BOARD_MAX - 2)) h.phase = 'held';
+  r = LV.pull('post_hook', {town: c.name, tpl: 'relic', target: offerP.id, forHero: A.id}, {by: 'dm-agent', reason: secretReason}); run(0.05);
+  for (const h of hold2) if (h.phase === 'held') h.phase = 'open';
+  ok(r.ok && A.lore.p['Sunk Mill'] && A.lore.p['Sunk Mill'].how === 'told', 'a job offered to the hero by name tells of its place' + (r.ok ? '' : ': ' + r.error));
+  ok(!J(A.lore).includes(secretReason) && !J(actA('lore')).includes(secretReason) && !J(actA('status')).includes(secretReason) && !J(A.playEv || []).includes(secretReason), 'no DM reason in the hero\'s lore, tools or events');
+  // the marker goes, and the name fades with it
+  S.places = S.places.filter(p => p !== heardP); run(0.05);
+  ok(!A.lore.p['the Hidden Barrow'], 'a gone marker fades from lore');
+  r = actA('move_to', {target: 'Hidden Barrow'}); ok(!r.ok && /Unknown place/.test(r.error), 'and move_to refuses it again: ' + r.error); A.pq = []; A.state = 'hunt';
+  // a background hero beside a marker learns nothing
+  const bg = S.agents.find(x => !x.player && x.state !== 'dead' && x.kind === 'hero');
+  if (bg) {const bx = {x: bg.x, y: bg.y}; bg.x = seenP.x + 1; bg.y = seenP.y; L.visit(bg); L.hear(bg, 'Lantern Hollow lies east.'); ok(!bg.lore, 'a background hero learns no DM place'); bg.x = bx.x; bg.y = bx.y}
+  S.places = S.places.filter(p => ![seenP, jobP, offerP].includes(p)); run(0.05)}
 
 // ---------------------------------------------------------------- 7. the rest of the world, and saving
 console.log('background heroes and saving');
