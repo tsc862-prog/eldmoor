@@ -352,6 +352,7 @@ Sample lines:
 
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
+  - **The stair sign and the captain's word** (#448): the game never turns a company away from the stair for level; the danger is read in the world. A weathered sign is nailed to the stair-post: "Those who went below were tried blades; you are not. Turn back." A hero below Mirefen's band who sees the stair marks the Crypt dangerous in what it knows. The gate captain, asked by a green blade, says: "The Sunken Crypt is not a place for green blades. Those who went down before you were tried, and the stair has kept more of them than the bards admit. Grow first, then go, and go together."
   - **The crawl** (#65): when the Fellowship goes down, the Crypt is played as five chambers in order, each one a Table scene (background groups still make the single roll). Creatures are the Crypt's own: Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens and Lich-Warden Vesk. Levels 7-12.
     - **The Weeping Stair** (level 7+): water runs down the steps, Tomb Skitters scuttle in the dark below.
     - **The Ossuary**: shelves of old bone; Crypt Shamblers stand up from them.
@@ -361,6 +362,8 @@ Sample lines:
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 20, raided by 5-6 heroes of level 14+ (or four well-geared ones).
 
 ### The Stepping Lands (test continent, not the home map)
+The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's warning (#448); a placeholder on this test continent.
+
 `STEPPING` in `src/world/spec.js` is a 160x100 stepping-stone map, four times the area of Eldmoor, used to test pacing, travel times and performance on the way to a larger world. Select it with `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node; the default is Eldmoor. It keeps Highgate, Grimhold, the Sunken Crypt and Kragmaw, and adds two more home towns and four new regions. Its geography is a test layout, not canon for Eldmoor itself. The monsters of each region are first-pass copies of the Eldmoor species (`src/data/fauna.js`), waiting for a creature-designer pass.
 
 | Region | Levels | Description |
