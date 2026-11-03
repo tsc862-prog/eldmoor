@@ -205,7 +205,7 @@ export function sceneDark(sc=S.table,base=0){const h=(((S.gameMin||0)%1440)+1440
 const ITEMS=[['candle',/\bcandle(s|[- ]stub)?|taper|wax\b/i],['letter',/\b(letter|note|missive|parchment|scroll|deed|writ)\b/i],['key',/\bkeys?\b/i],
   ['ring',/\b(ring|signet|locket|amulet|pendant)\b/i],['pouch',/\b(pouch|purse|coin(s)?|gold)\b/i],['book',/\b(book|tome|ledger|journal|diary)\b/i],
   ['vial',/\b(vial|phial|potion|bottle|flask)\b/i],['dagger',/\b(dagger|knife|blade)\b/i],['map',/\bmap\b/i],['lantern',/\blantern\b/i]];
-export function sceneItem(sc=S.table){if(!sc)return null;const said=[sc.title,plain(sc.frame),sc.narr&&sc.narr.text].join(' ');for(const [k,re] of ITEMS)if(re.test(said))return k;return null}
+export function sceneItem(sc=S.table){if(!sc)return null;const said=[sc.title,plain(sc.frame),sc.narr&&sc.narr.text].join(' ');for(const [k,re] of ITEMS)if(re.test(said))return sc.given&&re.test(sc.given)?null:k;return null} // sc.given: the DM handed that item to a hero in the scene (give_item, #524), so it is no longer drawn by the speaker
 
 // The bar: the answer count and the timer, then where it is; outdoors also who is there (members in class colour, the
 // cast in theirs). The scene's title lives in the banner (#536: one place per fact).
