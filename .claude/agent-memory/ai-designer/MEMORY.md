@@ -43,3 +43,4 @@
 - [Town autopilot #466/#465](town_autopilot.md) — autopilot acts in town (inn, sell, potions, hunt fitting ground); danger-edge stop 5+ levels up, force/repeat
 - [Autopilot caution #487](autopilot_caution.md) — wary autopilot hunts (ground, prey <= lvl+2, flee .22/.5, home when hurt); 5/40 -> 39/40 green survival
 - [Leave and companions #443](leave_companions.md) — leave_party for_good in offers.js, companions tool, a.seen last-seen record, AWAY leave
+- [init() reset #507](init_reset.md) — resetS/resetWorld, initcheck, what to reset when adding stores

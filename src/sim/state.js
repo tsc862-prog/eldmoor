@@ -3,7 +3,7 @@
 import {LAIR} from '../world/map.js';
 import {BOSSES} from '../data/bosses.js';
 
-export const S={
+const fresh=()=>({
   worldVoice:'dm', // issue #164: 'dm' = background heroes and townsfolk say no scripted lines (only the DM voices world characters who meet the Fellowship); 'scripted' brings the old barks back (Settings)
   agents:[],      // heroes, living and dead (graves are recycled past 40)
   mobs:[],
@@ -26,7 +26,16 @@ export const S={
   companies:[],   // companies of 1..PARTY.MAX heroes, id order (sim/company.js, #402); every agent hero rides in exactly one. S.fellowship is an accessor over these.
   companySeq:0,   // last company id handed out, never reused
   followId:null,  // the company the watcher follows (null = the first)
-};
+});
+export const S=fresh();
+// Back to a brand-new world's state, in place (every module keeps its S and its arrays): init() calls it first (#507).
+export function resetS(){const f=fresh();
+  for(const k of Object.keys(S))if(!(k in f))delete S[k];
+  for(const k in f){const c=S[k],v=f[k];
+    if(Array.isArray(c)&&Array.isArray(v)){c.length=0;for(const x of v)c.push(x)}
+    else if(k==='boss'&&c&&v){for(const q in c)delete c[q];Object.assign(c,v)}
+    else S[k]=v}}
+
 // Save-file format version (sim/save.js). Bump it and add a migration there when the shape of S changes.
 export const SAVE_VERSION=7;
 // A fresh world instance id. Deliberately not from the seeded rng or Math.random (a stubbed Math.random must not shift), so a seeded world keeps its dice.
