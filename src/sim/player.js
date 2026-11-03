@@ -75,6 +75,8 @@ import {sceneAct,tableView} from './table.js';
 import {sceneOf} from './scenes.js'; // the hero's own company's scene (#518)
 import {waitsNote,waitedS} from './scenewait.js'; // a scene that waits on you, said in every tool result; how long it waited (#515)
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
+import {passOnTo,gateWord} from './rumours.js'; // what the town is saying (seed_rumour, #637)
+import {titleOf,styled} from './epithet.js'; // a name given for a deed (bestow, #638)
 import {lineRefusal,noteSaid,publicAnswer} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
 import {searchAct,examineView,SR} from './search.js'; // search and examine marked places, signs and landmarks (#525)
@@ -783,7 +785,7 @@ const sightLine=(a,L)=>L.length?'In sight: '+L.slice(0,8).map(c=>c.name+(c.kind=
 function heroDoing(a,b){const t=b.target&&alive(b.target)?(b.target===a?'you':foeName(a,b.target)):null;
   if(b.state==='fight')return 'fighting'+(t?' '+t:'');if(b.state==='duel')return 'in a duel'+(t?' with '+t:'');if(b.state==='assist')return 'helping someone in a fight';
   if(b.state==='town'&&b.moving)return 'walking through town';return ST_WORD[b.state]||b.state}
-function heroLook(a,b){const self=b===a,o={ok:true,kind:'hero',name:b.name,who:raceOf(b).name+' '+b.cls+', level '+b.lvl,
+function heroLook(a,b){const self=b===a,o={ok:true,kind:'hero',name:b.name,...(titleOf(b)?{known_as:styled(b)}:{}),who:raceOf(b).name+' '+b.cls+', level '+b.lvl,
     faction:FAC[b.fac].name+(self?'':b.fac===a.fac?' (your side)':' (the other side: they may attack you)'),looks:HURT(b.hp,maxHp(b)),doing:heroDoing(a,b)};
   if(b.guild)o.guild='<'+b.guild.tag+'> '+b.guild.name;
   if(inSlots(b)&&slotKeyOf(b)){const L={tank:'Tank',healer:'Healer'}[slotKeyOf(b)]||'DPS';o.fellowship='of the Fellowship ('+L+')'}
@@ -853,6 +855,7 @@ function seen(a){const R=sightOf(a),here=inTown(a)?homeOf(a):null,out={heroes:[]
   for(const b of nearHeroes(a.x,a.y,qr)){if(b===a||b.hidden||b.state==='dead'||!vis(b))continue;
     const mate=a.party&&b.party===a.party,o={id:b.id,name:b.name,fac:FAC[b.fac].name,cls:b.cls,lvl:b.lvl,dist:r1(dist(a,b)),doing:b.state};
     if(mate)o.party=true,o.hp=pct(b.hp,maxHp(b))+'%';else if(b.hp<maxHp(b)*.5)o.wounded=true;
+    if(titleOf(b))o.known_as=styled(b); // a name given for a deed (#638)
     if(b.guild)o.guild=b.guild.tag;out.heroes.push(o);if(out.heroes.length>=10)break}
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone)continue;
     const o=mobView(a,m);o.dist=r1(dist(a,m));if(m.target===a)o.onYou=true;else if(m.target)o.busy=true; // described, never numbered (#188)
@@ -878,7 +881,7 @@ const T={
     {const f=followLine(a);if(f)r.following=f;const by=followersOf(a);if(by.length)r.walks_with_you=by.map(b=>b.name+' walks with you')} // follow (#445)
     lookSnap(a);return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
-    const r={ok:true,name:a.name,people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,home:c.name,level:a.lvl,
+    const r={ok:true,name:a.name,...(titleOf(a)?{known_as:styled(a)}:{}),people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,home:c.name,level:a.lvl,
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
       state:a.state,doing:a.playDoing||null,queue:(a.pq||[]).map(cmdText),
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
@@ -962,7 +965,9 @@ const T={
       const met=a.metNpc||(a.metNpc={}),fresh=!met[p.id];met[p.id]=1;const pa=text!=null&&String(text).trim()?publicAnswer(p,a,String(text)):null;
       const before=p.lastBark;if(!pa)npcSay(p,'greet',{target:a.name},{dm:true});const line=pa?pa.text:p.bubble&&p.lastBark!==before?p.bubble.text:p.bubble?p.bubble.text:null;
       const warn=pa?null:fresh?((p.role==='captain'&&captainWarning(a))||npcWarning(a)):null;if(warn)hear(a,warn,p.title+' '+p.name); // a townsperson's advice (#188); the captain warns of the Crypt (#448)
-      talked(a,[p.name]);const rr={ok:true,who:p.title+' '+p.name,answer:(line||'('+p.name+' nods.)')+(warn?' "'+warn+'"':'')};if(p.role==='innkeeper')innRumour(a,rr);return rr}
+      talked(a,[p.name]);const rr={ok:true,who:p.title+' '+p.name,answer:(line||'('+p.name+' nods.)')+(warn?' "'+warn+'"':'')};if(p.role==='innkeeper')innRumour(a,rr);
+      {const w=passOnTo(p,a);if(w.length)rr.answer+=' '+w.map(x=>'"'+x+'"').join(' ')} // word the town is passing on (#637)
+      return rr}
     const id=Number(target),b=S.agents.find(x=>x!==a&&x.state!=='dead'&&(x.id===id||x.name.toLowerCase()===t));
     need(b,'Nobody called "'+target+'" is here.');need(dist(a,b)<=PK.TALK*1.5,b.name+' is too far away to talk to.');
     if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
@@ -1021,7 +1026,8 @@ const T={
         for_you:h.for!=null?h.for===a.id:undefined,rumour:h.zone!=null?jobRumour(a,h.zone):undefined,expires_in_min:Math.max(0,Math.round(h.until-S.gameMin))})}
     const bounties=bountiesAt(c).filter(b=>MOBS[b.type]).map(b=>({bounty:MOBS[b.type].q,kill:b.need+' '+MOBS[b.type].pl,where:ZONES[b.z],giver:b.giver,yours:a.quest&&a.quest.bounty===b.id||undefined,expires_in_min:Math.max(0,Math.round(b.until-S.gameMin))}));
     const sg=sightingLines(a,c.name),nt=noticesAt(a,c.name);for(const x of sg)if(x.bound)learnPlace(a,x.bound,'told');
-    return {ok:true,jobs:out,bounties:bounties.length?bounties:undefined,sightings:sg.length?sg.map(x=>x.text):undefined,notices:nt.length?nt.map(({poster,...r})=>r):undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
+    const gw=gateWord(a,c.name); // the gate's word: what the town is saying (#637)
+    return {ok:true,jobs:out,...(gw.length?{word_at_the_gate:gw}:{}),bounties:bounties.length?bounties:undefined,sightings:sg.length?sg.map(x=>x.text):undefined,notices:nt.length?nt.map(({poster,...r})=>r):undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
     need(!(a.party&&a.party.leader!==a),'In the Fellowship the party decides: propose {kind:"job", job_id:'+(Number.isFinite(id)?id:'N')+'} (vote; the leader settles it).');
     const mine=advOf(a);
