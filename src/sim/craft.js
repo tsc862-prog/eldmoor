@@ -106,7 +106,7 @@ export function craftOne(a,r,{by='script',cls,where}={}){const P=PROF[r.prof],sk
   const st=stat('made');st.units+=r.out.n;st.fees+=r.gold;st.byProf[r.prof]=(st.byProf[r.prof]||0)+1;if(by==='camp')st.camp++;
   record(a,'Made ',{t:made,c:'gd'},where==='camp'?' at the camp fire':'',' ('+P.name+' '+g.skill+').');
   let text=a.name+' made '+made+(where==='camp'?' at the camp fire':'')+' ('+P.name+' '+g.skill+(g.up?', up':'')+'; fee '+r.gold+'g).';
-  if(now!==was){const an=/^[AEIOU]/.test(now)?'an ':'a ';text+=' '+a.name+' is now '+an+now+' in '+P.name+'.';record(a,'Became '+an+now.toLowerCase()+' in '+P.name+'.');
+  if(now!==was){const an=/^[AEIOU]/.test(now)?'an ':'a ';text+=' '+a.name+' is now '+an+now+' in '+P.name+'.';record(a,'Became '+an+now+' in '+P.name+'.');
     if(now==='Master'||by==='agent')log(a,' is now ',gold(an+now+' in '+P.name),'.')}
   if(item&&item.quality==='rare')log(a,' crafts ',gold(item.name),'.');
   return {ok:true,text,item,made,skill:g.skill,up:g.up}}
