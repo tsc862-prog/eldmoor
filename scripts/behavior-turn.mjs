@@ -50,6 +50,7 @@ export function usageDelta(sess, result) {
 export function localRec(r) {
   if (!r) return {tools: [], narration: '', flags: ['failed']};
   const flags = []; if (r.fresh) flags.push('fresh'); if (r.reprompted) flags.push('reprompted'); if (r.foreign) flags.push('foreign'); if (r.repeat) flags.push('repeat'); if (r.capped) flags.push('capped'); if (r.looped) flags.push('looped'); else if (r.loopRetried) flags.push('loop-retried'); if (r.mode === 'json') flags.push('json-mode'); if (r.mode === 'reflect') flags.push('reflection');
+  if (r.broke) flags.push('breaker'); if (r.throttled) flags.push('throttled'); // ended early (issue #467)
   return {tools: (r.calls || []).map(c => ({name: c.name, ok: c.ok, ...(c.ok ? {} : {error: c.error}), ...(c.refused ? {refused: true} : {})})), narration: r.narration || '', seconds: +(r.ms / 1000).toFixed(1), tokensIn: r.in, tokensOut: r.out, cost: r.cost || 0, flags};
 }
 
