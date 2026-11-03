@@ -9,7 +9,10 @@ DM focus across companies (#450, merged via PR from `ai/dm-focus-companies`, 202
 
 - `dmfocus.js focuses()`: one record per company, followed first, read straight from `S.companies` (no company.js import, keeps
   dmfocus import-free). `focus()` stays the five-slot Fellowship's record so levers/staged/pace/behavior/ui callers are unchanged.
-  `ffFor(h,f)`: an ff job without `h.cid` (old saves) belongs to the slot company.
+  `ffFor(h,f)`: an ff job without `h.cid` (old saves) belongs to the slot company. The field is `h.cid`, not `h.company`, and the
+  last-touched minute lives in `S.dmFocus.last`, not on the company: savecheck's v6 fixture asserts no `"company":` key anywhere and
+  deep-compares company records, so both broke it.
+- Solo worlds (playcheck) now draw differently on the boards; RNG-reliant fixtures there may need their hero held alive.
 - `dm.js`: every ff job gets `h.cid`. The five keep their exact draws (same template pick, same reasons), other companies
   draw only templates their lowest member can take (`T.lvl<=lo`), skip below `K.MIN_LVL`, and an elite hunt needs a walking party of
   2+ (a company without a party could never take it: `fits` needs mem>=2). `fits`: another company's ff job ignores `T.size[0]` (a
