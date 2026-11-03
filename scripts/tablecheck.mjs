@@ -763,6 +763,7 @@ if (process.argv[2] === '--talk') {
   const clear = () => {let f = 0; while (S.table && f++ < 60 * 60) step(1 / 60); for (const c of (S.talks ? S.talks.cur.slice() : [])) {c.state = 'done'; S.talks.cur.splice(S.talks.cur.indexOf(c), 1)}
     for (const p of S.npcs) {delete p.snub; delete p.trade; p.warmth = 0; delete p.hostile; p.mood = 'neutral'} if (SLT.slotted()) delete SLT.slotted().talkScenes};
   const talk = (a, p, text) => {a.playRate = []; return act(a, 'talk', {target: String(p.name), ...(text != null ? {text} : {})})};
+  const sc0room = p => {away(); clear(); beside(A, p); const rr = talk(A, p, 'Could we strike a deal on the price?'); const s2 = S.table; const v = s2 && s2.ctx.setting; if (S.table) playOut('leave'); return v};
   const talks = () => (S.dmLog || []).filter(e => e.kind === 'talk' && e.detail && e.detail.scene != null).length;
   const nm = id => (S.agents.find(x => x.id === id) || {}).name;
   // plays the open talk scene out: A answers `pick`, the rest by reflex. Returns the scene.
@@ -800,6 +801,16 @@ if (process.argv[2] === '--talk') {
   ok(talks() === n0 + 1 && S.dmLog.some(e => e.kind === 'talk' && e.detail.table === 'bargain' && e.detail.d20 != null), 'the scene and the roll are in the DM log');
   r = talk(A, smith, 'Surely we can haggle a little more?'); ok(r.ok && !S.table, 'the same conversation does not bargain at the table twice');
 
+  // the room (#431): a talk in town opens on the room of the building the person stands in; in the field on no room (the terrain cut)
+  ok(TS.roomFor(smith) && TS.roomFor(smith).setting === 'smithy', `the smith stands at the forge: ${JSON.stringify(TS.roomFor(smith))}`);
+  ok(sc0room(smith) === 'smithy', 'a bargain with the smith opens on the smithy: ' + sc0room(smith));
+  const roomOf = (p, text) => {away(); clear(); beside(A, p); const rr = talk(A, p, text); const s2 = S.table; const out = s2 && s2.kind === 'talk' ? {setting: s2.ctx.setting, town: s2.ctx.town} : null; if (S.table) playOut('leave'); return out};
+  let rm = roomOf(inn, 'Stand aside, or else.'); ok(rm && rm.setting === 'tavern' && rm.town === c0.name, 'the innkeeper: a tavern back room in ' + c0.name);
+  rm = roomOf(pr, 'Stand aside, or else.'); ok(rm && rm.setting === 'chapel', 'the priest: the chapel');
+  rm = roomOf(cap, 'Stand aside, or else.') || {setting: S.table && S.table.ctx.setting}; ok(rm && (rm.setting === 'gate' || rm.setting === 'tavern' || rm.setting === 'cellar'), 'the captain: a room by the gate (' + (rm && rm.setting) + ')');
+  {const gx = c0.spots.gate, fake = {x: gx.x, y: gx.y}; ok(TS.roomFor(fake).setting === 'gate', 'a person at the gate post stands in the gatehouse');}
+  ok(TS.roomFor({x: c0.gate.x + 30, y: c0.gate.y}) === null, 'a person in the field has no room: the scene keeps the terrain cut');
+  away(); clear();
   // an offer that needs an answer: the captain's job
   away(); clear(); beside(A, cap);
   r = talk(A, cap, 'Good day, captain.'); sc = S.table;
