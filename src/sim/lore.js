@@ -157,9 +157,14 @@ export function learnJob(a,h){if(!learner(a)||!h)return 0;let n=0;if(h.zone!=nul
   const p=dmPlaces().find(x=>x.name===nm&&(d.x==null||(x.x===d.x&&x.y===d.y)))||dmPlaces().find(x=>x.name===nm);
   if(markOk(p)){if(learnMark(a,p,'told'))n++;return n}
   const lm=LANDMARKS.find(l=>l.name===nm)||(CRYPT&&CRYPT.name===nm?CRYPT:null);if(lm&&learnPlace(a,lm.name,'told'))n++;return n}
+// The sign at a dungeon stair (#448): read on first sight; to a hero below the region's band it marks the place dangerous.
+const green=a=>{const b=REGIONS[zoneAt(CRYPT.x,CRYPT.y)]&&REGIONS[zoneAt(CRYPT.x,CRYPT.y)].band;return !!b&&a.lvl<b[0]};
+function readSign(a,l){if(!l.sign||!learner(a))return;ev(a,l.sign);const p=loreOf(a).p[l.name];if(p&&!p.warned&&green(a))p.warned=clean('a sign at the stair: "Those who went below were tried blades; you are not."',LORE.SNIP)}
+// The gate captain's word to a green blade about the Crypt (sim/player.js talk), or null.
+export function captainWarning(a){if(!learner(a)||!CRYPT||!green(a))return null;const l=LANDMARKS.find(x=>x.kind==='crypt');return l&&l.captain||null}
 // Every step for an agent hero (watch() in sim/player.js): the region it stands in, landmarks in sight, its quest.
 export function visit(a){if(!learner(a))return;const z=zoneAt(a.x,a.y);if(a.loreZ!==z){a.loreZ=z;if(ZONES[z]&&learnPlace(a,ZONES[z],'been'))ev(a,'You come into '+ZONES[z]+' for the first time.');else if(ZONES[z])place(a,ZONES[z],'been')}
-  const R=12*sightMul(z);for(const l of LANDMARKS)if(dist(a,l)<=R+(l.r||1)&&learnPlace(a,l.name,'seen'))ev(a,'You see '+l.name+' with your own eyes.');
+  const R=12*sightMul(z);for(const l of LANDMARKS)if(dist(a,l)<=R+(l.r||1)&&learnPlace(a,l.name,'seen')){ev(a,'You see '+l.name+' with your own eyes.');readSign(a,l)}
   // DM places (#423): one in sight is seen; a known one whose marker is gone fades
   const P=dmPlaces(),L=loreOf(a);for(const p of P)if(markOk(p)&&dist(a,p)<=R){const e=L.p[p.name];if(!e||e.dm!==p.id||e.how==='told'){if(learnMark(a,p,'seen'))ev(a,'You see '+p.name+' with your own eyes.')}}
   for(const n of Object.keys(L.p)){const e=L.p[n];if(e.dm!=null&&!P.some(x=>x.id===e.dm))delete L.p[n]}

@@ -35,3 +35,4 @@
 - [Sim perf #433](sim_perf.md) — hash-identical speedups: within() box+hypot, non-enumerable hero caches, LOD flag off by default
 - [Emergent parties #402](emergent_parties.md) — companies of 1-8 (5 minds), single faction, together default; owner decisions 2026-11-03
 - [Company model #438](company_model.md) — company.js, accessor shims (S.fellowship, a.fellow, p.fellow), companySeq ids, save v7, hash proof
+- [Emergent parties #402](emergent_parties.md) — company 8 heroes/5 minds, together default forever, followed-only pause, arrival scene, no crypt level gate

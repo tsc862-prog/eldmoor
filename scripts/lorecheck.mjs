@@ -230,5 +230,19 @@ ok(A2 && J(A2.lore) === keep, 'a.lore survives snapshot -> restore');
 // nothing a hero tool returned carried the creature's planted numbers
 noNums('the events', A2.playEv);
 
+// ---------------------------------------------------------------- the Crypt stair sign and the captain (#448)
+console.log('crypt stair');
+{
+  const B = S.agents.find(x => x.id !== A2.id && x.kind === 'hero' && x.state !== 'dead' && !x.fellow);
+  B.lvl = 1; B.hp = maxHp(B); P.markPlayer(B, true); B.lore = null; B.loreZ = null;
+  B.x = CRYPT.x; B.y = CRYPT.y + 3; B.state = 'hunt'; B.hidden = false;
+  L.visit(B);
+  ok(J(B.playEv).includes('tried blades; you are not'), 'a level-1 hero at the stair reads the sign');
+  ok(L.placesView(B).some(p => p.startsWith(CRYPT.name) && /danger/.test(p)), 'the stair is marked dangerous to a level-1 hero');
+  ok(L.captainWarning(B) && /green blades/.test(L.captainWarning(B)), 'the gate captain warns a green blade');
+  B.lvl = 8;
+  ok(L.captainWarning(B) === null, 'no warning once the hero is inside the region band');
+}
+
 console.log(fail ? `\nlorecheck: ${fail} FAILED\n` : '\nlorecheck: all ok\n');
 process.exit(fail ? 1 : 0);

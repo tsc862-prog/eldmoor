@@ -69,7 +69,7 @@ import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js
 import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
-import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,npcWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
+import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
 import {actFlee,fights,actionLog} from './actlog.js';
 import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
@@ -705,7 +705,7 @@ const T={
     if(p){need(dist(a,p)<=PK.TALK,p.title+' '+p.name+' is too far away ('+r1(dist(a,p))+' tiles). move_to("'+p.role+'") first.');
       if(p.fac!==a.fac)return {ok:true,who:p.title+' '+p.name,answer:'('+p.name+' looks at you with open contempt and says nothing.)'};
       const before=p.lastBark;npcSay(p,'greet',{target:a.name},{dm:true});const line=p.bubble&&p.lastBark!==before?p.bubble.text:p.bubble?p.bubble.text:null;
-      const warn=npcWarning(a);if(warn)hear(a,warn,p.title+' '+p.name); // a townsperson's advice (#188)
+      const warn=(p.role==='captain'&&captainWarning(a))||npcWarning(a);if(warn)hear(a,warn,p.title+' '+p.name); // a townsperson's advice (#188); the captain warns of the Crypt (#448)
       talked(a,[p.name]);return {ok:true,who:p.title+' '+p.name,answer:(line||'('+p.name+' nods.)')+(warn?' "'+warn+'"':'')}}
     const id=Number(target),b=S.agents.find(x=>x!==a&&x.state!=='dead'&&(x.id===id||x.name.toLowerCase()===t));
     need(b,'Nobody called "'+target+'" is here.');need(dist(a,b)<=PK.TALK*1.5,b.name+' is too far away to talk to.');
@@ -748,7 +748,7 @@ const T={
     const bounties=bountiesAt(c).filter(b=>MOBS[b.type]).map(b=>({bounty:MOBS[b.type].q,kill:b.need+' '+MOBS[b.type].pl,where:ZONES[b.z],giver:b.giver,yours:a.quest&&a.quest.bounty===b.id||undefined,expires_in_min:Math.max(0,Math.round(b.until-S.gameMin))}));
     return {ok:true,jobs:out,bounties:bounties.length?bounties:undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
-    need(!(a.party&&a.party.leader!==a),'Your party leader decides which job the party takes.');
+    need(!(a.party&&a.party.leader!==a),'In the Fellowship the party decides: propose {kind:"job", job_id:'+(Number.isFinite(id)?id:'N')+'} (vote; the leader settles it).');
     const mine=advOf(a);
     if(mine&&mine.id===id){a.pq=[];const ok=dmDepart(a,c);need(ok,'The adventure could not resume.');return {ok:true,resumed:mine.title,scene:plain(advLine(a))}}
     if(heldOf(a).some(v=>v.id===id)||takenOf(a).some(h=>h.id===id))return T.focus_quest(a,{id:'job:'+id}); // one you hold: focus it (the quest log)
@@ -844,8 +844,8 @@ const T={
   buy(a,{slot,item,count,npc}){const tr=npc!=null&&npc!==''||!inTown(a)?traderFor(a,npc,PK.TALK):null; // a person who opened their stock (#170)
     if(tr){need(!tr.error,tr.error);const r=npcBuy(a,tr,{slot,item,count});need(!r.error,r.error);return r}
     need(inTown(a),'The smiths are in town.');
-    if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>x.toLowerCase()===String(item).toLowerCase());
-      need(id,'Not sold here. For sale: '+Object.keys(USES).filter(x=>USES[x].lvl<=a.lvl).map(x=>x+' ('+USES[x].price+'g)').join(', ')+'.');
+    if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>!USES[x].craft&&x.toLowerCase()===String(item).toLowerCase());
+      need(id,'Not sold here. For sale: '+Object.keys(USES).filter(x=>!USES[x].craft&&USES[x].lvl<=a.lvl).map(x=>x+' ('+USES[x].price+'g)').join(', ')+'.');
       const U=USES[id];need(U.lvl<=a.lvl,id+' is sold from level '+U.lvl+'.');const n=Math.min(10,Math.max(1,Math.round(Number(count)||1)));
       need(a.gold>=U.price,'That costs '+U.price+'g each; you have '+a.gold+'g.');
       if(U.kind==='pack'){need(!invOf(a).pack,'You already carry a Wayfarer\'s Pack.');a.gold-=U.price;invOf(a).pack=1;return {ok:true,bought:id,cost:U.price,gold:a.gold,capacity:capOf(a)}}
@@ -874,7 +874,7 @@ const T={
       throw new Rule('The smiths are in town. '+(g?c.name+' lies '+compass(g.x-a.x,g.y-a.y)+', about '+Math.round(d)+' tiles ('+walkTime(d)+'): move_to {target: "home"}, then shop. ':'')+(tr&&tr.error?tr.error:'Out here only a person who opened their trade with you sells (talk to them, then shop {npc}).'))}
     return shopView(a,null,all)},
   // The gate captain's bounties (issue #67): hand in a finished one, or take one if you hold none. Never handed out unasked.
-  turn_in(a,{region}={}){need(inTown(a),'The gate captain is in town.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,l=a.lvl,c=homeOf(a);
+  turn_in(a,{region}={}){need(inTown(a),'The gate captain is at '+homeOf(a).name+'’s gate ('+Math.round(dist(a,homeOf(a).gate))+' tiles). move_to("home"), then turn_in.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,l=a.lvl,c=homeOf(a);
     const bt=x=>(MOBS[x.type].q)+': '+x.need+' '+MOBS[x.type].pl+' in '+ZONES[MOBS[x.type].z];
     if(doneQ){turnIn(a);return {ok:true,reward_gold:a.gold-g,leveled:a.lvl>l||undefined,note:'The captain keeps bounties posted: turn_in again to take another (list_jobs shows them).'}}
     if(q)return {ok:false,error:'Your bounty is not done ('+q.have+'/'+q.need+').',bounty:bt(q)};

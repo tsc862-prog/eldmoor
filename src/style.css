@@ -716,3 +716,12 @@ button.tbtn.danger{border-color:var(--red)}
 .dglink{font-family:var(--px);font-size:7px;padding:3px 6px;margin-left:4px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer;vertical-align:middle}
 .tbanner .tdg{margin-left:6px;color:#9ae0b8;border-color:#3a5a4a}
 @media (max-width:600px){.dgrooms{display:none}.dgtxt{font-size:14px;flex-basis:160px}}
+/* The scene view (#431, render/sceneview.js): an indoor setting like the dungeon view; outdoors only the bar, the world shows through */
+.tbanner .tscn{pointer-events:auto;font-family:var(--px);font-size:7px;padding:4px 6px;min-height:22px;margin-left:6px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer}
+.tbanner .tscn:focus-visible{outline:2px solid #ffd866}
+.scview.scout{background:transparent}
+.scview.scout .dgcv{display:none}
+.screen.scopen .minimap,.screen.scopen .hint{display:none}
+.scview .dgname{color:var(--gold)}
+.scwho .scp.gone{opacity:.5;text-decoration:line-through}
+@media (max-width:600px){.scview .scwho{display:flex;font-size:13px}.screen.scopen{aspect-ratio:auto;height:min(82vh,640px)}} /* a phone gets a taller map while a scene is shown */
