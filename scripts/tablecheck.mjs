@@ -274,6 +274,11 @@ if (process.argv[2] === '--fireside') {
   ok(sd && sd.kind === 'debrief' && sd.all && !sd.ids.includes(away.id), 'a hard scene (a rescue) is followed by a debrief for those present, everyone at once');
   if (sd) P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'Too close. I owe you all a drink.'}); k = 0; while (S.table === sd && k++ < 60 * 60) step(1 / 60);
   ok(sd && /talked it over/.test(sd.summary) && !S.table, 'the debrief plays one round: ' + (sd && sd.summary));
+  // 3b. the start gate holds the world (#559): no fire opens while it holds, and it opens once the hold lifts
+  CM.breakCampNow('called'); S.fellowship.fire.last -= 1e4; field(); SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
+  ok(!S.table, 'while the start gate holds the world no fireside opens');
+  SIM.setGateHold(false); k = 0; while (!(S.table && S.table.kind === 'fireside') && k++ < 600) step(1 / 60);
+  ok(S.table && S.table.kind === 'fireside', 'once the hold lifts the waiting fireside opens'); k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
   // 4. no host: a camp opens no fireside
   CM.breakCampNow('called'); S.fellowship.fire.last -= 1e4; SIM.setRunnerLinks(null); field(); CM.leaderRest(live, 4); run(30);
   ok(!S.table && !S.fellowship.fireQ, 'with no host (npm run sim) a camp opens no fireside');

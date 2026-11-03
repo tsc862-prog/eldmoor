@@ -34,6 +34,7 @@ import {addHeroNote} from './notebook.js';
 import {moment,onMoment} from './reflect.js';
 import {tellStory} from './persona.js';
 import {hasLinks} from './runlink.js';
+import {worldHeld} from './prep.js';
 import {inRange} from './reach.js';
 import {onCamp,campOf} from './camp.js';
 import {companies,companyOf,members} from './company.js';
@@ -102,7 +103,7 @@ function openFire(C,q,H){const skip=memOf(C).filter(a=>!H.includes(a)).map(a=>a.
   const sc=openScene('debrief','After '+cut(q.title,60),[gd(cut(q.title,60)),' is over. ',pickH(C.id+gm,5,['They catch their breath.','Nobody speaks at first.','Someone laughs, too loud, and stops.']),' How was that?'],{mode:'debrief',about:q.title,skip,anchor:H[0].id},C);
   if(sc)F.dlast=gm;return sc}
 // Once per step (sim/index.js, after the table): a waiting fireside or debrief opens when its company's table is free.
-export function fireTick(){const CS=S.companies;if(!CS||!CS.some(C=>C.fireQ))return;
+export function fireTick(){const CS=S.companies;if(!CS||!CS.some(C=>C.fireQ)||worldHeld())return; // the start gate or the DM's prep holds the world (#559): no fire opens meanwhile
   for(const C of companies()){const q=C.fireQ;if(!q)continue;
     if(S.gameMin-q.at>FIRE.QUEUE_MIN||!hasLinks()){delete C.fireQ;continue}
     if(sceneFor(C))continue; // each company its own table (#518)
