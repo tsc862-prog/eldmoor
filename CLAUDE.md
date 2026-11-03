@@ -28,8 +28,12 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   lever reasons, or another hero's journal, memories, persona, mind, narration or session; a claimed
   hero answers only its own runner; heroes have no DM tools and the DM no hero tools. The watcher
   (the owner's browser) still sees everything. See "In-game channels" below; `npm run channelcheck`.
-- **No build step required for the art.** All terrain and sprites are generated
-  in code (pixel arrays and procedural textures). No image assets yet.
+- **Generated art, procedural fallback, no build step to play.** Art is generated images under `assets/`
+  (PNGs plus `assets/index.json`, committed and served by Vite as static files) made offline by the Hugging Face
+  pipeline in `scripts/art/` (#177); every asset has a procedural fallback (the pixel arrays and procedural
+  textures in `src/render/`), so a missing or absent `assets/` never breaks a world and looks as before. The sim,
+  the map and its hash, lighting, weather, effects and the minimap stay procedural; `HF_TOKEN` is read only by
+  `scripts/art/gen.mjs`, never by the browser or the relay.
 - **Built to scale.** The world will grow 20-30x with several races and home
   towns per faction (see the scaling epic on GitHub). Never hard-code the number
   of zones, factions, cities or races; loop over the tables. Never assume a zone
@@ -145,6 +149,20 @@ other. The rules:
 - `npm run focuscheck`: guild focus (#6, `src/sim/guildfocus.js`): each guild's leader picks Delve (crypt), Wyrmhunt (raid), Wayfaring (DM hooks) or Warpath (PvP) from the guild's state, no dice; it multiplies or reorders existing rolls only, so `GF.ON=false` (or no guild focused) rolls exactly as before; the Fellowship's guild never takes one; changes go to the chronicle and timeline (GUILD).
 - `npm run archetypecheck`: Fellowship archetypes (#295, `src/data/archetypes.js`, `applyArchetype` in `src/sim/persona.js`): six archetypes picked on the setup page or the sheet, their stances toward each companion reaching prompts (#305), owner stances, no RNG.
 - `npm run personacheck`: agent-built personality (#409): the `self`/`become` tools, daily limits, owner pins, the persona history, relay writing never overwriting the hero's own words, the turn-header line and the standing-order block, a reflection that changes the persona, privacy, save/restore and old saves, no RNG.
+- Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, size, priority, prompt, seed, palette paths into
+  `src/render/palette.js`, the renderer hook naming its procedural fallback) and the candidate models (pixel-art LoRAs
+  on fal-ai through Hugging Face Inference Providers). `npm run art:daily` (`daily.mjs`; `-- --now` to run at once,
+  `--max N`, `ART_MAX_CALLS`, `--dry-run`) generates missing assets in priority order until the free allowance is used
+  up (402, a quota 429/403, rate headers at 0), into `assets/incoming/<date>/` with a contact sheet; state in
+  `assets/queue.json` (gitignored), one line a run in `logs/art.log` (the launcher's `s` shows it); refused models fall
+  through to the next candidate and the one that answers is pinned. `npm run art:accept -- <ids>|all` (`--reject`,
+  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scriptsartschedule.cmd [HH:MM]`
+  registers the daily Windows task. `npm run art:gen` generates straight into `assets/`, `npm run art:sheet` writes
+  the contact sheet. Post-processing (`post.mjs`, zero-dependency PNG codec `png.mjs`): background, downscale to the
+  pixel grid, quantise to the palette, outline. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until
+  loaded or when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names
+  the road, water and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against
+  a mock Hugging Face server.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player
@@ -287,6 +305,18 @@ is silent, and scene choices time out to the scripted branch, so the world never
   plus `<id>-<slug>.md` with front matter), the DM under `dm/memory/`; never read back. `--no-mirror` (or
   `RELAY_MIRROR=0`) turns the files off. A replaced world is purged: every world carries an instance id (`S.worldId`, new at `init()`, saved with the world, given to an older save on load; never read by `step()`), the page's hello and `play-headless` send it, and `logs/agents/<world>/.world` records the last one. A different id (a New World, an Import of another save, `--fresh`) deletes that world's hero folders and `dm/` (`purgeWorld` in `scripts/memory-mirror.mjs`) and logs `[mirror] new <world> world: purged N old memory folders`; the same id on reload purges nothing; links and anything outside `<root>/<world>` are never touched; session files are left to the runners. The Memory tab and the DM panel's **Notes** filter show them.
 - Own personality (#409, `src/sim/persona.js`): every agent hero grows its persona. `self` reads it (voice, wants, fears, quirk, never_says, beliefs, traits, stances toward companions and people, backstory, recent changes, what it may still change today); `become {field, text, why, about?, op?}` revises one part in its own words (fields voice, wants, fears, quirk, never_says, beliefs, traits (op add/drop/set), stance (about: a companion, any hero or a person by name); aliases and over-long text are taken with a note; a why is required). `SELF.PER_DAY` 3 changes a game day, one per field (a stance per person); each lands in `a.persona.hist` (day, field, before -> after, why; 40 kept). Owner pins per field in the sheet editor (`a.persona.pins`, `pinField`) refuse a change with a message. The archetype, scripted sheet, relay writing and owner edits are the seed; the agent's words count as authored (`by[field]='self'`, `stanceBy[id]='self'`): relay persona writing and a sheet rebuild (`keepSelf`) never overwrite them. Every turn header carries one line (`brief.persona`, "Who you are: ..."); Claude runners write the full text (`paceBrief(id,{self:true})`, `/play/pace {brief, self}`) into their standing orders between `YOUR PERSONA` and `(end of your persona)` and refresh it when `brief.personaV` changes. Reflections ask "has this changed who you are?" (Claude: become with tool use; local/OpenAI: an optional `become` object in the forced answer). The Life view shows "Who they became". Private to the hero (channelcheck), dies with it, no RNG; old saves migrate on first touch. `npm run personacheck`.
+- Stated aim (#535, `src/sim/intent.js`): `intent {goal, why, until?, done?}` saves `a.intent` (goal, why, until: game hours ->
+  `untilAt` or a condition; set time, last progress, the `order` autopilot carries on, `done`). Every turn header says "Your aim: ...
+  (set 3 h ago)" (`brief.aim`, `aimNote` in `scripts/pacing.mjs`); a done, stale (no kill, XP, level, adventure step or 4 tiles walked
+  for `INTENT.STALE` 120 game min) or missing aim makes the turn ask first "What are you trying to do now?" (any mind: the intent
+  tool; local/OpenAI reflections also carry an optional `intent` object in the forced answer); a scene open only names it. The order
+  comes from the command the agent gives (or carries out) under the aim, else the goal's words (wait/rest, follow <name>, a known place,
+  hunt words); autopilot then walks on to the place, hunts the ground (if it fits), follows or waits, after its safety checks. Done on
+  arrival, the kills made, the hours up, the followed hero gone, or `done: "yes"`. A wait-like aim with no until ends in 2 h; with no aim
+  `wait` is held to `INTENT.WAIT_NOAIM` (120). A company leader's new aim is shouted (a party line in range; `a.heardAim`), and those
+  who heard it carry "Your leader's aim: ..." in their header. 12 aims a game day. Private otherwise (channelcheck). The purpose line
+  (#534) reads it. Behavior: `no-aim` anomaly (`BW.NO_AIM_MIN`, outside camp and town rest) and "Aims stated (intent) per hero per game
+  day" in the report. Agent heroes only, no RNG.
 - Tiered memory (#153, `src/sim/tiers.js`, `a.tiers`): agent heroes and Fellowship members keep **landmarks** outside
   every rolling cap (a companion's death, joining or leaving the Fellowship, levels 5/10/15/20, Crypt clears, a boss or
   named elite slain, a nemesis taken or paid, and entries written with `journal_write {landmark: yes}`, 3 a day; 30
@@ -584,6 +614,28 @@ off", "model refused". A failed call means the hero plays scripted. Agent runs r
 `<model> · openai`. The runner reads the key from its own environment/`.env` like the Claude runner
 does, and never prints it. `npm run openaicheck` (in CI) tests all of it against a mock OpenAI server,
 with no key and no network.
+
+### Hugging Face router (issue #552)
+
+A fourth mind provider, id `huggingface` (label "Hugging Face", tag `<model> · huggingface`): the Inference Providers router at
+`https://router.huggingface.co/v1` speaks OpenAI Chat Completions, so it is `scripts/providers/openai.mjs` with other options
+(`hfAdapter`, `HF_OPTS`). Setup: `HF_TOKEN=hf_...` in `.env` (the same token the art pipeline uses; read by the relay and the runners only, never
+printed, scrubbed from errors); optional `HF_MODEL` (default model), `HF_MODELS` (comma list that replaces the picker list), `HF_BASE_URL`.
+Recharge is off, so the owner's credit is the free monthly allowance, shared with the art pipeline (the picker rows say so): a request carries
+only `model`, `max_tokens`, `messages` and the structured-output/tools fields, never provider or billing options. Cost is the reply's
+`usage.estimated_cost` (turn line, run budget, relay stats); a reply without it is "unknown", as for an unpriced OpenAI model.
+- Models: not every Hub model has an enabled provider (400 `model_not_supported`), so the list is curated, `HF_MODELS` in the adapter
+  (Llama 3.1 8B, Llama 3.3 70B, Qwen 2.5 72B, DeepSeek V3; each had a live provider on the Hub on 2026-11-03). The relay checks each once at start
+  with one tiny call (`max_tokens` 1; a few millionths of a dollar), caches the answer for its life and drops the unsupported ones
+  (`GET /health` `providers.huggingface.models`, plus `dropped`); runners do not repeat the check, a model that answers `model_not_supported`
+  fails with an error that names the picker list.
+- Structured output: strict `json_schema` first; a provider that rejects it (400 naming the schema) is asked again with `json_object` and the schema in
+  the system prompt, remembered per model; the relay validates either way. No `reasoning_effort`. Tools use the OpenAI tools path; a model that
+  says it has no tool support sets `noTools` and the local loop switches to its JSON-actions mode.
+- Errors: 401 "bad or missing HF_TOKEN"; 402, or a 429 naming credits, "Hugging Face allowance used up (recharge is off); the hero plays scripted / the
+  runner waits" (kind `quota`, never retried); other 429s pause the limiter (`RELAY_HF_CONCURRENCY`, default 4, `queues.huggingface`).
+- Agent play is the OpenAI path (`--provider huggingface --model <id>`, `openaiRunner` in `scripts/agent-chat.mjs`, same loop, forced scene answers
+  and reflections); no Claude slot, keeps the kind's turn cap and budget caps. `npm run hfcheck` (in CI) runs it all against a mock router.
 
 ## DM agent (issue #66, part 1)
 

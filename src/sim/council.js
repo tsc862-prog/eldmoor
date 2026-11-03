@@ -129,7 +129,8 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   // presence (#182): only members within shouting range hear a proposal and vote; the absent hear of it on rejoining
   const away=members(F).filter(b=>b!==a&&!inRange(a,b));
   if(away.length&&NEED_ALL.includes(kind)&&o.src!=='call')return 'The '+KIND_TEXT[kind]+' takes the whole '+word(F)+' together; '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear. Gather first, or send a courier.';
-  const P={id:nextPropId(F),kind,details:(d||KIND_TEXT[kind])+greenWarn(F,kind),by:a.id,byName:a.name,at:Math.round(S.gameMin),until:S.gameMin+COUNCIL.PROP_MIN,votes:{},status:'open',result:null,src:o.src||'member'};
+  const base=d||KIND_TEXT[kind],gw=greenWarn(F,kind);
+  const P={id:nextPropId(F),kind,details:base+(gw&&!/[.!?]$/.test(base)?'.':'')+gw,by:a.id,byName:a.name,at:Math.round(S.gameMin),until:S.gameMin+COUNCIL.PROP_MIN,votes:{},status:'open',result:null,src:o.src||'member'};
   if(away.length)P.absent=away.map(b=>b.id);
   if(kind==='split'&&o.where)P.meet={where:clean(o.where,60),hours:o.hours}; // the plan to meet again, recorded if the split passes
   if(o.job!=null)P.job=Number(o.job);

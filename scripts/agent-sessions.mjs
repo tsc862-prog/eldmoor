@@ -46,7 +46,7 @@ export function loadSession(heroId, heroName, fresh, {logs = LOGS, startNew = fa
 // then the hero's saved settings, then the defaults (environment / built-in). Returns the settings
 // and whether they changed what was saved.
 export const DEFAULT_PROVIDER = 'anthropic';
-export const RUNNER_PROVIDERS = ['anthropic', 'ollama', 'openai']; // providers with an agent runner (google: not yet)
+export const RUNNER_PROVIDERS = ['anthropic', 'ollama', 'openai', 'huggingface']; // providers with an agent runner (google: not yet)
 export function runnerSettings(sess, overrides = {}, defaults = {}) {
   const saved = sess && sess.runner && typeof sess.runner === 'object' ? sess.runner : {};
   const pick = k => overrides[k] != null && overrides[k] !== '' ? String(overrides[k]) : saved[k] != null ? String(saved[k]) : defaults[k] != null ? String(defaults[k]) : null;

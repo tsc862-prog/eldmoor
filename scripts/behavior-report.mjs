@@ -33,6 +33,7 @@ const ABOUT = {
   'lever-near-hurt': 'a danger lever pulled near a badly hurt Fellowship member',
   'request-flood': 'too many tool or relay calls in a minute',
   'no-memories': 'an agent-played Fellowship member wrote no memory for two game days',
+  'no-aim': 'an agent hero had no stated aim (intent) for two game hours outside camp and town rest (#535)',
   'dm-scripted': 'the DM agent answered under half of the answerable calls (talk, table voice, slots) over two game hours while its seat was held; the scripted DM filled the rest (#541)',
   'scene-missed': 'a live member did not answer its Table scene in time: the table waited, then its reflex acted (#515)',
 };
@@ -175,6 +176,12 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
     const dl = [...days].sort((a, b) => a - b).slice(-10);
     L.push('', 'Memories written per member per game day:', '');
     L.push(mem.size ? table(['member', ...dl.map(d => 'day ' + d), 'total'], [...mem.entries()].map(([k, m]) => [k, ...dl.map(d => m.get(d) || 0), [...m.values()].reduce((t, v) => t + v, 0)])) : '_none written_', '');
+    // aims stated per hero per game day (issue #535), from the digests
+    const aim = new Map();
+    for (const w of W) {const d = Math.floor((w.gameMin - 1) / 1440) + 1; for (const [k, v] of Object.entries(w.intents || {})) {const m = aim.get(k) || new Map(); m.set(d, (m.get(d) || 0) + v); aim.set(k, m)}}
+    for (const m of last.members || []) if (m.agent && !aim.has(m.name)) aim.set(m.name, new Map());
+    L.push('', 'Aims stated (intent) per hero per game day:', '');
+    L.push(aim.size ? table(['hero', ...dl.map(d => 'day ' + d), 'total'], [...aim.entries()].map(([k, m]) => [k, ...dl.map(d => m.get(d) || 0), [...m.values()].reduce((t, v) => t + v, 0)])) : '_none stated_', '');
     const deaths = W.flatMap(w => (w.deaths || []).map(d => ({...d, gm: w.gameMin})));
     L.push(`- Deaths: ${deaths.length}${deaths.length ? ' (watched heroes: ' + (deaths.filter(d => d.watched || d.fellow || d.agent).map(d => d.name + ', ' + d.cause).join('; ') || 'none') + ')' : ''}.`);
     const causes = {}; for (const d of deaths) {const c = String(d.cause || '?').replace(/^(slain|killed) by /i, '').slice(0, 40); causes[c] = (causes[c] || 0) + 1}

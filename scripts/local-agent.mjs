@@ -336,7 +336,7 @@ export const REFLECT_NOTES = 3;
 // strict: OpenAI's strict json_schema (every property required, no maxItems/maxLength; cut here instead).
 export function reflectSchema({strict = false} = {}) {
   const s = (d, n) => ({type: 'string', description: d, ...(strict ? {} : {maxLength: n})});
-  return {type: 'object', additionalProperties: false, required: strict ? ['notes', 'become'] : ['notes'], properties: {notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
+  return {type: 'object', additionalProperties: false, required: strict ? ['notes', 'become', 'intent'] : ['notes'], properties: {notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
     description: 'The memories you want to keep (0-3); empty if nothing is worth it',
     items: {type: 'object', additionalProperties: false, required: strict ? ['title', 'text', 'tags', 'about'] : ['title', 'text', 'tags'], properties: {
       title: s('A short title of your choosing', 80), text: s('The memory in your own words', 600),
@@ -344,7 +344,10 @@ export function reflectSchema({strict = false} = {}) {
       about: s('Who or what it concerns (a name, a place), or empty', 60)}}},
     // has this changed who you are? (issue #409): an optional change of one persona field, sent with become
     become: {type: 'object', additionalProperties: false, required: ['field', 'text', 'why', 'about'], description: 'A change of who you are, if this moment changed you; field "none" if not',
-      properties: {field: {type: 'string', enum: ['none', ...BECOME_KEYS]}, text: s('Your new words for that part of you, or empty', 300), why: s('What changed you, or empty', 200), about: s('For a stance: who it is toward, or empty', 40)}}}};
+      properties: {field: {type: 'string', enum: ['none', ...BECOME_KEYS]}, text: s('Your new words for that part of you, or empty', 300), why: s('What changed you, or empty', 200), about: s('For a stance: who it is toward, or empty', 40)}},
+    // what next (issue #535): an optional new aim, sent with intent
+    intent: {type: 'object', additionalProperties: false, required: ['goal', 'why', 'until'], description: 'What you are trying to do next, if your aim changed or you have none; goal empty to keep it',
+      properties: {goal: s('What you will do next, or empty', 160), why: s('Why, or empty', 200), until: s('Game hours or a condition, or empty', 60)}}}};
 }
 export const BECOME_KEYS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 'beliefs', 'traits', 'stance'];
 // The persona change of a structured reflection answer, or null (none, or not given). -> {field, text, why, about?}
@@ -355,6 +358,15 @@ export function reflectBecome(text) {
   const field = String(b.field || '').trim().toLowerCase(), t = String(b.text || '').trim();
   if (!field || field === 'none' || !t) return null;
   return {field, text: t.slice(0, 300), why: String(b.why || '').trim().slice(0, 200) || 'a moment of reflection', ...(String(b.about || '').trim() ? {about: String(b.about).trim().slice(0, 40)} : {})};
+}
+// The new aim of a structured reflection answer (issue #535), or null (none given). -> {goal, why?, until?}
+export function reflectIntent(text) {
+  let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
+  const b = j && typeof j === 'object' && !Array.isArray(j) ? j.intent : null;
+  if (!b || typeof b !== 'object') return null;
+  const goal = String(b.goal || '').trim(); if (!goal || /^(none|same|keep|-)$/i.test(goal)) return null;
+  const why = String(b.why || '').trim(), until = String(b.until || '').trim();
+  return {goal: goal.slice(0, 160), ...(why ? {why: why.slice(0, 200)} : {}), ...(until && !/^(none|-)$/i.test(until) ? {until: until.slice(0, 60)} : {})};
 }
 // What the member did lately, from its own compact conversation (sess.local.history), for the reflection prompt.
 export function recentOf(sess, chars = 2400) {
@@ -377,11 +389,11 @@ export function reflectNotes(text) {
 export async function reflectTurn({ask, call, sess, moment, prompt, context = '', on = () => {}, keep = true, strict = false}) {
   const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'reflect', forced: true, calls: [], misses: 0, notes: [], moment: moment && moment.id};
   const recent = recentOf(sess), user = [recent ? 'What you did and heard lately (your own turns):\n' + recent : '', context ? context.trim() : '', prompt].filter(Boolean).join('\n\n');
-  let notes = null, note = '', bec = null;
+  let notes = null, note = '', bec = null, aim = null;
   for (let k = 0; k < 2 && !notes; k++) {
     const r = await ask(sess.system || '', user + note, reflectSchema({strict})), u = r.usage || {};
     stat.modelCalls++; stat.in += u.in || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
-    notes = reflectNotes(r.text); bec = reflectBecome(r.text);
+    notes = reflectNotes(r.text); bec = reflectBecome(r.text); aim = reflectIntent(r.text);
     if (!notes) {const w = parseTextCalls(r.text).filter(c => c.function.name === 'remember').map(c => c.function.arguments).filter(a => a && a.text); if (w.length) notes = w.slice(0, REFLECT_NOTES)} // remember written as text still counts
     if (!notes) {stat.misses++; note = '\n\nThat was not the JSON object. Answer only with {"notes": [...]} (an empty list for none).'}
   }
@@ -398,9 +410,15 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
     on('result', typeof r === 'string' ? r : JSON.stringify(r));
     if (r && r.ok !== false) {stat.calls.push({name: 'become', ok: true}); stat.became = bec.field} else {stat.rejected++; stat.calls.push({name: 'become', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
   }
+  if (aim && !stat.dead) { // what the hero means to do next (#535): one intent, refused or not
+    on('tool', 'intent', aim); stat.tools++;
+    let r; try {r = await call('intent', aim)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    on('result', typeof r === 'string' ? r : JSON.stringify(r));
+    if (r && r.ok !== false) {stat.calls.push({name: 'intent', ok: true}); stat.aimed = aim.goal} else {stat.rejected++; stat.calls.push({name: 'intent', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
+  }
   stat.answered = !!notes; stat.wrote = stat.notes.length;
-  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) + (stat.became ? ` Something in them has changed (${stat.became}).` : '') : '';
-  if (keep && (stat.wrote || stat.became)) {const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
+  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) + (stat.became ? ` Something in them has changed (${stat.became}).` : '') + (stat.aimed ? ` Next: ${stat.aimed}.` : '') : '';
+  if (keep && (stat.wrote || stat.became || stat.aimed)) {const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
     L.history.push({role: 'user', content: 'A moment to reflect: ' + String(moment && moment.why || ''), turn: 1}, {role: 'assistant', content: stat.narration});
     L.tokensIn += stat.in; L.tokensOut += stat.out; L.dropped += trimHistory(L.history, LOCAL_DEFAULTS.historyChars); L.seconds += (Date.now() - t0) / 1000}
   if (stat.narration) on('text', stat.narration);
@@ -583,6 +601,6 @@ export const localLine = (st, model) => `${model} (local) | ${st.tools} tool cal
 // Ends with "| turn $x | run $y" when run is given (the app runner supervisor reads "| run $"); an
 // unknown price (a model not in the provider's price table) says so instead of a dollar figure.
 export const paidLine = (st, model, provider, {run = null, session = null} = {}) => {
-  const money = v => '$' + v.toFixed(4);
+  const money = v => '$' + v.toFixed(v > 0 && v < 0.0001 ? 6 : 4); // estimated costs of a cheap open model can be a few millionths
   return `${model} (${provider}) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | ${st.costKnown ? 'turn ' + money(st.cost) : 'cost unknown (model not in the price table)'}${run != null ? ' | run ' + money(run) : ''}${session != null ? ' | session ' + money(session) : ''}${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 };

@@ -650,6 +650,92 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   P.markPlayer(h, false); paused = false;
 }
 
+// ---- the stated aim (issue #535): intent, the header line, the stale prompt, wait limits, autopilot, the leader's shout ----
+{
+  paused = true;
+  const {ZONES, zoneAt, dist} = await import('../src/world/map.js'), {paceBrief} = await import('../src/sim/pace.js'), {memoryNote, claudeBrief, AIM_ASK} = await import('./pacing.mjs');
+  const {INTENT, aimState} = await import('../src/sim/intent.js'), {companyOf} = await import('../src/sim/company.js'), {leaderFor} = await import('../src/sim/council.js');
+  const {makeWatch, BW} = await import('../src/sim/behavior.js'), {rebuild} = await import('../src/sim/spatial.js'), {leaveParty} = await import('../src/sim/party.js');
+  const act = (h, tool, args) => {h.playRate = []; return P.playerAct(h.id, tool, args || {})};
+  const free = x => x.id !== id && x.kind === 'hero' && !x.player && !x.fellow && !x.adv && !x.hidden && !['dead', 'ghost', 'dungeon', 'raid', 'duel'].includes(x.state);
+  const fac = [0, 1].find(f => S.agents.filter(x => free(x) && x.fac === f).length >= 3), pool = S.agents.filter(x => free(x) && x.fac === fac);
+  const h = pool[0], hc = homeOf(h); if (h.party) leaveParty(h); h.pq = []; h.target = null; h.hp = maxHp(h); h.x = hc.ah.x; h.y = hc.ah.y; h.state = 'town'; h.dest = null;
+  ok(P.markPlayer(h, true), `marked ${h.name} agent-played for intent`);
+  let r = act(h, 'intent');
+  ok(r.ok && r.state === 'none' && r.aim === null && /What are you trying to do now\?/.test(r.note), 'intent with no goal reads the aim: none yet, and asks');
+  let b = paceBrief(h.id).brief;
+  ok(b.aim && b.aim.ask && b.aim.state === 'none' && /wait is held/.test(b.aim.wait_limit || ''), 'the brief asks when no aim was ever stated, with the wait limit');
+  let note = memoryNote(b);
+  ok(note.includes(AIM_ASK) && /intent \{goal, why, until\}/.test(note) && /wait is held to 2 h/.test(note), 'the turn header asks first: ' + note.split('\n').find(l => l.includes(AIM_ASK)));
+  ok(/if the header asks what you are trying to do, say it with intent first/.test(claudeBrief(b)), 'a Claude turn is told to answer with intent first');
+  // waiting needs a reason and a limit
+  r = act(h, 'wait', {minutes: 240});
+  ok(r.ok && r.pending && r.pending.until - r.pending.from === INTENT.WAIT_NOAIM && /no aim stated/.test(r.pending.limit), `wait without an aim is held to ${INTENT.WAIT_NOAIM} game minutes`);
+  r = act(h, 'wait', {minutes: 30}); ok(r.ok && r.pending.until - r.pending.from === 30 && !r.pending.limit, 'a short wait without an aim is left as asked');
+  // state it: the order comes from the words (a known ground + hunting)
+  const ground = ZONES[zoneAt(hc.gate.x, hc.gate.y)];
+  r = act(h, 'intent', {goal: 'hunt in ' + ground + ' until I reach the next level', why: 'I am too green for the roads', until: '6'});
+  ok(r.ok && /set 0 min ago; 6 h left/.test(r.aim) && /hunting in /.test(r.carries_on), 'intent states the aim and maps it to a hunt: ' + r.aim + ' / ' + r.carries_on);
+  ok(h.intent.order && h.intent.order.kind === 'hunt' && h.intent.order.ground === ground && h.intentSeq === 1, 'saved on the hero with its order and count');
+  b = paceBrief(h.id).brief; note = memoryNote(b);
+  ok(!b.aim.ask && b.aim.state === 'set' && /\nYour aim: hunt in .* \(set \d+ min ago; [\d.]+ h left\)/.test(note), 'every header carries it: ' + note.split('\n').find(l => /Your aim/.test(l)));
+  r = act(h, 'wait', {minutes: 240}); ok(r.ok && r.pending.until - r.pending.from === 240 && !r.pending.limit, 'with an aim the wait is as long as asked');
+  // a non-English aim is refused; the daily cap holds
+  ok(!act(h, 'intent', {goal: '狩猎野狼直到升级为止我要变强', why: '因为'}).ok, 'an aim not in English is refused');
+  // autopilot carries the aim on: idle in town with full HP and nothing to sell, it heads to the aim's ground and hunts
+  h.playActAt = S.gameMin - 200; h.playIdle = false; h.gold = 0; h.inv = {list: []}; h.x = hc.ah.x; h.y = hc.ah.y; h.state = 'town'; h.playTurn = null;
+  let got = false; for (let i = 0; i < 600 && !got; i++) {step(1 / 60); const c = h.pq && h.pq[0]; got = !!(c && c.auto && /your aim: hunt in/.test(c.auto))}
+  ok(got, 'autopilot carries the aim on: ' + (h.pq[0] && h.pq[0].auto));
+  // stale: no progress for two game hours -> asked again
+  h.pq = []; h.state = 'town'; h.x = hc.ah.x; h.y = hc.ah.y; h.intent.snap = {x: h.x, y: h.y, kills: h.kills, xp: h.xp, lvl: h.lvl, adv: null, idx: null}; h.intent.prog = S.gameMin - INTENT.STALE - 1;
+  ok(aimState(h) === 'stale', 'no progress for two game hours: the aim is stale');
+  b = paceBrief(h.id).brief; note = memoryNote(b);
+  ok(b.aim.ask && /no progress toward it/.test(b.aim.why) && note.includes(AIM_ASK) && /Your aim was: hunt in/.test(note), 'a stale aim prompts first: ' + b.aim.why);
+  b.scene = {title: 'x'}; ok(!memoryNote(b).includes(AIM_ASK) && /Your aim: hunt in/.test(memoryNote(b)), 'with a scene open the header only names the aim (the scene comes first)');
+  // progress refreshes it; the hours given run out -> done
+  h.x += 6; for (let i = 0; i < 3; i++) step(1 / 60);
+  ok(aimState(h) === 'set', 'walking on is progress: the aim is fresh again');
+  h.intent.untilAt = S.gameMin - 1; for (let i = 0; i < 3; i++) step(1 / 60);
+  ok(aimState(h) === 'done' && /time you gave is up/.test(h.intent.done.why) && paceBrief(h.id).brief.aim.ask, 'the hours given run out: done, and the next turn asks again');
+  // a wait with no limit gets one; done sets it down
+  r = act(h, 'intent', {goal: 'wait for a companion at the gate', why: 'we ride together'});
+  ok(r.ok && h.intent.order && h.intent.order.kind === 'wait' && h.intent.untilAt === h.intent.set + INTENT.WAIT_DEF && /needs a limit/.test(r.notes), 'a wait aim with no until gets a default limit: ' + r.notes);
+  r = act(h, 'intent', {done: 'yes', why: 'they came'}); ok(r.ok && aimState(h) === 'done' && h.intent.done.why === 'they came', 'intent {done: yes} sets the aim down');
+  // a command under an aim with no order becomes its order
+  act(h, 'intent', {goal: 'see what the road brings', why: 'restless'}); ok(h.intent.order === null, 'an aim the words do not map leaves no order');
+  h.state = 'town'; r = act(h, 'move_to', {target: ground}); ok(r.ok && h.intent.order && h.intent.order.kind === 'move' && h.intent.order.target === ground, 'the next move_to becomes its order');
+  // purpose line (#534) reads it
+  const {purposeOf} = await import('../src/sim/purpose.js'); ok(/says: see what the road brings \(restless\)/.test(purposeOf(h).line), 'the purpose line reads the aim: ' + purposeOf(h).line);
+
+  // the leader's shout: a company of two agents; the leader's new aim reaches the companion in range, and its header
+  const L = h, F = pool.find(x => x !== h && x.state !== 'dead'); if (F.party) leaveParty(F); P.markPlayer(F, true);
+  const far = pool.find(x => x !== h && x !== F && x.state !== 'dead');
+  const spot = {x: hc.gate.x + 3, y: hc.gate.y + 6}, put = (x, dx, dy) => {x.x = spot.x + dx; x.y = spot.y + dy; x.state = 'hunt'; x.pq = []; x.dest = null; x.target = null; x.hidden = false; rebuild()};
+  put(L, 0, 0); put(F, 2, 0); put(far, 0, 40); L.lvl = Math.max(L.lvl, F.lvl + 1);
+  r = act(L, 'invite', {hero_id: F.id}); const acc = act(F, 'accept', {offer_id: r.offer});
+  ok(acc.ok && companyOf(L) === companyOf(F) && leaderFor(F) === L, `${L.name} leads a company of two with ${F.name}`);
+  const before = (far.chat || []).length;
+  r = act(L, 'intent', {goal: 'to the ' + ground + ' ford', why: 'the wight job'});
+  ok(r.ok && /heard by .*\b/.test(r.shouted || '') && r.shouted.includes(F.name), 'a leader\'s new aim is shouted: ' + r.shouted);
+  const e = F.chat[F.chat.length - 1];
+  ok(e && e.party && e.from === L && e.text === 'to the ' + ground + ' ford, the wight job', 'the companion hears it as a party line: ' + (e && e.text));
+  ok((far.chat || []).length === before, 'a hero far away does not hear it');
+  b = paceBrief(F.id).brief;
+  ok(b.aim.leader && b.aim.leader.includes(L.name) && /the wight job/.test(memoryNote(b)) && /Your leader's aim: /.test(memoryNote(b)), 'the follower\'s header carries the leader\'s aim: ' + b.aim.leader);
+  r = act(L, 'intent', {goal: 'to the ' + ground + ' ford', why: 'the wight job'}); ok(r.ok && !r.shouted, 'the same aim again is not shouted twice');
+  ok(!JSON.stringify(paceBrief(far.player ? far.id : F.id).brief).includes('see what the road brings') && !b.aim.line, 'the leader\'s earlier private aim never reached the follower');
+
+  // the no-aim anomaly: an agent hero with no aim out in the field for two game hours
+  const W = makeWatch(); W.tick(); F.intent = null; put(F, 2, 0); F.hp = maxHp(F); step(1 / 60); const out = [...W.tick()];
+  act(L, 'intent', {goal: 'hold the ford road until dusk', why: 'the wight walks at night'}); const t0 = S.gameMin; while (S.gameMin < t0 + 2 * BW.NO_AIM_MIN + 30 && !out.some(x => x.kind === 'anomaly' && x.rec.kind === 'no-aim' && x.rec.hero.id === F.id)) {F.x = spot.x + 2; F.y = spot.y; F.state = 'hunt'; F.target = null; F.hp = maxHp(F); step(1 / 60); out.push(...W.tick())}
+  while (S.gameMin < t0 + BW.NO_AIM_MIN + 61) {step(1 / 60); out.push(...W.tick())}
+  const an = out.filter(x => x.kind === 'anomaly' && x.rec.kind === 'no-aim');
+  ok(an.some(x => x.rec.hero.id === F.id && x.rec.evidence.last === 'none'), 'no-aim anomaly for an agent hero with no aim for two game hours');
+  ok(!an.some(x => x.rec.hero.id === L.id), 'and none for the leader holding its aim');
+  ok(out.some(x => x.kind === 'world' && x.rec.intents && x.rec.intents[L.name] >= 1), 'the digest counts aims stated per hero');
+  P.markPlayer(h, false); P.markPlayer(F, false); paused = false;
+}
+
 // ---- hardcore: a dead hero only answers that it is dead ----
 {
   paused = true; a = S.agents.find(x => x.id === id);
