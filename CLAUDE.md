@@ -388,6 +388,20 @@ is silent, and scene choices time out to the scripted branch, so the world never
   brief carries `quest {focus, id, others}`, every turn prompt names it (`questNote` in `scripts/pacing.mjs`). The hero's view never
   says who made a job; scripted heroes keep one kill quest and one adventure (a seeded world is unchanged). Old saves need no migration:
   with no `a.qlog` the running adventure, else the kill quest, is the focus.
+- Free actions (#522, `src/sim/ruling.js`): `attempt {what, how?, at?}` tries anything the tools never named, in one or two sentences
+  (refused only for length (300), non-English, a dead or hidden hero, a fight round, or past `ATTEMPT.PER_HOUR` 3 a game hour; in a Table
+  scene it is the act `scene_act {option: attempt, line: <what>}`, offered to agent members in every scene but a vote). The words are said
+  aloud; the DM rules on it (`ruling_call` / `ruling_answer`: skill, a DC word easy 8 / fair 12 / hard 15 / heroic 18, at most 3 effects for a
+  success and 3 for a failure, the lines heard, a note for the DM log only) and the game rolls d20 + the hero's skill (a 20 passes, a 1
+  fails) and applies the effects in one resolver. Bounded set: `none`, `move` (up to 6 tiles; not in a scene), `reveal` place|fact|creature
+  (lore, a memory), `attitude` (a person in earshot, -3..3), `open_talk`, `open_scene` (mystery, meeting, social, ambush, trap via
+  `stage_scene`), `item` give|take (the give_item/take_item levers and their limits), `wound` (at most 15%, never below 10% HP),
+  `condition` warded|exposed, `boon` d4/d6/d8 on the next attempt; level, XP, gold and life are refused (logged, `forbidden`). The game
+  waits only while the DM's ruling voice polls (`TABLE.dmMs`, or its `budget_s` 4-30 s; a scene waits for it the same way), then the
+  scripted ruling fills it (the DM's reflex: skill by keywords, DC fair, a reveal on a total of 15+); nobody listening rules at once.
+  The hero hears the text, the roll and what changed (chat, an urgent event, the Agent tab's `ruling` line, the Table banner's beat and
+  narrator line); every ruling is in the DM log (`detail.ruling`, by `dm-agent` or `scripted` with `fill`/`why`). State `S.rulings`
+  (saved); `rulingTick` runs before the Table hold and is a no-op without it, so a seeded world is unchanged. `npm run attemptcheck`.
 - `npm run playcheck`: a scripted mock agent plays through town, a job, a choice, a fight,
   the journal and a save/restore, proves a silent agent never stalls the world, and runs two
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
@@ -722,6 +736,7 @@ encounters and speak at their tables (issue #132, below).
   `regions`, `hooks`, `levers`, and the reads of what a DM at a table would have (#558, `src/sim/dmsight.js`, read-only, no RNG): `hear {company?, hero?, since?, n?}` (the words said aloud since its last hear: say in earshot, party shouts and table lines of agent heroes with speaker, company, time and place, 200 lines at most, kept in a ring `S.dmAgent.ear`; never narration, whispers, scripted barks, journals or memories; `dm_status.unheard` counts them), `survey {near, radius?}` (region, roads, water, impassable edges, towns, landmarks and marked places by direction and distance, and up to 6 legal `x,y` spots that `mark_place`, `place_person` and `stage_scene` accept; a refusal of those about the ground names `survey`) and `world_standing` (guild focus and why, rivalries, the wyrm and its last fall, the Crypt record, auction extremes and shocks, conditions, events, top five heroes); member views (`fellowship_view`, `companies_view`, `heroes_near` for company members) also carry `carries` (gold, gear score, quest items by name, potion and scroll counts, never the pack), `quests` (kind, title, status, focus) and `knows` (creatures feared or beaten, places, people met, capped); `fellowship_needs` items say what they spoke and what a member carries. `notes_read`, `notes_write` (threads, characters, plans, secrets; saved
   with the world in `S.dmAgent`), `pull_lever` (`pull(name, params, {by:'dm-agent', reason})`; at most
   `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's), the flat lever tools `post_hook {town, tpl, giver?, reward?, region?, place?, for?}`, `place_person {role, near, name?, faction?, want?, attitude?, hours?, spot?}` (create_npc) , `mark_place {kind, near, name?, hours?}`, and `give_item {hero, item, by?, ilvl?}` / `take_item {hero, item, by?}` (#524: a quest item, token or consumable, or one plain gear piece a day at or below the hero's level, never an epic; `by` a person within 7 tiles hands it over, else it is found; take is quest items only; refused in a fight; urgent-1 event; `give_token`/`take_token` are now aliases) (#413: each with a reason, `near` read like `stage_scene`'s, pulled through pull_lever's path, so the same caps, limits, Fellowship reserve and DM log),
+  `ruling_call`/`ruling_answer` (rule on a hero's free action, #522; see Free actions under Agent player),
   `log_intent`, and its in-game voice `narrate` (`{text, near, radius?}`: heroes near a hero, town,
   region or "x,y", or everyone at the open Table scene, hear it in their Chat tab and the Table banner;
   12 a game day) and `npc_say` (`{npc, text}`: a townsperson or placed person speaks to whoever is within
@@ -751,6 +766,9 @@ encounters and speak at their tables (issue #132, below).
   kind `falter`/`reinforce`, `rival`, `tremor`). Each call has `TABLE.dmMs` (6 s) at 1x, and only while the
   runner is polling; then the scripted DM fills it, and after 2 misses it fills the rest at once. At 3x/8x
   every slot is scripted and the scene resolves in one step.
+- Ruling voice (#522): `npm run dm` also rules on the heroes' free actions (polls `ruling_call`, one forced structured answer with
+  enums for skill, DC and effect kinds, then `ruling_answer`; `--ruling-model`/`DM_RULING_MODEL`, default the table model; `--ruling-budget S`,
+  8 s with Anthropic, 25 s local; `--no-ruling-voice` leaves every ruling to the scripted DM). A `[ruling]` line per call.
 - Runner: `npm run dm` answers the calls with a table voice (one structured call each: `claude-haiku-5-5` by
   default, `--table-model`/`DM_TABLE_MODEL`; with Ollama the seat's own model; `--no-table-voice` leaves them to
   the scripted DM). Its cost counts toward `--budget`; a `[table]` line per call.

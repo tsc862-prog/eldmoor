@@ -1071,6 +1071,20 @@ ok(h.dm.link === 'waiting' && h.dm.runner && h.dm.runner.model === 'claude-sonne
 r = await post('/play/dm', {tool: 'dm_status', runner: 'test:1'});
 ok(r.ok && r.day >= 1, 'POST /play/dm dm_status');
 for (const [t, args] of [['hear', {n: 3}], ['survey', {near: 'fellowship'}], ['world_standing', {}]]) {const q = await post('/play/dm', {tool: t, args, runner: 'test:1'}); ok(q.ok === true, `POST /play/dm ${t}` + (q.ok ? '' : ': ' + q.error));}
+{// a free action ruled over /play/dm (issue #522): the call, a refused level effect, the ruling, the hourly limit
+  const hz = S.agents.find(a => a.kind === 'hero' && a.state !== 'dead' && !a.hidden && a.state !== 'fight'); sim.markPlayer(hz, true); hz.attempts = []; hz.playRate = [];
+  await post('/play/dm', {tool: 'ruling_call', args: {budget_s: 10}, runner: 'test:1'});
+  const at = sim.playerAct(hz.id, 'attempt', {what: 'I wedge the shutter with my knife and listen.'});
+  const rc = await post('/play/dm', {tool: 'ruling_call', args: {budget_s: 10}, runner: 'test:1'});
+  ok(at.ok && rc.ok && rc.call && rc.call.call === at.call && rc.call.attempt.what.includes('shutter'), 'POST /play/dm ruling_call: the attempt waits for the DM');
+  const bad = await post('/play/dm', {tool: 'ruling_answer', args: {call: at.call, skill: 'traps', dc: 'fair', effects: ['level:1', 'hp:+50'], text: 'It holds.'}, runner: 'test:1'});
+  ok(!bad.ok && /bounded set/.test(bad.error), 'a level/HP effect is refused: ' + String(bad.error).slice(0, 80));
+  const good = await post('/play/dm', {tool: 'ruling_answer', args: {call: at.call, skill: 'traps', dc: 'fair', effects: ['reveal:fact:Someone oiled these hinges lately'], fail_effects: ['wound:5'], text: 'The shutter holds; voices beyond it.', fail_text: 'The knife slips.'}, runner: 'test:1'});
+  ok(good.ok && /(success|failure)/.test(good.outcome) && S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.by === 'dm-agent'), 'ruling_answer applies it (' + good.outcome + ') with the DM AGENT tag');
+  sim.playerAct(hz.id, 'attempt', {what: 'I try the latch again.'}); sim.playerAct(hz.id, 'attempt', {what: 'And once more, harder.'});
+  const lim = sim.playerAct(hz.id, 'attempt', {what: 'One more go at the latch.'});
+  ok(!lim.ok && /this game hour/.test(lim.error), 'the hourly limit (3 a game hour)');
+  sim.markPlayer(hz, false)}
 ok((await post('/play/dm', {tool: 'dm_status', runner: 'test:2'})).status === 409, 'a held DM seat answers only its own runner (issue #123)');
 ok((await post('/play/dm', {tool: 'dm_status', runner: 'test:1', hero: 1})).status === 403, 'a call naming a hero gets no DM tools');
 ok((await post('/play/dm', {tool: 'look'})).status === 400, 'hero tools are not DM tools');

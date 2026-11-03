@@ -34,6 +34,9 @@
 // world characters (npc_call -> npc_say {conv} + npc_offer); --no-talk-voice leaves them to DM turns (a waiting conversation then starts
 // a turn at once, after the minimum gap) and the scripted DM. --talk-budget S: real seconds the game waits for the talk voice
 // per answer (4-30; default 8 with Anthropic, 25 with a local model).
+// Ruling voice (issue #522): --ruling-model (or DM_RULING_MODEL; default the table model) rules on the heroes' free actions
+// (ruling_call -> ruling_answer: skill, DC word, bounded effects, the line heard); --no-ruling-voice leaves them to the scripted DM.
+// --ruling-budget S: real seconds the game waits per ruling (4-30; default 8 with Anthropic, 25 with a local model).
 import {mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
@@ -244,6 +247,64 @@ export function talkVoice({base, adapter, model, effort = 'low', log = () => {},
   const p = loop().catch(e => log(`[talk] voice stopped: ${short(String(e && e.message || e), 120)}`));
   return {stop: () => {done = true; return p}};
 }
+// ---- the ruling voice (issue #522) ----
+// A hero tries something the tools never named (attempt; scene_act attempt at the table). The game asks the DM for a ruling
+// (ruling_call): the hero in words, the attempt, the place and what is in sight, the legal skills, DCs and effect forms. It waits
+// a few seconds while this loop polls, then the scripted DM rules. One forced structured answer per call (enums for skill, DC and
+// effect kinds), then ruling_answer; a refused answer (an illegal effect) is logged and the scripted DM rules at the deadline.
+export const RULING_POLL_IDLE = 1500, RULING_POLL_HOT = 400;
+export const RULING_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), ruling on what a hero tries. ' +
+  'The hero may try anything; you decide which skill it tests and how hard it is (easy 8, fair 12, hard 15, heroic 18), and what follows a success and a failure, drawn only from the legal effects. ' +
+  'The game rolls the dice; you never decide the result, what a hero thinks or chooses, and never touch level, XP, gold or life (a wound is at most 15% and never below 10% HP). ' +
+  'Most attempts deserve none or one small effect: a clever idea a reveal (a fact they learn, a place, a creature) or someone warming to them, a reckless one a small wound or exposed. ' +
+  'text is what the heroes hear on a success and fail_text on a failure (vivid, as much as the moment needs, usually one to three sentences, true to what is in sight). ' +
+  'An effect is {kind, target, value}: move {target: a direction or "x,y"}, reveal {target: place|fact|creature, value: the name or the fact}, attitude {target: a person in sight, value: -3..3}, open_talk {target: a person}, ' +
+  'open_scene {target: mystery|meeting|social|ambush|trap}, item {target: give|take, value: the item}, wound {target: 1..15}, condition {target: warded|exposed, value: minutes}, boon {target: d4|d6|d8}, none. ' +
+  'Reply as JSON {"skill": "...", "dc": "...", "effects": [...], "fail_effects": [...], "text": "...", "fail_text": "...", "note": "..."}; note is for your own log.';
+export function rulingPrompt(c) {
+  const h = c.hero || {}, w = c.where || {}, s = c.in_sight || {}, t = c.attempt || {};
+  return [`Hero: ${h.name}, a ${h.cls}, ${h.level}, ${h.health}. Best skills: ${(h.best_skills || []).join(', ')}.${h.gear && h.gear.length ? ' Gear: ' + h.gear.join(', ') + '.' : ''}${h.quest_items && h.quest_items.length ? ' Carries: ' + h.quest_items.join(', ') + '.' : ''}`,
+    `Where: ${w.region || 'the wilds'}${w.town ? ' (in town)' : ''} at ${w.x},${w.y}${w.table_scene ? '; at the table: ' + w.table_scene : ''}.`,
+    s.creatures && s.creatures.length ? `Creatures in sight: ${s.creatures.join(', ')}` : '', s.people && s.people.length ? `People near: ${s.people.map(p => p.name + (p.role ? ' (' + p.role + ')' : '')).join(', ')}` : '',
+    s.heroes && s.heroes.length ? `Heroes near: ${s.heroes.join(', ')}` : '', s.places && s.places.length ? `Places near: ${s.places.join(', ')}` : '',
+    `${h.name} tries: "${t.what}"${t.how ? ' (how: ' + t.how + ')' : ''}${t.at ? ' (at: ' + t.at + ')' : ''}`,
+    `Legal effects: ${((c.legal || {}).effects || []).join(', ')}. Forms: ${((c.legal || {}).effect_forms || []).join('; ')}`].filter(Boolean).join('\n');
+}
+const EFFECT = kinds => ({type: 'object', properties: {kind: {type: 'string', enum: kinds}, target: {type: 'string'}, value: {type: 'string'}}, required: ['kind', 'target', 'value'], additionalProperties: false});
+export const rulingSchema = c => {const L = c.legal || {}, kinds = (L.effects || ['none']).slice();
+  return {type: 'object', properties: {skill: {type: 'string', enum: (L.skills || []).slice()}, dc: {type: 'string', enum: Object.keys(L.dc || {easy: 1, fair: 1, hard: 1, heroic: 1})},
+    effects: {type: 'array', items: EFFECT(kinds)}, fail_effects: {type: 'array', items: EFFECT(kinds)}, text: {type: 'string'}, fail_text: {type: 'string'}, note: {type: 'string'}},
+  required: ['skill', 'dc', 'effects', 'fail_effects', 'text', 'fail_text', 'note'], additionalProperties: false}};
+// {kind, target, value} -> the game's "kind:target:value" form (empty parts dropped); "none" entries dropped unless alone.
+export const effectText = e => e && typeof e === 'object' ? [e.kind, e.target, e.value].map(x => String(x == null ? '' : x).trim()).filter((x, i) => i === 0 || x).join(':') : String(e || '');
+export const effectList = L => {const a = (Array.isArray(L) ? L : []).slice(0, 3).map(effectText).filter(Boolean), b = a.filter(x => x !== 'none'); return b.length ? b : a.slice(0, 1)};
+export function rulingVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = RULING_POLL_IDLE, pollHot = RULING_POLL_HOT, budgetS = 8}) {
+  let done = false, seen = 0;
+  const loop = async () => {
+    while (!done && !stopped()) {
+      const t = await tool(base, 'ruling_call', {budget_s: budgetS});
+      const c = t && t.ok && t.call;
+      if (c && c.call !== seen && c.seconds_left > .8) {
+        seen = c.call; const t0 = Date.now();
+        try {
+          const ms = Math.max(800, c.seconds_left * 1000 - 400);
+          const r = await adapter.call({system: RULING_SYSTEM, user: rulingPrompt(c), schema: rulingSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+          let j = null; try {j = JSON.parse(r.text)} catch {}
+          onCost(r.usage || {});
+          if (!j || typeof j.text !== 'string' || !j.text.trim()) log(`[ruling] call ${c.call}: the model's reply was not usable; the scripted DM rules`);
+          else {
+            const a = await tool(base, 'ruling_answer', {call: c.call, skill: j.skill, dc: j.dc, effects: effectList(j.effects), fail_effects: effectList(j.fail_effects), text: j.text, fail_text: j.fail_text || '', note: j.note || ''});
+            log(`[ruling] ${c.hero ? c.hero.name : '?'} "${short(c.attempt && c.attempt.what || '', 60)}": ${j.skill} ${j.dc} -> ${a.ok ? (a.outcome || 'ruled') + (a.roll ? ' (' + a.roll + ')' : '') : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+          }
+        } catch (e) {log(`[ruling] call ${c.call}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM rules`)}
+        continue;
+      }
+      await sleep(t && t.ok && t.waiting ? pollHot : pollIdle);
+    }
+  };
+  const p = loop().catch(e => log(`[ruling] voice stopped: ${short(String(e && e.message || e), 120)}`));
+  return {stop: () => {done = true; return p}};
+}
 // A conversation waiting for the DM while no talk voice runs: the turn starts at once and its prompt names it (#170).
 export const talkWaiting = st => st && Array.isArray(st.conversations) ? st.conversations.filter(c => c.waiting) : [];
 export const talkNote = st => {const w = talkWaiting(st); return w.length ? ` A Fellowship member is talking to someone and waits for an answer: ${w.map(c => `${c.member} to ${c.npc} (conv ${c.conv}): "${c.line}"`).join('; ')}. First answer as that person: npc_call, then npc_say {npc, conv, text} and at most one npc_offer; then go on with your turn.` : ''};
@@ -355,6 +416,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     {const {warmUp} = await import('./warmup.mjs'); await warmUp({base, seat: {role: 'dm'}, runner, model: rs.model, adapter: ol, log})} // the start gate (issue #222): ready = answered
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
     if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 25))}); log(`[dm] talk voice: ${rs.model} (local) answers the Fellowship's conversations with world characters`)}
+    if (!flag('no-ruling-voice')) {rulingVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || 25))}); log(`[dm] ruling voice: ${rs.model} (local) rules on the heroes' free actions`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
     if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
@@ -397,6 +459,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     talkVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: talkModel}), model: talkModel, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 8)),
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] talk voice: ${talkModel} answers the Fellowship's conversations with world characters`);
+  }
+  if (!flag('no-ruling-voice')) {
+    const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
+    const rulingModel = opt('ruling-model', env.DM_RULING_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
+    rulingVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: rulingModel}), model: rulingModel, log, stopped: () => stopping, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || 8)),
+      onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
+    log(`[dm] ruling voice: ${rulingModel} rules on the heroes' free actions`);
   }
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
   const {model, effort} = rs;

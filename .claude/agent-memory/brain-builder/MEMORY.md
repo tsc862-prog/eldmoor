@@ -51,3 +51,4 @@
 - [CI correctness](ci-correctness.md) — #573 hashcheck source+hash-guard, rulescheck allowlist, merge_group, pitfalls
 - [CI observation](ci-observation.md) — #574 flake hunt, nightly mock run + thresholds, shoot.mjs, red-main alarm, helpers, pitfalls
 - [Company runners](company-runners.md) — #460 kind company, seatInfo health fields, adopt (leaver/heir restarts), per-company digest+report, shims left
+- [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
