@@ -37,6 +37,7 @@ import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../dat
 import * as D from '../data/adventures.js';
 import {PLAYER_TOOLS} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
+import {soloFor,companyOf,leaveCompany} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,findMob,turnIn,huntZone} from './heroes.js';
 import {partyMates,leaderOf,leaveParty} from './party.js';
@@ -68,7 +69,7 @@ import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js
 import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
-import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,npcWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
+import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
 import {actFlee,fights,actionLog} from './actlog.js';
 import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
@@ -201,9 +202,11 @@ export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
   if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
-    ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');return true}
+    ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');soloFor(a);return true}
   if(a.fellow&&a.state!=='dead')return false; // the Fellowship is always agent-played (#148): a member is handed back only by leaving
-  a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);return true}
+  a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
+  {const C=companyOf(a);if(C&&!C.slots)leaveCompany(a)} // out of agent play: a solo's company ends with it
+  return true}
 export const isPlayer=a=>!!(a&&a.player);
 
 // ---- the reduced state machine ----
@@ -780,7 +783,7 @@ const T={
     if(p){need(dist(a,p)<=PK.TALK,p.title+' '+p.name+' is too far away ('+r1(dist(a,p))+' tiles). move_to("'+p.role+'") first.');
       if(p.fac!==a.fac)return {ok:true,who:p.title+' '+p.name,answer:'('+p.name+' looks at you with open contempt and says nothing.)'};
       const before=p.lastBark;npcSay(p,'greet',{target:a.name},{dm:true});const line=p.bubble&&p.lastBark!==before?p.bubble.text:p.bubble?p.bubble.text:null;
-      const warn=npcWarning(a);if(warn)hear(a,warn,p.title+' '+p.name); // a townsperson's advice (#188)
+      const warn=(p.role==='captain'&&captainWarning(a))||npcWarning(a);if(warn)hear(a,warn,p.title+' '+p.name); // a townsperson's advice (#188); the captain warns of the Crypt (#448)
       talked(a,[p.name]);return {ok:true,who:p.title+' '+p.name,answer:(line||'('+p.name+' nods.)')+(warn?' "'+warn+'"':'')}}
     const id=Number(target),b=S.agents.find(x=>x!==a&&x.state!=='dead'&&(x.id===id||x.name.toLowerCase()===t));
     need(b,'Nobody called "'+target+'" is here.');need(dist(a,b)<=PK.TALK*1.5,b.name+' is too far away to talk to.');

@@ -21,6 +21,8 @@ import {convertBag} from './inv.js';
 import {reserveNames} from '../data/races.js';
 import {normalizeProfs} from './professions.js';
 import {ensureCampaign} from './dmagent.js';
+import {relinkCompanies} from './company.js';
+import {homeOf} from '../data/races.js';
 
 export {SAVE_VERSION};
 
@@ -48,7 +50,24 @@ const MIGRATIONS={1:snap=>{const ids={};(snap.GUILDS||[]).forEach((g,i)=>{ids[g.
     for(const k in a.slots||{})if(a.slots[k])convertItem(a.slots[k],a.cls);
     for(const it of a.bag||[])if(it&&typeof it==='object')convertItem(it,a.cls)}return snap},
   // v5 -> v6: the trade-goods bag becomes the pack a.inv (inventory, #124): stacks, spare gear, consumables, quest items.
-  5:snap=>{for(const a of snap.agents||[])if(a.kind==='hero'&&!a.inv)convertBag(a);return snap}};
+  5:snap=>{for(const a of snap.agents||[])if(a.kind==='hero'&&!a.inv)convertBag(a);return snap},
+  // v6 -> v7: companies (#402, #438). The Fellowship singleton becomes S.companies[0] (its old id kept as the name seed),
+  // a.fellow/a.fellowRole/a.fellowFrom become a.company (role from the slot, home town in C.from), p.fellow becomes
+  // p.company, S.fellowshipsPast becomes S.companiesPast, and every living agent hero with no company becomes a solo.
+  6:snap=>migrateCompanies(snap)};
+function migrateCompanies(snap){let seq=0;const companies=[],day=Math.floor((snap.gameMin||0)/1440)+1;
+  const F=snap.fellowship,heroes=(snap.agents||[]).filter(a=>a&&a.kind==='hero');
+  if(F&&typeof F==='object'){const C={...F,id:++seq,seed:F.id,from:{}};const ids=new Set((F.ids||[]).map(String));
+    for(const a of heroes){if(ids.has(String(a.id))){a.company=C.id;if(a.fellowFrom!=null)C.from[a.id]=a.fellowFrom}}
+    for(const p of snap.parties||[])if(p&&p.fellow)p.company=C.id;
+    companies.push(C);snap.followId=C.id}
+  for(const a of heroes){delete a.fellow;delete a.fellowRole;delete a.fellowFrom}
+  for(const p of snap.parties||[])if(p)delete p.fellow;
+  for(const a of heroes)if(a.player&&a.state!=='dead'&&a.company==null){const C={id:++seq,name:a.name,fac:a.fac,hall:homeOf(a).name,ids:[a.id],
+    founded:Math.round(snap.gameMin||0),day,log:[],past:[],npcs:[],seq:0};a.company=C.id;companies.push(C)}
+  if(snap.fellowshipsPast)snap.companiesPast=snap.fellowshipsPast;
+  delete snap.fellowship;delete snap.fellowshipsPast;
+  snap.companies=companies;snap.companySeq=seq;if(snap.followId===undefined)snap.followId=null;return snap}
 
 // ---- snapshot ----
 export function snapshot(){
@@ -107,18 +126,23 @@ export function restore(snap){
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
   for(const a of S.agents||[])if(a.profs!==undefined)normalizeProfs(a); // a.profs is optional (professions, #254): absent reads as [], present is cleaned
   reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
+  relinkCompanies(); // a.fellow / p.fellow accessors on company members and parties; agent heroes without a company ride as solos
   ensureCampaign(); // an older save whose DM notes are empty gets the campaign seed once
   return S}
 
 // ---- a short description of a save, for the title screen (read-only, never changes S) ----
-// {day, min, heroes, fellowship:{name, members:[{slot, name, cls, lvl, fac, race, skin, hair, dead}]}|null}
+// {day, min, heroes, fellowship:{name, members:[{slot, name, cls, lvl, fac, race, skin, hair, dead}]}|null,
+//  companies:[{id, name, fac, solo, members:[{name, cls, lvl, dead}]}]} (a v6 save, not yet migrated, lists its Fellowship)
 const SLOT_ORDER=['tank','healer','dps1','dps2','dps3'];
 export function describeSave(snap){if(!isSave(snap))return null;
   const byId=new Map();for(const a of snap.agents)if(a&&a.kind==='hero')byId.set(String(a.id),a);
-  const F=snap.fellowship;let fellowship=null;
+  const CS=Array.isArray(snap.companies)?snap.companies:[];
+  const F=snap.fellowship||CS.find(c=>c&&c.slots)||null;let fellowship=null;
   if(F&&F.slots&&typeof F.slots==='object'){const rank=k=>{const i=SLOT_ORDER.indexOf(k);return i<0?99:i},keys=Object.keys(F.slots).sort((a,b)=>rank(a)-rank(b));
     const members=[];for(const k of keys){const h=F.slots[k]!=null&&byId.get(String(F.slots[k]));
       if(h)members.push({slot:k,name:h.name,cls:h.cls,lvl:h.lvl,fac:h.fac,race:h.race,skin:h.skin,hair:h.hair,dead:h.state==='dead'})}
     fellowship={name:F.name||'',members}}
+  const companies=(CS.length?CS:F?[F]:[]).filter(c=>c&&Array.isArray(c.ids)).map(c=>{const ms=c.ids.map(id=>byId.get(String(id))).filter(Boolean);
+    return {id:c.id,name:c.name||'',fac:c.fac,solo:c.ids.length===1,members:ms.map(h=>({name:h.name,cls:h.cls,lvl:h.lvl,dead:h.state==='dead'}))}});
   return {day:Math.floor(snap.gameMin/1440)+1,min:Math.floor(snap.gameMin)%1440,
-    heroes:byId.size?[...byId.values()].filter(a=>a.state!=='dead').length:0,fellowship}}
+    heroes:byId.size?[...byId.values()].filter(a=>a.state!=='dead').length:0,fellowship,companies}}

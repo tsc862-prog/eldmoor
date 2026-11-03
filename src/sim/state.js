@@ -23,9 +23,12 @@ export const S={
   uid:0,
   worldId:'',     // one id per world instance, new at init() and kept by saves; hosts use it to tell a new world from a reload (memory mirror purge). Not simulation state: never read by step().
   pinned:null,    // the hero the watcher is following; its grave is never recycled
+  companies:[],   // companies of 1..PARTY.MAX heroes, id order (sim/company.js, #402); every agent hero rides in exactly one. S.fellowship is an accessor over these.
+  companySeq:0,   // last company id handed out, never reused
+  followId:null,  // the company the watcher follows (null = the first)
 };
 // Save-file format version (sim/save.js). Bump it and add a migration there when the shape of S changes.
-export const SAVE_VERSION=6;
+export const SAVE_VERSION=7;
 // A fresh world instance id. Deliberately not from the seeded rng or Math.random (a stubbed Math.random must not shift), so a seeded world keeps its dice.
 export const newWorldId=()=>'w'+Date.now().toString(36)+[...globalThis.crypto.getRandomValues(new Uint8Array(5))].map(b=>b.toString(36).padStart(2,'0')).join('').slice(0,6);
 export const dayNo=()=>Math.floor(S.gameMin/1440)+1; // game day, 1-based (the UI shows D4 03:12 with it)
