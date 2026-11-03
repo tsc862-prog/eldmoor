@@ -951,5 +951,15 @@ console.log('start gate: ready, not just claimed');
   sv.setSceneAuto(false);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick(FOL);ok(!sv.sceneOpen()&&/off/.test($('vScene').textContent),'scene maps: with Scene maps off in Settings, nothing opens by itself');
   sv.setSceneAuto(true);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick({view:'map',sel:null});ok(!sv.sceneOpen(),'scene maps: only when the watcher follows the Fellowship');
   sv.closeSceneView(false);mem.forEach((a,k)=>{[a.x,a.y,a.hidden]=keepPos[k]});S.table=keepT;S.wanderers=keepW;uiFast()}
+// camp watch end: a camp with no restAt/watchIdx must not show "until NaN:NaN" (#475)
+{const {campLine}=await import('../src/ui/fellowship.js');const {campSummary}=await import('../src/sim/camp.js');
+  const F=sim.S.fellowship,mem=sim.fellowshipMembers().map(m=>m.hero).filter(Boolean),keep=F.camp,ks=mem.map(a=>a.state);
+  mem.forEach(a=>{a.state='camp'});
+  F.camp={phase:'rest',why:'night',hours:0,ids:mem.map(a=>a.id),watcher:mem[0].id};
+  ok(!/NaN/.test(campSummary()||''),'camp watch: the sim line has no NaN for a camp with no watch times');
+  const cl=campLine();ok(cl&&!/NaN|until \d\d:\d\d\)/.test(cl)&&/on watch: /.test(cl),'camp watch: the panel line leaves out "until" when the end is unknown ('+cl+')');
+  F.camp={phase:'rest',why:'night',hours:0,ids:mem.map(a=>a.id),watcher:mem[0].id,restAt:Math.round(sim.S.gameMin),watchIdx:0};
+  ok(/on watch: \S+ \(until \d\d:\d\d\)/.test(campLine()),'camp watch: a normal camp keeps "until hh:mm"');
+  F.camp=keep;mem.forEach((a,k)=>{a.state=ks[k]})}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
