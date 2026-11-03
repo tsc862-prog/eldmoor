@@ -108,6 +108,8 @@ export const SCENE_KINDS=['site','room','boss','elite','ambush','rescue','check'
 const EXTRA={};let STG=null;
 export function setSceneKind(k,h){EXTRA[k]=h;if(!SCENE_KINDS.includes(k))SCENE_KINDS.push(k)}
 export function setStageHooks(h){STG=h}
+// A member's free action at the table (issue #522, sim/ruling.js): scene_act attempt with the words as its line; the DM rules on it.
+let ATT=null;export function setAttemptHooks(h){ATT=h}
 const staged=sc=>!!(STG&&sc&&sc.ctx&&sc.ctx.staged!=null);
 // The DM's at-the-table calls of a scene: a kind that brings its own (setSceneKind(k, {..., dm:{onFrame, onAll, live, fill,
 // done}}): the arrival and the opening, sim/arrival.js, #452/#437), else the staged scene's (sim/staged.js), else none.
@@ -230,7 +232,8 @@ const holding=sc=>!!(sc&&sc.sh&&!sc.sh.go&&sc.sh.rd===sc.rd&&sc.phase==='turn'&&
 export function stepNext(){const sc=S.table;if(!holding(sc))return false;sc.sh.go=1;return true}
 // The order as names, the foe at its place (agents' notices and tableView).
 const orderNames=sc=>{const L=sc.ids.map(byId).filter(Boolean).map(a=>a.name),f=foeOf(sc);if(rounds(sc)&&f)L.splice(Math.min(sc.foeAt,L.length),0,foeName(f)+' (foe)');return L};
-export function optionsFor(sc,a){const o=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels;return L?o.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o} // the DM's own labels for a staged scene's actions
+export function optionsFor(sc,a){const o0=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels,o=L?o0.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o0;
+  if(ATT&&a&&a.player&&sc&&sc.kind!=='decision'&&o.length)o.push({k:'attempt',text:ATT.label});return o} // the DM's own labels for a staged scene's actions
 function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])return EXTRA[k].options(sc,a);
   if(COMBAT[k]){const f=foeOf(sc),fn=f?(f.kind==='hero'?f.name:mobName(f)):'the foe',lo=lowest(sc),o=[{k:'strike',text:'Strike '+fn}];
     if(f&&f.kind!=='boss')o.push({k:'guard',text:'Draw '+fn+' onto yourself'});
@@ -306,6 +309,8 @@ export function sceneAct(a,opt,line){const sc=sceneOf(a);if(!sc||!sc.ids.include
   const o=key==='use'?optionsFor(sc,a).find(x=>x.k.startsWith('use:')):optionsFor(sc,a).find(x=>x.k===key);if(!o)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.'; // a bare 'use': the first item offered
   const said=clean(line,1e4);if(said.length>TABLE.LINE_MAX)return 'Too long: keep your line under '+TABLE.LINE_MAX+' characters (yours has '+said.length+').';
   if(said&&sameLine(sc,a,said))return 'Someone already said that at this table; say it your own way, about yourself.';
+  if(o.k==='attempt'){if(!ATT)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.';const rid=ATT.start(sc,a,said);if(typeof rid==='string')return rid;
+    sc.acts[a.id]={k:'attempt',line:said,by:'agent',rid};return sc.acts[a.id]} // the DM rules on it before the member's turn plays (#522)
   sc.acts[a.id]={k:o.k,line:said,by:'agent'};return sc.acts[a.id]}
 
 // ---- turns ----
@@ -331,7 +336,8 @@ function voice(sc,a,k){const pool=LINES[k];if(!pool||a.hidden)return;const text=
       if(still)speak(a,t||text,'table',!!t)}).catch(()=>{});return}
   speak(a,text,'table')}
 
-function apply(sc,a,act){if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act);const f=foeOf(sc),k=act.k;
+function apply(sc,a,act){if(act.k==='attempt')return ATT?ATT.apply(sc,a,act):'nothing came of it'; // a free action, ruled by the DM (#522)
+  if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act);const f=foeOf(sc),k=act.k;
   if(COMBAT[sc.kind]&&k.startsWith('use:'))return useInRound(sc,a,k,lowest(sc)); // an item from the pack (#360)
   switch(k){
   case 'strike':if(!f)return 'the foe was already gone';if(a.hidden&&f.kind!=='boss')return 'out of reach';
@@ -377,6 +383,7 @@ function runTurns(sc,dt,instant){
       if(sc.t*1000<liveLimit(sc,a,liveOf(sc)))return true;sc.late=(sc.late||0)+1;missed(sc,a);if(R||moreOf(sc))(sc.lw||(sc.lw=[])).push(a.id)}
     if(!act){const k=reflexFor(sc,a),late=a.player&&!reflexMay(a);act=sc.acts[a.id]={k,line:'',by:'reflex'};
       if(a.player)notify(a,late?'The table waited '+Math.round(liveOf(sc)/1000)+' s for you; your reflexes chose: '+k+'.':'Your turn passed; your reflexes chose: '+k+'.',false)}
+    if(act.rid&&ATT&&ATT.hold(sc,act,instant||!sc.pause))return true; // the DM still weighs a free action (bounded, #522)
     take(sc,a,act);sc.i++;if(sc.i<sc.ids.length)startTurn(sc);dt=0}
   return false}
 // Everyone at once: tick each unanswered live agent's own wait (nudge, then reflex), side by side; once nobody is
@@ -394,6 +401,7 @@ function runAll(sc,dt,instant){
       if(w.t*1000<liveLimit(sc,a,liveOf(sc)))hold=true;else{w.late=1;sc.late=(sc.late||0)+1;missed(sc,a)}}
     if(sc.calls&&callWait(sc,dt,instant))return true; // the DM's opening voice, side by side with the members' answers
     if(hold)return true;
+    if(ATT&&sc.ids.some(id=>{const x=sc.acts[id];return x&&x.rid&&ATT.hold(sc,x,instant||!sc.pause)}))return true; // a free action the DM still weighs (#522)
     sc.resolved=true;
     for(const id of sc.ids){const a=byId(id);if(!living(a))continue;let act=sc.acts[id];
       if(!act){const k=reflexFor(sc,a),late=!!(sc.w[id]&&sc.w[id].late);act=sc.acts[id]={k,line:'',by:'reflex'};

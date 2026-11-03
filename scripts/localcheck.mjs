@@ -535,7 +535,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0;
       const first = S.agents.find(x => x.id === sc0.ids[0]), second = S.agents.find(x => x.id === sc0.ids[1]);
       const w1 = sim.playerAct(first.id, 'wait', {minutes: 10}), w2 = sim.playerAct(second.id, 'wait', {minutes: 10});
-      ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press\.( Since your last look|$)/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
+      ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press(, attempt)?.( Since your last look|$)/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
       ok(!w2.ok && /^It is your turn at the table/.test(w2.error), 'a check is answered by everyone at once: every member who has not answered is on turn');
       ok(sim.playerAct(second.id, 'scene_act', {option: 'press'}).ok && sim.playerAct(second.id, 'wait', {minutes: 10}).ok, 'once a member has answered, it may wait for the others');
       S.table = null;

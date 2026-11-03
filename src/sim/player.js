@@ -86,6 +86,7 @@ import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfessio
 import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
+import {attempt as attemptRuled} from './ruling.js'; // free actions ruled by the DM (#522)
 import {worldHeld,holdLine} from './prep.js'; // the world held before play (#559)
 
 // ---- knobs ----
@@ -891,6 +892,7 @@ const T={
     if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
     talked(a,[b.name]);const n=(b.chat||[]).length;say(b,'idle',{});const e=(b.chat||[])[(b.chat||[]).length-1];
     return {ok:true,who:b.name,answer:(b.chat||[]).length>n&&e&&e.from===b?e.text:'('+b.name+' is busy and does not answer.)'}},
+  attempt(a,{what,how,at}){return attemptRuled(a,{what,how,at})}, // anything the tools never named; the DM rules on it (#522)
   say(a,{text}){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);const t=L.text;need(!notEnglish(t),ENGLISH);need(a.state!=='ghost','Ghosts do not speak.');
     const no=lineRefusal(a,t);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
     agentLine(a,speak(a,t,'agent'));const H=sayHearers(a);noteSaid(a,t,H);talked(a,H.map(b=>b.name));const heard=H.length;

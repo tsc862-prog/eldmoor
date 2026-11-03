@@ -705,7 +705,7 @@ if (process.argv[2] === '--talk') {
   ok(r.ok && /scene at the table/.test(r.table || '') && !r.answer && sc && sc.kind === 'talk' && sc.ctx.why === 'bargain' && sc.all && sc.pause, `a bargain asked for opens a paused talk scene: "${sc && sc.title}"`);
   ok(sc && sc.ids.includes(A.id) && sc.ids.includes(M[1].id) && sc.company === S.fellowship.id, `the company present is at the table (${sc && sc.ids.map(nm).join(', ')})`);
   const tv = act(A, 'status').table;
-  ok(tv && tv.everyone_answers && tv.options.map(o => o.split(' = ')[0]).join() === 'accept,decline,bargain,leave', 'options: ' + (tv && tv.options.join('; ')));
+  ok(tv && tv.everyone_answers && tv.options.map(o => o.split(' = ')[0]).join() === 'accept,decline,bargain,leave,attempt', 'options: ' + (tv && tv.options.join('; ')));
   ok((A.playEv || []).some(e => /TABLE \(talk\)/.test(e.text)), 'the member is told at once (a must-answer event)');
   const said0 = (A.chat || []).length, ids0 = sc.ids.length;
   sc = playOut('bargain'); const ab = sc.beats.find(b => b.id === A.id) || {};

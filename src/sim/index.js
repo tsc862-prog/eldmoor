@@ -21,6 +21,7 @@ import {updMarket} from './market.js';
 import {chatTick} from './chat.js';
 import {npcsTick} from './npcs.js';
 import {talkTick} from './talk.js'; // NPC conversations (#170)
+import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
@@ -97,7 +98,8 @@ export function init(o={}){resetWorld();
 }
 
 // Advance the world by dt real seconds at 1x (6 game minutes per second).
-export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
+export function step(dt){rulingTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
+  if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
   S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
