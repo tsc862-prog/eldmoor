@@ -32,6 +32,7 @@ import {runnerFor,stateLine,leftOf} from './runners.js'; // the runner's state, 
 import {mountDmFrame,renderDmFrame} from './dmframe.js'; // the DM beside the party (owner request)
 import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
 import {agentReadyWord} from './player-bridge.js'; // the start gate (#222): claimed / warming / ready / failed
+import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 const READY_TEXT={claimed:'claimed',warming:'warming up',ready:'ready',failed:'warm-up failed'};
 const mindLine=a=>{const w=a&&a.player&&a.state!=='dead'?agentReadyWord(a):null;return mindText(a)+(w?' · '+READY_TEXT[w]:'')};
 // The mind dot (#546): the frame carries the glance only. agent = a runner plays it (live or thinking), autopilot = the agent
@@ -127,7 +128,7 @@ function update(fr,m,lead,no,total){const a=m.hero,r=fr.r;
   setCls(fr.node,'pf r-'+m.role+(cam.sel===a?' sel':'')+(dead?' dead':a.state==='ghost'?' ghost':'')+(a.hp<mh*.35&&!dead?' low':''));
   // portrait: redraw only when the face itself changes (ghost, fallen, a new hero)
   const s=portrait(a,dead?'dead':a.state==='ghost'?'ghost':'');if(r.port._s!==s){r.port._s=s;r.port.width=s.width;r.port.height=s.height;const c=r.port.getContext&&r.port.getContext('2d');if(c){c.clearRect(0,0,s.width,s.height);c.drawImage(s,0,0)}}
-  r.star.hidden=lead!==a;
+  r.star.hidden=lead!==a;setText(r.nm,styled(a)); // a name given for a deed (#638)
   setText(r.sub,'Lv '+a.lvl+' '+a.cls);
   const w=dead?0:Math.max(0,Math.min(100,a.hp/mh*100));if(r.hpi._w!==w){r.hpi._w=w;r.hpi.style.width=w.toFixed(1)+'%'}
   setText(r.hpt,dead?'fallen':Math.max(0,Math.round(a.hp))+' / '+mh);
