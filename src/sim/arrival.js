@@ -46,8 +46,8 @@ import {tm} from '../data/traits.js';
 import {CAP as CHAT_CAP} from './chat.js';
 import {hasLinks,runnerLink,agentLive} from './runlink.js';
 import {prepActive} from './prep.js';
-import {heard,tableLive,fillWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
-import {TABLE,openScene,setSceneKind,tableOn,sceneFor} from './table.js';
+import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
+import {TABLE,openScene,setSceneKind,tableOn,sceneFor,callSeen,callLeft} from './table.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf} from './company.js';
 
@@ -69,7 +69,7 @@ const pickH=(seed,k,list)=>list[Math.floor(hash(seed|0,k,53)*list.length)%list.l
 const NARRATOR={kind:'dm',name:'The Narrator'};
 const LIVE={connected:1,waiting:1};
 const isFellowship=C=>!!C&&C===slotted();
-const memOf=C=>!C?[]:isFellowship(C)?slotHeroes(slotted()):members(C);
+const memOf=C=>!C?[]:isFellowship(C)?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const leadOf=C=>{if(!C)return null;if(isFellowship(C)){const P=slotParty(slotted());if(P&&living(P.leader))return P.leader;const L=slotHeroes(slotted());let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}return leaderOf(C)||members(C)[0]||null};
 const townOf=C=>{const ld=leadOf(C);return C&&C.hall?C.hall:ld?homeOf(ld).name:'town'};
 
@@ -101,7 +101,7 @@ function openingFrame(C,q){const L=memOf(C),ld=leadOf(C),town=townOf(C),d=Math.f
 function openOpening(q){const C=companyById(q.company),L=memOf(C);if(!C||!L.length)return null;const ld=leadOf(C),town=townOf(C),solo=L.length===1;
   if(q.kind==='heir')log(nar(''),'The Chronicle remembers ',gd(q.fallen||'one who fell'),(q.cause?', '+q.cause:'')+'. In '+town+', ',L[0],' takes up the road.');
   const title='SESSION ZERO · '+(solo?L[0].name:C.name||ld.name+'\'s company');
-  const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town)};
+  const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,setting:'tavern',...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town)};
   const frame=openingFrame(C,q);
   if(!tableOn())return settleOpening(C,ctx,[],title);
   const sc=openScene('opening',title,frame,ctx,C);
@@ -170,7 +170,7 @@ function place(C,a,where){if(where==='camp'){const g=C.camp;a.x=g.x+1.2;a.y=g.y+
 function openArrival(C,q,where){const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=q.slot?lcRoleOf(q.slot):roleOf(a.cls);
   const title='A newcomer: '+a.name;
   const frame=[a,', a level '+a.lvl+' '+a.cls.toLowerCase()+', comes to '+at+', sent to take ',gd(q.name),'\'s place as the company\'s '+role+'.'];
-  const ctx={arrival:1,recruit:a.id,fallen:q.fallen,fname:q.name,role,slot:q.slot||null,skip:[a.id],anchor:ld?ld.id:null,at};
+  const ctx={arrival:1,recruit:a.id,fallen:q.fallen,fname:q.name,role,slot:q.slot||null,skip:[a.id],anchor:ld?ld.id:null,at,...(where==='town'?{setting:'tavern',town:homeOf(leadOf(C)||a).name}:{})};
   for(const b of memOf(C))if(b!==a&&b.player)notify(b,a.name+' has come to take '+q.name+'\'s place.',false);
   if(!tableOn())return settleArrival(C,ctx,[]);
   const sc=openScene('arrival',title,frame,ctx,C);
@@ -207,7 +207,7 @@ function premise(){const D=S.dmAgent;if(!D||!D.notes)return '';const P=(D.notes.
 const castOf=sc=>{const a=byId(sc.ctx.recruit);return a?[a.name+' (newcomer, level '+a.lvl+' '+a.cls+(a.persona&&a.persona.voice?'; voice: '+a.persona.voice:'')+(a.persona&&a.persona.wants?'; wants: '+a.persona.wants:'')+')']:[]};
 const DM_OPEN={
   onFrame(sc){const L=sc.ids.map(byId).filter(living);
-    push(sc,{kind:'frame',who:'the narrator',about:'Session zero: frame the opening of the campaign for '+(sc.ctx.solo?L.map(a=>a.name+' ('+a.cls+', alone)').join(''):L.map(a=>a.name+' ('+a.cls+')').join(', '))+' in '+sc.ctx.town+
+    push(sc,{kind:'frame',ms:TABLE.frameMs,who:'the narrator',about:'Session zero: frame the opening of the campaign for '+(sc.ctx.solo?L.map(a=>a.name+' ('+a.cls+', alone)').join(''):L.map(a=>a.name+' ('+a.cls+')').join(', '))+' in '+sc.ctx.town+
       '. What the table already shows: '+plain(sc.frame)+premise()+' Write what they see and hear as they sit down (or set out): one or two short paragraphs. Hint at the premise through what can be seen; reveal none of your secrets; decide nothing for them.'})},
   onAll(){},
   live,
@@ -216,7 +216,7 @@ const DM_OPEN={
 };
 const DM_ARRIVE={
   onFrame(sc){const a=byId(sc.ctx.recruit);if(!a)return;
-    push(sc,{kind:'voice',who:a.name,about:'Voice '+a.name+', a level '+a.lvl+' '+a.cls+' sent to take '+sc.ctx.fname+'\'s place as the company\'s '+sc.ctx.role+', as they reach '+sc.ctx.at+': what they say and how they come in, one or two lines'+(a.persona&&a.persona.voice?' (their voice: '+a.persona.voice+')':'')+'. They know '+sc.ctx.fname+' fell; they do not know the company.'})},
+    push(sc,{kind:'voice',ms:TABLE.frameMs,who:a.name,about:'Voice '+a.name+', a level '+a.lvl+' '+a.cls+' sent to take '+sc.ctx.fname+'\'s place as the company\'s '+sc.ctx.role+', as they reach '+sc.ctx.at+': what they say and how they come in, one or two lines'+(a.persona&&a.persona.voice?' (their voice: '+a.persona.voice+')':'')+'. They know '+sc.ctx.fname+' fell; they do not know the company.'})},
   onAll(sc){const a=byId(sc.ctx.recruit);if(!a||!sc.beats.length)return;
     push(sc,{kind:'oath',who:a.name,about:'Everyone answered at once: '+sc.beats.map(b=>b.name+' chose to '+low(b.text)+(b.line?' and said "'+b.line+'"':'')).join('; ')+'. Voice '+a.name+' answering them and swearing the company\'s oath at the table, one or two lines, true to what was said (an objection is spoken, not a veto).'})},
   live,
@@ -227,7 +227,7 @@ const DM_ARRIVE={
   done(){},
 };
 function resolve(sc,c,{text,by}){c.done=true;c.by=by;c.text=text||'';if(text)say(sc,text,NARRATOR);
-  dmlog('agent',null,['At the table ('+sc.kind+', '+c.kind+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{by,call:c.kind,scene:sc.kind,text,...(by==='scripted'?{fill:true,why:fillWhy(c)}:{})},{heroes:[]})}
+  dmlog('agent',null,['At the table ('+sc.kind+', '+c.kind+'): ',text||'-',by==='scripted'?' [scripted fill'+(c.t>0?': '+lateWhy(c.seen):'')+']':''],{by,call:c.kind,scene:sc.kind,text,...(by==='scripted'?{fill:true,why:fillWhy(c),...(c.t>0?{late:lateWhy(c.seen)}:{})}:{})},{heroes:[]})}
 setSceneKind('opening',{options:optsOpening,reflex:reflexOpening,apply:applyOpening,outcome:sc=>settleOpening(companyById(sc.company)||slotted(),sc.ctx,sc.beats,sc.title),dm:DM_OPEN});
 setSceneKind('arrival',{options:optsArrival,reflex:reflexArrival,apply:applyArrival,outcome:sc=>settleArrival(companyById(sc.company)||slotted(),sc.ctx,sc.beats),dm:DM_ARRIVE});
 
@@ -241,7 +241,8 @@ export const ourScene=()=>findScene(sc=>sc.kind in VOICED); // any company's (#5
 export function sceneCall(){heard('table');const sc=ourScene();if(!sc)return null;const c=(sc.calls||[]).find(x=>!x.done)||null;
   const out={ok:true,staged:null,scene:{title:sc.title,kind:sc.kind,frame:plain(sc.frame),order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+')'),
     so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.kind==='arrival'?castOf(sc):[]},call:null};
-  if(c)out.call={id:c.id,kind:c.kind,about:c.about,who:c.who||null,seconds_left:sc.pause&&live(sc)?Math.max(0,Math.round((TABLE.dmMs/1000-c.t)*10)/10):0,max_chars:ARRIVE.LINE_MAX};
+  if(c){const waiting=sc.pause&&live(sc);if(waiting)callSeen(c); // the budget starts at pickup (#680)
+    out.call={id:c.id,kind:c.kind,about:c.about,who:c.who||null,seconds_left:waiting?callLeft(c):0,max_chars:ARRIVE.LINE_MAX}}
   return out}
 export function sceneAnswer(a){a=a&&typeof a==='object'?a:{};const sc=ourScene();if(!sc)return null;const id=Math.round(Number(a.call)),text=clean(a.text,ARRIVE.LINE_MAX);
   const c=(sc.calls||[]).find(x=>x.id===id);if(!c)return {ok:false,error:'no call '+(a.call==null?'':a.call)+' in this scene (see table_call)'};

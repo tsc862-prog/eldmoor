@@ -8,7 +8,7 @@
 // The world never waits on the bridge: a disconnected or silent agent just leaves its hero to
 // its reflexes. Reconnects every few seconds while an agent-played hero is alive.
 import {markPlayer,playerHero,playerSeat,playerSeats,playerNarrate,disableBrain,S,dmAct,dmSeatOn,setDmSeat,prepView} from '../sim/index.js';
-import {hostCall,seatInfo} from '../sim/player-host.js'; // seatInfo: one seat for /play/health, company field (#460)
+import {hostCall,hostDm,seatInfo} from '../sim/player-host.js'; // seatInfo: one seat for /play/health, company field (#460)
 import {setAgentTag} from '../sim/chat.js';
 import {makeWatch} from '../sim/behavior.js';
 import {noteDmCall} from './dmturns.js'; // per-turn cards of the DM tab (#181)
@@ -37,13 +37,13 @@ export const dmReady=()=>dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInf
 export const readyWord=(link,r)=>!(link==='connected'||link==='waiting')?null:r&&r.state?r.state:'claimed';
 export const agentReadyWord=a=>readyWord(agentLink(a),agentReady(a));
 export const dmReadyWord=()=>readyWord(dmLink(),dmReady());
-export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':r.provider==='huggingface'?' · huggingface':''):null};
+export const runnerTag=a=>{const r=agentRunner(a);return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider&&r.provider!=='anthropic'?' · '+r.provider:''):null};
 setAgentTag(a=>runnerTag(a)); // agent chat lines carry the runner's model in the Chat tab (#126)
 // The DM seat (issue #66): open it and the page answers the DM agent's tools (sim/dmagent.js) over the
 // same WebSocket. dmLink(): 'connected' | 'waiting' | 'none' as for a hero, or the bridge's own state.
 export function dmSeatSet(on){setDmSeat(on);if(on){connect();hello()}else{hello();if(!wanted())disconnect()}}
 export const dmLink=()=>!dmSeatOn()?'off':status!=='connected'?status:!linksIn?'connecting':dmLinkInfo&&dmLinkInfo.link||'none';
-export const dmRunnerTag=()=>{const r=dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.runner;return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':r.provider==='huggingface'?' · huggingface':''):null};
+export const dmRunnerTag=()=>{const r=dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.runner;return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider&&r.provider!=='anthropic'?' · '+r.provider:''):null};
 export const LINK_TEXT={connected:'agent connected',waiting:'agent waiting (runner idle)',none:'no runner',connecting:'connecting to the relay…',offline:'relay offline',off:'not connected'};
 
 // Make a an agent-played hero (alongside any others) and connect.
@@ -65,7 +65,7 @@ function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecti
       try{r=a?await hostCall(a.id,String(m.tool),m.args||{},{nap:wsleep}):{ok:false,error:m.hero!=null?'Hero #'+m.hero+' is not agent-played in the game.':'No agent-played hero in the game.'}}catch(err){r={ok:false,error:String(err&&err.message||err)}}
       send({type:'result',id:m.id,result:r})}
     else if(m.type==='narrate'){const a=seat(m.hero);if(a)playerNarrate(a.id,String(m.text||''))}
-    else if(m.type==='dmcall'){let r;try{r=dmAct(String(m.tool),m.args||{})}catch(err){r={ok:false,error:String(err&&err.message||err)}}try{noteDmCall(String(m.tool),m.args||{},r)}catch(err){}send({type:'result',id:m.id,result:r})}
+    else if(m.type==='dmcall'){let r;try{r=await hostDm(String(m.tool),m.args||{},{nap:wsleep})}catch(err){r={ok:false,error:String(err&&err.message||err)}}try{noteDmCall(String(m.tool),m.args||{},r)}catch(err){}send({type:'result',id:m.id,result:r})}
     else if(m.type==='links')takeLinks(m)};
   ws.onclose=()=>{ws=null;lastHello='';links={};runners={};readies={};dmLinkInfo=null;status=wanted()?'offline':'off';if(wanted())later()};
   ws.onerror=()=>{}}

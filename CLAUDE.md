@@ -96,6 +96,7 @@ other. The rules:
 - **Names go through lore.** Anything newly named (zone, creature, item, NPC,
   guild, quest) is added to `docs/LORE.md` in the same PR, and `lore-keeper`
   checks originality before merge.
+- **Every PR carries its patch note** (#664): `docs/patchnotes/<PR number>.md` (front matter `title`, `date`, `area`, `issues`, then 1-6 `- ` lines) is part of the PR, written for the owner as a player: what he will see or can do now, in plain words, no file or function names or hashes ("Nothing you will notice: ..." for CI and tests). `npm run rulescheck` fails a PR without it unless it has the label `no-notes`; the launcher (`n`, and on start and after `u`), `npm run notes` and the title screen's What's new show them.
 - **Numbers go through balance.** Changes to stats, mobs, bosses, XP or AI get a
   `balance-tester` report before merge.
 - **Issues are the queue.** Work is tracked as GitHub issues labelled
@@ -112,7 +113,7 @@ other. The rules:
   levels, deaths, honor, guild dungeon results and boss state.
 - `npm run build`: static build into `dist/`.
 - Worlds: Eldmoor (80x50) by default; `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node selects the 160x100 Stepping Lands test continent (saves are kept per world).
-- Title screen (`src/ui/title.js`): the page opens on Continue (with a line on the save), New world (the setup page), Load from file and the map choice; no world is built or restored until a choice. `?continue=1` (or `?skip-title=1`) boots straight in as before; a queued New World setup and a Load/Import reload skip it too.
+- Title screen (`src/ui/title.js`): the page opens on Continue (with a line on the save, and a What's new block of the patch notes this viewer has not read, NEW until Got it, #664), New world (the setup page), Load from file and the map choice; no world is built or restored until a choice. `?continue=1` (or `?skip-title=1`) boots straight in as before; a queued New World setup and a Load/Import reload skip it too.
 - New worlds (#111): `init()` founds the default Fellowship (level 1, home town, Minds scripted) and starts the other heroes at levels 1-15 in fitting zones (`src/sim/opening.js`, `START_BANDS`). `ELDMOOR_FELLOWSHIP=0` in Node, `?fellowship=0` in the browser or `init({fellowship:false})` keeps the old all-level-1 start for balance baselines; checks that found their own Fellowship use it.
 - `npm run hashcheck` (#573, `scripts/hashcheck.mjs`): the one source of the seeded hashes PRs quote (professioncheck with and without the Fellowship, tablecheck --hash and --hash-talk, crawlcheck, dmcheck seat closed and open, focuscheck, the no-company world, the Eldmoor map). It runs them here and on `git archive origin/main` extracted to a temp dir (never a worktree) and prints both side by side; exit 2 when one moved. The CI job `hash-guard` comments that table on every PR and fails when a hash moved unless the PR has the label `hash-change-ok` (add the label, then re-run the job). Quote its table in PRs, not hand-run hashes.
 - `npm run rulescheck` (#573): src/sim, src/world and src/data never import src/render or src/ui; no zone, faction or town name literals outside src/data and src/world (known ones in `scripts/rulescheck.allow.json`, with a reason); the append-only tables (MOBS, EPICS, GOODS, CLS, the world specs' regions and towns, ...) keep every existing row in place against origin/main; every `scripts/*check.mjs` with an npm script is a step in ci.yml. CI also runs on `merge_group` for GitHub's merge queue.
@@ -137,7 +138,8 @@ other. The rules:
   processes (output prefixed and coloured `[relay]`, `[vite]`, `[up]`), then opens http://localhost:5173 once. Single keys
   (or the word plus Enter where raw mode is missing): `u` update (`git pull --ff-only`; refused on a dirty tree outside .claude/ (agent memory never blocks it; git refuses if the pull touches a file you edited, naming it; nothing is stashed) or a
   non-fast-forward; `npm install` only when package-lock.json changed, with Vite stopped meanwhile; then the relay restarts,
-  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `s`
+  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `n` the last 10 patch notes (on start and after `u` it prints every note merged since
+  the commit last seen, `logs/last-seen.json`, #664), `s`
   status (relay health, runners, Ollama models loaded), `h` help, `q`/Ctrl+C quit (runners get "stop" first so they
   release their heroes, then the relay, then Vite; the process trees are killed with `taskkill /T /F` as a last resort, so
   no node process or port stays held; closing the window does the same). A change under `scripts/` while it runs prints
@@ -594,7 +596,7 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   prints whether Ollama is reachable and which models are pulled; `GET /health` lists the same
   under `providers`.
 - Pick a mind per background hero (Developer toggle; company members are always agents, #148): Scripted / AI / Agent, and
-  for AI a provider (Claude, Local (Ollama), OpenAI, Google) and a model picked from what the relay
+  for AI a provider (Claude, Local (Ollama), OpenAI, Hugging Face, Gemini) and a model picked from what the relay
   reports. The setting is `a.brainCfg = {provider, model}` on the hero (same shape as the agent
   runner's `runner` settings), saved with the world; the brain sends it with every request for
   that hero, Fellowship sheets included.
@@ -609,7 +611,7 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   (for example `qwen2.5:14b · local`), and the relay log and `--verbose` log record provider and model.
 - Adapters live in `scripts/providers/` (one interface: `call({system, user, schema, maxTokens,
   model, effort})`; Ollama and OpenAI also have `chat({messages, tools|format})` for the agent loop).
-  Google is a stub that reports "not configured" until built.
+  Google (Gemini) is the OpenAI adapter with other options, see below.
 
 Local agent runner (part 2):
 
@@ -685,6 +687,12 @@ Owner setup:
    hero's session file; later runs need only `--hero`), or `npm run fellowship -- --provider openai --model <id>`.
    Tags read like `gpt-6-luna · openai`.
 
+Model lists (#677): `OPENAI_MODELS=a,b` in `.env` makes `providers.openai.models` exactly that list, in that order, checked once against the
+key's `/models` (an id the key cannot use is dropped, with `dropped` in `/health` and a line in the relay log); unset, the key's chat models come
+cheapest first from `PRICES` (unpriced last). `/health` also carries `prices` (per 1M tokens) and the pickers label each model ("gpt-6-luna · $0.10 /
+$0.50 per 1M", "price unknown"). `ANTHROPIC_MODELS` narrows the Claude list the same way, `HF_MODELS` as before (one helper, `modelListFrom` in
+`scripts/providers/index.mjs`). Recommended: `OPENAI_MODELS=gpt-6-luna,gpt-6.1-terra`.
+
 Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pick any model from your
 own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
 1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
@@ -722,6 +730,55 @@ only `model`, `max_tokens`, `messages` and the structured-output/tools fields, n
   runner waits" (kind `quota`, never retried); other 429s pause the limiter (`RELAY_HF_CONCURRENCY`, default 4, `queues.huggingface`).
 - Agent play is the OpenAI path (`--provider huggingface --model <id>`, `openaiRunner` in `scripts/agent-chat.mjs`, same loop, forced scene answers
   and reflections); no Claude slot, keeps the kind's turn cap and budget caps. `npm run hfcheck` (in CI) runs it all against a mock router.
+
+### Google (Gemini) (issue #672)
+
+The fifth mind provider, id `google` (label "Gemini", tag `<model> · google`, for example `gemini-3.8-flash · google`): Gemini's
+OpenAI-compatible Chat Completions surface (`https://generativelanguage.googleapis.com/v1beta/openai`, the AI Studio key as a bearer) is
+`scripts/providers/openai.mjs` with other options (`googleAdapter`/`GOOGLE_OPTS` in `scripts/providers/google.mjs`, the #552 pattern), with the
+native `generateContent` call as a fallback where the compat layer falls short.
+
+Owner setup:
+
+1. Create a key at https://aistudio.google.com/apikey (a free Google account is enough; the free tier needs no billing).
+2. Add `GOOGLE_API_KEY=...` to `.env` (ignored by git; read only by the relay and the runners, never printed, scrubbed from errors).
+   Optional: `GOOGLE_MODEL=<id>` (a default; none in code), `GOOGLE_MODELS=a,b` (an allow list for the pickers, as `OPENAI_MODELS`, #677), `GOOGLE_TIER=paid` (a billed key: cost from the price table; default free),
+   `GOOGLE_NATIVE=1` (every structured call through `generateContent`), `GOOGLE_BASE_URL`, `RELAY_GOOGLE_CONCURRENCY` (default 4),
+   `RELAY_GOOGLE_RPM` (space calls to the key's requests-per-minute quota; 0, the default, means no spacing).
+3. Restart the relay. `GET /health` lists `providers.google` (the chat models `GET /models` returns for the key, `free: true`) and
+   `queues.google`; the mind row (AI), the Start runner picker, the setup page and the DM seat's picker fill from it, cheapest first by the paid price, labelled "$0.00 / $0.00 per 1M" on the free tier (the table's price on the paid tier or for a paid-only model). Or from a terminal:
+   `npm run agent -- --hero <name|id> --provider google --model gemini-3.8-flash`, `npm run fellowship -- --provider google --model <id>`,
+   `npm run dm -- --provider google --model <id>` (saved as `runner: {provider: 'google', model}`; later runs need only `--hero`).
+
+- Free tier = the budget: on the free tier every call costs $0 (tokens are still counted and shown) and a used-up daily quota reads "Gemini free
+  quota used up for today; the hero plays scripted / the runner waits" (kind `quota`, never retried; daily quotas reset at midnight Pacific).
+  A per-minute 429 is a rate limit: the relay's limiter pauses for the retry delay Google names (writing kinds retry, decisions drop to scripted),
+  a runner waits. 401/403, or Google's 400 "API key not valid", read "bad or missing GOOGLE_API_KEY".
+- How many minds the free tier carries: Google's rate-limit page (read 2026-11-03) does not print the free tier's numbers; they are shown per key
+  in AI Studio. Each agent turn is several model calls (6-12 in the local runs), so divide the key's requests per minute by
+  about 10 for the members that can think at once, and its requests per day by the calls a member makes in a session; set `RELAY_GOOGLE_RPM` to the
+  key's per-minute limit so relay decisions never trip it. Watch the relay log for "free tier per-minute quota" lines.
+- Models and prices: read from https://ai.google.dev/gemini-api/docs/pricing on 2026-11-03 (`PRICES` in `google.mjs`, Standard tier, prompts up
+  to 200k, output including thinking tokens): gemini-3.8-flash and gemini-3.6-flash $0.75 / $3.75 per 1M (doubling 2027-01-01), gemini-3.5-flash-lite
+  $0.30 / $2.50, gemini-3.1-flash-lite $0.25 / $1.50, gemini-3-flash-preview $0.50 / $3, gemini-2.5-flash-lite $0.10 / $0.40, gemini-2.5-flash
+  $0.30 / $2.50 and gemini-2.5-pro $1.25 / $10 (both deprecated, routed to 3.8 Flash / 3.5 Flash-Lite on 2026-12-01), all with a free tier;
+  gemini-4-argon ($2 / $10) and gemini-3.1-pro-preview ($2 / $12) are paid only. A model not in the table reports cost "unknown" on the paid tier.
+- Requests carry only `model`, `messages`, `max_tokens`, `reasoning_effort`, and `response_format` or `tools`. Thinking: `reasoning_effort` "none"
+  on the 2.5 Flash models, "low" on the others (the 3.x models cannot turn it off), and `max_tokens` gets 1024 tokens of headroom, because
+  thinking spends output tokens before the answer; output tokens are counted as total minus prompt, so thinking is in them.
+- Native fallback (`nativeCaller`): a strict schema the compat layer rejects (400 naming the schema or `response_format`) is asked again through
+  `POST /v1beta/models/<model>:generateContent` (`x-goog-api-key` header; `systemInstruction`, `contents`, `generationConfig {maxOutputTokens,
+  responseMimeType: application/json, responseJsonSchema}`), remembered per model (decisions, writing, forced scene answers and reflections);
+  usage from `usageMetadata` (thoughts counted as output), `MAX_TOKENS` -> "reply cut off", a safety finish or a blocked prompt -> "model refused".
+  Tool calls stay on the compat path.
+- Thought signatures: Gemini 3 tool calls carry `extra_content.google.thought_signature`; the loop sends it back within the turn and drops it from
+  the kept history and the session file. A 400 naming a missing signature is asked once more with the tool calls written out as text.
+- Agent play is the OpenAI path (`openaiRunner` -> `googleRunner` in `scripts/agent-chat.mjs`, the same loop, forced scene answers, reflections,
+  state header, English re-prompt, `--max-fails`); no Claude slot; it keeps the budget cap (spent stays $0 on the free tier). The DM plays it through
+  the same loop as a local DM (table, talk and ruling voices on the seat's Gemini model, 8 s budgets). `npm run googlecheck` (in CI) runs it all
+  against a mock Gemini server, with no key and no network.
+- Caveats: Google calls the OpenAI compatibility beta ("still in beta while we extend feature support"); the free quotas are not printed on
+  Google's pages and change with the tier, so read them in AI Studio; check the AI Studio terms for how free-tier prompts are used.
 
 ## DM agent (issue #66, part 1)
 

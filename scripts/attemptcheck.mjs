@@ -103,17 +103,29 @@ fresh(A); dmAct('ruling_call', {budget_s: 4});
 r = act(A, 'attempt', {what: 'I bargain with the gate guard for a cheaper toll.'});
 ok(r.call, 'waiting for the DM');
 fake += 2000; step(1 / 60); ok(S.rulings.cur.some(x => x.id === r.call && x.state === 'wait'), 'still waiting inside its 4 s');
-fake += 2500; step(1 / 60); ok(!S.rulings.cur.some(x => x.id === r.call), 'filled after 4 s');
-ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.call === r.call && e.detail.by === 'scripted' && e.detail.why === 'slow' && e.detail.skill === 'persuasion'), 'scripted fill logged: why slow, persuasion by keyword');
+fake += 2500; step(1 / 60); ok(S.rulings.cur.some(x => x.id === r.call && x.state === 'wait'), 'never picked up: still waiting past its 4 s (the pickup allowance, #680)');
+fake += 4000; step(1 / 60); ok(!S.rulings.cur.some(x => x.id === r.call), 'filled at 4 s + the 4 s pickup cap');
+ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.call === r.call && e.detail.by === 'scripted' && e.detail.why === 'slow' && e.detail.late === 'late pickup' && e.detail.skill === 'persuasion'), 'scripted fill logged: why slow, late pickup, persuasion by keyword');
 a2 = dmAct('ruling_answer', {call: r.call, skill: 'persuasion', dc: 'fair', text: 'Late.'});
 ok(!a2.ok && /scripted DM filled it/.test(a2.error), 'a late answer is refused: ' + a2.error);
+console.log('the budget starts at pickup (#680)');
+fresh(A); dmAct('ruling_call', {budget_s: 4}); fake += 100;
+r = act(A, 'attempt', {what: 'I read the old milestone by touch.'});
+fake += 1500; step(1 / 60); c = dmAct('ruling_call', {budget_s: 4});
+ok(c.call && c.call.seconds_left >= 3.9, 'picked up 1.5 s late: the full 4 s left (' + (c.call && c.call.seconds_left) + ')');
+fake += 3500; step(1 / 60); ok(S.rulings.cur.some(x => x.id === r.call && x.state === 'wait'), '5 s after the attempt (3.5 s after pickup): still waiting');
+a2 = dmAct('ruling_answer', {call: r.call, skill: 'lore', dc: 'fair', text: 'The letters are older than the road.'}); ok(a2.ok, 'answered 3.5 s after pickup: accepted');
+fresh(A); dmAct('ruling_call', {budget_s: 4}); r = act(A, 'attempt', {what: 'I count the guards on the wall.'});
+fake += 3000; step(1 / 60); dmAct('ruling_call', {budget_s: 4}); fake += 4200; step(1 / 60);
+ok(!S.rulings.cur.some(x => x.id === r.call), 'picked up and silent: filled at its deadline');
+ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.call === r.call && e.detail.late === 'no answer in time'), 'scripted fill logged: no answer in time');
 fresh(A); dmAct('ruling_call'); r = act(A, 'attempt', {what: 'I listen at the shutters.'}); setDmSeat(false);
 step(1 / 60); ok(!S.rulings.cur.some(x => x.id === r.call), 'the seat closing fills a waiting ruling at once');
 
 console.log('an attempt in a Table scene');
 setDmSeat(true); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; fresh(A); fresh(B);
 const sc = T.openScene('check', 'The rope bridge', ['A rope bridge sways over the gorge.'], {}, CO.companyOf(A));
-ok(sc && sc.ids.includes(A.id), 'a check scene is open');
+ok(sc && sc.ids.includes(A.id), 'a check scene is open'); sc.phase = 'turn'; delete sc.wk; // the DM has set the scene and its members are woken (#682)
 const tv = P.playerAct(A.id, 'look', {}); ok(at(T.tableView(A).options, 'attempt ='), 'the member\'s options include attempt');
 ok(/scene_act/.test(act(A, 'attempt', {what: 'I test the ropes.'}).error), 'the attempt tool points to scene_act inside a scene');
 dmAct('ruling_call', {budget_s: 10});
@@ -135,7 +147,7 @@ ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.by === 'dm-agent' &
 // the same at 8x: no wait, the scripted ruling
 T.TABLE.speed = 8; fresh(A);
 const sc2 = T.openScene('check', 'The ford', ['A cold ford.'], {}, CO.companyOf(A));
-if (sc2) {act(A, 'scene_act', {option: 'attempt', line: 'I wade across with a pole to feel the bottom.'}); for (const x of M) if (x !== A && !sc2.acts[x.id]) act(x, 'scene_act', {option: 'steady'});
+if (sc2) {sc2.phase = 'turn'; delete sc2.wk; act(A, 'scene_act', {option: 'attempt', line: 'I wade across with a pole to feel the bottom.'}); for (const x of M) if (x !== A && !sc2.acts[x.id]) act(x, 'scene_act', {option: 'steady'});
   k = 0; while ((S.table === sc2) && k++ < 600) step(1 / 60);
   const b2 = sc2.beats.find(b => b.k === 'attempt'); ok(b2 && /(success|failure)/.test(b2.res), 'at 8x the scripted ruling plays it at once: ' + (b2 && b2.res))}
 else ok(true, 'at 8x (scene resolved inside openScene)');

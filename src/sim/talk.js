@@ -42,11 +42,12 @@ import {remember} from './memory.js';
 import {CAP as CHAT_CAP,BUBBLE,HEAR} from './chat.js';
 import {ensureNpcs} from './npcs.js';
 import {stageScene} from './staged.js';
-import {heard,since,dmAlive,goneEpoch} from './dmreflex.js'; // the DM's reflexes (#561)
+import {heard,since,dmAlive,goneEpoch,callDeadline,lateWhy} from './dmreflex.js'; // the DM's reflexes (#561)
 import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
 import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
 import {inSlots,slotHeroes,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
+import {hireKind,priceFor,HIRE} from './hire.js'; // a hire offer (#634); used inside functions only (hire.js imports this file)
 import {rumoursFor,tell as tellRumour,carries} from './rumours.js'; // word the DM seeded for the town's tellers (#637)
 import {spokenAbout} from './epithet.js'; // a hero refusing a name given (#638)
 
@@ -79,7 +80,7 @@ export const CONV={
   DM_LINE_MAX:2000,   // the person's line from the DM: a technical ceiling only, the DM writes as much as the moment needs (owner, #170)
   LEAD_MAX:600, NOTE_MAX:160, NOTES_KEEP:8, PAST_KEEP:12,
 };
-export const OFFER_KINDS=['trade','rumour','job','combat','blessing','leave'];
+export const OFFER_KINDS=['trade','rumour','job','combat','blessing','hire','leave'];
 const MOODS=['hostile','neutral','friendly'];
 const DAY=1440;
 
@@ -125,6 +126,9 @@ export function recordView(p){if(p.warmth==null&&!p.fmem)return null;const R=rec
 // scripted line; sim/dmreflex.js, #561: the DM is always an agent, there is no seat-closed path). A world no DM runner ever
 // spoke to never waits, so a seeded world without one is untouched.
 let voiceMs=0;
+// When a waiting answer is due (#680): its budget (ms) from the moment the DM first read it (npc_call: seen), never past
+// ms + PICKUP_MS from the member's line.
+const waitEnd=w=>callDeadline(w.real,w.ms,w.seen);
 // tool: the DM tool called; args.budget_s on npc_call: the real seconds the voice says it needs per answer (a local model
 // is slower than Haiku), held to VOICE_MIN..VOICE_MAX.
 export function dmHeard(tool,args){heard(tool==='npc_call'?'voice':'act');if(tool==='npc_call'){const b=Number(args&&args.budget_s);voiceMs=Number.isFinite(b)&&b>0?Math.max(CONV.VOICE_MIN,Math.min(CONV.VOICE_MAX,b*1000)):0}}
@@ -204,7 +208,7 @@ function speakAs(p,c,text,by,mark){const e={t:clockStr(),d:gameDay()+1,from:{kin
   for(const b of hs){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=Math.max(p.chatCd||0,10);
   c.lines.push({who:'npc',id:p.id,name:full(p),text,t:e.t,by,...(mark?{mark}:{})});c.last=Math.round(S.gameMin);
-  log([full(p)+(by==='dm-agent'?' (DM agent)':'')+': "',text,'"'+(mark?' '+mark:'')],{conv:c.id,npc:p.id,who:'npc',by,text,...(mark?{mark}:{}),...(by==='scripted'?{fill:true,why:c.wait?'slow':'gone'}:{})});return e} // a scripted answer is the DM's reflex (#561)
+  log([full(p)+(by==='dm-agent'?' (DM agent)':'')+': "',text,'"'+(mark?' '+mark:'')],{conv:c.id,npc:p.id,who:'npc',by,text,...(mark?{mark}:{}),...(by==='scripted'?{fill:true,why:c.wait?'slow':'gone',...(c.wait?{late:lateWhy(c.wait.seen)}:{})}:{})});return e} // a scripted answer is the DM's reflex (#561)
 // Word the DM seeded (#637): after the person's answer, a teller passes on what the town is saying, once a game day a hero,
 // in their own words. A line the DM's voice already wove it into counts as told (said); else the scripted words follow.
 // The line is heard like the answer, never written to the DM log (the telling is counted there by sim/rumours.js).
@@ -240,7 +244,7 @@ export function dmAnswer(c,p,text,o={}){const d=today(),T=talkState();
 
 // The scripted DM's answer from the person's role: an opening line and the role's follow-up on the first exchange,
 // a reply later, a farewell on the last; a hostile person threatens and walks off.
-function scripted(c,p,a){const T=talkState();T.stats.scripted++;if(c.wait&&c.wait.real&&Date.now()-c.wait.real>=c.wait.ms)T.stats.late++;
+function scripted(c,p,a){const T=talkState();T.stats.scripted++;if(c.wait&&c.wait.real&&Date.now()>=waitEnd(c.wait))T.stats.late++;
   recordOf(p,a);const mood=p.mood,o={target:a.name,name:p.name,town:p.town||(homeOf(a)&&homeOf(a).name)||'town'};
   let text,mark=null,hint=null;
   if(mood==='hostile'){text=fill(pick(TALK_LINES.threat),o);speakAs(p,c,text,'scripted');const r2=offer(c,p,'leave',{},'scripted');mark=r2.mark;c.wait=null;return {text,mark}}
@@ -308,6 +312,13 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
     const got=mem.filter(b=>!b.blessed&&dist(b,p)<=4);if(!got.length)return no('nobody near enough is without a blessing');
     for(const b of got)b.blessed=1;mark='[blessing]';hint=full(p)+' blesses '+got.map(b=>b.name).join(' and ')+': the next strike lands harder.';
     if(by==='scripted')speakAs(p,c,pick(TALK_LINES.blessing),by,mark);warm(p,1,'blessed them')}
+  else if(kind==='hire'){if(p.hired!=null)return no(p.name+' is already hired');if(p.mood==='hostile')return no(p.name+' will not ride with the Fellowship (hostile)');
+    if(!hireKind({...p,hireOffer:null}))return no(full(p)+' does not hire out (a sellsword, a drover or a guide does; so does anyone placed with a want of coin)');
+    const std=priceFor({...p,hireOffer:null},a),want=Math.round(Number(args.price)),price=Number.isFinite(want)&&want>0?Math.max(1,Math.min(want,std*3)):std;
+    p.hireOffer={conv:c.id,hero:a.id,price,until:Math.round(S.gameMin+HIRE.OFFER_MIN)};
+    mark='[hire]';hint=full(p)+' offers their blade to '+a.name+' for '+price+' gold a day (1 to 5 days, paid up front): hire {npc:"'+p.name+'", days} while you stand near; the offer stands '+Math.round(HIRE.OFFER_MIN/60)+' game hours.';
+    if(by==='scripted')speakAs(p,c,full(p)+' names a price: '+price+' gold a day.',by,mark);
+    noteOn(p,'Offered their blade to '+a.name+' for '+price+' gold a day.')}
   else if(kind==='leave'){mark='[leaves]';hint=full(p)+' walks away from the conversation.';const sn=p.snub||(p.snub={});for(const id of c.heroes)sn[id]=Math.round(S.gameMin+CONV.SNUB_GM);
     if(by==='scripted'&&p.mood!=='hostile')speakAs(p,c,pick(TALK_LINES.leave),by,mark);
     warm(p,-1,'walked off');if(p.wander&&a){const dx=p.x-a.x,dy=p.y-a.y,n=Math.hypot(dx,dy)||1;p.stroll={x:p.x+dx/n*5,y:p.y+dy/n*5}}}
@@ -422,11 +433,13 @@ function tradeDone(p,a,what){const c=p.trade&&convById(p.trade.conv);if(!p.trade
 // ---- the DM's view: the waiting call ----
 export function legalOffers(c,p){const out=[];if(p.mood!=='hostile')out.push('trade');out.push('rumour','job');
   const hurt=slotHeroes(slotted()).some(b=>living(b)&&b.hp<maxHp(b)*CONV.HURT&&(c.heroes.includes(b.id)||dist(b,p)<=CONV.HURT_R));if(!hurt)out.push('combat');
-  if(['priest','hermit'].includes(p.role)&&p.mood!=='hostile')out.push('blessing');out.push('leave');return out}
+  if(['priest','hermit'].includes(p.role)&&p.mood!=='hostile')out.push('blessing');
+  if(p.hired==null&&p.mood!=='hostile'&&hireKind({...p,hireOffer:null}))out.push('hire');out.push('leave');return out}
 function convView(c,withCall){const p=npcById(c.npc);if(!p)return null;const a=hero(c.wait?c.wait.hero:c.heroes[c.heroes.length-1]);
   const T=talkOf(p),want=p.want||T.want;
-  return {conv:c.id,...(withCall&&c.wait?{call:c.wait.call,seconds_left:Math.max(0,Math.round((c.wait.ms-(Date.now()-c.wait.real))/100)/10)}:{}),waiting:!!c.wait,
+  return {conv:c.id,...(withCall&&c.wait?{call:c.wait.call,seconds_left:Math.max(0,Math.round((waitEnd(c.wait)-Date.now())/100)/10)}:{}),waiting:!!c.wait,
     npc:{id:p.id,name:full(p),role:p.role,faction:p.fac===0||p.fac===1?FAC[p.fac].name:'neutral',where:p.town||ZONES[zoneAt(p.x,p.y)]||'the wilds',want,mood:recordOf(p,a)&&p.mood,warmth:p.warmth,
+      ...(p.hireOffer&&S.gameMin<p.hireOffer.until?{hire_offer:{price:p.hireOffer.price,until:Math.round(p.hireOffer.until)}}:{}),...(p.hired!=null?{hired:true}:{}),
       ...(withCall?{knows:knows(p,a).map(x=>x.text),record:recordView(p)}:{})},
     member:a?{id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,role:slotKeyOf(a)||null,...(c.read&&c.read[a.id]!=null?{read_them:c.read[a.id]}:{}),...(lastTime(p,a)?{last_time:lastTime(p,a)}:{})}:null, // last_time: what the person remembers of them (#571)
     line:c.wait?c.wait.line:null,so_far:c.lines.slice(-12).map(l=>l.name+': '+l.text+(l.mark?' '+l.mark:'')),exchange:exText(c),
@@ -434,6 +447,7 @@ function convView(c,withCall){const p=npcById(c.npc);if(!p)return null;const a=h
     ...(withCall&&a&&rumoursFor(p,a).length?{word_to_pass_on:rumoursFor(p,a).map(r=>r.text),word_note:'What the town is saying, which '+p.name+' passes on: weave it into the answer in their voice if it fits; the game adds it after your answer if you leave it out.'}:{})}}
 // npc_call: the oldest conversation waiting for the DM, with everything needed to answer it.
 export function npcCall(){const T=S.talks;const c=T&&T.cur.find(x=>x.state==='open'&&x.wait);
+  if(c&&c.wait.seen==null&&c.wait.real)c.wait.seen=Date.now(); // the budget starts at pickup (#680)
   if(!c)return {ok:true,call:null,open:T?T.cur.filter(x=>x.state==='open').map(x=>convView(x,false)).filter(Boolean):[]};
   return {ok:true,call:convView(c,true),how:'Answer as the person: npc_say {npc, conv, text} (their own voice, as much as the moment needs; usually a few sentences), then at most one npc_offer {npc, kind} from offers. Silence is answered by the scripted DM.'}}
 // For dm_status: conversations open now, the waiting ones first (must answer).
@@ -469,7 +483,7 @@ export function talkFromScene(w,ids,line){if(!w||!slotted())return null;const T=
 export function talkTick(){const T=S.talks;if(!T)return;
   for(const c of T.cur.slice()){const p=npcById(c.npc);
     if(!p){close(c,'they are gone');continue}
-    if(c.wait){const live=!(goneEpoch()>(c.wait.ep|0))&&(Date.now()-c.wait.real<c.wait.ms)&&today().lines<CONV.DM_LINES_PER_DAY&&S.gameMin-c.wait.gm<CONV.WAIT_GM;
+    if(c.wait){const live=!(goneEpoch()>(c.wait.ep|0))&&(Date.now()<waitEnd(c.wait))&&today().lines<CONV.DM_LINES_PER_DAY&&S.gameMin-c.wait.gm<CONV.WAIT_GM;
       if(!live){const a=hero(c.wait.hero);if(c.wait.fill){T.stats.scripted++;speakAs(p,c,c.wait.fill,'scripted');afterAnswer(c,p)}else if(living(a))scripted(c,p,a);else close(c,'nobody is left to answer');continue}}
     const near=c.heroes.map(hero).filter(b=>living(b)&&dist(b,p)<=CONV.LEAVE_R);
     if(!near.length)close(c,'the Fellowship moved on');

@@ -125,6 +125,7 @@ ok(!r.ok && /vote\(\d+, yes\|no/.test(r.error), 'a bad vote word names the call'
 ok(act(m1, 'propose', {kind: 'other', details: 'Sing a song'}).ok, 'an other proposal');
 r = act(m2, 'propose', {kind: 'other', details: 'Tell a tale'});
 ok(!r.ok && /is already open\. Vote on it with vote\(\d+, yes\|no\), or wait for it to settle \(about \d+ game min\)/.test(r.error), 'a duplicate kind names the open proposal: ' + r.error);
+for (let i = 0; i < 1200 && S.table && S.table.wk && !S.table.wk.done; i++) step(1 / 60); // the vote's scene is set first; then the members may answer (#682)
 for (const a of M) for (const P of CO.openProps()) if (!P.votes[a.id]) {const v = act(a, 'vote', {proposal_id: P.id, vote: P.kind === 'break_camp' ? 'yes' : 'no'}); if (!v.ok) console.log('    vote', a.name, P.id, v.error.slice(0, 120))}
 for (let i = 0; i < 60 && (S.table || SLT.slotted().camp.phase); i++) run(1); // the votes are counted at the table (an all-at-once decision scene)
 ok(BP.status === 'passed' && !SLT.slotted().camp.phase && M.every(a => a.state !== 'camp'), 'the seconded break_camp passed and broke camp');
@@ -166,14 +167,15 @@ ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused 
   let P = CO.propose(A, 'other', 'Cross the river at dawn', {vote: 'yes'});
   ok(P && P.id && P.status === 'open' && CO.voters(P).length === 2 && CO.openProps(pair).includes(P) && !CO.openProps(F).includes(P), 'the pair\'s proposal is theirs alone (#' + P.id + ')');
   ok(S.table && S.table.kind === 'decision' && S.table.company === pair.id && S.table.ids.length === 2, 'the pair\'s vote opens its own Table scene, both at the table (#440)');
+  const set = () => {if (S.table) {S.table.phase = 'turn'; delete S.table.wk}}; // the DM has set the scene and its members are woken (#682)
   const settle = async () => {const T = await import('../src/sim/table.js'); if (!S.table) return; const m0 = TABLE.mode; TABLE.mode = 'off'; T.tableHold(0); TABLE.mode = m0}; // the table resolves the vote now (both answered), with no world time passing
   ok(Object.keys(F.props || {}).length === 0 || !(F.props || []).some(Q => Q.id === P.id), 'proposal ids are unique across companies');
   let r = act(M[0], 'vote', {proposal_id: P.id, vote: 'no'});
   ok(!r.ok && /No proposal/.test(r.error), 'a Fellowship member cannot vote on another company\'s proposal: ' + r.error);
-  r = act(B, 'vote', {proposal_id: P.id, vote: 'no', reason: 'too cold'}); await settle();
+  set(); r = act(B, 'vote', {proposal_id: P.id, vote: 'no', reason: 'too cold'}); await settle();
   ok(r.ok && P.status === 'passed' && /1-1, .*breaking the tie/.test(P.result) && P.result.includes(A.name), 'a company of 2 votes and the leader breaks the tie: ' + P.result);
   ok(pair.log.some(e => e.kind === 'council'), 'the vote is in the pair\'s own campaign log');
-  P = CO.propose(B, 'other', 'Rest a day', {vote: 'yes'}); act(A, 'vote', {proposal_id: P.id, vote: 'no'}); await settle();
+  P = CO.propose(B, 'other', 'Rest a day', {vote: 'yes'}); set(); act(A, 'vote', {proposal_id: P.id, vote: 'no'}); await settle();
   ok(P.status === 'failed' && /1-1/.test(P.result), 'the leader\'s no breaks a tie the other way: ' + P.result);
   // a solo cannot propose; it decides
   for (const k of ['job', 'crypt', 'split', 'other']) {const x = CO.propose(Z, k, 'x'); ok(x === CO.SOLO, 'a solo\'s ' + k + ' proposal is refused: ' + x)}
@@ -212,6 +214,7 @@ ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused 
   ok(g.watchIdx % 2 === 1 && CAMPM.asleep(Z) && CAMPM.campView(Z).asleep, 'second watch: the solo sleeps, no one watching');
   r = act(Z, 'move_to', {target: 'home'});
   ok(!r.ok && /camped alone .*break_camp to move on now/.test(r.error), 'a camped solo is told to break_camp: ' + r.error);
+  await settle(); // another company's scene the world opened meanwhile (an enemy hero's ambush on the Fellowship) would hold the world through this step
   CAMPM.CAMP.AMBUSH_P = 2; g.nextRoll = S.gameMin; const c0 = g.stats.caught; Z.hp = mh; step(1 / 60);
   ok(g.stats.caught === c0 + 1 && !g.phase, 'an ambush on the sleeping solo finds it unroused (the same Perception roll, no dice added)');
   ok(S.table && S.table.kind === 'ambush' && S.table.company === solo.id && S.table.ids.join() === String(Z.id), 'the ambush at the solo\'s camp is its own Table scene (#440)');
