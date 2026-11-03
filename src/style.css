@@ -420,7 +420,7 @@ button.mindbtn{font-size:6px;padding:2px 4px;white-space:nowrap}
 .pfrun button.runbtn{font-size:6px;padding:2px 4px}
 button.runbtn.off{opacity:.55}
 .runstate{font-size:15px;overflow-wrap:anywhere}
-.runstate.r-live{color:#7fd6c2}.runstate.r-waiting{color:#d9c27a}.runstate.r-crashed{color:#e07a6a}.runstate.r-starting,.runstate.r-stopping{color:#9fb4d8}
+.runstate.r-live{color:#7fd6c2}.runstate.r-waiting{color:#7fd6c2}.runstate.r-crashed{color:#e07a6a}.runstate.r-starting,.runstate.r-stopping{color:#9fb4d8}
 .fm .ftools{flex-wrap:wrap;justify-content:flex-end}
 .pftip .pftr{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}
 @media (max-width:920px){.frlist,.frlist.wide{grid-template-columns:repeat(3,minmax(0,1fr))}}

@@ -7,7 +7,7 @@
 //
 //   1. npm run relay   (+ npm run dev; in the game open the Dungeon Master panel and press "DM agent")
 //      or: node scripts/play-headless.mjs --dm --agents 0   (a Node world with the DM seat open, port 8789)
-//   2. npm run dm [-- --url http://127.0.0.1:8789] [--max-turns 12] [--budget 1.00] [--cadence evening]
+//   2. npm run dm [-- --url http://127.0.0.1:8789] [--budget 1.00] [--max-turns N] [--cadence evening]
 //
 // The runner claims the one DM seat at the relay (POST /play/claim {role:'dm'}, refreshed every
 // 10 s, released on exit; a second DM runner is refused) and every tool call names the role
@@ -17,13 +17,12 @@
 // the-table work). One model call at a time (the owner's API concurrency is low); a rate limit (429
 // or overloaded) backs off 30 s, 60 s, ... up to 10 min and retries the turn. Turns are also at least
 // --min-gap S real seconds apart (issue #126; default 20, AGENT_MIN_GAP), so a fast world (8x: a game day
-// in 30 s) gets a DM turn now and then, not back to back. A local (Ollama) DM runs until stopped unless
-// --max-turns is given; any DM stops after --max-fails N (default 5) failed or empty turns in a row.
+// in 30 s) gets a DM turn now and then, not back to back. Any DM runs until stopped (a paid one until its
+// --budget is spent; #563) unless --max-turns is given; any DM stops after --max-fails N (default 5) failed or empty turns in a row.
 // Session: logs/agents/dm.json (gitignored), resumed next run for the same world; --new sets it
 // aside in logs/agents/old/. Cost line per turn.
 //
-// Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (default 12 for Claude; a local
-// DM until stopped), --min-gap S, --max-fails N, --budget USD
+// Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (optional; default until stopped), --min-gap S, --max-fails N, --budget USD
 // (default 1.00, this run), --cadence evening|S, --tool-turns N (model calls per turn, default 16),
 // --provider anthropic|ollama (or DM_PROVIDER), --model (or DM_MODEL; default claude-sonnet-5-5, or the
 // Ollama default), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
