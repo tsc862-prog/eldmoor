@@ -258,6 +258,7 @@ ok(snaps.persona.companions.some(c => c.name === B.name) && !snaps.persona.compa
 // ---------------------------------------------------------------- 4. the Table: narration on the banner and in the view
 console.log('the Table');
 T.TABLE.mode = 'auto'; T.TABLE.speed = 1;
+rest[0].x = A.x + 1; rest[0].y = A.y; (await import('../src/sim/spatial.js')).rebuild(); // a companion beside A, not wherever the dice left them (the scene takes those in shouting range)
 const sc = T.openScene('check', 'A narrow stair', ['The stair goes down.'], {anchor: A.id}); // everyone at once: those within shouting range of A (#182)
 ok(!!sc && S.table, 'a scene is open');
 r = DMA.dmAct('narrate', {text: said.table, near: 'table'});

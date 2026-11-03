@@ -545,7 +545,7 @@ if (process.argv[2] === '--staged') {
     ok((A.chat || []).some(e => e.from.kind === 'dm' && /thorn banks/.test(e.text)), 'the frame reached the members as narration');
     const calls = sc.calls || [];
     if (T.PLAY[kind] === 'all') ok(calls.length === 3 && calls.filter(c => c.kind === 'outcome').length === 1 && calls.find(c => c.kind === 'outcome').beat === 'all' && calls.every(c => c.done && c.by === 'dm-agent'), `${calls.length} DM calls (voice, one combined outcome after everyone answered, one complication), all answered by the mock DM`);
-    else ok(calls.length >= sc.ids.length + 2 && calls.every(c => c.done) && calls.filter(c => c.by === 'dm-agent').length === calls.length, `${calls.length} DM calls (voice, an outcome per member, one complication), all answered by the mock DM`);
+    else ok(calls.length >= sc.ids.length + 2 - sc.beats.filter(b => b.by === 'cond').length && calls.every(c => c.done) && calls.filter(c => c.by === 'dm-agent').length === calls.length, `${calls.length} DM calls (voice, an outcome per member, one complication), all answered by the mock DM`);
     const comp = calls.find(c => c.kind === 'complication');
     ok(comp && ST.COMPLICATIONS[kind].includes(comp.pick), `the complication is one of the legal set: ${comp && comp.pick}`);
     ok(sc.beats.length === sc.ids.length || ['elite', 'ambush'].includes(kind), `every member acted (${sc.beats.map(b => b.name + '=' + b.k + '(' + b.by + ')').join(', ')})`);

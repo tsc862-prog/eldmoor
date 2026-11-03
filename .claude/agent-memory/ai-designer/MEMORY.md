@@ -41,6 +41,7 @@
 - [Council per company #439](council_company.md) — leader rule kept for hashes, SOLO refusal, unique prop ids, solo camp (no auto-camp), Fellowship-only scenes until #440
 - [Offers and companions #442](offers_companions.md) — offers on the maker's company, hash-picked scripted answers, companionTick party, Fellowship refused
 - [Town autopilot #466/#465](town_autopilot.md) — autopilot acts in town (inn, sell, potions, hunt fitting ground); danger-edge stop 5+ levels up, force/repeat
+- [Gathering #257](gathering.md) — gather.js: scripted gatherers stay in hunt, agents never by script, rate GAP 300/SPOT 10, materials sell, fixtures
 - [DM focus per company #450](dm_focus_companies.md) — focuses(), h.cid hall jobs, companies_needs order, any-company reserve, Fellowship path hash-identical
 - [Autopilot caution #487](autopilot_caution.md) — wary autopilot hunts (ground, prey <= lvl+2, flee .22/.5, home when hurt); 5/40 -> 39/40 green survival
 - [Leave and companions #443](leave_companions.md) — leave_party for_good in offers.js, companions tool, a.seen last-seen record, AWAY leave

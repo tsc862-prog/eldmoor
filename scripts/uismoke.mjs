@@ -611,6 +611,7 @@ console.log('start gate: ready, not just claimed');
 // Professions block on the Stats tab (#259)
 {const h=(sim.fellowshipMembers().filter(x=>x.hero)[0]||{hero:sim.S.agents.find(a=>a.kind==='hero')}).hero;
   const Pf=await import('../src/sim/professions.js');
+  const keepP=h.profs;h.profs=[]; // a hero with none (scripted heroes take up a gathering trade at level 3 since #257, so the seeded world's hero may hold one)
   select(h);setTab('stats');uiFast();
   ok(/Professions/.test(tb().textContent)&&/No professions yet/.test(tb().textContent),'stats: a hero with none says "No professions yet"');
   Pf.learn(h,'mining');Pf.learn(h,'cooking');Pf.gainSkill(h,'mining',59);
@@ -619,7 +620,7 @@ console.log('start gate: ready, not just claimed');
   ok(rows.length===2&&/Mining/.test(rows[0].textContent)&&/gathering/.test(rows[0].textContent)&&/60 · Journeyman/.test(rows[0].textContent),'stats: each profession with kind, skill and band ('+(rows[0]&&rows[0].textContent)+')');
   ok(rows.length===2&&/crafting/.test(rows[1].textContent)&&/1 · Novice/.test(rows[1].textContent),'stats: a craft profession at skill 1 is Novice');
   const bar=rows[0]&&rows[0].querySelector('.profbar i');ok(bar&&bar.style.width==='60%','stats: the bar is skill out of 100');
-  delete h.profs}
+  if(keepP===undefined)delete h.profs;else h.profs=keepP}
 
 // Table banner: the combat block (#277). A scene with rounds, set up by hand (no world step), rendered like main.js does.
 {const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),S=sim.S,box=$('tbanner'),spd=T.TABLE.speed;

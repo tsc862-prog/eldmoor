@@ -44,6 +44,7 @@ import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Tabl
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
 import {opening} from './opening.js';
+import {resetMats} from './gather.js'; // gathered materials at the auction house (#257)
 import {questTick} from './questlog.js'; // several quests per hero
 
 export {S,clockStr} from './state.js';
@@ -76,6 +77,7 @@ function resetWorld(){resetS();
   CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[])}
 export function init(o={}){resetWorld();
   S.worldId=newWorldId(); // a new world instance (hosts purge the old world's memory mirror on a new id)
+  resetMats(); // a new world's auction house opens with the materials table's stock
   const seeded=!!(o.setup&&o.setup.seed!=null);
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
   spawnAll();
