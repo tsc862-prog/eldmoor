@@ -1,0 +1,41 @@
+name: Nightly flake hunt
+
+on:
+  schedule:
+    - cron: '41 2 * * *'
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Runs per check
+        default: '5'
+      all_checks:
+        description: Run every check instead of the flake-prone list
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  hunt:
+    name: Flake hunt
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    permissions:
+      contents: read
+      issues: write
+    env:
+      CI_FAST: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - name: Rerun the checks
+        run: node scripts/flakehunt.mjs --runs "${{ inputs.runs || '5' }}" ${{ inputs.all_checks && '--all' || '' }} --link "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: flake-report, path: 'flake-report.*'}
+      - name: Open or update the Nightly flake report issue
+        run: node scripts/ci-issue.mjs open --title "Nightly flake report" --body-file flake-report.md --label flake-report

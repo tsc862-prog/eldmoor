@@ -48,3 +48,4 @@
 - [DM always (setup+gate)](dm-always-setup.md) — #559 DM mind required, seat open tick 1, gate counts DM, --no-dm, resume DM, world-held tool refusal
 - [Runner labels](runner-labels.md) — #563 label flip cause (6-turn cap release vs supervisor list), left members, implied ready, no turn caps, labelcheck
 - [CI correctness](ci-correctness.md) — #573 hashcheck source+hash-guard, rulescheck allowlist, merge_group, pitfalls
+- [CI observation](ci-observation.md) — #574 flake hunt, nightly mock run + thresholds, shoot.mjs, red-main alarm, helpers, pitfalls
