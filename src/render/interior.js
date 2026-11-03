@@ -26,6 +26,7 @@ import {drawConditions} from './conditions.js';
 import {drawFoes} from './dgfoes.js';
 import {maxHp} from '../sim/heroes.js';
 import {spokenOf,unrole} from '../core/spoken.js';
+import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
 const PS={close:true,sc:1,dpr:1,offX:0,offY:0}; // the camera the condition glyphs read (a reused object, no per-frame allocation)
 const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
@@ -320,7 +321,7 @@ function spriteOf(e,fr){if(!e)return null;
 const nameOf=e=>e.kind==='mob'?(e.name||(MOBS[e.type]&&MOBS[e.type].name)||'foe'):e.name||'?';
 const headOf=e=>e.kind==='hero'?e.name.toUpperCase():'['+nameOf(e)+']';
 function castColor(e){if(e.kind==='mob'||e.kind==='boss')return DISP.hostile.color;if(e.kind==='hero')return DISP.hostile.color;
-  const t=toneOf(e,S.fellowship,S.gameMin);return t.color||DISP.neutral.color}
+  const t=toneOf(e,slotted(),S.gameMin);return t.color||DISP.neutral.color}
 
 // A speech bubble over (x, y) in the current transform (sc world-to-device, dpr): a dark rounded box with the speaker's
 // name in its colour and up to three wrapped lines. Shared by the outdoor cut (render/sceneview.js).

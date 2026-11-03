@@ -33,6 +33,7 @@ import {S,dmSeatOn,setDmSeat,beginPrep,endPrep,prepTick,prepView,prepActive,open
 import {runnerFor,runnerByKey,allRunners,relayUp,runnersEnabled,ollamaBusy,reasonOf,watchRunners,DONE_STATE,leftOf} from './runners.js';
 import {agentLink,dmLink,bridgeStatus,agentReady,dmReady} from './player-bridge.js';
 import {ctl} from './controls.js';
+import {inSlots} from '../sim/company.js'; // the slotted company (#588)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -63,9 +64,9 @@ export function ensureDmSeat(){if(probe||!S.agents||!S.agents.length)return fals
 // The runner behind a seat: the live one, else (for the continuous gate, #559) the one that last played it and ended, so a
 // crashed or stopped Fellowship runner pauses the world at once instead of after the grace.
 const seatRunner=s=>{if(s.kind==='dm')return runnerByKey('dm');const r=runnerFor(s.a);if(r)return r;const a=s.a;
-  return allRunners().slice().reverse().find(x=>DONE_STATE[x.state]&&(x.key==='hero:'+a.id||Array.isArray(x.heroes)&&x.heroes.includes(a.id)||x.kind==='fellowship'&&a.fellow))||null};
+  return allRunners().slice().reverse().find(x=>DONE_STATE[x.state]&&(x.key==='hero:'+a.id||Array.isArray(x.heroes)&&x.heroes.includes(a.id)||x.kind==='fellowship'&&inSlots(a)))||null};
 export function seats(){const out=[];
-  for(const a of S.agents)if(a.fellow&&a.player&&a.state!=='dead')out.push({key:'hero:'+a.id,kind:'hero',hero:a.id,name:a.name,a,link:linkOf(a),ready:readyOf(a)});
+  for(const a of S.agents)if(inSlots(a)&&a.player&&a.state!=='dead')out.push({key:'hero:'+a.id,kind:'hero',hero:a.id,name:a.name,a,link:linkOf(a),ready:readyOf(a)});
   if(dmSeatOn())out.push({key:'dm',kind:'dm',name:'DM',link:dmOf(),ready:dmReadyOf()});
   return out}
 

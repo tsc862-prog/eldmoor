@@ -212,7 +212,10 @@ const PAIRS=[
   {id:'bank-water',a:[G,FLOWER],b:[RIVER]},
   {id:'meadow-fen',a:[G,FLOWER],b:[SGRASS]},
   {id:'fen-ash',a:[SGRASS],b:[ROCK]},
-  {id:'ash-snow',a:[ROCK],b:[SNOW]}];
+  {id:'ash-snow',a:[ROCK],b:[SNOW]},
+  {id:'fen-river',a:[SGRASS],b:[RIVER]},
+  {id:'snow-river',a:[SNOW],b:[RIVER]},
+  {id:'mud-swamp',a:[MUD],b:[SWAMP]}];
 const PIECE={edge:'',corner:'-corner',inner:'-inner'};
 export const ASSET_EDGES={};
 for(const p of PAIRS)for(const k of Object.values(PIECE))ASSET_EDGES['autotile:'+p.id+k]=[p.a[0],p.b[0]];

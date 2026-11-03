@@ -5,7 +5,7 @@
 import {S,clockStr,dayNo} from './state.js';
 
 export const HIST_CAP=40,TL_CAP=200;
-// Observers read a hero's log lines: sim/fellowship.js (#68) turns a member's into memories, sim/tiers.js (#153)
+// Observers read a hero's log lines: sim/company.js (the slots option, #68/#588) turns a member's into memories, sim/tiers.js (#153)
 // keeps an agent hero's landmarks. They read only.
 const hooks=[];export const onRecord=f=>{hooks.push(f)};
 // Who caused a line (issue #136): 'agent' (the agent's order), 'autopilot' (carrying the last order out

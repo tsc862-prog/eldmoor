@@ -14,6 +14,7 @@ import {every} from './ui/ticker.js'; // timers that a hidden tab does not throt
 import {checkRunGate} from './ui/rungate.js'; // hold the world while an agent seat is not connected (#171)
 import {initUI,uiFast,uiSlow} from './ui/app.js'; // every panel and its refresh cadence (shared with npm run uismoke)
 import {titleWanted,showTitle} from './ui/title.js'; // Continue, New world, Load: nothing runs until a choice
+import {slotted} from './sim/company.js'; // the slotted company (#588)
 
 // The world is built only when the owner picks Continue (or the default world) on the title screen, or at once with
 // ?continue=1 / ?skip-title=1, a queued New World setup, or a Load/Import reload. New world goes to the setup page
@@ -32,7 +33,7 @@ function start(kind){
   initUI(renderer);
   if(bootKind()==='fresh'&&kind!=='default')openSetup({first:true});else afterBoot(); // no save and no queued setup: the setup page opens over the default world; a setup boot starts its runners
   select(startHero()); // the saved hero when it rides with the followed company, else that company's leader (#546)
-  if(S.fellowship)setView('fellow'); // the Fellowship is the story: frame it by default (#68)
+  if(slotted())setView('fellow'); // the Fellowship is the story: frame it by default (#68)
   last=performance.now();requestAnimationFrame(frame)}
 
 let last=performance.now(),uiT=0;

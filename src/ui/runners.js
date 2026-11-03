@@ -17,6 +17,7 @@
 // When the relay runs without --runners the controls say how to turn it on; the world never waits on any of this.
 import {bridgeUrl} from './player-bridge.js';
 import {S,playerSeats} from '../sim/index.js';
+import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 let info=null,up=null,fetchedAt=0,inFlight=false,note={},picks={},onUpdate=()=>{},lastSig='';
@@ -106,7 +107,7 @@ export async function startCompany(C){const L=coHeroes(C);if(liveKey('company:'+
   if(L.length>1&&!L.some(a=>liveKey('hero:'+a.id))){await startRunner('company',C.id,'co:'+C.id);return}
   for(const a of L)if(!liveKey('hero:'+a.id))await startRunner('hero',a.id,'co:'+C.id)}
 export async function stopCompany(C){if(liveKey('company:'+C.id))await stopRunner('company',C.id);for(const a of coHeroes(C))if(liveKey('hero:'+a.id))await stopRunner('hero',a.id)}
-export async function stopAllFellows(){const ids=(S.fellowship&&S.fellowship.ids)||[];await stopRunner('fellowship');
+export async function stopAllFellows(){const ids=(slotted()&&slotted().ids)||[];await stopRunner('fellowship');
   for(const id of ids){const r=runnerByKey('hero:'+id);if(r&&!DONE[r.state])await stopRunner('hero',id)}}
 
 const mindTag=r=>r&&(r.model||r.provider)?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':r.provider==='huggingface'?' · huggingface':''):'';
@@ -145,7 +146,7 @@ export function runnerControl(a,{line=true}={}){poll();const d=el('span','runctl
   return d}
 
 export function fellowshipRunnerControl(name){poll(true);const d=el('div','runctl fbar');const r=runnerByKey('fellowship'),on=r&&!DONE[r.state];
-  const others=((S.fellowship&&S.fellowship.ids)||[]).some(id=>{const x=runnerByKey('hero:'+id);return x&&!DONE[x.state]});
+  const others=((slotted()&&slotted().ids)||[]).some(id=>{const x=runnerByKey('hero:'+id);return x&&!DONE[x.state]});
   if(!on){const b=button('Start '+(name||'the Fellowship'),'start','fellowship',null,info&&!info.enabled?HOW_TEXT:'One runner plays every agent-played member (npm run fellowship, started by the relay)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   if(on||others)d.append(button('Stop all','stopall','fellowship',null,'Stop the Fellowship runner and every member\'s own runner'));
   const s=el('span','dm runstate r-'+(r&&!note.fellowship?r.state:'none'),stateLine(r,'fellowship'));s.title=tip(r,6);d.append(s);

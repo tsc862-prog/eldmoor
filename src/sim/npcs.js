@@ -20,6 +20,7 @@ import {pop} from './effects.js';
 import {moveTo} from './heroes.js';
 import {attitudeOf,presence} from './levers.js';
 import {within,LOD} from './spatial.js';
+import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
 // Tuning. Speeds in tiles/s at 1x; GREET_R tiles from the post that count as a visit;
 // BLESS_R the priest's reach; HEAR who hears a line (same as chat.js); COOL real seconds
@@ -85,10 +86,10 @@ export function npcSay(p,trigger,ctx={},opts={}){
   if(pool.length>1&&line===p.lastBark)line=pool[(pool.indexOf(line)+1)%pool.length];p.lastBark=line;
   // `from` is a small stub, not the live NPC: the chat tab only needs name and faction, and
   // the save walker (sim/save.js) would otherwise copy the whole NPC into every hero's buffer.
-  const dmVoice=opts.dm||S.worldVoice!=='dm'||S.agents.some(a=>a.fellow&&a.state!=='dead'&&!a.hidden&&within(a,p,HEAR));
+  const dmVoice=opts.dm||S.worldVoice!=='dm'||S.agents.some(a=>inSlots(a)&&a.state!=='dead'&&!a.hidden&&within(a,p,HEAR));
   if(!dmVoice){p.chatCd=COOL;return false}
   const text=fill(line,p,ctx),e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc'};if(S.worldVoice==='dm')e.dm=true;let heard=0;
-  for(const a of S.agents){if(a.state==='dead'||a.hidden||!within(a,p,HEAR))continue;if(S.fellowship&&a.fellow)e.fh=true;(a.chat||(a.chat=[])).push(e);if(a.chat.length>CAP)a.chat.shift();heard++}
+  for(const a of S.agents){if(a.state==='dead'||a.hidden||!within(a,p,HEAR))continue;if(slotted()&&inSlots(a))e.fh=true;(a.chat||(a.chat=[])).push(e);if(a.chat.length>CAP)a.chat.shift();heard++}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=COOL;
   const st=S.npcNews.stats;st.lines++;if(heard)st.heard++;return true}
 

@@ -119,6 +119,11 @@ ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.giftReason)) && 
 // a staged scene (issue #132): its reason is the DM's own (DM log only); the frame and the person's want are said in the game
 r = DMA.dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A drover waits by the road with a lame ox.', cast: {role: 'drover', want: 'a hand with the ox'}, reason: 'Stage ' + plant('stageReason')});
 ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), 'a staged scene\'s reason in the DM log' + (r.ok ? '' : ': ' + r.error));
+// a ruling on a free action (issue #522): the hero hears the text, the roll and what changed; the DM's note stays in its log
+{DMA.dmAct('ruling_call', {budget_s: 10}); A.playRate = []; A.attempts = []; const at = act(A, 'attempt', {what: 'I knock three times on the milestone and listen.'});
+  const ru = at.call ? DMA.dmAct('ruling_answer', {call: at.call, skill: 'perception', dc: 'fair', effects: ['none'], fail_effects: ['none'], text: 'A hollow echo answers.', fail_text: 'Only stone.', note: 'Ruling ' + plant('rulingNote')}) : {ok: false, error: at.error || 'no call'};
+  keep('attempt result', at); keep('ruling events', A.playEv || []);
+  ok(ru.ok && S.dmLog.some(e => JSON.stringify(e.detail || {}).includes(SECRETS.rulingNote)), 'a ruling: its note is in the DM log only' + (ru.ok ? '' : ': ' + ru.error))}
 S.dmLog[0].prompt = 'DM model prompt ' + plant('dmPrompt'); S.dmLog[0].reply = 'DM model reply ' + plant('dmReply');
 ok(act(B, 'journal_write', {text: 'Dear diary, ' + plant('bJournal')}).ok, 'B\'s journal');
 // tiered memory (issue #153): B's own landmark and a chapter of B's older lines stay B's

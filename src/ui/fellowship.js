@@ -2,7 +2,7 @@
 // Memory tab, the backstory view the Bio tab shows, and the Chronicle's "Companies only" filter.
 // A tab per company plus All (no tab bar while there is one company); each tab: header, open threads, hall board, members
 // and minds with Start <company>, and the campaign log in the Story panel follows the tab.
-// Reads S.fellowship through sim/fellowship.js; writes only through its functions (found, join,
+// Reads slotted() through sim/fellowship.js; writes only through its functions (found, join,
 // leave, offerReplacement, disbandFellowship, editSheet).
 //
 // Small render helpers are exported for other UI modules (party frames and the side-by-side sheet
@@ -25,9 +25,8 @@ import {campSummary} from '../sim/camp.js';
 // The sim's camp line, with a watch end it could not compute (NaN) left out rather than shown as "until NaN:NaN" (#475).
 export const campLine=()=>{const s=campSummary();return s?s.replace(/ \(until [^)]*NaN[^)]*\)/g,''):s};
 import {hallBoard} from '../sim/dmfocus.js'; // the hall board's jobs for a company (#334, #457), read-only
-import {companies,members,openThreads as companyThreads,mates as companyMates,leaderOf} from '../sim/company.js'; // companies (#402)
+import {companies,members,openThreads as companyThreads,mates as companyMates,leaderOf,slotMembers,slotParty,slotted,inSlots,mindsOf,fits,joinSlot,leaveSlot,offerReplacement,disbandSlots,editSheet,enriching,chronicleFocus} from '../sim/company.js'; // companies (#402)
 import {followCompany,followedCompany,companyLabel,companyCols} from './companyview.js';
-import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype,authoredStance,scriptedStance,personaValue,pinField,pinned} from '../sim/persona.js';
 import {STANCE_MAX} from '../data/prompts.js'; // the stance cap the model gets (#305)
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
@@ -52,12 +51,12 @@ const alive=a=>a&&a.state!=='dead';
 function rosterFace(a){const c=el('canvas','fport');c.width=15;c.height=18;if(!a)return c;
   const s=portrait(a,a.state==='dead'?'dead':a.state==='ghost'?'ghost':'');c.width=s.width;c.height=s.height;
   const g=c.getContext&&c.getContext('2d');if(g)g.drawImage(s,0,0);return c}
-export function renderSettings(node,C){C=C||S.fellowship;if(C&&!C.slots)return renderRoster(node,C);
-  const P=fellowParty(),ul=el('div','felroster');
-  for(const m of fellowshipMembers()){const row=el('div','fm'),a=m.hero;
+export function renderSettings(node,C){C=C||slotted();if(C&&!C.slots)return renderRoster(node,C);
+  const P=slotParty(slotted()),ul=el('div','felroster');
+  for(const m of slotMembers(slotted())){const row=el('div','fm'),a=m.hero;
     row.append(rosterFace(a));row.append(el('span','frole r-'+m.role,m.label));
     if(!a){const e=el('span','dm fn','empty place');row.append(e);const tools=el('span','ftools');const b=el('button','mini','Fill');b.dataset.ffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';tools.append(b);
-      const s=cam.sel;if(s&&alive(s)&&!s.fellow&&S.fellowship&&s.fac===S.fellowship.fac&&fits(m.slot,s)){const c=el('button','mini','Add '+s.name);c.dataset.fadd=m.slot;tools.append(c)}
+      const s=cam.sel;if(s&&alive(s)&&!inSlots(s)&&slotted()&&s.fac===slotted().fac&&fits(m.slot,s)){const c=el('button','mini','Add '+s.name);c.dataset.fadd=m.slot;tools.append(c)}
       row.append(tools);ul.append(row);continue}
     const nm=el('span','fn');if(P&&P.leader===a)nm.append(el('span','gd','★ '));nm.append(hn(a));if(enriching(a))nm.append(el('span','dm',' · writing…'));row.append(nm);
     const tools=el('span','ftools');const sh=el('button','mini','Sheet');sh.dataset.fsheet=a.id;const rm=el('button','mini','Remove');rm.dataset.fremove=a.id;tools.append(sh,rm);row.append(tools);
@@ -78,7 +77,7 @@ export function renderPersona(node,a){const P=a&&a.persona;if(!P){node.append(el
   const kv=el('div','kv');for(const [k,label] of PERSONA_ORDER)kv.append(el('span','k',label),el('span','v',personaValue(P,k)));node.append(kv)}
 const KIND_LABEL={council:'COUNCIL',table:'TABLE',camp:'CAMP',found:'FOUND',join:'JOIN',recruit:'RECRUIT',leave:'LEAVE',adventure:'JOB',scene:'SCENE',roll:'ROLL',branch:'CHOICE',complication:'TWIST',outcome:'END',npc:'MET',fight:'FIGHT',level:'LVL',kill:'KILL',death:'DEATH',session:'DAY',note:'NOTE'};
 // o.C: one company's log (default the Fellowship); o.all: every company's log merged, newest first, each line named (#457).
-export function renderCampaignLog(node,o={}){const all=!!o.all,C=o.C||S.fellowship;
+export function renderCampaignLog(node,o={}){const all=!!o.all,C=o.C||slotted();
   if(!all&&!C){node.append(el('div','dm','No company.'));return}
   let L;if(all){L=[];for(const D of companies())for(const e of D.log||[])L.push({e,D});L.sort((x,y)=>y.e.gameMin-x.e.gameMin||y.e.id-x.e.id);L=L.slice(0,300)}
   else L=(C.log||[]).map(e=>({e,D:C}));
@@ -90,7 +89,7 @@ export function renderCampaignLog(node,o={}){const all=!!o.all,C=o.C||S.fellowsh
     const ul=el('ul','tlist');for(const {e,D} of d.list){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t),el('span','badge k-'+e.kind,KIND_LABEL[e.kind]||e.kind),' ');
       if(all&&companies().length>1)li.append(el('span','dm fcoTag',companyLabel(D)+': '));parts(li,e.parts);ul.append(li)}
     box.append(ul);node.append(box)})}
-export function renderThreads(node,C){const th=companyThreads(C||S.fellowship);if(!th.length){node.append(el('div','dm','No open threads.'));return}
+export function renderThreads(node,C){const th=companyThreads(C||slotted());if(!th.length){node.append(el('div','dm','No open threads.'));return}
   const ul=el('ul','tlist');for(const t of th){const li=el('li');parts(li,t.parts);ul.append(li)}node.append(ul)}
 export function tabMemory(b,a){const M=a.memory;
   if(!M){if(a.memories)renderNotebook(b,a);else b.append(el('div','dm','Only Fellowship members keep a memory.'));return} // an agent hero's own notes (#155)
@@ -110,16 +109,16 @@ let coCache={at:-1,n:-1,ids:null};
 function companyIds(){const L=companies(),at=Math.floor(S.gameMin);if(coCache.at===at&&coCache.n===L.length&&coCache.ids)return coCache.ids;
   const ids=new Set();for(const C of L){if(!C.slots&&!members(C).some(a=>a.player))continue;for(const id of C.ids)ids.add(id);for(const p of C.past||[])ids.add(p.id)}
   coCache={at,n:L.length,ids};return ids}
-function companyFocus(e){if(S.fellowship&&chronicleFocus(e))return true;const ids=companyIds();
+function companyFocus(e){if(slotted()&&chronicleFocus(e))return true;const ids=companyIds();
   for(const p of e.parts||[])if(p&&typeof p==='object'&&p.kind==='hero'&&ids.has(p.id))return true;
-  return !S.fellowship&&!(e.parts||[]).some(p=>p&&typeof p==='object'&&p.kind==='hero')}
+  return !slotted()&&!(e.parts||[]).some(p=>p&&typeof p==='object'&&p.kind==='hero')}
 export const chronicleShows=e=>regionLine(e)&&(!focus||!companies().length||companyFocus(e)); // the region picker (#430) narrows it further
 let onFilter=()=>{};
 export function setChronicleRefresh(f){onFilter=f}
 export const refreshChronicle=()=>onFilter();
 // The Story panel (#145): the Chronicle, and with a company its Campaign log as a second tab.
 let story='chron';
-function syncChronBtn(){const F=!!S.fellowship||companies().length>0,camp=F&&story==='camp',b=$('chronFel'),t=$('storyTabs'),tt=$('storyTtl'),lg=$('log'),cp=$('campaign');
+function syncChronBtn(){const F=!!slotted()||companies().length>0,camp=F&&story==='camp',b=$('chronFel'),t=$('storyTabs'),tt=$('storyTtl'),lg=$('log'),cp=$('campaign');
   if(b){b.hidden=!F||camp;b.setAttribute('aria-pressed',String(focus))}
   if(t){t.hidden=!F;for(const x of t.children)x.setAttribute('aria-pressed',String(x.dataset.story===(camp?'camp':'chron')))}
   if(tt&&tt.textContent!==(F?'Story':'Chronicle'))tt.textContent=F?'Story':'Chronicle';
@@ -144,7 +143,7 @@ function tabsView(node,t){const L=companies();if(L.length<2)return;
   const al=el('button',null,'All');al.dataset.fact='tab:all';al.setAttribute('role','tab');al.setAttribute('aria-pressed',String(!!t.all));bar.append(al);node.append(bar)}
 // The header is one line; threads lead, and Members and Fallen open in a drawer under it.
 // Disband sits behind the ... menu (the Fellowship only).
-function topView(node,C){const fel=!!C.slots&&S.fellowship===C;
+function topView(node,C){const fel=!!C.slots&&slotted()===C;
   const h=el('div','fhline');
   const nm=el('span','fname f'+C.fac,cname(C));nm.title=cname(C);
   const live=members(C).length,place=C.hall?C.hall+' · ':'';
@@ -187,7 +186,7 @@ function coRunners(C){const rc=companyRunnerControl(C);if(!rc.querySelector('[da
 function allView(node){const L=companies(),F=followedCompany();
   node.append(el('div','fth-h dm','All companies ('+L.length+')'));
   const ul=el('div','felall');
-  for(const C of L){const row=el('div','fm fco'),fel=!!C.slots&&S.fellowship===C;row.setAttribute('data-k','co'+C.id);
+  for(const C of L){const row=el('div','fm fco'),fel=!!C.slots&&slotted()===C;row.setAttribute('data-k','co'+C.id);
     const open=el('button','fconame f'+C.fac,cname(C));open.dataset.fact='tab:'+C.id;open.title='Open this company';
     const live=members(C),th=companyThreads(C).length,hb=hallBoard(C).length;
     row.append(open,el('span','fmeta dm',(C.hall?C.hall+' · ':'')+live.length+(fel?'/5':'')+' standing · '+th+' thread'+(th===1?'':'s')+' · '+hb+' on the board'+(C===F?' · followed':'')));
@@ -279,21 +278,21 @@ function pickArchetype(s){const a=byId(s.dataset.farch),id=s.value;if(!a||!ARCHE
 
 function act(t){msg='';
   if(mindAct(t))return;
-  if(t.dataset.ffill){offerReplacement(t.dataset.ffill);return}
-  if(t.dataset.fadd){const s=cam.sel;if(s&&join(s,t.dataset.fadd,'chosen by the watcher'))msg=s.name+' joins.';return}
+  if(t.dataset.ffill){offerReplacement(slotted(),t.dataset.ffill);return}
+  if(t.dataset.fadd){const s=cam.sel;if(s&&joinSlot(slotted(),s,t.dataset.fadd,'chosen by the watcher'))msg=s.name+' joins.';return}
   if(t.dataset.fstreset!=null){const a=byId(sheetOpen),b=byId(t.dataset.fstreset),r=t.closest('.fstance');if(!a||!b||!r)return;
     editSheet(a,'stance',b.id,'');fillStance(r,a,b);refreshSheet(a,true);r.querySelector('textarea').focus();msg=a.name+'’s stance toward '+b.name+' is reset.';return}
   if(t.dataset.fsheet){sheetOpen=+t.dataset.fsheet;sheetView(sheet,byId(sheetOpen));return}
-  if(t.dataset.fremove){const a=byId(t.dataset.fremove);if(a){leave(a,'sent away by the watcher');msg=a.name+' leaves. Fill the empty place, or add a hero.'}return}
+  if(t.dataset.fremove){const a=byId(t.dataset.fremove);if(a){leaveSlot(slotted(),a,'sent away by the watcher');msg=a.name+' leaves. Fill the empty place, or add a hero.'}return}
   const k=t.dataset.fact;
   if(k&&k.startsWith('tab:')){const w=k.slice(4);tabSel=w==='all'?'all':+w;drawer=null;menuOpen=false;confirmDisband=false;moreThreads=false;sigLog='';return}
-  const cur=tabNow().C,F=S.fellowship;
+  const cur=tabNow().C,F=slotted();
   if(k&&k.startsWith('follow:')){const C=companies().find(x=>x.id===+k.slice(7));if(C){if(followedCompany()===C&&cam.view==='fellow')setViewHook('map');else{followCompany(C);setViewHook('fellow')}}return}
   if(k==='follow'){if(!cur)return;if(followedCompany()===cur&&cam.view==='fellow')setViewHook('map');else{followCompany(cur);setViewHook('fellow')}return}
   if(k==='menu'){menuOpen=!menuOpen;confirmDisband=false;return}
   if(k==='more'){moreThreads=!moreThreads;return}
   if(k&&k.startsWith('drawer:')){const w=k.slice(7);drawer=drawer===w?null:w;return}
-  if(k==='disband'){if(!F)return;if(!confirmDisband){confirmDisband=true;return}confirmDisband=false;menuOpen=false;drawer=null;disbandFellowship();sheetOpen=null;sheetView(sheet,null);onFilter();setViewHook('map');return}
+  if(k==='disband'){if(!F)return;if(!confirmDisband){confirmDisband=true;return}confirmDisband=false;menuOpen=false;drawer=null;disbandSlots(slotted());sheetOpen=null;sheetView(sheet,null);onFilter();setViewHook('map');return}
   if(k==='save'){const a=byId(sheetOpen);if(a){for(const ta of sheet.querySelectorAll('textarea[data-fw]')){if(ta.dataset.fw==='stance'&&ta.value===ta.dataset.orig)continue;editSheet(a,ta.dataset.fw,ta.dataset.fk,ta.value)}
     refreshSheet(a,false)}msg='Sheet saved.';return} // in place: scroll, focus and the boxes stay
   if(k==='close'){sheetOpen=null;sheetView(sheet,null)}}
@@ -316,11 +315,11 @@ export function initFellowship(setView){setViewHook=setView||(()=>{});root=$('fe
   renderFellowship()}
 
 // The signature of what the visible tab shows; the panel is patched in place only when it changes (and never under a press or a picker).
-function companySig(C){const fel=!!C.slots&&S.fellowship===C,fo=followedCompany();
+function companySig(C){const fel=!!C.slots&&slotted()===C,fo=followedCompany();
   return 'C'+C.id+'|'+cname(C)+'|'+msg+'|'+confirmDisband+'|'+menuOpen+'|'+drawer+'|'+moreThreads+'|'+companyThreads(C).map(t=>plainOf(t.parts)).join('~')+'|'+
   (fel?mindsOf(C)+'|'+(mindsOf(C)==='agent'?runnerSig(null):''):companyRunnerSig(C))+'|'+cam.view+'|'+(fo?fo.id:'')+'|'+(cam.sel?cam.sel.id:'')+'|'+
   companyCols(C).map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+
-  (fel&&fellowParty()?fellowParty().leader.id:'')+'|'+(fel?campLine()||'':'')+'|'+hallSig(C)+'|'+(C.past||[]).length+'|'+(fel&&C.enrich?C.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode()}
+  (fel&&slotParty(slotted())?slotParty(slotted()).leader.id:'')+'|'+(fel?campLine()||'':'')+'|'+hallSig(C)+'|'+(C.past||[]).length+'|'+(fel&&C.enrich?C.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode()}
 function allSig(){const fo=followedCompany();
   return 'all|'+(fo?fo.id:'')+'|'+cam.view+'|'+companies().map(C=>C.id+':'+cname(C)+':'+members(C).length+':'+companyThreads(C).length+':'+hallBoard(C).length+':'+(C.slots?runnerSig(null):companyRunnerSig(C))).join(',')}
 

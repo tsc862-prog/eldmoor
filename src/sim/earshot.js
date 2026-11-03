@@ -17,6 +17,7 @@ import {shoutRange,REACH} from './reach.js';
 import {weatherName,weatherKind} from './weather.js';
 import {sightLever} from './levers.js';
 import {ensureNpcs} from './npcs.js';
+import {inSlots} from './company.js'; // the slotted company (#588)
 
 export const EAR={TALK:4,LINE_MAX:4}; // TALK: tiles to a townsperson for talk (keep equal to player.js PK.TALK; not imported there: an import cycle through fellowship.js)
 
@@ -29,8 +30,8 @@ const byDist=a=>(x,y)=>dist(a,x)-dist(a,y)||(x.id||0)-(y.id||0);
 
 // Townsfolk within r. A Fellowship member can talk to anyone placed in the world (sim/talk.js findPerson); any other
 // hero only to the townsfolk of the town it stands in (the talk tool's own lookup).
-function folkWithin(a,r,talkable){const here=talkable&&!a.fellow?cityAt(a):null;
-  const L=talkable&&!a.fellow?(S.npcs||[]).filter(p=>Number.isFinite(p.x)&&(!here||p.town===here.name)):people();
+function folkWithin(a,r,talkable){const here=talkable&&!inSlots(a)?cityAt(a):null;
+  const L=talkable&&!inSlots(a)?(S.npcs||[]).filter(p=>Number.isFinite(p.x)&&(!here||p.town===here.name)):people();
   return L.filter(p=>dist(a,p)<=r).sort(byDist(a))}
 
 // Why today's shout is shorter than REACH.SHOUT, in words ('' when it is not).
@@ -43,7 +44,7 @@ export function earshot(a){
   if(!a||a.state==='dead')return {ok:false,error:'The dead hear nothing.'};
   if(a.state==='ghost')return {ok:true,ghost:true,text:'You are a ghost: nobody hears you.'};
   const sayH=sayHearers(a).sort(byDist(a)),sayF=folkWithin(a,HEAR,false),talk=folkWithin(a,EAR.TALK,true);
-  const say=[...sayH.map(b=>({name:b.name,who:b.cls+(b.fellow&&a.fellow?', companion':b.fac!==a.fac?', of the other side':''),tiles:tiles(dist(a,b))})),
+  const say=[...sayH.map(b=>({name:b.name,who:b.cls+(inSlots(b)&&inSlots(a)?', companion':b.fac!==a.fac?', of the other side':''),tiles:tiles(dist(a,b))})),
     ...sayF.map(p=>({name:full(p),who:p.role||'townsperson',tiles:tiles(dist(a,p))}))];
   const range=shoutRange(a),why=shoutWhy(a,range),{mates,near,far}=shoutHearers(a);
   const shout=mates.length?{range,usual:REACH.SHOUT,...(why?{shorter:why}:{}),
@@ -58,7 +59,7 @@ export function earshot(a){
   lines.push(say.length?'say (within '+HEAR+' tiles) reaches: '+r.say.join(', ')+'.':'Nobody is within '+HEAR+' tiles to hear you say anything.');
   if(shout){lines.push('A party shout carries '+range+' tiles today'+(why?' (usually '+REACH.SHOUT+'; '+why+')':'')+': '+
     (shout.hear.length?shout.hear.join(', ')+' would hear it':'no companion would hear it')+'.');
-    if(far.length)lines.push('Out of shouting range: '+far.map(b=>b.name).join(', ')+'. Walk closer, or hire a courier at a town gate (send_courier)'+(a.fellow?'':' (Fellowship only)')+'.')}
+    if(far.length)lines.push('Out of shouting range: '+far.map(b=>b.name).join(', ')+'. Walk closer, or hire a courier at a town gate (send_courier)'+(inSlots(a)?'':' (Fellowship only)')+'.')}
   else lines.push('You have no party to shout to.');
   lines.push(talk.length?'Close enough to talk to (within '+EAR.TALK+' tiles): '+talk.map(full).join(', ')+'.':'Nobody is close enough to talk to (within '+EAR.TALK+' tiles).');
   r.text=lines.join(' ');return r}
@@ -73,5 +74,5 @@ export function earshotLine(a){if(!a||a.state==='dead'||a.state==='ghost')return
   const bits=[];if(sayH.length||folk)bits.push('say reaches '+[sayH.length?cut(sayH):'',folk?folk+(folk>1?' townsfolk':' townsperson'):''].filter(Boolean).join(' and '));
   if(mates.length)bits.push('a shout ('+shoutRange(a)+' tiles) reaches '+(near.length?cut(near.sort(byDist(a)).map(b=>b.name)):'no companion'));
   if(talk.length)bits.push('talk to '+cut(talk));
-  if(far.length)bits.push('too far for a shout: '+cut(far.map(b=>b.name))+(a.fellow?' (send_courier)':''));
+  if(far.length)bits.push('too far for a shout: '+cut(far.map(b=>b.name))+(inSlots(a)?' (send_courier)':''));
   return bits.join('; ')}
