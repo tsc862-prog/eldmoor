@@ -18,9 +18,14 @@
 // calls, half on Continue or for a DM runner started again; the call cap is counted in sim/dmagent.js). The bar reads
 // "THE DM PREPARES THE TABLE" with the time and calls and keeps Start anyway (it ends the prep). Then the opening scene
 // opens (sim/arrival.js) and the clock runs. A closed DM seat, or a DM seat waived without a ready runner: no prep.
-import {S,dmSeatOn,beginPrep,endPrep,prepTick,prepView,prepActive,openingDue,setPrepHost} from '../sim/index.js';
+// The DM is always an agent (#520, slice A #559): a played world has its DM seat open, so the gate always counts it. The
+// page opens the seat once per world it plays (ensureDmSeat: a new world from the setup page already has it open; an
+// older world on Continue gets it here). Until slice B (#560) the panel's Close seat still works for this session.
+// While the gate or the prep holds the world, agent heroes get no turns and their acting tools are refused
+// (sim/prep.js setGateHold, #559), so nobody speaks or moves before the opening scene.
+import {S,dmSeatOn,beginPrep,endPrep,prepTick,prepView,prepActive,openingDue,setPrepHost,setGateHold} from '../sim/index.js';
 import {runnerFor,runnerByKey,relayUp,runnersEnabled,ollamaBusy,reasonOf,watchRunners,DONE_STATE} from './runners.js';
-import {agentLink,dmLink,bridgeStatus,agentReady,dmReady} from './player-bridge.js';
+import {agentLink,dmLink,bridgeStatus,agentReady,dmReady,dmSeatSet} from './player-bridge.js';
 import {ctl} from './controls.js';
 
 const $=id=>document.getElementById(id);
@@ -44,6 +49,9 @@ const readyOf=a=>probe?(probe.ready?probe.ready(a):READY):agentReady(a),dmReadyO
 const stateOf=s=>s.ready&&s.ready.state?s.ready.state:'claimed';
 export const gateCounts=()=>({ready:readyN,total});
 
+let seatFor=null; // the world (S.worldId) whose DM seat this page opened
+export function ensureDmSeat(){if(probe||!S.agents||!S.agents.length)return false;const w=S.worldId||'world';if(seatFor===w)return false;seatFor=w;
+  if(dmSeatOn())return false;dmSeatSet(true);return true}
 export function seats(){const out=[];
   for(const a of S.agents)if(a.fellow&&a.player&&a.state!=='dead')out.push({key:'hero:'+a.id,kind:'hero',hero:a.id,name:a.name,a,link:linkOf(a),ready:readyOf(a)});
   if(dmSeatOn())out.push({key:'dm',kind:'dm',name:'DM',link:dmOf(),ready:dmReadyOf()});
@@ -68,6 +76,7 @@ export function whyMissing(s){
 // Recompute the gate. Cheap; called every frame, works at most once a second unless forced by now.
 export function checkRunGate(now=Date.now()){
   if(now-checkAt<1000&&!probe)return;checkAt=now;
+  ensureDmSeat();
   const L=seats();let list=[];
   if(L.length&&!probe)watchRunners();
   let nReady=0;
@@ -88,7 +97,7 @@ export function checkRunGate(now=Date.now()){
   if(!prepActive()&&!list.length&&!free&&dm&&dm.live&&stateOf(dm)==='ready'&&dm.ready!==READY){const k=JSON.stringify(dm.ready||{});if(k!==prepSig){prepSig=k;beginPrep(openingDue()?'opening':'resume')}} // READY: a test probe's stand-in, not a runner's report
   prepping=prepActive()&&!list.length;
   const was=ctl.held;
-  missing=list;ctl.held=list.length>0||prepping;
+  missing=list;ctl.held=list.length>0||prepping;setGateHold(list.length>0); // the prep holds by itself (sim/prep.js)
   if(ctl.held!==was){for(const b of document.querySelectorAll('[data-sp]'))if(+b.dataset.sp>0){if(ctl.held)b.setAttribute('aria-disabled','true');else b.removeAttribute('aria-disabled')}}
   if(ctl.held&&!was&&closeCb&&list.length)closeCb(list);
   paint()}

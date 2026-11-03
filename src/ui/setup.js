@@ -82,9 +82,10 @@ const heroAt=k=>st.setup.heroes[idx(k)];
 const heroTitle=k=>together()?slotLabel(k)+(k.startsWith('dps')?' '+k.slice(3):''):'Hero '+(+k+1);
 const facOfHero=h=>h.fac!=null?h.fac:st.setup.fac;
 const mindOf=who=>who==='dm'?st.setup.dm:heroAt(who).mind;
-function setMode(who,mode){const m=mindOf(who);if(who==='dm'){st.setup.dm=mode==='agent'?{mode,provider:'anthropic',model:CLAUDE_MODELS.sonnet}:{mode:'scripted'};return}
-  const keep=m.provider?{provider:m.provider,model:m.model}:{provider:'anthropic',model:CLAUDE_MODELS.haiku};
-  heroAt(who).mind=mode==='scripted'?{mode}:{mode,...keep}}
+// Every mind on this page is an agent: a member's (#148) and the DM's (#520). Only the model is chosen; an older button
+// asking for another mode is ignored.
+function setMode(who,mode){if(mode!=='agent')return;const m=mindOf(who);const keep=m&&m.provider?{provider:m.provider,model:m.model}:{provider:'anthropic',model:CLAUDE_MODELS.haiku};
+  if(who==='dm')st.setup.dm={mode,...keep};else heroAt(who).mind={mode,...keep}}
 // Runners as the relay can start them today: it has no company kind yet (#402 slice 23), so a group sharing one mind starts one runner per hero.
 const plan=s=>planRunners(s).flatMap(r=>r.kind==='company'?r.heroes.map(i=>({kind:'hero',index:i,provider:r.provider,model:r.model,label:s.heroes[i].name||s.heroes[i].cls})):[r]);
 const sharesMind=s=>planRunners(s).some(r=>r.kind==='company');
@@ -101,14 +102,13 @@ function select(f,opts,value,title){const s=el('select','msel');s.dataset.f=f;if
   for(const [v,t] of opts){const o=new Option(t,v);if(v===value)o.selected=true;s.append(o)}s.value=value;return s}
 function field(label,...kids){const d=el('label','sfield');d.append(el('span','slbl',label),...kids);return d}
 
-// A member's mind is always an agent (#148): only its model is chosen. The DM may be scripted or an agent.
+// A member's mind is always an agent (#148), and so is the DM's (#520): only the model is chosen (required; there is no
+// scripted DM to pick).
 function mindControls(who,m){const d=el('div','smind'),seg=el('span','mseg');
-  const modes=who==='dm'?['scripted','agent']:[];
-  if(who!=='dm')seg.append(el('span','dm','Agent'));
-  for(const k of modes){const b=btn(who==='dm'&&k==='agent'?'DM agent':MODE_TEXT[k],'mode',{who,mode:k});b.title=MODE_TITLE[k];b.setAttribute('aria-pressed',String(m.mode===k));seg.append(b)}
+  const tag=el('span','dm',who==='dm'?'DM agent':'Agent');tag.title=who==='dm'?'An agent runner sits in the DM seat from the first minute; the scripted DM only fills in while its runner is slow or gone':MODE_TITLE.agent;seg.append(tag);
   d.append(seg);
-  if(m.mode!=='scripted'){const opts=modelOptions();if(m.model&&!opts.some(o=>o[0]===joinMind(m)))opts.push([joinMind(m),labelOf(m)+' (not reported by the relay)']);
-    d.append(select('mind:'+who,opts,joinMind(m),'Which model plays '+(who==='dm'?'the DM':'this hero')))}
+  const opts=modelOptions();if(m&&m.model&&!opts.some(o=>o[0]===joinMind(m)))opts.push([joinMind(m),labelOf(m)+' (not reported by the relay)']);
+  d.append(select('mind:'+who,opts,joinMind(m),'Which model plays '+(who==='dm'?'the DM':'this hero')));
   return d}
 
 // Apart: where a hero sets out (#454). 'home' = its people's home town; a town of its faction (the CITY rows, no names here);
@@ -158,7 +158,7 @@ function relayLine(){const s=relayState(),d=el('div','srelay '+s);
   if(agentsWanted&&s!=='ready')d.append(el('div','dm','Agent minds can still start: the heroes play on reflexes and are shown as AGENT until you start their runners from the Minds panel or a terminal.'));
   return d}
 
-function runnerSummary(){const pl=plan(st.setup);if(!pl.length)return 'No runners needed: every mind is scripted or AI.';
+function runnerSummary(){const pl=plan(st.setup);if(!pl.length)return 'No runners needed.';
   const max=relay.runner&&relay.runner.max;
   return (sharesMind(st.setup)?'Heroes of one group sharing a mind start one runner each for now. ':'')+'On Start: '+pl.map(r=>r.kind==='fellowship'?'one Fellowship runner ('+labelOf(r)+')':r.kind==='dm'?'the DM runner ('+labelOf(r)+')':r.label+' runner ('+labelOf(r)+')').join(', ')+'. '+pl.length+(max?' of '+max+' runners allowed.':' runner'+(pl.length===1?'':'s')+'.')}
 
@@ -177,7 +177,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   const pre=el('div','spresets');pre.append(el('span','slbl','Minds'));
   const lm=localModel(),last=readLast();
   const mk=(label,name,off,why)=>{const b=btn(label,'preset',{name});if(off){b.classList.add('off');b.title=why}return b};
-  pre.append(mk('All agents (Haiku), DM scripted','haiku'),mk('All agents (Haiku), DM on Sonnet','claude'),mk('All local'+(lm?' ('+lm+')':''),'local',!lm,'The relay reports no local model: start Ollama and pull one'),mk('Last used','last',!last,'Nothing remembered yet'));
+  pre.append(mk('All on Haiku (the DM too)','haiku'),mk('All agents (Haiku), DM on Sonnet','claude'),mk('All local'+(lm?' ('+lm+')':''),'local',!lm,'The relay reports no local model: start Ollama and pull one'),mk('Last used','last',!last,'Nothing remembered yet'));
   page.append(pre);
 
   const wsec=el('section','ssec');wsec.append(el('h3',null,'World'));
@@ -196,7 +196,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   const cards=el('div','scards');for(const k of keys())cards.append(slotCard(k));fsec.append(cards);page.append(fsec);
 
   const dsec=el('section','ssec');dsec.append(el('h3',null,'The Dungeon Master'),mindControls('dm',s.dm),
-    el('div','dm',s.dm.mode==='agent'?'The DM seat opens at once; a DM agent prepares the campaign and pulls levers.':'The scripted DM runs the world.'));page.append(dsec);
+    el('div','dm','The DM is always an agent: its seat opens at once, it prepares the campaign, frames the scenes and pulls levers. The world waits for its runner as for a member; the scripted DM only fills in while it is slow or gone.'));page.append(dsec);
 
   const fin=el('section','ssec sfinal');fin.append(relayLine(),el('div','dm srun',runnerSummary()));
   const ps=problems();

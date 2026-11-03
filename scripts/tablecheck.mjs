@@ -122,7 +122,19 @@ if (process.argv[2] === '--arrival') {
   inTown(); step(1 / 60);
   // session zero: the prep holds the opening; then the DM frames it, members introduce themselves, the leader is contested
   ok(!A.openingPending(), 'a world founded without a setup plans no opening');
-  A.planOpening(); PR.beginPrep('opening');
+  A.planOpening();
+  // held before play (#559, owner bug: members introduced themselves while the DM prepared, then again at the opening):
+  // the start gate and the prep refuse acting and speaking tools, give no paced turn, and reads still answer
+  const PC = await import('../src/sim/pace.js'), heardIntro = () => M.some(x => (x.chat || []).some(e => /Covenant's Healer/.test(e.text || '')));
+  const ACTS = [['say', {text: "The Covenant's Healer. We follow the leader."}], ['party_say', {text: "The Covenant's Healer, at your side."}], ['move_to', {where: 'north'}], ['hunt', {}], ['take_quest', {id: 'job:1'}], ['propose', {kind: 'other', details: 'We ride at dawn.'}]];
+  PR.setGateHold(true);
+  {const r = P.playerAct(live.id, 'say', {text: "The Covenant's Healer."}); ok(r.ok === false && r.held === 'gate' && r.offline === true && /held until every mind is ready/.test(r.error), 'the start gate holds: say is refused (' + r.error + ')')}
+  ok(PC.paceCheck(live.id, {since: 0, minutes: 5, wake: 'all'}) === null, 'the start gate holds: the runner gets no paced turn (a heartbeat long due)');
+  PR.setGateHold(false); PR.beginPrep('opening');
+  for (const [t, a] of ACTS) {const r = P.playerAct(live.id, t, a); ok(r.ok === false && r.held === 'prep' && r.error === 'The DM is preparing the table; wait for the opening scene.', 'the DM prepares: ' + t + ' is refused with the prep line')}
+  for (const t of ['look', 'status', 'self', 'lore', 'recall', 'journal_read']) {const r = P.playerAct(live.id, t, {}); ok(r.ok !== false || !r.held, 'the DM prepares: ' + t + ' (read-only) still answers' + (r.ok === false ? ' (' + r.error + ')' : ''))}
+  ok(PC.paceCheck(live.id, {since: 0, minutes: 5, wake: 'all'}) === null, 'the DM prepares: no paced turn');
+  run(2); ok(!heardIntro(), 'no hero line lands before the opening scene');
   ok(A.openingDue() && PR.prepView().state === 'running' && PR.prepView().max_calls === PR.PREP.CALLS, 'session zero is due and the DM prepares (full caps)');
   run(2); ok(!S.table, 'no opening scene while the DM prepares');
   dmAct('dm_status'); dmAct('notes_read'); ok(PR.prepView().calls === 2, 'DM tool calls during the prep are counted');
@@ -143,6 +155,8 @@ if (process.argv[2] === '--arrival') {
   ok(refl && /introduces themself: .+, a .+ of /.test(refl.res || ''), `a silent agent's reflex shows its persona line (${refl && refl.res})`);
   ok(/keeps the head of the table|leads/.test(sc.summary), `the leader is contested and keeps the lead (${sc.summary})`);
   ok(M.every(a => M.every(b => a === b || TK.metIds(a).includes(b.id))), 'introductions at the opening count as met');
+  ok(!heardIntro() && !PR.worldHeld(), 'the introductions came at the opening scene, none before it (and nothing holds the world now)');
+  {const r = P.playerAct(live.id, 'party_say', {text: 'To the road, then.'}); ok(r.held == null && !(r.ok === false && /preparing the table|held until/.test(r.error || '')), 'once the table is open, speaking tools work again')}
   ok(S.fellowship.log.some(e => e.kind === 'session' && /SESSION ZERO/.test(txt(e))), 'the campaign log has the session zero line');
   // the Continue prep: half the caps; the time cap ends it; the call cap ends it
   let clk = 0; PR.setPrepClock(() => clk); PR.beginPrep('resume');

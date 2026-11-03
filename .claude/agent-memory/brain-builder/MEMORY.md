@@ -41,3 +41,4 @@
 - [DM share](dm-share.md) — #541 dmShare digest, dm-scripted anomaly, report section, old-log limits
 - [Standing orders](standing-orders.md) — #531 orders.mjs situations block, short local variant, withSituationOrders, orderscheck
 - [CI fast](ci-fast.md) — #543 job split, CI_FAST knob, dmcheck/ratecheck parallel children, what is timer vs CPU bound
+- [DM always (setup+gate)](dm-always-setup.md) — #559 DM mind required, seat open tick 1, gate counts DM, --no-dm, resume DM, world-held tool refusal

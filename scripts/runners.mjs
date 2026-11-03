@@ -335,7 +335,8 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   // Bring back the runners of the last run (logs/runners/active.json; `npm run up` passes --resume-runners). Waits for
   // the game page to connect and name its agent heroes, then starts each saved runner whose hero is still the same
   // living agent-played hero (same id and name: a new world that reused the id is skipped, as is a dead hero, a closed
-  // DM seat or a Fellowship with no agent member). Skipped ones leave the list. -> {resumed:[key], skipped:[{what, why}]}
+  // DM seat or a Fellowship with no agent member). Skipped ones leave the list. An open DM seat gets its runner even when
+  // none was saved (#559). -> {resumed:[key], skipped:[{what, why}]}
   async function resume({waitMs = 5 * 60000, pollMs = 500, settleMs = 1200, heroWaitMs = 6000} = {}) {
     const out = {resumed: [], skipped: []};
     if (!enabled) return out;
@@ -359,6 +360,11 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       const r = startRequest(body);
       if (r.code === 200) {out.resumed.push(r.obj.runner.key); log(`[runners] resumed ${what}`)} else skip(r.obj.error || 'refused');
     }
+    // The DM is always an agent (#520, #559): with the seat open and no DM runner on the list or in the seat, resume starts
+    // one anyway, with the mind its session saved (else the default), so the start gate is not left waiting for it.
+    if (!closing && !saved.some(x => x.kind === 'dm')) {const d = play.dmInfo ? play.dmInfo() : null;
+      if (d && d.seat && !d.claimed && !running().some(x => x.kind === 'dm')) {const r = startRequest({kind: 'dm'});
+        if (r.code === 200) {out.resumed.push(r.obj.runner.key); log('[runners] resumed dm (the DM seat is always played)')} else {out.skipped.push({what: 'dm', why: r.obj.error || 'refused'}); log(`[runners] resume: the DM runner did not start: ${r.obj.error || 'refused'}`)}}}
     saveActive();
     return out;
   }

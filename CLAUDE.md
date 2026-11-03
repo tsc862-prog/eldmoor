@@ -184,7 +184,13 @@ is silent, and scene choices time out to the scripted branch, so the world never
   seat's state ("loading qwen2.5:14b (40 s)", "claimed", "warm-up failed: ...") and **Start anyway** (waives the
   seats as they are; a waived seat whose runner goes away must warm up again). Party frames and the DM frame show
   claimed / warming up / ready / warm-up failed. `play-headless --wait-ready` holds a headless world the same way
-  (every living agent hero and the open DM seat); without the flag headless runs as before. A failed warm-up never
+  (every living agent hero and the DM seat, which `--wait-ready` opens unless `--no-dm`, #559); without the flag headless runs as before.
+  The DM seat always counts (#559, slice A of #520): the setup page requires a DM mind (no scripted DM; an older setup's
+  scripted DM cleans to Claude Haiku), a setup world opens the seat from the first tick, the page opens the seat of any
+  world it plays, and `--resume-runners` starts a DM runner for an open seat even when none was saved. While the gate or
+  the DM's prep holds the world (`worldHeld()` in `src/sim/prep.js`), agent heroes get no paced turn and their acting
+  tools (`act:true`: say, party_say, move_to, hunt, take_quest, propose, ...) are refused with "The DM is preparing the
+  table; wait for the opening scene." (`offline:true`, so it never counts as a failed turn); reads still answer. A failed warm-up never
   stops the runner. `npm run localcheck` (slow and crashing mock warm-ups) and `npm run uismoke` cover it.
 - Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
   game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in

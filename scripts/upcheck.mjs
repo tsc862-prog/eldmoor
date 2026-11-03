@@ -88,7 +88,12 @@ console.log('active.json and resume (fake children)');
   writeFileSync(active, JSON.stringify({saved: 'x', runners: [{kind: 'hero', hero: 1, name: 'Ann', provider: 'ollama', model: 'm', maxTurns: null, budget: null}]}));
   connected = false; const C = await mk(); const r2 = await C.sup.resume({waitMs: 150, pollMs: 20});
   ok(!r2.resumed.length && readActive().length === 1, 'no page, no resume, and the list is kept for next time');
-  B.server.close(); C.server.close();
+  // the DM is always an agent (#559): an open DM seat gets its runner on resume even when none was saved
+  writeFileSync(active, JSON.stringify({saved: 'x', runners: [{kind: 'hero', hero: 1, name: 'Ann', provider: 'ollama', model: 'qwen2.5:14b', maxTurns: null, budget: null}]}));
+  connected = true; dm = true; const D = await mk(); const r3 = await D.sup.resume({waitMs: 3000, pollMs: 20, settleMs: 20, heroWaitMs: 100});
+  ok(r3.resumed.join() === 'hero:1,dm' && /dm-agent\.mjs/.test(kids[kids.length - 1].args.join(' ')), 'an open DM seat with no saved DM runner: resume starts one (the DM is always played): ' + JSON.stringify(r3));
+  dm = false;
+  B.server.close(); C.server.close(); D.server.close();
   rmSync(tmp, {recursive: true, force: true});
 }
 

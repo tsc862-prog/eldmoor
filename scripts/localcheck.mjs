@@ -620,7 +620,12 @@ console.log('start gate: --wait-ready holds the world until every mind answered 
 {
   ok(!/world held/.test(world.out()), 'without --wait-ready play-headless never holds the world (unchanged)');
   const P2 = port + 650, B2 = `http://127.0.0.1:${P2}`, poll = async (f, ms = 30000) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {const h = await health(B2).catch(() => null); if (h && f(h)) return h; await sleep(100)} return null};
-  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--world', join(tmp, 'world-ready.json')], {wait: /^\[play\] headless world at /m});
+  // --wait-ready opens the DM seat and counts it (the DM is always an agent, #559)
+  {const P3 = port + 651, w3 = start(['scripts/play-headless.mjs', '--port', String(P3), '--agents', '1', '--quiet', '--wait-ready', '--world', join(tmp, 'world-ready-dm.json')], {wait: /^\[play\] headless world at /m});
+   await w3.until; const h3 = await health(`http://127.0.0.1:${P3}`).catch(() => null), t3 = Date.now(); while (!/world held, waiting for minds: .*DM: no runner/.test(w3.out()) && Date.now() - t3 < 5000) await sleep(100);
+   ok(h3 && h3.dm && h3.dm.seat === true && /DM: no runner/.test(w3.out()), '--wait-ready opens the DM seat and holds the world for its runner too (#559)'); try {w3.p.kill()} catch {}}
+  // the rest tests hero runners alone: --no-dm keeps the hold to the heroes
+  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--no-dm', '--world', join(tmp, 'world-ready.json')], {wait: /^\[play\] headless world at /m});
   await w2.until;
   const [ga, gb] = (await health(B2)).heroes, by = (h, id) => h.heroes.find(x => x.id === id) || {};
   ok(await poll(() => /world held, waiting for minds: .*no runner/.test(w2.out()), 5000), 'with --wait-ready a world with no runners is held');

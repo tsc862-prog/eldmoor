@@ -31,6 +31,12 @@ sim.init();
 if(sim.S.fellowship)sim.disbandFellowship(); // the first half runs without one
 const renderer={onCamChange(){},setZoom(){},stepZoom:(z)=>z,currentZoom:()=>1,zoomAt(){},panBy(){},screenToWorld:()=>({x:0,y:0})};
 initUI(renderer);
+// The DM is always an agent (#559): the page opens the DM seat of the world it plays and the start gate counts it. The
+// smoke plays without runners, so it closes the seat again (the panel's Close seat, until #560) and lets nothing hold.
+ok(sim.dmSeatOn(),'the page opens the DM seat of the world it plays (#559)');
+{const gate=await import('../src/ui/rungate.js');ok(gate.gateMissing().some(m=>m.kind==='dm'),'the start gate counts the DM seat (#559)');
+ ok(sim.worldHeld()==='gate','while the gate holds, the sim knows it (agent tools refused, no paced turns, #559)');
+ sim.setDmSeat(false);gate.checkRunGate(Date.now()+5000);ok(!sim.worldHeld()&&!gate.ensureDmSeat(),'closed for the smoke: nothing holds, and the page does not reopen the seat of the same world')}
 let clockS=0;
 // The Fellowship half needs its five members alive, visible and together (hardcore: a member who dies is replaced by
 // a new object, and one who enters the Crypt is hidden, which silently drops every shout and made the chat cases flaky).
