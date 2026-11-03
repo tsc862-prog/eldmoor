@@ -23,7 +23,7 @@ function drawOne(ctx,S,cam,o,g){const {inView,blink,drawText}=o;
   ctx.fillStyle='#ffe27a';ctx.fillRect(cx-1,cy-h+1,2,Math.max(2,h-2));
   // sparks
   for(let k=0;k<3;k++){const t=(blink*1.6+k*.37)%1;ctx.fillStyle=t<.6?'#ffd060':'#c8803a';ctx.fillRect(Math.round(cx-3+k*3+Math.sin(t*6+k)*2),Math.round(cy-6-t*14),1,1)}
-  if(cam.close){const w=ids.map(id=>S.agents.find(x=>x.id===id)).find(a=>a&&a.id===g.watcher);
+  if(cam.close&&!S.table){const w=ids.map(id=>S.agents.find(x=>x.id===id)).find(a=>a&&a.id===g.watcher);
     drawText('CAMP'+(w?' · '+w.name+' on watch':''),cx,cy-26,'#f4c070',13)}}
 
 // Warm light for the night overlay (draw.js calls this in the 'lighter' pass).

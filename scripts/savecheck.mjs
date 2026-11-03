@@ -196,6 +196,9 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   restore(JSON.parse(JSON.stringify(v7))); const a7 = JSON.parse(JSON.stringify(snapshot()));
   restore(JSON.parse(JSON.stringify(v6))); const a6 = JSON.parse(JSON.stringify(snapshot()));
   for (const s of [a7, a6]) for (const c of s.companies) if (!c.slots) {delete c.founded; delete c.day} // a solo made by the migration is founded at load (a v6 save has no record of it)
+  // C.from may keep the home town of a member who has since left or died (nothing reads it; v6 kept it on the hero's own
+  // a.fellowFrom, which the migration reads only for current members): compare it for current members only
+  for (const s of [a7, a6]) for (const c of s.companies) if (c.from) for (const id of Object.keys(c.from)) if (!c.ids.some((x) => String(x) === id)) delete c.from[id];
   // ... and numbered in hero order, while the world numbered its solos in the order heroes became agent-played: compare
   // solos by their hero, not their id (the check was flaky on main whenever those orders differed)
   for (const s of [a7, a6]) {const solo = new Map(s.companies.filter((c) => !c.slots && c.ids.length === 1).map((c) => [c.id, 'solo:' + c.ids[0]]));
