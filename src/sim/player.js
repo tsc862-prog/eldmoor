@@ -46,7 +46,7 @@ import {earshot} from './earshot.js'; // who hears you now (#395)
 import {npcSay,ensureNpcs} from './npcs.js';
 import {talkTo,addressed,findPerson,traderFor,npcBuy,npcSell,stockOf,tradePrice,metIds} from './talk.js'; // NPC conversations (#170)
 import {equip,makeItem,SHOP_COST,SELL_VALUE,slotLevel,weakestSlot,itemStats,gearScore,refreshEpics,itemArmor,itemDamage} from './gear.js';
-import {weatherName,sightMul,isStorm} from './weather.js';
+import {weatherName,sightFor,isStorm} from './weather.js';
 import {record,asSrc} from './history.js';
 import {fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
@@ -123,7 +123,7 @@ const day=()=>'Day '+(Math.floor(S.gameMin/1440)+1)+' '+clockStr();
 const dayPart=()=>{const h=(S.gameMin/60)%24;return h<5||h>=21?'night':h<8?'dawn':h<18?'day':'dusk'};
 const advOf=a=>a.adv&&S.adventures?S.adventures.find(v=>v.id===a.adv&&v.phase==='active')||null:null;
 const mobName=m=>m.elite||m.named?m.name+(m.title?', '+m.title:''):MOBS[m.type]?MOBS[m.type].name:'monster';
-const sightOf=a=>PK.SIGHT*sightMul(zoneAt(a.x,a.y));
+const sightOf=a=>PK.SIGHT*sightFor(a,zoneAt(a.x,a.y));
 const inRect=(c,p,pad=0)=>p.x>=c.x0-pad&&p.x<=c.x1+1+pad&&p.y>=c.y0-pad&&p.y<=c.y1+1+pad;
 const cityAt=p=>CITY.find(c=>inRect(c,p,.5))||null;
 const inTown=a=>a.state==='town';
@@ -171,7 +171,7 @@ const creatureNear=(a,r)=>nearMobs(a.x,a.y,r).some(m=>m.alive&&!m.gone&&!m.hidde
 // Wary prey (#487): the nearest creature on the hunting ground that this hero sizes up as an even match or less (no named
 // foe, none it learned to fear, none more than PK.WARY_UP levels above it, near the scripted findMob rule), or one already on
 // it. Nothing of this reaches the agent: it is the hero's own judgement while it carries on alone.
-function waryPrey(a,cmd){const R=9*sightMul(zoneAt(a.x,a.y)),gz=cmd.ground;let best=null,bs=1e9;
+function waryPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y)),gz=cmd.ground;let best=null,bs=1e9;
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a))continue;const d=dist(a,m);if(d>R)continue;
     if(m.target!==a){if(m.elite||m.named||m.lvl>a.lvl+PK.WARY_UP||feared(a,m)||m.spared>S.gameMin)continue;if(gz!=null&&MOBS[m.type]&&MOBS[m.type].z!==gz)continue}
     const s=d-(cmd.prey&&keyOf(m)===cmd.prey?4:0)-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}

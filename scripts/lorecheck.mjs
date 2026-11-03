@@ -317,5 +317,22 @@ console.log('roads knowledge (#539)');
   ok(P.playerAct(G.id, 'search', {}).ok === false || G.player, 'a scripted hero cannot use it');
   S.places = []; }
 
+// night shortens how far a hunt and a first look reach (#583)
+{ const t0 = S.gameMin, day0 = Math.floor(t0 / 1440) * 1440, WE = await import('../src/sim/weather.js'), {CITY: CT} = await import('../src/world/map.js');
+  const H = S.agents.find(x => x.player && x.kind === 'hero' && x.state !== 'dead');
+  if (H) { const keep = {x: H.x, y: H.y}, z = zoneAt(H.x, H.y);
+    S.gameMin = day0 + 12 * 60; const noon = WE.sightFor(H, z); S.gameMin = day0; const mid = WE.sightFor(H, z); S.gameMin = day0 + 19.5 * 60; const dusk = WE.sightFor(H, z);
+    ok(Math.abs(mid / noon - 0.6) < 1e-9 && dusk < noon && dusk > mid, `sight multiplier noon ${noon}, dusk ${dusk.toFixed(2)}, midnight ${mid}`);
+    S.gameMin = day0; H.x = CT[0].x0 + 1; H.y = CT[0].y0 + 1;
+    ok(WE.sightFor(H, zoneAt(H.x, H.y)) === WE.sightMul(zoneAt(H.x, H.y)), 'a torchlit town is exempt from the night');
+    H.x = keep.x; H.y = keep.y; H.player = false; ok(WE.sightFor(H, z) === WE.sightMul(z), 'a scripted hero is exempt'); H.player = true;
+    const m = S.mobs.find(q => q.alive && !q.gone && !q.hidden && !q.elite && !q.target);
+    if (m) { H.x = m.x - 9 * WE.sightMul(zoneAt(m.x, m.y)) * 0.8; H.y = m.y; rebuild();
+      S.gameMin = day0 + 12 * 60; const noonSees = L.pickPrey(H, {kind: 'hunt', n: 1, prey: L.keyOf(m)}) === m, key = L.keyOf(m);
+      S.gameMin = day0; const midSees = L.pickPrey(H, {kind: 'hunt', n: 1, prey: L.keyOf(m)}) === m;
+      ok(noonSees && !midSees, `a creature at 80% of day reach is prey at noon (${noonSees}) and out of sight at midnight (${midSees})`) }
+    H.x = keep.x; H.y = keep.y; rebuild() }
+  S.gameMin = t0 }
+
 console.log(fail ? `\nlorecheck: ${fail} FAILED\n` : '\nlorecheck: all ok\n');
 process.exit(fail ? 1 : 0);
