@@ -214,5 +214,53 @@ console.log('hold');
   HD.holdStart(W, hr); const hp = W.hp; W.state = 'dead'; HD.holdTick(.1); ok(!S.gambitHold, 'a hold ends with its hero'); W.state = 'town'; W.hp = hp;
   setRunnerLinks(links0); W.gambits = null;
 }
+// ---------------------------------------------------------------- the diff against the class preset (#679)
+console.log('\nhow a list differs from its class preset (#679)');
+{
+  const Wr = S.agents.find(a => a.kind === 'hero' && a.cls === 'Warrior' && a.state !== 'dead');
+  const saved = Wr.gambits, hist = Wr.gambitHist, day = Wr.gambitDay; Wr.gambits = null; Wr.gambitHist = []; Wr.gambitDay = null;
+  if (!Wr.player) P.markPlayer(Wr, true);
+  const Pr = G.presetFor('Warrior'), idOf = t => Pr.find(r => r.then === t).id, fleeId = idOf('flee_home'), potId = idOf('drink_potion');
+  let d = G.gambitDiff(Wr);
+  ok(d.unchanged && !d.edited && d.summary === 'class preset, unchanged' && d.rules.every(r => r.status === 'same' && !r.moved) && !d.dropped.length, 'an untouched preset: "' + d.summary + '"');
+  const s0 = JSON.stringify(G.gambitDiff(Wr)); ok(s0 === JSON.stringify(G.gambitDiff(Wr)) && !Wr.gambits, 'the diff is read-only and repeats');
+  // added
+  G.setGambit(Wr, {when: 'self_hp_below 25', then: 'shout Fall back!', why: 'call for help'});
+  d = G.gambitDiff(Wr); let r = d.rules.find(x => x.status === 'added');
+  ok(d.counts.added === 1 && r && r.edit && r.edit.why === 'call for help' && /1 added/.test(d.summary), 'added: ' + d.summary);
+  // changed (arguments of a preset rule, same id)
+  const restId = Pr.find(x => x.then === 'rest' && x.w && x.w.pct === 60).id;
+  G.setGambit(Wr, {id: restId, when: 'self_hp_below 70', then: 'rest 60 yes', why: 'rest sooner'});
+  d = G.gambitDiff(Wr); r = d.rules.find(x => x.id === restId);
+  ok(r.status === 'changed' && r.preset && /pct: 60/.test(r.preset.rule) && /pct: 70/.test(r.rule) && r.edit.why === 'rest sooner', 'changed: rule ' + restId + ' shows the preset version (' + r.preset.rule + ')');
+  // moved
+  G.moveGambit(Wr, {id: potId, before: 'top', why: 'potions first'});
+  d = G.gambitDiff(Wr); r = d.rules.find(x => x.id === potId);
+  ok(r.moved === 'up' && r.status === 'same' && d.counts.moved === 1 && d.rules.filter(x => x.moved).length === 1, 'moved: only the rule moved is marked (up), ' + d.summary);
+  // turned off: a safety rule
+  G.toggleGambit(Wr, {id: fleeId, on: 'no', why: 'stand and fight'});
+  d = G.gambitDiff(Wr); r = d.rules.find(x => x.id === fleeId);
+  ok(r.status === 'off' && d.safety.flee === 'off' && /flee rule off/.test(d.summary), 'off: ' + d.summary);
+  // a tank's off suggestion turned on is a change
+  const guardId = idOf('guard'); G.toggleGambit(Wr, {id: guardId, on: 'yes'});
+  ok(G.gambitDiff(Wr).rules.find(x => x.id === guardId).status === 'changed', 'the guard suggestion turned on reads as changed');
+  // dropped
+  G.dropGambit(Wr, {id: fleeId, why: 'one life, no running'});
+  d = G.gambitDiff(Wr);
+  ok(d.dropped.length === 1 && d.dropped[0].id === fleeId && d.dropped[0].safety === 'flee' && d.safety.flee === 'gone' && /1 dropped/.test(d.summary) && /flee rule gone/.test(d.summary), 'dropped: ' + d.summary);
+  // weakened: a potion rule changed while another potion rule stands
+  G.setGambit(Wr, {id: potId, when: 'self_hp_below 10', then: 'drink_potion'}); G.setGambit(Wr, {when: 'foe_is elite', then: 'drink_potion'});
+  ok(G.gambitDiff(Wr).safety.potion === 'weakened', 'weakened: a preset potion rule changed while another stands');
+  // the purpose line names the hero's own rule
+  ok(G.ownRule(Wr, d.rules.find(x => x.status === 'added').id) && !G.ownRule(Wr, idOf('defend')), 'ownRule: an added rule is the hero\'s own, a preset rule is not');
+  // reset
+  G.resetGambits(Wr, {preset: 'class', why: 'back to basics'});
+  d = G.gambitDiff(Wr); ok(d.unchanged && d.edited && d.summary === 'own list, same as the Warrior preset' && d.rules.every(r => !r.edit), 'after reset: "' + d.summary + '"');
+  G.resetGambits(Wr, {preset: 'cautious'}); d = G.gambitDiff(Wr);
+  ok(d.counts.added === 2 && !d.counts.dropped && !Object.keys(d.safety).length, 'the cautious preset: ' + d.summary);
+  G.resetGambits(Wr, {preset: 'empty'}); d = G.gambitDiff(Wr);
+  ok(d.dropped.length === Pr.length && d.safety.flee === 'gone' && d.safety.potion === 'gone' && d.safety.defend === 'gone', 'the empty preset: ' + d.summary);
+  Wr.gambits = saved; Wr.gambitHist = hist; Wr.gambitDay = day;
+}
 console.log('\n' + (fail ? fail + ' FAILED' : 'all ok'));
 process.exit(fail ? 1 : 0);

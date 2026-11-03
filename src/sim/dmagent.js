@@ -33,8 +33,9 @@ import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
 import {fileWish} from './wish.js'; // #663
-import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS} from './levers.js';
+import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS,validate as leverValidate} from './levers.js';
 import {log as chronLog} from './chronicle.js';
+import {setWhen,setWatch,cancel as whenCancel,whensView,whenStatus,whenTick,setWhenHooks} from './dmwhen.js'; // deferred actions and chosen wakes (#635)
 import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
 import {openProps} from './council.js';
@@ -138,7 +139,7 @@ function remember(tool,args,ok){const D=dmState();D.stats.calls++;
 // Each call lands in the open turn (opened by the first call after the last turn closed); the runner closes it with
 // turn_end {turn, model, provider, cost, seconds, tokensIn, tokensOut}, sent by the relay when the seat's runner reports the turn
 // (never a DM tool: the agent cannot write it). Game time only, no dice; a silent seat records nothing.
-const READS=new Set(['dm_status','read_timeline','read_chronicle','read_dm_log','fellowship_view','companies_view','heroes_near','npcs','regions','hooks','levers','notes_read','recall']);
+const READS=new Set(['whens','watches','dm_status','read_timeline','read_chronicle','read_dm_log','fellowship_view','companies_view','heroes_near','npcs','regions','hooks','levers','notes_read','recall']);
 const NOTEW=new Set(['notes_write','remember','update_memory','forget','pin']);
 const cutT=(s,n)=>{s=clean(s,400);return s.length>n?s.slice(0,n-1)+'…':s};
 function openTurn(D){if(!Array.isArray(D.turns)){D.turns=[];D.tseq=0;D.tv=0}
@@ -285,6 +286,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
     campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
+    ...whenFields(),
     notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length])),relevant_notes:relevant(dmBook(D),dmContext())}} // relevant_notes: your notes that bear on the moment, {id,title} (#155)
 
 function timelineRead(n){return {ok:true,timeline:(S.timeline||[]).slice(0,nOf(n,12,1,30)).map(e=>({day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,text:txt(e.parts)}))}}
@@ -640,7 +642,8 @@ function dream(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)return
   dmlog('agent',null,['Dream for '+h.name+' (DM agent), when they next sleep'],{by:'dm-agent',voice:'dream',hero:h.id});
   return {ok:true,dream_for:h.name,note:'Delivered when '+h.name+' wakes from camp or an inn rest.'}}
 const sleeping=h=>h.state==='camp'||h.state==='town'&&Array.isArray(h.pq)&&!!h.pq[0]&&h.pq[0].kind==='rest';
-export function dreamTick(){const D=S.dmAgent;if(D&&D.seat&&(D.earAt==null||S.gameMin-D.earAt>=3||S.gameMin<D.earAt)){D.earAt=S.gameMin;listen(D)} // the DM hears what is said aloud (#558)
+export function dreamTick(){whenTick(); // the DM's whens and watches (#635): returns at once when none is set
+  const D=S.dmAgent;if(D&&D.seat&&(D.earAt==null||S.gameMin-D.earAt>=3||S.gameMin<D.earAt)){D.earAt=S.gameMin;listen(D)} // the DM hears what is said aloud (#558)
   const L=D&&D.dreams;if(!L||!L.length)return;
   for(let i=L.length-1;i>=0;i--){const d=L[i],h=byIdA(d.hero);
     if(!h||!alive(h)){L.splice(i,1);continue}
@@ -741,7 +744,15 @@ export function dmAct(tool,args={}){
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
   const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
-  try{switch(tool){
+  try{r=run(tool,args)}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
+  if(!r)r={ok:false,error:'no answer'};
+  if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene'||tool==='mark_danger'||tool==='custom_foe')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
+  if(prepping&&!prepActive()&&tool!=='prep_done'&&r&&typeof r==='object')r={...r,prep:'Your prep is over (its '+(prepView().why==='calls'?'calls':'time')+' ran out): the table opens now. End this turn.'};
+  if(!((tool==='table_call'||tool==='npc_call'||tool==='ruling_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
+  return r}
+// One tool, answered (dmAct's bookkeeping aside); a when fires its action through it too (#635).
+function run(tool,args){let r;
+  switch(tool){
     case 'dm_status':r=status();break;
     case 'read_timeline':r=timelineRead(args.n);break;
     case 'read_chronicle':r=chronicleRead(args.n);break;
@@ -778,10 +789,32 @@ export function dmAct(tool,args={}){
     case 'ruling_call':r=rulingCall(args);break;
     case 'ruling_answer':r=rulingAnswer(args);break;
     case 'prep_done':r=prepDone(args);break;
+    case 'when':r=setWhen(args);break;
+    case 'watch':r=setWatch(args);break;
+    case 'whens':case 'watches':r=whensView();break;
+    case 'unwhen':r=whenCancel('when',args.id);break;
+    case 'unwatch':r=whenCancel('watch',args.id);break;
     case 'seed_rumour':case 'bestow':r=renownTool(tool,args);break; // #637, #638
-  }}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
-  if(!r)r={ok:false,error:'no answer'};
-  if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene'||tool==='mark_danger'||tool==='custom_foe')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
-  if(prepping&&!prepActive()&&tool!=='prep_done'&&r&&typeof r==='object')r={...r,prep:'Your prep is over (its '+(prepView().why==='calls'?'calls':'time')+' ran out): the table opens now. End this turn.'};
-  if(!((tool==='table_call'||tool==='npc_call'||tool==='ruling_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
+  }
   return r}
+
+// ---- when and watch (#635): the DM's deferred actions and chosen wakes, in src/sim/dmwhen.js ----
+// dm_status carries them only once one was set (an older or quiet seat reads as before).
+function whenFields(){const w=whenStatus();return w?{whens:w.whens,watches:w.watches,fired:w.fired,watches_fired:w.watches_fired}:{}}
+// When a when is set: its action's arguments checked as the tool would read them now (a lever's params, a place, a person,
+// a hero); a staged scene is previewed. Only shape errors refuse: what may change by then (who is where, the day's limits)
+// is checked again, for real, when it fires. who: the action names the hero who trips it ({who}), so hero and place reads wait.
+function whenCheck(tool,a,o={}){
+  if(tool==='pull_lever'){const name=leverAlias(clean(a.lever,40));if(!LEVERS[name]||!leverNames().includes(name))return {error:'no such lever "'+clean(a.lever,40)+'"; levers: '+leverNames().join(', ')};
+    if(name==='named_foe')return {error:'named foes are raised by the scripted DM inside a running scene'};if(o.who)return null;
+    const params=aliasParams(clean(a.lever,40),leverParams(name,a));if(!params)return {error:'params must be an object',usage:leverUsage(name)};
+    const v=leverValidate(LEVERS[name],params);return typeof v==='string'?{error:'the lever '+name+': '+v,usage:leverUsage(name)}:null}
+  if(o.who)return null;
+  if(tool==='narrate'){const n=clean(a.near,60);if(n.toLowerCase()!=='table'&&!placeOf(n))return {error:'narrate near: unknown place "'+n+'" (a hero name or id, a town, a region, "x,y", or "table")'};return null}
+  if(tool==='npc_say'){const p=personOf(a.npc);if(!p){const nb=nobody(a.npc);return {error:nb.error}}return null}
+  if(tool==='whisper'||tool==='dream'||tool==='give_item'||tool==='take_item'){if(!heroOf(a.hero))return {error:'hero: no living hero called "'+clean(a.hero,40)+'"'};
+    if(tool==='whisper'&&a.as!=null&&a.as!==''&&!personOf(a.as))return {error:nobody(a.as).error};if(tool==='dream'&&!heroOf(a.hero).player)return {error:heroOf(a.hero).name+' is not agent-played: only agent heroes dream'};return null}
+  if(tool==='stage_scene'){const r=stageScene({...a,preview:'true'});const{ok,error,...rest}=r||{};
+    return {preview:ok?rest:{now:clean(String(error||'').replace(/^Refused:\s*/,''),200),note:'Refused if it fired now; it is checked again when it fires.'}}}
+  return null}
+setWhenHooks({fire:(tool,args)=>run(tool,args&&typeof args==='object'?args:{}),check:whenCheck});
