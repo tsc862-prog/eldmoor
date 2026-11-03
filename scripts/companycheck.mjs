@@ -338,5 +338,22 @@ ok(!r.ok, 'a Fellowship member cannot propose a merge: ' + r.error);
 r = act(FM, 'propose', {kind: 'expel', hero_id: CO.members(S.fellowship)[1].name});
 ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
 
+// ---- scripted recruiting never takes a company hero (#510) ----
+{
+  init({fellowship: false}); run(120);
+  const {seekParty} = await import('../src/sim/party.js');
+  const hs = S.agents.filter(b => living(b) && !b.fellow && !b.companion && !b.player && b.company == null);
+console.log('POOL',hs.length,[...new Set(hs.map(b=>b.fac+homeOf(b).name))]);
+  const hm = homeOf(hs.find(b => hs.filter(c => homeOf(c) === homeOf(b) && c.fac === b.fac).length >= 3)); const grp = hs.filter(b => homeOf(b) === hm && b.fac === hs.find(c => homeOf(c) === hm).fac);
+  const seeker = grp[0], solo = grp[1], other = grp[2];
+  for (const b of [seeker, solo, other]) {if (b.party) leaveParty(b); b.state = 'town'; b.lvl = seeker.lvl; b.linger = 0; b.traits = b.traits}
+  markPlayer(solo, true);
+  ok(CO.companyOf(solo), 'the solo is in a company');
+  const before = S.parties.length; let tries = 0;
+  for (let i = 0; i < 30 && !seeker.party; i++, tries++) {if (!solo.party) {} seekParty(seeker)}
+  ok(!solo.party && !(seeker.party && seeker.party.mem.includes(solo)), 'a company solo near a forming scripted party is never recruited');
+  if (seeker.party) leaveParty(seeker);
+}
+
 console.log(fail ? `\ncompanycheck: ${fail} failure(s)` : '\ncompanycheck: all ok');
 process.exit(fail ? 1 : 0);
