@@ -144,7 +144,7 @@ if (process.argv[2] === '--ffbounty') {
   out.postedFF = posted.filter(h => h.ff).length; out.postedOther = posted.filter(h => !h.ff).length;
   const hl = hallLines(); out.hallLines = hl.length;
   out.lineNames = hl.every(e => e.parts.some(p => p && p.kind === 'hero' && fo.ids.has(p.id)) && e.parts.some(p => p && p.t === c.name));
-  out.lineKept = hl.every(e => chronicleFocus(e)); out.lineNoDm = hl.every(e => !/DM|dungeon master/i.test(e.parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('')));
+  out.lineKept = hl.every(e => chronicleFocus(e)); out.lineNoDm = hl.every(e => !/\bDM\b|dungeon master/i.test(e.parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('')));
   out.lineText = hl.length ? hl[0].parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('') : '';
   const ff = S.adventures.filter(h => h.phase === 'open' && h.town === c.name && h.ff);
   out.refillFF = ff.length; out.refillTpl = ff.map(h => h.tpl + (h.data && h.data.bounty ? '(bounty)' : h.data && h.data.eliteId != null ? '(elite)' : '')).join(',');
