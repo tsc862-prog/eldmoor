@@ -45,14 +45,25 @@ export const costOf = (model, inTok, outTok) => {const p = priceFor(model); retu
 export const isChatModel = id => /^(gpt-|o\d|chatgpt-|chat-latest)/.test(id)
   && !/(embedding|whisper|tts|dall-e|image|audio|realtime|transcribe|moderation|search|codex|instruct|davinci|babbage|computer-use|sora|deep-research|diarize)/.test(id);
 
-const scrub = s => String(s == null ? '' : s).replace(/sk-[A-Za-z0-9_-]{6,}/g, 'sk-…').replace(/Bearer\s+\S+/gi, 'Bearer …');
+const scrub = s => String(s == null ? '' : s).replace(/sk-[A-Za-z0-9_-]{6,}/g, 'sk-…').replace(/hf_[A-Za-z0-9]{6,}/g, 'hf_…').replace(/Bearer\s+\S+/gi, 'Bearer …');
 const fail = (msg, extra) => Object.assign(new Error(msg), extra || {});
 const sleep = (ms, signal) => new Promise((res, rej) => {
   const t = setTimeout(res, ms);
   if (signal) signal.addEventListener('abort', () => {clearTimeout(t); rej(Object.assign(new Error('aborted'), {name: 'AbortError'}))}, {once: true});
 });
 
-export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel = null, fetchImpl = globalThis.fetch, statusTtl = 60000} = {}) {
+// Hugging Face Inference Providers router (issue #552): OpenAI-compatible, the same adapter with another name,
+// base URL and key. Only the free allowance is used (the owner keeps no payment method): a request is a plain
+// chat completion with the model id as given and no billing options; the cost is 0 (free tier), an exhausted
+// allowance (402, or 429 naming credits/quota) is a 'quota' error, never charged. HF_TOKEN is read from the
+// environment by the process that calls and goes only into the Authorization header.
+export const HF_URL = 'https://router.huggingface.co/v1';
+export const HF_PRICES_SOURCE = 'free allowance of the Hugging Face router (no paid options are ever sent); cost 0';
+export const HF_OPTS = {name: 'hf', label: 'Hugging Face', keyName: 'HF_TOKEN', baseUrl: HF_URL, free: true, sendEffort: false, tokensField: 'max_tokens', modelFilter: () => true, pricesSource: HF_PRICES_SOURCE};
+export const hfAdapter = (o = {}) => openaiAdapter({...HF_OPTS, ...o});
+
+export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel = null, fetchImpl = globalThis.fetch, statusTtl = 60000,
+  name = 'openai', label = 'OpenAI', keyName = 'OPENAI_API_KEY', free = false, sendEffort = true, tokensField = 'max_completion_tokens', modelFilter = isChatModel, pricesSource = PRICES_SOURCE} = {}) {
   const base = String(baseUrl || OPENAI_URL).replace(/\/+$/, '');
   const noEffort = new Set(); // models that rejected reasoning_effort
   let cached = null, cachedAt = 0;
@@ -62,17 +73,18 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     const e = j && j.error || {}, msg = scrub(e.message || '').slice(0, 160), code = e.code || e.type || '';
     const ra = Number(headers && headers.get && headers.get('retry-after'));
     const retryAfter = Number.isFinite(ra) && ra >= 0 ? ra : null;
-    if (status === 401) return fail('openai: bad or missing key', {status, kind: 'auth'});
-    if (status === 429 && /insufficient_quota/.test(code)) return fail('openai: out of credit (insufficient quota; check billing)', {status, kind: 'quota'});
-    if (status === 429) return fail('openai: rate limit' + (retryAfter != null ? ` (retry after ${retryAfter} s)` : ''), {status, kind: 'rate', retryAfter, ...(retryAfter != null ? {headers: {'retry-after': String(retryAfter)}} : {})}); // headers: what the relay's limiter (providers/limiter.mjs rateLimitOf) reads
-    if (status === 404) return fail('openai: model not found or not available to this key' + (msg ? ' (' + msg + ')' : ''), {status, kind: 'model'});
-    return fail('openai: ' + (msg || 'HTTP ' + status), {status, kind: 'http', apiMessage: msg});
+    if (status === 401) return fail(name + ': bad or missing key', {status, kind: 'auth'});
+    if (free && (status === 402 || (status === 429 && /credit|quota|allowance|exceeded your monthly/i.test(msg)))) return fail(name + ': free allowance used up', {status, kind: 'quota'});
+    if (status === 429 && /insufficient_quota/.test(code)) return fail(name + ': out of credit (insufficient quota; check billing)', {status, kind: 'quota'});
+    if (status === 429) return fail(name + ': rate limit' + (retryAfter != null ? ` (retry after ${retryAfter} s)` : ''), {status, kind: 'rate', retryAfter, ...(retryAfter != null ? {headers: {'retry-after': String(retryAfter)}} : {})}); // headers: what the relay's limiter (providers/limiter.mjs rateLimitOf) reads
+    if (status === 404) return fail(name + ': model not found or not available to this key' + (msg ? ' (' + msg + ')' : ''), {status, kind: 'model'});
+    return fail(name + ': ' + (msg || 'HTTP ' + status), {status, kind: 'http', apiMessage: msg});
   }
 
   // One POST with the reasoning_effort fallback and a bounded wait on 429. waitMs: the most we sleep for
   // a rate limit in total (0 = never; decisions have seconds, an agent turn can afford more).
   async function post(path, body, {signal, waitMs = 0, retries = 1} = {}) {
-    if (!apiKey) throw fail('openai is not configured (no OPENAI_API_KEY): bad or missing key', {status: 401, kind: 'auth'});
+    if (!apiKey) throw fail(name + ' is not configured (no ' + keyName + '): bad or missing key', {status: 401, kind: 'auth'});
     let waited = 0;
     for (let attempt = 0; ; attempt++) {
       const r = await fetchImpl(base + path, {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer ' + apiKey}, body: JSON.stringify(body), signal});
@@ -88,24 +100,24 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     }
   }
 
-  const effortField = mdl => noEffort.has(mdl) ? {} : {reasoning_effort: 'none'};
+  const effortField = mdl => !sendEffort || noEffort.has(mdl) ? {} : {reasoning_effort: 'none'};
 
   return {
-    name: 'openai', local: false, defaultModel: defaultModel || null, pricesSource: PRICES_SOURCE,
+    name, label, local: false, free, defaultModel: defaultModel || null, pricesSource,
     configured: () => !!apiKey,
     // Reachable and the key accepted, and the chat models this key can use (GET /models). Cached.
     async status() {
-      if (!apiKey) return {ok: false, models: [], default: defaultModel || null, error: 'no OPENAI_API_KEY'};
+      if (!apiKey) return {ok: false, models: [], default: defaultModel || null, error: 'no ' + keyName};
       if (cached && Date.now() - cachedAt < statusTtl) return cached;
       const ac = new AbortController(), t = setTimeout(() => ac.abort(), 4000);
       try {
         const r = await fetchImpl(base + '/models', {headers: {authorization: 'Bearer ' + apiKey}, signal: ac.signal});
         let j = null; try {j = await r.json()} catch {}
         if (!r.ok) throw apiError(r.status, j, r.headers);
-        const models = (Array.isArray(j && j.data) ? j.data : []).map(m => m && m.id).filter(id => typeof id === 'string' && isChatModel(id)).sort();
-        cached = {ok: true, models, default: defaultModel || null, ...(defaultModel ? {} : {note: 'pick a model (OPENAI_MODEL sets a default)'})};
+        const models = (Array.isArray(j && j.data) ? j.data : []).map(m => m && m.id).filter(id => typeof id === 'string' && modelFilter(id)).sort();
+        cached = {ok: true, models, default: defaultModel || null, ...(defaultModel ? {} : {note: 'pick a model (' + keyName.replace(/_(API_KEY|TOKEN)$/, '') + '_MODEL sets a default)'})};
       } catch (e) {
-        cached = {ok: false, models: [], default: defaultModel || null, error: e.name === 'AbortError' ? 'not reachable (timeout)' : e.kind ? e.message.replace(/^openai: /, '') : 'not reachable (' + scrub(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
+        cached = {ok: false, models: [], default: defaultModel || null, error: e.name === 'AbortError' ? 'not reachable (timeout)' : e.kind ? e.message.replace(name + ': ', '') : 'not reachable (' + scrub(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
       } finally {clearTimeout(t)}
       cachedAt = Date.now();
       return cached;
@@ -113,9 +125,9 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     // One structured decision or writing request.
     async call({system, user, schema, maxTokens, model, signal}) {
       const mdl = model || defaultModel;
-      if (!mdl) throw fail('openai: no model chosen (pick one in the mind row, or set OPENAI_MODEL)');
+      if (!mdl) throw fail(name + ': no model chosen (pick one in the mind row, or set the default model in .env)');
       const t0 = Date.now();
-      const body = {model: mdl, ...effortField(mdl), max_completion_tokens: maxTokens,
+      const body = {model: mdl, ...effortField(mdl), [tokensField]: maxTokens,
         response_format: {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema}},
         messages: [{role: 'system', content: system}, {role: 'user', content: user}]};
       const j = await post('/chat/completions', body, {signal, retries: 0}); // a 429 goes to the relay's limiter (queue pause, writing kinds retried)
@@ -129,8 +141,8 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     // shape {message:{role,content,tool_calls?}, usage:{in,out,cost,costKnown}, model, ms, done}.
     async chat({model, messages, tools, format, strict = false, maxTokens = 600, signal}) {
       const mdl = model || defaultModel;
-      if (!mdl) throw fail('openai: no model chosen (use --model, or set OPENAI_MODEL)');
-      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), max_completion_tokens: maxTokens, messages: toOpenAI(messages),
+      if (!mdl) throw fail(name + ': no model chosen (use --model, or set the default model in .env)');
+      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), [tokensField]: maxTokens, messages: toOpenAI(messages),
         ...(tools ? {tools} : {}), ...(format ? {response_format: strict ? {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema: format}} : {type: 'json_object'}} : {})};
       const j = await post('/chat/completions', body, {signal, waitMs: 30000, retries: 4});
       const out = finish(j, mdl, t0, false);
@@ -144,7 +156,7 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
   function finish(j, mdl, t0, structured) {
     const ch = j && Array.isArray(j.choices) ? j.choices[0] : null, m = ch && ch.message || {};
     const billed = j && j.model || mdl, u = j && j.usage || {};
-    const inTok = +u.prompt_tokens || 0, outTok = +u.completion_tokens || 0, c = costOf(billed, inTok, outTok) ?? costOf(mdl, inTok, outTok);
+    const inTok = +u.prompt_tokens || 0, outTok = +u.completion_tokens || 0, c = free ? 0 : costOf(billed, inTok, outTok) ?? costOf(mdl, inTok, outTok);
     const usage = {in: inTok, out: outTok, cost: c ?? 0, costKnown: c != null, ...(c == null ? {costNote: 'unknown'} : {})};
     const text = typeof m.content === 'string' ? m.content : null;
     const out = {text, usage, model: billed, ms: Date.now() - t0, raw: m, finish: ch && ch.finish_reason || null};

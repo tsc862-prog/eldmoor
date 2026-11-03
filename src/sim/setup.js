@@ -15,7 +15,7 @@
 //         group's); a hero with no group is a company of one (a solo). Each company is of one faction; the world
 //         may hold both.
 //   fac   the together faction; for apart the default of a hero with none
-//   mind  {mode:'agent', provider:'anthropic'|'ollama'|'openai', model}: an agent runner plays the hero through
+//   mind  {mode:'agent', provider:'anthropic'|'ollama'|'openai'|'hf', model}: an agent runner plays the hero through
 //         the game tools (the model is what its runner is started with). Agent heroes are always agent-played
 //         (hard rule, #148): a hero has no scripted or AI mind; an older setup's are turned into agents.
 //   dm    {mode:'scripted'} or {mode:'agent', provider, model}: the DM seat is opened and a DM runner started
@@ -55,7 +55,7 @@ export function seatCap(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];re
 export function seatNote(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];
   return H.length>SEATS.PAID&&seatCap(s0)===SEATS.LOCAL?H.length+' local minds share one GPU: each agent turn will be slow (expect long waits between turns).':''}
 export const CLAUDE_MODELS={haiku:'claude-haiku-5-5',sonnet:'claude-sonnet-5-5'};
-export const SETUP_PROVIDERS=['anthropic','ollama','openai']; // what the runners can start with
+export const SETUP_PROVIDERS=['anthropic','ollama','openai','hf']; // what the runners can start with
 export const MIND_MODES=['agent']; // a hero's mind (#148); the DM may still be scripted (DM_MODES)
 export const DM_MODES=['scripted','agent'];
 export const ARCHETYPE_RANDOM='random';

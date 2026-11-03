@@ -561,6 +561,20 @@ off", "model refused". A failed call means the hero plays scripted. Agent runs r
 does, and never prints it. `npm run openaicheck` (in CI) tests all of it against a mock OpenAI server,
 with no key and no network.
 
+### Hugging Face router (issue #552)
+
+A fourth mind provider, id `hf`, label "Hugging Face": the router at `https://router.huggingface.co/v1` speaks the OpenAI Chat
+Completions shape, so it is `scripts/providers/openai.mjs` with other options (`hfAdapter`, `HF_OPTS`: name, `HF_TOKEN`, `max_tokens`,
+no `reasoning_effort`, every listed model offered, cost 0 and known). Free allowance only: the owner keeps no payment method, a request
+carries just `model`, `max_tokens`, `messages` and the structured-output/tools fields (no provider or billing options), the model id
+goes as given, and an exhausted allowance (HTTP 402, or a 429 naming credits/quota) is the error "hf: free allowance used up" (kind
+`quota`, never retried): the hero plays scripted. Setup: `HF_TOKEN=hf_...` in `.env` (read by the relay and the runners only, never printed,
+scrubbed from errors); optional `HF_MODEL` (default model) and `HF_BASE_URL`. `GET /health` lists it under `providers.hf` with the router's
+models; the mind rows, the Start runner picker and the setup page offer them as `<model> · hf` (first 80). It has its own limiter
+(`RELAY_HF_CONCURRENCY`, default 2, `queues.hf`). Agent play is the OpenAI path (`--provider hf --model <id>`, `scripts/agent-chat.mjs`
+`openaiRunner` hands back the hf adapter, same loop, forced scene answers and reflections; it takes no Claude slot and keeps the kind's
+turn cap and budget caps, though its cost is 0). `npm run hfcheck` (in CI) tests it against a mock router on a free port, no token and no network.
+
 ## DM agent (issue #66, part 1)
 
 An AI agent can sit in the DM seat between scenes: it reads the world, keeps campaign notes and shapes

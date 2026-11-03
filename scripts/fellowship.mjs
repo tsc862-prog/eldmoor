@@ -151,7 +151,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
-    if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama or openai); skipped`); await release(h.id); return}
+    if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama, openai or hf); skipped`); await release(h.id); return}
     if (rs.provider === 'ollama') {
       // a local member (issue #97 part 2): plays through scripts/local-agent.mjs, no key, cost 0
       if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
@@ -161,17 +161,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const s = await ollama.status();
       if (!opt('model', null) && s.ok) {const p = await preferLoaded(ollama, rs.model, s.models); if (p.note) {out(h.name, p.note); rs.model = p.model}}
       if (!s.ok || !s.models.includes(rs.model)) {skip(h, s.ok ? `local model ${rs.model} is not pulled (pulled: ${s.models.join(', ') || 'none'}; ollama pull ${rs.model}); skipped` : `Ollama at ${s.url} is ${s.error}; skipped`); await release(h.id); return}
-    } else if (rs.provider === 'openai') {
+    } else if (rs.provider === 'openai' || rs.provider === 'hf') {
       // an OpenAI member (issue #97): the same loop against Chat Completions, real cost; the key stays in this process
       const o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
       if (o.error) {skip(h, o.error + '; skipped'); await release(h.id); return}
       openaiChat = o.adapter.chat; openaiAd = o.adapter;
     } else if (!env.ANTHROPIC_API_KEY) {skip(h, 'plays Claude but there is no ANTHROPIC_API_KEY in the environment or .env (use --env FILE, or --provider ollama); skipped'); await release(h.id); return}
     sess.runner = rs; saveSession(sess, {url: base});
-    const m = {id: h.id, name: st.name, world: h.world, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai', paid: rs.provider === 'openai', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
+    const m = {id: h.id, name: st.name, world: h.world, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || rs.provider === 'openai' || rs.provider === 'hf', paid: rs.provider === 'openai' || rs.provider === 'hf', turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
       maxTurns: turnCap(turnsAsked, rs.provider, 6), fails: failTracker(pace.maxFails)};
     members.set(h.id, m); claim(h.id);
-    out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.paid ? rs.model + ' (OpenAI)' : m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'} | ${capText(m.maxTurns)}`);
+    out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.paid ? rs.model + (rs.provider === 'hf' ? ' (Hugging Face)' : ' (OpenAI)') : m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'} | ${capText(m.maxTurns)}`);
     loop(m).catch(e => {m.ended = 'error: ' + e.message; out(m.name, 'loop failed: ' + e.message)});
   }
 
@@ -212,7 +212,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     m.sess.turns++; m.turns++; m.reflections = (m.reflections || 0) + 1;
     reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model: m.rs.model, turn: m.sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
     if (r) {m.tools += r.tools; m.tin += r.in; m.tout += r.out; m.notes = (m.notes || 0) + r.wrote; if (r.dead) m.ended = 'dead';
-      if (m.paid) {spent += r.cost; m.cost += r.cost; m.sess.costUsd = (m.sess.costUsd || 0) + r.cost; out(m.name, `[turn ${m.turns}, reflection] ${paidLine(r, m.rs.model, 'openai', {run: spent})} of ${money(budget)} | member ${money(m.cost)}`)}
+      if (m.paid) {spent += r.cost; m.cost += r.cost; m.sess.costUsd = (m.sess.costUsd || 0) + r.cost; out(m.name, `[turn ${m.turns}, reflection] ${paidLine(r, m.rs.model, m.rs.provider, {run: spent})} of ${money(budget)} | member ${money(m.cost)}`)}
       else out(m.name, `[turn ${m.turns}, reflection] ${localLine(r, m.rs.model)} | member tokens ${m.tin} / ${m.tout}`)}
     saveSession(m.sess, {url: base});
     return localWorked(r);
@@ -322,7 +322,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model: m.rs.model, turn: m.sess.turns, wake: w, brief: b0, ...lr, ...(err ? {error: err} : {})})}
     if (r) {m.tools += r.tools; m.tin += r.in; m.tout += r.out; if (r.dead) m.ended = 'dead';
       if (m.paid) {spent += r.cost; m.cost += r.cost; m.sess.costUsd = (m.sess.costUsd || 0) + r.cost;
-        out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${paidLine(r, m.rs.model, 'openai', {run: spent})} of ${money(budget)} | member ${money(m.cost)}`)}
+        out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${paidLine(r, m.rs.model, m.rs.provider, {run: spent})} of ${money(budget)} | member ${money(m.cost)}`)}
       else out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${localLine(r, m.rs.model)} | member tokens ${m.tin} / ${m.tout}`)}
     saveSession(m.sess, {url: base});
     return localWorked(r);

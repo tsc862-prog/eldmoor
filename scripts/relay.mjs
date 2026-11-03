@@ -9,12 +9,12 @@
 //                  {kind:'persona'|'backstory'|'memory'|'chapter', snapshot:{...companions:[{id,name,...}]}}  (Fellowship writing, #68:
 //                  persona -> {voice,wants,fears,quirk,never_says,stances:{id:line}}; backstory -> {family,arms,defining,
 //                  flaw,wants,joined,link,summary,link_id,link_hero,link_kind}; memory -> {long}; plus model)
-//                  Any request may add provider:'anthropic'|'ollama'|'openai'|'google', model:'<id or tag>', effort
+//                  Any request may add provider:'anthropic'|'ollama'|'openai'|'hf'|'google', model:'<id or tag>', effort
 //                  (Mixed minds, #97; the hero's a.brainCfg). Default: anthropic with the models below.
 //     200 {choice?, crypt?, line?, reason?, sent, usage:{in,out,cost}, provider, model}   (cryptCall: {crypt, reason})
 //     4xx/5xx {error:'...', sent?, provider?, model?}   (the sim treats any error as "scripted")
 //   GET  /health   {ok, model, requests, cost, byProvider:{name:{requests,errors,inTok,outTok,cost,ms}},
-//                   providers:{anthropic:{ok,models}, ollama:{ok,url,models (pulled, from /api/tags),numCtx (#221),error?}, openai, google}, localTimeout}
+//                   providers:{anthropic:{ok,models}, ollama:{ok,url,models (pulled, from /api/tags),numCtx (#221),error?}, openai, hf (Hugging Face router, #552), google}, localTimeout}
 //
 // Providers: scripts/providers/ (anthropic.mjs = the Claude call, ollama.mjs = local models at OLLAMA_URL,
 // default http://localhost:11434, cost 0; openai.mjs = OpenAI Chat Completions; google.mjs is a stub until built).
@@ -71,7 +71,8 @@ export const LOG_FILE = join(ROOT, 'logs', 'relay.jsonl');
 export const ANTHROPIC_CONCURRENCY = 2, RATE_RETRIES = 3, RATE_PAUSE_MAX = 10000;
 export const DECIDE_MIN_LEFT = 300; // a decision that would leave the queue with less than this before its deadline is dropped (at most a quarter of its timeout)
 export const OPENAI_CONCURRENCY = 4; // env RELAY_OPENAI_CONCURRENCY
-export const makeLimits = (env = {}) => ({anthropic: makeLimiter({max: Number(env.RELAY_ANTHROPIC_CONCURRENCY) || ANTHROPIC_CONCURRENCY}), openai: makeLimiter({max: Number(env.RELAY_OPENAI_CONCURRENCY) || OPENAI_CONCURRENCY})});
+export const HF_CONCURRENCY = 2; // env RELAY_HF_CONCURRENCY (the free allowance has tight rate limits, #552)
+export const makeLimits = (env = {}) => ({anthropic: makeLimiter({max: Number(env.RELAY_ANTHROPIC_CONCURRENCY) || ANTHROPIC_CONCURRENCY}), openai: makeLimiter({max: Number(env.RELAY_OPENAI_CONCURRENCY) || OPENAI_CONCURRENCY}), hf: makeLimiter({max: Number(env.RELAY_HF_CONCURRENCY) || HF_CONCURRENCY})});
 const sleepFor = (ms, signal) => new Promise((res, rej) => {if (signal && signal.aborted) return rej(Object.assign(new Error('aborted'), {name: 'AbortError'}));
   const t = setTimeout(res, ms); if (signal) signal.addEventListener('abort', () => {clearTimeout(t); rej(Object.assign(new Error('aborted'), {name: 'AbortError'}))}, {once: true})});
 // One provider call through its limiter: queued (decisions first), paused on 429, writing kinds retried.
