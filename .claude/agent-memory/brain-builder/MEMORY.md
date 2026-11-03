@@ -38,3 +38,4 @@
 - [Give item](give-item.md) — #524 give_item/take_item levers, token alias, flat tools, allow:['item'], ilvl, pitfalls
 - [Scene waits](scene-waits.md) — #515 table_waits, urgent Ollama queue, free-turn interrupt, Claude scene-first, pace {queued} extra wait, scene-missed, sceneS
 - [Standing orders](standing-orders.md) — #531 orders.mjs situations block, short local variant, withSituationOrders, orderscheck
+- [CI fast](ci-fast.md) — #543 job split, CI_FAST knob, dmcheck/ratecheck parallel children, what is timer vs CPU bound
