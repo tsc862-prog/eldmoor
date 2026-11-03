@@ -10,7 +10,7 @@
 import {fellowshipMembers,defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,asV2} from '../sim/index.js';
 import {companies} from '../sim/company.js';
 import {S} from '../sim/state.js';
-import {slotsOf,groupsOf,MAX_HEROES,CLASSIC} from '../sim/setup.js';
+import {slotsOf,groupsOf,MAX_HEROES,CLASSIC,seatCap,seatNote} from '../sim/setup.js';
 import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
@@ -169,7 +169,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   for(const [m,t,why] of [['together','Together','One company of five in one hall: a Tank, a Healer and three DPS'],['apart','Apart','Heroes set out from their own start towns, alone or in groups']]){
     const b=btn(t,'smode',{mode:m});b.title=why;b.setAttribute('aria-pressed',String(together()?m==='together':m==='apart'));sw.append(b)}
   if(!together()){sw.append(el('span','slbl','Heroes'));
-    for(let n=1;n<=MAX_HEROES;n++){const b=btn(String(n),'count',{n});b.setAttribute('aria-pressed',String(s.heroes.length===n));b.title=n+' hero'+(n===1?'':'es');sw.append(b)}}
+    for(let n=1;n<=MAX_HEROES;n++){const b=btn(String(n),'count',{n});b.setAttribute('aria-pressed',String(s.heroes.length===n));b.title=n+' hero'+(n===1?'':'es');if(n>seatCap(s)){b.classList.add('off');b.title=n+' heroes need every mind local (seats: 5 while any mind is paid, 10 when all are local)'}sw.append(b)}}
   page.append(sw);
   const shapes=el('div','spresets');shapes.append(el('span','slbl','Shapes'));
   for(const [l,n,w] of [['Classic five','classic','The five together in one hall'],['Five solos','five-solos','The five, each alone in its own home town'],['Pairs and a solo','pairs-and-solo','Warrior and Priest, Mage and Hunter, the Rogue alone'],['One hero','solo','A single hero']]){const b=btn(l,'preset',{name:n});b.title=w;shapes.append(b)}
@@ -201,6 +201,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   const fin=el('section','ssec sfinal');fin.append(relayLine(),el('div','dm srun',runnerSummary()));
   const ps=problems();
   if(ps.length){const ul=el('ul','sprobs');for(const p of ps)ul.append(el('li',null,p));fin.append(ul)}
+  {const note=seatNote(s);if(note)fin.append(el('div','dm sseatnote',note))}
   if(st.error)fin.append(el('div','sbad',st.error));
   if(st.confirm){const sum=saveSummary(s.world),c=el('div','sconfirm');
     c.append(el('div',null,'Replace the saved '+(WORLDS_INFO[s.world]||s.world)+' world'+(sum?' (day '+sum.day+', '+sum.kb+' KB)':'')+'? It cannot be brought back unless you export it first.'));

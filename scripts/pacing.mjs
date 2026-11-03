@@ -154,7 +154,7 @@ export function talkText(b) {
 // recall them. Every turn prompt carries it (local turns inside briefText, Claude turns on their own); '' when none.
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return personaNote(b) + questNote(b) + hallNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return personaNote(b) + questNote(b) + hallNote(b) + companyNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.
 export const personaNote = b => b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '';
@@ -179,6 +179,16 @@ export async function refreshPersona(pacer, sess, b0) {
 export function questNote(b) {
   const q = b && b.quest;
   return q && q.focus ? `\nYour quest in focus: ${String(q.focus).slice(0, 120)}${q.others ? ` (and ${q.others} more you hold: quests lists them, focus_quest switches)` : ''}.` : '';
+}
+
+// Offers to ride together open to the hero (brief.offers) and its company of two or more (brief.company), issue #442:
+// names and who is within shouting range only, never where the others are.
+export function companyNote(b) {
+  const o = b && Array.isArray(b.offers) ? b.offers : [], c = b && b.company;
+  const offer = x => `${x.id} from ${x.from}${x.kind === 'ask' ? ' (asks to join you)' : ' (invites you)'}${x.said ? ': "' + String(x.said).slice(0, 120) + '"' : ''}, until ${x.until}`;
+  const offers = o.length ? `\nOffers to ride together, open to you: ${o.map(offer).join('; ')} (accept {offer_id} or decline {offer_id}).` : '';
+  const comp = c && c.name ? `\nYour company: ${c.name} (${c.size} heroes${c.leader ? ', ' + c.leader + ' leads' : ''})${c.with_you && c.with_you.length ? '; within shouting range: ' + c.with_you.join(', ') : ''}${c.apart && c.apart.length ? '; apart: ' + c.apart.join(', ') : ''}.` : '';
+  return offers + comp;
 }
 
 // The hall board's open jobs for the Fellowship (brief.hall, issue #326): only for a member in town, only when there are some.

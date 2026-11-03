@@ -1,6 +1,5 @@
 ---
 name: emergent-parties
-description: Epic #402 design (docs/emergent-parties.md, PR #406): companies of 1-8 replace the fixed five; the owner's decisions of 2026-11-03
 description: Epic #402 design (docs/emergent-parties.md, PR #406): companies of 1-8 heroes (5 minds max), owner decisions of 2026-11-03 and the 12-slice plan
 metadata:
   type: project

@@ -248,7 +248,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   ok(!all(R(),'button').some(b=>b.dataset.a==='count')&&!sel('start:0'),'together: no hero count, no start towns');
   click(R(),b=>b.dataset.a==='smode'&&b.dataset.mode==='apart');
   ok(pressed('smode','mode','apart')&&all(R(),'.scard').length===5,'Apart keeps the five heroes as cards');
-  ok(all(R(),'button').filter(b=>b.dataset.a==='count').length===5&&pressed('count','n','5'),'Apart: hero count 1-5, five chosen');
+  ok(all(R(),'button').filter(b=>b.dataset.a==='count').length===10&&pressed('count','n','5'),'Apart: hero count 1-10 (6-10 need local minds), five chosen');
   const so=sel('start:0').childNodes.map(o=>o.value),{CITY}=await imp('src/world/map.js');
   const fac0=+sel('hfac:0').value;
   ok(so[0]==='home'&&CITY.filter(c=>c.fac===fac0).every(c=>so.includes('town:'+c.name))&&!CITY.filter(c=>c.fac!==fac0).some(c=>so.includes('town:'+c.name)),'start towns are the CITY rows of the hero faction: '+so.slice(0,4));

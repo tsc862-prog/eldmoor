@@ -45,7 +45,15 @@ import {applyArchetype} from './persona.js';
 
 export const SETUP_VERSION=2;
 export const MODES=['together','apart'];
-export const MAX_HEROES=5; // 1-5 for now (#453); the seat count (5 paid, 10 local, #402 decision 6) lands with the runners
+// Seats (#455, #402 decision 6): agent heroes in the world, the DM outside the count. Five when any mind is paid
+// (Claude or OpenAI), up to ten when every mind is local (Ollama). MAX_HEROES is the most any setup may hold.
+export const SEATS={PAID:5,LOCAL:10};
+export const MAX_HEROES=SEATS.LOCAL;
+const isLocal=m=>!!m&&m.provider==='ollama';
+export function seatCap(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];return H.length&&H.every(h=>h&&isLocal(h.mind))?SEATS.LOCAL:SEATS.PAID}
+// The turn-time warning shown when more than five local minds share one GPU ('' when not needed).
+export function seatNote(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];
+  return H.length>SEATS.PAID&&seatCap(s0)===SEATS.LOCAL?H.length+' local minds share one GPU: each agent turn will be slow (expect long waits between turns).':''}
 export const CLAUDE_MODELS={haiku:'claude-haiku-5-5',sonnet:'claude-sonnet-5-5'};
 export const SETUP_PROVIDERS=['anthropic','ollama','openai']; // what the runners can start with
 export const MIND_MODES=['agent']; // a hero's mind (#148); the DM may still be scripted (DM_MODES)
@@ -162,7 +170,8 @@ export function validateSetup(s0){const out=[];
   if(!(Number.isInteger(s.seed)&&s.seed>=0))out.push('The seed must be a whole number.');
   if(mode!=='apart'&&!FAC[s.fac])out.push('Pick a faction.');
   if(!H||!H.length)return out.concat(['Pick at least one hero.']);
-  if(H.length>MAX_HEROES)out.push('At most '+MAX_HEROES+' heroes for now.');
+  if(H.length>MAX_HEROES)out.push('At most '+MAX_HEROES+' heroes.');
+  else if(H.length>seatCap(s))out.push('Seats full: '+H.length+' heroes, but only '+SEATS.PAID+' agent heroes may play while any mind is paid (Claude or OpenAI). Up to '+SEATS.LOCAL+' when every hero uses a local model.');
   const map=mode==='together'?slotsOf(s):null,place={};if(map)for(const k in map)place[map[k]]=k;
   if(mode==='together'&&!map)out.push(togetherProblem(H));
   const label=i=>{const h=H[i]||{};if(place[i])return slotLabel(place[i]);return 'Hero '+(i+1)+(h.name?' ('+String(h.name).trim()+')':h.cls?' ('+h.cls+')':'')};
