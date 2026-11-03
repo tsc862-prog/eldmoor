@@ -22,6 +22,10 @@ Rules chosen and why:
 - **Solos** get every kind; `open()` with no company derives it from ctx.hero/anchor, else the Fellowship (camp ambush,
   crawl rooms, staged scenes stay Fellowship until their slices). `voteRefusal(C)`/`SOLO_VOTE` refuse a decision
   scene for a solo (non-slots company of one); council.js's own propose refusal is #439's.
+- #483 (slice 2) left `F===S.fellowship` guards for #440; replaced: council.js calls the propose hook for any company
+  (the hook opens the scene for the proposer's company), camp.js opens the camp ambush scene for any company
+  (`openScene(...,{mob},F)`, the Fellowship's frame text unchanged). campcheck now expects the pair's vote scene and a
+  solo's camp-ambush scene, and settles them with Table off + `tableHold(0)` so no world time passes.
 - A solo's adventure **choice** stays on the per-hero pick flow (`choose`, `CHOICE_HOLD`, then the scripted branch):
   it already is a one-answer waited choice, and routing it to a Table scene broke playcheck's silent-agent timeout path.
   Only the Fellowship's choice goes to the Table (player-choice.js still gates on `a.fellow`).

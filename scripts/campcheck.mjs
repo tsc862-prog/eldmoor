@@ -154,14 +154,15 @@ ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused 
   RL.setRunnerLinks(a => 'connected'); // live agents: votes wait for them
   let P = CO.propose(A, 'other', 'Cross the river at dawn', {vote: 'yes'});
   ok(P && P.id && P.status === 'open' && CO.voters(P).length === 2 && CO.openProps(pair).includes(P) && !CO.openProps(F).includes(P), 'the pair\'s proposal is theirs alone (#' + P.id + ')');
-  ok(!S.table, 'no Table scene opens for another company\'s vote (the table per company is #440)');
+  ok(S.table && S.table.kind === 'decision' && S.table.company === pair.id && S.table.ids.length === 2, 'the pair\'s vote opens its own Table scene, both at the table (#440)');
+  const settle = async () => {const T = await import('../src/sim/table.js'); if (!S.table) return; const m0 = TABLE.mode; TABLE.mode = 'off'; T.tableHold(0); TABLE.mode = m0}; // the table resolves the vote now (both answered), with no world time passing
   ok(Object.keys(F.props || {}).length === 0 || !(F.props || []).some(Q => Q.id === P.id), 'proposal ids are unique across companies');
   let r = act(M[0], 'vote', {proposal_id: P.id, vote: 'no'});
   ok(!r.ok && /No proposal/.test(r.error), 'a Fellowship member cannot vote on another company\'s proposal: ' + r.error);
-  r = act(B, 'vote', {proposal_id: P.id, vote: 'no', reason: 'too cold'});
+  r = act(B, 'vote', {proposal_id: P.id, vote: 'no', reason: 'too cold'}); await settle();
   ok(r.ok && P.status === 'passed' && /1-1, .*breaking the tie/.test(P.result) && P.result.includes(A.name), 'a company of 2 votes and the leader breaks the tie: ' + P.result);
   ok(pair.log.some(e => e.kind === 'council'), 'the vote is in the pair\'s own campaign log');
-  P = CO.propose(B, 'other', 'Rest a day', {vote: 'yes'}); act(A, 'vote', {proposal_id: P.id, vote: 'no'});
+  P = CO.propose(B, 'other', 'Rest a day', {vote: 'yes'}); act(A, 'vote', {proposal_id: P.id, vote: 'no'}); await settle();
   ok(P.status === 'failed' && /1-1/.test(P.result), 'the leader\'s no breaks a tie the other way: ' + P.result);
   // a solo cannot propose; it decides
   for (const k of ['job', 'crypt', 'split', 'other']) {const x = CO.propose(Z, k, 'x'); ok(x === CO.SOLO, 'a solo\'s ' + k + ' proposal is refused: ' + x)}
@@ -201,6 +202,8 @@ ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused 
   ok(!r.ok && /camped alone .*break_camp to move on now/.test(r.error), 'a camped solo is told to break_camp: ' + r.error);
   CAMPM.CAMP.AMBUSH_P = 2; g.nextRoll = S.gameMin; const c0 = g.stats.caught; Z.hp = mh; step(1 / 60);
   ok(g.stats.caught === c0 + 1 && !g.phase, 'an ambush on the sleeping solo finds it unroused (the same Perception roll, no dice added)');
+  ok(S.table && S.table.kind === 'ambush' && S.table.company === solo.id && S.table.ids.join() === String(Z.id), 'the ambush at the solo\'s camp is its own Table scene (#440)');
+  await settle();
   CAMPM.CAMP.AMBUSH_P = ambushP2; for (const m of S.mobs) if (m.target === Z) m.target = null; Z.state = 'hunt'; Z.target = null;
   // break_camp works for a solo leader
   Z.hp = mh; ok(act(Z, 'rest', {hours: 2}).ok, 'a second solo camp');
