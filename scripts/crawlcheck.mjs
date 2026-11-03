@@ -18,8 +18,9 @@ if (argv[0] === '--run') seed = 0x9e3779b9 ^ Number(argv[1]);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {init, step, S, snapshot, restore, maxHp} = SIM;
-const F_ = await import('../src/sim/fellowship.js');
+const F_ = await import('../src/sim/company.js');
 const T = await import('../src/sim/table.js');
 const D = await import('../src/sim/dungeon.js');
 const {CRYPT} = await import('../src/world/map.js');
@@ -30,9 +31,9 @@ const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 function descend(lvl = 9) {
   init(); run(20);
   T.TABLE.speed = 1; T.TABLE.mode = 'auto';
-  const M = F_.fellows(); S.mobs.length = 0;
+  const M = SLT.slotHeroes(SLT.slotted()); S.mobs.length = 0;
   for (const a of M) {a.lvl = lvl; a.hp = maxHp(a); a.state = 'hunt'; a.hidden = false; a.target = null; a.dest = null; a.x = CRYPT.x + (Math.random() - .5); a.y = CRYPT.y + 1}
-  D.musterCrypt(M, M[0].fac, null, S.fellowship.name);
+  D.musterCrypt(M, M[0].fac, null, SLT.slotted().name);
   return M;
 }
 // Step until the crawl ends (the group is gone) or the budget runs out; collect the scenes seen.
@@ -71,7 +72,7 @@ if (argv[0] === '--companies') {
   const CX = CO.companyOf(x1), CY = CO.companyOf(x2), CZ = CO.companyOf(x3);
   cok(CX && CY && CZ && CX !== CY, 'three agent heroes start as solos');
   CO.mergeCompanies(CX, CY); CO.mergeCompanies(CX, CZ);
-  cok(CX.ids.length === 3 && !CX.slots && !S.fellowship, 'they ride as one company of three, no Fellowship');
+  cok(CX.ids.length === 3 && !CX.slots && !SLT.slotted(), 'they ride as one company of three, no Fellowship');
   cok(CO.companyOf(f1) == null && CO.companyOf(f2) == null, 'the fill-ins are background heroes');
   P.markPlayer(y1, true); P.markPlayer(y2, true); CO.mergeCompanies(CO.companyOf(y1), CO.companyOf(y2));
   const CYY = CO.companyOf(y1);
@@ -118,7 +119,7 @@ if (argv[0] === '--stepping') {
   sok(order.every((r, i) => r === i), 'rooms come in order, none skipped: ' + order.join(' > '));
   sok(seen.every((s, i) => i === 0 || s.room >= seen[i - 1].room), 'no scene goes back a room');
   sok(order.length === 3 && order[2] === 2, 'all three rooms were reached, the boss room last');
-  sok(S.fellowship.crawl.clears >= 1 && !CRYPT.group && !S.table, 'the Fellowship cleared the crypt and the table and group are free again');
+  sok(SLT.slotted().crawl.clears >= 1 && !CRYPT.group && !S.table, 'the Fellowship cleared the crypt and the table and group are free again');
   {
     const R = descend(14); const rs = crawl(R, {act: () => 'retreat', maxS: 300});
     sok(rs.length === 1 && rs[0].room === 0, 'a retreat withdraws the party at the first room (the sump)');
@@ -196,15 +197,15 @@ console.log('a save mid-crawl');
   if (snap) {
     restore(JSON.parse(snap)); T.TABLE.speed = 1;
     ok(CRYPT.group && CRYPT.group.crawl && CRYPT.group.crawl.i >= 1, 'the crawl came back from the save');
-    crawl(F_.fellows(), {maxS: 600});
+    crawl(SLT.slotHeroes(SLT.slotted()), {maxS: 600});
     ok(!CRYPT.group && !S.table, 'it plays on to its end');
   }
 }
 
 console.log('fast speed');
 {
-  const M = descend(), c0 = (S.fellowship.crawl || {runs: 0}).runs; T.TABLE.speed = 8; crawl(M, {maxS: 600});
-  ok(!CRYPT.group && !S.table && S.fellowship.crawl.runs === c0 + 1, 'at 8x the crawl resolves without stalling, once');
+  const M = descend(), c0 = (SLT.slotted().crawl || {runs: 0}).runs; T.TABLE.speed = 8; crawl(M, {maxS: 600});
+  ok(!CRYPT.group && !S.table && SLT.slotted().crawl.runs === c0 + 1, 'at 8x the crawl resolves without stalling, once');
 }
 
 console.log('determinism');

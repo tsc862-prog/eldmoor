@@ -7,6 +7,7 @@ let seed = 0;
 const reseed = n => {seed = n >>> 0};
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const {init, step, S, snapshot, restore} = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const F = await import('../src/sim/guildfocus.js');
 const {onLog} = await import('../src/sim/chronicle.js');
 let fail = 0;
@@ -29,7 +30,7 @@ ok(st.set > 0 && gs.some(g => g.focus && g.focus !== 'open'), 'focus on: guilds 
 ok(gs.every(g => !g.focus || F.FOCI.includes(g.focus)), 'every focus is one of FOCI');
 ok(lines.some(l => /turns its banner|takes up the|goes Wayfaring|is on the Warpath/.test(l)), 'focus changes reach the chronicle');
 ok((S.timeline || []).some(e => e.kind === 'guild'), 'focus changes reach the timeline');
-const fg = gs.filter(g => S.agents.some(a => a.guild === g && a.fellow && a.state !== 'dead'));
+const fg = gs.filter(g => S.agents.some(a => a.guild === g && SLT.inSlots(a) && a.state !== 'dead'));
 ok(fg.every(g => (g.focus || 'open') === 'open'), 'the Fellowship\'s guild has no focus (' + fg.length + ' such guilds)');
 // 2 the same seed again: deterministic; and with GF.ON false (the neutral setting) no guild takes a focus.
 ok(child('--hash').hash === on1, 'focus on is deterministic for a seed');
@@ -40,7 +41,7 @@ ok(off.guilds > 0 && !off.focused && !off.stats, 'focus off: guilds form and non
 const tips = off.hash !== on1 || child('--hash', '--seed', '28430').hash !== child('--off', '--seed', '28430').hash;
 ok(tips, 'focus on changes the world (it is meant to)');
 // 3 the hooks: neutral for the Fellowship and the unguilded, and Warpath needs blood or a rival.
-const fel = S.agents.find(a => a.fellow), un = S.agents.find(a => !a.guild && !a.fellow), mem = S.agents.find(a => a.guild && !a.guild.retired && a.state !== 'dead' && !S.agents.some(b => b.guild === a.guild && b.fellow && b.state !== 'dead'));
+const fel = S.agents.find(a => SLT.inSlots(a)), un = S.agents.find(a => !a.guild && !SLT.inSlots(a)), mem = S.agents.find(a => a.guild && !a.guild.retired && a.state !== 'dead' && !S.agents.some(b => b.guild === a.guild && SLT.inSlots(b) && b.state !== 'dead'));
 if (fel) ok(F.focusOf(fel) === 'open' && F.takeChance(fel, .9) === .9, 'a Fellowship member is never steered');
 if (un) ok(F.focusOf(un) === 'open', 'an unguilded hero has no focus');
 if (mem) {

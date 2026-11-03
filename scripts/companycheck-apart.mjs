@@ -23,6 +23,7 @@
 let seed = 0x5eed459;
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {init, step, S, snapshot, restore, markPlayer, playerAct, applyPreset, defaultSetup, cleanSetup, validateSetup, planRunners, setRunnerLinks, setDmSeat, dmAct} = SIM;
 const CO = await import('../src/sim/company.js'), OF = await import('../src/sim/offers.js'), CN = await import('../src/sim/council.js');
 const T = await import('../src/sim/table.js'), SG = await import('../src/sim/sightings.js'), FW = await import('../src/sim/follow.js');
@@ -74,7 +75,7 @@ section('A. setup v2 apart: pairs, solos, two towns');
   ok(validateSetup(SETUP).length === 0 && SETUP.mode === 'apart', 'the apart setup validates: ' + validateSetup(SETUP).join(' | '));
   const W = apart(), hi = CITY.find(c => c.fac === 0), gr = CITY.find(c => c.fac === 1);
   ok(W.Cs.length === 4 && W.Cs.map(C => C.ids.length).join() === '2,2,1,1', 'four companies: two pairs and two solos (' + W.Cs.map(C => C.ids.length) + ')');
-  ok(!S.fellowship && W.Cs.every(C => !C.slots), 'no five-place Fellowship');
+  ok(!SLT.slotted() && W.Cs.every(C => !C.slots), 'no five-place Fellowship');
   ok(S.agents.filter(a => a.player).length === 6 && W.Cs.every(C => CO.members(C).every(a => a.player && a.lvl === 1)), 'six heroes, agent-played from the first tick, level 1');
   ok(W.SoloC.hall === hi.name && W.SoloW.hall === gr.name && dist(W.solo, hi.gate) < 12 && dist(W.wsolo, gr.gate) < 12, 'two solos founded apart in two towns: ' + W.solo.name + ' at ' + W.SoloC.hall + ', ' + W.wsolo.name + ' at ' + W.SoloW.hall);
   ok(W.Cs.every(C => CO.members(C).every(a => a.fac === C.fac)), 'each company is of one faction; the world holds both');

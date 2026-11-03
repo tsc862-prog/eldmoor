@@ -9,6 +9,7 @@ let seed = 0x9e3779b9 ^ 231;
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 
 const {init, step, S} = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {paceBrief, paceCheck} = await import('../src/sim/pace.js');
 const {localsNear, localsTick, LOC} = await import('../src/sim/locals.js');
 const {hash} = await import('../src/core/rng.js');
@@ -29,7 +30,7 @@ let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 console.log('\nEldmoor localscheck: townsfolk in the agents\' turns\n');
 init({}); run(2);
-const mem = S.agents.find(a => a.fellow && a.player);
+const mem = S.agents.find(a => SLT.inSlots(a) && a.player);
 ok(!!mem, 'a Fellowship member is agent-played: ' + (mem && mem.name));
 const home = CITY.find(c => c.fac === mem.fac) || CITY[0];
 const place = (a, c, dx = 0) => {a.state = 'town'; a.dest = null; a.x = c.spots.square.x + dx; a.y = c.spots.square.y; a.hp = 1e9; a.visit = null};
@@ -53,7 +54,7 @@ const b = paceBrief(mem.id).brief;
 ok(Array.isArray(b.nearby) && b.nearby.length > 0 && b.nearby.length <= LOC.MAX, 'the state header lists ' + b.nearby.length + ' people about');
 ok(b.nearby.every(x => /\(.+\)$/.test(x) || !/\(/.test(x)), 'with short hooks: ' + b.nearby.join(' | '));
 ok(!JSON.stringify(b.nearby).match(/want|secret|note|mood|warmth/i), 'and no wants, notes or secrets');
-const far = S.agents.find(a => !a.fellow && !a.player && a.state === 'hunt' && !CITY.some(c => Math.hypot(a.x - c.x0, a.y - c.y0) < 20));
+const far = S.agents.find(a => !SLT.inSlots(a) && !a.player && a.state === 'hunt' && !CITY.some(c => Math.hypot(a.x - c.x0, a.y - c.y0) < 20));
 if (far) {const keep = {x: far.x, y: far.y}; far.player = true; const nb = paceBrief(far.id).brief.nearby; far.player = false; ok(nb.length === 0, 'nobody listed for a hero far from any person'); far.x = keep.x}
 
 // ---- a hail ----
@@ -79,7 +80,7 @@ const rep = talkTo(mem, innkeeper, 'Good day. What news?');
 ok(rep && !rep.error, 'the member can answer with talk: ' + JSON.stringify(rep).slice(0, 90));
 
 // ---- no hail for a scripted hero ----
-const scripted = S.agents.find(a => !a.fellow && !a.player && a.state !== 'dead' && a.fac === home.fac);
+const scripted = S.agents.find(a => !SLT.inSlots(a) && !a.player && a.state !== 'dead' && a.fac === home.fac);
 const opened = S.talks.stats.opened;
 place(scripted, home); scripted.x = innkeeper.x; scripted.y = innkeeper.y + .5; scripted.lvl = 8; innkeeper.x = scripted.x; innkeeper.y = scripted.y - 1;
 for (let i = 0; i < 4; i++) localsTick(LOC.EVERY + .1);

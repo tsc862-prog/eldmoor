@@ -9,6 +9,7 @@
 let seed = 0x5eed442;
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {init, step, S, snapshot, restore, markPlayer, playerAct, found, autoPick} = SIM;
 const CO = await import('../src/sim/company.js'), OF = await import('../src/sim/offers.js'), CN = await import('../src/sim/council.js');
 const {paceCheck, paceBrief} = await import('../src/sim/pace.js');
@@ -26,7 +27,7 @@ const living = a => a && a.state !== 'dead';
 init({fellowship: false}); run(120);
 // heroes of one faction, placed in a quiet field outside town so the town routine does not move them between calls
 const g = homeOf(S.agents.find(a => a.fac === 0)).gate, spot = {x: g.x + 3, y: g.y + 6};
-const pool = () => S.agents.filter(a => living(a) && !a.companion && a.fac === 0 && !a.player && !a.adv && !a.fellow && a.state !== 'dungeon' && a.state !== 'raid');
+const pool = () => S.agents.filter(a => living(a) && !a.companion && a.fac === 0 && !a.player && !a.adv && !SLT.inSlots(a) && a.state !== 'dungeon' && a.state !== 'raid');
 const place = (a, dx, dy) => {a.x = spot.x + dx; a.y = spot.y + dy; a.state = 'hunt'; a.dest = null; a.target = null; a.hidden = false; rebuild()};
 const used = new Set(), take = () => {const a = pool().find(b => !used.has(b)); used.add(a); if (a.party) leaveParty(a); return a};
 const A = take(); markPlayer(A, true); place(A, 0, 0);
@@ -198,7 +199,7 @@ if (comp && comp.ids.length > 1) {
   const sp2 = {x: spot.x + 30, y: spot.y};
   const put = (a, dx, dy) => {a.x = sp2.x + dx; a.y = sp2.y + dy; a.state = 'hunt'; a.dest = null; a.target = null; a.hidden = false; rebuild()};
   let FACN = 0;
-  const free = () => S.agents.find(b => living(b) && b.fac === FACN && !b.fellow && !b.companion && !b.player && !CO.companyOf(b) && !b.adv && !used.has(b) && b.state !== 'dungeon' && b.state !== 'raid' && b.state !== 'duel');
+  const free = () => S.agents.find(b => living(b) && b.fac === FACN && !SLT.inSlots(b) && !b.companion && !b.player && !CO.companyOf(b) && !b.adv && !used.has(b) && b.state !== 'dungeon' && b.state !== 'raid' && b.state !== 'duel');
   const grab = () => {const a = free(); used.add(a); if (a.party) leaveParty(a); return a};
   const agent = () => {const a = grab(); markPlayer(a, true); a.partyOk = true; return a};
   const comp = (...L) => {const r = CO.foundCompany(L); if (!r.ok) throw new Error(r.error); return r.company};
@@ -239,8 +240,8 @@ if (comp && comp.ids.length > 1) {
   const solo = E3; put(solo, 3, 3);
   r = prop(X1, {kind: 'merge', company: solo.name});
   ok(!r.ok && /rides alone/.test(r.error), 'merge toward a solo is refused: ' + r.error);
-  const foe = S.agents.find(b => living(b) && b.fac === 1 && !b.fellow && b.state !== 'dungeon' && b.state !== 'raid'); markPlayer(foe, true); put(foe, 4, 7);
-  const foeB = S.agents.find(b => living(b) && b.fac === 1 && b !== foe && !b.fellow && b.state !== 'dungeon' && b.state !== 'raid'); markPlayer(foeB, true); put(foeB, 5, 7);
+  const foe = S.agents.find(b => living(b) && b.fac === 1 && !SLT.inSlots(b) && b.state !== 'dungeon' && b.state !== 'raid'); markPlayer(foe, true); put(foe, 4, 7);
+  const foeB = S.agents.find(b => living(b) && b.fac === 1 && b !== foe && !SLT.inSlots(b) && b.state !== 'dungeon' && b.state !== 'raid'); markPlayer(foeB, true); put(foeB, 5, 7);
   const CF = comp(foe, foeB);
   r = prop(X1, {kind: 'merge', company: foe.name});
   ok(!r.ok && /faction/.test(r.error), 'merge across factions is refused: ' + r.error);
@@ -326,9 +327,9 @@ if (comp && comp.ids.length > 1) {
   ok(m.maxhp === 1000 && !m.scaled, 'the five-slot company is never scaled');
 }
 // ---- the Fellowship keeps its roster ----
-const fr = found(autoPick(1), {ai: false});
+const fr = SLT.foundSlots(SLT.autoPick(1), {ai: false});
 ok(fr.ok, 'a Fellowship founded');
-const FM = CO.members(S.fellowship)[0], out = S.agents.find(b => living(b) && b.fac === 1 && !b.fellow && b.state !== 'dungeon');
+const FM = CO.members(SLT.slotted())[0], out = S.agents.find(b => living(b) && b.fac === 1 && !SLT.inSlots(b) && b.state !== 'dungeon');
 out.x = FM.x + 1; out.y = FM.y; out.state = 'hunt';
 r = act(FM, 'invite', {hero_id: out.id});
 ok(!r.ok && /Fellowship/.test(r.error), 'the Fellowship takes no one in by invitation: ' + r.error);
@@ -336,14 +337,14 @@ r = act(FM, 'leave_party', {for_good: true});
 ok(!r.ok && /Fellowship/.test(r.error), 'a Fellowship member cannot leave for good: ' + r.error);
 r = act(FM, 'propose', {kind: 'merge', company: out.name});
 ok(!r.ok, 'a Fellowship member cannot propose a merge: ' + r.error);
-r = act(FM, 'propose', {kind: 'expel', hero_id: CO.members(S.fellowship)[1].name});
+r = act(FM, 'propose', {kind: 'expel', hero_id: CO.members(SLT.slotted())[1].name});
 ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
 
 // ---- follow (#445): walk at a hero's side without joining; lost them; autopilot keeps a standing follow ----
 {
   init({fellowship: false}); run(120); // a fresh world (init resets since #507): the sections above used up the free heroes
   const FW = await import('../src/sim/follow.js'), {dist} = await import('../src/world/map.js'), {W: MW, H: MH} = await import('../src/world/tiles.js');
-  const freeOf = a => living(a) && !a.adv && !a.fellow && !a.player && a.companion == null && !CO.companyOf(a) && a.state !== 'dungeon' && a.state !== 'raid';
+  const freeOf = a => living(a) && !a.adv && !SLT.inSlots(a) && !a.player && a.companion == null && !CO.companyOf(a) && a.state !== 'dungeon' && a.state !== 'raid';
   const FAC0 = [0, 1].sort((x, y) => S.agents.filter(a => a.fac === y && freeOf(a)).length - S.agents.filter(a => a.fac === x && freeOf(a)).length)[0]; // the earlier sections used up one side's free heroes
   const fg = homeOf(S.agents.find(a => a.fac === FAC0)).gate, at = {x: fg.x + 4, y: fg.y + 4};
   const cl = (v, m) => Math.max(1, Math.min(m - 2, v));
@@ -361,7 +362,7 @@ ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
   ok(!r.ok && /other side/.test(r.error), 'another faction outside a town is refused: ' + r.error);
   r = act(F, 'follow', {name: F.name}); ok(!r.ok, 'following yourself is refused');
   {
-    const comp = S.agents.find(b => living(b) && b.fac === FAC0 && !b.player && !b.fellow && b.companion == null && !CO.companyOf(b) && b.state !== 'dungeon' && b.state !== 'raid' && b !== L && b !== F && b !== X);
+    const comp = S.agents.find(b => living(b) && b.fac === FAC0 && !b.player && !SLT.inSlots(b) && b.companion == null && !CO.companyOf(b) && b.state !== 'dungeon' && b.state !== 'raid' && b !== L && b !== F && b !== X);
     if (comp.party) leaveParty(comp); const CX = CO.companyOf(X); comp.companion = CX.id; CO.joinCompany(CX, comp);
     X.partyOk = true; put(comp, 3, 2); run(1); put(X, 3, 1); put(comp, 3, 2); put(L, 0, 0); put(F, 2, 0);
     const rx = act(X, 'follow', {hero_id: L.id});
@@ -431,7 +432,7 @@ ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
 {
   init({fellowship: false}); run(120);
   const {seekParty} = await import('../src/sim/party.js');
-  const hs = S.agents.filter(b => living(b) && !b.fellow && !b.companion && !b.player && b.company == null);
+  const hs = S.agents.filter(b => living(b) && !SLT.inSlots(b) && !b.companion && !b.player && b.company == null);
 console.log('POOL',hs.length,[...new Set(hs.map(b=>b.fac+homeOf(b).name))]);
   const hm = homeOf(hs.find(b => hs.filter(c => homeOf(c) === homeOf(b) && c.fac === b.fac).length >= 3)); const grp = hs.filter(b => homeOf(b) === hm && b.fac === hs.find(c => homeOf(c) === hm).fac);
   const seeker = grp[0], solo = grp[1], other = grp[2];
@@ -451,7 +452,7 @@ console.log('POOL',hs.length,[...new Set(hs.map(b=>b.fac+homeOf(b).name))]);
   const {sightNote} = await import('./pacing.mjs');
   init({fellowship: false}); run(60);
   const gt = homeOf(S.agents.find(a => a.fac === 0)).gate, sp = {x: gt.x + 3, y: gt.y + 12};
-  const ps = S.agents.filter(a => living(a) && !a.companion && a.fac === 0 && !a.adv && !a.fellow && a.state !== 'dungeon' && a.state !== 'raid');
+  const ps = S.agents.filter(a => living(a) && !a.companion && a.fac === 0 && !a.adv && !SLT.inSlots(a) && a.state !== 'dungeon' && a.state !== 'raid');
   const [W, Cm, Mt, Sk, Sc] = ps;
   for (const b of [W, Cm, Mt, Sk, Sc]) if (b.party) leaveParty(b);
   for (const b of [W, Cm, Mt, Sk]) markPlayer(b, true);

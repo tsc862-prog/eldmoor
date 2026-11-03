@@ -197,6 +197,7 @@ const mixedProviders = () => ({...makeProviders({anthropicClient: fakeClient, en
 
 // ======== 2. the sim with a mock relay ========
 const {init, step, S, enableBrain, disableBrain, brainStatus, onLog} = await import('../src/sim/index.js');
+const SLT2 = await import('../src/sim/company.js'); // the slotted company (#588)
 const B = await import('../src/sim/brain.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {maxHp} = await import('../src/sim/index.js');
@@ -544,7 +545,7 @@ console.log('mixed minds: routing by hero');
   await new Promise(r => mr.server.listen(0, '127.0.0.1', r));
   const cfg0 = {...B.CFG}; B.CFG.url = `http://127.0.0.1:${mr.server.address().port}/decide`; B.CFG.timeoutMs = 600; B.CFG.localTimeoutMs = 2500;
   B.resetBrain();
-  const pick = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.party && !a.fellow && !a.hidden).slice(0, 2);
+  const pick = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.party && !SLT2.inSlots(a) && !a.hidden).slice(0, 2);
   const [A, Lo] = pick; for (const h of pick) {h.lvl = 8; h.hp = maxHp(h); delete h.mind; delete h.brainPlan; enableBrain(h)}
   const stored = B.setMind(Lo, {provider: 'ollama', model: 'qwen2.5:14b'});
   ok(JSON.stringify(stored) === '{"provider":"ollama","model":"qwen2.5:14b"}' && B.mindTag(Lo) === 'qwen2.5:14b · local' && B.mindTag(A) === 'Claude' && isPlain(Lo.brainCfg), 'setMind stores {provider, model} on the hero (plain, saved); tags "' + B.mindTag(Lo) + '" and "' + B.mindTag(A) + '"');

@@ -26,15 +26,16 @@ export const classPalette=()=>Object.keys(CLS).map(k=>[k,classColor(k)]);
 
 export const DISP={hostile:{color:'#e0705f',label:'hostile'},neutral:{color:'#cfae5c',label:'neutral'},friendly:{color:'#72bf84',label:'friendly'}};
 const KINDS=['hostile','neutral','friendly'];
-// Disposition of a non-member toward the Fellowship `F` (S.fellowship, may be null): 'hostile', 'neutral',
+// Disposition of a non-member toward the Fellowship `F` (sim/company.js slotted(), may be null): 'hostile', 'neutral',
 // 'friendly', or null for someone who gets no disposition (a Fellowship member, the Narrator).
 // Reads, in order: npc.hostile, npc.mood and npc.attitude (an NPC conversation's outcome, #170, or a DM
 // placed person's attitude), then the defaults: an enemy-faction hero or a foe of an open hostile scene is
 // hostile; townsfolk and placed people of the Fellowship's faction are friendly; others neutral.
 // `now` (S.gameMin, optional): the DM's attitude entries (`x.att`, levers.js `set_attitude`) count while they last;
 // a hostile one wins, 'wary' reads as neutral. This is the one place a map ring, nameplate, bubble or minimap dot learns it.
+const member=(x,F)=>!!(x&&F&&x.company===F.id&&Array.isArray(F.ids)&&F.ids.includes(x.id)); // one of F's heroes (#588)
 export function dispositionOf(x,F,now){
-  if(!x||x.fellow||x.kind==='dm')return null;
+  if(!x||member(x,F)||x.kind==='dm')return null;
   if(x.hostile===true)return 'hostile';
   let wary=false;for(const e of x.att||[]){if(now!=null&&e.until!=null&&e.until<=now)continue;if(e.a==='hostile')return 'hostile';if(e.a==='wary'||e.a==='neutral')wary=true}
   let m=x.mood!=null?x.mood:x.attitude;if(m==='wary')m='neutral';if(KINDS.includes(m))return m;
@@ -46,7 +47,7 @@ export function dispositionOf(x,F,now){
 // How to draw `x`: {kind:'class'|'hostile'|'neutral'|'friendly'|null, color, npc}. `npc` is true when the
 // shape cue (underline, brackets) applies. A hero with no class colour and no disposition gives kind null.
 export function toneOf(x,F,now){
-  if(x&&x.fellow&&x.cls)return {kind:'class',color:classColor(x.cls),npc:false};
+  if(member(x,F)&&x.cls)return {kind:'class',color:classColor(x.cls),npc:false};
   const d=dispositionOf(x,F,now);if(d)return {kind:d,color:DISP[d].color,npc:true};
   return {kind:null,color:null,npc:false}}
 // Text for a map label or bubble header: NPCs and foes in [brackets].
