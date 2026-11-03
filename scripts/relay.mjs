@@ -42,6 +42,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {FAC} from '../src/data/factions.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs'; // agent player: /mcp, /play (issue #75)
 import {attachRunners} from './runners.mjs';
+import {semanticRecall, embedConfig, embedStatus} from './embed.mjs'; // semantic memory search (issue #553)
 import {memoryMirror} from './memory-mirror.mjs'; // agent memories mirrored as Markdown (issue #155)
 import {behaviorLog} from './behavior-log.mjs'; // behavior logs for the watcher (issue #129) // app runners: the page starts and stops agent runners (--runners)
 import {makeProviders, PROVIDERS, isLocal, MODEL_RE, DEFAULT_MODEL, PRICES, costOf} from './providers/index.mjs';
@@ -266,7 +267,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose, providers, localTimeout, limits, onDecide: behavior ? behavior.relayDecision : null});
   // Agent memories (issue #155): logs/agents/<world>/<hero>/memory/*.md from the page's notebooks; off with --no-mirror or RELAY_MIRROR=0.
   const mirror = process.argv.includes('--no-mirror') || /^(0|false|no|off)$/i.test(env.RELAY_MIRROR || '') ? null : memoryMirror({world: env.ELDMOOR_WORLD || 'eldmoor', log: console.log});
-  const play = attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null, behavior, mirror}); // agent player: MCP at /mcp, the game page at ws /play
+  // Semantic memory search (issue #553): recall and journal_search ranked by meaning with a local embedding model (OLLAMA_EMBED_MODEL, default nomic-embed-text); RELAY_EMBED=0 turns it off; keywords rank when the model is not pulled.
+  const embedCfg = embedConfig(env), embed = embedCfg.enabled ? semanticRecall({adapter: providers.ollama, world: env.ELDMOOR_WORLD || 'eldmoor', config: embedCfg, log: console.log}) : null;
+  const play = attachPlay(server, {origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose: verbose ? PLAY_LOG : null, behavior, mirror, embed}); // agent player: MCP at /mcp, the game page at ws /play
   // App runners: with --runners (or RELAY_RUNNERS=1) the game page may start and stop agent runners
   // (child processes of this relay; scripts/runners.mjs). Off by default.
   const runnersOn = process.argv.includes('--runners') || /^(1|true|yes)$/i.test(env.RELAY_RUNNERS || '');
@@ -285,6 +288,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}${behavior ? '  behavior logs -> ' + behavior.dir() : ''}`);
     console.log(runnersOn ? '[relay] app runners ON: the game page can start and stop agent runners (logs in logs/runners/)' : '[relay] app runners off (start with --runners to launch agent runners from the game page)');
     if (runnersOn && (process.argv.includes('--resume-runners') || /^(1|true|yes)$/i.test(env.RELAY_RESUME_RUNNERS || ''))) sup.resume().catch(e => console.log('[runners] resume failed: ' + e.message)); // the last run's runners, once the page is back
+    embedStatus(providers.ollama, embedCfg).then(o => console.log('[relay] ' + o.line));
     providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error} | num_ctx ${o.numCtx} for every local call (OLLAMA_NUM_CTX)`));
     if (providers.huggingface && providers.huggingface.configured()) providers.huggingface.status().then(o => console.log(`[relay] huggingface: ${o.ok ? (o.models.length ? o.models.join(', ') : 'no model answered') + (o.dropped ? ' (not supported, dropped: ' + o.dropped.join(', ') + ')' : '') : o.error} | one tiny call per model, checked once (HF_MODELS); shares the free allowance with the art pipeline`));
   });

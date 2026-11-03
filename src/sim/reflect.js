@@ -32,7 +32,7 @@ export const REFLECT={
   TALK:4,       // lines an agent hero says to others (say, party_say, talk_to) within TALK_MIN that make a conversation
   TALK_MIN:180, // game minutes a conversation's lines must fall within
 };
-export const KINDS={camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day',lesson:'a hard lesson'}; // lesson: a near death or a fall witnessed (sim/lore.js, #188)
+export const KINDS={fireside:'a night round the fire',camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day',lesson:'a hard lesson'}; // lesson: a near death or a fall witnessed (sim/lore.js, #188)
 
 const DAY=1440;
 const dayNo=gm=>Math.floor(gm/DAY)+1;
@@ -41,7 +41,10 @@ const live=a=>!!(a&&a.player&&a.kind==='hero'&&a.state!=='dead');
 function stateOf(a){const R=a.reflect||(a.reflect={seq:0,cur:null,d:0,n:0,dusk:0,last:-1e9,ev:a.playEvN||0,log:[]});const d=dayNo(S.gameMin);if(R.d!==d){R.d=d;R.n=0}return R}
 
 // The world raises a moment for one agent-played hero. kind: a key of KINDS; detail: a few words of what happened.
-export function moment(a,kind,detail){if(!live(a))return;const R=stateOf(a),gm=Math.round(S.gameMin),why=clean((KINDS[kind]||kind)+(detail?': '+detail:''),140);
+// Listeners hear every moment raised (agent heroes only): fn(a, kind, detail). sim/fireside.js keeps the day's oaths and lessons
+// as talk for the fire (#571).
+const heard=[];export const onMoment=f=>{if(typeof f==='function')heard.push(f)};
+export function moment(a,kind,detail){if(!live(a))return;for(const f of heard){try{f(a,kind,detail)}catch(e){}}const R=stateOf(a),gm=Math.round(S.gameMin),why=clean((KINDS[kind]||kind)+(detail?': '+detail:''),140);
   if(R.cur&&gm-R.cur.gm<=REFLECT.TTL){if(!R.cur.why.includes(why))R.cur.why.push(why);if(R.cur.why.length>REFLECT.WHY)R.cur.why.shift();R.cur.kind=R.cur.kind||kind;return}
   R.cur={id:'m'+(++R.seq),kind,why:[why],gm}}
 

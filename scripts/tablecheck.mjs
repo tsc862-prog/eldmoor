@@ -23,6 +23,9 @@
 //   - session zero and arrivals (#437, #452, a child with a fresh world): the DM prep holds the opening, the DM frames it, a
 //     silent member reflex shows its persona line, introductions count as met; a death waits for an arrival scene at the next
 //     town or camp (never in the Crypt), the DM or the scripted DM voices the newcomer, the oath, the letter; no host = at once
+//   - talk round the fire (#571, a child with a fresh world): a camp opens a 3-round fireside in turns (6 after a big event), the DM
+//     frames it and may set the rounds, a silent agent is skipped, a 300-character line arrives whole (700 refused, a copy refused), a
+//     told story lands in the teller's backstory, header and the listeners' notes, the reflection, a debrief after a rescue, no host = none
 //   - without a Fellowship, two seeded runs are identical (determinism)
 // Usage: npm run tablecheck   (TABLECHECK_SEED to vary the world)
 import {spawnSync} from 'node:child_process';
@@ -215,6 +218,82 @@ if (process.argv[2] === '--arrival') {
   HE.fall(d3, 'a third test'); step(1 / 60);
   ok(S.fellowship.slots[s3] != null && !(S.fellowship.arrivals || []).length && !S.table, 'with no host (npm run sim) the seat is refilled at once, no scene');
   console.log(fail ? 'ARRIVAL FAILED ' + fail : 'ARRIVAL OK'); process.exit(fail ? 1 : 0);
+}
+
+// ---- talk round the fire and the debrief (#571), in a child with a fresh world: node scripts/tablecheck.mjs --fireside ----
+if (process.argv[2] === '--fireside') {
+  const {dmAct, setDmSeat} = SIM, FR = await import('../src/sim/fireside.js'), CM = await import('../src/sim/camp.js'), PC = await import('../src/sim/pace.js');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
+  init({fellowship: false}); run(20);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  F_.found(F_.autoPick(0), {fac: 0, ai: false});
+  const M = F_.fellowshipMembers().map(m => m.hero), lead = C.leaderOfF(), live = lead, quiet = M.find(x => x !== live), other = M.find(x => x !== live && x !== quiet), away = M.find(x => x !== live && x !== quiet && x !== other);
+  const LINK = {[live.id]: 'connected', [quiet.id]: 'connected'}; SIM.setRunnerLinks(x => LINK[x.id] || 'none');
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto'; FR.FIRE.LIVE_MS = 1500;
+  const home = homeOf(M[0]), field = () => {for (const [i, x] of M.entries()) {x.state = x === away ? 'town' : 'hunt'; x.x = x === away ? home.gate.x : home.gate.x + 14 + (i % 3) * .5; x.y = x === away ? home.gate.y : home.gate.y + 2 + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.hp = maxHp(x)}};
+  const camp = () => {field(); const why = CM.leaderRest(live, 4); let g = 0; while (!(S.table && S.table.kind === 'fireside') && g++ < 60 * 60) {step(1 / 60); dmAct('table_call')} away.x = home.gate.x; away.y = home.gate.y; away.state = 'town'; return why}; // the paused scene: away stays in town
+  // 1. an ordinary camp: a 3-round fireside, the topic set, in turns, the DM frames it (and asks for 4 rounds)
+  setDmSeat(true); const w1 = camp(), sc = S.table;
+  ok(!w1 && sc && sc.kind === 'fireside' && !sc.all && sc.ctx.rounds === 3 && sc.ctx.topic, `a camp opens a fireside in turns, 3 rounds, with a topic (${sc && sc.ctx.topic}; ${w1 || ''})`);
+  ok(sc && !sc.ids.includes(away.id) && sc.ids.length === 4, 'only the members at the camp sit at the fire');
+  let k = 0; while (S.table === sc && !(sc.calls && sc.calls.length) && k++ < 600) {dmAct('table_call'); step(1 / 60)}
+  const tc = dmAct('table_call');
+  ok(tc.ok && tc.call && tc.call.kind === 'frame' && tc.scene.kind === 'fireside' && /round the fire/.test(tc.call.about), 'the DM agent is asked to frame the fireside (table_call)');
+  const fa = dmAct('table_answer', {call: tc.call.id, text: 'The fire spits pine resin; an owl calls twice.', rounds: 4});
+  ok(fa.ok && fa.rounds === 4 && sc.ctx.rounds === 4 && M.filter(x => x !== away).every(x => (x.chat || []).some(e => /owl calls twice/.test(e.text))), 'the DM frames it and sets 4 rounds; everyone at the fire hears the frame');
+  // lines: 300 characters arrive whole, 700 are refused, a near copy of another member's line is refused
+  const L300 = ('I grew up on the drover roads east of the river, where my mother kept the tally of every beast we brought to market, and I learned early that a count kept honest is worth more than a sword. ').repeat(2).slice(0, 300).trim();
+  const long = P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'x'.repeat(700)});
+  ok(!long.ok && /Too long: keep your line under 600/.test(long.error), 'a 700-character line is refused, not cut (' + (long.error || '').slice(0, 60) + ')');
+  const sp = P.playerAct(live.id, 'scene_act', {option: 'speak', line: L300});
+  ok(sp.ok && sc.acts[live.id].line === L300, 'a 300-character line is taken whole');
+  const dup = P.playerAct(other.id, 'scene_act', {option: 'speak', line: L300.replace(live.name, other.name)});
+  ok(!dup.ok && /already said that/.test(dup.error), 'a near copy of another member\'s line at the table is refused');
+  const plan = [null, null, {option: 'tell', line: 'When I was nine the river took our ferry, and my father with it; I swore then I would never again wait on a bank for anyone.'}, {option: 'ask-' + other.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), line: 'What brought you to the Concord, truly?'}, {option: 'speak', line: 'Sleep, all of you. I will keep the fire.'}];
+  k = 0; let sawView = null, sawBrief = null;
+  while (S.table === sc && k++ < 60 * 600) {const rd = sc.rd || 1;
+    if (rd === 2 && !sawBrief && sc.phase === 'turn' && !sc.acts[live.id]) sawBrief = PC.paceBrief(live.id).brief.scene;
+    if (sc.phase === 'turn' && !sc.acts[live.id] && plan[rd]) {const r = P.playerAct(live.id, 'scene_act', plan[rd]); if (!r.ok) console.error('  act refused: ' + r.error)}
+    if (rd === 2 && !sawView) sawView = T.tableView(live);
+    step(1 / 60)}
+  ok(sc.rd === 4 && sc.beats.filter(b => b.id === live.id && b.line).length === 4, `four rounds were played, the live member spoke in each (${sc.rd})`);
+  ok(sawView && /2 of up to 4/.test(sawView.talk_round || '') && sawView.topic, 'tableView names the topic and the talk round');
+  ok(sawBrief && sawBrief.you && sawBrief.you.name === live.name && sawBrief.you.persona && sawBrief.topic, 'the scene brief names who answers (own name and persona line) and the topic');
+  ok(sc.beats.filter(b => b.id === quiet.id).length === 4 && sc.beats.filter(b => b.id === quiet.id).every(b => b.k === 'listen') && (sc.lw || []).includes(quiet.id) && (sc.late || 0) === 1, 'a silent agent is waited for once, then skipped (it listens)');
+  ok(sc.beats.some(b => b.id === live.id && /^ask-/.test(b.k) && /asks /.test(b.res)), 'a member asks a named companion');
+  ok(live.told && live.told.length === 1 && /river took our ferry/.test(live.told[0].text) && live.told[0].to.includes(other.name) && !live.told[0].to.includes(away.name), 'the told story lands in the teller\'s backstory (told to those at the fire)');
+  ok(live.persona && live.persona.hist.some(h => h.f === 'backstory' && /^told: /.test(h.after)), 'the persona history has a "told: ..." line');
+  const nt = P.playerAct(other.id, 'recall', {tag: 'story'});
+  ok(nt.ok && nt.notes.some(n => /river took our ferry/.test(n.text) && /hero/.test(n.about || '')), 'a listener remembers the story, about the teller');
+  ok(!(away.memories && away.memories.notes.some(n => /ferry/.test(n.text))) && !(away.chat || []).some(e => e.text === L300), 'the member away from the fire neither heard nor remembers it');
+  const br = PC.paceBrief(live.id).brief;
+  ok(br && /You have told your companions: .*ferry/.test(br.told || ''), 'the teller\'s turn header reminds it what it told');
+  ok(live.reflect && live.reflect.cur && /round the fire: what did you learn about/.test(live.reflect.cur.why.join(' ')), 'each member gets a fireside reflection: what did you learn about them tonight');
+  ok(/talked round the fire/.test(sc.summary) && /told of/.test(sc.summary), 'the outcome: ' + sc.summary);
+  // 2. a big event (a companion's death in the log): six rounds; nobody speaks, so the talk ends after one silent round
+  CM.breakCampNow('called'); S.fellowship.fire.last -= 1e4; F_.campaign('death', 'Old Brannoc fell at level 9 (a test).'); setDmSeat(false); LINK[live.id] = 'connected';
+  camp(); const sb = S.table;
+  ok(sb && sb.kind === 'fireside' && sb.ctx.rounds === 6 && sb.ctx.tk === 'death', `a big event makes a 6-round fireside on it (${sb && sb.ctx.topic})`);
+  k = 0; while (S.table === sb && k++ < 60 * 600) step(1 / 60);
+  ok(sb && sb.ctx.quiet && sb.rd === 1 && (sb.calls || []).every(c => c.by === 'scripted'), 'a silent round ends the talk early; no DM runner polls (its calls refused), so its reflexes frame it');
+  ok(sb && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'fireside' && e.detail.fill && e.detail.why === 'gone'), 'the fireside frame filled by the reflex is logged as a fill (why: gone) (#561)');
+  // 3. a debrief after a hard scene: one round, everyone at once
+  CM.breakCampNow('called'); field();
+  const rs = T.openScene('rescue', live.name + ' is going down', [live, ' is down.'], {hero: live.id}); k = 0; while (S.table === rs && k++ < 600) step(1 / 60);
+  k = 0; while (!(S.table && S.table.kind === 'debrief') && k++ < 600) step(1 / 60); const sd = S.table;
+  ok(sd && sd.kind === 'debrief' && sd.all && !sd.ids.includes(away.id), 'a hard scene (a rescue) is followed by a debrief for those present, everyone at once');
+  if (sd) P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'Too close. I owe you all a drink.'}); k = 0; while (S.table === sd && k++ < 60 * 60) step(1 / 60);
+  ok(sd && /talked it over/.test(sd.summary) && !S.table, 'the debrief plays one round: ' + (sd && sd.summary));
+  // 3b. the start gate holds the world (#559): no fire opens while it holds, and it opens once the hold lifts
+  CM.breakCampNow('called'); S.fellowship.fire.last -= 1e4; field(); SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
+  ok(!S.table, 'while the start gate holds the world no fireside opens');
+  SIM.setGateHold(false); k = 0; while (!(S.table && S.table.kind === 'fireside') && k++ < 600) step(1 / 60);
+  ok(S.table && S.table.kind === 'fireside', 'once the hold lifts the waiting fireside opens'); k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
+  // 4. no host: a camp opens no fireside
+  CM.breakCampNow('called'); S.fellowship.fire.last -= 1e4; SIM.setRunnerLinks(null); field(); CM.leaderRest(live, 4); run(30);
+  ok(!S.table && !S.fellowship.fireQ, 'with no host (npm run sim) a camp opens no fireside');
+  console.log(fail ? 'FIRESIDE FAILED ' + fail : 'FIRESIDE OK'); process.exit(fail ? 1 : 0);
 }
 
 // ---- parley and conditions (#296), in a child with a fresh world: node scripts/tablecheck.mjs --parley ----
@@ -1284,6 +1363,10 @@ ok(F_.fellows().every(a => a.state === 'dungeon'), 'agent members stay in the Cr
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
   ok(ch.status === 0 && /ARRIVAL OK/.test(ch.stdout || ''), 'session zero (prep, DM frame, introductions, met) and arrivals (never in the Crypt, DM or scripted voice, the oath, the letter, no host = at once)')}
 
+// ---- 5e. talk round the fire and the debrief (#571): a fresh world in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fireside'], {encoding: 'utf8', env: {...process.env}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /FIRESIDE OK/.test(ch.stdout || ''), 'fireside: 3 rounds a camp, 6 after a big event, the DM frames it, turns, a silent member skipped, long lines whole, copies refused, stories in the backstory and in listener notes, the reflection, the debrief, no host = none')}
 // ---- 6. determinism without a Fellowship ----
 const me = fileURLToPath(import.meta.url), h1 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim(), h2 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim();
 ok(/^HASH -?\d+ table:0 fellowship:0$/.test(h1) && h1 === h2, `no Fellowship: two seeded 3-minute runs are identical (${h1})`);

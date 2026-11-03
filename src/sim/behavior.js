@@ -13,6 +13,9 @@
 //             minutes this hour as closed, no runner, live, waiting;
 //             deaths and their causes; chat lines heard by those heroes, counted by channel; votes by agent
 //             and by reflex; Mind decisions by outcome.
+//             companies (issue #460): every company of agent heroes, {id, name, size (heroes), minds (agent members), deaths
+//             this hour, fellowship (the five-place one)}, plus a company that ended this hour with a death in it ({ended});
+//             each member line carries its company id and each death the company it rode in, for the death-rate watch.
 //   anomaly   idle in one place over BW.IDLE_MIN outside camp; the same state with no progress over
 //             BW.STUCK_MIN; reflex taking every agent turn of BW.SCENE_RUN scenes in a row; every agent
 //             vote by reflex for BW.VOTE_RUN proposals in a row; DM levers refused often; a danger lever
@@ -31,7 +34,8 @@
 import {S,clockStr} from './state.js';
 import {ZONES,zoneAt,dist} from '../world/map.js';
 import {maxHp} from './heroes.js';
-import {fellowshipMembers,mindsOf} from './fellowship.js';
+import {fellowshipMembers} from './fellowship.js';
+import {companies,minds} from './company.js'; // per-company digest (#460)
 import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
 import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
@@ -75,6 +79,7 @@ const DM_KINDS=['talk','table','slot','levers','board','branch','staged','voice'
 export function makeWatch(opts={}){
   const dmLinkFn=typeof opts.dmLink==='function'?opts.dmLink:null;
   let dmC=null,dmWin=[],dmHeld=null,dmAnom=-1e9,base=false,lastGm=0,hour=0,dmSeen=0,scene=null,sceneRun=0,voteRun=0,refusals=[],pulls=[];
+  const coSeen=new Map();let coDeaths={}; // hero id -> the company it was last seen in; deaths per company this hour (#460)
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map(),iseq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
     levers:{pulled:0,refused:0,by:{}},dmlog:{},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{}});
@@ -86,6 +91,7 @@ export function makeWatch(opts={}){
     seq0.clear();for(const a of seats())seq0.set(a.id,a.memories?a.memories.seq||0:0); // notes written before a seat is first tracked still count (#179)
     iseq0.clear();for(const a of seats())iseq0.set(a.id,a.intentSeq||0); // aims stated before a seat is first tracked still count (#535)
     for(const e of S.fallen||[])seenFallen.add(e);
+    coSeen.clear();coDeaths={};for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
     for(const a of seats())for(const e of a.chat||[])seenChat.add(e);
     for(const P of (S.fellowship&&S.fellowship.props)||[])if(P.status!=='open')seenProps.add(P.id);
     for(const a of S.agents)if(a.mind)emitted.set(a.id,new Set(a.mind.filter(e=>e.outcome!=='pending').map(e=>e.id)))}
@@ -174,13 +180,17 @@ export function makeWatch(opts={}){
 
   function heard(){for(const a of seats())for(const e of a.chat||[]){if(seenChat.has(e))continue;seenChat.add(e);const c=channelOf(e);H.chat[c]=(H.chat[c]||0)+1}}
   function deaths(){const mine=new Map(seats().map(a=>[a.name,a]));for(const e of S.fallen||[]){if(seenFallen.has(e))continue;seenFallen.add(e);
-    const was=S.agents.find(x=>x.name===e.name&&x.state==='dead');H.deaths.push({name:e.name,lvl:e.lvl,cls:e.cls,cause:e.cause||null,...(was&&was.fellow?{fellow:true}:{}),...(was&&was.player?{agent:true}:{}),...(mine.has(e.name)?{watched:true}:{})})}}
+    const was=S.agents.find(x=>x.name===e.name&&x.state==='dead'),co=was?coSeen.get(was.id):undefined;if(co!=null)coDeaths[co]=(coDeaths[co]||0)+1;
+    H.deaths.push({name:e.name,lvl:e.lvl,cls:e.cls,cause:e.cause||null,...(co!=null?{company:co}:{}),...(was&&was.fellow?{fellow:true}:{}),...(was&&was.player?{agent:true}:{}),...(mine.has(e.name)?{watched:true}:{})})}}
 
   function digest(out){const F=S.fellowship;
     out.push({kind:'world',rec:{gameMin:Math.round(S.gameMin),clock:day(),minutes:BW.DIGEST_MIN,
-      fellowship:F?{name:F.name,minds:mindsOf(F)}:null,
-      members:seats().map(a=>{const t=T.get(a.id);return {id:a.id,name:a.name,role:a.fellowRole||null,fellow:!!a.fellow,agent:!!a.player,mind:mindOf(a),state:a.state,doing:a.playDoing||null,place:place(a),hp:pct(a),lvl:a.lvl,idleMin:t?Math.round(S.gameMin-t.since):0}}),
-      ...H,dmShare:{...H.dmShare,agentShare:(()=>{const K=H.dmShare.kinds;let a=0,b=0;for(const k of ['talk','table','slot']){a+=K[k].agent;b+=K[k].scripted}return a+b?Math.round(100*a/(a+b))/100:null})()},dmFocus:{...H.dmFocus,share:H.dmFocus.acts?Math.round(100*H.dmFocus.fellow/H.dmFocus.acts)/100:null},table:{...H.table,open:!!S.table}}});H=fresh()}
+      fellowship:F?{name:F.name,minds:'agent'}:null, // always agent-played (#148)
+      companies:companyDigest(),
+      members:seats().map(a=>{const t=T.get(a.id);return {id:a.id,name:a.name,role:a.fellowRole||null,fellow:!!a.fellow,company:a.company??null,agent:!!a.player,mind:mindOf(a),state:a.state,doing:a.playDoing||null,place:place(a),hp:pct(a),lvl:a.lvl,idleMin:t?Math.round(S.gameMin-t.since):0}}),
+      ...H,dmShare:{...H.dmShare,agentShare:(()=>{const K=H.dmShare.kinds;let a=0,b=0;for(const k of ['talk','table','slot']){a+=K[k].agent;b+=K[k].scripted}return a+b?Math.round(100*a/(a+b))/100:null})()},dmFocus:{...H.dmFocus,share:H.dmFocus.acts?Math.round(100*H.dmFocus.fellow/H.dmFocus.acts)/100:null},table:{...H.table,open:!!S.table}}});H=fresh();coDeaths={}}
+  function companyDigest(){const L=companies().map(C=>({id:C.id,name:C.name||null,size:C.ids.length,minds:minds(C).length,deaths:coDeaths[C.id]||0,...(C.slots?{fellowship:true}:{})}));
+    for(const id in coDeaths)if(!L.some(c=>c.id===+id))L.push({id:+id,name:null,size:0,minds:0,deaths:coDeaths[id],ended:true});return L}
 
   return {
     tick(){const out=[];
@@ -188,7 +198,7 @@ export function makeWatch(opts={}){
       const dt=S.gameMin-lastGm;lastGm=S.gameMin;
       // a paused world (a Table scene at 1x) keeps its clock: scenes, votes and levers are still read
       if(dt>0){dmSeat(out,dt);for(const a of seats())track(out,a,dt);for(const id of [...T.keys()]){const a=byId(id);if(!a||a.state==='dead')T.delete(id)}}
-      dmLog(out);table(out);votes(out);decisions(out);heard();deaths();
+      dmLog(out);table(out);votes(out);decisions(out);heard();deaths();for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
       const h=Math.floor(S.gameMin/BW.DIGEST_MIN);if(h>hour){hour=h;digest(out)}
       return out},
     reset(){base=false}};

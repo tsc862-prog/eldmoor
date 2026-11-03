@@ -150,19 +150,26 @@ other. The rules:
 - `npm run archetypecheck`: Fellowship archetypes (#295, `src/data/archetypes.js`, `applyArchetype` in `src/sim/persona.js`): six archetypes picked on the setup page or the sheet, their stances toward each companion reaching prompts (#305), owner stances, no RNG.
 - `npm run personacheck`: agent-built personality (#409): the `self`/`become` tools, daily limits, owner pins, the persona history, relay writing never overwriting the hero's own words, the turn-header line and the standing-order block, a reflection that changes the persona, privacy, save/restore and old saves, no RNG.
 - Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, size, priority, prompt, seed, palette paths into
-  `src/render/palette.js`, the renderer hook naming its procedural fallback) and the candidate models (pixel-art LoRAs
-  on fal-ai through Hugging Face Inference Providers). `npm run art:daily` (`daily.mjs`; `-- --now` to run at once,
-  `--max N`, `ART_MAX_CALLS`, `--dry-run`) generates missing assets in priority order until the free allowance is used
-  up (402, a quota 429/403, rate headers at 0), into `assets/incoming/<date>/` with a contact sheet; state in
+  `src/render/palette.js`, the renderer hook naming its procedural fallback), the candidate models (pixel-art LoRAs
+  on fal-ai through Hugging Face Inference Providers) and `allowance.monthlyUsd`. `npm run art:daily` (`daily.mjs`;
+  `-- --now` to run at once, `--max N`, `ART_MAX_CALLS`, `ART_DAILY_BUDGET`/`--budget`, `--dry-run`) generates missing
+  assets in priority order into `assets/incoming/<date>/` with a contact sheet, and stops at the day's share of the
+  monthly credits (monthlyUsd / days in the month; HF gives free accounts no Inference Providers credits and PRO $2.00 a
+  month, about $0.01 an image with pixel-xl), at the month's total, or when the provider refuses (402, a quota 429/403,
+  rate headers at 0). It keeps every provider image as it came under `assets/incoming/<date>/raw/` before
+  post-processing, and `npm run art:reprocess -- <date>|all [keys]` re-runs post-processing on them with no call. State in
   `assets/queue.json` (gitignored), one line a run in `logs/art.log` (the launcher's `s` shows it); refused models fall
   through to the next candidate and the one that answers is pinned. `npm run art:accept -- <ids>|all` (`--reject`,
-  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scriptsartschedule.cmd [HH:MM]`
+  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scripts\art\schedule.cmd [HH:MM]`
   registers the daily Windows task. `npm run art:gen` generates straight into `assets/`, `npm run art:sheet` writes
-  the contact sheet. Post-processing (`post.mjs`, zero-dependency PNG codec `png.mjs`): background, downscale to the
-  pixel grid, quantise to the palette, outline. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until
-  loaded or when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names
-  the road, water and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against
-  a mock Hugging Face server.
+  the contact sheet. Post-processing (`post-texture.mjs` on the building blocks of `post.mjs`, zero-dependency PNG codec
+  `png.mjs`): find the model's pixel grid and sample cell centres (the image at its own pixel scale, ~128 px from 1024),
+  a seamless crop for tiles (base tiles are 32x32 patches) or a scaled subject for sprites, tone match and quantise to
+  the palette (widened with shades, optional ordered dither), outline; an output under `post.minColors` (4 for tiles)
+  is rejected as flat, not written. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until loaded or
+  when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names the road, water
+  and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against a mock Hugging
+  Face server and a pixel-art fixture.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player
@@ -268,20 +275,31 @@ is silent, and scene choices time out to the scripted branch, so the world never
   `RELAY_RUNNERS=1`, or `start-eldmoor.cmd`). Then an agent-played hero's mind row, its Agent tab and its
   party frame have **Start runner / Stop runner** with the runner's state (starting, live, waiting,
   stopping, stopped, crashed with its last error line), provider/model, turns and cost; the Fellowship panel
-  (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`). A picker chooses the mind
+  (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`), and a company's Company tab
+  **Start <company> / Stop <company>** (one company runner for two or more agent members with no runner yet, else a
+  hero runner per member; #460). A picker chooses the mind
   it starts with (the hero's saved mind, Claude Haiku, Claude Sonnet, or a pulled local model; a runner started from the
   app plays Claude Haiku when nothing is saved, `APP_CLAUDE_MODEL` in `scripts/runners.mjs`, while terminal runners keep
   Sonnet; `AGENT_MODEL`/`DM_MODEL` override both) and its budget for a paid mind ($0.50-$10, beside the picker and in the Agents panel; no turn cap, #563).
   The state line shows spend of budget ("$0.081 of $2.00"), turns per minute and the last turn's age; its tooltip shows what the pacing waits for. The relay spawns the runners as
-  child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship'|'dm',
-  hero?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {kind, hero?}`; kinds are a table; `dm` runs
+  child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship'|'company'|'dm',
+  hero?, company?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {kind, hero?, company?}`; kinds are a table; `dm` runs
   `scripts/dm-agent.mjs`, one at most, and is refused as "not installed yet" until that file exists), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
   a stop writes "stop" on the child's stdin (it releases its heroes), then kills; a child also stops when
   the relay goes away. Limits: off without the flag, loopback and the game page's origin only, heroes the
   page names as agent-played, providers anthropic/ollama/openai, defaults $1.00 per hero, $2.00 for the Fellowship, $1.00 for the DM and no turn cap (budget caps $5, $10, $5; a
   turn cap only when asked; local runners have no budget, OpenAI runners keep the budget and take no Claude slot), at most `RELAY_MAX_RUNNERS` (default 6)
   runners, where the six seats (the five Fellowship members as hero runners or one Fellowship runner, plus
-  the DM) always fit whatever the caps. Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
+  the DM) always fit whatever the caps. Company runners (#460, epic #402): kind `company` (key `company:<id>`, the
+  company named by `company` or one of its members as `hero`; $2.00 default, $10 cap) runs `scripts/fellowship.mjs
+  --company <id>` and plays every living agent member of one company of any size, each with its own session, pacing
+  and claim, picking up a joiner or a recruit who takes a fallen member's seat; it takes one hero seat per living
+  member. `/play/health` names each hero's `company`, `companyName` and `size` (plus `lead`, `table`, `due` in a
+  company of two or more; `seatInfo` in `src/sim/player-host.js` builds the list for the page and play-headless).
+  Seats restart on their own (`adopt` in `scripts/runners.mjs`, every `ADOPT_MS`): a member who leaves a company is let
+  go by the company runner and gets a hero runner with that runner's mind; a solo whose hero runner ended with its death
+  gets one for its heir (`succeeds`) with the same mind, within `HEIR_WAIT_MS`; a stop from the page never restarts.
+  The setup page starts one company runner for an apart group sharing one mind (`planRunners`). Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
   /play/runner/slot`, released after the turn, freed when the child exits) and waits for one when all are
   taken, so starting is never refused for slots (a Fellowship runner also queues its members with
@@ -339,6 +357,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   characters; under ~2.5k tokens by its caps); the first turn of a resumed run is told to read it. Old saves migrate
   on first touch (an existing journal becomes chapter 1, unlabeled). Hardcore: they die with the hero. No RNG, so the
   seeded sim is unchanged. Mirrored as `LIFE.md`. `npm run tiercheck`.
+- Semantic recall (#553, `scripts/embed.mjs`, `src/sim/semkey.js`): `recall` and `journal_search` (and the DM's `recall`) also find by meaning when the relay has a local embedding model (`OLLAMA_EMBED_MODEL`, default `nomic-embed-text`, `ollama pull nomic-embed-text`; `RELAY_EMBED=0` turns it off; `/api/embed` through `providers/ollama.mjs` `embed()`, no `num_ctx`). The sim never calls a network: for a query the relay asks the game for the texts (`_pool`), ranks them (cosine, scaled between `EMBED_MIN` .55 and `EMBED_FULL` .8, 300 ms budget, a cold cache fills in the background) and passes `{hash: 0..1}` as `_sem`; the tool adds up to `SEM.MAX` 2 to a hit's keyword score (a title or tag word is worth 3, so keywords still win) and marks it `semantic`, result `ranked: 'keywords and meaning'`. Agents cannot set `_sem`/`_pool` (stripped). Vectors are not in the save: `logs/agents/<world>/<heroId>-<name>/vectors.json` (the DM's under `dm/`), keyed by text hash, rebuilt when missing, stale or another model; a new world purges them with the folder, a fallen hero's file is removed. Not pulled, Ollama down or slow: scoring is exactly the game's own. The state header's relevant notes stay game-side. `play-headless --embed` opts in. `npm run embedcheck`.
 - Reflection moments (#179, `src/sim/reflect.js`): at natural pauses (making camp, the end of a Table scene, a
   companion's death, an oath kept, a buy or sell of 150g+, a conversation of 4 lines within 3 game hours, and dusk from
   19:00 once a game day when something happened) the state header names `reflect {id, kind, why}` and the runner's next
@@ -396,6 +415,9 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   `npm run fellowship -- --budget 2.00`.
 - Headless: `node scripts/play-headless.mjs --fellowship --port 8790 --warm 20 [--no-relay]`
   then `npm run fellowship -- --url http://127.0.0.1:8790 --max-turns 2 --budget 0.50`.
+- `npm run fellowship -- --company <id|name>` (#460) plays one company instead (a name matches the company's name or
+  one of its members); a company that is not the Fellowship gets company orders sized to it (`companyPrompt`: a solo its
+  own short ones), log `logs/company-<id>.log`, and its run record in `logs/fellowship-runs.jsonl` carries `company`.
 - The runner reuses the per-hero sessions (`logs/agents/<heroId>.json`, resumed next run,
   `--new` to start over), runner settings and claims of `npm run agent`; one overall
   `--budget` (for paid members), `--max-turns` per member (optional; by default every member plays until stopped or the budget is spent), each member paced like a hero runner (`--heartbeat MIN`, `--min-gap S`, the old `--cadence S` is the
@@ -503,6 +525,21 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
 - Talk (`src/sim/talk.js`): an agent's `say`/`party_say` that repeats one of its last 5 lines, or a second
   introduction once members have met (both spoke in each other's hearing), is refused; every turn header
   carries the last 8 lines heard and the companions met.
+- Round the fire (#571, `src/sim/fireside.js`): when a company with an agent at the table settles to rest at camp, a `fireside`
+  Table scene (PLAY 'turns') opens on a topic from its day (campaign log, fallen, landmarks, oaths and lessons; else an oath or a
+  question one member asks another), framed by the DM agent's table voice (table_call; `table_answer {rounds}` sets 3-6) or the
+  scripted DM. `FIRE.STD` 3 rounds, `FIRE.BIG` 6 after a death, the Crypt, a boss, a newcomer, an oath kept, a merge or expulsion.
+  Options: speak, `ask-<name>` (the asked one gets `answer`), `tell` (a story of one's past), listen; no dice, no votes. A silent
+  round ends it; a live agent silent past `FIRE.LIVE_MS` (60 s) listens for the rest of the night. Afterwards each agent gets a
+  reflection (kind `fireside`: what did you learn about them tonight?); a told story goes to the teller's `a.told` (persona
+  history "told: ...", `brief.told` header line, `self` stories_told) and to each listener's notebook (about the teller, tags
+  story, fireside). A `debrief` (PLAY 'all', one round) follows a rescue, a fall, a fight that left half below 35% or a vote
+  decided by one. Only with a host that reports links (`hasLinks`) and agents deciding, so seeded worlds are unchanged;
+  `FIRE.ON=false` turns it off (campcheck, dmcheck). Table lines (`TABLE.LINE_MAX` 600) are refused when longer, never cut, and a
+  line that near-copies another member's line in the scene (names left out) is refused; the scene brief carries `you` (name,
+  persona line, own oath, told stories) for forced answers. Townsfolk talk voiced by the DM agent runs to `CONV.DM_EXCHANGES` 10;
+  each person remembers each hero (`p.hmem`: last words, follow-ups; `npc_call` member.last_time; a scripted "Back again").
+  `npm run tablecheck` child `--fireside`.
 
 ## Model providers (Mixed minds, issue #97)
 
@@ -763,7 +800,9 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   `src: game` each hero's Mind entry once settled (outcome applied, late, rejected, offline, superseded).
 - `world.jsonl`: a digest every game hour from `src/sim/behavior.js` (read-only, not part of `step()`):
   each Fellowship member's and agent hero's mind, link, state, place, HP, level and idle time; the share
-  of game time agent / autopilot / relay mind / scripted; Table scenes and agent vs reflex turns; votes;
+  of game time agent / autopilot / relay mind / scripted; `companies` (#460: each company's id, name, size, agent
+  minds, deaths this hour, `fellowship` for the five-place one, `ended` for one that ended with a death in it) and
+  each member's and death's `company`; Table scenes and agent vs reflex turns; votes;
   DM lever pulls and refusals by caller; DM log kinds; deaths and causes; chat lines by channel (counts).
   The page sends it over the play bridge (`src/ui/player-bridge.js`, which now also connects while a
   Fellowship has relay minds); `play-headless` writes it directly.
@@ -782,7 +821,9 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   tokens and cost per provider/model, relay failure rates, decision outcomes), a **Mind comparison** per Fellowship
   member and provider/model (#280, `scripts/mind-compare.mjs`: agent turns, empty/failed, Table answers, decisions,
   rejected, scripted fallbacks, p50/p90 latency, tokens, cost, digest hours on autopilot, close calls, deaths survived,
-  lifetimes; "-" where a member has no data), the world digests.
+  lifetimes; "-" where a member has no data), the world digests, and **Companies** (#460, `companySection`: per company
+  the most heroes and minds, game hours seen, deaths and deaths per 10 game hours for the death-rate watch, its
+  members' agent turns and empty share).
 - `npm run behaviorcheck` (in CI): mock runners and a timing-out relay produce every anomaly kind above on
   a headless Fellowship of silent agents; asserts they are logged and reported, that a runner cannot write
   another seat's line, keys are redacted, files rotate, the watch leaves the world unchanged, and that a

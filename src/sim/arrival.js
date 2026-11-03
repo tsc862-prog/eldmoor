@@ -233,7 +233,12 @@ setSceneKind('opening',{options:optsOpening,reflex:reflexOpening,apply:applyOpen
 setSceneKind('arrival',{options:optsArrival,reflex:reflexArrival,apply:applyArrival,outcome:sc=>settleArrival(companyById(sc.company)||S.fellowship,sc.ctx,sc.beats),dm:DM_ARRIVE});
 
 // ---- the DM's tools for these scenes (sim/dmagent.js hands table_call / table_answer here while one is at the table) ----
-export const ourScene=()=>findScene(sc=>sc.kind==='opening'||sc.kind==='arrival'); // any company's (#518)
+// Other kinds voiced the same way register here (#571: the fireside and the debrief, sim/fireside.js): onAnswer(sc, call, args)
+// runs after the DM's answer (the fireside reads rounds from it).
+const VOICED={opening:null,arrival:null};
+export function voicedKind(k,onAnswer){VOICED[k]=typeof onAnswer==='function'?onAnswer:null}
+export {push as pushCall,resolve as resolveCall,live as voiceLive,say as sayAtTable};
+export const ourScene=()=>findScene(sc=>sc.kind in VOICED); // any company's (#518)
 export function sceneCall(){heard('table');const sc=ourScene();if(!sc)return null;const c=(sc.calls||[]).find(x=>!x.done)||null;
   const out={ok:true,staged:null,scene:{title:sc.title,kind:sc.kind,frame:plain(sc.frame),order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+')'),
     so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.kind==='arrival'?castOf(sc):[]},call:null};
@@ -243,7 +248,7 @@ export function sceneAnswer(a){a=a&&typeof a==='object'?a:{};const sc=ourScene()
   const c=(sc.calls||[]).find(x=>x.id===id);if(!c)return {ok:false,error:'no call '+(a.call==null?'':a.call)+' in this scene (see table_call)'};
   if(c.done)return {ok:false,error:'too late: the '+(c.by==='scripted'?'scripted DM':'DM')+' already answered call '+id};
   if(!text)return {ok:false,error:'say something'};
-  resolve(sc,c,{text,by:'dm-agent'});return {ok:true,call:id,kind:c.kind,said:text,next:(sc.calls||[]).some(x=>!x.done)?'another call is waiting (table_call)':null}}
+  resolve(sc,c,{text,by:'dm-agent'});const more=VOICED[sc.kind]?VOICED[sc.kind](sc,c,a)||{}:{};return {ok:true,...more,call:id,kind:c.kind,said:text,next:(sc.calls||[]).some(x=>!x.done)?'another call is waiting (table_call)':null}}
 
 // ---- once per step (sim/index.js, after the table): openings first, then the arrivals ----
 export function sessionTick(){const O=S.opening,CS=S.companies;

@@ -438,7 +438,7 @@ console.log('the DM prepares the table');
     if(url.endsWith('/play/runner'))return j(relay);throw new Error('no route '+url)};
   const dmf=$('frames').querySelector('.dmf'),txt=()=>dmf.textContent;
   sim.setDmSeat(false);relay.runners=[];uiFast();
-  ok(!!dmf&&!dmf.querySelector('.dmfchip').hidden&&dmf.querySelector('.dmffull').hidden&&/DM: scripted/.test(txt())&&/Open seat/.test(txt()),'seat closed: a small "DM: scripted" chip with Open seat');
+  ok(!!dmf&&!dmf.querySelector('.dmfchip').hidden&&dmf.querySelector('.dmffull').hidden&&/DM: no seat yet/.test(txt())&&!/Open seat/.test(txt()),'no seat yet: a small chip, no Open seat (#560)');
   sim.setDmSeat(true);relay.runners=[dmr];
   for(let i=0;i<250&&!/evening of day 2/.test(txt());i++){await wait();uiSlow();uiFast()}
   ok(dmf.querySelector('.dmfchip').hidden&&!dmf.querySelector('.dmffull').hidden,'seat open: the frame shows, the chip goes away');
@@ -458,7 +458,16 @@ console.log('the DM prepares the table');
   ok(box.open&&wb.open,'a click on the frame opens the Dungeon Master panel');
   box.open=false;dmf.dispatch('click',{target:dmf.querySelector('[data-dmnotes]')});
   ok(box.open&&(await import('../src/ui/dmpanel.js')).dmFilter()==='notes','the Notes button opens the panel on its Notes filter');
-  ok(dmf.querySelector('.dmftop').querySelector('[data-dmseat=close]'),'Close seat is on the frame');
+  ok(!dmf.querySelector('[data-dmseat]'),'no Open/Close seat on the frame (#560)');
+  ok(!document.getElementById('dmseat').querySelector('[data-dmseat]')&&!/(Open|Close) seat/.test(document.getElementById('dmseat').textContent+txt()),'no Open/Close seat in the Dungeon Master panel (#560)');
+  relay.runners=[dmr];uiFast();uiSlow();uiFast();
+  ok(!!dmf.querySelector('.dmfrun').querySelectorAll('button').find(b=>b.dataset.runact==='restart'&&/Restart DM/.test(b.textContent)),'a running DM offers Restart DM');
+  ok(/Notes \d+/.test(document.getElementById('dmseat').textContent)&&/Stop DM/.test(document.getElementById('dmseat').textContent),'the panel header shows the runner controls and the notes count');
+  {const gate=await import('../src/ui/rungate.js');relay.runners=[{...dmr,state:'stopped',pace:null,lines:[]}];gate.checkRunGate(Date.now()+60000);uiFast();
+   ok(gate.gateMissing().some(m=>m.kind==='dm'),'a stopped DM runner holds the world (gate)');
+   ok(!dmf.querySelector('.dmfalert').hidden&&/DM runner gone: the world is paused/.test(dmf.querySelector('.dmfalert').textContent),'the frame carries the DM runner-stop alert: '+dmf.querySelector('.dmfalert').textContent);
+   ok(/Restart|Start/.test(document.getElementById('rgate').textContent)&&/DM/.test(document.getElementById('rgate').textContent),'the gate banner names the DM with a button');
+   relay.runners=[];sim.setDmSeat(false);gate.setRunFree(true);gate.checkRunGate(Date.now()+70000);gate.setRunFree(false);uiFast()}
   const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
   ok(/\.dmf\{[^}]*min-width:0/.test(css)&&/\.dmffull\{[^}]*min-width:0/.test(css)&&/overflow-wrap:anywhere/.test(css.match(/\.dmfdo\{[^}]*\}/)[0]),'phone width: the frame wraps and shrinks (no horizontal scroll)');
   sim.setDmSeat(false)}

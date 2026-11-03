@@ -23,7 +23,7 @@
 // folder, logs/behavior/<NAME>/, default <world id>-headless; issue #129; also the memory mirror's logs/agents/<NAME>/, #155),
 // --wait-ready (issue #222: hold the world until every living agent hero and the DM seat report a completed
 // warm-up model call, POST /play/ready; it opens the DM seat, #559, unless --no-dm; without it the world runs as before;
-// while held, agent heroes get no turn and their acting tools are refused), --no-behavior (keep none), --no-mirror (no Markdown copy of the agents' memories). The world is
+// while held, agent heroes get no turn and their acting tools are refused), --no-behavior (keep none), --no-mirror (no Markdown copy of the agents' memories), --embed (semantic recall through a local Ollama embedding model, #553; off by default so a headless run never reaches for Ollama on its own). The world is
 // saved every minute and on exit, so `--resume` (and `npm run agent`, which keeps one session per
 // hero in logs/agents/) pick up where they stopped.
 import http from 'node:http';
@@ -32,15 +32,15 @@ import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
 import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks, planOpening, openingDue, beginPrep, endPrep, prepTick, prepView, prepActive, setPrepHost, setGateHold, setDmAlive} from '../src/sim/index.js';
 import {onLog} from '../src/sim/chronicle.js';
-import {hostCall} from '../src/sim/player-host.js';
-import {sceneDue} from '../src/sim/scenewait.js';
-import {sceneOf} from '../src/sim/scenes.js'; // health: a member's scene still waits for its answer (#515)
+import {hostCall, seatInfo} from '../src/sim/player-host.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
 import {attachRunners} from './runners.mjs';
 import {behaviorLog} from './behavior-log.mjs';
 import {makeWatch} from '../src/sim/behavior.js';
 import {mirrorDirty} from '../src/sim/notebook.js';
 import {memoryMirror} from './memory-mirror.mjs';
+import {semanticRecall} from './embed.mjs'; // semantic memory search, opt in with --embed (issue #553)
+import {ollamaAdapter} from './providers/ollama.mjs';
 import {WORLD_ID} from '../src/world/map.js';
 import {loadCampaigns} from './campaign-files.mjs';
 
@@ -64,7 +64,7 @@ export function localBackend(hostOpts) {
       return a ? hostCall(a.id, tool, args, hostOpts) : Promise.resolve({ok: false, error: heroId != null ? `Hero #${heroId} is not agent-played.` : 'No agent-played hero.', offline: true})},
     dmCall: (tool, args) => Promise.resolve(dmAct(tool, args)), // the DM seat (issue #66): answered at once, no waits
     narrate: (heroId, text) => {const a = heroId != null ? playerSeat(heroId) : playerSeat(); if (a) playerNarrate(a.id, text)},
-    info: () => ({connected: true, dm: dmSeatOn(), ...(prepView().state !== 'idle' ? {dmPrep: prepView()} : {}), heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', ...(a.succeeds != null ? {succeeds: a.succeeds} : {}), ...(a.fellow ? {fellow: true, role: a.fellowRole || null, lead: !!(a.party && a.party.fellow && a.party.leader === a), table: !!sceneOf(a), ...(sceneDue(a) ? {due: true} : {})} : {})}))}),
+    info: () => ({connected: true, dm: dmSeatOn(), ...(prepView().state !== 'idle' ? {dmPrep: prepView()} : {}), heroes: seats().map(seatInfo)}),
   };
 }
 
@@ -142,7 +142,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const server = http.createServer((req, res) => {res.writeHead(404, {'content-type': 'application/json'}); res.end('{"error":"not found"}')});
   // Behavior logs (issue #129): runners' turn lines, the world digest and game-side anomalies under logs/behavior/<world>/.
   const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch({dmLink: () => playRef && playRef.claimed('dm') ? 'connected' : 'none'}) : null;
-  const play = attachPlay(server, {behavior, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
+  // Semantic memory search (issue #553) is opt in here (--embed): a headless run never reaches for a local Ollama on its own.
+  const embed = flag('embed') ? semanticRecall({adapter: ollamaAdapter({url: process.env.OLLAMA_URL || undefined}), world: opt('log-world', WORLD_ID + '-headless'), log: console.log}) : null;
+  if (embed) embed.setWorld(opt('log-world', WORLD_ID + '-headless'), S.worldId);
+  const play = attachPlay(server, {behavior, embed, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
   playRef = play;
   setDmAlive(() => dmSeatOn() && playRef.claimed('dm')); // a claimed DM seat is a live runner: its calls wait their bounded time, then its reflexes fill (#561)
   if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);

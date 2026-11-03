@@ -35,7 +35,7 @@
 - [localcheck autopilot flake](localcheck-autopilot-flake.md) — pin hp/spot until idle; soft wake by kind not text
 - [Whisper and dream](whisper-dream.md) — #523 whisper/dream DM tools: delivery, limits, leans-close via table.narr, check pitfalls
 - [DM fairness](dm-fairness.md) — #451 fairness()/fairRefusal, staged per company (PER_DAY 2+n, company:<id>), starve-test caveat
-- [Art pipeline](art-pipeline.md) — #177 HF Inference Providers shapes (fal-ai LoRA), candidates, quota stop rules, daily/accept/queue protocol, pitfalls
+- [Art pipeline](art-pipeline.md) — #177 HF request shape (confirmed), credits $2/mo PRO ~$0.01/image, texture-preserving post, raw+reprocess, daily/accept, pitfalls
 - [Talk fallback](talk-fallback.md) — #540 townAnswer: public-knowledge scripted answers, warning only when fits, scripted tag, DM grace
 - [Give item](give-item.md) — #524 give_item/take_item levers, token alias, flat tools, allow:['item'], ilvl, pitfalls
 - [Scene waits](scene-waits.md) — #515 table_waits, urgent Ollama queue, free-turn interrupt, Claude scene-first, pace {queued} extra wait, scene-missed, sceneS
@@ -47,6 +47,8 @@
 - [CI fast](ci-fast.md) — #543 job split, CI_FAST knob, dmcheck/ratecheck parallel children, what is timer vs CPU bound
 - [DM always (setup+gate)](dm-always-setup.md) — #559 DM mind required, seat open tick 1, gate counts DM, --no-dm, resume DM, world-held tool refusal
 - [Runner labels](runner-labels.md) — #563 label flip cause (6-turn cap release vs supervisor list), left members, implied ready, no turn caps, labelcheck
+- [Semantic recall](semantic-recall.md) — #553 _pool/_sem protocol, vectors.json cache, 300 ms budget, fallbacks, pitfalls
 - [CI correctness](ci-correctness.md) — #573 hashcheck source+hash-guard, rulescheck allowlist, merge_group, pitfalls
 - [CI observation](ci-observation.md) — #574 flake hunt, nightly mock run + thresholds, shoot.mjs, red-main alarm, helpers, pitfalls
+- [Company runners](company-runners.md) — #460 kind company, seatInfo health fields, adopt (leaver/heir restarts), per-company digest+report, shims left
 - [DM reflexes](dm-reflexes.md) — #561 dmreflex.js heard/alive/gone, no seat-closed paths, fill why slow|gone, dmShare arrival, RNG test pitfall

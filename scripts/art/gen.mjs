@@ -20,9 +20,12 @@
 // (default https://huggingface.co).
 import {readFileSync,writeFileSync,existsSync,mkdirSync,renameSync} from 'node:fs';
 import {join,dirname} from 'node:path';
-import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,sha256,validateManifest} from './lib.mjs';
-import {decodePng,encodePng} from './png.mjs';
-import {resolvePalette,postProcess} from './post.mjs';
+import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest} from './lib.mjs';
+import {decodePng,encodePng,isPng} from './png.mjs';
+import {resolvePalette} from './post.mjs';
+import {postProcess} from './post-texture.mjs';
+
+export const today=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
 export function parseArgs(argv,valued){const o={_:[]};for(let i=0;i<argv.length;i++){const a=argv[i];if(!a.startsWith('--')){o._.push(a);continue}const k=a.slice(2);
   if(valued.includes(k)){o[k]=argv[i+1];i++}else o[k]=true}return o}
@@ -78,7 +81,7 @@ async function imageBytes(r){
   throw new ArtError('image','no image in the answer')}
 
 const QUOTA=/quota|credit|exceeded|limit reached|usage limit|monthly|daily|subscribe|pre-?paid|payment/i;
-// HTTP status + body -> ArtError. 402 and a 429 that speaks of quota or credit mean the free allowance is used up.
+// HTTP status + body -> ArtError. 402 and a 429 that speaks of quota or credit mean the credits are used up.
 export function classify(status,body,retryAfter){
   const txt=String(body||'').slice(0,240).replace(/hf_[A-Za-z0-9]+/g,'hf_***').replace(/\s+/g,' ');
   if(status===402)return new ArtError('quota',`allowance used: HTTP 402 ${txt}`,status);
@@ -101,12 +104,22 @@ export async function callImage(req,token,{timeout=120000,count=()=>{},wait=s=>n
     if((e.kind==='rate'||r.status===503)&&attempt<2){const s=Math.min(60,ra||5*(attempt+1));console.log(`  ${r.status}, waiting ${s}s`);await wait(s);continue}
     throw e}}
 
-// prompt -> PNG buffer and image for one manifest entry (seed may differ for alternates).
-export async function makeAsset({man,PAL,m,mp,e,token,seed=e.seed,timeout,count}){
-  const {bytes,last}=await callImage(buildRequest(man,m,mp,e,seed),token,{timeout,count});
+// One call: the provider's image bytes. Callers keep them raw (saveRaw) before anything else happens.
+export async function fetchRaw({man,m,mp,e,token,seed=e.seed,timeout,count}){return callImage(buildRequest(man,m,mp,e,seed),token,{timeout,count})}
+
+// Raw bytes -> asset image and PNG (post-texture.mjs). Throws ArtError 'image' (not a PNG) or 'flat' (too few colours).
+export function processRaw(bytes,e,PAL,m){
   let raw;try{raw=decodePng(bytes)}catch(err){throw new ArtError('image',err.message)}
-  const img=postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline);
-  return {img,png:encodePng(img),last}}
+  try{const img=postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline,{hint:(m&&m.grid)||8});return {img,png:encodePng(img)}}
+  catch(err){if(err.kind==='flat')throw Object.assign(new ArtError('flat',err.message),{notes:err.notes});throw err}}
+
+// Keep the provider's image as it came, before post-processing, so every later tweak re-runs offline
+// (npm run art:reprocess): <inc>/raw/<kind>/<name>[.altK].<png|jpg|bin> plus <inc>/raw/index.json with the request facts.
+export function saveRaw(inc,key,bytes,meta){
+  const ext=isPng(bytes)?'png':bytes[0]===0xff&&bytes[1]===0xd8?'jpg':'bin',file=keyFile(key).replace(/\.png$/,'.'+ext),p=join(inc,'raw',file);
+  mkdirSync(dirname(p),{recursive:true});writeFileSync(p,bytes);
+  const ri=loadIndex(join(inc,'raw'));ri.assets[key]={...meta,file,bytes:bytes.length,sha256:sha256(bytes),at:new Date().toISOString()};writeIndex(join(inc,'raw'),ri);
+  return file}
 
 export function writeIndex(dir,idx){mkdirSync(dir,{recursive:true});const p=join(dir,'index.json'),s={version:1,assets:Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]))};
   writeFileSync(p+'.tmp',JSON.stringify(s,null,1)+'\n');renameSync(p+'.tmp',p)}
@@ -126,7 +139,7 @@ export async function main(argv=process.argv.slice(2)){
   const cost=todo.reduce((s,e)=>s+man.models[modelKey(man,e,o.model)].costPerImage,0);
   console.log(`[art] ${man.assets.length} in the manifest, ${Object.keys(idx.assets).length} in ${out.replace(ROOT,'.')}/index.json, ${want.length} to make`+(todo.length<want.length?`, stopping at --max ${todo.length}`:''));
   for(const [k,n] of Object.entries(todo.reduce((a,e)=>{const k=modelKey(man,e,o.model);a[k]=(a[k]||0)+1;return a},{})))console.log(`[art]   ${n} x ${k} (${man.models[k].repo}) at ~$${man.models[k].costPerImage}/image`);
-  console.log(`[art] estimated cost: $${cost.toFixed(3)} for ${todo.length} image${todo.length===1?'':'s'} (an estimate; inside the free allowance nothing is billed)`);
+  console.log(`[art] estimated cost: $${cost.toFixed(3)} for ${todo.length} image${todo.length===1?'':'s'} (an estimate of Inference Providers credits; art:daily keeps to a daily budget, art:gen does not)`);
   if(!todo.length){console.log('[art] nothing to do');return 0}
   if(o['dry-run']){const e=todo[0],m=man.models[modelKey(man,e,o.model)];let mp;try{mp=await mapping(m)}catch(err){mp={provider:m.provider||'?',providerId:m.providerId||'?'};console.log('[art] mapping lookup failed: '+err.message)}
     const {url,body}=buildRequest(man,m,mp,e);console.log(`[art] dry run: first request POST ${url}\n${JSON.stringify(body,null,1)}`);return 0}
@@ -135,7 +148,8 @@ export async function main(argv=process.argv.slice(2)){
   const timeout=(Number(o.timeout)||120)*1000,maps=new Map();let made=0,failed=0;
   for(const e of todo){const k=modelKey(man,e,o.model),m=man.models[k],t0=Date.now();
     try{let mp=maps.get(k);if(!mp){mp=await mapping(m);maps.set(k,mp)}
-      const {img,png}=await makeAsset({man,PAL,m,mp,e,token,timeout});
+      const {bytes}=await fetchRaw({man,m,mp,e,token,timeout});saveRaw(join(out,'incoming',today()),e.id,bytes,{id:e.id,model:k,repo:m.repo,provider:mp.provider,seed:e.seed});
+      const {img,png}=processRaw(bytes,e,PAL,m);
       const file=fileOf(e.id),p=join(out,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);
       idx.assets[e.id]={id:e.id,kind:e.kind,file,w:img.w,h:img.h,sha256:sha256(png),model:k,repo:m.repo,provider:mp.provider,seed:e.seed,at:new Date().toISOString()};
       writeIndex(out,idx);made++;console.log(`[art] ${e.id} -> ${file} ${img.w}x${img.h} (${((Date.now()-t0)/1000).toFixed(1)}s)`)}

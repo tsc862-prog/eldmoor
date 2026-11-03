@@ -41,7 +41,8 @@ import {companionTick} from './offers.js'; // offers lapse, companies of 2+ keep
 import {tableTick,tableHold} from './table.js';
 import './events.js'; // DM world events: festival and plague (#10)
 import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Table (#65)
-import {sessionTick,planOpening} from './arrival.js'; // session zero (#437) and a fallen member's recruit (#452)
+import {sessionTick,planOpening} from './arrival.js';
+import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
 import {opening} from './opening.js';
@@ -103,7 +104,7 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first
-  partyTick();fellowshipTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  partyTick();fellowshipTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);

@@ -194,6 +194,26 @@ ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.n
 ok(world.some(w => w.intents && w.intents[A.name] >= 1) && anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id !== A.id) && !anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id === A.id), 'digests count aims stated per hero; no-aim flags the silent ones, not A (#535)');
 ok(/Aims stated \(intent\) per hero per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: aims stated per hero per game day');
 ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last world digest');
+// ---- per company (issue #460): the digest names every company, its size, minds and deaths; members carry their company ----
+{const FC = S.fellowship.id, wc = world.filter(w => Array.isArray(w.companies));
+  ok(wc.length === world.length && wc.every(w => w.companies.some(c => c.id === FC && c.fellowship && c.size >= 1 && c.minds >= 1 && Number.isInteger(c.deaths))), 'every digest lists the companies: the Fellowship\'s with its size, minds and deaths this hour (#460)');
+  ok(lastW.members.every(m => m.company === FC), 'digest members carry their company id');
+  ok(/## Companies/.test(md) && md.split('## Companies')[1].includes('#' + FC + ' (Fellowship)'), 'the report has a Companies section with the Fellowship\'s row');}
+{const CD = join(ROOT, 'companies', 'mock'); const {mkdirSync} = await import('node:fs'); mkdirSync(CD, {recursive: true});
+  const t0 = Date.parse('2026-11-01T10:00:00Z'), W3 = [];
+  for (let h = 1; h <= 10; h++) W3.push({ts: new Date(t0 + h * 60000).toISOString(), gameMin: 600 + h * 60, minutes: 60,
+    companies: [{id: 1, name: 'The Ninth Lantern', size: 5, minds: 5, deaths: h === 4 ? 1 : 0, fellowship: true}, ...(h <= 6 ? [{id: 2, name: null, size: 2, minds: 2, deaths: h === 6 ? 2 : 0}] : h === 7 ? [] : []), {id: 3, name: 'Wren', size: 1, minds: 1, deaths: 0}],
+    members: [{id: 10, name: 'Ann', company: 1, agent: true}, {id: 20, name: 'Bo', company: 2, agent: true}, {id: 30, name: 'Wren', company: 3, agent: true}],
+    deaths: h === 6 ? [{name: 'Bo', company: 2, agent: true}, {name: 'Cal', company: 2, agent: true}] : []});
+  writeFileSync(join(CD, FILES.world), W3.map(x => JSON.stringify(x)).join('\n') + '\n');
+  writeFileSync(join(CD, FILES.turn), [1, 2, 3, 4].map(i => JSON.stringify({ts: new Date(t0 + i * 1000).toISOString(), seat: 'hero:30', hero: {id: 30, name: 'Wren'}, provider: 'ollama', model: 'q', turn: i, tools: [], seconds: 1, flags: i === 1 ? ['empty'] : []})).join('\n') + '\n');
+  const rc = writeReport(join(ROOT, 'companies'), 'mock'), cmd = readFileSync(rc.file, 'utf8'), csec = (cmd.split('## Companies')[1] || '').split('## Decisions')[0];
+  const row = id => (csec.split('\n').find(l => l.startsWith('| #' + id)) || '').split('|').slice(1, -1).map(x => x.trim());
+  const r1 = row(1), r2 = row(2), r3 = row(3);
+  ok(r1[0] === '#1 (Fellowship)' && r1[1] === 'The Ninth Lantern' && r1[2] === '5' && r1[4] === '10' && r1[5] === '1' && r1[6] === '1.00', `the Fellowship: 10 game hours, 1 death, 1.00 per 10 h (${r1.join(' | ')})`);
+  ok(r2[2] === '2' && r2[4] === '6' && r2[5] === '2' && r2[6] === '3.33', `a company of two that lost both: 2 deaths in 6 h (${r2.join(' | ')})`);
+  ok(r3[7] === '4' && r3[8] === '25%' && r3[9] === 'Wren', `a solo: its member's agent turns and empty share (${r3.join(' | ')})`);
+  ok(Array.isArray(rc.companies) && rc.companies.length === 3, 'buildReport returns the per-company data');}
 
 // ---- 6b. the mind comparison (issue #280) on mock logs: two members on qwen, one on Claude, a death, writing calls ----
 {

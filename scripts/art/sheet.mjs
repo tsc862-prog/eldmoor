@@ -5,7 +5,7 @@
 // Tile fallbacks are painted with the real terrain texels (src/render/terrain.js) from the first tile of that type
 // on the Eldmoor map; kinds without a Node fallback painter say so. Node only, no network.
 import {readFileSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
-import {join,dirname} from 'node:path';
+import {join,dirname,relative,sep} from 'node:path';
 import {ROOT,ASSETS,loadManifest,loadIndex} from './lib.mjs';
 import {encodePng} from './png.mjs';
 import {resolvePalette} from './post.mjs';
@@ -33,21 +33,26 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const scales=[1,2,4];
 const cell=(src,[w,h])=>src?scales.map(k=>`<img src="${src}" width="${w*k}" height="${h*k}" alt="">`).join(''):'<span class="none">none</span>';
 // One row per generated key (an alternate is 'id#altK'), or per manifest entry; --generated lists only what is generated.
-let made=0;const keys=man.assets.flatMap(e=>{const ks=Object.keys(idx.assets).filter(k=>k===e.id||k.startsWith(e.id+'#'));return (ks.length||o.generated?ks:[e.id]).map(k=>[k,e])});
+// The provider's own image, when the run kept it (incoming/<date>/raw/), linked relative to the sheet, not inlined.
+const raw=loadIndex(join(dir,'raw')).assets;
+const rawCell=k=>{const r=raw[k];if(!r||!existsSync(join(dir,'raw',r.file)))return '<span class="none">-</span>';
+  return `<a href="${relative(dirname(out),join(dir,'raw',r.file)).split(sep).join('/')}"><img class="raw" src="${relative(dirname(out),join(dir,'raw',r.file)).split(sep).join('/')}" width="128" height="128" alt=""></a>`};
+let made=0;const keys=man.assets.flatMap(e=>{const ks=[...new Set([...Object.keys(idx.assets),...Object.keys(raw)])].filter(k=>k===e.id||k.startsWith(e.id+'#'));return (ks.length||o.generated?ks:[e.id]).map(k=>[k,e])});
 const rows=keys.map(([k,e])=>{const a=idx.assets[k],p=a&&join(dir,a.file);const has=p&&existsSync(p);if(has)made++;
-  const pal=resolvePalette(e.palette,PAL).colors;
-  return `<tr><td><b>${esc(k)}</b><br>${e.size.join('x')} · ${esc(e.kind)} · priority ${e.priority}<br><small>${a?esc(a.model+' · '+a.repo+' · seed '+a.seed)+'<br>'+esc(a.at||''):'seed '+e.seed}</small>
+  const pal=resolvePalette(e.palette,PAL).colors,r=raw[k];
+  return `<tr><td><b>${esc(k)}</b><br>${e.size.join('x')} · ${esc(e.kind)} · priority ${e.priority}<br><small>${a?esc(a.model+' · '+a.repo+' · seed '+a.seed)+'<br>'+esc(a.at||''):r?esc(r.model+' · seed '+r.seed):'seed '+e.seed}${a&&a.colors?'<br>'+a.colors+' colours · grid '+esc(a.grid||'?'):''}</small>
 <div class="pal">${pal.map(c=>`<i style="background:${c}" title="${c}"></i>`).join('')}</div></td>
-<td class="g">${has?cell(uri(readFileSync(p)),e.size):'<span class="none">not generated</span>'}</td>
+<td>${rawCell(k)}</td>
+<td class="g">${has?cell(uri(readFileSync(p)),e.size):`<span class="none">${r?'rejected (flat); raw kept':'not generated'}</span>`}</td>
 <td class="g">${cell(tileFallback(e.id,e.size),e.size)}</td>
 <td><small>${esc(e.prompt)}</small></td></tr>`}).join('\n');
 
 const html=`<!doctype html><meta charset="utf-8"><title>Eldmoor art sheet</title>
 <style>body{background:#0d0e19;color:#ece6d2;font:14px/1.4 system-ui,sans-serif;margin:16px}table{border-collapse:collapse;width:100%}
-td,th{border-bottom:1px solid #2e2a34;padding:8px;vertical-align:top;text-align:left}img{image-rendering:pixelated;margin-right:8px;vertical-align:bottom}
+td,th{border-bottom:1px solid #2e2a34;padding:8px;vertical-align:top;text-align:left}img{image-rendering:pixelated;margin-right:8px;vertical-align:bottom}img.raw{image-rendering:auto}
 .g{background:#1a1a26;white-space:nowrap}.g:hover{background:#d8d0c0}.none{color:#8f8ca8}.pal i{display:inline-block;width:10px;height:10px;margin:1px}small{color:#8f8ca8}</style>
 <h1>Eldmoor art: ${made} generated (${man.assets.length} in the manifest)</h1><p>Generated asset and its procedural fallback at 1x, 2x and 4x (hover a cell for a light ground).</p>
-<table><tr><th>asset</th><th>generated</th><th>procedural fallback</th><th>prompt</th></tr>
+<table><tr><th>asset</th><th>model image</th><th>generated</th><th>procedural fallback</th><th>prompt</th></tr>
 ${rows}</table>`;
 mkdirSync(dirname(out),{recursive:true});writeFileSync(out,html);
 console.log(`[art] sheet: ${out} (${made} generated, ${man.assets.length} in the manifest)`);

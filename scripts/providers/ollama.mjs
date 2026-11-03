@@ -120,6 +120,27 @@ export function ollamaAdapter({url = OLLAMA_URL, defaultModel = OLLAMA_MODEL, ke
       if (!text) throw Object.assign(fail('no text in reply'), {result: out});
       return out;
     },
+    // Embeddings for semantic memory search (issue #553): POST /api/embed with a small embedding model
+    // (OLLAMA_EMBED_MODEL, default nomic-embed-text, see scripts/embed.mjs). input: an array of texts -> {vectors: [[number]], model, ms}.
+    // No num_ctx here on purpose: an embedding model is its own small load and never evicts or reloads the chat model
+    // the way a different context would (issue #221). Throws a plain Error on any failure; callers fall back.
+    async embed({model, input, signal, timeoutMs = 20000}) {
+      const t0 = Date.now(), list = (Array.isArray(input) ? input : [input]).map(x => String(x == null ? '' : x));
+      if (!model) throw fail('ollama: no embedding model named');
+      const ac = new AbortController(), t = setTimeout(() => ac.abort(), timeoutMs);
+      if (signal) {if (signal.aborted) ac.abort(); else signal.addEventListener('abort', () => ac.abort(), {once: true})}
+      try {
+        const r = await fetchImpl(base + '/api/embed', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({model, input: list, truncate: true, keep_alive: keepAlive}), signal: ac.signal});
+        let j = null; try {j = await r.json()} catch {}
+        if (!r.ok) throw fail('ollama: ' + String(j && j.error || 'HTTP ' + r.status).slice(0, 160));
+        const v = j && j.embeddings;
+        if (!Array.isArray(v) || v.length !== list.length || !v.every(x => Array.isArray(x) && x.length)) throw fail('ollama: the embedding reply did not match the request');
+        return {vectors: v, model: (j && j.model) || model, ms: Date.now() - t0};
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw fail('ollama: no embedding in ' + Math.round(timeoutMs / 1000) + ' s');
+        throw e;
+      } finally {clearTimeout(t)}
+    },
     // A multi-turn chat for the local agent runner (issue #97 part 2, scripts/local-agent.mjs).
     // messages: Ollama chat messages (system/user/assistant with tool_calls/tool); tools: Ollama
     // function tools, or format: a JSON schema for the JSON-action fallback. Returns {message,

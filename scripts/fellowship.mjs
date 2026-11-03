@@ -1,5 +1,9 @@
-// The Fellowship's table runner (issue #68, phase B): `npm run fellowship` plays every member of
-// the Fellowship with its own Claude Agent SDK session, side by side, under one budget.
+// The company runner (issue #460, epic #402; the Fellowship's table runner of issue #68, phase B): `npm run fellowship`
+// plays every member of the Fellowship with its own Claude Agent SDK session, side by side, under one budget;
+// `npm run fellowship -- --company <id|name>` plays every living agent member of one company of any size the same way
+// (heroes[].company in /play/health; a name matches the company's name or one of its members). In company mode a
+// member who leaves the company is let go (the supervisor, scripts/runners.mjs, gives it a hero runner), and a joiner
+// or a recruit who takes a fallen member's seat is picked up as it arrives. The app starts it as runner kind 'company'.
 //
 //   1. The game: npm run relay + npm run dev, found a Fellowship in the Fellowship panel and click
 //      its Minds button until it reads "Minds: agents" (every member becomes agent-played).
@@ -71,7 +75,7 @@ import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.m
 import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const LOG_FILE = join(ROOT, 'logs', 'fellowship.log'), RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
+let LOG_FILE = join(ROOT, 'logs', 'fellowship.log'); const RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
 
 // The Fellowship's part of a member's standing orders (appended to systemPrompt(status)).
 export function fellowshipPrompt(st) {
@@ -89,6 +93,18 @@ export function fellowshipPrompt(st) {
   ].join('\n');
 }
 
+// A company's part of a member's standing orders when it is not the five-place Fellowship (#460): the same rules of
+// talk, distance, votes, the leader and the table, sized to the company. name: the company's name ('' for none).
+export function companyPrompt(st, {name = '', size = 1} = {}) {
+  const n = Math.max(0, (size || 1) - 1), who = name ? name : 'a company';
+  if (!n) return ['', `COMPANY: you ride alone for now (${name ? name + ', ' : ''}a company of one). Others may ride with you later (invite, accept); until then your choices are yours.`,
+    '- You already know who you are: do not introduce yourself again to someone you have met, and do not repeat a line. The game refuses a line you already said.',
+    '- TABLE MODE: when status, look or wait show "table", the world is paused for a scene. Act at once with scene_act(option, line), with a short line in your voice. Then wait.',
+    '- Hardcore still holds: one life.'].join('\n');
+  return fellowshipPrompt(st).replace(/^FELLOWSHIP: .*$/m, `COMPANY: you ride with ${who}. ${n === 1 ? 'One companion shares' : n + ' companions share'} your road; who they are is in status.party, and how you see them in your persona and memories: play from them, in your own voice.`)
+    .replace('whoever takes your place in the Fellowship finds it', 'whoever takes your place in the company finds it');
+}
+
 const argv = process.argv.slice(2);
 const opt = (k, d) => {const i = argv.indexOf('--' + k); return i >= 0 && argv[i + 1] != null && !argv[i + 1].startsWith('--') ? argv[i + 1] : d};
 const flag = k => argv.includes('--' + k);
@@ -102,7 +118,7 @@ const money = v => '$' + (v || 0).toFixed(4);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // A member's prompt for one turn: at the table, the first turn, or carrying on.
 // w: why the turn started (scripts/pacing.mjs), the member's own news only (issue #123)
-export const memberPrompt = (turns, scene, w = null) => scene ? 'The Fellowship is at the table: a scene is open and the world is paused. Read the table (status, or the event you were sent) only if you must, then act NOW with scene_act(option, line). Then wait.'
+export const memberPrompt = (turns, scene, w = null, who = 'The Fellowship') => scene ? who + ' is at the table: a scene is open and the world is paused. Read the table (status, or the event you were sent) only if you must, then act NOW with scene_act(option, line). Then wait.'
   : turns === 0 ? 'Begin. Get to know yourself, your companions and your surroundings (status, look, party_read, journal_read), say a word to the party, write a first journal entry, then act. Follow your leader.'
   : `Turn ${turns + 1}. Carry on with your companions: answer open proposals, keep to the party, and act.${wakeNote(w)} Answer and speak only in English.`;
 
@@ -116,12 +132,21 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   const h0 = await health(base);
   if (!h0.ok || !h0.connected) {console.error(`The game at ${base} is not ready: ${h0.error || 'no game page connected'}.`); process.exit(1)}
-  const fellowsOf = h => (h.heroes || []).filter(x => x.fellow && x.alive);
+  // --company <id|name> (#460): the members are the living agent heroes of that company; else the Fellowship's
+  const coArg = opt('company', null);
+  let cid = null;
+  if (coArg != null) {const hs = (h0.heroes || []).filter(x => Number.isInteger(x.company)), low = String(coArg).trim().toLowerCase();
+    const hit = /^\d{1,9}$/.test(low) && hs.find(x => x.company === Number(low)) || hs.find(x => String(x.companyName || '').toLowerCase() === low) || hs.find(x => String(x.name || '').toLowerCase() === low);
+    if (!hit) {console.error(`No company "${coArg}" with an agent-played member in the game (companies: ${[...new Set(hs.map(x => x.company + (x.companyName ? ' ' + x.companyName : '')))].join(', ') || 'none'}).`); process.exit(1)}
+    cid = hit.company; LOG_FILE = join(ROOT, 'logs', `company-${cid}.log`)}
+  const fellowsOf = h => (h.heroes || []).filter(x => x.alive && (cid != null ? x.company === cid : x.fellow));
+  const coOf = h => {const x = (h.heroes || []).find(y => y.company === cid); return x ? {name: x.companyName || '', size: x.size || 1} : {name: '', size: 1}};
+  const label = cid != null ? (coOf(h0).name || 'your company') : 'the Fellowship', Label = label.charAt(0).toUpperCase() + label.slice(1);
   if (!fellowsOf(h0).length) {console.error('No agent-played Fellowship member. In the game, set the Fellowship panel\'s Minds to "agents" (or run play-headless with --fellowship).'); process.exit(1)}
   if (!env.ANTHROPIC_API_KEY) out(null, 'No ANTHROPIC_API_KEY in the environment or .env (use --env FILE): only members with a local runner (provider ollama) will play.');
   const moved = migrateLegacy(); if (moved) out(null, moved);
 
-  const runnerId = `${hostname()}:${process.pid}:fellowship`; RUNNER = runnerId; const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-fellowship/1.0'};
+  const runnerId = `${hostname()}:${process.pid}:${cid != null ? 'company' : 'fellowship'}`; RUNNER = runnerId; const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-fellowship/1.0'};
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   const members = new Map(); // heroId -> {id, name, sess, rs, turns, cost, ended, scene}
   let spent = 0, stopping = null, inScene = new Set(), leadId = null;
@@ -145,7 +170,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   async function addMember1(h) {
     const c = await claim(h.id); if (c.status !== 200) {out(h.name, 'skipped: ' + (c.error || 'could not claim')); members.set(h.id, {id: h.id, name: h.name, ended: 'claimed elsewhere'}); return}
     const st = await play(base, h.id, 'status'); if (!st.ok) {out(h.name, 'status failed: ' + st.error); await release(h.id); return}
-    const sys = systemPrompt(st) + '\n' + fellowshipPrompt(st);
+    const sys = systemPrompt(st) + '\n' + (cid != null && !st.fellowship ? companyPrompt(st, coOf(await health(base))) : fellowshipPrompt(st));
     const {sess, note} = loadSession(h.id, st.name, () => ({sessionId: null, heroId: h.id, heroName: st.name, system: sys, turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
     if (note) out(st.name, note);
     if (inheritRunner(sess, h.succeeds)) out(st.name, `plays with the runner settings of the companion whose place they took (#${h.succeeds}): ${sess.runner.provider} ${sess.runner.model || ''}`); // #452
@@ -224,7 +249,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
     const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129); outside a scene the fresh state header and the turn order (#401)
     if (await refreshPersona(m.pacer, m.sess, b0)) {out(m.name, '[persona: standing orders refreshed]'); saveSession(m.sess, {url: base})} // who the member is now (#409)
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : memberPrompt(m.sess.turns, scene, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns) + claudeBrief(b0)); // a reflection (#179): the same prompt, with tool use
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : memberPrompt(m.sess.turns, scene, w, Label) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns) + claudeBrief(b0)); // a reflection (#179): the same prompt, with tool use
     if (refl) out(m.name, `[reflection: ${refl.why}]`);
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
     // Scene first (issue #515): the member's own scene is open as the turn starts. One structured answer (the member's model, effort
@@ -313,7 +338,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
         if (!r.tools) out(m.name, `[scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`)}
       const answered = b0 && 'scene' in b0 && !sc; // in the scene but already acted: an ordinary turn
-      if (!r || !r.tools) {const r0 = r, free = !sc && !(scene && !answered); r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns)) + briefText(b0), model: m.rs.model,
+      if (!r || !r.tools) {const r0 = r, free = !sc && !(scene && !answered); r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w, Label) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns)) + briefText(b0), model: m.rs.model,
         toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, on, interrupt: free && !m.due ? () => !!m.due : null}); // a free turn gives way to the member's own scene opening meanwhile (#515)
         if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0;
         // its scene opened mid-turn: the forced answer comes next, ahead of the other members' calls (issue #515)
@@ -360,14 +385,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const due = new Set((h.heroes || []).filter(x => x.due).map(x => x.id));
     for (const m of members.values()) {if (!m.sess || m.ended) continue; m.due = due.has(m.id); if (!m.due) {m.qSent = false; continue}
       if (m.inTurn || (m.local && !m.paid && ollama && ollama.busy() > 0) || (!m.local && claudeMax && claudeLive >= claudeMax)) reportQueued(m)}
-    const L = (h.heroes || []).find(x => x.fellow && x.lead && x.alive); leadId = L ? L.id : leadId;
+    const L = fellowsOf(h).find(x => x.lead); leadId = L ? L.id : leadId;
+    // company mode: a member who left the company (rides alone or joined another) is let go; the supervisor gives it a hero runner
+    if (cid != null) for (const m of members.values()) {if (!m.sess || m.ended) continue; const x = (h.heroes || []).find(y => y.id === m.id);
+      if (x && x.alive && x.company !== cid) {m.ended = 'left the company'; out(m.name, 'left ' + label + ': letting go')}}
     for (const x of fellowsOf(h)) if (!members.has(x.id) && !stopping) addMember(x);
     }, 1000);
   watch.unref();
   // Claims are refreshed on their own timer, never gated on /play/health (a slow health call must not let a claim lapse).
   const beat = setInterval(() => {for (const m of members.values()) if (!m.ended && m.turns >= 0) claim(m.id)}, 8000); beat.unref();
-  const L0 = (h0.heroes || []).find(x => x.fellow && x.lead); leadId = L0 ? L0.id : null;
-  out(null, `Fellowship runner at ${base}: ${fellowsOf(h0).map(x => x.name + (x.lead ? ' (leads)' : '')).join(', ')} | ${turnsAsked != null ? 'up to ' + turnsAsked + ' turns each' : 'until stopped'}, budget ${money(budget)} | ${paceText(pace)}`);
+  const L0 = fellowsOf(h0).find(x => x.lead); leadId = L0 ? L0.id : null;
+  out(null, `${cid != null ? 'Company runner (' + label + ', company #' + cid + ')' : 'Fellowship runner'} at ${base}: ${fellowsOf(h0).map(x => x.name + (x.lead ? ' (leads)' : '')).join(', ')} | ${turnsAsked != null ? 'up to ' + turnsAsked + ' turns each' : 'until stopped'}, budget ${money(budget)} | ${paceText(pace)}`);
   for (const h of fellowsOf(h0)) await addMember(h);
   const finish = async why => {stopping = stopping || why; for (const m of members.values()) if (m.sess) await release(m.id)};
   process.on('SIGINT', async () => {for (const a of aborts) a.abort(); await finish('interrupted'); summary(); process.exit(130)});
@@ -380,7 +408,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const rows = [...members.values()].filter(m => m.sess);
     out(null, `Run over${stopping ? ' (' + stopping + ')' : ''}: ${money(spent)} in all.`);
     for (const m of rows) out(null, `  ${m.name.padEnd(12)} ${String(m.role || '').padEnd(7)} ${m.turns} turns (${m.scenes} at the table), ${m.tools} tool calls, ${m.notes || 0} memories in ${m.reflections || 0} reflections, ${m.paid ? money(m.cost) + ', tokens ' + m.tin + ' in / ' + m.tout + ' out' : m.local ? '$0 (local), tokens ' + m.tin + ' in / ' + m.tout + ' out' : money(m.cost)} | session ${money(m.sess.costUsd)} | ${m.rs.model}${m.paid ? ' (OpenAI)' : m.local ? ' (local)' : followerModel ? ' / ' + followerModel : ''}`);
-    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, spent, budget, maxTurns: turnsAsked != null ? Number(turnsAsked) : null, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, reflections: m.reflections || 0, notes: m.notes || 0, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: m.paid ? 'openai' : 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
+    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, ...(cid != null ? {company: cid} : {}), spent, budget, maxTurns: turnsAsked != null ? Number(turnsAsked) : null, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, reflections: m.reflections || 0, notes: m.notes || 0, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: m.paid ? 'openai' : 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
     for (const mdl of new Set(rows.map(m => m.rs.model).concat(followerModel ? [followerModel] : []))) if (PRICES[mdl]) out(null, `  list price ${mdl}: $${PRICES[mdl].in} in / $${PRICES[mdl].out} out per 1M tokens`);
   }
   process.exit(0);
