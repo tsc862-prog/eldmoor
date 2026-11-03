@@ -23,10 +23,11 @@
 // (default https://huggingface.co).
 import {readFileSync,writeFileSync,existsSync,mkdirSync,renameSync} from 'node:fs';
 import {join,dirname} from 'node:path';
-import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest,TILE,TIERS,tierKey,tierCfg,nextCheck} from './lib.mjs';
+import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest,TILE,TIERS,tierKey,tierCfg,nextCheck,loadQueue,saveQueue} from './lib.mjs';
 import {decodePng,encodePng,isPng} from './png.mjs';
 import {resolvePalette} from './post.mjs';
 import {postProcess} from './post-texture.mjs';
+import {spaceOf,buildSpaceRequest,callSpace,spaceToken,DEFAULT_SPACE,ensureAwake,spaceDuration,gpuWindow,windowEnd} from './space.mjs';
 
 export const today=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
@@ -41,7 +42,16 @@ export function hfToken(env=process.env){if(env.HF_TOKEN)return env.HF_TOKEN;
 
 const ROUTER=()=>(process.env.HF_ROUTER_URL||'https://router.huggingface.co').replace(/\/$/,'');
 const HUB=()=>(process.env.HF_HUB_URL||'https://huggingface.co').replace(/\/$/,'');
-export const SUPPORTED=['fal-ai','hf-inference']; // providers whose request body this script knows
+export const SUPPORTED=['fal-ai','hf-inference']; // router providers whose request body this script knows
+// Where images are made (#703): 'space' (default: the owner's private ZeroGPU Space, daily GPU quota, $0) or 'router'
+// (Inference Providers, billed against the monthly credit). The router is used only when --provider router is given;
+// it is never a fallback for a Space that fails.
+export const PROVIDERS=['space','router'];
+export function providerOf(o){const p=o.provider===true||o.provider===undefined?'space':String(o.provider);return PROVIDERS.includes(p)?p:null}
+// A model's route in a mode: the Space ({provider:'space', space}) or the router mapping. A router-only model has no Space route.
+export async function routeOf(m,mode){if(mode==='space'){const id=spaceOf(m);if(!id)throw new ArtError('model',`${m.repo} is not on the Space (router only)`);return {provider:'space',space:id}}
+  return mapping(m.provider==='space'?{...m,provider:m.routerProvider}:m)}
+export const tokenFor=(mode,env=process.env)=>mode==='space'?spaceToken(env):hfToken(env);
 
 // An error with a class the daily run acts on: quota (allowance used: stop for today), auth (stop), rate (stop),
 // model (this model or route does not work: try the next candidate), transient (5xx, timeout: next asset), image.
@@ -112,7 +122,9 @@ export async function callImage(req,token,{timeout=120000,count=()=>{},wait=s=>n
     throw e}}
 
 // One call: the provider's image bytes. Callers keep them raw (saveRaw) before anything else happens.
-export async function fetchRaw({man,m,mp,e,token,seed=e.seed,timeout,count,tier=TILE}){return callImage(buildRequest(man,m,mp,e,seed,tier),token,{timeout,count})}
+export async function fetchRaw({man,m,mp,e,token,seed=e.seed,timeout,count,tier=TILE,now}){
+  if(mp.provider==='space')return callSpace(buildSpaceRequest(man,m,mp,e,seed,tier),token,{timeout,count,now});
+  return callImage(buildRequest(man,m,mp,e,seed,tier),token,{timeout,count})}
 
 // Raw bytes -> asset image and PNG (post-texture.mjs). Throws ArtError 'image' (not a PNG) or 'flat' (too few colours).
 // At a tier: its size from e.sizes, the model's pixel grid and the palette widening from the tier's settings.
@@ -137,8 +149,9 @@ export function writeIndex(dir,idx){mkdirSync(dir,{recursive:true});const p=join
 export const modelKey=(man,e,want)=>(e&&e.model)||want||man.pinnedModel||(man.candidates||Object.keys(man.models))[0];
 
 export async function main(argv=process.argv.slice(2)){
-  const o=parseArgs(argv,['max','only','out','manifest','timeout','model','tier']),out=o.out||ASSETS,man=loadManifest(o.manifest||MANIFEST),tier=o.tier?Number(o.tier):TILE;
+  const o=parseArgs(argv,['max','only','out','manifest','timeout','model','tier','provider']),out=o.out||ASSETS,man=loadManifest(o.manifest||MANIFEST),tier=o.tier?Number(o.tier):TILE;
   if(!TIERS.includes(tier)){console.error(`--tier: ${o.tier} is not one of ${TIERS.join(', ')}`);return 2}
+  const mode=providerOf(o);if(!mode){console.error(`--provider: ${o.provider} is not one of ${PROVIDERS.join(', ')}`);return 2}
   const PAL=await import('../../src/render/palette.js');
   const bad=validateManifest(man,PAL,resolvePalette);if(bad.length){console.error('manifest problems:\n  '+bad.join('\n  '));return 2}
   if(o.model&&!man.models[o.model]){console.error(`--model: ${o.model} is not in the manifest`);return 2}
@@ -146,24 +159,31 @@ export async function main(argv=process.argv.slice(2)){
   if(only)for(const id of only)if(!man.assets.some(e=>e.id===id)){console.error(`--only: ${id} is not in the manifest`);return 2}
   const have=e=>idx.assets[tierKey(e.id,tier)],want=man.assets.filter(e=>(!only||only.has(e.id))&&(o.force||!have(e)||!existsSync(join(out,have(e).file))));
   const max=o.max!==undefined?Math.max(0,parseInt(o.max,10)||0):Infinity,todo=want.slice(0,max);
-  const cost=todo.reduce((s,e)=>s+man.models[modelKey(man,e,o.model)].costPerImage,0);
+  const mk=e=>mode==='space'?(e.model||o.model||(man.candidates||[]).find(k=>spaceOf(man.models[k]))):modelKey(man,e,o.model);
+  if(mode==='space'&&todo.some(e=>!mk(e)||!spaceOf(man.models[mk(e)]))){console.error('[art] no model of the manifest is on the Space (models[].space); --provider router uses the paid router');return 2}
+  const cost=mode==='space'?0:todo.reduce((s,e)=>s+man.models[mk(e)].costPerImage,0);
   console.log(`[art] tier ${tier}: ${man.assets.length} in the manifest, ${Object.values(idx.assets).filter(a=>a.tier===tier).length} in ${out.replace(ROOT,'.')}/index.json, ${want.length} to make`+(todo.length<want.length?`, stopping at --max ${todo.length}`:''));
-  for(const [k,n] of Object.entries(todo.reduce((a,e)=>{const k=modelKey(man,e,o.model);a[k]=(a[k]||0)+1;return a},{})))console.log(`[art]   ${n} x ${k} (${man.models[k].repo}) at ~$${man.models[k].costPerImage}/image`);
-  console.log(`[art] estimated cost: $${cost.toFixed(3)} for ${todo.length} image${todo.length===1?'':'s'} (an estimate of Inference Providers credits; art:daily keeps to a daily budget, art:gen does not)`);
+  for(const [k,n] of Object.entries(todo.reduce((a,e)=>{const k=mk(e);a[k]=(a[k]||0)+1;return a},{})))console.log(mode==='space'?`[art]   ${n} x ${k} (${man.models[k].repo}) on the Space ${spaceOf(man.models[k])||DEFAULT_SPACE}: $0, daily ZeroGPU quota`:`[art]   ${n} x ${k} (${man.models[k].repo}) at ~$${man.models[k].costPerImage}/image`);
+  console.log(mode==='space'?`[art] provider: the ZeroGPU Space (cost $0.000; GPU quota, not credits)`:`[art] estimated cost: $${cost.toFixed(3)} for ${todo.length} image${todo.length===1?'':'s'} (--provider router: Inference Providers credits; art:daily keeps to a daily budget, art:gen does not)`);
   if(!todo.length){console.log('[art] nothing to do');return 0}
-  if(o['dry-run']){const e=todo[0],m=man.models[modelKey(man,e,o.model)];let mp;try{mp=await mapping(m)}catch(err){mp={provider:m.provider||'?',providerId:m.providerId||'?'};console.log('[art] mapping lookup failed: '+err.message)}
-    const {url,body}=buildRequest(man,m,mp,e,e.seed,tier);console.log(`[art] dry run: first request POST ${url}\n${JSON.stringify(body,null,1)}`);return 0}
+  if(o['dry-run']){const e=todo[0],m=man.models[mk(e)];let mp;try{mp=await routeOf(m,mode)}catch(err){mp={provider:m.routerProvider||m.provider||'?',providerId:m.providerId||'?'};console.log('[art] mapping lookup failed: '+err.message)}
+    const {url,body}=mp.provider==='space'?buildSpaceRequest(man,m,mp,e,e.seed,tier):buildRequest(man,m,mp,e,e.seed,tier);console.log(`[art] dry run: first request POST ${url}\n${JSON.stringify(body,null,1)}`);return 0}
   if(!o.yes){console.log('[art] add --yes to generate');return 0}
-  const token=hfToken();if(!token){console.error('[art] no HF_TOKEN: put HF_TOKEN=hf_... in .env (a token with the "Inference Providers" permission)');return 2}
+  const token=tokenFor(mode);if(!token){console.error(mode==='space'?'[art] no HF_TOKEN (or HF_SPACE_TOKEN): put it in .env (a token that can read the Space)':'[art] no HF_TOKEN: put HF_TOKEN=hf_... in .env (a token with the "Inference Providers" permission)');return 2}
   const timeout=(Number(o.timeout)||120)*1000,maps=new Map();let made=0,failed=0;
-  for(const e of todo){const k=modelKey(man,e,o.model),m=man.models[k],t0=Date.now();
-    try{let mp=maps.get(k);if(!mp){mp=await mapping(m);maps.set(k,mp)}
-      const key=tierKey(e.id,tier),{bytes}=await fetchRaw({man,m,mp,e,token,timeout,tier});saveRaw(join(out,'incoming',today()),key,bytes,{id:e.id,tier,model:k,repo:m.repo,provider:mp.provider,seed:e.seed});
+  // the Space: the same GPU window and stop as art:daily (the queue beside the assets), so a direct run never runs into overage
+  let first=true;const q=mode==='space'?loadQueue(out):null,zg=(man.allowance&&man.allowance.zeroGpu)||{},capS=(Number(process.env.ART_GPU_MINUTES)||zg.stopAtMinutes||36)*60;
+  for(const e of todo){const k=mk(e),m=man.models[k],t0=Date.now();
+    if(q){const gw=gpuWindow(q,new Date());if(gw.s+spaceDuration(m)>capS){console.error(`[art] GPU cap reached (${(gw.s/60).toFixed(1)} of ${capS/60} min counted); the quota resets ${windowEnd(gw)?windowEnd(gw).toLocaleTimeString():'within 24 h'}`);break}}
+    try{let mp=maps.get(k);if(!mp){mp=await routeOf(m,mode);maps.set(k,mp)}
+      if(mp.provider==='space'&&first)await ensureAwake(mp.space,token);
+      const key=tierKey(e.id,tier),got=await fetchRaw({man,m,mp,e,token,timeout:first&&mp.provider==='space'?Math.max(timeout,300000):timeout,tier}),{bytes}=got;first=false;
+      if(q){const gw=gpuWindow(q,new Date());q.gpu={...gw,start:gw.start||new Date().toISOString(),s:gw.s+(got.gpuS||0),images:gw.images+1};saveQueue(out,q)}saveRaw(join(out,'incoming',today()),key,bytes,{id:e.id,tier,model:k,repo:m.repo,provider:mp.provider,seed:e.seed});
       const {img,png}=processRaw(bytes,e,PAL,m,tier,man);
       const file=fileOf(e.id,tier),p=join(out,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);
       idx.assets[key]={id:e.id,tier,kind:e.kind,file,w:img.w,h:img.h,sha256:sha256(png),model:k,repo:m.repo,provider:mp.provider,seed:e.seed,at:new Date().toISOString()};
-      writeIndex(out,idx);made++;console.log(`[art] ${e.id} -> ${file} ${img.w}x${img.h} (${((Date.now()-t0)/1000).toFixed(1)}s)`)}
-    catch(err){failed++;console.error(`[art] ${e.id} failed: ${err.message}`);if(['quota','auth','rate'].includes(err.kind)){const n=nextCheck(err.kind==='auth'?'error':'provider',new Date(),{retryHours:Number(process.env.ART_RETRY_HOURS)||4,retryAfter:err.retryAfter});console.error(`[art] stopped at the provider's limit: check again at ${today(n)} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')} (npm run art:loop does this by itself)`);break}}}
+      writeIndex(out,idx);made++;console.log(`[art] ${e.id} -> ${file} ${img.w}x${img.h} (${((Date.now()-t0)/1000).toFixed(1)}s${mp.provider==='space'?`, quota: ${(got.gpuS||0).toFixed(1)} s of GPU`:''})`)}
+    catch(err){failed++;console.error(`[art] ${e.id} failed: ${err.message}`);if(q&&err.kind==='gpu'){const gw=gpuWindow(q,new Date());q.gpu={...gw,start:gw.start||new Date().toISOString(),resetAt:(err.resetAt||new Date(Date.now()+864e5)).toISOString()};saveQueue(out,q)}if(['quota','auth','rate','gpu','space'].includes(err.kind)){const n=nextCheck(err.kind==='auth'?'error':'provider',new Date(),{retryHours:Number(process.env.ART_RETRY_HOURS)||4,retryAfter:err.retryAfter});console.error(`[art] stopped at the provider's limit: check again at ${today(n)} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')} (npm run art:loop does this by itself)`);break}}}
   console.log(`[art] made ${made}, failed ${failed}; npm run art:sheet to review, then npm run artcheck`);
   return failed?1:0}
 

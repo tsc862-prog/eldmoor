@@ -58,3 +58,4 @@
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
 - [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
 - [Rumours and titles](rumour-bestow.md) — seed_rumour and bestow DM tools (#637, #638)
+- [Art ZeroGPU Space](art-zerogpu-space.md) — #703 default art provider: Gradio call protocol, overage risk + 36 min cap, quota reset, push endpoints, pins

@@ -41,7 +41,7 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   pipeline in `scripts/art/` (#177); every asset has a procedural fallback (the pixel arrays and procedural
   textures in `src/render/`), so a missing or absent `assets/` never breaks a world and looks as before. The sim,
   the map and its hash, lighting, weather, effects and the minimap stay procedural; `HF_TOKEN` is read only by
-  `scripts/art/gen.mjs`, never by the browser or the relay.
+  `scripts/art/*.mjs` (and the relay for its Hugging Face minds), never by the browser.
 - **Built to scale.** The world will grow 20-30x with several races and home
   towns per faction (see the scaling epic on GitHub). Never hard-code the number
   of zones, factions, cities or races; loop over the tables. Never assume a zone
@@ -191,6 +191,19 @@ other. The rules:
   `onAssets`; `terrain.js` `ASSET_TILES`, `ASSET_ROAD`, `ASSET_EDGES` (dual-grid transition pieces, one tile each) and
   `ASSET_PROPS` draw from assets at TILE resolution. `npm run artcheck` (CI) checks it all against a mock Hugging Face
   server and fixtures (`scripts/art/fixtures.mjs`), incl. tier selection, the scaled fallback and `--tier 64`.
+- Art on the ZeroGPU Space (#703, the default provider): `scripts/art/space/` is a private Gradio Space (`tsc862/eldmoor-art`;
+  SDXL base + the manifest's SDXL LoRAs pixel-xl and pixel-redmond, `@spaces.GPU` with a duration sized to steps and pixels,
+  one API `generate(prompt, negative, seed, steps, guidance, width, height, lora_scale, lora_repo) -> (PNG, GPU s)`); `scripts/art/space.mjs`
+  calls it through Gradio's HTTP API (`/gradio_api/call/generate`, then the event stream) with the same prompts, seeds and post-processing.
+  Images cost $0 and draw on the PRO account's daily ZeroGPU quota (40 min, reset 24 h after first use); `daily.mjs` counts GPU seconds
+  in that window (`assets/queue.json` `gpu`; log "quota: 37.2 s of GPU (... of 40 min this window)", launcher `s` "N images today, X GPU
+  min of 40") and stops at `allowance.zeroGpu.stopAtMinutes` 36 (`ART_GPU_MINUTES`), before paid overage, or at the Space's quota
+  refusal ("Try again in H:MM:SS"), and the loop sleeps until exactly that reset. A sleeping Space is woken (first image waits up to
+  300 s); a missing, building-too-long or errored Space is reported with its page. The router (fal-ai, billed against the $2.00 credit,
+  the credit share above) runs only with `--provider router`, never as a fallback; FLUX and Z-Image models are router-only.
+  Owner setup once: a fine-grained token with write access to the Space repo (`HF_SPACE_TOKEN` in `.env`, else `HF_TOKEN`; leave
+  billing permissions off), then `npm run art:space -- --push` (creates the private Space, one commit, asks for ZeroGPU; a read-only
+  token is named and nothing is sent; `--status` shows its state), then `npm run art:daily -- --now`. `npm run artcheck` tests it on a mock Space.
 - `npm run gambitcheck` (#617, `src/sim/gambits.js`, vocabulary and class presets in `src/data/gambits.js`): an agent hero's gambits, an ordered rule list (`when` + optional `and` + `then`) that autopilot (first rule that holds and can run), the fight reflex (every fight rule that holds, in order; flee ends it) and the full-pack reflex run between turns. With no edit a hero runs its class preset, which is the old fixed policy written out rule for rule (hashcheck's `autopilot` row proves agent heroes on autopilot play identically); scripted heroes never use it. Tools (not orders, `act:false`): `gambits` (the list, ids, on/off, last fired, the vocabulary), `set_gambit {when, and?, then, id?, before?, on?, why?}` written in words ("ally hp below 40", "buy_potions 3"), `move_gambit`, `toggle_gambit`, `drop_gambit`, `reset_gambits {preset: class|cautious|empty}`; `GAMBIT.PER_DAY` 20 edits a game day. Weakening or dropping a safety rule (flee, potion, defend) is never refused: it is noted in the edit history and the persona history, the watch flags `no-flee-rule` and the digest/report count rule-driven acts per hero. The Agent tab shows the list (view only) with the rule that fired last; the purpose line names it.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
