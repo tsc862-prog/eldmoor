@@ -66,3 +66,4 @@
 - [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut
 - [Talk setting #431](talk_setting.md) — talk scenes open on tavern/chapel/smithy/gate by where the person stands; field keeps the cut
 - [Gambits #617](gambits.md) — per-hero rules run by autopilot/fight reflex; presets = old policy rule for rule; hashcheck autopilot row guards it
+- [Pay and mark tools #628/#632](pay_mark_tools.md) — pay.js, marks.js (lore mk:1/2), emote chat flag, set_attitude steps, edit pitfalls
