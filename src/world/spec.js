@@ -51,15 +51,15 @@ const CRYPT_CAPTAIN='The Sunken Crypt is not a place for green blades. Those who
 // The Sunken Crypt's chambers, in the order the Fellowship meets them (sim/crawl.js). Bestiary species, no new creatures.
 const CRYPT_ROOMS=[
   {id:'stair',name:'The Weeping Stair',frame:'Water runs down the steps of the stair and something small scuttles in the dark below.',
-    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.10,rounds:2},
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.225,rounds:2},
   {id:'ossuary',name:'The Ossuary',frame:'Shelves of old bone line the walls. Some of it stands up as the light reaches it.',
-    foes:[{type:'shambler',n:2}],lvl:0,hit:.13,rounds:2},
+    foes:[{type:'shambler',n:2}],lvl:0,hit:.29,rounds:2},
   {id:'gallery',name:"The Archers' Gallery",frame:'A long gallery with arrow-slits in every pillar. Dry bowstrings creak somewhere above.',
-    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.13,rounds:2},
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.29,rounds:2},
   {id:'court',name:'The Drowned Court',frame:'The floor is a black mirror of still water. Grave Wardens stand in it to the knee, keeping a court that no longer sits.',
-    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.17,rounds:2},
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:2},
   {id:'vigil',name:'The Vigil Chamber',frame:'The last door. Something has kept watch here a very long time, and the cold has a voice. It knows every name in the party.',
-    foes:[{type:'graveward',n:1,name:'Lich-Warden Vesk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.19,rounds:2,boss:true},
+    foes:[{type:'graveward',n:1,name:'Lich-Warden Vesk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:2,boss:true},
 ];
 
 export const ELDMOOR={
@@ -154,11 +154,11 @@ const TOWN_SPOTS={quartermaster:[3.5,3.8],gate:[7.5,3.8],inn:[3.5,7.3],smith:[5.
 // from the party's average). Bestiary species only; the boss is a Grave Warden under a name, not a new creature.
 const STEPPING_CRYPT_ROOMS=[
   {id:'sump',name:'The Reed Sump',frame:'The crypt stair ends in a flooded sump choked with dead reeds. Something small and many-legged moves under the water-mat.',
-    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.10,rounds:2},
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.225,rounds:2},
   {id:'bonehall',name:'The Salt-Bone Hall',frame:'Fen salt has crusted the old shelves white. The bones under it are not as still as they should be, and a dry bowstring creaks in the dark.',
-    foes:[{type:'shambler',n:1},{type:'boneshot',n:1,hits:1}],lvl:0,hit:.12,rounds:2},
+    foes:[{type:'shambler',n:1},{type:'boneshot',n:1,hits:1}],lvl:0,hit:.27,rounds:2},
   {id:'mere',name:"The Mere-Warden's Seat",frame:'The last chamber is a round pool with a stone chair standing in it. The one who sits there has watched the fen rise for a very long time.',
-    foes:[{type:'graveward',n:1,name:'Mere-Warden Hask',hits:3,atk:1.5},{type:'tombskit',n:1}],lvl:1,hit:.16,rounds:2,boss:true},
+    foes:[{type:'graveward',n:1,name:'Mere-Warden Hask',hits:3,atk:1.5},{type:'tombskit',n:1}],lvl:1,hit:.36,rounds:2,boss:true},
 ];
 
 export const STEPPING={
