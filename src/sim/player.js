@@ -89,7 +89,9 @@ import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,eq
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
 import {attempt as attemptRuled} from './ruling.js'; // free actions ruled by the DM (#522)
 import {worldHeld,holdLine} from './prep.js'; // the world held before play (#559)
-import {defineGambits,idlePick,fightRules,reflexPick,HOLD,gambitRec,ruleText,GAMBIT} from './gambits.js'; // the hero's own rules (#617)
+import {defineGambits,idlePick,fightRules,reflexPick,HOLD,gambitRec,ruleText,GAMBIT,gambitsView,setGambit,moveGambit,toggleGambit,dropGambit,resetGambits,onSafetyChange} from './gambits.js'; // the hero's own rules (#617)
+import {histNote} from './persona.js';
+onSafetyChange((a,before,after,why)=>histNote(a,'gambits',before,after,why)); // a safety rule changed: the persona history says so (#617)
 
 // ---- knobs ----
 export const PK={
@@ -1251,6 +1253,13 @@ const T={
     const noAim=!aimHeld(a)&&m>INTENT.WAIT_NOAIM;if(noAim)m=INTENT.WAIT_NOAIM; // waiting needs a reason and a limit (#535)
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS,...(noAim?{limit:'You have no aim stated, so the wait is held to '+INTENT.WAIT_NOAIM+' game minutes. intent {goal, why, until} says what you wait for.'}:{})}}},
   // the stated aim (#535, sim/intent.js): read it, state it, or set it down
+  // gambits (#617): the hero's own rules; edits never refused for being unwise, only for words outside the vocabulary or the day's limit
+  gambits(a,{vocabulary}={}){return gambitsView(a,{vocab:/^(yes|true|1)$/i.test(String(vocabulary||''))})},
+  set_gambit(a,args={}){const r=setGambit(a,args);need(r.ok,r.error);return r},
+  move_gambit(a,args={}){const r=moveGambit(a,args);need(r.ok,r.error);return r},
+  toggle_gambit(a,args={}){const r=toggleGambit(a,args);need(r.ok,r.error);return r},
+  drop_gambit(a,args={}){const r=dropGambit(a,args);need(r.ok,r.error);return r},
+  reset_gambits(a,args={}){const r=resetGambits(a,args);need(r.ok,r.error);return r},
   intent(a,{goal,why,until,done}={}){const g=goal!=null?String(goal).trim():'';
     if(/^(yes|true|done|kept|abandon(ed)?|drop(ped)?)$/i.test(String(done==null?'':done))||/^(done|none|nothing)$/i.test(g))return endIntent(a,why);
     if(!g)return intentView(a,leaderFor(a));

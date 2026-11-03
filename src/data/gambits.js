@@ -103,4 +103,4 @@ export const PRESET_FIGHT=[
 export const PRESET_HEAL=R('always','heal');
 export const PRESET_GUARD=R('ally_hp_below','guard',{w:{pct:50},on:false}); // a tank's suggestion, off by default (no such reflex today)
 export const TANK_CLASSES=['Warrior']; // classes whose preset carries the guard suggestion
-export const PRESETS=['class','cautious','bold']; // reset_gambits presets: the class list, or it with the flee mark moved
+export const PRESETS=['class','cautious','empty']; // reset_gambits presets: the class list, it with a flee rule at 35% first, or no rules at all
