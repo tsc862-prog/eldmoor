@@ -85,11 +85,20 @@ r = await call('fight', {target_id: 1}); ok(!r.ok, 'fight is refused inside the 
  r = await call('use_ability', {ability: 'challenge', target_id: foe.id}); ok(!r.ok && /not ready/.test(r.error), 'a cooling ability is refused: ' + r.error);
  r = await call('use_ability', {ability: 'Smite of Nonsense'}); ok(!r.ok && /no ability/.test(r.error), 'an unknown ability is refused');
  a.x = keep.x; a.y = keep.y; foe.target = null; a.state = 'town'; a.target = null; a.playRate = [];} // the rate budget goes back to the rest of the check
+// the shop (#424): read only, and its prices are what buy charges
+const before424 = JSON.stringify({g: a.gold, inv: a.inv, slots: a.slots});
+const shop = await call('shop');
+ok(shop.ok && Array.isArray(shop.gear) && shop.gear.length === 7 && shop.supplies.length >= 8 && JSON.stringify({g: a.gold, inv: a.inv, slots: a.slots}) === before424, `shop lists ${shop.gear && shop.gear.length} slots and ${shop.supplies && shop.supplies.length} supplies and changes nothing`);
+const lock = shop.supplies.find(x => x.level > a.lvl); ok(lock && lock.needs === 'needs level ' + lock.level, `a supply above your level says "${lock && lock.needs}" (${lock && lock.item})`);
+const headOffer = shop.gear.find(x => x.slot === 'head');
 r = await call('buy', {slot: 'head'}); ok(r.ok || /gold|better/i.test(r.error), 'buy: ' + (r.ok ? r.bought : r.error));
+ok(r.ok ? headOffer.price === r.cost : !headOffer.buy || r.error.includes(headOffer.price + 'g'), `the shop's head price equals what buy charged (${headOffer.price}g, ${r.ok ? r.cost : r.error})`);
+if (r.ok) {const it = a.slots.head, m = /armor \((\d+) -> (\d+)\)/.exec(headOffer.change || ''); ok(!m || (it.quality === 'plain' ? it.armor === Number(m[2]) : it.armor >= Number(m[2])), `the armor change shown (${headOffer.change}) is the piece buy put on (${it.quality}, armor ${it.armor})`)}
 // ---- the pack (issue #124): supplies, use, give, drop, quest items ----
 {const INV = await import('../src/sim/inv.js');
  a.gold = Math.max(a.gold, 100);
  r = await call('buy', {item: 'Redroot Draught', count: 2}); ok(r.ok && /Redroot/.test(r.bought), 'buy a supply: ' + (r.ok ? r.bought : r.error));
+ ok(r.ok && r.cost === 2 * shop.supplies.find(x => x.item === 'Redroot Draught').price, `the shop's supply price equals what buy charged (${r.cost}g for 2)`);
  r = await call('buy', {item: 'Moonwater'}); ok(!r.ok && /Not sold/.test(r.error), 'buy refuses a supply that is not sold');
  r = await call('inventory'); const pi = r.items.find(e => /Redroot/.test(e.item)); ok(pi && pi.kind === 'use' && /Heals 35%/.test(pi.item), 'the potions are in the pack with their numbers');
  a.hp = maxHp(a); r = await call('use_item', {index: pi.index}); ok(!r.ok && /not hurt/.test(r.error), 'a potion is not wasted at full health');
@@ -487,7 +496,10 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   r = await call('look'); // the other hero's view is untouched
   r = await mc('talk', {target: 'quartermaster', text: 'Rope and bandages, if you have them.'});
   ok(r.ok && r.answer && r.follow_up === '[trade opened]', `the scripted DM answers as ${r.who}: "${r.answer}" ${r.follow_up}`);
-  m.gold = 100; r = await mc('buy', {npc: qm.name, item: 'Linen Bandage'}); ok(r.ok && r.from === qm.title + ' ' + qm.name, `bought from the person: ${r.bought || r.error}`);
+  m.gold = 100; {const sh = await mc('shop', {npc: qm.name}), off = sh.ok && sh.supplies.find(x => x.item === 'Linen Bandage');
+   const nb = await mc('buy', {npc: qm.name, item: 'Linen Bandage'}); ok(off && nb.ok && nb.cost === off.price && sh.from === qm.title + ' ' + qm.name, `shop {npc} lists the person's stock at buy's price (${off && off.price}g, charged ${nb.cost}g)`); m.gold = 100;
+   const far = {x: m.x, y: m.y, st: m.state}; m.state = 'hunt'; m.x = home.gate.x + 30; const nf = await mc('shop'); ok(!nf.ok && /smiths are in town/.test(nf.error) && /move_to/.test(nf.error), 'shop outside town says how to get there: ' + nf.error); m.x = far.x; m.y = far.y; m.state = far.st}
+  r = await mc('buy', {npc: qm.name, item: 'Linen Bandage'}); ok(r.ok && r.from === qm.title + ' ' + qm.name, `bought from the person: ${r.bought || r.error}`);
   r = await mc('say', {text: 'And what do you hear of the roads?'}); ok(r.ok && r.to === qm.title + ' ' + qm.name && r.answer, `say goes on with the conversation: "${r.answer}"`);
   r = await mc('say', {text: 'Thank you.'}); r = await mc('say', {text: 'Farewell, then.'});
   ok(r.ok && r.ended && !TK.convWith(qm), `after ${TK.CONV.EXCHANGES} exchanges it ends`);

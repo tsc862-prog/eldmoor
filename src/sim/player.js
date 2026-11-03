@@ -43,8 +43,8 @@ import {partyMates,leaderOf,leaveParty} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {earshot} from './earshot.js'; // who hears you now (#395)
 import {npcSay,ensureNpcs} from './npcs.js';
-import {talkTo,addressed,findPerson,traderFor,npcBuy,npcSell} from './talk.js'; // NPC conversations (#170)
-import {equip,makeItem,SHOP_COST,SELL_VALUE,slotLevel,weakestSlot,itemStats,gearScore,refreshEpics} from './gear.js';
+import {talkTo,addressed,findPerson,traderFor,npcBuy,npcSell,stockOf} from './talk.js'; // NPC conversations (#170)
+import {equip,makeItem,SHOP_COST,SELL_VALUE,slotLevel,weakestSlot,itemStats,gearScore,refreshEpics,itemArmor,itemDamage} from './gear.js';
 import {weatherName,sightMul,isStorm} from './weather.js';
 import {record,asSrc} from './history.js';
 import {fleeCheck} from './narrator.js';
@@ -483,6 +483,33 @@ function placesList(a,{about,kind,near}={}){const L=loreOf(a);
   return r}
 
 // ---- the tools ----
+// ---- shop (#424): what the smiths or a trader sell, read only (no dice, no change to gold, stock or the pack) ----
+// Smith prices are the buy tool's own sources (USES[id].price, SHOP_COST(level)); a trader's prices come from npcBuy itself,
+// asked for a copy of the hero with no gold and empty slots, so its refusal names the exact price buy would charge.
+const traderPrice=(a,p,args)=>{const r=npcBuy({...a,gold:0,slots:{},lvl:args.item?99:a.lvl},p,args),m=r&&r.error&&/costs (\d+)g/.exec(r.error);return m?Number(m[1]):null};
+const pts=(n,w)=>(n>0?'+':'')+n+' '+w;
+// One slot's line: the piece buy would put there (item level = your level, plain, sometimes fine) against what you wear.
+// The change is the new piece's armor and damage minus the worn one's, the same numbers equip swaps.
+function shopSlot(a,k,cost){const cur=a.slots&&a.slots[k],wear=cur?itemText(cur):'nothing';
+  if(cur&&cur.epic)return {slot:k,wearing:wear,offer:null,note:'An epic holds this slot; nothing for sale beats it.'};
+  if(slotLevel(a,k)>=a.lvl)return {slot:k,wearing:wear,offer:null,note:'You wear item level '+slotLevel(a,k)+'; gear is sold only at your level, so the next piece needs level '+(slotLevel(a,k)+1)+'.'};
+  const ar=itemArmor(a.cls,k,a.lvl),dm=itemDamage(a.cls,k,a.lvl),c=itemStats(cur),da=ar-(c.armor||0),dd=dm-(c.damage||0),ch=[];
+  if(ar||c.armor)ch.push(pts(da,'armor')+' ('+(c.armor||0)+' -> '+ar+')');if(dm||c.damage)ch.push(pts(dd,'damage')+' ('+(c.damage||0)+' -> '+dm+')');
+  const word=(da>0||dd>0)&&da>=0&&dd>=0?'better':(da<0||dd<0)&&da<=0&&dd<=0?'worse':ch.length?'mixed':'no armor or damage on this slot';
+  return {slot:k,wearing:wear,offer:'item level '+a.lvl+' (plain, sometimes fine: 15% more)',price:cost,change:word+(ch.length?': '+ch.join(', '):''),
+    afford:a.gold>=cost?'yes':'no ('+(cost-a.gold)+'g short)',buy:'buy {slot: "'+k+'"}'}}
+function shopUse(a,id,price){const U=USES[id],o={item:id,price,level:U.lvl,kind:U.kind,buy:'buy {item: "'+id+'"}'};
+  if(U.lvl>a.lvl)o.needs='needs level '+U.lvl;else if(U.kind==='pack'&&invOf(a).pack)o.needs='you already carry one';else if(a.gold<price)o.needs=(price-a.gold)+'g short';
+  const L=useLines(id);if(L.length)o.does=L.map(x=>x[1]).join('; ');return o}
+function shopView(a,tr){const out={ok:true,gold:a.gold,pack:used(a)+'/'+capOf(a)},weak=a.slots?weakestSlot(a):null;need(a.slots,'You have no gear slots to shop for.');
+  if(tr){const st=stockOf(tr);out.from=(tr.title?tr.title+' ':'')+tr.name;out.where='trade open with you nearby';
+    out.supplies=st.filter(x=>x!=='gear'&&USES[x]).map(x=>{const v=shopUse(a,x,traderPrice(a,tr,{item:x}));v.buy='buy {npc: "'+tr.name+'", item: "'+x+'"}';return v});
+    if(st.includes('gear')){const cost=traderPrice(a,tr,{slot:SLOTS[0]});out.gear=SLOTS.map(k=>{const v=shopSlot(a,k,cost);if(v.buy)v.buy='buy {npc: "'+tr.name+'", slot: "'+k+'"}';return v})}
+    else out.gear='No gear: '+out.from+' sells supplies only.';
+  }else{const c=homeOf(a),cost=SHOP_COST(a.lvl);out.from='the smiths and quartermaster of '+(c?c.name:'town');
+    out.gear=SLOTS.map(k=>shopSlot(a,k,cost));out.supplies=Object.keys(USES).map(x=>shopUse(a,x,USES[x].price))}
+  if(Array.isArray(out.gear)&&weak&&out.gear.some(g=>g.slot===weak&&g.buy))out.note='buy with no slot fills your weakest slot, '+weak+'. Gear bought is worn at once; what it replaces goes to your pack.';
+  return out}
 const need=(cond,msg)=>{if(!cond)throw new Rule(msg)};
 class Rule extends Error{}
 const fieldState=a=>['hunt','travel','follow','return'].includes(a.state);
@@ -746,6 +773,11 @@ const T={
   equip(a,{index}){need(!['fight','duel','assist'].includes(a.state),'Not in the middle of a fight.');const i=Number(index);
     const it=invOf(a).list[i];need(isGear(it),'No gear at pack index '+index+'.');need(!it.cls||it.cls===a.cls||it.epic,'That is made for a '+it.cls+'.');need(it.ilvl<=a.lvl+INV.WEAR_OVER,'Too far above your level to wear.');
     const old=equipSpare(a,it);a.hp=Math.min(a.hp,maxHp(a));return {ok:true,wearing:itemText(it),replaced:old?itemText(old)+' (now in your pack)':null}},
+  shop(a,{npc}={}){const named=npc!=null&&npc!=='',tr=named||!inTown(a)?traderFor(a,npc,PK.TALK):null; // the same seller buy would use
+    if(tr&&!tr.error)return shopView(a,tr);need(!(tr&&named),tr&&tr.error);
+    if(!inTown(a)){const c=homeOf(a),g=c&&c.gate,d=g?Math.hypot(g.x-a.x,g.y-a.y):0;
+      throw new Rule('The smiths are in town. '+(g?c.name+' lies '+compass(g.x-a.x,g.y-a.y)+', about '+Math.round(d)+' tiles ('+walkTime(d)+'): move_to {target: "home"}, then shop. ':'')+(tr&&tr.error?tr.error:'Out here only a person who opened their trade with you sells (talk to them, then shop {npc}).'))}
+    return shopView(a,null)},
   // The gate captain's bounties (issue #67): hand in a finished one, or take one if you hold none. Never handed out unasked.
   turn_in(a,{region}={}){need(inTown(a),'The gate captain is in town.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,l=a.lvl,c=homeOf(a);
     const bt=x=>(MOBS[x.type].q)+': '+x.need+' '+MOBS[x.type].pl+' in '+ZONES[MOBS[x.type].z];
