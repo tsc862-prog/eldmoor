@@ -7,7 +7,7 @@
 // file is the form, the relay status and the runner launch. Choices are remembered per viewer in localStorage
 // (eldmoor.setup.last). Starting reloads the page into the new world (ui/save.js queueNewWorld), where
 // init({setup}) builds it, so every panel starts from state as for any boot.
-import {fellowshipMembers,defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM} from '../sim/index.js';
+import {fellowshipMembers,defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,slotsView} from '../sim/index.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
 import {SLOT_KEYS} from '../sim/fellowship.js';
 import {racesOf} from '../data/races.js';
@@ -25,7 +25,8 @@ const LAST_KEY='eldmoor.setup.last';
 const WORLDS_INFO=Object.fromEntries(Object.keys(WORLDS).map(id=>[id,WORLDS[id].name||id]));
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const store=()=>{try{return window.localStorage}catch(e){return null}};
-const readLast=()=>{try{const j=JSON.parse(store().getItem(LAST_KEY));return j&&j.slots?cleanSetup(j):null}catch(e){return null}};
+// The page still edits the five places (v1 shape); a stored v2 setup (#453) is shown through slotsView (null for apart).
+const readLast=()=>{try{const j=JSON.parse(store().getItem(LAST_KEY));return j&&(j.slots||j.heroes)?slotsView(cleanSetup(j)):null}catch(e){return null}};
 const newSeed=()=>1+Math.floor(Math.random()*999999);
 const ROLE_ORDER=SLOT_KEYS;
 const MODE_TEXT={scripted:'Scripted',ai:'AI',agent:'Agent'};
@@ -62,7 +63,7 @@ const labelOf=m=>{const o=modelOptions().find(x=>x[0]===joinMind(m));return o?o[
 // ---- state ----
 function initialSetup(){const last=readLast(),seed=newSeed();
   if(last){last.seed=seed;last.world=last.world||WORLD_ID;return last}
-  return defaultSetup(seed,WORLD_ID,Math.random()<.5?0:1)}
+  return slotsView(defaultSetup(seed,WORLD_ID,Math.random()<.5?0:1))}
 const mindOf=who=>who==='dm'?st.setup.dm:st.setup.slots[who].mind;
 function setMode(who,mode){const m=mindOf(who);if(who==='dm'){st.setup.dm=mode==='agent'?{mode,provider:'anthropic',model:CLAUDE_MODELS.sonnet}:{mode:'scripted'};return}
   const keep=m.provider?{provider:m.provider,model:m.model}:{provider:'anthropic',model:CLAUDE_MODELS.haiku};
@@ -195,7 +196,7 @@ function onChange(e){const t=e.target;if(!t||!t.dataset||!t.dataset.f)return;con
   render()}
 
 function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a]'):null;if(!t||t.disabled)return;const a=t.dataset.a;st.error='';
-  if(a==='preset'){const r=applyPreset(t.dataset.name,st.setup,{local:localModel(),last:readLast()});if(!r){st.error='That preset is not available right now.'}else{r.seed=st.setup.seed;r.world=st.setup.world;st.setup=r}st.confirm=false}
+  if(a==='preset'){const r=slotsView(applyPreset(t.dataset.name,st.setup,{local:localModel(),last:readLast()}));if(!r){st.error='That preset is not available right now.'}else{r.seed=st.setup.seed;r.world=st.setup.world;st.setup=r}st.confirm=false}
   else if(a==='prof'){const p=st.setup.slots[t.dataset.slot],id=t.dataset.id,l=(p.profs||[]).slice(),i=l.indexOf(id);
     if(i>=0)l.splice(i,1);else if(l.length<MAX_PROF)l.push(id);
     if(l.length)p.profs=l;else delete p.profs;st.confirm=false}
