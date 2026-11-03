@@ -70,7 +70,7 @@ function reason(p,a,c){const role=p.role;
   return null}
 
 // ---- once per step (sim/index.js) ----
-let acc=0;
+let acc=0;export const resetLocals=()=>{acc=0}; // a new world starts the timer over (#674)
 export function localsTick(dt){if(!slotted())return;acc+=dt;if(acc<LOC.EVERY)return;acc=0;
   const T=talkState();
   for(const a of S.agents){if(!inSlots(a)||!a.player||!living(a)||a.kind!=='hero')continue;

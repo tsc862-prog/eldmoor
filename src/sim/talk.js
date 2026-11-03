@@ -84,7 +84,7 @@ const MOODS=['hostile','neutral','friendly'];
 const DAY=1440;
 
 // Private LCG (like sim/npcs.js): the scripted lines never touch the gameplay RNG.
-let seed=0x5bd1e995;
+const SEED0=0x5bd1e995;let seed=SEED0;export const resetTalkSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 const pick=L=>L[Math.floor(r()*L.length)];
 
