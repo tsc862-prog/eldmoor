@@ -1373,7 +1373,8 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(!a.player)return {ok:false,error:a.name+' is not agent-played.'};
   if(a.state==='dead'){const r={ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+', at '+(a.diedAt||'?')+'). Hardcore: one life. Their story is over.'};logCall(a,tool,args,r);return r}
   const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'};
-  if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}} // held before play (#559): look, recall and the other reads still answer
+  if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}}
+  if(meta.act&&a.state==='downed'&&tool!=='wait'){const r={ok:false,downed:true,offline:true,error:'You are down, bleeding at zero health: you cannot act until someone brings you back or you rise. Listen, remember, or wait.'};logCall(a,tool,args,r);return r} // downed (#626): reads still answer // held before play (#559): look, recall and the other reads still answer
   if(args&&args._pool===true&&(tool==='recall'||tool==='journal_search'))return fn(a,args); // the relay's ask for the texts it embeds (#553): not a turn, not logged
   if(meta.act){const st=a.playRate||(a.playRate=[]);while(st.length&&st[0]<S.gameMin-60)st.shift();
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}

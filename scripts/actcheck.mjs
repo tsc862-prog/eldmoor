@@ -91,7 +91,7 @@ for (const s of fights(a, 20)) {
 
 // death settles the fight
 const v = live().find(x => x !== a && x !== b && x !== f);
-const mv = mob(); mv.x = v.x; mv.y = v.y; AL.actHurt(v, mv, 5); HE.agentDie(v, mv);
+const mv = mob(); mv.x = v.x; mv.y = v.y; AL.actHurt(v, mv, 5); HE.slay(v, mv); // the death itself (agentDie would down a full-health hero, #626)
 ok(actionLog(v, {kinds: ['death']}).length === 1 && fightSummary(v).result === 'died', 'death recorded and the fight settles as died');
 
 // caps
