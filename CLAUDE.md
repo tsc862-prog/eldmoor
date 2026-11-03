@@ -777,6 +777,14 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   another seat's line, keys are redacted, files rotate, the watch leaves the world unchanged, and that a
   real `npm run agent` with a lazy mock Ollama model lands its turns and its stale fight claim.
 
+## CI observation (issue #574)
+
+Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none path-filtered on the required checks):
+- `nightly-flakes.yml` (`scripts/flakehunt.mjs`): reruns the flake-prone checks 5 times under CI_FAST and rewrites one issue, "Nightly flake report" (check, fails/runs, `flaky` at 2 of 5, last failing line).
+- `nightly-run.yml` (`scripts/nightly-run.mjs`, thresholds in `scripts/nightly-thresholds.json`): a 60 minute headless Fellowship at 8x with mock local minds (no paid API, no Ollama), the behavior report, artifacts; a crossed threshold opens "Nightly agent run failed". Mock minds make idle, no-aim and repeated-narration expected, so those are not limited.
+- `screenshots.yml` (`scripts/shoot.mjs`): on PRs touching `src/ui`, `src/render`, `index.html` or `src/style.css`, headless Chrome against `vite preview` at 3440x1440 and 1280x800; artifact plus an inline comment (images on the `ci-shots` branch). Comments use `scripts/pr-comment.mjs` (a hidden marker per job; hash-guard too).
+- `red-main.yml`: when CI fails on a push to main it opens or updates one issue "main is red" (label `red-main`) and comments on the merged PR; it closes itself when CI is green on main again. **An open "main is red" issue is a merge stop**: do not merge anything else until it is closed. `workflow_dispatch` with `simulate` tests it.
+
 ## Layout
 
 - `index.html`: page shell and side panels. `src/style.css`: dark single-theme
