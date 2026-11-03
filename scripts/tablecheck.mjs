@@ -353,6 +353,11 @@ if (process.argv[2] === '--staged') {
   ok(good.ok && good.cast.length === pv.creatures.length && good.cast.every((c, i) => c.includes(pv.creatures[i].replace(/ \(L\d+\)$/, ''))), `a fitting frame (a family word, "pack leader" allowed) is accepted and builds the previewed cast (${good.cast && good.cast.length} foes)`);
   for (const id of S.staged.cur.cast.mobs) {const m = S.mobs.find(x => x.id === id); if (m) {m.alive = false; m.gone = true}}
   S.staged.cur.phase = 'done'; S.staged.day.n = 0; fresh();
+  ok(ST.STAGE.WANT_MAX === 160, 'STAGE.WANT_MAX is a real constant (160, as place_person caps a want)');
+  {const lw = dmAct('stage_scene', {kind: 'meeting', near: 'fellowship', frame: 'A pilgrim sits by a cairn, mending a sandal.', cast: {role: 'hermit', want: 'company as far as the ford '.repeat(12)}, reason: 'want cap'});
+   const cw = S.staged.cur && S.staged.cur.cast && S.staged.cur.cast.want;
+   ok(!lw.ok || (cw && cw.length <= ST.STAGE.WANT_MAX), `a long want is capped at ${ST.STAGE.WANT_MAX}: ${cw ? cw.length : lw.error}`);
+   if (S.staged.cur) S.staged.cur.phase = 'done'; fresh()}
   const ev = dmAct('stage_scene', {kind: 'elite', near: 'fellowship', preview: 'true'});
   ok(ev.ok && /^a named /.test(ev.cast), `elite preview: ${ev.cast}`);
   ok(dmAct('stage_scene', {kind: 'elite', near: 'fellowship', frame: 'A bandit captain steps out of the thorns, sword drawn.', cast: {}, reason: 'misfit'}).ok === false, 'an elite framed as a bandit captain is refused');
@@ -546,7 +551,7 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  ok(/\(3 rounds\.\)/.test(scR.summary) && /the foe struck \d+ times?/.test(lastTable()), `the outcome: ${scR.summary}`);
  RM.forEach(x => {delete x.mcr.zz_test});
  // (b) the foe falls: the scene ends in the round it goes down, with today's outcome text
- fieldR(); q = foeAt(8, .02); q.hp = 1; scR = elite(q); p1 = stepUntil(() => !S.table, 30);
+ fieldR(); q = foeAt(8, .02); q.hp = 1; scR = elite(q); scR.pl = RM.map(x => x.id); /* each member has already parleyed (#296 once a fight): a reflex member would talk a 1 HP foe down, and this asserts the strike */ p1 = stepUntil(() => !S.table, 30);
  ok(!S.table && scR.rd === 1 && !q.alive && /^The foe is down\./.test(scR.summary), `a foe at 1 HP falls in round 1 and the scene ends: ${scR.summary}`);
  // (c) a member falls (a child, so the main party keeps its five): the scene ends on the fall
  const fc = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--rounds', 'fall'], {encoding: 'utf8'}), lfc = (fc.stdout || '').trim().split('\n').pop(); if (fc.stderr) process.stderr.write(fc.stderr);

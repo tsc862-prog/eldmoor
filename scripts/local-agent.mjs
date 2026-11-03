@@ -58,16 +58,28 @@ export function ollamaTools(list = PLAYER_TOOLS) {
 // A model's arguments checked against the tool table: {args} or {error}. Numbers given as strings are
 // coerced, unknown keys dropped, enums and required arguments enforced. The game validates again.
 export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
-  const M = byName(list), t = M.get(name); if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}`};
+  const M = byName(list), t = M.get(name);
+  // a DM calling a world lever by name (post_hook, mark_place: issue #401) is pointed at pull_lever
+  if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '')};
   let a = raw; if (typeof a === 'string') {try {a = a.trim() ? JSON.parse(a) : {}} catch {return {error: 'arguments are not valid JSON'}}}
   if (a == null) a = {}; if (typeof a !== 'object' || Array.isArray(a)) return {error: 'arguments must be an object'};
+  // a tool with one object argument (pull_lever's params): keys the tool does not take are that object's, not dropped
+  const objKeys = Object.entries(t.args || {}).filter(([, s]) => s.type === 'object').map(([k]) => k);
+  if (objKeys.length === 1) {const k = objKeys[0], extra = Object.keys(a).filter(x => !(x in (t.args || {})));
+    if (extra.length) {let base = a[k]; if (typeof base === 'string') {try {base = base.trim() ? JSON.parse(base) : {}} catch {base = null}}
+      if (base == null || (typeof base === 'object' && !Array.isArray(base))) {a = {...a, [k]: {...Object.fromEntries(extra.map(x => [x, a[x]])), ...(base || {})}}}}}
   const out = {};
   for (const [k, spec] of Object.entries(t.args || {})) {
     let v = a[k];
     if (v == null || v === '') {if (!spec.optional) return {error: `${name} needs "${k}" (${spec.desc || k})`}; continue}
     if (spec.type === 'object') {if (typeof v === 'string') {try {v = JSON.parse(v)} catch {return {error: `"${k}" must be a JSON object`}} } if (!v || typeof v !== 'object' || Array.isArray(v)) return {error: `"${k}" must be an object`}}
     else if (spec.type === 'array') {if (typeof v === 'string') {const t = v.trim(); try {v = t.startsWith('[') ? JSON.parse(t) : t.split(',')} catch {v = t.split(',')}} if (!Array.isArray(v)) v = [v]; v = v.map(x => String(x).trim()).filter(Boolean).slice(0, 12)}
-    else if (spec.type === 'integer' || spec.type === 'number') {const n = Number(v); if (!Number.isFinite(n)) return {error: `"${k}" must be a number`}; v = spec.type === 'integer' ? Math.round(n) : n}
+    else if (spec.type === 'integer' || spec.type === 'number') {const n = Number(v);
+      if (!Number.isFinite(n)) { // a name where an id goes (#399): hand it to the tool's name argument when it has one
+        const alt = typeof v === 'string' && (/_id$/.test(k) ? ['target', 'to', 'who'] : k === 'index' ? ['item'] : []).find(x => t.args[x] && t.args[x].type === 'string' && a[x] == null); // give's index as a name (#412)
+        if (alt) {out[alt] = v.trim().slice(0, 60); continue}
+        return {error: `"${k}" must be a number`}}
+      v = spec.type === 'integer' ? Math.round(n) : n}
     else v = typeof v === 'string' ? v : typeof v === 'object' ? JSON.stringify(v) : String(v);
     if (spec.enum && !spec.enum.includes(v)) return {error: `"${k}" must be one of ${spec.enum.join(', ')}`};
     out[k] = v;
@@ -102,6 +114,13 @@ export function parseTextCalls(content, list = PLAYER_TOOLS) {
   const M = byName(list), s = String(content || ''), out = [];
   if (!/<tool_call>/.test(s)) {const one = parseTextCall(s, list); if (one) return [{...one, start: 0, end: s.length}]} // the whole reply is one call object
   for (const m of s.matchAll(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g)) {const c = parseTextCall(m[0], list); if (c) out.push({...c, start: m.index, end: m.index + m[0].length})}
+  // a fenced block inside prose (issue #401: 44 DM calls were lost): ```json {"name":"stage_scene","arguments":{...}} ```,
+  // also {"tool","args"}, {"function":{...}} and a list of them; a fence that is not a call stays narration
+  for (const m of s.matchAll(/```[ \t]*([A-Za-z_]*)[ \t]*\r?\n?([\s\S]*?)```/g)) {
+    if (out.some(c => m.index >= c.start && m.index < c.end)) continue;
+    const cs = fencedCalls(m[2], M); if (!cs.length) continue;
+    out.push(...cs.map((c, i) => ({function: c, start: m.index + i, end: i === cs.length - 1 ? m.index + m[0].length : m.index + i + 1})));
+  }
   const names = [...M.keys()].filter(n => /^\w+$/.test(n)).sort((a, b) => b.length - a.length);
   const re = new RegExp('(?<![\\w.])(' + names.join('|') + ')\\s*\\(', 'g');
   for (const m of s.matchAll(re)) {
@@ -113,6 +132,22 @@ export function parseTextCalls(content, list = PLAYER_TOOLS) {
     out.push({function: {name: m[1], arguments: args}, start, end});
   }
   return out.sort((a, b) => a.start - b.start);
+}
+// The calls in one fenced block: a JSON object or a list of them, each {name|tool, arguments|parameters|args} or
+// {function: {name, arguments}}. A name the tools do not know counts only with arguments (rejected with the list).
+function fencedCalls(body, M) {
+  let j; try {j = JSON.parse(String(body || '').trim())} catch {return []}
+  const one = x => {if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+    const f = x.function && typeof x.function === 'object' ? x.function : x, name = f.name || x.tool || x.name;
+    if (typeof name !== 'string' || !name) return null;
+    const hasArgs = 'arguments' in f || 'parameters' in f || 'args' in x;
+    if (!M.has(name) && !hasArgs) return null;
+    let args = f.arguments ?? f.parameters ?? x.args ?? {};
+    if (typeof args === 'string') {try {args = args.trim() ? JSON.parse(args) : {}} catch {}}
+    return {name, arguments: args}};
+  const xs = Array.isArray(j) ? j : [j], out = [];
+  for (const x of xs) {const c = one(x); if (!c) return []; out.push(c)}
+  return out;
 }
 function matchParen(s, i) {
   let depth = 0, q = null;
@@ -249,12 +284,25 @@ export const REFLECT_NOTES = 3;
 // strict: OpenAI's strict json_schema (every property required, no maxItems/maxLength; cut here instead).
 export function reflectSchema({strict = false} = {}) {
   const s = (d, n) => ({type: 'string', description: d, ...(strict ? {} : {maxLength: n})});
-  return {type: 'object', additionalProperties: false, required: ['notes'], properties: {notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
+  return {type: 'object', additionalProperties: false, required: strict ? ['notes', 'become'] : ['notes'], properties: {notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
     description: 'The memories you want to keep (0-3); empty if nothing is worth it',
     items: {type: 'object', additionalProperties: false, required: strict ? ['title', 'text', 'tags', 'about'] : ['title', 'text', 'tags'], properties: {
       title: s('A short title of your choosing', 80), text: s('The memory in your own words', 600),
       tags: {type: 'array', items: {type: 'string'}, description: 'A few tags of your choosing'},
-      about: s('Who or what it concerns (a name, a place), or empty', 60)}}}}};
+      about: s('Who or what it concerns (a name, a place), or empty', 60)}}},
+    // has this changed who you are? (issue #409): an optional change of one persona field, sent with become
+    become: {type: 'object', additionalProperties: false, required: ['field', 'text', 'why', 'about'], description: 'A change of who you are, if this moment changed you; field "none" if not',
+      properties: {field: {type: 'string', enum: ['none', ...BECOME_KEYS]}, text: s('Your new words for that part of you, or empty', 300), why: s('What changed you, or empty', 200), about: s('For a stance: who it is toward, or empty', 40)}}}};
+}
+export const BECOME_KEYS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 'beliefs', 'traits', 'stance'];
+// The persona change of a structured reflection answer, or null (none, or not given). -> {field, text, why, about?}
+export function reflectBecome(text) {
+  let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
+  const b = j && typeof j === 'object' && !Array.isArray(j) ? j.become : null;
+  if (!b || typeof b !== 'object') return null;
+  const field = String(b.field || '').trim().toLowerCase(), t = String(b.text || '').trim();
+  if (!field || field === 'none' || !t) return null;
+  return {field, text: t.slice(0, 300), why: String(b.why || '').trim().slice(0, 200) || 'a moment of reflection', ...(String(b.about || '').trim() ? {about: String(b.about).trim().slice(0, 40)} : {})};
 }
 // What the member did lately, from its own compact conversation (sess.local.history), for the reflection prompt.
 export function recentOf(sess, chars = 2400) {
@@ -277,11 +325,11 @@ export function reflectNotes(text) {
 export async function reflectTurn({ask, call, sess, moment, prompt, context = '', on = () => {}, keep = true, strict = false}) {
   const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'reflect', forced: true, calls: [], misses: 0, notes: [], moment: moment && moment.id};
   const recent = recentOf(sess), user = [recent ? 'What you did and heard lately (your own turns):\n' + recent : '', context ? context.trim() : '', prompt].filter(Boolean).join('\n\n');
-  let notes = null, note = '';
+  let notes = null, note = '', bec = null;
   for (let k = 0; k < 2 && !notes; k++) {
     const r = await ask(sess.system || '', user + note, reflectSchema({strict})), u = r.usage || {};
     stat.modelCalls++; stat.in += u.in || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
-    notes = reflectNotes(r.text);
+    notes = reflectNotes(r.text); bec = reflectBecome(r.text);
     if (!notes) {const w = parseTextCalls(r.text).filter(c => c.function.name === 'remember').map(c => c.function.arguments).filter(a => a && a.text); if (w.length) notes = w.slice(0, REFLECT_NOTES)} // remember written as text still counts
     if (!notes) {stat.misses++; note = '\n\nThat was not the JSON object. Answer only with {"notes": [...]} (an empty list for none).'}
   }
@@ -292,9 +340,15 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
     if (r && r.ok !== false) {stat.calls.push({name: 'remember', ok: true}); stat.notes.push(n.title || n.text.slice(0, 40))} else {stat.rejected++; stat.calls.push({name: 'remember', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
     if (r && r.dead) {stat.dead = true; break}
   }
+  if (bec && !stat.dead) { // the moment changed who the hero is (#409): one become, refused or not
+    on('tool', 'become', bec); stat.tools++;
+    let r; try {r = await call('become', bec)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    on('result', typeof r === 'string' ? r : JSON.stringify(r));
+    if (r && r.ok !== false) {stat.calls.push({name: 'become', ok: true}); stat.became = bec.field} else {stat.rejected++; stat.calls.push({name: 'become', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
+  }
   stat.answered = !!notes; stat.wrote = stat.notes.length;
-  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) : '';
-  if (keep && stat.wrote) {const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
+  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) + (stat.became ? ` Something in them has changed (${stat.became}).` : '') : '';
+  if (keep && (stat.wrote || stat.became)) {const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
     L.history.push({role: 'user', content: 'A moment to reflect: ' + String(moment && moment.why || ''), turn: 1}, {role: 'assistant', content: stat.narration});
     L.tokensIn += stat.in; L.tokensOut += stat.out; L.dropped += trimHistory(L.history, LOCAL_DEFAULTS.historyChars); L.seconds += (Date.now() - t0) / 1000}
   if (stat.narration) on('text', stat.narration);
@@ -352,7 +406,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     const text = typeof r === 'string' ? r : JSON.stringify(r);
     on('result', text);
     stat.calls.push(r && typeof r === 'object' && r.ok === false ? {name, ok: false, error: String(r.error || 'error').slice(0, 140), ...(r.refused ? {refused: true} : {})} : {name, ok: true}); // the behavior log's turn line (issue #129)
-    if (r && typeof r === 'object' && r.ok === false && (r.offline || /did not answer in time|page went away|game is not connected/i.test(String(r.error || '')))) stat.gameDown = (stat.gameDown || 0) + 1; // the page was away, not the model's mistake
+    if (r && typeof r === 'object' && r.ok === false && (r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')))) stat.gameDown = (stat.gameDown || 0) + 1; // the page was away, not the model's mistake
     if (/"dead":true/.test(text)) stat.dead = true;
     return text;
   };

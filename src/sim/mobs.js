@@ -17,7 +17,7 @@ import {actHurt} from './actlog.js';
 import {dmgTaken} from './stats.js';
 import {sightMul} from './weather.js';
 import {eliteSight} from './narrator.js';
-import {nearHeroes,nearMobs} from './spatial.js';
+import {nearHeroes,nearMobs,LOD,heroCellsNear} from './spatial.js';
 import {trick as loreTrick} from './lore.js'; // a creature's tricks, learned by the agent hero it is used on (#188)
 
 // Per-zone target population (today's COUNTS total), a COUNTS-weighted species list for extra
@@ -141,6 +141,7 @@ export function updMob(m,dt){
     if(m.cd<=0&&!useAbility(m,t)){m.cd=m.acd*(m.frenzy>0?.8:1);hurt(t,m,unitOf(m)*(m.frenzy>0?1.35:1)*(.8+rnd()*.4)*(rnd()<B.crit?1.6:1))}
     m.hpl=m.hp;return}
   m.hp=Math.min(m.maxhp,m.hp+m.maxhp*(m.elite?.01:.1)*dt); // elites mend slowly: hit-and-run heroes can wear one down
+  if(LOD.on&&!m.elite&&!heroCellsNear(m.x,m.y,LOD.SLEEP_R)){m.moving=false;m.hpl=m.hp;return} // #433 LOD (off by default): asleep, nobody near
   if(m.dest){if(moveTo(m,m.dest.x,m.dest.y,dt,.9))m.dest=null}
   else{m.wait-=dt;if(m.wait<=0){m.wait=2+rnd()*5;if(m.elite&&rnd()<.25)m.home=zonePoint(z,m.home); // elites stalk the whole zone
     m.dest={x:m.home.x+(rnd()-.5)*4,y:m.home.y+(rnd()-.5)*4}}}

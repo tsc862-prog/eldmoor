@@ -11,7 +11,8 @@
 // the creatures this hero has learned to fear). So the scripted headless sim is unchanged.
 //
 //   a.lore = {c:{key:{seen, read, rl, name, told, fought, killed, hurt, fell, warned, tricks:[], z:[], lo, hi}},
-//             p:{placeName:{how:'home'|'been'|'seen'|'told', at, hurt, fell, warned}}}
+//             p:{placeName:{how:'home'|'been'|'seen'|'told', at, hurt, fell, warned, dm}}}
+//   dm: the id of a DM-marked place (S.places, #423), learned like a landmark; the entry fades with the marker.
 //   key: a MOBS key, a VARIANTS key (site foes), or 'n:'+name for a named elite or an adventure's named foe.
 import {S} from './state.js';
 import {hash} from '../core/rng.js';
@@ -132,9 +133,39 @@ function place(a,name,how){const L=loreOf(a),p=L.p[name];const order={told:0,see
   if(p){if((order[how]||0)>(order[p.how]||0))p.how=how;return p}return L.p[name]={how,at:Math.round(S.gameMin)}}
 export function knowsPlace(a,name){if(!learner(a))return true;return !!loreOf(a).p[name]}
 export function learnPlace(a,name,how='told'){if(!learner(a)||!name)return;const was=!!loreOf(a).p[name];place(a,name,how);return !was}
+
+// ---- DM-marked places (S.places: mark_place, create_site, a staged mystery; #423) ----
+// Learned by the same rules as landmarks: seen within sight, heard named, told by a job. The entry keeps only the
+// public name and the marker's id (never its lever, the DM's reason or notes); move_to finds it by name while the
+// marker stands, and the name fades from the hero's lore when the marker is gone.
+const dmPlaces=()=>S.places||[];
+const bare=n=>String(n||'').replace(/^the\s+/i,'');
+const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const RE_CACHE=new Map();
+const placeRe=n=>{let r=RE_CACHE.get(n);if(!r){r=new RegExp('\\b'+reEsc(bare(n))+'\\b','i');if(RE_CACHE.size>200)RE_CACHE.clear();RE_CACHE.set(n,r)}return r};
+// A marker named like a region, landmark or town is left to those (its entry must not fade with the marker).
+const clash=n=>ZONES.includes(n)||placeNames().includes(n)||CITY.some(c=>c.name===n);
+const markOk=p=>!!(p&&p.name&&p.id!=null&&bare(p.name).length>=3&&!clash(p.name));
+function learnMark(a,p,how){const was=!!loreOf(a).p[p.name];const e=place(a,p.name,how);e.dm=p.id;return !was}
+// The DM place this hero knows by name (any case, "the" optional), while its marker stands; or null.
+export function knownMark(a,t){if(!a||!a.lore)return null;const s=bare(String(t||'').toLowerCase().trim());if(!s)return null;
+  for(const n of Object.keys(a.lore.p)){const e=a.lore.p[n];if(e.dm==null||bare(n.toLowerCase())!==s)continue;const p=dmPlaces().find(x=>x.id===e.dm);if(p)return p}
+  return null}
+// A job the hero reads or holds tells it of its region and of the place it names (post_hook's target, or a landmark).
+export function learnJob(a,h){if(!learner(a)||!h)return 0;let n=0;if(h.zone!=null&&ZONES[h.zone]&&learnPlace(a,ZONES[h.zone],'told'))n++;
+  const d=h.data,nm=d&&d.place;if(!nm)return n;
+  const p=dmPlaces().find(x=>x.name===nm&&(d.x==null||(x.x===d.x&&x.y===d.y)))||dmPlaces().find(x=>x.name===nm);
+  if(markOk(p)){if(learnMark(a,p,'told'))n++;return n}
+  const lm=LANDMARKS.find(l=>l.name===nm)||(CRYPT&&CRYPT.name===nm?CRYPT:null);if(lm&&learnPlace(a,lm.name,'told'))n++;return n}
 // Every step for an agent hero (watch() in sim/player.js): the region it stands in, landmarks in sight, its quest.
 export function visit(a){if(!learner(a))return;const z=zoneAt(a.x,a.y);if(a.loreZ!==z){a.loreZ=z;if(ZONES[z]&&learnPlace(a,ZONES[z],'been'))ev(a,'You come into '+ZONES[z]+' for the first time.');else if(ZONES[z])place(a,ZONES[z],'been')}
   const R=12*sightMul(z);for(const l of LANDMARKS)if(dist(a,l)<=R+(l.r||1)&&learnPlace(a,l.name,'seen'))ev(a,'You see '+l.name+' with your own eyes.');
+  // DM places (#423): one in sight is seen; a known one whose marker is gone fades
+  const P=dmPlaces(),L=loreOf(a);for(const p of P)if(markOk(p)&&dist(a,p)<=R){const e=L.p[p.name];if(!e||e.dm!==p.id||e.how==='told'){if(learnMark(a,p,'seen'))ev(a,'You see '+p.name+' with your own eyes.')}}
+  for(const n of Object.keys(L.p)){const e=L.p[n];if(e.dm!=null&&!P.some(x=>x.id===e.dm))delete L.p[n]}
+  // jobs it holds or was offered by name that point at a place (once per change of that set)
+  const js=(S.adventures||[]).filter(h=>h.data&&h.data.place&&h.phase!=='done'&&(h.for===a.id||h.taker===a.id||a.adv===h.id||h.held===a.id||h.mem&&h.mem.includes(a.id)));
+  const sig=js.map(h=>h.id).join(',');if(a.loreJ!==sig){a.loreJ=sig;for(const h of js)learnJob(a,h)}
   const q=a.quest;if(q&&a.loreQ!==q.type){a.loreQ=q.type;const M=MOBS[q.type];if(M){const e=entry(a,q.type);e.told=1;if(ZONES[M.z]){learnPlace(a,ZONES[M.z],'told');if(!e.z.includes(ZONES[M.z]))e.z.push(ZONES[M.z])}}}}
 
 // ---- learning from words heard (chat, the criers, a job, a townsperson) ----
@@ -147,6 +178,8 @@ export function hear(a,text,who){if(!learner(a))return 0;const t=String(text||''
     if((warn||DIED(x.n).test(t))&&!e.warned){e.warned=snip;n++}
     if(!x.key.startsWith('n:')&&MOBS[x.key]&&ZONES[MOBS[x.key].z]&&X.p.some(p=>p.n===ZONES[MOBS[x.key].z]&&p.re.test(t))&&!e.z.includes(ZONES[MOBS[x.key].z]))e.z.push(ZONES[MOBS[x.key].z])}
   for(const p of X.p){if(!p.re.test(t))continue;if(learnPlace(a,p.n,'told'))n++;const q=loreOf(a).p[p.n];if((warn||DIED(p.n).test(t))&&!q.warned&&q.how!=='home'){q.warned=snip;n++}}
+  // a DM place named (#423): its public name only
+  for(const p of dmPlaces()){if(!markOk(p)||!placeRe(p.name).test(t))continue;if(learnMark(a,p,'told'))n++;const q=loreOf(a).p[p.name];if((warn||DIED(bare(p.name)).test(t))&&!q.warned){q.warned=snip;n++}}
   return n}
 
 // ---- what the hero can say about it (the lore tool, status.places, move_to) ----

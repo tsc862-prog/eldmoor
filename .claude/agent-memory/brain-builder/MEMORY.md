@@ -20,3 +20,12 @@
 - [Token deltas](token-deltas.md) — #282 SDK modelUsage is cumulative; usageDelta, cacheRead/cacheWrite turn fields, legacy lines
 - [Agentkit seam](agentkit-seam.md) — #290/#294 engine vs game design doc: adapter items, registries, carve order K1-K10, risks, owner questions
 - [Earshot](earshot.md) — #395 earshot tool + brief.earshot line, shared sayHearers/shoutHearers, spatial-index test pitfall
+- [Tool quick wins](tool-quickwins.md) — #399 owner rule accept-more tools; move_to label parsing, header town, name targets, PAUSED, toolwincheck pitfalls
+- [Tool quick wins C](tool-quickwins-c.md) — #401 leverUsage errors, lever-as-tool hint, fenced json calls, claudeBrief header for Claude turns, check pitfalls
+- [Own persona](own-persona.md) — #409 self/become tools, limits, self/owner markers, header line + standing-order block, reflection become
+- [Hunt where](hunt-where.md) — #411 hunt {where} via plan(), [move,hunt] queue, lazy k0, zonePoint enemy-wall retry, hash-compare recipe
+- [Give by name](give-by-name.md) — #412 give item by name: match tiers, count prefix, ambiguity rule, cleanArgs index->item
+- [DM region reads](dm-region-reads.md) — #427 hooks/npcs take region: readScope, scope/note fields, refusal lists, dmcheck pitfalls
+- [Places tool](places-tool.md) — #414 places: knownNames + markers in sight, way/word/creatures/learned, heredoc backslash pitfall
+- [DM places lore](dm-places-lore.md) — #423 heroes learn S.places markers: seen/heard/job-told, e.dm id, fade, knownMark, learnJob, pitfalls
+- [Shop tool](shop-tool.md) — #424 shop {npc?}: seller choice like buy, trader price probe via npcBuy, gear change, refusals

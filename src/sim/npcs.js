@@ -19,6 +19,7 @@ import {S,clockStr,dayNo} from './state.js';
 import {pop} from './effects.js';
 import {moveTo} from './heroes.js';
 import {attitudeOf,presence} from './levers.js';
+import {within,LOD} from './spatial.js';
 
 // Tuning. Speeds in tiles/s at 1x; GREET_R tiles from the post that count as a visit;
 // BLESS_R the priest's reach; HEAR who hears a line (same as chat.js); COOL real seconds
@@ -84,10 +85,10 @@ export function npcSay(p,trigger,ctx={},opts={}){
   if(pool.length>1&&line===p.lastBark)line=pool[(pool.indexOf(line)+1)%pool.length];p.lastBark=line;
   // `from` is a small stub, not the live NPC: the chat tab only needs name and faction, and
   // the save walker (sim/save.js) would otherwise copy the whole NPC into every hero's buffer.
-  const dmVoice=opts.dm||S.worldVoice!=='dm'||S.agents.some(a=>a.fellow&&a.state!=='dead'&&!a.hidden&&dist(a,p)<=HEAR);
+  const dmVoice=opts.dm||S.worldVoice!=='dm'||S.agents.some(a=>a.fellow&&a.state!=='dead'&&!a.hidden&&within(a,p,HEAR));
   if(!dmVoice){p.chatCd=COOL;return false}
   const text=fill(line,p,ctx),e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc'};if(S.worldVoice==='dm')e.dm=true;let heard=0;
-  for(const a of S.agents){if(a.state==='dead'||a.hidden||dist(a,p)>HEAR)continue;if(S.fellowship&&a.fellow)e.fh=true;(a.chat||(a.chat=[])).push(e);if(a.chat.length>CAP)a.chat.shift();heard++}
+  for(const a of S.agents){if(a.state==='dead'||a.hidden||!within(a,p,HEAR))continue;if(S.fellowship&&a.fellow)e.fh=true;(a.chat||(a.chat=[])).push(e);if(a.chat.length>CAP)a.chat.shift();heard++}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=COOL;
   const st=S.npcNews.stats;st.lines++;if(heard)st.heard++;return true}
 
@@ -108,12 +109,12 @@ function routine(p,c,dt){
   const shift=work?'day':'night',said=p.shift!==shift&&nearHero(p,GREET_R+1)&&r()<.25;p.shift=shift;
   if(work){p.state='post';p.wait=3+r()*5;if(said)npcSay(p,'open')}
   else{p.state='home';if(said)npcSay(p,'close')}}
-const nearHero=(p,rad)=>S.agents.some(a=>a.state!=='dead'&&a.state!=='ghost'&&!a.hidden&&dist(a,p)<=rad);
+const nearHero=(p,rad)=>S.agents.some(a=>a.state!=='dead'&&a.state!=='ghost'&&!a.hidden&&within(a,p,rad));
 
 // Greeting: the first unmet (or long unseen) living hero within GREET_R of an NPC at post.
 function greet(p,work){
   if(p.chatCd>0||!(p.state==='post'||(p.role==='bard'&&work)))return;
-  for(const a of S.agents){if(a.state==='dead'||a.state==='ghost'||a.hidden||dist(a,p)>GREET_R)continue;
+  for(const a of S.agents){if(a.state==='dead'||a.state==='ghost'||a.hidden||!within(a,p,GREET_R))continue;
     const last=p.met[a.id];if(last!=null&&S.gameMin-last<REGREET)continue;
     // DM levers: a hostile resident turns away; a friendly one, a festival or a plague changes the odds
     p.met[a.id]=S.gameMin;const att=attitudeOf(p,[a]);if(att==='hostile'||r()>=GREET_P*presence(p.town)*(att==='friendly'?2:1))continue;
@@ -137,7 +138,7 @@ function newsTick(){const n=S.npcNews,st=S.eco&&S.eco.stats;
 // The bard sings the oldest news this town has not heard, once someone is near enough to hear it.
 function sing(p,dt){if(p.songCd>0){p.songCd-=dt;return}if(p.chatCd>0)return;
   const item=S.npcNews.items.find(it=>!it.sung[p.town]);if(!item)return;
-  if(!S.agents.some(a=>a.state!=='dead'&&!a.hidden&&dist(a,p)<=HEAR))return;
+  if(!S.agents.some(a=>a.state!=='dead'&&!a.hidden&&within(a,p,HEAR)))return;
   item.sung[p.town]=1;const own=item.fac===p.fac;
   npcSay(p,item.kind==='boss'?(own?'boss':'bossFoe'):(own?'song':'songFoe'),{hero:item.hero,elite:item.elite,zone:item.zone});
   p.songCd=SONG_GAP;S.npcNews.stats.songs++}
@@ -159,5 +160,5 @@ export function npcsTick(dt){ensureNpcs();newsTick();
     if(p.bubble){p.bubble.life-=dt;if(p.bubble.life<=0)p.bubble=null}
     if(p.role==='priest')bless(p,c);
     routine(p,c,dt);
-    greet(p,work);
+    if(!LOD.on||(LOD.tick+p.id)%LOD.GREET_EVERY===0)greet(p,work); // #433 LOD (off by default): staggered
     if(p.role==='bard')sing(p,dt)}}

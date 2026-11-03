@@ -140,6 +140,16 @@ export function provide(name,fn){IMPL[name]=fn}
 // The menu for a model or agent: names, parameter schemas and limits as plain JSON.
 export function leverMenu(){return Object.values(LEVERS).map(d=>({name:d.name,about:d.about||'',params:JSON.parse(JSON.stringify(d.params,(k,v)=>v===Infinity?null:typeof v==='function'?undefined:v)),limits:{...d.limits},cooldown:d.cooldown,available:!d.stub||!!IMPL[d.stub]}))}
 export const activeOf=name=>(S.levers?S.levers.active:[]).filter(x=>x.name===name);
+// One lever's contract in a line, for error messages (issue #401): "post_hook takes params: town (a town: Highgate|...),
+// tpl (rescue|escort|...), giver? (...), reward=fair (small|fair|generous)". ? = optional, =x = default. Read only.
+export function leverUsage(name){const def=LEVERS[name];if(!def)return '';
+  const kind=s=>{const v=s.values||[];switch(s.type){case 'enum':return v.length>12?v.slice(0,12).join('|')+'|...':v.join('|');
+    case 'region':return 'a region: '+ZONES.join('|');case 'town':return 'a town: '+CITY.map(c=>c.name).join('|');case 'point':return '{"x":N,"y":N}';
+    case 'int':case 'num':return 'number'+(s.min!=null?' '+s.min+'-'+s.max:'');case 'str':return 'text';case 'bool':return 'true|false';case 'id':return 'an id';case 'obj':return 'object';default:return s.type}};
+  const ps=Object.entries(def.params).filter(([k])=>!(def.hide||[]).includes(k)).map(([k,s])=>k+(s.opt?'?':'def' in s&&typeof s.def!=='function'?'='+s.def:'def' in s?'?':'')+' ('+kind(s)+')');
+  return name+' takes params: '+(ps.length?ps.join(', '):'none')}
+// The lever names a caller can pull now (stubs without an implementation left out).
+export const leverNames=()=>Object.values(LEVERS).filter(d=>!d.stub||IMPL[d.stub]||d.native).map(d=>d.name);
 
 // ---- pull ----
 // pull(name, params, {by, reason, adv, log}) -> {ok, id, effect, until, ret} or {ok:false, reason}.

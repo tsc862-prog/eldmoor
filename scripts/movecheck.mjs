@@ -7,6 +7,7 @@ import {CLS} from '../src/data/classes.js';
 import {movesOf, useMove, canUse, pickMove, tickRound, cdLeft, roundsLeft, abilityView, fightMoves} from '../src/sim/moves.js';
 import {setRunnerLinks} from '../src/sim/runlink.js';
 import {actionLog} from '../src/sim/actlog.js';
+import {addUse, take, bestUse} from '../src/sim/inv.js';
 import {combatStats, dmgTaken} from '../src/sim/stats.js';
 import {effOn} from '../src/sim/eff.js';
 import {rebuild} from '../src/sim/spatial.js';
@@ -164,6 +165,12 @@ if (S.fellowship) {
       const sc3 = {kind: 'elite', ctx: {mob: fo.id}, ids: [hl.id], acts: {}, beats: []};
       ok(reflexFor(sc3, hl) === 'mendingtouch', 'at the Table a reflex Mender heals with Mending Touch: ' + reflexFor(sc3, hl));
       hl.mcr.mendingtouch = 2; ok(reflexFor(sc3, hl) === 'heal', 'and with the plain heal while it cools down');
+      // badly hurt (below 35%): the class move first, then a potion, then the plain heal (#387)
+      hl.mcd = {}; hl.mcr = {}; mate.hp = combatStats(mate).health * .2; addUse(hl, 'Redroot Draught', 1);
+      const r35 = reflexFor(sc3, hl), healMv = movesOf(hl).filter(id => MOVES[id].kind === 'heal');
+      ok(healMv.includes(r35), 'below 35% a reflex Mender with a potion still heals with a class move first: ' + r35);
+      for (const id of healMv) hl.mcr[id] = 2; ok(reflexFor(sc3, hl) === 'potion', 'and drinks the potion while it cools down: ' + reflexFor(sc3, hl));
+      for (let p; (p = bestUse(hl, 'potion'));) take(hl, 'use', p, 99); ok(reflexFor(sc3, hl) === 'heal', 'and with no potion and no ready move, the plain heal: ' + reflexFor(sc3, hl));
       if (bg) bg.player = false;
     }
     for (const b of mem) b.hp = combatStats(b).health;

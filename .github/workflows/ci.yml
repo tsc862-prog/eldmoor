@@ -28,6 +28,7 @@ jobs:
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: Fellowship archetypes, run: npm run archetypecheck}
+      - {name: Agent-built personality, run: npm run personacheck}
       - {name: Pack and inventory, run: npm run invcheck}
       - {name: Bestiary, run: npm run bestiarycheck}
       - {name: Class abilities and specialisations, run: npm run movecheck}
@@ -89,6 +90,7 @@ jobs:
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}
+      - {name: Tool quick wins, run: npm run toolwincheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: Action log, run: npm run actcheck}
       - {name: Tiered memory, run: npm run tiercheck}

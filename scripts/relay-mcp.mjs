@@ -70,6 +70,10 @@ import {DM_TOOLS} from '../src/data/dm-tools.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
+// What an agent hears while the game page is away (#399): a pause in the world, not advice to a human ("Press Agent ...", which
+// models read as something they must do). offline:true marks it for the runners (not the model's mistake, scripts/local-agent.mjs).
+export const PAUSED = 'The world is paused or reloading; wait and try again (your runner picks up when it is back).';
+const paused = why => ({ok: false, error: PAUSED, offline: true, why});
 export const CLAIM_MS = 45000, LINK_MS = 20000; // a runner claim lives this long unrefreshed; a call keeps the link 'connected' this long
 export const HERO_HEADER = 'x-eldmoor-hero', ROLE_HEADER = 'x-eldmoor-role', RUNNER_HEADER = 'x-eldmoor-runner', DM_KEY = 'dm'; // DM_KEY: the DM seat's key in the claim and link maps
 // A runner id from a header, query or body value (what /play/claim was given), or null.
@@ -113,27 +117,27 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
       });
       ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; log('[play] game page disconnected');
-        for (const [id, w] of waiting) {clearTimeout(w.t); w.res({ok: false, error: 'The game page went away.'}); waiting.delete(id)}});
+        for (const [id, w] of waiting) {clearTimeout(w.t); w.res(paused('page went away')); waiting.delete(id)}});
     },
     info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat}),
     // A DM tool call (issue #66), answered by the page through src/sim/dmagent.js.
     dmCall(tool, args) {
-      if (!sock || sock.readyState !== 1) return Promise.resolve({ok: false, error: 'The game is not connected. Open the game page and open the DM seat (Dungeon Master panel: "DM agent").', offline: true});
+      if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
       if (!dmSeat) return Promise.resolve({ok: false, error: 'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent").', offline: true});
       const id = ++seq;
       return new Promise(res => {
-        const t = setTimeout(() => {waiting.delete(id); res({ok: false, error: 'The game did not answer in time (is the tab hidden or paused?).'})}, CALL_MS);
+        const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, CALL_MS);
         waiting.set(id, {res, t});
         send({type: 'dmcall', id, tool, args: args || {}});
       });
     },
     call(heroId, tool, args) {
-      if (!sock || sock.readyState !== 1) return Promise.resolve({ok: false, error: 'The game is not connected. Open the game page and press "Agent" on a hero.', offline: true});
-      if (!heroes.length) return Promise.resolve({ok: false, error: 'No hero is agent-played. Press "Agent" on a hero in the game.', offline: true});
+      if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
+      if (!heroes.length) return Promise.resolve(paused('no agent hero listed'));
       if (!heroes.some(h => h.id === heroId)) return Promise.resolve({ok: false, error: `Hero #${heroId} is not agent-played in the game.`, offline: true});
       const id = ++seq;
       return new Promise(res => {
-        const t = setTimeout(() => {waiting.delete(id); res({ok: false, error: 'The game did not answer in time (is the tab hidden or paused?).'})}, tool === 'wait' || tool === 'pace' ? WAIT_MS : CALL_MS);
+        const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, tool === 'wait' || tool === 'pace' ? WAIT_MS : CALL_MS);
         waiting.set(id, {res, t});
         send({type: 'call', id, hero: heroId, tool, args: args || {}});
       });
@@ -226,7 +230,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     const a = id != null ? act.get(id) || {last: 0, inflight: 0} : null; if (a) {a.inflight++; a.last = t0; act.set(id, a); pushLinks()}
     if (behavior && id != null) behavior.call('hero:' + id);
     let r;
-    try {r = id == null ? {ok: false, error: 'No hero is agent-played.', offline: true} : await be.call(id, tool, args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    try {r = id == null ? paused('no agent hero') : await be.call(id, tool, args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
     if (a) {a.inflight--; a.last = now(); pushLinks()}
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
@@ -364,7 +368,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (path === '/play/pace') {const id = hero;
         if (id == null) return send(400, {ok: false, error: 'pace needs the hero id'});
         const holder = heldBy(id, rid); if (holder) return send(409, refusedSeat(id, holder));
-        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
+        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
         let r; try {r = await be.call(id, 'pace', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
         return send(200, r && typeof r === 'object' ? r : {ok: false, error: 'no answer'})}
       if (path === '/play/narrate') {const id = resolve(hero);

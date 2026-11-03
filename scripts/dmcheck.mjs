@@ -129,6 +129,30 @@ const rng0 = seed, n0 = nums();
 for (const t of ['dm_status', 'read_timeline', 'read_chronicle', 'read_dm_log', 'fellowship_view', 'npcs', 'regions', 'hooks', 'levers', 'notes_read']) {r = dmAct(t, {n: 5}); ok(r.ok, `${t} reads (${JSON.stringify(r).length} chars)`)}
 r = dmAct('heroes_near', {near: S.fellowship.hall || 'Highgate'}); ok(r.ok && Array.isArray(r.heroes), `heroes_near ${r.place}: ${r.heroes && r.heroes.length} heroes`);
 ok(dmAct('heroes_near', {near: 'Nowhere-at-all'}).ok === false, 'heroes_near refuses an unknown place');
+{ // issue #427: hooks and npcs read a region as well as a town
+  const {CITY} = await import('../src/world/map.js');
+  const tc = CITY[0], tz = zoneAt(tc.gate.x, tc.gate.y), rn = ZONES[tz], logN = S.dmLog.length, log0 = S.dmLog[0], notesN = JSON.stringify(S.dmAgent && S.dmAgent.notes);
+  const hk = dmAct('hooks', {region: rn.toUpperCase()}), all = dmAct('hooks');
+  const want = all.open_jobs.filter(j => CITY.some(c => c.name === j.town && zoneAt(c.gate.x, c.gate.y) === tz) || j.region === rn).map(j => j.id).sort().join();
+  ok(hk.ok && hk.scope && hk.scope.region === rn && hk.scope.towns.includes(tc.name) && hk.open_jobs.map(j => j.id).sort().join() === want,
+    `hooks {region: ${rn}} lists the jobs of its towns (${hk.scope && hk.scope.towns.join(', ')}): ${hk.open_jobs && hk.open_jobs.length} of ${all.open_jobs.length}`);
+  const np = dmAct('npcs', {region: rn});
+  ok(np.ok && np.townsfolk.length > 0 && np.townsfolk.every(n => np.scope.towns.includes(n.town)) && np.wanderers.every(w => np.scope.towns.includes(w.where) || w.where === rn),
+    `npcs {region: ${rn}}: ${np.townsfolk && np.townsfolk.length} townsfolk and ${np.wanderers && np.wanderers.length} wanderers there`);
+  const wz = ZONES.findIndex((n, i) => !CITY.some(c => zoneAt(c.gate.x, c.gate.y) === i));
+  if (wz >= 0) {
+    const wn = dmAct('npcs', {region: ZONES[wz]}), wh = dmAct('hooks', {region: ZONES[wz]});
+    ok(wn.ok && wn.townsfolk.length === 0 && wn.scope.towns.length === 0 && wh.ok && wh.open_jobs.every(j => j.region === ZONES[wz]),
+      `a region with no town (${ZONES[wz]}) reads no townsfolk and only the jobs that lead into it (${wh.open_jobs.length})`);
+  }
+  const asTown = dmAct('hooks', {town: rn});
+  ok(asTown.ok && /is a region, not a town/.test(asTown.note) && asTown.scope.region === rn, 'a town value that names a region is read as the region, with a note');
+  ok(dmAct('npcs', {town: tc.name.toLowerCase()}).scope.town === tc.name, 'a town still reads as the town');
+  const bad = dmAct('npcs', {region: 'Lowmarkia'}), bad2 = dmAct('hooks', {town: 'Lowmarkia'});
+  ok(!bad.ok && ZONES.every(z => bad.error.includes(z)) && CITY.every(c => bad.error.includes(c.name)) && !bad2.ok && /town or region/.test(bad2.error),
+    'an unknown name refuses with the regions and towns it can read');
+  ok(S.dmLog.length === logN && S.dmLog[0] === log0 && JSON.stringify(S.dmAgent && S.dmAgent.notes) === notesN, 'region reads write no DM log entry and no note');
+}
 ok(seed === rng0 && nums() === n0, 'reads roll no dice and change no hero');
 const fv = dmAct('fellowship_view').fellowship;
 ok(fv && fv.members.length === 5 && fv.members.every(m => m.empty || ('persona' in m && 'memory_recent' in m)) && Array.isArray(fv.open_threads), 'fellowship_view: five members with persona, memories and open threads');
@@ -161,6 +185,21 @@ ok(dmAct('pull_lever', {lever: 'named_foe', params: {}, reason: 'x'}).ok === fal
 ok(dmAct('pull_lever', {lever: 'set_condition', params: {region: 1}, reason: ''}).ok === false, 'a pull without a reason is refused');
 ok(dmAct('pull_lever', {lever: 'kill_hero', params: {}, reason: 'x'}).ok === false, 'an unknown lever is refused');
 ok(dmAct('pull_lever', {lever: 'set_condition', params: '{not json', reason: 'x'}).ok === false, 'params that are not an object are refused');
+// errors that carry the fix (issue #401): the lever's contract, the lever names, a lever called as a tool
+{const pulls1 = S.dmAgent.day.pulls;
+  r = dmAct('pull_lever', {lever: 'kill_hero', params: {}, reason: 'x'}); ok(/levers: .*set_condition.*post_hook|levers: .*post_hook.*set_condition/.test(r.error), 'an unknown lever lists the lever names: ' + r.error.slice(0, 90));
+  r = dmAct('pull_lever', {lever: 'set_condition', params: {region: ZONES[4] || ZONES[0]}, reason: 'fog'});
+  ok(r.ok === false && /kind is required/.test(r.error) && /set_condition takes params: region \(a region: .*\), kind \(/.test(r.error) && r.usage, 'a pull shaped wrong names the lever\'s params and legal values: ' + r.error.slice(0, 160));
+  r = dmAct('pull_lever', {lever: 'set_condition', params: {region: 1}, reason: ''}); ok(/reason is required/.test(r.error) && /pull_lever \{"lever":"set_condition"/.test(r.error), 'a pull without a reason says how to call it');
+  r = dmAct('pull_lever', {lever: 'set_condition', region: ZONES[4] || ZONES[0], kind: 'no-such-weather', reason: 'fog'});
+  ok(r.ok === false && /kind must be one of/.test(r.error), 'lever params given beside lever and reason are read as params (the refusal is about the value, not a missing key)');
+  r = dmAct('pull_lever', {lever: 'mark_dangerous', params: {x: -5, y: -5}, reason: 'x,y given flat'});
+  ok(r.ok === false && !/at is required/.test(r.error), 'a point given as x,y is read as the lever\'s point: ' + r.error.slice(0, 80));
+  S.dmAgent.day.pulls = pulls1;
+  r = dmAct('set_condition', {region: 'x'}); ok(r.ok === false && /pull_lever \{"lever":"set_condition"/.test(r.error) && /set_condition takes params: region/.test(r.error), 'a lever name called as a tool points to pull_lever with its params: ' + r.error.slice(0, 120));
+  r = dmAct('create_npc', {role: 'hermit'}); ok(r.ok === false && /pull_lever \{"lever":"create_npc"/.test(r.error) && /Or call place_person \(flat arguments\): place_person takes: role/.test(r.error), 'a lever with a flat tool (create_npc) points to pull_lever and to place_person');
+  r = dmAct('create_npc_placeholder', {}); ok(r.ok === false && /looks like the lever create_npc/.test(r.error), 'a made-up tool that contains a lever name points to that lever');
+  r = dmAct('fly', {}); ok(r.ok === false && /Tools: dm_status/.test(r.error) && /go through pull_lever/.test(r.error), 'an unknown DM tool lists the tools');}
 // pile-on: a badly hurt Fellowship member out in the field
 const hurt = fellows()[0], hz = zoneAt(hurt.x, hurt.y);
 hurt.state = 'hunt'; hurt.hp = maxHp(hurt) * .2;
@@ -216,6 +255,77 @@ ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
     ok(!S.levers.active.some(x => x.name === 'start_event') && !S.conditions.some(c => c.z === zf && c.kind === 'festival') && dmAct('dm_status').world_events.running.length === 0, 'an ended event leaves world_events and its region');}
 }
 
+// ---------------------------------------------------------------- 1a. flat lever tools (issue #413)
+console.log('flat lever tools: post_hook, place_person, mark_place');
+{const {zoneFor, zonePoint, CITY, LANDMARKS} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js'), {focus, reserveOf} = await import('../src/sim/dmfocus.js'), {LEVERS} = await import('../src/sim/levers.js');
+  const L = fellows(), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
+  L.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)});
+  S.dmAgent.day.pulls = 0; const n1 = nums(), cap0 = S.dmAgent.day.pulls, hall = S.fellowship.hall || CITY[0].name;
+  const T = DM_TOOLS.filter(t => ['post_hook', 'place_person', 'mark_place'].includes(t.name));
+  ok(T.length === 3 && T.every(t => t.act && t.desc.length < 600 && /pull_lever/.test(t.desc) && t.args.reason && !t.args.reason.optional), 'the three flat tools are listed, under 600 characters, name pull_lever and need a reason');
+  const lastLever = () => S.dmLog.find(e => e.kind === 'lever');
+  // post_hook
+  r = dmAct('post_hook', {town: hall, tpl: 'rescue', giver: 'captain', reward: 'generous', reason: 'a lost drover on their road'});
+  const hk = r.ok && S.adventures.find(h => h.id === r.effect.hook), e1 = lastLever();
+  ok(r.ok && r.lever === 'post_hook' && hk && hk.town === hall && hk.by === 'dm-agent' && e1.detail.lever === 'post_hook' && e1.detail.by === 'dm-agent' && e1.detail.reason === 'a lost drover on their road' && e1.detail.result === 'applied' && S.dmAgent.day.pulls === cap0 + 1,
+    'post_hook posts through the lever: on ' + hall + '\'s board, by dm-agent, the reason in the DM log, one pull counted' + (r.ok ? '' : ': ' + r.error));
+  r = dmAct('post_hook', {town: 'fellowship', tpl: 'hunt', reason: 'a beast near their camp'});
+  ok(r.ok && S.adventures.some(h => h.id === r.effect.hook && CITY.some(c => c.name === h.town)), 'post_hook town "fellowship" takes the nearest board' + (r.ok ? '' : ': ' + r.error));
+  r = dmAct('post_hook', {town: hall, reason: 'no template'});
+  const viaPull = dmAct('pull_lever', {lever: 'post_hook', params: {town: hall}, reason: 'no template'});
+  ok(r.ok === false && /^Refused: tpl is required/.test(r.error) && /post_hook takes: town/.test(r.error) && /post_hook takes params: town/.test(r.error) && r.usage,
+    'post_hook without tpl is refused by the lever, with its own and the lever\'s contract: ' + r.error.slice(0, 120));
+  ok(viaPull.ok === false && r.error.split('. ')[0] === viaPull.error.split('. ')[0], 'the refusal is the one pull_lever gives: ' + viaPull.error.split('. ')[0]);
+  ok(lastLever().detail.result === 'rejected: tpl is required' && lastLever().detail.by === 'dm-agent', 'the refusal is in the DM log, tagged dm-agent');
+  r = dmAct('post_hook', {town: 'Nowhere-at-all', tpl: 'rescue', reason: 'x'});
+  ok(r.ok === false && /town: unknown place/.test(r.error) && /town takes "fellowship"/.test(r.error), 'post_hook at an unknown town names what town takes: ' + r.error.slice(0, 100));
+  r = dmAct('post_hook', {town: hall, tpl: 'rescue', place: 'the moon', reason: 'x'});
+  ok(r.ok === false && /place: no place or person/.test(r.error), 'post_hook about an unknown place is refused');
+  // place_person
+  r = dmAct('place_person', {role: 'hermit', near: 'fellowship', name: 'Odo', want: 'someone to read the stones at the old cairn', attitude: 'wary', reason: 'a lead for their oath'});
+  const w = r.ok && S.wanderers.find(x => x.id === r.npc), e2 = lastLever();
+  ok(r.ok && r.lever === 'create_npc' && w && w.homeKind === 'camp' && w.name === 'Odo' && w.attitude === 'wary' && w.want === 'someone to read the stones at the old cairn' && Math.hypot(w.x - L[0].x, w.y - L[0].y) < 8 && e2.detail.lever === 'create_npc' && e2.detail.reason === 'a lead for their oath',
+    'place_person near the Fellowship camps a person by them, with their want, through create_npc' + (r.ok ? ' (' + r.person + ' ' + r.where + ')' : ': ' + r.error));
+  const other = (CITY.find(c => c.name !== hall) || CITY[0]).name; S.levers.cd = {}; // the towns may share a region with the camp above: its cooldown is the lever's
+  r = dmAct('place_person', {role: 'minstrel', near: other, spot: 'inn', reason: 'songs of the road'});
+  const w2 = r.ok && S.wanderers.find(x => x.id === r.npc);
+  ok(r.ok && w2 && w2.homeKind === 'town' && w2.town === other, 'place_person near a town gives a town home' + (r.ok ? '' : ': ' + r.error));
+  r = dmAct('place_person', {role: 'hermit', near: 'Nowhere-at-all', reason: 'x'});
+  ok(r.ok === false && /unknown place/.test(r.error) && /create_npc needs town for a town home, or at: a point/.test(r.error) && /near takes "fellowship"/.test(r.error), 'place_person at an unknown place says what create_npc needed and what near takes: ' + r.error.slice(0, 120));
+  r = dmAct('place_person', {role: 'wizard', near: 'fellowship', reason: 'x'});
+  ok(r.ok === false && /role must be one of/.test(r.error) && /create_npc takes params: role/.test(r.error), 'place_person with a bad role is refused by the lever with its contract');
+  r = dmAct('place_person', {role: 'hermit', near: 'fellowship'});
+  ok(r.ok === false && /reason is required/.test(r.error), 'place_person without a reason is refused');
+  // mark_place
+  r = dmAct('mark_place', {kind: 'shrine', near: 'fellowship', name: 'the lantern stone', reason: 'something for their scout to read'});
+  const pl = r.ok && S.places.find(p => p.id === r.effect.place), e3 = lastLever();
+  ok(r.ok && pl && pl.name === 'the lantern stone' && pl.kind === 'shrine' && Math.hypot(pl.x - L[0].x, pl.y - L[0].y) < 8 && e3.detail.lever === 'mark_place' && e3.detail.reason === 'something for their scout to read',
+    'mark_place near the Fellowship puts a shrine on open ground by them' + (r.ok ? ' at ' + r.at.x + ',' + r.at.y : ': ' + r.error));
+  const zl = zoneAt(pl.x, pl.y);
+  r = dmAct('mark_place', {kind: 'ruin', near: 'the lantern stone', reason: 'a second marker in that region'});
+  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: {x: pl.x + 4, y: pl.y}}, reason: 'a second marker in that region'});
+  ok(r.ok === false && /^Refused: cooldown/.test(r.error) && pv.ok === false && /^Refused: cooldown/.test(pv.error) && !r.usage, 'a second mark_place in ' + ZONES[zl] + ' meets the lever\'s cooldown, as pull_lever does: ' + r.error);
+  r = dmAct('mark_place', {kind: 'ruin', near: '0,0', reason: 'off the map'});
+  ok(r.ok === false && /no open ground at 0,0/.test(r.error) && /mark_place needs at: a point/.test(r.error), 'mark_place on bad ground says what the lever needed: ' + r.error.slice(0, 100));
+  r = dmAct('mark_place', {near: LANDMARKS[0].name, reason: 'no kind'});
+  ok(r.ok === false && /kind is required/.test(r.error) && /mark_place takes params: kind/.test(r.error), 'mark_place without a kind is refused by the lever with its contract');
+  // the turn record names the levers
+  const tr = S.dmAgent.turns[0];
+  ok(tr.levers.some(x => x.name === 'post_hook' && x.ok) && tr.levers.some(x => x.name === 'create_npc' && x.ok) && tr.levers.some(x => x.name === 'mark_place' && x.ok), 'the DM turn record lists the flat pulls by lever');
+  // the Fellowship's reserved share: world pulls of create_npc far from them stop short of the daily limit
+  {const fo = focus(), lim = LEVERS.create_npc.limits.perDay, far = ZONES.map((n, i) => i).filter(i => !fo.zones.has(i) && ZPTS[i] && ZPTS[i].length);
+    let got = null, made = 0; S.levers.day.n.create_npc = 0; S.levers.day.nf = {}; // a fresh day for create_npc
+    for (let i = 0; i < lim + 2 && far.length; i++) {const z = far[i % far.length]; S.dmAgent.day.pulls = 0; S.levers.cd = {}; // cooldowns waved through, so the daily share is what stops it
+      r = dmAct('place_person', {role: 'drover', near: ZONES[z], reason: 'a drover far off'}); if (r.ok) made++; else if (/kept for the Fellowship/.test(r.error)) {got = r; break}}
+    ok(!!got && /^Refused: limit/.test(got.error) && !got.usage, 'the Fellowship\'s reserved share holds for place_person far from them (' + made + ' made, limit ' + lim + ', reserve ' + reserveOf(lim) + '): ' + (got ? got.error : 'never refused'));}
+  // the DM agent's own daily cap
+  S.dmAgent.day.pulls = DMA.PULLS_PER_DAY;
+  for (const [t, a] of [['post_hook', {town: hall, tpl: 'deliver', reason: 'cap'}], ['place_person', {role: 'peddler', near: hall, reason: 'cap'}], ['mark_place', {kind: 'cairn_door', near: LANDMARKS[0].name, reason: 'cap'}]]) {
+    r = dmAct(t, a); ok(r.ok === false && /pulled \d+ levers today/.test(r.error), t + ' past DMA.PULLS_PER_DAY is refused: ' + r.error.slice(0, 80));}
+  S.dmAgent.day.pulls = 0;
+  ok(nums() === n1, 'no hero\'s level, XP or life changed through the flat tools');
+}
+
 // ---------------------------------------------------------------- 1b. staged scenes: the rules of the seat (issue #132)
 console.log('staged scenes: refusals');
 {const ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
@@ -230,6 +340,13 @@ console.log('staged scenes: refusals');
   no({frame: 'Mist.'}, /frame/, 'no real frame');
   no({cast: [1, 2]}, /cast must be an object/, 'a cast that is not an object');
   no({near: 'Nowhere-at-all'}, /unknown place/, 'an unknown place');
+  // the refusals carry the fix (issue #401): the legal places, the call's contract; a landmark is a place
+  {const {LANDMARKS} = await import('../src/world/map.js');
+    no({near: 'Nowhere-at-all'}, new RegExp('a member \\(' + L[0].name + '.*a landmark \\(' + LANDMARKS[0].name + '.*or a region \\(' + ZONES[0]), 'an unknown place lists members, landmarks and regions');
+    no({near: 'Nowhere-at-all'}, /stage_scene takes: kind \(elite\|ambush/, 'and the call\'s contract');
+    no({reason: ''}, /reason \(one sentence/, 'a missing reason names the call\'s contract');
+    const lm = LANDMARKS[LANDMARKS.length - 1], pl = st({kind: 'elite', preview: 'true', near: lm.name.replace(/^The /, ''), frame: undefined});
+    ok(pl.ok && pl.preview, `a landmark is a place to stage near ("${lm.name.replace(/^The /, '')}"): ` + (pl.cast || pl.error))}
   no({near: CITYN()}, /not inside/, 'inside a town');
   const stranger = S.agents.find(a => !a.fellow && a.state !== 'dead');
   no({near: stranger.name}, /only the Fellowship/, 'a hero outside the Fellowship');
@@ -253,7 +370,7 @@ console.log('staged scenes: refusals');
   S.staged.cur.phase = 'done'; S.staged.day.n = ST.STAGE.PER_DAY;
   no({}, /staged scenes today/, `past ${ST.STAGE.PER_DAY} a day`);
   S.staged.day.n = 0;
-  ok(S.dmLog.filter(e => /Staged scene refused/.test(e.summary.map(p => typeof p === 'string' ? p : p && p.t || '').join('')) && e.detail.by === 'dm-agent').length === n0 + 19, 'every refusal is in the DM log, tagged dm-agent');
+  ok(S.dmLog.filter(e => /Staged scene refused/.test(e.summary.map(p => typeof p === 'string' ? p : p && p.t || '').join('')) && e.detail.by === 'dm-agent').length === n0 + 22, 'every refusal is in the DM log, tagged dm-agent');
   ok(S.dmLog.some(e => e.kind === 'frame' && e.detail.by === 'dm-agent' && e.detail.staged === okR.staged && e.detail.reason === 'test'), 'the staging is in the DM log with its reason');
   const ds = dmAct('dm_status'); ok(ds.ok && ds.staged && /\/3$/.test(ds.staged.today), `dm_status shows the day's staged scenes (${ds.staged && ds.staged.today})`);
   const tc = dmAct('table_call'); ok(tc.ok && tc.call === null && tc.scene === null, 'table_call with nothing at the table: no call');
@@ -318,7 +435,7 @@ console.log('NPC conversations');
   r = dmAct('npc_offer', {npc: String(smith.id), conv: call.call.conv, kind: 'job', text: 'Bring back what the carters lost and I will pay.', tpl: 'relic'});
   ok(r.ok && r.mark === '[job posted]' && (S.adventures || []).filter(h => h.phase === 'open' && h.for === A.id).length === jobs0 + 1, `npc_offer job: ${r.hint}`);
   act(A, 'say', {text: 'Then we are agreed.'}); call = dmAct('npc_call');
-  r = dmAct('npc_say', {npc: String(smith.id), conv: call.call.conv, text: 'Agreed. Go.'});
+  r = dmAct('npc_say', {conv: call.call.conv, text: 'Agreed. Go.'}); // conv alone names the person (issue #401)
   ok(r.ok && r.ended && !TK.convWith(smith), `after ${TK.CONV.EXCHANGES} exchanges the conversation ends (${r.ended})`);
   ok(S.talks.past[0] && S.talks.past[0].offers.join() === 'trade,rumour,job', 'the past conversation keeps its follow-ups');
   // a polled but silent DM: the scripted DM answers after the budget
@@ -361,6 +478,12 @@ console.log('NPC conversations');
     const nr = dmAct('narrate', {text: long, near: A.name}), ns = dmAct('npc_say', {npc: String(smith.id), text: long});
     ok(nr.ok && nr.narrated === long && ns.ok && ns.said === long && long.length > 600, `narrate and npc_say keep a ${long.length}-character line whole`);
     ok(dmAct('npc_say', {npc: String(smith.id), text: 'x'.repeat(5000)}).said.length === DMA.NPC_SAY_MAX, `with a technical ceiling of ${DMA.NPC_SAY_MAX} characters`)}
+  // names as models write them (issue #401): spaces dropped, a near miss names the closest people
+  {const squeezed = (smith.title + smith.name).replace(/\s+/g, ''), ns = dmAct('npc_say', {npc: squeezed, text: 'Mind the forge.'});
+    ok(ns.ok && ns.who === smith.title + ' ' + smith.name, `npc_say finds "${squeezed}" ignoring spaces`);
+    const miss = dmAct('npc_say', {npc: smith.name.slice(0, -1) + 'q', text: 'x'});
+    ok(miss.ok === false && /Did you mean .*\(id /.test(miss.error) && miss.did_you_mean.some(p => p.id === smith.id), 'a near miss names the closest people with ids: ' + miss.error.slice(0, 120));
+    const none = dmAct('npc_say', {text: 'x'}); ok(none.ok === false && /npc is required/.test(none.error) && /conv alone/.test(none.error), 'no npc and no conv says what npc takes')}
   // saved with the world
   const snapT = JSON.parse(JSON.stringify(snapshot())); restore(snapT);
   const cap2 = S.npcs.find(p => p.id === capt.id), sm2 = S.npcs.find(p => p.id === smith.id);
@@ -461,10 +584,16 @@ console.log('the Fellowship first');
   G.day = {d: -1, n: 0, nw: 0}; G.cur = null;
 }
 { // the scripted DM, alone, with a Fellowship: most of what it does concerns them, and it is deterministic
-  const run1 = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env}}), line = (run1.stdout || '').trim().split(/\r?\n/).pop();
-  const m = /^FOCUS (\{.*\}) H/.exec(line), fs_ = m ? JSON.parse(m[1]) : null;
-  ok(fs_ && fs_.acts >= 6 && fs_.share > 0.5, 'with a Fellowship, most DM actions concern it: ' + (fs_ ? fs_.fellow + ' of ' + fs_.acts + ' (' + Math.round(fs_.share * 100) + '%)' : line || run1.stderr.slice(-300)));
-  const run2 = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env}});
+  // one seeded world is a single draw (a small change to hero dice moves the share by 15 points), so pool three seeds
+  const focusRun = sd => spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--focus'], {cwd: ROOT, encoding: 'utf8', env: {...process.env, DMCHECK_SEED: String(sd)}});
+  const runs = [66, 1, 2].map(sd => ({sd, r: focusRun(sd)})), parsed = runs.map(({sd, r}) => {
+    const line = (r.stdout || '').trim().split(/\r?\n/).pop(), m = /^FOCUS (\{.*\}) H/.exec(line);
+    return {sd, st: m ? JSON.parse(m[1]) : null, line: line || r.stderr.slice(-300)};
+  });
+  const good = parsed.filter(p => p.st), acts = good.reduce((t, p) => t + p.st.acts, 0), fel = good.reduce((t, p) => t + p.st.fellow, 0), share = acts ? fel / acts : 0;
+  ok(good.length === parsed.length && acts >= 18 && share > 0.5,
+    'with a Fellowship, most DM actions concern it (pooled over seeds 66, 1, 2): ' + fel + ' of ' + acts + ' (' + Math.round(share * 100) + '%); ' + parsed.map(p => p.st ? 'seed ' + p.sd + ' ' + p.st.fellow + '/' + p.st.acts + ' (' + Math.round(p.st.share * 100) + '%)' : 'seed ' + p.sd + ' ' + p.line).join(', '));
+  const run1 = runs[0].r, run2 = focusRun(66);
   ok((run2.stdout || '').trim() === (run1.stdout || '').trim(), 'the scripted DM is deterministic under the same seed (same actions, same share)');
 }
 

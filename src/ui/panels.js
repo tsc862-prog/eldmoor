@@ -391,7 +391,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   // header and body are patched in place (#145): scroll, focus and open rows survive the 0.3 s tick
   patch(k.hd,h=>{h.append(heroName(a));
     h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
-    h.append(el('div','doing',doing(a)));
+    const dg=el('div','doing',doing(a));if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=CRYPT.name;b.title='Open the dungeon view';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
     h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
     h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)))});
   const cur=tabShown(a,tab)?tab:'stats',grp=groupOf(cur);

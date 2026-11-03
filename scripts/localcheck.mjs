@@ -40,7 +40,7 @@ console.log('local agent loop (fake chat)');
 {
   ok(ollamaTools().length > 20 && ollamaTools().every(t => t.type === 'function' && t.function.parameters.type === 'object'), 'every game tool becomes an Ollama function tool');
   ok(JSON.stringify(cleanArgs('fight', {target_id: '12', junk: 1})) === '{"args":{"target_id":12}}', 'numbers given as strings are coerced, unknown keys dropped');
-  ok(cleanArgs('fight', {}).error && cleanArgs('choose', {option: 'c'}).error && cleanArgs('teleport', {}).error, 'a missing argument, a bad enum and an unknown tool are rejected');
+  ok(cleanArgs('move_to', {}).error && cleanArgs('choose', {option: 'c'}).error && cleanArgs('teleport', {}).error, 'a missing argument, a bad enum and an unknown tool are rejected');
   ok(parseTextCall('<tool_call>{"name":"look","arguments":{}}</tool_call>').function.name === 'look' && parseTextCall('I look around.') === null, 'a call written as text is understood; prose is not a call');
 
   const calls = [], game = async (tool, args) => {calls.push([tool, args]); return {ok: true, tool, ...(tool === 'status' ? {hp: '100%', note: 'x'.repeat(3000)} : {})}};
@@ -127,6 +127,34 @@ console.log('text-written calls and forced scene turns (issue #163)');
   st = await sceneTurn({ask: A.ask, call: g2, sess: {system: 's'}, scene});
   ok(st.misses === 2 && st.tools === 0 && !acts.length, 'two misses: nothing is sent (the free turn, or the table\'s reflex later)');
   ok(/forced scene turn/.test(localLine({...st, tools: 1, misses: 0, ms: 5, modelMs: 2}, 'm')), 'the turn line says it was a forced scene turn');
+}
+
+// ---------------------------------------------------------------- 1c. fenced JSON calls and DM argument shapes (issue #401)
+console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
+{
+  const {DM_TOOLS} = await import('../src/data/dm-tools.js');
+  // the live DM form: prose, then the call as a fenced json block (44 DM calls were lost this way)
+  const dmReply = 'The Fellowship rides past the old mill. A wary hermit should cross their road.\n\n```json\n{"name": "stage_scene", "arguments": {"kind": "meeting", "near": "fellowship", "frame": "A ragged hermit steps out of the reeds, leaning on a staff.", "cast": {"role": "hermit", "want": "a lost charm"}, "reason": "a lead for their oath"}}\n```\n\nThat should give them something to chew on.';
+  const fc = parseTextCalls(dmReply, DM_TOOLS);
+  ok(fc.length === 1 && fc[0].function.name === 'stage_scene' && fc[0].function.arguments.cast.role === 'hermit' && fc[0].function.arguments.reason === 'a lead for their oath', 'a ```json {"name","arguments"} block inside prose is a call');
+  const fn = cleanNarration(dmReply, DM_TOOLS, fc);
+  ok(!/```|stage_scene|"kind"/.test(fn) && /old mill/.test(fn) && /chew on/.test(fn), 'the fenced call is cut from the narration, the prose stays: ' + JSON.stringify(fn));
+  const two = parseTextCalls('First the board, then a word:\n```\n[{"tool": "pull_lever", "args": {"lever": "post_hook", "params": {"town": "Highgate", "tpl": "rescue"}, "reason": "their road"}}, {"function": {"name": "log_intent", "arguments": "{\\"text\\": \\"a rescue for them\\"}"}}]\n```', DM_TOOLS);
+  ok(two.length === 2 && two[0].function.name === 'pull_lever' && two[0].function.arguments.params.tpl === 'rescue' && two[1].function.name === 'log_intent' && two[1].function.arguments.text === 'a rescue for them', 'a fenced list, {tool,args} and {function:{name,arguments as text}} forms count too');
+  ok(parseTextCalls('Here is the plan:\n```json\n{"region": "Mirefen", "kind": "fogbound"}\n```', DM_TOOLS).length === 0 && parseTextCalls('```\nnot json at all\n```').length === 0, 'a fenced block that is not a call stays narration');
+  ok(parseTextCalls('```json\n{"name": "hunt", "arguments": {"n": 2}}\n```')[0].function.name === 'hunt', 'a hero\'s fenced call (the whole reply) runs too');
+  // a lever called as a tool, and lever params at the top level
+  const lv = cleanArgs('set_condition', {region: 'Mirefen'}, DM_TOOLS);
+  ok(lv.error && /pull_lever/.test(lv.error) && /"lever":"set_condition"/.test(lv.error), 'a lever name called as a DM tool is pointed at pull_lever: ' + (lv.error || '').slice(-120));
+  ok(!/pull_lever/.test(cleanArgs('teleport', {}).error), 'a hero\'s unknown tool gets no lever hint');
+  const flat = cleanArgs('pull_lever', {lever: 'set_condition', region: 'Mirefen', kind: 'fogbound', reason: 'fog'}, DM_TOOLS);
+  ok(flat.args && flat.args.params.region === 'Mirefen' && flat.args.params.kind === 'fogbound' && flat.args.lever === 'set_condition', 'a lever\'s params given beside lever and reason are folded into params, not dropped');
+  ok(/reason/.test(cleanArgs('stage_scene', {kind: 'meeting', near: 'fellowship'}, DM_TOOLS).error || ''), 'stage_scene needs a reason in the schema');
+  // end to end: a local DM turn whose reply carries the fenced call runs it
+  const ran = []; let i = 0;
+  const replies = [{role: 'assistant', content: dmReply}, {role: 'assistant', content: 'The hermit waits on their road.'}];
+  const r = await localTurn({chat: async () => ({message: replies[Math.min(i++, replies.length - 1)], usage: {in: 10, out: 5, cost: 0}, ms: 1}), call: async (tool, args) => {ran.push([tool, args]); return {ok: true}}, sess: {system: 'You are the DM.'}, prompt: 'Your turn.', model: 'm', tools: DM_TOOLS, toolTurns: 4});
+  ok(ran.length === 1 && ran[0][0] === 'stage_scene' && ran[0][1].frame.startsWith('A ragged hermit') && r.tools === 1 && r.rejected === 0, `a local DM turn runs the fenced stage_scene call (${ran.map(x => x[0]).join(',') || 'none'})`);
 }
 
 // ---------------------------------------------------------------- the mock Ollama (scripts/mock-ollama.mjs)
@@ -341,21 +369,28 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // Deterministic (issue #159, it failed now and then on CI): the background clock is held and the world is stepped
     // here from a seed; the hero stands alone (no monster may pick it, no duel); the checks read the autopilot state
     // (a.playIdle, a.playAuto, a.playDoing) at the step it changes, not pq[0] after the world had its say.
-    const {seedRng} = await import('../src/core/rng.js'), {dist} = await import('../src/world/map.js');
+    const {seedRng} = await import('../src/core/rng.js'), {dist, CITY} = await import('../src/world/map.js'), {invOf} = await import('../src/sim/inv.js');
     hold = true; seedRng(159);
     try {
       const calm = () => {S.pvpT = 1; a.spotCd = 99; for (const m of S.mobs) {if (m.target === a) m.target = null; if (dist(m, a) < 30) m.scan = 1}
         if (a.state === 'fight' || a.state === 'duel') {a.state = 'hunt'; a.target = null}};
       const stepUntil = (f, gameMin) => {const end = S.gameMin + gameMin; while (S.gameMin < end) {calm(); sim.step(1 / 20); if (f()) return true} return false};
-      const out = S.agents.find(x => x !== a && x.state === 'hunt' && !x.player && x.kind === 'hero');
+      // The spot must not depend on how far the background world got in real time before the section (the runners and the
+      // 8x ticker above run on the clock): a field spot well outside every town (autopilot only acts in the field), an empty
+      // pack (a full one walks home), no party, adventure or open turn. The Table, DM and crypt states are cleared too.
+      const inTownish = p => CITY.some(c => p.x >= c.x0 - 6 && p.x <= c.x1 + 7 && p.y >= c.y0 - 6 && p.y <= c.y1 + 7);
+      const out = S.agents.find(x => x !== a && x.state === 'hunt' && !x.player && x.kind === 'hero' && !inTownish(x));
+      if (!out) throw new Error('autopilot fixture: no hunting hero outside the towns');
+      a.adv = null; a.playTurn = null; a.cryptOk = false; a.raidOk = false; invOf(a).list.length = 0;
+      const seenNow = () => `state=${a.state} at ${a.x.toFixed(1)},${a.y.toFixed(1)} town=${inTownish(a)} hp=${Math.round(a.hp)}/${maxHpOf(a)} idle=${a.playIdle} auto=${a.playAuto} doing="${a.playDoing}" pq=${JSON.stringify((a.pq || []).map(c => c.kind + (c.auto ? '/' + c.auto : '')))} sinceAct=${Math.round(S.gameMin - a.playActAt)} turn=${a.playTurn} party=${!!a.party} adv=${a.adv} pack=${invOf(a).list.length}`;
       a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.dest = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15}; a.hp = Math.max(1, Math.round(maxHpOf(a) * .4));
       // its last order nearly two game hours ago (a hurt hero heals while it stands, so the long wait is not stepped through)
       a.playActAt = S.gameMin - 115; a.playIdle = false; a.playAuto = null;
       const t0 = S.gameMin, idle = stepUntil(() => a.playIdle && a.playAuto === 'rest', 60);
-      ok(idle && S.gameMin - a.playActAt >= 120 && S.gameMin - t0 >= 4, `with no order for 2 game hours autopilot carries on (${a.playAuto}, after ${Math.round(S.gameMin - t0)} game min)`);
-      ok(a.player && !a.brain && /^autopilot: resting/.test(a.playDoing || ''), `the agent stays the mind (agent-played, no brain): "${a.playDoing}"`);
+      ok(idle && S.gameMin - a.playActAt >= 120 && S.gameMin - t0 >= 4, `with no order for 2 game hours autopilot carries on (${a.playAuto}, after ${Math.round(S.gameMin - t0)} game min; ${seenNow()})`);
+      ok(a.player && !a.brain && /^autopilot: resting/.test(a.playDoing || ''), `the agent stays the mind (agent-played, no brain): "${a.playDoing}" ${seenNow()}`);
       a.hp = maxHpOf(a); a.pq = [];
-      ok(stepUntil(() => a.playAuto === 'hunt' && a.pq[0] && a.pq[0].kind === 'hunt' && a.pq[0].auto, 60), `mended, it carries on its last order (${a.playAuto}: ${a.playDoing})`);
+      ok(stepUntil(() => a.playAuto === 'hunt' && a.pq[0] && a.pq[0].kind === 'hunt' && a.pq[0].auto, 60), `mended, it carries on its last order (${a.playAuto}: ${a.playDoing}; ${seenNow()})`);
       ok((a.playEv || []).some(e => /autopilot carries on/.test(e.text)) && !(a.playEv || []).some(e => /scripted|instinct/i.test(e.text)), 'the hero is told so, and nothing calls it scripted');
       const r = sim.playerAct(a.id, 'say', {text: 'Enough wandering. I choose my own road again.'});
       calm(); sim.step(1 / 60);

@@ -669,6 +669,9 @@ button.tbtn.danger{border-color:var(--red)}
 .condmeta{overflow-wrap:anywhere}
 .condnone{margin-top:8px}
 
+/* ---- Table banner: round moves per member (#390) ---- */
+.tbanner .tcm{font-size:12px;color:#ffd878;border:1px solid #6a5a2a;padding:0 3px;overflow-wrap:anywhere}
+.tbanner .tci{flex-wrap:wrap}
 /* ---- Fellowship sheet: Life view (#389, src/ui/lifeview.js) ---- */
 .shhead .shttl{flex:1;min-width:0}
 .shviews{display:flex;gap:4px;flex:none}
@@ -689,5 +692,27 @@ button.tbtn.danger{border-color:var(--red)}
 .lfmark.k-level .lftag,.lfmark.k-own .lftag{color:var(--green)}
 .lfch[title]{cursor:help}
 .lfnone{font-size:15px;margin:2px 0}
+.lfself .lfwhy{color:var(--dim)}
+.fpin{font-size:14px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;align-self:flex-end}.fpin input{margin:0;accent-color:var(--gold)}
 @media (max-width:560px){.shhead{flex-wrap:wrap}.shhead .shttl{flex-basis:100%}.lfview{padding:6px}.lfgrid{grid-template-columns:minmax(0,1fr)}}
 /* ---- end Life view ---- */
+
+/* The dungeon view (#85, render/dungeonview.js): the interior over the world canvas, a bar with Back to world, the chambers */
+.dgview{position:absolute;inset:0;background:#06060b;cursor:default;display:flex;flex-direction:column;justify-content:flex-end}
+.dgview[hidden]{display:none}
+.dgview .dgcv{position:absolute;inset:0;width:100%;height:100%}
+.screen.dgopen .minimap,.screen.dgopen .hint{display:none}
+.dgbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:5px 8px;background:rgba(8,10,20,.88);border-top:2px solid var(--edge)}
+.dgback{font-family:var(--px);font-size:8px;padding:5px 8px;min-height:26px;background:#1a1d2c;color:var(--gold);border:1px solid var(--gold);cursor:pointer}
+.dgback:focus-visible,.dglink:focus-visible{outline:2px solid var(--gold)}
+.dgtxt{flex:1 1 240px;min-width:0;font-size:16px;line-height:1.1;color:#e8e4d0}
+.dgname{font-family:var(--px);font-size:8px;color:#9ae0b8;letter-spacing:.04em}
+.dgrooms{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:3px 10px;margin:0;padding:0;list-style:none;font-size:15px;color:var(--dim)}
+.dgroom.cleared{color:var(--green)}
+.dgroom.current{color:var(--gold)}
+.dgroom.lost{color:var(--red)}
+.dgroom.unexplored{opacity:.7}
+.dgroom.boss:not(.cleared):not(.current){color:#ffb060}
+.dglink{font-family:var(--px);font-size:7px;padding:3px 6px;margin-left:4px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer;vertical-align:middle}
+.tbanner .tdg{margin-left:6px;color:#9ae0b8;border-color:#3a5a4a}
+@media (max-width:600px){.dgrooms{display:none}.dgtxt{font-size:14px;flex-basis:160px}}

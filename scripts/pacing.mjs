@@ -113,10 +113,11 @@ export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbe
     } finally {st.waiting = false}
   }
   // The hero's state header for a turn prompt (src/sim/pace.js paceBrief), or null on an older host.
-  async function brief() {
+  // self: also the whole persona text (brief.self) for the standing orders (#409).
+  async function brief({self = false} = {}) {
     if (legacy) return null;
     try {
-      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, brief: true}), signal: AbortSignal.timeout(8000)});
+      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, brief: true, ...(self ? {self: true} : {})}), signal: AbortSignal.timeout(8000)});
       if (r.status === 404) return null;
       const j = await r.json(); return j && j.ok && j.brief ? j.brief : null;
     } catch {return null}
@@ -153,8 +154,27 @@ export function talkText(b) {
 // recall them. Every turn prompt carries it (local turns inside briefText, Claude turns on their own); '' when none.
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return questNote(b) + hallNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return personaNote(b) + questNote(b) + hallNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
+// Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.
+export const personaNote = b => b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '';
+// The persona in the standing orders (issue #409): the block between PERSONA_HEAD and PERSONA_TAIL (src/sim/persona.js
+// selfText) replaced, or appended. text '' leaves the orders as they are.
+const P_HEAD = 'YOUR PERSONA', P_TAIL = '(end of your persona)';
+export function withPersona(sys, text) {
+  const s = String(sys || ''); if (!text) return s;
+  const i = s.indexOf('\n' + P_HEAD), j = i >= 0 ? s.indexOf(P_TAIL, i) : -1;
+  return i >= 0 && j > i ? s.slice(0, i) + '\n' + text + s.slice(j + P_TAIL.length) : s + '\n' + text;
+}
+// Before a Claude turn: when the persona changed since the orders were written (brief.personaV), fetch its text and
+// rewrite the block in sess.system (the SDK sends the system prompt with every query, resumed or not). -> true when changed.
+export async function refreshPersona(pacer, sess, b0) {
+  if (!pacer || !sess || !b0 || !b0.personaV || b0.personaV === sess.personaV) return false;
+  const full = await pacer.brief({self: true});
+  if (!full || typeof full.self !== 'string' || !full.self) return false;
+  sess.system = withPersona(sess.system, full.self); sess.personaV = b0.personaV; return true;
+}
+
 // The quest in focus and how many others the hero holds (brief.quest, src/sim/questlog.js); every turn prompt carries it with the memories.
 export function questNote(b) {
   const q = b && b.quest;
@@ -199,13 +219,16 @@ export async function withClaudeSlot(base, fn, log, opts) {const release = await
 // The runner gives the member a short reflection turn (local/OpenAI: one forced structured answer, scripts/local-agent.mjs
 // reflectTurn; Claude: this prompt with tool use) and closes the moment with pacer.reflected(id, wrote).
 export const REFLECT_MAX = 3;
+// Reflections also ask whether the moment changed who the hero is (issue #409): most days it has not.
+export const BECOME_ASK = 'And has this changed who you are (what you want or fear, what you believe, a trait you see in yourself, how you see someone)? Most days it has not.';
+export const BECOME_FIELDS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 'beliefs', 'traits', 'stance'];
 // Reflections are on unless AGENT_REFLECT=0 or --no-reflect (--reflect turns them on again); checks that count exact turns turn them off.
 export const REFLECT_ON = process.argv.includes('--reflect') || !(process.env.AGENT_REFLECT === '0' || process.argv.includes('--no-reflect'));
 export function reflectPrompt(r, {tools = true} = {}) {
   const why = r && r.why ? ` (now: ${String(r.why).slice(0, 200)})` : '';
   return `Before you rest${why}: what is worth remembering from today? ` + (tools
-    ? `Write 1-${REFLECT_MAX} memories with remember (title, text, tags; about is optional), in your own words, or answer "none" if nothing is. Anything you want to keep: a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion. Prefer remember to journal_write for this.`
-    : `Write 0-${REFLECT_MAX} memories in your own words: anything you want to keep (a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion). Answer only with the JSON object {"notes": [{"title": "...", "text": "...", "tags": ["..."], "about": "who or what it concerns, or empty"}]}; an empty list if nothing is worth keeping.`);
+    ? `Write 1-${REFLECT_MAX} memories with remember (title, text, tags; about is optional), in your own words, or answer "none" if nothing is. Anything you want to keep: a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion. Prefer remember to journal_write for this. ${BECOME_ASK} If it has, change that one part with become (field, text, why).`
+    : `Write 0-${REFLECT_MAX} memories in your own words: anything you want to keep (a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion). ${BECOME_ASK} Answer only with the JSON object {"notes": [{"title": "...", "text": "...", "tags": ["..."], "about": "who or what it concerns, or empty"}], "become": {"field": "none", "text": "", "why": "", "about": ""}}; an empty list if nothing is worth keeping, and field "none" unless you changed (else one of ${BECOME_FIELDS.join(', ')}, with your new words in text, why it changed, and for a stance who it is about).`);
 }
 // Should this turn be a reflection? A due moment, no scene open, and nothing that cannot wait.
 export const reflectNow = (b, w) => !!(REFLECT_ON && b && b.reflect && b.reflect.id && !b.scene && !(w && (w.wake === 'now' || w.must || w.table)));
@@ -241,3 +264,13 @@ export function watchWorld({base, known, onNew, every = 3000, fetchImpl = fetch}
   return () => {done = true; clearInterval(t)};
 }
 export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}) so the runner starts again for the current members; the old sessions are set aside in logs/agents/old/.`;
+
+// Claude turns (issue #401): the same fresh state header the local turns get (briefText: state, HP, place, foe, news,
+// memories, what was said lately), without its generic last line, plus the turn order. A Claude turn used to open with
+// 2-4 reads and loop wait/look/party_read until the call cap (44% of turns). scene: a table turn, header only.
+export const CLAUDE_TURN_ORDER = 'Act: give one command (or answer what is asked of you), then wait. When wait returns, act on its events if they need you, otherwise end your turn with one short sentence of narration; do not look again unless the events say the world changed.';
+export function claudeBrief(b, {scene = false} = {}) {
+  const t = briefText(b).replace(/\nAct through the tools[^\n]*$/, '');
+  if (scene) return t;
+  return t + (t ? '\nThis turn: the header above is fresh from the game, so do not open with status, look or party_read unless you need ids or detail it lacks. ' : '\nThis turn: ') + CLAUDE_TURN_ORDER;
+}

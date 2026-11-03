@@ -58,7 +58,7 @@ import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner} from './agent-chat.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, earshotNote, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -73,7 +73,7 @@ const flag = k => argv.includes('--' + k);
 export function systemPrompt(st) {
   const traits = (st.traits || []).join('; ');
   return [
-    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in Eldmoor, a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
+    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of Eldmoor (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
     st.origin ? `Your past: ${st.origin}` : '',
     st.oath ? `Your oath: ${st.oath}.` : '',
     traits ? `Your nature: ${traits}. Let it colour your choices.` : '',
@@ -84,11 +84,12 @@ export function systemPrompt(st) {
     'How to play:',
     '- You act only through the tools. You know only what they tell you: what you can see nearby, what you hear, and the news.',
     '- Everyone you deal with is in the game, and so are your words: you speak with say (heard within about 7 tiles) and party_say in a party (a shout heard within about 12 tiles), and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way. Distance cuts you off: beyond shouting range your companions neither hear you nor your proposals and votes, so before you part agree where and when to meet again and remember it; only a paid courier from a town gate (send_courier) carries word farther, slowly.',
-    '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns early, something needs you: read the events.',
+    '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns, act on its events if they need you, otherwise end your turn; its events are your news, so do not look again unless they say the world changed. Each turn starts with a fresh header from the game (state, HP, place, foe, news): trust it rather than reading status again.',
     '- Grow stronger: hunt what you judge you can beat, sell loot and buy gear at home, take adventures from the gate (list_jobs, take_adventure) once level 4+ (the main road), and if you like take and hand in the gate captain’s bounties (turn_in), answer scene choices with choose. You may hold several quests: quests lists them, take_quest keeps a job for later, focus_quest picks the one you pursue now (the others wait), abandon_quest gives one up; your oath is yours until kept.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice.',
     MEMORY_ORDERS,
     JOURNAL_ORDERS,
+    SELF_ORDERS,
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
@@ -107,7 +108,9 @@ export const withTownOrders = sys => {const s = String(sys || ''); return s.incl
 export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
 // Tiered memory (issue #153): landmarks, chapters and journal_search; withMemoryOrders adds this line to an older prompt too.
 export const JOURNAL_ORDERS = '- Your past stays with you: your landmarks (deaths, vows, levels, the Fellowship, and entries you write with landmark yes) are never lost, and old journal entries and notes fold into chapters. journal_read with no arguments shows them with your latest entries: read it when you pick up again. Before a big decision, journal_search for the people or places involved.';
-export const withMemoryOrders = sys => {let s = String(sys || ''); if (!/- Keep memories: /.test(s)) s += '\n' + MEMORY_ORDERS; if (!/- Your past stays with you: /.test(s)) s += '\n' + JOURNAL_ORDERS; return s};
+export const withMemoryOrders = sys => {let s = String(sys || ''); if (!/- Keep memories: /.test(s)) s += '\n' + MEMORY_ORDERS; if (!/- Your past stays with you: /.test(s)) s += '\n' + JOURNAL_ORDERS; if (!/- Who you are is yours to grow: /.test(s)) s += '\n' + SELF_ORDERS; return s};
+// Who you are (issue #409): the persona is the hero's own to grow; every turn header carries one line of it.
+export const SELF_ORDERS = '- Who you are is yours to grow: self shows your persona (voice, wants, fears, quirk, a line you would never say, beliefs, traits, how you see others) and how you have changed. When your story truly changes you (a loss, a debt paid, a fear faced, a friend won or lost), change that one part with become (field, text, why), in your own words; most days nothing changes. Play from who you are now.';
 // The first turn of a run that resumes a hero (issue #153): re-ground on the journal overview first.
 export const resumeNote = (first, turns) => first && turns > 0 ? ' You are picking up after a pause: start with journal_read (no arguments) to recall who you have been.' : '';
 
@@ -121,7 +124,7 @@ const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.string
 const money = v => '$' + (v || 0).toFixed(4);
 // w: why this turn started (scripts/pacing.mjs), the hero's own news only
 export const turnPrompt = (turns, w = null) => turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
-  : `Turn ${turns + 1}. Continue living your life in Eldmoor.${wakeNote(w)} Answer and speak only in English.`;
+  : `Turn ${turns + 1}. Continue living your life.${wakeNote(w)} Answer and speak only in English.`;
 // Between turns: wait for the game (scripts/pacing.mjs). -> {w} or {end: why the run is over}
 async function between(pacer) {
   const w = await pacer.next();
@@ -285,9 +288,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
-    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries only its memory line (#155)
+    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
+    if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + memoryNote(b0) + earshotNote(b0); // who hears you now (#395)
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn

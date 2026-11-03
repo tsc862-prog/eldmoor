@@ -81,8 +81,13 @@ export function assignRace(a,roster=[]){
 // A hero's home town: the town they are recorded in (a.town), else their people's home
 // town if the spec has it, else the first town of their faction. The gate, graveyard,
 // auction house and quest giver all come from here; never from CITY[a.fac].
+// #433: the answer is remembered on the hero (a non-enumerable field, so saves and spreads never see it)
+// against the three fields it reads, so the hot path builds no key string; any change to town, race or
+// faction asks again.
 const townCache={};
 export function homeOf(a){
-  const r=raceOf(a),k=(a.town||'')+'|'+r.id+'|'+a.fac;if(townCache[k])return townCache[k];
-  const t=(a.town&&CITY.find(c=>c.name===a.town))||CITY.find(c=>c.race===r.id)||CITY.find(c=>c.name===r.home)||CITY.find(c=>c.fac===a.fac)||CITY[0];
-  return townCache[k]=t}
+  const m=a._home;if(m&&m.town===a.town&&m.race===a.race&&m.fac===a.fac)return m.t;
+  const r=raceOf(a),k=(a.town||'')+'|'+r.id+'|'+a.fac;let t=townCache[k];
+  if(!t)t=townCache[k]=(a.town&&CITY.find(c=>c.name===a.town))||CITY.find(c=>c.race===r.id)||CITY.find(c=>c.name===r.home)||CITY.find(c=>c.fac===a.fac)||CITY[0];
+  if(Object.isExtensible(a)){const v={town:a.town,race:a.race,fac:a.fac,t};if(m)a._home=v;else Object.defineProperty(a,'_home',{value:v,writable:true,enumerable:false})}
+  return t}

@@ -3,6 +3,7 @@
 import {T} from '../world/tiles.js';
 import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
+import {cryptAt,openDungeon} from '../render/dungeonview.js'; // the dungeon view (#85): a click on a crypt's door opens it
 import {renderHero,renderTops,ranked,setPicker} from './panels.js';
 import {fellows} from '../sim/fellowship.js';
 
@@ -56,6 +57,6 @@ export function initControls(renderer){R=renderer;
   scr.addEventListener('click',e=>{if(dragged){dragged=false;return}
     const {x:wx,y:wy}=renderer.screenToWorld(e.clientX,e.clientY);
     let best=null,bd=cam.view==='follow'?1.2:Math.max(1.2,2.2/cam.zoom);for(const a of S.agents){if(a.hidden||a.state==='dead')continue;const d=Math.hypot(a.x-wx,a.y-.4-wy);if(d<bd){bd=d;best=a}}
-    if(best){select(best);setView('follow')}});
+    if(best){select(best);setView('follow')}else{const L=cryptAt(wx,wy);if(L)openDungeon(L)}});
   syncView();
 }

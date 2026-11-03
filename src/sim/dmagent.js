@@ -25,20 +25,20 @@
 //                     and once the runner reported: turn (its number), model, provider, cost, seconds, tokensIn, tokensOut}
 //   The turn record is the DM's own data for the watcher's DM tab: no hero tool, prompt or snapshot reads it (issue #123).
 import {S,clockStr,dayNo} from './state.js';
-import {ZONES,REGIONS,CITY,ZPTS,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,zoneAt,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
-import {pull,leverMenu,LEVERS,ready,activeOf} from './levers.js';
+import {pull,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK} from './levers.js';
 import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
 import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
 import {openProps} from './council.js';
 import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {ensureNpcs} from './npcs.js';
-import {stageScene,tableCall,tableAnswer,stagedView} from './staged.js';
+import {stageScene,tableCall,tableAnswer,stagedView,STAGE} from './staged.js';
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {focus,focusStats} from './dmfocus.js'; // the Fellowship first (issue #165)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
@@ -131,7 +131,7 @@ function recordTurn(tool,args,res){const D=dmState(),t=openTurn(D);
   const c=t.tools[tool]||(t.tools[tool]={ok:0,bad:0});c[ok?'ok':'bad']++;
   if(READS.has(tool)&&!NOTEW.has(tool))t.reads[tool]=(t.reads[tool]||0)+1;
   else if(NOTEW.has(tool))t.notes.push({ok,title:cutT(args.title||args.text||(res.note&&res.note.text)||tool,60),sec:args.section||null,why:ok?null:cutT(res.error,100)});
-  else if(tool==='pull_lever')t.levers.push({ok,name:cutT(args.name,32),why:cutT(ok?(res.effect||args.reason):res.error,120)});
+  else if(tool==='pull_lever'||FLAT_LEVERS[tool])t.levers.push({ok,name:cutT(FLAT_LEVERS[tool]||args.lever||args.name,32),why:cutT(ok?(res.effect||args.reason):res.error,120)});
   else if(tool==='stage_scene')t.staged.push({ok,kind:cutT(args.kind,16),near:cutT(args.near,24),why:ok?null:cutT(res.error,120)});
   else if(tool==='narrate'||tool==='npc_say'||tool==='npc_offer'&&args.text)t.said.push({ok,who:tool==='narrate'?'Narrator':cutT(res.who||args.npc,24),text:cutT(args.text,140),why:ok?null:cutT(res.error,100)});
   else if(tool==='table_answer')t.said.push({ok,who:'Table',text:cutT(args.line||args.text||args.complication||'answered a call',100),why:ok?null:cutT(res.error,100)});
@@ -247,11 +247,20 @@ function heroesNear(near,radius){const p=placeOf(near);if(!p)return {ok:false,er
     parties:[...parties.values()].map(P=>({id:P.id,leader:P.leader?P.leader.name:null,members:(P.members||[]).filter(alive).map(b=>b.name),fellowship:!!P.fellow}))}}
 
 const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({toward:x.to+' '+x.id,attitude:x.a}));
-function npcsRead(town){const c=town?townOf(town):null;if(town&&!c)return {ok:false,error:'No town called '+clean(town,40)+'. Towns: '+CITY.map(t=>t.name).join(', ')};
-  const folk=(S.npcs||[]).filter(n=>!c||n.town===c.name).map(n=>({id:n.id,name:n.title+' '+n.name,role:n.role,town:n.town,...(attOf(n).length?{attitudes:attOf(n)}:{}),...(recordView(n)?{fellowship:recordView(n)}:{})}));
-  const wand=(S.wanderers||[]).filter(w=>!c||w.town===c.name||dist(w,c.gate)<=20).map(w=>({id:w.id,name:w.title+' '+w.name,role:w.role,where:w.town||ZONES[zoneAt(w.x,w.y)],home:w.homeKind,attitude:w.attitude||'neutral',
+// The scope of a hooks or npcs read (issue #427): a town, or a region (the towns whose gate lies in it, and what is out in it).
+// A town value that names a region is read as the region (the reply says so). Unknown: the refusal names the regions and towns.
+function readScope(tool,town,region){const t=clean(town,40),g=clean(region,40);if(!t&&!g)return {};
+  if(t){const c=townOf(t);if(c)return {towns:[c.name],c,label:c.name}}
+  const v=g||t,z=regionIdx(v);
+  if(z==null)return {err:'No '+(g?'region':'town or region')+' called "'+v+'". '+tool+' takes town ('+CITY.map(c=>c.name).join(', ')+') or region ('+ZONES.join(', ')+').'};
+  return {z,towns:CITY.filter(c=>zoneAt(c.gate.x,c.gate.y)===z).map(c=>c.name),label:ZONES[z],...(!g?{note:'"'+t+'" is a region, not a town: read as the region '+ZONES[z]+'.'}:{})}}
+const scopeHead=Q=>Q.label?{scope:Q.z!=null?{region:Q.label,towns:Q.towns}:{town:Q.label},...(Q.note?{note:Q.note}:{})}:{};
+function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)return {ok:false,error:Q.err};const c=Q.c,inT=n=>!Q.label||Q.towns.includes(n.town);
+  const wIn=w=>!Q.label||(c?w.town===c.name||dist(w,c.gate)<=20:Q.towns.includes(w.town)||zoneAt(w.x,w.y)===Q.z);
+  const folk=(S.npcs||[]).filter(inT).map(n=>({id:n.id,name:n.title+' '+n.name,role:n.role,town:n.town,...(attOf(n).length?{attitudes:attOf(n)}:{}),...(recordView(n)?{fellowship:recordView(n)}:{})}));
+  const wand=(S.wanderers||[]).filter(wIn).map(w=>({id:w.id,name:w.title+' '+w.name,role:w.role,where:w.town||ZONES[zoneAt(w.x,w.y)],home:w.homeKind,attitude:w.attitude||'neutral',
     ...(attOf(w).length?{attitudes:attOf(w)}:{}),...(recordView(w)?{fellowship:recordView(w)}:{}),placed_by_lever:w.lever||null}));
-  return {ok:true,townsfolk:folk.slice(0,60),wanderers:wand}}
+  return {ok:true,...scopeHead(Q),townsfolk:folk.slice(0,60),wanderers:wand}}
 
 function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Array(ZONES.length).fill(0);
   for(const m of S.mobs)if(m.alive&&!m.gone){const z=zoneAt(m.x,m.y);if(z>=0)mobs[z]++}
@@ -263,9 +272,9 @@ function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Arr
       ...(pl.length?{places:pl.map(p=>({id:p.id,kind:p.kind,name:p.name,at:Math.round(p.x)+','+Math.round(p.y)}))}:{})}}),
     towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]}))}}
 
-function hooksRead(town){const c=town?townOf(town):null;if(town&&!c)return {ok:false,error:'No town called '+clean(town,40)};
-  const A=(S.adventures||[]).filter(v=>!c||v.town===c.name),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};
-  return {ok:true,open_jobs:A.filter(v=>v.phase==='open').map(h=>({id:h.id,town:h.town,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,region:h.zone==null?'any':ZONES[h.zone],
+function hooksRead(town,region){const Q=readScope('hooks',town,region);if(Q.err)return {ok:false,error:Q.err};
+  const A=(S.adventures||[]).filter(v=>!Q.label||Q.towns.includes(v.town)||(Q.z!=null&&v.zone===Q.z)),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};
+  return {ok:true,...scopeHead(Q),open_jobs:A.filter(v=>v.phase==='open').map(h=>({id:h.id,town:h.town,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,region:h.zone==null?'any':ZONES[h.zone],
       ...(h.for!=null?{for:hn(h.for)}:{}),hours_left:Math.max(0,Math.round((h.until-S.gameMin)/60))})),
     under_way:A.filter(v=>v.phase==='active').map(v=>({id:v.id,title:v.title,tpl:v.tpl,town:v.town,leader:hn(v.lead),members:v.mem.map(hn),scene:(v.idx||0)+1,of:(v.scenes||[]).length,away:!!v.away})),
     recently_done:A.filter(v=>v.phase==='done').slice(-5).map(v=>({id:v.id,title:v.title,outcome:v.outcome||null}))}}
@@ -307,19 +316,112 @@ function dmMemory(tool,a){const D=dmState(),b=dmBook(D);
   if(!r.ok)return r;day.notes++;const n=r.note;noteLog(op,k0||'threads',n);
   return {ok:true,[op==='add'?'remembered':op==='edit'?'updated':op==='remove'?'forgot':op==='pin'?'pinned':'unpinned']:{id:n.id,title:n.title,section:k0},...(r.archived?{archived:{id:r.archived.id,title:r.archived.title,note:'the oldest unpinned note of that section was archived (recall still finds it)'}}:{})}}
 
-function pullLever(a){const day=today(),D=dmState(),name=clean(a.lever,40),reason=clean(a.reason,DMA.REASON_MAX);
-  let params=a.params;if(typeof params==='string'){try{params=params.trim()?JSON.parse(params):{}}catch(e){params=null}}
-  const refuse=why=>{D.stats.refused++;dmlog('lever',null,['Lever ',{t:name||'?',c:'gd'},' refused: '+why+(reason?' (wanted: '+reason+')':'')+'.'],{lever:name,by:'dm-agent',params:params&&typeof params==='object'?params:String(a.params).slice(0,200),reason,result:'rejected: '+why});
-    return {ok:false,error:'Refused: '+why}};
-  if(!params||typeof params!=='object'||Array.isArray(params))return refuse('params must be an object');
-  if(!LEVERS[name])return refuse('no such lever (see levers)');
+// The shapes a model sends for a lever's params, made into what the lever reads (issue #401): params as a JSON string,
+// the lever's own keys at the top level beside lever/reason, and a point given as x,y / coords / "x,y" instead of {x,y}.
+// It only reshapes; the lever validates the result as before.
+const PULL_KEYS=['lever','params','reason'];
+function leverParams(name,a){let params=a.params;
+  if(typeof params==='string'){try{params=params.trim()?JSON.parse(params):{}}catch(e){return null}}
+  if(params==null)params={};if(typeof params!=='object'||Array.isArray(params))return null;params={...params};
+  const def=LEVERS[name];if(!def)return params;
+  for(const k in a)if(!PULL_KEYS.includes(k)&&k in def.params&&!(k in params))params[k]=a[k];
+  const pts=Object.keys(def.params).filter(k=>def.params[k].type==='point'),num=v=>v!==''&&v!=null&&Number.isFinite(Number(v));
+  const asPt=v=>{if(typeof v==='string'){const m=/^\s*\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?\s*$/.exec(v);return m?{x:Number(m[1]),y:Number(m[2])}:v}
+    if(Array.isArray(v)&&v.length===2&&num(v[0])&&num(v[1]))return {x:Number(v[0]),y:Number(v[1])};
+    if(v&&typeof v==='object'&&num(v.x)&&num(v.y))return {x:Number(v.x),y:Number(v.y)};return v};
+  for(const k of pts)if(params[k]!=null)params[k]=asPt(params[k]);
+  const loose=pts.filter(k=>params[k]==null);
+  if(loose.length===1){const k=loose[0],src=num(params.x)&&num(params.y)?params:num(a.x)&&num(a.y)?a:null,c=params.coords!=null?params.coords:a.coords;
+    if(src){params[k]={x:Number(src.x),y:Number(src.y)};if(!('x' in def.params))delete params.x;if(!('y' in def.params))delete params.y}
+    else if(c!=null){const p=asPt(c);if(p&&typeof p==='object'&&!Array.isArray(p)){params[k]=p;delete params.coords}}}
+  return params}
+// via (issue #413): a flat lever tool (post_hook, place_person, mark_place) that built the params itself; its own
+// contract replaces the pull_lever call shape in the refusals. Everything else (caps, pile-on, limits, log) is the same.
+function pullLever(a,via){const day=today(),D=dmState(),name=clean(a.lever,40),reason=clean(a.reason,DMA.REASON_MAX);
+  const params=via?a.params:leverParams(name,a);
+  const refuse=(why,usage)=>leverRefuse(name,why,usage,reason,params&&typeof params==='object'?params:String(a.params).slice(0,200),via);
+  const call=via?via.usage:'call it as pull_lever {"lever":"'+(name||'<name>')+'","params":{...},"reason":"one sentence"}';
+  if(!name)return refuse('lever is required (one of: '+leverNames().join(', ')+')',call);
+  if(!LEVERS[name])return refuse('no such lever "'+name+'"; levers: '+leverNames().join(', '));
+  const usage=via?via.usage+'. The lever: '+leverUsage(name):leverUsage(name)+'; '+call;
+  if(!params)return refuse('params must be an object such as {"region":"'+ZONES[0]+'"}',usage);
   if(name==='named_foe')return refuse('named foes are raised by the scripted DM inside a running scene');
+  if(!reason)return refuse('a reason is required (one sentence for the DM log)',usage);
   if(day.pulls>=DMA.PULLS_PER_DAY)return refuse('the DM agent has pulled '+DMA.PULLS_PER_DAY+' levers today; the world needs time to answer');
   const pile=pileOn(name,params);if(pile)return refuse(pile);
   const r=pull(name,params,{by:'dm-agent',reason});
-  if(!r.ok){D.stats.refused++;return {ok:false,error:'Refused: '+r.reason}}
-  day.pulls++;D.stats.pulls++;
+  // a limit, a cooldown or the reserved share is a refusal to wait out, not a wrong call: no contract with it
+  if(!r.ok){D.stats.refused++;const shape=!/^(limit|cooldown|not available)/.test(r.reason);
+    return {ok:false,error:'Refused: '+r.reason+(shape?'. '+usage:''),...(shape?{usage}:{})}}
+  day.pulls++;D.stats.pulls++;if(via&&via.after)try{via.after(r)}catch(e){}
   return {ok:true,lever:name,id:r.id,effect:r.effect,hours:r.until!=null?Math.round((r.until-S.gameMin)/60):null,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY}}
+
+// A refused lever call, counted and written to the DM log with its reason (pull_lever and the flat lever tools alike).
+function leverRefuse(name,why,usage,reason,params,via){const D=dmState();D.stats.refused++;
+  dmlog('lever',null,['Lever ',{t:name||'?',c:'gd'},' refused: '+why+(reason?' (wanted: '+reason+')':'')+'.'],{lever:name,by:'dm-agent',...(via?{tool:via.tool}:{}),params,reason,result:'rejected: '+why});
+  return {ok:false,error:'Refused: '+why+(usage?'. '+usage:''),...(usage?{usage}:{})}}
+
+// ---- flat lever tools (issue #413) ----
+// post_hook, place_person and mark_place are thin wrappers over pull_lever for the three levers the DM reaches for most:
+// flat arguments, a near read the way stage_scene reads it, then pullLever(), so the DM agent's daily cap, the pile-on
+// rule, the lever's own limits, cooldown and the Fellowship's reserved share (levers.js pull) and the DM log are identical.
+// Nothing is validated twice: the lever refuses, and its contract comes back with the refusal.
+export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_place:'mark_place'};
+const NEAR_FORMS='"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region';
+const FLAT_USAGE={
+  post_hook:'post_hook takes: town (a town: '+CITY.map(c=>c.name).join('|')+', or "fellowship", a member or a region for the nearest board), tpl (rescue|escort|investigate|clear|relic|negotiate|hunt|deliver), giver? (captain|innkeeper|smith|quartermaster|priest|bard), reward? (small|fair|generous), region? (where the job leads), place? (a place or person by name or id), for? (a hero by name or id), reason',
+  place_person:'place_person takes: role (peddler|hermit|drover|sellsword|minstrel|stranger), near ('+NEAR_FORMS+'), name?, faction? (concord|warband|neutral), want?, attitude? (hostile|wary|neutral|friendly), hours? (6-168), spot? (in a town: inn|smith|quartermaster|chapel|square|gate), reason',
+  mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reason'};
+// A walkable spot between min and max tiles of c (rings outward, no dice), clear of towns, landmarks and, by gap, other places.
+function openSpot(c,min,max,gap){const R=q=>Math.round(q*10)/10,okAt=q=>!spotErr(q)&&!(gap&&(S.places||[]).some(p=>dist(p,q)<gap));
+  if(min<=0&&okAt({x:R(c.x),y:R(c.y)}))return {x:R(c.x),y:R(c.y)};
+  for(let d=Math.max(.5,min);d<=max;d+=.5)for(let k=0;k<16;k++){const ang=k*Math.PI/8,q={x:R(c.x+Math.cos(ang)*d),y:R(c.y+Math.sin(ang)*d)};if(okAt(q))return q}
+  return null}
+const nearestTown=p=>CITY.reduce((b,c)=>!b||dist(p,c.gate)<dist(p,b.gate)?c:b,null);
+const nearTakes=()=>'near takes "fellowship", a member ('+fellows().map(a=>a.name).join(', ')+'), a hero, "x,y", a town ('+CITY.map(c=>c.name).join(', ')+'), a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+')'+((S.places||[]).length?', a place ('+S.places.slice(0,8).map(p=>p.name).join(', ')+')':'')+' or a region ('+ZONES.join(', ')+')';
+// near -> {town?, hero?, at?, label} or {err}. o.gap keeps a spot clear of other places (mark_place); o.min/o.max set
+// how far from a hero or place the spot lies; o.townSpot asks a spot outside a town's gate as well.
+function nearSpot(near,o={}){const s=clean(near,60),lo=s.toLowerCase(),gap=o.gap||0,mn=o.min!=null?o.min:1,mx=o.max!=null?o.max:5;
+  if(!s)return {err:'near is required'};
+  const gateSpot=c=>o.townSpot?openSpot(c.gate,LK.TOWN_CLEAR+.5,LK.TOWN_CLEAR+6,gap):null;
+  const fromHero=h=>{if(h.state==='town'||h.state==='dungeon'){const c=CITY.find(x=>x.name===h.town)||nearestTown(h);return {town:c.name,hero:h,label:'in '+c.name,at:gateSpot(c)}}
+    const at=openSpot(h,mn,mx,gap);return at?{at,hero:h,label:'near '+h.name}:{err:'no open ground near '+h.name}};
+  if(lo==='fellowship'||lo==='party'||lo==='the fellowship'){const fo=focus();if(!fo)return {err:'no Fellowship rides in this world'};
+    const L=fo.members.filter(a=>a.state!=='town'&&!a.hidden),h=L.find(a=>a.x===fo.x&&a.y===fo.y)||L[0];
+    if(h)return fromHero(h);const c=fo.town;return c?{town:c.name,label:'in '+c.name,at:gateSpot(c)}:{err:'the Fellowship has no town'}}
+  const m=/^\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?$/.exec(s);
+  if(m){const p={x:Number(m[1]),y:Number(m[2])},e=spotErr(p),at=openSpot(p,0,3,gap);return at?{at,label:'at '+at.x+','+at.y}:{err:'no open ground at '+m[1]+','+m[2]+(e?' ('+e+')':'')}}
+  const h=S.agents.find(a=>alive(a)&&!a.hidden&&(String(a.id)===s||a.name.toLowerCase()===lo));if(h)return fromHero(h);
+  const c=townOf(s);if(c)return {town:c.name,label:'in '+c.name,at:gateSpot(c)};
+  const pl=(S.places||[]).find(p=>(p.name||'').toLowerCase()===lo||String(p.id)===s);if(pl){const at=openSpot(pl,Math.max(mn,gap),mx+gap,gap);return at?{at,label:'near '+pl.name}:{err:'no open ground near '+pl.name}}
+  const lm=LANDMARKS.find(l=>{const n=l.name.toLowerCase();return n===lo||n.replace(/^the /,'')===lo.replace(/^the /,'')});
+  if(lm){const e=(lm.exclude||0)+1,at=openSpot(lm,e,e+5,gap);return at?{at,label:'near '+lm.name}:{err:'no open ground near '+lm.name}}
+  const z=regionIdx(s);if(z!=null){const p=centreOf(z),at=p&&openSpot(p,0,8,gap);return at?{at,label:'in '+ZONES[z]}:{err:'no open ground in the middle of '+ZONES[z]}}
+  return {err:'unknown place "'+s+'"'}}
+const heroOf=v=>{const s=clean(v,40),lo=s.toLowerCase();return s?S.agents.find(a=>alive(a)&&(String(a.id)===s||a.name.toLowerCase()===lo))||null:null};
+const placeOrPerson=v=>{const s=clean(v,60),lo=s.toLowerCase();if(!s)return null;
+  return (S.places||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo)||peopleAll().find(n=>String(n.id)===s||n.name.toLowerCase()===lo||((n.title?n.title+' ':'')+n.name).toLowerCase()===lo)||null};
+function flatLever(tool,a){a=a&&typeof a==='object'?a:{};const lever=FLAT_LEVERS[tool],usage=FLAT_USAGE[tool],reason=clean(a.reason,DMA.REASON_MAX),via={tool,usage};
+  const no=(why,params)=>leverRefuse(lever,why,usage+'. The lever: '+leverUsage(lever),reason,params||{},via);
+  const opt=(k,v)=>v==null||v===''?{}:{[k]:v},str=(v,n)=>typeof v==='string'?clean(v,n)||undefined:v;
+  const int=v=>v==null||v===''?undefined:Number.isFinite(Number(v))?Math.round(Number(v)):v;
+  let params;
+  if(tool==='post_hook'){const t=clean(a.town,40);if(!t)return no('town is required (post_hook needs a town board: a town, or "fellowship", a member or a region for the nearest board)');
+    let town=townOf(t);if(!town){const W=nearSpot(t);if(W.err)return no('town: '+W.err+'; '+nearTakes().replace(/^near/,'town'));town=W.town?townOf(W.town):nearestTown(W.at)}
+    let target;if(a.place!=null&&a.place!==''){const q=placeOrPerson(a.place);if(!q)return no('place: no place or person called "'+clean(a.place,40)+'" (see npcs and regions)');target=q.id}
+    let forHero;if(a.for!=null&&a.for!==''){const h=heroOf(a.for);if(!h)return no('for: no living hero called "'+clean(a.for,40)+'"');forHero=h.id}
+    params={town:town.name,tpl:str(a.tpl,20),...opt('giver',str(a.giver,20)),...opt('reward',str(a.reward,12)),...opt('region',str(a.region,40)),...opt('target',target),...opt('forHero',forHero)}}
+  else if(tool==='place_person'){const W=nearSpot(a.near,{min:2,max:5});if(W.err)return no(W.err+' (create_npc needs town for a town home, or at: a point {x,y} for a camp); '+nearTakes());
+    const base={role:str(a.role,20),...opt('name',str(a.name,24)),...opt('faction',str(a.faction,12)),...opt('attitude',str(a.attitude,12)),...opt('hours',int(a.hours))};
+    params=W.town?{...base,home:'town',town:W.town,...opt('spot',str(a.spot,16))}:{...base,home:'camp',at:W.at}}
+  else {const W=nearSpot(a.near,{min:1,max:5,gap:LK.PLACE_GAP,townSpot:true});
+    if(W.err||!W.at)return no((W.err||'no open ground outside '+W.town+'’s gate')+' (mark_place needs at: a point {x,y} on open ground, '+LK.PLACE_GAP+' tiles from other places); '+nearTakes());
+    params={kind:str(a.kind,16),at:W.at,...opt('name',str(a.name,32)),...opt('hours',int(a.hours))}}
+  const want=tool==='place_person'?clean(a.want,STAGE.WANT_MAX||160):'';
+  if(want)via.after=r=>{if(r.ret)r.ret.want=want}; // what they want from heroes, read by conversations (talk.js), as a staged meeting sets it
+  const r=pullLever({lever,params,reason},via);if(!r.ok)return r;
+  const e=r.effect||{};
+  return {...r,tool,...(tool==='mark_place'?{place:e.name,at:params.at}:{}),...(tool==='place_person'?{person:e.name,npc:e.npc,at:e.at,where:e.where}:{}),...(want?{want}:{})}}
 
 function logIntent(text){const day=today(),t=clean(text,DMA.INTENT_MAX);if(!t)return {ok:false,error:'Say what you intend.'};
   if(day.intents>=DMA.INTENTS_PER_DAY)return {ok:false,error:'Enough plans logged for one game day ('+DMA.INTENTS_PER_DAY+'): keep the rest in notes.'};
@@ -346,8 +448,22 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
   return {ok:true,narrated:t,where:label,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
 // A person by id or name (townsfolk or a DM-placed person).
-function personOf(v){ensureNpcs();const k=clean(v,60).toLowerCase(),all=[...(S.npcs||[]),...(S.wanderers||[])];
-  return all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k)||null}
+// Names match ignoring case, spaces and punctuation too ("EdrinPask" is Edrin Pask, issue #401).
+const squeeze=s=>String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]+/g,'');
+const peopleAll=()=>{ensureNpcs();return [...(S.npcs||[]),...(S.wanderers||[])]};
+function personOf(v){const k=clean(v,60).toLowerCase(),q=squeeze(k),all=peopleAll();if(!k)return null;
+  return all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k)
+    ||(q?all.find(n=>squeeze(n.name)===q||squeeze((n.title||'')+n.name)===q):null)||null}
+// The person a call means: npc, else the person of the conversation conv (an answer may name only the conversation).
+function personFor(a){const p=personOf(a.npc);if(p||clean(a.npc,60))return p;
+  if(a.conv==null||a.conv==='')return null;const c=convById(a.conv);return c?peopleAll().find(n=>n.id===c.npc)||null:null}
+// "Nobody called X" with the closest names, so the next call can be right.
+function edits(x,y){if(x===y)return 0;const m=x.length,n=y.length;if(!m||!n)return m||n;let prev=Array.from({length:n+1},(_,j)=>j);
+  for(let i=1;i<=m;i++){const cur=[i];for(let j=1;j<=n;j++)cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(x[i-1]===y[j-1]?0:1));prev=cur}return prev[n]}
+function nobody(v){const q=squeeze(v),all=peopleAll(),nm=n=>(n.title?n.title+' ':'')+n.name;
+  if(!clean(v,40))return {ok:false,error:'npc is required: the person\'s id or name from npcs (when answering a conversation, conv alone is enough).'};
+  const near=q?all.map(n=>({n,d:Math.min(edits(q,squeeze(n.name)),edits(q,squeeze(nm(n))),squeeze(n.name).includes(q)||q.includes(squeeze(n.name))?1:99)})).sort((x,y)=>x.d-y.d).slice(0,3).filter(x=>x.d<=Math.max(3,q.length/2)):[];
+  return {ok:false,error:'Nobody called "'+clean(v,40)+'".'+(near.length?' Did you mean '+near.map(x=>nm(x.n)+' (id '+x.n.id+')').join(', ')+'?':'')+' npc takes a person\'s id or name from npcs.',...(near.length?{did_you_mean:near.map(x=>({id:x.n.id,name:nm(x.n)}))}:{})}}
 // npc_say as the answer in a conversation (#170): with conv, or to a person whose conversation waits for the DM.
 function convAnswer(a){const p=personOf(a.npc);if(!p)return null;
   const c=a.conv!=null&&a.conv!==''?convById(a.conv):convWith(p);
@@ -355,7 +471,7 @@ function convAnswer(a){const p=personOf(a.npc);if(!p)return null;
   if(!c||!(c.wait||a.conv!=null&&a.conv!==''))return null;
   return dmAnswer(c,p,a.text,{warmth:a.warmth,remember:a.remember})}
 // npc_offer (#170): one follow-up of a conversation.
-function npcOffer(a){const p=personOf(a.npc);if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs).'};
+function npcOffer(a){const p=personFor(a);if(!p)return nobody(a.npc);
   const c=a.conv!=null&&a.conv!==''?convById(a.conv):convWith(p);if(!c||c.npc!==p.id)return {ok:false,error:'No open conversation with '+p.name+': a follow-up belongs to a conversation a member started.'};
   const kind=clean(a.kind,12).toLowerCase();
   if(c.wait&&!legalOffers(c,p).includes(kind))return npcOfferApply(c,p,kind,a,'dm-agent'); // refused before the line is spoken (it says why)
@@ -363,12 +479,11 @@ function npcOffer(a){const p=personOf(a.npc);if(!p)return {ok:false,error:'Nobod
   const r=npcOfferApply(c,p,kind,a,'dm-agent');
   if(r.ok){const w=Number(a.warmth);if(Number.isFinite(w)&&w)warm(p,Math.max(-3,Math.min(3,Math.round(w))),'the DM: '+kind)}
   return said?{...r,said:said.ok}:r}
-function npcSay(a){const cv=convAnswer(a);if(cv)return cv;
-  const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)return {ok:false,error:'Say what?'};
+function npcSay(a){const p0=personFor(a);if(p0)a={...a,npc:String(p0.id)};const cv=convAnswer(a);if(cv)return cv;
+  const day=today(),t=clean(a.text,DMA.NPC_SAY_MAX);if(!t)return {ok:false,error:'Say what? npc_say takes npc (id or name from npcs), text (the line), and conv when answering a conversation.'};
   if((day.npc||0)>=DMA.NPC_SAY_PER_DAY)return {ok:false,error:'Enough lines for the townsfolk for one game day ('+DMA.NPC_SAY_PER_DAY+').'};
-  ensureNpcs();const k=clean(a.npc,60).toLowerCase(),all=[...(S.npcs||[]),...(S.wanderers||[])];
-  const p=all.find(n=>String(n.id).toLowerCase()===k)||all.find(n=>String(n.name||'').toLowerCase()===k||((n.title||'')+' '+n.name).toLowerCase()===k);
-  if(!p)return {ok:false,error:'Nobody called "'+clean(a.npc,40)+'" (see npcs for ids and names).'};
+  const p=p0;
+  if(!p)return nobody(a.npc);
   if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return {ok:false,error:p.name+' is nowhere the heroes could hear them.'};
   const e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
   const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;for(const b of hs)hearLine(b,e);
@@ -377,10 +492,17 @@ function npcSay(a){const cv=convAnswer(a);if(cv)return cv;
   return {ok:true,who:(p.title?p.title+' ':'')+p.name,said:t,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
 
 const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
+// A tool name that is not a DM tool (issue #401): a lever name called as a tool (post_hook, mark_place, create_npc,
+// or create_npc_placeholder) is pointed at pull_lever with that lever's contract; anything else lists the tools.
+const flatOf=lv=>Object.keys(FLAT_LEVERS).find(t=>FLAT_LEVERS[t]===lv)||null;
+export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();
+  const lv=LEVERS[lo]?lo:Object.keys(LEVERS).filter(n=>lo.includes(n)).sort((x,y)=>y.length-x.length)[0];
+  if(lv&&leverNames().includes(lv))return {ok:false,error:'"'+s+'" is not a tool'+(lv===lo?'':'; it looks like the lever '+lv)+'. Levers are pulled through pull_lever: pull_lever {"lever":"'+lv+'","params":{...},"reason":"one sentence"}. '+leverUsage(lv)+'.'+(flatOf(lv)?' Or call '+flatOf(lv)+' (flat arguments): '+FLAT_USAGE[flatOf(lv)]+'.':''),hint:'pull_lever',lever:lv,usage:leverUsage(lv)};
+  return {ok:false,error:'Unknown DM tool "'+s+'". Tools: '+DM_TOOLS.map(t=>t.name).join(', ')+'. World levers ('+leverNames().join(', ')+') go through pull_lever.'}}
 // One DM tool call: validated, answered, never thrown. The seat must be open.
 export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
-  const t=BY_NAME.get(tool);if(!t)return {ok:false,error:'Unknown DM tool '+String(tool).slice(0,40)+'.'};
+  const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args); // a DM present: conversations wait for it a little (#170)
   try{switch(tool){
@@ -390,13 +512,14 @@ export function dmAct(tool,args={}){
     case 'read_dm_log':r=dmLogRead(args.n,args.kind);break;
     case 'fellowship_view':r=fellowshipView();break;
     case 'heroes_near':r=heroesNear(args.near,args.radius);break;
-    case 'npcs':r=npcsRead(args.town);break;
+    case 'npcs':r=npcsRead(args.town,args.region);break;
     case 'regions':r=regionsRead();break;
-    case 'hooks':r=hooksRead(args.town);break;
+    case 'hooks':r=hooksRead(args.town,args.region);break;
     case 'levers':r=leversRead();break;
     case 'notes_read':r=notesRead(args.section);break;
     case 'notes_write':r=notesWrite(args);break;
     case 'pull_lever':r=pullLever(args);break;
+    case 'post_hook':case 'place_person':case 'mark_place':r=flatLever(tool,args);break;
     case 'log_intent':r=logIntent(args.text);break;
     case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;

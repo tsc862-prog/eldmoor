@@ -1,3 +1,4 @@
 - [Looking at the world view](previews.md) — vite ignores .claude worktrees (use a scratch config), headless Chrome via PowerShell + CDP, camera and clock control
 - [Art style and palette](style.md) — palette.js contract with the UI, biome-keyed art, style rules, #176 PR order
 - [Spell effects](spellfx.md) — #374 sim->render spell fx contract, real-time pool, staging shots with spellDebug.freeze
+- [Dungeon view](dungeonview.md) — #85 interior generator + overlay contract, last-run tracking, staging a mid-crawl shot

@@ -85,11 +85,20 @@ r = await call('fight', {target_id: 1}); ok(!r.ok, 'fight is refused inside the 
  r = await call('use_ability', {ability: 'challenge', target_id: foe.id}); ok(!r.ok && /not ready/.test(r.error), 'a cooling ability is refused: ' + r.error);
  r = await call('use_ability', {ability: 'Smite of Nonsense'}); ok(!r.ok && /no ability/.test(r.error), 'an unknown ability is refused');
  a.x = keep.x; a.y = keep.y; foe.target = null; a.state = 'town'; a.target = null; a.playRate = [];} // the rate budget goes back to the rest of the check
+// the shop (#424): read only, and its prices are what buy charges
+const before424 = JSON.stringify({g: a.gold, inv: a.inv, slots: a.slots});
+const shop = await call('shop');
+ok(shop.ok && Array.isArray(shop.gear) && shop.gear.length === 7 && shop.supplies.length >= 8 && JSON.stringify({g: a.gold, inv: a.inv, slots: a.slots}) === before424, `shop lists ${shop.gear && shop.gear.length} slots and ${shop.supplies && shop.supplies.length} supplies and changes nothing`);
+const lock = shop.supplies.find(x => x.level > a.lvl); ok(lock && lock.needs === 'needs level ' + lock.level, `a supply above your level says "${lock && lock.needs}" (${lock && lock.item})`);
+const headOffer = shop.gear.find(x => x.slot === 'head');
 r = await call('buy', {slot: 'head'}); ok(r.ok || /gold|better/i.test(r.error), 'buy: ' + (r.ok ? r.bought : r.error));
+ok(r.ok ? headOffer.price === r.cost : !headOffer.buy || r.error.includes(headOffer.price + 'g'), `the shop's head price equals what buy charged (${headOffer.price}g, ${r.ok ? r.cost : r.error})`);
+if (r.ok) {const it = a.slots.head, m = /armor \((\d+) -> (\d+)\)/.exec(headOffer.change || ''); ok(!m || (it.quality === 'plain' ? it.armor === Number(m[2]) : it.armor >= Number(m[2])), `the armor change shown (${headOffer.change}) is the piece buy put on (${it.quality}, armor ${it.armor})`)}
 // ---- the pack (issue #124): supplies, use, give, drop, quest items ----
 {const INV = await import('../src/sim/inv.js');
  a.gold = Math.max(a.gold, 100);
  r = await call('buy', {item: 'Redroot Draught', count: 2}); ok(r.ok && /Redroot/.test(r.bought), 'buy a supply: ' + (r.ok ? r.bought : r.error));
+ ok(r.ok && r.cost === 2 * shop.supplies.find(x => x.item === 'Redroot Draught').price, `the shop's supply price equals what buy charged (${r.cost}g for 2)`);
  r = await call('buy', {item: 'Moonwater'}); ok(!r.ok && /Not sold/.test(r.error), 'buy refuses a supply that is not sold');
  r = await call('inventory'); const pi = r.items.find(e => /Redroot/.test(e.item)); ok(pi && pi.kind === 'use' && /Heals 35%/.test(pi.item), 'the potions are in the pack with their numbers');
  a.hp = maxHp(a); r = await call('use_item', {index: pi.index}); ok(!r.ok && /not hurt/.test(r.error), 'a potion is not wasted at full health');
@@ -101,7 +110,25 @@ r = await call('buy', {slot: 'head'}); ok(r.ok || /gold|better/i.test(r.error), 
  r = await call('drop', {index: qi.index}); ok(!r.ok && /quest/i.test(r.error), 'a quest item cannot be dropped');
  r = await call('sell', {index: qi.index}); ok(!r.ok, 'a quest item cannot be sold');
  r = await call('give', {index: qi.index, hero_id: other.id}); ok(!r.ok, 'a quest item cannot be given');
- INV.take(a, 'quest', 'Cairn-Door Key', 1); a.hp = maxHp(a);}
+ INV.take(a, 'quest', 'Cairn-Door Key', 1); a.hp = maxHp(a);
+ // give by item name (#412): a companion in the same party beside the hero; exact, kind, count prefix, ambiguity, no match
+ {const pal = S.agents.find(x => x !== a && x.kind === 'hero' && x.state !== 'dead' && x.fac === a.fac && !x.party);
+  const keep = {party: a.party, px: pal.x, py: pal.y, pparty: pal.party, pinv: JSON.stringify(pal.inv || null), ainv: JSON.stringify(a.inv)};
+  const tmp = {id: -412, mem: [a, pal]}; a.party = pal.party = tmp; pal.x = a.x + 1; pal.y = a.y;
+  INV.addUse(a, 'Redroot Draught', 3); INV.addUse(a, 'Trail Ration', 3); INV.addUse(a, 'Scroll of Hearthward', 1); INV.addUse(a, 'Scroll of the Steadfast Hour', 1);
+  const cnt = (h, idn) => INV.count(h, idn), r0 = cnt(pal, 'Redroot Draught'), t0 = cnt(pal, 'Trail Ration'), s0 = cnt(pal, 'Scroll of Hearthward');
+  a.playRate = []; r = await call('give', {item: 'redroot draught', to: pal.name, count: 2}); ok(r.ok && cnt(pal, 'Redroot Draught') === r0 + 2 && /Gave 2 Redroot Draught/.test(r.result), 'give by name, any case: ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {item: '2 rations', to: pal.name}); ok(r.ok && cnt(pal, 'Trail Ration') === t0 + 2, 'give "2 rations" (count and plural in the name): ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {item: 'potion', hero_id: pal.id}); ok(r.ok && /Redroot/.test(r.result), 'give "potion" finds the potion: ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {item: 'scroll', to: pal.name}); ok(!r.ok && /matches 2/.test(r.error) && /\d+: Scroll of Hearthward/.test(r.error) && /\d+: Scroll of the Steadfast Hour/.test(r.error), 'an ambiguous name lists the matches with indexes: ' + r.error);
+  a.playRate = []; r = await call('give', {item: 'hearth', to: pal.name}); ok(r.ok && cnt(pal, 'Scroll of Hearthward') === s0 + 1, 'a partial name: ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {item: 'Moonwater', to: pal.name}); ok(!r.ok && /nothing called/.test(r.error) && /Your pack: 0: /.test(r.error), 'a missing item lists the pack: ' + r.error);
+  a.playRate = []; r = await call('give', {to: pal.name}); ok(!r.ok && /Give what/.test(r.error), 'give without item or index asks for one: ' + r.error);
+  const ix = (await call('inventory')).items.find(e => /Trail Ration/.test(e.item)).index;
+  a.playRate = []; r = await call('give', {index: ix, to: pal.name}); ok(r.ok && /Trail Ration/.test(r.result), 'the pack index still works: ' + (r.result || r.error));
+  a.playRate = []; r = await call('give', {index: ix, item: 'Redroot Draught', to: pal.name}); ok(!r.ok && /not "Redroot Draught"/.test(r.error), 'index and a different item name are refused: ' + r.error);
+  a.playRate = []; INV.addQuest(a, 'Cairn-Door Key'); r = await call('give', {item: 'cairn-door key', to: pal.name}); ok(!r.ok && /bound/.test(r.error), 'a quest item named is still bound: ' + r.error);
+  a.party = keep.party; pal.party = keep.pparty; pal.x = keep.px; pal.y = keep.py; pal.inv = JSON.parse(keep.pinv) || undefined; if (!pal.inv) delete pal.inv; a.inv = JSON.parse(keep.ainv); a.playRate = [];}}
 
 // ---- a posted job with a choice scene ----
 // Prefer a job with a choice scene; take it, and if the job-giver turns the hero away (the DM's
@@ -167,6 +194,28 @@ if (a.state !== 'dead') {
   const L = await import('../src/sim/lore.js');
   if (!(a.lore && a.lore.p.Mirefen)) {r = await call('move_to', {target: 'Mirefen'}); ok(!r.ok && /heard of/.test(r.error), 'move_to a region never heard of is refused: ' + r.error)}
   L.hear(a, 'The reeds of Mirefen are thick with Boglings this season.', 'a townsperson');
+  // places (#414): the known set only, nearest first, words not numbers; every name it gives works in move_to and hunt
+  {const pv = await call('places'), names = (pv.places || []).map(p => p.name), blob = JSON.stringify(pv.places);
+    ok(pv.ok && names.includes('Mirefen') && /heard of|been there/.test(pv.places.find(p => p.name === 'Mirefen').known), 'places lists Mirefen once heard of: ' + names.join(', '));
+    const unknownP = ['Cinderpass', 'Hoarfell', 'The Sunken Crypt', 'Kragmaw'].find(n => !L.knowsPlace(a, n));
+    ok(!unknownP || !blob.includes(unknownP), 'places never names a place the hero does not know (' + unknownP + ')');
+    ok(!/\b(lvl|level|hp)\b/i.test(blob) && pv.places.every(p => /^(here|(north|south|east|west|northeast|northwest|southeast|southwest), \d+ tiles)/.test(p.way)), 'places gives direction and tiles, no levels: ' + pv.places.map(p => p.name + ' ' + p.way).join('; '));
+    ok(pv.places.every((p, i, A) => i === 0 || (A[i - 1].way === 'here' || +((p.way.match(/(\d+) tiles/) || [0, 0])[1]) >= +((A[i - 1].way.match(/(\d+) tiles/) || [0, 0])[1]))), 'places are nearest first');
+    const towns = await call('places', {kind: 'town'}); ok(towns.ok && towns.places.length && towns.places.every(p => p.kind === 'town'), 'places {kind: town}: ' + towns.places.map(p => p.name).join(', '));
+    const near = await call('places', {near: 'Mirefen', about: 'Mirefen'}); ok(near.ok && near.from === 'Mirefen' && near.places[0].way === 'here', 'places {near, about} measures from Mirefen');
+    for (const p of pv.places) {a.playRate = []; const rr = await call('move_to', {target: p.go || p.name}); ok(rr.ok || /fight|wall/.test(rr.error), 'move_to takes the places name ' + p.name + ': ' + (rr.going || rr.error))}
+    // a marked place (the DM's mark_place) is listed only while in sight, and move_to takes it then
+    if (!S.places) S.places = []; const mk = {id: 999901, kind: 'ruin', name: 'Weeping Cairn', x: a.x + 3, y: a.y, z: 0, born: S.gameMin, until: S.gameMin + 600}, far = {id: 999902, kind: 'ruin', name: 'Hidden Barrow', x: a.x > 40 ? 2 : 78, y: a.y, z: 0, born: S.gameMin, until: S.gameMin + 600}; S.places.push(mk, far);
+    const pm = await call('places', {kind: 'place'}); ok(pm.ok && pm.places.some(p => p.name === 'Weeping Cairn') && !JSON.stringify(pm).includes('Hidden Barrow'), 'places shows a marked place in sight, not one out of sight: ' + pm.places.map(p => p.name + ' (' + p.known + ')').join(', '));
+    a.playRate = []; const rm = await call('move_to', {target: 'Weeping Cairn'}); ok(rm.ok, 'move_to takes the marked place in sight: ' + (rm.going || rm.error));
+    a.playRate = []; const rf = await call('move_to', {target: 'Hidden Barrow'}); ok(!rf.ok, 'move_to refuses a marked place out of sight, never heard of');
+    // #423: once heard named, the out-of-sight place is known: places lists it and move_to takes it
+    L.hear(a, 'Old Brenna swears the Hidden Barrow stands open again.', 'a townsperson');
+    const ph = await call('places', {kind: 'place'}), hbp = (ph.places || []).find(p => p.name === 'Hidden Barrow');
+    ok(hbp && /heard of/.test(hbp.known), 'places lists the marked place once heard of: ' + (hbp ? hbp.known + ', ' + hbp.way : 'missing'));
+    a.playRate = []; const rh = await call('move_to', {target: 'Hidden Barrow'}); ok(rh.ok, 'move_to takes the marked place out of sight once heard of: ' + (rh.going || rh.error));
+    S.places = S.places.filter(p => p !== mk && p !== far);
+    a.playRate = []; a.pq = []}
   r = await call('move_to', {target: 'Mirefen'}); ok(r.ok || /fight/.test(r.error), 'move_to Mirefen once told of it: ' + (r.going || r.error));
   await until(() => {const b = S.agents.find(x => x.id === id); return b.state === 'hunt' && !(b.pq || []).length || b.state === 'fight'}, 25, 'arriving in Mirefen');
   let target = null;
@@ -447,7 +496,10 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   r = await call('look'); // the other hero's view is untouched
   r = await mc('talk', {target: 'quartermaster', text: 'Rope and bandages, if you have them.'});
   ok(r.ok && r.answer && r.follow_up === '[trade opened]', `the scripted DM answers as ${r.who}: "${r.answer}" ${r.follow_up}`);
-  m.gold = 100; r = await mc('buy', {npc: qm.name, item: 'Linen Bandage'}); ok(r.ok && r.from === qm.title + ' ' + qm.name, `bought from the person: ${r.bought || r.error}`);
+  m.gold = 100; {const sh = await mc('shop', {npc: qm.name}), off = sh.ok && sh.supplies.find(x => x.item === 'Linen Bandage');
+   const nb = await mc('buy', {npc: qm.name, item: 'Linen Bandage'}); ok(off && nb.ok && nb.cost === off.price && sh.from === qm.title + ' ' + qm.name, `shop {npc} lists the person's stock at buy's price (${off && off.price}g, charged ${nb.cost}g)`); m.gold = 100;
+   const far = {x: m.x, y: m.y, st: m.state}; m.state = 'hunt'; m.x = home.gate.x + 30; const nf = await mc('shop'); ok(!nf.ok && /smiths are in town/.test(nf.error) && /move_to/.test(nf.error), 'shop outside town says how to get there: ' + nf.error); m.x = far.x; m.y = far.y; m.state = far.st}
+  r = await mc('buy', {npc: qm.name, item: 'Linen Bandage'}); ok(r.ok && r.from === qm.title + ' ' + qm.name, `bought from the person: ${r.bought || r.error}`);
   r = await mc('say', {text: 'And what do you hear of the roads?'}); ok(r.ok && r.to === qm.title + ' ' + qm.name && r.answer, `say goes on with the conversation: "${r.answer}"`);
   r = await mc('say', {text: 'Thank you.'}); r = await mc('say', {text: 'Farewell, then.'});
   ok(r.ok && r.ended && !TK.convWith(qm), `after ${TK.CONV.EXCHANGES} exchanges it ends`);
@@ -535,6 +587,31 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   for (const f of ['0', '1']) {const fp = () => execFileSync(process.execPath, [me, '--fp', f], {encoding: 'utf8'}).trim().split('\n').pop();
     const x = fp(), y = fp(); ok(x === y && x.length > 100, `a seeded run with an agent hero's turn held is deterministic (${f === '1' ? 'with' : 'without'} a Fellowship)`)}
   P.markPlayer(c, false); paused = false;
+}
+
+// ---- hunt {where} (issue #411): from town, walk to a known ground, then hunt; unknown names refused with known grounds ----
+{
+  paused = true;
+  const {ZONES, zoneAt} = await import('../src/world/map.js');
+  const h = S.agents.find(x => x.id !== id && x.kind === 'hero' && !x.player && !x.fellow && x.state === 'town' && x.lvl <= 6) || S.agents.find(x => x.id !== id && x.kind === 'hero' && !x.player && x.state === 'town');
+  const hc = homeOf(h); h.pq = []; h.target = null; h.hp = maxHp(h);
+  ok(P.markPlayer(h, true), `marked ${h.name} agent-played for hunt {where}`);
+  const ground = ZONES[zoneAt(hc.gate.x, hc.gate.y)];
+  r = P.playerAct(h.id, 'hunt', {});
+  ok(!r.ok && r.error.includes(hc.name) && r.error.includes('hunt {where: "') && /walks you to/.test(r.error), 'hunt in town names the nearest known ground and the call: ' + r.error);
+  r = P.playerAct(h.id, 'hunt', {where: 'Glimmerdeep Hollow'});
+  ok(!r.ok && /Hunting grounds you know: /.test(r.error) && (r.error.split('Hunting grounds you know: ')[1] || '').split(',').length <= 3, 'hunt at an unknown place is refused with up to three known grounds: ' + r.error);
+  r = P.playerAct(h.id, 'hunt', {where: ground + ' Webspinner Grounds'}); h.pq = [];
+  ok(r.ok && r.note && r.note.includes(ground), 'a known region inside longer words reads as that region, as move_to does: ' + (r.note || r.error));
+  r = P.playerAct(h.id, 'hunt', {where: 'inn'});
+  ok(!r.ok && /inside the town walls/.test(r.error), 'hunt at a town spot is refused: ' + r.error);
+  r = P.playerAct(h.id, 'hunt', {where: ground, count: 2});
+  ok(r.ok && r.going === 'going to ' + ground + ' to hunt' && h.pq.length === 2 && h.pq[0].kind === 'move' && h.pq[1].kind === 'hunt', `hunt {where: "${ground}"} from town walks there first: ${r.going || r.error}`);
+  ok(h.playOrder && h.playOrder.kind === 'hunt' && h.playOrder.n === 2, 'the hunt order is remembered for autopilot');
+  let hunted = false;
+  for (let i = 0; i < 60 * 600 && !hunted; i++) {step(1 / 60); if (h.state === 'dead') break; const c0 = h.pq && h.pq[0]; hunted = !!(c0 && c0.kind === 'hunt' && c0.k0 != null && h.pq.length === 1 && h.state !== 'town')}
+  ok(hunted, `${h.name} walked out and is hunting (${h.state}, in ${ZONES[zoneAt(h.x, h.y)]})`);
+  P.markPlayer(h, false); paused = false;
 }
 
 // ---- hardcore: a dead hero only answers that it is dead ----

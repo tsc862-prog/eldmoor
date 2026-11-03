@@ -46,7 +46,7 @@ const NBm = await import('../src/sim/notebook.js');
 const PC = await import('../src/sim/pace.js');
 const HE = await import('../src/sim/heroes.js');
 const MM = await import('./memory-mirror.mjs');
-const {memoryNote} = await import('./pacing.mjs');
+const {memoryNote, claudeBrief} = await import('./pacing.mjs');
 const {dmTurnPrompt} = await import('./dm-agent.mjs');
 const {zoneFor, zonePoint, dist, ZONES, zoneAt} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
@@ -107,6 +107,12 @@ ok(r.ok, 'DM log: an intent line');
 r = DMA.dmAct('pull_lever', {lever: 'set_condition', params: {region: ZONES[zone > 0 ? zone : 1], kind: 'fogbound', strength: 1, hours: 6}, reason: 'Reason ' + plant('leverReason')});
 DMA.dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'shrine', at: {x: 1, y: 1}}, reason: 'Refused ' + plant('leverRefused')});
 ok(S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.leverReason) || JSON.stringify(e).includes(SECRETS.leverRefused)), 'lever reasons (granted or refused) in the DM log');
+// a DM-marked place beside A (#423): A learns its public name, never the lever's reason
+let markedPlace = null;
+for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2], [3, 1], [-3, -1], [1, 3], [-1, -3]]) {
+  r = DMA.dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'shrine', at: {x: Math.round(A.x) + dx, y: Math.round(A.y) + dy}, name: 'Quiet Cairn'}, reason: 'Mark ' + (SECRETS.placeReason || plant('placeReason'))});
+  if (r.ok) {markedPlace = 'Quiet Cairn'; break}}
+ok(markedPlace && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.placeReason)), 'a DM place marked beside A, its reason in the DM log' + (markedPlace ? '' : ': ' + r.error));
 // a staged scene (issue #132): its reason is the DM's own (DM log only); the frame and the person's want are said in the game
 r = DMA.dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A drover waits by the road with a lame ox.', cast: {role: 'drover', want: 'a hand with the ox'}, reason: 'Stage ' + plant('stageReason')});
 ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), 'a staged scene\'s reason in the DM log' + (r.ok ? '' : ': ' + r.error));
@@ -122,6 +128,10 @@ ME.memOf(B).long = (ME.memOf(B).long || '') + ' Long ago ' + plant('bLong') + '.
 B.persona = {...(B.persona || PE.buildPersona(B, M)), wants: 'B wants ' + plant('bWants'), fears: 'B fears ' + plant('bFears'), voice: 'B speaks ' + plant('bVoice')};
 B.backstory = {...(B.backstory || PE.buildBackstory(B, M, S.fellowship.name)), summary: 'B is ' + plant('bSummary')};
 B.backstory.paras = {...B.backstory.paras, flaw: 'B hides ' + plant('bFlaw')};
+// the persona B grows itself (issue #409): its own beliefs, traits, a stance toward A and why, all private to B
+ok(act(B, 'become', {field: 'beliefs', text: 'B believes ' + plant('bBelief'), why: 'B changed because ' + plant('bWhy')}).ok, 'B changes its own beliefs (become)');
+ok(act(B, 'become', {field: 'traits', text: 'B is ' + plant('bTrait').slice(0, 30), why: 'B noticed'}).ok, 'B notes a trait of its own');
+ok(act(B, 'become', {field: 'stance', about: A.name, text: 'Of A, B thinks ' + plant('bStanceA'), why: 'B judged ' + plant('bStanceWhy')}).ok, 'B changes its stance toward A');
 B.mind = [{id: 1, t: 'D1 08:00', kind: 'townPlan', snapshot: {secret: plant('bMind')}, sent: {user: 'prompt ' + plant('bMindPrompt')}, outcome: 'applied'}];
 P.playerNarrate(B.id, 'B thinks ' + plant('bNarration'));
 const bs = SS.loadSession(B.id, B.name, () => ({sessionId: 's-b', heroId: B.id, heroName: B.name, system: 'You are B. ' + plant('bPrompt'), turns: 3, costUsd: 0, lastTotal: 0})).sess; SS.saveSession(bs, {});
@@ -184,10 +194,12 @@ ok(!DMA.dmAct('narrate', {text: 'x', near: 'nowhere at all'}).ok && !DMA.dmAct('
 // ---------------------------------------------------------------- 3. everything a hero gets
 console.log('hero tools, events, prompts and snapshots');
 run(2); // let the watch() step turn heard lines into events
+ok(!markedPlace || (A.lore && A.lore.p[markedPlace] && JSON.stringify(act(A, 'lore', {about: 'Cairn'})).includes(markedPlace)), 'A saw the marked place and its lore names it (the check is not vacuous)');
 const argsFor = {move_to: {target: 'home'}, talk: {target: B.name}, say: {text: 'Well met.'}, join_party: {hero_id: B.id}, take_adventure: {job_id: 1}, choose: {option: 'a'},
   fight: {target_id: 0}, hunt: {count: 1}, rest: {minutes: 10}, buy: {}, sell: {index: 99}, equip: {index: 99}, read_chronicle: {n: 20}, journal_read: {n: 50}, journal_write: {text: 'A writes.'},
   journal_search: {query: 'diary turning point road old line filler ' + SECRETS.bJournal + ' ' + SECRETS.bLandmark + ' ' + SECRETS.bChapter},
   party_say: {text: 'Aye.'}, party_read: {n: 20}, chat_read: {n: 20}, propose: {kind: 'other', details: 'A small fire tonight.'}, vote: {proposal_id: 1, vote: 'yes', reason: 'fine'},
+  become: {field: 'traits', text: 'watchful', why: 'A keeps the night watch'},
   lead_to: {target: 'home'}, scene_act: {option: 'a'}, wait: {minutes: 10}, list_jobs: {},
   remember: {title: 'Road notes', text: 'A notes the road home.', tags: ['road', 'secret'], about: B.name}, recall: {query: 'road hide secret memory'}, update_memory: {id: 1, text: 'A rewrites the road note.'}, forget: {id: 9999}, pin: {id: 1}};
 // Learn the world (#188): a creature in sight with a planted level and HP: no hero tool, event or header may number it
@@ -209,7 +221,8 @@ keep('A journal overview', act(A, 'journal_read', {})); keep('A journal_search d
 // A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
 for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));
 ok(act(A, 'recall', {n: 20}).notes.every(n => n.title === 'Road notes' || n.title === 'A writes.'), 'A\'s recall finds only A\'s own notes (its note and its journal entry, #179), whatever it asks');
-{const br = keep('A pace brief', PC.paceBrief(A.id)); keep('A memory line', memoryNote(br.brief)); keep('A brief text', SIM.S && br.brief ? JSON.stringify(br.brief) : '')}
+keep('A self brief', PC.paceBrief(A.id, {self: true})); // the persona text for A's standing orders (#409): A's own only
+{const br = keep('A pace brief', PC.paceBrief(A.id)); keep('A memory line', memoryNote(br.brief)); keep('A Claude turn header', claudeBrief(br.brief)); keep('A brief text', SIM.S && br.brief ? JSON.stringify(br.brief) : '')}
 // a wait, finished by the host the way sim/player-host.js does
 const w = act(A, 'wait', {minutes: 10}); run(3); keep('A wait', P.finishWait(w.pending, true));
 for (const x of [rest[0], rest[1]]) for (const t of ['status', 'chat_read', 'party_read', 'look', 'earshot']) keep(x.name + ' ' + t, act(x, t, argsFor[t]));
