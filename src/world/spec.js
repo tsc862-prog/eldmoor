@@ -100,7 +100,7 @@ export const ELDMOOR={
   // Contested outposts (#11): data only, nothing is painted (the map hash does not move). Whichever faction holds one
   // (sim/outposts.js) gets a rest aura around it; kills within r+2 count double honor. {id,name,x,y,r}; the region is read from the map.
   outposts:[
-    {id:'fenmarch',name:'Fenmarch Cross',x:40.5,y:25.5,r:3.5},
+    {id:'fenmarch',name:'Fenmarch Cross',x:49.5,y:33.5,r:3.5},
     {id:'ashgate',name:'Ashgate Watch',x:57.5,y:25.5,r:3.5},
   ],
   points:{crossroads:[40,25]},
