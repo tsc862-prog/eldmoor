@@ -511,7 +511,27 @@ console.log('the DM prepares the table');
   root.querySelector('[data-a="new"]').click();ok(/replaces the saved/.test(root.textContent),'New world asks first');
   key('Enter');ok(played.length===0,'Enter does not Continue while the question is open');
   key('Escape');ok(!/replaces the saved/.test(root.textContent),'Escape closes the question');
-  key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away')}
+  key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away');
+  // What's new (#664): unread patch notes, newest first, three open and a fold, a NEW badge until Got it
+  const note=(t,d)=>'---\ntitle: '+t+'\ndate: '+d+'\narea: ui\nissues: []\n---\n- Line of '+t+'.\n';
+  title.provideNotes({'../docs/patchnotes/0000-before.md':note('Before','2026-11-02'),'../docs/patchnotes/10.md':note('Ten','2026-11-03'),'../docs/patchnotes/11.md':note('Eleven','2026-11-03'),
+    '../docs/patchnotes/12.md':note('Twelve','2026-11-04'),'../docs/patchnotes/_draft.md':note('Draft','2026-11-04')});
+  localStorage.removeItem('eldmoor.notesSeen');played=[];
+  const r2=title.showTitle(k=>played.push(k)),news=()=>r2.querySelector('.tnews');
+  ok(news()&&/What's new/.test(news().textContent)&&news().querySelector('.tnew')&&news().querySelector('.tnew').textContent==='NEW',"the title shows What's new with a NEW badge");
+  const heads=()=>[...news().querySelectorAll('.tnt')].map(x=>x.textContent);
+  ok(heads().join()==='Twelve,Eleven,Ten'&&!/Draft/.test(news().textContent)&&/#12/.test(news().textContent)&&/Line of Twelve\./.test(news().textContent),'newest three expanded, newest first, a draft left out ('+heads().join()+')');
+  const more=r2.querySelector('[data-a="notesmore"]');ok(more&&/1 more/.test(more.textContent),'the rest behind a fold');
+  more.click();ok(heads().join()==='Twelve,Eleven,Ten,Before'&&/Before patch notes/.test(news().textContent),'the fold opens the older notes ('+heads().join()+')');
+  r2.querySelector('[data-a="notesread"]').click();
+  ok(!news()||!news().querySelector('.tnew'),'Got it clears the NEW badge');
+  ok(JSON.parse(localStorage.getItem('eldmoor.notesSeen')).ids.length===4,'read notes are kept per viewer');
+  ok(r2.querySelector('[data-a="notesmore"]')&&!r2.querySelector('.tnote'),'once read, the notes fold away behind Show the latest');
+  r2.querySelector('[data-a="notesmore"]').click();ok(heads().join()==='Twelve,Eleven,Ten','Show the latest opens the last three ('+heads().join()+')');
+  title.provideNotes({'../docs/patchnotes/12.md':note('Twelve','2026-11-04'),'../docs/patchnotes/14.md':note('Fourteen','2026-11-05')});
+  r2.querySelector('[data-a="notesmore"]').click();
+  ok(news().querySelector('.tnew')&&heads().join()==='Fourteen','a note merged later is new again, alone ('+heads().join()+')');
+  key('Enter');ok(played.join()==='continue'&&JSON.parse(localStorage.getItem('eldmoor.notesSeen')).ids.includes('14'),'leaving the title marks the notes read')}
 
 // ---- the Quests tab (owner request): groups, focus, folded Done, held scroll ----
 {select(busy);const mk=(id,kind,extra={})=>({id,kind,title:'T '+id,giver:'G',where:'W',objective:'Do '+id,progress:kind==='oath'?{have:1,need:3}:null,reward:'5g',status:'active',focus:false,started:0,ends:sim.S.gameMin+3000,from:'scripted',...extra});
