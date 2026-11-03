@@ -275,20 +275,31 @@ is silent, and scene choices time out to the scripted branch, so the world never
   `RELAY_RUNNERS=1`, or `start-eldmoor.cmd`). Then an agent-played hero's mind row, its Agent tab and its
   party frame have **Start runner / Stop runner** with the runner's state (starting, live, waiting,
   stopping, stopped, crashed with its last error line), provider/model, turns and cost; the Fellowship panel
-  (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`). A picker chooses the mind
+  (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`), and a company's Company tab
+  **Start <company> / Stop <company>** (one company runner for two or more agent members with no runner yet, else a
+  hero runner per member; #460). A picker chooses the mind
   it starts with (the hero's saved mind, Claude Haiku, Claude Sonnet, or a pulled local model; a runner started from the
   app plays Claude Haiku when nothing is saved, `APP_CLAUDE_MODEL` in `scripts/runners.mjs`, while terminal runners keep
   Sonnet; `AGENT_MODEL`/`DM_MODEL` override both) and its budget for a paid mind ($0.50-$10, beside the picker and in the Agents panel; no turn cap, #563).
   The state line shows spend of budget ("$0.081 of $2.00"), turns per minute and the last turn's age; its tooltip shows what the pacing waits for. The relay spawns the runners as
-  child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship'|'dm',
-  hero?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {kind, hero?}`; kinds are a table; `dm` runs
+  child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship'|'company'|'dm',
+  hero?, company?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {kind, hero?, company?}`; kinds are a table; `dm` runs
   `scripts/dm-agent.mjs`, one at most, and is refused as "not installed yet" until that file exists), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
   a stop writes "stop" on the child's stdin (it releases its heroes), then kills; a child also stops when
   the relay goes away. Limits: off without the flag, loopback and the game page's origin only, heroes the
   page names as agent-played, providers anthropic/ollama/openai, defaults $1.00 per hero, $2.00 for the Fellowship, $1.00 for the DM and no turn cap (budget caps $5, $10, $5; a
   turn cap only when asked; local runners have no budget, OpenAI runners keep the budget and take no Claude slot), at most `RELAY_MAX_RUNNERS` (default 6)
   runners, where the six seats (the five Fellowship members as hero runners or one Fellowship runner, plus
-  the DM) always fit whatever the caps. Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
+  the DM) always fit whatever the caps. Company runners (#460, epic #402): kind `company` (key `company:<id>`, the
+  company named by `company` or one of its members as `hero`; $2.00 default, $10 cap) runs `scripts/fellowship.mjs
+  --company <id>` and plays every living agent member of one company of any size, each with its own session, pacing
+  and claim, picking up a joiner or a recruit who takes a fallen member's seat; it takes one hero seat per living
+  member. `/play/health` names each hero's `company`, `companyName` and `size` (plus `lead`, `table`, `due` in a
+  company of two or more; `seatInfo` in `src/sim/player-host.js` builds the list for the page and play-headless).
+  Seats restart on their own (`adopt` in `scripts/runners.mjs`, every `ADOPT_MS`): a member who leaves a company is let
+  go by the company runner and gets a hero runner with that runner's mind; a solo whose hero runner ended with its death
+  gets one for its heir (`succeeds`) with the same mind, within `HEIR_WAIT_MS`; a stop from the page never restarts.
+  The setup page starts one company runner for an apart group sharing one mind (`planRunners`). Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
   /play/runner/slot`, released after the turn, freed when the child exits) and waits for one when all are
   taken, so starting is never refused for slots (a Fellowship runner also queues its members with
@@ -404,6 +415,9 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   `npm run fellowship -- --budget 2.00`.
 - Headless: `node scripts/play-headless.mjs --fellowship --port 8790 --warm 20 [--no-relay]`
   then `npm run fellowship -- --url http://127.0.0.1:8790 --max-turns 2 --budget 0.50`.
+- `npm run fellowship -- --company <id|name>` (#460) plays one company instead (a name matches the company's name or
+  one of its members); a company that is not the Fellowship gets company orders sized to it (`companyPrompt`: a solo its
+  own short ones), log `logs/company-<id>.log`, and its run record in `logs/fellowship-runs.jsonl` carries `company`.
 - The runner reuses the per-hero sessions (`logs/agents/<heroId>.json`, resumed next run,
   `--new` to start over), runner settings and claims of `npm run agent`; one overall
   `--budget` (for paid members), `--max-turns` per member (optional; by default every member plays until stopped or the budget is spent), each member paced like a hero runner (`--heartbeat MIN`, `--min-gap S`, the old `--cadence S` is the
@@ -786,7 +800,9 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   `src: game` each hero's Mind entry once settled (outcome applied, late, rejected, offline, superseded).
 - `world.jsonl`: a digest every game hour from `src/sim/behavior.js` (read-only, not part of `step()`):
   each Fellowship member's and agent hero's mind, link, state, place, HP, level and idle time; the share
-  of game time agent / autopilot / relay mind / scripted; Table scenes and agent vs reflex turns; votes;
+  of game time agent / autopilot / relay mind / scripted; `companies` (#460: each company's id, name, size, agent
+  minds, deaths this hour, `fellowship` for the five-place one, `ended` for one that ended with a death in it) and
+  each member's and death's `company`; Table scenes and agent vs reflex turns; votes;
   DM lever pulls and refusals by caller; DM log kinds; deaths and causes; chat lines by channel (counts).
   The page sends it over the play bridge (`src/ui/player-bridge.js`, which now also connects while a
   Fellowship has relay minds); `play-headless` writes it directly.
@@ -805,7 +821,9 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   tokens and cost per provider/model, relay failure rates, decision outcomes), a **Mind comparison** per Fellowship
   member and provider/model (#280, `scripts/mind-compare.mjs`: agent turns, empty/failed, Table answers, decisions,
   rejected, scripted fallbacks, p50/p90 latency, tokens, cost, digest hours on autopilot, close calls, deaths survived,
-  lifetimes; "-" where a member has no data), the world digests.
+  lifetimes; "-" where a member has no data), the world digests, and **Companies** (#460, `companySection`: per company
+  the most heroes and minds, game hours seen, deaths and deaths per 10 game hours for the death-rate watch, its
+  members' agent turns and empty share).
 - `npm run behaviorcheck` (in CI): mock runners and a timing-out relay produce every anomaly kind above on
   a headless Fellowship of silent agents; asserts they are logged and reported, that a runner cannot write
   another seat's line, keys are redacted, files rotate, the watch leaves the world unchanged, and that a

@@ -89,16 +89,23 @@ async function send(path,body){
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
 // pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
 const pickBody=(k,lk=k)=>{const p=picks[k]||'',L=limitOf(lk),t={...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:p.startsWith('huggingface:')?{provider:'huggingface',model:p.slice(12)}:{}),...t}};
-export async function startRunner(kind,hero,pickKey){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';delete userStop[k];
+// kind 'company' (#460): `hero` is the company's id and the runner's key is 'company:<id>'
+const keyOf=(kind,hero)=>kind==='hero'?'hero:'+hero:kind==='company'?'company:'+hero:kind;
+export async function startRunner(kind,hero,pickKey){const k=keyOf(kind,hero);note[k]='';delete userStop[k];
   const lk=pickKey&&limitOf(pickKey).budget&&!limitOf(k).budget?pickKey:k;
-  const r=await send('/start',{kind,...(hero!=null?{hero}:{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k,lk)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
-export async function stopRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';userStop[k]=Date.now();
+  const r=await send('/start',{kind,...(hero!=null?(kind==='company'?{company:hero}:{hero}):{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k,lk)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
+export async function stopRunner(kind,hero){const k=keyOf(kind,hero);note[k]='';userStop[k]=Date.now();
   const r=await send('/stop',{key:k});if(!r.ok)note[k]=r.error;poll(true,true);return r}
-// A company that is not the five-place Fellowship has no runner of its own: Start <company> starts a hero runner for
-// each agent-played member that has none, Stop <company> stops them (#457). pick: the company's picker key, 'co:<id>'.
+// A company that is not the five-place Fellowship (#457, #460): Start <company> starts one company runner for a company
+// of two or more agent-played members when none of them has a runner yet (one process plays them all, each with its own
+// session), else a hero runner for each member that has none (a solo, or a company whose members already run apart);
+// Stop <company> stops its company runner and its members' hero runners. pick: the company's picker key, 'co:<id>'.
 const coHeroes=C=>(C?C.ids:[]).map(id=>S.agents.find(a=>a.id===id)).filter(a=>a&&a.state!=='dead'&&a.player);
-export async function startCompany(C){for(const a of coHeroes(C)){const x=runnerByKey('hero:'+a.id);if(!x||DONE[x.state])await startRunner('hero',a.id,'co:'+C.id)}}
-export async function stopCompany(C){for(const a of coHeroes(C)){const x=runnerByKey('hero:'+a.id);if(x&&!DONE[x.state])await stopRunner('hero',a.id)}}
+const liveKey=k=>{const x=runnerByKey(k);return !!x&&!DONE[x.state]};
+export async function startCompany(C){const L=coHeroes(C);if(liveKey('company:'+C.id))return;
+  if(L.length>1&&!L.some(a=>liveKey('hero:'+a.id))){await startRunner('company',C.id,'co:'+C.id);return}
+  for(const a of L)if(!liveKey('hero:'+a.id))await startRunner('hero',a.id,'co:'+C.id)}
+export async function stopCompany(C){if(liveKey('company:'+C.id))await stopRunner('company',C.id);for(const a of coHeroes(C))if(liveKey('hero:'+a.id))await stopRunner('hero',a.id)}
 export async function stopAllFellows(){const ids=(S.fellowship&&S.fellowship.ids)||[];await stopRunner('fellowship');
   for(const id of ids){const r=runnerByKey('hero:'+id);if(r&&!DONE[r.state])await stopRunner('hero',id)}}
 
@@ -129,8 +136,9 @@ function button(label,act,kind,hero,title){const b=el('button','mini runbtn',lab
 // runner shows that runner and stops it from the Fellowship panel.
 export function runnerControl(a,{line=true}={}){poll();const d=el('span','runctl');if(!a||a.state==='dead'||!a.player)return d;
   const r=runnerFor(a),k='hero:'+a.id,on=r&&!DONE[r.state],fel=on&&r.kind!=='hero',lf=fel&&leftOf(r,a);
-  if(lf){d.append(el('span','dm','Fellowship runner'));if(line){const s=el('span','dm runstate r-none',' done with '+a.name+' ('+lf.why+'): no runner; Restart the Fellowship runner to play on');s.title=tip(r,4);d.append(s)}return d}
-  if(fel)d.append(el('span','dm','Fellowship runner'));
+  const rl=r&&r.kind==='company'?'Company runner':'Fellowship runner';
+  if(lf){d.append(el('span','dm',rl));if(line){const s=el('span','dm runstate r-none',' done with '+a.name+' ('+lf.why+'): no runner; Restart the '+rl.toLowerCase()+' to play on');s.title=tip(r,4);d.append(s)}return d}
+  if(fel)d.append(el('span','dm',rl));
   else if(on)d.append(button('Stop runner','stop','hero',a.id,'Stop this hero\'s agent runner (it lets go of the hero; reflexes play on)'));
   else{const b=button('Start runner','start','hero',a.id,info&&!info.enabled?HOW_TEXT:'Start an agent runner for '+a.name+' from the relay (no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   if(line){const s=el('span','dm runstate r-'+(r&&!note[k]?r.state:'none'),' '+stateLine(r,k));s.title=tip(r,4);d.append(s)}
@@ -145,12 +153,13 @@ export function fellowshipRunnerControl(name){poll(true);const d=el('div','runct
 
 // Start <company> / Stop <company> for a company with no Fellowship runner: hero runners for its agent-played members.
 export function companyRunnerControl(C){poll(true);const d=el('div','runctl fbar'),L=coHeroes(C),name=C.name||(L.length===1?L[0].name:'the company');
-  const live=L.filter(a=>{const x=runnerByKey('hero:'+a.id);return x&&!DONE[x.state]});
+  const cr=runnerByKey('company:'+C.id),con=!!cr&&!DONE[cr.state],live=L.filter(a=>con&&Array.isArray(cr.heroes)&&cr.heroes.includes(a.id)||liveKey('hero:'+a.id));
   if(!L.length){d.append(el('span','dm runstate','No agent-played hero here.'));return d}
   if(live.length<L.length){const b=button('Start '+name,'startco',null,null,info&&!info.enabled?HOW_TEXT:'Start a hero runner for each agent-played member of this company that has none');b.dataset.runco=String(C.id);if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   if(live.length){const b=button('Stop '+name,'stopco',null,null,'Stop the hero runners of this company (reflexes play on)');b.dataset.runco=String(C.id);d.append(b)}
+  if(con){const s=el('span','dm runstate r-'+cr.state,'company runner · '+stateLine(cr,'company:'+C.id)+' · ');s.title=tip(cr,6);d.append(s)}
   d.append(el('span','dm runstate r-'+(live.length?'live':'none'),live.length+' of '+L.length+' runners on'));return d}
-export const companyRunnerSig=C=>{poll(true);return coHeroes(C).map(a=>{const x=runnerByKey('hero:'+a.id);return a.id+(x?x.state+x.turns+(x.model||''):'-')}).join(',')+':'+up+':'+(info?info.enabled:'?')};
+export const companyRunnerSig=C=>{poll(true);const cr=runnerByKey('company:'+C.id);return (cr?cr.state+cr.turns+(cr.model||'')+(cr.heroes||[]).join('.'):'-')+'|'+coHeroes(C).map(a=>{const x=runnerByKey('hero:'+a.id);return a.id+(x?x.state+x.turns+(x.model||''):'-')}).join(',')+':'+up+':'+(info?info.enabled:'?')};
 
 // The DM agent's runner (#66): Start DM / Stop DM and its state, for the DM panel and the Minds panel's
 // DM row (src/ui/dmseat.js). It plays no hero, so it polls whether or not a hero is agent-played.
@@ -170,7 +179,7 @@ export function runnerPick(k,models,openai,hf){const s=el('select','msel');s.dat
   for(const [v,t] of opts){const o=new Option(t,v);if(v===(picks[k]||''))o.selected=true;s.append(o)}
   // the budget the runner starts with (owner, #563: dollars are the limit, a runner plays until stopped); also in the Agents panel
   const w=el('span','runpick');w.append(s,budgetPick(k));return w}
-const KIND_OF=k=>k==='dm'||k==='fellowship'?k:'hero';
+const KIND_OF=k=>k==='dm'||k==='fellowship'?k:/^co(mpany)?:/.test(k)?'company':'hero';
 export const BUDGETS=[.5,1,2,5,10];
 export function budgetPick(k){const K=kindInfo(KIND_OF(k)),cap=K&&K.caps?K.caps.budget:5,def=K&&K.defaults?K.defaults.budget:(k==='fellowship'?2:1),L=limitOf(k);
   const b=el('select','msel');b.dataset.runbudget=k;b.title='The most this runner may spend (Claude, OpenAI); it plays until stopped or the budget is spent. Local models are free.';

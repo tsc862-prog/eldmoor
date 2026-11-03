@@ -91,7 +91,7 @@ const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(
 // A hero id from a header, query or body value: a positive integer, null when absent, NaN when bad.
 export const heroParam = v => v == null || v === '' ? null : /^\d{1,9}$/.test(String(v).trim()) ? Number(String(v).trim()) : NaN;
 const cleanHeroes = list => (Array.isArray(list) ? list : []).filter(h => h && typeof h === 'object' && Number.isInteger(h.id))
-  .slice(0, 64).map(h => ({id: h.id, name: String(h.name || '').slice(0, 40), alive: h.alive !== false, ...(Number.isInteger(h.succeeds) ? {succeeds: h.succeeds} : {}), ...(h.fellow ? {fellow: true, role: String(h.role || '').slice(0, 12) || null, lead: !!h.lead, table: !!h.table, ...(h.due ? {due: true} : {})} : {})})); // fellow/role/lead: Fellowship members (#68), for npm run fellowship
+  .slice(0, 64).map(h => ({id: h.id, name: String(h.name || '').slice(0, 40), alive: h.alive !== false, ...(Number.isInteger(h.succeeds) ? {succeeds: h.succeeds} : {}), ...(h.fellow ? {fellow: true, role: String(h.role || '').slice(0, 12) || null} : {}), ...(Number.isInteger(h.company) ? {company: h.company, companyName: String(h.companyName || '').slice(0, 40) || null, size: Number.isInteger(h.size) ? h.size : 1} : {}), ...(h.fellow || (Number.isInteger(h.company) && h.size > 1) ? {lead: !!h.lead, table: !!h.table, ...(h.due ? {due: true} : {})} : {})})); // fellow/role: the five-place Fellowship (#68); company/lead/table/due: the hero's company (#460), for the company runner
 // The hero a call without a hero id goes to (the old single-hero path).
 export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes.length - 1] || null);
 

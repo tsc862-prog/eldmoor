@@ -5,8 +5,10 @@
 import {playerAct,waitOver,finishWait,turnStart,turnEnd,lookSnap} from './player.js';
 import {paceCheck,paceIdle,paceBrief,PACE} from './pace.js';
 import {reflectDone} from './reflect.js';
-import {markQueued} from './scenewait.js';
+import {markQueued,sceneDue} from './scenewait.js';
 import {S} from './state.js';
+import {companyOf,leaderOf} from './company.js';
+import {sceneOf} from './scenes.js';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -33,3 +35,13 @@ export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now(
   turnEnd(me()); // a runner asking when to go next has ended its turn: autopilot may start things again (#240)
   for(;;){const r=paceCheck(heroId,q);if(r){const a=me();if(r.ok&&r.wake&&a){turnStart(a);a.playFresh=true}return r} // a wake opens the next turn
     if(now()-t0>=realMs)return paceIdle(heroId,q.since);await nap(poll)}}
+
+// One agent seat as the host names it to the relay (the page's hello, play-headless's info; /play/health heroes[]).
+// fellow/role/lead: the five-place Fellowship (#68), kept as they were. company (#460): every agent hero rides in one
+// (a solo is a company of one): its id, name and size, and for a company of two or more who leads it, whether the hero
+// sits at a scene (table) and whether its own scene still waits for its answer (due, #515). Game state only (#123).
+export function seatInfo(a){const o={id:a.id,name:a.name,alive:a.state!=='dead',...(a.succeeds!=null?{succeeds:a.succeeds}:{})};
+  if(a.fellow)Object.assign(o,{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!sceneOf(a),...(sceneDue(a)?{due:true}:{})});
+  const C=companyOf(a);if(C){o.company=C.id;o.companyName=C.name||null;o.size=C.ids.length;
+    if(!a.fellow&&C.ids.length>1){o.lead=leaderOf(C)===a;o.table=!!sceneOf(a);if(sceneDue(a))o.due=true}}
+  return o}
