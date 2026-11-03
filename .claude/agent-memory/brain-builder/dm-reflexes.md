@@ -23,3 +23,5 @@ Kept: dmAct refuses with the seat closed (a host-less world has no seat; wording
 
 **Tests:** tablecheck --arrival (busy runner waited, gone -> fill at once, slow/gone logged, seat stays open); tablecheck --talk (gone mid-wait -> reflex now, logged slow); dmcheck --opening 'silent' replaces 'closed'; behaviorcheck 6d counts arrival/opening fills.
 Pitfall: a scripted talk answer in the middle of dmcheck's main run rolls RNG and shifts later seed-sensitive checks (staged "last slot" and hear failed). Put extra talk tests in tablecheck --talk (a child with its own world) instead.
+
+**After merging main (#582/#587/#584):** the fireside and debrief (sim/fireside.js, #571) voice through arrival.js's exported `voiceLive`/`resolveCall`, so they follow tableLive and log `fill/why` with no extra code; dmShare counts them as table slots (scene 'fireside'). tablecheck --fireside asserts the logged fill. dmAct keeps the `_pool` recall line from #553 before the seat refusal.
