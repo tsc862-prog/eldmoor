@@ -347,6 +347,27 @@ if (process.argv[2] === '--companies') {
   ok(!S.table && !CX.tableQ && CX.tableSeen['rescue:' + X.id] == null && T.openScene('check', 'x', ['x'], {anchor: X.id}) === null, 'a solo with no runner gets no scene (it plays on, as with the Table off), and no cooldown key is spent');
   X.hp = maxHp(X); X.state = 'hunt'; X.target = null;
 
+  // (b2) followed pause (#458): at 1x only the followed company's scene stops the world; another company's plays on the
+  // live clock (its agent still decides), the banner says where and whose; following it, or "pause for any company", stops it
+  {LINK[X.id] = 'connected'; LINK[Y.id] = 'connected'; T.TABLE.speed = 1; const f0 = S.followId; S.followId = CX.id;
+   for (const a of [X, Y]) {a.state = 'hunt'; a.target = null; a.hp = maxHp(a); a.hidden = false}
+   ok(!T.pauseAll() && !('pauseAll' in S), 'pause for any company is off by default and leaves no key on S');
+   let s2 = T.openScene('check', 'A narrow ford', ['The water runs high.'], {anchor: Y.id});
+   ok(s2 && s2.company === CY.id && s2.pause && !T.stopsWorld(s2), "an unfollowed company's scene at 1x does not stop the world");
+   const m0 = S.gameMin; step(1 / 60);
+   ok(S.table === s2 && S.gameMin > m0, `the world clock runs on beside it (${m0} -> ${S.gameMin.toFixed(2)})`);
+   const bl = T.bannerOf(); ok(bl && bl.live && !bl.paused && bl.company === CY.id && bl.where, `the banner marks it live, at ${bl && bl.where}`);
+   {let g = 0; while (S.table && S.table.phase === 'frame' && g++ < 600) step(1 / 60)}
+   ok(S.table === s2 && s2.phase === 'turn' && !s2.acts[Y.id], 'its agent still decides (the table waits for the answer)');
+   S.followId = CY.id; ok(T.stopsWorld(s2) && T.bannerOf().paused && !T.bannerOf().live, 'following that company: its scene stops the world');
+   {const m1 = S.gameMin; step(1 / 60); ok(S.gameMin === m1, 'and the world clock holds')}
+   S.followId = CX.id; T.setPauseAll(true);
+   ok(S.pauseAll === true && T.stopsWorld(s2), 'pause for any company: the unfollowed scene stops the world again');
+   T.setPauseAll(false); ok(!('pauseAll' in S) && !T.stopsWorld(s2), 'turned off, the key leaves S');
+   T.TABLE.speed = 3; T.TABLE.drop = null; T.tableHold(1 / 60);
+   ok(T.TABLE.drop && S.table === s2, '3x: an unfollowed scene whose agent decides still asks for 1x, as before');
+   T.TABLE.drop = null; T.TABLE.speed = 1; close(); S.followId = f0; delete LINK[X.id]; delete LINK[Y.id]}
+
   // (c) everyone at once, a company of two: answers in any order, resolved in join order
   const CU = CO.companyOf(U), CV = CO.companyOf(V); const mg = CO.mergeCompanies(CU, CV);
   ok(mg.ok && CU.ids.length === 2 && CU.ids[0] === U.id && CU.ids[1] === V.id, `${U.name} and ${V.name} ride as one company (join order ${CU.ids})`);
@@ -381,6 +402,28 @@ if (process.argv[2] === '--companies') {
   const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);
   ok(S.table && S.table.company === CU.id && T.sceneCompany(S.table) === CO.companyById(CU.id), 'a save mid-scene keeps the scene\'s company');
   close();
+  // (g) a merge proposal puts a decision scene to each company: the proposer's now, the other's queued (#500)
+  {
+    const [gx, gy, gu, gv] = [X, Y, U, V].map(h => S.agents.find(q => q.id === h.id)), gCX = CO.companyOf(gx), gCY = CO.companyOf(gy), gCU = CO.companyOf(gu);
+    const mgXY = CO.mergeCompanies(gCX, gCY); ok(mgXY.ok, 'the first pair rides as one company');
+    for (const [h, dx] of [[gx, 0], [gy, 1], [gu, 3], [gv, 4]]) {h.x = spot.x + dx; h.y = spot.y - 8; h.state = 'hunt'; h.dest = null; h.target = null; h.hp = maxHp(h); h.hidden = false; LINK[h.id] = 'connected'; h.partyOk = true}
+    for (const h of [gx, gy, gu, gv]) for (const o of [gx, gy, gu, gv]) if (h !== o) (h.bonds || (h.bonds = {}))[o.id] = 1;
+    close();
+    const rm = P.playerAct(gx.id, 'propose', {kind: 'merge', company: gu.name});
+    ok(rm.ok, 'the merge is proposed: ' + JSON.stringify(rm).slice(0, 90));
+    ok(S.table && S.table.kind === 'decision' && S.table.company === gCX.id, 'the proposer company has the decision scene now (company ' + (S.table && S.table.company) + ')');
+    const pj = gCU.props.find(q => q.kind === 'merge');
+    ok(pj && gCU.tableQ && gCU.tableQ.kind === 'decision' && gCU.tableQ.ctx.prop === pj.id, 'the other company decision scene waits in its queue, keyed by its own proposal');
+    ok(gCU.props.find(q => q.kind === 'merge') && !CO.isSolo(gCU) && gCU.id !== gCX.id, 'the paired proposal sits in the other company');
+    for (const h of [gx, gy]) P.playerAct(h.id, 'scene_act', {option: 'yes'});
+    {let g = 0; while ((!S.table || S.table.company !== gCU.id) && g++ < 60 * 40) step(1 / 60)}
+    ok(S.table && S.table.kind === 'decision' && S.table.company === gCU.id && S.table.ctx.prop === pj.id, 'the other company decision scene opens when the table frees (company ' + (S.table && S.table.company) + ')');
+    for (const h of [gu, gv]) P.playerAct(h.id, 'scene_act', {option: 'yes'});
+    {let g = 0; while (S.table && g++ < 60 * 40) step(1 / 60)}
+    ok(!S.table, 'both scenes settle');
+    close();
+  }
+
   console.log(fail ? fail + ' FAILED' : 'COMPANIES OK'); process.exit(fail ? 1 : 0);
 }
 
@@ -523,7 +566,7 @@ if (process.argv[2] === '--staged') {
     ok((A.chat || []).some(e => e.from.kind === 'dm' && /thorn banks/.test(e.text)), 'the frame reached the members as narration');
     const calls = sc.calls || [];
     if (T.PLAY[kind] === 'all') ok(calls.length === 3 && calls.filter(c => c.kind === 'outcome').length === 1 && calls.find(c => c.kind === 'outcome').beat === 'all' && calls.every(c => c.done && c.by === 'dm-agent'), `${calls.length} DM calls (voice, one combined outcome after everyone answered, one complication), all answered by the mock DM`);
-    else ok(calls.length >= sc.ids.length + 2 && calls.every(c => c.done) && calls.filter(c => c.by === 'dm-agent').length === calls.length, `${calls.length} DM calls (voice, an outcome per member, one complication), all answered by the mock DM`);
+    else ok(calls.length >= sc.ids.length + 2 - sc.beats.filter(b => b.by === 'cond').length && calls.every(c => c.done) && calls.filter(c => c.by === 'dm-agent').length === calls.length, `${calls.length} DM calls (voice, an outcome per member, one complication), all answered by the mock DM`);
     const comp = calls.find(c => c.kind === 'complication');
     ok(comp && ST.COMPLICATIONS[kind].includes(comp.pick), `the complication is one of the legal set: ${comp && comp.pick}`);
     ok(sc.beats.length === sc.ids.length || ['elite', 'ambush'].includes(kind), `every member acted (${sc.beats.map(b => b.name + '=' + b.k + '(' + b.by + ')').join(', ')})`);
