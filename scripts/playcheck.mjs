@@ -537,6 +537,31 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   P.markPlayer(c, false); paused = false;
 }
 
+// ---- hunt {where} (issue #411): from town, walk to a known ground, then hunt; unknown names refused with known grounds ----
+{
+  paused = true;
+  const {ZONES, zoneAt} = await import('../src/world/map.js');
+  const h = S.agents.find(x => x.id !== id && x.kind === 'hero' && !x.player && !x.fellow && x.state === 'town' && x.lvl <= 6) || S.agents.find(x => x.id !== id && x.kind === 'hero' && !x.player && x.state === 'town');
+  const hc = homeOf(h); h.pq = []; h.target = null; h.hp = maxHp(h);
+  ok(P.markPlayer(h, true), `marked ${h.name} agent-played for hunt {where}`);
+  const ground = ZONES[zoneAt(hc.gate.x, hc.gate.y)];
+  r = P.playerAct(h.id, 'hunt', {});
+  ok(!r.ok && r.error.includes(hc.name) && r.error.includes('hunt {where: "') && /walks you to/.test(r.error), 'hunt in town names the nearest known ground and the call: ' + r.error);
+  r = P.playerAct(h.id, 'hunt', {where: 'Glimmerdeep Hollow'});
+  ok(!r.ok && /Hunting grounds you know: /.test(r.error) && (r.error.split('Hunting grounds you know: ')[1] || '').split(',').length <= 3, 'hunt at an unknown place is refused with up to three known grounds: ' + r.error);
+  r = P.playerAct(h.id, 'hunt', {where: ground + ' Webspinner Grounds'}); h.pq = [];
+  ok(r.ok && r.note && r.note.includes(ground), 'a known region inside longer words reads as that region, as move_to does: ' + (r.note || r.error));
+  r = P.playerAct(h.id, 'hunt', {where: 'inn'});
+  ok(!r.ok && /inside the town walls/.test(r.error), 'hunt at a town spot is refused: ' + r.error);
+  r = P.playerAct(h.id, 'hunt', {where: ground, count: 2});
+  ok(r.ok && r.going === 'going to ' + ground + ' to hunt' && h.pq.length === 2 && h.pq[0].kind === 'move' && h.pq[1].kind === 'hunt', `hunt {where: "${ground}"} from town walks there first: ${r.going || r.error}`);
+  ok(h.playOrder && h.playOrder.kind === 'hunt' && h.playOrder.n === 2, 'the hunt order is remembered for autopilot');
+  let hunted = false;
+  for (let i = 0; i < 60 * 600 && !hunted; i++) {step(1 / 60); if (h.state === 'dead') break; const c0 = h.pq && h.pq[0]; hunted = !!(c0 && c0.kind === 'hunt' && c0.k0 != null && h.pq.length === 1 && h.state !== 'town')}
+  ok(hunted, `${h.name} walked out and is hunting (${h.state}, in ${ZONES[zoneAt(h.x, h.y)]})`);
+  P.markPlayer(h, false); paused = false;
+}
+
 // ---- hardcore: a dead hero only answers that it is dead ----
 {
   paused = true; a = S.agents.find(x => x.id === id);

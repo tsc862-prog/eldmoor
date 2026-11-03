@@ -27,7 +27,7 @@
 // Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
 import {W,H} from '../world/tiles.js';
-import {CITY,ZONES,REGIONS,LANDMARKS,CRYPT,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
+import {CITY,ZONES,REGIONS,LANDMARKS,CRYPT,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
 import {homeOf,raceOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -265,7 +265,7 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
     if(!t||!alive(t)){done(a,t&&t.kind==='mob'&&!t.alive?'Slew '+(t.elite?t.name:'the '+mobName(t))+'.':'Your target is gone.');return true}
     if(t.kind==='mob'){a.target=t;a.state='fight';a.dest=null;return true}
     done(a,'Your foe is out of reach.');return true}
-  if(cmd&&cmd.kind==='hunt'){const left=cmd.n-(a.kills-cmd.k0);
+  if(cmd&&cmd.kind==='hunt'){if(cmd.k0==null)cmd.k0=a.kills;const left=cmd.n-(a.kills-cmd.k0);
     if(left<=0){done(a,'Hunt done: '+cmd.n+' kill'+(cmd.n>1?'s':'')+'. HP '+pct(a.hp,mh)+'%.');return true}
     if(a.hp<mh*PK.RETREAT*tm(a,'retreat')){done(a,'Too hurt to keep hunting ('+pct(a.hp,mh)+'% HP).');return true}
     if(isStorm(a.zone)&&!cmd.stormSaid){cmd.stormSaid=true;ev(a,'A storm rolls over '+ZONES[a.zone]+'.',true)}
@@ -324,7 +324,7 @@ const givenAs=(id,name)=>{const v=name!=null&&name!==''?name:id;return v==null||
 function doingText(a,adv,cmd){
   if(a.state==='fight'&&a.target)return 'Fighting '+foeName(a,a.target);
   if(cmd){if(cmd.kind==='move')return (cmd.flee?'Fleeing to ':'Walking to ')+cmd.label;
-    if(cmd.kind==='hunt')return 'Hunting in '+ZONES[zoneAt(a.x,a.y)]+' ('+Math.max(0,cmd.n-(a.kills-cmd.k0))+' to go)';
+    if(cmd.kind==='hunt')return 'Hunting in '+ZONES[zoneAt(a.x,a.y)]+' ('+Math.max(0,cmd.n-(cmd.k0==null?0:a.kills-cmd.k0))+' to go)';
     if(cmd.kind==='rest')return 'Resting';
     if(cmd.kind==='fight')return 'Closing on a foe'}
   if(adv){if(adv.stage==='choose')return 'Weighing a choice on '+adv.title;return 'On an adventure: '+adv.title}
@@ -389,6 +389,10 @@ function unknownPlace(a,t,raw){const c=homeOf(a),cands=[...knownNames(a),...TOWN
   for(const n of cands){const k=n.toLowerCase();const d=k.length>2&&(k.includes(s)||s.includes(k))?Math.abs(k.length-s.length)/4:lev(s,k);if(d<bd){bd=d;best=n}}
   const close=best&&bd<=Math.max(2,Math.floor(s.length/3));
   return 'Unknown place "'+raw+'".'+(close?' Did you mean "'+best+'"?':'')+' Places you know: '+(placesView(a).slice(0,8).join(', ')||'none yet')+'. In '+c.name+': '+TOWN_SPOTS.join(', ')+', or "home". Or a direction ("north", "explore east") or "x,y".'}
+// Hunting grounds the hero knows (#411): known regions, nearest first (the closest spawn point, sampled; no dice).
+function huntGrounds(a){const out=[];for(let z=0;z<ZONES.length;z++){const n=ZONES[z],L=ZPTS[z];if(!n||!L||!L.length||!knowsPlace(a,n))continue;
+    let bd=Infinity;const st=Math.max(1,Math.floor(L.length/60));for(let i=0;i<L.length;i+=st){const d=Math.hypot(L[i].x-a.x,L[i].y-a.y);if(d<bd)bd=d}out.push([n,bd])}
+  return out.sort((x,y)=>x[1]-y[1]).map(x=>x[0])}
 const toFieldOf=(a,p,label)=>{const c=homeOf(a);return {legs:inTown(a)?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}],last:'hunt',label}};
 function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   if(inT){if(!(t==='town'||t==='home'||SPOT_ALIASES[t]||TOWN_SPOTS.includes(t)||inT.spots&&inT.spots[t]))return null;
@@ -400,7 +404,8 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   // Places by name only when this hero knows them: its home region, where it has been, what it saw or was told (#188).
   const unknown=n=>({error:'You have never been to '+n+' nor heard of it. Ask around (talk, the town criers, your companions), or explore a direction ("north", "east", ...) or "x,y".'});
   const z=ZONES.findIndex(n=>n.toLowerCase()===t);
-  if(z>=0){if(!knowsPlace(a,ZONES[z]))return unknown(ZONES[z]);const p=zonePoint(z,null,c.gate);if(enemyNear(a,p))return {error:'That part of '+ZONES[z]+' is under an enemy town wall.'};
+  if(z>=0){if(!knowsPlace(a,ZONES[z]))return unknown(ZONES[z]);let p=zonePoint(z,null,c.gate);for(let i=0;i<8&&enemyNear(a,p);i++)p=zonePoint(z,null,c.gate); // a region around both towns (#411): pick again, away from the enemy wall
+    if(enemyNear(a,p))return {error:'That part of '+ZONES[z]+' is under an enemy town wall.'};
     const r=toField(p,ZONES[z]);const w=placeWarn(a,ZONES[z]);if(w)r.warn=w;return r}
   if(t==='crypt'||t===CRYPT.name.toLowerCase()||t==='the crypt'){if(!knowsPlace(a,CRYPT.name))return unknown(CRYPT.name);const r=toField({x:CRYPT.x,y:CRYPT.y+1.4},CRYPT.name+' (the entrance)');const w=placeWarn(a,CRYPT.name);if(w)r.warn=w;return r}
   const lm=LANDMARKS.find(l=>l.name.toLowerCase()===t||l.kind===t);
@@ -624,13 +629,27 @@ const T={
     need(['hunt','travel','return','follow'].includes(t.state),t.name+' is not free to be challenged right now.');
     a.pq=[];a.state=t.state='duel';a.target=t;t.target=a;a.dest=t.dest=null;record(a,'Challenged ',t,'.');
     return {ok:true,duel:t.name+' ('+t.cls+' L'+t.lvl+')',note:'A duel runs until one falls or breaks off; you break off on your own at low HP, or flee().'}},
-  hunt(a,{count,flee_below,prey}){if(!(fieldState(a)&&!inTown(a))){const ct=cityAt(a)||(inTown(a)?homeOf(a):null),hz=ct?ZONES[zoneAt(ct.gate.x,ct.gate.y)]:null;
-      need(false,'Hunt out in the world, not in town: move_to a region first'+(ct&&hz&&knowsPlace(a,hz)?' (you are in '+ct.name+'; '+hz+' lies around it: move_to("'+hz+'"), then hunt)':'')+'.')}need(a.state!=='return','You are heading home.');
-    const n=Math.min(10,Math.max(1,Math.round(Number(count)||3)));
+  // hunt {where} (#411): a known region, place, direction or "x,y" (read the way move_to reads it, #399/#188); the hero
+  // walks there first (the move_to walk), then hunts. In town with no where, the refusal names the nearest known ground.
+  hunt(a,{count,flee_below,prey,where}){const w=where!=null&&String(where).trim()?String(where):null;
+    if(!w&&!(fieldState(a)&&!inTown(a))){const ct=cityAt(a)||(inTown(a)?homeOf(a):null),g=huntGrounds(a)[0];
+      need(false,'Hunt out in the world, not in town'+(ct?' (you are in '+ct.name+')':'')+': '+(g?'hunt {where: "'+g+'"} walks you to '+g+' and hunts there'+(ct&&g===ZONES[zoneAt(ct.gate.x,ct.gate.y)]?' ('+g+' lies around '+ct.name+')':'')+', or move_to a place you know first.':'hunt {where: "north"} (a direction or "x,y") walks out and hunts; no hunting ground is known to you yet.'))}
+    need(w||a.state!=='return','You are heading home. hunt {where: "<a region you know>"} to turn around and hunt there.');
+    const n=Math.min(10,Math.max(1,Math.round(Number(count)||3))),fl=flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100));
     // what the hero chooses (#188): a creature it knows by name, or whatever is around that it has not learned to fear
     let pk=null;if(prey!=null&&String(prey).trim()&&!/^(any|anything|around|whatever.*)$/i.test(String(prey).trim())){pk=preyKey(a,prey);need(pk,'You know of no creature called "'+clean(prey,40)+'". Hunt what is around (no prey), or learn its name first (fight one, look, ask around).')}
-    a.pq=[{kind:'hunt',n,k0:a.kills,prey:pk||undefined,flee:flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100))}];a.state='hunt';a.dest=null;
-    return {ok:true,hunting:n+' kill'+(n>1?'s':'')+' in '+ZONES[zoneAt(a.x,a.y)]+(pk?' ('+clean(prey,40)+' only)':' (whatever is around that you do not fear)')}},
+    const what=n+' kill'+(n>1?'s':'')+(pk?' ('+clean(prey,40)+' only)':' (whatever is around that you do not fear)'),hunt={kind:'hunt',n,prey:pk||undefined,flee:fl};
+    if(w){need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
+      need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first, or hunt with no where once it is over.');
+      const gl=()=>{const L=huntGrounds(a).slice(0,3);return L.length?' Hunting grounds you know: '+L.join(', ')+'.':''};
+      const p=plan(a,w);if(p.error)throw new Rule('Cannot hunt at "'+clean(w,60)+'": '+p.error+gl());
+      if(p.last==='town')throw new Rule(p.label+' is inside the town walls: hunt out in the world.'+gl()+' Or a direction ("north") or "x,y".');
+      const z=ZONES.indexOf(p.label);
+      if(z>=0&&fieldState(a)&&!inTown(a)&&!cityAt(a)&&zoneAt(a.x,a.y)===z){a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;return {ok:true,hunting:what+' in '+ZONES[z],note:'You are already in '+ZONES[z]+'.'}}
+      a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label},hunt];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
+      const r={ok:true,going:'going to '+p.label+' to hunt',hunting:what+' once there',distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r}
+    a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;
+    return {ok:true,hunting:what+' in '+ZONES[zoneAt(a.x,a.y)]}},
   flee(a){need(['fight','duel','assist'].includes(a.state),'You are not in a fight.');flee(a,false);return {ok:true,fleeing_to:homeOf(a).name,hp:pct(a.hp,maxHp(a))+'%'}},
   rest(a,{minutes,hours}){if(a.state==='camp'){const v=campView(a);return {ok:true,camp:'You rest at camp'+(v&&v.ends?': '+v.ends:'')+'.',note:campBlock(a)}} // resting is what camp is (#400)
     if(hours!=null&&hours!==''&&a.fellow){const e=leaderRest(a,hours);if(e)throw new Rule(e);return {ok:true,camp:campView(a)&&campView(a).status||'making camp',note:'The Fellowship makes camp; sleepers get no turns but wake events.'}}
@@ -759,7 +778,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
-  if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'&&a.pq&&a.pq[0])a.playOrder={kind:'hunt',n:a.pq[0].n,flee:a.pq[0].flee,prey:a.pq[0].prey}} // the agent's last action that went through (autopilot, #126)
+  if(meta.act&&r&&r.ok!==false){a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}} // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
   logCall(a,tool,args,r);return r}
 
