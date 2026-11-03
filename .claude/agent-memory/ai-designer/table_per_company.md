@@ -26,9 +26,10 @@ Rules chosen and why:
   it already is a one-answer waited choice, and routing it to a Table scene broke playcheck's silent-agent timeout path.
   Only the Fellowship's choice goes to the Table (player-choice.js still gates on `a.fellow`).
 - `status` shows `table` for any hero (player.js one-liner); save.js v6->v7 stamps an open table with the Fellowship id.
-- Checks that drive agent solos must answer or switch off their scenes: lorecheck runs with `TABLE.mode='off'`;
-  playcheck's mock agent answers its own scene (wait refuses on your own turn) and turns the Table off for the
-  "world keeps running with a silent agent" case (a live silent agent's scene pauses the world up to liveMs).
+- Checks that drive agent solos but are not about the Table run with `TABLE.mode='off'` (lorecheck, playcheck): a
+  solo's scene pauses the world (a live silent agent up to liveMs), `wait` is refused on your own turn, and the pause
+  shifts the seeded trajectory (playcheck's hero then met a Cinder Golem and died). Answering scenes in the mock was
+  tried and was not enough; switching the Table off keeps them on main's trajectory.
 - `bannerOf()` carries `company, companyName, solo`; `decisionsWaiting()` entries carry `company` (UI use is #471/#458).
 
 Testing pitfall: a solo in a duel with an enemy hero opens an ambush right after its rescue resolves (key `duel:<id>`);
