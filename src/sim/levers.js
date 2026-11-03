@@ -42,7 +42,7 @@ import {npcRole,WANDER_ROLES} from '../data/npcs.js';
 import {BEAST,ADVENTURES} from '../data/adventures.js';
 import {S} from './state.js';
 import {dmlog} from './dmlog.js';
-import {focus,pullTouches,reserveOf} from './dmfocus.js'; // the Fellowship's reserved share of the daily limits (issue #165)
+import {focuses,pullTouchesAny,reserveOf} from './dmfocus.js'; // the companies' reserved share of the daily limits (issues #165, #450)
 import {timeline} from './history.js';
 import {npcSay,ensureNpcs} from './npcs.js';
 import {moveTo} from './heroes.js';
@@ -172,8 +172,9 @@ export function pull(name,raw,o={}){const L=ensureLevers(),def=LEVERS[name],by=o
   if(lim.perDay!=null&&(D.n[name]||0)>=lim.perDay)return fail('limit: '+lim.perDay+' '+name+' per game day');
   // Fellowship first (issue #165): with a Fellowship, a share of each daily limit is kept for pulls that concern it,
   // so world upkeep cannot use the day up before the story needs it.
-  const fo=lim.perDay!=null?focus():null,forFellow=fo?pullTouches(name,p,z,fo):false;
-  if(fo&&!forFellow&&(D.nf[name]||0)>=lim.perDay-reserveOf(lim.perDay))return fail('limit: '+(lim.perDay-reserveOf(lim.perDay))+' '+name+' per game day for the world; the rest is kept for the Fellowship');
+  // Every company a thread (#450): the reserve is kept for a pull that concerns any company (fairness between them: #451).
+  const fs=lim.perDay!=null?focuses():[],fo=fs.length?fs:null,forFellow=fo?pullTouchesAny(name,p,z,fs):false;
+  if(fo&&!forFellow&&(D.nf[name]||0)>=lim.perDay-reserveOf(lim.perDay))return fail('limit: '+(lim.perDay-reserveOf(lim.perDay))+' '+name+' per game day for the world; the rest is kept for '+(fs.length>1?'the companies':fs[0].company.slots?'the Fellowship':fs[0].company.name||'the company'));
   if(lim.perRegionPerDay!=null&&z!=null&&(D.rz[name+':'+z]||0)>=lim.perRegionPerDay)return fail('limit: '+lim.perRegionPerDay+' '+name+' per region per game day in '+ZONES[z]);
   const ck=name+(z!=null?':'+z:'');if(def.cooldown&&L.cd[ck]>S.gameMin)return fail('cooldown: '+hrs(L.cd[ck]-S.gameMin)+' left'+(z!=null?' in '+ZONES[z]:''));
   const id=++L.seq;ctx.id=id;ctx.region=z;
