@@ -163,7 +163,7 @@ const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80
 export const tableOn=()=>(!!slotted()||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
 // The scene's company and its members. The Fellowship keeps its slot order (slotHeroes(slotted())); any other company its join order.
 export const sceneCompany=sc=>!sc?null:sc.company!=null?companyById(sc.company):slotted()||null;
-const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C);
+const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const leadOf=C=>!C?null:C===slotted()?leaderOfF():leaderOf(C);
 const scMem=sc=>memOf(sceneCompany(sc));
 // A company other than the Fellowship comes to the table only while one of its agents has the say (a runner holds it,

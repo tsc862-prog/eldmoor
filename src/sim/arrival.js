@@ -69,7 +69,7 @@ const pickH=(seed,k,list)=>list[Math.floor(hash(seed|0,k,53)*list.length)%list.l
 const NARRATOR={kind:'dm',name:'The Narrator'};
 const LIVE={connected:1,waiting:1};
 const isFellowship=C=>!!C&&C===slotted();
-const memOf=C=>!C?[]:isFellowship(C)?slotHeroes(slotted()):members(C);
+const memOf=C=>!C?[]:isFellowship(C)?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const leadOf=C=>{if(!C)return null;if(isFellowship(C)){const P=slotParty(slotted());if(P&&living(P.leader))return P.leader;const L=slotHeroes(slotted());let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}return leaderOf(C)||members(C)[0]||null};
 const townOf=C=>{const ld=leadOf(C);return C&&C.hall?C.hall:ld?homeOf(ld).name:'town'};
 
