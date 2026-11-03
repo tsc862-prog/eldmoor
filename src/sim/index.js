@@ -9,7 +9,8 @@ import {CRYPT} from '../world/map.js';
 import {reserveNames} from '../data/races.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
-import {makeHero,updAgent} from './heroes.js';
+import {makeHero,updAgent,setFallHook} from './heroes.js';
+import {executeWill,estateTick} from './will.js'; // a hero's will (#631): executes on the final death, far heirs get it when they rest
 import {spawnAll,updMob,ecologyTick} from './mobs.js';
 import {partyTick} from './party.js';
 import {weatherTick} from './weather.js';
@@ -83,6 +84,7 @@ export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath 
 export {planOpening,openingDue,openingPending,arrivalsView,ARRIVE} from './arrival.js'; // session zero and arrivals (#437, #452)
 export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost,setGateHold,worldHeld,holdLine} from './prep.js'; // the DM's prep before the table opens (#437)
 
+setFallHook(executeWill); // a will executes on the final death (#631)
 installRumourLever();installBestowLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
@@ -121,7 +123,7 @@ export function step(dt){rulingTick(); // a ruling the DM let lapse is filled ev
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first
-  partyTick();slotsTick(dt);companionTick();hireTick();challengeTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  partyTick();slotsTick(dt);estateTick();companionTick();hireTick();challengeTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);outpostsTick(dt);dungeonCheck(dt);siteTick(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
