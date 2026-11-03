@@ -55,6 +55,7 @@ import {postHook,withdrawHook} from './dm.js';
 import {customFoe,spawnFoe} from './encounterbuilder.js';
 import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
 import {CUSTOM} from '../data/encounter-tables.js';
+import {SITE_THEME_IDS} from '../data/sites.js';
 
 // ---- knobs ----
 export const LK={
@@ -75,7 +76,7 @@ const DAY=1440;
 const FORBIDDEN=/^(hp|maxhp|xp|lvl_?up|level_?up|stats?|abil|cls|class|hardcore|kill|slay|revive|resurrect|save_?hero|loot|item|epic|gold_?grant|gear)$/i;
 
 // Private LCG for cosmetic picks (names, looks, strolls): never perturbs the gameplay RNG.
-let seed=0x2545f491;
+const SEED0=0x2545f491;let seed=SEED0;export const resetLeverSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 const pickR=a=>a[Math.floor(r()*a.length)];
 
@@ -112,7 +113,7 @@ function field(k,s,v){
   case 'id':return isNum(v)&&Number.isInteger(v)?[v]:k+' must be an id';
   case 'obj':return v&&typeof v==='object'&&!Array.isArray(v)?[JSON.parse(JSON.stringify(v))]:k+' must be an object';
   default:return k+' has an unknown type'}}
-function validate(def,raw){const p={};raw=raw&&typeof raw==='object'?raw:{};
+export function validate(def,raw){const p={};raw=raw&&typeof raw==='object'?raw:{};
   for(const k in raw)if(!(k in def.params))return 'unknown parameter '+k;
   for(const k in def.params){const x=field(k,def.params[k],raw[k]);if(typeof x==='string')return x;if(x[0]!==undefined)p[k]=x[0]}return p}
 // A spot on the map: in bounds, walkable (or a road), outside the towns and clear of their gates
@@ -205,6 +206,16 @@ export function ready(name,z){const L=ensureLevers(),def=LEVERS[name];if(!def||d
 // End an active lever now (retire_npc, withdraw_hook and expiry all come through here).
 function end(rec){const L=S.levers,i=L.active.indexOf(rec);if(i>=0)L.active.splice(i,1);const def=LEVERS[rec.name];if(def&&def.expire)def.expire(rec)}
 const recOf=id=>S.levers?S.levers.active.find(x=>x.id===id)||null:null;
+// Take an active lever back early (issue #636: the DM agent's undo, dismiss and unstage). Only effects that can be removed
+// cleanly: a place, an area, a condition, an attitude, a placed person, a special foe not yet in a fight. The lever's own
+// expire() does the removal, as when it runs out. Returns {ok, rec} or {ok:false, reason} (the reason says why it stays).
+export const TAKE_BACK=['mark_place','mark_dangerous','mark_cleared','set_condition','set_attitude','create_npc','custom_foe'];
+export function takeBack(id){const rec=recOf(id);
+  if(!rec)return {ok:false,reason:'it is no longer active (it ran out, or was ended already)'};
+  if(!TAKE_BACK.includes(rec.name))return {ok:false,reason:rec.name+' cannot be taken back'};
+  if(rec.name==='custom_foe'&&(S.mobs||[]).some(m=>m.lever===rec.id&&!m.gone&&m.target))return {ok:false,reason:'the foe is already in a fight'};
+  if(rec.name==='create_npc'){const w=(S.wanderers||[]).find(x=>x.lever===rec.id);if(w&&w.staged!=null)return {ok:false,reason:'they belong to a staged scene (unstage it)'}}
+  end(rec);return {ok:true,rec}}
 // A world-change worth the timeline, at most TL_PER_DAY a game day.
 function tl(...parts){const st=S.levers.stats.tl,k='d'+day();if((st[k]||0)>=LK.TL_PER_DAY)return;for(const x in st)if(x!==k)delete st[x];bump(st,k);timeline('world',...parts)}
 
@@ -442,9 +453,11 @@ register({name:'custom_foe',about:'A special foe from the bestiary: base creatur
 // Stubs: they reject with "not available yet" until the system behind them registers an
 // implementation (provide('createSite', fn) once #69 gives sites a lifecycle, startEvent, nudgeRelation),
 // or replaces the lever outright with register().
-register({name:'create_site',stub:'createSite',about:'A DM-made dungeon site (#69).',
-  params:{theme:{type:'str',max:24},region:{type:'region'},band:{type:'int',min:1,max:60},size:{type:'enum',values:['small','medium','large'],def:'small'},raid:{type:'bool',def:false}},
-  limits:{maxActive:2,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.createSite(p,ctx),describe:p=>p.theme+' site in '+ZONES[p.region]});
+// create_site (#69, slice 1): sim/sites.js provides the generator and owns the site's lifecycle (it is not an expiring lever:
+// a site stays until cleared or collapsed, so the open-site caps, 1 a region and 3 a world, are checked there).
+register({name:'create_site',stub:'createSite',about:'Raise a dungeon site a company can enter: a '+SITE_THEME_IDS.join(', ')+' in a region, its level clamped to the region’s band (band: the level wanted), 3-8 rooms, a named boss with a guaranteed epic. At most 1 open site a region and 3 in the world.',
+  params:{theme:{type:'enum',values:SITE_THEME_IDS},region:{type:'region'},band:{type:'int',min:1,max:60,opt:true},rooms:{type:'int',min:3,max:8,opt:true},at:{type:'point',opt:true},name:{type:'str',max:40,opt:true}},
+  limits:{perDay:2,perRegionPerDay:1},cooldown:120,apply:(p,ctx)=>IMPL.createSite(p,ctx),describe:p=>p.theme+(p.name?' "'+p.name+'"':'')+' in '+ZONES[p.region]+(p.band!=null?' (level '+p.band+')':'')});
 register({name:'start_event',stub:'startEvent',about:'A world event (#10).',params:{kind:{type:'str',max:24},region:{type:'region'},scale:{type:'int',min:1,max:3,def:1}},
   limits:{maxActive:1,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.startEvent(p,ctx),expire(rec){if(IMPL.endEvent)IMPL.endEvent(rec);S.conditions=(S.conditions||[]).filter(c=>c.lever!==rec.id)},describe:p=>p.kind+' in '+ZONES[p.region]});
 register({name:'nudge_relation',stub:'nudgeRelation',about:'Shift how two parties of the world regard each other (#11).',params:{a:{type:'str',max:24},b:{type:'str',max:24},delta:{type:'int',min:-2,max:2}},

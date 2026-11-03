@@ -25,7 +25,7 @@ import {record,timeline,first} from './history.js';
 import {bestUse,useItem} from './inv.js';
 import {notify} from './notify.js';
 import {setCrawlHook,payClear,clearXp} from './dungeon.js';
-import {tableOn,openScene,setSceneKind} from './table.js';
+import {tableOn,openScene,setSceneKind,sceneFor} from './table.js';
 import {companyOf,companyById,roleOf,slotKeyOf,slotted} from './company.js';
 
 export const CRAWL={
@@ -46,11 +46,16 @@ const gd=t=>({t,c:'gd'});
 const byId=id=>S.agents.find(x=>x.id==id)||null;
 const living=a=>a&&a.kind==='hero'&&a.state!=='dead';
 
-const roomsOf=()=>CRYPT.rooms||[];
+// The dungeon a group is in: a DM-made site (sim/sites.js, #69; g.site its id, the site's rooms as data on S.sites) or the Sunken Crypt.
+// Read straight from S so this module never imports sites.js (sites.js drives its groups through the exports below).
+export const siteById=id=>id==null?null:((S.sites&&S.sites.list)||[]).find(s=>s.id===id)||null;
+const dunOf=g=>g&&g.site!=null?siteById(g.site)||CRYPT:CRYPT;
+const roomsOf=g=>dunOf(g).rooms||[];
+var SITE_END=null;export function setSiteEnd(f){SITE_END=f} // sim/sites.js: pays a cleared site, marks a ruin
 // The crawl runs for a group the Fellowship is in, in a dungeon with rooms, while Table mode is on (Watch mode keeps the roll).
 // The company is the first group member who rides in one (a drafted company comes first, see council.js unitDraft); a solo is a company of one.
 const coOf=g=>{for(const a of g.mem){const C=companyOf(a);if(C)return C}return null};
-export const crawlFits=g=>!!(g&&coOf(g)&&roomsOf().length&&tableOn());
+export const crawlFits=g=>!!(g&&coOf(g)&&roomsOf(g).length&&tableOn());
 const lvlOf=g=>{const L=g.mem.filter(a=>crewOf(g).includes(a));return Math.max(1,Math.round(L.reduce((t,a)=>t+a.lvl,0)/Math.max(1,L.length)))};
 // A crawl foe's species: a site creature (VARIANTS: shambler, graveward ...) or a field species.
 export const species=type=>VARIANTS[type]||BESTIARY[baseId(type)]||null;
@@ -64,45 +69,50 @@ export function startCrawl(g){if(!crawlFits(g))return false;
   const C=coOf(g);
   g.crawl={i:0,rd:0,gap:0,foes:null,guard:[],back:[],shield:0,edge:0,end:null,lvl:0,stats:{rooms:0,rounds:0,blows:0},co:C.id};
   g.crawl.lvl=lvlOf(g);g.crawl.crew=crewOf(g).length;
-  log(gd(g.name||C.name),' go room by room: ',gd(CRYPT.name),', ',String(roomsOf().length),' chambers.');return true}
+  log(gd(g.name||C.name),' go room by room: ',gd(dunOf(g).name),', ',String(roomsOf(g).length),' chambers.');return true}
 
 // ---- opening a room's round ----
 // Foe counts are written for five. A company of another size meets proportionally more or fewer (never fewer than one of a kind);
 // the Fellowship's five-slot company meets the rooms as written.
 const scaleN=(n,cr)=>{const C=companyById(cr.co);return !C||C.slots||!cr.crew?n:Math.max(1,Math.round(n*cr.crew/5))};
-function buildFoes(room,lvl,cr){const out=[];
-  for(const f of room.foes)for(let k=0;k<scaleN(f.n,cr);k++){const h=hitsOf(f);out.push({type:f.type,name:foeName(f),hp:h,hits:h,atk:f.atk||1,lvl:Math.max(1,lvl+(room.lvl||0))})}
+// A site's room (#69) names its foes' level outright (alvl, plus the site's growth); the Crypt's rooms are relative to the party.
+function buildFoes(room,lvl,cr,D){const out=[],fl=room.alvl!=null?room.alvl+((D&&D.grow)||0):lvl+(room.lvl||0);
+  for(const f of room.foes)for(let k=0;k<scaleN(f.n,cr);k++){const h=hitsOf(f);out.push({type:f.type,name:foeName(f),hp:h,hits:h,atk:f.atk||1,lvl:Math.max(1,fl)})}
   return out}
+// A foe above the party hits harder in a site room (its level is its own); the Crypt's rooms keep their written hit.
+const hitOf=(room,f,cr)=>{if(room.alvl==null)return room.hit;const d=f.lvl-cr.lvl;return room.hit*Math.max(.12,Math.min(1.8,d>=0?1+.08*d:1+.1*d))};
 const woundedWord=a=>a.hp<maxHp(a)*.35?' (badly hurt)':a.hp<maxHp(a)*.65?' (hurt)':'';
 function frameOf(g,room){const cr=g.crawl,rem=liveFoes(cr),by={};for(const f of rem)by[f.name]=(by[f.name]||0)+1;
   const list=Object.keys(by).map(n=>by[n]>1?by[n]+' '+(species((rem.find(f=>f.name===n)||{}).type)||{}).pl||n+'s':n).join(' and ');
   const fresh=cr.rd===0,hurt=members(g).filter(a=>a.hp<maxHp(a)*.65).map(a=>a.name+woundedWord(a));
   return [fresh?room.frame+' ':'The fight goes on. ',gd(list)+(fresh?' bar the way.':' still stand.'),hurt.length?' Hurt: '+hurt.join(', ')+'.':'',
-    ' Room '+(cr.i+1)+' of '+roomsOf().length+', round '+(cr.rd+1)+'.']}
+    ' Room '+(cr.i+1)+' of '+roomsOf(g).length+', round '+(cr.rd+1)+'.']}
 
-function openRound(g){const cr=g.crawl,room=roomsOf()[cr.i];
-  if(!cr.foes){cr.foes=buildFoes(room,cr.lvl,cr);cr.rd=0;cr.stats.rooms++}
+function openRound(g){const cr=g.crawl,room=roomsOf(g)[cr.i];
+  if(!cr.foes){cr.foes=buildFoes(room,cr.lvl,cr,dunOf(g));cr.rd=0;cr.stats.rooms++;
+    if(room.alvl!=null)cr.cap=Math.max(room.rounds||CRAWL.ROUNDS,Math.ceil(cr.foes.reduce((t,f)=>t+f.hp,0)/(Math.max(1,cr.crew||1)*.6))+1)} // a site room (#69): a small crew gets the rounds its blows need
   cr.guard=[];cr.back=[];cr.shield=0;cr.edge=Math.round(g.bonus||0); // the site scene's choices at the stair (sim/table.js g.bonus) tip every roll of the crawl
-  return openScene('crawl',room.name+(cr.rd?' (round '+(cr.rd+1)+')':''),frameOf(g,room),{room:cr.i,rd:cr.rd},companyById(cr.co)||undefined)}
+  return openScene('crawl',room.name+(cr.rd?' (round '+(cr.rd+1)+')':''),frameOf(g,room),g.site!=null?{room:cr.i,rd:cr.rd,site:g.site}:{room:cr.i,rd:cr.rd},companyById(cr.co)||undefined)}
 
 // ---- the scene kind ----
 const SPECIAL={Warrior:['hold','Hold the line: the foes\' blows on the others fall short'],Priest:['ward','Ward the group with prayer: a little mending and a steadier hand for all'],
   Rogue:['scout','Look for the gap in their guard'],Hunter:['scout','Read their movements and call the gap'],Mage:['read','Read the old wards and turn them on the foes'],Wildspeaker:['ward','Ask the roots for a steadier hand for all'],Skald:['read','Sing a dirge that turns the old wards on the foes']};
-const grp=()=>CRYPT.group&&CRYPT.group.crawl?CRYPT.group:null;
+// The group a crawl scene belongs to: the site its ctx names, else the Crypt's.
+const grp=sc=>{const id=sc&&sc.ctx&&sc.ctx.site;if(id!=null){const D=siteById(id),g=D&&D.group;return g&&g.crawl?g:null}return CRYPT.group&&CRYPT.group.crawl?CRYPT.group:null};
 // The crew is the company at the table (#441); background fill-ins ride along: they are paid and brought home, but do not act,
 // take blows or count for the foes. A crawl saved before companies (no cr.co) treats the whole group as the crew.
 const crewOf=g=>{const C=g.crawl&&g.crawl.co!=null?companyById(g.crawl.co):null;return C?g.mem.filter(a=>C.ids.includes(a.id)):g.mem};
 const members=g=>crewOf(g).filter(living);
 const lowest=g=>{let lo=null;for(const b of members(g))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
 const pct=a=>Math.round(a.hp/maxHp(a)*100);
-function options(sc,a){const g=grp();if(!g)return [];const cr=g.crawl,f=liveFoes(cr)[0],lo=lowest(g),o=[];
+function options(sc,a){const g=grp(sc);if(!g)return [];const cr=g.crawl,f=liveFoes(cr)[0],lo=lowest(g),o=[];
   o.push({k:'strike',text:'Strike '+(f?f.name:'the foe')});
   o.push({k:'guard',text:'Draw the foes onto yourself'});
   const s=SPECIAL[a.cls];if(s)o.push({k:s[0],text:s[1]});
   if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
   const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
   o.push({k:'retreat',text:'Fall back toward the stair (if most do, the party withdraws)'});return o}
-function reflex(sc,a){const g=grp();if(!g)return 'strike';const cr=g.crawl,lo=lowest(g),mh=maxHp(a),healer=CLS[a.cls]&&CLS[a.cls].heal;
+function reflex(sc,a){const g=grp(sc);if(!g)return 'strike';const cr=g.crawl,lo=lowest(g),mh=maxHp(a),healer=CLS[a.cls]&&CLS[a.cls].heal;
   if(lo&&lo.hp<maxHp(lo)*.35&&bestUse(a,'potion'))return 'potion';
   if(healer&&lo&&lo.hp<maxHp(lo)*.6)return 'heal';
   if(a.hp<mh*.2)return 'retreat';
@@ -113,7 +123,7 @@ function reflex(sc,a){const g=grp();if(!g)return 'strike';const cr=g.crawl,lo=lo
 const skill=(a,cr,f)=>{const bz=(f&&species(f.type))||{},tag=heroTag(a.cls),w=(bz.weak||{})[tag]||1,rs=(bz.res||{})[tag]||1;
   return Math.round((a.lvl+a.gear*.3)/2)+cr.edge+(w>1.1?1:0)-(rs<.95?1:0)};
 const heal=(b,amt)=>{const h=Math.min(maxHp(b)-b.hp,Math.round(amt));b.hp+=h;return h};
-function apply(sc,a,act){const g=grp();if(!g)return null;const cr=g.crawl,k=act.k,f=liveFoes(cr)[0];
+function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=act.k,f=liveFoes(cr)[0];
   switch(k){
   case 'strike':{if(!f)return 'the room is quiet';const d=ri(1,20),dc=CRAWL.DC+Math.floor(f.lvl/2),t=d+skill(a,cr,f);cr.stats.blows++;
     if(d===1){cr.open=(cr.open||[]);cr.open.push(a.id);return 'missed badly and left an opening'}
@@ -135,21 +145,21 @@ function foeBlow(g,f,room,cr,rearguard){const L=members(g);if(!L.length)return n
   let t=front.length&&rnd()<CRAWL.GUARD_DRAW?pickA(front):pickA(open.length&&rnd()<.5?open:pool),drawn=front.includes(t);
   const ac=10+Math.round(combatStats(t).defense*20),d=ri(1,20);
   if(d!==20&&(d===1||d+CRAWL.FOE_HIT+Math.floor(f.lvl/2)<ac))return {t,miss:true};
-  let dmg=maxHp(t)*room.hit*(.7+rnd()*.6)*(f.atk||1)*(rearguard?CRAWL.RETREAT_HIT:1)*(d===20?1.5:1);
+  let dmg=maxHp(t)*hitOf(room,f,cr)*(.7+rnd()*.6)*(f.atk||1)*(rearguard?CRAWL.RETREAT_HIT:1)*(d===20?1.5:1);
   if(drawn)dmg*=CRAWL.GUARD_CUT;else dmg*=1-Math.min(.5,cr.shield*CRAWL.HOLD_CUT);
   dmg=Math.max(1,Math.round(dmg));t.hp-=dmg;
   if(t.hp<=0){return {t,dmg,down:true}}return {t,dmg}}
 function strikeBack(g,room,cr,rearguard){const out=[],foes=rearguard?[pickA(liveFoes(cr))]:liveFoes(cr),fell=[];
   for(const f of foes){if(!f)continue;const r=foeBlow(g,f,room,cr,rearguard);if(!r)break;
-    if(r.down&&!fell.includes(r.t)){fell.push(r.t);const cause='felled by '+f.name+' in '+CRYPT.name;
-      record(r.t,'Fell in ',gd(CRYPT.name),', slain by '+f.name+'.');fall(r.t,cause);log(r.t,' fell in ',gd(room.name),' to '+f.name+'.')}
+    if(r.down&&!fell.includes(r.t)){fell.push(r.t);const cause='felled by '+f.name+' in '+dunOf(g).name;
+      record(r.t,'Fell in ',gd(dunOf(g).name),', slain by '+f.name+'.');fall(r.t,cause);log(r.t,' fell in ',gd(room.name),' to '+f.name+'.')}
     out.push(r)}
   return {fell,hits:out.filter(x=>!x.miss).length,misses:out.filter(x=>x.miss).length}}
-function outcome(sc){const g=grp();if(!g)return '';const cr=g.crawl,room=roomsOf()[cr.i];cr.stats.rounds++;let tail;
+function outcome(sc){const g=grp(sc);if(!g)return '';const cr=g.crawl,room=roomsOf(g)[cr.i];cr.stats.rounds++;let tail;
   const foes=liveFoes(cr);
-  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP/roomsOf().length))}
+  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP/roomsOf(g).length))}
     if(sc.beats.some(b=>b.k==='retreat'))tail+=' Those who fell back come forward again.';
-    if(cr.i+1>=roomsOf().length){cr.end='clear';cr.foes=null}
+    if(cr.i+1>=roomsOf(g).length){cr.end='clear';cr.foes=null}
     else{cr.i++;cr.foes=null;cr.rd=0;cr.gap=CRAWL.GAP;tail+=' The way on is open.'}
     return tail}
   const live=members(g);
@@ -159,38 +169,41 @@ function outcome(sc){const g=grp();if(!g)return '';const cr=g.crawl,room=roomsOf
   const r=strikeBack(g,room,cr,false);
   tail=foes.length+' of them stand'+(foes.length===1?'s':'')+'. '+(r.hits+r.misses?r.hits+(r.hits===1?' blow lands, ':' blows land, ')+r.misses+(r.misses===1?' misses.':' miss.'):'')+(r.fell.length?' '+r.fell.map(x=>x.name).join(' and ')+' falls.':'');
   if(!members(g).length){cr.end='wiped';return tail}
-  cr.rd++;if(cr.rd>=(room.rounds||CRAWL.ROUNDS)){cr.end='retreat';cr.driven=true;tail+=' They cannot win this room; the party is driven back up the stair.'}
+  cr.rd++;if(cr.rd>=(room.alvl!=null&&cr.cap?cr.cap:room.rounds||CRAWL.ROUNDS)){cr.end='retreat';cr.driven=true;tail+=' They cannot win this room; the party is driven back up the stair.'}
   return tail}
 
 setSceneKind('crawl',{options,reflex,apply,outcome});
 
 // ---- the driver, once per step while the group is inside (called from dungeon.js dungeonCheck) ----
-function leave(g){for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6}}
+function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;a.x=D.x+(rnd()-.5)*1.5;a.y=D.y+.5+rnd()*.6}}
+const endGroup=g=>{if(g.site!=null){const D=siteById(g.site);if(D)D.group=null}else CRYPT.group=null};
 const whoOf=g=>{const C=g.crawl&&companyById(g.crawl.co);return {t:g.name||(C?C.name:'The company'),c:'f'+g.fac}};
 function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats;leave(g);
+  if(g.site!=null){if(SITE_END)SITE_END(g,cr.end==='clear'?'clear':cr.driven?'driven':'withdrawn');tally(cr.end==='clear'?'clears':cr.driven?'driven':'withdrawn',g,cr);endGroup(g);return st}
   if(cr.end==='clear'){log(who,' cleared ',gd(CRYPT.name),' room by room and destroyed ',gd(CRYPT.boss),'!');
     if(first('crypt:f'+g.fac))timeline('crypt',who,' cleared ',gd(CRYPT.name),' for the first time.');
     payClear(g,CRAWL.CLEAR_BONUS)}
   else{const names=g.mem.filter(living); // the fill-ins too
-    log(who,cr.driven?' were driven back from ':' withdrew from ',gd(CRYPT.name),' with the ',gd(roomsOf()[cr.i].name),' unbeaten.');
+    log(who,cr.driven?' were driven back from ':' withdrew from ',gd(CRYPT.name),' with the ',gd(roomsOf(g)[cr.i].name),' unbeaten.');
     for(const a of names){record(a,cr.driven?'Driven back from ':'Withdrew from ',gd(CRYPT.name),'.');goHome(a)}}
   tally(cr.end==='clear'?'clears':cr.driven?'driven':'withdrawn',g,cr);
   CRYPT.group=null;return st}
 // Called when the group has no one left (everyone fell): the wipe, at the table's dice.
-export function crawlLost(g){const who=whoOf(g);
-  for(const a of g.mem)if(living(a)){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6;record(a,'Came up the stair alone from ',gd(CRYPT.name),'.');goHome(a)} // fill-ins who rode along with a crew that fell
-  log(who,' was lost in ',gd(CRYPT.name),'. No one came back up the stair.');timeline('death',who,' was lost in ',gd(CRYPT.name),' to the last man.');
+export function crawlLost(g){const who=whoOf(g),D=dunOf(g);
+  for(const a of g.mem)if(living(a)){a.hidden=false;a.x=D.x+(rnd()-.5)*1.5;a.y=D.y+.5+rnd()*.6;record(a,'Came up the stair alone from ',gd(D.name),'.');goHome(a)} // fill-ins who rode along with a crew that fell
+  log(who,' was lost in ',gd(D.name),'. No one came back up the stair.');timeline('death',who,' was lost in ',gd(D.name),' to the last man.');
+  if(g.site!=null&&SITE_END)SITE_END(g,'wiped');
   tally('wipes',g,g.crawl)}
 // The Fellowship's crawl record (slotted().crawl: runs, clears, driven back, withdrawn, wipes, deaths, rooms won), for the sim summary and the checks.
 function tally(k,g,cr){const F=companyById(cr.co)||slotted();if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
-  C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.rooms+=cr.end==='clear'?roomsOf().length:cr.i;C.deaths+=(cr.crew!=null?cr.crew:g.mem0)-members(g).length}
-function tick(g,dt){const cr=g.crawl;
-  if(S.table)return;                                  // a scene (the stair, or a room) is open: the table runs it
+  C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.rooms+=cr.end==='clear'?roomsOf(g).length:cr.i;C.deaths+=(cr.crew!=null?cr.crew:g.mem0)-members(g).length}
+export function crawlTick(g,dt){const cr=g.crawl;
+  if(g.site!=null?sceneFor(companyById(cr.co)):S.table)return; // a scene (the stair, or a room) is open: the table runs it (a site: its company's scene)
   if(!g.tSite)return;                                 // the stair scene (sim/table.js tableTick) comes first
-  if(cr.end==='wiped'){crawlLost(g);CRYPT.group=null;return}
+  if(cr.end==='wiped'){crawlLost(g);endGroup(g);return}
   if(cr.end){finish(g);return}
   if(cr.gap>0){cr.gap-=dt;return}
-  if(!members(g).length){crawlLost(g);CRYPT.group=null;return}
+  if(!members(g).length){crawlLost(g);endGroup(g);return}
   const sc=openRound(g);if(!sc)return;
 }
-setCrawlHook({start:startCrawl,tick,lost:crawlLost});
+setCrawlHook({start:startCrawl,tick:crawlTick,lost:crawlLost});

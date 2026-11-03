@@ -39,6 +39,16 @@ export const PRICES = {
 // A dated snapshot (gpt-4o-2024-08-06) is priced as its family when the table has no row for the snapshot itself.
 export const priceFor = model => {const m = String(model || ''); return PRICES[m] || PRICES[m.replace(/-\d{4}-\d{2}-\d{2}$/, '')] || null};
 // -> number, or null when the model is not in the table (the caller reports 'unknown').
+// The picker list (#677): with an allow list (OPENAI_MODELS) exactly those the key can use, in the order given, the rest
+// reported as dropped; without one the key's chat models cheapest first (input + output price), unpriced last.
+// prices: {id: {in, out}} per 1M tokens for the listed models that have a row, for the picker's labels (OpenAI only).
+export function shapeList(models, allow = null, priceOf = priceFor) {
+  const have = new Set(models), dropped = allow && allow.length ? allow.filter(m => !have.has(m)) : [];
+  let list = allow && allow.length ? allow.filter(m => have.has(m)) : models.slice();
+  if (!(allow && allow.length)) { const cost = m => { const p = priceOf(m); return p ? p.in + p.out : Infinity }; list = list.map((m, i) => [m, i]).sort((a, b) => cost(a[0]) - cost(b[0]) || a[1] - b[1]).map(x => x[0]) }
+  const prices = {}; for (const m of list) { const p = priceOf(m); if (p) prices[m] = {in: p.in, out: p.out} }
+  return {models: list, dropped, prices: priceOf === priceFor ? prices : null};
+}
 export const costOf = (model, inTok, outTok) => {const p = priceFor(model); return p ? (inTok * p.in + outTok * p.out) / 1e6 : null};
 
 // Chat-capable models out of GET /models (which also lists embeddings, speech, images, moderation ...).
@@ -70,7 +80,7 @@ export const hfAdapter = (o = {}) => openaiAdapter({...HF_OPTS, ...o});
 
 export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel = null, fetchImpl = globalThis.fetch, statusTtl = 60000,
   name = 'openai', label = 'OpenAI', keyName = 'OPENAI_API_KEY', free = false, sendEffort = true, tokensField = 'max_completion_tokens', modelFilter = isChatModel, pricesSource = PRICES_SOURCE,
-  costField = null, models: curated = null, note: statusNote = null} = {}) {
+  costField = null, models: curated = null, note: statusNote = null, allow = null} = {}) {
   const base = String(baseUrl || OPENAI_URL).replace(/\/+$/, '');
   const noEffort = new Set(); // models that rejected reasoning_effort
   let cached = null, cachedAt = 0, verified = null; // verified: a curated list after its one tiny call per model (kept for the adapter's life)
@@ -163,7 +173,8 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
         let j = null; try {j = await r.json()} catch {}
         if (!r.ok) throw apiError(r.status, j, r.headers);
         const models = (Array.isArray(j && j.data) ? j.data : []).map(m => m && m.id).filter(id => typeof id === 'string' && modelFilter(id)).sort();
-        cached = {ok: true, models, default: defaultModel || null, ...(defaultModel ? {} : {note: 'pick a model (' + keyName.replace(/_(API_KEY|TOKEN)$/, '') + '_MODEL sets a default)'})};
+        const listed = shapeList(models, allow);
+        cached = {ok: true, models: listed.models, ...(listed.prices ? {prices: listed.prices} : {}), ...(listed.dropped.length ? {dropped: listed.dropped} : {}), default: defaultModel || null, ...(defaultModel ? {} : {note: 'pick a model (' + keyName.replace(/_(API_KEY|TOKEN)$/, '') + '_MODEL sets a default)'})};
       } catch (e) {
         cached = {ok: false, models: [], default: defaultModel || null, error: e.name === 'AbortError' ? 'not reachable (timeout)' : e.kind ? e.message.replace(name + ': ', '') : 'not reachable (' + scrub(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
       } finally {clearTimeout(t)}

@@ -78,6 +78,7 @@ import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName,roundEnd,stunCheck,ca
 import {condOn,condsOf,clearRounds} from './eff.js';
 import {CONDITIONS} from '../data/moves.js';
 import {socialSkill,trained} from './abilities.js';
+import {PICKUP_MS,callDeadline,goneEpoch} from './dmreflex.js'; // the DM call budget counts from pickup (#680)
 
 export const TABLE={
   mode:'auto',     // 'auto' (the trigger rules) or 'off' (Watch mode: never a scene); the View group switch
@@ -90,6 +91,9 @@ export const TABLE={
   outcomeS:1.8,    // real seconds the outcome stays before the world runs on
   RESCUE:.25,      // a member below this share of max HP in a fight is a rescue moment
   dmMs:6000,       // real milliseconds the DM agent has for an at-the-table call in a scene it staged (#132); then the scripted DM fills it
+                   // (#680: counted from the moment its runner first reads the call, never past dmMs + pickupMs from the post)
+  pickupMs:PICKUP_MS, // real ms a posted call may wait for a runner to pick it up before its own budget starts (#680)
+  frameMs:8000,    // ... the budget of the frame call of session zero and of a newcomer's arrival (the owner waits for those)
   step:'off',      // the watcher's round pace in a paused combat scene (#285): 'off' (rounds run on), 'hold' (wait after each
                    // round until Next round, stepNext()), 'auto' (wait stepS real seconds, or Next round). Only a paused scene
                    // at 1x ever holds, so headless runs, 3x/8x and Watch mode never do; a hold rolls no dice.
@@ -152,7 +156,8 @@ const mobName=m=>m.kind==='boss'?m.name:m.elite||m.named?m.name:MOBS[m.type]?MOB
 const plain=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join('');
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 // Private LCG for line picks: the gameplay RNG is never touched by flavour.
-let seed=0x1f2e3d4c;const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+const SEED0=0x1f2e3d4c;let seed=SEED0;export const resetTableSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
+const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
 export const tableOn=()=>(!!slotted()||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
 // The scene's company and its members. The Fellowship keeps its slot order (slotHeroes(slotted())); any other company its join order.
@@ -166,6 +171,9 @@ const scMem=sc=>memOf(sceneCompany(sc));
 // only swap the autopilot's cautious reflexes for the table's and stop the clock for nothing. The Fellowship keeps
 // its reflex-only scenes (its seeded hashes and record count on them).
 const atTable=C=>!!C&&(C===slotted()||agentsDecide(memOf(C)));
+export const companyAtTable=atTable; // sim/sites.js (#69): a site's crawl runs at the table only for a company with the say
+// Who is down in the dungeon a crawl scene belongs to: a DM-made site's group (ctx.site, #69) or the Crypt's.
+const dunMem=ctx=>{const id=ctx&&ctx.site;if(id!=null){const D=((S.sites&&S.sites.list)||[]).find(x=>x.id===id);return D&&D.group?D.group.mem:[]}return CRYPT.group?CRYPT.group.mem:[]};
 // Why a company may not put something to a vote at the table: a solo has no one to ask. null = it may.
 export function voteRefusal(C){return C&&!C.slots&&isSolo(C)?SOLO_VOTE:null}
 setSpeedSource(()=>TABLE.speed);
@@ -290,7 +298,7 @@ export function scaleElite(F,L,ctx){const m=ctx&&ctx.mob!=null?S.mobs.find(x=>x.
 function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||sceneFor(F))return null;const all=PLAY[kind]==='all';
   if(kind==='decision'&&voteRefusal(F))return null; // a solo has no one to vote with (#440)
   if(!atTable(F))return null; // no agent of this company has the say: it plays on by reflex (#440)
-  const L=(all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||(CRYPT.group&&CRYPT.group.mem.includes(a)))).filter(a=>!(ctx.skip||[]).includes(a.id)); // skip: the newcomer of an arrival (#452), voiced by the DM
+  const L=(all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||dunMem(ctx).includes(a))).filter(a=>!(ctx.skip||[]).includes(a.id)); // skip: the newcomer of an arrival (#452), voiced by the DM
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,company:F.id,kind,title:clean(title,80),frame,ids:(all?L:initiative(L)).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin),...(all?{all:true,w:{}}:{})};
   if(kind==='elite')scaleElite(F,L,ctx);
@@ -419,9 +427,18 @@ function runAll(sc,dt,instant){
 // the scripted DM's fill (at once at 3x/8x, when the seat is empty or the DM keeps missing). True = waiting.
 function callWait(sc,dt,instant){const H=dmOf(sc);if(!H)return false;
   for(const c of sc.calls){if(c.done)continue;
-    if(!instant&&sc.pause&&H.live(sc)){c.t+=dt;if(c.t*1000<TABLE.dmMs)return true;sc.dmMiss=(sc.dmMiss||0)+1}
+    if(!instant&&sc.pause&&(H.live(sc)||callPicked(c))){c.t+=dt;if(c.t<callEnd(c))return true;sc.dmMiss=(sc.dmMiss||0)+1}
     H.fill(sc,c);dt=0}
   return false}
+// A DM call's clock (#680), in the scene's seconds (c.t runs only while the DM is waited for): its budget (c.ms, else
+// TABLE.dmMs) counts from the moment a runner first read it (c.seen, table_call), capped at budget + pickupMs from the post.
+export const callMs=c=>c&&c.ms>0?c.ms:TABLE.dmMs;
+export const callEnd=c=>callDeadline(0,callMs(c)/1000,c.seen,TABLE.pickupMs/1000);
+export const callLeft=c=>Math.max(0,Math.round((callEnd(c)-(c.t||0))*10)/10);
+// A runner read the call (table_call): its budget starts now. A picked-up call is waited for to its deadline even while the
+// runner is busy answering (not polling), unless the runner went away since (dmreflex gone()).
+export function callSeen(c){if(c&&c.seen==null){c.seen=c.t||0;c.ep=goneEpoch()}}
+const callPicked=c=>c.seen!=null&&c.ep===goneEpoch();
 const frameCalls=sc=>{const H=dmOf(sc);if(H&&H.onFrame&&!sc.framed){sc.framed=true;H.onFrame(sc)}};
 
 // ---- the outcome ----
@@ -588,7 +605,7 @@ export function bannerOf(sc=S.table){if(!sc)return null;const cur=byId(sc.ids[sc
   const hold=holding(sc)?{round:sc.rd,auto:TABLE.step==='auto',left:TABLE.step==='auto'?Math.max(0,Math.ceil(TABLE.stepS-sc.sh.t)):null}:null;
   if(sc.phase==='frame')line='The DM is setting the scene…';
   else if(hold)line='Round '+hold.round+' is done · '+(hold.auto?'the next round in '+hold.left+' s':'Next round when you are ready');
-  else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'||pc.kind==='oath'?'giving them a voice':pc.kind==='frame'?'setting the table':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.max(0,Math.ceil(TABLE.dmMs/1000-pc.t))+' s)';
+  else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'||pc.kind==='oath'?'giving them a voice':pc.kind==='frame'?'setting the table':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.ceil(callLeft(pc))+' s)';
   else if(sc.phase==='turn'&&together(sc)){const n=answered(sc),held=n.wait.find(b=>b.player&&!reflexMay(b)&&ownerHeld(b)),w0=n.wait.reduce((m,b)=>Math.max(m,(sc.w[b.id]&&sc.w[b.id].t)||0),0);
     line=!n.wait.length?'Everyone has answered.':n.done+'/'+n.of+' answered · waiting for '+n.wait.map(b=>b.name).join(', ')+(held?' ('+held.name+' has no runner: Restart runner, or Resume without it)':w0*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-w0))+' s before reflexes)':'')}
   else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]&&!reflexMay(cur)?(ownerHeld(cur)?cur.name+' has no runner: the table waits for you (Restart runner, or Resume without it)':cur.name+' is thinking…'+(sc.t*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-sc.t))+' s before reflexes)':'')):cur.name+' acts'}

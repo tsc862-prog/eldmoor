@@ -17,7 +17,7 @@ import {ZONES,CRYPT,LAIR,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
 import {maxHp} from './heroes.js';
 import {lookingFor} from './sighthero.js';
-import {gambitRec,firedFor} from './gambits.js'; // the rule autopilot fired (#617)
+import {gambitRec,firedFor,ownRule} from './gambits.js'; // the rule autopilot fired (#617)
 
 const byId=id=>S.agents.find(b=>b.id===id)||null;
 const zn=p=>ZONES[zoneAt(p.x,p.y)]||'the wilds';
@@ -48,7 +48,7 @@ function make(o){const p={kind:o.kind||'town',goal:o.goal||'',target:o.target||'
 
 // ---- agent-played heroes ----
 function agentPurpose(a){const cmd=a.pq&&a.pq.length?a.pq[0]:null,auto=a.playIdle,adv=advOf(a);
-  const g=auto&&firedFor(a,cmd)&&gambitRec(a),gl=g?' (gambit #'+g.last.id+')':''; // which of its rules autopilot is following (#617)
+  const g=auto&&firedFor(a,cmd)&&gambitRec(a),gl=g?(ownRule(a,g.last.id)?' (by its own rule #':' (gambit #')+g.last.id+')':''; // which of its rules autopilot is following (#617)
   const why=w=>auto?'autopilot'+(cmd&&cmd.auto?': '+autoWhy(cmd.auto):w?': '+w:'')+gl:w||(cmd?'its agent’s order':'');
   if(a.state==='fight'&&a.target)return fightP(a,auto?'autopilot: fighting back':a.target.target===a?'attacked':'its agent’s call');
   if(cmd&&cmd.kind==='follow'){const b=byId(cmd.id);if(b)return followP(a,b,auto?'autopilot':'its agent’s order')}
@@ -88,7 +88,8 @@ function scriptedPurpose(a,agent){const c=town(a),adv=advOf(a);
   case 'duel':if(a.target)return make({kind:'fight',goal:'Duelling',target:a.target.name,why:a.nemesis&&a.nemesis[a.target.id]?'a blood debt':'a chance meeting on the road'});break;
   case 'assist':return make({kind:'fight',goal:'Rushing to help',target:a.target?a.target.name:'a guildmate',why:'a guildmate under attack',to:a.target?{x:a.target.x,y:a.target.y,label:a.target.name,mark:'foe'}:null});
   case 'raid':return make({kind:'raid',goal:'Raiding',target:'Kragmaw',why:'the wyrm’s hoard',to:LAIR?{x:LAIR.x,y:LAIR.y,label:'Kragmaw’s lair',mark:'foe'}:null});
-  case 'dungeon':return a.hidden?make({kind:'delve',goal:'Delving',target:CRYPT.name,why:'toward '+CRYPT.boss})
+  case 'dungeon':{const st=a.siteIn!=null&&S.sites?S.sites.list.find(x=>x.id===a.siteIn):null;if(st&&a.hidden)return make({kind:'delve',goal:'Delving',target:st.name,why:'toward '+st.boss})} // a DM-made site (#69)
+    return a.hidden?make({kind:'delve',goal:'Delving',target:CRYPT.name,why:'toward '+CRYPT.boss})
     :make({kind:'wait',goal:'Waiting for a group',target:CRYPT.name,why:'a Crypt run',wait:{x:CRYPT.x,y:CRYPT.y,label:CRYPT.name},to:{x:CRYPT.x,y:CRYPT.y,label:CRYPT.name,mark:'place'}});
   case 'camp':return make({kind:'rest',goal:'Resting at camp',target:zn(a),why:a.playDoing&&!a.player?a.playDoing:'the company camps'});
   case 'regroup':return make({kind:'flee',goal:'Pulling back',target:a.dest?zn(a.dest):'',why:'after a skirmish',to:a.dest?{x:a.dest.x,y:a.dest.y,label:'regroup',mark:'place'}:null});

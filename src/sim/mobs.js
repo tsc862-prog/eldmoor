@@ -13,6 +13,7 @@ import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {pop} from './effects.js';
 import {moveTo,agentDie} from './heroes.js';
+import {downHit,foeOnDowned} from './downed.js'; // the downed (#626): a blow is a failed save; standing heroes first
 import {actHurt} from './actlog.js';
 import {dmgTaken} from './stats.js';
 import {sightMul} from './weather.js';
@@ -82,12 +83,12 @@ export function ecologyTick(dt){const E=S.eco;
 const MOB_HIT=1.35; // #154: mobs from level 7 bite 1.35x (deaths floor); ramps in from level 3 so level 1-3 heroes are not hit harder
 const hitRamp=m=>1+(MOB_HIT-1)*Math.min(1,Math.max(0,(m.lvl-3)/4));
 const unitOf=m=>(3+m.lvl*2)*m.hit*hitRamp(m);
-function hurt(t,m,dm){if(dm<=0||t.state==='dead'||t.state==='ghost')return;if(inSlots(t))dm/=hitRamp(m); // the Fellowship keeps the old bite (#154: the world is deadlier, the story is not ground down)
+function hurt(t,m,dm,crit){if(dm<=0||t.state==='dead'||t.state==='ghost')return;if(t.state==='downed'){downHit(t,m,crit);return}if(inSlots(t))dm/=hitRamp(m); // the Fellowship keeps the old bite (#154: the world is deadlier, the story is not ground down)
   dm=Math.max(1,Math.round(dm*dmgTaken(t)));t.hp-=dm;actHurt(t,m,dm);pop(t.x,t.y-.6,String(dm),'#ff6a5a');
   if(t.hp<=0){if(m.elite)S.eco.stats.eliteDeaths++;agentDie(t,m)}}
 // One bite at the Table (sim/tableround.js, #276): the creature's own blow (variance, crit, the Fellowship's cut) through
 // hurt(); mul scales it (a natural 20). Returns the damage dealt.
-export function mobBlow(m,t,mul=1){const h=t.hp;hurt(t,m,unitOf(m)*(.8+rnd()*.4)*(rnd()<blk(m).crit?1.6:1)*mul);return Math.max(0,Math.round(h-Math.max(0,t.hp)))}
+export function mobBlow(m,t,mul=1){const h=t.hp,v=.8+rnd()*.4,cr=rnd()<blk(m).crit;hurt(t,m,unitOf(m)*v*(cr?1.6:1)*mul,cr);return Math.max(0,Math.round(h-Math.max(0,t.hp)))}
 const alliesHurt=m=>nearMobs(m.x,m.y,6,o=>o!==m&&o.alive&&!o.gone&&o.hp<o.maxhp*.5)[0]||null;
 const packNear=m=>nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&(o.target||m.target)).length>0;
 const liveAdds=m=>S.mobs.reduce((n,o)=>n+(o.add&&o.parent===m.id&&o.alive&&!o.gone?1:0),0);
@@ -133,14 +134,15 @@ export function updMob(m,dt){
   eliteSight(m,dt); // Chronicler: first hero within sight of a living elite (sim/narrator.js)
   m.cd-=dt;for(const id in m.abcd)m.abcd[id]-=dt;if(m.frenzy>0)m.frenzy-=dt;const t=m.target;
   if(m.fled>0){m.fled-=dt;if(t){const dx=m.x-t.x,dy=m.y-t.y,d=Math.hypot(dx,dy)||1;moveTo(m,m.x+dx/d*3,m.y+dy/d*3,dt,2.1)}m.hpl=m.hp;return}
-  if(t){const engaged=(t.state==='fight'&&(t.target===m||m.pack))||(t.state==='hunt'||t.state==='travel');
+  if(t&&t.state==='downed'&&foeOnDowned(m)!==t){m.hpl=m.hp;return} // its prey is down: someone standing first (sim/downed.js); next step it goes for them
+  if(t){const engaged=(t.state==='fight'&&(t.target===m||m.pack))||(t.state==='hunt'||t.state==='travel')||t.state==='downed'; // a downed prey with no one else about is struck where it lies
     if(t.state==='ghost'||t.state==='dead'||!engaged||dist(m,t)>10||held(t)){m.target=null;m.pack=false;m.dest={...m.home};m.hpl=m.hp;return} // a hero held in a scene (#518) is let be
-    if(t.state!=='fight'){t.state='fight';t.target=m;t.dest=null}
+    if(t.state!=='fight'&&t.state!=='downed'){t.state='fight';t.target=m;t.dest=null}
     const d=dist(m,t);m.face=t.x>m.x?1:-1;
     if(d>B.reach){moveTo(m,t.x,t.y,dt,2.1);m.hpl=m.hp;return}m.moving=false;
     for(const id of m.ab||[])if(m.abcd[id]==null)m.abcd[id]=ABILITIES[id].cd*(.4+rnd()*.4); // first use a little way into the fight
     if(B.beh.flee&&!m.fledOnce&&!m.elite&&m.hp<m.maxhp*B.beh.flee){m.fledOnce=true;m.fled=2.5;pop(m.x,m.y-.8,'FLEES','#ffb060');m.hpl=m.hp;return}
-    if(m.cd<=0&&!useAbility(m,t)){m.cd=m.acd*(m.frenzy>0?.8:1);hurt(t,m,unitOf(m)*(m.frenzy>0?1.35:1)*(.8+rnd()*.4)*(rnd()<B.crit?1.6:1))}
+    if(m.cd<=0&&(t.state==='downed'||!useAbility(m,t))){m.cd=m.acd*(m.frenzy>0?.8:1);const v=.8+rnd()*.4,cr=rnd()<B.crit;hurt(t,m,unitOf(m)*(m.frenzy>0?1.35:1)*v*(cr?1.6:1),cr)} // the downed get a plain blow, not an ability
     m.hpl=m.hp;return}
   m.hp=Math.min(m.maxhp,m.hp+m.maxhp*(m.elite?.01:.1)*dt); // elites mend slowly: hit-and-run heroes can wear one down
   if(LOD.on&&!m.elite&&!heroCellsNear(m.x,m.y,LOD.SLEEP_R)){m.moving=false;m.hpl=m.hp;return} // #433 LOD (off by default): asleep, nobody near

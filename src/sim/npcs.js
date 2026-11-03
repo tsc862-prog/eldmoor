@@ -34,7 +34,7 @@ export const WALK=1.6,STROLL=1.1,GREET_R=2,BLESS_R=3,HEAR=7,COOL=30,URGENT=3,BUB
   REGREET=10080,GREET_P=.12,SONG_GAP=90,NEWS_TTL=2880;
 
 // Private LCG: choosing lines, stroll points and pauses never perturbs the gameplay RNG.
-let seed=0x3c6ef372;
+const SEED0=0x3c6ef372;let seed=SEED0;export const resetNpcSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
 const fill=(s,p,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?p.name:k==='town'?p.town:ctx[k]!=null?String(ctx[k]):k)
