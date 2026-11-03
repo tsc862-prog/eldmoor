@@ -9,6 +9,7 @@ import {S} from '../sim/index.js';
 import {dmSeatOn,dmAgentView,DMA} from '../sim/dmagent.js';
 import {focusStats} from '../sim/dmfocus.js';
 import {stagedView} from '../sim/staged.js';
+import {prepView} from '../sim/prep.js'; // the DM's prep before the table opens (#437)
 import {dmLink,dmRunnerTag,dmReadyWord,LINK_TEXT} from './player-bridge.js';
 const READY_TEXT={claimed:'claimed',warming:'warming up',ready:'ready',failed:'warm-up failed'}; // the start gate (#222)
 import {dmRunnerControl,dmRunnerSig,runnerByKey,DONE_STATE} from './runners.js';
@@ -33,7 +34,7 @@ export function dmFrameData(){const open=dmSeatOn(),r=runnerByKey('dm'),on=!!(r&
   const v=dmAgentView()||{day:{}},d=v.day||{},today=d.d===Math.floor(S.gameMin/1440)?d:{},sv=stagedView(),fs=focusStats(),D=S.dmAgent;
   const notes=D&&D.notes?Object.values(D.notes).reduce((n,a)=>n+(a?a.length:0),0):0;
   const link=dmLink();
-  return {open:true,link,linkText:LINK[link]||LINK_TEXT[link]||link,mind:(dmRunnerTag()||'')+(dmReadyWord()?(dmRunnerTag()?' · ':'')+READY_TEXT[dmReadyWord()]:''),ready:dmReadyWord(),now:nowLine(r),last:r&&r.lastTurnAgo!=null&&!DONE_STATE[r.state]?r.lastTurnAgo:null,
+  return {open:true,link,linkText:LINK[link]||LINK_TEXT[link]||link,mind:(dmRunnerTag()||'')+(prepView().state==='running'?(dmRunnerTag()?' · ':'')+'preparing':dmReadyWord()?(dmRunnerTag()?' · ':'')+READY_TEXT[dmReadyWord()]:''),ready:dmReadyWord(),prep:prepView().state==='running',now:nowLine(r),last:r&&r.lastTurnAgo!=null&&!DONE_STATE[r.state]?r.lastTurnAgo:null,
     turns:r?r.turns:0,cost:r?r.cost:0,
     narr:(today.narr||0)+'/'+DMA.NARRATE_PER_DAY,levers:(today.pulls||0)+'/'+DMA.PULLS_PER_DAY,scenes:sv.today,
     staged:sv.cur?sv.cur.title+' · '+sv.cur.kind+(sv.cur.hours_left!=null?' · '+sv.cur.hours_left+' h left':''):'',

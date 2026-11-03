@@ -9,7 +9,7 @@
 //   - failures are recorded for the UI (requests per minute, recent failures);
 //   - the scripted path is deterministic with a dead relay.
 // Usage: npm run ratecheck     (RATE_BOUND=n to change the bound; --count prints the healthy run only)
-import {spawnSync} from 'node:child_process';
+import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const DAYS = 6, SPEED = 8, DAY_SIM = 240; // one game day is 240 sim seconds
@@ -69,17 +69,18 @@ if (phase) {
 
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
-const run = p => {
-  const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--phase', p], {encoding: 'utf8', maxBuffer: 1 << 26});
-  const line = (r.stdout || '').split('\n').find(l => l.startsWith('RESULT '));
-  if (!line) {console.error(r.stderr || r.stdout); throw new Error('phase ' + p + ' failed')}
-  return JSON.parse(line.slice(7));
-};
+// The phases are independent processes: all four start at once (CI runners have several cores), each awaited where it is read.
+const phases = {};
+const run = p => phases[p] || (phases[p] = new Promise((res, rej) => {
+  const k = spawn(process.execPath, [fileURLToPath(import.meta.url), '--phase', p.replace(/2$/, '')], {stdio: ['ignore', 'pipe', 'pipe']}); let out = '', err = '';
+  k.stdout.on('data', d => out += d); k.stderr.on('data', d => err += d);
+  k.on('close', () => {const line = out.split(String.fromCharCode(10)).find(l => l.startsWith('RESULT ')); if (!line) {console.error(err || out); rej(new Error('phase ' + p + ' failed'))} else res(JSON.parse(line.slice(7)))})}));
+for (const p of ['ok', '429', 'fp', 'fp2']) run(p).catch(() => {});
 const by = l => {const o = {}; for (const e of l) o[e[0]] = (o[e[0]] || 0) + 1; return o};
 const BOUND = +process.env.RATE_BOUND || 30;
 
 console.log('healthy relay, ' + DAYS + ' game days at ' + SPEED + 'x');
-const h = run('ok'), mins = h.sim / SPEED / 60, rate = h.log.length / mins, k = by(h.log);
+const h = await run('ok'), mins = h.sim / SPEED / 60, rate = h.log.length / mins, k = by(h.log);
 console.log('  requests ' + h.log.length + ' in ' + mins.toFixed(1) + ' min of play -> ' + rate.toFixed(1) + '/min', JSON.stringify(k), '(founding burst ' + h.found + ')');
 if (process.argv.includes('--count')) process.exit(0);
 ok(rate <= BOUND, 'request rate ' + rate.toFixed(1) + '/min stays under ' + BOUND + '/min');
@@ -93,7 +94,7 @@ ok(h.reask === false, 'a member with written sheets is not asked again');
 ok(h.totals.sent === h.log.length && h.rpm >= 0, 'the throttle counts every request (' + h.totals.sent + ')');
 
 console.log('relay answering 429');
-const f = run('429'), fk = by(f.log), fr = f.log.length / (f.sim / SPEED / 60);
+const f = await run('429'), fk = by(f.log), fr = f.log.length / (f.sim / SPEED / 60);
 console.log('  requests ' + f.log.length + ' -> ' + fr.toFixed(1) + '/min', JSON.stringify(fk));
 ok(fr <= BOUND, 'failing relay: rate ' + fr.toFixed(1) + '/min under the bound');
 const last = {}, gaps = {}; let minGap = 1e9;
@@ -108,6 +109,6 @@ ok(wr <= 5 * (DAYS + 2), 'failing relay: writing requests stay bounded (' + wr +
 ok(f.totals.failed > 0 && f.fails.length > 0 && /429/.test(f.fails[0].why), 'failures are recorded for the UI (' + f.totals.failed + ' failed, last: ' + (f.fails[0] ? f.fails[0].why : '-') + ')');
 
 console.log('determinism');
-ok(run('fp').fp === run('fp').fp, 'two scripted runs match');
+ok((await run('fp')).fp === (await run('fp2')).fp, 'two scripted runs match');
 console.log(fail ? fail + ' check(s) FAILED' : 'ratecheck passed');
 process.exit(fail ? 1 : 0);
