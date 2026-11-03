@@ -956,7 +956,7 @@ console.log('the Fellowship first');
   ok(f.reserveHeld && f.lastOk, 'one staged scene a day is kept for each company that has had none: ' + (f.err || f.reserveWhy));
   ok(f.pileSolo && f.pilePair, 'a staged fight or trap waits only for the targeted company\'s hurt members: ' + (f.err || f.pileWhy));
   const sv = kid2('--starve', 'STARVE');
-  ok(!sv.err && sv.worst <= 1440 && Object.keys(sv.by).length >= 3 && sv.starvedNow === 0, 'with three companies over 150 game hours the scripted DM never leaves one in the field unserved for a whole game day (longest ' + (sv.err || sv.worst + ' min, ' + sv.who) + ')');
+  ok(!sv.err && sv.worst <= 360 && Object.keys(sv.by).length >= 3 && sv.starvedNow === 0, 'with three companies over 150 game hours the scripted DM never leaves one in the field unserved for FOCUS.STARVE_MIN (360 game minutes; a starved company is served first, #530) (longest ' + (sv.err || sv.worst + ' min, ' + sv.who) + ')');
 }
 
 { // solo-sized jobs (issue #447): only while an agent solo exists, band-checked, paid less
