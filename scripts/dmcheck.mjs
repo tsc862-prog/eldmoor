@@ -129,6 +129,30 @@ const rng0 = seed, n0 = nums();
 for (const t of ['dm_status', 'read_timeline', 'read_chronicle', 'read_dm_log', 'fellowship_view', 'npcs', 'regions', 'hooks', 'levers', 'notes_read']) {r = dmAct(t, {n: 5}); ok(r.ok, `${t} reads (${JSON.stringify(r).length} chars)`)}
 r = dmAct('heroes_near', {near: S.fellowship.hall || 'Highgate'}); ok(r.ok && Array.isArray(r.heroes), `heroes_near ${r.place}: ${r.heroes && r.heroes.length} heroes`);
 ok(dmAct('heroes_near', {near: 'Nowhere-at-all'}).ok === false, 'heroes_near refuses an unknown place');
+{ // issue #427: hooks and npcs read a region as well as a town
+  const {CITY} = await import('../src/world/map.js');
+  const tc = CITY[0], tz = zoneAt(tc.gate.x, tc.gate.y), rn = ZONES[tz], logN = S.dmLog.length, log0 = S.dmLog[0], notesN = JSON.stringify(S.dmAgent && S.dmAgent.notes);
+  const hk = dmAct('hooks', {region: rn.toUpperCase()}), all = dmAct('hooks');
+  const want = all.open_jobs.filter(j => CITY.some(c => c.name === j.town && zoneAt(c.gate.x, c.gate.y) === tz) || j.region === rn).map(j => j.id).sort().join();
+  ok(hk.ok && hk.scope && hk.scope.region === rn && hk.scope.towns.includes(tc.name) && hk.open_jobs.map(j => j.id).sort().join() === want,
+    `hooks {region: ${rn}} lists the jobs of its towns (${hk.scope && hk.scope.towns.join(', ')}): ${hk.open_jobs && hk.open_jobs.length} of ${all.open_jobs.length}`);
+  const np = dmAct('npcs', {region: rn});
+  ok(np.ok && np.townsfolk.length > 0 && np.townsfolk.every(n => np.scope.towns.includes(n.town)) && np.wanderers.every(w => np.scope.towns.includes(w.where) || w.where === rn),
+    `npcs {region: ${rn}}: ${np.townsfolk && np.townsfolk.length} townsfolk and ${np.wanderers && np.wanderers.length} wanderers there`);
+  const wz = ZONES.findIndex((n, i) => !CITY.some(c => zoneAt(c.gate.x, c.gate.y) === i));
+  if (wz >= 0) {
+    const wn = dmAct('npcs', {region: ZONES[wz]}), wh = dmAct('hooks', {region: ZONES[wz]});
+    ok(wn.ok && wn.townsfolk.length === 0 && wn.scope.towns.length === 0 && wh.ok && wh.open_jobs.every(j => j.region === ZONES[wz]),
+      `a region with no town (${ZONES[wz]}) reads no townsfolk and only the jobs that lead into it (${wh.open_jobs.length})`);
+  }
+  const asTown = dmAct('hooks', {town: rn});
+  ok(asTown.ok && /is a region, not a town/.test(asTown.note) && asTown.scope.region === rn, 'a town value that names a region is read as the region, with a note');
+  ok(dmAct('npcs', {town: tc.name.toLowerCase()}).scope.town === tc.name, 'a town still reads as the town');
+  const bad = dmAct('npcs', {region: 'Lowmarkia'}), bad2 = dmAct('hooks', {town: 'Lowmarkia'});
+  ok(!bad.ok && ZONES.every(z => bad.error.includes(z)) && CITY.every(c => bad.error.includes(c.name)) && !bad2.ok && /town or region/.test(bad2.error),
+    'an unknown name refuses with the regions and towns it can read');
+  ok(S.dmLog.length === logN && S.dmLog[0] === log0 && JSON.stringify(S.dmAgent && S.dmAgent.notes) === notesN, 'region reads write no DM log entry and no note');
+}
 ok(seed === rng0 && nums() === n0, 'reads roll no dice and change no hero');
 const fv = dmAct('fellowship_view').fellowship;
 ok(fv && fv.members.length === 5 && fv.members.every(m => m.empty || ('persona' in m && 'memory_recent' in m)) && Array.isArray(fv.open_threads), 'fellowship_view: five members with persona, memories and open threads');
