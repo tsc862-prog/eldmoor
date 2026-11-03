@@ -28,8 +28,12 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   lever reasons, or another hero's journal, memories, persona, mind, narration or session; a claimed
   hero answers only its own runner; heroes have no DM tools and the DM no hero tools. The watcher
   (the owner's browser) still sees everything. See "In-game channels" below; `npm run channelcheck`.
-- **No build step required for the art.** All terrain and sprites are generated
-  in code (pixel arrays and procedural textures). No image assets yet.
+- **Generated art, procedural fallback, no build step to play.** Art is generated images under `assets/`
+  (PNGs plus `assets/index.json`, committed and served by Vite as static files) made offline by the Hugging Face
+  pipeline in `scripts/art/` (#177); every asset has a procedural fallback (the pixel arrays and procedural
+  textures in `src/render/`), so a missing or absent `assets/` never breaks a world and looks as before. The sim,
+  the map and its hash, lighting, weather, effects and the minimap stay procedural; `HF_TOKEN` is read only by
+  `scripts/art/gen.mjs`, never by the browser or the relay.
 - **Built to scale.** The world will grow 20-30x with several races and home
   towns per faction (see the scaling epic on GitHub). Never hard-code the number
   of zones, factions, cities or races; loop over the tables. Never assume a zone
@@ -143,6 +147,20 @@ other. The rules:
 - `npm run focuscheck`: guild focus (#6, `src/sim/guildfocus.js`): each guild's leader picks Delve (crypt), Wyrmhunt (raid), Wayfaring (DM hooks) or Warpath (PvP) from the guild's state, no dice; it multiplies or reorders existing rolls only, so `GF.ON=false` (or no guild focused) rolls exactly as before; the Fellowship's guild never takes one; changes go to the chronicle and timeline (GUILD).
 - `npm run archetypecheck`: Fellowship archetypes (#295, `src/data/archetypes.js`, `applyArchetype` in `src/sim/persona.js`): six archetypes picked on the setup page or the sheet, their stances toward each companion reaching prompts (#305), owner stances, no RNG.
 - `npm run personacheck`: agent-built personality (#409): the `self`/`become` tools, daily limits, owner pins, the persona history, relay writing never overwriting the hero's own words, the turn-header line and the standing-order block, a reflection that changes the persona, privacy, save/restore and old saves, no RNG.
+- Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, size, priority, prompt, seed, palette paths into
+  `src/render/palette.js`, the renderer hook naming its procedural fallback) and the candidate models (pixel-art LoRAs
+  on fal-ai through Hugging Face Inference Providers). `npm run art:daily` (`daily.mjs`; `-- --now` to run at once,
+  `--max N`, `ART_MAX_CALLS`, `--dry-run`) generates missing assets in priority order until the free allowance is used
+  up (402, a quota 429/403, rate headers at 0), into `assets/incoming/<date>/` with a contact sheet; state in
+  `assets/queue.json` (gitignored), one line a run in `logs/art.log` (the launcher's `s` shows it); refused models fall
+  through to the next candidate and the one that answers is pinned. `npm run art:accept -- <ids>|all` (`--reject`,
+  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scriptsartschedule.cmd [HH:MM]`
+  registers the daily Windows task. `npm run art:gen` generates straight into `assets/`, `npm run art:sheet` writes
+  the contact sheet. Post-processing (`post.mjs`, zero-dependency PNG codec `png.mjs`): background, downscale to the
+  pixel grid, quantise to the palette, outline. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until
+  loaded or when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names
+  the road, water and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against
+  a mock Hugging Face server.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player

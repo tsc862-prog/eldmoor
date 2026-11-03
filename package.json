@@ -61,6 +61,11 @@
     "bestiarycheck": "node scripts/bestiarycheck.mjs",
     "focuscheck": "node scripts/focuscheck.mjs",
     "questcheck": "node scripts/questcheck.mjs",
+    "artcheck": "node scripts/artcheck.mjs",
+    "art:gen": "node scripts/art/gen.mjs",
+    "art:daily": "node scripts/art/daily.mjs",
+    "art:accept": "node scripts/art/accept.mjs",
+    "art:sheet": "node scripts/art/sheet.mjs",
     "labelcheck": "node scripts/labelcheck.mjs"
   },
   "devDependencies": {

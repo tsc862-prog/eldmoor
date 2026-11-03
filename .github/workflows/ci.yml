@@ -68,6 +68,7 @@ jobs:
       - {name: Gathering nodes, run: npm run nodecheck}
       - {name: Recipes, run: npm run recipecheck}
       - {name: Professions, run: npm run professioncheck}
+      - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
       - {name: New World setup, run: npm run setupcheck}
 
   ui:
