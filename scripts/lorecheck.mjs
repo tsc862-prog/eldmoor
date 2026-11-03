@@ -29,6 +29,7 @@ const {speak} = await import('../src/sim/chat.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {ZONES, REGIONS, CRYPT, LANDMARKS, zoneAt, zonePoint, dist} = await import('../src/world/map.js');
 const {MOBS} = await import('../src/data/mobs.js');
+(await import('../src/sim/table.js')).TABLE.mode = 'off'; // a solo agent hero gets Table scenes (#440); this check is about lore, so the world never pauses for one
 const {homeOf} = await import('../src/data/races.js');
 
 let fail = 0;
