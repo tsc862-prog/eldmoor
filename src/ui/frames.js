@@ -29,7 +29,7 @@ import {mindOf,mindText} from './mindctl.js';
 import {mindLabel} from './mindlabel.js'; // the frame shows the mind; it is set in Members and minds (#145)
 import {effectChips} from './abilities.js';
 import {openSheet} from './sheet.js';
-import {runnerFor,stateLine} from './runners.js'; // the runner's state, on the mind dot's tooltip (#546: Start / Stop live in the Company tab)
+import {runnerFor,stateLine,leftOf} from './runners.js'; // the runner's state, on the mind dot's tooltip (#546: Start / Stop live in the Company tab)
 import {mountDmFrame,renderDmFrame} from './dmframe.js'; // the DM beside the party (owner request)
 import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
 import {agentReadyWord} from './player-bridge.js'; // the start gate (#222): claimed / warming / ready / failed
@@ -41,7 +41,7 @@ const mindLine=a=>{const w=a&&a.player&&a.state!=='dead'?agentReadyWord(a):null;
 export function mindDot(a){if(!a||a.state==='dead')return {k:'none',word:'',title:''};const m=mindOf(a),L=mindLabel(a);
   let k=m,word=MIND_WORD[m]||m;
   if(m==='agent'){const live=L.link==='connected'||L.link==='waiting'||L.link==='busy';k=!live?'reflex':a.playIdle?'autopilot':'agent';word=DOT_WORD[k]}
-  const r=a.player?runnerFor(a):null,rs=a.player?stateLine(r,'hero:'+a.id):'';
+  const r=a.player?runnerFor(a):null,lf=leftOf(r,a),rs=!a.player?'':lf?'the Fellowship runner is done with '+a.name+' ('+lf.why+'): no runner; restart it in the Company tab':stateLine(r,'hero:'+a.id); // #563: never its runner's live line for a member it let go
   return {k,word,title:word+': '+mindLine(a)+(rs?'\nRunner: '+rs:'')+'\n'+L.title}}
 const MIND_WORD={ai:'AI',quiet:'AI (quiet)',scripted:'Scripted'},DOT_WORD={agent:'Agent',autopilot:'Autopilot',reflex:'Reflex'};
 

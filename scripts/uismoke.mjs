@@ -223,7 +223,7 @@ console.log('Agents panel');
   ok(posts.some(p=>p.body.key===hk&&p.body.budget===.5),'a lower budget on a running runner is sent live');
   const row2=pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
   ok(/applies now/.test(row2.textContent),'the row says the change applies now');
-  const ts=row2.querySelectorAll('select').find(x=>x.dataset.agf==='turns');ok(!!ts&&ts.children.some(o=>o.value==='200'),'a turn cap picker up to the kind\'s cap');
+  const ts=row2.querySelectorAll('select').find(x=>x.dataset.agf==='turns');ok(!ts&&bs.children.some(o=>o.value==='5')&&/Budget/.test(row2.textContent),'no turn cap picker: the budget is the limit (owner, #563)');
   ok(!pop.querySelector('select[data-runturns]')&&!$('felbody').querySelector('select[data-runturns]'),'turn caps live only in the Agents panel');
   for(const f of document._ls.keydown||[])f({key:'Escape'});
   ok(pop.hidden&&btn.getAttribute('aria-expanded')==='false','Escape closes it')}

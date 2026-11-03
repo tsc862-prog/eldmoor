@@ -10,7 +10,9 @@ import {ollamaBusy} from './runners.js';
 
 // 'connected' | 'waiting' | 'none' | 'busy' (the local Ollama model is busy or loading) | the bridge's own state
 export function linkOf(a){const k=agentLink(a);return (k==='connected'||k==='waiting'||k==='none')&&ollamaBusy(a)?'busy':k}
-export const LINK_WORD={connected:'live',waiting:'waiting',none:'no runner',busy:'Ollama busy',connecting:'connecting',offline:'relay offline',off:'not connected'};
+// connected and waiting both read 'live' (#563): a runner holds the seat whether it is calling tools, thinking, between turns or
+// waiting for a Claude slot; the title tells which. One steady word while it is held.
+export const LINK_WORD={connected:'live',waiting:'live',none:'no runner',busy:'Ollama busy',connecting:'connecting',offline:'relay offline',off:'not connected'};
 const LINK_LONG={...LINK_TEXT,busy:'the local Ollama model is busy or loading; the runner is waiting for it'};
 
 export function mindLabel(a){

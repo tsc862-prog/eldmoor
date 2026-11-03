@@ -7,7 +7,7 @@
 //
 //   1. npm run relay   (+ npm run dev; in the game open the Dungeon Master panel and press "DM agent")
 //      or: node scripts/play-headless.mjs --dm --agents 0   (a Node world with the DM seat open, port 8789)
-//   2. npm run dm [-- --url http://127.0.0.1:8789] [--max-turns 12] [--budget 1.00] [--cadence evening]
+//   2. npm run dm [-- --url http://127.0.0.1:8789] [--budget 1.00] [--max-turns N] [--cadence evening]
 //
 // The runner claims the one DM seat at the relay (POST /play/claim {role:'dm'}, refreshed every
 // 10 s, released on exit; a second DM runner is refused) and every tool call names the role
@@ -17,13 +17,12 @@
 // the-table work). One model call at a time (the owner's API concurrency is low); a rate limit (429
 // or overloaded) backs off 30 s, 60 s, ... up to 10 min and retries the turn. Turns are also at least
 // --min-gap S real seconds apart (issue #126; default 20, AGENT_MIN_GAP), so a fast world (8x: a game day
-// in 30 s) gets a DM turn now and then, not back to back. A local (Ollama) DM runs until stopped unless
-// --max-turns is given; any DM stops after --max-fails N (default 5) failed or empty turns in a row.
+// in 30 s) gets a DM turn now and then, not back to back. Any DM runs until stopped (a paid one until its
+// --budget is spent; #563) unless --max-turns is given; any DM stops after --max-fails N (default 5) failed or empty turns in a row.
 // Session: logs/agents/dm.json (gitignored), resumed next run for the same world; --new sets it
 // aside in logs/agents/old/. Cost line per turn.
 //
-// Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (default 12 for Claude; a local
-// DM until stopped), --min-gap S, --max-fails N, --budget USD
+// Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (optional; default until stopped), --min-gap S, --max-fails N, --budget USD
 // (default 1.00, this run), --cadence evening|S, --tool-turns N (model calls per turn, default 16),
 // --provider anthropic|ollama (or DM_PROVIDER), --model (or DM_MODEL; default claude-sonnet-5-5, or the
 // Ollama default), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
@@ -70,6 +69,7 @@ export function dmSystemPrompt(st) {
     '- The scripted DM keeps posting jobs and running adventures beside you. Build on what it does; do not flood the boards.',
     '- Keep notes: open threads (unresolved things), characters (recurring people and their wants), plans (what you are setting up), secrets (what the heroes do not know yet). Read them back at the start of a turn and keep them current; they are your memory.',
     DM_MEMORY_ORDERS,
+    DM_SIGHT_ORDERS,
     DM_CAMPAIGN_ORDERS,
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
     '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
@@ -82,7 +82,7 @@ export function dmSystemPrompt(st) {
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '',
-    'Each turn: dm_status (read fellowship_needs first), notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, levers as needed), update notes, pull at most a few levers, and end with one short sentence of what you prepared.',
+    'Each turn: dm_status (read fellowship_needs first), hear (what they said aloud since you last listened), notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, levers as needed), update notes, pull at most a few levers, and end with one short sentence of what you prepared.',
   ].join('\n');
 }
 // Priorities (issue #165): the Fellowship first, then the overall world. The standing-orders line; withDmFellowshipOrders adds it to an older session's prompt.
@@ -111,13 +111,17 @@ export const withDmCallOrders = sys => /\bSend every call whole\b/.test(String(s
 // Searchable notes (issue #155): the DM's standing-orders line; withDmMemoryOrders adds it to an older session's prompt.
 export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything you want to find again, free-form (your own title, text and tags; about and section optional), recall by words, tag, about or id across all sections before you build on a person, place or thread, update_memory, forget, and pin the few that must never be archived. dm_status lists the notes that bear on the moment.';
 // Campaign seed: the notes start from the world's campaign file (docs/campaigns/<world>.md).
+// What the DM sees of the companies' life (#558): hear first, then the views; survey before placing; world_standing for the wider turns.
+export const DM_SIGHT_ORDERS = '- Listen before you act: dm_status unheard counts the lines the companies said aloud since your last hear; read hear first (what they plan, fear, ask for, joke about), then the views. fellowship_view, companies_view and heroes_near show what members carry (quest items, potions, gold), the quests they hold and what they know (carries, quests, knows): build on those, do not hand them what they already hold or warn them of what they know. A quiet turn is: hear, then one act or nothing. Before you place anything, survey {near} gives roads, landmarks and legal x,y spots that mark_place, place_person and stage_scene accept; a refusal about the ground means survey. world_standing is one read of the wider world (guild focus, rivalries, the wyrm, the Crypt, prices, conditions, the top heroes) for the turns after the companies have been served. You hear only what is said aloud in the world, never a journal, memories or thoughts.';
+export const withDmSightOrders = sys => /Listen before you act/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_SIGHT_ORDERS;
 export const DM_CAMPAIGN_ORDERS = '- Your notes start with a campaign seed (premise, threads, characters, plans, secrets): a starting point to adapt to the Fellowship, not a script; reveal it only through play. dm_status campaign says whether one was loaded.';
 export const withDmCampaignOrders = sys => /\bcampaign seed\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_CAMPAIGN_ORDERS;
 export const withDmMemoryOrders = sys => /\bYour notes are searchable\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_MEMORY_ORDERS;
 const notesNow = st => st && Array.isArray(st.relevant_notes) && st.relevant_notes.length ? ` Notes that may matter now: ${st.relevant_notes.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id}).` : '';
+const heardNote = st => st && st.unheard && st.unheard.total ? ` ${st.unheard.total} line${st.unheard.total === 1 ? '' : 's'} said aloud wait for you: read hear first.` : ' Nothing new was said aloud; a quiet turn is hear, then one act or nothing.';
 export const dmTurnPrompt = (turns, st) => turns === 0
-  ? 'You take the DM seat. Orient yourself: dm_status, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
-  : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign, the Fellowship first.${notesNow(st)}`;
+  ? 'You take the DM seat. Orient yourself: dm_status, hear, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
+  : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign, the Fellowship first.${heardNote(st)}${notesNow(st)}`;
 // Each turn starts with the Fellowship (issue #165): the status line and the first needs, then the wider world only if nothing is pending for them.
 export const fellowNow = st => {const n = st && st.fellowship_needs; if (!n) return companiesNow(st); return `Fellowship first: ${n.summary} ${(n.items || []).slice(0, 3).join(' ')} ${n.quiet ? 'Nothing is pending for them, so the wider world may have a turn after you have given them something to ride toward.' : 'Settle what is pending for them before you touch the wider world.'} `.replace(/\s+/g, ' ').trim() + ' ' + companiesNow(st)};
 // Every company a thread (#450): when other companies ride, the turn prompt names them neediest first (at most four) and why.
@@ -328,7 +332,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
+  sess.system = withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
