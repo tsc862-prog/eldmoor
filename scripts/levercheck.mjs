@@ -4,7 +4,7 @@
 //   - limits (max active, per game day, per region per day) and cooldowns reject;
 //   - out-of-band levels, non-walkable tiles, spots by a town gate, unknown parameters, a missing
 //     reason or an unknown caller reject, and every rejection is logged with its reason;
-//   - the stubs (custom_foe, create_site, start_event, nudge_relation) say "not available yet"
+//   - the stubs (nudge_relation) say "not available yet" (create_site is real since #69: npm run sitecheck)
 //     until another system provides them;
 //   - forbidden effects are impossible by construction: register() refuses a lever whose params
 //     name HP, XP, stats, class, loot, life or death, and pulling every lever leaves every hero's
@@ -144,9 +144,10 @@ rej('set_condition', {region: 1, kind: 'plague', strength: 9}, /strength must be
 rej('mark_place', {kind: 'ruin', at: S0[4]}, /reason/, 'missing reason', {by: 'agent', reason: ' '});
 rej('mark_place', {kind: 'ruin', at: S0[4]}, /caller/, 'unknown caller', {by: 'god', reason: 'because'});
 rej('teleport_hero', {}, /no such lever/, 'unknown lever');
-for (const st of ['create_site', 'nudge_relation']) rej(st, {}, /not available yet/, st + ' stub');
-provide('createSite', (p) => ({ok: true, effect: {stub: p.theme}}));
-{const x = pull('create_site', {theme: 'test', region: 0, band: 3}, by); ok(x.ok && x.effect.stub === 'test', 'a stub works once its system provides an implementation')}
+for (const st of ['nudge_relation']) rej(st, {}, /not available yet/, st + ' stub');
+provide('nudgeRelation', (p) => ({ok: true, effect: {stub: p.a}}));
+{const x = pull('nudge_relation', {a: 'test', b: 'other', delta: 1}, by); ok(x.ok && x.effect.stub === 'test', 'a stub works once its system provides an implementation')}
+rej('create_site', {theme: 'castle', region: 0}, /theme must be/, 'create_site (#69, sim/sites.js) validates its theme'); // its generator and lifecycle: npm run sitecheck
 const ADVENTURES_OK = h => !!h.tpl && h.src === 'dm';
 // start_event (#335): festival and plague as timed region conditions
 {await import('../src/sim/events.js'); S.levers.cd = {}; S.levers.day = {}; S.conditions = [];
