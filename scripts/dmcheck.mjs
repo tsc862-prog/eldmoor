@@ -524,6 +524,11 @@ console.log('NPC conversations');
   const jobs0 = (S.adventures || []).filter(h => h.phase === 'open' && h.for === A.id).length;
   r = dmAct('npc_offer', {npc: String(smith.id), conv: call.call.conv, kind: 'job', text: 'Bring back what the carters lost and I will pay.', tpl: 'relic'});
   ok(r.ok && r.mark === '[job posted]' && (S.adventures || []).filter(h => h.phase === 'open' && h.for === A.id).length === jobs0 + 1, `npc_offer job: ${r.hint}`);
+  // a job needs an answer (#407): it opens a talk scene; the DM agent voices the person's reply to the company's choice
+  ok(r.table && S.table && S.table.kind === 'talk' && S.table.ctx.why === 'offer', 'the job offered opens a talk scene at the table (#407)');
+  {let f = 0; while (S.table && f++ < 60 * 60) step(1 / 60)}
+  call = dmAct('npc_call'); ok(!S.table && call.call && /at the table/.test(call.call.line || ''), `the DM is asked to voice the answer: ${call.call && call.call.line}`);
+  dmAct('npc_say', {conv: call.call.conv, text: 'Good. Then go.'});
   act(A, 'say', {text: 'Then we are agreed.'}); call = dmAct('npc_call');
   r = dmAct('npc_say', {conv: call.call.conv, text: 'Agreed. Go.'}); // conv alone names the person (issue #401)
   ok(r.ok && r.ended && !TK.convWith(smith), `after ${TK.CONV.EXCHANGES} exchanges the conversation ends (${r.ended})`);
