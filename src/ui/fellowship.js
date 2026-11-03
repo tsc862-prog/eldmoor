@@ -30,6 +30,7 @@ import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
 import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
 import {fellowshipRunnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start all five / Stop all
 import {devMode} from './mindctl.js'; // request stats are a developer surface (#145)
+import {regionLine} from './region.js'; // region view (#430)
 import {patch,held,keyOf} from './stable.js'; // update in place, keep scroll (#145)
 
 const $=id=>document.getElementById(id);
@@ -84,9 +85,10 @@ export function tabMemory(b,a){const M=a.memory;
 
 // ---- the Chronicle filter ----
 let focus=true;
-export const chronicleShows=e=>!focus||!S.fellowship||chronicleFocus(e);
+export const chronicleShows=e=>regionLine(e)&&(!focus||!S.fellowship||chronicleFocus(e)); // the region picker (#430) narrows it further
 let onFilter=()=>{};
 export function setChronicleRefresh(f){onFilter=f}
+export const refreshChronicle=()=>onFilter();
 // The Story panel (#145): the Chronicle, and with a Fellowship its Campaign log as a second tab.
 let story='chron';
 function syncChronBtn(){const F=!!S.fellowship,camp=F&&story==='camp',b=$('chronFel'),t=$('storyTabs'),tt=$('storyTtl'),lg=$('log'),cp=$('campaign');

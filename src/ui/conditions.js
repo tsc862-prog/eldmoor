@@ -8,6 +8,7 @@ import {CONDITIONS} from '../sim/levers.js';
 import {focus} from '../sim/dmfocus.js';
 import {ZONES,zoneAt} from '../world/map.js';
 import {patch} from './stable.js';
+import {getRegion,regionName} from './region.js'; // region view (#430)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -29,7 +30,7 @@ export function conditionRows(){const road=roadZones(),act=S.levers&&S.levers.ac
   const rows=(S.conditions||[]).map(c=>{const def=CONDITIONS[c.kind]||{},rec=act.find(r=>r.id===c.lever)||null;
     const event=!!(rec&&rec.name==='start_event'),ek=event&&rec.params&&rec.params.kind;
     return {id:c.id,kind:c.kind,label:event&&ek?cap(String(ek)):def.label||cap(String(c.kind)),col:def.col||'#9aa8b8',about:def.about||'',
-      region:ZONES[c.z]!=null?ZONES[c.z]:'region '+c.z,str:c.str|0,left:(c.until||0)-S.gameMin,road:road.has(c.z),event,
+      z:c.z,region:ZONES[c.z]!=null?ZONES[c.z]:'region '+c.z,str:c.str|0,left:(c.until||0)-S.gameMin,road:road.has(c.z),event,
       by:rec?BY[rec.by]||String(rec.by||'unknown'):null}});
   return rows.sort((x,y)=>(y.road?1:0)-(x.road?1:0)||x.left-y.left||x.id-y.id)}
 
@@ -45,10 +46,10 @@ export function mountConditions(){if(sec||typeof document==='undefined')return s
   const ws=document.querySelector('#worldgrp .wsub');if(ws&&!/conditions/.test(ws.textContent))ws.textContent=ws.textContent.replace(/^Factions, /,'Factions, region conditions, ');
   return sec}
 
-export function renderConditions(){if(!mountConditions())return;const L=conditionRows();
-  const sig=L.map(r=>r.id+':'+r.label+':'+r.region+':'+r.road+':'+meta(r)).join('~');if(sig===seen)return;
-  const ok=patch(box,n=>{n.append(el('summary',null,'Region conditions'+(L.length?' ('+L.length+')':'')));
-    if(!L.length){n.append(el('div','dm condnone','No region conditions.'));return}
+export function renderConditions(){if(!mountConditions())return;const rg=getRegion(),L=conditionRows().filter(r=>rg==null||r.z===rg);
+  const sig=regionName()+'|'+L.map(r=>r.id+':'+r.label+':'+r.region+':'+r.road+':'+meta(r)).join('~');if(sig===seen)return;
+  const ok=patch(box,n=>{n.append(el('summary',null,'Region conditions'+(rg!=null?' · '+regionName():'')+(L.length?' ('+L.length+')':'')));
+    if(!L.length){n.append(el('div','dm condnone',rg!=null?'No conditions in '+regionName()+'.':'No region conditions.'));return}
     const ul=el('ul','tlist condlist');
     for(const r of L){const li=el('li',r.road?'condrow road':'condrow');li.setAttribute('data-k','c'+r.id);if(r.about)li.title=r.label+': '+r.about;
       const top=el('div','condtop'),sw=el('span','condsw');sw.style.background=r.col;sw.setAttribute('aria-hidden','true');

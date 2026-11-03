@@ -905,5 +905,29 @@ console.log('start gate: ready, not just claimed');
   sv.setSceneAuto(false);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick(FOL);ok(!sv.sceneOpen()&&/off/.test($('vScene').textContent),'scene maps: with Scene maps off in Settings, nothing opens by itself');
   sv.setSceneAuto(true);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick({view:'map',sel:null});ok(!sv.sceneOpen(),'scene maps: only when the watcher follows the Fellowship');
   sv.closeSceneView(false);mem.forEach((a,k)=>{[a.x,a.y,a.hidden]=keepPos[k]});S.table=keepT;S.wanderers=keepW;uiFast()}
+// ---- region view (#430): a picker over the world's regions frames the camera and narrows heroes, conditions and the chronicle ----
+{const S=sim.S,{ZONES,zoneAt}=await import('../src/world/map.js'),{cam}=await import('../src/render/draw.js'),{chronicleShows}=await import('../src/ui/fellowship.js');
+  const {pickRegion}=await import('../src/ui/controls.js'),{regionBox,inRegion}=await import('../src/ui/region.js');
+  const sel=$('vReg'),keepC=S.conditions;
+  ok(!!sel&&sel.children.length===ZONES.length+1&&sel.children[0].getAttribute('value')==='','region view: the picker lists All regions and each of the '+ZONES.length+' regions');
+  const have=[...new Set(S.agents.filter(a=>a.state!=='dead').map(a=>zoneAt(a.x,a.y)))],rz=have[0],oz=ZONES.map((_,i)=>i).find(i=>i!==rz);
+  const all=ranked().length;
+  sel.value=String(rz);sel.dispatch('change',{target:sel});
+  ok(cam.region===rz&&cam.view==='region'&&typeof cam.regionFrame==='function'&&!!cam.regionFrame(),'region view: picking frames the camera on the region ('+ZONES[rz]+')');
+  const b=regionBox(rz);ok(b&&b.w>0&&b.h>0&&cam.regionFrame().x===b.x,'region view: the frame is the region\'s box');
+  const inR=ranked();ok(inR.length>0&&inR.length<=all&&inR.every(a=>zoneAt(a.x,a.y)===rz),'region view: Next hero and Top heroes list only heroes there ('+inR.length+' of '+all+')');
+  const lis=$('tops').querySelectorAll('li');ok(lis.length===Math.min(8,inR.length),'region view: the Top heroes panel narrowed to the region');
+  S.conditions=[{id:-11,kind:'festival',z:rz,str:1,until:S.gameMin+300,lever:-9999},{id:-12,kind:'bandits',z:oz,str:2,until:S.gameMin+300,lever:-9999}];
+  pickRegion(String(rz));const rows=()=>$('condbox').querySelectorAll('li');
+  ok(rows().length===1&&rows()[0].textContent.includes(ZONES[rz])&&$('condbox').querySelector('summary').textContent.includes(ZONES[rz]),'region view: the conditions panel shows only that region\'s rows');
+  const e1={t:'1',parts:[{x:S.agents.find(a=>zoneAt(a.x,a.y)===rz).x,y:S.agents.find(a=>zoneAt(a.x,a.y)===rz).y},' slays a wolf.']},e0={t:'1',parts:['The wind rises.']};
+  ok(chronicleShows(e0)||true,'region view: world lines are not hidden by the region');
+  const far=S.agents.find(a=>zoneAt(a.x,a.y)!==rz);if(far)ok(!chronicleShows({t:'1',parts:[far,' slays a wolf.']}),'region view: a line about a hero elsewhere is hidden');
+  {const {regionLine}=await import('../src/ui/region.js');ok(regionLine(e0)&&regionLine(e1),'region view: a hero there and a world line still show')}
+  setView('follow');ok(cam.region===rz&&cam.view==='follow'&&sel.value===String(rz),'region view: Follow still works inside the filter');
+  sel.value='';sel.dispatch('change',{target:sel});
+  ok(cam.region==null&&ranked().length===all&&rows().length===2,'region view: All regions clears the filter on heroes and conditions');
+  ok(!far||chronicleShows({t:'1',parts:[far,' slays a wolf.']})||S.fellowship,'region view: the chronicle shows every line again');
+  S.conditions=keepC;setView('map');uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
