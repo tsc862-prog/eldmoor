@@ -66,9 +66,11 @@ const {DM_TOOLS} = await import('../src/data/dm-tools.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
 const {maxHp} = await import('../src/sim/heroes.js');
-const {ZONES, ZPTS, zoneAt} = await import('../src/world/map.js');
+const {ZONES, ZPTS, zoneAt, LANDMARKS} = await import('../src/world/map.js');
+(await import('../src/sim/outposts.js')).OP.ON = false; // the DM scenarios below set their own fixtures; contested outposts (#11) move hunters and would shift them (outposts have their own check)
 // a spot well inside its region (not within 11 tiles of a border): a staged cast lands 6-10 tiles away, and over a border it would stand in ground far above a level-2 party, which changes which refusal comes first
-const innerPoint = (zonePoint, zoneAt, z, home) => {let p; for (let i = 0; i < 300; i++) {p = zonePoint(z, null, home); if ([[11, 0], [-11, 0], [0, 11], [0, -11]].every(([dx, dy]) => zoneAt(p.x + dx, p.y + dy) === z)) return p} return p};
+const awayFromSites = p => LANDMARKS.every(l => Math.hypot(p.x - l.x, p.y - l.y) > 9); // a fixture spot never sits on the Crypt or the lair (a pull there is refused for its own reasons)
+const innerPoint = (zonePoint, zoneAt, z, home) => {let p; for (let i = 0; i < 300; i++) {p = zonePoint(z, null, home); if (awayFromSites(p) && [[11, 0], [-11, 0], [0, 11], [0, -11]].every(([dx, dy]) => zoneAt(p.x + dx, p.y + dy) === z)) return p} return p};
 
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 
@@ -144,7 +146,7 @@ if (process.argv[2] === '--ffbounty') {
   out.postedFF = posted.filter(h => h.ff).length; out.postedOther = posted.filter(h => !h.ff).length;
   const hl = hallLines(); out.hallLines = hl.length;
   out.lineNames = hl.every(e => e.parts.some(p => p && p.kind === 'hero' && fo.ids.has(p.id)) && e.parts.some(p => p && p.t === c.name));
-  out.lineKept = hl.every(e => chronicleFocus(e)); out.lineNoDm = hl.every(e => !/DM|dungeon master/i.test(e.parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('')));
+  out.lineKept = hl.every(e => chronicleFocus(e)); out.lineNoDm = hl.every(e => !/\bDM\b|dungeon master/i.test(e.parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('')));
   out.lineText = hl.length ? hl[0].parts.map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('') : '';
   const ff = S.adventures.filter(h => h.phase === 'open' && h.town === c.name && h.ff);
   out.refillFF = ff.length; out.refillTpl = ff.map(h => h.tpl + (h.data && h.data.bounty ? '(bounty)' : h.data && h.data.eliteId != null ? '(elite)' : '')).join(',');

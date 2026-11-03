@@ -32,7 +32,7 @@ export const REFLECT={
   TALK:4,       // lines an agent hero says to others (say, party_say, talk_to) within TALK_MIN that make a conversation
   TALK_MIN:180, // game minutes a conversation's lines must fall within
 };
-export const KINDS={fireside:'a night round the fire',camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day',lesson:'a hard lesson',vision:'a vision'}; // lesson: a near death or a fall witnessed (sim/lore.js, #188)
+export const KINDS={fireside:'a night round the fire',camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day',lesson:'a hard lesson',title:'a name given you',vision:'a vision'}; // lesson: a near death or a fall witnessed (sim/lore.js, #188)
 
 const DAY=1440;
 const dayNo=gm=>Math.floor(gm/DAY)+1;
