@@ -119,6 +119,31 @@ select(mem[1]);setTab('agent');uiFast();
 ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-played member');
 {const get=()=>tb().querySelector('.agentlog');const l=get();if(l){l.scrollTop=40;const n=l;for(let i=0;i<4;i++){sim.playerAct(mem[1].id,'look',{});tick(5)}
   ok(get()===n&&n.scrollTop>=40,'Agent tab tool calls: same list, scroll held while calls arrive ('+n.scrollTop+')')}else ok(false,'Agent tab tool calls: list not found')}
+// Gambits against the class preset (#679): a summary line, a mark per rule, dropped rules struck, safety flags, hovers
+{const G=await import('../src/sim/gambits.js'),SH=await import('../src/ui/sheet.js'),h=mem[1];
+  const gb=()=>tb().querySelector('ol.gambits'),sum=()=>tb().querySelector('.gbsum');
+  const keep0={};for(const k of ['persona','tiers','memory','journal'])keep0[k]=k in h?JSON.stringify(h[k]):null; // a safety edit writes the persona history: put it back for the Life checks
+  ok(!!gb()&&sum()&&sum().textContent==='Class preset, unchanged'&&![...gb().querySelectorAll(".gbm")].some(x=>x.textContent),'gambits: an untouched list reads "Class preset, unchanged", no marks');
+  const P=G.presetFor(h.cls),fl=P.find(r=>r.then==='flee_home').id,pot=P.find(r=>r.then==='drink_potion').id,last=P[P.length-1].id;
+  G.setGambit(h,{when:'self_hp_below 25',then:'shout To me!',why:'call the healer'});
+  G.moveGambit(h,{id:pot,before:'top',why:'potions first'});
+  G.toggleGambit(h,{id:fl,on:'no',why:'stand and fight'});
+  G.dropGambit(h,{id:last,why:'never walk home'});
+  const ol0=gb();uiFast();
+  ok(gb()===ol0,'gambits: the list is patched in place after edits');
+  ok(/^Differs from the .+ preset: 1 added, 1 moved, 1 turned off, 1 dropped, flee rule off$/.test(sum().textContent)&&sum().classList.contains('gbdiff'),'gambits: summary line "'+sum().textContent+'"');
+  const li=k=>gb().querySelector('li[data-k="'+k+'"]'),add=[...gb().querySelectorAll('li.gb-added')];
+  ok(add.length===1&&add[0].querySelector('.gbm').textContent==='+'&&/call the healer/.test(add[0].title),'gambits: the added rule is marked + and its hover gives the why');
+  ok(li('g'+pot).querySelector('.gbm').textContent==='^'&&/Moved up/.test(li('g'+pot).title),'gambits: the moved rule is marked ^');
+  ok(li('g'+fl).querySelector('.gbm').textContent==='off'&&li('g'+fl).classList.contains('gbsafe')&&/Preset: #/.test(li('g'+fl).title)&&/stand and fight/.test(li('g'+fl).title),'gambits: the flee rule turned off is marked off, flagged as safety, with the preset version and why');
+  const dr=li('gd'+last);ok(!!dr&&dr.classList.contains('gb-dropped')&&!!dr.querySelector('s')&&dr===gb().lastChild&&/never walk home/.test(dr.title),'gambits: the dropped preset rule is listed last, struck through');
+  ok([...tb().querySelectorAll('.meta.warn')].some(x=>/flee rule is turned off/.test(x.textContent)),'gambits: the flee rule flagged in a warning line');
+  setTab('stats');uiFast();ok([...tb().querySelectorAll('.gbsum')].some(x=>/^Gambits: Differs from/.test(x.textContent)),'Stats tab: the gambits summary under Abilities');
+  const row=SH.sheetRows().rows.find(r=>r.key==='gambits'),i=SH.sheetRows().cols.findIndex(c=>c.hero===h);
+  ok(row&&row.group==='Agent'&&/^own: 1 added/.test(row.cells[i].t)&&row.cells[i].c==='lo','sheet: an Agent row with the member\'s gambits ('+(row&&row.cells[i].t)+')');
+  G.resetGambits(h,{preset:'class'});setTab('agent');uiFast();
+  ok(sum().textContent==='Own list, same as the '+h.cls+' preset'&&!gb().querySelector('.gb-dropped'),'gambits: after a reset "'+sum().textContent+'"');
+  h.gambits=null;h.gambitHist=[];h.gambitDay=null;for(const k in keep0){if(keep0[k]==null)delete h[k];else h[k]=JSON.parse(keep0[k])}uiFast()}
 // Keys 1-5 select the member in that party slot
 {const {cam}=await import('../src/render/draw.js');
   const press=(k,o={})=>{let pd=false;for(const f of document._ls.keydown||[])f({key:k,target:document.body,preventDefault(){pd=true},...o});return pd};

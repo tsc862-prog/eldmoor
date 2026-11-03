@@ -110,6 +110,10 @@ button[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:va
 .facs .k{color:var(--dim)}
 .log{list-style:none;margin:0;padding:0;max-height:330px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;font-size:18px}
 .log li{line-height:1.1}
+.gambits .gbm{display:inline-block;min-width:4ch;color:var(--gold)} /* #679: + added, ~ changed, ^ v moved, off, - dropped */
+.gambits .gb-added .gbm{color:var(--green)} .gambits .gb-dropped{color:var(--dim)} .gambits .gb-dropped s{text-decoration-thickness:2px}
+.gambits li.gbsafe .gbm,.gambits li.gbsafe s{color:var(--red)} .gambits li[title]{cursor:help} .gambits li[tabindex]:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.meta.gbsum.gbdiff{color:var(--gold)} .meta.warn{color:var(--amber)}
 .log time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-nums}
 .daysep{list-style:none;color:var(--gold);font-family:var(--px);font-size:7px;letter-spacing:.08em;margin:8px 0 3px;padding-bottom:2px;border-bottom:1px solid var(--edge)}
 div.daysep{margin:8px 0 3px}
