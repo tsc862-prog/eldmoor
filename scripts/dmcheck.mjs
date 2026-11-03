@@ -335,6 +335,13 @@ primeKids([[['--focus'], {DMCHECK_SEED: '66'}], [['--focus'], {DMCHECK_SEED: '1'
   [['--solo', 'solo', '6']], [['--solo', 'solo', '4']], [['--solo', 'none']], [['--solo', 'solo', '2']], [['--hash', 'none']], [['--hash', 'seat']]]);
 console.log('\nEldmoor dmcheck: the DM as an agent, part 1 (mock agents)\n');
 
+// ---------------------------------------------------------------- 0. when and watch (issue #635), in a world of its own
+console.log('when and watch (scripts/dmwhen-test.mjs)');
+{const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'dmwhen-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
+  for (const l of out.split(/\r?\n/)) if (/^\s+FAIL /.test(l)) console.error(l);
+  const n = (out.match(/^\s+ok /gm) || []).length;
+  ok(k.status === 0 && /WHEN OK/.test(out), `when and watch: ${n} checks (set, list, cancel, every trigger, firing through the same tools, expiry, refused at fire time, caps, reserve, save/restore, the runner's wake)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
+
 // ---------------------------------------------------------------- 1. the DM tools in the sim
 console.log('the DM tools');
 init({fac: 0}); run(60);
@@ -832,8 +839,10 @@ console.log('NPC conversations');
   away(); clear(); const inn = npc('innkeeper'); beside(A, inn); TK.CONV.VOICE_MS = 60;
   dmAct('npc_call'); r = act(A, 'talk', {target: 'innkeeper', text: 'Any news?'});
   ok(r.waiting, 'the DM is polling: the line waits');
+  dmAct('npc_call'); // picked up: its budget starts now (#680)
   const tw = Date.now(); while (Date.now() - tw < 90) {} step(1 / 60);
   ok(S.talks.stats.late >= 1 && (A.chat || []).some(e => e.talk && e.from.id === inn.id && e.by === 'scripted'), 'past the budget the scripted DM answers for them (late counted)');
+  ok(S.dmLog.some(e => e.kind === 'talk' && e.detail && e.detail.fill && e.detail.late === 'no answer in time'), 'the scripted answer is logged: no answer in time (#680)');
   TK.CONV.VOICE_MS = 8000;
   {away(); clear(); const bd = npc('bard'); beside(A, bd); dmAct('npc_call', {budget_s: 20}); act(A, 'talk', {target: 'bard', text: 'A song?'});
     const cw = TK.convWith(bd); ok(cw && cw.wait && cw.wait.ms === 20000, 'a slower voice asks for a longer wait (npc_call budget_s 20 -> 20 s)');

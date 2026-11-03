@@ -70,3 +70,4 @@
 - [Gambit hold #630](gambit_hold.md) — hold action stops the clock until the agent acts; release paths, limits, cautious preset only
 - [Pay and mark tools #628/#632](pay_mark_tools.md) — pay.js, marks.js (lore mk:1/2), emote chat flag, set_attitude steps, edit pitfalls
 - [Hire tool #634](hire_tool.md) — hires are scripted heroes outside slots, wanderers only, voters skip them, inSlots true in Fellowship
+- [Downed and saves #652/#653](downed_saves.md) — downed.js: hero blows finish, table/crawl keep old death until #654, aid state, finishes flag, fixture pitfalls

@@ -434,6 +434,7 @@ function session(F){const d=day();if(d<=F.day)return;const prev=F.day;F.day=d;
   for(const a of slotHeroes(F))refreshStances(a,F.ids)}
 
 let acc=0;
+export function resetCompanyWatch(){fightSeen.clear();lastState.clear();acc=0} // a new world starts the per-hero watch over (#674)
 // Once per step: every company's upkeep, then the slotted company's muster, hold, watch and DM beats.
 export function slotsTick(dt){companyTick();const F=slotted();if(!F)return;
   enforceAgents(F);

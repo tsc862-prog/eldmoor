@@ -76,7 +76,7 @@ const DAY=1440;
 const FORBIDDEN=/^(hp|maxhp|xp|lvl_?up|level_?up|stats?|abil|cls|class|hardcore|kill|slay|revive|resurrect|save_?hero|loot|item|epic|gold_?grant|gear)$/i;
 
 // Private LCG for cosmetic picks (names, looks, strolls): never perturbs the gameplay RNG.
-let seed=0x2545f491;
+const SEED0=0x2545f491;let seed=SEED0;export const resetLeverSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 const pickR=a=>a[Math.floor(r()*a.length)];
 
@@ -113,7 +113,7 @@ function field(k,s,v){
   case 'id':return isNum(v)&&Number.isInteger(v)?[v]:k+' must be an id';
   case 'obj':return v&&typeof v==='object'&&!Array.isArray(v)?[JSON.parse(JSON.stringify(v))]:k+' must be an object';
   default:return k+' has an unknown type'}}
-function validate(def,raw){const p={};raw=raw&&typeof raw==='object'?raw:{};
+export function validate(def,raw){const p={};raw=raw&&typeof raw==='object'?raw:{};
   for(const k in raw)if(!(k in def.params))return 'unknown parameter '+k;
   for(const k in def.params){const x=field(k,def.params[k],raw[k]);if(typeof x==='string')return x;if(x[0]!==undefined)p[k]=x[0]}return p}
 // A spot on the map: in bounds, walkable (or a road), outside the towns and clear of their gates
