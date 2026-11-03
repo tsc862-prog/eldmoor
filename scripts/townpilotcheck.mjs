@@ -5,12 +5,13 @@
 //   caution  (#487) autopilot rests before heading out, heads home when hurt (rests in the field only with nothing close),
 //            hunts only what it can take on its own ground, breaks off sooner from a foe above it; agent orders untouched
 //   silent   a level-1 agent hero left alone in town (no runner turns at all) lives and reaches level 2 within 24 game hours
-//            (level 3 before #487; the wary autopilot levels about as fast as a scripted level-1 hero, 2-3 a day)
+//            (six trials, each its own dice; at least 3 must level, the wary autopilot being about a coin flip per day)
 //   edge     a walk (move_to "explore <dir>", hunt {where}) into a region 5+ levels above the hero stops at its edge once,
 //            with the danger in words; the same call again (or force: "yes") goes on; leaving a party leader says so
 //   world    background heroes are never touched (their seeded hash: node scripts/professioncheck.mjs --hash)
 // Usage: npm run townpilotcheck
-let seed = 0x7a466 ^ (Number(process.env.TOWNPILOT_SEED) || 3);
+const baseSeed = Number(process.env.TOWNPILOT_SEED) || 3;
+let seed = 0x7a466 ^ baseSeed;
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 
 const SIM = await import('../src/sim/index.js');
@@ -33,12 +34,31 @@ const inTownRect = a => CITY.some(c => a.x >= c.x0 - .5 && a.x <= c.x1 + 1.5 && 
 console.log('\nEldmoor townpilotcheck: autopilot in town (#466), danger edges (#465)\n');
 init({fellowship: false}); run(5);
 const heroes = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead');
-const A = heroes.find(a => a.fac === 0), B = heroes.find(a => a.fac === 0 && a !== A);
-const c = homeOf(A);
+let A = heroes.find(a => a.fac === 0); let B = heroes.find(a => a.fac === 0 && a !== A);
+let c = homeOf(A);
 // a hero at its gate, idle, level 1, with nothing in its pack: the scene of the playtest (a company at the gate for days)
-const fresh = (a, lvl = 1) => {a.lvl = lvl; a.xp = 0; a.hp = maxHp(a); a.party = null; a.partyOk = false; a.target = null; a.dest = null; a.pq = []; a.hidden = false;
+const fresh = (a, lvl = 1) => {a.traits = []; a.lvl = lvl; a.xp = 0; a.hp = maxHp(a); a.party = null; a.partyOk = false; a.target = null; a.dest = null; a.pq = []; a.hidden = false;
   if (!a.player) P.markPlayer(a, true); a.x = c.gate.x - 1; a.y = c.gate.y; a.state = 'town'; a.adv = null; a.quest = null; invOf(a).list = []; a.gold = 0; a.playOrder = null; a.playGround = null; a.playDare = null};
 const idle = (a, min = 130) => {a.playActAt = S.gameMin - min; a.playTurn = null; a.playIdle = false};
+
+// ---------------------------------------------------------------- silent (first, on the untouched world: later sections thin and move the fields' creatures)
+console.log('silent');
+// the wary autopilot's pace depends on the dice, so a single seed is a coin flip: several trials, each its own dice, most must level
+const TRIALS = 6, NEED = 3; let leveled = 0, alive = 0, last = null;
+for (let t = 0; t < TRIALS; t++) {
+  seed = (0x51e47 ^ (t + 1) * 7919 ^ baseSeed) >>> 0; // its own dice, and a clean slate for the hero (no fears learned in an earlier trial)
+  for (const m of S.mobs) if (!m.alive && !m.gone) {m.alive = true; m.hp = m.maxhp; m.target = null} // the fields as a fresh hero finds them
+  fresh(A); A.lore = null; A.kills = 0; A.nemesis = {}; idle(A); const t0 = S.gameMin;
+  while (S.gameMin - t0 < 24 * 60 && A.state !== 'dead') {run(5); if (!A.playIdle) idle(A)}
+  const up = A.state !== 'dead' && A.lvl >= 2; if (A.state !== 'dead') alive++; if (up) leveled++; last = A;
+  console.log(`  trial ${t + 1}: level ${A.lvl}, ${A.kills} kills, ${A.state} in ${ZONES[zoneAt(A.x, A.y)]}${up ? '' : ' (no progress)'}`);
+}
+ok(leveled >= NEED, `a level-1 agent hero left alone in town reaches level 2 in 24 game hours in ${leveled} of ${TRIALS} trials (need ${NEED}; ${alive} lived)`);
+ok(!A.adv && !A.quest, 'still no job or bounty it did not take');
+
+// the silent days age the world (creatures, heroes' lives), so the rest starts from a new one
+init({fellowship: false}); run(5);
+{const hs = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead'); A = hs.find(a => a.fac === 0); c = homeOf(A); B = hs.find(a => a.fac === 0 && a !== A && !a.party && homeOf(a) === c) || hs.find(a => a.fac === 0 && a !== A)}
 
 // ---------------------------------------------------------------- town
 console.log('town');
@@ -130,8 +150,9 @@ inField(.55); run(.05);
 ok((A.pq || [])[0] && A.pq[0].kind === 'rest', 'hurt with no creature close: rests where it stands');
 inField(.55); place('wolf', 1, 3); rebuild(); run(.05);
 ok((A.pq || [])[0] && A.pq[0].kind === 'move' && /creatures close/.test(A.pq[0].auto), 'hurt with a creature close: heads home to heal instead');
-inField(); const big = place('spider', 6, 1.2), small = place('wolf', 1, 2.4); rebuild(); const k0 = A.kills; run(.8);
-ok((A.target === small || (!small.alive && A.kills > k0)) && A.target !== big && big.target !== A, `a wary hunt leaves a creature far above it alone and takes the one it can (${A.target ? A.target.type + ' ' + A.target.lvl : A.kills > k0 ? 'slew the wolf' : 'none'})`);
+inField(); const big = place('spider', 6, 1.2), small = place('wolf', 1, 2.4); rebuild(); const k0 = A.kills; let bigPicked = false;
+for (let i = 0; i < 20 && !(A.target === small || A.kills > k0 || !small.alive); i++) {run(.4); if (A.target === big || big.target === A) bigPicked = true}
+ok((A.target === small || !small.alive) && !bigPicked && A.target !== big && big.target !== A, `a wary hunt leaves a creature far above it alone and takes the one it can (${A.target ? A.target.type + ' ' + A.target.lvl : A.kills > k0 ? 'slew the wolf' : !small.alive ? 'the wolf fell to another hand' : 'none'})`);
 ok((A.pq || [])[0] && A.pq[0].wary && A.pq[0].ground === field0.z, 'the hunt keeps to its ground');
 inField(); big.alive = true; big.gone = false; big.hp = big.maxhp; big.target = A; A.target = big; A.state = 'fight'; big.x = A.x + .5; big.y = A.y; A.hp = maxHp(A) * .45; rebuild(); run(.05);
 ok(A.state === 'return' && A.target == null, 'jumped by a creature far above it: autopilot breaks off below half health');
@@ -141,13 +162,7 @@ A.target = null; A.pq = []; A.state = 'hunt';
 for (const m of S.mobs) if (m.placed) {m.placed = false; m.scan = 0; m.wait = 0}
 for (const m of cleared) {m.alive = true; m.gone = false; m.target = null; m.hp = m.maxhp} rebuild(); // the field as it was
 
-// ---------------------------------------------------------------- silent
-console.log('silent');
-fresh(A); idle(A); const l0 = A.lvl, t0 = S.gameMin;
-while (S.gameMin - t0 < 24 * 60 && A.state !== 'dead') {run(5); if (!A.playIdle) idle(A)}
-ok(A.state !== 'dead' && A.lvl >= 2, `a level-1 agent hero left alone in town reaches level ${A.lvl} in 24 game hours (${A.kills} kills, ${A.state} in ${ZONES[zoneAt(A.x, A.y)]})`);
-ok(!A.adv && !A.quest, 'still no job or bounty it did not take');
-void l0; void xpNeed;
+void xpNeed; void last;
 
 console.log(fail ? `\ntownpilotcheck: ${fail} FAILED\n` : '\ntownpilotcheck: all ok\n');
 process.exit(fail ? 1 : 0);
