@@ -74,6 +74,7 @@ import {waitsNote,waitedS} from './scenewait.js'; // a scene that waits on you, 
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
 import {lineRefusal,noteSaid,publicAnswer} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
+import {noticeHeroes,sighted} from './sighthero.js'; // heroes coming into sight (#570)
 import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,intentView,waitish} from './intent.js'; // the hero's stated aim (#535)
 import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,placeMemory,roadsLine,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,feared,keyOf,sight,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
@@ -211,6 +212,7 @@ function townPilot(a){const mh=maxHp(a),c=homeOf(a);
 // fits, wary as ever), wait where it is. A follow aim is the standing follow order (a.playOrder, #445). Safety comes first:
 // autopilot only gets here once hurt, storm and full-pack checks passed, and an aim that is done maps to nothing.
 function intentPilot(a){if(!aimHeld(a))return null;const I=a.intent,o=I.order;if(!o)return null;const why=' (your aim: '+clean(I.goal,60)+')';
+  const sg=o.kind==='move'?sighted(a):null;if(sg)return {kind:'rest',until:S.gameMin+30,auto:'holding where you are: you saw '+sg.name+' (your aim: '+clean(I.goal,60)+')',label:'rest'}; // stopped on sight (#570): the agent decides next
   if(o.kind==='wait')return {kind:'rest',until:S.gameMin+60,auto:'waiting where you are'+why,label:'rest'};
   if(o.kind==='move'){if(o.to&&dist(a,o.to)<=INTENT.NEAR)return null;let p=o.target?plan(a,o.target):null;
     if((!p||p.error)&&o.to&&o.last!=='town')p=toFieldOf(a,o.to,o.label);if(!p||p.error)return null;
@@ -290,7 +292,7 @@ export const isPlayer=a=>!!(a&&a.player);
 // Returns true when it handled the step; false hands it to updAgent (duels, assists, regroups,
 // ghosts, a consented crypt or raid, following a party leader, and the DM-led legs of an adventure).
 export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
-  watch(a);intentWatch(a); // progress toward the stated aim (#535)
+  watch(a);intentWatch(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
   // A Fellowship member whose runner is gone, once the owner said go on (or with no host at all: the headless sim,
   // play-headless before a runner claims it): its reflexes play it whole, the scripted rules, until a runner holds
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
