@@ -172,7 +172,7 @@ const slotIds=C=>SLOT_KEYS.map(k=>C.slots[k]).filter(id=>id!=null);
 // ---- reading ----
 export const slotted=()=>fellowshipCompany(); // the company with the five places, or null
 // A hero in a slotted company / a party walking for one.
-export function inSlots(a){const C=companyOf(a);return !!(C&&C.slots)}
+export function inSlots(a){const C=companyOf(a);return !!(C&&C.slots)&&!a.hire} // a hire rides with the Fellowship but holds no place in it (#634)
 export function partySlotted(p){if(!p)return false;const C=companyById(p.company);return !!(C&&C.slots)}
 // The hero's slot key (tank, healer, dps1-3), or undefined.
 export function slotKeyOf(a){const C=companyOf(a);if(!C||!C.slots)return undefined;for(const k in C.slots)if(C.slots[k]===a.id)return k;return undefined}

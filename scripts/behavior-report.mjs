@@ -70,18 +70,19 @@ const mind = r => (r.provider || '?') + '/' + (r.model || (r.src === 'game' ? 'r
 // (scene-missed anomalies: a live member's turn taken by its reflex after the wait; held-back repeats counted).
 export function sceneAnswers(T = [], A = []) {
   const by = new Map(), who = new Map();
-  const mem = n => {let m = who.get(n); if (!m) who.set(n, m = {name: n, answers: 0, missed: 0, secs: []}); return m};
+  const mem = n => {let m = who.get(n); if (!m) who.set(n, m = {name: n, answers: 0, missed: 0, secs: [], causes: {}}); return m};
   for (const t of T) {const xs = Array.isArray(t.sceneS) ? t.sceneS.filter(Number.isFinite) : []; if (!xs.length) continue;
     const k = mind(t); let b = by.get(k); if (!b) by.set(k, b = {k, secs: []}); b.secs.push(...xs);
     const m = mem(t.hero && t.hero.name || t.seat || '?'); m.answers += xs.length; m.secs.push(...xs)}
-  for (const a of A) if (a.kind === 'scene-missed') mem(a.hero && a.hero.name || a.seat || '?').missed += 1 + (a.heldBack || 0);
+  for (const a of A) if (a.kind === 'scene-missed') {const m = mem(a.hero && a.hero.name || a.seat || '?'), n = 1 + (a.heldBack || 0), c = a.evidence && a.evidence.cause || 'no answer'; m.missed += n; m.causes[c] = (m.causes[c] || 0) + n} // by cause (#687)
+  const why = m => Object.entries(m.causes).map(([k, v]) => k + ' ' + v).join(', ') || '-';
   const s1 = v => v == null ? '-' : f1(v) + ' s';
   const lines = ['## Table scene answers', '', 'Seconds the table had waited when an agent answered (the world is paused; the table waits about 120 s, longer for a member its runner reports queued):', '',
     table(['provider/model', 'answers', 'p50', 'p90', 'max'], [...by.values()].map(b => [b.k, b.secs.length, s1(pctile(b.secs, 50)), s1(pctile(b.secs, 90)), s1(Math.max(...b.secs))])), '',
     'Per member (missed = its runner held it, but the reflex acted after the wait):', '',
-    table(['member', 'answers', 'missed', 'p50', 'p90'], [...who.values()].map(m => [m.name, m.answers, m.missed, s1(pctile(m.secs, 50)), s1(pctile(m.secs, 90))])), ''];
+    table(['member', 'answers', 'missed', 'missed by cause', 'p50', 'p90'], [...who.values()].map(m => [m.name, m.answers, m.missed, why(m), s1(pctile(m.secs, 50)), s1(pctile(m.secs, 90))])), ''];
   return {lines, data: {minds: [...by.values()].map(b => ({mind: b.k, answers: b.secs.length, p50: pctile(b.secs, 50), p90: pctile(b.secs, 90)})),
-    members: [...who.values()].map(m => ({name: m.name, answers: m.answers, missed: m.missed, p50: pctile(m.secs, 50), p90: pctile(m.secs, 90)}))}};
+    members: [...who.values()].map(m => ({name: m.name, answers: m.answers, missed: m.missed, causes: m.causes, p50: pctile(m.secs, 50), p90: pctile(m.secs, 90)}))}};
 }
 
 // The report for one world's folder, as Markdown.

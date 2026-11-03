@@ -29,7 +29,7 @@
 // (optional: any mind runs until stopped, a paid one until its --budget is spent; #563), --heartbeat MIN,
 // --min-gap S, --max-fails N (or AGENT_HEARTBEAT, AGENT_MIN_GAP, AGENT_MAX_FAILS), --budget USD (default 1.00, total for this run), --tool-turns N (model round
 // trips per turn, default 12), --model (or AGENT_MODEL; default claude-sonnet-5-5), --effort (or
-// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic', 'ollama', 'openai' or 'huggingface'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
+// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic', 'ollama', 'openai', 'huggingface' or 'google'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
 // .env), --new.
 // Local models (issue #97 part 2): --provider ollama --model qwen2.5:14b plays the hero with a local
 // Ollama model through the same tools, claims and session file (scripts/local-agent.mjs; the
@@ -56,7 +56,7 @@ import {reflectPrompt, reflectNow, closeReflection} from './pacing.mjs'; // refl
 import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
-import {openaiRunner} from './agent-chat.mjs';
+import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
@@ -208,7 +208,7 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
 async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter, budget, pacer, pace}) {
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
-  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via ${rs.provider === 'huggingface' ? 'Hugging Face' : 'OpenAI'} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via ${compatLabel(rs.provider)} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
   await warmUp({base, seat: {hero: heroId}, runner: RUNNER, model: rs.model, adapter, log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let ended = null, runIn = 0, runOut = 0, spent = 0, unknown = false, t0 = Date.now(); const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
@@ -272,7 +272,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
-  if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama, openai or huggingface.`); await release(); process.exit(1)}
+  if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama, openai, huggingface or google.`); await release(); process.exit(1)}
   sess.system = withSituationOrders(sess.system, rs.provider === 'ollama'); // the short variant for a local model (#531)
   if (rs.provider === 'ollama') {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
@@ -282,8 +282,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
     await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'ollama', 20), toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)}), release, beat, file: SESSION_FILE, pacer, pace});
   }
-  if (rs.provider === 'openai' || rs.provider === 'huggingface') {
-    // OpenAI (or the Hugging Face router, #552) plays (issue #97): the same tool loop through Chat Completions; the key stays in this process.
+  if (isCompat(rs.provider)) {
+    // OpenAI (or the Hugging Face router, #552, or Gemini, #672) plays (issue #97): the same tool loop through Chat Completions; the key stays in this process.
     const o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
     if (o.error) {console.error('[agent] ' + o.error); await release(); process.exit(1)}
     if (o.note) console.log('[agent] ' + o.note);
@@ -305,13 +305,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
-    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
+    let b0 = await pacer.brief(); const tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
     const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
-    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
+    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, // under the app supervisor: one of the Claude slots for this turn
+      due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, // #687: its own scene opened meanwhile
+      onDue: async () => {const r = await (await fetch(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero: heroId, runner: RUNNER, queued: true, why: 'slot'}), signal: AbortSignal.timeout(4000)})).json();
+        if (r && r.queued) console.log(`[scene] answer queued behind a Claude slot: the table waits up to ${r.extra_s} s more (${r.scene})`)}});
+    if (freeSlot.scene) b0 = await pacer.brief(); // the scene came up while it waited: answer it first (#687)
     const sceneS = [], sceneOn = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${short(b, 120)})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
     // Scene first (issue #515): the hero's own scene is open as the turn starts: one structured answer sends scene_act before
     // anything else (a short tool budget was spent before it, live). Answered: that is the turn.
