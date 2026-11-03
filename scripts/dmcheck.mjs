@@ -66,9 +66,10 @@ const {DM_TOOLS} = await import('../src/data/dm-tools.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
 const {maxHp} = await import('../src/sim/heroes.js');
-const {ZONES, ZPTS, zoneAt} = await import('../src/world/map.js');
+const {ZONES, ZPTS, zoneAt, LANDMARKS} = await import('../src/world/map.js');
 // a spot well inside its region (not within 11 tiles of a border): a staged cast lands 6-10 tiles away, and over a border it would stand in ground far above a level-2 party, which changes which refusal comes first
-const innerPoint = (zonePoint, zoneAt, z, home) => {let p; for (let i = 0; i < 300; i++) {p = zonePoint(z, null, home); if ([[11, 0], [-11, 0], [0, 11], [0, -11]].every(([dx, dy]) => zoneAt(p.x + dx, p.y + dy) === z)) return p} return p};
+const awayFromSites = p => LANDMARKS.every(l => Math.hypot(p.x - l.x, p.y - l.y) > 9); // a fixture spot never sits on the Crypt or the lair (a pull there is refused for its own reasons)
+const innerPoint = (zonePoint, zoneAt, z, home) => {let p; for (let i = 0; i < 300; i++) {p = zonePoint(z, null, home); if (awayFromSites(p) && [[11, 0], [-11, 0], [0, 11], [0, -11]].every(([dx, dy]) => zoneAt(p.x + dx, p.y + dy) === z)) return p} return p};
 
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 

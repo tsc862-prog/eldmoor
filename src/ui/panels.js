@@ -4,10 +4,11 @@
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
 // delegated click handler (initPanels) looks the hero up in S.agents and hands it
 // to the picker, which controls.js wires to select + follow.
+import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
 import {heroStream,sysLine} from './chatpanel.js';
-import {CITY,CRYPT,LAIR,ZONES,zoneFor} from '../world/map.js';
+import {CITY,CRYPT,LAIR,ZONES,OUTPOSTS,zoneFor} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
@@ -431,6 +432,7 @@ export function renderFacs(){const rows=[['',...FAC.map((f,i)=>el('span','h f'+i
   rows.push(['Fallen',...[0,1].map(f=>S.facStats[f].fallen)]);
   rows.push(['Honor',...[0,1].map(f=>S.facStats[f].honor)]);
   rows.push(['Boss kills',...[0,1].map(f=>S.facStats[f].bosses)]);
+  if(OUTPOSTS.length)rows.push(['Outposts',...outpostCounts().map(n=>n+'/'+OUTPOSTS.length)]);
   rows.push(['Treasury',...[0,1].map(f=>s(f).reduce((t,a)=>t+a.gold,0)+'g')]);
   rows.push(['Epics',...[0,1].map(f=>s(f).reduce((t,a)=>t+a.epics.length,0))]);
   patch($('facs'),g=>{for(const r of rows){g.append(el('div','k',r[0]));for(const v of r.slice(1)){const d=el('div');d.append(typeof v==='object'?v:String(v));g.append(d)}}})}

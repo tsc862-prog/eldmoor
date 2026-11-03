@@ -26,6 +26,7 @@
 //             stop), inn, smith, chapel, square. Missing spots get defaults laid
 //             out relative to the gate side (sim/npcs.js, data/npcs.js).
 //             npcs: role ids staffed here (default: every role in data/npcs.js).
+//   outposts  {id, name, x, y, r} contested outposts (#11): data only, never painted; sim/outposts.js owns who holds them.
 //   landmarks {kind:'lair', name, x, y, r, inner, mouth:'W'|'E'|'N'|'S', exclude, light}
 //             {kind:'crypt', name, boss, x, y, mouth:{x0,y0,w,h}, exclude, cd, rooms}
 //             rooms (#65, optional): the dungeon's chambers in order, played room by room at the Table by
@@ -95,6 +96,12 @@ export const ELDMOOR={
     {kind:'lair',name:'Kragmaw',x:71.5,y:25.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
     {kind:'crypt',name:'The Sunken Crypt',boss:'Lich-Warden Vesk',x:44.5,y:43.1,mouth:{x0:43,y0:41,w:3,h:3},exclude:3.5,cd:25,rooms:CRYPT_ROOMS,
       sign:CRYPT_SIGN,captain:CRYPT_CAPTAIN},
+  ],
+  // Contested outposts (#11): data only, nothing is painted (the map hash does not move). Whichever faction holds one
+  // (sim/outposts.js) gets a rest aura around it; kills within r+2 count double honor. {id,name,x,y,r}; the region is read from the map.
+  outposts:[
+    {id:'fenmarch',name:'Fenmarch Cross',x:40.5,y:25.5,r:3.5},
+    {id:'ashgate',name:'Ashgate Watch',x:57.5,y:25.5,r:3.5},
   ],
   points:{crossroads:[40,25]},
   roads:[

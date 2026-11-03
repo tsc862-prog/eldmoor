@@ -4,6 +4,7 @@
 // Owned by ai-designer (behaviour) and character-builder (stat formulas).
 import {writeSighting} from './sightings.js';
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
+import {outpostHonor,outpostDest} from './outposts.js';
 import {SPEED} from '../world/tiles.js';
 import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {assignRace,homeOf} from '../data/races.js';
@@ -130,7 +131,7 @@ export function agentDie(a,killer){
   record(a,'Fell at level '+a.lvl+', slain by ',killer.kind==='hero'?killer:killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+MOBS[killer.type].name,'.');
   bondEvent(a,'died',[killer]);
   for(const x of nearHeroes(a.x,a.y,10))if(x!==a&&x.state!=='dead'&&((a.guild&&x.guild===a.guild)||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
-  if(killer.kind==='hero'){killer.honor++;S.facStats[killer.fac].honor++;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
+  if(killer.kind==='hero'){const oh=outpostHonor(a);killer.honor+=oh;S.facStats[killer.fac].honor+=oh;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
     killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
     say(killer,'kill',{target:a.name});
     record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':'Killed ',a,' (level '+a.lvl+').');
@@ -215,7 +216,7 @@ export function updAgent(a,dt){
     if(steerClear(a,dt,moveTo))break;
     if(gatherTick(a,dt,moveTo))break; // at a node (sim/gather.js): still 'hunt', so mobs, duels and the party see a hunter
     a.scan-=dt;if(a.scan<=0){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
-    if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
+    if(!a.dest)a.dest=outpostDest(a)||zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
   // Party member at the leader's side: heals, picks off nearby mobs, joins the leader's fights (party tick),
   // hangs back when hurt. Drops to solo hunting (or heads home) the moment there is no leader to follow.
   case 'follow':{const L=leaderOf(a);if(!L){a.state=a.party&&a.party.home?'return':'hunt';a.dest=null;break}
