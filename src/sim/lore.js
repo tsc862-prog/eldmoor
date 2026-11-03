@@ -246,3 +246,13 @@ export function npcWarning(a){if(!learner(a))return null;let z=-1;
 export function jobRumour(a,z){const b=REGIONS[z]&&REGIONS[z].band;if(!b)return 'nobody says much about it';
   if(b[0]>a.lvl+3)return 'the captain shakes his head: no work for green blades';if(b[0]>a.lvl+1)return 'they say it will test you';
   if(b[1]<a.lvl-3)return 'they call it easy coin';return 'they call it honest work'}
+
+// A short, read-only digest of what an agent hero has learned in play, for the DM's views (#558): the creatures it has beaten
+// or fears, and the places it knows by name, each capped. Reads a.lore as it stands (never creates it, never writes), no RNG.
+export function loreSummary(a,cap=12){const L=a&&a.lore;if(!L)return {beaten:[],feared:[],places:[]};
+  const beaten=[],feared=[];
+  for(const key of Object.keys(L.c||{})){const e=L.c[key];if(!knowsName(e))continue;
+    if(e.hurt||e.fell)feared.push(keyName(key));else if(e.killed)beaten.push(keyName(key))}
+  const places=Object.keys(L.p||{});
+  const cut=l=>l.slice(0,cap);
+  return {beaten:cut(beaten),feared:cut(feared),places:cut(places),more:Math.max(0,beaten.length+feared.length+places.length-cut(beaten).length-cut(feared).length-cut(places).length)}}
