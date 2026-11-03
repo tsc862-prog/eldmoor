@@ -41,6 +41,8 @@ import {councilTick} from './council.js';
 import {hireTick} from './hire.js'; // hired companions (#634): days up, dismissals, the fallen mourned
 import {companionTick} from './offers.js'; // offers lapse, companies of 2+ keep a walking party, companions (#442)
 import {tableTick,tableHold} from './table.js';
+import {holdTick} from './gambithold.js';
+export {holdResume,holdView,holdRelease} from './gambithold.js';
 import './events.js'; // DM world events: festival and plague (#10)
 import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Table (#65)
 import {sessionTick,planOpening} from './arrival.js';
@@ -101,6 +103,7 @@ export function init(o={}){resetWorld();
 
 // Advance the world by dt real seconds at 1x (6 game minutes per second).
 export function step(dt){rulingTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
+  if(holdTick(dt)){updFx(dt);return} // a gambit hold stops the clock until the agent acts (#630)
   if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
   S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);

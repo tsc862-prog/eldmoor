@@ -144,12 +144,14 @@ export function briefText(b) {
 // The earshot line (brief.earshot, src/sim/earshot.js, #395) leads it: who hears a say or a shout now, who to talk to.
 // The in-sight line (brief.insight, src/sim/sighthero.js, #570): companions and the one you seek, in sight beyond earshot.
 export const sightNote = b => b && typeof b.insight === 'string' && b.insight ? `\nIn sight: ${b.insight.slice(0, 300)}.` : '';
+// The gambit hold (brief.hold, #630): the world waits for this hero's next acting call.
+export const holdNote = b => b && typeof b.hold === 'string' && b.hold ? `\nTHE WORLD IS HELD FOR YOU by your rule (${b.hold.slice(0, 160)}): nothing moves until you act (any acting tool), at most 2 minutes. Look, then act.` : '';
 export const earshotNote = b => b && typeof b.earshot === 'string' && b.earshot ? `\nIn earshot: ${b.earshot.slice(0, 300)} (the earshot tool tells more).` : '';
 export function talkText(b) {
   if (!b) return '';
   const heard = Array.isArray(b.heard) ? b.heard : [], met = Array.isArray(b.met) ? b.met : [];
   const near = Array.isArray(b.nearby) ? b.nearby : [];
-  return earshotNote(b) + sightNote(b) + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
+  return holdNote(b) + earshotNote(b) + sightNote(b) + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
     (met.length ? `\nCompanions you have met: ${met.join(', ')}. You know each other: do not introduce yourself again or repeat a line; talk to move the party forward (propose, vote, lead_to, or answer a question you were asked).` : '');
 }
 
