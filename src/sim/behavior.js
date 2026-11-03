@@ -39,7 +39,8 @@ import {companies,minds,inSlots,slotKeyOf,slotMembers,slotted} from './company.j
 import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
 import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
-import {gambitRec,noFlee} from './gambits.js'; // the hero's own rules (#617)
+import {gambitRec,noFlee} from './gambits.js';
+import {drainHolds} from './gambithold.js'; // finished gambit holds (#630) // the hero's own rules (#617)
 
 export const BW={
   DIGEST_MIN:60,     // game minutes between world digests
@@ -164,6 +165,9 @@ export function makeWatch(opts={}){
     if(refusals.length>=BW.REFUSE_N&&refusals.length*2>=pulls.length){anomaly(out,'levers-refused',null,refusals.length+' of '+pulls.length+' lever pulls refused in '+Math.round(BW.REFUSE_WIN/60)+' game hours',
       {refused:refusals.length,pulls:pulls.length,last:(L.find(e=>e.kind==='lever'&&e.detail&&e.detail.result!=='applied')||{}).detail?.result||null});refusals=[];pulls=[]}}
 
+  // gambit holds (#630): the digest counts holds and held seconds per hero; one that ran to HOLD_MAX_S unanswered is an anomaly
+  function holds(out){for(const h of drainHolds()){const t=H.holds||(H.holds={n:0,heldS:0,expired:0,by:{}}),b=t.by[h.name]||(t.by[h.name]={n:0,s:0});t.n++;t.heldS+=h.s;b.n++;b.s+=h.s;
+    if(h.how==='expired'){t.expired++;const a=byId(h.id);anomaly(out,'hold-expired',a||null,h.name+' held the world with "'+h.rule+'" and did not act in '+h.s+' s',{rule:h.rule,seconds:h.s},'warn')}}}
   function table(out){const t=tStats();H.table.opened+=Math.max(0,t.scenes-tLast.scenes);H.table.agentTurns+=Math.max(0,t.agent-tLast.agent);H.table.reflexTurns+=Math.max(0,t.reflex-tLast.reflex);tLast=t;
     const sc=S.table;
     if(scene&&(scene!==sc||scene.phase==='outcome')&&!seenScene.has(scene)){seenScene.add(scene);H.table.resolved++;
@@ -207,7 +211,7 @@ export function makeWatch(opts={}){
       const dt=S.gameMin-lastGm;lastGm=S.gameMin;
       // a paused world (a Table scene at 1x) keeps its clock: scenes, votes and levers are still read
       if(dt>0){dmSeat(out,dt);for(const a of seats())track(out,a,dt);for(const id of [...T.keys()]){const a=byId(id);if(!a||a.state==='dead')T.delete(id)}}
-      dmLog(out);table(out);votes(out);decisions(out);heard();deaths();for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
+      dmLog(out);holds(out);table(out);votes(out);decisions(out);heard();deaths();for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
       const h=Math.floor(S.gameMin/BW.DIGEST_MIN);if(h>hour){hour=h;digest(out)}
       return out},
     reset(){base=false}};

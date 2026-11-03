@@ -37,7 +37,7 @@ const clone=r=>JSON.parse(JSON.stringify(r));
 // The class preset: fight rules (a healer's heal first, a tank's guard suggestion, off), then the between-turns rules.
 export function presetFor(cls,name='class'){const k=cls+'|'+name;if(PRE[k])return PRE[k];
   let L=[...(CLS[cls]&&CLS[cls].heal?[PRESET_HEAL]:[]),...(TANK_CLASSES.includes(cls)?[PRESET_GUARD]:[]),...PRESET_FIGHT,...PRESET_IDLE];
-  if(name==='cautious')L=L.flatMap(r=>r.when==='past_flee_mark'?[{when:'self_hp_below',w:{pct:35},then:'flee_home'},r]:[r]);
+  if(name==='cautious')L=L.flatMap(r=>r.when==='past_flee_mark'?[{when:'foe_is',w:{what:'elite'},and:'attacked',then:'hold'},{when:'self_hp_below',w:{pct:35},then:'flee_home'},r]:[r]);
   if(name==='empty')L=[];
   const out=L.map((r,i)=>Object.freeze({id:i+1,...clone(r),on:r.on!==false}));
   return PRE[k]=Object.freeze(out)}
@@ -169,12 +169,13 @@ const ids=L=>'Your rule ids: '+L.map(r=>r.id).join(', ')+' (gambits lists them).
 
 function viewList(a){const L=rulesOf(a),g=gambitRec(a),last=g&&g.last;
   return L.map((r,i)=>({id:r.id,order:i+1,rule:ruleText(r),on:r.on!==false,phase:ACTS[r.then]?ACTS[r.then].phase:'?',...(ACTS[r.then]&&ACTS[r.then].safety?{safety:ACTS[r.then].safety}:{}),
-    ...(g&&g.at[r.id]!=null?{last_fired:Math.round(S.gameMin-g.at[r.id])+' game min ago'}:{}),...(last&&last.id===r.id?{fired_last:true}:{})}))}
+    ...(g&&g.at[r.id]!=null?{last_fired:Math.round(S.gameMin-g.at[r.id])+' game min ago'}:{}),...(last&&last.id===r.id?{fired_last:true}:{}),...(S.gambitHold&&S.gambitHold.id===a.id&&S.gambitHold.rid===r.id?{holding:true}:{})}))}
 export function gambitsView(a,{vocab}={}){const g=gambitRec(a),last=g&&g.last,L=rulesOf(a),B=budget(a);
   const r={ok:true,source:a.gambits?'your own list':'your class preset (untouched: it is how you have always played)',rules:viewList(a),
     how:'In a fight every fight rule that holds acts in turn, top to bottom (flee or retreat ends the moment). Between your turns (autopilot) the first rule that holds and can run acts; one that cannot run here falls through.',
     edits_left_today:GAMBIT.PER_DAY-B.n,max_rules:GAMBIT.MAX};
   if(last){const x=L.find(y=>y.id===last.id);r.last_fired={id:last.id,rule:x?ruleText(x):last.when+' -> '+last.then,ago:Math.round(S.gameMin-last.at)+' game min'}}
+  const hv=S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold:null;if(hv)r.holding={rule:hv.rule,rule_id:hv.rid,seconds:Math.round(hv.s),note:'The world is held for you until your next acting call (or '+GAMBIT.HOLD_MAX_S+' s).'};
   if(noFlee(a))r.no_flee_rule='No rule breaks you off a losing fight (flee_home or retreat_to). Hardcore: one life.';
   if(vocab||!a.gambits)Object.assign(r,vocabulary());
   return r}
