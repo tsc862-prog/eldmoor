@@ -1,0 +1,47 @@
+// Hero-to-hero auction trades (#14): auction_list / browse / buy / cancel through playerAct, refusals, the 5% fee, lapse,
+// the scripted seller and buyer, a save round trip and determinism. Usage: npm run tradecheck
+let seed = 0x14ade;
+const reseed = s => {seed = s};
+Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
+const SIM = await import('../src/sim/index.js');
+const {init, step, S, playerAct, snapshot, restore} = SIM;
+const {invOf, addGood, addGear, count} = await import('../src/sim/inv.js');
+const {listings, tradeTick, scriptedList, scriptedBuy, TRADE} = await import('../src/sim/market.js');
+const {makeItem} = await import('../src/sim/gear.js');
+const {CITY} = await import('../src/world/map.js');
+let fail = 0;
+const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+const call = (a, t, x) => {a.playRate = []; return playerAct(a.id, t, x || {})};
+console.log('\nEldmoor tradecheck\n');
+reseed(0x14ade); init({fellowship: true});
+const F = (await import('../src/sim/company.js')).slotted(), M = F.ids.map(id => S.agents.find(x => x.id === id));
+const [a, b] = M, home = CITY.find(c => c.fac === a.fac);
+const toTown = h => {h.state = 'town'; h.x = home.ah.x; h.y = home.ah.y; h.pq = []; h.target = null};
+toTown(a); toTown(b); S.listings = []; invOf(a).list = []; invOf(b).list = []; a.gold = 100; b.gold = 500;
+const gname = Object.keys((await import('../src/data/items.js')).GOODS)[0];
+addGood(a, gname, 4);
+let r = call(a, 'auction_list', {index: 0, price: 99999});
+ok(!r.ok && /Ask between/.test(r.error), 'a silly ask is refused: ' + r.error);
+r = call(a, 'auction_list', {index: 0, n: 3});
+ok(r.ok && r.each >= 1 && count(a, gname) === 1, 'lists 3 of 4 goods at the going price');
+const id = r.id;
+r = call(a, 'auction_buy', {id}); ok(!r.ok && /your own/.test(r.error), 'cannot buy your own listing');
+r = call(b, 'auction_browse'); ok(r.ok && r.listings.length === 1 && r.listings[0].n === 3, 'the other hero sees it');
+const g0 = a.gold, b0 = b.gold; r = call(b, 'auction_buy', {id, n: 2});
+ok(r.ok && b.gold === b0 - 2 * r.cost / 2 && count(b, gname) === 2 && a.gold === g0 + r.cost - Math.floor(r.cost * TRADE.FEE), 'buys 2: gold moves, the fee is kept (' + r.cost + 'g)');
+ok(S.trades.length === 1 && S.tradeStats.sold === 1, 'logged in S.trades');
+r = call(a, 'auction_cancel', {id}); ok(r.ok && count(a, gname) === 2, 'cancel returns the rest');
+const it = makeItem(a.cls, 'head', 10, 1, {rare: 0}); addGear(a, it);
+r = call(a, 'auction_list', {index: invOf(a).list.length - 1}); ok(r.ok, 'gear listed');
+S.gameMin += TRADE.DAYS * 1440 + 1; const nl = invOf(a).list.length; tradeTick();
+ok(!listings().length && invOf(a).list.length === nl + 1 && S.tradeStats.lapsed === 1, 'an unsold agent listing lapses back to its pack');
+// scripted
+const s = M[2]; toTown(s); s.player = false; invOf(s).list = []; const spare = makeItem(s.cls, 'head', 12, 1, {rare: 0}); spare.ilvl = 12; addGear(s, spare);
+s.slots.head = null; s.lvl = Math.max(s.lvl, 12);
+ok(scriptedList(s) === 1 && listings().length === 1, 'a scripted hero lists a spare');
+const buyer = M[3]; buyer.cls = s.cls; toTown(buyer); buyer.player = false; buyer.lvl = 12; buyer.gold = 400; buyer.slots.head = null;
+ok(scriptedBuy(buyer, null) === 1 && !listings().length, 'a scripted hero buys the upgrade');
+const snap = snapshot(); reseed(1); restore(snap); ok(Array.isArray(S.trades), 'trades survive a save round trip');
+const run = () => {reseed(7); init({fellowship: false}); for (let i = 0; i < 600 * 60; i++) step(1 / 60); return S.agents.reduce((h, x) => (h * 33 + x.gold + x.lvl) >>> 0, 5381) + ':' + (S.tradeStats ? S.tradeStats.listed : 0)};
+const h1 = run(), h2 = run(); ok(h1 === h2, 'deterministic: ' + h1);
+console.log(fail ? '\n' + fail + ' FAILED' : '\nall ok'); process.exit(fail ? 1 : 0);

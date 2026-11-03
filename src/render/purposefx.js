@@ -8,7 +8,7 @@
 //                      Close zoom only and only while the Intent icons switch (Settings) is on (cam.icons); the followed or
 //                      hovered hero's hourglass shows whenever it waits, at any zoom, switch or not.
 // Icons are 5x5 pixel strings on a dark 7x7 plate, drawn in world pixels like the selection chevron.
-import {T} from '../world/tiles.js';
+import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {purposeOf,ICON_OF} from '../sim/purpose.js';
 import {INTENT,MARK} from './palette.js';
 

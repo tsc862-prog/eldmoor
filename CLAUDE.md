@@ -157,10 +157,20 @@ other. The rules:
 - `npm run focuscheck`: guild focus (#6, `src/sim/guildfocus.js`): each guild's leader picks Delve (crypt), Wyrmhunt (raid), Wayfaring (DM hooks) or Warpath (PvP) from the guild's state, no dice; it multiplies or reorders existing rolls only, so `GF.ON=false` (or no guild focused) rolls exactly as before; the Fellowship's guild never takes one; changes go to the chronicle and timeline (GUILD).
 - `npm run archetypecheck`: Fellowship archetypes (#295, `src/data/archetypes.js`, `applyArchetype` in `src/sim/persona.js`): six archetypes picked on the setup page or the sheet, their stances toward each companion reaching prompts (#305), owner stances, no RNG.
 - `npm run personacheck`: agent-built personality (#409): the `self`/`become` tools, daily limits, owner pins, the persona history, relay writing never overwriting the hero's own words, the turn-header line and the standing-order block, a reflection that changes the persona, privacy, save/restore and old saves, no RNG.
-- Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, size, priority, prompt, seed, palette paths into
+- Art tiers (#177, owner decision 2026-11-03: 32 px tiles now, a cheap path to 64): `src/render/tile.js` is the one place
+  for the tile size: `TILE` (art pixels a tile, 32; tiers 32 and 64), `U` (world units a tile, 16 = world `T`: positions,
+  camera, labels, effects and the procedural art) and `ART` = TILE/U. Terrain chunks are painted at TILE while any terrain
+  asset is loaded (the procedural 16 px texel scaled up wherever no asset covers a pixel) and at U otherwise; `CH` keeps a
+  chunk about 1024 art px square. Entities stand 32x48 at the 32 tier (`SPRITE_TILES`, `HEAD` for nameplates): generated
+  sheets (`sprites.js` `ASSET_SPRITES`, `sheetFrame`: 3 frames by 4 directions, the hero tabard recoloured per faction from
+  `palette.js` `SPRITE.key`) else the procedural sprite scaled by `PROC_SCALE` (`worldSprite`, a one-art-pixel outline).
+  `palette.js` `TIER_SHADES` widens asset palettes per tier. Upgrading to 64: set `TILE=64`, run
+  `npm run art:daily -- --tier 64` (same manifest, prompts and seeds), accept the set, re-base `FOLLOW_TILES`.
+- Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, `sizes` per tier, priority, prompt, seed, palette paths into
   `src/render/palette.js`, the renderer hook naming its procedural fallback), the candidate models (pixel-art LoRAs
   on fal-ai through Hugging Face Inference Providers) and `allowance.monthlyUsd`. `npm run art:daily` (`daily.mjs`;
-  `-- --now` to run at once, `--max N`, `ART_MAX_CALLS`, `ART_DAILY_BUDGET`/`--budget`, `--dry-run`) generates missing
+  `-- --now` to run at once, `--tier 32|64` (default `TILE`; the tier's LoRA scale, pixel grid and palette widening from
+  the manifest's `tiers`: 0.55 / grid 4 at 32, 0.2 / grid 2 at 64), `--max N`, `ART_MAX_CALLS`, `ART_DAILY_BUDGET`/`--budget`, `--dry-run`) generates missing
   assets in priority order into `assets/incoming/<date>/` with a contact sheet, and stops at the day's share of the
   monthly credits (monthlyUsd / days in the month; HF gives free accounts no Inference Providers credits and PRO $2.00 a
   month, about $0.01 an image with pixel-xl), at the month's total, or when the provider refuses (402, a quota 429/403,
@@ -168,16 +178,18 @@ other. The rules:
   post-processing, and `npm run art:reprocess -- <date>|all [keys]` re-runs post-processing on them with no call. State in
   `assets/queue.json` (gitignored), one line a run in `logs/art.log` (the launcher's `s` shows it); refused models fall
   through to the next candidate and the one that answers is pinned. `npm run art:accept -- <ids>|all` (`--reject`,
-  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scripts\art\schedule.cmd [HH:MM]`
+  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. Index and queue keys are
+  `<id>@<tier>` (files `assets/<kind>/<tier>/<name>.png`, entries carry `tier`; keys from before tiers read as 32). `scripts\art\schedule.cmd [HH:MM]`
   registers the daily Windows task. `npm run art:gen` generates straight into `assets/`, `npm run art:sheet` writes
   the contact sheet. Post-processing (`post-texture.mjs` on the building blocks of `post.mjs`, zero-dependency PNG codec
   `png.mjs`): find the model's pixel grid and sample cell centres (the image at its own pixel scale, ~128 px from 1024),
-  a seamless crop for tiles (base tiles are 32x32 patches) or a scaled subject for sprites, tone match and quantise to
+  a seamless crop for tiles (one tile at the tier: 32x32 at 32) or a scaled subject for sprites, tone match and quantise to
   the palette (widened with shades, optional ordered dither), outline; an output under `post.minColors` (4 for tiles)
   is rejected as flat, not written. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until loaded or
-  when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names the road, water
-  and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against a mock Hugging
-  Face server and a pixel-art fixture.
+  when absent; only entries of the renderer's tier are used, so a missing tier draws the procedural art scaled to TILE),
+  `onAssets`; `terrain.js` `ASSET_TILES`, `ASSET_ROAD`, `ASSET_EDGES` (dual-grid transition pieces, one tile each) and
+  `ASSET_PROPS` draw from assets at TILE resolution. `npm run artcheck` (CI) checks it all against a mock Hugging Face
+  server and fixtures (`scripts/art/fixtures.mjs`), incl. tier selection, the scaled fallback and `--tier 64`.
 - `npm run gambitcheck` (#617, `src/sim/gambits.js`, vocabulary and class presets in `src/data/gambits.js`): an agent hero's gambits, an ordered rule list (`when` + optional `and` + `then`) that autopilot (first rule that holds and can run), the fight reflex (every fight rule that holds, in order; flee ends it) and the full-pack reflex run between turns. With no edit a hero runs its class preset, which is the old fixed policy written out rule for rule (hashcheck's `autopilot` row proves agent heroes on autopilot play identically); scripted heroes never use it. Tools (not orders, `act:false`): `gambits` (the list, ids, on/off, last fired, the vocabulary), `set_gambit {when, and?, then, id?, before?, on?, why?}` written in words ("ally hp below 40", "buy_potions 3"), `move_gambit`, `toggle_gambit`, `drop_gambit`, `reset_gambits {preset: class|cautious|empty}`; `GAMBIT.PER_DAY` 20 edits a game day. Weakening or dropping a safety rule (flee, potion, defend) is never refused: it is noted in the edit history and the persona history, the watch flags `no-flee-rule` and the digest/report count rule-driven acts per hero. The Agent tab shows the list (view only) with the rule that fired last; the purpose line names it.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
@@ -923,8 +935,8 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   `memory.js` per-member recent memories, long-term summary and companion stances;
   `council.js` party chat, proposals and votes, `lead_to`, splitting off and the all-or-none
   Crypt/raid draft; `table.js` Table mode scenes; `notify.js` events for agent-played heroes; `questlog.js` the quest log (several quests per hero, one in focus); `dmagent.js` the DM seat and its tools (#66); `staged.js` the DM agent's staged scenes and its at-the-table calls (#132).
-- `src/render/`: `sprites.js` pixel-string sprites and `heroSprite`;
-  `terrain.js` per-pixel tile textures into an offscreen canvas;
+- `src/render/`: `tile.js` the tile size (`TILE`, `U`, `ART`); `sprites.js` pixel-string sprites, `heroSprite` and the
+  generated sheets; `terrain.js` per-pixel tile textures into cached chunks at TILE (or U with no terrain asset);
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
   overlay with torch light, labels at constant CSS size.
 - `src/ui/`: `panels.js` hero card, factions, chronicle, graveyard, guilds,
@@ -961,7 +973,7 @@ render or ui, so the headless harness stays stub-free.
 
 ## Known state
 
-- In a 120-minute headless run from level 1 (balance #361, 8 seeded runs on main 9e201d8 with the default Fellowship; deaths counted without the `S.fallen` cap of 15, cause from the real death cause): about 10 deaths per hour (range 6-15, below the 20-40 target; was about 14), 45% PvP (62-74% on some seeds), 28% mob, 27% Sunken Crypt, 0% Kragmaw; median living level 12 at minute 60 and 15-16 at minute 120, top 20 (about 19 alive at 14+); Sunken Crypt about 38 clears and 2 wipes; Kragmaw dies about 5 times per run (13000 hp, respawn 600 sim seconds, so kills are limited by raid musters). Mobs of level 7+ hit 1.35x (ramped in from level 3, Fellowship exempt). The Fellowship reaches L16 with about 0.6 Crypt deaths per run (#269: every crawl room `hit` x2.25, owner decision; 10 seeds, was 0.0) and 0 crawl wipes (about 10-13 crawl clears and 6-7 driven back per run, was 15 and 3; level 12.0 at minute 60, 16.2 at 120; about 300 Table scenes and 26 camps per run); reflex healers use their class heals (#359). Guild focus mix: adventure 48%, crypt 34%, pvp 15%, raid 4%; rivalries are rare (0.4 declared per run). Next levers for more deaths: mid-level (L6-13) mob pressure (`MOB_HIT`, mob hp) and PvP duel chance/range; Fellowship danger is an owner decision (#269: `TR.HIT`, crawl `room.hit`). Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
+- Balance baseline (#154, 2026-11-03, 16 unseeded `npm run sim -- 120` runs on main b0a7d8b with the default Fellowship, after #269/#604/#613/#620; deaths counted without the `S.fallen` cap of 15, cause from the real death cause; minute-60 figures from 8 of them). Targets (owner, #154, replacing the old 20-40 deaths/h): background deaths 12-20 per hour over a 120-minute run, PvP under 60% of deaths (soft ceiling, report when crossed), Kragmaw killed 4-6 times per run, Fellowship deaths reported separately (governed by #269 for the Crypt and `TR.HIT`, owner's call). Measured: 11.3 deaths per hour all heroes (range 4-18.5 across runs; about 10.9 without the Fellowship's 0.8 per run), just under the 12-20 band, so it is missed by a small margin; causes 46% Sunken Crypt, 33% PvP (met, under 60%; one seed 54%), 21% mob, under 1% Kragmaw; Kragmaw dies 5.0 times per run (3-6, met; 13000 hp, respawn 600 sim seconds, limited by raid musters); median living level 12.6 at minute 60 (12-13, in the 8-13 band) and 15 at 120 (11-17), top 20 in nearly every run, about 17 alive at 14+ of 28; guild Crypt about 38 clears and 4.5 wipes per run; Fellowship L15-18 at 120 with 0.8 deaths per run (0-3, all in the Crypt crawl), 0 crawl wipes, about 14 crawl clears and 6-7 driven back of 21 runs; average hero gold about 540 (median about 300) after the smith sink; crafting about 64 items per run (alchemy 44, smithing 5, leatherworking 5, cooking 5, scribing 5) with about 330g of fees. Mobs of level 7+ hit 1.35x (ramped in from level 3, Fellowship exempt). Guild focus mix: adventure 48%, crypt 34%, pvp 15%, raid 4%; rivalries are rare (0.4 declared per run). Single lever to lift deaths into the band: the death share of a wiped background Crypt party (`dungeon.js`, now 40%), or `MOB_HIT` for L6-13 mobs; PvP stays untouched (roadmap wants less). Late-game (240 min) PvP among veterans still climbs. Fellowship replacements arrive 2 levels under the lowest living member.
 - The world auto-saves to localStorage every game-hour and on tab close, and restores on reload; Export/Import move it as JSON (`src/sim/save.js`, `src/ui/save.js`, `npm run savecheck`).
 
 ## Roadmap ideas

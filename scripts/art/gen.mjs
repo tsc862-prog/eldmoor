@@ -8,10 +8,13 @@
 //   npm run art:gen -- --only tile:grass,tile:snow --force --yes   regenerate these even if present
 //   npm run art:gen -- --dry-run       print the plan and the request of the first image, call nothing
 //   --model KEY                        a key of the manifest's models (default: the pinned model, else the first candidate)
+//   --tier N                           the art tier to make (32 or 64; default src/render/tile.js TILE): its sizes from the
+//                                      manifest entry, its LoRA scale, pixel grid and palette widening from manifest tiers
 //
 // Each image: prompt -> the model's provider (fal-ai for the pixel-art LoRAs) -> PNG -> post-processing
 // (scripts/art/post.mjs: background, downscale to the pixel grid, quantise to src/render/palette.js colours, outline)
-// -> assets/<kind>/<name>.png, and assets/index.json gets {id, kind, file, w, h, sha256, model, repo, provider, seed, at}.
+// -> assets/<kind>/<tier>/<name>.png, and assets/index.json gets '<id>@<tier>': {id, tier, kind, file, w, h, sha256, model,
+// repo, provider, seed, at}.
 // The index is written after every image, so an interrupted run keeps what it made.
 //
 // The token: HF_TOKEN in the environment or in .env / .env.local at the repo root (gitignored). It is read here only,
@@ -20,7 +23,7 @@
 // (default https://huggingface.co).
 import {readFileSync,writeFileSync,existsSync,mkdirSync,renameSync} from 'node:fs';
 import {join,dirname} from 'node:path';
-import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest} from './lib.mjs';
+import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest,TILE,TIERS,tierKey,tierCfg} from './lib.mjs';
 import {decodePng,encodePng,isPng} from './png.mjs';
 import {resolvePalette} from './post.mjs';
 import {postProcess} from './post-texture.mjs';
@@ -61,11 +64,12 @@ export function negativeOf(man,e){return [e.negative,man.negativeStyle].filter(B
 
 // The HTTP request for one image. fal-ai takes its own body (prompt, image_size, loras); hf-inference takes the
 // task spec of https://huggingface.co/docs/inference-providers/tasks/text-to-image ({inputs, parameters}).
-export function buildRequest(man,m,mp,e,seed=e.seed){
-  const prompt=promptOf(man,m,e),negative=negativeOf(man,e);
+// The tier picks the LoRA scale (manifest tiers, a model's own tiers win, else the model's loraScale).
+export function buildRequest(man,m,mp,e,seed=e.seed,tier=TILE){
+  const prompt=promptOf(man,m,e),negative=negativeOf(man,e),cfg=tierCfg(man,m,tier);
   if(mp.provider==='hf-inference')return {url:`${ROUTER()}/hf-inference/models/${m.repo}`,body:{inputs:prompt,parameters:{negative_prompt:negative,width:m.width,height:m.height,num_inference_steps:m.steps,guidance_scale:m.guidance,seed}}};
   const body={prompt,negative_prompt:negative,image_size:{width:m.width,height:m.height},num_inference_steps:m.steps,guidance_scale:m.guidance,seed,num_images:1,sync_mode:true,output_format:'png',format:'png'};
-  if(mp.adapter==='lora'&&mp.adapterWeightsPath)body.loras=[{path:`${HUB()}/${m.repo}/resolve/main/${mp.adapterWeightsPath}`,scale:m.loraScale??1}];
+  if(mp.adapter==='lora'&&mp.adapterWeightsPath)body.loras=[{path:`${HUB()}/${m.repo}/resolve/main/${mp.adapterWeightsPath}`,scale:cfg.loraScale??m.loraScale??1}];
   return {url:`${ROUTER()}/${mp.provider}/${mp.providerId}`,body}}
 
 // Image bytes from a provider answer: raw image bytes, or JSON with images[0].url (https or data:), image, or b64_json.
@@ -105,12 +109,14 @@ export async function callImage(req,token,{timeout=120000,count=()=>{},wait=s=>n
     throw e}}
 
 // One call: the provider's image bytes. Callers keep them raw (saveRaw) before anything else happens.
-export async function fetchRaw({man,m,mp,e,token,seed=e.seed,timeout,count}){return callImage(buildRequest(man,m,mp,e,seed),token,{timeout,count})}
+export async function fetchRaw({man,m,mp,e,token,seed=e.seed,timeout,count,tier=TILE}){return callImage(buildRequest(man,m,mp,e,seed,tier),token,{timeout,count})}
 
 // Raw bytes -> asset image and PNG (post-texture.mjs). Throws ArtError 'image' (not a PNG) or 'flat' (too few colours).
-export function processRaw(bytes,e,PAL,m){
+// At a tier: its size from e.sizes, the model's pixel grid and the palette widening from the tier's settings.
+export function processRaw(bytes,e,PAL,m,tier=TILE,man=null){
   let raw;try{raw=decodePng(bytes)}catch(err){throw new ArtError('image',err.message)}
-  try{const img=postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline,{hint:(m&&m.grid)||8});return {img,png:encodePng(img)}}
+  const cfg=tierCfg(man,m,tier),sh=(PAL.TIER_SHADES&&PAL.TIER_SHADES[tier])||{};
+  try{const img=postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline,{hint:cfg.grid||(m&&m.grid)||8,tier,minPalette:cfg.minPalette??sh.minPalette??6,factors:sh.factors});return {img,png:encodePng(img)}}
   catch(err){if(err.kind==='flat')throw Object.assign(new ArtError('flat',err.message),{notes:err.notes});throw err}}
 
 // Keep the provider's image as it came, before post-processing, so every later tweak re-runs offline
@@ -128,30 +134,31 @@ export function writeIndex(dir,idx){mkdirSync(dir,{recursive:true});const p=join
 export const modelKey=(man,e,want)=>(e&&e.model)||want||man.pinnedModel||(man.candidates||Object.keys(man.models))[0];
 
 export async function main(argv=process.argv.slice(2)){
-  const o=parseArgs(argv,['max','only','out','manifest','timeout','model']),out=o.out||ASSETS,man=loadManifest(o.manifest||MANIFEST);
+  const o=parseArgs(argv,['max','only','out','manifest','timeout','model','tier']),out=o.out||ASSETS,man=loadManifest(o.manifest||MANIFEST),tier=o.tier?Number(o.tier):TILE;
+  if(!TIERS.includes(tier)){console.error(`--tier: ${o.tier} is not one of ${TIERS.join(', ')}`);return 2}
   const PAL=await import('../../src/render/palette.js');
   const bad=validateManifest(man,PAL,resolvePalette);if(bad.length){console.error('manifest problems:\n  '+bad.join('\n  '));return 2}
   if(o.model&&!man.models[o.model]){console.error(`--model: ${o.model} is not in the manifest`);return 2}
   const idx=loadIndex(out),only=o.only?new Set(String(o.only).split(',')):null;
   if(only)for(const id of only)if(!man.assets.some(e=>e.id===id)){console.error(`--only: ${id} is not in the manifest`);return 2}
-  const want=man.assets.filter(e=>(!only||only.has(e.id))&&(o.force||!idx.assets[e.id]||!existsSync(join(out,idx.assets[e.id].file))));
+  const have=e=>idx.assets[tierKey(e.id,tier)],want=man.assets.filter(e=>(!only||only.has(e.id))&&(o.force||!have(e)||!existsSync(join(out,have(e).file))));
   const max=o.max!==undefined?Math.max(0,parseInt(o.max,10)||0):Infinity,todo=want.slice(0,max);
   const cost=todo.reduce((s,e)=>s+man.models[modelKey(man,e,o.model)].costPerImage,0);
-  console.log(`[art] ${man.assets.length} in the manifest, ${Object.keys(idx.assets).length} in ${out.replace(ROOT,'.')}/index.json, ${want.length} to make`+(todo.length<want.length?`, stopping at --max ${todo.length}`:''));
+  console.log(`[art] tier ${tier}: ${man.assets.length} in the manifest, ${Object.values(idx.assets).filter(a=>a.tier===tier).length} in ${out.replace(ROOT,'.')}/index.json, ${want.length} to make`+(todo.length<want.length?`, stopping at --max ${todo.length}`:''));
   for(const [k,n] of Object.entries(todo.reduce((a,e)=>{const k=modelKey(man,e,o.model);a[k]=(a[k]||0)+1;return a},{})))console.log(`[art]   ${n} x ${k} (${man.models[k].repo}) at ~$${man.models[k].costPerImage}/image`);
   console.log(`[art] estimated cost: $${cost.toFixed(3)} for ${todo.length} image${todo.length===1?'':'s'} (an estimate of Inference Providers credits; art:daily keeps to a daily budget, art:gen does not)`);
   if(!todo.length){console.log('[art] nothing to do');return 0}
   if(o['dry-run']){const e=todo[0],m=man.models[modelKey(man,e,o.model)];let mp;try{mp=await mapping(m)}catch(err){mp={provider:m.provider||'?',providerId:m.providerId||'?'};console.log('[art] mapping lookup failed: '+err.message)}
-    const {url,body}=buildRequest(man,m,mp,e);console.log(`[art] dry run: first request POST ${url}\n${JSON.stringify(body,null,1)}`);return 0}
+    const {url,body}=buildRequest(man,m,mp,e,e.seed,tier);console.log(`[art] dry run: first request POST ${url}\n${JSON.stringify(body,null,1)}`);return 0}
   if(!o.yes){console.log('[art] add --yes to generate');return 0}
   const token=hfToken();if(!token){console.error('[art] no HF_TOKEN: put HF_TOKEN=hf_... in .env (a token with the "Inference Providers" permission)');return 2}
   const timeout=(Number(o.timeout)||120)*1000,maps=new Map();let made=0,failed=0;
   for(const e of todo){const k=modelKey(man,e,o.model),m=man.models[k],t0=Date.now();
     try{let mp=maps.get(k);if(!mp){mp=await mapping(m);maps.set(k,mp)}
-      const {bytes}=await fetchRaw({man,m,mp,e,token,timeout});saveRaw(join(out,'incoming',today()),e.id,bytes,{id:e.id,model:k,repo:m.repo,provider:mp.provider,seed:e.seed});
-      const {img,png}=processRaw(bytes,e,PAL,m);
-      const file=fileOf(e.id),p=join(out,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);
-      idx.assets[e.id]={id:e.id,kind:e.kind,file,w:img.w,h:img.h,sha256:sha256(png),model:k,repo:m.repo,provider:mp.provider,seed:e.seed,at:new Date().toISOString()};
+      const key=tierKey(e.id,tier),{bytes}=await fetchRaw({man,m,mp,e,token,timeout,tier});saveRaw(join(out,'incoming',today()),key,bytes,{id:e.id,tier,model:k,repo:m.repo,provider:mp.provider,seed:e.seed});
+      const {img,png}=processRaw(bytes,e,PAL,m,tier,man);
+      const file=fileOf(e.id,tier),p=join(out,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);
+      idx.assets[key]={id:e.id,tier,kind:e.kind,file,w:img.w,h:img.h,sha256:sha256(png),model:k,repo:m.repo,provider:mp.provider,seed:e.seed,at:new Date().toISOString()};
       writeIndex(out,idx);made++;console.log(`[art] ${e.id} -> ${file} ${img.w}x${img.h} (${((Date.now()-t0)/1000).toFixed(1)}s)`)}
     catch(err){failed++;console.error(`[art] ${e.id} failed: ${err.message}`);if(['quota','auth','rate'].includes(err.kind))break}}
   console.log(`[art] made ${made}, failed ${failed}; npm run art:sheet to review, then npm run artcheck`);

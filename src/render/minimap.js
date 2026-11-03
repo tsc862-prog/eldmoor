@@ -2,7 +2,8 @@
 // world. The base image (one colour per tile from a small palette) is painted once
 // from `tiles`/`zone`; every frame draws hero dots coloured by faction, elite and
 // boss markers and the camera's view rectangle on top. Clicking recentres the camera.
-import {W,H,T,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,SNOW,ICE} from '../world/tiles.js';
+import {U as T} from './tile.js'; // world units a tile (render/tile.js)
+import {W,H,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,SNOW,ICE} from '../world/tiles.js';
 import {tiles,zone,I,CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {BIOME,TILE_FLAT,MARK,TEXT,biomeOfZone} from './palette.js';

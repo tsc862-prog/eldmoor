@@ -5,6 +5,8 @@
 //   npm run art:daily -- --now         run now, even if today's run already happened
 //   npm run art:daily -- --now --max 5 at most 5 images
 //   npm run art:daily -- --dry-run     the plan: what is next, which model; no call
+//   npm run art:daily -- --tier 64     make the 64 px tier (default: src/render/tile.js TILE, the tier the game draws).
+//                                      Same manifest, prompts and seeds; sizes and generation settings of that tier.
 //   scripts\art\schedule.cmd [HH:MM]   register the Windows task that runs it daily (default 09:00)
 //
 // It walks scripts/art/manifest.json in priority order (terrain tileset, towns and landmarks, sprites, the portrait
@@ -15,7 +17,7 @@
 // Caps: --max N images, ART_MAX_CALLS (or --max-calls) HTTP attempts a run (default 100).
 // Model: the manifest's pinnedModel, else the one that answered before (assets/queue.json), else the candidates in
 // order: a model or route that is refused (400/404/422, no supported provider) is recorded and the next is tried.
-// Output: assets/incoming/<date>/<kind>/<name>.png (+ index.json and sheet.html there) for review; npm run art:accept
+// Output: assets/incoming/<date>/<kind>/<tier>/<name>.png (+ index.json and sheet.html there) for review; npm run art:accept
 // moves what you keep into assets/ and assets/index.json. State: assets/queue.json (gitignored). One line a run is
 // appended to logs/art.log (date, made, calls, cost, model, stop reason, next), which the launcher's `s` shows.
 // No paid option is ever sent (no bill-to header, no provider key); the token is HF_TOKEN from .env, never printed.
@@ -26,7 +28,7 @@
 import {writeFileSync,existsSync,mkdirSync,readFileSync,appendFileSync} from 'node:fs';
 import {join,dirname} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,sha256,validateManifest,loadQueue,saveQueue,keyFile,splitKey} from './lib.mjs';
+import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,sha256,validateManifest,loadQueue,saveQueue,keyFile,splitKey,TILE,TIERS,tierKey} from './lib.mjs';
 import {resolvePalette} from './post.mjs';
 import {parseArgs,hfToken,mapping,fetchRaw,saveRaw,processRaw,writeIndex} from './gen.mjs';
 
@@ -38,28 +40,31 @@ const DONE=/stop: (allowance used|rate headers|ART_MAX_CALLS|manifest complete|d
 // Estimated credits spent on the given day (YYYY-MM-DD) or month (YYYY-MM), read back from art.log lines.
 export function spentOn(text,prefix){let t=0;for(const l of String(text).split(/\r?\n/))if(l.startsWith(prefix)){const m=/est\. \$([\d.]+)/.exec(l)||/~\$([\d.]+) of the free allowance/.exec(l);if(m)t+=Number(m[1])}return t}
 
-// The work list: missing assets by priority, then alternates once everything exists.
-export function jobsFor(man,idx,q,{retryFailed=false}={}){
+// The work list at a tier: missing assets by priority, then alternates once everything exists. Keys are tier keys
+// ('tile:grass@32', 'tile:grass@32#alt1'), so the 32 and 64 sets are made and reviewed apart.
+export function jobsFor(man,idx,q,{retryFailed=false,tier=TILE}={}){
   const order=man.assets.map((e,i)=>[e,i]).sort((a,b)=>a[0].priority-b[0].priority||a[1]-b[1]).map(([e])=>e);
   const tooOften=k=>!retryFailed&&((q.failed[k]&&q.failed[k].tries)||0)>=3;
   // a failed or flat draw is not repeated with the same seed (the same seed gives the same image)
   const retry=k=>((q.failed[k]&&q.failed[k].tries)||0)*104729;
-  const miss=order.filter(e=>!idx.assets[e.id]&&!q.incoming[e.id]&&!tooOften(e.id)).map(e=>({e,key:e.id,seed:e.seed+(q.rejected[e.id]||0)*7919+retry(e.id)}));
+  const K=e=>tierKey(e.id,tier);
+  const miss=order.filter(e=>!idx.assets[K(e)]&&!q.incoming[K(e)]&&!tooOften(K(e))).map(e=>({e,key:K(e),tier,seed:e.seed+(q.rejected[K(e)]||0)*7919+retry(K(e))}));
   if(miss.length)return miss;
   const N=man.alternatesWhenComplete||0,alts=[];
-  for(let k=1;k<=N;k++)for(const e of order){if(!idx.assets[e.id]&&!q.incoming[e.id])continue;if((q.alts[e.id]||0)>=k)continue;
-    const key=`${e.id}#alt${k}`;if(q.incoming[key]||tooOften(key))continue;alts.push({e,key,seed:e.seed+1000*k+retry(key),alt:k})}
+  for(let k=1;k<=N;k++)for(const e of order){if(!idx.assets[K(e)]&&!q.incoming[K(e)])continue;if((q.alts[K(e)]||0)>=k)continue;
+    const key=tierKey(e.id,tier,k);if(q.incoming[key]||tooOften(key))continue;alts.push({e,key,tier,seed:e.seed+1000*k+retry(key),alt:k})}
   return alts}
 
 export async function main(argv=process.argv.slice(2),env=process.env){
-  const o=parseArgs(argv,['max','max-calls','manifest','dir','log','date','timeout','budget']);
+  const o=parseArgs(argv,['max','max-calls','manifest','dir','log','date','timeout','budget','tier']),tier=o.tier?Number(o.tier):TILE;
+  if(!TIERS.includes(tier)){console.error(`--tier: ${o.tier} is not one of ${TIERS.join(', ')}`);return 2}
   const dir=o.dir||ASSETS,logPath=o.log||join(ROOT,'logs','art.log'),now=new Date(),date=o.date||today(now);
   const man=loadManifest(o.manifest||MANIFEST),PAL=await import('../../src/render/palette.js');
   const log=line=>{mkdirSync(dirname(logPath),{recursive:true});appendFileSync(logPath,line+'\n');console.log('[art] '+line)};
   if(!o.now&&!o['dry-run']&&existsSync(logPath)){const last=readFileSync(logPath,'utf8').trim().split(/\r?\n/).filter(l=>l.startsWith(date)).pop();
     if(last&&DONE.test(last)){console.log(`[art] already ran today: ${last}\n[art] (--now runs again)`);return 0}}
   const bad=validateManifest(man,PAL,resolvePalette);if(bad.length){console.error('manifest problems:\n  '+bad.join('\n  '));return 2}
-  const idx=loadIndex(dir),q=loadQueue(dir),jobs=jobsFor(man,idx,q,{retryFailed:!!o['retry-failed']});
+  const idx=loadIndex(dir),q=loadQueue(dir),jobs=jobsFor(man,idx,q,{retryFailed:!!o['retry-failed'],tier});
   const max=o.max!==undefined?Math.max(0,parseInt(o.max,10)||0):Infinity,maxCalls=Math.max(1,parseInt(o['max-calls']??env.ART_MAX_CALLS??'100',10)||100);
   const candidates=man.pinnedModel?[man.pinnedModel]:q.model.pinned?[q.model.pinned]:man.candidates.filter(k=>!(q.model.tried[k]&&q.model.tried[k].ok===false));
   // Credits: the account's monthly Inference Providers credits (manifest allowance.monthlyUsd, $2.00 on PRO) are spread
@@ -70,7 +75,7 @@ export async function main(argv=process.argv.slice(2),env=process.env){
   const budget=Number(o.budget??(env.ART_DAILY_BUDGET||undefined)??(monthly/dim));
   const line=(made,rej,calls,cost,model,stop,next)=>`${stamp(now,date)} | made ${made} | rejected ${rej} | calls ${calls} | est. $${cost.toFixed(3)} (month $${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)} credits) | model ${model||'-'} | stop: ${stop} | next: ${next||'-'}`;
   if(!jobs.length){log(line(0,0,0,0,q.model.pinned||man.pinnedModel,'manifest complete, alternates too: no call',''));q.next=[];saveQueue(dir,q);return 0}
-  console.log(`[art] ${jobs.length} to make (${jobs.filter(j=>j.alt).length?'alternates':'missing assets'}), first ${jobs.slice(0,5).map(j=>j.key).join(', ')}; caps: ${max===Infinity?'no --max':'--max '+max}, ${maxCalls} calls`);
+  console.log(`[art] tier ${tier}: ${jobs.length} to make (${jobs.filter(j=>j.alt).length?'alternates':'missing assets'}), first ${jobs.slice(0,5).map(j=>j.key).join(', ')}; caps: ${max===Infinity?'no --max':'--max '+max}, ${maxCalls} calls`);
   console.log(`[art] credits: today's share $${budget.toFixed(3)} (spent today ~$${spentToday.toFixed(3)}), month ~$${spentMonth.toFixed(3)} of $${monthly.toFixed(2)}`);
   console.log(`[art] model: ${man.pinnedModel?man.pinnedModel+' (pinned in the manifest)':q.model.pinned?q.model.pinned+' (answered before)':'try '+candidates.join(', ')}`);
   if(o['dry-run'])return 0;
@@ -88,10 +93,10 @@ export async function main(argv=process.argv.slice(2),env=process.env){
     for(;;){k=e.model||candidates[ci];if(!k){stop='no candidate model answered';break}
       const m=man.models[k];
       try{let mp=maps.get(k);if(!mp){mp=await mapping(m);maps.set(k,mp)}
-        const got=await fetchRaw({man,m,mp,e,token,seed:job.seed,timeout,count});cost+=m.costPerImage; // refused calls draw nothing
+        const got=await fetchRaw({man,m,mp,e,token,seed:job.seed,timeout,count,tier});cost+=m.costPerImage; // refused calls draw nothing
         // keep the provider's image before anything else, so post-processing can be re-run offline (art:reprocess)
-        saveRaw(inc,job.key,got.bytes,{id:e.id,kind:e.kind,model:k,repo:m.repo,provider:mp.provider,seed:job.seed,...(job.alt?{alt:job.alt}:{})});
-        try{res={...processRaw(got.bytes,e,PAL,m),last:got.last,mp}}catch(err){res={err,last:got.last}}break}
+        saveRaw(inc,job.key,got.bytes,{id:e.id,tier,kind:e.kind,model:k,repo:m.repo,provider:mp.provider,seed:job.seed,...(job.alt?{alt:job.alt}:{})});
+        try{res={...processRaw(got.bytes,e,PAL,m,tier,man),last:got.last,mp}}catch(err){res={err,last:got.last}}break}
       catch(err){
         if(err.kind==='model'&&!e.model&&!man.pinnedModel&&!q.model.pinned){q.model.tried[k]={ok:false,why:err.message.slice(0,160),at:now.toISOString()};console.log(`[art] model ${k} refused: ${err.message.slice(0,160)}; trying the next`);ci++;saveQueue(dir,q);continue}
         res={err};break}}
@@ -105,13 +110,13 @@ export async function main(argv=process.argv.slice(2),env=process.env){
     inRow=0;
     if(!e.model&&!q.model.pinned&&!man.pinnedModel){q.model.pinned=k;q.model.tried[k]={ok:true,at:now.toISOString()};console.log(`[art] model ${k} (${man.models[k].repo}) answered: pinned in assets/queue.json (copy it to the manifest's pinnedModel)`)}
     const file=keyFile(job.key),p=join(inc,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,res.png);
-    incIdx.assets[job.key]={id:e.id,kind:e.kind,file,w:res.img.w,h:res.img.h,colors:res.img.notes.colors,grid:res.img.notes.grid,sha256:sha256(res.png),model:k,repo:man.models[k].repo,provider:res.mp.provider,seed:job.seed,at:new Date().toISOString(),...(job.alt?{alt:job.alt}:{})};
-    writeIndex(inc,incIdx);q.incoming[job.key]={date,file};if(job.alt)q.alts[e.id]=Math.max(q.alts[e.id]||0,job.alt);delete q.failed[job.key];saveQueue(dir,q);
+    incIdx.assets[job.key]={id:e.id,tier,kind:e.kind,file,w:res.img.w,h:res.img.h,colors:res.img.notes.colors,grid:res.img.notes.grid,sha256:sha256(res.png),model:k,repo:man.models[k].repo,provider:res.mp.provider,seed:job.seed,at:new Date().toISOString(),...(job.alt?{alt:job.alt}:{})};
+    writeIndex(inc,incIdx);q.incoming[job.key]={date,file};if(job.alt){const b=tierKey(e.id,tier);q.alts[b]=Math.max(q.alts[b]||0,job.alt)}delete q.failed[job.key];saveQueue(dir,q);
     made++;console.log(`[art] ${job.key} -> assets/incoming/${date}/${file} (${res.img.notes.colors} colours, grid ${res.img.notes.grid}, native ${res.img.notes.native})`);
     if(res.last){stop='rate headers: allowance used';i++;break}}
   if(!stop)stop=i>=jobs.length?'all done for now':'stopped';
-  const left=jobsFor(man,loadIndex(dir),q);q.next=left.slice(0,10).map(j=>j.key);q.lastRun={date,made,calls,stop};saveQueue(dir,q);
-  if(made||rej){const r=spawnSync(process.execPath,[join(ROOT,'scripts','art','sheet.mjs'),'--assets',inc,'--out',join(inc,'sheet.html'),'--generated'],{encoding:'utf8'});
+  const left=jobsFor(man,loadIndex(dir),q,{tier});q.next=left.slice(0,10).map(j=>j.key);q.lastRun={date,made,calls,stop};saveQueue(dir,q);
+  if(made||rej){const r=spawnSync(process.execPath,[join(ROOT,'scripts','art','sheet.mjs'),'--assets',inc,'--out',join(inc,'sheet.html'),'--generated','--tier',String(tier)],{encoding:'utf8'});
     if(r.status===0)console.log(`[art] review: ${join(inc,'sheet.html')}\n[art] keep: npm run art:accept -- <ids> (or all); drop: npm run art:accept -- --reject <ids>`);else console.log('[art] sheet failed: '+(r.stderr||'').slice(0,200))}
   log(line(made,rej,calls,cost,q.model.pinned||man.pinnedModel||candidates[ci],stop,q.next[0]));
   return /HTTP 401|HTTP 403 token|no candidate/.test(stop)?2:0}

@@ -2,7 +2,8 @@
 // chunks that intersect the view, entities sorted by y and culled to the view,
 // effects, day/night overlay with torch light, labels at constant CSS size, minimap.
 // `cam` is shared with the UI (selection and view mode live here).
-// All world positions are in tile units times T (16px); sprites are two-frame.
+// All world positions are in world units: tiles times T (render/tile.js U, 16 a tile). Art is drawn at TILE (32) pixels
+// a tile: terrain chunks and generated sheets are scaled down to world units, procedural sprites scaled up (#177).
 //
 // Camera model: cam.fit is the scale at which the whole map fits the canvas.
 //   free camera ('map'): sc = fit * zoom, zoom one of ZOOMS; camX/camY is the view
@@ -12,12 +13,13 @@
 //   A wheel, drag or minimap click in follow mode drops to the free camera at the
 //   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
-import {W,H,T,LAVA} from '../world/tiles.js';
+import {W,H,LAVA} from '../world/tiles.js';
+import {U as T,ART,PROC_SCALE,HEAD,FOLLOW_TILES} from './tile.js';
 import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
-import {sprite,SPR,heroSprite,npcSprite,outlined} from './sprites.js';
+import {sprite,SPR,heroSprite,npcSprite,outlined,worldSprite,sheetFrame} from './sprites.js';
 import {classColor,toneOf,toneName,DISP} from '../core/colors.js';
 import {drawBubbles,bubbleBoxes} from './bubbles.js';
 import {bubbleVisible} from '../core/chatview.js';
@@ -42,8 +44,14 @@ const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are place
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null,hover:null,icons:true}; // hover, icons: the hovered hero and the Intent icons switch in Settings (#534, render/purposefx.js)
-// Follow view shows about 460 world pixels (29 tiles) across the screen.
-const FOLLOW_VIEW=460;
+// Follow view shows about FOLLOW_TILES (29) tiles across the screen.
+const FOLLOW_VIEW=FOLLOW_TILES*T;
+const BOSS_HEAD=SPR.boss[0].length*PROC_SCALE+6; // Kragmaw's nameplate height over its feet
+// The facing of each entity for a generated sheet (0 down, 1 left, 2 right, 3 up), from how it last moved.
+const FACE=new WeakMap();
+function dirOf(e){let f=FACE.get(e);if(!f){f={x:e.x,y:e.y,d:e.face<0?1:2};FACE.set(e,f)}
+  const dx=e.x-f.x,dy=e.y-f.y;if(dx*dx+dy*dy>1e-4){f.d=Math.abs(dx)>=Math.abs(dy)?(dx<0?1:2):(dy<0?3:0);f.x=e.x;f.y=e.y}return f.d}
+const STEP=[1,0,2,0]; // sheet columns of a walk cycle
 // Entities and labels this many world px outside the view are not drawn.
 const MARGIN=48;
 // BOSS_PAL lives in palette.js (#85: the raid arena draws Kragmaw too)
@@ -127,7 +135,7 @@ export function createRenderer(cv,screenEl){
     const i0=Math.max(0,Math.floor(-cam.offX/sc/cs)),i1=Math.min(CHUNKS_X-1,Math.floor((cv.width-cam.offX)/sc/cs));
     const j0=Math.max(0,Math.floor(-cam.offY/sc/cs)),j1=Math.min(CHUNKS_Y-1,Math.floor((cv.height-cam.offY)/sc/cs));
     for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const c=getChunk(i,j);
-      const x0=Math.round(cam.offX+i*cs*sc),y0=Math.round(cam.offY+j*cs*sc),x1=Math.round(cam.offX+(i*cs+c.width)*sc),y1=Math.round(cam.offY+(j*cs+c.height)*sc);
+      const x0=Math.round(cam.offX+i*cs*sc),y0=Math.round(cam.offY+j*cs*sc),x1=Math.round(cam.offX+(i*cs+c.uw)*sc),y1=Math.round(cam.offY+(j*cs+c.uh)*sc); // c.uw/uh: the chunk in world units, whatever its resolution
       ctx.drawImage(c,0,0,c.width,c.height,x0,y0,x1-x0,y1-y0)}}
 
   let blink=0;
@@ -180,20 +188,25 @@ export function createRenderer(cv,screenEl){
       else if(e.state==='dead')s=sprite('grave'+e.fac,SPR.grave[0],{G:'#8a8a96',F:'#3a3a46',B:FAC[e.fac].dark});
       else s=heroSprite(e,e.state==='ghost',fr);
       const px=Math.round(e.x*T),py=Math.round(e.y*T),live=e.state!=='dead';
+      // a generated sheet (#177) for a living hero or creature, else the procedural sprite scaled to the same height
+      const G=live&&e.state!=='ghost'&&(e.kind==='hero'||e.kind==='mob')?sheetFrame(e,dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
+      const sw=G?G.fw/ART:s.width*PROC_SCALE,sh=G?G.fh/ART:s.height*PROC_SCALE;
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
-      if(live)shadow(px,py,s.width);
-      if(close&&e.kind==='npc')dispoRing(px,py,s.width,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
-      const o=live?outlined(s):s,ow=live?1:0; // living entities get the dark outline
-      ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);
-      ctx.drawImage(o,-Math.floor(s.width/2)-ow,py-s.height-ow);ctx.restore();ctx.globalAlpha=1;
-      const top=py-s.height;
+      if(live)shadow(px,py,sw);
+      if(close&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
+      if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);
+      else{const o=worldSprite(s,live),ow=live?1/ART:0; // living entities get the dark outline, one art pixel wide
+        ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);
+        ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-ow,py-sh-ow,o.width/ART,o.height/ART);ctx.restore()}
+      ctx.globalAlpha=1;
+      const top=py-sh;
       // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
       if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle=MARK.quest;ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
         else if(e.role==='quartermaster'){ctx.fillStyle='#f2c14e';ctx.fillRect(px-2,top-8,4,4);ctx.fillStyle='#8a6a1a';ctx.fillRect(px-1,top-6,2,1)}}
       if(e===sel){ctx.fillStyle=Math.floor(blink*3)%2?MARK.sel:MARK.selHi;ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
-      if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=e.kind==='boss'?28:12;
+      if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=(e.kind==='boss'?21:8)*PROC_SCALE;
         ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
-      if(e.kind==='hero'&&!cut)drawIntentIcon(ctx,S,cam,e,px,top,s.width,close); // the intent icon at the right shoulder (#534)
+      if(e.kind==='hero'&&!cut)drawIntentIcon(ctx,S,cam,e,px,top,sw,close); // the intent icon at the right shoulder (#534)
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     }
     // effects: bolts leave a short fading trail; the boss's breath ring
@@ -213,7 +226,7 @@ export function createRenderer(cv,screenEl){
         glow(L.x*T,L.y*T,r*(L.big?1:.94+.06*fl),LIGHT.torch,dk*.7*fl)}
       for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,40))glow(x,y,26,LIGHT.crypt,dk*(.35+.1*Math.sin(now*1.3)))}
       drawCampLight(ctx,S,dk,inView);
-      if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-7,22,SCENE_LIGHT,dk*.6); // a Table scene's people keep a pool of light at night (#471)
+      if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-HEAD/2,22*PROC_SCALE*.75,SCENE_LIGHT,dk*.6); // a Table scene's people keep a pool of light at night (#471)
       ctx.globalCompositeOperation='source-over'}
     drawSpells(ctx,1,close,inView,fxNow); // spell effects in the air, over the night wash: they carry their own light (#374)
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
@@ -225,7 +238,7 @@ export function createRenderer(cv,screenEl){
     LQ.length=0;
     if(!close){
       for(const[t,x,y]of LABELS)if(inView(x*T,y*T,LM)){const town=TOWNS.has(t);lab(t,x*T,inMap(y*T,town?13:15),town?TEXT.place:TEXT.region,town?13:15,town?6:3)}
-      if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-14,MARK.sel,13,10); // the followed hero is named at any zoom
+      if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-HEAD,MARK.sel,13,10); // the followed hero is named at any zoom
       if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))lab('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,TEXT.elite,12,5);
       for(const L of LANDMARKS){if(L.kind!=='crypt'||!L.mouth||!inView(L.x*T,L.y*T,LM))continue; // every crypt, labelled just above its mouth
         const g=CRYPT&&L.name===CRYPT.name&&CRYPT.group&&CRYPT.group.phase==='inside'?CRYPT.group:null;
@@ -236,24 +249,24 @@ export function createRenderer(cv,screenEl){
       if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
-        const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),y=a.y*T-17-condLift(a,cam);
+        const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),y=a.y*T-HEAD-condLift(a,cam);
         if(inCut&&a.bubble&&a.bubble.life>0&&bubbleVisible(a,S))continue; // its bubble names it already: one label per member
         if(inCut){lab(a.name,a.x*T,y,inSlots(a)?classColor(a.cls):FAC[a.fac].color,14,inSlots(a)?9:8,[y-lh*1.05,a.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
         lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14,a===sel?10:fel&&fel.has(String(a.id))?8:dead?1:4)}
       for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,slotted(),S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
-        lab(toneName(p,t),p.x*T,p.y*T-17-condLift(p,cam),t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
-      for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-17-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
-      if(boss.alive&&inView(boss.x*T,boss.y*T,LM))lab('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28-condLift(boss,cam),TEXT.elite,15,9)}
+        lab(toneName(p,t),p.x*T,p.y*T-HEAD-condLift(p,cam),t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
+      for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-HEAD-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
+      if(boss.alive&&inView(boss.x*T,boss.y*T,LM))lab('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-BOSS_HEAD-condLift(boss,cam),TEXT.elite,15,9)}
     // The Fellowship (#94): a role marker over each member and their name at any zoom (close views
     // queue the names above), plus a dashed ring around the party in Follow Fellowship.
     if(slotted()){const px1=cam.dpr/sc,F=slotted(),mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
       if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
         ctx.save();ctx.strokeStyle=MARK.party;ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
       for(const a of mem){if(!inView(a.x*T,a.y*T,40)||(cut&&cut.members.includes(a)))continue;const col=classColor(a.cls); // in a Table scene the ring and the class-coloured name mark them (#471) // a member's marker: its class colour (one palette, core/colors.js)
-        const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-(close?17:14)-(close?16:15)*px1-m-condLift(a,cam);
+        const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-HEAD-(close?16:15)*px1-m-condLift(a,cam);
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
-        if(!close)lab(a.name,a.x*T,a.y*T-14,a===sel?MARK.sel:col,13,a===sel?10:7)}}
+        if(!close)lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,13,a===sel?10:7)}}
     flushLabels(sc);
     if(close){drawBubbles(ctx,S,cam,drawText);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
