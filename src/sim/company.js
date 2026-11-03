@@ -75,6 +75,8 @@ export function openThreads(C){if(!C)return [];const out=[],seen=new Set();
   for(const v of S.adventures||[])if(v.phase==='active'&&v.mem&&v.mem.some(id=>C.ids.includes(id)))out.push({kind:'job',parts:['Unfinished job: ',gd(v.title),' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+')']});
   for(const p of C.plans||[])if(p.status==='open')out.push({kind:'meeting',parts:['Meeting: ',gd(p.where),' at '+p.atText+' ('+p.whoNames.join(', ')+' know)']}); // #182
   for(const a of members(C)){for(const id in a.nemesis||{}){const n=byId(id);if(alive(n)&&!seen.has(n.id)){seen.add(n.id);out.push({kind:'nemesis',parts:['Blood owed: ',n,' of the '+FAC[n.fac].name+' (',a,' swore it for '+a.nemesis[id]+')']})}}
+    if(a.vow)out.push({kind:'oath',parts:[a,' swore, aloud: ',gd(a.vow.text)]}); // a sworn vow (#526): the DM can stage its keeping
+    const bk=a.vowBroke&&S.gameMin-a.vowBroke.at<3*1440?a.vowBroke:null;if(bk)out.push({kind:'broken',parts:[a,bk.how==='failed'?' failed a vow: ':' broke their word: ',gd(bk.text)]});
     if(a.goal&&!a.goal.done)out.push({kind:'oath',parts:[a,' swore to ',gd(a.goal.text.charAt(0).toLowerCase()+a.goal.text.slice(1)),' ('+(a.goal.progress||0)+'/'+a.goal.need+')']})}
   return out}
 

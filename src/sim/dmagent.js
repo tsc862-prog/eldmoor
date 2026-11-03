@@ -288,7 +288,7 @@ function fellowshipView(){const F=S.fellowship;if(!F)return {ok:true,fellowship:
   const members=fellowshipMembers().map(m=>{const a=m.hero;if(!a)return {role:m.label,empty:true};
     const P=a.persona||{},M=a.memory||{};
     return {...heroLine(a),...sightOf(a),role:m.label,persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
-      oath:a.goal&&!a.goal.done?a.goal.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
+      oath:a.goal&&!a.goal.done?a.goal.text:null,vow:a.vow?a.vow.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
       stances:Object.fromEntries(Object.entries(M.stances||{}).filter(([id])=>!(P.stanceBy&&P.stanceBy[id]==='self')).slice(0,6).map(([id,s])=>{const b=S.agents.find(x=>String(x.id)===String(id));return [b?b.name:'#'+id,String(s).slice(0,120)]}))}});
   return {ok:true,fellowship:{name:F.name,faction:facName(F.fac),hall:F.hall||null,founded_day:F.day||null,minds:mindsOf(F),members,
     open_threads:openThreads().map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:openProps().map(P=>({id:P.id,kind:P.kind,details:P.details||null,by:P.by||null})),

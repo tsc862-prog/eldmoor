@@ -33,6 +33,7 @@ import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {moment} from './reflect.js';
 import {oathDone} from './questlog.js'; // finished oaths in the quest log (no dice)
+import {vowEvent,vowTick} from './vows.js'; // sworn vows (#526): agent heroes only, no dice
 import {goHome,huntZone} from './heroes.js';
 
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!==undefined?String(v[k]):m);
@@ -116,6 +117,7 @@ function checkRival(a){const g=a.goal,t=byId(g.targetId);if(!alive(t)){voided(a)
 
 // ---- hooks called from heroes.js, dungeon.js and boss.js ----
 export function goalEvent(a,kind,x){
+  if(a&&a.vow)vowEvent(a,kind,x);
   // An enemy hero x fell to a: every oath-bearer of a's side in the fight (within 8 tiles) shares the vengeance.
   if(kind==='slay'){for(const h of S.agents){const g=h.goal;if(!g||g.done||g.type!=='avengeHero'||g.targetId!==x.id||!alive(h))continue;if(h===a||(h.fac!==x.fac&&dist(h,x)<=8))complete(h)}return}
   const g=a&&a.goal;if(!g||g.done)return;
@@ -146,6 +148,7 @@ function pilgrimStep(a,g){
 
 // Periodic checks (twice a real second): hoards, rivals, void targets, pilgrim steering.
 export function goalsTick(dt){S.goalT=(S.goalT===undefined?0:S.goalT)-dt;if(S.goalT>0)return;S.goalT=.5;
+  for(const a of S.agents)if(a.vow)vowTick(a);
   for(const a of S.agents){const g=a.goal;if(!g||g.done||a.state==='dead')continue;
     switch(g.type){
     case 'hoard':g.progress=a.gold;if(a.gold>=g.need)complete(a);break;

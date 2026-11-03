@@ -82,6 +82,8 @@ function jobQ(a,h,status,focus){const T=D.ADVENTURES[h.tpl]||{},on=h.phase==='ac
 function oathQ(a,g,status,focus){const where=g.type==='pilgrimCrypt'&&CRYPT?CRYPT.name:g.zone!=null&&typeof g.zone==='number'?ZONES[g.zone]||null:null;
   return mk({id:oathId(g),kind:'oath',title:g.text,giver:null,where,objective:g.text+(g.target?' ('+g.target+')':''),
     progress:g.need>1?{have:Math.min(g.progress||0,g.need),need:g.need}:null,reward:null,status,focus,started:g.at,ends:null,from:'oath'})}
+function vowQ(a,v,status,focus,why){const where=v.about&&v.about.zone!=null?ZONES[v.about.zone]||null:v.kind==='reach'?v.about&&v.about.name:null;
+  return mk({id:v.id,kind:'oath',title:v.text,giver:null,where,objective:'Your vow: '+v.text+(why?' ('+why+')':''),progress:null,reward:null,status,focus,started:v.at,ends:v.ends,from:'sworn vow'})}
 function debtQ(a,k,victim,focus){return mk({id:debtId(k.id),kind:'oath',title:'Blood debt: '+k.name,giver:null,where:null,
   objective:'Avenge '+victim+': slay '+k.name+' of the other side',progress:null,reward:null,status:'active',focus,started:null,ends:null,from:'blood debt'})}
 const tableRec=a=>{const T=S.table,G=S.staged;if(!T||!T.ctx||T.ctx.staged==null||!T.ids||!T.ids.includes(a.id)||!G||!G.cur||G.cur.id!==T.ctx.staged)return null;return G.cur};
@@ -101,7 +103,7 @@ export const heldCount=a=>(a.quest?1:0)+(runningOf(a)?1:0)+heldOf(a).length+take
 export function focusId(a){const r=runningOf(a);if(r)return jobId(r);
   const f=a.qlog&&a.qlog.focus;if(f&&holds(a,f))return f;
   if(a.quest)return killId(a.quest);if(a.goal&&!a.goal.done)return oathId(a.goal);return null}
-function holds(a,id){if(a.quest&&killId(a.quest)===id)return true;if(a.goal&&!a.goal.done&&oathId(a.goal)===id)return true;
+function holds(a,id){if(a.vow&&a.vow.id===id)return true;if(a.quest&&killId(a.quest)===id)return true;if(a.goal&&!a.goal.done&&oathId(a.goal)===id)return true;
   if(/^debt:/.test(id)){const k=hero(Number(id.slice(5)));return !!(a.nemesis&&k&&a.nemesis[k.id]&&alive(k))}
   const n=parseJob(id);return n!=null&&(heldOf(a).some(v=>v.id===n)||takenOf(a).some(h=>h.id===n))}
 
@@ -114,6 +116,7 @@ export function questLog(a){if(!a||a.kind!=='hero')return {active:[],done:[],foc
   for(const h of takenOf(a))out.push(jobQ(a,h,'held',false));
   if(a.quest)out.push(killQ(a,a.quest,'active',f===killId(a.quest)));
   if(a.goal&&!a.goal.done)out.push(oathQ(a,a.goal,'active',f===oathId(a.goal)));
+  if(a.vow)out.push(vowQ(a,a.vow,'active',f===a.vow.id));
   let n=0;for(const k in a.nemesis||{}){const x=hero(Number(k));if(!alive(x))continue;if(n++>=QL.DEBTS)break;out.push(debtQ(a,x,a.nemesis[k],f===debtId(x.id)))}
   const rec=tableRec(a);if(rec)out.push(sceneQ(a,rec,'active'));
   out.sort((p,q)=>(q.focus?1:0)-(p.focus?1:0));
@@ -151,6 +154,7 @@ export function jobDone(b,adv){const why=adv.why,st=JOB_END[adv.outcome]||(why==
   const q=jobQ(b,adv,st,false);q.objective=clip((adv.outcome==='partial'?'Half done: ':adv.outcome==='success'?'Done: ':'')+jobTitle(adv)+(adv.quitWhy&&adv.held===b.id?' ('+adv.quitWhy+')':''),160);q.progress=sceneProgress(adv);
   push(b,ended(q,st,{outcome:adv.outcome}),adv.paid&&adv.paid[b.id])}
 export function takenGone(a,h,st,why){const q=jobQ(a,h,st,false);if(why)q.objective=clip(q.objective+' ('+why+')',160);push(a,ended(q,st))}
+export function vowDone(a,v,st,why){push(a,ended(vowQ(a,v,st,false,why),st))}
 export function oathDone(a,g,st){push(a,ended(oathQ(a,g,st,false),st))}
 export function debtDone(a,k){const v=a.nemesis&&a.nemesis[k.id];if(!v)return;push(a,ended(debtQ(a,k,v,false),'done'))}
 export function killAbandoned(a,why){if(!a.quest)return;const q=killQ(a,a.quest,'abandoned',false);if(why)q.objective=clip(q.objective+' ('+why+')',160);push(a,ended(q,'abandoned'))}
