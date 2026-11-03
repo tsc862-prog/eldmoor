@@ -46,7 +46,8 @@ import {tm} from '../data/traits.js';
 import {CAP as CHAT_CAP} from './chat.js';
 import {hasLinks,runnerLink} from './runlink.js';
 import {prepActive} from './prep.js';
-import {TABLE,openScene,setSceneKind,tableOn} from './table.js';
+import {TABLE,openScene,setSceneKind,tableOn,sceneFor} from './table.js';
+import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {fellows,fellowParty,seatRecruit,setArrivalHook,lcRoleOf} from './fellowship.js';
 import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf} from './company.js';
 
@@ -228,7 +229,7 @@ setSceneKind('opening',{options:optsOpening,reflex:reflexOpening,apply:applyOpen
 setSceneKind('arrival',{options:optsArrival,reflex:reflexArrival,apply:applyArrival,outcome:sc=>settleArrival(companyById(sc.company)||S.fellowship,sc.ctx,sc.beats),dm:DM_ARRIVE});
 
 // ---- the DM's tools for these scenes (sim/dmagent.js hands table_call / table_answer here while one is at the table) ----
-export const ourScene=()=>{const sc=S.table;return sc&&(sc.kind==='opening'||sc.kind==='arrival')?sc:null};
+export const ourScene=()=>findScene(sc=>sc.kind==='opening'||sc.kind==='arrival'); // any company's (#518)
 export function sceneCall(){polledAt=Date.now();const sc=ourScene();if(!sc)return null;const c=(sc.calls||[]).find(x=>!x.done)||null;
   const out={ok:true,staged:null,scene:{title:sc.title,kind:sc.kind,frame:plain(sc.frame),order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+')'),
     so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.kind==='arrival'?castOf(sc):[]},call:null};
@@ -244,9 +245,8 @@ export function sceneAnswer(a){a=a&&typeof a==='object'?a:{};const sc=ourScene()
 export function sessionTick(){const O=S.opening,CS=S.companies;
   if(!(O&&O.queue&&O.queue.length)&&!(CS&&CS.some(C=>C.arrivals&&C.arrivals.length)))return; // the common case: nothing to open
   if(!hosted()){if(O&&!O.queue.length)delete S.opening;return}
-  if(S.table)return;
-  if(O&&O.queue&&O.queue.length){if(prepActive())return;const q=O.queue.shift();if(!O.queue.length)delete S.opening;openOpening(q);return}
-  for(const C of companies()){if(!C.arrivals||!C.arrivals.length)continue;
+  if(O&&O.queue&&O.queue.length){if(prepActive()||sceneFor(companyById(O.queue[0].company)))return;const q=O.queue.shift();if(!O.queue.length)delete S.opening;openOpening(q);return}
+  for(const C of companies()){if(!C.arrivals||!C.arrivals.length||sceneFor(C))continue; // each company its own table (#518)
     const where=settled(C)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!(CRYPT.group&&CRYPT.group.mem.some(a=>memOf(C).includes(a)))?'town':false);if(!where)continue;
     const q=C.arrivals.shift();if(!C.arrivals.length)delete C.arrivals;openArrival(C,q,where);return}}
 // The panels: what waits.

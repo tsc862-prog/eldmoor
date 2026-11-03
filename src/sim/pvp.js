@@ -15,11 +15,12 @@ import {record} from './history.js';
 import {bondEvent,grudgeOf} from './bonds.js';
 import {ZONES} from '../world/map.js';
 import {nearHeroes} from './spatial.js';
+import {held} from './scenes.js'; // the engaged of a live-clock Table scene (#518)
 import {rivalMul,rivalCount} from './rivals.js';
 import {duelFocus,assistFocus,focusCount} from './guildfocus.js';
 
 export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agents=S.agents;
-  const free=agents.filter(a=>(a.state==='hunt'||a.state==='travel'||a.state==='return')&&zoneAt(a.x,a.y)>=1);
+  const free=agents.filter(a=>(a.state==='hunt'||a.state==='travel'||a.state==='return')&&zoneAt(a.x,a.y)>=1&&!held(a)); // held in a scene (#518): no duels
   const freeSet=new Set(free);
   const isFree=a=>freeSet.has(a)&&(a.state==='hunt'||a.state==='travel'||a.state==='return');
   // Nemesis: the lowest-id free hero in sight who is on this hero's grudge list (nemesis keys are ids, iterated ascending).

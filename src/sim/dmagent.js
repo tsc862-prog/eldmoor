@@ -46,6 +46,7 @@ import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded p
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
 import {openThreads as companyThreads} from './company.js';
+import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
 import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
@@ -208,7 +209,7 @@ export function companiesSig(){const fs=focuses();if(!fs.length)return null;retu
 // is open); then any company with a pending scene or vote; then one with members badly hurt out in the field; then the one
 // longest without a DM action for it (touchedAt; never = longest); then the smaller (a solo is the most fragile); then id.
 // Read only: game state, never hero notes.
-const pendingOf=fo=>({scene:!!(S.table&&(S.table.ids||[]).some(id=>fo.ids.has(id))),vote:(fo.company.props||[]).some(P=>P.status==='open')});
+const pendingOf=fo=>({scene:!!findScene(sc=>(sc.ids||[]).some(id=>fo.ids.has(id))),vote:(fo.company.props||[]).some(P=>P.status==='open')});
 export const NEED_WHY=['the followed company must choose','a scene or vote is pending','members badly hurt in the field','longest without you','the most fragile'];
 export function companiesNeeds(){const fs=focuses();if(!fs.length)return [];const fol=followedCompany();
   const rows=fs.map(fo=>{const C=fo.company,pend=pendingOf(fo),field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),hurt=field.filter(a=>a.hp<maxHp(a)*DMA.PILE_HP);
@@ -512,7 +513,7 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
     const r=nOf(a.radius,DMA.NARRATE_R,4,20);label=p.label;
     hs=S.agents.filter(b=>alive(b)&&!b.hidden&&(dist(b,p)<=r||p.town&&b.state==='town'&&b.town===p.town))}
   const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs)hearLine(b,e);
-  if(S.table&&hs.some(b=>S.table.ids.includes(b.id)))S.table.narr={t:e.t,text:t}; // the banner and tableView show it
+  for(const sc of allScenes())if(hs.some(b=>sc.ids.includes(b.id)))sc.narr={t:e.t,text:t}; // the banner and tableView show it
   day.narr=(day.narr||0)+1;
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
   return {ok:true,narrated:t,where:label,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
@@ -525,12 +526,12 @@ function whisper(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   const h=heroOf(a.hero);if(!h)return {ok:false,error:'hero: no living hero called "'+clean(a.hero,40)+'" (see heroes_near or fellowship_view).'};
   if(h.hidden)return {ok:false,error:h.name+" is out of anyone's reach."};
   if((day.wh||0)>=DMA.WHISPER_PER_DAY)return {ok:false,error:'Enough whispers for one game day ('+DMA.WHISPER_PER_DAY+').'};
-  const inScene=!!(S.table&&S.table.ids.includes(h.id));let p=null;
+  const hsc=sceneOf(h),inScene=!!hsc;let p=null;
   if(a.as!=null&&a.as!==''){p=personOf(a.as);if(!p)return nobody(a.as);
     if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||dist(h,p)>DMA.WHISPER_R&&!inScene)return {ok:false,error:h.name+' is too far from '+p.name+' to be whispered to (within '+DMA.WHISPER_R+' tiles, or in the Table scene).'}}
   else if(!inScene)return {ok:false,error:h.name+' is not in an open Table scene: name the person who whispers (as), and have the hero within '+DMA.WHISPER_R+' tiles of them.'};
   const e={t:clockStr(),d:dayNo(),from:p?{kind:'npc',id:p.id,name:p.name,fac:p.fac}:NARRATOR,text:'(whispered) '+t,trigger:p?'npc':'dm',dm:true,whisper:true};hearLine(h,e);
-  if(inScene)S.table.narr={t:e.t,text:(p?(p.title&&!p.wander?p.title+' ':'')+p.name:'Someone')+' leans close to '+h.name+'.'}; // the fact of it, not the words
+  if(inScene)hsc.narr={t:e.t,text:(p?(p.title&&!p.wander?p.title+' ':'')+p.name:'Someone')+' leans close to '+h.name+'.'}; // the fact of it, not the words
   day.wh=(day.wh||0)+1;
   dmlog('agent',null,['Whisper to '+h.name+' (DM agent)'],{by:'dm-agent',voice:'whisper',hero:h.id,npc:p?p.id:undefined});
   return {ok:true,whispered_to:h.name,as:p?p.name:'the narrator',note:'Only '+h.name+' heard it; the table sees that someone leans close.'}}

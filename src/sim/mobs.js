@@ -18,6 +18,7 @@ import {dmgTaken} from './stats.js';
 import {sightMul} from './weather.js';
 import {eliteSight} from './narrator.js';
 import {nearHeroes,nearMobs,LOD,heroCellsNear} from './spatial.js';
+import {held} from './scenes.js'; // the engaged of a live-clock Table scene (#518)
 import {trick as loreTrick} from './lore.js'; // a creature's tricks, learned by the agent hero it is used on (#188)
 
 // Per-zone target population (today's COUNTS total), a COUNTS-weighted species list for extra
@@ -132,7 +133,7 @@ export function updMob(m,dt){
   m.cd-=dt;for(const id in m.abcd)m.abcd[id]-=dt;if(m.frenzy>0)m.frenzy-=dt;const t=m.target;
   if(m.fled>0){m.fled-=dt;if(t){const dx=m.x-t.x,dy=m.y-t.y,d=Math.hypot(dx,dy)||1;moveTo(m,m.x+dx/d*3,m.y+dy/d*3,dt,2.1)}m.hpl=m.hp;return}
   if(t){const engaged=(t.state==='fight'&&(t.target===m||m.pack))||(t.state==='hunt'||t.state==='travel');
-    if(t.state==='ghost'||t.state==='dead'||!engaged||dist(m,t)>10){m.target=null;m.pack=false;m.dest={...m.home};m.hpl=m.hp;return}
+    if(t.state==='ghost'||t.state==='dead'||!engaged||dist(m,t)>10||held(t)){m.target=null;m.pack=false;m.dest={...m.home};m.hpl=m.hp;return} // a hero held in a scene (#518) is let be
     if(t.state!=='fight'){t.state='fight';t.target=m;t.dest=null}
     const d=dist(m,t);m.face=t.x>m.x?1:-1;
     if(d>B.reach){moveTo(m,t.x,t.y,dt,2.1);m.hpl=m.hp;return}m.moving=false;
@@ -147,7 +148,7 @@ export function updMob(m,dt){
     m.dest={x:m.home.x+(rnd()-.5)*4,y:m.home.y+(rnd()-.5)*4}}}
   m.scan-=dt;if(m.scan<=0&&m.spared>S.gameMin)m.scan=.6; // talked down at the Table (#296): it leaves people be for a while
   if(m.scan<=0){m.scan=.6;const reach=m.elite?ELITE_TEMPLATE.aggro:B.beh.aggro*sightMul(z); // ambush reach; the index returns heroes within it, id-ascending (sim/spatial.js)
-    for(const a of nearHeroes(m.x,m.y,reach)){if((a.state!=='travel'&&a.state!=='hunt')||(B.beh.territorial&&zoneAt(a.x,a.y)!==z))continue; // territorial: no ambushing travellers outside the mob's own zone
+    for(const a of nearHeroes(m.x,m.y,reach)){if((a.state!=='travel'&&a.state!=='hunt')||held(a)||(B.beh.territorial&&zoneAt(a.x,a.y)!==z))continue; // territorial: no ambushing travellers outside the mob's own zone
       if(m.elite){if(a.lvl<m.lvl-2||a.hp<.9*(CLS[a.cls].hp+a.lvl*14+a.gear*6+a.epics.length*10))continue; // elites ignore small prey and the already wounded
         if(dist(a,m)<ELITE_TEMPLATE.aggro&&rnd()<.5){m.target=a;a.state='fight';a.target=m;a.dest=null;break}continue}
       if(m.lvl<a.lvl-3)continue;
