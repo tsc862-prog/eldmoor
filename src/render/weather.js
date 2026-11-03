@@ -3,7 +3,8 @@
 // streaks, fog banks) over that zone only. Zone spans are built once from the
 // zone array; draw.js calls drawWeather after the night overlay and before the
 // labels so the labels stay readable. Owned by world-builder.
-import {W,H,T} from '../world/tiles.js';
+import {W,H} from '../world/tiles.js';
+import {U as T} from './tile.js';
 import {zone,I,ZONES} from '../world/map.js';
 import {weatherKind} from '../sim/weather.js';
 

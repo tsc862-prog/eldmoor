@@ -2,7 +2,8 @@
 // pilgrim and the bandit figures of an ambush, at the encounter tile, plus a small
 // nameplate in follow view. Called from draw.js just before the entity loop so
 // heroes render over them. Owned by world-builder.
-import {T} from '../world/tiles.js';
+import {U as T,PROC_SCALE,ART,HEAD} from './tile.js';
+import {worldSprite} from './sprites.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {ENC} from '../sim/encounters.js';
 
 const PAL={
@@ -23,7 +24,7 @@ export function drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText){const L=S.en
   for(const e of L){
     const px=Math.round(e.x*T),py=Math.round(e.y*T);
     if(e.type==='ambush'){for(let i=0;i<e.n;i++){const [ox,oy]=BANDIT_OFF[i],f=Math.floor(blink*1.5+i)%2,s=sprite('bandit'+f,SPR.bandit[f],PAL.bandit);
-        const bx=px+Math.round(ox*T),by=py+Math.round(oy*T);ctx.save();ctx.translate(bx,0);if(ox>0)ctx.scale(-1,1);ctx.drawImage(s,-5,by-s.height);ctx.restore()}}
+        const bx=px+Math.round(ox*T),by=py+Math.round(oy*T);const o=worldSprite(s,false);ctx.save();ctx.translate(bx,0);if(ox>0)ctx.scale(-1,1);ctx.drawImage(o,-5*PROC_SCALE,by-s.height*PROC_SCALE,o.width/ART,o.height/ART);ctx.restore()}}
     else{const key=e.type==='merchant'?'wagon':e.type,fr=e.type==='pilgrim'?(e.moving?Math.floor(blink*6)%2:0):slow,s=sprite('enc'+key+fr,SPR[key][fr],PAL[key]);
-      ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);ctx.drawImage(s,-Math.floor(s.width/2),py-s.height);ctx.restore()}
-    if(follow&&Math.abs(e.x*T-cam.camX)<=vw/2+40&&Math.abs(e.y*T-cam.camY)<=vh/2+40)drawText(ENC[e.type].label,px,py-16,LABEL_COL[e.type],13)}}
+      const o=worldSprite(s,false);ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE,py-s.height*PROC_SCALE,o.width/ART,o.height/ART);ctx.restore()}
+    if(follow&&Math.abs(e.x*T-cam.camX)<=vw/2+40&&Math.abs(e.y*T-cam.camY)<=vh/2+40)drawText(ENC[e.type].label,px,py-HEAD+1,LABEL_COL[e.type],13)}}

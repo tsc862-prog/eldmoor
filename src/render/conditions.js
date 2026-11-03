@@ -16,6 +16,7 @@ import {condOn,effOn,effLeft} from '../sim/eff.js';
 import {sprite,outlined,SPR} from './sprites.js';
 import {MOBS} from '../data/mobs.js';
 import {UI,MARK} from './palette.js';
+import {PROC_SCALE,HEAD} from './tile.js';
 
 // The order is the sim's: COND_IDS (stun, root, poison) then ward.
 const IDS=['stun','root','poison','ward'];
@@ -83,8 +84,9 @@ const glyph=(id,f)=>{const fr=GLYPH[id],k=f%fr.length;return outlined(sprite('co
 // labels sit exactly where they always did.
 
 // Sprite height in world px (heroes and townsfolk 12, creatures by their art, Kragmaw 22).
-function headH(e){if(e.kind==='boss')return SPR.boss[0].length;
-  if(e.kind==='mob'){const M=MOBS[e.type],a=M&&SPR[M.spr];return a?a[0].length:12}return 12}
+// Drawn on the world map at PROC_SCALE world units a sprite pixel (render/tile.js).
+function headH(e){if(e.kind==='boss')return SPR.boss[0].length*PROC_SCALE;
+  if(e.kind==='mob'){const M=MOBS[e.type],a=M&&SPR[M.spr];return (a?a[0].length:12)*PROC_SCALE}return 12*PROC_SCALE}
 // Device px per glyph pixel: the sprites' own grid, never under 2 CSS px.
 const gpx=cam=>Math.max(Math.round(2*cam.dpr),Math.round(cam.sc));
 // Gap under the glyphs in world px: one over the HP bar, or over the selection arrow.
@@ -97,7 +99,7 @@ export function condLift(e,cam){
   if(!cam.close||!e.eff||e.state==='dead'||e.state==='ghost')return 0;
   let h=0;for(const id of IDS)if(on(e,id))h=Math.max(h,glyph(id,0).height);
   if(!h)return 0;
-  const sc=cam.sc,top=-headH(e),gtop=top-under(e,cam)-h*gpx(cam)/sc,base=e.kind==='boss'?-28:-17;
+  const sc=cam.sc,top=-headH(e),gtop=top-under(e,cam)-h*gpx(cam)/sc,base=e.kind==='boss'?-(SPR.boss[0].length*PROC_SCALE+6):-HEAD;
   return Math.max(0,base-(gtop-3*cam.dpr/sc));
 }
 

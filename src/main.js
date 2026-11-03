@@ -24,7 +24,7 @@ provideCampaigns(Object.fromEntries(Object.entries(import.meta.glob('../docs/cam
 // Generated art (#177): assets/index.json and the PNG URLs under assets/ (served as static files; an absent folder is an
 // empty index and every renderer draws procedurally). The PNGs themselves load lazily, on first use (render/assets.js).
 provideAssets(Object.values(import.meta.glob('../assets/index.json',{import:'default',eager:true}))[0]||null,
-  Object.fromEntries(Object.entries(import.meta.glob('../assets/*/*.png',{query:'?url',import:'default',eager:true})).map(([p,u])=>[p.replace('../assets/',''),u])));
+  Object.fromEntries(Object.entries(import.meta.glob(['../assets/*/*.png','../assets/*/*/*.png','!../assets/incoming/**'],{query:'?url',import:'default',eager:true})).map(([p,u])=>[p.replace('../assets/',''),u])));
 initSetup();
 let renderer=null;
 function start(kind){

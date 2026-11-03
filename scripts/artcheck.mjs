@@ -10,14 +10,18 @@
 //  5. the terrain renders the same with no assets, uses a tile asset when one is there, and goes back when it is removed;
 //  6. the autotile rules (slice 2) on headless Eldmoor and Stepping Lands maps with fixture PNGs (scripts/art/fixtures.mjs,
 //     drawn in code, written to a temp folder, never assets/) on, one piece removed, and off: same map, pieces and
-//     variants placed by tile hash, fallback per tile, the procedural render back exactly.
+//     variants placed by tile hash, fallback per tile, the procedural render back exactly;
+//  7. tiers (#177, src/render/tile.js): index keys and files per tier, the loader keeps only the renderer's tier (a 64
+//     asset under TILE 32 is absent, so the procedural art is drawn), the procedural texel scaled to TILE where an
+//     asset is missing, generation settings per tier (LoRA scale, pixel grid, palette widening) in the requests and
+//     outputs of gen/daily --tier 64, a queue and index from before tiers read as the 32 tier, and sprite sheets.
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {deflateSync} from 'node:zlib';
-import {ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf} from './art/lib.mjs';
+import {ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf,sizeOf,tierKey,normKey,splitKey,keyFile,loadQueue,tierCfg,TILE,TIERS} from './art/lib.mjs';
 import {decodePng,encodePng,pngSize} from './art/png.mjs';
 import {resolvePalette,hexToRgb,downscale} from './art/post.mjs';
 import {postProcess,detectGrid,expandPalette,colorCount} from './art/post-texture.mjs';
@@ -33,7 +37,19 @@ console.log('manifest and hooks');
   const h=await checkHooks(man);ok(!h.length,'every manifest id has a procedural fallback hook'+(h.length?': '+h.join('; '):''));
   const {ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS}=await import('../src/render/terrain.js');const ids=new Set(man.assets.map(a=>a.id));
   const orphan=[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS].flatMap(Object.keys).filter(id=>!ids.has(id));ok(!orphan.length,'every terrain hook id is in the manifest'+(orphan.length?': '+orphan:''));
-  for(const a of man.assets)ok(fileOf(a.id)===`${a.kind}/${a.id.split(':')[1]}.png`,`${a.id} -> assets/${fileOf(a.id)}`)}
+  let bad=man.assets.filter(a=>fileOf(a.id,32)!==`${a.kind}/32/${a.id.split(':')[1]}.png`||fileOf(a.id,64)!==`${a.kind}/64/${a.id.split(':')[1]}.png`);
+  ok(!bad.length,`every id has a file per tier, e.g. ${man.assets[0].id} -> assets/${fileOf(man.assets[0].id,32)} and assets/${fileOf(man.assets[0].id,64)}`+(bad.length?': '+bad.map(a=>a.id):''));
+  bad=man.assets.filter(a=>!TIERS.every(t=>sizeOf(a,t))||sizeOf(a,64)[0]!==2*sizeOf(a,32)[0]||sizeOf(a,64)[1]!==2*sizeOf(a,32)[1]);
+  ok(!bad.length,`every asset has a size per tier, the 64 tier twice the 32 (${TIERS.join(', ')})`+(bad.length?': '+bad.map(a=>a.id):''));
+  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
+  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier`+(bad.length?': '+bad.map(a=>a.id):''));
+  const {ASSET_SPRITES}=await import('../src/render/sprites.js'),sp=man.assets.filter(a=>a.kind==='sprite');
+  ok(sp.length&&sp.every(a=>ASSET_SPRITES[a.id]&&a.frames.cols===3&&a.frames.rows===4),`sprite sheets: 3 frames by 4 directions (${sp.length})`);
+  const hero=sp.filter(a=>/^sprite:hero-/.test(a.id));ok(hero.length&&hero.every(a=>sizeOf(a,32)[0]/3===32&&sizeOf(a,32)[1]/4===48&&sizeOf(a,64)[0]/3===64&&sizeOf(a,64)[1]/4===96),`hero frames 32x48 at the 32 tier, 64x96 at 64 (${hero.length} classes)`);
+  const {CLS}=await import('../src/data/classes.js');ok(Object.keys(CLS).every(c=>hero.some(a=>ASSET_SPRITES[a.id].cls===c)),'a hero sheet for every class');
+  const t32=tierCfg(man,man.models['pixel-xl'],32),t64=tierCfg(man,man.models['pixel-xl'],64);
+  ok(t32.loraScale===.55&&t32.grid===4&&t64.loraScale===.2&&t64.grid===2,`tier settings: 32 at LoRA ${t32.loraScale} grid ${t32.grid}, 64 at LoRA ${t64.loraScale} grid ${t64.grid} (the owner's comparison)`);
+  ok(PAL.SPRITE.key[0]===(await import('../src/data/factions.js')).FAC[0].color,'the sprite key colour is the first faction (fixtures and recolour agree)')}
 
 console.log('assets/ in the repo');
 {const {errs,count}=checkIndex(man,ASSETS);ok(!errs.length,`${existsSync(ASSETS)?'assets/ present':'assets/ absent'}: ${count} indexed`+(errs.length?': '+errs.join('; '):''))}
@@ -75,7 +91,10 @@ const propArt=()=>{const a=pixelArt(1024,8,{seed:13});for(let y=0;y<1024;y++)for
   const dith=postProcess(src,{...grass,post:{...grass.post,dither:24}},gpal,PAL.MARK.outline);ok(!Buffer.from(dith.data).equals(Buffer.from(t.data))&&dith.notes.colors>=4,'ordered dither changes the result and stays in the palette');
   let flatErr=null;try{postProcess(pixelArt(1024,8,{flat:true}),grass,gpal,PAL.MARK.outline)}catch(e){flatErr=e}
   ok(flatErr&&flatErr.kind==='flat'&&/flat: 1 colour/.test(flatErr.message),'a flat output is rejected, not written: '+(flatErr&&flatErr.message));
-  ok(expandPalette(['#3f8a3a','#2a6e2c'],6).length===6,'a short palette is widened with shades')}
+  ok(expandPalette(['#3f8a3a','#2a6e2c'],6).length===6,'a short palette is widened with shades');
+  {const w=expandPalette(['#3f8a3a','#2a6e2c'],PAL.TIER_SHADES[32].minPalette,PAL.TIER_SHADES[32].factors),w64=expandPalette(['#3f8a3a','#2a6e2c'],PAL.TIER_SHADES[64].minPalette,PAL.TIER_SHADES[64].factors);
+    ok(w.length===PAL.TIER_SHADES[32].minPalette&&w64.length>w.length&&w.slice(2).every(c=>PAL.shadesOf('#3f8a3a').includes(c)||PAL.shadesOf('#2a6e2c').includes(c)),`the tiers widen a palette with the palette module's shades (${w.length} at 32, ${w64.length} at 64)`)}
+  {const t64=postProcess(src,grass,gpal,PAL.MARK.outline,{tier:64,hint:8});ok(t64.w===64&&t64.h===64,`the 64 tier crops ${t64.w}x${t64.h} from the same model image`)}}
 {const e={kind:'sprite',size:[16,16],post:{transparent:true,outline:true}},pal=['#3f8a3a','#2a6e2c','#45923c'];
   const a=postProcess(synth(256,256),e,pal,PAL.MARK.outline),b=postProcess(synth(256,256),e,pal,PAL.MARK.outline);
   ok(a.w===16&&a.h===16,'a sprite is scaled to 16x16');ok(Buffer.from(a.data).equals(Buffer.from(b.data)),'deterministic');
@@ -130,11 +149,13 @@ try{
     {const {errs,count}=checkIndex(man,out);ok(count===N&&!errs.length,'assets present: index matches files, sizes and sha256'+(errs.length?': '+errs.join('; '):''))}
     ok(S.posts.every(p=>p.prompt.startsWith('pixel art, ')&&p.negative_prompt&&p.image_size.width===1024),'prompts carry the trigger, style and negative');
     ok(S.headers.every(h=>!Object.keys(h).some(k=>/bill|x-fal|provider-key/i.test(k))),'no billing or provider-key header is ever sent');
-    for(const e of man.assets){const im=decodePng(readFileSync(join(out,fileOf(e.id)))),pal=new Set(resolvePalette(e.palette,PAL).colors.map(c=>hexToRgb(c).join(',')));
+    for(const e of man.assets){const im=decodePng(readFileSync(join(out,fileOf(e.id)))),sh=PAL.TIER_SHADES[TILE],pal=new Set(expandPalette(resolvePalette(e.palette,PAL).colors,(e.post&&e.post.minPalette)??sh.minPalette,sh.factors).map(c=>hexToRgb(c).join(',')));
       if(e.post&&e.post.outline)pal.add(hexToRgb(e.post.outlineColor||PAL.MARK.outline).join(',')); // a prop's 1px outline
       let bad=0;for(let i=0;i<im.w*im.h;i++){const o=i*4;if(im.data[o+3]&&!pal.has([im.data[o],im.data[o+1],im.data[o+2]].join(',')))bad++}
-      if(bad||im.w!==e.size[0]||im.h!==e.size[1])ok(false,`${e.id}: ${im.w}x${im.h}, ${bad} pixels off the palette`)}
+      if(bad||im.w!==sizeOf(e)[0]||im.h!==sizeOf(e)[1])ok(false,`${e.id}: ${im.w}x${im.h}, ${bad} pixels off the palette`)}
     ok(true,`every generated asset has its size and palette colours only (${N})`);
+    {const ix=loadIndex(out);ok(Object.entries(ix.assets).every(([k,a])=>a.tier===TILE&&k===tierKey(a.id,TILE)&&a.file===fileOf(a.id,TILE)),`index entries carry their tier: '${tierKey('tile:grass')}' -> ${fileOf('tile:grass')}`)}
+    ok(S.posts.every(p=>!p.loras||p.loras[0].scale===tierCfg(man,man.models['pixel-xl'],TILE).loraScale),`every request at the ${TILE} tier asks LoRA scale ${tierCfg(man,man.models['pixel-xl'],TILE).loraScale}`);
     ok(S.lookups>=1,'provider mapping looked up on the Hub');
     r=await run('--yes');ok(r.code===0&&/nothing to do/.test(r.s)&&S.posts.length===N,'a second run has nothing to do');
     S.deny=true;r=await run('--yes','--force','--only',man.assets[0].id);S.deny=false;ok(r.code!==0&&/401 bad or missing HF_TOKEN/.test(r.s)&&!r.s.includes(MOCK_TOKEN),'a refused token is reported, never printed');
@@ -153,7 +174,7 @@ try{
     // day 1: the first candidate is refused, the second answers and is pinned; the allowance runs out after 4 (HTTP 402)
     S.refuse='nerijs';S.quota402=4;r=await daily(['--date',days[d]]);
     let q=Q();ok(r.code===0&&q.model.pinned==='pixel-redmond'&&q.model.tried['pixel-xl']&&q.model.tried['pixel-xl'].ok===false,'a refused model is recorded and the next candidate answers and is pinned');
-    ok(Object.keys(q.incoming).length===4&&readdirSync(join(dir,'incoming',days[d],'tile')).length===4,'4 made into assets/incoming/<date>/ before the allowance ran out');
+    ok(Object.keys(q.incoming).length===4&&readdirSync(join(dir,'incoming',days[d],'tile','32')).length===4,'4 made into assets/incoming/<date>/ before the allowance ran out');
     ok(/made 4 \| rejected 0 \| calls 6 \| est\. \$0\.040 \(month \$0\.040 of \$2\.00 credits\)/.test(lastLog())&&/stop: allowance used: HTTP 402/.test(lastLog())&&/next: tile:mud/.test(lastLog()),'art.log: made, calls, estimated credits, the 402 stop and what is next: '+lastLog());
     ok(existsSync(join(dir,'incoming',days[d],'sheet.html'))&&existsSync(join(dir,'incoming',days[d],'index.json')),'contact sheet and index written beside the incoming assets');
     ok(!existsSync(join(dir,'index.json')),'nothing lands in assets/ before review');
@@ -171,21 +192,22 @@ try{
     // review: accept some, reject one; --now on the same day runs again and redraws the rejected one with a new seed
     r=await node('accept.mjs',['--dir',dir,'--list']);ok(/waiting for review \(10\)/.test(r.s),'art:accept --list shows what waits');
     r=await node('accept.mjs',['--dir',dir,'tile:grass','tile:snow']);ok(r.code===0&&checkIndex(man,dir).count===2&&!checkIndex(man,dir).errs.length,'accepted assets move into assets/ and the index (artcheck passes)');
-    r=await node('accept.mjs',['--dir',dir,'--reject','tile:mud']);q=Q();ok(r.code===0&&q.rejected['tile:mud']===1&&!q.incoming['tile:mud'],'a rejected asset leaves the queue for a redraw');
+    r=await node('accept.mjs',['--dir',dir,'--reject','tile:mud']);q=Q();ok(r.code===0&&q.rejected['tile:mud@32']===1&&!q.incoming['tile:mud@32'],'a rejected asset leaves the queue for a redraw');
     r=await node('accept.mjs',['--dir',dir,'tile:nope']);ok(r.code===2,'accepting an unknown id is refused');
     const p5=P0();r=await daily(['--now','--date',days[d]]);q=Q();
     ok(S.posts.slice(p5).some(p=>p.seed===1775+7919),'the rejected asset is redrawn with a new seed');
     ok(Object.keys(q.incoming).length+checkIndex(man,dir).count===N,`--now finishes the manifest (${Object.keys(q.incoming).length} waiting + ${checkIndex(man,dir).count} accepted)`);
     r=await node('accept.mjs',['--dir',dir,'all']);ok(r.code===0&&checkIndex(man,dir).count===N&&!checkIndex(man,dir).errs.length&&!Object.keys(Q().incoming).length,'accept all: every asset in assets/, index valid');
     {const sh=await node('sheet.mjs',['--assets',dir,'--out',join(tmp,'sheet.html')]);const html=existsSync(join(tmp,'sheet.html'))?readFileSync(join(tmp,'sheet.html'),'utf8'):'';
-      ok(sh.code===0&&(html.match(/<img /g)||[]).length>=N*6,`contact sheet: ${N} assets and their fallbacks at 1x/2x/4x`)}
+      const TN=man.assets.filter(e=>e.hook.module==='src/render/terrain.js').length; // terrain fallbacks are painted in Node; sprite fallbacks need a canvas
+      ok(sh.code===0&&(html.match(/<img /g)||[]).length>=N*3+TN*3,`contact sheet: ${N} assets at 1x/2x/4x and the ${TN} terrain fallbacks`+(sh.code?' '+sh.s.slice(0,300):' ('+(html.match(/<img /g)||[]).length+' images)'))}
     // alternates once the manifest is complete; an accepted alternate replaces its asset
     d++;const p6=P0();r=await daily(['--date',days[d],'--max','3']);q=Q();
     ok(P0()-p6===3&&Object.keys(q.incoming).every(k=>/#alt1$/.test(k))&&S.posts.slice(p6).every(p=>p.seed>=2771),'complete manifest: alternates with new seeds (--max 3)');
     const altKey=Object.keys(q.incoming)[0],before=checkIndex(man,dir);r=await node('accept.mjs',['--dir',dir,altKey]);
     {const ix=loadIndex(dir),id=altKey.split('#')[0];ok(r.code===0&&ix.assets[id].fromAlt===1&&before.count===N&&!checkIndex(man,dir).errs.length,'an accepted alternate replaces its asset')}
-    d++;r=await daily(['--date',days[d]],{ART_MAX_CALLS:'400'});r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows)
-    d++;const p7=P0();r=await daily(['--date',days[d]]);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
+    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
+    d++;const p7=P0();r=await daily(['--date','2026-12-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
     ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| est\. \$[\d.]+ \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
     S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
 
@@ -200,8 +222,8 @@ try{
     const m2=JSON.parse(readFileSync(join(ROOT,'scripts','art','manifest.json'),'utf8'));for(const a of m2.assets)a.post={...a.post,minColors:1};const mp=join(tmp,'manifest-lenient.json');writeFileSync(mp,JSON.stringify(m2));
     const p1=S.posts.length;r=await node('reprocess.mjs',['2026-12-01','--dir',dir,'--manifest',mp]);q=Q();
     ok(r.code===0&&S.posts.length===p1&&/reprocessed 3, rejected 0/.test(r.s)&&Object.keys(q.incoming).length===3&&!Object.keys(q.failed).length,'art:reprocess re-makes them from the raw images with no call');
-    ok(existsSync(join(inc,'sheet.html'))&&/model image/.test(readFileSync(join(inc,'sheet.html'),'utf8'))&&/raw\/tile\/grass\.png/.test(readFileSync(join(inc,'sheet.html'),'utf8')),'the review sheet shows the model image beside the result');
-    r=await node('reprocess.mjs',['2026-12-01','tile:grass','--dir',dir]);ok(r.code===0&&/tile:grass: rejected, flat/.test(r.s)&&!Q().incoming['tile:grass'],'reprocessing with the strict manifest rejects a flat one again');
+    ok(existsSync(join(inc,'sheet.html'))&&/model image/.test(readFileSync(join(inc,'sheet.html'),'utf8'))&&/raw\/tile\/32\/grass\.png/.test(readFileSync(join(inc,'sheet.html'),'utf8')),'the review sheet shows the model image beside the result');
+    r=await node('reprocess.mjs',['2026-12-01','tile:grass','--dir',dir]);ok(r.code===0&&/tile:grass@32: rejected, flat/.test(r.s)&&!Q().incoming['tile:grass@32'],'reprocessing with the strict manifest rejects a flat one again');
     r=await node('reprocess.mjs',['2026-11-30','--dir',dir]);ok(r.code===0&&/no raw images kept/.test(r.s),'a day without raw images says so');
     // daily share of the monthly credits: $2.00 / 31 days = $0.0645, so 6 images at $0.01
     const dir4=join(tmp,'assets4'),log4=join(tmp,'art4.log'),p2=S.posts.length;
@@ -212,20 +234,57 @@ try{
     const log5=join(tmp,'art5.log');writeFileSync(log5,'2026-12-01 09:00 | made 199 | rejected 0 | calls 199 | est. $1.995 (month $1.995 of $2.00 credits) | model pixel-xl | stop: x | next: -\n');
     const p3=S.posts.length;r=await node('daily.mjs',['--dir',join(tmp,'assets5'),'--log',log5,'--date','2026-12-02']);
     ok(S.posts.length===p3&&/stop: monthly credits used/.test(last(log5)),'the month\'s credits used: no call')}
+
+  // --- the 64 tier: same manifest, prompt and seed; the tier's LoRA scale, pixel grid, sizes and keys
+  {const out=join(tmp,'tier64'),p0=S.posts.length;S.ok=0;S.quota402=Infinity;S.quota429=Infinity;S.refuse=null;S.flat=false;S.zeroLeft=false;
+    let r=await node('gen.mjs',['--out',out,'--tier','64','--only','tile:grass,prop:tree-meadow-1','--yes']);const posts=S.posts.slice(p0),ix=loadIndex(out);
+    ok(r.code===0&&posts.length===2&&posts.every(p=>p.loras&&p.loras[0].scale===.2)&&posts[0].seed===man.assets.find(a=>a.id==='tile:grass').seed,'gen --tier 64: LoRA scale 0.2, the same seed as the 32 tier'+(r.code?' '+r.s.slice(0,300):''));
+    const g=ix.assets['tile:grass@64'],im=g&&decodePng(readFileSync(join(out,g.file)));
+    ok(g&&g.tier===64&&g.file==='tile/64/grass.png'&&im.w===64&&im.h===64&&!checkIndex(man,out).errs.length,'its assets land as <kind>/64/<name>.png under keys @64 at the 64 size; the index check passes'+(checkIndex(man,out).errs.join('; ')));
+    r=await node('gen.mjs',['--out',out,'--tier','16']);ok(r.code===2&&/not one of 32, 64/.test(r.s),'an unknown tier is refused');
+    const dir6=join(tmp,'assets6'),log6=join(tmp,'art6.log');r=await node('daily.mjs',['--dir',dir6,'--log',log6,'--date','2026-12-07','--tier','64','--max','1']);
+    const q6=existsSync(join(dir6,'queue.json'))?JSON.parse(readFileSync(join(dir6,'queue.json'),'utf8')):{incoming:{}};
+    ok(r.code===0&&/tier 64: /.test(r.s)&&Object.keys(q6.incoming).join()==='tile:grass@64'&&existsSync(join(dir6,'incoming','2026-12-07','tile','64','grass.png')),'daily --tier 64 makes the 64 set into its own keys and folders for review'+(r.code?' '+r.s.slice(0,300):''))}
   srv.close();
 }finally{rmSync(tmp,{recursive:true,force:true})}
 
 console.log('renderer with assets off, on and off again');
-{const A=await import('../src/render/assets.js'),{texel}=await import('../src/render/terrain.js'),{tiles,I}=await import('../src/world/map.js'),{W,H,G}=await import('../src/world/tiles.js');
+{const A=await import('../src/render/assets.js'),Tr=await import('../src/render/terrain.js'),{tiles,I}=await import('../src/world/map.js'),{W,H,G}=await import('../src/world/tiles.js');
+  const {TILE:RT,U,ART}=await import('../src/render/tile.js');
   A.provideAssets(null,{});ok(A.asset('tile:grass')===null&&A.assetPixels('tile:grass')===null,'no index, no DOM: asset() is null, no throw');
-  A.provideAssets({assets:{'tile:grass':{file:'tile/grass.png',w:32,h:32}}},{'tile/grass.png':'/assets/tile/grass.png'});ok(A.asset('tile:grass')===null,'indexed but no Image (Node): null, procedural');
-  const sample=()=>{const out=[];for(let ty=0;ty<H;ty+=3)for(let tx=0;tx<W;tx+=3){const t=tiles[I(tx,ty)];for(const [px,py] of [[0,0],[7,9],[15,15]])out.push([t,texel(t,tx,ty,px,py)])}return out};
+  A.provideAssets({assets:{'tile:grass@32':{id:'tile:grass',tier:32,file:'tile/32/grass.png',w:32,h:32}}},{'tile/32/grass.png':'/assets/tile/32/grass.png'});ok(A.asset('tile:grass')===null,'indexed but no Image (Node): null, procedural');
+  ok(!Tr.terrainArt(),'no terrain asset loaded: chunks are painted at the procedural grid (U) and scaled');
+  // art pixels: the corners and the middle of each sampled tile at the renderer's TILE
+  const P=[[0,0],[RT/2-1,RT/2+3],[RT-1,RT-1]];
+  const sample=()=>{const out=[];for(let ty=0;ty<H;ty+=3)for(let tx=0;tx<W;tx+=3){const t=tiles[I(tx,ty)];for(const [ax,ay] of P)out.push([t,Tr.artTexel(t,tx,ty,ax,ay)])}return out};
   const off=sample(),grassN=off.filter(([t])=>t===G).length;
-  const im={w:32,h:32,data:new Uint8Array(32*32*4)};for(let i=0;i<32*32;i++){const c=((i>>5)+i)%2?[0x12,0x34,0x56]:[0x65,0x43,0x21];im.data.set([...c,255],i*4)}A.setAssetPixels('tile:grass',A.pixelsOf(im.w,im.h,im.data));
+  {let k=0,bad=0;for(let ty=0;ty<H;ty+=3)for(let tx=0;tx<W;tx+=3){const t=tiles[I(tx,ty)];for(const [ax,ay] of P){if(off[k++][1]!==Tr.texel(t,tx,ty,(ax/ART)|0,(ay/ART)|0))bad++}}
+    ok(RT===U*ART&&!bad,`no asset: every ${RT} px art texel is the ${U} px procedural texel scaled ${ART}x`)}
+  const im={w:RT,h:RT,data:new Uint8Array(RT*RT*4)};for(let i=0;i<RT*RT;i++){const c=((i/RT|0)+i)%2?[0x12,0x34,0x56]:[0x65,0x43,0x21];im.data.set([...c,255],i*4)}A.setAssetPixels('tile:grass',A.pixelsOf(im.w,im.h,im.data));
   const on=sample();let same=0,changed=0,other=0;
   for(let i=0;i<off.length;i++){if(off[i][0]===G){if(on[i][1]==='#123456'||on[i][1]==='#654321')changed++}else if(on[i][1]===off[i][1])same++;else other++}
-  ok(grassN>0&&changed===grassN,`grass texels come from the asset (${changed}/${grassN})`);ok(!other,`other tiles unchanged (${same})`);
-  A.setAssetPixels('tile:grass',null);const back=sample();ok(back.every((v,i)=>v[1]===off[i][1]),'asset removed: the procedural terrain is back exactly')}
+  ok(grassN>0&&changed===grassN,`grass texels come from the asset at art resolution (${changed}/${grassN})`);ok(!other,`other tiles unchanged (${same})`);
+  ok(Tr.terrainArt(),'a terrain asset loaded: chunks are painted at TILE');
+  A.setAssetPixels('tile:grass',null);const back=sample();ok(back.every((v,i)=>v[1]===off[i][1]),'asset removed: the procedural terrain is back exactly');ok(!Tr.terrainArt(),'and chunks go back to the procedural grid')}
+
+console.log('tiers: index, loader, fallback, generation settings');
+{const A=await import('../src/render/assets.js'),{TILE:RT}=await import('../src/render/tile.js');
+  const other=TIERS.find(t=>t!==RT);
+  const idx={assets:{'tile:grass@64':{id:'tile:grass',tier:64,file:'tile/64/grass.png',w:64,h:64},'tile:snow@32':{id:'tile:snow',tier:32,file:'tile/32/snow.png',w:32,h:32},'tile:mud':{file:'tile/mud.png',w:32,h:32}}};
+  A.provideAssets(idx,{});
+  ok(A.hasAsset('tile:snow')===(RT===32)&&A.hasAsset('tile:grass')===(RT===64)&&A.assetEntry(RT===32?'tile:snow':'tile:grass').tier===RT,`the loader keeps the renderer's tier (${RT}) only; the ${other} tier is absent, so its renderer draws procedurally`);
+  ok(A.hasAsset('tile:mud')===(RT===32)&&A.tierOf('tile:mud',{})===32,'an index entry from before tiers counts as the 32 tier');
+  const e32=A.entriesFor(idx.assets,32),e64=A.entriesFor(idx.assets,64);ok(Object.keys(e32).sort().join()==='tile:mud,tile:snow'&&Object.keys(e64).join()==='tile:grass','entries split by tier, keyed by id');
+  A.provideAssets(null,{});
+  ok(normKey('tile:grass')==='tile:grass@32'&&normKey('tile:grass#alt2')==='tile:grass@32#alt2'&&normKey('tile:grass@64#alt1')==='tile:grass@64#alt1','queue keys from before tiers read as the 32 tier');
+  {const k=splitKey('tile:grass@64#alt3');ok(k.id==='tile:grass'&&k.tier===64&&k.alt===3&&keyFile('tile:grass@64#alt3')==='tile/64/grass.alt3.png','a tier key splits into id, tier and alternate; its file is <kind>/<tier>/<name>.altK.png')}
+  // an old queue and index (keys without a tier) are read as the 32 tier
+  const old=mkdtempSync(join(tmpdir(),'eldmoor-oldq-'));
+  try{writeFileSync(join(old,'queue.json'),JSON.stringify({version:1,incoming:{'tile:grass':{date:'2026-11-03',file:'tile/grass.png'}},rejected:{'tile:mud':1},alts:{},failed:{},next:['tile:swamp']}));
+    writeFileSync(join(old,'index.json'),JSON.stringify({version:1,assets:{'tile:grass':{id:'tile:grass',file:'tile/grass.png',w:32,h:32}}}));
+    const q=loadQueue(old),ix=loadIndex(old);
+    ok(q.incoming['tile:grass@32']&&q.incoming['tile:grass@32'].file==='tile/grass.png'&&q.rejected['tile:mud@32']===1&&q.next[0]==='tile:swamp@32'&&ix.assets['tile:grass@32'].tier===32,'the owner\'s queue and incoming index from before tiers (2026-11-03) carry over as the 32 tier')}
+  finally{rmSync(old,{recursive:true,force:true})}}
 
 console.log('autotile rules with fixture PNGs (slice 2)');
 for(const world of ['eldmoor','stepping']){
@@ -241,28 +300,31 @@ console.log(fails?`artcheck: ${fails} FAILED`:'artcheck: all ok');process.exit(f
 async function autotileProbe(){
   const A=await import('../src/render/assets.js'),T=await import('../src/render/terrain.js'),{tiles,zone,I}=await import('../src/world/map.js');
   const {W,H,TREE,ROAD}=await import('../src/world/tiles.js'),{fixtures}=await import('./art/fixtures.mjs'),{ACTIVE_SPEC}=await import('../src/world/spec.js');
+  const {TILE:RT,U,ART}=await import('../src/render/tile.js'),RR=RT*RT; // the map is rendered at art resolution (TILE a tile)
   const fnv=a=>{let h=0x811c9dc5;for(let i=0;i<a.length;i++){h^=a[i]&255;h=Math.imul(h,16777619)>>>0}return h.toString(16).padStart(8,'0')};
   const mapHash=()=>fnv(tiles)+fnv(zone);
-  const render=()=>{const out=new Uint32Array(W*H*256);let i=0;
-    for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];for(let py=0;py<16;py++)for(let px=0;px<16;px++)out[i++]=parseInt(T.pixel(t,tx,ty,px,py).slice(1),16)}
+  const render=()=>{const out=new Uint32Array(W*H*RR);let i=0;
+    for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];for(let py=0;py<RT;py++)for(let px=0;px<RT;px++)out[i++]=parseInt(T.pixel(t,tx,ty,px,py).slice(1),16)}
     return out};
   const same=(a,b)=>{for(let i=0;i<a.length;i++)if(a[i]!==b[i])return false;return true};
   const diff=(a,b)=>{let n=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])n++;return n};
   // the corner point whose quadrant holds pixel i of the render
-  const pointOf=i=>{const tile=i>>8,px=i&15,py=(i>>4)&15;return [tile%W+(px>=8?1:0),Math.floor(tile/W)+(py>=8?1:0)]};
+  const pointOf=i=>{const tile=Math.floor(i/RR),px=i%RT,py=Math.floor((i%RR)/RT);return [tile%W+(px>=RT/2?1:0),Math.floor(tile/W)+(py>=RT/2?1:0)]};
   A.provideAssets(null,{});
   const m0=mapHash(),off=render();
-  console.log(`  ok  ${ACTIVE_SPEC.id||'world'} ${W}x${H}: procedural render ${fnv(new Uint8Array(off.buffer))} (no assets)`);
+  console.log(`  ok  ${ACTIVE_SPEC.id||'world'} ${W}x${H}: procedural render ${fnv(new Uint8Array(off.buffer))} (no assets, ${RT} px tiles)`);
+  {let bad=0,i=0;for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];for(let py=0;py<RT;py++)for(let px=0;px<RT;px++){if(off[i++]!==parseInt(T.procPixel(t,tx,ty,(px/ART)|0,(py/ART)|0).slice(1),16))bad++}}
+    ok(!bad,`no assets: the ${RT} px render is the ${U} px procedural map scaled ${ART}x, pixel for pixel`)}
   // fixtures -> PNG files and an index in a temp assets folder -> decoded -> installed
-  const fx=fixtures(man),dir=mkdtempSync(join(tmpdir(),'eldmoor-fixtures-')),{mkdirSync}=await import('node:fs'),{sha256}=await import('./art/lib.mjs');
+  const fx=fixtures(man,RT),dir=mkdtempSync(join(tmpdir(),'eldmoor-fixtures-')),{mkdirSync}=await import('node:fs'),{sha256}=await import('./art/lib.mjs'),{dirname}=await import('node:path');
   try{const index={version:1,assets:{}};
-    for(const [id,im] of Object.entries(fx)){const f=fileOf(id),b=encodePng(im);mkdirSync(join(dir,f.split('/')[0]),{recursive:true});writeFileSync(join(dir,f),b);
-      index.assets[id]={file:f,w:im.w,h:im.h,sha256:sha256(b),model:'fixture',seed:0}}
+    for(const [id,im] of Object.entries(fx)){const f=fileOf(id,RT),b=encodePng(im);mkdirSync(dirname(join(dir,f)),{recursive:true});writeFileSync(join(dir,f),b);
+      index.assets[tierKey(id,RT)]={id,tier:RT,file:f,w:im.w,h:im.h,sha256:sha256(b),model:'fixture',seed:0}}
     writeFileSync(join(dir,'index.json'),JSON.stringify(index));
     const terrainIds=man.assets.filter(e=>e.hook&&e.hook.module==='src/render/terrain.js').map(e=>e.id),missing=terrainIds.filter(id=>!fx[id]);
     ok(!missing.length,`a fixture for every terrain asset (${Object.keys(fx).length})`+(missing.length?': missing '+missing:''));
     {const {errs,count}=checkIndex(man,dir);ok(!errs.length&&count===Object.keys(fx).length,`fixture PNGs pass the index check (${count})`+(errs.length?': '+errs.slice(0,3).join('; '):''))}
-    for(const [id,a] of Object.entries(index.assets)){const im=decodePng(readFileSync(join(dir,a.file)));A.setAssetPixels(id,A.pixelsOf(im.w,im.h,im.data))}
+    for(const a of Object.values(index.assets)){const im=decodePng(readFileSync(join(dir,a.file)));A.setAssetPixels(a.id,A.pixelsOf(im.w,im.h,im.data))}
   }finally{rmSync(dir,{recursive:true,force:true})}
   const on=render();
   ok(mapHash()===m0,'fixtures on: the map (tiles and zones) is unchanged');

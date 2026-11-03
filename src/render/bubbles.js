@@ -3,7 +3,7 @@
 // bubble fades out over its last 0.6s. Text is word-wrapped to at most three short lines;
 // anything longer is truncated with an ellipsis. bubbleBoxes() gives the same boxes so the label
 // pass can keep names clear of them in a Table scene (#471).
-import {T} from '../world/tiles.js';
+import {U as T,HEAD} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {bubbleVisible} from '../core/chatview.js';
 import {toneOf} from '../core/colors.js';
 
@@ -25,7 +25,7 @@ function layout(ctx,S,cam){const out=[],cv=ctx.canvas,vw=cv.width/cam.sc,vh=cv.h
     const px=a.x*T,py=a.y*T;if(Math.abs(px-cam.camX)>vw/2+60||Math.abs(py-cam.camY)>vh/2+60)continue;
     const tone=toneOf(a,slotted(),S.gameMin),head=tone.kind==='class'?a.name.toUpperCase():tone.npc?'['+a.name+']':null,lines=(head?[head]:[]).concat(wrap(b.text)); // a member's bubble leads with its name in class colour, an NPC's in [brackets] in its disposition colour
     let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
-    const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=py-17-s*1.15,top=bottom-bh,x0=px-bw/2;
+    const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=py-HEAD-s*1.15,top=bottom-bh,x0=px-bw/2;
     out.push({b,tone,head,lines,px,top,bottom,x0,bw,bh,lh,pad})}
   return out}
 // The bubbles' boxes in world px, [x0, y0, x1, y1] each (the tail included).
