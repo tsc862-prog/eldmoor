@@ -23,6 +23,10 @@
 //             event (break camp now or sleep till dawn?); any member may propose `break_camp` (sim/council.js, the vote
 //             settles it) and the leader may `break_camp` outright; the leader's `rest {hours}` makes a camp for a set
 //             time (why 'rest'). Every member gets a turn-starting event when camp breaks (not on an ambush: the alarm is one)
+//   crafting  at supper (rest begins) a member played by reflex cooks a meal and brews a draught if its trade and pack allow
+//             (sim/craft.js campCraft), then eats; once the fire's talk is over (no fireside queued or open) each agent member
+//             with a cooking or alchemy recipe it can make is told so once (craft {recipe}); the craft tool refuses while the
+//             company sits at its table (#258)
 //   sleeping  a sleeper's agent gets no soft turns (sim/pace.js asleep()), only wake events; one woken by an ambush is groggy
 //             for the first round (its swing cooldown is not ready). onCamp(fn) hears 'make','rest','mended','break',
 //             'spotted','caught' for the reflection memories (#179)
@@ -56,7 +60,8 @@ import {askRelay,snapshotFor,cleanLine} from './brain.js';
 import {sayOk} from './throttle.js';
 import {companyOf,companies,members as cMembers,campaign,slotted} from './company.js';
 import {partySay,leaderOfC,setCampHook,openProps} from './council.js';
-import {openScene} from './table.js';
+import {openScene,sceneFor} from './table.js';
+import {campCraft,fireRecipes} from './craft.js'; // cooking and brewing at the fire (#258)
 import {sceneOf} from './scenes.js';
 import {reflexMay} from './runlink.js';
 import {advCampable} from './dm.js'; // a night camp may fall between an adventure's scenes (#325)
@@ -214,7 +219,7 @@ function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors+
   for(const a of wake)if(a!==w)a.cd=Math.max(a.cd||0,2.4); // a sleeper woken by the alarm is groggy for the first round
   if(useHero){const b=foeHero;for(const a of wake)a.state='hunt';w.state='duel';w.target=b;b.state='duel';b.target=w;b.dest=null}
   else{m.target=pass?w:victim;for(const a of wake){a.state='fight';a.target=m;a.dest=null}
-    openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at '+(F===slotted()?'the Fellowship\'s camp':g.solo?'a lone camp':(F.name||'the company')+'\'s camp')+' in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id},F)}} // any company's camp (#440)
+    openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at '+(F===slotted()?'the Fellowship\'s camp':g.solo?'a lone camp':(F.name||'the company')+'\'s camp')+' in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id,camp:{x:g.x,y:g.y}},F)}} // camp: the scene plays on the ground round the fire (#431 slice 3) // any company's camp (#440)
 
 // ---- campfire talk ----
 function talk(F,g,L){if(L.length<2)return;
@@ -265,7 +270,7 @@ function campOne(F,dt){const g=F.camp&&F.camp.phase?F.camp:null;
   if(g.phase==='gather'){let all=true;
     L.forEach((a,i)=>{const p=spotOf(g,i,L.length);if(!moveTo(a,p.x,p.y,dt,2.4))all=false;a.face=g.x>a.x?1:-1});
     if(all||now-g.start>CAMP.GATHER_MAX){g.phase='rest';g.restAt=Math.round(now);g.nextRoll=now+CAMP.ROLL_MIN;g.nextTalk=now+20;g.nextBond=now+180;g.watchIdx=-1;
-      for(const a of L){a.moving=false;campMeal(a)}
+      for(const a of L){a.moving=false;if(reflexMay(a))campCraft(a);campMeal(a,{meals:reflexMay(a)})} // supper: a reflex member cooks and brews first (#258); an agent's crafted meals are its own to eat
       for(const a of L)if(!g.lit&&a.inv&&a.inv.list.length)campLight(a)
       emit('rest',g,{why:g.why})}
     refreshDoing(L);
@@ -282,6 +287,8 @@ function campOne(F,dt){const g=F.camp&&F.camp.phase?F.camp:null;
   if(now>=g.nextBond){g.nextBond=now+180;if(L.length>1)bondEvent(L[0],'party',L)}
   if(now>=g.nextRoll){g.nextRoll=now+CAMP.ROLL_MIN;
     if(rnd()<CAMP.AMBUSH_P+.02*g.zone){visitor(F,g,byId(g.watcher)||w);return}}
+  if(!g.craftNote&&!F.fireQ&&!sceneFor(F)){g.craftNote=1; // once a camp, after the fire's talk (it queues on 'rest' and opens first): what an agent could cook or brew here (#258)
+    for(const a of L)if(!reflexMay(a)){const R=fireRecipes(a);if(R.length)notify(a,'The fire is going: you could cook or brew here with craft {recipe}: '+R.join(', ')+'. A meal mends a little and gives a short edge; eat it with use_item.',false,1)}}
   const full=L.every(a=>a.hp>=maxHp(a)*CAMP.MENDED),h=hourNow();
   refreshDoing(L);
   if(g.why==='night'&&full&&!g.mendedNote&&!(h>=CAMP.DAWN&&h<12)){g.mendedNote=1;emit('mended',g,{});

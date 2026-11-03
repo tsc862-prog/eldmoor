@@ -13,7 +13,7 @@ import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
 import {raceOf,homeOf} from '../data/races.js';
 import {MOBS} from '../data/mobs.js';
-import {GOODS,price,EPIC_ITEMS,PROPS,USES,QUEST_ITEMS,useLines} from '../data/items.js';
+import {GOODS,MATERIALS,price,EPIC_ITEMS,PROPS,USES,QUEST_ITEMS,useLines} from '../data/items.js';
 import {capOf,used as packUsed,isGear} from '../sim/inv.js'; // the pack (#124)
 import {combatStats} from '../sim/stats.js';
 import {gearScore} from '../sim/gear.js';
@@ -208,7 +208,7 @@ const invEntry=(a,i)=>a&&a.inv?a.inv.list[i]||null:null;
 function supplyCard(e,cls){const d=el('div',cls||'itip');
   if(e.kind==='use'&&USES[e.id]){const U=USES[e.id];d.append(el('div','in qf',e.id),el('div','dm',U.kind.charAt(0).toUpperCase()+U.kind.slice(1)+' · x'+e.n));
     for(const [c,t] of useLines(e.id))d.append(el('div','is s-'+c,t));d.append(el('div','dm','Costs '+U.price+'g in town'),el('div','if',U.flavour))}
-  else if(e.kind==='good'){d.append(el('div','in qp',e.id),el('div','dm','Trade good · x'+e.n));if(GOODS[e.id])d.append(el('div','is s-bn','Sells for about '+price(e.id)+'g each'))}
+  else if(e.kind==='good'){d.append(el('div','in qp',e.id),el('div','dm',(MATERIALS[e.id]?'Material · ':'Trade good · ')+'x'+e.n));if(GOODS[e.id]||MATERIALS[e.id])d.append(el('div','is s-bn','Sells for about '+price(e.id)+'g each'))}
   else{const Q=QUEST_ITEMS[e.id];d.append(el('div','in gd',e.id),el('div','dm','Quest item'));
     d.append(el('div','if',Q?Q.flavour:'Carried for a job; it is handed in when the job ends.'),el('div','dm','Cannot be sold, dropped or given.'))}
   return d}
@@ -240,7 +240,7 @@ function tabGear(b,a){
       const kk=el('span','k',label),v=el('span','v');kk.dataset.slot=k;v.dataset.slot=k;if(sel){kk.classList.add('pin');v.classList.add('pin')}
       g.append(kk);
       if(!it)v.append(el('span','dm','Empty'));
-      else{v.append(el('span',qCls(it),it.name),' ',el('span','ilv','ilvl '+it.ilvl));
+      else{v.append(el('span',qCls(it),it.name),' ',el('span','ilv','ilvl '+it.ilvl));if(it.maker)v.append(' ',el('span','dm mk','by '+it.maker));
         const z=zoneIdx(it.zone);if(z>=0)v.append(' ',el('span','ztag z'+z,ZONES[z]));else if(it.zone)v.append(' ',el('span','ztag',String(it.zone)))}
       g.append(v)}
     b.append(g,el('div','meta','Gear score '+gearScoreOf(a)+' · hover or tap a slot'));
@@ -254,12 +254,12 @@ function tabInv(b,a){
   if(pinned&&pinned.id!==a.id)pinned=null;
   if(!a.inv||!a.inv.list.length){b.append(el('div','meta','Pack 0/'+(a.inv?capOf(a):'?')+' slots · '+a.gold+'g'),el('div','dm','Nothing carried.'));return}
   b.append(el('div','meta','Pack '+packUsed(a)+'/'+capOf(a)+' slots · '+a.gold+'g · hover or tap an item'));
-  const groups=[['Potions and supplies',e=>e.kind==='use'],['Quest items',e=>e.kind==='quest'],['Spare gear',isGear],['Trade goods',e=>e.kind==='good']];
+  const groups=[['Potions and supplies',e=>e.kind==='use'],['Quest items',e=>e.kind==='quest'],['Spare gear',isGear],['Materials',e=>e.kind==='good'&&!!MATERIALS[e.id]],['Trade goods',e=>e.kind==='good'&&!MATERIALS[e.id]]];
   for(const [title,f] of groups){const rows=a.inv.list.map((e,i)=>[e,i]).filter(([e])=>f(e));if(!rows.length)continue;
     b.append(el('div','dm',title));const g=el('div','gear');
     for(const [e,i] of rows){const sel=pinned&&pinned.inv===i,gear=isGear(e);
       const kk=el('span','k',gear?slotLabel(e.slot):'x'+e.n),v=el('span','v');kk.dataset.inv=String(i);v.dataset.inv=String(i);if(sel){kk.classList.add('pin');v.classList.add('pin')}
-      if(gear){v.append(el('span',qCls(e),e.name),' ',el('span','ilv','ilvl '+e.ilvl));if(e.cls&&e.cls!==a.cls&&!e.epic)v.append(' ',el('span','dm','for '+e.cls))}
+      if(gear){v.append(el('span',qCls(e),e.name),' ',el('span','ilv','ilvl '+e.ilvl));if(e.cls&&e.cls!==a.cls&&!e.epic)v.append(' ',el('span','dm','for '+e.cls));if(e.maker)v.append(' ',el('span','dm mk','by '+e.maker))}
       else v.append(el('span',e.kind==='quest'?'gd':e.kind==='use'?'qf':'qp',e.id));
       g.append(kk,v)}
     b.append(g)}

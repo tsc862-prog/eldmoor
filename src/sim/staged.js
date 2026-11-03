@@ -42,7 +42,7 @@ import {leaderOf as companyLead} from './company.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
-import {TABLE,openScene,tableOn,setSceneKind,setStageHooks} from './table.js';
+import {TABLE,openScene,tableOn,setSceneKind,setStageHooks,kindHooks} from './table.js';
 import {setProps} from './props.js';
 import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
 import {heard,tableLive,fillWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
@@ -71,12 +71,12 @@ export const STAGE={
   TOWN_WAIT_MIN:720, // game minutes a person staged in a town (at) waits there for the party
   TOWN_PAD:1,       // tiles round a town's walls that count as being in it (the scene opens when a member is there)
 };
-export const STAGE_KINDS=['elite','ambush','meeting','trap','mystery','social'];
+export const STAGE_KINDS=['elite','ambush','meeting','trap','mystery','social','interrogation']; // interrogation: a suspect questioned at the table (#431 slice 3, sim/interrogate.js)
 const COMBAT_ACTS=['strike','guard','heal','potion','retreat'];
 // The legal Table actions per kind: the DM may relabel them (cast.choices), never add to them.
-export const STAGE_ACTS={elite:COMBAT_ACTS,ambush:COMBAT_ACTS,meeting:['hear','help','pass'],trap:['spot','disarm','round'],mystery:['study','search','leave'],social:['parley','press','leave']};
+export const STAGE_ACTS={elite:COMBAT_ACTS,ambush:COMBAT_ACTS,meeting:['hear','help','pass'],trap:['spot','disarm','round'],mystery:['study','search','leave'],social:['parley','press','leave'],interrogation:['ask','threaten','bargain','read','release','hand_over','watch']};
 // The complications the DM may pick at the table (one per scene), per kind. 'none' and 'omen' change nothing but the words.
-export const COMPLICATIONS={elite:['none','omen','falter','reinforce'],ambush:['none','omen','falter','reinforce'],meeting:['none','omen','rival'],social:['none','omen','rival'],trap:['none','omen','tremor'],mystery:['none','omen','tremor']};
+export const COMPLICATIONS={elite:['none','omen','falter','reinforce'],ambush:['none','omen','falter','reinforce'],meeting:['none','omen','rival'],social:['none','omen','rival'],trap:['none','omen','tremor'],mystery:['none','omen','tremor'],interrogation:['none','omen','rival']};
 const COMP_ABOUT={none:'nothing changes',omen:'a sign or a sound, words only',falter:'the foe, if already below half its health, breaks off for a moment',reinforce:'one more foe of the pack (two levels under the party) joins',
   rival:'the person turns one step colder (the next words are harder)',tremor:'the place turns against them: the remaining rolls are 2 harder'};
 const FIGHTING={elite:1,ambush:1,trap:1}; // kinds the pile-on rule guards
@@ -168,7 +168,7 @@ function whereOf(near){const nt=nearText(near);if(nt.err)return {err:nt.err};con
 // ---- the setting and the town (scene maps, issue #431 slice 2) ----
 // A meeting or social scene may play in a room from data/settings.js (setting) and in a real town, at one of its
 // buildings (at). The outdoor kinds keep the ground where they happen and ignore both, with a note.
-export const INDOOR_STAGE={meeting:1,social:1};
+export const INDOOR_STAGE={meeting:1,social:1,interrogation:1};
 const SET_ALIAS={home:'house',cottage:'house',farmhouse:'house','back room':'tavern','tavern back room':'tavern',inn:'tavern',alehouse:'tavern',
   temple:'chapel',church:'chapel','interrogation cell':'cell','interrogation room':'cell',interrogation:'cell',prison:'cell',jail:'cell',gaol:'cell',
   ship:'hold',"ship's hold":'hold','ships hold':'hold',boat:'hold'};
@@ -195,11 +195,15 @@ export function atOf(v){if(v==null||v==='')return {};const s=clean(v,60).toLower
 // The room a meeting or social scene plays in when the DM names none (the scripted pick): the building it is set at
 // (the inn: the tavern back room; the chapel), then the words of the title, frame, want and role (data/settings.js
 // words), then a tavern back room for a meeting and a house for a social call. No dice.
-export function fitSetting(kind,{spot,title,frame,want,role}={}){if(spot&&BLDG_SET[spot])return BLDG_SET[spot];
+export function fitSetting(kind,{spot,title,frame,want,role}={}){if(kind==='interrogation'&&!/\b(tavern|inn|cellar|chapel|house|hold|shrine)\b/i.test([title,frame].join(' ')))return 'cell'; // a suspect is questioned in a cell unless the words name another room
+  if(spot&&BLDG_SET[spot])return BLDG_SET[spot];
   for(const w of [[title,frame].join(' '),[want,role].join(' ')])for(const id of SETTING_IDS)if(SETTINGS[id].words&&SETTINGS[id].words.test(w||''))return id;
-  return kind==='meeting'?'tavern':'house'}
+  return kind==='interrogation'?'cell':kind==='meeting'?'tavern':'house'}
 const inTown=(c,p)=>!!(c&&p)&&p.x>=c.x0-STAGE.TOWN_PAD&&p.x<=c.x1+1+STAGE.TOWN_PAD&&p.y>=c.y0-STAGE.TOWN_PAD&&p.y<=c.y1+1+STAGE.TOWN_PAD;
 const townOf=n=>CITY.find(c=>c.name===n)||null;
+// A place an interrogated suspect may give up (cast.place): a landmark, a region, a town or a marked place, by name.
+function placeName(v){const lo=clean(v,60).toLowerCase().replace(/^the /,'');if(!lo)return null;const eq=n=>!!n&&String(n).toLowerCase().replace(/^the /,'')===lo;
+  const l=LANDMARKS.find(x=>eq(x.name));if(l)return l.name;const z=ZONES.find(eq);if(z)return z;const c=CITY.find(x=>eq(x.name));if(c)return c.name;const p=(S.places||[]).find(x=>eq(x.name));return p?p.name:null}
 
 // ---- staging (the DM tool stage_scene) ----
 // a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, item, trap, place, choices:{act:label}}, reason} (cast.item: a give_item name the frame's first prop holds; search finds it)
@@ -279,11 +283,14 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   else if(kind==='ambush'){
     plan.forEach((f,i)=>{const m=spawnFoe(f);place(m,{x:at.x+(i%3-1)*.8,y:at.y+Math.floor(i/3)*.8});m.staged=rid;C.mobs.push(m.id)});
     C.foe=MOBS[mobOf(C.mobs[0]).type].name;if(!C.name)C.name=C.foe+(C.mobs.length>1?' pack':'')}
-  else if(kind==='meeting'||kind==='social'){const roles=WANDER_ROLES.map(x=>x.id),role=String(cast.role||'stranger').toLowerCase();
+  else if(kind==='meeting'||kind==='social'||kind==='interrogation'){const roles=WANDER_ROLES.map(x=>x.id),role=String(cast.role||'stranger').toLowerCase();
     if(!roles.includes(role))return refuse('cast.role must be one of '+roles.join(', '),a);
-    const att=String(cast.attitude||(kind==='social'?'wary':'neutral')).toLowerCase();if(!ATT.includes(att))return refuse('cast.attitude must be one of '+ATT.join(', '),a);
+    const att=String(cast.attitude||(kind==='social'?'wary':kind==='interrogation'?'hostile':'neutral')).toLowerCase();if(!ATT.includes(att))return refuse('cast.attitude must be one of '+ATT.join(', '),a);
     const fac=String(cast.faction||'neutral').toLowerCase();
-    if(!C.want)return refuse('a '+kind+' needs cast.want: what this person wants from the party',a);
+    if(!C.want&&kind!=='interrogation')return refuse('a '+kind+' needs cast.want: what this person wants from the party',a);
+    if(kind==='interrogation'){if(!C.reveal)return refuse('an interrogation needs cast.reveal: what the suspect knows (the truth the dice may get out of them)',a);
+      if(cast.place!=null&&cast.place!==''){const pn=placeName(cast.place);if(!pn)return refuse('cast.place must name a place they could learn of: a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+'), a region ('+ZONES.join(', ')+'), a town or one of your marked places',a);C.place=pn}
+      C.lie=clean(cast.lie,STAGE.REVEAL_MAX)||null}
     const res=pull('create_npc',{role,...(C.name?{name:C.name.slice(0,24)}:{}),faction:['concord','warband','neutral'].includes(fac)?fac:'neutral',...(town?{home:'town',town:town.name,spot}:{home:'camp',at}),attitude:att,hours:town?Math.ceil(STAGE.TOWN_WAIT_MIN/60)+6:12},{by:'dm-agent',reason:'staged '+kind+': '+reason});
     if(!res.ok)return refuse('the people lever said no: '+res.reason,a);
     const w=res.ret;w.staged=rid;if(C.want)w.want=C.want;C.npc=w.id;C.name=w.name;C.role=w.title;C.attitude=att}
@@ -372,6 +379,7 @@ function meet(rec,a){const G=S.staged,F=slotted(),fight=rec.kind==='elite'||rec.
   const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{}),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),dcUp:0,tally:{}};
   const pre={ids:recMem(rec).map(b=>b.id)};say(pre,rec.frame,NARRATOR); // the frame reaches the members as narration (#123), before any line of the scene
   ctx.anchor=a.id; // an everyone-at-once scene takes the members within shouting range of the one they met (#182)
+  {const K=kindHooks(rec.kind);if(K&&K.stagedCtx)Object.assign(ctx,K.stagedCtx(rec,recMem(rec).filter(living)),{staged:rec.id})} // an interrogation's truth, lie and resolve (sim/interrogate.js, #431 slice 3)
   const sc=openScene(rec.kind,rec.title,[rec.frame],ctx);
   if(!sc){rec.phase='waiting';return false}
   rec.scene=sc.id;if(S.table===sc&&!sc.narr)sc.narr=pre.narr;setProps(sc,rec.cast.item); // the frame's props as data (#592)
@@ -500,7 +508,7 @@ function complicate(sc,pick){const rec=recOf(sc),c=sc.ctx;
   if(pick==='tremor'){c.dcUp=(c.dcUp||0)+2;return 'the remaining rolls are 2 harder'}
   return null}
 function done(sc){const rec=recOf(sc);if(rec)finish(rec,sc,sc.summary||null)}
-setStageHooks({tick,onFrame,onBeat,onAll,fill,live,done});
+setStageHooks({tick,onFrame,onBeat,onAll,fill,live,done}); // a kind with its own DM voice (an interrogation, sim/interrogate.js) hands its end back through table.js stageDone
 
 // ---- the DM tools ----
 // table_call: what the table asks of the DM right now (the pending call, the scene) and the staged scene's state.

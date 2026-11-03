@@ -13,7 +13,7 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   and characters. Prefer names that sound good over names that are merely unique.
 - **Hardcore.** Every hero has one life. Death is permanent; a fresh level-1
   recruit of the same class and guild replaces them.
-- **The Fellowship is always agent-played.** Every Fellowship member (and every replacement) is
+- **Every company member is always agent-played.** Every member of an agent company, the Fellowship included (and every replacement), is
   controlled by an agent at all times; there is no scripted or single-call AI mode for members. Between
   decisions a member may auto-play (autopilot: carry out the last order, follow the leader, reflexes such as
   defend, drink a potion, flee below 15% HP), but every decision belongs to its agent: votes, proposals,
@@ -28,8 +28,8 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   and every fill is logged. When the DM runner is gone the world pauses at the start gate and asks the owner (Resume anyway,
   Restart; #578), as for a member; reflexes answer only after the owner resumed. `npm run sim` and the seeded checks have no
   runner and fill at once, so their hashes do not move. Background heroes may still be scripted.
-- **The DM serves the Fellowship first, then the world.** The DM's priorities are the Fellowship first, then the overall game world, for the DM agent and the scripted world engine alike: each turn or refresh starts with where the Fellowship is, their open threads and oaths, pending decisions and what would make their next game hours interesting; hooks, rumours, people, places and staged scenes go to their road first; world-shaping that does not touch them comes after, and only when nothing is pending for them. A share of every daily lever and staging limit is reserved for them. See "DM agent" below.
-- **In-game channels only.** The DM and the players (Fellowship members, agent-played heroes)
+- **The DM serves the companies first, then the world.** ("Company" is the generic word; the Fellowship is the default five-place company and keeps its name.) The DM's priorities are the player's companies first, the Fellowship above all, then the overall game world, for the DM agent and the scripted world engine alike: each turn or refresh starts with where the companies are, their open threads and oaths, pending decisions and what would make their next game hours interesting; hooks, rumours, people, places and staged scenes go to their road first; world-shaping that does not touch them comes after, and only when nothing is pending for them. A share of every daily lever and staging limit is reserved for them. See "DM agent" below.
+- **In-game channels only.** The DM and the players (company members, agent-played heroes)
   communicate only inside the game: in-game chat (say in earshot, party shouts in range, townsfolk, the
   DM's `narrate` and `npc_say`) and what their characters can see. Nobody messages anyone directly
   outside it. A hero's tools, runner prompts and brain snapshots never carry DM notes, the DM log,
@@ -211,12 +211,12 @@ is silent, and scene choices time out to the scripted branch, so the world never
   `--max-turns` is given (owner, #563: dollars are the limit): a local runner runs until stopped, Claude and OpenAI until stopped or their budget is spent.
 - Start gate (#222, extends the run gate #171 in `src/ui/rungate.js`): a seat is **ready** only after its runner
   completed one warm-up model call with the model it plays (and the shared `num_ctx`, #221): before its first turn
-  every runner (hero, Fellowship member, DM; `scripts/warmup.mjs`) posts `POST /play/ready {hero|role:'dm', runner,
+  every runner (hero, company member, DM; `scripts/warmup.mjs`) posts `POST /play/ready {hero|role:'dm', runner,
   state:'warming'}`, makes one tiny structured call (Ollama `chat()` through the runner's queue, else the adapter's
   `call()`), then `{state:'ready', ms}` or `{state:'failed', error}`. Readiness belongs to the runner that reported
   it, so a restarted runner starts over; `/play/health` shows `heroes[].ready` (+ `warm`) and `dm.ready`, and the
   page gets it with the links. The page holds the world (after Continue, a new world, any runner start) until every
-  living Fellowship seat and the open DM seat are ready; the banner reads "WAITING FOR MINDS · 3/5 READY" with each
+  living company seat and the open DM seat are ready; the banner reads "WAITING FOR MINDS · 3/5 READY" with each
   seat's state ("loading qwen2.5:14b (40 s)", "claimed", "warm-up failed: ...") and **Start anyway** (waives the
   seats as they are; a waived seat whose runner goes away must warm up again). Party frames and the DM frame show
   claimed / warming up / ready / warm-up failed. `play-headless --wait-ready` holds a headless world the same way
@@ -227,7 +227,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   the DM's prep holds the world (`worldHeld()` in `src/sim/prep.js`), agent heroes get no paced turn and their acting
   tools (`act:true`: say, party_say, move_to, hunt, take_quest, propose, ...) are refused with "The DM is preparing the
   table; wait for the opening scene." (`offline:true`, so it never counts as a failed turn); reads still answer.
-  The gate is continuous (owner decision on #559): the world runs only while every living agent-played Fellowship member
+  The gate is continuous (owner decision on #559): the world runs only while every living agent-played company member
   and the DM seat have a live runner (thinking, between turns, waiting for a Claude slot all count; a warm-up that failed
   while its runner plays on counts too). A supervised runner that stops, crashes, hits its budget or lets a member go
   pauses the world at once and the banner names who; "Resume anyway" (Start anyway before the first run) overrides until
@@ -253,7 +253,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   game refuses a say/party_say that is mostly non-Latin script.
 - Hearing: a line from an agent-played hero (aloud in earshot, or a party shout in range) starts each listening
   agent's turn at once, at most once per `PK.HEAR_WAKE` (15) game minutes per listener; narrator, NPC and
-  scripted party lines wake after the gap. When every member at a Fellowship camp is agent-played, the agents
+  scripted party lines wake after the gap. When every member at a company camp is agent-played, the agents
   are told the fire is lit and talk if they like.
 - Headless: `npm run play-headless -- --warm 20 --agents 2` (a Node world on port 8789 with
   the top Concord and Warband heroes agent-played, or `--hero Ann,Bo`; saved to
@@ -310,7 +310,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   The setup page starts one company runner for an apart group sharing one mind (`planRunners`). Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
   /play/runner/slot`, released after the turn, freed when the child exits) and waits for one when all are
-  taken, so starting is never refused for slots (a Fellowship runner also queues its members with
+  taken, so starting is never refused for slots (a company runner also queues its members with
   `--claude-concurrency`). Without `--runners` the buttons say how to turn it on.
 - Relay concurrency: the owner's API org caps concurrent requests across all models. The relay keeps at most
   `RELAY_ANTHROPIC_CONCURRENCY` (default 2) Anthropic calls in flight (`scripts/providers/limiter.mjs`):
@@ -329,13 +329,13 @@ is silent, and scene choices time out to the scripted branch, so the world never
   takes `prey` (a creature known by name) or whatever is around except what it learned to fear; `list_jobs` gives the
   gate's rumour, not "fits"; townsfolk warn a green blade off the next region up. Background heroes keep the scripted
   level logic and never get lore; the hooks only touch `a.player` heroes, so `npm run sim` is unchanged.
-- New world under the same ids (#219): New World reuses hero ids, so a runner that holds ids would play nobody. Hero and Fellowship runners poll `/play/health` (`watchWorld` in `scripts/pacing.mjs`) and, when a held id now names another hero (the name differs; the world instance id will be compared too once `/play/health` carries it as `world`), release their claims and exit with code 75 (`NEW_WORLD_EXIT`, `[world] a new world: ...` line). The supervisor (`scripts/runners.mjs`) restarts a runner that exits 75 with the same request after `RESTART_MS`, at most `MAX_RESTARTS` in a row without a turn; the restart sets the old sessions aside in `logs/agents/old/`. A DM runner whose seat is not open yet (a rare race at a new world; every world opens it from the first tick, #559) says so in its `[pace]` line and waits.
+- New world under the same ids (#219): New World reuses hero ids, so a runner that holds ids would play nobody. Hero and company runners poll `/play/health` (`watchWorld` in `scripts/pacing.mjs`) and, when a held id now names another hero (the name differs; the world instance id will be compared too once `/play/health` carries it as `world`), release their claims and exit with code 75 (`NEW_WORLD_EXIT`, `[world] a new world: ...` line). The supervisor (`scripts/runners.mjs`) restarts a runner that exits 75 with the same request after `RESTART_MS`, at most `MAX_RESTARTS` in a row without a turn; the restart sets the old sessions aside in `logs/agents/old/`. A DM runner whose seat is not open yet (a rare race at a new world; every world opens it from the first tick, #559) says so in its `[pace]` line and waits.
 - Memories (#155, `src/sim/notebook.js`): every agent hero keeps its own searchable notes with `remember {title,
   text, tags[], about?}`, `recall {query?, tag?, about?, id?, n?}` (title and tag words 3, about 2, text 1, +1 pinned,
   plus recency; a tag or about filters), `update_memory`, `forget` and `pin`; 200 notes of 600 characters, the oldest
   unpinned is archived (40 kept, still found), 20 pins, 60 writes a game day. Saved with the world on the hero
   (`a.memories`); each turn's state header names the 3 most relevant (people in sight and the party, region, town,
-  foe, adventure, an open scene or vote) by id and title only. Hardcore: they die with the hero; in the Fellowship a
+  foe, adventure, an open scene or vote) by id and title only. Hardcore: they die with the hero; in a company a
   pinned note tagged `letter` is found by whoever takes the fallen member's place, nothing else. The DM has the same
   tools over its four note sections (search across them; `dm_status.relevant_notes`). Mirrored read-only as Markdown
   by the relay (from the page) or the headless world: `logs/agents/<world>/<heroId>-<name>/memory/` (`MEMORY.md`
@@ -354,8 +354,8 @@ is silent, and scene choices time out to the scripted branch, so the world never
   who heard it carry "Your leader's aim: ..." in their header. 12 aims a game day. Private otherwise (channelcheck). The purpose line
   (#534) reads it. Behavior: `no-aim` anomaly (`BW.NO_AIM_MIN`, outside camp and town rest) and "Aims stated (intent) per hero per game
   day" in the report. Agent heroes only, no RNG.
-- Tiered memory (#153, `src/sim/tiers.js`, `a.tiers`): agent heroes and Fellowship members keep **landmarks** outside
-  every rolling cap (a companion's death, joining or leaving the Fellowship, levels 5/10/15/20, Crypt clears, a boss or
+- Tiered memory (#153, `src/sim/tiers.js`, `a.tiers`): agent heroes and company members keep **landmarks** outside
+  every rolling cap (a companion's death, joining or leaving a company, levels 5/10/15/20, Crypt clears, a boss or
   named elite slain, a nemesis taken or paid, and entries written with `journal_write {landmark: yes}`, 3 a day; 30
   kept, the lightest folds first), read from the record hook and `memory.js` lines only, and **chapters** instead of
   deletion: journal entries past 100 and notebook notes past the archive fold 20 at a time into a chapter (days,
@@ -383,7 +383,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   (the checks that count exact turns do; `--reflect` turns them back on).
 - Quest log (`src/sim/questlog.js`, the dossier's Quest tab): a hero's quests in one list, each `{id, kind: board|dm|oath, title,
   giver, where, objective, progress, reward, status: active|held|done|failed|abandoned|expired, focus, started, ends, from}`;
-  `questLog(a) -> {active, done (newest first, 20 for agent and Fellowship heroes, 8 for scripted), focus, offered}` (read-only, no dice,
+  `questLog(a) -> {active, done (newest first, 20 for agent and company heroes, 8 for scripted), focus, offered}` (read-only, no dice,
   re-exported from `src/sim/index.js`). Kinds: board = the kill quest (`a.quest`) and town-board, townsperson and follow-up jobs; dm =
   jobs the DM agent posted (`h.by`, "DM agent") and the scripted DM's Fellowship-first jobs (`h.ff`, "scripted DM"), and a staged scene
   the hero sits in at the table; oath = the oath (`a.goal`) and blood debts (`a.nemesis`, at most 3 listed). Agent heroes hold up to
@@ -415,13 +415,13 @@ is silent, and scene choices time out to the scripted branch, so the world never
   mock agents on two heroes at once (routing, claims, links, the browser bridge, per-hero
   session files). The mock agent's waits drive game time, so it depends on the seed only.
 
-## Fellowship (agents and Table mode)
+## Companies (agents and Table mode)
 
-The Fellowship (#68) is five heroes (Tank, Healer, three DPS) who are the story. It is always
+A company is a group of heroes who travel and decide together (#402; the model is `src/sim/company.js`). The Fellowship (#68) is the default company: five places (Tank, Healer, three DPS) who are the story, held as `slots`. Every company member is always
 agent-played (#148): founding, joining, replacement and a new world mark every member agent-played,
 an older save's scripted or relay members are converted with a notice, and the only mind choice is the
 model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or an OpenAI model).
-`npm run fellowship` plays all five, one Agent SDK session per member.
+`npm run fellowship` plays all five Fellowship members, one Agent SDK session per member (`-- --company <id|name>` plays any other company).
 - Decisions wait for the agent (`src/sim/runlink.js`): the host passes each member's link from the relay's
   claims. `connected`/`waiting` = a runner holds it (a slow agent is still there): a Table turn waits (nudged
   after `TABLE.turnMs`, reflex only after `TABLE.liveMs`, 2 min), a vote stays open past `PROP_MIN` for
@@ -433,7 +433,7 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   At 3x/8x a Fellowship decision asks the host to drop to 1x (`TABLE.drop`; page and play-headless honour it).
 
 - Browser: `npm run relay` (the brain relay, port 8787; it also serves the agents' MCP tools),
-  `npm run dev` (5173), found a Fellowship (its members are agents), then
+  `npm run dev` (5173), found a company (its members are agents), then
   `npm run fellowship -- --budget 2.00`.
 - Headless: `node scripts/play-headless.mjs --fellowship --port 8790 --warm 20 [--no-relay]`
   then `npm run fellowship -- --url http://127.0.0.1:8790 --max-turns 2 --budget 0.50`.
@@ -450,7 +450,7 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (a shout in range, Chat tab and bubble), `propose`/`vote` (job, crypt, raid, split, other; the
   leader settles it: majority, leader breaks ties; members with no runner vote by reflex, a live
   agent's vote is waited for, see above), leader-only `lead_to`, `leave_party` (splits off for 6 game hours, costs bonds).
-  A Crypt group or raid takes the whole Fellowship or none of it; an agent-played Fellowship
+  A Crypt group or raid takes the whole company or none of it; an agent-played company
   is asked first (a `crypt`/`raid` proposal).
 - Talking takes presence (#182, `src/sim/reach.js`): `party_say` is a shout heard within `REACH.SHOUT` 12 tiles
   (less in fog and storm; `say` stays at 7), and the result says who heard and who was too far away. Only members in
@@ -501,7 +501,7 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   with a short opening (owner answer 2). Letters (`C.letters`, any company, keyed by writer): to whoever takes the writer's
   place, else the next joiner of their class, else the next joiner after `PARTY.LETTER_DAYS` 3. `tablecheck` (its `--arrival`
   child), `dmcheck` (prep caps, Continue, no host, the frame), `uismoke` (the banner).
-- Dungeon crawl (#65, `src/sim/crawl.js`): when the Fellowship is in the group that goes down a dungeon whose spec lists
+- Dungeon crawl (#65, `src/sim/crawl.js`): when a company is in the group that goes down a dungeon whose spec lists
   `rooms` (`CRYPT.rooms`, from the landmark in `src/world/spec.js`; add chambers as data: `{id, name, frame, foes:[{type, n,
   name?, hits?, atk?}], lvl, hit, rounds, boss?}`, `type` a bestiary key incl. site foes), the run goes room by room instead of the one
   `pw` roll. Every round of every room is a Table scene of kind `crawl` (turns, `PLAY.crawl`), the DM-framed text naming the foes left and
@@ -519,7 +519,7 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   every vote incl. break_camp, check, choice, staged meeting/social/trap/mystery): every member present gets the
   scene at the same moment (a must-answer event), `your_turn` is true for each until it answers (then `wait` is
   allowed), answers come in any order, and each live agent has its own `turnMs` nudge and `liveMs` wait side by
-  side (not summed). Once nobody is waited on, the acts resolve in Fellowship slot order (never arrival order;
+  side (not summed). Once nobody is waited on, the acts resolve in company slot order (never arrival order;
   reflexes chosen then), and a staged scene gets one combined outcome call for the DM instead of one per act.
   Only members within shouting range (#182) of the scene's anchor (a vote: its voters) take part. `tableView`
   adds `everyone_answers`, `answered` ("3/5") and `waiting_on`; the banner shows EVERYONE ANSWERS and
@@ -577,7 +577,7 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   the relay still starts and only Claude requests fail (those heroes play scripted). On start it
   prints whether Ollama is reachable and which models are pulled; `GET /health` lists the same
   under `providers`.
-- Pick a mind per background hero (Developer toggle; Fellowship members are always agents, #148): Scripted / AI / Agent, and
+- Pick a mind per background hero (Developer toggle; company members are always agents, #148): Scripted / AI / Agent, and
   for AI a provider (Claude, Local (Ollama), OpenAI, Google) and a model picked from what the relay
   reports. The setting is `a.brainCfg = {provider, model}` on the hero (same shape as the agent
   runner's `runner` settings), saved with the world; the brain sends it with every request for
@@ -601,9 +601,9 @@ Local agent runner (part 2):
   `npm run agent -- --hero <name|id> --provider ollama --model qwen2.5:14b`. No key; the settings
   are saved in the hero's session file (`runner: {provider: 'ollama', model}`), so later runs need
   only `--hero`. `--provider anthropic` switches it back to Claude (the Claude session is kept).
-- A Fellowship: give each member its runner once with `npm run agent -- --hero X --provider ollama
+- A company: give each member its runner once with `npm run agent -- --hero X --provider ollama
   --model M --max-turns 1`, or play all five locally with `npm run fellowship -- --provider ollama
-  --model qwen2.5:14b`. Mixed Fellowships work: members saved as `ollama` play locally, the others
+  --model qwen2.5:14b`. Mixed companies work: members saved as `ollama` play locally, the others
   through the Agent SDK (they still need `ANTHROPIC_API_KEY`; without one only local members play).
 - How it plays: `scripts/local-agent.mjs`, a small tool-calling loop on Ollama's `/api/chat`
   `tools`, through the same game tools as Claude (`/play/call`), with the same system prompt,
@@ -616,7 +616,7 @@ Local agent runner (part 2):
   Sampling: temperature 0.6, repeat_penalty 1.15; after two empty turns in a row the next starts from a fresh
   context. `chat()` uses node:http with its own timeout (`OLLAMA_CHAT_TIMEOUT`, 600 s, a clear "busy or
   loading" message instead of undici's 5-minute "fetch failed") and one queue per runner process
-  (`OLLAMA_PARALLEL`, default 1: a Fellowship runner's local members take turns). Before every local turn the
+  (`OLLAMA_PARALLEL`, default 1: a company runner's local members take turns). Before every local turn the
   runner checks `/api/ps` and warns when Ollama holds another model (the relay's minds evict it on one GPU);
   with no `--model` given it plays with the model Ollama already holds. The runner state line warns when the
   minds and a runner use different local models. Every call is checked against the
@@ -801,7 +801,7 @@ The owner's rule: the DM and the players talk only inside the game. How it holds
   never holds a hero and the DM seat. `/play/narrate` only feeds the watcher's Agent tab. `GET
   /play/runner` gives the runners' output lines only to the page's origin.
 - Runners: each member and the DM keep their own session; turn prompts are fixed text and standing
-  orders come from the seat's own status; the Fellowship runner shares only game state (`/play/health`:
+  orders come from the seat's own status; the company runner shares only game state (`/play/health`:
   ids, names, roles, links). The system prompts say that others are reached only in the game.
 - `npm run channelcheck` (in CI) plants unique secrets in DM notes, the DM log, lever reasons, another
   member's journal, memories, persona, mind, narration and session prompt, gathers every hero tool
@@ -837,7 +837,7 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
 - `decisions.jsonl`: `src: relay` one line per `/decide` call (kind, provider, model, status, ms, error);
   `src: game` each hero's Mind entry once settled (outcome applied, late, rejected, offline, superseded).
 - `world.jsonl`: a digest every game hour from `src/sim/behavior.js` (read-only, not part of `step()`):
-  each Fellowship member's and agent hero's mind, link, state, place, HP, level and idle time; the share
+  each company member's and agent hero's mind, link, state, place, HP, level and idle time; the share
   of game time agent / autopilot / relay mind / scripted; `companies` (#460: each company's id, name, size, agent
   minds, deaths this hour, `fellowship` for the five-place one, `ended` for one that ended with a death in it) and
   each member's and death's `company`; Table scenes and agent vs reflex turns; votes;
@@ -856,7 +856,7 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   seat's text in a seat's lines, chat as counts only.
 - `npm run behavior-report [-- --world NAME | --all] [--hours N]` writes `logs/behavior/<world>/report.md`:
   top anomalies with counts and examples, per-seat health, model comparison (empty-turn rate, seconds,
-  tokens and cost per provider/model, relay failure rates, decision outcomes), a **Mind comparison** per Fellowship
+  tokens and cost per provider/model, relay failure rates, decision outcomes), a **Mind comparison** per company
   member and provider/model (#280, `scripts/mind-compare.mjs`: agent turns, empty/failed, Table answers, decisions,
   rejected, scripted fallbacks, p50/p90 latency, tokens, cost, digest hours on autopilot, close calls, deaths survived,
   lifetimes; "-" where a member has no data), the world digests, and **Companies** (#460, `companySection`: per company
@@ -930,7 +930,7 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   top heroes, auction house, clock; `controls.js` speed, view (incl. Follow Fellowship)
   and selection; `fellowship.js` the Fellowship panel (founding, roster, sheet editor,
   campaign log), the Memory tab and the Chronicle's "Fellowship only" filter; `table.js` the
-  Table mode banner and the View group's Table switch. Fellowship-first UI (#94):
+  Table mode banner and the View group's Table switch. Company-first UI (#94):
   `frames.js` party frames above the map, `sheet.js` the side-by-side sheet overlay,
   `layout.js` folds the world panels into a "World" group while a Fellowship exists,
   `mindctl.js` per-member mind control and the Developer toggle (with a Fellowship, AI/Agent

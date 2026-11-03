@@ -297,6 +297,91 @@ if (process.argv[2] === '--fireside') {
   console.log(fail ? 'FIRESIDE FAILED ' + fail : 'FIRESIDE OK'); process.exit(fail ? 1 : 0);
 }
 
+// ---- interrogation and the camp scene (#431 slice 3), in a child with a fresh world: node scripts/tablecheck.mjs --interrogate ----
+if (process.argv[2] === '--interrogate') {
+  const {dmAct, setDmSeat} = SIM, IQ = await import('../src/sim/interrogate.js'), CM = await import('../src/sim/camp.js'), FR = await import('../src/sim/fireside.js');
+  const {LANDMARKS, CITY} = await import('../src/world/map.js'), LV = await import('../src/sim/levers.js');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const inv = (() => {let a = 1664525n, m = 1n << 32n, [r0, r1, s0, s1] = [a, m, 1n, 0n]; while (r1) {const q = r0 / r1; [r0, r1] = [r1, r0 - q * r1]; [s0, s1] = [s1, s0 - q * s1]} return ((s0 % m) + m) % m})();
+  const forceNext = v => {const t = BigInt(Math.min(4294967295, Math.floor(v * 4294967296))); seed = Number((((t - 1013904223n) % (1n << 32n) + (1n << 32n)) * inv) % (1n << 32n))};
+  const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
+  init({fellowship: false}); run(30);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); FR.FIRE.ON = false;
+  let M = SLT.slotMembers(SLT.slotted()).map(m => m.hero); const live = C.leaderOfF(), byId = id => S.agents.find(x => x.id === id);
+  const LINK = {[live.id]: 'connected'}; SIM.setRunnerLinks(x => LINK[x.id] || 'none');
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto'; IQ.IQ.LIVE_MS = 1500;
+  const home = homeOf(M[0]).gate, spot = zonePoint(zoneFor(8, home), null, home);
+  for (const m of S.mobs) if (m.alive && dist(m, spot) < 16) {m.alive = false; m.gone = true}
+  const talker = S.mobs.find(m => m.alive && !m.gone && !m.elite && TRD.canParley(m));
+  ok(!!talker, 'a creature with speech to question (' + (talker && talker.type) + ')');
+  const place = (q) => {M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'fight'; x.hidden = false; x.dest = null; x.hp = maxHp(x); x.pq = []; x.target = q; x.eff = {}; x.mcr = {}});
+    q.x = spot.x + 1; q.y = spot.y; q.lvl = 8; q.maxhp = 4000; q.hp = 600; q.cd = 99; q.fledOnce = true; q.hit = .001; q.target = M[0]; q.eff = {}; q.ab = []};
+  const toTurns = () => {let g = 0; while (S.table && S.table.phase === 'frame' && g++ < 600) {dmAct('table_call'); step(1 / 60)}};
+  // 1. a fight ends with the foe yielding: it is held for questions, on the ground where it yielded
+  place(talker); SLT.slotted().tableSeen = {}; let sc = T.openScene('elite', 'Talk test', ['A rough voice from the brush.'], {mob: talker.id});
+  toTurns(); sc.end = 'yield'; sc.talk = live.name; let g = 0; while (S.table === sc && g++ < 600) step(1 / 60);
+  ok((SLT.slotted().iqQ && SLT.slotted().iqQ.foe.id === talker.id) || (S.table && S.table.kind === 'interrogation' && S.table.ctx.mob === talker.id), 'a yield queues an interrogation of the foe');
+  setDmSeat(true); g = 0; while (!(S.table && S.table.kind === 'interrogation') && g++ < 600) {dmAct('table_call'); step(1 / 60)} sc = S.table;
+  ok(sc && sc.kind === 'interrogation' && !sc.all && sc.ctx.mode === 'yield' && sc.ctx.mob === talker.id && sc.ctx.secret && sc.ctx.secret.text, `the interrogation opens in turns, the foe in it, a secret to give up (${sc && sc.ctx.secret.text})`);
+  const opts = sc ? T.optionsFor(sc, live).map(o => o.k) : [];
+  ok(['ask', 'threaten', 'release', 'watch'].every(k => opts.includes(k)) && !opts.includes('read'), 'options: ask, threaten, release, watch (read only once something was said): ' + opts.join(', '));
+  ok(talker.alive && !talker.gone && dist(talker, spot) < 4, 'the yielded foe is held where it yielded');
+  let k = 0; while (S.table === sc && !(sc.calls && sc.calls.length) && k++ < 600) {dmAct('table_call'); step(1 / 60)}
+  let tc = dmAct('table_call');
+  ok(tc.ok && tc.call && tc.call.kind === 'voice' && tc.scene.kind === 'interrogation' && /held for questions/.test(tc.call.about), 'the DM agent is asked to voice the prisoner (table_call)');
+  const va = dmAct('table_answer', {call: tc.call.id, text: '"Ask your questions. I am too tired to lie well."'});
+  ok(va.ok && sc.narr && sc.narr.text.startsWith(sc.ctx.who.name + ': '), 'the DM\'s voice is the prisoner\'s own words on the banner (' + (sc.narr && sc.narr.text.slice(0, 60)) + ')');
+  // 2. the live member asks; the dice give the truth (a natural 20), the DM voices it true to the dice, the place is learned
+  sc.ctx.dc = 99; k = 0; while (S.table === sc && !(sc.phase === 'turn' && sc.ids[sc.i] === live.id && !(sc.calls || []).some(c => !c.done)) && k++ < 6000) {const c0 = dmAct('table_call').call; if (c0) dmAct('table_answer', {call: c0.id, text: 'Nothing. A stare.'}); step(1 / 60)}
+  sc.ctx.dc = -40; sc.ctx.up = 0; const sa = P.playerAct(live.id, 'scene_act', {option: 'ask', line: 'Who sent you, and from where?'});
+  ok(sa.ok !== false && !sa.error, 'the live member asks its question (scene_act ask)' + (sa.error ? ': ' + sa.error : ''));
+  const mine = () => (sc.calls || []).find(c => c.kind === 'answer' && !c.done && sc.beats[c.beat] && sc.beats[c.beat].id === live.id);
+  k = 0; while (S.table === sc && !mine() && k++ < 600) step(1 / 60);
+  tc = dmAct('table_call'); const ac = tc.call;
+  ok(ac && ac.kind === 'answer' && /They tell the truth/.test(ac.about) && ac.about.includes(sc.ctx.secret.text), 'the DM is asked to voice the answer, true to the dice (the truth and what it is)');
+  dmAct('table_answer', {call: ac.id, text: 'Fine. ' + sc.ctx.secret.text + '. Now let me go.'});
+  const pl = sc.ctx.secret.place;
+  ok(sc.ctx.broken === live.id && (!pl || (live.lore && live.lore.p[pl])), 'the truth is out and the place is learned through lore (' + pl + ')');
+  ok((live.memories && live.memories.notes || []).some(n => (n.tags || []).includes('interrogation')), 'the live member keeps a note of what they told');
+  g = 0; while (S.table === sc && g++ < 60 * 60) {dmAct('table_call'); step(1 / 60)}
+  const rdT = (sc.beats.find(b => b.id === live.id && b.k === 'ask') || {}).rd;
+  ok(!S.table && /gave up what they knew/.test(sc.summary) && (sc.rd || 1) === rdT, 'the truth out, the questioning ends with that round: ' + sc.summary + ' (rd ' + sc.rd + ', asked in ' + rdT + '; ' + sc.beats.map(b => b.name + ':' + b.k + '@' + b.rd).join(' ') + ')');
+  ok(sc.calls.every(c => c.done), 'every call to the DM was answered or filled');
+  ok(talker.alive && (talker.spared || 0) > S.gameMin, 'let go: the creature is spared and leaves the company be');
+  // 3. the dice: a near miss is a lie, a read catches it, a failed threat hardens them (the kind's own dice, forced)
+  const K = T.kindHooks('interrogation'), q2 = {id: 9e6, kind: 'interrogation', ids: [live.id], beats: [], acts: {}, rd: 1, ctx: {mode: 'yield', who: {kind: 'mob', id: talker.id, name: 'Test', lvl: 8}, dc: 12, secret: {text: 'the truth', place: null}, lie: {text: 'a lie', place: null}, said: []}};
+  const mod = A => {const r = K.apply({...q2, ctx: {...q2.ctx, dc: 99, said: []}}, A, {k: 'ask'}); return +/d20 \d+([+-]\d+)/.exec(r)[1]};
+  forceNext(.47); const m0 = mod(live); q2.ctx.dc = 10 + m0 + 2; forceNext(.47); let r = K.apply(q2, live, {k: 'ask'});
+  ok(q2.ctx.lied === live.id && q2.ctx.said[0].k === 'lie' && /too quickly/.test(r), 'a near miss (by 2) is a lie: ' + r);
+  forceNext(.97); r = K.apply(q2, live, {k: 'read'}); q2.ctx.dc = 99;
+  ok(q2.ctx.caught === live.id && /the lie shows/.test(r), 'a read that passes catches the lie: ' + r);
+  forceNext(.02); r = K.apply(q2, live, {k: 'threaten'});
+  ok(q2.ctx.said[2].k === 'silent' && q2.ctx.up === 0 && /say nothing/.test(r), 'a bad miss is silence; a failed threat hardens them (+2, after the read\'s -2): ' + r);
+  // 4. hand over near a town: the watch pays each member, the creature is taken
+  const gate = CITY.find(c => c.fac === live.fac).gate, t2 = S.mobs.find(m => m.alive && !m.gone && !m.elite && TRD.canParley(m) && m !== talker);
+  M.forEach((x, i) => {x.x = gate.x + 6 + (i % 3) * .6; x.y = gate.y + 2; x.state = 'hunt'; x.target = null; x.hidden = false}); t2.x = gate.x + 7; t2.y = gate.y + 2.5; t2.target = null;
+  SLT.slotted().iqQ = {at: Math.round(S.gameMin), foe: {kind: 'mob', id: t2.id}, ids: M.map(x => x.id), anchor: live.id};
+  g = 0; while (!(S.table && S.table.kind === 'interrogation') && g++ < 600) step(1 / 60); sc = S.table;
+  ok(sc && sc.ctx.watch && T.optionsFor(sc, live).some(o => o.k === 'hand_over'), 'near a town of theirs the watch will take a prisoner (hand_over at ' + (sc && sc.ctx.watch) + ')');
+  const gold0 = M.map(x => x.gold || 0); k = 0; while (S.table === sc && !(sc.phase === 'turn' && sc.ids[sc.i] === live.id) && k++ < 600) step(1 / 60);
+  P.playerAct(live.id, 'scene_act', {option: 'hand_over', line: 'You can tell it to the watch.'}); g = 0; while (S.table === sc && g++ < 60 * 60) step(1 / 60);
+  ok(!t2.alive && t2.gone && /goes to the watch/.test(sc.summary) && sc.ids.map(byId).every((x, i) => (x.gold || 0) > gold0[M.findIndex(y => y.id === x.id)]), 'handed over: the watch takes it and pays the members: ' + sc.summary);
+  ok(sc.calls.some(c => c.kind === 'answer' && c.k === 'handed'), 'the DM is asked to voice the hand-over too');
+  ok(sc.calls.every(c => c.by === 'scripted') && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'interrogation' && e.detail.fill && e.detail.why === 'gone'), 'a DM that does not poll: its reflexes voice the prisoner, logged as fills (why: gone)');
+  // 5. the camp: an ambush on the watch carries the camp spot; a fireside too
+  CM.CAMP.AMBUSH_P = 1; const why = CM.leaderRest(live, 4); M.forEach(x => {x.state = 'hunt'}); // the scene opens on the camp's next roll
+  const field = () => {for (const [i, x] of M.entries()) {x.state = 'hunt'; x.x = home.x + 14 + (i % 3) * .5; x.y = home.y + 2 + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.hp = maxHp(x)}};
+  field(); CM.leaderRest(live, 4); g = 0; while (!(S.table && S.table.kind === 'ambush') && g++ < 60 * 300) step(1 / 60); const am = S.table;
+  ok(am && am.ctx.camp && Math.abs(am.ctx.camp.x - SLT.slotted().camp.x) < .01, 'an ambush on the watch carries the camp spot (the scene plays round the fire)' + (am ? '' : ' (' + why + ')'));
+  // 6. no host: a yield queues nothing
+  T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto'; SIM.setRunnerLinks(null); delete SLT.slotted().iqQ;
+  const t3 = S.mobs.find(m => m.alive && !m.gone && !m.elite && TRD.canParley(m) && m !== talker && m !== t2); place(t3);
+  sc = T.openScene('elite', 'Talk test 2', ['Another voice.'], {mob: t3.id}); if (sc) {sc.end = 'yield'; g = 0; while (S.table === sc && g++ < 600) step(1 / 60)}
+  ok(!SLT.slotted().iqQ && !(S.table && S.table.kind === 'interrogation'), 'with no host (npm run sim) a yield opens no interrogation');
+  console.log(fail ? 'INTERROGATE FAILED ' + fail : 'INTERROGATE OK'); process.exit(fail ? 1 : 0);
+}
+
 // ---- parley and conditions (#296), in a child with a fresh world: node scripts/tablecheck.mjs --parley ----
 // The dice are the world's seeded LCG (Math.random above); forceNext(v) rewinds it so the very next roll is v, which lets
 // the check pin a natural 20 or a natural 1 on a parley or a save without stubbing the game.
@@ -308,7 +393,7 @@ if (process.argv[2] === '--parley') {
   const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
   init({fellowship: false}); run(30);
   for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
-  SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); SIM.setRunnerLinks(() => 'connected');
+  SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); SIM.setRunnerLinks(() => 'connected'); (await import('../src/sim/interrogate.js')).IQ.ON = false; // a yield here ends the test scene; the questioning after it (#431) is interrogate's own child
   T.TABLE.speed = 1; T.TABLE.mode = 'auto';
   let M = SLT.slotMembers(SLT.slotted()).map(m => m.hero); const home = homeOf(M[0]).gate, spot = zonePoint(zoneFor(8, home), null, home);
   const byId = id => S.agents.find(x => x.id === id);
@@ -805,6 +890,7 @@ if (process.argv[2] === '--staged') {
     social: {role: 'sellsword', want: 'a toll for the ford', attitude: 'wary', reveal: 'The toll goes to the Rookscar crew.'}, trap: {trap: 'spikes'},
     mystery: {place: 'shrine', reveal: 'The shrine remembers a drowned king.'}, elite: {name: 'Old Greyjaw', title: 'the Hungry', choices: {strike: 'Go for the throat'}}, ambush: {}};
   for (const kind of ST.STAGE_KINDS) {
+    if (kind === 'interrogation') continue; // its own DM voice and calls (sim/interrogate.js): checked on its own below
     fresh(); const log0 = S.dmLogSeq, hp0 = M.map(x => x.hp);
     const r = dmAct('stage_scene', {kind, near: 'fellowship', frame: 'The road narrows between thorn banks, and something waits for them.', cast: CAST[kind], reason: 'tablecheck ' + kind});
     ok(r.ok && r.staged, `stage_scene ${kind}: ${r.title || r.error} ${r.where || ''}${r.level ? ' (level ' + r.level + ', party ' + r.party_level + ')' : ''}`);
@@ -834,6 +920,19 @@ if (process.argv[2] === '--staged') {
     for (const id of S.staged.cur.cast.mobs) {const m = S.mobs.find(x => x.id === id); if (m && m.alive) {m.alive = false; m.gone = true}}
     run(1);
   }
+  // a staged suspect questioned at the table (#431 slice 3): its own voice and answers, the staging closed with the scene's outcome
+  {fresh(); const bad = dmAct('stage_scene', {kind: 'interrogation', near: 'fellowship', frame: 'A bound man sits on a milestone, watched by a drover.', cast: {role: 'sellsword', name: 'Varn'}, reason: 'no reveal'});
+    ok(!bad.ok && /cast.reveal/.test(bad.error), 'an interrogation with nothing to reveal is refused: ' + bad.error);
+    const nowhere = dmAct('stage_scene', {kind: 'interrogation', near: 'fellowship', frame: 'A bound man sits on a milestone, watched by a drover.', cast: {role: 'sellsword', name: 'Varn', reveal: 'x', place: 'Nowhere Keep'}, reason: 'bad place'});
+    ok(!nowhere.ok && /cast.place must name a place/.test(nowhere.error), 'an unknown place to give up is refused');
+    const r = dmAct('stage_scene', {kind: 'interrogation', near: 'fellowship', frame: 'A bound man sits on a milestone, watched by a drover who caught him at the ford.', cast: {role: 'sellsword', name: 'Varn', reveal: 'the ford toll goes to a crew that sleeps in the Sunken Crypt', place: CRYPT.name, lie: 'he works alone and spent it all'}, reason: 'tablecheck interrogation'});
+    ok(r.ok && r.staged, 'stage_scene interrogation: ' + (r.title || r.error) + ' ' + (r.where || ''));
+    if (r.ok) {const {opened: sc} = play('answer');
+      ok(sc && sc.kind === 'interrogation' && sc.ctx.staged === r.staged && sc.ctx.mode === 'staged' && sc.ctx.who.kind === 'npc' && sc.ctx.secret.place === CRYPT.name, 'the suspect met the party and an interrogation opened, the truth and the place theirs to give up');
+      const calls = sc ? sc.calls || [] : [];
+      ok(calls.length >= 2 && calls[0].kind === 'voice' && calls.slice(1).every(c => c.kind === 'answer') && calls.every(c => c.done && c.by === 'dm-agent'), `the DM voices the suspect and each answer (${calls.length} calls, all by the mock DM)`);
+      ok(S.staged.cur.phase === 'done' && S.staged.cur.result === sc.summary, 'the staging closes with the scene\'s own outcome: ' + S.staged.cur.result)}
+    S.staged.day.n = 0}
   // the frame must fit the cast (issue #211)
   fresh();
   const pv = dmAct('stage_scene', {kind: 'ambush', near: 'fellowship', preview: 'true'});
@@ -1368,6 +1467,9 @@ ok(SLT.slotHeroes(SLT.slotted()).every(a => a.state === 'dungeon'), 'agent membe
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fireside'], {encoding: 'utf8', env: {...process.env}});
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
   ok(ch.status === 0 && /FIRESIDE OK/.test(ch.stdout || ''), 'fireside: 3 rounds a camp, 6 after a big event, the DM frames it, turns, a silent member skipped, long lines whole, copies refused, stories in the backstory and in listener notes, the reflection, the debrief, no host = none')}
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--interrogate'], {encoding: 'utf8', env: {...process.env}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /INTERROGATE OK/.test(ch.stdout || ''), 'interrogation (#431 slice 3): a yielded foe is held and questioned in turns, the DM voices it true to the dice, the truth teaches a place, a lie and a read, a failed threat hardens, hand over to the watch, the camp ambush carries the fire, no host = none')}
 // ---- 6. determinism without a Fellowship ----
 const me = fileURLToPath(import.meta.url), h1 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim(), h2 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim();
 ok(/^HASH -?\d+ table:0 fellowship:0$/.test(h1) && h1 === h2, `no Fellowship: two seeded 3-minute runs are identical (${h1})`);

@@ -42,6 +42,7 @@
 - [Offers and companions #442](offers_companions.md) — offers on the maker's company, hash-picked scripted answers, companionTick party, Fellowship refused
 - [Town autopilot #466/#465](town_autopilot.md) — autopilot acts in town (inn, sell, potions, hunt fitting ground); danger-edge stop 5+ levels up, force/repeat
 - [Gathering #257](gathering.md) — gather.js: scripted gatherers stay in hunt, agents never by script, rate GAP 300/SPOT 10, materials sell, fixtures
+- [Crafting #258](crafting.md) — craft.js: town all / camp cooking+alchemy, no dice, scripted buy-to-craft in town, meal buff, note after fireside
 - [DM focus per company #450](dm_focus_companies.md) — focuses(), h.cid hall jobs, companies_needs order, any-company reserve, Fellowship path hash-identical
 - [Autopilot caution #487](autopilot_caution.md) — wary autopilot hunts (ground, prey <= lvl+2, flee .22/.5, home when hurt); 5/40 -> 39/40 green survival
 - [Leave and companions #443](leave_companions.md) — leave_party for_good in offers.js, companions tool, a.seen last-seen record, AWAY leave
@@ -62,3 +63,4 @@
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap
 - [Night sight #583](night_sight.md) — sightFor(a,z): night 0.6 for agent heroes only, towns exempt, hash unchanged
 - [Fold Fellowship #588](fold_fellowship.md) — slot model in company.js (slots option); shims and fellowship.js deleted, rulescheck guards; SLT in scripts
+- [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut

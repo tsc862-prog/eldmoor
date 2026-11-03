@@ -108,6 +108,10 @@ export const SCENE_KINDS=['site','room','boss','elite','ambush','rescue','check'
 const EXTRA={};let STG=null;
 export function setSceneKind(k,h){EXTRA[k]=h;if(!SCENE_KINDS.includes(k))SCENE_KINDS.push(k)}
 export function setStageHooks(h){STG=h}
+// A kind's own hooks (sim/staged.js asks an interrogation for its ctx, #431), and the staging's end for a staged scene that
+// plays with its kind's own DM voice (sim/interrogate.js): registered, so neither module imports the other.
+export const kindHooks=k=>EXTRA[k]||null;
+export const stageDone=sc=>{if(STG&&STG.done)STG.done(sc)};
 // A member's free action at the table (issue #522, sim/ruling.js): scene_act attempt with the words as its line; the DM rules on it.
 let ATT=null;export function setAttemptHooks(h){ATT=h}
 const staged=sc=>!!(STG&&sc&&sc.ctx&&sc.ctx.staged!=null);
@@ -116,7 +120,8 @@ const staged=sc=>!!(STG&&sc&&sc.ctx&&sc.ctx.staged!=null);
 const dmOf=sc=>sc&&EXTRA[sc.kind]&&EXTRA[sc.kind].dm?EXTRA[sc.kind].dm:staged(sc)?STG:null;
 // A kind may bring more (#571, the fireside): next(sc) -> true to play another round (acts cleared, the same order); liveMs, the
 // real wait for a live agent instead of TABLE.liveMs (a member that ran it out once is not waited for again in that scene);
-// lineMax, the length of a member's line; view(sc, a), more fields for tableView.
+// lineMax, the length of a member's line; view(sc, a), more fields for tableView; everyBeat, its DM's onBeat call in every
+// round, not only the first (#431: an interrogation's suspect answers each question).
 const kindOf=sc=>sc&&EXTRA[sc.kind]||null;
 const liveOf=sc=>{const K=kindOf(sc);return K&&K.liveMs||TABLE.liveMs};
 const moreOf=sc=>{const K=kindOf(sc);return !!(K&&K.next)};
@@ -135,6 +140,7 @@ const COMBAT={elite:1,ambush:1,boss:1,rescue:1};
 // not listed plays in turns.
 export const PLAY={elite:'turns',ambush:'turns',boss:'turns',rescue:'turns',site:'turns',room:'turns',crawl:'turns',
   decision:'all',check:'all',choice:'all',meeting:'all',social:'all',trap:'all',mystery:'all',talk:'all', // talk: a conversation turned decision (#407, sim/talkscene.js)
+  interrogation:'turns', // a yielded foe or a suspect questioned, question by question (#431 slice 3, sim/interrogate.js)
   arrival:'all',opening:'all', // a fallen member's recruit arrives (#452); session zero (#437): sim/arrival.js
   fireside:'turns',debrief:'all'}; // talk round the fire, in turns over 3-6 rounds, and a one-round debrief after a hard scene (#571, sim/fireside.js)
 const together=sc=>!!sc&&sc.all===true;
@@ -318,7 +324,7 @@ function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFo
   const F=sceneCompany(sc);if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
   sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{})}); // an item used (#360): {item, on, ok, effect, healed?}
   const first=!(sc.rd>1);sc.beats[sc.beats.length-1].rd=sc.rd||1;
-  {const H=dmOf(sc);if(H&&H.onBeat&&!together(sc)&&first)H.onBeat(sc,sc.beats[sc.beats.length-1])} // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
+  {const H=dmOf(sc),K=kindOf(sc);if(H&&H.onBeat&&!together(sc)&&(first||(K&&K.everyBeat)))H.onBeat(sc,sc.beats[sc.beats.length-1])} // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
   if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
   else if(reflexMay(a)&&first)voice(sc,a,act.k); // a member whose runner is gone acts (and speaks) by reflex (#148)
   if(first)remember(a,'table',sc.title+': I chose to '+o.text.charAt(0).toLowerCase()+o.text.slice(1)+(res?' ('+res+')':'')+'.')}

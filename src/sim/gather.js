@@ -156,7 +156,7 @@ export function recipesView(a,prof){const held=professionsOf(a);
       materials:matsOf(k).map(m=>({material:m,skill:bandFloor(MATERIALS[m].band)===1?'any':bandFloor(MATERIALS[m].band)+'+',
         you:have?(MATERIALS[m].band<=hb?'yes':MATERIALS[m].band===hb+1?'a stretch (about '+Math.round(GATHER.STRETCH*100)+'% a try)':'not yet'):'learn it first',
         sells_about:Math.round(MATERIALS[m].base)+'g',used_in:RECIPES.filter(r=>r.inputs.some(i=>i.id===m)).map(r=>r.out.id)}))}}
-    return {profession:P.name,kind:'crafting',note:'Crafting itself opens soon; gather and keep the materials.',
+    return {profession:P.name,kind:'crafting',note:'craft {recipe} makes one in a friendly town (cooking and alchemy also at a camp fire).',
       recipes:RECIPES.filter(r=>r.prof===id).map(r=>({id:r.id,makes:r.out.id+(r.out.n>1?' x'+r.out.n:''),skill:bandFloor(r.band)===1?'any':bandFloor(r.band)+'+',
         needs:r.inputs.map(i=>i.id+' x'+i.n+' (you carry '+count(a,i.id)+')').join(', '),fee:r.gold+'g',
         you:have?(r.band<=hb?'within your skill':'needs skill '+bandFloor(r.band)):'learn it first'}))}};

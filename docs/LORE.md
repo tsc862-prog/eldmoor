@@ -75,7 +75,7 @@ Sunken Crypt, or slaying Kragmaw, within a day of each other) declare a rivalry.
 timeline carry the declaration ("<FW> The Fenwatch and <BG> The Bonegnash declare a rivalry: ...")
 and its end, when the blood cools or a banner falls; the guild panel lists each guild's rivals. Rival
 members meeting in the wilds duel more readily, and guildmates rush in against a rival sooner. The
-Fellowship's guild stays out of it.
+Fellowship's guild (the default company's) stays out of it.
 
 **Guild focus** (issue #6, `src/sim/guildfocus.js`): a guild's leader turns its banner to one end,
 chosen from who rides under it, their oaths and the guild's record, and weighed again each day or when
@@ -353,7 +353,7 @@ Sample lines:
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
   - **The stair sign and the captain's word** (#448): the game never turns a company away from the stair for level; the danger is read in the world. A weathered sign is nailed to the stair-post: "Those who went below were tried blades; you are not. Turn back." A hero below Mirefen's band who sees the stair marks the Crypt dangerous in what it knows. The gate captain, asked by a green blade, says: "The Sunken Crypt is not a place for green blades. Those who went down before you were tried, and the stair has kept more of them than the bards admit. Grow first, then go, and go together."
-  - **The crawl** (#65): when the Fellowship goes down, the Crypt is played as five chambers in order, each one a Table scene (background groups still make the single roll). Creatures are the Crypt's own: Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens and Lich-Warden Vesk. Levels 7-12.
+  - **The crawl** (#65): when a company goes down, the Crypt is played as five chambers in order, each one a Table scene (background groups still make the single roll). Creatures are the Crypt's own: Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens and Lich-Warden Vesk. Levels 7-12.
     - **The Weeping Stair** (level 7+): water runs down the steps, Tomb Skitters scuttle in the dark below.
     - **The Ossuary**: shelves of old bone; Crypt Shamblers stand up from them.
     - **The Archers' Gallery**: a long gallery of arrow-slits and dry bowstrings; Bone Archers and a Shambler.
@@ -569,7 +569,7 @@ from, the noun what kind of hero wears it. Town smiths and tailors sell pieces a
 level for 6 gold a level; monsters drop one now and then at their own level, give or take one,
 and named elites always do. A hero wears an upgrade on the spot and sells what it replaced at
 the auction house. Epics take a slot outright, are never displaced by ordinary gear, and grow with
-their bearer: a smith reworks a worn epic to the hero's own level and a little more on every visit
+their bearer: a worn epic is raised to the hero's own level and a little more on its own, with no visit
 home, so a relic looted at level three is still a relic at twenty.
 
 Materials by zone: Thornvale **Bramble, Oakbark, Wolfhide**; Mirefen **Mossweave, Bogiron,
@@ -685,7 +685,7 @@ and Recover-a-relic jobs. The DM can also place a token from a short table, and 
 ## Professions (issue #254, epic #238)
 A hero may hold two trades, each with a skill from 1 to 100 that rises with use. Names are generic and provisional until lore-keeper has checked them.
 - Gathering: Herbalism (herbs, moss, flowers), Mining (ore and stone), Skinning (hide, sinew, bone), Fishing (river, mere and sea).
-- Crafting: Alchemy (potions, cures), Smithing (weapons, armor, repairs), Leatherworking (cured hide: armor, straps, packs), Cooking (camp meals that hearten the company), Scribing (scrolls, maps).
+- Crafting: Alchemy (potions, cures), Smithing (weapons, armor, tempering), Leatherworking (cured hide: armor, straps, packs), Cooking (camp meals that hearten the company), Scribing (scrolls, maps).
 - Skill bands used by recipes and nodes: 1-24, 25-49, 50-74, 75-99, 100.
 - Gathering nodes (issue #255): four kinds, plain descriptions rather than proper names: Herb patch (Herbalism), Ore vein (Mining), Game trail (Skinning), Fishing spot (Fishing). They sit in the open land of every region, in the region's level band: Thornvale band 0, Mirefen 1, Cinderpass 2, Hoarfell 3 (the Stepping Lands the same ladder). Fishing spots stand on the banks of the river (Eldmoor's river runs through Thornvale, Mirefen and Hoarfell; Cinderpass has no water, so no fish); a sea coast would add more when a world has one. Nothing is gathered on a road, in a town or at the Crypt and Kragmaw's lair. A spent node grows back after a set time (herbs 4 game hours, ore 8, game trails 3, fish 2).
 
@@ -751,6 +751,15 @@ Thornvale tier); the other material words are the existing ones under Equipment.
 | Scribing | scroll-hearthward | 0 | 2 Rushpulp, Redroot Leaf | Scroll of Hearthward |
 | Scribing | scroll-steadfast | 2 | Rushpulp, Venom Sac | Scroll of the Steadfast Hour |
 | Scribing | chart-hoarfell | 3 | 3 Rushpulp, Venom Sac | Hoarfell Survey Chart |
+
+**Where things are made (issue #258).** Every recipe can be made at the workshops of a friendly town; at a camp fire only
+cooking and alchemy (a meal over the coals, a draught in a pot). A crafted piece of gear takes the crafter's class noun
+(or the class of the companion it was made for): a smith's Tinforged Weapon comes out as a Tinforged Longsword for a
+Warrior, a Tinforged Mace for a Priest. It carries its maker's name ("Crafted by Kerin"), so a gift between companions
+is remembered. A camp meal mends a little and gives a short edge (a quicker hand, a tougher hide, a sturdier frame) that
+fades within a few hours; a hero eats one meal at a time. Herbalists tend toward alchemy (about half the mages and
+priests among them toward scribing), miners toward the forge, skinners toward leatherwork and fishers toward the cook-pot; a crafter short of
+herbs or ore buys them at the auction house.
 
 Name check (2026-11-02): all of the above pass; no franchise proper nouns, no duplicates inside canon. Nits: "Fenmire"
 sits one letter-shuffle from the zone Mirefen (kept as the cook's joke, but never use it as a place name); Rimebloom and
@@ -981,15 +990,15 @@ A hero played by an agent (one that chooses where to go and when, and keeps its 
 
 ## The Fellowship
 
-One company of five is the story Eldmoor tells; everyone else is the world around them. A Fellowship swears in one town of one faction and keeps fixed places: a **Tank** (a warrior who stands where the blows land), a **Healer** (a priest) and three **DPS** (mages, hunters and rogues, one of each when the faction can spare them). The five lodge together in their hall town, muster at one gate and leave together; they still bleed, level and die by the same rules as everyone else. Hardcore binds them too: a fallen member stays fallen, the survivors carry the news home, and the empty place is offered to the living hero of that calling who knew them best, or to the next recruit.
+One company of five is the story Eldmoor tells; everyone else is the world around them. A company swears in one town of one faction (the default one is the Fellowship) and keeps fixed places: a **Tank** (a warrior who stands where the blows land), a **Healer** (a priest) and three **DPS** (mages, hunters and rogues, one of each when the faction can spare them). The five lodge together in their hall town, muster at one gate and leave together; they still bleed, level and die by the same rules as everyone else. Hardcore binds them too: a fallen member stays fallen, the survivors carry the news home, and the empty place is offered to the living hero of that calling who knew them best, or to the next recruit.
 
 Every member carries a **backstory** (family and home, how they came to arms, one defining day tied to the living world: a real elite, a real rival, a real place; a flaw or secret; what they want and fear; why they joined) with at least one tie to another member: a shared hamlet, an old debt, a rescue, a rivalry, kin or an oath. A **persona sheet** (voice, wants, fears, a quirk, a line they would never say, and how they see each companion) is drawn from the same facts. Both may be written once by a model through the relay; the watcher can rewrite any of it. Members keep a **memory**: a dozen recent lines in their own terms, a longer summary of what has faded, and their standing with each companion. The **campaign log** records each game-day as a session: jobs taken, scenes and rolls, people met, deaths and recruits, and the threads still open.
 
-Names: a Fellowship is named in its faction's voice when it is founded. Concord names are sober and civic (The Patient Watch, The Lantern Wardens, The Covenant of Highgate, The Ledger of the Quiet Road); Warband names are short and brutal (The Broken Teeth, The Red Five, The Pit of Grimhold, Thrakash’s Scarred Five). Word lists live in `src/sim/fellowship.js` (`NAME_PARTS`) and are original to Eldmoor, with one exception under review: the adjective `Grey` paired with `Company` yields "The Grey Company", the name of Aragorn's rangers in Tolkien, and must be replaced in the sim list (suggested: `Dun`). The word "Fellowship" for the party of five is a generic English noun but is also the title of Tolkien's first volume; it is kept as the product term and should never be paired with a ring, a nine or a quest to destroy anything. Reviewed 2026-11-01.
+Names: a company is named in its faction's voice when it is founded. Concord names are sober and civic (The Patient Watch, The Lantern Wardens, The Covenant of Highgate, The Ledger of the Quiet Road); Warband names are short and brutal (The Broken Teeth, The Red Five, The Pit of Grimhold, Thrakash’s Scarred Five). Word lists live in `src/sim/company.js` (`NAME_PARTS`) and are original to Eldmoor, with one exception under review: the adjective `Grey` paired with `Company` yields "The Grey Company", the name of Aragorn's rangers in Tolkien, and must be replaced in the sim list (suggested: `Dun`). "Fellowship" is the in-world name of the default company of five ("company" is the generic word, and a Concord company may call itself a fellowship, a Warband one a pack). It is a generic English noun but is also the title of Tolkien's first volume; it is kept as the product term and should never be paired with a ring, a nine or a quest to destroy anything. Reviewed 2026-11-01.
 
 ### Archetypes (issue #295)
 
-Six optional temperaments a Fellowship member's persona can take in place of a generated sheet (`src/data/archetypes.js`, applied by `applyArchetype` in `src/sim/persona.js`). Each fills only the voice, wants, fears, quirk, the line never said and a default stance, and records its id as the persona's `archetype`; class, bonds, oath, home and history are never touched. The names are generic fantasy roles.
+Six optional temperaments a company member's persona can take in place of a generated sheet (`src/data/archetypes.js`, applied by `applyArchetype` in `src/sim/persona.js`). Each fills only the voice, wants, fears, quirk, the line never said and a default stance, and records its id as the persona's `archetype`; class, bonds, oath, home and history are never touched. The names are generic fantasy roles.
 
 - **Dour Veteran**: weary, buries friends and expects more; wants the young ones home alive.
 - **Bright Idealist**: earnest, sure a road can be made safe; fears the work changes nothing.
@@ -1000,7 +1009,7 @@ Six optional temperaments a Fellowship member's persona can take in place of a g
 
 ### Camp and the night watch
 
-When night falls (21:00 to 03:00) or the company is worn thin, and the whole Fellowship (or all but one) is out on the road, they make camp on open ground at least eleven tiles from any town and fourteen from Kragmaw's lair or the Sunken Crypt: a ring of stones, a small fire, a bedroll each. They sleep in turns of two hours each, one of them on **watch**, and an hour at a time the dark may send a visitor (a wandering foe of the region, or an enemy hero passing close). A watcher who hears it in time wakes the camp; one who nods off lets the visitor reach the fire. Camp heals everyone; a night camp breaks at first light once all are mended. Round the fire they tell stories, sing and sometimes quarrel. The camp songs and sayings are folk verse of the Thornvale roads, not named works: the lantern road, the seven bells and the broken oar, the river crossing that did not count. No new place is named.
+When night falls (21:00 to 03:00) or the company is worn thin, and the whole company (or all but one) is out on the road, they make camp on open ground at least eleven tiles from any town and fourteen from Kragmaw's lair or the Sunken Crypt: a ring of stones, a small fire, a bedroll each. They sleep in turns of two hours each, one of them on **watch**, and an hour at a time the dark may send a visitor (a wandering foe of the region, or an enemy hero passing close). A watcher who hears it in time wakes the camp; one who nods off lets the visitor reach the fire. Camp heals everyone; a night camp breaks at first light once all are mended. Round the fire they tell stories, sing and sometimes quarrel. The camp songs and sayings are folk verse of the Thornvale roads, not named works: the lantern road, the seven bells and the broken oar, the river crossing that did not count. No new place is named.
 
 ## Memorials
 
@@ -1024,3 +1033,11 @@ New names (townsfolk names are rolled per world and are not canon; these placed 
 - **Pilgrims With No Gate**, **Hollowfang's Season**, **The Door at the Hollow Cairn**, **Murkstead Salt, Cairnmoot Wool** and **The Ram-King's Toll** (Stepping Lands): the other thread titles of the Stepping seed. They use canon places and creatures only: Hollowfang, the Hollow Cairn (sealed, no dungeon run), the Greywater trade between Murkstead and Cairnmoot, and Brask Ironhorn's pass.
 - **The Compact of Four Pages** (Stepping Lands): one page in each home town (Highgate debts, Cairnmoot the route, Grimhold the salt-song, Murkstead the names).
 - Endings named in the Eldmoor seed: **the Kept Light**, **the Dark Road**, **the Unowned Flame**.
+
+### The smith's temper (issue #13)
+
+In any friendly town a smith will temper a worn piece of gear for gold alone: one item level higher each time, up to three
+tempers a piece, never past the wearer's level plus two, dearer for finer metal and for each step. Epics cannot be
+tempered: they grow with their bearer on their own. Gear does not wear in Eldmoor, so the smith mends nothing. A piece replaced by a better
+one carries its tempering away with it. Scripted heroes visit the smith after the market when they have gold to spare;
+agents use the `smith {item, do}` tool.

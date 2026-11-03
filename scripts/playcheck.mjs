@@ -586,8 +586,13 @@ driven = false; // from here on tool calls arrive over sockets; the background t
 {
   paused = true;
   const {hostPace} = await import('../src/sim/player-host.js'), {dist} = await import('../src/world/map.js'), {leaveParty} = await import('../src/sim/party.js');
+  const RL = await import('../src/sim/runlink.js'), hostLinks = RL.runnerLinks();
   const c = S.agents.find(x => x.fac === 1 && x.state !== 'dead' && !x.player && !SLT.inSlots(x) && !x.adv);
   if (c.party) leaveParty(c); P.markPlayer(c, true);
+  // A runner holds this hero for the whole block (#603): the relay sections above leave play-headless's link map in place,
+  // and whether a stale claim of theirs still covered this hero depended on how much real time had passed (red on slow CI).
+  // Every other hero keeps the link the host reports.
+  if (hostLinks) RL.setRunnerLinks(x => x === c ? 'connected' : hostLinks(x));
   const out = S.agents.find(x => x !== c && x.state === 'hunt' && !x.player && x.kind === 'hero');
   const calm = () => {S.pvpT = 1; c.spotCd = 99; for (const m of S.mobs) {if (m.target === c) m.target = null; if (dist(m, c) < 30) m.scan = 1}
     if (c.state === 'fight' || c.state === 'duel' || c.state === 'assist' || c.state === 'return') {c.state = 'hunt'; c.target = null}};
@@ -624,7 +629,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   const {execFileSync} = await import('node:child_process'), {fileURLToPath} = await import('node:url'), me = fileURLToPath(import.meta.url);
   for (const f of ['0', '1']) {const fp = () => execFileSync(process.execPath, [me, '--fp', f], {encoding: 'utf8'}).trim().split('\n').pop();
     const x = fp(), y = fp(); ok(x === y && x.length > 100, `a seeded run with an agent hero's turn held is deterministic (${f === '1' ? 'with' : 'without'} a Fellowship)`)}
-  P.markPlayer(c, false); paused = false;
+  P.markPlayer(c, false); RL.setRunnerLinks(hostLinks); paused = false;
 }
 
 // ---- hunt {where} (issue #411): from town, walk to a known ground, then hunt; unknown names refused with known grounds ----
@@ -638,7 +643,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   r = P.playerAct(h.id, 'hunt', {});
   ok(!r.ok && r.error.includes(hc.name) && r.error.includes('hunt {where: "') && /walks you to/.test(r.error), 'hunt in town names the nearest known ground and the call: ' + r.error);
   r = P.playerAct(h.id, 'hunt', {where: 'Glimmerdeep Hollow'});
-  ok(!r.ok && /Hunting grounds you know: /.test(r.error) && (r.error.split('Hunting grounds you know: ')[1] || '').split(',').length <= 3, 'hunt at an unknown place is refused with up to three known grounds: ' + r.error);
+  ok(!r.ok && /Hunting grounds you know: /.test(r.error) && (r.error.split('Hunting grounds you know: ')[1] || '').split('.')[0].split(',').length <= 3, 'hunt at an unknown place is refused with up to three known grounds: ' + r.error);
   r = P.playerAct(h.id, 'hunt', {where: ground + ' Webspinner Grounds'}); h.pq = [];
   ok(r.ok && r.note && r.note.includes(ground), 'a known region inside longer words reads as that region, as move_to does: ' + (r.note || r.error));
   r = P.playerAct(h.id, 'hunt', {where: 'inn'});

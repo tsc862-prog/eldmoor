@@ -656,6 +656,22 @@ console.log('the DM prepares the table');
   ok(rows.length===2&&/Mining/.test(rows[0].textContent)&&/gathering/.test(rows[0].textContent)&&/60 · Journeyman/.test(rows[0].textContent),'stats: each profession with kind, skill and band ('+(rows[0]&&rows[0].textContent)+')');
   ok(rows.length===2&&/crafting/.test(rows[1].textContent)&&/1 · Novice/.test(rows[1].textContent),'stats: a craft profession at skill 1 is Novice');
   const bar=rows[0]&&rows[0].querySelector('.profbar i');ok(bar&&bar.style.width==='60%','stats: the bar is skill out of 100');
+  const pd=tb().querySelectorAll('.profd');
+  ok(pd.length===2&&/Works ore veins/.test(pd[0].textContent)&&/Tin Ore/.test(pd[0].textContent),'stats: a gathering trade lists what it works and takes ('+(pd[0]&&pd[0].textContent)+')');
+  ok(pd.length===2&&/Makes/.test(pd[1].textContent)&&/Spit-Roast Perch/.test(pd[1].textContent),'stats: a crafting trade lists its recipes');
+  ok(!tb().querySelector('.profmeal'),'stats: no supper line without a meal');
+  const keepM=h.meal,SS=sim.S;h.meal={id:'Spit-Roast Perch',stat:'speed',v:.03,until:SS.gameMin+60};
+  uiSlow();setTab('stats');uiFast();
+  ok(/Supper: Spit-Roast Perch \+3% speed/.test((tb().querySelector('.profmeal')||{}).textContent||''),'stats: the supper meal with its buff and time left ('+((tb().querySelector('.profmeal')||{}).textContent)+')');
+  const sc=document.body.querySelector('#hero .tb')||tb();sc.scrollTop=0;
+  if(keepM===undefined)delete h.meal;else h.meal=keepM;
+  // crafted gear names its maker in the Pack tab
+  const Inv=await import('../src/sim/inv.js'),Gr=await import('../src/sim/gear.js');
+  if(!h.inv)Inv.invOf(h);
+  const cg=Gr.makeItem(h.cls,'main',3,0,{quality:'fine',src:'Crafted by '+h.name});cg.maker=h.name;cg.makerId=h.id;const n0=h.inv.list.length;Inv.addGear(h,cg);
+  uiSlow();setTab('inv');uiFast();
+  ok(new RegExp('by '+h.name).test(tb().textContent),'pack: a crafted piece shows its maker');
+  while(h.inv.list.length>n0)h.inv.list.pop();
   if(keepP===undefined)delete h.profs;else h.profs=keepP}
 
 // Table banner: the combat block (#277). A scene with rounds, set up by hand (no world step), rendered like main.js does.
@@ -1073,6 +1089,16 @@ console.log('the DM prepares the table');
   S.table=scene('social','A word on the road',{npc:npc.id,anchor:m0.id,setting:'chapel',town:c.name});sp=sv.sceneSpec();ok(sp.mode==='indoor'&&sp.setting==='chapel'&&sp.town===c&&sp.where==='A chapel in '+c.name,'scene maps: a scene set at a town (ctx.town) plays in that town\'s room ('+sp.where+')');
   S.table=scene('ambush','Ambush on the road',{anchor:m0.id,setting:'house'});ok(sv.sceneSpec().mode==='outdoor','scene maps: an outdoor kind keeps the terrain cut whatever setting it carries');
   S.table=scene('crawl','The first chamber',{room:0});ok(sv.sceneSpec().mode==='dungeon','scene maps: the Crypt\'s scenes keep the dungeon view');
+  // #431 slice 3: a camp scene on the ground round the fire, and an interrogation in the cell
+  {const fire={x:wild.x+.5,y:wild.y+.5};mem.forEach((a,k)=>{a.x=fire.x+Math.cos(k)*1.4;a.y=fire.y+Math.sin(k)*1.1});
+    S.table=scene('fireside','Round the fire',{mode:'camp',anchor:m0.id,camp:fire});sp=sv.sceneSpec();sv.sceneTick(FOL);const cc=sv.sceneCut();
+    ok(sp.mode==='outdoor'&&sp.setting==='camp'&&sp.anchor.x===fire.x&&/^A camp in /.test(sp.where)&&!!cc&&Math.abs(cc.cx-fire.x)<2&&Math.abs(cc.cy-fire.y)<2&&cc.w<18&&cc.h<=11,'scene maps: a fireside plays on a small cut round the camp fire ('+sp.where+', '+(cc?Math.round(cc.w)+'x'+Math.round(cc.h):'no cut')+')');
+    S.table=scene('ambush','Ambush at camp: a wolf',{mob:-1,anchor:m0.id,camp:fire});ok(sv.sceneSpec().setting==='camp','scene maps: an ambush on the watch plays at the camp');
+    S.table=scene('elite','The Old Boar',{anchor:m0.id,camp:fire});ok(sv.sceneSpec().setting!=='camp','scene maps: only the camp kinds take the camp cut');
+    S.table=null;sv.sceneTick(FOL);mem.forEach((a,k)=>{a.x=c.gate.x-1+k*.8;a.y=c.gate.y});
+    S.table=scene('interrogation','Questioning Mara',{npc:npc.id,anchor:m0.id,who:{kind:'npc',id:npc.id,name:'Mara'},said:[]});sp=sv.sceneSpec();ok(sp.mode==='indoor'&&sp.setting==='cell'&&sp.cast.includes(npc),'scene maps: an interrogation in town plays in the cell ('+sp.where+')');
+    mem.forEach(a=>{a.x=wild.x;a.y=wild.y});S.table=scene('interrogation','Questioning '+wild.name,{foe:wild.id,anchor:m0.id,said:[]});sp=sv.sceneSpec();ok(sp.mode==='outdoor'&&sp.cast.includes(wild),'scene maps: a yielded foe questioned in the field is on the terrain where it yielded');
+    S.table=null;sv.sceneTick(FOL)}
   sv.setSceneAuto(false);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick(FOL);ok(!sv.sceneOpen()&&/off/.test($('vScene').textContent),'scene maps: with Scene maps off in Settings, nothing opens by itself');
   sv.setSceneAuto(true);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick({view:'map',sel:null});ok(!sv.sceneOpen(),'scene maps: only when the watcher follows the Fellowship');
   sv.closeSceneView(false);mem.forEach((a,k)=>{[a.x,a.y,a.hidden]=keepPos[k]});S.table=keepT;S.wanderers=keepW;uiFast()}
@@ -1212,7 +1238,7 @@ console.log('the DM prepares the table');
     [...tabs().children].find(b=>b.dataset.fact==='tab:all').click();uiFast();
     ok(fb.querySelectorAll('.fco').length===CO.companies().length,'Companies panel: the All tab lists every company');
     [...tabs().children].find(b=>b.dataset.fact==='tab:'+F.id).click();uiFast();
-    ok(/Fellowship|Wardens/.test(fb.querySelector('.fhline').textContent)&&!!fb.querySelector('[data-fact=menu]'),'Companies panel: the Fellowship tab keeps its menu');
+    ok(fb.querySelector('.fhline').textContent.includes(F.name)&&!!fb.querySelector('[data-fact=menu]'),'Companies panel: the Fellowship tab keeps its menu');
     ok(/Companies only/.test($('chronFel').textContent),'Chronicle filter reads Companies only');
     [...tabs().children][0].click()}
   // back to one company: one row again, no heads
