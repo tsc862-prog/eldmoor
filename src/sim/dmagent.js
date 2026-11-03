@@ -309,7 +309,7 @@ const scopeHead=Q=>Q.label?{scope:Q.z!=null?{region:Q.label,towns:Q.towns}:{town
 function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)return {ok:false,error:Q.err};const c=Q.c,inT=n=>!Q.label||Q.towns.includes(n.town);
   const wIn=w=>!Q.label||(c?w.town===c.name||dist(w,c.gate)<=20:Q.towns.includes(w.town)||zoneAt(w.x,w.y)===Q.z);
   const folk=(S.npcs||[]).filter(inT).map(n=>({id:n.id,name:n.title+' '+n.name,role:n.role,town:n.town,...(attOf(n).length?{attitudes:attOf(n)}:{}),...(recordView(n)?{fellowship:recordView(n)}:{})}));
-  const wand=(S.wanderers||[]).filter(wIn).map(w=>({id:w.id,name:w.title+' '+w.name,role:w.role,where:w.town||ZONES[zoneAt(w.x,w.y)],home:w.homeKind,attitude:w.attitude||'neutral',
+  const wand=(S.wanderers||[]).filter(wIn).map(w=>({id:w.id,name:w.name,title:w.title,role:w.role,where:w.town||ZONES[zoneAt(w.x,w.y)],home:w.homeKind,attitude:w.attitude||'neutral',
     ...(attOf(w).length?{attitudes:attOf(w)}:{}),...(recordView(w)?{fellowship:recordView(w)}:{}),placed_by_lever:w.lever||null}));
   return {ok:true,...scopeHead(Q),townsfolk:folk.slice(0,60),wanderers:wand}}
 
@@ -512,7 +512,7 @@ function whisper(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
     if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||dist(h,p)>DMA.WHISPER_R&&!inScene)return {ok:false,error:h.name+' is too far from '+p.name+' to be whispered to (within '+DMA.WHISPER_R+' tiles, or in the Table scene).'}}
   else if(!inScene)return {ok:false,error:h.name+' is not in an open Table scene: name the person who whispers (as), and have the hero within '+DMA.WHISPER_R+' tiles of them.'};
   const e={t:clockStr(),d:dayNo(),from:p?{kind:'npc',id:p.id,name:p.name,fac:p.fac}:NARRATOR,text:'(whispered) '+t,trigger:p?'npc':'dm',dm:true,whisper:true};hearLine(h,e);
-  if(inScene)S.table.narr={t:e.t,text:(p?(p.title?p.title+' ':'')+p.name:'Someone')+' leans close to '+h.name+'.'}; // the fact of it, not the words
+  if(inScene)S.table.narr={t:e.t,text:(p?(p.title&&!p.wander?p.title+' ':'')+p.name:'Someone')+' leans close to '+h.name+'.'}; // the fact of it, not the words
   day.wh=(day.wh||0)+1;
   dmlog('agent',null,['Whisper to '+h.name+' (DM agent)'],{by:'dm-agent',voice:'whisper',hero:h.id,npc:p?p.id:undefined});
   return {ok:true,whispered_to:h.name,as:p?p.name:'the narrator',note:'Only '+h.name+' heard it; the table sees that someone leans close.'}}
