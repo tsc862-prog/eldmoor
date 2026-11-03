@@ -196,7 +196,8 @@ if (comp && comp.ids.length > 1) {
 {
   const sp2 = {x: spot.x + 30, y: spot.y};
   const put = (a, dx, dy) => {a.x = sp2.x + dx; a.y = sp2.y + dy; a.state = 'hunt'; a.dest = null; a.target = null; a.hidden = false; rebuild()};
-  const free = () => S.agents.find(b => living(b) && b.fac === 0 && !b.fellow && !b.companion && !b.player && !CO.companyOf(b) && !b.adv && !used.has(b) && b.state !== 'dungeon' && b.state !== 'raid' && b.state !== 'duel');
+  let FACN = 0;
+  const free = () => S.agents.find(b => living(b) && b.fac === FACN && !b.fellow && !b.companion && !b.player && !CO.companyOf(b) && !b.adv && !used.has(b) && b.state !== 'dungeon' && b.state !== 'raid' && b.state !== 'duel');
   const grab = () => {const a = free(); used.add(a); if (a.party) leaveParty(a); return a};
   const agent = () => {const a = grab(); markPlayer(a, true); a.partyOk = true; return a};
   const comp = (...L) => {const r = CO.foundCompany(L); if (!r.ok) throw new Error(r.error); return r.company};
@@ -264,6 +265,46 @@ if (comp && comp.ids.length > 1) {
   ok(merged && CO.companyOf(Y1) === merged && merged.ids.length === 4, 'both passing: one company of four');
   ok(merged.id === Math.min(CX.id, CY.id) && S.companies.every(c => c.id !== Math.max(CX.id, CY.id) || c === merged), 'the older id keeps the company (a tie in size)');
   ok(merged.log.some(e => e.kind === 'merge') && merged.log.some(e => e.folded), 'the log has a merge line and the other log folded in');
+
+  // merge: the caps refuse it (5 minds, 8 heroes) (#500)
+  FACN = 1;
+  let caps;
+  {
+    const mA = [agent(), agent(), agent()], mB = [agent(), agent(), agent()];
+    [...mA, ...mB].forEach((h, i) => put(h, -20 + (i % 3), 10 + (i < 3 ? 0 : 3)));
+    const CMA = comp(...mA), CMB = comp(...mB);
+    r = prop(mA[0], {kind: 'merge', company: mB[0].name});
+    ok(!r.ok && /choose their own road/.test(r.error), 'merge over the 5-mind cap is refused: ' + r.error);
+    ok(CMA.ids.length === 3 && CMB.ids.length === 3 && !(CMA.props || []).length, 'nothing opened, nobody moved');
+    const cs = [];
+    for (let i = 0; i < 5; i++) cs.push(grab());
+    cs.forEach((h, i) => put(h, -20 + i, 4));
+    for (const c of cs) {c.companion = CMA.id; CO.joinCompany(CMA, c)}
+    ok(CMA.ids.length === 8, 'a company of eight is built: ' + CMA.ids.length);
+    r = prop(mA[0], {kind: 'merge', company: mB[0].name});
+    ok(!r.ok && /at most 8/.test(r.error), 'merge over the 8-hero cap is refused: ' + r.error);
+    caps = {mB, cs, CMB};
+  }
+  // merge: a companion of the smaller company is re-pointed at the merged company (#500)
+  {
+    const {mB, cs, CMB} = caps;
+    const ws = mB, [z1, z2, zc] = [cs[0], cs[1], cs[2]];
+    for (const h of [z1, z2, zc]) {CO.leaveCompany(h); delete h.companion}
+    for (const h of [z1, z2]) {markPlayer(h, true); h.partyOk = true}
+    [...ws, z1, z2, zc].forEach((h, i) => put(h, 25 + (i % 5), 10 + Math.floor(i / 5) * 3));
+    const zs = [z1, z2], CW = CMB, CZ = comp(z1, z2);
+    zc.companion = CZ.id; CO.joinCompany(CZ, zc);
+    bump(ws[0], zs[0], 1); bump(zs[0], ws[0], 1);
+    r = prop(zs[0], {kind: 'merge', company: ws[0].name});
+    ok(r.ok, 'companion merge proposed: ' + JSON.stringify(r).slice(0, 100));
+    const PZ = CZ.props.find(P => P.kind === 'merge'), PW = CW.props.find(P => P.kind === 'merge');
+    ok(PZ && PW && PZ.pair === PW.id, 'a paired proposal sits in each company');
+    run(2);
+    const M2 = CO.companyOf(zs[0]);
+    ok(CO.companyOf(ws[0]) === M2 && M2.ids.length === 6, 'one company of six');
+    ok(zc.companion === M2.id && CO.companyOf(zc) === M2, 'the companion is re-pointed at the merged company: ' + zc.companion + ' vs ' + M2.id);
+    ok(CN.leaderOfC(M2) !== zc, 'the companion still does not lead');
+  }
 }
 // ---- scripted recruiting never takes a company hero (#510) ----
 {

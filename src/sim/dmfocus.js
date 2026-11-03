@@ -18,7 +18,7 @@
 //   share()        the share of DM actions that touched the Fellowship (null before any)
 //   pullTouches(name, p, z)  does a lever pull concern the Fellowship (for the reserved daily share)?
 //   hallHooks(town)  the open hooks on that board that concern the Fellowship (the hall's own first), raw; [] without one
-//   hallBoard()    the watcher's rows for the hall board's Fellowship jobs (who posted it included; never hero-facing)
+//   hallBoard(C?)  the watcher's rows for the hall board's jobs for the Fellowship (or for company C) (who posted it included; never hero-facing)
 //   hallTitle(h)   a hook's title as the board shows it
 import {S} from './state.js';
 import {ZONES,REGIONS,CITY,zoneAt,dist} from '../world/map.js';
@@ -126,8 +126,9 @@ export function hallHooks(town,f=focus()){if(!f||!town)return [];
 const plainText=p=>Array.isArray(p)?p.map(x=>typeof x==='string'?x:x&&x.kind==='hero'?x.name:x&&x.t||'').join(''):String(p||'');
 export const hallTitle=h=>{const T=ADV.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return String(h.title||(T.name||h.tpl)+(th?': '+plainText(th):'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')).slice(0,90)};
 // Rows for the watcher: {id, title, region, band:[lo,hi]|null, day, by, oath:{id,name}|null, elite:{name,lvl,alive}|null, giver}.
-export function hallBoard(){const F=S.fellowship;if(!F)return [];
-  return hallHooks(F.hall).map(h=>{const z=h.zone!=null&&h.zone>=0?h.zone:null,R=z!=null&&REGIONS?REGIONS[z]:null,d=h.data||{};
+export function hallBoard(C){const co=C||S.fellowship;if(!co)return []; // a company's own jobs (#457); no C: the Fellowship's
+  const f=focusOf(co);if(!f)return [];
+  return hallHooks(co.hall,f).map(h=>{const z=h.zone!=null&&h.zone>=0?h.zone:null,R=z!=null&&REGIONS?REGIONS[z]:null,d=h.data||{};
     const who=h.for!=null?S.agents.find(a=>a.id===h.for):null;
     const E=d.eliteId!=null?S.mobs&&S.mobs.find(m=>m.id===d.eliteId):null;
     return {id:h.id,title:hallTitle(h),region:z!=null?ZONES[z]:null,band:R&&R.band?[R.band[0],R.band[1]]:null,
