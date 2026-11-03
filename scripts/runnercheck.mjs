@@ -19,7 +19,7 @@ import {tmpdir, hostname} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {attachPlay} from './relay-mcp.mjs';
-import {attachRunners, checkStart, runnerArgs, MAX_RUNNERS, SEATS, RUNNER_KINDS, HOW, NEW_WORLD_EXIT, RESTART_MS} from './runners.mjs';
+import {attachRunners, checkStart, runnerArgs, MAX_RUNNERS, SEATS, HERO_SEATS, RUNNER_KINDS, HOW, NEW_WORLD_EXIT, RESTART_MS} from './runners.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -56,10 +56,16 @@ console.log('start requests');
   const args = runnerArgs({...c.req, provider: 'anthropic', model: 'claude-sonnet-5-5'}, 'http://127.0.0.1:8787');
   ok(args[0] === RUNNER_KINDS.hero.script && args.join(' ') === 'scripts/agent-player.mjs --url http://127.0.0.1:8787 --hero 1 --budget 1 --provider anthropic --model claude-sonnet-5-5', 'the command line: script, url, hero, budget, provider, model (no turn cap unless asked)');
   ok(runnerArgs({...l.req}, 'u').join(' ') === 'scripts/agent-player.mjs --url u --hero 1 --max-turns 40 --provider ollama --model qwen2.5:14b', 'an asked turn cap goes on the command line');
-  {const fs = hs.map(h => ({...h, fellow: true, alive: true})), full = Array.from({length: MAX_RUNNERS}, (_, i) => ({key: 'hero:' + (100 + i)}));
-    ok(checkStart({hero: 3}, fs, {running: full}).req && checkStart({kind: 'dm'}, fs, {running: full, max: 2}).req, 'a Fellowship member or the DM still fits when other runners fill the cap (six seats)');
-    const seats = Array.from({length: SEATS}, (_, i) => ({key: 'hero:' + (200 + i), fellow: true}));
-    ok(checkStart({hero: 3}, fs, {running: seats}).code === 429, `but not past ${SEATS} seats`)}
+  {const fs = hs.map(h => ({...h, fellow: true, alive: true})), full = Array.from({length: 4}, (_, i) => ({key: 'hero:' + (100 + i), provider: 'anthropic'}));
+    ok(checkStart({hero: 3}, fs, {running: full, max: 4}).req && checkStart({kind: 'dm'}, fs, {running: full, max: 4}).req, 'a Fellowship member or the DM still fits when other runners fill the cap (five paid seats and the DM)');
+    const seats = Array.from({length: HERO_SEATS.PAID}, (_, i) => ({key: 'hero:' + (200 + i), fellow: true, provider: 'anthropic'}));
+    ok(checkStart({hero: 3, provider: 'anthropic'}, fs, {running: seats}).code === 429 && /Seats full: 5/.test(checkStart({hero: 3, provider: 'anthropic'}, fs, {running: seats}).error), 'a sixth paid agent hero is refused with the seat message');
+    ok(checkStart({kind: 'dm'}, fs, {running: seats}).req, 'the DM seat is outside the count');
+    const loc = Array.from({length: 9}, (_, i) => ({key: 'hero:' + (300 + i), provider: 'ollama'}));
+    ok(checkStart({hero: 3, provider: 'ollama', model: 'qwen2.5:14b'}, fs, {running: loc}).req, 'ten local agent heroes fit');
+    ok(checkStart({hero: 3, provider: 'ollama', model: 'qwen2.5:14b'}, fs, {running: [...loc, {key: 'hero:399', provider: 'ollama'}]}).code === 429, 'an eleventh local hero is refused');
+    ok(checkStart({hero: 3, provider: 'anthropic'}, fs, {running: loc.slice(0, 5)}).code === 429, 'a paid mind among five local runners is a sixth paid-world seat: refused');
+    ok(SEATS === HERO_SEATS.LOCAL + 1 && MAX_RUNNERS === SEATS, 'RELAY_MAX_RUNNERS default covers ten local runners plus the DM')}
   ok(!args.some(a => /key|sk-ant/i.test(a)), 'no key on the command line');
   ok(runnerArgs({...f.req, claudeConcurrency: 2}, 'u').join(' ').endsWith('--budget 2 --claude-concurrency 2'), 'a Fellowship runner gets its share of Claude slots (--claude-concurrency)');
 }
@@ -68,7 +74,7 @@ console.log('start requests');
 console.log('runner routes (fake children)');
 {
   const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
-  const heroes = [1, 2, 3, 4, 5, 6, 7].map(id => ({id, name: 'H' + id, alive: true}));
+  const heroes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(id => ({id, name: 'H' + id, alive: true}));
   let dmSeat = true; // the game's DM seat (#66): a DM runner starts only while it is open
   const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat})};
   const kids = [];
@@ -116,10 +122,11 @@ console.log('runner routes (fake children)');
   ok(v && v.state === 'waiting' && v.turns === 2 && v.cost === 0.031 && v.lines.length === 3 && v.model === 'qwen2.5:14b', `claimed and quiet: waiting, 2 turns, $0.031, model from the claim (${v && v.state}, ${v && v.turns}, ${v && v.cost})`);
   {const nv = (await req(on.base, '/play/runner', {origin: null})).runners.find(r => r.key === 'hero:1');
     ok(nv && nv.state === 'waiting' && nv.lines.length === 0, 'without the page\'s origin the runners\' output lines are withheld (issue #123: for the watcher only)')}
-  // up to MAX_RUNNERS
-  for (const id of [2, 3, 4, 5, 6]) await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: id}, origin: PAGE});
-  s = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 7}, origin: PAGE});
-  ok(kids.length === MAX_RUNNERS && s.status === 429, `${MAX_RUNNERS} runners at once, the next is refused`);
+  // up to MAX_RUNNERS: ten local agent heroes fit (the DM is outside the count), the eleventh is refused
+  {const lo = {provider: 'ollama', model: 'qwen2.5:14b'};
+    for (const id of [2, 3, 4, 5, 6, 7, 8, 9, 10]) await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: id, ...lo}, origin: PAGE});}
+  s = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 11, provider: 'ollama', model: 'qwen2.5:14b'}, origin: PAGE});
+  ok(s.status === 429 && /Seats full: 10/.test(JSON.stringify(s.body || s)), 'ten local agent heroes at most, the eleventh is refused');
   // stop: "stop" on stdin; the child exits cleanly
   s = await req(on.base, '/play/runner/stop', {method: 'POST', body: {hero: 1}, origin: PAGE});
   ok(s.status === 200 && s.runner.state === 'stopping' && k1.got === 'stop\n', 'stop asks the runner to stop (on its stdin)');
