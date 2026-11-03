@@ -18,6 +18,7 @@ import {IT} from '../world/interior.js';
 import {hash} from '../core/rng.js';
 import {DUNGEON as D,DUNGEON,THEMES,TEXT,MARK} from './palette.js';
 import {FURN} from './furniture.js';
+import {SITEP} from './siteprops.js';
 import {sprite,outlined,heroSprite,npcSprite,SPR} from './sprites.js';
 import {MOBS} from '../data/mobs.js';
 import {S} from '../sim/state.js';
@@ -38,7 +39,7 @@ const walk=t=>t!==IT.VOID&&t!==IT.WALL;
 const texCache=new Map();
 export function interiorTexture(m){const key=m.seed+':'+m.w+'x'+m.h+':'+(m.theme||'');let c=texCache.get(key);if(c)return c;
   c=document.createElement('canvas');c.width=m.w*T;c.height=m.h*T;const x=c.getContext('2d'),img=x.createImageData(c.width,c.height),d=img.data;
-  const D=(m.theme&&THEMES[m.theme])||DUNGEON,FS=m.style?m.style.floor:'flag',WS=m.style?m.style.wall:'brick',tall=!!m.tall;
+  const D=(m.theme&&THEMES[m.theme])||DUNGEON,FS=m.style?m.style.floor:'flag',WS=m.style?m.style.wall:'brick',HS=m.style&&m.style.hall,tall=!!m.tall;
   const s=m.seed%9973,h=(a,b,k)=>hash(a,b,s+k),tile=(tx,ty)=>tx<0||ty<0||tx>=m.w||ty>=m.h?IT.VOID:m.tiles[ty*m.w+tx];
   // the floor's colour at a world pixel, by style
   const floor=(t,gx,gy,n)=>{let col;
@@ -54,7 +55,7 @@ export function interiorTexture(m){const key=m.seed+':'+m.w+'x'+m.h+':'+(m.theme
         if(dd<d1){d2=d1;d1=dd;id=h(X,Y,24)}else if(dd<d2)d2=dd}
       const e=d2-d1;if(e<1.1)return id<.12&&D.ember?mix(D.mortar,D.ember,.7):D.mortar;
       col=mix(D.floor[1],id<.5?D.floor[2]:D.floor[0],Math.abs(id-.5)*.7);if(e<2.2)col=mix(col,D.floor[0],.35);else if(d1>4.5)col=mix(col,D.floor[2],.25);if(n<.04)col=mix(col,D.floor[2],.5);return col}
-    if(t!==IT.HALL&&FS==='dirt'){const v=h(gx>>2,gy>>2,15);col=mix(D.floor[1],v<.5?D.floor[2]:D.floor[0],Math.abs(v-.5)*.5);if(n<.03)col=D.floor[0];else if(n>.97)col=D.floor[2];return col}
+    if(FS==='dirt'&&(t!==IT.HALL||HS==='dirt')){const R=t===IT.HALL?D.hall:D.floor,v=h(gx>>2,gy>>2,15);col=mix(R[1],v<.5?R[2]:R[0],Math.abs(v-.5)*.5);if(n<.03)col=R[0];else if(n>.97)col=R[2];return col} // a site's cave (#642) keeps dirt in its corridors too
     const R=t===IT.HALL?D.hall:D.floor,sz=t===IT.HALL||FS==='cobble'?5:8,row=Math.floor(gy/sz),off=(row&1)*(sz>>1),sx=Math.floor((gx+off)/sz),lx=(gx+off)%sz,ly=gy%sz,v=h(sx,row,1); // flagstones (chambers 8 px, corridors and setts 5)
     if(lx===0||ly===0)col=D.mortar;
     else{col=mix(R[1],v<.5?R[2]:R[0],Math.abs(v-.5)*.6);
@@ -157,15 +158,16 @@ const PROPS={
   hoard:  {rows:HOARD,map:{W:'#fff6c0',Y:'#ffd866',G:'#e0a838',O:'#a86a20',D:'#5a3410',S:'#d8dce8',H:'#7a3a2a'},ox:0,oy:6},
   crag:   {rows:CRAG,map:{H:'#9a8a88',L:'#76686a',M:'#584c50',S:'#363036'},ox:3,oy:4},
 };
-function prop(x,p,th,tk){const F=FURN[p.kind];
-  if(F){const rows=F.make?F.make(p.len?p.len*16-2:0):F.rows,s=outlined(sprite('sf-'+p.kind+'-'+(tk||'')+'-'+(p.len||0),rows,F.map(th)));x.drawImage(s,p.x*T+F.ox-1,p.y*T+F.oy-1);return}
+function prop(x,p,th,tk){const F=FURN[p.kind]||SITEP[p.kind]; // setting furniture, then a DM-made site's pieces (render/siteprops.js, #642)
+  if(F){const rows=F.make?F.make(p.len?p.len*16-2:0):F.rows,raw=sprite('sf-'+p.kind+'-'+(tk||'')+'-'+(p.len||0),rows,F.map(th));
+    if(F.flat){x.drawImage(raw,p.x*T+F.ox,p.y*T+F.oy);return}x.drawImage(outlined(raw),p.x*T+F.ox-1,p.y*T+F.oy-1);return}
   const P=PROPS[p.kind];if(!P)return;const s=outlined(sprite('dg-'+p.kind,P.rows,P.map));x.drawImage(s,p.x*T+P.ox-1,p.y*T+P.oy-1)}
-const propOf=k=>FURN[k]||PROPS[k]; // a prop's art: setting furniture first, then the crypt's
+const propOf=k=>FURN[k]||SITEP[k]||PROPS[k]; // a prop's art: setting furniture first, then a site's, then the crypt's
 
 // ---- light and fog ----
 let glowC=null;
 function glowSprite(){if(glowC)return glowC;glowC={};
-  for(const [k,c] of [['warm',[255,170,70]],['crypt',D.ghost],['day',DAYGLOW]]){const cv=document.createElement('canvas');cv.width=cv.height=64;const x=cv.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);
+  for(const [k,c] of [['warm',[255,170,70]],['crypt',D.ghost],['day',DAYGLOW],['cold',[130,160,255]]]){const cv=document.createElement('canvas');cv.width=cv.height=64;const x=cv.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);
     g.addColorStop(0,'rgba('+c.join(',')+',.55)');g.addColorStop(1,'rgba('+c.join(',')+',0)');x.fillStyle=g;x.fillRect(0,0,64,64);glowC[k]=cv}
   return glowC}
 // One texel per tile: dark over everything past the last room reached (rooms and the corridors that lead to them).
@@ -185,7 +187,7 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
   // flickering light from candles and braziers in rooms the party can see
   const G=glowSprite(),reached=st.fog;ctx.globalCompositeOperation='lighter';
   for(const p of m.props){const P=propOf(p.kind);if(!P||!P.light)continue;const r=m.reg[p.y*m.w+p.x];if(reached>=0&&r>2*reached)continue;
-    const f=.75+.25*Math.sin(now*7+p.x*1.7+p.y),R=P.light==='crypt'?44:30;ctx.globalAlpha=f;ctx.drawImage(G[P.light],p.x*T+8-R,p.y*T+8-R,R*2,R*2)}
+    const f=.75+.25*Math.sin(now*7+p.x*1.7+p.y),R=P.light==='crypt'||P.light==='cold'?44:30;ctx.globalAlpha=f;ctx.drawImage(G[P.light],p.x*T+8-R,p.y*T+8-R,R*2,R*2)}
   if(st.party&&st.party.length){const pp=partySpot(m,st);ctx.globalAlpha=.7;ctx.drawImage(G.warm,pp.x*T-52,pp.y*T-52,104,104)} // the party's torches
   ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   if(reached>=0&&reached<m.rooms.length-1)ctx.drawImage(fogOf(m,reached),0,0,m.w*T,m.h*T);

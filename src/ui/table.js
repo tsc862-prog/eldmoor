@@ -222,7 +222,7 @@ export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd
   const c=combatView(),rows=c?null:memberRows(),hd=sceneHead(b.kind,b.title),chips=sceneChips(b,c),own=tableOwner(b),ppl=peopleAt(S.table),narrs=narrLines(S.table);
   const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,ms,narrs.join('¦'),b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):'',own?own.text+own.followed:''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
   const tt=el('div','tt'),th=el('span','tth',hd.head.toUpperCase());th.title=b.title;tt.append(th);box.append(tt);
-  if(S.table&&(S.table.kind==='crawl'||S.table.kind==='site')){const v=el('button','tstb tdg','View the crypt ▸');v.type='button';v.dataset.dungeon='';v.title='Open the dungeon view';tt.append(v)} // #85
+  if(S.table&&(S.table.kind==='crawl'||S.table.kind==='site')){const sid=S.table.ctx&&S.table.ctx.site,v=el('button','tstb tdg',sid!=null?'View the dungeon ▸':'View the crypt ▸');v.type='button';v.dataset.dungeon=sid!=null?'site:'+sid:'';v.title='Open the dungeon view';tt.append(v)} // #85; a DM-made site's crawl opens the site (#642)
   else if(S.table){const v=el('button','tscn','Scene map ▸');v.type='button';v.dataset.scene='';v.title='Show the scene on its own map, or back to the world';tt.append(v)} // scene maps (#431)
   if(chips.length||own){const ch=el('div','tchips');
     if(own){const o=el(own.followed?'span':'button','tco'+(own.followed?'':' tcob'),own.text);if(!own.followed){o.type='button';o.dataset.act='follow';o.dataset.co=own.id;o.title='Follow this company: the camera, the frames and the sheet turn to it'}ch.append(o)}
