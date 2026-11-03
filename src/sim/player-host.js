@@ -42,6 +42,7 @@ export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now(
 // sits at a scene (table) and whether its own scene still waits for its answer (due, #515). Game state only (#123).
 export function seatInfo(a){const o={id:a.id,name:a.name,alive:a.state!=='dead',...(a.succeeds!=null?{succeeds:a.succeeds}:{})};
   if(inSlots(a))Object.assign(o,{fellow:true,role:slotKeyOf(a)||null,lead:!!(a.party&&partySlotted(a.party)&&a.party.leader===a),table:!!sceneOf(a),...(sceneDue(a)?{due:true}:{})});
+  if(S.gambitHold&&S.gambitHold.id===a.id)o.hold=true; // a gambit hold waits for this hero's next act (#630): its turn starts at once
   const C=companyOf(a);if(C){o.company=C.id;o.companyName=C.name||null;o.size=C.ids.length;
     if(!inSlots(a)&&C.ids.length>1){o.lead=leaderOf(C)===a;o.table=!!sceneOf(a);if(sceneDue(a))o.due=true}}
   return o}
