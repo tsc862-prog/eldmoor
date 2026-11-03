@@ -4,12 +4,12 @@
 //   isLocal(name)    a local provider: no cost, longer timeouts
 import {anthropicAdapter} from './anthropic.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './ollama.mjs';
-import {openaiAdapter} from './openai.mjs';
+import {openaiAdapter, hfAdapter, hfModelList} from './openai.mjs';
 import {googleAdapter} from './google.mjs';
-export {anthropicAdapter, ollamaAdapter, openaiAdapter, googleAdapter, OLLAMA_URL, OLLAMA_MODEL};
+export {anthropicAdapter, ollamaAdapter, openaiAdapter, hfAdapter, googleAdapter, OLLAMA_URL, OLLAMA_MODEL};
 export {DEFAULT_MODEL, PRICES, costOf} from './anthropic.mjs';
 
-export const PROVIDERS = ['anthropic', 'ollama', 'openai', 'google'];
+export const PROVIDERS = ['anthropic', 'ollama', 'openai', 'huggingface', 'google'];
 export const LOCAL = new Set(['ollama']);
 export const isLocal = name => LOCAL.has(name);
 // A model name the relay passes on: Claude ids, Ollama tags (qwen2.5:14b, library/x:latest, hf.co/u/m:Q4_K_M).
@@ -23,6 +23,7 @@ export function makeProviders({anthropicClient = null, model, env = process.env,
     anthropic: anthropicAdapter({client: anthropicClient, ...(model ? {defaultModel: model} : {})}),
     ollama: ollamaAdapter({url: env.OLLAMA_URL || OLLAMA_URL, defaultModel: env.OLLAMA_MODEL || OLLAMA_MODEL, fetchImpl, numCtx: numCtxFrom(env)}), // one num_ctx with the runners (issue #221)
     openai: openaiAdapter({apiKey: env.OPENAI_API_KEY || null, baseUrl: env.OPENAI_BASE_URL || undefined, defaultModel: env.OPENAI_MODEL || null, fetchImpl}),
+    huggingface: hfAdapter({apiKey: env.HF_TOKEN || null, baseUrl: env.HF_BASE_URL || undefined, defaultModel: env.HF_MODEL || null, models: hfModelList(env), fetchImpl}), // Hugging Face router, free allowance only (#552)
     google: googleAdapter({apiKey: env.GOOGLE_API_KEY || null}),
   };
 }

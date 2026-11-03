@@ -583,6 +583,28 @@ off", "model refused". A failed call means the hero plays scripted. Agent runs r
 does, and never prints it. `npm run openaicheck` (in CI) tests all of it against a mock OpenAI server,
 with no key and no network.
 
+### Hugging Face router (issue #552)
+
+A fourth mind provider, id `huggingface` (label "Hugging Face", tag `<model> · huggingface`): the Inference Providers router at
+`https://router.huggingface.co/v1` speaks OpenAI Chat Completions, so it is `scripts/providers/openai.mjs` with other options
+(`hfAdapter`, `HF_OPTS`). Setup: `HF_TOKEN=hf_...` in `.env` (the same token the art pipeline uses; read by the relay and the runners only, never
+printed, scrubbed from errors); optional `HF_MODEL` (default model), `HF_MODELS` (comma list that replaces the picker list), `HF_BASE_URL`.
+Recharge is off, so the owner's credit is the free monthly allowance, shared with the art pipeline (the picker rows say so): a request carries
+only `model`, `max_tokens`, `messages` and the structured-output/tools fields, never provider or billing options. Cost is the reply's
+`usage.estimated_cost` (turn line, run budget, relay stats); a reply without it is "unknown", as for an unpriced OpenAI model.
+- Models: not every Hub model has an enabled provider (400 `model_not_supported`), so the list is curated, `HF_MODELS` in the adapter
+  (Llama 3.1 8B, Llama 3.3 70B, Qwen 2.5 72B, DeepSeek V3; each had a live provider on the Hub on 2026-11-03). The relay checks each once at start
+  with one tiny call (`max_tokens` 1; a few millionths of a dollar), caches the answer for its life and drops the unsupported ones
+  (`GET /health` `providers.huggingface.models`, plus `dropped`); runners do not repeat the check, a model that answers `model_not_supported`
+  fails with an error that names the picker list.
+- Structured output: strict `json_schema` first; a provider that rejects it (400 naming the schema) is asked again with `json_object` and the schema in
+  the system prompt, remembered per model; the relay validates either way. No `reasoning_effort`. Tools use the OpenAI tools path; a model that
+  says it has no tool support sets `noTools` and the local loop switches to its JSON-actions mode.
+- Errors: 401 "bad or missing HF_TOKEN"; 402, or a 429 naming credits, "Hugging Face allowance used up (recharge is off); the hero plays scripted / the
+  runner waits" (kind `quota`, never retried); other 429s pause the limiter (`RELAY_HF_CONCURRENCY`, default 4, `queues.huggingface`).
+- Agent play is the OpenAI path (`--provider huggingface --model <id>`, `openaiRunner` in `scripts/agent-chat.mjs`, same loop, forced scene answers
+  and reflections); no Claude slot, keeps the kind's turn cap and budget caps. `npm run hfcheck` (in CI) runs it all against a mock router.
+
 ## DM agent (issue #66, part 1)
 
 An AI agent can sit in the DM seat between scenes: it reads the world, keeps campaign notes and shapes

@@ -38,6 +38,7 @@
 - [Talk fallback](talk-fallback.md) — #540 townAnswer: public-knowledge scripted answers, warning only when fits, scripted tag, DM grace
 - [Give item](give-item.md) — #524 give_item/take_item levers, token alias, flat tools, allow:['item'], ilvl, pitfalls
 - [Scene waits](scene-waits.md) — #515 table_waits, urgent Ollama queue, free-turn interrupt, Claude scene-first, pace {queued} extra wait, scene-missed, sceneS
+- [HF provider](hf-provider.md) — #552 huggingface = openaiAdapter options, curated verified models, estimated_cost, hfcheck
 - [DM share](dm-share.md) — #541 dmShare digest, dm-scripted anomaly, report section, old-log limits
 - [Standing orders](standing-orders.md) — #531 orders.mjs situations block, short local variant, withSituationOrders, orderscheck
 - [DM visibility](dm-visibility.md) — #558 hear ring, survey legal spots, world_standing, carries/quests/knows, survey hint on refusals
