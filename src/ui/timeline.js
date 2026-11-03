@@ -4,6 +4,7 @@
 // the delegated click handler. Cheap: one pass over at most 200 entries.
 import {S} from '../sim/index.js';
 import {patch,keyOf} from './stable.js'; // update in place, keep scroll (#145)
+import {LAIR,CRYPT} from '../world/map.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -32,7 +33,10 @@ function fill(list,tl){
   for(const e of tl){if(!matches(e))continue;
     const li=el('li','tl tl-'+e.kind);li.setAttribute('data-k',keyOf(e));
     li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-'+e.kind,BADGE[e.kind]||e.kind.toUpperCase()));
-    const t=el('span','tx');partsTo(t,e.parts);li.append(t);list.append(li);n++}
+    const t=el('span','tx');partsTo(t,e.parts);li.append(t);
+    const inside=(e.kind==='raid'||e.kind==='boss')&&LAIR?LAIR.name:e.kind==='crypt'&&CRYPT?CRYPT.name:null; // Inside: the raid arena or the dungeon view (#85)
+    if(inside){const b=el('button','dglink','Inside ▸');b.type='button';b.dataset.dungeon=inside;b.title=e.kind==='crypt'?'Open the dungeon view':'Open the raid arena';li.append(' ',b)}
+    list.append(li);n++}
   if(!n)list.append(el('li','dm','Nothing of note yet.'))}
 
 export function initTimeline(){box=$('timeline');list=$('tlist');if(!box||!list)return;

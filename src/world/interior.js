@@ -169,3 +169,49 @@ export function buildSetting(id,key=''){const sid=SETTINGS[id]?id:'house',S0=SET
   const out={w,h,seed,tiles,reg,rooms:[{id:sid,name:S0.name,boss:false,x:ox,y:oy,w:fw,h:fh,cx:ox+fw/2,cy:oy+fh/2,water:false,i:0}],props,entry,
     setting:sid,name:S0.name,theme:S0.theme||sid,style:{floor:S0.floor||'flag',wall:S0.wall||'brick'},dark:S0.dark||0,spots:{cast,party},tall:true};
   scache.set(ck,out);return out}
+
+// ---- raid arenas (#85, raid slice): a boss's lair as its own small map ----
+// buildArena(site) -> the interior shape (w, h, seed, tiles, reg, rooms, props, entry) plus {theme:'lair', style, tall,
+//   arena:{k, cx, cy, wx, wy, inner, r}}: the real lair (data/world spec: a rock floor of radius `inner`, a lava ring out to `r`,
+//   a rock causeway through it on the `opening` side) drawn at k tiles per world tile, so a world point (x, y) is arena tile
+//   (cx + (x - wx) * k, cy + (y - wy) * k) and a boss's breath radius keeps its true size. Rock walls close it all round, the
+//   causeway runs on out as the way in; a hoard mound lies at the back, away from the way in; crags and bones from the seed.
+// site: a lair landmark {name, x, y, r, inner, opening:'W'|'E'|'N'|'S'}. Seeded like the crypts (name and position, the local
+//   generator): the same lair always gives the same arena, nothing is saved and the sim's dice are never touched.
+export const ARENA_K=2;
+const acache=new Map();
+export function buildArena(site){const key=(site.name||'')+'|'+site.x+'|'+site.y;if(acache.has(key))return acache.get(key);
+  const k=ARENA_K,r=site.r||5.4,inner=site.inner||4,op=site.opening||'W',seed=interiorSeed(site),R=prng(seed),ri=(a,b)=>a+Math.floor(R()*(b-a+1));
+  const rad=Math.ceil(r*k)+2,tun=4,N=2*rad+1; // the cavern, plus a tunnel of `tun` tiles out on the opening side
+  const dir={W:[-1,0],E:[1,0],N:[0,-1],S:[0,1]}[op]||[-1,0],w=N+(dir[0]?tun:0),h=N+(dir[1]?tun:0)+1; // +1: a two-course back wall
+  const cx=(dir[0]<0?tun:0)+rad+.5,cy=(dir[1]<0?tun:0)+rad+1.5;
+  const tiles=new Uint8Array(w*h),reg=new Int16Array(w*h).fill(-1),I=(x,y)=>y*w+x,get=(x,y)=>x<0||y<0||x>=w||y>=h?IT.VOID:tiles[I(x,y)];
+  const set=(x,y,t)=>{if(x>=0&&y>=0&&x<w&&y<h){tiles[I(x,y)]=t;reg[I(x,y)]=0}};
+  const wob=[];for(let i=0;i<24;i++)wob.push((R()-.5)*.5); // the lava's outer shore wanders a little
+  const shore=a=>{const f=(a/(Math.PI*2)+1)%1*24,i=Math.floor(f),t=f-i;return wob[i%24]*(1-t)+wob[(i+1)%24]*t};
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const dx=(x+.5-cx)/k,dy=(y+.5-cy)/k,d=Math.hypot(dx,dy),along=dx*dir[0]+dy*dir[1],perp=dir[0]?dy:dx;
+    const causeway=along>2.5&&Math.abs(perp)<1.6;
+    if(d<=inner-.06)set(x,y,IT.FLOOR); // (a hair inside, so the disc has no one-tile nubs at its four points)
+    else if(d<=r+shore(Math.atan2(dy,dx)))set(x,y,causeway?IT.HALL:IT.WATER);
+    else if(causeway&&Math.abs(perp)<1.1)set(x,y,IT.HALL)} // the way in runs on to the map's edge
+  // the hoard: a raised mound at the back of the floor, away from the way in
+  const hx=cx-dir[0]*(inner-1.4)*k,hy=cy-dir[1]*(inner-1.4)*k;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(get(x,y)===IT.FLOOR){const ex=(x+.5-hx)/(dir[0]?1.6:3.2),ey=(y+.5-hy)/(dir[0]?3.2:1.6);if(ex*ex+ey*ey<1)set(x,y,IT.DAIS)}
+  // walls: every empty tile beside a walkable one, and a second course over each back-wall face
+  const walk=t=>t!==IT.VOID&&t!==IT.WALL;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(get(x,y)!==IT.VOID)continue;let n=false;for(let dy=-1;dy<=1&&!n;dy++)for(let dx=-1;dx<=1;dx++)if(walk(get(x+dx,y+dy))){n=true;break}if(n)set(x,y,IT.WALL)}
+  for(let y=1;y<h;y++)for(let x=0;x<w;x++)if(get(x,y)===IT.WALL&&walk(get(x,y+1))&&get(x,y-1)===IT.VOID)set(x,y-1,IT.WALL);
+  // the way in's mouth at the edge reads as a stair up to the world
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(get(x,y)===IT.HALL&&(x===0||y===0||x===w-1||y===h-1))tiles[I(x,y)]=IT.STAIR;
+  let entry={x:Math.floor(cx+dir[0]*(rad+tun-1)),y:Math.floor(cy+dir[1]*(rad+tun-1))};
+  // props: the hoard's gold, crags on the floor's rim, bones of the ones who came before
+  const props=[],used=new Set(),K=(x,y)=>x+','+y,free=(x,y)=>get(x,y)===IT.FLOOR&&!used.has(K(x,y));
+  const keepOut=(x,y)=>Math.hypot(x+.5-cx,y+.5-cy)<2.2*k; // the boss and the raid ring stay clear
+  for(const [ox,oy] of [[-1,0],[1,0],[0,0]]){const x=Math.floor(hx+ox*(dir[0]?0:1.6)),y=Math.floor(hy+(dir[0]?ox*1.6:0));if(get(x,y)===IT.DAIS){used.add(K(x,y));props.push({x,y,kind:'hoard',v:ri(0,3)})}}
+  const rim=[];for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(free(x,y)&&!keepOut(x,y)&&[[1,0],[-1,0],[0,1],[0,-1]].some(([a,b])=>get(x+a,y+b)===IT.WATER))rim.push([x,y]);
+  const take=(n,kind)=>{for(let j=0;j<n&&rim.length;j++){const [x,y]=rim.splice(Math.floor(R()*rim.length),1)[0];if(!free(x,y))continue;used.add(K(x,y));props.push({x,y,kind,v:ri(0,3)})}};
+  take(ri(5,7),'crag');take(ri(3,5),'bones');
+  props.sort((a,b)=>a.y-b.y||a.x-b.x);
+  const out={w,h,seed,tiles,reg,rooms:[{id:'lair',name:site.name||'The lair',boss:true,x:Math.floor(cx-inner*k),y:Math.floor(cy-inner*k),w:Math.round(2*inner*k),h:Math.round(2*inner*k),cx,cy,water:false,i:0}],
+    props,entry,theme:'lair',style:{floor:'ash',wall:'rock'},tall:true,arena:{k,cx,cy,wx:site.x,wy:site.y,inner,r,dir}};
+  acache.set(key,out);return out}
