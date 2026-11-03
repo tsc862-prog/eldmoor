@@ -23,6 +23,7 @@ import {portrait} from '../render/sprites.js'; // generated face portraits (#367
 import {cam} from '../render/draw.js';
 import {doing,combatRows} from './panels.js';
 import {select,setView,syncFollow} from './controls.js';
+import {setPurpose,tapPurpose,purposeLine} from './purposeview.js'; // what each hero is trying to do (#534)
 import {mindOf,mindText,mindTitle} from './mindctl.js'; // the frame shows the mind; it is set in Members and minds (#145)
 import {effectChips} from './abilities.js';
 import {openSheet} from './sheet.js';
@@ -73,7 +74,7 @@ export function replacedLine(slot){const p=before(slot);return p&&p.day>=today()
 export function frameRows(){const out=[];for(const g of frameGroups()){const lead=leadOf(g);for(const m of g.cols){const a=m.hero;
   if(!a){const p=before(m.slot);out.push({row:g.title,role:m.label,empty:true,text:m.label+' · place empty'+(p?' · † '+p.name+', '+p.cause:'')});continue}
   const mh=maxHp(a);
-  out.push({row:g.title,role:m.label,name:a.name,cls:a.cls,lvl:a.lvl,hp:Math.max(0,Math.round(a.hp))+' / '+mh,status:doing(a),target:targetOf(a),
+  out.push({row:g.title,role:m.label,name:a.name,cls:a.cls,lvl:a.lvl,hp:Math.max(0,Math.round(a.hp))+' / '+mh,status:doing(a),purpose:purposeLine(a),target:targetOf(a),
     chips:chipsOf(a).map(c=>c.t),pots:potText(a),mind:mindLine(a),replaced:replacedLine(m.slot),lead:lead===a,
     hover:combatRows(a).map(r=>r[1]+' '+r[2]).concat(['Skills: '+topSkills(a).join(', ')])})}}
   return out}
@@ -103,7 +104,7 @@ function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
   const sub=el('div','pfsub');sub.append(el('span','frole r-'+m.role,m.label),' ');r.sub=el('span','dm');sub.append(r.sub);id.append(r.name,sub);
   top.append(r.port,id);
   const hp=el('div','meter hp pfhp');r.hpi=document.createElement('i');r.hpt=el('span','pfhpt');hp.append(r.hpi,r.hpt);
-  r.doing=el('div','pfdo');r.tgt=el('div','pftg');r.chips=el('div','pfchips');
+  r.doing=el('div','pfdo purp');r.doing._base='pfdo';r.tgt=el('div','pftg');r.chips=el('div','pfchips');
   const foot=el('div','pffoot');r.pot=el('span','pfpot');r.mind=el('span','pfmind');r.btn=el('span','pfbtn');foot.append(r.pot,r.mind,r.btn);r.run=el('div','pfrun');
   r.rep=el('div','dm pfrep');
   f.append(top,hp,r.doing,r.tgt,r.chips,r.rep,foot,r.run);
@@ -120,7 +121,7 @@ function update(fr,m,lead,no,total){const a=m.hero,r=fr.r;
   setText(r.sub,'Lv '+a.lvl+' '+a.cls);
   const w=dead?0:Math.max(0,Math.min(100,a.hp/mh*100));if(r.hpi._w!==w){r.hpi._w=w;r.hpi.style.width=w.toFixed(1)+'%'}
   setText(r.hpt,dead?'fallen':Math.max(0,Math.round(a.hp))+' / '+mh);
-  setText(r.doing,doing(a));const t=targetOf(a);setText(r.tgt,t?'» '+t:'');
+  setPurpose(r.doing,a,'f');const t=targetOf(a);setText(r.tgt,t?'» '+t:'');
   const ch=chipsOf(a),ck=ch.map(c=>c.t).join('|');if(r.chips._k!==ck){r.chips._k=ck;r.chips.replaceChildren();for(const c of ch){const s=el('span','chip c-'+c.c,c.t);s.title=c.title||'';if(c.col)s.style.color=c.col;r.chips.append(s)}}
   setText(r.rep,replacedLine(m.slot));setText(r.pot,dead?'':potText(a));
   setText(r.mind,mindLine(a));setCls(r.mind,'pfmind m-'+mindOf(a));setAttr(r.mind,'title',mindTitle(a));
@@ -170,6 +171,7 @@ export function initFrames(){root=$('frames');if(!root)return;
     const fol=t.closest('[data-pffollow]');if(fol){followCompany(companies().find(C=>String(C.id)===fol.dataset.pffollow));setView('fellow');renderFrames();return}
     const fill=t.closest('[data-pffill]');if(fill){offerReplacement(fill.dataset.pffill);renderFrames();return}
     if(t.closest('button'))return;
+    const pu=t.closest('.purp');if(pu&&tapPurpose(pu))return; // a cut purpose line opens in full on a tap (phone width)
     const f=t.closest('.pf[data-hid]');if(!f)return;const a=byId(f.dataset.hid);if(a){hideTip();select(a);setView('follow')}});
   root.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const f=e.target&&e.target.closest&&e.target.closest('.pf[data-hid]');if(!f||e.target!==f)return;e.preventDefault();const a=byId(f.dataset.hid);if(a){select(a);setView('follow')}});
   wrap.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;tipXY=[e.clientX,e.clientY];

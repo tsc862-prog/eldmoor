@@ -116,3 +116,7 @@ export const THEMES={
 };
 // The scene view's marks (render/sceneview.js): the outdoor cut's frame, the dimmed world past it, the turn chevron.
 export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,person:UI.amber};
+
+// What a hero is trying to do (#534, render/purposefx.js): the intent icon over a head and the followed or hovered hero's
+// path, tether and wait line, one colour per kind (the purpose line in the panels uses the same hues).
+export const INTENT={hunt:'#f2c14e',job:'#ffe040',wait:'#d9c27a',follow:'#9ad0ff',rest:'#7fd6c2',home:'#c8b4ff',flee:'#ff7050',fight:'#ffb060',travel:'#ece6d2',plate:'rgba(8,10,20,.85)'};

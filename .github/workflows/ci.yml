@@ -71,6 +71,7 @@ jobs:
       - {name: Agent player (mock agents), run: npm run playcheck}
       - {name: Townsfolk hails, run: npm run localscheck}
       - {name: Local agent runner (mock Ollama), run: npm run localcheck}
+      - {name: Hero standing orders, run: npm run orderscheck}
       - {name: Table scene waits (slow mock members), run: npm run scenewaitcheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
