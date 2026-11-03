@@ -57,4 +57,5 @@
 - [Scene props](scene-props.md) — #592 sc.props data, examine/search/give_item hooks, cast.item, pitfalls
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
 - [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
+- [DM undo + flat](dm-undo-flat.md) — #636 undo/dismiss/unstage, ten flat lever tools, D.last, takeBack, caps, test pitfalls
 - [Rumours and titles](rumour-bestow.md) — seed_rumour and bestow DM tools (#637, #638)

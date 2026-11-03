@@ -174,8 +174,8 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
     for (let t = 0; t < 6; t++) await localTurn({chat: async () => ({message: three, usage: {in: 1, out: 1}, ms: 1}), call: okCall, sess: s3, prompt: 'Turn.', model: 'm', tools: DM_TOOLS, toolTurns: 16, opts: {endOnWait: false, callsPerMin: 30}});
     ok(total === 30, `the minute cap holds a looping DM to 30 calls over 6 quick turns (${total}; the flood line is 90)`)}
   // a lever called as a tool, and lever params at the top level
-  const lv = cleanArgs('set_condition', {region: 'Mirefen'}, DM_TOOLS);
-  ok(lv.error && /pull_lever/.test(lv.error) && /"lever":"set_condition"/.test(lv.error), 'a lever name called as a DM tool is pointed at pull_lever: ' + (lv.error || '').slice(-120));
+  const lv = cleanArgs('mark_cleared', {region: 'Mirefen'}, DM_TOOLS);
+  ok(lv.error && /pull_lever/.test(lv.error) && /"lever":"mark_cleared"/.test(lv.error), 'a lever name called as a DM tool is pointed at pull_lever: ' + (lv.error || '').slice(-120));
   ok(!/pull_lever/.test(cleanArgs('teleport', {}).error), 'a hero\'s unknown tool gets no lever hint');
   const flat = cleanArgs('pull_lever', {lever: 'set_condition', region: 'Mirefen', kind: 'fogbound', reason: 'fog'}, DM_TOOLS);
   ok(flat.args && flat.args.params.region === 'Mirefen' && flat.args.params.kind === 'fogbound' && flat.args.lever === 'set_condition', 'a lever\'s params given beside lever and reason are folded into params, not dropped');
