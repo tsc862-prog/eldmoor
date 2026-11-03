@@ -282,10 +282,12 @@ ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
 // ---- follow (#445): walk at a hero's side without joining; lost them; autopilot keeps a standing follow ----
 {
   const FW = await import('../src/sim/follow.js'), {dist} = await import('../src/world/map.js'), {W: MW, H: MH} = await import('../src/world/tiles.js');
-  const fg = homeOf(S.agents.find(a => a.fac === 0)).gate, at = {x: fg.x + 4, y: fg.y + 4};
+  const freeOf = a => living(a) && !a.adv && !a.fellow && !a.player && a.companion == null && !CO.companyOf(a) && a.state !== 'dungeon' && a.state !== 'raid';
+  const FAC0 = [0, 1].sort((x, y) => S.agents.filter(a => a.fac === y && freeOf(a)).length - S.agents.filter(a => a.fac === x && freeOf(a)).length)[0]; // the earlier sections used up one side's free heroes
+  const fg = homeOf(S.agents.find(a => a.fac === FAC0)).gate, at = {x: fg.x + 4, y: fg.y + 4};
   const cl = (v, m) => Math.max(1, Math.min(m - 2, v));
   const put = (a, dx, dy) => {a.x = cl(at.x + dx, MW); a.y = cl(at.y + dy, MH); a.state = 'hunt'; a.dest = null; a.target = null; a.hidden = false; a.pq = []; rebuild()};
-  const side = S.agents.filter(a => living(a) && a.fac === 0 && !a.adv && !a.fellow && !a.player && a.companion == null && !CO.companyOf(a) && a.state !== 'dungeon' && a.state !== 'raid').sort((x, y) => y.lvl - x.lvl || x.id - y.id);
+  const side = S.agents.filter(a => a.fac === FAC0 && freeOf(a)).sort((x, y) => y.lvl - x.lvl || x.id - y.id);
   const L = side[0], F = side[1], X = side[2];
   const HZ = await import('../src/sim/heroes.js');
   for (const a of [L, F, X]) {if (a.party) leaveParty(a); markPlayer(a, true); HZ.seedLevel(a, 12); a.hp = HZ.maxHp(a)} // sturdy enough for the fields by the gate
@@ -293,12 +295,12 @@ ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
   // refusals
   put(L, 30, 0); r = act(F, 'follow', {hero_id: L.id}); put(L, 0, 0);
   ok(!r.ok && /not in sight/.test(r.error), 'follow refuses a hero out of sight: ' + r.error);
-  const foe = S.agents.find(b => living(b) && b.fac === 1 && b.state !== 'dungeon' && b.state !== 'raid'), fs = {x: foe.x, y: foe.y};
+  const foe = S.agents.find(b => living(b) && b.fac !== FAC0 && b.state !== 'dungeon' && b.state !== 'raid'), fs = {x: foe.x, y: foe.y};
   foe.x = F.x + 1; foe.y = F.y + 1; rebuild(); r = act(F, 'follow', {hero_id: foe.id}); foe.x = fs.x; foe.y = fs.y; rebuild();
   ok(!r.ok && /other side/.test(r.error), 'another faction outside a town is refused: ' + r.error);
   r = act(F, 'follow', {name: F.name}); ok(!r.ok, 'following yourself is refused');
   {
-    const comp = S.agents.find(b => living(b) && b.fac === 0 && !b.player && !b.fellow && b.companion == null && !CO.companyOf(b) && b.state !== 'dungeon' && b.state !== 'raid' && b !== L && b !== F && b !== X);
+    const comp = S.agents.find(b => living(b) && b.fac === FAC0 && !b.player && !b.fellow && b.companion == null && !CO.companyOf(b) && b.state !== 'dungeon' && b.state !== 'raid' && b !== L && b !== F && b !== X);
     if (comp.party) leaveParty(comp); const CX = CO.companyOf(X); comp.companion = CX.id; CO.joinCompany(CX, comp);
     put(comp, 3, 2); run(1); put(X, 3, 1); put(comp, 3, 2); put(L, 0, 0); put(F, 2, 0);
     const rx = act(X, 'follow', {hero_id: L.id});
