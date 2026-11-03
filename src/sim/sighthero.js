@@ -11,7 +11,7 @@
 // Privacy (#123): only heroes within the viewer's sight are named with a place; the aim's own words name the rest.
 import {S} from './state.js';
 import {CITY,dist,zoneAt} from '../world/map.js';
-import {sightMul} from './weather.js';
+import {sightFor} from './weather.js';
 import {nearHeroes} from './spatial.js';
 import {ev} from './notify.js';
 import {companyOf} from './company.js';
@@ -20,7 +20,7 @@ export const SEE={SIGHT:12,HOUR:60,EAR:7,MAX:4}; // SIGHT = FOLLOW.SIGHT; EAR = 
 const SEEK=/\b(find|finding|meet|meeting|look(?:ing)?\s+for|seek|seeking|search(?:ing)?\s+for|rejoin|regroup|catch(?:ing)?\s+up|reach|locate|join)\b/i;
 const alive=b=>!!b&&b.state!=='dead'&&!b.hidden;
 const inTown=p=>CITY.some(c=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5);
-export const sightRange=a=>SEE.SIGHT*sightMul(zoneAt(a.x,a.y));
+export const sightRange=a=>SEE.SIGHT*sightFor(a,zoneAt(a.x,a.y));
 const DIRS=['E','NE','N','NW','W','SW','S','SE'],WORD={E:'east',NE:'north-east',N:'north',NW:'north-west',W:'west',SW:'south-west',S:'south',SE:'south-east'};
 export const compass=(a,b)=>DIRS[(Math.round(Math.atan2(-(b.y-a.y),b.x-a.x)/(Math.PI/4))+8)%8]; // north is up (y grows south)
 const first=b=>String(b.name).toLowerCase().split(/\s+/)[0];

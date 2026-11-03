@@ -25,7 +25,7 @@ import {ev} from './notify.js';
 import {moment} from './reflect.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {held} from './scenes.js';
-import {sightMul} from './weather.js';
+import {sightFor} from './weather.js';
 
 export const LORE={
   DC:12,          // the first-sight read (d20 + the better of Lore and Perception)
@@ -125,7 +125,7 @@ export function nearDeath(a,m){if(!learner(a)||!m||m.kind!=='mob'||a.loreNear===
 export function witness(dead,m){if(!dead||!m||m.kind!=='mob')return;const z=ZONES[zoneAt(dead.x,dead.y)];
   // Sight, not a list: a hero sees a fall within its own sight (never out of the Crypt, or from it); a companion of the fallen within shouting range knows too (#539).
   for(const x of nearHeroes(dead.x,dead.y,LORE.WITNESS)){if(x===dead||!learner(x)||x.hidden)continue;
-    const mate=x.company!=null&&x.company===dead.company,seen=!dead.hidden&&dist(x,dead)<=LORE.WITNESS*sightMul(zoneAt(x.x,x.y));if(!seen&&!mate)continue;
+    const mate=x.company!=null&&x.company===dead.company,seen=!dead.hidden&&dist(x,dead)<=LORE.WITNESS*sightFor(x,zoneAt(x.x,x.y));if(!seen&&!mate)continue;
     const e=entry(x,keyOf(m));e.fell=(e.fell||0)+1;e.name=1;seenLvl(e,m);where(e,m);if(!e.warned)e.warned='You saw '+dead.name+' fall to it';
     if(z){const p=place(x,z,'been');p.fell=(p.fell||0)+1}
     ev(x,'You saw '+dead.name+' fall to '+(m.elite||m.named?'':'a ')+realName(m)+'. You will not forget what it can do.',true);
@@ -167,7 +167,7 @@ function readSign(a,l){if(!l.sign||!learner(a))return;ev(a,l.sign);const p=loreO
 export function captainWarning(a){if(!learner(a)||!CRYPT||!green(a))return null;const l=LANDMARKS.find(x=>x.kind==='crypt');return l&&l.captain||null}
 // Every step for an agent hero (watch() in sim/player.js): the region it stands in, landmarks in sight, its quest.
 export function visit(a){if(!learner(a))return;const z=zoneAt(a.x,a.y);if(a.loreZ!==z){a.loreZ=z;if(ZONES[z]&&learnPlace(a,ZONES[z],'been'))ev(a,'You come into '+ZONES[z]+' for the first time.');else if(ZONES[z])place(a,ZONES[z],'been')}
-  const R=12*sightMul(z);for(const l of LANDMARKS)if(dist(a,l)<=R+(l.r||1)&&learnPlace(a,l.name,'seen')){ev(a,'You see '+l.name+' with your own eyes.');readSign(a,l)}
+  const R=12*sightFor(a,z);for(const l of LANDMARKS)if(dist(a,l)<=R+(l.r||1)&&learnPlace(a,l.name,'seen')){ev(a,'You see '+l.name+' with your own eyes.');readSign(a,l)}
   // DM places (#423): one in sight is seen; a known one whose marker is gone fades
   const P=dmPlaces(),L=loreOf(a);for(const p of P)if(markOk(p)&&dist(a,p)<=R){const e=L.p[p.name];if(!e||e.dm!==p.id||e.how==='told'){if(learnMark(a,p,'seen'))ev(a,'You see '+p.name+' with your own eyes.')}}
   for(const n of Object.keys(L.p)){const e=L.p[n];if(e.dm!=null&&!P.some(x=>x.id===e.dm))delete L.p[n]}
@@ -230,7 +230,7 @@ export function preyKey(a,name){const s=clean(name,60).toLowerCase().replace(/^(
   for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e))continue;const n=keyName(key).toLowerCase(),p=keyPlural(key).toLowerCase();if(s===n||s===p||s===n.replace(/^the /,''))return key}
   return null}
 // hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear).
-export function pickPrey(a,cmd){const R=9*sightMul(zoneAt(a.x,a.y));let best=null,bs=1e9;
+export function pickPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y));let best=null,bs=1e9;
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a)||held(m))continue; // held in a scene (#518)
     if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(m.target!==a&&feared(a,m))continue;
     const d=dist(a,m);if(d>R)continue;const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
