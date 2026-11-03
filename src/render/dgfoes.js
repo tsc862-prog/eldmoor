@@ -4,7 +4,7 @@
 //   drawFoes(ctx, m, st, now, dpr, sc, pseudo)  the live crawl's foes with HP bars (one pip per blow it takes), fallen ones faint
 //   foeAt(m, st, tx, ty)      the foe whose sprite is under tile-space point (tx, ty), or null (for the hover detail)
 // st.foes: [{type, name, hp, hits, lvl, boss, eff}] for the chamber st.foeRoom (render/dungeonview.js stateOf), read only.
-import {T} from '../world/tiles.js';
+import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {BESTIARY,VARIANTS,baseId} from '../data/bestiary.js';
 import {MOBS} from '../data/mobs.js';
 import {sprite,outlined,SPR} from './sprites.js';

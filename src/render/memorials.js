@@ -2,7 +2,7 @@
 // fell, statues of legends in their home town square, and Kragmaw's lair as cooled rock with a
 // loot-cave marker while the boss is dead. All render-only: the terrain arrays never change.
 // Called once from draw.js before the entity loop so heroes walk over the stones.
-import {T} from '../world/tiles.js';
+import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {tiles,I,LAIR,LANDMARKS} from '../world/map.js';
 import {LAVA} from '../world/tiles.js';
 import {FAC} from '../data/factions.js';

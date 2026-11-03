@@ -13,7 +13,7 @@
 // them round the wyrm and the breath's ring keeps its true radius; raiders still walking in queue on the causeway.
 // Read-only on the sim: S.boss, S.raidOn, S.agents (a.raid, a.raidIdx, a.state), S.mobs, S.fx (the breath ring), BOSSES.
 // Style: as the crypt (light from the top left, entities outlined); the lava's glow pulses, the breath's telegraph fills orange.
-import {T} from '../world/tiles.js';
+import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {buildArena} from '../world/interior.js';
 import {LANDMARKS} from '../world/map.js';
 import {S} from '../sim/state.js';

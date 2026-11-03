@@ -34,7 +34,8 @@
 //   drawSceneView(now) one indoor frame; drawSceneRings / drawSceneMarks(ctx, cam, cut, now) the outdoor marks (draw.js)
 import {S} from '../sim/state.js';
 import {CITY,CRYPT,ZONES,zoneAt} from '../world/map.js';
-import {W,H,T,G,SNOW,ROCK,SGRASS} from '../world/tiles.js';
+import {W,H,G,SNOW,ROCK,SGRASS} from '../world/tiles.js';
+import {U as T,HEAD,PROC_SCALE} from './tile.js';
 import {SETTINGS,SETTING_IDS,OUTDOOR_SETTINGS} from '../data/settings.js';
 import {buildSetting} from '../world/interior.js';
 import {drawSetting,bubble,answerMark} from './interior.js';
@@ -164,14 +165,14 @@ export function arenaPattern(ctx,biome){if(arenaC[biome])return arenaC[biome];co
 // dim past it (drawSceneMarks).
 export function drawSceneRings(ctx,cam,cut){const px1=cam.dpr/cam.sc; // under the sprites
   for(const e of cut.members.concat(cut.foes)){const hero=e.kind==='hero'&&inSlots(e),col=hero?classColor(e.cls):e.kind==='npc'||e.role?SCENE.person:SCENE.foe;
-    ctx.strokeStyle=col;ctx.globalAlpha=.85;ctx.lineWidth=1.5*px1;ctx.beginPath();ctx.ellipse(e.x*T,e.y*T+.5,7,2.8,0,0,7);ctx.stroke()}
+    ctx.strokeStyle=col;ctx.globalAlpha=.85;ctx.lineWidth=1.5*px1;ctx.beginPath();ctx.ellipse(e.x*T,e.y*T+.5,7*PROC_SCALE*.75,2.8,0,0,7);ctx.stroke()}
   ctx.globalAlpha=1}
 export function drawSceneMarks(ctx,cam,cut,now){const sc=cam.sc;
-  if(cut.cur&&live(cut.cur)){const px1=cam.dpr/sc,m=Math.max(3,5*px1),x=Math.round(cut.cur.x*T),y=Math.round(cut.cur.y*T-17-16*px1-2*m-px1-7+Math.sin(now*5));ctx.fillStyle=MARK.edge;ctx.fillRect(x-4,y-1,9,5);ctx.fillStyle=SCENE.turn;ctx.fillRect(x-3,y,7,1);ctx.fillRect(x-2,y+1,5,1);ctx.fillRect(x-1,y+2,3,1);ctx.fillRect(x,y+3,1,1)}
+  if(cut.cur&&live(cut.cur)){const px1=cam.dpr/sc,m=Math.max(3,5*px1),x=Math.round(cut.cur.x*T),y=Math.round(cut.cur.y*T-HEAD-16*px1-2*m-px1-7+Math.sin(now*5));ctx.fillStyle=MARK.edge;ctx.fillRect(x-4,y-1,9,5);ctx.fillStyle=SCENE.turn;ctx.fillRect(x-3,y,7,1);ctx.fillRect(x-2,y+1,5,1);ctx.fillRect(x-1,y+2,3,1);ctx.fillRect(x,y+3,1,1)}
   {const mk=answerMarks(S.table),px1=cam.dpr/sc,m=Math.max(3,5*px1); // "..." while a member thinks, a tick once answered (#536)
-    for(const e of cut.members){const k=mk[e.id];if(!live(e)||(k!=='think'&&k!=='done')||e===cut.cur)continue;answerMark(ctx,e.x*T,Math.round(e.y*T-17-16*px1-2*m-px1-1),k,now)}}
+    for(const e of cut.members){const k=mk[e.id];if(!live(e)||(k!=='think'&&k!=='done')||e===cut.cur)continue;answerMark(ctx,e.x*T,Math.round(e.y*T-HEAD-16*px1-2*m-px1-1),k,now)}}
   const s=cut.speaker;if(s&&s.e&&live(s.e)&&!(s.e.bubble&&s.e.bubble.life>0)){const e=s.e,hero=e.kind==='hero';
-    bubble(ctx,e.x*T,e.y*T-18,hero?e.name.toUpperCase():'['+(e.name||'?')+']',hero&&inSlots(e)?classColor(e.cls):e.kind==='mob'||hero?DISP.hostile.color:DISP.neutral.color,s.text,cam.dpr,sc,Math.min(1,(SPEAK_S-(clock()-s.t))/.6))}
+    bubble(ctx,e.x*T,e.y*T-HEAD-1,hero?e.name.toUpperCase():'['+(e.name||'?')+']',hero&&inSlots(e)?classColor(e.cls):e.kind==='mob'||hero?DISP.hostile.color:DISP.neutral.color,s.text,cam.dpr,sc,Math.min(1,(SPEAK_S-(clock()-s.t))/.6))}
   // screen space: dim outside the cut, a thin gold frame with corner brackets
   ctx.setTransform(1,0,0,1,0,0);const cv=ctx.canvas,x0=Math.round((cut.cx-cut.w/2)*T*sc+cam.offX),y0=Math.round((cut.cy-cut.h/2)*T*sc+cam.offY),x1=Math.round((cut.cx+cut.w/2)*T*sc+cam.offX),y1=Math.round((cut.cy+cut.h/2)*T*sc+cam.offY);
   ctx.fillStyle=SCENE.dim;if(y0>0)ctx.fillRect(0,0,cv.width,y0);if(y1<cv.height)ctx.fillRect(0,y1,cv.width,cv.height-y1);if(x0>0)ctx.fillRect(0,Math.max(0,y0),x0,Math.min(cv.height,y1)-Math.max(0,y0));if(x1<cv.width)ctx.fillRect(x1,Math.max(0,y0),cv.width-x1,Math.min(cv.height,y1)-Math.max(0,y0));

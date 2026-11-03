@@ -1,15 +1,20 @@
-// Paints the map in cached 32x32-tile chunks on first request: a per-pixel procedural
-// 16x16 texture for every tile, then city buildings and the crypt mouth on top.
-// Owned by world-builder (textures) together with render (chunk cache).
+// Paints the map in cached chunks on first request: a per-pixel texture for every tile, then city buildings and the
+// crypt mouth on top. Owned by world-builder (textures) together with render (chunk cache).
+//
+// Two resolutions (#177 tiers, render/tile.js): the procedural texels are drawn on a U x U (16x16) grid per tile, the
+// generated assets at TILE x TILE (32x32 now, 64x64 later) art pixels. pixel() answers at art resolution and scales the
+// procedural texel up where no asset covers a pixel. A chunk is painted at TILE resolution only while a terrain asset
+// is loaded; with none it is painted at U and scaled by the renderer, which looks the same and costs a quarter.
 import {hash,vnoise} from '../core/rng.js';
-import {W,H,T,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
+import {TILE,U,ART} from './tile.js';
+import {W,H,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
 import {tiles,zone,I,CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {biomeOfZone} from './palette.js';
 import {assetPixels,onAssets} from './assets.js';
 
 // Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
-// procedural texel. A tile asset repeats every w x h world pixels (a 32x32 patch spans 2x2 tiles); a missing
+// procedural texel. A tile asset repeats every w x h art pixels (a TILE x TILE patch per tile at its tier); a missing
 // or not yet loaded asset, or a transparent pixel of it, falls back to the procedural texel below. Every id
 // here or in ASSET_ROAD, ASSET_EDGES or ASSET_PROPS needs a manifest entry whose hook names that table (npm run artcheck checks both ways).
 export const ASSET_TILES={'tile:grass':G,'tile:meadow':FLOWER,'tile:fen-grass':SGRASS,'tile:swamp':SWAMP,'tile:mud':MUD,'tile:ash-rock':ROCK,'tile:snow':SNOW,'tile:ice':ICE};
@@ -34,10 +39,9 @@ const SNOWP=['#e2e8ee','#d8e0e8','#dde4ec','#e6ecf2'];
 function snowBase(x,y,h){return h>.985?'#ffffff':pk(SNOWP,h)}
 const SGP=['#46622f','#3d5729','#42602c','#4a6632'];
 
-// Colour of pixel (px,py) inside tile (tx,ty) of type t. px,py are 0..15.
+// Procedural colour of pixel (px,py) inside tile (tx,ty) of type t. px,py are 0..U-1 (the 16x16 procedural grid).
 export function texel(t,tx,ty,px,py){
-  const x=tx*16+px,y=ty*16+py;
-  if(TILE_ASSET[t]){const A=assetPixels(TILE_ASSET[t]);if(A){const c=A.hex[(y%A.h)*A.w+x%A.w];if(c)return c}}
+  const x=tx*U+px,y=ty*U+py;
   const h=hash(x,y,3);
   switch(t){
     case G:{ // grass with tufts and a pebble
@@ -137,7 +141,6 @@ export function texel(t,tx,ty,px,py){
       if(h>.985)return '#fff4a0';
       return n<.3?'#ffd04a':n<.45?'#f07a22':'#c8401a'}
     case ROAD:{ // packed earth with two wheel ruts and loose stones
-      {const A=assetPixels('tile:road');if(A){const v=roadVerticalAt(tx,ty),u=v?y:x,w=v?x:y,c=A.hex[(w%A.h)*A.w+u%A.w];if(c)return c}}
       if((py===5||py===10)&&hash(x,py,33)>.3)return '#8e7448';
       for(const [ax,ay] of anchors(tx,ty,210,2,1,14)){if(py===ay&&(px===ax||px===ax+1))return '#c8b088';if(py===ay+1&&(px===ax||px===ax+1))return '#8a7048'}
       return h>.9?'#c4a878':pk(['#a88c5c','#9f8455','#a68a58'],h)}
@@ -155,7 +158,6 @@ export function texel(t,tx,ty,px,py){
     case RIVER:{ // flowing water: wavy ripple crests and foam along the banks
       const bank=(px<=1&&!isWater(tx-1,ty))||(px>=14&&!isWater(tx+1,ty))||(py<=1&&!isWater(tx,ty-1))||(py>=14&&!isWater(tx,ty+1));
       if(bank)return h>.5?'#dce8f8':'#5a88d0';
-      {const A=assetPixels('tile:water');if(A){const c=A.hex[(y%A.h)*A.w+x%A.w];if(c)return c}}
       const wv=Math.round(Math.sin(x/3.2+ty*2.1)*1.2);
       if(((py+wv+ty*5)%8)===0&&h>.3)return h>.75?'#8ab8f0':'#6a9ce0';
       return pk(['#2e5fb0','#3468b8','#3a70c4','#3264b4'],h)}
@@ -165,6 +167,18 @@ export function texel(t,tx,ty,px,py){
       if((px===2||px===13)&&py%4===3)return '#4a3018';
       return h>.9?'#9a6a3c':((py>>2)&1)?'#8a5a32':'#7a4e2a'}
   }return '#000'}
+// The asset colour of tile type t at art pixel (ax,ay) of tile (tx,ty) (0..TILE-1), or null: the base tile patches, the
+// road patch (turned for a north-south road) and the water patch (away from the banks, which keep the procedural foam).
+function assetTexel(t,tx,ty,ax,ay){
+  const x=tx*TILE+ax,y=ty*TILE+ay;
+  if(TILE_ASSET[t]){const A=assetPixels(TILE_ASSET[t]);return A?A.hex[(y%A.h)*A.w+x%A.w]:null}
+  if(t===ROAD){const A=assetPixels('tile:road');if(!A)return null;const v=roadVerticalAt(tx,ty),u=v?y:x,w=v?x:y;return A.hex[(w%A.h)*A.w+u%A.w]}
+  if(t===RIVER){const A=assetPixels('tile:water');if(!A)return null;const px=Math.floor(ax/ART),py=Math.floor(ay/ART);
+    if((px<=1&&!isWater(tx-1,ty))||(px>=U-2&&!isWater(tx+1,ty))||(py<=1&&!isWater(tx,ty-1))||(py>=U-2&&!isWater(tx,ty+1)))return null;
+    return A.hex[(y%A.h)*A.w+x%A.w]}
+  return null}
+// Colour at art pixel (ax,ay): the asset where it covers the pixel, else the procedural texel scaled up to TILE.
+export function artTexel(t,tx,ty,ax,ay){return assetTexel(t,tx,ty,ax,ay)||texel(t,tx,ty,Math.floor(ax/ART),Math.floor(ay/ART))} // floor: a neighbour's pixel may be negative
 function isWater(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return true;const t=tiles[I(tx,ty)];return t===RIVER||t===BRIDGE}
 const isRoad=(tx,ty)=>{const t=tileOr(tx,ty);return t===ROAD||t===BRIDGE};
 // A road whose only road neighbours lie north or south runs north-south: its patch is drawn turned.
@@ -172,7 +186,7 @@ export const roadVerticalAt=(tx,ty)=>(isRoad(tx,ty-1)||isRoad(tx,ty+1))&&!isRoad
 const isPeak=(tx,ty)=>tx>=0&&ty>=0&&tx<W&&ty<H&&tiles[I(tx,ty)]===PEAK;
 // Ridge height (the first rock row, 0..15) at local column px of the top peak tile (tx,ty). A tent wave
 // of 26 px plus value noise, continuous in world x; at the range's open ends it slopes down to the foot.
-function ridgeAt(tx,ty,px){const x=tx*16+px,ph=hash(0,ty,5)*26,t=Math.abs((((x+ph)/26)%1)*2-1),n=vnoise(x/17,ty*1.7,19);
+function ridgeAt(tx,ty,px){const x=tx*U+px,ph=hash(0,ty,5)*26,t=Math.abs((((x+ph)/26)%1)*2-1),n=vnoise(x/17,ty*1.7,19);
   let r=1+t*7+n*4;
   if(!isPeak(tx-1,ty))r=Math.max(r,14-px*1.3);
   if(!isPeak(tx+1,ty))r=Math.max(r,14-(15-px)*1.3);
@@ -191,18 +205,21 @@ const BLEND=new Uint8Array(16);for(const t of [G,FLOWER,SGRASS,MUD,SNOW,ICE,ROCK
 const fam=t=>t===FLOWER?G:t;
 const EDGE=[.42,.6,.78]; // noise threshold by distance to the edge: nearer edges bleed more
 const tileOr=(tx,ty)=>tx<0||ty<0||tx>=W||ty>=H?-1:tiles[I(tx,ty)];
-function blendPixel(t,tx,ty,px,py){
-  if(BLEND[t]){let d=3,n=-1,ox=0,oy=0;
+// The blend is decided on the procedural grid (pixel (px,py) of U x U), so it bleeds the same at every tier; (ax,ay) is
+// the art pixel (0..TILE-1) inside it whose colour is wanted, from the asset of whichever tile type wins.
+// With art=false it answers at the procedural grid alone (ax,ay unused): the no-asset fast path of paintChunk.
+function blendPixel(t,tx,ty,px,py,ax,ay,art=true){
+  if(BLEND[t]){let d=3,n=-1,ox=0,oy=0;const L=U-1;
     if(px<d){const k=tileOr(tx-1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=px;n=k;ox=-1;oy=0}}
-    if(15-px<d){const k=tileOr(tx+1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=15-px;n=k;ox=1;oy=0}}
+    if(L-px<d){const k=tileOr(tx+1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=L-px;n=k;ox=1;oy=0}}
     if(py<d){const k=tileOr(tx,ty-1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=py;n=k;ox=0;oy=-1}}
-    if(15-py<d){const k=tileOr(tx,ty+1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=15-py;n=k;ox=0;oy=1}}
-    if(n>=0){const x=tx*16+px,y=ty*16+py;if(vnoise(x/2.3,y/2.3,93)>EDGE[d])return texel(n,tx+ox,ty+oy,px-ox*16,py-oy*16)}}
-  return texel(t,tx,ty,px,py)}
+    if(L-py<d){const k=tileOr(tx,ty+1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=L-py;n=k;ox=0;oy=1}}
+    if(n>=0){const x=tx*U+px,y=ty*U+py;if(vnoise(x/2.3,y/2.3,93)>EDGE[d])return art?artTexel(n,tx+ox,ty+oy,ax-ox*TILE,ay-oy*TILE):texel(n,tx+ox,ty+oy,px-ox*U,py-oy*U)}}
+  return art?artTexel(t,tx,ty,ax,ay):texel(t,tx,ty,px,py)}
 // ---- autotile (#177 slice 2) ----
 // Transition pieces sit on the tile corners (a "dual grid"): every pixel belongs to the quadrant of its tile nearest
 // one corner point, and the four tiles around that point decide what is drawn there. Four tiles of two ground types
-// that form a pair below get one 16x16 piece centred on the point: an edge (two and two), a corner (one B tile) or an
+// that form a pair below get one TILE x TILE piece centred on the point: an edge (two and two), a corner (one B tile) or an
 // inner corner (three B tiles), turned or mirrored to fit. Pieces are drawn as A on top and B below (edge), B in the
 // bottom-right quarter (corner) and A in the top-left quarter (inner). Anything else (one tile type, two in a diagonal,
 // three types, objects, the map's rim), a missing piece or a transparent pixel of one falls back to the procedural
@@ -222,14 +239,14 @@ for(const p of PAIRS)for(const k of Object.values(PIECE))ASSET_EDGES['autotile:'
 const PAIR_AT=new Map(); // (type,type) -> pair index, either order
 PAIRS.forEach((p,i)=>{for(const a of p.a)for(const b of p.b){PAIR_AT.set(a*16+b,i);PAIR_AT.set(b*16+a,i)}});
 // Quadrant mask of the B tiles around a point (bit 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right) ->
-// [piece, transform]. A transform maps the point-local pixel (x,y) to the piece's pixel (u,v):
-// 0 (x,y)  1 (15-x,15-y)  2 (y,x)  3 (y,15-x)  4 (x,15-y)  5 (15-x,y). Masks 6 and 9 (diagonal) have no piece.
+// [piece, transform]. A transform maps the point-local pixel (x,y) to the piece's pixel (u,v), with L = TILE-1:
+// 0 (x,y)  1 (L-x,L-y)  2 (y,x)  3 (y,L-x)  4 (x,L-y)  5 (L-x,y). Masks 6 and 9 (diagonal) have no piece.
 const QUAD=[];
 QUAD[12]=['edge',0];QUAD[3]=['edge',1];QUAD[10]=['edge',2];QUAD[5]=['edge',3];
 QUAD[8]=['corner',0];QUAD[1]=['corner',1];QUAD[2]=['corner',4];QUAD[4]=['corner',5];
 QUAD[14]=['inner',0];QUAD[7]=['inner',1];QUAD[13]=['inner',5];QUAD[11]=['inner',4];
-function sampleXf(A,xf,x,y){let u=x,v=y;
-  if(xf===1){u=15-x;v=15-y}else if(xf===2){u=y;v=x}else if(xf===3){u=y;v=15-x}else if(xf===4){v=15-y}else if(xf===5){u=15-x}
+function sampleXf(A,xf,x,y){let u=x,v=y;const L=TILE-1;
+  if(xf===1){u=L-x;v=L-y}else if(xf===2){u=y;v=x}else if(xf===3){u=y;v=L-x}else if(xf===4){v=L-y}else if(xf===5){u=L-x}
   return A.hex[(v%A.h)*A.w+u%A.w]}
 // The transition piece on the corner point (vx,vy) (the top-left corner of tile (vx,vy)): {id, A, xf} or null.
 // With asset=false it answers the piece id the point wants even when the asset is missing (for checks and tools).
@@ -271,16 +288,19 @@ let planKey=-1;const plan={q:[null,null,null,null],prop:null};
 function planFor(tx,ty){const k=ty*W+tx;if(k===planKey)return plan;planKey=k;
   for(let i=0;i<4;i++)plan.q[i]=autotileAt(tx+(i&1),ty+(i>>1));
   plan.prop=propAt(tx,ty);return plan}
-// Final colour of pixel (px,py) of tile (tx,ty) of type t, before the shade: prop, transition piece, then the
-// procedural blend and texel (which use the base tile, road and water assets themselves).
-export function pixel(t,tx,ty,px,py){const P=planFor(tx,ty),pr=P.prop;
-  if(pr){const c=pr.A.hex[(py%pr.A.h)*pr.A.w+px%pr.A.w];if(c)return c;if(pr.kind==='tree')return texel(pr.ground,tx,ty,px,py)}
-  const q=P.q[(px>=8?1:0)+(py>=8?2:0)];
-  if(q){const c=sampleXf(q.A,q.xf,(px+8)&15,(py+8)&15);if(c)return c}
-  return blendPixel(t,tx,ty,px,py)}
+// Final colour of art pixel (ax,ay) (0..TILE-1) of tile (tx,ty) of type t, before the shade: prop, transition piece,
+// then the blend and the texel (the base tile, road and water assets, else the procedural texel scaled up).
+const HALF=TILE>>1;
+export function pixel(t,tx,ty,ax,ay){const P=planFor(tx,ty),pr=P.prop;
+  if(pr){const c=pr.A.hex[(ay%pr.A.h)*pr.A.w+ax%pr.A.w];if(c)return c;if(pr.kind==='tree')return artTexel(pr.ground,tx,ty,ax,ay)}
+  const q=P.q[(ax>=HALF?1:0)+(ay>=HALF?2:0)];
+  if(q){const c=sampleXf(q.A,q.xf,(ax+HALF)%TILE,(ay+HALF)%TILE);if(c)return c}
+  return blendPixel(t,tx,ty,(ax/ART)|0,(ay/ART)|0,ax,ay)}
+// The same at the procedural grid only (px,py 0..U-1), for chunks painted with no terrain asset loaded.
+export const procPixel=(t,tx,ty,px,py)=>blendPixel(t,tx,ty,px,py,0,0,false);
 
 // Light from the top left: ground just below or right of a mountain lies in its shadow, and
-// the foot of a massif darkens where it meets the ground.
+// the foot of a massif darkens where it meets the ground. (px,py) on the procedural grid.
 export function shade(t,tx,ty,px,py){
   if(t===PEAK)return isPeak(tx,ty+1)||py<14?1:.82;
   if(t===WALL||t===FLOOR)return 1;
@@ -289,42 +309,49 @@ export function shade(t,tx,ty,px,py){
 // ---- chunks ----
 // The map is painted in CH x CH tile canvases, each on its first request, and cached
 // for the life of the page. draw.js asks only for the chunks that intersect the view,
-// so a world 30x this size costs nothing until the camera reaches it.
-export const CH=32;
+// so a world 30x this size costs nothing until the camera reaches it. A chunk is about 1024 art pixels square at any
+// tier (32 tiles at 32 px, 16 at 64), so a tier change keeps the canvases the same size.
+export const CH=Math.max(8,Math.round(1024/TILE));
 export const CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
 const chunks=new Map();
-onAssets(()=>{chunks.clear();planKey=-1}); // a tile asset arrived (or the index changed): repaint on the next request
+// Whether any terrain asset is loaded (then chunks are painted at TILE, else at U). Refreshed when assets change.
+let artOn=null;
+const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS].flatMap(Object.keys);
+export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
+onAssets(()=>{chunks.clear();planKey=-1;artOn=null}); // a tile asset arrived (or the index changed): repaint on the next request
 
-// Cached canvas for chunk (cx,cy): min(CH,W-cx*CH)*T by min(CH,H-cy*CH)*T pixels.
+// Cached canvas for chunk (cx,cy): min(CH,W-cx*CH) by min(CH,H-cy*CH) tiles at k pixels a tile (TILE, or U with no
+// terrain asset). c.uw and c.uh give its size in world units (tiles * U), which is what the renderer scales it to.
 export function getChunk(cx,cy){const k=cy*CHUNKS_X+cx;let c=chunks.get(k);if(!c){c=paintChunk(cx,cy);chunks.set(k,c)}return c}
 
 function paintChunk(cx,cy){
-  const tx0=cx*CH,ty0=cy*CH,cw=Math.min(CH,W-tx0),ch=Math.min(CH,H-ty0),stride=cw*T;
-  const cv=document.createElement('canvas');cv.width=cw*T;cv.height=ch*T;
+  const art=terrainArt(),k=art?TILE:U,tx0=cx*CH,ty0=cy*CH,cw=Math.min(CH,W-tx0),ch=Math.min(CH,H-ty0),stride=cw*k;
+  const cv=document.createElement('canvas');cv.width=cw*k;cv.height=ch*k;cv.uw=cw*U;cv.uh=ch*U;
   const c=cv.getContext('2d');
-  const img=c.createImageData(cw*T,ch*T),d=img.data;
+  const img=c.createImageData(cw*k,ch*k),d=img.data;
   for(let j=0;j<ch;j++)for(let i=0;i<cw;i++){const tx=tx0+i,ty=ty0+j,t=tiles[I(tx,ty)];
-    for(let py=0;py<T;py++)for(let px=0;px<T;px++){const col=rgb(pixel(t,tx,ty,px,py)),o=((j*T+py)*stride+i*T+px)*4,k=shade(t,tx,ty,px,py);
-      d[o]=col[0]*k;d[o+1]=col[1]*k;d[o+2]=col[2]*k;d[o+3]=255}}
+    for(let py=0;py<k;py++)for(let px=0;px<k;px++){
+      const col=rgb(art?pixel(t,tx,ty,px,py):procPixel(t,tx,ty,px,py)),o=((j*k+py)*stride+i*k+px)*4,sh=art?shade(t,tx,ty,(px/ART)|0,(py/ART)|0):shade(t,tx,ty,px,py);
+      d[o]=col[0]*sh;d[o+1]=col[1]*sh;d[o+2]=col[2]*sh;d[o+3]=255}}
   c.putImageData(img,0,0);
-  // decorations are painted in world pixels; the translated context clips them to this chunk
-  c.translate(-tx0*T,-ty0*T);
+  // decorations are painted in world units; the scaled, translated context clips them to this chunk
+  c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);
   decorate(c,tx0,ty0,tx0+cw,ty0+ch);
   return cv}
 
-// Paint every chunk into one W*T by H*T canvas. Compatibility helper for tools and
+// Paint every chunk into one W*U by H*U canvas (world units). Compatibility helper for tools and
 // previews; the renderer never calls it.
 export function buildTerrain(){
-  const terrain=document.createElement('canvas');terrain.width=W*T;terrain.height=H*T;
-  const tctx=terrain.getContext('2d');
-  for(let cy=0;cy<CHUNKS_Y;cy++)for(let cx=0;cx<CHUNKS_X;cx++)tctx.drawImage(getChunk(cx,cy),cx*CH*T,cy*CH*T);
+  const terrain=document.createElement('canvas');terrain.width=W*U;terrain.height=H*U;
+  const tctx=terrain.getContext('2d');tctx.imageSmoothingEnabled=false;
+  for(let cy=0;cy<CHUNKS_Y;cy++)for(let cx=0;cx<CHUNKS_X;cx++){const c=getChunk(cx,cy);tctx.drawImage(c,cx*CH*U,cy*CH*U,c.uw,c.uh)}
   return terrain}
 
 // City buildings, gate banners, graveyard stones and the crypt mouth, drawn in world
 // pixels onto tctx. Only decorations whose tile box touches [x0,x1)x[y0,y1) are painted.
 const hits=(ax0,ay0,ax1,ay1,x0,y0,x1,y1)=>ax0<x1&&ax1>x0&&ay0<y1&&ay1>y0;
 function decorate(tctx,x0,y0,x1,y1){
-  const R=(x,y,w,h,c)=>{tctx.fillStyle=c;tctx.fillRect(x,y,w,h)};
+  const T=U,R=(x,y,w,h,c)=>{tctx.fillStyle=c;tctx.fillRect(x,y,w,h)}; // in world units: the chunk context is scaled to its resolution
   // city buildings: auction house (faction roof, gold sign) and quest hall, gate banners, graveyard stones
   for(const c of CITY){const f=FAC[c.fac],ox=(c.x0-2)*T,dy=(c.y0-2)*T; // building layout is drawn relative to the town's top-left corner
     if(!hits(c.x0-2,c.y0-2,c.x0+13,c.y0+9,x0,y0,x1,y1))continue; // layout spans tiles x0+2..x0+12, y0+1..y0+7
