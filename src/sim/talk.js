@@ -302,6 +302,9 @@ function lore(p,a){const L=knows(p,a);return L.length?L[0].warn?L[0]:L[Math.floo
 export function stockOf(p){return ROLE_STOCK[p.role]||DEFAULT_STOCK}
 const buyMul=p=>Math.max(.7,1-(p.warmth||0)*.02)*(p.town?1:1.1),sellMul=p=>Math.min(1.3,1+(p.warmth||0)*.02)*(p.town?1:.9);
 const priceWord=p=>{const m=buyMul(p);return m<.97?'kind':m>1.03?'steep':'fair'};
+// What person p charges for a thing whose town price is base (a supply's USES price, or SHOP_COST(level) for gear): the one
+// price rule npcBuy and the shop tool share (#425).
+export const tradePrice=(p,base)=>Math.ceil(base*buyMul(p));
 // The person a member trades with: named, or the one trade open within reach. Returns p or {error}.
 export function traderFor(a,name,range){const s=String(name==null?'':name).trim().toLowerCase();
   const open=people().filter(p=>p.trade&&p.trade.until>S.gameMin&&(s?String(p.id)===s||String(p.name).toLowerCase()===s||full(p).toLowerCase()===s||p.role===s:true));
@@ -309,18 +312,18 @@ export function traderFor(a,name,range){const s=String(name==null?'':name).trim(
   const p=open.sort((x,y)=>dist(a,x)-dist(a,y))[0];if(dist(a,p)>range)return {error:full(p)+' is too far away to trade ('+Math.round(dist(a,p))+' tiles).'};
   if(!a.fellow||p.trade.fac!==a.fac)return {error:full(p)+' trades only with the Fellowship.'};
   return p}
-export function npcBuy(a,p,{slot,item,count}){const m=buyMul(p),st=stockOf(p);
+export function npcBuy(a,p,{slot,item,count}){const st=stockOf(p);
   if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>x.toLowerCase()===String(item).toLowerCase());
     const sells=st.filter(x=>x!=='gear'&&USES[x]&&USES[x].lvl<=a.lvl);
-    if(!id||!st.includes(id))return {error:full(p)+' does not sell that. On offer: '+(sells.map(x=>x+' ('+Math.ceil(USES[x].price*m)+'g)').join(', ')||'no supplies')+(st.includes('gear')?', and gear for your level (pass slot)':'')+'.'};
-    const U=USES[id],price=Math.ceil(U.price*m);if(U.lvl>a.lvl)return {error:id+' is sold from level '+U.lvl+'.'};if(a.gold<price)return {error:'That costs '+price+'g each; you have '+a.gold+'g.'};
+    if(!id||!st.includes(id))return {error:full(p)+' does not sell that. On offer: '+(sells.map(x=>x+' ('+tradePrice(p,USES[x].price)+'g)').join(', ')||'no supplies')+(st.includes('gear')?', and gear for your level (pass slot)':'')+'.'};
+    const U=USES[id],price=tradePrice(p,U.price);if(U.lvl>a.lvl)return {error:id+' is sold from level '+U.lvl+'.'};if(a.gold<price)return {error:'That costs '+price+'g each; you have '+a.gold+'g.'};
     if(U.kind==='pack'){if(invOf(a).pack)return {error:'You already carry a Wayfarer\'s Pack.'};a.gold-=price;invOf(a).pack=1;tradeDone(p,a,id);return {ok:true,bought:id,from:full(p),cost:price,gold:a.gold,capacity:capOf(a)}}
     const n=Math.min(10,Math.max(1,Math.round(Number(count)||1)));let got=0;while(got<n&&a.gold>=price&&addUse(a,id,1)){a.gold-=price;got++}
     if(!got)return {error:'Your pack is full ('+used(a)+'/'+capOf(a)+').'};tradeDone(p,a,id+' x'+got);return {ok:true,bought:id+' x'+got,from:full(p),cost:got*price,gold:a.gold}}
   if(!st.includes('gear'))return {error:full(p)+' sells no gear. Pass item: '+st.filter(x=>USES[x]).join(', ')+'.'};
   const k=slot?String(slot):weakestSlot(a);if(!k||!SLOTS.includes(k))return {error:'No slot to fill.'};
   const cur=a.slots[k];if(cur&&cur.epic)return {error:'An epic holds that slot.'};if(slotLevel(a,k)>=a.lvl)return {error:'Nothing better than your '+(cur?cur.name:'gear')+' is on offer at your level.'};
-  const cost=Math.ceil(SHOP_COST(a.lvl)*m);if(a.gold<cost)return {error:'That costs '+cost+'g; you have '+a.gold+'g.'};
+  const cost=tradePrice(p,SHOP_COST(a.lvl));if(a.gold<cost)return {error:'That costs '+cost+'g; you have '+a.gold+'g.'};
   refreshEpics(a);a.gold-=cost;const it=makeItem(a.cls,k,a.lvl,zoneFor(a.lvl),{src:'Bought from '+full(p),rare:0});const old=equip(a,it);if(old)addGear(a,old);a.hp=Math.min(a.hp,maxHp(a));
   tradeDone(p,a,it.name);const s2=itemStats(it);
   return {ok:true,bought:it.name+' (ilvl '+it.ilvl+': '+Object.keys(s2).map(x=>'+'+s2[x]+' '+x).join(' ')+')',from:full(p),cost,gold:a.gold,replaced:old?old.name+' (now in your pack)':null}}

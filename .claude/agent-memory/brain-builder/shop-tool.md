@@ -9,9 +9,9 @@ metadata:
 seller exactly like `buy`: npc named or out of town -> `traderFor(a,npc,PK.TALK)`; else the town smiths.
 
 - Smith prices use buy's own sources: `USES[id].price`, `SHOP_COST(a.lvl)` (gear is always at the hero's level, plain or fine).
-- Trader prices: talk.js is read-only and `buyMul` is private, so `traderPrice` calls `npcBuy` on a copy of the hero
+- Trader prices: since #425 `tradePrice(p,base)` from talk.js. (Before: `traderPrice` called `npcBuy` on a copy of the hero
   `{...a, gold:0, slots:{}, lvl}` and parses "costs Ng" from its refusal (no mutation before that check, no RNG).
-  If talk.js ever exports a price helper, switch to it.
+  - done, see [[inspect-tool]].)
 - Gear change = plain `itemArmor/itemDamage(cls,slot,lvl)` minus the worn piece's `itemStats` armor/damage.
 - Out of town with no npc: "The smiths are in town. <home> lies <dir>, about N tiles (time): move_to {target: "home"}"
   plus the trader's refusal when one is open but far.

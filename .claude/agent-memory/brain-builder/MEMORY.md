@@ -28,4 +28,5 @@
 - [DM region reads](dm-region-reads.md) — #427 hooks/npcs take region: readScope, scope/note fields, refusal lists, dmcheck pitfalls
 - [Places tool](places-tool.md) — #414 places: knownNames + markers in sight, way/word/creatures/learned, heredoc backslash pitfall
 - [DM places lore](dm-places-lore.md) — #423 heroes learn S.places markers: seen/heard/job-told, e.dm id, fade, knownMark, learnJob, pitfalls
-- [Shop tool](shop-tool.md) — #424 shop {npc?}: seller choice like buy, trader price probe via npcBuy, gear change, refusals
+- [Shop tool](shop-tool.md) — #424 shop {npc?}: seller choice like buy, trader price now talk.js tradePrice (#425), gear change, refusals
+- [Inspect tool](inspect-tool.md) — #425 inspect {who}: sight tiers then pack/worn/catalogue, what each kind hides; shop brief default, tradePrice
