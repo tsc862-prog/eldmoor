@@ -65,10 +65,12 @@ import {dmlog} from './dmlog.js';
 import {pull,ready,spotErr,attitudeDc,activeOf} from './levers.js';
 import {GOODS} from '../data/items.js';
 import {playerBranch} from './player-choice.js';
+import {isSolo} from './company.js';
 
 // ---- knobs ----
 export const K={
   FLOOR:1,              // posted hooks an outlying board keeps while the Fellowship has nothing under way (issue #165)
+  SOLO_PAY:.75,         // gold multiplier of a solo-sized job (a party of five is paid per head for the same template; #447)
   HOOKS:3,              // posted hooks per town (personal ones, for one hero's oath or a follow-up, come on top)
   HOOK_LIFE:[1440,2880],// game minutes a hook stays posted (one to two game days)
   REFILL:5,             // real seconds between hook refills
@@ -203,7 +205,7 @@ function giverOf(town,roles){const ps=(S.npcs||[]).filter(p=>p.town===town.name&
 export function postHook(c,tpl,src,o={}){const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
   const h={id:++S.uid,phase:'open',town:c.name,fac:c.fac,tpl,src,giver:g,zone:o.zone==null?null:o.zone,for:o.for==null?null:o.for,
     data:{thing:o.thing||(T.things?pickA(T.things):null),...(o.data||{})},born:S.gameMin,until:S.gameMin+ri(...K.HOOK_LIFE)*(o.zone==null?1:.5)}; // news tied to one place goes stale sooner
-  if(o.by&&o.by!=='scripted')h.by=o.by;if(o.ff)h.ff=1; // who made it, for the quest log (sim/questlog.js): the DM agent, or the scripted DM's Fellowship-first job
+  if(o.by&&o.by!=='scripted')h.by=o.by;if(o.ff)h.ff=1;if(o.solo)h.solo=1; // who made it, for the quest log (sim/questlog.js): the DM agent, or the scripted DM's Fellowship-first job
   S.adventures.push(h);bump(stats().hooks,src);bump(stats().offered,tpl);return h}
 export function withdrawHook(id){const i=S.adventures.findIndex(h=>h.id===id&&h.phase==='open');if(i<0)return null;return S.adventures.splice(i,1)[0]}
 // The scripted DM posts every hook through the post_hook lever. On the board refresh the lever's
@@ -315,6 +317,7 @@ function oathTpl(a){const g=a.goal;if(!g||g.done)return null;
 // Does this hook suit a party of these members, led by a?
 function fits(h,a,mem){const T=D.ADVENTURES[h.tpl],lo=Math.min(...mem.map(b=>b.lvl)),hi=Math.max(...mem.map(b=>b.lvl));
   if(h.for!=null&&!mem.some(b=>b.id===h.for))return false;
+  if(h.solo&&mem.length!==1)return false; // a solo-sized job is for one hero (#447)
   const whole=h.ff&&mem.some(b=>b.fellow); // a Fellowship-first job is theirs and takes the whole Fellowship (#325): the size cap is for background parties
   if(h.ff&&!whole)return false;
   if(mem.length<T.size[0]||(!whole&&mem.length>T.size[1])||lo<Math.max(K.MIN_LVL,T.lvl))return false;
@@ -660,13 +663,27 @@ function refill(){const gone={};
   // Fellowship first (issue #165): its hall's board is filled first; other boards fill beyond a floor of one posted job only
   // while the Fellowship has a job under way (then the world's background hooks are not starved, and not ahead of the story).
   const fo=focus(),order=fo&&fo.town?[fo.town,...CITY.filter(c=>c!==fo.town)]:CITY;
-  for(const c of order){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null);
+  for(const c of order){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null&&!h.solo);
     if(fo&&fo.town&&c!==fo.town&&!fo.busy&&posted.length>=K.FLOOR)continue;
     // the Fellowship's hall keeps one job they can take on top of a full board (#325)
     if(fo&&c===fo.town&&!fo.busy&&posted.length>=K.HOOKS&&!ffOpen(c,fo)){boardLever=null;const h=fellowHook(c,fo);if(h){boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}}
     if(posted.length<K.HOOKS){boardLever=null;const h=makeHook(c);boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}
     if(!posted.some(h=>h.zone==null)){const w=pull('withdraw_hook',{hook:posted[0].id},{by:'scripted',reason:'every posted job was tied to one region',log:false});
-      boardLever=null;const h=townHook(c);boardLog(c,h,(gone[c.name]||[]).concat(w.ok?[hookRow(posted[0],'every posted job was tied to one region: oldest taken down')]:[]),[w.entry.detail].concat(boardLever?[boardLever]:[]))}}}
+      boardLever=null;const h=townHook(c);boardLog(c,h,(gone[c.name]||[]).concat(w.ok?[hookRow(posted[0],'every posted job was tied to one region: oldest taken down')]:[]),[w.entry.detail].concat(boardLever?[boardLever]:[]))}}
+  for(const c of order){boardLever=null;const h=soloHook(c,fo);if(h)boardLog(c,h,[],boardLever?[boardLever]:[])}} // a solo-sized job on every board a solo's faction owns (#447)
+// Solo-sized jobs (#447, epic #402): while an agent company of one exists in a faction, each of that faction's boards keeps
+// one posted job sized for a single hero, inside the lowest solo's level band and paid K.SOLO_PAY. Not posted at all with
+// no solo (the default together world and a world without a Fellowship draw no dice here and stay byte-identical). The
+// Fellowship's hall keeps its own ff job. Returns the hook or null.
+const soloHeroes=fac=>(S.companies||[]).filter(C=>isSolo(C)&&!C.slots&&C.fac===fac).map(C=>S.agents.find(a=>a.id===C.ids[0])).filter(a=>a&&a.player&&a.state!=='dead'&&a.lvl>=K.MIN_LVL);
+function soloHook(c,fo){const hs=soloHeroes(c.fac);if(!hs.length)return null;
+  if(fo&&fo.town&&fo.town.name===c.name)return null;
+  if(S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&h.solo))return null;
+  const low=hs.reduce((m,a)=>a.lvl<m.lvl?a:m,hs[0]),lo=low.lvl;
+  const tpls=Object.keys(D.ADVENTURES).filter(k=>{const T=D.ADVENTURES[k];return k!=='fallen'&&T.size[0]<=1&&T.lvl<=lo});if(!tpls.length)return null;
+  const tpl=pickA(tpls),T=D.ADVENTURES[tpl],g=giverOf(c,T.givers),hz=huntZone(low);
+  const zone=hz!=null&&band(hz)[0]<=lo&&band(hz)[1]>=lo-4?hz:null;
+  return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g,zone,solo:1,data:{payMul:K.SOLO_PAY}},'a job sized for one blade',true)}
 const hookRow=(h,why)=>({id:h.id,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone],for:h.for==null?null:h.for,why});
 // One log entry per town per refresh: what went up on the board, what came down, what stands.
 // levers: the post_hook / withdraw_hook pulls behind this refresh (the Levers filter shows the entry).
