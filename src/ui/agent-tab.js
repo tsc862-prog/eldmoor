@@ -9,6 +9,7 @@ import {S} from '../sim/index.js';
 import {keyed} from './stable.js'; // lists keep their node (and scroll) when a line is added above them
 import {runnerControl} from './runners.js'; // app runners: Start / Stop from the page
 import {reflectView} from '../sim/reflect.js'; // reflection moments (#179)
+import {rulesOf,gambitRec,ruleText,noFlee} from '../sim/gambits.js'; // the hero's own rules (#617), read only
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const STATUS={connected:'connected to the relay',connecting:'connecting to the relay…',offline:'relay not reachable (start npm run relay, then npm run agent)',off:'not connected'};
@@ -28,6 +29,7 @@ export function tabAgent(b,a){
   {const R=reflectView(a);if(a.player&&R){const l=R.last;b.append(el('div','meta','Reflections today: '+R.today+'/'+R.perDay+(l?' · last: '+l.why+' (day '+l.day+'), '+l.wrote+' memor'+(l.wrote===1?'y':'ies')+' written':'')+(R.due?' · due now: '+R.due.why:'')))}}
   if(a.player&&a.memories){const fresh=a.memories.notes.filter(n=>S.gameMin-(n.gm??-1e9)<=360).slice(-3);if(fresh.length)b.append(el('div','meta','New memories: '+fresh.map(n=>'#'+n.id+' '+n.title+(n.rf?' (reflection)':'')).join(' · ')))}
   if(a.player&&a.playActAt!=null){const m=Math.max(0,Math.round(S.gameMin-a.playActAt));b.append(el('div','meta','Last agent order: '+(m<60?m+' game min':Math.round(m/60)+' game h')+' ago'+(a.playIdle?' · autopilot is carrying on until the agent acts':'')))}
+  if(a.player)gambitBlock(b,a);
   const adv=a.adv&&S.adventures?S.adventures.find(v=>v.id===a.adv&&v.phase==='active'):null,p=adv&&adv.stage==='choose'&&adv.pick;
   if(p&&!p.chosen){const d=el('div','meta adv');d.append('Choice waiting: '+p.frame+' — a) '+p.opts.a+' · b) '+p.opts.b+' ('+Math.max(0,Math.round(p.until-S.gameMin))+' min left)');b.append(d)}
   const narr=(a.playNarr||[]).slice(0,5);
@@ -40,3 +42,12 @@ export function tabAgent(b,a){
   b.append(el('div','dm','Journal'));
   if(!j.length)b.append(el('div','dm','No entries yet.'));
   else for(const e of j){const d=el('p','bio');d.append(el('span','dm',stampOf(e)+' · '),e.text);b.append(d)}}
+
+// Gambits (#617): the hero's ordered rules, the one that fired last highlighted, and the last edits. View only: the agent
+// edits them through its tools; the owner's lever stays the persona pins.
+function gambitBlock(b,a){const L=rulesOf(a),g=gambitRec(a),last=g&&g.last;
+  const head=el('div','dm','Gambits'+(a.gambits?' (own list)':' (class preset)'));b.append(head);
+  if(last){const r=L.find(x=>x.id===last.id);b.append(el('div','meta','Fired by gambit: '+(r?ruleText(r):last.when+' -> '+last.then)+' · '+Math.max(0,Math.round(S.gameMin-last.at))+' game min ago'))}
+  if(noFlee(a))b.append(el('div','meta warn','No flee rule: nothing breaks this hero off a losing fight.'));
+  const ol=el('ol','log gambits');for(const r of L){const li=el('li',(r.on===false?'dm':'')+(last&&last.id===r.id?' gd':''),'#'+r.id+' '+ruleText(r)+(r.on===false?' (off)':''));ol.append(li)}b.append(ol);
+  const H=(a.gambitHist||[]).slice(-3).reverse();if(H.length)b.append(el('div','meta','Edits: '+H.map(h=>'day '+h.d+' '+h.text+(h.safety?' [safety]':'')+(h.why?' ('+h.why+')':'')).join(' · ')))}

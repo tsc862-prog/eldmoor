@@ -67,7 +67,7 @@ export function createMinimap(canvas,cam,onCenter){
     for(const L of LANDMARKS){if(L.kind==='crypt'&&L.mouth)edot((L.mouth.x0+L.mouth.x1+1)/2,(L.mouth.y0+L.mouth.y1+1)/2,big,TEXT.crypt);
       else if(L.kind==='lair'){ctx.strokeStyle=S.boss.alive?BOSS_COL:TEXT.dead;ctx.lineWidth=Math.max(1,Math.round(k/2));ctx.beginPath();ctx.arc(L.x*k,L.y*k,(L.r||5)*k,0,7);ctx.stroke()}}
     // while the dungeon view is open: a pulsing gold bracket round the crypt whose inside is on screen (#85)
-    const ds=dungeonSite(),dm=ds&&ds.mouth;
+    const ds=dungeonSite(),dm=ds&&(ds.mouth||(ds.kind==='lair'?{x0:ds.x-.5,x1:ds.x-.5,y0:ds.y-.5,y1:ds.y-.5}:null)); // a lair (the raid arena): the bracket round its centre
     if(dm){const cx=(dm.x0+dm.x1+1)/2*k,cy=(dm.y0+dm.y1+1)/2*k,r=Math.round(big*1.7+1.5*Math.sin(performance.now()/260)),l=Math.max(2,r>>1);
       for(const col of [MARK.edge,SEL_COL]){ctx.fillStyle=col;const o=col===SEL_COL?0:1;
         for(const [sx,sy] of [[-1,-1],[1,-1],[-1,1],[1,1]]){const x=Math.round(cx+sx*r),y=Math.round(cy+sy*r);
