@@ -11,17 +11,17 @@
 //              real time), returned by scene_act as waited_s and logged per turn (sceneS) for the latency report.
 //   waits note Every tool result of a member whose own scene is open (other than scene_act) carries a short line saying
 //              so, so a turn already in flight when the scene opened learns of it at its next call.
-import {S} from './state.js';
+import {sceneOf} from './scenes.js'; // the member's own company's scene (#518: one open scene per company)
 
 export const SW={EXTRA_MS:90000}; // at most this much longer (real ms) for a live member its runner reports as queued
 
 // (in a turns scene a member whose turn has passed cannot answer any more, as sceneAct says: not due)
 const unanswered=(sc,a)=>!!(sc&&a&&sc.ids.includes(a.id)&&!sc.acts[a.id]&&sc.phase!=='outcome'&&sc.phase!=='done'&&!(sc.all&&sc.resolved)&&(sc.all||sc.phase!=='turn'||sc.ids.indexOf(a.id)>=sc.i));
 // The open scene still waits for this member's answer (any phase before the outcome; it may answer early).
-export const sceneDue=a=>unanswered(S.table,a);
+export const sceneDue=a=>unanswered(sceneOf(a),a);
 
 // A runner's report: the member's answer is queued (on) or no longer (off). -> the pace answer.
-export function markQueued(a,on){const sc=S.table;
+export function markQueued(a,on){const sc=sceneOf(a);
   if(!a||!a.player)return {ok:false,error:'not agent-played'};
   if(!on){if(sc&&sc.q)sc.q=sc.q.filter(id=>id!==a.id);return {ok:true,queued:false}}
   if(!unanswered(sc,a))return {ok:true,queued:false,why:'no scene waits for you'};
@@ -35,6 +35,6 @@ export function missed(sc,a){if(!sc||!a)return;const L=sc.miss||(sc.miss=[]);if(
 export function waitedS(sc,a){if(!sc||!a)return 0;const t=sc.all?(sc.w&&sc.w[a.id]?sc.w[a.id].t:0):sc.phase==='turn'&&sc.ids[sc.i]===a.id?sc.t:0;
   return Math.round((Number(t)||0)*10)/10}
 // The line a member's tool results carry while its own scene waits, or null.
-export function waitsNote(a,options){if(!sceneDue(a))return null;const sc=S.table;
+export function waitsNote(a,options){if(!sceneDue(a))return null;const sc=sceneOf(a);
   const keys=(options||[]).map(o=>String(o).split(' = ')[0]).filter(Boolean);
   return 'A Table scene waits on you ('+sc.title+'): answer with scene_act now'+(keys.length?' (options: '+keys.join(', ')+')':'')+'; the party is held until you do.'}

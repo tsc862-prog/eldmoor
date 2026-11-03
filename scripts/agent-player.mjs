@@ -4,7 +4,7 @@
 //
 //   1. npm run relay   (+ npm run dev, open the game, select heroes, press "Agent" on each)
 //      or: npm run play-headless -- --agents 2   (a Node world, no browser; port 8789)
-//   2. npm run agent -- --hero <name|id> [--url http://127.0.0.1:8787] [--max-turns 20] [--budget 1.00] [--new]
+//   2. npm run agent -- --hero <name|id> [--url http://127.0.0.1:8787] [--budget 1.00] [--max-turns N] [--new]
 //
 // Without --hero the runner lists the agent-played heroes and takes the first living one that has
 // no live runner (or says none is free). The runner claims its hero at the relay (POST
@@ -26,7 +26,7 @@
 // SDK's auto-compaction; boundaries are printed).
 //
 // Options: --hero NAME|ID, --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N
-// (default 20 for Claude and OpenAI; a local Ollama mind runs until stopped unless given), --heartbeat MIN,
+// (optional: any mind runs until stopped, a paid one until its --budget is spent; #563), --heartbeat MIN,
 // --min-gap S, --max-fails N (or AGENT_HEARTBEAT, AGENT_MIN_GAP, AGENT_MAX_FAILS), --budget USD (default 1.00, total for this run), --tool-turns N (model round
 // trips per turn, default 12), --model (or AGENT_MODEL; default claude-sonnet-5-5), --effort (or
 // AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic', 'ollama' or 'openai'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's

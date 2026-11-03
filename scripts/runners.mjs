@@ -32,8 +32,8 @@
 // Safety: off unless enabled (--runners / RELAY_RUNNERS=1); only loopback sockets with a localhost
 // Host; only no Origin (local tools) or the game page's origin; a hero must be one the game names as
 // agent-played (and not already held by a live runner); providers limited to RUNNER_PROVIDERS, model
-// names to MODEL_RE; maxTurns and budget capped per kind (local models: no budget, and no turn cap unless
-// one is asked: a local runner plays until stopped, issue #126; Claude and OpenAI keep the kind's default); at
+// names to MODEL_RE; maxTurns and budget capped per kind (local models: no budget; no runner has a turn cap unless
+// one is asked: every runner plays until stopped, a paid one until its budget in dollars is spent, #126/#563); at
 // most MAX_RUNNERS at once, and at most CLAUDE_SLOTS concurrent Claude requests across them.
 import {spawn} from 'node:child_process';
 import {mkdirSync, appendFileSync, readFileSync, writeFileSync, renameSync, existsSync} from 'node:fs';
@@ -69,18 +69,19 @@ export const APP_CLAUDE_MODEL = 'claude-haiku-5-5';
 export const MAX_RUNNERS = SEATS, STOP_GRACE_MS = 6000, KEEP_LINES = 12, MAX_BODY = 4096, KEEP_DONE = 20, TPM_WINDOW = 10 * 60000;
 export const MODEL_RE = /^[A-Za-z0-9][\w.:\/+-]{0,99}$/; // the relay's (providers/index.mjs), kept here so this module has no SDK imports
 export const HOW = 'Runners are off. Start the relay with runners on: npm run relay -- --runners (or set RELAY_RUNNERS=1, or use start-eldmoor.cmd).';
-// Kinds of runner. defaults: what the terminal runner uses; caps: the most a request may ask.
+// Kinds of runner. defaults: what the terminal runner uses; caps: the most a request may ask. No turn cap by default
+// (owner, #563): a paid runner plays until stopped or its budget in dollars is spent; maxTurns stays optional.
 // heroes(req, heroes): the agent-played heroes this runner plays, from the game's list.
 export const RUNNER_KINDS = {
   hero: {script: 'scripts/agent-player.mjs', label: 'hero runner', needsHero: true,
-    defaults: {maxTurns: 20, budget: 1}, caps: {maxTurns: 200, budget: 5},
+    defaults: {maxTurns: null, budget: 1}, caps: {maxTurns: 200, budget: 5},
     key: r => 'hero:' + r.hero, args: r => ['--hero', String(r.hero)], heroes: (r) => [r.hero]},
   fellowship: {script: 'scripts/fellowship.mjs', label: 'Fellowship runner', needsHero: false,
-    defaults: {maxTurns: 6, budget: 2}, caps: {maxTurns: 100, budget: 10},
+    defaults: {maxTurns: null, budget: 2}, caps: {maxTurns: 100, budget: 10},
     key: () => 'fellowship', args: () => [], heroes: (r, hs) => hs.filter(h => h.fellow && h.alive).map(h => h.id)},
   // The DM agent (#66): one at most, no hero; it claims the DM seat itself. Installed once scripts/dm-agent.mjs exists.
   dm: {script: 'scripts/dm-agent.mjs', label: 'DM agent', needsHero: false, noHeroes: true, missing: 'The DM agent is not installed yet (scripts/dm-agent.mjs comes with the DM agent PR).',
-    defaults: {maxTurns: 12, budget: 1}, caps: {maxTurns: 200, budget: 5},
+    defaults: {maxTurns: null, budget: 1}, caps: {maxTurns: 200, budget: 5},
     key: () => 'dm', args: () => [], heroes: () => [], session: 'dm', seat: 'dm'}, // seat: the claim key it holds at the relay (DM_KEY in relay-mcp.mjs)
 };
 export const kindInstalled = K => existsSync(join(ROOT, K.script));
@@ -104,7 +105,7 @@ export function checkStart(b, heroes, {running = [], max = MAX_RUNNERS} = {}) {
   const mt = num(b.maxTurns), bu = num(b.budget);
   if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
   if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};
-  req.maxTurns = mt; // null: the runner's own default (Claude/OpenAI: the kind's default; a local mind: until stopped)
+  req.maxTurns = mt; // null: until stopped (a paid mind until its budget is spent, #563)
   req.budget = local ? null : bu ?? K.defaults.budget; // a local model costs nothing: turns are its only cap
   const known = (heroes || []);
   if (K.needsHero) {
@@ -182,15 +183,27 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (!held.length) return 'starting';
     return links.includes('connected') ? 'live' : 'waiting';
   }
+  // Members a multi-hero runner no longer plays (#563): it held them (a claim under its host:pid) and let go, e.g. a
+  // Fellowship member that finished ("[Name] done (reason)") while the others play on. They leave `heroes`, so the page
+  // never shows a released member as played by the runner while the relay says it has none; `left` says why.
+  const mine = (r, id) => {const h = play.holderOf ? play.holderOf(id) : null, p = `${host}:${r.pid}`; return !!h && (h === p || h.startsWith(p + ':'))};
+  function leftOf(r, ids) {
+    if (r.kind === 'hero' || r.done || RUNNER_KINDS[r.kind].noHeroes) return [];
+    const held = r.held || (r.held = new Set()), out = [], byId = new Map(heroes().map(h => [h.id, h]));
+    for (const id of ids) {if (mine(r, id)) {held.add(id); continue}
+      const name = (byId.get(id) || {}).name, why = name && r.memberDone ? r.memberDone[name] : null;
+      if (held.has(id) || why) out.push({id, name: name || null, why: why || 'let go of it'})}
+    return out}
   function view(r) {
-    const ids = r.kind === 'hero' ? [r.hero] : r.done ? r.heroes || [] : RUNNER_KINDS[r.kind].heroes(r, heroes());
+    let ids = r.kind === 'hero' ? [r.hero] : r.done ? r.heroes || [] : RUNNER_KINDS[r.kind].heroes(r, heroes());
+    const left = leftOf(r, ids); if (left.length) ids = ids.filter(id => !left.some(x => x.id === id));
     if (!r.done) r.heroes = ids;
     const seat = RUNNER_KINDS[r.kind].seat, mind = seat ? play.runnerOf(seat) : ids.map(id => play.runnerOf(id)).find(Boolean);
-    return {key: r.key, kind: r.kind, hero: r.hero ?? null, heroes: ids, name: r.name, state: stateOf(r), pid: r.pid,
+    return {key: r.key, kind: r.kind, hero: r.hero ?? null, heroes: ids, ...(left.length ? {left} : {}), name: r.name, state: stateOf(r), pid: r.pid,
       startedAt: new Date(r.started).toISOString(), uptime: Math.round(((r.ended || now()) - r.started) / 1000),
       turns: r.turns, cost: Math.round(r.cost * 10000) / 10000, provider: (mind && mind.provider) || r.provider || null, model: (mind && mind.model) || r.model || null,
       capTurns: r.capTurns ?? null, capBudget: r.capBudget ?? null, stopWhy: r.stopWhy || null,
-      maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' : r.local ? 'until stopped' : 'up to ' + RUNNER_KINDS[r.kind].defaults.maxTurns + ' turns' + (r.kind === 'fellowship' ? ' each' : ''),
+      maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' + (r.kind === 'fellowship' ? ' each' : '') : 'until stopped',
       // issue #221: the context size every local call asks (children inherit OLLAMA_NUM_CTX), and the runner's warning when Ollama holds the model at another
       ...(((mind && mind.provider) || r.provider) === 'ollama' ? {numCtx: numCtxFrom(env), ctxWarn: (r.lines.filter(l => /runners ask \d+, so it reloads/.test(l)).pop() || '').replace(/^.*?note: /, '') || null} : {}),
       ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
@@ -229,6 +242,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
         write(line); r.lines.push(line.slice(0, 300)); if (r.lines.length > KEEP_LINES) r.lines.shift();
         if (/\[turn \d+/.test(line)) {r.turns++; (r.turnTimes || (r.turnTimes = [])).push(now()); if (r.turnTimes.length > 200) r.turnTimes.shift()}
         const pc = line.match(/\[pace\] (.*)$/); if (pc) r.pace = pc[1].slice(0, 160);
+        const md = line.match(/^(?:\[[\d:]+\] )?\[([^\]]{1,40})\] done \(([^)]{1,80})\)/); if (md) (r.memberDone || (r.memberDone = {}))[md[1]] = md[2]; // a Fellowship member finished (#563)
         const c = line.match(/\| run \$(\d+\.\d+)/); if (c) {const v = Number(c[1]); if (v > r.cost) session.spent += v - r.cost; r.cost = v}
         if (err || /failed|error|not ready|refused|No ANTHROPIC|is not|cannot|could not/i.test(line)) r.lastErr = line.slice(0, 300);
       }};
@@ -254,7 +268,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (done.length > KEEP_DONE) table.delete(done[0].key);
     }
     table.delete(req.key); table.set(req.key, r);
-    log(`[runners] started ${req.kind} runner for ${req.name} (pid ${r.pid}): ${req.provider || 'saved provider'}${req.model ? ' ' + req.model : ''}, ${req.maxTurns != null ? req.maxTurns + ' turns' : req.local ? 'until stopped' : 'default turns'}${req.budget != null ? ', $' + req.budget.toFixed(2) : ''}`);
+    log(`[runners] started ${req.kind} runner for ${req.name} (pid ${r.pid}): ${req.provider || 'saved provider'}${req.model ? ' ' + req.model : ''}, ${req.maxTurns != null ? req.maxTurns + ' turns' : 'until stopped'}${req.budget != null ? ', $' + req.budget.toFixed(2) : ''}`);
     saveActive();
     return {runner: view(r)};
   }
@@ -277,7 +291,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (b.key != null) {const r = table.get(String(b.key)); if (!r || r.done) return {error: 'no such live runner', code: 404};
       const K = RUNNER_KINDS[r.kind], mt = num(b.maxTurns), bu = num(b.budget); let later = false;
       if ('maxTurns' in b) {if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
-        const own = r.maxTurns ?? (r.local ? Infinity : K.defaults.maxTurns); r.capTurns = mt; if (mt == null ? own !== Infinity : mt > own || r.kind === 'fellowship') later = true}
+        const own = r.maxTurns ?? Infinity; r.capTurns = mt; if (mt == null ? own !== Infinity : mt > own || r.kind === 'fellowship') later = true}
       if ('budget' in b) {if (!paid(r)) return {error: 'a local runner has no budget', code: 400};
         if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};
         r.capBudget = bu; if (bu == null || bu > r.budget) later = true}

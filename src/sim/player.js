@@ -69,6 +69,7 @@ import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sighting
 import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js';
 import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
 import {sceneAct,tableView} from './table.js';
+import {sceneOf} from './scenes.js'; // the hero's own company's scene (#518)
 import {waitsNote,waitedS} from './scenewait.js'; // a scene that waits on you, said in every tool result; how long it waited (#515)
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
 import {lineRefusal,noteSaid,publicAnswer} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
@@ -1061,7 +1062,7 @@ const T={
     const P=propose(a,k,details,{job:job_id,where:meet_at,hours:meet_in_hours,hero:hero_id,company});
     if(typeof P==='string')throw new Rule(P);return {ok:true,proposal:propText(P),status:P.status,note:P.status==='open'?'The others vote; the leader settles it when all have voted or in '+Math.round(P.until-S.gameMin)+' game minutes.'+(P.absent&&P.absent.length?' Out of shouting range, so not asked: '+nameList(S.agents.filter(x=>P.absent.includes(x.id)))+'.':''):P.result}},
   vote(a,{proposal_id,vote,reason}){const C=companyOf(a);need(C&&C.ids.length>1,C?'You ride alone: there is nothing to vote on.':'Only members of a company vote.');const P=propById(proposal_id,C);need(P,noProposal(proposal_id,C));
-    const sc=tableView(a);if(sc&&sc.kind==='decision'&&!sc.acted&&S.table&&S.table.ctx.prop===P.id){const x=sceneAct(a,vote,reason);if(typeof x==='string')throw new Rule(x);return {ok:true,voted:x.k,note:'Counted at the table on your turn.'}}
+    const sc=tableView(a);if(sc&&sc.kind==='decision'&&!sc.acted&&sceneOf(a)&&sceneOf(a).ctx.prop===P.id){const x=sceneAct(a,vote,reason);if(typeof x==='string')throw new Rule(x);return {ok:true,voted:x.k,note:'Counted at the table on your turn.'}}
     const x=castVote(a,P.id,vote,reason,'agent');if(typeof x==='string')throw new Rule(x);return {ok:true,voted:String(vote).toLowerCase(),proposal:propText(P)}},
   break_camp(a){need(companyOf(a),'Only a member of a company can break camp.');
     // a member who does not lead calls for it instead (#400): the call goes to the vote, or is a yes on the open one
@@ -1079,7 +1080,7 @@ const T={
   send_courier(a,{to,text}){need(companyOf(a),'Only an agent hero can hire a courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
   scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
-    return {ok:true,chose:x.k,said:x.line||undefined,waited_s:waitedS(S.table,a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
+    return {ok:true,chose:x.k,said:x.line||undefined,waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   // ---- professions and gathering (#257): only the caller's own hero ----
   recipes(a,{profession}={}){let id=null;if(profession!=null&&String(profession).trim()){id=profKey(profession);
       need(id,'There is no profession called "'+clean(profession,40)+'". Leave it out for all of yours, or name one: herbalism, mining, skinning, fishing, alchemy, smithing, leatherworking, cooking, scribing.')}
@@ -1113,7 +1114,7 @@ const T={
     return {ok:true,gathering:n.name+' ('+n.id+')',material:c.mat,distance:d,takes:'about '+Math.round(GATHER.MIN+d*3)+' game minutes',
       odds:c.chance>=.7?'a sure hand':c.chance>=.5?'likely':'a stretch for your skill',note:'wait() while you work; an attack interrupts and you go back to it after the fight.'}},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
-    if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&S.table.ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
+    if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&sceneOf(a).ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
     const m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS}}},
 };

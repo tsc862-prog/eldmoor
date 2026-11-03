@@ -95,6 +95,7 @@ jobs:
       - {name: Hero standing orders, run: npm run orderscheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
+      - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
 
   rate:

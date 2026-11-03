@@ -57,7 +57,7 @@ import {makeItem,equip,weakestSlot,slotLevel} from './gear.js';
 import {addGear,addQuest,hasQuestFor,dropQuest} from './inv.js'; // quest items an adventure carries (sim/inv.js)
 import {jobDone} from './questlog.js'; // several quests per hero (the quest log)
 import {say} from './chat.js';
-import {focus,focuses,focusFor,ffFor} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
+import {focus,focuses,focusFor,ffFor,fairness,FOCUS} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
 import {takeChance,focusOf,focusCount} from './guildfocus.js'; // a Wayfaring guild's leaders take hooks more readily (#6)
 import {d20} from './narrator.js';
 import {bestFor,socialSkill,SKILLS} from './abilities.js';
@@ -73,6 +73,7 @@ export const K={
   SOLO_PAY:.75,         // gold multiplier of a solo-sized job (a party of five is paid per head for the same template; #447)
   HOOKS:3,              // posted hooks per town (personal ones, for one hero's oath or a follow-up, come on top)
   HOOK_LIFE:[1440,2880],// game minutes a hook stays posted (one to two game days)
+  LEAD:120,             // game minutes before FOCUS.STARVE_MIN that a company in the field is served, so no gap passes it (#530)
   REFILL:5,             // real seconds between hook refills
   TAKE:.9,              // chance a departing leader with a fitting hook takes one
   MIN_LVL:4,            // nobody below this level is offered an adventure
@@ -672,7 +673,7 @@ function refill(){const gone={};
   // while the Fellowship has a job under way (then the world's background hooks are not starved, and not ahead of the story).
   // Every company a thread (#450): each company's hall is filled first (the followed company's first) and keeps one job for
   // each company it is the hall of; boards that are nobody's hall hold at the floor while no company has a job under way.
-  const fs=focuses(),halls=[];for(const f of fs)if(f.town&&!halls.includes(f.town))halls.push(f.town);
+  const fs=focuses();serveStarved(fs);const halls=[];for(const f of fs)if(f.town&&!halls.includes(f.town))halls.push(f.town);
   const order=halls.length?[...halls,...CITY.filter(c=>!halls.includes(c))]:CITY,idle=fs.every(f=>!f.busy);
   for(const c of order){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null&&!h.solo);
     const here=fs.filter(f=>f.town===c),fo=here[0]||null;
@@ -686,6 +687,15 @@ function refill(){const gone={};
       boardLever=null;const h=townHook(c);boardLog(c,h,(gone[c.name]||[]).concat(w.ok?[hookRow(posted[0],'every posted job was tied to one region: oldest taken down')]:[]),[w.entry.detail].concat(boardLever?[boardLever]:[]))}}
   const five=fs.find(f=>f.company.slots)||null;
   for(const c of order){boardLever=null;const h=soloHook(c,five);if(h)boardLog(c,h,[],boardLever?[boardLever]:[])}} // a solo-sized job on every board a solo's faction owns (#447)
+// A starved company (#530): with two or more companies, the one in the field longest unserved (fairness(), FOCUS.STARVE_MIN)
+// gets its hall job before the board fills: a fresh one replaces the stale unclaimed hall job (the job is the DM's next act for
+// them, so it stamps their last-served time). One a refill, no dice beyond fellowHook's own; one company never runs this.
+function serveStarved(fs){if(fs.length<2)return;
+  const st=fairness(fs).rows.filter(r=>r.field>0&&r.since>=FOCUS.STARVE_MIN-K.LEAD).sort((p,q)=>q.since-p.since||p.cid-q.cid);
+  for(const r of st){const f=fs.find(x=>x.cid===r.cid),c=f&&f.town;if(!c)continue;
+    const old=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null&&ffFor(h,f));
+    const removed=[],lv=[];for(const o of old){const w=pull('withdraw_hook',{hook:o.id},{by:'scripted',reason:'a stale hall job for a company the DM has not served',log:false});if(w.ok){removed.push(hookRow(o,'stale: replaced for a starved company'));lv.push(w.entry.detail)}}
+    boardLever=null;const h=fellowHook(c,f);if(h){boardLog(c,h,removed,lv.concat(boardLever?[boardLever]:[]));return}}}
 // Solo-sized jobs (#447, epic #402): while an agent company of one exists in a faction, each of that faction's boards keeps
 // one posted job sized for a single hero, inside the lowest solo's level band and paid K.SOLO_PAY. Not posted at all with
 // no solo (the default together world and a world without a Fellowship draw no dice here and stay byte-identical). The

@@ -3,13 +3,13 @@
 //   - the session budget: one cap across every paid runner the relay started (Claude, OpenAI), with the
 //     spend so far live; when it runs out the relay stops the paid runners and refuses new paid starts;
 //   - one row per runner the game can start (the Fellowship runner, each agent-played hero, the DM):
-//     its state, a turn cap ("until stopped" is a local mind's default) and, for paid minds, a budget.
+//     its state and, for paid minds, a budget (no turn cap: every runner plays until stopped, #563).
 //     A limit is used on the next start; on a running runner a lower one applies now, a higher one on
 //     its next start (the row says which).
 // Limits are kept per viewer (localStorage, ui/runners.js). The relay enforces them (scripts/runners.mjs).
 import {S,playerSeats,dmSeatOn} from '../sim/index.js';
 import {mindsOf} from '../sim/fellowship.js';
-import {runnerByKey,allRunners,runnersEnabled,relayUp,kindInfo,pickOf,limitOf,limitNote,setLimit,sessionInfo,setSessionBudget,stateLine,watchRunners,HOW_TEXT,DONE_STATE} from './runners.js';
+import {runnerByKey,allRunners,runnersEnabled,relayUp,kindInfo,pickOf,limitOf,limitNote,setLimit,sessionInfo,setSessionBudget,stateLine,watchRunners,HOW_TEXT,DONE_STATE,BUDGETS} from './runners.js';
 import {patch} from './stable.js';
 
 const $=id=>document.getElementById(id);
@@ -44,13 +44,12 @@ function sessionBox(n){const s=sessionInfo(),box=el('div','agsess');
 function runnerRow(n,x){const r=runnerByKey(x.key),on=r&&!DONE_STATE[r.state],L=limitOf(x.key),K=kindInfo(x.kind),loc=isLocal(x.key);
   const row=el('div','agr');row.setAttribute('data-k',x.key);
   const top=el('div','agrow');top.append(el('span','agname',x.name),el('span','dm runstate r-'+(r?r.state:'none'),stateLine(r,x.key)));row.append(top);
-  const caps=K&&K.caps||{maxTurns:200,budget:5},defs=K&&K.defaults||{maxTurns:20,budget:1},each=x.kind==='fellowship'?' each':'';
+  const caps=K&&K.caps||{budget:5},defs=K&&K.defaults||{budget:1};
   const lim=el('div','agrow');
-  const tOpts=[['',loc?'until stopped':'default ('+defs.maxTurns+each+')']].concat([5,10,20,50,100,200].filter(v=>v<=caps.maxTurns).map(v=>[String(v),v+' turns'+each]));
-  lim.append(el('span','dm','Turns'),sel(tOpts,L.turns,{aglim:x.key,agf:'turns'},'How many turns the runner plays before it stops. It also stops when its hero dies or after 5 empty turns.'));
-  if(loc)lim.append(el('span','dm','local · free'));
-  else{const bOpts=[['','default ('+usd(defs.budget)+')']].concat([.25,.5,1,2,5,10].filter(v=>v<=caps.budget).map(v=>[String(v),usd(v)]));
-    lim.append(el('span','dm','Budget'),sel(bOpts,L.budget,{aglim:x.key,agf:'budget'},'The most this runner may spend before it stops (paid models only).'))}
+  // owner, #563: no turn cap; a runner plays until stopped, a paid one until its budget is spent (--max-turns stays for terminals and checks)
+  if(loc)lim.append(el('span','dm','local · free · until stopped'));
+  else{const bOpts=[['','default ('+usd(defs.budget)+')']].concat(BUDGETS.filter(v=>v<=caps.budget).map(v=>[String(v),usd(v)]));
+    lim.append(el('span','dm','Budget'),sel(bOpts,L.budget,{aglim:x.key,agf:'budget'},'The most this runner may spend; it plays until stopped or this is spent (paid models only). It also stops when its hero dies or after 5 empty turns.'))}
   row.append(lim);
   const note=limitNote(x.key);if(note)row.append(el('div','dm agnote',note));
   else if(on)row.append(el('div','dm agnote','Running: a lower limit applies now, a higher one on its next start.'));
@@ -74,7 +73,7 @@ export const agentsOpen=()=>isOpen;
 
 export function initAgents(){btn=$('agentsBtn');pop=$('agentsPop');if(!btn||!pop)return;
   const hd=el('div','aghead');const cl=el('button','mini','Close');cl.dataset.agclose='1';hd.append(el('span','fname','Agents'),cl);
-  body=el('div','agbody');pop.append(hd,body,el('div','dm agfoot','Limits are kept in this browser and sent to the relay. Turn caps and budgets apply to the next start; on a running runner a lower one applies now.'));
+  body=el('div','agbody');pop.append(hd,body,el('div','dm agfoot','Budgets are kept in this browser and sent to the relay. They apply to the next start; on a running runner a lower one applies now.'));
   btn.addEventListener('click',()=>isOpen?closeAgents():openAgents());
   pop.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-agclose]')){closeAgents();btn.focus()}});
   pop.addEventListener('change',e=>{const s=e.target;if(!s||!s.dataset)return;

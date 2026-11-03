@@ -19,7 +19,7 @@
 // "THE DM PREPARES THE TABLE" with the time and calls and keeps Start anyway (it ends the prep). Then the opening scene
 // opens (sim/arrival.js) and the clock runs. A closed DM seat, or a DM seat waived without a ready runner: no prep.
 import {S,dmSeatOn,beginPrep,endPrep,prepTick,prepView,prepActive,openingDue,setPrepHost} from '../sim/index.js';
-import {runnerFor,runnerByKey,relayUp,runnersEnabled,ollamaBusy,reasonOf,watchRunners,DONE_STATE} from './runners.js';
+import {runnerFor,runnerByKey,relayUp,runnersEnabled,ollamaBusy,reasonOf,watchRunners,DONE_STATE,leftOf} from './runners.js';
 import {agentLink,dmLink,bridgeStatus,agentReady,dmReady} from './player-bridge.js';
 import {ctl} from './controls.js';
 
@@ -57,6 +57,7 @@ export function whyMissing(s){
     return 'claimed, waiting for its first model answer (an older runner never reports one: Start anyway)'}
   if(!probe){const bs=bridgeStatus();if(bs==='connecting')return 'connecting to the relay…';if(bs!=='connected'||relayUp()===false)return 'the relay is offline (npm run relay -- --runners)'}
   const r=s.kind==='dm'?runnerByKey('dm'):runnerFor(s.a);
+  const lf=s.a&&leftOf(r,s.a);if(lf&&!DONE_STATE[r.state])return 'the Fellowship runner is done with '+s.name+' ('+lf.why+'): Restart it to play on'; // #563
   if(r&&r.state==='crashed')return reasonOf(r,s.a||null);
   if(r&&r.state==='starting')return 'starting…';
   if(r&&r.state==='stopping')return 'stopping…';
@@ -72,7 +73,7 @@ export function checkRunGate(now=Date.now()){
   if(L.length&&!probe)watchRunners();
   let nReady=0;
   for(const s of L){if(LIVE[s.link])lastLive[s.key]=now;
-    const r=LIVE[s.link]||probe?null:s.kind==='dm'?runnerByKey('dm'):runnerFor(s.a),gone=!!(r&&DONE_STATE[r.state]&&r.state!=='starting'); // a runner the relay reports stopped or crashed closes at once, no grace
+    const r=LIVE[s.link]||probe?null:s.kind==='dm'?runnerByKey('dm'):runnerFor(s.a),gone=!!(r&&(DONE_STATE[r.state]&&r.state!=='starting'||s.a&&leftOf(r,s.a))); // a runner the relay reports stopped or crashed, or one that let this member go (#563), closes at once, no grace
     const live=LIVE[s.link]||(!gone&&lastLive[s.key]!=null&&now-lastLive[s.key]<GRACE);s.live=!!live;
     if(LIVE[s.link])lastRd[s.key]=s.ready||null;else if(live&&!s.ready)s.ready=lastRd[s.key]||null; // a short blip keeps the last readiness too
     const w=anyway.get(s.key);if(w==='missing'&&live)anyway.delete(s.key);if(w==='live'&&!live)anyway.delete(s.key); // a new runner warms up again
@@ -109,7 +110,8 @@ function paint(){const box=$('rgate');if(!box)return;
   box.append(el('div','rl dm',paused?'Paused. It will stay paused once every mind is ready.':'The world runs by itself once every mind has connected and answered once.'));
   for(const m of missing){const row=el('div','rl rgrow');row.append(el('span','rgn',m.name),el('span','rgw',': '+whyMissing(m)));
     const r=m.kind==='dm'?runnerByKey('dm'):runnerFor(m.a),running=r&&!DONE_STATE[r.state]&&r.state!=='stopping';
-    const b=el('button','mini runbtn',running?'Restart':'Start');b.dataset.runact=running?'restart':'start';b.dataset.runkind=m.kind;if(m.hero!=null)b.dataset.runhero=m.hero;
+    const kind=running&&r.kind!=='hero'?r.kind:m.kind; // a member the Fellowship runner plays (or let go): restart that runner (#563)
+    const b=el('button','mini runbtn',running?'Restart':'Start');b.dataset.runact=running?'restart':'start';b.dataset.runkind=kind;if(m.hero!=null&&kind==='hero')b.dataset.runhero=m.hero;
     b.title=running?'Stop this runner and start it again':'Start the runner from the relay';row.append(b);box.append(row)}
   const all=el('button','mini runbtn','Start all');all.dataset.gateall='1';all.title='Start the Fellowship runner (all five) and the DM runner for every seat that is missing';
   const go=el('button','mini runbtn','Start anyway');go.dataset.gateanyway='1';go.title='Run the world now with the minds as they are (members without a ready runner act by reflex until theirs is ready)';

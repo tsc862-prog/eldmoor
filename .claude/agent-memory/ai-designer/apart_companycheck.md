@@ -30,4 +30,7 @@ Bugs it found (fixed minimally, PR for #459):
   it. Now `heirReady`: the heir's opening waits until `agentLive(heir)` or `ARRIVE.HEIR_WAIT` (60 game min). Hosted
   worlds only, so seeded hashes unchanged. Why: the heir's agent should play its own session zero.
 
-Open: #518 engaged hold (PR #557) has a printed `todo` line in section G; add its case once it merges.
+Since #518 (S.tables) several scenes are open at once: read a company's scene with `T.sceneFor(C)` / a hero's with
+`sceneOf(a)`, never `S.table`; a merge opens both companies' decision scenes at once (no tableQ). Section G covers the
+engaged hold: two unfollowed rescues open together, members and foes `held`, each resolves on its own. A pair's rescue
+seats both members, so answer for all of them or the table waits for the live silent one.

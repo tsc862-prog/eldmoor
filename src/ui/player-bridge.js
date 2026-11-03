@@ -15,11 +15,12 @@ import {noteDmCall} from './dmturns.js'; // per-turn cards of the DM tab (#181)
 import {mindsOf} from '../sim/fellowship.js';
 import {WORLD_ID} from '../world/map.js';
 import {mirrorDirty} from '../sim/notebook.js';
-import {sceneDue} from '../sim/scenewait.js'; // health: a member's scene still waits for its answer (#515)
+import {sceneDue} from '../sim/scenewait.js';
+import {sceneOf} from '../sim/scenes.js'; // health: a member's scene still waits for its answer (#515)
 import {sleep as wsleep,every} from './ticker.js';
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
-let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null,readies={};
+let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null,readies={},linksIn=false; // linksIn: the relay's first links since connecting (#563)
 // The bridge is wanted while a hero is agent-played or the DM seat is open (issue #66), or a Fellowship plays with
 // relay minds (its behavior digests go to the relay's logs, issue #129).
 const wanted=()=>!!playerHero()||dmSeatOn()||(!!S.fellowship&&mindsOf(S.fellowship)!=='off');
@@ -28,7 +29,7 @@ export const bridgeStatus=()=>status; // off | connecting | connected | offline
 // One hero's agent link: 'connected' (its runner is calling tools), 'waiting' (a runner holds
 // it but is quiet), 'none' (no runner yet), or the bridge's own state when the page is not
 // connected to the relay ('connecting', 'offline', 'off').
-export const agentLink=a=>!a||!a.player?'off':status!=='connected'?status:links[a.id]||'none';
+export const agentLink=a=>!a||!a.player?'off':status!=='connected'?status:!linksIn?'connecting':links[a.id]||'none'; // before the first links message: connecting, never a false 'no runner'
 // The mind behind a hero's runner, as its claim reports it (issue #97): {provider, model} or null.
 export const agentRunner=a=>a&&a.player&&status==='connected'&&runners[a.id]||null;
 // The start gate (issue #222): a seat's warm-up as the relay reports it ({state:'warming'|'ready'|'failed', model?, ms?, at, error?}), or null (claimed, not yet warming).
@@ -43,7 +44,7 @@ setAgentTag(a=>runnerTag(a)); // agent chat lines carry the runner's model in th
 // The DM seat (issue #66): open it and the page answers the DM agent's tools (sim/dmagent.js) over the
 // same WebSocket. dmLink(): 'connected' | 'waiting' | 'none' as for a hero, or the bridge's own state.
 export function dmSeatSet(on){setDmSeat(on);if(on){connect();hello()}else{hello();if(!wanted())disconnect()}}
-export const dmLink=()=>!dmSeatOn()?'off':status!=='connected'?status:dmLinkInfo&&dmLinkInfo.link||'none';
+export const dmLink=()=>!dmSeatOn()?'off':status!=='connected'?status:!linksIn?'connecting':dmLinkInfo&&dmLinkInfo.link||'none';
 export const dmRunnerTag=()=>{const r=dmSeatOn()&&status==='connected'&&dmLinkInfo&&dmLinkInfo.runner;return r?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':''):null};
 export const LINK_TEXT={connected:'agent connected',waiting:'agent waiting (runner idle)',none:'no runner',connecting:'connecting to the relay…',offline:'relay offline',off:'not connected'};
 
@@ -54,22 +55,25 @@ export function agentOn(a){if(!a||a.state==='dead')return false;
 export function agentOff(a){markPlayer(a,false);if(!wanted())disconnect();else hello()}
 
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.succeeds!=null?{succeeds:a.succeeds}:{}),...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!(S.table&&S.table.ids.includes(a.id)),...(sceneDue(a)?{due:true}:{})}:{})})),pv=prepView(),dm={seat:dmSeatOn(),...(pv.state!=='idle'?{prep:{state:pv.state,kind:pv.kind,calls:pv.calls,max_calls:pv.max_calls,...(pv.why?{why:pv.why}:{})}}:{})},k=JSON.stringify([hs,dm,WORLD_ID,S.worldId]); // succeeds: a recruit's fallen predecessor (#452); prep: the DM's prep (#437)
+function hello(){const hs=playerSeats().map(a=>({id:a.id,name:a.name,alive:a.state!=='dead',...(a.succeeds!=null?{succeeds:a.succeeds}:{}),...(a.fellow?{fellow:true,role:a.fellowRole||null,lead:!!(a.party&&a.party.fellow&&a.party.leader===a),table:!!sceneOf(a),...(sceneDue(a)?{due:true}:{})}:{})})),pv=prepView(),dm={seat:dmSeatOn(),...(pv.state!=='idle'?{prep:{state:pv.state,kind:pv.kind,calls:pv.calls,max_calls:pv.max_calls,...(pv.why?{why:pv.why}:{})}}:{})},k=JSON.stringify([hs,dm,WORLD_ID,S.worldId]); // succeeds: a recruit's fallen predecessor (#452); prep: the DM's prep (#437)
   if(k===lastHello&&status==='connected')return;lastHello=k;if(S.worldId!==sentWid){sentWid=S.worldId;sentMem.clear()}
   send({type:'hello',heroes:hs,dm,world:WORLD_ID,worldId:S.worldId||null,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
 const seat=id=>id!=null?playerSeat(id):playerSeat();
 function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecting';
   try{ws=new WebSocket(bridgeUrl())}catch(e){ws=null;status='offline';later();return}
-  ws.onopen=()=>{status='connected';lastHello='';links={};runners={};readies={};sentMem.clear();hello()};
+  ws.onopen=()=>{status='connected';lastHello='';links={};runners={};readies={};linksIn=false;sentMem.clear();hello()};
   ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
     if(m.type==='call'){const a=seat(m.hero);let r;
       try{r=a?await hostCall(a.id,String(m.tool),m.args||{},{nap:wsleep}):{ok:false,error:m.hero!=null?'Hero #'+m.hero+' is not agent-played in the game.':'No agent-played hero in the game.'}}catch(err){r={ok:false,error:String(err&&err.message||err)}}
       send({type:'result',id:m.id,result:r})}
     else if(m.type==='narrate'){const a=seat(m.hero);if(a)playerNarrate(a.id,String(m.text||''))}
     else if(m.type==='dmcall'){let r;try{r=dmAct(String(m.tool),m.args||{})}catch(err){r={ok:false,error:String(err&&err.message||err)}}try{noteDmCall(String(m.tool),m.args||{},r)}catch(err){}send({type:'result',id:m.id,result:r})}
-    else if(m.type==='links'&&m.links&&typeof m.links==='object'){links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{};readies=m.ready&&typeof m.ready==='object'?m.ready:{};dmLinkInfo=m.dm&&typeof m.dm==='object'?m.dm:null}};
+    else if(m.type==='links')takeLinks(m)};
   ws.onclose=()=>{ws=null;lastHello='';links={};runners={};readies={};dmLinkInfo=null;status=wanted()?'offline':'off';if(wanted())later()};
   ws.onerror=()=>{}}
+function takeLinks(m){if(!m.links||typeof m.links!=='object')return;links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{};readies=m.ready&&typeof m.ready==='object'?m.ready:{};dmLinkInfo=m.dm&&typeof m.dm==='object'?m.dm:null;linksIn=true}
+// Test seam (scripts/labelcheck.mjs, #563): feed the relay's links message as if the socket were connected; null: back to off.
+export function bridgeFeed(m){if(m==null){status='off';linksIn=false;links={};runners={};readies={};dmLinkInfo=null;return}status='connected';takeLinks(m)}
 // the reconnect timer runs on the worker clock so a hidden tab reconnects in seconds, not a minute
 function later(){if(timer)return;timer=1;wsleep(4000).then(()=>{timer=null;if(wanted())connect()})}
 function disconnect(){if(ws){const w=ws;ws=null;try{w.close()}catch(e){}}status='off';lastHello='';links={};runners={};readies={};dmLinkInfo=null}

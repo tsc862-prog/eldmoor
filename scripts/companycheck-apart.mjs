@@ -12,7 +12,8 @@
 //      reserves the company's faction
 //   F  the DM per company (#450/#451): one focus per company with the followed one first, a hall job on each company's
 //      board, companies_needs, fairness rows, a staged pull for one company
-//   G  scenes (#440, #518): two companies due at once open in company-id order, a solo camp and its ambush scene, a
+//   G  scenes (#440, #518): two companies due at once each open their own scene, members and foes held (the engaged
+//      hold), each resolving on its own; a solo camp and its ambush scene, a
 //      death refilled by an arrival scene with the letter, a solo's heir at home with its opening
 //   H  save mid-everything and restore: an offer, a follow, a notice and a sighting, a courier on the road, a queued
 //      arrival and an open scene all stand
@@ -25,7 +26,7 @@ const SIM = await import('../src/sim/index.js');
 const {init, step, S, snapshot, restore, markPlayer, playerAct, applyPreset, defaultSetup, cleanSetup, validateSetup, planRunners, setRunnerLinks, setDmSeat, dmAct} = SIM;
 const CO = await import('../src/sim/company.js'), OF = await import('../src/sim/offers.js'), CN = await import('../src/sim/council.js');
 const T = await import('../src/sim/table.js'), SG = await import('../src/sim/sightings.js'), FW = await import('../src/sim/follow.js');
-const FO = await import('../src/sim/dmfocus.js'), AR = await import('../src/sim/arrival.js'), CP = await import('../src/sim/camp.js'), HE = await import('../src/sim/heroes.js');
+const SC = await import('../src/sim/scenes.js'), FO = await import('../src/sim/dmfocus.js'), AR = await import('../src/sim/arrival.js'), CP = await import('../src/sim/camp.js'), HE = await import('../src/sim/heroes.js');
 const {homeOf} = await import('../src/data/races.js');
 const {CITY, CRYPT, dist} = await import('../src/world/map.js');
 const {rebuild} = await import('../src/sim/spatial.js');
@@ -36,6 +37,11 @@ const act = (a, tool, args) => {a.playRate = []; return playerAct(a.id, tool, ar
 const living = a => !!a && a.state !== 'dead';
 const byId = id => S.agents.find(b => b.id === id);
 const section = t => console.log('\n' + t);
+const sf = C => T.sceneFor(C); // a company's own open scene (#518: several may be open at once)
+// every hero of L answers its own open scene with option k until none of them sits at one
+const playOut = (L, k, line, max = 60 * 60) => {for (let g = 0; g < max; g++) {let any = false;
+  for (const a of L) {const sc = SC.sceneOf(a); if (!sc) continue; any = true; if (sc.phase !== 'frame' && !sc.resolved && !sc.acts[a.id]) act(a, 'scene_act', {option: k, ...(line ? {line} : {})})}
+  if (!any) return; step(1 / 60)}};
 const txt = ps => (ps || []).map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('');
 
 // ---- the setup: two pairs and a solo of the Concord, and a Warband solo at Grimhold (local minds: six seats fit) ----
@@ -128,7 +134,7 @@ section('C. grouping (#442/#443/#444/#500/#516)');
   put(W.solo, sp.x + 1, sp.y + 1);
   r = act(lead1, 'invite', {hero_id: W.solo.id, text: 'Ride with us east, ' + W.solo.name + '.'});
   ok(r.ok && r.offer, 'in range the pair\'s leader invites the solo, aloud');
-  ok(!CN.openProps(W.P1).length && !(S.table && S.table.kind === 'decision'), 'an invite is no vote: the other member is not asked');
+  ok(!CN.openProps(W.P1).length && !sf(W.P1), 'an invite is no vote: the other member is not asked');
   r = act(W.solo, 'accept', {offer_id: r.offer});
   ok(r.ok && CO.companyOf(W.solo) === W.P1 && W.P1.ids.length === 3 && !S.companies.includes(W.SoloC), 'the solo accepts alone (one-sided): a company of three, the solo company gone');
   // merge: a decision scene in each company, the proposer's now, the other's queued; both pass
@@ -138,12 +144,10 @@ section('C. grouping (#442/#443/#444/#500/#516)');
   ok(r.ok, 'the company of three proposes a merge with the pair');
   const PX = W.P1.props.find(P => P.kind === 'merge' && P.status === 'open'), PY = W.P2.props.find(P => P.kind === 'merge' && P.status === 'open');
   ok(PX && PY && PX.pair === PY.id, 'a paired proposal sits in each company');
-  ok(S.table && S.table.kind === 'decision' && S.table.company === W.P1.id, 'the proposer\'s company has its decision scene now');
-  ok(W.P2.tableQ && W.P2.tableQ.kind === 'decision' && W.P2.tableQ.ctx.prop === PY.id, 'the pair\'s decision scene waits in its queue, keyed by its own proposal');
-  const answer = (L, k) => {let g2 = 0; while (g2++ < 60 * 40) {const sc = S.table; if (sc && sc.phase !== 'frame') for (const a of L) if (sc.ids.includes(a.id) && !sc.acts[a.id]) act(a, 'scene_act', {option: k}); if (!S.table || !L.some(a => S.table.ids.includes(a.id))) break; step(1 / 60)}};
+  const sX = sf(W.P1), sY = sf(W.P2);
+  ok(sX && sX.kind === 'decision' && sX.ctx.prop === PX.id && sY && sY.kind === 'decision' && sY.ctx.prop === PY.id && !W.P2.tableQ, 'a decision scene opens in each company at once, each keyed by its own proposal (#518)');
+  const answer = (L, k) => playOut(L, k);
   answer([p1a, p1b, W.solo], 'yes');
-  {let g2 = 0; while (!(S.table && S.table.company === W.P2.id) && g2++ < 60 * 40) step(1 / 60)}
-  ok(S.table && S.table.kind === 'decision' && S.table.company === W.P2.id && S.table.ctx.prop === PY.id, 'when the table frees the pair\'s scene opens');
   answer([p2a, p2b], 'yes'); run(2);
   const M = CO.companyOf(p1a);
   ok(M && CO.companyOf(p2a) === M && M.ids.length === 5 && PX.status === 'passed' && PY.status === 'passed', 'both passed: one company of five (' + (M && M.name) + ')');
@@ -156,7 +160,7 @@ section('C. grouping (#442/#443/#444/#500/#516)');
   ok(r.ok, 'the leader proposes to expel ' + W.solo.name);
   const PE = M.props.find(P => P.kind === 'expel' && P.status === 'open');
   ok(PE && !CN.voters(PE).includes(W.solo), 'the target is no voter');
-  ok(!S.table || !S.table.ids.includes(W.solo.id), 'and has no seat at the decision scene');
+  ok(!SC.sceneOf(W.solo), 'and has no seat at the decision scene');
   r = act(W.solo, 'vote', {proposal_id: PE.id, vote: 'no', reason: 'I paid my share.'});
   ok(!r.ok && /do not vote/.test(r.error), 'the target\'s vote is refused: ' + r.error);
   r = act(W.solo, 'party_say', {text: 'I paid my share, every coin of it.'});
@@ -210,7 +214,7 @@ section('E. crypt and raid draft per company (#441, #449/#538)');
   ok(r.ok && PC, 'a green company\'s crypt proposal is never refused for level');
   ok(PC && /Crypt\. Those who went below were tried blades; you are not\./.test(PC.details), 'the proposal everyone hears carries the warning: ' + (PC && PC.details));
   ok(!W.P2.props || !W.P2.props.some(q => q.kind === 'crypt'), 'the other pair hears nothing of it');
-  {let g2 = 0; while (g2++ < 60 * 40 && PC.status === 'open') {const sc = S.table; if (sc && sc.phase !== 'frame') for (const a of P) if (sc.ids.includes(a.id) && !sc.acts[a.id]) act(a, 'scene_act', {option: 'yes'}); step(1 / 60)}}
+  {let g2 = 0; while (g2++ < 60 * 40 && PC.status === 'open') {const sc = sf(W.P1); if (sc && sc.phase !== 'frame') for (const a of P) if (sc.ids.includes(a.id) && !sc.acts[a.id]) act(a, 'scene_act', {option: 'yes'}); step(1 / 60)}}
   ok(PC.status === 'passed', 'the company votes to go: ' + PC.result);
   const G = CRYPT.group;
   ok(G && G.mem.length === P.length && P.every(a => G.mem.includes(a)) && G.name === W.P1.name, 'the passed call drafts the whole company, whatever its level (' + (G && G.mem.map(a => a.name)) + ')');
@@ -219,7 +223,7 @@ section('E. crypt and raid draft per company (#441, #449/#538)');
   const seen = []; let last = null, went = false;
   for (let f = 0; f < 900 * 60 && (CRYPT.group || !went); f++) {
     step(1 / 60); if (CRYPT.group && CRYPT.group.crawl) went = true;
-    const sc = S.table;
+    const sc = sf(W.P1);
     if (sc && sc.kind === 'crawl' && sc.id !== last) {last = sc.id; seen.push(sc.ids.slice())}
     if (sc && sc.kind === 'crawl' && (sc.phase === 'frame' || sc.phase === 'turn')) for (const id of sc.ids) {const a = byId(id); if (living(a) && !sc.acts[id]) T.sceneAct(a, 'strike', 'test')}
   }
@@ -231,7 +235,7 @@ section('E. crypt and raid draft per company (#441, #449/#538)');
   r = act(CN.leaderOfC(W.P2), 'propose', {kind: 'raid', details: 'We ride on Kragmaw'});
   const PR = W.P2.props.find(q => q.kind === 'raid');
   ok(r.ok && PR && /^We ride on Kragmaw\. Those who went to the lair .*you are not\.$/.test(PR.details), 'a green raid call is warned, not refused: ' + (PR && PR.details));
-  {let g2 = 0; while (g2++ < 60 * 40 && PR.status === 'open') {const sc = S.table; if (sc && sc.phase !== 'frame') for (const a of Q) if (sc.ids.includes(a.id) && !sc.acts[a.id]) act(a, 'scene_act', {option: 'yes'}); step(1 / 60)}}
+  {let g2 = 0; while (g2++ < 60 * 40 && PR.status === 'open') {const sc = sf(W.P2); if (sc && sc.phase !== 'frame') for (const a of Q) if (sc.ids.includes(a.id) && !sc.acts[a.id]) act(a, 'scene_act', {option: 'yes'}); step(1 / 60)}}
   ok(PR.status === 'passed' && CN.raidReserve() === W.P2.fac && Q.every(a => a.raidOk), 'passed: the raid muster is held for the company (faction ' + CN.raidReserve() + ')');
   // the draft never takes a company piecemeal
   const pool = S.agents.filter(a => living(a) && a.fac === 0 && !a.hidden && ['hunt', 'travel', 'town', 'return'].includes(a.state));
@@ -280,7 +284,7 @@ section('F. the DM per company (#450/#451)');
 }
 
 // ---- G. scenes: two due at once, a solo camp and its ambush, an arrival, a solo's heir ----
-section('G. scenes per company (#440/#452/#528; #518 engaged hold pending)');
+section('G. scenes per company (#440/#518/#452/#528)');
 {
   const W = apart(), LINK = {}; setRunnerLinks(x => LINK[x.id] || 'none');
   CRYPT.cd = 1e9; S.raidT = 1e9;
@@ -291,18 +295,26 @@ section('G. scenes per company (#440/#452/#528; #518 engaged hold pending)');
   const fightAt = (a, m, dx) => {put(a, sp.x + dx, sp.y); a.state = 'fight'; a.target = m; m.target = a; m.x = a.x + 1; m.y = a.y; a.hp = Math.round(HE.maxHp(a) * .2); a.eff = {}; a.mcr = {}};
   const close = () => {T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto'};
   const [q1] = CO.members(W.P2);
-  // two companies due in one tick: the lower id opens, the other waits in its own queue
+  // two companies due in one tick, neither of them followed: each opens its own scene at once on the live clock, its
+  // members and foe held (the engaged hold, #518), and each resolves on its own
+  S.followId = W.P1.id;
   const m1 = beast(), m2 = beast(); fightAt(W.solo, m1, 0); fightAt(q1, m2, 4);
-  ok(W.P2.id < W.SoloC.id, 'the pair\'s id (' + W.P2.id + ') is below the solo\'s (' + W.SoloC.id + ')');
   T.tableTick();
-  ok(S.table && S.table.kind === 'rescue' && S.table.company === W.P2.id, 'two rescues due at once: the lower company id opens first');
-  ok(W.SoloC.tableQ && W.SoloC.tableQ.kind === 'rescue', 'the solo\'s rescue waits in its own queue');
-  close(); fightAt(W.solo, m1, 0); T.tableTick();
-  ok(S.table && S.table.company === W.SoloC.id && S.table.ids.join() === String(W.solo.id) && S.table.foeAt != null, 'when the table frees the solo\'s rescue opens, with the foe in its order');
-  {const sc = S.table; let k = 0; while (S.table === sc && k++ < 60 * 30) {if (sc.phase === 'turn' && !sc.acts[W.solo.id]) act(W.solo, 'scene_act', {option: 'strike', line: 'Not today.'}); step(1 / 60)}
-   ok(sc.beats.some(b => b.by === 'foe') && sc.beats.some(b => b.id === W.solo.id && b.by === 'agent'), "the solo's rescue rolls the foe's round too (" + sc.beats.map(b => b.name + '=' + b.k).join(', ') + ')')}
+  const sA = sf(W.P2), sB = sf(W.SoloC);
+  ok(sA && sA.kind === 'rescue' && sB && sB.kind === 'rescue' && sA !== sB && !W.SoloC.tableQ, "two rescues due at once: both companies' scenes open in the same tick");
+  ok(sB.ids.join() === String(W.solo.id) && sB.foeAt != null, "the solo's rescue has its foe in the order");
+  ok(!T.stopsWorld(sA) && !T.stopsWorld(sB), "neither is the followed company's: both play on the live clock");
+  step(1 / 60); const t0 = S.gameMin, at = [W.solo.x, W.solo.y, q1.x, q1.y, m1.x, m1.y, m2.x, m2.y].join(), hp1 = m1.hp;
+  ok([W.solo, q1, m1, m2].every(e => SC.held(e)) && !CO.members(W.P1).some(e => SC.held(e)), "the engaged hold: both scenes' members and foes are held, nobody else");
+  for (let i = 0; i < 30; i++) step(1 / 60);
+  ok(S.gameMin > t0 && [W.solo.x, W.solo.y, q1.x, q1.y, m1.x, m1.y, m2.x, m2.y].join() === at && m1.hp === hp1, 'the world clock runs while the held stand still (no move, no blow)');
+  {let k = 0; while (sf(W.SoloC) === sB && k++ < 60 * 30) {if (sB.phase === 'turn' && !sB.acts[W.solo.id]) act(W.solo, 'scene_act', {option: 'strike', line: 'Not today.'}); step(1 / 60)}}
+  ok(!sf(W.SoloC) && sf(W.P2) === sA, "the solo's scene resolves on its own; the pair's stays open");
+  ok(sB.beats.some(b => b.by === 'foe') && sB.beats.some(b => b.id === W.solo.id && b.by === 'agent'), "the solo's rescue rolled the foe's round too (" + sB.beats.map(b => b.name + '=' + b.k).join(', ') + ')');
+  ok(!SC.held(W.solo) && SC.held(q1), 'released from the hold when its own scene ends, the other still held');
+  playOut(CO.members(W.P2), 'strike');
+  ok(!sf(W.P2) && !SC.held(q1) && sA.beats.some(b => b.id === q1.id), "the pair's scene resolves in its turn");
   close(); for (const a of [W.solo, q1]) {a.state = 'hunt'; a.target = null; a.hp = HE.maxHp(a)} m1.alive = m2.alive = false; m1.gone = m2.gone = true;
-  console.log('  todo the engaged hold of several open scenes (#518) lands with PR #557; add its case here then');
   // a solo camp, and its ambush (the camp's roll forced): the scene is the solo's own
   put(W.solo, sp.x, sp.y); W.solo.hp = Math.round(HE.maxHp(W.solo) * .6);
   let r = act(W.solo, 'rest', {hours: 4});
@@ -311,11 +323,11 @@ section('G. scenes per company (#440/#452/#528; #518 engaged hold pending)');
   ok(r.ok && camp && camp.solo && camp.phase === 'rest' && W.solo.state === 'camp', 'the solo makes camp alone when its agent calls it: ' + (r.error || r.note || 'camped'));
   const P0 = CP.CAMP.AMBUSH_P; CP.CAMP.AMBUSH_P = 1;
   const foesAway = () => {for (const b of S.agents) if (b.kind === 'hero' && b.fac !== W.solo.fac && living(b) && dist(b, W.solo) < 24) {b.x = W.solo.x + (b.x < W.solo.x ? -30 : 30); b.target = null; if (b.state === 'duel') b.state = 'hunt'}}; // a creature comes, not a Warband blade
-  {let k = 0; while (k++ < 60 * 60 && !(S.table && S.table.kind === 'ambush')) {foesAway(); step(1 / 60)}}
+  {let k = 0; while (k++ < 60 * 60 && !(sf(W.SoloC) && sf(W.SoloC).kind === 'ambush')) {foesAway(); step(1 / 60)}}
   CP.CAMP.AMBUSH_P = P0;
-  ok(S.table && S.table.kind === 'ambush' && S.table.company === W.SoloC.id && /lone camp/.test(txt(S.table.frame)), 'the ambush at the lone camp opens the solo\'s own scene: ' + (S.table && S.table.title));
+  {const amb = sf(W.SoloC); ok(amb && amb.kind === 'ambush' && /lone camp/.test(txt(amb.frame)), "the ambush at the lone camp opens the solo's own scene: " + (amb && amb.title))}
   ok(!(W.SoloC.camp && W.SoloC.camp.phase) && W.SoloC.log.some(e => e.kind === 'camp'), 'the camp is broken and its log kept');
-  {let k = 0; while (S.table && k++ < 60 * 60) {const sc = S.table; if (sc.phase === 'turn' && sc.ids.includes(W.solo.id) && !sc.acts[W.solo.id]) act(W.solo, 'scene_act', {option: 'retreat'}); step(1 / 60)}}
+  playOut([W.solo], 'retreat');
   close(); for (const m of S.mobs) if (m.alive && dist(m, W.solo) < 10) {m.alive = false; m.gone = true}
   // a death refilled by an arrival: the pair's member falls, a letter waits, the recruit arrives in town at the table
   const [d1, d2] = CO.members(W.P1);
@@ -324,13 +336,13 @@ section('G. scenes per company (#440/#452/#528; #518 engaged hold pending)');
   for (const a of [d1, d2]) put(a, sp.x + 10, sp.y);
   HE.fall(d1, 'a test of the hardcore rule'); step(1 / 60);
   ok((W.P1.arrivals || []).length === 1 && W.P1.arrivals[0].cls === d1.cls && W.P1.ids.length === 1, 'the fallen member\'s seat waits for an arrival (' + d1.cls + ')');
-  run(1); ok(!(S.table && S.table.kind === 'arrival'), 'no arrival out on the road');
+  run(1); ok(!sf(W.P1), 'no arrival out on the road');
   const hg = homeOf(d2).gate; put(d2, hg.x, hg.y, 'town'); d2.townStep = 1;
-  {let k = 0; while (k++ < 60 * 20 && !(S.table && S.table.kind === 'arrival')) {step(1 / 60); if (d2.state !== 'town') put(d2, hg.x, hg.y, 'town')}}
-  const asc = S.table, nh = W.P1.ids.map(byId).find(a => a && a !== d2);
+  {let k = 0; while (k++ < 60 * 20 && !(sf(W.P1) && sf(W.P1).kind === 'arrival')) {step(1 / 60); if (d2.state !== 'town') put(d2, hg.x, hg.y, 'town')}}
+  const asc = sf(W.P1), nh = W.P1.ids.map(byId).find(a => a && a !== d2);
   ok(asc && asc.kind === 'arrival' && asc.company === W.P1.id && nh && !asc.ids.includes(nh.id), 'in town the pair\'s arrival scene opens; the newcomer is voiced, not seated');
   ok(nh && nh.cls === d1.cls && nh.lvl === Math.max(1, d2.lvl - 2) && nh.player && nh.succeeds === d1.id, 'the recruit: same class, two under the lowest (L' + (nh && nh.lvl) + '), agent-played, succeeds the fallen');
-  {let k = 0; while (S.table && k++ < 60 * 60) {const sc = S.table; if (sc.phase !== 'frame' && sc.ids.includes(d2.id) && !sc.acts[d2.id]) act(d2, 'scene_act', {option: 'greet', line: 'Sit. Eat. Then we talk.'}); step(1 / 60)}}
+  playOut([d2], 'greet', 'Sit. Eat. Then we talk.');
   ok(W.P1.log.some(e => e.kind === 'recruit'), 'the oath is sworn at the table');
   const lt = nh && act(nh, 'recall', {tag: 'letter'});
   ok(lt && lt.ok && lt.notes.some(n => /river road/.test(n.text)), 'the fallen member\'s letter reaches the newcomer');
@@ -343,12 +355,12 @@ section('G. scenes per company (#440/#452/#528; #518 engaged hold pending)');
   ok(heir && heir.lvl === 1 && heir.player && heir.cls === W.solo.cls && CO.isSolo(CO.companyOf(heir)) && CO.companyOf(heir) !== W.SoloC, 'the heir: a level-1 ' + (heir && heir.cls) + ', agent-played, a company of one (' + (heir && heir.name) + ')');
   ok(heir && dist(heir, homeOf(heir).gate) < 12, 'it starts at home');
   run(2);
-  ok(!S.table && S.opening && S.opening.queue.some(q => q.kind === 'heir' && q.company === CO.companyOf(heir).id), 'its opening waits for a runner to hold the heir (a new hero id)');
+  ok(!sf(CO.companyOf(heir)) && S.opening && S.opening.queue.some(q => q.kind === 'heir' && q.company === CO.companyOf(heir).id), 'its opening waits for a runner to hold the heir (a new hero id)');
   LINK[heir.id] = 'connected';
-  {let k = 0; while (k++ < 60 * 5 && !(S.table && S.table.kind === 'opening')) step(1 / 60)}
-  const os = S.table;
+  {let k = 0; while (k++ < 60 * 5 && !sf(CO.companyOf(heir))) step(1 / 60)}
+  const os = sf(CO.companyOf(heir));
   ok(os && os.kind === 'opening' && os.company === CO.companyOf(heir).id && os.ids.join() === String(heir.id) && txt(os.frame).includes(fallenName), 'its short opening names who fell: ' + (os && os.title));
-  {let k = 0; while (S.table && k++ < 60 * 60) {const sc = S.table; if (sc.phase !== 'frame' && sc.ids.includes(heir.id) && !sc.acts[heir.id]) act(heir, 'scene_act', {option: 'listen'}); step(1 / 60)}}
+  playOut([heir], 'listen');
   const hl = act(heir, 'recall', {tag: 'letter'});
   ok(hl.ok && hl.notes.some(n => /cairn by the ford/.test(n.text)), 'the solo\'s letter reaches its heir');
   // an heir no runner takes up: its opening is written without a scene once HEIR_WAIT has passed
@@ -356,7 +368,7 @@ section('G. scenes per company (#440/#452/#528; #518 engaged hold pending)');
   HE.fall(W.wsolo, 'a second test'); step(1 / 60);
   const heir2 = S.agents.find(a => a.succeeds === W.wsolo.id && living(a)), H2 = CO.companyOf(heir2);
   run(Math.ceil(AR.ARRIVE.HEIR_WAIT / 6) + 2);
-  ok(heir2 && H2 && !(S.opening && S.opening.queue.length) && H2.log.some(e => e.kind === 'session') && !(S.table && S.table.company === H2.id), 'with no runner the heir\'s opening is written without a scene after ' + AR.ARRIVE.HEIR_WAIT + ' game minutes');
+  ok(heir2 && H2 && !(S.opening && S.opening.queue.length) && H2.log.some(e => e.kind === 'session') && !sf(H2), 'with no runner the heir\'s opening is written without a scene after ' + AR.ARRIVE.HEIR_WAIT + ' game minutes');
 }
 
 // ---- H. save mid-everything and restore ----
@@ -390,7 +402,7 @@ section('H. save mid-everything');
   const wg = homeOf(W.wsolo).gate; put(W.wsolo, wg.x + 6, wg.y + 6); W.wsolo.state = 'fight'; W.wsolo.target = m; m.target = W.wsolo; m.x = W.wsolo.x + 1; m.y = W.wsolo.y; W.wsolo.hp = Math.round(HE.maxHp(W.wsolo) * .2);
   T.tableTick();
   const before = {offer: of.ok && OF.offersTo(W.solo).length, follow: fw.ok && !!FW.followCmd(fol0), courier: cr.ok && (W.P1.post || []).length,
-    notice: !!SG.noticeOf(W.solo), sighting: (S.sightings || []).some(s => s.hero === W.solo.id), arrival: (W.P2.arrivals || []).length, scene: S.table && S.table.kind, sceneCo: S.table && S.table.company};
+    notice: !!SG.noticeOf(W.solo), sighting: (S.sightings || []).some(s => s.hero === W.solo.id), arrival: (W.P2.arrivals || []).length, scene: sf(W.SoloW) && sf(W.SoloW).kind, sceneCo: sf(W.SoloW) && sf(W.SoloW).company};
   ok(before.offer === 1 && before.follow && before.courier === 1 && before.notice && before.sighting && before.arrival === 1 && before.scene === 'rescue' && before.sceneCo === W.SoloW.id, 'before the save: an offer, a follow, a courier, a notice, a sighting, a queued arrival and an open rescue (' + JSON.stringify(before) + ')');
   const sig = () => JSON.stringify(CO.companies().map(C => [C.id, C.name, C.ids, (C.arrivals || []).map(q => q.cls), (C.post || []).length]));
   const s0 = sig();
@@ -398,18 +410,18 @@ section('H. save mid-everything');
   const solo = byId(W.solo.id), fol = byId(fol0.id), C2 = CO.companyById(W.P2.id), ws = byId(W.wsolo.id);
   ok(sig() === s0, 'the companies come back as they were (ids, members, arrivals, couriers)');
   ok(OF.offersTo(solo).length === 1 && FW.followCmd(fol) && SG.noticeOf(solo) && (S.sightings || []).some(s => s.hero === solo.id), 'the offer, the follow, the notice and the sighting stand');
-  ok(S.table && S.table.kind === 'rescue' && T.sceneCompany(S.table) === CO.companyById(W.SoloW.id), 'the open rescue stands, keyed to the Warband solo\'s company');
+  {const rs = sf(CO.companyById(W.SoloW.id)); ok(rs && rs.kind === 'rescue' && T.sceneCompany(rs) === CO.companyById(W.SoloW.id), 'the open rescue stands, keyed to the Warband solo\'s company')}
   // play on: the scene settles, the offer is accepted (within its hour), the courier arrives, the arrival opens in town
-  {let k = 0; while (S.table && k++ < 60 * 60) {const sc = S.table; if (sc.phase === 'turn' && sc.ids.includes(ws.id) && !sc.acts[ws.id]) act(ws, 'scene_act', {option: 'retreat'}); step(1 / 60)}}
-  ok(!S.table, 'the restored scene plays out');
+  playOut([ws], 'retreat');
+  ok(!sf(CO.companyById(W.SoloW.id)), 'the restored scene plays out');
   const l2b = byId(l2.id); put(solo, l2b.x + 1, l2b.y); for (const a of [solo, l2b]) {a.state = 'hunt'; a.target = null}
   const off = OF.offersTo(solo)[0], ac = off && act(solo, 'accept', {offer_id: off.id});
   ok(ac && ac.ok && CO.companyOf(solo) === C2 && C2.ids.length === 2, 'the restored offer is accepted: the solo rides with ' + C2.name + (ac && ac.error ? ' (' + ac.error + ')' : ''));
   {let k = 0; while (k++ < 40 && !(solo.playEv || []).some(e => /courier finds you/.test(e.text))) {S.gameMin += 20; run(1)}}
   ok((solo.playEv || []).some(e => /courier finds you/.test(e.text)), 'the restored courier still finds the solo');
   const lg = homeOf(l2b).gate; for (const a of CO.members(C2)) {put(a, lg.x, lg.y, 'town'); a.townStep = 1}
-  {let k = 0; while (k++ < 60 * 20 && !(S.table && S.table.kind === 'arrival')) step(1 / 60)}
-  ok(S.table && S.table.kind === 'arrival' && S.table.company === C2.id, 'the restored arrival opens in town for its company');
+  {let k = 0; while (k++ < 60 * 20 && !(sf(C2) && sf(C2).kind === 'arrival')) step(1 / 60)}
+  ok(sf(C2) && sf(C2).kind === 'arrival', 'the restored arrival opens in town for its company');
   T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto';
 }
 

@@ -13,14 +13,14 @@ import {reflectView} from '../sim/reflect.js'; // reflection moments (#179)
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const STATUS={connected:'connected to the relay',connecting:'connecting to the relay…',offline:'relay not reachable (start npm run relay, then npm run agent)',off:'not connected'};
 
-const LINK={connected:['live','its agent is calling tools'],waiting:['waiting','a runner holds this hero and is thinking or between turns'],busy:['Ollama busy','the local model is busy or loading; the runner waits for it'],none:['no runner','start one: npm run agent -- --hero ']};
+const LINK={connected:['live','a runner holds this hero (calling tools, thinking or between turns)'],waiting:['live','a runner holds this hero (calling tools, thinking or between turns)'],busy:['Ollama busy','the local model is busy or loading; the runner waits for it'],none:['no runner','start one: npm run agent -- --hero ']};
 
 export const hasAgent=a=>!!(a&&(a.player||(a.playLog&&a.playLog.length)||(a.journal&&a.journal.length)));
 
 export function tabAgent(b,a){
   if(a.player){const st=bridgeStatus();b.append(el('div','meta','Agent-played · bridge '+(STATUS[st]||st)+(st==='connected'?'':' · '+bridgeUrl())));
     // the runner bound to this hero (issue #93: one agent per hero, several side by side)
-    if(st==='connected'){const k=linkOf(a),t=LINK[k]||[k,''],d=el('div','meta');d.append(el('span','mk-line',mindLabel(a).text),' · ',el('span','mlink '+k,t[0]),' · '+t[1]+(k==='none'?a.name+', or press Start runner':''));b.append(d)}
+    if(st==='connected'){const k=linkOf(a),t=LINK[k]||[k,''],d=el('div','meta');d.append(el('span','mk-line',mindLabel(a).text),' · ',el('span','mlink '+(k==='waiting'?'connected':k),t[0]),' · '+t[1]+(k==='none'?a.name+', or press Start runner':''));b.append(d)}
     const rc=el('div','meta');rc.append('Runner: ',runnerControl(a));b.append(rc)}
   else b.append(el('div','meta','No longer agent-played. What the agent did and wrote:'));
   if(a.playDoing)b.append(el('div','doing',a.playDoing));
