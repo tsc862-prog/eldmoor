@@ -7,6 +7,8 @@
 //               restarted too when vite.config.js, package.json or the lockfile changed)
 //   r  restart  the relay (and its runners, which come back by themselves) without pulling
 //   s  status   relay health, runners, Ollama models loaded
+//   n  notes    the last 10 patch notes (issue #664); on start and after u the launcher prints every note merged since
+//               the commit you last saw (logs/last-seen.json in the repo) under [notes], then records HEAD
 //   h  help
 //   q  quit     (or Ctrl+C, or closing the window) runners stop cleanly first, then the relay, then Vite
 //
@@ -23,6 +25,7 @@ import {watch, existsSync, readFileSync} from 'node:fs';
 import {join, dirname, basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import net from 'node:net';
+import {unseenNotes, lastNotes, formatMerge} from './patchnotes.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WIN = process.platform === 'win32';
@@ -35,7 +38,7 @@ const GRACE_MS = Number(process.env.UP_GRACE_MS) || 12000; // how long the relay
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- output ----
-const COLORS = {up: '1;33', relay: '36', vite: '35', git: '32', npm: '32'};
+const COLORS = {up: '1;33', relay: '36', vite: '35', git: '32', npm: '32', notes: '1;32'};
 const tagOf = name => (NO_COLOR ? `[${name}]` : `\x1b[${COLORS[name] || '37'}m[${name}]\x1b[0m`).padEnd(NO_COLOR ? 8 : 20);
 const say = (name, text) => {for (const l of String(text).split(/\r?\n/)) if (l.trim()) process.stdout.write(tagOf(name) + ' ' + l + '\n')};
 const up = t => say('up', t);
@@ -152,6 +155,7 @@ async function update() {
   if (before === after) return up('already up to date. (Press r to restart the relay anyway.)');
   const files = (await git('diff', '--name-only', before, after)).out.split('\n').map(s => s.trim()).filter(Boolean);
   up(`updated ${before.slice(0, 7)} -> ${after.slice(0, 7)}: ${files.length} file(s) changed`);
+  showUnseen();
   const lock = files.includes('package-lock.json'), viteChanged = lock || files.includes('package.json') || files.includes('vite.config.js');
   if (lock) { // dependencies changed: nothing may hold node_modules while npm works
     const cli = npmCli();
@@ -167,6 +171,16 @@ async function update() {
   await restartRelay();
   if (viteChanged) {up('vite.config.js or package.json changed: restarting Vite'); await restartVite()}
   up('update applied. The game page reconnects to the relay by itself (Vite reloads it when src/ changed).');
+}
+
+// ---- patch notes (#664) ----
+function showUnseen() {
+  try {const r = unseenNotes(REPO); if (!r.head) return; if (!r.lines.length) return say('notes', 'no new patch notes since you last looked (press n for the last 10)'); for (const l of r.lines) say('notes', l)}
+  catch (e) {up('patch notes: ' + e.message)}
+}
+function showLast(n = 10) {
+  try {const list = lastNotes(REPO, n); if (!list.length) return say('notes', 'no patch notes yet'); say('notes', `the last ${list.length} patch notes:`); for (const m of list) for (const l of formatMerge(m)) say('notes', l)}
+  catch (e) {up('patch notes: ' + e.message)}
 }
 
 async function getJson(path, ms = 3000) {
@@ -205,14 +219,15 @@ async function status() {
 }
 
 const HELP = ['u  update: git pull --ff-only, npm install if the lockfile changed, restart the relay (and Vite if its config changed)',
-  'r  restart the relay and its runners (no pull)', 's  status: relay, runners, Ollama', 'h  this help', 'q  quit (Ctrl+C or closing the window too): runners stop cleanly first'];
+  'r  restart the relay and its runners (no pull)', 's  status: relay, runners, Ollama', 'n  the last 10 patch notes (npm run notes -- --since <commit> for more)', 'h  this help', 'q  quit (Ctrl+C or closing the window too): runners stop cleanly first'];
 
 // ---- commands ----
 async function command(word) {
   const w = String(word).trim().toLowerCase();
-  const map = {u: 'u', update: 'u', r: 'r', restart: 'r', q: 'q', quit: 'q', exit: 'q', s: 's', status: 's', h: 'h', help: 'h', '?': 'h'};
+  const map = {u: 'u', update: 'u', r: 'r', restart: 'r', q: 'q', quit: 'q', exit: 'q', s: 's', status: 's', n: 'n', notes: 'n', h: 'h', help: 'h', '?': 'h'};
   const k = map[w]; if (!k) {if (w) up(`unknown command "${w}". Press h for help.`); return}
   if (k === 'h') return HELP.forEach(l => up(l));
+  if (k === 'n') return showLast(10);
   if (k === 'q') return shutdown('quit');
   if (busy) return up(`busy (${busy}); wait for it to finish`);
   busy = {u: 'updating', r: 'restarting', s: 'status'}[k];
@@ -255,7 +270,8 @@ async function main() {
     process.exit(1);
   }
   if (process.stdout.isTTY) process.stdout.write('\x1b]0;Eldmoor\x07');
-  up('Eldmoor launcher. Keys: u update, r restart relay, s status, h help, q quit.');
+  up('Eldmoor launcher. Keys: u update, r restart relay, s status, n patch notes, h help, q quit.');
+  showUnseen();
   startRelay(); startVite();
   if (!NO_OPEN) setTimeout(openGame, 20000).unref(); // if Vite's ready line is missed
   watchCode();

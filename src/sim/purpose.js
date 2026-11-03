@@ -17,7 +17,7 @@ import {ZONES,CRYPT,LAIR,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
 import {maxHp} from './heroes.js';
 import {lookingFor} from './sighthero.js';
-import {gambitRec,firedFor} from './gambits.js'; // the rule autopilot fired (#617)
+import {gambitRec,firedFor,ownRule} from './gambits.js'; // the rule autopilot fired (#617)
 
 const byId=id=>S.agents.find(b=>b.id===id)||null;
 const zn=p=>ZONES[zoneAt(p.x,p.y)]||'the wilds';
@@ -48,7 +48,7 @@ function make(o){const p={kind:o.kind||'town',goal:o.goal||'',target:o.target||'
 
 // ---- agent-played heroes ----
 function agentPurpose(a){const cmd=a.pq&&a.pq.length?a.pq[0]:null,auto=a.playIdle,adv=advOf(a);
-  const g=auto&&firedFor(a,cmd)&&gambitRec(a),gl=g?' (gambit #'+g.last.id+')':''; // which of its rules autopilot is following (#617)
+  const g=auto&&firedFor(a,cmd)&&gambitRec(a),gl=g?(ownRule(a,g.last.id)?' (by its own rule #':' (gambit #')+g.last.id+')':''; // which of its rules autopilot is following (#617)
   const why=w=>auto?'autopilot'+(cmd&&cmd.auto?': '+autoWhy(cmd.auto):w?': '+w:'')+gl:w||(cmd?'its agent’s order':'');
   if(a.state==='fight'&&a.target)return fightP(a,auto?'autopilot: fighting back':a.target.target===a?'attacked':'its agent’s call');
   if(cmd&&cmd.kind==='follow'){const b=byId(cmd.id);if(b)return followP(a,b,auto?'autopilot':'its agent’s order')}

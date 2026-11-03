@@ -58,7 +58,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {strike,maxHp,goHome} from './heroes.js';
 import {speak,agentLine} from './chat.js';
-import {notify} from './notify.js';
+import {notify,hush} from './notify.js';
 import {moment} from './reflect.js'; // reflection moments (#179)
 import {remember} from './memory.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
@@ -71,13 +71,14 @@ import {inRange} from './reach.js';
 import {setFellowChoice} from './player-choice.js';
 import {reflexMay,ownerHeld} from './runlink.js';
 import {ENG,allScenes,sceneOf} from './scenes.js'; // one open scene per company, the engaged hold (#518)
-import {liveLimit,missed} from './scenewait.js'; // a queued live member gets a bounded extra wait; a timed-out one is reported (#515)
+import {liveLimit,missed,framing,unwoken,heldBack,FRAMING} from './scenewait.js'; // a queued live member gets a bounded extra wait; a timed-out one is reported (#515)
 import {MOVES} from '../data/moves.js';
 import {movesOf,ready,useMove,pickMove,tickRound,tableHealMove} from './moves.js'; // class abilities, round cooldowns (#81)
 import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName,roundEnd,stunCheck,canParley,parley,useOptions,useInRound,useNote,useSlug} from './tableround.js'; // combat rounds: the foe's turn and the dice (#276); conditions and parley (#296)
 import {condOn,condsOf,clearRounds} from './eff.js';
 import {CONDITIONS} from '../data/moves.js';
 import {socialSkill,trained} from './abilities.js';
+import {PICKUP_MS,callDeadline,goneEpoch} from './dmreflex.js'; // the DM call budget counts from pickup (#680)
 
 export const TABLE={
   mode:'auto',     // 'auto' (the trigger rules) or 'off' (Watch mode: never a scene); the View group switch
@@ -89,7 +90,11 @@ export const TABLE={
   frameS:1.6,      // real seconds the DM's framing stays on the banner before the first turn
   outcomeS:1.8,    // real seconds the outcome stays before the world runs on
   RESCUE:.25,      // a member below this share of max HP in a fight is a rescue moment
+  wakeGapMs:1500,  // real ms between members' wakes once the DM has set an everyone-answers scene, in seat order (#682)
   dmMs:6000,       // real milliseconds the DM agent has for an at-the-table call in a scene it staged (#132); then the scripted DM fills it
+                   // (#680: counted from the moment its runner first reads the call, never past dmMs + pickupMs from the post)
+  pickupMs:PICKUP_MS, // real ms a posted call may wait for a runner to pick it up before its own budget starts (#680)
+  frameMs:8000,    // ... the budget of the frame call of session zero and of a newcomer's arrival (the owner waits for those)
   step:'off',      // the watcher's round pace in a paused combat scene (#285): 'off' (rounds run on), 'hold' (wait after each
                    // round until Next round, stepNext()), 'auto' (wait stepS real seconds, or Next round). Only a paused scene
                    // at 1x ever holds, so headless runs, 3x/8x and Watch mode never do; a hold rolls no dice.
@@ -152,7 +157,8 @@ const mobName=m=>m.kind==='boss'?m.name:m.elite||m.named?m.name:MOBS[m.type]?MOB
 const plain=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join('');
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 // Private LCG for line picks: the gameplay RNG is never touched by flavour.
-let seed=0x1f2e3d4c;const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+const SEED0=0x1f2e3d4c;let seed=SEED0;export const resetTableSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
+const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
 export const tableOn=()=>(!!slotted()||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
 // The scene's company and its members. The Fellowship keeps its slot order (slotHeroes(slotted())); any other company its join order.
@@ -300,18 +306,34 @@ function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||sce
   if(COMBAT[kind]){sc.rd=1;sc.fd=0;sc.foeAt=foeSlot(sc.ids.map(byId),foeOf(sc))} // the foe joins the initiative order (#276)
   if(sc.pause)requestDrop(sc.title);
   place(sc);F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
-  const order=orderNames(sc).join(', ');
-  for(const a of L)if(a.player)notify(a,'TABLE ('+kind+'): '+plain(frame)+(all?' Everyone answers at once, each for themselves ('+order+').':' Initiative: '+order+'.')+' Your options: '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+
-    (all?'. Answer with scene_act(option, line) now; the table waits for everyone.':'. Answer with scene_act(option, line) now or on your turn; the table waits for you.'),3);
-  if(!sc.pause){finishAll(sc);return sc}
+  if(!sc.pause){for(const a of L)if(a.player)tableNote(sc,a,plain(frame));finishAll(sc);return sc}
+  sc.wk={}; // a paused scene wakes its members once the DM has set it (#682, wakeStep)
   return sc}
 
 export {open as openScene}; // sim/camp.js opens the camp ambush scene
+// The must-answer event that wakes a member's runner for a scene, with the frame as it stands.
+function tableNote(sc,a,frame){const all=together(sc),order=orderNames(sc).join(', ');
+  notify(a,'TABLE ('+sc.kind+'): '+frame+(all?' Everyone answers at once, each for themselves ('+order+').':' Initiative: '+order+'.')+' Your options: '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+
+    (all?'. Answer with scene_act(option, line) now; the table waits for everyone.':'. Answer with scene_act(option, line) now or on your turn; the table waits for you.'),3)}
+// The frame the members are woken with (#682): the DM's frame call when it has one, else the scene's frame and the opening
+// voice lines (the DM agent's or the scripted DM's, whichever answered).
+function framedText(sc){const op=(sc.calls||[]).filter(c=>c.op&&c.done&&c.text),fr=op.find(c=>c.kind==='frame');
+  return fr?fr.text:plain(sc.frame)+(op.length?' '+op.map(c=>(c.kind==='voice'&&c.who&&c.who!=='the narrator'?c.who+': ':'')+c.text).join(' '):'')}
+// Once the DM has set a paused scene: wake its agent members with the final frame, everyone at once in seat order
+// TABLE.wakeGapMs apart (so five runners do not ask for the model in the same second), a turns scene all together (its
+// turn order wakes one at a time after). Scene seconds, like the rest of the table.
+function wakeStep(sc,dt){const W=sc.wk;if(!W||W.done||sc.phase!=='turn'||framing(sc))return;
+  if(W.n==null){W.n=1;for(const id of sc.ids)if(sc.acts[id])W[id]='acted'} // who had answered when the frame was set takes no seat in the order
+  W.t=(W.t||0)+dt;const all=together(sc),text=framedText(sc);let i=0,left=false;
+  for(const id of sc.ids){const a=byId(id);if(!living(a)||!a.player||reflexMay(a))continue;if(W[id]==='acted')continue;const at=all?i++*TABLE.wakeGapMs/1000:0; // seat order among those still to answer (a member with no runner acts by reflex: no seat)
+    if(W[id])continue;if(W.t<at){left=true;continue}W[id]=1;tableNote(sc,a,text)}
+  if(!left){W.done=1;if(!all)startTurn(sc)}}
 
 // An agent's answer (scene_act), before or during its turn. Returns an error string or the act.
 export function sceneAct(a,opt,line){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
   if(sc.phase==='outcome'||sc.phase==='done')return 'The scene is over.';
   if(together(sc)&&sc.resolved)return 'The table has already answered.';
+  if(heldBack(sc,a))return FRAMING; // the DM sets the scene first (#682)
   const i=sc.ids.indexOf(a.id);if(!together(sc)&&i<sc.i&&sc.phase==='turn')return 'Your turn has passed.';
   if(sc.acts[a.id])return 'You already acted in this scene.';
   let key=String(opt||'').trim().toLowerCase();if(key.startsWith('use:'))key='use:'+useSlug(key.slice(4)); // 'use:Redroot Draught' or 'use:redroot-draught'
@@ -368,7 +390,7 @@ function apply(sc,a,act){if(act.k==='attempt')return ATT?ATT.apply(sc,a,act):'no
   case 'a':case 'b':case 'yes':case 'no':if(sc.kind==='decision')castVote(a,sc.ctx.prop,k,act.line||'',act.by);return null;
   }}
 
-function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;sc.nudge=0;if(!a||!a.player||sc.acts[a.id])return;
+function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;sc.nudge=0;if(!a||!a.player||sc.acts[a.id]||sc.wk&&!sc.wk.done)return; // not before the DM has set the scene (#682)
   if(rounds(sc)&&(foeDue(sc)||fightOver(sc)||(sc.rd>1&&!inFight(sc,a))||condOn(a,'stun')))return; // the foe goes first, or the fight is over, or this member is out of it or stunned (its save comes first, #296)
   notify(a,'YOUR TURN at the table ('+sc.title+(rounds(sc)?', round '+sc.rd:'')+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line); the table waits for you.',3)}
 // Advance the turn pointer as far as it can go this step. Returns true while an agent is thinking.
@@ -400,10 +422,11 @@ function runTurns(sc,dt,instant){
 const fromVote=(sc,a)=>{if(sc.kind!=='decision'||sc.acts[a.id])return;const P=propById(sc.ctx.prop),v=P&&P.votes[a.id];
   if(v&&v.by!=='reflex')sc.acts[a.id]={k:v.v,line:v.reason||'',by:'agent'}}; // voted with the vote tool meanwhile
 // The members an everyone-at-once scene still waits on for their agent (or owner).
-export function waitingFor(sc){if(!together(sc)||sc.resolved)return [];return sc.ids.map(byId).filter(a=>living(a)&&a.player&&!sc.acts[a.id]&&!reflexMay(a)&&!(sc.w[a.id]&&sc.w[a.id].late))}
+export function waitingFor(sc){if(!together(sc)||sc.resolved)return [];return sc.ids.map(byId).filter(a=>living(a)&&a.player&&!sc.acts[a.id]&&!reflexMay(a)&&!(sc.w[a.id]&&sc.w[a.id].late)&&!heldBack(sc,a))}
 function runAll(sc,dt,instant){
   if(!sc.resolved){let hold=false;
     for(const id of sc.ids){const a=byId(id);if(!living(a))continue;fromVote(sc,a);if(sc.acts[id]||!a.player||instant||reflexMay(a))continue;
+      if(unwoken(sc,a)||framing(sc)){hold=true;continue} // not woken yet: its clock starts when the DM has set the scene (#682)
       const w=sc.w[id]||(sc.w[id]={t:0,nudge:0});if(w.late)continue;
       if(ownerHeld(a)){hold=true;continue}
       w.t+=dt;if(!w.nudge&&w.t*1000>=TABLE.turnMs){w.nudge=1;notify(a,'The table still waits for your answer ('+sc.title+'): scene_act(option, line).',3)}
@@ -422,10 +445,19 @@ function runAll(sc,dt,instant){
 // the scripted DM's fill (at once at 3x/8x, when the seat is empty or the DM keeps missing). True = waiting.
 function callWait(sc,dt,instant){const H=dmOf(sc);if(!H)return false;
   for(const c of sc.calls){if(c.done)continue;
-    if(!instant&&sc.pause&&H.live(sc)){c.t+=dt;if(c.t*1000<TABLE.dmMs)return true;sc.dmMiss=(sc.dmMiss||0)+1}
+    if(!instant&&sc.pause&&(H.live(sc)||callPicked(c))){c.t+=dt;if(c.t<callEnd(c))return true;sc.dmMiss=(sc.dmMiss||0)+1}
     H.fill(sc,c);dt=0}
   return false}
-const frameCalls=sc=>{const H=dmOf(sc);if(H&&H.onFrame&&!sc.framed){sc.framed=true;H.onFrame(sc)}};
+// A DM call's clock (#680), in the scene's seconds (c.t runs only while the DM is waited for): its budget (c.ms, else
+// TABLE.dmMs) counts from the moment a runner first read it (c.seen, table_call), capped at budget + pickupMs from the post.
+export const callMs=c=>c&&c.ms>0?c.ms:TABLE.dmMs;
+export const callEnd=c=>callDeadline(0,callMs(c)/1000,c.seen,TABLE.pickupMs/1000);
+export const callLeft=c=>Math.max(0,Math.round((callEnd(c)-(c.t||0))*10)/10);
+// A runner read the call (table_call): its budget starts now. A picked-up call is waited for to its deadline even while the
+// runner is busy answering (not polling), unless the runner went away since (dmreflex gone()).
+export function callSeen(c){if(c&&c.seen==null){c.seen=c.t||0;c.ep=goneEpoch()}}
+const callPicked=c=>c.seen!=null&&c.ep===goneEpoch();
+const frameCalls=sc=>{const H=dmOf(sc);if(H&&H.onFrame&&!sc.framed){sc.framed=true;H.onFrame(sc);for(const c of sc.calls||[])c.op=1}}; // op: the opening calls the members wait for (#682)
 
 // ---- the outcome ----
 function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.filter(b=>b.k===k).map(b=>b.name);let tail='';
@@ -477,6 +509,7 @@ function holdStep(sc,dt){if(!sc)return false;
   sc.dropT=0;
   if(sc.kind==='decision'&&!propById(sc.ctx.prop)){closeScene(sc);return false}
   if(sc.phase==='frame'){sc.t+=dt;if(sc.t<TABLE.frameS)return true;sc.phase='turn';sc.i=0;frameCalls(sc);if(!together(sc))startTurn(sc);dt=0}
+  wakeStep(sc,dt); // the members are woken once the DM has set the scene (#682)
   if(sc.phase==='turn'){if(together(sc)?runAll(sc,dt,false):runTurns(sc,dt,false))return true;outcome(sc);return true}
   if(sc.phase==='outcome'){sc.t+=dt;if(sc.t<TABLE.outcomeS)return true;closeScene(sc);return false}
   closeScene(sc);return false}
@@ -539,6 +572,7 @@ setProposeHook(P=>{const C=propCompany(P)||companyOf(byId(P.by))||slotted(),L=me
   if(sceneFor(C)){if(P.src==='pair'&&!C.tableQ&&atTable(C)){C.tableQ={kind:'decision',title:'Put to the party: '+P.details,frame:[gd('The other company'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],ctx:{prop:P.id},at:Math.round(S.gameMin)};return true}return false} // a merge's second scene waits its turn (#500)
   const sc=open('decision','Put to the party: '+P.details,[by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id},C);
   if(sc)for(const id in P.votes)if(sc.ids.includes(+id))sc.acts[id]={k:P.votes[id].v,line:P.votes[id].reason||'',by:P.votes[id].by==='reflex'?'reflex':'agent'}; // a vote already cast counts as that member's turn
+  if(sc&&sc.wk)for(const id of sc.ids)hush(byId(id),e=>e.text.includes('vote('+P.id+',')); // the scene wakes them once the DM has set it (#682), not the proposal
   return !!sc});
 // A choice scene on a Fellowship adventure: the whole table chooses (undefined: the usual path).
 setFellowChoice((adv,sc,a,spec)=>{const C=companyOf(a)||slotted();if(!holdOk(memOf(C)))return undefined;
@@ -559,10 +593,11 @@ const hurtWord=f=>f>=.95?'stands unhurt':f>=.6?'is hurt':f>=.25?'is badly hurt':
 const condWords=e=>condsOf(e).map(id=>CONDITIONS[id].name.toLowerCase());
 const foeWords=f=>({name:foeName(f),looks:f.kind==='hero'?'still stands':hurtWord(f.hp/(f.maxhp||maxHp(f))),...(condWords(f).length?{conditions:condWords(f)}:{})});
 export function tableView(a){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return null;const cur=byId(sc.ids[sc.i]);
-  const all=together(sc),live=all&&!sc.resolved&&(sc.phase==='frame'||sc.phase==='turn');
-  const v={scene:sc.title,kind:sc.kind,frame:plain(sc.frame),phase:sc.phase,order:sc.ids.map(byId).filter(Boolean).map(b=>b.name),
+  const held=heldBack(sc,a),all=together(sc),live=all&&!sc.resolved&&!held&&(sc.phase==='frame'||sc.phase==='turn');
+  const v={scene:sc.title,kind:sc.kind,frame:framedText(sc),phase:sc.phase,order:sc.ids.map(byId).filter(Boolean).map(b=>b.name),
     ...(rounds(sc)?{round:sc.rd+' of up to '+TR.ROUNDS,initiative:orderNames(sc),...(foeOf(sc)?{foe:foeWords(foeOf(sc))}:{}),...(condWords(a).length?{your_conditions:condWords(a)}:{})}:{}),
-    turn:!all&&sc.phase==='turn'&&cur?cur.name:null,your_turn:all?live&&!sc.acts[a.id]:sc.phase==='turn'&&cur===a,acted:!!sc.acts[a.id]};
+    turn:!all&&sc.phase==='turn'&&cur?cur.name:null,your_turn:all?live&&!sc.acts[a.id]:!held&&sc.phase==='turn'&&cur===a,acted:!!sc.acts[a.id]};
+  if(held)v.waiting_for='the DM'; // the DM is still setting the scene (#682): no turn, no scene_act yet
   if(all){const n=answered(sc);v.everyone_answers=true;v.answered=n.done+'/'+n.of;if(live&&n.wait.length)v.waiting_on=n.wait.map(b=>b.name)} // all answer at once; once you have, you may wait
   if(!sc.acts[a.id]&&sc.phase!=='outcome')v.options=optionsFor(sc,a).map(o=>o.k+' = '+o.text);
   if(v.your_turn)v.waiting_for_you=true; // #148: the table waits for your scene_act (a reflex only after a long wait)
@@ -591,7 +626,7 @@ export function bannerOf(sc=S.table){if(!sc)return null;const cur=byId(sc.ids[sc
   const hold=holding(sc)?{round:sc.rd,auto:TABLE.step==='auto',left:TABLE.step==='auto'?Math.max(0,Math.ceil(TABLE.stepS-sc.sh.t)):null}:null;
   if(sc.phase==='frame')line='The DM is setting the scene…';
   else if(hold)line='Round '+hold.round+' is done · '+(hold.auto?'the next round in '+hold.left+' s':'Next round when you are ready');
-  else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'||pc.kind==='oath'?'giving them a voice':pc.kind==='frame'?'setting the table':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.max(0,Math.ceil(TABLE.dmMs/1000-pc.t))+' s)';
+  else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'||pc.kind==='oath'?'giving them a voice':pc.kind==='frame'?'setting the table':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.ceil(callLeft(pc))+' s)';
   else if(sc.phase==='turn'&&together(sc)){const n=answered(sc),held=n.wait.find(b=>b.player&&!reflexMay(b)&&ownerHeld(b)),w0=n.wait.reduce((m,b)=>Math.max(m,(sc.w[b.id]&&sc.w[b.id].t)||0),0);
     line=!n.wait.length?'Everyone has answered.':n.done+'/'+n.of+' answered · waiting for '+n.wait.map(b=>b.name).join(', ')+(held?' ('+held.name+' has no runner: Restart runner, or Resume without it)':w0*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-w0))+' s before reflexes)':'')}
   else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]&&!reflexMay(cur)?(ownerHeld(cur)?cur.name+' has no runner: the table waits for you (Restart runner, or Resume without it)':cur.name+' is thinking…'+(sc.t*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-sc.t))+' s before reflexes)':'')):cur.name+' acts'}

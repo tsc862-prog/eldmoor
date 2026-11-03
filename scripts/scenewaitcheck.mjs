@@ -86,6 +86,9 @@ const gather = () => {const L = mem.find(a => a.state !== 'dead'); let i = 0; fo
   const watch = makeWatch(); watch.tick();
   gather(); const sc = openScene('check', 'A test of the wait', ['The DM calls for a roll at the ford.'], {anchor: mem[0].id});
   ok(sc && sc.all && sc.pause, 'an everyone-at-once scene opens and pauses the world'); watch.tick(); // the watch sees it open
+  ok(sc.ids.every(id => !sceneDue(S.agents.find(x => x.id === id))), 'while the DM sets the scene nothing is due yet (#682)');
+  const gap0 = TABLE.wakeGapMs; TABLE.wakeGapMs = 0; // everyone woken together here (the stagger is tablecheck's and part E's)
+  for (let i = 0; i < 600 && !(sc.wk && sc.wk.done); i++) sim.step(1 / 60); TABLE.wakeGapMs = gap0;
   const [a, b, c] = mem.filter(x => sc.ids.includes(x.id));
   const lk = sim.playerAct(a.id, 'look', {});
   ok(sceneDue(a) && typeof lk.table_waits === 'string' && /A Table scene waits on you \(A test of the wait\): answer with scene_act now \(options: [a-z, ]*press/.test(lk.table_waits), 'a member\'s tool result says its scene waits: ' + lk.table_waits);
@@ -165,6 +168,44 @@ const kids = [];
   p.kill(); clearInterval(tick); TABLE.liveMs = liveMs0;
   for (const a of mem) await fetch(PB + '/play/release', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero: a.id, runner: `${hostname()}:${p.pid}:fellowship`})}).catch(() => {});
   server.close();
+}
+// ---------------------------------------------------------------- E. the DM sets the scene first (#682)
+// Session zero with a DM table voice whose model takes 5 s and five live members: nobody is woken or may act before the frame,
+// the frame is the DM agent's (not lost to the clock), the wakes carry it and go out in seat order TABLE.wakeGapMs apart.
+console.log('E. a slow DM frame and five live members: nobody acts before the frame, wakes staggered by seat');
+{
+  const {tableVoice} = await import('./dm-agent.mjs'), {allScenes} = await import('../src/sim/scenes.js');
+  for (const sc of allScenes()) sc.resolved = true; S.table = null;
+  const live = mem.filter(a => a.state !== 'dead'); gather(); for (const a of live) a.playEv = [];
+  sim.setDmSeat(true); setRunnerLinks(() => 'connected'); TABLE.speed = 1; TABLE.mode = 'auto';
+  let last = Date.now(); const tick = setInterval(() => {const n = Date.now(); for (const a of live) a.hp = Math.max(a.hp, a.maxhp || 0); sim.step(Math.min(.1, (n - last) / 1000)); last = n}, 20);
+  const adapter = {call: ({signal}) => new Promise((res, rej) => {const t = setTimeout(() => res({text: JSON.stringify({text: 'MOCKFRAME Rain on the shutters; the hall fire is low.', pick: ''}), usage: {in: 300, out: 20, cost: 0}}), 5000);
+    if (signal) signal.addEventListener('abort', () => {clearTimeout(t); rej(new Error('Request was aborted.'))})})};
+  const V = tableVoice({base: 'x', adapter, model: 'mock', tool: async (b, t, a) => sim.dmAct(t, a), pollIdle: 50, pollHot: 50, waitMs: 0});
+  sim.planOpening();
+  const until2 = async (f, ms) => {const t = Date.now(); while (!f() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 20)); return f()};
+  ok(await until2(() => S.table && S.table.kind === 'opening', 5000), 'session zero opens');
+  const sc = S.table, t0 = Date.now(), told = a => (a.playEv || []).find(e => /TABLE \(opening\)/.test(e.text) && e.w === 3);
+  const woke = {}, early = [], acted = {};
+  let frameAt = null;
+  await until2(() => {const now = Date.now() - t0;
+    if (frameAt == null && sc.calls && sc.calls[0] && sc.calls[0].done) frameAt = now;
+    for (const a of live) {if (!sc.ids.includes(a.id) || acted[a.id]) continue;
+      if (!told(a)) {if (early.length < 40) {const r = sim.playerAct(a.id, 'scene_act', {option: 'listen'}); early.push(r)} continue}
+      if (woke[a.id] == null) woke[a.id] = now;
+      const tv = sim.playerAct(a.id, 'status', {}).table, k = tv && tv.options && tv.options[0].split(' = ')[0];
+      if (k) {const r = sim.playerAct(a.id, 'scene_act', {option: k}); if (r.ok) acted[a.id] = 1}}
+    return S.table !== sc}, 60000);
+  await V.stop(); clearInterval(tick);
+  const fr = sc.calls && sc.calls[0];
+  ok(fr && fr.kind === 'frame' && fr.by === 'dm-agent' && /MOCKFRAME/.test(fr.text), `the frame is the DM agent's after 5 s of model time (${fr && fr.by}), set ${frameAt != null ? (frameAt / 1000).toFixed(1) + ' s' : '?'} in`);
+  ok(early.length > 0 && early.every(r => !r.ok && r.offline && /still setting the scene/.test(r.error)), `every scene_act before a member was woken was refused, offline (${early.length} tries)`);
+  const seats = sc.ids.filter(id => woke[id] != null), times = seats.map(id => woke[id]), gaps = times.slice(1).map((t, i) => t - times[i]);
+  ok(seats.length === live.length && times[0] >= frameAt - 50, `nobody was woken before the frame (first wake ${(times[0] / 1000).toFixed(2)} s, frame ${(frameAt / 1000).toFixed(2)} s)`);
+  ok(gaps.every(g => g >= TABLE.wakeGapMs - 250 && g <= TABLE.wakeGapMs + 400), `the wakes go out in seat order about ${TABLE.wakeGapMs / 1000} s apart (${gaps.map(g => (g / 1000).toFixed(2)).join(', ')} s)`);
+  ok(live.every(a => /MOCKFRAME/.test((told(a) || {}).text || '')), 'each wake carries the DM\'s final frame');
+  ok(sc.beats.length === live.length && sc.beats.every(b => b.by === 'agent'), 'every member answered by its agent: ' + sc.beats.map(b => b.name + '/' + b.by).join(', '));
+  setRunnerLinks(null);
 }
 closeOllama();
 for (const k of kids) try {k.kill()} catch {}
