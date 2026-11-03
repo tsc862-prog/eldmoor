@@ -38,7 +38,7 @@ const SCENE_LIGHT=[255,232,196]; // the light under a Table scene's people at ni
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
-export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false};
+export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null};
 // Follow view shows about 460 world pixels (29 tiles) across the screen.
 const FOLLOW_VIEW=460;
 // Entities and labels this many world px outside the view are not drawn.
@@ -51,7 +51,7 @@ export function onCamChange(fn){listeners.push(fn)}
 const changed=()=>{for(const f of listeners)f(cam)};
 const followScale=()=>cvRef?Math.max(cam.fit*2.6,cvRef.width/FOLLOW_VIEW):cam.fit*2.6;
 // 'fellow' view (#68): cam.frame() (set by ui/controls.js) returns {x,y,w,h} in tiles framing the Fellowship, or null.
-const framed=()=>cam.view==='fellow'&&typeof cam.frame==='function'?cam.frame():null;
+const framed=()=>cam.view==='fellow'&&typeof cam.frame==='function'?cam.frame():cam.view==='region'&&typeof cam.regionFrame==='function'?cam.regionFrame():null; // 'region' view (#430): cam.regionFrame() frames the picked region
 const frameScale=f=>cvRef?clamp(Math.min(cvRef.width/((f.w+8)*T),cvRef.height/((f.h+6)*T)),cam.fit,followScale()):cam.fit*2.6;
 const following=()=>(cam.view==='follow'&&!!cam.sel)||!!framed();
 // The zoom the camera is effectively at right now (follow mode included).
