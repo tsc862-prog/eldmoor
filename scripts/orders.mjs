@@ -3,6 +3,7 @@
 // the tools already fill. Both sit between ORDERS_HEAD and ORDERS_TAIL so withSituationOrders can swap or add them.
 export const ORDERS_HEAD = 'SITUATIONS (what to do depends on where you are):';
 export const ORDERS_TAIL = '(end of situations)';
+import {toolMap} from './toolmap.mjs';
 export const SHORT_BUDGET = 1200;
 
 export const SITUATION_HEADINGS = ['In town:', 'On the road:', 'Hunting or in a fight:', 'Hurt:', 'Camped:', 'A scene is open:', 'A vote or offer is open:', 'Apart from your party:', 'Quests:', 'After something notable:'];
@@ -34,10 +35,12 @@ export const ORDERS_FULL = [
   '- Look before you leave: you are level 2, alone in Highgate, and the roads line says Thornvale has Webspinners more than you can handle. intent {goal: "hunt the Ashen Fields until someone rides with me to Thornvale", why: "too green for webspinners alone"}, party_say asking for company so someone can ride along, and hunt the Ashen Fields meanwhile. You never move_to Thornvale to find out.',
   '',
   ANTI_HEADING + ' (1) move_to a far region, read the warning, then move_to back: two calls and a wasted turn to learn what your header already told you. (2) Calling status or look again when the fresh header already says it. (3) Writing a tool call as text instead of calling it: text never runs.',
+  '',
+  toolMap('hero'), // the inventory, generated from player-tools.js (#640)
   ORDERS_TAIL,
 ].join('\n');
 
-export const ORDERS_SHORT = [
+export const ORDERS_SHORT_HAND = [
   ORDERS_HEAD,
   'Your aim: intent {goal, why, until}; when the header asks what you are trying to do, answer with intent first. In town: shop and boards; hunt is refused here. On the road: move_to known places. Hunting or in a fight: hunt, then wait; fight, use_ability or flee. Hurt: rest, potion, or go home. Camped: move_to is refused; propose break_camp or wait. A scene is open: scene_act once, then wait. A vote or offer is open: vote, accept or decline first. Apart from your party: earshot, companions, meet again. Quests: quests, focus_quest. Between turns your gambits act: gambits, set_gambit. After something notable: journal_write. Anything else: attempt {what}.',
   PRIORITY_HEADING + ' scene, vote or offer, party lines, danger, quest, travel, shopping.',
@@ -46,6 +49,8 @@ export const ORDERS_SHORT = [
   ANTI_HEADING + ' do not re-read status the header gave; do not write a call as text.',
   ORDERS_TAIL,
 ].join('\n');
+// The local variant adds the names-only map (#640); SHORT_BUDGET limits the hand-written part, the map is generated.
+export const ORDERS_SHORT = ORDERS_SHORT_HAND.replace(ORDERS_TAIL, toolMap('hero', true) + '\n' + ORDERS_TAIL);
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const BLOCK = new RegExp('\\n?' + esc(ORDERS_HEAD) + '[\\s\\S]*?' + esc(ORDERS_TAIL));

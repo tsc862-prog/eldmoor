@@ -42,6 +42,7 @@ import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
+import {withToolMap} from './toolmap.mjs';
 import {loadDmSession, saveDmSession, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
@@ -432,6 +433,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   sess.system = withDmRenownOrders(withDmBetweenOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
+  sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
   const saveSess = () => saveDmSession(sess, {url: base});
   let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;
