@@ -55,6 +55,7 @@ import {postHook,withdrawHook} from './dm.js';
 import {customFoe,spawnFoe} from './encounterbuilder.js';
 import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
 import {CUSTOM} from '../data/encounter-tables.js';
+import {SITE_THEME_IDS} from '../data/sites.js';
 
 // ---- knobs ----
 export const LK={
@@ -452,9 +453,11 @@ register({name:'custom_foe',about:'A special foe from the bestiary: base creatur
 // Stubs: they reject with "not available yet" until the system behind them registers an
 // implementation (provide('createSite', fn) once #69 gives sites a lifecycle, startEvent, nudgeRelation),
 // or replaces the lever outright with register().
-register({name:'create_site',stub:'createSite',about:'A DM-made dungeon site (#69).',
-  params:{theme:{type:'str',max:24},region:{type:'region'},band:{type:'int',min:1,max:60},size:{type:'enum',values:['small','medium','large'],def:'small'},raid:{type:'bool',def:false}},
-  limits:{maxActive:2,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.createSite(p,ctx),describe:p=>p.theme+' site in '+ZONES[p.region]});
+// create_site (#69, slice 1): sim/sites.js provides the generator and owns the site's lifecycle (it is not an expiring lever:
+// a site stays until cleared or collapsed, so the open-site caps, 1 a region and 3 a world, are checked there).
+register({name:'create_site',stub:'createSite',about:'Raise a dungeon site a company can enter: a '+SITE_THEME_IDS.join(', ')+' in a region, its level clamped to the region’s band (band: the level wanted), 3-8 rooms, a named boss with a guaranteed epic. At most 1 open site a region and 3 in the world.',
+  params:{theme:{type:'enum',values:SITE_THEME_IDS},region:{type:'region'},band:{type:'int',min:1,max:60,opt:true},rooms:{type:'int',min:3,max:8,opt:true},at:{type:'point',opt:true},name:{type:'str',max:40,opt:true}},
+  limits:{perDay:2,perRegionPerDay:1},cooldown:120,apply:(p,ctx)=>IMPL.createSite(p,ctx),describe:p=>p.theme+(p.name?' "'+p.name+'"':'')+' in '+ZONES[p.region]+(p.band!=null?' (level '+p.band+')':'')});
 register({name:'start_event',stub:'startEvent',about:'A world event (#10).',params:{kind:{type:'str',max:24},region:{type:'region'},scale:{type:'int',min:1,max:3,def:1}},
   limits:{maxActive:1,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.startEvent(p,ctx),expire(rec){if(IMPL.endEvent)IMPL.endEvent(rec);S.conditions=(S.conditions||[]).filter(c=>c.lever!==rec.id)},describe:p=>p.kind+' in '+ZONES[p.region]});
 register({name:'nudge_relation',stub:'nudgeRelation',about:'Shift how two parties of the world regard each other (#11).',params:{a:{type:'str',max:24},b:{type:'str',max:24},delta:{type:'int',min:-2,max:2}},
