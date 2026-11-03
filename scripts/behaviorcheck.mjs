@@ -275,6 +275,43 @@ ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last
   ok(tlines.length === 1 && tlines[0].cacheRead === 90000 && tlines[0].cacheWrite === 2000 && tlines[0].tokensIn === 40, 'the turn line writes cacheRead and cacheWrite beside tokensIn and tokensOut');
 }
 
+// ---- 6d. the DM agent's share (issue #541): a mock DM that answers some calls and misses others ----
+{
+  SIM.setDmSeat(true);
+  let link = 'connected'; const w = makeWatch({dmLink: () => link}), recs = [];
+  const talks = S.talks || (S.talks = {seq: 0, call: 0, cur: [], past: [], day: {d: -1, lines: 0, offers: 0, opened: 0}, stats: {}}); talks.stats = {opened: 0, lines: 0, dm: 0, scripted: 0, late: 0, offers: {}, refused: 0};
+  const G = S.staged || (S.staged = {seq: 0, day: {d: -1, n: 0, nw: 0}, cur: null, past: [], stats: {}}); G.stats = {staged: 0, met: 0, expired: 0, refused: 0, calls: 0, answered: 0, filled: 0, late: 0, rejected: 0};
+  const g0 = S.gameMin; const tick = () => {for (const o of w.tick()) recs.push(o)};
+  S.gameMin = Math.ceil(g0 / 60) * 60 + 1; tick(); // baseline
+  const adv = (min, f) => {for (let m = 0; m < min; m += 10) {S.gameMin += 10; f(m); tick()}};
+  // an hour or two with the seat held: it answers 1 in 5 talk calls and no table voice slot
+  adv(180, () => {talks.stats.dm += 0; talks.stats.scripted += 2; G.stats.filled += 1; G.stats.calls++});
+  adv(60, () => {talks.stats.dm += 3; talks.stats.late += 1});
+  link = 'none'; adv(60, () => {talks.stats.scripted += 3}); link = 'waiting'; adv(60, () => {});
+  const an = recs.filter(r => r.kind === 'anomaly' && r.rec.kind === 'dm-scripted'), digs = recs.filter(r => r.kind === 'world');
+  ok(an.length >= 1 && an[0].rec.evidence.share < BW.DM_SHARE && an[0].rec.evidence.scripted > an[0].rec.evidence.agent, `dm-scripted flagged while the seat was held and the agent answered under half (${an.length}: ${an[0] && an[0].rec.text})`);
+  ok(an.every(a => a.rec.gameMin - g0 >= BW.DM_WIN), 'and only after the seat had been held for the whole window');
+  const tot = k => digs.reduce((n, d) => n + ((d.rec.dmShare.kinds[k] || {}).agent || 0), 0), totS = k => digs.reduce((n, d) => n + ((d.rec.dmShare.kinds[k] || {}).scripted || 0), 0);
+  ok(digs.length >= 4 && digs.every(d => d.rec.dmShare && d.rec.dmShare.kinds.talk && d.rec.dmShare.seat), `${digs.length} digests carry dmShare kinds and seat minutes`);
+  ok(tot('talk') >= 15 && totS('talk') >= 30 && totS('table') >= 15 && digs.reduce((n, d) => n + d.rec.dmShare.kinds.talk.late, 0) >= 5, `counted answered ${tot('talk')} / scripted ${totS('talk')} talk calls, ${totS('table')} filled table slots and late answers`);
+  const seat = digs.reduce((o, d) => { for (const k of Object.keys(d.rec.dmShare.seat)) o[k] = (o[k] || 0) + d.rec.dmShare.seat[k]; return o }, {});
+  ok(seat.live > 0 && seat.norunner > 0 && seat.waiting > 0, `seat state per hour: ${JSON.stringify(seat)}`);
+  // a seat with no runner for the same traffic raises nothing
+  const w2 = makeWatch({dmLink: () => 'none'}), r2 = []; w2.tick(); for (let m = 0; m < 240; m += 10) {S.gameMin += 10; talks.stats.scripted += 3; r2.push(...w2.tick())}
+  ok(!r2.some(r => r.kind === 'anomaly' && r.rec.kind === 'dm-scripted'), 'no dm-scripted while the seat has no runner (the owner is told elsewhere)');
+  // the report reads the digests: per kind, per day, per model, and says what old digests lack
+  const dirR = join(ROOT, 'dmshare'), {mkdirSync: mk3} = await import('node:fs'); mk3(dirR, {recursive: true});
+  const bl = behaviorLog({root: dirR, world: 'ds', log: () => {}});
+  bl.ingest('turn', {seat: 'dm', provider: 'anthropic', model: 'claude-sonnet-5-5', turn: 1, tools: [], narration: 'x', seconds: 3});
+  for (const o of recs) bl.ingest(o.kind, o.rec);
+  const old = writeReport(dirR, 'ds'), mdr = readFileSync(old.file, 'utf8');
+  ok(/## DM agent share/.test(mdr) && /Per kind of call/.test(mdr) && /Per game day/.test(mdr) && /Per model/.test(mdr) && /\| talk \| \d+ \| \d+ \| \d+ \| \d+%/.test(mdr), 'report: a DM agent share section with kinds, days and models');
+  ok(/dm-scripted/.test(mdr), 'report names the dm-scripted anomaly');
+  const dirO = join(ROOT, 'dmshare-old'); mk3(dirO, {recursive: true}); writeFileSync(join(dirO, FILES.world), JSON.stringify({ts: new Date().toISOString(), gameMin: 600, members: [], levers: {}}) + String.fromCharCode(10));
+  const mdo = readFileSync(writeReport(ROOT, 'dmshare-old').file, 'utf8');
+  ok(/predate #541/.test(mdo), 'report on old digests says the counters are missing instead of showing zeros');
+}
+
 // ---- 7. rotation by size ----
 {const rot = behaviorLog({root: join(ROOT, 'rot'), world: 'r', rotate: {bytes: 1500, keep: 2}});
   for (let i = 0; i < 60; i++) rot.ingest('world', {gameMin: i, members: [], pad: 'x'.repeat(80)});

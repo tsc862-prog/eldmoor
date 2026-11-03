@@ -34,6 +34,7 @@ const ABOUT = {
   'request-flood': 'too many tool or relay calls in a minute',
   'no-memories': 'an agent-played Fellowship member wrote no memory for two game days',
   'no-aim': 'an agent hero had no stated aim (intent) for two game hours outside camp and town rest (#535)',
+  'dm-scripted': 'the DM agent answered under half of the answerable calls (talk, table voice, slots) over two game hours while its seat was held; the scripted DM filled the rest (#541)',
   'scene-missed': 'a live member did not answer its Table scene in time: the table waited, then its reflex acted (#515)',
 };
 
@@ -143,6 +144,10 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   // ---- minds per member (issue #280) ----
   const mc = mindSection(T, D, W, table); L.push(...mc.lines);
 
+
+  // ---- DM agent share (issue #541) ----
+  L.push(...dmShareSection(W, T, A, table));
+
   // ---- world ----
   L.push('## World', '');
   if (!W.length) L.push('_No world digests yet (the game sends one every game hour while the relay or the headless host keeps behavior logs)._', '');
@@ -190,6 +195,44 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   for (const d of D) {const k = (d.src || '?') + ' ' + (d.kind || '?'); let x = dk.get(k); if (!x) dk.set(k, x = {k, n: 0, res: {}}); x.n++; const r = d.src === 'relay' ? (d.ok ? 'answered' : 'failed ' + (d.status || '')) : d.outcome || '?'; x.res[r] = (x.res[r] || 0) + 1}
   L.push(table(['source and kind', 'count', 'results'], [...dk.values()].map(x => [x.k, x.n, Object.entries(x.res).map(([k, v]) => `${k.trim()} ${v}`).join(', ')])), '');
   return {md: scrub(L.join('\n') + '\n'), minds: mc.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
+}
+
+
+// How often the DM agent answered what it was asked, from the hourly digests' dmShare (issue #541). Older digests have no
+// dmShare: they count as "no data", never as zero. Answerable = talk, table voice and slot calls (the scripted DM fills a miss);
+// levers, board, branches, staged scenes and voice are context. Per model: each digest goes to the model of the DM's latest turn before it.
+const ANSWERABLE = ['talk', 'table', 'slot'], SHARE_KINDS = ['talk', 'table', 'slot', 'levers', 'board', 'branch', 'staged', 'voice'];
+const SEAT_NAMES = [['closed', 'closed'], ['norunner', 'no runner'], ['live', 'live'], ['waiting', 'waiting'], ['unknown', 'unknown']];
+function dmShareSection(W, T, A, table) {
+  const L = ['## DM agent share', ''], D = W.filter(w => w.dmShare && w.dmShare.kinds);
+  if (!D.length) {
+    L.push(`_No digest carries the DM share counters yet (${W.length} digest${W.length === 1 ? '' : 's'} predate #541). Computable from them: nothing per call kind; the log-based figures under World (DM log entries by kind, levers by caller, dmFocus) still apply. New digests count, per kind of DM call, how many the DM agent answered, answered late and the scripted DM filled, and the seat's minutes closed, with no runner, live and waiting._`, '');
+    const dmTurns = T.filter(t => t.seat === 'dm'); if (dmTurns.length) L.push(`DM agent turns on record: ${dmTurns.length}.`, '');
+    return L;
+  }
+  const dnum = w => Math.floor((w.gameMin - 1) / 1440) + 1, zero = () => ({agent: 0, late: 0, scripted: 0, seat: {}});
+  const add = (acc, w) => {for (const k of SHARE_KINDS) {const v = w.dmShare.kinds[k] || {}; const a = acc[k] || (acc[k] = {agent: 0, late: 0, scripted: 0}); a.agent += v.agent || 0; a.late += v.late || 0; a.scripted += v.scripted || 0}
+    for (const [k] of SEAT_NAMES) acc.seat[k] = (acc.seat[k] || 0) + ((w.dmShare.seat || {})[k] || 0)};
+  const share = acc => {let a = 0, b = 0; for (const k of ANSWERABLE) {a += acc[k] ? acc[k].agent : 0; b += acc[k] ? acc[k].scripted : 0} return [a, b]};
+  const seatCell = acc => {const tot = SEAT_NAMES.reduce((t, [k]) => t + (acc.seat[k] || 0), 0); return SEAT_NAMES.filter(([k]) => acc.seat[k]).map(([k, nm]) => `${nm} ${pct(acc.seat[k], tot)}`).join(', ') || '-'};
+  const all = {seat: {}}; for (const w of D) add(all, w);
+  const [a0, b0] = share(all);
+  L.push(`${D.length} of ${W.length} digests carry the counters. The DM agent answered ${a0} of ${a0 + b0} answerable calls (talk answers, table voice slots, slot fallbacks): ${pct(a0, a0 + b0)}; the scripted DM filled ${b0}. Seat time: ${seatCell(all)}.`, '');
+  L.push('Per kind of call (agent / late / scripted):', '');
+  L.push(table(['kind', 'answered by the DM agent', 'late', 'filled by the scripted DM', 'agent share'], SHARE_KINDS.map(k => {const v = all[k] || {agent: 0, late: 0, scripted: 0}; return [k + (ANSWERABLE.includes(k) ? '' : ' (context)'), v.agent, v.late, v.scripted, ANSWERABLE.includes(k) || k === 'levers' || k === 'board' ? pct(v.agent, v.agent + v.scripted) : '-']})), '');
+  const byDay = new Map(); for (const w of D) {const d = dnum(w); if (!byDay.has(d)) byDay.set(d, {seat: {}}); add(byDay.get(d), w)}
+  L.push('Per game day:', '');
+  L.push(table(['day', 'talk', 'table voice', 'slots', 'answerable share', 'levers (agent/scripted)', 'seat time'], [...byDay.entries()].sort((x, y) => x[0] - y[0]).map(([d, v]) => {const [a, b] = share(v), f = k => `${(v[k] || {agent: 0}).agent}/${(v[k] || {late: 0}).late}/${(v[k] || {scripted: 0}).scripted}`;
+    return [d, f('talk'), f('table'), f('slot'), `${pct(a, a + b)} (${a} of ${a + b})`, `${(v.levers || {agent: 0}).agent}/${(v.levers || {scripted: 0}).scripted}`, seatCell(v)]})), '', 'Cells read agent/late/scripted.', '');
+  // per model: a digest goes to the model of the DM's latest turn at or before it
+  const dm = T.filter(t => t.seat === 'dm').sort((x, y) => Date.parse(x.ts) - Date.parse(y.ts)), by = new Map();
+  for (const w of D) {const wt = Date.parse(w.ts); let m = null; for (const t of dm) {if (Date.parse(t.ts) <= wt) m = t; else break}
+    const k = m ? (m.provider || '?') + '/' + (m.model || '?') : 'no DM turn yet'; if (!by.has(k)) by.set(k, {seat: {}, turns: 0}); add(by.get(k), w)}
+  for (const t of dm) {const k = (t.provider || '?') + '/' + (t.model || '?'); if (by.has(k)) by.get(k).turns++}
+  L.push('Per model (digests go to the model of the DM latest turn before them):', '');
+  L.push(table(['DM model', 'DM turns', 'answerable calls', 'answered by the agent', 'late', 'scripted fill', 'agent share'], [...by.entries()].map(([k, v]) => {const [a, b] = share(v), late = ANSWERABLE.reduce((t, x) => t + (v[x] ? v[x].late : 0), 0); return [k, v.turns, a + b, a, late, b, pct(a, a + b)]})), '');
+  const an = A.filter(x => x.kind === 'dm-scripted'); L.push(`Anomalies \`dm-scripted\`: ${an.length}${an.length ? ' (' + an.slice(-3).map(x => day(x.gameMin)).join(', ') + ')' : ''}.`, '');
+  return L;
 }
 
 export function worlds(root) {return existsSync(root) ? readdirSync(root).filter(d => {try {return statSync(join(root, d)).isDirectory()} catch {return false}}) : []}
