@@ -837,5 +837,30 @@ console.log('start gate: ready, not just claimed');
   S.conditions[1].until-=1440;uiFast();ok(rows()[0]===r0&&/1 game day left/.test(r0.textContent),'conditions: time left updates in place');
   ok(leftText(30)==='1 game hour left'&&leftText(1440*3)==='3 game days left','conditions: time left words');
   S.conditions=keepC;const i=act.indexOf(rec);if(i>=0)act.splice(i,1);uiFast()}
+// ---- the dungeon view (#85, slice 1): opens over the map, one row per chamber, the crawl read live ----
+{const dv=await import('../src/render/dungeonview.js'),{CRYPT}=await import('../src/world/map.js'),{buildInterior,IT}=await import('../src/world/interior.js');
+  const again=await import('../src/world/interior.js?again'),S=sim.S,keep=CRYPT.group,n=CRYPT.rooms.length;
+  const m=buildInterior(CRYPT),m2=again.buildInterior(CRYPT);
+  ok(m.rooms.length===n&&m.rooms.filter(r=>r.boss).length===1&&m.rooms[n-1].boss,'dungeon view: the interior has a chamber per room ('+n+'), the last one the boss\'s');
+  ok(m!==m2&&m.seed===m2.seed&&m.w===m2.w&&m.h===m2.h&&m.tiles.every((t,i)=>t===m2.tiles[i]),'dungeon view: the interior is the same from a fresh build (seeded by the site, '+m.w+'x'+m.h+')');
+  ok(m.tiles.includes(IT.STAIR)&&m.tiles.includes(IT.DAIS)&&m.tiles.includes(IT.DOOR),'dungeon view: the stair, the doors and the boss dais are on the map');
+  const mo=CRYPT.mouth;ok(dv.cryptAt(mo.x0+1.5,mo.y0+1.5)&&!dv.cryptAt(mo.x0-5,mo.y0),'dungeon view: a click on the crypt\'s door finds it, a click beside it does not');
+  dv.initDungeonView();
+  const box=()=>$('dungeon'),lis=()=>[...box().querySelectorAll('li')];
+  ok(dv.openDungeon(CRYPT)&&!box().hidden&&box().parentNode===$('screen')&&$('screen').classList.contains('dgopen'),'dungeon view: opens over the map');
+  ok(lis().length===n&&lis().every((li,i)=>li.textContent.includes(CRYPT.rooms[i].name.replace(/^the /i,''))),'dungeon view: shows the '+n+' chambers by name');
+  ok(/Back to world/.test(box().querySelector('.dgback').textContent),'dungeon view: has Back to world');
+  const mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,4);
+  CRYPT.group={phase:'inside',mem,tSite:true,crawl:{i:2,rd:1,gap:0,foes:[{hp:1},{hp:0}],end:null}};
+  let st=dv.refreshDungeon();
+  ok(lis()[0].classList.contains('cleared')&&lis()[1].classList.contains('cleared')&&lis()[2].classList.contains('current')&&lis()[3].classList.contains('unexplored'),'dungeon view: cleared rooms, the room in progress and fog read from the crawl');
+  ok(/round 2\/2/.test(st.status)&&/1 foe stands/.test(st.status)&&st.party.length===mem.length&&st.round==='ROUND 2/2','dungeon view: the round and the party ('+st.status+')');
+  ok(lis()[3].textContent.includes('?'),'dungeon view: a room not reached is not named');
+  CRYPT.group.crawl.end='retreat';CRYPT.group.crawl.driven=true;dv.trackCrawl();CRYPT.group=null;dv.trackCrawl();st=dv.refreshDungeon();
+  ok(/Last run/.test(st.status)&&/driven back from/.test(st.status)&&lis()[2].classList.contains('lost')&&!box().querySelector('.unexplored'),'dungeon view: with no crawl, the empty interior and how the last run ended ('+st.status+')');
+  box().querySelector('.dgback').click();ok(box().hidden&&!dv.dungeonOpen()&&!$('screen').classList.contains('dgopen'),'dungeon view: Back to world closes it');
+  const a=mem[0],was={state:a.state,hidden:a.hidden};a.state='dungeon';a.hidden=true;select(a);uiFast();const link=$('hero').querySelector('.dglink');
+  ok(!!link,'dungeon view: the hero card of a hero inside has View inside');if(link){link.click();ok(dv.dungeonOpen(),'dungeon view: View inside opens it')}
+  dv.closeDungeon();a.state=was.state;a.hidden=was.hidden;CRYPT.group=keep;uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
