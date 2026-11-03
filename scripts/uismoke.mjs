@@ -904,6 +904,17 @@ console.log('start gate: ready, not just claimed');
   ok(lis()[ci+1].textContent.includes('?'),'dungeon view: a room not reached is not named');
   CRYPT.group.crawl.end='retreat';CRYPT.group.crawl.driven=true;dv.trackCrawl();CRYPT.group=null;dv.trackCrawl();st=dv.refreshDungeon();
   ok(/Last run/.test(st.status)&&/driven back from/.test(st.status)&&lis()[ci].classList.contains('lost')&&!box().querySelector('.unexplored'),'dungeon view: with no crawl, the empty interior and how the last run ended ('+st.status+')');
+  { // a non-Fellowship company's crawl (#502): the crew is the company, fill-ins ride along unseen, the bar names it, the tally is its own
+    const {companies}=await import('../src/sim/company.js'),all=S.agents.filter(x=>x.kind==='hero'&&x.state!=='dead'),crew=all.slice(0,2),fill=all[2];
+    const Co={id:9901,name:'The Ember Road',fac:crew[0].fac,ids:crew.map(x=>x.id),crawl:{runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0}};
+    S.companies=(S.companies||[]).concat([Co]);const fk=S.fellowship&&S.fellowship.crawl;
+    CRYPT.group={phase:'inside',mem:crew.concat(fill?[fill]:[]),tSite:true,crawl:{i:ci,rd:0,gap:0,foes:[{hp:1}],end:null,co:Co.id,crew:crew.length}};
+    st=dv.refreshDungeon();
+    ok(st.party.length===crew.length&&st.company==='The Ember Road'&&/THE EMBER ROAD/.test(box().querySelector('.dgname').textContent),'dungeon view: a non-Fellowship company crawl names the company and shows only its crew ('+box().querySelector('.dgname').textContent+')');
+    CRYPT.group.crawl.end='retreat';st=dv.refreshDungeon();ok(/The Ember Road fall back/.test(st.status),'dungeon view: the status names the company ('+st.status+')');
+    CRYPT.group.crawl.end='clear';dv.trackCrawl();CRYPT.group=null;Co.crawl.clears++;dv.trackCrawl();st=dv.refreshDungeon();
+    ok(/Last run/.test(st.status)&&/The Ember Road cleared/.test(st.status),'dungeon view: that company tally ends its run as a clear ('+st.status+')');
+    S.companies=S.companies.filter(x=>x!==Co);if(fk===undefined&&S.fellowship)delete S.fellowship.crawl}
   box().querySelector('.dgback').click();ok(box().hidden&&!dv.dungeonOpen()&&!$('screen').classList.contains('dgopen'),'dungeon view: Back to world closes it');
   const a=mem[0],was={state:a.state,hidden:a.hidden};a.state='dungeon';a.hidden=true;select(a);uiFast();const link=$('hero').querySelector('.dglink');
   ok(!!link,'dungeon view: the hero card of a hero inside has View inside');if(link){link.click();ok(dv.dungeonOpen(),'dungeon view: View inside opens it')}
@@ -1020,5 +1031,85 @@ console.log('start gate: ready, not just claimed');
   F.camp={phase:'rest',why:'night',hours:0,ids:mem.map(a=>a.id),watcher:mem[0].id,restAt:Math.round(sim.S.gameMin),watchIdx:0};
   ok(/on watch: \S+ \(until \d\d:\d\d\)/.test(campLine()),'camp watch: a normal camp keeps "until hh:mm"');
   F.camp=keep;mem.forEach((a,k)=>{a.state=ks[k]})}
+// ---- companies (#456): a row of frames per company, solos in one Alone row, the follow cycle, the sheet, the banner ----
+{const S=sim.S,CO=await import('../src/sim/company.js'),FR=await import('../src/ui/frames.js'),CV=await import('../src/ui/companyview.js');
+  const SH=await import('../src/ui/sheet.js'),LV=await import('../src/ui/lifeview.js'),TB=await import('../src/ui/table.js'),{cam}=await import('../src/render/draw.js');
+  const F=S.fellowship,keepFollow=S.followId,keepView=cam.view,keepSel=cam.sel,keepT=S.table,keepW=window.innerWidth;
+  const rowEls=()=>$('frames').querySelectorAll('.frrow'),pfs=()=>$('frames').querySelectorAll('.pf'),vf=$('vFel');
+  const press=k=>{for(const f of document._ls.keydown||[])f({key:k,target:document.body,preventDefault(){}})};
+  S.followId=F.id;uiFast();
+  // the default together world: one company, one row, no row head, the five frames, the button and banner as before
+  ok(CO.companies().length===1&&FR.frameGroupRows().length===1&&FR.frameGroupRows()[0].title===F.name,'companies: the default world shows one company in one row');
+  ok(rowEls().length===1&&rowEls()[0].querySelector('.frrh').hidden&&pfs().length===5,'companies: one row of five frames, no row head (looks as before)');
+  ok($('frames').querySelector('.frttl').textContent===F.name&&$('frames').querySelector('[data-pfsheet]').textContent==='Compare the five','companies: the title is the Fellowship\'s name, Compare the five');
+  ok(vf.textContent==='Fellowship'&&!vf.hidden,'companies: the follow button reads Fellowship with one company');
+  ok(TB.tableOwner({company:F.id,companyName:F.name,solo:false})===null,'companies: the banner names no company while there is one');
+  // a pair and two solos (the pair of one faction; every hero alive and not in the Fellowship)
+  const free=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead'&&!CO.companyOf(a)&&!a.fellow);
+  const fac=[0,1].find(f=>free.filter(a=>a.fac===f).length>=10),same=free.filter(a=>a.fac===fac);
+  const [p0,p1]=same,q0=free.find(a=>a!==p0&&a!==p1),q1=free.find(a=>a!==p0&&a!==p1&&a!==q0);
+  const pair=CO.foundCompany([p0,p1],{name:'The Smoke Pair'}).company,s1=CO.foundCompany([q0]).company,s2=CO.foundCompany([q1]).company;
+  ok(!!pair&&!!s1&&!!s2&&CO.companies().length===4,'companies: a pair and two solos founded beside the Fellowship');
+  const fr0=$('frames').querySelector('.pf[data-hid="'+F.slots.tank+'"]');uiFast();
+  let G=FR.frameGroupRows();
+  ok(G.length===3&&G[0].title===F.name&&G[0].followed&&G[1].title==='The Smoke Pair'&&G[1].names.join()===p0.name+','+p1.name&&G[2].alone&&G[2].names.join()===q0.name+','+q1.name,'companies: rows are the followed Fellowship, the pair, then Alone with both solos: '+G.map(g=>g.title+'['+g.names.join(',')+']').join(' | '));
+  ok(rowEls().length===3&&[...rowEls()].every(r=>!r.querySelector('.frrh').hidden)&&pfs().length===9,'companies: three rows with their heads, nine frames');
+  ok($('frames').querySelector('.pf[data-hid="'+F.slots.tank+'"]')===fr0,'companies: the Fellowship\'s frames are the same nodes after the rows appear');
+  const heads=[...rowEls()].map(r=>r.querySelector('.frrh').textContent);
+  ok(/The Smoke Pair/.test(heads[1])&&/2 riding · \+6/.test(heads[1])&&/FOLLOWED/.test(heads[0]),'companies: a row head names the company, how many ride and the room left (+6): '+heads.join(' / '));
+  ok(/Alone/.test(heads[2])&&/2 heroes, each on their own/.test(heads[2])&&rowEls()[2].querySelector('.frrh').tagName!=='BUTTON','companies: the Alone row says it holds two solos and is not a follow button');
+  ok(rowEls()[0].querySelector('.frrf').hidden===false&&rowEls()[1].querySelector('.frrf').hidden===true,'companies: FOLLOWED marks only the followed row');
+  ok($('frames').querySelector('.frttl').textContent==='4 companies','companies: the strip title counts the companies');
+  ok([...$('frames').querySelectorAll('.pfkey')].map(n=>n.textContent).join()==='1,2,3,4,5,6,7,8,9','companies: keys 1-9 run in display order across the rows');
+  press('6');ok(cam.sel===p0,'companies: key 6 picks the pair\'s first hero');press('8');ok(cam.sel===q0,'companies: key 8 picks the first solo');
+  // the follow cycle: first click frames the followed company, each next click follows the next one (id order, wraps)
+  setView('map');vf.click();ok(cam.view==='fellow'&&CV.followedCompany()===F,'follow cycle: the first click frames the followed Fellowship');
+  ok(/^Follow /.test(vf.textContent)&&vf.textContent.includes(F.name),'follow cycle: the button reads Follow <company> with several: '+vf.textContent);
+  const tankNode=$('frames').querySelector('.pf[data-hid="'+F.slots.tank+'"]'),pairNode=$('frames').querySelector('.pf[data-hid="'+p0.id+'"]');
+  vf.click();uiFast();G=FR.frameGroupRows();
+  ok(CV.followedCompany()===pair&&S.followId===pair.id&&cam.view==='fellow'&&vf.textContent==='Follow The Smoke Pair','follow cycle: the next click follows the pair (S.followId saved with the world)');
+  ok(G[0].title==='The Smoke Pair'&&G[0].followed&&G[1].title===F.name,'follow cycle: the followed pair moves to the first row');
+  ok($('frames').querySelector('.pf[data-hid="'+F.slots.tank+'"]')===tankNode&&$('frames').querySelector('.pf[data-hid="'+p0.id+'"]')===pairNode,'follow cycle: frames move with their row, not rebuilt');
+  {const fr=cam.frame(),mx=(p0.x+p1.x)/2;ok(!!fr&&Math.abs(fr.x-mx)<.01,'follow cycle: the camera frames the pair')}
+  ok($('hint').textContent==='Following The Smoke Pair','follow cycle: the hint names the followed company');
+  // the sheet shows the followed company
+  SH.openSheet();uiFast();let T=SH.sheetRows();
+  ok(SH.sheetOpen()&&T.cols.length===2&&T.cols.every(c=>c.hero===p0||c.hero===p1)&&$('sheetov').querySelector('.shttl').textContent==='The Smoke Pair · side by side','sheet: two columns and the pair\'s name');
+  ok($('sheetov').querySelector('.shcorner').textContent==='join order'&&LV.lifeRows().length===2,'sheet: join order for a company, the Life view shows the same two');
+  ok($('frames').querySelector('[data-pfsheet]').textContent==='Side by side','companies: the compare button says Side by side for a company that is not five');
+  vf.click();uiFast();G=FR.frameGroupRows();
+  ok(CV.followedCompany()===s1&&G[0].alone&&G[0].followed&&G[0].names[0]===q0.name&&G[1].title===F.name&&G[2].title==='The Smoke Pair','follow cycle: following a solo puts the Alone row first, that solo first');
+  T=SH.sheetRows();ok(T.cols.length===1&&T.cols[0].hero===q0&&$('sheetov').querySelector('.shttl').textContent===q0.name+' · side by side','sheet: a solo is one column under the hero\'s name');
+  vf.click();uiFast();ok(CV.followedCompany()===s2&&FR.frameGroupRows()[0].names.join()===q1.name+','+q0.name,'follow cycle: the second solo, first in the Alone row');
+  vf.click();uiFast();ok(CV.followedCompany()===F&&FR.frameGroupRows()[0].title===F.name&&SH.sheetRows().cols.length===5,'follow cycle: wraps back to the Fellowship and its five columns');
+  SH.closeSheet();
+  // a row head follows its company
+  rowEls()[1].querySelector('.frrh').click();uiFast();ok(CV.followedCompany()===pair&&cam.view==='fellow'&&FR.frameGroupRows()[0].title==='The Smoke Pair','companies: a click on a row head follows that company');
+  // up to eight in a company: eight columns, the frames in rows of four, no room left
+  const more=same.filter(a=>a!==p0&&a!==p1&&!CO.companyOf(a)).slice(0,6);for(const a of more)CO.joinCompany(pair,a);uiFast();
+  ok(pair.ids.length===8&&SH.sheetRows().cols.length===8,'sheet: a company of eight is eight columns');
+  ok(CO.joinCompany(pair,same.find(a=>!CO.companyOf(a))).ok===false&&SH.sheetRows().cols.length<=8,'sheet: never more than eight columns (the cap refuses a ninth)');
+  const pr=[...rowEls()].find(r=>r.dataset.row==='c'+pair.id);
+  ok(/wide/.test(pr.querySelector('.frlist').className)&&/8 riding$/.test(pr.querySelector('.frrc').textContent)&&/Full/.test(pr.querySelector('.frrc').getAttribute('title')),'companies: eight frames in rows of four, the head says it is full');
+  ok([...$('frames').querySelectorAll('.pfkey')].filter(n=>n.textContent).length===9,'companies: only the first nine frames carry a key');
+  // the Table banner names whose table it is, and follows another company's
+  const sc={id:7001,company:s1.id,kind:'check',title:'A narrow ledge',frame:['A narrow ledge over the river.'],ids:[q0.id],i:0,phase:'turn',t:0,acts:{},beats:[],ctx:{},pause:false,at:S.gameMin};
+  S.table=sc;TB.renderTable(1);let own=$('tbanner').querySelector('.tco');
+  ok(!!own&&own.textContent===q0.name+', alone'&&own.tagName==='BUTTON','banner: a solo\'s scene names the hero, alone, as a follow button');
+  own.click();ok(CV.followedCompany()===s1,'banner: the button follows that company');TB.renderTable(1);own=$('tbanner').querySelector('.tco');
+  ok(!!own&&own.tagName!=='BUTTON','banner: the followed company\'s name is plain text');
+  S.table={...sc,id:7002,company:pair.id,ids:[p0.id,p1.id]};TB.renderTable(1);own=$('tbanner').querySelector('.tco');
+  ok(!!own&&own.textContent==='At the table: The Smoke Pair','banner: a company\'s scene says At the table: <name>');
+  S.table=keepT;TB.renderTable(1);
+  // phone width: the rows wrap and shrink (no horizontal scroll)
+  const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  ok(/\.frrh\{[^}]*min-width:0[^}]*max-width:100%/.test(css)&&/\.frrn\{[^}]*text-overflow:ellipsis/.test(css)&&/\.frrows\{[^}]*min-width:0/.test(css),'phone width: a long company name is cut, never widens the page');
+  ok(/@media \(max-width:920px\)\{\.frlist,\.frlist\.wide\{grid-template-columns:repeat\(3,/.test(css),'phone width: every row, eight included, is three frames across');
+  ok(/#vFel\{[^}]*max-width:[^}]*text-overflow:ellipsis/.test(css),'phone width: the Follow <company> button is cut, not widened');
+  window.innerWidth=390;uiFast();ok(rowEls().length===3&&pfs().length===15,'phone width: the rows still render (390 px)');window.innerWidth=keepW;
+  // back to one company: one row again, no heads
+  for(const C of [pair,s1,s2])CO.dissolveCompany(C);S.followId=keepFollow;uiFast();
+  ok(rowEls().length===1&&rowEls()[0].querySelector('.frrh').hidden&&pfs().length===5&&vf.textContent==='Fellowship','companies: back to one company, the strip is as before ('+rowEls().length+' rows, '+pfs().length+' frames, '+vf.textContent+', '+CO.companies().map(C=>C.name+':'+C.ids.length).join(',')+')');
+  cam.sel=keepSel;setView(keepView==='fellow'?'fellow':'map');uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
