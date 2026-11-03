@@ -143,5 +143,112 @@ while (F.ids.length < 8) {const h = S.agents.find(x => x.state !== 'dead' && x.c
 const dr2 = place('drover', homeOf(L).name, 'square'); dr2.x = L.x; dr2.y = L.y; rebuild(); L.state = 'town';
 r = act(L, 'hire', {npc: dr2.name}); ok(!r.ok && /holds 8|most a company/.test(r.error), 'a company of 8 refuses: ' + r.error);
 
+
+// ---- the Fellowship with a hire: scenes, the crawl, the draft, lead_to, fireside, arrival, the start gate ----
+const T = await import('../src/sim/table.js');
+const D = await import('../src/sim/dungeon.js');
+const COUNCIL = await import('../src/sim/council.js');
+const HOST = await import('../src/sim/player-host.js');
+const {CRYPT, dist} = await import('../src/world/map.js');
+const {slotHeroes, slotParty} = await import('../src/sim/company.js');
+// A fresh Fellowship (live agents: runner links on) with a sellsword hired, everyone beside it in town.
+function fw(links = true) {
+  init(); run(20); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; S.mobs.length = 0;
+  if (links) SIM.setRunnerLinks(() => 'connected');
+  const F = slotted(), M = slotHeroes(F), L = M[0], hd = homeOf(L);
+  const sw = place('sellsword', hd.name);
+  for (const a of M) {a.lvl = 9; a.hp = maxHp(a); a.x = sw.x + 1; a.y = sw.y; a.state = 'town'; a.hidden = false; a.target = null; a.dest = null; a.pq = []}
+  rebuild(); L.gold = 400;
+  const r = act(L, 'hire', {npc: sw.name, days: 4});
+  return {F, M, L, sw, r, H: S.agents.find(x => x.hire && !x.hire.over)};
+}
+const answerAll = (sc, pick) => {for (const id of sc.ids) {const a = S.agents.find(x => x.id === id); if (a && a.state !== 'dead' && !sc.acts[id] && a.player) T.sceneAct(a, pick(sc, a), 'test')}};
+const pickFor = (sc, a) => {const rf = T.reflexFor(sc, a); return (rf && (rf.opt || rf.k)) || rf || 'strike'};
+
+console.log('Fellowship with a hire, Table scenes:');
+{
+  const {F, M, L, H, r} = fw(); ok(r.ok && H && !inSlots(H) && slotKeyOf(H) === undefined, 'a hire rides with the Fellowship and holds no place: ' + (r.error || ''));
+  for (const a of M.concat([H])) {a.x = L.x; a.y = L.y; a.state = 'hunt'}
+  const sc = T.openScene('check', 'A narrow ford', ['The water runs high.'], {anchor: L.id});
+  ok(sc && !sc.ids.includes(H.id), 'an everyone-at-once scene does not seat the hire (' + (sc && sc.ids.length) + ' seated)');
+  ok(T.tableView(H) === null, 'the hire has no scene view');
+  const v = T.tableView(L); ok(v && !(v.waiting_on || []).includes(H.name) && /\/5$/.test(String(v.answered || '0/5')), 'answered counts the five and waiting_on never names the hire: ' + (v && v.answered) + ' ' + J(v && v.waiting_on));
+  let g = 0; while (S.table === sc && g++ < 60 * 200) {if (sc.phase === 'turn' || sc.phase === 'frame') answerAll(sc, pickFor); step(1 / 60)}
+  ok(S.table !== sc, 'the scene resolves with the five answering (the hire never waited on)');
+  ok(!(sc.beats || []).some(b => b.by === H.id || b.id === H.id), 'no beat is the hire');
+}
+console.log('Fellowship with a hire, a Crypt crawl:');
+{
+  const {F, M, H} = fw();
+  for (const a of M.concat([H])) {a.hp = maxHp(a); a.state = 'hunt'; a.hidden = false; a.target = null; a.dest = null; a.x = CRYPT.x + (Math.random() - .5); a.y = CRYPT.y + 1}
+  for (const a of M) a.cryptOk = true;
+  D.musterCrypt(M.concat([H]), F.fac, null, F.name);
+  let went = false, hireSeated = false, scenes = 0, last = null, threw = null;
+  try {
+    for (let f = 0; f < 1500 * 60 && (CRYPT.group || !went); f++) {
+      step(1 / 60); if (CRYPT.group) went = true;
+      const sc = S.table;
+      if (sc && sc.id !== last) {last = sc.id; scenes++}
+      if (sc && sc.ids.includes(H.id)) hireSeated = true;
+      if (sc && (sc.phase === 'frame' || sc.phase === 'turn')) answerAll(sc, pickFor);
+    }
+  } catch (e) {threw = e}
+  ok(!threw, 'the crawl runs without a throw' + (threw ? ': ' + threw.stack.split('\n').slice(0, 3).join(' | ') : ''));
+  ok(went && !CRYPT.group && !S.table, 'the group and the table are free at the end');
+  const cr = F.crawl || {};
+  ok(cr.runs >= 1 && [cr.runs, cr.clears, cr.deaths, cr.rooms].every(Number.isFinite) && cr.deaths <= 6, 'the record is sane: ' + J({runs: cr.runs, clears: cr.clears, driven: cr.driven, wipes: cr.wipes, deaths: cr.deaths, rooms: cr.rooms}));
+  ok(!hireSeated && scenes >= 1, 'room scenes opened (' + scenes + ') and none seated the hire');
+  ok(H.state !== 'dungeon' && (H.state === 'dead' || !H.hidden), 'the hire is out of the Crypt, alive or fallen: ' + H.state);
+}
+console.log('Fellowship with a hire, the draft and lead_to:');
+{
+  const {F, M, L, H} = fw();
+  const door = {x: CRYPT.x, y: CRYPT.y + 3};
+  for (const a of M) {a.x = door.x + (M.indexOf(a) % 3) * .4; a.y = door.y; a.state = 'hunt'; a.hp = maxHp(a); a.hidden = false}
+  H.x = door.x + 35; H.y = door.y; H.state = 'fight'; rebuild();
+  F.wait = {crypt: S.gameMin + 600};
+  let g = 0; while (!CRYPT.group && g++ < 60 * 60) step(1 / 60);
+  ok(CRYPT.group && M.every(a => CRYPT.group.mem.includes(a)), 'the call goes with the five, the far and busy hire does not hold it');
+  g = 0; while (CRYPT.group && CRYPT.group.phase === 'gather' && g++ < 60 * 120) step(1 / 60);
+  ok(CRYPT.group && CRYPT.group.phase === 'inside' && M.every(a => CRYPT.group.mem.includes(a)), 'the five go in; the hire is ' + (CRYPT.group && CRYPT.group.mem.includes(H) ? 'with them' : 'left out'));
+}
+{
+  const {F, M, L, H} = fw(false);
+  for (const a of M.concat([H])) {a.x = L.x; a.y = L.y; a.state = 'hunt'; a.hidden = false}
+  run(5);
+  const P_ = slotParty(F); ok(P_ && P_.mem.includes(H), 'the hire is in the Fellowship party');
+  const n = COUNCIL.followLead(P_.leader, 'the ford'); ok(n >= 3 && P_.dest && P_.dest.label === 'the ford', 'lead_to moves the party (' + n + ' heard it)');
+  H.x = P_.leader.x + 3; run(5); ok(dist(H, P_.leader) < 20 && H.state !== 'dead', 'the hire rides along');
+}
+console.log('Fellowship with a hire, fireside, arrival, the start gate:');
+{
+  const {F, M, L, H} = fw();
+  for (const a of M.concat([H])) {a.x = L.x; a.y = L.y; a.state = 'town'}
+  F.fireQ = {mode: 'debrief', at: Math.round(S.gameMin), title: 'a hard fight', anchor: L.id};
+  let g = 0; while (!S.table && g++ < 60 * 10) step(1 / 60);
+  ok(!S.table || !S.table.ids.includes(H.id), 'fireside and debrief never seat the hire' + (S.table ? ' (' + S.table.kind + ', ' + S.table.ids.length + ' seated)' : ' (no scene opened)'));
+  S.table = null; S.tables = [];
+  const dead = M[2]; fall(dead, 'a test'); let seenSc = null; g = 0;
+  while (g++ < 60 * 200) {step(1 / 60); const sc = S.table; if (sc && sc.kind === 'arrival') {seenSc = sc; break}}
+  ok(!seenSc || !seenSc.ids.includes(H.id), 'an arrival scene does not seat the hire' + (seenSc ? '' : ' (none opened in this fixture)'));
+  const seats = S.agents.filter(a => a.player && a.state !== 'dead').map(a => HOST.seatInfo(a).id);
+  ok(!seats.includes(H.id) && !H.player, 'seatInfo and the start gate list no seat for the hire');
+}
+
+console.log('a placed person away on hire keeps its DM clock paused:');
+{
+  init({fellowship: false}); run(5);
+  const B = live().find(a => a.fac === 0); P.markPlayer(B, true);
+  const sw = place('sellsword', homeOf(B).name); B.gold = 100; beside(B, sw);
+  const rec = S.levers.active.find(x => x.id === sw.lever), left0 = rec.until - S.gameMin;
+  const r1 = act(B, 'hire', {npc: sw.name, days: 1}); ok(r1.ok, 'hired a placed person');
+  run(120);
+  ok(Math.abs((rec.until - S.gameMin) - left0) < 2, 'the placement clock did not run while away: ' + Math.round(rec.until - S.gameMin) + ' of ' + Math.round(left0) + ' left');
+  const h1 = S.agents.find(x => x.hire); h1.hire.until = S.gameMin + 1; run(2); hurry(h1);
+  ok(h1.hire.done && (S.wanderers || []).includes(sw), 'back, and the person is still placed');
+  const before = rec.until - S.gameMin; run(30);
+  ok(rec.until - S.gameMin < before - 100, 'and the clock runs again after the return');
+}
+
 console.log(fail ? `\n${fail} FAILED` : '\nall ok');
 process.exit(fail ? 1 : 0);

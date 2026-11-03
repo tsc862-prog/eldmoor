@@ -198,7 +198,7 @@ const waiting=(F,k)=>F&&F.wait&&F.wait[k]>S.gameMin;
 function setWait(F,k){(F.wait||(F.wait={}))[k]=S.gameMin+COUNCIL.WAIT_MIN}
 // The faction whose raid muster is reserved for a company, or -1.
 export function raidReserve(){for(const C of companies())if(openProps(C).some(P=>P.kind==='raid')||waiting(C,'raid'))return C.fac;return -1}
-function cryptReady(L,C){return L.every(b=>['hunt','travel','town','return','follow'].includes(b.state))&&gathered(L,C)} // the whole company, in shouting range of each other (#182)
+function cryptReady(L,C){L=L.filter(b=>!b.hire);return L.every(b=>['hunt','travel','town','return','follow'].includes(b.state))&&gathered(L,C)} // the whole company, in shouting range of each other (#182)
 function goCrypt(F,L){for(const b of L)if(b.player)b.cryptOk=true;
   musterCrypt(L,F.fac,null,F.name);clog(F,'council',gd(F.name),' sets out for ',gd(CRYPT.name),' together.')}
 // Called by dungeonCheck while no group holds the Crypt. True: the Crypt is the Fellowship's (reserved or just launched); the
@@ -250,7 +250,7 @@ export function followLead(lead,label){const P=lead.party;if(!P||P.leader!==lead
 export function unitDraft(list,pool,n,kind){const top=list.slice(0,n),hit=top.find(inUnit),F=hit?companyOf(hit):null;if(!F)return top;
   // a member following the leader counts as free to answer (the pools only list hunt/travel/town/return)
   const free=a=>pool.includes(a)||(a.state==='follow'&&!a.raid);
-  const L=members(F),ready=L.length>0&&L.every(free)&&gathered(L,F),agents=L.filter(a=>a.player);
+  const L=members(F),core=L.filter(b=>!b.hire),ready=core.length>0&&core.every(free)&&gathered(core,F),agents=L.filter(a=>a.player); // a hire comes along and never holds the call (#634)
   const accepted=!agents.length||(F.accept&&F.accept[kind]>S.gameMin);
   if(ready&&accepted){for(const a of agents){if(kind==='crypt')a.cryptOk=true;else a.raidOk=true}
     if(F.accept)delete F.accept[kind];if(F.wait)delete F.wait[kind];

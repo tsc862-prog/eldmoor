@@ -110,6 +110,7 @@ export function hire(a,{npc,days}={}){
     town:p.town||null,zone:z>=0?z:null,region,line:R.line};
   p.hired=h.id;p.hireOffer=null;
   const list=stash(p);h.hire.list=list;
+  {const rec=p.lever!=null&&S.levers?S.levers.active.find(x=>x.id===p.lever):null;if(rec)h.hire.leverLeft=Math.max(1,rec.until-S.gameMin)} // the DM placement's clock is paused while they are away
   const r=joinInto(A,h,a);
   if(!r.ok){ // the company would not take them: undo (no one was ever hired)
     a.gold+=cost;p.purse-=cost;p.hired=null;unstash(h,p);S.agents.splice(S.agents.indexOf(h),1);return no(r.error||'The company could not take them in.')}
@@ -166,6 +167,7 @@ const busy=h=>OFFER.FIGHT.includes(h.state)||OFFER.BUSY.includes(h.state);
 // mourned, a hire in the Fellowship's company joins its party, and a hire that has reached town is a townsperson again.
 export function hireTick(){const hs=S.agents.filter(h=>h.hire&&!h.hire.done);if(!hs.length)return;
   for(const h of hs){const t=h.hire;
+    if(t.leverLeft!=null){const e=(S.hireAway||[]).find(e=>e.p.id===t.npc),rec=e&&e.p.lever!=null&&S.levers?S.levers.active.find(x=>x.id===e.p.lever):null;if(rec)rec.until=S.gameMin+t.leverLeft}
     if(h.state==='dead'){if(!t.mourned)mourn(h);continue}
     if(!t.over){const C=companyOf(h),by=hero(t.by);
       if(!C||h.companion==null){t.over=true;t.overAt=Math.round(S.gameMin);t.end='company';t.why='the company parted';
