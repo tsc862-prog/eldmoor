@@ -1098,6 +1098,10 @@ console.log('the DM prepares the table');
     S.table=null;sv.sceneTick(FOL);mem.forEach((a,k)=>{a.x=c.gate.x-1+k*.8;a.y=c.gate.y});
     S.table=scene('interrogation','Questioning Mara',{npc:npc.id,anchor:m0.id,who:{kind:'npc',id:npc.id,name:'Mara'},said:[]});sp=sv.sceneSpec();ok(sp.mode==='indoor'&&sp.setting==='cell'&&sp.cast.includes(npc),'scene maps: an interrogation in town plays in the cell ('+sp.where+')');
     mem.forEach(a=>{a.x=wild.x;a.y=wild.y});S.table=scene('interrogation','Questioning '+wild.name,{foe:wild.id,anchor:m0.id,said:[]});sp=sv.sceneSpec();ok(sp.mode==='outdoor'&&sp.cast.includes(wild),'scene maps: a yielded foe questioned in the field is on the terrain where it yielded');
+    // a talk scene (#407, #431): in town it opens on the room the person stands in; in the field on the terrain cut
+    mem.forEach(a=>{a.x=npc.x+1;a.y=npc.y});S.table=scene('talk','Bargaining with '+npc.name,{npc:npc.id,anchor:m0.id,why:'bargain',setting:'smithy',town:c.name});sp=sv.sceneSpec();ok(sp.mode==='indoor'&&sp.setting==='smithy'&&sp.cast.includes(npc),'scene maps: a talk in town opens on the room set for it ('+sp.where+')');
+    S.table=scene('talk','A tense word with '+npc.name,{npc:npc.id,anchor:m0.id,why:'tense',setting:'gate',town:c.name});sp=sv.sceneSpec();ok(sp.mode==='indoor'&&sp.setting==='gate','scene maps: and the gatehouse for a person at the gate ('+sp.where+')');
+    S.table=scene('talk','A word on the road',{npc:npc.id,anchor:m0.id,why:'party'});mem.forEach(a=>{a.x=wild.x;a.y=wild.y});sp=sv.sceneSpec();ok(sp.mode==='outdoor','scene maps: a talk in the field keeps the terrain cut ('+sp.where+')');
     S.table=null;sv.sceneTick(FOL)}
   sv.setSceneAuto(false);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick(FOL);ok(!sv.sceneOpen()&&/off/.test($('vScene').textContent),'scene maps: with Scene maps off in Settings, nothing opens by itself');
   sv.setSceneAuto(true);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick({view:'map',sel:null});ok(!sv.sceneOpen(),'scene maps: only when the watcher follows the Fellowship');
