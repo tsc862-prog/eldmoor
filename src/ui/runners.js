@@ -16,6 +16,7 @@
 //   initRunners(after)         one delegated handler for every control on the page
 // When the relay runs without --runners the controls say how to turn it on; the world never waits on any of this.
 import {bridgeUrl} from './player-bridge.js';
+import {priceLabel} from './pricelabel.js';
 import {S,playerSeats} from '../sim/index.js';
 import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
@@ -175,7 +176,7 @@ export const dmRunnerSig=()=>{poll(true);const r=runnerByKey('dm');return (r?r.s
 // The mind a runner starts with. models: pulled local models (from the relay's /health), may be empty.
 export function runnerPick(k,models,openai,hf){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude). Hugging Face models share the free allowance with the art pipeline.';
   // Claude by model (the owner pays per model): Haiku is also what a runner started here plays when nothing is saved
-  const opts=[['','saved mind (new: Claude Haiku)'],['anthropic:claude-haiku-5-5','Claude Haiku'],['anthropic:claude-sonnet-5-5','Claude Sonnet']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai'])).concat((hf||[]).map(m=>['huggingface:'+m,m+' · huggingface']));
+  const opts=[['','saved mind (new: Claude Haiku)'],['anthropic:claude-haiku-5-5','Claude Haiku'],['anthropic:claude-sonnet-5-5','Claude Sonnet']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai'+(openai&&openai.prices?priceLabel(openai,m):'')])).concat((hf||[]).map(m=>['huggingface:'+m,m+' · huggingface']));
   if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai|huggingface|anthropic):/,'')+(picks[k].startsWith('openai:')?' · openai':picks[k].startsWith('huggingface:')?' · huggingface':picks[k].startsWith('anthropic')?'':' · local')]);
   for(const [v,t] of opts){const o=new Option(t,v);if(v===(picks[k]||''))o.selected=true;s.append(o)}
   // the budget the runner starts with (owner, #563: dollars are the limit, a runner plays until stopped); also in the Agents panel
