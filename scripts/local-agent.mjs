@@ -281,10 +281,11 @@ export function scenePrompt(sc) {
 }
 // ask(system, user, schema) over the loop's chat(): Ollama `format`, OpenAI strict json_schema (chat({strict:true})).
 // timeoutMs: past the table's wait (TABLE.liveMs 120 s) the reflex has acted, so a busy Ollama is not waited on longer.
+// urgent: the scene answer goes ahead of every ordinary request waiting in the runner's model queue (issue #515).
 // The context size (num_ctx) is the Ollama adapter's own, the same for every local call (issue #221).
 // A generation Ollama aborts for repeating tokens (#221) is asked once more, cooler.
 export const chatAsk = (chat, model, {strict = false, timeoutMs = 110000} = {}) => async (system, user, schema) => {
-  const req = temperature => ({model, messages: [{role: 'system', content: system}, {role: 'user', content: user}], format: schema, strict, maxTokens: 300, temperature, signal: AbortSignal.timeout(timeoutMs)});
+  const req = temperature => ({model, messages: [{role: 'system', content: system}, {role: 'user', content: user}], format: schema, strict, maxTokens: 300, temperature, signal: AbortSignal.timeout(timeoutMs), urgent: true});
   let r; try {r = await chat(req(0.4))} catch (e) {if (!(e && (e.repeatLimit || /repeat limit|prediction aborted/i.test(String(e.message || ''))))) throw e; r = await chat(req(0.2))}
   return {text: String(r.message && r.message.content || ''), usage: r.usage || {}, ms: r.ms || 0};
 };
@@ -313,7 +314,8 @@ export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep
   on('tool', 'scene_act', args); stat.tools++;
   let r; try {r = await call('scene_act', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
   const text = typeof r === 'string' ? r : JSON.stringify(r); on('result', text);
-  if (r && r.ok !== false) {stat.acts++; stat.calls.push({name: 'scene_act', ok: true}); stat.narration = pick.line ? `${pick.line} (${pick.option})` : `Chose ${pick.option} at the table.`}
+  if (r && r.ok !== false) {stat.acts++; stat.calls.push({name: 'scene_act', ok: true}); stat.narration = pick.line ? `${pick.line} (${pick.option})` : `Chose ${pick.option} at the table.`;
+    if (r && Number.isFinite(r.waited_s)) stat.sceneS = [r.waited_s]} // how long the table had waited (issue #515)
   else {stat.rejected++; stat.calls.push({name: 'scene_act', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
   if (/"dead":true/.test(text)) stat.dead = true;
   if (keep) { // the hero's own conversation remembers the choice, compactly
@@ -423,7 +425,10 @@ export function trimHistory(h, budget) {
 // (sess.system, sess.local); on(kind, ...): 'text' narration, 'tool' (name, args), 'result' (text),
 // 'mode' (new mode). Returns {tools, modelCalls, in, out, modelMs, ms, narration, dead, capped, rejected, mode, calls:[{name, ok, error?}]}.
 // tools: the tool table (default the hero's; the DM runner passes DM_TOOLS); rules: the line appended to the system prompt.
-export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12, on = () => {}, opts = {}, tools: list = PLAYER_TOOLS, rules = LOCAL_RULES}) {
+// interrupt: () => true when this hero's own Table scene opened (issue #515): the turn stops at once (a model call waiting in
+// the runner's queue or in flight is withdrawn) and returns with sceneJump, so the runner can send the forced scene answer.
+// A tool result carrying the game's table_waits line (the scene opened while the turn was in flight) does the same.
+export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12, on = () => {}, opts = {}, tools: list = PLAYER_TOOLS, rules = LOCAL_RULES, interrupt = null}) {
   const o = {...LOCAL_DEFAULTS, ...opts};
   const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
   const t0 = Date.now(); let reprompted = false; const stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: L.mode, calls: []};
@@ -434,15 +439,20 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   // Ollama aborts a generation that loops on repeated tokens ("token repeat limit reached", the owner's qwen2.5:14b,
   // #221). Retry once from a trimmed context (the oldest half of the history dropped) at temperature 0.4, same num_ctx;
   // a second loop ends the turn as empty (stat.looped), which does not count as a failed turn.
-  const ask = async req => {
+  const jumpAc = interrupt ? new AbortController() : null;
+  const jumpT = interrupt ? setInterval(() => {if (!stat.sceneJump && interrupt()) {stat.sceneJump = true; on('jump', 'scene'); jumpAc.abort()}}, 200) : null;
+  const ask = async req0 => {
+    const req = jumpAc ? () => ({...req0(), signal: jumpAc.signal}) : req0;
+    if (stat.sceneJump) return null;
     try {return await chat(req())}
     catch (e) {
+      if (stat.sceneJump) return null; // withdrawn for the scene answer (issue #515)
       const loop = e && (e.repeatLimit || /repeat limit|prediction aborted/i.test(String(e.message || '')));
       if (!loop) throw e;
       if (stat.loopRetried) {stat.looped = true; return null}
       stat.loopRetried = true; on('loop', String(e.message || e).slice(0, 120));
       L.dropped += trimHistory(L.history, Math.floor(JSON.stringify(L.history).length / 2)); sample = {...sample, temperature: 0.4};
-      try {return await chat(req())} catch (e2) {if (e2 && (e2.repeatLimit || /repeat limit|prediction aborted/i.test(String(e2.message || '')))) {stat.looped = true; return null} throw e2}
+      try {return await chat(req())} catch (e2) {if (stat.sceneJump) return null; if (e2 && (e2.repeatLimit || /repeat limit|prediction aborted/i.test(String(e2.message || '')))) {stat.looped = true; return null} throw e2}
     }
   };
   const turnMsgs = [{role: 'user', content: prompt, turn: 1}];
@@ -459,6 +469,8 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     stat.calls.push(r && typeof r === 'object' && r.ok === false ? {name, ok: false, error: String(r.error || 'error').slice(0, 140), ...(r.refused ? {refused: true} : {})} : {name, ok: true}); // the behavior log's turn line (issue #129)
     if (r && typeof r === 'object' && r.ok === false && (r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')))) stat.gameDown = (stat.gameDown || 0) + 1; // the page was away, not the model's mistake
     if (/"dead":true/.test(text)) stat.dead = true;
+    if (name === 'scene_act' && r && r.ok !== false && Number.isFinite(r.waited_s)) (stat.sceneS = stat.sceneS || []).push(r.waited_s); // the table's wait when it answered (issue #515)
+    else if (r && typeof r === 'object' && r.table_waits && !stat.sceneJump) {stat.sceneJump = true; on('jump', 'table_waits')} // its own scene opened mid-turn: answer that first (issue #515)
     // the breaker (#467): a refusal (not the page being away) counts per tool and in a row; enough ends the turn
     const refused = r && typeof r === 'object' && r.ok === false && !(r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')));
     if (refused) {refusedBy.set(name, (refusedBy.get(name) || 0) + 1); inRow++;
@@ -471,7 +483,8 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   const capHit = () => {const now = Date.now(); while (times.length && now - times[0] > 60000) times.shift();
     if (times.length < o.callsPerMin) {times.push(now); return false}
     if (!stat.throttled) {stat.throttled = true; on('throttle', times.length)} return true};
-  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled;
+  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled || !!stat.sceneJump;
+  try {
   for (let i = 0; i < toolTurns && !stat.dead; i++) {
     let res;
     try {res = await ask(() => ({model, messages: [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)], ...(L.mode === 'json' ? {format: actionSchema(list)} : {tools}), maxTokens: o.maxTokens, ...sample}))}
@@ -524,6 +537,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     }
     if (i === toolTurns - 1) stat.capped = true;
   }
+  } finally {if (jumpT) clearInterval(jumpT)}
   // the breaker or the minute cap ended the turn (#467): the next turn reads why, once
   if (stat.broke || stat.throttled) turnMsgs.push({role: 'user', content: stat.broke ? BREAK_NOTE + (stat.broke.error ? ' Last refusal (' + stat.broke.tool + '): ' + stat.broke.error : '') : THROTTLE_NOTE});
   // a narration not in English is not shown, kept or counted: the turn is empty (issue #126)
@@ -539,7 +553,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   // a narration close to the last one is a repeat; with no world-changing call it makes an empty turn (scripts/pacing.mjs localWorked)
   if (stat.narration && L.lastNarr && similar(stat.narration, L.lastNarr) >= REPEAT_SIM) stat.repeat = true;
   if (stat.narration) L.lastNarr = stat.narration.slice(0, 400);
-  if (stat.looped) L.emptyRun = Math.max(L.emptyRun || 0, o.freshAfter); else
+  if (stat.looped) L.emptyRun = Math.max(L.emptyRun || 0, o.freshAfter); else if (stat.sceneJump && !stat.tools) {} else // a turn given up for the scene answer is not an empty one
   L.emptyRun = !stat.tools || stat.rejected >= stat.tools || (stat.repeat && !stat.acts) || stat.foreign ? (L.emptyRun || 0) + 1 : 0;
   L.dropped += trimHistory(L.history, o.historyChars);
   L.tokensIn += stat.in; L.tokensOut += stat.out; L.seconds += (Date.now() - t0) / 1000;
@@ -547,8 +561,21 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   return stat;
 }
 
+// One turn record from two (issue #515): a free turn given up for the scene, then the forced scene answer. Numbers add up,
+// calls and the scene waits follow each other, the marks of either stay; mode/forced/narration come from the second.
+export function joinTurns(a, b) {
+  if (!a) return b; if (!b) return a;
+  const o = {...a, ...b};
+  for (const k of ['tools', 'acts', 'modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms', 'rejected', 'misses']) o[k] = (a[k] || 0) + (b[k] || 0);
+  for (const k of ['fresh', 'reprompted', 'foreign', 'dead', 'capped', 'looped', 'loopRetried', 'broke', 'throttled', 'sceneJump']) o[k] = a[k] || b[k] || false;
+  o.costKnown = a.costKnown !== false && b.costKnown !== false; o.calls = [...(a.calls || []), ...(b.calls || [])];
+  o.sceneS = [...(a.sceneS || []), ...(b.sceneS || [])]; if (!o.sceneS.length) delete o.sceneS;
+  o.narration = b.narration || a.narration; o.repeat = !!b.repeat;
+  return o;
+}
+
 // Marks on a turn line (issue #126): the model was told to act, or only repeated itself.
-const turnFlags = st => (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.broke ? ' | ended early: ' + st.broke.n + ' refusals of ' + st.broke.tool + (st.broke.inRow > st.broke.n ? ' (' + st.broke.inRow + ' in a row)' : '') : '') + (st.throttled ? ' | ended early: the per-minute call cap' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : '');
+const turnFlags = st => (st.sceneJump ? ' | its scene opened mid-turn: answered it first' : '') + (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.broke ? ' | ended early: ' + st.broke.n + ' refusals of ' + st.broke.tool + (st.broke.inRow > st.broke.n ? ' (' + st.broke.inRow + ' in a row)' : '') : '') + (st.throttled ? ' | ended early: the per-minute call cap' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : '');
 // The cost line for a local turn: tokens and seconds, cost 0.
 export const localLine = (st, model) => `${model} (local) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | $0 (local)${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 
