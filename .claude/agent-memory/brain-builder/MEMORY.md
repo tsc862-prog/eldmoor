@@ -43,3 +43,4 @@
 - [DM visibility](dm-visibility.md) — #558 hear ring, survey legal spots, world_standing, carries/quests/knows, survey hint on refusals
 - [CI fast](ci-fast.md) — #543 job split, CI_FAST knob, dmcheck/ratecheck parallel children, what is timer vs CPU bound
 - [Runner labels](runner-labels.md) — #563 label flip cause (6-turn cap release vs supervisor list), left members, implied ready, no turn caps, labelcheck
+- [CI correctness](ci-correctness.md) — #573 hashcheck source+hash-guard, rulescheck allowlist, merge_group, pitfalls

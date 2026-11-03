@@ -60,7 +60,9 @@
     "bestiarycheck": "node scripts/bestiarycheck.mjs",
     "focuscheck": "node scripts/focuscheck.mjs",
     "questcheck": "node scripts/questcheck.mjs",
-    "labelcheck": "node scripts/labelcheck.mjs"
+    "labelcheck": "node scripts/labelcheck.mjs",
+    "rulescheck": "node scripts/rulescheck.mjs",
+    "hashcheck": "node scripts/hashcheck.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.316",
