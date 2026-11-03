@@ -208,5 +208,71 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
   const nF = b.playEvN || 0; jobDone(b, {...v, id: 9902, outcome: 'failure', why: 'expired'}); ok(doneWakes(b, nF).length === 0, 'a job that went cold wakes nobody');
   const s0 = S.agents.find(x => !x.player && x.kind === 'hero'), nS = s0.playEvN || 0; jobDone(s0, {...v, id: 9903, held: null, mem: [s0.id]}); ok((s0.playEvN || 0) === nS, 'a scripted hero gets no wake')}
 
+// ---- 7. sworn vows (#526) ----
+{
+  const me = () => S.agents.find(x => x.id === a.id);
+  const {goalEvent} = await import('../src/sim/goals.js');
+  const {openThreads} = await import('../src/sim/company.js');
+  const {ELITES} = await import('../src/data/mobs.js');
+  for (const t of ['swear_oath', 'renounce_oath']) ok(TOOL_NAMES.includes(t), `tool ${t} is listed`);
+  const o0 = S.agents.find(x => x.id !== a.id && x.fac === me().fac && x.state !== 'dead'), ob = () => S.agents.find(x => x.id === o0.id); P.markPlayer(ob(), true); ob().x = me().x + 1; ob().y = me().y; ob().state = 'town'; ob().pq = []; run(1); me().x = ob().x - 1; me().y = ob().y; run(1);
+  me().bonds = {...(me().bonds || {}), [ob().id]: 12}; ob().bonds = {...(ob().bonds || {}), [a.id]: 12};
+  let r = call('swear_oath', {kind: 'slay'}); ok(!r.ok && /needs an about/.test(r.error), 'a slay vow needs a target');
+  r = call('swear_oath', {kind: 'reach', about: 'Nowhereland'}); ok(!r.ok && /No such place/.test(r.error), 'a reach vow needs a real place');
+  const oN = ob().playEvN || 0;
+  const foe = ELITES[0];
+  r = call('swear_oath', {kind: 'slay', about: foe.name, text: 'I will have the head of ' + foe.name + '.'});
+  ok(r.ok && me().vow && me().vow.kind === 'slay' && r.heard_by.includes(ob().name), `swear_oath: sworn, heard by ${r.heard_by}`);
+  ok((ob().playEv || []).some(e => e.n > oN && /swears/.test(e.text)), 'a witness in earshot is told');
+  r = call('swear_oath', {text: 'Another', kind: 'vow'}); ok(!r.ok && /Keep or renounce/.test(r.error), 'a second vow is refused while one stands');
+  let ql = call('quests'); ok(ql.active.some(q => q.id === me().vow.id && q.kind === 'oath'), 'the vow is an oath in the quest log');
+  ok(questLog(me()).active.some(q => q.id === me().vow.id && q.from === 'sworn vow'), 'the watcher log marks it a sworn vow');
+  ok(/head of/.test(JSON.stringify(call('self'))) && call('self').sworn_vow, 'self shows the vow under wants');
+  ok(call('status').vow, 'status shows the vow');
+  r = call('abandon_quest', {id: me().vow.id}); ok(!r.ok && /renounce_oath/.test(r.error), 'abandon_quest points to renounce_oath');
+  ok(openThreads({ids: [a.id], plans: [], log: [], seq: 0}).some(t => t.kind === 'oath' && t.parts.some(p => /head of/.test(p.t || ''))), 'the DM sees the vow as an open thread');
+  const m0 = me().tiers ? me().tiers.marks.length : 0;
+  // kept
+  const nK = me().playEvN || 0, vid = me().vow.id;
+  goalEvent(me(), 'kill', {name: 'Somebody Else', elite: true, type: 'wolf'}); ok(me().vow, 'another kill does not keep it');
+  goalEvent(me(), 'kill', {name: foe.name, elite: true, type: 'wolf'});
+  ok(!me().vow && questLog(me()).done.some(q => q.id === vid && q.status === 'done'), 'slaying the named foe keeps the vow (done list)');
+  ok((me().tiers.marks || []).some(m => /Kept the vow/.test(m.text)), 'a landmark: kept the vow');
+  ok((me().playEv || []).some(e => e.n > nK && /kept your vow/.test(e.text)), 'the agent is told it kept its vow');
+  ok(me().reflect && (me().reflect.cur || (me().reflect.log || []).length || me().reflect.ev), 'a reflection moment is due');
+  // reach
+  r = call('swear_oath', {kind: 'reach', about: c.name}); ok(!r.ok && /do not know/.test(r.error), 'a place not yet known is refused'); (await import('../src/sim/lore.js')).learnPlace(me(), c.name, 'told');
+  r = call('swear_oath', {kind: 'reach', about: c.name}); ok(r.ok, 'reach vow sworn '+(r.error||'')); run(1);
+  ok(!me().vow && questLog(me()).done.some(q => /reach/i.test(q.title) && q.status === 'done'), 'reaching the place keeps it');
+  // recover
+  r = call('swear_oath', {kind: 'recover', about: 'The Moonglass Ring'}); ok(r.ok, 'recover vow sworn');
+  goalEvent(me(), 'epic', 'The Moonglass Ring'); ok(!me().vow, 'looting the epic keeps it');
+  // free vow lapses kept at the end of its term; a slay vow expires
+  r = call('swear_oath', {text: 'I will not drink again.', days: 1}); ok(r.ok && r.term_days === 1, 'a free vow with a one day term');
+  S.gameMin += 1500; run(1); ok(!me().vow && questLog(me()).done.some(q => /not drink/.test(q.title) && q.status === 'done'), 'a free vow held to the end of its term is kept');
+  r = call('swear_oath', {kind: 'slay', about: foe.name, days: 1}); S.gameMin += 1500; run(1);
+  ok(!me().vow && questLog(me()).done.some(q => q.title.includes(foe.name) && q.status === 'expired') && !me().vowBroke, 'a slay vow past its term is expired, not broken');
+  // renounce: costs
+  r = call('swear_oath', {text: 'I will never leave this company.', kind: 'vow'}); ok(r.ok, 'a vow sworn before a witness');
+  const b0 = me().bonds[ob().id], nR = ob().playEvN || 0, ch0 = S.chronicle.length;
+  r = call('renounce_oath', {reason: 'It was too much to ask'});
+  ok(r.ok && !me().vow, 'renounce_oath: the vow is given up');
+  ok((me().bonds[ob().id] || 0) < b0, `the witness cools (${b0} -> ${me().bonds[ob().id] || 0})`);
+  ok((me().tiers.marks || []).some(m => /Broke their word/.test(m.text)), 'a landmark: broke their word');
+  ok(S.chronicle.length > ch0, 'a Chronicle line');
+  ok((ob().playEv || []).some(e => e.n > nR && /broken the vow/.test(e.text)), 'witnesses are told');
+  ok(questLog(me()).done.some(q => q.status === 'abandoned' && /leave this company/.test(q.title)), 'the done list shows it abandoned');
+  ok(openThreads({ids: [a.id], plans: [], log: [], seq: 0}).some(t => t.kind === 'broken'), 'the DM sees the broken word as a thread');
+  r = call('renounce_oath'); ok(!r.ok && /no sworn vow/.test(r.error), 'renounce with no vow is refused');
+  // protect: a companion's fall breaks it
+  const {foundCompany} = await import('../src/sim/company.js');
+  const fc = foundCompany([me(), ob()]); r = call('swear_oath', {kind: 'protect', about: ob().name});
+  ok(r.ok && me().vow.kind === 'protect', `a protect vow for a companion (${fc.ok})`);
+  const sv = JSON.parse(JSON.stringify(snapshot())); ok(sv.agents.find(x => x.id === a.id).vow, 'the vow is saved with the hero');
+  ob().state = 'dead'; run(1); ok(!me().vow && me().vowBroke && me().vowBroke.how === 'failed', 'the companion fell: the vow failed');
+  // scripted heroes hold no vows and are not touched
+  ok(S.agents.filter(x => !x.player).every(x => !x.vow), 'no scripted hero holds a vow');
+}
+
 console.log(fail ? `\n${fail} check(s) FAILED\n` : '\nAll quest log checks passed.\n');
 process.exit(fail ? 1 : 0);
