@@ -161,7 +161,7 @@ export function memoryNote(b) {
   return personaNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.
-export const personaNote = b => b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '';
+export const personaNote = b => (b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '') + (b && typeof b.told === 'string' && b.told ? `\n${b.told.slice(0, 500)}` : ''); // #571: what it told of its past round the fire
 // The persona in the standing orders (issue #409): the block between PERSONA_HEAD and PERSONA_TAIL (src/sim/persona.js
 // selfText) replaced, or appended. text '' leaves the orders as they are.
 const P_HEAD = 'YOUR PERSONA', P_TAIL = '(end of your persona)';

@@ -240,9 +240,10 @@ export function fellowCard(a){if(!a||!a.fellow)return null;const F=S.fellowship,
 //   a.persona.selfDay  {d, n, keys:[]}: today's changes (SELF.PER_DAY, one per field, a stance per person)
 // Private to the hero (in-game channels, #123): only its own tools, its own state header and its own runner's standing
 // orders read it. It dies with the hero (a replacement is a new hero). No RNG: hashes and plain data only.
-export const SELF={PER_DAY:3,HIST:40,TRAITS:6,TRAIT_LEN:40,BELIEFS:300,WHY:200,SHOW:5,LINE:260,CUT:200};
+export const SELF={PER_DAY:3,HIST:40,TRAITS:6,TRAIT_LEN:40,BELIEFS:300,WHY:200,SHOW:5,LINE:260,CUT:200,
+  TOLD:8,STORY:600,TOLD_SHOW:3}; // stories told of one's own past round the fire (#571): kept, a story's length, shown in the header
 export const SELF_FIELDS=['voice','wants','fears','quirk','never_says','beliefs','traits','stance'];
-export const SELF_LABEL={voice:'Voice',wants:'Wants',fears:'Fears',quirk:'Quirk',never_says:'Would never say',beliefs:'Beliefs',traits:'Traits',stance:'Stances'};
+export const SELF_LABEL={backstory:'Backstory',voice:'Voice',wants:'Wants',fears:'Fears',quirk:'Quirk',never_says:'Would never say',beliefs:'Beliefs',traits:'Traits',stance:'Stances'};
 const CAP={...PERSONA_FIELDS,beliefs:SELF.BELIEFS,stance:STANCE_MAX};
 const ALIAS={voice:'voice',speech:'voice',tone:'voice',want:'wants',wants:'wants',goal:'wants',goals:'wants',desire:'wants',desires:'wants',
   fear:'fears',fears:'fears',quirk:'quirk',quirks:'quirk',habit:'quirk',neversays:'never_says',neversay:'never_says',never:'never_says',wouldneversay:'never_says',
@@ -278,7 +279,7 @@ export function personaLine(a){if(!a)return '';const P=a.persona||buildPersona(a
   return cutS(bits.filter(Boolean).join(' | '),SELF.LINE)}
 // A short signature of the persona text, so a runner knows when to refresh its standing orders.
 export function personaSig(a){const P=a&&a.persona;if(!P)return '0';let h=5381;
-  const s=[P.voice,P.wants,P.fears,P.quirk,P.never_says,P.beliefs||'',traitsOf(P).join(','),a.backstory?a.backstory.summary:''].join('|');
+  const s=[P.voice,P.wants,P.fears,P.quirk,P.never_says,P.beliefs||'',traitsOf(P).join(','),a.backstory?a.backstory.summary:''].join('|')+(a.told&&a.told.length?'|told'+a.told.length+':'+(a.told[a.told.length-1].gm||0):'');
   for(let i=0;i<s.length;i++)h=((h*33)^s.charCodeAt(i))>>>0;return h.toString(36)}
 // The persona as standing-order text (the Claude runners' system prompt, refreshed when personaSig changes).
 export const PERSONA_HEAD='YOUR PERSONA',PERSONA_TAIL='(end of your persona)';
@@ -286,7 +287,8 @@ export function selfText(a){if(!a)return '';const P=a.persona||buildPersona(a,[]
   return [PERSONA_HEAD+' (who you are now. It grows with you: self shows it, become changes one part, with a why, when your story changes you. Play from it, in this voice):',
     '- Voice: '+P.voice,'- Wants: '+P.wants,'- Fears: '+P.fears,'- Quirk: '+P.quirk,'- Would never say: "'+P.never_says+'"',
     P.beliefs?'- Believes: '+P.beliefs:'',tr.length?'- Traits you see in yourself: '+tr.join(', '):'',
-    a.backstory&&a.backstory.summary?'- Backstory: '+a.backstory.summary:'',PERSONA_TAIL].filter(Boolean).join('\n')}
+    a.backstory&&a.backstory.summary?'- Backstory: '+a.backstory.summary:'',
+    a.told&&a.told.length?'- Stories you have told your companions of your past (keep to them): '+a.told.slice(-SELF.TOLD_SHOW).map(x=>'"'+cutS(x.text,160)+'"').join('; '):'',PERSONA_TAIL].filter(Boolean).join('\n')}
 
 function changesToday(P){const d=dayN();if(!P.selfDay||P.selfDay.d!==d)P.selfDay={d,n:0,keys:[]};return P.selfDay}
 export const histLine=h=>'Day '+h.d+': '+(SELF_LABEL[h.f]||h.f).toLowerCase()+(h.about?' ('+h.about+')':'')+': "'+cutS(h.before||'(none)',80)+'" -> "'+cutS(h.after||'(none)',80)+'" because '+cutS(h.why,100);
@@ -300,7 +302,7 @@ export function selfView(a){const P=selfOf(a),T=changesToday(P),M=a.memory,tr=tr
   const left=Math.max(0,SELF.PER_DAY-T.n),pins=SELF_FIELDS.filter(f=>P.pins[f]);
   return {ok:true,who_you_are:personaLine(a),voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk,never_says:P.never_says,
     beliefs:P.beliefs||'(none named yet)',traits:tr.length?tr:['(none named yet)'],stances,...(people.length?{people}:{}),
-    backstory:a.backstory&&a.backstory.summary?a.backstory.summary:null,...(P.archetype&&ARCHETYPES[P.archetype]?{began_as:ARCHETYPES[P.archetype].name}:{}),
+    backstory:a.backstory&&a.backstory.summary?a.backstory.summary:null,...(a.told&&a.told.length?{stories_told:a.told.map(x=>'Day '+x.d+' to '+(x.to.join(', ')||'the fire')+': "'+x.text+'"')}:{}),...(P.archetype&&ARCHETYPES[P.archetype]?{began_as:ARCHETYPES[P.archetype].name}:{}),
     ...(pins.length?{fixed:pins.map(f=>SELF_LABEL[f])}:{}),
     changes_today:T.n+' of '+SELF.PER_DAY,can_change_now:left?openFields(P,T):[],
     recent_changes:P.hist.slice(-SELF.SHOW).reverse().map(histLine),
@@ -352,3 +354,14 @@ export function become(a,args){const x=args&&typeof args==='object'?args:{},P=se
   const h={d:dayN(),gm:Math.round(S.gameMin),f,...(about?{about}:{}),before:cutS(before,SELF.CUT),after:cutS(after,SELF.CUT),why};
   P.hist.push(h);while(P.hist.length>SELF.HIST)P.hist.shift();
   return {ok:true,field:f,...(about?{about}:{}),before:h.before||'(none)',after:h.after,change:histLine(h),changes_left_today:SELF.PER_DAY-T.n,...(note?{note}:{})}}
+
+// ---- stories told (#571) ----
+// A story a hero tells of its own past round the fire becomes part of its backstory: a.told [{d, gm, text, to:[names]}]
+// (SELF.TOLD kept), a "told: ..." line in its persona history (not one of its daily changes), and every turn header reminds it
+// what it has told (toldLine) so it keeps its story straight. Private to the hero like the rest; it dies with the hero.
+export function tellStory(a,text,to){const t=cleanText(text,SELF.STORY);if(!a||!t)return null;const P=selfOf(a),gm=Math.round(S.gameMin),names=(to||[]).map(b=>b.name);
+  const L=a.told||(a.told=[]);L.push({d:dayN(),gm,text:t,to:names});while(L.length>SELF.TOLD)L.shift();
+  P.hist.push({d:dayN(),gm,f:'backstory',before:'',after:cutS('told: '+t,SELF.CUT),why:'told round the fire'+(names.length?' to '+names.join(', '):'')});while(P.hist.length>SELF.HIST)P.hist.shift();
+  return t}
+export function toldLine(a){const L=a&&a.told;if(!L||!L.length)return null;
+  return 'You have told your companions: '+L.slice(-SELF.TOLD_SHOW).map(x=>'"'+cutS(x.text,100)+'" (day '+x.d+')').join('; ')+'. Keep your story consistent with what you told.'}

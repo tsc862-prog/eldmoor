@@ -50,6 +50,8 @@ import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} f
 // ---- knobs ----
 export const CONV={
   EXCHANGES:4,        // member lines a conversation runs to (the last answer closes it)
+  DM_EXCHANGES:10,    // ... once the DM agent has voiced the person in it: a longer talk, with follow-ups (#571)
+  HMEM_KEEP:12,       // heroes a person remembers one by one (#571: p.hmem), the least recent forgotten first
   OPEN_MAX:3,         // conversations open at once
   PER_DAY:16,         // conversations opened per game day
   DM_LINES_PER_DAY:40,// the DM agent's conversation lines per game day (the Fellowship's own share, apart from npc_say's 16)
@@ -206,18 +208,24 @@ export function speakAsHail(p,c,text){const a=hero(c.heroes[0]),ms=dmBudget();
   if(ms>0&&a){const T=talkState();c.wait={call:++T.call,hero:a.id,line:'('+full(p)+' calls out to '+a.name+': '+clean(text,CONV.LEAD_MAX)+')',gm:Math.round(S.gameMin),real:Date.now(),ms,by:ms===CONV.TURN_MS?'turn':'voice'};return false}
   speakAs(p,c,text,'scripted');return true}
 // After an answer: the last exchange closes the conversation.
-function afterAnswer(c,p){c.wait=null;if(c.state==='open'&&c.ex>=CONV.EXCHANGES)close(c,'said what they had to say')}
+function afterAnswer(c,p){c.wait=null;if(c.state==='open'&&c.ex>=exMax(c))close(c,'said what they had to say')}
+// How long a conversation runs: CONV.EXCHANGES, or CONV.DM_EXCHANGES once the DM agent has voiced the person in it (#571).
+const exMax=c=>c&&c.dm?CONV.DM_EXCHANGES:CONV.EXCHANGES;
+const exText=c=>c.ex+'/'+exMax(c);
+// What a person remembers of one hero (#571): p.hmem[heroId] = {n talks, gm last, said: the hero's last words, what: follow-ups}.
+const hmemOf=(p,a)=>p&&a&&p.hmem?p.hmem[a.id]||null:null;
+export function lastTime(p,a){const m=hmemOf(p,a);if(!m)return null;return 'Day '+(Math.floor(m.gm/DAY)+1)+(m.n>1?' (talked '+m.n+' times)':'')+(m.said?': they said "'+m.said+'"':'')+(m.what?'; '+m.what:'')}
 
 // The DM agent's answer (npc_say with a conversation): the line, then optional warmth and a note on the person's record.
 export function dmAnswer(c,p,text,o={}){const d=today(),T=talkState();
   if(c.state!=='open')return {ok:false,error:'That conversation has ended.'};
   if(d.lines>=CONV.DM_LINES_PER_DAY)return {ok:false,error:'Enough conversation for one game day ('+CONV.DM_LINES_PER_DAY+' lines); the scripted DM answers the rest.'};
   const t=clean(text,CONV.DM_LINE_MAX);if(!t)return {ok:false,error:'Say what?'};
-  const was=!!c.wait;speakAs(p,c,t,'dm-agent');d.lines++;T.stats.dm++;
+  const was=!!c.wait;speakAs(p,c,t,'dm-agent');d.lines++;T.stats.dm++;c.dm=1;
   const w=Number(o.warmth);if(Number.isFinite(w)&&w)warm(p,Math.max(-3,Math.min(3,Math.round(w))),'the DM: '+t);
   if(o.remember)noteOn(p,o.remember);
   if(was)afterAnswer(c,p);
-  return {ok:true,conv:c.id,answered:was,exchange:c.ex+'/'+CONV.EXCHANGES,mood:p.mood,...(c.state==='done'?{ended:c.why}:{})}}
+  return {ok:true,conv:c.id,answered:was,exchange:exText(c),mood:p.mood,...(c.state==='done'?{ended:c.why}:{})}}
 
 // The scripted DM's answer from the person's role: an opening line and the role's follow-up on the first exchange,
 // a reply later, a farewell on the last; a hostile person threatens and walks off.
@@ -225,11 +233,12 @@ function scripted(c,p,a){const T=talkState();T.stats.scripted++;if(c.wait&&c.wai
   recordOf(p,a);const mood=p.mood,o={target:a.name,name:p.name,town:p.town||(homeOf(a)&&homeOf(a).name)||'town'};
   let text,mark=null,hint=null;
   if(mood==='hostile'){text=fill(pick(TALK_LINES.threat),o);speakAs(p,c,text,'scripted');const r2=offer(c,p,'leave',{},'scripted');mark=r2.mark;c.wait=null;return {text,mark}}
-  const first=c.ex<=1,last=c.ex>=CONV.EXCHANGES;
+  const first=c.ex<=1,last=c.ex>=exMax(c),seen=first&&hmemOf(p,a);
   const asked=[...c.lines].reverse().find(l=>l.who==='member'),ans=asked&&!last?townAnswer(p,a,asked.text):null;
   if(ans){if(ans.fit)c.fit=true;text=ans.text;speakAs(p,c,text,'scripted');afterAnswer(c,p);
     return {text,mark,hint:'Townsfolk answer from what is public: '+full(p)+' knows only what the town knows.'}}
   text=fill(pick(last?TALK_LINES.bye:first?TALK_LINES.open[mood]:TALK_LINES.reply[mood]),o); // the greeting only on the first exchange
+  if(seen)text='Back again, '+a.name+'?'+(seen.said?' Last time you said "'+(seen.said.length>70?seen.said.slice(0,68)+'..':seen.said)+'".':'')+' '+text; // they remember you (#571)
   speakAs(p,c,text,'scripted');
   if(first&&!last){const k=talkOf(p).offer;if(k&&k!=='none'){const r2=offer(c,p,k,{},'scripted',a);if(r2.ok){mark=r2.mark;hint=r2.hint}
     else if(k==='job'){const r3=offer(c,p,'rumour',{},'scripted',a);if(r3.ok){mark=r3.mark;hint=r3.hint}}}}
@@ -408,8 +417,8 @@ function convView(c,withCall){const p=npcById(c.npc);if(!p)return null;const a=h
   return {conv:c.id,...(withCall&&c.wait?{call:c.wait.call,seconds_left:Math.max(0,Math.round((c.wait.ms-(Date.now()-c.wait.real))/100)/10)}:{}),waiting:!!c.wait,
     npc:{id:p.id,name:full(p),role:p.role,faction:p.fac===0||p.fac===1?FAC[p.fac].name:'neutral',where:p.town||ZONES[zoneAt(p.x,p.y)]||'the wilds',want,mood:recordOf(p,a)&&p.mood,warmth:p.warmth,
       ...(withCall?{knows:knows(p,a).map(x=>x.text),record:recordView(p)}:{})},
-    member:a?{id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,role:a.fellowRole||null,...(c.read&&c.read[a.id]!=null?{read_them:c.read[a.id]}:{})}:null,
-    line:c.wait?c.wait.line:null,so_far:c.lines.slice(-8).map(l=>l.name+': '+l.text+(l.mark?' '+l.mark:'')),exchange:c.ex+'/'+CONV.EXCHANGES,
+    member:a?{id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,role:a.fellowRole||null,...(c.read&&c.read[a.id]!=null?{read_them:c.read[a.id]}:{}),...(lastTime(p,a)?{last_time:lastTime(p,a)}:{})}:null, // last_time: what the person remembers of them (#571)
+    line:c.wait?c.wait.line:null,so_far:c.lines.slice(-12).map(l=>l.name+': '+l.text+(l.mark?' '+l.mark:'')),exchange:exText(c),
     ...(withCall?{offers:legalOffers(c,p),offered_this_exchange:c.offerEx===c.ex}:{})}}
 // npc_call: the oldest conversation waiting for the DM, with everything needed to answer it.
 export function npcCall(){const T=S.talks;const c=T&&T.cur.find(x=>x.state==='open'&&x.wait);
@@ -417,13 +426,16 @@ export function npcCall(){const T=S.talks;const c=T&&T.cur.find(x=>x.state==='op
   return {ok:true,call:convView(c,true),how:'Answer as the person: npc_say {npc, conv, text} (their own voice, as much as the moment needs; usually a few sentences), then at most one npc_offer {npc, kind} from offers. Silence is answered by the scripted DM.'}}
 // For dm_status: conversations open now, the waiting ones first (must answer).
 export function convSummary(){const T=S.talks;if(!T)return [];return T.cur.filter(c=>c.state==='open').sort((x,y)=>!!y.wait-!!x.wait).map(c=>{const p=npcById(c.npc),a=hero(c.wait?c.wait.hero:c.heroes[c.heroes.length-1]);
-  return {conv:c.id,npc:p?full(p):c.name,npc_id:c.npc,member:a?a.name:null,waiting:!!c.wait,line:c.wait?c.wait.line:null,exchange:c.ex+'/'+CONV.EXCHANGES}})}
+  return {conv:c.id,npc:p?full(p):c.name,npc_id:c.npc,member:a?a.name:null,waiting:!!c.wait,line:c.wait?c.wait.line:null,exchange:exText(c)}})}
 
 // ---- end ----
 function close(c,why){if(c.state==='done')return;c.state='done';c.wait=null;c.why=why;const T=talkState(),p=npcById(c.npc);
   T.cur.splice(T.cur.indexOf(c),1);T.past.unshift({id:c.id,npc:c.npc,name:c.name,heroes:c.heroes.slice(),lines:c.lines.length,offers:c.offers.map(o=>o.kind),why,day:gameDay()+1});if(T.past.length>CONV.PAST_KEEP)T.past.pop();
   const what=c.offers.length?' ('+c.offers.map(o=>o.mark).join(' ')+')':'';
   for(const id of c.heroes){const b=hero(id);if(living(b))remember(b,'talk','Talked with '+c.name+what+'.')}
+  if(p){const H=p.hmem||(p.hmem={});for(const id of c.heroes){const said=[...c.lines].reverse().find(l=>l.who==='member'&&l.id===id),m=H[id]||{n:0};
+      H[id]={n:m.n+1,gm:Math.round(S.gameMin),said:said?clean(said.text,120):m.said||null,what:c.offers.length?c.offers.map(o=>o.kind).join(', '):m.what||null}}
+    const ks=Object.keys(H);if(ks.length>CONV.HMEM_KEEP){ks.sort((x,y)=>H[x].gm-H[y].gm);for(const k of ks.slice(0,ks.length-CONV.HMEM_KEEP))delete H[k]}} // townsfolk remember each hero (#571)
   log(['Conversation with '+c.name+' ends: '+why+what+'.'],{conv:c.id,npc:c.npc,end:why})}
 
 // After a talk scene at the table (#407): the person answers the company's choice. With the DM agent listening the answer is

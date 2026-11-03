@@ -90,6 +90,8 @@ export const TABLE={
                    // at 1x ever holds, so headless runs, 3x/8x and Watch mode never do; a hold rolls no dice.
   stepS:4,         // real seconds an 'auto' step waits after a round
   queueMin:30,     // game minutes a company's queued moment (#440) may wait for the table before it is dropped as stale
+  LINE_MAX:600,    // characters of a member's line at the table (#571: an introduction or a story needs room); a longer one is refused, never cut
+  SAME:.8,SAME_MIN:6, // a line this alike (shared words, names left out) to another member's line in the scene is refused, from SAME_MIN words up (#571)
 };
 // A company of one has no one to put a vote to (#440; council.js refuses the proposal itself).
 export const SOLO_VOTE='You ride alone: decide and act (take_adventure; lead_to is move_to for you).';
@@ -105,6 +107,20 @@ const staged=sc=>!!(STG&&sc&&sc.ctx&&sc.ctx.staged!=null);
 // The DM's at-the-table calls of a scene: a kind that brings its own (setSceneKind(k, {..., dm:{onFrame, onAll, live, fill,
 // done}}): the arrival and the opening, sim/arrival.js, #452/#437), else the staged scene's (sim/staged.js), else none.
 const dmOf=sc=>sc&&EXTRA[sc.kind]&&EXTRA[sc.kind].dm?EXTRA[sc.kind].dm:staged(sc)?STG:null;
+// A kind may bring more (#571, the fireside): next(sc) -> true to play another round (acts cleared, the same order); liveMs, the
+// real wait for a live agent instead of TABLE.liveMs (a member that ran it out once is not waited for again in that scene);
+// lineMax, the length of a member's line; view(sc, a), more fields for tableView.
+const kindOf=sc=>sc&&EXTRA[sc.kind]||null;
+const liveOf=sc=>{const K=kindOf(sc);return K&&K.liveMs||TABLE.liveMs};
+const moreOf=sc=>{const K=kindOf(sc);return !!(K&&K.next)};
+// Another member's line said again with the name swapped (#571: two small models parroted the frame): words of 3+ letters, the
+// scene's names left out, shared words over the larger set.
+function sameLine(sc,a,line){const nm=new Set();for(const id of sc.ids){const b=byId(id);if(b)for(const w of String(b.name).toLowerCase().split(/\s+/))nm.add(w)}
+  const W=t=>new Set(String(t||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(' ').filter(w=>w.length>2&&!nm.has(w)));const A=W(line);if(A.size<TABLE.SAME_MIN)return false;
+  const L=[...Object.entries(sc.acts).filter(([id,x])=>+id!==a.id&&x&&x.line).map(([,x])=>x.line),...sc.beats.filter(b=>b.id!==a.id&&b.line).map(b=>b.line)];
+  return L.some(t=>{const B=W(t);if(!B.size)return false;let n=0;for(const w of A)if(B.has(w))n++;return n/Math.max(A.size,B.size)>=TABLE.SAME})}
+// Listeners told when a scene ends (after its outcome): fn(sc). sim/fireside.js opens a debrief after a hard scene.
+const enders=[];export const onSceneEnd=f=>{if(typeof f==='function')enders.push(f)};
 const COOL={rescue:90,boss:240,ambush:120,check:0,elite:100000}; // game minutes before the same moment opens a scene again
 const COMBAT={elite:1,ambush:1,boss:1,rescue:1};
 // How each kind is played. 'turns': members act one by one in initiative order, because one act changes the next
@@ -112,7 +128,8 @@ const COMBAT={elite:1,ambush:1,boss:1,rescue:1};
 // not listed plays in turns.
 export const PLAY={elite:'turns',ambush:'turns',boss:'turns',rescue:'turns',site:'turns',room:'turns',crawl:'turns',
   decision:'all',check:'all',choice:'all',meeting:'all',social:'all',trap:'all',mystery:'all',talk:'all', // talk: a conversation turned decision (#407, sim/talkscene.js)
-  arrival:'all',opening:'all'}; // a fallen member's recruit arrives (#452); session zero (#437): sim/arrival.js
+  arrival:'all',opening:'all', // a fallen member's recruit arrives (#452); session zero (#437): sim/arrival.js
+  fireside:'turns',debrief:'all'}; // talk round the fire, in turns over 3-6 rounds, and a one-round debrief after a hard scene (#571, sim/fireside.js)
 const together=sc=>!!sc&&sc.all===true;
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
 const byId=id=>S.agents.find(x=>x.id==id)||null;
@@ -266,7 +283,9 @@ export function sceneAct(a,opt,line){const sc=S.table;if(!sc||!sc.ids.includes(a
   if(sc.acts[a.id])return 'You already acted in this scene.';
   let key=String(opt||'').trim().toLowerCase();if(key.startsWith('use:'))key='use:'+useSlug(key.slice(4)); // 'use:Redroot Draught' or 'use:redroot-draught'
   const o=key==='use'?optionsFor(sc,a).find(x=>x.k.startsWith('use:')):optionsFor(sc,a).find(x=>x.k===key);if(!o)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.'; // a bare 'use': the first item offered
-  sc.acts[a.id]={k:o.k,line:clean(line,120),by:'agent'};return sc.acts[a.id]}
+  const said=clean(line,1e4);if(said.length>TABLE.LINE_MAX)return 'Too long: keep your line under '+TABLE.LINE_MAX+' characters (yours has '+said.length+').';
+  if(said&&sameLine(sc,a,said))return 'Someone already said that at this table; say it your own way, about yourself.';
+  sc.acts[a.id]={k:o.k,line:said,by:'agent'};return sc.acts[a.id]}
 
 // ---- turns ----
 function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc,use=sc.ru;delete sc.rr;delete sc.rc;delete sc.ru; // a strike's roll as data (#285), a parley's check (#296)
@@ -321,7 +340,8 @@ function runTurns(sc,dt,instant){
   const R=rounds(sc);
   for(;;){if(sc.calls&&callWait(sc,dt,instant))return true;
     if(foeDue(sc)){sc.fd=1;if(!fightOver(sc))foeAct(sc);startTurn(sc);continue} // the foe's turn at its place in the order (#276)
-    if(sc.i>=sc.ids.length){if(R&&!instant&&stepHold(sc,dt))return true;if(R&&nextRound(sc)){dt=0;continue}break} // the watcher's step mode (#285)
+    if(sc.i>=sc.ids.length){if(R&&!instant&&stepHold(sc,dt))return true;if(R&&nextRound(sc)){dt=0;continue} // the watcher's step mode (#285)
+      if(!R&&moreOf(sc)&&kindOf(sc).next(sc)){sc.acts={};sc.i=0;startTurn(sc);dt=0;continue}break} // another round of a kind that plays several (#571)
     const a=byId(sc.ids[sc.i]);
     if(!living(a)||(COMBAT[sc.kind]&&(R?fightOver(sc)||(sc.out||[]).includes(a.id)||(sc.rd>1&&!inFight(sc,a)):!foeOf(sc)))){sc.i++;startTurn(sc);continue}
     if(R&&condOn(a,'stun')){const b=stunCheck(sc,a);b.rd=sc.rd;sc.beats.push(b); // a stunned member's save, before anyone waits on it (#296)
@@ -333,9 +353,9 @@ function runTurns(sc,dt,instant){
     // a live agent that already ran out the clock once in this fight is not waited for again in its later rounds (#276)
     if(!act&&a.player&&!instant&&!reflexMay(a)&&!(sc.lw&&sc.lw.includes(a.id))){if(ownerHeld(a))return true;
       sc.t+=dt;if(!sc.nudge&&sc.t*1000>=TABLE.turnMs){sc.nudge=1;notify(a,'Still your turn at the table ('+sc.title+'): the party waits for you. scene_act(option, line).',3)}
-      if(sc.t*1000<liveLimit(sc,a,TABLE.liveMs))return true;sc.late=(sc.late||0)+1;missed(sc,a);if(R)(sc.lw||(sc.lw=[])).push(a.id)}
+      if(sc.t*1000<liveLimit(sc,a,liveOf(sc)))return true;sc.late=(sc.late||0)+1;missed(sc,a);if(R||moreOf(sc))(sc.lw||(sc.lw=[])).push(a.id)}
     if(!act){const k=reflexFor(sc,a),late=a.player&&!reflexMay(a);act=sc.acts[a.id]={k,line:'',by:'reflex'};
-      if(a.player)notify(a,late?'The table waited '+Math.round(TABLE.liveMs/1000)+' s for you; your reflexes chose: '+k+'.':'Your turn passed; your reflexes chose: '+k+'.',false)}
+      if(a.player)notify(a,late?'The table waited '+Math.round(liveOf(sc)/1000)+' s for you; your reflexes chose: '+k+'.':'Your turn passed; your reflexes chose: '+k+'.',false)}
     take(sc,a,act);sc.i++;if(sc.i<sc.ids.length)startTurn(sc);dt=0}
   return false}
 // Everyone at once: tick each unanswered live agent's own wait (nudge, then reflex), side by side; once nobody is
@@ -350,7 +370,7 @@ function runAll(sc,dt,instant){
       const w=sc.w[id]||(sc.w[id]={t:0,nudge:0});if(w.late)continue;
       if(ownerHeld(a)){hold=true;continue}
       w.t+=dt;if(!w.nudge&&w.t*1000>=TABLE.turnMs){w.nudge=1;notify(a,'The table still waits for your answer ('+sc.title+'): scene_act(option, line).',3)}
-      if(w.t*1000<liveLimit(sc,a,TABLE.liveMs))hold=true;else{w.late=1;sc.late=(sc.late||0)+1;missed(sc,a)}}
+      if(w.t*1000<liveLimit(sc,a,liveOf(sc)))hold=true;else{w.late=1;sc.late=(sc.late||0)+1;missed(sc,a)}}
     if(sc.calls&&callWait(sc,dt,instant))return true; // the DM's opening voice, side by side with the members' answers
     if(hold)return true;
     sc.resolved=true;
@@ -391,7 +411,8 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
   if(COMBAT[sc.kind]){for(const a of mem)tickRound(a);const f=foeOf(sc);if(f)tickRound(f); // a round has passed: ability cooldowns and round-long effects run down
     if(rounds(sc))for(const e of [...mem,...sceneFoes(sc)])clearRounds(e)} // conditions and round-counted effects end with the scene (#296)
   for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id))moment(a,'scene',sc.title)} // reflection moment (#179)
-  {const H=dmOf(sc);if(H&&H.done)H.done(sc)}}
+  {const H=dmOf(sc);if(H&&H.done)H.done(sc)}
+  for(const f of enders){try{f(sc)}catch(e){}}}
 function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);S.table=null}
 
 // ---- once per step: the paused scene (sim/index.js calls this first; true = skip the world) ----
@@ -500,6 +521,7 @@ export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))ret
   if(v.your_turn)v.waiting_for_you=true; // #148: the table waits for your scene_act (a reflex only after a long wait)
   if(sc.beats.length)v.so_far=sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':''));
   if(sc.narr)v.narrator=sc.narr.text; // the DM's narrate line at this table (issue #123)
+  {const K=kindOf(sc);if(K&&K.view)Object.assign(v,K.view(sc,a))} // a kind's own fields (#571: the fireside's topic and round)
   if(sc.summary)v.outcome=sc.summary;return v}
 // The Fellowship's decisions that wait on a member's agent right now (#148), for the page's runner-stop alert:
 // [{a, what}] for the member whose turn holds the table and every member an open vote or an adventure choice waits for.

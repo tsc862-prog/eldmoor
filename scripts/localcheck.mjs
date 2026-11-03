@@ -25,7 +25,7 @@ import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:f
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneSchema, sceneTurn, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
+import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
 import {ollamaAdapter, numCtxFrom} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
@@ -86,6 +86,8 @@ console.log('local agent loop (fake chat)');
 // ---------------------------------------------------------------- 1b. calls written as text, forced scene turns (issue #163)
 console.log('text-written calls and forced scene turns (issue #163)');
 {
+  {const sf = sceneFrom({scene: 'SESSION ZERO', kind: 'opening', frame: 'On the board: the Fang of the Old Wood.', options: ['introduce = Introduce yourself'], your_turn: true, you: {name: 'Oskwy', cls: 'Mage', persona: 'dry, careful, counts everything', oath: 'Stand at the mouth of the Sunken Crypt'}}), sp = scenePrompt(sf);
+    ok(/You are Oskwy, a mage\./.test(sp) && /Who you are: dry, careful/.test(sp) && /Your own oath: Stand at the mouth/.test(sp) && /about yourself/.test(sp) && /never the DM's words or a companion's line as your own/.test(sp), 'a forced scene prompt carries the hero itself: name, persona line, own oath, "about yourself" (#571: two members parroted the frame job)')}
   const live = 'CallCheck identifies that Pikeora is engaged with the Bristleback Boar and needs immediate assistance.\n(scene_act("strike", "I\'ll take care of this boar."))\n---\nI strike at the Bristleback Boar to aid my companion Pikeora.';
   const pc = parseTextCalls(live);
   ok(pc.length === 1 && pc[0].function.name === 'scene_act' && pc[0].function.arguments.option === 'strike' && pc[0].function.arguments.line === "I'll take care of this boar.", 'the owner\'s live text, (scene_act("strike", "...")), is a call: positional values mapped onto option, line');
@@ -109,7 +111,7 @@ console.log('text-written calls and forced scene turns (issue #163)');
   const scene = sceneFrom({scene: 'Pikeora is going down', kind: 'rescue', frame: 'Pikeora is down to 17%.', options: ['strike = Strike Bristleback Boar', 'guard = Draw it onto yourself', 'retreat = Fall back toward home'], your_turn: true});
   ok(scene && scene.keys.join() === 'strike,guard,retreat', 'the scene keys come from the member\'s options');
   const sch = sceneSchema(scene.keys), schS = sceneSchema(scene.keys, {strict: true});
-  ok(sch.properties.option.enum.join() === 'strike,guard,retreat' && sch.properties.line.maxLength === 200 && sch.required.join() === 'option,line' && !schS.properties.line.maxLength && schS.additionalProperties === false, 'the schema: an enum of that member\'s options and a line of at most 200 (strict OpenAI: no maxLength, cut in code)');
+  ok(sch.properties.option.enum.join() === 'strike,guard,retreat' && sch.properties.line.maxLength === 600 && sch.required.join() === 'option,line' && !schS.properties.line.maxLength && schS.additionalProperties === false, 'the schema: an enum of that member\'s options and a line of at most 600 (the game TABLE.LINE_MAX, #571) (strict OpenAI: no maxLength, cut in code)');
   const askOf = replies => {let i = 0; const seen = []; return {seen, ask: async (system, user, schema) => {seen.push({system, user, schema}); return {text: replies[Math.min(i++, replies.length - 1)], usage: {in: 50, out: 8, cost: 0}, ms: 2}}}};
   const acts = [], g2 = async (tool, args) => {acts.push([tool, args]); return {ok: true, chose: args.option}};
   let A = askOf(['{"option":"guard","line":"On me, boar!"}']), sess = {system: 'You are Ivoagh.'};

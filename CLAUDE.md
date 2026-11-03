@@ -460,6 +460,21 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
 - Talk (`src/sim/talk.js`): an agent's `say`/`party_say` that repeats one of its last 5 lines, or a second
   introduction once members have met (both spoke in each other's hearing), is refused; every turn header
   carries the last 8 lines heard and the companions met.
+- Round the fire (#571, `src/sim/fireside.js`): when a company with an agent at the table settles to rest at camp, a `fireside`
+  Table scene (PLAY 'turns') opens on a topic from its day (campaign log, fallen, landmarks, oaths and lessons; else an oath or a
+  question one member asks another), framed by the DM agent's table voice (table_call; `table_answer {rounds}` sets 3-6) or the
+  scripted DM. `FIRE.STD` 3 rounds, `FIRE.BIG` 6 after a death, the Crypt, a boss, a newcomer, an oath kept, a merge or expulsion.
+  Options: speak, `ask-<name>` (the asked one gets `answer`), `tell` (a story of one's past), listen; no dice, no votes. A silent
+  round ends it; a live agent silent past `FIRE.LIVE_MS` (60 s) listens for the rest of the night. Afterwards each agent gets a
+  reflection (kind `fireside`: what did you learn about them tonight?); a told story goes to the teller's `a.told` (persona
+  history "told: ...", `brief.told` header line, `self` stories_told) and to each listener's notebook (about the teller, tags
+  story, fireside). A `debrief` (PLAY 'all', one round) follows a rescue, a fall, a fight that left half below 35% or a vote
+  decided by one. Only with a host that reports links (`hasLinks`) and agents deciding, so seeded worlds are unchanged;
+  `FIRE.ON=false` turns it off (campcheck, dmcheck). Table lines (`TABLE.LINE_MAX` 600) are refused when longer, never cut, and a
+  line that near-copies another member's line in the scene (names left out) is refused; the scene brief carries `you` (name,
+  persona line, own oath, told stories) for forced answers. Townsfolk talk voiced by the DM agent runs to `CONV.DM_EXCHANGES` 10;
+  each person remembers each hero (`p.hmem`: last words, follow-ups; `npc_call` member.last_time; a scripted "Back again").
+  `npm run tablecheck` child `--fireside`.
 
 ## Model providers (Mixed minds, issue #97)
 

@@ -55,3 +55,4 @@
 - [Roads knowledge #539](roads_knowledge.md) — brief.roads line, place reasons, memory wording, last-level rating, witness needs sight
 - [Arrival and session zero #452/#437](arrival_session_zero.md) — arrival/opening scenes gated on hasLinks, DM prep caps and host flag, newcomer voiced by DM, letters per company
 - [Starved company #530](starved_company.md) — serveStarved in dm.js refill, LEAD 120, busy not skipped, dmcheck bound 360
+- [Fireside #571](fireside.md) — fireside/debrief kinds, table.js next/liveMs/onSceneEnd hooks, hasLinks gate, 600-char lines, copy refusal, townsfolk hmem
