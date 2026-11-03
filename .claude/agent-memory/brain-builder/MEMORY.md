@@ -58,4 +58,5 @@
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
 - [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
 - [Wish tool](wish-tool.md) — #663 wish on both seats: outbox->watch->wishes.jsonl, save fields, report section, backslash pitfall
+- [DM undo + flat](dm-undo-flat.md) — #636 undo/dismiss/unstage, ten flat lever tools, D.last, takeBack, caps, test pitfalls
 - [Rumours and titles](rumour-bestow.md) — seed_rumour and bestow DM tools (#637, #638)
