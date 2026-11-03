@@ -27,7 +27,8 @@
 // Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
 import {W,H} from '../world/tiles.js';
-import {CITY,ZONES,REGIONS,LANDMARKS,CRYPT,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
+import {outpostsView} from './outposts.js';
+import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
 import {homeOf,raceOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -612,6 +613,8 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
     if(enemyNear(a,p))return {error:'That part of '+ZONES[z]+' is under an enemy town wall.'};
     const r=toField(p,ZONES[z]);const w=placeMemory(a,ZONES[z]);if(w)r.warn=w;return r}
   if(t==='crypt'||t===CRYPT.name.toLowerCase()||t==='the crypt'){if(!knowsPlace(a,CRYPT.name))return unknown(CRYPT.name);const r=toField({x:CRYPT.x,y:CRYPT.y+1.4},CRYPT.name+' (the entrance)');const w=placeMemory(a,CRYPT.name);if(w)r.warn=w;return r}
+  const op=OUTPOSTS.find(o=>o.name.toLowerCase()===t);
+  if(op){if(!knowsPlace(a,ZONES[op.z])&&dist(a,op)>30)return unknown(op.name);return toField({x:op.x,y:op.y},op.name)}
   const lm=LANDMARKS.find(l=>l.name.toLowerCase()===t||l.kind===t);
   if(lm){if(!knowsPlace(a,lm.name))return unknown(lm.kind==='lair'?'that lair':lm.name);const r=toField({x:lm.x,y:lm.y+(lm.r||1)+1},lm.name);if(lm.kind==='lair')r.warn='That is the lair of Kragmaw the Cinder Wyrm. Few who go there come back.';return r}
   const ow=markAt(a,t);if(ow){const r=toField({x:ow.x,y:ow.y},ow.name);if(ow.warn)r.warn=ow.warn;return r} // a place the hero marked or was told of (#632)
@@ -1253,6 +1256,8 @@ const T={
     need(v!=null&&String(v).trim()!=='','Which profession? unlearn_profession {id: "<one you hold>"}; recipes lists yours. Its skill is lost for good.');
     need(!(a.pq||[]).some(c=>c.kind==='gather'),'You are gathering right now; let it finish (wait) or give another order first.');
     const r=unlearnProfession(a,v);need(r.ok,r.why);return r},
+  outposts(a){const L=outpostsView().filter(o=>dist(a,o)<=30||knowsPlace(a,ZONES[o.region])).map(o=>({name:o.name,region:ZONES[o.region],dir:compass(o.x-a.x,o.y-a.y),tiles:Math.round(dist(a,o)),held_by:o.held_by||'nobody',control:o.control,contested:o.contested,standing_there:o.present.map((n,f)=>n?n+' '+FAC[f].name:null).filter(Boolean).join(', ')||'nobody',yours:o.holder===a.fac}));
+    return {ok:true,outposts:L,note:L.length?'move_to an outpost by name and stay in its ring to contest it.':'You know of no outposts yet: explore the roads of the middle regions.'}},
   nodes(a,{kind}={}){const R=sightOf(a),k=kind!=null&&String(kind).trim()?String(kind).toLowerCase().trim():null;
     const kk=k?(['herb','ore','hide','fish'].find(x=>k.startsWith(x))||({herbalism:'herb',mining:'ore',skinning:'hide',fishing:'fish'})[profKey(k)]||null):null;
     need(!k||kk,'kind is one of herb, ore, hide or fish (or leave it out for every kind).');

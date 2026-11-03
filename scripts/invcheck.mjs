@@ -83,7 +83,7 @@ ok(INV.has(s, 'Linen Bandage'), 'and bandages');
 
 // ---- the DM lever ----
 console.log('lever');
-const lh = live()[1]; lh.inv = INV.newInv();
+const lh = live().find((x, i) => i > 0 && !['fight', 'duel', 'assist', 'raid', 'dungeon'].includes(x.state)) || live()[1]; lh.inv = INV.newInv(); // a hero out of any fight (outposts, #11, can draw live()[1] into one)
 let r = pull('give_token', {hero: lh.id, token: 'Rookscar Toll-Token'}, {by: 'scripted', reason: 'invcheck'}); ok(r.ok && INV.has(lh, 'Rookscar Toll-Token'), 'give_token puts a quest item in a pack' + (r.ok ? '' : ': ' + r.reason));
 r = pull('give_token', {hero: lh.id, token: 'Rookscar Toll-Token'}, {by: 'scripted', reason: 'invcheck'}); ok(!r.ok, 'it is not given twice');
 r = pull('take_token', {hero: lh.id, token: 'Rookscar Toll-Token'}, {by: 'scripted', reason: 'invcheck'}); ok(r.ok && !INV.has(lh, 'Rookscar Toll-Token'), 'take_token takes it back');
