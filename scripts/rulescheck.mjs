@@ -145,8 +145,11 @@ console.log('patch notes: one player-facing note per PR (docs/patchnotes/<PR>.md
   const dir = join(ROOT, 'docs', 'patchnotes'), files = existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.md') && !f.startsWith('_')) : [];
   const bad = [];
   for (const f of files) {const e = lintNote(parseNote(readFileSync(join(dir, f), 'utf8'), f)); if (e.length) bad.push(f + ': ' + e.join('; '))}
-  ok(bad.length === 0, `every note (${files.length}) has front matter and 1-6 lines for the player` + (bad.length ? '\n    ' + bad.join('\n    ') : ''));
   const pr = Number(opt('--pr', process.env.PR_NUMBER || '')) || 0;
+  // A PR answers for its own note; a note another PR merged in an older shape is a warning, so one PR cannot block the next.
+  const own = bad.filter(b => b.startsWith(pr + '.md:')), others = bad.filter(b => !b.startsWith(pr + '.md:'));
+  ok(own.length === 0, (pr ? `PR #${pr}'s note has` : `every note (${files.length}) has`) + ' front matter and 1-6 lines for the player' + (own.length ? '\n    ' + own.join('\n    ') : ''));
+  if (others.length) {console.log(`  warn ${others.length} older note(s) need work (not this PR's; fix them in passing):\n    ` + others.join('\n    ')); if (!pr) fail++}
   if (!pr) console.log("  -    not a pull-request run (no --pr N or PR_NUMBER): the PR's own note is checked in CI");
   else if (files.includes(pr + '.md')) ok(true, `PR #${pr} carries its note (docs/patchnotes/${pr}.md)`);
   else {
