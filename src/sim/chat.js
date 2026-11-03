@@ -61,6 +61,10 @@ export function speak(a,text,trigger,ai){const e={t:clockStr(),d:dayNo(),from:a,
   hear(a,e);for(const b of ls)hear(b,e);
   a.bubble={text,life:BUBBLE};if(e.fh)a.bubble.fh=true;a.chatCd=COOL;return e}
 
+// An act, not a speech (#628: pay): 'Kerin pays Fena 12 gold' to the actor and the same hearers, no bubble.
+export function act(a,text,trigger){const e={t:clockStr(),d:dayNo(),from:a,text,trigger,act:true};if(S.table&&S.table.ctx)e.scene=true;
+  const ls=sayHearers(a);if(slotted()&&(inSlots(a)||ls.some(b=>inSlots(b))))e.fh=true;hear(a,e);for(const b of ls)hear(b,e);return e}
+
 function hear(b,e){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CAP)b.chat.shift()}
 
 // Fight entry: speak once per target, and only when the monster is a real threat
