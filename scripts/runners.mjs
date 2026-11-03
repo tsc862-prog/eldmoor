@@ -55,7 +55,10 @@ export const CLAUDE_SLOTS = 3, LEASE_MS = 15 * 60000, LEASE_WAIT_MS = 20000;
 // At most MAX_RUNNERS at once (env RELAY_MAX_RUNNERS). SEATS: the Fellowship's five and the DM, which always
 // fit whatever the setting: a runner for a Fellowship member, the Fellowship runner or the DM is refused only
 // when SEATS such runners already run.
-export const SEATS = 6;
+// Seat caps (#455, #402 decision 6, the numbers of src/sim/setup.js SEATS): five agent heroes while any runner plays a paid
+// mind (Claude or OpenAI), ten when every one is local (Ollama); the DM seat is outside the count, so SEATS is 5 + 1 paid, 10 + 1 local.
+export const HERO_SEATS = {PAID: 5, LOCAL: 10};
+export const SEATS = HERO_SEATS.LOCAL + 1;
 // A runner that finds its heroes belong to a new world (same ids, other heroes; issue #219) exits with this code; the
 // supervisor then starts it again with the same request after RESTART_MS (at most MAX_RESTARTS in a row without a turn).
 export const NEW_WORLD_EXIT = 75, RESTART_MS = 1500, MAX_RESTARTS = 5;
@@ -63,7 +66,7 @@ export const NEW_WORLD_EXIT = 75, RESTART_MS = 1500, MAX_RESTARTS = 5;
 // one (the owner's cost ask, #126): Haiku. Terminal runners keep their own default (Sonnet). AGENT_MODEL / DM_MODEL
 // in the relay's environment override it.
 export const APP_CLAUDE_MODEL = 'claude-haiku-5-5';
-export const MAX_RUNNERS = 6, STOP_GRACE_MS = 6000, KEEP_LINES = 12, MAX_BODY = 4096, KEEP_DONE = 20, TPM_WINDOW = 10 * 60000;
+export const MAX_RUNNERS = SEATS, STOP_GRACE_MS = 6000, KEEP_LINES = 12, MAX_BODY = 4096, KEEP_DONE = 20, TPM_WINDOW = 10 * 60000;
 export const MODEL_RE = /^[A-Za-z0-9][\w.:\/+-]{0,99}$/; // the relay's (providers/index.mjs), kept here so this module has no SDK imports
 export const HOW = 'Runners are off. Start the relay with runners on: npm run relay -- --runners (or set RELAY_RUNNERS=1, or use start-eldmoor.cmd).';
 // Kinds of runner. defaults: what the terminal runner uses; caps: the most a request may ask.
@@ -121,6 +124,11 @@ export function checkStart(b, heroes, {running = [], max = MAX_RUNNERS} = {}) {
   }
   req.key = K.key(req);
   if (running.some(r => r.key === req.key)) return {error: `A ${K.label} for ${req.name} is already running.`, code: 409};
+  if (req.kind !== 'dm') { // hero seats: the DM is outside the count
+    const heroRunners = [...running.filter(r => r.kind !== 'dm'), req], seats = heroRunners.reduce((n, r) => n + (r.kind === 'fellowship' ? 5 : 1), 0);
+    const allLocal = heroRunners.every(r => r.provider === 'ollama');
+    if (seats > (allLocal ? HERO_SEATS.LOCAL : HERO_SEATS.PAID)) return {error: allLocal ? `Seats full: ${HERO_SEATS.LOCAL} agent heroes at most.` : `Seats full: ${HERO_SEATS.PAID} agent heroes at most while any mind is paid (Claude or OpenAI); up to ${HERO_SEATS.LOCAL} when every mind is local.`, code: 429};
+  }
   if (running.length >= max && !(seatRunner(req) && running.filter(seatRunner).length < SEATS)) return {error: `At most ${max} runners at once (RELAY_MAX_RUNNERS). Stop one first.`, code: 429};
   return {req};
 }
