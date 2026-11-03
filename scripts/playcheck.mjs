@@ -179,6 +179,7 @@ ok(offered, `list_jobs offers a job: ${offered && offered.job}`);
 ok(job && r.ok && a.adv === job.id, `take_adventure: ${r.adventure || r.error}${turnedAway ? ' (turned away ' + turnedAway + 'x first)' : ''}`);
 ok(S.adventures.filter(h => h.phase === 'held').length === 0, 'no posted job is left held back after taking one');
 r = await call('take_adventure', {job_id: job.id}); ok(!r.ok, 'a second take is refused (not in town / already on it)');
+if (a.state !== 'town') {const t = await call('turn_in', {}); ok(!t.ok && /gate \(\d+ tiles\)\. move_to\("home"\), then turn_in/.test(t.error || ''), `turn_in out of town names the gate and distance: ${t.error}`)}
 
 // Drive it: answer the first choice, fight what comes. Save and restore mid-run.
 let chose = false, saved = false, fought = false;
