@@ -265,7 +265,7 @@ function start(args, {wait: ready = null, env = childEnv} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe']});
   kids.push(p); let out = '';
   p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
-  const done = new Promise(r => p.on('exit', code => r(code)));
+  const done = new Promise(r => p.on('close', code => r(code)));
   const until = ready ? new Promise((res, rej) => {const t = setInterval(() => {if (ready.test(out)) {clearInterval(t); res()}}, 100); setTimeout(() => {clearInterval(t); rej(new Error('timeout waiting for ' + ready + '\n' + out))}, 120000)}) : null;
   return {p, done, until, out: () => out};
 }
@@ -359,7 +359,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   // a runner process with its output lines timed against the real and the game clock
   function runner(a, model, extra) {
     const p = spawn(process.execPath, ['scripts/agent-player.mjs', '--url', PB, '--hero', String(a.id), '--provider', 'ollama', '--model', model, '--ollama-url', OLLAMA, ...extra], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
-    kids.push(p); const R = {p, out: '', turns: [], wakes: [], done: new Promise(r => p.on('exit', c => r(c)))}; let part = '';
+    kids.push(p); const R = {p, out: '', turns: [], wakes: [], done: new Promise(r => p.on('close', c => r(c)))}; let part = '';
     const take = d => {R.out += d; part += d; const ls = part.split(/\r?\n/); part = ls.pop();
       for (const l of ls) {const t = {real: Date.now(), gm: S.gameMin, line: l};
         if (/^\[turn \d+\]/.test(l)) R.turns.push(t); const w = l.match(/\[pace\] woke \((\w+)/); if (w) R.wakes.push({...t, kind: w[1]})}};
@@ -408,8 +408,10 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   // C. a lazy model (the owner's live bug): re-prompted once per turn, empty turns stop the runner, the scripted rules take over
   {const a = pick(), n0 = seen.length;
     // --max-fails 3, but a fresh context after two empty turns breaks the loop first (the mock forgets it went lazy)
+    // pinned in town at full health while it runs: autopilot or a wandering mob must not make rest/wait fail (a refused turn reads as empty)
+    const pinC = setInterval(() => {park(a); a.hp = a.maxhp || a.hp;}, 50);
     const R = runner(a, 'mock-lazy:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--max-turns', '8', '--new']);
-    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]);
+    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]); clearInterval(pinC);
     const mine = seen.slice(n0), re = mine.filter(b => {const u = b.messages.filter(m => m.role === 'user').pop(); return u && /^Act through a tool/.test(u.content)});
     const flags = R.turns.map(t => /empty turn/.test(t.line) ? 'E' : 'A').join('');
     ok(code === 0 && R.turns.length === 8 && flags === 'AAAEEAAA', `three good turns, two empty ones, then a fresh context and it acts again (${flags})` + (code === 0 ? '' : '\n' + R.out.slice(-1500)));
@@ -474,7 +476,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   // exits with code 75 (the supervisor starts it again); the next run sets the old session aside and takes a turn
   {const a = pick(), oldName = a.name;
     const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '0', '--new']);
-    ok(await until(() => R.turns.length >= 1, 30000) && existsSync(join(tmp, 'agents', a.id + '.json')), 'a runner plays and keeps its session for the hero');
+    ok(await until(() => R.turns.length >= 1 && existsSync(join(tmp, 'agents', a.id + '.json')), 30000), 'a runner plays and keeps its session for the hero'); // the turn line prints before the session file is written: wait for both
     a.name = 'Newcomer'; // the same id, another hero
     const code = await Promise.race([R.done, sleep(15000).then(() => 'timeout')]);
     ok(code === 75 && /\[world\] a new world: #\d+ was .*, now Newcomer/.test(R.out), `a runner whose hero was renamed under its id exits for the supervisor (code ${code})`);
@@ -571,7 +573,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) {sim.step(dt / n); gather()}}, 50);
       const q = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-intro:1b', '--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
       kids.push(q); let qo = ''; q.stdout.on('data', d => qo += d); q.stderr.on('data', d => qo += d);
-      const code = await Promise.race([new Promise(r => q.on('exit', r)), sleep(120000).then(() => 'timeout')]);
+      const code = await Promise.race([new Promise(r => q.on('close', r)), sleep(120000).then(() => 'timeout')]);
       clearInterval(tick8);
       const live = mem.filter(a => a.state !== 'dead'), refused = (qo.match(/< \{"ok":false,"error":"You (have already met your companions|already said that)/g) || []).length;
       ok(code === 0, 'mock-intro: every member plays two turns' + (code === 0 ? '' : ' (' + code + ')\n' + qo.slice(-2000)));
