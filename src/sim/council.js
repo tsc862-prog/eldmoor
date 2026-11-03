@@ -157,7 +157,7 @@ export function castVote(a,id,v,reason,by='agent'){const C=companyOf(a),P=propBy
 
 // Members a reflex may vote for (no runner, and the owner said go on; or no host): they vote at once.
 // Who a proposal reaches (#182): the living members who were within shouting range when it was made, and any who have rejoined since.
-export const voters=P=>members(propCompany(P)).filter(b=>!(P.absent||[]).includes(b.id)&&!(P.kind==='expel'&&P.target===b.id)); // the one an expel vote is about hears it and may speak, but does not vote (#444)
+export const voters=P=>members(propCompany(P)).filter(b=>!b.hire&&!(P.absent||[]).includes(b.id)&&!(P.kind==='expel'&&P.target===b.id)); // the one an expel vote is about hears it and may speak, but does not vote (#444)
 const atTable=P=>!!findScene(sc=>sc.ctx&&sc.ctx.prop===P.id); // any company's open scene (#518)
 function reflexFill(P){for(const b of voters(P))if(!P.votes[b.id]&&reflexMay(b)&&P.status==='open')castVote(b,P.id,reflexVote(b,P),'','reflex')}
 // Who the open vote still waits for: members without a vote whose agent (or owner) has the say (#148).

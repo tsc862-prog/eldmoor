@@ -47,6 +47,7 @@ import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
 import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
 import {inSlots,slotHeroes,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
+import {hireKind,priceFor,HIRE} from './hire.js'; // a hire offer (#634); used inside functions only (hire.js imports this file)
 
 // ---- knobs ----
 export const CONV={
@@ -77,7 +78,7 @@ export const CONV={
   DM_LINE_MAX:2000,   // the person's line from the DM: a technical ceiling only, the DM writes as much as the moment needs (owner, #170)
   LEAD_MAX:600, NOTE_MAX:160, NOTES_KEEP:8, PAST_KEEP:12,
 };
-export const OFFER_KINDS=['trade','rumour','job','combat','blessing','leave'];
+export const OFFER_KINDS=['trade','rumour','job','combat','blessing','hire','leave'];
 const MOODS=['hostile','neutral','friendly'];
 const DAY=1440;
 
@@ -298,6 +299,13 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
     const got=mem.filter(b=>!b.blessed&&dist(b,p)<=4);if(!got.length)return no('nobody near enough is without a blessing');
     for(const b of got)b.blessed=1;mark='[blessing]';hint=full(p)+' blesses '+got.map(b=>b.name).join(' and ')+': the next strike lands harder.';
     if(by==='scripted')speakAs(p,c,pick(TALK_LINES.blessing),by,mark);warm(p,1,'blessed them')}
+  else if(kind==='hire'){if(p.hired!=null)return no(p.name+' is already hired');if(p.mood==='hostile')return no(p.name+' will not ride with the Fellowship (hostile)');
+    if(!hireKind({...p,hireOffer:null}))return no(full(p)+' does not hire out (a sellsword, a drover or a guide does; so does anyone placed with a want of coin)');
+    const std=priceFor({...p,hireOffer:null},a),want=Math.round(Number(args.price)),price=Number.isFinite(want)&&want>0?Math.max(1,Math.min(want,std*3)):std;
+    p.hireOffer={conv:c.id,hero:a.id,price,until:Math.round(S.gameMin+HIRE.OFFER_MIN)};
+    mark='[hire]';hint=full(p)+' offers their blade to '+a.name+' for '+price+' gold a day (1 to 5 days, paid up front): hire {npc:"'+p.name+'", days} while you stand near; the offer stands '+Math.round(HIRE.OFFER_MIN/60)+' game hours.';
+    if(by==='scripted')speakAs(p,c,full(p)+' names a price: '+price+' gold a day.',by,mark);
+    noteOn(p,'Offered their blade to '+a.name+' for '+price+' gold a day.')}
   else if(kind==='leave'){mark='[leaves]';hint=full(p)+' walks away from the conversation.';const sn=p.snub||(p.snub={});for(const id of c.heroes)sn[id]=Math.round(S.gameMin+CONV.SNUB_GM);
     if(by==='scripted'&&p.mood!=='hostile')speakAs(p,c,pick(TALK_LINES.leave),by,mark);
     warm(p,-1,'walked off');if(p.wander&&a){const dx=p.x-a.x,dy=p.y-a.y,n=Math.hypot(dx,dy)||1;p.stroll={x:p.x+dx/n*5,y:p.y+dy/n*5}}}
@@ -412,11 +420,13 @@ function tradeDone(p,a,what){const c=p.trade&&convById(p.trade.conv);if(!p.trade
 // ---- the DM's view: the waiting call ----
 export function legalOffers(c,p){const out=[];if(p.mood!=='hostile')out.push('trade');out.push('rumour','job');
   const hurt=slotHeroes(slotted()).some(b=>living(b)&&b.hp<maxHp(b)*CONV.HURT&&(c.heroes.includes(b.id)||dist(b,p)<=CONV.HURT_R));if(!hurt)out.push('combat');
-  if(['priest','hermit'].includes(p.role)&&p.mood!=='hostile')out.push('blessing');out.push('leave');return out}
+  if(['priest','hermit'].includes(p.role)&&p.mood!=='hostile')out.push('blessing');
+  if(p.hired==null&&p.mood!=='hostile'&&hireKind({...p,hireOffer:null}))out.push('hire');out.push('leave');return out}
 function convView(c,withCall){const p=npcById(c.npc);if(!p)return null;const a=hero(c.wait?c.wait.hero:c.heroes[c.heroes.length-1]);
   const T=talkOf(p),want=p.want||T.want;
   return {conv:c.id,...(withCall&&c.wait?{call:c.wait.call,seconds_left:Math.max(0,Math.round((c.wait.ms-(Date.now()-c.wait.real))/100)/10)}:{}),waiting:!!c.wait,
     npc:{id:p.id,name:full(p),role:p.role,faction:p.fac===0||p.fac===1?FAC[p.fac].name:'neutral',where:p.town||ZONES[zoneAt(p.x,p.y)]||'the wilds',want,mood:recordOf(p,a)&&p.mood,warmth:p.warmth,
+      ...(p.hireOffer&&S.gameMin<p.hireOffer.until?{hire_offer:{price:p.hireOffer.price,until:Math.round(p.hireOffer.until)}}:{}),...(p.hired!=null?{hired:true}:{}),
       ...(withCall?{knows:knows(p,a).map(x=>x.text),record:recordView(p)}:{})},
     member:a?{id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,role:slotKeyOf(a)||null,...(c.read&&c.read[a.id]!=null?{read_them:c.read[a.id]}:{}),...(lastTime(p,a)?{last_time:lastTime(p,a)}:{})}:null, // last_time: what the person remembers of them (#571)
     line:c.wait?c.wait.line:null,so_far:c.lines.slice(-12).map(l=>l.name+': '+l.text+(l.mark?' '+l.mark:'')),exchange:exText(c),

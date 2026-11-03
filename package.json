@@ -51,6 +51,7 @@
     "gambitcheck": "node scripts/gambitcheck.mjs",
     "toolwincheck": "node scripts/toolwincheck.mjs",
     "paymarkcheck": "node scripts/paymarkcheck.mjs",
+    "hirecheck": "node scripts/hirecheck.mjs",
     "attemptcheck": "node scripts/attemptcheck.mjs",
     "wakecheck": "node scripts/wakecheck.mjs",
     "actcheck": "node scripts/actcheck.mjs",
