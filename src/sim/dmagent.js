@@ -41,6 +41,8 @@ import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {moment} from './reflect.js'; // a dream is a reflection moment (#523)
 import {ensureNpcs} from './npcs.js';
 import {stageScene,tableCall,tableAnswer,stagedView,STAGE} from './staged.js';
+import {sceneCall,sceneAnswer,ourScene,openingDue} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
+import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
 import {openThreads as companyThreads} from './company.js';
@@ -257,7 +259,9 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     fellowship_first:F?'The Fellowship comes first: read fellowship_needs, act for them, and only then shape the wider world (and only when nothing is pending for them).':null,
     fellowship_needs:fellowshipNeeds(),fellowship_change:companiesSig(),
     ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
-    table:sc?(sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
+    prep:{...prepView(),...(openingDue()?{opening_due:true}:{})}, // #437: while it runs the world is held for you; end it with prep_done
+    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
+      :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
     proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,
@@ -592,6 +596,10 @@ function npcSay(a){const p0=personFor(a);if(p0)a={...a,npc:String(p0.id)};const 
   dmlog('agent',null,[(p.title?p.title+' ':'')+p.name+' (DM agent): "',t,'"'],{by:'dm-agent',voice:'npc_say',npc:p.id,text:t,heard:hs.map(b=>b.id)});
   return {ok:true,who:(p.title?p.title+' ':'')+p.name,said:t,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
 
+// The DM ends its prep (#437): the host lets the world run and the opening scene opens.
+function prepDone(a){const t=clean(a&&a.summary,DMA.INTENT_MAX);if(!prepActive())return {ok:true,prep:prepView(),note:'No prep is running; nothing to end.'};
+  const v0=prepView();endPrep('done');dmlog('agent',null,['DM prep done ('+v0.kind+', '+v0.calls+' calls, '+v0.seconds+' s)'+(t?': '+t:'.')],{by:'dm-agent',prep:v0.kind,calls:v0.calls,seconds:v0.seconds,text:t||null},{heroes:[]});
+  return {ok:true,prep:prepView(),note:'The table opens now.'}}
 const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // A tool name that is not a DM tool (issue #401): a lever name called as a tool (post_hook, mark_place, create_npc,
 // or create_npc_placeholder) is pointed at pull_lever with that lever's contract; anything else lists the tools.
@@ -615,7 +623,8 @@ export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
   const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
-  args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args); // a DM present: conversations wait for it a little (#170)
+  args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
+  const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
   try{switch(tool){
     case 'dm_status':r=status();break;
     case 'read_timeline':r=timelineRead(args.n);break;
@@ -644,10 +653,12 @@ export function dmAct(tool,args={}){
     case 'npc_call':r=npcCall();break;
     case 'npc_offer':r=npcOffer(args);break;
     case 'stage_scene':r=stageScene(args);break;
-    case 'table_call':r=tableCall();break;
-    case 'table_answer':r=tableAnswer(args);break;
+    case 'table_call':r=sceneCall()||tableCall();break;
+    case 'table_answer':r=sceneAnswer(args)||tableAnswer(args);break;
+    case 'prep_done':r=prepDone(args);break;
   }}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
   if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
+  if(prepping&&!prepActive()&&tool!=='prep_done'&&r&&typeof r==='object')r={...r,prep:'Your prep is over (its '+(prepView().why==='calls'?'calls':'time')+' ran out): the table opens now. End this turn.'};
   if(!((tool==='table_call'||tool==='npc_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
   return r}

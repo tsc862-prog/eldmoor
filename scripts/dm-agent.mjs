@@ -75,7 +75,7 @@ export function dmSystemPrompt(st) {
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
     '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
     '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): for an elite or an ambush call stage_scene with preview "true" first to see the cast the game will build, then write a frame that fits it (a frame of armed men over a pack of boars is refused); you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. A meeting or social scene may name a setting (a house, a tavern back room, a chapel, a cellar, an interrogation cell, a shrine, the hold of a ship) and at (a town or a building in it): the Table scene plays in that room; the other kinds play where they happen. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
-    '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); you do not need to do anything for that.',
+    '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); the same voice frames the opening scene of a new world (session zero) and speaks for a newcomer who arrives to take a fallen member’s place. You do not need to do anything for that.',
     DM_FELLOWSHIP_ORDERS,
     DM_COMPANY_ORDERS,
     DM_EVENT_ORDERS,
@@ -154,7 +154,7 @@ export const isRateLimit = s => /\b429\b|rate.?limit|overloaded|\b529\b/i.test(S
 export const DEFAULT_TABLE_MODEL = 'claude-haiku-5-5'; // claude-api skill (cached 2026-10-06): Haiku 5.5, $0.10 in / $0.50 out per 1M tokens
 export const POLL_IDLE = 2500, POLL_HOT = 400;
 export const TABLE_SYSTEM = 'You are the Dungeon Master\'s voice at the table in Eldmoor, a hardcore fantasy world (original setting; no names from other games or books). ' +
-  'A scene you staged is being played. Each request is one call: voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
+  'A scene is being played: one you staged, the opening of the campaign (session zero: frame it as the company first sits down), or a newcomer’s arrival (voice the newcomer). Each request is one call: frame the scene, voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
   'Write what can be seen, heard or smelled, as much as the moment needs; usually a few vivid sentences. The Cast line is the truth: voice and describe only what it lists, and invent no one else (no men, bandits or leaders when the cast is creatures). Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
 export function tablePrompt(t) {
   const c = t.call, s = t.scene || {};
@@ -249,6 +249,30 @@ export function talkVoice({base, adapter, model, effort = 'low', log = () => {},
 export const talkWaiting = st => st && Array.isArray(st.conversations) ? st.conversations.filter(c => c.waiting) : [];
 export const talkNote = st => {const w = talkWaiting(st); return w.length ? ` A Fellowship member is talking to someone and waits for an answer: ${w.map(c => `${c.member} to ${c.npc} (conv ${c.conv}): "${c.line}"`).join('; ')}. First answer as that person: npc_call, then npc_say {npc, conv, text} and at most one npc_offer; then go on with your turn.` : ''};
 
+// ---- the prep before the table opens (issue #437, owner decision of 2026-11-03) ----
+// When every seat is ready, the host holds the world while the DM takes one bounded prep turn (sim/prep.js: about 90 s and
+// 20 tool calls; half on Continue or for a DM runner started again mid-session). A fresh runner waits for the host to start
+// it (dm_status prep.state 'running'): as long as session zero is due (prep.opening_due), else PREP_WAIT_MS. The turn has
+// the prep's call cap as its model-call cap and is aborted at its time cap; then the runner calls prep_done (a cap the game
+// counted may already have ended it) and the opening scene opens; the table voice frames it.
+export const PREP_WAIT_MS = 15000;
+export const prepPrompt = st => {const p = st.prep || {}, cap = `at most ${p.max_calls || 20} tool calls and ${p.max_seconds || 90} seconds`;
+  return p.kind === 'opening'
+    ? `Session zero. The world is paused before the first table opens, and this one turn is your preparation (${cap}). ${fellowNow(st)}Read: dm_status, notes_read (your campaign seed: premise, threads, characters, plans and opening beats), fellowship_view. Write your plans for the first days (remember or notes_write). Mark one place or post one hook for the opening, on the company's road (mark_place or post_hook), and log_intent one line. Then call prep_done. Nothing of this reaches a hero except through the opening scene, which you will frame when it opens.`
+    : `The world is paused for a short prep before the clock runs again (${cap}): re-read where the companies are (dm_status, fellowship_view, notes_read), bring your plans up to date, then call prep_done.`};
+export async function waitPrep({base, log = () => {}, stopped = () => false, tool = dmTool, waitMs = PREP_WAIT_MS, every = 1000}) {
+  const t0 = Date.now(); let said = false;
+  for (;;) {
+    if (stopped()) return null;
+    const st = await tool(base, 'dm_status'), p = st && st.ok ? st.prep : null;
+    if (p && p.state === 'running') return st;
+    if (!(p && p.host)) return null; // nobody holds the world for a prep (an older page, play-headless without --wait-ready)
+    if (!(p && p.opening_due) && Date.now() - t0 >= waitMs) return null;
+    if (p && p.opening_due && !said) {said = true; log('[dm] session zero is due: waiting for every seat to be ready, then the prep')}
+    await sleep(every);
+  }
+}
+
 // Wait until the cadence allows a turn and nothing is pending. Returns the fresh status, or null on stop.
 // gapUntil: the earliest real time (ms) the next turn may start (the minimum gap, issue #126).
 async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n: 0}, log, stopped, gapUntil = 0, talkNow = false}) {
@@ -333,16 +357,20 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping}); log(`[dm] table voice: ${rs.model} (local) answers the calls of staged scenes`)}
     if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 25))}); log(`[dm] talk voice: ${rs.model} (local) answers the Fellowship's conversations with world characters`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
+    let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
+    if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
-      const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
+      const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
       let r = null, err = null;
-      try {r = await localTurn({chat: ol.chat, call: (tool, args) => dmTool(base, tool, args), sess, prompt: dmTurnPrompt(sess.turns, st) + talkNote(st), model: rs.model, toolTurns, tools: DM_TOOLS, rules,
+      const prepping = st === prepSt && !!prepSt, prepAt = Date.now();
+      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
         // the breaker and the minute cap (issue #467): 3 refusals of one tool or 5 in a row end the turn; at most
         // DM_CALLS_PER_MIN (default 30) tool calls a real minute across turns, well under the relay's flood line (90)
         opts: {endOnWait: false, sameRefusals: 3, consecutiveRefusals: 5, callsPerMin: Math.max(5, Number(opt('calls-per-min', env.DM_CALLS_PER_MIN || 30)) || 30)},
         on: (k, a, b) => {if (k === 'text') log(`  DM: ${a}`); else if (k === 'tool') log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') log(`    < ${short(a, 220)}`);
           else if (k === 'break') log(`  [breaker] ${a.n} refusals of ${a.tool}${a.inRow > a.n ? ' (' + a.inRow + ' in a row)' : ''}: the turn ends here`); else if (k === 'throttle') log(`  [throttle] ${a} tool calls in the last minute: the turn ends here`)}})}
       catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
+      if (prepping) {const d = await dmTool(base, 'prep_done', {summary: 'prepared the table'}); log(`[dm] prep over: ${d.ok ? (d.prep && d.prep.why) || 'done' : short(d.error, 80)}`); prepSt = null}
       sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; lastEnd = Date.now();
       reportTurn(base, {role: 'dm', runner, provider: 'ollama', model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
       if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
@@ -378,18 +406,21 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   {const {warmUp, claudeWarmAdapter} = await import('./warmup.mjs'); await claim(); await warmUp({base, seat: {role: 'dm'}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log})} // the start gate (issue #222)
+  let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
+  if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    const st = await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
+    const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
-    const q = query({prompt: dmTurnPrompt(sess.turns, st) + talkNote(st), options: {
+    const prepping = st === prepSt && !!prepSt, prepTimer = prepping ? setTimeout(() => {if (turnAbort) turnAbort.abort()}, prepSt.prep.max_seconds * 1000) : null;
+    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st), options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?role=dm&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': runner}, timeout: 30000}},
       tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
-      settings: {autoCompactEnabled: true}, maxTurns: toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
+      settings: {autoCompactEnabled: true}, maxTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv,
     }});
     try {for await (const m of q) {
@@ -410,7 +441,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (result && result.subtype === 'error_max_turns') log(`[dm] turn hit the ${toolTurns} model-call cap; continuing next turn`);
       else if (isRateLimit(msg) || limited) failed = failed || 'rate_limit';
       else {console.error(`[dm] turn failed: ${msg}`); failed = failed || 'error'}}
-    freeSlot();
+    freeSlot(); if (prepTimer) clearTimeout(prepTimer);
+    if (prepping) {const d = await dmTool(base, 'prep_done', {summary: 'prepared the table'}); log(`[dm] prep over: ${d.ok ? (d.prep && d.prep.why) || 'done' : short(d.error, 80)}`); prepSt = null; if (failed === 'error' && turnAbort && turnAbort.signal.aborted) failed = null}
     let turnCost = null, tin = null, tout = null, cread = null, cwrite = null;
     if (result) {
       const ud = usageDelta(sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)

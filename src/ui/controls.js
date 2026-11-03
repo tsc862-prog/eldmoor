@@ -6,7 +6,8 @@ import {cam} from '../render/draw.js';
 import {cryptAt,openDungeon} from '../render/dungeonview.js'; // the dungeon view (#85): a click on a crypt's door opens it
 import {renderHero,renderTops,ranked,setPicker} from './panels.js';
 import {companies} from '../sim/company.js';
-import {followedCompany,followedMembers,companyLabel,followNext} from './companyview.js'; // the follow cycle (#456)
+import {followedCompany,followedMembers,companyLabel,followNext,storyLead} from './companyview.js'; // the follow cycle (#456)
+import {showDock} from './layout.js'; // the dock (#546): a click on a hero opens its Hero tab
 import {regionBox,regionList,getRegion,setRegion} from './region.js'; // region view (#430)
 import {renderConditions} from './conditions.js';
 import {refreshChronicle} from './fellowship.js';
@@ -38,8 +39,17 @@ export function syncView(){const fel=cam.view==='fellow',reg=cam.view==='region'
   const h=$('hint'),ht=reg?'Viewing '+(vr&&vr.selectedOptions&&vr.selectedOptions[0]?vr.selectedOptions[0].textContent:'a region'):fel?'Following '+(C&&C.slots&&n===1?'the Fellowship':lbl):cam.view==='follow'?'Following '+(cam.sel?cam.sel.name:''):cam.zoom===1?'Tap a hero to follow · wheel to zoom':'Drag to pan · wheel to zoom';if(h.textContent!==ht)h.textContent=ht}
 // The follow button and hint name the followed company: refresh them when the companies change (called by the frames'
 // 0.3 s render; a no-op while nothing changed).
-let followSig='';
-export function syncFollow(){const C=followedCompany(),k=companies().map(x=>x.id).join(',')+'|'+(C?C.id+':'+companyLabel(C):'');if(k===followSig)return;followSig=k;syncView()}
+// The selected hero follows the follow cycle (#546): when the followed company changes, the dossier moves to its leader
+// unless the selected hero rides with it already.
+let followSig='',followWas;
+export function syncFollow(){const C=followedCompany(),k=companies().map(x=>x.id).join(',')+'|'+(C?C.id+':'+companyLabel(C):'');if(k===followSig)return;followSig=k;
+  const id=C?C.id:null,moved=followWas!==undefined&&id!==followWas;followWas=id;
+  if(moved&&C&&!(cam.sel&&C.ids.includes(cam.sel.id))){const L=storyLead(C);if(L)select(L)}
+  syncView()}
+// The hero the dossier opens on (#546): the saved pick when it rides with the followed company (or there is none), else
+// that company's leader; without a company the saved pick or the top hero, as before.
+export function startHero(){const p=S.pinned&&typeof S.pinned.x==='number'&&S.agents.includes(S.pinned)?S.pinned:null,C=followedCompany();
+  if(C&&!(p&&C.ids.includes(p.id)))return storyLead(C)||p||ranked()[0];return p||ranked()[0]}
 
 // 'map' is the free camera (the Whole map button also resets the zoom); 'follow' tracks cam.sel.
 export function setView(v){cam.view=v;if(v==='map'&&R)R.setZoom(1);syncView()}
@@ -69,7 +79,7 @@ export function initControls(renderer){R=renderer;
   $('zIn').onclick=()=>renderer.setZoom(renderer.stepZoom(renderer.currentZoom(),1));
   $('zOut').onclick=()=>renderer.setZoom(renderer.stepZoom(renderer.currentZoom(),-1));
   renderer.onCamChange(syncView);initRegionPicker();
-  setPicker(a=>{select(a);setView('follow')});
+  setPicker(a=>{select(a);setView('follow');showDock('hero')});
 
   const scr=$('screen');
   // wheel: zoom one step around the cursor (in follow mode this drops to the free camera)
@@ -89,6 +99,6 @@ export function initControls(renderer){R=renderer;
   scr.addEventListener('click',e=>{if(dragged){dragged=false;return}
     const {x:wx,y:wy}=renderer.screenToWorld(e.clientX,e.clientY);
     const best=heroAt(wx,wy);
-    if(best){select(best);setView('follow')}else{const L=cryptAt(wx,wy);if(L)openDungeon(L)}});
+    if(best){select(best);setView('follow');showDock('hero')}else{const L=cryptAt(wx,wy);if(L)openDungeon(L)}});
   syncView();
 }

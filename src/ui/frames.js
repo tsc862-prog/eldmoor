@@ -2,8 +2,8 @@
 // order (Tank, Healer, DPS x3). Companies (#456): one row of frames per company, the followed one first, solos sharing
 // an "Alone" row (src/ui/companyview.js frameGroups); a row head names each company once there is more than one. Each shows a sprite portrait, name, role and class, level, health
 // with numbers, what the member is doing, their target, conditions and blessings, who plays them
-// (scripted / AI / agent with its link state) with a control to switch it, and the dead or
-// replaced state of the place. Click a frame: select that member and centre the camera on them.
+// (a mind dot: agent / autopilot / reflex, the runner's state on hover; #546 moved runner Start / Stop to the Company
+// tab), and the dead or replaced state of the place. Click a frame: select that member and centre the camera on them.
 // Hover a frame: the five combat totals and the top skills.
 //
 // Cheap rendering: a frame's skeleton is built when the hero in its place changes; every 0.3 s
@@ -23,16 +23,27 @@ import {portrait} from '../render/sprites.js'; // generated face portraits (#367
 import {cam} from '../render/draw.js';
 import {doing,combatRows} from './panels.js';
 import {select,setView,syncFollow} from './controls.js';
+import {showDock} from './layout.js'; // a click on a frame opens the Hero tab of the dock (#546)
 import {setPurpose,tapPurpose,purposeLine} from './purposeview.js'; // what each hero is trying to do (#534)
-import {mindOf,mindText,mindTitle} from './mindctl.js'; // the frame shows the mind; it is set in Members and minds (#145)
+import {mindOf,mindText} from './mindctl.js';
+import {mindLabel} from './mindlabel.js'; // the frame shows the mind; it is set in Members and minds (#145)
 import {effectChips} from './abilities.js';
 import {openSheet} from './sheet.js';
-import {runnerControl,runnerSig} from './runners.js'; // app runners: Start / Stop on an agent-played member
+import {runnerFor,stateLine} from './runners.js'; // the runner's state, on the mind dot's tooltip (#546: Start / Stop live in the Company tab)
 import {mountDmFrame,renderDmFrame} from './dmframe.js'; // the DM beside the party (owner request)
 import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
 import {agentReadyWord} from './player-bridge.js'; // the start gate (#222): claimed / warming / ready / failed
 const READY_TEXT={claimed:'claimed',warming:'warming up',ready:'ready',failed:'warm-up failed'};
 const mindLine=a=>{const w=a&&a.player&&a.state!=='dead'?agentReadyWord(a):null;return mindText(a)+(w?' · '+READY_TEXT[w]:'')};
+// The mind dot (#546): the frame carries the glance only. agent = a runner plays it (live or thinking), autopilot = the agent
+// is quiet and autopilot carries its last order, reflex = no runner (reflexes hold until one connects), ai / scripted for
+// the rest. The words and the runner's state are the dot's tooltip; Start / Stop is in the Company tab's Members and minds.
+export function mindDot(a){if(!a||a.state==='dead')return {k:'none',word:'',title:''};const m=mindOf(a),L=mindLabel(a);
+  let k=m,word=MIND_WORD[m]||m;
+  if(m==='agent'){const live=L.link==='connected'||L.link==='waiting'||L.link==='busy';k=!live?'reflex':a.playIdle?'autopilot':'agent';word=DOT_WORD[k]}
+  const r=a.player?runnerFor(a):null,rs=a.player?stateLine(r,'hero:'+a.id):'';
+  return {k,word,title:word+': '+mindLine(a)+(rs?'\nRunner: '+rs:'')+'\n'+L.title}}
+const MIND_WORD={ai:'AI',quiet:'AI (quiet)',scripted:'Scripted'},DOT_WORD={agent:'Agent',autopilot:'Autopilot',reflex:'Reflex'};
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -59,7 +70,7 @@ export function chipsOf(a){const out=[];if(!a)return out;
   if(a.hidden&&a.state==='dungeon')out.push({t:'IN CRYPT',c:'crypt',title:'Inside the Sunken Crypt.'});
   const c=conditionAt(a.zone);if(c&&CONDITIONS[c.kind])out.push({t:CONDITIONS[c.kind].label.toUpperCase(),c:'cond',title:CONDITIONS[c.kind].about+' (over '+ZONES[c.z]+')',col:CONDITIONS[c.kind].col});
   const owed=Object.keys(a.nemesis||{}).filter(id=>{const n=byId(id);return n&&n.state!=='dead'}).length;if(owed)out.push({t:'BLOOD OWED',c:'warn',title:'Sworn to avenge a guildmate.'});
-  if(a.goal&&!a.goal.done&&a.goal.need)out.push({t:'OATH '+(a.goal.progress||0)+'/'+a.goal.need,c:'oath',title:a.goal.text});
+  // the oath's counter lives in the Company tab's open threads (#546: frames carry the glance only)
   return out}
 export function topSkills(a,n=3){return SKILL_IDS.slice().sort((x,y)=>skillMod(a,y)-skillMod(a,x)||trained(a,y)-trained(a,x)).slice(0,n).map(k=>(trained(a,k)?'* ':'')+SKILLS[k].name+' '+sg(skillMod(a,k)))}
 // The member who held this place before, when the place has turned over (the DM's replacement).
@@ -105,9 +116,9 @@ function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
   top.append(r.port,id);
   const hp=el('div','meter hp pfhp');r.hpi=document.createElement('i');r.hpt=el('span','pfhpt');hp.append(r.hpi,r.hpt);
   r.doing=el('div','pfdo purp');r.doing._base='pfdo';r.tgt=el('div','pftg');r.chips=el('div','pfchips');
-  const foot=el('div','pffoot');r.pot=el('span','pfpot');r.mind=el('span','pfmind');r.btn=el('span','pfbtn');foot.append(r.pot,r.mind,r.btn);r.run=el('div','pfrun');
+  const foot=el('div','pffoot');r.pot=el('span','pfpot');r.mind=el('span','pfdot');r.mind.setAttribute('role','img');foot.append(r.pot,r.mind);
   r.rep=el('div','dm pfrep');
-  f.append(top,hp,r.doing,r.tgt,r.chips,r.rep,foot,r.run);
+  f.append(top,hp,r.doing,r.tgt,r.chips,r.rep,foot);
   return {node:f,hid:a.id,r}}
 
 function update(fr,m,lead,no,total){const a=m.hero,r=fr.r;
@@ -124,8 +135,7 @@ function update(fr,m,lead,no,total){const a=m.hero,r=fr.r;
   setPurpose(r.doing,a,'f');const t=targetOf(a);setText(r.tgt,t?'» '+t:'');
   const ch=chipsOf(a),ck=ch.map(c=>c.t).join('|');if(r.chips._k!==ck){r.chips._k=ck;r.chips.replaceChildren();for(const c of ch){const s=el('span','chip c-'+c.c,c.t);s.title=c.title||'';if(c.col)s.style.color=c.col;r.chips.append(s)}}
   setText(r.rep,replacedLine(m.slot));setText(r.pot,dead?'':potText(a));
-  setText(r.mind,mindLine(a));setCls(r.mind,'pfmind m-'+mindOf(a));setAttr(r.mind,'title',mindTitle(a));
-  const rk=dead||!a.player?'':runnerSig(a);if(r.run._k!==rk){r.run._k=rk;r.run.replaceChildren();if(rk)r.run.append(runnerControl(a))}}
+  const md=mindDot(a);setText(r.mind,md.word);setCls(r.mind,'pfdot d-'+md.k);setAttr(r.mind,'title',md.title||null);setAttr(r.mind,'aria-label',md.word?'Mind: '+md.word:null)}
 
 // A company row: a head (shown only when there is more than one row) and the frames. A company's head names it, says how
 // many ride with it and how many more it may take ('+3'), and follows it on a click; the Alone row's head only names it.
@@ -172,7 +182,7 @@ export function initFrames(){root=$('frames');if(!root)return;
     const fill=t.closest('[data-pffill]');if(fill){offerReplacement(fill.dataset.pffill);renderFrames();return}
     if(t.closest('button'))return;
     const pu=t.closest('.purp');if(pu&&tapPurpose(pu))return; // a cut purpose line opens in full on a tap (phone width)
-    const f=t.closest('.pf[data-hid]');if(!f)return;const a=byId(f.dataset.hid);if(a){hideTip();select(a);setView('follow')}});
+    const f=t.closest('.pf[data-hid]');if(!f)return;const a=byId(f.dataset.hid);if(a){hideTip();select(a);setView('follow');showDock('hero')}});
   root.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const f=e.target&&e.target.closest&&e.target.closest('.pf[data-hid]');if(!f||e.target!==f)return;e.preventDefault();const a=byId(f.dataset.hid);if(a){select(a);setView('follow')}});
   wrap.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;tipXY=[e.clientX,e.clientY];
     const f=e.target&&e.target.closest?e.target.closest('.pf[data-hid]'):null,a=f?byId(f.dataset.hid):null;if(!a||a.state==='dead'){if(tipFor)hideTip();return}

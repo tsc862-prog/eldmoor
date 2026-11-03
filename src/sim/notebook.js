@@ -19,15 +19,17 @@
 //     pinned notes are never archived (NB.PINS at most). A hero's note dropped from a full archive folds into its
 //     chapters (sim/tiers.js, #153), so journal_search still finds its words.
 //   - Hardcore: the notebook dies with the hero. The dead hero's tools all answer "dead" (sim/player.js), its
-//     replacement starts with an empty one. One exception, chosen for the Fellowship: a member's newest pinned
-//     note tagged "letter" is sealed for the party (C.letters[slot] on the Fellowship's company, #438); when that member has fallen,
-//     the next hero to take the slot finds it as a pinned note "A letter from <name>". Nothing else crosses.
+//     replacement starts with an empty one. One exception: a member's newest pinned note tagged "letter" is sealed for
+//     its company (C.letters, #438/#452); when that member has fallen, the next hero to join the company (the one who
+//     takes the place, else one of the same class, else anyone after PARTY.LETTER_DAYS) finds it as a pinned note
+//     "A letter from <name>". Nothing else crosses.
 //   - Relevance is keyword scoring, deterministic (see score/relevant below); no embeddings, no model.
 import {S,clockStr} from './state.js';
 import {ZONES,CITY,zoneAt,dist} from '../world/map.js';
 import {nearHeroes} from './spatial.js';
 import {sightMul} from './weather.js';
 import {partyMates} from './party.js';
+import {companyOf,PARTY} from './company.js'; // letters belong to the company (#452)
 import {tableView} from './table.js';
 import {openProps} from './council.js';
 import {noteWritten} from './reflect.js'; // reflection moments (#179)
@@ -167,7 +169,6 @@ export function dmContext(){const c=ctxNew(),F=S.fellowship;
   const sc=S.table;if(sc)c.words.push(...words((sc.title||'')+' '+(sc.kind||'')));
   return c}
 // The state header's notes (sim/pace.js): nothing for a hero with no notebook, unless a letter waits for it.
-const letterFor=a=>!!(a.fellow&&a.fellowRole&&S.fellowship&&S.fellowship.letters&&S.fellowship.letters[a.fellowRole]);
 export const heroRelevant=a=>(a.memories&&a.memories.notes.length)||letterFor(a)?relevant(heroBook(a),heroContext(a)):[];
 
 // ---- the hero's tools (sim/player.js hands these on; the hero is always the caller's own) ----
@@ -182,19 +183,31 @@ export function heroMemory(a,tool,args){const b=heroBook(a),M=b.M;args=args||{};
   if(tool==='update_memory'){const r=updateNote(b,args.id,args);return r.ok?{ok:true,updated:view(r.note)}:r}
   if(tool==='forget'){const r=forgetNote(b,args.id);return r.ok?{ok:true,forgot:{id:r.note.id,title:r.note.title},notes:M.notes.length}:r}
   if(tool==='pin'){const on=!(args.on===false||/^(false|no|off)$/i.test(String(args.on||'')));const r=pinNote(b,args.id,on);if(!r.ok)return r;
-    return {ok:true,[on?'pinned':'unpinned']:{id:r.note.id,title:r.note.title},...(on&&a.fellow&&(r.note.tags||[]).includes('letter')?{note:'Sealed as your letter to the Fellowship: if you fall, whoever takes your place will find it.'}:{})}}
+    return {ok:true,[on?'pinned':'unpinned']:{id:r.note.id,title:r.note.title},...(on&&companyOf(a)&&(r.note.tags||[]).includes('letter')?{note:'Sealed as your letter to '+(a.fellow?'the Fellowship':'your company')+': if you fall, whoever takes your place will find it.'}:{})}}
   return {ok:false,error:'Unknown memory tool '+tool+'.'}}
 
-// ---- the letter (Fellowship only) ----
-// The newest pinned note tagged "letter" of a living member is sealed for its slot; delivered once, to the next
-// hero who takes the slot after the writer has fallen.
-function syncLetter(a){const F=S.fellowship;if(!F||!a.fellow||!a.fellowRole||a.state==='dead')return;const L=F.letters||(F.letters={});
+// ---- the letter (any company; #452) ----
+// The newest pinned note tagged "letter" of a living member is sealed for its company (C.letters, keyed by the writer's
+// id: {from, name, cls, slot?, title, text, day, fell?}). Once the writer has fallen it is delivered once, to the next
+// hero who joins that company after the fall: the one who takes the writer's own place (the recruit of the arrival
+// scene, the heir of a solo), else the next joiner of the writer's class, else the next joiner once PARTY.LETTER_DAYS
+// game days have passed since the fall. An older save's letters (keyed by slot) read the same way.
+const lettersOf=C=>C&&C.letters||null;
+function syncLetter(a){const C=companyOf(a);if(!C||a.state==='dead')return;
   const n=(a.memories.notes||[]).filter(x=>x.pin&&(x.tags||[]).includes('letter')).sort((p,q)=>(q.up||0)-(p.up||0)||q.id-p.id)[0];
-  const cur=L[a.fellowRole];if(cur&&cur.from!==a.id){const w=hero(cur.from);if(!w||w.state==='dead')return} // a fallen writer's letter still waits for its reader
-  if(n)L[a.fellowRole]={from:a.id,name:a.name,title:n.title,text:n.text,day:n.day};else if(cur&&cur.from===a.id)delete L[a.fellowRole]}
-function deliverLetter(a,M){const F=S.fellowship;if(!F||!F.letters||!a.fellow||!a.fellowRole)return;const l=F.letters[a.fellowRole];
-  if(!l||l.from===a.id)return;const w=hero(l.from);if(w&&w.state!=='dead')return; // the writer still lives: not for anyone yet
-  delete F.letters[a.fellowRole];const gm=Math.round(S.gameMin);
+  if(!n&&!C.letters)return; // letters only where one was ever sealed (a save carries no empty map)
+  const L=C.letters||(C.letters={});
+  for(const k of Object.keys(L))if(L[k]&&L[k].from===a.id&&k!==String(a.id))delete L[k]; // an older save's slot key
+  if(n)L[a.id]={from:a.id,name:a.name,cls:a.cls,...(a.fellowRole?{slot:a.fellowRole}:{}),title:n.title,text:n.text,day:n.day};else delete L[a.id]}
+const joinedAt=(C,a)=>C.joined&&C.joined[a.id]!=null?C.joined[a.id]:null;
+function letterFor(a){const C=companyOf(a),L=lettersOf(C);if(!L)return null;let best=null;
+  for(const k of Object.keys(L)){const l=L[k];if(!l||l.from===a.id)continue;const w=hero(l.from);if(w&&w.state!=='dead')continue; // the writer still lives: not for anyone yet
+    const fell=l.fell!=null?l.fell:-1e9,j=joinedAt(C,a),after=j!=null&&j>=fell;
+    const ok=a.succeeds===l.from||(l.slot&&a.fellowRole===l.slot&&(j==null||after))||(after&&l.cls===a.cls)||(after&&S.gameMin-fell>=PARTY.LETTER_DAYS*1440);
+    if(ok&&(!best||fell<(best.l.fell!=null?best.l.fell:-1e9)))best={k,l}}
+  return best}
+function deliverLetter(a,M){if(!a||a.state==='dead')return;const b=letterFor(a);if(!b)return;const C=companyOf(a),l=b.l;
+  delete C.letters[b.k];const gm=Math.round(S.gameMin);
   M.notes.push({id:++M.seq,title:clean('A letter from '+l.name,NB.TITLE),text:clean(l.title+': '+l.text,NB.LEN),tags:['letter'],about:l.name,rk:'hero:'+l.from,day:dayNo(),t:clockStr(),gm,up:gm,pin:true});M.v=(M.v||0)+1}
 
 // ---- the mirror (scripts/memory-mirror.mjs writes it; nothing reads it back) ----

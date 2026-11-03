@@ -390,6 +390,26 @@ console.log('start gate: ready, not just claimed');
   R[down.id]={state:'ready',at:0};gate.checkRunGate(T0+32000);ok(!ctl.held,'ready again: the world runs');
   gate.setGateProbe(null)}
 
+// The DM prepares the table (#437): once every seat is ready, a ready DM runner holds the world for one bounded prep
+console.log('the DM prepares the table');
+{const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js'),{dmFrameData}=await import('../src/ui/dmframe.js');
+  const F=sim.fellows(),L={},R={};for(const m of F){L[m.id]='connected';R[m.id]={state:'ready',model:'qwen2.5:14b',ms:900,at:0}}
+  const turns0=sim.S.dmAgent&&sim.S.dmAgent.turns?sim.S.dmAgent.turns.slice():null; // the DM calls below are not a turn for the DM tab's check further down
+  let dmR={state:'ready',model:'qwen2.5:14b',ms:700,at:1};sim.setDmSeat(true);
+  gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'connected',ready:a=>R[a.id]||null,dmReady:()=>dmR});
+  const T0=9e6,box=$('rgate');ctl.speed=1;gate.checkRunGate(T0);
+  ok(ctl.held&&/THE DM PREPARES THE TABLE · \d+ S · 0\/10 CALLS/.test(box.textContent),'every seat ready: the world stays held while the DM prepares ('+(box.children[0]&&box.children[0].textContent)+')');
+  ok(/Start anyway/.test(box.textContent)&&/re-reads where the companies are/.test(box.textContent),'the banner keeps Start anyway and says what the DM does (a Continue: the short prep)');
+  ok(/preparing/.test(dmFrameData().mind),'the DM frame shows preparing: '+dmFrameData().mind);
+  sim.dmAct('regions');sim.dmAct('levers');gate.checkRunGate(T0+1000);ok(/2\/10 CALLS/.test(box.textContent),'the banner counts the calls');
+  gate.startAnyway();ok(!ctl.held&&box.hidden&&sim.prepView().why==='anyway','Start anyway ends the prep and the world runs');
+  gate.checkRunGate(T0+2000);ok(!ctl.held,'the same runner gets no second prep');
+  dmR={state:'ready',model:'qwen2.5:14b',ms:650,at:2};gate.checkRunGate(T0+3000);ok(ctl.held&&/PREPARES/.test(box.textContent),'a DM runner started again gets a short prep');
+  sim.dmAct('prep_done',{summary:'ok'});gate.checkRunGate(T0+4000);ok(!ctl.held&&sim.prepView().why==='done','prep_done releases the world');
+  sim.setDmSeat(false);dmR={state:'ready',model:'x',ms:1,at:3};gate.checkRunGate(T0+5000);ok(!ctl.held&&!sim.prepActive(),'the seat closed: no prep');
+  if(sim.S.dmAgent){if(turns0)sim.S.dmAgent.turns=turns0;else delete sim.S.dmAgent.turns}
+  gate.setGateProbe(null)}
+
 // ---- timed ward chips on the party frames (#336) ----
 {console.log('ward chips');const {setEff}=await import('../src/sim/eff.js');const {effectChips}=await import('../src/ui/abilities.js');
   const a=mem[0],chips=()=>[...$('frames').querySelector('.pf[data-hid="'+a.id+'"]').querySelectorAll('.chip')].map(c=>c.textContent);
@@ -479,7 +499,7 @@ console.log('start gate: ready, not just claimed');
   const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
   const keep=window.innerWidth;
   ok(!!sim.S.fellowship,'wide layout: a Fellowship stands for the column checks');
-  for(const [w,n,st,hr] of [[1000,2,'side','colM'],[1600,2,'side','colM'],[2600,3,'colL','side'],[390,1,'side','colM'],[1000,2,'side','colM']]){
+  for(const [w,n,st,hr] of [[1000,2,'side','colM'],[1600,2,'side','colM'],[2400,3,'colL','side'],[390,1,'side','colM'],[1000,2,'side','colM']]){
     window.innerWidth=w;uiFast();
     ok(columnCount()===n,w+' px: '+n+' column(s)');
     ok(where('storySec')===st&&where('heroSec')===hr&&(w<2200?where('worldgrp')==='side':where('worldgrp')==='colL'),w+' px: Story, World and Hero are in '+st+' / '+hr);
@@ -664,8 +684,8 @@ console.log('start gate: ready, not just claimed');
   {const r0=TB.combatView().rolls[0].r;ok(!!r0&&r0.crit&&r0.down&&r0.dmg===30&&r0.target==='Brute','combat banner: the rolls are the beats roll data (crit, down, damage, target)')}
   // the watcher's round pace (#285): the mode button cycles off/hold/auto; a held round shows Next round, which releases it
   T.TABLE.step='off';TB.renderTable(1);let sb=box.querySelector('.tstb');
-  ok(!!sb&&/Step: off/.test(sb.textContent)&&!box.querySelector('.tnext'),'combat banner: the step button shows the round pace (off)');
-  sb.click();TB.renderTable(1);ok(T.TABLE.step==='hold'&&/Step: hold/.test(box.querySelector('.tstb').textContent),'combat banner: the step button cycles to hold');
+  ok(!!sb&&/Rounds: run on/.test(sb.textContent)&&!box.querySelector('.tnext'),'combat banner: the step button shows the round pace (off)');
+  sb.click();TB.renderTable(1);ok(T.TABLE.step==='hold'&&/Rounds: pause after each/.test(box.querySelector('.tstb').textContent),'combat banner: the step button cycles to hold');
   const i0=sc.i;sc.i=sc.ids.length;sc.sh={rd:sc.rd,t:0,go:0};TB.renderTable(1);
   const nx=box.querySelector('.tnext');ok(!!nx&&/Round 3 is done/.test(box.textContent),'combat banner: a held round says so and offers Next round ('+(T.bannerOf()||{}).line+')');
   nx.click();ok(sc.sh.go===1,'combat banner: Next round releases the held round');TB.renderTable(1);ok(!box.querySelector('.tnext'),'combat banner: no Next round once released');
@@ -725,16 +745,16 @@ console.log('start gate: ready, not just claimed');
 {const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
   const keep=window.innerWidth;ok(!!sim.S.fellowship,'chat left: a Fellowship stands');
   const lst=$('chatList'),sec=$('chatSec');
-  window.innerWidth=2600;uiFast();
-  ok(where('chatSec')==='colL'&&$('colL').children[0]===sec,'2600 px: the chat is first in the left column');
-  ok(where('storySec')==='colL'&&where('worldgrp')==='colL'&&$('colL').children.indexOf($('storySec'))>0,'2600 px: Story and World sit below the chat');
+  window.innerWidth=2400;uiFast();
+  ok(where('chatSec')==='colL'&&$('colL').children[0]===sec,'2400 px: the chat is first in the left column');
+  ok(where('storySec')==='colL'&&where('worldgrp')==='colL'&&$('colL').children.indexOf($('storySec'))>0,'2400 px: Story and World sit below the chat');
   const fb=$('chatFilter').children[1];fb.dispatch('click',{target:fb});const pressed=fb.getAttribute('aria-pressed');
-  for(const w of [1600,2600]){window.innerWidth=w;uiFast()}
-  ok($('chatList')===lst&&where('chatSec')==='colL','2600 px again: the same chat node is back in the left column');
+  for(const w of [1600,2400]){window.innerWidth=w;uiFast()}
+  ok($('chatList')===lst&&where('chatSec')==='colL','2400 px again: the same chat node is back in the left column');
   ok(fb.getAttribute('aria-pressed')===pressed&&pressed==='true','a resize keeps the chat filter');
   ok(document.body.classList.contains('chat-left')&&$('chatSide')&&!$('chatSide').hidden,'left column: the placement switch is shown');
   const sb=$('chatSide');sb.dispatch('click',{target:sb});
-  ok(where('chatSec')==='colM'&&!document.body.classList.contains('chat-left'),'the switch puts the chat under the map at 2600 px');
+  ok(where('chatSec')==='colM'&&!document.body.classList.contains('chat-left'),'the switch puts the chat under the map at 2400 px');
   sb.dispatch('click',{target:sb});ok(where('chatSec')==='colL','and back to the left column');
   for(const w of [1600,390]){window.innerWidth=w;uiFast();
     ok(where('chatSec')==='colM'&&$('colM').children.indexOf(sec)<$('colM').children.indexOf($('heroSec')),w+' px: the chat is under the map, above the hero card');
@@ -1021,7 +1041,7 @@ console.log('start gate: ready, not just claimed');
     const arc=IR.arcSpots(5,{x:6,y:3},{x:1,y:1,w:10,h:8});ok(arc.length===5&&arc.every(p=>p.y>3.5)&&new Set(arc.map(p=>p.x.toFixed(2))).size===5&&Math.abs(arc[0].x-6+(arc[4].x-6))<.01,'#536 staging: the party stands in an arc before the speaker, facing it');
     const desk=sv.roomBox({left:0,top:0,right:1000,bottom:600},{left:612,top:8,right:992,bottom:552,width:380,height:544},48,1),phone=sv.roomBox({left:0,top:0,right:390,bottom:640},{left:6,top:330,right:384,bottom:592,width:378,height:262},40,1);
     ok(desk.x+desk.w<=604&&desk.h>=530&&phone.y+phone.h<=326&&phone.w>=370,'#536 layout: the room fills the space beside the docked banner (desktop '+desk.w+'x'+desk.h+', 390 px '+phone.w+'x'+phone.h+')');
-    const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');ok(/\.screen\.scin \.tbanner\{[^}]*right:8px[^}]*overflow-y:auto/.test(css)&&/max-width:700px\)\{\.screen\.scin \.tbanner\{[^}]*top:auto/.test(css),'#536 layout: the banner docks beside the map on a desktop and below it at 390 px');
+    const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');ok(/\.screen\.scopen \.tbanner:not\(\.tlive\)\{[^}]*right:8px[^}]*overflow-y:auto/.test(css)&&/max-width:700px\)\{\.screen\.scopen \.tbanner:not\(\.tlive\)\{[^}]*top:auto/.test(css),'#536/#546 layout: the banner docks beside the map (indoors and out) on a desktop and below it at 390 px');
     S.wanderers=S.wanderers.filter(w=>w!==fc);S.table=null;TB.renderTable(1);sv.sceneTick(FOL)}
   S.table=scene('meeting','A word at the inn',{npc:npc.id,anchor:m0.id,staged:null});S.table.all=true;S.table.w={};sv.sceneTick(FOL);
   S.table=null;sv.sceneTick(FOL);ok(!sv.sceneOpen(),'scene maps: the room closes with the scene');
@@ -1232,5 +1252,52 @@ console.log('start gate: ready, not just claimed');
   Object.assign(hunter,{state:kh.state,quest:kh.quest});Object.assign(fol,{pq:kf.pq,state:kf.state,x:kf.x,y:kf.y});
   Object.assign(waiter,{state:kw.state,party:kw.party,pq:kw.pq,playActAt:kw.act,x:kw.x,y:kw.y});Object.assign(trav,{pq:kt.pq,state:kt.state});
   cam.hover=null;cam.sel=keepSel;setView(keepView==='fellow'?'fellow':'map');uiFast()}
+// ---- the dock at 3440x1440 (#546): map first, one dock with four tabs, story-following defaults, frames carry the glance ----
+{console.log('dock (3440 px)');const L=await import('../src/ui/layout.js'),C=await import('../src/ui/controls.js'),CV=await import('../src/ui/companyview.js');
+  const {cam}=await import('../src/render/draw.js'),{companies,companyOf}=await import('../src/sim/company.js'),S=sim.S;
+  const keepW=window.innerWidth,keepSel=cam.sel,keepPin=S.pinned;
+  ok(!!S.fellowship||companies().length>0,'dock: a company stands');
+  window.innerWidth=3440;uiFast();
+  const side=$('side'),bar=$('dockTabs'),off=id=>$(id).classList.contains('doff');
+  ok(L.docked()&&document.body.classList.contains('docked')&&side.parentNode.className.includes('dock')&&!side.parentNode.className.includes('cols3')&&$('colL').hidden,'3440 px: the dock layout (two columns, no left column)');
+  ok(!!bar&&!bar.hidden&&side.children[0]===bar&&bar.children.map(b=>b.textContent).join()==='Company,Hero,Story,Chat','3440 px: one dock with four tabs: '+(bar&&bar.children.map(b=>b.textContent).join()));
+  ok(['fellowship','heroSec','storySec','worldgrp','chatSec'].every(id=>$(id).parentNode===side),'3440 px: Company, Hero, Story, World and Chat sit in the dock');
+  for(const [k,on,offs] of [['company',['fellowship'],['heroSec','storySec','chatSec','worldgrp']],['hero',['heroSec'],['fellowship','storySec','chatSec']],['story',['storySec','worldgrp'],['fellowship','heroSec','chatSec']],['chat',['chatSec'],['fellowship','heroSec','storySec']]]){
+    L.showDock(k);uiFast();ok(on.every(id=>!off(id))&&offs.every(off)&&bar.children.find(b=>b.dataset.dock===k).getAttribute('aria-selected')==='true','dock tab '+k+': shows '+on.join(' + ')+' only')}
+  ok(localStorage.getItem('eldmoor.dock')==='chat','the dock tab is remembered');
+  {const r=$('chatTabs');ok(r.contains($('chatFilter'))&&!!r.children.find(b=>b.dataset.ctab==='dm')&&$('chatLegend').hidden&&/class colour/.test($('chatFilter').title||''),'chat: one row (channel chips and the DM agent toggle), the colour key a tooltip')}
+  // the default hero: the followed company's leader, not a random background hero
+  const F=CV.followedCompany(),lead=CV.storyLead(F),bg=S.agents.find(a=>a.state!=='dead'&&!a.fellow&&!a.player&&!companyOf(a));
+  ok(!!lead&&F.ids.includes(lead.id),'the story lead is a member of the followed company ('+(lead&&lead.name)+')');
+  S.pinned=bg;ok(C.startHero()===lead,'a saved background pick gives way to the followed company’s leader');
+  S.pinned=lead;ok(C.startHero()===lead,'a saved member pick is kept');
+  {const other=F.ids.map(id=>S.agents.find(a=>a.id===id)).find(a=>a&&a!==lead&&a.state!=='dead');if(other){S.pinned=other;ok(C.startHero()===other,'any member of the followed company is kept as the pick')}}
+  // a background hero: a short card until the full sheet is asked for
+  if(bg){C.select(bg);L.showDock('hero');uiFast();const h=$('hero'),fs=h.querySelector('[data-fullsheet]'),tabs=h.querySelector('.tabs');
+    ok(!!fs&&tabs.hidden&&h.querySelector('.tb').hidden,'a background hero shows a short card with a Full sheet button');
+    fs.dispatch('click',{target:fs});uiFast();ok(!h.querySelector('[data-fullsheet]')&&!h.querySelector('.tabs').hidden,'Full sheet opens the tabs')}
+  C.select(lead);uiFast();ok(!$('hero').querySelector('[data-fullsheet]')&&!$('hero').querySelector('.tabs').hidden,'a member opens on its full dossier');
+  // the frames carry the glance only: no runner control, no relay text, no oath counter; a mind dot with the runner on hover
+  {const fr=$('frames').querySelector('.frrows'),pf=fr.querySelectorAll('.pf[data-hid]');
+    ok(pf.length>0&&!fr.querySelector('[data-runact]')&&!fr.querySelector('.runctl')&&!/relay offline|Start runner|OATH \d/.test(fr.textContent),'frames: no runner control, relay text or oath counter');
+    const d=pf[0].querySelector('.pfdot');ok(!!d&&/^pfdot d-(agent|autopilot|reflex|ai|scripted|quiet)$/.test(d.className)&&/Runner: /.test(d.title||'')&&/Agent|Autopilot|Reflex/.test(d.textContent),'frames: a mind dot ('+(d&&d.className)+', '+(d&&d.textContent)+') with the runner state as its tooltip')}
+  {L.showDock('company');uiFast();const fb=$('felbody'),m=fb.querySelector('[data-fact="drawer:members"]');m.click();uiFast();
+    ok(!!fb.querySelector('[data-runact]'),'Company tab: the runner Start / Stop lives in Members and minds');fb.querySelector('[data-fact="drawer:members"]').click();uiFast()}
+  // the View bar: the Intent icons switch joins it at this width; the cap rises to 11 above 2560 px only
+  {const bar_=document.querySelector('.bar'),vis=bar_.querySelectorAll('button').filter(b=>{for(let e=b;e&&e!==bar_;e=e.parentNode){if(e.hidden)return false;if(e.tagName==='DETAILS'&&!e.open&&e!==b.parentNode)return false}return true});
+    ok($('vIcons').parentNode===$('zOut').parentNode&&vis.length<=11,'3440 px: Intent icons sit on the View bar ('+vis.length+' buttons, cap 11 above 2560 px)')}
+  // a button budget for the default view: header, frames, bar and the open dock tab
+  {L.showDock('company');uiFast();const shown=b=>{for(let e=b;e&&e!==document.body;e=e.parentNode){if(e.hidden||(e.classList&&e.classList.contains('doff')))return false;if(e.tagName==='DETAILS'&&!e.open&&e!==b.parentNode)return false;if(e.id==='setPop'||e.id==='agentsPop'||e.id==='sheetov')return false;if(e.classList&&e.classList.contains('wdrop'))return false}return true};
+    const n=document.body.querySelectorAll('button').filter(shown).length;ok(n<=25,'3440 px default view: '+n+' buttons visible (at most 25)')}
+  {const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');ok(/@media \(min-width:3200px\)\{:root\{--uiz:1\.35\}\}/.test(css)&&/header,\.frames,\.bar,#side[^{]*\.tbanner\{zoom:var\(--uiz\)\}/.test(css),'3440 px: the interface steps up 1.35x (frames, bar, header, dock, banner)')}
+  // the follow cycle moves the dossier to the next company's leader
+  if(companies().length>1){const was=CV.followedCompany();C.select(CV.storyLead(was));const N=CV.followNext();uiFast();ok(N!==was&&cam.sel===CV.storyLead(N),'the follow cycle selects the next company’s leader');CV.followCompany(was);uiFast()}
+  else console.log('  skip follow cycle (one company)');
+  // 1280 px: everything goes back (no dock, chat and hero under the map, Intent icons back in Settings)
+  window.innerWidth=1280;uiFast();
+  ok(!L.docked()&&!document.body.classList.contains('docked')&&bar.hidden&&$('chatSec').parentNode===$('colM')&&$('heroSec').parentNode===$('colM')&&$('storySec').parentNode===side,'1280 px: no dock; chat and hero under the map, Story in the side column');
+  ok(!side.querySelectorAll('section').some(x=>x.classList.contains('doff'))&&$('setPop').contains($('vIcons')),'1280 px: no section hidden by the dock; Intent icons back in Settings');
+  ok(side.children.filter(x=>x.tagName==='SECTION'&&!x.hidden).map(x=>x.id)[0]==='fellowship','1280 px: the side column opens with the Companies panel');
+  window.innerWidth=keepW;S.pinned=keepPin;cam.sel=keepSel;uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
