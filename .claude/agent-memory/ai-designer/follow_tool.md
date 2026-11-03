@@ -25,5 +25,5 @@ Rules and why:
 
 **Why:** owner wants the event rare and meaningful, and no positions beyond sight and last-seen (in-game channels).
 **How to apply:** later follow work (UI follow cycle, companions "who follows you") reads `followCmd`/`followersOf`;
-companycheck must not call `init()` twice (init appends heroes and keeps S.companies); its follow block seeds L12 heroes.
+companycheck's follow block runs on the existing world (picks the side with free heroes left) and seeds L12 heroes; init() resets since #507.
 Related: [[emergent-parties]], [[autopilot-caution]], [[company-model]].

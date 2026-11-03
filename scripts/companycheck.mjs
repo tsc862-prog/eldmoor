@@ -340,6 +340,7 @@ ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
 
 // ---- follow (#445): walk at a hero's side without joining; lost them; autopilot keeps a standing follow ----
 {
+  init({fellowship: false}); run(120); // a fresh world (init resets since #507): the sections above used up the free heroes
   const FW = await import('../src/sim/follow.js'), {dist} = await import('../src/world/map.js'), {W: MW, H: MH} = await import('../src/world/tiles.js');
   const freeOf = a => living(a) && !a.adv && !a.fellow && !a.player && a.companion == null && !CO.companyOf(a) && a.state !== 'dungeon' && a.state !== 'raid';
   const FAC0 = [0, 1].sort((x, y) => S.agents.filter(a => a.fac === y && freeOf(a)).length - S.agents.filter(a => a.fac === x && freeOf(a)).length)[0]; // the earlier sections used up one side's free heroes
@@ -361,7 +362,7 @@ ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
   {
     const comp = S.agents.find(b => living(b) && b.fac === FAC0 && !b.player && !b.fellow && b.companion == null && !CO.companyOf(b) && b.state !== 'dungeon' && b.state !== 'raid' && b !== L && b !== F && b !== X);
     if (comp.party) leaveParty(comp); const CX = CO.companyOf(X); comp.companion = CX.id; CO.joinCompany(CX, comp);
-    put(comp, 3, 2); run(1); put(X, 3, 1); put(comp, 3, 2); put(L, 0, 0); put(F, 2, 0);
+    X.partyOk = true; put(comp, 3, 2); run(1); put(X, 3, 1); put(comp, 3, 2); put(L, 0, 0); put(F, 2, 0);
     const rx = act(X, 'follow', {hero_id: L.id});
     ok(!rx.ok && /lead your company/.test(rx.error || ''), 'a leader of a company of 2+ is refused: ' + (rx.error || 'went through'));
     X.pq = [];
