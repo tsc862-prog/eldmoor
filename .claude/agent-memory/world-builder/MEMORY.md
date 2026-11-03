@@ -9,3 +9,4 @@
 - [Gathering nodes](project_gathering_nodes.md) — #255 nodes overlay from spec.nodes, bands, shore fish, lazy S.nodes respawn, nodecheck
 - [Crypt stair sign](project_crypt_stair_sign.md) — #448 sign/captain text on crypt spec, lore read, no level gate
 - [World events hooks](project_world_events_hooks.md) — #10: per-faction event hooks, facStats outcomes, DM log entry, 3-day cooldown
+- [Crypt lethality](project_crypt_lethality.md) — #269 room hit x2.25, 0.6 Fellowship Crypt deaths/run, sweep numbers
