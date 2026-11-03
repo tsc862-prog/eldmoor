@@ -8,8 +8,12 @@
 // Bringing them back: a heal (priestHeal, a class heal move: + DOWN.HEALER_BONUS of max HP), a potion (party
 // mates, adjacent) or stabilize (d20 + Healing vs DOWN.STAB_DC, automatic with a Linen Bandage), done by a
 // nearby party, company or guild mate who drops what they were doing ('aid' state).
-// Same dice for every hero (the shared rng), no new random stream. Not yet: the Table rescue scene and crawl rooms
-// (#654), Watch-mode clock (#655), wounds (#656), PvP spare (#657), agent tools and gambits (#658), UI (#659).
+// Same dice for every hero (the shared rng), no new random stream.
+// At the table (#654): a downing in a combat scene keeps the hero in it, downed; a downing in the world with an agent
+// involved opens a rescue scene (table.js due). There the saves are per round, in initiative order (tableSave), and a
+// companion's act may heal, give a potion or stabilize (stabilizeAt); the world's clock leaves them be (savesAtTable).
+// In the Crypt crawl a hero at zero is downed too (crawlDown): the room's dice roll the saves, a wipe ends them all.
+// Not yet: Watch-mode clock (#655), wounds (#656), PvP spare (#657), agent tools and gambits (#658), UI (#659).
 import {ri} from '../core/rng.js';
 import {dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
@@ -26,7 +30,7 @@ import {skillMod} from './abilities.js';
 import {count,take,bestUse,useItem} from './inv.js';
 import {nearDeath} from './lore.js';
 import {held,sceneOf} from './scenes.js';
-import {maxHp,moveTo,healOne,slay} from './heroes.js';
+import {maxHp,moveTo,healOne,slay,fall} from './heroes.js';
 
 export const DOWN={
   TICK:10,          // game minutes between death saves away from a table
@@ -63,20 +67,21 @@ export function goDown(a,killer){
   if(!a||a.kind!=='hero'||!killer)return false;
   if(isDown(a))return false;                                            // already down: a blow that reaches here finishes them
   if(killer.kind==='hero'){stats().why.finish++;return false}           // PvP: the victor finishes them (spare comes with #657)
-  if(a.hidden||a.state==='dungeon')return false;                        // below ground: the Crypt's own rules
-  if(sceneOf(a))return false;                                           // at a Table scene: as before until the rescue scene (#654)
+  if(a.hidden||a.state==='dungeon')return false;                        // below ground: the crawl downs its own (crawlDown), the abstract Crypt kills
   if(-a.hp>=maxHp(a)){stats().why.massive++;return false}               // a blow from zero past full health
-  const st=stats();st.downed++;
-  a.down={at:now(),next:now()+R.TICK,s:0,f:0,stable:false,wake:0,by:{kind:killer.kind,id:killer.id,type:killer.type||null,name:killer.name||null}};
-  a.hp=0;a.state='downed';a.target=null;a.dest=null;a.moving=false;a.raid=false;a.aid=null;
+  lay(a,{kind:killer.kind,id:killer.id,type:killer.type||null,name:killer.name||null});
   pop(a.x,a.y-.8,'DOWN','#ff6a5a');
   if(killer.kind==='mob')nearDeath(a,killer); // lore: what nearly killed them (#188)
   record(a,'Went down at level '+a.lvl+' to ',killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+mobName(killer),'.');
   if(a.lvl>=10||a.company!=null)log(a,' is down, bleeding, in the grass.');
-  ev(a,'You are down: you lie bleeding at zero health. Death saves every '+R.TICK+' game minutes; three failures and you die.',2);
+  ev(a,'You are down: you lie bleeding at zero health. Death saves every '+R.TICK+' game minutes (each round at a Table scene); three failures and you die.',2);
   for(const b of nearKin(a,R.REACH))ev(b,a.name+' is down and dying nearby!',2);
-  callHelp(a);
+  if(!sceneOf(a))callHelp(a); // at a scene the table's rounds are the rescue
   return true}
+// The downed record and state, for the world and the crawl alike.
+function lay(a,by){stats().downed++;
+  a.down={at:now(),next:now()+R.TICK,s:0,f:0,stable:false,wake:0,by};
+  a.hp=0;a.state='downed';a.target=null;a.dest=null;a.moving=false;a.raid=false;a.aid=null}
 const mobName=m=>m.kind==='mob'&&MOBS[m.type]?MOBS[m.type].name:m.name||'foe';
 
 // The killer to name at the end: the live mob or boss if still around, else a stand-in with its type.
@@ -89,11 +94,13 @@ function die(a,why){const st=stats();st.died++;st.why[why]=(st.why[why]||0)+1;
   const k=killerOf(a);
   if(why==='alone')record(a,'Bled out with no one near.');
   for(const b of S.agents)if(b.aid===a.id){b.aid=null;if(b.state==='aid'){b.state='hunt';b.dest=null}}
-  a.down=null;a.hp=0;
+  const d=a.down;a.down=null;a.hp=0;
+  if(d&&d.cause){record(a,d.rec||'Died of their wounds.');log(a,' died of the wounds taken there, '+d.cause+'.');fall(a,d.cause);return} // the crawl names its own foe and place
   slay(a,k)}
 
 function rise(a,how){const st=stats();if(how==='revived')st.revived++;else if(how==='rose')st.rose++;else st.woke++;
-  a.hp=Math.max(1,a.hp);a.down=null;a.state='hunt';a.target=null;a.dest=null;a.cd=Math.max(a.cd,1);
+  const deep=!!(a.down&&a.down.crawl); // up again inside the crawl: still below ground
+  a.hp=Math.max(1,a.hp);a.down=null;a.state=deep?'dungeon':'hunt';a.target=null;a.dest=null;a.cd=Math.max(a.cd,1);
   pop(a.x,a.y-.8,how==='revived'?'REVIVED':'UP','#7dce5a');
   for(const b of S.agents)if(b.aid===a.id)b.aid=null; // their helper finishes in aidStep
   record(a,how==='revived'?'Was brought back from the brink.':how==='rose'?'Rose from the brink on their own.':'Woke from the dark on 1 HP.');
@@ -110,6 +117,7 @@ const fails=a=>nearHeroes(a.x,a.y,R.HEAL_RANGE).some(b=>standing(b)&&kin(a,b)&&h
 function downStep(a,dt){const d=a.down;a.moving=false;
   if(!d){a.down={at:now(),next:now()+R.TICK,s:0,f:0,stable:false,wake:0,by:{kind:'mob'}};return}
   if(a.hp>0){rise(a,'revived');return}               // a heal or a potion landed
+  if(d.crawl||savesAtTable(sceneOf(a)))return;        // the table rolls their saves, a round at a time (#654)
   if(d.stable){if(now()>=d.wake){a.hp=1;rise(a,'woke')}return}
   if(now()<d.next)return;
   d.next+=R.TICK;
@@ -168,4 +176,48 @@ export function foeOnDowned(m){const t=m.target;if(!isDown(t))return t;
   m.target=o;if(o.state!=='fight'){o.state='fight';o.target=m;o.dest=null}
   return o}
 // The boss's breath falls on the downed in its reach too: Kragmaw finishes.
+export const finisher=m=>{if(!m||m.kind!=='mob')return false;const B=blockOf(m.type,m.v,m.role);return !!(B&&B.beh&&B.beh.finishes)};
 export function breathOnDowned(src,r){for(const b of nearHeroes(src.x,src.y,r))if(isDown(b)&&dist(b,src)<=r)downHit(b,src,false)}
+
+// ---- at the table (#654) ----
+// Combat scenes in rounds and the crawl's rooms roll the saves of their downed members on their turns (table.js runTurns).
+const SAVE_KINDS={elite:1,ambush:1,boss:1,rescue:1};
+export const savesAtTable=sc=>!!sc&&(sc.kind==='crawl'||(!!SAVE_KINDS[sc.kind]&&sc.rd!=null));
+const bleeds=b=>isDown(b)&&!b.down.stable;
+// The one to stabilize among L (not the actor): the bleeding hero with the most failures, ties by id.
+export function bleedingOf(L,a){let t=null;for(const b of L)if(b!==a&&bleeds(b)&&(!t||b.down.f>t.down.f||(b.down.f===t.down.f&&b.id<t.id)))t=b;return t}
+export const stabText=(b,t)=>'Stabilize '+t.name+', who lies bleeding ('+(count(b,'Linen Bandage')>0?'a Linen Bandage binds it for sure':'d20 + Healing vs '+R.STAB_DC)+')';
+const sg=n=>(n<0?'':'+')+n;
+// A death save on the downed hero's turn at the table. o.kin: someone of theirs stands at the table (else three successes
+// is dying alone); o.healer: a healer of theirs stands there (four failures). Returns {die, dc, out, s, f, of} or null.
+// out: 'success' | 'failure' | 'two failures' | 'stable' | 'rose' | 'dead'.
+export function tableSave(a,o={}){const d=a.down;if(!isDown(a)||!d||d.stable)return null;
+  const r=ri(1,20),of=o.healer?R.HEALER_FAILS:R.SAVES;let out;
+  if(r===20){a.hp=1;rise(a,'rose');return {die:r,dc:R.DC,out:'rose',s:d.s,f:d.f,of}}
+  if(r===1)d.f+=2;else if(r>=R.DC)d.s++;else d.f++;
+  const s=d.s,f=d.f;
+  if(f>=of){die(a,'fails');out='dead'}
+  else if(s>=R.SAVES){if(!o.kin){die(a,'alone');out='dead'}else{stable(a,'their own will');out='stable'}}
+  else out=r===1?'two failures':r>=R.DC?'success':'failure';
+  return {die:r,dc:R.DC,out,s,f,of}}
+// A companion's stabilize at the table: a Linen Bandage binds it, else d20 + Healing against DOWN.STAB_DC. Returns {ok, text}.
+export function stabilizeAt(b,t){if(!bleeds(t))return {ok:false,text:t.name+' is not bleeding'};
+  if(count(b,'Linen Bandage')>0){take(b,'use','Linen Bandage',1);stats().stabilized++;stable(t,b.name);return {ok:true,text:'bound the wounds of '+t.name+' with a Linen Bandage: stable'}}
+  const d=ri(1,20),m=skillMod(b,'healing'),tot=d+m;
+  if(tot>=R.STAB_DC){stats().stabilized++;stable(t,b.name);return {ok:true,die:d,mod:m,text:'d20 '+d+sg(m)+'='+tot+' vs DC '+R.STAB_DC+': '+t.name+' is stable'}}
+  return {ok:false,die:d,mod:m,text:'d20 '+d+sg(m)+'='+tot+' vs DC '+R.STAB_DC+': the bleeding goes on'}}
+// A heal or a potion brought them above zero at the table: they are up (the world's downStep does the same).
+export function upAgain(a){if(isDown(a)&&a.hp>0){rise(a,'revived');return true}return false}
+// The crawl (crawl.js foeBlow): a crew member at zero is downed below ground, not dead. False: a blow past full health,
+// the caller lets them fall. cause/rec: the words of the death if it comes (the foe and the place).
+export function crawlDown(a,foe,cause,rec){if(!a||a.kind!=='hero'||isDown(a))return false;
+  if(-a.hp>=maxHp(a)){stats().why.massive++;return false}
+  lay(a,{kind:'mob',id:null,type:null,name:foe&&foe.name||null});a.down.crawl=true;a.down.cause=cause;a.down.rec=rec;
+  record(a,'Went down at level '+a.lvl+' below ground, to '+(foe&&foe.name||'a foe')+'.');
+  ev(a,'You are down: you lie bleeding at zero health. A death save each round; three failures and you die.',2);
+  return true}
+// The crawl is over and they come up the stair still down (carried out): the world's clock and helpers take over.
+export function toWorld(a){if(!a||!a.down||a.state==='dead')return;const d=a.down;/* a goHome on the way out may have changed the state */d.crawl=false;d.next=now()+R.TICK;
+  a.state='downed';a.hidden=false;a.target=null;a.dest=null;a.moving=false;callHelp(a)}
+// Nobody stands to carry them: the end (the crawl's wipe).
+export function bleedOut(a){if(isDown(a))die(a,'alone')}

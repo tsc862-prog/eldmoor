@@ -69,4 +69,5 @@
 - [DM sites #69](dm_sites.md) — create_site/enter_site, crawl by g.site, alvl gap scaling, round cap, wireSites cycle, private LCG
 - [Gambit hold #630](gambit_hold.md) — hold action stops the clock until the agent acts; release paths, limits, cautious preset only
 - [Pay and mark tools #628/#632](pay_mark_tools.md) — pay.js, marks.js (lore mk:1/2), emote chat flag, set_attitude steps, edit pitfalls
-- [Downed and saves #652/#653](downed_saves.md) — downed.js: hero blows finish, table/crawl keep old death until #654, aid state, finishes flag, fixture pitfalls
+- [Downed and saves #652/#653](downed_saves.md) — downed.js: hero blows finish, table and crawl down since #654, aid state, finishes flag, fixture pitfalls
+- [Table rescue and saves #654](table_rescue_saves.md) — downed stay in scenes, saves per round, scene extends while bleeding, crawl downs, world downing opens rescue
