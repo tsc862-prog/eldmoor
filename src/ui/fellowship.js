@@ -33,7 +33,7 @@ import {STANCE_MAX} from '../data/prompts.js'; // the stance cap the model gets 
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
-import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
+import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels,hfModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
 import {fellowshipRunnerControl,companyRunnerControl,companyRunnerSig,runnerPick,runnerSig} from './runners.js'; // app runners: Start <company> / Stop
 import {devMode} from './mindctl.js'; // request stats are a developer surface (#145)
 import {regionLine} from './region.js'; // region view (#430)
@@ -171,7 +171,7 @@ function topView(node,C){const fel=!!C.slots&&S.fellowship===C;
   hallView(node,C);
   if(drawer==='members'){const mm=el('div','feldrawer felmem');mm.setAttribute('data-k','members');mm.append(el('div','fth-h dm','Members and minds'));
     if(fel){const md=mindsOf(C); // always agents (#148): the choice is the model, on the runners below
-      if(md==='agent'){const rc=fellowshipRunnerControl(cname(C));if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels(),openaiModels()),rc.firstChild);mm.append(rc)}}
+      if(md==='agent'){const rc=fellowshipRunnerControl(cname(C));if(!rc.querySelector('[data-runact="stopall"]'))rc.insertBefore(runnerPick('fellowship',pulledModels(),openaiModels(),hfModels()),rc.firstChild);mm.append(rc)}}
     else mm.append(coRunners(C));
     renderSettings(mm,C);node.append(mm)}
   if(drawer==='fallen'&&(C.past||[]).length){const fa=el('div','feldrawer');fa.setAttribute('data-k','fallen');fa.append(el('div','fth-h dm','Fallen ('+C.past.length+')'));const ul=el('ul','tlist');
@@ -181,7 +181,7 @@ function topView(node,C){const fel=!!C.slots&&S.fellowship===C;
     if(fl.length)r.title='Recent failures: '+fl.map(f=>f.kind+(f.hero?' '+f.hero:'')+': '+f.why).join(' | ');node.append(r);
     if(fl.length)node.append(el('div','dm','Last failure: '+fl[0].kind+(fl[0].hero?' ('+fl[0].hero+')':'')+', '+fl[0].why+'. Writing backs off, scripted text stands in.'))}}
 // Start <company> / Stop for a company without a Fellowship runner, with the mind it starts with.
-function coRunners(C){const rc=companyRunnerControl(C);if(!rc.querySelector('[data-runact="stopco"]'))rc.insertBefore(runnerPick('co:'+C.id,pulledModels(),openaiModels()),rc.firstChild);return rc}
+function coRunners(C){const rc=companyRunnerControl(C);if(!rc.querySelector('[data-runact="stopco"]'))rc.insertBefore(runnerPick('co:'+C.id,pulledModels(),openaiModels(),hfModels()),rc.firstChild);return rc}
 
 // The All tab: one row per company (open it, follow it, its runner) with its thread and hall-job counts.
 function allView(node){const L=companies(),F=followedCompany();

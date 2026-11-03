@@ -16,6 +16,7 @@
 import {S,clockStr} from './state.js';
 import {wakeLevel} from './notify.js';
 import {tableView,optionsFor} from './table.js';
+import {sceneOf} from './scenes.js';
 import {heardLines,metNames} from './talk.js';
 import {maxHp} from './heroes.js';
 import {ZONES,zoneAt,CITY} from '../world/map.js';
@@ -34,6 +35,9 @@ import {personaLine,personaSig,selfText,toldLine} from './persona.js'; // who th
 import * as ADV from '../data/adventures.js';
 import {followBrief} from './follow.js'; // who the hero follows and who follows it (#445)
 import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
+import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
+import {leaderFor} from './council.js';
+import {worldHeld} from './prep.js'; // the world held before play (#559)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -46,6 +50,7 @@ export function paceCheck(id,{since=null,minutes=240,wake='all',reflect=false}={
   if(!a||a.kind!=='hero')return {ok:false,gone:true,error:'No such hero.'};
   if(a.state==='dead')return {ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+'). Hardcore: one life.'};
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
+  if(worldHeld())return null; // the start gate or the DM's prep holds the world (#559): no turn until it runs
   const from=Number.isFinite(Number(since))&&since!==null?Number(since):S.gameMin,m=Math.min(PACE.MIN[1],Math.max(PACE.MIN[0],Number(minutes)||240));
   const out=(w,why,must)=>({ok:true,wake:w,why:why||null,...(must?{must:true}:{}),gameMin:Math.round(S.gameMin),since:from,clock:day(),table:!!tv});
   const tv=tableView(a);
@@ -81,6 +86,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}),...(toldLine(a)?{told:toldLine(a)}:{}), // stories it told of its past round the fire (#571): keep them straight // the hero's own persona (#409): one line for the header, a signature, and on request the full text
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
+    aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
     reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The hall's open jobs that concern the Fellowship (issue #326), as the board shows them to a member standing in town:
 // a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting
@@ -95,7 +101,7 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
   return 'about '+g+'g and XP'+(T.pay.honor?', '+T.pay.honor+' honor':'')+(T.pay.gear>=.35?', maybe gear':'')} // the quest log's payText (sim/questlog.js), same words as list_jobs/quests
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
-function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(S.table,a).map(o=>o.k);if(!keys.length)return null;
+function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
   const g=a.goal&&!a.goal.done&&a.goal.text?a.goal.text:null,tl=toldLine(a);
   return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
     you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{})},...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)

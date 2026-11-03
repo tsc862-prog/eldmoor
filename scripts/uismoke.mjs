@@ -31,6 +31,12 @@ sim.init();
 if(sim.S.fellowship)sim.disbandFellowship(); // the first half runs without one
 const renderer={onCamChange(){},setZoom(){},stepZoom:(z)=>z,currentZoom:()=>1,zoomAt(){},panBy(){},screenToWorld:()=>({x:0,y:0})};
 initUI(renderer);
+// The DM is always an agent (#559): the page opens the DM seat of the world it plays and the start gate counts it. The
+// smoke plays without runners, so it closes the seat again (the panel's Close seat, until #560) and lets nothing hold.
+ok(sim.dmSeatOn(),'the page opens the DM seat of the world it plays (#559)');
+{const gate=await import('../src/ui/rungate.js');ok(gate.gateMissing().some(m=>m.kind==='dm'),'the start gate counts the DM seat (#559)');
+ ok(sim.worldHeld()==='gate','while the gate holds, the sim knows it (agent tools refused, no paced turns, #559)');
+ sim.setDmSeat(false);gate.checkRunGate(Date.now()+5000);ok(!sim.worldHeld()&&!gate.ensureDmSeat(),'closed for the smoke: nothing holds, and the page does not reopen the seat of the same world')}
 let clockS=0;
 // The Fellowship half needs its five members alive, visible and together (hardcore: a member who dies is replaced by
 // a new object, and one who enters the Crypt is hidden, which silently drops every shout and made the chat cases flaky).
@@ -380,7 +386,7 @@ console.log('start gate: ready, not just claimed');
   ok(box.textContent.includes(slow.name+': loading qwen2.5:14b (4')&&box.textContent.includes(down.name+': claimed'),'the banner says who is loading which model (and for how long) and who is only claimed');
   ok(/Start anyway/.test(box.textContent),'the banner offers Start anyway');
   R[down.id]={state:'failed',error:'ollama: no answer from qwen2.5:14b in 600 s',at:0};gate.checkRunGate(T0+2000);
-  ok(ctl.held&&box.textContent.includes('warm-up failed: ollama: no answer'),'a crashed warm-up shows in the banner with its error');
+  ok(ctl.held&&!gate.gateMissing().some(m=>m.hero===down.id)&&box.textContent.includes(slow.name),'a failed warm-up whose runner is there counts as active (owner, #559): only the seat still warming holds');
   gate.startAnyway();
   ok(!ctl.held&&box.hidden,'Start anyway releases the world');
   R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
@@ -1216,7 +1222,7 @@ console.log('the DM prepares the table');
   waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;waiter.x=c.gate.x;waiter.y=c.gate.y;
   const pw=P.purposeOf(waiter);ok(pw.kind==='wait'&&pw.line.startsWith('Waiting for '+lead.name)&&/40 min/.test(pw.line)&&pw.wait&&pw.wait.id===lead.id,'purpose: a waiting hero names whom it waits for and how long ('+pw.line+')');
   // a traveller on a walk order
-  const kt={pq:trav.pq,state:trav.state},dest={x:c.gate.x+6,y:c.gate.y+4};trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
+  const kt={pq:trav.pq,state:trav.state,adv:trav.adv},dest={x:c.gate.x+6,y:c.gate.y+4};trav.adv=null;trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
   const pt=P.purposeOf(trav);ok(pt.kind==='travel'&&pt.line.startsWith('Walking → the old mill')&&pt.path.length===2&&pt.to&&pt.to.x===dest.x,'purpose: a traveller names where it walks, with its road ('+pt.line+')');
   // autopilot says so; a stated intent (#535) wins the why
   trav.playIdle=true;trav.pq[0].auto='heading out to hunt (your last order: hunt 3)';ok(/· autopilot: its last order: hunt 3$/.test(P.purposeOf(trav).line),'purpose: autopilot says so and why, in the third person ('+P.purposeOf(trav).line+')');trav.playIdle=false;
@@ -1250,7 +1256,7 @@ console.log('the DM prepares the table');
   vi.click();ok(cam.icons===true,'icons: back on');
   // restore
   Object.assign(hunter,{state:kh.state,quest:kh.quest});Object.assign(fol,{pq:kf.pq,state:kf.state,x:kf.x,y:kf.y});
-  Object.assign(waiter,{state:kw.state,party:kw.party,pq:kw.pq,playActAt:kw.act,x:kw.x,y:kw.y});Object.assign(trav,{pq:kt.pq,state:kt.state});
+  Object.assign(waiter,{state:kw.state,party:kw.party,pq:kw.pq,playActAt:kw.act,x:kw.x,y:kw.y});Object.assign(trav,{pq:kt.pq,state:kt.state,adv:kt.adv});
   cam.hover=null;cam.sel=keepSel;setView(keepView==='fellow'?'fellow':'map');uiFast()}
 // ---- the dock at 3440x1440 (#546): map first, one dock with four tabs, story-following defaults, frames carry the glance ----
 {console.log('dock (3440 px)');const L=await import('../src/ui/layout.js'),C=await import('../src/ui/controls.js'),CV=await import('../src/ui/companyview.js');

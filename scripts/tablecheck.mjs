@@ -18,7 +18,7 @@
 //     a mock DM answers every at-the-table call; a silent DM is filled by the scripted DM after
 //     its budget (then at once); no runner = no wait; 3x resolves at once; a save mid-scene; expiry
 //   - companies (#440, a child with a fresh world): solos get their own scenes (a rescue with the foe's round), two
-//     companies due in one tick open lowest id first and the other next tick from its queue, a company of two answers
+//     companies due in one tick each open their own scene at once (#518; the unfollowed one live, its member and foe held), a company of two answers
 //     everyone-at-once in any order and resolves in join order, a solo's vote is refused
 //   - session zero and arrivals (#437, #452, a child with a fresh world): the DM prep holds the opening, the DM frames it, a
 //     silent member reflex shows its persona line, introductions count as met; a death waits for an arrival scene at the next
@@ -125,7 +125,19 @@ if (process.argv[2] === '--arrival') {
   inTown(); step(1 / 60);
   // session zero: the prep holds the opening; then the DM frames it, members introduce themselves, the leader is contested
   ok(!A.openingPending(), 'a world founded without a setup plans no opening');
-  A.planOpening(); PR.beginPrep('opening');
+  A.planOpening();
+  // held before play (#559, owner bug: members introduced themselves while the DM prepared, then again at the opening):
+  // the start gate and the prep refuse acting and speaking tools, give no paced turn, and reads still answer
+  const PC = await import('../src/sim/pace.js'), heardIntro = () => M.some(x => (x.chat || []).some(e => /Covenant's Healer/.test(e.text || '')));
+  const ACTS = [['say', {text: "The Covenant's Healer. We follow the leader."}], ['party_say', {text: "The Covenant's Healer, at your side."}], ['move_to', {where: 'north'}], ['hunt', {}], ['take_quest', {id: 'job:1'}], ['propose', {kind: 'other', details: 'We ride at dawn.'}]];
+  PR.setGateHold(true);
+  {const r = P.playerAct(live.id, 'say', {text: "The Covenant's Healer."}); ok(r.ok === false && r.held === 'gate' && r.offline === true && /held until every mind is ready/.test(r.error), 'the start gate holds: say is refused (' + r.error + ')')}
+  ok(PC.paceCheck(live.id, {since: 0, minutes: 5, wake: 'all'}) === null, 'the start gate holds: the runner gets no paced turn (a heartbeat long due)');
+  PR.setGateHold(false); PR.beginPrep('opening');
+  for (const [t, a] of ACTS) {const r = P.playerAct(live.id, t, a); ok(r.ok === false && r.held === 'prep' && r.error === 'The DM is preparing the table; wait for the opening scene.', 'the DM prepares: ' + t + ' is refused with the prep line')}
+  for (const t of ['look', 'status', 'self', 'lore', 'recall', 'journal_read']) {const r = P.playerAct(live.id, t, {}); ok(r.ok !== false || !r.held, 'the DM prepares: ' + t + ' (read-only) still answers' + (r.ok === false ? ' (' + r.error + ')' : ''))}
+  ok(PC.paceCheck(live.id, {since: 0, minutes: 5, wake: 'all'}) === null, 'the DM prepares: no paced turn');
+  run(2); ok(!heardIntro(), 'no hero line lands before the opening scene');
   ok(A.openingDue() && PR.prepView().state === 'running' && PR.prepView().max_calls === PR.PREP.CALLS, 'session zero is due and the DM prepares (full caps)');
   run(2); ok(!S.table, 'no opening scene while the DM prepares');
   dmAct('dm_status'); dmAct('notes_read'); ok(PR.prepView().calls === 2, 'DM tool calls during the prep are counted');
@@ -146,6 +158,8 @@ if (process.argv[2] === '--arrival') {
   ok(refl && /introduces themself: .+, a .+ of /.test(refl.res || ''), `a silent agent's reflex shows its persona line (${refl && refl.res})`);
   ok(/keeps the head of the table|leads/.test(sc.summary), `the leader is contested and keeps the lead (${sc.summary})`);
   ok(M.every(a => M.every(b => a === b || TK.metIds(a).includes(b.id))), 'introductions at the opening count as met');
+  ok(!heardIntro() && !PR.worldHeld(), 'the introductions came at the opening scene, none before it (and nothing holds the world now)');
+  {const r = P.playerAct(live.id, 'party_say', {text: 'To the road, then.'}); ok(r.held == null && !(r.ok === false && /preparing the table|held until/.test(r.error || '')), 'once the table is open, speaking tools work again')}
   ok(S.fellowship.log.some(e => e.kind === 'session' && /SESSION ZERO/.test(txt(e))), 'the campaign log has the session zero line');
   // the Continue prep: half the caps; the time cap ends it; the call cap ends it
   let clk = 0; PR.setPrepClock(() => clk); PR.beginPrep('resume');
@@ -440,11 +454,13 @@ if (process.argv[2] === '--use') {
 let fail = 0;
 // ---- scenes keyed by company (#440), in a child with a fresh world: node scripts/tablecheck.mjs --companies ----
 // Solos (companies of one) made by markPlayer, no Fellowship: a solo rescue with its foe's round, two companies due in
-// one tick (lower id first, the other queued for the next tick, its cooldown key kept), a stale queued moment dropped,
+// one tick (both open at once, #518: the followed one paused, the other live with its member and foe held, each resolving
+// on its own; a save with both open), a stale queued moment dropped,
 // everyone at once for a company of two (any answer order, resolved in join order), a solo's one-answer scene and the
 // solo vote refusal.
 if (process.argv[2] === '--companies') {
-  const CO = await import('../src/sim/company.js'), INV = await import('../src/sim/inv.js');
+  const CO = await import('../src/sim/company.js'), INV = await import('../src/sim/inv.js'), SC = await import('../src/sim/scenes.js'), H = await import('../src/sim/heroes.js'), {MOBS} = await import('../src/data/mobs.js');
+  const MOBS_Z = m => MOBS[m.type].z;
   let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
   const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
   init({fellowship: false}); run(30);
@@ -486,24 +502,47 @@ if (process.argv[2] === '--companies') {
   ok(CX.log.some(e => e.kind === 'table') && (CX.tableStats || {}).scenes >= 1, 'the outcome lands in the solo company\'s own log and stats');
   close(); enemy.state = 'hunt'; enemy.target = null; X.state = 'hunt'; X.target = null; // the duel would open an ambush scene next
 
-  // (b) two companies due in one tick: the lower id opens, the other waits in its queue and opens on the next tick the
-  // table is free (both agents live, so both come to the table)
+  // (b) two companies due in one tick (#518): each opens its own scene at once. With no company followed the first one
+  // is (company.js followed()), so X's scene is the primary S.table and stops the world; Y's sits in S.tables and runs on
+  // the live clock, Y and its foe held in place (engaged); each resolves on its own (both agents live, so both come to the table)
   T.TABLE.speed = 1; CX.tableSeen = {}; CY.tableSeen = {}; LINK[X.id] = 'connected'; LINK[Y.id] = 'connected';
   const m1 = beast(), m2 = beast(); fightAt(X, m1, 0); fightAt(Y, m2, 3);
   const g0 = (CX.tableStats || {}).scenes || 0;
   T.tableTick();
-  ok(S.table && S.table.company === CX.id && (CX.tableStats || {}).scenes === g0 + 1 && !((CY.tableStats || {}).scenes), `tick 1: ${X.name}'s company (id ${CX.id}) opens first`);
-  ok(CY.tableQ && CY.tableQ.kind === 'rescue' && CY.tableSeen['rescue:' + Y.id] != null, `${Y.name}'s company waits in its queue, its cooldown key kept`);
-  const q0 = CY.tableQ; T.tableTick(); ok(CY.tableQ === q0 && S.table.company === CX.id, 'a company with a queued moment is not looked at again (no third), the open scene holds the table');
-  close(); fightAt(Y, m2, 3); T.tableTick();
-  ok(S.table && S.table.company === CY.id && !CY.tableQ && (CY.tableStats || {}).scenes === 1, 'next tick with the table free: the queued scene opens');
-  close();
+  const sX = S.table, sY = S.tables && S.tables[CY.id];
+  ok(sX && sX.company === CX.id && sY && sY.company === CY.id && (CX.tableStats || {}).scenes === g0 + 1 && (CY.tableStats || {}).scenes === 1 && !CY.tableQ, `tick 1: both companies open their own scene at once (${X.name}'s the primary, ${Y.name}'s in S.tables, nothing queued)`);
+  ok(T.openScenes().length === 2 && T.sceneFor(CX) === sX && T.sceneFor(CY) === sY && SC.sceneOf(Y) === sY && SC.sceneOf(X) === sX, 'each company and hero finds its own scene');
+  ok(T.stopsWorld(sX) && !T.stopsWorld(sY) && sY.pause, 'the followed company\'s scene stops the world; the other runs on the live clock');
+  {const tvY = P.playerAct(Y.id, 'status').table, tvX = P.playerAct(X.id, 'status').table;
+   ok(tvY && tvX && tvY.scene === sY.title && tvX.scene === sX.title, `each sees its own scene in status (${tvX && tvX.scene} / ${tvY && tvY.scene})`)}
+  ok(T.bannerOf(sY) && T.bannerOf(sY).live && T.bannerOf(sY).company === CY.id && T.bannerOf().company === CX.id, 'the banner reads either scene; the primary is the followed one');
+  const q0 = CY.tableQ; T.tableTick(); ok(!CY.tableQ && S.table === sX && S.tables[CY.id] === sY && (CY.tableStats || {}).scenes === 1, 'a company with its scene open is not looked at again (no second scene, nothing queued)');
+  {let g = 0; while ([sX, sY].some(x => x.phase === 'frame') && g++ < 600) step(1 / 60)}
+  {const dw = T.decisionsWaiting(); ok(dw.some(d => d.a === X) && dw.some(d => d.a === Y), 'decisionsWaiting lists both tables (each member whose turn it is)')}
+  ok(SC.held(Y) && SC.held(m2) && !SC.held(X) && !SC.held(m1), `the live scene's member and foe are engaged (held); the paused scene's are not (the world is stopped anyway)`);
+  // X answers; its later rounds by reflex. Its scene resolves while Y's live scene still waits for Y's agent.
+  {const toT = () => {let g = 0; while (sX.phase === 'frame' && g++ < 600) step(1 / 60)}; toT();
+   ok(P.playerAct(X.id, 'scene_act', {option: 'retreat', line: 'Back!'}).ok, `${X.name} answers at its own table`); delete LINK[X.id];
+   let g = 0; while (S.table === sX && g++ < 60 * 30) step(1 / 60)}
+  ok(sX.phase !== 'turn' && S.table === sY && !S.tables && !sY.resolved && sY.phase !== 'outcome', `${X.name}'s scene resolves on its own; ${Y.name}'s live scene becomes the primary, still waiting for its agent`);
+  {const y0 = [Y.x, Y.y, Y.state, Y.target], f0 = [m2.x, m2.y, m2.hp], t0 = S.gameMin; m2.cd = 0; m2.hit = 50;
+   for (let i = 0; i < 60; i++) step(1 / 60);
+   ok(S.gameMin > t0 && S.table === sY, `the world clock runs beside the live scene (${t0.toFixed(1)} -> ${S.gameMin.toFixed(1)})`);
+   ok(Y.x === y0[0] && Y.y === y0[1] && Y.state === y0[2] && Y.target === y0[3] && m2.x === f0[0] && m2.y === f0[1] && m2.hp === f0[2] && SC.held(Y) && SC.held(m2), `${Y.name} and its foe stay put: no moving, no world blows while the scene runs`);
+   const hunter = S.agents.find(a => a.kind === 'hero' && a.state === 'hunt' && !SC.held(a) && a !== X), hz = hunter && [hunter.x, hunter.y, hunter.zone, hunter.lvl];
+   if (hunter) {hunter.x = m2.x + 1; hunter.y = m2.y; hunter.zone = MOBS_Z(m2); hunter.lvl = m2.lvl + 1; m2.target = null;
+     const pick = H.findMob(hunter); ok(pick !== m2, `a hunter beside the held foe does not pick it (${pick ? 'picks another' : 'picks none'})`);
+     m2.target = Y; [hunter.x, hunter.y, hunter.zone, hunter.lvl] = hz}
+   m2.cd = 99; m2.hit = .001}
+  ok(P.playerAct(Y.id, 'scene_act', {option: 'strike', line: 'Now.'}).ok, `${Y.name} answers its live scene`); delete LINK[Y.id];
+  {let g = 0; while (S.table && g++ < 60 * 30) step(1 / 60)}
+  step(1 / 60);
+  ok(!S.table && !S.tables && !SC.held(Y) && !SC.held(m2), 'it resolves on its own; nobody is held any more and S.tables is gone');
   {const has = (Cc, n) => Cc.log.some(e => e.kind === 'table' && JSON.stringify(e.parts).includes(n + ' is going down'));
    ok(has(CY, Y.name) && !has(CX, Y.name) && has(CX, X.name), 'each scene lands in its own company\'s log')}
-  // a queued moment that went stale is dropped and its key unset
-  CX.tableSeen = {}; CY.tableSeen = {}; fightAt(X, m1, 0); fightAt(Y, m2, 3); T.tableTick();
-  ok(S.table && S.table.company === CX.id && CY.tableQ, 'with a paused scene open, the next company\'s moment waits in its queue');
-  close(); X.state = 'hunt'; X.target = null;
+  // a queued moment that went stale is dropped and its key unset (a queue is left only for a merge's paired vote, #500)
+  X.hp = maxHp(X); X.state = 'hunt'; X.target = null; CY.tableSeen = {['rescue:' + Y.id]: S.gameMin};
+  CY.tableQ = {kind: 'rescue', title: Y.name + ' is going down', frame: ['x'], ctx: {hero: Y.id, mob: m2.id}, key: 'rescue:' + Y.id, at: Math.round(S.gameMin)};
   Y.hp = maxHp(Y); Y.state = 'hunt'; Y.target = null; T.tableTick();
   ok(!CY.tableQ && CY.tableSeen['rescue:' + Y.id] == null && !S.table, 'a stale queued moment (out of the fight) is dropped, its cooldown key unset');
   // a solo with no runner (no agent has the say) is not taken to the table: it plays on by its autopilot's reflexes
@@ -566,7 +605,16 @@ if (process.argv[2] === '--companies') {
   const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap);
   ok(S.table && S.table.company === CU.id && T.sceneCompany(S.table) === CO.companyById(CU.id), 'a save mid-scene keeps the scene\'s company');
   close();
-  // (g) a merge proposal puts a decision scene to each company: the proposer's now, the other's queued (#500)
+  // (f2) a save with two companies' scenes open (#518): both come back, each with its company, S.tables keyed by company
+  {const [fu, fy] = [U, Y].map(h => S.agents.find(q => q.id === h.id)), fCU = CO.companyOf(fu), fCY = CO.companyOf(fy);
+   for (const h of [fu, fy]) {LINK[h.id] = 'connected'; h.state = 'hunt'; h.target = null; h.hidden = false}
+   const a1 = T.openScene('check', 'A cold trail', ['Tracks in the frost.'], {anchor: fu.id}), a2 = T.openScene('check', 'A fallen bridge', ['The river took it.'], {anchor: fy.id});
+   ok(a1 && a2 && T.openScenes().length === 2, 'two scenes open for two companies');
+   const snap2 = JSON.parse(JSON.stringify(snapshot())); restore(snap2);
+   const L2 = T.openScenes(), r1 = L2.find(x => x.company === fCU.id), r2 = L2.find(x => x.company === fCY.id);
+   ok(L2.length === 2 && r1 && r2 && r1.title === 'A cold trail' && r2.title === 'A fallen bridge' && T.sceneFor(CO.companyById(fCY.id)) === r2, 'both restore with their companies (S.table and S.tables)');
+   close(); ok(!S.table && !S.tables, 'closing resolves both')}
+  // (g) a merge proposal puts a decision scene to each company, both at once (#500, #518: each company its own scene)
   {
     const [gx, gy, gu, gv] = [X, Y, U, V].map(h => S.agents.find(q => q.id === h.id)), gCX = CO.companyOf(gx), gCY = CO.companyOf(gy), gCU = CO.companyOf(gu);
     const mgXY = CO.mergeCompanies(gCX, gCY); ok(mgXY.ok, 'the first pair rides as one company');
@@ -577,12 +625,12 @@ if (process.argv[2] === '--companies') {
     ok(rm.ok, 'the merge is proposed: ' + JSON.stringify(rm).slice(0, 90));
     ok(S.table && S.table.kind === 'decision' && S.table.company === gCX.id, 'the proposer company has the decision scene now (company ' + (S.table && S.table.company) + ')');
     const pj = gCU.props.find(q => q.kind === 'merge');
-    ok(pj && gCU.tableQ && gCU.tableQ.kind === 'decision' && gCU.tableQ.ctx.prop === pj.id, 'the other company decision scene waits in its queue, keyed by its own proposal');
+    const sU = T.sceneFor(gCU);
+    ok(pj && !gCU.tableQ && sU && sU.kind === 'decision' && sU.ctx.prop === pj.id && S.tables && S.tables[gCU.id] === sU, 'the other company\'s decision scene opens at once beside it, keyed by its own proposal');
     ok(gCU.props.find(q => q.kind === 'merge') && !CO.isSolo(gCU) && gCU.id !== gCX.id, 'the paired proposal sits in the other company');
-    for (const h of [gx, gy]) P.playerAct(h.id, 'scene_act', {option: 'yes'});
-    {let g = 0; while ((!S.table || S.table.company !== gCU.id) && g++ < 60 * 40) step(1 / 60)}
-    ok(S.table && S.table.kind === 'decision' && S.table.company === gCU.id && S.table.ctx.prop === pj.id, 'the other company decision scene opens when the table frees (company ' + (S.table && S.table.company) + ')');
-    for (const h of [gu, gv]) P.playerAct(h.id, 'scene_act', {option: 'yes'});
+    {let g = 0; while ([S.table, sU].some(x => x && x.phase === 'frame') && g++ < 600) step(1 / 60)}
+    for (const h of [gx, gy]) P.playerAct(h.id, 'scene_act', {option: 'yes'}); // the proposer's own vote already counts
+    for (const h of [gu, gv]) ok(P.playerAct(h.id, 'scene_act', {option: 'yes'}).ok, h.name + ' votes at its own company\'s table, beside the other');
     {let g = 0; while (S.table && g++ < 60 * 40) step(1 / 60)}
     ok(!S.table, 'both scenes settle');
     close();
@@ -1032,7 +1080,7 @@ link(RA, 'connected'); link(RB, 'waiting');
 // ---- 2e. scenes keyed by company (#440): solos and a company of two, a fresh world in a child ----
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--companies'], {encoding: 'utf8'});
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
-  ok(ch.status === 0 && /COMPANIES OK/.test(ch.stdout || ''), 'scenes keyed by company: a solo rescue with its foe round, two companies in one tick (queue), a pair answering at once in join order, a solo vote refused')}
+  ok(ch.status === 0 && /COMPANIES OK/.test(ch.stdout || ''), 'scenes keyed by company: a solo rescue with its foe round, two companies\' scenes open at once (each resolves on its own, the live one\'s member and foe held), a pair answering at once in join order, a solo vote refused')}
 
 // ---- 3. proposals (in town, where nothing attacks) ----
 T.TABLE.speed = 1;

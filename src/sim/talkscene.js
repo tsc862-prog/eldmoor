@@ -20,7 +20,7 @@ import {S} from './state.js';
 import {dist} from '../world/map.js';
 import {HEAR} from './chat.js';
 import {companyOf,members} from './company.js';
-import {openScene,setSceneKind,tableOn} from './table.js';
+import {openScene,setSceneKind,tableOn,sceneFor} from './table.js';
 import {setTalkEscalation,warm,sceneReply,endTalk,convById} from './talk.js';
 import {check,socialSkill,trained} from './abilities.js';
 import {maxHp} from './heroes.js';
@@ -54,8 +54,8 @@ const LOG=(summary,detail)=>dmlog('talk',null,summary,{by:'scripted',...detail},
 // c: the conversation, p: the person, a: the member who spoke (or was offered), o: {line} for a member's words, or
 // {offer, hook} for the person's follow-up. Returns {why, mates} when the talk is a decision, else null.
 export function escalation(c,p,a,o={}){
-  if(!c||!p||!living(a)||c.state!=='open'||!tableOn()||S.table)return null;
-  const C=companyOf(a);if(!C)return null;
+  if(!c||!p||!living(a)||c.state!=='open'||!tableOn())return null;
+  const C=companyOf(a);if(!C||sceneFor(C))return null; // the company's own scene is open (#518: one per company)
   const E=c.esc||{};
   const mates=members(C).filter(b=>b!==a&&!b.hidden&&dist(b,p)<=HEAR);
   let why=null;

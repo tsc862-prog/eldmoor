@@ -38,7 +38,7 @@ import {inRange} from './reach.js';
 import {onCamp,campOf} from './camp.js';
 import {companies,companyOf,members} from './company.js';
 import {fellows} from './fellowship.js';
-import {openScene,setSceneKind,tableOn,agentsDecide,onSceneEnd,sceneCompany} from './table.js';
+import {openScene,setSceneKind,tableOn,agentsDecide,onSceneEnd,sceneCompany,sceneFor} from './table.js';
 import {pushCall,resolveCall,voiceLive,voicedKind} from './arrival.js';
 
 export const FIRE={
@@ -101,11 +101,11 @@ function openFire(C,q,H){const skip=memOf(C).filter(a=>!H.includes(a)).map(a=>a.
     if(!sc)return null;sc.rd=1;F.last=gm;F.ev=[];if(g)g.agentTalk=1;return sc} // the fire is the talk: no extra "the fire is lit" nudge (sim/camp.js)
   const sc=openScene('debrief','After '+cut(q.title,60),[gd(cut(q.title,60)),' is over. ',pickH(C.id+gm,5,['They catch their breath.','Nobody speaks at first.','Someone laughs, too loud, and stops.']),' How was that?'],{mode:'debrief',about:q.title,skip,anchor:H[0].id},C);
   if(sc)F.dlast=gm;return sc}
-// Once per step (sim/index.js, after the table): a waiting fireside or debrief opens when the table is free.
+// Once per step (sim/index.js, after the table): a waiting fireside or debrief opens when its company's table is free.
 export function fireTick(){const CS=S.companies;if(!CS||!CS.some(C=>C.fireQ))return;
   for(const C of companies()){const q=C.fireQ;if(!q)continue;
     if(S.gameMin-q.at>FIRE.QUEUE_MIN||!hasLinks()){delete C.fireQ;continue}
-    if(S.table)return;
+    if(sceneFor(C))continue; // each company its own table (#518)
     const H=hereAt(C,q);if(H===null)continue;delete C.fireQ;if(!H||!ok(C,H))continue;
     if(openFire(C,q,H))return}}
 // A company settles to rest at its camp: the fire's talk waits for the table (sim/camp.js emits 'rest').

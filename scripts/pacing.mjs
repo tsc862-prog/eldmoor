@@ -158,7 +158,20 @@ export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
 What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return personaNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return personaNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+}
+// The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
+// header; when it is done, stale or was never stated, the turn asks first "What are you trying to do now?" (any mind: the
+// intent tool; local and OpenAI reflections also carry an optional intent in their forced answer). A scene comes first:
+// with one open the header only names the aim. The leader's shouted aim follows, for a companion who heard it.
+export const AIM_ASK = 'What are you trying to do now?';
+export function aimNote(b) {
+  const m = b && b.aim; if (!m || typeof m !== 'object') return '';
+  const lead = m.leader ? `\nYour leader's aim: ${String(m.leader).slice(0, 260)}.` : '';
+  const line = m.line ? String(m.line).slice(0, 260) : '';
+  if (!m.ask || b.scene || b.table) return (line && !m.ask ? `\nYour aim: ${line} (intent changes it, or sets it down when done).` : line ? `\nYour aim: ${line}.` : '') + lead;
+  const why = String(m.why || '').slice(0, 120);
+  return `\n${AIM_ASK} ${line ? 'Your aim was: ' + line + '; ' + why : why.charAt(0).toUpperCase() + why.slice(1)}. Say it first with intent {goal, why, until} (one call), then act on it.${m.wait_limit ? ' Until you do, ' + String(m.wait_limit).replace(/^with no aim, /, '') + '.' : ''}` + lead;
 }
 // Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.
 export const personaNote = b => (b && typeof b.persona === 'string' && b.persona ? `\nWho you are: ${b.persona.slice(0, 300)} (self shows all of you; become changes one part, with a why, when your story changes you).` : '') + (b && typeof b.told === 'string' && b.told ? `\n${b.told.slice(0, 500)}` : ''); // #571: what it told of its past round the fire
@@ -243,14 +256,16 @@ export async function withClaudeSlot(base, fn, log, opts) {const release = await
 export const REFLECT_MAX = 3;
 // Reflections also ask whether the moment changed who the hero is (issue #409): most days it has not.
 export const BECOME_ASK = 'And has this changed who you are (what you want or fear, what you believe, a trait you see in yourself, how you see someone)? Most days it has not.';
+// ... and what the hero is trying to do next (issue #535): an optional new aim.
+export const INTENT_ASK = 'What are you trying to do next? If your aim changed or you have none, say it.';
 export const BECOME_FIELDS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 'beliefs', 'traits', 'stance'];
 // Reflections are on unless AGENT_REFLECT=0 or --no-reflect (--reflect turns them on again); checks that count exact turns turn them off.
 export const REFLECT_ON = process.argv.includes('--reflect') || !(process.env.AGENT_REFLECT === '0' || process.argv.includes('--no-reflect'));
 export function reflectPrompt(r, {tools = true} = {}) {
   const why = r && r.why ? ` (now: ${String(r.why).slice(0, 200)})` : '';
   return `Before you rest${why}: what is worth remembering from today? ` + (tools
-    ? `Write 1-${REFLECT_MAX} memories with remember (title, text, tags; about is optional), in your own words, or answer "none" if nothing is. Anything you want to keep: a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion. Prefer remember to journal_write for this. ${BECOME_ASK} If it has, change that one part with become (field, text, why).`
-    : `Write 0-${REFLECT_MAX} memories in your own words: anything you want to keep (a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion). ${BECOME_ASK} Answer only with the JSON object {"notes": [{"title": "...", "text": "...", "tags": ["..."], "about": "who or what it concerns, or empty"}], "become": {"field": "none", "text": "", "why": "", "about": ""}}; an empty list if nothing is worth keeping, and field "none" unless you changed (else one of ${BECOME_FIELDS.join(', ')}, with your new words in text, why it changed, and for a stance who it is about).`);
+    ? `Write 1-${REFLECT_MAX} memories with remember (title, text, tags; about is optional), in your own words, or answer "none" if nothing is. Anything you want to keep: a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion. Prefer remember to journal_write for this. ${BECOME_ASK} If it has, change that one part with become (field, text, why). ${INTENT_ASK} (intent {goal, why, until}).`
+    : `Write 0-${REFLECT_MAX} memories in your own words: anything you want to keep (a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion). ${BECOME_ASK} ${INTENT_ASK} Answer only with the JSON object {"notes": [{"title": "...", "text": "...", "tags": ["..."], "about": "who or what it concerns, or empty"}], "become": {"field": "none", "text": "", "why": "", "about": ""}, "intent": {"goal": "", "why": "", "until": ""}}; an empty list if nothing is worth keeping, and field "none" unless you changed (else one of ${BECOME_FIELDS.join(', ')}, with your new words in text, why it changed, and for a stance who it is about); intent goal empty to keep your aim as it is (else what you will do next, why, and until: game hours or a condition).`);
 }
 // Should this turn be a reflection? A due moment, no scene open, and nothing that cannot wait.
 export const reflectNow = (b, w) => !!(REFLECT_ON && b && b.reflect && b.reflect.id && !b.scene && !(w && (w.wake === 'now' || w.must || w.table)));
@@ -290,7 +305,7 @@ export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} 
 // Claude turns (issue #401): the same fresh state header the local turns get (briefText: state, HP, place, foe, news,
 // memories, what was said lately), without its generic last line, plus the turn order. A Claude turn used to open with
 // 2-4 reads and loop wait/look/party_read until the call cap (44% of turns). scene: a table turn, header only.
-export const CLAUDE_TURN_ORDER = 'Act: give one command (or answer what is asked of you), then wait. When wait returns, act on its events if they need you, otherwise end your turn with one short sentence of narration; do not look again unless the events say the world changed.';
+export const CLAUDE_TURN_ORDER = 'Act: if the header asks what you are trying to do, say it with intent first; then give one command (or answer what is asked of you), then wait. When wait returns, act on its events if they need you, otherwise end your turn with one short sentence of narration; do not look again unless the events say the world changed.';
 export function claudeBrief(b, {scene = false} = {}) {
   const t = briefText(b).replace(/\nAct through the tools[^\n]*$/, '');
   if (scene) return t;

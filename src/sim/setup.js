@@ -15,10 +15,13 @@
 //         group's); a hero with no group is a company of one (a solo). Each company is of one faction; the world
 //         may hold both.
 //   fac   the together faction; for apart the default of a hero with none
-//   mind  {mode:'agent', provider:'anthropic'|'ollama'|'openai', model}: an agent runner plays the hero through
+//   mind  {mode:'agent', provider:'anthropic'|'ollama'|'openai'|'huggingface', model}: an agent runner plays the hero through
 //         the game tools (the model is what its runner is started with). Agent heroes are always agent-played
 //         (hard rule, #148): a hero has no scripted or AI mind; an older setup's are turned into agents.
-//   dm    {mode:'scripted'} or {mode:'agent', provider, model}: the DM seat is opened and a DM runner started
+//   dm    {mode:'agent', provider, model}: the DM is always an agent (owner decision on #520, slice A #559): the DM seat
+//         is open from the first tick and a DM runner is started with this mind. There is no scripted-DM mode: the
+//         scripted DM is the world engine and the DM's reflexes. An older setup's {mode:'scripted'} DM cleans to the
+//         default DM agent (cleanSetup), and validateSetup refuses it.
 //   race  a people id of the hero's faction (data/races.js) or absent for "whoever the recruits are"
 //   archetype  an id of data/archetypes.js, 'random' (picked from the seed and the hero's index, no RNG) or absent
 // A v1 setup ({fac, slots:{tank,healer,dps1,dps2,dps3}}, the page before #453, the viewer's last setup) migrates to
@@ -55,9 +58,9 @@ export function seatCap(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];re
 export function seatNote(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];
   return H.length>SEATS.PAID&&seatCap(s0)===SEATS.LOCAL?H.length+' local minds share one GPU: each agent turn will be slow (expect long waits between turns).':''}
 export const CLAUDE_MODELS={haiku:'claude-haiku-5-5',sonnet:'claude-sonnet-5-5'};
-export const SETUP_PROVIDERS=['anthropic','ollama','openai']; // what the runners can start with
-export const MIND_MODES=['agent']; // a hero's mind (#148); the DM may still be scripted (DM_MODES)
-export const DM_MODES=['scripted','agent'];
+export const SETUP_PROVIDERS=['anthropic','ollama','openai','huggingface']; // what the runners can start with
+export const MIND_MODES=['agent']; // a hero's mind (#148)
+export const DM_MODES=['agent']; // the DM's mind (#520): always an agent
 export const ARCHETYPE_RANDOM='random';
 export const CLASSIC=['Warrior','Priest','Mage','Hunter','Rogue']; // the classic five, in SLOT_KEYS order
 const archOk=v=>v===ARCHETYPE_RANDOM||!!ARCHETYPES[v];
@@ -66,9 +69,9 @@ export const slotLabel=k=>(SLOTS.find(s=>s.key===k)||{}).label||k;
 export const slotClasses=k=>((SLOTS.find(s=>s.key===k)||{}).cls||[]).slice();
 const clone=o=>JSON.parse(JSON.stringify(o));
 
-const SCRIPTED={mode:'scripted'};
 export const claudeMind=(mode,which='haiku')=>({mode,provider:'anthropic',model:CLAUDE_MODELS[which]});
 export const DEFAULT_MIND=()=>claudeMind('agent','haiku');
+export const DEFAULT_DM=()=>claudeMind('agent','haiku'); // the cheapest DM agent; the 'claude' preset seats Sonnet
 
 // ---- v1 -> v2 ----
 // The raw migration (values kept as they are, so validateSetup still sees a bad value): slots -> heroes in
@@ -85,7 +88,7 @@ export function slotsOf(s){s=asV2(s);const H=s&&Array.isArray(s.heroes)?s.heroes
 // The v1 editing shape of a together setup of the five (the setup page edits places until #454), or null.
 export function slotsView(s){s=asV2(s);if(!s||s.mode==='apart')return null;const map=slotsOf(s);if(!map)return null;
   const slots={};for(const k of SLOT_KEYS){const {fac,start,group,...h}=s.heroes[map[k]];slots[k]=clone(h)}
-  return {v:1,world:s.world,seed:s.seed,fac:s.fac,...(s.name?{name:s.name}:{}),slots,dm:clone(s.dm||SCRIPTED)}}
+  return {v:1,world:s.world,seed:s.seed,fac:s.fac,...(s.name?{name:s.name}:{}),slots,dm:clone(s.dm||DEFAULT_DM())}}
 
 // The archetype a hero gets: the chosen id, or for 'random' one picked from the seed and the hero's index (a hash,
 // so the world's random stream is untouched and the same seed gives the same picks). null = none.
@@ -97,15 +100,15 @@ export function resolveArchetype(setup,k){const s=asV2(setup);if(!s||!Array.isAr
   return ARCHETYPE_IDS[Math.floor(hash(i+1,295,(s.seed>>>0)%2147483647)*ARCHETYPE_IDS.length)%ARCHETYPE_IDS.length]}
 
 // The default: a Concord-or-Warband Fellowship of one of each preferred class, together, every hero an agent on
-// Claude Haiku (#148), the DM scripted.
+// Claude Haiku (#148), the DM an agent on Claude Haiku too (#520).
 export function defaultSetup(seed=1,world='eldmoor',fac=0){
-  return {v:SETUP_VERSION,world,seed:seed>>>0,mode:'together',fac,heroes:CLASSIC.map(cls=>({cls,fac,mind:DEFAULT_MIND()})),dm:{...SCRIPTED}}}
+  return {v:SETUP_VERSION,world,seed:seed>>>0,mode:'together',fac,heroes:CLASSIC.map(cls=>({cls,fac,mind:DEFAULT_MIND()})),dm:DEFAULT_DM()}}
 
 // ---- presets ----
 // Shape presets set who sets out and how: 'classic' (the five together, the default), 'five-solos' (the same five,
 // apart, each alone in its people's home town, level 1), 'pairs-and-solo' (apart: Warrior and Priest, Mage and
 // Hunter, the Rogue alone), 'solo' (one hero, apart). They keep a hero's choices and mind when its class matches.
-// Mind presets set the minds: 'haiku' (every hero on Claude Haiku, DM scripted: the cheapest), 'claude' (DM on
+// Mind presets set the minds: 'haiku' (every hero and the DM on Claude Haiku: the cheapest), 'claude' (DM on
 // Sonnet), 'local' (one local model for all), 'last' (the viewer's last setup).
 // ctx: {local} the one local model the relay has loaded (or the first pulled), '' when none; {last} the viewer's
 // last used setup (v1 or v2). Returns a v2 copy of base, or null when the preset cannot be made (no local model, no
@@ -126,11 +129,11 @@ export function applyPreset(name,base,ctx={}){const b=asV2(base);if(!b||!Array.i
   if(name==='five-solos')return shaped(s,'apart',5);
   if(name==='pairs-and-solo')return shaped(s,'apart',5,PAIRS);
   if(name==='solo')return shaped(s,'apart',1);
-  if(name==='haiku'){all(claudeMind('agent','haiku'));s.dm={...SCRIPTED};return s}
+  if(name==='haiku'){all(claudeMind('agent','haiku'));s.dm=DEFAULT_DM();return s}
   if(name==='claude'){all(claudeMind('agent','haiku'));s.dm=claudeMind('agent','sonnet');return s}
   if(name==='local'){if(!ctx.local)return null;all({mode:'agent',provider:'ollama',model:ctx.local});s.dm={mode:'agent',provider:'ollama',model:ctx.local};return s}
   if(name==='last'){const l=cleanSetup(ctx.last);if(!l||!l.heroes.length)return null;
-    if(l.dm)s.dm={...l.dm};
+    if(l.dm)s.dm={...l.dm}; // cleanSetup: always an agent
     // the viewer's last heroes, kept whole when of the same faction (or apart); else only their minds, by index
     if(l.mode==='apart'||l.fac===s.fac){s.mode=l.mode;s.fac=l.fac;s.heroes=clone(l.heroes);if(l.name)s.name=l.name;else delete s.name;return s}
     s.heroes.forEach((h,i)=>{if(l.heroes[i])h.mind={...l.heroes[i].mind}});
@@ -142,8 +145,7 @@ export function applyPreset(name,base,ctx={}){const b=asV2(base);if(!b||!Array.i
 function agentOnly(m){if(m&&(m.mode==='agent'||m.mode==='ai')&&m.provider&&m.model)return {mode:'agent',provider:m.provider,model:m.model};return DEFAULT_MIND()}
 
 // ---- checking ----
-function mindProblem(m,what,modes=MIND_MODES){if(!m||typeof m!=='object'||!modes.includes(m.mode))return what+(modes===MIND_MODES&&m&&(m.mode==='scripted'||m.mode==='ai')?': a Fellowship member is always played by an agent; pick its model.':': unknown mind.');
-  if(m.mode==='scripted')return null;
+function mindProblem(m,what,modes=MIND_MODES){if(!m||typeof m!=='object'||!modes.includes(m.mode))return what+(m&&(m.mode==='scripted'||m.mode==='ai')?(modes===DM_MODES?': the DM is always an agent; pick its model.':': a Fellowship member is always played by an agent; pick its model.'):': unknown mind.');
   if(!SETUP_PROVIDERS.includes(m.provider)||!MIND_PROVIDERS.includes(m.provider))return what+': pick a provider for the '+(m.mode==='ai'?'AI':'agent')+'.';
   if(typeof m.model!=='string'||!MODEL_OK.test(m.model))return what+': there is no model for the '+(m.mode==='ai'?'AI':'agent')+'; pick one'+(m.provider==='ollama'?' (is Ollama running with a model pulled?)':'')+'.';
   return null}
@@ -194,8 +196,8 @@ export function validateSetup(s0){const out=[];
         if(st.region!=null&&st.region!==''&&!regionOf(st.region))out.push(L+': there is no region called '+st.region+'.')}}
     const mp=mindProblem(h.mind,L);if(mp)out.push(mp)}
   if(mode==='apart')for(const g of groupsOf(s))if(g.length>1&&new Set(g.map(i=>facOf(s,H[i]))).size>1)out.push('Group '+H[g[0]].group+': a company is of one faction.');
-  if(!s.dm||!DM_MODES.includes(s.dm.mode))out.push('DM: pick scripted or agent.');
-  else if(s.dm.mode==='agent'){const mp=mindProblem({...s.dm},'DM',DM_MODES);if(mp)out.push(mp)}
+  if(!s.dm||typeof s.dm!=='object')out.push('DM: pick the model that plays the DM.');
+  else{const mp=mindProblem({...s.dm},'DM',DM_MODES);if(mp)out.push(mp)}
   return out}
 
 // Strip a setup to the fields we read (it may come from localStorage or the URL of an older page); a v1 setup comes
@@ -211,7 +213,7 @@ export function cleanSetup(s0){if(!s0||typeof s0!=='object')return null;const s=
       ...(start&&Object.keys(start).length?{start}:{}),
       ...(mode==='apart'&&p.group!=null&&p.group!==''?{group:typeof p.group==='number'?p.group:String(p.group)}:{}),
       mind:agentOnly(p.mind)}}); // agents only (#148): an older page's scripted or AI mind becomes an agent
-  const dm=s.dm&&s.dm.mode==='agent'?{mode:'agent',provider:s.dm.provider,model:s.dm.model}:{mode:'scripted'};
+  const dm=s.dm&&(s.dm.mode==='agent'||s.dm.mode==='ai')&&s.dm.provider&&s.dm.model?{mode:'agent',provider:s.dm.provider,model:s.dm.model}:DEFAULT_DM(); // the DM is always an agent (#520): an older scripted DM becomes the default
   return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,mode,fac,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),heroes,dm}}
 
 // ---- names ----
@@ -245,7 +247,8 @@ export function pickApart(setup){const used=new Set(),taken=new Set(S.agents.map
   return setup.heroes.map(h=>pickOne(h,facOf(setup,h),used,taken).id)}
 
 // Minds, set before the first tick: every member is agent-played at once (found() already marked them: AGENT
-// with a link state, autopilot and reflexes until a runner claims it), the DM seat opens when the DM is an agent.
+// with a link state, autopilot and reflexes until a runner claims it), and the DM seat opens (the DM is always an
+// agent, #520; the scripted DM answers its calls as reflexes until its runner is there).
 // The model each member's runner starts with is in the setup (planRunners); the page starts them.
 export function applyMinds(setup){setup=asV2(setup);const F=S.fellowship;if(!F)return;const map=slotsOf(setup)||{};
   const mem=SLOT_KEYS.map(k=>[k,F.slots[k]!=null?S.agents.find(a=>a.id==F.slots[k]):null]);
@@ -256,7 +259,7 @@ export function applyMinds(setup){setup=asV2(setup);const F=S.fellowship;if(!F)r
   const chosen={};for(const [k,a] of mem){const ids=at(k)&&at(k).profs;if(a&&ids&&ids.length){chosen[k]=ids.slice();seedProfs(a,ids)}}
   for(const [k,a] of mem){const id=a&&resolveArchetype(setup,k);if(id&&applyArchetype(a,id))a.persona.edited=true} // the persona voice the owner chose (#295); marked as the owner's, like the panel picker, so relay writing never replaces it
   F.minds='agent';F.ai=true;
-  if(setup.dm&&setup.dm.mode==='agent')setDmSeat(true);
+  setDmSeat(true);
   return chosen} // {slot:[profession ids]} the owner chose; kept in S.setup.profs for whoever fills a place later
 
 // Apart: where a hero (entry h) starts. {town (a CITY row of its faction), zone (region index) or null, lvl (the
@@ -269,7 +272,7 @@ export function startOf(a,h){const st=h&&h.start||{};
 // ---- which runners a setup needs ----
 // Together: one Fellowship runner when all five are agents on the same mind, else one hero runner per member (with
 // its slot). Apart: per company, one company runner when its members (two or more) share one mind, else one hero
-// runner per hero (with its index). Plus the DM's runner.
+// runner per hero (with its index). Plus the DM's runner, always (#520).
 // [{kind:'fellowship'|'company'|'hero'|'dm', slot?, index?, heroes?, provider, model, label}]. The page starts them
 // through the relay (src/ui/setup.js); the relay says how many may run at once. (The relay's 'company' kind comes
 // with the company runners, #402 slice 12; until then the setup page offers only Together.)
@@ -285,5 +288,5 @@ export function planRunners(setup){const s=asV2(setup),out=[],H=s.heroes||[],sam
     if(ag.length>1&&ag.length===g.length&&ag.every(i=>same(H[i].mind,m0)))
       out.push({kind:'company',heroes:ag.slice(),provider:m0.provider,model:m0.model,label:'the company of '+ag.map(nameOf).join(' and ')});
     else for(const i of ag)out.push({kind:'hero',index:i,provider:H[i].mind.provider,model:H[i].mind.model,label:nameOf(i)})}
-  if(s.dm&&s.dm.mode==='agent')out.push({kind:'dm',provider:s.dm.provider,model:s.dm.model,label:'the DM'});
+  const dm=s.dm&&s.dm.mode==='agent'&&s.dm.provider&&s.dm.model?s.dm:DEFAULT_DM();out.push({kind:'dm',provider:dm.provider,model:dm.model,label:'the DM'});
   return out}

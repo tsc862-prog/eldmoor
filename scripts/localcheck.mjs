@@ -187,6 +187,28 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
   ok(ran.length === 1 && ran[0][0] === 'stage_scene' && ran[0][1].frame.startsWith('A ragged hermit') && r.tools === 1 && r.rejected === 0, `a local DM turn runs the fenced stage_scene call (${ran.map(x => x[0]).join(',') || 'none'})`);
 }
 
+// ---------------------------------------------------------------- 1d. the stated aim (issue #535) for local and OpenAI minds
+// The local turn prompt asks "What are you trying to do now?" when the aim is missing or stale (and the intent tool is in the
+// tool table); the forced reflection answer carries an optional intent the runner sends with the intent tool.
+{
+  const LA = await import('./local-agent.mjs'), PC = await import('./pacing.mjs');
+  const lo = LA.reflectSchema(), st = LA.reflectSchema({strict: true});
+  ok(lo.properties.intent && !lo.required.includes('intent') && st.required.includes('intent') && st.properties.intent.required.join() === 'goal,why,until', 'the reflection schema carries an intent object (optional; required by strict OpenAI)');
+  ok(/"intent": \{"goal"/.test(PC.reflectPrompt({why: 'camp'}, {tools: false})) && /What are you trying to do next\?/.test(PC.reflectPrompt({why: 'camp'})), 'the reflection prompt asks what next (forced answer: an intent object; tool use: the intent tool)');
+  ok(LA.reflectIntent('{"notes":[],"intent":{"goal":"","why":"","until":""}}') === null && LA.reflectIntent('{"notes":[]}') === null, 'an empty goal keeps the aim');
+  const got = LA.reflectIntent('{"notes":[],"intent":{"goal":"Hunt boars in Dunmere","why":"to reach level 4","until":"3"}}');
+  ok(got && got.goal === 'Hunt boars in Dunmere' && got.why === 'to reach level 4' && got.until === '3', 'a goal reads as {goal, why, until}');
+  const sent = [];
+  const t = await LA.reflectTurn({ask: async () => ({text: JSON.stringify({notes: [], become: {field: 'none', text: '', why: '', about: ''}, intent: {goal: 'Hunt boars in Dunmere', why: 'to reach level 4', until: '3'}}), usage: {in: 5, out: 5}}),
+    call: async (tool, args) => {sent.push([tool, args]); return {ok: true, aim: args.goal}}, sess: {system: 's'}, moment: {id: 'm1', kind: 'dusk', why: 'dusk'}, prompt: 'p'});
+  ok(sent.length === 1 && sent[0][0] === 'intent' && sent[0][1].goal === 'Hunt boars in Dunmere' && t.aimed === 'Hunt boars in Dunmere' && /Next: Hunt boars/.test(t.narration), 'a reflection answer with an intent sets the aim: ' + t.narration);
+  const ask = {clock: 'Day 1 08:00', state: 'town', hp: '100%', level: 2, place: 'Highgate', aim: {state: 'stale', ask: true, line: 'hunt in Lowmark (set 3 h ago)', why: 'no progress toward it for 2 h'}};
+  const bt = PC.briefText(ask);
+  ok(bt.includes(PC.AIM_ASK) && /Your aim was: hunt in Lowmark/.test(bt) && /intent \{goal, why, until\}/.test(bt), 'a local turn prompt with a stale aim asks first: ' + bt.split('\n').find(l => l.includes(PC.AIM_ASK)));
+  ok(!PC.briefText({...ask, aim: {state: 'set', ask: false, line: 'hunt in Lowmark (set 1 h ago)'}}).includes(PC.AIM_ASK) && /\nYour aim: hunt in Lowmark \(set 1 h ago\)/.test(PC.briefText({...ask, aim: {state: 'set', ask: false, line: 'hunt in Lowmark (set 1 h ago)'}})), 'a fresh aim is named, not asked');
+  ok(LA.ollamaTools().some(x => x.function.name === 'intent' && x.function.parameters.properties.goal), 'the intent tool is in the local tool table');
+}
+
 // ---------------------------------------------------------------- the mock Ollama (scripts/mock-ollama.mjs)
 const {url: OLLAMA, seen, close: closeOllama} = await startMockOllama();
 let ctxFrom = 0; // where the runners' requests start in `seen` (after the adapter's own tests)
@@ -245,7 +267,7 @@ function start(args, {wait: ready = null, env = childEnv} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe']});
   kids.push(p); let out = '';
   p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
-  const done = new Promise(r => p.on('exit', code => r(code)));
+  const done = new Promise(r => p.on('close', code => r(code)));
   const until = ready ? new Promise((res, rej) => {const t = setInterval(() => {if (ready.test(out)) {clearInterval(t); res()}}, 100); setTimeout(() => {clearInterval(t); rej(new Error('timeout waiting for ' + ready + '\n' + out))}, 120000)}) : null;
   return {p, done, until, out: () => out};
 }
@@ -339,7 +361,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   // a runner process with its output lines timed against the real and the game clock
   function runner(a, model, extra) {
     const p = spawn(process.execPath, ['scripts/agent-player.mjs', '--url', PB, '--hero', String(a.id), '--provider', 'ollama', '--model', model, '--ollama-url', OLLAMA, ...extra], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
-    kids.push(p); const R = {p, out: '', turns: [], wakes: [], done: new Promise(r => p.on('exit', c => r(c)))}; let part = '';
+    kids.push(p); const R = {p, out: '', turns: [], wakes: [], done: new Promise(r => p.on('close', c => r(c)))}; let part = '';
     const take = d => {R.out += d; part += d; const ls = part.split(/\r?\n/); part = ls.pop();
       for (const l of ls) {const t = {real: Date.now(), gm: S.gameMin, line: l};
         if (/^\[turn \d+\]/.test(l)) R.turns.push(t); const w = l.match(/\[pace\] woke \((\w+)/); if (w) R.wakes.push({...t, kind: w[1]})}};
@@ -388,8 +410,10 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   // C. a lazy model (the owner's live bug): re-prompted once per turn, empty turns stop the runner, the scripted rules take over
   {const a = pick(), n0 = seen.length;
     // --max-fails 3, but a fresh context after two empty turns breaks the loop first (the mock forgets it went lazy)
+    // pinned in town at full health while it runs: autopilot or a wandering mob must not make rest/wait fail (a refused turn reads as empty)
+    const pinC = setInterval(() => {park(a); a.hp = a.maxhp || a.hp;}, 50);
     const R = runner(a, 'mock-lazy:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--max-turns', '8', '--new']);
-    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]);
+    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]); clearInterval(pinC);
     const mine = seen.slice(n0), re = mine.filter(b => {const u = b.messages.filter(m => m.role === 'user').pop(); return u && /^Act through a tool/.test(u.content)});
     const flags = R.turns.map(t => /empty turn/.test(t.line) ? 'E' : 'A').join('');
     ok(code === 0 && R.turns.length === 8 && flags === 'AAAEEAAA', `three good turns, two empty ones, then a fresh context and it acts again (${flags})` + (code === 0 ? '' : '\n' + R.out.slice(-1500)));
@@ -454,7 +478,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   // exits with code 75 (the supervisor starts it again); the next run sets the old session aside and takes a turn
   {const a = pick(), oldName = a.name;
     const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '0', '--new']);
-    ok(await until(() => R.turns.length >= 1, 30000) && existsSync(join(tmp, 'agents', a.id + '.json')), 'a runner plays and keeps its session for the hero');
+    ok(await until(() => R.turns.length >= 1 && existsSync(join(tmp, 'agents', a.id + '.json')), 30000), 'a runner plays and keeps its session for the hero'); // the turn line prints before the session file is written: wait for both
     a.name = 'Newcomer'; // the same id, another hero
     const code = await Promise.race([R.done, sleep(15000).then(() => 'timeout')]);
     ok(code === 75 && /\[world\] a new world: #\d+ was .*, now Newcomer/.test(R.out), `a runner whose hero was renamed under its id exits for the supervisor (code ${code})`);
@@ -551,7 +575,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const tick8 = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; const dt = real * 8, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) {sim.step(dt / n); gather()}}, 50);
       const q = spawn(process.execPath, ['scripts/fellowship.mjs', '--url', PB, '--provider', 'ollama', '--model', 'mock-intro:1b', '--max-turns', '2', '--min-gap', '0', '--heartbeat', '30', '--ollama-url', OLLAMA], {cwd: ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe']});
       kids.push(q); let qo = ''; q.stdout.on('data', d => qo += d); q.stderr.on('data', d => qo += d);
-      const code = await Promise.race([new Promise(r => q.on('exit', r)), sleep(120000).then(() => 'timeout')]);
+      const code = await Promise.race([new Promise(r => q.on('close', r)), sleep(120000).then(() => 'timeout')]);
       clearInterval(tick8);
       const live = mem.filter(a => a.state !== 'dead'), refused = (qo.match(/< \{"ok":false,"error":"You (have already met your companions|already said that)/g) || []).length;
       ok(code === 0, 'mock-intro: every member plays two turns' + (code === 0 ? '' : ' (' + code + ')\n' + qo.slice(-2000)));
@@ -622,7 +646,12 @@ console.log('start gate: --wait-ready holds the world until every mind answered 
 {
   ok(!/world held/.test(world.out()), 'without --wait-ready play-headless never holds the world (unchanged)');
   const P2 = port + 650, B2 = `http://127.0.0.1:${P2}`, poll = async (f, ms = 30000) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {const h = await health(B2).catch(() => null); if (h && f(h)) return h; await sleep(100)} return null};
-  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--world', join(tmp, 'world-ready.json')], {wait: /^\[play\] headless world at /m});
+  // --wait-ready opens the DM seat and counts it (the DM is always an agent, #559)
+  {const P3 = port + 651, w3 = start(['scripts/play-headless.mjs', '--port', String(P3), '--agents', '1', '--quiet', '--wait-ready', '--world', join(tmp, 'world-ready-dm.json')], {wait: /^\[play\] headless world at /m});
+   await w3.until; const h3 = await health(`http://127.0.0.1:${P3}`).catch(() => null), t3 = Date.now(); while (!/world held, waiting for minds: .*DM: no runner/.test(w3.out()) && Date.now() - t3 < 5000) await sleep(100);
+   ok(h3 && h3.dm && h3.dm.seat === true && /DM: no runner/.test(w3.out()), '--wait-ready opens the DM seat and holds the world for its runner too (#559)'); try {w3.p.kill()} catch {}}
+  // the rest tests hero runners alone: --no-dm keeps the hold to the heroes
+  const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--agents', '2', '--quiet', '--speed', '8', '--wait-ready', '--no-dm', '--world', join(tmp, 'world-ready.json')], {wait: /^\[play\] headless world at /m});
   await w2.until;
   const [ga, gb] = (await health(B2)).heroes, by = (h, id) => h.heroes.find(x => x.id === id) || {};
   ok(await poll(() => /world held, waiting for minds: .*no runner/.test(w2.out()), 5000), 'with --wait-ready a world with no runners is held');
@@ -633,14 +662,20 @@ console.log('start gate: --wait-ready holds the world until every mind answered 
   ok(readyA && Date.now() - t0 > 1000 && by(readyA, ga.id).warm.ms >= 2000, `it turns ready only when the slow warm-up answers (${readyA && by(readyA, ga.id).warm.ms} ms)`);
   ok(!/every mind is ready/.test(w2.out()) && /no runner/.test(w2.out().split('waiting for minds:').pop()), 'the world stays held: the other seat has no runner');
   const rb = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-down:1b', '--ollama-url', OLLAMA]);
-  const failed = await poll(h => by(h, gb.id).ready === 'failed', 20000);
+  const failed = await poll(h => by(h, gb.id).ready === 'failed' || !!(by(h, gb.id).warm && by(h, gb.id).warm.warmFailed), 20000); // a turn played after the failure turns it ready (#559), keeping warmFailed
   // the gate prints its held line on a 50 ms tick and the child's pipe may lag on a slow runner: wait for the line, bounded
-  const heldLine = failed ? await poll(() => /failed \(ollama: model runner has unexpectedly stopped/.test(w2.out()), 15000) : null;
+  const heldLine = true; // #559: a failed warm-up with its runner there no longer holds the world, so no held line names it
   if (!(failed && heldLine)) console.log('  (debug) warm state:', JSON.stringify(failed && by(failed, gb.id).warm), 'out tail:', w2.out().slice(-400));
-  ok(failed && /unexpectedly stopped/.test(by(failed, gb.id).warm.error || '') && heldLine, 'a crashed warm-up is reported (failed, with the error) and keeps the world held');
+  ok(failed && /unexpectedly stopped/.test((by(failed, gb.id).warm.error || by(failed, gb.id).warm.warmFailed || '')) && heldLine, 'a crashed warm-up is reported (failed, with the error) on /play/health');
+  // owner decision on #559: a seat whose warm-up failed but whose runner plays on counts as active, so the world runs
+  const runs = () => (w2.out().match(/every mind is ready: the world runs/g) || []).length;
+  ok(await poll(() => runs() >= 1, 15000), 'a failed warm-up whose runner is still there counts as active: the world runs');
+  // continuous (#559): the runner goes away -> held at once; a new runner -> runs again
   rb.p.kill(); await poll(h => !by(h, gb.id).claimed, 60000);
+  ok(await poll(() => /world held, waiting for minds: .*no runner/.test(w2.out().split('every mind is ready').pop()), 15000), 'its runner gone: the world is held again (the gate is continuous)');
   const rb2 = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', OLLAMA]);
-  ok(await poll(() => /every mind is ready: the world runs/.test(w2.out()), 30000), 'once every seat answered its warm-up the world runs');
+  const lastGate = () => w2.out().split(String.fromCharCode(10)).filter(l => /world held|every mind is ready/.test(l)).pop() || '', again = await poll(() => runs() >= 2 || (/world held/.test(lastGate()) && !lastGate().includes(gb.name + ':')), 60000); // the slow mock seat may stop by itself once the world runs (5 empty turns): only this seat is asked if (!again) console.log('  (debug) world tail:', w2.out().slice(-700), ' | ra tail:', ra.out().slice(-500));
+  ok(again, 'a new runner answered its warm-up: its seat no longer holds the world');
   for (const k of [ra, rb2, w2]) try {k.p.kill()} catch {}
 }
 // issue #221: every request the runners sent (agent loop, closing calls, forced scene, reflection) asked one num_ctx

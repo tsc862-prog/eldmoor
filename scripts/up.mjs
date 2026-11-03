@@ -198,6 +198,9 @@ async function status() {
     up(`ollama (${url}): ${(j.models || []).length ? j.models.map(m => m.name + (m.size_vram ? ` ${(m.size_vram / 1e9).toFixed(1)} GB` : '')).join(', ') + ' loaded' : 'reachable, no model loaded'}`);
   } catch {up('ollama: not reachable')}
   const hd = await git('log', '-1', '--format=%h %s'); if (hd.code === 0) up(`repo: ${hd.out.trim().slice(0, 90)}`);
+  try { // the last daily art run (#177: scripts/art/daily.mjs appends one line a run to logs/art.log)
+    const lines = readFileSync(join(REPO, 'logs', 'art.log'), 'utf8').trim().split(/\r?\n/); up(`art: ${lines[lines.length - 1].slice(0, 160)}`);
+  } catch {up('art: no daily run yet (npm run art:daily -- --now)')}
   if (codeChanged) up('relay code changed since it started: press u (or r) to apply');
 }
 
