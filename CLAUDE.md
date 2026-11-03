@@ -186,8 +186,16 @@ is silent, and scene choices time out to the scripted branch, so the world never
 - Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
   game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in
   the Agent tab, with "Last agent order: N game min ago"): rest when hurt, hunt again when its last order was
-  a hunt, follow the party, fight back, go home when hurt or full. The agent stays the mind; nothing is ever
-  handed to the scripted rules, and any command takes over again.
+  a hunt, follow the party, fight back, go home when hurt or full. In town (#466) it rests at the inn when hurt, sells
+  loot, buys up to 2 potions, then walks to its last hunting ground (`a.playGround`) or a known region that fits its level
+  and hunts; in the field with no hunt order it hunts a region that fits, moves on from one it outgrew, or heads home from
+  one beyond it. A follower waits for a leader in town 4 more game hours, then hunts nearby alone; an open vote holds it. It
+  never takes a job, bounty, Crypt or raid. The agent stays the mind; nothing is ever handed to the scripted rules, and any
+  command takes over again. A level refusal at take_adventure names a ground to hunt instead.
+- Danger edges (#465): a move_to or hunt {where} whose road enters a region whose lowest level is 5+ above the hero's
+  stops at its edge the first time, with the danger in words (the land's feel, the hero's lore, the townsfolk's warning);
+  the same call again within 12 game hours, or `force: "yes"`, walks on (never a hard block). Walking out of shouting
+  range of a party leader who will not follow says so (`apart`). `npm run townpilotcheck` covers both.
 - One mind per hero: an agent-played hero has no relay brain (Fellowship Minds: agents turns the members'
   brains off; the relay still writes their sheets) and voices no scripted line (no barks, banter, camp lines,
   quarrel replies or table lines; a silent agent's table reflex acts without a word). Its own lines (say,

@@ -123,11 +123,51 @@ function since(list,k){if(!list||!list.length)return [];if(!k)return list.slice(
 // Autopilot's next command (issue #126): what the hero's own reflexes and last order call for. In the field:
 // rest when hurt, else hunt again when the last order was a hunt; in town it heals and waits; a Fellowship
 // member follows its leader (the 'follow' state); a full bag already sends it home (field()).
+// #466: in town it carries on too (townPilot below); out in the field with no hunt order it hunts a ground that fits, or
+// heads home from one that does not. Returns one command or a list of them (a walk, then a hunt).
 function autopilot(a){const mh=maxHp(a),field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
+  if(a.state==='town')return townPilot(a);
   if(!field)return null;
   if(a.hp<mh*.6)return {kind:'rest',until:S.gameMin+60,auto:'resting while hurt',label:'rest'};
   const o=a.playOrder;if(o&&o.kind==='hunt')return {kind:'hunt',n:o.n,k0:a.kills,flee:o.flee,prey:o.prey,auto:'hunting again (your last order: hunt '+o.n+')',label:'hunt'};
-  return null}
+  if(leaderOf(a))return null; // a follower keeps to its leader out here (the follow state); one whose leader stayed in town hunts on
+  const c=homeOf(a),z=zoneAt(a.x,a.y);
+  if(load(a)>=PK.BAG)return {kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:c.ah.x,y:c.ah.y,st:'town'}],last:'town',label:'the '+c.name+' auction house (pack full)',auto:'heading home to sell (pack full)'};
+  const b=bandOf(z),g=groundFor(a);
+  if(fits(a,z)&&!(g!=null&&g!==z&&b&&b[1]!=null&&a.lvl>b[1]))return {kind:'hunt',n:TP.HUNT,k0:a.kills,auto:'hunting in '+ZONES[z]+' (it suits your strength)',label:'hunt'};
+  if(g!=null&&g!==z&&fits(a,z)){const p=planOne(a,ZONES[g].toLowerCase());if(p&&!p.error)return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'moving on to '+ZONES[g]+' ('+ZONES[z]+' is too easy now)'},{kind:'hunt',n:TP.HUNT,auto:'hunting in '+ZONES[g]+' (it suits your strength)'}]}
+  return {kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'}],last:'town',label:c.name,auto:'heading home to '+c.name+' (this land is beyond you)'}}
+
+// ---- autopilot in town (issue #466) ----
+// A local model's turn can take hours of game time, so a hero (solo or in a company of any size) left in town with no order
+// used to stand at the gate for days. Now, once idle there, it does what its own habits call for, one step at a time and
+// never a decision that belongs to its agent (no vote, proposal, job, Crypt or raid): rest at the inn when hurt, sell its
+// loot, buy a potion or two, then walk out to its last hunting ground (or a known region that fits its level) and hunt.
+// A follower waits for its leader (it follows them out, town()) and only goes hunting near town on its own after TP.WAIT
+// more game minutes with the leader still in town. Agent-played heroes only: the scripted world never comes here.
+const TP={HUNT:5,POTIONS:2,LOOT:4,WAIT:240,FIT_UP:1,DANGER:5,DARE_MIN:720};
+const bandOf=z=>REGIONS[z]&&REGIONS[z].band||null;
+// A region this hero can hunt: its lowest level within TP.FIT_UP of the hero's.
+const fits=(a,z)=>{const b=bandOf(z);return !!(b&&b[0]<=a.lvl+TP.FIT_UP)};
+// Where autopilot hunts: the last ground the hero hunted on (a.playGround) if it still fits, else the known region that fits
+// best (its band holds the level, then the nearest), else the region the scripted ladder would pick if the hero knows it.
+function groundFor(a){const g=a.playGround;if(g!=null&&ZONES[g]&&fits(a,g)&&knowsPlace(a,ZONES[g]))return g;
+  const L=huntGrounds(a).map(n=>ZONES.indexOf(n)).filter(z=>z>=0&&fits(a,z));
+  const holds=L.find(z=>{const b=bandOf(z);return a.lvl>=b[0]&&(b[1]==null||a.lvl<=b[1])});if(holds!=null)return holds;if(L.length)return L[0];
+  const h=huntZone(a);return h!=null&&ZONES[h]&&knowsPlace(a,ZONES[h])?h:null}
+const potionsHeld=a=>invOf(a).list.reduce((n,e)=>n+(!isGear(e)&&USES[e.id]&&USES[e.id].kind==='potion'?e.n||1:0),0);
+const bestPotion=a=>Object.keys(USES).filter(k=>{const U=USES[k];return U.kind==='potion'&&!U.craft&&U.lvl<=a.lvl}).sort((x,y)=>USES[y].lvl-USES[x].lvl)[0]||null;
+function townPilot(a){const mh=maxHp(a),c=homeOf(a);
+  if(a.fellow&&openProps().length)return null; // a vote is open: the party is deciding, autopilot waits with it
+  if(a.hp<mh*.6){const inn=c.spots&&c.spots.inn||c.ah;return [{kind:'move',legs:[{x:inn.x,y:inn.y,st:'town'}],last:'town',label:'the inn in '+c.name,auto:'walking to the inn to rest (hurt)'},{kind:'rest',until:S.gameMin+60,auto:'resting at the inn'}]}
+  if(load(a)>=TP.LOOT)return {kind:'sell',auto:'selling your loot'};
+  const pk=bestPotion(a);if(pk&&potionsHeld(a)<TP.POTIONS&&a.gold>=USES[pk].price*2&&used(a)<capOf(a))return {kind:'buy',item:pk,n:TP.POTIONS-potionsHeld(a),auto:'buying '+pk};
+  const L=a.party&&a.party.leader!==a&&a.party.leader.state!=='dead'?a.party.leader:null;
+  if(L&&S.gameMin-(a.playActAt||0)<PK.IDLE+TP.WAIT)return null; // wait for the leader a while: it follows them out (town())
+  const z=groundFor(a);if(z==null)return null;const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
+  const o=a.playOrder&&a.playOrder.kind==='hunt'?a.playOrder:null,n=o?o.n:TP.HUNT;
+  const why=o?'your last order: hunt '+o.n:L?L.name+' is still in town; hunting nearby':'it suits your strength';
+  return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'heading out to '+ZONES[z]+' to hunt ('+why+')'},{kind:'hunt',n,flee:o?o.flee:undefined,prey:o?o.prey:undefined,auto:'hunting in '+ZONES[z]+' ('+why+')'}]}
 
 // ---- the agent's turn and its last look (issue #240) ----
 // A local model's turn can take a game hour at 1x. While the hero's turn is open (from the pace wake, or the first tool
@@ -189,7 +229,7 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   const lastAct=a.playActAt??(a.playActAt=S.gameMin);
   // ...but not while the agent's turn is open (#240): it is deciding right now, so nothing new starts under it.
   if(!cmdOf(a)&&!adv&&!tableView(a)&&S.gameMin-lastAct>=PK.IDLE&&!turnHeld(a)){if(!a.playIdle){a.playIdle=true;ev(a,'No order from you for a while: autopilot carries on (your last order, rest when hurt, follow the party). Any command takes over.')}
-    const ap=autopilot(a);if(ap){a.pq=[ap];a.playAuto=ap.label}}
+    const ap=autopilot(a);if(ap){const L=Array.isArray(ap)?ap:[ap];a.pq=L;a.playAuto=L[0].label||L[0].kind;if(a.state==='town'&&L[0].auto)ev(a,'Autopilot: '+L[0].auto+'.',false)}}
   else if(a.playIdle&&S.gameMin-lastAct<PK.IDLE){a.playIdle=false;a.playAuto=null}
   const cmd=cmdOf(a);
   // A choice scene answered (or timed out): send the hero back to the scene point so the DM
@@ -243,6 +283,9 @@ function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*d
     cmd={kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'town'}],last:'hunt',label:'the gate, following '+a.party.leader.name};a.pq=[cmd];ev(a,'The party is out with '+a.party.leader.name+'; you follow them out of '+c.name+'.')}
   if(cmd&&cmd.kind==='move')return travel(a,dt,cmd);
   if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||a.hp>=mh)done(a,'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
+  if(cmd&&cmd.kind==='sell'){const r=sellLoot(a);a.gold+=r.gold;done(a,r.n?'Sold '+r.n+' thing'+(r.n>1?'s':'')+' for '+r.gold+'g (gold '+a.gold+').':null,false);a.moving=false;return true} // autopilot (#466)
+  if(cmd&&cmd.kind==='buy'){const U=USES[cmd.item];let got=0;while(U&&got<cmd.n&&a.gold>=U.price&&addUse(a,cmd.item,1)){a.gold-=U.price;got++}
+    done(a,got?'Bought '+cmd.item+' x'+got+' (gold '+a.gold+').':null,false);a.moving=false;return true}
   if(cmd)done(a,'Cannot '+cmd.kind+' inside the town walls.');
   a.moving=false;return true}
 
@@ -273,7 +316,7 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
     if(a.hp<mh*PK.RETREAT*tm(a,'retreat')){done(a,'Too hurt to keep hunting ('+pct(a.hp,mh)+'% HP).');return true}
     if(isStorm(a.zone)&&!cmd.stormSaid){cmd.stormSaid=true;ev(a,'A storm rolls over '+ZONES[a.zone]+'.',true)}
     if(cmd.auto&&turnHeld(a)){a.moving=false;a.dest=null;return true} // autopilot's hunt picks no new prey while the agent's turn is open (#240)
-    a.scan-=dt;if(a.scan<=0){a.scan=.5;const m=pickPrey(a,cmd);if(m){a.target=m;a.state='fight';a.dest=null;return true}}
+    a.scan-=dt;if(a.scan<=0){a.scan=.5;const m=pickPrey(a,cmd);if(m){a.target=m;a.state='fight';a.dest=null;a.playGround=a.zone;return true}} // the ground it hunts on (autopilot goes back there, #466)
     if(!a.dest)a.dest=zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;return true}
   if(cmd){done(a,'Cannot '+cmd.kind+' here.');return true}
   // idle reflex: a full bag goes home to be sold
@@ -430,6 +473,39 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   const mk=markInSight(a,t);if(mk)return toField({x:mk.x,y:mk.y},mk.name); // a DM-marked place in sight (#414)
   const named=placeNameIn(t);if(named)return unknown(named);
   return null}
+// ---- walking into danger (issue #465) ----
+// A walk (move_to, hunt {where}) whose road crosses into a region whose lowest level is TP.DANGER or more above the hero's stops
+// at its edge the first time, with the danger in words (the land's feel, the hero's own lore, what townsfolk say). Maximum
+// agency (owner): never a hard block; the same call again, or force: "yes", walks on. Read-only and dice-free.
+const FEEL={meadow:'even the meadow beasts here move like hunters',fen:'the air turns to rot and the things in the reeds are huge',ash:'ash drifts on a hot wind and the beasts here are scarred and huge',
+  tundra:'the wind brings a bitter cold, and the tracks in the snow are bigger than you are',highland:'the wind howls over bare stone, and something up there has been feeding well'};
+// The first point of the walk that enters such a region: {z, li (the leg), stop (the last safe point before it)}, or null.
+function dangerAhead(a,legs){const here=zoneAt(a.x,a.y);let px=a.x,py=a.y,safe={x:a.x,y:a.y};
+  for(let li=0;li<legs.length;li++){const l=legs[li],k=Math.max(1,Math.ceil(Math.hypot(l.x-px,l.y-py)));
+    for(let i=1;i<=k;i++){const x=px+(l.x-px)*i/k,y=py+(l.y-py)*i/k;
+      if(l.st!=='town'){const z=zoneAt(x,y),b=bandOf(z);if(z!==here&&b&&b[0]>=a.lvl+TP.DANGER)return {z,li,stop:safe}}
+      safe={x,y}}
+    px=l.x;py=l.y}
+  return null}
+function dangerWords(a,z){const n=ZONES[z],known=knowsPlace(a,n),b=bandOf(z),R=REGIONS[z];
+  const feel=FEEL[R&&R.biome]||'the beasts here look far beyond you',worse=b[0]-a.lvl>=10;
+  const lw=known?placeWarn(a,n):null,tw=npcWarning(a);
+  return (known?n:'The land ahead')+': '+feel+'. '+(worse?'Nothing there would even notice a blade of your strength before it killed you.':'The beasts there look far beyond you.')
+    +(lw?' What you know: '+lw:'')+(tw&&known&&tw.startsWith(n)?' The townsfolk said: "'+tw+'"':'')+' Hardcore: one life.'}
+const forceYes=f=>f===true||/^(yes|true|1|force)$/i.test(String(f==null?'':f).trim());
+// Check a planned walk. Returns {p} to go as planned (p.warn may be set), {p, stopped} with the walk cut at the edge, or {refuse}.
+function guardWalk(a,p,force){const dz=dangerAhead(a,p.legs);if(!dz)return {p};const n=ZONES[dz.z],known=knowsPlace(a,n),words=dangerWords(a,dz.z);
+  const D=a.playDare;if(forceYes(force)||D&&D.z===dz.z&&S.gameMin-D.t<=TP.DARE_MIN){p.warn=(p.warn?p.warn+' ':'')+'You go on into '+(known?n:'the land ahead')+' knowing the danger: '+words;return {p}}
+  a.playDare={z:dz.z,t:S.gameMin};const again=' To go on anyway, make the same call again (or add force: "yes").';
+  const legs=p.legs.slice(0,dz.li),st=p.legs[dz.li].st;
+  if(!legs.length&&dist(a,dz.stop)<1.5)return {refuse:'You stand at the edge. '+words+again};
+  legs.push({x:dz.stop.x,y:dz.stop.y,st});
+  return {p:{...p,legs,last:'hunt',label:'the edge of '+(known?n:'the land ahead'),warn:'You stop at the edge. '+words+again},stopped:true}}
+// Walking away from a party leader that will not follow: say so, with who will be out of earshot (#465, companies of any size).
+function apartNote(a,p){const L=a.party&&a.party.leader!==a&&a.party.leader.state!=='dead'?a.party.leader:null;if(!L)return null;
+  const end=p.legs[p.legs.length-1];if(!end||dist(end,L)<=REACH.SHOUT)return null;
+  const mates=a.party.mem.filter(b=>b!==a&&b.state!=='dead');
+  return 'This takes you away from '+nameList(mates)+': '+L.name+' leads and will not follow, and past about '+REACH.SHOUT+' tiles they cannot hear you. Out there, every fight is yours alone.'}
 const DIRS={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0],northeast:[1,-1],northwest:[-1,-1],southeast:[1,1],southwest:[-1,1]};
 // A place name the agent used that the world has but the hero has not heard of (so the refusal does not confirm others).
 const placeNameIn=t=>{const n=[...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).find(x=>x.toLowerCase()===t);return n||null};
@@ -688,11 +764,13 @@ const T={
     need(i!=null&&Number.isFinite(i),'Give what? item (a name, like "Redroot Draught" or "2 rations") or index (from inventory). '+packList(a));
     need(invOf(a).list[i],'No pack entry '+i+'. '+packList(a));
     const r=giveItem(a,b,i,n==null||n===''?1:n);need(r.ok,r.error);return {ok:true,result:r.text}},
-  move_to(a,{target}){need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
+  move_to(a,{target,force}){need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
     need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
-    const p=plan(a,target);if(p.error)throw new Rule(p.error);
+    const p0=plan(a,target);if(p0.error)throw new Rule(p0.error);
+    const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // a region far above the hero: stop at its edge first (#465)
     a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r},
+    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;
+    if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;return r},
   talk(a,{target,text}){const t=clean(target,60).toLowerCase();need(t,'Talk to whom?');
     ensureNpcs();const here=cityAt(a);
     // NPC conversations (#170): a Fellowship member's words to a person open a conversation the DM answers (sim/talk.js)
@@ -754,7 +832,7 @@ const T={
     if(heldOf(a).some(v=>v.id===id)||takenOf(a).some(h=>h.id===id))return T.focus_quest(a,{id:'job:'+id}); // one you hold: focus it (the quest log)
     if(mine)need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');
     const h=(S.adventures||[]).find(x=>x.id===id&&x.phase==='open'&&x.town===c.name);need(h,'No open job '+id+' at '+c.name+'.');
-    const w=jobFit(a,h,mem);need(!w,'The job-giver turns you away: '+w+'.');
+    const w=jobFit(a,h,mem);need(!w,'The job-giver turns you away: '+w+'.'+growHint(a,w,mem));
     // Offer only this job to the DM: the others are held back for the moment and the job is
     // marked as personal to this hero, so the scripted DM's pickHook takes it without a roll.
     const held=(S.adventures||[]).filter(x=>x!==h&&x.phase==='open'&&x.town===c.name);for(const x of held)x.phase='held';
@@ -816,7 +894,7 @@ const T={
     return {ok:true,duel:t.name+' ('+t.cls+' L'+t.lvl+')',note:'A duel runs until one falls or breaks off; you break off on your own at low HP, or flee().'}},
   // hunt {where} (#411): a known region, place, direction or "x,y" (read the way move_to reads it, #399/#188); the hero
   // walks there first (the move_to walk), then hunts. In town with no where, the refusal names the nearest known ground.
-  hunt(a,{count,flee_below,prey,where}){const w=where!=null&&String(where).trim()?String(where):null;
+  hunt(a,{count,flee_below,prey,where,force}){const w=where!=null&&String(where).trim()?String(where):null;
     if(!w&&!(fieldState(a)&&!inTown(a))){const ct=cityAt(a)||(inTown(a)?homeOf(a):null),g=huntGrounds(a)[0];
       need(false,'Hunt out in the world, not in town'+(ct?' (you are in '+ct.name+')':'')+': '+(g?'hunt {where: "'+g+'"} walks you to '+g+' and hunts there'+(ct&&g===ZONES[zoneAt(ct.gate.x,ct.gate.y)]?' ('+g+' lies around '+ct.name+')':'')+', or move_to a place you know first.':'hunt {where: "north"} (a direction or "x,y") walks out and hunts; no hunting ground is known to you yet.'))}
     need(w||a.state!=='return','You are heading home. hunt {where: "<a region you know>"} to turn around and hunt there.');
@@ -827,8 +905,11 @@ const T={
     if(w){need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
       need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first, or hunt with no where once it is over.');
       const gl=()=>{const L=huntGrounds(a).slice(0,3);return L.length?' Hunting grounds you know: '+L.join(', ')+'.':''};
-      const p=plan(a,w);if(p.error)throw new Rule('Cannot hunt at "'+clean(w,60)+'": '+p.error+gl());
-      if(p.last==='town')throw new Rule(p.label+' is inside the town walls: hunt out in the world.'+gl()+' Or a direction ("north") or "x,y".');
+      const p0=plan(a,w);if(p0.error)throw new Rule('Cannot hunt at "'+clean(w,60)+'": '+p0.error+gl());
+      if(p0.last==='town')throw new Rule(p0.label+' is inside the town walls: hunt out in the world.'+gl()+' Or a direction ("north") or "x,y".');
+      const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);if(g.stopped){a.pq=[{kind:'move',legs:g.p.legs,last:'hunt',label:g.p.label}];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
+        return {ok:true,going:g.p.label,stops_short:true,warning:g.p.warn,hunting:'not yet: you stop at the edge first',apart:apartNote(a,g.p)||undefined}}
+      const p=g.p; // #465
       const z=ZONES.indexOf(p.label);
       if(z>=0&&fieldState(a)&&!inTown(a)&&!cityAt(a)&&zoneAt(a.x,a.y)===z){a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;return {ok:true,hunting:what+' in '+ZONES[z],note:'You are already in '+ZONES[z]+'.'}}
       a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label},hunt];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
@@ -975,6 +1056,11 @@ function entryText(e){if(isGear(e))return itemText(e)+(e.cls&&!e.epic?' ['+e.cls
 function itemText(it){if(!it)return null;const st=itemStats(it);return it.name+' (ilvl '+it.ilvl+(it.epic?', epic':it.quality&&it.quality!=='plain'?', '+it.quality:'')+(it.slot?', '+it.slot:'')+': '+Object.keys(st).map(k=>'+'+st[k]+' '+k).join(' ')+(it.property?' '+it.property:'')+')'}
 function jobText(h){const T=D.ADVENTURES[h.tpl];const thing=h.data&&h.data.thing;return (T&&T.name?T.name:h.tpl)+(thing?': '+thing:'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')}
 // Why a job does not suit this hero (and party), or null. The DM's own fits() decides in the end.
+// A refusal for level names the way on (#466): hunt to grow, with the ground that fits, and who follows; never a dead end
+// that leaves a company at the gate.
+function growHint(a,w,mem){if(!/^needs level/.test(w))return '';const lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a),z=groundFor(lo);
+  const g=z!=null?ZONES[z]:null,n=mem.length-1;
+  return ' Grow first: '+(g?'hunt {where: "'+g+'"}':'hunt out in the world')+(n?(a.party&&a.party.leader===a?' and your companions follow you out':'; tell the others where you hunt'):'')+'. Left at the gate, autopilot hunts there too.'}
 function jobFit(a,h,mem){const T=D.ADVENTURES[h.tpl];if(!T)return 'unknown job';const lo=Math.min(...mem.map(b=>b.lvl));
   if(h.for!=null&&!mem.some(b=>b.id===h.for))return 'it is meant for someone else';
   if(lo<Math.max(DMK.MIN_LVL,T.lvl||0))return 'needs level '+Math.max(DMK.MIN_LVL,T.lvl||0);

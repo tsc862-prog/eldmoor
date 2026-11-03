@@ -91,6 +91,7 @@ jobs:
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}
+      - {name: Town autopilot and danger edges, run: npm run townpilotcheck}
       - {name: Tool quick wins, run: npm run toolwincheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: Action log, run: npm run actcheck}
