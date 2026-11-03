@@ -6,7 +6,7 @@
 // save) shows an empty state. Built through patch() (src/ui/stable.js): cards and rows are keyed, so an unchanged
 // row is the same node and the scroll position holds; a signature skips the work when nothing changed.
 // lifeRows() gives the same content as plain data for the headless smoke.
-import {fellowshipMembers} from '../sim/fellowship.js';
+import {followedMembers} from './companyview.js'; // the followed company's heroes (#456)
 import {tiersView} from '../sim/tiers.js';
 import {patch,keyed} from './stable.js';
 import {SELF_LABEL} from '../sim/persona.js'; // the persona history (#409)
@@ -19,7 +19,7 @@ export const cutText=(s,n)=>{s=clean(s);if(s.length<=n)return s;const t=s.slice(
 const daysOf=(d0,d1)=>d0===d1?'Day '+d0:'Days '+d0+'-'+d1;
 
 // ---- as data: one card per Fellowship place ----
-export function lifeRows(){return fellowshipMembers().map(m=>{const a=m.hero;
+export function lifeRows(){return followedMembers().map(m=>{const a=m.hero;
   if(!a)return {slot:m.slot,role:m.role,label:m.label,hero:null};
   const T=tiersView(a),J=Array.isArray(a.journal)?a.journal:[];
   const marks=T?T.marks.slice().reverse().map(x=>({day:x.day,k:x.k,kind:KIND[x.k]||x.k,text:cutText(x.text,LIFE.MARK_LEN)})):[];

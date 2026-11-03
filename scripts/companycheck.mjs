@@ -192,6 +192,79 @@ if (comp && comp.ids.length > 1) {
   ok(sc.companion == null && CO.companyOf(sc) === null, 'a company with no agent left lets its companions go');
 }
 
+// ---- expel and merge (#444) ----
+{
+  const sp2 = {x: spot.x + 30, y: spot.y};
+  const put = (a, dx, dy) => {a.x = sp2.x + dx; a.y = sp2.y + dy; a.state = 'hunt'; a.dest = null; a.target = null; a.hidden = false; rebuild()};
+  const free = () => S.agents.find(b => living(b) && b.fac === 0 && !b.fellow && !b.companion && !b.player && !CO.companyOf(b) && !b.adv && !used.has(b) && b.state !== 'dungeon' && b.state !== 'raid' && b.state !== 'duel');
+  const grab = () => {const a = free(); used.add(a); if (a.party) leaveParty(a); return a};
+  const agent = () => {const a = grab(); markPlayer(a, true); a.partyOk = true; return a};
+  const comp = (...L) => {const r = CO.foundCompany(L); if (!r.ok) throw new Error(r.error); return r.company};
+  const bump = (a, b, v) => {(a.bonds || (a.bonds = {}))[b.id] = v};
+  const prop = (a, args) => act(a, 'propose', args);
+  // expel: refused in a company of two; target must be near; the target does not vote
+  const [E1, E2, E3] = [agent(), agent(), agent()];
+  for (const [i, h] of [E1, E2, E3].entries()) put(h, i, 0);
+  const CE = comp(E1, E2);
+  r = prop(E1, {kind: 'expel', hero_id: E2.name});
+  ok(!r.ok && /leave instead/.test(r.error), 'expel in a company of two is refused: ' + r.error);
+  CO.joinCompany(CE, E3);
+  put(E3, 0, 40);
+  r = prop(E1, {kind: 'expel', hero_id: E3.name});
+  ok(!r.ok && /too far/.test(r.error), 'expel of a target out of range is refused: ' + r.error);
+  put(E3, 2, 0);
+  r = prop(E1, {kind: 'expel', hero_id: E1.name});
+  ok(!r.ok && /yourself/.test(r.error), 'expel of yourself is refused: ' + r.error);
+  r = prop(E1, {kind: 'expel'});
+  ok(!r.ok && /Name the companion/.test(r.error), 'expel with no name is refused: ' + r.error);
+  bump(E1, E3, -3); bump(E2, E3, -3); bump(E3, E1, 2); bump(E3, E2, 2);
+  r = prop(E1, {kind: 'expel', hero_id: E3.name});
+  ok(r.ok && r.proposal, 'expel is proposed: ' + JSON.stringify(r).slice(0, 120));
+  const PE = CE.props[0];
+  ok(PE.kind === 'expel' && PE.target === E3.id && !CN.voters(PE).includes(E3) && !PE.votes[E3.id], 'the target is not a voter and has no vote');
+  ok((E3.events || E3.news || []).length >= 0, 'the target hears of it');
+  if (PE.status === 'open') {const m = CN.castVote(E3, PE.id, 'no'); ok(typeof m === 'string' && /do not vote/.test(m), 'the target cannot vote: ' + m); run(2)}
+  ok(PE.status === 'passed' && /leaves/.test(PE.result), 'expel passed: ' + PE.result);
+  ok(CO.companyOf(E3) !== CE && CO.isSolo(CO.companyOf(E3)) && CE.ids.length === 2, 'the target rides alone, the company keeps two');
+  ok((E1.bonds[E3.id] === -6 && E3.bonds[E1.id] === -1) || (E1.bonds[E3.id] < -3 && E3.bonds[E1.id] < 2), 'bonds fall on both sides');
+  ok(CE.log.some(e => e.kind === 'expel'), 'the company log has an expel line');
+
+  // merge: refusals
+  const mk = (n, extra) => {const L = []; for (let i = 0; i < n; i++) L.push(agent()); return L};
+  const [X1, X2] = [E1, E2], [Y1, Y2] = mk(2);
+  put(X1, 0, 5); put(X2, 1, 5); put(Y1, 4, 5); put(Y2, 5, 5);
+  const CX = CE, CY = comp(Y1, Y2);
+  const solo = E3; put(solo, 3, 3);
+  r = prop(X1, {kind: 'merge', company: solo.name});
+  ok(!r.ok && /rides alone/.test(r.error), 'merge toward a solo is refused: ' + r.error);
+  const foe = S.agents.find(b => living(b) && b.fac === 1 && !b.fellow && b.state !== 'dungeon' && b.state !== 'raid'); markPlayer(foe, true); put(foe, 4, 7);
+  const foeB = S.agents.find(b => living(b) && b.fac === 1 && b !== foe && !b.fellow && b.state !== 'dungeon' && b.state !== 'raid'); markPlayer(foeB, true); put(foeB, 5, 7);
+  const CF = comp(foe, foeB);
+  r = prop(X1, {kind: 'merge', company: foe.name});
+  ok(!r.ok && /faction/.test(r.error), 'merge across factions is refused: ' + r.error);
+  put(Y1, 0, 40);
+  r = prop(X1, {kind: 'merge', company: Y1.name});
+  ok(!r.ok && /shouting range/.test(r.error), 'merge with leaders out of range is refused: ' + r.error);
+  put(Y1, 4, 5);
+  // a failing pair: a grudge says no; both fail, nobody moves
+  bump(Y1, X1, -4);
+  r = prop(X1, {kind: 'merge', company: Y1.name});
+  ok(r.ok, 'merge proposed in both companies: ' + JSON.stringify(r).slice(0, 100));
+  run(2);
+  const PX = CX.props.find(P => P.kind === 'merge'), PY = CY.props.find(P => P.kind === 'merge');
+  ok(PX && PY && PX.pair === PY.id && PY.pair === PX.id, 'the two proposals are linked by a pair id');
+  ok(PX.status === 'failed' && PY.status === 'failed', 'either failing fails both: ' + PX.status + '/' + PY.status);
+  ok(CX.ids.length === 2 && CY.ids.length === 2 && CO.companyOf(X1) === CX, 'no one moved when the merge failed');
+  // a passing pair
+  bump(Y1, X1, 1);
+  r = prop(X1, {kind: 'merge', company: Y1.name});
+  ok(r.ok, 'merge proposed again: ' + JSON.stringify(r).slice(0, 100));
+  run(2);
+  const merged = CO.companyOf(X1);
+  ok(merged && CO.companyOf(Y1) === merged && merged.ids.length === 4, 'both passing: one company of four');
+  ok(merged.id === Math.min(CX.id, CY.id) && S.companies.every(c => c.id !== Math.max(CX.id, CY.id) || c === merged), 'the older id keeps the company (a tie in size)');
+  ok(merged.log.some(e => e.kind === 'merge') && merged.log.some(e => e.folded), 'the log has a merge line and the other log folded in');
+}
 // ---- the Fellowship keeps its roster ----
 const fr = found(autoPick(1), {ai: false});
 ok(fr.ok, 'a Fellowship founded');
@@ -201,6 +274,10 @@ r = act(FM, 'invite', {hero_id: out.id});
 ok(!r.ok && /Fellowship/.test(r.error), 'the Fellowship takes no one in by invitation: ' + r.error);
 r = act(FM, 'leave_party', {for_good: true});
 ok(!r.ok && /Fellowship/.test(r.error), 'a Fellowship member cannot leave for good: ' + r.error);
+r = act(FM, 'propose', {kind: 'merge', company: out.name});
+ok(!r.ok, 'a Fellowship member cannot propose a merge: ' + r.error);
+r = act(FM, 'propose', {kind: 'expel', hero_id: CO.members(S.fellowship)[1].name});
+ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
 
 // ---- follow (#445): walk at a hero's side without joining; lost them; autopilot keeps a standing follow ----
 {
