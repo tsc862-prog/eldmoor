@@ -636,14 +636,20 @@ console.log('start gate: --wait-ready holds the world until every mind answered 
   ok(readyA && Date.now() - t0 > 1000 && by(readyA, ga.id).warm.ms >= 2000, `it turns ready only when the slow warm-up answers (${readyA && by(readyA, ga.id).warm.ms} ms)`);
   ok(!/every mind is ready/.test(w2.out()) && /no runner/.test(w2.out().split('waiting for minds:').pop()), 'the world stays held: the other seat has no runner');
   const rb = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-down:1b', '--ollama-url', OLLAMA]);
-  const failed = await poll(h => by(h, gb.id).ready === 'failed', 20000);
+  const failed = await poll(h => by(h, gb.id).ready === 'failed' || !!(by(h, gb.id).warm && by(h, gb.id).warm.warmFailed), 20000); // a turn played after the failure turns it ready (#559), keeping warmFailed
   // the gate prints its held line on a 50 ms tick and the child's pipe may lag on a slow runner: wait for the line, bounded
-  const heldLine = failed ? await poll(() => /failed \(ollama: model runner has unexpectedly stopped/.test(w2.out()), 15000) : null;
+  const heldLine = true; // #559: a failed warm-up with its runner there no longer holds the world, so no held line names it
   if (!(failed && heldLine)) console.log('  (debug) warm state:', JSON.stringify(failed && by(failed, gb.id).warm), 'out tail:', w2.out().slice(-400));
-  ok(failed && /unexpectedly stopped/.test(by(failed, gb.id).warm.error || '') && heldLine, 'a crashed warm-up is reported (failed, with the error) and keeps the world held');
+  ok(failed && /unexpectedly stopped/.test((by(failed, gb.id).warm.error || by(failed, gb.id).warm.warmFailed || '')) && heldLine, 'a crashed warm-up is reported (failed, with the error) on /play/health');
+  // owner decision on #559: a seat whose warm-up failed but whose runner plays on counts as active, so the world runs
+  const runs = () => (w2.out().match(/every mind is ready: the world runs/g) || []).length;
+  ok(await poll(() => runs() >= 1, 15000), 'a failed warm-up whose runner is still there counts as active: the world runs');
+  // continuous (#559): the runner goes away -> held at once; a new runner -> runs again
   rb.p.kill(); await poll(h => !by(h, gb.id).claimed, 60000);
+  ok(await poll(() => /world held, waiting for minds: .*no runner/.test(w2.out().split('every mind is ready').pop()), 15000), 'its runner gone: the world is held again (the gate is continuous)');
   const rb2 = start(['scripts/agent-player.mjs', '--url', B2, '--hero', String(gb.id), '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', OLLAMA]);
-  ok(await poll(() => /every mind is ready: the world runs/.test(w2.out()), 30000), 'once every seat answered its warm-up the world runs');
+  const lastGate = () => w2.out().split(String.fromCharCode(10)).filter(l => /world held|every mind is ready/.test(l)).pop() || '', again = await poll(() => runs() >= 2 || (/world held/.test(lastGate()) && !lastGate().includes(gb.name + ':')), 60000); // the slow mock seat may stop by itself once the world runs (5 empty turns): only this seat is asked if (!again) console.log('  (debug) world tail:', w2.out().slice(-700), ' | ra tail:', ra.out().slice(-500));
+  ok(again, 'a new runner answered its warm-up: its seat no longer holds the world');
   for (const k of [ra, rb2, w2]) try {k.p.kill()} catch {}
 }
 // issue #221: every request the runners sent (agent loop, closing calls, forced scene, reflection) asked one num_ctx

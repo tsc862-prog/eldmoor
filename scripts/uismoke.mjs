@@ -386,7 +386,7 @@ console.log('start gate: ready, not just claimed');
   ok(box.textContent.includes(slow.name+': loading qwen2.5:14b (4')&&box.textContent.includes(down.name+': claimed'),'the banner says who is loading which model (and for how long) and who is only claimed');
   ok(/Start anyway/.test(box.textContent),'the banner offers Start anyway');
   R[down.id]={state:'failed',error:'ollama: no answer from qwen2.5:14b in 600 s',at:0};gate.checkRunGate(T0+2000);
-  ok(ctl.held&&box.textContent.includes('warm-up failed: ollama: no answer'),'a crashed warm-up shows in the banner with its error');
+  ok(ctl.held&&!gate.gateMissing().some(m=>m.hero===down.id)&&box.textContent.includes(slow.name),'a failed warm-up whose runner is there counts as active (owner, #559): only the seat still warming holds');
   gate.startAnyway();
   ok(!ctl.held&&box.hidden,'Start anyway releases the world');
   R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');

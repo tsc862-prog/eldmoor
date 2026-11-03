@@ -12,7 +12,10 @@
 //   3. a member the Fellowship runner lets go (its turns or budget ran out) reads 'no runner' at once and steadily,
 //      the runner line and the gate say the runner is done with it, and the gate's button restarts that runner;
 //   4. a claimed seat with no warm-up record counts as ready once its runner has played a turn;
-//   5. the runner line shows spend against the budget, with no turn cap (owner, #563).
+//   5. the runner line shows spend against the budget, with no turn cap (owner, #563);
+//   6. every mind active or the world pauses (owner decision on #559): the DM seat always counts; a runner that crashes
+//      mid-play pauses the world at once and the banner names who; restarted, it runs; the DM runner stops: paused; the
+//      owner's Resume anyway overrides until the next change.
 // Usage: npm run labelcheck
 import http from 'node:http';
 import {EventEmitter} from 'node:events';
@@ -41,7 +44,8 @@ ok(mem.length === 5 && mem.every(a => a.player), 'a Fellowship of five agent-pla
 const hello = () => mem.map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', fellow: true, role: a.fellowRole || null}));
 
 // the relay with a backend standing in for the page's socket, and the supervisor with a fake child
-const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes: hello(), dm: false})};
+const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes: hello(), dm: sim.dmSeatOn()})};
+sim.setDmSeat(true); // the DM is always an agent (#559): the page plays every world with its DM seat open
 const kids = [];
 const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 47000 + kids.length; k.stdout = new EventEmitter(); k.stderr = new EventEmitter();
   k.stdin = Object.assign(new EventEmitter(), {write() {}}); k.kill = () => setTimeout(() => k.emit('exit', null), 1); kids.push(k); return k};
@@ -56,7 +60,7 @@ const post = (path, body, origin) => fetch(base + path, {method: 'POST', headers
 
 // the page's view: the relay's links message as the socket would bring it, then the runner list poll
 const linksMsg = () => {const ids = hello().map(h => h.id);
-  return {type: 'links', links: play.links(), runners: Object.fromEntries(ids.map(id => [id, play.runnerOf(id)]).filter(e => e[1])), ready: Object.fromEntries(ids.map(id => [id, play.readyOf(id)]).filter(e => e[1]))}};
+  return {type: 'links', links: play.links(), dm: play.dmInfo(), runners: Object.fromEntries(ids.map(id => [id, play.runnerOf(id)]).filter(e => e[1])), ready: Object.fromEntries(ids.map(id => [id, play.readyOf(id)]).filter(e => e[1]))}};
 async function view() {BR.bridgeFeed(linksMsg()); RN.runnerSig(mem[0]); for (let i = 0; i < 40; i++) {await sleep(2); if (RN.allRunners().length) break} await sleep(5)}
 const norm = s => String(s).replace(/last \d+ (s|min|h) ago/g, 'last # ago').replace(/\$\d+\.\d+ of \$\d+\.\d+/g, '$ of $').replace(/\d+(\.\d+)?/g, '#'); // spend, turns, rates and ages move; the words must not
 const labels = a => ({mind: mindLabel(a).text + ' · ' + (BR.agentReadyWord(a) || '-'), run: norm(RN.runnerControl(a).textContent)});
@@ -74,6 +78,12 @@ const claim = a => post('/play/claim', {hero: a.id, runner: rid, provider: 'anth
 for (const a of mem) await claim(a);
 for (const a of mem.slice(0, 4)) await post('/play/ready', {hero: a.id, runner: rid, state: 'ready', model: 'claude-haiku-5-5', ms: 3600});
 for (const a of mem) await post('/play/call', {tool: 'status', args: {}, hero: a.id, runner: rid});
+// the DM runner (#559: its seat always counts), claimed and warmed up
+const dst = await post('/play/runner/start', {kind: 'dm', provider: 'anthropic', model: 'claude-haiku-5-5'}, 'http://localhost:5173');
+let dkid = kids[kids.length - 1], drid = `${hostname()}:${dkid.pid}:dm`;
+const dmClaim = () => post('/play/claim', {role: 'dm', runner: drid, provider: 'anthropic', model: 'claude-haiku-5-5'});
+await dmClaim(); await post('/play/ready', {role: 'dm', runner: drid, state: 'ready', model: 'claude-haiku-5-5', ms: 2100});
+ok(dst.status === 200 && play.dmInfo().claimed && play.readyOf('dm') && play.readyOf('dm').state === 'ready', 'the DM runner holds the open DM seat and is ready');
 say(`[07:23:56] [${mem[0].name}] [turn 1] claude-haiku-5-5 | 15 tool calls, 32.0 s | turn $0.0073 | member $0.0073 | run $0.0073 of $2.0000`);
 await view();
 
@@ -90,7 +100,7 @@ const seen = mem.map(() => ({mind: new Set(), run: new Set()})), gates = new Set
 await post('/play/runner/slot', {key: 'fellowship', op: 'take'}, 'http://localhost:5173').catch(() => {});
 for (let s = 1; s <= 120; s++) {
   T += 1000;
-  if (s % 8 === 0) for (const a of mem) await claim(a);
+  if (s % 8 === 0) {for (const a of mem) await claim(a); await dmClaim()}
   if (s === 60) say(`[${mem[1].name}] [pace] waiting: a turn on an event, else every 120 game min, at least 20 s apart`);
   await view();
   mem.forEach((a, i) => {const L = labels(a); seen[i].mind.add(L.mind); seen[i].run.add(L.run)});
@@ -112,7 +122,7 @@ await post('/play/call', {tool: 'wait', args: {minutes: 30}, hero: done.id, runn
 await post('/play/release', {hero: done.id, runner: rid});
 const after = new Set(), runs = new Set(), why = new Set();
 for (let s = 1; s <= 60; s++) {
-  T += 1000; if (s % 8 === 0) for (const a of mem) if (a !== done) await claim(a);
+  T += 1000; if (s % 8 === 0) {for (const a of mem) if (a !== done) await claim(a); await dmClaim()}
   await view(); if (s <= 2) continue; // the page polls the runner list every 2 s: its first poll after the release
   const L = labels(done); after.add(L.mind); runs.add(L.run); why.add(gate().join('|'));
 }
@@ -125,6 +135,41 @@ const others = mem.filter(a => a !== done).map(labels);
 ok(others.every(L => /live\) · ready/.test(L.mind) && /^Fellowship runner/.test(L.run)), 'the other four still read live and ready under the Fellowship runner');
 const rv = RN.runnerByKey('fellowship');
 ok(rv && !rv.heroes.includes(done.id) && rv.left && rv.left[0].id === done.id && rv.left[0].why === 'budget reached', 'the supervisor lists it as left, not as played');
+
+// ---- 6. every mind active or the world pauses (owner decision on #559)
+{const {ctl} = await import('../src/ui/controls.js'), box = document.getElementById('rgate');
+  const tick = async (n = 3) => {for (let i = 0; i < n; i++) {T += 1000; await dmClaim(); await view(); G.checkRunGate(T)}};
+  // a fresh Fellowship runner for all five (the old one let a member go above): the world runs
+  kid.emit('exit', 0); await tick(3);
+  const st2 = await post('/play/runner/start', {kind: 'fellowship', provider: 'anthropic', model: 'claude-haiku-5-5'}, 'http://localhost:5173');
+  const k2 = kids[kids.length - 1], rid2 = `${hostname()}:${k2.pid}:fellowship`;
+  const up = async () => {for (const a of mem) {await post('/play/claim', {hero: a.id, runner: rid2, provider: 'anthropic', model: 'claude-haiku-5-5'}); await post('/play/ready', {hero: a.id, runner: rid2, state: 'ready', model: 'claude-haiku-5-5', ms: 900})}};
+  await up(); for (let i = 0; i < 3; i++) {T += 1000; await up(); await dmClaim(); await view(); G.checkRunGate(T)}
+  ok(st2.status === 200 && !ctl.held && gate().length === 0, 'every member and the DM live: the world runs (' + gate().join(' | ') + ')');
+  // the Fellowship runner crashes mid-play: paused at once, the banner names the members
+  k2.emit('exit', 1); T += 1000; await view(); await sleep(5); for (let i = 0; i < 3; i++) {T += 1000; await dmClaim(); await view(); G.checkRunGate(T)}
+  const g6 = gate();
+  ok(ctl.held && mem.every(a => g6.some(x => x.startsWith(a.name))), 'a runner that crashes mid-play pauses the world at once and the banner names every member it played (' + g6.join(' | ') + ')');
+  ok(/Resume anyway/.test(box.textContent) && /Restart|Start/.test(box.textContent), 'the banner offers Restart/Start and Resume anyway once the world has run');
+  // restarted: it runs again
+  const st3 = await post('/play/runner/start', {kind: 'fellowship', provider: 'anthropic', model: 'claude-haiku-5-5'}, 'http://localhost:5173');
+  const k3 = kids[kids.length - 1], rid3 = `${hostname()}:${k3.pid}:fellowship`;
+  const up3 = async () => {for (const a of mem) {await post('/play/claim', {hero: a.id, runner: rid3, provider: 'anthropic', model: 'claude-haiku-5-5'}); await post('/play/ready', {hero: a.id, runner: rid3, state: 'ready', model: 'claude-haiku-5-5', ms: 900})}};
+  for (let i = 0; i < 3; i++) {T += 1000; await up3(); await dmClaim(); await view(); G.checkRunGate(T)}
+  ok(st3.status === 200 && !ctl.held, 'the runner restarted and ready: the world runs again');
+  // the DM runner stops: paused, the DM named
+  dkid.emit('exit', 0); for (let i = 0; i < 3; i++) {T += 1000; await up3(); await view(); G.checkRunGate(T)}
+  ok(ctl.held && gate().length === 1 && /^DM: /.test(gate()[0]), 'the DM runner stops: the world pauses for the DM (' + gate().join(' | ') + ')');
+  ok(sim.worldHeld() === 'gate', 'while paused, the heroes are held too (no paced turns, acting tools refused)');
+  // the owner's override holds until the next change
+  G.startAnyway(); for (let i = 0; i < 3; i++) {T += 1000; await up3(); await view(); G.checkRunGate(T)}
+  ok(!ctl.held && !sim.worldHeld(), 'Resume anyway: the world runs without the DM (the scripted DM answers as reflexes)');
+  const st4 = await post('/play/runner/start', {kind: 'dm', provider: 'anthropic', model: 'claude-haiku-5-5'}, 'http://localhost:5173');
+  dkid = kids[kids.length - 1]; drid = `${hostname()}:${dkid.pid}:dm`;
+  for (let i = 0; i < 3; i++) {T += 1000; await up3(); await dmClaim(); await post('/play/ready', {role: 'dm', runner: drid, state: 'failed', error: 'model not found', model: 'x'}); await view(); G.checkRunGate(T)}
+  ok(st4.status === 200 && !ctl.held, 'a DM runner is back (its warm-up failed, but it is there and playing: active)');
+  dkid.emit('exit', 1); for (let i = 0; i < 3; i++) {T += 1000; await up3(); await view(); G.checkRunGate(T)}
+  ok(ctl.held && /^DM: /.test(gate()[0] || ''), 'the override held only until the next change: the DM runner goes again and the world pauses again')}
 
 server.close(); try {rmSync(tmp, {recursive: true, force: true})} catch {}
 Date.now = realNow;

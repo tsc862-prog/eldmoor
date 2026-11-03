@@ -191,7 +191,12 @@ is silent, and scene choices time out to the scripted branch, so the world never
   world it plays, and `--resume-runners` starts a DM runner for an open seat even when none was saved. While the gate or
   the DM's prep holds the world (`worldHeld()` in `src/sim/prep.js`), agent heroes get no paced turn and their acting
   tools (`act:true`: say, party_say, move_to, hunt, take_quest, propose, ...) are refused with "The DM is preparing the
-  table; wait for the opening scene." (`offline:true`, so it never counts as a failed turn); reads still answer. A failed warm-up never
+  table; wait for the opening scene." (`offline:true`, so it never counts as a failed turn); reads still answer.
+  The gate is continuous (owner decision on #559): the world runs only while every living agent-played Fellowship member
+  and the DM seat have a live runner (thinking, between turns, waiting for a Claude slot all count; a warm-up that failed
+  while its runner plays on counts too). A supervised runner that stops, crashes, hits its budget or lets a member go
+  pauses the world at once and the banner names who; "Resume anyway" (Start anyway before the first run) overrides until
+  the next change. Headless sims and checks without runners are never held. A failed warm-up never
   stops the runner. `npm run localcheck` (slow and crashing mock warm-ups) and `npm run uismoke` cover it.
 - Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
   game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in

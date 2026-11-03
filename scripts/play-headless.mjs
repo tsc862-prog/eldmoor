@@ -113,9 +113,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const save = () => {try {mkdirSync(dirname(worldFile), {recursive: true}); writeFileSync(worldFile, JSON.stringify(snapshot()))} catch (e) {console.error('[play] save failed: ' + e.message)}};
   let last = Date.now(), saveT = 0, playRef = null, heldSig = null, prepSig = null, prepping = false, ran = resumed;
   // --wait-ready (issue #222): the seats not ready yet, or [] (never held without the flag)
+  // Continuous (owner decision on #559): a runner that stops or crashes releases its claim and holds the world again at once.
+  // A failed warm-up whose runner still holds the seat counts as active.
+  const active = id => {const r = playRef.readyOf(id); return !!(r && (r.state === 'ready' || r.state === 'failed') && playRef.claimed(id))};
   const notReady = () => {if (!flag('wait-ready') || !playRef) return [];
-    const out = playerSeats().filter(h => h.state !== 'dead').filter(h => {const r = playRef.readyOf(h.id); return !r || r.state !== 'ready'}).map(h => {const r = playRef.readyOf(h.id); return `${h.name}: ${r ? r.state + (r.error ? ' (' + r.error + ')' : '') : playRef.claimed(h.id) ? 'claimed' : 'no runner'}`});
-    if (dmSeatOn()) {const r = playRef.readyOf('dm'); if (!r || r.state !== 'ready') out.push(`DM: ${r ? r.state + (r.error ? ' (' + r.error + ')' : '') : playRef.claimed('dm') ? 'claimed' : 'no runner'}`)}
+    const out = playerSeats().filter(h => h.state !== 'dead').filter(h => !active(h.id)).map(h => {const r = playRef.readyOf(h.id); return `${h.name}: ${r ? r.state + (r.error ? ' (' + r.error + ')' : '') : playRef.claimed(h.id) ? 'claimed' : 'no runner'}`});
+    if (dmSeatOn()) {const r = playRef.readyOf('dm'); if (!active('dm')) out.push(`DM: ${r ? r.state + (r.error ? ' (' + r.error + ')' : '') : playRef.claimed('dm') ? 'claimed' : 'no runner'}`)}
     return out};
   setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now;
     const wait = notReady(), ws = wait.join(' · '); setGateHold(wait.length > 0); // heroes get no turn and no acting tool while held (#559)
