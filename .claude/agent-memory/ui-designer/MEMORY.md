@@ -17,3 +17,4 @@
 - [Table legibility](table_legibility.md): #471 banner title/chips/rows, sceneHead in core, scene-cut label plates and stacking
 - [Company frames](company_frames.md): #456 rows per company, Alone row, follow cycle, companyview.js helper for #457
 - [Chat company](chat_company.md): #506 shouts name the company when 2+ exist, shoutLine/shoutCompany in chatpanel.js
+- [Companies panel](companies_panel.md): #457 tab per company plus All, Start <company>, Companies only filter, hallBoard(C)
