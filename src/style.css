@@ -752,3 +752,8 @@ button.tbtn.danger{border-color:var(--red)}
 .scview .dgname{color:var(--gold)}
 .scwho .scp.gone{opacity:.5;text-decoration:line-through}
 @media (max-width:600px){.scview .scwho{display:flex;font-size:13px}.screen.scopen{aspect-ratio:auto;height:min(82vh,640px)}} /* a phone gets a taller map while a scene is shown */
+/* setup page: Together / Apart switch and hero count (#454) */
+.sswitch{gap:8px}
+.sswitch .mini[aria-pressed="true"],.spresets .mini[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:var(--gold)}
+.sswitch .slbl:not(:first-child){margin-left:10px}
+@media (max-width:520px){.sswitch .slbl:not(:first-child){margin-left:0;flex-basis:100%}}
