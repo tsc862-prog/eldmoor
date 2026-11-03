@@ -20,6 +20,8 @@ import {dmlog} from './dmlog.js';
 import {foundItem} from './levers.js';
 import {found as loreFound,hear as loreHear,sight as loreSight,foeName,learnPlace} from './lore.js';
 import {noticesAt} from './sightings.js';
+import {sceneOf} from './scenes.js';
+import {findProp,propLook} from './props.js'; // scene props as data (#592)
 
 export const SR={
   MIN:20,       // game minutes a search takes
@@ -51,7 +53,8 @@ const townHere=a=>CITY.find(c=>a.x>=c.x0-.5&&a.x<=c.x1+1.5&&a.y>=c.y0-.5&&a.y<=c
 const listText=L=>L.length?L.slice(0,5).map(t=>t.name).join(', '):'nothing marked';
 
 // ---- examine ----
-export function examineView(a,{what}={},R=12){const L=things(a,R),w=norm(what),town=townHere(a);
+export function examineView(a,{what}={},R=12){const L=things(a,R),w=norm(what),town=townHere(a),sc=sceneOf(a),pr=sc?findProp(sc,what):null;
+  if(pr&&(w||!L.length))return {ok:true,examined:pr.name,text:'You look closely at '+pr.name+': '+propLook(pr)+'.',hint:pr.item?'It may hold more than it shows; a search of it might turn something up.':undefined};
   if(town&&(/\b(board|notice|notices)\b/.test(w)||(!w&&!L.length))){const n=noticesAt(a,town.name);
     return {ok:true,examined:'the notice board in '+town.name,text:n.length?'Pinned up: '+n.map(x=>x.from+': "'+x.notice+'"').join(' | '):'Nothing is pinned up that concerns you.'}}
   if(!w&&!L.length)return {ok:false,error:'Nothing marked is in sight. examine takes a marked place, a landmark or its sign (look and places tell what is about); inspect covers people, creatures and items.'};
@@ -74,7 +77,15 @@ function cacheTo(a,o){const t=clean(o.cache,60),m=/^(\d+)\s*(?:g|gold)?$/i.exec(
   if(m){const g=Math.min(SR.GOLD_MAX,Number(m[1]));if(g>0){a.gold=(a.gold||0)+g;o.cacheBy=a.id;return 'Tucked away: '+g+' gold.'}return null}
   const r=foundItem(a,t);if(r.err)return null;o.cacheBy=a.id;return 'Tucked away: '+r.name+'.'}
 export function searchAct(a,{what}={},R=12){
-  const w=norm(what);let th=null;
+  const w=norm(what),sc=sceneOf(a),pr=sc?findProp(sc,what):null;let th=null;
+  if(pr&&(w||!things(a,SR.REACH).length)){const res={ok:true,searched:pr.name,took_min:SR.MIN};
+    for(const h of sayHearers(a))notify(h,a.name+' searches '+pr.name+'.',0);
+    const f=pr.item?foundItem(a,pr.item):null; // the give_item path; a full pack leaves it where it is
+    if(f&&!f.err){pr.item=null;res.result='found';res.found='Hidden in '+pr.name.replace(/^the /,'the ')+': '+f.name+'.'}
+    else{res.result='nothing';res.looked='You go over '+pr.name+' and find nothing more than what shows.';if(f&&f.err)res.note='You could not take it: '+f.err+'.'}
+    record(a,'Searched: ',pr.name+(res.result==='found'?' (found something)':' (nothing)'));
+    dmlog('search',null,[a.name+' searches '+pr.name+(res.result==='found'?' and finds something':' and finds nothing')],{hero:a.id,spot:pr.name,result:res.result},{heroes:[a.id]});
+    return res}
   if(w){th=pick(things(a,R),what);
     if(!th){const far=things(a,80).find(t=>norm(t.name)===w||norm(t.name).includes(w));
       if(far)return {ok:false,error:far.name+' is '+Math.round(far.d)+' tiles away and out of sight. move_to it first.'};
