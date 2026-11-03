@@ -57,5 +57,6 @@
 - [Arrival and session zero #452/#437](arrival_session_zero.md) — arrival/opening scenes gated on hasLinks, DM prep caps and host flag, newcomer voiced by DM, letters per company
 - [Apart companycheck #459](apart_companycheck.md) — companycheck-apart.mjs sections, fixture traps (links/seat not reset by init), heir-wait fix
 - [Starved company #530](starved_company.md) — serveStarved in dm.js refill, LEAD 120, busy not skipped, dmcheck bound 360
+- [Fireside #571](fireside.md) — fireside/debrief kinds, table.js next/liveMs/onSceneEnd hooks, hasLinks gate, 600-char lines, copy refusal, townsfolk hmem
 - [Sight events #570](sight_events.md) — sighthero.js: you-see events on coming into sight, seeker stops on sight, In sight header, Looking for
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap

@@ -32,7 +32,7 @@ import {foeName,roadsLine} from './lore.js'; // the foe as the hero knows it, ne
 import {questBrief} from './questlog.js'; // the focused quest and how many others
 import {focus,hallHooks,hallTitle} from './dmfocus.js'; // where the Fellowship rides (#165), the hall jobs that concern it (#326)
 import {homeOf} from '../data/races.js';
-import {personaLine,personaSig,selfText} from './persona.js'; // who the hero is now, one line (#409)
+import {personaLine,personaSig,selfText,toldLine} from './persona.js'; // who the hero is now, one line (#409)
 import * as ADV from '../data/adventures.js';
 import {followBrief} from './follow.js'; // who the hero follows and who follows it (#445)
 import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
@@ -84,7 +84,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),earshot:earshotLine(a),insight:sightLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
     quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
-    persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}), // the hero's own persona (#409): one line for the header, a signature, and on request the full text
+    persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}),...(toldLine(a)?{told:toldLine(a)}:{}), // stories it told of its past round the fire (#571): keep them straight // the hero's own persona (#409): one line for the header, a signature, and on request the full text
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
     aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
@@ -103,7 +103,9 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
 function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
-  return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[]}}
+  const g=a.goal&&!a.goal.done&&a.goal.text?a.goal.text:null,tl=toldLine(a);
+  return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
+    you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{})},...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)
 // Where the hero stands, for the header (#399): a town by name when it is inside one ("Highgate (town; Lowmark around it)"), so
 // an agent waiting in town no longer reads the region and calls hunt there. The same words move_to reads back.
 const inTown=(c,p)=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5; // player.js cityAt

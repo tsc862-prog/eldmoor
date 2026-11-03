@@ -58,6 +58,7 @@ const spawnSync = (cmd, args, opts = {}) => {
 let seed = 0x9e3779b9 ^ (Number(process.env.DMCHECK_SEED) || 66);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const sim = await import('../src/sim/index.js');
+const FIRE_ = (await import('../src/sim/fireside.js')).FIRE; FIRE_.ON = false; // no talk round the fire in these worlds (#571; tablecheck --fireside covers it, the DM's frame included)
 const {init, step, S, snapshot, restore, dmAct, setDmSeat, dmSeatOn} = sim;
 const {DMA, pileOn, dreamTick} = await import('../src/sim/dmagent.js');
 const {DM_TOOLS} = await import('../src/data/dm-tools.js');
@@ -742,8 +743,13 @@ console.log('NPC conversations');
   dmAct('npc_say', {conv: call.call.conv, text: 'Good. Then go.'});
   act(A, 'say', {text: 'Then we are agreed.'}); call = dmAct('npc_call');
   r = dmAct('npc_say', {conv: call.call.conv, text: 'Agreed. Go.'}); // conv alone names the person (issue #401)
-  ok(r.ok && r.ended && !TK.convWith(smith), `after ${TK.CONV.EXCHANGES} exchanges the conversation ends (${r.ended})`);
+  ok(r.ok && !r.ended && r.exchange === TK.CONV.EXCHANGES + '/' + TK.CONV.DM_EXCHANGES && TK.convWith(smith), `voiced by the DM agent, the talk goes on past ${TK.CONV.EXCHANGES} exchanges (${r.exchange}, #571)`);
+  {const more = ['Tell me of the hills.', 'Who owns the carts?', 'How far is the ore road?', 'Do the carters drink here?', 'What do you make of the guard?', 'Fair winds, smith.'];
+    for (const [i, t] of more.entries()) {act(A, 'say', {text: t}); call = dmAct('npc_call'); r = call.call ? dmAct('npc_say', {conv: call.call.conv, text: 'Answer number ' + (i + 1) + ', smith says.'}) : {ok: false}}}
+  ok(r.ok && r.ended && !TK.convWith(smith), `after ${TK.CONV.DM_EXCHANGES} exchanges the conversation ends (${r.ended})`);
+  ok(smith.hmem && smith.hmem[A.id] && smith.hmem[A.id].said === 'Fair winds, smith.' && /rumour/.test(smith.hmem[A.id].what || ''), 'the smith remembers this hero: their last words and what came of it (#571)');
   ok(S.talks.past[0] && S.talks.past[0].offers.join() === 'trade,rumour,job', 'the past conversation keeps its follow-ups');
+  ok(/Fair winds, smith/.test(TK.lastTime(smith, A) || ''), 'next time the DM sees what the person remembers of them (npc_call member.last_time): ' + TK.lastTime(smith, A));
   // a polled but silent DM: the scripted DM answers after the budget
   away(); clear(); const inn = npc('innkeeper'); beside(A, inn); TK.CONV.VOICE_MS = 60;
   dmAct('npc_call'); r = act(A, 'talk', {target: 'innkeeper', text: 'Any news?'});

@@ -77,7 +77,8 @@ const FRAME={
 const TITLE={offer:n=>n+'\'s offer',bargain:n=>'Bargaining with '+n,party:n=>'A word with '+n,tense:n=>'A tense word with '+n};
 function maybe(c,p,a,o){const E=escalation(c,p,a,o);if(!E)return null;const C=companyOf(a),n=full(p);
   const h=E.why==='offer'?hookOf(o.hook):null,job=h?'a job: '+((ADVENTURES[h.tpl]&&ADVENTURES[h.tpl].name)||h.tpl):'work';
-  const sc=openScene('talk',TITLE[E.why](n),FRAME[E.why](n,{who:a.name,line:String(o.line||'').slice(0,120),job,hostile:p.mood==='hostile'}),
+  const wordCut=(t,n)=>{t=t.trim();if(t.length<=n)return t;const x=t.slice(0,n-1),i=x.lastIndexOf(' ');return (i>n*.6?x.slice(0,i):x).trimEnd()+'…'}; // a quoted line is cut at a word, never mid-word (#571)
+  const sc=openScene('talk',TITLE[E.why](n),FRAME[E.why](n,{who:a.name,line:wordCut(String(o.line||''),120),job,hostile:p.mood==='hostile'}),
     {anchor:a.id,conv:c.id,npc:p.id,why:E.why,...(h?{hook:h.id}:{}),line:String(o.line||'').slice(0,200),tally:{}},C);
   if(!sc)return null;
   (c.esc||(c.esc={}))[E.why]=1;const d=Math.floor(S.gameMin/DAY);C.talkScenes=C.talkScenes&&C.talkScenes.d===d?C.talkScenes:{d,n:0};C.talkScenes.n++;

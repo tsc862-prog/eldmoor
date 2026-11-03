@@ -188,6 +188,7 @@ ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused 
   B.x = A.x + 40; B.y = A.y; ok(CO.shoutHearers(A).far.includes(B), 'out of range: the pair is apart'); B.x = A.x; B.y = A.y;
   // two companies camp at once, in the same place: two fires
   const ambushP2 = CAMPM.CAMP.AMBUSH_P; CAMPM.CAMP.AMBUSH_P = -1;
+  const FR = await import('../src/sim/fireside.js'); FR.FIRE.ON = false; // live agents at these camps: no talk round the fire here (#571, tablecheck --fireside)
   ok(CAMPM.leaderRest(LD, 4) === null, 'the Fellowship makes camp');
   ok(CAMPM.leaderRest(B, 2) !== null && CAMPM.leaderRest(A, 2) === null, 'the pair makes its own camp (its leader calls it) beside them');
   for (let i = 0; i < 40 && !(F.camp.phase === 'rest' && pair.camp.phase === 'rest'); i++) run(10);
