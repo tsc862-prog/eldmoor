@@ -26,7 +26,15 @@ import {PLAYER_TOOLS} from '../src/data/player-tools.js';
 
 // temperature/repeatPenalty (issue #126): a local model looping on one plan, or drifting into another language, is
 // nudged out of it; freshAfter: that many empty turns in a row and the next turn starts with a fresh context.
-export const LOCAL_DEFAULTS = {historyChars: 24000, resultChars: 1800, keptChars: 400, maxTokens: 700, callsPerReply: 3, endOnWait: true, temperature: 0.6, repeatPenalty: 1.15, freshAfter: 2};
+export const LOCAL_DEFAULTS = {historyChars: 24000, resultChars: 1800, keptChars: 400, maxTokens: 700, callsPerReply: 3, endOnWait: true, temperature: 0.6, repeatPenalty: 1.15, freshAfter: 2,
+  // the circuit breaker (issue #467: a local DM sent 21 calls in one turn, all refused): the turn ends after sameRefusals
+  // refusals of one tool or consecutiveRefusals refusals in a row; callsPerMin caps one session's tool calls over any real
+  // minute, across turns (the relay flags more than 90 as a request flood)
+  sameRefusals: 3, consecutiveRefusals: 5, callsPerMin: 60};
+// What the next turn is told after the breaker or the minute cap ended one (kept in the history as a user line).
+export const BREAK_NOTE = 'Your last turn ended early: these calls kept failing. Read the refusal, then do one small thing that fits it, or wait.';
+export const THROTTLE_NOTE = 'Your last turn ended early: too many calls in one minute. Next turn, make one or two deliberate calls.';
+const CALL_TIMES = new WeakMap(); // sess -> times of its recent tool calls (this runner process only, not saved)
 // A turn whose first answer is words without a tool call gets this once (issue #126: a small model narrated
 // a long-over fight for 100 turns without acting).
 export const REPROMPT = 'Act through a tool (look, status, move_to, hunt, rest, wait, ...). Words alone change nothing in the world; give one command now.';
@@ -121,6 +129,20 @@ export function parseTextCalls(content, list = PLAYER_TOOLS) {
     const cs = fencedCalls(m[2], M); if (!cs.length) continue;
     out.push(...cs.map((c, i) => ({function: c, start: m.index + i, end: i === cs.length - 1 ? m.index + m[0].length : m.index + i + 1})));
   }
+  // a bare call object inside the text, often behind a junk word and before a stray </tool_call> (issue #468, live:
+  // `Fragistics {"name": "fight", "arguments": {"target_id": 1}} </tool_call>` while a Timber Wolf attacked): it runs
+  for (const m of s.matchAll(/\{\s*"(?:name|function|tool)"\s*:/g)) {
+    if (out.some(c => m.index >= c.start && m.index < c.end)) continue;
+    const close = matchClose(s, m.index); if (close < 0) continue;
+    let j; try {j = JSON.parse(s.slice(m.index, close + 1))} catch {continue}
+    const f = j && j.function && typeof j.function === 'object' ? j.function : j;
+    if (!j || !('arguments' in f || 'parameters' in f || 'args' in j)) continue; // an object that merely has a name is prose
+    const cs = fencedCalls(JSON.stringify(j), M); if (cs.length !== 1) continue;
+    let start = m.index, end = close + 1;
+    const pre = /(^|\n)[ \t]*[A-Za-z_][\w-]*[ \t]*=?[ \t]*$/.exec(s.slice(0, start)); if (pre) start = pre.index + pre[1].length; // the junk word before it on its line
+    const post = /^\s*<\/tool_call>/.exec(s.slice(end)); if (post) end += post[0].length;
+    out.push({function: cs[0], start, end});
+  }
   const names = [...M.keys()].filter(n => /^\w+$/.test(n)).sort((a, b) => b.length - a.length);
   const re = new RegExp('(?<![\\w.])(' + names.join('|') + ')\\s*\\(', 'g');
   for (const m of s.matchAll(re)) {
@@ -148,6 +170,14 @@ function fencedCalls(body, M) {
   const xs = Array.isArray(j) ? j : [j], out = [];
   for (const x of xs) {const c = one(x); if (!c) return []; out.push(c)}
   return out;
+}
+// The index of the bracket closing the one at i (any of ([{), skipping strings; -1 when it never closes.
+function matchClose(s, i) {
+  let depth = 0, q = null;
+  for (let k = i; k < s.length; k++) {const c = s[k];
+    if (q) {if (c === '\\') k++; else if (c === q) q = null; continue}
+    if (c === '"') q = c; else if ('([{'.includes(c)) depth++; else if (')]}'.includes(c) && --depth === 0) return k}
+  return -1;
 }
 function matchParen(s, i) {
   let depth = 0, q = null;
@@ -183,6 +213,8 @@ export function cleanNarration(text, list = PLAYER_TOOLS, calls = null) {
   let s = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '');
   const cs = calls || parseTextCalls(s, list);
   for (const c of [...cs].sort((a, b) => b.start - a.start)) s = s.slice(0, c.start) + s.slice(c.end);
+  s = stripEcho(s).replace(/<\/?tool_call>/g, '');
+  s = s.replace(/^\s*[A-Za-z_]\w*\s*=\s*(["'])([\s\S]*?)\1\s*$/, '$2'); // a junk assignment around the words (live: INdEx="Dovas is taking care of me.")
   const tools = byName(list);
   s = s.split(/\r?\n/).map(l => {
     let x = l;
@@ -192,8 +224,26 @@ export function cleanNarration(text, list = PLAYER_TOOLS, calls = null) {
     return x.replace(/\(\s*\)/g, '').replace(/[ \t]+([.,!?])/g, '$1').trimEnd();
   }).filter(l => !/^\s*([-*_=]{3,}|[()`]+)\s*$/.test(l)).join('\n');
   s = s.replace(/\n{3,}/g, '\n\n').trim();
+  // English with a Chinese sentence in it or at its end loses that sentence; a reply with little English left stays as it is
+  // for the caller to flag and re-prompt (notEnglish)
+  if (s && /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(s)) {const c = cutForeign(s); if ((c.match(/[A-Za-z]/g) || []).length >= 12) s = c}
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 }
+// The end-of-turn instruction echoed back (issue #468: 38 of 630 qwen turns). "End your turn now: one short sentence of
+// narration in the third person about what you did and why." is cut wherever it appears; at an "End of turn:" label the
+// words after it are the narration asked for (live: "... End of turn: Mirora confirms her status ..."), else those before.
+const ECHO = /\(?\**\s*(?:the wait is over\.?\s*)?\b(?:end|nd)\s+(?:your|the|every)\s+turn(?:\s+now)?\s*(?:[:,-]\s*)?(?:(?:with|by replying with)\s+)?(?:one|a)\s+short\s+sentence(?:\s+of\s+narration)?(?:\s+in\s+(?:the\s+)?third\s+person)?(?:\s+in\s+plain\s+text)?(?:\s+about\s+what\s+you\s+did(?:\s+and\s+why)?)?\s*[.:]?\s*\**\)?/gi;
+const END_LABEL = /\**\s*\bend\s+of\s+(?:the\s+|my\s+|this\s+)?turn\b\s*[.:!\-–]*\s*\**/i;
+export function stripEcho(text) {
+  let s = String(text || '').replace(ECHO, ' ');
+  for (let k = 0; k < 4; k++) {const m = END_LABEL.exec(s); if (!m) break;
+    const before = s.slice(0, m.index).trim(), after = s.slice(m.index + m[0].length).trim();
+    s = (after.match(/\p{L}/gu) || []).length >= 8 ? after : before}
+  return s.replace(/[ \t]{2,}/g, ' ').trim();
+}
+// Non-Latin script runs (Chinese, Japanese, Korean, Thai, Cyrillic, Arabic ...) with the punctuation that follows them.
+const FOREIGN_RUN = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}][^A-Za-zÀ-ɏ]*/gu;
+export function cutForeign(text) {return String(text || '').replace(FOREIGN_RUN, ' ').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+([.,!?])/g, '$1').trim()}
 
 // ---- forced scene turns (issue #163) ----
 // When a member's own Table turn is open, the runner does not hand it the free tool loop: it asks the model for
@@ -398,6 +448,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   const turnMsgs = [{role: 'user', content: prompt, turn: 1}];
   const sys = () => sess.system + (L.mode === 'json' ? '\n\n' + JSON_RULES + actionCatalogue(list) : rules);
   const tools = ollamaTools(list);
+  const refusedBy = new Map(); let inRow = 0;
   const exec = async (name, rawArgs) => {
     const c = cleanArgs(name, rawArgs, list); stat.tools++;
     on('tool', name, c.args || rawArgs);
@@ -408,8 +459,19 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     stat.calls.push(r && typeof r === 'object' && r.ok === false ? {name, ok: false, error: String(r.error || 'error').slice(0, 140), ...(r.refused ? {refused: true} : {})} : {name, ok: true}); // the behavior log's turn line (issue #129)
     if (r && typeof r === 'object' && r.ok === false && (r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')))) stat.gameDown = (stat.gameDown || 0) + 1; // the page was away, not the model's mistake
     if (/"dead":true/.test(text)) stat.dead = true;
+    // the breaker (#467): a refusal (not the page being away) counts per tool and in a row; enough ends the turn
+    const refused = r && typeof r === 'object' && r.ok === false && !(r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')));
+    if (refused) {refusedBy.set(name, (refusedBy.get(name) || 0) + 1); inRow++;
+      if (!stat.broke && (refusedBy.get(name) >= o.sameRefusals || inRow >= o.consecutiveRefusals)) {stat.broke = {tool: name, n: refusedBy.get(name), inRow, error: String(r.error || '').slice(0, 140)}; on('break', stat.broke)}}
+    else inRow = 0;
     return text;
   };
+  // the minute cap (#467): this session's tool calls over the last real minute, across turns
+  const times = CALL_TIMES.get(sess) || []; CALL_TIMES.set(sess, times);
+  const capHit = () => {const now = Date.now(); while (times.length && now - times[0] > 60000) times.shift();
+    if (times.length < o.callsPerMin) {times.push(now); return false}
+    if (!stat.throttled) {stat.throttled = true; on('throttle', times.length)} return true};
+  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled;
   for (let i = 0; i < toolTurns && !stat.dead; i++) {
     let res;
     try {res = await ask(() => ({model, messages: [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)], ...(L.mode === 'json' ? {format: actionSchema(list)} : {tools}), maxTokens: o.maxTokens, ...sample}))}
@@ -425,8 +487,10 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
       if (jn && j.tool !== 'end' && !notEnglish(jn)) on('text', jn);
       if ((j.tool === 'end' || !j.tool) && (!stat.tools || notEnglish(j.narration)) && !reprompted && i < toolTurns - 1) {reprompted = stat.reprompted = true; turnMsgs.push({role: 'user', content: notEnglish(j.narration) ? REPROMPT_EN : REPROMPT}); continue}
       if (j.tool === 'end' || !j.tool) {stat.narration = jn; break}
+      if (capHit()) break;
       const text = await exec(j.tool, j.args);
       turnMsgs.push({role: 'user', content: `Result of ${j.tool}: ${cut(text, o.resultChars)}`});
+      if (stopNow()) break;
       continue;
     }
     // calls written into the text count too, before the real ones (issue #163: scene_act written out, then a real wait)
@@ -442,10 +506,12 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     if (said && !notEnglish(said)) on('text', said);
     for (const c of calls) {
       const name = String(c.function && c.function.name || '');
+      if (stopNow()) {turnMsgs.push({role: 'tool', tool_name: name, content: '{"ok":false,"error":"Not done: the turn ended early"}'}); continue}
+      if (capHit()) {turnMsgs.push({role: 'tool', tool_name: name, content: '{"ok":false,"error":"Not done: too many calls this minute"}'}); continue}
       const text = await exec(name, c.function && c.function.arguments);
       turnMsgs.push({role: 'tool', tool_name: name, content: cut(text, o.resultChars)});
-      if (stat.dead) break;
     }
+    if (stopNow()) break; // dead, the breaker or the minute cap: no more model calls this turn
     // Small models rarely stop on their own: once the command has played out (a wait returned), the
     // turn ends with one call without tools, which can only answer in words (the narration).
     if (o.endOnWait && !stat.dead && calls.some(c => c.function && c.function.name === 'wait') && /"ok":true/.test(turnMsgs[turnMsgs.length - 1].content)) {
@@ -458,6 +524,8 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     }
     if (i === toolTurns - 1) stat.capped = true;
   }
+  // the breaker or the minute cap ended the turn (#467): the next turn reads why, once
+  if (stat.broke || stat.throttled) turnMsgs.push({role: 'user', content: stat.broke ? BREAK_NOTE + (stat.broke.error ? ' Last refusal (' + stat.broke.tool + '): ' + stat.broke.error : '') : THROTTLE_NOTE});
   // a narration not in English is not shown, kept or counted: the turn is empty (issue #126)
   if (stat.narration && notEnglish(stat.narration)) {stat.foreign = true; for (const m of turnMsgs) if (m.narr && m.content === stat.narration) m.content = '(not in English)'; stat.narration = ''}
   if (stat.narration) on('text', stat.narration);
@@ -480,7 +548,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
 }
 
 // Marks on a turn line (issue #126): the model was told to act, or only repeated itself.
-const turnFlags = st => (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : '');
+const turnFlags = st => (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.broke ? ' | ended early: ' + st.broke.n + ' refusals of ' + st.broke.tool + (st.broke.inRow > st.broke.n ? ' (' + st.broke.inRow + ' in a row)' : '') : '') + (st.throttled ? ' | ended early: the per-minute call cap' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : '');
 // The cost line for a local turn: tokens and seconds, cost 0.
 export const localLine = (st, model) => `${model} (local) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | $0 (local)${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 

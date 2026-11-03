@@ -27,6 +27,7 @@
 import {S,clockStr,dayNo} from './state.js';
 import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,zoneAt,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
+import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
 import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
@@ -105,7 +106,7 @@ const heroLine=a=>({id:a.id,name:a.name,lvl:a.lvl,cls:a.cls,faction:facName(a.fa
   ...(a.fellow?{fellowship:a.fellowRole||true}:{}),...(a.adv?{adventure:a.adv}:{})});
 // The centre of a region (the mean of its spawn points), for heroes_near.
 const centreOf=z=>{const P=ZPTS[z]||[];if(!P.length)return null;let x=0,y=0;for(const p of P){x+=p.x;y+=p.y}return {x:x/P.length,y:y/P.length}};
-function placeOf(near){const s=String(near||'').trim();if(!s)return null;
+function placeOf(near){const nt=nearText(near);if(nt.err)return null;const s=String(nt.s||'').trim();if(!s)return null;
   const m=/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/.exec(s);if(m)return {x:Number(m[1]),y:Number(m[2]),label:'around '+m[1]+','+m[2]};
   const lo=s.toLowerCase(),h=S.agents.find(a=>alive(a)&&!a.hidden&&(String(a.id)===s||a.name.toLowerCase()===lo));if(h)return {x:h.x,y:h.y,label:'around '+h.name};
   const c=townOf(s);if(c)return {x:c.gate.x,y:c.gate.y,label:'around '+c.name+'’s gate',town:c.name};
@@ -326,7 +327,7 @@ function leverParams(name,a){let params=a.params;
   const def=LEVERS[name];if(!def)return params;
   for(const k in a)if(!PULL_KEYS.includes(k)&&k in def.params&&!(k in params))params[k]=a[k];
   const pts=Object.keys(def.params).filter(k=>def.params[k].type==='point'),num=v=>v!==''&&v!=null&&Number.isFinite(Number(v));
-  const asPt=v=>{if(typeof v==='string'){const m=/^\s*\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?\s*$/.exec(v);return m?{x:Number(m[1]),y:Number(m[2])}:v}
+  const asPt=v=>{if(typeof v==='string'){const t=nearText(v),m=/^\s*\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?\s*$/.exec(t.s||v);return m?{x:Number(m[1]),y:Number(m[2])}:v} // "Town,dx,dy" and {"x":..} as text too (#467)
     if(Array.isArray(v)&&v.length===2&&num(v[0])&&num(v[1]))return {x:Number(v[0]),y:Number(v[1])};
     if(v&&typeof v==='object'&&num(v.x)&&num(v.y))return {x:Number(v.x),y:Number(v.y)};return v};
   for(const k of pts)if(params[k]!=null)params[k]=asPt(params[k]);
@@ -381,7 +382,7 @@ const nearestTown=p=>CITY.reduce((b,c)=>!b||dist(p,c.gate)<dist(p,b.gate)?c:b,nu
 const nearTakes=()=>'near takes "fellowship", a member ('+fellows().map(a=>a.name).join(', ')+'), a hero, "x,y", a town ('+CITY.map(c=>c.name).join(', ')+'), a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+')'+((S.places||[]).length?', a place ('+S.places.slice(0,8).map(p=>p.name).join(', ')+')':'')+' or a region ('+ZONES.join(', ')+')';
 // near -> {town?, hero?, at?, label} or {err}. o.gap keeps a spot clear of other places (mark_place); o.min/o.max set
 // how far from a hero or place the spot lies; o.townSpot asks a spot outside a town's gate as well.
-function nearSpot(near,o={}){const s=clean(near,60),lo=s.toLowerCase(),gap=o.gap||0,mn=o.min!=null?o.min:1,mx=o.max!=null?o.max:5;
+function nearSpot(near,o={}){const nt=nearText(near);if(nt.err)return {err:nt.err};const s=clean(nt.s,60),lo=s.toLowerCase(),gap=o.gap||0,mn=o.min!=null?o.min:1,mx=o.max!=null?o.max:5;
   if(!s)return {err:'near is required'};
   const gateSpot=c=>o.townSpot?openSpot(c.gate,LK.TOWN_CLEAR+.5,LK.TOWN_CLEAR+6,gap):null;
   const fromHero=h=>{if(h.state==='town'||h.state==='dungeon'){const c=CITY.find(x=>x.name===h.town)||nearestTown(h);return {town:c.name,hero:h,label:'in '+c.name,at:gateSpot(c)}}
@@ -390,7 +391,7 @@ function nearSpot(near,o={}){const s=clean(near,60),lo=s.toLowerCase(),gap=o.gap
     const L=fo.members.filter(a=>a.state!=='town'&&!a.hidden),h=L.find(a=>a.x===fo.x&&a.y===fo.y)||L[0];
     if(h)return fromHero(h);const c=fo.town;return c?{town:c.name,label:'in '+c.name,at:gateSpot(c)}:{err:'the Fellowship has no town'}}
   const m=/^\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?$/.exec(s);
-  if(m){const p={x:Number(m[1]),y:Number(m[2])},e=spotErr(p),at=openSpot(p,0,3,gap);return at?{at,label:'at '+at.x+','+at.y}:{err:'no open ground at '+m[1]+','+m[2]+(e?' ('+e+')':'')}}
+  if(m){const p={x:Number(m[1]),y:Number(m[2])},e=spotErr(p),at=openSpot(p,0,3,gap);return at?{at,label:(nt.from?'off '+nt.from+' ':'')+'at '+at.x+','+at.y}:{err:'no open ground at '+m[1]+','+m[2]+(e?' ('+e+')':'')+pointHint(s)}}
   const h=S.agents.find(a=>alive(a)&&!a.hidden&&(String(a.id)===s||a.name.toLowerCase()===lo));if(h)return fromHero(h);
   const c=townOf(s);if(c)return {town:c.name,label:'in '+c.name,at:gateSpot(c)};
   const pl=(S.places||[]).find(p=>(p.name||'').toLowerCase()===lo||String(p.id)===s);if(pl){const at=openSpot(pl,Math.max(mn,gap),mx+gap,gap);return at?{at,label:'near '+pl.name}:{err:'no open ground near '+pl.name}}
