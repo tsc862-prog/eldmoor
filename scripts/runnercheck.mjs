@@ -95,7 +95,7 @@ console.log('runner routes (fake children)');
 
   const on = await mk(true);
   g = await req(on.base, '/play/runner');
-  ok(g.enabled === true && g.max === MAX_RUNNERS && g.kinds.hero.defaults.maxTurns === 20 && g.providers.includes('ollama'), 'with --runners: enabled, with the kinds, caps and providers');
+  ok(g.enabled === true && g.max === MAX_RUNNERS && g.kinds.hero.defaults.maxTurns === null && g.kinds.hero.defaults.budget === 1 && g.providers.includes('ollama'), 'with --runners: enabled, with the kinds, caps and providers');
   s = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 1}, origin: 'http://evil.example'});
   ok(s.status === 403 && kids.length === 0, 'another origin is refused');
   s = await new Promise(res => {const u = new URL(on.base); const q = http.request({host: u.hostname, port: u.port, path: '/play/runner', headers: {host: 'evil.example'}}, r => {r.resume(); res({status: r.statusCode})}); q.end()});
