@@ -59,7 +59,9 @@ export async function mapping(m){
   if(!pick)throw new ArtError('model',`${m.repo}: no live text-to-image route on ${SUPPORTED.join(' or ')} (has: ${Object.keys(map).join(', ')||'none'})`);
   return {provider:pick,providerId:map[pick].providerId,adapter:map[pick].adapter,adapterWeightsPath:map[pick].adapterWeightsPath}}
 
-export function promptOf(man,m,e){return [m.trigger,e.prompt,man.style].filter(Boolean).join(', ')}
+// The top-level style, or the kind's own (manifest kindStyle: buildings and landmarks are not seamless ground tiles).
+export const styleOf=(man,e)=>(man.kindStyle&&man.kindStyle[e.kind])||man.style;
+export function promptOf(man,m,e){return [m.trigger,e.prompt,styleOf(man,e)].filter(Boolean).join(', ')}
 export function negativeOf(man,e){return [e.negative,man.negativeStyle].filter(Boolean).join(', ')}
 
 // The HTTP request for one image. fal-ai takes its own body (prompt, image_size, loras); hf-inference takes the
