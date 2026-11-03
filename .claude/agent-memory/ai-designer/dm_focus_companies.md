@@ -33,3 +33,8 @@ DM focus across companies (#450, merged via PR from `ai/dm-focus-companies`, 202
 **How to apply:** for #451 fairness, hook into `touchedAt(C)`/`S.dmFocus.by` and `companiesNeeds()`; keep the slot-company branch
 drawing exactly as before or the seeded hashes move. Test pattern: dmcheck children `--companies`, `--needs`, `--focus-companies`
 (pick free heroes that are not hidden or in the Crypt, or "field" checks silently fail). See [[company-model]], [[emergent-parties]].
+
+Fixture lesson (campcheck, 2026-11-03): `SIM.leaveParty` does not exist, so `SIM.leaveParty ? ... : null` silently kept a
+"company" fixture hero in its scripted party; its leader's job rolled for it and #485's per-company Table opened a check scene
+that paused the world. Import `leaveParty` from party.js and strip the hero from active adventures' `mem`. Open gap (not fixed):
+`seekParty` excludes only `a.fellow`, so scripted musters can still draft agent heroes of other companies.
