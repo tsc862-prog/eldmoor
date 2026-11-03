@@ -5,13 +5,15 @@ import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {cryptAt,openDungeon} from '../render/dungeonview.js'; // the dungeon view (#85): a click on a crypt's door opens it
 import {renderHero,renderTops,ranked,setPicker} from './panels.js';
-import {fellows} from '../sim/fellowship.js';
+import {companies} from '../sim/company.js';
+import {followedCompany,followedMembers,companyLabel,followNext} from './companyview.js'; // the follow cycle (#456)
 import {regionBox,regionList,getRegion,setRegion} from './region.js'; // region view (#430)
 import {renderConditions} from './conditions.js';
 import {refreshChronicle} from './fellowship.js';
 
-// Follow Fellowship (#68): frame every living member who is out in the open (not inside the Crypt).
-export function fellowFrame(){const L=fellows().filter(a=>!a.hidden);if(!L.length)return null;
+// Follow Fellowship (#68), Follow <company> (#456): frame every living member of the followed company who is out in the
+// open (not inside the Crypt).
+export function fellowFrame(){const L=followedMembers().map(m=>m.hero).filter(a=>a&&a.state!=='dead'&&!a.hidden);if(!L.length)return null;
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of L){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
   return {x:(x0+x1)/2,y:(y0+y1)/2,w:x1-x0,h:y1-y0}}
 cam.frame=fellowFrame;
@@ -26,9 +28,17 @@ const DRAG_PX=4;
 // Reflect the camera state in the view buttons and the hint.
 export function syncView(){const fel=cam.view==='fellow',reg=cam.view==='region',map=cam.view!=='follow'&&!fel&&!reg;
   $('vMap').setAttribute('aria-pressed',String(map&&cam.zoom===1));$('vFol').setAttribute('aria-pressed',String(cam.view==='follow'));
-  const vf=$('vFel');if(vf){vf.hidden=!fellows().length;vf.setAttribute('aria-pressed',String(fel))}
+  const vf=$('vFel'),C=followedCompany(),n=companies().length,lbl=companyLabel(C);
+  if(vf){vf.hidden=!n;vf.setAttribute('aria-pressed',String(fel));
+    // one company: "Fellowship" as before (or the solo's name); several: "Follow <company>", a click again moves to the next
+    const t=n>1?'Follow '+lbl:C&&C.slots?'Fellowship':lbl;if(vf.textContent!==t)vf.textContent=t;
+    const tip=n>1?'Frame '+lbl+(fel?'. Click again for the next company ('+n+' in all)':'; click again to cycle through the '+n+' companies'):'Frame the whole '+(C&&C.slots?'Fellowship':'company');if(vf.title!==tip)vf.title=tip}
   const vr=$('vReg');if(vr){const want=getRegion()==null?'':String(getRegion());if(vr.value!==want)vr.value=want}
-  $('hint').textContent=reg?'Viewing '+(vr&&vr.selectedOptions&&vr.selectedOptions[0]?vr.selectedOptions[0].textContent:'a region'):fel?'Following the Fellowship':cam.view==='follow'?'Following '+(cam.sel?cam.sel.name:''):cam.zoom===1?'Tap a hero to follow · wheel to zoom':'Drag to pan · wheel to zoom'}
+  const h=$('hint'),ht=reg?'Viewing '+(vr&&vr.selectedOptions&&vr.selectedOptions[0]?vr.selectedOptions[0].textContent:'a region'):fel?'Following '+(C&&C.slots&&n===1?'the Fellowship':lbl):cam.view==='follow'?'Following '+(cam.sel?cam.sel.name:''):cam.zoom===1?'Tap a hero to follow · wheel to zoom':'Drag to pan · wheel to zoom';if(h.textContent!==ht)h.textContent=ht}
+// The follow button and hint name the followed company: refresh them when the companies change (called by the frames'
+// 0.3 s render; a no-op while nothing changed).
+let followSig='';
+export function syncFollow(){const C=followedCompany(),k=companies().map(x=>x.id).join(',')+'|'+(C?C.id+':'+companyLabel(C):'');if(k===followSig)return;followSig=k;syncView()}
 
 // 'map' is the free camera (the Whole map button also resets the zoom); 'follow' tracks cam.sel.
 export function setView(v){cam.view=v;if(v==='map'&&R)R.setZoom(1);syncView()}
@@ -49,7 +59,8 @@ export function initControls(renderer){R=renderer;
     ctl.speed=+b.dataset.sp;document.querySelectorAll('[data-sp]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))}));
   $('vMap').onclick=()=>setView('map');
   $('vFol').onclick=()=>{if(!cam.sel)select(ranked()[0]);setView('follow')};
-  if($('vFel'))$('vFel').onclick=()=>setView(fellows().length?'fellow':'map');
+  // the follow cycle (#456): the first click frames the followed company, each next click follows the next company
+  if($('vFel'))$('vFel').onclick=()=>{if(!companies().length){setView('map');return}if(cam.view==='fellow'&&companies().length>1)followNext();setView('fellow')};
   $('vNext').onclick=()=>{const r=ranked();const i=cam.sel?r.indexOf(cam.sel):-1;select(r[(i+1)%r.length]);setView('follow')};
   $('zIn').onclick=()=>renderer.setZoom(renderer.stepZoom(renderer.currentZoom(),1));
   $('zOut').onclick=()=>renderer.setZoom(renderer.stepZoom(renderer.currentZoom(),-1));
