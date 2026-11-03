@@ -306,6 +306,24 @@ if (comp && comp.ids.length > 1) {
     ok(CN.leaderOfC(M2) !== zc, 'the companion still does not lead');
   }
 }
+// ---- elites scale to the company that meets them (#502) ----
+{
+  const T = await import('../src/sim/table.js');
+  const f = (n, avg, lvl) => T.eliteFactor(n, avg, lvl);
+  ok(f(5, 10, 10).hp === 1 && f(5, 10, 10).hit === 1, 'a full five meets an elite as written');
+  ok(f(1, 10, 10).hp < f(2, 10, 10).hp && f(2, 10, 10).hp < f(4, 10, 10).hp && f(4, 10, 10).hp < 1, 'a solo and a pair meet it scaled down, a smaller company more');
+  ok(f(2, 8, 13).hp < f(2, 8, 9).hp, 'an elite far over the company level is cut more');
+  const heroes = S.agents.filter(h => living(h)).slice(0, 5);
+  const mk = () => {const m = S.mobs.find(x => x.alive && !x.gone); m.elite = true; m.maxhp = m.hp = 1000; m.hit = 1; m.lvl = heroes[0].lvl; delete m.scaled; return m};
+  let m = mk(); T.scaleElite({id: 99}, heroes.slice(0, 2), {mob: m.id});
+  ok(m.scaled && m.maxhp < 1000 && m.hp === m.maxhp && m.hit < 1, 'a pair elite is scaled down: ' + m.maxhp + ' hp, hit ' + m.hit.toFixed(2));
+  const pair = m.maxhp; T.scaleElite({id: 99}, heroes.slice(0, 1), {mob: m.id});
+  ok(m.maxhp === pair, 'scaled once only');
+  m = mk(); T.scaleElite({id: 99}, heroes.slice(0, 1), {mob: m.id});
+  ok(m.maxhp < pair, 'a solo meets it lighter than a pair: ' + m.maxhp);
+  m = mk(); T.scaleElite({id: 99, slots: true}, heroes.slice(0, 2), {mob: m.id});
+  ok(m.maxhp === 1000 && !m.scaled, 'the five-slot company is never scaled');
+}
 // ---- the Fellowship keeps its roster ----
 const fr = found(autoPick(1), {ai: false});
 ok(fr.ok, 'a Fellowship founded');
