@@ -37,6 +37,7 @@ import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../dat
 import * as D from '../data/adventures.js';
 import {PLAYER_TOOLS} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
+import {soloFor,companyOf,leaveCompany} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,findMob,turnIn,huntZone} from './heroes.js';
 import {partyMates,leaderOf,leaveParty} from './party.js';
@@ -161,9 +162,11 @@ export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
   if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
-    ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');return true}
+    ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');soloFor(a);return true}
   if(a.fellow&&a.state!=='dead')return false; // the Fellowship is always agent-played (#148): a member is handed back only by leaving
-  a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);return true}
+  a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
+  {const C=companyOf(a);if(C&&!C.slots)leaveCompany(a)} // out of agent play: a solo's company ends with it
+  return true}
 export const isPlayer=a=>!!(a&&a.player);
 
 // ---- the reduced state machine ----

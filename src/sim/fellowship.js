@@ -4,17 +4,20 @@
 // Roles are fixed (owner's rule): one Tank (Warrior), one Healer (Priest) and three DPS (Mage,
 // Hunter, Rogue; one of each preferred, repeats allowed). SLOTS lists them in display order.
 //
-// S.fellowship = {id, name, fac, hall, slots:{tank,healer,dps1,dps2,dps3: heroId|null}, ids:[heroId],
+// Companies (#402, sim/company.js): the Fellowship is the company that carries the five slots. S.fellowship is an
+// accessor over S.companies (that company, or null); the company is {id, name, fac, hall, slots:{tank,healer,dps1,dps2,
+//   dps3: heroId|null}, ids:[heroId] (slot order), seed (the name's hash seed), from:{heroId: home town before joining},
 //   founded (gameMin), day (current session day), log:[entry], past:[{id,name,cls,slot,lvl,cause,day}],
-//   npcs:[name], dmSeen (last DM log id read), ai (relay enrichment on), enrich:{calls,ok,fail,usd,ms}}
+//   npcs:[name], dmSeen (last DM log id read), ai (relay enrichment on), enrich:{calls,ok,fail,usd,ms}, letters}
 // log entry: {id, day, t, gameMin, kind, parts}; kinds: found join leave adventure scene roll branch
 //   complication outcome npc fight level kill death recruit session thread. Parts follow the chronicle
 //   convention (strings, heroes, {t,c} spans), so every name in the panel is clickable.
-// Members carry a.fellow=true, a.fellowRole (slot key), a.fellowFrom (home town before joining; the
-// Fellowship lodges in its hall town so the five muster at one gate), a.persona, a.backstory, a.memory.
+// Members carry a.company (the company id); a.fellow and a.fellowRole (slot key) are read-only accessors derived from
+// it (company.js linkHero). The home town before joining is C.from[id] (the Fellowship lodges in its hall town so the
+// five muster at one gate). Members also carry a.persona, a.backstory, a.memory.
 //
 // How it runs (fellowshipTick, once per step, a no-op without a Fellowship):
-//   muster   the five form one party (p.fellow) in town; party.js keeps the usual follow / shared XP /
+//   muster   the five form one party (p.company; p.fellow is its accessor) in town; party.js keeps the usual follow / shared XP /
 //            heal behaviour, never dissolves it on a level gap and never lets a member join another party
 //   hold     a member at the gate waits (up to HOLD_MAX real seconds) for companions still selling,
 //            questing or walking home, so the party leaves together
@@ -40,14 +43,14 @@ import {markPlayer} from './player.js';
 import {seedProfs} from './professions.js';
 import {buildPersona,buildBackstory,personaSnapshot,backstorySnapshot,applyPersona,applyBackstory,ROLE_NAME,keepSelf} from './persona.js';
 import {STANCE_MAX} from '../data/prompts.js';
+import {DPS,HEALERS,campaign as companyCampaign,openThreads as companyThreads,newCompany,attach,leaveCompany,linkParty,soloFor,companyTick} from './company.js';
 import {remember,memOf,refreshStances,stanceEvent,setSummariser,memorySnapshot,applyLong} from './memory.js';
 
-export const DPS=['Mage','Hunter','Rogue','Skald'];
-export const HEALERS=['Priest','Wildspeaker'];
+export {DPS,HEALERS,LOG_CAP,setWitness} from './company.js';
 export const SLOTS=[{key:'tank',role:'tank',label:'Tank',cls:['Warrior']},{key:'healer',role:'healer',label:'Healer',cls:HEALERS},
   {key:'dps1',role:'dps',label:'DPS',cls:DPS},{key:'dps2',role:'dps',label:'DPS',cls:DPS},{key:'dps3',role:'dps',label:'DPS',cls:DPS}];
 export const SLOT_KEYS=SLOTS.map(s=>s.key);
-export const LOG_CAP=300,HOLD_MAX=20,TIMEOUT={backstory:65000,persona:45000,memory:16000};
+export const HOLD_MAX=20,TIMEOUT={backstory:65000,persona:45000,memory:16000};
 const slotOf=k=>SLOTS.find(s=>s.key===k);
 const lcRole=k=>{const l=slotOf(k).label;return l==='DPS'?l:l.toLowerCase()};
 export const fits=(k,a)=>!!(a&&slotOf(k)&&slotOf(k).cls.includes(a.cls));
@@ -70,23 +73,15 @@ export const fellowParty=()=>S.parties.find(p=>p.fellow)||null;
 export const roleName=a=>{const s=a&&a.fellowRole&&slotOf(a.fellowRole);return s?s.label:null};
 
 // ---- the campaign log ----
-var witnessFn; // no initializer: reach.js may set it while this module is still loading // sim/reach.js (#182): who was apart while this happened. A var, set while the import cycle loads.
-export function setWitness(f){witnessFn=f}
-export function campaign(kind,...parts){const F=S.fellowship;if(!F)return null;
-  const e={id:F.seq=(F.seq||0)+1,day:day(),t:clockStr(),gameMin:Math.round(S.gameMin),kind,parts};
-  F.log.unshift(e);if(F.log.length>LOG_CAP)F.log.pop();if(witnessFn)witnessFn(kind,plain(parts).slice(0,80));return e}
+// (reach.js's witness hook, #182, now lives in company.js and is re-exported above.)
+export function campaign(kind,...parts){return companyCampaign(S.fellowship,kind,...parts)}
 // The same beat for several members at once (a shared kill, a party level-up) is one line: 'A, B and C slew ...'.
 export function campaignBy(kind,a,...tail){const F=S.fellowship;if(!F)return null;const e=F.log[0],tt=plain(tail);
   if(e&&e.kind===kind&&e.tail===tt&&Math.abs(e.gameMin-S.gameMin)<=3&&Array.isArray(e.who)&&!e.who.includes(a.id)){e.who.push(a.id);
     const hs=e.who.map(byId).filter(Boolean),ps=[];hs.forEach((h,i)=>{ps.push(h);if(i<hs.length-2)ps.push(', ');else if(i===hs.length-2)ps.push(' and ')});e.parts=[...ps,...tail];return e}
   const n=campaign(kind,a,...tail);n.who=[a.id];n.tail=tt;return n}
 // Open threads: unfinished jobs, living nemeses, oaths still sworn. Computed live, not stored.
-export function openThreads(){const F=S.fellowship;if(!F)return [];const out=[],seen=new Set();
-  for(const v of S.adventures||[])if(v.phase==='active'&&v.mem&&v.mem.some(id=>F.ids.includes(id)))out.push({kind:'job',parts:['Unfinished job: ',gd(v.title),' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+')']});
-  for(const p of F.plans||[])if(p.status==='open')out.push({kind:'meeting',parts:['Meeting: ',gd(p.where),' at '+p.atText+' ('+p.whoNames.join(', ')+' know)']}); // #182
-  for(const a of fellows()){for(const id in a.nemesis||{}){const n=byId(id);if(alive(n)&&!seen.has(n.id)){seen.add(n.id);out.push({kind:'nemesis',parts:['Blood owed: ',n,' of the '+FAC[n.fac].name+' (',a,' swore it for '+a.nemesis[id]+')']})}}
-    if(a.goal&&!a.goal.done)out.push({kind:'oath',parts:[a,' swore to ',gd(a.goal.text.charAt(0).toLowerCase()+a.goal.text.slice(1)),' ('+(a.goal.progress||0)+'/'+a.goal.need+')']})}
-  return out}
+export const openThreads=()=>companyThreads(S.fellowship);
 
 // ---- names in faction voice (a lore-keeper pass reviews the word lists) ----
 const NAME_PARTS=[
@@ -141,9 +136,10 @@ export function found(slots,o={}){if(S.fellowship)return {ok:false,error:'A Fell
   const bad=checkSlots(slots,fac);if(bad)return {ok:false,error:bad};
   const filled={};for(const s of SLOTS){const id=slots[s.key];filled[s.key]=id!=null?byId(id):recruit(fac,s.cls.find(c=>!SLOTS.some(t=>t.key!==s.key&&filled[t.key]&&filled[t.key].cls===c))||s.cls[0])}
   const mem=SLOT_KEYS.map(k=>filled[k]);let lead=mem[0];for(const b of mem)if(b.lvl>lead.lvl)lead=b;
-  const F=S.fellowship={id:++S.uid,name:'',fac,hall:homeOf(lead).name,slots:{},ids:[],founded:Math.round(S.gameMin),day:day(),log:[],past:[],npcs:[],
-    dmSeen:S.dmLogSeq||0,ai:o.ai!==false,minds:'agent',enrich:{calls:0,ok:0,fail:0,usd:0,ms:0},seq:0};
-  F.name=(o.name&&String(o.name).trim().slice(0,40))||fellowshipName(fac,lead,F.id);
+  const seed=++S.uid; // the name's hash seed (it was the Fellowship's id before companies, #438; uid use unchanged)
+  const F=Object.assign(newCompany({fac,lead}),{seed,slots:{},from:{},dmSeen:S.dmLogSeq||0,ai:o.ai!==false,minds:'agent',enrich:{calls:0,ok:0,fail:0,usd:0,ms:0}});
+  S.fellowship=F;if(S.followId==null)S.followId=F.id;
+  F.name=(o.name&&String(o.name).trim().slice(0,40))||fellowshipName(fac,lead,seed);
   for(const s of SLOTS)join(filled[s.key],s.key,null,true);
   const roster=[];mem.forEach((b,i)=>{roster.push(b,' ('+slotOf(SLOT_KEYS[i]).label+')');if(i<mem.length-2)roster.push(', ');else if(i===mem.length-2)roster.push(' and ')});
   campaign('found',gd(F.name),' is founded in '+F.hall+': ',...roster,'.');
@@ -159,8 +155,8 @@ export function found(slots,o={}){if(S.fellowship)return {ok:false,error:'A Fell
 export function join(a,key,why,quiet){const F=S.fellowship;if(!F||!alive(a)||!fits(key,a))return false;
   const old=F.slots[key]!=null?byId(F.slots[key]):null;if(old&&old!==a)leave(old,'replaced');
   if(a.party&&!a.party.fellow)leaveParty(a);
-  F.slots[key]=a.id;F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);
-  a.fellow=true;a.fellowRole=key;if(a.fellowFrom==null)a.fellowFrom=a.town||null;a.town=F.hall;
+  const from=F.from||(F.from={});if(from[a.id]==null)from[a.id]=a.town||null;attach(F,a); // a solo's own company ends as it joins
+  F.slots[key]=a.id;F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);a.town=F.hall;
   memOf(a);agentMind(a); // the Fellowship is always agent-played (#148): one mind per member, its agent (#126)
   if(!quiet){campaign('recruit',a,' joins ',gd(F.name),' as its '+slotOf(key).label+(why?' ('+why+')':'')+'.');
     log(a,' takes the empty place in ',gd(F.name),' as its '+lcRole(key)+'.');
@@ -175,7 +171,10 @@ export function join(a,key,why,quiet){const F=S.fellowship;if(!F||!alive(a)||!fi
 export function leave(a,why){const F=S.fellowship;if(!F||!a)return;const k=SLOT_KEYS.find(k=>F.slots[k]===a.id);if(k)F.slots[k]=null;
   F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);
   if(a.party&&a.party.fellow)leaveParty(a);
-  a.fellow=false;delete a.fellowRole;if(a.fellowBrain){disableBrain(a);delete a.fellowBrain}if(a.fellowAgent){if(a.state!=='dead')markPlayer(a,false);delete a.fellowAgent}delete a.splitUntil;if(a.fellowFrom!=null&&a.state!=='dead'){a.town=a.fellowFrom}delete a.fellowFrom;
+  if(a.company===F.id)leaveCompany(a,{keep:true});
+  if(a.fellowBrain){disableBrain(a);delete a.fellowBrain}if(a.fellowAgent){if(a.state!=='dead')markPlayer(a,false);delete a.fellowAgent}delete a.splitUntil;
+  const from=F.from&&F.from[a.id];if(from!=null&&a.state!=='dead'){a.town=from}if(F.from)delete F.from[a.id];
+  if(a.player)soloFor(a); // still agent-played: rides on as a company of one
   if(alive(a)&&why!=='disband'){campaign('leave',a,' leaves ',gd(F.name),why?' ('+why+')':'','.');record(a,'Left ',gd(F.name),'.')}}
 
 // Who plays the members (hard rule, #148): always their agents. There is no scripted or single-call AI
@@ -199,10 +198,11 @@ export function enforceAgents(){const F=S.fellowship;if(!F)return 0;let n=0;for(
   return n}
 
 export function disbandFellowship(){const F=S.fellowship;if(!F)return;
-  for(const a of fellows())leave(a,'disband');const p=fellowParty();if(p){p.fellow=false}
+  for(const a of fellows())leave(a,'disband');const p=fellowParty();if(p){delete p.company}
   log(gd(F.name),' is disbanded. The road takes them back one at a time.');
-  S.fellowshipsPast=(S.fellowshipsPast||[]).concat([{id:F.id,name:F.name,fac:F.fac,founded:F.founded,ended:Math.round(S.gameMin),fallen:F.past.length}]).slice(-10);
-  S.fellowship=null}
+  S.companiesPast=(S.companiesPast||[]).concat([{id:F.id,name:F.name,fac:F.fac,founded:F.founded,ended:Math.round(S.gameMin),fallen:F.past.length}]).slice(-10);
+  for(const id of F.ids){const a=byId(id);if(a&&a.company===F.id)delete a.company}
+  S.fellowship=null;if(S.followId===F.id)S.followId=null}
 
 // Hardcore replacement: the most-bonded living hero who fits the slot, else the next recruit of the class.
 export function offerReplacement(key){const F=S.fellowship;if(!F||F.slots[key]!=null)return null;const s=slotOf(key),mates=fellows();
@@ -223,7 +223,7 @@ function ghost(key){const F=S.fellowship,l=(F.last||{})[key]||{},f=S.fallen.find
 function onDeath(a,key){const F=S.fellowship;F.slots[key]=null;F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);
   const lvl=a?a.lvl:0,cause=a&&a.cause||'lost';
   F.past.push({id:a?a.id:null,name:a?a.name:'?',cls:a?a.cls:'?',slot:key,lvl,cause,day:day()});
-  if(a){a.fellow=false;a.fellowPast=F.id}
+  if(a){if(a.company===F.id)delete a.company;a.fellowPast=F.id}
   const who=a&&a.kind==='hero'?a:gd(a&&a.name||'a companion');
   campaign('death',who,' fell at level '+lvl+' ('+cause+'). The '+lcRole(key)+'’s place stands empty.');
   log({t:'',c:'nar'},gd(F.name),' has lost ',who,', their '+lcRole(key)+', '+cause+'. Hardcore: there is no coming back.');
@@ -269,7 +269,7 @@ function muster(){const F=S.fellowship,L=fellows();let P=fellowParty();
   for(const b of L)if(b.party&&b.party!==P)leaveParty(b);
   if(!P){const inTown=L.filter(b=>b.state==='town'&&!b.splitUntil);if(inTown.length<2)return;
     let lead=inTown[0];for(const b of inTown)if(b.lvl>lead.lvl)lead=b;
-    P={id:++S.uid,fac:F.fac,leader:lead,mem:inTown.slice(),zone:zoneFor(Math.min(...inTown.map(b=>b.lvl)),homeOf(lead).gate),home:false,fellow:true};
+    P=linkParty({id:++S.uid,fac:F.fac,leader:lead,mem:inTown.slice(),zone:zoneFor(Math.min(...inTown.map(b=>b.lvl)),homeOf(lead).gate),home:false,company:F.id});
     for(const b of inTown)b.party=P;S.parties.push(P);return}
   if(P.home)return;
   for(const b of L)if(!b.party&&!b.splitUntil&&(b.state==='town'||(loose(b)&&b.state!=='return'&&dist(b,P.leader)<12))){P.mem.push(b);b.party=P}}
@@ -313,7 +313,7 @@ function session(){const F=S.fellowship,d=day();if(d<=F.day)return;const prev=F.
   for(const a of fellows())refreshStances(a,F.ids)}
 
 let acc=0;
-export function fellowshipTick(dt){const F=S.fellowship;if(!F)return;
+export function fellowshipTick(dt){companyTick();const F=S.fellowship;if(!F)return;
   enforceAgents();
   for(const k of SLOT_KEYS){const id=F.slots[k];if(id==null)continue;const a=byId(id);if(!alive(a))onDeath(a||ghost(k),k);else (F.last||(F.last={}))[k]={id:a.id,name:a.name,cls:a.cls,lvl:a.lvl}}
   muster();
