@@ -14,7 +14,7 @@
 // detached stubs. Functions and canvases never appear in S (savecheck asserts it).
 import {S,SAVE_VERSION,newWorldId} from './state.js';
 import {CRYPT} from '../world/map.js';
-import {GOODS,price} from '../data/items.js';
+import {GOODS,MATERIALS,price} from '../data/items.js';
 import {rollScores} from './abilities.js';
 import {convertItem} from './gear.js';
 import {convertBag} from './inv.js';
@@ -86,6 +86,7 @@ export function snapshot(){
     if(KEYS[k]){const v=KEYS[k].save(S[k],ser);if(v!==undefined)snap[k]=v;continue}
     snap[k]=k in HOMES?(S[k]||[]).map(o=>ser(o,true)):ser(S[k],false)}
   snap.GOODS={};for(const n in GOODS)snap.GOODS[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
+  snap.MATS={};for(const n in MATERIALS)snap.MATS[n]={supply:MATERIALS[n].supply,prev:MATERIALS[n].prev}; // gathered materials sold at the auction house (#257)
   snap.CRYPT={group:ser(CRYPT.group,false),cd:CRYPT.cd};
   return snap}
 
@@ -116,12 +117,13 @@ export function restore(snap){
   // refilled in place; everything else is replaced.
   for(const k in HOMES)(snap[k]||[]).forEach((e,i)=>{const o=alloc[k][i];for(const f in e)o[f]=de(e[f])});
   for(const k of Object.keys(S)){if(KEYS[k])KEYS[k].reset();else if(!(k in snap))delete S[k]}
-  for(const k in snap){if(k==='version'||k==='GOODS'||k==='CRYPT'||KEYS[k])continue;
+  for(const k in snap){if(k==='version'||k==='GOODS'||k==='MATS'||k==='CRYPT'||KEYS[k])continue;
     const v=k in HOMES?alloc[k]:de(snap[k]),cur=S[k];
     if(Array.isArray(cur)&&Array.isArray(v)){cur.length=0;for(const x of v)cur.push(x)}
     else if(k==='boss'&&cur&&v){for(const f in cur)delete cur[f];Object.assign(cur,v)}
     else S[k]=v}
   for(const n in snap.GOODS||{}){const g=GOODS[n],s=snap.GOODS[n];if(!g||!s)continue;g.supply=s.supply;g.prev=s.prev!=null?s.prev:price(n)}
+  for(const n in MATERIALS){const g=MATERIALS[n],s=snap.MATS&&snap.MATS[n];g.supply=s?s.supply:6;g.prev=s&&s.prev!=null?s.prev:price(n)} // an older save: the table's opening stock
   if(snap.CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
   for(const a of S.agents||[])if(a.profs!==undefined)normalizeProfs(a); // a.profs is optional (professions, #254): absent reads as [], present is cleaned

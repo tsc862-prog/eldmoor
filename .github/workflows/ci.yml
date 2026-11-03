@@ -35,6 +35,7 @@ jobs:
       - {name: Professions, run: npm run professioncheck}
       - {name: Recipes, run: npm run recipecheck}
       - {name: Gathering nodes, run: npm run nodecheck}
+      - {name: Gathering, run: npm run gathercheck}
       - {name: DM levers, run: npm run levercheck}
       - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
       - {name: New World setup, run: npm run setupcheck}
