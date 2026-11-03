@@ -5,6 +5,9 @@
 //      r restarts the relay with a new pid and the runner list is resumed once a page reconnects; a dirty tree and a
 //      non-fast-forward refuse `u`; a fast-forward pull with a changed package-lock.json runs npm (a mock) and restarts
 //      the relay; a changed script prints the code-changed notice; q leaves no child process and frees both ports.
+//      The art loop (#661) is the launcher's third child: started, shown by `s` (next check, spend), restarted by `u`,
+//      stopped cleanly by q (its state file says stopped), skipped by --no-art (checked on a second launcher); it talks to
+//      a dead local address only, never the real API.
 import http from 'node:http';
 import net from 'node:net';
 import {ms as fastMs} from './ci-clock.mjs'; // CI_FAST=1 scales the waits below tenfold (issue #543)
@@ -111,10 +114,11 @@ console.log('launcher (real children on spare ports)');
   writeFileSync(active, JSON.stringify({saved: 'x', runners: [{kind: 'hero', hero: 7, name: 'Tester', provider: 'ollama', model: 'qwen2.5:14b', maxTurns: 1, budget: null}, {kind: 'hero', hero: 8, name: 'Other', provider: 'ollama', model: 'qwen2.5:14b', maxTurns: 1, budget: null}]}));
   const mockNpm = join(tmp, 'mock-npm.js'); writeFileSync(mockNpm, `require('fs').appendFileSync(${JSON.stringify(join(tmp, 'npm-ran.txt'))}, process.argv.slice(2).join(' ') + ' in ' + process.cwd() + '\\n');`);
   const RP = await freePort(), VP = await freePort();
+  const artState = join(logs, 'art-loop.json'), artEnv = {ART_LOG: join(logs, 'art.log'), ART_STATE: artState, ART_ASSETS: join(tmp, 'art-assets'), HF_TOKEN: 'hf_mockUpcheck', HF_ROUTER_URL: 'http://127.0.0.1:9', HF_HUB_URL: 'http://127.0.0.1:9'};
   const ORIGIN = `http://localhost:${VP}`;
   let out = '';
   const proc = spawn(process.execPath, ['scripts/up.mjs', '--relay-port', String(RP), '--vite-port', String(VP), '--no-open', '--repo', work], {cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'],
-    env: {...process.env, AGENT_LOGS: logs, UP_NPM_CLI: mockNpm, UP_GRACE_MS: String(fastMs(15000, 3000)), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9'}});
+    env: {...process.env, ...artEnv, AGENT_LOGS: logs, UP_NPM_CLI: mockNpm, UP_GRACE_MS: String(fastMs(15000, 3000)), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9'}});
   proc.stdout.on('data', d => {out += d}); proc.stderr.on('data', d => {out += d});
   let exited = null; proc.on('exit', c => {exited = c});
   const send = s => proc.stdin.write(s + '\n');
@@ -133,6 +137,11 @@ console.log('launcher (real children on spare ports)');
     const relay1 = pidOf(/relay started \(pid (\d+)\)/), vite1 = pidOf(/vite started \(pid (\d+)\)/);
     ok(relay1 && vite1 && alive(relay1) && alive(vite1), 'both children run');
     children.push(relay1, vite1);
+    const art1 = pidOf(/art loop started \(pid (\d+)\)/);
+    ok(art1 && alive(art1), 'the art loop runs as a third child (pid ' + art1 + ')');
+    children.push(art1);
+    ok(await until(async () => { try {return JSON.parse(readFileSync(artState, 'utf8')).state === 'waiting'} catch {return false} }, 30000), 'its first pass ends and it waits for the next check (no HF server here: a problem, retried hours later)');
+    ok(/\[art\]\s+(?!\[art\])/.test(out) && !/\[art\]\s+\[art\]/.test(out), 'its output is prefixed [art] once');
     ok(await listening(RP) && await listening(VP), 'ports ' + RP + ' and ' + VP + ' are held');
     // resume: the page connects with Tester (hero 7) but not Other (hero 8)
     let m = mark(); connectPage();
@@ -150,7 +159,8 @@ console.log('launcher (real children on spare ports)');
     ok(await seen(/resumed Tester/, m, 30000), 'the new relay resumes the runner list once the page has reconnected');
     // s: status
     m = mark(); send('s');
-    ok(await seen(/relay: ok/, m, 8000) && /ollama: not reachable/.test(out.slice(m)), 'status shows the relay and Ollama');
+    ok(await seen(/relay: ok/, m, 8000) && await seen(/art loop: /, m, 8000) && /ollama: not reachable/.test(out.slice(m)), 'status shows the relay and Ollama');
+    ok(await seen(/art loop: waiting until \d{4}-\d\d-\d\d \d\d:\d\d .*; last pass made 0/, m, 8000), 's shows the art loop: its next check and last pass: ' + (out.slice(m).match(/art loop: .*/) || [''])[0]);
     // u: dirty tree refused
     appendFileSync(join(work, 'a.txt'), 'local edit\n'); m = mark(); send('update');
     ok(await seen(/update refused: the working tree has local changes/, m, 15000), 'u refuses a dirty tree');
@@ -180,6 +190,9 @@ console.log('launcher (real children on spare ports)');
     const relay3 = pidOf(/relay started \(pid (\d+)\)/, m), vite2 = pidOf(/vite started \(pid (\d+)\)/, m);
     ok(relay3 && relay3 !== relay2 && !alive(relay2) && vite2 && vite2 !== vite1 && !alive(vite1), 'the relay and (dependencies changed) Vite restarted with new pids');
     children.push(relay3, vite2);
+    const art2 = pidOf(/art loop started \(pid (\d+)\)/, m);
+    ok(art2 && art2 !== art1 && alive(art2) && !alive(art1), 'u restarts the art loop with the new scripts (' + art1 + ' -> ' + art2 + ')');
+    children.push(art2);
     ok(await seen(/update applied|\[relay\].*listening/, m, 20000) || true, 'update finishes');
     await until(async () => await listening(RP) && await listening(VP), 20000);
     // code-change notice
@@ -190,7 +203,8 @@ console.log('launcher (real children on spare ports)');
     m = mark(); send('q');
     ok(await until(async () => exited != null, 30000) !== null && exited === 0, 'q exits the launcher (code ' + exited + ')');
     await sleep(500);
-    ok(children.every(p => !alive(p)), 'no relay or Vite process is left');
+    ok(children.every(p => !alive(p)), 'no relay, Vite or art loop process is left');
+    ok(JSON.parse(readFileSync(artState, 'utf8')).state === 'stopped', 'the art loop stopped cleanly on the launcher\'s stop (its state file says stopped)');
     ok(!(await listening(RP)) && !(await listening(VP)), 'ports ' + RP + ' and ' + VP + ' are free');
     ok(/stopped\. Ports/.test(out.slice(m)), 'the launcher says it stopped');
   } catch (e) {
@@ -200,6 +214,27 @@ console.log('launcher (real children on spare ports)');
     if (exited == null) {try {spawnSync('taskkill', ['/T', '/F', '/PID', String(proc.pid)], {windowsHide: true})} catch {} try {proc.kill()} catch {}}
     for (const p of children) if (alive(p)) {try {process.kill(p)} catch {}}
     if (fail) console.error('--- launcher output ---\n' + out.slice(-4000));
+    await sleep(300); try {rmSync(tmp, {recursive: true, force: true})} catch {}
+  }
+}
+
+console.log('launcher --no-art');
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-upart-'));
+  const RP = await freePort(), VP = await freePort();
+  let out = '', exited = null;
+  const proc = spawn(process.execPath, ['scripts/up.mjs', '--relay-port', String(RP), '--vite-port', String(VP), '--no-open', '--no-art', '--repo', ROOT], {cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'],
+    env: {...process.env, AGENT_LOGS: join(tmp, 'logs'), ART_STATE: join(tmp, 'art-loop.json'), ART_LOG: join(tmp, 'art.log'), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9', UP_GRACE_MS: String(fastMs(15000, 3000))}});
+  proc.stdout.on('data', d => {out += d}); proc.stderr.on('data', d => {out += d}); proc.on('exit', c => {exited = c});
+  try {
+    ok(await until(async () => /vite started \(pid \d+\)/.test(out), 30000), '--no-art: the launcher starts');
+    proc.stdin.write('s\n');
+    ok(await until(async () => /art loop: off/.test(out), 15000) && !/art loop started/.test(out), '--no-art starts no art loop and `s` says off');
+    proc.stdin.write('q\n');
+    ok(await until(async () => exited != null, 30000) !== null && exited === 0, 'and quits cleanly');
+  } finally {
+    if (exited == null) {try {spawnSync('taskkill', ['/T', '/F', '/PID', String(proc.pid)], {windowsHide: true})} catch {} try {proc.kill()} catch {}}
+    if (fail) console.error('--- launcher output ---\n' + out.slice(-2000));
     await sleep(300); try {rmSync(tmp, {recursive: true, force: true})} catch {}
   }
 }

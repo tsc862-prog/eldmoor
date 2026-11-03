@@ -23,7 +23,7 @@
 // (default https://huggingface.co).
 import {readFileSync,writeFileSync,existsSync,mkdirSync,renameSync} from 'node:fs';
 import {join,dirname} from 'node:path';
-import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest,TILE,TIERS,tierKey,tierCfg} from './lib.mjs';
+import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest,TILE,TIERS,tierKey,tierCfg,nextCheck} from './lib.mjs';
 import {decodePng,encodePng,isPng} from './png.mjs';
 import {resolvePalette} from './post.mjs';
 import {postProcess} from './post-texture.mjs';
@@ -88,7 +88,8 @@ async function imageBytes(r){
 
 const QUOTA=/quota|credit|exceeded|limit reached|usage limit|monthly|daily|subscribe|pre-?paid|payment/i;
 // HTTP status + body -> ArtError. 402 and a 429 that speaks of quota or credit mean the credits are used up.
-export function classify(status,body,retryAfter){
+export function classify(status,body,retryAfter){const e=classify0(status,body,retryAfter);e.retryAfter=retryAfter||0;return e}
+function classify0(status,body,retryAfter){
   const txt=String(body||'').slice(0,240).replace(/hf_[A-Za-z0-9]+/g,'hf_***').replace(/\s+/g,' ');
   if(status===402)return new ArtError('quota',`allowance used: HTTP 402 ${txt}`,status);
   if(status===429)return QUOTA.test(txt)||retryAfter>120?new ArtError('quota',`allowance used: HTTP 429 ${txt}`,status):new ArtError('rate',`rate limited: HTTP 429 ${txt}`,status);
@@ -162,7 +163,7 @@ export async function main(argv=process.argv.slice(2)){
       const file=fileOf(e.id,tier),p=join(out,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);
       idx.assets[key]={id:e.id,tier,kind:e.kind,file,w:img.w,h:img.h,sha256:sha256(png),model:k,repo:m.repo,provider:mp.provider,seed:e.seed,at:new Date().toISOString()};
       writeIndex(out,idx);made++;console.log(`[art] ${e.id} -> ${file} ${img.w}x${img.h} (${((Date.now()-t0)/1000).toFixed(1)}s)`)}
-    catch(err){failed++;console.error(`[art] ${e.id} failed: ${err.message}`);if(['quota','auth','rate'].includes(err.kind))break}}
+    catch(err){failed++;console.error(`[art] ${e.id} failed: ${err.message}`);if(['quota','auth','rate'].includes(err.kind)){const n=nextCheck(err.kind==='auth'?'error':'provider',new Date(),{retryHours:Number(process.env.ART_RETRY_HOURS)||4,retryAfter:err.retryAfter});console.error(`[art] stopped at the provider's limit: check again at ${today(n)} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')} (npm run art:loop does this by itself)`);break}}}
   console.log(`[art] made ${made}, failed ${failed}; npm run art:sheet to review, then npm run artcheck`);
   return failed?1:0}
 

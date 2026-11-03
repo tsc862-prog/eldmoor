@@ -73,6 +73,7 @@
     "artcheck": "node scripts/artcheck.mjs",
     "art:gen": "node scripts/art/gen.mjs",
     "art:daily": "node scripts/art/daily.mjs",
+    "art:loop": "node scripts/art/daily.mjs --loop",
     "art:accept": "node scripts/art/accept.mjs",
     "art:sheet": "node scripts/art/sheet.mjs",
     "art:reprocess": "node scripts/art/reprocess.mjs"
