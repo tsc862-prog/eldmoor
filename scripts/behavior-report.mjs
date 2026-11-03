@@ -14,7 +14,7 @@ import {readFileSync, writeFileSync, existsSync, readdirSync, statSync} from 'no
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {behaviorRoot, FILES, ROTATE, scrub, legacyTokens} from './behavior-log.mjs';
-import {mindSection} from './mind-compare.mjs';
+import {mindSection, pctile} from './mind-compare.mjs';
 
 const SEV = {bad: 3, warn: 2, info: 1};
 const ABOUT = {
@@ -33,6 +33,7 @@ const ABOUT = {
   'lever-near-hurt': 'a danger lever pulled near a badly hurt Fellowship member',
   'request-flood': 'too many tool or relay calls in a minute',
   'no-memories': 'an agent-played Fellowship member wrote no memory for two game days',
+  'scene-missed': 'a live member did not answer its Table scene in time: the table waited, then its reflex acted (#515)',
 };
 
 export function readJsonl(dir, name, sinceMs = 0) {
@@ -59,6 +60,25 @@ const q = (s, n = 140) => {s = cell(s); return s.length > n ? s.slice(0, n) + 'â
 const table = (head, rows) => rows.length ? ['| ' + head.join(' | ') + ' |', '|' + head.map(() => ' --- ').join('|') + '|', ...rows.map(r => '| ' + r.map(cell).join(' | ') + ' |')].join('\n') : '_none_';
 const day = gm => gm == null ? '?' : `day ${Math.floor(gm / 1440) + 1} ${String(Math.floor(gm % 1440 / 60)).padStart(2, '0')}:${String(Math.floor(gm % 60)).padStart(2, '0')}`;
 const mind = r => (r.provider || '?') + '/' + (r.model || (r.src === 'game' ? 'relay default' : '?')); // a Mind entry without a model asked the relay's default
+
+// Table scene answers (issue #515): how long the table had waited when each agent answer came (turn lines' sceneS,
+// the game's waited_s from scene_act), p50/p90 per provider/model, and per member the answers and the scenes missed
+// (scene-missed anomalies: a live member's turn taken by its reflex after the wait; held-back repeats counted).
+export function sceneAnswers(T = [], A = []) {
+  const by = new Map(), who = new Map();
+  const mem = n => {let m = who.get(n); if (!m) who.set(n, m = {name: n, answers: 0, missed: 0, secs: []}); return m};
+  for (const t of T) {const xs = Array.isArray(t.sceneS) ? t.sceneS.filter(Number.isFinite) : []; if (!xs.length) continue;
+    const k = mind(t); let b = by.get(k); if (!b) by.set(k, b = {k, secs: []}); b.secs.push(...xs);
+    const m = mem(t.hero && t.hero.name || t.seat || '?'); m.answers += xs.length; m.secs.push(...xs)}
+  for (const a of A) if (a.kind === 'scene-missed') mem(a.hero && a.hero.name || a.seat || '?').missed += 1 + (a.heldBack || 0);
+  const s1 = v => v == null ? '-' : f1(v) + ' s';
+  const lines = ['## Table scene answers', '', 'Seconds the table had waited when an agent answered (the world is paused; the table waits about 120 s, longer for a member its runner reports queued):', '',
+    table(['provider/model', 'answers', 'p50', 'p90', 'max'], [...by.values()].map(b => [b.k, b.secs.length, s1(pctile(b.secs, 50)), s1(pctile(b.secs, 90)), s1(Math.max(...b.secs))])), '',
+    'Per member (missed = its runner held it, but the reflex acted after the wait):', '',
+    table(['member', 'answers', 'missed', 'p50', 'p90'], [...who.values()].map(m => [m.name, m.answers, m.missed, s1(pctile(m.secs, 50)), s1(pctile(m.secs, 90))])), ''];
+  return {lines, data: {minds: [...by.values()].map(b => ({mind: b.k, answers: b.secs.length, p50: pctile(b.secs, 50), p90: pctile(b.secs, 90)})),
+    members: [...who.values()].map(m => ({name: m.name, answers: m.answers, missed: m.missed, p50: pctile(m.secs, 50), p90: pctile(m.secs, 90)}))}};
+}
 
 // The report for one world's folder, as Markdown.
 export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
@@ -116,6 +136,9 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   L.push('Single decisions (outcome in the game):', '');
   L.push(table(['provider/model', 'decisions', 'outcomes', 'avg ms'], [...game.values()].map(g => [g.k, g.n, Object.entries(g.out).map(([k, v]) => `${k} ${v}`).join(', '), f1(avg(g.ms))])), '');
 
+  // ---- Table scene answers (issue #515) ----
+  const sa = sceneAnswers(T, A); L.push(...sa.lines);
+
   // ---- minds per member (issue #280) ----
   const mc = mindSection(T, D, W, table); L.push(...mc.lines);
 
@@ -159,7 +182,7 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   const dk = new Map();
   for (const d of D) {const k = (d.src || '?') + ' ' + (d.kind || '?'); let x = dk.get(k); if (!x) dk.set(k, x = {k, n: 0, res: {}}); x.n++; const r = d.src === 'relay' ? (d.ok ? 'answered' : 'failed ' + (d.status || '')) : d.outcome || '?'; x.res[r] = (x.res[r] || 0) + 1}
   L.push(table(['source and kind', 'count', 'results'], [...dk.values()].map(x => [x.k, x.n, Object.entries(x.res).map(([k, v]) => `${k.trim()} ${v}`).join(', ')])), '');
-  return {md: scrub(L.join('\n') + '\n'), minds: mc.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
+  return {md: scrub(L.join('\n') + '\n'), minds: mc.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
 }
 
 export function worlds(root) {return existsSync(root) ? readdirSync(root).filter(d => {try {return statSync(join(root, d)).isDirectory()} catch {return false}}) : []}

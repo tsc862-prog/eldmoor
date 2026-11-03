@@ -233,7 +233,7 @@ register({name:'create_npc',about:'Place a person in the world: a visitor in tow
       attitude:p.attitude,att:[],lever:ctx.id,z:zoneAt(at.x,at.y)};
     if(p.towardParty!=null)w.att.push({to:'party',id:p.towardParty,a:p.attitude,until:null,lever:ctx.id});
     S.wanderers.push(w);
-    return {ok:true,effect:{npc:w.id,name:w.title+' '+name,at:{x:at.x,y:at.y},where:c?c.name:ZONES[w.z]},until:S.gameMin+p.hours*60,ret:w}},
+    return {ok:true,effect:{npc:w.id,name,title:w.title,at:{x:at.x,y:at.y},where:c?c.name:ZONES[w.z]},until:S.gameMin+p.hours*60,ret:w}},
   expire(rec){const i=S.wanderers.findIndex(w=>w.lever===rec.id);if(i>=0)S.wanderers.splice(i,1)},
   describe:p=>(p.attitude!=='neutral'?p.attitude+' ':'')+p.role+(p.name?' '+p.name:'')+(p.home==='town'?' in '+p.town:' at a '+p.home+' in '+(p.at?ZONES[zoneAt(p.at.x,p.at.y)]:'the wilds'))});
 
@@ -384,6 +384,7 @@ register({name:'give_item',allow:['item'],about:'Put one object in a hero’s pa
     else{const lvl=p.ilvl!=null?p.ilvl:a.lvl,g=makeItem(a.cls,it.id,lvl,zoneFor(lvl),{quality:'plain',src:who?'Given by '+who:'Found'});got=addGear(a,g);name=g.name;bump(today().n,'give_item_gear')}
     if(!got)return {ok:false,effect:'the pack would not take it'};
     const fl=FLAVOUR(it),line=(who?who+' presses '+withArt(name)+' into your hand.':'Half-buried in the dirt where you stand: '+name+'.')+(fl?' '+fl:'');
+    {const sc=S.table;if(sc&&Array.isArray(sc.ids)&&sc.ids.includes(a.id))sc.given=name} // a scene prop the speaker held is now the hero's (render: sceneItem)
     notify(a,line,1);record(a,'Given: ',name+(who?' (from '+who+')':' (found)'));
     return {ok:true,effect:{hero:a.name,item:name,kind:it.kind,by:who||'found'}}},
   describe:p=>p.item+' to hero #'+p.hero});

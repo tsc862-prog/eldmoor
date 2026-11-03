@@ -19,3 +19,4 @@
 - [Chat company](chat_company.md): #506 shouts name the company when 2+ exist, shoutLine/shoutCompany in chatpanel.js
 - [Followed pause](followed_pause.md): #458 stopsWorld/pauseAll in sim/table.js, live-clock banner line, vPause setting
 - [Companies panel](companies_panel.md): #457 tab per company plus All, Start <company>, Companies only filter, hallBoard(C)
+- [Scene map polish](scene_map_polish.md): #536 docked banner .screen.scin, whole-number crop, quote-only bubbles (core/spoken.js), narrLines, shortLabel
