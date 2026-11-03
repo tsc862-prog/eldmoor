@@ -107,6 +107,12 @@ ok(r.ok, 'DM log: an intent line');
 r = DMA.dmAct('pull_lever', {lever: 'set_condition', params: {region: ZONES[zone > 0 ? zone : 1], kind: 'fogbound', strength: 1, hours: 6}, reason: 'Reason ' + plant('leverReason')});
 DMA.dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'shrine', at: {x: 1, y: 1}}, reason: 'Refused ' + plant('leverRefused')});
 ok(S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.leverReason) || JSON.stringify(e).includes(SECRETS.leverRefused)), 'lever reasons (granted or refused) in the DM log');
+// a DM-marked place beside A (#423): A learns its public name, never the lever's reason
+let markedPlace = null;
+for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2], [3, 1], [-3, -1], [1, 3], [-1, -3]]) {
+  r = DMA.dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'shrine', at: {x: Math.round(A.x) + dx, y: Math.round(A.y) + dy}, name: 'Quiet Cairn'}, reason: 'Mark ' + (SECRETS.placeReason || plant('placeReason'))});
+  if (r.ok) {markedPlace = 'Quiet Cairn'; break}}
+ok(markedPlace && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.placeReason)), 'a DM place marked beside A, its reason in the DM log' + (markedPlace ? '' : ': ' + r.error));
 // a staged scene (issue #132): its reason is the DM's own (DM log only); the frame and the person's want are said in the game
 r = DMA.dmAct('stage_scene', {kind: 'meeting', near: A.name, frame: 'A drover waits by the road with a lame ox.', cast: {role: 'drover', want: 'a hand with the ox'}, reason: 'Stage ' + plant('stageReason')});
 ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), 'a staged scene\'s reason in the DM log' + (r.ok ? '' : ': ' + r.error));
@@ -188,6 +194,7 @@ ok(!DMA.dmAct('narrate', {text: 'x', near: 'nowhere at all'}).ok && !DMA.dmAct('
 // ---------------------------------------------------------------- 3. everything a hero gets
 console.log('hero tools, events, prompts and snapshots');
 run(2); // let the watch() step turn heard lines into events
+ok(!markedPlace || (A.lore && A.lore.p[markedPlace] && JSON.stringify(act(A, 'lore', {about: 'Cairn'})).includes(markedPlace)), 'A saw the marked place and its lore names it (the check is not vacuous)');
 const argsFor = {move_to: {target: 'home'}, talk: {target: B.name}, say: {text: 'Well met.'}, join_party: {hero_id: B.id}, take_adventure: {job_id: 1}, choose: {option: 'a'},
   fight: {target_id: 0}, hunt: {count: 1}, rest: {minutes: 10}, buy: {}, sell: {index: 99}, equip: {index: 99}, read_chronicle: {n: 20}, journal_read: {n: 50}, journal_write: {text: 'A writes.'},
   journal_search: {query: 'diary turning point road old line filler ' + SECRETS.bJournal + ' ' + SECRETS.bLandmark + ' ' + SECRETS.bChapter},

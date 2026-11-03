@@ -26,3 +26,4 @@
 - [Hunt where](hunt-where.md) — #411 hunt {where} via plan(), [move,hunt] queue, lazy k0, zonePoint enemy-wall retry, hash-compare recipe
 - [Give by name](give-by-name.md) — #412 give item by name: match tiers, count prefix, ambiguity rule, cleanArgs index->item
 - [Places tool](places-tool.md) — #414 places: knownNames + markers in sight, way/word/creatures/learned, heredoc backslash pitfall
+- [DM places lore](dm-places-lore.md) — #423 heroes learn S.places markers: seen/heard/job-told, e.dm id, fade, knownMark, learnJob, pitfalls

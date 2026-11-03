@@ -199,7 +199,12 @@ if (a.state !== 'dead') {
     if (!S.places) S.places = []; const mk = {id: 999901, kind: 'ruin', name: 'Weeping Cairn', x: a.x + 3, y: a.y, z: 0, born: S.gameMin, until: S.gameMin + 600}, far = {id: 999902, kind: 'ruin', name: 'Hidden Barrow', x: a.x > 40 ? 2 : 78, y: a.y, z: 0, born: S.gameMin, until: S.gameMin + 600}; S.places.push(mk, far);
     const pm = await call('places', {kind: 'place'}); ok(pm.ok && pm.places.some(p => p.name === 'Weeping Cairn') && !JSON.stringify(pm).includes('Hidden Barrow'), 'places shows a marked place in sight, not one out of sight: ' + pm.places.map(p => p.name + ' (' + p.known + ')').join(', '));
     a.playRate = []; const rm = await call('move_to', {target: 'Weeping Cairn'}); ok(rm.ok, 'move_to takes the marked place in sight: ' + (rm.going || rm.error));
-    a.playRate = []; const rf = await call('move_to', {target: 'Hidden Barrow'}); ok(!rf.ok, 'move_to refuses a marked place out of sight');
+    a.playRate = []; const rf = await call('move_to', {target: 'Hidden Barrow'}); ok(!rf.ok, 'move_to refuses a marked place out of sight, never heard of');
+    // #423: once heard named, the out-of-sight place is known: places lists it and move_to takes it
+    L.hear(a, 'Old Brenna swears the Hidden Barrow stands open again.', 'a townsperson');
+    const ph = await call('places', {kind: 'place'}), hbp = (ph.places || []).find(p => p.name === 'Hidden Barrow');
+    ok(hbp && /heard of/.test(hbp.known), 'places lists the marked place once heard of: ' + (hbp ? hbp.known + ', ' + hbp.way : 'missing'));
+    a.playRate = []; const rh = await call('move_to', {target: 'Hidden Barrow'}); ok(rh.ok, 'move_to takes the marked place out of sight once heard of: ' + (rh.going || rh.error));
     S.places = S.places.filter(p => p !== mk && p !== far);
     a.playRate = []; a.pq = []}
   r = await call('move_to', {target: 'Mirefen'}); ok(r.ok || /fight/.test(r.error), 'move_to Mirefen once told of it: ' + (r.going || r.error));
