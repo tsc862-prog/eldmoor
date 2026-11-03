@@ -39,7 +39,7 @@ const whereNow=a=>a.state==='town'?(a.town||'town'):(ZONES[zoneAt(a.x,a.y)]||'th
 // before every hear / dm_status). A line is kept once however many heroes heard it.
 export function listen(D){const E=earOf(D),seen=new Set(E.keys),co=compOf();let added=0;
   for(const a of S.agents){if(!a.player||!a.chat||!a.chat.length)continue;
-    for(const e of a.chat){const f=e&&e.from;if(!f||f.kind!=='hero'||!f.player||e.dm||e.npc||e.whisper||typeof e.text!=='string'||!e.text)continue;
+    for(const e of a.chat){const f=e&&e.from;if(!f||f.kind!=='hero'||!f.player||e.dm||e.npc||e.whisper||e.emote||typeof e.text!=='string'||!e.text)continue;
       const min=(e.d||0)*1440+clockMin(e.t),key=min+'|'+f.id+'|'+e.text.slice(0,60);if(seen.has(key))continue;seen.add(key);
       const c=co.get(f.id)||null;
       E.lines.push({id:++E.seq,min,day:e.d||null,t:e.t,who:f.name,wid:f.id,cid:c?c.id:null,company:c?c.name:null,kind:e.party?'shout':e.scene||e.trigger==='table'?'table':'say',

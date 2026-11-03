@@ -17,7 +17,8 @@ import {shoutRange,REACH} from './reach.js';
 import {weatherName,weatherKind} from './weather.js';
 import {sightLever} from './levers.js';
 import {ensureNpcs} from './npcs.js';
-import {inSlots} from './company.js'; // the slotted company (#588)
+import {inSlots} from './company.js';
+import {ASIDE,whisperLine} from './aside.js'; // whisper reach (#627) // the slotted company (#588)
 
 export const EAR={TALK:4,LINE_MAX:4}; // TALK: tiles to a townsperson for talk (keep equal to player.js PK.TALK; not imported there: an import cycle through fellowship.js)
 
@@ -54,7 +55,8 @@ export function earshot(a){
     say_range:HEAR,
     shout,
     talk:talk.map(p=>full(p)+' ('+(p.role||'townsperson')+', '+tiles(dist(a,p))+')'),
-    talk_range:EAR.TALK};
+    talk_range:EAR.TALK,
+    whisper:whisperLine(a),whisper_range:ASIDE.WHISPER};
   const lines=[];
   lines.push(say.length?'say (within '+HEAR+' tiles) reaches: '+r.say.join(', ')+'.':'Nobody is within '+HEAR+' tiles to hear you say anything.');
   if(shout){lines.push('A party shout carries '+range+' tiles today'+(why?' (usually '+REACH.SHOUT+'; '+why+')':'')+': '+
@@ -62,6 +64,7 @@ export function earshot(a){
     if(far.length)lines.push('Out of shouting range: '+far.map(b=>b.name).join(', ')+'. Walk closer, or hire a courier at a town gate (send_courier)'+(inSlots(a)?'':' (Fellowship only)')+'.')}
   else lines.push('You have no party to shout to.');
   lines.push(talk.length?'Close enough to talk to (within '+EAR.TALK+' tiles): '+talk.map(full).join(', ')+'.':'Nobody is close enough to talk to (within '+EAR.TALK+' tiles).');
+  if(r.whisper.length)lines.push('Close enough to whisper to (within '+ASIDE.WHISPER+' tiles): '+r.whisper.join(', ')+'.');
   r.text=lines.join(' ');return r}
 
 // One short line for the state header: who hears a say, which companions a shout reaches, who to talk to, who is
