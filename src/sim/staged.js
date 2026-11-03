@@ -112,7 +112,7 @@ const recOf=sc=>sc&&sc.ctx&&sc.ctx.staged!=null?recById(sc.ctx.staged):null;
 const field=()=>slotHeroes(slotted()).filter(a=>!a.hidden&&a.state!=='town');
 // Companies (#451): a scene is staged for one company (rec.company; absent = the Fellowship). Its members, its party level.
 const fiveCo=C=>!C||C===slotted()||!!C.slots;
-const memOfCo=C=>fiveCo(C)?slotHeroes(slotted()):coMembers(C).filter(a=>a.kind==='hero');
+const memOfCo=C=>fiveCo(C)?slotHeroes(slotted()):coMembers(C).filter(a=>a.kind==='hero'&&!a.hire);
 const everyone=()=>{const out=slotHeroes(slotted()).slice();for(const C of companies())if(!fiveCo(C))for(const a of memOfCo(C))if(!out.includes(a))out.push(a);return out};
 const recCo=rec=>rec&&rec.company!=null?companyById(rec.company):null;
 const recMem=rec=>memOfCo(rec&&rec.company!=null?companyById(rec.company):null);
