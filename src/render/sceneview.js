@@ -8,6 +8,9 @@
 //            the members and foes where they stand, condition glyphs and spell effects, and only takes its camera
 //            from sceneCut(); past the map's edge a generated biome arena fills in (arenaPattern)
 //   dungeon  the Crypt's scenes (site, room, crawl) open the dungeon view as before (render/dungeonview.js)
+//   camp     (#431 slice 3) a scene that breaks out at a camp (ctx.camp: the fireside, an ambush on the watch, a yielded foe
+//            questioned by the fire) is an outdoor cut centred on the fire, smaller (data/settings.js OUTDOOR_SETTINGS.camp),
+//            the fire and the bedrolls kept drawn while it lasts (render/camp.js); an interrogation in a town plays in the cell
 // The view opens by itself when the followed Fellowship's scene opens (Settings: "Scene maps: auto", kept in this
 // browser), returns to the world when the scene ends, and "Back to world" closes it for that scene. The Table banner's
 // "Scene map" button (data-scene) opens it by hand. Everything here reads S; nothing writes it.
@@ -32,7 +35,7 @@
 import {S} from '../sim/state.js';
 import {CITY,CRYPT,ZONES,zoneAt} from '../world/map.js';
 import {W,H,T,G,SNOW,ROCK,SGRASS} from '../world/tiles.js';
-import {SETTINGS,SETTING_IDS} from '../data/settings.js';
+import {SETTINGS,SETTING_IDS,OUTDOOR_SETTINGS} from '../data/settings.js';
 import {buildSetting} from '../world/interior.js';
 import {drawSetting,bubble,answerMark} from './interior.js';
 import {texel} from './terrain.js';
@@ -46,7 +49,7 @@ import {spokenOf,unrole} from '../core/spoken.js';
 import {inSlots} from '../sim/company.js'; // the slotted company (#588)
 
 const KEY='eldmoor.sceneMaps';
-const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social']);
+const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social','interrogation']); // interrogation (#431 slice 3): the cell in a town
 const TOWN_PAD=3,NEAR=14,SPEAK_S=9;
 let auto=true;try{if(typeof localStorage!=='undefined'&&localStorage.getItem(KEY)==='off')auto=false}catch(_){}
 
@@ -73,7 +76,7 @@ function anchorOf(sc,members){const c=sc.ctx||{},a=byId(c.anchor!=null?c.anchor:
 export function pickSetting(sc,town,people=[]){const want=sc&&sc.ctx&&sc.ctx.setting;if(want&&SETTINGS[want])return want;
   const said=[sc&&sc.title,plain(sc&&sc.frame)].join(' '),who=people.map(p=>(p.role||'')+' '+(p.title||'')).join(' '); // the scene's own words first, then who is in it
   for(const w of [said,who])for(const id of SETTING_IDS)if(SETTINGS[id].words&&SETTINGS[id].words.test(w))return id;
-  return sc&&sc.kind==='meeting'?'tavern':'house'}
+  return sc&&sc.kind==='interrogation'?'cell':sc&&sc.kind==='meeting'?'tavern':'house'}
 
 export function sceneSpec(sc=S.table){if(!sc)return null;
   const members=sc.ids.map(byId).filter(Boolean),cast=castOf(sc),an=anchorOf(sc,members);
@@ -82,6 +85,9 @@ export function sceneSpec(sc=S.table){if(!sc)return null;
   // indoors: in a town, or wherever the DM named a room (stage_scene setting, #431 slice 2: a house by the road)
   if(INDOOR_KINDS.has(sc.kind)&&(town||SETTINGS[c.setting])){const people=cast.filter(e=>e.kind!=='hero'&&e.kind!=='mob'),setting=pickSetting(sc,town,people),place=town?town.name:(ZONES[z]||'the wilds');
     return {mode:'indoor',kind:sc.kind,title:sc.title,members,cast,anchor:an,town,setting,key:place+'|'+sc.id,where:SETTINGS[setting].name+' in '+place}}
+  // at a camp (#431 slice 3): the fireside, an ambush on the watch or questions by the fire play on the real ground round the fire
+  const CS=OUTDOOR_SETTINGS.camp,fire=c.camp&&CS.kinds.includes(sc.kind)?{x:c.camp.x,y:c.camp.y}:null;
+  if(fire){const zc=zoneAt(Math.max(0,Math.min(W-1,fire.x)),Math.max(0,Math.min(H-1,fire.y)));return {mode:'outdoor',kind:sc.kind,title:sc.title,members,cast,anchor:fire,camp:fire,town,setting:'camp',where:CS.name+' in '+(ZONES[zc]||'the wilds')}}
   return {mode:'outdoor',kind:sc.kind,title:sc.title,members,cast,anchor:an,town,where:(town?'Outside '+town.name+', ':'')+(ZONES[z]||'the wilds')}}
 
 // ---- state ----
@@ -130,7 +136,8 @@ export function sceneTick(cam){const sc=S.table;
 export function sceneCut(aspect=1.6){if(!open||!spec||spec.mode!=='outdoor'||!spec.anchor)return null;const an=spec.anchor,tallView=aspect<1; // a phone held upright frames a narrower, taller cut
   const near=e=>live(e)&&Math.hypot(e.x-an.x,e.y-an.y)<=NEAR,mem=spec.members.filter(near),foes=spec.cast.filter(near);
   let x0=an.x,y0=an.y,x1=an.x,y1=an.y;for(const e of mem.concat(foes)){x0=Math.min(x0,e.x);y0=Math.min(y0,e.y);x1=Math.max(x1,e.x);y1=Math.max(y1,e.y)}
-  const w=Math.max(tallView?11:18,x1-x0+(tallView?5:9)),h=Math.max(tallView?15:11,y1-y0+7),cx=(x0+x1)/2,cy=(y0+y1)/2-.4;
+  const [mw,mh]=spec.camp?OUTDOOR_SETTINGS.camp.cut:[18,11]; // a camp's cut is small: the fire and the ring round it (#431 slice 3)
+  const w=Math.max(tallView?Math.min(11,mh+2):mw,x1-x0+(tallView?5:spec.camp?6:9)),h=Math.max(tallView?Math.max(15,mw):mh,y1-y0+(spec.camp?5:7)),cx=(x0+x1)/2,cy=(y0+y1)/2-.4;
   const sc=S.table,cur=sc&&!sc.all&&sc.phase==='turn'?byId(sc.ids[sc.i]):null;
   const ban=document.getElementById('tbanner'),bar=root&&root.querySelector('.dgbar'),ins=banInset(ban),bot=bar?bar.offsetHeight+6:6;
   return {cx,cy,w,h,edge:cx-w/2<0||cy-h/2<0||cx+w/2>W||cy+h/2>H,members:mem,foes,cur,speaker,

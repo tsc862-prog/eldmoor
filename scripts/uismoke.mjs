@@ -1073,6 +1073,16 @@ console.log('the DM prepares the table');
   S.table=scene('social','A word on the road',{npc:npc.id,anchor:m0.id,setting:'chapel',town:c.name});sp=sv.sceneSpec();ok(sp.mode==='indoor'&&sp.setting==='chapel'&&sp.town===c&&sp.where==='A chapel in '+c.name,'scene maps: a scene set at a town (ctx.town) plays in that town\'s room ('+sp.where+')');
   S.table=scene('ambush','Ambush on the road',{anchor:m0.id,setting:'house'});ok(sv.sceneSpec().mode==='outdoor','scene maps: an outdoor kind keeps the terrain cut whatever setting it carries');
   S.table=scene('crawl','The first chamber',{room:0});ok(sv.sceneSpec().mode==='dungeon','scene maps: the Crypt\'s scenes keep the dungeon view');
+  // #431 slice 3: a camp scene on the ground round the fire, and an interrogation in the cell
+  {const fire={x:wild.x+.5,y:wild.y+.5};mem.forEach((a,k)=>{a.x=fire.x+Math.cos(k)*1.4;a.y=fire.y+Math.sin(k)*1.1});
+    S.table=scene('fireside','Round the fire',{mode:'camp',anchor:m0.id,camp:fire});sp=sv.sceneSpec();sv.sceneTick(FOL);const cc=sv.sceneCut();
+    ok(sp.mode==='outdoor'&&sp.setting==='camp'&&sp.anchor.x===fire.x&&/^A camp in /.test(sp.where)&&!!cc&&Math.abs(cc.cx-fire.x)<2&&Math.abs(cc.cy-fire.y)<2&&cc.w<18&&cc.h<=11,'scene maps: a fireside plays on a small cut round the camp fire ('+sp.where+', '+(cc?Math.round(cc.w)+'x'+Math.round(cc.h):'no cut')+')');
+    S.table=scene('ambush','Ambush at camp: a wolf',{mob:-1,anchor:m0.id,camp:fire});ok(sv.sceneSpec().setting==='camp','scene maps: an ambush on the watch plays at the camp');
+    S.table=scene('elite','The Old Boar',{anchor:m0.id,camp:fire});ok(sv.sceneSpec().setting!=='camp','scene maps: only the camp kinds take the camp cut');
+    S.table=null;sv.sceneTick(FOL);mem.forEach((a,k)=>{a.x=c.gate.x-1+k*.8;a.y=c.gate.y});
+    S.table=scene('interrogation','Questioning Mara',{npc:npc.id,anchor:m0.id,who:{kind:'npc',id:npc.id,name:'Mara'},said:[]});sp=sv.sceneSpec();ok(sp.mode==='indoor'&&sp.setting==='cell'&&sp.cast.includes(npc),'scene maps: an interrogation in town plays in the cell ('+sp.where+')');
+    mem.forEach(a=>{a.x=wild.x;a.y=wild.y});S.table=scene('interrogation','Questioning '+wild.name,{foe:wild.id,anchor:m0.id,said:[]});sp=sv.sceneSpec();ok(sp.mode==='outdoor'&&sp.cast.includes(wild),'scene maps: a yielded foe questioned in the field is on the terrain where it yielded');
+    S.table=null;sv.sceneTick(FOL)}
   sv.setSceneAuto(false);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick(FOL);ok(!sv.sceneOpen()&&/off/.test($('vScene').textContent),'scene maps: with Scene maps off in Settings, nothing opens by itself');
   sv.setSceneAuto(true);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick({view:'map',sel:null});ok(!sv.sceneOpen(),'scene maps: only when the watcher follows the Fellowship');
   sv.closeSceneView(false);mem.forEach((a,k)=>{[a.x,a.y,a.hidden]=keepPos[k]});S.table=keepT;S.wanderers=keepW;uiFast()}

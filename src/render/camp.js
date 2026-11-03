@@ -2,13 +2,16 @@
 // at each camper's spot, and a warm pool of light at night. Procedural, no image assets. Reads
 // every company's camp (C.camp, sim/camp.js; two companies light two fires, #439); draws nothing when there is none.
 const T=16;
-const camps=S=>(S.companies||[]).map(C=>C.camp).filter(g=>g&&g.phase);
+// A scene that broke out at a camp (#431 slice 3: the fireside, an ambush on the watch, questions at the fire) keeps its fire
+// drawn while it lasts, even when the ambush broke the camp: the bedrolls lie where they were left.
+const atScene=S=>{const out=[];for(const sc of [S.table,...Object.values(S.tables||{})]){const p=sc&&sc.ctx&&sc.ctx.camp;if(p&&!(S.companies||[]).some(C=>C.camp&&C.camp.phase&&Math.abs(C.camp.x-p.x)<.01&&Math.abs(C.camp.y-p.y)<.01))out.push({x:p.x,y:p.y,ids:sc.ids,phase:'scene',left:true})}return out};
+const camps=S=>(S.companies||[]).map(C=>C.camp).filter(g=>g&&g.phase).concat(atScene(S));
 
 export function drawCamp(ctx,S,cam,o){for(const g of camps(S))drawOne(ctx,S,cam,o,g)}
 function drawOne(ctx,S,cam,o,g){const {inView,blink,drawText}=o;
   const cx=Math.round(g.x*T),cy=Math.round(g.y*T);if(!inView(cx,cy,40))return;
   // bedrolls
-  const ids=g.ids||[];ids.forEach((id,i)=>{const a=S.agents.find(x=>x.id===id);if(!a||a.state!=='camp')return;
+  const ids=g.ids||[];ids.forEach((id,i)=>{const a=S.agents.find(x=>x.id===id);if(!a||(a.state!=='camp'&&!g.left))return;
     const ang=i/Math.max(1,ids.length)*Math.PI*2+.6,bx=Math.round(g.x*T+Math.cos(ang)*T*1.15)-5,by=Math.round(g.y*T+Math.sin(ang)*T*.92)+3;
     ctx.fillStyle='#2a2430';ctx.fillRect(bx-1,by-1,12,6);ctx.fillStyle=id===g.watcher?'#6a5a40':'#7a4a3a';ctx.fillRect(bx,by,10,4);ctx.fillStyle='#d8c8a0';ctx.fillRect(bx,by,3,4);
     if(id!==g.watcher&&g.phase==='rest'){const t=(blink*.8+i*.31)%1,zx=bx+8+Math.round(t*3),zy=by-4-Math.round(t*7); // a small z drifts up from each sleeper (#178)
