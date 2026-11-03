@@ -5,7 +5,7 @@
 // runs on. At 3x and 8x a scene whose members' agents decide asks the host to drop the world to 1x
 // (TABLE.drop, #148) and pauses; only a scene where every member acts by reflex (no runner, and the
 // owner said go on) resolves at once and is summarised in a line or two. Mode 'off' (Watch mode)
-// never opens a scene. Only the Fellowship ever pauses the world.
+// never opens a scene. Only the followed company's scene pauses the world (#458; S.pauseAll: any company's).
 //
 // Triggers (tableTick, once per step after the council):
 //   site / room  the Fellowship's Crypt group goes in, and reaches the inner chamber
@@ -61,7 +61,7 @@ import {sayOk,setSpeedSource} from './throttle.js';
 import {score} from './abilities.js';
 import {bestUse,useItem} from './inv.js'; // a potion in a scene (scene_act option potion)
 import {fellows} from './fellowship.js';
-import {companyById,companyOf,companies,members,leaderOf,isSolo,campaign} from './company.js'; // scenes belong to a company (#440)
+import {companyById,companyOf,companies,members,leaderOf,isSolo,campaign,followed} from './company.js'; // scenes belong to a company (#440)
 import {setProposeHook,castVote,resolveProp,reflexVote,propById,propCompany,leaderOfF,openProps,waitingVoters,voters} from './council.js';
 import {inRange} from './reach.js';
 import {setFellowChoice} from './player-choice.js';
@@ -135,6 +135,12 @@ const atTable=C=>!!C&&(C===S.fellowship||agentsDecide(memOf(C)));
 export function voteRefusal(C){return C&&!C.slots&&isSolo(C)?SOLO_VOTE:null}
 setSpeedSource(()=>TABLE.speed);
 export const canPause=()=>tableOn()&&TABLE.speed<=1;
+// Whose scene stops the world (#458): at 1x only the followed company's (S.followId); any other company's scene plays on
+// the live clock (its agents still decide, with their normal waits) unless the watcher's "Pause for any company" is on
+// (S.pauseAll, saved with the world; absent = off, so older saves and seeded worlds are untouched). One company: always.
+export const pauseAll=()=>!!S.pauseAll;
+export function setPauseAll(on){if(on)S.pauseAll=true;else delete S.pauseAll}
+export const stopsWorld=sc=>{if(!sc||!sc.pause||S.pauseAll)return !!(sc&&sc.pause);const F=followed();return !F||sceneCompany(sc)===F};
 // #148: do these members' agents (or the owner, for an absent runner) have the say? Then the moment waits.
 export const agentsDecide=L=>L.some(a=>a&&a.player&&a.state!=='dead'&&!reflexMay(a));
 // Ask the host to drop to 1x at a Fellowship decision (3x/8x never auto-resolve the agents' choices).
@@ -173,7 +179,7 @@ function nextRound(sc){if(fightOver(sc)||sc.rd>=TR.ROUNDS)return false;delete sc
 // Step mode (#285): a round is done and another will follow; hold the paused scene for the watcher (TABLE.step).
 // sc.sh = {rd, t, go}: the round it holds after, real seconds held, released. True = hold this step.
 const moreRounds=sc=>rounds(sc)&&!fightOver(sc)&&sc.rd<TR.ROUNDS;
-function stepHold(sc,dt){if(TABLE.step==='off'||!sc.pause||TABLE.speed>1||!moreRounds(sc))return false;
+function stepHold(sc,dt){if(TABLE.step==='off'||!stopsWorld(sc)||TABLE.speed>1||!moreRounds(sc))return false;
   const h=sc.sh&&sc.sh.rd===sc.rd?sc.sh:(sc.sh={rd:sc.rd,t:0,go:0});if(h.go)return false;
   h.t+=dt;if(TABLE.step==='auto'&&h.t>=TABLE.stepS){h.go=1;return false}return true}
 const holding=sc=>!!(sc&&sc.sh&&!sc.sh.go&&sc.sh.rd===sc.rd&&sc.phase==='turn'&&sc.i>=sc.ids.length&&TABLE.step!=='off');
@@ -376,7 +382,8 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
 function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);S.table=null}
 
 // ---- once per step: the paused scene (sim/index.js calls this first; true = skip the world) ----
-export function tableHold(dt){const sc=S.table;if(!sc)return false;
+export function tableHold(dt){const sc=S.table;return holdStep(dt)&&stopsWorld(sc)} // a live-clock scene (#458) runs here too, but the world goes on
+function holdStep(dt){const sc=S.table;if(!sc)return false;
   if(!scMem(sc).length){S.table=null;return false} // the scene's company is gone
   if(!sc.pause)return false;
   if(!tableOn()){finishAll(sc);return false} // switched to Watch mode mid-scene: resolve now
@@ -494,6 +501,8 @@ export function decisionsWaiting(){const out=[],seen=new Set(),add=(a,what)=>{if
 function foeBanner(sc){const f=foeOf(sc);if(!f)return null;const c=sc.ctx||{};
   return {id:f.id,kind:f.kind,name:foeName(f),hp:Math.max(0,f.hp),maxhp:f.maxhp||maxHp(f),target:f.target&&f.target.id!=null?f.target.id:null,pack:c.mobs?foesOf(sc).length:1,conds:condsOf(f)}}
 // What the banner shows (src/ui/table.js).
+// Where a scene is, in words (#458: "Scene at Mirefen"): the region of its anchor, else of its first member.
+function sceneWhere(sc){const c=sc.ctx||{},a=byId(c.anchor!=null?c.anchor:c.hero)||sc.ids.map(byId).find(living);return a?ZONES[zoneAt(a.x,a.y)]||null:null}
 export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc.ids[sc.i]),last=sc.beats[sc.beats.length-1];
   let who=null,line;
   const pc=sc.calls&&sc.phase==='turn'?sc.calls.find(c=>!c.done):null;
@@ -507,5 +516,5 @@ export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc
   else line=sc.summary||'';
   const C=sceneCompany(sc);
   return {title:sc.title,kind:sc.kind,company:C?C.id:null,companyName:C?C.name||null:null,solo:!!C&&!C.slots&&isSolo(C),frame:sc.frame,line,who,last:last?last.name+': '+last.text+(last.res?' ('+last.res+')':''):null,
-    order:sc.ids.map(byId).filter(Boolean),...(rounds(sc)?{round:sc.rd,rounds:TR.ROUNDS,foeAt:sc.foeAt,foe:foeBanner(sc),hold,conds:Object.fromEntries(sc.ids.map(id=>[id,condsOf(byId(id))]))}:{}),turn:sc.phase==='turn'&&!together(sc)?sc.i:-1,all:together(sc),phase:sc.phase,paused:!!sc.pause,narr:sc.narr?sc.narr.text:null,
+    order:sc.ids.map(byId).filter(Boolean),...(rounds(sc)?{round:sc.rd,rounds:TR.ROUNDS,foeAt:sc.foeAt,foe:foeBanner(sc),hold,conds:Object.fromEntries(sc.ids.map(id=>[id,condsOf(byId(id))]))}:{}),turn:sc.phase==='turn'&&!together(sc)?sc.i:-1,all:together(sc),phase:sc.phase,paused:stopsWorld(sc),live:!!sc.pause&&!stopsWorld(sc),where:sceneWhere(sc),narr:sc.narr?sc.narr.text:null,
     ...(sc.ctx&&sc.ctx.cast?{cast:sc.ctx.cast,staged:true}:{})}} // a staged scene's cast (#132)

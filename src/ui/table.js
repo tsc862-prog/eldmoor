@@ -14,10 +14,14 @@
 // Companies (#456): with more than one company the chip row starts with whose table it is ("At the table: Dovas and
 // Ilsa", "Ketter, alone"); a scene of a company the watcher does not follow makes it a button that follows that company.
 // One company (the default world) shows no name, as before.
+// Followed pause (#458): a scene of a company the watcher does not follow plays on the live clock (the world does not
+// pause), so the banner is one line, "Scene at Mirefen: Dovas and company", a button that follows that company (its scene
+// then pauses the world and the full banner opens). The Settings row "Pause: followed / any company" (S.pauseAll, saved
+// with the world) shows with two or more companies.
 // Legibility (#471): a short pixel-font title (the kind and a few words, sceneHead), the status tags as a chip row of their
 // own, the full question as wrapping body text, and outside combat one row per member (memberRows): name in class colour,
 // answered or waiting, the vote or option chosen, and the nudge or reflex timer. Combat keeps its initiative chips.
-import {TABLE,bannerOf,stepNext,optionsFor} from '../sim/table.js';
+import {TABLE,bannerOf,stepNext,optionsFor,pauseAll,setPauseAll} from '../sim/table.js';
 import {reflexMay,ownerHeld} from '../sim/runlink.js';
 import {classColor} from '../core/colors.js';
 import {sceneHead} from '../core/scenehead.js';
@@ -28,7 +32,7 @@ import {maxHp} from '../sim/heroes.js';
 import {effOn,condOn} from '../sim/eff.js';
 import {CONDITIONS,MOVES} from '../data/moves.js';
 import {patch} from './stable.js'; // update in place (#145)
-import {companies,companyById} from '../sim/company.js';
+import {companies,companyById,members,leaderOf} from '../sim/company.js';
 import {followedCompany,followCompany} from './companyview.js'; // whose table it is (#456)
 import {setView} from './controls.js';
 
@@ -55,14 +59,17 @@ export function alertCue(){if(!snd||!gesture||!ctx||ctx.state!=='running')return
     g.gain.setValueAtTime(0,t0+dt);g.gain.linearRampToValueAtTime(.05,t0+dt+.02);g.gain.exponentialRampToValueAtTime(.0008,t0+dt+.16);o.connect(g).connect(ctx.destination);o.start(t0+dt);o.stop(t0+dt+.2)})}catch(_){}}
 function syncSnd(){const b=$('vSnd');if(!b)return;b.hidden=!S.fellowship;b.textContent='Sound: '+(snd?'on':'off');b.setAttribute('aria-pressed',String(snd))}
 
+function syncPause(){const b=$('vPause'),r=b&&b.closest?b.closest('.setrow'):null;if(!b)return;const on=pauseAll(),show=companies().length>1;
+  if(r&&r.hidden===show)r.hidden=!show;const t='Pause: '+(on?'any company':'followed');if(b.textContent!==t){b.textContent=t;b.setAttribute('aria-pressed',String(on))}}
 function syncBtn(){const b=$('vTab');if(!b)return;b.hidden=!S.fellowship;b.textContent='Table: '+(TABLE.mode==='off'?'Off':'Auto');b.setAttribute('aria-pressed',String(TABLE.mode!=='off'))}
 export function initTable(){
   try{const v=localStorage.getItem(KEY);if(v==='off'||v==='auto')TABLE.mode=v}catch(_){}
   try{const v=localStorage.getItem(STEP);if(STEPS.includes(v))TABLE.step=v}catch(_){}
   const b=$('vTab');if(b)b.onclick=()=>{TABLE.mode=TABLE.mode==='off'?'auto':'off';try{localStorage.setItem(KEY,TABLE.mode)}catch(_){}syncBtn()};
+  const p=$('vPause');if(p)p.onclick=()=>{setPauseAll(!pauseAll());syncPause();sig=''};
   const s=$('vSnd');if(s)s.onclick=()=>{snd=!snd;try{localStorage.setItem(SND,snd?'on':'off')}catch(_){}if(snd)wake();syncSnd()};
   for(const ev of ['pointerdown','keydown'])document.addEventListener(ev,wake,{capture:true});
-  syncBtn();syncSnd()}
+  syncBtn();syncSnd();syncPause()}
 
 // ---- the combat block (#277) ----
 const byId=id=>S.agents.find(x=>x.id==id)||null;
@@ -119,8 +126,12 @@ function stepRow(box,c){const d=el('div','tstep'),m=el('button','tstb',STEP_TXT[
 function onBox(e){const t=e.target&&e.target.closest?e.target.closest('[data-act]'):null;if(!t)return;
   if(t.dataset.act==='step'){TABLE.step=STEPS[(STEPS.indexOf(TABLE.step)+1)%STEPS.length];try{localStorage.setItem(STEP,TABLE.step)}catch(_){}sig=''}
   else if(t.dataset.act==='next'){stepNext();sig=''}
-  else if(t.dataset.act==='follow'){followCompany(companyById(+t.dataset.co));setView('fellow');sig=''}}
+  else if(t.dataset.act==='follow'||t.dataset.act==='live'){followCompany(companyById(+t.dataset.co));setView('fellow');sig=''}}
 // Whose table it is, or null with one company (#456): {text, id, followed}.
+// The one-line banner of a scene on the live clock (#458), or null: {text, id}.
+export function liveLine(b){if(!b||!b.live||b.company==null)return null;const C=companyById(b.company),L=C?members(C):[],lead=C?leaderOf(C)||L[0]:null;
+  const who=lead?(L.length>1?lead.name+' and company':lead.name+', alone'):(b.companyName||'A company');
+  return {text:'Scene at '+(b.where||'the road')+': '+who,id:b.company}}
 export function tableOwner(b){if(!b||b.company==null||companies().length<2)return null;const name=b.companyName||'A company',F=followedCompany();
   return {text:b.solo?name+', alone':'At the table: '+name,id:b.company,followed:!!F&&F.id===b.company}}
 function endBlock(box,c){if(!c.ends||!c.ends.length)return;const d=el('div','tend');d.setAttribute('aria-label','How the fight ended');
@@ -167,10 +178,13 @@ function rowsBlock(box,rows,b){const all=!!b.all,n=rows.filter(r=>r.st==='done')
 const rowsSay=(b,rows)=>!!rows&&b.phase==='turn'&&(b.all?/^\d+\/\d+ answered/.test(b.line)&&!/no runner/.test(b.line):/is thinking/.test(b.line||''));
 
 // Called every frame with the host's speed: the sim pauses only at 1x.
-export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd();
-  if(S.table){if(S.table.id!==lastScene){lastScene=S.table.id;if(TABLE.speed<=1)chime(S.table.kind)}}else lastScene=null;
+export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd();syncPause();
   const box=$('tbanner');if(!box)return;if(!box._tstep){box._tstep=1;box.addEventListener('click',onBox)}
-  const b=bannerOf();if(!b){if(!box.hidden){box.hidden=true;sig=''}return}
+  const b=bannerOf();if(!b){lastScene=null;if(!box.hidden){box.hidden=true;sig=''}return}
+  if(S.table.id!==lastScene&&!b.live){lastScene=S.table.id;if(TABLE.speed<=1)chime(S.table.kind)} // chime when the scene stops the world, also on following into it
+  const ll=liveLine(b);box.classList.toggle('tlive',!!ll);
+  if(ll){const s='live|'+ll.text+'|'+ll.id;if(s===sig)return;sig=s;box.hidden=false;box.classList.remove('tcombat');patch(box,box=>{
+    const o=el('button','tlvb',ll.text+' ▸');o.type='button';o.dataset.act='live';o.dataset.co=ll.id;o.title='Follow this company: its scene then pauses the world and opens here';box.append(o)},{force:true});return}
   const c=combatView(),rows=c?null:memberRows(),hd=sceneHead(b.kind,b.title),chips=sceneChips(b,c),own=tableOwner(b);
   const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):'',own?own.text+own.followed:''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
   const tt=el('div','tt'),th=el('span','tth',hd.head.toUpperCase());th.title=b.title;tt.append(th);box.append(tt);
