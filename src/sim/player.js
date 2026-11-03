@@ -280,13 +280,13 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   default:return false}}
 
 // A line the hero heard (sim/chat.js, council.js party chat, an NPC, the DM's narrate), as the agent reads it.
-const heardText=e=>e.from&&e.from.kind==='dm'?'The narrator: '+e.text:(e.party?'[party] ':'')+(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"';
+const heardText=e=>e.dream?e.text:e.from&&e.from.kind==='dm'?'The narrator: '+e.text:(e.party?'[party] ':'')+(e.from&&e.from.name||'Someone')+' says: "'+e.text+'"';
 // Hearing (issue #126): a line from an agent-played hero (aloud in earshot, or on the party channel) starts the
 // listener's turn promptly (2), at most once per PK.HEAR_WAKE game minutes per listener so two agents cannot
 // talk each other into turns forever; the narrator, an NPC or a scripted companion's party line wake after the gap (1).
 function hearWake(a,e){const f=e.from;
   if(f&&f.kind==='hero'&&f.player){if(S.gameMin-(a.playHeardAt??-1e9)>=PK.HEAR_WAKE){a.playHeardAt=S.gameMin;return 2}return 0}
-  if(e.talk)return 2; // a person answering the hero in a conversation (#170): a turn at once
+  if(e.talk||e.dream)return 2; // a person answering the hero in a conversation (#170): a turn at once
   return e.party||f&&(f.kind==='dm'||f.kind==='npc')?1:0}
 // Notice what changed since the last step and turn it into events.
 function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills});const mh=maxHp(a);
