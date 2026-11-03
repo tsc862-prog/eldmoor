@@ -285,6 +285,7 @@ if (process.argv[2] === '--companies') {
   let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
   const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
   init({fellowship: false}); run(30);
+  CRYPT.cd = 1e9; S.raidT = 1e9; // these fixture companies are green: no Crypt or raid call while the scenes are tested (no level gate, #449)
   const LINK = {}; SIM.setRunnerLinks(x => LINK[x.id] || 'none');
   T.TABLE.speed = 1; T.TABLE.mode = 'auto';
   const pool = S.agents.filter(a => a.kind === 'hero' && a.fac === 0 && a.state !== 'dead' && a.state !== 'dungeon' && a.state !== 'raid').slice(0, 4);
