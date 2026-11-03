@@ -7,13 +7,16 @@
 // itself to the party with party_say every turn, then waits: the owner's screenshot), mock-loop (Ollama aborts every
 // generation: "token repeat limit reached", issue #221), mock-loop1 (aborts every call at the play temperature;
 // the cooler retry at 0.4 plays like mock-tools), mock-slow (the start gate's warm-up call, issue #222, answers after WARM_SLOW_MS,
-// then plays like mock-tools), mock-down (every call fails: a crashed warm-up). Each turn it plays status,
+// then plays like mock-tools), mock-down (every call fails: a crashed warm-up), mock-busy (issue #515: every tool-loop call takes
+// BUSY_MS, look, status, rest, wait, so a member is nearly always mid-turn; a scene answer (format with option) comes in SCENE_MS
+// with press or the first option). Each turn it plays status,
 // rest 20, a bad tool (fly), wait 20, then narrates.
 // startMockOllama() -> {url, seen (every /api/chat body; seen.final counts closing calls), close()}
 import http from 'node:http';
 
-export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b'];
+export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b', 'mock-busy:1b'];
 export const WARM_SLOW_MS = 2500; // mock-slow's warm-up answer takes this long (issue #222)
+export const MOCK_BUSY = {BUSY_MS: 1200, SCENE_MS: 150}; // mock-busy's tool-loop call and scene answer times (issue #515); a check may change them
 export async function startMockOllama() {
   const seen = [];
   const plan = {
@@ -40,6 +43,14 @@ export async function startMockOllama() {
         return body.model === 'mock-slow:1b' ? void setTimeout(answer, WARM_SLOW_MS) : answer();
       }
       if (body.model === 'mock-down:1b') return send(500, {error: 'model runner has unexpectedly stopped'});
+      if (body.model === 'mock-busy:1b') { // issue #515: slow free turns, quick scene answers
+        const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
+        if (en) {seen.busyScene = (seen.busyScene || 0) + 1; return void setTimeout(() => send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: en.includes('press') ? 'press' : en[0], line: 'Steady, I am with you.'})}}), MOCK_BUSY.SCENE_MS)}
+        seen.busy = (seen.busy || 0) + 1;
+        const k = after.filter(m => m.role === 'assistant').length, busyPlan = [['look'], ['status'], ['rest', {minutes: '20'}], ['wait', {minutes: 20}]];
+        const msg = !body.tools || k >= busyPlan.length ? {role: 'assistant', content: 'The hero looked about, rested and waited.'} : {role: 'assistant', content: '', tool_calls: [{function: {name: busyPlan[k][0], arguments: busyPlan[k][1] || {}}}]};
+        return void setTimeout(() => {if (!res.destroyed) send(200, {...done, message: msg})}, MOCK_BUSY.BUSY_MS);
+      }
       if (body.model === 'mock-loop:1b' || body.model === 'mock-loop1:1b' && body.options && body.options.temperature !== 0.4) { // the owner's live error (issue #221)
         seen.loop = (seen.loop || 0) + 1;
         return send(500, {error: 'an error was encountered while running the model: prediction aborted, token repeat limit reached'});
