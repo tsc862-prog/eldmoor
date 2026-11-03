@@ -52,6 +52,7 @@ import {inSlots} from '../sim/company.js'; // the slotted company (#588)
 
 const KEY='eldmoor.sceneMaps';
 const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social','interrogation','talk']); // interrogation (#431 slice 3): the cell in a town
+const ROOM_KINDS=new Set(['opening','arrival']); // session zero and an arrival in a town (#701): arrival.js names the tavern in ctx.setting; at a camp they keep the camp cut
 const TOWN_PAD=3,NEAR=14,SPEAK_S=9;
 let auto=true;try{if(typeof localStorage!=='undefined'&&localStorage.getItem(KEY)==='off')auto=false}catch(_){}
 
@@ -87,7 +88,7 @@ export function sceneSpec(sc=S.table){if(!sc)return null;
   if(DUNGEON_KINDS.has(sc.kind))return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:CRYPT?CRYPT.name:'the Crypt',dungeon:CRYPT};
   const c=sc.ctx||{},town=(c.town&&CITY.find(t=>t.name===c.town))||(an?townAt(an.x,an.y):null),z=an?zoneAt(an.x,an.y):-1;
   // indoors: in a town, or wherever the DM named a room (stage_scene setting, #431 slice 2: a house by the road)
-  if(INDOOR_KINDS.has(sc.kind)&&(sc.kind==='talk'?SETTINGS[c.setting]:(town||SETTINGS[c.setting]))){ // a talk (#407) plays indoors only when talkscene.js set its room (the person stands in a town); in the field it keeps the cut
+  if((INDOOR_KINDS.has(sc.kind)||ROOM_KINDS.has(sc.kind))&&(sc.kind==='talk'||ROOM_KINDS.has(sc.kind)?SETTINGS[c.setting]:(town||SETTINGS[c.setting]))){ // a talk (#407) plays indoors only when talkscene.js set its room (the person stands in a town); in the field it keeps the cut
     const people=cast.filter(e=>e.kind!=='hero'&&e.kind!=='mob'),setting=pickSetting(sc,town,people),place=town?town.name:(ZONES[z]||'the wilds');
     return {mode:'indoor',kind:sc.kind,title:sc.title,members,cast,anchor:an,town,setting,key:place+'|'+sc.id,where:SETTINGS[setting].name+' in '+place}}
   // at a camp (#431 slice 3): the fireside, an ambush on the watch or questions by the fire play on the real ground round the fire

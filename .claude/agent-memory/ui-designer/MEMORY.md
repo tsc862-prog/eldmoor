@@ -23,3 +23,4 @@
 - [Scene map polish](scene_map_polish.md): #536 docked banner .screen.scin, whole-number crop, quote-only bubbles (core/spoken.js), narrLines, shortLabel
 - [Ultra-wide dock](ultrawide_dock.md): #546 dock from 2560 px, Company/Hero/Story/Chat tabs, --uiz zoom, story-lead default hero, mind dot
 - [DM panel, no seat](dm_panel_no_seat.md): #560 Restart DM, DM alert line on the frame, uismoke gate-state gotcha
+- [Gambit diff](gambit_diff.md): #679 gambitDiff/ownRule, Agent tab marks, sheet Agent row; Bash heredocs halve backslashes

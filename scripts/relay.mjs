@@ -290,6 +290,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (runnersOn && (process.argv.includes('--resume-runners') || /^(1|true|yes)$/i.test(env.RELAY_RESUME_RUNNERS || ''))) sup.resume().catch(e => console.log('[runners] resume failed: ' + e.message)); // the last run's runners, once the page is back
     embedStatus(providers.ollama, embedCfg).then(o => console.log('[relay] ' + o.line));
     providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error} | num_ctx ${o.numCtx} for every local call (OLLAMA_NUM_CTX)`));
+    if (providers.openai && providers.openai.configured()) providers.openai.status().then(o => { if (o.ok) console.log(`[relay] openai: ${o.models.length} model${o.models.length === 1 ? '' : 's'}, cheapest first (OPENAI_MODELS narrows the list)${o.dropped ? ' | in OPENAI_MODELS but not usable with this key, dropped: ' + o.dropped.join(', ') : ''}`) });
     if (providers.huggingface && providers.huggingface.configured()) providers.huggingface.status().then(o => console.log(`[relay] huggingface: ${o.ok ? (o.models.length ? o.models.join(', ') : 'no model answered') + (o.dropped ? ' (not supported, dropped: ' + o.dropped.join(', ') + ')' : '') : o.error} | one tiny call per model, checked once (HF_MODELS); shares the free allowance with the art pipeline`));
   });
 }
