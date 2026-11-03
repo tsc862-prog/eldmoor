@@ -50,5 +50,7 @@
 - [Semantic recall](semantic-recall.md) — #553 _pool/_sem protocol, vectors.json cache, 300 ms budget, fallbacks, pitfalls
 - [CI correctness](ci-correctness.md) — #573 hashcheck source+hash-guard, rulescheck allowlist, merge_group, pitfalls
 - [CI observation](ci-observation.md) — #574 flake hunt, nightly mock run + thresholds, shoot.mjs, red-main alarm, helpers, pitfalls
+- [Search and examine](search-examine.md) — #525 search/examine tools, marker reveal/cache, hash roll, cooldown, lorecheck stale-hero pitfall
 - [Company runners](company-runners.md) — #460 kind company, seatInfo health fields, adopt (leaver/heir restarts), per-company digest+report, shims left
 - [DM old saves](dm-old-saves.md) — #562 convertOldDm on restore, DM hard rule in CLAUDE.md, savecheck seat/flaky-regex pitfalls
+- [DM reflexes](dm-reflexes.md) — #561 dmreflex.js heard/alive/gone, no seat-closed paths, fill why slow|gone, dmShare arrival, RNG test pitfall

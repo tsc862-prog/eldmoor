@@ -319,6 +319,13 @@ ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last
   // a seat with no runner for the same traffic raises nothing
   const w2 = makeWatch({dmLink: () => 'none'}), r2 = []; w2.tick(); for (let m = 0; m < 240; m += 10) {S.gameMin += 10; talks.stats.scripted += 3; r2.push(...w2.tick())}
   ok(!r2.some(r => r.kind === 'anomaly' && r.rec.kind === 'dm-scripted'), 'no dm-scripted while the seat has no runner (the owner is told elsewhere)');
+  // session zero and an arrival at the table (#561): their calls count as table slots, the DM agent's answer and each reflex fill
+  {const {dmlog} = await import('../src/sim/dmlog.js'), w3 = makeWatch({dmLink: () => 'connected'}), r3 = []; w3.tick();
+    dmlog('agent', null, ['At the table (arrival, voice): x'], {by: 'dm-agent', call: 'voice', scene: 'arrival', text: 'x'}, {heroes: []});
+    for (const why of ['slow', 'gone']) dmlog('agent', null, ['At the table (opening, frame): y [scripted fill]'], {by: 'scripted', call: 'frame', scene: 'opening', text: 'y', fill: true, why}, {heroes: []});
+    for (let m = 0; m < 70; m += 10) {S.gameMin += 10; r3.push(...w3.tick())}
+    const k = r3.filter(r => r.kind === 'world').reduce((o, d) => {const t = d.rec.dmShare.kinds.table; o.a += t.agent; o.s += t.scripted; return o}, {a: 0, s: 0});
+    ok(k.a === 1 && k.s === 2, 'the arrival and opening calls count in the DM share: 1 answered by the DM agent, 2 reflex fills (' + JSON.stringify(k) + ')')}
   // the report reads the digests: per kind, per day, per model, and says what old digests lack
   const dirR = join(ROOT, 'dmshare'), {mkdirSync: mk3} = await import('node:fs'); mk3(dirR, {recursive: true});
   const bl = behaviorLog({root: dirR, world: 'ds', log: () => {}});
