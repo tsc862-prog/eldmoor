@@ -57,3 +57,4 @@
 - [Scene props](scene-props.md) — #592 sc.props data, examine/search/give_item hooks, cast.item, pitfalls
 - [Narrator voice](narrator-voice.md) — #554 local TTS: loopback engine, relay routes, hash cache, page queue rules, ttscheck
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
+- [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
