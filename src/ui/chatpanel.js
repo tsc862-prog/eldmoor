@@ -103,8 +103,8 @@ function renderDm(){if(!dmList)return;const tv=dmView==='turns';dmList.hidden=tv
     if(!L.length)tmp.append(el('li','dm','The DM agent has not acted yet (open the DM seat in Agents, then npm run dm).'))},{force:true})}
 
 function sync(){const F=!!S.fellowship,sec=$('chatSec');if(!sec)return;if(sec.hidden===F)sec.hidden=!F;
-  $('chatPane').hidden=tab!=='chat';$('dmPane').hidden=tab!=='dm';
-  for(const b of $('chatTabs').children)b.setAttribute('aria-pressed',String(b.dataset.ctab===tab))}
+  $('chatPane').hidden=tab!=='chat';$('dmPane').hidden=tab!=='dm';$('chatFilter').hidden=tab!=='chat';
+  for(const b of $('chatTabs').children){if(!b.dataset.ctab)continue;if(b.dataset.ctab==='chat')b.hidden=tab==='chat';else b.setAttribute('aria-pressed',String(tab==='dm'))}}
 export function renderChatPanel(){if(!box)return;sync();if(!S.fellowship)return;if(tab==='chat')renderChat();else renderDm()}
 export function setChatTab(t){if(t!=='chat'&&t!=='dm')return;tab=t;sig='';dmSig='';renderChatPanel()}
 export function setChatFilter(f){if(!FILTERS.some(([k])=>k===f))return;filter=f;sig='';for(const b of $('chatFilter').children)b.setAttribute('aria-pressed',String(b.dataset.cf===f));renderChatPanel()}
@@ -114,22 +114,28 @@ export const setDmView=v=>{if(v==='turns'||v==='entries'){const b=dmBar&&[...dmB
 export function initChatPanel(){const sec=$('chatSec');if(!sec)return;
   box=el('details','tlbox chatbox');box.id='chatbox';box.open=true;
   const sum=el('summary',null,'Chat');box.append(sum);
-  const tabs=el('div','tfilter');tabs.id='chatTabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Chat or DM agent');
-  for(const [k,l] of [['chat','Chat'],['dm','DM agent']]){const b=el('button',null,l);b.dataset.ctab=k;b.setAttribute('role','tab');b.addEventListener('click',()=>setChatTab(k));tabs.append(b)}
+  // One row (#546): the channel chips, then the DM agent toggle (and, in its view, a way back to the chat), Taller and the
+  // left/under-map switch. The colour key is the row's and the list's tooltip.
+  const tabs=el('div','tfilter chatrow');tabs.id='chatTabs';tabs.setAttribute('role','toolbar');tabs.setAttribute('aria-label','Chat channels and the DM agent');
+  const fb=el('div','chatchips');fb.id='chatFilter';fb.setAttribute('role','group');fb.setAttribute('aria-label','Chat filter');
+  for(const [k,l] of FILTERS){const b=el('button',null,l);b.dataset.cf=k;b.setAttribute('aria-pressed',String(k===filter));b.addEventListener('click',()=>setChatFilter(k));fb.append(b)}
+  tabs.append(fb);
+  for(const [k,l] of [['chat','◀ Chat'],['dm','DM agent']]){const b=el('button',k==='dm'?'chatdmbtn':'chatback',l);b.dataset.ctab=k;
+    b.title=k==='dm'?'The DM agent’s turns and actions (click again for the chat)':'Back to the chat';
+    b.addEventListener('click',()=>setChatTab(k==='dm'&&tab==='dm'?'chat':k));tabs.append(b)}
   {const w=el('button','chatwidebtn','Taller');w.id='chatTall';w.title='Make the chat under the map taller (remembered)';
    const apply=()=>{document.body.classList.toggle('chat-tall',wide);w.setAttribute('aria-pressed',String(wide));w.textContent=wide?'Shorter':'Taller'};
    w.addEventListener('click',()=>{wide=!wide;try{localStorage.setItem(WKEY,wide?'1':'0')}catch(e){}apply()});tabs.append(w);apply()}
   box.append(tabs);
   const pane=el('div');pane.id='chatPane';
-  const fb=el('div','tfilter');fb.id='chatFilter';fb.setAttribute('role','group');fb.setAttribute('aria-label','Chat filter');
-  for(const [k,l] of FILTERS){const b=el('button',null,l);b.dataset.cf=k;b.setAttribute('aria-pressed',String(k===filter));b.addEventListener('click',()=>setChatFilter(k));fb.append(b)}
   // the colour key: member = class colour, others = disposition colour with an underline (a shape as well as a colour)
-  const lg=el('div','chatlegend dm');lg.id='chatLegend';lg.append('Names: class colour = member; underlined = others: ');
+  const lg=el('div','chatlegend dm');lg.id='chatLegend';lg.hidden=true;lg.append('Names: class colour = member; underlined = others: ');
   for(const k of ['hostile','neutral','friendly']){const s=el('span','npcn npc-'+k,k);s.style.color=DISP[k].color;lg.append(s,' ')}
-  const wrap=el('div','chatwrap');list=el('ul','log chat chatlist');list.id='chatList';list.tabIndex=0;list.setAttribute('role','log');list.setAttribute('aria-label','Fellowship chat');
+  const key='Names: class colour = a company member; underlined = others (red hostile, amber neutral, green friendly)';fb.title=key;
+  const wrap=el('div','chatwrap');list=el('ul','log chat chatlist');list.id='chatList';list.tabIndex=0;list.setAttribute('role','log');list.setAttribute('aria-label','Fellowship chat');list.title=key;
   chip=el('button','chatnew','new lines');chip.hidden=true;chip.addEventListener('click',()=>{list.scrollTop=0;newN=0;syncChip()});
   list.addEventListener('scroll',()=>{if(atTop()){newN=0;syncChip()}});
-  wrap.append(list,chip);pane.append(fb,lg,wrap);
+  wrap.append(list,chip);pane.append(lg,wrap);
   const dp=el('div');dp.id='dmPane';dp.hidden=true;
   dmBar=el('div','tfilter');const tg=el('button',null,'Scripted DM');tg.setAttribute('aria-pressed','false');tg.title='Also show the scripted DM’s entries, dimmed';
   tg.addEventListener('click',()=>{showScripted=!showScripted;tg.setAttribute('aria-pressed',String(showScripted));dmSig='';renderChatPanel()});dmBar.append(tg);

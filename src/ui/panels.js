@@ -43,6 +43,7 @@ import {showMindButtons,devMode} from './mindctl.js';
 import {tabQuests} from './quests.js'; // the Quests tab
 import {tabCombat} from './combat.js'; // the Combat tab
 import {setPurpose,isOpen} from './purposeview.js'; // the purpose line in the header (#534)
+import {companyOf} from '../sim/company.js'; // the dock's short card is for heroes outside every company (#546)
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
@@ -386,16 +387,26 @@ function skeleton(root){root.replaceChildren();const hd=el('div','hd'),tabs=el('
 // member; Party is hidden for members, whose party is the frames above the map.
 function tabShown(a,k){if(k==='mind')return hasMind(a);if(k==='agent')return hasAgent(a);if(k==='memory')return !!a.memory||!!a.memories;if(k==='party')return !(a.fellow&&S.fellowship);return true}
 
+// The dock's short card (#546): with the dock open, a background hero (no company, not agent-played) shows its header and a
+// Full sheet button; the tabs open on that click and stay open for that hero.
+const fullFor=new Set();
+export const briefCard=a=>!!a&&!!document.body&&document.body.classList.contains('docked')&&!a.fellow&&!a.player&&!companyOf(a)&&!fullFor.has(a.id);
 export function renderHero(){const root=$('hero'),a=cam.sel;
   if(!a){root.innerHTML='<div class="meta">Tap a hero on the map, or pick one from Top heroes.</div>';skel=null;return}
   const k=skel&&skel.root===root&&root.contains(skel.hd)?skel:skeleton(root);
-  const mh=maxHp(a);
+  const mh=maxHp(a),short=briefCard(a);
   // header and body are patched in place (#145): scroll, focus and open rows survive the 0.3 s tick
   patch(k.hd,h=>{h.append(heroName(a));
     h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
     const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=CRYPT.name;b.title='Open the dungeon view';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
     h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
-    h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)))});
+    h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
+    if(short){const b=el('button','mini fullsheet','Full sheet ▸');b.type='button';b.dataset.fullsheet=a.id;b.title='Open '+a.name+'’s full sheet: stats, gear, story and mind';h.append(b)}});
+  // the dock (#546): a hero outside every company shows this short card until its full sheet is asked for
+  const sc=k.root.closest?k.root.closest('section'):null;
+  if(k.tabs.hidden!==short){k.tabs.hidden=short;k.tb.hidden=short}
+  if(sc&&sc._who!==a.id){sc._who=a.id;if(document.body.classList.contains('docked'))sc.scrollTop=0}
+  if(short){hideTip();return}
   const cur=tabShown(a,tab)?tab:'stats',grp=groupOf(cur);
   for(const b of k.gr.children){const on=b.dataset.tgroup===grp;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-selected',String(on))}
   for(const b of k.sub.children){const on=b.dataset.tab===cur;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-selected',String(on));b.hidden=groupOf(b.dataset.tab)!==grp||!tabShown(a,b.dataset.tab)}
@@ -470,6 +481,7 @@ function initClicks(){const host=document.querySelector('.main')||document.body;
       if(a)mindOpen=mindOpen&&mindOpen.hid===a.id&&mindOpen.id===id?null:{hid:a.id,id,prompt:false};renderHero();return}
     const dv=t.closest('[data-adv]');if(dv&&!t.closest('.hn[data-hid]')){showAdventure(dv.dataset.adv);return}
     const cs=t.closest('[data-cstat]');if(cs){statOpen=statOpen===cs.dataset.cstat?null:cs.dataset.cstat;renderHero();return}
+    const fs=t.closest('[data-fullsheet]');if(fs){fullFor.add(Number(fs.dataset.fullsheet));renderHero();return}
     const tg=t.closest('[data-tgroup]');if(tg){setGroup(tg.dataset.tgroup);return}
     const tb=t.closest('[data-tab]');if(tb){setTab(tb.dataset.tab);return}
     const n=t.closest('.hn[data-hid]');if(!n)return;
