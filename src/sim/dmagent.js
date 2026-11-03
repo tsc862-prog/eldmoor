@@ -441,7 +441,7 @@ const FLAT_USAGE={
   place_person:'place_person takes: role (peddler|hermit|drover|sellsword|minstrel|stranger), near ('+NEAR_FORMS+'), name?, faction? (concord|warband|neutral), want?, attitude? (hostile|wary|neutral|friendly), hours? (6-168), spot? (in a town: inn|smith|quartermaster|chapel|square|gate), reason',
   give_item:'give_item takes: hero (a hero by name or id), item (a quest item or token, a consumable, or a gear slot head|chest|hands|feet|main|off|trinket), by? (a person in earshot, by name or id), ilvl? (gear only, never above the hero’s level), reason',
   take_item:'take_item takes: hero (a hero by name or id), item (a quest item or token), by? (a person in earshot, by name or id), reason',
-  mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reason'};
+  mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reveal? (a secret a search uncovers), cache? (gold or an item hidden there), reason'};
 // A walkable spot between min and max tiles of c (rings outward, no dice), clear of towns, landmarks and, by gap, other places.
 function openSpot(c,min,max,gap){const R=q=>Math.round(q*10)/10,okAt=q=>!spotErr(q)&&!(gap&&(S.places||[]).some(p=>dist(p,q)<gap));
   if(min<=0&&okAt({x:R(c.x),y:R(c.y)}))return {x:R(c.x),y:R(c.y)};
@@ -490,6 +490,7 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};const lever=FLAT_LEVERS
   else {const W=nearSpot(a.near,{min:1,max:5,gap:LK.PLACE_GAP,townSpot:true});
     if(W.err||!W.at)return no((W.err||'no open ground outside '+W.town+'’s gate')+' (mark_place needs at: a point {x,y} on open ground, '+LK.PLACE_GAP+' tiles from other places); '+nearTakes());
     params={kind:str(a.kind,16),at:W.at,...opt('name',str(a.name,32)),...opt('hours',int(a.hours))}}
+  if(tool==='mark_place'){const rv=clean(a.reveal,200),ca=clean(a.cache,60);if(rv||ca)via.after=r=>{if(r.ret){if(rv)r.ret.reveal=rv;if(ca)r.ret.cache=ca}}} // what a hero's search finds there (sim/search.js, #525)
   const want=tool==='place_person'?clean(a.want,STAGE.WANT_MAX||160):'';
   if(want)via.after=r=>{if(r.ret)r.ret.want=want}; // what they want from heroes, read by conversations (talk.js), as a staged meeting sets it
   const r=pullLever({lever,params,reason},via);if(!r.ok)return r;

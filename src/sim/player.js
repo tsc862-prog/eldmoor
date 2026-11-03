@@ -74,6 +74,7 @@ import {waitsNote,waitedS} from './scenewait.js'; // a scene that waits on you, 
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
 import {lineRefusal,noteSaid,publicAnswer} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
+import {searchAct,examineView,SR} from './search.js'; // search and examine marked places, signs and landmarks (#525)
 import {noticeHeroes,sighted} from './sighthero.js'; // heroes coming into sight (#570)
 import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,intentView,waitish} from './intent.js'; // the hero's stated aim (#535)
 import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,placeMemory,roadsLine,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,feared,keyOf,sight,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
@@ -364,7 +365,7 @@ function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*d
   if(!cmd&&a.party&&a.party.fellow&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil&&!turnHeld(a)){const c=homeOf(a);
     cmd={kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'town'}],last:'hunt',label:'the gate, following '+a.party.leader.name};a.pq=[cmd];ev(a,'The party is out with '+a.party.leader.name+'; you follow them out of '+c.name+'.')}
   if(cmd&&cmd.kind==='move')return travel(a,dt,cmd);
-  if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||a.hp>=mh)done(a,'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
+  if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||(!cmd.search&&a.hp>=mh))done(a,cmd.search?'You finish searching.':'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
   if(cmd&&cmd.kind==='sell'){const r=sellLoot(a);a.gold+=r.gold;done(a,r.n?'Sold '+r.n+' thing'+(r.n>1?'s':'')+' for '+r.gold+'g (gold '+a.gold+').':null,false);a.moving=false;return true} // autopilot (#466)
   if(cmd&&cmd.kind==='buy'){const U=USES[cmd.item];let got=0;while(U&&got<cmd.n&&a.gold>=U.price&&addUse(a,cmd.item,1)){a.gold-=U.price;got++}
     done(a,got?'Bought '+cmd.item+' x'+got+' (gold '+a.gold+').':null,false);a.moving=false;return true}
@@ -387,7 +388,7 @@ function homeward(a,dt){const c=homeOf(a);if(moveTo(a,c.gate.x,c.gate.y,dt,2.4))
 // Out in the world, not walking: hunt, rest, or stand and keep watch.
 function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
   if(a.state!=='hunt')a.state='hunt';
-  if(cmd&&cmd.kind==='rest'){a.moving=false;a.hp=Math.min(mh,a.hp+mh*PK.REST_REGEN*dt);if(S.gameMin>=cmd.until||a.hp>=mh)done(a,'Rested. HP '+pct(a.hp,mh)+'%.');return true}
+  if(cmd&&cmd.kind==='rest'){a.moving=false;a.hp=Math.min(mh,a.hp+mh*PK.REST_REGEN*dt);if(S.gameMin>=cmd.until||(!cmd.search&&a.hp>=mh))done(a,cmd.search?'You finish searching.':'Rested. HP '+pct(a.hp,mh)+'%.');return true}
   a.hp=Math.min(mh,a.hp+mh*.025*dt);
   if(cmd&&cmd.kind==='fight'){const t=findTarget(cmd.id);
     if(!t||!alive(t)){done(a,t&&t.kind==='mob'&&!t.alive?'Slew '+(t.elite?t.name:'the '+mobName(t))+'.':'Your target is gone.');return true}
@@ -1098,6 +1099,11 @@ const T={
     for(const l of news)hear(a,l,'the town criers');return {ok:true,news}}, // the criers' news teaches names and places (#188)
   places:(a,x)=>placesList(a,x||{}), // #414: known places, nearest first
   inspect:(a,x)=>inspectView(a,x||{}), // #425: one person, creature or item, as the hero perceives it
+  examine:(a,x)=>examineView(a,x||{},sightOf(a)), // #525: a closer look at a marked place, landmark or sign; read only
+  search(a,x){need(['hunt','town','travel','follow','camp'].includes(a.state),'You cannot search now ('+a.state+'). Not in a fight, a dungeon or on the road home.');
+    const r=searchAct(a,x||{},sightOf(a));if(r.ok===false)return r;
+    if(a.state!=='camp'&&!(r.result==='already searched')){a.pq=[{kind:'rest',until:S.gameMin+SR.MIN,search:true}];a.dest=null;if(a.state==='travel'||a.state==='follow')a.state='hunt'}
+    return r},
   lore(a,{about}){return {ok:true,...loreView(a,about),note:'What you know, in your own words: no one knows the measure of a creature until they have met it or been told.'}},
   // the journal (#153: tiers in sim/tiers.js): without n an overview (landmarks, chapter titles, latest entries) to re-ground on
   journal_read(a,{n}){if(n==null||n==='')return {ok:true,...journalOverview(a)};
