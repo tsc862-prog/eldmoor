@@ -219,7 +219,7 @@ function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors+
   for(const a of wake)if(a!==w)a.cd=Math.max(a.cd||0,2.4); // a sleeper woken by the alarm is groggy for the first round
   if(useHero){const b=foeHero;for(const a of wake)a.state='hunt';w.state='duel';w.target=b;b.state='duel';b.target=w;b.dest=null}
   else{m.target=pass?w:victim;for(const a of wake){a.state='fight';a.target=m;a.dest=null}
-    openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at '+(F===slotted()?'the Fellowship\'s camp':g.solo?'a lone camp':(F.name||'the company')+'\'s camp')+' in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id},F)}} // any company's camp (#440)
+    openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at '+(F===slotted()?'the Fellowship\'s camp':g.solo?'a lone camp':(F.name||'the company')+'\'s camp')+' in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id,camp:{x:g.x,y:g.y}},F)}} // camp: the scene plays on the ground round the fire (#431 slice 3) // any company's camp (#440)
 
 // ---- campfire talk ----
 function talk(F,g,L){if(L.length<2)return;

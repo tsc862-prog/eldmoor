@@ -71,3 +71,14 @@ export const SETTING_IDS=Object.keys(SETTINGS);
 // Floor footprint of a prop in tiles [w, h] (what the generator keeps free around it); a prop not listed takes one tile.
 // 'pew' takes its own length (rows). Wall props (hearth, shelf, window, rack, chains, torch) hang on the wall face.
 export const FOOT={table:[2,1],longtable:[4,1],bed:[1,2],altar:[2,1],idol:[1,1],hammock:[2,1],basin:[1,1],straw:[1,1]};
+
+// Outdoor settings (#431, slice 3): a scene that breaks out where the company camps plays on the real ground round the
+// fire, not in a generated room (owner: outdoor scenes match the landscape). render/sceneview.js frames a small cut of the
+// overworld round the fire (the chunk terrain, the weather and the night as they are), and render/camp.js keeps the fire,
+// the stone ring and the bedrolls drawn while the scene lasts, even when an ambush broke the camp. A row:
+//   name     what the watcher reads on the scene bar ("A camp in <region>")
+//   cut      [w, h] the smallest cut in tiles, centred on the fire (it grows to take in everyone in the scene)
+//   kinds    the scene kinds that play here when they carry ctx.camp {x, y} (sim/camp.js, sim/fireside.js)
+export const OUTDOOR_SETTINGS={
+  camp:{name:'A camp',cut:[13,9],kinds:['fireside','ambush','interrogation']},
+};

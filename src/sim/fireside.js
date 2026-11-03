@@ -97,7 +97,7 @@ function hereAt(C,q){const L=memOf(C).filter(living);
 function openFire(C,q,H){const skip=memOf(C).filter(a=>!H.includes(a)).map(a=>a.id),F=fireOf(C),gm=Math.round(S.gameMin);
   if(q.mode==='camp'){const T=topicsOf(C,H),big=T.some(t=>t.big),g=campOf(C),zn=g?ZONES[g.zone]||'the wilds':'the wilds',rounds=big?FIRE.BIG:FIRE.STD;
     const topic=T[0]||null,frame=['The fire is lit in ',gd(zn),'. ',intro(topic),big?' It will be a long night of talk.':''];
-    const sc=openScene('fireside','Round the fire',frame,{mode:'camp',topic:topic?topic.text:null,tk:topic?topic.k:null,topics:T.slice(0,FIRE.TOPICS).map(t=>t.text),rounds,rd:1,asked:{},told:[],zone:zn,skip,anchor:H[0].id},C);
+    const sc=openScene('fireside','Round the fire',frame,{mode:'camp',topic:topic?topic.text:null,tk:topic?topic.k:null,topics:T.slice(0,FIRE.TOPICS).map(t=>t.text),rounds,rd:1,asked:{},told:[],zone:zn,skip,anchor:H[0].id,...(g?{camp:{x:g.x,y:g.y}}:{})},C);
     if(!sc)return null;sc.rd=1;F.last=gm;F.ev=[];if(g)g.agentTalk=1;return sc} // the fire is the talk: no extra "the fire is lit" nudge (sim/camp.js)
   const sc=openScene('debrief','After '+cut(q.title,60),[gd(cut(q.title,60)),' is over. ',pickH(C.id+gm,5,['They catch their breath.','Nobody speaks at first.','Someone laughs, too loud, and stops.']),' How was that?'],{mode:'debrief',about:q.title,skip,anchor:H[0].id},C);
   if(sc)F.dlast=gm;return sc}
