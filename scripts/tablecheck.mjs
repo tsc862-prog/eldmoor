@@ -353,6 +353,11 @@ if (process.argv[2] === '--staged') {
   ok(good.ok && good.cast.length === pv.creatures.length && good.cast.every((c, i) => c.includes(pv.creatures[i].replace(/ \(L\d+\)$/, ''))), `a fitting frame (a family word, "pack leader" allowed) is accepted and builds the previewed cast (${good.cast && good.cast.length} foes)`);
   for (const id of S.staged.cur.cast.mobs) {const m = S.mobs.find(x => x.id === id); if (m) {m.alive = false; m.gone = true}}
   S.staged.cur.phase = 'done'; S.staged.day.n = 0; fresh();
+  ok(ST.STAGE.WANT_MAX === 160, 'STAGE.WANT_MAX is a real constant (160, as place_person caps a want)');
+  {const lw = dmAct('stage_scene', {kind: 'meeting', near: 'fellowship', frame: 'A pilgrim sits by a cairn, mending a sandal.', cast: {role: 'hermit', want: 'company as far as the ford '.repeat(12)}, reason: 'want cap'});
+   const cw = S.staged.cur && S.staged.cur.cast && S.staged.cur.cast.want;
+   ok(!lw.ok || (cw && cw.length <= ST.STAGE.WANT_MAX), `a long want is capped at ${ST.STAGE.WANT_MAX}: ${cw ? cw.length : lw.error}`);
+   if (S.staged.cur) S.staged.cur.phase = 'done'; fresh()}
   const ev = dmAct('stage_scene', {kind: 'elite', near: 'fellowship', preview: 'true'});
   ok(ev.ok && /^a named /.test(ev.cast), `elite preview: ${ev.cast}`);
   ok(dmAct('stage_scene', {kind: 'elite', near: 'fellowship', frame: 'A bandit captain steps out of the thorns, sword drawn.', cast: {}, reason: 'misfit'}).ok === false, 'an elite framed as a bandit captain is refused');
