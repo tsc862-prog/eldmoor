@@ -98,5 +98,57 @@ T.gambits = [{id: 1, when: 'in_town', then: 'rest', t: {minutes: 30}, on: true}]
 ok(G.gambitRec(T) && G.gambitRec(T).last && G.gambitRec(T).last.then === 'rest' && G.gambitRec(T).last.id === 1, 'a rule "in_town -> rest {minutes: 30}" rests in town');
 T.gambits = null;
 
+
+console.log('tools');
+const {snapshot, restore} = await import('../src/sim/save.js');
+const {makeWatch} = await import('../src/sim/behavior.js');
+const {PLAYER_TOOLS} = await import('../src/data/player-tools.js');
+for (const t of ['gambits', 'set_gambit', 'move_gambit', 'toggle_gambit', 'drop_gambit', 'reset_gambits']) ok(PLAYER_TOOLS.some(x => x.name === t), 'tool ' + t + ' is listed');
+const K = heroes.find(a => a !== A && a !== Hh && a !== Bb && a !== T && !CLS[a.cls].heal && a.state !== 'dead');
+if (!K.player) P.markPlayer(K, true); K.gambits = null; K.gambitDay = null; K.gambitHist = null;
+const call = (tool, args) => P.playerAct(K.id, tool, args || {});
+let r = call('gambits');
+ok(r.ok && r.rules.length === G.presetFor(K.cls).length && /class preset/.test(r.source) && r.conditions && r.actions, 'gambits reads the class preset with the vocabulary (' + r.rules.length + ' rules)');
+const playAct0 = K.playActAt;
+r = call('set_gambit', {when: 'ally hp below 40', then: 'shout Hold on, I am coming!', before: 1, why: 'my friends first'});
+ok(r.ok && K.gambits && K.gambits[0].when === 'ally_hp_below' && K.gambits[0].w.pct === 40 && K.gambits[0].then === 'shout', 'set_gambit adds a rule in words, at the top (' + (r.done || r.error) + ')');
+ok(K.playActAt === playAct0, 'editing rules is not an order: autopilot is not ended by it');
+const newId = K.gambits[0].id;
+r = call('set_gambit', {when: 'sunny day', then: 'flee_home'}); ok(!r.ok && /self_hp_below/.test(r.error), 'an unknown condition is refused, naming the vocabulary');
+r = call('set_gambit', {when: 'always', then: 'dance'}); ok(!r.ok && /flee_home/.test(r.error), 'an unknown action is refused, naming the vocabulary');
+r = call('set_gambit', {when: 'self_hp_below', then: 'flee_home'}); ok(!r.ok && /needs a share/.test(r.error), 'a condition without its argument is refused with an example');
+r = call('move_gambit', {id: newId, after: 'bottom'}); ok(r.ok && K.gambits[K.gambits.length - 1].id === newId, 'move_gambit moves it to the bottom');
+r = call('toggle_gambit', {id: newId, on: 'no'}); ok(r.ok && K.gambits.find(x => x.id === newId).on === false, 'toggle_gambit switches it off');
+r = call('toggle_gambit', {id: newId, on: 'no'}); ok(!r.ok && /already off/.test(r.error), 'switching it off again is refused');
+const flee = K.gambits.find(x => x.then === 'flee_home');
+const hist0 = (K.persona && K.persona.hist || []).length;
+r = call('drop_gambit', {id: flee.id, why: 'I stand or fall here'});
+ok(r.ok && !K.gambits.some(x => x.then === 'flee_home') && /safety rule/.test(r.note || ''), 'dropping the flee rule is allowed, with a note (' + (r.note || r.error) + ')');
+ok(K.persona && K.persona.hist.length === hist0 + 1 && /stopped fleeing/.test(K.persona.hist[K.persona.hist.length - 1].why), 'it lands in the persona history ("stopped fleeing: ...")');
+ok(K.gambitHist.some(h => h.kind === 'drop' && h.safety), 'and in the edit history, marked as a safety change');
+r = call('gambits'); ok(r.no_flee_rule && /one life/.test(r.no_flee_rule), 'gambits marks a list with no flee rule');
+// the behavior watch counts it
+{const W = makeWatch(); W.tick(); const out = []; for (let i = 0; i < 70 * 60 && !out.some(x => x.kind === 'world'); i++) {step(1 / 60); out.push(...W.tick())}
+  const an = out.filter(x => x.kind === 'anomaly' && x.rec.kind === 'no-flee-rule' && x.rec.hero && x.rec.hero.id === K.id), wd = out.find(x => x.kind === 'world');
+  ok(an.length === 1, 'the behavior watch flags no-flee-rule once (' + an.length + ')');
+  ok(wd && wd.rec.gambits && wd.rec.gambits[K.name] && wd.rec.gambits[K.name].noFlee && wd.rec.gambits[K.name].own, 'the hourly digest counts it per hero (gambits: ' + JSON.stringify(wd && wd.rec.gambits && wd.rec.gambits[K.name]) + ')')}
+// save and restore
+const before = JSON.stringify(K.gambits);
+restore(JSON.parse(JSON.stringify(snapshot())));
+const K2 = S.agents.find(x => x.id === K.id);
+ok(K2 && JSON.stringify(K2.gambits) === before, 'the rules survive save and restore');
+const call2 = (tool, args) => P.playerAct(K2.id, tool, args || {});
+r = call2('reset_gambits', {preset: 'class', why: 'that was foolish'});
+ok(r.ok && K2.gambits.some(x => x.then === 'flee_home' && x.on), 'reset_gambits class brings the flee rule back');
+r = call2('reset_gambits', {preset: 'reckless'}); ok(!r.ok && /cautious/.test(r.error), 'an unknown preset is refused, naming the presets');
+// the day's limit
+let n = 0; while (n < 30) {r = call2('toggle_gambit', {id: K2.gambits[0].id}); if (!r.ok) break; n++}
+ok(!r.ok && /times today/.test(r.error) && K2.gambitDay.n === 20, 'the day\'s limit stops edits at ' + K2.gambitDay.n + ' (' + r.error + ')');
+// privacy: another hero's tools never show a hero's rules
+{const secret = 'Zorvath-unique-ward-line'; K2.gambitDay.d = -1;
+  r = call2('set_gambit', {when: 'night', then: 'shout ' + secret}); ok(r.ok, 'a shout rule is set (' + (r.done || r.error) + ')');
+  const O = S.agents.find(x => x !== K2 && x.kind === 'hero' && x.state !== 'dead' && x.fac === K2.fac); if (!O.player) P.markPlayer(O, true); O.x = K2.x + 1; O.y = K2.y;
+  let leak = false; for (const t of ['look', 'status', 'companions', 'gambits', 'earshot', 'party_read', 'chat_read']) {const x = P.playerAct(O.id, t, {}); if (JSON.stringify(x).includes('Zorvath')) leak = true}
+  ok(!leak, 'another hero\'s look, status, companions, gambits and chat never show a hero\'s rules')}
 console.log('\n' + (fail ? fail + ' FAILED' : 'all ok'));
 process.exit(fail ? 1 : 0);

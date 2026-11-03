@@ -23,3 +23,10 @@ semantics: `always -> heal` = priestHeal, `always -> drink_potion` = fightAid; a
 must stay pure (no RNG, no writes) or that row moves. The runtime record (`a._gb`: last fired, log, once-timers) is
 non-enumerable so it is neither saved nor hashed. A new reflex belongs in the vocabulary plus the preset, never inline.
 See also [[autopilot_caution]], [[town_autopilot]].
+
+Part 2 (tools): edits are `act:false` (not orders: they must not end autopilot or count toward the rate). Rules are written in
+words (`when: "ally hp below 40"`, spaces or underscores, args positional or key=value) because tool args are flat strings.
+Safety edits (signature of enabled flee/potion/defend rules changed) are never refused: logged in `a.gambitHist`, the persona
+history (`histNote`, field 'gambits') and `S.gambitStats`; the watch emits `no-flee-rule` and digests `gambits` per hero.
+Hooks registered across the player.js <-> gambits.js cycle must be hoisted function declarations (`impl()`), never top-level
+const/let, or importing gambits.js first throws a TDZ error.
