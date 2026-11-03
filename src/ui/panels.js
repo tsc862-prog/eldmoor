@@ -292,6 +292,7 @@ export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k'
   if(e.from&&e.from.kind==='dm')li.append(el('span','gd chn','Narrator'));else{const s=chatName(e.from),tg=chatTag(e);if(tg)s.title=(e.agent?'Agent-played':'AI-played')+(e.model?' · '+e.model.replace(/^Agent \((.*)\)$/,'$1'):'');li.append(s)}
   // a shout (party_say, #182) reads 'Kerin shouts: text', a courier 'Kerin sends word: text'; the dim suffix says who heard it. No channel tag (owner).
   const none=e.party&&!e.courier&&e.heard&&!e.heard.length;li.append(e.courier?' sends word: ':none?' calls out, but no one is near: ':e.party?' shouts: ':': ',e.text);
+  if(e.by==='scripted'&&e.trigger==='npc')li.append(el('span','dm chscr',' scripted')); // the scripted DM's townsfolk, not the DM agent's words (#540)
   if(n>1)li.append(el('span','dm chx',' ×'+n));
   if(e.party&&!e.courier&&e.heard&&e.heard.length)li.append(el('span','dm chheard',' ('+e.heard.join(', ')+')'));return li}
 // The same speaker saying the same thing on the same channel back to back shows once with a count.
