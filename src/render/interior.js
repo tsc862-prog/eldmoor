@@ -22,7 +22,10 @@ import {MOBS} from '../data/mobs.js';
 import {S} from '../sim/state.js';
 import {classColor,DISP,toneOf} from '../core/colors.js';
 import {drawConditions} from './conditions.js';
+import {drawFoes} from './dgfoes.js';
+import {maxHp} from '../sim/heroes.js';
 
+const PS={close:true,sc:1,dpr:1,offX:0,offY:0}; // the camera the condition glyphs read (a reused object, no per-frame allocation)
 const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 const walk=t=>t!==IT.VOID&&t!==IT.WALL;
 
@@ -164,22 +167,32 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
   ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   if(reached>=0&&reached<m.rooms.length-1)ctx.drawImage(fogOf(m,reached),0,0,m.w*T,m.h*T);
   // chamber marks: the boss skull (always), cleared badges, the chamber in progress
+  PS.sc=sc;PS.dpr=dpr;PS.offX=ox;PS.offY=oy;
   const px1=dpr/sc,pulse=.75+.25*Math.sin(now*4);
   for(const r of m.rooms){const seen=reached<0||r.i<=reached;
     if(st.cleared&&st.cleared[r.i]){ctx.fillStyle=MARK.edge;ctx.fillRect(r.x*T+r.w*T-11,r.y*T+2,10,9);ctx.fillStyle=D.clear; // a tick in a dark badge
       for(const [a,b] of [[1,4],[2,5],[3,6],[4,5],[5,4],[6,3],[7,2]])ctx.fillRect(r.x*T+r.w*T-11+a,r.y*T+2+b,2,1)}
     if(r.boss)skull(ctx,Math.round(r.cx*T)-4,Math.round(r.y*T-5-13*px1-12),1); // above the chamber's name, fog or not
     if(st.cur===r.i){ctx.save();ctx.strokeStyle=D.cur;ctx.globalAlpha=pulse;ctx.lineWidth=2*px1;ctx.strokeRect(r.x*T+px1,r.y*T+px1,r.w*T-2*px1,r.h*T-2*px1);ctx.restore()}} // the outline sits inside the floor, so the wall faces never hide it
+  drawFoes(ctx,m,st,now,dpr,sc,PS); // the live crawl's foes with their HP bars (render/dgfoes.js)
+  // the hand that rests on a chamber (hover or pinned), and a cross where a hero fell on the last run
+  for(const r of m.rooms){const hot=st.hover===r.i||st.pin===r.i;if(hot){ctx.save();ctx.strokeStyle=st.pin===r.i?D.cur:'#ffffff';ctx.globalAlpha=st.pin===r.i?.9:.5;ctx.lineWidth=px1;ctx.setLineDash([3,3]);ctx.strokeRect(r.x*T+3*px1,r.y*T+3*px1,r.w*T-6*px1,r.h*T-6*px1);ctx.restore()}}
+  if(st.falls)for(const q of st.falls){const r=m.rooms[q.room];if(!r)continue;const gx=r.x*T+4+q.k*8,gy=r.y*T+r.h*T-12;
+    ctx.fillStyle=MARK.edge;ctx.fillRect(gx-1,gy-1,7,11);ctx.fillStyle='#b8b4c8';ctx.fillRect(gx+2,gy,1,8);ctx.fillRect(gx,gy+2,5,1);ctx.fillStyle='#e0584a';ctx.fillRect(gx+2,gy+8,1,1)}
   // the party, outlined hero sprites in a line facing the chamber; they step while a scene is playing
   if(st.party&&st.party.length){const pp=partySpot(m,st),n=st.party.length,fr=st.busy?Math.floor(now*2.2)&1:0;
     st.party.forEach((a,k)=>{const s=outlined(heroSprite(a,false,(fr+k)&1&&st.busy?1:0)),x=Math.round((pp.x+(k-(n-1)/2)*1.05)*T-s.width/2),y=Math.round(pp.y*T+(k&1?3:0)-s.height);
-      ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x+s.width/2,y+s.height-1,5,1.5,0,0,7);ctx.fill();ctx.drawImage(s,x,y)})}
+      ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x+s.width/2,y+s.height-1,5,1.5,0,0,7);ctx.fill();ctx.drawImage(s,x,y);
+      if(st.foes){const mh=maxHp(a),f=mh>0?Math.max(0,Math.min(1,a.hp/mh)):1,bx=x+(s.width>>1)-5,by=y-2; // a small health bar while foes stand in the room
+        ctx.fillStyle=MARK.edge;ctx.fillRect(bx-1,by-1,12,4);ctx.fillStyle='#142a1c';ctx.fillRect(bx,by,10,2);ctx.fillStyle=f<.35?'#e0584a':f<.65?'#e0b040':'#58c070';ctx.fillRect(bx,by,Math.max(1,Math.round(10*f)),2)}
+      if(a.eff)drawConditions(ctx,null,PS,a,x+(s.width>>1),y+s.height,y+(st.foes?-3:0),now)})}
   // names at a constant CSS size, above each chamber; unreached ones are a question mark
   const compact=T*sc/dpr<10; // a phone-sized view: only the chamber in progress keeps its name, so labels never pile up
   for(const r of m.rooms){const seen=reached<0||r.i<=reached,cur=st.cur===r.i;if(compact&&!cur)continue;
     const name=seen?r.name.replace(/^the /i,''):'?',col=cur?D.cur:st.cleared&&st.cleared[r.i]?D.clear:r.boss?TEXT.elite:TEXT.crypt;
     text(ctx,name,r.cx*T,r.y*T-5,col,13,dpr,sc);
-    if(cur&&st.round)text(ctx,st.round,r.cx*T,r.y*T+r.h*T+12,D.cur,12,dpr,sc)}
+    if(cur&&st.round)text(ctx,st.round,r.cx*T,r.y*T+r.h*T+12,D.cur,12,dpr,sc);
+    if(cur&&st.foeText)text(ctx,st.foeText,r.cx*T,r.y*T+r.h*T+12+13*dpr/sc,DISP.hostile.color,12,dpr,sc)}
   ctx.setTransform(1,0,0,1,0,0);return {sc,ox,oy}}
 
 // Where the party stands: in its room, a little below the middle (clear of the boss dais), or on the stair.
@@ -253,7 +266,8 @@ function wrapLine(t){const out=[];let cur='';for(const w of String(t).split(' ')
 export function bubble(ctx,x,y,head,headCol,body,dpr,sc,alpha=1){const s=12*dpr/sc,lh=s*.8,pad=s*.3,lines=(head?[head]:[]).concat(wrapLine(body));
   ctx.font=s+'px VT323, monospace';let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
   const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=y-pad*.7,top=bottom-bh,x0=x-bw/2;
-  ctx.globalAlpha=alpha;ctx.fillStyle='rgba(10,10,22,.88)';
-  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill()}else ctx.fillRect(x0,top,bw,bh);
+  ctx.globalAlpha=alpha;ctx.fillStyle='#0a0a16'; // opaque, edged in the speaker's colour (#471)
+  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill();if(headCol){ctx.strokeStyle=headCol;ctx.lineWidth=dpr/sc;ctx.stroke()}}else ctx.fillRect(x0,top,bw,bh);
+  ctx.fillStyle='#0a0a16';
   ctx.beginPath();ctx.moveTo(x-pad*.6,bottom);ctx.lineTo(x+pad*.6,bottom);ctx.lineTo(x,bottom+pad*.7);ctx.fill();
   lines.forEach((l,i)=>text(ctx,l,x,top+pad*.6+lh*(i+.85),head&&i===0?headCol:TEXT.label,12,dpr,sc));ctx.globalAlpha=1}

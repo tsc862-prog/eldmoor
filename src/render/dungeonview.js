@@ -7,14 +7,22 @@
 //   trackCrawl()        called every frame: remembers how the last crawl it saw ended (the sim keeps only totals)
 //   initDungeonView()   once: any element with a data-dungeon attribute opens the view on click (the hero card's
 //                       "View inside", the Table banner's crawl button), Escape closes it
+// Slice 2 (#85): foes in the chamber being fought with HP bars (render/dgfoes.js, from the live crawl), hover and click
+//   detail for a chamber or a foe (roomDetail: name, type, state, foes, what happened there), the History panel
+//   (historyOf: who entered, which chambers fell to them, who fell where; kept for the session on this side, as the sim
+//   keeps only totals), and the minimap's mark (dungeonSite).
 // Read-only on the sim: reads CRYPT.group and its crawl (sim/crawl.js), S.table and S.fellowship.crawl.
 // The overlay sits inside #screen right after the world canvas, so the Table banner and alerts stay on top of it.
 import {CRYPT,LANDMARKS} from '../world/map.js';
 import {buildInterior} from '../world/interior.js';
 import {S} from '../sim/state.js';
 import {drawInterior} from './interior.js';
+import {foeKind,foeAt} from './dgfoes.js';
+import {T} from '../world/tiles.js';
+import {classColor} from '../core/colors.js';
 
-let root=null,cv=null,ctx=null,nameEl=null,statEl=null,listEl=null,site=null,open=false,inited=false,sig='';
+let root=null,cv=null,ctx=null,nameEl=null,statEl=null,listEl=null,tipEl=null,pinEl=null,histEl=null,histBtn=null,site=null,open=false,inited=false,sig='';
+let fit=null,hov={room:-1,foe:null,x:0,y:0},pin=-1,histOpen=false,tipSig='',topPx=-1,barPx=-1; // fit: where the last frame put the interior (for pointer maths)
 const roomsOf=s=>(s&&s.rooms)||[];
 const live=s=>!!(CRYPT&&s&&s.name===CRYPT.name);
 const who=g=>g.name||(g.guild?'<'+g.guild.tag+'> '+g.guild.name:'A group');
@@ -23,11 +31,32 @@ const who=g=>g.name||(g.guild?'<'+g.guild.tag+'> '+g.guild.name:'A group');
 const KINDS=['clears','driven','withdrawn','wipes'],END={clears:'clear',driven:'driven',withdrawn:'withdrawn',wipes:'wiped'};
 const lastRun={};let watch=null;
 const tallyNow=()=>{const C=S.fellowship&&S.fellowship.crawl;return KINDS.map(k=>C?C[k]||0:0)};
+// Every crawl this page has seen, newest last (session memory): {site, who, day, party:[{name,cls}], rooms:{i:{rounds, result}},
+// falls:[{name,cls,room}], reached, end}. Filled from the live crawl each frame, so a page opened mid-crawl has the rest.
+const runs=[];let cur=null;
+const noteRun=(g,cr)=>{if(!cur||cur.site!==CRYPT.name)return;
+  if(cr.i>cur.reached){for(let j=cur.reached;j<cr.i;j++){const q=cur.rooms[j]||(cur.rooms[j]={rounds:0,result:''});q.result='cleared'}cur.reached=cr.i}
+  const rec=cur.rooms[cr.i]||(cur.rooms[cr.i]={rounds:0,result:''});if(cr.foes&&cr.rd+1>rec.rounds)rec.rounds=cr.rd+1;
+  if(cr.end==='clear')rec.result='cleared';else if(cr.end==='retreat')rec.result=cr.driven?'driven':'fell back';else if(cr.end==='wiped')rec.result='lost';
+  for(const a of g.mem)if(a.state==='dead'&&!cur.fell[a.id]){cur.fell[a.id]=1;cur.falls.push({name:a.name,cls:a.cls,room:cr.i});if(!rec.result)rec.result=''}};
+function closeRun(end){if(!cur)return;cur.end=end||'ended';
+  if(end==='clear')for(let j=0;j<roomsOf(CRYPT).length;j++)(cur.rooms[j]||(cur.rooms[j]={rounds:0,result:''})).result='cleared';
+  else for(let j=0;j<cur.reached;j++){const q=cur.rooms[j]||(cur.rooms[j]={rounds:0,result:''});if(!q.result)q.result='cleared'}
+  runs.push(cur);if(runs.length>24)runs.shift();cur=null}
 export function trackCrawl(){const g=CRYPT&&CRYPT.group,cr=g&&g.crawl;
-  if(cr){watch={name:CRYPT.name,i:cr.i,end:cr.end,driven:!!cr.driven,tally:watch&&watch.name===CRYPT.name&&watch.tally||tallyNow(),who:who(g),day:Math.floor(S.gameMin/1440)+1};return}
+  if(cr){watch={name:CRYPT.name,i:cr.i,end:cr.end,driven:!!cr.driven,tally:watch&&watch.name===CRYPT.name&&watch.tally||tallyNow(),who:who(g),day:Math.floor(S.gameMin/1440)+1};
+    if(!cur||cur.site!==CRYPT.name)cur={site:CRYPT.name,who:watch.who,day:watch.day,party:g.mem.map(a=>({name:a.name,cls:a.cls})),rooms:{},falls:[],fell:{},reached:0,end:null};
+    noteRun(g,cr);return}
   if(!watch)return;const now=tallyNow(),k=KINDS.find((_,j)=>now[j]>watch.tally[j]);
   const end=k?END[k]:watch.end==='clear'?'clear':watch.end==='wiped'?'wiped':watch.end==='retreat'?(watch.driven?'driven':'withdrawn'):null;
-  if(end)lastRun[watch.name]={end,i:end==='clear'?roomsOf(CRYPT).length:watch.i,who:watch.who,day:watch.day};watch=null}
+  if(end)lastRun[watch.name]={end,i:end==='clear'?roomsOf(CRYPT).length:watch.i,who:watch.who,day:watch.day};closeRun(end);watch=null}
+
+const runsOf=s=>runs.filter(r=>r.site===s.name);
+// "2 Crypt Shamblers, Bone Archer": the foes still standing, by kind (memoised on the standing count of the same array)
+let sumFor=null,sumN=-1,sumText='';
+function foeSummary(foes){let n=0;for(const f of foes)if(f.hp>0)n++;if(foes===sumFor&&n===sumN)return sumText;sumFor=foes;sumN=n;
+  const by=new Map();const nameOf=f=>f.name||foeKind(f.type).name;for(const f of foes)if(f.hp>0)by.set(nameOf(f),(by.get(nameOf(f))||0)+1);
+  sumText=[...by].map(([nm,c])=>{const k=foeKind(foes.find(f=>nameOf(f)===nm).type);return c>1&&nm===k.name?c+' '+k.pl:c>1?c+' '+nm:nm}).join(', ');return sumText}
 
 // ---- the live state as data ----
 export function stateOf(s=site||CRYPT){const rooms=roomsOf(s),n=rooms.length,g=live(s)?CRYPT.group:null,cr=g&&g.crawl;
@@ -49,8 +78,37 @@ export function stateOf(s=site||CRYPT){const rooms=roomsOf(s),n=rooms.length,g=l
       st.status='Quiet. Last run (day '+L.day+'): '+L.who+(L.end==='clear'?' cleared every chamber.':L.end==='wiped'?' were lost in '+(at?at.name:'the dark')+'.':(L.end==='driven'?' were driven back from ':' withdrew from ')+(at?at.name:'the dark')+'.');st.last=L}
     else if(live(s)&&C&&C.runs)st.status='Quiet. The Fellowship has gone down '+C.runs+(C.runs===1?' time':' times')+': '+C.clears+' cleared, '+(C.driven+C.withdrawn)+' turned back, '+C.wipes+' lost.';
     else st.status='Quiet. No one is inside.'}
+  if(cr&&cr.foes&&!cr.end&&g.tSite&&cr.foes.length){st.foes=cr.foes;st.foeRoom=cr.i;st.foeText=foeSummary(cr.foes)}
+  const run=cur&&cur.site===s.name?cur:runsOf(s).pop();
+  if(run&&run.falls.length){const per={};st.falls=run.falls.map(f=>({room:f.room,name:f.name,k:per[f.room]=(per[f.room]||-1)+1}))}
   st.rooms=rooms.map((r,i)=>({name:r.name,boss:!!r.boss,state:st.cleared[i]?'cleared':i===st.cur?'current':st.fog>=0&&i>st.fog?'unexplored':st.last&&i===st.last.i&&st.last.end!=='clear'?'lost':'room'}));
   return st}
+
+// ---- what the watcher may read: a chamber's detail and the history (DOM-free) ----
+const STATE_WORD={cleared:'Cleared',current:'Fight in progress',unexplored:'Not reached yet',lost:'Turned back here',room:'Quiet'};
+const RESULT_WORD={cleared:'cleared',driven:'the party was driven back',lost:'the party was lost','fell back':'the party fell back'};
+const foeLine=(f,live)=>{const k=foeKind(f.type),nm=f.name||k.name;
+  return nm+' · '+k.role+(k.family?', '+k.family:'')+(live&&f.lvl?' · L'+f.lvl:'')+(live?' · HP '+Math.max(0,f.hp)+'/'+(f.hits||f.hp):'')};
+// roomDetail(i): {i, title, kind, state, stateText, frame, foes:[text], notes:[text]} for chamber i of the site
+export function roomDetail(i,s=site||CRYPT,st=stateOf(s)){const r=roomsOf(s)[i];if(!r)return null;
+  const rs=st.rooms[i],fog=rs.state==='unexplored'&&!r.boss;
+  const d={i,title:fog?'Unexplored chamber':r.name,kind:r.boss?'Boss chamber':'Chamber',state:rs.state,stateText:STATE_WORD[rs.state]||'',frame:fog?'':r.frame||'',foes:[],notes:[]};
+  if(rs.state==='current'&&st.round)d.stateText+=' · '+st.round.toLowerCase();
+  if(rs.state==='current'&&!st.foes)d.stateText='The party is heading here';
+  if(st.foeRoom===i&&st.foes){for(const f of st.foes)if(f.hp>0)d.foes.push(foeLine(f,true));const down=st.foes.filter(f=>f.hp<=0).length;if(down)d.foes.push(down+(down===1?' foe':' foes')+' already down')}
+  else if(!fog)for(const f of r.foes||[])d.foes.push((f.n>1?f.n+'x ':'')+foeLine(f,false));
+  const list=runsOf(s).concat(cur&&cur.site===s.name?[cur]:[]).reverse();
+  for(const run of list){const rec=run.rooms[i],falls=run.falls.filter(f=>f.room===i);if(!rec&&!falls.length)continue;
+    if(rec&&(rec.result||rec.rounds))d.notes.push('Day '+run.day+', '+run.who+': '+(RESULT_WORD[rec.result]||(run===cur?'fight under way':'fought here'))+(rec.rounds?' ('+rec.rounds+(rec.rounds===1?' round)':' rounds)'):''));
+    for(const f of falls)d.notes.push(f.name+' fell here.');if(d.notes.length>=5)break}
+  return d}
+// historyOf(s): the crawls seen this session, newest first: {title, outcome, lines:[text]}
+export function historyOf(s=site||CRYPT){const rooms=roomsOf(s),nm=i=>(rooms[i]||{}).name||'the dark';
+  return runsOf(s).concat(cur&&cur.site===s.name?[cur]:[]).reverse().map(run=>{
+    const n=Object.keys(run.rooms).filter(j=>run.rooms[j].result==='cleared').map(Number).sort((a,b)=>a-b);
+    const out=!run.end?'In progress':run.end==='clear'?'Cleared every chamber':run.end==='wiped'?'Lost in '+nm(run.reached):run.end==='driven'?'Driven back from '+nm(run.reached):run.end==='withdrawn'?'Withdrew from '+nm(run.reached):'Ended';
+    return {title:'Day '+run.day+' · '+run.who,outcome:out,lines:['Entered: '+(run.party.map(p=>p.name).join(', ')||'-'),'Chambers cleared: '+(n.length?n.map(nm).join(', '):'none'),
+      'Fell: '+(run.falls.length?run.falls.map(f=>f.name+' in '+nm(f.room)).join('; '):'no one')]}})}
 
 // ---- the overlay ----
 const mk=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -59,17 +117,45 @@ function build(){const scr=document.getElementById('screen');if(!scr)return fals
   cv=mk('canvas','dgcv');cv.setAttribute('aria-label','Map of the dungeon\'s chambers');ctx=cv.getContext('2d');
   const bar=mk('div','dgbar'),back=mk('button','dgback','◀ Back to world');back.type='button';back.onclick=e=>{e.stopPropagation();closeDungeon()};
   const txt=mk('div','dgtxt');nameEl=mk('b','dgname');statEl=mk('span','dgstat');txt.append(nameEl,' ',statEl);
-  listEl=mk('ol','dgrooms');listEl.setAttribute('aria-label','Chambers');bar.append(back,txt,listEl);root.append(cv,bar);
+  listEl=mk('ol','dgrooms');listEl.setAttribute('aria-label','Chambers');histBtn=mk('button','dghbtn','History');histBtn.type='button';histBtn.setAttribute('aria-expanded','false');histBtn.onclick=e=>{e.stopPropagation();histOpen=!histOpen;sig='';refreshDungeon()};
+  bar.append(back,txt,histBtn,listEl);
+  tipEl=mk('div','dgtip');tipEl.hidden=true;tipEl.setAttribute('aria-hidden','true');
+  pinEl=mk('div','dgpin');pinEl.hidden=true;pinEl.setAttribute('role','region');pinEl.setAttribute('aria-label','Chamber detail');
+  histEl=mk('div','dghist');histEl.hidden=true;histEl.setAttribute('role','region');histEl.setAttribute('aria-label','Dungeon history');
+  root.append(cv,histEl,pinEl,tipEl,bar);
+  cv.addEventListener('pointermove',onMove);cv.addEventListener('pointerleave',()=>{hov.room=-1;hov.foe=null;tipEl.hidden=true});
+  cv.addEventListener('click',e=>{onMove(e);setPin(hov.room===pin?-1:hov.room)});
   // the world under it must not react: no hero picks, pans or zooms through the overlay
   for(const ev of ['click','pointerdown','pointermove','wheel'])root.addEventListener(ev,e=>e.stopPropagation(),ev==='wheel'?{passive:true}:undefined);
   const after=document.getElementById('cv');if(after&&after.nextSibling)scr.insertBefore(root,after.nextSibling);else scr.append(root);return true}
+// Pointer to chamber: the pixel under the pointer, through the last frame's fit, to a tile; chambers have even regions.
+function onMove(e){if(!fit||!site)return;const r=cv.getBoundingClientRect(),dpr=cv.width/Math.max(1,r.width),m=buildInterior(site),st=stateOf(site);
+  const wx=((e.clientX-r.left)*dpr-fit.ox)/fit.sc,wy=((e.clientY-r.top)*dpr-fit.oy)/fit.sc,tx=Math.floor(wx/T),ty=Math.floor(wy/T);
+  hov.foe=foeAt(m,st,wx,wy);const reg=tx<0||ty<0||tx>=m.w||ty>=m.h?-1:m.reg[ty*m.w+tx];hov.room=hov.foe?st.foeRoom:reg>=0&&(reg&1)===0?reg>>1:-1;
+  hov.x=e.clientX-root.getBoundingClientRect().left;hov.y=e.clientY-root.getBoundingClientRect().top;cv.style.cursor=hov.room>=0?'pointer':'default';placeTip(st)}
+function fillDetail(el,d,st,brief){el.textContent='';const t=mk('div','dgdt',d.title);const k=mk('div','dgdk',d.kind+' · '+d.stateText);el.append(t,k);
+  if(d.frame&&!brief)el.append(mk('div','dgdf',d.frame));
+  if(d.foes.length){el.append(mk('div','dgdh','Foes'));for(const f of d.foes)el.append(mk('div','dgdl',f))}
+  if(d.notes.length&&!brief){el.append(mk('div','dgdh','What happened'));for(const n of d.notes)el.append(mk('div','dgdl',n))}
+  if(!d.foes.length&&!(d.notes.length&&!brief))el.append(mk('div','dgdl',d.state==='unexplored'?'Nothing is known of it yet.':'Nothing is stirring here.'))}
+function placeTip(st){if(!tipEl)return;if(hov.room<0||hov.room===pin&&!hov.foe){tipEl.hidden=true;return}
+  const d=roomDetail(hov.room,site,st),sg=hov.room+':'+(hov.foe?hov.foe.hp:'')+':'+st.status+':'+(st.foes?st.foes.map(f=>f.hp).join():'');
+  if(sg!==tipSig){tipSig=sg;if(hov.foe)d.foes=[foeLine(hov.foe,true)];fillDetail(tipEl,d,st,true);tipEl.append(mk('div','dgdh','Click for the full detail'))}
+  tipEl.hidden=false;const rw=root.clientWidth,rh=root.clientHeight,w=tipEl.offsetWidth,h=tipEl.offsetHeight;
+  const fx=hov.x+18+w>rw-4?hov.x-w-18:hov.x+18,fy=hov.y-h/2; // beside the pointer, never over it; to the other side at the edge
+  tipEl.style.left=Math.max(4,Math.min(rw-w-4,fx))+'px';tipEl.style.top=Math.max(4,Math.min(rh-h-4,fy))+'px'}
+function setPin(i){pin=i;sig='';refreshDungeon();tipEl.hidden=true}
+export function pinRoom(i){setPin(i)}
+// Client point (px) of chamber i's floor at (fx, fy) in 0..1 as the last frame laid it out, or null before one: for tests and shots.
+export function roomPoint(i,fx=.5,fy=.5){if(!fit||!site||!cv)return null;const r=buildInterior(site).rooms[i];if(!r)return null;const b=cv.getBoundingClientRect(),dpr=cv.width/Math.max(1,b.width);
+  return {x:b.left+(fit.ox+(r.x+r.w*fx)*T*fit.sc)/dpr,y:b.top+(fit.oy+(r.y+r.h*fy)*T*fit.sc)/dpr}}
 export function initDungeonView(){if(inited||typeof document==='undefined')return;inited=true;
   document.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('[data-dungeon]'):null;if(!t)return;
     const name=t.dataset.dungeon;openDungeon(LANDMARKS.find(L=>L.kind==='crypt'&&L.name===name)||CRYPT)});
   document.addEventListener('keydown',e=>{if(open&&e.key==='Escape')closeDungeon()})}
-export function openDungeon(s){if(!root&&!build())return false;site=s||CRYPT;open=true;sig='';root.hidden=false;
+export function openDungeon(s){if(!root&&!build())return false;site=s||CRYPT;open=true;sig='';pin=-1;root.hidden=false;
   const scr=document.getElementById('screen');if(scr)scr.classList.add('dgopen');refreshDungeon();return true}
-export function closeDungeon(){open=false;if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr)scr.classList.remove('dgopen')}
+export function closeDungeon(){open=false;hov.room=-1;hov.foe=null;pin=-1;if(tipEl)tipEl.hidden=true;if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr)scr.classList.remove('dgopen')}
 export const dungeonOpen=()=>open;
 export const dungeonSite=()=>open?site:null;
 // The crypt whose mouth (its 3x3 rock patch, plus a little slack) is under tile (x, y).
@@ -77,13 +163,19 @@ export function cryptAt(x,y){for(const L of LANDMARKS){const m=L.kind==='crypt'&
 
 // The bar and the room list: patched only when the words change.
 export function refreshDungeon(){if(!root||!open)return null;const st=stateOf(site);
-  const s=st.status+'|'+st.rooms.map(r=>r.state).join(',');if(s===sig)return st;sig=s;
+  const s=st.status+'|'+st.rooms.map(r=>r.state).join(',')+'|'+pin+'|'+histOpen+'|'+(st.foes?st.foes.map(f=>f.hp).join():'')+'|'+runs.length+(cur?cur.reached+':'+cur.falls.length:'');if(s===sig)return st;sig=s;
   nameEl.textContent=String(site.name||'Dungeon').toUpperCase();statEl.textContent=st.status;
   const lis=listEl.children;while(lis.length>st.rooms.length)listEl.removeChild(lis[lis.length-1]);
   st.rooms.forEach((r,i)=>{let li=listEl.children[i];if(!li){li=mk('li');listEl.append(li)}
     const label=(st.fog>=0&&i>st.fog?'?':r.name.replace(/^the /i,''))+(r.boss?' ☠':''),word={cleared:'cleared',current:'in progress',unexplored:'not reached yet',lost:'turned back here',room:''}[r.state];
-    li.className='dgroom '+r.state+(r.boss?' boss':'');li.dataset.k=String(i);li.textContent=(i+1)+'. '+label;li.title=r.name+(word?' · '+word:'')+(r.boss?' · boss chamber':'');
+    li.className='dgroom '+r.state+(r.boss?' boss':'')+(pin===i?' pinned':'');if(!li.onclick){li.tabIndex=0;li.setAttribute('role','button');li.onclick=e=>{e.stopPropagation();const k=Number(li.dataset.k);setPin(pin===k?-1:k)};li.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();li.click()}}}
+    li.dataset.k=String(i);li.textContent=(i+1)+'. '+label;li.title=r.name+(word?' · '+word:'')+(r.boss?' · boss chamber':'');
     li.setAttribute('aria-label',r.name+(word?', '+word:'')+(r.boss?', boss chamber':''))});
+  histBtn.textContent='History ('+(runsOf(site).length+(cur&&cur.site===site.name?1:0))+')';histBtn.setAttribute('aria-expanded',String(histOpen));
+  if(pin>=0){fillDetail(pinEl,roomDetail(pin,site,st),st);const x=mk('button','dgx','x');x.type='button';x.setAttribute('aria-label','Close the chamber detail');x.onclick=e=>{e.stopPropagation();setPin(-1)};pinEl.prepend(x);pinEl.hidden=false}else pinEl.hidden=true;
+  if(histOpen){histEl.textContent='';histEl.append(mk('div','dgdt','History'));const H=historyOf(site);
+    if(!H.length)histEl.append(mk('div','dgdl','No one has gone down while this page was watching.'));
+    for(const h of H){histEl.append(mk('div','dgdh',h.title+' · '+h.outcome));for(const l of h.lines)histEl.append(mk('div','dgdl',l))}histEl.hidden=false}else histEl.hidden=true;
   return st}
 
 // One frame: fit the interior below the Table banner and above the bar.
@@ -92,4 +184,8 @@ export function drawDungeon(now){if(!open||!root)return;const st=refreshDungeon(
   if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
   const ban=document.getElementById('tbanner'),top=ban&&!ban.hidden?(ban.offsetHeight+12)*dpr:8*dpr,bar=root.querySelector('.dgbar'),bot=(bar?bar.offsetHeight:0)*dpr+8*dpr;
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='rgb(6,6,11)';ctx.fillRect(0,0,W,H);
-  const m=buildInterior(site);drawInterior(ctx,{x:8*dpr,y:top,w:W-16*dpr,h:Math.max(40,H-top-bot)},m,st,now,dpr)}
+  const tp=Math.round(top/dpr),bp=Math.round((bar?bar.offsetHeight:0));
+  if(tp!==topPx||bp!==barPx){topPx=tp;barPx=bp;root.style.setProperty('--dgtop',tp+'px');const scr=document.getElementById('screen');if(scr)scr.style.setProperty('--dgbar',bp+'px')}
+  st.hover=hov.room;st.pin=pin;
+  const m=buildInterior(site);fit=drawInterior(ctx,{x:8*dpr,y:top,w:W-16*dpr,h:Math.max(40,H-top-bot)},m,st,now,dpr);
+  if(hov.room>=0&&!tipEl.hidden)placeTip(st)}
