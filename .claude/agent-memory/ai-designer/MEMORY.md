@@ -54,3 +54,4 @@
 - [Elite company scale #502](elite_company_scale.md) — scaleElite at scene open for non-slots companies under 5; crawl counts by crew/5
 - [Roads knowledge #539](roads_knowledge.md) — brief.roads line, place reasons, memory wording, last-level rating, witness needs sight
 - [Arrival and session zero #452/#437](arrival_session_zero.md) — arrival/opening scenes gated on hasLinks, DM prep caps and host flag, newcomer voiced by DM, letters per company
+- [Apart companycheck #459](apart_companycheck.md) — companycheck-apart.mjs sections, fixture traps (links/seat not reset by init), heir-wait fix
