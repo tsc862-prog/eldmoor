@@ -66,6 +66,16 @@ export const SETTINGS={
       {kind:'crate',scatter:[3,4],where:'edge'},{kind:'barrel',scatter:[2,3],where:'edge'},{kind:'rope',scatter:[1,1],where:'any'}],
     cast:[{fx:.6,fy:.4}],party:{fx:.4,fy:.75},
     words:/\b(ship|hold|dock|sail|harbou?r|cargo|deck|boat|barge|quay|wharf)/i},
+  smithy:{name:'A smithy',shape:'rect',w:[9,11],h:[6,7],floor:'flag',wall:'brick',theme:'smithy',entry:'door',dark:.22,
+    props:[{kind:'hearth',at:'wall',fx:.5},{kind:'rack',at:'wall',fx:.15},{kind:'rack',at:'wall',fx:.85},{kind:'window',at:'wall',fx:.75},
+      {kind:'table',at:'floor',fx:.2,fy:.5},{kind:'barrel',at:'floor',fx:1,fy:.4},{kind:'bucket',at:'floor',fx:.82,fy:.3},
+      {kind:'crate',scatter:[1,2],where:'edge'},{kind:'sack',scatter:[1,1],where:'edge'}],
+    cast:[{fx:.5,fy:.3}],party:{fx:.5,fy:.82}},
+  gate:{name:'A gatehouse',shape:'rect',w:[9,11],h:[6,7],floor:'flag',wall:'rock',theme:'gate',entry:'door',dark:.28,
+    props:[{kind:'torch',at:'wall',fx:.2},{kind:'torch',at:'wall',fx:.8},{kind:'rack',at:'wall',fx:.5},
+      {kind:'table',at:'floor',fx:.5,fy:.45},{kind:'chair',at:'cast'},{kind:'bench',at:'floor',fx:.1,fy:.8},
+      {kind:'crate',scatter:[1,2],where:'edge'},{kind:'barrel',scatter:[1,1],where:'edge'}],
+    cast:[{fx:.5,fy:.25}],party:{fx:.5,fy:.82}},
 };
 export const SETTING_IDS=Object.keys(SETTINGS);
 // Floor footprint of a prop in tiles [w, h] (what the generator keeps free around it); a prop not listed takes one tile.
