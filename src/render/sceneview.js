@@ -130,9 +130,17 @@ export function sceneCut(aspect=1.6){if(!open||!spec||spec.mode!=='outdoor'||!sp
   let x0=an.x,y0=an.y,x1=an.x,y1=an.y;for(const e of mem.concat(foes)){x0=Math.min(x0,e.x);y0=Math.min(y0,e.y);x1=Math.max(x1,e.x);y1=Math.max(y1,e.y)}
   const w=Math.max(tallView?11:18,x1-x0+(tallView?5:9)),h=Math.max(tallView?15:11,y1-y0+7),cx=(x0+x1)/2,cy=(y0+y1)/2-.4;
   const sc=S.table,cur=sc&&!sc.all&&sc.phase==='turn'?byId(sc.ids[sc.i]):null;
-  const ban=document.getElementById('tbanner'),bar=root&&root.querySelector('.dgbar');
+  const ban=document.getElementById('tbanner'),bar=root&&root.querySelector('.dgbar'),ins=banInset(ban),bot=bar?bar.offsetHeight+6:6;
   return {cx,cy,w,h,edge:cx-w/2<0||cy-h/2<0||cx+w/2>W||cy+h/2>H,members:mem,foes,cur,speaker,
-    top:ban&&!ban.hidden?ban.offsetHeight+10:6,bottom:bar?bar.offsetHeight+6:6,biome:biomeOfZone(zoneAt(Math.max(0,Math.min(W-1,an.x)),Math.max(0,Math.min(H-1,an.y))))}}
+    top:ins?6:ban&&!ban.hidden?ban.offsetHeight+10:6,right:ins&&ins.right||0,bottom:ins&&ins.bottom?Math.max(bot,ins.bottom):bot,biome:biomeOfZone(zoneAt(Math.max(0,Math.min(W-1,an.x)),Math.max(0,Math.min(H-1,an.y))))}}
+
+// Where the banner sits when it is docked beside the map (#546: outdoors too, the banner is a column on the right, or
+// below the map on a phone): {right} or {bottom} in CSS px to keep the cut clear of, or null while it floats over the top.
+function banInset(ban){if(!ban||ban.hidden||(ban.classList&&ban.classList.contains('tlive')))return null;const scr=document.getElementById('screen');
+  if(!scr||!scr.classList||!scr.classList.contains('scopen')||!ban.getBoundingClientRect)return null;
+  const b=ban.getBoundingClientRect(),r=scr.getBoundingClientRect();if(!(b.width>0&&r.width>0))return null;
+  if(b.left-r.left>r.width*.3)return {right:Math.max(0,r.right-b.left)+6};
+  if(b.top-r.top>r.height*.3)return {bottom:Math.max(0,r.bottom-b.top)+6};return null}
 
 // A generated ground for past the map's edge: four by four tiles of the biome's ground, from the terrain's own texels.
 const arenaC={};
