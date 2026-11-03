@@ -9,6 +9,7 @@ import {S} from '../sim/index.js';
 import {dmSeatOn,dmAgentView,DMA} from '../sim/dmagent.js';
 import {focusStats} from '../sim/dmfocus.js';
 import {stagedView} from '../sim/staged.js';
+import {whenPending} from '../sim/dmwhen.js'; // the DM's pending whens and watches (#635)
 import {prepView} from '../sim/prep.js'; // the DM's prep before the table opens (#437)
 import {dmLink,dmRunnerTag,dmReadyWord,LINK_TEXT} from './player-bridge.js';
 const READY_TEXT={claimed:'claimed',warming:'warming up',ready:'ready',failed:'warm-up failed'}; // the start gate (#222)
@@ -39,6 +40,7 @@ export function dmFrameData(){const open=dmSeatOn(),r=runnerByKey('dm'),on=!!(r&
     turns:r?r.turns:0,cost:r?r.cost:0,
     narr:(today.narr||0)+'/'+DMA.NARRATE_PER_DAY,levers:(today.pulls||0)+'/'+DMA.PULLS_PER_DAY,scenes:sv.today,
     staged:sv.cur?sv.cur.title+' · '+sv.cur.kind+(sv.cur.hours_left!=null?' · '+sv.cur.hours_left+' h left':''):'',
+    pending:whenPending(),
     share:fs.share==null?null:Math.round(fs.share*100),acts:fs.acts,notes}}
 
 function build(){const f=el('div','dmf');f.tabIndex=0;f.setAttribute('role','button');f.setAttribute('aria-label','Dungeon Master status; open the Dungeon Master panel');
@@ -47,9 +49,9 @@ function build(){const f=el('div','dmf');f.tabIndex=0;f.setAttribute('role','but
   r.full=el('div','dmffull');
   const top=el('div','dmftop');r.lbl=el('span','dmflbl','DM');r.link=el('span','mlink');r.mind=el('span','dmfmind');
   top.append(r.lbl,r.link,r.mind);
-  r.alert=el('div','dmfalert');r.alert.setAttribute('role','alert');r.alert.hidden=true;r.now=el('div','dmfdo');r.act=el('div','dmfact');r.stg=el('div','dmfstg');r.fol=el('div','dmffol');
+  r.alert=el('div','dmfalert');r.alert.setAttribute('role','alert');r.alert.hidden=true;r.now=el('div','dmfdo');r.act=el('div','dmfact');r.stg=el('div','dmfstg');r.when=el('div','dmfstg');r.fol=el('div','dmffol');
   const foot=el('div','dmffoot');r.notes=el('button','mini','Notes 0');r.notes.dataset.dmnotes='1';r.notes.title='Open the Dungeon Master panel on its Notes';r.run=el('span','dmfrun');foot.append(r.notes,r.run);
-  r.full.append(top,r.alert,r.now,r.act,r.stg,r.fol,foot);f.append(r.chip,r.full);
+  r.full.append(top,r.alert,r.now,r.act,r.stg,r.when,r.fol,foot);f.append(r.chip,r.full);
   f.addEventListener('click',e=>{const t=e.target;if(t&&t.closest&&(t.closest('[data-runact]')||t.closest('select')))return;
     openDmPanel(t&&t.closest&&t.closest('[data-dmnotes]')?'notes':null)});
   f.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target===f){e.preventDefault();openDmPanel(null)}});
@@ -68,6 +70,9 @@ export function renderDmFrame(){if(!node)return;const x=dmFrameData(),r=refs;
   setText(r.act,'Narrations '+x.narr+' · Levers '+x.levers+' · Scenes '+x.scenes+' today');
   setTitle(r.act,'The DM agent\'s narrations and lever pulls today against their daily limits, and staged scenes (3 a day)');
   setText(r.stg,x.staged?'Staged: '+x.staged:'');
+  {const P=x.pending,nw=P.filter(e=>e.kind==='when').length,nv=P.length-nw;
+    setText(r.when,P.length?'Pending: '+(nw?nw+' when'+(nw===1?'':'s'):'')+(nw&&nv?' · ':'')+(nv?nv+' watch'+(nv===1?'':'es'):'')+' · '+P.slice(0,2).map(e=>e.label).join('; ')+(P.length>2?' …':''):'');
+    setTitle(r.when,P.map(e=>(e.kind==='when'?'When #'+e.id+': '+e.label+' → '+e.action:'Watch #'+e.id+': wake the DM when '+e.label)+' ('+e.hours_left+' h left)').join('\n'))}
   setText(r.fol,(x.share==null?'No DM actions yet':'Fellowship '+x.share+'% of '+x.acts+' DM actions')+(x.last!=null?' · last turn '+agoText(x.last)+' ago':'')+(x.turns?' · '+x.turns+' turn'+(x.turns===1?'':'s')+(x.cost?' · $'+x.cost.toFixed(3):''):''));
   setText(r.notes,'Notes '+x.notes);
   const k=dmRunnerSig();if(r.run._k!==k){r.run._k=k;r.run.replaceChildren(dmRunnerControl())}}

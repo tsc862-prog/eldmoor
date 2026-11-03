@@ -112,7 +112,7 @@ function field(k,s,v){
   case 'id':return isNum(v)&&Number.isInteger(v)?[v]:k+' must be an id';
   case 'obj':return v&&typeof v==='object'&&!Array.isArray(v)?[JSON.parse(JSON.stringify(v))]:k+' must be an object';
   default:return k+' has an unknown type'}}
-function validate(def,raw){const p={};raw=raw&&typeof raw==='object'?raw:{};
+export function validate(def,raw){const p={};raw=raw&&typeof raw==='object'?raw:{};
   for(const k in raw)if(!(k in def.params))return 'unknown parameter '+k;
   for(const k in def.params){const x=field(k,def.params[k],raw[k]);if(typeof x==='string')return x;if(x[0]!==undefined)p[k]=x[0]}return p}
 // A spot on the map: in bounds, walkable (or a road), outside the towns and clear of their gates
