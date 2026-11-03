@@ -65,7 +65,7 @@ import {dmlog} from './dmlog.js';
 import {pull,ready,spotErr,attitudeDc,activeOf} from './levers.js';
 import {GOODS} from '../data/items.js';
 import {playerBranch} from './player-choice.js';
-import {isSolo} from './company.js';
+import {isSolo,inSlots} from './company.js';
 
 // ---- knobs ----
 export const K={
@@ -171,7 +171,7 @@ function line(adv,...parts){log({t:'',c:'nar',adv:adv.id},...parts);stats().line
 // fewer than TOLD others are being told, or whenever the watcher follows one of its party.
 // A told adventure speaks every beat; the rest go to the heroes' own logs (the dossier), and
 // only their headline moments (a named foe, a death, a hunted elite) reach the Chronicle.
-const watched=adv=>!!(S.pinned&&adv.mem.includes(S.pinned.id))||adv.mem.some(id=>S.agents.some(b=>b.id===id&&b.fellow)); // the Fellowship's adventures are always told (#68)
+const watched=adv=>!!(S.pinned&&adv.mem.includes(S.pinned.id))||adv.mem.some(id=>S.agents.some(b=>b.id===id&&inSlots(b))); // the Fellowship's adventures are always told (#68)
 function beat(adv,big,...parts){if(adv.told||watched(adv)||big){line(adv,...parts);return}stats().quiet++;note(adv,plain(parts))}
 function note(adv,text){for(const b of members(adv))record(b,text)}
 
@@ -326,7 +326,7 @@ function fits(h,a,mem){const T=D.ADVENTURES[h.tpl],lo=Math.min(...mem.map(b=>b.l
   if(h.for!=null&&!mem.some(b=>b.id===h.for))return false;
   if(h.solo&&mem.length!==1)return false; // a solo-sized job is for one hero (#447)
   const own=h.ff&&h.cid!=null&&!slotCo(h.cid); // another company's hall job (#450): its members, whatever its size, a solo too
-  const whole=h.ff&&mem.some(b=>own?b.company===h.cid:b.fellow); // a Fellowship-first job is theirs and takes the whole Fellowship (#325): the size cap is for background parties
+  const whole=h.ff&&mem.some(b=>own?b.company===h.cid:inSlots(b)); // a Fellowship-first job is theirs and takes the whole Fellowship (#325): the size cap is for background parties
   if(h.ff&&!whole)return false;
   if((!own&&mem.length<T.size[0])||(!whole&&mem.length>T.size[1])||lo<Math.max(K.MIN_LVL,T.lvl))return false;
   if(h.data.eliteId!=null){if(mem.length<2||hi<h.data.eliteLvl-2)return false;const E=S.mobs.find(m=>m.id===h.data.eliteId);if(!E||!E.alive||E.gone)return false}

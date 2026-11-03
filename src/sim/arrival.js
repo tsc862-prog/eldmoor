@@ -49,8 +49,7 @@ import {prepActive} from './prep.js';
 import {heard,tableLive,fillWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {TABLE,openScene,setSceneKind,tableOn,sceneFor} from './table.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
-import {fellows,fellowParty,seatRecruit,setArrivalHook,lcRoleOf} from './fellowship.js';
-import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf} from './company.js';
+import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf} from './company.js';
 
 export const ARRIVE={
   POLL_MS:5000,   // the table waits for the DM's voice only if its runner polled table_call this recently (as staged scenes)
@@ -69,9 +68,9 @@ const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length
 const pickH=(seed,k,list)=>list[Math.floor(hash(seed|0,k,53)*list.length)%list.length];
 const NARRATOR={kind:'dm',name:'The Narrator'};
 const LIVE={connected:1,waiting:1};
-const isFellowship=C=>!!C&&C===S.fellowship;
-const memOf=C=>!C?[]:isFellowship(C)?fellows():members(C);
-const leadOf=C=>{if(!C)return null;if(isFellowship(C)){const P=fellowParty();if(P&&living(P.leader))return P.leader;const L=fellows();let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}return leaderOf(C)||members(C)[0]||null};
+const isFellowship=C=>!!C&&C===slotted();
+const memOf=C=>!C?[]:isFellowship(C)?slotHeroes(slotted()):members(C);
+const leadOf=C=>{if(!C)return null;if(isFellowship(C)){const P=slotParty(slotted());if(P&&living(P.leader))return P.leader;const L=slotHeroes(slotted());let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}return leaderOf(C)||members(C)[0]||null};
 const townOf=C=>{const ld=leadOf(C);return C&&C.hall?C.hall:ld?homeOf(ld).name:'town'};
 
 // ---- what the company has before it: the hall's first job, the gate captain's writ, a rumour ----
@@ -125,7 +124,7 @@ function settleOpening(C,ctx,beats,title){const L=memOf(C),ids=beats.length?beat
   for(const a of here)for(const b of here)if(a!==b)(a.talkHeard||(a.talkHeard={}))[b.id]=1; // introductions at the opening count as met (sim/talk.js)
   let ld=byId(ctx.lead),tail='';
   if(!ctx.solo&&here.length>1){const yielded=beats.some(b=>b.id===ctx.lead&&b.k==='yield'),want=beats.filter(b=>b.k==='lead').map(b=>byId(b.id)).filter(living);
-    if(yielded&&want.length){let nl=want[0];for(const x of want)if(x.lvl>nl.lvl)nl=x;const P=isFellowship(C)?fellowParty():(S.parties||[]).find(p=>p.company===C.id);
+    if(yielded&&want.length){let nl=want[0];for(const x of want)if(x.lvl>nl.lvl)nl=x;const P=isFellowship(C)?slotParty(slotted()):(S.parties||[]).find(p=>p.company===C.id);
       if(P&&P.mem.includes(nl))P.leader=nl;tail=(ld?ld.name+' offers the lead and ':'')+nl.name+' takes it.';ld=nl}
     else if(want.length)tail=names(want.map(b=>b.name))+' offered to lead; '+(ld?ld.name:'the leader')+' keeps the head of the table.';
     else tail=(ld?ld.name+' leads, and no one says otherwise.':'')}
@@ -162,7 +161,7 @@ function settled(C){const L=memOf(C);if(!L.length)return false;const g=CRYPT.gro
   if(L.some(a=>['raid','dungeon','fight','duel','assist'].includes(a.state)||a.raid))return false;
   if(C.camp&&C.camp.phase&&L.some(a=>a.state==='camp'))return 'camp';
   const ld=leadOf(C);return ld&&ld.state==='town'?'town':false}
-function makeRecruit(C,q){if(isFellowship(C))return seatRecruit(q);
+function makeRecruit(C,q){if(isFellowship(C))return seatRecruit(C,q);
   const L=members(C);if(!L.length||C.ids.length>=8)return null;
   const a=makeHero(C.fac,q.cls,null,1);seedLevel(a,Math.min(...L.map(b=>b.lvl))-2);
   if(!joinCompany(C,a).ok)return null;markPlayer(a,true);if(q.fallen!=null)a.succeeds=q.fallen;return a}
@@ -229,8 +228,8 @@ const DM_ARRIVE={
 };
 function resolve(sc,c,{text,by}){c.done=true;c.by=by;c.text=text||'';if(text)say(sc,text,NARRATOR);
   dmlog('agent',null,['At the table ('+sc.kind+', '+c.kind+'): ',text||'-',by==='scripted'?' [scripted fill]':''],{by,call:c.kind,scene:sc.kind,text,...(by==='scripted'?{fill:true,why:fillWhy(c)}:{})},{heroes:[]})}
-setSceneKind('opening',{options:optsOpening,reflex:reflexOpening,apply:applyOpening,outcome:sc=>settleOpening(companyById(sc.company)||S.fellowship,sc.ctx,sc.beats,sc.title),dm:DM_OPEN});
-setSceneKind('arrival',{options:optsArrival,reflex:reflexArrival,apply:applyArrival,outcome:sc=>settleArrival(companyById(sc.company)||S.fellowship,sc.ctx,sc.beats),dm:DM_ARRIVE});
+setSceneKind('opening',{options:optsOpening,reflex:reflexOpening,apply:applyOpening,outcome:sc=>settleOpening(companyById(sc.company)||slotted(),sc.ctx,sc.beats,sc.title),dm:DM_OPEN});
+setSceneKind('arrival',{options:optsArrival,reflex:reflexArrival,apply:applyArrival,outcome:sc=>settleArrival(companyById(sc.company)||slotted(),sc.ctx,sc.beats),dm:DM_ARRIVE});
 
 // ---- the DM's tools for these scenes (sim/dmagent.js hands table_call / table_answer here while one is at the table) ----
 // Other kinds voiced the same way register here (#571: the fireside and the debrief, sim/fireside.js): onAnswer(sc, call, args)

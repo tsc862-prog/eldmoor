@@ -23,6 +23,7 @@
 import {S} from './state.js';
 import {ZONES,REGIONS,CITY,zoneAt,dist} from '../world/map.js';
 import * as ADV from '../data/adventures.js'; // pure table: job names for the board titles
+import {slotted} from './company.js'; // the slotted company (#588)
 
 export const FOCUS={
   RESERVE:.34,   // share of a lever's per-day limit (and of the staged scenes) kept for the Fellowship
@@ -53,7 +54,7 @@ export function focuses(){const L=companyList(),f=followedCompany(),out=[];
   for(const C of f?[f,...L.filter(c=>c!==f)]:L){const r=focusOf(C);if(r)out.push(r)}
   return out}
 // The focus of the five-slot Fellowship (the old single focus, kept for its callers): null without one.
-export function focus(){const F=S.fellowship;return F?focusOf(F):null}
+export function focus(){const F=slotted();return F?focusOf(F):null}
 // The focus of the company a hero rides with, or null.
 export function focusFor(a){if(!a||a.company==null)return null;const C=companyList().find(c=>c.id===a.company);return C&&C.ids.includes(a.id)?focusOf(C):null}
 // Is this posted job (h.ff) the hall job of the company behind f (h.cid, its id)? A job posted before companies (no h.cid) belongs to
@@ -147,7 +148,7 @@ export function hallHooks(town,f=focus()){if(!f||!town)return [];
 const plainText=p=>Array.isArray(p)?p.map(x=>typeof x==='string'?x:x&&x.kind==='hero'?x.name:x&&x.t||'').join(''):String(p||'');
 export const hallTitle=h=>{const T=ADV.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return String(h.title||(T.name||h.tpl)+(th?': '+plainText(th):'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')).slice(0,90)};
 // Rows for the watcher: {id, title, region, band:[lo,hi]|null, day, by, oath:{id,name}|null, elite:{name,lvl,alive}|null, giver}.
-export function hallBoard(C){const co=C||S.fellowship;if(!co)return []; // a company's own jobs (#457); no C: the Fellowship's
+export function hallBoard(C){const co=C||slotted();if(!co)return []; // a company's own jobs (#457); no C: the Fellowship's
   const f=focusOf(co);if(!f)return [];
   return hallHooks(co.hall,f).map(h=>{const z=h.zone!=null&&h.zone>=0?h.zone:null,R=z!=null&&REGIONS?REGIONS[z]:null,d=h.data||{};
     const who=h.for!=null?S.agents.find(a=>a.id===h.for):null;

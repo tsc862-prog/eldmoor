@@ -13,7 +13,7 @@ import {chatLine,chatName,liveOf} from './panels.js';
 import {daySep,dayOf,stampOf} from './daystamp.js';
 import {patch,held,keyOf} from './stable.js';
 import {classColor,DISP} from '../core/colors.js';
-import {companies,companyOf} from '../sim/company.js';
+import {companies,companyOf,inSlots,slotted} from '../sim/company.js';
 import {companyLabel} from './companyview.js';
 import {dmTable,dmParts,dmBadge,dmByAgent} from './dmpanel.js';
 import {dmTurns,dmTurnsVer,turnCard} from './dmturns.js'; // per-turn cards (#181)
@@ -36,12 +36,12 @@ export function catsOf(e){const f=e.from||{},c=new Set();
   if(e.scene)c.add('table');
   if(!c.has('party')&&!c.has('dm')&&!e.scene)c.add('aloud');
   return c}
-function ingest(){for(const a of S.agents){if(!a.fellow||!a.chat)continue;for(const e of a.chat){if(known.has(e))continue;known.add(e);items.push({k:sortKey(e),n:++seq,kind:'chat',e})}}
+function ingest(){for(const a of S.agents){if(!inSlots(a)||!a.chat)continue;for(const e of a.chat){if(known.has(e))continue;known.add(e);items.push({k:sortKey(e),n:++seq,kind:'chat',e})}}
   items.sort((x,y)=>x.k-y.k||x.n-y.n);if(items.length>KEEP)items.splice(0,items.length-KEEP)}
 // The council as system lines, made from the proposals themselves (no second record): "Garrwen proposes: ... [job · vote open]",
 // "Kerin votes yes: reason" (the proposer's own automatic yes is left out), "Passed 4-1".
 const stamp=gm=>({d:Math.floor(gm/1440)+1,t:String(Math.floor(gm%1440/60)).padStart(2,'0')+':'+String(Math.floor(gm%60)).padStart(2,'0')});
-function councilItems(){const F=S.fellowship,out=[];if(!F||!F.props)return out;
+function councilItems(){const F=slotted(),out=[];if(!F||!F.props)return out;
   for(const P of F.props){const by=S.agents.find(a=>a.id===P.by),st=P.status==='open'?'vote open':P.status;
     out.push({k:P.at,n:-3,kind:'prop',id:'p'+P.id,P,who:by||{name:P.byName||'?'},cats:['party'],text:' proposes: '+P.details+' ['+P.kind+' · '+st+']',gm:P.at});
     for(const id in P.votes){const v=P.votes[id],h=S.agents.find(a=>String(a.id)===String(id));if(!h)continue;
@@ -74,7 +74,7 @@ function sysLine(it){const li=el('li','chl sys sys-'+it.kind);li.setAttribute('d
 function atTop(){return !list||list.scrollTop<=6}
 const rowsIn=()=>Array.from(list.children||[]).filter(c=>!(c.classList&&c.classList.contains('daysep'))).length;
 function renderChat(){if(!list)return;const rows=streamItems().reverse(),last=rows.length?rows[0]:null; // newest first
-  const s=filter+':'+rows.length+':'+(last?(last.id||keyOf(last.e)):'')+':'+rows.map(r=>r.kind==='prop'||r.kind==='result'?r.text:'').join('').length+':'+(S.fellowship?1:0)+':'+companies().map(C=>C.id+companyLabel(C)).join(',');
+  const s=filter+':'+rows.length+':'+(last?(last.id||keyOf(last.e)):'')+':'+rows.map(r=>r.kind==='prop'||r.kind==='result'?r.text:'').join('').length+':'+(slotted()?1:0)+':'+companies().map(C=>C.id+companyLabel(C)).join(',');
   if(s===sig)return;if(held(list))return;sig=s;
   const top=atTop(),before=rowsIn();
   patch(list,tmp=>{let lastDay=null;
@@ -102,10 +102,10 @@ function renderDm(){if(!dmList)return;const tv=dmView==='turns';dmList.hidden=tv
       if(openDm.has(e.id))li.append(dmTable(e));tmp.append(li)}
     if(!L.length)tmp.append(el('li','dm','The DM agent has not acted yet (open the DM seat in Agents, then npm run dm).'))},{force:true})}
 
-function sync(){const F=!!S.fellowship,sec=$('chatSec');if(!sec)return;if(sec.hidden===F)sec.hidden=!F;
+function sync(){const F=!!slotted(),sec=$('chatSec');if(!sec)return;if(sec.hidden===F)sec.hidden=!F;
   $('chatPane').hidden=tab!=='chat';$('dmPane').hidden=tab!=='dm';$('chatFilter').hidden=tab!=='chat';
   for(const b of $('chatTabs').children){if(!b.dataset.ctab)continue;if(b.dataset.ctab==='chat')b.hidden=tab==='chat';else b.setAttribute('aria-pressed',String(tab==='dm'))}}
-export function renderChatPanel(){if(!box)return;sync();if(!S.fellowship)return;if(tab==='chat')renderChat();else renderDm()}
+export function renderChatPanel(){if(!box)return;sync();if(!slotted())return;if(tab==='chat')renderChat();else renderDm()}
 export function setChatTab(t){if(t!=='chat'&&t!=='dm')return;tab=t;sig='';dmSig='';renderChatPanel()}
 export function setChatFilter(f){if(!FILTERS.some(([k])=>k===f))return;filter=f;sig='';for(const b of $('chatFilter').children)b.setAttribute('aria-pressed',String(b.dataset.cf===f));renderChatPanel()}
 export const chatTab=()=>tab;

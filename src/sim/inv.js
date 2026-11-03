@@ -20,7 +20,7 @@ import {dist} from '../world/map.js';
 import {partyMates} from './party.js';
 import {SELL_VALUE,equip} from './gear.js';
 import {record} from './history.js';
-import {companyOf} from './company.js';
+import {companyOf,inSlots} from './company.js';
 
 export const GIVE_RANGE=4;     // tiles between giver and receiver
 const FIGHT=['fight','duel','assist','raid'];
@@ -172,7 +172,7 @@ export function restock(a){const L=a.lvl;
   if(pid){const have=countKind(a,'potion');if(have<want)buyUse(a,pid,want-have)}
   if(L>=2&&countKind(a,'bandage')<2)buyUse(a,'Linen Bandage',2-countKind(a,'bandage'));
   if(L>=USES['Bogroot Antidote'].lvl+1&&a.gold>=40&&!has(a,'Bogroot Antidote'))buyUse(a,'Bogroot Antidote',1);
-  if(a.fellow){if(countKind(a,'ration')<3)buyUse(a,'Trail Ration',3-countKind(a,'ration'));if(!countKind(a,'torch'))buyUse(a,'Pitch Torch',1)}
+  if(inSlots(a)){if(countKind(a,'ration')<3)buyUse(a,'Trail Ration',3-countKind(a,'ration'));if(!countKind(a,'torch'))buyUse(a,'Pitch Torch',1)}
   if(L>=8&&a.gold>=120&&!has(a,'Scroll of Hearthward'))buyUse(a,'Scroll of Hearthward',1);
   if(L>=10&&a.gold>=150&&!has(a,'Scroll of the Steadfast Hour'))buyUse(a,'Scroll of the Steadfast Hour',1);
   if(L>=USES["Wayfarer's Pack"].lvl+1&&a.gold>=100&&!invOf(a).pack&&a.gold>=USES["Wayfarer's Pack"].price){a.gold-=USES["Wayfarer's Pack"].price;invOf(a).pack=1;stat('bought')}}

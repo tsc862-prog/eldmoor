@@ -12,6 +12,7 @@ import {setDmAlive} from '../sim/talk.js'; // a live but busy DM gets a grace be
 import {ctl} from './controls.js';
 import {alertCue} from './table.js';
 import {runFree,onGateClose} from './rungate.js';
+import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
 export {reasonOf} from './runners.js';
 
 const $=id=>document.getElementById(id);
@@ -41,8 +42,8 @@ export function checkRunAlerts(){
   const dm=dmSeatOn();
   for(const r of allRunners()){const p=prevState[r.key];prevState[r.key]=r.state;
     if(!p||!UP[p]||!DONE_STATE[r.state])continue;
-    if(r.kind==='hero'){const a=byId(r.hero);if(!a||!a.fellow)continue}
-    if(r.kind==='fellowship'&&!S.fellowship)continue;
+    if(r.kind==='hero'){const a=byId(r.hero);if(!a||!inSlots(a))continue}
+    if(r.kind==='fellowship'&&!slotted())continue;
     if(r.kind==='dm'&&!dm)continue;
     if(userStopped(r.key))note(whoOf(r.kind,r.hero)+' stopped by you.')}}
 
@@ -54,4 +55,4 @@ export function initRunAlert(){
   onGateClose(()=>{if(on)alertCue()});
   const b=$('vRal');if(b){b.onclick=()=>{on=!on;try{localStorage.setItem(KEY,on?'on':'off')}catch(_){}sync()}}
   sync()}
-export function sync(){const b=$('vRal');if(!b)return;b.hidden=!S.fellowship&&!dmSeatOn();b.textContent='Alert on runner stop: '+(on?'on':'off');b.setAttribute('aria-pressed',String(on))}
+export function sync(){const b=$('vRal');if(!b)return;b.hidden=!slotted()&&!dmSeatOn();b.textContent='Alert on runner stop: '+(on?'on':'off');b.setAttribute('aria-pressed',String(on))}

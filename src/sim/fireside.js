@@ -37,8 +37,7 @@ import {hasLinks} from './runlink.js';
 import {worldHeld} from './prep.js';
 import {inRange} from './reach.js';
 import {onCamp,campOf} from './camp.js';
-import {companies,companyOf,members} from './company.js';
-import {fellows} from './fellowship.js';
+import {companies,companyOf,members,slotHeroes,slotted} from './company.js';
 import {openScene,setSceneKind,tableOn,agentsDecide,onSceneEnd,sceneCompany,sceneFor} from './table.js';
 import {pushCall,resolveCall,voiceLive,voicedKind} from './arrival.js';
 
@@ -63,7 +62,7 @@ const plain=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:
 const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1];
 const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const pickH=(seed,k,list)=>list[Math.floor(hash(seed|0,k,71)*list.length)%list.length];
-const memOf=C=>!C?[]:C===S.fellowship?fellows():members(C);
+const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C);
 const fireOf=C=>C.fire||(C.fire={last:-1e9,seq:0,past:0,ev:[]});
 const FIGHTING=['fight','duel','assist','raid','dungeon'];
 const isFire=k=>k==='fireside'||k==='debrief';

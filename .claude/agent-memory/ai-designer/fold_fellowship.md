@@ -25,6 +25,13 @@ Rules chosen and why:
   onRecord listener ahead of the slot record hook (memory.js imports tiers.js), and memory.js finishes before
   `setSummariser` runs. A hash change after moving code between modules: suspect listener order first.
 
-**How to apply:** step 2 converts readers module by module (sim first, then render/ui, then scripts: scripts hold
+Step 2 (branch ai/fold-fellowship-readers): every reader in src/sim, src/render and src/ui uses the company
+reads; only `sim/index.js`'s public re-export, `src/core` (chatview/colors take S as an argument and must not import
+sim) and the scripts still read the shims. Conversion was regex-driven (scratch scripts), then hand fixes for receivers
+the regex skipped (`...fellows()` after a spread, `e.fellow`, `cam.sel.fellow`, `y.fellow`); a check for names used but
+not imported caught the rest. Never regex `.fellow` in scripts blindly: JSON fields from `/play/health`
+(`heroes[].fellow`) and behavior digests are data, not the accessor.
+
+**How to apply:** step 2 converted readers module by module (sim first, then render/ui, then scripts: scripts hold
 most of the ~600 `fellows()`/`S.fellowship` uses), step 3 deletes `fellowship.js` and the accessors (save.js must then
 stop expecting them; old saves already carry only `S.companies`/`a.company`).

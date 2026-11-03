@@ -6,7 +6,7 @@
 import {S} from './state.js';
 import {ZONES,zoneAt} from '../world/map.js';
 import {raceOf} from '../data/races.js';
-import {wasFellow} from './fellowship.js';
+import {wasSlotted} from './company.js'; // the slotted company (#588)
 
 export const LEG_CAP=30,LEG_MIN=40,HOUR=60;
 const rank=(a,b)=>b.score-a.score||b.lvl-a.lvl||a.id-b.id;
@@ -43,7 +43,7 @@ export function legendsTick(dt){
     const score=scoreOf(c);if(!e&&score<LEG_MIN)continue;
     const o=e||{id:a.id,name:a.name};
     Object.assign(o,{name:a.name,people:raceOf(a).name,cls:a.cls,fac:a.fac,tag:a.guild?a.guild.tag:null,lvl:c.lvl,score,c,hl:highlights(c,a),
-      fel:!!wasFellow(a)||!!(e&&e.fel),alive:a.state!=='dead'});
+      fel:!!wasSlotted(a)||!!(e&&e.fel),alive:a.state!=='dead'});
     if(a.state==='dead'){o.cause=a.cause||'fallen';o.diedAt=a.diedAt||'';o.diedDay=Math.floor(S.gameMin/1440)+1;
       const z=zoneAt(a.x,a.y),lost=/^lost in (.+)$/.exec(o.cause);o.place=lost?lost[1]:(z>=0&&ZONES[z])||'the wilds'}
     if(!e){L.list.push(o);byId.set(o.id,o)}}

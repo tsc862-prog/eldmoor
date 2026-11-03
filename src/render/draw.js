@@ -35,6 +35,7 @@ import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
+import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
 const SCENE_LIGHT=[255,232,196]; // the light under a Table scene's people at night (#471)
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
@@ -180,7 +181,7 @@ export function createRenderer(cv,screenEl){
       const px=Math.round(e.x*T),py=Math.round(e.y*T),live=e.state!=='dead';
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
       if(live)shadow(px,py,s.width);
-      if(close&&e.kind==='npc')dispoRing(px,py,s.width,toneOf(e,S.fellowship,S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
+      if(close&&e.kind==='npc')dispoRing(px,py,s.width,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
       const o=live?outlined(s):s,ow=live?1:0; // living entities get the dark outline
       ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);
       ctx.drawImage(o,-Math.floor(s.width/2)-ow,py-s.height-ow);ctx.restore();ctx.globalAlpha=1;
@@ -230,21 +231,21 @@ export function createRenderer(cv,screenEl){
         lab(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
     else{
       if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))lab(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14,7);
-      const fel=S.fellowship?new Set(Object.values(S.fellowship.slots).map(String)):null,lh=14*cam.dpr/sc;
+      const fel=slotted()?new Set(Object.values(slotted().slots).map(String)):null,lh=14*cam.dpr/sc;
       if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
         const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),y=a.y*T-17-condLift(a,cam);
         if(inCut&&a.bubble&&a.bubble.life>0&&bubbleVisible(a,S))continue; // its bubble names it already: one label per member
-        if(inCut){lab(a.name,a.x*T,y,a.fellow?classColor(a.cls):FAC[a.fac].color,14,a.fellow?9:8,[y-lh*1.05,a.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
+        if(inCut){lab(a.name,a.x*T,y,inSlots(a)?classColor(a.cls):FAC[a.fac].color,14,inSlots(a)?9:8,[y-lh*1.05,a.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
         lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14,a===sel?10:fel&&fel.has(String(a.id))?8:dead?1:4)}
-      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,S.fellowship,S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
+      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,slotted(),S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
         lab(toneName(p,t),p.x*T,p.y*T-17-condLift(p,cam),t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
       for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-17-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
       if(boss.alive&&inView(boss.x*T,boss.y*T,LM))lab('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-28-condLift(boss,cam),TEXT.elite,15,9)}
     // The Fellowship (#94): a role marker over each member and their name at any zoom (close views
     // queue the names above), plus a dashed ring around the party in Follow Fellowship.
-    if(S.fellowship){const px1=cam.dpr/sc,F=S.fellowship,mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
+    if(slotted()){const px1=cam.dpr/sc,F=slotted(),mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
       if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
         ctx.save();ctx.strokeStyle=MARK.party;ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
       for(const a of mem){if(!inView(a.x*T,a.y*T,40)||(cut&&cut.members.includes(a)))continue;const col=classColor(a.cls); // in a Table scene the ring and the class-coloured name mark them (#471) // a member's marker: its class colour (one palette, core/colors.js)

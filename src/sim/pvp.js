@@ -18,6 +18,7 @@ import {nearHeroes} from './spatial.js';
 import {held} from './scenes.js'; // the engaged of a live-clock Table scene (#518)
 import {rivalMul,rivalCount} from './rivals.js';
 import {duelFocus,assistFocus,focusCount} from './guildfocus.js';
+import {inSlots} from './company.js'; // the slotted company (#588)
 
 export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agents=S.agents;
   const free=agents.filter(a=>(a.state==='hunt'||a.state==='travel'||a.state==='return')&&zoneAt(a.x,a.y)>=1&&!held(a)); // held in a scene (#518): no duels
@@ -37,7 +38,7 @@ export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agent
   for(const a of agents)if(a.state==='duel'&&a.target)duelBark(a,a.target);
   // Assists: free guildmates within 8 tiles of a dueller roll to rush in; the first to pass goes.
   for(const a of agents){if(a.state!=='duel'||!a.target)continue;const foe=a.target;
-    const rm=g0=>g0.fellow?1:rivalMul(a,foe,'assist')*assistFocus(g0,foe); // against a declared rival guild, or in a Warpath guild (sim/guildfocus.js), guildmates rush in more readily
-    for(const g of nearHeroes(a.x,a.y,8)){if(!isFree(g)||!a.guild||g.guild!==a.guild||dist(g,a)>8||rnd()>.2*tm(g,'loyal')*rm(g))continue;if(rivalMul(a,foe,'assist')>1&&!g.fellow)rivalCount('assists');if(!g.fellow&&assistFocus(g,foe)>1)focusCount('assists');
+    const rm=g0=>inSlots(g0)?1:rivalMul(a,foe,'assist')*assistFocus(g0,foe); // against a declared rival guild, or in a Warpath guild (sim/guildfocus.js), guildmates rush in more readily
+    for(const g of nearHeroes(a.x,a.y,8)){if(!isFree(g)||!a.guild||g.guild!==a.guild||dist(g,a)>8||rnd()>.2*tm(g,'loyal')*rm(g))continue;if(rivalMul(a,foe,'assist')>1&&!inSlots(g))rivalCount('assists');if(!inSlots(g)&&assistFocus(g,foe)>1)focusCount('assists');
       say(g,'assist',{target:a.name});
       bondEvent(g,'assist',[a]);g.state='assist';g.target=foe;g.dest=null;if(rnd()<.6)log(g,' rushes to help guildmate ',a,' against ',foe,'.');break}}}
