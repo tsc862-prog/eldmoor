@@ -258,6 +258,7 @@ ok(snaps.persona.companions.some(c => c.name === B.name) && !snaps.persona.compa
 // ---------------------------------------------------------------- 4. the Table: narration on the banner and in the view
 console.log('the Table');
 T.TABLE.mode = 'auto'; T.TABLE.speed = 1;
+rest[0].x = A.x + 1; rest[0].y = A.y; (await import('../src/sim/spatial.js')).rebuild(); // a companion beside A, not wherever the dice left them (the scene takes those in shouting range)
 const sc = T.openScene('check', 'A narrow stair', ['The stair goes down.'], {anchor: A.id}); // everyone at once: those within shouting range of A (#182)
 ok(!!sc && S.table, 'a scene is open');
 r = DMA.dmAct('narrate', {text: said.table, near: 'table'});
@@ -266,10 +267,27 @@ const tv = act(A, 'look'); keep('A look at the table', tv);
 ok(tv.table && tv.table.narrator === said.table && T.bannerOf().narr === said.table, 'the line shows in the Table banner and in each member\'s table view');
 ok(sc.ids.includes(rest[0].id) && (rest[0].chat || []).some(e => e.text === said.table), 'a companion at the table with A hears it too (the scene is where they are)');
 ok(!sc.ids.includes(B.id) && !(B.chat || []).some(e => e.text === said.table), 'B, far away, is not at the table (#182) and does not hear it');
+// whisper and dream (#523): a secret for one hero. Only A hears it; the table sees that someone leans close, never the words.
+{const wsp = 'Trust nobody at the gate, ' + secret('whisper') + '.', drm = 'A red door opens in the fog: ' + secret('dream') + '.';
+  r = DMA.dmAct('whisper', {hero: A.name, text: wsp}); ok(r.ok, 'whisper to A inside the Table scene' + (r.ok ? '' : ': ' + r.error));
+  ok((A.chat || []).some(e => e.text === '(whispered) ' + wsp), 'A hears it in its chat buffer as "(whispered) ..."');
+  for (const x of [rest[0], rest[1], B]) ok(!(x.chat || []).some(e => e.text.includes('QZXwhisper')) && !JSON.stringify([act(x, 'chat_read', {n: 20}), act(x, 'look'), act(x, 'status')]).includes('QZXwhisper'), x.name + ': no whisper in chat, look or status');
+  ok(/leans close to /.test(T.bannerOf().narr || '') && (T.bannerOf().narr || '').includes(A.name) && !(T.bannerOf().narr || '').includes('QZXwhisper') && !JSON.stringify(act(rest[0], 'look')).includes('QZXwhisper'), 'the banner and table view say only that someone leans close');
+  ok(JSON.stringify(act(A, 'chat_read', {n: 20})).includes(wsp), 'A\'s chat_read shows the whisper');
+  ok(!S.dmLog.some(e => e.detail && e.detail.hero === A.id && e.detail.voice === 'whisper' && ('text' in e.detail)) && S.dmLog.some(e => e.detail && e.detail.voice === 'whisper' && e.detail.hero === A.id && e.detail.by === 'dm-agent'), 'the DM log names the hero, not the words');
+  ok(!DMA.dmAct('whisper', {hero: B.name, text: 'x'}).ok, 'a hero outside the scene is refused');
+  }
 keep('A status at the table', act(A, 'status'));
 {const own = JSON.stringify(act(B, 'status')), other = Object.entries(SECRETS).filter(([k]) => !k.startsWith('b')).filter(([, v]) => own.includes(v)).map(([k]) => k);
   ok(own.includes(SECRETS.bWants) && !other.length, 'B\'s own status carries B\'s own sheet and memories, and nothing of the DM\'s or another member\'s' +(other.length ? ': ' + other.join(', ') : ''))}
 S.table = null; T.TABLE.mode = 'off';
+{const drm = 'A red door opens in the fog: ' + secret('dream') + '.';
+  r = DMA.dmAct('dream', {hero: A.name, text: drm}); ok(r.ok, 'dream for A');
+  const sA = A.state; A.state = 'camp'; DMA.dreamTick(); A.state = sA === 'camp' ? 'hunt' : sA; DMA.dreamTick();
+  ok((A.chat || []).some(e => e.text === 'You dream: ' + drm), 'A wakes from camp with "You dream: ..."');
+  ok(!(B.chat || []).some(e => e.text.includes('QZXdream')) && !JSON.stringify(act(B, 'chat_read', {n: 20})).includes('QZXdream') && !S.dmLog.some(e => e.detail && e.detail.voice === 'dream' && 'text' in e.detail), 'nobody else and not the DM log has the dream');
+  {const bg = S.agents.find(h => !h.player && h.state !== 'dead'); ok(!bg || !DMA.dmAct('dream', {hero: bg.name, text: 'x'}).ok, 'a dream is for agent heroes only')}
+}
 
 // ---------------------------------------------------------------- 5. the relay: seats stay apart
 console.log('relay and MCP');

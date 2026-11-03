@@ -3,7 +3,10 @@
 import {rnd,seedRng} from '../core/rng.js';
 import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
-import {S,newWorldId} from './state.js';
+import {S,newWorldId,resetS} from './state.js';
+import {GOODS} from '../data/items.js';
+import {CRYPT} from '../world/map.js';
+import {reserveNames} from '../data/races.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
 import {makeHero,updAgent} from './heroes.js';
@@ -41,6 +44,7 @@ import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Tabl
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
 import {opening} from './opening.js';
+import {resetMats} from './gather.js'; // gathered materials at the auction house (#257)
 import {questTick} from './questlog.js'; // several quests per hero
 
 export {S,clockStr} from './state.js';
@@ -58,15 +62,22 @@ export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} fr
 export {fellowshipStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,resolveArchetype,slotsView,asV2,MODES,SHAPE_PRESETS,MIND_PRESETS,SEATS,seatCap,seatNote} from './setup.js'; // New World setup (#133; v2 #453)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
-import {ensureCampaign} from './dmagent.js';
+import {ensureCampaign,dreamTick} from './dmagent.js';
 export {provideCampaigns,parseCampaign,campaignIdOf} from './campaign.js'; // the campaign seed
 export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
 // o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
-export function init(o={}){
+// What a process starts with outside S: the auction house's opening supply and the Crypt's cooldown (init() puts them back, #507).
+const GOODS0={};for(const n in GOODS)GOODS0[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
+const CRYPT_CD0=CRYPT.cd;
+function resetWorld(){resetS();
+  for(const n in GOODS0){GOODS[n].supply=GOODS0[n].supply;GOODS[n].prev=GOODS0[n].prev}
+  CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[])}
+export function init(o={}){resetWorld();
   S.worldId=newWorldId(); // a new world instance (hosts purge the old world's memory mirror on a new id)
+  resetMats(); // a new world's auction house opens with the materials table's stock
   const seeded=!!(o.setup&&o.setup.seed!=null);
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
   spawnAll();
@@ -89,5 +100,5 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   partyTick();fellowshipTick(dt);companionTick();councilTick();campTick(dt);tableTick();for(const m of S.mobs)updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
-  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
+  narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}
