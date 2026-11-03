@@ -335,6 +335,13 @@ primeKids([[['--focus'], {DMCHECK_SEED: '66'}], [['--focus'], {DMCHECK_SEED: '1'
   [['--solo', 'solo', '6']], [['--solo', 'solo', '4']], [['--solo', 'none']], [['--solo', 'solo', '2']], [['--hash', 'none']], [['--hash', 'seat']]]);
 console.log('\nEldmoor dmcheck: the DM as an agent, part 1 (mock agents)\n');
 
+// ---------------------------------------------------------------- 0. when and watch (issue #635), in a world of its own
+console.log('when and watch (scripts/dmwhen-test.mjs)');
+{const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'dmwhen-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
+  for (const l of out.split(/\r?\n/)) if (/^\s+FAIL /.test(l)) console.error(l);
+  const n = (out.match(/^\s+ok /gm) || []).length;
+  ok(k.status === 0 && /WHEN OK/.test(out), `when and watch: ${n} checks (set, list, cancel, every trigger, firing through the same tools, expiry, refused at fire time, caps, reserve, save/restore, the runner's wake)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
+
 // ---------------------------------------------------------------- 1. the DM tools in the sim
 console.log('the DM tools');
 init({fac: 0}); run(60);
