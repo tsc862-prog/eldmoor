@@ -745,7 +745,7 @@ const T={
     const bounties=bountiesAt(c).filter(b=>MOBS[b.type]).map(b=>({bounty:MOBS[b.type].q,kill:b.need+' '+MOBS[b.type].pl,where:ZONES[b.z],giver:b.giver,yours:a.quest&&a.quest.bounty===b.id||undefined,expires_in_min:Math.max(0,Math.round(b.until-S.gameMin))}));
     return {ok:true,jobs:out,bounties:bounties.length?bounties:undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
-    need(!(a.party&&a.party.leader!==a),'Your party leader decides which job the party takes.');
+    need(!(a.party&&a.party.leader!==a),'In the Fellowship the party decides: propose {kind:"job", job_id:'+(Number.isFinite(id)?id:'N')+'} (vote; the leader settles it).');
     const mine=advOf(a);
     if(mine&&mine.id===id){a.pq=[];const ok=dmDepart(a,c);need(ok,'The adventure could not resume.');return {ok:true,resumed:mine.title,scene:plain(advLine(a))}}
     if(heldOf(a).some(v=>v.id===id)||takenOf(a).some(h=>h.id===id))return T.focus_quest(a,{id:'job:'+id}); // one you hold: focus it (the quest log)
@@ -871,7 +871,7 @@ const T={
       throw new Rule('The smiths are in town. '+(g?c.name+' lies '+compass(g.x-a.x,g.y-a.y)+', about '+Math.round(d)+' tiles ('+walkTime(d)+'): move_to {target: "home"}, then shop. ':'')+(tr&&tr.error?tr.error:'Out here only a person who opened their trade with you sells (talk to them, then shop {npc}).'))}
     return shopView(a,null,all)},
   // The gate captain's bounties (issue #67): hand in a finished one, or take one if you hold none. Never handed out unasked.
-  turn_in(a,{region}={}){need(inTown(a),'The gate captain is in town.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,l=a.lvl,c=homeOf(a);
+  turn_in(a,{region}={}){need(inTown(a),'The gate captain is at '+homeOf(a).name+'’s gate ('+Math.round(dist(a,homeOf(a).gate))+' tiles). move_to("home"), then turn_in.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,l=a.lvl,c=homeOf(a);
     const bt=x=>(MOBS[x.type].q)+': '+x.need+' '+MOBS[x.type].pl+' in '+ZONES[MOBS[x.type].z];
     if(doneQ){turnIn(a);return {ok:true,reward_gold:a.gold-g,leveled:a.lvl>l||undefined,note:'The captain keeps bounties posted: turn_in again to take another (list_jobs shows them).'}}
     if(q)return {ok:false,error:'Your bounty is not done ('+q.have+'/'+q.need+').',bounty:bt(q)};
