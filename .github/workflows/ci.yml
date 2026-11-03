@@ -46,6 +46,7 @@ jobs:
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: init() reset, run: npm run initcheck}
+      - {name: Downed and death saves, run: npm run downcheck}
       - {name: Fellowship archetypes, run: npm run archetypecheck}
       - {name: Agent-built personality, run: npm run personacheck}
       - {name: Pack and inventory, run: npm run invcheck}
@@ -184,6 +185,7 @@ jobs:
       - {name: Tool quick wins, run: npm run toolwincheck}
       - {name: Pay and mark tools, run: npm run paymarkcheck}
       - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
+      - {name: DM voices long-poll and answer in time (issue 680), run: npm run voicecheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: Action log, run: npm run actcheck}
       - {name: Tiered memory, run: npm run tiercheck}
