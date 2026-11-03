@@ -59,7 +59,7 @@ if (process.argv[2] === '--fp') {
 }
 
 console.log('\nEldmoor playcheck: a mock agent plays a hero through the tools\n');
-init({fellowship: false}); run(1); // the old start (#111): this check sets up its own heroes and Fellowship
+init({fellowship: false}); setDmSeat(true); run(1); // the old start (#111): this check sets up its own heroes and Fellowship
 // A mid-level hero so posted jobs fit (the DM offers adventures from level 4).
 let a = S.agents.find(x => x.fac === 0 && x.cls === 'Warrior' && x.state === 'town') || S.agents.find(x => x.fac === 0 && x.state === 'town');
 a.lvl = 7; a.hp = maxHp(a); a.gold = 120; // enough to shop once
@@ -186,7 +186,6 @@ if (a.state !== 'town') {const t = await call('turn_in', {}); ok(!t.ok && /gate 
 let chose = false, saved = false, fought = false;
 function saveRestore(when) {
   paused = true;
-  setDmSeat(true); // a real world has its DM seat open (#520); a closed seat converts on restore
   const snap = JSON.parse(JSON.stringify(snapshot()));
   run(1);
   restore(snap); a = S.agents.find(x => x.id === id);
@@ -595,6 +594,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
     c.playOrder = {kind: 'hunt', n: 2, flee: .15}; c.playActAt = S.gameMin - 200; c.playIdle = false; c.playAuto = null};
   const autoStarted = () => c.playIdle || c.playAuto || (c.pq[0] && c.pq[0].auto);
   // a turn opens with the agent's first tool call: two game hours past its last order, autopilot still starts nothing
+  (await import("../src/sim/runlink.js")).setRunnerLinks(() => "connected"); // a live runner holds the hero while its turn is open (the check is about that hold)
   idle(); let r = P.playerAct(c.id, 'look'); const t0 = S.gameMin;
   ok(r.ok && c.playTurn === t0 && /^Day \d+ \d\d:\d\d/.test(r.as_of || ''), 'a tool call opens the turn; results carry as_of: ' + r.as_of);
   ok(!stepFor(60, autoStarted), `during the turn autopilot starts nothing new (60 game min, ${Math.round(S.gameMin - c.playActAt)} since the last order)`);
