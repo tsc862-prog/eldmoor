@@ -12,6 +12,9 @@
 //   (historyOf: who entered, which chambers fell to them, who fell where; kept for the session on this side, as the sim
 //   keeps only totals), and the minimap's mark (dungeonSite).
 // Read-only on the sim: reads CRYPT.group and its crawl (sim/crawl.js), S.table and slotted().crawl.
+// Raid slice (#85): a lair landmark (kind 'lair') opens the raid arena in the same frame (render/raidview.js): the boss with
+//   its HP, phase and breath, the raiders where they stand, adds, who broke off or fell, a raider list on the bar, hover and
+//   click detail and a raid history; the minimap marks the lair.
 // The overlay sits inside #screen right after the world canvas, so the Table banner and alerts stay on top of it.
 import {CRYPT,LANDMARKS} from '../world/map.js';
 import {buildInterior} from '../world/interior.js';
@@ -21,9 +24,10 @@ import {drawInterior} from './interior.js';
 import {foeKind,foeAt} from './dgfoes.js';
 import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {classColor} from '../core/colors.js';
+import {isArena,arenaOf,raidState,raidDetail,raidRows,raidHistory,drawArena,arenaHit} from './raidview.js';
 
 let root=null,cv=null,ctx=null,nameEl=null,statEl=null,listEl=null,tipEl=null,pinEl=null,histEl=null,histBtn=null,site=null,open=false,inited=false,sig='';
-let fit=null,hov={room:-1,foe:null,x:0,y:0},pin=-1,histOpen=false,tipSig='',topPx=-1,barPx=-1; // fit: where the last frame put the interior (for pointer maths)
+let fit=null,hov={room:-1,foe:null,key:null,x:0,y:0},pin=-1,histOpen=false,tipSig='',topPx=-1,barPx=-1; // fit: where the last frame put the interior (for pointer maths)
 const roomsOf=s=>(s&&s.rooms)||[];
 const live=s=>!!(CRYPT&&s&&s.name===CRYPT.name);
 const who=(g,cr)=>{const C=coOf(cr||g.crawl);return g.name||(C&&C.name)||whoG(g)};
@@ -129,19 +133,27 @@ function build(){const scr=document.getElementById('screen');if(!scr)return fals
   histEl=mk('div','dghist');histEl.hidden=true;histEl.setAttribute('role','region');histEl.setAttribute('aria-label','Dungeon history');
   root.append(cv,histEl,pinEl,tipEl,bar);
   cv.addEventListener('pointermove',onMove);cv.addEventListener('pointerleave',()=>{hov.room=-1;hov.foe=null;tipEl.hidden=true});
-  cv.addEventListener('click',e=>{onMove(e);setPin(hov.room===pin?-1:hov.room)});
+  cv.addEventListener('click',e=>{onMove(e);if(isArena(site))setPin(hov.key==null||hov.key===pin?-1:hov.key);else setPin(hov.room===pin?-1:hov.room)});
   // the world under it must not react: no hero picks, pans or zooms through the overlay
   for(const ev of ['click','pointerdown','pointermove','wheel'])root.addEventListener(ev,e=>e.stopPropagation(),ev==='wheel'?{passive:true}:undefined);
   const after=document.getElementById('cv');if(after&&after.nextSibling)scr.insertBefore(root,after.nextSibling);else scr.append(root);return true}
 // Pointer to chamber: the pixel under the pointer, through the last frame's fit, to a tile; chambers have even regions.
-function onMove(e){if(!fit||!site)return;const r=cv.getBoundingClientRect(),dpr=cv.width/Math.max(1,r.width),m=buildInterior(site),st=stateOf(site);
+function onMove(e){if(!fit||!site)return;if(isArena(site))return onArenaMove(e);const r=cv.getBoundingClientRect(),dpr=cv.width/Math.max(1,r.width),m=buildInterior(site),st=stateOf(site);
   const wx=((e.clientX-r.left)*dpr-fit.ox)/fit.sc,wy=((e.clientY-r.top)*dpr-fit.oy)/fit.sc,tx=Math.floor(wx/T),ty=Math.floor(wy/T);
   hov.foe=foeAt(m,st,wx,wy);const reg=tx<0||ty<0||tx>=m.w||ty>=m.h?-1:m.reg[ty*m.w+tx];hov.room=hov.foe?st.foeRoom:reg>=0&&(reg&1)===0?reg>>1:-1;
   hov.x=e.clientX-root.getBoundingClientRect().left;hov.y=e.clientY-root.getBoundingClientRect().top;cv.style.cursor=hov.room>=0?'pointer':'default';placeTip(st)}
+// The raid arena: the boss, a raider or an add under the pointer (the hit boxes of the last frame).
+let arenaSt=null;
+function onArenaMove(e){const r=cv.getBoundingClientRect(),dpr=cv.width/Math.max(1,r.width),wx=((e.clientX-r.left)*dpr-fit.ox)/fit.sc,wy=((e.clientY-r.top)*dpr-fit.oy)/fit.sc;
+  hov.key=arenaHit(arenaSt,wx,wy);hov.room=-1;hov.x=e.clientX-root.getBoundingClientRect().left;hov.y=e.clientY-root.getBoundingClientRect().top;cv.style.cursor=hov.key!=null?'pointer':'default';placeArenaTip()}
+function placeArenaTip(){if(!tipEl)return;const st=arenaSt;if(hov.key==null||hov.key===pin||!st){tipEl.hidden=true;return}const d=raidDetail(hov.key,st);if(!d){tipEl.hidden=true;return}
+  const sg=hov.key+':'+d.stateText;if(sg!==tipSig){tipSig=sg;fillDetail(tipEl,d,st,true);tipEl.append(mk('div','dgdh','Click for the full detail'))}
+  tipEl.hidden=false;const rw=root.clientWidth,rh=root.clientHeight,w=tipEl.offsetWidth,h=tipEl.offsetHeight,fx=hov.x+18+w>rw-4?hov.x-w-18:hov.x+18;
+  tipEl.style.left=Math.max(4,Math.min(rw-w-4,fx))+'px';tipEl.style.top=Math.max(4,Math.min(rh-h-4,hov.y-h/2))+'px'}
 function fillDetail(el,d,st,brief){el.textContent='';const t=mk('div','dgdt',d.title);const k=mk('div','dgdk',d.kind+' · '+d.stateText);el.append(t,k);
   if(d.frame&&!brief)el.append(mk('div','dgdf',d.frame));
-  if(d.foes.length){el.append(mk('div','dgdh','Foes'));for(const f of d.foes)el.append(mk('div','dgdl',f))}
-  if(d.notes.length&&!brief){el.append(mk('div','dgdh','What happened'));for(const n of d.notes)el.append(mk('div','dgdl',n))}
+  if(d.foes.length){el.append(mk('div','dgdh',d.foesHead||'Foes'));for(const f of d.foes)el.append(mk('div','dgdl',f))}
+  if(d.notes.length&&!brief){el.append(mk('div','dgdh',d.notesHead||'What happened'));for(const n of d.notes)el.append(mk('div','dgdl',n))}
   if(!d.foes.length&&!(d.notes.length&&!brief))el.append(mk('div','dgdl',d.state==='unexplored'?'Nothing is known of it yet.':'Nothing is stirring here.'))}
 function placeTip(st){if(!tipEl)return;if(hov.room<0||hov.room===pin&&!hov.foe){tipEl.hidden=true;return}
   const d=roomDetail(hov.room,site,st),sg=hov.room+':'+(hov.foe?hov.foe.hp:'')+':'+st.status+':'+(st.foes?st.foes.map(f=>f.hp).join():'');
@@ -156,21 +168,41 @@ export function roomPoint(i,fx=.5,fy=.5){if(!fit||!site||!cv)return null;const r
   return {x:b.left+(fit.ox+(r.x+r.w*fx)*T*fit.sc)/dpr,y:b.top+(fit.oy+(r.y+r.h*fy)*T*fit.sc)/dpr}}
 export function initDungeonView(){if(inited||typeof document==='undefined')return;inited=true;
   document.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('[data-dungeon]'):null;if(!t)return;
-    const name=t.dataset.dungeon;openDungeon(LANDMARKS.find(L=>L.kind==='crypt'&&L.name===name)||CRYPT)});
+    const name=t.dataset.dungeon;openDungeon(LANDMARKS.find(L=>(L.kind==='crypt'||L.kind==='lair')&&L.name===name)||CRYPT)});
   document.addEventListener('keydown',e=>{if(open&&e.key==='Escape')closeDungeon()})}
 export function openDungeon(s){if(!root&&!build())return false;site=s||CRYPT;open=true;sig='';pin=-1;root.hidden=false;
+  const ar=isArena(site);root.classList.toggle('raid',ar);root.setAttribute('aria-label',ar?'Raid view':'Dungeon view');cv.setAttribute('aria-label',ar?'Map of the lair and the raid':"Map of the dungeon's chambers");listEl.setAttribute('aria-label',ar?'Raiders':'Chambers');
   const scr=document.getElementById('screen');if(scr)scr.classList.add('dgopen');refreshDungeon();return true}
-export function closeDungeon(){open=false;hov.room=-1;hov.foe=null;pin=-1;if(tipEl)tipEl.hidden=true;if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr)scr.classList.remove('dgopen')}
+export function closeDungeon(){open=false;hov.room=-1;hov.foe=null;hov.key=null;pin=-1;if(tipEl)tipEl.hidden=true;if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr)scr.classList.remove('dgopen')}
 export const dungeonOpen=()=>open;
 export const dungeonSite=()=>open?site:null;
 // The crypt whose mouth (its 3x3 rock patch, plus a little slack) is under tile (x, y).
 export function cryptAt(x,y){for(const L of LANDMARKS){const m=L.kind==='crypt'&&L.mouth;if(m&&x>=m.x0-.3&&x<=m.x1+1.3&&y>=m.y0-.3&&y<=m.y1+1.3)return L}return null}
 
+// The lair whose ring (its lava, plus a little slack) is under tile (x, y), for a click on the world map.
+export function lairAt(x,y){for(const L of LANDMARKS)if(L.kind==='lair'&&Math.hypot(x-L.x,y-L.y)<=(L.r||5)+.5)return L;return null}
+
+// The raid arena's bar: the status, one row per raider (fighting, on the way in, fled, fallen), the pinned detail, the history.
+function refreshArena(){const st=raidState(site);arenaSt=st;const rows=raidRows(st);
+  const s=st.company+'|'+st.status+'|'+rows.map(r=>r.key+r.state+r.label).join(',')+'|'+pin+'|'+histOpen+'|'+(pin!==-1?(raidDetail(pin,st)||{}).stateText:'');if(s===sig)return st;sig=s;
+  nameEl.textContent=String(st.boss?st.boss.name+'’s lair':site.name||'Lair').toUpperCase()+(st.company?' · '+st.company.toUpperCase():'');statEl.textContent=st.status;
+  while(listEl.children.length>rows.length)listEl.removeChild(listEl.children[listEl.children.length-1]); // (children read fresh: a stub DOM's list may not be live)
+  rows.forEach((r,i)=>{let li=listEl.children[i];if(!li){li=mk('li');listEl.append(li)}
+    li.className='dgroom raider '+r.state+(pin===r.key?' pinned':'');if(!li.onclick){li.tabIndex=0;li.setAttribute('role','button');li.onclick=e=>{e.stopPropagation();const k=li.dataset.k,key=k!==''&&!isNaN(+k)?+k:k;setPin(pin===key?-1:key)};li.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();li.click()}}}
+    li.dataset.k=String(r.key);li.textContent=r.label;li.title=r.title;li.setAttribute('aria-label',r.title);if(li.style.setProperty)li.style.setProperty('--cc',classColor(r.cls))});
+  histBtn.textContent='History ('+raidHistory().length+')';histBtn.setAttribute('aria-expanded',String(histOpen));
+  const d=pin!==-1?raidDetail(pin,st):null;
+  if(d){fillDetail(pinEl,d,st);const x=mk('button','dgx','x');x.type='button';x.setAttribute('aria-label','Close the detail');x.onclick=e=>{e.stopPropagation();setPin(-1)};pinEl.prepend(x);pinEl.hidden=false}else pinEl.hidden=true;
+  if(histOpen){histEl.textContent='';histEl.append(mk('div','dgdt','Raids'));const H=raidHistory();
+    if(!H.length)histEl.append(mk('div','dgdl','No raid has come to the lair while this page was watching.'));
+    for(const h of H){histEl.append(mk('div','dgdh',h.title+' · '+h.outcome));for(const l of h.lines)histEl.append(mk('div','dgdl',l))}histEl.hidden=false}else histEl.hidden=true;
+  return st}
+
 // The bar and the room list: patched only when the words change.
-export function refreshDungeon(){if(!root||!open)return null;const st=stateOf(site);
+export function refreshDungeon(){if(!root||!open)return null;if(isArena(site))return refreshArena();const st=stateOf(site);
   const s=st.company+'|'+st.status+'|'+st.rooms.map(r=>r.state).join(',')+'|'+pin+'|'+histOpen+'|'+(st.foes?st.foes.map(f=>f.hp).join():'')+'|'+runs.length+(cur?cur.reached+':'+cur.falls.length:'');if(s===sig)return st;sig=s;
   nameEl.textContent=String(site.name||'Dungeon').toUpperCase()+(st.company?' · '+st.company.toUpperCase():'');statEl.textContent=st.status;
-  const lis=listEl.children;while(lis.length>st.rooms.length)listEl.removeChild(lis[lis.length-1]);
+  while(listEl.children.length>st.rooms.length)listEl.removeChild(listEl.children[listEl.children.length-1]);
   st.rooms.forEach((r,i)=>{let li=listEl.children[i];if(!li){li=mk('li');listEl.append(li)}
     const label=(st.fog>=0&&i>st.fog?'?':r.name.replace(/^the /i,''))+(r.boss?' ☠':''),word={cleared:'cleared',current:'in progress',unexplored:'not reached yet',lost:'turned back here',room:''}[r.state];
     li.className='dgroom '+r.state+(r.boss?' boss':'')+(pin===i?' pinned':'');if(!li.onclick){li.tabIndex=0;li.setAttribute('role','button');li.onclick=e=>{e.stopPropagation();const k=Number(li.dataset.k);setPin(pin===k?-1:k)};li.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();li.click()}}}
@@ -191,6 +223,7 @@ export function drawDungeon(now){if(!open||!root)return;const st=refreshDungeon(
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='rgb(6,6,11)';ctx.fillRect(0,0,W,H);
   const tp=Math.round(top/dpr),bp=Math.round((bar?bar.offsetHeight:0));
   if(tp!==topPx||bp!==barPx){topPx=tp;barPx=bp;root.style.setProperty('--dgtop',tp+'px');const scr=document.getElementById('screen');if(scr)scr.style.setProperty('--dgbar',bp+'px')}
+  if(isArena(site)){fit=drawArena(ctx,{x:8*dpr,y:top,w:W-16*dpr,h:Math.max(40,H-top-bot)},arenaOf(site),st,now,dpr);if(hov.key!=null&&!tipEl.hidden)placeArenaTip();return}
   st.hover=hov.room;st.pin=pin;
   const m=buildInterior(site);fit=drawInterior(ctx,{x:8*dpr,y:top,w:W-16*dpr,h:Math.max(40,H-top-bot)},m,st,now,dpr);
   if(hov.room>=0&&!tipEl.hidden)placeTip(st)}

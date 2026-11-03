@@ -48,6 +48,12 @@ export function interiorTexture(m){const key=m.seed+':'+m.w+'x'+m.h+':'+(m.theme
         if(h(gx>>2,row,14)<.12&&(gx&3)!==0)col=mix(col,R[2],.35);if((lx===2||lx===len-3)&&ly===2)col=mix(col,D.mortar,.6)} // grain, nails
       if(FS==='hull'){const rb=gx%48;if(rb<5){const B=D.beam;col=rb===0?B[0]:rb===4?B[2]:mix(B[1],B[0],.2);if(ly===0)col=mix(col,D.mortar,.4)}}
       return col}
+    if(t!==IT.HALL&&FS==='ash'){ // a lair's floor (#85 raid arena): basalt plates split by cracks, a few still holding embers
+      const cs=7,qx=Math.floor(gx/cs),qy=Math.floor(gy/cs);let d1=99,d2=99,id=0;
+      for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const X=qx+i,Y=qy+j,px=(X+.15+h(X,Y,22)*.7)*cs,py=(Y+.15+h(X,Y,23)*.7)*cs,dd=Math.hypot(gx-px,gy-py);
+        if(dd<d1){d2=d1;d1=dd;id=h(X,Y,24)}else if(dd<d2)d2=dd}
+      const e=d2-d1;if(e<1.1)return id<.12&&D.ember?mix(D.mortar,D.ember,.7):D.mortar;
+      col=mix(D.floor[1],id<.5?D.floor[2]:D.floor[0],Math.abs(id-.5)*.7);if(e<2.2)col=mix(col,D.floor[0],.35);else if(d1>4.5)col=mix(col,D.floor[2],.25);if(n<.04)col=mix(col,D.floor[2],.5);return col}
     if(t!==IT.HALL&&FS==='dirt'){const v=h(gx>>2,gy>>2,15);col=mix(D.floor[1],v<.5?D.floor[2]:D.floor[0],Math.abs(v-.5)*.5);if(n<.03)col=D.floor[0];else if(n>.97)col=D.floor[2];return col}
     const R=t===IT.HALL?D.hall:D.floor,sz=t===IT.HALL||FS==='cobble'?5:8,row=Math.floor(gy/sz),off=(row&1)*(sz>>1),sx=Math.floor((gx+off)/sz),lx=(gx+off)%sz,ly=gy%sz,v=h(sx,row,1); // flagstones (chambers 8 px, corridors and setts 5)
     if(lx===0||ly===0)col=D.mortar;
@@ -89,6 +95,15 @@ export function interiorTexture(m){const key=m.seed+':'+m.w+'x'+m.h+':'+(m.theme
         else if(upper)col=face(gx,gy,py,32,n);
         else{col=mix(D.wallTop[1],D.wallTop[2],n*.6); // the wall's top, with a lit rim toward the open side
           if((walk(up)&&py<2)||(walk(lf)&&px<2)||(walk(rt)&&px>13))col=D.wallTop[0];if(n>.97)col=D.wallFace[2]}}
+      else if(t===IT.WATER&&D.crust){ // lava (#85 raid arena): dark crust plates on a bright melt, glowing seams, the shore's lip cooled
+        const L=D.water,cs=6,qx=Math.floor(gx/cs),qy=Math.floor(gy/cs);let d1=99,d2=99,id=0;
+        for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const X=qx+i,Y=qy+j,px2=(X+.2+h(X,Y,27)*.6)*cs,py2=(Y+.2+h(X,Y,28)*.6)*cs,dd=Math.hypot(gx-px2,gy-py2);
+          if(dd<d1){d2=d1;d1=dd;id=h(X,Y,29)}else if(dd<d2)d2=dd}
+        const e=d2-d1;
+        if(id<.62&&e>1.2)col=mix(D.crust[1],D.crust[0],e<2.2?.75:Math.min(.5,d1/8)); // a plate, its rim still warm
+        else col=e<.8?L[0]:mix(L[1],L[0],Math.max(0,.6-e*.15));
+        if(n<.012)col=L[0];
+        if((up!==IT.WATER&&walk(up)&&py<3)||(lf!==IT.WATER&&walk(lf)&&px<2))col=mix(D.crust[1],L[2],.35)}
       else if(t===IT.WATER){col=D.water[1];
         if(up!==IT.WATER&&py<3)col=mix(D.water[2],D.water[1],py/3); // the rim's shadow on the water
         else if(lf!==IT.WATER&&px<2)col=D.water[2];
@@ -127,6 +142,9 @@ const SARC=[
   "SDDDDDDDDDDDDDDDDDDDDDDDDS",
   "SSSSSSSSSSSSSSSSSSSSSSSSSS"];
 const THRONE=["..L........S..",".LMS......LMS.",".LMS......LMS.",".LMSLLLLLLLMS.",".LMMMMMMMMMMS.",".LMMMGMMGMMMS.",".LMMMMMMMMMMS.",".LMMMMMMMMMMS.","LLLLLLLLLLLLLS","SMMMMMMMMMMMMS","SDDDDDDDDDDDDS",".SD........DS.",".SD........DS."];
+// the raid arena's lair (#85): a gold hoard with a sword in it, a basalt crag (lit from the top left)
+const HOARD=["..........S.....","..........S.....","......Y...S.....",".....YWY..S.....","....YGGGY.H..Y..","...YGWGGGHHHYGY.","..YGGGGOGGGGGGOY",".YGGOGGGGGOGGGGO","YGGGGGOGGGGGOGGO","DOOODDOOOODOOODD"];
+const CRAG=["....H.....","...HLM....","...HLMS...","..HLLMS...","..HLMMS...","..LLMMSS..",".HLMMMMS..",".LLMMMMSS.",".LMMMMMMS.","HLMMMMMMSS","LLMMMMMMMS","SSSSSSSSSS"];
 const STONE={L:'#a8a4ba',M:'#7c7890',S:'#4a4658',H:'#c8c4d8',D:'#34303e',G:'#7ad0a0'};
 const PROPS={
   bones:  {rows:BONES,map:{W:'#e8e4d8',D:'#8a8678'},ox:1,oy:9},
@@ -136,6 +154,8 @@ const PROPS={
   brazier:{rows:BRAZIER,map:{G:'#3fae7a',g:'#7ad0a0',W:'#c8ffd8',B:'#2a2630',M:'#5a5666'},ox:4,oy:4,light:'crypt'},
   sarcophagus:{rows:SARC,map:STONE,ox:-5,oy:4},
   throne: {rows:THRONE,map:STONE,ox:1,oy:2},
+  hoard:  {rows:HOARD,map:{W:'#fff6c0',Y:'#ffd866',G:'#e0a838',O:'#a86a20',D:'#5a3410',S:'#d8dce8',H:'#7a3a2a'},ox:0,oy:6},
+  crag:   {rows:CRAG,map:{H:'#9a8a88',L:'#76686a',M:'#584c50',S:'#363036'},ox:3,oy:4},
 };
 function prop(x,p,th,tk){const F=FURN[p.kind];
   if(F){const rows=F.make?F.make(p.len?p.len*16-2:0):F.rows,s=outlined(sprite('sf-'+p.kind+'-'+(tk||'')+'-'+(p.len||0),rows,F.map(th)));x.drawImage(s,p.x*T+F.ox-1,p.y*T+F.oy-1);return}

@@ -32,8 +32,9 @@ import {drawConditions,condLift} from './conditions.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {syncSpells,drawSpells} from './spellfx.js';
-import {TEXT,MARK,LIGHT} from './palette.js';
+import {TEXT,MARK,LIGHT,BOSS_PAL} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
+import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
@@ -53,7 +54,7 @@ function dirOf(e){let f=FACE.get(e);if(!f){f={x:e.x,y:e.y,d:e.face<0?1:2};FACE.s
 const STEP=[1,0,2,0]; // sheet columns of a walk cycle
 // Entities and labels this many world px outside the view are not drawn.
 const MARGIN=48;
-const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a20'};
+// BOSS_PAL lives in palette.js (#85: the raid arena draws Kragmaw too)
 
 // ---- camera control (module level so the UI and tools can drive it) ----
 let cvRef=null;const listeners=[];
@@ -139,7 +140,7 @@ export function createRenderer(cv,screenEl){
 
   let blink=0;
   function draw(){
-    trackCrawl();sceneTick(cam);if(dungeonOpen()){drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
+    trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
     if(drawSceneView(performance.now()/1000))return; // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
