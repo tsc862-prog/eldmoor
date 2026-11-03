@@ -83,7 +83,7 @@ import {actFlee,fights,actionLog} from './actlog.js';
 import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
 import {SPEC_LVL} from '../data/classes.js';
 import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfession,unlearnProfession,profKey} from './gather.js'; // professions and gathering (#257)
-import {craftTool} from './craft.js'; // crafting (#258)
+import {craftTool,smithTool} from './craft.js'; // crafting (#258)
 import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
@@ -1184,6 +1184,7 @@ const T={
     const d=Math.round(dist(a,n)*10)/10;
     return {ok:true,gathering:n.name+' ('+n.id+')',material:c.mat,distance:d,takes:'about '+Math.round(GATHER.MIN+d*3)+' game minutes',
       odds:c.chance>=.7?'a sure hand':c.chance>=.5?'likely':'a stretch for your skill',note:'wait() while you work; an attack interrupts and you go back to it after the fight.'}},
+  smith(a,args={}){const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac);const r=smithTool(a,args,{inTown:here});need(r.ok,r.why);return r},
   craft(a,{recipe,count,for:forWho}={}){need(recipe!=null&&String(recipe).trim()!=='','Which recipe? craft {recipe: "meal-perch"}; recipes lists yours, what each needs and how many you carry.');
     need(!['fight','duel','assist','dead','ghost'].includes(a.state),'Not now ('+a.state+').');
     const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac); // crafting (#258): a friendly town's workshops, or the camp fire

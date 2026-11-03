@@ -1033,3 +1033,11 @@ New names (townsfolk names are rolled per world and are not canon; these placed 
 - **Pilgrims With No Gate**, **Hollowfang's Season**, **The Door at the Hollow Cairn**, **Murkstead Salt, Cairnmoot Wool** and **The Ram-King's Toll** (Stepping Lands): the other thread titles of the Stepping seed. They use canon places and creatures only: Hollowfang, the Hollow Cairn (sealed, no dungeon run), the Greywater trade between Murkstead and Cairnmoot, and Brask Ironhorn's pass.
 - **The Compact of Four Pages** (Stepping Lands): one page in each home town (Highgate debts, Cairnmoot the route, Grimhold the salt-song, Murkstead the names).
 - Endings named in the Eldmoor seed: **the Kept Light**, **the Dark Road**, **the Unowned Flame**.
+
+### The smith's temper (issue #13)
+
+In any friendly town a smith will temper a worn piece of gear for gold alone: one item level higher each time, up to three
+tempers a piece, never past the wearer's level plus two, dearer for finer metal and for each step. Epics are beyond the
+smith: they grow with their bearer. Gear does not wear in Eldmoor, so the smith mends nothing. A piece replaced by a better
+one carries its tempering away with it. Scripted heroes visit the smith after the market when they have gold to spare;
+agents use the `smith {item, do}` tool.
