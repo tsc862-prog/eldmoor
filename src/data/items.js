@@ -60,7 +60,7 @@ export const epicZone=n=>{const z=EPICS.findIndex(l=>l.includes(n));return z>=0?
 // armor:    head, chest, hands, feet and a Warrior's shield. Summed armor becomes Defense (sim/stats.js).
 // damage:   the main hand, and a Hunter's longbow (a ranged off hand). Summed damage adds to Attack.
 // bonus:    points added to ability scores while worn ("+2 Brawn"): fine items one +1, rare items two
-//           +1 or one +2; trinkets and the other off hands (tome, censer, shiv) a +1 at every quality.
+//           +1 or one +2; trinkets and the other off hands (tome, censer, shiv, songstone) a +1 at every quality.
 // property: rare items and most epics carry one word from PROPS.
 // Armor and damage scale with item level and quality; bonuses and properties do not.
 export const ARMOR_PER_ILVL=1;    // armor points per item level, before slot and class weights
