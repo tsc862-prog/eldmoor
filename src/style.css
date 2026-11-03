@@ -324,6 +324,11 @@ body:not(.dev-mode) #wFreeRow{display:none}
 .tbanner .tth{flex:1 1 auto;min-width:0;overflow:hidden;line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .tbanner .tchips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px}
 .tbanner .tp{font-family:var(--px);font-size:7px;line-height:1;padding:3px 5px;border:1px solid #6a3a2a;background:#2a1612;color:#ffb08a}
+/* whose table it is, with more than one company (#456); a button when the watcher follows another company */
+.tbanner .tco{font-size:16px;line-height:1;padding:1px 5px;color:var(--gold);border:1px solid #6a5a2a;background:#1e1a10;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbanner button.tco{font-family:inherit;cursor:pointer;text-transform:none;letter-spacing:0}
+.tbanner button.tco::after{content:' ▸'}
+.tbanner button.tco:hover,.tbanner button.tco:focus-visible{border-color:var(--gold);outline:none}
 .tbanner .tp.tall{border-color:#3a5a7a;background:#121e2c;color:#9ad0ff}
 .tbanner .tp.tround{border-color:#6a5a2a;background:#241e0e;color:#ffd866}
 .tbanner .tq{color:#ffe9a8;margin-bottom:2px;overflow-wrap:anywhere}
@@ -367,6 +372,21 @@ ul.legends .meta{margin-left:22px}
 .frhead{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .frttl{font-family:var(--px);font-size:9px;color:var(--gold);letter-spacing:.06em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .frlist{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+/* one row per company (#456): the followed one first, solos sharing the Alone row; the heads show with two rows or more */
+.frrows{display:flex;flex-direction:column;gap:6px;min-width:0}
+.frrow{display:flex;flex-direction:column;gap:3px;min-width:0}
+.frrh{display:flex;align-items:baseline;gap:8px;min-width:0;max-width:100%;align-self:flex-start;background:none;border:0;border-bottom:1px solid var(--edge);padding:1px 2px;color:var(--ink);text-align:left;font:inherit;font-size:16px;line-height:1.1;box-shadow:none}
+.frrh[hidden]{display:none}
+button.frrh{cursor:pointer}
+button.frrh[aria-pressed="true"]{background:none;color:var(--ink);border-color:var(--edge)}
+#vFel{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button.frrh:hover,button.frrh:focus-visible{border-bottom-color:var(--gold)}
+.frrn{font-family:var(--px);font-size:8px;color:var(--gold);letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.frrh.alone .frrn{color:var(--dim)}
+.frrc{white-space:nowrap}
+.frrf{font-family:var(--px);font-size:6px;padding:2px 3px;background:var(--gold);color:#0d0e19;white-space:nowrap}
+.frrf[hidden]{display:none}
+.frlist.wide{grid-template-columns:repeat(4,minmax(0,1fr))}
 .pf{background:var(--panel);border:2px solid var(--edge);border-top-width:3px;box-shadow:3px 3px 0 #05060c;padding:5px 6px;display:flex;flex-direction:column;gap:3px;min-width:0;cursor:pointer;font-size:16px;line-height:1.05}
 .pf{position:relative}
 .pfkey{position:absolute;top:2px;right:3px;font-family:'Press Start 2P',monospace;font-size:7px;line-height:1;color:var(--dim,#6c7390);opacity:.7;pointer-events:auto}
@@ -403,7 +423,7 @@ button.runbtn.off{opacity:.55}
 .runstate.r-live{color:#7fd6c2}.runstate.r-waiting{color:#d9c27a}.runstate.r-crashed{color:#e07a6a}.runstate.r-starting,.runstate.r-stopping{color:#9fb4d8}
 .fm .ftools{flex-wrap:wrap;justify-content:flex-end}
 .pftip .pftr{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}
-@media (max-width:920px){.frlist{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:920px){.frlist,.frlist.wide{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:560px){
   .frlist{gap:4px}
   .pf{font-size:14px;padding:3px 4px}

@@ -1,6 +1,7 @@
 // The Fellowship sheet (issue #94): an overlay comparing the five side by side, one column per
-// member in role order. Rows: the six scores, the five combat totals, trained skills, gear by slot
-// with item levels and the gear score, gold, oath and progress, the last memory line, and each
+// member in role order. Companies (#456): the columns are the followed company's heroes (the Fellowship's five places,
+// or any company's 1-8 heroes in join order), and the title is its name.
+// Rows: the six scores, the five combat totals, trained skills, gear by slot with item levels and the gear score, gold, oath and progress, the last memory line, and each
 // member's bond toward every companion. Click a row's label to sort the columns by it (again to
 // flip, a third time back to role order). Names are .hn spans: clicking one follows that member
 // (panels.js owns the delegated click) and closes the sheet. The table scrolls sideways inside its
@@ -13,7 +14,7 @@
 import {CLS} from '../data/classes.js';
 import {SLOTS as GEAR_SLOTS} from '../data/items.js';
 import {S} from '../sim/index.js';
-import {fellowshipMembers} from '../sim/fellowship.js';
+import {followedCompany,followedMembers,companyLabel,MAX_HEROES} from './companyview.js'; // the followed company (#456)
 import {combatStats} from '../sim/stats.js';
 import {bond} from '../sim/bonds.js';
 import {ABILITIES,ABIL_IDS,SKILLS,SKILL_IDS,score,mod,trained} from '../sim/abilities.js';
@@ -40,7 +41,7 @@ function lastFight(a){const g=globalThis.__actionLog,f=g&&g.fightSummary?g.fight
 const qCls=it=>it.epic?'ep':it.quality==='rare'?'qr':it.quality==='fine'?'qf':'qp';
 
 // ---- the table as data: cols (members) and rows {key, group, label, cells:[{t, n (sort value), c (css)}]} ----
-export function sheetRows(){const ms=fellowshipMembers(),cols=ms.map(m=>({slot:m.slot,role:m.role,label:m.label,hero:m.hero}));
+export function sheetRows(){const ms=followedMembers().slice(0,MAX_HEROES),cols=ms.map(m=>({slot:m.slot,role:m.role,label:m.label,hero:m.hero}));
   const rows=[],row=(key,group,label,f)=>rows.push({key,group,label,cells:cols.map(c=>c.hero?f(c.hero):{t:'',n:null})});
   row('lvl','Identity','Level',a=>({t:String(a.lvl),n:a.lvl}));
   for(const k of ABIL_IDS)row('ab_'+k,'Scores',ABILITIES[k].name,a=>{const s=score(a,k),m=mod(a,k);return {t:s+' ('+sg(m)+')',n:s,c:m>=2?'hi':m<0?'lo':''}});
@@ -77,7 +78,7 @@ function face(a){let cv=faces.get(a.id);if(!cv){cv=el('canvas','shport');cv.setA
 // ---- DOM ----
 let ov=null,box=null,body=null,tblw=null,life=null,key=null,open=false,sort=null,dir=-1,sig='',view='table';
 const views={};
-const KEY={table:'Click a row name to sort the five by it. Click a name to follow that member.',life:'Landmarks newest first, chapters by days, the last 10 journal entries. Click a name to follow that member.'};
+const KEY={table:'Click a row name to sort the columns by it. Click a name to follow that member.',life:'Landmarks newest first, chapters by days, the last 10 journal entries. Click a name to follow that member.'};
 export const sheetOpen=()=>open;
 export const sheetView=()=>view;
 // The sheet's two views (#389): side by side (the table) and Life (src/ui/lifeview.js). Each keeps its own scroll.
@@ -85,14 +86,14 @@ export function setSheetView(v){if(!ov||(v!=='table'&&v!=='life')||v===view){ret
   views[view]={x:body.scrollLeft,y:body.scrollTop};view=v;tblw.hidden=v!=='table';life.hidden=v!=='life';key.textContent=KEY[v];
   for(const b of box.querySelectorAll('[data-sview]'))b.setAttribute('aria-pressed',String(b.dataset.sview===v));
   sig='';resetLife();renderSheet();const p=views[v]||{x:0,y:0};body.scrollLeft=p.x;body.scrollTop=p.y}
-export function openSheet(){if(!ov||!S.fellowship)return;open=true;ov.hidden=false;sig='';resetLife();renderSheet();const c=ov.querySelector('.shclose');if(c&&c.focus)c.focus()}
+export function openSheet(){if(!ov||!followedCompany())return;open=true;ov.hidden=false;sig='';resetLife();renderSheet();const c=ov.querySelector('.shclose');if(c&&c.focus)c.focus()}
 export function closeSheet(){if(!ov)return;open=false;ov.hidden=true}
 
 function order(T){const idx=T.cols.map((_,i)=>i);if(!sort)return idx;const r=T.rows.find(x=>x.key===sort);if(!r)return idx;
   return idx.sort((i,j)=>{const a=r.cells[i].n,b=r.cells[j].n;if(a==null&&b==null)return i-j;if(a==null)return 1;if(b==null)return -1;return (a-b)*dir||i-j})}
 
 function build(T){const tbl=el('table','shtbl'),ord=order(T);
-  const thead=el('thead'),hr=el('tr');hr.append(el('th','shcorner',sort?'sorted by '+(T.rows.find(r=>r.key===sort)||{label:'?'}).label.toLowerCase():'role order'));
+  const thead=el('thead'),hr=el('tr');hr.append(el('th','shcorner',sort?'sorted by '+(T.rows.find(r=>r.key===sort)||{label:'?'}).label.toLowerCase():T.cols.length&&/^h\d/.test(T.cols[0].slot)?'join order':'role order'));
   for(const i of ord){const c=T.cols[i],th=el('th','shcol');
     if(c.hero){const n=el('span','hn f'+c.hero.fac,c.hero.name);n.dataset.hid=c.hero.id;const tx=el('span','shcoltx');tx.append(el('span','frole r-'+c.role,c.label),el('br'),n,el('br'),el('span','dm',c.hero.cls+(c.hero.state==='dead'?' · fallen':'')));
       const hd=el('div','shcolhd');hd.append(face(c.hero),tx);th.append(hd)}
@@ -105,14 +106,14 @@ function build(T){const tbl=el('table','shtbl'),ord=order(T);
       if(c.fight!=null){const b=el('button','hn shfight',c.t);b.dataset.hid=c.fight;b.title='Open the Combat tab';td.append(b)}else td.textContent=c.t;tr.append(td)}tb.append(tr)}
   tbl.append(tb);return tbl}
 
-export function renderSheet(){if(!ov)return;if(!S.fellowship){if(open)closeSheet();return}if(!open)return;
-  box.querySelector('.shttl').textContent=S.fellowship.name+(view==='life'?' · lives':' · side by side');
+export function renderSheet(){if(!ov)return;const C=followedCompany();if(!C){if(open)closeSheet();return}if(!open)return;
+  const ttl=companyLabel(C)+(view==='life'?' · lives':' · side by side'),te=box.querySelector('.shttl');if(te.textContent!==ttl)te.textContent=ttl;
   if(view==='life'){renderLife(life);return}
   const T=sheetRows(),k=sort+'|'+dir+'|'+T.cols.map(c=>c.hero?c.hero.id+faceMode(c.hero):'-').join(',')+'|'+T.rows.map(r=>r.cells.map(c=>c.t).join('¦')).join('§');
   if(k===sig)return;sig=k;const ids=new Set(T.cols.map(c=>c.hero&&c.hero.id));for(const id of faces.keys())if(!ids.has(id))faces.delete(id);const x=body.scrollLeft,y=body.scrollTop;tblw.replaceChildren(build(T));body.scrollLeft=x;body.scrollTop=y}
 
 export function initSheet(){ov=$('sheetov');if(!ov)return;
-  box=el('div','shbox');box.setAttribute('role','dialog');box.setAttribute('aria-label','Fellowship sheet');
+  box=el('div','shbox');box.setAttribute('role','dialog');box.setAttribute('aria-label','Company sheet');
   const hd=el('div','shhead');const cl=el('button','mini shclose','Close');cl.dataset.sclose='1';
   const sw=el('div','shviews');sw.setAttribute('role','group');sw.setAttribute('aria-label','Sheet view');
   for(const [v,t,tip] of [['table','Side by side','Compare the five row by row'],['life','Life','Landmarks, chapters and journal of each member']]){const b=el('button','mini',t);b.dataset.sview=v;b.title=tip;b.setAttribute('aria-pressed',String(v===view));sw.append(b)}
