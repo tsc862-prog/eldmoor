@@ -45,6 +45,7 @@ import {patch} from './stable.js'; // update in place (#145)
 import {companies,companyById,members,leaderOf,slotted} from '../sim/company.js';
 import {followedCompany,followCompany} from './companyview.js'; // whose table it is (#456)
 import {setView} from './controls.js';
+import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -94,7 +95,7 @@ function condsOf(a,sc,f){const c=[];if(a.state==='dead')return ['fallen'];if((sc
 // The foe (bannerOf().foe: name, hp, maxhp, target id, pack) and each roll (beat.roll) come from the sim as data (#285).
 export function combatView(){const sc=S.table;if(!sc||sc.rd==null)return null;const b=bannerOf(),f=b&&b.foe,cur=b&&b.who;
   const foeNow=sc.phase==='turn'&&!sc.fd&&sc.i>=sc.foeAt&&!!f;
-  const mem=sc.ids.map(byId).filter(Boolean).map(a=>({name:a.name,hp:pct(a.hp,maxHp(a)),cond:condsOf(a,sc,f),cur:!foeNow&&a===cur,down:a.state==='dead'||(sc.out||[]).includes(a.id)}));
+  const mem=sc.ids.map(byId).filter(Boolean).map(a=>({name:styled(a),hp:pct(a.hp,maxHp(a)),cond:condsOf(a,sc,f),cur:!foeNow&&a===cur,down:a.state==='dead'||(sc.out||[]).includes(a.id)}));
   const foe=f?{name:f.name,foe:true,hp:pct(f.hp,f.maxhp),cond:[...(f.pack>1?['pack of '+f.pack]:[]),...(f.conds||[]).map(id=>CONDITIONS[id].name.toLowerCase())],cur:foeNow,down:false}:null;
   // the round in play (or the last one at a round's start): the class move each member used, by name (#390)
   let rd0=sc.rd;if(rd0>1&&!sc.beats.some(x=>(x.rd||1)===rd0))rd0--;
@@ -185,7 +186,7 @@ const secs=n=>Math.max(0,Math.ceil(n))+' s';
 // st: done (answered or acted), wait (an agent is thinking), held (no runner: the owner decides), reflex (plays by reflex),
 // turn (acting now in a turn-by-turn scene), next (still to act), fallen, out (the scene ended without an answer).
 export function memberRows(){const sc=S.table;if(!sc||sc.rd!=null)return null;const out=[],live=sc.phase==='turn'||sc.phase==='frame';
-  sc.ids.forEach((id,i)=>{const a=byId(id);if(!a)return;const act=sc.acts&&sc.acts[id],r={id,name:a.name,cls:a.cls,color:classColor(a.cls),st:'',ans:'',tone:'',full:'',line:'',by:'',timer:''};
+  sc.ids.forEach((id,i)=>{const a=byId(id);if(!a)return;const act=sc.acts&&sc.acts[id],r={id,name:styled(a),cls:a.cls,color:classColor(a.cls),st:'',ans:'',tone:'',full:'',line:'',by:'',timer:''};
     if(a.state==='dead')r.st='fallen';
     else if(act){Object.assign(r,answerOf(sc,a,act));r.st='done';r.line=act.line||'';r.by=act.by||''}
     else if(!live||sc.resolved)r.st='out';

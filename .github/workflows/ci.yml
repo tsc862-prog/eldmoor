@@ -159,6 +159,7 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: Dungeon crawl room by room, run: npm run crawlcheck}
+      - {name: DM-made dungeon sites, run: npm run sitecheck}
       - {name: Camp and rest, run: npm run campcheck}
       - {name: Town autopilot and danger edges, run: npm run townpilotcheck}
       - {name: Gambits (agent heroes' own rules), run: npm run gambitcheck}
@@ -176,6 +177,7 @@ jobs:
       - {name: Table mode and staged scenes, run: npm run tablecheck}
       - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
+      - {name: DM rumours and names for deeds (seed_rumour and bestow), run: npm run rumourcheck}
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}

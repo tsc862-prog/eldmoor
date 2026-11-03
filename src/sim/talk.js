@@ -47,6 +47,8 @@ import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
 import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
 import {inSlots,slotHeroes,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
+import {rumoursFor,tell as tellRumour,carries} from './rumours.js'; // word the DM seeded for the town's tellers (#637)
+import {spokenAbout} from './epithet.js'; // a hero refusing a name given (#638)
 
 // ---- knobs ----
 export const CONV={
@@ -203,6 +205,14 @@ function speakAs(p,c,text,by,mark){const e={t:clockStr(),d:gameDay()+1,from:{kin
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=Math.max(p.chatCd||0,10);
   c.lines.push({who:'npc',id:p.id,name:full(p),text,t:e.t,by,...(mark?{mark}:{})});c.last=Math.round(S.gameMin);
   log([full(p)+(by==='dm-agent'?' (DM agent)':'')+': "',text,'"'+(mark?' '+mark:'')],{conv:c.id,npc:p.id,who:'npc',by,text,...(mark?{mark}:{}),...(by==='scripted'?{fill:true,why:c.wait?'slow':'gone'}:{})});return e} // a scripted answer is the DM's reflex (#561)
+// Word the DM seeded (#637): after the person's answer, a teller passes on what the town is saying, once a game day a hero,
+// in their own words. A line the DM's voice already wove it into counts as told (said); else the scripted words follow.
+// The line is heard like the answer, never written to the DM log (the telling is counted there by sim/rumours.js).
+function passOn(c,p,a,said){if(!S.rumours||!a||!living(a))return;
+  for(const r of rumoursFor(p,a)){if(said&&carries(said,r)){tellRumour(r,p,a,'dm voice');continue}
+    const text=tellRumour(r,p,a),e={t:clockStr(),d:gameDay()+1,from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc',talk:c.id,dm:true,by:'scripted'};
+    for(const b of S.agents.filter(b=>living(b)&&(dist(b,p)<=HEAR||c.heroes.includes(b.id)))){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
+    p.bubble={text,life:BUBBLE};c.lines.push({who:'npc',id:p.id,name:full(p),text,t:e.t,by:'scripted'})}}
 // A hail (sim/locals.js): the person opens the talk. With the DM agent listening the opening is its to voice (the call waits like
 // any other, and the scripted DM fills it if the seat goes quiet); else the scripted line is spoken now. Returns true when spoken.
 export function speakAsHail(p,c,text){const a=hero(c.heroes[0]),ms=dmBudget();
@@ -222,7 +232,7 @@ export function dmAnswer(c,p,text,o={}){const d=today(),T=talkState();
   if(c.state!=='open')return {ok:false,error:'That conversation has ended.'};
   if(d.lines>=CONV.DM_LINES_PER_DAY)return {ok:false,error:'Enough conversation for one game day ('+CONV.DM_LINES_PER_DAY+' lines); the scripted DM answers the rest.'};
   const t=clean(text,CONV.DM_LINE_MAX);if(!t)return {ok:false,error:'Say what?'};
-  const was=!!c.wait;speakAs(p,c,t,'dm-agent');d.lines++;T.stats.dm++;c.dm=1;
+  const was=!!c.wait,to=hero(c.wait&&c.wait.hero)||hero(c.heroes[c.heroes.length-1]);speakAs(p,c,t,'dm-agent');d.lines++;T.stats.dm++;c.dm=1;passOn(c,p,to,t);
   const w=Number(o.warmth);if(Number.isFinite(w)&&w)warm(p,Math.max(-3,Math.min(3,Math.round(w))),'the DM: '+t);
   if(o.remember)noteOn(p,o.remember);
   if(was)afterAnswer(c,p);
@@ -236,11 +246,11 @@ function scripted(c,p,a){const T=talkState();T.stats.scripted++;if(c.wait&&c.wai
   if(mood==='hostile'){text=fill(pick(TALK_LINES.threat),o);speakAs(p,c,text,'scripted');const r2=offer(c,p,'leave',{},'scripted');mark=r2.mark;c.wait=null;return {text,mark}}
   const first=c.ex<=1,last=c.ex>=exMax(c),seen=first&&hmemOf(p,a);
   const asked=[...c.lines].reverse().find(l=>l.who==='member'),ans=asked&&!last?townAnswer(p,a,asked.text):null;
-  if(ans){if(ans.fit)c.fit=true;text=ans.text;speakAs(p,c,text,'scripted');afterAnswer(c,p);
+  if(ans){if(ans.fit)c.fit=true;text=ans.text;speakAs(p,c,text,'scripted');passOn(c,p,a,null);afterAnswer(c,p);
     return {text,mark,hint:'Townsfolk answer from what is public: '+full(p)+' knows only what the town knows.'}}
   text=fill(pick(last?TALK_LINES.bye:first?TALK_LINES.open[mood]:TALK_LINES.reply[mood]),o); // the greeting only on the first exchange
   if(seen)text='Back again, '+a.name+'?'+(seen.said?' Last time you said "'+(seen.said.length>70?seen.said.slice(0,68)+'..':seen.said)+'".':'')+' '+text; // they remember you (#571)
-  speakAs(p,c,text,'scripted');
+  speakAs(p,c,text,'scripted');passOn(c,p,a,null);
   if(first&&!last){const k=talkOf(p).offer;if(k&&k!=='none'){const r2=offer(c,p,k,{},'scripted',a);if(r2.ok){mark=r2.mark;hint=r2.hint}
     else if(k==='job'){const r3=offer(c,p,'rumour',{},'scripted',a);if(r3.ok){mark=r3.mark;hint=r3.hint}}}}
   afterAnswer(c,p);return {text,mark,hint}}
@@ -420,7 +430,8 @@ function convView(c,withCall){const p=npcById(c.npc);if(!p)return null;const a=h
       ...(withCall?{knows:knows(p,a).map(x=>x.text),record:recordView(p)}:{})},
     member:a?{id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,role:slotKeyOf(a)||null,...(c.read&&c.read[a.id]!=null?{read_them:c.read[a.id]}:{}),...(lastTime(p,a)?{last_time:lastTime(p,a)}:{})}:null, // last_time: what the person remembers of them (#571)
     line:c.wait?c.wait.line:null,so_far:c.lines.slice(-12).map(l=>l.name+': '+l.text+(l.mark?' '+l.mark:'')),exchange:exText(c),
-    ...(withCall?{offers:legalOffers(c,p),offered_this_exchange:c.offerEx===c.ex}:{})}}
+    ...(withCall?{offers:legalOffers(c,p),offered_this_exchange:c.offerEx===c.ex}:{}),
+    ...(withCall&&a&&rumoursFor(p,a).length?{word_to_pass_on:rumoursFor(p,a).map(r=>r.text),word_note:'What the town is saying, which '+p.name+' passes on: weave it into the answer in their voice if it fits; the game adds it after your answer if you leave it out.'}:{})}}
 // npc_call: the oldest conversation waiting for the DM, with everything needed to answer it.
 export function npcCall(){const T=S.talks;const c=T&&T.cur.find(x=>x.state==='open'&&x.wait);
   if(!c)return {ok:true,call:null,open:T?T.cur.filter(x=>x.state==='open').map(x=>convView(x,false)).filter(Boolean):[]};
@@ -491,7 +502,7 @@ export function lineRefusal(a,text){if(!a||!a.player)return null;
   if((a.talkSaid||[]).some(s=>sameness(s,text)>=TALK.SAME))return MSG_SAME;
   if(isIntro(a,text)&&metIds(a).length)return MSG_INTRO;
   return null}
-export function noteSaid(a,text,listeners){if(!a||!a.player)return;const L=a.talkSaid||(a.talkSaid=[]);L.push(String(text).slice(0,200));if(L.length>TALK.LAST)L.shift();
+export function noteSaid(a,text,listeners){if(!a||!a.player)return;spokenAbout(a,text);const L=a.talkSaid||(a.talkSaid=[]);L.push(String(text).slice(0,200));if(L.length>TALK.LAST)L.shift();
   for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1;noteKnownAt(b,a);noteKnownAt(a,b)}}
 export function heardLines(a,n=TALK.HEARD){const cut=t=>t.length>TALK.CUT?t.slice(0,TALK.CUT-1)+'…':t;
   return (a.chat||[]).filter(e=>e.from&&(e.party||e.trigger==='agent'||e.from.kind==='hero'||e.whisper||e.emote)).slice(-n)

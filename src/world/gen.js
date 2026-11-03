@@ -200,8 +200,9 @@ export function buildWorld(spec){
     ...regions.map((r,i)=>[r.name.toUpperCase(),Math.round(centroid[i].x),Math.round(centroid[i].y)]),
     ...CITY.map(c=>[c.name.toUpperCase(),(c.x0+c.x1+1)/2,c.y0>2?c.y1+2.2:c.y0-.6])];
 
+  const OUTPOSTS=(spec.outposts||[]).map(o=>({id:o.id,name:o.name,x:o.x,y:o.y,r:o.r||3.5,z:zoneAt(o.x,o.y)})); // contested outposts (#11): data only, never painted
   const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS},spec); // gathering nodes (#255): an overlay list, not tiles
   return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
-    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT,ROUTES,
+    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT,ROUTES,OUTPOSTS,
     zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,
     road:pts=>paintPolyline(world,pts)}}
