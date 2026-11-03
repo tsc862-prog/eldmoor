@@ -569,7 +569,7 @@ from, the noun what kind of hero wears it. Town smiths and tailors sell pieces a
 level for 6 gold a level; monsters drop one now and then at their own level, give or take one,
 and named elites always do. A hero wears an upgrade on the spot and sells what it replaced at
 the auction house. Epics take a slot outright, are never displaced by ordinary gear, and grow with
-their bearer: a smith reworks a worn epic to the hero's own level and a little more on every visit
+their bearer: a worn epic is raised to the hero's own level and a little more on its own, with no visit
 home, so a relic looted at level three is still a relic at twenty.
 
 Materials by zone: Thornvale **Bramble, Oakbark, Wolfhide**; Mirefen **Mossweave, Bogiron,
@@ -685,7 +685,7 @@ and Recover-a-relic jobs. The DM can also place a token from a short table, and 
 ## Professions (issue #254, epic #238)
 A hero may hold two trades, each with a skill from 1 to 100 that rises with use. Names are generic and provisional until lore-keeper has checked them.
 - Gathering: Herbalism (herbs, moss, flowers), Mining (ore and stone), Skinning (hide, sinew, bone), Fishing (river, mere and sea).
-- Crafting: Alchemy (potions, cures), Smithing (weapons, armor, repairs), Leatherworking (cured hide: armor, straps, packs), Cooking (camp meals that hearten the company), Scribing (scrolls, maps).
+- Crafting: Alchemy (potions, cures), Smithing (weapons, armor, tempering), Leatherworking (cured hide: armor, straps, packs), Cooking (camp meals that hearten the company), Scribing (scrolls, maps).
 - Skill bands used by recipes and nodes: 1-24, 25-49, 50-74, 75-99, 100.
 - Gathering nodes (issue #255): four kinds, plain descriptions rather than proper names: Herb patch (Herbalism), Ore vein (Mining), Game trail (Skinning), Fishing spot (Fishing). They sit in the open land of every region, in the region's level band: Thornvale band 0, Mirefen 1, Cinderpass 2, Hoarfell 3 (the Stepping Lands the same ladder). Fishing spots stand on the banks of the river (Eldmoor's river runs through Thornvale, Mirefen and Hoarfell; Cinderpass has no water, so no fish); a sea coast would add more when a world has one. Nothing is gathered on a road, in a town or at the Crypt and Kragmaw's lair. A spent node grows back after a set time (herbs 4 game hours, ore 8, game trails 3, fish 2).
 
@@ -1037,7 +1037,7 @@ New names (townsfolk names are rolled per world and are not canon; these placed 
 ### The smith's temper (issue #13)
 
 In any friendly town a smith will temper a worn piece of gear for gold alone: one item level higher each time, up to three
-tempers a piece, never past the wearer's level plus two, dearer for finer metal and for each step. Epics are beyond the
-smith: they grow with their bearer. Gear does not wear in Eldmoor, so the smith mends nothing. A piece replaced by a better
+tempers a piece, never past the wearer's level plus two, dearer for finer metal and for each step. Epics cannot be
+tempered: they grow with their bearer on their own. Gear does not wear in Eldmoor, so the smith mends nothing. A piece replaced by a better
 one carries its tempering away with it. Scripted heroes visit the smith after the market when they have gold to spare;
 agents use the `smith {item, do}` tool.
