@@ -23,6 +23,8 @@ import {npcsTick} from './npcs.js';
 import {talkTick} from './talk.js'; // NPC conversations (#170)
 import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
+import {installRumourLever} from './rumours.js'; // seed_rumour (#637)
+import {installBestowLever} from './epithet.js'; // bestow (#638)
 import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
@@ -73,6 +75,8 @@ export {provideCampaigns,parseCampaign,campaignIdOf} from './campaign.js'; // th
 export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus
 export {planOpening,openingDue,openingPending,arrivalsView,ARRIVE} from './arrival.js'; // session zero and arrivals (#437, #452)
 export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost,setGateHold,worldHeld,holdLine} from './prep.js'; // the DM's prep before the table opens (#437)
+
+installRumourLever();installBestowLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);

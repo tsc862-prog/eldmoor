@@ -45,6 +45,7 @@ import {tabCombat} from './combat.js'; // the Combat tab
 import {setPurpose,isOpen} from './purposeview.js'; // the purpose line in the header (#534)
 import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short card is for heroes outside every company (#546)
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
+import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -57,7 +58,7 @@ export const ranked=()=>living().filter(inRegion).sort((a,b)=>b.lvl-a.lvl||b.xp-
 // ---- small DOM helpers ----
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 // Clickable hero name. Dead heroes stay clickable while their grave is still in S.agents.
-export const hn=a=>{const s=el('span','hn f'+a.fac,a.name);s.dataset.hid=a.id;return s};
+export const hn=a=>{const s=el('span','hn f'+a.fac,styled(a));s.dataset.hid=a.id;return s};
 const meter=(cls,frac)=>{const m=el('div','meter '+cls);const i=document.createElement('i');i.style.width=clamp(frac*100,0,100)+'%';m.append(i);return m};
 // Render chronicle-style parts (strings, heroes, {t,c} spans) into a node.
 const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p)node.append(el('span',p.c||'',p.t))}};
@@ -315,7 +316,7 @@ export function chatName(h){const npc=h&&h.kind==='npc',t=toneOf(liveOf(h),slott
 
 // ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
-function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
+function heroName(a){const d=el('div','nm f'+a.fac,styled(a)),st=brainStatus(a);
   {const ml=mindLabel(a),bd=aiBadge(ml.text,ml.title);bd.classList.add('mk-'+ml.kind);d.append(' ',bd)} // the one mind label (issue #136)
   if(!showMindButtons(a)||(inSlots(a)&&slotted()&&!devMode()))return d; // a member's mind is set in Members and minds (#145)
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);
