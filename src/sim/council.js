@@ -38,12 +38,12 @@ import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {inRange,together,outOfRange,nameList,makePlan,reachTick,toldBy,REACH} from './reach.js';
 
 export const COUNCIL={PROP_MIN:120,HOLD_MIN:600,SPLIT_MIN:360,BOND_COST:3,ACCEPT_MIN:240,WAIT_MIN:480,CALL_COOL:240,PROPS_MAX:20,SAY_LEN:200,HEAR:7,SHOUT:REACH.SHOUT}; // SHOUT: how far party_say carries, in tiles (issue #182, sim/reach.js)
-const NEED_ALL=['crypt','raid']; // calls that take the whole company, together
+const NEED_ALL=['crypt','raid','site']; // calls that take the whole company, together
 export const SOLO='You ride alone: decide and act (take_adventure; lead_to is move_to for you).';
 // The whole company in shouting range of each other (#182). A party its reflexes play whole (no live agent, no runner; the headless sim) moves as one unit and is not held to it.
 const gathered=(L,C)=>!L.some(b=>!reflexMay(b))||together(L,leaderOfC(C));
-export const PROP_KINDS=['job','crypt','raid','split','break_camp','other','expel','merge'];
-const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide',expel:'put a companion out of the company',merge:'ride together with another company'};
+export const PROP_KINDS=['job','crypt','raid','split','break_camp','other','expel','merge','site']; // site: go down into a DM-made site together (sim/sites.js, #69; put by enter_site)
+const KIND_TEXT={job:'take a job',crypt:'answer a call to '+CRYPT.name,raid:'answer a raid muster on Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide',expel:'put a companion out of the company',merge:'ride together with another company',site:'go down into the place we found'};
 const gd=t=>({t,c:'gd'});
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 // A spoken line (#145): whitespace folded, a leading "<own name>:" / "<own name> here," dropped (the game already
@@ -99,7 +99,8 @@ export const propCompany=P=>P?companies().find(c=>propsOf(c).includes(P))||null:
 function nextPropId(F){let n=F.propSeq||0;for(const c of companies())if((c.propSeq||0)>n)n=c.propSeq;return F.propSeq=n+1}
 // sim/table.js turns a new proposal into a decision scene when it can pause. A hoisted function and
 // a var without initializer, because table.js registers it while the import cycle is still loading.
-var proposeHook,campHook,groupHook;
+var proposeHook,campHook,groupHook,siteHook;
+export function setSiteHook(f){siteHook=f} // sim/sites.js (#69): {vote(a,P), go(F,P)} for the site kind
 export function setProposeHook(f){proposeHook=f}
 export function setGroupHook(f){groupHook=f} // sim/offers.js (#444): prepare/expel/merge for the expel and merge kinds
 export function setCampHook(f){campHook=f} // sim/camp.js: break the camp when a break_camp vote passes
@@ -110,6 +111,7 @@ export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
   case 'crypt':return a.lvl>=7&&!hurt?'yes':'no';
   case 'raid':return a.lvl>=14&&!hurt?'yes':'no';
   case 'split':return 'no';
+  case 'site':return siteHook?siteHook.vote(a,P):'no';
   case 'merge':{const O=companyById(P.other);return O&&members(O).some(m=>bond(a,m)<0)?'no':'yes'} // a grudge against anyone in the other company says no
   case 'expel':{const t=S.agents.find(x=>x.id===P.target);return t&&bond(a,t)<0?'yes':'no'}
   case 'break_camp':{const C=propCompany(P)||companyOf(a),g=C&&C.camp;return g&&g.phase&&members(C).every(b=>b.hp>=maxHp(b)*.9)?'yes':'no'}
@@ -122,6 +124,7 @@ function greenWarn(F,kind){if(kind!=='crypt'&&kind!=='raid')return '';const at=k
 export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return 'Only a member of a company can put something to the party.';
   if(!PROP_KINDS.includes(kind))return 'Kind must be one of: '+PROP_KINDS.join(', ')+'.';
   if(isSolo(F)&&kind!=='break_camp')return SOLO;
+  if(kind==='site'&&o.site==null)return 'Put a site to the party with enter_site {site}: it names the place.';
   if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break: the '+word(F)+' is not camped. Go on with move_to'+(leaderOfC(F)===a&&!isSolo(F)?' or lead_to':'')+'.';
   let ex=null;if(kind==='expel'||kind==='merge'){if(!groupHook)return 'Not available here.';ex=groupHook.prepare(a,F,kind,o);if(ex.error)return ex.error}
   {const O=openProps(F).find(P=>P.kind===kind);if(O)return 'Proposal '+propLine(O)+' is already open. Vote on it with vote('+O.id+', yes|no), or wait for it to settle'+leftText(O)+' before proposing another.'}
@@ -134,6 +137,7 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   if(away.length)P.absent=away.map(b=>b.id);
   if(kind==='split'&&o.where)P.meet={where:clean(o.where,60),hours:o.hours}; // the plan to meet again, recorded if the split passes
   if(o.job!=null)P.job=Number(o.job);
+  if(o.site!=null)P.site=o.site;
   if(ex)Object.assign(P,ex.fields);
   (F.props||(F.props=[])).unshift(P);if(F.props.length>COUNCIL.PROPS_MAX)F.props.pop();
   if(kind==='merge')pairMerge(P,F,ex.other,a);
@@ -223,6 +227,7 @@ function carryOut(P){const F=propCompany(P),L=members(F);if(!F)return;
     for(const b of voters(P))splitOff(b,true);clog(F,'council',gd(F.name),' splits up for a while, by agreement.');
     for(const b of voters(P))notify(b,(pl&&!pl.error?'You part by agreement; the plan is to meet at '+pl.where+' at '+pl.atText+'.':'You part by agreement with no plan to meet again. Out of shouting range (about '+REACH.SHOUT+' tiles) you cannot talk except by a courier from a town gate.'),3)}
   else if(P.kind==='expel'||P.kind==='merge'){if(groupHook)groupHook[P.kind](P)}
+  else if(P.kind==='site'){if(siteHook)siteHook.go(F,P)}
   else if(P.kind==='job'){const lead=leaderOfC(F);if(lead)notify(lead,'The party agreed to take '+(P.job!=null?'job '+P.job:'a job')+'. As leader, take_adventure('+(P.job!=null?P.job:'id')+') at the gate.',true)}}
 
 // ---- moving as a party ----

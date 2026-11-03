@@ -50,7 +50,7 @@ export const TIER={
   OV_ENTRY:300,   // characters of an entry in the overview (journal_read {n} gives them whole)
 };
 // Weights: the heaviest are kept longest.
-const W={death:5,boss:5,fellowship:5,nemesis:4,own:4,friend:3,crypt:3,level:3,vow:3,elite:2};
+const W={death:5,boss:5,fellowship:5,nemesis:4,own:4,title:4,friend:3,crypt:3,level:3,vow:3,elite:2};
 
 const DAY=1440;
 const dayNo=gm=>Math.floor((gm==null?S.gameMin:gm)/DAY)+1;
@@ -91,6 +91,7 @@ const RX=[
   [/^Slew .+!$/,()=>'boss'],
   [/^Slew .+, .+, in /,()=>'elite'],
   [/^(Paid the blood debt|Avenged )/,()=>'nemesis'],
+  [/^Named .+ by .+\.$/,()=>'title'], // a name given for a deed (sim/epithet.js, #638)
   [/^Lost a close friend/,()=>'friend'],
   [/^Lost a friend/,()=>'friend'],
   [/^Left (.+)\.$/,(m)=>slotted()&&m[1]===slotted().name?'fellowship':null],

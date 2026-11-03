@@ -6,6 +6,7 @@
 import {S} from '../sim/index.js';
 import {renderDmNotes,dmNotesSig} from './notebook.js'; // the DM agent's notes viewer (#155)
 import {patch,held} from './stable.js'; // update in place, keep scroll (#145)
+import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -33,7 +34,7 @@ const dayOf=e=>Math.floor((e.gameMin||0)/1440)+1;
 const heroSpan=(id,h)=>{const s=el('span','hn f'+(h?h.fac:0),h?h.name:'#'+id);s.dataset.hid=id;return s};
 
 function partsTo(node,ps){for(const p of ps||[]){if(typeof p==='string')node.append(p);
-  else if(p&&p.kind==='hero'||p&&p.ref==='hero'){const s=el('span','hn f'+(p.fac||0),p.name||'?');s.dataset.hid=p.id;node.append(s)}
+  else if(p&&p.kind==='hero'||p&&p.ref==='hero'){const s=el('span','hn f'+(p.fac||0),p.kind==='hero'?styled(p):p.name||'?');s.dataset.hid=p.id;node.append(s)}
   else if(p&&p.t!=null)node.append(el('span',p.c||'',p.t))}}
 
 // Flatten detail to [key, text] rows: nested objects get dotted keys, arrays of objects list one row per item.

@@ -3,6 +3,7 @@
 // Usage: npm run sim            (60 minutes)
 //        npm run sim -- 120     (120 minutes)
 import {init, step, S, spatialStats} from '../src/sim/index.js';
+import {outpostsView} from '../src/sim/outposts.js';
 import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 
 const minutes = Number(process.argv[2] || 60);
@@ -23,6 +24,7 @@ console.log('Rivalries:', JSON.stringify(S.rivals ? S.rivals.stats : {}), '| act
 console.log('Guild focus:', JSON.stringify(S.focusStats || {}), '| now', S.GUILDS.filter((g) => !g.retired).map((g) => `${g.tag} ${g.focus || 'open'}`).join(', ') || 'none');
 {const F=SLT.slotted();console.log('Fellowship:', F ? `${F.name} (${['Concord','Warband'][F.fac]}) | members ${F.ids.map((id) => S.agents.find((a) => a.id === id)).filter(Boolean).map((a) => `${a.name} L${a.lvl} ${a.cls}`).join(', ')} | fallen ${F.past.length}` : 'none')}
 {const L=(S.companies||[]).map((c)=>c.crawl).filter(Boolean),C=L.length?L.reduce((t,x)=>{for(const k of ['runs','clears','driven','withdrawn','wipes','deaths','rooms','scenes'])t[k]=(t[k]||0)+(x[k]||0);return t},{}):null;if(C)console.log(`Fellowship Crypt crawl (room by room): ${C.runs} runs | ${C.clears} cleared, ${C.driven} driven back, ${C.withdrawn} withdrew, ${C.wipes} wiped | ${C.deaths} fell | rooms won ${C.rooms} | scenes ${C.scenes||0}${L.length>1?` | across ${L.length} companies`:''}`)}
+console.log('Outposts:',outpostsView().map(o=>o.name+' '+(o.held_by||'unheld')+' ('+o.control+', flipped '+o.flips+')').join(' | '),'| flips total',(S.outposts&&S.outposts.flips)||0);
 console.log('Kragmaw alive:', S.boss.alive, '| hp', Math.round(S.boss.hp));
 console.log('Top 5:', alive.sort((a, b) => b.lvl - a.lvl).slice(0, 5).map((a) => `${a.name} L${a.lvl} ${a.cls}`).join(', '));
 console.log('Recent deaths:', S.fallen.slice(0, 8).map((f) => `${f.name} L${f.lvl} (${f.cause})`).join('; '));

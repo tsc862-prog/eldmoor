@@ -282,7 +282,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // The one-window launcher (npm run up, scripts/up.mjs) cannot send a signal that Windows delivers to a node process,
   // so it writes "stop" on this process's stdin (and closes it when it goes away): the same clean quit.
   if (/^(1|true|yes)$/i.test(env.ELDMOOR_LAUNCHER || '') || process.argv.includes('--launcher')) {
-    process.stdin.setEncoding('utf8'); process.stdin.on('data', d => {if (/stop/.test(d)) quit()}); process.stdin.on('end', quit); process.stdin.on('error', quit); process.stdin.resume();
+    process.stdin.setEncoding('utf8'); process.stdin.on('data', d => {if (/\bstop\b/.test(d)) quit()}); process.stdin.on('end', quit); process.stdin.on('error', quit); process.stdin.resume();
   }
   server.listen(port, '127.0.0.1', () => {
     console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}${behavior ? '  behavior logs -> ' + behavior.dir() : ''}`);

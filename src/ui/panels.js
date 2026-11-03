@@ -4,10 +4,11 @@
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
 // delegated click handler (initPanels) looks the hero up in S.agents and hands it
 // to the picker, which controls.js wires to select + follow.
+import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
 import {heroStream,sysLine} from './chatpanel.js';
-import {CITY,CRYPT,LAIR,ZONES,zoneFor} from '../world/map.js';
+import {CITY,CRYPT,LAIR,ZONES,OUTPOSTS,zoneFor} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
@@ -45,6 +46,7 @@ import {tabCombat} from './combat.js'; // the Combat tab
 import {setPurpose,isOpen} from './purposeview.js'; // the purpose line in the header (#534)
 import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short card is for heroes outside every company (#546)
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
+import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -57,7 +59,7 @@ export const ranked=()=>living().filter(inRegion).sort((a,b)=>b.lvl-a.lvl||b.xp-
 // ---- small DOM helpers ----
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 // Clickable hero name. Dead heroes stay clickable while their grave is still in S.agents.
-export const hn=a=>{const s=el('span','hn f'+a.fac,a.name);s.dataset.hid=a.id;return s};
+export const hn=a=>{const s=el('span','hn f'+a.fac,styled(a));s.dataset.hid=a.id;return s};
 const meter=(cls,frac)=>{const m=el('div','meter '+cls);const i=document.createElement('i');i.style.width=clamp(frac*100,0,100)+'%';m.append(i);return m};
 // Render chronicle-style parts (strings, heroes, {t,c} spans) into a node.
 const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p)node.append(el('span',p.c||'',p.t))}};
@@ -315,7 +317,7 @@ export function chatName(h){const npc=h&&h.kind==='npc',t=toneOf(liveOf(h),slott
 
 // ---- AI-played marking (sim/brain.js): toggle button next to the name, badge on the card and on model-written chat lines ----
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
-function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
+function heroName(a){const d=el('div','nm f'+a.fac,styled(a)),st=brainStatus(a);
   {const ml=mindLabel(a),bd=aiBadge(ml.text,ml.title);bd.classList.add('mk-'+ml.kind);d.append(' ',bd)} // the one mind label (issue #136)
   if(!showMindButtons(a)||(inSlots(a)&&slotted()&&!devMode()))return d; // a member's mind is set in Members and minds (#145)
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);
@@ -433,6 +435,7 @@ export function renderFacs(){const rows=[['',...FAC.map((f,i)=>el('span','h f'+i
   rows.push(['Fallen',...[0,1].map(f=>S.facStats[f].fallen)]);
   rows.push(['Honor',...[0,1].map(f=>S.facStats[f].honor)]);
   rows.push(['Boss kills',...[0,1].map(f=>S.facStats[f].bosses)]);
+  if(OUTPOSTS.length)rows.push(['Outposts',...outpostCounts().map(n=>n+'/'+OUTPOSTS.length)]);
   rows.push(['Treasury',...[0,1].map(f=>s(f).reduce((t,a)=>t+a.gold,0)+'g')]);
   rows.push(['Epics',...[0,1].map(f=>s(f).reduce((t,a)=>t+a.epics.length,0))]);
   patch($('facs'),g=>{for(const r of rows){g.append(el('div','k',r[0]));for(const v of r.slice(1)){const d=el('div');d.append(typeof v==='object'?v:String(v));g.append(d)}}})}

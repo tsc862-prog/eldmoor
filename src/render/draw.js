@@ -15,6 +15,8 @@
 import {clamp} from '../core/rng.js';
 import {W,H,LAVA} from '../world/tiles.js';
 import {U as T,ART,PROC_SCALE,HEAD,FOLLOW_TILES} from './tile.js';
+import {OUTPOSTS} from '../world/map.js';
+import {outpostsView} from '../sim/outposts.js';
 import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
@@ -165,6 +167,13 @@ export function createRenderer(cv,screenEl){
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
     if(S.boss.alive&&inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle=MARK.ember;for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
+    if(OUTPOSTS.length){ // contested outposts (#11): a banner pole in the holder's colour (grey when unclaimed) and a capture bar
+      for(const o of outpostsView()){const px=Math.round(o.x*T),py=Math.round(o.y*T);if(!inView(px,py,40))continue;
+        const col=o.holder>=0?FAC[o.holder].color:'#8a8a96',dk=o.holder>=0?FAC[o.holder].dark:'#4a4a56';
+        ctx.fillStyle='#3a2f28';ctx.fillRect(px-1,py-14,2,16);ctx.fillStyle=col;ctx.fillRect(px+1,py-14,9,6);ctx.fillStyle=dk;ctx.fillRect(px+1,py-9,9,1);
+        const f=Math.abs(o.ctl)/100;ctx.fillStyle='#14141c';ctx.fillRect(px-11,py+5,22,3);
+        if(f>0){ctx.fillStyle=o.ctl>0?FAC[0].color:FAC[1].color;ctx.fillRect(px-10,py+6,Math.round(20*f),1)}
+        if(o.contested){ctx.fillStyle=MARK.ember;ctx.fillRect(px-10,py+9,20,1)}}}
     const close=cam.close=sc>=cam.fit*2;
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
