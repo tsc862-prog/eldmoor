@@ -82,7 +82,7 @@ export function initBridge(){if(wanted())connect();every(3000,()=>{if(wanted()){
 // Behavior logs (issue #129): the world digest, game-side anomalies and settled Mind decisions (sim/behavior.js) go to
 // the relay over this socket, which writes logs/behavior/<world>/ for the watcher. Read-only on the world; held
 // (up to BEHAVIOR_HOLD records) while the socket is down, dropped beyond that. Never sent to any agent.
-const BEHAVIOR_MS=500,BEHAVIOR_HOLD=200,watch=makeWatch(),held=[];
+const BEHAVIOR_MS=500,BEHAVIOR_HOLD=200,watch=makeWatch({dmLink:()=>dmLink()}),held=[];
 function behaviorTick(){let out;try{out=watch.tick()}catch(e){return}
   for(const o of out){held.push(o);if(held.length>BEHAVIOR_HOLD)held.shift()}
   if(!ws||ws.readyState!==1||status!=='connected')return;

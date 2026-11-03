@@ -134,7 +134,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   const server = http.createServer((req, res) => {res.writeHead(404, {'content-type': 'application/json'}); res.end('{"error":"not found"}')});
   // Behavior logs (issue #129): runners' turn lines, the world digest and game-side anomalies under logs/behavior/<world>/.
-  const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch() : null;
+  const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch({dmLink: () => playRef && playRef.claimed('dm') ? 'connected' : 'none'}) : null;
   const play = attachPlay(server, {behavior, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
   playRef = play;
   if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);

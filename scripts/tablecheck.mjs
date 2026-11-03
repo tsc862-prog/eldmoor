@@ -600,6 +600,25 @@ if (process.argv[2] === '--talk') {
   ok(sc && sc.ctx.why === 'tense', 'a hostile person: even a plain good morning is tense');
   playOut('decline');
 
+  // the scripted answer reads the question (#540): public knowledge only, the warning when it fits, tagged, a grace for a busy DM
+  away(); clear(); T.TABLE.mode = 'auto'; TS.ESC.PER_DAY = 99; beside(A, cap);
+  const lastNpc = () => [...(A.chat || [])].reverse().find(e => e.from && e.from.kind === 'npc');
+  r = talk(A, cap, 'Do you have any quests or information on Old Mother Sedge?');
+  ok(r.ok && !S.table && /Never heard of Old Mother Sedge\. Try the inn/.test(r.answer || ''), 'an unknown name: "' + (r.answer || r.table || r.error) + '"');
+  ok(/board/i.test(r.answer || '') && !/Report,|Short words|green blades|Crypt/.test(r.answer || ''), 'the same line also gets the board, no greeting, no Crypt warning');
+  ok(lastNpc() && lastNpc().by === 'scripted', 'the scripted answer is tagged by:scripted in the hero chat');
+  clear(); beside(A, inn); const cnt = S.npcs.find(p => p.role === 'smith' && p.town === c0.name);
+  r = talk(A, inn, 'Where is ' + cnt.name + '?'); ok(r.ok && !S.table && (r.answer || '').includes(cnt.name), 'a named townsperson is placed: "' + r.answer + '"');
+  clear(); beside(A, inn); r = talk(A, inn, 'How far is Cinderpass?'); ok(/Cinderpass lies/.test(r.answer || ''), 'a named region is answered: "' + r.answer + '"');
+  clear(); beside(A, inn); r = talk(A, inn, 'What about the Sunken Crypt?'); ok(/Crypt/.test(r.answer || ''), 'a question about the Crypt gets the Crypt');
+  clear(); beside(A, inn); r = talk(A, inn, 'Anything new on the roads?'); ok(r.ok && !/Crypt|green blades/.test(r.answer || r.follow_up || ''), 'an unrelated question on a second meeting carries no Crypt warning: "' + r.answer + '"');
+  clear(); beside(A, inn); const sec = 'ZQXSECRETNOTE'; S.dmAgent = S.dmAgent || {}; S.dmAgent.notes = {threads: [{title: sec, text: sec}], characters: [{title: sec, text: sec}]};
+  r = talk(A, inn, 'Do you know of any secrets, plans or threads?'); ok(!(r.answer || '').includes(sec) && !(A.chat || []).some(e => String(e.text).includes(sec)), 'no DM note reaches a townsfolk answer');
+  // a live but busy DM: the game waits a grace before the scripted answer
+  clear(); beside(A, inn); SIM.setDmSeat(true); TK.setDmAlive(() => true);
+  r = talk(A, inn, 'Good evening.'); const cw = S.talks.cur.find(c => c.wait);
+  ok(r.waiting && cw && cw.wait.ms === TK.CONV.GRACE_MS, 'a live but busy DM is waited for (' + (cw && cw.wait.ms) + ' ms)');
+  TK.setDmAlive(null); SIM.setDmSeat(false); clear();
   // Table off (Watch mode): never a scene
   away(); clear(); T.TABLE.mode = 'off'; beside(A, smith); r = talk(A, smith, 'Let us haggle over the price.'); ok(r.ok && !S.table && r.answer, 'Table off: a bargain stays a plain talk');
   T.TABLE.mode = 'auto';

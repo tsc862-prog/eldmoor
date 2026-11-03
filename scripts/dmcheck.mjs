@@ -25,13 +25,36 @@
 //      world opened with --dm: it claims the seat, reads, writes a note, pulls a lever, gets one
 //      refused, prints a cost line per turn and keeps its session in logs/agents/dm.json (resumed next run).
 import http from 'node:http';
-import {spawn, spawnSync} from 'node:child_process';
-import {mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync} from 'node:fs';
+import {spawn, spawnSync as realSpawnSync} from 'node:child_process';
+import {mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync, renameSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const realSpawn = spawn;
+
+// The slow seeded children below (--focus x3, --companies, --starve, ...) are CPU-bound and used to run one after
+// another (~3 min on a CI runner). The parent starts them all at once before its own checks (primeKids) and
+// spawnSync() here hands each call its prepared result, so the sections read as before; a call with no prepared
+// result (or DMCHECK_SERIAL=1) runs as it always did. Each prepared result is used once, so asking the same seed twice
+// (the determinism check) still runs two separate worlds.
+const kidKey = (args, env) => args.slice(1).join(' ') + '|' + ((env && env.DMCHECK_SEED) || '');
+const kidPool = new Map(); let kidDir = null;
+const KID_LAUNCH = "const {spawnSync}=require('child_process'),fs=require('fs');const [out,j]=process.argv.slice(1);const {args,cwd,env}=JSON.parse(j);const r=spawnSync(process.execPath,args,{cwd,encoding:'utf8',env:{...process.env,...env}});fs.writeFileSync(out+'.tmp',JSON.stringify({stdout:r.stdout,stderr:r.stderr,status:r.status}));fs.renameSync(out+'.tmp',out)";
+function primeKids(list) {
+  if (process.env.DMCHECK_SERIAL === '1') return;
+  kidDir = mkdtempSync(join(tmpdir(), 'dmcheck-kids-'));
+  list.forEach(([args, env], i) => {
+    const out = join(kidDir, i + '.json'), full = [fileURLToPath(import.meta.url), ...args];
+    const k = realSpawn(process.execPath, ['-e', KID_LAUNCH, out, JSON.stringify({args: full, cwd: ROOT, env: env || {}})], {stdio: 'ignore'}); k.unref();
+    const key = kidKey(['', ...args], env); (kidPool.get(key) || kidPool.set(key, []).get(key)).push(out)});
+}
+const kidWait = out => {const sab = new Int32Array(new SharedArrayBuffer(4)); while (!existsSync(out)) Atomics.wait(sab, 0, 0, 50); return JSON.parse(readFileSync(out, 'utf8'))};
+const spawnSync = (cmd, args, opts = {}) => {
+  const list = kidPool.get(kidKey(args, opts.env)), out = list && list.shift();
+  return out ? kidWait(out) : realSpawnSync(cmd, args, opts);
+};
 let seed = 0x9e3779b9 ^ (Number(process.env.DMCHECK_SEED) || 66);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const sim = await import('../src/sim/index.js');
@@ -302,6 +325,9 @@ if (process.argv[2] === '--needs') {
 
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+primeKids([[['--focus'], {DMCHECK_SEED: '66'}], [['--focus'], {DMCHECK_SEED: '1'}], [['--focus'], {DMCHECK_SEED: '2'}], [['--focus'], {DMCHECK_SEED: '66'}],
+  [['--companies']], [['--needs']], [['--focus-companies']], [['--fairness']], [['--starve']], [['--ffbounty']],
+  [['--solo', 'solo', '6']], [['--solo', 'solo', '4']], [['--solo', 'none']], [['--solo', 'solo', '2']], [['--hash', 'none']], [['--hash', 'seat']]]);
 console.log('\nEldmoor dmcheck: the DM as an agent, part 1 (mock agents)\n');
 
 // ---------------------------------------------------------------- 1. the DM tools in the sim
