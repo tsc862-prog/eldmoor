@@ -25,7 +25,7 @@ if (process.argv[2] === '--fp') {
   process.exit(0);
 }
 
-const {init, step, S, snapshot, restore} = await import('../src/sim/index.js');
+const {init, setDmSeat, step, S, snapshot, restore} = await import('../src/sim/index.js');
 const L = await import('../src/sim/levers.js');
 const {pull, register, provide, LEVERS, leverTick, leverMenu, encRate, encKind, encSpot, sightLever, presence, attitudeOf, attitudeDc, spotErr} = L;
 const {tiles, I, CITY, ZONES, REGIONS, zoneAt, dist} = await import('../src/world/map.js');
@@ -39,7 +39,7 @@ const by = {by: 'agent', reason: 'levercheck'};
 const leverLog = () => {let n = 0; for (const e of S.dmLog) if (e.kind === 'lever') n += e.id; return n}; // id-sum survives the 200-entry cap
 const leverSeq = () => S.dmLogSeq || 0;
 
-init(); for (let i = 0; i < 4 * 3600; i++) step(1 / 60); // one game day, so towns, npcs and heroes exist
+init(); setDmSeat(true); for (let i = 0; i < 4 * 3600; i++) step(1 / 60); // one game day, so towns, npcs and heroes exist
 // Start from a clean lever slate (the scripted DM may have pulled some already).
 S.levers = null; S.places = []; S.marks = []; S.conditions = []; S.wanderers = []; L.ensureLevers();
 const advance = m => {S.gameMin += m};
