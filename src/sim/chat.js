@@ -23,7 +23,7 @@ let agentTag=()=>null;export function setAgentTag(fn){agentTag=typeof fn==='func
 export function agentLine(a,e){if(!e||e.from!==a)return e;e.agent=true;delete e.ai;const t=agentTag(a);e.model='Agent ('+(t||'agent')+')';return e}
 
 // Private LCG so picking lines never perturbs the gameplay RNG.
-let seed=0x2545f491;
+const SEED0=0x2545f491;let seed=SEED0;export const resetChatSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
 // Fill placeholders, then fix the article before a vowel ("a Ash Drake" -> "an Ash Drake").

@@ -51,6 +51,7 @@ import {inSlots} from '../sim/company.js'; // the slotted company (#588)
 
 const KEY='eldmoor.sceneMaps';
 const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social','interrogation','talk']); // interrogation (#431 slice 3): the cell in a town
+const ROOM_KINDS=new Set(['opening','arrival']); // session zero and an arrival in a town (#701): arrival.js names the tavern in ctx.setting; at a camp they keep the camp cut
 const TOWN_PAD=3,NEAR=14,SPEAK_S=9;
 let auto=true;try{if(typeof localStorage!=='undefined'&&localStorage.getItem(KEY)==='off')auto=false}catch(_){}
 
@@ -85,7 +86,7 @@ export function sceneSpec(sc=S.table){if(!sc)return null;
   if(DUNGEON_KINDS.has(sc.kind))return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:CRYPT?CRYPT.name:'the Crypt'};
   const c=sc.ctx||{},town=(c.town&&CITY.find(t=>t.name===c.town))||(an?townAt(an.x,an.y):null),z=an?zoneAt(an.x,an.y):-1;
   // indoors: in a town, or wherever the DM named a room (stage_scene setting, #431 slice 2: a house by the road)
-  if(INDOOR_KINDS.has(sc.kind)&&(sc.kind==='talk'?SETTINGS[c.setting]:(town||SETTINGS[c.setting]))){ // a talk (#407) plays indoors only when talkscene.js set its room (the person stands in a town); in the field it keeps the cut
+  if((INDOOR_KINDS.has(sc.kind)||ROOM_KINDS.has(sc.kind))&&(sc.kind==='talk'||ROOM_KINDS.has(sc.kind)?SETTINGS[c.setting]:(town||SETTINGS[c.setting]))){ // a talk (#407) plays indoors only when talkscene.js set its room (the person stands in a town); in the field it keeps the cut
     const people=cast.filter(e=>e.kind!=='hero'&&e.kind!=='mob'),setting=pickSetting(sc,town,people),place=town?town.name:(ZONES[z]||'the wilds');
     return {mode:'indoor',kind:sc.kind,title:sc.title,members,cast,anchor:an,town,setting,key:place+'|'+sc.id,where:SETTINGS[setting].name+' in '+place}}
   // at a camp (#431 slice 3): the fireside, an ambush on the watch or questions by the fire play on the real ground round the fire
@@ -217,9 +218,10 @@ export function answerMarks(sc=S.table){const o={};if(!sc||sc.phase==='outcome')
   return o}
 // How dim the room is: the setting's own dimness, deeper at night and dusk, and as the frame tells it.
 const DARKW=/\b(dark|darkness|gloom|gloomy|shadow(s|ed|y)?|gutter(s|ing|ed)?|dim(ly|ming)?|unlit|pitch|black|midnight|night|moonless|guttering)\b/i,BRIGHTW=/\b(sunlit|sunlight|bright|blazing|lamplit|well[- ]lit|noon|daylight)\b/i;
+export const DARK_CAP=.55; // owner request: a room never goes near-black, whatever the hour and the frame (setting dark + night + gloom, capped)
 export function sceneDark(sc=S.table,base=0){const h=(((S.gameMin||0)%1440)+1440)%1440/60,said=(sc?[sc.title,plain(sc.frame)].join(' '):'');
   let d=base+(h<5||h>=21?.3:h<7||h>=19?.15:0);if(DARKW.test(said))d+=.2;if(BRIGHTW.test(said))d-=.15;
-  return Math.max(0,Math.min(.8,Math.round(d*100)/100))}
+  return Math.max(0,Math.min(DARK_CAP,Math.round(d*100)/100))}
 // The one item the frame or the person's words name, drawn as a small lit prop in front of the speaker. Order matters:
 // the first kind whose words appear wins.
 export function sceneItem(sc=S.table){const p=liveProps(sc)[0];return p?p.id:null} // from sc.props (sim/props.js, #592); a prop whose item was handed to a hero (give_item, #524) is gone

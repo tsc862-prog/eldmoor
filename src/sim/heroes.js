@@ -1,5 +1,5 @@
 // Heroes: stats, quests, movement, combat, death and the per-hero state
-// machine (town, travel, hunt, follow, fight, return, ghost, duel, assist, regroup, dungeon, raid).
+// machine (town, travel, hunt, follow, fight, return, downed, aid, duel, assist, regroup, dungeon, raid).
 // Party behaviour (forming, following, joining fights, shared XP) lives in party.js.
 // Owned by ai-designer (behaviour) and character-builder (stat formulas).
 import {writeSighting} from './sightings.js';
@@ -29,6 +29,7 @@ import {newInv,load,sellLoot,autoEquip,passSpares,restock,fightAid,idleTend,tend
 import {record,timeline,first} from './history.js';
 import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
+import {goDown,downedStep,reviveBonus} from './downed.js'; // downed and death saves (#626, #652/#653)
 import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {held} from './scenes.js'; // the engaged of a live-clock Table scene (#518)
@@ -120,12 +121,14 @@ export function fall(a,cause){
   S.fallen.unshift({name:a.name,fac:a.fac,lvl:a.lvl,cls:a.cls,cause,t:a.diedAt});if(S.fallen.length>15)S.fallen.pop();
   goalEvent(a,'died');
   if(a.lvl>=10&&!/^lost in/.test(cause))timeline('death',a,' fell at level '+a.lvl+' ('+cause+').'+(a.lvl>=15?' A legend ends.':''));
-  S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8});
+  if(!a.hire)S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8}); // a hired blade is not replaced (sim/hire.js)
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
 
 const GUILD_GRUDGE_LVL=12,RAID_FLEE=.15;
-export function agentDie(a,killer){
+// A hero at zero HP: downed first when it may be (sim/downed.js), else slain. slay() is the one road to fall().
+export function agentDie(a,killer){if(goDown(a,killer))return;slay(a,killer)}
+export function slay(a,killer){
   actDeath(a,killer);if(killer.kind==='hero')actKill(killer,a);
   if(killer&&killer.kind==='mob')loreWitness(a,killer); // those who see it learn what it can do (#188)
   const lv={t:'(level '+a.lvl+')',c:'dm'};
@@ -162,10 +165,10 @@ export function strike(a,t,o){
   return d}
 
 export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){tendAlly(a,list);return}let low=null; // spell on cooldown: a potion for a member nearly down (sim/inv.js)
-  for(const b of list){if(b.state==='ghost'||dist(a,b)>4)continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
+  for(const b of list){if(b.state==='ghost'||dist(a,b)>(b.state==='downed'?5:4))continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
   if(low)healOne(a,low)}
 // One cast of the class heal on one hero (priestHeal's pick, or a gambit's target, #617).
-export function healOne(a,low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'healMul'));low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;actHeal(a,low,h,'Heal');if(low!==a)bondEvent(a,'heal',[low])}
+export function healOne(a,low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'healMul'))+reviveBonus(low);low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;actHeal(a,low,h,'Heal');if(low!==a)bondEvent(a,'heal',[low])}
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
@@ -213,7 +216,7 @@ export function updAgent(a,dt){
     if(a.adv&&dmHunt(a,dt))break; // DM: the adventure's fight, rest or next leg instead of the kill-N hunt
     a.hp=Math.min(mh,a.hp+mh*.025*dt);idleTend(a);const mates=partyMates(a);
     if(a.party)priestHeal(a,mates);
-    if(a.hp<mh*.45*tm(a,'retreat')||load(a)>=Math.round(8*tm(a,'greed'))||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.hp<maxHp(b)*.3)||isStorm(a.zone)){goHome(a);break}
+    if(a.hp<mh*.45*tm(a,'retreat')||load(a)>=Math.round(8*tm(a,'greed'))||(a.quest&&a.quest.have>=a.quest.need)||mates.some(b=>b.state!=='downed'&&b.hp<maxHp(b)*.3)||isStorm(a.zone)){goHome(a);break}
     if(steerClear(a,dt,moveTo))break;
     if(gatherTick(a,dt,moveTo))break; // at a node (sim/gather.js): still 'hunt', so mobs, duels and the party see a hunter
     a.scan-=dt;if(a.scan<=0){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
@@ -241,7 +244,7 @@ export function updAgent(a,dt){
     break}
   case 'regroup':{a.regT-=dt;if(a.regT<=0||!a.dest||moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state=a.regNext==='return'?'return':leaderOf(a)?'follow':'hunt';a.dest=null;a.regNext=null}break}
   case 'return':if(steerClear(a,dt,moveTo))break;if(checkEncounter(a,dt))break;if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;
-  case 'ghost':if(moveTo(a,c.grave.x,c.grave.y,dt,4)){a.state='town';a.hp=mh*.5;a.townStep=0;a.wait=2;pop(a.x,a.y-.6,'REVIVED','#9ad0ff')}break;
+  case 'downed':case 'aid':downedStep(a,dt);break; // at zero HP, and the one who came to help (sim/downed.js)
   case 'duel':{const b=a.target;if(!b||b.state!=='duel'||b.target!==a){a.state='hunt';a.target=null;break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
     if(d>r){moveTo(a,b.x,b.y,dt,2.4);break}a.moving=false;priestHeal(a,[a]);

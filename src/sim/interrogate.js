@@ -63,7 +63,7 @@ const cut=(s,n)=>{s=clean(s,1e4);return s.length<=n?s:s.slice(0,n-1).trimEnd()+'
 const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1];
 const pickH=(seed,k,list)=>list[Math.floor(hash(seed|0,k,431)*list.length)%list.length];
 const low=s=>s?s.charAt(0).toLowerCase()+s.slice(1):s;
-const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C);
+const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const ASKS={ask:'persuasion',threaten:'intimidation',bargain:'persuasion',read:'empathy'};
 const FIGHT=new Set(['elite','ambush','rescue']);
 
