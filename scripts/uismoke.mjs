@@ -904,6 +904,17 @@ console.log('start gate: ready, not just claimed');
   ok(lis()[ci+1].textContent.includes('?'),'dungeon view: a room not reached is not named');
   CRYPT.group.crawl.end='retreat';CRYPT.group.crawl.driven=true;dv.trackCrawl();CRYPT.group=null;dv.trackCrawl();st=dv.refreshDungeon();
   ok(/Last run/.test(st.status)&&/driven back from/.test(st.status)&&lis()[ci].classList.contains('lost')&&!box().querySelector('.unexplored'),'dungeon view: with no crawl, the empty interior and how the last run ended ('+st.status+')');
+  { // a non-Fellowship company's crawl (#502): the crew is the company, fill-ins ride along unseen, the bar names it, the tally is its own
+    const {companies}=await import('../src/sim/company.js'),all=S.agents.filter(x=>x.kind==='hero'&&x.state!=='dead'),crew=all.slice(0,2),fill=all[2];
+    const Co={id:9901,name:'The Ember Road',fac:crew[0].fac,ids:crew.map(x=>x.id),crawl:{runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0}};
+    S.companies=(S.companies||[]).concat([Co]);const fk=S.fellowship&&S.fellowship.crawl;
+    CRYPT.group={phase:'inside',mem:crew.concat(fill?[fill]:[]),tSite:true,crawl:{i:ci,rd:0,gap:0,foes:[{hp:1}],end:null,co:Co.id,crew:crew.length}};
+    st=dv.refreshDungeon();
+    ok(st.party.length===crew.length&&st.company==='The Ember Road'&&/THE EMBER ROAD/.test(box().querySelector('.dgname').textContent),'dungeon view: a non-Fellowship company crawl names the company and shows only its crew ('+box().querySelector('.dgname').textContent+')');
+    CRYPT.group.crawl.end='retreat';st=dv.refreshDungeon();ok(/The Ember Road fall back/.test(st.status),'dungeon view: the status names the company ('+st.status+')');
+    CRYPT.group.crawl.end='clear';dv.trackCrawl();CRYPT.group=null;Co.crawl.clears++;dv.trackCrawl();st=dv.refreshDungeon();
+    ok(/Last run/.test(st.status)&&/The Ember Road cleared/.test(st.status),'dungeon view: that company tally ends its run as a clear ('+st.status+')');
+    S.companies=S.companies.filter(x=>x!==Co);if(fk===undefined&&S.fellowship)delete S.fellowship.crawl}
   box().querySelector('.dgback').click();ok(box().hidden&&!dv.dungeonOpen()&&!$('screen').classList.contains('dgopen'),'dungeon view: Back to world closes it');
   const a=mem[0],was={state:a.state,hidden:a.hidden};a.state='dungeon';a.hidden=true;select(a);uiFast();const link=$('hero').querySelector('.dglink');
   ok(!!link,'dungeon view: the hero card of a hero inside has View inside');if(link){link.click();ok(dv.dungeonOpen(),'dungeon view: View inside opens it')}
