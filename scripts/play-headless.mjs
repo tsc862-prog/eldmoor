@@ -30,7 +30,8 @@ import http from 'node:http';
 import {existsSync, readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
-import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks, planOpening, openingDue, beginPrep, endPrep, prepTick, prepView, prepActive, setPrepHost, setGateHold, setDmAlive} from '../src/sim/index.js';
+import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, autoPick, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks, planOpening, openingDue, beginPrep, endPrep, prepTick, prepView, prepActive, setPrepHost, setGateHold, setDmAlive} from '../src/sim/index.js';
+import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 import {onLog} from '../src/sim/chronicle.js';
 import {hostCall, seatInfo} from '../src/sim/player-host.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
@@ -90,14 +91,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // Heroes to play: named ones, else --agents N alternating the factions (Concord first).
   // The Fellowship (#68): found one with every member agent-played, unless the save already has one.
   if (flag('fellowship') || opt('fellowship', null)) {
-    if (!S.fellowship) {const fac = Number(opt('fac', 0)) === 1 ? 1 : 0, r = found(autoPick(fac), {fac, ai: !flag('no-relay')}); if (!r.ok) throw new Error('could not found a Fellowship: ' + r.error)}
-    setMinds('agent'); if (flag('no-relay')) S.brainOn = false; // --no-relay: never call a brain relay (sheets and table lines stay scripted)
-    console.log(`[play] Fellowship: ${S.fellowship.name} (${S.fellowship.ids.length} members, Minds: agents)`);
+    if (!SLT.slotted()) {const fac = Number(opt('fac', 0)) === 1 ? 1 : 0, r = SLT.foundSlots(SLT.autoPick(fac), {fac, ai: !flag('no-relay')}); if (!r.ok) throw new Error('could not found a Fellowship: ' + r.error)}
+    SLT.setSlotMinds(SLT.slotted(), 'agent'); if (flag('no-relay')) S.brainOn = false; // --no-relay: never call a brain relay (sheets and table lines stay scripted)
+    console.log(`[play] Fellowship: ${SLT.slotted().name} (${SLT.slotted().ids.length} members, Minds: agents)`);
   }
   TABLE.speed = speed; if (opt('turn-ms', null)) TABLE.turnMs = Math.max(1000, Number(opt('turn-ms'))); if (flag('watch')) TABLE.mode = 'off';
   const names = String(opt('hero', '') || '').split(',').map(s => s.trim()).filter(Boolean), want = Math.max(flag('dm') ? 0 : 1, Math.min(8, Number(opt('agents', names.length || 1)))); // --dm --agents 0: the DM agent alone
   for (const n of names) {const a = chooseHero({name: n}); if (!a) throw new Error('no living hero called ' + n); markPlayer(a, true)}
-  for (let k = 0; !S.fellowship && playerSeats().filter(a => a.state !== 'dead').length < want && k < 16; k++) {
+  for (let k = 0; !SLT.slotted() && playerSeats().filter(a => a.state !== 'dead').length < want && k < 16; k++) {
     const a = chooseHero({cls: opt('class', null), fac: k % 2}); if (!a) break; markPlayer(a, true)}
   // The DM is always an agent (#520, #559): --wait-ready plays the world as the page does, so it opens the DM seat and the
   // start gate counts it; --no-dm keeps a heroes-only hold (checks that test hero runners alone).

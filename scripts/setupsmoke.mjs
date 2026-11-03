@@ -73,6 +73,7 @@ let fail=0;const ok=(c,m)=>{if(c)console.log('  ok   '+m);else{console.error('  
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const {boot,bootKind,appliedSetup,PENDING_KEY,SAVE_KEY,writeSave}=await imp('src/ui/save.js');
 const sim=await imp('src/sim/index.js');
+const SLT=await imp('src/sim/company.js'); // the slotted company (#588)
 const {ctl}=await imp('src/ui/controls.js');
 const setup=await imp('src/ui/setup.js');
 const all=(root,sel)=>root.querySelectorAll(sel);
@@ -195,7 +196,7 @@ if(mode==='a'){
   localStorage.setItem(PENDING_KEY,JSON.stringify(s));
   boot(sim.init);
   ok(bootKind()==='setup'&&appliedSetup().seed===777,'boot applies the queued setup');
-  const mem=sim.fellowshipMembers().map(m=>m.hero);
+  const mem=SLT.slotMembers(SLT.slotted()).map(m=>m.hero);
   ok(mem.length===5&&mem.every(h=>h.player),'all five are agent-played the moment the world exists');
   ok(!localStorage.getItem(PENDING_KEY),'the pending setup is consumed');
   setup.initSetup();
@@ -291,7 +292,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   // phone width: one column of cards (CSS) and nothing in the switch row that is wider than the screen
   const css=(await import('node:fs')).readFileSync(path.join(repo,'src/style.css'),'utf8');
   ok(/@media \(max-width:520px\)\{[^}]*\.scards[^}]*minmax\(0,1fr\)/.test(css)&&/\.sswitch/.test(css),'phone: single column cards and a wrapping switch row')}
-if(mode==='b'){const t=sim.fellowshipMembers().find(m=>m.slot==='tank').hero;
+if(mode==='b'){const t=SLT.slotMembers(SLT.slotted()).find(m=>m.slot==='tank').hero;
   ok(t.persona&&t.persona.archetype==='veteran','archetype: the queued pick is applied at founding')}
 if(mode==='d'){
   // an apart setup boots and starts one company runner per pair sharing a mind and a hero runner for the solo (#460)

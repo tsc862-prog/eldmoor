@@ -7,6 +7,7 @@ let seed = 0x9e3779b9 ^ (Number(process.env.INVCHECK_SEED) || 124);
 const reseed = n => {seed = n >>> 0; Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296}};
 reseed(seed);
 const {init, step, S, snapshot, restore, maxHp} = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const INV = await import('../src/sim/inv.js');
 const I = await import('../src/data/items.js');
 const {makeItem, equip} = await import('../src/sim/gear.js');
@@ -96,7 +97,7 @@ lh.inv = INV.newInv();
 
 // ---- the Table ----
 console.log('the table');
-{const {fellows} = await import('../src/sim/fellowship.js'); const F = fellows(); const t = F[0], u = F[1]; for (const x of F) {x.hp = maxHp(x); x.inv = INV.newInv()}
+{const F = SLT.slotHeroes(SLT.slotted()); const t = F[0], u = F[1]; for (const x of F) {x.hp = maxHp(x); x.inv = INV.newInv()}
  t.hp = Math.floor(maxHp(t) * .2); INV.addUse(t, 'Redroot Draught', 1); const m = S.mobs.find(x => x.alive); const sc = {kind: 'rescue', ctx: {mob: m.id}, ids: F.map(x => x.id)};
  ok(T.optionsFor(sc, t).some(o => o.k === 'potion'), 'a potion shows among the scene options'); ok(T.reflexFor(sc, t) === 'potion', 'a hurt member holding a potion reflexes to give it');
  ok(!T.optionsFor(sc, u).some(o => o.k === 'potion'), 'a member with no potion has no such option');}

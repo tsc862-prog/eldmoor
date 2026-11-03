@@ -32,6 +32,13 @@ the regex skipped (`...fellows()` after a spread, `e.fellow`, `cam.sel.fellow`, 
 not imported caught the rest. Never regex `.fellow` in scripts blindly: JSON fields from `/play/health`
 (`heroes[].fellow`) and behavior digests are data, not the accessor.
 
-**How to apply:** step 2 converted readers module by module (sim first, then render/ui, then scripts: scripts hold
+Step 3 (branch ai/fold-fellowship-shims): scripts converted with namespace `SLT` (company.js imported right after
+each script's own sim/index.js import, never before it: a seeded script must load the sim graph in the same order);
+`src/core` reads `S.companies.find(C=>C.slots)` and `a.company===F.id&&F.ids.includes(a.id)` itself (core never imports
+sim); the accessors and fellowship.js are deleted; `linkHero`/`linkParty` only drop stale fields now; rulescheck rule 5
+fails on any `S.fellowship`, `.fellowRole` read or sim/fellowship.js import (save.js migration exempt). Data fields named
+`fellow` stay: `/play/health` heroes, behavior digests, `S.dmFocus.fellow`, `p.st.fellow`, savecheck's v6 fixture.
+
+**How to apply (history):** step 2 converted readers module by module (sim first, then render/ui, then scripts: scripts hold
 most of the ~600 `fellows()`/`S.fellowship` uses), step 3 deletes `fellowship.js` and the accessors (save.js must then
 stop expecting them; old saves already carry only `S.companies`/`a.company`).

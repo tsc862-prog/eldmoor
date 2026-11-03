@@ -513,7 +513,7 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   `dungeon.js`; reflex scouts in round 1 only for rooms of `CRAWL.SCOUT_MIN` blows or more. The stair scene (`site`) still opens first and its choices tip every roll. Table Off (Watch) and groups without a
   Fellowship member keep the abstract roll, so the background balance and a seeded no-Fellowship hash do not move. Wired through
   `setCrawlHook` in `dungeon.js` (crawl.js is imported by `sim/index.js`); state is plain data on `CRYPT.group.crawl`, saved with the
-  group; the record is `S.fellowship.crawl` (runs, clears, driven, withdrawn, wipes, deaths, rooms). A world without `rooms` has no crawl.
+  group; the record is `slotted().crawl` (`sim/company.js`) (runs, clears, driven, withdrawn, wipes, deaths, rooms). A world without `rooms` has no crawl.
 - Everyone at once (owner request): `PLAY` in `src/sim/table.js` says per scene kind how it is played. `turns`
   (elite, ambush, boss, rescue, Crypt site/room, dungeon crawl): initiative order, one act changes the next. `all` (decision =
   every vote incl. break_camp, check, choice, staged meeting/social/trap/mystery): every member present gets the
@@ -902,9 +902,10 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   conditions, price shocks, hooks and named/custom foes, plus the hooks the world reads them
   through (state on `S.levers`, `S.places`, `S.marks`, `S.conditions`, `S.wanderers`;
   drawn by `src/render/places.js`; `npm run levercheck`);
-  `index.js` `init()` and `step(dt)`; `fellowship.js` the Fellowship (#68): five fixed
-  roles (Tank, Healer, three DPS), founding, muster, hardcore replacement, campaign log,
-  `fellowshipMembers()` in slot order; `persona.js` persona sheets and backstories from
+  `index.js` `init()` and `step(dt)`; `company.js` companies (#402) and, as the `slots` option
+  of a company (#588), the Fellowship (#68): five fixed roles (Tank, Healer, three DPS), founding, muster, hardcore
+  replacement, campaign log; read it with `slotted()`, `slotMembers(C)` in slot order, `inSlots(a)`, `slotKeyOf(a)`,
+  `partySlotted(p)` (the old `S.fellowship`/`a.fellow`/`fellowship.js` shims are gone; `npm run rulescheck` guards it); `persona.js` persona sheets and backstories from
   sim facts (scripted, or enriched once through the relay) and `fellowCard` for prompts;
   `memory.js` per-member recent memories, long-term summary and companion stances;
   `council.js` party chat, proposals and votes, `lead_to`, splitting off and the all-or-none
@@ -942,7 +943,7 @@ render or ui, so the headless harness stays stub-free.
   break off below 15% HP and a failed raid cools down 240s: `src/sim/boss.js`,
   `RAID_FLEE` in `src/sim/heroes.js`.
 - Bounties (#67): kill-N quests are optional gate-captain bounties (`BOUNTY` in `src/sim/dm.js`, take chance .55 x greed after no adventure fits); adventure pay XP `K.PAY_XP` .35.
-- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 40% of the party (was 55%). Webspinner and Bristleback Boar are softened in `data/bestiary.js` (tilt + aggro); Fellowship replacements seed in `fellowship.js` (`SEED_BEHIND`=2). Duel chance .03 in `pvp.js`.
+- Dungeon success: the `pw` formula in `src/sim/dungeon.js`; a wipe kills 40% of the party (was 55%). Webspinner and Bristleback Boar are softened in `data/bestiary.js` (tilt + aggro); Fellowship replacements seed in `company.js` (`SEED_BEHIND`=2). Duel chance .03 in `pvp.js`.
 - PvP: chance duels 4% x boldness, level gap 2, range 3 tiles; nemesis spot cooldown 45s; guild assist 20%; duellers yield below 30% HP; only fallen heroes of level 12+ pass the grudge to the whole guild (lesser deaths bind their party): `src/sim/pvp.js`, `GUILD_GRUDGE_LVL` in `src/sim/heroes.js`.
 
 ## Known state

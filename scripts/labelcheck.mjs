@@ -31,6 +31,7 @@ let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {con
 
 const {seedRng} = await import('../src/core/rng.js'); seedRng(563);
 const sim = await import('../src/sim/index.js'); sim.init();
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {attachRunners} = await import('./runners.mjs');
 const RN = await import('../src/ui/runners.js');
@@ -38,10 +39,10 @@ const {mindLabel} = await import('../src/ui/mindlabel.js');
 const BR = await import('../src/ui/player-bridge.js');
 const G = await import('../src/ui/rungate.js');
 
-const mem = sim.fellowshipMembers().map(m => m.hero).filter(Boolean);
+const mem = SLT.slotMembers(SLT.slotted()).map(m => m.hero).filter(Boolean);
 for (const a of mem) if (!a.player) sim.markPlayer(a, true);
 ok(mem.length === 5 && mem.every(a => a.player), 'a Fellowship of five agent-played members');
-const hello = () => mem.map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', fellow: true, role: a.fellowRole || null}));
+const hello = () => mem.map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', fellow: true, role: SLT.slotKeyOf(a) || null}));
 
 // the relay with a backend standing in for the page's socket, and the supervisor with a fake child
 const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes: hello(), dm: sim.dmSeatOn()})};

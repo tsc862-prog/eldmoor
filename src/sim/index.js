@@ -60,7 +60,7 @@ export {actionLog,fightSummary,fights} from './actlog.js'; // action log (record
 export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
 export {enableBrain,disableBrain,brainStatus,setRunnerMind} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
-export {found,autoPick,disbandFellowship,fellowshipMembers,fellows,setMinds} from './fellowship.js';
+export {foundSlots,autoPick,disbandSlots,slotMembers,slotHeroes,setSlotMinds,slotted} from './company.js'; // the five places (#588)
 export {TABLE,bannerOf,decisionsWaiting} from './table.js';
 export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} from './runlink.js'; // the Fellowship's decisions wait for its runners (#148)
 export {fellowshipStart,START_BANDS} from './opening.js';
