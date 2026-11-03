@@ -809,3 +809,22 @@ button.tbtn.danger{border-color:var(--red)}
 .felall .fconame{font-family:var(--px);font-size:9px;padding:4px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .felall .fco .runctl{flex-basis:100%}
 .fcoTag{font-size:inherit}
+/* the purpose line (#534): what a hero is trying to do, goal → target · why (src/ui/purposeview.js). One line, cut with an
+   ellipsis where room is short (frames always, the dossier at phone width); a tap on a cut line opens it in full. */
+.purp{min-width:0}
+.pfdo.purp{color:var(--ink)}
+.purp.open{white-space:normal;overflow:visible;overflow-wrap:anywhere}
+.purp.p-fight,.purp.p-flee{color:#ffb060}
+.purp.p-wait{color:#d9c27a}
+.purp.p-follow{color:#9ad0ff}
+.purp.p-rest{color:#7fd6c2}
+.purp.p-dead{color:var(--dim)}
+.hero .doing{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
+.hero .doing .purp{flex:1 1 auto;cursor:default}
+.hero .doing .purp:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.ptip .ptgoal{margin-top:2px}
+#vIcons[aria-pressed="false"]{opacity:.7}
+@media (max-width:560px){
+  .hero .doing .purp{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+  .hero .doing .purp.open{white-space:normal;overflow:visible}
+}
