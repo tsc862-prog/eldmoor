@@ -199,13 +199,13 @@ function creatureLine(a,key,e){const name=knowsName(e)?keyName(key):'unnamed: '+
   const k=[];if(e.fought)k.push('fought '+(e.fought===1?'once':e.fought+' times')+(e.killed?', killed '+(e.killed===1?'one':e.killed):''));else if(e.killed)k.push('killed '+(e.killed===1?'one':e.killed));
   if(e.hurt)k.push('it nearly killed you'+(e.hurt>1?' '+e.hurt+' times':''));if(e.fell)k.push('you know of '+(e.fell===1?'one':e.fell)+' who fell to it');
   if(e.tricks.length)k.push('tricks: '+e.tricks.map(trickName).join('; '));if(e.z.length)k.push('found in '+e.z.join(', '));
-  if(e.warned)k.push('warned: '+e.warned);if(k.length)out.known=k;return out}
+  if(e.warned)k.push('warned: '+e.warned);if(e.from&&!e.fought&&!e.killed)k.push('heard of it from '+e.from);if(k.length)out.known=k;return out}
 // The worst creature the hero knows in a region, rated at a typical level (the last it met), not the highest ever seen (#539).
 function worstIn(a,name){let worst=null;for(const key of Object.keys(loreOf(a).c)){const e=loreOf(a).c[key];if(!e.z.includes(name)||e.hi==null||!(e.fought||e.read))continue;const r=rankOf((e.last!=null?e.last:e.hi)-a.lvl);if(!worst||r>worst.r)worst={r,n:keyPlural(key)}}return worst}
 // A few words of why a place is dangerous, or null.
 function dangerWhy(a,name,p){if(!p)return null;const w=[];if(p.hurt)w.push('you nearly died there');if(p.fell)w.push((p.fell===1?'one':p.fell)+' fell there');
   const x=ZONES.includes(name)?worstIn(a,name):null;if(x&&x.r>=3)w.push(x.n+', '+RANKS[x.r]);if(p.warned&&!w.length)w.push('warned');return w.length?w.slice(0,2).join('; '):null}
-function placeLine(a,name,p){const out={place:name,how:p.mk===1?'a place you marked':p.mk?'told by '+(p.src||'a companion'):p.how==='home'?'your home region':p.how==='been'?'you have been there':p.how==='seen'?'you have seen it':'you have heard of it'};
+function placeLine(a,name,p){const out={place:name,how:p.mk===1?'a place you marked':p.mk?'told by '+(p.src||'a companion'):p.how==='home'?'your home region':p.how==='been'?'you have been there':p.how==='seen'?'you have seen it':'you have heard of it'+(p.from?' from '+p.from:'')};
   const z=ZONES.indexOf(name),k=[];if(p.hurt)k.push('you nearly died there'+(p.hurt>1?' '+p.hurt+' times':''));if(p.fell)k.push('you know of '+(p.fell===1?'one':p.fell)+' who fell there');
   if(z>=0){const worst=worstIn(a,name);if(worst)k.push('the worst you know there: '+worst.n+' ('+RANKS[worst.r]+')')}
   if(p.note&&p.mk===1)k.push('your note: '+p.note);if(p.warned)k.push('warned: '+p.warned);if(p.found)k.push('you searched it and found: '+p.found);if(k.length)out.notes=k;return out}
@@ -214,9 +214,10 @@ export function loreView(a,about){const L=loreOf(a),q=clean(about,60).toLowerCas
   for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e)&&!e.desc){const m=S.mobs.find(x=>keyOf(x)===key);if(m)e.desc=describe(m)}}
   let cs=Object.keys(L.c).map(k=>creatureLine(a,k,L.c[k])),ps=Object.keys(L.p).map(n=>placeLine(a,n,L.p[n]));
   if(q){cs=cs.filter(x=>x.name.toLowerCase().includes(q)||(x.known||[]).some(s=>s.toLowerCase().includes(q)));ps=ps.filter(x=>x.place.toLowerCase().includes(q)||(x.notes||[]).some(s=>s.toLowerCase().includes(q)))}
-  return {creatures:cs,places:ps,towns:CITY.filter(c=>c.fac===a.fac).map(c=>c.name)}}
+  const hp=Object.keys(L.h||{}).map(n=>({person:n,how:'you have heard of them from '+L.h[n].from})).filter(x=>!q||x.person.toLowerCase().includes(q));
+  return {creatures:cs,places:ps,towns:CITY.filter(c=>c.fac===a.fac).map(c=>c.name),...(hp.length?{people:hp}:{})}}
 // status.places: where this hero can walk by name.
-export function placesView(a){const L=loreOf(a);return Object.keys(L.p).map(n=>{const p=L.p[n],w=[];if(p.how==='home')w.push('home');else if(p.mk===1)w.push('yours');else if(p.mk)w.push('told by '+(p.src||'a companion'));else if(p.how==='told')w.push('heard of');{const y=dangerWhy(a,n,p);if(y)w.push('danger: '+y);else if(p.hurt||p.fell||p.warned)w.push('danger')}return w.length?n+' ('+w.join(', ')+')':n})}
+export function placesView(a){const L=loreOf(a);return Object.keys(L.p).map(n=>{const p=L.p[n],w=[];if(p.how==='home')w.push('home');else if(p.mk===1)w.push('yours');else if(p.mk)w.push('told by '+(p.src||'a companion'));else if(p.how==='told')w.push('heard of'+(p.from?' from '+p.from:''));{const y=dangerWhy(a,n,p);if(y)w.push('danger: '+y);else if(p.hurt||p.fell||p.warned)w.push('danger')}return w.length?n+' ('+w.join(', ')+')':n})}
 // The hero's warning words for a known region (move_to/lead_to), or null.
 export function placeWarn(a,name){const p=a.lore&&a.lore.p[name];if(!p)return null;const l=placeLine(a,name,p);return l.notes&&l.notes.length?name+': '+l.notes.join('; ')+'.':null}
 // The same, as the hero's memory (move_to/lead_to reply, #539).
@@ -259,3 +260,16 @@ export function loreSummary(a,cap=12){const L=a&&a.lore;if(!L)return {beaten:[],
   const places=Object.keys(L.p||{});
   const cut=l=>l.slice(0,cap);
   return {beaten:cut(beaten),feared:cut(feared),places:cut(places),more:Math.max(0,beaten.length+feared.length+places.length-cut(beaten).length-cut(feared).length-cut(places).length)}}
+
+// ---- word heard from a townsperson (a rumour, sim/rumours.js #637) ----
+// about: {kind:'place'|'landmark'|'town'|'region'|'foe'|'creature'|'person', name, id?, key?, z?}; from: who said it, as the hero
+// heard them ("Innkeeper Bree"). Puts it on the hero's lore as heard of, with the speaker as its source, so move_to takes a place.
+// Never says who seeded it. Returns true when the hero learned something new. Agent heroes only, no RNG.
+export function heardOf(a,about,from){if(!learner(a)||!about||!about.name)return false;const src=clean(from,60)||'someone in town';
+  const k=about.kind;
+  if(k==='place'){const p=dmPlaces().find(x=>x.id===about.id);if(!markOk(p))return false;const was=!!loreOf(a).p[p.name];learnMark(a,p,'told');const e=loreOf(a).p[p.name];if(e.how==='told'&&!e.from)e.from=src;return !was}
+  if(k==='landmark'||k==='town'||k==='region'){const was=!!loreOf(a).p[about.name];const e=place(a,about.name,'told');if(e.how==='told'&&!e.from)e.from=src;return !was}
+  if(k==='foe'||k==='creature'){const key=k==='foe'?'n:'+about.name:about.key;if(!key)return false;const e=entry(a,key),was=!!e.told||knowsName(e);e.told=1;if(!e.from)e.from=src;
+    const zn=about.z!=null?ZONES[about.z]:null;if(zn){if(!e.z.includes(zn))e.z.push(zn);place(a,zn,'told')}return !was}
+  if(k==='person'){const L=loreOf(a),H=L.h||(L.h={}),was=!!H[about.name];if(!was)H[about.name]={from:src,at:Math.round(S.gameMin)};return !was}
+  return false}

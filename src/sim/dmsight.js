@@ -9,6 +9,7 @@
 //
 //   S.dmAgent.ear = {seq, lines:[{id, min, day, t, who, wid, cid, company, kind, where, text, h}], keys:[...]}  (oldest first, EAR.KEEP)
 //     h: true once a `hear` returned it; keys: dedupe of lines seen through several hearers' buffers
+import {outpostsView} from './outposts.js';
 import {S,clockStr,dayNo} from './state.js';
 import {W,H,G,ROAD,BRIDGE,RIVER,WALKABLE,SGRASS,FLOWER,SNOW} from '../world/tiles.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
@@ -124,4 +125,5 @@ export function worldStanding(){
   return {ok:true,day:Math.floor(S.gameMin/1440)+1,guilds,rivalries:riv,boss,crypt,auction,
     conditions:(S.conditions||[]).map(c=>({region:ZONES[c.z],kind:c.kind,hours_left:Math.max(0,Math.round((c.until-S.gameMin)/60))})),
     events:(S.levers&&S.levers.active||[]).filter(x=>x.name==='start_event').map(x=>({kind:x.params&&x.params.kind||null,region:x.region!=null?ZONES[x.region]:null,hours_left:Math.max(0,Math.round((x.until-S.gameMin)/60))})),
+    outposts:outpostsView().map(o=>({name:o.name,region:ZONES[o.region]||null,held_by:o.held_by,control:o.control,contested:o.contested,times_flipped:o.flips,heroes_there:o.present})),
     top_heroes:top}}
