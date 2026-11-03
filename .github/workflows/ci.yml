@@ -27,6 +27,7 @@ jobs:
       - {name: Static build, run: npm run build}
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Save/load round trip, run: npm run savecheck}
+      - {name: init() reset, run: npm run initcheck}
       - {name: Fellowship archetypes, run: npm run archetypecheck}
       - {name: Agent-built personality, run: npm run personacheck}
       - {name: Pack and inventory, run: npm run invcheck}

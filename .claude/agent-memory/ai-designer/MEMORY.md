@@ -44,5 +44,6 @@
 - [DM focus per company #450](dm_focus_companies.md) — focuses(), h.cid hall jobs, companies_needs order, any-company reserve, Fellowship path hash-identical
 - [Autopilot caution #487](autopilot_caution.md) — wary autopilot hunts (ground, prey <= lvl+2, flee .22/.5, home when hurt); 5/40 -> 39/40 green survival
 - [Leave and companions #443](leave_companions.md) — leave_party for_good in offers.js, companions tool, a.seen last-seen record, AWAY leave
+- [init() reset #507](init_reset.md) — resetS/resetWorld, initcheck, what to reset when adding stores
 - [Talk escalation #407](talk_escalation.md) — talkscene.js ESC rules: offer/bargain/party/tense, once per conv+reason, company present, test pitfalls
 - [Merge vote scene #500](merge_vote_scene.md) — paired merge proposal gets its own company's decision scene, queued behind the first
