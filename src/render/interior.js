@@ -266,7 +266,8 @@ function wrapLine(t){const out=[];let cur='';for(const w of String(t).split(' ')
 export function bubble(ctx,x,y,head,headCol,body,dpr,sc,alpha=1){const s=12*dpr/sc,lh=s*.8,pad=s*.3,lines=(head?[head]:[]).concat(wrapLine(body));
   ctx.font=s+'px VT323, monospace';let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
   const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=y-pad*.7,top=bottom-bh,x0=x-bw/2;
-  ctx.globalAlpha=alpha;ctx.fillStyle='rgba(10,10,22,.88)';
-  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill()}else ctx.fillRect(x0,top,bw,bh);
+  ctx.globalAlpha=alpha;ctx.fillStyle='#0a0a16'; // opaque, edged in the speaker's colour (#471)
+  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill();if(headCol){ctx.strokeStyle=headCol;ctx.lineWidth=dpr/sc;ctx.stroke()}}else ctx.fillRect(x0,top,bw,bh);
+  ctx.fillStyle='#0a0a16';
   ctx.beginPath();ctx.moveTo(x-pad*.6,bottom);ctx.lineTo(x+pad*.6,bottom);ctx.lineTo(x,bottom+pad*.7);ctx.fill();
   lines.forEach((l,i)=>text(ctx,l,x,top+pad*.6+lh*(i+.85),head&&i===0?headCol:TEXT.label,12,dpr,sc));ctx.globalAlpha=1}

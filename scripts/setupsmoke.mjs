@@ -120,8 +120,11 @@ if(mode==='a'){
   ok(all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1').value.length>=3,'name reroll fills a name');
   click(ids.get('setup'),b=>b.dataset.a==='start');
   const pend=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
-  ok(pend&&pend.world==='eldmoor'&&reloads===1&&pend.slots.tank.mind.mode==='agent','Start queues the setup and reloads');
+  ok(pend&&pend.world==='eldmoor'&&reloads===1&&pend.v===2&&pend.mode==='together'&&pend.heroes.length===5&&pend.heroes[0].cls==='Warrior'&&pend.heroes[0].mind.mode==='agent','Start queues the setup (v2 together, #453) and reloads');
   ok(sim.validateSetup(pend).length===0,'the queued setup validates');
+  {const last=JSON.parse(localStorage.getItem('eldmoor.setup.last')||'null');setup.openSetup({first:false});
+   const nm=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1');
+   ok(last&&last.v===2&&all(ids.get('setup'),'.scard').length===5&&nm&&nm.value===pend.heroes[2].name,'a stored v2 last setup opens on the page as its five places (#453)')}
   localStorage.removeItem(PENDING_KEY);reloads=0;
   click(ids.get('setup'),b=>b.dataset.a==='cancel');writeSave();ok(!!localStorage.getItem(SAVE_KEY),'a save exists');
   setup.openSetup({first:false});
@@ -182,7 +185,7 @@ if(mode==='a'){
   save.holdSave(false);save.writeSave();played=[];title.showTitle(k=>played.push(k));t=ids.get('title');
   click(t,b=>b.dataset.a==='continue');ok(played.join()==='continue','Continue resumes the save');
 }else{
-  const s0=sim.applyPreset('claude',sim.defaultSetup(777,'eldmoor',0));s0.slots.tank.archetype='veteran';const s=sim.cleanSetup(s0);
+  const s0=sim.applyPreset('claude',sim.defaultSetup(777,'eldmoor',0));s0.heroes[0].archetype='veteran';const s=sim.cleanSetup(s0);
   localStorage.setItem(PENDING_KEY,JSON.stringify(s));
   boot(sim.init);
   ok(bootKind()==='setup'&&appliedSetup().seed===777,'boot applies the queued setup');
@@ -217,7 +220,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   ok(!pb('fishing').disabled&&/Smithing at skill 1/.test(card().textContent),'cards: un-picking frees a place');
   click(ids.get('setup'),b=>b.dataset.a==='start');
   const pend2=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
-  ok(pend2&&pend2.slots.tank.profs.join()==='smithing'&&!pend2.slots.healer.profs,'Start queues the choice for that place only');
+  ok(pend2&&pend2.heroes[0].profs.join()==='smithing'&&!pend2.heroes[1].profs,'Start queues the choice for that place only');
   localStorage.removeItem(PENDING_KEY)}
 // Archetype picker on the place cards (#295 follow-up): None, the six, Random; the hint follows the pick
 if(mode==='a'){setup.openSetup({first:true});await sleep(30);
@@ -235,7 +238,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   ok(!/unknown archetype/.test(text(ids.get('setup'))),'archetype: no problem flagged for a legal pick');
   click(ids.get('setup'),b=>b.dataset.a==='start');
   const pend3=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
-  ok(pend3&&pend3.slots.tank.archetype==='veteran'&&pend3.slots.dps2.archetype==='random'&&!pend3.slots.healer.archetype,'archetype: Start queues the picks per place');
+  ok(pend3&&pend3.heroes[0].archetype==='veteran'&&pend3.heroes[3].archetype==='random'&&!pend3.heroes[1].archetype,'archetype: Start queues the picks per place');
   localStorage.removeItem(PENDING_KEY)}
 if(mode==='b'){const t=sim.fellowshipMembers().find(m=>m.slot==='tank').hero;
   ok(t.persona&&t.persona.archetype==='veteran','archetype: the queued pick is applied at founding')}

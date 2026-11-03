@@ -24,6 +24,9 @@ const $=id=>document.getElementById(id);
 
 let fail=0;const failed=[];const ok=(c,m)=>{if(c)console.log('  ok   '+m);else{console.error('  FAIL '+m);failed.push(m);fail++}};
 
+// One fixed seed: the world, the warm-up and the Fellowship it founds are the same on every run, so a check that needs a
+// member alive, a foe in the open or a stranger in range sees the same world each time (the unseeded smoke flaked, #477).
+const {seedRng}=await import('../src/core/rng.js');seedRng(477);
 sim.init();
 if(sim.S.fellowship)sim.disbandFellowship(); // the first half runs without one
 const renderer={onCamChange(){},setZoom(){},stepZoom:(z)=>z,currentZoom:()=>1,zoomAt(){},panBy(){},screenToWorld:()=>({x:0,y:0})};
@@ -674,6 +677,49 @@ console.log('start gate: ready, not just claimed');
   sc.rd=null;TB.renderTable(1);ok(!box.querySelector('.tci')&&!/ROUND/.test(t())&&!box.classList.contains('tcombat'),'combat banner: a scene without rounds keeps the plain banner');
   S.table=null;TB.renderTable(1);ok(box.hidden,'combat banner: hidden when the scene closes');
   S.table=keep;m.hp=mhp;m.target=null;ms.forEach((a,i)=>a.hp=hp0[i]);T.TABLE.speed=spd}}
+// Table banner legibility (#471): a short pixel title, the tags as chips, the question as body text, one row per member.
+{const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),RL=await import('../src/sim/runlink.js'),{classColor}=await import('../src/core/colors.js');
+  const S=sim.S,box=$('tbanner'),ms=sim.fellows().filter(a=>a.state!=='dead');
+  if(ms.length<3)console.log('  skip banner legibility (no Fellowship)');else{
+  const keep=S.table,det='make camp here by the old road and start our watch before the moon is up';
+  ok(TB.sceneHead('decision','Put to the party: '+det).head==='Vote · make camp here…','banner: the title is the kind plus a few words ('+TB.sceneHead('decision','Put to the party: '+det).head+')');
+  ok(TB.sceneHead('ambush','Ambush: Gorran').head==='Ambush · Gorran'&&!TB.sceneHead('ambush','Ambush: Gorran').cut,'banner: a short title is not cut');
+  ok(TB.sceneHead('check',"The Miller's Debt: a check").head==="Check · The Miller's Debt…",'banner: a long title stops at its colon');
+  RL.setRunnerLinks(a=>a===ms[3]?'none':'waiting');RL.setReflexAck(()=>false);
+  const w={};ms.forEach((a,i)=>w[a.id]={t:i===2?9:3.2,nudge:0});
+  const sc={id:9101,kind:'decision',title:'Put to the party: '+det,frame:[ms[0],' puts it to the party: ',{t:det,c:'gd'},'. Everyone votes.'],ids:ms.map(a=>a.id),i:0,phase:'turn',t:0,
+    acts:{[ms[0].id]:{k:'yes',line:'',by:'agent'},[ms[1].id]:{k:'no',line:'Taking the watch instead',by:'agent'}},beats:[],ctx:{prop:-1},pause:true,at:0,all:true,w};
+  S.table=sc;TB.renderTable(1);
+  const tt=box.querySelector('.tt'),th=box.querySelector('.tth');
+  ok(!box.hidden&&th&&th.textContent==='VOTE · MAKE CAMP HERE…','banner: the pixel title is short ('+(th&&th.textContent)+')');
+  ok(tt&&!/WORLD PAUSED|EVERYONE ANSWERS/.test(tt.textContent)&&!!tt.querySelector('[data-scene]'),'banner: the title row holds only the title and the scene map button');
+  const chips=[...box.querySelectorAll('.tchips .tp')].map(e=>e.textContent);
+  ok(chips.join('|')==='WORLD PAUSED|EVERYONE ANSWERS','banner: the tags are chips on their own row ('+chips.join(', ')+')');
+  const tf=box.querySelector('.tf');ok(tf&&tf.textContent.includes(det)&&!box.querySelector('.tq'),'banner: the whole question is the body text, said once');
+  const rows=[...box.querySelectorAll('.tmem .tmr')],rd=TB.memberRows();
+  ok(rows.length===ms.length&&rd.length===ms.length,'banner: one row per member ('+rows.length+')');
+  ok(/Answers 2\/5/.test(box.querySelector('.tmh').textContent.replace(String(ms.length),'5')),'banner: the rows count the answers ('+box.querySelector('.tmh').textContent+')');
+  ok(rows[0].querySelector('.tmn').textContent===ms[0].name&&rows[0].querySelector('.tmn').style.color===classColor(ms[0].cls)&&rows[0].querySelector('.tmsw').style.background===classColor(ms[0].cls),'banner: a row names the member in its class colour');
+  ok(rows[0].querySelector('.tma.yes').textContent==='YES'&&rows[1].querySelector('.tma.no').textContent==='NO','banner: a row shows the vote cast (YES, NO)');
+  ok(/Taking the watch instead/.test(rows[1].querySelector('.tmq').textContent),'banner: a row carries what the member said');
+  ok(rows[2].classList.contains('st-wait')&&/reflex in 111 s/.test(rows[2].querySelector('.tmt').textContent),'banner: a nudged member shows the reflex timer ('+rows[2].querySelector('.tmt').textContent+')');
+  ok(rows[4]&&rows[4].classList.contains('st-wait')&&rows[4].querySelector('.tmt').textContent==='4 s','banner: a thinking member shows how long ('+(rows[4]&&rows[4].querySelector('.tmt').textContent)+')');
+  ok(rows[3].classList.contains('st-held')&&/no runner/.test(rows[3].textContent),'banner: a member with no runner says so');
+  ok(!/answered · waiting for/.test(box.textContent)&&/has no runner: Restart runner/.test((box.querySelector('.tl')||{}).textContent||''),'banner: the waiting list is not said twice (rows only); what to do about a missing runner stays');
+  const r0=rows[0];r0._same=1;w[ms[4].id].t=5.4;TB.renderTable(1);
+  ok(box.querySelector('.tmr')._same===1&&box.querySelectorAll('.tmr')[4].querySelector('.tmt').textContent==='6 s','banner: a ticking timer patches the row in place');
+  sc.acts[ms[2].id]={k:'yes',line:'',by:'reflex'};TB.renderTable(1);
+  ok(/reflex/.test(box.querySelectorAll('.tmr')[2].querySelector('.tmby').textContent),'banner: a reflex answer is marked as one');
+  // a turn-by-turn scene without rounds: the order as rows, the one acting marked
+  const sc2={id:9102,kind:'site',title:'The Sunken Crypt',frame:['The stair goes down.'],ids:ms.map(a=>a.id),i:1,phase:'turn',t:2,acts:{[ms[0].id]:{k:'press',line:'',by:'agent'}},beats:[],ctx:{},pause:true,at:0};
+  S.table=sc2;TB.renderTable(1);const r2=[...box.querySelectorAll('.tmr')];
+  ok(box.querySelector('.tmh').textContent==='Turn order'&&r2[1].classList.contains('st-turn')&&/▶/.test(r2[1].textContent)&&r2[2].classList.contains('st-next'),'banner: a turn-by-turn scene lists the turn order with the one acting marked');
+  ok(/Press on/.test(r2[0].querySelector('.tma').textContent),'banner: an option chosen shows in words ('+r2[0].querySelector('.tma').textContent+')');
+  ok(!box.querySelector('.tchips .tall'),'banner: no EVERYONE ANSWERS chip in a turn-by-turn scene');
+  // a cut title whose words the frame does not carry: the whole title as body text
+  const sc3={...sc,id:9103,kind:'check',title:"The Miller's Debt: a sound under the mill floor",frame:['The DM calls for a roll.'],acts:{},w:{}};S.table=sc3;TB.renderTable(1);
+  ok(box.querySelector('.tq')&&/a sound under the mill floor/.test(box.querySelector('.tq').textContent),'banner: a cut title still shows in full as body text');
+  RL.setRunnerLinks(null);RL.setReflexAck(null);S.table=keep;TB.renderTable(1)}}
 // ---- chat in the left column on the three-column layout (owner request) ----
 {const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
   const keep=window.innerWidth;ok(!!sim.S.fellowship,'chat left: a Fellowship stands');
@@ -805,7 +851,7 @@ console.log('start gate: ready, not just claimed');
 {const {chronicleShows}=await import('../src/ui/fellowship.js');const {chronicleFocus,guildLabel}=await import('../src/sim/fellowship.js');
   const a=mem.find(x=>x.state!=='dead'),was=a.guild;
   const ours={id:-341,tag:'OWN',name:'Oathbound Test',fac:a.fac,retired:false},theirs={id:-342,tag:'ELS',name:'Elsewhere Test',fac:1-a.fac,retired:false};
-  a.guild=ours;const tg=g=>({t:guildLabel(g),c:'f'+g.fac}),stranger=sim.S.agents.find(x=>!x.fellow&&x.state!=='dead'&&!mem.some(m=>(m.nemesis||{})[x.id]));
+  a.guild=ours;const tg=g=>({t:guildLabel(g),c:'f'+g.fac}),stranger=sim.S.agents.find(x=>x.kind==='hero'&&!x.fellow&&x.state!=='dead'&&!(sim.S.fellowship.past||[]).some(p=>p.id===x.id)&&!sim.fellows().some(m=>(m.nemesis||{})[x.id])); // not a member, a former member or a member's rival
   const e=(...parts)=>({t:'12:00',parts});
   const focusLine=e(tg(ours),' turns its banner to the ',{t:'Delve',c:'gd'},'.'),otherLine=e(tg(theirs),' goes ',{t:'Wayfaring',c:'gd'},'.');
   const rivalLine=e(tg(theirs),' and ',tg(ours),' declare a rivalry: blood on the road.');
@@ -813,7 +859,7 @@ console.log('start gate: ready, not just claimed');
   ok(chronicleShows(rivalLine),'Fellowship only: a rivalry naming the member\'s guild shows');
   ok(!chronicleShows(otherLine),'Fellowship only: an unrelated guild line stays hidden');
   ok(chronicleShows(e(a,' slays a wolf.'))&&chronicleShows(e({t:'Kragmaw',c:'gd'},' stirs.')),'Fellowship only: member and Kragmaw lines still show');
-  if(stranger)ok(!chronicleShows(e(stranger,' slays a wolf.')),'Fellowship only: a stranger\'s line stays hidden');
+  if(stranger){const shown=chronicleShows(e(stranger,' slays a wolf.'));ok(!shown,'Fellowship only: a stranger\'s line stays hidden'+(shown?' -- saw '+stranger.name+' id '+stranger.id+' fellow='+stranger.fellow+' past='+JSON.stringify((sim.S.fellowship.past||[]).map(p=>p.id))+' ids='+JSON.stringify(sim.S.fellowship.ids):''))}
   a.guild=null;ok(!chronicleShows(focusLine),'Fellowship only: once no member is in it, the guild line hides');
   a.guild=was;$('chronFel').click();ok(chronicleShows(otherLine),'the whole Chronicle (toggle off) shows every guild line');$('chronFel').click();
   ok(!chronicleShows(otherLine),'Fellowship only again: the unrelated guild line hides')}
@@ -850,14 +896,14 @@ console.log('start gate: ready, not just claimed');
   ok(dv.openDungeon(CRYPT)&&!box().hidden&&box().parentNode===$('screen')&&$('screen').classList.contains('dgopen'),'dungeon view: opens over the map');
   ok(lis().length===n&&lis().every((li,i)=>li.textContent.includes(CRYPT.rooms[i].name.replace(/^the /i,''))),'dungeon view: shows the '+n+' chambers by name');
   ok(/Back to world/.test(box().querySelector('.dgback').textContent),'dungeon view: has Back to world');
-  const mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,4);
-  CRYPT.group={phase:'inside',mem,tSite:true,crawl:{i:2,rd:1,gap:0,foes:[{hp:1},{hp:0}],end:null}};
+  const ci=Math.min(2,n-2),mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,4); // the room in progress, with one chamber after it, whatever the world's crypt has
+  CRYPT.group={phase:'inside',mem,tSite:true,crawl:{i:ci,rd:1,gap:0,foes:[{hp:1},{hp:0}],end:null}};
   let st=dv.refreshDungeon();
-  ok(lis()[0].classList.contains('cleared')&&lis()[1].classList.contains('cleared')&&lis()[2].classList.contains('current')&&lis()[3].classList.contains('unexplored'),'dungeon view: cleared rooms, the room in progress and fog read from the crawl');
+  ok(lis().slice(0,ci).every(li=>li.classList.contains('cleared'))&&lis()[ci].classList.contains('current')&&lis()[ci+1].classList.contains('unexplored'),'dungeon view: cleared rooms, the room in progress and fog read from the crawl');
   ok(/round 2\/2/.test(st.status)&&/1 foe stands/.test(st.status)&&st.party.length===mem.length&&st.round==='ROUND 2/2','dungeon view: the round and the party ('+st.status+')');
-  ok(lis()[3].textContent.includes('?'),'dungeon view: a room not reached is not named');
+  ok(lis()[ci+1].textContent.includes('?'),'dungeon view: a room not reached is not named');
   CRYPT.group.crawl.end='retreat';CRYPT.group.crawl.driven=true;dv.trackCrawl();CRYPT.group=null;dv.trackCrawl();st=dv.refreshDungeon();
-  ok(/Last run/.test(st.status)&&/driven back from/.test(st.status)&&lis()[2].classList.contains('lost')&&!box().querySelector('.unexplored'),'dungeon view: with no crawl, the empty interior and how the last run ended ('+st.status+')');
+  ok(/Last run/.test(st.status)&&/driven back from/.test(st.status)&&lis()[ci].classList.contains('lost')&&!box().querySelector('.unexplored'),'dungeon view: with no crawl, the empty interior and how the last run ended ('+st.status+')');
   box().querySelector('.dgback').click();ok(box().hidden&&!dv.dungeonOpen()&&!$('screen').classList.contains('dgopen'),'dungeon view: Back to world closes it');
   const a=mem[0],was={state:a.state,hidden:a.hidden};a.state='dungeon';a.hidden=true;select(a);uiFast();const link=$('hero').querySelector('.dglink');
   ok(!!link,'dungeon view: the hero card of a hero inside has View inside');if(link){link.click();ok(dv.dungeonOpen(),'dungeon view: View inside opens it')}
@@ -910,13 +956,13 @@ console.log('start gate: ready, not just claimed');
   const mem=S.agents.filter(a=>a.kind==='hero'&&a.fellow&&a.state!=='dead').slice(0,5),m0=mem[0],box=()=>$('sceneview');
   const keepPos=mem.map(a=>[a.x,a.y,a.hidden]);
   // an ambush in the open: the terrain cut around the members and the foe
-  const wild=S.agents.find(a=>a.kind==='hero'&&!a.fellow&&a.state!=='dead'&&!CITY.some(c=>a.x>=c.x0-4&&a.x<=c.x1+5&&a.y>=c.y0-4&&a.y<=c.y1+5))||S.agents.find(a=>!a.fellow);
+  const seen=a=>a.kind==='hero'&&!a.fellow&&a.state!=='dead'&&!a.hidden&&a.alive!==false, wild=S.agents.find(a=>seen(a)&&!CITY.some(c=>a.x>=c.x0-4&&a.x<=c.x1+5&&a.y>=c.y0-4&&a.y<=c.y1+5))||S.agents.find(seen); // a foe the cut can see: not dead, not hidden inside the Crypt or a raid
   mem.forEach((a,k)=>{a.x=wild.x-2+k;a.y=wild.y+1;a.hidden=false});
   let sid=5000;const scene=(kind,title,ctx)=>({id:++sid,kind,title,frame:[title],ids:mem.map(a=>a.id),i:0,phase:'turn',t:0,acts:{},beats:[],ctx,pause:true,at:S.gameMin});
   S.table=scene('ambush','Ambush: '+wild.name,{foe:wild.id,anchor:m0.id});sv.sceneTick(FOL);
   const cut=sv.sceneCut();
   ok(sv.sceneOpen()&&sv.sceneMode()==='outdoor'&&!box().hidden&&box().classList.contains('scout')&&$('screen').classList.contains('scopen'),'scene maps: an ambush opens the terrain cut over the world');
-  ok(!!cut&&cut.foes.includes(wild)&&mem.every(a=>cut.members.includes(a))&&Math.abs(cut.cx-m0.x)<cut.w/2&&Math.abs(cut.cy-m0.y)<cut.h/2,'scene maps: the cut frames the members where they stand and the foe ('+(cut?Math.round(cut.w)+'x'+Math.round(cut.h)+' tiles':'none')+')');
+  ok(!!cut&&cut.foes.includes(wild)&&mem.every(a=>cut.members.includes(a))&&Math.abs(cut.cx-m0.x)<cut.w/2&&Math.abs(cut.cy-m0.y)<cut.h/2,'scene maps: the cut frames the members where they stand and the foe ('+(cut?Math.round(cut.w)+'x'+Math.round(cut.h)+' tiles':'none')+')'+(cut&&mem.every(a=>cut.members.includes(a))&&cut.foes.includes(wild)?'':' -- saw foe '+wild.name+' '+wild.state+' hidden='+wild.hidden+' alive='+wild.alive+' at '+Math.round(wild.x)+','+Math.round(wild.y)+', members in cut '+(cut?cut.members.length:0)+'/'+mem.length+', foes '+(cut?cut.foes.length:0)));
   ok([...box().querySelectorAll('li')].some(li=>li.textContent===wild.name)&&/AMBUSH/.test(box().querySelector('.dgname').textContent),'scene maps: the bar names the scene and who is in it');
   box().querySelector('.dgback').click();sv.sceneTick(FOL);
   ok(!sv.sceneOpen()&&box().hidden&&!$('screen').classList.contains('scopen'),'scene maps: Back to world closes it, and it stays closed for that scene');

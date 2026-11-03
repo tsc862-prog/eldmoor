@@ -34,6 +34,7 @@ import {maxHp} from './heroes.js';
 import {check,socialSkill} from './abilities.js';
 import {buildEncounter,spawnFoe} from './encounterbuilder.js';
 import {pull,spotErr} from './levers.js';
+import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
 import {fellows} from './fellowship.js';
 import {focus,nearMember} from './dmfocus.js';
 import {openProps,leaderOfF} from './council.js';
@@ -126,10 +127,10 @@ function spotNear(c,min,max,toward){const z0=zoneAt(c.x,c.y),R=q=>Math.round(q*1
   return null}
 // near: '' / 'fellowship' / 'party' (the leader, or whoever is out in the field), a member's name or id,
 // "x,y", a DM-placed place's name, or a region. Returns {hero?, at, label} or {err}.
-function whereOf(near){const s=clean(near,60),lo=s.toLowerCase();
+function whereOf(near){const nt=nearText(near);if(nt.err)return {err:nt.err};const s=clean(nt.s,60),lo=s.toLowerCase();
   if(!s||lo==='fellowship'||lo==='party'||lo==='the fellowship'){const F=field(),L=leaderOfF(),h=L&&F.includes(L)?L:F[0];
     if(!h)return {err:'the whole Fellowship is in town; stage it near a place on their road, or when they ride out'};return {hero:h}}
-  const m=/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/.exec(s);if(m){const at={x:Number(m[1]),y:Number(m[2])},e=spotErr(at);return e?{err:'that spot is '+e}:{at,label:'at '+m[1]+','+m[2]}}
+  const m=/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/.exec(s);if(m){const at={x:Number(m[1]),y:Number(m[2])},e=spotErr(at);return e?{err:'that spot is '+e+pointHint(s)}:{at,label:(nt.from?'off '+nt.from+' ':'')+'at '+m[1]+','+m[2]}}
   const h=fellows().find(a=>String(a.id)===s||a.name.toLowerCase()===lo);
   if(h){if(h.hidden||h.state==='town'||h.state==='dungeon')return {err:h.name+' is '+(h.state==='town'?'in town':'out of reach')+' right now'};return {hero:h}}
   if(S.agents.some(a=>a.name.toLowerCase()===lo||String(a.id)===s))return {err:'only the Fellowship meets staged scenes; '+s+' is not one of them'};
