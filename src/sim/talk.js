@@ -25,7 +25,7 @@
 //   conv {id, npc, name, heroes:[ids], lines:[{who:'member'|'npc', id, name, text, t}], ex, wait:{call, hero, line, gm, real, by}|null,
 //         offers:[{kind, ex, by, mark}], offerEx, state 'open'|'done', born, last, why}
 import {S,clockStr} from './state.js';
-import {ZONES,ZPTS,CITY,zoneAt,zoneFor,dist} from '../world/map.js';
+import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,zoneFor,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {USES,SLOTS} from '../data/items.js';
 import {ELITES} from '../data/mobs.js';
@@ -44,7 +44,7 @@ import {CAP as CHAT_CAP,BUBBLE,HEAR} from './chat.js';
 import {ensureNpcs} from './npcs.js';
 import {stageScene} from './staged.js';
 import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
-import {npcWarning} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
+import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
 
 // ---- knobs ----
@@ -57,6 +57,8 @@ export const CONV={
   VOICE_MS:8000,      // real ms the game waits for the DM's fast voice (its runner polled npc_call recently)
   VOICE_MIN:4000, VOICE_MAX:30000, // the range a voice may ask for with npc_call {budget_s} (a local model needs longer)
   TURN_MS:40000,      // real ms it waits when only a DM turn is running (a DM tool call recently, no voice)
+  GRACE_MS:12000,     // real ms the game waits for a live but busy DM (queued behind other calls) before the scripted answer (#540)
+  BUSY_MS:90000,      // real ms: a DM call this recent counts as a live runner even without the host's word
   POLL_MS:6000,       // real ms: a DM poll or call this recent counts as a DM listening
   WAIT_GM:720,        // game minutes a call may wait at most, whatever the clock (a paused tab, a stuck runner)
   TALK_R:6,           // tiles: a line naming a person reaches them from this far
@@ -121,9 +123,13 @@ let voiceAt=0,actAt=0,voiceMs=0;
 // is slower than Haiku), held to VOICE_MIN..VOICE_MAX.
 export function dmHeard(tool,args){actAt=Date.now();if(tool==='npc_call'){voiceAt=actAt;const b=Number(args&&args.budget_s);voiceMs=Number.isFinite(b)&&b>0?Math.max(CONV.VOICE_MIN,Math.min(CONV.VOICE_MAX,b*1000)):0}}
 const seatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
+// A live but busy DM (#540): its runner is alive (the host says so, setDmAlive) or it was heard within BUSY_MS, but it is not
+// polling right now (queued behind other calls): the game waits GRACE_MS before the scripted DM answers, like a queued member (#515).
+let aliveFn=null;export function setDmAlive(f){aliveFn=typeof f==='function'?f:null}
 function dmBudget(){if(!seatOn())return 0;const now=Date.now(),d=today();
   if(d.lines>=CONV.DM_LINES_PER_DAY)return 0;
-  if(now-voiceAt<CONV.POLL_MS)return voiceMs||CONV.VOICE_MS;if(now-actAt<CONV.POLL_MS)return CONV.TURN_MS;return 0}
+  if(now-voiceAt<CONV.POLL_MS)return voiceMs||CONV.VOICE_MS;if(now-actAt<CONV.POLL_MS)return CONV.TURN_MS;
+  if((aliveFn&&aliveFn())||(actAt&&now-actAt<CONV.BUSY_MS))return CONV.GRACE_MS;return 0}
 
 // ---- finding who a member speaks to ----
 const people=()=>{ensureNpcs();return [...(S.npcs||[]),...(S.wanderers||[])].filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))};
@@ -164,6 +170,7 @@ export function talkTo(a,p,text){const T=talkState(),d=today();
     T.cur.push(c);d.opened++;T.stats.opened++;const R=recordOf(p);R.talks++;R.last=Math.round(S.gameMin);
     log(['Conversation: ',a.name,' speaks to ',full(p),(p.town?' in '+p.town:' in '+(ZONES[zoneAt(p.x,p.y)]||'the wilds'))+'.'],{conv:c.id,npc:p.id,hero:a.id,open:true})}
   let read=null;if(!c.heroes.includes(a.id)){c.heroes.push(a.id);read=readPerson(c,p,a)}
+  const met=a.metNpc||(a.metNpc={});if(!met[p.id]){met[p.id]=gameDay()+1;c.fresh=true} // a first meeting may carry a warning (#540)
   const line=clean(text,CONV.LINE_MAX)||'(greets '+p.name+')';
   c.lines.push({who:'member',id:a.id,name:a.name,text:line,t:clockStr()});c.ex++;c.last=Math.round(S.gameMin);T.stats.lines++;
   p.face=a.x>p.x?1:-1;
@@ -219,7 +226,10 @@ function scripted(c,p,a){const T=talkState();T.stats.scripted++;if(c.wait&&c.wai
   let text,mark=null,hint=null;
   if(mood==='hostile'){text=fill(pick(TALK_LINES.threat),o);speakAs(p,c,text,'scripted');const r2=offer(c,p,'leave',{},'scripted');mark=r2.mark;c.wait=null;return {text,mark}}
   const first=c.ex<=1,last=c.ex>=CONV.EXCHANGES;
-  text=fill(pick(last?TALK_LINES.bye:first?TALK_LINES.open[mood]:TALK_LINES.reply[mood]),o);
+  const asked=[...c.lines].reverse().find(l=>l.who==='member'),ans=asked&&!last?townAnswer(p,a,asked.text):null;
+  if(ans){if(ans.fit)c.fit=true;text=ans.text;speakAs(p,c,text,'scripted');afterAnswer(c,p);
+    return {text,mark,hint:'Townsfolk answer from what is public: '+full(p)+' knows only what the town knows.'}}
+  text=fill(pick(last?TALK_LINES.bye:first?TALK_LINES.open[mood]:TALK_LINES.reply[mood]),o); // the greeting only on the first exchange
   speakAs(p,c,text,'scripted');
   if(first&&!last){const k=talkOf(p).offer;if(k&&k!=='none'){const r2=offer(c,p,k,{},'scripted',a);if(r2.ok){mark=r2.mark;hint=r2.hint}
     else if(k==='job'){const r3=offer(c,p,'rumour',{},'scripted',a);if(r3.ok){mark=r3.mark;hint=r3.hint}}}}
@@ -250,7 +260,7 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
       if(pt){const res=pull('mark_place',{kind:kindM,at:{x:pt.x,y:pt.y},hours:72},{by,reason:'a lead from '+full(p)+' in conversation'});
         if(res.ok){at=res.ret;where=res.ret.name+' in '+ZONES[z]+' ('+Math.round(pt.x)+','+Math.round(pt.y)+')';extra.place=res.ret.id}else where=ZONES[z]}
       else where=ZONES[z]}
-    if(!lead&&by==='scripted'){const L=lore(p,a);if(!L){speakAs(p,c,pick(TALK_LINES.rumourNone),by);return {ok:true,mark:null}}lead=L.text;where=L.where||where}
+    if(!lead&&by==='scripted'){const L=lore(p,a,!!(c.fit||c.fresh));if(!L){speakAs(p,c,pick(TALK_LINES.rumourNone),by);return {ok:true,mark:null}}lead=L.text;where=L.where||where}
     if(!lead)return no('a rumour needs about: the lead, written so the member can act on it');
     mark='[rumour]';hint='A lead from '+full(p)+': '+lead+(where?' (where: '+where+')':'');
     if(by==='scripted')speakAs(p,c,fill(pick(TALK_LINES.rumour),{lead}),by,mark);
@@ -305,7 +315,53 @@ function knows(p,a){const out=[],z=Number.isFinite(p.x)?zoneAt(p.x,p.y):null;
   if(z!=null&&z>=0)out.sort((x,y)=>(y.where===ZONES[z])-(x.where===ZONES[z]));
   out.sort((x,y)=>(y.warn?1:0)-(x.warn?1:0)); // a warning to a green blade comes first (#188)
   return out.slice(0,5)}
-function lore(p,a){const L=knows(p,a);return L.length?L[0].warn?L[0]:L[Math.floor(r()*L.length)]:null}
+// fit: a warning to a green blade comes only on a first meeting or when the question was about the danger (#540); else it is left out.
+function lore(p,a,fit=true){const L=knows(p,a).filter(x=>fit||!x.warn);return L.length?L[0].warn?L[0]:L[Math.floor(r()*L.length)]:null}
+
+// ---- the scripted answer reads the question (#540) ----
+// Public knowledge only: the placed people (S.npcs, wanderers) as the town sees them, the regions, towns, landmarks and
+// markers in the world, and the posted board. Never the DM's notes, a person's want, their record or a campaign secret.
+// Keyword matching, no model, no RNG. Returns {text, fit} or null when the line asks for nothing it can answer.
+const JOBQ=/\b(quests?|jobs?|work|bount(?:y|ies)|tasks?|board|adventures?|contracts?|hiring)\b/i,CRYPTQ=/\b(crypt|dungeon|tomb|catacombs?|stair|undercroft)\b/i;
+const DIRS=['east','south-east','south','south-west','west','north-west','north','north-east'];
+const dirTo=(f,t)=>DIRS[((Math.round(Math.atan2(t.y-f.y,t.x-f.x)/(Math.PI/4))%8)+8)%8];
+const wayTo=(p,t)=>{const d=Math.round(dist(p,t));return d<4?'close by':dirTo(p,t)+' of here, about '+d+' tiles'};
+const nearestOf=(p,z)=>{let b=null,bd=1e9;for(const q of ZPTS[z]||[]){const d=dist(p,q);if(d<bd){bd=d;b=q}}return b};
+const nmRe=n=>new RegExp('\\b'+String(n).toLowerCase().replace(/[^a-z0-9 ]/g,'.')+'\\b');
+const STOP=new Set(['i','the','a','an','crypt','gate','captain','inn','board','north','south','east','west','do','is','are','can','what','where','who','any','have','has','tell','know']);
+function townAnswer(p,a,text){const raw=String(text||''),t=raw.toLowerCase();if(t.length<3)return null;
+  const parts=[];let fit=false;const here=p.town||(homeOf(a)&&homeOf(a).name)||'town';
+  const hit=[];
+  for(const q of people()){if(q===p)continue;const first=String(q.name||'').split(' ')[0].toLowerCase();
+    if(nmRe(q.name).test(t)||(first.length>=4&&nmRe(first).test(t)))hit.push(q)}
+  for(const q of hit.slice(0,1)){const where=q.town?(q.town===p.town?wayTo(p,q):'in '+q.town+', '+wayTo(p,q)):'last seen around '+(ZONES[zoneAt(q.x,q.y)]||'the wilds');
+    parts.push(full(q)+'? '+where+'.')}
+  const pl=[];
+  ZONES.forEach((n,z)=>{if(nmRe(n).test(t))pl.push({name:n,z,at:nearestOf(p,z)})});
+  for(const c of CITY)if(c.name!==p.town&&nmRe(c.name).test(t))pl.push({name:c.name,at:{x:(c.x0+c.x1)/2,y:(c.y0+c.y1)/2}});
+  for(const l of LANDMARKS)if(!(CRYPT&&l.name===CRYPT.name)&&nmRe(l.name.replace(/^the /i,'')).test(t))pl.push({name:l.name,at:l,z:zoneAt(l.x,l.y)});
+  for(const m of S.places||[])if(m.name&&nmRe(m.name).test(t))pl.push({name:m.name,at:m,z:m.z});
+  for(const g of pl.slice(0,1)){learnPlace(a,g.name,'told');
+    parts.push(g.name+' lies '+(g.at?wayTo(p,g.at):'a way off')+(g.z!=null&&ZONES[g.z]&&g.name!==ZONES[g.z]?', in '+ZONES[g.z]:'')+(g.z!=null&&g.name===ZONES[g.z]?'; '+jobRumour(a,g.z):'')+'.')}
+  if(CRYPTQ.test(t)||(CRYPT&&nmRe(CRYPT.name.replace(/^the /i,'')).test(t))){fit=true;
+    const cw=p.role==='captain'?captainWarning(a):null;
+    parts.push(cw||((CRYPT?CRYPT.name:'The Crypt')+' lies '+(CRYPT?wayTo(p,CRYPT):'far off')+'. Tried blades go down together, or not at all.'));
+    if(CRYPT)learnPlace(a,CRYPT.name,'told')}
+  // a name nobody here knows: a capitalised run in the middle of the line
+  const known=new Set([a.name,p.name,...people().flatMap(q=>[q.name,String(q.name||'').split(' ')[0]]),...(S.agents||[]).map(b=>b.name),...ZONES,...CITY.map(c=>c.name),...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).flatMap(x=>String(x).split(' ')).map(x=>x.toLowerCase()));
+  if(!hit.length&&!pl.length&&!(CRYPTQ.test(t))){const runs=[];let cur=[];
+    for(const m of raw.matchAll(/[A-Za-z][A-Za-z'-]*/g)){const w=m[0],i=m.index,before=raw.slice(0,i).trimEnd(),start=!before||/[.!?]$/.test(before),lw=w.toLowerCase();
+      const cap=/^[A-Z]/.test(w)&&!known.has(lw)&&!STOP.has(lw)&&(!start||cur.length);
+      if(cap)cur.push(w);else{if(cur.length)runs.push(cur.join(' '));cur=[]}}
+    if(cur.length)runs.push(cur.join(' '));
+    const nm=runs[0];
+    if(nm)parts.push(p.role==='innkeeper'?'Never heard of '+nm+', and I hear most things. Ask at the gate.':'Never heard of '+nm+'. Try the inn, they hear everything.')}
+  if(JOBQ.test(t)){const mine=(S.adventures||[]).filter(h=>h.phase==='open'&&h.town===here&&(h.for==null||h.for===a.id));
+    for(const h of mine)learnJob(a,h);
+    const names=mine.slice(0,4).map(h=>{const T=ADVENTURES[h.tpl];return (T&&T.name||h.tpl)+(h.zone!=null&&ZONES[h.zone]?' ('+ZONES[h.zone]+')':'')});
+    parts.push(names.length?'On the '+here+' board: '+names.join('; ')+'. Ask at the gate.':'Nothing posted at '+here+' just now. The board fills every few hours.')}
+  return parts.length?{text:parts.join(' '),fit}:null}
+export const publicAnswer=townAnswer; // for the townsperson who answers a hero that is not in the Fellowship (sim/player.js talk)
 
 // ---- trade with a person (the buy and sell tools with npc) ----
 export function stockOf(p){return ROLE_STOCK[p.role]||DEFAULT_STOCK}

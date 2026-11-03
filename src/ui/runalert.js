@@ -7,7 +7,8 @@
 //  - a quiet note when you stop a runner yourself, and the drop to 1x at a Fellowship decision (TABLE.drop).
 import {S,dmSeatOn,TABLE,setRunnerLinks,setReflexAck,setRunnerMind} from '../sim/index.js';
 import {allRunners,userStopped,DONE_STATE} from './runners.js';
-import {agentLink,agentRunner} from './player-bridge.js';
+import {agentLink,agentRunner,dmLink} from './player-bridge.js';
+import {setDmAlive} from '../sim/talk.js'; // a live but busy DM gets a grace before the scripted townsfolk answer (#540)
 import {ctl} from './controls.js';
 import {alertCue} from './table.js';
 import {runFree,onGateClose} from './rungate.js';
@@ -47,6 +48,7 @@ export function checkRunAlerts(){
 
 export function initRunAlert(){
   setRunnerLinks(a=>agentLink(a));                       // the relay's claims: connected / waiting = a runner holds the hero
+  setDmAlive(()=>{const l=dmLink();return l==='connected'||l==='waiting'});
   setRunnerMind(a=>agentRunner(a));                      // relay writing kinds follow the hero's runner mind (#478)
   setReflexAck(()=>runFree());                           // reflexes for a runner-less member only in Developer "Run without agents"
   onGateClose(()=>{if(on)alertCue()});

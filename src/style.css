@@ -791,8 +791,10 @@ button.tbtn.danger{border-color:var(--red)}
 /* Scene map polish (#536): with an indoor scene map open the Table banner docks beside the map (a column on the right; below
    the map on a phone), scrolls on its own, and the room fills the rest (render/sceneview.js roomBox). --scbar is the bar's height. */
 .scwho[hidden]{display:none!important}
-.screen.scin .tbanner{left:auto;right:8px;top:8px;bottom:var(--scbar,52px);width:min(380px,40%);max-width:none;margin:0;overflow-y:auto;overscroll-behavior:contain;pointer-events:auto;z-index:3}
-@media (max-width:700px){.screen.scin .tbanner{left:6px;right:6px;width:auto;top:auto;max-height:44%}}
+/* #546: outdoors too, while the scene map is open the banner docks beside the map instead of covering the world (the cut
+   fills the room left of it, render/sceneview.js banInset); another company's one-line live banner (.tlive) still floats */
+.screen.scopen .tbanner:not(.tlive){left:auto;right:8px;top:8px;bottom:var(--scbar,52px);width:min(380px,40%);max-width:none;margin:0;overflow-y:auto;overscroll-behavior:contain;pointer-events:auto;z-index:3}
+@media (max-width:700px){.screen.scopen .tbanner:not(.tlive){left:6px;right:6px;width:auto;top:auto;max-height:44%}}
 .tbanner .tnarrs{list-style:none;margin:3px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
 .tbanner .tnarrs .tnarr{margin-top:0}
 .tbanner .tnarrs .tnarr.old{color:#b8ac90;opacity:.85}
@@ -839,3 +841,46 @@ button.tbtn.danger{border-color:var(--red)}
   .hero .doing .purp{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
   .hero .doing .purp.open{white-space:normal;overflow:visible}
 }
+
+/* ---- The dock (#546): the owner watches at 3440x1440. From 2560 CSS px with a company the map column takes about 70%
+   (frames, map, bar; the map fills the height) and the side column is one dock with four tabs (src/ui/layout.js). The
+   interface steps up with --uiz (zoom on the frames, bars, header, banner and columns; never on the map canvas). ---- */
+:root{--uiz:1}
+.docktabs{display:flex;gap:4px;flex:none;border-bottom:2px solid var(--edge);padding-bottom:6px}
+.docktabs[hidden]{display:none}
+.docktabs button{flex:1 1 0;min-width:0;font-size:10px;padding:9px 6px;box-shadow:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#side>section.doff{display:none!important}
+.setrow:not(:has(>button)){display:none}
+.fullsheet{grid-column:1/-1;justify-self:start;margin-top:4px}
+/* the chat's one row (#546): channel chips, the DM agent toggle, Taller and the column switch */
+.chatrow{align-items:center}
+.chatchips{display:flex;flex-wrap:wrap;gap:4px}
+.chatchips[hidden],.chatrow>button[hidden]{display:none}
+.chatrow .chatdmbtn{margin-left:8px}
+/* the round pace (#546): a small label says whose pace it is */
+.tbanner .tsth{font-family:var(--px);font-size:6px;color:#8a90a8;letter-spacing:.06em;align-self:center}
+@media (min-width:2560px){
+  :root{--uiz:1.2}
+  header,.frames,.bar,#side,#colL,#colM>.panel,.sheetov>*,.tbanner{zoom:var(--uiz)}
+  .main.dock{flex:1;min-height:0;grid-template-columns:minmax(0,7fr) minmax(0,3fr);align-items:stretch}
+  .main.dock>.col{min-height:0;overflow:hidden}
+  .main.dock>#colM{display:flex;flex-direction:column}
+  .main.dock .screen{flex:1 1 auto;height:auto;min-height:420px;aspect-ratio:auto}
+  .main.dock>#side{display:flex;flex-direction:column;gap:10px}
+  .main.dock>#side>section{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+  .main.dock>#side>#worldgrp,.main.dock>#side>#mindsSec{flex:0 1 auto;max-height:50%}
+  /* the tab names the section: no second title */
+  body.docked #heroSec>h2,body.docked #chatSec .chatbox>summary{display:none}
+  body.docked #chatSec .chatbox .chatlist,body.docked #chatSec .chatdm{height:calc((100vh - 230px) / var(--uiz) - 15px);max-height:none}
+  body.docked #chatTall,body.docked #chatSide{display:none}
+  /* the dossier's tabs on one row: the groups, then the open group's tabs */
+  body.docked .hero .tabs{flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 8px}
+  body.docked .hero .tsub{border-left:2px solid var(--edge);padding-left:8px}
+  body.docked .tb .log{max-height:none}
+  /* the docked Table banner: wide enough for the initiative chips on one row */
+  .screen.scopen .tbanner:not(.tlive){width:min(calc(980px / var(--uiz)),34%);bottom:calc(var(--scbar,52px) / var(--uiz))}
+  .screen.scopen .tbanner .tcinit{flex-wrap:nowrap}
+  .screen.scopen .tbanner .tci{flex:0 1 auto;min-width:0}
+  .screen.scopen .tbanner .tcn{min-width:0}
+}
+@media (min-width:3200px){:root{--uiz:1.35}}

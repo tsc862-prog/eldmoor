@@ -8,6 +8,9 @@
 //             time idle; the share of game time each mind ran them (agent order, autopilot, relay mind,
 //             scripted); Table scenes opened and resolved; DM lever pulls and refusals, DM log entries by kind;
 //             dmFocus: DM actions (board posts, applied levers, staged scenes) this hour and how many touched the Fellowship, with the share (issue #165);
+//             dmShare (issue #541): per kind of DM call, answered by the DM agent, answered late, filled by the scripted DM
+//             (talk, table voice, slot; levers, board, branches, staged and voice are counted for context), and the DM seat's
+//             minutes this hour as closed, no runner, live, waiting;
 //             deaths and their causes; chat lines heard by those heroes, counted by channel; votes by agent
 //             and by reflex; Mind decisions by outcome.
 //   anomaly   idle in one place over BW.IDLE_MIN outside camp; the same state with no progress over
@@ -16,6 +19,8 @@
 //             pulled near a hurt member; an agent-played Fellowship member who wrote no memory for BW.NO_NOTES_MIN
 //             (issue #179; the digest counts memories written per member, by name); scene-missed: a live member's
 //             Table turn resolved by reflex after the wait (issue #515; the digest counts missed and queued waits).
+//             dm-scripted (issue #541): the DM agent answered under BW.DM_SHARE of the answerable calls (talk, table voice, slot)
+//             over BW.DM_WIN game minutes while the seat stayed held by a runner.
 //   decision  each hero's Mind entry (sim/brain.js) once it settles: kind, provider, model, options,
 //             choice, outcome (applied, late, rejected, offline, superseded, overruled), latency, error.
 // Read only: it never writes S or a hero, rolls no random number and is not part of step(), so a world
@@ -42,6 +47,9 @@ export const BW={
   NEAR:14,           // ... and a danger lever within this many tiles or in its region piles on -> lever-near-hurt
   DANGER:['mark_dangerous','named_foe','custom_foe','set_condition'],
   NO_IDLE:['camp','dead','ghost'],
+  DM_SHARE:.5,       // the DM agent's share of answerable calls below this over DM_WIN while its seat is held -> dm-scripted (#541)
+  DM_WIN:120,        // game minutes of that window
+  DM_MIN_CALLS:4,    // ... and at least this many answerable calls in it
   NO_NOTES_MIN:2*1440, // game minutes an agent-played Fellowship member goes without writing a memory -> no-memories (#179)
 };
 
@@ -56,16 +64,21 @@ const channelOf=e=>e.party?'party':e.from&&e.from.kind==='dm'?'dm':e.from&&e.fro
 function seats(){const out=new Map();for(const m of fellowshipMembers())if(m.hero&&m.hero.state!=='dead')out.set(m.hero.id,m.hero);
   for(const a of playerSeats())if(a.state!=='dead')out.set(a.id,a);return [...out.values()]}
 
-export function makeWatch(){
-  let base=false,lastGm=0,hour=0,dmSeen=0,scene=null,sceneRun=0,voteRun=0,refusals=[],pulls=[];
+// The DM's answerable calls, read from counters the game already keeps (S.talks.stats, S.staged.stats, S.dmStats): never written here.
+const dmCounts=()=>{const t=(S.talks&&S.talks.stats)||{},g=S.staged&&S.staged.stats||{},d=S.dmStats||{};
+  return {talk:[t.dm||0,t.late||0,t.scripted||0],table:[g.answered||0,g.late||0,g.filled||0],slot:[0,0,d.fallback||0]}};
+const DM_KINDS=['talk','table','slot','levers','board','branch','staged','voice'];
+export function makeWatch(opts={}){
+  const dmLinkFn=typeof opts.dmLink==='function'?opts.dmLink:null;
+  let dmC=null,dmWin=[],dmHeld=null,dmAnom=-1e9,base=false,lastGm=0,hour=0,dmSeen=0,scene=null,sceneRun=0,voteRun=0,refusals=[],pulls=[];
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
-    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{}});
+    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{}});
   const tStats=()=>{const F=S.fellowship,t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
   function baseline(){base=true;lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
-    T.clear();seenProps.clear();emitted.clear();H=fresh();tLast=tStats();
+    T.clear();seenProps.clear();emitted.clear();H=fresh();tLast=tStats();dmC=dmCounts();dmWin=[];dmHeld=null;
     seq0.clear();for(const a of seats())seq0.set(a.id,a.memories?a.memories.seq||0:0); // notes written before a seat is first tracked still count (#179)
     for(const e of S.fallen||[])seenFallen.add(e);
     for(const a of seats())for(const e of a.chat||[])seenChat.add(e);
@@ -92,10 +105,27 @@ export function makeWatch(){
     if(seq>t.nseq){H.memories[a.name]=(H.memories[a.name]||0)+(seq-t.nseq);t.nseq=seq;t.noteAt=now}
     if(!a.player){t.noteAt=now;return}
     if(a.fellow&&now-t.noteAt>=BW.NO_NOTES_MIN){anomaly(out,'no-memories',a,a.name+' has written no memory for '+Math.round((now-t.noteAt)/1440*10)/10+' game days',{minutes:Math.round(now-t.noteAt),notes:a.memories?a.memories.notes.length:0,reflections:a.reflect?a.reflect.log.length:0,mind:mindOf(a)});t.noteAt=now}}
+  // The log entries that tell who answered (issue #541): levers and posted hooks by caller, scripted board posts and branches,
+  // staged scenes and the DM agent's voice.
+  function shareOf(e){const K=H.dmShare.kinds,d=e.detail||{},ag=d.by==='dm-agent';
+    if(e.kind==='lever'){if(d.result==='applied'){K[/hook/.test(String(d.lever))&&ag?'board':'levers'][ag?'agent':'scripted']++}}
+    else if(e.kind==='hooks'){if(d.added&&d.added.length)K.board.scripted++}
+    else if(e.kind==='branch')K.branch.scripted++;
+    else if(e.kind==='agent'){if(d.voice)K.voice.agent++;else if(d.staged!=null&&!d.call&&!d.result)K.staged.agent++}}
+  function dmSeat(out,dt){const on=!!(S.dmAgent&&S.dmAgent.seat),link=on&&dmLinkFn?String(dmLinkFn()||'none'):null;
+    const st=!on?'closed':!dmLinkFn?'unknown':link==='connected'?'live':link==='waiting'?'waiting':'norunner';H.dmShare.seat[st]+=dt;
+    const held=st==='live'||st==='waiting';if(!held){dmHeld=null;dmWin=[]}else if(dmHeld==null)dmHeld=S.gameMin;
+    const c=dmCounts(),K=H.dmShare.kinds;let ag=0,sc=0;
+    for(const k of ['talk','table','slot']){const p=dmC[k],n=c[k],da=Math.max(0,n[0]-p[0]),dl=Math.max(0,n[1]-p[1]),ds=Math.max(0,n[2]-p[2]);K[k].agent+=da;K[k].late+=dl;K[k].scripted+=ds;ag+=da;sc+=ds}
+    dmC=c;if(!held)return;if(ag||sc)dmWin.push({t:S.gameMin,ag,sc});
+    dmWin=dmWin.filter(w=>S.gameMin-w.t<=BW.DM_WIN);
+    const A=dmWin.reduce((t,w)=>t+w.ag,0),B=dmWin.reduce((t,w)=>t+w.sc,0),N=A+B;
+    if(S.gameMin-dmHeld>=BW.DM_WIN&&N>=BW.DM_MIN_CALLS&&A/N<BW.DM_SHARE&&S.gameMin-dmAnom>=BW.DM_WIN){dmAnom=S.gameMin;
+      anomaly(out,'dm-scripted',null,'The DM agent answered '+A+' of '+N+' answerable calls ('+Math.round(100*A/N)+'%) over '+BW.DM_WIN/60+' game hours while its seat was held: the scripted DM filled '+B,{agent:A,scripted:B,share:Math.round(100*A/N)/100,windowMin:BW.DM_WIN,seat:st})}}
   function dmLog(out){const L=S.dmLog||[],seq=S.dmLogSeq||0;if(seq<=dmSeen)return;
     const fresh_=L.filter(e=>e.id>dmSeen).reverse();dmSeen=seq;const now=S.gameMin;
     const fo=focus();
-    for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;if(fo&&countable(e)){H.dmFocus.acts++;if(touches(e,fo))H.dmFocus.fellow++}if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');
+    for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;shareOf(e);if(fo&&countable(e)){H.dmFocus.acts++;if(touches(e,fo))H.dmFocus.fellow++}if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');
       const ok=d.result==='applied';H.levers[ok?'pulled':'refused']++;const b=H.levers.by[by]||(H.levers.by[by]={pulled:0,refused:0});b[ok?'pulled':'refused']++;
       pulls.push(now);if(!ok)refusals.push(now);
       if(ok&&BW.DANGER.includes(d.lever)){const P=d.params||{},at=Number.isFinite(+P.x)&&Number.isFinite(+P.y)?{x:+P.x,y:+P.y}:null;
@@ -136,14 +166,14 @@ export function makeWatch(){
     out.push({kind:'world',rec:{gameMin:Math.round(S.gameMin),clock:day(),minutes:BW.DIGEST_MIN,
       fellowship:F?{name:F.name,minds:mindsOf(F)}:null,
       members:seats().map(a=>{const t=T.get(a.id);return {id:a.id,name:a.name,role:a.fellowRole||null,fellow:!!a.fellow,agent:!!a.player,mind:mindOf(a),state:a.state,doing:a.playDoing||null,place:place(a),hp:pct(a),lvl:a.lvl,idleMin:t?Math.round(S.gameMin-t.since):0}}),
-      ...H,dmFocus:{...H.dmFocus,share:H.dmFocus.acts?Math.round(100*H.dmFocus.fellow/H.dmFocus.acts)/100:null},table:{...H.table,open:!!S.table}}});H=fresh()}
+      ...H,dmShare:{...H.dmShare,agentShare:(()=>{const K=H.dmShare.kinds;let a=0,b=0;for(const k of ['talk','table','slot']){a+=K[k].agent;b+=K[k].scripted}return a+b?Math.round(100*a/(a+b))/100:null})()},dmFocus:{...H.dmFocus,share:H.dmFocus.acts?Math.round(100*H.dmFocus.fellow/H.dmFocus.acts)/100:null},table:{...H.table,open:!!S.table}}});H=fresh()}
 
   return {
     tick(){const out=[];
       if(!base||S.gameMin<lastGm||(S.dmLogSeq||0)<dmSeen){baseline();return out}
       const dt=S.gameMin-lastGm;lastGm=S.gameMin;
       // a paused world (a Table scene at 1x) keeps its clock: scenes, votes and levers are still read
-      if(dt>0){for(const a of seats())track(out,a,dt);for(const id of [...T.keys()]){const a=byId(id);if(!a||a.state==='dead')T.delete(id)}}
+      if(dt>0){dmSeat(out,dt);for(const a of seats())track(out,a,dt);for(const id of [...T.keys()]){const a=byId(id);if(!a||a.state==='dead')T.delete(id)}}
       dmLog(out);table(out);votes(out);decisions(out);heard();deaths();
       const h=Math.floor(S.gameMin/BW.DIGEST_MIN);if(h>hour){hour=h;digest(out)}
       return out},

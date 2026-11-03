@@ -7,11 +7,12 @@
 //   followedMembers()  companyCols(followedCompany())
 //   frameGroups()      the frame rows in display order: the followed company first, then every company of two or more
 //                      in id order, then one "Alone" row for every solo (first when the followed company is a solo)
+//   storyLead(C)       the hero who leads its story (the dossier opens on it, #546)
 //   followNext()       the follow cycle: the next company after the followed one (wraps); returns it
 // The default together world has one company, so it reads exactly as before: one row, the five places.
 import {S} from '../sim/index.js';
-import {companies,followed,members,roleOf,isSolo,PARTY} from '../sim/company.js';
-import {fellowshipMembers} from '../sim/fellowship.js';
+import {companies,followed,members,roleOf,isSolo,leaderOf,PARTY} from '../sim/company.js';
+import {fellowshipMembers,fellowParty} from '../sim/fellowship.js';
 
 export const ROLE_LABEL={tank:'Tank',healer:'Healer',dps:'DPS'};
 export const MAX_HEROES=PARTY.MAX;
@@ -38,4 +39,9 @@ export function frameGroups(){const all=companies();if(!all.length)return [];con
   return out}
 export function followNext(){const all=companies();if(!all.length)return null;const F=followedCompany(),i=all.indexOf(F);
   const N=all[(i+1)%all.length];S.followId=N.id;return N}
+// The hero who leads a company's story (#546: the dossier's default): the Fellowship's walking leader, else the company's
+// agent leader, else its first living member.
+export function storyLead(C){if(!C)return null;const live=a=>a&&a.state!=='dead';
+  if(C.slots&&S.fellowship===C){const P=fellowParty();if(P&&live(P.leader)&&C.ids.includes(P.leader.id))return P.leader}
+  const L=leaderOf(C);if(live(L))return L;return members(C).find(live)||null}
 export function followCompany(C){if(C&&companies().includes(C))S.followId=C.id;return followedCompany()}
