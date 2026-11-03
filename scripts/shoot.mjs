@@ -26,10 +26,13 @@ const notes = [], shots = [];
 
 async function session(w, h) {
   const port = 9333 + Math.floor(Math.random() * 500), prof = join(OUT, `prof-${port}`);
-  const proc = spawn(BIN, ['--headless=new', '--disable-gpu', '--hide-scrollbars', ...(process.env.CHROME_NO_SANDBOX ? ['--no-sandbox'] : []), `--window-size=${w},${h}`,
-    `--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, 'about:blank'], {stdio: 'ignore'});
-  const json = async p => { for (let i = 0; i < 60; i++) { try { return await (await fetch(`http://127.0.0.1:${port}${p}`)).json(); } catch { await sleep(250); } } throw new Error('no devtools on ' + port); };
-  const page = (await json('/json')).find(t => t.type === 'page');
+  const flags = ['--hide-scrollbars', '--disable-gpu', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check', '--disable-extensions',
+    ...(process.env.CHROME_NO_SANDBOX ? ['--no-sandbox'] : []), `--window-size=${w},${h}`, `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1', `--user-data-dir=${prof}`];
+  let err = '', proc = null;
+  const launch = mode => { err = ''; proc = spawn(BIN, [mode, ...flags, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe']}); proc.stderr.on('data', d => { err = (err + d).slice(-2000); }); };
+  const json = async p => { for (let i = 0; i < 160; i++) { if (proc.exitCode !== null) break; try { return await (await fetch(`http://127.0.0.1:${port}${p}`)).json(); } catch { await sleep(250); } } throw new Error(`no devtools on ${port} (${BIN}, exit ${proc.exitCode}): ${err.trim().slice(-600)}`); };
+  launch('--headless=new');
+  let page; try { page = (await json('/json')).find(t => t.type === 'page'); } catch (e) { console.error(e.message + ' - retrying with --headless'); try { proc.kill(); } catch {} await sleep(500); launch('--headless'); page = (await json('/json')).find(t => t.type === 'page'); }
   const ws = new WebSocket(page.webSocketDebuggerUrl, {perMessageDeflate: false});
   await new Promise((r, j) => { ws.on('open', r); ws.on('error', j); });
   let id = 0; const pending = new Map();
