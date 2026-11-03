@@ -13,6 +13,7 @@ const P = await import('../src/sim/player.js');
 const R = await import('../src/sim/ruling.js');
 const T = await import('../src/sim/table.js');
 const F_ = await import('../src/sim/fellowship.js');
+const CO = await import('../src/sim/company.js');
 const {LANDMARKS, dist} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
 
@@ -112,7 +113,7 @@ step(1 / 60); ok(!S.rulings.cur.some(x => x.id === r.call), 'the seat closing fi
 
 console.log('an attempt in a Table scene');
 setDmSeat(true); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; fresh(A); fresh(B);
-const sc = T.openScene('check', 'The rope bridge', ['A rope bridge sways over the gorge.'], {}, S.fellowship);
+const sc = T.openScene('check', 'The rope bridge', ['A rope bridge sways over the gorge.'], {}, CO.companyOf(A));
 ok(sc && sc.ids.includes(A.id), 'a check scene is open');
 const tv = P.playerAct(A.id, 'look', {}); ok(at(T.tableView(A).options, 'attempt ='), 'the member\'s options include attempt');
 ok(/scene_act/.test(act(A, 'attempt', {what: 'I test the ropes.'}).error), 'the attempt tool points to scene_act inside a scene');
@@ -134,7 +135,7 @@ ok((A.chat || []).some(e => e.ruling && /third plank/.test(e.text)), 'the table 
 ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.by === 'dm-agent' && e.detail.pass), 'logged with the DM AGENT tag');
 // the same at 8x: no wait, the scripted ruling
 T.TABLE.speed = 8; fresh(A);
-const sc2 = T.openScene('check', 'The ford', ['A cold ford.'], {}, S.fellowship);
+const sc2 = T.openScene('check', 'The ford', ['A cold ford.'], {}, CO.companyOf(A));
 if (sc2) {act(A, 'scene_act', {option: 'attempt', line: 'I wade across with a pole to feel the bottom.'}); for (const x of M) if (x !== A && !sc2.acts[x.id]) act(x, 'scene_act', {option: 'steady'});
   k = 0; while ((S.table === sc2) && k++ < 600) step(1 / 60);
   const b2 = sc2.beats.find(b => b.k === 'attempt'); ok(b2 && /(success|failure)/.test(b2.res), 'at 8x the scripted ruling plays it at once: ' + (b2 && b2.res))}

@@ -14,7 +14,7 @@
 // sections show (class doff on the others: their own modules set hidden); the tab is remembered per viewer
 // (eldmoor.dock). showDock(t) opens a tab (a click on a hero opens Hero).
 import {S} from '../sim/index.js';
-import {companies} from '../sim/company.js';
+import {companies,slotted} from '../sim/company.js';
 import {syncDevBtn} from './mindctl.js';
 import {mountConditions,renderConditions} from './conditions.js'; // region conditions, a world panel (#366)
 
@@ -26,7 +26,7 @@ let mode=null;
 export const WIDE3=2200,DOCK=2560;
 let cols=0; // 0 not placed yet, 1, 2, 3 or 'dock'
 export const columnCount=()=>{const w=window.innerWidth||0;return w>=WIDE3?3:w>920?2:1};
-const hasCompany=()=>!!S.fellowship||companies().length>0;
+const hasCompany=()=>!!slotted()||companies().length>0;
 export const dockWanted=()=>(window.innerWidth||0)>=DOCK&&hasCompany();
 export const docked=()=>cols==='dock';
 // Chat: left column (default) or under the map on the wide layout; remembered, never fatal.
@@ -86,7 +86,7 @@ function undock(){const side=$('side'),colM=$('colM'),main=side.parentNode;cols=
   moveKeep($('chatSec'),colM);colM.append($('heroSec'));
   const all=[...side.querySelectorAll(':scope > section[data-o]')].sort((x,y)=>+x.dataset.o - +y.dataset.o);for(const s of all)side.append(s);side.append($('worldgrp'))}
 
-function placeColumns(){const want=dockWanted()?'dock':(S.fellowship&&columnCount()===3)?3:(columnCount()===1?1:2);if(want===cols){placeChat();syncDock();return}
+function placeColumns(){const want=dockWanted()?'dock':(slotted()&&columnCount()===3)?3:(columnCount()===1?1:2);if(want===cols){placeChat();syncDock();return}
   const side=$('side'),colL=$('colL'),main=side&&side.parentNode;if(!side||!colL||!main||!$('colM'))return;
   restoreColumns();
   if(want==='dock'){dock();placeChat();return}
@@ -94,7 +94,7 @@ function placeColumns(){const want=dockWanted()?'dock':(S.fellowship&&columnCoun
   if(want===3){colL.append($('storySec'));colL.append($('worldgrp'));side.append($('heroSec'))}
   placeChat()}
 let rs=0;if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('resize',()=>{clearTimeout(rs);rs=setTimeout(placeColumns,100)});
-export function applyLayout(){mountConditions();renderConditions();const fel=!!S.fellowship;if(fel!==mode)restoreColumns();
+export function applyLayout(){mountConditions();renderConditions();const fel=!!slotted();if(fel!==mode)restoreColumns();
   if(fel===mode){placeColumns();return}mode=fel;
   const side=$('side'),grp=$('worldgrp'),wb=$('worldbody');if(!side||!grp||!wb)return;
   document.body.classList.toggle('fellow-mode',fel);

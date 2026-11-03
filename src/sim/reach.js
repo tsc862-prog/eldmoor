@@ -4,14 +4,14 @@
 //   shout range  the party channel carries SHOUT tiles (about 12), less in fog and storms (weather.js sightMul).
 //                Same town or camp changes nothing: only distance does. `say` stays at earshot (chat.js HEAR, 7).
 //   plans        a meeting plan (a place and a game time) made when the party splits, recorded for those who were
-//                there as an open thread (fellowship.js openThreads) and a notebook memory (#155).
+//                there as an open thread (company.js openThreads) and a notebook memory (#155).
 //   couriers     the one way to reach someone out of range: a paid courier hired at a town gate who takes game
 //                hours to arrive (D&D style: slow, costs gold, arrives as an in-game event and a chat line).
 // Plain data, saved with the world on each company: C.plans [{id,where,at,atText,made,by,byName,who,whoNames,status}], C.post [{id,from,to,text,sent,due,cost}].
 import {S,clockStr,dayNo} from './state.js';
 import {dist,zoneAt,ZONES,CITY} from '../world/map.js';
 import {sightMul} from './weather.js';
-import {companyOf,companies,members,mates,campaign,setWitness} from './company.js';
+import {companyOf,companies,members,mates,campaign,setWitness,slotted} from './company.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {addHeroNote} from './notebook.js';
@@ -31,7 +31,7 @@ export const inRange=(a,b)=>!!(a&&b&&living(a)&&living(b)&&!a.hidden&&!b.hidden&
 // The companions of a (its company) out of range of a (for status and lead_to).
 export const outOfRange=a=>mates(a).filter(b=>!inRange(a,b));
 // Every living member within range of the leader (or of the first member): the Crypt and raid need all of them.
-export function together(L,lead){L=L||members(S.fellowship);if(!L.length)return false;const h=lead&&L.includes(lead)?lead:L[0];return L.every(b=>b===h||inRange(h,b))}
+export function together(L,lead){L=L||members(slotted());if(!L.length)return false;const h=lead&&L.includes(lead)?lead:L[0];return L.every(b=>b===h||inRange(h,b))}
 export const nameList=L=>L.length<3?L.map(b=>b.name).join(' and '):L.slice(0,-1).map(b=>b.name).join(', ')+' and '+L[L.length-1].name;
 
 // ---- meeting plans ----
@@ -49,7 +49,7 @@ export function makePlan(a,where,hours){const F=companyOf(a);if(!F)return {error
     if(b!==a)notify(b,a.name+' sets a meeting: '+w+' at '+atText+'. Be there.',true)}
   campaign(F,'council',a,' sets a meeting for '+word(F)+': '+w+' at '+atText+' ('+here.map(b=>b.name).join(', ')+' know).');
   return P}
-export const openPlans=C=>{if(C===undefined)C=S.fellowship;return ((C&&C.plans)||[]).filter(p=>p.status==='open')};
+export const openPlans=C=>{if(C===undefined)C=slotted();return ((C&&C.plans)||[]).filter(p=>p.status==='open')};
 
 // ---- couriers ----
 export const courierCost=d=>REACH.FEE_BASE+Math.ceil(d/REACH.FEE_TILE);
@@ -79,7 +79,7 @@ export function sendCourier(a,to,text){const F=companyOf(a);if(!F)return {error:
 // game (#123); if nobody speaks to them within TOLD_WAIT minutes their turn header says they have not been told.
 export const AWAY={MIN:120,TOLD_WAIT:30,TTL:720,KINDS:['council','scene','npc','death','outcome','recruit','complication','leave']};
 export function witness(kind,label,C){if(!AWAY.KINDS.includes(kind))return;
-  for(const b of members(C===undefined?S.fellowship:C))if(b.apartSince!=null){const M=b.missed||(b.missed=[]);if(M.length&&M[M.length-1].l===label)continue;M.push({k:kind,l:label});if(M.length>12)M.shift()}}
+  for(const b of members(C===undefined?slotted():C))if(b.apartSince!=null){const M=b.missed||(b.missed=[]);if(M.length&&M[M.length-1].l===label)continue;M.push({k:kind,l:label});if(M.length>12)M.shift()}}
 setWitness(witness);
 // Anyone in the company who speaks to a returner has told them something.
 export function toldBy(speaker,hearers){for(const b of hearers)if(b!==speaker&&b.catchUp&&!b.catchUp.told)b.catchUp.told=true}

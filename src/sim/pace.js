@@ -39,6 +39,7 @@ import {offersBrief,companyCard} from './offers.js'; // offers open to the hero 
 import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
 import {leaderFor} from './council.js';
 import {worldHeld} from './prep.js'; // the world held before play (#559)
+import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -93,8 +94,8 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
 // a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting
 // says (id, title, giver, reward), never who posted it behind the scenes (in-game channels, #123). Reads only; at most
 // PACE.HALL, the hall's own Fellowship jobs first. {} when the hero is no member, is not in town, or nothing is posted.
-function hallBrief(a){if(!a.fellow||a.state!=='town'||!S.fellowship)return {};const f=focus();if(!f)return {};
-  const town=homeOf(a);if(!town||town.name!==S.fellowship.hall)return {};
+function hallBrief(a){if(!inSlots(a)||a.state!=='town'||!slotted())return {};const f=focus();if(!f)return {};
+  const town=homeOf(a);if(!town||town.name!==slotted().hall)return {};
   const L=hallHooks(town.name,f); // one selection with the watcher's Fellowship panel (#334)
   if(!L.length)return {};
   return {hall:L.slice(0,PACE.HALL).map(h=>{const o={id:'job:'+h.id,title:hallTitle(h)};if(h.giver&&h.giver.name)o.giver=h.giver.name;const r=hallPay(a,h);if(r)o.reward=r;return o})}}

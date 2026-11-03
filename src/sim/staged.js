@@ -35,15 +35,15 @@ import {check,socialSkill} from './abilities.js';
 import {buildEncounter,spawnFoe} from './encounterbuilder.js';
 import {pull,spotErr} from './levers.js';
 import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
-import {fellows} from './fellowship.js';
 import {focus,focuses,nearMember} from './dmfocus.js';
-import {companies,companyOf,companyById,members as coMembers} from './company.js'; // staging per company (#451)
+import {companies,companyOf,companyById,members as coMembers,slotHeroes,slotKeyOf,slotted} from './company.js'; // staging per company (#451)
 import {openProps,leaderOfF} from './council.js';
 import {leaderOf as companyLead} from './company.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {TABLE,openScene,tableOn,setSceneKind,setStageHooks} from './table.js';
+import {setProps} from './props.js';
 import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
 import {heard,tableLive,fillWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {talkFromScene} from './talk.js'; // NPC conversations (#170)
@@ -108,24 +108,24 @@ const dayCo=(cid)=>{const d=today();return ((d.c||{})[cid])||0};
 const today=()=>{const G=stagedState();if(G.day.d!==gameDay())G.day={d:gameDay(),n:0,nw:0};return G.day};
 const recById=id=>{const G=S.staged;return G&&G.cur&&G.cur.id===id?G.cur:null};
 const recOf=sc=>sc&&sc.ctx&&sc.ctx.staged!=null?recById(sc.ctx.staged):null;
-const field=()=>fellows().filter(a=>!a.hidden&&a.state!=='town');
+const field=()=>slotHeroes(slotted()).filter(a=>!a.hidden&&a.state!=='town');
 // Companies (#451): a scene is staged for one company (rec.company; absent = the Fellowship). Its members, its party level.
-const fiveCo=C=>!C||C===S.fellowship||!!C.slots;
-const memOfCo=C=>fiveCo(C)?fellows():coMembers(C).filter(a=>a.kind==='hero');
-const everyone=()=>{const out=fellows().slice();for(const C of companies())if(!fiveCo(C))for(const a of memOfCo(C))if(!out.includes(a))out.push(a);return out};
+const fiveCo=C=>!C||C===slotted()||!!C.slots;
+const memOfCo=C=>fiveCo(C)?slotHeroes(slotted()):coMembers(C).filter(a=>a.kind==='hero');
+const everyone=()=>{const out=slotHeroes(slotted()).slice();for(const C of companies())if(!fiveCo(C))for(const a of memOfCo(C))if(!out.includes(a))out.push(a);return out};
 const recCo=rec=>rec&&rec.company!=null?companyById(rec.company):null;
 const recMem=rec=>memOfCo(rec&&rec.company!=null?companyById(rec.company):null);
 const coName=C=>fiveCo(C)?'the Fellowship':C.name||'company '+C.id;
 const nearAny=at=>focuses().some(f=>nearMember(f,at));
-const partyLvl=(L=fellows())=>{if(!L.length)return {avg:1,lo:1,hi:1,n:0};const ls=L.map(a=>a.lvl);return {avg:Math.round(ls.reduce((s,x)=>s+x,0)/ls.length),lo:Math.min(...ls),hi:Math.max(...ls),n:L.length}};
+const partyLvl=(L=slotHeroes(slotted()))=>{if(!L.length)return {avg:1,lo:1,hi:1,n:0};const ls=L.map(a=>a.lvl);return {avg:Math.round(ls.reduce((s,x)=>s+x,0)/ls.length),lo:Math.min(...ls),hi:Math.max(...ls),n:L.length}};
 const band=z=>REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];
 
 // ---- the DM log ----
-// Entries name no heroes (heroes: []): the Fellowship's campaign log and memories (fellowship.js readDm) take
+// Entries name no heroes (heroes: []): the Fellowship's campaign log and memories (company.js readDm) take
 // the scene from the Table's own outcome, in the world's words, never the DM's bookkeeping ("staged", reasons).
 const LOG=(kind,summary,detail)=>dmlog(kind,null,summary,{by:'dm-agent',...detail},{heroes:[]});
 // The call's contract, added to the refusals of a call shaped wrong (issue #401), so the next call can be right.
-export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark or a region), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, choices); with preview "true" only kind, near and reason are needed';
+export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark or a region), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, item (an object the first prop of the frame holds, found with search), choices); with preview "true" only kind, near and reason are needed';
 function refuse(why,a,usage){const err='Refused: '+why+(usage?'. '+STAGE_USAGE:'');if(a&&a.preview)return {ok:false,error:err}; // a preview stages nothing, so it leaves no trace
   const G=stagedState();G.stats.refused++;
   LOG('agent',['Staged scene refused: '+why+(a&&a.kind?' ('+clean(a.kind,12)+')':'')+'.'],{staged:null,kind:a&&a.kind?clean(a.kind,12):null,reason:clean(a&&a.reason,STAGE.REASON_MAX),result:'rejected: '+why});
@@ -202,8 +202,8 @@ const inTown=(c,p)=>!!(c&&p)&&p.x>=c.x0-STAGE.TOWN_PAD&&p.x<=c.x1+1+STAGE.TOWN_P
 const townOf=n=>CITY.find(c=>c.name===n)||null;
 
 // ---- staging (the DM tool stage_scene) ----
-// a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, trap, place, choices:{act:label}}, reason}
-export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),F=S.fellowship||companies()[0]||null,seed0=seed,pv=a.preview===true||a.preview==='true';
+// a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, item, trap, place, choices:{act:label}}, reason} (cast.item: a give_item name the frame's first prop holds; search finds it)
+export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),F=slotted()||companies()[0]||null,seed0=seed,pv=a.preview===true||a.preview==='true';
   const kind=String(a.kind||'').toLowerCase().trim(),reason=clean(a.reason,STAGE.REASON_MAX);
   let cast=a.cast;if(typeof cast==='string'){try{cast=cast.trim()?JSON.parse(cast):{}}catch(e){cast=null}}if(cast==null)cast={};
   if(!STAGE_KINDS.includes(kind))return refuse('kind must be one of '+STAGE_KINDS.join(', '),a,1);
@@ -217,7 +217,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   if(G.cur&&G.cur.phase!=='done')return refuse('your staged '+G.cur.kind+' "'+G.cur.title+'" is still '+(G.cur.phase==='waiting'?'waiting for the party':'running')+'; one at a time',a);
   if(today().n>=STAGE.PER_DAY)return refuse(STAGE.PER_DAY+' staged scenes today already; the world needs room to breathe',a)}
   const multi=companies().length>1; // one company plays exactly as before (#451)
-  if(!pv&&FIGHTING[kind]&&!multi){const h=fellows().find(b=>b.state!=='town'&&!b.hidden&&b.hp<maxHp(b)*STAGE.PILE_HP);
+  if(!pv&&FIGHTING[kind]&&!multi){const h=slotHeroes(slotted()).find(b=>b.state!=='town'&&!b.hidden&&b.hp<maxHp(b)*STAGE.PILE_HP);
     if(h)return refuse(h.name+' of the Fellowship is badly hurt ('+pct(h)+'% HP) out in the field: no staged '+kind+' until they recover',a)}
   // the room and the town (#431): a meeting or social scene may name a setting and a town or building; the rest ignore them
   const notes=[],given=v=>v!=null&&v!=='';let setId=null,town=null,spot=null,named=false,picked=false;
@@ -231,7 +231,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   // the company this scene is for (#451): the one the hero belongs to, else whose member or hall it is set at; none = a world scene
   let cmp=W.company||(W.hero?companyOf(W.hero):null);
   if(!cmp&&!W.hero){const f=focuses().find(f=>nearMember(f,W.at)||(town&&f.town===town));cmp=f?f.company:null}
-  const scope=cmp||(F&&!F.slots&&!S.fellowship?F:null),SM=scope?memOfCo(scope):fellows(),P=partyLvl(SM.length?SM:everyone());
+  const scope=cmp||(F&&!F.slots&&!slotted()?F:null),SM=scope?memOfCo(scope):slotHeroes(slotted()),P=partyLvl(SM.length?SM:everyone());
   let at=W.at,label=W.label;
   // a cast walks in from out of sight; a trap or a strange place lies just ahead, where they pass
   if(W.hero){at=STATIC[kind]?spotNear(W.hero,STAGE.AHEAD_MIN,STAGE.AHEAD_MAX,W.hero.dest||null):spotNear(W.hero,STAGE.SPOT_MIN,STAGE.SPOT_MAX,W.hero.dest||null);if(!at)return refuse('no open ground near '+W.hero.name,a);label='near '+W.hero.name}
@@ -245,7 +245,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
       if(h)return refuse(h.name+' of '+coName(cmp)+' is badly hurt ('+pct(h)+'% HP) out in the field: no staged '+kind+' for them until they recover',a)}}
   if(!pv&&FIGHTING[kind]&&band(z)[0]>P.avg+STAGE.FAR)return refuse(ZONES[z]+' (levels '+band(z)[0]+'+) is far above the party (average level '+P.avg+')',a);
   // the cast
-  const C={name:clean(cast.name,STAGE.NAME_MAX)||null,title:clean(cast.title,40)||null,want:clean(cast.want,STAGE.WANT_MAX)||null,voice:clean(cast.voice,60)||null,reveal:clean(cast.reveal,STAGE.REVEAL_MAX)||null,mobs:[],npc:null,place:null};
+  const C={name:clean(cast.name,STAGE.NAME_MAX)||null,title:clean(cast.title,40)||null,want:clean(cast.want,STAGE.WANT_MAX)||null,voice:clean(cast.voice,60)||null,reveal:clean(cast.reveal,STAGE.REVEAL_MAX)||null,item:clean(cast.item,40)||null,mobs:[],npc:null,place:null};
   const labels={},ignored=[];
   if(cast.choices!=null){if(typeof cast.choices!=='object'||Array.isArray(cast.choices))return refuse('cast.choices must be an object {action: label}',a);
     for(const k in cast.choices){const kk=String(k).toLowerCase(),t=clean(cast.choices[k],STAGE.LABEL_MAX);if(STAGE_ACTS[kind].includes(kk)&&t)labels[kk]=t;else ignored.push(k)}}
@@ -360,7 +360,7 @@ function tick(){const G=S.staged;if(!G||!G.cur)return false;const rec=G.cur;
   if(S.table||openProps().length)return false; // the table is busy: the cast waits a moment longer
   return meet(rec,met)}
 
-function meet(rec,a){const G=S.staged,F=S.fellowship,fight=rec.kind==='elite'||rec.kind==='ambush';G.stats.met++;
+function meet(rec,a){const G=S.staged,F=slotted(),fight=rec.kind==='elite'||rec.kind==='ambush';G.stats.met++;
   if(fight){const mobs=rec.cast.mobs.map(mobOf).filter(liveMob),L=recMem(rec).filter(b=>!b.hidden);
     for(const m of mobs){let best=null,bd=1e9;for(const b of L){const d=dist(m,b);if(d<bd){bd=d;best=b}}if(!best)continue;
       m.target=best;m.dest=null;if(['hunt','travel','follow','return'].includes(best.state)){best.state='fight';best.target=m;best.dest=null}}
@@ -374,7 +374,7 @@ function meet(rec,a){const G=S.staged,F=S.fellowship,fight=rec.kind==='elite'||r
   ctx.anchor=a.id; // an everyone-at-once scene takes the members within shouting range of the one they met (#182)
   const sc=openScene(rec.kind,rec.title,[rec.frame],ctx);
   if(!sc){rec.phase='waiting';return false}
-  rec.scene=sc.id;if(S.table===sc&&!sc.narr)sc.narr=pre.narr;
+  rec.scene=sc.id;if(S.table===sc&&!sc.narr)sc.narr=pre.narr;setProps(sc,rec.cast.item); // the frame's props as data (#592)
   return false}
 
 function expire(rec){const G=S.staged;G.stats.expired++;
@@ -384,7 +384,7 @@ function expire(rec){const G=S.staged;G.stats.expired++;
 function finish(rec,sc,why){if(rec.phase==='done')return;rec.phase='done';rec.result=why||(sc&&sc.summary)||'done';
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.alive&&!m.gone){m.gone=true;m.target=null}}
   LOG('payoff',['Staged ',gd(rec.kind),' ',gd(rec.title),' ends: '+clean(rec.result,180)],{staged:rec.id,kind:rec.kind,result:rec.result,calls:sc&&sc.calls?sc.calls.map(c=>({kind:c.kind,by:c.by,...(c.pick?{pick:c.pick}:{})})):null,heroes:sc?sc.ids:[]});
-  const F=S.fellowship;if(F)F.tableDm=S.dmLogSeq||0; // the scene's own rolls do not reopen the table as a DM check
+  const F=slotted();if(F)F.tableDm=S.dmLogSeq||0; // the scene's own rolls do not reopen the table as a DM check
   if(sc&&(rec.kind==='meeting'||rec.kind==='social')&&rec.cast.npc!=null){const w=npcOf(rec.cast.npc);if(w&&w.attitude!=='hostile')talkFromScene(w,sc.ids)} // the members' next words go on with it (#170)
   retire(rec)}
 function retire(rec){const G=S.staged;G.past.unshift({id:rec.id,kind:rec.kind,title:rec.title,day:Math.floor(rec.born/DAY)+1,result:rec.result});if(G.past.length>STAGE.PAST_KEEP)G.past.pop()}
@@ -420,7 +420,7 @@ function applyNew(sc,a,act){const k=act.k,T=sc.ctx.tally;T[k]=T[k]||{n:0,win:0,w
     remember(a,'table','At '+sc.title+' I found: '+t);notify(a,'You find something at '+sc.title+': '+t,true)}
   return res(R)}
 function reflexNew(sc,a){const k=sc.kind,hurt=a.hp<maxHp(a)*.3;
-  if(k==='meeting')return a.fellowRole==='healer'?'help':'hear';
+  if(k==='meeting')return slotKeyOf(a)==='healer'?'help':'hear';
   if(k==='social')return hurt?'leave':socialSkill(a)==='intimidation'?'press':'parley';
   if(k==='trap')return a.cls==='Rogue'?'disarm':a.cls==='Hunter'&&!sc.ctx.spotted?'spot':'round';
   if(k==='mystery')return a.cls==='Mage'||a.cls==='Priest'?'study':'search';

@@ -8,6 +8,7 @@ import {FAC} from '../data/factions.js';
 import {BIOME,TILE_FLAT,MARK,TEXT,biomeOfZone} from './palette.js';
 import {classColor,toneOf} from '../core/colors.js';
 import {dungeonSite} from './dungeonview.js';
+import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
 // Largest CSS size; the canvas keeps the map's aspect inside this box.
 const BOX_W=160,BOX_H=100;
@@ -79,10 +80,10 @@ export function createMinimap(canvas,cam,onCenter){
     for(const a of S.agents){if(a.hidden||a.state==='dead'||!(a.brain||a.player))continue; // AI- or agent-played heroes get a ring
       ctx.strokeStyle=MIND_COL;ctx.lineWidth=Math.max(1,Math.round(k/2));const r=big+2;ctx.strokeRect(Math.round(a.x*k-r/2)+.5,Math.round(a.y*k-r/2)+.5,r,r)}
     // Fellowship members (#94): bright class-coloured dots with a dark edge, on top of everyone else
-    if(S.fellowship)for(const k in S.fellowship.slots){const a=S.agents.find(x=>x.id==S.fellowship.slots[k]);if(!a||a.hidden||a.state==='dead')continue;
+    if(slotted())for(const k in slotted().slots){const a=S.agents.find(x=>x.id==slotted().slots[k]);if(!a||a.hidden||a.state==='dead')continue;
       edot(a.x,a.y,big,classColor(a.cls))}
     // townsfolk, placed people and foes of a scene: a small dot in the disposition colour (hollow, so never a class dot)
-    for(const p of (S.npcs||[]).concat(S.wanderers||[])){if(p.hidden)continue;const t=toneOf(p,S.fellowship,S.gameMin);if(!t.color)continue;
+    for(const p of (S.npcs||[]).concat(S.wanderers||[])){if(p.hidden)continue;const t=toneOf(p,slotted(),S.gameMin);if(!t.color)continue;
       ctx.strokeStyle=t.color;ctx.lineWidth=1;ctx.strokeRect(Math.round(p.x*k-d/2)+.5,Math.round(p.y*k-d/2)+.5,d,d)}
     const sel=cam.sel;if(sel&&!sel.hidden&&sel.state!=='dead'){dot(sel.x,sel.y,big+1,'#000');dot(sel.x,sel.y,d+1,SEL_COL)}
     // view rectangle, kept inside the canvas

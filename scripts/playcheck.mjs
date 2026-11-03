@@ -17,7 +17,7 @@ import http from 'node:http';
 let seed = 0x9e3779b9 ^ (Number(process.env.PLAYCHECK_SEED) || 75);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 
-const {init, step, S, snapshot, restore, maxHp} = await import('../src/sim/index.js');
+const {init, setDmSeat, step, S, snapshot, restore, maxHp} = await import('../src/sim/index.js');
 const {homeOf} = await import('../src/data/races.js');
 const {ADVENTURES: ADV} = await import('../src/data/adventures.js');
 const P = await import('../src/sim/player.js');
@@ -186,6 +186,7 @@ if (a.state !== 'town') {const t = await call('turn_in', {}); ok(!t.ok && /gate 
 let chose = false, saved = false, fought = false;
 function saveRestore(when) {
   paused = true;
+  setDmSeat(true); // a real world has its DM seat open (#520); a closed seat converts on restore
   const snap = JSON.parse(JSON.stringify(snapshot()));
   run(1);
   restore(snap); a = S.agents.find(x => x.id === id);

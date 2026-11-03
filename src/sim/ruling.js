@@ -36,6 +36,7 @@ import {setAttemptHooks,TABLE} from './table.js';
 import {dmlog} from './dmlog.js';
 import {notEnglish} from './lang.js';
 import {record} from './history.js';
+import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 import {dmAlive,goneEpoch} from './dmreflex.js'; // the one place that knows whether the DM listens (#561)
 
 export const ATTEMPT={
@@ -196,7 +197,7 @@ export function checkEffect(a,x,sc){const e=parseEffect(x),{k}=e;
     return {...e,t,v:clean(e.v,ATTEMPT.FACT_MAX)}}
   case 'attitude':{const p=findPerson(a,e.t,7);if(!p||p.far)return {err:'attitude: no person called "'+clean(e.t,40)+'" within earshot (7 tiles) of '+a.name};
     const d=Math.round(Number(e.v));if(!Number.isFinite(d)||!d||Math.abs(d)>3)return {err:'attitude: delta is -3..3, not 0 (attitude:<person>:<delta>)'};return {...e,p,d}}
-  case 'open_talk':{if(!a.fellow||!S.fellowship)return {err:'open_talk: only the Fellowship holds conversations'};const p=findPerson(a,e.t,6);if(!p||p.far)return {err:'open_talk: no person called "'+clean(e.t,40)+'" within 6 tiles'};return {...e,p}}
+  case 'open_talk':{if(!inSlots(a)||!slotted())return {err:'open_talk: only the Fellowship holds conversations'};const p=findPerson(a,e.t,6);if(!p||p.far)return {err:'open_talk: no person called "'+clean(e.t,40)+'" within 6 tiles'};return {...e,p}}
   case 'open_scene':{const t=lc(e.t);return SCENE_KINDS.includes(t)?{...e,t}:{err:'open_scene: kind is one of '+SCENE_KINDS.join(', ')}}
   case 'item':{const t=lc(e.t);if(t!=='give'&&t!=='take')return {err:'item: give or take (item:give:<item>)'};if(!e.v)return {err:'item: name the item (item:'+t+':<item>)'};
     if(FORBID.test(e.v))return {err:'item: gold and the like are not handed out by a ruling',forbidden:true};return {...e,t}}

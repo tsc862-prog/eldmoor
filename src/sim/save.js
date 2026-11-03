@@ -20,7 +20,9 @@ import {convertItem} from './gear.js';
 import {convertBag} from './inv.js';
 import {reserveNames} from '../data/races.js';
 import {normalizeProfs} from './professions.js';
-import {ensureCampaign} from './dmagent.js';
+import {ensureCampaign,setDmSeat,dmSeatOn} from './dmagent.js';
+import {DEFAULT_DM} from './setup.js';
+import {dmlog} from './dmlog.js';
 import {relinkCompanies} from './company.js';
 import {homeOf} from '../data/races.js';
 
@@ -131,7 +133,21 @@ export function restore(snap){
   reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
   relinkCompanies(); // a.fellow / p.fellow accessors on company members and parties; agent heroes without a company ride as solos
   ensureCampaign(); // an older save whose DM notes are empty gets the campaign seed once
+  convertOldDm();
   return S}
+
+// The DM is always an agent (#520, slice D #562). An older save with the seat closed, no DM state at all or a scripted-DM
+// setup restores with the seat open (the host starts the DM runner and the start gate waits for it, as for a member) and a
+// notice in the DM log; its notes, campaign and S.setup otherwise stay as they were. The scripted DM keeps running as the
+// world engine and the DM's reflexes. Plain data, no RNG, runs once (the seat is open afterwards).
+function convertOldDm(){
+  const sd=S.setup&&S.setup.dm,scripted=!!(sd&&!(sd.mode==='agent'&&sd.provider&&sd.model));
+  if(scripted)S.setup.dm=DEFAULT_DM();
+  if(dmSeatOn())return false;
+  const had=S.dmAgent?'a closed seat':'no DM seat',how=scripted?' and a scripted DM in its setup':'';
+  setDmSeat(true);
+  dmlog('agent',null,['The DM is always an agent now: this older world had '+had+how+', so the seat is open. Start the DM runner; its reflexes and the scripted world engine keep things moving until one holds it.'],{by:'dm-agent',notice:true,converted:true});
+  return true}
 
 // ---- a short description of a save, for the title screen (read-only, never changes S) ----
 // {day, min, heroes, fellowship:{name, members:[{slot, name, cls, lvl, fac, race, skin, hair, dead}]}|null,

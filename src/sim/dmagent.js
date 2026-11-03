@@ -35,7 +35,6 @@ import {dmlog} from './dmlog.js';
 import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK} from './levers.js';
 import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
-import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
 import {openProps} from './council.js';
 import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {moment} from './reflect.js'; // a dream is a reflection moment (#523)
@@ -47,7 +46,7 @@ import {sceneCall,sceneAnswer,ourScene,openingDue} from './arrival.js'; // sessi
 import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
-import {openThreads as companyThreads} from './company.js';
+import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf} from './company.js';
 import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
 import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
@@ -116,7 +115,7 @@ const regionIdx=v=>{if(Number.isInteger(v)&&v>=0&&v<ZONES.length)return v;if(typ
 const townOf=v=>typeof v==='string'?CITY.find(c=>c.name.toLowerCase()===v.trim().toLowerCase())||null:null;
 const where=a=>a.state==='town'?'in '+(a.town||'town'):a.state==='dead'?'dead':'in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+' at '+Math.round(a.x)+','+Math.round(a.y);
 const heroLine=a=>({id:a.id,name:a.name,lvl:a.lvl,cls:a.cls,faction:facName(a.fac),hp:pct(a)+'%',doing:a.state,where:where(a),party:a.party?a.party.id:null,
-  ...(a.fellow?{fellowship:a.fellowRole||true}:{}),...(a.adv?{adventure:a.adv}:{})});
+  ...(inSlots(a)?{fellowship:slotKeyOf(a)||true}:{}),...(a.adv?{adventure:a.adv}:{})});
 // The centre of a region (the mean of its spawn points), for heroes_near.
 const centreOf=z=>{const P=ZPTS[z]||[];if(!P.length)return null;let x=0,y=0;for(const p of P){x+=p.x;y+=p.y}return {x:x/P.length,y:y/P.length}};
 function placeOf(near){const nt=nearText(near);if(nt.err)return null;const s=String(nt.s||'').trim();if(!s)return null;
@@ -169,8 +168,8 @@ export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object
   if(name==='set_condition'&&!DANGER_CONDS.includes(p.kind))return null;
   if(name==='start_event'){const ev=EVENTS[p.kind];if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
   const at=p.at&&typeof p.at==='object'&&Number.isFinite(Number(p.at.x))?{x:Number(p.at.x),y:Number(p.at.y)}:null,z=p.region!=null?regionIdx(p.region):at?zoneAt(at.x,at.y):null;
-  const fs=focuses(),five=new Set(fellows()),coOf=a=>fs.find(f=>f.ids.has(a.id)),who=a=>{if(five.has(a))return ' of the Fellowship';const f=coOf(a);return f&&f.members.length>1?' of '+(f.company.name||'a company'):' (riding alone)'};
-  const L=[...fellows(),...fs.flatMap(f=>f.members).filter(a=>!five.has(a))]; // the Fellowship as before, then every other company's members (#450)
+  const fs=focuses(),five=new Set(slotHeroes(slotted())),coOf=a=>fs.find(f=>f.ids.has(a.id)),who=a=>{if(five.has(a))return ' of the Fellowship';const f=coOf(a);return f&&f.members.length>1?' of '+(f.company.name||'a company'):' (riding alone)'};
+  const L=[...slotHeroes(slotted()),...fs.flatMap(f=>f.members).filter(a=>!five.has(a))]; // the Fellowship as before, then every other company's members (#450)
   for(const a of L){if(a.state==='town'||a.hp>=maxHp(a)*DMA.PILE_HP)continue;
     if(at&&dist(a,at)<=DMA.PILE_R||z!=null&&zoneAt(a.x,a.y)===z)return a.name+who(a)+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.'}
   return null}
@@ -184,8 +183,8 @@ function seeItems(fo,D){listen(D);const out=[],mine=fo.members.map(a=>a.id);
   const k=earOf(D).lines.filter(l=>!l.h&&mine.includes(l.wid)).length;if(k)out.push('They spoke '+k+' line'+(k===1?'':'s')+' you have not heard (hear {company}): what they plan, fear or ask for.');
   for(const a of fo.members.slice(0,5)){const q=carriesOf(a).quest_items;if(q.length)out.push(a.name+' carries '+q.slice(0,2).join(', ')+'.')}
   return out.slice(0,3)}
-function fellowshipNeeds(){const F=S.fellowship,fo=focus();if(!F||!fo)return null;
-  const th=openThreads(),props=openProps(),items=[],hurt=fo.members.filter(a=>a.state!=='town'&&!a.hidden&&a.hp<maxHp(a)*DMA.PILE_HP);
+function fellowshipNeeds(){const F=slotted(),fo=focus();if(!F||!fo)return null;
+  const th=companyThreads(slotted()),props=openProps(),items=[],hurt=fo.members.filter(a=>a.state!=='town'&&!a.hidden&&a.hp<maxHp(a)*DMA.PILE_HP);
   const field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),inTown=fo.members.length-field.length;
   const sv=stagedView(),at=field.length?(ZONES[zoneAt(fo.x,fo.y)]||'the wilds'):(fo.town?fo.town.name:'town');
   if(S.table)items.push('A Table scene is open: let it play; answer only calls of a scene you staged.');
@@ -246,7 +245,7 @@ function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
   const why=!ready('start_event')?(lim.maxActive!=null&&run.length>=lim.maxActive?'a world event is already running ('+lim.maxActive+' at a time)':lim.perDay!=null&&used>=lim.perDay?'one world event has started today; try another game day':'not available')
     :d.pulls>=DMA.PULLS_PER_DAY?'you have pulled '+DMA.PULLS_PER_DAY+' levers today':null;
   const cooling=Object.entries(L&&L.cd||{}).filter(([k,t])=>k.startsWith('start_event:')&&t>S.gameMin).map(([k,t])=>ZONES[+k.split(':')[1]]+' '+Math.round((t-S.gameMin)/60)+'h');
-  const fo=focus(),F=S.fellowship;
+  const fo=focus(),F=slotted();
   return {running,open_today:!why,...(why?{why_not:why}:{}),kinds:Object.keys(EVENTS),per_day:lim.perDay??null,at_a_time:lim.maxActive??null,
     regions_with_a_condition:(S.conditions||[]).map(c=>ZONES[c.z]+' ('+c.kind+')'),...(cooling.length?{cooling}:{}),
     ...(F?{fellowship_regions:fo?[...fo.zones].map(z=>ZONES[z]):[],note:'Fellowship first: start an event only when nothing is pending for them, in a region they ride (fellowship_regions) or are headed to, and say why it serves their story.'}:{})}}
@@ -255,7 +254,7 @@ function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
 const manyCompanies=()=>{const fs=focuses();return fs.length>1||fs.length===1&&!fs[0].company.slots};
 export const COMPANIES_FIRST='Every company is a thread: serve the company at the head of companies_needs first (the followed company first only when it must choose), then each other company in turn, the one longest without you next; a split-off member is a thread of its own, and a solo is the most fragile.';
 const unheardOf=D=>{const u=unheard(D),n=u.reduce((t,r)=>t+r.lines,0);return {total:n,by_company:u,...(n?{note:'Words were said aloud that you have not heard: read hear first.'}:{})}};
-function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle||[],L=S.dmLog||[],F=S.fellowship;
+function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle||[],L=S.dmLog||[],F=slotted();
   const sinceTl=tl.filter(e=>e.gameMin>D.seen.tl).length,i=ch.findIndex(e=>(e.t+txt(e.parts))===D.seen.chron),sinceCh=i<0?Math.min(ch.length,30):i,sinceLog=L.filter(e=>e.id>D.seen.log).length;
   D.seen.tl=tl[0]?tl[0].gameMin:D.seen.tl;D.seen.chron=ch[0]?ch[0].t+txt(ch[0].parts):D.seen.chron;D.seen.log=L[0]?L[0].id:D.seen.log;
   const sc=S.table||null,props=F?openProps():[];
@@ -270,7 +269,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
     proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,
-    fellowship:F?{name:F.name,minds:mindsOf(F),members:fellowshipMembers().map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:m.label,lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:m.label,empty:true})}:null,
+    fellowship:F?{name:F.name,minds:mindsOf(F),members:slotMembers(slotted()).map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:m.label,lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:m.label,empty:true})}:null,
     unheard:unheardOf(D),since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
@@ -289,14 +288,14 @@ function dmLogRead(n,kind){const k=LOG_KINDS[kind]||null,out=[];
     if(out.length>=nOf(n,12,1,30))break}
   return {ok:true,log:out}}
 
-function fellowshipView(){const F=S.fellowship;if(!F)return {ok:true,fellowship:null,note:'No Fellowship rides in this world yet.'};
-  const members=fellowshipMembers().map(m=>{const a=m.hero;if(!a)return {role:m.label,empty:true};
+function fellowshipView(){const F=slotted();if(!F)return {ok:true,fellowship:null,note:'No Fellowship rides in this world yet.'};
+  const members=slotMembers(slotted()).map(m=>{const a=m.hero;if(!a)return {role:m.label,empty:true};
     const P=a.persona||{},M=a.memory||{};
     return {...heroLine(a),...sightOf(a),role:m.label,persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
       oath:a.goal&&!a.goal.done?a.goal.text:null,vow:a.vow?a.vow.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
       stances:Object.fromEntries(Object.entries(M.stances||{}).filter(([id])=>!(P.stanceBy&&P.stanceBy[id]==='self')).slice(0,6).map(([id,s])=>{const b=S.agents.find(x=>String(x.id)===String(id));return [b?b.name:'#'+id,String(s).slice(0,120)]}))}});
   return {ok:true,fellowship:{name:F.name,faction:facName(F.fac),hall:F.hall||null,founded_day:F.day||null,minds:mindsOf(F),members,
-    open_threads:openThreads().map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:openProps().map(P=>({id:P.id,kind:P.kind,details:P.details||null,by:P.by||null})),
+    open_threads:companyThreads(slotted()).map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:openProps().map(P=>({id:P.id,kind:P.kind,details:P.details||null,by:P.by||null})),
     campaign_log:(F.log||[]).slice(0,10).map(e=>'D'+e.day+' '+e.t+' '+txt(e.parts)),fallen:(F.past||[]).slice(-5).map(p=>p.name||('#'+p.id))}}}
 
 // Every company (#450): who rides in it, where, its hall, open threads and votes, the latest campaign lines and when you last
@@ -314,7 +313,7 @@ function heroesNear(near,radius){const p=placeOf(near);if(!p)return {ok:false,er
   for(const a of S.agents){if(!alive(a)||a.hidden)continue;if(p.town?!(a.state==='town'&&a.town===p.town)&&dist(a,p)>r:dist(a,p)>r)continue;hs.push(a)}
   hs.sort((x,y)=>dist(x,p)-dist(y,p));const parties=new Map();for(const a of hs)if(a.party&&!parties.has(a.party.id))parties.set(a.party.id,a.party);
   return {ok:true,place:p.label,radius:r,heroes:hs.slice(0,24).map(a=>co.has(a.id)?{...heroLine(a),...sightOf(a)}:heroLine(a)),more:Math.max(0,hs.length-24),
-    parties:[...parties.values()].map(P=>({id:P.id,leader:P.leader?P.leader.name:null,members:(P.members||[]).filter(alive).map(b=>b.name),fellowship:!!P.fellow}))}}
+    parties:[...parties.values()].map(P=>({id:P.id,leader:P.leader?P.leader.name:null,members:(P.members||[]).filter(alive).map(b=>b.name),fellowship:!!partySlotted(P)}))}}
 
 const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({toward:x.to+' '+x.id,attitude:x.a}));
 // The scope of a hooks or npcs read (issue #427): a town, or a region (the towns whose gate lies in it, and what is out in it).
@@ -450,7 +449,7 @@ function openSpot(c,min,max,gap){const R=q=>Math.round(q*10)/10,okAt=q=>!spotErr
   for(let d=Math.max(.5,min);d<=max;d+=.5)for(let k=0;k<16;k++){const ang=k*Math.PI/8,q={x:R(c.x+Math.cos(ang)*d),y:R(c.y+Math.sin(ang)*d)};if(okAt(q))return q}
   return null}
 const nearestTown=p=>CITY.reduce((b,c)=>!b||dist(p,c.gate)<dist(p,b.gate)?c:b,null);
-const nearTakes=()=>'near takes "fellowship", a member ('+fellows().map(a=>a.name).join(', ')+'), a hero, "x,y", a town ('+CITY.map(c=>c.name).join(', ')+'), a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+')'+((S.places||[]).length?', a place ('+S.places.slice(0,8).map(p=>p.name).join(', ')+')':'')+' or a region ('+ZONES.join(', ')+')';
+const nearTakes=()=>'near takes "fellowship", a member ('+slotHeroes(slotted()).map(a=>a.name).join(', ')+'), a hero, "x,y", a town ('+CITY.map(c=>c.name).join(', ')+'), a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+')'+((S.places||[]).length?', a place ('+S.places.slice(0,8).map(p=>p.name).join(', ')+')':'')+' or a region ('+ZONES.join(', ')+')';
 // near -> {town?, hero?, at?, label} or {err}. o.gap keeps a spot clear of other places (mark_place); o.min/o.max set
 // how far from a hero or place the spot lies; o.townSpot asks a spot outside a town's gate as well.
 function nearSpot(near,o={}){const nt=nearText(near);if(nt.err)return {err:nt.err};const s=clean(nt.s,60),lo=s.toLowerCase(),gap=o.gap||0,mn=o.min!=null?o.min:1,mx=o.max!=null?o.max:5;
@@ -598,7 +597,7 @@ function npcSay(a){const p0=personFor(a);if(p0)a={...a,npc:String(p0.id)};const 
   if(!p)return nobody(a.npc);
   if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return {ok:false,error:p.name+' is nowhere the heroes could hear them.'};
   const e={t:clockStr(),d:dayNo(),from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text:t,trigger:'npc'};
-  const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;for(const b of hs)hearLine(b,e);
+  const hs=S.agents.filter(b=>alive(b)&&!b.hidden&&dist(b,p)<=HEAR);if(slotted()&&hs.some(b=>inSlots(b)))e.fh=true;for(const b of hs)hearLine(b,e);
   p.bubble={text:t,life:BUBBLE};if(e.fh)p.bubble.fh=true;day.npc=(day.npc||0)+1;
   dmlog('agent',null,[(p.title?p.title+' ':'')+p.name+' (DM agent): "',t,'"'],{by:'dm-agent',voice:'npc_say',npc:p.id,text:t,heard:hs.map(b=>b.id)});
   return {ok:true,who:(p.title?p.title+' ':'')+p.name,said:t,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}

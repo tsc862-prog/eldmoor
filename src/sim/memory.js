@@ -18,7 +18,7 @@ export const RECENT_MAX=12,COMPRESS=6;
 const day=()=>Math.floor(S.gameMin/1440)+1;
 const byId=id=>S.agents.find(x=>x.id==id);
 export const memOf=a=>a.memory||(a.memory={recent:[],long:'',stances:{},n:0,longAt:0});
-let summarise=null; // (a, items, longBefore) => void; set by fellowship.js to ask the relay
+let summarise=null; // (a, items, longBefore) => void; set by company.js (the slots option) to ask the relay
 export const setSummariser=f=>{summarise=f};
 
 export function remember(a,k,text){if(!a||!text)return;const M=memOf(a),t=String(text).replace(/\s+/g,' ').trim().slice(0,200);

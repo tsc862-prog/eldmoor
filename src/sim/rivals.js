@@ -22,6 +22,7 @@
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
+import {inSlots} from './company.js'; // the slotted company (#588)
 
 export const RIV={VET:12,KILL_VET:2.5,KILL:1,CRYPT:1,BOSS:1.5,CONTEST:1440,DECLARE:3.5,END:1,CAP:8,HALF:2,DUEL:1.6,ASSIST:1.5,TICK:30};
 
@@ -29,7 +30,7 @@ const R=()=>S.rivals||(S.rivals={heat:{},on:{},last:{},t:S.gameMin,stats:{declar
 const key=(g,h)=>g.id<h.id?g.id+':'+h.id:h.id+':'+g.id;
 const tagTxt=g=>({t:'<'+g.tag+'> '+g.name,c:'f'+g.fac});
 const live=g=>g&&!g.retired;
-const hasFellow=g=>S.agents.some(a=>a.guild===g&&a.fellow&&a.state!=='dead');
+const hasFellow=g=>S.agents.some(a=>a.guild===g&&inSlots(a)&&a.state!=='dead');
 const byId=id=>S.GUILDS.find(g=>g.id===Number(id));
 
 function heat(g,h,n,why,kind){
@@ -42,7 +43,7 @@ function heat(g,h,n,why,kind){
 
 // Called when a hero is slain by another hero (bonds.js inheritGrudge, from agentDie), before the grave.
 export function rivalKill(victim,killer){
-  if(!victim||!killer||killer.kind!=='hero'||!victim.guild||!killer.guild||victim.fellow||killer.fellow)return;
+  if(!victim||!killer||killer.kind!=='hero'||!victim.guild||!killer.guild||inSlots(victim)||inSlots(killer))return;
   const vet=victim.lvl>=RIV.VET;
   heat(victim.guild,killer.guild,vet?RIV.KILL_VET:RIV.KILL,vet?killer.name+' cut down the veteran '+victim.name:'blood spilled between them',vet?'vet':'kill')}
 
@@ -61,7 +62,7 @@ export function rivalDeed(kind,g,others){
 export function rivals(g,h){return !!(g&&h&&g!==h&&S.rivals&&S.rivals.on[key(g,h)])}
 // The odds multiplier for a duel ('duel') or an assist ('assist') between heroes a and b; 1 when no rivalry applies.
 export function rivalMul(a,b,kind){
-  if(!a||!b||a.fellow||b.fellow||!rivals(a.guild,b.guild))return 1;
+  if(!a||!b||inSlots(a)||inSlots(b)||!rivals(a.guild,b.guild))return 1;
   return kind==='assist'?RIV.ASSIST:RIV.DUEL}
 // pvp.js counts the duels and assists a rivalry started (for the sim summary).
 export function rivalCount(kind){R().stats[kind]++}

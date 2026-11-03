@@ -61,3 +61,4 @@
 - [Sight events #570](sight_events.md) — sighthero.js: you-see events on coming into sight, seeker stops on sight, In sight header, Looking for
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap
 - [Night sight #583](night_sight.md) — sightFor(a,z): night 0.6 for agent heroes only, towns exempt, hash unchanged
+- [Fold Fellowship #588](fold_fellowship.md) — slot model in company.js (slots option, C-first functions), fellowship.js wrappers, no shim reads in new code

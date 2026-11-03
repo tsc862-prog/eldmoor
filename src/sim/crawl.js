@@ -26,7 +26,7 @@ import {bestUse,useItem} from './inv.js';
 import {notify} from './notify.js';
 import {setCrawlHook,payClear,clearXp} from './dungeon.js';
 import {tableOn,openScene,setSceneKind} from './table.js';
-import {companyOf,companyById,roleOf} from './company.js';
+import {companyOf,companyById,roleOf,slotKeyOf,slotted} from './company.js';
 
 export const CRAWL={
   GAP:4,          // seconds (world time) between one room and the next
@@ -107,7 +107,7 @@ function reflex(sc,a){const g=grp();if(!g)return 'strike';const cr=g.crawl,lo=lo
   if(healer&&lo&&lo.hp<maxHp(lo)*.6)return 'heal';
   if(a.hp<mh*.2)return 'retreat';
   if(roleOf(a.cls)==='tank'&&!cr.guard.length)return 'guard';
-  if(cr.rd===0&&SPECIAL[a.cls]&&a.fellowRole!=='tank'&&liveFoes(cr).reduce((t,f)=>t+f.hp,0)>=CRAWL.SCOUT_MIN)return SPECIAL[a.cls][0];
+  if(cr.rd===0&&SPECIAL[a.cls]&&slotKeyOf(a)!=='tank'&&liveFoes(cr).reduce((t,f)=>t+f.hp,0)>=CRAWL.SCOUT_MIN)return SPECIAL[a.cls][0];
   return 'strike'}
 // A roll's skill: level and gear, halved, plus the round's edge (scouting, a ward, the site scene).
 const skill=(a,cr,f)=>{const bz=(f&&species(f.type))||{},tag=heroTag(a.cls),w=(bz.weak||{})[tag]||1,rs=(bz.res||{})[tag]||1;
@@ -181,8 +181,8 @@ export function crawlLost(g){const who=whoOf(g);
   for(const a of g.mem)if(living(a)){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6;record(a,'Came up the stair alone from ',gd(CRYPT.name),'.');goHome(a)} // fill-ins who rode along with a crew that fell
   log(who,' was lost in ',gd(CRYPT.name),'. No one came back up the stair.');timeline('death',who,' was lost in ',gd(CRYPT.name),' to the last man.');
   tally('wipes',g,g.crawl)}
-// The Fellowship's crawl record (S.fellowship.crawl: runs, clears, driven back, withdrawn, wipes, deaths, rooms won), for the sim summary and the checks.
-function tally(k,g,cr){const F=companyById(cr.co)||S.fellowship;if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
+// The Fellowship's crawl record (slotted().crawl: runs, clears, driven back, withdrawn, wipes, deaths, rooms won), for the sim summary and the checks.
+function tally(k,g,cr){const F=companyById(cr.co)||slotted();if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
   C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.rooms+=cr.end==='clear'?roomsOf().length:cr.i;C.deaths+=(cr.crew!=null?cr.crew:g.mem0)-members(g).length}
 function tick(g,dt){const cr=g.crawl;
   if(S.table)return;                                  // a scene (the stair, or a room) is open: the table runs it

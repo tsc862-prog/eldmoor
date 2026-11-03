@@ -22,6 +22,7 @@ import {attitudeOf} from './levers.js';
 import {huntZone} from './heroes.js';
 import {weakestSlot,slotLevel} from './gear.js';
 import {talkState,talkFromScene,convWith,speakAsHail,CONV} from './talk.js';
+import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
 export const LOC={MAX:4,HAIL_R:4,SETTLE:10,CHANCE:.6,EVERY:1}; // list size; tiles a hailer calls from; game minutes after arrival before a hail; share of visits with a hail; seconds between looks
 const inRect=(c,p,pad=0)=>p.x>=c.x0-pad&&p.x<=c.x1+1+pad&&p.y>=c.y0-pad&&p.y<=c.y1+1+pad;
@@ -70,9 +71,9 @@ function reason(p,a,c){const role=p.role;
 
 // ---- once per step (sim/index.js) ----
 let acc=0;
-export function localsTick(dt){if(!S.fellowship)return;acc+=dt;if(acc<LOC.EVERY)return;acc=0;
+export function localsTick(dt){if(!slotted())return;acc+=dt;if(acc<LOC.EVERY)return;acc=0;
   const T=talkState();
-  for(const a of S.agents){if(!a.fellow||!a.player||!living(a)||a.kind!=='hero')continue;
+  for(const a of S.agents){if(!inSlots(a)||!a.player||!living(a)||a.kind!=='hero')continue;
     const c=a.state==='town'?cityAt(a):null;
     if(!c){if(a.visit)a.visit=null;continue}
     let v=a.visit;

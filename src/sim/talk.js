@@ -37,7 +37,6 @@ import {noteKnownAt} from './sightings.js';
 import {pull,spotErr,attitudeOf,LK} from './levers.js';
 import {maxHp,huntZone} from './heroes.js';
 import {check} from './abilities.js';
-import {fellows} from './fellowship.js';
 import {notify} from './notify.js';
 import {remember} from './memory.js';
 import {CAP as CHAT_CAP,BUBBLE,HEAR} from './chat.js';
@@ -47,6 +46,7 @@ import {heard,since,dmAlive,goneEpoch} from './dmreflex.js'; // the DM's reflexe
 import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
 import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
+import {inSlots,slotHeroes,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
 
 // ---- knobs ----
 export const CONV={
@@ -108,7 +108,7 @@ export function setTalkEscalation(f){escHook=f}
 // ---- the person's record of the Fellowship ----
 const ATT_WARM={hostile:-5,wary:-2,neutral:0,friendly:4};
 const moodOf=w=>w>=3?'friendly':w<=-4?'hostile':'neutral';
-export function recordOf(p,a){if(p.warmth==null){const att=attitudeOf(p,a?[a]:fellows());p.warmth=ATT_WARM[att]??0}
+export function recordOf(p,a){if(p.warmth==null){const att=attitudeOf(p,a?[a]:slotHeroes(slotted()));p.warmth=ATT_WARM[att]??0}
   p.mood=p.hostile?'hostile':moodOf(p.warmth);return p.fmem||(p.fmem={talks:0,last:null,notes:[]})}
 export function warm(p,d,why){if(!d)return;recordOf(p);p.warmth=Math.max(-10,Math.min(10,Math.round((p.warmth||0)+d)));if(p.warmth>-4&&p.hostile&&d>0&&p.warmth>=0)delete p.hostile;
   p.mood=p.hostile?'hostile':moodOf(p.warmth);if(why)p.fmem.lastWhy=clean(why,80)}
@@ -142,7 +142,7 @@ export const convWith=p=>(S.talks?S.talks.cur:[]).find(c=>c.npc===p.id&&c.state=
 export const convById=id=>(S.talks?S.talks.cur:[]).find(c=>c.id===Number(id))||null;
 // For the say tool: the person a member's line is said to, or null. An open conversation within earshot first, then
 // a person named in the line within TALK_R, then one right next to the member with no companion near.
-export function addressed(a,text){if(!a||!a.fellow||!S.fellowship)return null;
+export function addressed(a,text){if(!a||!inSlots(a)||!slotted())return null;
   for(const c of (S.talks?S.talks.cur:[]))if(c.state==='open'){const p=npcById(c.npc);if(p&&dist(a,p)<=HEAR&&(c.heroes.includes(a.id)||dist(a,p)<=CONV.TALK_R))return p}
   const P=people();let best=null,bd=1e9;
   for(const p of P){const d=dist(a,p);if(d<=CONV.TALK_R&&named(p,text)&&d<bd){best=p;bd=d}}
@@ -162,7 +162,7 @@ export function findPerson(a,t,range){const s=String(t||'').trim().toLowerCase()
 // either waits for the DM agent (the answer arrives as a line heard) or answers at once from the role. Returns a
 // plain result for the tool, or {error}.
 export function talkTo(a,p,text){const T=talkState(),d=today();
-  if(!a.fellow||!S.fellowship)return {error:'Only the Fellowship holds conversations.'};
+  if(!inSlots(a)||!slotted())return {error:'Only the Fellowship holds conversations.'};
   recordOf(p,a);
   if(p.snub&&p.snub[a.id]>S.gameMin)return {ok:true,who:full(p),answer:'('+fill(pick(TALK_LINES.snub),{name:p.name})+')',ended:true};
   let c=convWith(p);
@@ -198,7 +198,7 @@ function readPerson(c,p,a){const want=p.want||talkOf(p).want,R=check(a,'empathy'
 // Deliver one line from the person to everyone within earshot (and the members in the conversation), tagged with the
 // conversation so a hero's agent wakes at once (sim/player.js hearWake) and the watcher's chat panel can group it.
 function speakAs(p,c,text,by,mark){const e={t:clockStr(),d:gameDay()+1,from:{kind:'npc',id:p.id,name:p.name,fac:p.fac},text,trigger:'npc',talk:c.id,dm:true,by};if(mark)e.mark=mark;
-  const hs=S.agents.filter(b=>living(b)&&(dist(b,p)<=HEAR||c.heroes.includes(b.id)));if(S.fellowship&&hs.some(b=>b.fellow))e.fh=true;
+  const hs=S.agents.filter(b=>living(b)&&(dist(b,p)<=HEAR||c.heroes.includes(b.id)));if(slotted()&&hs.some(b=>inSlots(b)))e.fh=true;
   for(const b of hs){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
   p.bubble={text,life:BUBBLE};if(e.fh)p.bubble.fh=true;p.chatCd=Math.max(p.chatCd||0,10);
   c.lines.push({who:'npc',id:p.id,name:full(p),text,t:e.t,by,...(mark?{mark}:{})});c.last=Math.round(S.gameMin);
@@ -257,7 +257,7 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
   if(!a)return no('nobody of the Fellowship is there any more');
   const home=homeOf(a);let mark,hint,extra={};
   if(kind==='trade'){if(p.mood==='hostile')return no(p.name+' will not trade with the Fellowship (hostile)');
-    p.trade={conv:c.id,until:Math.round(S.gameMin+CONV.TRADE_GM),fac:S.fellowship?S.fellowship.fac:a.fac};
+    p.trade={conv:c.id,until:Math.round(S.gameMin+CONV.TRADE_GM),fac:slotted()?slotted().fac:a.fac};
     const st=stockOf(p,a).map(x=>x==='gear'?'gear for your level':x).join(', ');
     mark='[trade opened]';hint=full(p)+' trades with you for '+Math.round(CONV.TRADE_GM/60)+' game hours while you stand near: buy {npc:"'+p.name+'", item} or buy {npc:"'+p.name+'", slot} for gear, sell {npc:"'+p.name+'"} ('+st+'; prices '+priceWord(p)+').';
     if(by==='scripted')speakAs(p,c,fill(pick(TALK_LINES.trade),{stock:st}),by,mark);}
@@ -285,7 +285,7 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
     extra.hook=res.ret.id;mark='[job posted]';hint=full(p)+' has a job for '+a.name+': '+(ADVENTURES[tpl].name||tpl)+' (job '+res.ret.id+' on the '+town+' board). list_jobs and take_adventure there.';
     if(by==='scripted')speakAs(p,c,fill(pick(TALK_LINES.job),{town}),by,mark);
     noteOn(p,'Offered '+a.name+' work: '+(ADVENTURES[tpl].name||tpl)+'.')}
-  else if(kind==='combat'){const hurt=fellows().find(b=>living(b)&&b.hp<maxHp(b)*CONV.HURT&&(c.heroes.includes(b.id)||dist(b,p)<=CONV.HURT_R));
+  else if(kind==='combat'){const hurt=slotHeroes(slotted()).find(b=>living(b)&&b.hp<maxHp(b)*CONV.HURT&&(c.heroes.includes(b.id)||dist(b,p)<=CONV.HURT_R));
     if(hurt)return no(hurt.name+' of the Fellowship is badly hurt ('+Math.round(100*hurt.hp/maxHp(hurt))+'% HP): no fight now; let them walk away');
     const k=args.fight==='elite'?'elite':'ambush',frame=clean(args.frame,280)||full(p)+' gives a sharp whistle, and figures step out to bar the way.';
     const town=a.state==='town'?CITY.find(x=>x.name===(p.town||a.town))||home:null,gate=town?outsideGate(town):null; // no fight inside the walls: they wait outside the gate
@@ -385,7 +385,7 @@ export function traderFor(a,name,range){const s=String(name==null?'':name).trim(
   const open=people().filter(p=>p.trade&&p.trade.until>S.gameMin&&(s?String(p.id)===s||String(p.name).toLowerCase()===s||full(p).toLowerCase()===s||p.role===s:true));
   if(!open.length)return s?{error:'Nobody called "'+name+'" has offered to trade with you. Talk to them first.'}:null;
   const p=open.sort((x,y)=>dist(a,x)-dist(a,y))[0];if(dist(a,p)>range)return {error:full(p)+' is too far away to trade ('+Math.round(dist(a,p))+' tiles).'};
-  if(!a.fellow||p.trade.fac!==a.fac)return {error:full(p)+' trades only with the Fellowship.'};
+  if(!inSlots(a)||p.trade.fac!==a.fac)return {error:full(p)+' trades only with the Fellowship.'};
   return p}
 export function npcBuy(a,p,{slot,item,count}){const st=stockOf(p);
   if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>x.toLowerCase()===String(item).toLowerCase());
@@ -411,14 +411,14 @@ function tradeDone(p,a,what){const c=p.trade&&convById(p.trade.conv);if(!p.trade
 
 // ---- the DM's view: the waiting call ----
 export function legalOffers(c,p){const out=[];if(p.mood!=='hostile')out.push('trade');out.push('rumour','job');
-  const hurt=fellows().some(b=>living(b)&&b.hp<maxHp(b)*CONV.HURT&&(c.heroes.includes(b.id)||dist(b,p)<=CONV.HURT_R));if(!hurt)out.push('combat');
+  const hurt=slotHeroes(slotted()).some(b=>living(b)&&b.hp<maxHp(b)*CONV.HURT&&(c.heroes.includes(b.id)||dist(b,p)<=CONV.HURT_R));if(!hurt)out.push('combat');
   if(['priest','hermit'].includes(p.role)&&p.mood!=='hostile')out.push('blessing');out.push('leave');return out}
 function convView(c,withCall){const p=npcById(c.npc);if(!p)return null;const a=hero(c.wait?c.wait.hero:c.heroes[c.heroes.length-1]);
   const T=talkOf(p),want=p.want||T.want;
   return {conv:c.id,...(withCall&&c.wait?{call:c.wait.call,seconds_left:Math.max(0,Math.round((c.wait.ms-(Date.now()-c.wait.real))/100)/10)}:{}),waiting:!!c.wait,
     npc:{id:p.id,name:full(p),role:p.role,faction:p.fac===0||p.fac===1?FAC[p.fac].name:'neutral',where:p.town||ZONES[zoneAt(p.x,p.y)]||'the wilds',want,mood:recordOf(p,a)&&p.mood,warmth:p.warmth,
       ...(withCall?{knows:knows(p,a).map(x=>x.text),record:recordView(p)}:{})},
-    member:a?{id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,role:a.fellowRole||null,...(c.read&&c.read[a.id]!=null?{read_them:c.read[a.id]}:{}),...(lastTime(p,a)?{last_time:lastTime(p,a)}:{})}:null, // last_time: what the person remembers of them (#571)
+    member:a?{id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,role:slotKeyOf(a)||null,...(c.read&&c.read[a.id]!=null?{read_them:c.read[a.id]}:{}),...(lastTime(p,a)?{last_time:lastTime(p,a)}:{})}:null, // last_time: what the person remembers of them (#571)
     line:c.wait?c.wait.line:null,so_far:c.lines.slice(-12).map(l=>l.name+': '+l.text+(l.mark?' '+l.mark:'')),exchange:exText(c),
     ...(withCall?{offers:legalOffers(c,p),offered_this_exchange:c.offerEx===c.ex}:{})}}
 // npc_call: the oldest conversation waiting for the DM, with everything needed to answer it.
@@ -448,8 +448,8 @@ export function sceneReply(c,p,a,what,fill){const t=clean(fill,CONV.DM_LINE_MAX)
 export function endTalk(c,why){close(c,why)}
 
 // A staged meeting or social scene ended with the person still there: the members' next words continue it (#132).
-export function talkFromScene(w,ids,line){if(!w||!S.fellowship)return null;const T=talkState();if(convWith(w))return convWith(w);
-  const hs=(ids||[]).map(hero).filter(b=>living(b)&&b.fellow);if(!hs.length)return null;
+export function talkFromScene(w,ids,line){if(!w||!slotted())return null;const T=talkState();if(convWith(w))return convWith(w);
+  const hs=(ids||[]).map(hero).filter(b=>living(b)&&inSlots(b));if(!hs.length)return null;
   const c={id:++T.seq,npc:w.id,name:full(w),heroes:hs.map(b=>b.id),lines:line?[{who:'npc',id:w.id,name:full(w),text:clean(line,CONV.LINE_MAX),t:clockStr(),by:'scene'}]:[],ex:0,wait:null,offers:[],offerEx:-1,state:'open',born:Math.round(S.gameMin),last:Math.round(S.gameMin)};
   T.cur.push(c);T.stats.opened++;recordOf(w,hs[0]);w.fmem.talks++;w.fmem.last=Math.round(S.gameMin);
   log(['Conversation: the scene with '+full(w)+' leaves the way open for words.'],{conv:c.id,npc:w.id,open:true,from:'scene'});return c}

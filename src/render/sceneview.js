@@ -41,7 +41,9 @@ import {biomeOfZone,SCENE,MARK,TEXT} from './palette.js';
 import {classColor,DISP} from '../core/colors.js';
 import {sceneHead} from '../core/scenehead.js';
 import {TABLE} from '../sim/table.js';
+import {liveProps} from '../sim/props.js';
 import {spokenOf,unrole} from '../core/spoken.js';
+import {inSlots} from '../sim/company.js'; // the slotted company (#588)
 
 const KEY='eldmoor.sceneMaps';
 const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social']);
@@ -91,7 +93,7 @@ export const sceneAuto=()=>auto;
 export function setSceneAuto(on){auto=!!on;try{localStorage.setItem(KEY,auto?'auto':'off')}catch(_){}syncBtn()}
 
 // Does the watcher follow this scene's Fellowship? (Follow Fellowship, or following one of the members.)
-const follows=(cam,sc)=>!!cam&&(cam.view==='fellow'||(!!cam.sel&&(sc.ids.includes(cam.sel.id)||(cam.view==='follow'&&!!cam.sel.fellow))));
+const follows=(cam,sc)=>!!cam&&(cam.view==='fellow'||(!!cam.sel&&(sc.ids.includes(cam.sel.id)||(cam.view==='follow'&&inSlots(cam.sel)))));
 
 export function openSceneView(sc=S.table){const sp=sceneSpec(sc);if(!sp)return false;
   if(sp.mode==='dungeon'){autoDg=true;dgShut=false;return openDungeon(CRYPT)}
@@ -118,7 +120,7 @@ export function sceneTick(cam){const sc=S.table;
     if(sp&&sp.mode==='dungeon'){if(!dgShut&&!dungeonOpen()){autoDg=true;openDungeon(CRYPT)}}else if(sp)openSceneView(sc)}}
   if(!sc)seenId=null;
   if(open){if(!sc||sc.id!==openId)closeSceneView(false);else{spec=sceneSpec(sc);track(sc);const scr=document.getElementById('screen');if(scr&&spec)scr.classList.toggle('scin',spec.mode==='indoor')}}
-  if(autoDg){const g=CRYPT&&CRYPT.group,inside=!!(g&&g.mem&&g.mem.some(a=>a.fellow));
+  if(autoDg){const g=CRYPT&&CRYPT.group,inside=!!(g&&g.mem&&g.mem.some(a=>inSlots(a)));
     if(!dungeonOpen()&&inside)dgShut=true; // Back to world during the crawl: not again until it is over
     if(!inside){if(dungeonOpen())closeDungeon();autoDg=false;dgShut=false}}
   if(speaker&&clock()-speaker.t>SPEAK_S)speaker=null}
@@ -153,7 +155,7 @@ export function arenaPattern(ctx,biome){if(arenaC[biome])return arenaC[biome];co
 // sprites (drawSceneRings); after the world is drawn, the turn chevron, the speaker's bubble, the cut's frame and the
 // dim past it (drawSceneMarks).
 export function drawSceneRings(ctx,cam,cut){const px1=cam.dpr/cam.sc; // under the sprites
-  for(const e of cut.members.concat(cut.foes)){const hero=e.kind==='hero'&&e.fellow,col=hero?classColor(e.cls):e.kind==='npc'||e.role?SCENE.person:SCENE.foe;
+  for(const e of cut.members.concat(cut.foes)){const hero=e.kind==='hero'&&inSlots(e),col=hero?classColor(e.cls):e.kind==='npc'||e.role?SCENE.person:SCENE.foe;
     ctx.strokeStyle=col;ctx.globalAlpha=.85;ctx.lineWidth=1.5*px1;ctx.beginPath();ctx.ellipse(e.x*T,e.y*T+.5,7,2.8,0,0,7);ctx.stroke()}
   ctx.globalAlpha=1}
 export function drawSceneMarks(ctx,cam,cut,now){const sc=cam.sc;
@@ -161,7 +163,7 @@ export function drawSceneMarks(ctx,cam,cut,now){const sc=cam.sc;
   {const mk=answerMarks(S.table),px1=cam.dpr/sc,m=Math.max(3,5*px1); // "..." while a member thinks, a tick once answered (#536)
     for(const e of cut.members){const k=mk[e.id];if(!live(e)||(k!=='think'&&k!=='done')||e===cut.cur)continue;answerMark(ctx,e.x*T,Math.round(e.y*T-17-16*px1-2*m-px1-1),k,now)}}
   const s=cut.speaker;if(s&&s.e&&live(s.e)&&!(s.e.bubble&&s.e.bubble.life>0)){const e=s.e,hero=e.kind==='hero';
-    bubble(ctx,e.x*T,e.y*T-18,hero?e.name.toUpperCase():'['+(e.name||'?')+']',hero&&e.fellow?classColor(e.cls):e.kind==='mob'||hero?DISP.hostile.color:DISP.neutral.color,s.text,cam.dpr,sc,Math.min(1,(SPEAK_S-(clock()-s.t))/.6))}
+    bubble(ctx,e.x*T,e.y*T-18,hero?e.name.toUpperCase():'['+(e.name||'?')+']',hero&&inSlots(e)?classColor(e.cls):e.kind==='mob'||hero?DISP.hostile.color:DISP.neutral.color,s.text,cam.dpr,sc,Math.min(1,(SPEAK_S-(clock()-s.t))/.6))}
   // screen space: dim outside the cut, a thin gold frame with corner brackets
   ctx.setTransform(1,0,0,1,0,0);const cv=ctx.canvas,x0=Math.round((cut.cx-cut.w/2)*T*sc+cam.offX),y0=Math.round((cut.cy-cut.h/2)*T*sc+cam.offY),x1=Math.round((cut.cx+cut.w/2)*T*sc+cam.offX),y1=Math.round((cut.cy+cut.h/2)*T*sc+cam.offY);
   ctx.fillStyle=SCENE.dim;if(y0>0)ctx.fillRect(0,0,cv.width,y0);if(y1<cv.height)ctx.fillRect(0,y1,cv.width,cv.height-y1);if(x0>0)ctx.fillRect(0,Math.max(0,y0),x0,Math.min(cv.height,y1)-Math.max(0,y0));if(x1<cv.width)ctx.fillRect(x1,Math.max(0,y0),cv.width-x1,Math.min(cv.height,y1)-Math.max(0,y0));
@@ -210,10 +212,7 @@ export function sceneDark(sc=S.table,base=0){const h=(((S.gameMin||0)%1440)+1440
   return Math.max(0,Math.min(.8,Math.round(d*100)/100))}
 // The one item the frame or the person's words name, drawn as a small lit prop in front of the speaker. Order matters:
 // the first kind whose words appear wins.
-const ITEMS=[['candle',/\bcandle(s|[- ]stub)?|taper|wax\b/i],['letter',/\b(letter|note|missive|parchment|scroll|deed|writ)\b/i],['key',/\bkeys?\b/i],
-  ['ring',/\b(ring|signet|locket|amulet|pendant)\b/i],['pouch',/\b(pouch|purse|coin(s)?|gold)\b/i],['book',/\b(book|tome|ledger|journal|diary)\b/i],
-  ['vial',/\b(vial|phial|potion|bottle|flask)\b/i],['dagger',/\b(dagger|knife|blade)\b/i],['map',/\bmap\b/i],['lantern',/\blantern\b/i]];
-export function sceneItem(sc=S.table){if(!sc)return null;const said=[sc.title,plain(sc.frame),sc.narr&&sc.narr.text].join(' ');for(const [k,re] of ITEMS)if(re.test(said))return sc.given&&re.test(sc.given)?null:k;return null} // sc.given: the DM handed that item to a hero in the scene (give_item, #524), so it is no longer drawn by the speaker
+export function sceneItem(sc=S.table){const p=liveProps(sc)[0];return p?p.id:null} // from sc.props (sim/props.js, #592); a prop whose item was handed to a hero (give_item, #524) is gone
 
 // The bar: the answer count and the timer, then where it is; outdoors also who is there (members in class colour, the
 // cast in theirs). The scene's title lives in the banner (#536: one place per fact).
@@ -221,7 +220,7 @@ export function refreshScene(){if(!root||!open||!spec)return null;const sp=spec,
   const s=stat+'|'+sp.where+'|'+sp.mode+'|'+people.map(e=>e.id+(live(e)?'':'x')).join(',');if(s===sig)return sp;sig=s;
   nameEl.textContent=stat;nameEl.title=sp.title||'';statEl.textContent=sp.where;whoEl.hidden=indoor;
   if(!indoor){whoEl.textContent='';for(const e of people){const li=mk('li','scp'+(live(e)?'':' gone'),e.kind==='mob'?(e.name||'foe'):e.name||'?');
-    li.style.color=e.kind==='hero'&&e.fellow?classColor(e.cls):e.kind==='mob'||e.kind==='boss'||e.kind==='hero'?DISP.hostile.color:DISP.neutral.color;whoEl.append(li)}}
+    li.style.color=e.kind==='hero'&&inSlots(e)?classColor(e.cls):e.kind==='mob'||e.kind==='boss'||e.kind==='hero'?DISP.hostile.color:DISP.neutral.color;whoEl.append(li)}}
   else whoEl.textContent='';
   const bar=root.querySelector('.dgbar'),scr=document.getElementById('screen');if(bar&&scr&&scr.style&&scr.style.setProperty)scr.style.setProperty('--scbar',(bar.offsetHeight+8)+'px');
   return sp}

@@ -54,7 +54,7 @@ import {remember,stanceEvent} from './memory.js';
 import {notify} from './notify.js';
 import {askRelay,snapshotFor,cleanLine} from './brain.js';
 import {sayOk} from './throttle.js';
-import {companyOf,companies,members as cMembers,campaign} from './company.js';
+import {companyOf,companies,members as cMembers,campaign,slotted} from './company.js';
 import {partySay,leaderOfC,setCampHook,openProps} from './council.js';
 import {openScene} from './table.js';
 import {sceneOf} from './scenes.js';
@@ -89,7 +89,7 @@ const listeners=[];
 export const onCamp=f=>{if(typeof f==='function')listeners.push(f)}; // fn(kind, camp, detail), for reflection memories (#179)
 const emit=(kind,g,d)=>{for(const f of listeners){try{f(kind,g,d||{})}catch(e){}}};
 // campOf(): the Fellowship's camp; campOf(hero): its company's; campOf(company): that one's. Null when not camped.
-const coOf=x=>x==null?S.fellowship:x.kind==='hero'?companyOf(x):x;
+const coOf=x=>x==null?slotted():x.kind==='hero'?companyOf(x):x;
 export const campOf=x=>{const C=coOf(x);return C&&C.camp&&C.camp.phase?C.camp:null};
 // The places a company has: its five slots for the Fellowship (empty ones too), else its heroes.
 const places=C=>C.slots?Object.keys(C.slots).length:C.ids.length;
@@ -214,7 +214,7 @@ function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors+
   for(const a of wake)if(a!==w)a.cd=Math.max(a.cd||0,2.4); // a sleeper woken by the alarm is groggy for the first round
   if(useHero){const b=foeHero;for(const a of wake)a.state='hunt';w.state='duel';w.target=b;b.state='duel';b.target=w;b.dest=null}
   else{m.target=pass?w:victim;for(const a of wake){a.state='fight';a.target=m;a.dest=null}
-    openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at '+(F===S.fellowship?'the Fellowship\'s camp':g.solo?'a lone camp':(F.name||'the company')+'\'s camp')+' in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id},F)}} // any company's camp (#440)
+    openScene('ambush','Ambush at camp: '+MOBS[m.type].name,[gd(MOBS[m.type].name),' comes out of the dark at '+(F===slotted()?'the Fellowship\'s camp':g.solo?'a lone camp':(F.name||'the company')+'\'s camp')+' in '+(ZONES[g.zone]||'the wilds')+'.'],{mob:m.id},F)}} // any company's camp (#440)
 
 // ---- campfire talk ----
 function talk(F,g,L){if(L.length<2)return;
@@ -292,7 +292,7 @@ function campOne(F,dt){const g=F.camp&&F.camp.phase?F.camp:null;
 
 // ---- the party's call: break camp early, or rest for a set time ----
 // breakCampNow(why, company): the Fellowship's camp when no company is named (old callers).
-export function breakCampNow(why='called',C){const F=C||S.fellowship,g=F&&F.camp;if(!g||!g.phase)return false;breakCamp(F,why);return true}
+export function breakCampNow(why='called',C){const F=C||slotted(),g=F&&F.camp;if(!g||!g.phase)return false;breakCamp(F,why);return true}
 setCampHook(breakCampNow);
 // The leader's `break_camp` tool (a solo leads itself).
 export function leaderBreak(a){const F=companyOf(a),g=F&&F.camp;if(!g||!g.phase)return 'There is no camp to break.';const ld=leaderOfC(F);if(ld!==a)return 'Only the leader ('+(ld?ld.name:'?')+') breaks camp outright; propose break_camp to put it to the vote.';

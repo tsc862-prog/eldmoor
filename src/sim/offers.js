@@ -202,7 +202,7 @@ export function companionTick(){const L=S.companies;if(!L||!L.length)return;
 export function release(C,b,why){if(b.party)leaveParty(b);delete b.companion;if(b.company===C.id)delete b.company;C.ids=C.ids.filter(id=>id!==b.id);
   if(loose(b)){b.state='return';b.target=null;b.dest=null}
   record(b,'Parted from ',gd(C.name),why?', '+why:'','.');campaign(C,'leave',b,' parted from the company'+(why?', '+why:'')+'.')}
-// The company's walking party (as fellowship.js muster does for the Fellowship): formed from members in town or out
+// The company's walking party (as company.js muster does for the slotted company): formed from members in town or out
 // near the leader; companions wait at the gate while the leader is in town, so they do not ride out alone.
 function walk(C,M){const ld=lead(C);if(!ld)return;let P=S.parties.find(p=>p.company===C.id)||null;
   const can=b=>!b.hidden&&(isCompanion(b)||b.partyOk)&&!b.splitUntil,near=b=>b.state==='town'||(loose(b)&&dist(b,ld)<OFFER.MUSTER);

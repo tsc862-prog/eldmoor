@@ -65,8 +65,7 @@ import {askRelay,snapshotFor,cleanLine} from './brain.js';
 import {sayOk,setSpeedSource} from './throttle.js';
 import {score} from './abilities.js';
 import {bestUse,useItem} from './inv.js'; // a potion in a scene (scene_act option potion)
-import {fellows} from './fellowship.js';
-import {companyById,companyOf,companies,members,leaderOf,isSolo,campaign,followed} from './company.js'; // scenes belong to a company (#440)
+import {companyById,companyOf,companies,members,leaderOf,isSolo,campaign,followed,inSlots,slotHeroes,slotKeyOf,slotted} from './company.js'; // scenes belong to a company (#440)
 import {setProposeHook,castVote,resolveProp,reflexVote,propById,propCompany,leaderOfF,openProps,waitingVoters,voters} from './council.js';
 import {inRange} from './reach.js';
 import {setFellowChoice} from './player-choice.js';
@@ -149,18 +148,18 @@ const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').re
 // Private LCG for line picks: the gameplay RNG is never touched by flavour.
 let seed=0x1f2e3d4c;const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
-export const tableOn=()=>(!!S.fellowship||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
-// The scene's company and its members. The Fellowship keeps its slot order (fellows()); any other company its join order.
-export const sceneCompany=sc=>!sc?null:sc.company!=null?companyById(sc.company):S.fellowship||null;
-const memOf=C=>!C?[]:C===S.fellowship?fellows():members(C);
-const leadOf=C=>!C?null:C===S.fellowship?leaderOfF():leaderOf(C);
+export const tableOn=()=>(!!slotted()||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
+// The scene's company and its members. The Fellowship keeps its slot order (slotHeroes(slotted())); any other company its join order.
+export const sceneCompany=sc=>!sc?null:sc.company!=null?companyById(sc.company):slotted()||null;
+const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C);
+const leadOf=C=>!C?null:C===slotted()?leaderOfF():leaderOf(C);
 const scMem=sc=>memOf(sceneCompany(sc));
 // A company other than the Fellowship comes to the table only while one of its agents has the say (a runner holds it,
 // or its runner is gone and the owner has not answered). A company that plays wholly by reflex (no runner, as in
 // headless runs and checks) plays on in the world on its autopilot, as with the Table off: a reflex-only scene would
 // only swap the autopilot's cautious reflexes for the table's and stop the clock for nothing. The Fellowship keeps
 // its reflex-only scenes (its seeded hashes and record count on them).
-const atTable=C=>!!C&&(C===S.fellowship||agentsDecide(memOf(C)));
+const atTable=C=>!!C&&(C===slotted()||agentsDecide(memOf(C)));
 // Why a company may not put something to a vote at the table: a solo has no one to ask. null = it may.
 export function voteRefusal(C){return C&&!C.slots&&isSolo(C)?SOLO_VOTE:null}
 setSpeedSource(()=>TABLE.speed);
@@ -260,7 +259,7 @@ export function reflexFor(sc,a){if(EXTRA[sc.kind])return EXTRA[sc.kind].reflex(s
     if(f){const mv=pickMove(a,f,mem,true,'round');if(mv)return mv.id} // the scripted ability policy, in rounds (sim/moves.js)
     if(a.cls==='Warrior'&&f&&f.kind==='mob'&&f.target&&f.target!==a)return 'guard';return 'strike'}
   if(k==='site'||k==='room')return SPECIAL[a.cls]?SPECIAL[a.cls][0]:'press';
-  if(k==='choice'){const anyHurt=mem.some(b=>b.hp<maxHp(b)*.6);return tm(a,'bold')>1&&!anyHurt?'a':anyHurt||tm(a,'retreat')>1?'b':a.fellowRole==='tank'?'a':'b'}
+  if(k==='choice'){const anyHurt=mem.some(b=>b.hp<maxHp(b)*.6);return tm(a,'bold')>1&&!anyHurt?'a':anyHurt||tm(a,'retreat')>1?'b':slotKeyOf(a)==='tank'?'a':'b'}
   if(k==='decision'){const P=propById(sc.ctx.prop);return P?reflexVote(a,P):'yes'}
   if(k==='check')return healer&&lo&&lo.hp<maxHp(lo)*.7?'aid':'steady';
   return null}
@@ -274,7 +273,7 @@ function present(kind,ctx,C){const L=memOf(C);if(kind==='decision'){const P=prop
   const an=byId(ctx.anchor!=null?ctx.anchor:ctx.hero),h=an&&L.includes(an)?an:leadOf(C);return h?L.filter(b=>b===h||inRange(h,b)):L}
 // The company a scene opened without one belongs to: the member it happened to, else the Fellowship (the camp ambush,
 // the crawl's rooms and staged scenes still serve the Fellowship until their own slices, #441 and the DM's).
-const ctxCompany=ctx=>{const c=ctx||{};if(c.company!=null)return companyById(c.company);const h=byId(c.anchor!=null?c.anchor:c.hero);return companyOf(h)||S.fellowship||null};
+const ctxCompany=ctx=>{const c=ctx||{};if(c.company!=null)return companyById(c.company);const h=byId(c.anchor!=null?c.anchor:c.hero);return companyOf(h)||slotted()||null};
 // Elites are tuned for the five-slot Fellowship (#502). A smaller company meets one scaled down once, on the scene's open: hp by size
 // (n=1 .52 ... n=4 .88) and by how far the elite's level stands over the company's average, its blows a little lighter (n=1 .84).
 // The five-slot company and a full five are untouched. m.scaled keeps it to one pass, whoever meets it next.
@@ -495,7 +494,7 @@ function due(C,L){
   for(const a of L){const m=a.target;if(a.state!=='fight'||!m||m.kind!=='mob'||!(m.elite||m.named)||!m.alive)continue;if(seen(C,'elite:'+m.id,COOL.elite))continue;
     return {kind:'elite',title:mobName(m),frame:[a,' meets ',gd(mobName(m)+(m.title?', '+m.title:'')),' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+'.'],ctx:{mob:m.id},key:'elite:'+m.id}}
   // the Crypt: going in, and the inner chamber
-  const g=CRYPT.group;if(g&&g.phase==='inside'&&g.mem.some(a=>C===S.fellowship?a.fellow:C.ids.includes(a.id))){
+  const g=CRYPT.group;if(g&&g.phase==='inside'&&g.mem.some(a=>C===slotted()?inSlots(a):C.ids.includes(a.id))){
     if(!g.tSite){g.tSite=1;return {kind:'site',title:CRYPT.name,frame:['The stair goes down into ',gd(CRYPT.name),'. Water drips; something below has heard the door.'],ctx:{}}}
     if(!g.tRoom&&g.t<12&&!g.crawl){g.tRoom=1;return {kind:'room',title:'The inner chamber',frame:['The last door of ',gd(CRYPT.name),'. Beyond it waits ',gd(CRYPT.boss),'.'],ctx:{}}}}
   // a DM check on one of their adventures
@@ -526,14 +525,14 @@ export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks 
 
 // ---- the hooks ----
 // A new council proposal: a decision scene when the world can pause; else the votes run async.
-setProposeHook(P=>{const C=propCompany(P)||companyOf(byId(P.by))||S.fellowship,L=memOf(C);if(voteRefusal(C))return false;if(agentsDecide(L))requestDrop('a vote: '+P.details); // #148: 3x/8x drop to 1x at a decision
+setProposeHook(P=>{const C=propCompany(P)||companyOf(byId(P.by))||slotted(),L=memOf(C);if(voteRefusal(C))return false;if(agentsDecide(L))requestDrop('a vote: '+P.details); // #148: 3x/8x drop to 1x at a decision
   if(!holdOk(L))return false;const by=byId(P.by);
   if(sceneFor(C)){if(P.src==='pair'&&!C.tableQ&&atTable(C)){C.tableQ={kind:'decision',title:'Put to the party: '+P.details,frame:[gd('The other company'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],ctx:{prop:P.id},at:Math.round(S.gameMin)};return true}return false} // a merge's second scene waits its turn (#500)
   const sc=open('decision','Put to the party: '+P.details,[by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id},C);
   if(sc)for(const id in P.votes)if(sc.ids.includes(+id))sc.acts[id]={k:P.votes[id].v,line:P.votes[id].reason||'',by:P.votes[id].by==='reflex'?'reflex':'agent'}; // a vote already cast counts as that member's turn
   return !!sc});
 // A choice scene on a Fellowship adventure: the whole table chooses (undefined: the usual path).
-setFellowChoice((adv,sc,a,spec)=>{const C=companyOf(a)||S.fellowship;if(!holdOk(memOf(C)))return undefined;
+setFellowChoice((adv,sc,a,spec)=>{const C=companyOf(a)||slotted();if(!holdOk(memOf(C)))return undefined;
   const tp=adv.tablePick;if(tp&&tp.k===adv.idx){adv.tablePick=null;return tp.br}
   {const T=sceneFor(C);if(T){if(T.kind==='choice'&&T.ctx.adv===adv.id){adv.stage='choose';return 'wait'}return undefined}}
   const d=adv.data||{},fill=s=>String(s||'').replace(/\{(\w+)\}/g,(m,k)=>{const v=d[k]!=null?d[k]:d[k.toLowerCase()];return typeof v==='string'?v:k==='who'?a.name:'the '+k.toLowerCase()});
@@ -569,7 +568,7 @@ export function decisionsWaiting(){const out=[],seen=new Set(),add=(a,what)=>{if
   const SC=allScenes();for(const sc of SC){if(sc.pause&&together(sc))for(const b of waitingFor(sc))add(b,'an answer at the table ('+sc.title+')');
     if(sc.pause&&sc.phase==='turn'&&!together(sc)){const cur=byId(sc.ids[sc.i]);if(cur&&!sc.acts[cur.id])add(cur,'a turn at the table ('+sc.title+')')}}
   for(const P of openProps())if(!SC.some(sc=>sc.ctx&&sc.ctx.prop===P.id))for(const b of waitingVoters(P))add(b,'a vote ('+P.details+')'); // a vote at the table: the scene says who it waits on
-  for(const v of S.adventures||[]){if(v.phase!=='active'||!v.pick||v.pick.chosen||v.stage!=='choose')continue;const ld=byId(v.lead);if(ld&&ld.fellow)add(ld,'a choice on '+(v.title||'an adventure'))}
+  for(const v of S.adventures||[]){if(v.phase!=='active'||!v.pick||v.pick.chosen||v.stage!=='choose')continue;const ld=byId(v.lead);if(ld&&inSlots(ld))add(ld,'a choice on '+(v.title||'an adventure'))}
   return out}
 // The foe for the watcher's banner (#285): the watcher sees numbers. pack: a staged pack's creatures still standing.
 function foeBanner(sc){const f=foeOf(sc);if(!f)return null;const c=sc.ctx||{};

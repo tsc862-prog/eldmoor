@@ -40,6 +40,7 @@ import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hook
 import {killDone,killAbandoned,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
 import {dmDepart,dmTravel,dmHunt,BOUNTY,bountyFor,takeBounty,fellowBounty} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 import {gatherTick} from './gather.js'; // gathering (#257): a scripted hunter works a node of its trade now and then
+import {inSlots} from './company.js'; // the slotted company (#588)
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45)*(1+.8*Math.min(1,Math.max(0,(l-9)/7)))); // veterans: L10-16 ramp to +80% (balance #107)
@@ -194,7 +195,7 @@ export function updAgent(a,dt){
         // and an AI hero's (or leader's) town plan is then settled 'overruled' (brainJob).
         if(dmDepart(a,c)){brainJob(a);break} // DM: take a posted adventure or resume one (sim/dm.js)
         const tz=a.party?partyZone(a):townZone(a); // BRAIN: zone pick (scripted = huntZone(a); a party's zone, which an AI leader may set)
-        if(a.fellow&&fellowBounty(a,c,tz)){brainJob(a);break} // the Fellowship first (#325): the captain's bounty for its region becomes a Fellowship job
+        if(inSlots(a)&&fellowBounty(a,c,tz)){brainJob(a);break} // the Fellowship first (#325): the captain's bounty for its region becomes a Fellowship job
         chooseBounty(a,c,tz); // no adventure: the captain's bounty for that region, if the hero wants it (issue #67)
         say(a,'depart',{zone:ZONES[tz]});
         a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate);if(a.player)writeSighting(a,ZONES[tz],c.name)}}break}

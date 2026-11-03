@@ -43,7 +43,7 @@ import {showMindButtons,devMode} from './mindctl.js';
 import {tabQuests} from './quests.js'; // the Quests tab
 import {tabCombat} from './combat.js'; // the Combat tab
 import {setPurpose,isOpen} from './purposeview.js'; // the purpose line in the header (#534)
-import {companyOf} from '../sim/company.js'; // the dock's short card is for heroes outside every company (#546)
+import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short card is for heroes outside every company (#546)
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 
 const $=id=>document.getElementById(id);
@@ -275,7 +275,7 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){
   // a Fellowship member: its slice of the chat panel's stream (lines it said or heard, and its proposals and votes), newest first
-  if(S.fellowship&&a.fellow){const rows=heroStream(a).reverse().slice(0,40);
+  if(slotted()&&inSlots(a)){const rows=heroStream(a).reverse().slice(0,40);
     if(!rows.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
     const ul=el('ul','log chat');let last=null;
     const gs=[];for(const it of rows){const p=gs[gs.length-1];
@@ -304,7 +304,7 @@ export function chatGroups(lines){const out=[];for(const e of lines){const p=out
 // A name in chat: a Fellowship member in its class colour, bold; an NPC, foe or enemy hero in its disposition colour,
 // muted and underlined (a shape as well as a colour), so it never reads as a class (owner, #169). One palette: core/colors.js.
 export function liveOf(f){if(!f||f.kind!=='npc')return f;return (S.npcs||[]).find(p=>p.id===f.id)||(S.wanderers||[]).find(p=>p.id===f.id)||f}
-export function chatName(h){const npc=h&&h.kind==='npc',t=toneOf(liveOf(h),S.fellowship);let s;
+export function chatName(h){const npc=h&&h.kind==='npc',t=toneOf(liveOf(h),slotted());let s;
   if(npc){s=el('span','hn',h.name)}else s=hn(h);
   s.classList.add('chn');
   if(t.kind==='class'){s.classList.add('fmn');s.style.color=t.color}
@@ -315,7 +315,7 @@ export function chatName(h){const npc=h&&h.kind==='npc',t=toneOf(liveOf(h),S.fel
 const aiBadge=(t,title)=>{const s=el('span','ai-badge',t);if(title)s.title=title;return s};
 function heroName(a){const d=el('div','nm f'+a.fac,a.name),st=brainStatus(a);
   {const ml=mindLabel(a),bd=aiBadge(ml.text,ml.title);bd.classList.add('mk-'+ml.kind);d.append(' ',bd)} // the one mind label (issue #136)
-  if(!showMindButtons(a)||(a.fellow&&S.fellowship&&!devMode()))return d; // a member's mind is set in Members and minds (#145)
+  if(!showMindButtons(a)||(inSlots(a)&&slotted()&&!devMode()))return d; // a member's mind is set in Members and minds (#145)
   const b=el('button','ai-toggle',st==='off'?'AI':'AI off');b.dataset.ai='1';b.title=st==='off'?'Let a language model play this hero (needs npm run relay)':'Return this hero to the scripted rules';d.append(' ',b);
   // Agent player (issue #75): an AI agent with its own session plays this hero through MCP tools.
   if(a.state!=='dead'){const g=el('button','ai-toggle',a.player?'Agent off':'Agent');g.dataset.agent='1';g.title=a.player?'Return this hero to the scripted rules':'Let an AI agent play this hero (npm run relay, then npm run agent)';d.append(' ',g)}
@@ -386,12 +386,12 @@ function skeleton(root){root.replaceChildren();const hd=el('div','hd'),tabs=el('
   wireGear(tb);root.append(hd,tabs,tb);skel={root,hd,tabs,tb,gr,sub};return skel}
 // Which tabs a hero has: Mind only for an AI-played hero, Agent for an agent-played one, Memory for a Fellowship
 // member; Party is hidden for members, whose party is the frames above the map.
-function tabShown(a,k){if(k==='mind')return hasMind(a);if(k==='agent')return hasAgent(a);if(k==='memory')return !!a.memory||!!a.memories;if(k==='party')return !(a.fellow&&S.fellowship);return true}
+function tabShown(a,k){if(k==='mind')return hasMind(a);if(k==='agent')return hasAgent(a);if(k==='memory')return !!a.memory||!!a.memories;if(k==='party')return !(inSlots(a)&&slotted());return true}
 
 // The dock's short card (#546): with the dock open, a background hero (no company, not agent-played) shows its header and a
 // Full sheet button; the tabs open on that click and stay open for that hero.
 const fullFor=new Set();
-export const briefCard=a=>!!a&&!!document.body&&document.body.classList.contains('docked')&&!a.fellow&&!a.player&&!companyOf(a)&&!fullFor.has(a.id);
+export const briefCard=a=>!!a&&!!document.body&&document.body.classList.contains('docked')&&!inSlots(a)&&!a.player&&!companyOf(a)&&!fullFor.has(a.id);
 export function renderHero(){const root=$('hero'),a=cam.sel;
   if(!a){root.innerHTML='<div class="meta">Tap a hero on the map, or pick one from Top heroes.</div>';skel=null;return}
   const k=skel&&skel.root===root&&root.contains(skel.hd)?skel:skeleton(root);
@@ -452,7 +452,7 @@ export function renderGuilds(){const live=livingGuilds().map(g=>({g,m:membersOf(
   patch($('guilds'),tb=>{if(!live.length)tb.append(wide('No guild has been founded yet.'));
     live.forEach(({g,m,s},i)=>{const L=leaderOf(g),tr=el('tr'),td=el('td');tr.setAttribute('data-k',keyOf(g));
       td.append(el('span','dm',String(i+1)),' ',el('span','f'+g.fac,'<'+g.tag+'> '+g.name),el('br'),el('span','dm',(L?'led by '+L.name+' · ':'')+m.length+' member'+(m.length===1?'':'s')));
-      {const fo=guildFocus(g),fel=m.some(x=>x.fellow&&x.state!=='dead');
+      {const fo=guildFocus(g),fel=m.some(x=>inSlots(x)&&x.state!=='dead');
         if(fo!=='open'||fel){const w=el('span','gd',fel?'none (Fellowship member)':FOCUS_NAME[fo]);w.title=fel?'A guild with a living Fellowship member sets no focus.':focusWhy(fo,L);td.append(el('br'),el('span','dm','Focus: '),w)}} // the leader's focus and why (sim/guildfocus.js, #6, #327)
       const rv=rivalsOf(g);if(rv.length){td.append(el('br'),el('span','dm','Rivals: '));rv.forEach((h,j)=>{const ht=S.rivals&&S.rivals.heat[g.id<h.id?g.id+':'+h.id:h.id+':'+g.id]||0,sp=el('span','f'+h.fac,'<'+h.tag+'>');sp.title='Rivalry with <'+h.tag+'> '+h.name+': heat '+(Math.round(ht*10)/10)+' of 8';td.append(j?el('span','dm',', '):'',sp)})} // declared rivalries and their heat (sim/rivals.js, #6, #327)
       tr.append(td,el('td',null,g.clears+'/'+(g.clears+g.wipes)),el('td','gd',String(s)));tb.append(tr)});

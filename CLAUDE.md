@@ -20,7 +20,15 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   lead_to, Table scene choices, jobs, splitting off, what to say. A decision point waits for the agent
   (Table mode pauses the world at 1x); reflex choices are only a fallback when the runner is gone, and then
   the runner-stop alert pauses the world and asks the owner. Background heroes may be scripted.
-- **The DM serves the Fellowship first, then the world.** The DM's priorities are the Fellowship first, then the overall game world, for the DM agent and the scripted DM alike: each turn or refresh starts with where the Fellowship is, their open threads and oaths, pending decisions and what would make their next game hours interesting; hooks, rumours, people, places and staged scenes go to their road first; world-shaping that does not touch them comes after, and only when nothing is pending for them. A share of every daily lever and staging limit is reserved for them. See "DM agent" below.
+- **The DM is always agent-played.** The DM seat is always held by an agent (#520): the setup page requires a DM mind, a
+  world opens the seat from the first tick, an older save with a closed seat or a scripted-DM setup converts on load with a
+  notice in the DM log, and there is no "no DM agent" mode. The scripted DM (`src/sim/dm.js`) is the world engine (boards,
+  background adventures, encounters) and the DM's reflexes (`src/sim/dmreflex.js`, #561): it fills a bounded wait (a Table
+  voice slot, a staged scene's outcome, session zero's frame, an arrival, a townsperson's answer) when the runner is slow,
+  and every fill is logged. When the DM runner is gone the world pauses at the start gate and asks the owner (Resume anyway,
+  Restart; #578), as for a member; reflexes answer only after the owner resumed. `npm run sim` and the seeded checks have no
+  runner and fill at once, so their hashes do not move. Background heroes may still be scripted.
+- **The DM serves the Fellowship first, then the world.** The DM's priorities are the Fellowship first, then the overall game world, for the DM agent and the scripted world engine alike: each turn or refresh starts with where the Fellowship is, their open threads and oaths, pending decisions and what would make their next game hours interesting; hooks, rumours, people, places and staged scenes go to their road first; world-shaping that does not touch them comes after, and only when nothing is pending for them. A share of every daily lever and staging limit is reserved for them. See "DM agent" below.
 - **In-game channels only.** The DM and the players (Fellowship members, agent-played heroes)
   communicate only inside the game: in-game chat (say in earshot, party shouts in range, townsfolk, the
   DM's `narrate` and `npc_say`) and what their characters can see. Nobody messages anyone directly
@@ -321,7 +329,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   takes `prey` (a creature known by name) or whatever is around except what it learned to fear; `list_jobs` gives the
   gate's rumour, not "fits"; townsfolk warn a green blade off the next region up. Background heroes keep the scripted
   level logic and never get lore; the hooks only touch `a.player` heroes, so `npm run sim` is unchanged.
-- New world under the same ids (#219): New World reuses hero ids, so a runner that holds ids would play nobody. Hero and Fellowship runners poll `/play/health` (`watchWorld` in `scripts/pacing.mjs`) and, when a held id now names another hero (the name differs; the world instance id will be compared too once `/play/health` carries it as `world`), release their claims and exit with code 75 (`NEW_WORLD_EXIT`, `[world] a new world: ...` line). The supervisor (`scripts/runners.mjs`) restarts a runner that exits 75 with the same request after `RESTART_MS`, at most `MAX_RESTARTS` in a row without a turn; the restart sets the old sessions aside in `logs/agents/old/`. A DM runner whose seat is closed (a new world starts with it closed) says so in its `[pace]` line (the DM frame shows it) and waits for Open seat.
+- New world under the same ids (#219): New World reuses hero ids, so a runner that holds ids would play nobody. Hero and Fellowship runners poll `/play/health` (`watchWorld` in `scripts/pacing.mjs`) and, when a held id now names another hero (the name differs; the world instance id will be compared too once `/play/health` carries it as `world`), release their claims and exit with code 75 (`NEW_WORLD_EXIT`, `[world] a new world: ...` line). The supervisor (`scripts/runners.mjs`) restarts a runner that exits 75 with the same request after `RESTART_MS`, at most `MAX_RESTARTS` in a row without a turn; the restart sets the old sessions aside in `logs/agents/old/`. A DM runner whose seat is not open yet (a rare race at a new world; every world opens it from the first tick, #559) says so in its `[pace]` line and waits.
 - Memories (#155, `src/sim/notebook.js`): every agent hero keeps its own searchable notes with `remember {title,
   text, tags[], about?}`, `recall {query?, tag?, about?, id?, n?}` (title and tag words 3, about 2, text 1, +1 pinned,
   plus recency; a tag or about filters), `update_memory`, `forget` and `pin`; 200 notes of 600 characters, the oldest
@@ -477,7 +485,7 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   counted in `dmagent.js`; idle table polls and `prep_done` do not count; half of both on Continue or for a DM runner started
   again), ended by `prep_done`, a cap, Start anyway or the seat going away. The banner reads "THE DM PREPARES THE TABLE · 12 S ·
   3/20 CALLS" with Start anyway, the DM frame "preparing", `/play/health` `dm.prep`, `dm_status` `prep` (`host`, `opening_due`).
-  No prep with the seat closed, without a ready DM runner, or with no host holding the world (play-headless without
+  No prep without a ready DM runner, or with no host holding the world (play-headless without
   `--wait-ready`); a DM runner waits for the prep only when `prep.host` says one will come. Then the opening scene opens
   ("SESSION ZERO · <company>"): the DM frames it through `table_call` (its call carries the campaign premise and opening beats,
   DM-only), else the scripted DM from the hall, the day, the oaths, the hall's first job and the gate captain's writ; members
@@ -487,7 +495,7 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   town, never in the Crypt, a raid or a fight (`C.arrivals`; the world's background recruit of that class is reserved). The
   recruit (the fallen member's class, `SEED_BEHIND` under the lowest living member, agent-played, `a.succeeds` = the fallen id)
   is made and placed at the camp's edge or the town gate as the scene opens; the DM voices them (`table_call` voice, then the
-  oath), the scripted DM when the seat is closed or silent; members greet, question, object (spoken, not a veto) or keep
+  oath), the scripted DM when the runner is slow or gone (a reflex, #561); members greet, question, object (spoken, not a veto) or keep
   silent; the oath is sworn at the table (`campaign('recruit')`). Runners give the newcomer the fallen member's runner settings
   (`inheritRunner`, `/play/health` `heroes[].succeeds`). A solo's death leaves an heir at level 1 at home, a company of one,
   with a short opening (owner answer 2). Letters (`C.letters`, any company, keyed by writer): to whoever takes the writer's
@@ -701,8 +709,8 @@ only `model`, `max_tokens`, `messages` and the structured-output/tools fields, n
 
 ## DM agent (issue #66, part 1)
 
-An AI agent can sit in the DM seat between scenes: it reads the world, keeps campaign notes and shapes
-what comes next through the world levers; the scripted DM keeps running beside it, unchanged. It never
+The DM seat is always held by an agent (the Hard rule; slice D #562: older saves convert on load, `convertOldDm` in `src/sim/save.js`, with a DM log notice, a scripted-DM setup becomes Claude Haiku, no RNG). The agent sits in the seat between scenes: it reads the world, keeps campaign notes and shapes
+what comes next through the world levers; the scripted DM keeps running beside it as the world engine and the DM's reflexes, unchanged. It never
 controls a hero and never kills anyone by fiat (no lever touches HP, level or life, and a pull that piles
 danger onto a badly hurt Fellowship member out in the field is refused). It can also stage narrated
 encounters and speak at their tables (issue #132, below).
@@ -716,9 +724,9 @@ encounters and speak at their tables (issue #132, below).
 
 - Campaign seed: `docs/campaigns/<world>.md` (H2 Premise, Threads, Characters, Plans, Secrets; bullets `- **Title**: text`) is parsed by `src/sim/campaign.js` and seeds the DM's notes once (`from:'campaign'`, premise pinned in plans) when a world's DM state is created, or on load for an older save with empty notes. The host hands the text over (`provideCampaigns`: Vite `?raw` glob in `src/main.js`, `scripts/campaign-files.mjs` in Node); no file, no seed. `dm_status` shows `campaign`. Heroes never see it (`npm run channelcheck`); `npm run campaigncheck`.
 
-- In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; open the
-  **Dungeon Master** panel and press **Open seat**, pick the mind (Claude or a pulled local model) and
-  press **Start DM**. The seat (link, runner mind, runner state and last error) shows there and as the
+- In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; the seat is
+  open from the first tick (the setup page picks the DM's mind); open the **Dungeon Master** panel and press
+  **Start DM** (Claude or a pulled local model). The seat (link, runner mind, runner state and last error) shows there and as the
   DM row of **Minds at play** (Start DM / Stop DM there too). Without `--runners` the button says how to
   turn runners on; from a terminal instead: `npm run dm` (one runner; it claims the seat).
 - Headless: `node scripts/play-headless.mjs --dm --agents 0 --port 8789` (no agent hero, the seat open),

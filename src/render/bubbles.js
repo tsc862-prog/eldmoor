@@ -8,6 +8,7 @@ import {bubbleVisible} from '../core/chatview.js';
 import {toneOf} from '../core/colors.js';
 
 import {TEXT} from './palette.js';
+import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
 const CSS=12,LINE=20,MAXL=3,FADE=.6,FILL='#0a0a16';
 
@@ -22,7 +23,7 @@ function layout(ctx,S,cam){const out=[],cv=ctx.canvas,vw=cv.width/cam.sc,vh=cv.h
   const s=CSS*cam.dpr/cam.sc,lh=s*.8,pad=s*.3;ctx.font=s+'px VT323, monospace';
   for(const a of S.agents.concat(S.npcs||[],S.wanderers||[])){const b=a.bubble;if(!b||b.life<=0||a.hidden||a.state==='dead'||!bubbleVisible(a,S))continue; // heroes and townsfolk (sim/npcs.js)
     const px=a.x*T,py=a.y*T;if(Math.abs(px-cam.camX)>vw/2+60||Math.abs(py-cam.camY)>vh/2+60)continue;
-    const tone=toneOf(a,S.fellowship,S.gameMin),head=tone.kind==='class'?a.name.toUpperCase():tone.npc?'['+a.name+']':null,lines=(head?[head]:[]).concat(wrap(b.text)); // a member's bubble leads with its name in class colour, an NPC's in [brackets] in its disposition colour
+    const tone=toneOf(a,slotted(),S.gameMin),head=tone.kind==='class'?a.name.toUpperCase():tone.npc?'['+a.name+']':null,lines=(head?[head]:[]).concat(wrap(b.text)); // a member's bubble leads with its name in class colour, an NPC's in [brackets] in its disposition colour
     let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
     const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=py-17-s*1.15,top=bottom-bh,x0=px-bw/2;
     out.push({b,tone,head,lines,px,top,bottom,x0,bw,bh,lh,pad})}
