@@ -14,10 +14,10 @@
 //     200 {choice?, crypt?, line?, reason?, sent, usage:{in,out,cost}, provider, model}   (cryptCall: {crypt, reason})
 //     4xx/5xx {error:'...', sent?, provider?, model?}   (the sim treats any error as "scripted")
 //   GET  /health   {ok, model, requests, cost, byProvider:{name:{requests,errors,inTok,outTok,cost,ms}},
-//                   providers:{anthropic:{ok,models}, ollama:{ok,url,models (pulled, from /api/tags),numCtx (#221),error?}, openai, huggingface (Hugging Face router, #552), google}, localTimeout}
+//                   providers:{anthropic:{ok,models}, ollama:{ok,url,models (pulled, from /api/tags),numCtx (#221),error?}, openai, huggingface (Hugging Face router, #552), google (Gemini, #672)}, localTimeout}
 //
 // Providers: scripts/providers/ (anthropic.mjs = the Claude call, ollama.mjs = local models at OLLAMA_URL,
-// default http://localhost:11434, cost 0; openai.mjs = OpenAI Chat Completions; google.mjs is a stub until built).
+// default http://localhost:11434, cost 0; openai.mjs = OpenAI Chat Completions; google.mjs = Gemini through Google's OpenAI-compatible endpoint, #672).
 //
 // Setup: put ANTHROPIC_API_KEY=... in .env at the repo root (gitignored; see .env.example),
 // then `npm run relay`. Optional env: RELAY_MODEL, RELAY_PORT, RELAY_ORIGIN, OLLAMA_URL, OLLAMA_MODEL.
@@ -74,7 +74,8 @@ export const ANTHROPIC_CONCURRENCY = 2, RATE_RETRIES = 3, RATE_PAUSE_MAX = 10000
 export const DECIDE_MIN_LEFT = 300; // a decision that would leave the queue with less than this before its deadline is dropped (at most a quarter of its timeout)
 export const OPENAI_CONCURRENCY = 4; // env RELAY_OPENAI_CONCURRENCY
 export const HF_CONCURRENCY = 4; // env RELAY_HF_CONCURRENCY (#552), like OpenAI's
-export const makeLimits = (env = {}) => ({anthropic: makeLimiter({max: Number(env.RELAY_ANTHROPIC_CONCURRENCY) || ANTHROPIC_CONCURRENCY}), openai: makeLimiter({max: Number(env.RELAY_OPENAI_CONCURRENCY) || OPENAI_CONCURRENCY}), huggingface: makeLimiter({max: Number(env.RELAY_HF_CONCURRENCY) || HF_CONCURRENCY})});
+export const GOOGLE_CONCURRENCY = 4; // env RELAY_GOOGLE_CONCURRENCY (#672); RELAY_GOOGLE_RPM spaces starts to a per-minute quota (0 = off)
+export const makeLimits = (env = {}) => ({anthropic: makeLimiter({max: Number(env.RELAY_ANTHROPIC_CONCURRENCY) || ANTHROPIC_CONCURRENCY}), openai: makeLimiter({max: Number(env.RELAY_OPENAI_CONCURRENCY) || OPENAI_CONCURRENCY}), huggingface: makeLimiter({max: Number(env.RELAY_HF_CONCURRENCY) || HF_CONCURRENCY}), google: makeLimiter({max: Number(env.RELAY_GOOGLE_CONCURRENCY) || GOOGLE_CONCURRENCY, rpm: Number(env.RELAY_GOOGLE_RPM) || 0})});
 const sleepFor = (ms, signal) => new Promise((res, rej) => {if (signal && signal.aborted) return rej(Object.assign(new Error('aborted'), {name: 'AbortError'}));
   const t = setTimeout(res, ms); if (signal) signal.addEventListener('abort', () => {clearTimeout(t); rej(Object.assign(new Error('aborted'), {name: 'AbortError'}))}, {once: true})});
 // One provider call through its limiter: queued (decisions first), paused on 429, writing kinds retried.
@@ -295,6 +296,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (tts) tts.status().then(o => console.log(o.ok ? `[relay] narrator voice: ${o.engine} at ${o.url}, ${o.voices.length} voices, clips cached in logs/tts/` : '[relay] ' + o.hint)); else console.log('[relay] narrator voice off (RELAY_TTS=0)');
     embedStatus(providers.ollama, embedCfg).then(o => console.log('[relay] ' + o.line));
     providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error} | num_ctx ${o.numCtx} for every local call (OLLAMA_NUM_CTX)`));
+    if (providers.google && providers.google.configured()) providers.google.status().then(o => console.log(`[relay] google (Gemini, ${providers.google.tier || 'free'} tier): ${o.ok ? (o.models.length ? o.models.length + ' chat models' + (o.default ? ', default ' + o.default : '') : 'no chat model listed') : o.error}${(Number(env.RELAY_GOOGLE_RPM) || 0) ? ' | at most ' + Number(env.RELAY_GOOGLE_RPM) + ' calls a minute (RELAY_GOOGLE_RPM)' : ''}`));
+    if (providers.openai && providers.openai.configured()) providers.openai.status().then(o => { if (o.ok) console.log(`[relay] openai: ${o.models.length} model${o.models.length === 1 ? '' : 's'}, cheapest first (OPENAI_MODELS narrows the list)${o.dropped ? ' | in OPENAI_MODELS but not usable with this key, dropped: ' + o.dropped.join(', ') : ''}`) });
     if (providers.huggingface && providers.huggingface.configured()) providers.huggingface.status().then(o => console.log(`[relay] huggingface: ${o.ok ? (o.models.length ? o.models.join(', ') : 'no model answered') + (o.dropped ? ' (not supported, dropped: ' + o.dropped.join(', ') + ')' : '') : o.error} | one tiny call per model, checked once (HF_MODELS); shares the free allowance with the art pipeline`));
   });
 }

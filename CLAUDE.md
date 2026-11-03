@@ -11,8 +11,10 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   Bastion) are fine. Don't copy a franchise's distinctive proper nouns wholesale (Azeroth, Horde,
   Alliance, Stormwind, Arthas) or its maps, sprites and sounds; Eldmoor keeps its own places, peoples
   and characters. Prefer names that sound good over names that are merely unique.
-- **Hardcore.** Every hero has one life. Death is permanent; a fresh level-1
-  recruit of the same class and guild replaces them.
+- **Hardcore.** Death is permanent. A hero at zero HP is downed, not dead: companions have a short window to
+  bring them back (death saves, stabilize, a heal or a potion). Three failed saves, a finishing blow, a blow past
+  their full health or nobody left to help is the end, and a fresh level-1 recruit of the same class and guild
+  replaces them. Once dead, dead: nothing brings a hero back. (`src/sim/downed.js`, `npm run downcheck`, epic #626.)
 - **Every company member is always agent-played.** Every member of an agent company, the Fellowship included (and every replacement), is
   controlled by an agent at all times; there is no scripted or single-call AI mode for members. Between
   decisions a member may auto-play (autopilot: carry out the last order, follow the leader, reflexes such as
@@ -94,6 +96,7 @@ other. The rules:
 - **Names go through lore.** Anything newly named (zone, creature, item, NPC,
   guild, quest) is added to `docs/LORE.md` in the same PR, and `lore-keeper`
   checks originality before merge.
+- **Every PR carries its patch note** (#664): `docs/patchnotes/<PR number>.md` (front matter `title`, `date`, `area`, `issues`, then 1-6 `- ` lines) is part of the PR, written for the owner as a player: what he will see or can do now, in plain words, no file or function names or hashes ("Nothing you will notice: ..." for CI and tests). `npm run rulescheck` fails a PR without it unless it has the label `no-notes`; the launcher (`n`, and on start and after `u`), `npm run notes` and the title screen's What's new show them.
 - **Numbers go through balance.** Changes to stats, mobs, bosses, XP or AI get a
   `balance-tester` report before merge.
 - **Issues are the queue.** Work is tracked as GitHub issues labelled
@@ -110,7 +113,7 @@ other. The rules:
   levels, deaths, honor, guild dungeon results and boss state.
 - `npm run build`: static build into `dist/`.
 - Worlds: Eldmoor (80x50) by default; `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node selects the 160x100 Stepping Lands test continent (saves are kept per world).
-- Title screen (`src/ui/title.js`): the page opens on Continue (with a line on the save), New world (the setup page), Load from file and the map choice; no world is built or restored until a choice. `?continue=1` (or `?skip-title=1`) boots straight in as before; a queued New World setup and a Load/Import reload skip it too.
+- Title screen (`src/ui/title.js`): the page opens on Continue (with a line on the save, and a What's new block of the patch notes this viewer has not read, NEW until Got it, #664), New world (the setup page), Load from file and the map choice; no world is built or restored until a choice. `?continue=1` (or `?skip-title=1`) boots straight in as before; a queued New World setup and a Load/Import reload skip it too.
 - New worlds (#111): `init()` founds the default Fellowship (level 1, home town, Minds scripted) and starts the other heroes at levels 1-15 in fitting zones (`src/sim/opening.js`, `START_BANDS`). `ELDMOOR_FELLOWSHIP=0` in Node, `?fellowship=0` in the browser or `init({fellowship:false})` keeps the old all-level-1 start for balance baselines; checks that found their own Fellowship use it.
 - `npm run hashcheck` (#573, `scripts/hashcheck.mjs`): the one source of the seeded hashes PRs quote (professioncheck with and without the Fellowship, tablecheck --hash and --hash-talk, crawlcheck, dmcheck seat closed and open, focuscheck, the no-company world, the Eldmoor map). It runs them here and on `git archive origin/main` extracted to a temp dir (never a worktree) and prints both side by side; exit 2 when one moved. The CI job `hash-guard` comments that table on every PR and fails when a hash moved unless the PR has the label `hash-change-ok` (add the label, then re-run the job). Quote its table in PRs, not hand-run hashes.
 - `npm run rulescheck` (#573): src/sim, src/world and src/data never import src/render or src/ui; no zone, faction or town name literals outside src/data and src/world (known ones in `scripts/rulescheck.allow.json`, with a reason); the append-only tables (MOBS, EPICS, GOODS, CLS, the world specs' regions and towns, ...) keep every existing row in place against origin/main; every `scripts/*check.mjs` with an npm script is a step in ci.yml. CI also runs on `merge_group` for GitHub's merge queue.
@@ -135,7 +138,8 @@ other. The rules:
   processes (output prefixed and coloured `[relay]`, `[vite]`, `[up]`), then opens http://localhost:5173 once. Single keys
   (or the word plus Enter where raw mode is missing): `u` update (`git pull --ff-only`; refused on a dirty tree outside .claude/ (agent memory never blocks it; git refuses if the pull touches a file you edited, naming it; nothing is stashed) or a
   non-fast-forward; `npm install` only when package-lock.json changed, with Vite stopped meanwhile; then the relay restarts,
-  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `s`
+  and Vite too when vite.config.js, package.json or the lockfile changed), `r` restart the relay and its runners, `n` the last 10 patch notes (on start and after `u` it prints every note merged since
+  the commit last seen, `logs/last-seen.json`, #664), `s`
   status (relay health, runners, Ollama models loaded), `h` help, `q`/Ctrl+C quit (runners get "stop" first so they
   release their heroes, then the relay, then Vite; the process trees are killed with `taskkill /T /F` as a last resort, so
   no node process or port stays held; closing the window does the same). A change under `scripts/` while it runs prints
@@ -191,6 +195,7 @@ other. The rules:
   `ASSET_PROPS` draw from assets at TILE resolution. `npm run artcheck` (CI) checks it all against a mock Hugging Face
   server and fixtures (`scripts/art/fixtures.mjs`), incl. tier selection, the scaled fallback and `--tier 64`.
 - `npm run gambitcheck` (#617, `src/sim/gambits.js`, vocabulary and class presets in `src/data/gambits.js`): an agent hero's gambits, an ordered rule list (`when` + optional `and` + `then`) that autopilot (first rule that holds and can run), the fight reflex (every fight rule that holds, in order; flee ends it) and the full-pack reflex run between turns. With no edit a hero runs its class preset, which is the old fixed policy written out rule for rule (hashcheck's `autopilot` row proves agent heroes on autopilot play identically); scripted heroes never use it. Tools (not orders, `act:false`): `gambits` (the list, ids, on/off, last fired, the vocabulary), `set_gambit {when, and?, then, id?, before?, on?, why?}` written in words ("ally hp below 40", "buy_potions 3"), `move_gambit`, `toggle_gambit`, `drop_gambit`, `reset_gambits {preset: class|cautious|empty}`; `GAMBIT.PER_DAY` 20 edits a game day. Weakening or dropping a safety rule (flee, potion, defend) is never refused: it is noted in the edit history and the persona history, the watch flags `no-flee-rule` and the digest/report count rule-driven acts per hero. The Agent tab shows the list (view only) with the rule that fired last; the purpose line names it.
+- `npm run downcheck` (#626 slices #652/#653, `src/sim/downed.js`): a hero at zero HP is downed (`a.state='downed'`, `a.down {s, f, stable, wake, by}`), rolls a death save every `DOWN.TICK` 10 game minutes (d20: 10+ success, 1 two failures, 20 up on 1 HP); three successes with kin standing within `DOWN.REACH` 12 tiles = stable (wakes on 1 HP after `DOWN.WAKE` 60), with nobody near = dies alone; three failures (four with a healer of theirs within 5 tiles) = dies. A blow on the downed is a failure (a crit two); a hero's blow finishes (PvP spare is #657); a blow from zero past full health kills. Party, company or guild kin in a free state come (`aid`): a healer heals from 5 tiles (+`DOWN.HEALER_BONUS` 15% of max HP), else at their side a potion (party mates), a Linen Bandage (stable at once) or stabilize (d20 + Healing vs 10, every 10 game minutes). Mobs turn to someone standing who fights them; with nobody else, or with `beh.finishes` (wolves, rimehounds, wights), they strike the downed; Kragmaw's breath hits the downed. `agentDie` asks `goDown` first; `slay` is the one road to `fall`. Not yet: Table scenes and the crawl keep the old death (#654), the Watch clock (#655), wounds (#656), agent tools (#658), UI (#659). `npm run sim` prints a Downed line.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player
@@ -591,7 +596,7 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   prints whether Ollama is reachable and which models are pulled; `GET /health` lists the same
   under `providers`.
 - Pick a mind per background hero (Developer toggle; company members are always agents, #148): Scripted / AI / Agent, and
-  for AI a provider (Claude, Local (Ollama), OpenAI, Google) and a model picked from what the relay
+  for AI a provider (Claude, Local (Ollama), OpenAI, Hugging Face, Gemini) and a model picked from what the relay
   reports. The setting is `a.brainCfg = {provider, model}` on the hero (same shape as the agent
   runner's `runner` settings), saved with the world; the brain sends it with every request for
   that hero, Fellowship sheets included.
@@ -606,7 +611,7 @@ lets a local model play a hero end to end as an agent (`npm run agent`, `npm run
   (for example `qwen2.5:14b · local`), and the relay log and `--verbose` log record provider and model.
 - Adapters live in `scripts/providers/` (one interface: `call({system, user, schema, maxTokens,
   model, effort})`; Ollama and OpenAI also have `chat({messages, tools|format})` for the agent loop).
-  Google is a stub that reports "not configured" until built.
+  Google (Gemini) is the OpenAI adapter with other options, see below.
 
 Local agent runner (part 2):
 
@@ -682,6 +687,12 @@ Owner setup:
    hero's session file; later runs need only `--hero`), or `npm run fellowship -- --provider openai --model <id>`.
    Tags read like `gpt-6-luna · openai`.
 
+Model lists (#677): `OPENAI_MODELS=a,b` in `.env` makes `providers.openai.models` exactly that list, in that order, checked once against the
+key's `/models` (an id the key cannot use is dropped, with `dropped` in `/health` and a line in the relay log); unset, the key's chat models come
+cheapest first from `PRICES` (unpriced last). `/health` also carries `prices` (per 1M tokens) and the pickers label each model ("gpt-6-luna · $0.10 /
+$0.50 per 1M", "price unknown"). `ANTHROPIC_MODELS` narrows the Claude list the same way, `HF_MODELS` as before (one helper, `modelListFrom` in
+`scripts/providers/index.mjs`). Recommended: `OPENAI_MODELS=gpt-6-luna,gpt-6.1-terra`.
+
 Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pick any model from your
 own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
 1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
@@ -720,6 +731,55 @@ only `model`, `max_tokens`, `messages` and the structured-output/tools fields, n
 - Agent play is the OpenAI path (`--provider huggingface --model <id>`, `openaiRunner` in `scripts/agent-chat.mjs`, same loop, forced scene answers
   and reflections); no Claude slot, keeps the kind's turn cap and budget caps. `npm run hfcheck` (in CI) runs it all against a mock router.
 
+### Google (Gemini) (issue #672)
+
+The fifth mind provider, id `google` (label "Gemini", tag `<model> · google`, for example `gemini-3.8-flash · google`): Gemini's
+OpenAI-compatible Chat Completions surface (`https://generativelanguage.googleapis.com/v1beta/openai`, the AI Studio key as a bearer) is
+`scripts/providers/openai.mjs` with other options (`googleAdapter`/`GOOGLE_OPTS` in `scripts/providers/google.mjs`, the #552 pattern), with the
+native `generateContent` call as a fallback where the compat layer falls short.
+
+Owner setup:
+
+1. Create a key at https://aistudio.google.com/apikey (a free Google account is enough; the free tier needs no billing).
+2. Add `GOOGLE_API_KEY=...` to `.env` (ignored by git; read only by the relay and the runners, never printed, scrubbed from errors).
+   Optional: `GOOGLE_MODEL=<id>` (a default; none in code), `GOOGLE_MODELS=a,b` (an allow list for the pickers, as `OPENAI_MODELS`, #677), `GOOGLE_TIER=paid` (a billed key: cost from the price table; default free),
+   `GOOGLE_NATIVE=1` (every structured call through `generateContent`), `GOOGLE_BASE_URL`, `RELAY_GOOGLE_CONCURRENCY` (default 4),
+   `RELAY_GOOGLE_RPM` (space calls to the key's requests-per-minute quota; 0, the default, means no spacing).
+3. Restart the relay. `GET /health` lists `providers.google` (the chat models `GET /models` returns for the key, `free: true`) and
+   `queues.google`; the mind row (AI), the Start runner picker, the setup page and the DM seat's picker fill from it, cheapest first by the paid price, labelled "$0.00 / $0.00 per 1M" on the free tier (the table's price on the paid tier or for a paid-only model). Or from a terminal:
+   `npm run agent -- --hero <name|id> --provider google --model gemini-3.8-flash`, `npm run fellowship -- --provider google --model <id>`,
+   `npm run dm -- --provider google --model <id>` (saved as `runner: {provider: 'google', model}`; later runs need only `--hero`).
+
+- Free tier = the budget: on the free tier every call costs $0 (tokens are still counted and shown) and a used-up daily quota reads "Gemini free
+  quota used up for today; the hero plays scripted / the runner waits" (kind `quota`, never retried; daily quotas reset at midnight Pacific).
+  A per-minute 429 is a rate limit: the relay's limiter pauses for the retry delay Google names (writing kinds retry, decisions drop to scripted),
+  a runner waits. 401/403, or Google's 400 "API key not valid", read "bad or missing GOOGLE_API_KEY".
+- How many minds the free tier carries: Google's rate-limit page (read 2026-11-03) does not print the free tier's numbers; they are shown per key
+  in AI Studio. Each agent turn is several model calls (6-12 in the local runs), so divide the key's requests per minute by
+  about 10 for the members that can think at once, and its requests per day by the calls a member makes in a session; set `RELAY_GOOGLE_RPM` to the
+  key's per-minute limit so relay decisions never trip it. Watch the relay log for "free tier per-minute quota" lines.
+- Models and prices: read from https://ai.google.dev/gemini-api/docs/pricing on 2026-11-03 (`PRICES` in `google.mjs`, Standard tier, prompts up
+  to 200k, output including thinking tokens): gemini-3.8-flash and gemini-3.6-flash $0.75 / $3.75 per 1M (doubling 2027-01-01), gemini-3.5-flash-lite
+  $0.30 / $2.50, gemini-3.1-flash-lite $0.25 / $1.50, gemini-3-flash-preview $0.50 / $3, gemini-2.5-flash-lite $0.10 / $0.40, gemini-2.5-flash
+  $0.30 / $2.50 and gemini-2.5-pro $1.25 / $10 (both deprecated, routed to 3.8 Flash / 3.5 Flash-Lite on 2026-12-01), all with a free tier;
+  gemini-4-argon ($2 / $10) and gemini-3.1-pro-preview ($2 / $12) are paid only. A model not in the table reports cost "unknown" on the paid tier.
+- Requests carry only `model`, `messages`, `max_tokens`, `reasoning_effort`, and `response_format` or `tools`. Thinking: `reasoning_effort` "none"
+  on the 2.5 Flash models, "low" on the others (the 3.x models cannot turn it off), and `max_tokens` gets 1024 tokens of headroom, because
+  thinking spends output tokens before the answer; output tokens are counted as total minus prompt, so thinking is in them.
+- Native fallback (`nativeCaller`): a strict schema the compat layer rejects (400 naming the schema or `response_format`) is asked again through
+  `POST /v1beta/models/<model>:generateContent` (`x-goog-api-key` header; `systemInstruction`, `contents`, `generationConfig {maxOutputTokens,
+  responseMimeType: application/json, responseJsonSchema}`), remembered per model (decisions, writing, forced scene answers and reflections);
+  usage from `usageMetadata` (thoughts counted as output), `MAX_TOKENS` -> "reply cut off", a safety finish or a blocked prompt -> "model refused".
+  Tool calls stay on the compat path.
+- Thought signatures: Gemini 3 tool calls carry `extra_content.google.thought_signature`; the loop sends it back within the turn and drops it from
+  the kept history and the session file. A 400 naming a missing signature is asked once more with the tool calls written out as text.
+- Agent play is the OpenAI path (`openaiRunner` -> `googleRunner` in `scripts/agent-chat.mjs`, the same loop, forced scene answers, reflections,
+  state header, English re-prompt, `--max-fails`); no Claude slot; it keeps the budget cap (spent stays $0 on the free tier). The DM plays it through
+  the same loop as a local DM (table, talk and ruling voices on the seat's Gemini model, 8 s budgets). `npm run googlecheck` (in CI) runs it all
+  against a mock Gemini server, with no key and no network.
+- Caveats: Google calls the OpenAI compatibility beta ("still in beta while we extend feature support"); the free quotas are not printed on
+  Google's pages and change with the tier, so read them in AI Studio; check the AI Studio terms for how free-tier prompts are used.
+
 ## DM agent (issue #66, part 1)
 
 The DM seat is always held by an agent (the Hard rule; slice D #562: older saves convert on load, `convertOldDm` in `src/sim/save.js`, with a DM log notice, a scripted-DM setup becomes Claude Haiku, no RNG). The agent sits in the seat between scenes: it reads the world, keeps campaign notes and shapes
@@ -730,7 +790,7 @@ encounters and speak at their tables (issue #132, below).
 
 - **Fellowship first (issue #165).** The DM's priorities are the Fellowship, then the overall world (a Hard rule).
   - Agent: the standing orders and every turn prompt start with them (`fellowNow`); `dm_status` lists `fellowship_first` and `fellowship_needs` (summary, items: where they ride, open threads and oaths, pending Table scene or vote, hurt members, what is under way, what would make their next hours interesting; `quiet` when nothing is pending) before the world, plus `fellowship_change`, a signature of their situation. The DM never reads hero notes. World-shaping that does not touch them comes after, and only when nothing is pending for them.
-  - Cadence: besides each game evening, the runner takes an extra turn when `fellowship_change` differs from the last turn's (they arrived or set out, a scene ended, a member fell, an oath or job finished), at most `EVENT_MAX` 3 a game day, `EVENT_GAP` 120 game minutes apart, still behind the Table/vote wait and the real-time minimum gap (`eventDue` in `scripts/dm-agent.mjs`; the DM seat has no `/play/pace`, that route is the heroes'). `src/sim/dmfocus.js` is the one place that knows where the Fellowship is.
+  - Cadence: besides each game evening, the runner takes an extra turn when `fellowship_change` differs from the last turn's (they arrived or set out, a scene ended, a member fell, an oath or job finished), at most `EVENT_MAX` 3 a game day, `EVENT_GAP` 120 game minutes apart, still behind the Table/vote wait and the real-time minimum gap (`eventDue` in `scripts/dm-agent.mjs`, which also wakes on the DM's own `watch` hits, #635; the DM seat has no `/play/pace`, that route is the heroes'). `src/sim/dmfocus.js` is the one place that knows where the Fellowship is.
   - Scripted DM (`src/sim/dm.js`, deterministic): the Fellowship's hall board always keeps one posted job that concerns them (a member's oath, the living elite nearest their road, or a townsfolk job in the region they ride, level band permitting) and fills first; outlying boards keep a floor of `K.FLOOR` 1 posted job and fill up to `K.HOOKS` only while the Fellowship has a job under way.
   - Reserved share: with a Fellowship, `FOCUS.RESERVE` (about a third, at least one) of each lever's `perDay` limit and `STAGE.RESERVE` (1) of the 3 staged scenes a day are kept for pulls near the Fellowship (their regions, hall, members); world pulls hit "kept for the Fellowship" first.
   - Measure: `S.dmFocus` counts DM actions (board posts, applied levers outside adventures, staged scenes) and those that touched the Fellowship; `dm_status` shows the share, the behavior digest has `dmFocus {acts, fellow, share}`, the report prints it, and `npm run dmcheck` asserts most scripted-DM actions concern the Fellowship (about 60% over 150 game hours) and that the run is deterministic.
@@ -761,7 +821,7 @@ encounters and speak at their tables (issue #132, below).
   `log_intent`, and its in-game voice `narrate` (`{text, near, radius?}`: heroes near a hero, town,
   region or "x,y", or everyone at the open Table scene, hear it in their Chat tab and the Table banner;
   12 a game day) and `npc_say` (`{npc, text}`: a townsperson or placed person speaks to whoever is within
-  earshot; 16 a game day). `whisper {hero, text, as?}` (#523) gives one hero a line nobody else hears (in an open Table scene or within 4 tiles of the placed person `as`; it lands in that hero's chat as "(whispered) ...", the table sees only "<npc> leans close to <hero>"; 8 a day) and `dream {hero, text}` a dream delivered when an agent hero next wakes from a camp or an inn rest ("You dream: ...", a soft wake and a reflection moment; 2 a day); the DM log names the hero, not the text. The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
+  earshot; 16 a game day). `whisper {hero, text, as?}` (#523) gives one hero a line nobody else hears (in an open Table scene or within 4 tiles of the placed person `as`; it lands in that hero's chat as "(whispered) ...", the table sees only "<npc> leans close to <hero>"; 8 a day) and `dream {hero, text}` a dream delivered when an agent hero next wakes from a camp or an inn rest ("You dream: ...", a soft wake and a reflection moment; 2 a day); the DM log names the hero, not the text. `when {trigger, on, action, args, hours?, once?, reason}` (#635, `src/sim/dmwhen.js`) leaves an action behind for a trigger (`enter_region`, `enter_town`, `near_place`, `near_person`, `talks_to`, `member_hp_below`, `foe_dies`, `quest_scene`, `camp_made`, `night_falls` 20:00, `day_breaks` 06:00, `at_time`, `after_hours`, `hero_levels`, `oath_kept`; `company`/`hero` narrows who trips it, default any agent hero; edges: what is already true does not fire): the action is narrate, npc_say, whisper, dream, stage_scene (previewed when set), a flat lever tool, pull_lever or a lever name, with `{who}` for the hero who tripped it; checked when set and run when it fires through the same tool code, so the day's caps, lever limits, the Fellowship reserve and every refusal apply then (a refusal is logged and the when dropped); `WHEN.MAX` 6 pending, 12 set a game day, hours 1-72 (default 24), `once: no` fires at most once a game day; every firing is a DM log line (the action's own lines carry `detail.when`) and a `dm_status.fired` item. `watch {trigger, on, note?, hours?, once?}` is the same triggers as a wake: a hit goes to `dm_status.watches_fired` and the runner's `eventDue` takes an event turn within `EVENT_MAX`/`EVENT_GAP` (the `fellowship_change` signature stays the floor), the turn prompt naming it ("Your watch fired: ..."); 6 set. `whens`/`watches` list both, `unwhen`/`unwatch {id}` cancel; checked every 2 game minutes from `dreamTick`, nothing set = nothing written (seeded hashes unchanged); the DM frame shows the pending ones; saved in `S.dmAgent.when`. The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
   reports `dm: {seat, link, claimed, runner}`. The game answers only while its seat is open.
 - Word and names (#637, #638; levers registered from `src/sim/rumours.js` and `src/sim/epithet.js`, so pull_lever's caps, the companies' reserve and the DM log apply): `seed_rumour {town|region, text, about?, days?, who?}` gives a town's innkeeper, gate captain and bard (or the towns bordering a region; `who` one of them) 160 characters to pass on for 1-5 game days in their own words, to a hero who talks to them (woven into the DM voice's answer when it carries `word_to_pass_on`) or reads list_jobs (`word_at_the_gate`), once a game day a hero; `about` goes on the hero's lore as heard of from the teller (`heardOf` in lore.js); 6 live, 3 a town, 4 a day, lapsing with its days, a dead foe, a faded place or a gone person; `hooks` lists them as `rumours`; the DM log counts tellings without the words. `bestow {hero, title, why, by?}` names a hero after a deed (2-24 characters, no numbers or level words; `a.epithet`, `styled(a)` "Fena Wightbane" in look, inspect, status, self, the hero card, party frame, chronicle, timeline kind `title`, Table banner and the DM's member views), proclaimed by a person within 7 tiles or the narrator, a landmark and a reflection moment; 2 a day, not the same hero within 3 game days; a hero who refuses it aloud (say, party_say, attempt) drops it and gets no further name. `npm run rumourcheck`.
 - DM log: the agent's entries carry a **DM AGENT** tag and its reason; the **DM agent** filter shows them.

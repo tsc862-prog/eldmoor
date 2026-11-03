@@ -76,7 +76,7 @@ const DAY=1440;
 const FORBIDDEN=/^(hp|maxhp|xp|lvl_?up|level_?up|stats?|abil|cls|class|hardcore|kill|slay|revive|resurrect|save_?hero|loot|item|epic|gold_?grant|gear)$/i;
 
 // Private LCG for cosmetic picks (names, looks, strolls): never perturbs the gameplay RNG.
-let seed=0x2545f491;
+const SEED0=0x2545f491;let seed=SEED0;export const resetLeverSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 const pickR=a=>a[Math.floor(r()*a.length)];
 
@@ -113,7 +113,7 @@ function field(k,s,v){
   case 'id':return isNum(v)&&Number.isInteger(v)?[v]:k+' must be an id';
   case 'obj':return v&&typeof v==='object'&&!Array.isArray(v)?[JSON.parse(JSON.stringify(v))]:k+' must be an object';
   default:return k+' has an unknown type'}}
-function validate(def,raw){const p={};raw=raw&&typeof raw==='object'?raw:{};
+export function validate(def,raw){const p={};raw=raw&&typeof raw==='object'?raw:{};
   for(const k in raw)if(!(k in def.params))return 'unknown parameter '+k;
   for(const k in def.params){const x=field(k,def.params[k],raw[k]);if(typeof x==='string')return x;if(x[0]!==undefined)p[k]=x[0]}return p}
 // A spot on the map: in bounds, walkable (or a road), outside the towns and clear of their gates
@@ -206,6 +206,16 @@ export function ready(name,z){const L=ensureLevers(),def=LEVERS[name];if(!def||d
 // End an active lever now (retire_npc, withdraw_hook and expiry all come through here).
 function end(rec){const L=S.levers,i=L.active.indexOf(rec);if(i>=0)L.active.splice(i,1);const def=LEVERS[rec.name];if(def&&def.expire)def.expire(rec)}
 const recOf=id=>S.levers?S.levers.active.find(x=>x.id===id)||null:null;
+// Take an active lever back early (issue #636: the DM agent's undo, dismiss and unstage). Only effects that can be removed
+// cleanly: a place, an area, a condition, an attitude, a placed person, a special foe not yet in a fight. The lever's own
+// expire() does the removal, as when it runs out. Returns {ok, rec} or {ok:false, reason} (the reason says why it stays).
+export const TAKE_BACK=['mark_place','mark_dangerous','mark_cleared','set_condition','set_attitude','create_npc','custom_foe'];
+export function takeBack(id){const rec=recOf(id);
+  if(!rec)return {ok:false,reason:'it is no longer active (it ran out, or was ended already)'};
+  if(!TAKE_BACK.includes(rec.name))return {ok:false,reason:rec.name+' cannot be taken back'};
+  if(rec.name==='custom_foe'&&(S.mobs||[]).some(m=>m.lever===rec.id&&!m.gone&&m.target))return {ok:false,reason:'the foe is already in a fight'};
+  if(rec.name==='create_npc'){const w=(S.wanderers||[]).find(x=>x.lever===rec.id);if(w&&w.staged!=null)return {ok:false,reason:'they belong to a staged scene (unstage it)'}}
+  end(rec);return {ok:true,rec}}
 // A world-change worth the timeline, at most TL_PER_DAY a game day.
 function tl(...parts){const st=S.levers.stats.tl,k='d'+day();if((st[k]||0)>=LK.TL_PER_DAY)return;for(const x in st)if(x!==k)delete st[x];bump(st,k);timeline('world',...parts)}
 

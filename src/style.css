@@ -110,6 +110,10 @@ button[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:va
 .facs .k{color:var(--dim)}
 .log{list-style:none;margin:0;padding:0;max-height:330px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;font-size:18px}
 .log li{line-height:1.1}
+.gambits .gbm{display:inline-block;min-width:4ch;color:var(--gold)} /* #679: + added, ~ changed, ^ v moved, off, - dropped */
+.gambits .gb-added .gbm{color:var(--green)} .gambits .gb-dropped{color:var(--dim)} .gambits .gb-dropped s{text-decoration-thickness:2px}
+.gambits li.gbsafe .gbm,.gambits li.gbsafe s{color:var(--red)} .gambits li[title]{cursor:help} .gambits li[tabindex]:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.meta.gbsum.gbdiff{color:var(--gold)} .meta.warn{color:var(--amber)}
 .log time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-nums}
 .daysep{list-style:none;color:var(--gold);font-family:var(--px);font-size:7px;letter-spacing:.08em;margin:8px 0 3px;padding-bottom:2px;border-bottom:1px solid var(--edge)}
 div.daysep{margin:8px 0 3px}
@@ -900,3 +904,18 @@ button.tbtn.danger{border-color:var(--red)}
 .pchip.now{color:var(--gold);border:1px solid var(--gold);padding:0 3px}
 .profmeal{margin:2px 0 4px;padding:1px 4px;border-left:2px solid var(--gold);overflow-wrap:anywhere}
 .mk{font-style:italic}
+/* What's new on the title screen (#664): the patch notes not read yet, a NEW badge until Got it */
+.tnews{display:flex;flex-direction:column;gap:8px;background:var(--panel);border:2px solid var(--edge);box-shadow:4px 4px 0 #05060c;padding:12px 14px;min-width:0}
+.tnews.unread{border-color:var(--gold)}
+.tnhead{display:flex;align-items:center;gap:10px;justify-content:space-between;min-width:0}
+.tnttl{font-family:var(--px);font-size:10px;margin:0;color:var(--gold);display:flex;align-items:center;gap:8px}
+.tnew{font-family:var(--px);font-size:7px;padding:3px 5px;background:var(--gold);color:#1a1206;letter-spacing:.06em}
+button.tnread,button.tnmore{font-size:8px;padding:6px 9px;box-shadow:none}
+button.tnmore{align-self:flex-start}
+.tnote{min-width:0;border-top:1px solid var(--edge);padding-top:6px}
+.tnh{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:18px;min-width:0}
+.tnn{color:var(--dim);flex:none}
+.tnt{color:var(--ink);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.tnd{color:var(--dim);font-size:16px;flex:none}
+.tnl{margin:4px 0 0;padding-left:18px;font-size:18px;line-height:1.15;color:#d8d4c4;overflow-wrap:anywhere}
+.tnl li{margin:2px 0}

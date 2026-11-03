@@ -56,7 +56,7 @@ export function paceCheck(id,{since=null,minutes=240,wake='all',reflect=false}={
   const from=Number.isFinite(Number(since))&&since!==null?Number(since):S.gameMin,m=Math.min(PACE.MIN[1],Math.max(PACE.MIN[0],Number(minutes)||240));
   const out=(w,why,must)=>({ok:true,wake:w,why:why||null,...(must?{must:true}:{}),gameMin:Math.round(S.gameMin),since:from,clock:day(),table:!!tv});
   const tv=tableView(a);
-  if(tv&&!tv.acted&&tv.phase!=='outcome')return out('now','a scene at the table: '+tv.scene,true);
+  if(tv&&!tv.acted&&tv.phase!=='outcome'&&tv.waiting_for!=='the DM')return out('now','a scene at the table: '+tv.scene,true); // not while the DM sets it (#682)
   const seen=a.playEvSeen||0,sleeping=asleep(a);let soft=null,now=null; // a sleeper's agent gets no soft turns and no heartbeat: only wake events (#178)
   for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=3)return out('now',e.text,true);if(l===2&&!now)now=e;if(l===1&&!soft&&!sleeping)soft=e}
   if(wake==='must')return null;
@@ -103,7 +103,7 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
   return 'about '+g+'g and XP'+(T.pay.honor?', '+T.pay.honor+' honor':'')+(T.pay.gear>=.35?', maybe gear':'')} // the quest log's payText (sim/questlog.js), same words as list_jobs/quests
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
-function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
+function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options||tv.waiting_for==='the DM')return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
   const g=a.goal&&!a.goal.done&&a.goal.text?a.goal.text:null,tl=toldLine(a);
   return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
     you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{})},...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)
