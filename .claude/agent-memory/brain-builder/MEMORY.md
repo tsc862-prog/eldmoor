@@ -31,3 +31,4 @@
 - [Shop tool](shop-tool.md) — #424 shop {npc?}: seller choice like buy, trader price now talk.js tradePrice (#425), gear change, refusals
 - [Inspect tool](inspect-tool.md) — #425 inspect {who}: sight tiers then pack/worn/catalogue, what each kind hides; shop brief default, tradePrice
 - [Local DM + narration](local-dm-narration.md) — #467/#468 nearform.js place shapes, localTurn breaker + minute cap, echo/junk-call/CJK cleanup, dmcheck pitfalls
+- [Stage setting](stage-setting.md) — #431 slice 2: stage_scene setting/at, fitSetting scripted pick, town meeting trigger, sceneSpec ctx.town, check pitfalls

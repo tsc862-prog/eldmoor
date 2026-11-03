@@ -512,6 +512,52 @@ console.log('staged scenes: refusals');
   T.TABLE.mode = 'auto'}
 function CITYN() {return S.agents.length && (S.fellowship.hall || 'Highgate')}
 
+// ---------------------------------------------------------------- 1b2. staged scenes in a setting (issue #431, slice 2)
+console.log('staged scenes: settings and towns');
+{const ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {SETTING_IDS} = await import('../src/data/settings.js'), {CITY} = await import('../src/world/map.js');
+  const L = fellows(), F = S.fellowship, hall = CITY.find(c => c.name === F.hall) || CITY.find(c => c.fac === F.fac), enemy = CITY.find(c => c.fac !== F.fac);
+  T.TABLE.mode = 'off'; S.staged.cur = null; S.staged.day.n = 0; S.staged.day.nw = 0; S.table = null;
+  const meet = (a) => dmAct('stage_scene', {kind: 'meeting', frame: 'A woman in a grey shawl waits with a cup she has not touched.', cast: {role: 'stranger', want: 'news of her brother'}, reason: 'settings test', ...a});
+  const no = (a, re, m) => {const x = meet(a); ok(x.ok === false && re.test(x.error), m + ': ' + (x.error || 'staged!').replace(/^Refused: /, '').slice(0, 160))};
+  no({near: 'fellowship', setting: 'throne room'}, new RegExp('unknown setting "throne room"; setting takes one of: ' + SETTING_IDS.join('.*')), 'an unknown setting is refused with every valid one');
+  no({at: 'Nowhere-town'}, /unknown town in at .*at takes a town \(/, 'an unknown town in at is refused with the towns');
+  no({at: 'the barbican in ' + hall.name}, new RegExp('no building "barbican" in ' + hall.name + '.*inn'), 'an unknown building is refused with the town\'s buildings');
+  if (enemy) no({at: enemy.name}, /enemy town/, 'a town of the other faction is refused');
+  ok(ST.settingOf('Ship\'s hold').id === 'hold' && ST.settingOf('a tavern back room').id === 'tavern' && ST.settingOf('interrogation').id === 'cell' && ST.settingOf('').id === undefined, 'a setting is read from its key, its name or a plain word');
+  ok(ST.atOf(hall.name + ' forge').spot === 'smith' && ST.atOf('the inn in ' + hall.name).spot === 'inn' && ST.atOf(hall.name).spot === null, 'at reads a town alone or a building in it');
+  // outdoor kinds ignore it, with a note
+  const pv = dmAct('stage_scene', {kind: 'elite', near: 'fellowship', preview: 'true', reason: 'x', setting: 'house'});
+  ok(pv.ok && /setting was ignored/.test(pv.setting_note || ''), 'an elite ignores setting, with a note: ' + (pv.setting_note || pv.error));
+  const pv2 = dmAct('stage_scene', {kind: 'mystery', near: 'fellowship', preview: 'true', reason: 'x', setting: 'chapel', at: hall.name});
+  ok(pv2.ok && /both were ignored/.test(pv2.note || '') && !pv2.setting, 'a mystery ignores setting and at, with a note: ' + (pv2.note || pv2.error));
+  // the whole Fellowship in town: near "fellowship" points to at
+  L.forEach(x => {x.state = 'town'; x.town = hall.name; x.x = hall.spots.square.x; x.y = hall.spots.square.y; x.hidden = false; x.target = null; x.dest = null});
+  no({near: 'fellowship'}, /whole Fellowship is in town.*pass at/, 'a meeting near the Fellowship when all are in town points to at');
+  // set in town with a named room: the person waits at the building; the scene opens in that room when a member is in town
+  L.forEach(x => {x.x = hall.gate.x + 25; x.y = hall.gate.y; x.state = 'hunt'});
+  const r = meet({at: 'the chapel in ' + hall.name, setting: 'chapel'});
+  ok(r.ok && r.setting === 'chapel' && r.where === 'A chapel in ' + hall.name && !r.setting_picked && r.waits_until_h === ST.STAGE.TOWN_WAIT_MIN / 60, 'a meeting is staged in a town, in a chapel: ' + (r.where || r.error));
+  const w = S.wanderers.find(x => x.staged === r.staged);
+  ok(w && w.town === hall.name && Math.hypot(w.x - hall.spots.chapel.x, w.y - hall.spots.chapel.y) < .01, 'the person waits at the chapel in ' + hall.name);
+  ok(dmAct('dm_status').staged.cur.setting === 'chapel', 'dm_status names the staged scene\'s setting');
+  T.TABLE.mode = 'auto'; T.tableTick(); ok(!S.table, 'nobody of the Fellowship is in town: the scene waits');
+  L[0].x = hall.spots.square.x; L[0].y = hall.spots.square.y; L[0].state = 'town'; T.tableTick();
+  ok(S.table && S.table.kind === 'meeting' && S.table.ctx.setting === 'chapel' && S.table.ctx.town === hall.name && S.table.ids.includes(L[0].id), 'a member in town opens the scene in that setting (ctx.setting, ctx.town)');
+  S.table = null; T.tableTick(); S.table = null; S.staged.cur.phase = 'done';
+  const drop = () => {const gone = S.wanderers.filter(x => x.staged != null && x.staged >= r.staged); S.levers.active = S.levers.active.filter(a => !gone.some(g => g.lever === a.id)); S.wanderers = S.wanderers.filter(x => !gone.includes(x))};
+  drop(); // the people lever keeps 6 at most
+  // no setting named: the game picks one that fits (a meeting with no words for a room: the tavern back room, at the inn)
+  S.staged.day.n = 0; S.staged.day.nw = 0; for (const k in S.levers.cd) if (k.startsWith('create_npc')) delete S.levers.cd[k]; L[0].x = hall.gate.x + 25; L[0].state = 'hunt';
+  const r2 = meet({at: hall.name, title: 'A quiet word'});
+  const w2 = r2.ok && S.wanderers.find(x => x.staged === r2.staged);
+  ok(r2.ok && r2.setting === 'tavern' && r2.setting_picked && w2 && Math.hypot(w2.x - hall.spots.inn.x, w2.y - hall.spots.inn.y) < .01, 'with no setting the game picks a fitting one (a meeting: the tavern back room, at the inn): ' + (r2.where || r2.error));
+  ok(ST.fitSetting('social', {frame: 'The prisoner is brought up in chains for questioning.'}) === 'cell' && ST.fitSetting('social', {}) === 'house' && ST.fitSetting('meeting', {spot: 'chapel'}) === 'chapel', 'the scripted pick: the building, then the words, then the kind');
+  if (r2.ok) S.staged.cur.phase = 'done';
+  const ds = dmAct('dm_status').staged;
+  ok(SETTING_IDS.every(k => ds.settings[k]) && /setting/.test(ds.settings_note) && /at \(a town/.test(ds.settings_note), 'dm_status lists the settings and how to set a scene in a town');
+  drop(); S.staged.day.n = 0; S.staged.day.nw = 0; for (const k in S.levers.cd) if (k.startsWith('create_npc')) delete S.levers.cd[k];
+  L.forEach(x => {x.state = 'hunt'; x.hp = maxHp(x)})}
+
 // ---------------------------------------------------------------- 1c. NPC conversations (issue #170)
 console.log('NPC conversations');
 {const TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), F_ = await import('../src/sim/fellowship.js');

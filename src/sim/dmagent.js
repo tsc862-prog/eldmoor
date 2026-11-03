@@ -178,7 +178,7 @@ function fellowshipNeeds(){const F=S.fellowship,fo=focus();if(!F||!fo)return nul
   for(const t of open)items.push('Open thread: '+t);
   const adv=(S.adventures||[]).filter(v=>v.phase==='active'&&v.mem&&v.mem.some(id=>fo.ids.has(id)));
   for(const v of adv.slice(0,2))items.push('Under way: '+(v.title||v.tpl)+' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+').');
-  if(!adv.length&&!sv.cur&&!S.table&&!props.length&&!hurt.length)items.push('Nothing is under way for them: a hook near '+at+', a rumour of a named foe on their road, or a staged scene (stage_scene near "fellowship") would give their next game hours something.');
+  if(!adv.length&&!sv.cur&&!S.table&&!props.length&&!hurt.length)items.push('Nothing is under way for them: a hook near '+at+', a rumour of a named foe on their road, or a staged scene ('+(field.length?'stage_scene near "fellowship"':'in town: stage_scene kind meeting or social with at "'+at+'" and a setting')+') would give their next game hours something.');
   const quiet=!S.table&&!props.length&&!hurt.length&&!adv.length&&!sv.cur;
   return {summary:(field.length?field.length+' riding in '+at:'all '+fo.members.length+' in '+at)+(inTown&&field.length?', '+inTown+' in town':'')+'; '+(th.length?th.length+' open thread'+(th.length===1?'':'s'):'no open threads')+(adv.length?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(S.table?'; a Table scene is open':'')+'.',
     where:at,riding:field.length,in_town:inTown,items,quiet,share_of_dm_actions:focusStats()}}
