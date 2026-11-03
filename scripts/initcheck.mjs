@@ -25,6 +25,14 @@ for (const f of [false, true]) {
   run(120); ok(hash() === r0, `fellowship=${f}: and the run after it matches (${r0})`);
   reseed(); init(o); reseed(); init(o); init(o);
 }
+// #674: two full runs in one process, a snapshot every sim minute for 40 minutes, must match all the way (module-level
+// state such as private random streams, watch maps and timers is put back by init()). Instance ids are random by design.
+{
+  const strip = (k, v) => (k === 'worldId' || (k === 'world' && typeof v === 'string')) ? undefined : v;
+  const once = () => {reseed(); init({fellowship: true}); const hs = []; for (let m = 0; m < 40; m++) {run(60); const j = JSON.stringify(snapshot(), strip); let h = 5381; for (let i = 0; i < j.length; i++) h = (Math.imul(h, 33) ^ j.charCodeAt(i)) >>> 0; hs.push(h)} return hs};
+  const A = once(), B = once(), at = A.findIndex((h, i) => h !== B[i]);
+  ok(at < 0, at < 0 ? 'two 40-minute runs in one process match at every minute' : `two runs in one process first differ at minute ${at + 1}`);
+}
 const s1 = JSON.stringify(Object.keys(snapshot()).sort());
 ok(s1.length > 2, 'snapshot works after repeated init');
 process.exit(fail ? 1 : 0);

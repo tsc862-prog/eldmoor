@@ -57,11 +57,11 @@ export const ABILITIES={
 // ---- species ----
 // role, family, abilities (1-3 ids), res / weak: {tag: multiplier on damage taken}, beh: aggro reach in
 // tiles (today 1.3), pack (how many others of its kind it calls, within 5 tiles), flee (hp share at which
-// it breaks off for a moment), territorial (never ambushes outside its own zone), tilt: {hp,dps} nudges
+// it breaks off for a moment), territorial (never ambushes outside its own zone), finishes (strikes a downed hero even when others stand, #626), tilt: {hp,dps} nudges
 // that keep each role mix level (see bestiarycheck). loot: p chance of the trade good, gold scale, gear
 // chance (defaults to the role's), epic chance of a zone epic.
 export const BESTIARY={
-  wolf:     {family:'beast',role:'skirmisher',tilt:{dps:1.1},abilities:['howl'],beh:{aggro:1.3,pack:1,flee:.15}},
+  wolf:     {family:'beast',role:'skirmisher',tilt:{dps:1.1},abilities:['howl'],beh:{aggro:1.3,pack:1,flee:.15,finishes:true}},
   boar:     {family:'beast',role:'brute',tilt:{dps:.88},abilities:['gore'],beh:{aggro:1.0}},
   spider:   {family:'vermin',role:'caster',tilt:{dps:.84,hp:.95},abilities:['web','venom'],beh:{aggro:.9},res:{nature:.85},weak:{holy:1.1}},
   bog:      {family:'brute-folk',role:'swarm',tilt:{hp:1.3,dps:1.1},abilities:['mire'],beh:{aggro:1.3,pack:2},weak:{arcane:1.1}},
@@ -69,9 +69,9 @@ export const BESTIARY={
   lurker:   {family:'vermin',role:'caster',tilt:{hp:1.1},abilities:['venom','hatch'],beh:{aggro:1.3},res:{nature:.8},weak:{arcane:1.15}},
   golem:    {family:'elemental',role:'guardian',tilt:{hp:.8},abilities:['slam'],beh:{aggro:1.1},res:{physical:.9},weak:{arcane:1.2}},
   drake:    {family:'wyrm',role:'caster',tilt:{hp:1.2,dps:1.1},abilities:['ashbreath'],beh:{aggro:1.4},res:{arcane:.9},weak:{physical:1.1}},
-  rimehound:{family:'beast',role:'skirmisher',abilities:['chill','howl'],beh:{aggro:1.5,pack:2,flee:.15},weak:{arcane:1.1}},
+  rimehound:{family:'beast',role:'skirmisher',abilities:['chill','howl'],beh:{aggro:1.5,pack:2,flee:.15,finishes:true},weak:{arcane:1.1}},
   shaghorn: {family:'beast',role:'brute',abilities:['roar','gore'],beh:{aggro:1.0},res:{physical:.92}},
-  wight:    {family:'undead',role:'caster',tilt:{dps:.96},abilities:['drain','dread'],beh:{aggro:1.3},res:{nature:.85},weak:{holy:1.3}},
+  wight:    {family:'undead',role:'caster',tilt:{dps:.96},abilities:['drain','dread'],beh:{aggro:1.3,finishes:true},res:{nature:.85},weak:{holy:1.3}},
 };
 
 // ---- site foes ----
