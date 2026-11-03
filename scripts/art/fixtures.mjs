@@ -29,7 +29,8 @@ const GROUND={
 const TILE_GROUND={'tile:grass':'grass','tile:meadow':'meadow','tile:fen-grass':'fen','tile:swamp':'swamp','tile:mud':'mud','tile:ash-rock':'ash','tile:snow':'snow','tile:ice':'ice','tile:road':'road','tile:water':'water'};
 // Transition pairs: A side, B side and a seam colour drawn on the A side of the border (foam, a worn rim, dying grass).
 const PAIR={'grass-road':['grass','road','#2f6a2c'],'bank-water':['grass','water','#dce8f8'],'meadow-fen':['grass','fen','#3f5a30'],
-  'fen-ash':['fen','ash','#6a6640'],'ash-snow':['ash','snow','#a8b0b8']};
+  'fen-ash':['fen','ash','#6a6640'],'ash-snow':['ash','snow','#a8b0b8'],
+  'fen-river':['fen','water','#dce8f8'],'snow-river':['snow','water','#e8f0f8'],'mud-swamp':['mud','swamp','#3e3c22']};
 
 // Colour of ground g at pixel (x,y) of a texture repeating every p pixels.
 function ground(g,x,y,p,s){const G=GROUND[g],n=pnoise(x,y,p,8,s)*.75+pnoise(x,y,p,4,s+9)*.25,h=hh(x,y,s+3);
