@@ -8,38 +8,79 @@
 //                       with its round, the boss chamber's skull, chamber names at a constant CSS size, the party.
 // st (render/dungeonview.js stateOf): {fog: index of the last room reached or -1 for none, cleared:[bool], cur, round,
 //   party:[hero], at: 'stair'|null, spot: the room the party stands in when it is not cur}. Read-only: nothing here touches the sim.
+// Scene settings (#431): interiorTexture also paints a setting from buildSetting (its theme, floor and wall styles, rug,
+//   bars, a two-course back wall and the furniture of render/furniture.js); drawSetting(ctx, box, m, st, now, dpr) draws
+//   one frame of it with the scene's people, the speaker's bubble and the turn chevron.
 // Style (docs/ART-PLAN.md): light from the top left, ground in mid values, entities outlined and owning the extremes.
 import {T} from '../world/tiles.js';
 import {IT} from '../world/interior.js';
 import {hash} from '../core/rng.js';
-import {DUNGEON as D,TEXT,MARK} from './palette.js';
-import {sprite,outlined,heroSprite} from './sprites.js';
+import {DUNGEON as D,DUNGEON,THEMES,TEXT,MARK} from './palette.js';
+import {FURN} from './furniture.js';
+import {sprite,outlined,heroSprite,npcSprite,SPR} from './sprites.js';
+import {MOBS} from '../data/mobs.js';
+import {S} from '../sim/state.js';
+import {classColor,DISP,toneOf} from '../core/colors.js';
+import {drawConditions} from './conditions.js';
 
 const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 const walk=t=>t!==IT.VOID&&t!==IT.WALL;
 
 // ---- the texture, once per interior ----
+// A dungeon (no m.theme) keeps the crypt look exactly; a scene setting (#431) brings its theme (palette.js THEMES),
+// its floor and wall styles and a two-course back wall (m.tall) to hang a hearth, shelves or a window on.
 const texCache=new Map();
-export function interiorTexture(m){const key=m.seed+':'+m.w+'x'+m.h;let c=texCache.get(key);if(c)return c;
+export function interiorTexture(m){const key=m.seed+':'+m.w+'x'+m.h+':'+(m.theme||'');let c=texCache.get(key);if(c)return c;
   c=document.createElement('canvas');c.width=m.w*T;c.height=m.h*T;const x=c.getContext('2d'),img=x.createImageData(c.width,c.height),d=img.data;
+  const D=(m.theme&&THEMES[m.theme])||DUNGEON,FS=m.style?m.style.floor:'flag',WS=m.style?m.style.wall:'brick',tall=!!m.tall;
   const s=m.seed%9973,h=(a,b,k)=>hash(a,b,s+k),tile=(tx,ty)=>tx<0||ty<0||tx>=m.w||ty>=m.h?IT.VOID:m.tiles[ty*m.w+tx];
+  // the floor's colour at a world pixel, by style
+  const floor=(t,gx,gy,n)=>{let col;
+    if(t!==IT.HALL&&(FS==='plank'||FS==='hull')){ // boards across the room, staggered ends; the hold's tarred deck with beams
+      const bh=FS==='hull'?6:5,row=Math.floor(gy/bh),ly=gy%bh,len=FS==='hull'?64:24+Math.floor(h(row,0,11)*3)*8,off=Math.floor(h(row,1,12)*len),lx=(gx+off)%len,v=h(Math.floor((gx+off)/len),row,13),R=D.floor;
+      if(ly===0||lx===0)col=D.mortar;else{col=mix(R[1],v<.5?R[2]:R[0],Math.abs(v-.5)*.7);if(ly===1)col=mix(col,R[0],.45);else if(ly===bh-1)col=mix(col,R[2],.5);
+        if(h(gx>>2,row,14)<.12&&(gx&3)!==0)col=mix(col,R[2],.35);if((lx===2||lx===len-3)&&ly===2)col=mix(col,D.mortar,.6)} // grain, nails
+      if(FS==='hull'){const rb=gx%48;if(rb<5){const B=D.beam;col=rb===0?B[0]:rb===4?B[2]:mix(B[1],B[0],.2);if(ly===0)col=mix(col,D.mortar,.4)}}
+      return col}
+    if(t!==IT.HALL&&FS==='dirt'){const v=h(gx>>2,gy>>2,15);col=mix(D.floor[1],v<.5?D.floor[2]:D.floor[0],Math.abs(v-.5)*.5);if(n<.03)col=D.floor[0];else if(n>.97)col=D.floor[2];return col}
+    const R=t===IT.HALL?D.hall:D.floor,sz=t===IT.HALL||FS==='cobble'?5:8,row=Math.floor(gy/sz),off=(row&1)*(sz>>1),sx=Math.floor((gx+off)/sz),lx=(gx+off)%sz,ly=gy%sz,v=h(sx,row,1); // flagstones (chambers 8 px, corridors and setts 5)
+    if(lx===0||ly===0)col=D.mortar;
+    else{col=mix(R[1],v<.5?R[2]:R[0],Math.abs(v-.5)*.6);
+      if(lx===1||ly===1)col=mix(col,R[0],.55);else if(lx===sz-1||ly===sz-1)col=mix(col,R[2],.6);
+      if(n<.07)col=mix(col,R[2],.5);if(D.moss&&h(sx,row,3)<.22&&n<.16)col=mix(col,D.moss,.7)}
+    return col};
+  // a wall face pixel: fy down the face (0..FH-1), the cap on top and the foot in shadow
+  const face=(gx,gy,fy,FH,n)=>{let col;const F=D.wallFace;
+    if(fy<2)return fy===0?F[0]:mix(F[0],F[1],.5);
+    if(WS==='timber'){const B=D.beam,bx=gx%40;col=mix(F[1],n<.5?F[2]:F[0],Math.abs(n-.5)*.25);if(h(gx>>3,fy>>3,16)<.08&&n<.3)col=mix(col,F[2],.5);
+      if(fy<5)col=fy===2?B[0]:fy===4?B[2]:B[1];else if(fy>=FH-5)col=fy===FH-5?B[0]:B[fy>=FH-2?2:1];else if(bx<3)col=bx===0?B[0]:bx===1?B[1]:B[2]}
+    else if(WS==='rock'){const bw=7,bh=5,row=Math.floor(fy/bh),off=Math.floor(h(row,gx>>6,17)*bw),lx=(gx+off)%bw,ly=fy%bh,v=h(Math.floor((gx+off)/bw),row,18);
+      if(lx===0||ly===0)col=D.mortar;else{col=mix(F[1],v<.5?F[2]:F[0],Math.abs(v-.5)*.8);if(ly===1||lx===1)col=mix(col,F[0],.4);if(n<.06)col=mix(col,F[2],.5)}}
+    else if(WS==='hull'){const ly=fy%4,rb=gx%48;col=ly===0?D.mortar:ly===1?mix(F[1],F[0],.5):ly===3?mix(F[1],F[2],.5):F[1];if(h(gx>>3,fy>>2,19)<.15&&ly===2)col=mix(col,F[2],.4);
+      if(rb<5){const B=D.beam;col=rb===0?B[0]:rb===4?B[2]:B[1]}}
+    else{const row=Math.floor(fy/4),off=(row&1)*4,lx=(gx+off)&7,ly=fy&3,v=h(Math.floor((gx+off)/8),gy>>2,4); // brick
+      if(lx===0||ly===0)col=D.mortar;else{col=mix(F[1],v<.5?F[2]:F[0],Math.abs(v-.5)*.5);if(ly===1)col=mix(col,F[0],.4);if(ly===3)col=mix(col,F[2],.5)}}
+    if(fy>=FH-3)col=mix(col,F[2],.35*(fy-(FH-4))); // the foot of the wall in shadow
+    return col};
   for(let ty=0;ty<m.h;ty++)for(let tx=0;tx<m.w;tx++){const t=tile(tx,ty);if(t===IT.VOID)continue;
     const up=tile(tx,ty-1),dn=tile(tx,ty+1),lf=tile(tx-1,ty),rt=tile(tx+1,ty);
+    const upper=tall&&t===IT.WALL&&dn===IT.WALL&&walk(tile(tx,ty+2)); // the upper course of a two-course back wall
     for(let py=0;py<T;py++)for(let px=0;px<T;px++){const gx=tx*T+px,gy=ty*T+py,n=h(gx,gy,2);let col;
-      if(t===IT.FLOOR||t===IT.HALL||t===IT.DOOR){ // flagstones (chambers 8 px, corridors rougher 4-6 px)
-        const R=t===IT.FLOOR?D.floor:D.hall,sz=t===IT.FLOOR?8:5,row=Math.floor(gy/sz),off=(row&1)*(sz>>1),sx=Math.floor((gx+off)/sz),lx=(gx+off)%sz,ly=gy%sz,v=h(sx,row,1);
-        if(lx===0||ly===0)col=D.mortar;
-        else{col=mix(R[1],v<.5?R[2]:R[0],Math.abs(v-.5)*.6);
-          if(lx===1||ly===1)col=mix(col,R[0],.55);else if(lx===sz-1||ly===sz-1)col=mix(col,R[2],.6);
-          if(n<.07)col=mix(col,R[2],.5);if(h(sx,row,3)<.22&&n<.16)col=mix(col,D.moss,.7)}
-        if(t===IT.DOOR){const vert=walk(up)&&walk(dn);const a=vert?px:py; // an open door leaf folded against one side, a threshold across
-          if(a<3)col=a===0?D.wood[2]:a===1?D.wood[0]:D.wood[1];else if((vert?py:px)===(walk(vert?dn:rt)?15:0))col=D.mortar}}
+      if(t===IT.FLOOR||t===IT.HALL||t===IT.DOOR||t===IT.BARS){col=floor(t===IT.BARS?IT.FLOOR:t===IT.DOOR?(m.theme?IT.FLOOR:IT.HALL):t,gx,gy,n);
+        if(t===IT.DOOR&&tall&&!walk(dn)){const B=D.beam; // the way out: a plank door in the front wall, in its frame
+          col=px<2||px>13?(px===0||px===15?D.wallTop[1]:B[1]):py===0?B[0]:(px&3)===2?D.wood[2]:(px&3)===3?D.wood[0]:D.wood[1];if(py>=13&&px>1&&px<14)col=mix(col,D.wood[2],.5);if(px===11&&(py===7||py===8))col=[200,170,80]}
+        else if(t===IT.DOOR){const vert=walk(up)&&walk(dn);const a=vert?px:py; // an open door leaf folded against one side, a threshold across
+          if(a<3)col=a===0?D.wood[2]:a===1?D.wood[0]:D.wood[1];else if((vert?py:px)===(walk(vert?dn:rt)?15:0))col=D.mortar}
+        else if(t===IT.BARS){const k=px&3,B=D.bars;if(k===1)col=B[0];else if(k===2)col=B[1];else if(k===3)col=mix(col,[0,0,0],.35);
+          if(py===2||py===13)col=B[1];else if(py===3||py===14)col=mix(col,[0,0,0],.3)}}
+      else if(t===IT.RUG){const Rg=D.rug,eL=lf!==IT.RUG,eR=rt!==IT.RUG,eU=up!==IT.RUG,eD=dn!==IT.RUG; // a woven rug: border, a figure line, a diamond field
+        const bx=Math.min(eL?px:99,eR?15-px:99),by=Math.min(eU?py:99,eD?15-py:99),b=Math.min(bx,by);
+        if(b<2)col=b===0&&(eU||eL)?mix(Rg[1],[255,255,255],.12):Rg[1];else if(b===3)col=Rg[2];
+        else{const dd=((gx+gy)&7)===0||((gx-gy)&7)===0;col=dd?mix(Rg[0],Rg[2],.45):Rg[0];if(n<.08)col=mix(col,Rg[1],.4)}
+        if(eD&&py===15)col=mix(col,[0,0,0],.3)}
       else if(t===IT.WALL){
-        if(walk(dn)){ // a brick face lit from above, its cap on top
-          const row=Math.floor(py/4),off=(row&1)*4,lx=(gx+off)&7,ly=py&3,v=h(Math.floor((gx+off)/8),gy>>2,4);
-          if(py<2)col=py===0?D.wallFace[0]:mix(D.wallFace[0],D.wallFace[1],.5);
-          else if(lx===0||ly===0)col=D.mortar;else{col=mix(D.wallFace[1],v<.5?D.wallFace[2]:D.wallFace[0],Math.abs(v-.5)*.5);if(ly===1)col=mix(col,D.wallFace[0],.4);if(ly===3)col=mix(col,D.wallFace[2],.5)}
-          if(py>=13)col=mix(col,D.wallFace[2],.35*(py-12))} // the foot of the wall in shadow
+        if(walk(dn))col=face(gx,gy,tall?py+16:py,tall?32:16,n);
+        else if(upper)col=face(gx,gy,py,32,n);
         else{col=mix(D.wallTop[1],D.wallTop[2],n*.6); // the wall's top, with a lit rim toward the open side
           if((walk(up)&&py<2)||(walk(lf)&&px<2)||(walk(rt)&&px>13))col=D.wallTop[0];if(n>.97)col=D.wallFace[2]}}
       else if(t===IT.WATER){col=D.water[1];
@@ -55,7 +96,7 @@ export function interiorTexture(m){const key=m.seed+':'+m.w+'x'+m.h;let c=texCac
       else col=D.void;
       const o=(gy*c.width+gx)*4;d[o]=col[0];d[o+1]=col[1];d[o+2]=col[2];d[o+3]=255}}
   x.putImageData(img,0,0);
-  for(const p of m.props)prop(x,p);
+  for(const p of m.props)prop(x,p,D,m.theme);
   texCache.set(key,c);return c}
 
 // ---- props: pixel strings (sprites.js cache) baked into the texture ----
@@ -90,12 +131,15 @@ const PROPS={
   sarcophagus:{rows:SARC,map:STONE,ox:-5,oy:4},
   throne: {rows:THRONE,map:STONE,ox:1,oy:2},
 };
-function prop(x,p){const P=PROPS[p.kind];if(!P)return;const s=outlined(sprite('dg-'+p.kind,P.rows,P.map));x.drawImage(s,p.x*T+P.ox-1,p.y*T+P.oy-1)}
+function prop(x,p,th,tk){const F=FURN[p.kind];
+  if(F){const rows=F.make?F.make(p.len?p.len*16-2:0):F.rows,s=outlined(sprite('sf-'+p.kind+'-'+(tk||'')+'-'+(p.len||0),rows,F.map(th)));x.drawImage(s,p.x*T+F.ox-1,p.y*T+F.oy-1);return}
+  const P=PROPS[p.kind];if(!P)return;const s=outlined(sprite('dg-'+p.kind,P.rows,P.map));x.drawImage(s,p.x*T+P.ox-1,p.y*T+P.oy-1)}
+const propOf=k=>FURN[k]||PROPS[k]; // a prop's art: setting furniture first, then the crypt's
 
 // ---- light and fog ----
 let glowC=null;
 function glowSprite(){if(glowC)return glowC;glowC={};
-  for(const [k,c] of [['warm',[255,170,70]],['crypt',D.ghost]]){const cv=document.createElement('canvas');cv.width=cv.height=64;const x=cv.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);
+  for(const [k,c] of [['warm',[255,170,70]],['crypt',D.ghost],['day',DAYGLOW]]){const cv=document.createElement('canvas');cv.width=cv.height=64;const x=cv.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);
     g.addColorStop(0,'rgba('+c.join(',')+',.55)');g.addColorStop(1,'rgba('+c.join(',')+',0)');x.fillStyle=g;x.fillRect(0,0,64,64);glowC[k]=cv}
   return glowC}
 // One texel per tile: dark over everything past the last room reached (rooms and the corridors that lead to them).
@@ -114,7 +158,7 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
   ctx.setTransform(sc,0,0,sc,ox,oy);
   // flickering light from candles and braziers in rooms the party can see
   const G=glowSprite(),reached=st.fog;ctx.globalCompositeOperation='lighter';
-  for(const p of m.props){const P=PROPS[p.kind];if(!P||!P.light)continue;const r=m.reg[p.y*m.w+p.x];if(reached>=0&&r>2*reached)continue;
+  for(const p of m.props){const P=propOf(p.kind);if(!P||!P.light)continue;const r=m.reg[p.y*m.w+p.x];if(reached>=0&&r>2*reached)continue;
     const f=.75+.25*Math.sin(now*7+p.x*1.7+p.y),R=P.light==='crypt'?44:30;ctx.globalAlpha=f;ctx.drawImage(G[P.light],p.x*T+8-R,p.y*T+8-R,R*2,R*2)}
   if(st.party&&st.party.length){const pp=partySpot(m,st);ctx.globalAlpha=.7;ctx.drawImage(G.warm,pp.x*T-52,pp.y*T-52,104,104)} // the party's torches
   ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
@@ -145,3 +189,71 @@ function partySpot(m,st){const i=st.spot!=null?st.spot:st.cur,r=m.rooms[Math.max
 function skull(ctx,x,y,a){ctx.globalAlpha=a;ctx.fillStyle=MARK.edge;ctx.fillRect(x-1,y-1,10,10);ctx.fillStyle=D.boss;ctx.fillRect(x+1,y,6,1);ctx.fillRect(x,y+1,8,4);ctx.fillRect(x+1,y+5,6,2);
   ctx.fillStyle='#1a0a0a';ctx.fillRect(x+1,y+2,2,2);ctx.fillRect(x+5,y+2,2,2);ctx.fillRect(x+2,y+6,1,1);ctx.fillRect(x+5,y+6,1,1);ctx.globalAlpha=1}
 function text(ctx,t,x,y,col,css,dpr,sc){const s=css*dpr/sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(t,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(t,x,y)}
+
+// ---- a scene setting (#431): one frame of the room with the scene's people in it ----
+// st (render/sceneview.js): {party:[hero], cast:[entity] (a townsperson, a foe or an enemy hero), speaker:{e, text}|null,
+//   cur: the member whose turn it is or null, busy}. The party stands in a row at the room's party spot facing the cast,
+//   the first of the cast at its spot (on its seat in a cell), the rest beside it. Read-only like the dungeon view.
+const DAYGLOW=[190,215,255];
+export function drawSetting(ctx,box,m,st,now,dpr=1){
+  const tex=interiorTexture(m);let sc=Math.min(box.w/(m.w*T),box.h/(m.h*T));if(sc>=2)sc=Math.floor(sc);else if(sc>1)sc=Math.floor(sc*4)/4;
+  const ox=Math.round(box.x+(box.w-m.w*T*sc)/2),oy=Math.round(box.y+(box.h-m.h*T*sc)/2),W=m.w*T,H=m.h*T;
+  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(tex,0,0,tex.width,tex.height,ox,oy,Math.round(W*sc),Math.round(H*sc));
+  ctx.setTransform(sc,0,0,sc,ox,oy);
+  // the room's own dimness, then its fire, candles, lamps and daylight added back
+  if(m.dark>0){ctx.fillStyle='rgba(8,8,22,'+m.dark+')';ctx.fillRect(0,0,W,H)}
+  const G=glowSprite();ctx.save();ctx.beginPath();ctx.rect(T,T,W-2*T,H-2*T);ctx.clip();ctx.globalCompositeOperation='lighter'; // light stays inside the walls
+  for(const p of m.props){const P=propOf(p.kind);if(!P||!P.light)continue;const R=P.light==='crypt'?44:P.light==='day'?36:p.kind==='hearth'?50:30;
+    const f=P.light==='day'?.55:.72+.28*Math.sin(now*7+p.x*1.7+p.y)*Math.sin(now*3.1+p.x);
+    const cx=p.x*T+P.ox+(P.rows?P.rows[0].length:16)/2,cy=p.y*T+P.oy+(P.light==='day'?12:6);
+    ctx.globalAlpha=Math.max(0,f);ctx.drawImage(G[P.light],cx-R,cy-R,R*2,R*2)}
+  ctx.restore();ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  // who stands where
+  const ents=[],sp=m.spots,party=st.party||[],cast=st.cast||[],n=party.length,room=m.rooms[0];
+  const per=Math.max(1,Math.min(n,Math.floor((room.w-.5)/1.2))),rows=Math.ceil(n/per);
+  party.forEach((a,k)=>{const r=Math.floor(k/per),inRow=Math.min(per,n-r*per),i=k-r*per;
+    ents.push({e:a,x:Math.max(room.x+.5,Math.min(room.x+room.w-.5,sp.party.x+(i-(inRow-1)/2)*1.2+(r&1)*.6)),y:Math.min(room.y+room.h-.15,sp.party.y+r*.95-(rows-1)*.45),hero:true})});
+  cast.forEach((e,k)=>{const c=sp.cast[Math.min(k,sp.cast.length-1)],off=k<sp.cast.length?0:(k-sp.cast.length+1);
+    ents.push({e,x:c.x+(off?(off&1?1:-1)*Math.ceil(off/2)*1.3:0),y:c.y+(off?.25:0),cast:true})});
+  ents.sort((a,b)=>a.y-b.y);
+  const fr=Math.floor(now*1.6)&1,pseudo={close:true,sc,dpr,offX:ox,offY:oy};
+  for(const q of ents){const e=q.e,s=spriteOf(e,st.busy&&e===st.cur?fr:0);if(!s)continue;
+    const px=Math.round(q.x*T),py=Math.round(q.y*T),o=outlined(s),top=py-s.height;q.px=px;q.top=top;
+    ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,s.width/2,1.6,0,0,7);ctx.fill();
+    if(q.cast||q.hero){const col=q.hero?classColor(e.cls):castColor(e);ctx.strokeStyle=col;ctx.globalAlpha=.8;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(px,py-.5,s.width/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
+    ctx.save();ctx.translate(px,0);if(q.cast)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)-1,top-1);ctx.restore();
+    if(e.eff)drawConditions(ctx,null,pseudo,e,px,py,top,now);}
+  // the member whose turn it is: a gold chevron over the head
+  for(const q of ents)if(q.e===st.cur&&q.top!=null){const y=q.top-7+Math.round(Math.sin(now*5));ctx.fillStyle=MARK.edge;ctx.fillRect(q.px-3,y-1,7,4);ctx.fillStyle=MARK.sel;ctx.fillRect(q.px-2,y,5,1);ctx.fillRect(q.px-1,y+1,3,1);ctx.fillRect(q.px,y+2,1,1)}
+  // names at a constant CSS size under the feet, the room's name over its back wall
+  const compact=T*sc/dpr<14;
+  for(const q of ents){if(q.top==null)continue;const e=q.e,col=q.hero?classColor(e.cls):castColor(e);if(compact&&!q.cast&&e!==st.cur)continue;
+    text(ctx,nameOf(e),q.x*T,q.y*T+11*dpr/sc,col,12,dpr,sc)}
+  // the speaker's bubble (the latest line at this table), and any member's own bubble from the chat
+  const said=new Set();
+  if(st.speaker&&st.speaker.e){const q=ents.find(r=>r.e===st.speaker.e);if(q&&q.top!=null){bubble(ctx,q.px,q.top-3*dpr/sc,headOf(q.e),q.hero?classColor(q.e.cls):castColor(q.e),st.speaker.text,dpr,sc,1);said.add(q.e)}}
+  for(const q of ents){const b=q.e.bubble;if(said.has(q.e)||q.top==null||!b||b.life<=0)continue;bubble(ctx,q.px,q.top-3*dpr/sc,headOf(q.e),q.hero?classColor(q.e.cls):castColor(q.e),b.text,dpr,sc,Math.min(1,b.life/.6))}
+  ctx.setTransform(1,0,0,1,0,0);return {sc,ox,oy}}
+
+// A scene entity's sprite: a hero, a townsperson (S.wanderers / S.npcs) or a creature.
+function spriteOf(e,fr){if(!e)return null;
+  if(e.kind==='hero')return heroSprite(e,e.state==='ghost',fr);
+  if(e.kind==='mob'){const M=MOBS[e.type];return M&&SPR[M.spr]?sprite(e.type+fr,SPR[M.spr][fr],M.col):null}
+  if(e.role)return npcSprite(e,fr);return null}
+const nameOf=e=>e.kind==='mob'?(e.name||(MOBS[e.type]&&MOBS[e.type].name)||'foe'):e.name||'?';
+const headOf=e=>e.kind==='hero'?e.name.toUpperCase():'['+nameOf(e)+']';
+function castColor(e){if(e.kind==='mob'||e.kind==='boss')return DISP.hostile.color;if(e.kind==='hero')return DISP.hostile.color;
+  const t=toneOf(e,S.fellowship,S.gameMin);return t.color||DISP.neutral.color}
+
+// A speech bubble over (x, y) in the current transform (sc world-to-device, dpr): a dark rounded box with the speaker's
+// name in its colour and up to three wrapped lines. Shared by the outdoor cut (render/sceneview.js).
+const BL=22,BMAX=3;
+function wrapLine(t){const out=[];let cur='';for(const w of String(t).split(' ')){if(cur&&(cur+' '+w).length>BL){out.push(cur);cur=w}else cur=cur?cur+' '+w:w}
+  if(cur)out.push(cur);if(out.length>BMAX){out.length=BMAX;out[BMAX-1]=out[BMAX-1].slice(0,BL-1).trimEnd()+'…'}return out}
+export function bubble(ctx,x,y,head,headCol,body,dpr,sc,alpha=1){const s=12*dpr/sc,lh=s*.8,pad=s*.3,lines=(head?[head]:[]).concat(wrapLine(body));
+  ctx.font=s+'px VT323, monospace';let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
+  const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=y-pad*.7,top=bottom-bh,x0=x-bw/2;
+  ctx.globalAlpha=alpha;ctx.fillStyle='rgba(10,10,22,.88)';
+  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill()}else ctx.fillRect(x0,top,bw,bh);
+  ctx.beginPath();ctx.moveTo(x-pad*.6,bottom);ctx.lineTo(x+pad*.6,bottom);ctx.lineTo(x,bottom+pad*.7);ctx.fill();
+  lines.forEach((l,i)=>text(ctx,l,x,top+pad*.6+lh*(i+.85),head&&i===0?headCol:TEXT.label,12,dpr,sc));ctx.globalAlpha=1}

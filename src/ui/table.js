@@ -118,6 +118,7 @@ export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd
   const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(','),c?JSON.stringify(c):''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
   const tt=el('div','tt','AT THE TABLE · '+b.title.toUpperCase());if(c)tt.append(el('span','tp tround','ROUND '+c.round+'/'+c.of));if(b.paused)tt.append(el('span','tp','WORLD PAUSED'));if(b.all)tt.append(el('span','tp','EVERYONE ANSWERS'));box.append(tt);
   if(S.table&&(S.table.kind==='crawl'||S.table.kind==='site')){const v=el('button','tstb tdg','View the crypt ▸');v.type='button';v.dataset.dungeon='';v.title='Open the dungeon view';tt.append(' ',v)} // #85
+  else if(S.table){const v=el('button','tscn','Scene map ▸');v.type='button';v.dataset.scene='';v.title='Show the scene on its own map, or back to the world';tt.append(' ',v)} // scene maps (#431)
   box.append(el('div','tf',plain(b.frame)));
   if(b.narr)box.append(el('div','tf tnarr',b.narr)); // the DM's narrate line (issue #123)
   if(b.cast&&b.cast.length)box.append(el('div','to','Staged by the DM · '+b.cast.join(' · '))); // a staged scene's cast (issue #132)

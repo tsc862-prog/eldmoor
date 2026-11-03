@@ -862,5 +862,48 @@ console.log('start gate: ready, not just claimed');
   const a=mem[0],was={state:a.state,hidden:a.hidden};a.state='dungeon';a.hidden=true;select(a);uiFast();const link=$('hero').querySelector('.dglink');
   ok(!!link,'dungeon view: the hero card of a hero inside has View inside');if(link){link.click();ok(dv.dungeonOpen(),'dungeon view: View inside opens it')}
   dv.closeDungeon();a.state=was.state;a.hidden=was.hidden;CRYPT.group=keep;uiFast()}
+// ---- scene maps (#431, slice 1): settings as data, the indoor generator, the scene view's terrain cut and rooms ----
+{const sv=await import('../src/render/sceneview.js'),{buildSetting,IT}=await import('../src/world/interior.js'),again=await import('../src/world/interior.js?again2');
+  const {SETTINGS,SETTING_IDS}=await import('../src/data/settings.js'),{CITY}=await import('../src/world/map.js'),S=sim.S;
+  const keepT=S.table,keepW=S.wanderers,FOL={view:'fellow'};
+  for(const id of ['house','tavern','chapel','cellar','cell','shrine','hold'])ok(!!SETTINGS[id],'scene maps: the settings table has '+id);
+  let good=0;for(const id of SETTING_IDS){const m=buildSetting(id,'Highgate|7'),m2=again.buildSetting(id,'Highgate|7'),at=(x,y)=>m.tiles[Math.floor(y)*m.w+Math.floor(x)];
+    const same=m!==m2&&m.seed===m2.seed&&m.w===m2.w&&m.tiles.every((t,i)=>t===m2.tiles[i])&&JSON.stringify(m.props)===JSON.stringify(m2.props);
+    const walk=t=>t!==IT.VOID&&t!==IT.WALL,onFloor=p=>walk(at(p.x,p.y))&&at(p.x,p.y)!==IT.BARS;
+    const walled=[...m.tiles].every((t,i)=>{if(!walk(t)||t===IT.DOOR||t===IT.STAIR)return true;const x=i%m.w,y=Math.floor(i/m.w);return x>0&&y>0&&x<m.w-1&&y<m.h-1});
+    if(same&&walled&&m.spots.cast.every(onFloor)&&onFloor(m.spots.party)&&m.props.length>=4)good++;else console.error('  setting '+id+': same '+same+', walled '+walled+', props '+m.props.length)}
+  ok(good===SETTING_IDS.length,'scene maps: every setting ('+SETTING_IDS.length+') builds walled, with its people on the floor, furnished, the same from a fresh build');
+  ok(buildSetting('tavern','Highgate|7').seed!==buildSetting('tavern','Highgate|8').seed,'scene maps: another scene in the same town gets another room');
+  sv.initSceneView();
+  const mem=S.agents.filter(a=>a.kind==='hero'&&a.fellow&&a.state!=='dead').slice(0,5),m0=mem[0],box=()=>$('sceneview');
+  const keepPos=mem.map(a=>[a.x,a.y,a.hidden]);
+  // an ambush in the open: the terrain cut around the members and the foe
+  const wild=S.agents.find(a=>a.kind==='hero'&&!a.fellow&&a.state!=='dead'&&!CITY.some(c=>a.x>=c.x0-4&&a.x<=c.x1+5&&a.y>=c.y0-4&&a.y<=c.y1+5))||S.agents.find(a=>!a.fellow);
+  mem.forEach((a,k)=>{a.x=wild.x-2+k;a.y=wild.y+1;a.hidden=false});
+  let sid=5000;const scene=(kind,title,ctx)=>({id:++sid,kind,title,frame:[title],ids:mem.map(a=>a.id),i:0,phase:'turn',t:0,acts:{},beats:[],ctx,pause:true,at:S.gameMin});
+  S.table=scene('ambush','Ambush: '+wild.name,{foe:wild.id,anchor:m0.id});sv.sceneTick(FOL);
+  const cut=sv.sceneCut();
+  ok(sv.sceneOpen()&&sv.sceneMode()==='outdoor'&&!box().hidden&&box().classList.contains('scout')&&$('screen').classList.contains('scopen'),'scene maps: an ambush opens the terrain cut over the world');
+  ok(!!cut&&cut.foes.includes(wild)&&mem.every(a=>cut.members.includes(a))&&Math.abs(cut.cx-m0.x)<cut.w/2&&Math.abs(cut.cy-m0.y)<cut.h/2,'scene maps: the cut frames the members where they stand and the foe ('+(cut?Math.round(cut.w)+'x'+Math.round(cut.h)+' tiles':'none')+')');
+  ok([...box().querySelectorAll('li')].some(li=>li.textContent===wild.name)&&/AMBUSH/.test(box().querySelector('.dgname').textContent),'scene maps: the bar names the scene and who is in it');
+  box().querySelector('.dgback').click();sv.sceneTick(FOL);
+  ok(!sv.sceneOpen()&&box().hidden&&!$('screen').classList.contains('scopen'),'scene maps: Back to world closes it, and it stays closed for that scene');
+  sv.openSceneView();ok(sv.sceneOpen(),'scene maps: it opens again by hand');S.table=null;sv.sceneTick(FOL);
+  ok(!sv.sceneOpen(),'scene maps: the view returns to the world when the scene ends');
+  // a staged meeting in town: a room in a generated setting, with the person and the party
+  const c=CITY[0];mem.forEach((a,k)=>{a.x=c.gate.x-1+k*.8;a.y=c.gate.y});
+  const npc={id:++S.uid,kind:'npc',wander:true,role:'innkeeper',fac:c.fac,name:'Mara',title:'Innkeeper',x:c.gate.x+1,y:c.gate.y-1,state:'post',att:[],met:{}};S.wanderers=(S.wanderers||[]).concat([npc]);
+  S.table=scene('meeting','A word at the inn',{npc:npc.id,anchor:m0.id,staged:null});S.table.all=true;S.table.w={};sv.sceneTick(FOL);
+  let sp=sv.sceneSpec();
+  ok(sv.sceneOpen()&&sv.sceneMode()==='indoor'&&sp.setting==='tavern'&&sp.cast.includes(npc)&&!box().classList.contains('scout'),'scene maps: a town meeting opens an indoor setting ('+(sp&&sp.where)+')');
+  ok(new RegExp(c.name).test(box().querySelector('.dgstat').textContent)&&[...box().querySelectorAll('li')].some(li=>li.textContent==='Mara'),'scene maps: the bar says where and lists the person met');
+  S.table=null;sv.sceneTick(FOL);ok(!sv.sceneOpen(),'scene maps: the room closes with the scene');
+  S.table=scene('social','Questioning the suspect',{npc:npc.id,anchor:m0.id});ok(sv.sceneSpec().setting==='cell','scene maps: the scene\'s words pick the room (questioning: the cell)');
+  S.table=scene('social','A quiet word',{npc:npc.id,anchor:m0.id});ok(sv.sceneSpec().setting==='tavern','scene maps: with no words in the title, the person picks it (an innkeeper: the tavern)');
+  mem.forEach(a=>{a.x=wild.x;a.y=wild.y});S.table=scene('meeting','A word on the road',{npc:npc.id,anchor:m0.id});ok(sv.sceneSpec().mode==='outdoor','scene maps: a meeting out of town plays on the terrain');
+  S.table=scene('crawl','The first chamber',{room:0});ok(sv.sceneSpec().mode==='dungeon','scene maps: the Crypt\'s scenes keep the dungeon view');
+  sv.setSceneAuto(false);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick(FOL);ok(!sv.sceneOpen()&&/off/.test($('vScene').textContent),'scene maps: with Scene maps off in Settings, nothing opens by itself');
+  sv.setSceneAuto(true);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick({view:'map',sel:null});ok(!sv.sceneOpen(),'scene maps: only when the watcher follows the Fellowship');
+  sv.closeSceneView(false);mem.forEach((a,k)=>{[a.x,a.y,a.hidden]=keepPos[k]});S.table=keepT;S.wanderers=keepW;uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
