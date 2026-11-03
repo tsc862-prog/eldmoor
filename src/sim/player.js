@@ -33,7 +33,7 @@ import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {MOBS} from '../data/mobs.js';
 import {TRAITS,tm} from '../data/traits.js';
-import {GOODS,price,SLOTS,USES,INV,useLines} from '../data/items.js';
+import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../data/items.js';
 import * as D from '../data/adventures.js';
 import {PLAYER_TOOLS} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
@@ -43,7 +43,7 @@ import {partyMates,leaderOf,leaveParty} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {earshot} from './earshot.js'; // who hears you now (#395)
 import {npcSay,ensureNpcs} from './npcs.js';
-import {talkTo,addressed,findPerson,traderFor,npcBuy,npcSell,stockOf} from './talk.js'; // NPC conversations (#170)
+import {talkTo,addressed,findPerson,traderFor,npcBuy,npcSell,stockOf,tradePrice,metIds} from './talk.js'; // NPC conversations (#170)
 import {equip,makeItem,SHOP_COST,SELL_VALUE,slotLevel,weakestSlot,itemStats,gearScore,refreshEpics,itemArmor,itemDamage} from './gear.js';
 import {weatherName,sightMul,isStorm} from './weather.js';
 import {record,asSrc} from './history.js';
@@ -485,8 +485,8 @@ function placesList(a,{about,kind,near}={}){const L=loreOf(a);
 // ---- the tools ----
 // ---- shop (#424): what the smiths or a trader sell, read only (no dice, no change to gold, stock or the pack) ----
 // Smith prices are the buy tool's own sources (USES[id].price, SHOP_COST(level)); a trader's prices come from npcBuy itself,
-// asked for a copy of the hero with no gold and empty slots, so its refusal names the exact price buy would charge.
-const traderPrice=(a,p,args)=>{const r=npcBuy({...a,gold:0,slots:{},lvl:args.item?99:a.lvl},p,args),m=r&&r.error&&/costs (\d+)g/.exec(r.error);return m?Number(m[1]):null};
+// priced by talk.js's own rule (tradePrice, the one npcBuy charges by).
+const traderPrice=(a,p,args)=>tradePrice(p,args.item?USES[args.item].price:SHOP_COST(a.lvl));
 const pts=(n,w)=>(n>0?'+':'')+n+' '+w;
 // One slot's line: the piece buy would put there (item level = your level, plain, sometimes fine) against what you wear.
 // The change is the new piece's armor and damage minus the worn one's, the same numbers equip swaps.
@@ -501,7 +501,7 @@ function shopSlot(a,k,cost){const cur=a.slots&&a.slots[k],wear=cur?itemText(cur)
 function shopUse(a,id,price){const U=USES[id],o={item:id,price,level:U.lvl,kind:U.kind,buy:'buy {item: "'+id+'"}'};
   if(U.lvl>a.lvl)o.needs='needs level '+U.lvl;else if(U.kind==='pack'&&invOf(a).pack)o.needs='you already carry one';else if(a.gold<price)o.needs=(price-a.gold)+'g short';
   const L=useLines(id);if(L.length)o.does=L.map(x=>x[1]).join('; ');return o}
-function shopView(a,tr){const out={ok:true,gold:a.gold,pack:used(a)+'/'+capOf(a)},weak=a.slots?weakestSlot(a):null;need(a.slots,'You have no gear slots to shop for.');
+function shopView(a,tr,all){const out={ok:true,gold:a.gold,pack:used(a)+'/'+capOf(a)},weak=a.slots?weakestSlot(a):null;need(a.slots,'You have no gear slots to shop for.');
   if(tr){const st=stockOf(tr);out.from=(tr.title?tr.title+' ':'')+tr.name;out.where='trade open with you nearby';
     out.supplies=st.filter(x=>x!=='gear'&&USES[x]).map(x=>{const v=shopUse(a,x,traderPrice(a,tr,{item:x}));v.buy='buy {npc: "'+tr.name+'", item: "'+x+'"}';return v});
     if(st.includes('gear')){const cost=traderPrice(a,tr,{slot:SLOTS[0]});out.gear=SLOTS.map(k=>{const v=shopSlot(a,k,cost);if(v.buy)v.buy='buy {npc: "'+tr.name+'", slot: "'+k+'"}';return v})}
@@ -509,10 +509,101 @@ function shopView(a,tr){const out={ok:true,gold:a.gold,pack:used(a)+'/'+capOf(a)
   }else{const c=homeOf(a),cost=SHOP_COST(a.lvl);out.from='the smiths and quartermaster of '+(c?c.name:'town');
     out.gear=SLOTS.map(k=>shopSlot(a,k,cost));out.supplies=Object.keys(USES).map(x=>shopUse(a,x,USES[x].price))}
   if(Array.isArray(out.gear)&&weak&&out.gear.some(g=>g.slot===weak&&g.buy))out.note='buy with no slot fills your weakest slot, '+weak+'. Gear bought is worn at once; what it replaces goes to your pack.';
-  return out}
+  return all?out:shopBrief(out,tr)}
+// The short answer (#425; the full one is about 1.5k tokens): only the gear that would help you and the supplies you may buy now.
+function shopBrief(out,tr){const o={ok:true,from:out.from,gold:out.gold,pack:out.pack};if(out.where)o.where=out.where;
+  if(Array.isArray(out.gear)){const good=out.gear.filter(g=>g.buy&&/^(better|mixed)/.test(g.change||''));
+    o.gear=good.length?good.map(g=>({slot:g.slot,price:g.price,change:g.change,...(g.afford==='yes'?{}:{short:g.afford.replace(/^no \((.*)\)$/,'$1')})})):'Nothing on offer is better than what you wear.';
+    const rest=out.gear.filter(g=>!good.includes(g)).map(g=>g.slot);if(good.length&&rest.length)o.no_better_for=rest.join(', ')}
+  else o.gear=out.gear;
+  o.supplies=out.supplies.filter(x=>!/^needs level|already carry/.test(x.needs||'')).map(x=>({item:x.item,price:x.price,...(x.does?{does:x.does.split('; ')[0]}:{}),...(x.needs?{short:x.needs}:{})}));
+  const by=tr?'npc: "'+tr.name+'", ':'';
+  o.how='buy {'+by+'slot: "<slot>"} for gear, buy {'+by+'item: "<name>", count: N} for supplies. shop {'+by+'all: "yes"} lists every slot, what you wear and the locked supplies.';
+  if(out.note)o.note=out.note;return o}
 const need=(cond,msg)=>{if(!cond)throw new Rule(msg)};
 class Rule extends Error{}
 const fieldState=a=>['hunt','travel','follow','return'].includes(a.state);
+
+// ---- inspect (#425): one person, creature or item, the way this hero perceives it. Read only: no dice, no change to the
+// world (a creature seen for the first time is sized up, as look does). Never a number for anyone else's HP, never a
+// creature's level, and nothing of another hero's persona, memories, mind or journal, nor a person's DM record.
+const HURT=(h,m)=>{const r=m>0?h/m:1;return r>=.95?'unhurt':r>=.7?'lightly hurt':r>=.4?'hurt':r>=.15?'badly hurt':'near death'};
+const ST_WORD={town:'in town',travel:'on the road',hunt:'out hunting',return:'heading home',follow:'following their party',regroup:'regrouping with their party',camp:'at camp',dungeon:'down in a dungeon',raid:'on a raid',ghost:'a pale ghost, walking to the graveyard'};
+const fullName=p=>(p.title?p.title+' ':'')+p.name;
+const gearWord=it=>it.name+' ('+it.slot+(it.epic?', epic':it.quality&&it.quality!=='plain'?', '+it.quality:'')+')';
+// Who and what is in sight now, nearest first: the look rule (sight radius; the whole town square inside a town).
+function inSight(a){const R=sightOf(a),here=inTown(a)?homeOf(a):null,vis=p=>dist(a,p)<=R||!!(here&&inRect(here,p,1)),out=[];
+  for(const b of nearHeroes(a.x,a.y,here?Math.max(R,Math.hypot(here.w,here.h)):R))if(b!==a&&!b.hidden&&b.state!=='dead'&&vis(b))out.push({kind:'hero',e:b,name:b.name});
+  ensureNpcs();for(const p of [...(S.npcs||[]),...(S.wanderers||[])])if(Number.isFinite(p.x)&&Number.isFinite(p.y)&&(here&&p.town===here.name||dist(a,p)<=R))out.push({kind:'person',e:p,name:fullName(p)});
+  for(const m of nearMobs(a.x,a.y,R))if(alive(m)&&!m.hidden&&dist(a,m)<=R)out.push({kind:'creature',e:m,name:foeName(a,m)});
+  return out.sort((x,y)=>dist(a,x.e)-dist(a,y.e))}
+const sightLine=(a,L)=>L.length?'In sight: '+L.slice(0,8).map(c=>c.name+(c.kind==='person'?' ('+c.e.role+')':' (id '+c.e.id+')')).join(', ')+(L.length>8?' and '+(L.length-8)+' more':'')+'.':'Nobody and nothing is in sight.';
+function heroDoing(a,b){const t=b.target&&alive(b.target)?(b.target===a?'you':foeName(a,b.target)):null;
+  if(b.state==='fight')return 'fighting'+(t?' '+t:'');if(b.state==='duel')return 'in a duel'+(t?' with '+t:'');if(b.state==='assist')return 'helping someone in a fight';
+  if(b.state==='town'&&b.moving)return 'walking through town';return ST_WORD[b.state]||b.state}
+function heroLook(a,b){const self=b===a,o={ok:true,kind:'hero',name:b.name,who:raceOf(b).name+' '+b.cls+', level '+b.lvl,
+    faction:FAC[b.fac].name+(self?'':b.fac===a.fac?' (your side)':' (the other side: they may attack you)'),looks:HURT(b.hp,maxHp(b)),doing:heroDoing(a,b)};
+  if(b.guild)o.guild='<'+b.guild.tag+'> '+b.guild.name;
+  if(b.fellow&&b.fellowRole){const L={tank:'Tank',healer:'Healer'}[b.fellowRole]||'DPS';o.fellowship='of the Fellowship ('+L+')'}
+  const w=SLOTS.map(k=>b.slots&&b.slots[k]).filter(Boolean).map(gearWord);o.wears=w.length?w:'plain clothes, no gear to speak of';
+  if(self){o.note='This is you. status has your numbers, inventory your pack.';return o}
+  o.distance=r1(dist(a,b))+' tiles';const ties=[];
+  if(a.party&&b.party===a.party)ties.push(a.party.leader===b?'in your party (leads it)':'in your party');
+  if(a.nemesis&&a.nemesis[b.id])ties.push('a blood debt: you are sworn to pay them back');
+  if(metIds(a).includes(b.id))ties.push('you have spoken with them');
+  o.to_you=ties.length?ties.join('; '):b.fac===a.fac?'a stranger of your own side':'a stranger of the other side';
+  o.next=b.fac===a.fac?(dist(a,b)<=PK.TALK?'talk {target: "'+b.name+'"}':'move_to {target: "'+b.name+'"} to come within talking distance'):'fight {target: "'+b.name+'"} if you mean to, or keep your distance';
+  return o}
+function personLook(a,p){const o={ok:true,kind:'person',name:fullName(p),role:p.role,
+    faction:p.fac===0||p.fac===1?FAC[p.fac].name+(p.fac===a.fac?' (your side)':' (the other side)'):'of no side',
+    doing:p.errand?'on an errand':p.state==='post'?'at their post':p.state==='walk'?'walking about':p.state==='home'?'at home, off work':'about',
+    where:p.town?'in '+p.town:ZONES[zoneAt(p.x,p.y)]||'the wilds',distance:r1(dist(a,p))+' tiles'};
+  // only what shows: open hostility, the mood learned by talking, or the other side's coldness. Never their record or wants.
+  o.mood=p.hostile?'hostile: they have turned against the Fellowship':p.fmem&&p.fmem.talks>0&&p.mood?p.mood+' (from talking with them)':(p.fac===0||p.fac===1)&&p.fac!==a.fac?'cold: they serve the other side':'not known: you have not spoken with them';
+  if(p.trade&&p.trade.until>S.gameMin&&a.fellow&&p.trade.fac===a.fac)o.trade='open with you: shop {npc: "'+p.name+'"}';
+  o.next=dist(a,p)<=PK.TALK?'talk {target: "'+p.name+'"}':'move_to {target: "'+(p.wander?Math.round(p.x)+','+Math.round(p.y):p.role)+'"}, then talk';
+  return o}
+function creatureLook(a,m){const v=mobView(a,m),o={ok:true,kind:'creature',what:v.what,threat:v.threat,looks:HURT(m.hp,m.maxhp)};
+  if(v.new_to_you)o.new_to_you=true;if(v.named)o.named='a named one, not a common beast';
+  o.doing=m.target===a?'coming for you':m.target&&m.target.kind==='hero'?'fighting '+m.target.name:'roaming';
+  const L=(loreView(a,v.what).creatures||[]).find(c=>c.name===v.what||c.name==='unnamed: '+v.what||v.what.startsWith(c.name));
+  o.you_know=L&&L.known&&L.known.length?L.known:'nothing yet beyond what you see (fight it, or ask about it)';
+  o.distance=r1(dist(a,m))+' tiles';o.next='fight {target: "'+v.what+'"} (id '+m.id+'), or lore {about} for what you know';return o}
+// An item: a pack entry, a piece you wear, or (by name) a supply or trade good you know of.
+function itemLook(a,e,at){const o={ok:true,kind:'item'};
+  if(isGear(e)){o.item=itemText(e);o.where=at;const ep=e.epic&&EPIC_ITEMS[e.name];if(ep&&ep.flavour)o.lore=ep.flavour;
+    o.sells='about '+SELL_VALUE(e)+'g at the auction house';
+    if(e.cls&&!e.epic&&e.cls!==a.cls)o.wear='made for a '+e.cls+'; you cannot wear it';
+    else if(at!=='worn'&&e.ilvl>a.lvl+INV.WEAR_OVER)o.wear='too far above you: wearable from level '+(e.ilvl-INV.WEAR_OVER);
+    else if(at!=='worn'){const cur=a.slots&&a.slots[e.slot];o.wear='you can wear it (equip {index}); on your '+e.slot+' now: '+(cur?itemText(cur):'nothing')}
+    if(e.src)o.from=e.src;return o}
+  const id=e.id;o.item=id;if(at)o.where=at;if(e.n)o.count=e.n;
+  if(USES[id]){const U=USES[id];o.does=useLines(id).map(l=>l[1]).join('; ');if(U.flavour)o.lore=U.flavour;o.town_price=U.price+'g at the quartermaster (from level '+U.lvl+')';o.sells='supplies are kept, not sold';if(at)o.use='use_item {index}'}
+  else if(GOODS[id]){o.does='a trade good: worth gold, nothing more';o.sells='about '+price(id)+'g each at the auction house now'}
+  else{const Q=QUEST_ITEMS[id];o.does='a quest item: bound to its bearer, never sold, dropped or given';if(Q&&Q.flavour)o.lore=Q.flavour}
+  return o}
+function catalogueItem(q){const n=normName(q),sq=singular(n),all=[...Object.keys(USES),...Object.keys(GOODS),...Object.keys(QUEST_ITEMS)];
+  return all.find(x=>normName(x)===n||singular(normName(x))===sq)||all.find(x=>singular(normName(x)).includes(sq))||null}
+function inspectView(a,{who,target,item}={}){const raw=[who,target,item].find(v=>v!=null&&String(v).trim()!=='');
+  need(raw!=null,'Inspect whom or what? who: a name or id from look (a hero, a townsperson, a creature), or an item in your pack or on you. '+sightLine(a,inSight(a)));
+  const s=String(raw),L=inSight(a),id=idIn(raw),n=nameKey(s);
+  const show=c=>c.kind==='hero'?heroLook(a,c.e):c.kind==='person'?personLook(a,c.e):creatureLook(a,c.e);
+  if(['me','self','myself','yourself'].includes(n)||n===a.name.toLowerCase())return heroLook(a,a);
+  if(id!=null&&/^\s*#?\d+\s*$|\bid\b|#/i.test(s)){const c=L.find(x=>x.e.id===id);if(c)return show(c);
+    throw new Rule('Nothing with id '+id+' is in sight. look first, or move_to near them. '+sightLine(a,L))}
+  // names as fight and give take them (#404, #412): the whole name, then a first name, title or role, then a start or a part
+  const nm=c=>nameKey(c.name),pe=c=>c.kind==='person'?[c.e.name.toLowerCase(),c.e.role,String(c.e.title||'').toLowerCase()]:[];
+  const tiers=[L.filter(c=>nm(c)===n||c.name.toLowerCase()===n),L.filter(c=>pe(c).includes(n)||nm(c).split(' ')[0]===n),L.filter(c=>nm(c).startsWith(n)),L.filter(c=>n.length>=3&&nm(c).includes(n))];
+  for(const t of tiers){if(!t.length)continue;const ppl=[...new Set(t.filter(c=>c.kind!=='creature').map(c=>c.name))];
+    if(ppl.length>1)throw new Rule('"'+clean(s,40)+'" fits '+ppl.length+' people in sight: '+t.filter(c=>c.kind!=='creature').slice(0,6).map(c=>c.name+(c.kind==='hero'?' (id '+c.e.id+')':' ('+c.e.role+')')).join(', ')+'. Give the full name or the id.');
+    return show(t[0])}
+  // then your own things: the pack, what you wear (by name or slot), then a supply or trade good you know by name
+  const m=packFind(a,s,'Inspect');if(!m.error)return itemLook(a,invOf(a).list[m.index],'your pack, index '+m.index);
+  if(/ matches \d+ things/.test(m.error))throw new Rule(m.error);
+  const worn=SLOTS.map(k=>a.slots&&a.slots[k]).filter(Boolean),w=worn.find(it=>it.slot===n||normName(it.name)===normName(s))||worn.find(it=>normName(it.name).includes(normName(s)));
+  if(w)return itemLook(a,w,'worn');if(SLOTS.includes(n))throw new Rule('You wear nothing on your '+n+' slot. shop shows what the smiths sell for it.');
+  const cat=catalogueItem(s);if(cat)return itemLook(a,{id:cat},null);
+  throw new Rule('"'+clean(s,40)+'" is not in sight, and you carry nothing by that name. look first, or move_to near them. '+sightLine(a,L))}
 
 function seen(a){const R=sightOf(a),here=inTown(a)?homeOf(a):null,out={heroes:[],monsters:[],townsfolk:[]};
   const vis=p=>dist(a,p)<=R||(here&&inRect(here,p,1));
@@ -773,11 +864,12 @@ const T={
   equip(a,{index}){need(!['fight','duel','assist'].includes(a.state),'Not in the middle of a fight.');const i=Number(index);
     const it=invOf(a).list[i];need(isGear(it),'No gear at pack index '+index+'.');need(!it.cls||it.cls===a.cls||it.epic,'That is made for a '+it.cls+'.');need(it.ilvl<=a.lvl+INV.WEAR_OVER,'Too far above your level to wear.');
     const old=equipSpare(a,it);a.hp=Math.min(a.hp,maxHp(a));return {ok:true,wearing:itemText(it),replaced:old?itemText(old)+' (now in your pack)':null}},
-  shop(a,{npc}={}){const named=npc!=null&&npc!=='',tr=named||!inTown(a)?traderFor(a,npc,PK.TALK):null; // the same seller buy would use
-    if(tr&&!tr.error)return shopView(a,tr);need(!(tr&&named),tr&&tr.error);
+  shop(a,{npc,all}={}){all=all===true||/^(true|yes|1|all)$/i.test(String(all==null?'':all).trim()); // brief by default (#425); brief:true asks for it too
+   const named=npc!=null&&npc!=='',tr=named||!inTown(a)?traderFor(a,npc,PK.TALK):null; // the same seller buy would use
+    if(tr&&!tr.error)return shopView(a,tr,all);need(!(tr&&named),tr&&tr.error);
     if(!inTown(a)){const c=homeOf(a),g=c&&c.gate,d=g?Math.hypot(g.x-a.x,g.y-a.y):0;
       throw new Rule('The smiths are in town. '+(g?c.name+' lies '+compass(g.x-a.x,g.y-a.y)+', about '+Math.round(d)+' tiles ('+walkTime(d)+'): move_to {target: "home"}, then shop. ':'')+(tr&&tr.error?tr.error:'Out here only a person who opened their trade with you sells (talk to them, then shop {npc}).'))}
-    return shopView(a,null)},
+    return shopView(a,null,all)},
   // The gate captain's bounties (issue #67): hand in a finished one, or take one if you hold none. Never handed out unasked.
   turn_in(a,{region}={}){need(inTown(a),'The gate captain is in town.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,l=a.lvl,c=homeOf(a);
     const bt=x=>(MOBS[x.type].q)+': '+x.need+' '+MOBS[x.type].pl+' in '+ZONES[MOBS[x.type].z];
@@ -790,6 +882,7 @@ const T={
   read_chronicle(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||8))),news=S.chronicle.slice(0,k).map(e=>e.t+' '+plain(e.parts));
     for(const l of news)hear(a,l,'the town criers');return {ok:true,news}}, // the criers' news teaches names and places (#188)
   places:(a,x)=>placesList(a,x||{}), // #414: known places, nearest first
+  inspect:(a,x)=>inspectView(a,x||{}), // #425: one person, creature or item, as the hero perceives it
   lore(a,{about}){return {ok:true,...loreView(a,about),note:'What you know, in your own words: no one knows the measure of a creature until they have met it or been told.'}},
   // the journal (#153: tiers in sim/tiers.js): without n an overview (landmarks, chapter titles, latest entries) to re-ground on
   journal_read(a,{n}){if(n==null||n==='')return {ok:true,...journalOverview(a)};
@@ -856,10 +949,10 @@ const oneWord=w=>w.length>3&&/ies$/.test(w)?w.slice(0,-3)+'y':w.length>3&&/(ch|s
 const singular=t=>t.split(' ').map(oneWord).join(' ');
 function packList(a){const L=invOf(a).list;if(!L.length)return 'Your pack is empty.';
   return 'Your pack: '+L.slice(0,5).map((e,i)=>i+': '+entryName(e)+(isGear(e)?'':' x'+e.n)).join('; ')+(L.length>5?'; and '+(L.length-5)+' more (inventory lists them all)':'')+'.'}
-function packFind(a,raw){let q=normName(raw),count;
+function packFind(a,raw,verb='Give'){let q=normName(raw),count;
   const lead=q.match(/^(\d+|all|every|my)\s+(?:of\s+)?(?:the\s+|my\s+)?(.+)$/);if(lead){if(/^\d+$/.test(lead[1]))count=Number(lead[1]);else if(lead[1]!=='my')count='all';q=lead[2]}
   q=q.replace(/\s+x\s*\d+$/,'').replace(/^(a|an|the|some)\s+/,'').trim();
-  if(!q)return {error:'Give what? Name an item from your pack. '+packList(a)};
+  if(!q)return {error:verb+' what? Name an item from your pack. '+packList(a)};
   const L=invOf(a).list,sq=singular(q),words=sq.split(' ');const tiers=[[],[],[]];
   L.forEach((e,i)=>{const nm=normName(entryName(e)),sn=singular(nm);
     if(nm===q||sn===sq)tiers[0].push(i);
@@ -869,7 +962,7 @@ function packFind(a,raw){let q=normName(raw),count;
   if(!hit)return {error:'You carry nothing called "'+clean(String(raw),40)+'". '+packList(a)};
   if(hit.length>1){const free=hit.filter(i=>isGear(L[i])||L[i].kind!=='quest');if(free.length)hit=free} // a quest item never goes, so it never makes a name ambiguous
   const first=L[hit[0]],same=hit.every(i=>!isGear(L[i])&&!isGear(first)&&L[i].id===first.id); // two stacks of one thing are one thing
-  if(hit.length>1&&!same)return {error:'"'+clean(String(raw),40)+'" matches '+hit.length+' things in your pack: '+hit.map(i=>i+': '+entryName(L[i])+(isGear(L[i])?'':' x'+L[i].n)).join('; ')+'. Give the one you mean by its index, or its full name.'};
+  if(hit.length>1&&!same)return {error:'"'+clean(String(raw),40)+'" matches '+hit.length+' things in your pack: '+hit.map(i=>i+': '+entryName(L[i])+(isGear(L[i])?'':' x'+L[i].n)).join('; ')+'. '+verb+' the one you mean by its index, or its full name.'};
   if(count==='all')count=isGear(first)?1:hit.reduce((t,i)=>t+L[i].n,0);
   return {index:hit[0],all:hit,name:entryName(first),count}}
 function entryText(e){if(isGear(e))return itemText(e)+(e.cls&&!e.epic?' ['+e.cls+' gear]':'')+', sells '+SELL_VALUE(e)+'g';

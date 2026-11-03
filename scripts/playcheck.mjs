@@ -26,6 +26,7 @@ const {CHOICE_MIN} = await import('../src/sim/player-choice.js');
 const {setDmPolicy} = await import('../src/sim/dm.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {TOOL_NAMES} = await import('../src/data/player-tools.js');
+const {USES, SLOTS: SLOTS_} = await import('../src/data/items.js');
 const {localBackend} = await import('./play-headless.mjs');
 
 let fail = 0;
@@ -87,13 +88,43 @@ r = await call('fight', {target_id: 1}); ok(!r.ok, 'fight is refused inside the 
  a.x = keep.x; a.y = keep.y; foe.target = null; a.state = 'town'; a.target = null; a.playRate = [];} // the rate budget goes back to the rest of the check
 // the shop (#424): read only, and its prices are what buy charges
 const before424 = JSON.stringify({g: a.gold, inv: a.inv, slots: a.slots});
-const shop = await call('shop');
+const shop = await call('shop', {all: 'yes'}); // the full list (#425: the default is the short answer)
 ok(shop.ok && Array.isArray(shop.gear) && shop.gear.length === 7 && shop.supplies.length >= 8 && JSON.stringify({g: a.gold, inv: a.inv, slots: a.slots}) === before424, `shop lists ${shop.gear && shop.gear.length} slots and ${shop.supplies && shop.supplies.length} supplies and changes nothing`);
 const lock = shop.supplies.find(x => x.level > a.lvl); ok(lock && lock.needs === 'needs level ' + lock.level, `a supply above your level says "${lock && lock.needs}" (${lock && lock.item})`);
 const headOffer = shop.gear.find(x => x.slot === 'head');
 r = await call('buy', {slot: 'head'}); ok(r.ok || /gold|better/i.test(r.error), 'buy: ' + (r.ok ? r.bought : r.error));
 ok(r.ok ? headOffer.price === r.cost : !headOffer.buy || r.error.includes(headOffer.price + 'g'), `the shop's head price equals what buy charged (${headOffer.price}g, ${r.ok ? r.cost : r.error})`);
 if (r.ok) {const it = a.slots.head, m = /armor \((\d+) -> (\d+)\)/.exec(headOffer.change || ''); ok(!m || (it.quality === 'plain' ? it.armor === Number(m[2]) : it.armor >= Number(m[2])), `the armor change shown (${headOffer.change}) is the piece buy put on (${it.quality}, armor ${it.armor})`)}
+// the short shop answer (#425): only gear that helps and supplies you may buy, well under the full list
+{const sb = await call('shop'), sf = await call('shop', {all: 'yes'});
+ ok(sb.ok && JSON.stringify(sb).length < JSON.stringify(sf).length * .7 && (typeof sb.gear === 'string' || sb.gear.every(g => /^(better|mixed)/.test(g.change))) && sb.supplies.every(x => USES[x.item].lvl <= a.lvl) && /all: "yes"/.test(sb.how), `shop is short by default (${JSON.stringify(sb).length} vs ${JSON.stringify(sf).length} characters with all), only helpful gear and buyable supplies`);
+ const rb = sb.supplies.find(x => x.item === 'Redroot Draught'), rf = sf.supplies.find(x => x.item === 'Redroot Draught'); ok(rb && rf && rb.price === rf.price, 'the short answer carries the same prices')}
+// inspect (#425): one person, creature or item as the hero sees it; read only, never a number for anyone's HP or a creature's level
+{const snap = () => JSON.stringify({g: a.gold, inv: a.inv, slots: a.slots, hp: a.hp, uid: S.uid, st: a.state});
+ const b4 = snap(), lk = await call('look'), h0 = lk.heroes[0], tf = (lk.townsfolk || [])[0];
+ a.playRate = [];
+ if (h0) {const v = await call('inspect', {who: h0.name}), b = S.agents.find(x => x.id === h0.id);
+   ok(v.ok && v.kind === 'hero' && v.name === b.name && v.who.includes(b.cls) && v.who.includes('level ' + b.lvl) && ['unhurt', 'lightly hurt', 'hurt', 'badly hurt', 'near death'].includes(v.looks) && v.doing && v.wears && !/\d+\s*%|\d+\s*\/\s*\d+|\bhp\b/i.test(JSON.stringify(v)), `inspect a hero by name: ${JSON.stringify(v).slice(0, 160)}`);
+   const v2 = await call('inspect', {who: String(h0.id)}); ok(v2.ok && v2.name === b.name, 'inspect a hero by id from look');
+   const pw = b.slots && SLOTS_.find(k => b.slots[k]); if (pw) ok(v.wears.some(w => w.startsWith(b.slots[pw].name)), 'their worn gear is named')}
+ if (tf) {const v = await call('inspect', {who: tf.role}); ok(v.ok && v.kind === 'person' && v.role === tf.role && v.name === tf.name && v.doing && v.mood && !('want' in v) && !('notes' in v) && !('warmth' in v), `inspect a townsperson by role: ${JSON.stringify(v).slice(0, 160)}`)}
+ let v = await call('inspect', {who: 'me'}); ok(v.ok && v.kind === 'hero' && v.name === a.name && /This is you/.test(v.note), 'inspect me');
+ {const far = S.agents.find(x => x !== a && x.state !== 'dead' && x.fac === a.fac), fp = {x: far.x, y: far.y, st: far.state}; far.x = a.x < 40 ? 75 : 3; far.y = a.y < 25 ? 45 : 3; far.state = 'hunt';
+  v = await call('inspect', {who: far.name}); far.x = fp.x; far.y = fp.y; far.state = fp.st;
+  ok(!v.ok && /not in sight/.test(v.error) && /look first/.test(v.error) && /In sight/.test(v.error) && !v.error.includes(far.name + ' ('), 'a hero far away is refused, with what is in sight: ' + v.error.slice(0, 120))}
+ v = await call('inspect', {who: 'Zorblax the Unseen'}); ok(!v.ok && /not in sight/.test(v.error), 'an unknown name is refused in words');
+ v = await call('inspect', {}); ok(!v.ok && /Inspect whom/.test(v.error), 'inspect with no who says what it takes');
+ v = await call('inspect', {who: 'Redroot Draught'}); ok(v.ok && v.kind === 'item' && /Heals 35%/.test(v.does) && /8g/.test(v.town_price), 'inspect a supply by name: ' + v.does);
+ v = await call('inspect', {who: 'head'}); ok(v.ok ? v.kind === 'item' && v.where === 'worn' : /nothing on your head/.test(v.error), 'inspect a worn slot: ' + (v.item || v.error));
+ v = await call('inspect', {who: 'Wolf Pelt'}); ok(v.ok && /auction house/.test(v.sells), 'inspect a trade good: its market price (' + v.sells + ')');
+ // a creature: the hero's own read, no level or HP numbers
+ const foe = S.mobs.find(m => m.alive && !m.gone && !m.elite && !m.named), keep = {x: a.x, y: a.y, lvl: foe.lvl}; a.x = foe.x - 2; a.y = foe.y;
+ v = await call('inspect', {who: '#' + foe.id}); const nm = v.what;
+ ok(v.ok && v.kind === 'creature' && v.threat && v.looks && !JSON.stringify(v).includes('"lvl"') && !/level \d|\bhp\b|health/i.test(JSON.stringify(v)), `inspect a creature: ${JSON.stringify(v).slice(0, 180)}`);
+ v = await call('inspect', {who: nm}); ok(v.ok && v.kind === 'creature' && v.what === nm, 'inspect a creature by the name the hero knows it by');
+ a.x = keep.x; a.y = keep.y;
+ ok(snap().replace(/"uid":\d+/, '') === b4.replace(/"uid":\d+/, '') && JSON.parse(snap()).uid === JSON.parse(b4).uid, 'inspect changes nothing (gold, pack, gear, HP, state, ids)');
+ a.playRate = []}
 // ---- the pack (issue #124): supplies, use, give, drop, quest items ----
 {const INV = await import('../src/sim/inv.js');
  a.gold = Math.max(a.gold, 100);
@@ -101,6 +132,7 @@ if (r.ok) {const it = a.slots.head, m = /armor \((\d+) -> (\d+)\)/.exec(headOffe
  ok(r.ok && r.cost === 2 * shop.supplies.find(x => x.item === 'Redroot Draught').price, `the shop's supply price equals what buy charged (${r.cost}g for 2)`);
  r = await call('buy', {item: 'Moonwater'}); ok(!r.ok && /Not sold/.test(r.error), 'buy refuses a supply that is not sold');
  r = await call('inventory'); const pi = r.items.find(e => /Redroot/.test(e.item)); ok(pi && pi.kind === 'use' && /Heals 35%/.test(pi.item), 'the potions are in the pack with their numbers');
+ {const iv = await call('inspect', {who: 'potion'}); ok(iv.ok && iv.kind === 'item' && iv.item === 'Redroot Draught' && iv.where === 'your pack, index ' + pi.index && iv.count >= 2 && /use_item/.test(iv.use), 'inspect a pack item by kind: ' + JSON.stringify(iv).slice(0, 140))} // #425
  a.hp = maxHp(a); r = await call('use_item', {index: pi.index}); ok(!r.ok && /not hurt/.test(r.error), 'a potion is not wasted at full health');
  a.hp = Math.floor(maxHp(a) * .3); r = await call('use_item', {index: pi.index}); ok(r.ok && a.hp > maxHp(a) * .5, 'use_item heals: ' + (r.result || r.error));
  const other = S.agents.find(x => x !== a && x.kind === 'hero' && x.state !== 'dead' && !(x.party && x.party === a.party));

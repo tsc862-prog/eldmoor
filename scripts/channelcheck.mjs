@@ -195,7 +195,7 @@ ok(!DMA.dmAct('narrate', {text: 'x', near: 'nowhere at all'}).ok && !DMA.dmAct('
 console.log('hero tools, events, prompts and snapshots');
 run(2); // let the watch() step turn heard lines into events
 ok(!markedPlace || (A.lore && A.lore.p[markedPlace] && JSON.stringify(act(A, 'lore', {about: 'Cairn'})).includes(markedPlace)), 'A saw the marked place and its lore names it (the check is not vacuous)');
-const argsFor = {move_to: {target: 'home'}, talk: {target: B.name}, say: {text: 'Well met.'}, join_party: {hero_id: B.id}, take_adventure: {job_id: 1}, choose: {option: 'a'},
+const argsFor = {move_to: {target: 'home'}, inspect: {who: B.name}, talk: {target: B.name}, say: {text: 'Well met.'}, join_party: {hero_id: B.id}, take_adventure: {job_id: 1}, choose: {option: 'a'},
   fight: {target_id: 0}, hunt: {count: 1}, rest: {minutes: 10}, buy: {}, sell: {index: 99}, equip: {index: 99}, read_chronicle: {n: 20}, journal_read: {n: 50}, journal_write: {text: 'A writes.'},
   journal_search: {query: 'diary turning point road old line filler ' + SECRETS.bJournal + ' ' + SECRETS.bLandmark + ' ' + SECRETS.bChapter},
   party_say: {text: 'Aye.'}, party_read: {n: 20}, chat_read: {n: 20}, propose: {kind: 'other', details: 'A small fire tonight.'}, vote: {proposal_id: 1, vote: 'yes', reason: 'fine'},
@@ -214,9 +214,20 @@ ok(JSON.stringify(first.status.events || []).includes(said.npc) || (first.chat_r
 for (const t of PLAYER_TOOLS) if (t.name !== 'wait') keep('A ' + t.name, act(A, t.name, argsFor[t.name] || {}));
 {beast.x = A.x + 2.5; beast.y = A.y; beast.alive = true; beast.gone = false; (await import('../src/sim/spatial.js')).rebuild(); const lk = keep('A look beast', act(A, 'look')), bm = (lk.monsters || []).find(m => m.id === beast.id);
   ok(bm && bm.lvl === undefined && bm.hurt === undefined && bm.what && bm.threat, `look describes a creature without numbers: ${JSON.stringify(bm)}`);
+  const ib = keep('A inspect beast', act(A, 'inspect', {who: '#' + beast.id})); ok(ib.ok && ib.kind === 'creature' && ib.threat, `inspect a creature: its threat in words (${ib.threat || ib.error}), checked for numbers below`); // #425
   const leak = heard.filter(h => h.what.startsWith('A ') && beastNums.test(h.text)).map(h => h.what);
   ok(!leak.length, 'no hero tool result numbers the creature (level or HP)' + (leak.length ? ': ' + leak.join(', ') : ''));
   beast.x = A.x + 60; beast.lvl = 3; beast.maxhp = beast.hp = 73}
+// inspect (#425): B beside A (B's persona, memories, mind, journal and session are planted above), the townsperson whose
+// record holds the DM's note, and every placed person: what A sees of them, never what they keep
+{const bx = {x: B.x, y: B.y}; B.x = A.x + 1; B.y = A.y; (await import('../src/sim/spatial.js')).rebuild();
+  const ib = keep('A inspect B', act(A, 'inspect', {who: B.name})), ib2 = keep('A inspect B by id', act(A, 'inspect', {who: String(B.id)}));
+  ok(ib.ok && ib.kind === 'hero' && ib.name === B.name && ib2.ok && ib.looks && ib.doing, `inspect B beside A: ${JSON.stringify(ib).slice(0, 150)}`);
+  B.x = bx.x; B.y = bx.y; (await import('../src/sim/spatial.js')).rebuild();
+  const rec = (S.npcs || []).find(p => p.fmem && (p.fmem.notes || []).some(n => n.text.includes(SECRETS.npcRecord)));
+  for (const p of [rec, ...(S.wanderers || [])].filter(Boolean)) {const ax = {x: A.x, y: A.y, st: A.state}; A.x = p.x + 1; A.y = p.y; if (!p.town) A.state = 'hunt';
+    const v = keep('A inspect ' + p.name, act(A, 'inspect', {who: p.name})); A.x = ax.x; A.y = ax.y; A.state = ax.st;
+    ok(v.ok && v.kind === 'person' && v.mood, `inspect ${p.title} ${p.name}: ${v.mood || v.error}`)}}
 keep('A journal overview', act(A, 'journal_read', {})); keep('A journal_search day 1', act(A, 'journal_search', {day: 1, n: 10})); // #153: A's own tiers only
 // A's own notebook only: every way of asking (about B, B's tag, ids B's notes also carry, everything), and the state header
 for (const [k, v] of Object.entries({about: {about: B.name}, aboutId: {about: String(B.id)}, tag: {tag: 'secret'}, party: {tag: 'party'}, all: {n: 20}, id1: {id: 1}, id2: {id: 2}, words: {query: 'hide note others private'}})) keep('A recall ' + k, act(A, 'recall', v));
