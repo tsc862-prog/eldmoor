@@ -189,12 +189,15 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
     L.push('');
   }
 
+  // ---- companies (issue #460) ----
+  const co = companySection(W, T, table); L.push(...co.lines);
+
   // ---- decisions ----
   L.push('## Decisions by kind', '');
   const dk = new Map();
   for (const d of D) {const k = (d.src || '?') + ' ' + (d.kind || '?'); let x = dk.get(k); if (!x) dk.set(k, x = {k, n: 0, res: {}}); x.n++; const r = d.src === 'relay' ? (d.ok ? 'answered' : 'failed ' + (d.status || '')) : d.outcome || '?'; x.res[r] = (x.res[r] || 0) + 1}
   L.push(table(['source and kind', 'count', 'results'], [...dk.values()].map(x => [x.k, x.n, Object.entries(x.res).map(([k, v]) => `${k.trim()} ${v}`).join(', ')])), '');
-  return {md: scrub(L.join('\n') + '\n'), minds: mc.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
+  return {md: scrub(L.join('\n') + '\n'), minds: mc.data, companies: co.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
 }
 
 
@@ -203,6 +206,27 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
 // levers, board, branches, staged scenes and voice are context. Per model: each digest goes to the model of the DM's latest turn before it.
 const ANSWERABLE = ['talk', 'table', 'slot'], SHARE_KINDS = ['talk', 'table', 'slot', 'levers', 'board', 'branch', 'staged', 'voice'];
 const SEAT_NAMES = [['closed', 'closed'], ['norunner', 'no runner'], ['live', 'live'], ['waiting', 'waiting'], ['unknown', 'unknown']];
+// Per company (issue #460): the world digests' companies[] and members[].company, and the turn lines of their members.
+// One row per company id: its name, the most heroes and agent minds it had, the game hours it was seen, deaths in it and
+// deaths per 10 game hours (the death-rate watch), its members' agent turns and the share of them that were empty, and
+// the members the last digest it appears in names. Digests from before #460 have no companies and give no rows.
+export function companySection(W = [], T = [], table) {
+  const L = ['## Companies', ''], by = new Map(), who = new Map();
+  for (const w of W) {
+    for (const c of w.companies || []) {let x = by.get(c.id); if (!x) by.set(c.id, x = {id: c.id, name: null, size: 0, minds: 0, hours: 0, deaths: 0, fellowship: false, ended: false, members: []});
+      if (c.name) x.name = c.name; x.size = Math.max(x.size, c.size || 0); x.minds = Math.max(x.minds, c.minds || 0); x.deaths += c.deaths || 0;
+      if (!c.ended) x.hours += (w.minutes || 60) / 60; if (c.fellowship) x.fellowship = true; x.ended = !!c.ended}
+    for (const m of w.members || []) if (m.company != null) {who.set(m.id, m.company); const x = by.get(m.company); if (x) x.members = [...new Set([...x.members.filter(n => n !== m.name), m.name])]}}
+  for (const t of T) {const id = t.hero && t.hero.id, c = id != null ? who.get(id) : undefined, x = c != null ? by.get(c) : null; if (!x) continue;
+    x.turns = (x.turns || 0) + 1; if ((t.flags || []).includes('empty')) x.empty = (x.empty || 0) + 1}
+  const rows = [...by.values()].sort((a, b) => a.id - b.id);
+  if (!rows.length) {L.push('_No company in the digests (older logs, or no agent hero yet)._', ''); return {lines: L, data: []}}
+  const pc = (a, b) => b ? Math.round(100 * a / b) + '%' : '-';
+  L.push(table(['company', 'name', 'heroes (most)', 'minds (most)', 'game hours', 'deaths', 'deaths / 10 h', 'agent turns', 'empty', 'members'],
+    rows.map(x => ['#' + x.id + (x.fellowship ? ' (Fellowship)' : '') + (x.ended ? ' (ended)' : ''), x.name || '-', x.size, x.minds, Math.round(x.hours), x.deaths, x.hours ? (10 * x.deaths / x.hours).toFixed(2) : '-', x.turns || 0, pc(x.empty || 0, x.turns || 0), x.members.slice(0, 8).join(', ') || '-'])), '');
+  return {lines: L, data: rows.map(x => ({id: x.id, name: x.name, size: x.size, minds: x.minds, hours: Math.round(x.hours * 10) / 10, deaths: x.deaths, turns: x.turns || 0, empty: x.empty || 0, fellowship: x.fellowship, members: x.members}))};
+}
+
 function dmShareSection(W, T, A, table) {
   const L = ['## DM agent share', ''], D = W.filter(w => w.dmShare && w.dmShare.kinds);
   if (!D.length) {

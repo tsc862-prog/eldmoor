@@ -87,9 +87,8 @@ const mindOf=who=>who==='dm'?st.setup.dm:heroAt(who).mind;
 // asking for another mode is ignored.
 function setMode(who,mode){if(mode!=='agent')return;const m=mindOf(who);const keep=m&&m.provider?{provider:m.provider,model:m.model}:{provider:'anthropic',model:CLAUDE_MODELS.haiku};
   if(who==='dm')st.setup.dm={mode,...keep};else heroAt(who).mind={mode,...keep}}
-// Runners as the relay can start them today: it has no company kind yet (#402 slice 23), so a group sharing one mind starts one runner per hero.
-const plan=s=>planRunners(s).flatMap(r=>r.kind==='company'?r.heroes.map(i=>({kind:'hero',index:i,provider:r.provider,model:r.model,label:s.heroes[i].name||s.heroes[i].cls})):[r]);
-const sharesMind=s=>planRunners(s).some(r=>r.kind==='company');
+// The runners the relay starts: a group sharing one mind gets one company runner (#460), the rest one runner per hero.
+const plan=s=>planRunners(s);
 function setModel(who,v){const m=mindOf(who),p=split(v);Object.assign(m,p)}
 function problems(){const out=validateSetup(st.setup);return out}
 
@@ -161,7 +160,7 @@ function relayLine(){const s=relayState(),d=el('div','srelay '+s);
 
 function runnerSummary(){const pl=plan(st.setup);if(!pl.length)return 'No runners needed.';
   const max=relay.runner&&relay.runner.max;
-  return (sharesMind(st.setup)?'Heroes of one group sharing a mind start one runner each for now. ':'')+'On Start: '+pl.map(r=>r.kind==='fellowship'?'one Fellowship runner ('+labelOf(r)+')':r.kind==='dm'?'the DM runner ('+labelOf(r)+')':r.label+' runner ('+labelOf(r)+')').join(', ')+'. '+pl.length+(max?' of '+max+' runners allowed.':' runner'+(pl.length===1?'':'s')+'.')}
+  return 'On Start: '+pl.map(r=>r.kind==='fellowship'?'one Fellowship runner ('+labelOf(r)+')':r.kind==='company'?'one runner for '+r.label+' ('+labelOf(r)+')':r.kind==='dm'?'the DM runner ('+labelOf(r)+')':r.label+' runner ('+labelOf(r)+')').join(', ')+'. '+pl.length+(max?' of '+max+' runners allowed.':' runner'+(pl.length===1?'':'s')+'.')}
 
 function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   const head=el('div','shead');head.append(el('h2',null,'New World'),el('div','dm','Build the world, choose who plays whom, and the heroes are agent-played from the first minute. Nothing changes until you press Start.'));page.append(head);
@@ -318,11 +317,12 @@ export async function afterBoot(){const setup=appliedSetup();if(!setup||bootKind
   // The hero a runner plays: together by its place, apart by its index (companies are founded in group order, members in group order).
   const mem=Object.fromEntries(fellowshipMembers().map(m=>[m.slot,m.hero])),byIdx={};
   if(v2.mode==='apart'){const flat=groupsOf(v2).flat(),ids=companies().flatMap(C=>C.ids);flat.forEach((i,n)=>{byIdx[i]=ids[n]!=null?S.agents.find(a=>a.id===ids[n]):null})}
-  const heroOf=r=>r.slot?mem[r.slot]:byIdx[r.index]||null;
+  const heroOf=r=>r.slot?mem[r.slot]:byIdx[r.index]||null,coHeroes=r=>(r.heroes||[]).map(i=>byIdx[i]||null); // a company runner: its members by index (#460)
+  const coId=r=>{const h=coHeroes(r).find(Boolean);return h&&h.company!=null?h.company:null};
   const jobs=pl.map(r=>({...r,
-    key:r.kind==='hero'?'hero:'+(heroOf(r)&&heroOf(r).id):r.kind,
-    label:r.kind==='hero'?(heroOf(r)?heroOf(r).name:r.label):r.kind==='dm'?'DM':'Fellowship',
-    link:()=>r.kind==='dm'?dmLink():r.kind==='fellowship'?worst(SLOT_KEYS.map(k=>mem[k])):agentLink(heroOf(r)),
+    key:r.kind==='hero'?'hero:'+(heroOf(r)&&heroOf(r).id):r.kind==='company'?'company:'+coId(r):r.kind,
+    label:r.kind==='hero'?(heroOf(r)?heroOf(r).name:r.label):r.kind==='dm'?'DM':r.kind==='company'?r.label:'Fellowship',
+    link:()=>r.kind==='dm'?dmLink():r.kind==='fellowship'?worst(SLOT_KEYS.map(k=>mem[k])):r.kind==='company'?worst(coHeroes(r)):agentLink(heroOf(r)),
     error:''}));
   launch={jobs,sent:false,headline:'Starting the runners…'};paintBar();
   if(ctl.speed===0)ctl.speed=1; // the run gate (ui/rungate.js) holds the world until every runner has claimed, then it plays on
@@ -332,7 +332,7 @@ export async function afterBoot(){const setup=appliedSetup();if(!setup||bootKind
   if(!info||!info.enabled){const why=!info?'The relay is not reachable: start it (npm run relay -- --runners).':(info.how||'Runners are off on the relay: start them yourself.');
     for(const j of jobs)j.error='no runner';launch.headline=why+' The world stays paused until they connect.';clearInterval(timer);paintBar();return}
   launch.sent=true;launch.headline='Runners are starting. The world is paused until they all claim their seats.';
-  for(const j of jobs){const body={kind:j.kind,provider:j.provider,model:j.model,...(j.kind==='hero'?{hero:heroOf(j).id}:{})};
+  for(const j of jobs){const body={kind:j.kind,provider:j.provider,model:j.model,...(j.kind==='hero'?{hero:heroOf(j).id}:j.kind==='company'?{company:coId(j)}:{})};
     let r;for(let i=0;i<10;i++){r=await post('/play/runner/start',body);if(r.ok||r.code!==404)break;await sleep(1000)} // the page tells the relay which heroes are agent-played a moment after loading
     if(!r.ok)j.error=r.error}
   const failed=jobs.filter(j=>j.error);

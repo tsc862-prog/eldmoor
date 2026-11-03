@@ -62,6 +62,9 @@ export const SEATS = HERO_SEATS.LOCAL + 1;
 // A runner that finds its heroes belong to a new world (same ids, other heroes; issue #219) exits with this code; the
 // supervisor then starts it again with the same request after RESTART_MS (at most MAX_RESTARTS in a row without a turn).
 export const NEW_WORLD_EXIT = 75, RESTART_MS = 1500, MAX_RESTARTS = 5;
+// Seat restarts (#460): how often the supervisor looks for a solo's heir or a member who left a company, and how long
+// after a hero runner ended with its hero's death it still looks for the heir.
+export const ADOPT_MS = 2000, HEIR_WAIT_MS = 10 * 60000;
 // The Claude model a runner started from the app plays when neither the request nor the hero's saved settings name
 // one (the owner's cost ask, #126): Haiku. Terminal runners keep their own default (Sonnet). AGENT_MODEL / DM_MODEL
 // in the relay's environment override it.
@@ -76,9 +79,16 @@ export const RUNNER_KINDS = {
   hero: {script: 'scripts/agent-player.mjs', label: 'hero runner', needsHero: true,
     defaults: {maxTurns: null, budget: 1}, caps: {maxTurns: 200, budget: 5},
     key: r => 'hero:' + r.hero, args: r => ['--hero', String(r.hero)], heroes: (r) => [r.hero]},
-  fellowship: {script: 'scripts/fellowship.mjs', label: 'Fellowship runner', needsHero: false,
+  fellowship: {script: 'scripts/fellowship.mjs', label: 'Fellowship runner', needsHero: false, multi: true,
     defaults: {maxTurns: null, budget: 2}, caps: {maxTurns: 100, budget: 10},
     key: () => 'fellowship', args: () => [], heroes: (r, hs) => hs.filter(h => h.fellow && h.alive).map(h => h.id)},
+  // A company of agent-played heroes (#460, epic #402): one runner plays every living agent member of one company of any
+  // size (scripts/fellowship.mjs --company <id>), each with its own session, pacing and claim; a joiner or a recruit who
+  // takes a fallen member's seat is picked up as it arrives. The request names the company (`company`, its id) or one of
+  // its members (`hero`). 'fellowship' above is the same runner for the five-place Fellowship (its members by `fellow`).
+  company: {script: 'scripts/fellowship.mjs', label: 'company runner', needsHero: false, multi: true,
+    defaults: {maxTurns: null, budget: 2}, caps: {maxTurns: 100, budget: 10},
+    key: r => 'company:' + r.company, args: r => ['--company', String(r.company)], heroes: (r, hs) => hs.filter(h => h.company === r.company && h.alive).map(h => h.id)},
   // The DM agent (#66): one at most, no hero; it claims the DM seat itself. Installed once scripts/dm-agent.mjs exists.
   dm: {script: 'scripts/dm-agent.mjs', label: 'DM agent', needsHero: false, noHeroes: true, missing: 'The DM agent is not installed yet (scripts/dm-agent.mjs comes with the DM agent PR).',
     defaults: {maxTurns: null, budget: 1}, caps: {maxTurns: 200, budget: 5},
@@ -93,7 +103,10 @@ const num = v => v === undefined || v === null || v === '' ? null : Number(v);
 export const SESSION_BUDGET_MAX = 500; // dollars: the most a session budget may be set to
 
 // Check a start request against the kinds, providers and caps. Returns {req} or {error, code}.
-const seatRunner = r => r.kind === 'dm' || r.kind === 'fellowship' || !!r.fellow;
+export const multiRunner = r => !!(r && RUNNER_KINDS[r.kind] && RUNNER_KINDS[r.kind].multi); // plays several heroes (Fellowship, company)
+// Hero seats a runner takes: the Fellowship's five, a company's living members (at least one), else one.
+const seatsOf = (r, hs) => r.kind === 'fellowship' ? 5 : r.kind === 'company' ? Math.max(1, RUNNER_KINDS.company.heroes(r, hs).length) : 1;
+const seatRunner = r => r.kind === 'dm' || multiRunner(r) || !!r.fellow;
 export function checkStart(b, heroes, {running = [], max = MAX_RUNNERS} = {}) {
   if (!b || typeof b !== 'object') return {error: 'bad body', code: 400};
   const kind = b.kind == null ? 'hero' : b.kind, K = RUNNER_KINDS[kind];
@@ -114,7 +127,15 @@ export function checkStart(b, heroes, {running = [], max = MAX_RUNNERS} = {}) {
     const h = known.find(x => x.id === id);
     if (!h) return {error: `Hero #${id} is not agent-played in the game (press Agent on it first).`, code: 404};
     if (!h.alive) return {error: `${h.name} is dead. Hardcore: one life.`, code: 409};
-    req.hero = id; req.name = h.name; if (h.fellow) req.fellow = true;
+    req.hero = id; req.name = h.name; if (h.fellow) req.fellow = true; if (Number.isInteger(h.company)) req.company = h.company;
+  } else if (kind === 'company') {
+    let cid = num(b.company);
+    if (cid == null && b.hero != null) {const h = known.find(x => x.id === num(b.hero)); if (!h) return {error: `Hero #${b.hero} is not agent-played in the game.`, code: 404}; cid = h.company ?? null}
+    if (!Number.isInteger(cid)) return {error: 'start needs the company id (or one of its members as hero)', code: 400};
+    req.company = cid;
+    const ms = known.filter(h => h.company === cid && h.alive);
+    if (!ms.length) return {error: `Company #${cid} has no living agent-played member.`, code: 404};
+    req.name = ms[0].companyName || 'the company of ' + ms.map(h => h.name).join(' and ');
   } else if (K.noHeroes) {
     if (!kindInstalled(K)) return {error: K.missing || `${K.label} is not installed.`, code: 501};
     req.name = K.label;
@@ -126,7 +147,7 @@ export function checkStart(b, heroes, {running = [], max = MAX_RUNNERS} = {}) {
   req.key = K.key(req);
   if (running.some(r => r.key === req.key)) return {error: `A ${K.label} for ${req.name} is already running.`, code: 409};
   if (req.kind !== 'dm') { // hero seats: the DM is outside the count
-    const heroRunners = [...running.filter(r => r.kind !== 'dm'), req], seats = heroRunners.reduce((n, r) => n + (r.kind === 'fellowship' ? 5 : 1), 0);
+    const heroRunners = [...running.filter(r => r.kind !== 'dm'), req], seats = heroRunners.reduce((n, r) => n + seatsOf(r, known), 0);
     const allLocal = heroRunners.every(r => r.provider === 'ollama');
     if (seats > (allLocal ? HERO_SEATS.LOCAL : HERO_SEATS.PAID)) return {error: allLocal ? `Seats full: ${HERO_SEATS.LOCAL} agent heroes at most.` : `Seats full: ${HERO_SEATS.PAID} agent heroes at most while any mind is paid (Claude or OpenAI); up to ${HERO_SEATS.LOCAL} when every mind is local.`, code: 429};
   }
@@ -203,7 +224,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       startedAt: new Date(r.started).toISOString(), uptime: Math.round(((r.ended || now()) - r.started) / 1000),
       turns: r.turns, cost: Math.round(r.cost * 10000) / 10000, provider: (mind && mind.provider) || r.provider || null, model: (mind && mind.model) || r.model || null,
       capTurns: r.capTurns ?? null, capBudget: r.capBudget ?? null, stopWhy: r.stopWhy || null,
-      maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' + (r.kind === 'fellowship' ? ' each' : '') : 'until stopped',
+      maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' + (multiRunner(r) ? ' each' : '') : 'until stopped',
       // issue #221: the context size every local call asks (children inherit OLLAMA_NUM_CTX), and the runner's warning when Ollama holds the model at another
       ...(((mind && mind.provider) || r.provider) === 'ollama' ? {numCtx: numCtxFrom(env), ctxWarn: (r.lines.filter(l => /runners ask \d+, so it reloads/.test(l)).pop() || '').replace(/^.*?note: /, '') || null} : {}),
       ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
@@ -220,7 +241,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   // ran out) leaves the list; a host shutdown does not (closing = true). Nothing secret: kind, hero, mind, caps.
   function saveActive() {
     if (closing || !enabled) return;
-    const rs = running().filter(r => !r.stopping).map(r => ({kind: r.kind, hero: r.hero ?? null, name: r.name, provider: r.provider || null, model: r.model || null, maxTurns: r.maxTurns ?? null, budget: r.budget ?? null}));
+    const rs = running().filter(r => !r.stopping).map(r => ({kind: r.kind, hero: r.hero ?? null, name: r.name, ...(r.kind === 'company' ? {company: r.company, members: (r.heroes || []).map(id => {const h = heroes().find(x => x.id === id); return {id, name: h ? h.name : null}})} : {}), provider: r.provider || null, model: r.model || null, maxTurns: r.maxTurns ?? null, budget: r.budget ?? null}));
     try {mkdirSync(dir, {recursive: true}); const tmp = activeFile + '.tmp'; writeFileSync(tmp, JSON.stringify({saved: new Date(now()).toISOString(), runners: rs}, null, 1)); renameSync(tmp, activeFile)} catch {}
   }
 
@@ -261,6 +282,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       write(`=== ${new Date().toISOString()} ${r.state}${code != null ? ' (exit ' + code + ')' : ''}${r.error ? ': ' + r.error : ''}`);
       log(`[runners] ${r.key} ${r.name} ${r.state}${r.error ? ': ' + r.error : ''} (${r.turns} turns${r.cost ? ', $' + r.cost.toFixed(4) : ''})`);
       if (r.pid) play.dropRunner(`${host}:${r.pid}`); // its claims, in case it could not release them
+      if (r.kind === 'hero' && !r.stopping && !closing) {const h = heroes().find(x => x.id === r.hero); if (!h || !h.alive) r.heirWatch = true} // a solo's heir may come (#460)
       dropLeases(r.key); saveActive();
       if (nw && (req.restarts || 0) < MAX_RESTARTS) {const next = {...req, restarts: r.turns ? 1 : (req.restarts || 0) + 1}; log(`[runners] ${r.key} sees a new world: starting it again`);
         setTimeout(() => {if (table.get(req.key) !== r) return; const o = start(next); if (o.error) log(`[runners] restart of ${r.key} failed: ${o.error}`)}, RESTART_MS)}
@@ -277,7 +299,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   // line ("stopped after N turns (reason)") is what the page's runner-stop alert reads.
   function checkCaps() {
     for (const r of running()) {if (r.stopping) continue;
-      const why = r.capTurns != null && r.kind !== 'fellowship' && r.turns >= r.capTurns ? `turn cap reached: ${r.turns} of ${r.capTurns}`
+      const why = r.capTurns != null && !multiRunner(r) && r.turns >= r.capTurns ? `turn cap reached: ${r.turns} of ${r.capTurns}`
         : r.capBudget != null && r.cost >= r.capBudget ? `budget reached: $${r.cost.toFixed(2)} of $${r.capBudget.toFixed(2)}`
         : paid(r) && session.budget != null && left() <= 0 ? `session budget reached: $${session.spent.toFixed(2)} of $${session.budget.toFixed(2)}` : null;
       if (why) {r.lines.push(`[runners] stopped after ${r.turns} turns (${why})`); if (r.lines.length > KEEP_LINES) r.lines.shift(); stop(r.key, why)}}}
@@ -291,7 +313,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (b.key != null) {const r = table.get(String(b.key)); if (!r || r.done) return {error: 'no such live runner', code: 404};
       const K = RUNNER_KINDS[r.kind], mt = num(b.maxTurns), bu = num(b.budget); let later = false;
       if ('maxTurns' in b) {if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
-        const own = r.maxTurns ?? Infinity; r.capTurns = mt; if (mt == null ? own !== Infinity : mt > own || r.kind === 'fellowship') later = true}
+        const own = r.maxTurns ?? Infinity; r.capTurns = mt; if (mt == null ? own !== Infinity : mt > own || multiRunner(r)) later = true}
       if ('budget' in b) {if (!paid(r)) return {error: 'a local runner has no budget', code: 400};
         if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};
         r.capBudget = bu; if (bu == null || bu > r.budget) later = true}
@@ -337,7 +359,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (d && d.claimed) return {code: 409, obj: {ok: false, error: 'The DM seat already has a live runner (one DM at a time).'}}}
     // Claude slots (see CLAUDE_SLOTS): its Claude minds lease a slot per turn, so starting never waits on them
     const K = RUNNER_KINDS[c.req.kind], ids = K.session ? [K.session] : K.heroes(c.req, heroes()), want = ids.filter(id => providerFor(id, c.req.provider) === 'anthropic').length;
-    c.req.claude = want; if (c.req.kind === 'fellowship' && want) c.req.claudeConcurrency = Math.min(want, claudeMax);
+    c.req.claude = want; if (multiRunner(c.req) && want) c.req.claudeConcurrency = Math.min(want, claudeMax);
     c.req.local = ids.length > 0 && ids.every(id => providerFor(id, c.req.provider) === 'ollama'); // no turn cap unless asked (issue #126)
     if (paid(c.req) && session.budget != null) {const l = left(); // the session budget (#145): clip this runner's budget to what is left
       if (l < .01) return {code: 402, obj: {ok: false, error: `Session budget reached ($${session.spent.toFixed(2)} of $${session.budget.toFixed(2)}). Raise it in the game's Agents settings.`}};
@@ -370,7 +392,9 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
         if (!h) {skip('not an agent-played hero in this world'); continue}
         if (x.name && h.name !== x.name) {skip(`hero #${x.hero} is now ${h.name} (a different world?)`); continue}
         if (!h.alive) {skip('dead'); continue}}
-      const body = {kind: x.kind, ...(x.kind === 'hero' ? {hero: x.hero} : {}), provider: x.provider || undefined, model: x.model || undefined, maxTurns: x.maxTurns ?? undefined, budget: x.budget ?? undefined};
+      if (x.kind === 'company') {const hs = heroes(), same = (x.members || []).some(m => hs.some(h => h.id === m.id && h.name === m.name && h.alive && h.company === x.company));
+        if (!same) {skip(`company #${x.company} has none of its members in this world`); continue}}
+      const body = {kind: x.kind, ...(x.kind === 'hero' ? {hero: x.hero} : {}), ...(x.kind === 'company' ? {company: x.company} : {}), provider: x.provider || undefined, model: x.model || undefined, maxTurns: x.maxTurns ?? undefined, budget: x.budget ?? undefined};
       const r = startRequest(body);
       if (r.code === 200) {out.resumed.push(r.obj.runner.key); log(`[runners] resumed ${what}`)} else skip(r.obj.error || 'refused');
     }
@@ -382,6 +406,28 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     saveActive();
     return out;
   }
+
+  // Seats that restart on their own (#460): a solo's heir (a recruit who succeeds a fallen hero whose hero runner ended
+  // with the death) gets a hero runner with the fallen hero's mind and caps; a member who left a company (it rides on
+  // as a solo, released by the company runner) gets a hero runner with the company runner's mind. Only heroes the game
+  // names as agent-played and alive, with no claim and no runner of this supervisor on them; a stop from the page or
+  // a host shutdown never restarts anything. Heirs are looked for HEIR_WAIT_MS after the runner ended.
+  const handed = new Set(); // hero ids already handed a runner by adopt()
+  function covered(id) {return play.claimed(id) || running().some(r => r.kind === 'hero' ? r.hero === id : (r.heroes || []).includes(id))}
+  function adopt() {
+    if (!enabled || closing) return [];
+    const hs = heroes(), out = [];
+    const give = (h, from, why) => {if (handed.has(h.id) || covered(h.id)) return; handed.add(h.id);
+      const o = startRequest({kind: 'hero', hero: h.id, provider: from.provider || undefined, model: from.model || undefined, maxTurns: from.maxTurns ?? undefined, budget: from.budget ?? undefined});
+      log(`[runners] ${h.name}: ${why}: ${o.code === 200 ? 'hero runner started' : 'not started (' + (o.obj.error || 'refused') + ')'}`); if (o.code === 200) out.push(o.obj.runner.key)};
+    for (const r of table.values()) {
+      if (r.kind === 'hero' && r.done && !r.stopping && r.heirWatch && now() - r.ended <= HEIR_WAIT_MS) {
+        const heir = hs.find(h => h.succeeds === r.hero && h.alive); if (heir) {r.heirWatch = false; give(heir, r, `takes the place of ${r.name}`)}}
+      if (r.kind === 'company' && !r.done && !r.stopping) {view(r); for (const id of r.held || []) {const h = hs.find(x => x.id === id);
+        if (h && h.alive && h.company !== r.company && !mine(r, id)) give(h, r, `left ${r.name} and rides alone`)}}}
+    return out}
+  const adoptT = enabled ? setInterval(adopt, ADOPT_MS) : null; if (adoptT && adoptT.unref) adoptT.unref();
+  server.on('close', () => clearInterval(adoptT));
 
   // Routes in front of everything else on the server (the page calls these, so they answer CORS).
   const prior = server.listeners('request'); server.removeAllListeners('request');
@@ -422,13 +468,13 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     }
     if (path === '/play/runner/stop') {
       let key = typeof b.key === 'string' ? b.key : null;
-      if (!key) {const K = RUNNER_KINDS[b.kind == null ? 'hero' : b.kind]; if (!K) return send(400, {ok: false, error: 'unknown runner kind'}); key = K.key({hero: Number(b.hero)})}
+      if (!key) {const K = RUNNER_KINDS[b.kind == null ? 'hero' : b.kind]; if (!K) return send(400, {ok: false, error: 'unknown runner kind'}); key = K.key({hero: Number(b.hero), company: Number(b.company)})}
       const s = stop(key); if (s.error) return send(s.code, {ok: false, error: s.error});
       return send(200, {ok: true, runner: s.runner});
     }
     send(404, {error: 'not found'});
   });
-  return {list, start, stop, stopAll, shutdown, killAll, table, limits, resume, session: sessionView, activeFile};
+  return {list, start, stop, stopAll, shutdown, killAll, table, limits, resume, adopt, session: sessionView, activeFile};
 }
 
 // A supervised runner (ELDMOOR_SUPERVISED=1) calls this once: fn runs on a "stop" line on stdin, or

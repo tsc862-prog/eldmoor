@@ -270,7 +270,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   ok(all(R(),'button').find(b=>b.dataset.a==='start').disabled,'Start is disabled while it is');
   const hs2=sel('hfac:1');hs2.value=String(fac0);hs2.dispatch('change',{target:hs2});
   const town=CITY.filter(c=>c.fac===fac0)[0].name;let ss=sel('start:0');ss.value='town:'+town;ss.dispatch('change',{target:ss});
-  ok(/one runner each for now/.test(text(R())),'a group sharing a mind says it starts per hero for now');
+  ok(/one runner for the company of /.test(text(R())),'a group sharing a mind starts one company runner (#460)');
   click(R(),b=>b.dataset.a==='start');
   const pa=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
   ok(pa&&pa.v===2&&pa.mode==='apart'&&pa.heroes.length===2&&pa.heroes[0].start.town===town&&pa.heroes[0].group===1&&pa.heroes[1].group===1&&sim.validateSetup(pa).length===0,'Start queues the v2 apart setup');
@@ -294,7 +294,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
 if(mode==='b'){const t=sim.fellowshipMembers().find(m=>m.slot==='tank').hero;
   ok(t.persona&&t.persona.archetype==='veteran','archetype: the queued pick is applied at founding')}
 if(mode==='d'){
-  // an apart setup boots and starts one runner per hero (the relay has no company runner yet)
+  // an apart setup boots and starts one company runner per pair sharing a mind and a hero runner for the solo (#460)
   const s0=sim.applyPreset('pairs-and-solo',sim.defaultSetup(4242,'eldmoor',0));s0.dm={mode:'scripted'};const s=sim.cleanSetup(s0);
   localStorage.setItem(PENDING_KEY,JSON.stringify(s));
   boot(sim.init);
@@ -302,7 +302,9 @@ if(mode==='d'){
   setup.initSetup();ctl.speed=1;
   await setup.afterBoot();
   const hp=posts.filter(x=>x.body.kind==='hero'),cp=posts.filter(x=>x.body.kind==='company');
-  ok(hp.length===5&&cp.length===0,'five hero runners, no company runner: '+posts.map(x=>x.body.kind));
-  ok(new Set(hp.map(x=>x.body.hero)).size===5&&hp.every(x=>sim.S.agents.find(a=>a.id===x.body.hero&&a.player)),'each runner names its own agent-played hero');
+  ok(hp.length===1&&cp.length===2,'two company runners (the pairs) and one hero runner (the solo): '+posts.map(x=>x.body.kind));
+  const co=sim.S.companies||[];
+  ok(new Set(cp.map(x=>x.body.company)).size===2&&cp.every(x=>{const C=co.find(c=>c.id===x.body.company);return C&&C.ids.length===2&&C.ids.every(id=>sim.S.agents.find(a=>a.id===id&&a.player))}),'each company runner names its own company of two agent-played heroes');
+  ok(hp.every(x=>{const a=sim.S.agents.find(a=>a.id===x.body.hero&&a.player);const C=a&&co.find(c=>c.id===a.company);return C&&C.ids.length===1}),'the hero runner names the agent-played solo');
 }
 console.log(fail?fail+' FAILED':'smoke133 '+mode+' passed');process.exit(fail?1:0);
