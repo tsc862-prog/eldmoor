@@ -143,6 +143,34 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
   ok(two.length === 2 && two[0].function.name === 'pull_lever' && two[0].function.arguments.params.tpl === 'rescue' && two[1].function.name === 'log_intent' && two[1].function.arguments.text === 'a rescue for them', 'a fenced list, {tool,args} and {function:{name,arguments as text}} forms count too');
   ok(parseTextCalls('Here is the plan:\n```json\n{"region": "Mirefen", "kind": "fogbound"}\n```', DM_TOOLS).length === 0 && parseTextCalls('```\nnot json at all\n```').length === 0, 'a fenced block that is not a call stays narration');
   ok(parseTextCalls('```json\n{"name": "hunt", "arguments": {"n": 2}}\n```')[0].function.name === 'hunt', 'a hero\'s fenced call (the whole reply) runs too');
+  // issue #468: the shapes of the 2026-11-03 qwen2.5:14b turns (echoed prompt, junk-prefixed calls, a Chinese tail)
+  const junk = parseTextCalls('Fragistics {"name": "fight", "arguments": {"target_id": 1}} </tool_call>');
+  ok(junk.length === 1 && junk[0].function.name === 'fight' && junk[0].function.arguments.target_id === 1 && cleanNarration('Fragistics {"name": "fight", "arguments": {"target_id": 1}} </tool_call>') === '', 'a call behind a junk word with a stray </tool_call> is parsed, and nothing of it is narration');
+  ok(parseTextCalls('INdEx {"name": "inventory", "arguments": {}} </tool_call>')[0].function.name === 'inventory' && parseTextCalls('Mirora braces.\nINdEx {"name": "fight", "arguments": {"target_id": 4}}')[0].function.arguments.target_id === 4, 'the same on a line after prose');
+  ok(parseTextCalls('I check {"name": "Bob"} and leave.').length === 0 && cleanNarration('INdEx="Dovas is taking care of me."') === 'Dovas is taking care of me.', 'an object with only a name stays prose; a junk assignment loses its label');
+  const echo = cleanNarration('Halis reviewed his status. End your turn now: one short sentence of narration in the third person about what you did and why. Halis waited patiently as the world paused.');
+  ok(echo === 'Halis reviewed his status. Halis waited patiently as the world paused.', 'the echoed end-of-turn instruction is cut: ' + JSON.stringify(echo));
+  ok(cleanNarration('I am at full health now. End of turn: Mirora confirms her status and remains ready.') === 'Mirora confirms her status and remains ready.' && cleanNarration('Maelwen led the party through the gate. **End of turn.**') === 'Maelwen led the party through the gate.', '"End of turn:" keeps the summary after it, or the words before a closing label');
+  ok(!/turn with one short/.test(cleanNarration('... nd your turn with one short sentence of narration in the third person about what you did and why. Sylis nodded.')), 'a clipped echo ("nd your turn with ...") is cut too');
+  const cjk = cleanNarration('For now, let me wait and see what happens next. 等候进一步指示。'), mid = cleanNarration('It seems there was an issue. 等候片刻后，我将继续尝试向北前进。 I will now try moving north again.');
+  ok(cjk === 'For now, let me wait and see what happens next.' && mid === 'It seems there was an issue. I will now try moving north again.', 'a Chinese tail or middle sentence is cut from English narration: ' + JSON.stringify(cjk));
+  ok(cleanNarration('等候进一步指示，我们继续前进吧。') === '等候进一步指示，我们继续前进吧。', 'a wholly foreign reply is left whole for the caller to flag and re-prompt');
+  {const ran = [], seq = [{role: 'assistant', content: 'The wolf lunges.\nFragistics {"name": "fight", "arguments": {"target_id": 7}} </tool_call>'}, {role: 'assistant', content: '', tool_calls: [{function: {name: 'wait', arguments: {minutes: 10}}}]}, {role: 'assistant', content: 'Mirora fought the wolf. End your turn now: one short sentence of narration in the third person about what you did and why. 等候进一步指示。'}];
+    let k = 0; const r = await localTurn({chat: async () => ({message: seq[Math.min(k++, seq.length - 1)], usage: {in: 1, out: 1}, ms: 1}), call: async (tool, args) => {ran.push(tool + JSON.stringify(args)); return {ok: true}}, sess: {system: 'You are Mirora.'}, prompt: 'A Timber Wolf attacks.', model: 'm'});
+    ok(ran[0] === 'fight{"target_id":7}' && ran[1] === 'wait{"minutes":10}', 'in a turn the junk-prefixed fight call runs: ' + ran.join(' '));
+    ok(r.narration === 'Mirora fought the wolf.' && !r.foreign, 'and the closing narration loses the echo and the Chinese tail: ' + JSON.stringify(r.narration))}
+  // issue #467: the circuit breaker and the per-minute call cap
+  {const refuse = async () => ({ok: false, error: 'Refused: unknown place "{"x":-5,"y":0}"'}), same = {role: 'assistant', content: '', tool_calls: [{function: {name: 'mark_place', arguments: {kind: 'ruin', near: '{"x":-5,"y":0}', reason: 'r'}}}]};
+    let n = 0; const s1 = {system: 'You are the DM.'}, r = await localTurn({chat: async () => {n++; return {message: same, usage: {in: 1, out: 1}, ms: 1}}, call: refuse, sess: s1, prompt: 'Your turn.', model: 'm', tools: DM_TOOLS, toolTurns: 16, opts: {endOnWait: false}});
+    ok(r.broke && r.broke.tool === 'mark_place' && r.broke.n === 3 && r.tools === 3 && n === 3, `the same refusal 3 times ends the turn (${r.tools} calls, ${n} model calls of 16 allowed)`);
+    ok(/ended early: 3 refusals of mark_place/.test(localLine(r, 'm')) && s1.local.history.some(m => m.role === 'user' && /ended early/.test(m.content)), 'the turn line says so and the next turn is told why');
+    let k = 0; const mixed = ['mark_place', 'post_hook', 'npc_say', 'pull_lever', 'place_person', 'narrate'].map(t => ({role: 'assistant', content: '', tool_calls: [{function: {name: t, arguments: {}}}]}));
+    const r2 = await localTurn({chat: async () => ({message: mixed[Math.min(k++, mixed.length - 1)], usage: {in: 1, out: 1}, ms: 1}), call: refuse, sess: {system: 'x'}, prompt: 'Your turn.', model: 'm', tools: DM_TOOLS, toolTurns: 16, opts: {endOnWait: false}});
+    ok(r2.broke && r2.tools === 5 && r2.broke.inRow === 5, `5 refusals in a row of different tools end it too (${r2.tools} calls)`);
+    const s3 = {system: 'x'}, three = {role: 'assistant', content: '', tool_calls: ['dm_status', 'hooks', 'npcs'].map(t => ({function: {name: t, arguments: {}}}))};
+    let total = 0; const okCall = async () => {total++; return {ok: true}};
+    for (let t = 0; t < 6; t++) await localTurn({chat: async () => ({message: three, usage: {in: 1, out: 1}, ms: 1}), call: okCall, sess: s3, prompt: 'Turn.', model: 'm', tools: DM_TOOLS, toolTurns: 16, opts: {endOnWait: false, callsPerMin: 30}});
+    ok(total === 30, `the minute cap holds a looping DM to 30 calls over 6 quick turns (${total}; the flood line is 90)`)}
   // a lever called as a tool, and lever params at the top level
   const lv = cleanArgs('set_condition', {region: 'Mirefen'}, DM_TOOLS);
   ok(lv.error && /pull_lever/.test(lv.error) && /"lever":"set_condition"/.test(lv.error), 'a lever name called as a DM tool is pointed at pull_lever: ' + (lv.error || '').slice(-120));
@@ -383,7 +411,12 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       if (!out) throw new Error('autopilot fixture: no hunting hero outside the towns');
       a.adv = null; a.playTurn = null; a.cryptOk = false; a.raidOk = false; invOf(a).list.length = 0;
       const seenNow = () => `state=${a.state} at ${a.x.toFixed(1)},${a.y.toFixed(1)} town=${inTownish(a)} hp=${Math.round(a.hp)}/${maxHpOf(a)} idle=${a.playIdle} auto=${a.playAuto} doing="${a.playDoing}" pq=${JSON.stringify((a.pq || []).map(c => c.kind + (c.auto ? '/' + c.auto : '')))} sinceAct=${Math.round(S.gameMin - a.playActAt)} turn=${a.playTurn} party=${!!a.party} adv=${a.adv} pack=${invOf(a).list.length}`;
-      a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.dest = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15}; a.hp = Math.max(1, Math.round(maxHpOf(a) * .4));
+      a.x = out.x; a.y = out.y; a.state = 'hunt'; a.pq = []; a.target = null; a.dest = null; a.playOrder = {kind: 'hunt', n: 2, flee: .15};
+      // hurt, but not so badly that autopilot walks home (#487: below the retreat line it does, and with a creature close by
+      // too): between the hero's retreat line and 60%, with the creatures near this spot out of sight for the section
+      const {tm} = await import('../src/data/traits.js'), {PK} = await import('../src/sim/player.js');
+      a.hp = Math.max(1, Math.round(maxHpOf(a) * (Math.max(PK.RETREAT * tm(a, 'retreat'), .3) + .6) / 2));
+      const veiled = S.mobs.filter(m => !m.hidden && dist(m, a) < PK.REST_CLEAR + 3); for (const m of veiled) m.hidden = true;
       // its last order nearly two game hours ago (a hurt hero heals while it stands, so the long wait is not stepped through)
       a.playActAt = S.gameMin - 115; a.playIdle = false; a.playAuto = null;
       const t0 = S.gameMin, idle = stepUntil(() => a.playIdle && a.playAuto === 'rest', 60);
@@ -391,6 +424,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       ok(a.player && !a.brain && /^autopilot: resting/.test(a.playDoing || ''), `the agent stays the mind (agent-played, no brain): "${a.playDoing}" ${seenNow()}`);
       a.hp = maxHpOf(a); a.pq = [];
       ok(stepUntil(() => a.playAuto === 'hunt' && a.pq[0] && a.pq[0].kind === 'hunt' && a.pq[0].auto, 60), `mended, it carries on its last order (${a.playAuto}: ${a.playDoing}; ${seenNow()})`);
+      for (const m of veiled) m.hidden = false;
       ok((a.playEv || []).some(e => /autopilot carries on/.test(e.text)) && !(a.playEv || []).some(e => /scripted|instinct/i.test(e.text)), 'the hero is told so, and nothing calls it scripted');
       const r = sim.playerAct(a.id, 'say', {text: 'Enough wandering. I choose my own road again.'});
       calm(); sim.step(1 / 60);

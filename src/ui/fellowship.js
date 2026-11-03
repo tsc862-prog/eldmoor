@@ -20,6 +20,8 @@ import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
 import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
 import {campSummary} from '../sim/camp.js';
+// The sim's camp line, with a watch end it could not compute (NaN) left out rather than shown as "until NaN:NaN" (#475).
+export const campLine=()=>{const s=campSummary();return s?s.replace(/ \(until [^)]*NaN[^)]*\)/g,''):s};
 import {hallBoard} from '../sim/dmfocus.js'; // the hall board's jobs for the Fellowship (#334), read-only
 import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype,authoredStance,scriptedStance,personaValue,pinField,pinned} from '../sim/persona.js';
@@ -137,7 +139,7 @@ function topView(node){const F=S.fellowship;
     if(!confirmDisband){const d=el('button',null,'Disband the Fellowship...');d.dataset.fact='disband';m.append(d)}
     else{m.append(el('span','dm','Disband for good? The five go their own ways.'));const y=el('button','danger','Yes, disband');y.dataset.fact='disband';const c=el('button',null,'Cancel');c.dataset.fact='menu';m.append(y,c)}
     node.append(m)}
-  const cs=campSummary();if(cs)node.append(el('div','gd fcamp',cs)); // camp: how long, who sleeps, who watches (#178)
+  const cs=campLine();if(cs)node.append(el('div','gd fcamp',cs)); // camp: how long, who sleeps, who watches (#178)
   if(msg)node.append(el('div','fmsg',msg));
   // Open threads lead (oaths, meeting plans, unfinished jobs, blood owed): live one-liners
   const th=openThreads(),box=el('div','felthreads');box.setAttribute('data-k','threads');
@@ -290,7 +292,7 @@ export function renderFellowship(){if(!root)return;const F=S.fellowship;syncChro
     const sig='f|'+draft.fac+'|'+JSON.stringify(draft.slots)+'|'+msg+'|'+S.agents.filter(a=>alive(a)&&a.fac===draft.fac).map(a=>a.id+':'+a.lvl).join(',');
     if(sig!==sigForm&&patch(top,n=>formView(n))){sigForm=sig;sigTop=''}return}
   if(logBox!==$('campaign'))logBox.hidden=false;
-  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+menuOpen+'|'+drawer+'|'+moreThreads+'|'+openThreads().map(t=>plainOf(t.parts)).join('~')+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+(campSummary()||'')+'|'+hallSig()+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
+  const sig='t|'+F.id+'|'+msg+'|'+confirmDisband+'|'+menuOpen+'|'+drawer+'|'+moreThreads+'|'+openThreads().map(t=>plainOf(t.parts)).join('~')+'|'+mindsOf(F)+'|'+(mindsOf(F)==='agent'?runnerSig(null):'')+'|'+cam.view+'|'+(cam.sel?cam.sel.id:'')+'|'+fellowshipMembers().map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+(fellowParty()?fellowParty().leader.id:'')+'|'+(campLine()||'')+'|'+hallSig()+'|'+F.past.length+'|'+(F.enrich?F.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode();
   // patched in place (#145): never under an open picker, a press or a scroll; open threads and days stay open
   if(sig!==sigTop&&patch(top,n=>topView(n))){sigTop=sig;sigForm=''}
   const ls=F.id+':'+(F.seq||0);if(ls!==sigLog&&patch(logBox._b,n=>renderCampaignLog(n)))sigLog=ls}

@@ -11,7 +11,14 @@
 //           its own after TABLE.stepS seconds); kept per viewer in localStorage. The rolls are the beats' roll data.
 //   switch  the View group's "Table: Auto / Off" button (Off = Watch mode, never pauses); kept
 //           per viewer in localStorage
-import {TABLE,bannerOf,stepNext} from '../sim/table.js';
+// Legibility (#471): a short pixel-font title (the kind and a few words, sceneHead), the status tags as a chip row of their
+// own, the full question as wrapping body text, and outside combat one row per member (memberRows): name in class colour,
+// answered or waiting, the vote or option chosen, and the nudge or reflex timer. Combat keeps its initiative chips.
+import {TABLE,bannerOf,stepNext,optionsFor} from '../sim/table.js';
+import {reflexMay,ownerHeld} from '../sim/runlink.js';
+import {classColor} from '../core/colors.js';
+import {sceneHead} from '../core/scenehead.js';
+export {sceneHead};
 import {S} from '../sim/index.js';
 import {TR} from '../sim/tableround.js';
 import {maxHp} from '../sim/heroes.js';
@@ -109,19 +116,62 @@ function onBox(e){const t=e.target&&e.target.closest?e.target.closest('[data-act
 function endBlock(box,c){if(!c.ends||!c.ends.length)return;const d=el('div','tend');d.setAttribute('aria-label','How the fight ended');
   for(const [t,k] of c.ends)d.append(el('span','tendc'+(k?' '+k:''),t));box.append(d)}
 
+// ---- the chips and the member rows (#471); the short title is core/scenehead.js ----
+// The status tags as data: [{t, k}] (k: round | paused | all).
+export function sceneChips(b,c){const o=[];if(c)o.push({t:'Round '+c.round+'/'+c.of,k:'round'});if(b.paused)o.push({t:'World paused',k:'paused'});if(b.all)o.push({t:'Everyone answers',k:'all'});return o}
+const shortOpt=t=>String(t||'').split(/ \(|: /)[0].replace(/^Ability, /,'');
+function answerOf(sc,a,act){if(sc.kind==='decision'&&(act.k==='yes'||act.k==='no'))return {ans:act.k.toUpperCase(),tone:act.k};
+  if(act.k==='stunned')return {ans:'Stunned',tone:'no'};
+  let o=null;try{o=optionsFor(sc,a).find(x=>x.k===act.k)}catch(_){}
+  return {ans:o?shortOpt(o.text):String(act.k||'').replace(/^use:/,'use '),tone:'opt',full:o?o.text:''}}
+const secs=n=>Math.max(0,Math.ceil(n))+' s';
+// One row per member at a scene without combat rounds: {id, name, color, st, ans, tone, line, by, timer}, in the scene's order.
+// st: done (answered or acted), wait (an agent is thinking), held (no runner: the owner decides), reflex (plays by reflex),
+// turn (acting now in a turn-by-turn scene), next (still to act), fallen, out (the scene ended without an answer).
+export function memberRows(){const sc=S.table;if(!sc||sc.rd!=null)return null;const out=[],live=sc.phase==='turn'||sc.phase==='frame';
+  sc.ids.forEach((id,i)=>{const a=byId(id);if(!a)return;const act=sc.acts&&sc.acts[id],r={id,name:a.name,cls:a.cls,color:classColor(a.cls),st:'',ans:'',tone:'',full:'',line:'',by:'',timer:''};
+    if(a.state==='dead')r.st='fallen';
+    else if(act){Object.assign(r,answerOf(sc,a,act));r.st='done';r.line=act.line||'';r.by=act.by||''}
+    else if(!live||sc.resolved)r.st='out';
+    else if(sc.all||sc.ids[sc.i]===id){const t=sc.all?((sc.w&&sc.w[id]&&sc.w[id].t)||0):sc.t||0;
+      if(sc.phase==='frame')r.st=sc.all?'wait':'turn';
+      else if(ownerHeld(a))r.st='held';else if(reflexMay(a))r.st=sc.all?'reflex':'turn';
+      else{r.st=sc.all?'wait':'turn';r.timer=t*1000>=TABLE.turnMs?'reflex in '+secs(TABLE.liveMs/1000-t):t>=1?secs(t):''}}
+    else r.st=i<sc.i?'out':'next';
+    out.push(r)});
+  return out}
+const ST_TXT={wait:'thinking',held:'no runner',reflex:'reflex',turn:'acting',next:'to act',fallen:'fallen',out:'no answer'};
+function rowsBlock(box,rows,b){const all=!!b.all,n=rows.filter(r=>r.st==='done').length,of=rows.filter(r=>r.st!=='fallen').length;
+  const L=el('div','tmem');L.setAttribute('role','list');L.setAttribute('aria-label',all?'Answers':'Turn order');
+  L.append(el('div','tmh',all?'Answers '+n+'/'+of:'Turn order'));
+  for(const r of rows){const d=el('div','tmr st-'+r.st);d.dataset.k='m'+r.id;d.setAttribute('role','listitem');
+    const sw=el('i','tmsw');sw.style.background=r.color;const nm=el('span','tmn',(r.st==='turn'?'▶ ':'')+r.name);nm.style.color=r.color;d.append(sw,nm);
+    if(r.st==='done'){const a=el('span','tma '+r.tone,r.ans);if(r.full)a.title=r.full;d.append(a);if(r.by==='reflex')d.append(el('span','tmby','reflex'))}
+    else d.append(el('span','tms',ST_TXT[r.st]||r.st));
+    const q=el('span','tmq',r.line?'“'+r.line+'”':'');if(r.line)q.title=r.line;d.append(q);
+    d.append(el('span','tmt',r.timer));
+    d.setAttribute('aria-label',r.name+': '+(r.st==='done'?r.ans+(r.by==='reflex'?' (reflex)':''):ST_TXT[r.st]||r.st)+(r.timer?', '+r.timer:'')+(r.line?', says '+r.line:''));
+    L.append(d)}
+  box.append(L)}
+// The status line repeats what the rows show while members are being waited on: drop it then (one place per fact).
+const rowsSay=(b,rows)=>!!rows&&b.phase==='turn'&&(b.all?/^\d+\/\d+ answered/.test(b.line)&&!/no runner/.test(b.line):/is thinking/.test(b.line||''));
+
 // Called every frame with the host's speed: the sim pauses only at 1x.
 export function renderTable(speed){TABLE.speed=speed>0?speed:1;syncBtn();syncSnd();
   if(S.table){if(S.table.id!==lastScene){lastScene=S.table.id;if(TABLE.speed<=1)chime(S.table.kind)}}else lastScene=null;
   const box=$('tbanner');if(!box)return;if(!box._tstep){box._tstep=1;box.addEventListener('click',onBox)}
   const b=bannerOf();if(!b){if(!box.hidden){box.hidden=true;sig=''}return}
-  const c=combatView();
-  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(','),c?JSON.stringify(c):''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
-  const tt=el('div','tt','AT THE TABLE · '+b.title.toUpperCase());if(c)tt.append(el('span','tp tround','ROUND '+c.round+'/'+c.of));if(b.paused)tt.append(el('span','tp','WORLD PAUSED'));if(b.all)tt.append(el('span','tp','EVERYONE ANSWERS'));box.append(tt);
-  if(S.table&&(S.table.kind==='crawl'||S.table.kind==='site')){const v=el('button','tstb tdg','View the crypt ▸');v.type='button';v.dataset.dungeon='';v.title='Open the dungeon view';tt.append(' ',v)} // #85
-  else if(S.table){const v=el('button','tscn','Scene map ▸');v.type='button';v.dataset.scene='';v.title='Show the scene on its own map, or back to the world';tt.append(' ',v)} // scene maps (#431)
-  box.append(el('div','tf',plain(b.frame)));
+  const c=combatView(),rows=c?null:memberRows(),hd=sceneHead(b.kind,b.title),chips=sceneChips(b,c);
+  const s=[b.title,b.phase,b.line,b.last,b.turn,b.paused,b.narr,b.cast&&b.cast.join(','),c?JSON.stringify(c):'',rows?JSON.stringify(rows):''].join('|');if(s===sig)return;sig=s;box.hidden=false;box.classList.toggle('tcombat',!!c);patch(box,box=>{
+  const tt=el('div','tt'),th=el('span','tth',hd.head.toUpperCase());th.title=b.title;tt.append(th);box.append(tt);
+  if(S.table&&(S.table.kind==='crawl'||S.table.kind==='site')){const v=el('button','tstb tdg','View the crypt ▸');v.type='button';v.dataset.dungeon='';v.title='Open the dungeon view';tt.append(v)} // #85
+  else if(S.table){const v=el('button','tscn','Scene map ▸');v.type='button';v.dataset.scene='';v.title='Show the scene on its own map, or back to the world';tt.append(v)} // scene maps (#431)
+  if(chips.length){const ch=el('div','tchips');for(const x of chips)ch.append(el('span','tp t'+x.k,x.t.toUpperCase()));box.append(ch)}
+  const fr=plain(b.frame);if(hd.cut&&!fr.toLowerCase().includes(hd.full.toLowerCase()))box.append(el('div','tq',hd.full)); // the whole title when the pixel title cut it and the frame does not say it
+  box.append(el('div','tf',fr));
   if(b.narr)box.append(el('div','tf tnarr',b.narr)); // the DM's narrate line (issue #123)
   if(b.cast&&b.cast.length)box.append(el('div','to','Staged by the DM · '+b.cast.join(' · '))); // a staged scene's cast (issue #132)
   if(c){combatBlock(box,c);box.append(el('div','tl',b.line));if(!c.ends)stepRow(box,c);endBlock(box,c);return} // the roll lines take the last-act line's place
-  const o=el('div','to');b.order.forEach((a,i)=>{if(i)o.append(' · ');o.append(i===b.turn?el('b',null,'▶ '+a.name):a.name)});box.append(o);
-  box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome')box.append(el('div','to',b.last))},{force:true})}
+  if(rows&&rows.length)rowsBlock(box,rows,b);
+  const hint=rows&&b.all&&b.phase==='turn'&&/^\d+\/\d+ answered/.test(b.line)?(b.line.match(/\(([^()]*no runner[^()]*)\)$/)||[])[1]:null; // the rows say who waits; keep only what to do
+  if(hint)box.append(el('div','tl',hint));else if(!rowsSay(b,rows))box.append(el('div','tl',b.line));if(b.last&&b.phase!=='outcome'&&!b.all)box.append(el('div','to',b.last))},{force:true})}

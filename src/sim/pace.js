@@ -32,6 +32,7 @@ import {focus,hallHooks,hallTitle} from './dmfocus.js'; // where the Fellowship 
 import {homeOf} from '../data/races.js';
 import {personaLine,personaSig,selfText} from './persona.js'; // who the hero is now, one line (#409)
 import * as ADV from '../data/adventures.js';
+import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -77,6 +78,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
     quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}), // the hero's own persona (#409): one line for the header, a signature, and on request the full text
+    offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
     reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The hall's open jobs that concern the Fellowship (issue #326), as the board shows them to a member standing in town:
 // a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting

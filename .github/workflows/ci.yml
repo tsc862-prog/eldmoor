@@ -88,6 +88,7 @@ jobs:
       - {name: Table mode and staged scenes, run: npm run tablecheck}
       - {name: Dungeon crawl room by room, run: npm run crawlcheck}
       - {name: Camp and rest, run: npm run campcheck}
+      - {name: Companies (invite and accept; scripted companions), run: npm run companycheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}

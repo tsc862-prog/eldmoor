@@ -7,6 +7,7 @@ import {tiles,zone,I,CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {BIOME,TILE_FLAT,MARK,TEXT,biomeOfZone} from './palette.js';
 import {classColor,toneOf} from '../core/colors.js';
+import {dungeonSite} from './dungeonview.js';
 
 // Largest CSS size; the canvas keeps the map's aspect inside this box.
 const BOX_W=160,BOX_H=100;
@@ -64,6 +65,12 @@ export function createMinimap(canvas,cam,onCenter){
     // landmarks: crypt mouths in crypt green, Kragmaw's lair as a ring (the boss dot sits inside while it lives)
     for(const L of LANDMARKS){if(L.kind==='crypt'&&L.mouth)edot((L.mouth.x0+L.mouth.x1+1)/2,(L.mouth.y0+L.mouth.y1+1)/2,big,TEXT.crypt);
       else if(L.kind==='lair'){ctx.strokeStyle=S.boss.alive?BOSS_COL:TEXT.dead;ctx.lineWidth=Math.max(1,Math.round(k/2));ctx.beginPath();ctx.arc(L.x*k,L.y*k,(L.r||5)*k,0,7);ctx.stroke()}}
+    // while the dungeon view is open: a pulsing gold bracket round the crypt whose inside is on screen (#85)
+    const ds=dungeonSite(),dm=ds&&ds.mouth;
+    if(dm){const cx=(dm.x0+dm.x1+1)/2*k,cy=(dm.y0+dm.y1+1)/2*k,r=Math.round(big*1.7+1.5*Math.sin(performance.now()/260)),l=Math.max(2,r>>1);
+      for(const col of [MARK.edge,SEL_COL]){ctx.fillStyle=col;const o=col===SEL_COL?0:1;
+        for(const [sx,sy] of [[-1,-1],[1,-1],[-1,1],[1,1]]){const x=Math.round(cx+sx*r),y=Math.round(cy+sy*r);
+          ctx.fillRect(x-(sx>0?l:0)-o,y-o,l+1+2*o,1+2*o);ctx.fillRect(x-o,y-(sy>0?l:0)-o,1+2*o,l+1+2*o)}}}
     for(const m of S.mobs){if(m.elite&&m.alive)edot(m.x,m.y,big,ELITE_COL)}
     if(S.boss.alive){dot(S.boss.x,S.boss.y,big+2,'#3a1a20');dot(S.boss.x,S.boss.y,big,BOSS_COL)}
     for(const a of S.agents){if(a.hidden||a.state==='dead')continue;
