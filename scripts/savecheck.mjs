@@ -9,7 +9,7 @@ import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {init, step, S, snapshot, restore, isSave, describeSave, markPlayer, playerAct, found, autoPick, TABLE} from '../src/sim/index.js';
+import {init, setDmSeat, step, S, snapshot, restore, isSave, describeSave, markPlayer, playerAct, found, autoPick, TABLE} from '../src/sim/index.js';
 TABLE.mode = 'off'; // Watch mode: the clock checks below expect the world never to pause for the Fellowship's scenes (tablecheck covers Table mode)
 import {GOODS} from '../src/data/items.js';
 import {CRYPT} from '../src/world/map.js';
@@ -97,6 +97,7 @@ if (args[0] === '--restore') {
 // ---- main phase ----
 console.log(`\nEldmoor savecheck: ${RUN_MIN} min, snapshot, round-trip, restore, ${MORE_MIN} more\n`);
 init();
+setDmSeat(true); // every real world has its DM seat open (#520); a closed seat converts on restore, checked below
 // An agent-played hero (issue #75) with a journal and a command in its queue rides along.
 {const p = S.agents.find((a) => a.state !== 'dead');
   ok(markPlayer(p, true) && playerAct(p.id, 'journal_write', {text: 'Savecheck was here.'}).ok && playerAct(p.id, 'move_to', {target: 'home'}).ok !== undefined, `agent-played hero ${p.name} with a journal entry`)}
@@ -161,6 +162,16 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   const F = S.fellowship, txt = F.log.map((e) => e.parts.map((p) => typeof p === 'string' ? p : '').join('')).join('\n');
   ok(was === 0 && F.ids.every((id) => {const a = S.agents.find((x) => x.id === id); return a.player && a.fellowAgent}) && F.minds === 'agent' && /always agent-played now/.test(txt), `an older save with scripted members restores agent-played, with a notice (${F.ids.length} converted)`)}
 
+// The DM is always an agent (#562): an older save with a closed seat, no DM state or a scripted-DM setup restores with the seat open and a notice.
+{const dmText = () => (S.dmLog || []).map((e) => (e.summary || []).filter((p) => typeof p === 'string').join('')).join(' ');
+  const closed = JSON.parse(json); closed.dmAgent.seat = false; closed.setup = {world: 'eldmoor', seed: 1, fac: 'concord', dm: {mode: 'scripted'}};
+  restore(closed); step(1 / 60);
+  ok(S.dmAgent.seat === true && S.setup.dm.mode === 'agent' && S.setup.dm.provider && S.setup.dm.model && /always an agent now/.test(dmText()), 'an older save with a closed seat and a scripted-DM setup restores with the seat open, an agent DM in its setup and a notice');
+  const none = JSON.parse(json); delete none.dmAgent; restore(none);
+  ok(S.dmAgent && S.dmAgent.seat === true && /no DM seat/.test(dmText()), 'a save from before the DM agent gets the seat open');
+  const n0 = S.dmLog.length; const again = snapshot(); restore(JSON.parse(JSON.stringify(again)));
+  ok(S.dmLog.length === n0 && S.dmAgent.seat === true, 'a converted world restores again without a second notice')}
+
 // ---- companies (#402, #438): the v7 shape, and a v6 save (a Fellowship, a split member, a scene open at the table) ----
 {restore(JSON.parse(json));
   if (!companies().some((C) => C.ids.length === 1 && !C.slots)) markPlayer(S.agents.find((a) => a.state !== 'dead' && !a.player && !a.fellow), true); // a solo rides along (the first one may have fallen)
@@ -193,7 +204,7 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   if (v6.companiesPast) v6.fellowshipsPast = v6.companiesPast;
   if (v6.table) delete v6.table.company; // a v6 scene had no company (#440)
   delete v6.companies; delete v6.companySeq; delete v6.followId; delete v6.companiesPast; v6.version = 6;
-  ok(!/"company":/.test(JSON.stringify(v6)) && v6.fellowship.slots && v6.table, 'fixture: a v6 save with a Fellowship, a.fellow / p.fellow and an open table');
+  ok(!/"company":/.test(JSON.stringify([v6.agents, v6.parties, v6.table])) && v6.fellowship.slots && v6.table, 'fixture: a v6 save with a Fellowship, a.fellow / p.fellow and an open table');
   restore(JSON.parse(JSON.stringify(v7))); const a7 = JSON.parse(JSON.stringify(snapshot()));
   restore(JSON.parse(JSON.stringify(v6))); const a6 = JSON.parse(JSON.stringify(snapshot()));
   for (const s of [a7, a6]) for (const c of s.companies) if (!c.slots) {delete c.founded; delete c.day} // a solo made by the migration is founded at load (a v6 save has no record of it)
