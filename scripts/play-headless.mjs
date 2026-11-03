@@ -22,7 +22,7 @@
 // Concord hero), --world FILE (default logs/agent-world.json), --resume, --quiet, --log-world NAME (the behavior logs'
 // folder, logs/behavior/<NAME>/, default <world id>-headless; issue #129; also the memory mirror's logs/agents/<NAME>/, #155),
 // --wait-ready (issue #222: hold the world until every living agent hero and the open DM seat report a completed
-// warm-up model call, POST /play/ready; without it the world runs as before), --no-behavior (keep none), --no-mirror (no Markdown copy of the agents' memories). The world is
+// warm-up model call, POST /play/ready; without it the world runs as before), --no-behavior (keep none), --no-mirror (no Markdown copy of the agents' memories), --embed (semantic recall through a local Ollama embedding model, #553; off by default so a headless run never reaches for Ollama on its own). The world is
 // saved every minute and on exit, so `--resume` (and `npm run agent`, which keeps one session per
 // hero in logs/agents/) pick up where they stopped.
 import http from 'node:http';
