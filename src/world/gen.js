@@ -145,7 +145,7 @@ export function buildWorld(spec){
     else if(L.kind==='crypt'){const mo=L.mouth,mouth=mo?{x0:mo.x0,y0:mo.y0,x1:mo.x0+mo.w-1,y1:mo.y0+mo.h-1}:null;
       if(mouth)for(let y=mouth.y0;y<=mouth.y1;y++)for(let x=mouth.x0;x<=mouth.x1;x++)if(x>=0&&y>=0&&x<w&&y<h)tiles[I(x,y)]=ROCK;
       const rooms=roomsOf(L);
-      const o={kind:'crypt',name:L.name,boss:L.boss,x:L.x,y:L.y,mouth,exclude:L.exclude||0,light:L.light||null,rooms};LANDMARKS.push(o);
+      const o={kind:'crypt',name:L.name,boss:L.boss,x:L.x,y:L.y,mouth,exclude:L.exclude||0,light:L.light||null,rooms,sign:L.sign||null,captain:L.captain||null};LANDMARKS.push(o);
       if(!CRYPT)CRYPT={name:L.name,boss:L.boss,x:L.x,y:L.y,group:null,cd:L.cd===undefined?25:L.cd,mouth,rooms}}
     else throw new Error('world spec: unknown landmark kind '+L.kind)}
 
