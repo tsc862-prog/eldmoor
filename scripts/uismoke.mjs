@@ -656,6 +656,22 @@ console.log('the DM prepares the table');
   ok(rows.length===2&&/Mining/.test(rows[0].textContent)&&/gathering/.test(rows[0].textContent)&&/60 · Journeyman/.test(rows[0].textContent),'stats: each profession with kind, skill and band ('+(rows[0]&&rows[0].textContent)+')');
   ok(rows.length===2&&/crafting/.test(rows[1].textContent)&&/1 · Novice/.test(rows[1].textContent),'stats: a craft profession at skill 1 is Novice');
   const bar=rows[0]&&rows[0].querySelector('.profbar i');ok(bar&&bar.style.width==='60%','stats: the bar is skill out of 100');
+  const pd=tb().querySelectorAll('.profd');
+  ok(pd.length===2&&/Works ore veins/.test(pd[0].textContent)&&/Tin Ore/.test(pd[0].textContent),'stats: a gathering trade lists what it works and takes ('+(pd[0]&&pd[0].textContent)+')');
+  ok(pd.length===2&&/Makes/.test(pd[1].textContent)&&/Spit-Roast Perch/.test(pd[1].textContent),'stats: a crafting trade lists its recipes');
+  ok(!tb().querySelector('.profmeal'),'stats: no supper line without a meal');
+  const keepM=h.meal,SS=sim.S;h.meal={id:'Spit-Roast Perch',stat:'speed',v:.03,until:SS.gameMin+60};
+  uiSlow();setTab('stats');uiFast();
+  ok(/Supper: Spit-Roast Perch \+3% speed/.test((tb().querySelector('.profmeal')||{}).textContent||''),'stats: the supper meal with its buff and time left ('+((tb().querySelector('.profmeal')||{}).textContent)+')');
+  const sc=document.body.querySelector('#hero .tb')||tb();sc.scrollTop=0;
+  if(keepM===undefined)delete h.meal;else h.meal=keepM;
+  // crafted gear names its maker in the Pack tab
+  const Inv=await import('../src/sim/inv.js'),Gr=await import('../src/sim/gear.js');
+  if(!h.inv)Inv.invOf(h);
+  const cg=Gr.makeItem(h.cls,'main',3,0,{quality:'fine',src:'Crafted by '+h.name});cg.maker=h.name;cg.makerId=h.id;const n0=h.inv.list.length;Inv.addGear(h,cg);
+  uiSlow();setTab('inv');uiFast();
+  ok(new RegExp('by '+h.name).test(tb().textContent),'pack: a crafted piece shows its maker');
+  while(h.inv.list.length>n0)h.inv.list.pop();
   if(keepP===undefined)delete h.profs;else h.profs=keepP}
 
 // Table banner: the combat block (#277). A scene with rounds, set up by hand (no world step), rendered like main.js does.

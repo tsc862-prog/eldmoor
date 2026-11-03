@@ -886,3 +886,13 @@ button.tbtn.danger{border-color:var(--red)}
   .screen.scopen .tbanner .tcn{min-width:0}
 }
 @media (min-width:3200px){:root{--uiz:1.35}}
+
+/* professions: second half of #259 (trade detail lines, supper meal, maker tag) */
+.profd{margin:0 0 6px;padding:0 2px;line-height:1.15;color:var(--text,#cfd6e6);overflow-wrap:anywhere}
+.profd .profl{margin-top:1px}
+.pchip{white-space:nowrap}
+.pchip.ok{color:var(--green)}
+.pchip.str{color:var(--gold)}
+.pchip.now{color:var(--gold);border:1px solid var(--gold);padding:0 3px}
+.profmeal{margin:2px 0 4px;padding:1px 4px;border-left:2px solid var(--gold);overflow-wrap:anywhere}
+.mk{font-style:italic}
