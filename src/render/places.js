@@ -68,6 +68,10 @@ export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite,o
     for(const [x,y,w,h,c] of PROPS[p.kind]||PROPS.ruin){ctx.fillStyle=c;ctx.fillRect(px+x,py+y,w,h)}
     if(p.kind==='camp'){ctx.fillStyle=FIRE[Math.floor(blink*4)%2];ctx.fillRect(px+4,py-4,2,2)}
     if(close)drawText(p.name,px,py-(p.kind==='watchtower'?22:14),TEXT.person,12)}
+  // the followed hero's own marks (#632, mark): small flags in Follow view only, never for everyone
+  const sel=cam.view==='follow'?cam.sel:null;if(sel&&sel.lore&&sel.lore.p)for(const n in sel.lore.p){const e=sel.lore.p[n];if(e.mk!==1||e.x==null)continue;
+    const px=Math.round(e.x*T),py=Math.round(e.y*T);if(!inView(px,py,24))continue;
+    ctx.fillStyle='#e8d8a0';ctx.fillRect(px,py-10,1,10);ctx.fillStyle='#d0502a';ctx.fillRect(px+1,py-10,5,3);ctx.fillRect(px+1,py-8,3,1);if(close)drawText(n,px,py-14,TEXT.person,11)}
   // DM-placed people
   for(const w of S.wanderers||[]){if(!inView(w.x*T,w.y*T,32))continue;
     const fr=w.moving?Math.floor(blink*6+w.id)%2:Math.floor(blink*1.5)%2,s=npcSprite(w,fr),px=Math.round(w.x*T),py=Math.round(w.y*T);

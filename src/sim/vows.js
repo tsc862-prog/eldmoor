@@ -80,6 +80,10 @@ export function vowEvent(a,kind,x){const v=a.vow;if(!v||!alive(a))return;const w
     if(norm(x.name)===w||creature===w)end(a,'done')}
   else if(v.kind==='recover'&&kind==='epic'&&w&&norm(String(x))===w)end(a,'done')}
 
+// A debt or promise of gold settled (#628, pay): a vow that names the payee and talks of paying, owing or gold is kept.
+export function vowPaid(a,b){const v=a&&a.vow;if(!v||!b||!alive(a)||v.kind!=='vow'||!/\b(pay|paid|debt|owe|owed|repay|gold)\b/i.test(v.text||''))return;
+  const w=v.about&&(v.about.id===b.id||norm(v.about.name)===norm(b.name));if(w)end(a,'done')}
+
 // Once per goal tick (twice a real second), only for heroes holding a vow.
 export function vowTick(a){const v=a.vow;if(!v)return;if(a.state==='dead'){a.vow=null;return}
   if(v.kind==='protect'){const b=byId(v.about&&v.about.id);if(!alive(b)){end(a,'failed','They fell.');return}}
