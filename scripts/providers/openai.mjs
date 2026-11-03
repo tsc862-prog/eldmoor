@@ -45,34 +45,55 @@ export const costOf = (model, inTok, outTok) => {const p = priceFor(model); retu
 export const isChatModel = id => /^(gpt-|o\d|chatgpt-|chat-latest)/.test(id)
   && !/(embedding|whisper|tts|dall-e|image|audio|realtime|transcribe|moderation|search|codex|instruct|davinci|babbage|computer-use|sora|deep-research|diarize)/.test(id);
 
-const scrub = s => String(s == null ? '' : s).replace(/sk-[A-Za-z0-9_-]{6,}/g, 'sk-…').replace(/Bearer\s+\S+/gi, 'Bearer …');
+const scrub = s => String(s == null ? '' : s).replace(/sk-[A-Za-z0-9_-]{6,}/g, 'sk-…').replace(/hf_[A-Za-z0-9]{6,}/g, 'hf_…').replace(/Bearer\s+\S+/gi, 'Bearer …');
 const fail = (msg, extra) => Object.assign(new Error(msg), extra || {});
 const sleep = (ms, signal) => new Promise((res, rej) => {
   const t = setTimeout(res, ms);
   if (signal) signal.addEventListener('abort', () => {clearTimeout(t); rej(Object.assign(new Error('aborted'), {name: 'AbortError'}))}, {once: true});
 });
 
-export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel = null, fetchImpl = globalThis.fetch, statusTtl = 60000} = {}) {
+// Hugging Face Inference Providers router (issue #552): OpenAI-compatible, the same adapter with other options.
+// Provider id `huggingface`, base URL the router, HF_TOKEN from the environment (read by the process that calls,
+// only into the Authorization header, scrubbed from errors). The owner's credit is the free allowance and
+// recharge is off, so an exhausted allowance (402, or a 429 naming credits) is a 'quota' error, never retried.
+// No price table: the reply's usage.estimated_cost is the cost ('unknown' when a reply has none). No
+// reasoning_effort. Not every Hub model has an enabled provider (400 model_not_supported), so the model list is
+// a curated default (HF_MODELS in .env overrides) checked once with one tiny call per model, cached for the
+// adapter's life, and the unsupported ones are dropped. Defaults confirmed to have live providers on the Hub
+// (Inference Providers panel, 2026-11-03); Meta-Llama-3.1-8B answered live per the issue.
+export const HF_URL = 'https://router.huggingface.co/v1';
+export const HF_MODELS = ['meta-llama/Llama-3.1-8B-Instruct', 'meta-llama/Llama-3.3-70B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3'];
+export const hfModelList = env => {const l = String(env && env.HF_MODELS || '').split(/[,\s]+/).filter(m => /^[A-Za-z0-9][\w.:\/+-]{0,99}$/.test(m)); return l.length ? l : HF_MODELS.slice()};
+export const HF_OPTS = {name: 'huggingface', label: 'Hugging Face', keyName: 'HF_TOKEN', baseUrl: HF_URL, free: true, sendEffort: false, tokensField: 'max_tokens', costField: 'estimated_cost', models: HF_MODELS,
+  note: 'shares the free allowance with the art pipeline', pricesSource: 'usage.estimated_cost of each reply (Hugging Face router)'};
+export const hfAdapter = (o = {}) => openaiAdapter({...HF_OPTS, ...o});
+
+export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel = null, fetchImpl = globalThis.fetch, statusTtl = 60000,
+  name = 'openai', label = 'OpenAI', keyName = 'OPENAI_API_KEY', free = false, sendEffort = true, tokensField = 'max_completion_tokens', modelFilter = isChatModel, pricesSource = PRICES_SOURCE,
+  costField = null, models: curated = null, note: statusNote = null} = {}) {
   const base = String(baseUrl || OPENAI_URL).replace(/\/+$/, '');
   const noEffort = new Set(); // models that rejected reasoning_effort
-  let cached = null, cachedAt = 0;
+  let cached = null, cachedAt = 0, verified = null; // verified: a curated list after its one tiny call per model (kept for the adapter's life)
+  const noSchema = new Set(); // models whose provider rejected strict json_schema (asked with json_object + the schema in the prompt from then on)
 
   // The API's own error, mapped to a short message the relay and the UI can show. Never contains the key.
   function apiError(status, j, headers) {
-    const e = j && j.error || {}, msg = scrub(e.message || '').slice(0, 160), code = e.code || e.type || '';
+    const e = j && typeof j.error === 'object' && j.error || {}, msg = scrub(e.message || (j && typeof j.error === 'string' ? j.error : '')).slice(0, 160), code = e.code || e.type || '';
     const ra = Number(headers && headers.get && headers.get('retry-after'));
     const retryAfter = Number.isFinite(ra) && ra >= 0 ? ra : null;
-    if (status === 401) return fail('openai: bad or missing key', {status, kind: 'auth'});
-    if (status === 429 && /insufficient_quota/.test(code)) return fail('openai: out of credit (insufficient quota; check billing)', {status, kind: 'quota'});
-    if (status === 429) return fail('openai: rate limit' + (retryAfter != null ? ` (retry after ${retryAfter} s)` : ''), {status, kind: 'rate', retryAfter, ...(retryAfter != null ? {headers: {'retry-after': String(retryAfter)}} : {})}); // headers: what the relay's limiter (providers/limiter.mjs rateLimitOf) reads
-    if (status === 404) return fail('openai: model not found or not available to this key' + (msg ? ' (' + msg + ')' : ''), {status, kind: 'model'});
-    return fail('openai: ' + (msg || 'HTTP ' + status), {status, kind: 'http', apiMessage: msg});
+    if (status === 401) return fail(name + ': bad or missing ' + (name === 'openai' ? 'key' : keyName), {status, kind: 'auth'});
+    if (curated && (code === 'model_not_supported' || /model_not_supported/.test(msg))) return fail(name + ': model not supported by an enabled provider; the picker list: ' + (verified || curated).join(', '), {status, kind: 'model', code: 'model_not_supported'});
+    if (free && (status === 402 || (status === 429 && /credit|quota|allowance|exceeded your monthly/i.test(msg || String(e).slice(0, 200))))) return fail(label + ' allowance used up (recharge is off); the hero plays scripted / the runner waits', {status, kind: 'quota'});
+    if (status === 429 && /insufficient_quota/.test(code)) return fail(name + ': out of credit (insufficient quota; check billing)', {status, kind: 'quota'});
+    if (status === 429) return fail(name + ': rate limit' + (retryAfter != null ? ` (retry after ${retryAfter} s)` : ''), {status, kind: 'rate', retryAfter, ...(retryAfter != null ? {headers: {'retry-after': String(retryAfter)}} : {})}); // headers: what the relay's limiter (providers/limiter.mjs rateLimitOf) reads
+    if (status === 404) return fail(name + ': model not found or not available to this key' + (msg ? ' (' + msg + ')' : ''), {status, kind: 'model'});
+    return fail(name + ': ' + (msg || 'HTTP ' + status), {status, kind: 'http', apiMessage: msg});
   }
 
   // One POST with the reasoning_effort fallback and a bounded wait on 429. waitMs: the most we sleep for
   // a rate limit in total (0 = never; decisions have seconds, an agent turn can afford more).
   async function post(path, body, {signal, waitMs = 0, retries = 1} = {}) {
-    if (!apiKey) throw fail('openai is not configured (no OPENAI_API_KEY): bad or missing key', {status: 401, kind: 'auth'});
+    if (!apiKey) throw fail(name + ' is not configured (no ' + keyName + '): bad or missing key', {status: 401, kind: 'auth'});
     let waited = 0;
     for (let attempt = 0; ; attempt++) {
       const r = await fetchImpl(base + path, {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer ' + apiKey}, body: JSON.stringify(body), signal});
@@ -80,6 +101,7 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
       if (r.ok) return j;
       if (r.status === 400 && 'reasoning_effort' in body && /reasoning_effort/i.test(String(j && j.error && j.error.message))) {noEffort.add(body.model); delete body.reasoning_effort; continue}
       const err = apiError(r.status, j, r.headers);
+      if (r.status === 400 && body.tools && /tool|function/i.test(err.apiMessage || '') && /support|enabled|allowed|unavailable/i.test(err.apiMessage || '')) err.noTools = true; // the loop switches to JSON actions
       if (err.kind === 'rate' && attempt < retries) {
         const wait = Math.max(500, (err.retryAfter != null ? err.retryAfter : 1) * 1000);
         if (waited + wait <= waitMs) {waited += wait; await sleep(wait, signal); continue}
@@ -88,24 +110,62 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     }
   }
 
-  const effortField = mdl => noEffort.has(mdl) ? {} : {reasoning_effort: 'none'};
+  // A curated list (huggingface): one tiny call per model, once; model_not_supported drops the model, any other
+  // failure keeps it (the allowance may be spent or the provider busy); a bad token is the status. Cached once settled.
+  let verifying = null;
+  function curatedStatus() {
+    if (verified) return Promise.resolve({ok: true, models: verified, default: defaultModel || null, verified: true, ...(statusNote ? {note: statusNote} : {})});
+    return verifying || (verifying = (async () => {
+      const keep = [], dropped = []; let authErr = null;
+      await Promise.all(curated.map(async m => {
+        try {await post('/chat/completions', {model: m, [tokensField]: 1, messages: [{role: 'user', content: 'ok'}]}, {retries: 0}); keep.push(m)}
+        catch (e) {if (e.kind === 'auth') authErr = e; else if (e.kind === 'model') dropped.push(m); else keep.push(m)}
+      }));
+      verifying = null;
+      if (authErr) return {ok: false, models: [], default: defaultModel || null, error: authErr.message.replace(name + ': ', '')}; // not cached: a fixed token is picked up
+      verified = curated.filter(m => keep.includes(m));
+      return {ok: true, models: verified, default: defaultModel || null, verified: true, ...(dropped.length ? {dropped: curated.filter(m => dropped.includes(m))} : {}), ...(statusNote ? {note: statusNote} : {})};
+    })());
+  }
+
+  // A strict json_schema request; a provider that rejects it (400 naming the schema or response_format) is asked
+  // again with json_object and the schema spelled out in the system prompt, and remembered (huggingface routes to
+  // many providers). The relay validates every answer against the schema either way.
+  const asJsonObject = body => {
+    const rf = body.response_format, sch = rf && rf.json_schema && rf.json_schema.schema, msgs = body.messages.slice();
+    if (sch && msgs[0] && msgs[0].role === 'system') msgs[0] = {...msgs[0], content: msgs[0].content + ' Reply with one JSON object only, matching this JSON schema: ' + JSON.stringify(sch)};
+    else if (sch) msgs.unshift({role: 'system', content: 'Reply with one JSON object only, matching this JSON schema: ' + JSON.stringify(sch)});
+    return {...body, response_format: {type: 'json_object'}, messages: msgs};
+  };
+  async function withSchema(body, _schema, opts) {
+    if (!curated || !body.response_format || body.response_format.type !== 'json_schema') return post('/chat/completions', body, opts);
+    if (noSchema.has(body.model)) return post('/chat/completions', asJsonObject(body), opts);
+    try {return await post('/chat/completions', body, opts)}
+    catch (e) {
+      if (e.status === 400 && e.kind === 'http' && /response_format|json_schema|schema|structured/i.test(e.apiMessage || '')) {noSchema.add(body.model); return post('/chat/completions', asJsonObject(body), opts)}
+      throw e;
+    }
+  }
+
+  const effortField = mdl => !sendEffort || noEffort.has(mdl) ? {} : {reasoning_effort: 'none'};
 
   return {
-    name: 'openai', local: false, defaultModel: defaultModel || null, pricesSource: PRICES_SOURCE,
+    name, label, local: false, free, defaultModel: defaultModel || null, pricesSource,
     configured: () => !!apiKey,
     // Reachable and the key accepted, and the chat models this key can use (GET /models). Cached.
     async status() {
-      if (!apiKey) return {ok: false, models: [], default: defaultModel || null, error: 'no OPENAI_API_KEY'};
+      if (!apiKey) return {ok: false, models: [], default: defaultModel || null, error: 'no ' + keyName};
+      if (curated) return curatedStatus();
       if (cached && Date.now() - cachedAt < statusTtl) return cached;
       const ac = new AbortController(), t = setTimeout(() => ac.abort(), 4000);
       try {
         const r = await fetchImpl(base + '/models', {headers: {authorization: 'Bearer ' + apiKey}, signal: ac.signal});
         let j = null; try {j = await r.json()} catch {}
         if (!r.ok) throw apiError(r.status, j, r.headers);
-        const models = (Array.isArray(j && j.data) ? j.data : []).map(m => m && m.id).filter(id => typeof id === 'string' && isChatModel(id)).sort();
-        cached = {ok: true, models, default: defaultModel || null, ...(defaultModel ? {} : {note: 'pick a model (OPENAI_MODEL sets a default)'})};
+        const models = (Array.isArray(j && j.data) ? j.data : []).map(m => m && m.id).filter(id => typeof id === 'string' && modelFilter(id)).sort();
+        cached = {ok: true, models, default: defaultModel || null, ...(defaultModel ? {} : {note: 'pick a model (' + keyName.replace(/_(API_KEY|TOKEN)$/, '') + '_MODEL sets a default)'})};
       } catch (e) {
-        cached = {ok: false, models: [], default: defaultModel || null, error: e.name === 'AbortError' ? 'not reachable (timeout)' : e.kind ? e.message.replace(/^openai: /, '') : 'not reachable (' + scrub(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
+        cached = {ok: false, models: [], default: defaultModel || null, error: e.name === 'AbortError' ? 'not reachable (timeout)' : e.kind ? e.message.replace(name + ': ', '') : 'not reachable (' + scrub(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
       } finally {clearTimeout(t)}
       cachedAt = Date.now();
       return cached;
@@ -113,12 +173,12 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     // One structured decision or writing request.
     async call({system, user, schema, maxTokens, model, signal}) {
       const mdl = model || defaultModel;
-      if (!mdl) throw fail('openai: no model chosen (pick one in the mind row, or set OPENAI_MODEL)');
+      if (!mdl) throw fail(name + ': no model chosen (pick one in the mind row, or set the default model in .env)');
       const t0 = Date.now();
-      const body = {model: mdl, ...effortField(mdl), max_completion_tokens: maxTokens,
+      const body = {model: mdl, ...effortField(mdl), [tokensField]: maxTokens,
         response_format: {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema}},
         messages: [{role: 'system', content: system}, {role: 'user', content: user}]};
-      const j = await post('/chat/completions', body, {signal, retries: 0}); // a 429 goes to the relay's limiter (queue pause, writing kinds retried)
+      const j = await withSchema(body, schema, {signal, retries: 0}); // a 429 goes to the relay's limiter (queue pause, writing kinds retried)
       return finish(j, mdl, t0, true);
     },
     // A multi-turn chat for the agent loop. messages are the loop's own (Ollama-shaped) messages:
@@ -129,10 +189,10 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     // shape {message:{role,content,tool_calls?}, usage:{in,out,cost,costKnown}, model, ms, done}.
     async chat({model, messages, tools, format, strict = false, maxTokens = 600, signal}) {
       const mdl = model || defaultModel;
-      if (!mdl) throw fail('openai: no model chosen (use --model, or set OPENAI_MODEL)');
-      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), max_completion_tokens: maxTokens, messages: toOpenAI(messages),
+      if (!mdl) throw fail(name + ': no model chosen (use --model, or set the default model in .env)');
+      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), [tokensField]: maxTokens, messages: toOpenAI(messages),
         ...(tools ? {tools} : {}), ...(format ? {response_format: strict ? {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema: format}} : {type: 'json_object'}} : {})};
-      const j = await post('/chat/completions', body, {signal, waitMs: 30000, retries: 4});
+      const j = await withSchema(body, format, {signal, waitMs: 30000, retries: 4});
       const out = finish(j, mdl, t0, false);
       const m = out.raw, calls = Array.isArray(m.tool_calls) ? m.tool_calls.filter(c => c && c.function).map(c => {
         let args = c.function.arguments; try {args = JSON.parse(args || '{}')} catch {} // a string that is not JSON stays a string; cleanArgs rejects it
@@ -144,7 +204,7 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
   function finish(j, mdl, t0, structured) {
     const ch = j && Array.isArray(j.choices) ? j.choices[0] : null, m = ch && ch.message || {};
     const billed = j && j.model || mdl, u = j && j.usage || {};
-    const inTok = +u.prompt_tokens || 0, outTok = +u.completion_tokens || 0, c = costOf(billed, inTok, outTok) ?? costOf(mdl, inTok, outTok);
+    const inTok = +u.prompt_tokens || 0, outTok = +u.completion_tokens || 0, ec = costField ? Number(u[costField]) : NaN, c = costField ? (Number.isFinite(ec) && ec >= 0 ? ec : null) : costOf(billed, inTok, outTok) ?? costOf(mdl, inTok, outTok);
     const usage = {in: inTok, out: outTok, cost: c ?? 0, costKnown: c != null, ...(c == null ? {costNote: 'unknown'} : {})};
     const text = typeof m.content === 'string' ? m.content : null;
     const out = {text, usage, model: billed, ms: Date.now() - t0, raw: m, finish: ch && ch.finish_reason || null};

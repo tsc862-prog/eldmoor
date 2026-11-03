@@ -4,6 +4,7 @@
 // module map and who owns what.
 import {init,step,S,provideCampaigns,campaignIdOf} from './sim/index.js';
 import {createRenderer} from './render/draw.js';
+import {provideAssets} from './render/assets.js';
 import {select,ctl,setView,startHero} from './ui/controls.js';
 import {boot,autoSaveTick,bootKind} from './ui/save.js';
 import {initSetup,openSetup,afterBoot} from './ui/setup.js'; // the New World setup page (#133)
@@ -19,6 +20,10 @@ import {titleWanted,showTitle} from './ui/title.js'; // Continue, New world, Loa
 // from the title and reloads into the new world, which skips the title.
 // The DM's campaign seeds (docs/campaigns/<world>.md, bundled at build time; none is fine). The sim reads the one for the world id.
 provideCampaigns(Object.fromEntries(Object.entries(import.meta.glob('../docs/campaigns/*.md',{query:'?raw',import:'default',eager:true})).filter(([p])=>!/\/_/.test(p)).map(([p,t])=>[campaignIdOf(p),t])));
+// Generated art (#177): assets/index.json and the PNG URLs under assets/ (served as static files; an absent folder is an
+// empty index and every renderer draws procedurally). The PNGs themselves load lazily, on first use (render/assets.js).
+provideAssets(Object.values(import.meta.glob('../assets/index.json',{import:'default',eager:true}))[0]||null,
+  Object.fromEntries(Object.entries(import.meta.glob('../assets/*/*.png',{query:'?url',import:'default',eager:true})).map(([p,u])=>[p.replace('../assets/',''),u])));
 initSetup();
 let renderer=null;
 function start(kind){

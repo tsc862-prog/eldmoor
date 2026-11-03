@@ -44,6 +44,7 @@ import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {TABLE,openScene,tableOn,setSceneKind,setStageHooks} from './table.js';
+import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
 import {talkFromScene} from './talk.js'; // NPC conversations (#170)
 import {SETTINGS,SETTING_IDS} from '../data/settings.js'; // scene maps (#431): the rooms a meeting or social scene plays in
 
@@ -338,7 +339,7 @@ const anchorOf=rec=>{for(const id of rec.cast.mobs){const m=mobOf(id);if(liveMob
 
 // ---- once per step, before the Table triggers (sim/table.js tableTick): walk, meet, expire ----
 function tick(){const G=S.staged;if(!G||!G.cur)return false;const rec=G.cur;
-  if(rec.phase==='open'){if(!S.table||S.table.ctx.staged!==rec.id)finish(rec,null,'the scene broke off');return false}
+  if(rec.phase==='open'){if(!findScene(sc=>sc.ctx&&sc.ctx.staged===rec.id))finish(rec,null,'the scene broke off');return false}
   if(rec.phase!=='waiting')return false;
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.alive&&!m.gone){m.gone=true;m.target=null}}
   const fight=rec.kind==='elite'||rec.kind==='ambush';
@@ -503,7 +504,7 @@ setStageHooks({tick,onFrame,onBeat,onAll,fill,live,done});
 
 // ---- the DM tools ----
 // table_call: what the table asks of the DM right now (the pending call, the scene) and the staged scene's state.
-export function tableCall(){polledAt=Date.now();const G=S.staged,rec=G&&G.cur&&G.cur.phase!=='done'?G.cur:null,sc=S.table&&S.table.ctx&&S.table.ctx.staged!=null?S.table:null;
+export function tableCall(){polledAt=Date.now();const G=S.staged,rec=G&&G.cur&&G.cur.phase!=='done'?G.cur:null,sc=findScene(x=>x.ctx&&x.ctx.staged!=null);
   const c=sc&&sc.calls?sc.calls.find(x=>!x.done):null;
   const out={ok:true,staged:rec?{id:rec.id,kind:rec.kind,title:rec.title,phase:rec.phase,near:rec.near.label,cast:castLine(rec),hours_left:Math.max(0,Math.round((rec.until-S.gameMin)/60))}:null,
     scene:sc?{title:sc.title,kind:sc.kind,frame:rec?rec.frame:'',order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+', '+pct(b)+'% HP)'),
@@ -513,7 +514,7 @@ export function tableCall(){polledAt=Date.now();const G=S.staged,rec=G&&G.cur&&G
     seconds_left:waiting?Math.max(0,Math.round((TABLE.dmMs/1000-c.t)*10)/10):0,max_chars:STAGE.LINE_MAX}}
   return out}
 // table_answer: {call, text, pick}. Late, unknown or illegal answers are refused (and counted); the slot stays the scripted DM's.
-export function tableAnswer(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),sc=S.table&&S.table.ctx&&S.table.ctx.staged!=null?S.table:null;
+export function tableAnswer(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),sc=findScene(x=>x.ctx&&x.ctx.staged!=null);
   const id=Math.round(Number(a.call)),text=clean(a.text,STAGE.LINE_MAX),pick=a.pick!=null?String(a.pick).toLowerCase().trim():null;
   const no=(why,late)=>{if(late)G.stats.late++;else G.stats.rejected++;
     LOG('agent',['At the table: answer refused: '+why+'.'],{staged:sc?sc.ctx.staged:null,call:id||null,result:'rejected: '+why},[]);return {ok:false,error:why}};

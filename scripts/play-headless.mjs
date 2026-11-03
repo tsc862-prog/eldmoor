@@ -33,7 +33,8 @@ import {dirname, join, resolve} from 'node:path';
 import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, found, autoPick, setMinds, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks, planOpening, openingDue, beginPrep, endPrep, prepTick, prepView, prepActive, setPrepHost, setGateHold} from '../src/sim/index.js';
 import {onLog} from '../src/sim/chronicle.js';
 import {hostCall} from '../src/sim/player-host.js';
-import {sceneDue} from '../src/sim/scenewait.js'; // health: a member's scene still waits for its answer (#515)
+import {sceneDue} from '../src/sim/scenewait.js';
+import {sceneOf} from '../src/sim/scenes.js'; // health: a member's scene still waits for its answer (#515)
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
 import {attachRunners} from './runners.mjs';
 import {behaviorLog} from './behavior-log.mjs';
@@ -63,7 +64,7 @@ export function localBackend(hostOpts) {
       return a ? hostCall(a.id, tool, args, hostOpts) : Promise.resolve({ok: false, error: heroId != null ? `Hero #${heroId} is not agent-played.` : 'No agent-played hero.', offline: true})},
     dmCall: (tool, args) => Promise.resolve(dmAct(tool, args)), // the DM seat (issue #66): answered at once, no waits
     narrate: (heroId, text) => {const a = heroId != null ? playerSeat(heroId) : playerSeat(); if (a) playerNarrate(a.id, text)},
-    info: () => ({connected: true, dm: dmSeatOn(), ...(prepView().state !== 'idle' ? {dmPrep: prepView()} : {}), heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', ...(a.succeeds != null ? {succeeds: a.succeeds} : {}), ...(a.fellow ? {fellow: true, role: a.fellowRole || null, lead: !!(a.party && a.party.fellow && a.party.leader === a), table: !!(S.table && S.table.ids.includes(a.id)), ...(sceneDue(a) ? {due: true} : {})} : {})}))}),
+    info: () => ({connected: true, dm: dmSeatOn(), ...(prepView().state !== 'idle' ? {dmPrep: prepView()} : {}), heroes: seats().map(a => ({id: a.id, name: a.name, alive: a.state !== 'dead', ...(a.succeeds != null ? {succeeds: a.succeeds} : {}), ...(a.fellow ? {fellow: true, role: a.fellowRole || null, lead: !!(a.party && a.party.fellow && a.party.leader === a), table: !!sceneOf(a), ...(sceneDue(a) ? {due: true} : {})} : {})}))}),
   };
 }
 

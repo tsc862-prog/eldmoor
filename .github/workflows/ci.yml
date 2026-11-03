@@ -68,6 +68,7 @@ jobs:
       - {name: Gathering nodes, run: npm run nodecheck}
       - {name: Recipes, run: npm run recipecheck}
       - {name: Professions, run: npm run professioncheck}
+      - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
       - {name: New World setup, run: npm run setupcheck}
 
   ui:
@@ -94,6 +95,7 @@ jobs:
       - {name: Table scene waits (slow mock members), run: npm run scenewaitcheck}
       - {name: Hero standing orders, run: npm run orderscheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
+      - {name: Hugging Face provider (mock router and no token), run: npm run hfcheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
       - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
@@ -161,7 +163,7 @@ jobs:
       - run: npm ci
       - {name: Brain policy and relay (mock model), run: npm run braincheck}
       - {name: Table mode and staged scenes, run: npm run tablecheck}
-      - {name: Companies (invite and accept; scripted companions), run: npm run companycheck}
+      - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}

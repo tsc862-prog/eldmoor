@@ -37,14 +37,19 @@
 // Parley and conditions (#296, sim/tableround.js): a member may talk an intelligent foe down once a fight (parley: hold,
 // flee or yield, a dice line); stunned, rooted, poisoned and warded are checked in the round (a stun on its holder's turn,
 // a root or poison at the round's end, each a save) and all of them end with the scene.
-// Scene state is plain data on S.table (ids only), so a save taken mid-scene resumes it.
+// Scene state is plain data on S.table / S.tables (ids only), so a save taken mid-scene resumes it.
 // Companies (#440, epic #402): every scene belongs to a company (sc.company; a scene saved before it belongs to the
-// Fellowship) and its roster is that company's members. S.table stays one scene at a time: tableTick looks at the
-// companies in id order, the lowest id with a due moment opens, and a later company's due moment waits in its one-scene
-// queue (C.tableQ, its cooldown key kept) until the table is free; a company whose queue is full is not looked at, so a
-// third moment is never taken (its key stays unset and it can come again). A queued moment that went stale (the foe
+// Fellowship) and its roster is that company's members. tableTick looks at the companies in id order; a moment that
+// cannot open while the company's own scene is open waits in its one-scene queue (C.tableQ, its cooldown key kept); a
+// company whose queue is full is not looked at, so a third moment is never taken (its key stays unset and it can come
+// again). A queued moment that went stale (the foe
 // gone, the member out of the fight, older than TABLE.queueMin) is dropped and its key unset. A solo (a company of one)
 // gets every scene kind; its everyone-at-once scene is one answer, and it has no vote to call (SOLO_VOTE).
+// Several open scenes (#518): each company holds its own open scene at once. S.table is the primary one (the followed
+// company's when it has one), every other company's sits in S.tables keyed by company id (sim/scenes.js); a company with a
+// scene open is not looked at, and C.tableQ is left only for a merge's paired vote (#500) while that company's own scene is
+// open. With one company nothing of this is ever used. A scene that runs on the live clock (stopsWorld false) holds its
+// members and foes in place (engaged, ENG in sim/scenes.js) until it resolves; boss and Crypt scenes hold no one.
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
@@ -66,6 +71,7 @@ import {setProposeHook,castVote,resolveProp,reflexVote,propById,propCompany,lead
 import {inRange} from './reach.js';
 import {setFellowChoice} from './player-choice.js';
 import {reflexMay,ownerHeld} from './runlink.js';
+import {ENG,allScenes,sceneOf} from './scenes.js'; // one open scene per company, the engaged hold (#518)
 import {liveLimit,missed} from './scenewait.js'; // a queued live member gets a bounded extra wait; a timed-out one is reported (#515)
 import {MOVES} from '../data/moves.js';
 import {movesOf,ready,useMove,pickMove,tickRound,tableHealMove} from './moves.js'; // class abilities, round cooldowns (#81)
@@ -152,7 +158,23 @@ export const agentsDecide=L=>L.some(a=>a&&a.player&&a.state!=='dead'&&!reflexMay
 export function requestDrop(reason){if(TABLE.speed>1)TABLE.drop={reason:clean(reason,80)}}
 const holdOk=L=>tableOn()&&(TABLE.speed<=1||agentsDecide(L));
 export const scene=()=>S.table||null;
-export const inScene=a=>!!(S.table&&a&&S.table.ids.includes(a.id));
+export const inScene=a=>!!sceneOf(a);
+// ---- one open scene per company (#518) ----
+const cidOf=sc=>{const C=sceneCompany(sc);return C?C.id:-1};
+// The company's open scene, or null.
+export function sceneFor(C){if(!C)return null;const T=S.table;if(T&&cidOf(T)===C.id)return T;return S.tables&&S.tables[C.id]||null}
+const stash=sc=>{(S.tables||(S.tables={}))[cidOf(sc)]=sc};
+const tidy=()=>{if(S.tables&&!Object.keys(S.tables).length)delete S.tables};
+const others=()=>S.tables?Object.keys(S.tables).sort((x,y)=>x-y):[];
+// A new scene: the primary when the table is free, or when it stops the world and the primary does not; else beside it.
+function place(sc){const P=S.table;if(!P){S.table=sc;return}if(stopsWorld(sc)&&!stopsWorld(P)){stash(P);S.table=sc}else stash(sc)}
+// The next primary: a scene that stops the world first, else the lowest company id.
+function promote(){const T=S.tables;if(!T)return;const ks=others();if(!ks.length){tidy();return}const k=ks.find(x=>stopsWorld(T[x]))||ks[0];S.table=T[k];delete T[k];tidy()}
+function closeScene(sc){if(S.table===sc){S.table=null;promote();return}const T=S.tables;if(!T)return;for(const k in T)if(T[k]===sc)delete T[k];tidy()}
+// Keep the primary the scene that stops the world (the watcher followed another company meanwhile).
+function primary(){if(!S.tables)return;if(!S.table){promote();return}if(stopsWorld(S.table))return;const T=S.tables,k=others().find(x=>stopsWorld(T[x]));if(k==null)return;const P=S.table;S.table=T[k];delete T[k];stash(P)}
+// Every open scene, primary first (the banner lists the others, #518).
+export const openScenes=()=>allScenes();
 
 // ---- options a member has at its turn ----
 const SPECIAL={Warrior:['hold','Hold the line at the front'],Priest:['ward','Ward the group with prayer'],Rogue:['scout','Scout ahead in the dark'],Hunter:['scout','Scout ahead and read the tracks'],Mage:['read','Read the old wards on the walls'],Wildspeaker:['ward','Ask the roots for a steadier hand for all'],Skald:['read','Sing the old verses on the walls and hear what they warn of']};
@@ -240,7 +262,7 @@ export function eliteFactor(n,avg,lvl){const over=Math.max(0,lvl-avg-2);return {
 export function scaleElite(F,L,ctx){const m=ctx&&ctx.mob!=null?S.mobs.find(x=>x.id===ctx.mob):null;if(!m||m.scaled||F.slots||L.length>=5)return;
   const avg=L.reduce((t,a)=>t+a.lvl,0)/L.length,k=eliteFactor(L.length,avg,m.lvl||1);
   const r=m.hp/(m.maxhp||1);m.maxhp=Math.max(10,Math.round(m.maxhp*k.hp));m.hp=Math.max(1,Math.round(m.maxhp*r));m.hit=(m.hit||1)*k.hit;m.scaled=+k.hp.toFixed(2)}
-function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||S.table)return null;const all=PLAY[kind]==='all';
+function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||sceneFor(F))return null;const all=PLAY[kind]==='all';
   if(kind==='decision'&&voteRefusal(F))return null; // a solo has no one to vote with (#440)
   if(!atTable(F))return null; // no agent of this company has the say: it plays on by reflex (#440)
   const L=(all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||(CRYPT.group&&CRYPT.group.mem.includes(a)))).filter(a=>!(ctx.skip||[]).includes(a.id)); // skip: the newcomer of an arrival (#452), voiced by the DM
@@ -249,7 +271,7 @@ function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||S.t
   if(kind==='elite')scaleElite(F,L,ctx);
   if(COMBAT[kind]){sc.rd=1;sc.fd=0;sc.foeAt=foeSlot(sc.ids.map(byId),foeOf(sc))} // the foe joins the initiative order (#276)
   if(sc.pause)requestDrop(sc.title);
-  S.table=sc;F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
+  place(sc);F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
   const order=orderNames(sc).join(', ');
   for(const a of L)if(a.player)notify(a,'TABLE ('+kind+'): '+plain(frame)+(all?' Everyone answers at once, each for themselves ('+order+').':' Initiative: '+order+'.')+' Your options: '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+
     (all?'. Answer with scene_act(option, line) now; the table waits for everyone.':'. Answer with scene_act(option, line) now or on your turn; the table waits for you.'),3);
@@ -259,7 +281,7 @@ function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||S.t
 export {open as openScene}; // sim/camp.js opens the camp ambush scene
 
 // An agent's answer (scene_act), before or during its turn. Returns an error string or the act.
-export function sceneAct(a,opt,line){const sc=S.table;if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
+export function sceneAct(a,opt,line){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
   if(sc.phase==='outcome'||sc.phase==='done')return 'The scene is over.';
   if(together(sc)&&sc.resolved)return 'The table has already answered.';
   const i=sc.ids.indexOf(a.id);if(!together(sc)&&i<sc.i&&sc.phase==='turn')return 'Your turn has passed.';
@@ -287,7 +309,7 @@ const LINES={strike:['Now, while it turns!','Hit it together.','Mine. Leave this
 function voice(sc,a,k){const pool=LINES[k];if(!pool||a.hidden)return;const text=pool[Math.floor(r()*pool.length)],C=sceneCompany(sc);
   if(sc.pause&&a.brain&&C&&C.ai&&S.brainOn!==false&&sayOk(a)){const sid=sc.id,cid=sc.company;
     askRelay('say',snapshotFor(a,'say',{trigger:'table',ctx:{scene:sc.title,kind:sc.kind,choice:k}}),Math.min(TABLE.turnMs,4000)).then(j=>{
-      const still=S.table&&S.table.id===sid&&S.table.company===cid&&living(a)&&!a.hidden;const t=j&&cleanLine(j.line);
+      const T=sceneFor(companyById(cid)),still=T&&T.id===sid&&living(a)&&!a.hidden;const t=j&&cleanLine(j.line);
       if(still)speak(a,t||text,'table',!!t)}).catch(()=>{});return}
   speak(a,text,'table')}
 
@@ -392,12 +414,23 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
     if(rounds(sc))for(const e of [...mem,...sceneFoes(sc)])clearRounds(e)} // conditions and round-counted effects end with the scene (#296)
   for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id))moment(a,'scene',sc.title)} // reflection moment (#179)
   {const H=dmOf(sc);if(H&&H.done)H.done(sc)}}
-function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);S.table=null}
+function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);closeScene(sc)}
 
 // ---- once per step: the paused scene (sim/index.js calls this first; true = skip the world) ----
-export function tableHold(dt){const sc=S.table;return holdStep(dt)&&stopsWorld(sc)} // a live-clock scene (#458) runs here too, but the world goes on
-function holdStep(dt){const sc=S.table;if(!sc)return false;
-  if(!scMem(sc).length){S.table=null;return false} // the scene's company is gone
+// Every company's open scene steps here (#518); the world stops while one that stopsWorld holds. A live-clock scene (#458)
+// runs here too, but the world goes on, its members and foes held in place (engage).
+export function tableHold(dt){primary();let stop=false;
+  for(const sc of allScenes())if(holdStep(sc,dt)&&stopsWorld(sc))stop=true;
+  engage();return stop}
+// The engaged (#518): members still in a live-clock scene (not fallen back) and its foes. Boss and Crypt scenes hold no one
+// (the raid and the dungeon run in the world).
+const NOHOLD={boss:1,site:1,room:1,crawl:1};
+function engage(){ENG.clear();for(const sc of allScenes()){if(!sc.pause||stopsWorld(sc)||NOHOLD[sc.kind])continue;
+  for(const id of sc.ids){const a=byId(id);if(living(a)&&!(sc.out||[]).includes(id))ENG.add(a)}
+  for(const f of foesOf(sc))if(f.kind!=='boss')ENG.add(f)}}
+export const engaged=e=>ENG.has(e);
+function holdStep(sc,dt){if(!sc)return false;
+  if(!scMem(sc).length){closeScene(sc);return false} // the scene's company is gone
   if(!sc.pause)return false;
   if(!tableOn()){finishAll(sc);return false} // switched to Watch mode mid-scene: resolve now
   // sped up mid-scene (or opened at 3x/8x): while the members' agents decide, ask the host for 1x and hold; a host that
@@ -405,11 +438,11 @@ function holdStep(dt){const sc=S.table;if(!sc)return false;
   if(TABLE.speed>1){if(sc.phase!=='outcome'&&agentsDecide(sc.ids.map(byId))){requestDrop(sc.title);sc.dropT=(sc.dropT||0)+dt;if(sc.dropT<TABLE.dropS)return true}
     finishAll(sc);return false}
   sc.dropT=0;
-  if(sc.kind==='decision'&&!propById(sc.ctx.prop)){S.table=null;return false}
+  if(sc.kind==='decision'&&!propById(sc.ctx.prop)){closeScene(sc);return false}
   if(sc.phase==='frame'){sc.t+=dt;if(sc.t<TABLE.frameS)return true;sc.phase='turn';sc.i=0;frameCalls(sc);if(!together(sc))startTurn(sc);dt=0}
   if(sc.phase==='turn'){if(together(sc)?runAll(sc,dt,false):runTurns(sc,dt,false))return true;outcome(sc);return true}
-  if(sc.phase==='outcome'){sc.t+=dt;if(sc.t<TABLE.outcomeS)return true;S.table=null;return false}
-  S.table=null;return false}
+  if(sc.phase==='outcome'){sc.t+=dt;if(sc.t<TABLE.outcomeS)return true;closeScene(sc);return false}
+  closeScene(sc);return false}
 
 // ---- triggers ----
 const seen=(C,key,cool)=>{const m=C.tableSeen||(C.tableSeen={}),t=m[key];if(t!=null&&S.gameMin-t<cool)return true;m[key]=S.gameMin;
@@ -454,28 +487,26 @@ function stale(C,q){if(S.gameMin-q.at>TABLE.queueMin)return true;const c=q.ctx||
 // Once per step (after the council). Companies in id order: a queued moment first when the table is free, then each
 // company's due moment; only one scene opens a step, a later company's moment waits in its queue for a later step.
 export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks to the party, meets it (a scene) or gives up (#132)
-  if(!tableOn())return;const CS=companies();if(!CS.length)return;let opened=false;
-  if(!S.table)for(const C of CS){const q=C.tableQ;if(!q)continue;delete C.tableQ;
+  if(!tableOn())return;const CS=companies();if(!CS.length)return;
+  for(const C of CS){if(sceneFor(C))continue;const q=C.tableQ;if(!q)continue;delete C.tableQ; // a queued moment opens once the company's own table is free
     if(stale(C,q)){unseen(C,q.key);continue}
-    if(open(q.kind,q.title,q.frame,q.ctx,C)){opened=true;break}}
-  const busy=sceneCompany(S.table);
-  for(const C of CS){if(C===busy||C.tableQ||!atTable(C))continue;const L=memOf(C);if(!L.length)continue;
+    open(q.kind,q.title,q.frame,q.ctx,C)}
+  for(const C of CS){if(sceneFor(C)||C.tableQ||!atTable(C))continue;const L=memOf(C);if(!L.length)continue; // each company its own scene at once (#518)
     const d=due(C,L);if(!d)continue;
-    if(!S.table&&!opened){open(d.kind,d.title,d.frame,d.ctx,C);opened=true}
-    else C.tableQ={...d,at:Math.round(S.gameMin)}}}
+    open(d.kind,d.title,d.frame,d.ctx,C)}}
 
 // ---- the hooks ----
 // A new council proposal: a decision scene when the world can pause; else the votes run async.
 setProposeHook(P=>{const C=propCompany(P)||companyOf(byId(P.by))||S.fellowship,L=memOf(C);if(voteRefusal(C))return false;if(agentsDecide(L))requestDrop('a vote: '+P.details); // #148: 3x/8x drop to 1x at a decision
   if(!holdOk(L))return false;const by=byId(P.by);
-  if(S.table){if(P.src==='pair'&&!C.tableQ&&atTable(C)){C.tableQ={kind:'decision',title:'Put to the party: '+P.details,frame:[gd('The other company'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],ctx:{prop:P.id},at:Math.round(S.gameMin)};return true}return false} // a merge's second scene waits its turn (#500)
+  if(sceneFor(C)){if(P.src==='pair'&&!C.tableQ&&atTable(C)){C.tableQ={kind:'decision',title:'Put to the party: '+P.details,frame:[gd('The other company'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],ctx:{prop:P.id},at:Math.round(S.gameMin)};return true}return false} // a merge's second scene waits its turn (#500)
   const sc=open('decision','Put to the party: '+P.details,[by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id},C);
   if(sc)for(const id in P.votes)if(sc.ids.includes(+id))sc.acts[id]={k:P.votes[id].v,line:P.votes[id].reason||'',by:P.votes[id].by==='reflex'?'reflex':'agent'}; // a vote already cast counts as that member's turn
   return !!sc});
 // A choice scene on a Fellowship adventure: the whole table chooses (undefined: the usual path).
 setFellowChoice((adv,sc,a,spec)=>{const C=companyOf(a)||S.fellowship;if(!holdOk(memOf(C)))return undefined;
   const tp=adv.tablePick;if(tp&&tp.k===adv.idx){adv.tablePick=null;return tp.br}
-  if(S.table){if(S.table.kind==='choice'&&S.table.ctx.adv===adv.id){adv.stage='choose';return 'wait'}return undefined}
+  {const T=sceneFor(C);if(T){if(T.kind==='choice'&&T.ctx.adv===adv.id){adv.stage='choose';return 'wait'}return undefined}}
   const d=adv.data||{},fill=s=>String(s||'').replace(/\{(\w+)\}/g,(m,k)=>{const v=d[k]!=null?d[k]:d[k.toLowerCase()];return typeof v==='string'?v:k==='who'?a.name:'the '+k.toLowerCase()});
   const A=spec&&spec.a?String(spec.a.label||'the bold road'):'the bold road',B=spec&&spec.b?String(spec.b.label||'the careful road'):'the careful road';
   const sc2=open('choice',(adv.title||'The road')+': a choice',[fill(spec&&spec.frame)||'The road forks.','. ',gd('a) '+A),' or ',gd('b) '+B),'?'],{adv:adv.id,k:adv.idx,a:A,b:B,anchor:a.id},C);
@@ -490,7 +521,7 @@ const hurtWord=f=>f>=.95?'stands unhurt':f>=.6?'is hurt':f>=.25?'is badly hurt':
 // The foe for a member (#285): its name and how hurt it looks, never numbers (#188).
 const condWords=e=>condsOf(e).map(id=>CONDITIONS[id].name.toLowerCase());
 const foeWords=f=>({name:foeName(f),looks:f.kind==='hero'?'still stands':hurtWord(f.hp/(f.maxhp||maxHp(f))),...(condWords(f).length?{conditions:condWords(f)}:{})});
-export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))return null;const cur=byId(sc.ids[sc.i]);
+export function tableView(a){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return null;const cur=byId(sc.ids[sc.i]);
   const all=together(sc),live=all&&!sc.resolved&&(sc.phase==='frame'||sc.phase==='turn');
   const v={scene:sc.title,kind:sc.kind,frame:plain(sc.frame),phase:sc.phase,order:sc.ids.map(byId).filter(Boolean).map(b=>b.name),
     ...(rounds(sc)?{round:sc.rd+' of up to '+TR.ROUNDS,initiative:orderNames(sc),...(foeOf(sc)?{foe:foeWords(foeOf(sc))}:{}),...(condWords(a).length?{your_conditions:condWords(a)}:{})}:{}),
@@ -505,9 +536,9 @@ export function tableView(a){const sc=S.table;if(!sc||!sc.ids.includes(a.id))ret
 // [{a, what}] for the member whose turn holds the table and every member an open vote or an adventure choice waits for.
 // Each entry carries company (the company id it belongs to, #440) so the alert can name whose table it is.
 export function decisionsWaiting(){const out=[],seen=new Set(),add=(a,what)=>{if(a&&!seen.has(a.id)&&a.player&&!reflexMay(a)){seen.add(a.id);const C=companyOf(a);out.push({a,what,company:C?C.id:null})}};
-  const sc=S.table;if(sc&&sc.pause&&together(sc))for(const b of waitingFor(sc))add(b,'an answer at the table ('+sc.title+')');
-  if(sc&&sc.pause&&sc.phase==='turn'&&!together(sc)){const cur=byId(sc.ids[sc.i]);if(cur&&!sc.acts[cur.id])add(cur,'a turn at the table ('+sc.title+')')}
-  for(const P of openProps())if(!(sc&&sc.ctx&&sc.ctx.prop===P.id))for(const b of waitingVoters(P))add(b,'a vote ('+P.details+')'); // a vote at the table: the scene says who it waits on
+  const SC=allScenes();for(const sc of SC){if(sc.pause&&together(sc))for(const b of waitingFor(sc))add(b,'an answer at the table ('+sc.title+')');
+    if(sc.pause&&sc.phase==='turn'&&!together(sc)){const cur=byId(sc.ids[sc.i]);if(cur&&!sc.acts[cur.id])add(cur,'a turn at the table ('+sc.title+')')}}
+  for(const P of openProps())if(!SC.some(sc=>sc.ctx&&sc.ctx.prop===P.id))for(const b of waitingVoters(P))add(b,'a vote ('+P.details+')'); // a vote at the table: the scene says who it waits on
   for(const v of S.adventures||[]){if(v.phase!=='active'||!v.pick||v.pick.chosen||v.stage!=='choose')continue;const ld=byId(v.lead);if(ld&&ld.fellow)add(ld,'a choice on '+(v.title||'an adventure'))}
   return out}
 // The foe for the watcher's banner (#285): the watcher sees numbers. pack: a staged pack's creatures still standing.
@@ -516,7 +547,7 @@ function foeBanner(sc){const f=foeOf(sc);if(!f)return null;const c=sc.ctx||{};
 // What the banner shows (src/ui/table.js).
 // Where a scene is, in words (#458: "Scene at Mirefen"): the region of its anchor, else of its first member.
 function sceneWhere(sc){const c=sc.ctx||{},a=byId(c.anchor!=null?c.anchor:c.hero)||sc.ids.map(byId).find(living);return a?ZONES[zoneAt(a.x,a.y)]||null:null}
-export function bannerOf(){const sc=S.table;if(!sc)return null;const cur=byId(sc.ids[sc.i]),last=sc.beats[sc.beats.length-1];
+export function bannerOf(sc=S.table){if(!sc)return null;const cur=byId(sc.ids[sc.i]),last=sc.beats[sc.beats.length-1];
   let who=null,line;
   const pc=sc.calls&&sc.phase==='turn'?sc.calls.find(c=>!c.done):null;
   const hold=holding(sc)?{round:sc.rd,auto:TABLE.step==='auto',left:TABLE.step==='auto'?Math.max(0,Math.ceil(TABLE.stepS-sc.sh.t)):null}:null;

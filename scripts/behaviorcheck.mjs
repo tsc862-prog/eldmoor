@@ -134,6 +134,8 @@ for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
 const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
 ok(memA.ok, 'A wrote a memory (#179)');
+const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Hold the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
+ok(aimA.ok, 'A stated an aim (#535)');
 // C's agent keeps it in town on purpose (#466: a silent member's autopilot now walks out of town to hunt, so a stuck member
 // is one whose agent keeps acting without going anywhere): every game hour its runner orders a rest in town.
 const runHeld = async s => {for (let t = 0; t < s; t += 10) {const r = await post('/play/call', {hero: Cm.id, tool: 'rest', args: {minutes: 60}, runner: 'mock-C'}); if (r.ok === false && !/camp|cannot rest/i.test(r.error || '')) console.log('  .. C rest refused: ' + r.error); run(Math.min(10, s - t))}};
@@ -162,7 +164,7 @@ ok(turns.length === 9, `9 turn lines (6 for A, 2 for B, 1 for the DM; none forge
 ok(!turns.some(t => /FORGED/.test(t.narration)), 'no forged line in turns.jsonl');
 ok(turns.filter(t => t.seat === 'hero:' + A.id).every(t => t.after && t.after.state), 'hero turn lines carry the state after the turn (from the game)');
 ok(turns.some(t => t.seat === 'dm' && t.cost === .012), 'the DM turn line carries its cost');
-const want = ['no-memories', 'no-tool-calls', 'repeated-narration', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
+const want = ['no-aim', 'no-memories', 'no-tool-calls', 'repeated-narration', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
 for (const k of want) ok(kinds.has(k), `anomaly logged: ${k}`);
 ok(world.length >= 6 && world.every(w => Array.isArray(w.members) && w.members.length === 5), `${world.length} hourly digests with the five members`);
 const lastW = world[world.length - 1] || {};
@@ -189,6 +191,8 @@ ok(/## Model comparison/.test(md) && md.includes('ollama/qwen2.5:14b') && md.inc
 ok(/\| ollama\/qwen2\.5:14b \| [^|]+ \| 6 \| 50% \|/.test(md), 'report: qwen ran 6 turns, half of them empty');
 ok(world.some(w => w.memories && w.memories[A.name] >= 1) && anomalies.some(x => x.kind === 'no-memories' && x.hero && x.hero.id !== A.id), 'digests count memories written per member (#179)');
 ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: memories written per member per game day');
+ok(world.some(w => w.intents && w.intents[A.name] >= 1) && anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id !== A.id) && !anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id === A.id), 'digests count aims stated per hero; no-aim flags the silent ones, not A (#535)');
+ok(/Aims stated \(intent\) per hero per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: aims stated per hero per game day');
 ok(/## World/.test(md) && md.includes(S.fellowship.name), 'report shows the last world digest');
 
 // ---- 6b. the mind comparison (issue #280) on mock logs: two members on qwen, one on Claude, a death, writing calls ----

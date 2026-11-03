@@ -1222,7 +1222,7 @@ console.log('the DM prepares the table');
   waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;waiter.x=c.gate.x;waiter.y=c.gate.y;
   const pw=P.purposeOf(waiter);ok(pw.kind==='wait'&&pw.line.startsWith('Waiting for '+lead.name)&&/40 min/.test(pw.line)&&pw.wait&&pw.wait.id===lead.id,'purpose: a waiting hero names whom it waits for and how long ('+pw.line+')');
   // a traveller on a walk order
-  const kt={pq:trav.pq,state:trav.state},dest={x:c.gate.x+6,y:c.gate.y+4};trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
+  const kt={pq:trav.pq,state:trav.state,adv:trav.adv},dest={x:c.gate.x+6,y:c.gate.y+4};trav.adv=null;trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
   const pt=P.purposeOf(trav);ok(pt.kind==='travel'&&pt.line.startsWith('Walking → the old mill')&&pt.path.length===2&&pt.to&&pt.to.x===dest.x,'purpose: a traveller names where it walks, with its road ('+pt.line+')');
   // autopilot says so; a stated intent (#535) wins the why
   trav.playIdle=true;trav.pq[0].auto='heading out to hunt (your last order: hunt 3)';ok(/· autopilot: its last order: hunt 3$/.test(P.purposeOf(trav).line),'purpose: autopilot says so and why, in the third person ('+P.purposeOf(trav).line+')');trav.playIdle=false;
@@ -1256,7 +1256,7 @@ console.log('the DM prepares the table');
   vi.click();ok(cam.icons===true,'icons: back on');
   // restore
   Object.assign(hunter,{state:kh.state,quest:kh.quest});Object.assign(fol,{pq:kf.pq,state:kf.state,x:kf.x,y:kf.y});
-  Object.assign(waiter,{state:kw.state,party:kw.party,pq:kw.pq,playActAt:kw.act,x:kw.x,y:kw.y});Object.assign(trav,{pq:kt.pq,state:kt.state});
+  Object.assign(waiter,{state:kw.state,party:kw.party,pq:kw.pq,playActAt:kw.act,x:kw.x,y:kw.y});Object.assign(trav,{pq:kt.pq,state:kt.state,adv:kt.adv});
   cam.hover=null;cam.sel=keepSel;setView(keepView==='fellow'?'fellow':'map');uiFast()}
 // ---- the dock at 3440x1440 (#546): map first, one dock with four tabs, story-following defaults, frames carry the glance ----
 {console.log('dock (3440 px)');const L=await import('../src/ui/layout.js'),C=await import('../src/ui/controls.js'),CV=await import('../src/ui/companyview.js');

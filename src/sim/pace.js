@@ -16,6 +16,7 @@
 import {S,clockStr} from './state.js';
 import {wakeLevel} from './notify.js';
 import {tableView,optionsFor} from './table.js';
+import {sceneOf} from './scenes.js';
 import {heardLines,metNames} from './talk.js';
 import {maxHp} from './heroes.js';
 import {ZONES,zoneAt,CITY} from '../world/map.js';
@@ -33,8 +34,10 @@ import {homeOf} from '../data/races.js';
 import {personaLine,personaSig,selfText} from './persona.js'; // who the hero is now, one line (#409)
 import * as ADV from '../data/adventures.js';
 import {followBrief} from './follow.js'; // who the hero follows and who follows it (#445)
-import {offersBrief,companyCard} from './offers.js';
-import {worldHeld} from './prep.js'; // the world held before play (#559) // offers open to the hero and its company card (#442)
+import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
+import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
+import {leaderFor} from './council.js';
+import {worldHeld} from './prep.js'; // the world held before play (#559)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -83,6 +86,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}), // the hero's own persona (#409): one line for the header, a signature, and on request the full text
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
+    aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
     reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The hall's open jobs that concern the Fellowship (issue #326), as the board shows them to a member standing in town:
 // a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting
@@ -97,7 +101,7 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
   return 'about '+g+'g and XP'+(T.pay.honor?', '+T.pay.honor+' honor':'')+(T.pay.gear>=.35?', maybe gear':'')} // the quest log's payText (sim/questlog.js), same words as list_jobs/quests
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
-function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(S.table,a).map(o=>o.k);if(!keys.length)return null;
+function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options)return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
   return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[]}}
 // Where the hero stands, for the header (#399): a town by name when it is inside one ("Highgate (town; Lowmark around it)"), so
 // an agent waiting in town no longer reads the region and calls hunt there. The same words move_to reads back.
