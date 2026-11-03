@@ -32,7 +32,7 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
-import {pull,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK} from './levers.js';
+import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK} from './levers.js';
 import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
 import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
@@ -388,8 +388,8 @@ function leverParams(name,a){let params=a.params;
   return params}
 // via (issue #413): a flat lever tool (post_hook, place_person, mark_place) that built the params itself; its own
 // contract replaces the pull_lever call shape in the refusals. Everything else (caps, pile-on, limits, log) is the same.
-function pullLever(a,via){const day=today(),D=dmState(),name=clean(a.lever,40),reason=clean(a.reason,DMA.REASON_MAX);
-  const params=via?a.params:leverParams(name,a);
+function pullLever(a,via){const day=today(),D=dmState(),name0=clean(a.lever,40),name=leverAlias(name0),reason=clean(a.reason,DMA.REASON_MAX); // give_token / take_token are give_item / take_item (#524)
+  const params=via?a.params:aliasParams(name0,leverParams(name,a));
   const refuse=(why,usage)=>leverRefuse(name,why,usage,reason,params&&typeof params==='object'?params:String(a.params).slice(0,200),via);
   const call=via?via.usage:'call it as pull_lever {"lever":"'+(name||'<name>')+'","params":{...},"reason":"one sentence"}';
   if(!name)return refuse('lever is required (one of: '+leverNames().join(', ')+')',call);
@@ -417,11 +417,13 @@ function leverRefuse(name,why,usage,reason,params,via){const D=dmState();D.stats
 // flat arguments, a near read the way stage_scene reads it, then pullLever(), so the DM agent's daily cap, the pile-on
 // rule, the lever's own limits, cooldown and the Fellowship's reserved share (levers.js pull) and the DM log are identical.
 // Nothing is validated twice: the lever refuses, and its contract comes back with the refusal.
-export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_place:'mark_place'};
+export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_place:'mark_place',give_item:'give_item',take_item:'take_item'};
 const NEAR_FORMS='"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region';
 const FLAT_USAGE={
   post_hook:'post_hook takes: town (a town: '+CITY.map(c=>c.name).join('|')+', or "fellowship", a member or a region for the nearest board), tpl (rescue|escort|investigate|clear|relic|negotiate|hunt|deliver), giver? (captain|innkeeper|smith|quartermaster|priest|bard), reward? (small|fair|generous), region? (where the job leads), place? (a place or person by name or id), for? (a hero by name or id), reason',
   place_person:'place_person takes: role (peddler|hermit|drover|sellsword|minstrel|stranger), near ('+NEAR_FORMS+'), name?, faction? (concord|warband|neutral), want?, attitude? (hostile|wary|neutral|friendly), hours? (6-168), spot? (in a town: inn|smith|quartermaster|chapel|square|gate), reason',
+  give_item:'give_item takes: hero (a hero by name or id), item (a quest item or token, a consumable, or a gear slot head|chest|hands|feet|main|off|trinket), by? (a person in earshot, by name or id), ilvl? (gear only, never above the hero’s level), reason',
+  take_item:'take_item takes: hero (a hero by name or id), item (a quest item or token), by? (a person in earshot, by name or id), reason',
   mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reason'};
 // A walkable spot between min and max tiles of c (rings outward, no dice), clear of towns, landmarks and, by gap, other places.
 function openSpot(c,min,max,gap){const R=q=>Math.round(q*10)/10,okAt=q=>!spotErr(q)&&!(gap&&(S.places||[]).some(p=>dist(p,q)<gap));
@@ -462,6 +464,9 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};const lever=FLAT_LEVERS
     let target;if(a.place!=null&&a.place!==''){const q=placeOrPerson(a.place);if(!q)return no('place: no place or person called "'+clean(a.place,40)+'" (see npcs and regions)');target=q.id}
     let forHero;if(a.for!=null&&a.for!==''){const h=heroOf(a.for);if(!h)return no('for: no living hero called "'+clean(a.for,40)+'"');forHero=h.id}
     params={town:town.name,tpl:str(a.tpl,20),...opt('giver',str(a.giver,20)),...opt('reward',str(a.reward,12)),...opt('region',str(a.region,40)),...opt('target',target),...opt('forHero',forHero)}}
+  else if(tool==='give_item'||tool==='take_item'){const h=heroOf(a.hero);if(!h)return no('hero: no living hero called "'+clean(a.hero,40)+'" (see heroes_near)');
+    let by;if(a.by!=null&&a.by!==''){const q=personOf(a.by);if(!q)return no('by: no person called "'+clean(a.by,40)+'" (see npcs)');by=q.id}
+    params={hero:h.id,item:str(a.item,40),...opt('by',by),...(tool==='give_item'?opt('ilvl',int(a.ilvl)):{})}}
   else if(tool==='place_person'){const W=nearSpot(a.near,{min:2,max:5});if(W.err)return no(W.err+' (create_npc needs town for a town home, or at: a point {x,y} for a camp); '+nearTakes());
     const base={role:str(a.role,20),...opt('name',str(a.name,24)),...opt('faction',str(a.faction,12)),...opt('attitude',str(a.attitude,12)),...opt('hours',int(a.hours))};
     params=W.town?{...base,home:'town',town:W.town,...opt('spot',str(a.spot,16))}:{...base,home:'camp',at:W.at}}
@@ -606,7 +611,7 @@ export function dmAct(tool,args={}){
     case 'notes_read':r=notesRead(args.section);break;
     case 'notes_write':r=notesWrite(args);break;
     case 'pull_lever':r=pullLever(args);break;
-    case 'post_hook':case 'place_person':case 'mark_place':r=flatLever(tool,args);break;
+    case 'post_hook':case 'place_person':case 'mark_place':case 'give_item':case 'take_item':r=flatLever(tool,args);break;
     case 'log_intent':r=logIntent(args.text);break;
     case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;
