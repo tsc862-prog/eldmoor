@@ -17,7 +17,7 @@
 // else the scripted line below. Nothing here runs unless a member talks to someone (agent tools only), so the seeded
 // world (npm run sim, the checks' hashes) is unchanged.
 import {S} from './state.js';
-import {dist} from '../world/map.js';
+import {dist,CITY} from '../world/map.js';
 import {HEAR} from './chat.js';
 import {companyOf,members} from './company.js';
 import {openScene,setSceneKind,tableOn,sceneFor} from './table.js';
@@ -68,6 +68,15 @@ export function escalation(c,p,a,o={}){
   const d=Math.floor(S.gameMin/DAY),N=C.talkScenes&&C.talkScenes.d===d?C.talkScenes:{d,n:0};if(N.n>=ESC.PER_DAY)return null;
   return {why,mates}}
 
+// ---- the room (#431) ----
+// A talk with a person who stands in a town plays in the room of the building nearest them: the inn (a tavern back
+// room), the chapel, the smithy, the gate (a gatehouse); the quartermaster's stores a cellar, the square a tavern room.
+// A person in the field keeps no setting: the scene view cuts the real ground round the speaker. No dice.
+const ROOM={inn:'tavern',chapel:'chapel',smith:'smithy',gate:'gate',quartermaster:'cellar',square:'tavern'};
+export function roomFor(p){if(!p)return null;const t=CITY.find(c=>p.x>=c.x0-1&&p.x<=c.x1+2&&p.y>=c.y0-1&&p.y<=c.y1+2);if(!t||!t.spots)return null;
+  let best=null,bd=1e9;for(const k of Object.keys(ROOM)){const s=t.spots[k];if(!s)continue;const d=dist(p,s);if(d<bd){bd=d;best=k}}
+  return best?{setting:ROOM[best],town:t.name,spot:best}:null}
+
 // ---- opening ----
 const FRAME={
   offer:(n,o)=>[n+' offers ',gd(o.job),' and waits for an answer.'],
@@ -75,11 +84,11 @@ const FRAME={
   party:(n,o)=>[o.who+' puts it to '+n+': "'+o.line+'". It concerns the whole company; ',gd(n),' looks from one face to the next.'],
   tense:(n,o)=>[gd(n),o.hostile?' has no love for them, and the air turns cold.':' bristles at '+o.who+'\'s words.',' A wrong word now and it ends badly.']};
 const TITLE={offer:n=>n+'\'s offer',bargain:n=>'Bargaining with '+n,party:n=>'A word with '+n,tense:n=>'A tense word with '+n};
-function maybe(c,p,a,o){const E=escalation(c,p,a,o);if(!E)return null;const C=companyOf(a),n=full(p);
+function maybe(c,p,a,o){const E=escalation(c,p,a,o);if(!E)return null;const C=companyOf(a),n=full(p),room=roomFor(p);
   const h=E.why==='offer'?hookOf(o.hook):null,job=h?'a job: '+((ADVENTURES[h.tpl]&&ADVENTURES[h.tpl].name)||h.tpl):'work';
   const wordCut=(t,n)=>{t=t.trim();if(t.length<=n)return t;const x=t.slice(0,n-1),i=x.lastIndexOf(' ');return (i>n*.6?x.slice(0,i):x).trimEnd()+'…'}; // a quoted line is cut at a word, never mid-word (#571)
   const sc=openScene('talk',TITLE[E.why](n),FRAME[E.why](n,{who:a.name,line:wordCut(String(o.line||''),120),job,hostile:p.mood==='hostile'}),
-    {anchor:a.id,conv:c.id,npc:p.id,why:E.why,...(h?{hook:h.id}:{}),line:String(o.line||'').slice(0,200),tally:{}},C);
+    {anchor:a.id,conv:c.id,npc:p.id,why:E.why,...(room?{setting:room.setting,town:room.town}:{}),...(h?{hook:h.id}:{}),line:String(o.line||'').slice(0,200),tally:{}},C);
   if(!sc)return null;
   (c.esc||(c.esc={}))[E.why]=1;const d=Math.floor(S.gameMin/DAY);C.talkScenes=C.talkScenes&&C.talkScenes.d===d?C.talkScenes:{d,n:0};C.talkScenes.n++;
   LOG(['The talk with '+n+' becomes a decision at the table ('+E.why+'): '+sc.ids.map(byId).filter(Boolean).map(b=>b.name).join(', ')+' answer.'],{conv:c.id,npc:p.id,hero:a.id,table:E.why,scene:sc.id});
