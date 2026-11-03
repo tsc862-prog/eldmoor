@@ -38,6 +38,7 @@ import {maxHp} from './heroes.js';
 import {fellowshipMembers,fellows,openThreads,mindsOf} from './fellowship.js';
 import {openProps} from './council.js';
 import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
+import {moment} from './reflect.js'; // a dream is a reflection moment (#523)
 import {ensureNpcs} from './npcs.js';
 import {stageScene,tableCall,tableAnswer,stagedView,STAGE} from './staged.js';
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
@@ -60,6 +61,9 @@ export const DMA={
   NARRATE_PER_DAY:12,  // narrate lines per game day (issue #123: the DM's voice in the game)
   NPC_SAY_PER_DAY:16,  // npc_say lines per game day
   NARRATE_MAX:2000, NPC_SAY_MAX:2000, // a technical ceiling for the UI and the logs only: the DM writes as much as the moment needs (owner, #170)
+  WHISPER_PER_DAY:8,   // whispers per game day (#523: one hero hears a line nobody else does)
+  DREAM_PER_DAY:2,     // dreams per game day (delivered when the hero next sleeps)
+  WHISPER_R:4,         // tiles from the placed person (as) a hero must be within to hear a whisper outside a Table scene
   NARRATE_R:10,        // default radius of a narrate line around its place
 };
 const DAY=1440;
@@ -494,6 +498,41 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   day.narr=(day.narr||0)+1;
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
   return {ok:true,narrated:t,where:label,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
+// ---- whisper and dream (#523): a secret for one hero ----
+// whisper: a line only that hero hears (its chat buffer, so chat_read and a soft event), in an open Table scene or within
+// WHISPER_R tiles of the person (as) the DM placed. The table sees only that someone leans close, never the words.
+// dream: kept until the hero next sleeps (a camp, or a rest in town) and delivered when it wakes, as "You dream: ...".
+// The words show in the watcher's Chat tab; the DM log names the hero, not the text.
+function whisper(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)return {ok:false,error:'Whisper what? whisper takes hero (name or id), text, and as (the person who whispers, optional).'};
+  const h=heroOf(a.hero);if(!h)return {ok:false,error:'hero: no living hero called "'+clean(a.hero,40)+'" (see heroes_near or fellowship_view).'};
+  if(h.hidden)return {ok:false,error:h.name+" is out of anyone's reach."};
+  if((day.wh||0)>=DMA.WHISPER_PER_DAY)return {ok:false,error:'Enough whispers for one game day ('+DMA.WHISPER_PER_DAY+').'};
+  const inScene=!!(S.table&&S.table.ids.includes(h.id));let p=null;
+  if(a.as!=null&&a.as!==''){p=personOf(a.as);if(!p)return nobody(a.as);
+    if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||dist(h,p)>DMA.WHISPER_R&&!inScene)return {ok:false,error:h.name+' is too far from '+p.name+' to be whispered to (within '+DMA.WHISPER_R+' tiles, or in the Table scene).'}}
+  else if(!inScene)return {ok:false,error:h.name+' is not in an open Table scene: name the person who whispers (as), and have the hero within '+DMA.WHISPER_R+' tiles of them.'};
+  const e={t:clockStr(),d:dayNo(),from:p?{kind:'npc',id:p.id,name:p.name,fac:p.fac}:NARRATOR,text:'(whispered) '+t,trigger:p?'npc':'dm',dm:true,whisper:true};hearLine(h,e);
+  if(inScene)S.table.narr={t:e.t,text:(p?(p.title?p.title+' ':'')+p.name:'Someone')+' leans close to '+h.name+'.'}; // the fact of it, not the words
+  day.wh=(day.wh||0)+1;
+  dmlog('agent',null,['Whisper to '+h.name+' (DM agent)'],{by:'dm-agent',voice:'whisper',hero:h.id,npc:p?p.id:undefined});
+  return {ok:true,whispered_to:h.name,as:p?p.name:'the narrator',note:'Only '+h.name+' heard it; the table sees that someone leans close.'}}
+function dream(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)return {ok:false,error:'Dream what? dream takes hero (name or id) and text.'};
+  const h=heroOf(a.hero);if(!h)return {ok:false,error:'hero: no living hero called "'+clean(a.hero,40)+'".'};
+  if(!h.player)return {ok:false,error:h.name+" is not agent-played: only agent heroes dream a DM's dream."};
+  if((day.dr||0)>=DMA.DREAM_PER_DAY)return {ok:false,error:'Enough dreams for one game day ('+DMA.DREAM_PER_DAY+').'};
+  const D=dmState(),L=D.dreams||(D.dreams=[]);if(L.filter(x=>x.hero===h.id).length>=3)return {ok:false,error:h.name+' already has dreams waiting.'};
+  L.push({hero:h.id,text:t,day:dayNo(),slept:false});day.dr=(day.dr||0)+1;
+  dmlog('agent',null,['Dream for '+h.name+' (DM agent), when they next sleep'],{by:'dm-agent',voice:'dream',hero:h.id});
+  return {ok:true,dream_for:h.name,note:'Delivered when '+h.name+' wakes from camp or an inn rest.'}}
+const sleeping=h=>h.state==='camp'||h.state==='town'&&Array.isArray(h.pq)&&!!h.pq[0]&&h.pq[0].kind==='rest';
+export function dreamTick(){const D=S.dmAgent,L=D&&D.dreams;if(!L||!L.length)return;
+  for(let i=L.length-1;i>=0;i--){const d=L[i],h=byIdA(d.hero);
+    if(!h||!alive(h)){L.splice(i,1);continue}
+    if(sleeping(h)){d.slept=true;continue}
+    if(!d.slept)continue;
+    hearLine(h,{t:clockStr(),d:dayNo(),from:NARRATOR,text:'You dream: '+d.text,trigger:'dm',dm:true,dream:true});
+    try{moment(h,'dream','a dream')}catch(e){}
+    L.splice(i,1)}}
 // A person by id or name (townsfolk or a DM-placed person).
 // Names match ignoring case, spaces and punctuation too ("EdrinPask" is Edrin Pask, issue #401).
 const squeeze=s=>String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]+/g,'');
@@ -572,6 +611,8 @@ export function dmAct(tool,args={}){
     case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;
     case 'npc_say':r=npcSay(args);break;
+    case 'whisper':r=whisper(args);break;
+    case 'dream':r=dream(args);break;
     case 'npc_call':r=npcCall();break;
     case 'npc_offer':r=npcOffer(args);break;
     case 'stage_scene':r=stageScene(args);break;

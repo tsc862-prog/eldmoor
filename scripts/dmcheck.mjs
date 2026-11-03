@@ -36,7 +36,7 @@ let seed = 0x9e3779b9 ^ (Number(process.env.DMCHECK_SEED) || 66);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const sim = await import('../src/sim/index.js');
 const {init, step, S, snapshot, restore, dmAct, setDmSeat, dmSeatOn} = sim;
-const {DMA, pileOn} = await import('../src/sim/dmagent.js');
+const {DMA, pileOn, dreamTick} = await import('../src/sim/dmagent.js');
 const {DM_TOOLS} = await import('../src/data/dm-tools.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
@@ -663,6 +663,26 @@ console.log('NPC conversations');
     const nr = dmAct('narrate', {text: long, near: A.name}), ns = dmAct('npc_say', {npc: String(smith.id), text: long});
     ok(nr.ok && nr.narrated === long && ns.ok && ns.said === long && long.length > 600, `narrate and npc_say keep a ${long.length}-character line whole`);
     ok(dmAct('npc_say', {npc: String(smith.id), text: 'x'.repeat(5000)}).said.length === DMA.NPC_SAY_MAX, `with a technical ceiling of ${DMA.NPC_SAY_MAX} characters`)}
+  // whisper and dream (#523): reach, day limits, delivery on waking
+  {beside(A, smith); beside(B, smith, 20); S.table = null;
+    const near = dmAct('whisper', {hero: A.name, text: 'The ledger is false.', as: String(smith.id)});
+    ok(near.ok && (A.chat || []).some(e => e.text === '(whispered) The ledger is false.' && e.from.id === smith.id && e.from.kind === 'npc') && !(B.chat || []).some(e => /ledger is false/.test(e.text)), 'whisper as a placed person within 4 tiles reaches that hero alone');
+    const far = dmAct('whisper', {hero: B.name, text: 'x', as: String(smith.id)}); ok(far.ok === false && /too far/.test(far.error), 'too far from the person: refused (' + far.error.slice(0, 60) + ')');
+    ok(dmAct('whisper', {hero: A.name, text: 'x'}).ok === false && dmAct('whisper', {hero: 'Nobody Atall', text: 'x'}).ok === false && dmAct('whisper', {hero: A.name, text: ' '}).ok === false, 'no scene and no person, an unknown hero and empty text are refused');
+    S.table = {ids: [A.id, B.id]}; const sc = dmAct('whisper', {hero: B.name, text: 'The captain lies.'});
+    ok(sc.ok && (B.chat || []).some(e => e.text === '(whispered) The captain lies.') && !(A.chat || []).some(e => /captain lies/.test(e.text)) && /Someone leans close to /.test(S.table.narr.text) && !/captain lies/.test(S.table.narr.text), 'in an open Table scene: only the target hears it; the table shows "leans close", not the words');
+    let n = 2; while (dmAct('whisper', {hero: A.name, text: 'again'}).ok) n++; ok(n === DMA.WHISPER_PER_DAY, 'whispers stop at ' + DMA.WHISPER_PER_DAY + ' a game day (' + n + ')'); S.table = null;
+    const d1 = dmAct('dream', {hero: A.name, text: 'A grey tide climbs the stair.'}), d2 = dmAct('dream', {hero: A.name, text: 'A bell without a rope.'}), d3 = dmAct('dream', {hero: A.name, text: 'third'});
+    ok(d1.ok && d2.ok && d3.ok === false && /Enough dreams/.test(d3.error), 'two dreams a game day, the third refused');
+    const bg2 = S.agents.find(h => !h.player && !h.fellow && h.state !== 'dead'); ok(!bg2 || dmAct('dream', {hero: bg2.name, text: 'x'}).ok === false, 'only agent heroes dream');
+    dreamTick(); ok(!(A.chat || []).some(e => /You dream/.test(e.text)), 'a dream waits while the hero is awake');
+    A.state = 'camp'; dreamTick(); ok(!(A.chat || []).some(e => /You dream/.test(e.text)), 'and while it sleeps');
+    A.state = 'hunt'; dreamTick(); const dr = (A.chat || []).filter(e => /^You dream: /.test(e.text));
+    ok(dr.length === 2 && dr[0].dream, 'on waking from camp both dreams arrive as "You dream: ..."');
+    P.markPlayer(A, true); beside(A, smith); dmAct('dream', {hero: A.name, text: 'Salt on the tongue.'}) ; S.dmAgent.day.dr = 0; dmAct('dream', {hero: A.name, text: 'Salt on the tongue.'});
+    A.pq = [{kind: 'rest', until: S.gameMin + 60}]; dreamTick(); A.pq = []; dreamTick();
+    ok(/Salt on the tongue/.test(A.chat[A.chat.length - 1].text), 'a rest at an inn delivers a dream when it ends');
+    S.dmAgent.day.wh = 0; S.dmAgent.day.dr = 0}
   // names as models write them (issue #401): spaces dropped, a near miss names the closest people
   {const squeezed = (smith.title + smith.name).replace(/\s+/g, ''), ns = dmAct('npc_say', {npc: squeezed, text: 'Mind the forge.'});
     ok(ns.ok && ns.who === smith.title + ' ' + smith.name, `npc_say finds "${squeezed}" ignoring spaces`);

@@ -588,7 +588,7 @@ encounters and speak at their tables (issue #132, below).
   `log_intent`, and its in-game voice `narrate` (`{text, near, radius?}`: heroes near a hero, town,
   region or "x,y", or everyone at the open Table scene, hear it in their Chat tab and the Table banner;
   12 a game day) and `npc_say` (`{npc, text}`: a townsperson or placed person speaks to whoever is within
-  earshot; 16 a game day). The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
+  earshot; 16 a game day). `whisper {hero, text, as?}` (#523) gives one hero a line nobody else hears (in an open Table scene or within 4 tiles of the placed person `as`; it lands in that hero's chat as "(whispered) ...", the table sees only "<npc> leans close to <hero>"; 8 a day) and `dream {hero, text}` a dream delivered when an agent hero next wakes from a camp or an inn rest ("You dream: ...", a soft wake and a reflection moment; 2 a day); the DM log names the hero, not the text. The seat is claimed like a hero (`POST /play/claim {role:'dm', runner}`); `/play/health`
   reports `dm: {seat, link, claimed, runner}`. The game answers only while its seat is open.
 - DM log: the agent's entries carry a **DM AGENT** tag and its reason; the **DM agent** filter shows them.
 - Measured live (Sonnet 5.5, effort medium, headless day 4): first turn 15 tool calls, 18 s, $0.056 (notes
