@@ -48,7 +48,7 @@ export function raidCheck(dt){const boss=S.boss,agents=S.agents;
   const rf=raidReserve(); // the Fellowship's muster comes first (#135): its faction is checked every few seconds and no background muster beats it
   S.raidT-=dt;if(S.raidT>0)return;S.raidT=rf>=0?6:45+rnd()*30;if(!boss.alive)return;
   const f=rf>=0?rf:ri(0,1);if(S.raidOn[f])return;
-  const pool=agents.filter(a=>a.fac===f&&a.lvl>=RAID_LVL&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>(rf>=0&&(companyOf(y)?1:0)-(companyOf(x)?1:0))||(raidPull(y)-raidPull(x))||(raidFirst(y)-raidFirst(x))||(y.lvl-x.lvl)); // a Wyrmhunt guild's members (sim/guildfocus.js) muster first
+  const pool=agents.filter(a=>a.fac===f&&(a.lvl>=RAID_LVL||companyOf(a))&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>(rf>=0&&(companyOf(y)?1:0)-(companyOf(x)?1:0))||(raidPull(y)-raidPull(x))||(raidFirst(y)-raidFirst(x))||(y.lvl-x.lvl)); // a Wyrmhunt guild's members (sim/guildfocus.js) muster first
   const cand=unitDraft(pool,pool,6,'raid'); // oath-bound (legend, Kragmaw heirloom) first; the Fellowship (#68) all together or not at all
   if(rf>=0&&!cand.some(a=>companyOf(a)))return; // reserved: background raiders only join under the Fellowship
   const core=cand.length>=4&&raidCore(cand); // a Wyrmhunt core goes without the gear check
