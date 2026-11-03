@@ -304,7 +304,7 @@ export function watchWorld({base, known, onNew, every = 3000, fetchImpl = fetch}
   t.unref();
   return () => {done = true; clearInterval(t)};
 }
-export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}) so the runner starts again for the current members; the old sessions are set aside in logs/agents/old/.`;
+export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}); nothing starts this runner again by itself (#691), the new world's setup or a resume starts the ones it wants, and the old sessions are set aside in logs/agents/old/.`;
 
 // Claude turns (issue #401): the same fresh state header the local turns get (briefText: state, HP, place, foe, news,
 // memories, what was said lately), without its generic last line, plus the turn order. A Claude turn used to open with

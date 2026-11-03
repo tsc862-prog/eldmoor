@@ -11,7 +11,7 @@ import {WORLD_ID} from '../world/map.js';
 import {WORLDS} from '../world/spec.js';
 import {FAC} from '../data/factions.js';
 import {heroSprite,outlined} from '../render/sprites.js';
-import {saveSummary,exportStored,importFile,takeSkipTitle,hasPending} from './save.js';
+import {saveSummary,exportStored,importFile,takeSkipTitle,hasPending,afterReset} from './save.js';
 import {openSetup,pollRelay,watchRelay,relayState,pulledModels} from './setup.js';
 
 const HELP_URL='https://github.com/tsc862-prog/eldmoor#readme';
@@ -96,14 +96,14 @@ function newWorld(confirmed){hide();openSetup({back:()=>show(),confirmed:confirm
 
 function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a]'):null;if(!t||!root||!root.contains(t))return;const a=t.dataset.a;
   if(a==='continue')return play('continue');
-  if(a==='default')return play('default');
+  if(a==='default')return afterReset(()=>play('default')); // a world reset stops the runners first (#691)
   if(a==='new'){if(st.sum){st.ask=true;render();focus('export');return}return newWorld(false)}
   if(a==='replace')return newWorld(true);
   if(a==='back'){st.ask=false;render();focus('new');return}
   if(a==='export'){st.msg=exportStored(WORLD_ID)?'Exported the saved '+worldName(WORLD_ID)+' world.':'There is no save to export.';render();focus('replace');return}
   if(a==='load'){const f=root.querySelector('.tfile');if(f){f.value='';f.click()}return}
   if(a==='map'){const id=t.dataset.world;if(id===WORLD_ID)return;const u=new URL(location.href);
-    if(id==='eldmoor')u.searchParams.delete('world');else u.searchParams.set('world',id);location.href=u.href}}
+    if(id==='eldmoor')u.searchParams.delete('world');else u.searchParams.set('world',id);afterReset(()=>{location.href=u.href})}}
 
 function onKey(e){if(!root||root.hidden)return;
   if(e.key==='Escape'&&st.ask){st.ask=false;render();focus('new');return}
