@@ -121,7 +121,8 @@ if (argv[0] === '--stepping') {
   sok(order.length === 3 && order[2] === 2, 'all three rooms were reached, the boss room last');
   sok(SLT.slotted().crawl.clears >= 1 && !CRYPT.group && !S.table, 'the Fellowship cleared the crypt and the table and group are free again');
   {
-    const R = descend(14); const rs = crawl(R, {act: () => 'retreat', maxS: 300});
+    const R = descend(14); SIM.setRunnerLinks(() => S.table && S.table.kind === 'crawl' ? 'connected' : 'none'); // answered by their runners once each room is set (#682)
+    const rs = crawl(R, {act: () => 'retreat', maxS: 300}); SIM.setRunnerLinks(null);
     sok(rs.length === 1 && rs[0].room === 0, 'a retreat withdraws the party at the first room (the sump)');
     sok(!CRYPT.group && !S.table && R.some(a => a.state !== 'dead') && R.filter(a => a.state !== 'dead').every(a => a.state === 'return'), 'survivors go home, group and table are free');
   }
@@ -159,7 +160,8 @@ console.log('a Fellowship crawl, room by room');
 
 console.log('a retreat, most fall back');
 {
-  const M = descend(); const seen = crawl(M, {act: () => 'retreat', maxS: 300});
+  const M = descend(); SIM.setRunnerLinks(() => S.table && S.table.kind === 'crawl' ? 'connected' : 'none'); // in the rooms their runners answer once the DM has set each one (#682), not their reflexes
+  const seen = crawl(M, {act: () => 'retreat', maxS: 300}); SIM.setRunnerLinks(null);
   ok(seen.length === 1, `the party withdrew at the first room (${seen.length} scene)`);
   ok(!CRYPT.group && M.some(a => a.state !== 'dead'), 'the group is gone and survivors are out');
   ok(M.filter(a => a.state !== 'dead').every(a => a.state === 'return'), 'the survivors go home');
