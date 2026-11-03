@@ -37,4 +37,15 @@ export function prepView(){const now=clock();
   const h=host?{host:true}:{};
   return last?{...h,state:'done',kind:last.kind,why:last.why,calls:last.calls,max_calls:last.maxCalls,seconds:Math.round((last.ended-last.since)/1000)}:{...h,state:'idle'}}
 export const lastPrep=()=>last?{...last}:null;
-export function resetPrep(){P=null;last=null}
+// The world held before play (#559, owner bug of 2026-11-03: members introduced themselves while the DM prepared, then
+// again at the opening scene). The host says when its start gate holds the world (the page's rungate, play-headless
+// --wait-ready); the DM's prep holds it by itself. While held, agent heroes get no paced turn (sim/pace.js) and their
+// world-changing or speaking tools are refused with holdLine() (sim/player.js); read-only tools still answer.
+// Never saved, never read by step(): a host with no gate (npm run sim, the checks) is never held.
+let gateHold=false;
+export const setGateHold=v=>{gateHold=!!v};
+export const worldHeld=()=>prepActive()?'prep':gateHold?'gate':null;
+export const HOLD_LINE={prep:'The DM is preparing the table; wait for the opening scene.',
+  gate:'The world is held until every mind is ready and the DM has prepared the table; wait (the opening scene comes first).'};
+export const holdLine=()=>{const w=worldHeld();return w?HOLD_LINE[w]:null};
+export function resetPrep(){P=null;last=null;gateHold=false}

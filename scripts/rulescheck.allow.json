@@ -1,0 +1,16 @@
+{
+  "_doc": "Allowlist for scripts/rulescheck.mjs. literals: file -> faction, zone or town names quoted outside src/data and src/world, with the reason in why. tables: table id -> row keys whose move or rename is a coordinated change in the same PR. layering: 'file -> imported file'. ciExempt: npm script names that need no ci.yml step (hashcheck runs as the hash-guard job).",
+  "layering": [],
+  "literals": {
+    "src/sim/dmsight.js": ["concord", "warband"],
+    "src/sim/levers.js": ["concord", "warband"],
+    "src/sim/staged.js": ["concord", "warband"]
+  },
+  "why": {
+    "src/sim/dmsight.js": "dm_sight guild summary prints the two faction names by index (['Concord','Warband'][fac]); should read FAC[fac].name when sight is next touched",
+    "src/sim/levers.js": "create_npc's faction param is a public enum of the DM tools ('concord'|'warband'|'neutral'), a vocabulary of the lever, not a lookup of the world; should derive from FAC when the lever is next touched",
+    "src/sim/staged.js": "stage_scene casts pass the same create_npc faction enum through"
+  },
+  "tables": {},
+  "ciExempt": ["hashcheck"]
+}

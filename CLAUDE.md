@@ -104,6 +104,8 @@ other. The rules:
 - Worlds: Eldmoor (80x50) by default; `?world=stepping` in the browser or `ELDMOOR_WORLD=stepping` in Node selects the 160x100 Stepping Lands test continent (saves are kept per world).
 - Title screen (`src/ui/title.js`): the page opens on Continue (with a line on the save), New world (the setup page), Load from file and the map choice; no world is built or restored until a choice. `?continue=1` (or `?skip-title=1`) boots straight in as before; a queued New World setup and a Load/Import reload skip it too.
 - New worlds (#111): `init()` founds the default Fellowship (level 1, home town, Minds scripted) and starts the other heroes at levels 1-15 in fitting zones (`src/sim/opening.js`, `START_BANDS`). `ELDMOOR_FELLOWSHIP=0` in Node, `?fellowship=0` in the browser or `init({fellowship:false})` keeps the old all-level-1 start for balance baselines; checks that found their own Fellowship use it.
+- `npm run hashcheck` (#573, `scripts/hashcheck.mjs`): the one source of the seeded hashes PRs quote (professioncheck with and without the Fellowship, tablecheck --hash and --hash-talk, crawlcheck, dmcheck seat closed and open, focuscheck, the no-company world, the Eldmoor map). It runs them here and on `git archive origin/main` extracted to a temp dir (never a worktree) and prints both side by side; exit 2 when one moved. The CI job `hash-guard` comments that table on every PR and fails when a hash moved unless the PR has the label `hash-change-ok` (add the label, then re-run the job). Quote its table in PRs, not hand-run hashes.
+- `npm run rulescheck` (#573): src/sim, src/world and src/data never import src/render or src/ui; no zone, faction or town name literals outside src/data and src/world (known ones in `scripts/rulescheck.allow.json`, with a reason); the append-only tables (MOBS, EPICS, GOODS, CLS, the world specs' regions and towns, ...) keep every existing row in place against origin/main; every `scripts/*check.mjs` with an npm script is a step in ci.yml. CI also runs on `merge_group` for GitHub's merge queue.
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
 - `npm run invcheck`: the pack, consumables, quest items, the bag-to-pack save migration and determinism.
@@ -203,7 +205,18 @@ is silent, and scene choices time out to the scripted branch, so the world never
   seat's state ("loading qwen2.5:14b (40 s)", "claimed", "warm-up failed: ...") and **Start anyway** (waives the
   seats as they are; a waived seat whose runner goes away must warm up again). Party frames and the DM frame show
   claimed / warming up / ready / warm-up failed. `play-headless --wait-ready` holds a headless world the same way
-  (every living agent hero and the open DM seat); without the flag headless runs as before. A failed warm-up never
+  (every living agent hero and the DM seat, which `--wait-ready` opens unless `--no-dm`, #559); without the flag headless runs as before.
+  The DM seat always counts (#559, slice A of #520): the setup page requires a DM mind (no scripted DM; an older setup's
+  scripted DM cleans to Claude Haiku), a setup world opens the seat from the first tick, the page opens the seat of any
+  world it plays, and `--resume-runners` starts a DM runner for an open seat even when none was saved. While the gate or
+  the DM's prep holds the world (`worldHeld()` in `src/sim/prep.js`), agent heroes get no paced turn and their acting
+  tools (`act:true`: say, party_say, move_to, hunt, take_quest, propose, ...) are refused with "The DM is preparing the
+  table; wait for the opening scene." (`offline:true`, so it never counts as a failed turn); reads still answer.
+  The gate is continuous (owner decision on #559): the world runs only while every living agent-played Fellowship member
+  and the DM seat have a live runner (thinking, between turns, waiting for a Claude slot all count; a warm-up that failed
+  while its runner plays on counts too). A supervised runner that stops, crashes, hits its budget or lets a member go
+  pauses the world at once and the banner names who; "Resume anyway" (Start anyway before the first run) overrides until
+  the next change. Headless sims and checks without runners are never held. A failed warm-up never
   stops the runner. `npm run localcheck` (slow and crashing mock warm-ups) and `npm run uismoke` cover it.
 - Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
   game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in
@@ -775,6 +788,14 @@ and `<world id>-headless` for `play-headless` (`--log-world NAME`, `--no-behavio
   a headless Fellowship of silent agents; asserts they are logged and reported, that a runner cannot write
   another seat's line, keys are redacted, files rotate, the watch leaves the world unchanged, and that a
   real `npm run agent` with a lazy mock Ollama model lands its turns and its stale fight claim.
+
+## CI observation (issue #574)
+
+Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none path-filtered on the required checks):
+- `nightly-flakes.yml` (`scripts/flakehunt.mjs`): reruns the flake-prone checks 5 times under CI_FAST and rewrites one issue, "Nightly flake report" (check, fails/runs, `flaky` at 2 of 5, last failing line).
+- `nightly-run.yml` (`scripts/nightly-run.mjs`, thresholds in `scripts/nightly-thresholds.json`): a 60 minute headless Fellowship at 8x with mock local minds (no paid API, no Ollama), the behavior report, artifacts; a crossed threshold opens "Nightly agent run failed". Mock minds make idle, no-aim and repeated-narration expected, so those are not limited.
+- `screenshots.yml` (`scripts/shoot.mjs`): on PRs touching `src/ui`, `src/render`, `index.html` or `src/style.css`, headless Chrome against `vite preview` at 3440x1440 and 1280x800; artifact plus an inline comment (images on the `ci-shots` branch). Comments use `scripts/pr-comment.mjs` (a hidden marker per job; hash-guard too).
+- `red-main.yml`: when CI fails on a push to main it opens or updates one issue "main is red" (label `red-main`) and comments on the merged PR; it closes itself when CI is green on main again. **An open "main is red" issue is a merge stop**: do not merge anything else until it is closed. `workflow_dispatch` with `simulate` tests it.
 
 ## Layout
 

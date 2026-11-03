@@ -16,6 +16,7 @@ import {MOBS} from '../data/mobs.js';
 import {ZONES,CRYPT,LAIR,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
 import {maxHp} from './heroes.js';
+import {lookingFor} from './sighthero.js';
 
 const byId=id=>S.agents.find(b=>b.id===id)||null;
 const zn=p=>ZONES[zoneAt(p.x,p.y)]||'the wilds';
@@ -111,6 +112,7 @@ export function purposeOf(a){if(!a)return make({kind:'town',goal:''});
     if(I&&a.state!=='dead'){const t=typeof I==='string'?I:I.text||(I.goal?I.goal+(I.why?' ('+I.why+')':''):I.why)||'';if(t){p.why='says: '+String(t).slice(0,140);p.line=p.goal+(p.target?' → '+p.target:'')+' · '+p.why}
       const at=typeof I==='object'?I.at||(I.order&&I.order.kind==='move'?I.order.to:null):null,lab=I.target||(I.order&&I.order.label)||'';
       if(at&&!p.to&&at.x!=null){p.to={x:at.x,y:at.y,label:lab,mark:'place'};p.path=[pt(at)]}}
+    const sk=I&&a.state!=='dead'?lookingFor(a):null;if(sk){p.goal='Looking for';p.target=sk.name;p.kind=p.kind==='wait'?'travel':p.kind;p.line=p.goal+' '+p.target+(p.why?' · '+p.why:'')} // the aim seeks a hero (#570)
     return p}
   catch(e){return make({kind:'town',goal:a.state||''})}}
 // The small icon over a hero's head: the purpose's kind, grouped into the seven the View toggle shows.

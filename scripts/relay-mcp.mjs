@@ -288,7 +288,8 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   // A turn line also proves the seat's model answers (#563): a claimed seat with no warm-up record (an older runner, or
   // readiness lost to a relay restart) counts as ready once its runner has played a turn, so the start gate never holds
   // the world on a seat that is plainly playing.
-  const turnPlayed = (key, rid) => {const r = readies.get(key); if (r && r.runner === rid) return; readies.set(key, {runner: rid, state: 'ready', implied: true, at: now()}); pushLinks()};
+  // A failed warm-up whose runner then plays a turn is ready too (owner decision on #559: a runner that plays is active).
+  const turnPlayed = (key, rid) => {const r = readies.get(key); if (r && r.runner === rid && r.state !== 'failed') return; readies.set(key, {runner: rid, state: 'ready', implied: true, at: now(), ...(r && r.runner === rid && r.state === 'failed' ? {warmFailed: r.error || true} : {})}); pushLinks()};
   async function behaviorTurn(b, hero, rid, dm) {
     const rec = b.rec && typeof b.rec === 'object' ? b.rec : null; if (!rec) return [400, {ok: false, error: 'turn needs {rec}'}];
     if (dm) {const c = claimOf(DM_KEY); if (!c || c.runner !== rid) return [409, {ok: false, refused: true, error: 'Only the runner holding the DM seat writes its turns.'}];

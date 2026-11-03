@@ -16,6 +16,7 @@ const {companyNote} = await import('./pacing.mjs');
 const {homeOf} = await import('../src/data/races.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {leaveParty} = await import('../src/sim/party.js');
+const {zoneAt} = await import('../src/world/map.js');
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -441,6 +442,64 @@ console.log('POOL',hs.length,[...new Set(hs.map(b=>b.fac+homeOf(b).name))]);
   for (let i = 0; i < 30 && !seeker.party; i++, tries++) {if (!solo.party) {} seekParty(seeker)}
   ok(!solo.party && !(seeker.party && seeker.party.mem.includes(solo)), 'a company solo near a forming scripted party is never recruited');
   if (seeker.party) leaveParty(seeker);
+}
+
+// ---- heroes notice companions they pass (#570): sight events, stop on sight, the in-sight line, looking for ----
+{
+  console.log('\nsight (#570)');
+  const SH = await import('../src/sim/sighthero.js'), {purposeOf} = await import('../src/sim/purpose.js'), {wakeLevel} = await import('../src/sim/notify.js');
+  const {sightNote} = await import('./pacing.mjs');
+  init({fellowship: false}); run(60);
+  const gt = homeOf(S.agents.find(a => a.fac === 0)).gate, sp = {x: gt.x + 3, y: gt.y + 12};
+  const ps = S.agents.filter(a => living(a) && !a.companion && a.fac === 0 && !a.adv && !a.fellow && a.state !== 'dungeon' && a.state !== 'raid');
+  const [W, Cm, Mt, Sk, Sc] = ps;
+  for (const b of [W, Cm, Mt, Sk, Sc]) if (b.party) leaveParty(b);
+  for (const b of [W, Cm, Mt, Sk]) markPlayer(b, true);
+  const put = (a, dx, dy) => {a.x = sp.x + dx; a.y = sp.y + dy; a.state = 'hunt'; a.dest = null; a.target = null; a.hidden = false; a.pq = []; rebuild()};
+  const evs = (a, re) => (a.playEv || []).filter(e => re.test(e.text));
+  put(W, 0, 0); put(Cm, 40, 0); put(Mt, 40, 5); put(Sk, 0, -40); put(Sc, 40, 40);
+  CO.mergeCompanies(CO.companyOf(W), CO.companyOf(Cm));
+  SH.noticeHeroes(W); // the first look is the baseline
+  put(Cm, 8, 0); SH.noticeHeroes(W);
+  let e = evs(W, /You see /);
+  ok(e.length === 1 && new RegExp('^You see ' + Cm.name + ' to the east, about 8 tiles off').test(e[0].text), 'a companion coming into sight: "' + (e[0] && e[0].text) + '"');
+  ok(e[0] && wakeLevel(e[0]) === 2, 'a companion sighting wakes at once (urgent)');
+  ok(SH.sightLine(W) === Cm.name + ' (E, 8 tiles)' && /In sight: .*E, 8 tiles/.test(sightNote({insight: SH.sightLine(W)})), 'the turn header line: ' + SH.sightLine(W));
+  put(Cm, 3, 0); SH.noticeHeroes(W); ok(SH.sightLine(W) === null, 'a companion within earshot is not in the in-sight line');
+  put(Cm, 40, 0); SH.noticeHeroes(W); put(Cm, 9, 0); SH.noticeHeroes(W);
+  ok(evs(W, /You see /).length === 1, 'back into sight within the hour: no second event');
+  S.gameMin += 61; put(Cm, 40, 0); SH.noticeHeroes(W); put(Cm, 0, -9); SH.noticeHeroes(W);
+  e = evs(W, /You see /); ok(e.length === 2 && /to the north, about 9 tiles/.test(e[1].text), 'an hour later it is told again: ' + (e[1] && e[1].text));
+  // fog shortens sight
+  const zn = zoneAt(W.x, W.y); S.conditions = [{id: 9e6, kind: 'fogbound', z: zn, str: 3, until: S.gameMin + 600, lever: 9e6}];
+  ok(SH.sightRange(W) < 8, 'fog shortens sight to ' + SH.sightRange(W).toFixed(1) + ' tiles');
+  S.gameMin += 61; put(Cm, 40, 0); SH.noticeHeroes(W); put(Cm, 9, 0); SH.noticeHeroes(W);
+  ok(evs(W, /You see /).length === 2, 'in fog a companion 9 tiles off is not seen');
+  S.conditions = [];
+  // a hero it has spoken with is soft news; a stranger is nothing; a scripted hero gets none
+  put(Cm, 40, 0); W.talkHeard = {[Mt.id]: 1}; Mt.talkHeard = {[W.id]: 1}; put(Mt, 40, 5); SH.noticeHeroes(W); put(Mt, -7, 3); SH.noticeHeroes(W);
+  e = evs(W, new RegExp('You see ' + Mt.name)); ok(e.length === 1 && wakeLevel(e[0]) === 0, 'a hero it has spoken with: soft news');
+  put(Sk, 0, 40); SH.noticeHeroes(W); put(Sk, 6, 6); SH.noticeHeroes(W);
+  ok(!evs(W, new RegExp(Sk.name)).length, 'a stranger in sight is no event');
+  const n0 = (Sc.playEv || []).length; put(Sc, 40, 0); SH.noticeHeroes(Sc); put(Sc, 3, 0); SH.noticeHeroes(Sc);
+  ok((Sc.playEv || []).length === n0 && Sc.sightNow === undefined, 'a scripted hero is untouched');
+  // nothing about someone out of sight
+  put(Sc, 40, 40); put(Cm, 40, 0); SH.noticeHeroes(W);
+  const header = String(SH.sightLine(W));
+  ok(SH.sightLine(W) === null && !header.includes(Cm.name), 'out of sight, the header says nothing of where a companion is');
+  // a seeker: stops on sight, holds, purpose reads Looking for
+  const first = Sc.name.split(' ')[0];
+  put(Sk, 0, -40); Sk.pq = [{kind: 'move', legs: [{x: Sk.x + 30, y: Sk.y, st: 'hunt'}], label: 'the far ford', last: 'hunt'}]; Sk.playIdle = true; Sk.state = 'travel';
+  Sk.intent = {goal: 'find ' + first + ' and meet them', why: 'we parted', until: null, untilAt: null, set: Math.round(S.gameMin), prog: Math.round(S.gameMin), snap: {x: Sk.x, y: Sk.y, kills: 0, xp: 0, lvl: Sk.lvl, adv: null, idx: null}, order: {kind: 'move', label: 'the far ford', to: {x: Sk.x + 30, y: Sk.y}}, done: null, n: 1};
+  put(Sc, 60, 0); Sk.pq = [{kind: 'move', legs: [{x: Sk.x + 30, y: Sk.y, st: 'hunt'}], label: 'the far ford', last: 'hunt'}]; SH.noticeHeroes(Sk);
+  const pl = purposeOf(Sk);
+  ok(/^Looking for /.test(pl.line) && pl.line.includes(Sc.name), 'the purpose line: ' + pl.line);
+  ok(Sk.pq.length === 1, 'out of sight the seeker walks on');
+  put(Sc, 10, -40); Sk.pq = [{kind: 'move', legs: [{x: Sk.x + 30, y: Sk.y, st: 'hunt'}], label: 'the far ford', last: 'hunt'}]; Sk.playIdle = true; SH.noticeHeroes(Sk);
+  ok(Sk.pq.length === 0 && Sk.intent.sighted && Sk.face === 1 && !Sk.dest, 'a seeker stops its autopilot walk on sight and turns toward them');
+  const ev0 = evs(Sk, /You see /); ok(ev0.length === 1 && wakeLevel(ev0[0]) === 2 && /the one you were looking for/.test(ev0[0].text), 'the sought hero is an urgent sighting');
+  const x0 = Sk.x; Sk.playActAt = S.gameMin - 500; run(2);
+  ok(Sk.pq.every(c => c.kind !== 'move') && Math.abs(Sk.x - x0) < 1, 'autopilot holds where it stands, it does not set out again');
 }
 
 console.log(fail ? `\ncompanycheck: ${fail} failure(s)` : '\ncompanycheck: all ok');

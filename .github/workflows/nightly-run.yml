@@ -1,0 +1,52 @@
+name: Nightly agent run
+
+# A 60 minute headless run of the Fellowship with mock local minds (no paid API and no Ollama) at 8x, then the behavior
+# report checked against scripts/nightly-thresholds.json. A crossed threshold opens or updates the issue "Nightly agent run failed".
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Real minutes to play
+        default: '60'
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: Long agent run
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - name: Play
+        id: play
+        run: |
+          set +e
+          node scripts/nightly-run.mjs --minutes "${{ inputs.minutes || '60' }}" --out nightly-out
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: nightly-run, path: nightly-out, retention-days: 14}
+      - name: Open or update the issue when a threshold is crossed
+        if: steps.play.outputs.code != '0'
+        run: |
+          printf '%s\n\n[Run and artifacts](%s/%s/actions/runs/%s) (exit code %s)\n' "$(cat nightly-out/summary.md)" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "${{ steps.play.outputs.code }}" > issue.md
+          node scripts/ci-issue.mjs open --title "Nightly agent run failed" --body-file issue.md --label nightly-run
+      - name: Close the issue when the run is clean
+        if: steps.play.outputs.code == '0'
+        run: node scripts/ci-issue.mjs close --title "Nightly agent run failed" --comment "Every threshold holds again."
+      - name: Fail the job when a threshold is crossed
+        if: steps.play.outputs.code != '0'
+        run: exit 1

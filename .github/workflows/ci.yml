@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:   # GitHub's merge queue (issue 573): the queue builds a merge group and needs CI ok on it
   schedule:
     - cron: '17 3 * * *'   # nightly, at real timing (CI_FAST off), so the real pacing is still exercised
   workflow_dispatch:
@@ -24,6 +25,8 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# hash-guard (issue 573) runs on pull requests only: it posts the seeded-hash table and fails when a hash moved against
+# main unless the PR carries the label hash-change-ok (a scripted-world change the owner or PR author vouches for).
 # Parallel groups: a run takes as long as its slowest group, not the sum. "CI ok" is the one check the
 # auto-merge workflow (automerge.yml) waits for. Add a new check as a step in a group; a new job must also
 # be listed in ok.needs.
@@ -36,7 +39,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 20, cache: npm}
       - run: npm ci
+      - name: Fetch origin/main for the append-only table check
+        run: git fetch --depth=1 origin main:refs/remotes/origin/main
       - {name: Static build, run: npm run build}
+      - {name: Repo rules (layering and name literals and append-only tables and CI coverage), run: npm run rulescheck}
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: init() reset, run: npm run initcheck}
@@ -92,6 +98,7 @@ jobs:
       - run: npm ci
       - {name: Agent player (mock agents), run: npm run playcheck}
       - {name: Townsfolk hails, run: npm run localscheck}
+      - {name: Sightings and couriers (issue 446), run: npm run sightcheck}
       - {name: Table scene waits (slow mock members), run: npm run scenewaitcheck}
       - {name: Hero standing orders, run: npm run orderscheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
@@ -173,10 +180,48 @@ jobs:
       - {name: Action log, run: npm run actcheck}
       - {name: Tiered memory, run: npm run tiercheck}
 
+  hash-guard:
+    name: Seeded hashes against main
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - name: Fetch origin/main
+        run: git fetch --depth=1 origin main:refs/remotes/origin/main
+      - name: Compare the seeded hashes with main
+        id: hashes
+        run: |
+          set +e
+          node scripts/hashcheck.mjs --against origin/main --md hashes.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Comment the hash table
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pr-comment.mjs "${{ github.event.pull_request.number }}" eldmoor-hash-guard hashes.md
+      - name: Fail when a hash moved without the label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code="${{ steps.hashes.outputs.code }}"
+          if [ "$code" = 0 ]; then echo "all hashes equal main"; exit 0; fi
+          if [ "$code" = 1 ]; then echo "a hash probe failed to run"; exit 1; fi
+          labels="$(gh pr view "${{ github.event.pull_request.number }}" --json labels --jq '.labels[].name')"
+          if echo "$labels" | grep -qx hash-change-ok; then echo "hash moved and the PR has hash-change-ok"; exit 0; fi
+          echo "A seeded hash moved against main. If the change is meant to move the scripted world, add the label hash-change-ok and re-run this job."
+          exit 1
+
   ok:
     name: CI ok
     if: always()
-    needs: [core, world, ui, agents, local, launcher, rate, dm, minds-a, minds-b]
+    needs: [core, world, ui, agents, local, launcher, rate, dm, minds-a, minds-b, hash-guard]
     runs-on: ubuntu-latest
     steps:
       - name: Every group passed
@@ -191,3 +236,5 @@ jobs:
           test "${{ needs.dm.result }}" = success
           test "${{ needs.minds-a.result }}" = success
           test "${{ needs.minds-b.result }}" = success
+          # hash-guard only runs on pull requests (skipped on pushes and merge groups)
+          case "${{ needs.hash-guard.result }}" in success|skipped) ;; *) exit 1 ;; esac

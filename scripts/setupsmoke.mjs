@@ -97,6 +97,12 @@ if(mode==='a'){
   ok(/Relay/.test(text(ids.get('setup'))),'relay line');
   ok(!all(ids.get('setup'),'button').some(b=>/All scripted/.test(b.textContent)),'no All scripted preset (#148: the Fellowship is always agent-played)');
   ok(all(ids.get('setup'),'.scard').every(c=>!all(c,'button').some(b=>b.dataset.a==='mode')),'no Scripted / AI buttons on a member card, only its model');
+  // the DM is always an agent (#520, #559): no Scripted button, a required model, a DM runner in every plan
+  ok(!all(ids.get('setup'),'button').some(b=>b.dataset.a==='mode'||/^Scripted$/.test(b.textContent)),'no Scripted DM button (#559: the DM is always an agent)');
+  ok(!!sels(ids.get('setup'),'mind:dm')&&/DM is always an agent/.test(text(ids.get('setup'))),'the DM section asks only for its model: '+(sels(ids.get('setup'),'mind:dm')||{}).value);
+  ok(/DM runner/.test(text(ids.get('setup'))),'the default plan starts a DM runner: '+text(ids.get('setup')).match(/On Start:[^.]*\./));
+  click(ids.get('setup'),b=>/All on Haiku/.test(b.textContent));
+  ok(sels(ids.get('setup'),'mind:dm').value==='anthropic:claude-haiku-5-5'&&/DM runner/.test(text(ids.get('setup'))),'All on Haiku seats the DM on Haiku too');
   click(ids.get('setup'),b=>/DM on Sonnet/.test(b.textContent));
   let r2=ids.get('setup');
   ok(all(r2,'.scard').every(c=>/Agent/.test(c.textContent)),'All agents preset: every card Agent');
