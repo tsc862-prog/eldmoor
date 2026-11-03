@@ -81,6 +81,7 @@ export function pickSetting(sc,town,people=[]){const want=sc&&sc.ctx&&sc.ctx.set
 
 export function sceneSpec(sc=S.table){if(!sc)return null;
   const members=sc.ids.map(byId).filter(Boolean),cast=castOf(sc),an=anchorOf(sc,members);
+  if(sc.ctx&&sc.ctx.site!=null)return null; // a DM-made site's crawl (#69): no interior view yet (the Crypt's view would be wrong); the banner plays it
   if(DUNGEON_KINDS.has(sc.kind))return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:CRYPT?CRYPT.name:'the Crypt'};
   const c=sc.ctx||{},town=(c.town&&CITY.find(t=>t.name===c.town))||(an?townAt(an.x,an.y):null),z=an?zoneAt(an.x,an.y):-1;
   // indoors: in a town, or wherever the DM named a room (stage_scene setting, #431 slice 2: a house by the road)
