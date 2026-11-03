@@ -8,7 +8,10 @@
 //     in the allowlist under "tables" ("<table>": ["<key>", ...]) in the same PR.
 //  4. every scripts/*check.mjs with a package.json script is a step in .github/workflows/ci.yml ("npm run <name>").
 //  5. nothing reads the old Fellowship shims (#588): no S.fellowship, no a.fellowRole read, no import of sim/fellowship.js.
-// Usage: npm run rulescheck [-- --against origin/main] [--no-tables]
+//  6. patch notes (#664): every docs/patchnotes/*.md has front matter and 1-6 player-facing lines; on a pull request the
+//     checked-out (merged) tree holds docs/patchnotes/<PR>.md, unless the PR carries the label no-notes. The PR number
+//     comes from --pr N or PR_NUMBER (CI); the label is read live with gh (GH_TOKEN), so adding it and re-running works.
+// Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
 import {readFileSync, readdirSync, existsSync, mkdtempSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
@@ -133,6 +136,25 @@ console.log('companies: nothing reads the old Fellowship shims (S.fellowship, a.
     });
   }
   ok(!existsSync(join(ROOT, 'src/sim/fellowship.js')) && bad.length === 0, 'no shim reads; read slotted(), inSlots(a), slotKeyOf(a), partySlotted(p) from sim/company.js' + (bad.length ? '\n    ' + bad.join('\n    ') : ''));
+}
+
+// ---- 6. patch notes (#664) ----
+console.log('patch notes: one player-facing note per PR (docs/patchnotes/<PR>.md)');
+{
+  const {parseNote, lintNote} = await import(pathToFileURL(join(ROOT, 'src/ui/patchnotes.js')).href);
+  const dir = join(ROOT, 'docs', 'patchnotes'), files = existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.md') && !f.startsWith('_')) : [];
+  const bad = [];
+  for (const f of files) {const e = lintNote(parseNote(readFileSync(join(dir, f), 'utf8'), f)); if (e.length) bad.push(f + ': ' + e.join('; '))}
+  ok(bad.length === 0, `every note (${files.length}) has front matter and 1-6 lines for the player` + (bad.length ? '\n    ' + bad.join('\n    ') : ''));
+  const pr = Number(opt('--pr', process.env.PR_NUMBER || '')) || 0;
+  if (!pr) console.log("  -    not a pull-request run (no --pr N or PR_NUMBER): the PR's own note is checked in CI");
+  else if (files.includes(pr + '.md')) ok(true, `PR #${pr} carries its note (docs/patchnotes/${pr}.md)`);
+  else {
+    const r = spawnSync('gh', ['pr', 'view', String(pr), '--json', 'labels', '--jq', '.labels[].name'], {cwd: ROOT, encoding: 'utf8'});
+    const labels = (r.status === 0 ? r.stdout.split('\n') : (process.env.PR_LABELS || '').split(',')).map(s => s.trim());
+    ok(labels.includes('no-notes'), labels.includes('no-notes') ? `PR #${pr} has no note and the label no-notes` :
+      `PR #${pr} has no patch note: add docs/patchnotes/${pr}.md (title, date, area, issues in front matter, then 1-6 "- " lines on what the player will see; "Nothing you will notice: ..." for CI and tests), or label the PR no-notes and re-run`);
+  }
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');
