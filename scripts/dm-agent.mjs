@@ -76,6 +76,7 @@ export function dmSystemPrompt(st) {
     '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): for an elite or an ambush call stage_scene with preview "true" first to see the cast the game will build, then write a frame that fits it (a frame of armed men over a pack of boars is refused); you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
     '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); you do not need to do anything for that.',
     DM_FELLOWSHIP_ORDERS,
+    DM_COMPANY_ORDERS,
     DM_EVENT_ORDERS,
     DM_CALL_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
@@ -91,6 +92,10 @@ export const withDmFellowshipOrders = sys => {
   const at = sys.indexOf('\n- If dm_status shows a Table scene');
   return at < 0 ? sys + '\n' + DM_FELLOWSHIP_ORDERS : sys.slice(0, at) + '\n' + DM_FELLOWSHIP_ORDERS + sys.slice(at);
 };
+// Every company a thread (issue #450, epic #402): agent heroes ride in companies (a solo is a company of one). The line;
+// withDmCompanyOrders adds it to an older session's prompt.
+export const DM_COMPANY_ORDERS = '- Every company is a thread. When more than one company rides (dm_status companies_needs, companies_view for the detail), serve the company at the head of companies_needs first: the followed company first only when it must choose; then a pending scene or vote; then members badly hurt in the field; then the company longest without you. Then each other company in turn, the one longest without you first, so nobody is starved: a solo\'s road gets a hook before the five get a third. A member who splits off or leaves is a thread of its own, and a solo is the most fragile: size its foes and jobs for one blade.';
+export const withDmCompanyOrders = sys => /\bEvery company is a thread\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_COMPANY_ORDERS;
 // World events (issue #352): festivals, plagues and the rest through start_event, the Fellowship first. withDmEventOrders adds it to an older session's prompt.
 export const DM_EVENT_ORDERS = '- World events (start_event: a festival, a plague, and the other kinds dm_status world_events lists) change a whole region for days. The Fellowship comes first here too: consider one only when nothing is pending for them, and only where it fits the region they ride or are headed to (world_events fellowship_regions), so it meets them on their road. One runs at a time and one may start a day; world_events says what is running, whether one may start today and why not. Give the reason the story needs it; the watcher reads it in the DM log, no hero ever does.';
 export const withDmEventOrders = sys => /\bWorld events \(start_event\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_EVENT_ORDERS;
@@ -114,7 +119,11 @@ export const dmTurnPrompt = (turns, st) => turns === 0
   ? 'You take the DM seat. Orient yourself: dm_status, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
   : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign, the Fellowship first.${notesNow(st)}`;
 // Each turn starts with the Fellowship (issue #165): the status line and the first needs, then the wider world only if nothing is pending for them.
-export const fellowNow = st => {const n = st && st.fellowship_needs; if (!n) return ''; return `Fellowship first: ${n.summary} ${(n.items || []).slice(0, 3).join(' ')} ${n.quiet ? 'Nothing is pending for them, so the wider world may have a turn after you have given them something to ride toward.' : 'Settle what is pending for them before you touch the wider world.'} `.replace(/\s+/g, ' ').trim() + ' '};
+export const fellowNow = st => {const n = st && st.fellowship_needs; if (!n) return companiesNow(st); return `Fellowship first: ${n.summary} ${(n.items || []).slice(0, 3).join(' ')} ${n.quiet ? 'Nothing is pending for them, so the wider world may have a turn after you have given them something to ride toward.' : 'Settle what is pending for them before you touch the wider world.'} `.replace(/\s+/g, ' ').trim() + ' ' + companiesNow(st)};
+// Every company a thread (#450): when other companies ride, the turn prompt names them neediest first (at most four) and why.
+export const companiesNow = st => {const L = st && Array.isArray(st.companies_needs) ? st.companies_needs : []; if (!L.length) return '';
+  const top = L[0], first = (top.items || []).slice(0, 2).join(' ');
+  return `Companies, neediest first: ${L.slice(0, 4).map(c => `${c.company} (${c.why}; ${c.summary.replace(/\.$/, '')})`).join('; ')}. Start with ${top.company}${first ? ': ' + first : '.'} `.replace(/\s+/g, ' ').trim() + ' '};
 // Is a Fellowship-change turn due before the next evening? last: {sig, gm} of the previous turn; ev: {day, n} (mutated by noteEvent).
 export const eventDue = (st, last, ev) => !!(st && st.ok && st.fellowship_change && last && last.sig != null && st.fellowship_change !== last.sig && last.gm != null && st.gameMin - last.gm >= EVENT_GAP && !(ev && ev.day === st.day && ev.n >= EVENT_MAX));
 export const noteEvent = (ev, st) => {if (ev.day !== st.day) {ev.day = st.day; ev.n = 0} ev.n++};
@@ -295,7 +304,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
+  sess.system = withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}

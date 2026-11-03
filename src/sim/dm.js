@@ -57,7 +57,7 @@ import {makeItem,equip,weakestSlot,slotLevel} from './gear.js';
 import {addGear,addQuest,hasQuestFor,dropQuest} from './inv.js'; // quest items an adventure carries (sim/inv.js)
 import {jobDone} from './questlog.js'; // several quests per hero (the quest log)
 import {say} from './chat.js';
-import {focus} from './dmfocus.js'; // the Fellowship first (issue #165)
+import {focus,focuses,focusFor,ffFor} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
 import {takeChance,focusOf,focusCount} from './guildfocus.js'; // a Wayfaring guild's leaders take hooks more readily (#6)
 import {d20} from './narrator.js';
 import {bestFor,socialSkill,SKILLS} from './abilities.js';
@@ -205,7 +205,7 @@ function giverOf(town,roles){const ps=(S.npcs||[]).filter(p=>p.town===town.name&
 export function postHook(c,tpl,src,o={}){const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
   const h={id:++S.uid,phase:'open',town:c.name,fac:c.fac,tpl,src,giver:g,zone:o.zone==null?null:o.zone,for:o.for==null?null:o.for,
     data:{thing:o.thing||(T.things?pickA(T.things):null),...(o.data||{})},born:S.gameMin,until:S.gameMin+ri(...K.HOOK_LIFE)*(o.zone==null?1:.5)}; // news tied to one place goes stale sooner
-  if(o.by&&o.by!=='scripted')h.by=o.by;if(o.ff)h.ff=1;if(o.solo)h.solo=1; // who made it, for the quest log (sim/questlog.js): the DM agent, or the scripted DM's Fellowship-first job
+  if(o.by&&o.by!=='scripted')h.by=o.by;if(o.ff)h.ff=1;if(o.ff&&o.cid!=null)h.cid=o.cid;if(o.solo)h.solo=1; // who made it, for the quest log (sim/questlog.js): the DM agent, or the scripted DM's Fellowship-first job
   S.adventures.push(h);bump(stats().hooks,src);bump(stats().offered,tpl);return h}
 export function withdrawHook(id){const i=S.adventures.findIndex(h=>h.id===id&&h.phase==='open');if(i<0)return null;return S.adventures.splice(i,1)[0]}
 // The scripted DM posts every hook through the post_hook lever. On the board refresh the lever's
@@ -254,33 +254,39 @@ export function takeBounty(a,b){a.quest={type:b.type,need:b.need,have:0,at:Math.
 // on the captain's bounty for the region they hunt (#325). The members in slot order; the job's template is drawn. Every one
 // is tagged ff, and an ff job fits the whole Fellowship (fits). Returns the posted hook or null (then the ordinary draw runs).
 function fellowHook(c,fo){
-  const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl));
+  const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl)),five=!!fo.company.slots,co=fo.cid;
+  if(!five&&lo<K.MIN_LVL)return null; // nothing on a board fits a company with a member this green (#450)
   for(const a of fo.members){if(a.adv||a.lvl<K.MIN_LVL||S.adventures.some(h=>h.phase==='open'&&h.for===a.id))continue;
-    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data,ff:1},'a Fellowship member’s oath',true)}
+    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data,ff:1,cid:co},five?'a Fellowship member’s oath':'a company member’s oath',true)}
   const taken=m=>S.adventures.some(h=>h.data&&h.data.eliteId===m.id&&h.phase!=='done');
   const E=S.mobs.filter(m=>m.elite&&m.alive&&!m.gone&&!taken(m)&&m.lvl<=hi+2).sort((p,q)=>dist(p,fo)-dist(q,fo)||p.id-q.id)[0];
-  if(E&&fo.members.length>=2){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper'],ff:1},'a living elite lies near the Fellowship’s road',true)}
+  // a hunt needs two blades walking together (another company: its walking party)
+  if(E&&(five?fo.members.length:fo.party?fo.party.mem.filter(alive).length:1)>=2){const z=MOBS[E.type].z;return newHook(c,'hunt','rumour',{zone:z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl},roles:['innkeeper'],ff:1,cid:co},five?'a living elite lies near the Fellowship’s road':'a living elite lies near the company’s road',true)}
   const z=fo.zone!=null&&band(fo.zone)[0]<=lo&&band(fo.zone)[1]>=lo-4?fo.zone:null;
   if(z==null)return bountyHook(c,fo);
-  const tpl=pickA(Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'));const T=D.ADVENTURES[tpl],g=giverOf(c,T.givers);
-  return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g,zone:z,ff:1},'a job in the region the Fellowship rides',true)}
+  const tpls=Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'&&(five||D.ADVENTURES[k].lvl<=lo));if(!tpls.length)return null; // the five draw as before; another company only what its lowest can take
+  const tpl=pickA(tpls);const T=D.ADVENTURES[tpl],g=giverOf(c,T.givers);
+  return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g,zone:z,ff:1,cid:co},five?'a job in the region the Fellowship rides':'a job in the region the company rides',true)}
 // The captain's bounty, with a job attached (issue #325): since #67 the Fellowship rode out on a bounty and came home less
 // often, and only to a board of jobs sized for background parties. When a bounty is posted for the region the Fellowship
 // hunts, the captain posts a Fellowship-first job in that region; the bounty stays up for everyone else.
 const BOUNTY_TPLS=Object.keys(D.ADVENTURES).filter(k=>k!=='fallen'&&(D.ADVENTURES[k].givers||[]).includes('captain'));
-const fellowZone=fo=>{const P=(S.parties||[]).find(p=>p.fellow&&p.leader&&p.leader.state!=='dead');return P&&P.zone!=null?P.zone:huntZone(fo.members[0])};
+const fellowZone=fo=>{const P=(S.parties||[]).find(p=>p.company===fo.cid&&p.leader&&p.leader.state!=='dead');return P&&P.zone!=null?P.zone:huntZone(fo.members[0])};
 function bountyHook(c,fo,b){const z=fellowZone(fo);b=b||bountiesAt(c).find(x=>x.z===z);if(!b||!BOUNTY_TPLS.length)return null;
-  const h=newHook(c,pickA(BOUNTY_TPLS),'writ',{giver:{name:b.giver,role:'captain'},zone:b.z,ff:1,data:{bounty:b.id}},'the gate captain’s bounty lies in the Fellowship’s region',true);
+  const five=!!fo.company.slots,lo=Math.min(...fo.members.map(m=>m.lvl)),tpls=five?BOUNTY_TPLS:BOUNTY_TPLS.filter(k=>D.ADVENTURES[k].lvl<=lo);if(!tpls.length)return null;
+  const h=newHook(c,pickA(tpls),'writ',{giver:{name:b.giver,role:'captain'},zone:b.z,ff:1,cid:fo.cid,data:{bounty:b.id}},five?'the gate captain’s bounty lies in the Fellowship’s region':'the gate captain’s bounty lies in the company’s region',true);
   if(h)bump(stats(),'ffBounty');return h}
 // An open Fellowship-first job (or one for a member) on this board: the only kind a full Fellowship party can take.
-const ffOpen=(c,fo)=>S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&(h.ff||h.for!=null&&fo.ids.has(h.for)));
+// Per company (#450): that company's own hall job, so two companies sharing a hall each keep one.
+const ffOpen=(c,fo)=>S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&(ffFor(h,fo)||h.for!=null&&fo.ids.has(h.for)));
 // Town gate (heroes.js, a Fellowship leader that found no job): the bounty of the region it sets out for becomes its job.
-// Returns true when the party set out on it; false leaves the ordinary bounty branch in charge. Never runs without a Fellowship.
-export function fellowBounty(a,c,z){const fo=focus();if(!fo||!a.fellow||fo.town!==c||(a.party&&a.party.leader!==a)||ffOpen(c,fo))return false;
+// Returns true when the party set out on it; false leaves the ordinary bounty branch in charge. Never runs without a company:
+// the hero's own company (#450; heroes.js calls it for the Fellowship's leader).
+export function fellowBounty(a,c,z){const fo=focusFor(a);if(!fo||fo.town!==c||(a.party&&a.party.leader!==a)||ffOpen(c,fo))return false;
   const b=bountiesAt(c).find(x=>x.z===z);if(!b)return false;
   boardLever=null;const h=bountyHook(c,fo,b);if(!h)return false;boardLog(c,h,[],boardLever?[boardLever]:[]);
   return dmDepart(a,c)}
-function makeHook(c){const seen=S.dmSeen,fo=focus();
+function makeHook(c,fo){const seen=S.dmSeen; // fo: the first company whose hall this is, or null
   if(fo&&fo.town&&fo.town.name===c.name&&!ffOpen(c,fo)){const h=fellowHook(c,fo);if(h)return h}
   const r=rnd();
   // recent deaths of this town's heroes, where they fell
@@ -318,12 +324,14 @@ function oathTpl(a){const g=a.goal;if(!g||g.done)return null;
 function fits(h,a,mem){const T=D.ADVENTURES[h.tpl],lo=Math.min(...mem.map(b=>b.lvl)),hi=Math.max(...mem.map(b=>b.lvl));
   if(h.for!=null&&!mem.some(b=>b.id===h.for))return false;
   if(h.solo&&mem.length!==1)return false; // a solo-sized job is for one hero (#447)
-  const whole=h.ff&&mem.some(b=>b.fellow); // a Fellowship-first job is theirs and takes the whole Fellowship (#325): the size cap is for background parties
+  const own=h.ff&&h.cid!=null&&!slotCo(h.cid); // another company's hall job (#450): its members, whatever its size, a solo too
+  const whole=h.ff&&mem.some(b=>own?b.company===h.cid:b.fellow); // a Fellowship-first job is theirs and takes the whole Fellowship (#325): the size cap is for background parties
   if(h.ff&&!whole)return false;
-  if(mem.length<T.size[0]||(!whole&&mem.length>T.size[1])||lo<Math.max(K.MIN_LVL,T.lvl))return false;
+  if((!own&&mem.length<T.size[0])||(!whole&&mem.length>T.size[1])||lo<Math.max(K.MIN_LVL,T.lvl))return false;
   if(h.data.eliteId!=null){if(mem.length<2||hi<h.data.eliteLvl-2)return false;const E=S.mobs.find(m=>m.id===h.data.eliteId);if(!E||!E.alive||E.gone)return false}
   if(h.zone!=null){const b=band(h.zone),home=partyZone(a);if(h.zone!==home&&!(b[0]<=lo&&b[1]>=lo-4))return false}
   return true}
+const slotCo=id=>{const C=(S.companies||[]).find(x=>x.id===id);return !!(C&&C.slots)};
 const partyZone=a=>a.party?a.party.zone:huntZone(a);
 
 // ---- starting, resuming, leaving ----
@@ -662,15 +670,22 @@ function refill(){const gone={};
   // party of any level always has something on the board.
   // Fellowship first (issue #165): its hall's board is filled first; other boards fill beyond a floor of one posted job only
   // while the Fellowship has a job under way (then the world's background hooks are not starved, and not ahead of the story).
-  const fo=focus(),order=fo&&fo.town?[fo.town,...CITY.filter(c=>c!==fo.town)]:CITY;
+  // Every company a thread (#450): each company's hall is filled first (the followed company's first) and keeps one job for
+  // each company it is the hall of; boards that are nobody's hall hold at the floor while some company has nothing under way.
+  const fs=focuses(),halls=[];for(const f of fs)if(f.town&&!halls.includes(f.town))halls.push(f.town);
+  const order=halls.length?[...halls,...CITY.filter(c=>!halls.includes(c))]:CITY,idle=fs.some(f=>!f.busy);
   for(const c of order){const posted=S.adventures.filter(h=>h.phase==='open'&&h.town===c.name&&h.for==null&&!h.solo);
-    if(fo&&fo.town&&c!==fo.town&&!fo.busy&&posted.length>=K.FLOOR)continue;
+    const here=fs.filter(f=>f.town===c),fo=here[0]||null;
+    if(halls.length&&!fo&&idle&&posted.length>=K.FLOOR)continue;
+    // a second company with the same hall: its own job on that board too, one per company
+    for(const o of here.slice(1))if(!o.busy&&!ffOpen(c,o)){boardLever=null;const h=fellowHook(c,o);if(h)boardLog(c,h,[],boardLever?[boardLever]:[])}
     // the Fellowship's hall keeps one job they can take on top of a full board (#325)
-    if(fo&&c===fo.town&&!fo.busy&&posted.length>=K.HOOKS&&!ffOpen(c,fo)){boardLever=null;const h=fellowHook(c,fo);if(h){boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}}
-    if(posted.length<K.HOOKS){boardLever=null;const h=makeHook(c);boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}
+    if(fo&&!fo.busy&&posted.length>=K.HOOKS&&!ffOpen(c,fo)){boardLever=null;const h=fellowHook(c,fo);if(h){boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}}
+    if(posted.length<K.HOOKS){boardLever=null;const h=makeHook(c,fo);boardLog(c,h,gone[c.name]||[],boardLever?[boardLever]:[]);continue}
     if(!posted.some(h=>h.zone==null)){const w=pull('withdraw_hook',{hook:posted[0].id},{by:'scripted',reason:'every posted job was tied to one region',log:false});
       boardLever=null;const h=townHook(c);boardLog(c,h,(gone[c.name]||[]).concat(w.ok?[hookRow(posted[0],'every posted job was tied to one region: oldest taken down')]:[]),[w.entry.detail].concat(boardLever?[boardLever]:[]))}}
-  for(const c of order){boardLever=null;const h=soloHook(c,fo);if(h)boardLog(c,h,[],boardLever?[boardLever]:[])}} // a solo-sized job on every board a solo's faction owns (#447)
+  const five=fs.find(f=>f.company.slots)||null;
+  for(const c of order){boardLever=null;const h=soloHook(c,five);if(h)boardLog(c,h,[],boardLever?[boardLever]:[])}} // a solo-sized job on every board a solo's faction owns (#447)
 // Solo-sized jobs (#447, epic #402): while an agent company of one exists in a faction, each of that faction's boards keeps
 // one posted job sized for a single hero, inside the lowest solo's level band and paid K.SOLO_PAY. Not posted at all with
 // no solo (the default together world and a world without a Fellowship draw no dice here and stay byte-identical). The
@@ -684,7 +699,7 @@ function soloHook(c,fo){const hs=soloHeroes(c.fac);if(!hs.length)return null;
   const tpl=pickA(tpls),T=D.ADVENTURES[tpl],g=giverOf(c,T.givers),hz=huntZone(low);
   const zone=hz!=null&&band(hz)[0]<=lo&&band(hz)[1]>=lo-4?hz:null;
   return newHook(c,tpl,g.role==='captain'?'writ':g.role==='innkeeper'?'rumour':'request',{giver:g,zone,solo:1,data:{payMul:K.SOLO_PAY}},'a job sized for one blade',true)}
-const hookRow=(h,why)=>({id:h.id,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone],for:h.for==null?null:h.for,why});
+const hookRow=(h,why)=>({id:h.id,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone],for:h.for==null?null:h.for,...(h.cid!=null?{cid:h.cid}:{}),why});
 // One log entry per town per refresh: what went up on the board, what came down, what stands.
 // levers: the post_hook / withdraw_hook pulls behind this refresh (the Levers filter shows the entry).
 function boardLog(c,h,removed,levers){const open=S.adventures.filter(x=>x.phase==='open'&&x.town===c.name);
@@ -700,11 +715,12 @@ function boardLog(c,h,removed,levers){const open=S.adventures.filter(x=>x.phase=
 // one line naming the town, the job and the member it is for (the oath-bearer, else the party's leader). Other postings stay
 // out of the Chronicle. No dice: the job's kind and region name it, not its drawn title. The giver is the townsperson who
 // pins it up; the DM (scripted or agent) is never named.
-function hallLine(c,h,who){const fo=focus();if(!fo)return;
-  const P=(S.parties||[]).find(p=>p.fellow&&p.leader&&fo.ids.has(p.leader.id)&&alive(p.leader));
+function hallLine(c,h,who){const fo=h.cid!=null?focuses().find(f=>f.cid===h.cid):focus();if(!fo)return;
+  const P=(S.parties||[]).find(p=>p.company===fo.cid&&p.leader&&fo.ids.has(p.leader.id)&&alive(p.leader));
   const a=who&&fo.ids.has(who.id)?who:P?P.leader:fo.members[0];if(!a)return;
   const T=D.ADVENTURES[h.tpl],job=(h.data&&h.data.beast?'Hunt '+h.data.beast:T&&T.name||h.tpl)+(h.zone!=null&&ZONES[h.zone]?' in '+ZONES[h.zone]:'');
-  log(gold(c.name),' hall board: '+(h.giver?h.giver.name:'the gate captain')+' posts a job for ',a,who===a?': ':' and the Fellowship: ',gold(job),'.')}
+  const co=fo.company.slots?'the Fellowship':fo.members.length>1?(fo.company.name||'the company'):null; // a solo's job is just theirs
+  log(gold(c.name),' hall board: '+(h.giver?h.giver.name:'the gate captain')+' posts a job for ',a,who===a||!co?': ':' and '+co+': ',gold(job),'.')}
 
 // Remember where road encounters ended, so a robbed wagon can become an investigation.
 function watchWorld(){const seen=S.dmSeen.enc,E=S.encounters||[],now={};
