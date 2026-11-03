@@ -41,6 +41,7 @@ import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {moment} from './reflect.js'; // a dream is a reflection moment (#523)
 import {ensureNpcs} from './npcs.js';
 import {stageScene,tableCall,tableAnswer,stagedView,STAGE} from './staged.js';
+import {gone as dmGone} from './dmreflex.js'; // the DM's reflexes (#561)
 import {sceneCall,sceneAnswer,ourScene,openingDue} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
 import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
@@ -91,9 +92,11 @@ export function dmState(){if(S.dmAgent)return S.dmAgent;const D=newDm();S.dmAgen
 function newDm(){return {world:'w'+Math.round(S.gameMin)+'-'+(S.uid||0),seat:false,notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,[]])),seq:0,
   day:{d:-1,pulls:0,notes:0,intents:0},calls:[],seen:{tl:0,chron:'',log:0},stats:{calls:0,pulls:0,refused:0}}}
 export const dmSeatOn=()=>!!(S.dmAgent&&S.dmAgent.seat);
-// Open or close the DM seat (the DM panel's "DM agent" button, play-headless --dm). Notes stay either way.
-export function setDmSeat(on){const D=dmState();on=!!on;if(D.seat===on)return on;D.seat=on;
-  dmlog('agent',null,[on?'The DM seat is open: an agent DM may sit in (npm run dm).':'The DM seat is closed: the scripted DM runs alone.'],{by:'dm-agent',seat:on});return on}
+// Open or close the DM seat. A played world opens it from its first tick (#559: the DM is always an agent); play-headless
+// --dm opens it, and only a world with no host (npm run sim, the checks) leaves it closed. Closing it means the runner is
+// gone: every call waiting for the DM is filled by its reflexes at once (sim/dmreflex.js, #561). Notes stay either way.
+export function setDmSeat(on){const D=dmState();on=!!on;if(!on)dmGone();if(D.seat===on)return on;D.seat=on;
+  dmlog('agent',null,[on?'The DM seat is open: the DM agent sits in (npm run dm).':'The DM seat is closed: its reflexes answer for the DM until a runner holds the seat again.'],{by:'dm-agent',seat:on});return on}
 // For the panels: the seat's recent calls and today's counts.
 export const dmAgentView=()=>S.dmAgent?{seat:S.dmAgent.seat,calls:S.dmAgent.calls.slice(0,8),day:{...S.dmAgent.day},stats:{...S.dmAgent.stats}}:null;
 
@@ -624,7 +627,7 @@ export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
   const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
   if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
-  if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
+  if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
   const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
   try{switch(tool){

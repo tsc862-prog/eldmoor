@@ -51,3 +51,4 @@
 - [CI correctness](ci-correctness.md) — #573 hashcheck source+hash-guard, rulescheck allowlist, merge_group, pitfalls
 - [CI observation](ci-observation.md) — #574 flake hunt, nightly mock run + thresholds, shoot.mjs, red-main alarm, helpers, pitfalls
 - [Company runners](company-runners.md) — #460 kind company, seatInfo health fields, adopt (leaver/heir restarts), per-company digest+report, shims left
+- [DM reflexes](dm-reflexes.md) — #561 dmreflex.js heard/alive/gone, no seat-closed paths, fill why slow|gone, dmShare arrival, RNG test pitfall

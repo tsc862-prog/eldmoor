@@ -166,7 +166,7 @@ function outcome(sc){const c=sc.ctx,here=atFire(sc),spoke=sc.beats.filter(b=>b.l
 function view(sc,a){const c=sc.ctx;if(c.mode!=='camp')return {talk:'one round: how was that'};const q=c.asked&&c.asked[a.id];
   return {topic:c.topic||null,talk_round:(sc.rd||1)+' of up to '+c.rounds,...(q?{asked_you:q.name+': "'+cut(q.q,120)+'"'}:{}),how:'Speak in your own voice; ask a companion by name; tell a story of your past (it becomes your backstory); or listen.'}}
 
-// ---- the DM's frame (the DM agent through table_call when it holds the seat; else the scripted DM) ----
+// ---- the DM's frame (the DM agent through table_call; a bounded wait, then the DM's reflex fills it and is logged as a fill, #561) ----
 const DM_FIRE={
   onFrame(sc){const c=sc.ctx,L=atFire(sc);
     pushCall(sc,{kind:'frame',who:'the narrator',about:'Frame the night\'s talk round the fire for '+L.map(a=>a.name+' ('+a.cls+')').join(', ')+' at their camp in '+c.zone+
