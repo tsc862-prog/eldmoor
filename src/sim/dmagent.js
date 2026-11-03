@@ -122,7 +122,7 @@ function placeOf(near){const nt=nearText(near);if(nt.err)return null;const s=Str
   const z=regionIdx(s);if(z!=null){const p=centreOf(z);return p?{...p,label:'in '+ZONES[z],z}:null}
   return null}
 function remember(tool,args,ok){const D=dmState();D.stats.calls++;
-  D.calls.unshift({t:clockStr(),tool,args:args&&Object.keys(args).length?JSON.stringify(args).slice(0,140):'',ok:!!ok});if(D.calls.length>DMA.CALLS_KEEP)D.calls.pop()}
+  D.calls.unshift({t:clockStr(),tool,args:args&&Object.keys(args).length?JSON.stringify(args,(k,v)=>k[0]==='_'?undefined:v).slice(0,140):'',ok:!!ok});if(D.calls.length>DMA.CALLS_KEEP)D.calls.pop()}
 
 // ---- the per-turn record (issue #181) ----
 // Each call lands in the open turn (opened by the first call after the last turn closed); the runner closes it with
@@ -288,7 +288,7 @@ function fellowshipView(){const F=S.fellowship;if(!F)return {ok:true,fellowship:
   const members=fellowshipMembers().map(m=>{const a=m.hero;if(!a)return {role:m.label,empty:true};
     const P=a.persona||{},M=a.memory||{};
     return {...heroLine(a),...sightOf(a),role:m.label,persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
-      oath:a.goal&&!a.goal.done?a.goal.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
+      oath:a.goal&&!a.goal.done?a.goal.text:null,vow:a.vow?a.vow.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
       stances:Object.fromEntries(Object.entries(M.stances||{}).filter(([id])=>!(P.stanceBy&&P.stanceBy[id]==='self')).slice(0,6).map(([id,s])=>{const b=S.agents.find(x=>String(x.id)===String(id));return [b?b.name:'#'+id,String(s).slice(0,120)]}))}});
   return {ok:true,fellowship:{name:F.name,faction:facName(F.fac),hall:F.hall||null,founded_day:F.day||null,minds:mindsOf(F),members,
     open_threads:openThreads().map(t=>({kind:t.kind,text:txt(t.parts)})),proposals:openProps().map(P=>({id:P.id,kind:P.kind,details:P.details||null,by:P.by||null})),
@@ -623,6 +623,7 @@ export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40)
 export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
   const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
+  if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed. Open it in the game (Dungeon Master panel: "DM agent") or start the headless world with --dm.',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
   const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)

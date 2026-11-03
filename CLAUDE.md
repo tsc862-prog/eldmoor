@@ -150,19 +150,26 @@ other. The rules:
 - `npm run archetypecheck`: Fellowship archetypes (#295, `src/data/archetypes.js`, `applyArchetype` in `src/sim/persona.js`): six archetypes picked on the setup page or the sheet, their stances toward each companion reaching prompts (#305), owner stances, no RNG.
 - `npm run personacheck`: agent-built personality (#409): the `self`/`become` tools, daily limits, owner pins, the persona history, relay writing never overwriting the hero's own words, the turn-header line and the standing-order block, a reflection that changes the persona, privacy, save/restore and old saves, no RNG.
 - Art (#177, `scripts/art/`): `manifest.json` lists every asset (kind, size, priority, prompt, seed, palette paths into
-  `src/render/palette.js`, the renderer hook naming its procedural fallback) and the candidate models (pixel-art LoRAs
-  on fal-ai through Hugging Face Inference Providers). `npm run art:daily` (`daily.mjs`; `-- --now` to run at once,
-  `--max N`, `ART_MAX_CALLS`, `--dry-run`) generates missing assets in priority order until the free allowance is used
-  up (402, a quota 429/403, rate headers at 0), into `assets/incoming/<date>/` with a contact sheet; state in
+  `src/render/palette.js`, the renderer hook naming its procedural fallback), the candidate models (pixel-art LoRAs
+  on fal-ai through Hugging Face Inference Providers) and `allowance.monthlyUsd`. `npm run art:daily` (`daily.mjs`;
+  `-- --now` to run at once, `--max N`, `ART_MAX_CALLS`, `ART_DAILY_BUDGET`/`--budget`, `--dry-run`) generates missing
+  assets in priority order into `assets/incoming/<date>/` with a contact sheet, and stops at the day's share of the
+  monthly credits (monthlyUsd / days in the month; HF gives free accounts no Inference Providers credits and PRO $2.00 a
+  month, about $0.01 an image with pixel-xl), at the month's total, or when the provider refuses (402, a quota 429/403,
+  rate headers at 0). It keeps every provider image as it came under `assets/incoming/<date>/raw/` before
+  post-processing, and `npm run art:reprocess -- <date>|all [keys]` re-runs post-processing on them with no call. State in
   `assets/queue.json` (gitignored), one line a run in `logs/art.log` (the launcher's `s` shows it); refused models fall
   through to the next candidate and the one that answers is pinned. `npm run art:accept -- <ids>|all` (`--reject`,
-  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scriptsartschedule.cmd [HH:MM]`
+  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. `scripts\art\schedule.cmd [HH:MM]`
   registers the daily Windows task. `npm run art:gen` generates straight into `assets/`, `npm run art:sheet` writes
-  the contact sheet. Post-processing (`post.mjs`, zero-dependency PNG codec `png.mjs`): background, downscale to the
-  pixel grid, quantise to the palette, outline. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until
-  loaded or when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names
-  the road, water and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against
-  a mock Hugging Face server.
+  the contact sheet. Post-processing (`post-texture.mjs` on the building blocks of `post.mjs`, zero-dependency PNG codec
+  `png.mjs`): find the model's pixel grid and sample cell centres (the image at its own pixel scale, ~128 px from 1024),
+  a seamless crop for tiles (base tiles are 32x32 patches) or a scaled subject for sprites, tone match and quantise to
+  the palette (widened with shades, optional ordered dither), outline; an output under `post.minColors` (4 for tiles)
+  is rejected as flat, not written. Browser: `src/render/assets.js` `asset(id)`/`assetPixels(id)` (null until loaded or
+  when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names the road, water
+  and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against a mock Hugging
+  Face server and a pixel-art fixture.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player
@@ -350,6 +357,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   characters; under ~2.5k tokens by its caps); the first turn of a resumed run is told to read it. Old saves migrate
   on first touch (an existing journal becomes chapter 1, unlabeled). Hardcore: they die with the hero. No RNG, so the
   seeded sim is unchanged. Mirrored as `LIFE.md`. `npm run tiercheck`.
+- Semantic recall (#553, `scripts/embed.mjs`, `src/sim/semkey.js`): `recall` and `journal_search` (and the DM's `recall`) also find by meaning when the relay has a local embedding model (`OLLAMA_EMBED_MODEL`, default `nomic-embed-text`, `ollama pull nomic-embed-text`; `RELAY_EMBED=0` turns it off; `/api/embed` through `providers/ollama.mjs` `embed()`, no `num_ctx`). The sim never calls a network: for a query the relay asks the game for the texts (`_pool`), ranks them (cosine, scaled between `EMBED_MIN` .55 and `EMBED_FULL` .8, 300 ms budget, a cold cache fills in the background) and passes `{hash: 0..1}` as `_sem`; the tool adds up to `SEM.MAX` 2 to a hit's keyword score (a title or tag word is worth 3, so keywords still win) and marks it `semantic`, result `ranked: 'keywords and meaning'`. Agents cannot set `_sem`/`_pool` (stripped). Vectors are not in the save: `logs/agents/<world>/<heroId>-<name>/vectors.json` (the DM's under `dm/`), keyed by text hash, rebuilt when missing, stale or another model; a new world purges them with the folder, a fallen hero's file is removed. Not pulled, Ollama down or slow: scoring is exactly the game's own. The state header's relevant notes stay game-side. `play-headless --embed` opts in. `npm run embedcheck`.
 - Reflection moments (#179, `src/sim/reflect.js`): at natural pauses (making camp, the end of a Table scene, a
   companion's death, an oath kept, a buy or sell of 150g+, a conversation of 4 lines within 3 game hours, and dusk from
   19:00 once a game day when something happened) the state header names `reflect {id, kind, why}` and the runner's next

@@ -84,6 +84,7 @@ import {SPEC_LVL} from '../data/classes.js';
 import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfession,unlearnProfession,profKey} from './gather.js'; // professions and gathering (#257)
 import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid} from './inv.js'; // the pack (#124)
+import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
 import {worldHeld,holdLine} from './prep.js'; // the world held before play (#559)
 
 // ---- knobs ----
@@ -809,7 +810,7 @@ const T={
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
       state:a.state,doing:a.playDoing||null,queue:(a.pq||[]).map(cmdText),
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
-      oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,
+      oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
       abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
@@ -984,8 +985,23 @@ const T={
       return {ok:true,focus:adv.title,scene:plain(advLine(a))||undefined,held:held.length?held:undefined,note:'The adventure leads you now; what you set aside waits in your quest log.'}}
     let aside=null;if(run)aside=holdAdventure(a);setFocus(a,q.id);
     return {ok:true,focus:q.title,set_aside:aside?aside.title:undefined,note:aside?aside.title+' waits where it stands (focus_quest it, or come back near its place).':undefined}},
+  swear_oath(a,{text,kind,about,days}){const no=canSwear(a);need(!no,no);
+    const k=clean(kind,12).toLowerCase()||'vow';need(VOW.KINDS.includes(k),'kind is one of '+VOW.KINDS.join(', ')+'.');
+    const w=clean(about,60);need(k==='vow'||w,'A '+k+' vow needs an about: '+(k==='reach'?'a region, town or landmark you know':k==='protect'?'a companion by name':k==='recover'?'the epic you mean to find':'the foe you mean to slay')+'.');
+    let ab=w?{name:w}:null;
+    if(k==='reach'){const p=placeNamed(w);need(p,'No such place: "'+w+'".');need(knowsPlace(a,p.name),'You do not know where '+p.name+' is yet.');ab={name:p.name,zone:p.zone,x:p.x,y:p.y,r:p.r}}
+    if(k==='protect'){const c=companyOf(a),ids=new Set([...(c?c.ids:[]),...partyMates(a).map(b=>b.id)]);const b=S.agents.find(x=>x!==a&&alive(x)&&ids.has(x.id)&&vnorm(x.name)===vnorm(w));
+      need(b,'You can protect only a companion: '+([...ids].map(id=>S.agents.find(x=>x.id===id)).filter(x=>x&&x!==a&&alive(x)).map(x=>x.name).join(', ')||'you ride alone')+'.');ab={name:b.name,id:b.id}}
+    const t=vowText(k,ab,clean(text,VOW.TEXT));need(t,'Say the words of the vow (text).');need(!notEnglish(t),ENGLISH);
+    const H=sayHearers(a),line=t.toLowerCase().indexOf('swear')>=0?t:'I swear it: '+t;
+    agentLine(a,speak(a,clean(line,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));
+    const v=swearVow(a,{kind:k,about:ab,text:t,days,hearers:H});
+    return {ok:true,sworn:v.text,id:v.id,kind:k,term_days:v.days,heard_by:H.map(b=>b.name),note:'It is in your quest log as an oath. Keep it, or renounce_oath (that costs).'}},
+  renounce_oath(a,{id,reason}){need(a.vow,'You hold no sworn vow. Only a vow you swore with swear_oath can be renounced; the oath you began with is not yours to break.');
+    need(!id||String(id).trim()===a.vow.id||vnorm(id)===vnorm(a.vow.text),'You hold no vow "'+id+'" (yours is '+a.vow.id+').');
+    const r=renounceVow(a,clean(reason,120));return {ok:true,renounced:r.vow.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. The witnesses remember it, and so do you.'}},
   abandon_quest(a,{id,reason}){const why=clean(reason,120)||null,q=findQ(a,id);need(q,'You hold no quest "'+id+'". quests lists them.');
-    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own.');
+    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own'+(a.vow&&a.vow.id===q.id?' (a vow you swore: renounce_oath, at a cost)':'')+'.');
     need(!/^scene:/.test(q.id),'You are in that scene; it ends at the table.');
     if(/^kill:/.test(q.id)){killAbandoned(a,why);a.quest=null;record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'The gate captain’s bounties stay posted: turn_in takes one if you want it.'}}
     const n=parseJob(q.id),h=(S.adventures||[]).find(x=>x.id===n);need(h,'That job is gone.');
@@ -1235,6 +1251,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(a.state==='dead'){const r={ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+', at '+(a.diedAt||'?')+'). Hardcore: one life. Their story is over.'};logCall(a,tool,args,r);return r}
   const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'};
   if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}} // held before play (#559): look, recall and the other reads still answer
+  if(args&&args._pool===true&&(tool==='recall'||tool==='journal_search'))return fn(a,args); // the relay's ask for the texts it embeds (#553): not a turn, not logged
   if(meta.act){const st=a.playRate||(a.playRate=[]);while(st.length&&st[0]<S.gameMin-60)st.shift();
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}
     st.push(S.gameMin)}
@@ -1264,7 +1281,7 @@ export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:fals
 // Recent tool calls for the Agent tab: newest first, short text.
 function logCall(a,tool,args,r){const L=a.playLog||(a.playLog=[]);
   L.unshift({t:clockStr(),d:dayNo(),tool,args:argText(args),ok:r.ok!==false,pending:!!r.pending||undefined,text:r.pending?'waiting...':summarize(r)});if(L.length>PK.LOG)L.pop()}
-const argText=x=>{if(!x||typeof x!=='object')return '';const k=Object.keys(x);return k.length?clean(k.map(j=>j+'='+(typeof x[j]==='string'?'"'+x[j]+'"':x[j])).join(' '),120):''};
+const argText=x=>{if(!x||typeof x!=='object')return '';const k=Object.keys(x).filter(j=>j[0]!=='_');return k.length?clean(k.map(j=>j+'='+(typeof x[j]==='string'?'"'+x[j]+'"':x[j])).join(' '),120):''};
 function summarize(r){if(r.ok===false)return 'x '+clean(r.error,160);const skip={ok:1,events:1,pending:1,as_of:1,since_look:1,changed:1,table_waits:1};
   return clean(Object.keys(r).filter(k=>!skip[k]).map(k=>{const v=r[k];return k+': '+(typeof v==='string'||typeof v==='number'?v:Array.isArray(v)?v.length+' item'+(v.length===1?'':'s'):v&&typeof v==='object'?'{...}':String(v))}).join(' · '),200)}
 

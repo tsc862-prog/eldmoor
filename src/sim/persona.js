@@ -298,7 +298,7 @@ export function selfView(a){const P=selfOf(a),T=changesToday(P),M=a.memory,tr=tr
   for(const id in P.stanceBy||{})if(P.stanceBy[id]==='self'&&!stances.some(s=>s.id==id)&&P.stances&&P.stances[id]){const b=byId(id);if(b)stances.push({who:b.name,id:b.id,line:P.stances[id],yours:true})}
   const people=Object.values(P.views).map(v=>({who:v.name,line:v.line}));
   const left=Math.max(0,SELF.PER_DAY-T.n),pins=SELF_FIELDS.filter(f=>P.pins[f]);
-  return {ok:true,who_you_are:personaLine(a),voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk,never_says:P.never_says,
+  return {ok:true,who_you_are:personaLine(a),voice:P.voice,wants:P.wants,...(a.vow?{sworn_vow:a.vow.text+' ('+Math.max(0,Math.ceil((a.vow.ends-S.gameMin)/1440))+' game days left)'}:{}),fears:P.fears,quirk:P.quirk,never_says:P.never_says,
     beliefs:P.beliefs||'(none named yet)',traits:tr.length?tr:['(none named yet)'],stances,...(people.length?{people}:{}),
     backstory:a.backstory&&a.backstory.summary?a.backstory.summary:null,...(P.archetype&&ARCHETYPES[P.archetype]?{began_as:ARCHETYPES[P.archetype].name}:{}),
     ...(pins.length?{fixed:pins.map(f=>SELF_LABEL[f])}:{}),

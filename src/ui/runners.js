@@ -164,7 +164,8 @@ export const companyRunnerSig=C=>{poll(true);const cr=runnerByKey('company:'+C.i
 // The DM agent's runner (#66): Start DM / Stop DM and its state, for the DM panel and the Minds panel's
 // DM row (src/ui/dmseat.js). It plays no hero, so it polls whether or not a hero is agent-played.
 export function dmRunnerControl(){poll(true);const d=el('span','runctl');const r=runnerByKey('dm'),on=r&&!DONE[r.state];
-  if(on)d.append(button('Stop DM','stop','dm',null,'Stop the DM agent (it lets go of the seat; the scripted DM runs on)'));
+  if(on){d.append(button('Restart DM','restart','dm',null,'Stop the DM runner and start it again (the world waits for the DM meanwhile)'));
+    d.append(button('Stop DM','stop','dm',null,'Stop the DM agent: the world pauses until a DM runner is back (Start DM)'))}
   else{const b=button('Start DM','start','dm',null,info&&!info.enabled?HOW_TEXT:'Start the DM agent from the relay (npm run dm, no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   const s=el('span','dm runstate r-'+(r&&!note.dm?r.state:'none'),' '+stateLine(r,'dm'));s.title=tip(r,6);d.append(s);
   return d}

@@ -16,7 +16,8 @@ import {join} from 'node:path';
 import {deflateSync} from 'node:zlib';
 import {ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf} from './art/lib.mjs';
 import {decodePng,encodePng,pngSize} from './art/png.mjs';
-import {resolvePalette,postProcess,hexToRgb} from './art/post.mjs';
+import {resolvePalette,hexToRgb,downscale} from './art/post.mjs';
+import {postProcess,detectGrid,expandPalette,colorCount} from './art/post-texture.mjs';
 
 let fails=0;const ok=(c,m)=>{if(c)console.log('  ok  '+m);else{fails++;console.log('  FAIL '+m)}};
 const man=loadManifest();
@@ -35,6 +36,14 @@ console.log('assets/ in the repo');
 console.log('PNG codec and post-processing');
 const synth=(w,h)=>{const d=new Uint8Array(w*h*4);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const o=(y*w+x)*4,inBlob=(x-w/2)**2+(y-h/2)**2<(w/3)**2;
   if(inBlob){d[o]=40+((x*7+y*3)%40);d[o+1]=130+((x*5)%50);d[o+2]=50}else{d[o]=255;d[o+1]=0;d[o+2]=255}d[o+3]=255}return {w,h,data:d}};
+// A stand-in for a pixel-art model image: a native texture of 'cells' greens drawn as blocks of 'block' px (fractional
+// allowed) from offset 'off', with soft block edges and noise, like pixel-art-xl's 1024 px output. 'flat' = one colour.
+const pixelArt=(size=1024,block=8,{off=3,seed=7,flat=false}={})=>{let r=seed>>>0;const rnd=()=>((r=(r*1664525+1013904223)>>>0)/4294967296);
+  const n=Math.ceil(size/block)+1,cells=[];for(let i=0;i<n*n;i++){const t=rnd(),tuft=rnd()<.12;cells.push(flat?[60,120,58]:tuft?[110+t*30,190+t*30,90]:[40+t*30,105+t*45,40+t*20])}
+  const d=new Uint8Array(size*size*4);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const cx=Math.floor((x-off)/block)+1,cy=Math.floor((y-off)/block)+1,c=cells[Math.max(0,cy)*n+Math.max(0,cx)];
+    const fx=((x-off)/block)%1,fy=((y-off)/block)%1,edge=(fx<.08||fx>.92||fy<.08||fy>.92)?.85:1,o=(y*size+x)*4,nz=flat?0:(rnd()-.5)*6;
+    d[o]=Math.max(0,Math.min(255,c[0]*edge+nz));d[o+1]=Math.max(0,Math.min(255,c[1]*edge+nz));d[o+2]=Math.max(0,Math.min(255,c[2]*edge+nz));d[o+3]=255}
+  return {w:size,h:size,data:d}};
 {const im=synth(37,23),b=encodePng(im),back=decodePng(b);ok(back.w===37&&back.h===23&&Buffer.from(back.data).equals(Buffer.from(im.data)),'RGBA round trip');
   ok(pngSize(b).w===37&&pngSize(b).h===23,'size from the header');
   // a 2x2 palette PNG with tRNS and a Paeth-filtered 2x1 RGB PNG, built by hand
@@ -46,13 +55,26 @@ const synth=(w,h)=>{const d=new Uint8Array(w*h*4);for(let y=0;y<h;y++)for(let x=
   ok(p.data[3]===0&&p.data[4+2]===255&&p.data[4+3]===255&&p.data[8+2]===255,'palette PNG with transparency');
   const q=decodePng(png(2,1,2,[],[4,10,20,30,5,5,5]));ok(q.data[4]===15&&q.data[5]===25&&q.data[6]===35,'Paeth filter');
   let jpegErr='';try{decodePng(Buffer.from([0xff,0xd8,0xff,0xe0,0,0,0,0,0,0]))}catch(e){jpegErr=e.message}ok(/JPEG/.test(jpegErr),'a JPEG answer is named, not misread')}
-{const e={size:[16,16],post:{transparent:true,outline:true}},pal=['#3f8a3a','#2a6e2c','#45923c'];
+{const grass=man.assets.find(a=>a.id==='tile:grass'),gpal=resolvePalette(grass.palette,PAL).colors,src=pixelArt();
+  const g=detectGrid(src);ok(g.found&&Math.abs(g.x.s-8)<=.25&&Math.abs(g.y.s-8)<=.25,`the model's pixel grid is found (${g.x.s}x${g.y.s}, offset ${g.x.o})`);
+  const g2=detectGrid(pixelArt(1024,8.5,{off:0,seed:9}));ok(g2.found&&Math.abs(g2.x.s-8.5)<=.25,`a fractional grid too (${g2.x.s})`);
+  // the first real run's failure: the whole image voted down to 16 px came out 1-2 colours
+  const old=downscale(src,16,16,gpal,'mode');ok(colorCount(old)<=2,`regression fixture: the old area vote gives ${colorCount(old)} colour(s)`);
+  const t=postProcess(src,grass,gpal,PAL.MARK.outline),t2=postProcess(src,grass,gpal,PAL.MARK.outline);
+  const pset=new Set(expandPalette(gpal,6).map(c=>hexToRgb(c).join(',')));let off=0;for(let i=0;i<t.w*t.h;i++){const o=i*4;if(!pset.has([t.data[o],t.data[o+1],t.data[o+2]].join(',')))off++}
+  ok(t.w===32&&t.h===32&&t.notes.colors>=6&&!off,`grass tile keeps its texture: 32x32, ${t.notes.colors} palette colours, grid ${t.notes.grid}, native ${t.notes.native}, seam ${t.notes.seam}`);
+  ok(Buffer.from(t.data).equals(Buffer.from(t2.data)),'deterministic');
+  const dith=postProcess(src,{...grass,post:{...grass.post,dither:24}},gpal,PAL.MARK.outline);ok(!Buffer.from(dith.data).equals(Buffer.from(t.data))&&dith.notes.colors>=4,'ordered dither changes the result and stays in the palette');
+  let flatErr=null;try{postProcess(pixelArt(1024,8,{flat:true}),grass,gpal,PAL.MARK.outline)}catch(e){flatErr=e}
+  ok(flatErr&&flatErr.kind==='flat'&&/flat: 1 colour/.test(flatErr.message),'a flat output is rejected, not written: '+(flatErr&&flatErr.message));
+  ok(expandPalette(['#3f8a3a','#2a6e2c'],6).length===6,'a short palette is widened with shades')}
+{const e={kind:'sprite',size:[16,16],post:{transparent:true,outline:true}},pal=['#3f8a3a','#2a6e2c','#45923c'];
   const a=postProcess(synth(256,256),e,pal,PAL.MARK.outline),b=postProcess(synth(256,256),e,pal,PAL.MARK.outline);
-  ok(a.w===16&&a.h===16,'downscaled to 16x16');ok(Buffer.from(a.data).equals(Buffer.from(b.data)),'deterministic');
-  const allowed=new Set([...pal,PAL.MARK.outline].map(c=>hexToRgb(c).join(',')));let bad=0,clear=0,line=0;
+  ok(a.w===16&&a.h===16,'a sprite is scaled to 16x16');ok(Buffer.from(a.data).equals(Buffer.from(b.data)),'deterministic');
+  const allowed=new Set([...expandPalette(pal,6),PAL.MARK.outline].map(c=>hexToRgb(c).join(',')));let bad=0,clear=0,line=0;
   for(let i=0;i<256;i++){const o=i*4;if(a.data[o+3]===0){clear++;continue}if(!allowed.has([a.data[o],a.data[o+1],a.data[o+2]].join(',')))bad++;if([a.data[o],a.data[o+1],a.data[o+2]].join(',')===hexToRgb(PAL.MARK.outline).join(','))line++}
   ok(!bad,'only palette colours (and the outline)');ok(clear>40,`background cleared (${clear} clear pixels)`);ok(line>8,`1px outline drawn (${line} pixels)`);
-  const t=postProcess(synth(256,256),{size:[32,32],post:{}},pal);let opaque=0;for(let i=0;i<32*32;i++)if(t.data[i*4+3]===255)opaque++;ok(opaque===1024,'a tile stays opaque')}
+  const t=postProcess(pixelArt(),{kind:'tile',size:[32,32],post:{}},pal);let opaque=0;for(let i=0;i<32*32;i++)if(t.data[i*4+3]===255)opaque++;ok(opaque===1024,'a tile stays opaque')}
 
 console.log('gen.mjs and daily.mjs against a mock Hugging Face server');
 const tmp=mkdtempSync(join(tmpdir(),'eldmoor-art-'));
@@ -64,13 +86,13 @@ try{
     'UmeAiRT/FLUX.1-dev-LoRA-Modern_Pixel_art':{'fal-ai':{status:'live',providerId:'fal-ai/flux-lora',task:'text-to-image',adapter:'lora',adapterWeightsPath:'ume_modern_pixelart.safetensors'}},
     'tarn59/pixel_art_style_lora_z_image_turbo':{'fal-ai':{status:'live',providerId:'fal-ai/z-image/turbo/lora',task:'text-to-image',adapter:'lora',adapterWeightsPath:'pixel_art_style_z_image_turbo.safetensors'}},
     'black-forest-labs/FLUX.1-schnell':{'fal-ai':{status:'live',providerId:'fal-ai/flux/schnell',task:'text-to-image'}}};
-  const S={posts:[],ok:0,lookups:0,deny:false,refuse:null,quota402:Infinity,quota429:Infinity,zeroLeft:false,headers:[]};
-  const img=encodePng(synth(512,512));
+  const S={posts:[],ok:0,lookups:0,deny:false,refuse:null,quota402:Infinity,quota429:Infinity,zeroLeft:false,flat:false,headers:[]};
+  const img=encodePng(pixelArt()),flatImg=encodePng(pixelArt(1024,8,{flat:true}));
   const srv=http.createServer((req,res)=>{let body='';req.on('data',c=>body+=c);req.on('end',()=>{
     const u=new URL(req.url,'http://x');S.headers.push(req.headers);
     if(req.method==='GET'&&u.pathname.startsWith('/api/models/')){S.lookups++;const id=u.pathname.slice(12);res.setHeader('content-type','application/json');
       return res.end(JSON.stringify({id,inferenceProviderMapping:MAPS[id]||{}}))}
-    if(req.method==='GET'&&u.pathname==='/img/out.png'){res.setHeader('content-type','image/png');return res.end(img)}
+    if(req.method==='GET'&&u.pathname==='/img/out.png'){res.setHeader('content-type','image/png');return res.end(S.flat?flatImg:img)}
     if(req.method==='POST'&&u.pathname.startsWith('/fal-ai/')){
       if(S.deny||req.headers.authorization!==`Bearer ${MOCK_TOKEN}`){res.statusCode=401;return res.end('{"error":"Invalid credentials"}')}
       const j=JSON.parse(body);j.route=u.pathname;S.posts.push(j);
@@ -79,10 +101,10 @@ try{
       if(S.ok>=S.quota429){res.statusCode=429;res.setHeader('retry-after','3600');return res.end('{"error":"You have reached your daily usage limit. Subscribe to PRO to get more credits."}')}
       S.ok++;res.setHeader('content-type','application/json');if(S.zeroLeft)res.setHeader('x-ratelimit-remaining','0');
       // alternate the two answer shapes fal gives: a data: URL and a URL to fetch
-      return res.end(JSON.stringify({images:[{url:S.ok%2?'data:image/png;base64,'+img.toString('base64'):`http://127.0.0.1:${srv.address().port}/img/out.png`}]}))}
+      const im=S.flat?flatImg:img;return res.end(JSON.stringify({images:[{url:S.ok%2?'data:image/png;base64,'+im.toString('base64'):`http://127.0.0.1:${srv.address().port}/img/out.png`}]}))}
     res.statusCode=404;res.end('no')})});
   await new Promise(f=>srv.listen(0,'127.0.0.1',f));const base=`http://127.0.0.1:${srv.address().port}`;
-  const env={...process.env,HF_TOKEN:MOCK_TOKEN,HF_ROUTER_URL:base,HF_HUB_URL:base};delete env.ART_MAX_CALLS;
+  const env={...process.env,HF_TOKEN:MOCK_TOKEN,HF_ROUTER_URL:base,HF_HUB_URL:base,ART_DAILY_BUDGET:'100'};delete env.ART_MAX_CALLS;
   const node=(script,a,extra={})=>new Promise(f=>{const c=spawn(process.execPath,[join(ROOT,'scripts','art',script),...a],{env:{...env,...extra},stdio:['ignore','pipe','pipe']});
     let s='';c.stdout.on('data',d=>s+=d);c.stderr.on('data',d=>s+=d);c.on('close',code=>f({code,s}))});
   const N=man.assets.length;
@@ -121,9 +143,11 @@ try{
     S.refuse='nerijs';S.quota402=4;r=await daily(['--date',days[d]]);
     let q=Q();ok(r.code===0&&q.model.pinned==='pixel-redmond'&&q.model.tried['pixel-xl']&&q.model.tried['pixel-xl'].ok===false,'a refused model is recorded and the next candidate answers and is pinned');
     ok(Object.keys(q.incoming).length===4&&readdirSync(join(dir,'incoming',days[d],'tile')).length===4,'4 made into assets/incoming/<date>/ before the allowance ran out');
-    ok(/made 4 \| calls 6 \| est\. cost \$0 billed/.test(lastLog())&&/stop: allowance used: HTTP 402/.test(lastLog())&&/next: tile:mud/.test(lastLog()),'art.log: made, calls, $0 billed, the 402 stop and what is next: '+lastLog());
+    ok(/made 4 \| rejected 0 \| calls 6 \| est\. \$0\.040 \(month \$0\.040 of \$2\.00 credits\)/.test(lastLog())&&/stop: allowance used: HTTP 402/.test(lastLog())&&/next: tile:mud/.test(lastLog()),'art.log: made, calls, estimated credits, the 402 stop and what is next: '+lastLog());
     ok(existsSync(join(dir,'incoming',days[d],'sheet.html'))&&existsSync(join(dir,'incoming',days[d],'index.json')),'contact sheet and index written beside the incoming assets');
     ok(!existsSync(join(dir,'index.json')),'nothing lands in assets/ before review');
+    {const ri=loadIndex(join(dir,'incoming',days[d],'raw'));const ks=Object.keys(ri.assets);
+      ok(ks.length===4&&ks.every(k=>{const f=join(dir,'incoming',days[d],'raw',ri.assets[k].file);return existsSync(f)&&pngSize(readFileSync(f)).w===1024&&ri.assets[k].seed&&ri.assets[k].model==='pixel-redmond'}),'the provider image is kept raw (1024 px) with its seed and model')}
     const p1=P0();r=await daily(['--date',days[d]]);ok(/already ran today/.test(r.s)&&P0()===p1,'a second run the same day makes no call');
     // day 2: resumes where it stopped; a 429 that speaks of a daily limit stops it
     d++;S.refuse=null;S.quota402=Infinity;S.ok=0;S.quota429=3;const seen=new Set(S.posts.map(p=>p.seed));r=await daily(['--date',days[d]]);
@@ -151,8 +175,32 @@ try{
     {const ix=loadIndex(dir),id=altKey.split('#')[0];ok(r.code===0&&ix.assets[id].fromAlt===1&&before.count===N&&!checkIndex(man,dir).errs.length,'an accepted alternate replaces its asset')}
     d++;r=await daily(['--date',days[d]]);r=await node('accept.mjs',['--dir',dir,'all']);
     d++;const p7=P0();r=await daily(['--date',days[d]]);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
-    ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| calls \d+ \| est\. cost \$0 billed/.test(l)),'every art.log line has date, made, calls and $0 billed');
+    ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| est\. \$[\d.]+ \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
     S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
+
+  // --- flat outputs are rejected but kept raw; art:reprocess re-makes them offline; the credit budget
+  {const dir=join(tmp,'assets3'),logP=join(tmp,'art3.log'),Q=()=>JSON.parse(readFileSync(join(dir,'queue.json'),'utf8')),last=f=>readFileSync(f,'utf8').trim().split('\n').pop();
+    S.flat=true;S.ok=0;S.quota402=Infinity;S.quota429=Infinity;S.refuse=null;const p0=S.posts.length;
+    let r=await node('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-01','--max','5']);S.flat=false;let q=Q();
+    ok(S.posts.length-p0===3&&/made 0 \| rejected 3 \| calls 3/.test(last(logP))&&/stop: 3 failures in a row \(flat/.test(last(logP)),'flat outputs are rejected (3 in a row stop the run): '+last(logP));
+    const inc=join(dir,'incoming','2026-12-01');
+    ok(Object.keys(loadIndex(join(inc,'raw')).assets).length===3&&!existsSync(join(inc,'tile'))&&Object.values(q.failed).every(f=>/flat/.test(f.why))&&!Object.keys(q.incoming).length,'nothing flat is written for review; the raw images and the reason are kept');
+    {const r2=await node('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-01','--dry-run']);ok(/first tile:grass/.test(r2.s),'a flat draw is retried on a later run');}
+    const m2=JSON.parse(readFileSync(join(ROOT,'scripts','art','manifest.json'),'utf8'));for(const a of m2.assets)a.post={...a.post,minColors:1};const mp=join(tmp,'manifest-lenient.json');writeFileSync(mp,JSON.stringify(m2));
+    const p1=S.posts.length;r=await node('reprocess.mjs',['2026-12-01','--dir',dir,'--manifest',mp]);q=Q();
+    ok(r.code===0&&S.posts.length===p1&&/reprocessed 3, rejected 0/.test(r.s)&&Object.keys(q.incoming).length===3&&!Object.keys(q.failed).length,'art:reprocess re-makes them from the raw images with no call');
+    ok(existsSync(join(inc,'sheet.html'))&&/model image/.test(readFileSync(join(inc,'sheet.html'),'utf8'))&&/raw\/tile\/grass\.png/.test(readFileSync(join(inc,'sheet.html'),'utf8')),'the review sheet shows the model image beside the result');
+    r=await node('reprocess.mjs',['2026-12-01','tile:grass','--dir',dir]);ok(r.code===0&&/tile:grass: rejected, flat/.test(r.s)&&!Q().incoming['tile:grass'],'reprocessing with the strict manifest rejects a flat one again');
+    r=await node('reprocess.mjs',['2026-11-30','--dir',dir]);ok(r.code===0&&/no raw images kept/.test(r.s),'a day without raw images says so');
+    // daily share of the monthly credits: $2.00 / 31 days = $0.0645, so 6 images at $0.01
+    const dir4=join(tmp,'assets4'),log4=join(tmp,'art4.log'),p2=S.posts.length;
+    r=await node('daily.mjs',['--dir',dir4,'--log',log4,'--date','2026-12-05'],{ART_DAILY_BUDGET:''});
+    ok(S.posts.length-p2===6&&/stop: daily share used \(est\. \$0\.060 of \$0\.065\)/.test(last(log4)),'a run stops at the day\'s share of the monthly credits: '+last(log4));
+    r=await node('daily.mjs',['--dir',dir4,'--log',log4,'--date','2026-12-05'],{ART_DAILY_BUDGET:''});ok(S.posts.length-p2===6&&/already ran today/.test(r.s),'and does not run again that day');
+    // the month's credits: a month already at $1.995 makes no call
+    const log5=join(tmp,'art5.log');writeFileSync(log5,'2026-12-01 09:00 | made 199 | rejected 0 | calls 199 | est. $1.995 (month $1.995 of $2.00 credits) | model pixel-xl | stop: x | next: -\n');
+    const p3=S.posts.length;r=await node('daily.mjs',['--dir',join(tmp,'assets5'),'--log',log5,'--date','2026-12-02']);
+    ok(S.posts.length===p3&&/stop: monthly credits used/.test(last(log5)),'the month\'s credits used: no call')}
   srv.close();
 }finally{rmSync(tmp,{recursive:true,force:true})}
 
@@ -162,7 +210,7 @@ console.log('renderer with assets off, on and off again');
   A.provideAssets({assets:{'tile:grass':{file:'tile/grass.png',w:32,h:32}}},{'tile/grass.png':'/assets/tile/grass.png'});ok(A.asset('tile:grass')===null,'indexed but no Image (Node): null, procedural');
   const sample=()=>{const out=[];for(let ty=0;ty<H;ty+=3)for(let tx=0;tx<W;tx+=3){const t=tiles[I(tx,ty)];for(const [px,py] of [[0,0],[7,9],[15,15]])out.push([t,texel(t,tx,ty,px,py)])}return out};
   const off=sample(),grassN=off.filter(([t])=>t===G).length;
-  const im=postProcess(synth(256,256),{size:[32,32],post:{}},['#123456','#654321']);A.setAssetPixels('tile:grass',A.pixelsOf(im.w,im.h,im.data));
+  const im={w:32,h:32,data:new Uint8Array(32*32*4)};for(let i=0;i<32*32;i++){const c=((i>>5)+i)%2?[0x12,0x34,0x56]:[0x65,0x43,0x21];im.data.set([...c,255],i*4)}A.setAssetPixels('tile:grass',A.pixelsOf(im.w,im.h,im.data));
   const on=sample();let same=0,changed=0,other=0;
   for(let i=0;i<off.length;i++){if(off[i][0]===G){if(on[i][1]==='#123456'||on[i][1]==='#654321')changed++}else if(on[i][1]===off[i][1])same++;else other++}
   ok(grassN>0&&changed===grassN,`grass texels come from the asset (${changed}/${grassN})`);ok(!other,`other tiles unchanged (${same})`);

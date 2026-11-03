@@ -196,12 +196,13 @@ const readBody = req => new Promise((res, rej) => {
 });
 
 // attachPlay(server, {backend?, origin, log, verbose, now, behavior?, mirror?}) -> {backend, stats, call, linkOf, links, behaviorIngest}
+// embed: a scripts/embed.mjs semanticRecall (issue #553): recall and journal_search of a hero (and the DM's recall) get the meaning scores the game folds into its keyword ranking; without it, or when it has nothing, the tool answers as before.
 // mirror: a scripts/memory-mirror.mjs writer (issue #155) for the page's {type:'mirror', seats} messages.
 // behavior: a scripts/behavior-log.mjs writer (issue #129); without it the host keeps no behavior logs.
-export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null} = {}) {
+export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null, embed = null} = {}) {
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
   const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, rec, {links: links(), runners: runners()}) : false;
-  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id)} : null,
+  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror || embed ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id); if (embed) embed.setWorld(w, id)} : null,
     onMirror: mirror ? seats => mirror.write(seats) : null, onHello: () => pushLinks()}); // mirror: scripts/memory-mirror.mjs (issue #155)
   const stats = {calls: 0, errors: 0};
   const claims = new Map(), act = new Map(); // hero id -> {runner, at} / {last, inflight}
@@ -228,17 +229,37 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   // process reads another seat's tool results (another hero's journal, events, chat) or acts for it.
   const heldBy = (id, rid) => {const c = id != null ? claimOf(id) : null; return c && c.runner !== rid ? c.runner : null};
   const refusedSeat = (id, holder) => ({ok: false, refused: true, error: `Hero #${id} is played by another runner (${holder}). A runner plays only the hero it claimed: name it (X-Eldmoor-Runner, or runner in the body).`});
+  // Semantic memory search (issue #553). The agent never sets `_sem` or `_pool` (they are the relay's words to the game):
+  // both are stripped from what it sends. For a query the relay asks the game for the texts to embed (`_pool`, one extra bridge call),
+  // ranks them by meaning (scripts/embed.mjs, a 300 ms budget, a cold cache fills in the background) and passes the strengths on as
+  // `_sem`; any failure or nothing to add leaves the call as the agent made it, so the tool ranks by keywords as it always did.
+  const SEARCH = new Set(['recall', 'journal_search']);
+  const bare = a => {if (a && typeof a === 'object' && ('_sem' in a || '_pool' in a)) {const {_sem, _pool, ...r} = a; return r} return a};
+  async function meaning(tool, args, seat, ask) {
+    if (!embed || !SEARCH.has(tool) || !args || typeof args.query !== 'string' || !args.query.trim() || (tool === 'recall' && args.id != null && args.id !== '')) return {args};
+    try {
+      const pr = await Promise.race([ask(), new Promise(res => setTimeout(() => res(null), 1500))]);
+      if (!pr || pr.ok === false || !Array.isArray(pr.pool) || !pr.pool.length) return {args};
+      const rk = await embed.rank({seat, pool: pr.pool, query: args.query});
+      return rk && rk.hits ? {args: {...args, _sem: rk.sem}, note: ` [meaning ${rk.hits}/${rk.total}${rk.cold ? ', cold' : ''}, ${rk.ms} ms]`} : {args};
+    } catch (e) {return {args}}
+  }
   async function call(hero, tool, args, rid = null) {
     const t0 = now(), id = resolve(hero); stats.calls++;
     const holder = heldBy(id, rid); if (holder) {stats.errors++; log(`[play] #${id} ${tool} refused: held by ${holder}, asked by ${rid || 'no runner'}`); return refusedSeat(id, holder)}
     const a = id != null ? act.get(id) || {last: 0, inflight: 0} : null; if (a) {a.inflight++; a.last = t0; act.set(id, a); pushLinks()}
     if (behavior && id != null) behavior.call('hero:' + id);
-    let r;
-    try {r = id == null ? paused('no agent hero') : await be.call(id, tool, args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    let r, note = '';
+    args = bare(args);
+    try {
+      let send = args;
+      if (id != null && embed && SEARCH.has(tool)) {const h = (be.info().heroes || []).find(x => x.id === id); if (h && h.alive !== false) {const m = await meaning(tool, args, {kind: 'hero', id, name: h.name}, () => be.call(id, tool, {_pool: true})); send = m.args; note = m.note || ''}}
+      r = id == null ? paused('no agent hero') : await be.call(id, tool, send);
+    } catch (e) {r = {ok: false, error: String(e.message || e)}}
     if (a) {a.inflight--; a.last = now(); pushLinks()}
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
-    log(`[play] #${id ?? '?'} ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'} (${now() - t0} ms)`);
+    log(`[play] #${id ?? '?'} ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'}${note} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), hero: id, tool, args, result: r, ms: now() - t0});
     return r;
   }
@@ -247,13 +268,18 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     const t0 = now(); stats.calls++;
     const a = act.get(DM_KEY) || {last: 0, inflight: 0}; a.inflight++; a.last = t0; act.set(DM_KEY, a); pushLinks();
     if (behavior) behavior.call('dm');
-    let r;
-    try {r = be.dmCall ? await be.dmCall(tool, args) : {ok: false, error: 'This host has no DM seat.', offline: true}} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    let r, note = '';
+    args = bare(args);
+    try {
+      let send = args;
+      if (embed && be.dmCall && SEARCH.has(tool) && tool === 'recall') {const m = await meaning(tool, args, {kind: 'dm'}, () => be.dmCall('recall', {_pool: true})); send = m.args; note = m.note || ''}
+      r = be.dmCall ? await be.dmCall(tool, send) : {ok: false, error: 'This host has no DM seat.', offline: true};
+    } catch (e) {r = {ok: false, error: String(e.message || e)}}
     a.inflight--; a.last = now(); pushLinks();
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
     if ((tool === 'table_call' || tool === 'npc_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
-    log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'} (${now() - t0} ms)`);
+    log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'}${note} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
     return r;
   }
@@ -282,7 +308,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     return [200, {ok: true}];
   }
   // Link states change with time alone (claims and calls age out); refresh the page now and then.
-  const tick = setInterval(pushLinks, 2000); if (tick.unref) tick.unref();
+  const tick = setInterval(() => {pushLinks(); if (embed) for (const h of (be.info().heroes || [])) if (h.alive === false) embed.drop({kind: 'hero', id: h.id, name: h.name})}, 2000); if (tick.unref) tick.unref();
   server.on('close', () => clearInterval(tick));
 
   const wss = backend ? null : new WebSocketServer({noServer: true, maxPayload: 256 * 1024});

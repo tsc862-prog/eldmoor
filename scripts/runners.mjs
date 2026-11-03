@@ -355,7 +355,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (c.error) {log(`[runners] start refused: ${c.error}`); return {code: c.code, obj: {ok: false, error: c.error}}}
     if (c.req.kind === 'hero' && play.claimed(c.req.hero)) return {code: 409, obj: {ok: false, error: `${c.req.name} already has a live agent runner (one agent per hero).`}};
     if (c.req.kind === 'dm') {const d = play.dmInfo ? play.dmInfo() : null; // the DM seat (#66)
-      if (d && !d.seat) return {code: 409, obj: {ok: false, error: 'The DM seat is closed: open it first (Dungeon Master panel, "Open seat").'}};
+      if (d && !d.seat) return {code: 409, obj: {ok: false, error: 'The DM seat is closed: the page opens it when it plays a world (load or start one first).'}};
       if (d && d.claimed) return {code: 409, obj: {ok: false, error: 'The DM seat already has a live runner (one DM at a time).'}}}
     // Claude slots (see CLAUDE_SLOTS): its Claude minds lease a slot per turn, so starting never waits on them
     const K = RUNNER_KINDS[c.req.kind], ids = K.session ? [K.session] : K.heroes(c.req, heroes()), want = ids.filter(id => providerFor(id, c.req.provider) === 'anthropic').length;

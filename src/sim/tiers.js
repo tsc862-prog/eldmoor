@@ -29,6 +29,7 @@
 import {S} from './state.js';
 import {onRecord} from './history.js';
 import {words} from './words.js';
+import {SEM,semKey,semOf,semBonus} from './semkey.js'; // meaning search supplied by the relay (#553)
 
 export const TIER={
   V:1,
@@ -159,19 +160,30 @@ export function overview(a){const T=tiersOf(a),J=a.journal||[];vows(a);
     entries:J.slice(-TIER.OVERVIEW).map(e=>e.t+': '+cut(e.text,TIER.OV_ENTRY)),total:J.length,
     note:'Older entries live on as chapters; journal_search finds anything in them, your landmarks and your entries.'}}
 // journal_search {query, day?, n?}: keyword and name match over entries, landmarks, chapters and lines waiting
-// for a chapter. Title and landmark hits weigh more; ties go to the newer.
-export function search(a,{query,day,n}={}){const T=tiersOf(a);vows(a);const k=Math.max(1,Math.min(TIER.N_MAX,Math.round(Number(n)||TIER.N)));
-  const qs=words(query),dd=day!=null&&day!==''&&Number.isFinite(Number(day))?Math.round(Number(day)):null;
-  if(!qs.length&&dd==null)return {ok:false,error:'Search for what? Give a few words (a name, a place, what happened), or a day.'};
+// for a chapter. Title and landmark hits weigh more; ties go to the newer. Meaning (issue #553): the relay may hand
+// `_sem` {key: 0..1} (src/sim/semkey.js; the sim never calls a network) which adds up to SEM.MAX to a hit and finds
+// what the words miss, marked semantic; `_pool` (the relay's own ask) returns the texts to embed. Without them, as before.
+const rawTexts=a=>{const T=tiersOf(a),out=[];
+  for(const e of a.journal||[])out.push(e.t+': '+e.text);
+  for(const m of T.marks)out.push(m.text);
+  for(const c of T.chapters)out.push((c.title?c.title+' | ':'')+c.text);
+  for(const p of T.pend)out.push(p.text);
+  return out};
+export function searchPool(a){tiersOf(a);vows(a);const out=[];for(const r of rawTexts(a)){const t=cut(r,SEM.TEXT);out.push({k:semKey(t),text:t});if(out.length>=SEM.POOL)break}return {ok:true,pool:out}}
+export function search(a,{query,day,n,_sem,_pool}={}){if(_pool===true)return searchPool(a);const T=tiersOf(a);vows(a);const k=Math.max(1,Math.min(TIER.N_MAX,Math.round(Number(n)||TIER.N)));
+  const qs=words(query),dd=day!=null&&day!==''&&Number.isFinite(Number(day))?Math.round(Number(day)):null,sem=semOf(_sem);
+  if(!qs.length&&dd==null&&!(sem&&String(query||'').trim()))return {ok:false,error:'Search for what? Give a few words (a name, a place, what happened), or a day.'};
+  const searching=qs.length>0||!!sem&&String(query||'').trim()!=='';
   const hit=(ws)=>{let c=0;for(const q of qs)if(ws.some(w=>w===q||q.length>=4&&w.startsWith(q)||w.length>=4&&q.startsWith(w)))c++;return c};
   const out=[];
-  const add=(kind,d0,d1,text,s,extra)=>{if(dd!=null&&(dd<d0||dd>d1))return;if(qs.length&&!s)return;out.push({kind,day:d0===d1?d0:d0+'-'+d1,text:cut(text,TIER.HIT_LEN),s:s+(dd!=null?1:0),o:d1,...extra})};
-  for(const e of a.journal||[]){const d=entryDay(e);add('entry',d,d,e.t+': '+e.text,hit(words(e.text)),{})}
-  for(const m of T.marks)add('landmark',m.day,m.day,m.text,qs.length?3*hit(words(m.text)):1,{});
-  for(const c of T.chapters){const s=qs.length?2*hit(words(c.title||''))+hit(words(c.text))+hit(c.kw||[]):1;add('chapter',c.d0,c.d1,(c.title?c.title+' | ':'')+c.text,s,{chapter:c.n})}
-  for(const p of T.pend)add('older',p.day,p.day,p.text,hit(words(p.text)),{});
+  const add=(kind,d0,d1,text,s,extra,raw)=>{if(dd!=null&&(dd<d0||dd>d1))return;const sb=sem&&searching?semBonus(sem[semKey(cut(raw,SEM.TEXT))]):0;if(searching&&!s&&!sb)return;
+    out.push({kind,day:d0===d1?d0:d0+'-'+d1,text:cut(text,TIER.HIT_LEN),s:s+sb+(dd!=null?1:0),o:d1,...(sb>0?{semantic:true}:{}),...extra})};
+  for(const e of a.journal||[]){const d=entryDay(e);add('entry',d,d,e.t+': '+e.text,hit(words(e.text)),{},e.t+': '+e.text)}
+  for(const m of T.marks)add('landmark',m.day,m.day,m.text,qs.length?3*hit(words(m.text)):searching?0:1,{},m.text);
+  for(const c of T.chapters){const s=qs.length?2*hit(words(c.title||''))+hit(words(c.text))+hit(c.kw||[]):searching?0:1;add('chapter',c.d0,c.d1,(c.title?c.title+' | ':'')+c.text,s,{chapter:c.n},(c.title?c.title+' | ':'')+c.text)}
+  for(const p of T.pend)add('older',p.day,p.day,p.text,hit(words(p.text)),{},p.text);
   out.sort((p,q)=>q.s-p.s||q.o-p.o);
-  return {ok:true,found:out.length,results:out.slice(0,k).map(({s,o,...r})=>r),...(out.length>k?{more:out.length-k}:{})}}
+  return {ok:true,found:out.length,...(sem&&searching?{ranked:'keywords and meaning'}:{}),results:out.slice(0,k).map(({s,o,...r})=>r),...(out.length>k?{more:out.length-k}:{})}}
 
 // The mirror and the panels: a plain copy.
 export const tiersView=a=>{const T=a&&a.tiers;if(!T)return null;return {marks:T.marks.map(m=>({day:m.day,k:m.k,text:m.text})),chapters:T.chapters.map(c=>({n:c.n,d0:c.d0,d1:c.d1,title:c.title,text:c.text,src:c.src})),pend:T.pend.length}};
