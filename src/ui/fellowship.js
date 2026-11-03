@@ -37,10 +37,11 @@ import {fellowshipRunnerControl,companyRunnerControl,companyRunnerSig,runnerPick
 import {devMode} from './mindctl.js'; // request stats are a developer surface (#145)
 import {regionLine} from './region.js'; // region view (#430)
 import {patch,held,keyOf} from './stable.js'; // update in place, keep scroll (#145)
+import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
-const hn=a=>{const s=el('span','hn f'+a.fac,a.name);s.dataset.hid=a.id;return s};
+const hn=a=>{const s=el('span','hn f'+a.fac,styled(a));s.dataset.hid=a.id;return s};
 const parts=(node,ps)=>{for(const p of ps||[]){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p)node.append(el('span',p.c||'',p.t))}};
 const meter=(frac)=>{const m=el('div','meter hp');const i=document.createElement('i');i.style.width=Math.max(0,Math.min(100,frac*100))+'%';m.append(i);return m};
 const byId=id=>S.agents.find(x=>x.id==id);
