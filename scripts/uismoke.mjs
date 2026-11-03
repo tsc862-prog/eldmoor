@@ -910,7 +910,7 @@ console.log('start gate: ready, not just claimed');
   const F=sim.S.fellowship,mem=sim.fellowshipMembers().map(m=>m.hero).filter(Boolean),keep=F.camp,ks=mem.map(a=>a.state);
   mem.forEach(a=>{a.state='camp'});
   F.camp={phase:'rest',why:'night',hours:0,ids:mem.map(a=>a.id),watcher:mem[0].id};
-  ok(/NaN/.test(campSummary()||''),'camp watch: the sim line is NaN for a camp with no watch times (the cause)');
+  ok(!/NaN/.test(campSummary()||''),'camp watch: the sim line has no NaN for a camp with no watch times');
   const cl=campLine();ok(cl&&!/NaN|until \d\d:\d\d\)/.test(cl)&&/on watch: /.test(cl),'camp watch: the panel line leaves out "until" when the end is unknown ('+cl+')');
   F.camp={phase:'rest',why:'night',hours:0,ids:mem.map(a=>a.id),watcher:mem[0].id,restAt:Math.round(sim.S.gameMin),watchIdx:0};
   ok(/on watch: \S+ \(until \d\d:\d\d\)/.test(campLine()),'camp watch: a normal camp keeps "until hh:mm"');

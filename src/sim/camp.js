@@ -108,19 +108,22 @@ const members=g=>g.ids.map(byId).filter(a=>a&&a.state==='camp');
 const pad=n=>String(n).padStart(2,'0');
 const hhmm=m=>{const x=((Math.round(m)%1440)+1440)%1440;return pad(Math.floor(x/60))+':'+pad(x%60)};
 const dur=m=>{m=Math.max(0,Math.round(m));const h=Math.floor(m/60);return h?h+' h '+(m%60)+' m':m+' m'};
+// End of the current watch as hh:mm, or null when the camp has no watch times (a staged or hand-made camp): never NaN (#475).
+const watchEnd=g=>Number.isFinite(g.restAt)&&Number.isFinite(g.watchIdx)?hhmm(g.restAt+(g.watchIdx+1)*CAMP.WATCH_MIN):null;
+const untilTxt=t=>t?' (until '+t+')':'';
 function endOf(g,L){const now=S.gameMin,low=Math.min(...L.map(a=>a.hp/maxHp(a))),pct=Math.round(low*100);
-  if(g.why==='rest'&&g.hours)return {text:'resting until '+hhmm(g.restAt+g.hours*60)+' · '+dur(g.restAt+g.hours*60-now)+' left',left:g.restAt+g.hours*60-now,mended:low>=CAMP.MENDED};
+  if(g.why==='rest'&&g.hours&&Number.isFinite(g.restAt))return {text:'resting until '+hhmm(g.restAt+g.hours*60)+' · '+dur(g.restAt+g.hours*60-now)+' left',left:g.restAt+g.hours*60-now,mended:low>=CAMP.MENDED};
   if(g.why==='night'){const h=hourNow();
     if(h>=CAMP.DAWN&&h<12)return {text:'resting until mended · '+pct+'%',left:null,mended:low>=CAMP.MENDED};
     const left=((CAMP.DAWN-h+24)%24)*60;return {text:'camping until dawn ('+hhmm(CAMP.DAWN*60)+') · '+dur(left)+' left'+(low>=CAMP.MENDED?', all mended':''),left,mended:low>=CAMP.MENDED}}
-  return {text:'resting until mended · '+pct+'%',left:Math.max(0,g.restAt+CAMP.WORN_MAX-now),mended:low>=CAMP.MENDED}}
+  return {text:'resting until mended · '+pct+'%',left:Number.isFinite(g.restAt)?Math.max(0,g.restAt+CAMP.WORN_MAX-now):null,mended:low>=CAMP.MENDED}}
 // Is this camper asleep (camp is resting and it is not the one on watch)?
 export function asleep(a){const g=campOf();return !!(g&&g.phase==='rest'&&a&&a.state==='camp'&&a.id!==g.watcher)}
 export function campView(a){const g=campOf();if(!g||!a||a.state!=='camp')return null;const L=members(g);
   if(g.phase==='gather')return {phase:'gather',status:'Walking to the camp fire',asleep:false};
-  const e=endOf(g,L),w=byId(g.watcher),wEnd=hhmm(g.restAt+(g.watchIdx+1)*CAMP.WATCH_MIN),sl=asleep(a);
-  return {phase:'rest',kind:g.why,status:(sl?'Asleep by the fire':'On watch (until '+wEnd+')')+' · '+e.text,asleep:sl,ends:e.text,left_min:e.left==null?null:Math.round(e.left),mended:e.mended,
-    on_watch:w?w.name+' (until '+wEnd+')':null,asleep_names:L.filter(x=>x.id!==g.watcher).map(x=>x.name),
+  const e=endOf(g,L),w=byId(g.watcher),wEnd=watchEnd(g),sl=asleep(a);
+  return {phase:'rest',kind:g.why,status:(sl?'Asleep by the fire':'On watch'+untilTxt(wEnd))+' · '+e.text,asleep:sl,ends:e.text,left_min:e.left==null?null:Math.round(e.left),mended:e.mended,
+    on_watch:w?w.name+untilTxt(wEnd):null,asleep_names:L.filter(x=>x.id!==g.watcher).map(x=>x.name),
     you_can:'propose break_camp (the party votes)'+(leaderOfF()===a?', or break_camp yourself as leader':'')+'; nothing else needs doing while you sleep'}}
 // Why an order cannot go through at camp, and the legal way on (#400): the leader breaks camp, the others vote on it.
 export function campBlock(a){const g=campOf();if(!g||!a||a.state!=='camp')return null;const lead=leaderOfF(),L=members(g);
@@ -131,7 +134,7 @@ export function campBlock(a){const g=campOf();if(!g||!a||a.state!=='camp')return
 export function campSummary(){const g=campOf();if(!g)return null;const L=members(g);if(!L.length)return null;
   if(g.phase==='gather')return 'Making camp: the company walks to the fire';
   const e=endOf(g,L),w=byId(g.watcher),r10=e.text.replace(/(\d+) h (\d+) m/,(m,h,mm)=>h+' h '+Math.floor(mm/10)*10+' m').replace(/ · (\d+) m left/,(m,mm)=>' · '+Math.ceil(mm/10)*10+' m left').replace(/(\d+)%/,(m,p)=>Math.floor(p/5)*5+'%');
-  return 'Camp: '+r10+(w?' · on watch: '+w.name+' (until '+hhmm(g.restAt+(g.watchIdx+1)*CAMP.WATCH_MIN)+')':'')+' · asleep: '+L.filter(x=>x!==w).map(x=>x.name).join(', ')}
+  return 'Camp: '+r10+(w?' · on watch: '+w.name+untilTxt(watchEnd(g)):'')+' · asleep: '+L.filter(x=>x!==w).map(x=>x.name).join(', ')}
 export const campStatus=a=>{const v=campView(a);return v?v.status:null};
 const refreshDoing=L=>{for(const a of L)a.playDoing=campStatus(a)};
 
