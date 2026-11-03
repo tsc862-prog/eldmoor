@@ -108,6 +108,41 @@ ok(OF.offersTo(lead).some(o => o.kind === 'ask' && o.from === D.id), 'the leader
 r = act(lead, 'accept', {offer_id: r.offer});
 ok(r.ok && CO.companyOf(D) === C && C.ids.length === 4, 'the leader lets them in');
 
+// ---- companions (#443): the company as the hero knows it, then leave_party for good ----
+{
+  const far3 = take(); markPlayer(far3, true); place(far3, 0, 40); CO.joinCompany(C, far3); far3.partyOk = true;
+  place(A, 0, 0); place(far3, 0, 5); run(1); place(far3, 0, 40); run(1);
+  const cv = act(A, 'companions');
+  ok(cv.ok && cv.riders.length === C.ids.length - 1 && cv.riders.every(x => x.at), 'companions lists every rider with an at-line');
+  const fr3 = cv.riders.find(x => x.name === far3.name);
+  ok(fr3 && /^last seen near /.test(fr3.at), 'a far companion is last seen near a place: ' + (fr3 && fr3.at));
+  ok(cv.riders.some(x => x.at === 'beside you'), 'a near companion is beside you');
+  const dump = JSON.stringify(cv);
+  ok(!/"x":|"y":|hp|mind|player|\d+\.\d+,\s*\d+\.\d+/.test(dump.replace(/earshot.*/, '')) && !dump.includes(far3.x.toFixed(1)), 'no coordinates, HP or minds in companions');
+  ok(cv.earshot && cv.earshot.ok, 'earshot is folded in');
+  const sizeBefore = C.ids.length, fb = (far3.bonds && far3.bonds[A.id]) || 0, ab = (A.bonds && A.bonds[far3.id]) || 0;
+  const chatBefore = C.log.length;
+  place(far3, 2, 2); far3.state = 'hunt';
+  r = act(far3, 'leave_party', {for_good: true});
+  const sc2 = CO.companyOf(far3);
+  ok(r.ok && sc2 && sc2 !== C && CO.isSolo(sc2) && C.ids.length === sizeBefore - 1 && !C.ids.includes(far3.id), 'leave for good makes a new solo and the old company never empties');
+  ok(C.log.some(e => e.kind === 'leave' && e.parts.some(p => p === far3 || p.name === far3.name) && C.log.length > chatBefore - 1), 'the old company log gets a leave line');
+  ok(((A.bonds && A.bonds[far3.id]) || 0) === Math.max(-10, ab - CN.COUNCIL.BOND_COST) && ((far3.bonds && far3.bonds[A.id]) || 0) === Math.max(-10, fb - CN.COUNCIL.BOND_COST), 'bonds cost COUNCIL.BOND_COST both ways');
+  ok(!far3.party || far3.party.company !== C.id, 'the leaver is out of the company party');
+  const solo = act(far3, 'companions');
+  ok(solo.ok && solo.alone, 'a solo is told it rides alone');
+  const again = act(far3, 'leave_party', {for_good: true});
+  ok(!again.ok && /ride alone already/.test(again.error), 'and is a solo now: ' + again.error);
+  ok((await import('../src/sim/reach.js')).AWAY.KINDS.includes('leave'), 'AWAY.KINDS knows leave');
+  // a member apart records a leave for when it rejoins (reach.js witness)
+  const wv = CO.members(C).find(b => b.player && b !== A);
+  wv.apartSince = Math.round(S.gameMin); wv.missed = [];
+  (await import('../src/sim/reach.js')).witness('leave', 'Zed left the company for good.', C);
+  ok(wv.missed.some(m => m.k === 'leave'), 'a member apart records the leave for when it rejoins'); delete wv.apartSince; delete wv.missed;
+  for (const b of CO.members(C)) {b.state = 'hunt'; b.target = null; b.dest = null}
+  markPlayer(far3, false); CO.dissolveCompany(CO.companyOf(far3)); used.delete(far3); far3.state = 'hunt'; far3.target = null; far3.dest = null; place(far3, 15, 15);
+}
+
 // ---- refusals: a leader of a company of 2+, a member of one, the Fellowship ----
 const E = take(); markPlayer(E, true); place(E, 3, 3);
 r = act(E, 'invite', {hero_id: lead.id});
@@ -164,6 +199,8 @@ const FM = CO.members(S.fellowship)[0], out = S.agents.find(b => living(b) && b.
 out.x = FM.x + 1; out.y = FM.y; out.state = 'hunt';
 r = act(FM, 'invite', {hero_id: out.id});
 ok(!r.ok && /Fellowship/.test(r.error), 'the Fellowship takes no one in by invitation: ' + r.error);
+r = act(FM, 'leave_party', {for_good: true});
+ok(!r.ok && /Fellowship/.test(r.error), 'a Fellowship member cannot leave for good: ' + r.error);
 
 console.log(fail ? `\ncompanycheck: ${fail} failure(s)` : '\ncompanycheck: all ok');
 process.exit(fail ? 1 : 0);

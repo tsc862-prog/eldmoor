@@ -66,7 +66,7 @@ import {notEnglish} from './lang.js';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote} from './council.js';
 import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js';
-import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
+import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
 import {sceneAct,tableView} from './table.js';
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
@@ -849,7 +849,9 @@ const T={
   invite(a,{hero_id,name,who,text}){const b=sideHero(a,hero_id,name!=null&&name!==''?name:who);return offerInvite(a,b,text)},
   accept(a,{offer_id}){return offerAccept(a,{offer_id})},
   decline(a,{offer_id,text}){return offerDecline(a,{offer_id,text})},
-  leave_party(a,{where,when_hours}){if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');
+  companions(a){return companionsView(a)}, // #443: the company as the hero knows it (read-only)
+  leave_party(a,{where,when_hours,for_good}){if(for_good===true||/^(yes|true|1)$/i.test(String(for_good==null?'':for_good))){const r=leaveForGood(a);if(!r.ok)throw new Rule(r.error);return r}
+    if(a.fellow){need(!a.splitUntil,'You have already gone your own way.');
       // a meeting plan (#182): made aloud before parting, so it is recorded only for those who hear it
       let plan=null;if(where||when_hours){plan=makeMeeting(a,where,when_hours);if(plan.error)throw new Rule(plan.error)}
       splitOff(a,false);a.partyOk=false;
