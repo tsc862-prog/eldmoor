@@ -4,7 +4,7 @@
 //
 //   1. npm run relay   (+ npm run dev, open the game, select heroes, press "Agent" on each)
 //      or: npm run play-headless -- --agents 2   (a Node world, no browser; port 8789)
-//   2. npm run agent -- --hero <name|id> [--url http://127.0.0.1:8787] [--max-turns 20] [--budget 1.00] [--new]
+//   2. npm run agent -- --hero <name|id> [--url http://127.0.0.1:8787] [--budget 1.00] [--max-turns N] [--new]
 //
 // Without --hero the runner lists the agent-played heroes and takes the first living one that has
 // no live runner (or says none is free). The runner claims its hero at the relay (POST
@@ -26,7 +26,7 @@
 // SDK's auto-compaction; boundaries are printed).
 //
 // Options: --hero NAME|ID, --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N
-// (default 20 for Claude and OpenAI; a local Ollama mind runs until stopped unless given), --heartbeat MIN,
+// (optional: any mind runs until stopped, a paid one until its --budget is spent; #563), --heartbeat MIN,
 // --min-gap S, --max-fails N (or AGENT_HEARTBEAT, AGENT_MIN_GAP, AGENT_MAX_FAILS), --budget USD (default 1.00, total for this run), --tool-turns N (model round
 // trips per turn, default 12), --model (or AGENT_MODEL; default claude-sonnet-5-5), --effort (or
 // AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic', 'ollama' or 'openai'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
@@ -48,7 +48,7 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
-import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
+import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, inheritRunner, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
@@ -262,6 +262,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const moved = migrateLegacy(); if (moved) console.log('[agent] ' + moved);
   const {sess, note} = loadSession(heroId, st.name, () => ({sessionId: null, heroId, heroName: st.name, system: systemPrompt(st), turns: 0, costUsd: 0, lastTotal: 0}), {startNew: flag('new')});
   if (note) console.log('[agent] ' + note);
+  if (inheritRunner(sess, pick.hero && pick.hero.succeeds)) console.log(`[agent] plays with the runner settings of the hero whose place it took (#${pick.hero.succeeds}): ${sess.runner.provider} ${sess.runner.model || ''}`); // #452
   sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
   sess.system = withSituationOrders(sess.system, false); // situations (#531); the local variant is set once the runner's provider is known
   const SESSION_FILE = sessionPath(heroId);

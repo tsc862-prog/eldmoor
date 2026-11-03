@@ -368,6 +368,9 @@ const D2 = rest[2], slot = D2.fellowRole;
 const lt = act(D2, 'remember', {title: 'To whoever comes next', text: 'Trust the healer and keep to the river road.', tags: ['letter']});
 const lp = act(D2, 'pin', {id: lt.remembered.id}); ok(lp.ok && /letter/.test(lp.note || ''), 'pin a note tagged "letter": sealed for the Fellowship');
 HE.fall(D2, 'a test of the hardcore rule'); run(2);
+// a world with runner links (the relay section above) refills the seat through an arrival scene at the next town or camp (#452): bring them home
+for (let k = 0; k < 60 * 60 && S.fellowship.slots[slot] == null; k++) {if (S.fellowship.arrivals && !S.table) for (const x of S.agents.filter(b => b.fellow && b.state !== 'dead')) {const g = homeOf(x).gate; x.state = 'town'; x.townStep = 1; x.x = g.x - 1; x.y = g.y; x.hidden = false} step(1 / 60)}
+while (S.table) step(1 / 60);
 const nh = S.agents.find(x => x.id === S.fellowship.slots[slot]);
 ok(nh && nh !== D2 && nh.player, `${D2.name} fell; ${nh && nh.name} takes the place, agent-played`);
 ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');
@@ -381,6 +384,21 @@ ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');
   ok(!['bNote', 'mateNote', 'deadNote'].some(k => dmSide.includes(SECRETS[k])) && !dmSide.includes('river road'), 'the DM\'s tools never show a hero\'s memories');
   ok(st.relevant_notes.some(x => x.title === 'The fogbound road') && dmTurnPrompt(3, st).includes('The fogbound road'), 'dm_status names the DM notes that bear on the Fellowship, and so does its turn prompt');
   const rr = DMA.dmAct('recall', {query: 'innkeeper'}); ok(rr.ok && rr.notes.some(n => n.section === 'secrets'), 'DM recall searches across sections (notes_write notes too)')}
+// DM visibility (#558): the DM hears what is said aloud, and sees what a hero carries and knows; none of the private places leaks
+{const sHS = secret('hearSay'), sHH = secret('hearShout'), heardSay = 'We ride at dawn, ' + sHS + '.', heardShout = 'Keep together, ' + sHH + '.';
+  ok(act(B, 'say', {text: heardSay}).ok, 'B says a line aloud');
+  ok(act(B, 'party_say', {text: heardShout}).ok, 'B shouts to the party');
+  const hr = DMA.dmAct('hear', {n: 200});
+  ok(hr.ok && JSON.stringify(hr.lines).includes(sHS) && JSON.stringify(hr.lines).includes(sHH), 'hear carries the say line and the party shout');
+  const privates = Object.keys(SECRETS).filter(k => /^(b|mate|dead)/.test(k) && !/^(bWants|bFears|bVoice|bSummary|bFlaw)$/.test(k));
+  const personaTxt = ['bWants', 'bFears', 'bVoice', 'bSummary', 'bFlaw'];
+  const newReads = JSON.stringify([hr, DMA.dmAct('hear', {since: 100000}), DMA.dmAct('survey', {near: 'fellowship'}), DMA.dmAct('survey', {near: B.name, radius: 30}), DMA.dmAct('world_standing'), DMA.dmAct('heroes_near', {near: B.name, radius: 30}), DMA.dmAct('companies_view'), DMA.dmAct('dm_status')]), fvRaw = JSON.stringify(DMA.dmAct('fellowship_view'));
+  const leaked = [...privates.filter(k => newReads.includes(SECRETS[k])), ...privates.filter(k => !['bMemory', 'bLong'].includes(k) && fvRaw.includes(SECRETS[k]))]; // bMemory/bLong are the game's own memory digest, shown to the DM since #68
+  ok(!leaked.length, 'hear, survey, world_standing and the member views carry no notebook, journal, memory, mind, narration, session or persona-change secret' + (leaked.length ? ': ' + leaked.join(', ') : ''));
+  const sight = JSON.stringify(DMA.dmAct('fellowship_view').fellowship.members.map(m => ({c: m.carries, q: m.quests, k: m.knows})));
+  ok(!personaTxt.some(k => sight.includes(SECRETS[k])) && !privates.some(k => sight.includes(SECRETS[k])), 'carries, quests and knows are public facts: no persona, memory or journal text');
+  ok(!newReads.includes(said.narr.slice(0, 12) + 'x') && !JSON.stringify(hr.lines).includes(SECRETS.narr), 'the narrator\'s own lines are not "heard" from the companies');
+}
 // the mirror: Markdown for the owner, never read back
 const mir = MM.memoryMirror({root: LOGS, world: 'check'}), sentM = new Map();
 const flush = () => {const out = NBm.mirrorDirty(sentM); mir.write(out); for (const o of out) sentM.set(o.key, o.sig); return out};

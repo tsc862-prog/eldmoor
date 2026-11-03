@@ -82,6 +82,22 @@ if (process.argv[2] === '--hash') {
   console.log('HASH ' + h); process.exit(0);
 }
 
+// ---- session zero child (issue #437): the opening framed by the DM agent's call, or by the scripted DM with the seat closed ----
+if (process.argv[2] === '--opening') {
+  const A = await import('../src/sim/arrival.js'), T = await import('../src/sim/table.js'), F_ = await import('../src/sim/fellowship.js'), PL = await import('../src/sim/player.js');
+  const closed = process.argv[3] === 'closed';
+  init({fellowship: false}); run(10);
+  F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(!closed); sim.setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  if (!closed) {const D = S.dmAgent; D.notes.plans.push({id: 9001, title: 'The Lanterns', text: 'PREMISE-PLANTED the road lights are failing.', tags: ['premise'], pin: true}, {id: 9002, title: 'Opening beats', text: 'Day 1: a dark shrine.', tags: ['openings']})}
+  A.planOpening(); step(1 / 60); const sc = S.table;
+  let call = null, k = 0; while (S.table && S.table.phase === 'frame' && k++ < 600) {if (!closed) dmAct('table_call'); step(1 / 60)}
+  if (!closed) {const t = dmAct('table_call'); call = t.call; if (call) dmAct('table_answer', {call: call.id, text: 'The hall smells of wet wool and lamp oil.'})}
+  k = 0; while (S.table && k++ < 60 * 60) step(1 / 60);
+  const heard = F_.fellows().map(a => (a.chat || []).map(e => e.text).join(' | ')).join(' || '), tools = JSON.stringify(F_.fellows().map(a => [PL.playerAct(a.id, 'status'), PL.playerAct(a.id, 'look')]));
+  console.log('OPENING ' + JSON.stringify({kind: sc && sc.kind, title: sc && sc.title, call: call && call.kind, premise: !!(call && /PREMISE-PLANTED/.test(call.about)), by: sc && sc.calls ? sc.calls.map(c => c.by) : [], dmLine: /wet wool/.test(heard), scripted: sc && sc.calls && sc.calls[0] && sc.calls[0].by === 'scripted' && heard.includes(sc.calls[0].text.slice(0, 30)), leak: heard.includes('PREMISE-PLANTED') || tools.includes('PREMISE-PLANTED'), summary: sc && sc.summary}));
+  process.exit(0);
+}
+
 // ---- Fellowship-first child (issue #165): a seeded world with a Fellowship, the scripted DM alone, the share printed ----
 if (process.argv[2] === '--focus') {
   init({fac: 0}); run(1500);
@@ -940,7 +956,7 @@ console.log('the Fellowship first');
   ok(f.reserveHeld && f.lastOk, 'one staged scene a day is kept for each company that has had none: ' + (f.err || f.reserveWhy));
   ok(f.pileSolo && f.pilePair, 'a staged fight or trap waits only for the targeted company\'s hurt members: ' + (f.err || f.pileWhy));
   const sv = kid2('--starve', 'STARVE');
-  ok(!sv.err && sv.worst <= 1440 && Object.keys(sv.by).length >= 3 && sv.starvedNow === 0, 'with three companies over 150 game hours the scripted DM never leaves one in the field unserved for a whole game day (longest ' + (sv.err || sv.worst + ' min, ' + sv.who) + ')');
+  ok(!sv.err && sv.worst <= 360 && Object.keys(sv.by).length >= 3 && sv.starvedNow === 0, 'with three companies over 150 game hours the scripted DM never leaves one in the field unserved for FOCUS.STARVE_MIN (360 game minutes; a starved company is served first, #530) (longest ' + (sv.err || sv.worst + ' min, ' + sv.who) + ')');
 }
 
 { // solo-sized jobs (issue #447): only while an agent solo exists, band-checked, paid less
@@ -968,6 +984,62 @@ console.log('the Fellowship first');
   ok(f && f.refillFF >= 1 && f.fitsWhole, 'a full hall board gets a Fellowship job on top at the next refresh, one the whole party fits (' + (f && f.refillTpl) + ', board ' + (f && f.boardBefore) + ')');
 }
 
+// ---------------------------------------------------------------- 1b. DM visibility (issue #558)
+console.log('DM visibility: hear, carries/quests/knows, survey, world_standing');
+{const {speak} = await import('../src/sim/chat.js'), {partySay} = await import('../src/sim/council.js'), {addQuest} = await import('../src/sim/inv.js');
+  const L = fellows(), A = L[0], B2 = L[1], DD = S.dmAgent, bg = S.agents.find(a => !a.player && a.state !== 'dead');
+  for (const x of L) {x.hidden = false; x.state = 'camp'; x.x = A.x + .5; x.y = A.y + .5; x.chat = []}
+  const before = JSON.stringify(S.agents.map(a => [a.x, a.y, a.hp, a.gold, a.lore ? 1 : 0, a.qlog ? 1 : 0]));
+  dmAct('hear', {n: 200});
+  const u0 = dmAct('dm_status').unheard;
+  ok(u0 && typeof u0.total === 'number' && Array.isArray(u0.by_company), 'dm_status has unheard (total, by_company)');
+  speak(A, 'We should look for the toll-keeper at Greywater ford.', 'agent'); A.chat[A.chat.length - 1].from = A;
+  partySay(A, 'Stay close, the road bends here.');
+  bg.chat = [{t: '12:00', d: 1, from: bg, text: 'A scripted bark nobody planned.', trigger: 'win'}];
+  A.chat.push({t: '12:00', d: 1, from: {kind: 'dm', name: 'The Narrator'}, text: 'SECRET-NARRATION-LINE', dm: true});
+  A.chat.push({t: '12:00', d: 1, from: {kind: 'dm', name: 'The Narrator'}, text: '(whispered) SECRET-WHISPER', dm: true});
+  const st = dmAct('dm_status'); ok(st.unheard.total >= 1 && /hear/.test(st.unheard.note || ''), 'dm_status counts the unheard lines and says to read hear: ' + JSON.stringify(st.unheard).slice(0, 160));
+  r = dmAct('hear', {});
+  ok(r.ok && r.lines.some(l => /toll-keeper/.test(l.text) && l.who === A.name && l.kind === 'say') && r.lines.some(l => /Stay close/.test(l.text) && l.kind === 'shout'), 'hear returns the say line and the party shout with speaker and kind: ' + JSON.stringify(r.lines && r.lines[0]));
+  ok(r.lines.every(l => l.who && l.t && l.where && l.text) && !/SECRET|scripted bark/.test(JSON.stringify(r)), 'hear carries no narration, whisper or scripted bark');
+  r = dmAct('hear', {}); ok(r.ok && r.count === 0 && dmAct('dm_status').unheard.total === 0, 'a second hear is empty (unheard is zero)');
+  r = dmAct('hear', {n: 2}); ok(r.ok && r.count === 2, 'n reads the last lines back');
+  r = dmAct('hear', {hero: A.name, since: 600}); ok(r.ok && r.lines.every(l => l.who === A.name) && r.count >= 1, 'hero and since narrow the read');
+  ok(dmAct('hear', {hero: 'Nobody Such'}).ok === false && dmAct('hear', {company: 'zz'}).ok === false, 'an unknown hero or company is refused with a hint');
+  for (let i = 0; i < 230; i++) {B2.chat = []; speak(B2, 'Line number ' + i + ' of the long road.', 'agent'); const e = B2.chat[B2.chat.length - 1]; e.from = B2; e.t = String(Math.floor(i / 60)).padStart(2, '0') + ':' + String(i % 60).padStart(2, '0'); A.chat.push(e); A.chat = A.chat.slice(-20); if (i % 15 === 14) dmAct('dm_status')}
+  r = dmAct('hear', {n: 500}); ok(r.ok && r.count <= 200, 'hear returns at most 200 lines (' + r.count + ')');
+  const fv = dmAct('fellowship_view'), m0 = fv.fellowship.members[0];
+  ok(m0.carries && typeof m0.carries.gold === 'number' && Array.isArray(m0.carries.quest_items) && Array.isArray(m0.quests) && m0.knows && Array.isArray(m0.knows.places), 'fellowship_view members have carries, quests and knows');
+  addQuest(A, 'Toll-Token', null);
+  const m1 = dmAct('fellowship_view').fellowship.members.find(x => x.id === A.id);
+  ok(m1.carries.quest_items.includes('Toll-Token') && !Array.isArray(m1.carries.pack), 'carries names the quest item, never the whole pack');
+  const cv = dmAct('companies_view'); ok(cv.companies[0].members[0].carries && cv.companies[0].members[0].knows, 'companies_view members have the same fields');
+  const hn = dmAct('heroes_near', {near: A.name, radius: 12}), mine = hn.heroes.find(h => h.id === A.id);
+  ok(mine && mine.carries && mine.knows && hn.heroes.filter(h => !h.fellowship).every(h => !h.carries), 'heroes_near gives company members carries/quests/knows and background heroes the old line');
+  ok(JSON.stringify(m1).length < 4000, 'a member view stays small (' + JSON.stringify(m1).length + ' bytes)');
+  r = dmAct('survey', {near: 'fellowship'});
+  ok(r.ok && r.region && r.legal_spots.length >= 1 && r.legal_spots.length <= 6 && Array.isArray(r.roads) && Array.isArray(r.towns_and_landmarks) && r.radius === 12, 'survey near the Fellowship: region, roads, places and ' + (r.legal_spots && r.legal_spots.length) + ' legal spots');
+  ok(dmAct('survey', {near: 'x'}).ok === false && dmAct('survey', {near: A.name, radius: 99}).radius === 30 && dmAct('survey', {near: A.name, radius: 1}).radius === 4, 'survey radius is held to 4-30 and an unknown place is refused');
+  const {spotErr} = await import('../src/sim/levers.js'), {dist} = await import('../src/world/map.js');
+  const sp = r.legal_spots.map(x => ({x: Number(x.at.split(',')[0]), y: Number(x.at.split(',')[1])}));
+  ok(sp.every(p => !spotErr(p) && (S.places || []).every(q => dist(q, p) >= 3)), 'every legal spot passes the lever ground check and keeps 3 tiles from places');
+  S.dmAgent.day.pulls = 0; S.levers.active = S.levers.active.filter(x => x.name !== "mark_place"); S.places = []; if (S.levers.cd) for (const k of Object.keys(S.levers.cd)) if (/mark_place/.test(k)) delete S.levers.cd[k]; if (S.levers.day) S.levers.day.n = {};
+  const m = dmAct('mark_place', {kind: 'cairn_door', near: sp[0].x + ',' + sp[0].y, reason: 'survey spot'});
+  ok(m.ok, 'mark_place accepts a survey spot' + (m.ok ? '' : ': ' + m.error));
+  const bad = dmAct('mark_place', {kind: 'ruin', near: '1,1', reason: 'the corner'}); ok(bad.ok === false && /survey/.test(bad.error), 'a mark_place refused for the ground names survey: ' + bad.error.slice(-120));
+  const bad2 = dmAct('place_person', {role: 'hermit', near: '0,0', reason: 'off map'}); ok(bad2.ok === false && /survey/.test(bad2.error), 'so does place_person');
+  r = dmAct('world_standing');
+  ok(r.ok && Array.isArray(r.guilds) && r.boss && 'alive' in r.boss && r.crypt && 'clears' in r.crypt && r.auction && Array.isArray(r.auction.notable) && Array.isArray(r.top_heroes) && r.top_heroes.length <= 5 && Array.isArray(r.conditions) && Array.isArray(r.events) && Array.isArray(r.rivalries), 'world_standing: guilds, rivalries, boss, crypt, auction, conditions, events, top five');
+  ok(r.guilds.every(g => g.focus && 'why' in g && 'rivals' in g), 'each guild shows its focus and why');
+  const after = JSON.stringify(S.agents.map(a => [a.x, a.y, a.hp, a.gold, a.lore ? 1 : 0, a.qlog ? 1 : 0]));
+  ok(before === after, 'the new reads touch no hero (position, HP, gold, lore, quest log)');
+  ok(dmAct('dm_status').fellowship_needs.items.some(x => /Toll-Token/.test(x)), 'fellowship_needs mentions what a member carries');
+  speak(A, 'One more word for the DM to miss.', 'agent'); A.chat[A.chat.length - 1].from = A;
+  ok(dmAct('dm_status').fellowship_needs.items.some(x => /not heard.*hear/.test(x)), 'fellowship_needs says they spoke and to read hear');
+  const snap2 = JSON.parse(JSON.stringify(snapshot())); restore(snap2); ok(dmAct('hear', {n: 3}).ok && S.dmAgent.ear.lines.length > 0, 'the ring survives snapshot -> JSON -> restore');
+  void DD;
+}
+
 // ---------------------------------------------------------------- 3. silence never stalls the world
 console.log('silence');
 const hashOf = arg => {const p = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--hash', arg], {cwd: ROOT, encoding: 'utf8', env: {...process.env}}); return (p.stdout || '').trim() || p.stderr};
@@ -992,6 +1064,7 @@ h = await (await fetch(B + '/play/health')).json();
 ok(h.dm.link === 'waiting' && h.dm.runner && h.dm.runner.model === 'claude-sonnet-5-5', `the seat's link is waiting with the runner's mind (${h.dm.runner && h.dm.runner.model})`);
 r = await post('/play/dm', {tool: 'dm_status', runner: 'test:1'});
 ok(r.ok && r.day >= 1, 'POST /play/dm dm_status');
+for (const [t, args] of [['hear', {n: 3}], ['survey', {near: 'fellowship'}], ['world_standing', {}]]) {const q = await post('/play/dm', {tool: t, args, runner: 'test:1'}); ok(q.ok === true, `POST /play/dm ${t}` + (q.ok ? '' : ': ' + q.error));}
 ok((await post('/play/dm', {tool: 'dm_status', runner: 'test:2'})).status === 409, 'a held DM seat answers only its own runner (issue #123)');
 ok((await post('/play/dm', {tool: 'dm_status', runner: 'test:1', hero: 1})).status === 403, 'a call naming a hero gets no DM tools');
 ok((await post('/play/dm', {tool: 'look'})).status === 400, 'hero tools are not DM tools');
@@ -1003,7 +1076,8 @@ ok(h.dm.link === 'connected', 'after a call the seat shows connected');
   const c = new Client({name: 'dmcheck', version: '1.0.0'});
   await c.connect(new StreamableHTTPClientTransport(new URL(B + '/mcp?role=dm'), {requestInit: {headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': 'test:1'}}}));
   const tools = (await c.listTools()).tools.map(t => t.name);
-  ok(tools.includes('pull_lever') && tools.includes('notes_write') && !tools.includes('look') && !tools.includes('move_to'), `MCP /mcp?role=dm lists ${tools.length} DM tools and no hero tools`);
+  ok(['hear', 'survey', 'world_standing'].every(t => tools.includes(t)), 'MCP lists hear, survey and world_standing');
+    ok(tools.includes('pull_lever') && tools.includes('notes_write') && !tools.includes('look') && !tools.includes('move_to'), `MCP /mcp?role=dm lists ${tools.length} DM tools and no hero tools`);
   ok(['stage_scene', 'table_call', 'table_answer'].every(t => tools.includes(t)), 'and the staged-scene tools (stage_scene, table_call, table_answer)');
   const res = await c.callTool({name: 'notes_write', arguments: {section: 'characters', op: 'add', text: 'Merel the gate captain, owes the party.'}});
   ok(/"ok":true/.test(res.content[0].text) && S.dmAgent.notes.characters.length === 1, 'an MCP notes_write lands in the world');
@@ -1092,11 +1166,12 @@ const plan = [['dm_status', {}], ['notes_write', {section: 'plans', op: 'add', t
 const seen = [];
 const mock = http.createServer((req, res) => {
   const send = (code, o) => {res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(o))};
-  if (req.url === '/api/tags') return send(200, {models: [{name: 'mock-dm:1b', model: 'mock-dm:1b'}]});
+  if (req.url === '/api/tags') return send(200, {models: [{name: 'mock-dm:1b', model: 'mock-dm:1b'}, {name: 'mock-loop:1b', model: 'mock-loop:1b'}]});
   if (req.url !== '/api/chat') return send(404, {error: 'not found'});
   let b = ''; req.on('data', c => b += c); req.on('end', () => {const body = JSON.parse(b); seen.push(body);
     const msgs = body.messages, last = msgs.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0).pop(), n = msgs.slice(last + 1).filter(m => m.role === 'assistant').length;
     const done = {done: true, done_reason: 'stop', prompt_eval_count: 1200, eval_count: 30, model: body.model};
+    if (body.model === 'mock-loop:1b' && body.tools) return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: 'regions', arguments: {}}}]}}); // a model that never stops calling
     if (n >= plan.length) return send(200, {...done, message: {role: 'assistant', content: 'The DM set a fair in motion and noted the pilgrim road.'}});
     const [name, args] = plan[n]; send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name, arguments: args}}]}})});
 });
@@ -1139,6 +1214,31 @@ try {
   const sizes = [...new Set(seen.map(b => b.options && b.options.num_ctx))];
   ok(seen.length && sizes.length === 1 && sizes[0] === 16384, `every DM loop request asks one num_ctx (${sizes.join(', ')}; issue #221)`);
   world.p.kill();
+  // the DM's prep before the table opens (issue #437): a resumed world (Continue) held for a short prep with --wait-ready
+  {const P2 = port + 1, B2 = `http://127.0.0.1:${P2}`, wf = join(tmp, 'world-prep.json');
+    writeFileSync(wf, JSON.stringify(snapshot())); // the world of this check, saved: a Continue
+    const w2 = start(['scripts/play-headless.mjs', '--port', String(P2), '--dm', '--agents', '0', '--quiet', '--speed', '4', '--wait-ready', '--resume', '--world', wf], /^\[play\] headless world at /m);
+    await w2.until;
+    const d2 = start(['scripts/dm-agent.mjs', '--url', B2, '--provider', 'ollama', '--model', 'mock-dm:1b', '--max-turns', '1', '--cadence', '5', '--ollama-url', OLLAMA, '--new']);
+    const c3 = await d2.done, o3 = d2.out(); for (let k = 0; k < 50 && !/prep is over/.test(w2.out()); k++) await new Promise(r => setTimeout(r, 100)); const wo = w2.out();
+    ok(c3 === 0 && /preparing the table \(resume\): at most 10 calls/.test(o3) && /prep over: done/.test(o3), 'Continue: the DM runner takes the short prep (half the calls) and ends it with prep_done' + (c3 === 0 ? '' : '\n' + o3.slice(-1500)));
+    ok(/the DM prepares the table \(resume/.test(wo) && /the DM's prep is over \(done/.test(wo), 'play-headless --wait-ready holds the world for the prep and runs once it is over' + (/prep is over/.test(wo) ? '' : '\n' + wo.slice(-1200)));
+    const d3 = start(['scripts/dm-agent.mjs', '--url', B2, '--provider', 'ollama', '--model', 'mock-loop:1b', '--max-turns', '1', '--cadence', '5', '--ollama-url', OLLAMA, '--new']);
+    const c4 = await d3.done, o4 = d3.out(); for (let k = 0; k < 50 && !/prep is over [(]calls/.test(w2.out()); k++) await new Promise(r => setTimeout(r, 100)); const wo2 = w2.out(); // the world's pipe may lag the runner's exit
+    ok(c4 === 0 && /preparing the table \(resume\)/.test(o4) && /the DM's prep is over \(calls: 10 calls/.test(wo2), 'a DM runner started again gets a short prep too; a model that loops on calls is stopped by the call cap' + (c4 === 0 && /calls: 10/.test(wo2) ? '' : '\n' + o4.slice(-1500) + '\nWORLD ' + wo2.slice(-800)));
+    w2.p.kill();
+    const w3 = start(['scripts/play-headless.mjs', '--port', String(P2 + 1), '--agents', '0', '--dm', '--quiet', '--speed', '4', '--resume', '--world', wf], /^\[play\] headless world at /m);
+    await w3.until;
+    const d4 = start(['scripts/dm-agent.mjs', '--url', `http://127.0.0.1:${P2 + 1}`, '--provider', 'ollama', '--model', 'mock-dm:1b', '--max-turns', '1', '--cadence', '5', '--ollama-url', OLLAMA, '--new']);
+    const c5 = await d4.done, o5 = d4.out();
+    ok(c5 === 0 && !/preparing the table/.test(o5) && !/prepares the table/.test(w3.out()), 'no host holding the world for it (no --wait-ready): no prep, the runner goes straight to its turn');
+    w3.p.kill()}
+  // session zero framed: by the DM agent's call (the premise in its call only), or by the scripted DM with the seat closed
+  {const run1 = arg => {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--opening', arg], {encoding: 'utf8'}); if (ch.stderr) process.stderr.write(ch.stderr); const l = (ch.stdout || '').split('\n').find(x => x.startsWith('OPENING ')); return l ? JSON.parse(l.slice(8)) : {}};
+    const o = run1('seat'), c = run1('closed');
+    ok(o.kind === 'opening' && /^SESSION ZERO/.test(o.title) && o.call === 'frame' && o.premise && o.dmLine && o.by[0] === 'dm-agent', 'session zero: the DM agent frames the opening (its call carries the campaign premise)');
+    ok(!o.leak && !c.leak, 'the premise reaches no hero tool or chat; only what the DM says at the table');
+    ok(c.kind === 'opening' && c.by[0] === 'scripted' && c.scripted && /Before them|board is bare/.test(c.summary || ''), 'with the seat closed the scripted DM frames it from the hall, the day and the first board job')}
 } catch (e) {ok(false, 'runner section: ' + (e.message || e))}
 for (const k of kids) try {k.kill()} catch {}
 mock.close();

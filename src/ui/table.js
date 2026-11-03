@@ -6,9 +6,9 @@
 //   combat  a combat scene with rounds (#277, part 2 of #140): ROUND n/3 in the title row, the initiative order as
 //           chips (name, HP bar and %, conditions) with the foe at its place and the current actor marked, the rolls
 //           of the round as it plays (d20, bonus, AC, hit/miss/crit, damage), and at the end why it ended
-//   step    in a combat scene, a small button cycles the watcher's round pace (TABLE.step, #285): Step off (rounds
-//           run on), Step: hold (the world waits after each round until Next round) and Step: auto (Next round, or on
-//           its own after TABLE.stepS seconds); kept per viewer in localStorage. The rolls are the beats' roll data.
+//   step    in a combat scene, a small button cycles the watcher's round pace (TABLE.step, #285): "Rounds: run on",
+//           "Rounds: pause after each" (the world waits after each round until Next round) and "Rounds: pause N s" (Next
+//           round, or on its own after TABLE.stepS seconds; worded for the owner in #546); kept per viewer in localStorage. The rolls are the beats' roll data.
 //   switch  the View group's "Table: Auto / Off" button (Off = Watch mode, never pauses); kept
 //           per viewer in localStorage
 // Companies (#456): with more than one company the chip row starts with whose table it is ("At the table: Dovas and
@@ -125,9 +125,11 @@ function combatBlock(box,c){
     L.append(row)}
   box.append(L)}
 // The watcher's round pace (#285): the mode button, and Next round while a round is held.
-const STEP_TXT={off:'Step: off',hold:'Step: hold',auto:'Step: auto'};
-function stepRow(box,c){const d=el('div','tstep'),m=el('button','tstb',STEP_TXT[c.step]||STEP_TXT.off);m.type='button';m.dataset.act='step';
-  m.title='Round pace: off = rounds run on; hold = wait after each round for Next round; auto = Next round or '+TABLE.stepS+' s';m.setAttribute('aria-label','Round pace: '+c.step);d.append(m);
+// #546: the button says what it does in words ("Rounds: run on / pause after each / pause N s"), with a small label.
+const STEP_TXT={off:'Rounds: run on',hold:'Rounds: pause after each',auto:'Rounds: pause '+TABLE.stepS+' s'};
+const STEP_TIP={off:'The rounds play on without a stop. Click: pause after each round until you press Next round',hold:'The fight stops after each round until you press Next round. Click: pause '+TABLE.stepS+' s after each round, then go on',auto:'After each round the fight waits '+TABLE.stepS+' s (or Next round), then goes on. Click: let the rounds run on'};
+function stepRow(box,c){const d=el('div','tstep'),k=STEP_TXT[c.step]?c.step:'off',m=el('button','tstb',STEP_TXT[k]);m.type='button';m.dataset.act='step';
+  m.title=STEP_TIP[k];m.setAttribute('aria-label','Round pace: '+STEP_TXT[k].replace(/^Rounds: /,'')+'. Click to change');d.append(el('span','tsth','ROUND PACE'),m);
   if(c.hold){const n=el('button','tstb tnext','Next round ▶'+(c.hold.auto?' ('+c.hold.left+' s)':''));n.type='button';n.dataset.act='next';d.append(n)}
   box.append(d)}
 function onBox(e){const t=e.target&&e.target.closest?e.target.closest('[data-act]'):null;if(!t)return;

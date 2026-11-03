@@ -91,13 +91,13 @@ const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(
 // A hero id from a header, query or body value: a positive integer, null when absent, NaN when bad.
 export const heroParam = v => v == null || v === '' ? null : /^\d{1,9}$/.test(String(v).trim()) ? Number(String(v).trim()) : NaN;
 const cleanHeroes = list => (Array.isArray(list) ? list : []).filter(h => h && typeof h === 'object' && Number.isInteger(h.id))
-  .slice(0, 64).map(h => ({id: h.id, name: String(h.name || '').slice(0, 40), alive: h.alive !== false, ...(h.fellow ? {fellow: true, role: String(h.role || '').slice(0, 12) || null, lead: !!h.lead, table: !!h.table, ...(h.due ? {due: true} : {})} : {})})); // fellow/role/lead: Fellowship members (#68), for npm run fellowship
+  .slice(0, 64).map(h => ({id: h.id, name: String(h.name || '').slice(0, 40), alive: h.alive !== false, ...(Number.isInteger(h.succeeds) ? {succeeds: h.succeeds} : {}), ...(h.fellow ? {fellow: true, role: String(h.role || '').slice(0, 12) || null, lead: !!h.lead, table: !!h.table, ...(h.due ? {due: true} : {})} : {})})); // fellow/role/lead: Fellowship members (#68), for npm run fellowship
 // The hero a call without a hero id goes to (the old single-hero path).
 export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes.length - 1] || null);
 
 // ---- the browser backend: one page at a time over a WebSocket, serving all its agent heroes ----
-export function browserBackend({log = () => {}, onBehavior = null, onWorld = null, onMirror = null} = {}) {
-  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false;
+export function browserBackend({log = () => {}, onBehavior = null, onWorld = null, onMirror = null, onHello = null} = {}) {
+  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false, dmPrep = null;
   const waiting = new Map();
   const send = o => {if (sock && sock.readyState === 1) sock.send(JSON.stringify(o))};
   return {
@@ -113,15 +113,17 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
           if (k !== heroes.map(h => h.id + ':' + h.name + ':' + h.alive).join(',')) log(`[play] agent heroes: ${next.length ? next.map(h => h.name + ' #' + h.id + (h.alive ? '' : ' (dead)')).join(', ') : 'none'}`);
           heroes = next; lastLinks = '';
           const seat = m.dm === true || !!(m.dm && m.dm.seat); if (seat !== dmSeat) log(`[play] DM seat ${seat ? 'open' : 'closed'}`); dmSeat = seat;
+          dmPrep = m.dm && m.dm.prep && typeof m.dm.prep === 'object' ? {state: String(m.dm.prep.state || '').slice(0, 12), kind: String(m.dm.prep.kind || '').slice(0, 12), calls: Number(m.dm.prep.calls) || 0, max_calls: Number(m.dm.prep.max_calls) || 0, ...(m.dm.prep.why ? {why: String(m.dm.prep.why).slice(0, 12)} : {})} : null; // the DM's prep (#437)
           if (onWorld && typeof m.world === 'string') onWorld(m.world, typeof m.worldId === 'string' ? m.worldId : null); // the behavior logs' folder (issue #129)
+          if (onHello) try {onHello()} catch {} // the links at once: a page that (re)connected never shows 'no runner' while it waits for the next tick (#563)
         } else if (m.type === 'behavior' && onBehavior && typeof m.kind === 'string') {try {onBehavior(m.kind, m.rec)} catch (e) {log('[play] behavior log: ' + e.message)}}
         else if (m.type === 'mirror' && onMirror && Array.isArray(m.seats)) {try {onMirror(m.seats)} catch (e) {log('[play] memory mirror: ' + e.message)}} // agent memories as Markdown (#155); written, never read back
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
       });
-      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; log('[play] game page disconnected');
+      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; dmPrep = null; log('[play] game page disconnected');
         for (const [id, w] of waiting) {clearTimeout(w.t); w.res(paused('page went away')); waiting.delete(id)}});
     },
-    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat}),
+    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat, ...(dmPrep ? {dmPrep} : {})}),
     // A DM tool call (issue #66), answered by the page through src/sim/dmagent.js.
     dmCall(tool, args) {
       if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
@@ -200,7 +202,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
   const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, rec, {links: links(), runners: runners()}) : false;
   const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id)} : null,
-    onMirror: mirror ? seats => mirror.write(seats) : null}); // mirror: scripts/memory-mirror.mjs (issue #155)
+    onMirror: mirror ? seats => mirror.write(seats) : null, onHello: () => pushLinks()}); // mirror: scripts/memory-mirror.mjs (issue #155)
   const stats = {calls: 0, errors: 0};
   const claims = new Map(), act = new Map(); // hero id -> {runner, at} / {last, inflight}
   const vlog = rec => {if (!verbose) return; try {mkdirSync(dirname(verbose), {recursive: true}); appendFileSync(verbose, JSON.stringify(rec) + '\n')} catch (e) {log(`[play] verbose log failed: ${e.message}`)}};
@@ -217,7 +219,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const readies = new Map(); // hero id | DM_KEY -> {runner, state, model?, ms?, at, error?}
   const readyOf = id => {const c = claimOf(id), r = readies.get(id); if (!c || !r || r.runner !== c.runner) return null; const {runner, ...o} = r; return o};
   const readyMap = () => Object.fromEntries((be.info().heroes || []).map(h => [h.id, readyOf(h.id)]).filter(e => e[1]));
-  const dmInfo = () => {const r = runnerOf(DM_KEY), rd = readyOf(DM_KEY); return {seat: dmOpen(), link: linkOf(DM_KEY), claimed: !!claimOf(DM_KEY), ...(r ? {runner: r} : {}), ...(rd ? {ready: rd} : {})}};
+  const dmInfo = () => {const r = runnerOf(DM_KEY), rd = readyOf(DM_KEY), pp = be.info().dmPrep; return {seat: dmOpen(), link: linkOf(DM_KEY), claimed: !!claimOf(DM_KEY), ...(r ? {runner: r} : {}), ...(rd ? {ready: rd} : {}), ...(pp ? {prep: pp} : {})}}; // prep: the DM's prep before the table opens (#437)
   const pushLinks = () => {if (be.links) be.links(links(), runners(), dmInfo(), readyMap())};
   const resolve = hero => hero != null ? hero : (defaultHero(be.info().heroes || []) || {}).id ?? null;
 
@@ -257,16 +259,21 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   }
   // A runner's turn line (issue #129): only the runner holding the seat may write it (issue #123: no seat writes
   // lines for another), and the host adds the hero's state header after the turn (src/sim/pace.js paceBrief).
+  // A turn line also proves the seat's model answers (#563): a claimed seat with no warm-up record (an older runner, or
+  // readiness lost to a relay restart) counts as ready once its runner has played a turn, so the start gate never holds
+  // the world on a seat that is plainly playing.
+  const turnPlayed = (key, rid) => {const r = readies.get(key); if (r && r.runner === rid) return; readies.set(key, {runner: rid, state: 'ready', implied: true, at: now()}); pushLinks()};
   async function behaviorTurn(b, hero, rid, dm) {
-    if (!behavior) return [404, {ok: false, error: 'this host keeps no behavior logs'}];
     const rec = b.rec && typeof b.rec === 'object' ? b.rec : null; if (!rec) return [400, {ok: false, error: 'turn needs {rec}'}];
     if (dm) {const c = claimOf(DM_KEY); if (!c || c.runner !== rid) return [409, {ok: false, refused: true, error: 'Only the runner holding the DM seat writes its turns.'}];
+      turnPlayed(DM_KEY, rid); if (!behavior) return [404, {ok: false, error: 'this host keeps no behavior logs'}];
       behavior.turn({...rec, seat: 'dm', hero: null, runner: rid, provider: (c.info && c.info.provider) || rec.provider, model: (c.info && c.info.model) || rec.model});
       // the game keeps the DM's per-turn record (issue #181): this turn's cost, model and seconds close it (DM-only data, never shown to heroes)
       if (be.dmCall) try {Promise.resolve(be.dmCall('turn_end', {turn: rec.turn, model: (c.info && c.info.model) || rec.model, provider: (c.info && c.info.provider) || rec.provider, cost: rec.cost, seconds: rec.seconds, tokensIn: rec.tokensIn, tokensOut: rec.tokensOut, cacheRead: rec.cacheRead, cacheWrite: rec.cacheWrite})).catch(() => {})} catch {}
       return [200, {ok: true}]}
     if (hero == null || Number.isNaN(hero)) return [400, {ok: false, error: 'turn needs the hero id'}];
     const c = claimOf(hero); if (!c || c.runner !== rid) return [409, {ok: false, refused: true, error: `Only the runner holding hero #${hero} writes its turns.`}];
+    turnPlayed(hero, rid); if (!behavior) return [404, {ok: false, error: 'this host keeps no behavior logs'}];
     const h = (be.info().heroes || []).find(x => x.id === hero) || {id: hero, name: null};
     let after = null; try {const r = await Promise.race([be.call(hero, 'pace', {brief: true}), new Promise(res => setTimeout(() => res(null), 3000))]); after = r && r.ok && r.brief ? r.brief : null} catch {}
     const af = after ? {state: after.state, doing: after.doing || null, hp: after.hp, level: after.level, place: after.place || null, foe: after.foe || null, autopilot: !!after.autopilot, table: !!after.table, clock: after.clock || null} : null;
@@ -381,7 +388,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         const runner = typeof b.runner === 'string' ? b.runner.slice(0, 80) : '';
         if (hero == null || !runner) return send(400, {error: 'claim needs {hero, runner}'});
         const held = claimOf(hero);
-        if (path === '/play/release') {if (held && held.runner === runner) {claims.delete(hero); log(`[play] runner let go of #${hero}`); pushLinks()} return send(200, {ok: true})}
+        if (path === '/play/release') {if (held && held.runner === runner) {claims.delete(hero); act.delete(hero); log(`[play] runner let go of #${hero}`); pushLinks()} return send(200, {ok: true})}
         if (held && held.runner !== runner) return send(409, {ok: false, error: `Hero #${hero} already has a live agent runner (${held.runner}). One agent per hero.`});
         if (path === '/play/claim' && claimOf(DM_KEY) && claimOf(DM_KEY).runner === runner) return send(409, {ok: false, error: 'This runner holds the DM seat; a hero needs a runner of its own (seats stay apart).'});
         const h = (be.info().heroes || []).find(x => x.id === hero);
@@ -396,7 +403,8 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   // For the runner supervisor (scripts/runners.mjs): whether a live runner holds a hero, and dropping the
   // claims of a runner process that is gone (a stopped child cannot always release on its way out).
   const claimed = id => !!claimOf(id);
-  const dropRunner = prefix => {let n = 0; for (const [id, c] of claims) if (c.runner === prefix || c.runner.startsWith(prefix + ':')) {claims.delete(id); n++}
+  const dropRunner = prefix => {let n = 0; for (const [id, c] of claims) if (c.runner === prefix || c.runner.startsWith(prefix + ':')) {claims.delete(id); act.delete(id); n++}
     if (n) {log(`[play] runner ${prefix} gone: ${n} claim(s) dropped`); pushLinks()} return n};
-  return {backend: be, stats, call, dmCall, dmInfo, linkOf, links, runnerOf, readyOf, claimed, dropRunner, behaviorIngest, behavior};
+  const holderOf = id => {const c = claimOf(id); return c ? c.runner : null}; // the runner id holding a seat (the supervisor matches its children by host:pid, #563)
+  return {backend: be, stats, call, dmCall, dmInfo, linkOf, links, runnerOf, readyOf, claimed, holderOf, dropRunner, behaviorIngest, behavior};
 }
