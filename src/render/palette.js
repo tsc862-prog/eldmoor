@@ -76,3 +76,17 @@ export const SPELL={
   ward:  ['#f4f8ff','#a8c0f0','#4a6aa8'],
   shadow:['#d8c8f0','#6a4a90','#24183a'],
 };
+
+// Dungeon interiors (#85, render/interior.js): the crypt's stone in the same cool violet-grey as its mouth on the
+// world map (terrain.js) and the teal-green crypt light. Ramps are [highlight, body, shade] as RGB triples for
+// the per-texel textures; light from the top left like the world above.
+export const DUNGEON={
+  void:[6,6,11],
+  floor:[[108,104,122],[84,80,98],[64,60,76]], mortar:[30,28,40], moss:[62,96,74],
+  hall:[[90,86,104],[70,66,84],[52,48,64]],
+  wallTop:[[46,42,56],[33,30,42],[24,22,32]], wallFace:[[96,92,112],[66,62,80],[44,40,56]],
+  water:[[90,168,160],[30,78,84],[18,52,58]], stair:[[132,128,146],[96,92,110],[44,41,54]],
+  dais:[[132,124,150],[104,96,124],[62,56,80]], rune:[122,208,160], wood:[[138,104,62],[96,70,40],[58,40,22]],
+  fog:'rgba(4,4,10,.9)', fogA:230,       // over chambers the party has not reached
+  cur:UI.gold, clear:UI.green, boss:UI.red, flame:'#ffd866', ghost:[120,230,170],
+};

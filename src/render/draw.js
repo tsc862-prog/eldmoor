@@ -30,6 +30,7 @@ import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {syncSpells,drawSpells} from './spellfx.js';
 import {TEXT,MARK,LIGHT} from './palette.js';
+import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
 import {CITY} from '../world/map.js';
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
@@ -90,7 +91,7 @@ export function createRenderer(cv,screenEl){
   const mini=miniEl&&miniEl.getContext?createMinimap(miniEl,cam,centerOn):null;
   function resize(){const r=screenEl.getBoundingClientRect();cam.dpr=window.devicePixelRatio||1;cv.width=Math.max(1,Math.round(r.width*cam.dpr));cv.height=Math.max(1,Math.round(r.height*cam.dpr));
     cam.fit=Math.min(cv.width/(W*T),cv.height/(H*T));if(mini)mini.resize()}
-  new ResizeObserver(resize).observe(screenEl);resize();
+  new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();
 
   function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
@@ -120,6 +121,7 @@ export function createRenderer(cv,screenEl){
 
   let blink=0;
   function draw(){
+    trackCrawl();if(dungeonOpen()){drawDungeon(performance.now()/1000);return} // the dungeon view covers the world; skip drawing it
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
     const sel=cam.sel,fr=framed(),follow=following();
