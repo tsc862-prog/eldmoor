@@ -29,6 +29,7 @@ import {texel} from './terrain.js';
 import {openDungeon,closeDungeon,dungeonOpen} from './dungeonview.js';
 import {biomeOfZone,SCENE,MARK,TEXT} from './palette.js';
 import {classColor,DISP} from '../core/colors.js';
+import {sceneHead} from '../core/scenehead.js';
 
 const KEY='eldmoor.sceneMaps';
 const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social']);
@@ -159,10 +160,10 @@ export function initSceneView(){if(inited||typeof document==='undefined')return;
   document.addEventListener('keydown',e=>{if(open&&e.key==='Escape')closeSceneView(true)});
   const b=document.getElementById('vScene');if(b)b.onclick=()=>setSceneAuto(!auto);syncBtn()}
 
-// The bar: the scene's title, where it is, and who is there (members in class colour, the cast in theirs).
+// The bar: the scene's short title (core/scenehead.js; the banner has the whole question, #471), where it is, and who is there (members in class colour, the cast in theirs).
 export function refreshScene(){if(!root||!open||!spec)return null;const sp=spec,people=sp.members.concat(sp.cast);
   const s=sp.title+'|'+sp.where+'|'+people.map(e=>e.id+(live(e)?'':'x')).join(',')+'|'+(speaker&&speaker.dm?speaker.text:'');if(s===sig)return sp;sig=s;
-  nameEl.textContent=String(sp.title||'Scene').toUpperCase();statEl.textContent=sp.where+(speaker&&speaker.dm?' · '+speaker.text:'');
+  nameEl.textContent=sceneHead(sp.kind,sp.title).head.toUpperCase();nameEl.title=sp.title||'';statEl.textContent=sp.where+(speaker&&speaker.dm?' · '+speaker.text:'');
   whoEl.textContent='';for(const e of people){const li=mk('li','scp'+(live(e)?'':' gone'),e.kind==='mob'?(e.name||'foe'):e.name||'?');
     li.style.color=e.kind==='hero'&&e.fellow?classColor(e.cls):e.kind==='mob'||e.kind==='boss'||e.kind==='hero'?DISP.hostile.color:DISP.neutral.color;whoEl.append(li)}
   return sp}

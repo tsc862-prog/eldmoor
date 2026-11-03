@@ -120,8 +120,11 @@ if(mode==='a'){
   ok(all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1').value.length>=3,'name reroll fills a name');
   click(ids.get('setup'),b=>b.dataset.a==='start');
   const pend=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
-  ok(pend&&pend.world==='eldmoor'&&reloads===1&&pend.slots.tank.mind.mode==='agent','Start queues the setup and reloads');
+  ok(pend&&pend.world==='eldmoor'&&reloads===1&&pend.v===2&&pend.mode==='together'&&pend.heroes.length===5&&pend.heroes[0].cls==='Warrior'&&pend.heroes[0].mind.mode==='agent','Start queues the setup (v2 together, #453) and reloads');
   ok(sim.validateSetup(pend).length===0,'the queued setup validates');
+  {const last=JSON.parse(localStorage.getItem('eldmoor.setup.last')||'null');setup.openSetup({first:false});
+   const nm=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1');
+   ok(last&&last.v===2&&all(ids.get('setup'),'.scard').length===5&&nm&&nm.value===pend.heroes[2].name,'a stored v2 last setup opens on the page as its five places (#453)')}
   localStorage.removeItem(PENDING_KEY);reloads=0;
   click(ids.get('setup'),b=>b.dataset.a==='cancel');writeSave();ok(!!localStorage.getItem(SAVE_KEY),'a save exists');
   setup.openSetup({first:false});
@@ -181,8 +184,8 @@ if(mode==='a'){
   // Continue
   save.holdSave(false);save.writeSave();played=[];title.showTitle(k=>played.push(k));t=ids.get('title');
   click(t,b=>b.dataset.a==='continue');ok(played.join()==='continue','Continue resumes the save');
-}else{
-  const s0=sim.applyPreset('claude',sim.defaultSetup(777,'eldmoor',0));s0.slots.tank.archetype='veteran';const s=sim.cleanSetup(s0);
+}else if(mode==='b'){
+  const s0=sim.applyPreset('claude',sim.defaultSetup(777,'eldmoor',0));s0.heroes[0].archetype='veteran';const s=sim.cleanSetup(s0);
   localStorage.setItem(PENDING_KEY,JSON.stringify(s));
   boot(sim.init);
   ok(bootKind()==='setup'&&appliedSetup().seed===777,'boot applies the queued setup');
@@ -217,7 +220,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   ok(!pb('fishing').disabled&&/Smithing at skill 1/.test(card().textContent),'cards: un-picking frees a place');
   click(ids.get('setup'),b=>b.dataset.a==='start');
   const pend2=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
-  ok(pend2&&pend2.slots.tank.profs.join()==='smithing'&&!pend2.slots.healer.profs,'Start queues the choice for that place only');
+  ok(pend2&&pend2.heroes[0].profs.join()==='smithing'&&!pend2.heroes[1].profs,'Start queues the choice for that place only');
   localStorage.removeItem(PENDING_KEY)}
 // Archetype picker on the place cards (#295 follow-up): None, the six, Random; the hint follows the pick
 if(mode==='a'){setup.openSetup({first:true});await sleep(30);
@@ -235,8 +238,65 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   ok(!/unknown archetype/.test(text(ids.get('setup'))),'archetype: no problem flagged for a legal pick');
   click(ids.get('setup'),b=>b.dataset.a==='start');
   const pend3=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
-  ok(pend3&&pend3.slots.tank.archetype==='veteran'&&pend3.slots.dps2.archetype==='random'&&!pend3.slots.healer.archetype,'archetype: Start queues the picks per place');
+  ok(pend3&&pend3.heroes[0].archetype==='veteran'&&pend3.heroes[3].archetype==='random'&&!pend3.heroes[1].archetype,'archetype: Start queues the picks per place');
   localStorage.removeItem(PENDING_KEY)}
+// Together / Apart, the hero count, start towns, groups and the shape presets (#454)
+if(mode==='a'){setup.openSetup({first:true});await sleep(30);
+  const R=()=>ids.get('setup'),pressed=(a,k,v)=>{const b=all(R(),'button').find(x=>x.dataset.a===a&&x.dataset[k]===v);return b&&b.getAttribute('aria-pressed')==='true'};
+  const sel=f=>all(R(),'select').find(s=>s.dataset.f===f);
+  ok(pressed('smode','mode','together')&&!pressed('smode','mode','apart'),'switch: Together is on by default');
+  ok(!all(R(),'button').some(b=>b.dataset.a==='count')&&!sel('start:0'),'together: no hero count, no start towns');
+  click(R(),b=>b.dataset.a==='smode'&&b.dataset.mode==='apart');
+  ok(pressed('smode','mode','apart')&&all(R(),'.scard').length===5,'Apart keeps the five heroes as cards');
+  ok(all(R(),'button').filter(b=>b.dataset.a==='count').length===5&&pressed('count','n','5'),'Apart: hero count 1-5, five chosen');
+  const so=sel('start:0').childNodes.map(o=>o.value),{CITY}=await imp('src/world/map.js');
+  const fac0=+sel('hfac:0').value;
+  ok(so[0]==='home'&&CITY.filter(c=>c.fac===fac0).every(c=>so.includes('town:'+c.name))&&!CITY.filter(c=>c.fac!==fac0).some(c=>so.includes('town:'+c.name)),'start towns are the CITY rows of the hero faction: '+so.slice(0,4));
+  ok(so.some(v=>/^region:/.test(v)),'regions are offered too');
+  click(R(),b=>b.dataset.a==='count'&&b.dataset.n==='3');
+  ok(all(R(),'.scard').length===3&&pressed('count','n','3'),'hero count 3 -> three cards');
+  click(R(),b=>b.dataset.a==='count'&&b.dataset.n==='1');
+  ok(all(R(),'.scard').length===1&&!sel('group:0'),'one hero: no group picker');
+  click(R(),b=>b.dataset.a==='count'&&b.dataset.n==='2');
+  let g=sel('group:0');g.value='1';g.dispatch('change',{target:g});g=sel('group:1');g.value='1';g.dispatch('change',{target:g});
+  const hs=sel('hfac:1');hs.value=String(1-fac0);hs.dispatch('change',{target:hs});
+  ok(/one faction/.test(text(R())),'validation from validateSetup: a group of two factions is flagged');
+  ok(all(R(),'button').find(b=>b.dataset.a==='start').disabled,'Start is disabled while it is');
+  const hs2=sel('hfac:1');hs2.value=String(fac0);hs2.dispatch('change',{target:hs2});
+  const town=CITY.filter(c=>c.fac===fac0)[0].name;let ss=sel('start:0');ss.value='town:'+town;ss.dispatch('change',{target:ss});
+  ok(/one runner each for now/.test(text(R())),'a group sharing a mind says it starts per hero for now');
+  click(R(),b=>b.dataset.a==='start');
+  const pa=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
+  ok(pa&&pa.v===2&&pa.mode==='apart'&&pa.heroes.length===2&&pa.heroes[0].start.town===town&&pa.heroes[0].group===1&&pa.heroes[1].group===1&&sim.validateSetup(pa).length===0,'Start queues the v2 apart setup');
+  localStorage.removeItem(PENDING_KEY);
+  setup.openSetup({first:false});
+  ok(pressed('smode','mode','apart')&&all(R(),'.scard').length===2&&sel('start:0').value==='town:'+town,'a stored apart setup reopens as apart');
+  click(R(),b=>b.dataset.a==='preset'&&b.dataset.name==='five-solos');
+  ok(all(R(),'.scard').length===5&&sel('start:0').value==='home'&&!sel('group:0').value,'preset Five solos');
+  click(R(),b=>b.dataset.a==='preset'&&b.dataset.name==='pairs-and-solo');
+  ok(sel('group:0').value==='1'&&sel('group:1').value==='1'&&sel('group:2').value==='2'&&sel('group:4').value==='','preset Pairs and a solo groups the pairs');
+  click(R(),b=>b.dataset.a==='preset'&&b.dataset.name==='solo');
+  ok(all(R(),'.scard').length===1&&pressed('count','n','1'),'preset One hero');
+  click(R(),b=>b.dataset.a==='smode'&&b.dataset.mode==='together');
+  ok(all(R(),'.scard').length===5&&sel('cls:tank')&&pressed('smode','mode','together'),'back to Together: the classic five');
+  click(R(),b=>b.dataset.a==='preset'&&b.dataset.name==='five-solos');
+  click(R(),b=>b.dataset.a==='preset'&&b.dataset.name==='classic');
+  ok(all(R(),'.scard').length===5&&sel('cls:tank'),'preset Classic five is Together');
+  // phone width: one column of cards (CSS) and nothing in the switch row that is wider than the screen
+  const css=(await import('node:fs')).readFileSync(path.join(repo,'src/style.css'),'utf8');
+  ok(/@media \(max-width:520px\)\{[^}]*\.scards[^}]*minmax\(0,1fr\)/.test(css)&&/\.sswitch/.test(css),'phone: single column cards and a wrapping switch row')}
 if(mode==='b'){const t=sim.fellowshipMembers().find(m=>m.slot==='tank').hero;
   ok(t.persona&&t.persona.archetype==='veteran','archetype: the queued pick is applied at founding')}
+if(mode==='d'){
+  // an apart setup boots and starts one runner per hero (the relay has no company runner yet)
+  const s0=sim.applyPreset('pairs-and-solo',sim.defaultSetup(4242,'eldmoor',0));s0.dm={mode:'scripted'};const s=sim.cleanSetup(s0);
+  localStorage.setItem(PENDING_KEY,JSON.stringify(s));
+  boot(sim.init);
+  ok(bootKind()==='setup'&&appliedSetup().mode==='apart','boot applies the queued apart setup');
+  setup.initSetup();ctl.speed=1;
+  await setup.afterBoot();
+  const hp=posts.filter(x=>x.body.kind==='hero'),cp=posts.filter(x=>x.body.kind==='company');
+  ok(hp.length===5&&cp.length===0,'five hero runners, no company runner: '+posts.map(x=>x.body.kind));
+  ok(new Set(hp.map(x=>x.body.hero)).size===5&&hp.every(x=>sim.S.agents.find(a=>a.id===x.body.hero&&a.player)),'each runner names its own agent-played hero');
+}
 console.log(fail?fail+' FAILED':'smoke133 '+mode+' passed');process.exit(fail?1:0);

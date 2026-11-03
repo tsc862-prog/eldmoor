@@ -611,6 +611,7 @@ console.log('start gate: ready, not just claimed');
 // Professions block on the Stats tab (#259)
 {const h=(sim.fellowshipMembers().filter(x=>x.hero)[0]||{hero:sim.S.agents.find(a=>a.kind==='hero')}).hero;
   const Pf=await import('../src/sim/professions.js');
+  const keepP=h.profs;h.profs=[]; // a hero with none (scripted heroes take up a gathering trade at level 3 since #257, so the seeded world's hero may hold one)
   select(h);setTab('stats');uiFast();
   ok(/Professions/.test(tb().textContent)&&/No professions yet/.test(tb().textContent),'stats: a hero with none says "No professions yet"');
   Pf.learn(h,'mining');Pf.learn(h,'cooking');Pf.gainSkill(h,'mining',59);
@@ -619,7 +620,7 @@ console.log('start gate: ready, not just claimed');
   ok(rows.length===2&&/Mining/.test(rows[0].textContent)&&/gathering/.test(rows[0].textContent)&&/60 · Journeyman/.test(rows[0].textContent),'stats: each profession with kind, skill and band ('+(rows[0]&&rows[0].textContent)+')');
   ok(rows.length===2&&/crafting/.test(rows[1].textContent)&&/1 · Novice/.test(rows[1].textContent),'stats: a craft profession at skill 1 is Novice');
   const bar=rows[0]&&rows[0].querySelector('.profbar i');ok(bar&&bar.style.width==='60%','stats: the bar is skill out of 100');
-  delete h.profs}
+  if(keepP===undefined)delete h.profs;else h.profs=keepP}
 
 // Table banner: the combat block (#277). A scene with rounds, set up by hand (no world step), rendered like main.js does.
 {const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),S=sim.S,box=$('tbanner'),spd=T.TABLE.speed;
@@ -677,6 +678,49 @@ console.log('start gate: ready, not just claimed');
   sc.rd=null;TB.renderTable(1);ok(!box.querySelector('.tci')&&!/ROUND/.test(t())&&!box.classList.contains('tcombat'),'combat banner: a scene without rounds keeps the plain banner');
   S.table=null;TB.renderTable(1);ok(box.hidden,'combat banner: hidden when the scene closes');
   S.table=keep;m.hp=mhp;m.target=null;ms.forEach((a,i)=>a.hp=hp0[i]);T.TABLE.speed=spd}}
+// Table banner legibility (#471): a short pixel title, the tags as chips, the question as body text, one row per member.
+{const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),RL=await import('../src/sim/runlink.js'),{classColor}=await import('../src/core/colors.js');
+  const S=sim.S,box=$('tbanner'),ms=sim.fellows().filter(a=>a.state!=='dead');
+  if(ms.length<3)console.log('  skip banner legibility (no Fellowship)');else{
+  const keep=S.table,det='make camp here by the old road and start our watch before the moon is up';
+  ok(TB.sceneHead('decision','Put to the party: '+det).head==='Vote · make camp here…','banner: the title is the kind plus a few words ('+TB.sceneHead('decision','Put to the party: '+det).head+')');
+  ok(TB.sceneHead('ambush','Ambush: Gorran').head==='Ambush · Gorran'&&!TB.sceneHead('ambush','Ambush: Gorran').cut,'banner: a short title is not cut');
+  ok(TB.sceneHead('check',"The Miller's Debt: a check").head==="Check · The Miller's Debt…",'banner: a long title stops at its colon');
+  RL.setRunnerLinks(a=>a===ms[3]?'none':'waiting');RL.setReflexAck(()=>false);
+  const w={};ms.forEach((a,i)=>w[a.id]={t:i===2?9:3.2,nudge:0});
+  const sc={id:9101,kind:'decision',title:'Put to the party: '+det,frame:[ms[0],' puts it to the party: ',{t:det,c:'gd'},'. Everyone votes.'],ids:ms.map(a=>a.id),i:0,phase:'turn',t:0,
+    acts:{[ms[0].id]:{k:'yes',line:'',by:'agent'},[ms[1].id]:{k:'no',line:'Taking the watch instead',by:'agent'}},beats:[],ctx:{prop:-1},pause:true,at:0,all:true,w};
+  S.table=sc;TB.renderTable(1);
+  const tt=box.querySelector('.tt'),th=box.querySelector('.tth');
+  ok(!box.hidden&&th&&th.textContent==='VOTE · MAKE CAMP HERE…','banner: the pixel title is short ('+(th&&th.textContent)+')');
+  ok(tt&&!/WORLD PAUSED|EVERYONE ANSWERS/.test(tt.textContent)&&!!tt.querySelector('[data-scene]'),'banner: the title row holds only the title and the scene map button');
+  const chips=[...box.querySelectorAll('.tchips .tp')].map(e=>e.textContent);
+  ok(chips.join('|')==='WORLD PAUSED|EVERYONE ANSWERS','banner: the tags are chips on their own row ('+chips.join(', ')+')');
+  const tf=box.querySelector('.tf');ok(tf&&tf.textContent.includes(det)&&!box.querySelector('.tq'),'banner: the whole question is the body text, said once');
+  const rows=[...box.querySelectorAll('.tmem .tmr')],rd=TB.memberRows();
+  ok(rows.length===ms.length&&rd.length===ms.length,'banner: one row per member ('+rows.length+')');
+  ok(/Answers 2\/5/.test(box.querySelector('.tmh').textContent.replace(String(ms.length),'5')),'banner: the rows count the answers ('+box.querySelector('.tmh').textContent+')');
+  ok(rows[0].querySelector('.tmn').textContent===ms[0].name&&rows[0].querySelector('.tmn').style.color===classColor(ms[0].cls)&&rows[0].querySelector('.tmsw').style.background===classColor(ms[0].cls),'banner: a row names the member in its class colour');
+  ok(rows[0].querySelector('.tma.yes').textContent==='YES'&&rows[1].querySelector('.tma.no').textContent==='NO','banner: a row shows the vote cast (YES, NO)');
+  ok(/Taking the watch instead/.test(rows[1].querySelector('.tmq').textContent),'banner: a row carries what the member said');
+  ok(rows[2].classList.contains('st-wait')&&/reflex in 111 s/.test(rows[2].querySelector('.tmt').textContent),'banner: a nudged member shows the reflex timer ('+rows[2].querySelector('.tmt').textContent+')');
+  ok(rows[4]&&rows[4].classList.contains('st-wait')&&rows[4].querySelector('.tmt').textContent==='4 s','banner: a thinking member shows how long ('+(rows[4]&&rows[4].querySelector('.tmt').textContent)+')');
+  ok(rows[3].classList.contains('st-held')&&/no runner/.test(rows[3].textContent),'banner: a member with no runner says so');
+  ok(!/answered · waiting for/.test(box.textContent)&&/has no runner: Restart runner/.test((box.querySelector('.tl')||{}).textContent||''),'banner: the waiting list is not said twice (rows only); what to do about a missing runner stays');
+  const r0=rows[0];r0._same=1;w[ms[4].id].t=5.4;TB.renderTable(1);
+  ok(box.querySelector('.tmr')._same===1&&box.querySelectorAll('.tmr')[4].querySelector('.tmt').textContent==='6 s','banner: a ticking timer patches the row in place');
+  sc.acts[ms[2].id]={k:'yes',line:'',by:'reflex'};TB.renderTable(1);
+  ok(/reflex/.test(box.querySelectorAll('.tmr')[2].querySelector('.tmby').textContent),'banner: a reflex answer is marked as one');
+  // a turn-by-turn scene without rounds: the order as rows, the one acting marked
+  const sc2={id:9102,kind:'site',title:'The Sunken Crypt',frame:['The stair goes down.'],ids:ms.map(a=>a.id),i:1,phase:'turn',t:2,acts:{[ms[0].id]:{k:'press',line:'',by:'agent'}},beats:[],ctx:{},pause:true,at:0};
+  S.table=sc2;TB.renderTable(1);const r2=[...box.querySelectorAll('.tmr')];
+  ok(box.querySelector('.tmh').textContent==='Turn order'&&r2[1].classList.contains('st-turn')&&/▶/.test(r2[1].textContent)&&r2[2].classList.contains('st-next'),'banner: a turn-by-turn scene lists the turn order with the one acting marked');
+  ok(/Press on/.test(r2[0].querySelector('.tma').textContent),'banner: an option chosen shows in words ('+r2[0].querySelector('.tma').textContent+')');
+  ok(!box.querySelector('.tchips .tall'),'banner: no EVERYONE ANSWERS chip in a turn-by-turn scene');
+  // a cut title whose words the frame does not carry: the whole title as body text
+  const sc3={...sc,id:9103,kind:'check',title:"The Miller's Debt: a sound under the mill floor",frame:['The DM calls for a roll.'],acts:{},w:{}};S.table=sc3;TB.renderTable(1);
+  ok(box.querySelector('.tq')&&/a sound under the mill floor/.test(box.querySelector('.tq').textContent),'banner: a cut title still shows in full as body text');
+  RL.setRunnerLinks(null);RL.setReflexAck(null);S.table=keep;TB.renderTable(1)}}
 // ---- chat in the left column on the three-column layout (owner request) ----
 {const where=id=>{let n=$(id);while(n&&!(n.id==='colL'||n.id==='colM'||n.id==='side'))n=n.parentNode;return n&&n.id};
   const keep=window.innerWidth;ok(!!sim.S.fellowship,'chat left: a Fellowship stands');
@@ -865,6 +909,38 @@ console.log('start gate: ready, not just claimed');
   const a=mem[0],was={state:a.state,hidden:a.hidden};a.state='dungeon';a.hidden=true;select(a);uiFast();const link=$('hero').querySelector('.dglink');
   ok(!!link,'dungeon view: the hero card of a hero inside has View inside');if(link){link.click();ok(dv.dungeonOpen(),'dungeon view: View inside opens it')}
   dv.closeDungeon();a.state=was.state;a.hidden=was.hidden;CRYPT.group=keep;uiFast()}
+// ---- the dungeon view (#85, slice 2): foes with HP, chamber detail on hover or click, history, the minimap's mark ----
+{const dv=await import('../src/render/dungeonview.js'),fx=await import('../src/render/dgfoes.js'),{CRYPT}=await import('../src/world/map.js'),{buildInterior}=await import('../src/world/interior.js');
+  const S=sim.S,keep=CRYPT.group,n=CRYPT.rooms.length,mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,4);
+  const foesOf=i=>{const o=[];for(const f of CRYPT.rooms[i].foes)for(let k=0;k<f.n;k++){const h=f.hits||2;o.push({type:f.type,name:f.name||fx.foeKind(f.type).name,hp:h,hits:h,atk:1,lvl:5})}return o};
+  const g=(i,extra)=>({phase:'inside',name:'The Fellowship',mem,tSite:true,crawl:Object.assign({i,rd:0,gap:0,foes:null,end:null},extra)});
+  ok(fx.foeKind('shambler').name==='Crypt Shambler'&&fx.foeKind('shambler').role==='brute'&&fx.foeKind('wolf').name==='Timber Wolf','dungeon foes: a site creature and a field species read from the bestiary (name, role)');
+  const m=buildInterior(CRYPT);ok(m.rooms.every(r=>[0,1,2].every(k=>{const p=fx.foeSpot(r,k,3);return p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h})),'dungeon foes: every foe stands inside its chamber');
+  dv.initDungeonView();dv.openDungeon(CRYPT);const box=()=>$('dungeon');
+  ok(sim.S&&dv.dungeonSite()===CRYPT,'dungeon view: the minimap reads the open site (dungeonSite)');
+  // a crawl in room 2 with three foes, one hurt, one down
+  const fs=foesOf(2);fs[0].hp=Math.max(0,fs[0].hits-1);fs[fs.length-1].hp=0;
+  CRYPT.group=g(2,{foes:fs,rd:1});dv.trackCrawl();let st=dv.refreshDungeon();
+  ok(st.foes===fs&&st.foeRoom===2&&st.foes.length===fs.length&&/\w/.test(st.foeText),'dungeon foes: the live crawl foes are in the view state ('+st.foeText+')');
+  let d=dv.roomDetail(2,CRYPT,st);
+  ok(d.state==='current'&&/Fight in progress/.test(d.stateText)&&d.kind==='Chamber'&&d.foes.some(t=>/HP \d+\/\d+/.test(t))&&d.foes.some(t=>/already down/.test(t)),'dungeon detail: the room in progress lists its foes with HP and the fallen ('+d.foes.join(' | ')+')');
+  d=dv.roomDetail(3,CRYPT,st);ok(d.state==='unexplored'&&/Unexplored/.test(d.title)&&!d.foes.length,'dungeon detail: a chamber not reached shows neither name nor foes');
+  d=dv.roomDetail(0,CRYPT,st);ok(d.state==='cleared'&&d.foes.length>0&&d.title===CRYPT.rooms[0].name,'dungeon detail: a cleared chamber shows its name and what dwelt there (bestiary name, role)');
+  ok(dv.roomDetail(n-1,CRYPT,st).kind==='Boss chamber','dungeon detail: the last chamber is the boss chamber');
+  // click a chamber in the list: its detail is pinned
+  const lis=[...box().querySelectorAll('li')];lis[2].click();const pin=box().querySelector('.dgpin');
+  ok(pin&&!pin.hidden&&pin.textContent.includes(CRYPT.rooms[2].name)&&/Foes/.test(pin.textContent),'dungeon detail: a click on a chamber pins its detail');
+  lis[2].click();ok(box().querySelector('.dgpin').hidden,'dungeon detail: a second click unpins it');
+  // a run: a fall in room 2, driven back; the history keeps who entered and who fell where
+  const a=mem[1],was=a.state;a.state='dead';dv.trackCrawl();CRYPT.group.crawl.end='retreat';CRYPT.group.crawl.driven=true;dv.trackCrawl();CRYPT.group=null;dv.trackCrawl();
+  const H=dv.historyOf(CRYPT);st=dv.refreshDungeon();
+  ok(H.length>=1&&/driven back/i.test(H[0].outcome)&&H[0].lines[0].includes(mem[0].name)&&/Fell: .*in/.test(H[0].lines[2])&&H[0].lines[2].includes(a.name),'dungeon history: who entered, how it ended and who fell where ('+H[0].outcome+'; '+H[0].lines.join(' / ')+')');
+  ok(st.falls&&st.falls.some(f=>f.room===2),'dungeon history: the fall is marked in its chamber');
+  d=dv.roomDetail(2,CRYPT,st);ok(d.notes.some(t=>t.includes(a.name+' fell here'))&&d.notes.some(t=>/driven back/.test(t)),'dungeon detail: what happened in a chamber comes from the run record ('+d.notes.join(' | ')+')');
+  box().querySelector('.dghbtn').click();ok(!box().querySelector('.dghist').hidden&&box().querySelector('.dghist').textContent.includes(mem[0].name),'dungeon history: the History button opens the panel');
+  box().querySelector('.dghbtn').click();ok(box().querySelector('.dghist').hidden,'dungeon history: and closes it');
+  dv.closeDungeon();ok(dv.dungeonSite()===null,'dungeon view: closed, the minimap has no mark');
+  a.state=was;CRYPT.group=keep;uiFast()}
 // ---- scene maps (#431, slice 1): settings as data, the indoor generator, the scene view's terrain cut and rooms ----
 {const sv=await import('../src/render/sceneview.js'),{buildSetting,IT}=await import('../src/world/interior.js'),again=await import('../src/world/interior.js?again2');
   const {SETTINGS,SETTING_IDS}=await import('../src/data/settings.js'),{CITY}=await import('../src/world/map.js'),S=sim.S;
@@ -908,5 +984,15 @@ console.log('start gate: ready, not just claimed');
   sv.setSceneAuto(false);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick(FOL);ok(!sv.sceneOpen()&&/off/.test($('vScene').textContent),'scene maps: with Scene maps off in Settings, nothing opens by itself');
   sv.setSceneAuto(true);S.table=scene('elite','The Old Boar',{anchor:m0.id});sv.sceneTick({view:'map',sel:null});ok(!sv.sceneOpen(),'scene maps: only when the watcher follows the Fellowship');
   sv.closeSceneView(false);mem.forEach((a,k)=>{[a.x,a.y,a.hidden]=keepPos[k]});S.table=keepT;S.wanderers=keepW;uiFast()}
+// camp watch end: a camp with no restAt/watchIdx must not show "until NaN:NaN" (#475)
+{const {campLine}=await import('../src/ui/fellowship.js');const {campSummary}=await import('../src/sim/camp.js');
+  const F=sim.S.fellowship,mem=sim.fellowshipMembers().map(m=>m.hero).filter(Boolean),keep=F.camp,ks=mem.map(a=>a.state);
+  mem.forEach(a=>{a.state='camp'});
+  F.camp={phase:'rest',why:'night',hours:0,ids:mem.map(a=>a.id),watcher:mem[0].id};
+  ok(!/NaN/.test(campSummary()||''),'camp watch: the sim line has no NaN for a camp with no watch times');
+  const cl=campLine();ok(cl&&!/NaN|until \d\d:\d\d\)/.test(cl)&&/on watch: /.test(cl),'camp watch: the panel line leaves out "until" when the end is unknown ('+cl+')');
+  F.camp={phase:'rest',why:'night',hours:0,ids:mem.map(a=>a.id),watcher:mem[0].id,restAt:Math.round(sim.S.gameMin),watchIdx:0};
+  ok(/on watch: \S+ \(until \d\d:\d\d\)/.test(campLine()),'camp watch: a normal camp keeps "until hh:mm"');
+  F.camp=keep;mem.forEach((a,k)=>{a.state=ks[k]})}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
