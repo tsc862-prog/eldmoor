@@ -152,7 +152,10 @@ ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused 
   const free = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && a.fac === F.fac && !CM.companyOf(a) && !a.player && !a.hidden && !a.raid);
   const [A, B, Z] = free;
   ok(A && B && Z, 'three free heroes of the faction for a pair and a solo');
-  const field = (L, at) => {for (const a of L) {if (a.party) SIM.leaveParty ? SIM.leaveParty(a) : null; a.x = at.x; a.y = at.y; a.state = 'hunt'; a.adv = null; a.dest = null; a.target = null; a.pq = []; a.hp = Math.round(a.maxhp || a.hp); a.splitUntil = 0; a.player = true; a.playEv = []}};
+  // out of any background party and its adventure first (SIM has no leaveParty: a hero left in a scripted party rode its
+  // leader's job, and that job's rolls opened the pair's own Table scene, pausing the world under the solo's camp)
+  const {leaveParty} = await import('../src/sim/party.js');
+  const field = (L, at) => {for (const a of L) {if (a.party) leaveParty(a); for (const v of S.adventures || []) if (v.phase === 'active' && v.mem && v.mem.includes(a.id)) v.mem = v.mem.filter(id => id !== a.id); a.x = at.x; a.y = at.y; a.state = 'hunt'; a.adv = null; a.dest = null; a.target = null; a.pq = []; a.hp = Math.round(a.maxhp || a.hp); a.splitUntil = 0; a.player = true; a.playEv = []}};
   field([A, B, Z], LD); A.lvl = Math.max(A.lvl, B.lvl + 1); // A leads the pair (highest level, no party)
   const pair = CM.foundCompany([A, B]).company, solo = CM.foundCompany([Z]).company;
   ok(pair && solo && pair.ids.length === 2 && CM.isSolo(solo), 'a company of two and a company of one');
