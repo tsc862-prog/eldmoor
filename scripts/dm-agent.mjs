@@ -82,6 +82,7 @@ export function dmSystemPrompt(st) {
     DM_COMPANY_ORDERS,
     DM_EVENT_ORDERS,
     DM_CALL_ORDERS,
+    DM_WHEN_ORDERS,
     DM_BETWEEN_ORDERS,
     DM_RENOWN_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
@@ -119,6 +120,9 @@ export const DM_BETWEEN_ORDERS = [
 ].join('\n');
 export const withDmBetweenOrders = sys => /\bWhat you can do between scenes\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_BETWEEN_ORDERS;
 export const withDmCallOrders = sys => /\bSend every call whole\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_CALL_ORDERS;
+// Deferred actions and chosen wakes (issue #635): one example each; withDmWhenOrders adds the line to an older session's prompt.
+export const DM_WHEN_ORDERS = '- You act between your turns with when and watch. when leaves an action behind for a trigger (a hero or company entering a region or town, coming near a place or person, talking to someone, falling below some health, a named foe dying, a job reaching a scene, camp, nightfall, daybreak, an hour, hours passing, a level, an oath kept): for example when {trigger: "enter_region", on: {"region": "Mirefen", "company": "fellowship"}, action: "narrate", args: {"text": "Fog rolls off the black water; somewhere a bell tolls once.", "near": "{who}"}, reason: "the bog announces itself"}. It runs through the same tool when it fires, so limits and refusals apply then; whens lists them, unwhen cancels. watch chooses what wakes you early: watch {trigger: "talks_to", on: {"npc": "Mara"}, note: "she knows of the stolen seal"} starts your next turn when a hero talks to her, and the turn prompt says so. Set a few that serve your plans; at most 6 of each.';
+export const withDmWhenOrders = sys => /\byou act between your turns with when and watch\b/i.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_WHEN_ORDERS;
 // Searchable notes (issue #155): the DM's standing-orders line; withDmMemoryOrders adds it to an older session's prompt.
 export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything you want to find again, free-form (your own title, text and tags; about and section optional), recall by words, tag, about or id across all sections before you build on a person, place or thread, update_memory, forget, and pin the few that must never be archived. dm_status lists the notes that bear on the moment.';
 // Campaign seed: the notes start from the world's campaign file (docs/campaigns/<world>.md).
@@ -143,7 +147,18 @@ export const companiesNow = st => {const L = st && Array.isArray(st.companies_ne
   const top = L[0], first = (top.items || []).slice(0, 2).join(' ');
   return `Companies, neediest first: ${L.slice(0, 4).map(c => `${c.company} (${c.why}; ${c.summary.replace(/\.$/, '')})`).join('; ')}. Start with ${top.company}${first ? ': ' + first : '.'} `.replace(/\s+/g, ' ').trim() + ' '};
 // Is a Fellowship-change turn due before the next evening? last: {sig, gm} of the previous turn; ev: {day, n} (mutated by noteEvent).
-export const eventDue = (st, last, ev) => !!(st && st.ok && st.fellowship_change && last && last.sig != null && st.fellowship_change !== last.sig && last.gm != null && st.gameMin - last.gm >= EVENT_GAP && !(ev && ev.day === st.day && ev.n >= EVENT_MAX));
+// A watch of the DM's own (issue #635) that tripped since the last turn is due the same way: dm_status watches_fired items
+// with a hit id above last.watch (the newest the last turn saw). The fixed fellowship_change signature stays the floor.
+export const newWatches = (st, seen) => (st && Array.isArray(st.watches_fired) ? st.watches_fired : []).filter(w => w && w.id > (seen || 0));
+export const newFired = (st, seen) => (st && Array.isArray(st.fired) ? st.fired : []).filter(f => f && f.seq > (seen || 0));
+export const eventDue = (st, last, ev) => !!(st && st.ok && last && last.gm != null && st.gameMin - last.gm >= EVENT_GAP && !(ev && ev.day === st.day && ev.n >= EVENT_MAX)
+  && (st.fellowship_change && last.sig != null && st.fellowship_change !== last.sig || newWatches(st, last.watch).length > 0));
+// The turn prompt names what tripped and what fired since the last turn (#635).
+export const whenNote = (st, seen = {}) => {const w = newWatches(st, seen.watch), f = newFired(st, seen.fired); let s = '';
+  if (w.length) s += ` Your watch fired: ${w.map(x => `${x.what} (watch ${x.watch}, day ${x.day} ${x.t}${x.note ? '; your note: ' + x.note : ''})`).join('; ')}.`;
+  if (f.length) s += ` Your whens since the last turn: ${f.map(x => `when ${x.id} (${x.trigger}): ${x.tool} ${x.status}${x.why ? ' - ' + x.why : ''}`).join('; ')}.`;
+  return s};
+export const seenMax = (L, k) => (Array.isArray(L) ? L : []).reduce((m, x) => Math.max(m, Number(x && x[k]) || 0), 0);
 export const noteEvent = (ev, st) => {if (ev.day !== st.day) {ev.day = st.day; ev.n = 0} ev.n++};
 
 const post = (base, path, body, ms) => fetch(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(ms)});
@@ -346,7 +361,7 @@ export async function waitPrep({base, log = () => {}, stopped = () => false, too
 
 // Wait until the cadence allows a turn and nothing is pending. Returns the fresh status, or null on stop.
 // gapUntil: the earliest real time (ms) the next turn may start (the minimum gap, issue #126).
-async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n: 0}, log, stopped, gapUntil = 0, talkNow = false}) {
+async function waitTurn({base, cadence, lastGm, lastSig = null, lastWatch = 0, ev = {day: -1, n: 0}, log, stopped, gapUntil = 0, talkNow = false}) {
   const target = cadence === 'evening' && lastGm != null ? nextEvening(lastGm) : null, until = Math.max(gapUntil, cadence !== 'evening' && lastGm != null ? Date.now() + Number(cadence) * 1000 : 0);
   let said = '';
   for (;;) {
@@ -356,10 +371,10 @@ async function waitTurn({base, cadence, lastGm, lastSig = null, ev = {day: -1, n
     if (!st.ok && st.offline && /seat is closed/.test(st.error || '')) why = '[pace] the DM seat is closed (the game opens it when a world is played; the DM is always an agent): waiting'
     else if (!st.ok) why = st.offline ? 'the game is not answering (' + short(st.error, 90) + ')' : short(st.error, 90);
     else if (talkNow && talkWaiting(st).length && !(st.table && st.table.open) && Date.now() >= gapUntil) why = ''; // a member waits for an answer and no talk voice runs (#170)
-    else if (target != null && st.gameMin < target && !(evt = eventDue(st, {sig: lastSig, gm: lastGm}, ev))) why = `waiting for the evening of day ${Math.floor(target / DAY) + 1} (now day ${st.day} ${st.time})`;
+    else if (target != null && st.gameMin < target && !(evt = eventDue(st, {sig: lastSig, gm: lastGm, watch: lastWatch}, ev))) why = `waiting for the evening of day ${Math.floor(target / DAY) + 1} (now day ${st.day} ${st.time})`;
     else if (until && Date.now() < until) why = `next turn in ${Math.ceil((until - Date.now()) / 1000)} s`;
     else if (st.pending) why = st.table && st.table.open ? 'a Table scene is running' : 'a party vote is open';
-    if (!why) {if (evt) {noteEvent(ev, st); st.event = true; log(`[dm] the Fellowship's situation changed: an extra turn (${ev.n} of ${EVENT_MAX} today)`)} return st}
+    if (!why) {if (evt) {noteEvent(ev, st); st.event = true; const w = newWatches(st, lastWatch); log(w.length ? `[dm] your watch fired (${w.map(x => x.what).join('; ')}): an extra turn (${ev.n} of ${EVENT_MAX} today)` : `[dm] the Fellowship's situation changed: an extra turn (${ev.n} of ${EVENT_MAX} today)`)} return st}
     if (why.replace(/\d+/g, '') !== said) {said = why.replace(/\d+/g, ''); log(`[dm] ${why}`)}
     await sleep(POLL_MS);
   }
@@ -404,7 +419,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmRenownOrders(withDmBetweenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
+  sess.system = withDmRenownOrders(withDmBetweenOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic, ollama or google.`); await quit(1)}
@@ -445,10 +460,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
       if (gem && spentG >= budget) {ended = 'budget reached'; break}
-      const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
+      const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
       let r = null, err = null;
       const prepping = st === prepSt && !!prepSt, prepAt = Date.now();
-      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
+      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
         // the breaker and the minute cap (issue #467): 3 refusals of one tool or 5 in a row end the turn; at most
         // DM_CALLS_PER_MIN (default 30) tool calls a real minute across turns, well under the relay's flood line (90)
         opts: {endOnWait: false, sameRefusals: 3, consecutiveRefusals: 5, callsPerMin: Math.max(5, Number(opt('calls-per-min', env.DM_CALLS_PER_MIN || 30)) || 30)},
@@ -456,7 +471,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
           else if (k === 'break') log(`  [breaker] ${a.n} refusals of ${a.tool}${a.inRow > a.n ? ' (' + a.inRow + ' in a row)' : ''}: the turn ends here`); else if (k === 'throttle') log(`  [throttle] ${a} tool calls in the last minute: the turn ends here`)}})}
       catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
       if (prepping) {const d = await dmTool(base, 'prep_done', {summary: 'prepared the table'}); log(`[dm] prep over: ${d.ok ? (d.prep && d.prep.why) || 'done' : short(d.error, 80)}`); prepSt = null}
-      sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; lastEnd = Date.now();
+      sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; lastEnd = Date.now(); sess.lastWatch = Math.max(sess.lastWatch || 0, seenMax(st.watches_fired, 'id')); sess.lastFired = Math.max(sess.lastFired || 0, seenMax(st.fired, 'seq'));
       reportTurn(base, {role: 'dm', runner, provider: rs.provider, model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
       if (r && gem) {runIn += r.in; runOut += r.out; spentG += r.cost || 0; sess.costUsd = (sess.costUsd || 0) + (r.cost || 0); log(`[turn ${sess.turns}] ${paidLine(r, rs.model, 'google', {run: spentG, session: sess.costUsd})}`)}
       else if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
@@ -503,12 +518,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
+    const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const prepping = st === prepSt && !!prepSt, prepTimer = prepping ? setTimeout(() => {if (turnAbort) turnAbort.abort()}, prepSt.prep.max_seconds * 1000) : null;
-    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st), options: {
+    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?role=dm&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': runner}, timeout: 30000}},
@@ -548,7 +563,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       flags: result && result.subtype !== 'success' ? [result.subtype] : [], ...(failed ? {error: failed === 'rate_limit' || failed === 'overloaded' ? '429 ' + failed : failed} : {})});
     // A rate-limited turn that did nothing is retried after a growing pause; a turn that got work done counts.
     if (failed && failed !== 'error' && !tools) {const s = BACKOFF[Math.min(backoff, BACKOFF.length - 1)]; backoff++; log(`[dm] rate limited (${failed}); backing off ${s} s before trying the turn again`); saveSess(); await sleep(s * 1000); continue}
-    backoff = 0; sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; turn++; lastEnd = Date.now();
+    backoff = 0; sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; turn++; lastEnd = Date.now(); sess.lastWatch = Math.max(sess.lastWatch || 0, seenMax(st.watches_fired, 'id')); sess.lastFired = Math.max(sess.lastFired || 0, seenMax(st.fired, 'seq'));
     saveSess();
     if (fails.ok(!failed && tools > 0)) ended = fails.why();
   }

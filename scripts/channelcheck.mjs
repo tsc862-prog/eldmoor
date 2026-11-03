@@ -134,6 +134,12 @@ ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), '
   const ru = at.call ? DMA.dmAct('ruling_answer', {call: at.call, skill: 'perception', dc: 'fair', effects: ['none'], fail_effects: ['none'], text: 'A hollow echo answers.', fail_text: 'Only stone.', note: 'Ruling ' + plant('rulingNote')}) : {ok: false, error: at.error || 'no call'};
   keep('attempt result', at); keep('ruling events', A.playEv || []);
   ok(ru.ok && S.dmLog.some(e => JSON.stringify(e.detail || {}).includes(SECRETS.rulingNote)), 'a ruling: its note is in the DM log only' + (ru.ok ? '' : ': ' + ru.error))}
+// when and watch (issue #635): a when's reason, its action not yet fired and a watch's note are the DM's own
+r = DMA.dmAct('when', {trigger: 'near_place', on: {place: '2,2', radius: 1, hero: B.name}, action: 'narrate', args: {text: 'Unfired ' + plant('whenText'), near: '{who}'}, reason: 'When ' + plant('whenReason')});
+ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.whenReason)), 'a when: its reason (and its unfired line) in the DM log only' + (r.ok ? '' : ': ' + r.error));
+r = DMA.dmAct('watch', {trigger: 'enter_town', on: {town: 'Nowhere'}, note: 'x'}); // refused (no such town): nothing set
+r = DMA.dmAct('watch', {trigger: 'hero_levels', on: {hero: B.name, level: 60}, note: 'Watch ' + plant('watchNote')});
+ok(r.ok && JSON.stringify(DMA.dmAct('whens')).includes(SECRETS.watchNote), 'a watch: its note is the DM\'s own (whens)' + (r.ok ? '' : ': ' + r.error));
 S.dmLog[0].prompt = 'DM model prompt ' + plant('dmPrompt'); S.dmLog[0].reply = 'DM model reply ' + plant('dmReply');
 ok(act(B, 'journal_write', {text: 'Dear diary, ' + plant('bJournal')}).ok, 'B\'s journal');
 // tiered memory (issue #153): B's own landmark and a chapter of B's older lines stay B's
