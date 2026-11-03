@@ -1,7 +1,7 @@
 // Parties: 2-3 same-faction heroes of similar level who leave town together,
 // follow their leader, join each other's fights and share XP. Owned by ai-designer.
 // A party is {id, fac, leader, mem, zone, home} on S.parties; each hero has a.party. A company's walking group
-// (sim/company.js, #402) is a party with p.company set; p.fellow is a read-only accessor for the Fellowship's.
+// (sim/company.js, #402) is a party with p.company set; partySlotted(p) says whether it walks for the slotted company (#588).
 // Rules: form in town after the quest-giver step (within 2 levels; a Priest prefers a
 // Warrior, a Warrior lingers a few seconds for a Priest); leader = highest level;
 // dissolve on a death, a level gap over 3, or when the party heads home together;
@@ -21,6 +21,7 @@ import {tm} from '../data/traits.js';
 import {record} from './history.js';
 import {nearHeroes} from './spatial.js';
 import {bondEvent} from './bonds.js';
+import {inSlots,partySlotted} from './company.js'; // the slotted company (#588)
 
 export const partyMates=a=>a.party?a.party.mem.filter(b=>b!==a&&b.state!=='dead'):[];
 const inField=b=>!(b.state==='town'||b.state==='dead'||b.state==='dungeon'||b.state==='raid'||b.state==='ghost');
@@ -43,8 +44,8 @@ const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.len
 
 // Called when a hero finishes the quest-giver step and again while lingering at the gate.
 // Returns 'wait' when a Warrior should hold at the gate a little longer for a Priest.
-export function seekParty(a){if(a.party||a.fellow||a.company!=null||a.companion!=null||!tm(a,'social'))return; // a company's companion (#442) rides with its company // Loners never form or join a party; Fellowship members muster with their own (sim/fellowship.js)
-  const cand=S.agents.filter(b=>b!==a&&!b.party&&!b.fellow&&b.company==null&&b.companion==null&&tm(b,'social')&&b.fac===a.fac&&homeOf(b)===homeOf(a)&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2); // same home town: a party musters in one gate
+export function seekParty(a){if(a.party||inSlots(a)||a.company!=null||a.companion!=null||!tm(a,'social'))return; // a company's companion (#442) rides with its company // Loners never form or join a party; Fellowship members muster with their own (sim/fellowship.js)
+  const cand=S.agents.filter(b=>b!==a&&!b.party&&!inSlots(b)&&b.company==null&&b.companion==null&&tm(b,'social')&&b.fac===a.fac&&homeOf(b)===homeOf(a)&&b.state==='town'&&Math.abs(b.lvl-a.lvl)<=2); // same home town: a party musters in one gate
   if(!cand.length)return;
   if(a.cls==='Warrior'&&a.linger>0&&!cand.some(b=>CLS[b.cls]&&CLS[b.cls].heal))return 'wait';
   const isHeal=c=>!!(CLS[c.cls]&&CLS[c.cls].heal),want=isHeal(a)?c=>c.cls==='Warrior':a.cls==='Warrior'?isHeal:()=>false;

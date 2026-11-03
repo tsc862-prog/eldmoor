@@ -11,6 +11,7 @@ import {BARKS,CLASS_BARKS} from '../data/barks.js';
 import {S,clockStr,dayNo} from './state.js';
 import {nearHeroes} from './spatial.js';
 import {brainLine} from './brain.js';
+import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
 export const COOL=20,URGENT=3,HEAR=7,CAP=20,BUBBLE=3,BANTER=60;
 const URGENT_TRIGGERS={mourn:1,epic:1,duel:1,kill:1};
@@ -42,7 +43,7 @@ export function say(a,trigger,ctx={}){
   a.lastBark=line;
   const text=fill(line,a,ctx);
   // #164: the line was picked (same private draws as ever); a background hero says nothing aloud while the DM voices the world
-  if(S.worldVoice==='dm'&&!a.fellow){a.chatCd=COOL;return}
+  if(S.worldVoice==='dm'&&!inSlots(a)){a.chatCd=COOL;return}
   // BRAIN: an AI-played hero asks for a line in the moment (said later by brain.js via speak);
   // with aiQuietTable the table line is held back and said only if no model line comes in time.
   if(a.brain&&brainLine(a,trigger,ctx,text)==='held'){a.chatCd=COOL;return}
@@ -56,7 +57,7 @@ export function sayHearers(a){const ls=[];for(const b of nearHeroes(a.x,a.y,HEAR
 export function speak(a,text,trigger,ai){const e={t:clockStr(),d:dayNo(),from:a,text,trigger};if(S.table&&S.table.ctx)e.scene=true;if(ai){e.ai=true;if(typeof ai==='string')e.model=ai}
   const ls=sayHearers(a);
   // fh: a Fellowship member said it or can hear it (the watcher's Chat tab and bubbles, issue #127)
-  if(S.fellowship&&(a.fellow||ls.some(b=>b.fellow)))e.fh=true;
+  if(slotted()&&(inSlots(a)||ls.some(b=>inSlots(b))))e.fh=true;
   hear(a,e);for(const b of ls)hear(b,e);
   a.bubble={text,life:BUBBLE};if(e.fh)a.bubble.fh=true;a.chatCd=COOL;return e}
 

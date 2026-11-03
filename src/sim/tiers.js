@@ -18,7 +18,7 @@
 //     pend    the lines spilled since the last chapter (TIER.BLOCK at most; searchable too).
 //
 // Rules:
-//   - Only agent-played heroes and Fellowship members keep tiers (a.player || a.fellow); nobody else is touched.
+//   - Only agent-played heroes and Fellowship members keep tiers (a.player || inSlots(a)); nobody else is touched.
 //   - Seats stay apart (issue #123): journal_search and journal_read answer from the caller's own hero only.
 //   - Hardcore: the tiers die with the hero (the dead hero's tools answer "dead"); the replacement starts empty.
 //     Only the pinned "letter" note of sim/notebook.js crosses to the next member.
@@ -30,6 +30,7 @@ import {S} from './state.js';
 import {onRecord} from './history.js';
 import {words} from './words.js';
 import {SEM,semKey,semOf,semBonus} from './semkey.js'; // meaning search supplied by the relay (#553)
+import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
 export const TIER={
   V:1,
@@ -55,7 +56,7 @@ const DAY=1440;
 const dayNo=gm=>Math.floor((gm==null?S.gameMin:gm)/DAY)+1;
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 const cut=(s,n)=>{s=clean(s,1e4);if(s.length<=n)return s;const t=s.slice(0,n-1);const i=t.lastIndexOf(' ');return (i>n*.6?t.slice(0,i):t)+'…'};
-const keeps=a=>!!(a&&a.kind==='hero'&&(a.player||a.fellow));
+const keeps=a=>!!(a&&a.kind==='hero'&&(a.player||inSlots(a)));
 const entryDay=e=>{const m=/^Day (\d+)/.exec(e&&e.t||'');return m?Number(m[1]):dayNo(e&&e.gameMin)};
 
 let writer=null; // (a, snapshot, stamp) => void: asks the relay for a chapter (set by sim/brain.js)
@@ -92,7 +93,7 @@ const RX=[
   [/^(Paid the blood debt|Avenged )/,()=>'nemesis'],
   [/^Lost a close friend/,()=>'friend'],
   [/^Lost a friend/,()=>'friend'],
-  [/^Left (.+)\.$/,(m)=>S.fellowship&&m[1]===S.fellowship.name?'fellowship':null],
+  [/^Left (.+)\.$/,(m)=>slotted()&&m[1]===slotted().name?'fellowship':null],
 ];
 function classify(a,text,d){for(const [re,f] of RX){const m=re.exec(text||'');if(m){const k=f(m);if(k)mark(a,k,text,d);return}}}
 // A Fellowship memory line (sim/memory.js remember): a companion's death and the joinings.

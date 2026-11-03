@@ -31,6 +31,7 @@ import * as D from '../data/adventures.js';
 import {K as DMK,holdAdventure,resumeAdventure} from './dm.js';
 import {ev} from './notify.js';
 import {wakeQuestDone} from './wakes.js'; // finished quests wake the agent (one wake helper, no copy)
+import {inSlots} from './company.js'; // the slotted company (#588)
 
 export const QL={
   MAX:5,        // quests a hero holds at once (oaths and blood debts come on top)
@@ -145,7 +146,7 @@ const unpack=q=>({...FIELDS,...q});
 // A quest finished well wakes its agent at once (sim/wakes.js), whether it was in focus or held. The kill quest's
 // turn-in already wakes from heroes.js turnIn, so it is skipped here (one wake per quest). Agent heroes only, no dice.
 function wakeDone(a,q,gold){if(a.player&&q.status==='done'&&!/^kill:/.test(q.id))wakeQuestDone(a,q.title,gold||0)}
-function push(a,q,gold){if(!a||a.kind!=='hero')return;wakeDone(a,q,gold);const L=logOf(a);L.done.unshift(pack(q));const cap=a.player||a.fellow?QL.DONE:QL.DONE_BG;if(L.done.length>cap)L.done.length=cap;
+function push(a,q,gold){if(!a||a.kind!=='hero')return;wakeDone(a,q,gold);const L=logOf(a);L.done.unshift(pack(q));const cap=a.player||inSlots(a)?QL.DONE:QL.DONE_BG;if(L.done.length>cap)L.done.length=cap;
   if(L.focus===q.id)L.focus=null}
 const ended=(q,status,extra)=>Object.assign(q,{status,focus:false,ends:Math.round(S.gameMin)},extra||{});
 export function killDone(a){if(a&&a.quest)push(a,ended(killQ(a,a.quest,'done',false),'done'))}

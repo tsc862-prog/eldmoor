@@ -19,6 +19,7 @@
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
 import {hash} from '../core/rng.js';
+import {slotKeyOf} from '../sim/company.js'; // the slotted company (#588)
 
 export const PORTRAIT_W=15,PORTRAIT_H=18;
 const W=PORTRAIT_W,H=PORTRAIT_H;
@@ -49,7 +50,7 @@ export function portraitPixels(a,mode=''){
   const race=a.race||'',skin=a.skin||(f.skin&&f.skin[0])||'#d8a878',hair=a.hair||'#2a2020';
   const skL=mix(skin,'#fff4e0',.22),skD=mul(skin,.78),skDD=mul(skin,.6);
   const hrL=mix(hair,'#ffffff',.18),hrD=mul(hair,.7);
-  const tank=a.fellowRole==='tank';
+  const tank=slotKeyOf(a)==='tank';
   const helm=tank||(a.cls==='Warrior'&&roll(s,1)<.5);
   const heavy=race==='ashfolk'||race==='thornhide';
 
@@ -168,7 +169,7 @@ export function portraitPixels(a,mode=''){
 
 // A cached canvas per look (the key carries everything the pixels depend on). Browser only.
 const cache=new Map();
-export function portraitKey(a,mode=''){return [a.id,a.name,a.race||'',a.cls,a.fac,a.skin||'',a.hair||'',a.fellowRole==='tank'?'T':'',mode].join('|')}
+export function portraitKey(a,mode=''){return [a.id,a.name,a.race||'',a.cls,a.fac,a.skin||'',a.hair||'',slotKeyOf(a)==='tank'?'T':'',mode].join('|')}
 export function portrait(a,mode=''){const k=portraitKey(a,mode);let c=cache.get(k);if(c)return c;
   const px=portraitPixels(a,mode);c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
   for(let i=0;i<px.length;i++){if(!px[i])continue;x.fillStyle=px[i];x.fillRect(i%W,(i/W)|0,1,1)}

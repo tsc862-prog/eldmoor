@@ -11,8 +11,7 @@
 //   followNext()       the follow cycle: the next company after the followed one (wraps); returns it
 // The default together world has one company, so it reads exactly as before: one row, the five places.
 import {S} from '../sim/index.js';
-import {companies,followed,members,roleOf,isSolo,leaderOf,PARTY} from '../sim/company.js';
-import {fellowshipMembers,fellowParty} from '../sim/fellowship.js';
+import {companies,followed,members,roleOf,isSolo,leaderOf,PARTY,slotMembers,slotParty,slotted} from '../sim/company.js';
 
 export const ROLE_LABEL={tank:'Tank',healer:'Healer',dps:'DPS'};
 export const MAX_HEROES=PARTY.MAX;
@@ -22,7 +21,7 @@ export const grouped=C=>!!C&&(!!C.slots||!isSolo(C));
 export function companyLabel(C){if(!C)return '';if(C.name)return C.name;const L=members(C).map(a=>a.name);
   return L.length?(L.length>2?L.slice(0,-1).join(', ')+' and '+L[L.length-1]:L.join(' and ')):'A company'}
 export function companyCols(C){if(!C)return [];
-  if(C.slots&&S.fellowship===C)return fellowshipMembers();
+  if(C.slots&&slotted()===C)return slotMembers(slotted());
   return members(C).map(a=>{const role=roleOf(a.cls);return {slot:'h'+a.id,role,label:ROLE_LABEL[role],hero:a}})}
 export const followedMembers=()=>companyCols(followedCompany());
 
@@ -42,6 +41,6 @@ export function followNext(){const all=companies();if(!all.length)return null;co
 // The hero who leads a company's story (#546: the dossier's default): the Fellowship's walking leader, else the company's
 // agent leader, else its first living member.
 export function storyLead(C){if(!C)return null;const live=a=>a&&a.state!=='dead';
-  if(C.slots&&S.fellowship===C){const P=fellowParty();if(P&&live(P.leader)&&C.ids.includes(P.leader.id))return P.leader}
+  if(C.slots&&slotted()===C){const P=slotParty(slotted());if(P&&live(P.leader)&&C.ids.includes(P.leader.id))return P.leader}
   const L=leaderOf(C);if(live(L))return L;return members(C).find(live)||null}
 export function followCompany(C){if(C&&companies().includes(C))S.followId=C.id;return followedCompany()}

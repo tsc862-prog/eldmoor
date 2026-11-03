@@ -34,7 +34,6 @@ import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
 import {S} from './state.js';
-import {SLOTS,SLOT_KEYS} from './fellowship.js';
 import {makeHero} from './heroes.js';
 import {rollScores} from './abilities.js';
 import {disableBrain,MIND_PROVIDERS} from './brain.js';
@@ -45,6 +44,7 @@ import {seedProfs} from './professions.js';
 import {hash} from '../core/rng.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js';
 import {applyArchetype} from './persona.js';
+import {inSlots,slotted,SLOTS,SLOT_KEYS} from './company.js'; // the slotted company (#588)
 
 export const SETUP_VERSION=2;
 export const MODES=['together','apart'];
@@ -222,7 +222,7 @@ export function suggestName(raceId,u1=rnd(),u2=rnd()){const r=RACES.find(x=>x.id
   return a[Math.floor(u1*a.length)%a.length]+b[Math.floor(u2*b.length)%b.length]}
 
 // ---- choosing the heroes (called by opening()) ----
-const free=(a,fac,used)=>a.kind==='hero'&&a.state!=='dead'&&a.fac===fac&&!a.fellow&&!a.player&&!used.has(a.id);
+const free=(a,fac,used)=>a.kind==='hero'&&a.state!=='dead'&&a.fac===fac&&!inSlots(a)&&!a.player&&!used.has(a.id);
 // Make a level-1 hero of this people: new skin, hair and home town, abilities rolled again.
 function restyle(a,raceId){const r=RACES.find(x=>x.id===raceId);if(!r||r.fac!==a.fac||a.race===r.id)return;
   a.race=r.id;a.skin=pickA(r.skin);a.hair=pickA(r.hair);a.town=r.home;const c=homeOf(a);a.town=c.name;a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;rollScores(a)}
@@ -250,7 +250,7 @@ export function pickApart(setup){const used=new Set(),taken=new Set(S.agents.map
 // with a link state, autopilot and reflexes until a runner claims it), and the DM seat opens (the DM is always an
 // agent, #520; the scripted DM answers its calls as reflexes until its runner is there).
 // The model each member's runner starts with is in the setup (planRunners); the page starts them.
-export function applyMinds(setup){setup=asV2(setup);const F=S.fellowship;if(!F)return;const map=slotsOf(setup)||{};
+export function applyMinds(setup){setup=asV2(setup);const F=slotted();if(!F)return;const map=slotsOf(setup)||{};
   const mem=SLOT_KEYS.map(k=>[k,F.slots[k]!=null?S.agents.find(a=>a.id==F.slots[k]):null]);
   for(const [k,a] of mem){if(!a)continue;
     if(a.brain){disableBrain(a);delete a.fellowBrain}

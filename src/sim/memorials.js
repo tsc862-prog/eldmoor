@@ -11,6 +11,7 @@ import {homeOf} from '../data/races.js';
 import {S} from './state.js';
 import {log,fac} from './chronicle.js';
 import {timeline} from './history.js';
+import {inSlots} from './company.js'; // the slotted company (#588)
 
 export const GRAVE_CAP=60,STATUE_CAP=3,STATUE_LVL=20,STATUE_FALL_LVL=15;
 const SLOTS=[[-1.7,-.5],[1.7,-.5],[0,1.3]]; // offsets from the square spot, one per statue
@@ -24,7 +25,7 @@ const protectedGrave=g=>g.keep||(S.statues||[]).some(s=>s.id===g.id);
 function addGrave(a){
   if(inTown(a.x,a.y))return;
   const G=S.graves||(S.graves=[]);
-  G.push({id:a.id,name:a.name,fac:a.fac,cls:a.cls,lvl:a.lvl,cause:a.cause||'fell',t:a.diedAt||'',gameMin:S.gameMin,x:+a.x.toFixed(1),y:+a.y.toFixed(1),keep:!!a.fellow});
+  G.push({id:a.id,name:a.name,fac:a.fac,cls:a.cls,lvl:a.lvl,cause:a.cause||'fell',t:a.diedAt||'',gameMin:S.gameMin,x:+a.x.toFixed(1),y:+a.y.toFixed(1),keep:!!inSlots(a)});
   while(G.length>GRAVE_CAP){const i=G.findIndex(g=>!protectedGrave(g));if(i<0)break;G.splice(i,1)}}
 
 function raise(a,why){

@@ -35,7 +35,7 @@ import {dmTick} from './dm.js';
 import {leverTick} from './levers.js';
 import {memorialsTick} from './memorials.js';
 import {playerUpd} from './player.js';
-import {fellowshipTick} from './fellowship.js';
+import {slotsTick} from './company.js'; // the slotted company's muster, watch and replacement (#588)
 import {councilTick} from './council.js';
 import {companionTick} from './offers.js'; // offers lapse, companies of 2+ keep a walking party, companions (#442)
 import {tableTick,tableHold} from './table.js';
@@ -104,7 +104,7 @@ export function step(dt){if(tableHold(dt)){updFx(dt);return} // Table mode (#68)
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first
-  partyTick();fellowshipTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  partyTick();slotsTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);dungeonCheck(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);

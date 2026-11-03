@@ -29,7 +29,7 @@ import {ZONES,CITY,zoneAt,dist} from '../world/map.js';
 import {nearHeroes} from './spatial.js';
 import {sightFor} from './weather.js';
 import {partyMates} from './party.js';
-import {companyOf,PARTY} from './company.js'; // letters belong to the company (#452)
+import {companyOf,PARTY,inSlots,slotKeyOf,slotted} from './company.js'; // letters belong to the company (#452)
 import {tableView} from './table.js';
 import {openProps} from './council.js';
 import {noteWritten} from './reflect.js'; // reflection moments (#179)
@@ -170,10 +170,10 @@ export function heroContext(a){const c=ctxNew(),z=zoneAt(a.x,a.y);
   const t=a.target;if(t&&t.kind==='hero')addRef(c,'hero:'+t.id,t.name);else if(t&&(t.elite||t.named)&&t.name)addRef(c,null,t.name);
   const adv=a.adv&&(S.adventures||[]).find(v=>v.id===a.adv&&v.phase==='active');if(adv){addRef(c,'adv:'+adv.id,null);c.words.push(...words(adv.title))}
   const tv=tableView(a);if(tv)c.words.push(...words((tv.title||'')+' '+(tv.scene||'')));
-  if(a.fellow)for(const P of openProps())c.words.push(...words(P.kind+' '+(P.details||'')));
+  if(inSlots(a))for(const P of openProps())c.words.push(...words(P.kind+' '+(P.details||'')));
   return c}
 // The DM's moment: the Fellowship (members, where they are, their adventures), an open or staged scene, open votes.
-export function dmContext(){const c=ctxNew(),F=S.fellowship;
+export function dmContext(){const c=ctxNew(),F=slotted();
   if(F)for(const id of F.ids||[]){const a=hero(id);if(!a||a.state==='dead')continue;addRef(c,'hero:'+a.id,a.name);const z=zoneAt(a.x,a.y);if(ZONES[z])addRef(c,'region:'+ZONES[z],ZONES[z]);
     if(a.adv)addRef(c,'adv:'+a.adv,null)}
   if(F){const town=F.hall;if(town)addRef(c,'town:'+town,town);for(const P of openProps())c.words.push(...words(P.kind+' '+(P.details||'')))}
@@ -194,7 +194,7 @@ export function heroMemory(a,tool,args){const b=heroBook(a),M=b.M;args=args||{};
   if(tool==='update_memory'){const r=updateNote(b,args.id,args);return r.ok?{ok:true,updated:view(r.note)}:r}
   if(tool==='forget'){const r=forgetNote(b,args.id);return r.ok?{ok:true,forgot:{id:r.note.id,title:r.note.title},notes:M.notes.length}:r}
   if(tool==='pin'){const on=!(args.on===false||/^(false|no|off)$/i.test(String(args.on||'')));const r=pinNote(b,args.id,on);if(!r.ok)return r;
-    return {ok:true,[on?'pinned':'unpinned']:{id:r.note.id,title:r.note.title},...(on&&companyOf(a)&&(r.note.tags||[]).includes('letter')?{note:'Sealed as your letter to '+(a.fellow?'the Fellowship':'your company')+': if you fall, whoever takes your place will find it.'}:{})}}
+    return {ok:true,[on?'pinned':'unpinned']:{id:r.note.id,title:r.note.title},...(on&&companyOf(a)&&(r.note.tags||[]).includes('letter')?{note:'Sealed as your letter to '+(inSlots(a)?'the Fellowship':'your company')+': if you fall, whoever takes your place will find it.'}:{})}}
   return {ok:false,error:'Unknown memory tool '+tool+'.'}}
 
 // ---- the letter (any company; #452) ----
@@ -209,12 +209,12 @@ function syncLetter(a){const C=companyOf(a);if(!C||a.state==='dead')return;
   if(!n&&!C.letters)return; // letters only where one was ever sealed (a save carries no empty map)
   const L=C.letters||(C.letters={});
   for(const k of Object.keys(L))if(L[k]&&L[k].from===a.id&&k!==String(a.id))delete L[k]; // an older save's slot key
-  if(n)L[a.id]={from:a.id,name:a.name,cls:a.cls,...(a.fellowRole?{slot:a.fellowRole}:{}),title:n.title,text:n.text,day:n.day};else delete L[a.id]}
+  if(n)L[a.id]={from:a.id,name:a.name,cls:a.cls,...(slotKeyOf(a)?{slot:slotKeyOf(a)}:{}),title:n.title,text:n.text,day:n.day};else delete L[a.id]}
 const joinedAt=(C,a)=>C.joined&&C.joined[a.id]!=null?C.joined[a.id]:null;
 function letterFor(a){const C=companyOf(a),L=lettersOf(C);if(!L)return null;let best=null;
   for(const k of Object.keys(L)){const l=L[k];if(!l||l.from===a.id)continue;const w=hero(l.from);if(w&&w.state!=='dead')continue; // the writer still lives: not for anyone yet
     const fell=l.fell!=null?l.fell:-1e9,j=joinedAt(C,a),after=j!=null&&j>=fell;
-    const ok=a.succeeds===l.from||(l.slot&&a.fellowRole===l.slot&&(j==null||after))||(after&&l.cls===a.cls)||(after&&S.gameMin-fell>=PARTY.LETTER_DAYS*1440);
+    const ok=a.succeeds===l.from||(l.slot&&slotKeyOf(a)===l.slot&&(j==null||after))||(after&&l.cls===a.cls)||(after&&S.gameMin-fell>=PARTY.LETTER_DAYS*1440);
     if(ok&&(!best||fell<(best.l.fell!=null?best.l.fell:-1e9)))best={k,l}}
   return best}
 function deliverLetter(a,M){if(!a||a.state==='dead')return;const b=letterFor(a);if(!b)return;const C=companyOf(a),l=b.l;
@@ -228,7 +228,7 @@ export function mirrorDirty(sent){const out=[];
   for(const id of S.playerHeroes||[]){const a=hero(id);if(!a||!a.memories&&!a.tiers)continue;const M=a.memories||{notes:[],arch:[]},dead=a.state==='dead',T=a.tiers;
     const sig=(M.v||0)+':'+(dead?1:0)+':'+a.name+(T?':'+T.seq+'.'+T.marks.length+'.'+T.chapters.map(c=>c.stamp+c.src).join(',')+'.'+T.pend.length:''),key='hero:'+a.id;if(sent.get(key)===sig)continue;
     out.push({key,sig,seat:{kind:'hero',id:a.id,name:a.name,cls:a.cls,lvl:a.lvl,dead,died:dead?(a.diedAt||null):null,cause:dead?(a.cause||null):null,
-      fellow:!!(a.fellow||a.fellowPast),notes:M.notes.map(n=>view(n)),arch:M.arch.map(n=>view(n)),tiers:tiersView(a)}})}
+      fellow:!!(inSlots(a)||a.fellowPast),notes:M.notes.map(n=>view(n)),arch:M.arch.map(n=>view(n)),tiers:tiersView(a)}})}
   const D=S.dmAgent;if(D&&D.notes){const sig=String(D.mv||0)+':'+Object.values(D.notes).reduce((t,l)=>t+l.length,0),key='dm';
     if(sent.get(key)!==sig)out.push({key,sig,seat:{kind:'dm',sections:Object.fromEntries(Object.entries(D.notes).map(([k,l])=>[k,l.map(n=>view({...n,title:n.title||titleOf(null,n.text)}))])),arch:(D.arch||[]).map(n=>view({...n,title:n.title||titleOf(null,n.text)}))}})}
   return out}
