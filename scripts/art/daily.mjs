@@ -47,7 +47,7 @@ const stamp=(d,date=today(d))=>`${date} ${pad(d.getHours())}:${pad(d.getMinutes(
 // A day counts as done once a run ended for a reason that will not change before tomorrow.
 const DONE=/stop: (allowance used|rate headers|ART_MAX_CALLS|manifest complete|daily share|monthly credits)/;
 // Estimated credits spent on the given day (YYYY-MM-DD) or month (YYYY-MM), read back from art.log lines.
-export function spentOn(text,prefix){let t=0;for(const l of String(text).split(/\r?\n/))if(l.startsWith(prefix)){const m=/est\. \$([\d.]+)/.exec(l)||/~\$([\d.]+) of the free allowance/.exec(l);if(m)t+=Number(m[1])}return t}
+export function spentOn(text,prefix){let t=0;for(const l of String(text).split(/\r?\n/))if(l.startsWith(prefix)){const m=/(?:est\.|estimated|billed|mixed) \$([\d.]+)/.exec(l)||/~\$([\d.]+) of the free allowance/.exec(l);if(m)t+=Number(m[1])}return t}
 
 // The work list at a tier: missing assets by priority, then alternates once everything exists. Keys are tier keys
 // ('tile:grass@32', 'tile:grass@32#alt1'), so the 32 and 64 sets are made and reviewed apart.
@@ -85,10 +85,11 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
   const explicit=o.budget??(env.ART_DAILY_BUDGET||undefined),carry=!o['no-carry']&&env.ART_CARRY!=='0'&&!!(man.allowance&&man.allowance.carry)&&monthly>0;
   // carry: what the month has earned by the end of today (monthly x day / days) less what it spent before today
   const budget=Number(explicit??(carry?Math.max(0,monthly*Number(date.slice(8,10))/dim-(spentMonth-spentToday)):monthly/dim));
-  const line=(made,rej,calls,cost,model,stop,next)=>`${stamp(now,date)} | made ${made} | rejected ${rej} | calls ${calls} | est. $${cost.toFixed(3)} (month $${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)} credits) | model ${model||'-'} | stop: ${stop} | next: ${next||'-'}${chk}`;
+  let billedN=0,estN=0,billedUsd=0,lastCost=null;const basis=()=>billedN&&!estN?'billed':billedN?'mixed':'estimated',next$=m=>lastCost??m.costPerImage;
+  const line=(made,rej,calls,cost,model,stop,next)=>`${stamp(now,date)} | made ${made} | rejected ${rej} | calls ${calls} | ${calls?basis():'estimated'} $${cost.toFixed(3)}${billedN&&estN?` (billed $${billedUsd.toFixed(3)})`:''} (month $${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)} credits) | model ${model||'-'} | stop: ${stop} | next: ${next||'-'}${chk}`;
   // when to look again: on the log line, and in ctx.result for the loop
   const setNext=(kind,stop,made=0,cost=0,retryAfter=0)=>{const n=nextCheck(kind,now,{retryHours,retryAfter});chk=` | check again ${stamp(n,today(n))} (${WAIT_WHY[kind]||kind})`;
-    ctx.result={kind,next:n,made,stop,spentToday:spentToday+cost,spentMonth:spentMonth+cost,monthly,budget,at:now.toISOString()}};
+    ctx.result={kind,next:n,made,stop,spentToday:spentToday+cost,spentMonth:spentMonth+cost,monthly,budget,budgetFrom:explicit!==undefined?'ART_DAILY_BUDGET or --budget':carry?'the month\'s share, carried':'the month\'s share',at:now.toISOString()}};
   if(!jobs.length){setNext('complete','manifest complete');log(line(0,0,0,0,q.model.pinned||man.pinnedModel,'manifest complete, alternates too: no call',''));q.next=[];saveQueue(dir,q);return 0}
   console.log(`[art] tier ${tier}: ${jobs.length} to make (${jobs.filter(j=>j.alt).length?'alternates':'missing assets'}), first ${jobs.slice(0,5).map(j=>j.key).join(', ')}; caps: ${max===Infinity?'no --max':'--max '+max}, ${maxCalls} calls`);
   console.log(`[art] credits: today's share $${budget.toFixed(3)}${carry&&explicit===undefined?' (carried forward)':''} (spent today ~$${spentToday.toFixed(3)}), month ~$${spentMonth.toFixed(3)} of $${monthly.toFixed(2)}`);
@@ -102,14 +103,15 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
     if(ctx.stopped&&ctx.stopped()){stop='stopped';kind='stop';break}
     if(made>=max){stop=`--max ${max} reached`;kind='error';break}
     if(calls>=maxCalls){stop=`ART_MAX_CALLS ${maxCalls} reached`;kind='cap';break}
-    {const next=man.models[e.model||candidates[ci]||candidates[0]].costPerImage;
-      if(monthly&&spentMonth+cost+next>monthly+1e-9){stop=`monthly credits used (est. $${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)})`;kind='month';break}
-      if(spentToday+cost+next>budget+1e-9){stop=`daily share used (est. $${(spentToday+cost).toFixed(3)} of $${budget.toFixed(3)})`;kind='share';break}}
+    {const next=next$(man.models[e.model||candidates[ci]||candidates[0]]);
+      if(monthly&&spentMonth+cost+next>monthly+1e-9){stop=`monthly credits used ($${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)}, ${basis()})`;kind='month';break}
+      if(spentToday+cost+next>budget+1e-9){stop=`daily share $${budget.toFixed(3)} used (${basis()}; spent today $${(spentToday+cost).toFixed(3)})`;kind='share';break}}
     let k,res=null;
     for(;;){k=e.model||candidates[ci];if(!k){stop='no candidate model answered';kind='error';break}
       const m=man.models[k];
       try{let mp=maps.get(k);if(!mp){mp=await mapping(m);maps.set(k,mp)}
-        const got=await fetchRaw({man,m,mp,e,token,seed:job.seed,timeout,count,tier});cost+=m.costPerImage; // refused calls draw nothing
+        const got=await fetchRaw({man,m,mp,e,token,seed:job.seed,timeout,count,tier});const c=got.cost!=null?got.cost:m.costPerImage;cost+=c;lastCost=got.cost!=null?got.cost:null;if(got.cost!=null){billedN++;billedUsd+=c}else estN++; // refused calls draw nothing; the answer's own cost wins over the manifest guess
+        if(!q.costProbe){q.costProbe={at:now.toISOString(),billed:got.cost!=null,from:got.costFrom||'',...got.probe};console.log(`[art] what the provider's answer says about cost: ${got.cost!=null?'$'+got.cost+' ('+got.costFrom+')':'nothing usable, so the manifest estimate is used'}; headers ${JSON.stringify(got.probe.headers)}, body keys ${got.probe.bodyKeys.join(',')||'-'}`)}
         // keep the provider's image before anything else, so post-processing can be re-run offline (art:reprocess)
         saveRaw(inc,job.key,got.bytes,{id:e.id,tier,kind:e.kind,model:k,repo:m.repo,provider:mp.provider,seed:job.seed,...(job.alt?{alt:job.alt}:{})});
         try{res={...processRaw(got.bytes,e,PAL,m,tier,man),last:got.last,mp}}catch(err){res={err,last:got.last}}break}
@@ -120,6 +122,7 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
     if(res.err){const err=res.err;
       if(['quota','auth','rate'].includes(err.kind)){stop=err.message.slice(0,200);kind=err.kind==='auth'?'error':'provider';ra=err.retryAfter||0;break}
       const f=q.failed[job.key]||{tries:0};q.failed[job.key]={tries:f.tries+1,why:err.message.slice(0,200),at:now.toISOString()};saveQueue(dir,q);
+      {const st=q.stats[e.kind]=q.stats[e.kind]||{made:0,flat:0,failed:0};st[err.kind==='flat'?'flat':'failed']++}
       if(err.kind==='flat')rej++;console.log(`[art] ${job.key} ${err.kind==='flat'?'rejected':'failed'}: ${err.message.slice(0,200)}${err.notes?' (grid '+err.notes.grid+', native '+err.notes.native+')':''}${err.kind==='flat'?'; raw kept for npm run art:reprocess':''}`);
       if(res.last){stop='rate headers: allowance used';kind='provider';i++;break}
       if(++inRow>=3){stop=`3 failures in a row (${err.message.slice(0,120)})`;kind='error';break}continue}
@@ -128,6 +131,7 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
     const file=keyFile(job.key),p=join(inc,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,res.png);
     incIdx.assets[job.key]={id:e.id,tier,kind:e.kind,file,w:res.img.w,h:res.img.h,colors:res.img.notes.colors,grid:res.img.notes.grid,sha256:sha256(res.png),model:k,repo:man.models[k].repo,provider:res.mp.provider,seed:job.seed,at:new Date().toISOString(),...(job.alt?{alt:job.alt}:{})};
     writeIndex(inc,incIdx);q.incoming[job.key]={date,file};if(job.alt){const b=tierKey(e.id,tier);q.alts[b]=Math.max(q.alts[b]||0,job.alt)}delete q.failed[job.key];saveQueue(dir,q);
+    {const st=q.stats[e.kind]=q.stats[e.kind]||{made:0,flat:0,failed:0};st.made++}
     made++;console.log(`[art] ${job.key} -> assets/incoming/${date}/${file} (${res.img.notes.colors} colours, grid ${res.img.notes.grid}, native ${res.img.notes.native})`);
     if(res.last){stop='rate headers: allowance used';kind='provider';i++;break}}
   if(!stop)stop=i>=jobs.length?'all done for now':'stopped';
@@ -150,7 +154,7 @@ export async function runLoop(argv,env=process.env,{now=()=>new Date(),sleep=ms=
     const ctx={now,stopped};
     try{await main([...rest,'--now','--date',today(now())],env,ctx)}catch(e){console.log('[art] pass failed: '+(e&&e.message||e))}
     const r=ctx.result||{kind:'error',next:new Date(now().getTime()+retryMs),stop:'the pass failed'};
-    last={at:r.at||now().toISOString(),made:r.made||0,stop:r.stop||'',spentToday:r.spentToday,spentMonth:r.spentMonth,monthly:r.monthly};
+    last={at:r.at||now().toISOString(),made:r.made||0,stop:r.stop||'',spentToday:r.spentToday,spentMonth:r.spentMonth,monthly:r.monthly,budget:r.budget,budgetFrom:r.budgetFrom};
     if(r.kind==='stop')break;
     const m0=mtime();
     if(r.kind==='complete'&&said!=='complete')console.log('[art] nothing left to make: sleeping until the manifest changes or tomorrow');
