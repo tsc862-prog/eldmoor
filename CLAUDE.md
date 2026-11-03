@@ -134,6 +134,7 @@ other. The rules:
   terminals, still works. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
+- `npm run labelcheck` (#563): one steady runner label while a runner holds a seat. A held link reads "live" whether the agent calls tools, thinks or waits for a Claude slot (the relay still reports connected/waiting); a page that just (re)connected reads "connecting" until the relay's first links; a member the Fellowship runner lets go (`[Name] done (why)`, a released claim) leaves the runner's `heroes` for `left: [{id, name, why}]` and reads "no runner" at once, the gate saying why and restarting the Fellowship runner; a claimed seat whose runner has posted a turn line counts as ready (`implied`). The check plays a 120 s silent Claude turn on the real relay, supervisor and page modules with a fake clock.
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
 - `npm run channelcheck`: the in-game channels rule (see "In-game channels").
 - `npm run lorecheck`: learning the world (#188, see "Agent player").
@@ -158,7 +159,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   like (the page connects to `ws://127.0.0.1:8787/play` and serves them all; the Agent tab
   shows tool calls, narration, the journal and the agent's link). Then one terminal per hero:
   `npm run agent -- --hero <name|id>` (Claude Agent SDK, `claude-sonnet-5-5` by default,
-  `AGENT_MODEL` to change; `--max-turns 20 --budget 1.00` are the default caps per runner;
+  `AGENT_MODEL` to change; `--budget 1.00` is the default cap per runner, no turn cap (`--max-turns N` optional);
   cost line per turn). Without `--hero` the runner lists the agent-played heroes and takes
   the first living one with no runner, or says none is free.
 - Pacing (issue #126, `scripts/pacing.mjs`, game side `src/sim/pace.js`): turns follow the game, not a
@@ -171,8 +172,8 @@ is silent, and scene choices time out to the scripted branch, so the world never
   gap plus the turn at 8x; a paused world takes none; at most 2 immediate turns a real minute inside the gap.
   The runner stops when the hero dies or leaves agent play, and after `--max-fails N` (default 5) failed or
   empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. More triggers (`src/sim/wakes.js`, `npm run wakecheck`): XP since the hero's last read is one bundled soft line ("+85 XP from 3 kills (...); 120 XP to level 4"), plus loot and quest progress and an elite kill (soft); a level up (names the ability, passive or level-10 path it opens), a rare or epic drop and a finished quest start the turn at once. Agent-played heroes only; no RNG. An older relay or page
-  without `/play/pace` falls back to real time as if at 1x. A local (Ollama) runner has no turn cap unless
-  `--max-turns` is given (it runs until stopped); Claude and OpenAI keep 20 turns and the budget.
+  without `/play/pace` falls back to real time as if at 1x. No runner has a turn cap unless
+  `--max-turns` is given (owner, #563: dollars are the limit): a local runner runs until stopped, Claude and OpenAI until stopped or their budget is spent.
 - Start gate (#222, extends the run gate #171 in `src/ui/rungate.js`): a seat is **ready** only after its runner
   completed one warm-up model call with the model it plays (and the shared `num_ctx`, #221): before its first turn
   every runner (hero, Fellowship member, DM; `scripts/warmup.mjs`) posts `POST /play/ready {hero|role:'dm', runner,
@@ -239,17 +240,15 @@ is silent, and scene choices time out to the scripted branch, so the world never
   (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`). A picker chooses the mind
   it starts with (the hero's saved mind, Claude Haiku, Claude Sonnet, or a pulled local model; a runner started from the
   app plays Claude Haiku when nothing is saved, `APP_CLAUDE_MODEL` in `scripts/runners.mjs`, while terminal runners keep
-  Sonnet; `AGENT_MODEL`/`DM_MODEL` override both) and its turn cap ("until stopped"
-  for a local mind by default, or 5-200 turns). The state line shows turns per minute, the last turn's age
-  and the cap; its tooltip shows what the pacing waits for. The relay spawns the runners as
+  Sonnet; `AGENT_MODEL`/`DM_MODEL` override both) and its budget for a paid mind ($0.50-$10, beside the picker and in the Agents panel; no turn cap, #563).
+  The state line shows spend of budget ("$0.081 of $2.00"), turns per minute and the last turn's age; its tooltip shows what the pacing waits for. The relay spawns the runners as
   child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship'|'dm',
   hero?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {kind, hero?}`; kinds are a table; `dm` runs
   `scripts/dm-agent.mjs`, one at most, and is refused as "not installed yet" until that file exists), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
   a stop writes "stop" on the child's stdin (it releases its heroes), then kills; a child also stops when
   the relay goes away. Limits: off without the flag, loopback and the game page's origin only, heroes the
-  page names as agent-played, providers anthropic/ollama/openai, defaults 20 turns/$1.00 per hero and 6 turns
-  each/$2.00 for the Fellowship (caps 200/$5, 100/$10; local runners have no budget and no turn cap unless
-  asked, OpenAI runners keep the budget and take no Claude slot), at most `RELAY_MAX_RUNNERS` (default 6)
+  page names as agent-played, providers anthropic/ollama/openai, defaults $1.00 per hero, $2.00 for the Fellowship, $1.00 for the DM and no turn cap (budget caps $5, $10, $5; a
+  turn cap only when asked; local runners have no budget, OpenAI runners keep the budget and take no Claude slot), at most `RELAY_MAX_RUNNERS` (default 6)
   runners, where the six seats (the five Fellowship members as hero runners or one Fellowship runner, plus
   the DM) always fit whatever the caps. Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
@@ -351,13 +350,12 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
 
 - Browser: `npm run relay` (the brain relay, port 8787; it also serves the agents' MCP tools),
   `npm run dev` (5173), found a Fellowship (its members are agents), then
-  `npm run fellowship -- --max-turns 6 --budget 2.00`.
+  `npm run fellowship -- --budget 2.00`.
 - Headless: `node scripts/play-headless.mjs --fellowship --port 8790 --warm 20 [--no-relay]`
   then `npm run fellowship -- --url http://127.0.0.1:8790 --max-turns 2 --budget 0.50`.
 - The runner reuses the per-hero sessions (`logs/agents/<heroId>.json`, resumed next run,
   `--new` to start over), runner settings and claims of `npm run agent`; one overall
-  `--budget` (for paid members), `--max-turns` per member (default 6 for Claude/OpenAI members, none for local
-  ones), each member paced like a hero runner (`--heartbeat MIN`, `--min-gap S`, the old `--cadence S` is the
+  `--budget` (for paid members), `--max-turns` per member (optional; by default every member plays until stopped or the budget is spent), each member paced like a hero runner (`--heartbeat MIN`, `--min-gap S`, the old `--cadence S` is the
   gap; a scene starts the member's turn at once), `--follower-model claude-haiku-5-5` for members other
   than the leader between scenes. Combined log `logs/fellowship.log`, per-run cost per member
   in `logs/fellowship-runs.jsonl`.
@@ -610,8 +608,8 @@ encounters and speak at their tables (issue #132, below).
 - Headless: `node scripts/play-headless.mjs --dm --agents 0 --port 8789` (no agent hero, the seat open),
   then `npm run dm -- --url http://127.0.0.1:8789`.
 - Runner (`scripts/dm-agent.mjs`): Agent SDK with `claude-sonnet-5-5` by default (`DM_MODEL`, `--model`,
-  `--effort`), or `--provider ollama --model M` through `scripts/local-agent.mjs`; `--max-turns 12
-  --budget 1.00` by default (a local DM runs until stopped); `--cadence evening` (a turn now, then one every game
+  `--effort`), or `--provider ollama --model M` through `scripts/local-agent.mjs`; `--budget 1.00` by default
+  and no turn cap (`--max-turns N` optional; a local DM runs until stopped); `--cadence evening` (a turn now, then one every game
   evening at 18:00) or `--cadence S` real seconds, never less than `--min-gap S` (20) apart; stops after
   `--max-fails` failed or empty turns in a row; never starts a turn while a Table scene or a party vote is open. One model
   call at a time; a rate limit (429/overloaded) backs off 30 s up to 10 min and retries. Cost line per

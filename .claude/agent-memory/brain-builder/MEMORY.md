@@ -42,3 +42,4 @@
 - [Standing orders](standing-orders.md) — #531 orders.mjs situations block, short local variant, withSituationOrders, orderscheck
 - [DM visibility](dm-visibility.md) — #558 hear ring, survey legal spots, world_standing, carries/quests/knows, survey hint on refusals
 - [CI fast](ci-fast.md) — #543 job split, CI_FAST knob, dmcheck/ratecheck parallel children, what is timer vs CPU bound
+- [Runner labels](runner-labels.md) — #563 label flip cause (6-turn cap release vs supervisor list), left members, implied ready, no turn caps, labelcheck
