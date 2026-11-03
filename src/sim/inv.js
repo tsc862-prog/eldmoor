@@ -20,6 +20,7 @@ import {dist} from '../world/map.js';
 import {partyMates} from './party.js';
 import {SELL_VALUE,equip} from './gear.js';
 import {record} from './history.js';
+import {companyOf} from './company.js';
 
 export const GIVE_RANGE=4;     // tiles between giver and receiver
 const FIGHT=['fight','duel','assist','raid'];
@@ -123,7 +124,7 @@ export function useItem(a,id,on,o={}){const U=USES[id];on=on||a;
   case 'bandage':case 'ration':{if(on.hp>=mh)return err((on===a?'You are':on.name+' is')+' not hurt.');
     if(inFight(on)||inFight(a))return err('Not in the middle of a fight.');
     const h=heal();stat(U.kind==='ration'?'ate':'bound');res=okay((U.kind==='ration'?'Ate a ':'Bound wounds with a ')+id+(on===a?'':' for '+on.name)+': +'+h+' health.',{healed:h})}break;
-  case 'torch':{const F=S.fellowship,g=F&&F.camp&&F.camp.phase?F.camp:null;if(!g||a.state!=='camp')return err('A torch is lit at a camp.');if(g.lit)return err('The camp is already lit.');g.lit=true;stat('lit');res=okay('Lit a pitch torch at the camp: the watch sees farther.')}break;
+  case 'torch':{const F=companyOf(a),g=F&&F.camp&&F.camp.phase?F.camp:null;/* the hero's own company's fire (#439) */if(!g||a.state!=='camp')return err('A torch is lit at a camp.');if(g.lit)return err('The camp is already lit.');g.lit=true;stat('lit');res=okay('Lit a pitch torch at the camp: the watch sees farther.')}break;
   case 'antidote':{if(!venomOn(a))return err('You are not poisoned.');cureVenom(a);stat('cured');res=okay('Drew the venom out with '+id+'.')}break;
   case 'scroll':
     if(U.effect==='recall'){if(!['fight','hunt','travel','follow','duel','assist'].includes(a.state))return err('You cannot read that now ('+a.state+').');
