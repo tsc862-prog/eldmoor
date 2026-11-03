@@ -63,3 +63,4 @@
 - [Rumours and titles](rumour-bestow.md) — seed_rumour and bestow DM tools (#637, #638)
 - [DM voice long-poll](dm-voice-longpoll.md) — #680 wait_ms long polls via hostDm, budget from pickup (callDeadline, +4 s cap), frameMs 8 s, voicecheck numbers
 - [Scene ready](scene-ready.md) — #682 members held until the DM frame, staggered wakes, hush, DM voice first on Claude slots; test pitfalls
+- [Slot and scene](slot-scene.md) — #687 slot wait watches due (scene:true first), queued why + miss cause, wait holds at an answered scene
