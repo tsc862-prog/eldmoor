@@ -1013,6 +1013,8 @@ console.log('start gate: ready, not just claimed');
     sc.narr={t:'09:02',text:'Father Corvane: Father Corvane sets the stub down and waits.'};sv.sceneTick(FOL);ok(!sv.sceneSpeaker(),'#536 bubble: prose about the person clears the bubble (no quote, no bubble)');
     ok(spokenOf('Hear me out. I need someone to find my ox.','Hesk')==='Hear me out. I need someone to find my ox.'&&spokenOf('The candle gutters.','Hesk')===null&&spokenOf('(whispered) go','Hesk')===null&&unrole('Hear Stranger Father Corvane out',[fc])==='Hear Father Corvane out','#536 spoken: speech kept, prose and stage directions dropped, roles removed');
     ok(sv.sceneItem(sc)==='candle','#536 props: the frame\'s candle stub becomes the scene\'s item');
+    {const LV=await import('../src/sim/levers.js'),st0=mem[0].state;mem[0].state='town';const rg=LV.pull('give_item',{hero:mem[0].id,item:'Shrine Candle-Stub'},{by:'agent',reason:'uismoke'});mem[0].state=st0;
+      ok(rg.ok&&sc.given==='Shrine Candle-Stub'&&sv.sceneItem(sc)===null,'#524 props: give_item of the scene item marks it given, the speaker no longer holds it'+(rg.ok?'':': '+rg.reason));delete sc.given;ok(sv.sceneItem(sc)==='candle','#524 props: without the flag the candle is drawn again')}
     const g0=S.gameMin;S.gameMin=Math.floor(g0/1440)*1440+12*60;const day=sv.sceneDark(sc,.15);S.gameMin=Math.floor(g0/1440)*1440+23*60;const night=sv.sceneDark(sc,.15);
     const plainSc={...sc,frame:['A quiet word.'],title:'A word'};S.gameMin=Math.floor(g0/1440)*1440+12*60;const lit=sv.sceneDark(plainSc,.15);S.gameMin=g0;
     ok(night>day&&day>lit&&lit===.15,'#536 light: darker at night ('+night+') and when the frame says guttering ('+day+' vs '+lit+')');
