@@ -112,25 +112,36 @@ export function pinNote(b,id,on=true){const f=find(b,id);if(!f)return {ok:false,
   if(on)f.n.pin=true;else delete f.n.pin;b.touch();return {ok:true,note:f.n}}
 
 // ---- search ----
-import {words} from './words.js';export {words}; // the search words, shared with sim/tiers.js (#153)
+import {words} from './words.js';export {words};
+import {SEM,semKey,semOf,semBonus} from './semkey.js'; // meaning search supplied by the relay (#553) // the search words, shared with sim/tiers.js (#153)
 const hit=(qs,ws)=>{let k=0;for(const q of qs)if(ws.some(w=>w===q||q.length>=4&&w.startsWith(q)||w.length>=4&&q.startsWith(w)))k++;return k};
 const recency=n=>2/(1+Math.max(0,S.gameMin-(n.up??n.gm??0))/DAY); // 2 today, 1 a day ago, .5 three days ago
 // recall: query words in the title (3) and tags (3), the about line (2) and the text (1); a tag or about filter
 // keeps only the notes that match it; then +1 pinned and the recency bonus. Ties: the newer id first.
-export function recallNotes(b,{query,tag,about,id,n,section}={}){
+// Semantic search (issue #553): the relay may hand `_sem` {key: 0..1}, the strength of each note's meaning match to the
+// query (src/sim/semkey.js; the sim never calls a network). A meaning match adds up to SEM.MAX to a hit's score, so a
+// title or tag word still wins; a note found only by meaning counts recency and a pin for less. `_pool` (the relay's
+// own ask, never an agent's) returns the texts to embed instead of results. Without either, scoring is as before.
+const poolText=x=>clean(x.title+'. '+((x.tags||[]).length?x.tags.join(', ')+'. ':'')+(x.about?x.about+'. ':'')+x.text,SEM.TEXT);
+export function semPool(b){const out=[];for(const x of [...allOf(b),...b.arch]){const t=poolText(x);out.push({k:semKey(t),text:t});if(out.length>=SEM.POOL)break}return {ok:true,pool:out}}
+export function recallNotes(b,{query,tag,about,id,n,section,_sem,_pool}={}){
+  if(_pool===true)return semPool(b);
   const k=Math.max(1,Math.min(NB.N_MAX,Math.round(Number(n)||NB.N)));
   if(id!=null&&id!==''){const f=find(b,id);return f?{ok:true,notes:[view(f.n)]}:{ok:false,error:'No memory '+id+'.'}}
   const qs=words(query),tg=tag?clean(tag,NB.TAG_LEN).toLowerCase():null,ab=about?resolveAbout(about):null,abw=ab?words(ab.about):[];
+  const sem=semOf(_sem),find_=qs.length>0||(sem&&String(query||'').trim()!=='');
   if(section&&!b.secs.includes(section))return {ok:false,error:'section must be one of '+b.secs.join(', ')};
   const pool=[...allOf(b),...b.arch].filter(x=>!section||(x.sec||b.secs[0])===section||b.kind==='hero');
   const out=[];
   for(const x of pool){
     if(tg&&!(x.tags||[]).includes(tg))continue;
     if(ab&&!(ab.ref&&x.rk===ab.ref||!ab.ref&&abw.length&&hit(abw,words(x.about))===abw.length))continue;
-    let s=0;if(qs.length){s=3*hit(qs,words(x.title))+3*hit(qs,x.tags||[])+2*hit(qs,words(x.about))+hit(qs,words(x.text));if(!s)continue}
-    s+=(x.pin?1:0)+recency(x)-(x.arch?1:0);out.push({x,s})}
+    let s=0,sb=0;if(find_){const kw=qs.length?3*hit(qs,words(x.title))+3*hit(qs,x.tags||[])+2*hit(qs,words(x.about))+hit(qs,words(x.text)):0;
+      sb=sem?semBonus(sem[semKey(poolText(x))]):0;if(!kw&&!sb)continue;s=kw+sb;
+      if(!kw){s+=(x.pin?.5:0)+recency(x)/4-(x.arch?1:0);out.push({x,s,sem:true});continue}}
+    s+=(x.pin?1:0)+recency(x)-(x.arch?1:0);out.push({x,s,sem:sb>0})}
   out.sort((p,q)=>q.s-p.s||q.x.id-p.x.id);
-  return {ok:true,found:out.length,notes:out.slice(0,k).map(o=>view(o.x)),...(out.length>k?{more:out.length-k}:{})}}
+  return {ok:true,found:out.length,...(sem&&find_?{ranked:'keywords and meaning'}:{}),notes:out.slice(0,k).map(o=>o.sem?{...view(o.x),semantic:true}:view(o.x)),...(out.length>k?{more:out.length-k}:{})}}
 
 // ---- what matters now ----
 // The context of a moment: refs of the people, places and quest present, their names, and the words of an open

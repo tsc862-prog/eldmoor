@@ -1178,6 +1178,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(!a.player)return {ok:false,error:a.name+' is not agent-played.'};
   if(a.state==='dead'){const r={ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+', at '+(a.diedAt||'?')+'). Hardcore: one life. Their story is over.'};logCall(a,tool,args,r);return r}
   const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'};
+  if(args&&args._pool===true&&(tool==='recall'||tool==='journal_search'))return fn(a,args); // the relay's ask for the texts it embeds (#553): not a turn, not logged
   if(meta.act){const st=a.playRate||(a.playRate=[]);while(st.length&&st[0]<S.gameMin-60)st.shift();
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}
     st.push(S.gameMin)}
@@ -1206,7 +1207,7 @@ export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:fals
 // Recent tool calls for the Agent tab: newest first, short text.
 function logCall(a,tool,args,r){const L=a.playLog||(a.playLog=[]);
   L.unshift({t:clockStr(),d:dayNo(),tool,args:argText(args),ok:r.ok!==false,pending:!!r.pending||undefined,text:r.pending?'waiting...':summarize(r)});if(L.length>PK.LOG)L.pop()}
-const argText=x=>{if(!x||typeof x!=='object')return '';const k=Object.keys(x);return k.length?clean(k.map(j=>j+'='+(typeof x[j]==='string'?'"'+x[j]+'"':x[j])).join(' '),120):''};
+const argText=x=>{if(!x||typeof x!=='object')return '';const k=Object.keys(x).filter(j=>j[0]!=='_');return k.length?clean(k.map(j=>j+'='+(typeof x[j]==='string'?'"'+x[j]+'"':x[j])).join(' '),120):''};
 function summarize(r){if(r.ok===false)return 'x '+clean(r.error,160);const skip={ok:1,events:1,pending:1,as_of:1,since_look:1,changed:1,table_waits:1};
   return clean(Object.keys(r).filter(k=>!skip[k]).map(k=>{const v=r[k];return k+': '+(typeof v==='string'||typeof v==='number'?v:Array.isArray(v)?v.length+' item'+(v.length===1?'':'s'):v&&typeof v==='object'?'{...}':String(v))}).join(' · '),200)}
 

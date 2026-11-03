@@ -40,6 +40,8 @@ import {behaviorLog} from './behavior-log.mjs';
 import {makeWatch} from '../src/sim/behavior.js';
 import {mirrorDirty} from '../src/sim/notebook.js';
 import {memoryMirror} from './memory-mirror.mjs';
+import {semanticRecall} from './embed.mjs'; // semantic memory search, opt in with --embed (issue #553)
+import {ollamaAdapter} from './providers/ollama.mjs';
 import {WORLD_ID} from '../src/world/map.js';
 import {loadCampaigns} from './campaign-files.mjs';
 
@@ -136,7 +138,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const server = http.createServer((req, res) => {res.writeHead(404, {'content-type': 'application/json'}); res.end('{"error":"not found"}')});
   // Behavior logs (issue #129): runners' turn lines, the world digest and game-side anomalies under logs/behavior/<world>/.
   const behavior = flag('no-behavior') ? null : behaviorLog({world: opt('log-world', WORLD_ID + '-headless'), log: console.log}), watch = behavior ? makeWatch({dmLink: () => playRef && playRef.claimed('dm') ? 'connected' : 'none'}) : null;
-  const play = attachPlay(server, {behavior, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
+  // Semantic memory search (issue #553) is opt in here (--embed): a headless run never reaches for a local Ollama on its own.
+  const embed = flag('embed') ? semanticRecall({adapter: ollamaAdapter({url: process.env.OLLAMA_URL || undefined}), world: opt('log-world', WORLD_ID + '-headless'), log: console.log}) : null;
+  if (embed) embed.setWorld(opt('log-world', WORLD_ID + '-headless'), S.worldId);
+  const play = attachPlay(server, {behavior, embed, backend: localBackend(), log: quiet ? () => {} : console.log, verbose: /^(1|true|yes)$/i.test(process.env.RELAY_VERBOSE || '') || flag('verbose') ? PLAY_LOG : null});
   playRef = play;
   if (watch) setInterval(() => {try {for (const o of watch.tick()) play.behaviorIngest(o.kind, o.rec)} catch (e) {console.error('[play] behavior watch: ' + e.message)}}, 250);
   // Agent memories (issue #155): the notebooks mirrored as Markdown under logs/agents/<world>/ (--no-mirror: none); written, never read back.
