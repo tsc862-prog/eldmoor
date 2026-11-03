@@ -19,9 +19,14 @@ export async function hostCall(heroId,tool,args,{poll=100,nap=sleep,now=()=>Date
   if(tool==='pace')return hostPace(heroId,args,{poll,nap,now});
   const r=playerAct(heroId,tool,args||{});
   if(!r||!r.pending)return r;
-  const p=r.pending,t0=now();
-  while(!waitOver(p)){if(now()-t0>=p.realMs)return finishWait(p,true);await nap(poll)}
-  return finishWait(p,false)}
+  const p=r.pending,t0=now(),me=S.agents.find(x=>x.id===Number(heroId)),sc=me&&sceneOf(me),held=sc&&sc.acts&&sc.acts[me.id]?sc:null;
+  // #687: a wait at a scene this member has already answered holds until the table settles (or something needs it, or the
+  // wait's game minutes pass), at most WAIT_SCENE_MS, instead of returning 0 minutes at the real-time cap again and again.
+  const settled=()=>held&&(sceneOf(me)!==held||held.phase==='outcome'||held.phase==='done');
+  for(;;){if(settled()){const out=finishWait(p,false);out.why='the table settled';if(held.summary)out.scene_outcome=held.summary;return out} // the scene's end first (its result event would end the wait too)
+    if(waitOver(p))return finishWait(p,false);
+    if(now()-t0>=(held?WAIT_SCENE_MS:p.realMs))return finishWait(p,true);await nap(poll)}}
+export const WAIT_SCENE_MS=240000; // the longest a wait holds at a scene already answered (the table's live wait plus a queued extra)
 
 // Runner pacing (issue #126, sim/pace.js): not a game tool (MCP and /play/call never offer it; the relay
 // sends it from POST /play/pace). Resolves when the hero's next turn should start, or after realMs
@@ -29,7 +34,7 @@ export async function hostCall(heroId,tool,args,{poll=100,nap=sleep,now=()=>Date
 export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now()}={}){
   const p=args&&typeof args==='object'?args:{},me=()=>S.agents.find(x=>x.id===Number(heroId));
   if(p.brief){const r=paceBrief(heroId,{self:!!p.self}),a=me();if(r&&r.ok&&a&&a.playFresh){a.playFresh=false;lookSnap(a)}return r} // the state header for a turn prompt, at once; the one a runner reads after its wake is the agent's view of the world (#240; the relay's after-turn brief for the behavior log is not)
-  if(p.queued!=null){const a=me();return a?markQueued(a,!!p.queued):{ok:false,gone:true,error:'No such hero.'}} // the runner: this member's scene answer is queued behind other work (#515)
+  if(p.queued!=null){const a=me();return a?markQueued(a,!!p.queued,p.why):{ok:false,gone:true,error:'No such hero.'}} // the runner: this member's scene answer is queued behind other work (#515)
   if(p.reflected!=null){const a=S.agents.find(x=>x.id===Number(heroId));return a&&a.player?reflectDone(a,String(p.reflected),p.wrote):{ok:false,error:'not agent-played'}} // a reflection closed (#179)
   const t0=now(),rm=Number(p.realMs),realMs=Math.min(PACE.REAL_MAX,Number.isFinite(rm)&&rm>=0&&p.realMs!==null?rm:PACE.REAL_MS);
   const q={since:Number.isFinite(Number(p.since))&&p.since!==null?Number(p.since):paceIdle(heroId,null).since,minutes:p.minutes,wake:p.wake==='now'||p.wake==='must'?p.wake:'all',reflect:!!p.reflect};

@@ -479,7 +479,12 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (key !== 'dm' && play && play.dmVoiceBusy && play.dmVoiceBusy()) await new Promise(r => setTimeout(r, DM_FIRST_MS)); // the DM's voice first (#682)
       grantNext();
       if (leases.size < claudeMax && !waiters.length) {const id = 'L' + (++leaseSeq); leases.set(id, {key, at: now()}); return send(200, {ok: true, lease: id, slots: claudeMax})}
-      const id = await new Promise(res => {const w = {key, res}; w.t = setTimeout(() => {const i = waiters.indexOf(w); if (i >= 0) waiters.splice(i, 1); res(null)}, LEASE_WAIT_MS); waiters.push(w)});
+      // a member whose own Table scene waits (scene: true, #687) goes before every request that has nothing that cannot wait
+      const scene = b.scene === true;
+      const id = await new Promise(done => {const w = {key, res: done, scene}; w.t = setTimeout(() => {const i = waiters.indexOf(w); if (i >= 0) waiters.splice(i, 1); done(null)}, LEASE_WAIT_MS);
+        const at = scene ? waiters.findIndex(x => !x.scene) : -1; if (at >= 0) waiters.splice(at, 0, w); else waiters.push(w);
+        res.on('close', () => {if (res.writableEnded) return; const i = waiters.indexOf(w); if (i >= 0) {waiters.splice(i, 1); clearTimeout(w.t); done(null)}})}); // the runner gave up this request (it asks again as a scene)
+      if (id && (res.destroyed || res.writableEnded)) {leases.delete(id); grantNext(); return} // granted to a request nobody waits on any more: the slot goes back
       return send(200, id ? {ok: true, lease: id, slots: claudeMax} : {ok: false, busy: true, slots: claudeMax, waiting: waiters.length});
     }
     if (path === '/play/runner/slot/release') {

@@ -8,7 +8,7 @@
 import {S,dmSeatOn,dmAgentView} from '../sim/index.js';
 import {dmLink,dmRunnerTag,LINK_TEXT,bridgeStatus} from './player-bridge.js';
 import {dmRunnerControl,dmRunnerSig,runnerPick,runnerByKey} from './runners.js';
-import {pulledModels} from './mindpick.js';
+import {pulledModels,googleModels} from './mindpick.js';
 import {patch} from './stable.js'; // update in place (#145)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -23,7 +23,7 @@ export const dmSeatSig=()=>{const v=dmAgentView();return [dmSeatOn(),dmLink(),dm
 const notesN=()=>{const D=S.dmAgent;return D&&D.notes?Object.values(D.notes).reduce((n,a)=>n+(a?a.length:0),0):0};
 function controls(compact){const d=el('div','dmseat'+(compact?' compact':''));
   if(!dmSeatOn()){if(!compact)d.append(el('span','dm','The DM seat opens when a world is played.'));return d}
-  if(!live())d.append(runnerPick('dm',pulledModels()));d.append(dmRunnerControl());
+  if(!live())d.append(runnerPick('dm',pulledModels(),null,null,googleModels()));d.append(dmRunnerControl());
   const k=dmLink(),rt=dmRunnerTag(),s=el('span','mlink '+k,(k==='connected'?'DM agent connected':k==='waiting'?'DM agent waiting':k==='none'?'no DM runner':LINK_TEXT[k]||k)+(rt?' · '+rt:''));
   s.title='The DM agent link to the game (relay '+bridgeStatus()+'). Terminal alternative: npm run dm';d.append(s);
   d.append(el('span','dm dmnotes','Notes '+notesN()));
