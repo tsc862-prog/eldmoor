@@ -191,6 +191,7 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
     delete h.company}
   for (const p of v6.parties) {if (p.company === C.id) p.fellow = true; delete p.company}
   if (v6.companiesPast) v6.fellowshipsPast = v6.companiesPast;
+  if (v6.table) delete v6.table.company; // a v6 scene had no company (#440)
   delete v6.companies; delete v6.companySeq; delete v6.followId; delete v6.companiesPast; v6.version = 6;
   ok(!/"company":/.test(JSON.stringify(v6)) && v6.fellowship.slots && v6.table, 'fixture: a v6 save with a Fellowship, a.fellow / p.fellow and an open table');
   restore(JSON.parse(JSON.stringify(v7))); const a7 = JSON.parse(JSON.stringify(snapshot()));
