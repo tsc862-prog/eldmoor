@@ -14,7 +14,10 @@
 //  7. tiers (#177, src/render/tile.js): index keys and files per tier, the loader keeps only the renderer's tier (a 64
 //     asset under TILE 32 is absent, so the procedural art is drawn), the procedural texel scaled to TILE where an
 //     asset is missing, generation settings per tier (LoRA scale, pixel grid, palette widening) in the requests and
-//     outputs of gen/daily --tier 64, a queue and index from before tiers read as the 32 tier, and sprite sheets.
+//     outputs of gen/daily --tier 64, a queue and index from before tiers read as the 32 tier, and sprite sheets;
+//  8. towns and landmarks (slice 3, src/render/townart.js) on headless Eldmoor and Stepping Lands maps, drawn through a
+//     small raster of its own (no canvas in Node): each town in its faction's style with every piece placed, no assets =
+//     the procedural drawing, fixture PNGs on (only inside the pieces' boxes), one piece removed, and off again exactly.
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync} from 'node:fs';
@@ -31,6 +34,7 @@ const man=loadManifest();
 const PAL=await import('../src/render/palette.js');
 // Child mode for part 6: one world per process (the world modules pick ELDMOOR_WORLD when they load).
 if(process.argv[2]==='--autotile'){await autotileProbe();process.exit(fails?1:0)}
+if(process.argv[2]==='--towns'){await townProbe();process.exit(fails?1:0)}
 
 console.log('manifest and hooks');
 {const e=validateManifest(man,PAL,resolvePalette);ok(!e.length,'manifest valid'+(e.length?': '+e.join('; '):` (${man.assets.length} assets, models ${Object.keys(man.models).join(', ')})`));
@@ -68,6 +72,10 @@ const pixelArt=(size=1024,block=8,{off=3,seed=7,flat=false}={})=>{let r=seed>>>0
 // A transition answer: pixel-art green ground above, grey-brown stone below. A prop answer: a textured blob on white.
 const twoGrounds=()=>{const a=pixelArt(),b=pixelArt(1024,8,{seed:11});for(let y=512;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4;a.data[o]=b.data[o+1];a.data[o+1]=b.data[o+1]*.85;a.data[o+2]=b.data[o+1]*.75}return a};
 const propArt=()=>{const a=pixelArt(1024,8,{seed:13});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++)if((x-512)**2+(y-560)**2>360**2){const o=(y*1024+x)*4;a.data[o]=a.data[o+1]=a.data[o+2]=255}return a};
+// Town answers (slice 3): a wall or gate is grey stone blocks with mortar; a building a roof band over a wall with a door, on white.
+const stoneArt=()=>{const a=pixelArt(1024,8,{seed:17});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4,g=a.data[o+1],m=(y%64<8)||((x+((y>>6)&1)*64)%128<8),v=m?50:90+g*.6;a.data[o]=v;a.data[o+1]=v*.95;a.data[o+2]=v*1.05}return a};
+const houseArt=()=>{const a=stoneArt();for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4;if(x<160||x>864||y<160||y>900){a.data[o]=a.data[o+1]=a.data[o+2]=255;continue}
+  if(y<480){a.data[o]*=.6;a.data[o+1]*=.7;a.data[o+2]=Math.min(255,a.data[o+2]*1.1)}else if(x>440&&x<584&&y>700){a.data[o]=70;a.data[o+1]=45;a.data[o+2]=25}}return a};
 {const im=synth(37,23),b=encodePng(im),back=decodePng(b);ok(back.w===37&&back.h===23&&Buffer.from(back.data).equals(Buffer.from(im.data)),'RGBA round trip');
   ok(pngSize(b).w===37&&pngSize(b).h===23,'size from the header');
   // a 2x2 palette PNG with tRNS and a Paeth-filtered 2x1 RGB PNG, built by hand
@@ -116,7 +124,8 @@ try{
   const S={posts:[],ok:0,lookups:0,deny:false,refuse:null,quota402:Infinity,quota429:Infinity,zeroLeft:false,flat:false,headers:[]};
   const img=encodePng(pixelArt()),flatImg=encodePng(pixelArt(1024,8,{flat:true}));
   // what a prompt asks for: a transition (two grounds, top and bottom) or a prop on a plain white background
-  const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt())},mockKind=pr=>/plain white background/.test(pr)?'prop':/transition tile/.test(pr)?'two':'tile';
+  const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt())},
+    mockKind=pr=>/town wall|town gate/.test(pr)?'stone':/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/transition tile/.test(pr)?'two':'tile';
   const srv=http.createServer((req,res)=>{let body='';req.on('data',c=>body+=c);req.on('end',()=>{
     const u=new URL(req.url,'http://x');S.headers.push(req.headers);
     if(req.method==='GET'&&u.pathname.startsWith('/api/models/')){S.lookups++;const id=u.pathname.slice(12);res.setHeader('content-type','application/json');
@@ -145,7 +154,7 @@ try{
     r=await run();ok(r.code===0&&/add --yes/.test(r.s)&&!S.posts.length,'gen without --yes: plan only');
     r=await run('--yes','--max','1');ok(r.code===0&&S.posts.length===1&&/stopping at --max 1/.test(r.s),'gen --max 1 makes one image');
     ok(checkIndex(man,out).count===1&&!checkIndex(man,out).errs.length,'index valid after one');
-    r=await run('--yes');ok(r.code===0&&S.posts.length===N,`gen makes the rest (${S.posts.length}/${N} calls)`);
+    r=await run('--yes');ok(r.code===0&&S.posts.length===N,`gen makes the rest (${S.posts.length}/${N} calls)`+(r.code?': '+r.s.split('\n').filter(l=>/failed/.test(l)).join('; '):''));
     {const {errs,count}=checkIndex(man,out);ok(count===N&&!errs.length,'assets present: index matches files, sizes and sha256'+(errs.length?': '+errs.join('; '):''))}
     ok(S.posts.every(p=>p.prompt.startsWith('pixel art, ')&&p.negative_prompt&&p.image_size.width===1024),'prompts carry the trigger, style and negative');
     ok(S.headers.every(h=>!Object.keys(h).some(k=>/bill|x-fal|provider-key/i.test(k))),'no billing or provider-key header is ever sent');
@@ -286,12 +295,12 @@ console.log('tiers: index, loader, fallback, generation settings');
     ok(q.incoming['tile:grass@32']&&q.incoming['tile:grass@32'].file==='tile/grass.png'&&q.rejected['tile:mud@32']===1&&q.next[0]==='tile:swamp@32'&&ix.assets['tile:grass@32'].tier===32,'the owner\'s queue and incoming index from before tiers (2026-11-03) carry over as the 32 tier')}
   finally{rmSync(old,{recursive:true,force:true})}}
 
-console.log('autotile rules with fixture PNGs (slice 2)');
+for(const [mode,title] of [['--autotile','autotile rules with fixture PNGs (slice 2)'],['--towns','towns and landmarks with fixture PNGs (slice 3)']]){console.log(title);
 for(const world of ['eldmoor','stepping']){
-  const r=await new Promise(f=>{const c=spawn(process.execPath,[join(ROOT,'scripts','artcheck.mjs'),'--autotile'],{env:{...process.env,ELDMOOR_WORLD:world},stdio:['ignore','pipe','pipe']});
+  const r=await new Promise(f=>{const c=spawn(process.execPath,[join(ROOT,'scripts','artcheck.mjs'),mode],{env:{...process.env,ELDMOOR_WORLD:world},stdio:['ignore','pipe','pipe']});
     let s='';c.stdout.on('data',d=>s+=d);c.stderr.on('data',d=>s+=d);c.on('close',code=>f({code,s}))});
   process.stdout.write(r.s.split('\n').filter(Boolean).map(l=>l.replace(/^ {2}(ok |FAIL)/,`  $1 [${world}]`)).join('\n')+'\n');
-  if(r.code!==0){fails++;if(!/FAIL/.test(r.s))console.log(`  FAIL [${world}] the autotile probe exited ${r.code}`)}}
+  if(r.code!==0){fails++;if(!/FAIL/.test(r.s))console.log(`  FAIL [${world}] the ${mode.slice(2)} probe exited ${r.code}`)}}}
 
 console.log(fails?`artcheck: ${fails} FAILED`:'artcheck: all ok');process.exit(fails?1:0);
 
@@ -357,3 +366,79 @@ async function autotileProbe(){
   for(const id of Object.keys(fx))A.setAssetPixels(id,null);
   ok(same(render(),off),'fixtures removed: the procedural render is back, pixel for pixel');
   ok(mapHash()===m0,'the map hash never moved')}
+
+// A tiny 2D context for Node (part 8): fillRect with '#rgb[a]' / '#rrggbb[aa]' colours (alpha blended), drawImage of
+// decoded pixels ({w, h, hex}), and translate / scale / quarter-turn rotate / save / restore. Enough for townart.js.
+function rasterClass(){return class Raster{ // a function, so the child mode at the top can use it before this line runs
+  constructor(w,h){this.w=w;this.h=h;this.px=new Uint32Array(w*h);this.m=[1,0,0,1,0,0];this.st=[];this.fillStyle='#000';this.imageSmoothingEnabled=true}
+  save(){this.st.push(this.m.slice())}restore(){this.m=this.st.pop()||[1,0,0,1,0,0]}
+  mul(a,b,c,d,e,f){const [A,B,C,D,E,F]=this.m;this.m=[A*a+C*b,B*a+D*b,A*c+C*d,B*c+D*d,A*e+C*f+E,B*e+D*f+F]}
+  translate(x,y){this.mul(1,0,0,1,x,y)}scale(x,y){this.mul(x,0,0,y,0,0)}
+  rotate(t){const c=Math.round(Math.cos(t)),s=Math.round(Math.sin(t));this.mul(c,s,-s,c,0,0)}
+  dev(x,y){const [a,b,c,d,e,f]=this.m;return [a*x+c*y+e,b*x+d*y+f]}
+  rect(x,y,w,h){const p=this.dev(x,y),q=this.dev(x+w,y+h);return [Math.round(Math.min(p[0],q[0])),Math.round(Math.min(p[1],q[1])),Math.round(Math.max(p[0],q[0])),Math.round(Math.max(p[1],q[1]))]}
+  fillRect(x,y,w,h){let s=String(this.fillStyle).slice(1);if(s.length<=4)s=[...s].map(c=>c+c).join('');
+    const r=parseInt(s.slice(0,2),16),g=parseInt(s.slice(2,4),16),b=parseInt(s.slice(4,6),16),al=s.length>6?parseInt(s.slice(6,8),16)/255:1;
+    const [x0,y0,x1,y1]=this.rect(x,y,w,h);
+    for(let Y=Math.max(0,y0);Y<Math.min(this.h,y1);Y++)for(let X=Math.max(0,x0);X<Math.min(this.w,x1);X++){const i=Y*this.w+X,o=this.px[i];
+      const or=(o>>16)&255,og=(o>>8)&255,ob=o&255,oa=o>>>24?1:0,k=oa?al:1;
+      this.px[i]=(0xff000000|(Math.round(r*k+or*(1-k)*oa)<<16)|(Math.round(g*k+og*(1-k)*oa)<<8)|Math.round(b*k+ob*(1-k)*oa))>>>0}}
+  drawImage(img,dx,dy,dw,dh){const [x0,y0,x1,y1]=this.rect(dx,dy,dw,dh),[a,b,c,d,e,f]=this.m,det=a*d-b*c;
+    for(let Y=Math.max(0,y0);Y<Math.min(this.h,y1);Y++)for(let X=Math.max(0,x0);X<Math.min(this.w,x1);X++){
+      const px=X+.5-e,py=Y+.5-f,ux=(d*px-c*py)/det,uy=(-b*px+a*py)/det; // back to the image's user space
+      const sx=Math.floor((ux-dx)/dw*img.w),sy=Math.floor((uy-dy)/dh*img.h);if(sx<0||sy<0||sx>=img.w||sy>=img.h)continue;
+      const hx=img.hex[sy*img.w+sx];if(hx)this.px[Y*this.w+X]=(0xff000000|parseInt(hx.slice(1),16))>>>0}}}}
+
+// Part 8, run in a child per world: every town and landmark drawn into rasters at art resolution (TILE a tile).
+async function townProbe(){
+  const A=await import('../src/render/assets.js'),TA=await import('../src/render/townart.js'),Tr=await import('../src/render/terrain.js');
+  const {CITY,LANDMARKS,tiles,zone}=await import('../src/world/map.js'),{fixtures}=await import('./art/fixtures.mjs'),{ACTIVE_SPEC}=await import('../src/world/spec.js');
+  const D=await import('../src/data/townart.js'),{FAC}=await import('../src/data/factions.js'),{TILE:RT,U,ART}=await import('../src/render/tile.js');
+  const fnv=a=>{let h=0x811c9dc5;for(let i=0;i<a.length;i++){h^=a[i]&255;h=Math.imul(h,16777619)>>>0}return h.toString(16).padStart(8,'0')};
+  const mapHash=()=>fnv(tiles)+fnv(zone);
+  A.provideAssets(null,{});const m0=mapHash();
+  // the hook table and the manifest agree both ways
+  {const ids=new Set(man.assets.filter(e=>e.hook&&e.hook.module==='src/render/townart.js').map(e=>e.id)),keys=Object.keys(TA.ASSET_TOWNS);
+    ok(keys.length===ids.size&&keys.every(k=>ids.has(k)),`every town and landmark hook id is in the manifest and back (${keys.length})`)}
+  // styles and plans
+  const styles=new Set(),bad=[];
+  for(const c of CITY){const st=D.townStyle(c),P=TA.townPlan(c);styles.add(st);
+    if(st!==D.FAC_STYLE[c.fac%D.FAC_STYLE.length])bad.push(c.name+': style '+st);
+    for(const p of D.TOWN_PIECES){const n=P.filter(q=>q.id===TA.pieceId(st,p.piece)).length;if(n!==1)bad.push(`${c.name}: ${p.piece} x${n}`)}
+    const walls=P.filter(q=>/-wall(-corner)?$/.test(q.id)).length,want=2*(c.w+c.h)-4-c.gateTiles.length;if(walls!==want)bad.push(`${c.name}: ${walls} wall pieces, want ${want}`);
+    const g=P.find(q=>q.id.endsWith('-gate'));if(!g||!c.gateTiles.every(([x,y])=>x>=g.box[0]&&x<g.box[0]+g.box[2]&&y>=g.box[1]&&y<g.box[1]+g.box[3]))bad.push(c.name+': the gate piece misses the gate');
+    for(const q of P)if(!TA.ASSET_TOWNS[q.id])bad.push(q.id+' not in ASSET_TOWNS');
+    for(const q of P.filter(q=>!/-(wall|wall-corner|gate)$/.test(q.id)))if(q.box[0]<c.x0||q.box[0]+q.box[2]>c.x1+1||q.box[1]<c.y0-1||q.box[1]+q.box[3]>c.y1+1)bad.push(`${c.name}: ${q.id} outside the town`)}
+  ok(!bad.length,`${CITY.length} towns, each in its faction's style (${[...styles].join(', ')}) with every piece placed once, walls on the rim, the gate over its gap`+(bad.length?': '+bad.slice(0,4).join('; '):''));
+  ok(FAC.every((f,i)=>!CITY.some(c=>c.fac===i)||styles.has(D.FAC_STYLE[i%D.FAC_STYLE.length])),'every faction\'s towns draw that faction\'s style');
+  const LP=TA.landmarkPlan();
+  ok(LP.filter(p=>p.id==='landmark:crypt-mouth').length===LANDMARKS.filter(l=>l.kind==='crypt'&&l.mouth).length&&LP.filter(p=>p.id==='landmark:lair').length===LANDMARKS.filter(l=>l.kind==='lair').length,
+    `a set piece for every crypt mouth and lair (${LP.length})`);
+  // rasters: every town (padded) and every landmark box, in world units scaled to art pixels like a terrain chunk
+  const regions=[...CITY.map(c=>[c.x0-2,c.y0-2,c.x1+3,c.y1+3]),...LP.map(p=>[Math.floor(p.box[0])-1,Math.floor(p.box[1])-1,Math.ceil(p.box[0]+p.box[2])+1,Math.ceil(p.box[1]+p.box[3])+1])];
+  const boxes=[...CITY.flatMap(c=>TA.townPlan(c)),...LP];
+  const render=()=>regions.map(([x0,y0,x1,y1])=>{const r=new (rasterClass())((x1-x0)*RT,(y1-y0)*RT);r.scale(ART,ART);r.translate(-x0*U,-y0*U);TA.drawPlaces(r,x0,y0,x1,y1);return r.px});
+  const same=(a,b)=>a.every((p,i)=>p.length===b[i].length&&p.every((v,j)=>v===b[i][j]));
+  // pixels that differ between two renders; out counts those outside fn's tiles (world tile coordinates)
+  const diffs=(a,b,fn)=>{let n=0,out=0;a.forEach((p,k)=>{const [x0,y0,x1]=regions[k],w=(x1-x0)*RT;for(let j=0;j<p.length;j++)if(p[j]!==b[k][j]){n++;const tx=x0+(j%w+.5)/RT,ty=y0+(Math.floor(j/w)+.5)/RT;if(!fn(tx,ty))out++}});return {n,out}};
+  const inside=list=>(x,y)=>list.some(p=>x>=p.box[0]&&x<p.box[0]+p.box[2]&&y>=p.box[1]&&y<p.box[1]+p.box[3]);
+  const off=render(),offN=off.reduce((n,p)=>n+p.filter(v=>v).length,0);
+  ok(offN>0&&same(render(),off),`no assets: the procedural towns and crypt mouths are drawn (${offN} art pixels), deterministically`);
+  ok(!Tr.terrainArt(),'no assets: chunks stay on the procedural grid');
+  // fixtures -> PNGs -> decoded -> installed
+  const fx=fixtures(man,RT),mine=Object.keys(TA.ASSET_TOWNS),install=id=>{const im=decodePng(encodePng(fx[id]));A.setAssetPixels(id,A.pixelsOf(im.w,im.h,im.data))};
+  ok(mine.every(id=>fx[id]&&fx[id].w===sizeOf(man.assets.find(e=>e.id===id),RT)[0]&&fx[id].h===sizeOf(man.assets.find(e=>e.id===id),RT)[1]),`a fixture for every town and landmark piece at the ${RT} tier (${mine.length})`);
+  for(const id of mine)install(id);
+  ok(Tr.terrainArt(),'a town piece loaded: chunks are painted at TILE');
+  const on=render(),d1=diffs(on,off,inside(boxes));
+  ok(d1.n>0&&!d1.out,`fixtures on: ${d1.n} art pixels from assets, all inside the pieces' boxes`+(d1.out?` (${d1.out} outside)`:''));
+  ok(same(render(),on),'fixtures on: deterministic');ok(mapHash()===m0,'fixtures on: the map (tiles and zones) is unchanged');
+  // one piece removed: only its own boxes change (the procedural hall comes back there)
+  const st=D.townStyle(CITY[0]),hall=TA.pieceId(st,'hall'),hallBoxes=boxes.filter(p=>p.id===hall);
+  A.setAssetPixels(hall,null);const part=render(),d2=diffs(part,on,inside(hallBoxes));
+  ok(d2.n>0&&!d2.out,`${hall} removed: ${d2.n} pixels fall back, all inside its ${hallBoxes.length} hall box(es)`+(d2.out?` (${d2.out} outside)`:''));
+  install(hall);ok(same(render(),on),'and back when it returns');
+  {const L=LP.find(p=>p.id==='landmark:lair');if(L)ok(L.rot===({W:0,N:1,E:2,S:3}[L.L.opening]||0),`the lair's nest faces its mouth (${L.L.opening}, ${L.rot} quarter turns)`)}
+  for(const id of mine)A.setAssetPixels(id,null);
+  ok(same(render(),off),'fixtures removed: the procedural towns and landmarks are back, pixel for pixel');
+  ok(!Tr.terrainArt()&&mapHash()===m0,`${process.env.ELDMOOR_WORLD||'eldmoor'}: chunks back on the procedural grid, the map hash never moved`)}

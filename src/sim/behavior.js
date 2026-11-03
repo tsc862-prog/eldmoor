@@ -70,7 +70,7 @@ const place=a=>ZONES[zoneAt(a.x,a.y)]||null;
 const heroRef=a=>({id:a.id,name:a.name});
 const byId=id=>S.agents.find(x=>x.id===id)||null;
 const mindOf=a=>a.player?(a.playIdle?'autopilot':'agent'):a.brain?'relay':'scripted';
-const channelOf=e=>e.party?'party':e.from&&e.from.kind==='dm'?'dm':e.from&&e.from.kind==='npc'?'npc':e.trigger==='table'?'table':e.agent?'agent':e.ai?'mind':'scripted';
+const channelOf=e=>e.emote?'emote':e.whisper?'whisper':e.party?'party':e.from&&e.from.kind==='dm'?'dm':e.from&&e.from.kind==='npc'?'npc':e.trigger==='table'?'table':e.agent?'agent':e.ai?'mind':'scripted';
 // The heroes the watch follows: Fellowship members and agent-played heroes, living.
 function seats(){const out=new Map();for(const m of slotMembers(slotted()))if(m.hero&&m.hero.state!=='dead')out.set(m.hero.id,m.hero);
   for(const a of playerSeats())if(a.state!=='dead')out.set(a.id,a);return [...out.values()]}

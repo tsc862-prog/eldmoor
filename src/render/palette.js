@@ -168,3 +168,18 @@ const swapC=[];
 export function recolour(fac){if(swapC[fac])return swapC[fac];const m={},to=FAC[fac]||FAC[0];
   if(to!==FAC[0])for(const tier of Object.keys(TIER_SHADES))for(const k of ['color','dark']){const a=shadesOf(FAC[0][k],+tier),b=shadesOf(to[k],+tier);a.forEach((c,i)=>{m[c]=b[i]})}
   return swapC[fac]=m}
+
+// Towns and landmarks (#177 slice 3, render/townart.js): the colours of each building style (data/townart.js TOWN_STYLES)
+// and of the two set pieces. The manifest's building and landmark entries quantise to these (palette from 'TOWN.<style>'),
+// and the fixtures draw with them. Mid values for walls and roofs, the extremes for doors, glass and fire; light from the
+// top left like everywhere.
+export const TOWN={
+  stone:{roof:['#8a9ab8','#5e6e8e','#3e4a66'],wall:['#ece4cc','#d0c4a4','#a89a7c'],trim:['#6a5a44','#3a2e22'],
+    stone:['#b4acb8','#8a8292','#5a5462','#2e2a34'],glass:['#9ad0ff','#4a7ab0'],door:['#5a3a1c','#3a2414'],gold:['#f2c14e','#a87a1a'],moss:['#5a8a44','#4a7a3a']},
+  timber:{roof:['#b0583c','#8a3a28','#5a2418'],wall:['#7a5a3e','#5a3e2a','#3a281c'],trim:['#2a2420','#141012'],
+    stone:['#6a6266','#4a4448','#332e32','#1a1618'],glass:['#ffb060','#c8601a'],door:['#3a2414','#1e140c'],gold:['#c8c4bc','#7a7672'],moss:['#6a7a3a','#4a5a2a']},
+};
+export const LANDMARK={
+  crypt:['#78748a','#5a5668','#4a4652','#2e2a34','#0a0810','#7ad0a0','#c8ffd8','#e8e4d8','#5a8a44'],
+  lair:['#5a2a1c','#3a1c16','#655c58','#4a423e','#2a2422','#c8401a','#f07a22','#ffd04a','#e8e0c8','#a8a090'],
+};
