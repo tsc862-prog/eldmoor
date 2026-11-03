@@ -136,9 +136,9 @@ export function createRenderer(cv,screenEl){
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
     const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height));
     if(cut){ // an outdoor scene (#431): the camera frames the scene's cut of the world below the banner and above the bar
-      const top=cut.top*cam.dpr,bot=cut.bottom*cam.dpr,want=Math.max(cam.fit*2,Math.min(cv.width/(cut.w*T),Math.max(40,cv.height-top-bot)/(cut.h*T)));
+      const top=cut.top*cam.dpr,bot=cut.bottom*cam.dpr,rt=(cut.right||0)*cam.dpr,want=Math.max(cam.fit*2,Math.min(Math.max(40,cv.width-rt)/(cut.w*T),Math.max(40,cv.height-top-bot)/(cut.h*T)));
       const first=!cam.cut;cam.cut=true;cam.sc=first?want:cam.sc+(want-cam.sc)*.15;
-      const tx=cut.cx*T,ty=cut.cy*T-(top-bot)/2/cam.sc;if(first){cam.camX=tx;cam.camY=ty}else{cam.camX+=(tx-cam.camX)*.15;cam.camY+=(ty-cam.camY)*.15}
+      const tx=cut.cx*T+rt/2/cam.sc,ty=cut.cy*T-(top-bot)/2/cam.sc; /* the banner docked on the right (#546): the cut fills the room left of it */if(first){cam.camX=tx;cam.camY=ty}else{cam.camX+=(tx-cam.camX)*.15;cam.camY+=(ty-cam.camY)*.15}
       cam.vw=cv.width/cam.sc;cam.vh=cv.height/cam.sc}
     else{cam.cut=false;
     cam.sc=fr?cam.sc+(frameScale(fr)-cam.sc)*.08:follow?followScale():cam.fit*cam.zoom;

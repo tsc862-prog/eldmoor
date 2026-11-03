@@ -138,6 +138,7 @@ other. The rules:
   terminals, still works. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
+- `npm run labelcheck` (#563): one steady runner label while a runner holds a seat. A held link reads "live" whether the agent calls tools, thinks or waits for a Claude slot (the relay still reports connected/waiting); a page that just (re)connected reads "connecting" until the relay's first links; a member the Fellowship runner lets go (`[Name] done (why)`, a released claim) leaves the runner's `heroes` for `left: [{id, name, why}]` and reads "no runner" at once, the gate saying why and restarting the Fellowship runner; a claimed seat whose runner has posted a turn line counts as ready (`implied`). The check plays a 120 s silent Claude turn on the real relay, supervisor and page modules with a fake clock.
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
 - `npm run channelcheck`: the in-game channels rule (see "In-game channels").
 - `npm run lorecheck`: learning the world (#188, see "Agent player").
@@ -176,7 +177,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   like (the page connects to `ws://127.0.0.1:8787/play` and serves them all; the Agent tab
   shows tool calls, narration, the journal and the agent's link). Then one terminal per hero:
   `npm run agent -- --hero <name|id>` (Claude Agent SDK, `claude-sonnet-5-5` by default,
-  `AGENT_MODEL` to change; `--max-turns 20 --budget 1.00` are the default caps per runner;
+  `AGENT_MODEL` to change; `--budget 1.00` is the default cap per runner, no turn cap (`--max-turns N` optional);
   cost line per turn). Without `--hero` the runner lists the agent-played heroes and takes
   the first living one with no runner, or says none is free.
 - Pacing (issue #126, `scripts/pacing.mjs`, game side `src/sim/pace.js`): turns follow the game, not a
@@ -189,8 +190,8 @@ is silent, and scene choices time out to the scripted branch, so the world never
   gap plus the turn at 8x; a paused world takes none; at most 2 immediate turns a real minute inside the gap.
   The runner stops when the hero dies or leaves agent play, and after `--max-fails N` (default 5) failed or
   empty turns in a row. Env: `AGENT_HEARTBEAT`, `AGENT_MIN_GAP`, `AGENT_MAX_FAILS`. More triggers (`src/sim/wakes.js`, `npm run wakecheck`): XP since the hero's last read is one bundled soft line ("+85 XP from 3 kills (...); 120 XP to level 4"), plus loot and quest progress and an elite kill (soft); a level up (names the ability, passive or level-10 path it opens), a rare or epic drop and a finished quest start the turn at once. Agent-played heroes only; no RNG. An older relay or page
-  without `/play/pace` falls back to real time as if at 1x. A local (Ollama) runner has no turn cap unless
-  `--max-turns` is given (it runs until stopped); Claude and OpenAI keep 20 turns and the budget.
+  without `/play/pace` falls back to real time as if at 1x. No runner has a turn cap unless
+  `--max-turns` is given (owner, #563: dollars are the limit): a local runner runs until stopped, Claude and OpenAI until stopped or their budget is spent.
 - Start gate (#222, extends the run gate #171 in `src/ui/rungate.js`): a seat is **ready** only after its runner
   completed one warm-up model call with the model it plays (and the shared `num_ctx`, #221): before its first turn
   every runner (hero, Fellowship member, DM; `scripts/warmup.mjs`) posts `POST /play/ready {hero|role:'dm', runner,
@@ -257,17 +258,15 @@ is silent, and scene choices time out to the scripted branch, so the world never
   (Minds: agents) has **Start all five / Stop all** (one `scripts/fellowship.mjs`). A picker chooses the mind
   it starts with (the hero's saved mind, Claude Haiku, Claude Sonnet, or a pulled local model; a runner started from the
   app plays Claude Haiku when nothing is saved, `APP_CLAUDE_MODEL` in `scripts/runners.mjs`, while terminal runners keep
-  Sonnet; `AGENT_MODEL`/`DM_MODEL` override both) and its turn cap ("until stopped"
-  for a local mind by default, or 5-200 turns). The state line shows turns per minute, the last turn's age
-  and the cap; its tooltip shows what the pacing waits for. The relay spawns the runners as
+  Sonnet; `AGENT_MODEL`/`DM_MODEL` override both) and its budget for a paid mind ($0.50-$10, beside the picker and in the Agents panel; no turn cap, #563).
+  The state line shows spend of budget ("$0.081 of $2.00"), turns per minute and the last turn's age; its tooltip shows what the pacing waits for. The relay spawns the runners as
   child processes (`scripts/runners.mjs`: `GET /play/runner`, `POST /play/runner/start {kind:'hero'|'fellowship'|'dm',
   hero?, provider?, model?, maxTurns?, budget?}`, `POST /play/runner/stop {kind, hero?}`; kinds are a table; `dm` runs
   `scripts/dm-agent.mjs`, one at most, and is refused as "not installed yet" until that file exists), `node` with an argument array, never a shell; output in `logs/runners/<key>.log`;
   a stop writes "stop" on the child's stdin (it releases its heroes), then kills; a child also stops when
   the relay goes away. Limits: off without the flag, loopback and the game page's origin only, heroes the
-  page names as agent-played, providers anthropic/ollama/openai, defaults 20 turns/$1.00 per hero and 6 turns
-  each/$2.00 for the Fellowship (caps 200/$5, 100/$10; local runners have no budget and no turn cap unless
-  asked, OpenAI runners keep the budget and take no Claude slot), at most `RELAY_MAX_RUNNERS` (default 6)
+  page names as agent-played, providers anthropic/ollama/openai, defaults $1.00 per hero, $2.00 for the Fellowship, $1.00 for the DM and no turn cap (budget caps $5, $10, $5; a
+  turn cap only when asked; local runners have no budget, OpenAI runners keep the budget and take no Claude slot), at most `RELAY_MAX_RUNNERS` (default 6)
   runners, where the six seats (the five Fellowship members as hero runners or one Fellowship runner, plus
   the DM) always fit whatever the caps. Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
@@ -369,13 +368,12 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
 
 - Browser: `npm run relay` (the brain relay, port 8787; it also serves the agents' MCP tools),
   `npm run dev` (5173), found a Fellowship (its members are agents), then
-  `npm run fellowship -- --max-turns 6 --budget 2.00`.
+  `npm run fellowship -- --budget 2.00`.
 - Headless: `node scripts/play-headless.mjs --fellowship --port 8790 --warm 20 [--no-relay]`
   then `npm run fellowship -- --url http://127.0.0.1:8790 --max-turns 2 --budget 0.50`.
 - The runner reuses the per-hero sessions (`logs/agents/<heroId>.json`, resumed next run,
   `--new` to start over), runner settings and claims of `npm run agent`; one overall
-  `--budget` (for paid members), `--max-turns` per member (default 6 for Claude/OpenAI members, none for local
-  ones), each member paced like a hero runner (`--heartbeat MIN`, `--min-gap S`, the old `--cadence S` is the
+  `--budget` (for paid members), `--max-turns` per member (optional; by default every member plays until stopped or the budget is spent), each member paced like a hero runner (`--heartbeat MIN`, `--min-gap S`, the old `--cadence S` is the
   gap; a scene starts the member's turn at once), `--follower-model claude-haiku-5-5` for members other
   than the leader between scenes. Combined log `logs/fellowship.log`, per-run cost per member
   in `logs/fellowship-runs.jsonl`.
@@ -410,6 +408,30 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (Off = Watch mode) never pauses. `npm run tablecheck` proves a scene waits for a silent but connected
   agent, reflex only without a runner, the owner hold, votes, `lead_to`, the all-or-none Crypt draft and
   determinism without a Fellowship.
+- Session zero and arrivals (#437, #452, `src/sim/arrival.js`, `src/sim/prep.js`): one mechanism, two Table scenes played
+  everyone at once (`PLAY` `opening`/`arrival`). Only in a world whose host reports runner links (the page, play-headless;
+  `hasLinks`), so `npm run sim` and the seeded hashes are unchanged. **Session zero**: a setup world (`init({setup})`, or
+  `play-headless --session-zero`) plans one opening per company (`S.opening.queue`, the followed company first). Once the start
+  gate is ready the DM **prepares** while the world stays held: one bounded turn (`PREP.MS` 90 s, `PREP.CALLS` 20 tool calls,
+  counted in `dmagent.js`; idle table polls and `prep_done` do not count; half of both on Continue or for a DM runner started
+  again), ended by `prep_done`, a cap, Start anyway or the seat going away. The banner reads "THE DM PREPARES THE TABLE · 12 S ·
+  3/20 CALLS" with Start anyway, the DM frame "preparing", `/play/health` `dm.prep`, `dm_status` `prep` (`host`, `opening_due`).
+  No prep with the seat closed, without a ready DM runner, or with no host holding the world (play-headless without
+  `--wait-ready`); a DM runner waits for the prep only when `prep.host` says one will come. Then the opening scene opens
+  ("SESSION ZERO · <company>"): the DM frames it through `table_call` (its call carries the campaign premise and opening beats,
+  DM-only), else the scripted DM from the hall, the day, the oaths, the hall's first job and the gate captain's writ; members
+  introduce themselves (a silent agent's reflex shows its persona line) and the leader may yield or be challenged; the
+  introductions count as met (`talk.js`), the leader is told the first move. A solo's opening is the gate captain and a rumour.
+  **Arrivals** (owner decision 5 on PR #406): a fallen member's seat is refilled through a scene at the company's next camp or
+  town, never in the Crypt, a raid or a fight (`C.arrivals`; the world's background recruit of that class is reserved). The
+  recruit (the fallen member's class, `SEED_BEHIND` under the lowest living member, agent-played, `a.succeeds` = the fallen id)
+  is made and placed at the camp's edge or the town gate as the scene opens; the DM voices them (`table_call` voice, then the
+  oath), the scripted DM when the seat is closed or silent; members greet, question, object (spoken, not a veto) or keep
+  silent; the oath is sworn at the table (`campaign('recruit')`). Runners give the newcomer the fallen member's runner settings
+  (`inheritRunner`, `/play/health` `heroes[].succeeds`). A solo's death leaves an heir at level 1 at home, a company of one,
+  with a short opening (owner answer 2). Letters (`C.letters`, any company, keyed by writer): to whoever takes the writer's
+  place, else the next joiner of their class, else the next joiner after `PARTY.LETTER_DAYS` 3. `tablecheck` (its `--arrival`
+  child), `dmcheck` (prep caps, Continue, no host, the frame), `uismoke` (the banner).
 - Dungeon crawl (#65, `src/sim/crawl.js`): when the Fellowship is in the group that goes down a dungeon whose spec lists
   `rooms` (`CRYPT.rooms`, from the landmark in `src/world/spec.js`; add chambers as data: `{id, name, frame, foes:[{type, n,
   name?, hits?, atk?}], lvl, hit, rounds, boss?}`, `type` a bestiary key incl. site foes), the run goes room by room instead of the one
@@ -579,6 +601,28 @@ off", "model refused". A failed call means the hero plays scripted. Agent runs r
 does, and never prints it. `npm run openaicheck` (in CI) tests all of it against a mock OpenAI server,
 with no key and no network.
 
+### Hugging Face router (issue #552)
+
+A fourth mind provider, id `huggingface` (label "Hugging Face", tag `<model> · huggingface`): the Inference Providers router at
+`https://router.huggingface.co/v1` speaks OpenAI Chat Completions, so it is `scripts/providers/openai.mjs` with other options
+(`hfAdapter`, `HF_OPTS`). Setup: `HF_TOKEN=hf_...` in `.env` (the same token the art pipeline uses; read by the relay and the runners only, never
+printed, scrubbed from errors); optional `HF_MODEL` (default model), `HF_MODELS` (comma list that replaces the picker list), `HF_BASE_URL`.
+Recharge is off, so the owner's credit is the free monthly allowance, shared with the art pipeline (the picker rows say so): a request carries
+only `model`, `max_tokens`, `messages` and the structured-output/tools fields, never provider or billing options. Cost is the reply's
+`usage.estimated_cost` (turn line, run budget, relay stats); a reply without it is "unknown", as for an unpriced OpenAI model.
+- Models: not every Hub model has an enabled provider (400 `model_not_supported`), so the list is curated, `HF_MODELS` in the adapter
+  (Llama 3.1 8B, Llama 3.3 70B, Qwen 2.5 72B, DeepSeek V3; each had a live provider on the Hub on 2026-11-03). The relay checks each once at start
+  with one tiny call (`max_tokens` 1; a few millionths of a dollar), caches the answer for its life and drops the unsupported ones
+  (`GET /health` `providers.huggingface.models`, plus `dropped`); runners do not repeat the check, a model that answers `model_not_supported`
+  fails with an error that names the picker list.
+- Structured output: strict `json_schema` first; a provider that rejects it (400 naming the schema) is asked again with `json_object` and the schema in
+  the system prompt, remembered per model; the relay validates either way. No `reasoning_effort`. Tools use the OpenAI tools path; a model that
+  says it has no tool support sets `noTools` and the local loop switches to its JSON-actions mode.
+- Errors: 401 "bad or missing HF_TOKEN"; 402, or a 429 naming credits, "Hugging Face allowance used up (recharge is off); the hero plays scripted / the
+  runner waits" (kind `quota`, never retried); other 429s pause the limiter (`RELAY_HF_CONCURRENCY`, default 4, `queues.huggingface`).
+- Agent play is the OpenAI path (`--provider huggingface --model <id>`, `openaiRunner` in `scripts/agent-chat.mjs`, same loop, forced scene answers
+  and reflections); no Claude slot, keeps the kind's turn cap and budget caps. `npm run hfcheck` (in CI) runs it all against a mock router.
+
 ## DM agent (issue #66, part 1)
 
 An AI agent can sit in the DM seat between scenes: it reads the world, keeps campaign notes and shapes
@@ -604,8 +648,8 @@ encounters and speak at their tables (issue #132, below).
 - Headless: `node scripts/play-headless.mjs --dm --agents 0 --port 8789` (no agent hero, the seat open),
   then `npm run dm -- --url http://127.0.0.1:8789`.
 - Runner (`scripts/dm-agent.mjs`): Agent SDK with `claude-sonnet-5-5` by default (`DM_MODEL`, `--model`,
-  `--effort`), or `--provider ollama --model M` through `scripts/local-agent.mjs`; `--max-turns 12
-  --budget 1.00` by default (a local DM runs until stopped); `--cadence evening` (a turn now, then one every game
+  `--effort`), or `--provider ollama --model M` through `scripts/local-agent.mjs`; `--budget 1.00` by default
+  and no turn cap (`--max-turns N` optional; a local DM runs until stopped); `--cadence evening` (a turn now, then one every game
   evening at 18:00) or `--cadence S` real seconds, never less than `--min-gap S` (20) apart; stops after
   `--max-fails` failed or empty turns in a row; never starts a turn while a Table scene or a party vote is open. One model
   call at a time; a rate limit (429/overloaded) backs off 30 s up to 10 min and retries. Cost line per
@@ -613,7 +657,7 @@ encounters and speak at their tables (issue #132, below).
 - Tools (`src/data/dm-tools.js`, game side `src/sim/dmagent.js`), over MCP at `/mcp?role=dm` (or the
   `X-Eldmoor-Role: dm` header), plain JSON at `POST /play/dm {tool, args}`: `dm_status`,
   `read_timeline`, `read_chronicle`, `read_dm_log`, `fellowship_view`, `heroes_near`, `npcs`,
-  `regions`, `hooks`, `levers`, `notes_read`, `notes_write` (threads, characters, plans, secrets; saved
+  `regions`, `hooks`, `levers`, and the reads of what a DM at a table would have (#558, `src/sim/dmsight.js`, read-only, no RNG): `hear {company?, hero?, since?, n?}` (the words said aloud since its last hear: say in earshot, party shouts and table lines of agent heroes with speaker, company, time and place, 200 lines at most, kept in a ring `S.dmAgent.ear`; never narration, whispers, scripted barks, journals or memories; `dm_status.unheard` counts them), `survey {near, radius?}` (region, roads, water, impassable edges, towns, landmarks and marked places by direction and distance, and up to 6 legal `x,y` spots that `mark_place`, `place_person` and `stage_scene` accept; a refusal of those about the ground names `survey`) and `world_standing` (guild focus and why, rivalries, the wyrm and its last fall, the Crypt record, auction extremes and shocks, conditions, events, top five heroes); member views (`fellowship_view`, `companies_view`, `heroes_near` for company members) also carry `carries` (gold, gear score, quest items by name, potion and scroll counts, never the pack), `quests` (kind, title, status, focus) and `knows` (creatures feared or beaten, places, people met, capped); `fellowship_needs` items say what they spoke and what a member carries. `notes_read`, `notes_write` (threads, characters, plans, secrets; saved
   with the world in `S.dmAgent`), `pull_lever` (`pull(name, params, {by:'dm-agent', reason})`; at most
   `DMA.PULLS_PER_DAY` 8 a game day on top of each lever's limits; `named_foe` stays the scripted DM's), the flat lever tools `post_hook {town, tpl, giver?, reward?, region?, place?, for?}`, `place_person {role, near, name?, faction?, want?, attitude?, hours?, spot?}` (create_npc) , `mark_place {kind, near, name?, hours?}`, and `give_item {hero, item, by?, ilvl?}` / `take_item {hero, item, by?}` (#524: a quest item, token or consumable, or one plain gear piece a day at or below the hero's level, never an epic; `by` a person within 7 tiles hands it over, else it is found; take is quest items only; refused in a fight; urgent-1 event; `give_token`/`take_token` are now aliases) (#413: each with a reason, `near` read like `stage_scene`'s, pulled through pull_lever's path, so the same caps, limits, Fellowship reserve and DM log),
   `log_intent`, and its in-game voice `narrate` (`{text, near, radius?}`: heroes near a hero, town,

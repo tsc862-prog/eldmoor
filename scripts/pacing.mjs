@@ -50,8 +50,9 @@ export function paceSettings(opt, env = {}, {cadence = null} = {}) {
   };
 }
 export const paceText = p => `a turn on an event, else every ${p.heartbeat} game min, at least ${p.minGap} s apart`;
-// --max-turns, else unlimited for a local (Ollama) mind, else the paid default.
-export const turnCap = (asked, provider, paidDefault) => asked != null && asked !== '' ? Math.max(1, Number(asked)) : provider === 'ollama' ? Infinity : paidDefault;
+// --max-turns when asked, else until stopped (owner, #563: paid minds are limited by their budget in dollars, not by turns;
+// a local mind costs nothing). provider and paidDefault are kept for callers; neither caps a run any more.
+export const turnCap = (asked, provider, paidDefault) => asked != null && asked !== '' ? Math.max(1, Number(asked)) : Infinity;
 export const capText = n => n === Infinity ? 'until stopped' : `up to ${n} turns`;
 
 // Failed or empty turns in a row. ok(turnWorked) -> true when the runner must stop.

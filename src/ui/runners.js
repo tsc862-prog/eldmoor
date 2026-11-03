@@ -26,7 +26,8 @@ try{const j=JSON.parse(localStorage.getItem(LIM_KEY)||'null');if(j&&typeof j==='
 const saveLims=()=>{try{localStorage.setItem(LIM_KEY,JSON.stringify({runners:lims,session:sessWant}))}catch(_){}};
 const base=()=>bridgeUrl().replace(/^ws(s?):/,'http$1:').replace(/\/play\/?$/,'')+'/play/runner';
 const DONE={stopped:1,crashed:1};
-export const RUN_TEXT={starting:'starting…',live:'live',waiting:'waiting',stopping:'stopping…',stopped:'stopped',crashed:'crashed'};
+// waiting reads 'live' too (#563): the runner is up and holds its seats whether a member calls tools, thinks or waits for a slot
+export const RUN_TEXT={starting:'starting…',live:'live',waiting:'live',stopping:'stopping…',stopped:'stopped',crashed:'crashed'};
 export const HOW_TEXT='Runners are off: start the relay with --runners (npm run relay -- --runners, or start-eldmoor.cmd).';
 
 // want: poll even with no agent-played hero (the Fellowship panel); now: skip the wait (after a start or stop)
@@ -63,8 +64,12 @@ export const watchRunners=()=>poll(true);
 export const runnersEnabled=()=>!!(info&&info.enabled);
 export const runnerByKey=k=>info&&info.runners?info.runners.find(r=>r.key===k)||null:null;
 export function runnerFor(a){if(!a||!info||!info.runners)return null;const own=runnerByKey('hero:'+a.id);
-  if(own&&!DONE[own.state])return own;const any=info.runners.find(r=>!DONE[r.state]&&Array.isArray(r.heroes)&&r.heroes.includes(a.id));return any||own}
-export const runnerSig=a=>{poll();const k=a?'hero:'+a.id:'fellowship',r=a?runnerFor(a):runnerByKey('fellowship');return (r?r.key+':'+r.state+':'+r.turns+':'+(r.model||''):'-')+':'+(note[k]||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks[k]||'')};
+  if(own&&!DONE[own.state])return own;const any=info.runners.find(r=>!DONE[r.state]&&Array.isArray(r.heroes)&&r.heroes.includes(a.id));
+  // a Fellowship runner that let this member go (#563: its turns or budget ran out while the others play on): shown as such, never as playing it
+  return any||info.runners.find(r=>!DONE[r.state]&&leftOf(r,a))||own}
+// {id, name, why} when runner r held hero a and let it go, else null (#563)
+export const leftOf=(r,a)=>r&&a&&Array.isArray(r.left)&&r.left.find(x=>x.id===a.id)||null;
+export const runnerSig=a=>{poll();const k=a?'hero:'+a.id:'fellowship',r=a?runnerFor(a):runnerByKey('fellowship'),lf=a&&leftOf(r,a);return (r?r.key+':'+r.state+':'+r.turns+':'+(r.model||'')+':'+r.cost+(lf?':left:'+lf.why:''):'-')+':'+(note[k]||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks[k]||'')};
 export const relayUp=()=>up;
 export const kindInfo=kind=>info&&info.kinds&&info.kinds[kind]||null;
 export const pickOf=k=>picks[k]||'';
@@ -83,9 +88,10 @@ async function send(path,body){
     return r.ok?{ok:true,runner:j.runner,applies:j.applies,session:j.session}:{ok:false,error:j.how||j.error||('HTTP '+r.status)}}
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
 // pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
-const pickBody=k=>{const p=picks[k]||'',L=limitOf(k),t={...(L.turns?{maxTurns:Number(L.turns)}:{}),...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:{}),...t}};
+const pickBody=(k,lk=k)=>{const p=picks[k]||'',L=limitOf(lk),t={...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:p.startsWith('huggingface:')?{provider:'huggingface',model:p.slice(12)}:{}),...t}};
 export async function startRunner(kind,hero,pickKey){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';delete userStop[k];
-  const r=await send('/start',{kind,...(hero!=null?{hero}:{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
+  const lk=pickKey&&limitOf(pickKey).budget&&!limitOf(k).budget?pickKey:k;
+  const r=await send('/start',{kind,...(hero!=null?{hero}:{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k,lk)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
 export async function stopRunner(kind,hero){const k=kind==='hero'?'hero:'+hero:kind;note[k]='';userStop[k]=Date.now();
   const r=await send('/stop',{key:k});if(!r.ok)note[k]=r.error;poll(true,true);return r}
 // A company that is not the five-place Fellowship has no runner of its own: Start <company> starts a hero runner for
@@ -96,13 +102,15 @@ export async function stopCompany(C){for(const a of coHeroes(C)){const x=runnerB
 export async function stopAllFellows(){const ids=(S.fellowship&&S.fellowship.ids)||[];await stopRunner('fellowship');
   for(const id of ids){const r=runnerByKey('hero:'+id);if(r&&!DONE[r.state])await stopRunner('hero',id)}}
 
-const mindTag=r=>r&&(r.model||r.provider)?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':''):'';
+const mindTag=r=>r&&(r.model||r.provider)?(r.model||r.provider)+(r.provider==='ollama'?' · local':r.provider==='openai'?' · openai':r.provider==='huggingface'?' · huggingface':''):'';
 export function stateLine(r,k){if(note[k])return note[k];
   if(up===false)return 'relay offline';if(info&&!info.enabled)return HOW_TEXT;if(!r)return 'no runner';
   const bits=[RUN_TEXT[r.state]||r.state];const m=mindTag(r);if(m)bits.push(m);
-  if(r.turns)bits.push(r.turns+' turn'+(r.turns===1?'':'s'));if(r.cost)bits.push('$'+r.cost.toFixed(3));
-  // pacing (issue #126): turns per minute, the last turn's age, the cap
-  if(r.turns&&r.turnsPerMin!=null)bits.push(r.turnsPerMin+'/min');if(r.lastTurnAgo!=null&&!DONE[r.state])bits.push('last '+ago(r.lastTurnAgo));if(r.turnCap&&!DONE[r.state])bits.push(r.turnCap);
+  if(r.turns)bits.push(r.turns+' turn'+(r.turns===1?'':'s'));
+  // spend against the budget (owner, #563: the dollar budget is the limit, not turns); a local mind is free
+  const bud=r.capBudget!=null?r.capBudget:r.budget;if(bud!=null)bits.push('$'+(r.cost||0).toFixed(3)+' of $'+bud.toFixed(2));else if(r.cost)bits.push('$'+r.cost.toFixed(3));
+  // pacing (issue #126): turns per minute, the last turn's age; a turn cap only when one was asked
+  if(r.turns&&r.turnsPerMin!=null)bits.push(r.turnsPerMin+'/min');if(r.lastTurnAgo!=null&&!DONE[r.state])bits.push('last '+ago(r.lastTurnAgo));if(r.maxTurns!=null&&r.turnCap&&!DONE[r.state])bits.push(r.turnCap);
   const other=r.provider==='ollama'&&r.model&&!DONE[r.state]?mindsLocal().find(m=>m!==r.model):null; // #126: two local models evict each other on one GPU
   if(other)bits.push('minds use '+other+': on one GPU the two models evict each other, use one');
   if(r.numCtx&&!DONE[r.state])bits.push('ctx '+r.numCtx);if(r.ctxWarn&&!DONE[r.state])bits.push(r.ctxWarn); // #221: one num_ctx for every local call
@@ -120,7 +128,8 @@ function button(label,act,kind,hero,title){const b=el('button','mini runbtn',lab
 // The control for one hero: Start / Stop and the runner's state. A hero played by the Fellowship
 // runner shows that runner and stops it from the Fellowship panel.
 export function runnerControl(a,{line=true}={}){poll();const d=el('span','runctl');if(!a||a.state==='dead'||!a.player)return d;
-  const r=runnerFor(a),k='hero:'+a.id,on=r&&!DONE[r.state],fel=on&&r.kind!=='hero';
+  const r=runnerFor(a),k='hero:'+a.id,on=r&&!DONE[r.state],fel=on&&r.kind!=='hero',lf=fel&&leftOf(r,a);
+  if(lf){d.append(el('span','dm','Fellowship runner'));if(line){const s=el('span','dm runstate r-none',' done with '+a.name+' ('+lf.why+'): no runner; Restart the Fellowship runner to play on');s.title=tip(r,4);d.append(s)}return d}
   if(fel)d.append(el('span','dm','Fellowship runner'));
   else if(on)d.append(button('Stop runner','stop','hero',a.id,'Stop this hero\'s agent runner (it lets go of the hero; reflexes play on)'));
   else{const b=button('Start runner','start','hero',a.id,info&&!info.enabled?HOW_TEXT:'Start an agent runner for '+a.name+' from the relay (no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
@@ -153,13 +162,19 @@ export function dmRunnerControl(){poll(true);const d=el('span','runctl');const r
 export const dmRunnerSig=()=>{poll(true);const r=runnerByKey('dm');return (r?r.state+':'+r.turns+':'+(r.model||'')+':'+(r.error||''):'-')+':'+(note.dm||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks.dm||'')};
 
 // The mind a runner starts with. models: pulled local models (from the relay's /health), may be empty.
-export function runnerPick(k,models,openai){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude)';
+export function runnerPick(k,models,openai,hf){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude). Hugging Face models share the free allowance with the art pipeline.';
   // Claude by model (the owner pays per model): Haiku is also what a runner started here plays when nothing is saved
-  const opts=[['','saved mind (new: Claude Haiku)'],['anthropic:claude-haiku-5-5','Claude Haiku'],['anthropic:claude-sonnet-5-5','Claude Sonnet']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai']));
-  if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai|anthropic):/,'')+(picks[k].startsWith('openai:')?' · openai':picks[k].startsWith('anthropic')?'':' · local')]);
+  const opts=[['','saved mind (new: Claude Haiku)'],['anthropic:claude-haiku-5-5','Claude Haiku'],['anthropic:claude-sonnet-5-5','Claude Sonnet']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai'])).concat((hf||[]).map(m=>['huggingface:'+m,m+' · huggingface']));
+  if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai|huggingface|anthropic):/,'')+(picks[k].startsWith('openai:')?' · openai':picks[k].startsWith('huggingface:')?' · huggingface':picks[k].startsWith('anthropic')?'':' · local')]);
   for(const [v,t] of opts){const o=new Option(t,v);if(v===(picks[k]||''))o.selected=true;s.append(o)}
-  // turn caps and budgets live in one place, the Agents panel (ui/agents.js, #145)
-  const w=el('span','runpick');w.append(s);return w}
+  // the budget the runner starts with (owner, #563: dollars are the limit, a runner plays until stopped); also in the Agents panel
+  const w=el('span','runpick');w.append(s,budgetPick(k));return w}
+const KIND_OF=k=>k==='dm'||k==='fellowship'?k:'hero';
+export const BUDGETS=[.5,1,2,5,10];
+export function budgetPick(k){const K=kindInfo(KIND_OF(k)),cap=K&&K.caps?K.caps.budget:5,def=K&&K.defaults?K.defaults.budget:(k==='fellowship'?2:1),L=limitOf(k);
+  const b=el('select','msel');b.dataset.runbudget=k;b.title='The most this runner may spend (Claude, OpenAI); it plays until stopped or the budget is spent. Local models are free.';
+  for(const [v,t] of [['','$'+def.toFixed(2)+' (default)']].concat(BUDGETS.filter(v=>v<=cap).map(v=>[String(v),'$'+v.toFixed(2)]))){const o=new Option(t,v);if(v===(L.budget||''))o.selected=true;b.append(o)}
+  return b}
 
 export function initRunners(after){const done=after||(()=>{});
   const act=async t=>{if(t.dataset.runco!=null){const C=(S.companies||[]).find(x=>x.id===+t.dataset.runco);if(C){if(t.dataset.runact==='startco')startCompany(C).then(done);else stopCompany(C).then(done)}done();return}
@@ -169,5 +184,5 @@ export function initRunners(after){const done=after||(()=>{});
   let downAt=0;
   document.addEventListener('pointerdown',e=>{if(e.button!==0)return;const t=e.target&&e.target.closest?e.target.closest('[data-runact]'):null;if(!t)return;e.preventDefault();e.stopPropagation();downAt=Date.now();act(t)},true);
   document.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('[data-runact]'):null;if(!t)return;e.stopPropagation();if(Date.now()-downAt<800)return;act(t)},true);
-  document.addEventListener('change',e=>{const s=e.target;if(!s||!s.dataset)return;if(s.dataset.runpick!=null)picks[s.dataset.runpick]=s.value;else return;done()},true);
+  document.addEventListener('change',e=>{const s=e.target;if(!s||!s.dataset)return;if(s.dataset.runpick!=null)picks[s.dataset.runpick]=s.value;else if(s.dataset.runbudget!=null){setLimit(s.dataset.runbudget,'budget',s.value).then(done);return}else return;done()},true);
   onUpdate=done;setInterval(()=>poll(),1000)}

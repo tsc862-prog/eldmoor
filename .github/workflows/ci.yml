@@ -4,7 +4,19 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '17 3 * * *'   # nightly, at real timing (CI_FAST off), so the real pacing is still exercised
   workflow_dispatch:
+    inputs:
+      real_timing:
+        description: Run the timer-bound checks at real timing (CI_FAST off)
+        type: boolean
+        default: false
+
+# CI_FAST=1 (scripts/ci-clock.mjs, issue #543) scales the real-time waits inside the check scripts about tenfold.
+# The nightly run and a manual run with real_timing leave it off.
+env:
+  CI_FAST: ${{ (github.event_name == 'schedule' || inputs.real_timing) && '0' || '1' }}
 
 # A new push to a PR cancels its older run. Every PR runs CI, so the required "CI ok" check (branch
 # protection on main) always reports and GitHub's auto-merge (gh pr merge --auto) can act.
@@ -33,14 +45,6 @@ jobs:
       - {name: Pack and inventory, run: npm run invcheck}
       - {name: Bestiary, run: npm run bestiarycheck}
       - {name: Class abilities and specialisations, run: npm run movecheck}
-      - {name: Professions, run: npm run professioncheck}
-      - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
-      - {name: Recipes, run: npm run recipecheck}
-      - {name: Gathering nodes, run: npm run nodecheck}
-      - {name: Gathering, run: npm run gathercheck}
-      - {name: DM levers, run: npm run levercheck}
-      - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
-      - {name: New World setup, run: npm run setupcheck}
       - name: Headless sim (10 game-hours)
         run: npm run sim -- 10 | tee sim.txt
       - name: Sanity-check the sim summary
@@ -49,6 +53,23 @@ jobs:
           test "$(grep -o 'Living heroes: [0-9]*' sim.txt | grep -o '[0-9]*$')" -gt 0
       - uses: actions/upload-artifact@v4
         with: {name: sim-summary, path: sim.txt}
+
+  world:
+    name: World levers, gathering, setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: DM levers, run: npm run levercheck}
+      - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
+      - {name: Gathering, run: npm run gathercheck}
+      - {name: Gathering nodes, run: npm run nodecheck}
+      - {name: Recipes, run: npm run recipecheck}
+      - {name: Professions, run: npm run professioncheck}
+      - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
+      - {name: New World setup, run: npm run setupcheck}
 
   ui:
     name: Watcher UI
@@ -71,16 +92,16 @@ jobs:
       - run: npm ci
       - {name: Agent player (mock agents), run: npm run playcheck}
       - {name: Townsfolk hails, run: npm run localscheck}
-      - {name: Local agent runner (mock Ollama), run: npm run localcheck}
-      - {name: Hero standing orders, run: npm run orderscheck}
       - {name: Table scene waits (slow mock members), run: npm run scenewaitcheck}
+      - {name: Hero standing orders, run: npm run orderscheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
+      - {name: Hugging Face provider (mock router and no token), run: npm run hfcheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
+      - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
-      - {name: One-window launcher and runner resume, run: npm run upcheck}
 
-  minds:
-    name: Brain, DM, Table, channels, memory
+  rate:
+    name: Model request rate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,31 +109,84 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: Model request rate (counting mock relay), run: npm run ratecheck}
-      - {name: Brain policy and relay (mock model), run: npm run braincheck}
+
+  dm:
+    name: DM agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
       - {name: DM agent (mock agent and Ollama), run: npm run dmcheck}
-      - {name: Table mode and staged scenes, run: npm run tablecheck}
+
+  local:
+    name: Local agent runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: Local agent runner (mock Ollama), run: npm run localcheck}
+
+  launcher:
+    name: One-window launcher
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: One-window launcher and runner resume, run: npm run upcheck}
+
+  minds-a:
+    name: Table, crawl, camp
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
       - {name: Dungeon crawl room by room, run: npm run crawlcheck}
       - {name: Camp and rest, run: npm run campcheck}
+      - {name: Town autopilot and danger edges, run: npm run townpilotcheck}
+      - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
+
+  minds-b:
+    name: Brain, channels, memory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: Brain policy and relay (mock model), run: npm run braincheck}
+      - {name: Table mode and staged scenes, run: npm run tablecheck}
       - {name: Companies (invite and accept; scripted companions), run: npm run companycheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Learn the world, run: npm run lorecheck}
-      - {name: Town autopilot and danger edges, run: npm run townpilotcheck}
       - {name: Tool quick wins, run: npm run toolwincheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: Action log, run: npm run actcheck}
       - {name: Tiered memory, run: npm run tiercheck}
-      - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
 
   ok:
     name: CI ok
     if: always()
-    needs: [core, ui, agents, minds]
+    needs: [core, world, ui, agents, local, launcher, rate, dm, minds-a, minds-b]
     runs-on: ubuntu-latest
     steps:
       - name: Every group passed
         run: |
           test "${{ needs.core.result }}" = success
+          test "${{ needs.world.result }}" = success
           test "${{ needs.ui.result }}" = success
           test "${{ needs.agents.result }}" = success
-          test "${{ needs.minds.result }}" = success
+          test "${{ needs.local.result }}" = success
+          test "${{ needs.launcher.result }}" = success
+          test "${{ needs.rate.result }}" = success
+          test "${{ needs.dm.result }}" = success
+          test "${{ needs.minds-a.result }}" = success
+          test "${{ needs.minds-b.result }}" = success

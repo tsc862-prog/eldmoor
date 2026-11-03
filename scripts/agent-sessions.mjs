@@ -46,7 +46,7 @@ export function loadSession(heroId, heroName, fresh, {logs = LOGS, startNew = fa
 // then the hero's saved settings, then the defaults (environment / built-in). Returns the settings
 // and whether they changed what was saved.
 export const DEFAULT_PROVIDER = 'anthropic';
-export const RUNNER_PROVIDERS = ['anthropic', 'ollama', 'openai']; // providers with an agent runner (google: not yet)
+export const RUNNER_PROVIDERS = ['anthropic', 'ollama', 'openai', 'huggingface']; // providers with an agent runner (google: not yet)
 export function runnerSettings(sess, overrides = {}, defaults = {}) {
   const saved = sess && sess.runner && typeof sess.runner === 'object' ? sess.runner : {};
   const pick = k => overrides[k] != null && overrides[k] !== '' ? String(overrides[k]) : saved[k] != null ? String(saved[k]) : defaults[k] != null ? String(defaults[k]) : null;
@@ -55,6 +55,14 @@ export function runnerSettings(sess, overrides = {}, defaults = {}) {
   if (saved.provider && r.provider !== saved.provider) {r.model = overrides.model || defaults.model || null; r.effort = overrides.effort || defaults.effort || null}
   const changed = JSON.stringify(saved) !== JSON.stringify(r);
   return {runner: r, changed};
+}
+
+// A recruit who took a fallen hero's place (issue #452: /play/health heroes[].succeeds) plays with the fallen hero's runner
+// settings until it has its own: read from the predecessor's session file (never written). Returns true when it took them.
+export function inheritRunner(sess, fromId, logs = LOGS) {
+  if (!sess || (sess.runner && typeof sess.runner === 'object') || !Number.isInteger(fromId)) return false;
+  const s = readJson(sessionPath(fromId, logs)); if (!s || !s.runner || typeof s.runner !== 'object') return false;
+  sess.runner = {...s.runner}; sess.inherited = fromId; return true;
 }
 
 // Which hero a runner takes, from /play/health's heroes ([{id,name,alive,link}]):

@@ -43,6 +43,7 @@ import {RACES} from '../data/races.js';
 import {npcRole,WANDER_ROLES} from '../data/npcs.js';
 import {BEAST,ADVENTURES} from '../data/adventures.js';
 import {S} from './state.js';
+import {sceneOf} from './scenes.js'; // the hero's own company's scene (#518)
 import {dmlog} from './dmlog.js';
 import {focuses,pullTouchesAny,reserveOf,fairRefusal} from './dmfocus.js'; // the companies' reserved share of the daily limits (issues #165, #450)
 import {timeline,record} from './history.js';
@@ -384,7 +385,7 @@ register({name:'give_item',allow:['item'],about:'Put one object in a hero’s pa
     else{const lvl=p.ilvl!=null?p.ilvl:a.lvl,g=makeItem(a.cls,it.id,lvl,zoneFor(lvl),{quality:'plain',src:who?'Given by '+who:'Found'});got=addGear(a,g);name=g.name;bump(today().n,'give_item_gear')}
     if(!got)return {ok:false,effect:'the pack would not take it'};
     const fl=FLAVOUR(it),line=(who?who+' presses '+withArt(name)+' into your hand.':'Half-buried in the dirt where you stand: '+name+'.')+(fl?' '+fl:'');
-    {const sc=S.table;if(sc&&Array.isArray(sc.ids)&&sc.ids.includes(a.id))sc.given=name} // a scene prop the speaker held is now the hero's (render: sceneItem)
+    {const sc=sceneOf(a);if(sc)sc.given=name} // a scene prop the speaker held is now the hero's (render: sceneItem)
     notify(a,line,1);record(a,'Given: ',name+(who?' (from '+who+')':' (found)'));
     return {ok:true,effect:{hero:a.name,item:name,kind:it.kind,by:who||'found'}}},
   describe:p=>p.item+' to hero #'+p.hero});

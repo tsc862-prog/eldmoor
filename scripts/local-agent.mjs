@@ -583,6 +583,6 @@ export const localLine = (st, model) => `${model} (local) | ${st.tools} tool cal
 // Ends with "| turn $x | run $y" when run is given (the app runner supervisor reads "| run $"); an
 // unknown price (a model not in the provider's price table) says so instead of a dollar figure.
 export const paidLine = (st, model, provider, {run = null, session = null} = {}) => {
-  const money = v => '$' + v.toFixed(4);
+  const money = v => '$' + v.toFixed(v > 0 && v < 0.0001 ? 6 : 4); // estimated costs of a cheap open model can be a few millionths
   return `${model} (${provider}) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | ${st.costKnown ? 'turn ' + money(st.cost) : 'cost unknown (model not in the price table)'}${run != null ? ' | run ' + money(run) : ''}${session != null ? ' | session ' + money(session) : ''}${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 };

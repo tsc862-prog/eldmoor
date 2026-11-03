@@ -30,6 +30,7 @@ import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
 import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
+import {held} from './scenes.js'; // the engaged of a live-clock Table scene (#518)
 import {slain as loreSlain,witness as loreWitness} from './lore.js'; // learn the world (#188): agent heroes only, no RNG
 import {effMul,passiveMul} from './eff.js'; // timed effects and class passives (sim/eff.js, #81)
 import {actHit,actHurt,actHeal,actKill,actDeath,actFlee,actNote} from './actlog.js'; // action log (recording only)
@@ -174,7 +175,7 @@ export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a
   if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');killDone(a);a.quest=null;if(S.dmStats)S.dmStats.bountiesDone=(S.dmStats.bountiesDone||0)+1}}
 
 export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9)*sightMul(a.zone),lq=L&&L.quest?L.quest.type:null;
-  for(const m of nearMobs(a.x,a.y,range)){if(!m.alive||(m.target&&m.target!==a)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+1||m.spared>S.gameMin)continue; // spared: talked down at the Table (#296)
+  for(const m of nearMobs(a.x,a.y,range)){if(!m.alive||(m.target&&m.target!==a)||held(m)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+1||m.spared>S.gameMin)continue; // spared: talked down at the Table (#296)
     const d=dist(a,m);if(d>range)continue;const s=d-(a.quest&&a.quest.type===m.type||m.type===lq?4:0);if(s<bs){bs=s;best=m}}return best}
 
 // Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
@@ -217,7 +218,7 @@ export function updAgent(a,dt){
     a.hp=Math.min(mh,a.hp+mh*.025*dt);priestHeal(a,a.party.mem);
     a.scan-=dt;if(a.scan<=0&&a.hp>=mh*.45&&L.state!=='return'){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
     if(dist(a,L)>2){a.dest=followPt(a);moveTo(a,a.dest.x,a.dest.y,dt,L.state==='return'?2.5:2.1)}else{a.dest=null;a.moving=false}break}
-  case 'fight':{const m=a.target;if(!m||!m.alive){a.state='hunt';a.target=null;break}
+  case 'fight':{const m=a.target;if(!m||!m.alive||held(m)){a.state='hunt';a.target=null;break} // a foe held in another company's scene (#518) is not fought
     spotMob(a,m);
     scoutCheck(a,m); // Chronicler: ambush / outleveled scout roll at fight entry (sim/narrator.js)
     const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
@@ -245,7 +246,7 @@ export function updAgent(a,dt){
     if(a.state==='duel'&&a.hp<mh*(outn?.5:.3*tm(a,'flee'))&&rnd()<dt*1.5){b.state='hunt';b.target=null;regroup(a,b,'return',3);actFlee(a);
       if(rnd()<.5)log(a,' fled from ',b,' in ',ZONES[zoneAt(a.x,a.y)],'.')}
     break}
-  case 'assist':{const b=a.target;if(!b||b.state!=='duel'){regroup(a,b&&b.state!=='dead'?b:null,a.regNext);break}
+  case 'assist':{const b=a.target;if(!b||b.state!=='duel'||held(b)){regroup(a,b&&b.state!=='dead'?b:null,a.regNext);break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;if(d>r){moveTo(a,b.x,b.y,dt,2.8);break}a.moving=false;
     if(b.target&&b.target.kind==='hero')priestHeal(a,[b.target,a,...partyMates(a)]);
     {const mv=fightMoves(a,b,[a,...partyMates(a)],a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,b);a.cd=1.1}}break}

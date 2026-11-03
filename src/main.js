@@ -5,8 +5,7 @@
 import {init,step,S,provideCampaigns,campaignIdOf} from './sim/index.js';
 import {createRenderer} from './render/draw.js';
 import {provideAssets} from './render/assets.js';
-import {ranked} from './ui/panels.js';
-import {select,ctl,setView} from './ui/controls.js';
+import {select,ctl,setView,startHero} from './ui/controls.js';
 import {boot,autoSaveTick,bootKind} from './ui/save.js';
 import {initSetup,openSetup,afterBoot} from './ui/setup.js'; // the New World setup page (#133)
 import {renderTable} from './ui/table.js';
@@ -32,7 +31,7 @@ function start(kind){
   renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
   initUI(renderer);
   if(bootKind()==='fresh'&&kind!=='default')openSetup({first:true});else afterBoot(); // no save and no queued setup: the setup page opens over the default world; a setup boot starts its runners
-  select(S.pinned&&typeof S.pinned.x==='number'?S.pinned:ranked()[0]); // keep following the saved hero
+  select(startHero()); // the saved hero when it rides with the followed company, else that company's leader (#546)
   if(S.fellowship)setView('fellow'); // the Fellowship is the story: frame it by default (#68)
   last=performance.now();requestAnimationFrame(frame)}
 
