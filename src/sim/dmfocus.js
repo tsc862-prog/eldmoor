@@ -15,7 +15,7 @@
 //   share()        the share of DM actions that touched the Fellowship (null before any)
 //   pullTouches(name, p, z)  does a lever pull concern the Fellowship (for the reserved daily share)?
 //   hallHooks(town)  the open hooks on that board that concern the Fellowship (the hall's own first), raw; [] without one
-//   hallBoard()    the watcher's rows for the hall board's Fellowship jobs (who posted it included; never hero-facing)
+//   hallBoard(C?)  the watcher's rows for the hall board's jobs for the Fellowship (or for company C) (who posted it included; never hero-facing)
 //   hallTitle(h)   a hook's title as the board shows it
 import {S} from './state.js';
 import {ZONES,REGIONS,CITY,zoneAt,dist} from '../world/map.js';
@@ -91,14 +91,17 @@ export const reserveOf=limit=>limit>=2?Math.max(1,Math.floor(limit*FOCUS.RESERVE
 // they ride or work in; a job for someone outside the Fellowship never. The hall's own Fellowship jobs first, then by
 // age. Reads S only, no RNG.
 export function hallHooks(town,f=focus()){if(!f||!town)return [];
-  const mine=h=>h.ff||(h.for!=null&&f.ids.has(h.for))||(h.zone!=null&&f.zones.has(h.zone));
+  const mine=h=>(h.ff&&!f.other)||(h.for!=null&&f.ids.has(h.for))||(h.zone!=null&&f.zones.has(h.zone));
   const L=(S.adventures||[]).filter(h=>h.phase==='open'&&h.town===town&&(h.for==null||f.ids.has(h.for))&&mine(h));
   return L.sort((x,y)=>(y.ff?1:0)-(x.ff?1:0)||x.id-y.id)}
 const plainText=p=>Array.isArray(p)?p.map(x=>typeof x==='string'?x:x&&x.kind==='hero'?x.name:x&&x.t||'').join(''):String(p||'');
 export const hallTitle=h=>{const T=ADV.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return String(h.title||(T.name||h.tpl)+(th?': '+plainText(th):'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')).slice(0,90)};
 // Rows for the watcher: {id, title, region, band:[lo,hi]|null, day, by, oath:{id,name}|null, elite:{name,lvl,alive}|null, giver}.
-export function hallBoard(){const F=S.fellowship;if(!F)return [];
-  return hallHooks(F.hall).map(h=>{const z=h.zone!=null&&h.zone>=0?h.zone:null,R=z!=null&&REGIONS?REGIONS[z]:null,d=h.data||{};
+export function hallBoard(C){const F=S.fellowship,co=C||F;if(!co)return [];
+  let f; // another company (#457): its own hall and regions; the scripted DM's Fellowship-first jobs (h.ff) are not its own
+  if(C&&C!==F){const L=S.agents.filter(a=>C.ids.includes(a.id)&&alive(a));if(!L.length)return [];
+    const zones=new Set();for(const a of L){const z=zoneAt(a.x,a.y);if(z>=0)zones.add(z)}f={ids:new Set(C.ids),zones,other:true}}
+  return hallHooks(co.hall,f).map(h=>{const z=h.zone!=null&&h.zone>=0?h.zone:null,R=z!=null&&REGIONS?REGIONS[z]:null,d=h.data||{};
     const who=h.for!=null?S.agents.find(a=>a.id===h.for):null;
     const E=d.eliteId!=null?S.mobs&&S.mobs.find(m=>m.id===d.eliteId):null;
     return {id:h.id,title:hallTitle(h),region:z!=null?ZONES[z]:null,band:R&&R.band?[R.band[0],R.band[1]]:null,

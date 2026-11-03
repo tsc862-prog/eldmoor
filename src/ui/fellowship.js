@@ -1,5 +1,7 @@
-// The Fellowship panel (issue #68, phase A) at the top of the side column, the hero card's
-// Memory tab, the backstory view the Bio tab shows, and the Chronicle's "Fellowship only" filter.
+// The Companies panel (issue #68, #457; was the Fellowship panel) at the top of the side column, the hero card's
+// Memory tab, the backstory view the Bio tab shows, and the Chronicle's "Companies only" filter.
+// A tab per company plus All (no tab bar while there is one company); each tab: header, open threads, hall board, members
+// and minds with Start <company>, and the campaign log in the Story panel follows the tab.
 // Reads S.fellowship through sim/fellowship.js; writes only through its functions (found, join,
 // leave, offerReplacement, disbandFellowship, editSheet).
 //
@@ -22,15 +24,17 @@ import {rpm,totals as reqTotals,recentFailures} from '../sim/throttle.js';
 import {campSummary} from '../sim/camp.js';
 // The sim's camp line, with a watch end it could not compute (NaN) left out rather than shown as "until NaN:NaN" (#475).
 export const campLine=()=>{const s=campSummary();return s?s.replace(/ \(until [^)]*NaN[^)]*\)/g,''):s};
-import {hallBoard} from '../sim/dmfocus.js'; // the hall board's jobs for the Fellowship (#334), read-only
-import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,autoPick,found,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
+import {hallBoard} from '../sim/dmfocus.js'; // the hall board's jobs for a company (#334, #457), read-only
+import {companies,members,openThreads as companyThreads,mates,leaderOf} from '../sim/company.js'; // companies (#402)
+import {followCompany,followedCompany,companyLabel,companyCols} from './companyview.js';
+import {MINDS,mindsOf,setMinds,SLOTS,fits,fellowshipMembers,fellows,fellowParty,join,leave,offerReplacement,disbandFellowship,openThreads,editSheet,enriching,chronicleFocus,campaign} from '../sim/fellowship.js';
 import {PERSONA_ORDER,BACKSTORY_ORDER,ROLE_NAME,applyArchetype,authoredStance,scriptedStance,personaValue,pinField,pinned} from '../sim/persona.js';
 import {STANCE_MAX} from '../data/prompts.js'; // the stance cap the model gets (#305)
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
 import {enableBrain,disableBrain} from '../sim/brain.js';
 import {abilityBlock} from './abilities.js'; // class abilities (issue #81)
 import {renderMindRow,mindAct,mindChange,mindRowSig,pulledModels,openaiModels} from './mindpick.js'; // per-member mind (Mixed minds, #97)
-import {fellowshipRunnerControl,runnerPick,runnerSig} from './runners.js'; // app runners: Start all five / Stop all
+import {fellowshipRunnerControl,companyRunnerControl,companyRunnerSig,runnerPick,runnerSig} from './runners.js'; // app runners: Start <company> / Stop
 import {devMode} from './mindctl.js'; // request stats are a developer surface (#145)
 import {regionLine} from './region.js'; // region view (#430)
 import {patch,held,keyOf} from './stable.js'; // update in place, keep scroll (#145)
@@ -48,7 +52,8 @@ const alive=a=>a&&a.state!=='dead';
 function rosterFace(a){const c=el('canvas','fport');c.width=15;c.height=18;if(!a)return c;
   const s=portrait(a,a.state==='dead'?'dead':a.state==='ghost'?'ghost':'');c.width=s.width;c.height=s.height;
   const g=c.getContext&&c.getContext('2d');if(g)g.drawImage(s,0,0);return c}
-export function renderSettings(node){const P=fellowParty(),ul=el('div','felroster');
+export function renderSettings(node,C){C=C||S.fellowship;if(C&&!C.slots)return renderRoster(node,C);
+  const P=fellowParty(),ul=el('div','felroster');
   for(const m of fellowshipMembers()){const row=el('div','fm'),a=m.hero;
     row.append(rosterFace(a));row.append(el('span','frole r-'+m.role,m.label));
     if(!a){const e=el('span','dm fn','empty place');row.append(e);const tools=el('span','ftools');const b=el('button','mini','Fill');b.dataset.ffill=m.slot;b.title='The DM offers the place to the most-bonded hero of this class, or a recruit';tools.append(b);
@@ -59,21 +64,33 @@ export function renderSettings(node){const P=fellowParty(),ul=el('div','felroste
     if(a.state!=='dead'){const mr=el('div','fmind');renderMindRow(mr,a);row.append(mr)}
     ul.append(row)}
   node.append(ul)}
+// A company without the five places: its heroes in join order, name, Sheet, mind row (#457).
+function renderRoster(node,C){const ul=el('div','felroster'),lead=leaderOf(C);
+  for(const m of companyCols(C)){const a=m.hero,row=el('div','fm');row.append(rosterFace(a),el('span','frole r-'+m.role,m.label));
+    const nm=el('span','fn');if(lead===a)nm.append(el('span','gd','★ '));nm.append(hn(a));row.append(nm);
+    const tools=el('span','ftools'),sh=el('button','mini','Sheet');sh.dataset.fsheet=a.id;tools.append(sh);row.append(tools);
+    if(a.state!=='dead'){const mr=el('div','fmind');renderMindRow(mr,a);row.append(mr)}ul.append(row)}
+  node.append(ul)}
 export function renderBackstory(node,a){const B=a&&a.backstory;if(!B){node.append(el('div','dm','No backstory yet.'));return}
   for(const [k,label] of BACKSTORY_ORDER){const t=B.paras&&B.paras[k];if(!t)continue;const p=el('p','bio');p.append(el('span','gd',label+'. '),t);node.append(p)}
   node.append(el('div','dm',(B.src==='model'?'Written by the model'+(B.model?' ('+B.model+')':''):'Scripted from the world')+(B.edited?', edited by you':'')+'.'))}
 export function renderPersona(node,a){const P=a&&a.persona;if(!P){node.append(el('div','dm','No persona yet.'));return}
   const kv=el('div','kv');for(const [k,label] of PERSONA_ORDER)kv.append(el('span','k',label),el('span','v',personaValue(P,k)));node.append(kv)}
 const KIND_LABEL={council:'COUNCIL',table:'TABLE',camp:'CAMP',found:'FOUND',join:'JOIN',recruit:'RECRUIT',leave:'LEAVE',adventure:'JOB',scene:'SCENE',roll:'ROLL',branch:'CHOICE',complication:'TWIST',outcome:'END',npc:'MET',fight:'FIGHT',level:'LVL',kill:'KILL',death:'DEATH',session:'DAY',note:'NOTE'};
-export function renderCampaignLog(node,o={}){const F=S.fellowship;if(!F){node.append(el('div','dm','No Fellowship.'));return}
-  const days=[];for(const e of F.log){let d=days[days.length-1];if(!d||d.day!==e.day){d={day:e.day,list:[]};days.push(d)}d.list.push(e)}
-  if(!days.length){node.append(el('div','dm','Nothing yet. The log fills as the five take jobs, roll dice and bleed.'));return}
+// o.C: one company's log (default the Fellowship); o.all: every company's log merged, newest first, each line named (#457).
+export function renderCampaignLog(node,o={}){const all=!!o.all,C=o.C||S.fellowship;
+  if(!all&&!C){node.append(el('div','dm','No company.'));return}
+  let L;if(all){L=[];for(const D of companies())for(const e of D.log||[])L.push({e,D});L.sort((x,y)=>y.e.gameMin-x.e.gameMin||y.e.id-x.e.id);L=L.slice(0,300)}
+  else L=(C.log||[]).map(e=>({e,D:C}));
+  const days=[];for(const {e,D} of L){let d=days[days.length-1];if(!d||d.day!==e.day){d={day:e.day,list:[]};days.push(d)}d.list.push({e,D})}
+  if(!days.length){node.append(el('div','dm','Nothing yet. The log fills as the company takes jobs, rolls dice and bleeds.'));return}
   days.slice(0,o.days||8).forEach((d,i)=>{const box=el('details','felday');box.setAttribute('data-k','day'+d.day);if(i===0)box.open=true;
-    const n=k=>d.list.filter(e=>e.kind===k).length;
+    const n=k=>d.list.filter(x=>x.e.kind===k).length;
     box.append(el('summary',null,'Day '+d.day+' · '+d.list.length+' entries'+(n('death')?' · '+n('death')+' fallen':'')+(n('adventure')?' · '+n('adventure')+' job'+(n('adventure')>1?'s':''):'')));
-    const ul=el('ul','tlist');for(const e of d.list){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t),el('span','badge k-'+e.kind,KIND_LABEL[e.kind]||e.kind),' ');parts(li,e.parts);ul.append(li)}
+    const ul=el('ul','tlist');for(const {e,D} of d.list){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,e.t),el('span','badge k-'+e.kind,KIND_LABEL[e.kind]||e.kind),' ');
+      if(all&&companies().length>1)li.append(el('span','dm fcoTag',companyLabel(D)+': '));parts(li,e.parts);ul.append(li)}
     box.append(ul);node.append(box)})}
-export function renderThreads(node){const th=openThreads();if(!th.length){node.append(el('div','dm','No open threads.'));return}
+export function renderThreads(node,C){const th=companyThreads(C||S.fellowship);if(!th.length){node.append(el('div','dm','No open threads.'));return}
   const ul=el('ul','tlist');for(const t of th){const li=el('li');parts(li,t.parts);ul.append(li)}node.append(ul)}
 export function tabMemory(b,a){const M=a.memory;
   if(!M){if(a.memories)renderNotebook(b,a);else b.append(el('div','dm','Only Fellowship members keep a memory.'));return} // an agent hero's own notes (#155)
