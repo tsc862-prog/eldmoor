@@ -412,10 +412,13 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     let w2 = null, dt = null;
     for (let k = 2; k <= 6 && !w2; k++) {
       await until(() => R.turns.length >= k, 30000); park(a); a.hp = a.maxhp || a.hp;
-      notify(a, 'A test traveller hails you from the road (' + k + ').', true); const tk = R.turns[k - 1].real, nw = R.wakes.length;
-      await until(() => R.wakes.length > nw, 15000);
-      const w = R.wakes[nw]; // the hero's own world news (XP, loot) may name itself in the wake line: any soft wake after the notice counts
-      if (w && (/test traveller/.test(w.line) || w.kind === 'soft')) {w2 = w; dt = w.real - tk}
+      notify(a, 'A test traveller hails you from the road (' + k + ').', true); const nw = R.wakes.length;
+      // the hero's own world news (XP, loot) may name itself in the wake line: any soft wake after the notice counts. An
+      // urgent wake ('now') may come first on a slow machine (#603): skip it and measure from the turn before the soft one.
+      const news = x => /test traveller/.test(x.line) || x.kind === 'soft';
+      await until(() => R.wakes.slice(nw).some(news), 15000);
+      const w = R.wakes.slice(nw).find(news);
+      if (w) {w2 = w; dt = w.real - Math.max(...R.turns.filter(t => t.real < w.real).map(t => t.real))}
     }
     ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`);
     await until(() => R.turns.length >= R.wakes.length + 1, 30000);

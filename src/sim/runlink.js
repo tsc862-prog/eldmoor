@@ -12,6 +12,7 @@
 let linkFn=null,ackFn=null;
 // fn(a) -> 'connected' | 'waiting' | 'none' | ...; null clears it
 export function setRunnerLinks(fn){linkFn=typeof fn==='function'?fn:null}
+export const runnerLinks=()=>linkFn; // the host's link function, so a check can put it back (#603)
 // fn(a) -> true when the owner let reflexes decide for a hero whose runner is gone; null = always (no owner to ask)
 export function setReflexAck(fn){ackFn=typeof fn==='function'?fn:null}
 const LIVE={connected:1,waiting:1};
