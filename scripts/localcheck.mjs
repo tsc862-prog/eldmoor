@@ -25,7 +25,7 @@ import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:f
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
+import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneDue, sceneToAnswer, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
 import {ollamaAdapter, numCtxFrom} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
@@ -110,6 +110,21 @@ console.log('text-written calls and forced scene turns (issue #163)');
   // forced scene turn: the schema is the member's legal options; a JSON answer, a written call, and a miss
   const scene = sceneFrom({scene: 'Pikeora is going down', kind: 'rescue', frame: 'Pikeora is down to 17%.', options: ['strike = Strike Bristleback Boar', 'guard = Draw it onto yourself', 'retreat = Fall back toward home'], your_turn: true});
   ok(scene && scene.keys.join() === 'strike,guard,retreat', 'the scene keys come from the member\'s options');
+  { // #681: a scene already acted in, one not open to this member, and one just answered are never forced again
+    const base = {scene: 'Back again', kind: 'talk', frame: 'A word at the gate.', options: ['accept = Agree', 'decline = Refuse']};
+    ok(sceneFrom({...base, acted: true, your_turn: false, everyone_answers: true}) === null, 'acted: no scene');
+    ok(sceneFrom({...base, your_turn: false, everyone_answers: true}) === null, 'an everyone-answers scene not open to this member: no scene');
+    ok(sceneFrom({...base, kind: 'elite', phase: 'turn', your_turn: false}) === null, 'a turn scene on another member turn: no scene');
+    ok(sceneFrom({...base, your_turn: true, everyone_answers: true}) !== null, 'an open everyone-answers scene is answered');
+    const mine = {...base, your_turn: true}, sess681 = {system: 's'}, g681 = async () => ({ok: true});
+    ok(sceneDue(mine, sess681) !== null, 'not answered yet: due');
+    const A681 = {ask: async () => ({text: '{"option":"accept","line":"Aye."}', usage: {in: 1, out: 1, cost: 0}, ms: 1})};
+    await sceneTurn({ask: A681.ask, call: g681, sess: sess681, scene: sceneFrom(mine), keep: false});
+    ok(sceneDue(mine, sess681) === null, 'the scene the session just answered is not due again (brief shows it stale)');
+    ok(await sceneToAnswer({scene: mine}, g681, false, sess681) === null && await sceneToAnswer({table: true}, async () => ({ok: true, table: mine}), true, sess681) === null, 'neither the brief path nor the status fallback forces it');
+    ok(sceneDue({...mine, frame: 'Another word, later.'}, sess681) !== null, 'a different scene is due');
+    ok(await sceneToAnswer({table: true}, async () => ({ok: true, table: {...base, acted: true, your_turn: false, everyone_answers: true}}), true, {}) === null, 'the status fallback honours acted');
+  }
   const sch = sceneSchema(scene.keys), schS = sceneSchema(scene.keys, {strict: true});
   ok(sch.properties.option.enum.join() === 'strike,guard,retreat' && sch.properties.line.maxLength === 600 && sch.required.join() === 'option,line' && !schS.properties.line.maxLength && schS.additionalProperties === false, 'the schema: an enum of that member\'s options and a line of at most 600 (the game TABLE.LINE_MAX, #571) (strict OpenAI: no maxLength, cut in code)');
   const askOf = replies => {let i = 0; const seen = []; return {seen, ask: async (system, user, schema) => {seen.push({system, user, schema}); return {text: replies[Math.min(i++, replies.length - 1)], usage: {in: 50, out: 8, cost: 0}, ms: 2}}}};
@@ -536,7 +551,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const mem = SLT.slotted().ids.map(id => S.agents.find(x => x.id === id));
     // the game side first: no waiting out your own turn
     {{const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
-      const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0;
+      const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0; delete sc0.wk; // the scene set and its members woken (#682)
       const first = S.agents.find(x => x.id === sc0.ids[0]), second = S.agents.find(x => x.id === sc0.ids[1]);
       const w1 = sim.playerAct(first.id, 'wait', {minutes: 10}), w2 = sim.playerAct(second.id, 'wait', {minutes: 10});
       ok(!w1.ok && /^It is your turn at the table: call scene_act with one of: (aid, )?steady, press(, attempt)?.( Since your last look|$)/.test(w1.error), 'wait on your own scene turn is refused: ' + (w1.error || 'allowed'));
@@ -548,6 +563,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const foe = S.mobs.find(m => m.alive && !m.gone && !m.elite), hunter = mem.find(a => movesOf(a).length) || mem[0];
       hunter.mcr = {}; // every ability ready this round (a world-dependent cooldown made this flaky)
       const sc1 = openScene('rescue', 'A test fight', ['A beast lunges.'], {hero: hunter.id, mob: foe.id});
+      sc1.phase = 'turn'; delete sc1.wk; // the scene set and its members woken (#682)
       const bk = paceBrief(hunter.id).brief.scene;
       ok(bk && bk.keys.includes('strike') && movesOf(hunter).some(id => bk.keys.includes(id)), `the forced turn's enum includes ready abilities by id (${hunter.cls}: ${bk && bk.keys.join(', ')})`);
       sc1.phase = 'turn'; sc1.i = 0; {const later = S.agents.find(x => x.id === sc1.ids[1]), w3 = sim.playerAct(later.id, 'wait', {minutes: 10});

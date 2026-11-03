@@ -37,7 +37,7 @@ import {dmlog} from './dmlog.js';
 import {notEnglish} from './lang.js';
 import {record} from './history.js';
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
-import {dmAlive,goneEpoch} from './dmreflex.js'; // the one place that knows whether the DM listens (#561)
+import {dmAlive,goneEpoch,callDeadline,lateWhy} from './dmreflex.js'; // the one place that knows whether the DM listens (#561)
 import {spokenAbout} from './epithet.js'; // a hero refusing a name given (#638)
 
 
@@ -91,6 +91,9 @@ const goneNow=()=>{if(epoch!==goneEpoch()){epoch=goneEpoch();polledAt=0;pollMs=0
 const polled=()=>polledAt>0&&Date.now()-polledAt<ATTEMPT.POLL_MS;
 const listening=()=>{goneNow();return !!(S.dmAgent&&S.dmAgent.seat)&&(polled()||dmAlive())};
 const budget=()=>pollMs||TABLE.dmMs;
+// When a waiting ruling is due (#680): its budget from the moment the DM first read it (ruling_call: seen), never past
+// budget + PICKUP_MS from the attempt.
+const due=r=>callDeadline(r.real,r.ms,r.seen);
 
 // ---- the hero's side ----
 function rate(a){const L=a.attempts||(a.attempts=[]);while(L.length&&(L[0]>S.gameMin||L[0]<=S.gameMin-60))L.shift();return L}
@@ -126,14 +129,14 @@ function open(a,what,how,at,sc){const R=rulingState(),d=today();R.stats.asked++;
   rule(r,scriptedRuling(a,r),'scripted','gone');if(!sc)resolve(r);return r}
 // The DM's (or the scripted) ruling decided: kept on r until applied (a scene applies it on the member's turn).
 function rule(r,ru,by,why){r.ru=ru;r.by=by;if(why)r.why=why;r.state='ruled';const R=rulingState(),d=today();
-  if(by==='dm-agent'){R.stats.dm++;d.dm++}else{R.stats.scripted++;d.scripted++;if(why==='slow'&&r.real&&Date.now()-r.real>=r.ms)R.stats.late++}}
+  if(by==='dm-agent'){R.stats.dm++;d.dm++}else{R.stats.scripted++;d.scripted++;if(why==='slow'&&r.real&&Date.now()>=due(r))R.stats.late++}}
 function fill(r,why){if(r.state!=='wait')return;const a=hero(r.hero);if(!alive(a)){close(r,'lapsed');return}rule(r,scriptedRuling(a,r),'scripted',why)}
 
 // Once per step (sim/index.js, before the Table hold): waits that ran out are filled; a ruled request outside a scene is applied.
 export function rulingTick(){const R=S.rulings;if(!R||!R.cur.length)return;
   const gone=goneNow()||!(S.dmAgent&&S.dmAgent.seat);
   for(const r of R.cur.slice()){
-    if(r.state==='wait'&&(gone||Date.now()-r.real>=r.ms||S.gameMin-r.gm>=ATTEMPT.WAIT_GM))fill(r,gone?'gone':'slow');
+    if(r.state==='wait'&&(gone||Date.now()>=due(r)||S.gameMin-r.gm>=ATTEMPT.WAIT_GM))fill(r,gone?'gone':'slow');
     if(r.state==='ruled'&&r.scene==null)resolve(r);
     else if(r.state==='ruled'&&r.scene!=null&&S.gameMin-r.gm>=ATTEMPT.WAIT_GM*4)close(r,'lapsed')}} // a scene that ended first
 
@@ -249,8 +252,8 @@ function resolve(r){const a=hero(r.hero);if(!alive(a)){close(r,'lapsed');return 
   notify(a,'The DM rules on your attempt ("'+clean(r.what,60)+'"): '+(pass?'success':'failure')+' ('+roll+'). '+text+(done.length?' '+done.join(' '):''),true,2);
   record(a,'Tried: ',clean(r.what,80)+' ('+(pass?'success':'failure')+')');
   {const L=a.playLog;if(a.player&&L){L.unshift({t:clockStr(),d:dayNo(),tool:'ruling',args:'call='+r.id,ok:true,text:clean((pass?'success':'failure')+' · '+roll+' · '+text,200)});if(L.length>30)L.pop()}} // the Agent tab
-  dmlog('agent',null,['Ruling on ',a.name,'\'s attempt',r.by==='scripted'?' [scripted'+(r.why?' fill, '+r.why:'')+']':'',': "',clean(r.what,80),'" -> ',(pass?'success':'failure'),' (',roll,')',done.length?'; '+done.join(' '):''],
-    {by:r.by,ruling:true,call:r.id,hero:a.id,skill:ru.skill,dc:ru.dc,pass,total,effects:list,...(ru.note?{note:ru.note}:{}),...(r.by==='scripted'?{fill:true,why:r.why||'gone'}:{})},{heroes:[]});
+  dmlog('agent',null,['Ruling on ',a.name,'\'s attempt',r.by==='scripted'?' [scripted'+(r.why?' fill, '+r.why+(r.why==='slow'?', '+lateWhy(r.seen):''):'')+']':'',': "',clean(r.what,80),'" -> ',(pass?'success':'failure'),' (',roll,')',done.length?'; '+done.join(' '):''],
+    {by:r.by,ruling:true,call:r.id,hero:a.id,skill:ru.skill,dc:ru.dc,pass,total,effects:list,...(ru.note?{note:ru.note}:{}),...(r.by==='scripted'?{fill:true,why:r.why||'gone',...(r.why==='slow'?{late:lateWhy(r.seen)}:{})}:{})},{heroes:[]});
   close(r,'done');return r.res}
 function close(r,how){const R=rulingState(),i=R.cur.indexOf(r);if(i>=0)R.cur.splice(i,1);r.end=how;
   R.past.unshift({id:r.id,hero:r.hero,name:r.name,what:r.what,t:r.t,day:r.day,by:r.by||null,end:how,...(r.res?{pass:r.res.pass,roll:r.res.roll,skill:r.res.skill}:{})});if(R.past.length>ATTEMPT.PAST)R.past.pop()}
@@ -271,7 +274,7 @@ function callView(r){const a=hero(r.hero);if(!a)return null;const sc=r.scene!=nu
   const gear=a.slots?Object.values(a.slots).filter(Boolean).map(g=>g.name).slice(0,7):[];
   const quest=(a.inv&&a.inv.list||[]).filter(x=>x.kind==='quest').map(x=>x.id).slice(0,6);
   const z=ZONES[zoneAt(a.x,a.y)]||null;
-  return {call:r.id,seconds_left:Math.max(0,Math.round((r.ms-(Date.now()-r.real))/100)/10),
+  return {call:r.id,seconds_left:Math.max(0,Math.round((due(r)-Date.now())/100)/10),
     hero:{name:a.name,cls:a.cls,level:band(a.lvl||1),health:health(a),best_skills:skills,gear,quest_items:quest,...(a.boon?{boon:a.boon.die}:{})},
     attempt:{what:r.what,...(r.how?{how:r.how}:{}),...(r.at?{at:r.at}:{})},
     where:{region:z,town:a.state==='town'&&a.town!=null?String(a.town):null,x:Math.round(a.x),y:Math.round(a.y),...(sc?{table_scene:sc.title}:{})},
@@ -286,6 +289,7 @@ export const RULES='Rule on what the hero tries: pick the skill it tests and how
   'effects follow a success, fail_effects a failure: at most '+ATTEMPT.EFFECTS_MAX+' each, only from the forms listed. Nothing touches level, XP, gold or life. text is what the heroes hear on a success, fail_text on a failure (as much as the moment needs; never decide what a hero thinks or chooses). note is for your DM log only. Most attempts deserve none or one small effect; reward a clever idea with a reveal or an attitude, punish a reckless one with a small wound or exposed.';
 
 export function rulingCall(args={}){rulingHeard(args&&args.budget_s);const R=S.rulings;const r=R&&R.cur.find(x=>x.state==='wait');
+  if(r&&r.seen==null&&r.real)r.seen=Date.now(); // the budget starts at pickup (#680)
   if(!r)return {ok:true,call:null,waiting:0,note:'No attempt waits for your ruling.'};
   return {ok:true,call:callView(r),waiting:R.cur.filter(x=>x.state==='wait').length}}
 function refuse(why,r,forbidden){const R=rulingState(),d=today();R.stats.refused++;d.refused++;
@@ -319,6 +323,6 @@ setAttemptHooks({
     rate(a).push(S.gameMin);return open(a,clean(line,ATTEMPT.WHAT_MAX),'','',sc).id},
   // true while the DM is still weighing it (the table waits, bounded); instant (3x/8x, a scene not pausing) fills at once
   hold(sc,act,instant){const R=S.rulings,r=R&&R.cur.find(x=>x.id===act.rid);if(!r||r.state!=='wait')return false;
-    const g=goneNow()||!(S.dmAgent&&S.dmAgent.seat);if(instant||g||Date.now()-r.real>=r.ms){fill(r,instant||g?'gone':'slow');return false}return true},
+    const g=goneNow()||!(S.dmAgent&&S.dmAgent.seat);if(instant||g||Date.now()>=due(r)){fill(r,instant||g?'gone':'slow');return false}return true},
   apply(sc,a,act){const R=S.rulings,r=R&&R.cur.find(x=>x.id===act.rid);if(!r)return 'nothing came of it';if(r.state==='wait')fill(r,'slow');
     const res=resolve(r);return res?(res.pass?'success':'failure')+', '+res.roll+(res.effects.length?'; '+res.effects.join(' '):''):'nothing came of it'}});

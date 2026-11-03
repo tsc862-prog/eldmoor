@@ -42,6 +42,7 @@ import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
+import {withToolMap} from './toolmap.mjs';
 import {loadDmSession, saveDmSession, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
@@ -168,7 +169,7 @@ export const noteEvent = (ev, st) => {if (ev.day !== st.day) {ev.day = st.day; e
 const post = (base, path, body, ms) => fetch(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(ms)});
 // Every DM call names the role and this runner (the id it claimed the seat with), issue #123.
 let RUNNER = null;
-export async function dmTool(base, tool, args = {}) {try {return await (await post(base, '/play/dm', {tool, args, role: 'dm', runner: RUNNER}, 20000)).json()} catch (e) {return {ok: false, error: e.message, offline: true}}}
+export async function dmTool(base, tool, args = {}) {try {return await (await post(base, '/play/dm', {tool, args, role: 'dm', runner: RUNNER}, 20000 + (Number(args && args.wait_ms) || 0))).json()} catch (e) {return {ok: false, error: e.message, offline: true}}}
 const short = (v, n = 160) => {const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s};
 const money = v => '$' + (v || 0).toFixed(4);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -185,6 +186,13 @@ export const isRateLimit = s => /\b429\b|rate.?limit|overloaded|\b529\b/i.test(S
 // waits or runs. A late, failed or refused answer changes nothing: the scripted DM already has the slot.
 export const DEFAULT_TABLE_MODEL = 'claude-haiku-5-5'; // claude-api skill (cached 2026-10-06): Haiku 5.5, $0.10 in / $0.50 out per 1M tokens
 export const POLL_IDLE = 2500, POLL_HOT = 400;
+// Long polls (#680): each voice asks with {wait_ms: VOICE_WAIT_MS}; the host holds the request until a call waits (it learns of
+// it within ~150 ms) and the game starts the call's budget when the voice first reads it. So a voice makes about 3 polls a real
+// minute while idle, not 25-150. A host that answers at once (an older one, a closed seat, a test's in-process tool) falls back
+// to sleeping pollIdle/pollHot between polls.
+export const VOICE_WAIT_MS = 20000;
+// After a poll: sleep only when it came back early without a call (the host did not hold it).
+const pollRest = (t0, waitMs) => waitMs > 0 && Date.now() - t0 >= Math.min(waitMs / 2, 1000);
 export const TABLE_SYSTEM = 'You are the Dungeon Master\'s voice at the table in Eldmoor, a hardcore fantasy world (original setting; no names from other games or books). ' +
   'A scene is being played: one you staged, the opening of the campaign (session zero: frame it as the company first sits down), a newcomer’s arrival (voice the newcomer), or a company’s talk round its camp fire (frame the night and open the talk on the topic given; never speak for the heroes). Each request is one call: frame the scene, voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
   'Write what can be seen, heard or smelled, as much as the moment needs; usually a few vivid sentences. The Cast line is the truth: voice and describe only what it lists, and invent no one else (no men, bandits or leaders when the cast is creatures). Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
@@ -196,11 +204,11 @@ export function tablePrompt(t) {
 }
 export const tableSchema = c => ({type: 'object', properties: {text: {type: 'string'}, pick: {type: 'string', enum: c.legal ? c.legal.slice() : ['']}}, required: ['text', 'pick'], additionalProperties: false});
 // adapter: a scripts/providers adapter ({call({system,user,schema,maxTokens,model,effort,timeoutMs})}). Returns {stop()}.
-export function tableVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = POLL_IDLE, pollHot = POLL_HOT}) {
+export function tableVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = POLL_IDLE, pollHot = POLL_HOT, waitMs = VOICE_WAIT_MS}) {
   let done = false, seen = 0;
   const loop = async () => {
     while (!done && !stopped()) {
-      const t = await tool(base, 'table_call');
+      const p0 = Date.now(), t = await tool(base, 'table_call', waitMs > 0 ? {wait_ms: waitMs} : {});
       const hot = !!(t && t.ok && (t.scene || t.staged));
       if (t && t.ok && t.call && t.call.id !== seen && t.call.seconds_left > .8) {
         seen = t.call.id; const c = t.call, t0 = Date.now();
@@ -217,6 +225,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
         } catch (e) {log(`[table] call ${c.id} ${c.kind}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM fills it`)}
         continue;
       }
+      if (t && t.ok && pollRest(p0, waitMs)) continue; // a held long poll came back empty: ask again at once
       await sleep(hot ? pollHot : pollIdle);
     }
   };
@@ -248,11 +257,11 @@ export function talkPrompt(c) {
 export const talkSchema = c => ({type: 'object', properties: {text: {type: 'string'}, offer: {type: 'string', enum: [...(c.offered_this_exchange ? [] : c.offers || []), 'none']},
   about: {type: 'string'}, region: {type: 'string'}, warmth: {type: 'string', enum: ['-3', '-1', '0', '1', '3']}, remember: {type: 'string'}}, required: ['text', 'offer', 'about', 'region', 'warmth', 'remember'], additionalProperties: false});
 // budgetS: the real seconds the game should wait for this voice per answer (npc_call {budget_s}); a local model needs more than Haiku.
-export function talkVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = TALK_POLL_IDLE, pollHot = TALK_POLL_HOT, budgetS = 8}) {
+export function talkVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = TALK_POLL_IDLE, pollHot = TALK_POLL_HOT, budgetS = 8, waitMs = VOICE_WAIT_MS}) {
   let done = false, seen = 0;
   const loop = async () => {
     while (!done && !stopped()) {
-      const t = await tool(base, 'npc_call', {budget_s: budgetS});
+      const p0 = Date.now(), t = await tool(base, 'npc_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
       const c = t && t.ok && t.call;
       if (c && c.call !== seen && c.seconds_left > .8) {
         seen = c.call; const t0 = Date.now(), who = c.npc && c.npc.id;
@@ -271,6 +280,7 @@ export function talkVoice({base, adapter, model, effort = 'low', log = () => {},
         } catch (e) {log(`[talk] conv ${c.conv}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM answers`)}
         continue;
       }
+      if (t && t.ok && pollRest(p0, waitMs)) continue; // a held long poll came back empty: ask again at once
       await sleep(t && t.ok && t.open && t.open.length ? pollHot : pollIdle);
     }
   };
@@ -308,11 +318,11 @@ export const rulingSchema = c => {const L = c.legal || {}, kinds = (L.effects ||
 // {kind, target, value} -> the game's "kind:target:value" form (empty parts dropped); "none" entries dropped unless alone.
 export const effectText = e => e && typeof e === 'object' ? [e.kind, e.target, e.value].map(x => String(x == null ? '' : x).trim()).filter((x, i) => i === 0 || x).join(':') : String(e || '');
 export const effectList = L => {const a = (Array.isArray(L) ? L : []).slice(0, 3).map(effectText).filter(Boolean), b = a.filter(x => x !== 'none'); return b.length ? b : a.slice(0, 1)};
-export function rulingVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = RULING_POLL_IDLE, pollHot = RULING_POLL_HOT, budgetS = 8}) {
+export function rulingVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = RULING_POLL_IDLE, pollHot = RULING_POLL_HOT, budgetS = 8, waitMs = VOICE_WAIT_MS}) {
   let done = false, seen = 0;
   const loop = async () => {
     while (!done && !stopped()) {
-      const t = await tool(base, 'ruling_call', {budget_s: budgetS});
+      const p0 = Date.now(), t = await tool(base, 'ruling_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
       const c = t && t.ok && t.call;
       if (c && c.call !== seen && c.seconds_left > .8) {
         seen = c.call; const t0 = Date.now();
@@ -329,6 +339,7 @@ export function rulingVoice({base, adapter, model, effort = 'low', log = () => {
         } catch (e) {log(`[ruling] call ${c.call}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM rules`)}
         continue;
       }
+      if (t && t.ok && pollRest(p0, waitMs)) continue; // a held long poll came back empty: ask again at once
       await sleep(t && t.ok && t.waiting ? pollHot : pollIdle);
     }
   };
@@ -426,6 +437,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   sess.system = withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
+  sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
   if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic or --provider ollama.`); await quit(1)}
   const saveSess = () => saveDmSession(sess, {url: base});
   let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;
