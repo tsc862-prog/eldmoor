@@ -23,7 +23,7 @@ import {say} from './chat.js';
 import {rivalKill} from './rivals.js';
 
 export const FRIEND=6,CLOSE=15,CAP=30,NEAR=8,DAY=1440;
-const GAIN={kill:1,heal:2,assist:3,party:2,avenge:3};
+const GAIN={kill:1,heal:2,assist:3,party:2,avenge:3,paid:1};
 
 const alive=x=>x&&x.state!=='dead';
 const stats=()=>S.bondStats||(S.bondStats={friends:0,close:0,inherited:0,mourned:0,bloodDebts:0});
