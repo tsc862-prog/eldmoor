@@ -51,6 +51,7 @@
     "townpilotcheck": "node scripts/townpilotcheck.mjs",
     "gambitcheck": "node scripts/gambitcheck.mjs",
     "toolwincheck": "node scripts/toolwincheck.mjs",
+    "paymarkcheck": "node scripts/paymarkcheck.mjs",
     "attemptcheck": "node scripts/attemptcheck.mjs",
     "wakecheck": "node scripts/wakecheck.mjs",
     "actcheck": "node scripts/actcheck.mjs",
