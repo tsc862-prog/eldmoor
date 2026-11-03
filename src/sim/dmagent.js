@@ -247,11 +247,20 @@ function heroesNear(near,radius){const p=placeOf(near);if(!p)return {ok:false,er
     parties:[...parties.values()].map(P=>({id:P.id,leader:P.leader?P.leader.name:null,members:(P.members||[]).filter(alive).map(b=>b.name),fellowship:!!P.fellow}))}}
 
 const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({toward:x.to+' '+x.id,attitude:x.a}));
-function npcsRead(town){const c=town?townOf(town):null;if(town&&!c)return {ok:false,error:'No town called '+clean(town,40)+'. Towns: '+CITY.map(t=>t.name).join(', ')};
-  const folk=(S.npcs||[]).filter(n=>!c||n.town===c.name).map(n=>({id:n.id,name:n.title+' '+n.name,role:n.role,town:n.town,...(attOf(n).length?{attitudes:attOf(n)}:{}),...(recordView(n)?{fellowship:recordView(n)}:{})}));
-  const wand=(S.wanderers||[]).filter(w=>!c||w.town===c.name||dist(w,c.gate)<=20).map(w=>({id:w.id,name:w.title+' '+w.name,role:w.role,where:w.town||ZONES[zoneAt(w.x,w.y)],home:w.homeKind,attitude:w.attitude||'neutral',
+// The scope of a hooks or npcs read (issue #427): a town, or a region (the towns whose gate lies in it, and what is out in it).
+// A town value that names a region is read as the region (the reply says so). Unknown: the refusal names the regions and towns.
+function readScope(tool,town,region){const t=clean(town,40),g=clean(region,40);if(!t&&!g)return {};
+  if(t){const c=townOf(t);if(c)return {towns:[c.name],c,label:c.name}}
+  const v=g||t,z=regionIdx(v);
+  if(z==null)return {err:'No '+(g?'region':'town or region')+' called "'+v+'". '+tool+' takes town ('+CITY.map(c=>c.name).join(', ')+') or region ('+ZONES.join(', ')+').'};
+  return {z,towns:CITY.filter(c=>zoneAt(c.gate.x,c.gate.y)===z).map(c=>c.name),label:ZONES[z],...(!g?{note:'"'+t+'" is a region, not a town: read as the region '+ZONES[z]+'.'}:{})}}
+const scopeHead=Q=>Q.label?{scope:Q.z!=null?{region:Q.label,towns:Q.towns}:{town:Q.label},...(Q.note?{note:Q.note}:{})}:{};
+function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)return {ok:false,error:Q.err};const c=Q.c,inT=n=>!Q.label||Q.towns.includes(n.town);
+  const wIn=w=>!Q.label||(c?w.town===c.name||dist(w,c.gate)<=20:Q.towns.includes(w.town)||zoneAt(w.x,w.y)===Q.z);
+  const folk=(S.npcs||[]).filter(inT).map(n=>({id:n.id,name:n.title+' '+n.name,role:n.role,town:n.town,...(attOf(n).length?{attitudes:attOf(n)}:{}),...(recordView(n)?{fellowship:recordView(n)}:{})}));
+  const wand=(S.wanderers||[]).filter(wIn).map(w=>({id:w.id,name:w.title+' '+w.name,role:w.role,where:w.town||ZONES[zoneAt(w.x,w.y)],home:w.homeKind,attitude:w.attitude||'neutral',
     ...(attOf(w).length?{attitudes:attOf(w)}:{}),...(recordView(w)?{fellowship:recordView(w)}:{}),placed_by_lever:w.lever||null}));
-  return {ok:true,townsfolk:folk.slice(0,60),wanderers:wand}}
+  return {ok:true,...scopeHead(Q),townsfolk:folk.slice(0,60),wanderers:wand}}
 
 function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Array(ZONES.length).fill(0);
   for(const m of S.mobs)if(m.alive&&!m.gone){const z=zoneAt(m.x,m.y);if(z>=0)mobs[z]++}
@@ -263,9 +272,9 @@ function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Arr
       ...(pl.length?{places:pl.map(p=>({id:p.id,kind:p.kind,name:p.name,at:Math.round(p.x)+','+Math.round(p.y)}))}:{})}}),
     towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]}))}}
 
-function hooksRead(town){const c=town?townOf(town):null;if(town&&!c)return {ok:false,error:'No town called '+clean(town,40)};
-  const A=(S.adventures||[]).filter(v=>!c||v.town===c.name),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};
-  return {ok:true,open_jobs:A.filter(v=>v.phase==='open').map(h=>({id:h.id,town:h.town,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,region:h.zone==null?'any':ZONES[h.zone],
+function hooksRead(town,region){const Q=readScope('hooks',town,region);if(Q.err)return {ok:false,error:Q.err};
+  const A=(S.adventures||[]).filter(v=>!Q.label||Q.towns.includes(v.town)||(Q.z!=null&&v.zone===Q.z)),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};
+  return {ok:true,...scopeHead(Q),open_jobs:A.filter(v=>v.phase==='open').map(h=>({id:h.id,town:h.town,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:null,region:h.zone==null?'any':ZONES[h.zone],
       ...(h.for!=null?{for:hn(h.for)}:{}),hours_left:Math.max(0,Math.round((h.until-S.gameMin)/60))})),
     under_way:A.filter(v=>v.phase==='active').map(v=>({id:v.id,title:v.title,tpl:v.tpl,town:v.town,leader:hn(v.lead),members:v.mem.map(hn),scene:(v.idx||0)+1,of:(v.scenes||[]).length,away:!!v.away})),
     recently_done:A.filter(v=>v.phase==='done').slice(-5).map(v=>({id:v.id,title:v.title,outcome:v.outcome||null}))}}
@@ -503,9 +512,9 @@ export function dmAct(tool,args={}){
     case 'read_dm_log':r=dmLogRead(args.n,args.kind);break;
     case 'fellowship_view':r=fellowshipView();break;
     case 'heroes_near':r=heroesNear(args.near,args.radius);break;
-    case 'npcs':r=npcsRead(args.town);break;
+    case 'npcs':r=npcsRead(args.town,args.region);break;
     case 'regions':r=regionsRead();break;
-    case 'hooks':r=hooksRead(args.town);break;
+    case 'hooks':r=hooksRead(args.town,args.region);break;
     case 'levers':r=leversRead();break;
     case 'notes_read':r=notesRead(args.section);break;
     case 'notes_write':r=notesWrite(args);break;
