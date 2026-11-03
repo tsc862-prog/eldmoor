@@ -45,15 +45,18 @@ export function rebuild(){
   let nh=0,nm=0;
   for(const a of S.agents){if(a.state==='dead')continue;const i=cy(a.y)*CW+cx(a.x),c=heroCells[i];if(!c.length)usedH.push(i);c.push(a);nh++}
   for(const m of S.mobs){if(!m.alive||m.gone)continue;const i=cy(m.y)*CW+cx(m.x),c=mobCells[i];if(!c.length)usedM.push(i);c.push(m);nm++}
-  spatialStats.heroes=nh;spatialStats.mobs=nm;spatialStats.rebuilds++}
+  spatialStats.heroes=nh;spatialStats.mobs=nm;spatialStats.rebuilds++;LOD.tick++}
 
+// #433: dist(a,b)<=r with a box test first. Math.hypot is never smaller than |dx| or |dy|, so anything outside
+// the box is outside the circle; inside it the same Math.hypot decides, so the answer is identical to dist().
+export const within=(a,b,r)=>{const dx=a.x-b.x;if(dx>r||dx<-r)return false;const dy=a.y-b.y;if(dy>r||dy<-r)return false;return Math.hypot(dx,dy)<=r};
 const P={x:0,y:0};
 const byId=(a,b)=>a.id-b.id;
 function query(cells,all,x,y,r,pred){spatialStats.queries++;P.x=x;P.y=y;const out=[];
   if(!USE_INDEX){for(const e of all){spatialStats.candidates++;if((!pred||pred(e))&&dist(P,e)<=r)out.push(e)}return out}
   const x0=cx(x-r-SLACK),x1=cx(x+r+SLACK),y0=cy(y-r-SLACK),y1=cy(y+r+SLACK);
   for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++){const c=cells[j*CW+i];
-    for(let k=0;k<c.length;k++){const e=c[k];spatialStats.candidates++;if((!pred||pred(e))&&dist(P,e)<=r)out.push(e)}}
+    for(let k=0;k<c.length;k++){const e=c[k];spatialStats.candidates++;if((!pred||pred(e))&&within(P,e,r))out.push(e)}}
   if(out.length>1)out.sort(byId);return out}
 
 // Living heroes within r tiles of (x,y), id-ascending. pred(e) is an optional extra filter.
@@ -62,3 +65,13 @@ export const nearHeroes=(x,y,r,pred)=>query(heroCells,S.agents,x,y,r,pred);
 export const nearMobs=(x,y,r,pred)=>query(mobCells,S.mobs,x,y,r,pred);
 // Heroes then mobs, each id-ascending.
 export const nearAll=(x,y,r,pred)=>nearHeroes(x,y,r,pred).concat(nearMobs(x,y,r,pred));
+
+// #433 level of detail, OFF by default: it changes results (mob wander draws from the gameplay RNG, greeting
+// rolls move to other steps), so seeded worlds only match main with it off. On (setLod(true), or
+// ELDMOOR_LOD=1 in Node): an idle mob with no living hero within SLEEP_R tiles' cells sleeps (heals, does not
+// wander or scan), and townsfolk look for someone to greet on one step in GREET_EVERY (staggered by id).
+export const LOD={on:typeof process!=='undefined'&&!!(process.env&&process.env.ELDMOOR_LOD==='1'),SLEEP_R:12,GREET_EVERY:6,tick:0};
+export const setLod=on=>{LOD.on=!!on};
+// Any living hero indexed in a cell within r tiles of (x,y) (cells only, no distance test: a cheap "is anyone about").
+export function heroCellsNear(x,y,r){const x0=cx(x-r),x1=cx(x+r),y0=cy(y-r),y1=cy(y+r);
+  for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++)if(heroCells[j*CW+i].length)return true;return false}

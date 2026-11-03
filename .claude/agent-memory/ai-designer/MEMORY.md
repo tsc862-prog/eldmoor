@@ -32,3 +32,4 @@
 - [Reflex moves #347/#348](reflex_moves.md) — reflex members heal with class moves only (reflexMay), reflex spec pick; Antler Ward's spec-only widened rally
 - [Table items #360](table_items.md) — use:<slug> round options via useItem, when each item is offered, same-party potions, reflex unchanged
 - [Camp refusals #400](camp_refusals.md) — campBlock text, second break_camp = yes vote, non-leader break_camp proposes, refusals name the next call
+- [Sim perf #433](sim_perf.md) — hash-identical speedups: within() box+hypot, non-enumerable hero caches, LOD flag off by default

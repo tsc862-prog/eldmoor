@@ -89,10 +89,21 @@ const cache=new WeakMap();
 function sig(a){const s=a.slots,ab=a.abil,parts=[a.cls,a.lvl,(a.epics||[]).length,a.spec||''];
   if(ab)for(const k in ab)parts.push(ab[k]);
   return parts.join(',')}
-function same(e,a,k){if(e.k!==k)return false;const s=a.slots;if(!s)return !e.items;if(!e.items)return false;
+// #433: the key's fields as read at the last build, compared one by one (no string per call). Identical
+// fields mean an identical sig; on any difference the joined sig decides, exactly as before. a.abil is
+// compared by identity and then by its values under the keys it had: rollScores (sim/abilities.js) builds
+// it once with all six keys and later changes only their values, so the key list cannot drift.
+function keyOf(a){const ab=a.abil,ak=[],av=[];if(ab)for(const k in ab){ak.push(k);av.push(ab[k])}
+  return {cls:a.cls,lvl:a.lvl,ne:(a.epics||[]).length,sp:a.spec||'',ab,ak,av}}
+const bySig=(e,a)=>{if(sig(a)!==e.k)return false;e.f=keyOf(a);return true}; // same key in other fields: remember them
+function sameKey(e,a){const f=e.f,ab=a.abil;
+  if(f.cls!==a.cls||f.lvl!==a.lvl||f.ne!==(a.epics||[]).length||f.sp!==(a.spec||'')||f.ab!==ab)return bySig(e,a);
+  if(ab){const ak=f.ak,av=f.av;for(let i=0;i<ak.length;i++)if(ab[ak[i]]!==av[i])return bySig(e,a)}
+  return true}
+function same(e,a){const s=a.slots;if(!s)return !e.items;if(!e.items)return false;
   for(let i=0;i<SLOTS.length;i++){const it=s[SLOTS[i]]||null;if(e.items[i]!==it||(it&&e.lv[i]!==it.ilvl))return false}return true}
-export function combatStats(a){const k=sig(a),e=cache.get(a);if(e&&same(e,a,k))return e.v;
+export function combatStats(a){const e=cache.get(a);if(e&&sameKey(e,a)&&same(e,a))return e.v;
   const s=a.slots,items=s?SLOTS.map(x=>s[x]||null):null,v=build(a);
-  cache.set(a,{k,items,lv:items?items.map(it=>it?it.ilvl:0):null,v});return v}
+  cache.set(a,{k:sig(a),f:keyOf(a),items,lv:items?items.map(it=>it?it.ilvl:0):null,v});return v}
 // Damage multiplier for a blow landing on this hero.
 export const dmgTaken=a=>(1-combatStats(a).defense)*(a.wardT>0?1-USES['Scroll of the Steadfast Hour'].ward:1)*effMul(a,'taken')*passiveTaken(a,a.hp/combatStats(a).health); // Ward of Dawn, Bastion and the class passives (sim/eff.js, #81); a warding scroll (sim/inv.js) softens every blow while it holds
