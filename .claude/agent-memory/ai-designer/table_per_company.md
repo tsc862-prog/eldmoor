@@ -30,10 +30,14 @@ Rules chosen and why:
   it already is a one-answer waited choice, and routing it to a Table scene broke playcheck's silent-agent timeout path.
   Only the Fellowship's choice goes to the Table (player-choice.js still gates on `a.fellow`).
 - `status` shows `table` for any hero (player.js one-liner); save.js v6->v7 stamps an open table with the Fellowship id.
-- Checks that drive agent solos but are not about the Table run with `TABLE.mode='off'` (lorecheck, playcheck): a
-  solo's scene pauses the world (a live silent agent up to liveMs), `wait` is refused on your own turn, and the pause
-  shifts the seeded trajectory (playcheck's hero then met a Cinder Golem and died). Answering scenes in the mock was
-  tried and was not enough; switching the Table off keeps them on main's trajectory.
+- **Only companies with an agent that has the say come to the table** (`atTable(C)`: the Fellowship always, any other
+  company only while `agentsDecide(members)`: a runner holds a member, or its runner is gone and the owner is asked).
+  A runner-less company plays on by its autopilot, as with the Table off, and spends no cooldown key. Why: a
+  reflex-only solo scene swapped #491's cautious autopilot (native prey, break off at 22%/50%) for the table's reflexes
+  and stopped the clock for nothing; townpilotcheck's silent level-1 solo then never reached level 2 in 24 game hours.
+- playcheck runs with `TABLE.mode='off'`: its mock agents hold runner claims (so they would get scenes), `wait` is
+  refused on your own turn, and the pause shifted the seeded trajectory (its hero met a Cinder Golem and died).
+  lorecheck needed no change once runner-less solos stopped getting scenes.
 - `bannerOf()` carries `company, companyName, solo`; `decisionsWaiting()` entries carry `company` (UI use is #471/#458).
 
 Testing pitfall: a solo in a duel with an enemy hero opens an ambush right after its rescue resolves (key `duel:<id>`);

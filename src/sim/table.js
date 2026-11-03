@@ -125,6 +125,12 @@ export const sceneCompany=sc=>!sc?null:sc.company!=null?companyById(sc.company):
 const memOf=C=>!C?[]:C===S.fellowship?fellows():members(C);
 const leadOf=C=>!C?null:C===S.fellowship?leaderOfF():leaderOf(C);
 const scMem=sc=>memOf(sceneCompany(sc));
+// A company other than the Fellowship comes to the table only while one of its agents has the say (a runner holds it,
+// or its runner is gone and the owner has not answered). A company that plays wholly by reflex (no runner, as in
+// headless runs and checks) plays on in the world on its autopilot, as with the Table off: a reflex-only scene would
+// only swap the autopilot's cautious reflexes for the table's and stop the clock for nothing. The Fellowship keeps
+// its reflex-only scenes (its seeded hashes and record count on them).
+const atTable=C=>!!C&&(C===S.fellowship||agentsDecide(memOf(C)));
 // Why a company may not put something to a vote at the table: a solo has no one to ask. null = it may.
 export function voteRefusal(C){return C&&!C.slots&&isSolo(C)?SOLO_VOTE:null}
 setSpeedSource(()=>TABLE.speed);
@@ -218,6 +224,7 @@ function present(kind,ctx,C){const L=memOf(C);if(kind==='decision'){const P=prop
 const ctxCompany=ctx=>{const c=ctx||{};if(c.company!=null)return companyById(c.company);const h=byId(c.anchor!=null?c.anchor:c.hero);return companyOf(h)||S.fellowship||null};
 function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||S.table)return null;const all=PLAY[kind]==='all';
   if(kind==='decision'&&voteRefusal(F))return null; // a solo has no one to vote with (#440)
+  if(!atTable(F))return null; // no agent of this company has the say: it plays on by reflex (#440)
   const L=all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||(CRYPT.group&&CRYPT.group.mem.includes(a)));
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,company:F.id,kind,title:clean(title,80),frame,ids:(all?L:initiative(L)).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin),...(all?{all:true,w:{}}:{})};
@@ -431,7 +438,7 @@ export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks 
     if(stale(C,q)){unseen(C,q.key);continue}
     if(open(q.kind,q.title,q.frame,q.ctx,C)){opened=true;break}}
   const busy=sceneCompany(S.table);
-  for(const C of CS){if(C===busy||C.tableQ)continue;const L=memOf(C);if(!L.length)continue;
+  for(const C of CS){if(C===busy||C.tableQ||!atTable(C))continue;const L=memOf(C);if(!L.length)continue;
     const d=due(C,L);if(!d)continue;
     if(!S.table&&!opened){open(d.kind,d.title,d.frame,d.ctx,C);opened=true}
     else C.tableQ={...d,at:Math.round(S.gameMin)}}}

@@ -322,26 +322,30 @@ if (process.argv[2] === '--companies') {
   ok(CX.log.some(e => e.kind === 'table') && (CX.tableStats || {}).scenes >= 1, 'the outcome lands in the solo company\'s own log and stats');
   close(); enemy.state = 'hunt'; enemy.target = null; X.state = 'hunt'; X.target = null; // the duel would open an ambush scene next
 
-  // (b) two companies due in one tick: the lower id opens, the other waits for the next tick (no runners, 3x: instant)
-  T.TABLE.speed = 3; CX.tableSeen = {}; CY.tableSeen = {};
+  // (b) two companies due in one tick: the lower id opens, the other waits in its queue and opens on the next tick the
+  // table is free (both agents live, so both come to the table)
+  T.TABLE.speed = 1; CX.tableSeen = {}; CY.tableSeen = {}; LINK[X.id] = 'connected'; LINK[Y.id] = 'connected';
   const m1 = beast(), m2 = beast(); fightAt(X, m1, 0); fightAt(Y, m2, 3);
   const g0 = (CX.tableStats || {}).scenes || 0;
   T.tableTick();
-  ok(!S.table && (CX.tableStats || {}).scenes === g0 + 1 && !((CY.tableStats || {}).scenes), `tick 1: ${X.name}'s company (id ${CX.id}) opens first (reflex only at 3x, resolved at once)`);
+  ok(S.table && S.table.company === CX.id && (CX.tableStats || {}).scenes === g0 + 1 && !((CY.tableStats || {}).scenes), `tick 1: ${X.name}'s company (id ${CX.id}) opens first`);
   ok(CY.tableQ && CY.tableQ.kind === 'rescue' && CY.tableSeen['rescue:' + Y.id] != null, `${Y.name}'s company waits in its queue, its cooldown key kept`);
-  fightAt(Y, m2, 3); T.tableTick();
-  ok(!CY.tableQ && (CY.tableStats || {}).scenes === 1, 'tick 2: the queued scene opens');
+  const q0 = CY.tableQ; T.tableTick(); ok(CY.tableQ === q0 && S.table.company === CX.id, 'a company with a queued moment is not looked at again (no third), the open scene holds the table');
+  close(); fightAt(Y, m2, 3); T.tableTick();
+  ok(S.table && S.table.company === CY.id && !CY.tableQ && (CY.tableStats || {}).scenes === 1, 'next tick with the table free: the queued scene opens');
+  close();
   {const has = (Cc, n) => Cc.log.some(e => e.kind === 'table' && JSON.stringify(e.parts).includes(n + ' is going down'));
    ok(has(CY, Y.name) && !has(CX, Y.name) && has(CX, X.name), 'each scene lands in its own company\'s log')}
-  // a queued moment that went stale is dropped and its key unset; a full queue is not looked at
-  CX.tableSeen = {}; CY.tableSeen = {}; fightAt(X, m1, 0); fightAt(Y, m2, 3);
-  T.TABLE.speed = 1; LINK[X.id] = 'connected'; T.tableTick();
+  // a queued moment that went stale is dropped and its key unset
+  CX.tableSeen = {}; CY.tableSeen = {}; fightAt(X, m1, 0); fightAt(Y, m2, 3); T.tableTick();
   ok(S.table && S.table.company === CX.id && CY.tableQ, 'with a paused scene open, the next company\'s moment waits in its queue');
-  const q0 = CY.tableQ; T.tableTick(); ok(CY.tableQ === q0, 'a company with a queued moment is not looked at again (no third)');
-  close(); delete LINK[X.id]; X.state = 'hunt'; X.target = null;
+  close(); X.state = 'hunt'; X.target = null;
   Y.hp = maxHp(Y); Y.state = 'hunt'; Y.target = null; T.tableTick();
   ok(!CY.tableQ && CY.tableSeen['rescue:' + Y.id] == null && !S.table, 'a stale queued moment (out of the fight) is dropped, its cooldown key unset');
-  T.TABLE.speed = 1;
+  // a solo with no runner (no agent has the say) is not taken to the table: it plays on by its autopilot's reflexes
+  delete LINK[X.id]; delete LINK[Y.id]; CX.tableSeen = {}; fightAt(X, m1, 0); T.tableTick();
+  ok(!S.table && !CX.tableQ && CX.tableSeen['rescue:' + X.id] == null && T.openScene('check', 'x', ['x'], {anchor: X.id}) === null, 'a solo with no runner gets no scene (it plays on, as with the Table off), and no cooldown key is spent');
+  X.hp = maxHp(X); X.state = 'hunt'; X.target = null;
 
   // (c) everyone at once, a company of two: answers in any order, resolved in join order
   const CU = CO.companyOf(U), CV = CO.companyOf(V); const mg = CO.mergeCompanies(CU, CV);
