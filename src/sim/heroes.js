@@ -121,7 +121,7 @@ export function fall(a,cause){
   S.fallen.unshift({name:a.name,fac:a.fac,lvl:a.lvl,cls:a.cls,cause,t:a.diedAt});if(S.fallen.length>15)S.fallen.pop();
   goalEvent(a,'died');
   if(a.lvl>=10&&!/^lost in/.test(cause))timeline('death',a,' fell at level '+a.lvl+' ('+cause+').'+(a.lvl>=15?' A legend ends.':''));
-  S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8});
+  if(!a.hire)S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8}); // a hired blade is not replaced (sim/hire.js)
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
 
