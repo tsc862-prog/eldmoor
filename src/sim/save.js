@@ -131,7 +131,7 @@ export function restore(snap){
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
   for(const a of S.agents||[])if(a.profs!==undefined)normalizeProfs(a); // a.profs is optional (professions, #254): absent reads as [], present is cleaned
   reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
-  relinkCompanies(); // a.fellow / p.fellow accessors on company members and parties; agent heroes without a company ride as solos
+  relinkCompanies(); // stale a.fellow / p.fellow fields dropped (#588); agent heroes without a company ride as solos
   ensureCampaign(); // an older save whose DM notes are empty gets the campaign seed once
   convertOldDm();
   return S}

@@ -58,6 +58,7 @@ const spawnSync = (cmd, args, opts = {}) => {
 let seed = 0x9e3779b9 ^ (Number(process.env.DMCHECK_SEED) || 66);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const sim = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const FIRE_ = (await import('../src/sim/fireside.js')).FIRE; FIRE_.ON = false; // no talk round the fire in these worlds (#571; tablecheck --fireside covers it, the DM's frame included)
 const {init, step, S, snapshot, restore, dmAct, setDmSeat, dmSeatOn} = sim;
 const {DMA, pileOn, dreamTick} = await import('../src/sim/dmagent.js');
@@ -65,7 +66,6 @@ const {DM_TOOLS} = await import('../src/data/dm-tools.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
 const {maxHp} = await import('../src/sim/heroes.js');
-const {fellows} = await import('../src/sim/fellowship.js');
 const {ZONES, ZPTS, zoneAt} = await import('../src/world/map.js');
 // a spot well inside its region (not within 11 tiles of a border): a staged cast lands 6-10 tiles away, and over a border it would stand in ground far above a level-2 party, which changes which refusal comes first
 const innerPoint = (zonePoint, zoneAt, z, home) => {let p; for (let i = 0; i < 300; i++) {p = zonePoint(z, null, home); if ([[11, 0], [-11, 0], [0, 11], [0, -11]].every(([dx, dy]) => zoneAt(p.x + dx, p.y + dy) === z)) return p} return p};
@@ -85,16 +85,16 @@ if (process.argv[2] === '--hash') {
 
 // ---- session zero child (issue #437): the opening framed by the DM agent's call, or by the DM's reflexes when no runner listens (#561: the seat is always open) ----
 if (process.argv[2] === '--opening') {
-  const A = await import('../src/sim/arrival.js'), T = await import('../src/sim/table.js'), F_ = await import('../src/sim/fellowship.js'), PL = await import('../src/sim/player.js');
+  const A = await import('../src/sim/arrival.js'), T = await import('../src/sim/table.js'), F_ = await import('../src/sim/company.js'), PL = await import('../src/sim/player.js');
   const closed = process.argv[3] === 'silent'; // the seat open, nobody polling it
   init({fellowship: false}); run(10);
-  F_.found(F_.autoPick(0), {fac: 0, ai: false}); setDmSeat(true); sim.setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); setDmSeat(true); sim.setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
   if (!closed) {const D = S.dmAgent; D.notes.plans.push({id: 9001, title: 'The Lanterns', text: 'PREMISE-PLANTED the road lights are failing.', tags: ['premise'], pin: true}, {id: 9002, title: 'Opening beats', text: 'Day 1: a dark shrine.', tags: ['openings']})}
   A.planOpening(); step(1 / 60); const sc = S.table;
   let call = null, k = 0; while (S.table && S.table.phase === 'frame' && k++ < 600) {if (!closed) dmAct('table_call'); step(1 / 60)}
   if (!closed) {const t = dmAct('table_call'); call = t.call; if (call) dmAct('table_answer', {call: call.id, text: 'The hall smells of wet wool and lamp oil.'})}
   k = 0; while (S.table && k++ < 60 * 60) step(1 / 60);
-  const heard = F_.fellows().map(a => (a.chat || []).map(e => e.text).join(' | ')).join(' || '), tools = JSON.stringify(F_.fellows().map(a => [PL.playerAct(a.id, 'status'), PL.playerAct(a.id, 'look')]));
+  const heard = SLT.slotHeroes(SLT.slotted()).map(a => (a.chat || []).map(e => e.text).join(' | ')).join(' || '), tools = JSON.stringify(SLT.slotHeroes(SLT.slotted()).map(a => [PL.playerAct(a.id, 'status'), PL.playerAct(a.id, 'look')]));
   console.log('OPENING ' + JSON.stringify({kind: sc && sc.kind, title: sc && sc.title, call: call && call.kind, premise: !!(call && /PREMISE-PLANTED/.test(call.about)), by: sc && sc.calls ? sc.calls.map(c => c.by) : [], dmLine: /wet wool/.test(heard), scripted: sc && sc.calls && sc.calls[0] && sc.calls[0].by === 'scripted' && heard.includes(sc.calls[0].text.slice(0, 30)), leak: heard.includes('PREMISE-PLANTED') || tools.includes('PREMISE-PLANTED'), summary: sc && sc.summary}));
   process.exit(0);
 }
@@ -112,19 +112,19 @@ if (process.argv[2] === '--ffbounty') {
   init({fac: 0}); run(120);
   const DM = await import('../src/sim/dm.js'), FO = await import('../src/sim/dmfocus.js'), {huntZone} = await import('../src/sim/heroes.js');
   const {MOBS} = await import('../src/data/mobs.js');
-  const {onLog} = await import('../src/sim/chronicle.js'), {chronicleFocus} = await import('../src/sim/fellowship.js'), {CITY} = await import('../src/world/map.js');
+  const {onLog} = await import('../src/sim/chronicle.js'), {chronicleFocus} = await import('../src/sim/company.js'), {CITY} = await import('../src/world/map.js');
   const heard = []; onLog(e => heard.push(e)); // Chronicle lines (#351): a Fellowship hall posting writes one, others none
   const hallLines = () => heard.filter(e => e.parts.some(p => typeof p === 'string' && /hall board:/.test(p)));
-  const out = {}, fo = FO.focus(), c = fo && fo.town, P = (S.parties || []).find(p => p.fellow);
+  const out = {}, fo = FO.focus(), c = fo && fo.town, P = (S.parties || []).find(p => SLT.partySlotted(p));
   if (!c || !P) {console.log('FFB ' + JSON.stringify({setup: false})); process.exit(0)}
   const L = P.leader, mem = [L, ...P.mem.filter(b => b !== L && b.state !== 'dead')];
-  for (const b of fellows()) {b.lvl = Math.max(b.lvl, 8); b.adv = null; b.state = 'town'; b.x = c.gate.x; b.y = c.gate.y}
+  for (const b of SLT.slotHeroes(SLT.slotted())) {b.lvl = Math.max(b.lvl, 8); b.adv = null; b.state = 'town'; b.x = c.gate.x; b.y = c.gate.y}
   const clearHall = () => {S.adventures = S.adventures.filter(h => !(h.phase === 'open' && h.town === c.name && (h.ff || h.for != null)))};
   // 1. the gate: no job for them on the board, a bounty posted for the region they set out for
   clearHall(); const z = P.zone != null ? P.zone : huntZone(L);
   let b = DM.bountiesAt(c).find(x => x.z === z);
   if (!b) {S.bounties.push({id: ++S.uid, town: c.name, z, type: Object.keys(MOBS).find(k => MOBS[k].z === z), need: 6, giver: 'the gate captain', born: S.gameMin, until: S.gameMin + 2000}); b = S.bounties[S.bounties.length - 1]}
-  const bg = S.agents.find(a => !a.fellow && a.state !== 'dead' && a.lvl >= 8 && !a.party) || S.agents.find(a => !a.fellow && a.state !== 'dead');
+  const bg = S.agents.find(a => !SLT.inSlots(a) && a.state !== 'dead' && a.lvl >= 8 && !a.party) || S.agents.find(a => !SLT.inSlots(a) && a.state !== 'dead');
   out.left = DM.fellowBounty(L, c, z);
   const adv = L.adv != null ? S.adventures.find(v => v.id === L.adv) : null;
   out.ff = !!(adv && adv.ff); out.fromBounty = !!(adv && adv.data && adv.data.bounty === b.id && adv.z === b.z);
@@ -182,11 +182,11 @@ if (process.argv[2] === '--solo') {
 // and one Warband hero riding alone (hall Grimhold).
 async function addCompanies() {
   const {markPlayer} = await import('../src/sim/player.js'), CO = await import('../src/sim/company.js');
-  const free = fac => S.agents.filter(a => a.kind === 'hero' && a.fac === fac && !['dead', 'dungeon', 'raid'].includes(a.state) && !a.hidden && !a.party && !a.company && !a.fellow);
+  const free = fac => S.agents.filter(a => a.kind === 'hero' && a.fac === fac && !['dead', 'dungeon', 'raid'].includes(a.state) && !a.hidden && !a.party && !a.company && !SLT.inSlots(a));
   const [p1, p2] = free(0), s1 = free(1)[0];
   for (const a of [p1, p2, s1]) {a.lvl = Math.max(a.lvl, 6); a.adv = null; markPlayer(a, true)}
   const pair = CO.companyOf(p1); CO.leaveCompany(p2); CO.joinCompany(pair, p2); pair.name = 'the Ashen Pair';
-  return {pair, solo: CO.companyOf(s1), five: S.fellowship, p1, p2, s1, CO};
+  return {pair, solo: CO.companyOf(s1), five: SLT.slotted(), p1, p2, s1, CO};
 }
 if (process.argv[2] === '--companies') {
   init({fac: 0}); run(120);
@@ -334,7 +334,7 @@ console.log('\nEldmoor dmcheck: the DM as an agent, part 1 (mock agents)\n');
 // ---------------------------------------------------------------- 1. the DM tools in the sim
 console.log('the DM tools');
 init({fac: 0}); run(60);
-ok(!!S.fellowship, `a world with a Fellowship (${S.fellowship && S.fellowship.name})`);
+ok(!!SLT.slotted(), `a world with a Fellowship (${SLT.slotted() && SLT.slotted().name})`);
 let r = dmAct('dm_status');
 ok(r.ok === false && r.offline && /seat is closed/.test(r.error) && !S.dmAgent, 'a closed seat answers nothing and leaves no state');
 setDmSeat(true);
@@ -342,7 +342,7 @@ ok(dmSeatOn() && S.dmLog[0].kind === 'agent', 'opening the seat is logged in the
 const nums = () => S.agents.map(a => [a.id, a.lvl, Math.round(a.xp), a.state === 'dead' ? 0 : 1].join(':')).join(',');
 const rng0 = seed, n0 = nums();
 for (const t of ['dm_status', 'read_timeline', 'read_chronicle', 'read_dm_log', 'fellowship_view', 'npcs', 'regions', 'hooks', 'levers', 'notes_read']) {r = dmAct(t, {n: 5}); ok(r.ok, `${t} reads (${JSON.stringify(r).length} chars)`)}
-r = dmAct('heroes_near', {near: S.fellowship.hall || 'Highgate'}); ok(r.ok && Array.isArray(r.heroes), `heroes_near ${r.place}: ${r.heroes && r.heroes.length} heroes`);
+r = dmAct('heroes_near', {near: SLT.slotted().hall || 'Highgate'}); ok(r.ok && Array.isArray(r.heroes), `heroes_near ${r.place}: ${r.heroes && r.heroes.length} heroes`);
 ok(dmAct('heroes_near', {near: 'Nowhere-at-all'}).ok === false, 'heroes_near refuses an unknown place');
 { // issue #427: hooks and npcs read a region as well as a town
   const {CITY} = await import('../src/world/map.js');
@@ -416,7 +416,7 @@ ok(dmAct('pull_lever', {lever: 'set_condition', params: '{not json', reason: 'x'
   r = dmAct('create_npc_placeholder', {}); ok(r.ok === false && /looks like the lever create_npc/.test(r.error), 'a made-up tool that contains a lever name points to that lever');
   r = dmAct('fly', {}); ok(r.ok === false && /Tools: dm_status/.test(r.error) && /go through pull_lever/.test(r.error), 'an unknown DM tool lists the tools');}
 // pile-on: a badly hurt Fellowship member out in the field
-const hurt = fellows()[0], hz = zoneAt(hurt.x, hurt.y);
+const hurt = SLT.slotHeroes(SLT.slotted())[0], hz = zoneAt(hurt.x, hurt.y);
 hurt.state = 'hunt'; hurt.hp = maxHp(hurt) * .2;
 const pile = pileOn('mark_dangerous', {at: {x: hurt.x + 1, y: hurt.y}});
 r = dmAct('pull_lever', {lever: 'mark_dangerous', params: {at: {x: Math.round(hurt.x) + 1, y: Math.round(hurt.y)}}, reason: 'more wolves'});
@@ -460,7 +460,7 @@ ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
   r = dmAct('pull_lever', {lever: 'start_event', params: {kind: 'plague', region: ZONES[zp >= 0 ? zp : 0]}, reason: 'a second event the same day'});
   ok(r.ok === false && /limit/.test(r.error) && S.dmLog[0].detail.lever === 'start_event' && /rejected: limit/.test(S.dmLog[0].detail.result) && S.dmLog[0].detail.reason === 'a second event the same day',
     'a second world event is refused over the limit, with the refusal in the DM log: ' + r.error);
-  const seenO = new WeakSet(), heard = JSON.stringify([S.chronicle, S.timeline, fellows().map(a => a.chat || [])], (k, v) => v && typeof v === 'object' ? (seenO.has(v) ? undefined : (seenO.add(v), v)) : v);
+  const seenO = new WeakSet(), heard = JSON.stringify([S.chronicle, S.timeline, SLT.slotHeroes(SLT.slotted()).map(a => a.chat || [])], (k, v) => v && typeof v === 'object' ? (seenO.has(v) ? undefined : (seenO.add(v), v)) : v);
   ok(!heard.includes(evReason), 'the event\'s reason stays in the DM log: not in the chronicle, the timeline or any member\'s chat');
   const DAe = await import('./dm-agent.mjs'), sys = DAe.dmSystemPrompt(dmAct('dm_status'));
   ok(/World events \(start_event/.test(sys) && /Fellowship comes first here too: consider one only when nothing is pending for them/.test(DAe.DM_EVENT_ORDERS) && /fellowship_regions/.test(DAe.DM_EVENT_ORDERS)
@@ -473,9 +473,9 @@ ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
 // ---------------------------------------------------------------- 1a. flat lever tools (issue #413)
 console.log('flat lever tools: post_hook, place_person, mark_place');
 {const {zoneFor, zonePoint, CITY, LANDMARKS} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js'), {focus, reserveOf} = await import('../src/sim/dmfocus.js'), {LEVERS} = await import('../src/sim/levers.js');
-  const L = fellows(), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
+  const L = SLT.slotHeroes(SLT.slotted()), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
   L.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)});
-  S.dmAgent.day.pulls = 0; const n1 = nums(), cap0 = S.dmAgent.day.pulls, hall = S.fellowship.hall || CITY[0].name;
+  S.dmAgent.day.pulls = 0; const n1 = nums(), cap0 = S.dmAgent.day.pulls, hall = SLT.slotted().hall || CITY[0].name;
   const T = DM_TOOLS.filter(t => ['post_hook', 'place_person', 'mark_place'].includes(t.name));
   ok(T.length === 3 && T.every(t => t.act && t.desc.length < 600 && /pull_lever/.test(t.desc) && t.args.reason && !t.args.reason.optional), 'the three flat tools are listed, under 600 characters, name pull_lever and need a reason');
   const lastLever = () => S.dmLog.find(e => e.kind === 'lever');
@@ -585,7 +585,7 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
 // ---------------------------------------------------------------- 1b. staged scenes: the rules of the seat (issue #132)
 console.log('staged scenes: refusals');
 {const ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
-  const L = fellows(), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
+  const L = SLT.slotHeroes(SLT.slotted()), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
   L.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)});
   T.TABLE.mode = 'off'; // nothing opens on its own while the refusals are tried
   const frame = 'Mist lies on the road, and something moves in it.', st = (a) => dmAct('stage_scene', {kind: 'mystery', near: 'fellowship', frame, cast: {}, reason: 'test', ...a});
@@ -604,7 +604,7 @@ console.log('staged scenes: refusals');
     const lm = LANDMARKS[LANDMARKS.length - 1], pl = st({kind: 'elite', preview: 'true', near: lm.name.replace(/^The /, ''), frame: undefined});
     ok(pl.ok && pl.preview, `a landmark is a place to stage near ("${lm.name.replace(/^The /, '')}"): ` + (pl.cast || pl.error))}
   no({near: CITYN()}, /not inside/, 'inside a town');
-  const stranger = S.agents.find(a => !a.fellow && a.state !== 'dead');
+  const stranger = S.agents.find(a => !SLT.inSlots(a) && a.state !== 'dead');
   no({near: stranger.name}, /only the Fellowship/, 'a hero outside the Fellowship');
   no({kind: 'elite', cast: {level: Math.max(...L.map(a => a.lvl)) + 6}}, /far above the party/, 'a foe far above the party\'s level');
   no({kind: 'elite', cast: {foe: 'Cinder Wyrm'}}, /lives in/, 'a creature that does not live there');
@@ -619,7 +619,7 @@ console.log('staged scenes: refusals');
   no({kind: 'trap'}, /badly hurt/, 'a trap too');
   L[1].hp = maxHp(L[1]);
   S.table = {id: 0, kind: 'check', ids: [], ctx: {}, calls: null}; no({}, /Table scene is open/, 'while a Table scene is open'); S.table = null;
-  const P0 = {id: 999, status: 'open', kind: 'other', votes: {}, by: L[0].id, details: 'x'}; (S.fellowship.props || (S.fellowship.props = [])).push(P0);
+  const P0 = {id: 999, status: 'open', kind: 'other', votes: {}, by: L[0].id, details: 'x'}; (SLT.slotted().props || (SLT.slotted().props = [])).push(P0);
   no({}, /vote is open/, 'while a party vote is open'); P0.status = 'failed';
   const okR = st({}); ok(okR.ok && okR.staged, `a mystery is staged: ${okR.title} ${okR.where}`);
   no({kind: 'meeting', cast: {role: 'drover', want: 'a hand'}}, /one at a time/, 'a second one while the first waits');
@@ -632,12 +632,12 @@ console.log('staged scenes: refusals');
   const tc = dmAct('table_call'); ok(tc.ok && tc.call === null && tc.scene === null, 'table_call with nothing at the table: no call');
   ok(dmAct('table_answer', {call: 1, text: 'x'}).ok === false, 'table_answer with nothing at the table is refused');
   T.TABLE.mode = 'auto'}
-function CITYN() {return S.agents.length && (S.fellowship.hall || 'Highgate')}
+function CITYN() {return S.agents.length && (SLT.slotted().hall || 'Highgate')}
 
 // ---------------------------------------------------------------- 1b2. staged scenes in a setting (issue #431, slice 2)
 console.log('staged scenes: settings and towns');
 {const ST = await import('../src/sim/staged.js'), T = await import('../src/sim/table.js'), {SETTING_IDS} = await import('../src/data/settings.js'), {CITY} = await import('../src/world/map.js');
-  const L = fellows(), F = S.fellowship, hall = CITY.find(c => c.name === F.hall) || CITY.find(c => c.fac === F.fac), enemy = CITY.find(c => c.fac !== F.fac);
+  const L = SLT.slotHeroes(SLT.slotted()), F = SLT.slotted(), hall = CITY.find(c => c.name === F.hall) || CITY.find(c => c.fac === F.fac), enemy = CITY.find(c => c.fac !== F.fac);
   T.TABLE.mode = 'off'; S.staged.cur = null; S.staged.day.n = 0; S.staged.day.nw = 0; S.table = null;
   const meet = (a) => dmAct('stage_scene', {kind: 'meeting', frame: 'A woman in a grey shawl waits with a cup she has not touched.', cast: {role: 'stranger', want: 'news of her brother'}, reason: 'settings test', ...a});
   const no = (a, re, m) => {const x = meet(a); ok(x.ok === false && re.test(x.error), m + ': ' + (x.error || 'staged!').replace(/^Refused: /, '').slice(0, 160))};
@@ -682,10 +682,10 @@ console.log('staged scenes: settings and towns');
 
 // ---------------------------------------------------------------- 1c. NPC conversations (issue #170)
 console.log('NPC conversations');
-{const TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), F_ = await import('../src/sim/fellowship.js');
+{const TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), F_ = await import('../src/sim/company.js');
   const {homeOf} = await import('../src/data/races.js'), {SLOTS} = await import('../src/data/items.js');
-  const L = fellows(), A = L[0], B = L[1], c0 = homeOf(A);
-  F_.setMinds('agent'); for (const x of L) x.hp = maxHp(x);
+  const L = SLT.slotHeroes(SLT.slotted()), A = L[0], B = L[1], c0 = homeOf(A);
+  SLT.setSlotMinds(SLT.slotted(), 'agent'); for (const x of L) x.hp = maxHp(x);
   const npc = role => S.npcs.find(p => p.town === c0.name && p.role === role);
   const beside = (a, p, dx = 1) => {a.state = 'town'; a.town = c0.name; a.x = p.x + dx; a.y = p.y; a.pq = []; a.target = null; a.dest = null; a.hidden = false};
   const away = () => {for (const x of L) {x.x = c0.gate.x + 30; x.y = c0.gate.y}};
@@ -728,7 +728,7 @@ console.log('NPC conversations');
   ok(dmAct('npcs', {town: c0.name}).townsfolk.some(n => n.id === smith.id && n.fellowship && n.fellowship.notes.some(t => /nightfall/.test(t))), 'npcs shows the person\'s record of the Fellowship (the promise)');
   // more exchanges: a rumour with a map marker, then a job, then the conversation closes
   act(A, 'say', {text: 'What do you hear from the roads?'}); call = dmAct('npc_call');
-  const region = S.fellowship && (await import('../src/world/map.js')).ZONES[1];
+  const region = SLT.slotted() && (await import('../src/world/map.js')).ZONES[1];
   r = dmAct('npc_offer', {npc: String(smith.id), conv: call.call.conv, kind: 'rumour', text: 'Ore carts stopped coming from the hills.', about: 'The ore road is blocked by something big; the carters will not go.', region});
   ok(r.ok && r.mark === '[rumour]' && (r.place == null || S.places.some(q => q.id === r.place)), `npc_offer rumour (with text as the answer): ${r.hint}`);
   ok(A.playEv.some(e => /\[rumour\]/.test(e.text)) && (A.memory && A.memory.recent.some(m => /ore road/.test(m.text))), 'the lead reaches the member as an event and in their memory');
@@ -782,7 +782,7 @@ console.log('NPC conversations');
     'npc_offer combat in town stages an ambush outside the gate; the person is hostile (mood hostile, hostile true)' + (r.ok ? '' : ': ' + r.error));
   if (S.staged && S.staged.cur) S.staged.cur.phase = 'done';
   // background heroes stay silent: a non-member agent hero's talk keeps the old greeting
-  const bg = S.agents.find(a => !a.fellow && a.state !== 'dead' && a.fac === A.fac);
+  const bg = S.agents.find(a => !SLT.inSlots(a) && a.state !== 'dead' && a.fac === A.fac);
   if (bg) {P.markPlayer(bg, true); beside(bg, smith, -1); const n0 = S.talks.stats.opened; r = P.playerAct(bg.id, 'talk', {target: 'smith'});
     ok(r.ok && S.talks.stats.opened === n0 && !r.waiting, 'a background hero\'s talk opens no conversation (the old greeting)'); P.markPlayer(bg, false)}
   // no style cap on what the DM says (owner): long lines pass whole, up to a technical ceiling
@@ -801,7 +801,7 @@ console.log('NPC conversations');
     let n = 2; while (dmAct('whisper', {hero: A.name, text: 'again'}).ok) n++; ok(n === DMA.WHISPER_PER_DAY, 'whispers stop at ' + DMA.WHISPER_PER_DAY + ' a game day (' + n + ')'); S.table = null;
     const d1 = dmAct('dream', {hero: A.name, text: 'A grey tide climbs the stair.'}), d2 = dmAct('dream', {hero: A.name, text: 'A bell without a rope.'}), d3 = dmAct('dream', {hero: A.name, text: 'third'});
     ok(d1.ok && d2.ok && d3.ok === false && /Enough dreams/.test(d3.error), 'two dreams a game day, the third refused');
-    const bg2 = S.agents.find(h => !h.player && !h.fellow && h.state !== 'dead'); ok(!bg2 || dmAct('dream', {hero: bg2.name, text: 'x'}).ok === false, 'only agent heroes dream');
+    const bg2 = S.agents.find(h => !h.player && !SLT.inSlots(h) && h.state !== 'dead'); ok(!bg2 || dmAct('dream', {hero: bg2.name, text: 'x'}).ok === false, 'only agent heroes dream');
     dreamTick(); ok(!(A.chat || []).some(e => /You dream/.test(e.text)), 'a dream waits while the hero is awake');
     A.state = 'camp'; dreamTick(); ok(!(A.chat || []).some(e => /You dream/.test(e.text)), 'and while it sleeps');
     A.state = 'hunt'; dreamTick(); const dr = (A.chat || []).filter(e => /^You dream: /.test(e.text));
@@ -887,8 +887,8 @@ console.log('the Fellowship first');
   const n = r.fellowship_needs;
   ok(n && typeof n.summary === 'string' && n.summary.length > 10 && Array.isArray(n.items) && 'quiet' in n && n.share_of_dm_actions, 'fellowship_needs: a short summary, the items (threads, scenes, hurt members) and the share of DM actions so far: ' + (n && n.summary));
   ok(typeof r.fellowship_change === 'string' && r.fellowship_change.length > 0, 'fellowship_change is a signature of their situation (' + r.fellowship_change + ')');
-  const sig0 = r.fellowship_change; S.fellowship.past.push({id: -1, name: 'Test'});
-  ok(dmAct('dm_status').fellowship_change !== sig0, 'a fallen member changes the signature'); S.fellowship.past.pop();
+  const sig0 = r.fellowship_change; SLT.slotted().past.push({id: -1, name: 'Test'});
+  ok(dmAct('dm_status').fellowship_change !== sig0, 'a fallen member changes the signature'); SLT.slotted().past.pop();
   // the runner's bounded, event-driven cadence
   const st = {ok: true, day: 3, gameMin: 4000, fellowship_change: 'b'};
   ok(DA.eventDue(st, {sig: 'a', gm: 3000}, {day: 3, n: 0}) === true, 'cadence: a changed situation makes an extra turn due');
@@ -993,7 +993,7 @@ console.log('the Fellowship first');
 // ---------------------------------------------------------------- 1b. DM visibility (issue #558)
 console.log('DM visibility: hear, carries/quests/knows, survey, world_standing');
 {const {speak} = await import('../src/sim/chat.js'), {partySay} = await import('../src/sim/council.js'), {addQuest} = await import('../src/sim/inv.js');
-  const L = fellows(), A = L[0], B2 = L[1], DD = S.dmAgent, bg = S.agents.find(a => !a.player && a.state !== 'dead');
+  const L = SLT.slotHeroes(SLT.slotted()), A = L[0], B2 = L[1], DD = S.dmAgent, bg = S.agents.find(a => !a.player && a.state !== 'dead');
   for (const x of L) {x.hidden = false; x.state = 'camp'; x.x = A.x + .5; x.y = A.y + .5; x.chat = []}
   const before = JSON.stringify(S.agents.map(a => [a.x, a.y, a.hp, a.gold, a.lore ? 1 : 0, a.qlog ? 1 : 0]));
   dmAct('hear', {n: 200});
@@ -1106,7 +1106,7 @@ ok(h.dm.link === 'connected', 'after a call the seat shows connected');
   await c.close()}
 // the runner's table voice (issue #132): a mock model answers the calls of a staged scene over /play/dm
 {const {tableVoice} = await import('./dm-agent.mjs'), T = await import('../src/sim/table.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js');
-  const L = fellows(), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
+  const L = SLT.slotHeroes(SLT.slotted()), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
   L.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'hunt'; x.hidden = false; x.target = null; x.dest = null; x.hp = maxHp(x)});
   if (S.levers) {S.levers.cd = {}; S.levers.day = {d: -1, n: {}, rz: {}}} if (S.staged) {S.staged.day.n = 0; if (S.staged.cur) S.staged.cur.phase = 'done'}
   T.TABLE.mode = 'auto'; T.TABLE.speed = 1; S.table = null;
@@ -1122,14 +1122,14 @@ ok(h.dm.link === 'connected', 'after a call the seat shows connected');
   ok(sc && calls.length && mine.length >= Math.ceil(calls.length / 2), `the table voice answered ${mine.length} of ${calls.length} calls in ${((Date.now() - t0) / 1000).toFixed(1)} s (the scripted DM filled ${calls.length - mine.length})`);
   ok(asked.length && /Call \d+ \(voice/.test(asked[0]) && /drover/i.test(asked[0]), 'its prompt carries the scene and the call');
   ok(lines.some(l => /^\[table\] call \d+ /.test(l)), 'a log line per call: ' + (lines[0] || ''));
-  ok(fellows().some(a => (a.chat || []).some(e => /^Mock line/.test(e.text))), 'the members hear the DM\'s lines in the game')
+  ok(SLT.slotHeroes(SLT.slotted()).some(a => (a.chat || []).some(e => /^Mock line/.test(e.text))), 'the members hear the DM\'s lines in the game')
 
   {const wid = S.staged.cur && S.staged.cur.cast.npc; ok(wid != null && S.talks && (S.talks.cur.some(c => c.npc === wid) || S.talks.past.some(c => c.npc === wid)), 'the staged meeting leaves the way open for words (a conversation with the drover)')}}
 // the talk voice answers a member's words over /play/dm (issue #170)
 {const {talkVoice} = await import('./dm-agent.mjs'), TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), {homeOf} = await import('../src/data/races.js');
-  const A = fellows()[0], c0 = homeOf(A), qm = S.npcs.find(p => p.town === c0.name && p.role === 'quartermaster');
+  const A = SLT.slotHeroes(SLT.slotted())[0], c0 = homeOf(A), qm = S.npcs.find(p => p.town === c0.name && p.role === 'quartermaster');
   for (const c of (S.talks ? S.talks.cur.slice() : [])) {c.state = 'done'; S.talks.cur.splice(S.talks.cur.indexOf(c), 1)} delete qm.snub;
-  for (const x of fellows()) {x.x = c0.gate.x + 30; x.y = c0.gate.y}
+  for (const x of SLT.slotHeroes(SLT.slotted())) {x.x = c0.gate.x + 30; x.y = c0.gate.y}
   A.state = 'town'; A.x = qm.x + 1; A.y = qm.y; A.pq = []; A.hidden = false;
   const asked = [], lines = [];
   const adapter = {call: async ({user, schema}) => {asked.push(user); return {text: JSON.stringify({text: 'Mock: salt pork and rope, friend, at honest weight.', offer: schema.properties.offer.enum.includes('trade') ? 'trade' : 'none', about: '', region: '', warmth: '1', remember: 'Sold them rope.'}), usage: {in: 400, out: 30, cost: 0}}}};
@@ -1159,7 +1159,7 @@ console.log('the browser bridge (src/ui/player-bridge.js)');
   globalThis.WebSocket = class extends WsClient {constructor(u) {super(u, {origin: 'http://localhost:5173'})}};
   globalThis.localStorage = {getItem: k => k === 'eldmoor.playUrl' ? `ws://127.0.0.1:${srv.address().port}/play` : null};
   const BR = await import('../src/ui/player-bridge.js');
-  sim.disbandFellowship(); // #148: Fellowship members are always agent-played; this part needs a world with no agent hero
+  SLT.disbandSlots(SLT.slotted()); // #148: Fellowship members are always agent-played; this part needs a world with no agent hero
   for (const a of S.agents) if (a.player) BR.agentOff(a);
   ok(BR.dmLink() === 'off' && BR.bridgeStatus() === 'off', 'seat closed, no agent hero: the page stays off the relay');
   BR.dmSeatSet(true);

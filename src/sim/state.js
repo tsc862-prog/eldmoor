@@ -23,7 +23,7 @@ const fresh=()=>({
   uid:0,
   worldId:'',     // one id per world instance, new at init() and kept by saves; hosts use it to tell a new world from a reload (memory mirror purge). Not simulation state: never read by step().
   pinned:null,    // the hero the watcher is following; its grave is never recycled
-  companies:[],   // companies of 1..PARTY.MAX heroes, id order (sim/company.js, #402); every agent hero rides in exactly one. S.fellowship is an accessor over these.
+  companies:[],   // companies of 1..PARTY.MAX heroes, id order (sim/company.js, #402); every agent hero rides in exactly one. slotted() is the one with the five places (#588).
   companySeq:0,   // last company id handed out, never reused
   followId:null,  // the company the watcher follows (null = the first)
 });

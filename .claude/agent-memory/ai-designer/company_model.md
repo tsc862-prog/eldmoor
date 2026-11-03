@@ -9,7 +9,7 @@ Slice 1 of epic #402 (issue #438, branch ai/company-model): `src/sim/company.js`
 `S.companySeq`, `S.followId`, `S.companiesPast`; `a.company`, `p.company`. SAVE_VERSION 7, MIGRATIONS[6].
 
 Rules chosen and why:
-- **Shims are accessors, not fields.** `S.fellowship` is a non-enumerable accessor on S (the company that still has
+- **(Gone since #588, see [[fold-fellowship]].) Shims were accessors, not fields.** `S.fellowship` is a non-enumerable accessor on S (the company that still has
   `slots`); `a.fellow`/`a.fellowRole` (linkHero) and `p.fellow` (linkParty) are non-enumerable getters derived from the
   company, so ~150 readers keep working and saves never carry them. Assigning them throws (strict mode, getter only):
   that is deliberate, it flags any stray writer. `restore()` calls `relinkCompanies()` to reinstall them.

@@ -7,6 +7,7 @@
 //     (git archive, never a worktree) no existing row is reordered or renamed. A deliberate coordinated change is listed
 //     in the allowlist under "tables" ("<table>": ["<key>", ...]) in the same PR.
 //  4. every scripts/*check.mjs with a package.json script is a step in .github/workflows/ci.yml ("npm run <name>").
+//  5. nothing reads the old Fellowship shims (#588): no S.fellowship, no a.fellowRole read, no import of sim/fellowship.js.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables]
 import {readFileSync, readdirSync, existsSync, mkdtempSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -118,6 +119,20 @@ console.log('CI coverage: every check script with an npm script runs in ci.yml')
   ok(missing.length === 0, 'no check script is missing from ci.yml' + (missing.length ? '\n    ' + missing.join('\n    ') + '\n    (add a step, or list it under "ciExempt" with a reason)' : ''));
   const stale = [...skip].filter(n => !pkg[n]);
   ok(stale.length === 0, 'ciExempt names only existing npm scripts' + (stale.length ? ': ' + stale.join(', ') : ''));
+}
+
+// ---- 5. no Fellowship shims (#588) ----
+console.log('companies: nothing reads the old Fellowship shims (S.fellowship, a.fellowRole, sim/fellowship.js)');
+{
+  const bad = [], files = srcFiles.concat(walk(join(ROOT, 'scripts')).filter(f => f.endsWith('.mjs') && !f.endsWith('rulescheck.mjs')));
+  for (const f of files) {
+    const r = rel(f); if (r === 'src/sim/save.js') continue; // the v6 -> v7 migration reads the old fields of a saved file
+    stripComments(readFileSync(f, 'utf8')).forEach((l, i) => {
+      const imp = [...l.matchAll(/(?:from\s*|import\s*\(\s*|import\s+)['"]([^'"]+)['"]/g)].some(m => m[1].startsWith('.') && rel(resolve(dirname(f), m[1])) === 'src/sim/fellowship.js');
+      if (imp || /\bS\.fellowship\b(?!s)/.test(l) || (/\.fellowRole\b/.test(l) && !/delete [\w.]*\.fellowRole|h\.fellowRole = /.test(l))) bad.push(`${r}:${i + 1}`);
+    });
+  }
+  ok(!existsSync(join(ROOT, 'src/sim/fellowship.js')) && bad.length === 0, 'no shim reads; read slotted(), inSlots(a), slotKeyOf(a), partySlotted(p) from sim/company.js' + (bad.length ? '\n    ' + bad.join('\n    ') : ''));
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');

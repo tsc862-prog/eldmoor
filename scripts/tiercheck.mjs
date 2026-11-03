@@ -13,9 +13,10 @@ let seed = 0x7135eed ^ (Number(process.env.TIERCHECK_SEED) || 153);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 
 const SIM = await import('../src/sim/index.js');
+const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
 const {init, step, S, maxHp} = SIM;
 const P = await import('../src/sim/player.js');
-const F_ = await import('../src/sim/fellowship.js');
+const F_ = await import('../src/sim/company.js');
 const NB = await import('../src/sim/notebook.js');
 const TI = await import('../src/sim/tiers.js');
 const HE = await import('../src/sim/heroes.js');
@@ -33,8 +34,8 @@ const asked = []; TI.setChapterWriter((a, snap, stamp) => asked.push({id: a.id, 
 
 console.log('\nEldmoor tiercheck: landmarks, chapters, journal_search\n');
 init(); run(5);
-F_.setMinds('agent');
-const M = F_.fellowshipMembers().map(m => m.hero), [A, B] = M;
+SLT.setSlotMinds(SLT.slotted(), 'agent');
+const M = SLT.slotMembers(SLT.slotted()).map(m => m.hero), [A, B] = M;
 ok(M.length === 5 && M.every(x => x.player), `the Fellowship, agent-played; A = ${A.name}`);
 NB.NB.WRITES_PER_DAY = 1e6;
 
@@ -45,7 +46,7 @@ ok(PLAYER_TOOLS.some(t => t.name === 'journal_search') && PLAYER_TOOLS.find(t =>
 const {record} = await import('../src/sim/history.js');
 record(A, 'Reached level 10.'); record(A, 'Reached level 11.'); record(A, 'Cleared ', {t: 'The Sunken Crypt', c: 'gd'}, ' and destroyed ', {t: 'the Drowned King', c: 'gd'}, '.');
 ok(T.marks.some(m => m.k === 'level' && /level 10/.test(m.text)) && !T.marks.some(m => /level 11/.test(m.text)) && T.marks.some(m => m.k === 'crypt'), 'record hook: level bands (10, not 11) and a Crypt clear');
-const other = S.agents.find(x => x.kind === 'hero' && !x.fellow && !x.player && x.state !== 'dead');
+const other = S.agents.find(x => x.kind === 'hero' && !SLT.inSlots(x) && !x.player && x.state !== 'dead');
 record(other, 'Reached level 10.'); ok(!other.tiers, 'a scripted background hero keeps no tiers');
 A.nemesis = A.nemesis || {}; A.nemesis[other.id] = 'Old Bren'; record(A, 'Looted a thing.');
 ok(T.marks.some(m => m.k === 'vow' && m.text.includes(other.name)), 'a new nemesis is a vow landmark');
@@ -126,7 +127,7 @@ console.log('seats apart; hardcore');
   ok(!JSON.stringify(act(B4, 'journal_read', {})).match(/Quillowmere|Olwick/), 'nor B\'s overview');
   HE.fall(A4, 'a test of the hardcore rule'); run(2);
   ok(act(A4, 'journal_search', {query: 'ferryman'}).ok === false, 'the fallen hero\'s tools answer no more');
-  const heir = F_.fellowshipMembers().map(m => m.hero).find(h => h && h.id !== A4.id && !M.some(x => x.id === h.id));
+  const heir = SLT.slotMembers(SLT.slotted()).map(m => m.hero).find(h => h && h.id !== A4.id && !M.some(x => x.id === h.id));
   ok(heir ? !JSON.stringify(act(heir, 'journal_search', {query: 'ferryman Olwick Quillowmere'})).match(/Olwick|Quillowmere/) && !(heir.tiers && heir.tiers.marks.some(m => /river stones/.test(m.text))) : true, heir ? `the replacement ${heir.name} starts without them` : 'no replacement yet (skipped)')}
 
 console.log(fail ? `\ntiercheck: ${fail} check(s) failed\n` : '\ntiercheck: all checks passed\n');
