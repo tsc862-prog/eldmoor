@@ -46,3 +46,4 @@
 - [Leave and companions #443](leave_companions.md) — leave_party for_good in offers.js, companions tool, a.seen last-seen record, AWAY leave
 - [Talk escalation #407](talk_escalation.md) — talkscene.js ESC rules: offer/bargain/party/tense, once per conv+reason, company present, test pitfalls
 - [Merge vote scene #500](merge_vote_scene.md) — paired merge proposal gets its own company's decision scene, queued behind the first
+- [No level gate #449](no_level_gate.md) — companies pooled for Crypt/raid at any level, green warning in proposal text, reflex vote keeps floor, hash moved
