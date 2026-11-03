@@ -32,14 +32,16 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
-import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK} from './levers.js';
+import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS,validate as leverValidate} from './levers.js';
+import {log as chronLog} from './chronicle.js';
+import {setWhen,setWatch,cancel as whenCancel,whensView,whenStatus,whenTick,setWhenHooks} from './dmwhen.js'; // deferred actions and chosen wakes (#635)
 import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
 import {openProps} from './council.js';
 import {HEAR,CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {moment} from './reflect.js'; // a dream is a reflection moment (#523)
 import {ensureNpcs} from './npcs.js';
-import {stageScene,tableCall,tableAnswer,stagedView,STAGE} from './staged.js';
+import {stageScene,tableCall,tableAnswer,stagedView,STAGE,unstage} from './staged.js';
 import {sitesView} from './sites.js'; // DM-made dungeon sites (#69)
 import {rulingCall,rulingAnswer,rulingSummary} from './ruling.js'; // free actions the DM rules on (#522)
 import {gone as dmGone} from './dmreflex.js'; // the DM's reflexes (#561)
@@ -73,6 +75,8 @@ export const DMA={
   DREAM_PER_DAY:2,     // dreams per game day (delivered when the hero next sleeps)
   WHISPER_R:4,         // tiles from the placed person (as) a hero must be within to hear a whisper outside a Table scene
   NARRATE_R:10,        // default radius of a narrate line around its place
+  UNDO_MIN:180,        // game minutes an undo can reach back to the DM's last pull or placement (#636)
+  UNDOS_PER_DAY:6,     // undo, dismiss and unstage calls per game day
 };
 const DAY=1440;
 const PILING=['mark_dangerous','custom_foe','named_foe','set_condition','start_event'];
@@ -134,7 +138,7 @@ function remember(tool,args,ok){const D=dmState();D.stats.calls++;
 // Each call lands in the open turn (opened by the first call after the last turn closed); the runner closes it with
 // turn_end {turn, model, provider, cost, seconds, tokensIn, tokensOut}, sent by the relay when the seat's runner reports the turn
 // (never a DM tool: the agent cannot write it). Game time only, no dice; a silent seat records nothing.
-const READS=new Set(['dm_status','read_timeline','read_chronicle','read_dm_log','fellowship_view','companies_view','heroes_near','npcs','regions','hooks','levers','notes_read','recall']);
+const READS=new Set(['whens','watches','dm_status','read_timeline','read_chronicle','read_dm_log','fellowship_view','companies_view','heroes_near','npcs','regions','hooks','levers','notes_read','recall']);
 const NOTEW=new Set(['notes_write','remember','update_memory','forget','pin']);
 const cutT=(s,n)=>{s=clean(s,400);return s.length>n?s.slice(0,n-1)+'…':s};
 function openTurn(D){if(!Array.isArray(D.turns)){D.turns=[];D.tseq=0;D.tv=0}
@@ -281,6 +285,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
     campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
+    ...whenFields(),
     notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length])),relevant_notes:relevant(dmBook(D),dmContext())}} // relevant_notes: your notes that bear on the moment, {id,title} (#155)
 
 function timelineRead(n){return {ok:true,timeline:(S.timeline||[]).slice(0,nOf(n,12,1,30)).map(e=>({day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,text:txt(e.parts)}))}}
@@ -428,6 +433,7 @@ function pullLever(a,via){const day=today(),D=dmState(),name0=clean(a.lever,40),
   if(!r.ok){D.stats.refused++;const shape=!/^(limit|cooldown|not available)/.test(r.reason);
     return {ok:false,error:'Refused: '+r.reason+(shape?'. '+usage:''),...(shape?{usage}:{})}}
   day.pulls++;D.stats.pulls++;if(via&&via.after)try{via.after(r)}catch(e){}
+  D.last={kind:'lever',lever:name,tool:via?via.tool:'pull_lever',id:r.id,at:Math.round(S.gameMin),hook:r.effect&&r.effect.hook!=null?r.effect.hook:null,name:r.effect&&(r.effect.name||r.effect.place)||null}; // what undo reaches (#636)
   return {ok:true,lever:name,id:r.id,effect:r.effect,hours:r.until!=null?Math.round((r.until-S.gameMin)/60):null,your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY}}
 
 // A refused lever call, counted and written to the DM log with its reason (pull_lever and the flat lever tools alike).
@@ -440,7 +446,8 @@ function leverRefuse(name,why,usage,reason,params,via){const D=dmState();D.stats
 // flat arguments, a near read the way stage_scene reads it, then pullLever(), so the DM agent's daily cap, the pile-on
 // rule, the lever's own limits, cooldown and the Fellowship's reserved share (levers.js pull) and the DM log are identical.
 // Nothing is validated twice: the lever refuses, and its contract comes back with the refusal.
-export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_place:'mark_place',give_item:'give_item',take_item:'take_item',create_site:'create_site'};
+export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_place:'mark_place',give_item:'give_item',take_item:'take_item',
+  retire_person:'retire_npc',withdraw_hook:'withdraw_hook',set_attitude:'set_attitude',set_condition:'set_condition',price_shock:'price_shock',mark_danger:'mark_dangerous',start_event:'start_event',nudge_relation:'nudge_relation',custom_foe:'custom_foe',create_site:'create_site'}; // #636: every remaining lever as a flat tool
 const NEAR_FORMS='"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region';
 const FLAT_USAGE={
   post_hook:'post_hook takes: town (a town: '+CITY.map(c=>c.name).join('|')+', or "fellowship", a member or a region for the nearest board), tpl (rescue|escort|investigate|clear|relic|negotiate|hunt|deliver), giver? (captain|innkeeper|smith|quartermaster|priest|bard), reward? (small|fair|generous), region? (where the job leads), place? (a place or person by name or id), for? (a hero by name or id), reason',
@@ -478,7 +485,7 @@ function nearSpot(near,o={}){const nt=nearText(near);if(nt.err)return {err:nt.er
 const heroOf=v=>{const s=clean(v,40),lo=s.toLowerCase();return s?S.agents.find(a=>alive(a)&&(String(a.id)===s||a.name.toLowerCase()===lo))||null:null};
 const placeOrPerson=v=>{const s=clean(v,60),lo=s.toLowerCase();if(!s)return null;
   return (S.places||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo)||peopleAll().find(n=>String(n.id)===s||n.name.toLowerCase()===lo||((n.title?n.title+' ':'')+n.name).toLowerCase()===lo)||null};
-function flatLever(tool,a){a=a&&typeof a==='object'?a:{};const lever=FLAT_LEVERS[tool],usage=FLAT_USAGE[tool],reason=clean(a.reason,DMA.REASON_MAX),via={tool,usage};
+function flatLever(tool,a){a=a&&typeof a==='object'?a:{};if(MORE_FLAT[tool])return flatMore(tool,a);const lever=FLAT_LEVERS[tool],usage=FLAT_USAGE[tool],reason=clean(a.reason,DMA.REASON_MAX),via={tool,usage};
   const no=(why,params)=>leverRefuse(lever,why,usage+'. The lever: '+leverUsage(lever),reason,params||{},via);
   const opt=(k,v)=>v==null||v===''?{}:{[k]:v},str=(v,n)=>typeof v==='string'?clean(v,n)||undefined:v;
   const int=v=>v==null||v===''?undefined:Number.isFinite(Number(v))?Math.round(Number(v)):v;
@@ -506,6 +513,80 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};const lever=FLAT_LEVERS
   const r=pullLever({lever,params,reason},via);if(!r.ok)return r;
   const e=r.effect||{};
   return {...r,tool,...(tool==='mark_place'?{place:e.name,at:params.at}:{}),...(tool==='create_site'?{site:e.name,at:e.at,band:e.band,rooms:e.rooms,boss:e.boss}:{}),...(tool==='place_person'?{person:e.name,npc:e.npc,at:e.at,where:e.where}:{}),...(want?{want}:{})}}
+
+// ---- the remaining levers as flat tools, and taking things back (issue #636) ----
+const FAC_NAMES=()=>FAC.map(f=>f.name).join('|');
+const MORE_FLAT={retire_person:1,withdraw_hook:1,set_attitude:1,set_condition:1,price_shock:1,mark_danger:1,start_event:1,nudge_relation:1,custom_foe:1};
+const MORE_USAGE=()=>({
+  retire_person:'retire_person takes: npc (a person you placed, by name or id from npcs; townsfolk keep their posts), how? (what the town says of them, such as "left for the coast"), reason',
+  withdraw_hook:'withdraw_hook takes: hook (the id of an open job from hooks), why? (a few words), reason. A job a hero already took stays theirs',
+  set_attitude:'set_attitude takes: npc (a person, by name or id), to (a hero by name or id, "fellowship" for the leader’s party, or a faction: '+FAC_NAMES()+'), attitude (hostile|wary|neutral|friendly), hours? (1-168), reason',
+  set_condition:'set_condition takes: region (a region: '+ZONES.join('|')+'), kind ('+Object.keys(CONDITIONS).join('|')+'), strength? (1-3), hours? (3-72), reason',
+  price_shock:'price_shock takes: good (a trade good of the auction house), direction (up|down), size? (1-3), hours? (2-24), reason',
+  mark_danger:'mark_danger takes: near ('+NEAR_FORMS+'), r? (2-6 tiles), lvl? (kept to the region’s band), hours? (2-48), cleared? ("yes" marks the area cleared instead of dangerous), reason',
+  start_event:'start_event takes: kind ('+Object.keys(EVENTS).join('|')+'), region (a region: '+ZONES.join('|')+'), scale? (1-3), reason',
+  nudge_relation:'nudge_relation takes: a, b (two parties of the world), delta (-2..2), reason',
+  custom_foe:'custom_foe takes: base (a bestiary creature), near ('+NEAR_FORMS+'), name?, lvl?, levels? (0-3), swap? {pair:[old,new]}, resist? {pair:[tag,mult]}, reason',
+  create_site:'create_site takes: theme, region (a region: '+ZONES.join('|')+'), band (a level), size? (small|medium|large), raid? (true|false), reason'});
+function flatMore(tool,a){const usage=MORE_USAGE()[tool],reason=clean(a.reason,DMA.REASON_MAX);let lever=FLAT_LEVERS[tool];const via={tool,usage};
+  const no=(why,params)=>leverRefuse(lever,why,usage+'. The lever: '+leverUsage(lever),reason,params||{},via);
+  const str=(v,n)=>typeof v==='string'?clean(v,n)||undefined:v,opt=(k,v)=>v==null||v===''?{}:{[k]:v};
+  const int=v=>v==null||v===''?undefined:Number.isFinite(Number(v))?Math.round(Number(v)):v,num=v=>v==null||v===''?undefined:Number.isFinite(Number(v))?Number(v):v;
+  const yes=v=>v===true||/^(yes|true|1)$/i.test(String(v==null?'':v));
+  let params,why=null;
+  if(tool==='retire_person'){const q=personOf(a.npc);if(!q)return no('npc: no person called "'+clean(a.npc,40)+'" (see npcs)');params={npc:q.id};const how=clean(a.how,100);
+    if(how)via.after=r=>{const nm=(r.effect&&r.effect.name)||q.name;chronLog(nm+' '+how.replace(/^[,.\s]+|[.\s]+$/g,'')+'.')}}
+  else if(tool==='withdraw_hook'){const id=int(a.hook);if(!Number.isInteger(id))return no('hook: pass the id of an open job (see hooks)');params={hook:id};why=clean(a.why,100)}
+  else if(tool==='set_attitude'){const q=personOf(a.npc);if(!q)return no('npc: no person called "'+clean(a.npc,40)+'" (see npcs)');
+    const s0=clean(a.to,40),lo=s0.toLowerCase();let to=null;
+    const h=heroOf(s0),f=FAC.findIndex(x=>x.name.toLowerCase()===lo);
+    if(h)to={to:'hero',id:h.id};else if(f>=0)to={to:'faction',id:f};
+    else if(/^(the )?(fellowship|party|company)$/.test(lo)){const fo=focus(),m=fo&&fo.members&&fo.members.find(x=>x.party);if(m)to={to:'party',id:m.party.id}}
+    if(!to)return no('to: no living hero, faction or party called "'+s0+'" (a hero by name or id, "fellowship", or '+FAC_NAMES()+')');
+    params={npc:q.id,...to,attitude:str(a.attitude,12),...opt('hours',int(a.hours))}}
+  else if(tool==='set_condition')params={region:str(a.region,40),kind:str(a.kind,20),...opt('strength',int(a.strength)),...opt('hours',int(a.hours))};
+  else if(tool==='price_shock')params={good:str(a.good,30),direction:str(a.direction,8),...opt('size',int(a.size)),...opt('hours',int(a.hours))};
+  else if(tool==='start_event')params={kind:str(a.kind,24),region:str(a.region,40),...opt('scale',int(a.scale))};
+  else if(tool==='nudge_relation')params={a:str(a.a,24),b:str(a.b,24),delta:int(a.delta)};
+  else if(tool==='create_site')params={theme:str(a.theme,24),region:str(a.region,40),band:int(a.band),...opt('size',str(a.size,8)),...(a.raid==null||a.raid===''?{}:{raid:yes(a.raid)})};
+  else{const W=nearSpot(a.near,{min:0,max:3});if(W.err||!W.at)return no((W.err||'no open ground outside '+W.town+'’s gate')+'; '+nearTakes());
+    if(tool==='mark_danger'){if(yes(a.cleared))lever='mark_cleared';params={at:W.at,...opt('r',num(a.r)),...opt('lvl',int(a.lvl)),...opt('hours',int(a.hours))}}
+    else params={base:str(a.base,40),region:ZONES[zoneAt(W.at.x,W.at.y)],at:W.at,...opt('name',str(a.name,40)),...opt('lvl',int(a.lvl)),...opt('levels',int(a.levels)),...opt('swap',a.swap&&typeof a.swap==='object'?a.swap:undefined),...opt('resist',a.resist&&typeof a.resist==='object'?a.resist:undefined)}}
+  const r=pullLever({lever,params,reason},via);if(!r.ok)return r;
+  return {...r,tool,...(why?{why}:{}),...(tool==='mark_danger'?{area:lever==='mark_cleared'?'cleared':'dangerous',at:params.at}:{}),...(tool==='custom_foe'?{at:params.at}:{})}}
+
+// undo / dismiss / unstage: take back what the DM agent started. Each is logged with the DM AGENT tag and shares UNDOS_PER_DAY.
+function takeBackStart(tool,a){const day=today(),reason=clean(a.reason,DMA.REASON_MAX),D=dmState();
+  const no=why=>{D.stats.refused++;dmlog('lever',null,[{t:tool,c:'gd'},' refused: '+why+(reason?' (wanted: '+reason+')':'')+'.'],{lever:tool,by:'dm-agent',tool,params:{...a},reason,result:'rejected: '+why});return {ok:false,error:'Refused: '+why}};
+  if(!reason)return {err:no('a reason is required (one sentence for the DM log)')};
+  if((day.undos||0)>=DMA.UNDOS_PER_DAY)return {err:no('you have taken back '+DMA.UNDOS_PER_DAY+' things today; let the world settle')};
+  return {no,reason,day}}
+function logBack(tool,what,reason,detail){dmlog('lever',null,[{t:tool,c:'gd'},' - '+what+' - '+reason+'.'],{lever:tool,by:'dm-agent',tool,reason,result:'undone',...detail})}
+function undoTool(a){a=a&&typeof a==='object'?a:{};const st=takeBackStart('undo',a);if(st.err)return st.err;const {no,reason,day}=st,D=dmState(),L=D.last;
+  if(!L)return no('nothing to take back: undo reaches only your last pull or placement, and you have made none');
+  if(S.gameMin-L.at>DMA.UNDO_MIN)return no('your last pull ('+L.tool+') is '+Math.round((S.gameMin-L.at)/60*10)/10+' game hours old; undo reaches back '+DMA.UNDO_MIN/60+' hours. Use dismiss, retire_person or withdraw_hook for older things');
+  let out;
+  if(L.kind==='stage'){const r=unstage(L.id);if(!r.ok)return no(r.reason);out={what:'staged scene "'+r.title+'" taken back',undone:'stage_scene'}}
+  else if(L.lever==='post_hook'){const r=pull('withdraw_hook',{hook:L.hook},{by:'dm-agent',reason:'undo: '+reason});if(!r.ok)return no('the job is no longer open on the board ('+r.reason+')');out={what:'job #'+L.hook+' taken down',undone:'post_hook'}}
+  else if(TAKE_BACK.includes(L.lever)){const r=takeBack(L.id);if(!r.ok)return no(L.lever+': '+r.reason);out={what:L.lever+' ended early',undone:L.lever}}
+  else return no(L.lever+' cannot be taken back (what is given, taken, shifted or spent stays; only a place, area, condition, attitude, person, foe, job or unopened scene can be)');
+  D.last=null;day.undos=(day.undos||0)+1;logBack('undo',out.what,reason,{id:L.id,undid:L.lever});
+  return {ok:true,...out,undos_today:day.undos+'/'+DMA.UNDOS_PER_DAY}}
+function dismissTool(a){a=a&&typeof a==='object'?a:{};const st=takeBackStart('dismiss',a);if(st.err)return st.err;const {no,reason,day}=st;
+  const s0=clean(a.place,60),lo=s0.toLowerCase();if(!s0)return no('place is required: the id or name of one of your markers or areas (regions lists them)');
+  const pl=(S.places||[]).find(p=>String(p.id)===s0||(p.name||'').toLowerCase()===lo),mk=!pl&&(S.marks||[]).find(m=>String(m.id)===s0);
+  const o=pl||mk;if(!o)return no('no place or area "'+s0+'" (a marker by name or id, or a danger or cleared area by id; see regions)');
+  if(o.lever==null)return no((o.name||'that area')+' belongs to the world, not to a lever of yours');
+  const G=S.staged;if(pl&&G&&G.cur&&G.cur.phase!=='done'&&G.cur.cast&&G.cur.cast.place===pl.id)return no(pl.name+' is the scene you staged; use unstage');
+  const rec=(S.levers.active||[]).find(x=>x.id===o.lever);if(!rec||rec.by!=='dm-agent')return no((o.name||'that area')+' was not made by you, so it stays');
+  const r=takeBack(o.lever);if(!r.ok)return no(r.reason);
+  day.undos=(day.undos||0)+1;const nm=o.name||(o.kind+' area');logBack('dismiss',nm+' dismissed',reason,{id:o.lever,undid:rec.name});
+  return {ok:true,dismissed:nm,kind:o.kind,undos_today:day.undos+'/'+DMA.UNDOS_PER_DAY}}
+function unstageTool(a){a=a&&typeof a==='object'?a:{};const st=takeBackStart('unstage',a);if(st.err)return st.err;const {no,reason,day}=st;
+  const r=unstage(a.scene);if(!r.ok)return no(r.reason);
+  const D=dmState();if(D.last&&D.last.kind==='stage'&&D.last.id===r.staged)D.last=null;
+  day.undos=(day.undos||0)+1;logBack('unstage','staged '+r.kind+' "'+r.title+'" taken back',reason,{staged:r.staged});
+  return {ok:true,unstaged:r.staged,kind:r.kind,title:r.title,note:'You may stage another scene now (the day’s scene count is not refunded).',undos_today:day.undos+'/'+DMA.UNDOS_PER_DAY}}
 
 function logIntent(text){const day=today(),t=clean(text,DMA.INTENT_MAX);if(!t)return {ok:false,error:'Say what you intend.'};
   if(day.intents>=DMA.INTENTS_PER_DAY)return {ok:false,error:'Enough plans logged for one game day ('+DMA.INTENTS_PER_DAY+'): keep the rest in notes.'};
@@ -558,7 +639,8 @@ function dream(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)return
   dmlog('agent',null,['Dream for '+h.name+' (DM agent), when they next sleep'],{by:'dm-agent',voice:'dream',hero:h.id});
   return {ok:true,dream_for:h.name,note:'Delivered when '+h.name+' wakes from camp or an inn rest.'}}
 const sleeping=h=>h.state==='camp'||h.state==='town'&&Array.isArray(h.pq)&&!!h.pq[0]&&h.pq[0].kind==='rest';
-export function dreamTick(){const D=S.dmAgent;if(D&&D.seat&&(D.earAt==null||S.gameMin-D.earAt>=3||S.gameMin<D.earAt)){D.earAt=S.gameMin;listen(D)} // the DM hears what is said aloud (#558)
+export function dreamTick(){whenTick(); // the DM's whens and watches (#635): returns at once when none is set
+  const D=S.dmAgent;if(D&&D.seat&&(D.earAt==null||S.gameMin-D.earAt>=3||S.gameMin<D.earAt)){D.earAt=S.gameMin;listen(D)} // the DM hears what is said aloud (#558)
   const L=D&&D.dreams;if(!L||!L.length)return;
   for(let i=L.length-1;i>=0;i--){const d=L[i],h=byIdA(d.hero);
     if(!h||!alive(h)){L.splice(i,1);continue}
@@ -659,7 +741,15 @@ export function dmAct(tool,args={}){
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
   const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
-  try{switch(tool){
+  try{r=run(tool,args)}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
+  if(!r)r={ok:false,error:'no answer'};
+  if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene'||tool==='mark_danger'||tool==='custom_foe')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
+  if(prepping&&!prepActive()&&tool!=='prep_done'&&r&&typeof r==='object')r={...r,prep:'Your prep is over (its '+(prepView().why==='calls'?'calls':'time')+' ran out): the table opens now. End this turn.'};
+  if(!((tool==='table_call'||tool==='npc_call'||tool==='ruling_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
+  return r}
+// One tool, answered (dmAct's bookkeeping aside); a when fires its action through it too (#635).
+function run(tool,args){let r;
+  switch(tool){
     case 'dm_status':r=status();break;
     case 'read_timeline':r=timelineRead(args.n);break;
     case 'read_chronicle':r=chronicleRead(args.n);break;
@@ -677,7 +767,10 @@ export function dmAct(tool,args={}){
     case 'notes_read':r=notesRead(args.section);break;
     case 'notes_write':r=notesWrite(args);break;
     case 'pull_lever':r=pullLever(args);break;
-    case 'post_hook':case 'place_person':case 'mark_place':case 'give_item':case 'take_item':case 'create_site':r=flatLever(tool,args);break;
+    case 'post_hook':case 'place_person':case 'mark_place':case 'give_item':case 'take_item':case 'retire_person':case 'withdraw_hook':case 'set_attitude':case 'set_condition':case 'price_shock':case 'mark_danger':case 'start_event':case 'nudge_relation':case 'custom_foe':case 'create_site':r=flatLever(tool,args);break;
+    case 'undo':r=undoTool(args);break;
+    case 'dismiss':r=dismissTool(args);break;
+    case 'unstage':r=unstageTool(args);break;
     case 'log_intent':r=logIntent(args.text);break;
     case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;
@@ -686,16 +779,38 @@ export function dmAct(tool,args={}){
     case 'dream':r=dream(args);break;
     case 'npc_call':r=npcCall();break;
     case 'npc_offer':r=npcOffer(args);break;
-    case 'stage_scene':r=stageScene(args);break;
+    case 'stage_scene':r=stageScene(args);if(r&&r.ok&&r.staged!=null&&!r.preview)dmState().last={kind:'stage',id:r.staged,tool:'stage_scene',at:Math.round(S.gameMin)};break;
     case 'table_call':r=sceneCall()||tableCall();break;
     case 'table_answer':r=sceneAnswer(args)||tableAnswer(args);break;
     case 'ruling_call':r=rulingCall(args);break;
     case 'ruling_answer':r=rulingAnswer(args);break;
     case 'prep_done':r=prepDone(args);break;
+    case 'when':r=setWhen(args);break;
+    case 'watch':r=setWatch(args);break;
+    case 'whens':case 'watches':r=whensView();break;
+    case 'unwhen':r=whenCancel('when',args.id);break;
+    case 'unwatch':r=whenCancel('watch',args.id);break;
     case 'seed_rumour':case 'bestow':r=renownTool(tool,args);break; // #637, #638
-  }}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
-  if(!r)r={ok:false,error:'no answer'};
-  if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
-  if(prepping&&!prepActive()&&tool!=='prep_done'&&r&&typeof r==='object')r={...r,prep:'Your prep is over (its '+(prepView().why==='calls'?'calls':'time')+' ran out): the table opens now. End this turn.'};
-  if(!((tool==='table_call'||tool==='npc_call'||tool==='ruling_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
+  }
   return r}
+
+// ---- when and watch (#635): the DM's deferred actions and chosen wakes, in src/sim/dmwhen.js ----
+// dm_status carries them only once one was set (an older or quiet seat reads as before).
+function whenFields(){const w=whenStatus();return w?{whens:w.whens,watches:w.watches,fired:w.fired,watches_fired:w.watches_fired}:{}}
+// When a when is set: its action's arguments checked as the tool would read them now (a lever's params, a place, a person,
+// a hero); a staged scene is previewed. Only shape errors refuse: what may change by then (who is where, the day's limits)
+// is checked again, for real, when it fires. who: the action names the hero who trips it ({who}), so hero and place reads wait.
+function whenCheck(tool,a,o={}){
+  if(tool==='pull_lever'){const name=leverAlias(clean(a.lever,40));if(!LEVERS[name]||!leverNames().includes(name))return {error:'no such lever "'+clean(a.lever,40)+'"; levers: '+leverNames().join(', ')};
+    if(name==='named_foe')return {error:'named foes are raised by the scripted DM inside a running scene'};if(o.who)return null;
+    const params=aliasParams(clean(a.lever,40),leverParams(name,a));if(!params)return {error:'params must be an object',usage:leverUsage(name)};
+    const v=leverValidate(LEVERS[name],params);return typeof v==='string'?{error:'the lever '+name+': '+v,usage:leverUsage(name)}:null}
+  if(o.who)return null;
+  if(tool==='narrate'){const n=clean(a.near,60);if(n.toLowerCase()!=='table'&&!placeOf(n))return {error:'narrate near: unknown place "'+n+'" (a hero name or id, a town, a region, "x,y", or "table")'};return null}
+  if(tool==='npc_say'){const p=personOf(a.npc);if(!p){const nb=nobody(a.npc);return {error:nb.error}}return null}
+  if(tool==='whisper'||tool==='dream'||tool==='give_item'||tool==='take_item'){if(!heroOf(a.hero))return {error:'hero: no living hero called "'+clean(a.hero,40)+'"'};
+    if(tool==='whisper'&&a.as!=null&&a.as!==''&&!personOf(a.as))return {error:nobody(a.as).error};if(tool==='dream'&&!heroOf(a.hero).player)return {error:heroOf(a.hero).name+' is not agent-played: only agent heroes dream'};return null}
+  if(tool==='stage_scene'){const r=stageScene({...a,preview:'true'});const{ok,error,...rest}=r||{};
+    return {preview:ok?rest:{now:clean(String(error||'').replace(/^Refused:\s*/,''),200),note:'Refused if it fired now; it is checked again when it fires.'}}}
+  return null}
+setWhenHooks({fire:(tool,args)=>run(tool,args&&typeof args==='object'?args:{}),check:whenCheck});

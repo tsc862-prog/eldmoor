@@ -132,7 +132,7 @@ try{
     'tarn59/pixel_art_style_lora_z_image_turbo':{'fal-ai':{status:'live',providerId:'fal-ai/z-image/turbo/lora',task:'text-to-image',adapter:'lora',adapterWeightsPath:'pixel_art_style_z_image_turbo.safetensors'}},
     'black-forest-labs/FLUX.1-schnell':{'fal-ai':{status:'live',providerId:'fal-ai/flux/schnell',task:'text-to-image'}}};
   const SPACE={stages:[],posts:[],missing:new Set()};
-  const S={posts:[],ok:0,lookups:0,deny:false,refuse:null,quota402:Infinity,quota429:Infinity,zeroLeft:false,flat:false,headers:[]};
+  const S={costMode:null,costVal:0,posts:[],ok:0,lookups:0,deny:false,refuse:null,quota402:Infinity,quota429:Infinity,zeroLeft:false,flat:false,headers:[]};
   const img=encodePng(pixelArt()),flatImg=encodePng(pixelArt(1024,8,{flat:true}));
   // what a prompt asks for: a transition (two grounds, top and bottom) or a prop on a plain white background
   const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt())},
@@ -148,9 +148,9 @@ try{
       if(S.refuse&&j.loras&&j.loras[0].path.includes(S.refuse)){res.statusCode=404;return res.end('{"error":"Model not found"}')}
       if(S.ok>=S.quota402){res.statusCode=402;return res.end('{"error":"You have exceeded your monthly included credits for Inference Providers."}')}
       if(S.ok>=S.quota429){res.statusCode=429;res.setHeader('retry-after',String(S.retryAfter||3600));return res.end('{"error":"You have reached your daily usage limit. Subscribe to PRO to get more credits."}')}
-      S.ok++;res.setHeader('content-type','application/json');if(S.zeroLeft)res.setHeader('x-ratelimit-remaining','0');
+      S.ok++;res.setHeader('content-type','application/json');if(S.zeroLeft)res.setHeader('x-ratelimit-remaining','0');if(S.costMode==='header')res.setHeader('x-inference-cost',String(S.costVal));
       // alternate the two answer shapes fal gives: a data: URL and a URL to fetch
-      const k=mockKind(j.prompt||''),im=S.flat?flatImg:MOCK[k];return res.end(JSON.stringify({images:[{url:S.ok%2?'data:image/png;base64,'+im.toString('base64'):`http://127.0.0.1:${srv.address().port}/img/out.png?k=${k}`}]}))}
+      const k=mockKind(j.prompt||''),im=S.flat?flatImg:MOCK[k];return res.end(JSON.stringify({...(S.costMode==='body'?{usage:{estimated_cost:S.costVal}}:{}),images:[{url:S.ok%2?'data:image/png;base64,'+im.toString('base64'):`http://127.0.0.1:${srv.address().port}/img/out.png?k=${k}`}]}))}
     // the mock Space (#703): the Hub's whoami, create, commit, hardware and status, then the Space's Gradio call protocol
     {const SP=SPACE,auth=req.headers.authorization||'';let m;
       if(req.method==='GET'&&u.pathname==='/api/whoami-v2'){res.setHeader('content-type','application/json');
@@ -229,7 +229,7 @@ try{
     S.refuse='nerijs';S.quota402=4;r=await daily(['--date',days[d]]);
     let q=Q();ok(r.code===0&&q.model.pinned==='pixel-redmond'&&q.model.tried['pixel-xl']&&q.model.tried['pixel-xl'].ok===false,'a refused model is recorded and the next candidate answers and is pinned');
     ok(Object.keys(q.incoming).length===4&&readdirSync(join(dir,'incoming',days[d],'tile','32')).length===4,'4 made into assets/incoming/<date>/ before the allowance ran out');
-    ok(/made 4 \| rejected 0 \| calls 6 \| est\. \$0\.040 \(month \$0\.040 of \$2\.00 credits\)/.test(lastLog())&&/stop: allowance used: HTTP 402/.test(lastLog())&&/next: tile:mud/.test(lastLog()),'art.log: made, calls, estimated credits, the 402 stop and what is next: '+lastLog());
+    ok(/made 4 \| rejected 0 \| calls 6 \| estimated \$0\.040 \(month \$0\.040 of \$2\.00 credits\)/.test(lastLog())&&/stop: allowance used: HTTP 402/.test(lastLog())&&/next: tile:mud/.test(lastLog()),'art.log: made, calls, estimated credits, the 402 stop and what is next: '+lastLog());
     ok(existsSync(join(dir,'incoming',days[d],'sheet.html'))&&existsSync(join(dir,'incoming',days[d],'index.json')),'contact sheet and index written beside the incoming assets');
     ok(!existsSync(join(dir,'index.json')),'nothing lands in assets/ before review');
     {const ri=loadIndex(join(dir,'incoming',days[d],'raw'));const ks=Object.keys(ri.assets);
@@ -262,7 +262,7 @@ try{
     {const ix=loadIndex(dir),id=altKey.split('#')[0];ok(r.code===0&&ix.assets[id].fromAlt===1&&before.count===N&&!checkIndex(man,dir).errs.length,'an accepted alternate replaces its asset')}
     d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
     d++;const p7=P0();r=await daily(['--date','2026-12-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
-    ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| est\. \$[\d.]+ \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
+    ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
     S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
 
   // --- flat outputs are rejected but kept raw; art:reprocess re-makes them offline; the credit budget
@@ -282,7 +282,7 @@ try{
     // daily share of the monthly credits: $2.00 / 31 days = $0.0645, so 6 images at $0.01
     const dir4=join(tmp,'assets4'),log4=join(tmp,'art4.log'),p2=S.posts.length;
     r=await node('daily.mjs',['--dir',dir4,'--log',log4,'--date','2026-12-05','--no-carry'],{ART_DAILY_BUDGET:''});
-    ok(S.posts.length-p2===6&&/stop: daily share used \(est\. \$0\.060 of \$0\.065\)/.test(last(log4)),'a run stops at the day\'s share of the monthly credits: '+last(log4));
+    ok(S.posts.length-p2===6&&/stop: daily share \$0\.065 used \(estimated; spent today \$0\.060\)/.test(last(log4)),'a run stops at the day\'s share of the monthly credits: '+last(log4));
     r=await node('daily.mjs',['--dir',dir4,'--log',log4,'--date','2026-12-05','--no-carry'],{ART_DAILY_BUDGET:''});ok(S.posts.length-p2===6&&/already ran today/.test(r.s),'and does not run again that day');
     // the month's credits: a month already at $1.995 makes no call
     const log5=join(tmp,'art5.log');writeFileSync(log5,'2026-12-01 09:00 | made 199 | rejected 0 | calls 199 | est. $1.995 (month $1.995 of $2.00 credits) | model pixel-xl | stop: x | next: -\n');
@@ -300,6 +300,22 @@ try{
     const q6=existsSync(join(dir6,'queue.json'))?JSON.parse(readFileSync(join(dir6,'queue.json'),'utf8')):{incoming:{}};
     ok(r.code===0&&/tier 64: /.test(r.s)&&Object.keys(q6.incoming).join()==='tile:grass@64'&&existsSync(join(dir6,'incoming','2026-12-07','tile','64','grass.png')),'daily --tier 64 makes the 64 set into its own keys and folders for review'+(r.code?' '+r.s.slice(0,300):''))}
 
+  // --- real cost (#661): the answer's own cost wins over the manifest guess; both are labelled; the month cap holds against the real spend
+  {const dir=join(tmp,'cost-assets'),logP=join(tmp,'cost.log'),last=()=>readFileSync(logP,'utf8').trim().split('\n').pop(),Q=()=>JSON.parse(readFileSync(join(dir,'queue.json'),'utf8'));
+    S.ok=0;S.quota402=Infinity;S.quota429=Infinity;S.refuse=null;S.flat=false;S.zeroLeft=false;S.costMode='header';S.costVal=0.02;let p0=S.posts.length;
+    let r=await node('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-05','--no-carry'],{ART_DAILY_BUDGET:''});
+    ok(S.posts.length-p0===3&&/calls 3 \| billed \$0\.060 \(month \$0\.060 of \$2\.00 credits\).*stop: daily share \$0\.065 used \(billed; spent today \$0\.060\)/.test(last()),'a cost header on the answer is the spend (3 x $0.02, not the manifest\'s $0.01), labelled billed, and the daily share stops on it: '+last().slice(0,230));
+    ok(Q().costProbe&&Q().costProbe.billed&&/x-inference-cost/.test(JSON.stringify(Q().costProbe.headers))&&/what the provider's answer says about cost: \$0\.02 \(header x-inference-cost\)/.test(r.s),'the first answer\'s cost-looking headers and body keys are recorded and printed once');
+    S.costMode='body';S.costVal=0.015;p0=S.posts.length;r=await node('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-06','--no-carry'],{ART_DAILY_BUDGET:''});
+    ok(S.posts.length-p0===4&&/billed \$0\.060 /.test(last())&&/\(billed; spent today/.test(last()),'usage.estimated_cost in the body counts too (4 x $0.015)');
+    S.costMode=null;p0=S.posts.length;r=await node('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-07','--no-carry'],{ART_DAILY_BUDGET:''});
+    ok(S.posts.length-p0===6&&/ estimated \$0\.060 /.test(last())&&/\(estimated; spent today/.test(last()),'no cost on the answer: the manifest guess, labelled estimated');
+    S.costMode='header';S.costVal=0.02;p0=S.posts.length;
+    {const l2=join(tmp,'cost2.log'),d2=join(tmp,'cost2-assets');writeFileSync(l2,'2026-12-01 09:00 | made 99 | rejected 0 | calls 99 | billed $1.970 (month $1.970 of $2.00 credits) | model pixel-xl | stop: x | next: -\n');
+      r=await node('daily.mjs',['--dir',d2,'--log',l2,'--date','2026-12-31','--budget','100']);const ln=readFileSync(l2,'utf8').trim().split('\n').pop();
+      ok(S.posts.length-p0===1&&/billed \$0\.020 \(month \$1\.990 of \$2\.00/.test(ln)&&/stop: monthly credits used/.test(ln),'the month cap is a hard stop against the billed spend: $1.97 + one $0.02 image, then the next $0.02 would pass $2.00 and no call is made: '+ln.slice(0,200))}
+    S.costMode=null}
+
   // --- the loop (#661): fake clock and sleep, the real passes against the mock server
   {const dir=join(tmp,'loop-assets'),logP=join(tmp,'loop.log'),stP=join(tmp,'loop-state.json');
     S.ok=0;S.quota402=Infinity;S.quota429=Infinity;S.refuse=null;S.flat=false;S.zeroLeft=false;S.retryAfter=0;
@@ -316,7 +332,7 @@ try{
     let p0=S.posts.length,states=[];
     await loop({start:at(2026,12,1,8),until:at(2026,12,2,6),onSleep:()=>{try{const j=JSON.parse(readFileSync(stP,'utf8'));if(!states.length||states[states.length-1].next!==j.next)states.push(j)}catch{}}});
     let L=logLines(logP);
-    ok(/^2026-12-01 08:00 .*made 6 .*stop: daily share used.*check again 2026-12-01 12:00 \(day's share spent\)/.test(L[0]||''),'loop: the first pass runs to the day\'s share and says when it checks again: '+L[0]);
+    ok(/^2026-12-01 08:00 .*made 6 .*stop: daily share \$0\.0\d+ used.*check again 2026-12-01 12:00 \(day's share spent\)/.test(L[0]||''),'loop: the first pass runs to the day\'s share and says when it checks again: '+L[0]);
     ok(L.length===6&&L.slice(1,4).every(l=>/made 0 \| rejected 0 \| calls 0/.test(l))&&/check again 2026-12-02 00:00/.test(L[3]),'loop: it checks again every 4 hours (12:00, 16:00, 20:00) with no call, the last wait ending at midnight');
     ok(/^2026-12-02 00:00 .*made 6 /.test(L[4]||'')&&S.posts.length-p0===12,'loop: at midnight the new day\'s share opens and a pass runs at once (6 more): '+(L[4]||'').slice(0,60));
     ok(states.some(j=>j.state==='waiting'&&/day's share/.test(j.why)&&j.last&&j.last.made===6&&j.last.monthly===2)&&JSON.parse(readFileSync(stP,'utf8')).state==='stopped','loop: the state file for the launcher: waiting with the next check and the last run, then stopped');
@@ -369,7 +385,7 @@ try{
       {const ri=loadIndex(join(dir,'incoming','2026-12-01','raw')),a=ri.assets['tile:grass@32'];ok(a&&a.provider==='space'&&a.seed===1771&&a.model==='pixel-xl','space: the raw image is kept with provider space, model and seed')}
       ok(SP.posts.every(p=>p.data.length===9&&p.data[7]===.55&&/^pixel art, /.test(p.data[0])&&p.auth===`Bearer ${MOCK_TOKEN}`),'space: every call is the 9-value generate call with the bearer token');
       r=await sNode('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-01','--now'],{ART_GPU_MINUTES:'1'});ok(SP.ok===3&&/stop: GPU cap reached/.test(lines(logP).pop()),'space: a second run in the same window makes no call (the cap holds across runs)');
-      r=await sNode('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-01','--now','--provider','router'],{ART_DAILY_BUDGET:'100','ART_MAX_CALLS':'1'});ok(S.posts.length===r0+1&&/est\. \$0\.010/.test(lines(logP).pop()),'the router runs only with --provider router (billed, estimated $)')}
+      r=await sNode('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-01','--now','--provider','router'],{ART_DAILY_BUDGET:'100','ART_MAX_CALLS':'1'});ok(S.posts.length===r0+1&&/ (estimated|billed) \$0\.0\d\d /.test(lines(logP).pop()),'the router runs only with --provider router (billed, estimated $)')}
     // the quota refusal: an HTTP 429 "Try again in 2:31:05" ends the pass; the loop sleeps until exactly then, not until tomorrow
     {const dir=join(tmp,'sp2'),logP=join(tmp,'sp2.log'),st=join(tmp,'sp2-state.json');SP.stages=[];SP.ok=0;SP.quota429=2;
       let t=new Date(2026,11,1,8,0).getTime(),states=[];const out=[],orig=console.log;console.log=(...a)=>out.push(a.join(' '));

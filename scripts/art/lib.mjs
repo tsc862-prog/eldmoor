@@ -99,7 +99,7 @@ export function checkIndex(man,dir=ASSETS){
 
 // assets/queue.json: the daily run's local state (gitignored): the model that answered, what waits in
 // assets/incoming/<date>/ for review, what failed and why, rejected redraws, alternates made, what is next.
-export const QUEUE0=()=>({version:1,model:{pinned:null,tried:{}},incoming:{},failed:{},rejected:{},alts:{},next:[],lastRun:null});
+export const QUEUE0=()=>({version:1,model:{pinned:null,tried:{}},incoming:{},failed:{},rejected:{},alts:{},stats:{},costProbe:null,next:[],lastRun:null});
 // Keys are tier keys ('tile:grass@32', 'tile:grass@32#alt1'); a queue from before tiers is read as the 32 tier.
 export function loadQueue(dir=ASSETS){const p=join(dir,'queue.json');if(!existsSync(p))return QUEUE0();
   const q={...QUEUE0(),...JSON.parse(readFileSync(p,'utf8'))};q.model={pinned:null,tried:{},...(q.model||{})};

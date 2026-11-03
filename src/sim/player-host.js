@@ -9,6 +9,7 @@ import {markQueued,sceneDue} from './scenewait.js';
 import {S} from './state.js';
 import {companyOf,leaderOf,inSlots,partySlotted,slotKeyOf} from './company.js';
 import {sceneOf} from './scenes.js';
+import {dmAct} from './dmagent.js';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -35,6 +36,17 @@ export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now(
   turnEnd(me()); // a runner asking when to go next has ended its turn: autopilot may start things again (#240)
   for(;;){const r=paceCheck(heroId,q);if(r){const a=me();if(r.ok&&r.wake&&a){turnStart(a);a.playFresh=true}return r} // a wake opens the next turn
     if(now()-t0>=realMs)return paceIdle(heroId,q.since);await nap(poll)}}
+
+// The DM's voice calls, long-polled (#680): table_call, npc_call and ruling_call with {wait_ms} (up to DM_WAIT.MAX) are held
+// here until a call is pending or the wait runs out, re-checked every `poll` ms, so the runner is told within a poll and asks
+// once instead of every second (the relay counts one call). Each check is the ordinary tool, so it stamps the DM as listening.
+// Any other tool, or no wait_ms, is answered at once (dmAct). A refusal (the seat closed) comes back at once.
+export const DM_WAIT={MAX:25000,POLL:150};
+const DM_POLLS={table_call:1,npc_call:1,ruling_call:1};
+export const dmWaitMs=(tool,args)=>DM_POLLS[tool]&&args&&typeof args==='object'?Math.min(DM_WAIT.MAX,Math.max(0,Number(args.wait_ms)||0)):0;
+export async function hostDm(tool,args,{poll=DM_WAIT.POLL,nap=sleep,now=()=>Date.now()}={}){
+  const a=args&&typeof args==='object'?args:{},w=dmWaitMs(tool,a);if(!w)return dmAct(tool,a);
+  const t0=now();for(;;){const r=dmAct(tool,a);if(!r||r.ok===false||r.call||now()-t0>=w)return r;await nap(poll)}}
 
 // One agent seat as the host names it to the relay (the page's hello, play-headless's info; /play/health heroes[]).
 // fellow/role/lead: the five-place Fellowship (#68), kept as they were. company (#460): every agent hero rides in one
