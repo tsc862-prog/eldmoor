@@ -157,6 +157,7 @@ export function join(a,key,why,quiet){const F=S.fellowship;if(!F||!alive(a)||!fi
   if(a.party&&!a.party.fellow)leaveParty(a);
   const from=F.from||(F.from={});if(from[a.id]==null)from[a.id]=a.town||null;attach(F,a); // a solo's own company ends as it joins
   F.slots[key]=a.id;F.ids=SLOT_KEYS.map(k=>F.slots[k]).filter(id=>id!=null);a.town=F.hall;
+  if(!quiet||why==='arrival')(F.joined||(F.joined={}))[a.id]=Math.round(S.gameMin); // when they joined: a fallen member's letter goes to a later joiner (#452)
   memOf(a);agentMind(a); // the Fellowship is always agent-played (#148): one mind per member, its agent (#126)
   if(!quiet){campaign('recruit',a,' joins ',gd(F.name),' as its '+slotOf(key).label+(why?' ('+why+')':'')+'.');
     log(a,' takes the empty place in ',gd(F.name),' as its '+lcRole(key)+'.');
@@ -230,7 +231,21 @@ function onDeath(a,key){const F=S.fellowship;F.slots[key]=null;F.ids=SLOT_KEYS.m
   for(const b of fellows())moment(b,'death',(a&&a.name||'a companion')+' fell ('+cause+')'); // reflection moment (#179)
   for(const b of fellows()){remember(b,'death',(a&&a.name||'A companion')+', our '+lcRole(key)+', fell ('+cause+'). One life each, and that was theirs.');
     if(b.state==='hunt'||b.state==='travel'||b.state==='follow')goHome(b)} // the survivors carry the news home
+  if(F.letters)for(const k in F.letters){const l=F.letters[k];if(l&&a&&l.from===a.id&&l.fell==null)l.fell=Math.round(S.gameMin)} // the letter waits for the next joiner (#452)
+  // A world with runners (a host reports their links): the seat is refilled through an arrival scene at the next camp
+  // or town (sim/arrival.js, #452). No host (npm run sim, the checks): the replacement takes the place at once, as always.
+  if(arrivalHook&&arrivalHook(F,{slot:key,cls:a&&a.cls&&a.cls!=='?'?a.cls:null,fallen:a?a.id:null,name:a&&a.name||'a companion',lvl}))return;
   offerReplacement(key)}
+let arrivalHook=null;
+export function setArrivalHook(f){arrivalHook=typeof f==='function'?f:null}
+// The arrival scene opens (sim/arrival.js): the recruit of the fallen member's class, seeded SEED_BEHIND under the lowest
+// living member, takes the empty place. The oath, its lines and the memories come from the scene's outcome.
+export function seatRecruit(q){const F=S.fellowship;if(!F||F.slots[q.slot]!=null)return null;const s=slotOf(q.slot);if(!s)return null;
+  const cls=q.cls&&s.cls.includes(q.cls)?q.cls:s.cls[0];const a=recruit(F.fac,cls);
+  if(!join(a,q.slot,'arrival',true))return null;placeProfs(a,q.slot);sheets(a);
+  for(const b of fellows())refreshStances(b,F.ids);if(F.ai)enrich(a);muster();
+  if(q.fallen!=null)a.succeeds=q.fallen;return a}
+export const lcRoleOf=k=>slotOf(k)?lcRole(k):'companion';
 
 // ---- relay enrichment: backstory, then persona, once per member; never awaited ----
 const pending=new Set();
