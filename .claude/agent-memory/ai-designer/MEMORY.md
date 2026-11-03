@@ -38,3 +38,4 @@
 - [Emergent parties #402](emergent_parties.md) — company 8 heroes/5 minds, together default forever, followed-only pause, arrival scene, no crypt level gate
 - [Council per company #439](council_company.md) — leader rule kept for hashes, SOLO refusal, unique prop ids, solo camp (no auto-camp), Fellowship-only scenes until #440
 - [Town autopilot #466/#465](town_autopilot.md) — autopilot acts in town (inn, sell, potions, hunt fitting ground); danger-edge stop 5+ levels up, force/repeat
+- [Gathering #257](gathering.md) — gather.js: scripted gatherers stay in hunt, agents never by script, rate GAP 300/SPOT 10, materials sell, fixtures
