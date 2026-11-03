@@ -44,7 +44,7 @@ console.log('start requests');
   ok(checkStart({hero: 9}, hs).code === 404 && checkStart({hero: 2}, hs).code === 409 && checkStart({}, hs).code === 400, 'unknown, dead and missing heroes are refused');
   const oa = checkStart({hero: 1, provider: 'openai', model: 'gpt-6-luna'}, hs);
   ok(oa.req && oa.req.budget === 1 && oa.req.model === 'gpt-6-luna', 'an OpenAI runner is paid: it keeps the budget cap');
-  ok(checkStart({hero: 1, provider: 'google'}, hs).code === 400 && checkStart({hero: 1, provider: 'x;rm'}, hs).code === 400, 'only providers with a runner (anthropic, ollama, openai)');
+  ok(checkStart({hero: 1, provider: 'gemini'}, hs).code === 400 && checkStart({hero: 1, provider: 'x;rm'}, hs).code === 400 && !checkStart({hero: 1, provider: 'google'}, hs).error, 'only providers with a runner (anthropic, ollama, openai, huggingface, google)');
   ok(checkStart({hero: 1, model: 'a b'}, hs).code === 400 && checkStart({hero: 1, model: '--env=x'}, hs).code === 400, 'model names must be plain (no spaces, no leading dash)');
   ok(checkStart({hero: 1, maxTurns: 201}, hs).code === 400 && checkStart({hero: 1, maxTurns: 1.5}, hs).code === 400 && checkStart({hero: 1, budget: 5.01}, hs).code === 400 && checkStart({hero: 1, budget: 0}, hs).code === 400, 'turns and budget are capped (200 turns, $5.00 for one hero)');
   ok(checkStart({kind: 'shell'}, hs).code === 400, 'unknown runner kinds are refused');
