@@ -14,7 +14,8 @@
 //             BW.STUCK_MIN; reflex taking every agent turn of BW.SCENE_RUN scenes in a row; every agent
 //             vote by reflex for BW.VOTE_RUN proposals in a row; DM levers refused often; a danger lever
 //             pulled near a hurt member; an agent-played Fellowship member who wrote no memory for BW.NO_NOTES_MIN
-//             (issue #179; the digest counts memories written per member, by name).
+//             (issue #179; the digest counts memories written per member, by name); scene-missed: a live member's
+//             Table turn resolved by reflex after the wait (issue #515; the digest counts missed and queued waits).
 //   decision  each hero's Mind entry (sim/brain.js) once it settles: kind, provider, model, options,
 //             choice, outcome (applied, late, rejected, offline, superseded, overruled), latency, error.
 // Read only: it never writes S or a hero, rolls no random number and is not part of step(), so a world
@@ -58,7 +59,7 @@ function seats(){const out=new Map();for(const m of fellowshipMembers())if(m.her
 export function makeWatch(){
   let base=false,lastGm=0,hour=0,dmSeen=0,scene=null,sceneRun=0,voteRun=0,refusals=[],pulls=[];
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map();
-  let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0},
+  let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
     levers:{pulled:0,refused:0,by:{}},dmlog:{},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{}});
   const tStats=()=>{const F=S.fellowship,t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
@@ -108,6 +109,9 @@ export function makeWatch(){
     const sc=S.table;
     if(scene&&(scene!==sc||scene.phase==='outcome')&&!seenScene.has(scene)){seenScene.add(scene);H.table.resolved++;
       const mine=scene.beats.filter(b=>{const a=byId(b.id);return a&&a.player});
+      H.table.queued+=(scene.q||[]).length;
+      for(const id of scene.miss||[]){const a=byId(id);if(!a)continue;H.table.missed++; // a live member's scene turn fell to its reflex after the table's wait (#515)
+        anomaly(out,'scene-missed',a,a.name+' did not answer the Table scene "'+scene.title+'" in time: its runner held it, the reflex acted',{scene:scene.title,kind:scene.kind,queued:!!(scene.q&&scene.q.includes(id)),mind:mindOf(a)},'bad')}
       if(mine.length){if(mine.every(b=>b.by==='reflex'))sceneRun++;else sceneRun=0;
         if(sceneRun>=BW.SCENE_RUN){anomaly(out,'reflex-scenes',null,'Reflex took every agent turn at the table for '+sceneRun+' scenes in a row (last: '+scene.title+')',{scenes:sceneRun,last:scene.title,kind:scene.kind,members:mine.map(b=>b.name)},'bad');sceneRun=0}}}
     scene=sc||null}
