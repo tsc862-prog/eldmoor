@@ -204,7 +204,8 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   const dk = new Map();
   for (const d of D) {const k = (d.src || '?') + ' ' + (d.kind || '?'); let x = dk.get(k); if (!x) dk.set(k, x = {k, n: 0, res: {}}); x.n++; const r = d.src === 'relay' ? (d.ok ? 'answered' : 'failed ' + (d.status || '')) : d.outcome || '?'; x.res[r] = (x.res[r] || 0) + 1}
   L.push(table(['source and kind', 'count', 'results'], [...dk.values()].map(x => [x.k, x.n, Object.entries(x.res).map(([k, v]) => `${k.trim()} ${v}`).join(', ')])), '');
-  return {md: scrub(L.join('\n') + '\n'), minds: mc.data, companies: co.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
+  const wsh = wishSection(readJsonl(dir, FILES.wish, sinceMs), T, table); L.push(...wsh.lines);
+  return {md: scrub(L.join('\n') + '\n'), wishes: wsh.data, minds: mc.data, companies: co.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
 }
 
 
@@ -266,6 +267,47 @@ function dmShareSection(W, T, A, table) {
   return L;
 }
 
+// ---- wishes (issue #663) ----
+// What the agents asked the builders for (type 'wish') grouped by the asked-for tool name, and two kinds of evidence they never put into
+// words: tools they tried that do not exist (their "Unknown tool" refusals in the turn lines) and the free actions the DM ruled on most
+// (type 'attempt', grouped by skill and by the first verb). Several worlds may be passed (wishes-all.md): counts then span worlds.
+export const wishKey = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || '?';
+const words = s => (String(s || '').match(/\S+/g) || []).length;
+const firstVerb = s => (String(s || '').toLowerCase().match(/[a-z']+/) || ['?'])[0];
+export function wishData(rows, turns) {
+  const wishes = rows.filter(r => r.type === 'wish'), attempts = rows.filter(r => r.type === 'attempt');
+  const by = new Map();
+  for (const w of wishes) {const k = wishKey(w.tool); let x = by.get(k); if (!x) by.set(k, x = {tool: k, n: 0, seats: new Set(), worlds: new Set(), best: null, names: new Map()});
+    x.n++; x.seats.add(w.seat === 'dm' ? 'DM' : (w.name || w.seat)); if (w.world) x.worlds.add(w.world); x.names.set(w.tool, (x.names.get(w.tool) || 0) + 1);
+    if (!x.best || words(w.what) + words(w.why) + words(w.moment) > words(x.best.what) + words(x.best.why) + words(x.best.moment)) x.best = w}
+  const unknown = new Map();
+  for (const t of turns || []) for (const c of t.tools || []) {if (c.ok) continue; const m = /^Unknown (?:DM )?tool\s+"?([^".:\s]+)/i.exec(c.error || ''); if (!m) continue;
+    const k = wishKey(m[1]); let x = unknown.get(k); if (!x) unknown.set(k, x = {tool: k, n: 0, seats: new Set()}); x.n++; x.seats.add(t.seat === 'dm' ? 'DM' : (t.hero && t.hero.name) || t.seat)}
+  const sk = new Map(), vb = new Map();
+  for (const a of attempts) {const s = a.skill || 'unknown'; let x = sk.get(s); if (!x) sk.set(s, x = {k: s, n: 0, pass: 0, ex: a.what}); x.n++; if (a.pass) x.pass++;
+    const v = firstVerb(a.what); let y = vb.get(v); if (!y) vb.set(v, y = {k: v, n: 0, ex: a.what}); y.n++}
+  const top = m => [...m.values()].sort((a, b) => b.n - a.n || String(a.k || a.tool).localeCompare(String(b.k || b.tool)));
+  return {wishes: wishes.length, groups: top(by).map(x => ({tool: x.tool, n: x.n, seats: [...x.seats], worlds: [...x.worlds], asked: [...x.names.keys()], best: x.best})),
+    unknown: top(unknown).map(x => ({tool: x.tool, n: x.n, seats: [...x.seats]})), attempts: attempts.length, bySkill: top(sk), byVerb: top(vb)};
+}
+export function wishSection(rows, turns, table) {
+  const d = wishData(rows, turns), L = ['## Wishes', '', 'Notes the DM and the heroes left for the people who build the game (private to the builders, never answered in play). Three or more asks for one tool make an issue.', ''];
+  if (!d.groups.length) L.push('No wishes yet.', '');
+  else {
+    L.push(table(['asked-for tool', 'asks', 'seats', 'worlds'], d.groups.map(g => [g.tool, g.n, g.seats.slice(0, 8).join(', '), g.worlds.length || '-'])), '');
+    for (const g of d.groups) {const b = g.best; L.push(`- **${g.tool}** (${g.n}): ${b.what} Why: ${b.why} Moment: ${b.moment} (${b.seat === 'dm' ? 'the DM' : b.name || b.seat}, day ${b.day ?? '?'}${b.place ? ', ' + b.place : ''}${b.model ? ', ' + (b.provider || '?') + '/' + b.model : ''})`)}
+    L.push('');
+  }
+  L.push('### Tools tried that do not exist', '');
+  L.push(d.unknown.length ? table(['name tried', 'times', 'seats'], d.unknown.slice(0, 15).map(u => [u.tool, u.n, u.seats.slice(0, 6).join(', ')])) : 'None in the turn lines.', '');
+  L.push('### Free actions the DM ruled on most', '');
+  if (!d.attempts) L.push('No attempts ruled on.', '');
+  else {
+    L.push(table(['skill', 'attempts', 'passed', 'example'], d.bySkill.slice(0, 10).map(s => [s.k, s.n, s.pass, String(s.ex || '').slice(0, 80)])), '');
+    L.push(table(['first verb', 'attempts', 'example'], d.byVerb.slice(0, 10).map(s => [s.k, s.n, String(s.ex || '').slice(0, 80)])), '');
+  }
+  return {lines: L, data: d};
+}
 export function worlds(root) {return existsSync(root) ? readdirSync(root).filter(d => {try {return statSync(join(root, d)).isDirectory()} catch {return false}}) : []}
 export function lastWorld(root) {
   let best = null, t = -1;
@@ -285,5 +327,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const r = writeReport(root, w, {sinceMs});
     console.log(`[behavior-report] ${w}: ${r.counts.turns} turns, ${r.counts.decisions} decisions, ${r.counts.world} digests, ${r.counts.anomalies} anomalies -> ${r.file}`);
     if (argv.includes('--stdout')) console.log(r.md);
+  }
+  if (list.length > 1) { // wishes across worlds (#663)
+    const rows = [], turns = []; for (const w of list) {const dir = join(root, w); rows.push(...readJsonl(dir, FILES.wish, sinceMs).map(r => ({...r, world: w}))); turns.push(...readJsonl(dir, FILES.turn, sinceMs))}
+    writeFileSync(join(root, 'wishes-all.md'), scrub(['# Wishes across worlds: ' + list.join(', '), '', ...wishSection(rows, turns, table).lines].join('\n') + '\n'));
+    console.log(`[behavior-report] wishes across ${list.length} worlds -> ${join(root, 'wishes-all.md')}`);
   }
 }

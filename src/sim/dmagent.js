@@ -32,6 +32,7 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
+import {fileWish} from './wish.js'; // #663
 import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK} from './levers.js';
 import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
@@ -498,6 +499,8 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};const lever=FLAT_LEVERS
   const e=r.effect||{};
   return {...r,tool,...(tool==='mark_place'?{place:e.name,at:params.at}:{}),...(tool==='place_person'?{person:e.name,npc:e.npc,at:e.at,where:e.where}:{}),...(want?{want}:{})}}
 
+// A note for the people who build the game (#663): the watcher and the builders only, never a hero, never answered in play.
+function dmWish(args){return fileWish(dmState(),{seat:'dm',name:'DM',place:null,summary:'DM seat, day '+dayNo()+' '+clockStr()},args)}
 function logIntent(text){const day=today(),t=clean(text,DMA.INTENT_MAX);if(!t)return {ok:false,error:'Say what you intend.'};
   if(day.intents>=DMA.INTENTS_PER_DAY)return {ok:false,error:'Enough plans logged for one game day ('+DMA.INTENTS_PER_DAY+'): keep the rest in notes.'};
   day.intents++;dmlog('agent',null,['DM agent: ',t],{by:'dm-agent',intent:t});return {ok:true,logged:t}}
@@ -652,6 +655,7 @@ export function dmAct(tool,args={}){
     case 'pull_lever':r=pullLever(args);break;
     case 'post_hook':case 'place_person':case 'mark_place':case 'give_item':case 'take_item':r=flatLever(tool,args);break;
     case 'log_intent':r=logIntent(args.text);break;
+    case 'wish':r=dmWish(args);break;
     case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;
     case 'npc_say':r=npcSay(args);break;

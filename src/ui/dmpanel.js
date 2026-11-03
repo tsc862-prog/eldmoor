@@ -11,7 +11,7 @@ const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 
 export const FILTERS=[['all','All',null],['hooks','Hooks',['hooks','pick']],['scenes','Scenes',['frame','branch','camp']],['rolls','Rolls',['roll','complication']],
-  ['outcomes','Outcomes',['payoff','fail','abandon','fallback']],['levers','Levers',['lever']],['agent','DM agent',['agent']],['notes','Notes',[]]]; // agent: the DM agent's notes, plans and pulls (#66); notes: its notebook (#155)
+  ['outcomes','Outcomes',['payoff','fail','abandon','fallback']],['levers','Levers',['lever']],['agent','DM agent',['agent']],['notes','Notes',[]],['wishes','Wishes',[]]]; // wishes: its notes for the builders (#663); agent: the DM agent's notes, plans and pulls (#66); notes: its notebook (#155)
 const BADGE={hooks:'BOARD',pick:'PICK',frame:'SCENE',roll:'ROLL',complication:'TWIST',branch:'FORK',payoff:'PAYOFF',fail:'FAIL',abandon:'DROP',fallback:'FALLBACK',lever:'LEVER',camp:'CAMP',agent:'DM AGENT'};
 const byAgent=e=>!!(e.detail&&e.detail.by==='dm-agent'); // the DM agent's entries (issue #66) carry a tag
 let filter='all',advId=null,seen='',box=null,list=null,bar=null,chip=null;
@@ -59,9 +59,14 @@ function table(e){const t=el('table','dmkv'),b=el('tbody');
 export const dmTable=table,dmParts=partsTo,dmByAgent=byAgent,dmBadge=e=>BADGE[e.kind]||e.kind.toUpperCase();
 function advTitle(id){const a=(S.adventures||[]).find(x=>x.id===id);return a&&a.title?a.title:'#'+id}
 
+const wishN=()=>(S.dmAgent&&S.dmAgent.wishes?S.dmAgent.wishes.length:0);
 export function renderDmLog(){if(!list)return;
-  const L=S.dmLog||[],sig=L.length+':'+(L[0]?L[0].id:0)+':'+filter+':'+advId+':'+open.size+':'+[...open].join(',')+(filter==='levers'?':'+Math.floor(S.gameMin/60):'')+(filter==='notes'?':'+dmNotesSig():'');
+  const L=S.dmLog||[],sig=L.length+':'+(L[0]?L[0].id:0)+':'+filter+':'+advId+':'+open.size+':'+[...open].join(',')+(filter==='levers'?':'+Math.floor(S.gameMin/60):'')+(filter==='notes'?':'+dmNotesSig():'')+':w'+wishN();
   if(sig===seen)return;if(held(list))return;seen=sig;
+  if(bar){const wb=bar.querySelector('[data-dm="wishes"]'),n=wishN();if(wb){const t='Wishes'+(n?' '+n:'');if(wb.textContent!==t)wb.textContent=t}}
+  if(filter==='wishes'){if(chip)chip.hidden=true;list.replaceChildren();const W=(S.dmAgent&&S.dmAgent.wishes)||[];
+    if(!W.length)list.append(el('li','dm','No wishes yet. The DM agent may leave a note for the builders about a tool it wished it had (3 a game day).'));
+    for(const w of W){const li=el('li','tl dmrow');li.append(el('time',null,'D'+w.day+' '+w.clock),el('span','badge b-dm','WISH'),el('span','tx dmtx',w.tool+': '+w.what+' Why: '+w.why+' Moment: '+w.moment));list.append(li)}return}
   if(filter==='notes'){if(chip)chip.hidden=true;list.replaceChildren();renderDmNotes(list);return} // the notes viewer instead of the log (#155)
   if(chip){chip.replaceChildren();if(advId!=null){chip.hidden=false;chip.append('Adventure: '+advTitle(advId)+' ');const x=el('button',null,'show all');x.dataset.dmclear='1';chip.append(x)}else chip.hidden=true}
   patch(list,list=>{let n=0;

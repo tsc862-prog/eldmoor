@@ -251,7 +251,7 @@ function resolve(r){const a=hero(r.hero);if(!alive(a)){close(r,'lapsed');return 
     {by:r.by,ruling:true,call:r.id,hero:a.id,skill:ru.skill,dc:ru.dc,pass,total,effects:list,...(ru.note?{note:ru.note}:{}),...(r.by==='scripted'?{fill:true,why:r.why||'gone'}:{})},{heroes:[]});
   close(r,'done');return r.res}
 function close(r,how){const R=rulingState(),i=R.cur.indexOf(r);if(i>=0)R.cur.splice(i,1);r.end=how;
-  R.past.unshift({id:r.id,hero:r.hero,name:r.name,what:r.what,t:r.t,day:r.day,by:r.by||null,end:how,...(r.res?{pass:r.res.pass,roll:r.res.roll}:{})});if(R.past.length>ATTEMPT.PAST)R.past.pop()}
+  R.past.unshift({id:r.id,hero:r.hero,name:r.name,what:r.what,t:r.t,day:r.day,by:r.by||null,end:how,...(r.res?{pass:r.res.pass,roll:r.res.roll,skill:r.res.skill}:{})});if(R.past.length>ATTEMPT.PAST)R.past.pop()}
 const heroView=r=>r.res?{outcome:r.res.pass?'success':'failure',roll:r.res.roll,ruling:r.res.text,...(r.res.effects.length?{changed:r.res.effects}:{})}:{outcome:'lapsed'};
 
 // ---- the DM's side: ruling_call / ruling_answer ----
