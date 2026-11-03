@@ -228,12 +228,20 @@ function present(kind,ctx,C){const L=memOf(C);if(kind==='decision'){const P=prop
 // The company a scene opened without one belongs to: the member it happened to, else the Fellowship (the camp ambush,
 // the crawl's rooms and staged scenes still serve the Fellowship until their own slices, #441 and the DM's).
 const ctxCompany=ctx=>{const c=ctx||{};if(c.company!=null)return companyById(c.company);const h=byId(c.anchor!=null?c.anchor:c.hero);return companyOf(h)||S.fellowship||null};
+// Elites are tuned for the five-slot Fellowship (#502). A smaller company meets one scaled down once, on the scene's open: hp by size
+// (n=1 .52 ... n=4 .88) and by how far the elite's level stands over the company's average, its blows a little lighter (n=1 .84).
+// The five-slot company and a full five are untouched. m.scaled keeps it to one pass, whoever meets it next.
+export function eliteFactor(n,avg,lvl){const over=Math.max(0,lvl-avg-2);return {hp:Math.max(.35,(.4+.12*Math.min(5,n))*Math.max(.6,1-.08*over)),hit:.8+.04*Math.min(5,n)}}
+export function scaleElite(F,L,ctx){const m=ctx&&ctx.mob!=null?S.mobs.find(x=>x.id===ctx.mob):null;if(!m||m.scaled||F.slots||L.length>=5)return;
+  const avg=L.reduce((t,a)=>t+a.lvl,0)/L.length,k=eliteFactor(L.length,avg,m.lvl||1);
+  const r=m.hp/(m.maxhp||1);m.maxhp=Math.max(10,Math.round(m.maxhp*k.hp));m.hp=Math.max(1,Math.round(m.maxhp*r));m.hit=(m.hit||1)*k.hit;m.scaled=+k.hp.toFixed(2)}
 function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||S.table)return null;const all=PLAY[kind]==='all';
   if(kind==='decision'&&voteRefusal(F))return null; // a solo has no one to vote with (#440)
   if(!atTable(F))return null; // no agent of this company has the say: it plays on by reflex (#440)
   const L=all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||(CRYPT.group&&CRYPT.group.mem.includes(a)));
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,company:F.id,kind,title:clean(title,80),frame,ids:(all?L:initiative(L)).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin),...(all?{all:true,w:{}}:{})};
+  if(kind==='elite')scaleElite(F,L,ctx);
   if(COMBAT[kind]){sc.rd=1;sc.fd=0;sc.foeAt=foeSlot(sc.ids.map(byId),foeOf(sc))} // the foe joins the initiative order (#276)
   if(sc.pause)requestDrop(sc.title);
   S.table=sc;F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
