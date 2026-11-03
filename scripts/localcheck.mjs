@@ -185,6 +185,28 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
   ok(ran.length === 1 && ran[0][0] === 'stage_scene' && ran[0][1].frame.startsWith('A ragged hermit') && r.tools === 1 && r.rejected === 0, `a local DM turn runs the fenced stage_scene call (${ran.map(x => x[0]).join(',') || 'none'})`);
 }
 
+// ---------------------------------------------------------------- 1d. the stated aim (issue #535) for local and OpenAI minds
+// The local turn prompt asks "What are you trying to do now?" when the aim is missing or stale (and the intent tool is in the
+// tool table); the forced reflection answer carries an optional intent the runner sends with the intent tool.
+{
+  const LA = await import('./local-agent.mjs'), PC = await import('./pacing.mjs');
+  const lo = LA.reflectSchema(), st = LA.reflectSchema({strict: true});
+  ok(lo.properties.intent && !lo.required.includes('intent') && st.required.includes('intent') && st.properties.intent.required.join() === 'goal,why,until', 'the reflection schema carries an intent object (optional; required by strict OpenAI)');
+  ok(/"intent": \{"goal"/.test(PC.reflectPrompt({why: 'camp'}, {tools: false})) && /What are you trying to do next\?/.test(PC.reflectPrompt({why: 'camp'})), 'the reflection prompt asks what next (forced answer: an intent object; tool use: the intent tool)');
+  ok(LA.reflectIntent('{"notes":[],"intent":{"goal":"","why":"","until":""}}') === null && LA.reflectIntent('{"notes":[]}') === null, 'an empty goal keeps the aim');
+  const got = LA.reflectIntent('{"notes":[],"intent":{"goal":"Hunt boars in Dunmere","why":"to reach level 4","until":"3"}}');
+  ok(got && got.goal === 'Hunt boars in Dunmere' && got.why === 'to reach level 4' && got.until === '3', 'a goal reads as {goal, why, until}');
+  const sent = [];
+  const t = await LA.reflectTurn({ask: async () => ({text: JSON.stringify({notes: [], become: {field: 'none', text: '', why: '', about: ''}, intent: {goal: 'Hunt boars in Dunmere', why: 'to reach level 4', until: '3'}}), usage: {in: 5, out: 5}}),
+    call: async (tool, args) => {sent.push([tool, args]); return {ok: true, aim: args.goal}}, sess: {system: 's'}, moment: {id: 'm1', kind: 'dusk', why: 'dusk'}, prompt: 'p'});
+  ok(sent.length === 1 && sent[0][0] === 'intent' && sent[0][1].goal === 'Hunt boars in Dunmere' && t.aimed === 'Hunt boars in Dunmere' && /Next: Hunt boars/.test(t.narration), 'a reflection answer with an intent sets the aim: ' + t.narration);
+  const ask = {clock: 'Day 1 08:00', state: 'town', hp: '100%', level: 2, place: 'Highgate', aim: {state: 'stale', ask: true, line: 'hunt in Lowmark (set 3 h ago)', why: 'no progress toward it for 2 h'}};
+  const bt = PC.briefText(ask);
+  ok(bt.includes(PC.AIM_ASK) && /Your aim was: hunt in Lowmark/.test(bt) && /intent \{goal, why, until\}/.test(bt), 'a local turn prompt with a stale aim asks first: ' + bt.split('\n').find(l => l.includes(PC.AIM_ASK)));
+  ok(!PC.briefText({...ask, aim: {state: 'set', ask: false, line: 'hunt in Lowmark (set 1 h ago)'}}).includes(PC.AIM_ASK) && /\nYour aim: hunt in Lowmark \(set 1 h ago\)/.test(PC.briefText({...ask, aim: {state: 'set', ask: false, line: 'hunt in Lowmark (set 1 h ago)'}})), 'a fresh aim is named, not asked');
+  ok(LA.ollamaTools().some(x => x.function.name === 'intent' && x.function.parameters.properties.goal), 'the intent tool is in the local tool table');
+}
+
 // ---------------------------------------------------------------- the mock Ollama (scripts/mock-ollama.mjs)
 const {url: OLLAMA, seen, close: closeOllama} = await startMockOllama();
 let ctxFrom = 0; // where the runners' requests start in `seen` (after the adapter's own tests)

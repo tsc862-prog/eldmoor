@@ -135,6 +135,10 @@ B.backstory.paras = {...B.backstory.paras, flaw: 'B hides ' + plant('bFlaw')};
 ok(act(B, 'become', {field: 'beliefs', text: 'B believes ' + plant('bBelief'), why: 'B changed because ' + plant('bWhy')}).ok, 'B changes its own beliefs (become)');
 ok(act(B, 'become', {field: 'traits', text: 'B is ' + plant('bTrait').slice(0, 30), why: 'B noticed'}).ok, 'B notes a trait of its own');
 ok(act(B, 'become', {field: 'stance', about: A.name, text: 'Of A, B thinks ' + plant('bStanceA'), why: 'B judged ' + plant('bStanceWhy')}).ok, 'B changes its stance toward A');
+// the aim (issue #535): a member's stated aim is private; only a leader's new aim leaves it, shouted to the company in range
+{const {leaderFor} = await import('../src/sim/council.js'), who = [B, ...rest].find(x => x.state !== 'dead' && leaderFor(x) !== x);
+  const ra = act(who, 'intent', {goal: 'Aim ' + plant('bAim'), why: 'Because ' + plant('bAimWhy')});
+  ok(ra.ok && !ra.shouted && who.intent && who.intent.goal.includes(SECRETS.bAim), who.name + ' (not the leader) states a private aim (intent)')}
 B.mind = [{id: 1, t: 'D1 08:00', kind: 'townPlan', snapshot: {secret: plant('bMind')}, sent: {user: 'prompt ' + plant('bMindPrompt')}, outcome: 'applied'}];
 P.playerNarrate(B.id, 'B thinks ' + plant('bNarration'));
 const bs = SS.loadSession(B.id, B.name, () => ({sessionId: 's-b', heroId: B.id, heroName: B.name, system: 'You are B. ' + plant('bPrompt'), turns: 3, costUsd: 0, lastTotal: 0})).sess; SS.saveSession(bs, {});

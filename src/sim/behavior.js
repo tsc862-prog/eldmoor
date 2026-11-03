@@ -15,7 +15,9 @@
 //             vote by reflex for BW.VOTE_RUN proposals in a row; DM levers refused often; a danger lever
 //             pulled near a hurt member; an agent-played Fellowship member who wrote no memory for BW.NO_NOTES_MIN
 //             (issue #179; the digest counts memories written per member, by name); scene-missed: a live member's
-//             Table turn resolved by reflex after the wait (issue #515; the digest counts missed and queued waits).
+//             Table turn resolved by reflex after the wait (issue #515; the digest counts missed and queued waits); no-aim: an
+//             agent hero with no stated aim (issue #535, sim/intent.js) for BW.NO_AIM_MIN outside camp and town rest (the digest
+//             counts aims stated per hero, by name).
 //   decision  each hero's Mind entry (sim/brain.js) once it settles: kind, provider, model, options,
 //             choice, outcome (applied, late, rejected, offline, superseded, overruled), latency, error.
 // Read only: it never writes S or a hero, rolls no random number and is not part of step(), so a world
@@ -27,6 +29,7 @@ import {maxHp} from './heroes.js';
 import {fellowshipMembers,mindsOf} from './fellowship.js';
 import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
+import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
 
 export const BW={
   DIGEST_MIN:60,     // game minutes between world digests
@@ -43,6 +46,7 @@ export const BW={
   DANGER:['mark_dangerous','named_foe','custom_foe','set_condition'],
   NO_IDLE:['camp','dead','ghost'],
   NO_NOTES_MIN:2*1440, // game minutes an agent-played Fellowship member goes without writing a memory -> no-memories (#179)
+  NO_AIM_MIN:INTENT.NO_AIM, // game minutes an agent hero goes with no stated aim outside camp and town rest -> no-aim (#535)
 };
 
 const day=()=>'Day '+(Math.floor(S.gameMin/1440)+1)+' '+clockStr();
@@ -58,15 +62,16 @@ function seats(){const out=new Map();for(const m of fellowshipMembers())if(m.her
 
 export function makeWatch(){
   let base=false,lastGm=0,hour=0,dmSeen=0,scene=null,sceneRun=0,voteRun=0,refusals=[],pulls=[];
-  const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map();
+  const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map(),iseq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
-    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{}});
+    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{}});
   const tStats=()=>{const F=S.fellowship,t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
   function baseline(){base=true;lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
     T.clear();seenProps.clear();emitted.clear();H=fresh();tLast=tStats();
-    seq0.clear();for(const a of seats())seq0.set(a.id,a.memories?a.memories.seq||0:0); // notes written before a seat is first tracked still count (#179)
+    seq0.clear();for(const a of seats())seq0.set(a.id,a.memories?a.memories.seq||0:0);
+    iseq0.clear();for(const a of seats())iseq0.set(a.id,a.intentSeq||0); // aims stated before a seat is first tracked still count (#535) // notes written before a seat is first tracked still count (#179)
     for(const e of S.fallen||[])seenFallen.add(e);
     for(const a of seats())for(const e of a.chat||[])seenChat.add(e);
     for(const P of (S.fellowship&&S.fellowship.props)||[])if(P.status!=='open')seenProps.add(P.id);
@@ -74,8 +79,8 @@ export function makeWatch(){
   const anomaly=(out,kind,a,text,evidence,severity='warn')=>{H.anomalies++;out.push({kind:'anomaly',rec:{kind,seat:a?'hero:'+a.id:'world',hero:a?heroRef(a):null,gameMin:Math.round(S.gameMin),clock:day(),severity,text,evidence:evidence||{}}})};
 
   function track(out,a,dt){let t=T.get(a.id);const now=S.gameMin;
-    if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:seq0.has(a.id)?seq0.get(a.id):a.memories?a.memories.seq||0:0,noteAt:now};T.set(a.id,t)}
-    notes(out,a,t,now);
+    if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:seq0.has(a.id)?seq0.get(a.id):a.memories?a.memories.seq||0:0,noteAt:now,iseq:iseq0.has(a.id)?iseq0.get(a.id):a.intentSeq||0,aimAt:now};T.set(a.id,t)}
+    notes(out,a,t,now);aims(out,a,t,now);
     H.share[mindOf(a)]+=dt;
     if(a.player&&a.playActAt!==t.act){t.act=a.playActAt;H.acts++}
     // idle in one place (outside camp)
@@ -92,6 +97,14 @@ export function makeWatch(){
     if(seq>t.nseq){H.memories[a.name]=(H.memories[a.name]||0)+(seq-t.nseq);t.nseq=seq;t.noteAt=now}
     if(!a.player){t.noteAt=now;return}
     if(a.fellow&&now-t.noteAt>=BW.NO_NOTES_MIN){anomaly(out,'no-memories',a,a.name+' has written no memory for '+Math.round((now-t.noteAt)/1440*10)/10+' game days',{minutes:Math.round(now-t.noteAt),notes:a.memories?a.memories.notes.length:0,reflections:a.reflect?a.reflect.log.length:0,mind:mindOf(a)});t.noteAt=now}}
+  // aims stated (issue #535): counted per hero each digest; an agent hero with none held for BW.NO_AIM_MIN outside camp and
+  // town rest is flagged (again every BW.NO_AIM_MIN while it lasts)
+  function aims(out,a,t,now){const seq=a.intentSeq||0;if(t.iseq==null)t.iseq=seq;if(t.aimAt==null)t.aimAt=now;
+    if(seq>t.iseq){H.intents[a.name]=(H.intents[a.name]||0)+(seq-t.iseq);t.iseq=seq}
+    const c=a.pq&&a.pq[0],resting=a.state==='town'&&(c&&c.kind==='rest'||a.hp<maxHp(a)*.6);
+    if(!a.player||aimHeld(a)||a.state==='camp'||a.state==='dead'||a.state==='ghost'||resting){t.aimAt=now;return}
+    if(now-t.aimAt>=BW.NO_AIM_MIN){const I=a.intent;anomaly(out,'no-aim',a,a.name+' has had no stated aim for '+Math.round((now-t.aimAt)/60*10)/10+' game hours ('+(I?'the last one is '+(I.done?'done':'stale'):'never stated')+')',
+      {minutes:Math.round(now-t.aimAt),state:a.state,place:place(a),mind:mindOf(a),last:I?(I.done?'done':'stale'):'none',aims:a.intentSeq||0});t.aimAt=now}}
   function dmLog(out){const L=S.dmLog||[],seq=S.dmLogSeq||0;if(seq<=dmSeen)return;
     const fresh_=L.filter(e=>e.id>dmSeen).reverse();dmSeen=seq;const now=S.gameMin;
     const fo=focus();

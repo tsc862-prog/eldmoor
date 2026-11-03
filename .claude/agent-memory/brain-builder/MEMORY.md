@@ -38,3 +38,4 @@
 - [Give item](give-item.md) — #524 give_item/take_item levers, token alias, flat tools, allow:['item'], ilvl, pitfalls
 - [Scene waits](scene-waits.md) — #515 table_waits, urgent Ollama queue, free-turn interrupt, Claude scene-first, pace {queued} extra wait, scene-missed, sceneS
 - [Standing orders](standing-orders.md) — #531 orders.mjs situations block, short local variant, withSituationOrders, orderscheck
+- [Stated aim](stated-aim.md) — #535 intent tool: a.intent shape, order mapping, stale/done, header ask, leader shout, no-aim, pitfalls
