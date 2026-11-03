@@ -214,6 +214,7 @@ ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused 
   ok(g.watchIdx % 2 === 1 && CAMPM.asleep(Z) && CAMPM.campView(Z).asleep, 'second watch: the solo sleeps, no one watching');
   r = act(Z, 'move_to', {target: 'home'});
   ok(!r.ok && /camped alone .*break_camp to move on now/.test(r.error), 'a camped solo is told to break_camp: ' + r.error);
+  await settle(); // another company's scene the world opened meanwhile (an enemy hero's ambush on the Fellowship) would hold the world through this step
   CAMPM.CAMP.AMBUSH_P = 2; g.nextRoll = S.gameMin; const c0 = g.stats.caught; Z.hp = mh; step(1 / 60);
   ok(g.stats.caught === c0 + 1 && !g.phase, 'an ambush on the sleeping solo finds it unroused (the same Perception roll, no dice added)');
   ok(S.table && S.table.kind === 'ambush' && S.table.company === solo.id && S.table.ids.join() === String(Z.id), 'the ambush at the solo\'s camp is its own Table scene (#440)');
