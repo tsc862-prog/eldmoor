@@ -67,7 +67,7 @@ var witnessFn; // no initializer: reach.js may set it while this module is still
 export function setWitness(f){witnessFn=f}
 export function campaign(C,kind,...parts){if(!C)return null;
   const e={id:C.seq=(C.seq||0)+1,day:day(),t:clockStr(),gameMin:Math.round(S.gameMin),kind,parts};
-  C.log.unshift(e);if(C.log.length>LOG_CAP)C.log.pop();if(witnessFn&&C===fellowshipCompany())witnessFn(kind,plain(parts).slice(0,80));return e}
+  C.log.unshift(e);if(C.log.length>LOG_CAP)C.log.pop();if(witnessFn&&C.ids.length>1)witnessFn(kind,plain(parts).slice(0,80),C);return e} // reach.js: what a member out of range missed (#182), per company (#439)
 const gd=t=>({t,c:'gd'});
 // Open threads: unfinished jobs, meeting plans, living nemeses, oaths still sworn. Computed live, not stored.
 export function openThreads(C){if(!C)return [];const out=[],seen=new Set();

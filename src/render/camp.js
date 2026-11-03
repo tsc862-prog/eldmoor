@@ -1,10 +1,11 @@
 // The Fellowship's campfire (issue #64): stone ring, logs, flickering flame, drifting sparks, bedrolls
 // at each camper's spot, and a warm pool of light at night. Procedural, no image assets. Reads
-// S.fellowship.camp (sim/camp.js); draws nothing when there is no camp.
+// every company's camp (C.camp, sim/camp.js; two companies light two fires, #439); draws nothing when there is none.
 const T=16;
-const camp=S=>{const F=S.fellowship,g=F&&F.camp;return g&&g.phase?g:null};
+const camps=S=>(S.companies||[]).map(C=>C.camp).filter(g=>g&&g.phase);
 
-export function drawCamp(ctx,S,cam,o){const g=camp(S);if(!g)return;const {inView,blink,drawText}=o;
+export function drawCamp(ctx,S,cam,o){for(const g of camps(S))drawOne(ctx,S,cam,o,g)}
+function drawOne(ctx,S,cam,o,g){const {inView,blink,drawText}=o;
   const cx=Math.round(g.x*T),cy=Math.round(g.y*T);if(!inView(cx,cy,40))return;
   // bedrolls
   const ids=g.ids||[];ids.forEach((id,i)=>{const a=S.agents.find(x=>x.id===id);if(!a||a.state!=='camp')return;
@@ -26,7 +27,8 @@ export function drawCamp(ctx,S,cam,o){const g=camp(S);if(!g)return;const {inView
     drawText('CAMP'+(w?' · '+w.name+' on watch':''),cx,cy-26,'#f4c070',13)}}
 
 // Warm light for the night overlay (draw.js calls this in the 'lighter' pass).
-export function drawCampLight(ctx,S,dk,inView){const g=camp(S);if(!g)return;const x=g.x*T,y=g.y*T,r=54;if(!inView(x,y,r))return;
+export function drawCampLight(ctx,S,dk,inView){for(const g of camps(S))lightOne(ctx,dk,inView,g)}
+function lightOne(ctx,dk,inView,g){const x=g.x*T,y=g.y*T,r=54;if(!inView(x,y,r))return;
   const fl=.85+.15*Math.sin(performance.now()/90);
   const gr=ctx.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,'rgba(255,170,70,'+(dk*.85*fl)+')');gr.addColorStop(1,'rgba(255,170,70,0)');
   ctx.fillStyle=gr;ctx.fillRect(x-r,y-r,r*2,r*2)}
