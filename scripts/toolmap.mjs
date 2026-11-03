@@ -16,7 +16,7 @@ export const HERO_GROUPS = {
   'Move and fight': ['move_to', 'follow', 'hunt', 'fight', 'flee', 'rest', 'use_ability', 'use_item', 'finish', 'spare', 'choose_specialisation', 'gambits', 'set_gambit', 'move_gambit', 'toggle_gambit', 'drop_gambit', 'reset_gambits'],
   'Town, trade and craft': ['shop', 'buy', 'sell', 'equip', 'auction_browse', 'auction_list', 'auction_buy', 'auction_cancel', 'give', 'pay', 'drop', 'recipes', 'learn_profession', 'unlearn_profession', 'nodes', 'gather', 'smith', 'craft'],
   'Jobs and quests': ['list_jobs', 'take_adventure', 'choose', 'quests', 'take_quest', 'focus_quest', 'abandon_quest', 'swear_oath', 'renounce_oath', 'turn_in', 'post_notice', 'intent', 'enter_site'],
-  'Talk and company': ['say', 'whisper', 'emote', 'talk', 'party_say', 'chat_read', 'party_read', 'invite', 'join_party', 'accept', 'decline', 'leave_party', 'propose', 'vote', 'break_camp', 'lead_to', 'send_courier'],
+  'Talk and company': ['say', 'whisper', 'emote', 'talk', 'party_say', 'chat_read', 'party_read', 'invite', 'join_party', 'accept', 'decline', 'leave_party', 'propose', 'vote', 'challenge', 'answer_challenge', 'break_camp', 'lead_to', 'send_courier'],
   'Memory and self': ['journal_read', 'journal_write', 'journal_search', 'remember', 'recall', 'update_memory', 'forget', 'pin', 'self', 'become'],
   'The table and the unforeseen': ['scene_act', 'attempt', 'wait'],
 };
