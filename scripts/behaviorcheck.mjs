@@ -134,10 +134,13 @@ for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
 const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
 ok(memA.ok, 'A wrote a memory (#179)');
-run(30); // 3 game hours: C and D sit in town
+// C's agent keeps it in town on purpose (#466: a silent member's autopilot now walks out of town to hunt, so a stuck member
+// is one whose agent keeps acting without going anywhere): every game hour its runner orders a rest in town.
+const runHeld = async s => {for (let t = 0; t < s; t += 10) {const r = await post('/play/call', {hero: Cm.id, tool: 'rest', args: {minutes: 60}, runner: 'mock-C'}); if (r.ok === false && !/camp|cannot rest/i.test(r.error || '')) console.log('  .. C rest refused: ' + r.error); run(Math.min(10, s - t))}};
+await runHeld(30); // 3 game hours: C and D sit in town
 T.TABLE.mode = 'auto';
 for (let k = 0; k < 2; k++) {const sc = T.openScene('check', 'A narrow ledge ' + (k + 1), ['The path crumbles.'], {}); ok(!!sc && sc.pause, `scene ${k + 1} opened and paused the world`); run(6);}
-for (let k = 0; k < 2; k++) {const P = C.propose(A, 'other', 'rest a while ' + k, {vote: false}); ok(P && P.id, `proposal ${k + 1} put to the party`); run(25)}
+for (let k = 0; k < 2; k++) {const P = C.propose(A, 'other', 'rest a while ' + k, {vote: false}); ok(P && P.id, `proposal ${k + 1} put to the party`); await runHeld(25)}
 T.TABLE.mode = 'off';
 for (let k = 0; k < 3; k++) LV.pull('mark_dangerous', {at: {x: spot.x, y: spot.y}}, {by: 'dm-agent', reason: ''});
 // a spot the lever accepts (open ground, not a town or a landmark), and E standing on it, hurt
@@ -147,7 +150,7 @@ await post('/play/claim', {hero: E.id, runner: 'mock-E', provider: 'anthropic', 
 E.hp = maxHp(E) * .2; E.state = 'hunt'; E.target = null;
 const lp = LV.pull('mark_dangerous', {at: {x: Math.floor(E.x) + .5, y: Math.floor(E.y) + .5}, r: 3, hours: 2}, {by: 'scripted', reason: 'the woods grow dark'});
 ok(lp.ok, 'a danger lever pulled where a hurt member stands' + (lp.ok ? '' : ': ' + lp.reason));
-run(45); // more game hours: stuck, more digests
+await runHeld(45); // more game hours: stuck, more digests
 await new Promise(r => setTimeout(r, 300));
 server.close(); BR.setFetch(null);
 
