@@ -178,6 +178,7 @@ other. The rules:
   when absent), `onAssets`; `terrain.js` `ASSET_TILES` draws base tiles from assets, `ASSET_LATER` names the road, water
   and transition pieces the slice-2 autotiles will draw. `npm run artcheck` (CI) checks it all against a mock Hugging
   Face server and a pixel-art fixture.
+- `npm run gambitcheck` (#617, `src/sim/gambits.js`, vocabulary and class presets in `src/data/gambits.js`): an agent hero's gambits, an ordered rule list (`when` + optional `and` + `then`) that autopilot (first rule that holds and can run), the fight reflex (every fight rule that holds, in order; flee ends it) and the full-pack reflex run between turns. With no edit a hero runs its class preset, which is the old fixed policy written out rule for rule (hashcheck's `autopilot` row proves agent heroes on autopilot play identically); scripted heroes never use it.
 - `npm run questcheck`: the quest log (see "Quest log" under Agent player): several quests per hero, focus, abandon, oaths, DM tags, save/restore and the scripted world unchanged.
 
 ## Agent player

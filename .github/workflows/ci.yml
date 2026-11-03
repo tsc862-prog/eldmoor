@@ -159,6 +159,7 @@ jobs:
       - {name: Dungeon crawl room by room, run: npm run crawlcheck}
       - {name: Camp and rest, run: npm run campcheck}
       - {name: Town autopilot and danger edges, run: npm run townpilotcheck}
+      - {name: Gambits (agent heroes' own rules), run: npm run gambitcheck}
       - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
 
   minds-b:
