@@ -150,5 +150,69 @@ ok(!r.ok && /times today/.test(r.error) && K2.gambitDay.n === 20, 'the day\'s li
   const O = S.agents.find(x => x !== K2 && x.kind === 'hero' && x.state !== 'dead' && x.fac === K2.fac); if (!O.player) P.markPlayer(O, true); O.x = K2.x + 1; O.y = K2.y;
   let leak = false; for (const t of ['look', 'status', 'companions', 'gambits', 'earshot', 'party_read', 'chat_read']) {const x = P.playerAct(O.id, t, {}); if (JSON.stringify(x).includes('Zorvath')) leak = true}
   ok(!leak, 'another hero\'s look, status, companions, gambits and chat never show a hero\'s rules')}
+// ---------------------------------------------------------------- the hold (#630)
+console.log('hold');
+{
+  const {setRunnerLinks, runnerLinks} = await import('../src/sim/runlink.js');
+  const HD = await import('../src/sim/gambithold.js');
+  const TBL = await import('../src/sim/table.js');
+  const {seatInfo} = await import('../src/sim/player-host.js');
+  const {paceBrief} = await import('../src/sim/pace.js');
+  const {briefText, holdNote} = await import('../scripts/pacing.mjs');
+  const links0 = runnerLinks();
+  const W = S.agents.find(x => x.kind === 'hero' && x.state !== 'dead' && !x.party && x.id !== K2.id);
+  if (!W.player) P.markPlayer(W, true);
+  setRunnerLinks(a => a.id === W.id ? 'connected' : 'none');
+  S.gambitHold = null; W.holdDay = null; W.gambits = null;
+  const hr = {id: 1, when: 'always', then: 'hold', on: true};
+  const mk = () => {W.gambits = [{...hr}, ...G.presetFor(W.cls).map((r, i) => ({...r, id: i + 2}))];};
+  ok(D.ACTS.hold && D.ACTS.hold.phase === 'both' && G.presetFor(W.cls).every(r => r.then !== 'hold'), 'hold is in the vocabulary and no class preset uses it');
+  ok(G.presetFor(W.cls, 'cautious').some(r => r.then === 'hold' && r.when === 'foe_is' && r.w.what === 'elite' && r.and === 'attacked'), 'the cautious preset holds when an elite attacks');
+  let rr = P.playerAct(W.id, 'set_gambit', {when: 'foe_is elite', and: 'attacked', then: 'hold', why: 'test'}); W.gambits = null;
+  ok(rr.ok, 'set_gambit takes "then: hold" (' + (rr.done || rr.error) + ')');
+  mk(); W.gambitDay = null;
+  fightSetup(W, .9); run(.05);
+  ok(S.gambitHold && S.gambitHold.id === W.id && S.gambitHold.rid === 1, 'a rule "always -> hold" holds the world for its hero');
+  ok((W.playEv || []).some(e => /holds the world/.test(e.text) && e.u), 'and starts the agent\'s turn at once (an urgent event)');
+  const g0 = S.gameMin; run(3);
+  ok(S.gameMin === g0 && S.gambitHold.s >= 2.9, 'the clock is stopped while held (' + S.gambitHold.s.toFixed(1) + ' s held)');
+  const v = P.playerAct(W.id, 'gambits'); ok(v.holding && v.rules.find(x => x.id === 1).holding, 'gambits marks the holding rule');
+  ok(seatInfo(W).hold === true, 'the seat info (/play/health) carries hold, so the runner starts at once');
+  const br = paceBrief(W.id).brief; ok(br.hold && /hold/.test(br.hold) && /HELD FOR YOU/.test(briefText(br)), 'the turn header says the world is held');
+  ok(!holdNote({}) && !seatInfo(S.agents.find(x => x.kind === 'hero' && x !== W)).hold, 'nothing is said for a hero that holds nothing');
+  rr = P.playerAct(W.id, 'say', {text: 'I see it'});
+  ok(!S.gambitHold, 'the hero\'s next acting call (' + (rr.ok ? 'say' : rr.error) + ') releases the hold');
+  const g1 = S.gameMin; run(1); ok(S.gameMin > g1, 'and the world runs on');
+  ok(S.gambitStats.holds === 1 && S.gambitStats.holdLog.slice(-1)[0].how === 'answered', 'it is counted (answered)');
+  // the gap and the cap
+  mk(); W.playActAt = S.gameMin; fightSetup(W, .9); run(.05);
+  ok(!S.gambitHold, 'the same rule does not hold again within ' + D.GAMBIT.HOLD_GAP + ' game minutes');
+  G.gambitRec(W).once = {}; W.holdDay = {d: Math.floor(S.gameMin / 1440) + 1, n: D.GAMBIT.HOLD_PER_DAY};
+  ok(!HD.holdStart(W, hr).ok && /holds/.test(HD.holdStart(W, hr).why), 'a hero is held at most ' + D.GAMBIT.HOLD_PER_DAY + ' times a game day');
+  W.holdDay = null; W.gambits = null;
+  // the limit in real seconds
+  ok(HD.holdStart(W, hr).ok, 'a hold starts'); const t0 = S.gameMin;
+  run(D.GAMBIT.HOLD_MAX_S - 5); ok(S.gambitHold && S.gameMin === t0, 'it waits for the agent');
+  run(10);
+  ok(!S.gambitHold && S.gambitStats.holdExpired === 1 && S.gambitStats.holdLog.slice(-1)[0].how === 'expired', JSON.stringify([!!S.gambitHold, S.gambitStats.holdExpired, S.gambitStats.holdLog.slice(-1)[0]]) + ' after ' + D.GAMBIT.HOLD_MAX_S + ' real seconds with no act it releases (expired)');
+  {const Wt = makeWatch(); Wt.tick(); S.table = null; S.tables = {}; HD.holdStart(W, hr); S.gambitHold.s = D.GAMBIT.HOLD_MAX_S - .01; run(1); const out = Wt.tick();
+    ok(out.some(x => x.kind === 'anomaly' && x.rec.kind === 'hold-expired'), 'the behavior watch flags hold-expired')}
+  // the runner is gone
+  HD.holdStart(W, hr); setRunnerLinks(() => 'none'); run(.1);
+  ok(!S.gambitHold && S.gambitStats.holdLog.slice(-1)[0].how === 'no-runner', 'with no runner the hold releases at once and the reflexes play');
+  ok(!HD.holdStart(W, hr).ok, 'and none starts without a live runner'); S.gambitHold = null;
+  setRunnerLinks(a => a.id === W.id ? 'connected' : 'none');
+  // a Table scene already waits: no hold
+  S.tables = S.tables || {}; const fake = {ids: [W.id]}; S.tables.__hold = fake;
+  ok(!HD.holdStart(W, hr).ok && /Table/.test(HD.holdStart(W, hr).why), 'a hold at a Table scene is a no-op (the table already waits)');
+  delete S.tables.__hold;
+  // owner override and speed
+  ok(HD.holdStart(W, hr).ok, 'a hold starts again'); TBL.TABLE.speed = 3; TBL.TABLE.drop = null; HD.holdTick(.1);
+  ok(TBL.TABLE.drop && /held for/.test(TBL.TABLE.drop.reason), 'above 1x it asks the host for 1x'); TBL.TABLE.speed = 1; TBL.TABLE.drop = null;
+  HD.holdResume(); ok(!S.gambitHold && S.gambitStats.holdLog.slice(-1)[0].how === 'owner', 'Resume anyway (the owner) releases it');
+  // death
+  HD.holdStart(W, hr); const hp = W.hp; W.state = 'dead'; HD.holdTick(.1); ok(!S.gambitHold, 'a hold ends with its hero'); W.state = 'town'; W.hp = hp;
+  setRunnerLinks(links0); W.gambits = null;
+}
 console.log('\n' + (fail ? fail + ' FAILED' : 'all ok'));
 process.exit(fail ? 1 : 0);
