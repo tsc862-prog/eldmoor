@@ -279,7 +279,7 @@ export function drawSetting(ctx,box,m,st,now,dpr=1){
   ctx.setTransform(sc,0,0,sc,ox,oy);
   // the room's own dimness (deeper at night and when the frame says so), then its fire, candles, lamps and daylight added back
   const dark=st.dark!=null?st.dark:m.dark||0,night=Math.max(0,dark-(m.dark||0));
-  if(dark>0){ctx.fillStyle='rgba(8,8,22,'+dark+')';ctx.fillRect(cr.x,cr.y,cr.w,cr.h)}
+  if(dark>0){ctx.fillStyle='rgba(14,16,34,'+dark+')';ctx.fillRect(cr.x,cr.y,cr.w,cr.h)}
   const G=glowSprite();ctx.save();ctx.beginPath();ctx.rect(T,T,W-2*T,H-2*T);ctx.clip();ctx.globalCompositeOperation='lighter'; // light stays inside the walls
   for(const p of m.props){const P=propOf(p.kind);if(!P||!P.light)continue;if(P.light==='day'&&night>.2)continue; // no daylight through the windows at night
     const R=(P.light==='crypt'?44:P.light==='day'?36:p.kind==='hearth'?50:30)*(1+night*.8);
@@ -301,6 +301,7 @@ export function drawSetting(ctx,box,m,st,now,dpr=1){
     ctx.drawImage(s,ix,iy-s.height);ctx.strokeStyle=MARK.sel;ctx.globalAlpha=pulse;ctx.lineWidth=dpr/sc;ctx.strokeRect(ix-1.5,iy-s.height-1.5,s.width+3,s.height+3);ctx.globalAlpha=1}
   for(const q of ents){const e=q.e,s=spriteOf(e,st.busy&&e===st.cur?fr:0);if(!s)continue;
     const px=Math.round(q.x*T),py=Math.round(q.y*T),o=outlined(s),top=py-s.height;q.px=px;q.top=top;
+    if(dark>.15){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(.5,dark*.8);ctx.drawImage(G.warm,px-17,py-s.height*.75-6,34,34);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over'} // ambient pool: people always read in a dim room
     ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,s.width/2,1.6,0,0,7);ctx.fill();
     if(q.cast||q.hero){const col=q.hero?classColor(e.cls):castColor(e);ctx.strokeStyle=col;ctx.globalAlpha=.8;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(px,py-.5,s.width/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
     ctx.save();ctx.translate(px,0);if(q.flip)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)-1,top-1);ctx.restore();
