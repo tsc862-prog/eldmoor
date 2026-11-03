@@ -78,7 +78,7 @@ export function loreOf(a){if(a.lore)return a.lore;const L=a.lore={c:{},p:{}};
   const z=zoneAt(a.x,a.y);if(ZONES[z]&&!L.p[ZONES[z]])L.p[ZONES[z]]={how:'been',at:Math.round(S.gameMin)};
   return L}
 function entry(a,key){const L=loreOf(a);return L.c[key]||(L.c[key]={tricks:[],z:[]})}
-const seenLvl=(e,m)=>{if(m.lvl==null)return;e.lo=e.lo==null?m.lvl:Math.min(e.lo,m.lvl);e.hi=e.hi==null?m.lvl:Math.max(e.hi,m.lvl)};
+const seenLvl=(e,m)=>{if(m.lvl==null)return;e.last=m.lvl;e.lo=e.lo==null?m.lvl:Math.min(e.lo,m.lvl);e.hi=e.hi==null?m.lvl:Math.max(e.hi,m.lvl)};
 const where=(e,m)=>{const z=MOBS[m.type]?MOBS[m.type].z:null;if(ZONES[z]&&!e.z.includes(ZONES[z]))e.z.push(ZONES[z])};
 const effLvl=m=>(m.lvl||1)+(m.elite||m.named?LORE.ELITE_RANK:0);
 // The first-sight read: d20 (from a hash of hero, creature and the hero's level, so a new level brings a new try) +
@@ -123,7 +123,9 @@ export function nearDeath(a,m){if(!learner(a)||!m||m.kind!=='mob'||a.loreNear===
   moment(a,'lesson',what+' nearly killed you'+(z?' in '+z:''))}
 // A hero fell to a creature: every learner who saw it (in sight, or a companion) learns it, and where.
 export function witness(dead,m){if(!dead||!m||m.kind!=='mob')return;const z=ZONES[zoneAt(dead.x,dead.y)];
-  for(const x of nearHeroes(dead.x,dead.y,LORE.WITNESS)){if(x===dead||!learner(x)||x.hidden)continue;if(dist(x,dead)>LORE.WITNESS*sightMul(zoneAt(x.x,x.y)))continue;
+  // Sight, not a list: a hero sees a fall within its own sight (never out of the Crypt, or from it); a companion of the fallen within shouting range knows too (#539).
+  for(const x of nearHeroes(dead.x,dead.y,LORE.WITNESS)){if(x===dead||!learner(x)||x.hidden)continue;
+    const mate=x.company!=null&&x.company===dead.company,seen=!dead.hidden&&dist(x,dead)<=LORE.WITNESS*sightMul(zoneAt(x.x,x.y));if(!seen&&!mate)continue;
     const e=entry(x,keyOf(m));e.fell=(e.fell||0)+1;e.name=1;seenLvl(e,m);where(e,m);if(!e.warned)e.warned='You saw '+dead.name+' fall to it';
     if(z){const p=place(x,z,'been');p.fell=(p.fell||0)+1}
     ev(x,'You saw '+dead.name+' fall to '+(m.elite||m.named?'':'a ')+realName(m)+'. You will not forget what it can do.',true);
@@ -196,10 +198,14 @@ function creatureLine(a,key,e){const name=knowsName(e)?keyName(key):'unnamed: '+
   if(e.hurt)k.push('it nearly killed you'+(e.hurt>1?' '+e.hurt+' times':''));if(e.fell)k.push('you know of '+(e.fell===1?'one':e.fell)+' who fell to it');
   if(e.tricks.length)k.push('tricks: '+e.tricks.map(trickName).join('; '));if(e.z.length)k.push('found in '+e.z.join(', '));
   if(e.warned)k.push('warned: '+e.warned);if(k.length)out.known=k;return out}
+// The worst creature the hero knows in a region, rated at a typical level (the last it met), not the highest ever seen (#539).
+function worstIn(a,name){let worst=null;for(const key of Object.keys(loreOf(a).c)){const e=loreOf(a).c[key];if(!e.z.includes(name)||e.hi==null||!(e.fought||e.read))continue;const r=rankOf((e.last!=null?e.last:e.hi)-a.lvl);if(!worst||r>worst.r)worst={r,n:keyPlural(key)}}return worst}
+// A few words of why a place is dangerous, or null.
+function dangerWhy(a,name,p){if(!p)return null;const w=[];if(p.hurt)w.push('you nearly died there');if(p.fell)w.push((p.fell===1?'one':p.fell)+' fell there');
+  const x=ZONES.includes(name)?worstIn(a,name):null;if(x&&x.r>=3)w.push(x.n+', '+RANKS[x.r]);if(p.warned&&!w.length)w.push('warned');return w.length?w.slice(0,2).join('; '):null}
 function placeLine(a,name,p){const out={place:name,how:p.how==='home'?'your home region':p.how==='been'?'you have been there':p.how==='seen'?'you have seen it':'you have heard of it'};
   const z=ZONES.indexOf(name),k=[];if(p.hurt)k.push('you nearly died there'+(p.hurt>1?' '+p.hurt+' times':''));if(p.fell)k.push('you know of '+(p.fell===1?'one':p.fell)+' who fell there');
-  if(z>=0){let worst=null;for(const key of Object.keys(loreOf(a).c)){const e=loreOf(a).c[key];if(!e.z.includes(name)||e.hi==null||!(e.fought||e.read))continue;const r=rankOf(e.hi-a.lvl);if(!worst||r>worst.r)worst={r,n:keyPlural(key)}}
-    if(worst)k.push('the worst you know there: '+worst.n+' ('+RANKS[worst.r]+')')}
+  if(z>=0){const worst=worstIn(a,name);if(worst)k.push('the worst you know there: '+worst.n+' ('+RANKS[worst.r]+')')}
   if(p.warned)k.push('warned: '+p.warned);if(k.length)out.notes=k;return out}
 export function loreView(a,about){const L=loreOf(a),q=clean(about,60).toLowerCase();
   // descriptions for unnamed entries: from a living one the hero can see, else a generic word
@@ -208,9 +214,17 @@ export function loreView(a,about){const L=loreOf(a),q=clean(about,60).toLowerCas
   if(q){cs=cs.filter(x=>x.name.toLowerCase().includes(q)||(x.known||[]).some(s=>s.toLowerCase().includes(q)));ps=ps.filter(x=>x.place.toLowerCase().includes(q)||(x.notes||[]).some(s=>s.toLowerCase().includes(q)))}
   return {creatures:cs,places:ps,towns:CITY.filter(c=>c.fac===a.fac).map(c=>c.name)}}
 // status.places: where this hero can walk by name.
-export function placesView(a){const L=loreOf(a);return Object.keys(L.p).map(n=>{const p=L.p[n],w=[];if(p.how==='home')w.push('home');else if(p.how==='told')w.push('heard of');if(p.hurt||p.fell||p.warned)w.push('danger');return w.length?n+' ('+w.join(', ')+')':n})}
+export function placesView(a){const L=loreOf(a);return Object.keys(L.p).map(n=>{const p=L.p[n],w=[];if(p.how==='home')w.push('home');else if(p.how==='told')w.push('heard of');{const y=dangerWhy(a,n,p);if(y)w.push('danger: '+y);else if(p.hurt||p.fell||p.warned)w.push('danger')}return w.length?n+' ('+w.join(', ')+')':n})}
 // The hero's warning words for a known region (move_to/lead_to), or null.
 export function placeWarn(a,name){const p=a.lore&&a.lore.p[name];if(!p)return null;const l=placeLine(a,name,p);return l.notes&&l.notes.length?name+': '+l.notes.join('; ')+'.':null}
+// The same, as the hero's memory (move_to/lead_to reply, #539).
+export function placeMemory(a,name){const w=placeWarn(a,name);return w?'You remember '+w:null}
+// brief.roads (#539): what the hero knows of where it is, where it is going and the places it knows to fear; short, null when empty.
+export function roadsLine(a){if(!learner(a)||!a.lore)return null;const P=a.lore.p,here=ZONES[zoneAt(a.x,a.y)],c=(a.pq||[])[0],out=[],seen=new Set();
+  const add=(n,pre)=>{if(!n||seen.has(n)||!P[n]||out.length>=3)return;seen.add(n);const y=dangerWhy(a,n,P[n]);if(y)out.push((pre?pre+' ':'')+n+': '+y)};
+  add(here,'Here,');const aim=c&&(c.kind==='move'?ZONES.find(z=>c.label&&c.label.includes(z)):c.ground!=null?ZONES[c.ground]:null);add(aim,'Bound for');
+  for(const n of Object.keys(P).filter(n=>ZONES.includes(n)).sort((x,y)=>(P[y].fell||0)+(P[y].hurt||0)-(P[x].fell||0)-(P[x].hurt||0)))add(n);
+  return out.length?out.join('. ').slice(0,260)+'.':null}
 // A creature named by the agent (hunt prey): the key of a creature it knows by name, or null.
 export function preyKey(a,name){const s=clean(name,60).toLowerCase().replace(/^(an?|the)\s+/,'');if(!s)return null;const L=loreOf(a);
   for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e))continue;const n=keyName(key).toLowerCase(),p=keyPlural(key).toLowerCase();if(s===n||s===p||s===n.replace(/^the /,''))return key}

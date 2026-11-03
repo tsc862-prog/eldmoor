@@ -74,7 +74,7 @@ import {waitsNote,waitedS} from './scenewait.js'; // a scene that waits on you, 
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
 import {lineRefusal,noteSaid} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
-import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,feared,keyOf,sight,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
+import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,placeMemory,roadsLine,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,feared,keyOf,sight,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
 import {actFlee,fights,actionLog} from './actlog.js';
 import {specOf,specChoices,specBlock,chooseSpec} from './spec.js'; // specialisations (#82)
@@ -496,11 +496,11 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   const z=ZONES.findIndex(n=>n.toLowerCase()===t);
   if(z>=0){if(!knowsPlace(a,ZONES[z]))return unknown(ZONES[z]);let p=zonePoint(z,null,c.gate);for(let i=0;i<8&&enemyNear(a,p);i++)p=zonePoint(z,null,c.gate); // a region around both towns (#411): pick again, away from the enemy wall
     if(enemyNear(a,p))return {error:'That part of '+ZONES[z]+' is under an enemy town wall.'};
-    const r=toField(p,ZONES[z]);const w=placeWarn(a,ZONES[z]);if(w)r.warn=w;return r}
-  if(t==='crypt'||t===CRYPT.name.toLowerCase()||t==='the crypt'){if(!knowsPlace(a,CRYPT.name))return unknown(CRYPT.name);const r=toField({x:CRYPT.x,y:CRYPT.y+1.4},CRYPT.name+' (the entrance)');const w=placeWarn(a,CRYPT.name);if(w)r.warn=w;return r}
+    const r=toField(p,ZONES[z]);const w=placeMemory(a,ZONES[z]);if(w)r.warn=w;return r}
+  if(t==='crypt'||t===CRYPT.name.toLowerCase()||t==='the crypt'){if(!knowsPlace(a,CRYPT.name))return unknown(CRYPT.name);const r=toField({x:CRYPT.x,y:CRYPT.y+1.4},CRYPT.name+' (the entrance)');const w=placeMemory(a,CRYPT.name);if(w)r.warn=w;return r}
   const lm=LANDMARKS.find(l=>l.name.toLowerCase()===t||l.kind===t);
   if(lm){if(!knowsPlace(a,lm.name))return unknown(lm.kind==='lair'?'that lair':lm.name);const r=toField({x:lm.x,y:lm.y+(lm.r||1)+1},lm.name);if(lm.kind==='lair')r.warn='That is the lair of Kragmaw the Cinder Wyrm. Few who go there come back.';return r}
-  const dp=knownMark(a,t);if(dp){const r=toField({x:dp.x,y:dp.y},dp.name);const w=placeWarn(a,dp.name);if(w)r.warn=w;return r} // a DM place it knows (#423)
+  const dp=knownMark(a,t);if(dp){const r=toField({x:dp.x,y:dp.y},dp.name);const w=placeMemory(a,dp.name);if(w)r.warn=w;return r} // a DM place it knows (#423)
   const town=CITY.find(x=>x.name.toLowerCase()===t);
   if(town){if(town.fac!==a.fac)return {error:town.name+' is an enemy town. You would not leave it alive.'};return toField({x:town.gate.x,y:town.gate.y},'the gate of '+town.name)}
   // Exploring (#188): a direction walks about LORE.DIR tiles that way, into whatever lies there.
