@@ -39,15 +39,17 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Serve the build and take the screenshots
+        continue-on-error: true
         run: |
           npx vite preview --host 127.0.0.1 --port 4173 --strictPort > preview.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173/ > /dev/null && break; sleep 1; done
           node scripts/shoot.mjs http://127.0.0.1:4173/ shots
       - uses: actions/upload-artifact@v4
         id: art
+        if: hashFiles('shots/*.png') != ''
         with: {name: ui-screenshots, path: shots/*.png, retention-days: 14}
       - name: Publish the images and comment on the PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('shots/*.png') != ''
         continue-on-error: true
         run: |
           pr="${{ github.event.pull_request.number }}"; sha="${{ github.event.pull_request.head.sha }}"
