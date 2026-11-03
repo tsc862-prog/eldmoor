@@ -36,3 +36,4 @@
 - [Emergent parties #402](emergent_parties.md) — companies of 1-8 (5 minds), single faction, together default; owner decisions 2026-11-03
 - [Company model #438](company_model.md) — company.js, accessor shims (S.fellowship, a.fellow, p.fellow), companySeq ids, save v7, hash proof
 - [Emergent parties #402](emergent_parties.md) — company 8 heroes/5 minds, together default forever, followed-only pause, arrival scene, no crypt level gate
+- [Town autopilot #466/#465](town_autopilot.md) — autopilot acts in town (inn, sell, potions, hunt fitting ground); danger-edge stop 5+ levels up, force/repeat
