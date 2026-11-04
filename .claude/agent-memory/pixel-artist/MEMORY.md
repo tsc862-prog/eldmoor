@@ -15,3 +15,4 @@
 - [Building recipe](buildingrecipe.md) — #763 flat palette + style gate for buildings, art:preview required before accept, ume-flux switch
 - [Crawl as played](crawlview.md) — #742 spots per chamber, act->spot, beats from sc.beats + HP drops, close-up framing, staging beats
 - [Image to image](img2img.md) — #763 owner decision: art from procedural init, layout contract, real Gradio facts, local Space test
+- [Town life](townlife.md) — #795 render-only critters/smoke/stalls/guards, deco entities, staging
