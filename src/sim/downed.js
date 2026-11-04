@@ -55,7 +55,7 @@ export const DOWN={
   // Below ground the Crypt stays deadly (owner, #269: about 0.6 Fellowship deaths per 120-minute run in the crawl; #654 with
   // the rules above alone gave 0.0, since a healer lifts the downed the next round). Crawl-only, world and Table rescues untouched.
   // A harder save or blows on the downed barely moved it (measured); the deaths come from the room the party loses.
-  CRAWL_LEFT:.6,     // driven back or withdrawing, the chance a downed hero not yet stable is lost on the stair (dies there)
+  CRAWL_LEFT:.7,     // (.7 since the crawl's geometry, #745: 60 sims each read .32 at .6, .45 at .7, .42 at .8) driven back or withdrawing, the chance a downed hero not yet stable is lost on the stair (dies there)
   CARRY:.6,         // a carrier's pace, a share of a helper's (#658)
   SEE:8,            // tiles: heroes not of their kin who still see a downing (agents hear of it, #658)
   DOWNS:8,          // an agent hero's own downings kept (a.downs, game minutes) for the self_downed_count gambit

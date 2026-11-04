@@ -16,4 +16,6 @@ metadata:
 
 **Balance (the hard part):** the guard rules took crawl downs to 0 at the old .5 cut, so `GEO.GUARD_CUT` was added. It is not a clean lever: deaths per run by cut, .5: 0 (14 sims), .65: .60 (10), .7: .30 (20), .8: .50 (10), .85: .33 (15), 1.0: .30 (10) and .13 (15). Above about .8 deaths fall (a tank at full blows goes down early, the priest lifts it, the room is still won). Main itself read .64 (14) and .40 (20). 20 sims give SE .15, too coarse for a .4-.8 band: use 60+.
 
+**Settled (coordinator decision, 2026-11-04):** `DOWN.CRAWL_LEFT` .6 to .7, GUARD_CUT stays .7. 60 sims each: .6 read .32, .7 read .45, .8 read .42 (SE .07-.09), so the three do not separate and .7 is the lowest inside the band, not a proven effect.
+
 **How to apply:** deaths need a down at the end of a lost room times `DOWN.CRAWL_LEFT`, so look at driven-back count (fell 6.85 to 4.2) and CRAWL_LEFT or blast strength before guard numbers. Heredocs with quotes and `\'` in python patches broke twice here: patch with script files and test-import after. Related: [[crawl-positions]], [[table-rescue-saves]].
