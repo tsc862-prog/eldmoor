@@ -4,12 +4,14 @@
 // turned into an agent, and no hero of the built world is ever scripted.
 // #453: setup v2 ({mode, heroes[]}): together (the default) builds the same world as the v1 setup it migrates from;
 // apart founds one company per group (a solo per hero with none) at its start town; the shape presets.
+// #771: a together company stands in one hall whatever its peoples (the Stepping Lands have two towns a faction), the
+// hall is the setup's choice, an apart group stands together, and a single-people setup is left exactly where it stood.
 // Usage: npm run setupcheck      (internal: --child <seed> [v1|apart] prints a world signature)
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {init, S, validateSetup, defaultSetup, applyPreset, cleanSetup, snapshot} from '../src/sim/index.js';
 import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
-import {seatCap, seatNote, asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION} from '../src/sim/setup.js';
+import {seatCap, seatNote, asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION, hallTowns} from '../src/sim/setup.js';
 import {companies, members} from '../src/sim/company.js';
 import {CITY, REGIONS} from '../src/world/map.js';
 
@@ -44,6 +46,18 @@ if (process.argv[2] === '--facts') {const k = process.argv[3], P = await import(
     arch: !!(pair[0] && pair[0].persona && pair[0].persona.archetype === 'zealot' && pair[1] && pair[0].persona.stances[pair[1].id]),
     logs: Cs.length > 1 && /sets out alone from/.test(JSON.stringify(Cs[Cs.length - 1].log)) && /set out together from/.test(JSON.stringify(Cs[0].log)),
     snapCos: (snapshot().companies || []).length, mining: hs[0] ? P.skillOf(hs[0].a, 'mining') : null})); process.exit(0)}
+
+// #771, in the Stepping Lands (ELDMOOR_WORLD=stepping): prints where a setup's companies stand.
+const PEOPLES = ['ashfolk', 'mirekin', 'mirekin', 'ashfolk', 'thornhide'];
+const peopled = (races, hall) => {const t = defaultSetup(771, 'stepping', 1); races.forEach((r, i) => t.heroes[i].race = r); if (hall) t.hall = hall; return t};
+if (process.argv[2] === '--stand') {const k = process.argv[3], {dist} = await import('../src/world/map.js');
+  const st = k === 'mixed' ? peopled(PEOPLES) : k === 'hall' ? peopled(PEOPLES, 'Murkstead') : k === 'single' ? peopled(PEOPLES.map(() => 'ashfolk')) : k === 'foreign' ? {...defaultSetup(771, 'eldmoor', 1), hall: 'Murkstead'}
+    : (() => {const t = applyPreset('pairs-and-solo', peopled(PEOPLES)); t.heroes[2].start = {town: 'home', region: REGIONS[REGIONS.findIndex(r => r.band && r.band[0] > 1)].name}; return t})();
+  init({setup: cleanSetup(st)});
+  console.log('STAND ' + JSON.stringify({valid: validateSetup(st).join(' | '), setup: S.setup, cos: companies().map(C => {const L = members(C), c = CITY.find(t => t.name === C.hall);
+    return {name: C.name, hall: C.hall, n: L.length, far: Math.max(...L.flatMap(a => L.map(b => dist(a, b)))), inHall: L.every(a => a.x >= c.x0 && a.x <= c.x1 + 1 && a.y >= c.y0 && a.y <= c.y1 + 1),
+      home: L.every(a => a.town === C.hall), town: L.every(a => a.state === 'town'), party: L[0].party ? L[0].party.mem.length : 0, born: L.map(a => a.born || null), story: L.map(a => a.backstory ? JSON.stringify(a.backstory) : ''), log: C.log.map(e => e.parts.map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '').join('')).join(' | ')}})}));
+  process.exit(0)}
 
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
@@ -88,6 +102,15 @@ bad(t => {t.mode = 'apart'; t.heroes[T].group = 1; t.heroes[H].group = 1; t.hero
  ok(validateSetup(t).length === 0, 'apart: the world may hold both factions, each hero from a town of its own: ' + validateSetup(t).join(' | '))}
 {const t = JSON.parse(JSON.stringify(s)); [t.heroes[0], t.heroes[2]] = [t.heroes[2], t.heroes[0]];
  ok(validateSetup(t).length === 0 && slotsOf(t).tank === 2 && slotsOf(t).dps1 === 0, 'together: the five places in any order (the Warrior takes the Tank place wherever it stands)')}
+
+// ---- the hall (#771) ----
+{const st = peopled(PEOPLES, 'Murkstead');
+ ok(hallTowns('stepping', 1).join() === 'Grimhold,Murkstead' && hallTowns('eldmoor', 1).join() === 'Grimhold', 'the hall picker lists the towns of the faction on the chosen map');
+ ok(validateSetup(st).length === 0 && cleanSetup(st).hall === 'Murkstead', 'a town of the faction is a legal hall, and cleaning keeps it: ' + validateSetup(st).join(' | '));
+ ok(validateSetup({...st, hall: 'Highgate'}).some(x => /hall.*not a town/i.test(x)), 'a town of the other faction is refused as a hall');
+ ok(!('hall' in cleanSetup(s)) && !('hall' in slotsView(cleanSetup(s))), 'no hall chosen: the setup carries none (the old shape)');
+ ok(slotsView(cleanSetup(st)).hall === 'Murkstead' && !('hall' in applyPreset('five-solos', st)) && !('hall' in cleanSetup({...st, mode: 'apart'})), 'the places view keeps the hall; apart has none');
+ ok(applyPreset('last', defaultSetup(2, 'stepping', 1), {last: st}).hall === 'Murkstead' && !('hall' in applyPreset('last', st, {last: defaultSetup(3, 'stepping', 1)})), 'Last used restores the hall, or its absence')}
 
 // ---- v1 -> v2 ----
 {const v1 = chosenV1(4242), c = cleanSetup(v1);
@@ -200,6 +223,23 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  const g = facts('five');
  ok(g.sizes === '1,1,1,1,1' && g.heroes.every(h => h.lvl === 1 && h.player && h.town === h.hall), 'five solos: five companies of one, level 1, each at its own start town');
  const p = facts('soloprof'); ok(p.sizes === '1' && p.mining === 1, 'apart: a hero\'s chosen profession is seeded too')}
+
+// ---- standing together (#771): the Stepping Lands, each world in its own process ----
+{const stand = k => {const out = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--stand', k], {encoding: 'utf8', env: {...process.env, ELDMOOR_WORLD: k === 'foreign' ? 'eldmoor' : 'stepping'}}); const m = out.stdout.match(/STAND (.*)/); if (!m) console.error(out.stderr.slice(-800)); return m ? JSON.parse(m[1]) : {cos: [{}]}};
+ const a = stand('mixed'), A = a.cos[0];
+ ok(a.valid === '' && a.cos.length === 1 && A.n === 5 && A.hall === 'Grimhold' && !('hall' in a.setup), 'mixed peoples, together: one company, the hall the Tank\'s home town as ever (' + A.hall + ')');
+ ok(A.inHall && A.far <= 4 && A.home && A.town && A.party === 5, `every member stands in the hall town, within 4 tiles (${A.far && A.far.toFixed(1)}), home there, in state town, one party of five`);
+ ok(A.born.join() === ',Murkstead,Murkstead,,' && /Murkstead, come from|come from Murkstead/.test(A.log), 'those from another town are marked, and the campaign log says where they came from: ' + A.born);
+ ok(A.story[1].includes('Murkstead'), 'the people\'s home town stays in the origin text');
+ const h = stand('hall'), B = h.cos[0];
+ ok(B.hall === 'Murkstead' && B.inHall && B.far <= 4 && B.home && h.setup.hall === 'Murkstead', 'the setup\'s hall: all five start there, and S.setup records it');
+ ok(B.born.join() === 'Grimhold,,,Grimhold,Grimhold', 'the hall is the setup\'s choice, not the leader\'s people: ' + B.born);
+ const g = stand('single'), G = g.cos[0];
+ ok(G.hall === 'Grimhold' && G.inHall && G.born.every(x => !x) && !/come from/.test(G.log), 'a single-people company is left where it stood: nobody moved, no line');
+ ok(stand('foreign').cos[0].hall === 'Grimhold', 'a remembered hall that is no town of this map falls back to the Tank\'s home town');
+ const p = stand('apart'), [P1, P2] = p.cos;
+ ok(p.valid === '' && P1.n === 2 && P1.far <= 4 && P1.inHall && P1.home, 'apart: a group of two peoples stands in one town (' + P1.hall + ', ' + P1.far.toFixed(1) + ' tiles)');
+ ok(P2.n === 2 && P2.far <= 4 && !P2.town, 'apart: a group seasoned to a region stands together out there too (' + P2.far.toFixed(1) + ' tiles)')}
 
 // Professions per place (#259): validated, cleaned, seeded through learn(), kept for a replacement.
 {const P = await import('../src/sim/professions.js'), {offerReplacement} = await import('../src/sim/company.js'), S2 = (await import('../src/sim/index.js')).S;
