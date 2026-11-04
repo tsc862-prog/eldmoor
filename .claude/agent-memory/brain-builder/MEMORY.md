@@ -70,3 +70,4 @@
 - [Scene ready](scene-ready.md) — #682 members held until the DM frame, staggered wakes, hush, DM voice first on Claude slots; test pitfalls
 - [Downed agent side](downed-agent.md) — #658 aid-phase gambits, presets = old reflex, onAid hook, downed reflection, stabilize/tend/carry, heredoc pitfall
 - [Slot and scene](slot-scene.md) — #687 slot wait watches due (scene:true first), queued why + miss cause, wait holds at an answered scene
+- [Scene grab](scene-grab.md) — #737 sceneGrab aborts mid-turn Claude query after 15 s due, resume, queued countdown
