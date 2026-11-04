@@ -427,7 +427,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     Object.assign(DOWN, keep); sim.markPlayer(a, false)}
 
   // B. a notification that cannot wait starts a turn at once, inside the gap; the hero's other news waits for the gap
-  {const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {if (a.state === 'downed') delete a.down; park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
+  {const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
     const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '4']);
     ok(await until(() => R.turns.length >= 1, 30000), 'a local runner without --max-turns plays (until stopped)');
     ok(/until stopped/.test(R.out), 'and says it runs until stopped');
