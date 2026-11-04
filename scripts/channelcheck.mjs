@@ -323,6 +323,23 @@ S.table = null; T.TABLE.mode = 'off';
   {const bg = S.agents.find(h => !h.player && h.state !== 'dead'); ok(!bg || !DMA.dmAct('dream', {hero: bg.name, text: 'x'}).ok, 'a dream is for agent heroes only')}
 }
 
+// the downed (#658): B goes down beside A. A hears that B is down and where, and nothing of B's own: no journal, memory,
+// persona, mind or reflection, and not the save tally. B's reflection moment is B's alone.
+{const {rebuild} = await import('../src/sim/spatial.js'), RF = await import('../src/sim/reflect.js');
+  const keepB = {x: B.x, y: B.y, state: B.state, hp: B.hp}, keepA = {x: A.x, y: A.y, state: A.state};
+  const m = S.mobs.find(q => q.alive && !q.gone && !q.elite && !q.named) || S.mobs[0];
+  A.state = 'hunt'; A.x = B.x + 2; A.y = B.y; B.state = 'hunt'; A.playEvSeen = A.playEvN || 0; rebuild();
+  B.hp = -3; HE.agentDie(B, m);
+  ok(B.state === 'downed', 'B is down beside A');
+  const evA = keep('A events after B went down', (A.playEv || []).filter(e => e.n > (A.playEvSeen || 0)).map(e => e.text).join(' | '));
+  ok(new RegExp(B.name + ' is down and dying').test(evA) && !/death save|failure|success|lying in the dark/i.test(evA), 'A hears that B is down and where, never B\'s saves or B\'s reflection');
+  keep('A look at downed B', act(A, 'look')); keep('A brief with B down', PC.paceBrief(A.id));
+  ok(RF.reflectDue(B) && RF.reflectDue(B).kind === 'downed' && !(RF.reflectDue(A) && RF.reflectDue(A).kind === 'downed'), 'the reflection in the dark is B\'s, not A\'s');
+  keep('A tend B', act(A, 'tend', {who: B.name}));
+  ok(!leaks().length, 'nothing private leaks through a downing' + (leaks().length ? ': ' + leaks().join(', ') : ''));
+  for (const h of S.agents) if (h.aid === B.id) {h.aid = null; h.aidHow = null; h.state = 'hunt'}
+  B.down = null; Object.assign(B, keepB, {hp: maxHp(B), state: keepB.state === 'downed' ? 'hunt' : keepB.state}); Object.assign(A, keepA); if (B.reflect) B.reflect.cur = null; rebuild()}
+
 // ---------------------------------------------------------------- 5. the relay: seats stay apart
 console.log('relay and MCP');
 const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
@@ -442,7 +459,16 @@ ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');
   r = act(A, 'emote', {text: 'sharpens his blade ' + sE}); ok(r.ok && r.seen_by.length === 2, 'A emotes');
   const ec = act(W1, 'chat_read', {}); ok(ec.lines.some(l => l.includes('*') && l.includes(sE)), 'a bystander sees the act in italics'); keep('emote chat_read (bystander)', ec);
   ok(!(B.chat || []).some(e => e.emote) && !JSON.stringify(DMA.dmAct('hear', {n: 200})).includes(sE), 'the far member and the DM see no emote');
-  ok((A.bubble || {}).text === '*sharpens his blade ' + sE + '*', 'the emote shows as a bubble')}
+  ok((A.bubble || {}).text === '*sharpens his blade ' + sE + '*', 'the emote shows as a bubble');
+  // a hero's whisper inside an open Table scene (#646): the banner and every table view carry only the veiled line, never the words
+  T.TABLE.mode = 'auto'; const sW2 = secret('whisper'), sc2 = T.openScene('check', 'A low door', ['The door is low.'], {anchor: A.id});
+  ok(!!sc2 && sc2.ids.includes(A.id) && sc2.ids.includes(W0.id), 'a scene is open around A and W0 for the hero whisper');
+  A.playRate = []; r = act(A, 'whisper', {to: W0.name, text: 'The door is a trap, ' + sW2}); ok(r.ok, 'A whispers to W0 inside the scene' + (r.ok ? '' : ': ' + r.error));
+  const bn2 = T.bannerOf().narr || '', views = sc2.ids.map(id => S.agents.find(x => x.id === id)).filter(Boolean).map(x => JSON.stringify(T.tableView(x)));
+  ok(bn2 === A.name + ' leans close to ' + W0.name + '.' && !bn2.includes(sW2), 'the Table banner shows "A leans close to W0", never the text (' + bn2 + ')');
+  ok(views.length >= 2 && views.every(v => !v.includes(sW2) && v.includes('leans close to')), 'every member table view carries the veiled line and not the words');
+  ok(!JSON.stringify([bn2, sc2.narr, sc2.beats.map(b => b.line)]).includes(sW2) && !JSON.stringify(act(W1, 'chat_read', {n: 30})).includes(sW2) && !JSON.stringify(act(W1, 'look')).includes(sW2), 'the banner data and a bystander never see the whispered words');
+  S.table = null; T.TABLE.mode = 'off'}
 // the mirror: Markdown for the owner, never read back
 const mir = MM.memoryMirror({root: LOGS, world: 'check'}), sentM = new Map();
 const flush = () => {const out = NBm.mirrorDirty(sentM); mir.write(out); for (const o of out) sentM.set(o.key, o.sig); return out};
