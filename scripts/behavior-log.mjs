@@ -60,8 +60,13 @@ export const cut = (s, n) => {s = String(s == null ? '' : s).replace(/[\u0000-\u
 export const worldName = w => String(w || '').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 40) || 'eldmoor';
 // Narration that claims a fight while the game says there is none (the coordinator's #126 bug: a model
 // narrated a fight that ended long ago). brief/after: the hero's state header before and after the turn.
+// #838: a passing mention is not a claim. Only a sentence that says a fight is going on now counts:
+// a present-tense cue, and none of the words of a negation, a plan, a finished fight or a fight someone else is in.
+const NOT_CLAIM = /\b(rather than|instead of|avoid(s|ed|ing)?|without|no (more )?(fight|battle|combat)|not (to )?(fight|risk)|risk(ing)?|after (the|a|our|that)|ended|won|over|finish(ed|es)? (off |the |a )|to (finish|fight|avoid)|only|if|once|before|nearby|have been|had|was|were)\b/i;
+const NOW_CLAIM = /\b(is|are|am|currently|still|now|let me|continues?|continuing|strikes|slashes|clashes|clashing|parries|swings|lunges|fights|battling)\b|\bI (strike|swing|slash|parry)\b/i;
+export const claimsFightNow = text => String(text || '').split(/(?<=[.!?])\s+|\n+/).some(t => FIGHT_WORDS.test(t) && !NOT_CLAIM.test(t) && NOW_CLAIM.test(t));
 export function staleClaim(narration, brief, after, tools = []) {
-  if (!narration || !FIGHT_WORDS.test(narration)) return null;
+  if (!narration || !FIGHT_WORDS.test(narration) || !claimsFightNow(narration)) return null;
   const fighting = b => b && (b.foe || FIGHT_STATES.has(b.state));
   if (!brief && !after) return null;
   if (fighting(brief) || fighting(after) || tools.some(t => FIGHT_TOOLS.has(t.name))) return null;
@@ -134,7 +139,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     if (S.empty >= BD.EMPTY_RUN && (S.empty === BD.EMPTY_RUN || S.empty % 10 === 0)) anomaly({kind: 'no-tool-calls', seat, hero: rec.hero || null, severity: 'bad', text: `${who}: ${S.empty} turns in a row without a tool call (${line.provider || '?'}/${line.model || '?'})`, evidence: {run: S.empty, turn: line.turn, narration: narration.slice(0, 200)}, force: S.empty === BD.EMPTY_RUN});
     if (flags.has('repeat')) anomaly({kind: 'repeated-narration', seat, hero: rec.hero || null, text: `${who} repeats an earlier narration`, evidence: {turn: line.turn, narration: narration.slice(0, 200)}});
     if (flags.has('foreign')) anomaly({kind: 'not-english', seat, hero: rec.hero || null, text: `${who} answered in another language (${line.model || '?'})`, evidence: {turn: line.turn, narration: narration.slice(0, 120)}});
-    if (stale) anomaly({kind: 'stale-claim', seat, hero: rec.hero || null, severity: 'bad', text: `${who} ${stale}`, evidence: {turn: line.turn, narration: narration.slice(0, 200), state: (rec.after || rec.brief || {}).state || null}});
+    if (stale) anomaly({kind: 'stale-claim', seat, hero: rec.hero || null, severity: (rec.after || rec.brief || {}).state === 'town' ? 'warn' : 'bad', text: `${who} ${stale}`, evidence: {turn: line.turn, narration: narration.slice(0, 200), state: (rec.after || rec.brief || {}).state || null}});
     S.refused = flags.has('refused') ? S.refused + 1 : 0;
     if (S.refused >= BD.REFUSED_RUN) anomaly({kind: 'refused-calls', seat, hero: rec.hero || null, text: `${who}: every tool call failed for ${S.refused} turns in a row (last: ${line.tools.filter(t => !t.ok).map(t => t.name + ': ' + t.error).slice(-1)[0] || '?'})`, evidence: {run: S.refused, refused}});
     if (rec.error && /429|rate.?limit|overloaded|timed? ?out|timeout/i.test(rec.error)) relayFail(cut(rec.error, 80), seat);

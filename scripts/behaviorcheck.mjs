@@ -37,13 +37,23 @@ const {zoneFor, zonePoint, ZONES, zoneAt, CITY} = await import('../src/world/map
 const {homeOf} = await import('../src/data/races.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
-const {behaviorLog, FILES} = await import('./behavior-log.mjs');
+const {behaviorLog, FILES, staleClaim} = await import('./behavior-log.mjs');
 const {reportTurn} = await import('./behavior-turn.mjs');
 const {writeReport, readJsonl} = await import('./behavior-report.mjs');
 const {createRelay} = await import('./relay.mjs');
 
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+// #838: the stale-claim words. Passing mentions of a fight are not claims; a present-tense claim is.
+{
+  const town = {state: 'town', place: 'Highgate'}, field = {state: 'hunt', place: 'Thornvale'};
+  ok(staleClaim('Tamod led the Covenant back to Highgate and waited safely inside the walls rather than risk a night fight.', town, town) === null, 'stale-claim: "rather than risk a night fight" is not a claim (#838)');
+  ok(staleClaim('Sorris made it back to Highgate badly hurt and headed for the inn rather than risk another fight.', town, town) === null, 'stale-claim: "rather than risk another fight" is not a claim (#838)');
+  ok(staleClaim('The party voted to return in daylight to finish the four remaining boars and fight only the wounded ones.', town, town) === null, 'stale-claim: a plan is not a claim');
+  ok(staleClaim('The boar fight ended with my HP full.', field, field) === null, 'stale-claim: a finished fight is not a claim');
+  ok(!!staleClaim('A Bristleback Boar has ambushed our camp in Thornvale. I will prepare to defend the party against this threat. Let me strike at it now.', field, field), 'stale-claim: the Marald line is still caught (#838)');
+  ok(!!staleClaim('It seems we are currently engaged in a fight with the Webspinner.', field, field), 'stale-claim: "currently engaged in a fight" is still caught');
+}
 const WORLD = 'check-world', DIR = join(process.env.BEHAVIOR_DIR, WORLD);
 const lines = f => readJsonl(DIR, FILES[f]);
 console.log('\nEldmoor behaviorcheck: behavior logs for the watcher (issue #129)\n');
