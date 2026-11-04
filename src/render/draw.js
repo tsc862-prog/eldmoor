@@ -198,7 +198,7 @@ export function createRenderer(cv,screenEl){
       else s=heroSprite(e,e.state==='ghost',fr);
       const px=Math.round((e.x+(e.kind==='npc'&&e.state==='home'&&!e.moving?((e.id%3)-1)*.6:0))*T),py=Math.round(e.y*T),live=e.state!=='dead'; // townsfolk at home stand on one wall column a tile apart (sim homeAt): stagger them over three lanes so the sprites do not stack (#701)
       // a generated sheet (#177) for a living hero or creature, else the procedural sprite scaled to the same height
-      const G=live&&e.state!=='ghost'&&(e.kind==='hero'||e.kind==='mob')?sheetFrame(e,dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
+      const G=live&&e.state!=='ghost'&&(e.kind==='hero'||e.kind==='mob'||e.kind==='npc')?sheetFrame(e,e.kind==='npc'&&!e.moving?0:dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
       const sw=G?G.fw/ART:s.width*PROC_SCALE,sh=G?G.fh/ART:s.height*PROC_SCALE;
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
       if(live)shadow(px,py,sw);

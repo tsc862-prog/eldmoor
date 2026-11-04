@@ -352,7 +352,13 @@ try{
       const SPR=await import('../src/render/sprites.js'),AS=await import('../src/render/assets.js'),px=AS.pixelsOf(96,192,new Uint8Array(96*192*4));
       AS.setAssetPixels('sprite:hero-warrior',px);AS.setAssetPixels('sprite:hero-warrior-ashfolk',px);
       ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior-ashfolk'&&SPR.heroSheetId('Warrior','tarrow')==='sprite:hero-warrior'&&SPR.heroSheetId('Warrior')==='sprite:hero-warrior'&&SPR.heroSheetId('Mage','ashfolk')==='sprite:hero-mage'&&SPR.heroSheetId('Nobody','ashfolk')===null,'the renderer takes the people sheet of a hero, else the class sheet, else the procedural sprite');
-      AS.setAssetPixels('sprite:hero-warrior',null);AS.setAssetPixels('sprite:hero-warrior-ashfolk',null);ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior','and falls back when the sheets leave (ids are re-read when assets change)')}}
+      AS.setAssetPixels('sprite:hero-warrior',null);AS.setAssetPixels('sprite:hero-warrior-ashfolk',null);ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior','and falls back when the sheets leave (ids are re-read when assets change)')
+      // a townsperson's sheet (#832): role and people, then the role alone, then the procedural figure; every role has a look for every people
+      AS.setAssetPixels('sprite:npc-smith',px);AS.setAssetPixels('sprite:npc-smith-ashfolk',px);
+      ok(SPR.npcSheetId('smith','ashfolk')==='sprite:npc-smith-ashfolk'&&SPR.npcSheetId('smith','tarrow')==='sprite:npc-smith'&&SPR.npcSheetId('bard','ashfolk')===null,'a townsperson picks the role sheet of the people, then of the role, else nothing');
+      AS.setAssetPixels('sprite:npc-smith',null);AS.setAssetPixels('sprite:npc-smith-ashfolk',null);
+      {const {NPC_ROLES,WANDER_ROLES}=await import('../src/data/npcs.js'),cfg=JSON.parse(readFileSync('scripts/art/lpc-townsfolk.json','utf8'));
+        ok([...NPC_ROLES,...WANDER_ROLES].every(R=>cfg.roles[R.id])&&Object.keys(cfg.roles).length===NPC_ROLES.length+WANDER_ROLES.length,'lpc-townsfolk.json has a look for every role of data/npcs.js and no other');}}}
 
   // --- daily.mjs: quota-driven, resumable, into incoming/<date>/ for review
   {const dir=join(tmp,'assets'),logP=join(tmp,'art.log'),days=['2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07','2026-11-08','2026-11-09','2026-11-10'];let d=0;
