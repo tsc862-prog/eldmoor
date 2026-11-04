@@ -66,6 +66,7 @@ import {pull,ready,spotErr,attitudeDc,activeOf} from './levers.js';
 import {GOODS} from '../data/items.js';
 import {playerBranch} from './player-choice.js';
 import {isSolo,inSlots} from './company.js';
+import {supplyPlan,notePosted} from './supply.js'; // goods jobs: the board asks for crafted or gathered goods (#720)
 
 // ---- knobs ----
 export const K={
@@ -686,7 +687,10 @@ function refill(){const gone={};
     if(!posted.some(h=>h.zone==null)){const w=pull('withdraw_hook',{hook:posted[0].id},{by:'scripted',reason:'every posted job was tied to one region',log:false});
       boardLever=null;const h=townHook(c);boardLog(c,h,(gone[c.name]||[]).concat(w.ok?[hookRow(posted[0],'every posted job was tied to one region: oldest taken down')]:[]),[w.entry.detail].concat(boardLever?[boardLever]:[]))}}
   const five=fs.find(f=>f.company.slots)||null;
-  for(const c of order){boardLever=null;const h=soloHook(c,five);if(h)boardLog(c,h,[],boardLever?[boardLever]:[])}} // a solo-sized job on every board a solo's faction owns (#447)
+  for(const c of order){boardLever=null;const h=soloHook(c,five);if(h)boardLog(c,h,[],boardLever?[boardLever]:[])} // a solo-sized job on every board a solo's faction owns (#447)
+  // goods jobs (#720): a Fellowship or company member's trade first (their hall, reserved to them), else a hero of the town; no dice
+  for(const c of order){const d=supplyPlan(c,fs.find(f=>f.town===c)||null);if(!d)continue;boardLever=null;
+    const h=newHook(c,d.tpl,d.o.src,d.o,d.reason,true);if(h){if(!d.ff)notePosted(c,h);boardLog(c,h,[],boardLever?[boardLever]:[])}}}
 // A starved company (#530): with two or more companies, the one in the field longest unserved (fairness(), FOCUS.STARVE_MIN)
 // gets its hall job before the board fills: a fresh one replaces the stale unclaimed hall job (the job is the DM's next act for
 // them, so it stamps their last-served time). One a refill, no dice beyond fellowHook's own; one company never runs this.
@@ -728,7 +732,7 @@ function boardLog(c,h,removed,levers){const open=S.adventures.filter(x=>x.phase=
 function hallLine(c,h,who){const fo=h.cid!=null?focuses().find(f=>f.cid===h.cid):focus();if(!fo)return;
   const P=(S.parties||[]).find(p=>p.company===fo.cid&&p.leader&&fo.ids.has(p.leader.id)&&alive(p.leader));
   const a=who&&fo.ids.has(who.id)?who:P?P.leader:fo.members[0];if(!a)return;
-  const T=D.ADVENTURES[h.tpl],job=(h.data&&h.data.beast?'Hunt '+h.data.beast:T&&T.name||h.tpl)+(h.zone!=null&&ZONES[h.zone]?' in '+ZONES[h.zone]:'');
+  const T=D.ADVENTURES[h.tpl]||D.SUPPLY[h.tpl],job=(h.data&&h.data.beast?'Hunt '+h.data.beast:T&&T.name||h.tpl)+(h.zone!=null&&ZONES[h.zone]?' in '+ZONES[h.zone]:'');
   const co=fo.company.slots?'the Fellowship':fo.members.length>1?(fo.company.name||'the company'):null; // a solo's job is just theirs
   log(gold(c.name),' hall board: '+(h.giver?h.giver.name:'the gate captain')+' posts a job for ',a,who===a||!co?': ':' and '+co+': ',gold(job),'.')}
 

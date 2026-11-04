@@ -94,7 +94,8 @@ function fitsOut(a,r){if(room(a)>0)return true;const L=invOf(a).list;
 
 // Gear from a pattern: the class noun of the slot, the pattern's material, its item level and quality; it names its maker.
 function makeGear(a,r,cls){const P=CRAFT_GEAR[r.out.id],it=makeItem(cls,P.slot,P.ilvl,zoneFor(P.ilvl),{quality:P.quality,src:'Crafted by '+a.name});
-  it.name=P.material+' '+(SLOT_NOUNS[cls]||SLOT_NOUNS.Warrior)[P.slot];it.maker=a.name;it.makerId=a.id;return it}
+  it.name=P.material+' '+(SLOT_NOUNS[cls]||SLOT_NOUNS.Warrior)[P.slot];it.maker=a.name;it.makerId=a.id;it.craft=r.out.id; // which pattern (goods jobs ask for it by this, sim/supply.js)
+  return it}
 
 // One craft. Assumes canCraft passed. by: 'agent' | 'script' | 'camp'. Returns {ok, text, item?, made, skill, up}.
 export function craftOne(a,r,{by='script',cls,where}={}){const P=PROF[r.prof],sk0=skillOf(a,r.prof),d=skillBand(Math.max(1,sk0))-r.band;
