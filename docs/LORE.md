@@ -311,6 +311,9 @@ and is hunted on sight ("spots X, who killed their friend Y, and charges"). The 
 friend swears the death will be paid for. Whoever finally kills the killer has paid the
 blood debt, and the dead hero's friends warm to them. A grudge ends only with the killer.
 
+## Wounds and the chapel (issue #656)
+A hero brought down and brought back carries a lasting wound for days: less health, a slower step and a slower arm. Healers and the fire shorten it. In town the Priest (the Shaman, in Warband towns) dresses wounds at the chapel for a few coins; no one there raises the dead, and no one ever will.
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |
