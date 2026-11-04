@@ -66,11 +66,13 @@
 - [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut
 - [Talk setting #431](talk_setting.md) — talk scenes open on tavern/chapel/smithy/gate by where the person stands; field keeps the cut
 - [Gambits #617](gambits.md) — per-hero rules run by autopilot/fight reflex; presets = old policy rule for rule; hashcheck autopilot row guards it
+- [Vision scene #639](vision_scene.md) — stage_scene vision: rest/place trigger, vision.js registered from index (cycle), summary hides reveal
 - [DM sites #69](dm_sites.md) — create_site/enter_site, crawl by g.site, alvl gap scaling, round cap, wireSites cycle, private LCG
 - [Gambit hold #630](gambit_hold.md) — hold action stops the clock until the agent acts; release paths, limits, cautious preset only
 - [Pay and mark tools #628/#632](pay_mark_tools.md) — pay.js, marks.js (lore mk:1/2), emote chat flag, set_attitude steps, edit pitfalls
 - [Hire tool #634](hire_tool.md) — hires are scripted heroes outside slots, wanderers only, voters skip them, inSlots true in Fellowship
 - [Downed and saves #652/#653](downed_saves.md) — downed.js: hero blows finish, table/crawl keep old death until #654, aid state, finishes flag, fixture pitfalls
+- [PvP mercy #657](pvp_mercy.md) — mercy.js: downs not kills, finish/spare odds, life-debts, bled = no credit, finish = guild grudge
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
 - [Town errands #727](town_errands.md) — arrival now-wake + 120 min leave hold, errand aims wait in town, already-here, forced stale-aim drop, errand-unacted
