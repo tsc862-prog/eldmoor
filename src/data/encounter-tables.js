@@ -47,9 +47,9 @@ export const SHRINES=[
 // Boss pool per theme: variant (the body), a title, and the first level the boss is fit for. The builder picks
 // the highest entry whose level is at or below the site's top band; a custom epic table may override loot.
 export const SITE_BOSSES={
-  crypt:   [{name:'the Barrow-Reeve',title:'Keeper of the Low Gate',variant:'graveward',from:1},{name:'Marrowmother Ysolt',title:'who counts the drowned',variant:'graveward',from:9},{name:'the Hollow Abbot',title:'of the Last Candle',variant:'graveward',from:15}],
+  crypt:   [{name:'the Grave-Sexton',title:'Keeper of the Low Gate',variant:'graveward',from:1},{name:'Marrowmother Ysolt',title:'who counts the drowned',variant:'graveward',from:9},{name:'the Hollow Abbot',title:'of the Last Candle',variant:'graveward',from:15}],
   fortress:[{name:'Captain Redhand',title:'of the Toll Road',variant:'captain',from:1},{name:'Warden Brannock Sull',title:'the Gatebreaker',variant:'captain',from:9},{name:'the Iron Reeve',title:'of the Fallen Keep',variant:'captain',from:15}],
-  den:     [{name:'Dunmaw',title:'Mother of the Den',variant:'denmother',from:1},{name:'Long Ursel',title:'the Dam of Many',variant:'denmother',from:9},{name:'Snowdam',title:'Queen of the High Burrow',variant:'denmother',from:15}],
+  den:     [{name:'Mother Thistlewick',title:'Mother of the Den',variant:'denmother',from:1},{name:'Long Ursel',title:'the Dam of Many',variant:'denmother',from:9},{name:'Snowdam',title:'Queen of the High Burrow',variant:'denmother',from:15}],
   mine:    [{name:'the Cave Duchess',title:'of the Lower Seams',variant:'cavecrawler',from:1},{name:'Slagheart',title:'the Cold Furnace',variant:'slagmote',from:9},{name:'Emberdeep Kor',title:'who never sleeps',variant:'slagmote',from:14}],
   temple:  [{name:'the Veiled Cantor',title:'of the Broken Choir',variant:'graveward',from:1},{name:'Ashen Prior Orsan',title:'Last of the Vigil',variant:'graveward',from:10},{name:'the Tarnkeeper',title:'Warden of the Tarn Stair',variant:'graveward',from:16}],
   ruin:    [{name:'the Stone Steward',title:'of the Empty Hall',variant:'shambler',from:1},{name:'Lord Orrick Dane',title:'the Unburied',variant:'shambler',from:9},{name:'the Sundered Queen',title:'of the Cairn Court',variant:'shambler',from:15}],
