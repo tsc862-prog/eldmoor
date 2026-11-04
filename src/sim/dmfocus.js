@@ -155,5 +155,5 @@ export function hallBoard(C){const co=C||slotted();if(!co)return []; // a compan
     const E=d.eliteId!=null?S.mobs&&S.mobs.find(m=>m.id===d.eliteId):null;
     return {id:h.id,title:hallTitle(h),region:z!=null?ZONES[z]:null,band:R&&R.band?[R.band[0],R.band[1]]:null,
       day:Math.floor((h.born||0)/DAY)+1,by:h.by==='dm-agent'?'DM agent':h.ff?'scripted DM':'town board',
-      oath:who?{id:who.id,name:who.name}:null,elite:d.beast?{name:d.beast,lvl:d.eliteLvl==null?null:d.eliteLvl,alive:!!E}:null,
+      oath:who?{id:who.id,name:who.name,...(who.goal&&who.goal.offered?{thread:true}:{})}:null,elite:d.beast?{name:d.beast,lvl:d.eliteLvl==null?null:d.eliteLvl,alive:!!E}:null,
       giver:h.giver&&h.giver.name||null}})}

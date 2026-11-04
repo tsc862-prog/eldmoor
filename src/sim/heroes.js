@@ -13,7 +13,7 @@ import {CLS} from '../data/classes.js';
 import {rollTraits,tm,traitPhrase} from '../data/traits.js';
 import {MOBS} from '../data/mobs.js';
 import {EPICS,GOODS,price} from '../data/items.js';
-import {S,clockStr} from './state.js';
+import {S,clockStr,noOthers} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
 import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerClear} from './party.js';
@@ -62,13 +62,14 @@ function chooseBounty(a,c,z){
   if(a.quest&&MOBS[a.quest.type]&&MOBS[a.quest.type].z!==z){killAbandoned(a,'left for '+ZONES[z]);record(a,'Let the bounty on '+MOBS[a.quest.type].pl+' go.');a.quest=null}
   if(a.quest)return;const b=bountyFor(a,c,z);if(b&&rnd()<BOUNTY.TAKE*tm(a,'greed'))takeBounty(a,b)}
 
-export function makeHero(f,cls,guild,wait){
+export function makeHero(f,cls,guild,wait,name){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
     inv:newInv(),kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
     wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0,adv:null};
   a.traits=rollTraits(cls);
   a.slots=emptySlots();
   assignRace(a,S.agents); // people, skin, hair, name and home town (data/races.js)
+  if(name)a.name=name; // a name chosen for them (summon_hero, #780), before the backstory speaks it
   assignBackstory(a);
   rollScores(a); // six ability scores and skill training, after the people and trade are known
   a.hp=maxHp(a);
@@ -127,7 +128,7 @@ export function fall(a,cause){
   if(a.will&&fallHook)fallHook(a);
   goalEvent(a,'died');
   if(a.lvl>=10&&!/^lost in/.test(cause))timeline('death',a,' fell at level '+a.lvl+' ('+cause+').'+(a.lvl>=15?' A legend ends.':''));
-  if(!a.hire)S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8}); // a hired blade is not replaced (sim/hire.js)
+  if(!a.hire&&!a.summoned&&!noOthers())S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8}); // a hired blade is not replaced (sim/hire.js), nor one the DM summoned; a world with no others queues nobody (#780)
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
 

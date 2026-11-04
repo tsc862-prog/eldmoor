@@ -128,6 +128,20 @@ console.log('runner routes (fake children)');
     for (const id of [2, 3, 4, 5, 6, 7, 8, 9, 10]) await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: id, ...lo}, origin: PAGE});}
   s = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 11, provider: 'ollama', model: 'qwen2.5:14b'}, origin: PAGE});
   ok(s.status === 429 && /Seats full: 10/.test(JSON.stringify(s.body || s)), 'ten local agent heroes at most, the eleventh is refused');
+  // issue #787: the context size from the turn lines, the rolls, and the page's fresh session
+  {k1.stdout.emit('data', Buffer.from('tokens this turn | ctx 212k | turn\n  [session rolled: 212k tokens]\ntokens this turn | ctx 31k | turn\n')); await sleep(10);
+    const v = (await req(on.base, '/play/runner', {origin: PAGE})).runners.find(r => r.key === 'hero:1');
+    ok(v && v.ctx === 31 && v.rolls === 1, `the runner view carries the last context size and the rolls: ctx ${v && v.ctx}k, ${v && v.rolls} roll`);
+    let f = await req(on.base, '/play/runner/fresh', {method: 'POST', body: {key: 'hero:1'}, origin: PAGE});
+    ok(f.status === 200 && f.asked.length === 1 && /fresh\n$/.test(k1.got), 'fresh session: a "fresh" line on the runner\'s stdin');
+    f = await req(on.base, '/play/runner/fresh', {method: 'POST', body: {}, origin: PAGE});
+    ok(f.status === 200 && f.asked.includes('hero:1') && f.asked.length > 1, `fresh sessions for all: ${f.asked.length} runners asked`);
+    f = await req(on.base, '/play/runner/fresh', {method: 'POST', body: {key: 'hero:99'}, origin: PAGE}); ok(f.status === 404, 'a runner that is not live is refused');
+    f = await req(on.base, '/play/runner/fresh', {method: 'POST', body: {}, origin: 'http://evil.example'}); ok(f.status === 403, 'another origin is refused');
+    const c = checkStart({hero: 1, fresh: true}, [{id: 1, name: 'Ann', alive: true}]);
+    ok(c.req.fresh === true && runnerArgs(c.req, 'http://x').includes('--new') && !runnerArgs(checkStart({hero: 1}, [{id: 1, name: 'Ann', alive: true}]).req, 'http://x').includes('--new'), 'Fresh session on a start is --new, and only when asked');
+    ok(!/fresh/.test(readFileSync(join(tmp, 'runners', 'active.json'), 'utf8')), 'it is never saved for a resume');
+    k1.got = ''}
   // stop: "stop" on stdin; the child exits cleanly
   s = await req(on.base, '/play/runner/stop', {method: 'POST', body: {hero: 1}, origin: PAGE});
   ok(s.status === 200 && s.runner.state === 'stopping' && k1.got === 'stop\n', 'stop asks the runner to stop (on its stdin)');
@@ -295,6 +309,52 @@ console.log('offline calls: one health check, not a retry loop (#691)');
   be.call = async () => ({ok: false, error: 'no answer in time', offline: true, why: 'no answer in time'}); const w0 = play.stats.offlineWaits; t0 = Date.now(); r = await play.call(1, 'status', {});
   ok(r.offline && Date.now() - t0 < 300 && play.stats.offlineWaits === w0, 'with the page listing its heroes an offline answer is immediate (no extra wait)');
   server.close();
+}
+
+// ---------------------------------------------------------------- 2a. a slow page (#736)
+console.log('a slow page: late answers kept for the retry, held waits, page busy (#736)');
+{
+  const {browserBackend, HELD_WAIT} = await import('./relay-mcp.mjs');
+  const page = () => {const ws = new EventEmitter(); ws.readyState = 1; ws.sent = []; ws.send = t => ws.sent.push(JSON.parse(t)); ws.close = () => {}; ws.say = o => ws.emit('message', Buffer.from(JSON.stringify(o))); return ws};
+  const be = browserBackend({callMs: 150, waitMs: 250, lateMs: 400, silentMs: 1000}), ws = page(); be.attach(ws);
+  ws.say({type: 'hello', heroes: [{id: 1, name: 'Ann', alive: true}]});
+  const beat = setInterval(() => ws.say({type: 'beat'}), 50); // the page's thread runs: it beats
+  const calls = () => ws.sent.filter(m => m.type === 'call');
+  // 1. a scene_act the page answers 100 ms after the relay gave up: the runner's retry gets that answer, the page is not asked twice
+  let r = await be.call(1, 'scene_act', {option: 'strike', line: 'Hold the gap.'});
+  ok(r.offline && r.why === 'no answer in time', 'a slow answer still times out at the call limit for the runner (' + r.why + ')');
+  const first = calls().at(-1); ws.say({type: 'result', id: first.id, result: {ok: true, chose: 'strike'}}); await sleep(20);
+  r = await be.call(1, 'scene_act', {line: 'Hold the gap.', option: 'strike'}); // same args, other key order
+  ok(r.ok && r.chose === 'strike' && r.late === true && calls().length === 1, 'the retry of the same tool and args gets the late answer (late: true), without a second call to the page');
+  r = await be.call(1, 'scene_act', {option: 'strike', line: 'Hold the gap.'}).catch(() => null);
+  ok(calls().length === 2, 'the kept answer is used once: the next call asks the page again');
+  ws.say({type: 'result', id: calls().at(-1).id, result: {ok: true}});
+  // 2. a retry while the page still works on the first call joins it
+  const p1 = be.call(1, 'status', {}); r = await p1; ok(r.offline, 'status times out');
+  const n = calls().length, p2 = be.call(1, 'status', {}); await sleep(30);
+  ok(calls().length === n, 'a retry while the first call is still pending joins it (no new call to the page)');
+  ws.say({type: 'result', id: calls().at(-1).id, result: {ok: true, state: 'town'}}); r = await p2;
+  ok(r.ok && r.state === 'town' && r.late, 'the joined retry gets the page\'s answer when it comes');
+  // 3. other arguments are another call
+  const p3 = be.call(1, 'say', {text: 'a'}); await sleep(10); ws.say({type: 'result', id: calls().at(-1).id, result: {ok: true}}); await p3;
+  const p4 = be.call(1, 'say', {text: 'b'}); await sleep(10); ok(calls().length === n + 2, 'a call with other arguments is a new call'); ws.say({type: 'result', id: calls().at(-1).id, result: {ok: true}}); await p4;
+  // 4. a late answer is kept only lateMs
+  r = await be.call(1, 'look', {}); ws.say({type: 'result', id: calls().at(-1).id, result: {ok: true, seen: 1}}); await sleep(500);
+  const before = calls().length, p5 = be.call(1, 'look', {}); await sleep(10);
+  ok(calls().length === before + 1, 'past lateMs the kept answer is gone and the page is asked again'); ws.say({type: 'result', id: calls().at(-1).id, result: {ok: true}}); await p5;
+  // 5. a wait the live page still holds (an answered Table scene) is not offline
+  r = await be.call(1, 'wait', {minutes: 10});
+  ok(r.ok === true && r.held === true && !r.offline && r.why === HELD_WAIT.why, 'a wait still held by a live page answers "still waiting", not offline');
+  const w0 = calls().length, p6 = be.call(1, 'wait', {minutes: 10}); await sleep(20);
+  ok(calls().length === w0, 'the next wait joins the one the page still holds');
+  ws.say({type: 'result', id: calls().filter(m => m.tool === 'wait').at(-1).id, result: {ok: true, waited_min: 0, why: 'the table settled'}}); r = await p6;
+  ok(r.ok && r.why === 'the table settled', 'and gets the table\'s end when it comes');
+  // 6. a silent page (no beat) is page busy, and is told so
+  clearInterval(beat); await sleep(1050);
+  r = await be.call(1, 'wait', {minutes: 5});
+  ok(r.offline && r.why === 'page busy' && ws.sent.some(m => m.type === 'pagelate'), 'with no beat for silentMs the page is busy: offline "page busy", and a pagelate goes to the page');
+  ok(be.page().late >= 5 && be.page().lateServed >= 2 && be.page().joined >= 2 && be.page().pageBusy === 1, 'the counts: ' + JSON.stringify(be.page()));
+  ws.emit('close');
 }
 
 // ---------------------------------------------------------------- 2b. company runners (#460), fake children

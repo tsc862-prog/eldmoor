@@ -1,4 +1,5 @@
 - [Party rules](party_rules.md) — why followers have their own state, duelers stay, regroup exists, zone = weakest member, 50% outnumbered flee
+- [Own oaths #800](own_oaths.md) — goal is an offered thread until sworn; swornOf is the one reader; dice stay in goals.js; keep_oath for words
 - [Mirefen PvP dynamics](pvp_dynamics.md) — Mirefen hero-time drives deaths; clustering multiplies duel pairs; how to instrument deaths headlessly
 - [Chatter rules](chatter_rules.md) — say() in chat.js, private RNG, lazy per-hero fields, spot at 2+ levels, merge-safe one-line inserts
 - [Narrator rules](narrator_rules.md) — why scout pass is a real strike, flee fail is a glancing bite, 20s cap exceptions, baseline variance is 92-124 deaths/2h
@@ -63,6 +64,7 @@
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap
 - [Night sight #583](night_sight.md) — sightFor(a,z): night 0.6 for agent heroes only, towns exempt, hash unchanged
 - [Fold Fellowship #588](fold_fellowship.md) — slot model in company.js (slots option); shims and fellowship.js deleted, rulescheck guards; SLT in scripts
+- [One hall #771](one_hall.md) — gather only with a setup, Eldmoor has one town a faction so test in stepping, hold + cap at session zero, a.born
 - [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut
 - [Talk setting #431](talk_setting.md) — talk scenes open on tavern/chapel/smithy/gate by where the person stands; field keeps the cut
 - [Gambits #617](gambits.md) — per-hero rules run by autopilot/fight reflex; presets = old policy rule for rule; hashcheck autopilot row guards it
@@ -77,3 +79,8 @@
 - [PvP mercy #657](pvp_mercy.md) — mercy.js: downs not kills, finish/spare odds, life-debts, bled = no credit, finish = guild grudge
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
+- [Watch clock and DM downed call #655](watch_clock_downcall.md) — WATCH_TICK 20 gated on Table Off+agent+hasLinks, kin wake per save, downcall.js non-blocking DM call
+- [Others none #780](others_none.md) — no-roster world, summon_hero lever, guild skip, GOODS floor, heir rule, fixture traps
+- [Log outcome tags #785](log_outcome_tags.md) — OUTCOME regex in history.js leaves src off outcome lines; add new outcome openings there
+- [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap
+- [Wait is not progress #790](wait_not_progress.md) — wait cap 240, level condition -> hunt, 12 h town-idle guard, refusals list the board

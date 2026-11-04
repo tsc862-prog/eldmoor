@@ -1,5 +1,5 @@
-// Vows (#526): an agent-played hero binds itself on purpose. One sworn vow at a time, besides the oath the sim gave it
-// (a.goal, sim/goals.js). a.vow = {id, kind, text, about, at, ends, days, witnesses:[ids]}. Kinds:
+// Vows (#526): an agent-played hero binds itself on purpose. One sworn vow at a time, for a term, beside its oath
+// (a.goal, sim/goals.js and sim/sworn.js). a.vow = {id, kind, text, about, at, ends, days, witnesses:[ids]}. Kinds:
 //   slay      kill the named foe (an elite, a kind of creature, or an enemy hero)   (goalEvent 'kill' / 'slay')
 //   recover   loot the named epic                                                  (goalEvent 'epic')
 //   reach     set foot in a region, town or landmark                               (vowTick)
@@ -58,14 +58,15 @@ function end(a,st,line){const v=a.vow;if(!v)return;a.vow=null;vowDone(a,v,st);
 
 // Giving a vow up on purpose. Costs: a landmark, a Chronicle line, bonds with the companion it concerned and a little
 // with those who heard it, and the witnesses are told.
-export function renounce(a,reason){const v=a.vow;if(!v)return null;const why=String(reason||'').trim();
-  const cooled=[];
+export function coolBonds(a,concerned,witnesses){const cooled=[];
   const hit=(b,n)=>{if(!b||b===a)return;const B=a.bonds||(a.bonds={}),was=B[b.id]||0;if(was<=0)return;
     const now=Math.max(0,was-n);if(now>0)B[b.id]=now;else delete B[b.id];
     if(b.bonds&&b.bonds[a.id]!=null){const m=Math.max(0,b.bonds[a.id]-n);if(m>0)b.bonds[a.id]=m;else delete b.bonds[a.id]}cooled.push(b.name)};
-  const concerned=v.kind==='protect'&&v.about&&v.about.id!=null?byId(v.about.id):null;
   if(concerned)hit(concerned,VOW.BOND_LOSS);
-  for(const id of v.witnesses||[]){const b=byId(id);if(b!==concerned&&alive(b))hit(b,VOW.WITNESS_LOSS)}
+  for(const id of witnesses||[]){const b=byId(id);if(b!==concerned&&alive(b))hit(b,VOW.WITNESS_LOSS)}
+  return cooled}
+export function renounce(a,reason){const v=a.vow;if(!v)return null;const why=String(reason||'').trim();
+  const concerned=v.kind==='protect'&&v.about&&v.about.id!=null?byId(v.about.id):null,cooled=coolBonds(a,concerned,v.witnesses);
   a.vow=null;vowDone(a,v,'abandoned',why);
   log(a,' broke their word: ',{t:lc(v.text),c:'dm'},why?' ('+why+')':'');record(a,'Broke the vow: ',{t:v.text,c:'gd'},why?' ('+why+')':'');
   mark(a,'vow','Broke their word: '+v.text+(why?' ('+why+')':''));

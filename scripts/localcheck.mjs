@@ -207,6 +207,13 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
 // tool table); the forced reflection answer carries an optional intent the runner sends with the intent tool.
 {
   const LA = await import('./local-agent.mjs'), PC = await import('./pacing.mjs');
+  {const sw = LA.reflectSchema({swear: true}), ss = LA.reflectSchema({swear: true, strict: true}); // a first dusk asks about the thread (#800)
+   ok(sw.properties.swear && !sw.required.includes('swear') && ss.required.includes('swear') && !LA.reflectSchema().properties.swear, 'the reflection carries swear only when a thread is asked about');
+   ok(LA.reflectSwear('{"notes":[],"swear":""}') === null && LA.reflectSwear('{"notes":[],"swear":"No."}').thread === 'no' && LA.reflectSwear('{"notes":[],"swear":"yes"}').thread === 'yes' && LA.reflectSwear('{"notes":[],"swear":"I will find her."}').text === 'I will find her.', 'its answer becomes swear_oath arguments');
+   const sent = []; const t = await LA.reflectTurn({ask: async () => ({text: '{"notes":[],"swear":"I will find her."}', usage: {}, ms: 0}), call: async (tool, args) => {sent.push([tool, args]); return {ok: true}}, sess: {system: 's'}, moment: {id: 'd1', kind: 'dusk', why: 'dusk', thread: 'Ann left home with something to prove.'}, prompt: 'p', keep: false});
+   ok(sent.length === 1 && sent[0][0] === 'swear_oath' && sent[0][1].text === 'I will find her.' && t.swore, 'a forced reflection swears through the tool');
+   const none = []; await LA.reflectTurn({ask: async () => ({text: '{"notes":[],"swear":"I will find her."}', usage: {}, ms: 0}), call: async (tool, args) => {none.push(tool); return {ok: true}}, sess: {system: 's'}, moment: {id: 'd2', kind: 'dusk', why: 'dusk'}, prompt: 'p', keep: false});
+   ok(!none.length, 'with no thread asked about, nothing is sworn')}
   const lo = LA.reflectSchema(), st = LA.reflectSchema({strict: true});
   ok(lo.properties.intent && !lo.required.includes('intent') && st.required.includes('intent') && st.properties.intent.required.join() === 'goal,why,until', 'the reflection schema carries an intent object (optional; required by strict OpenAI)');
   ok(/"intent": \{"goal"/.test(PC.reflectPrompt({why: 'camp'}, {tools: false})) && /What are you trying to do next\?/.test(PC.reflectPrompt({why: 'camp'})), 'the reflection prompt asks what next (forced answer: an intent object; tool use: the intent tool)');
@@ -348,7 +355,7 @@ console.log('npm run fellowship -- --provider ollama (headless Fellowship, no AP
   ok(/only members with a local runner/.test(out) || existsSync(join(ROOT, '.env')), 'without an API key it says only local members will play');
   ok((out.match(/\[turn 1(, scene)?\] mock-tools:1b \(local\)/g) || []).length === 5, 'each of the five plays a local turn');
   ok((out.match(/\$0 \(local\), tokens \d+ in \/ \d+ out \| session \$0\.0000 \| mock-tools:1b \(local\)/g) || []).length === 5, 'the summary shows $0 and tokens per member');
-  const runs = readFileSync(join(ROOT, 'logs', 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop(), j = JSON.parse(runs);
+  const runs = readFileSync(join(tmp, 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop(), j = JSON.parse(runs);
   ok(j.url === FB && j.spent === 0 && j.members.every(m => m.provider === 'ollama' && m.tokensIn > 0), 'the run record lists the local members with tokens and cost 0');
   // the company runner (#460): the same five, named as a company by one of its members
   const h2 = await health(FB), first = h2.heroes.find(x => x.fellow && x.alive), cid = first && first.company;
@@ -357,7 +364,7 @@ console.log('npm run fellowship -- --provider ollama (headless Fellowship, no AP
   const ccode = await crun.done, cout = crun.out();
   ok(ccode === 0 && new RegExp('Company runner \\(.*company #' + cid + '\\)').test(cout), 'npm run fellowship -- --company <member> plays that company' + (ccode ? '\n' + cout.slice(-3000) : ''));
   ok((cout.match(/\[turn \d+(, scene)?\] mock-tools:1b \(local\)/g) || []).length === 5, 'each of its five plays a local turn');
-  const cj = JSON.parse(readFileSync(join(ROOT, 'logs', 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop());
+  const cj = JSON.parse(readFileSync(join(tmp, 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop());
   ok(cj.company === cid && cj.members.length === 5, 'the run record names the company');
   const bad = start(['scripts/fellowship.mjs', '--url', FB, '--company', 'nobody-at-all', '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', OLLAMA]);
   ok(await bad.done === 1 && /No company "nobody-at-all"/.test(bad.out()), 'an unknown company is refused with the companies there are');
@@ -384,7 +391,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   let speed = 8, last = Date.now(), hold = false; // hold: a section steps the world itself (deterministic, issue #159)
   const tick = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; if (hold) return; const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
   const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
-  attachPlay(server, {backend: localBackend(), log: () => {}});
+  // idle: the runner sits in its pace poll (no turn in flight). Section B drops its news there, as a hero's news arrives between turns; a notice that lands inside a turn is read by that turn's next tool result, which is the game doing its job (takeEvents).
+  const be = localBackend(), callOrig = be.call.bind(be), flight = {pace: 0, tool: 0}; be.call = (id, tool, args, ...r) => {const k = tool === 'pace' && !(args && args.brief) ? 'pace' : 'tool'; flight[k]++; const done = () => {flight[k]--}; const p = callOrig(id, tool, args, ...r); Promise.resolve(p).then(done, done); return p};
+  attachPlay(server, {backend: be, log: () => {}});
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const PB = `http://127.0.0.1:${server.address().port}`;
   const park = a => {const c = homeOf(a); a.state = 'town'; a.x = c.gate.x; a.y = c.gate.y - 1; a.target = null; a.pq = []; a.dest = null}; // in town: nothing attacks
@@ -395,13 +404,16 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     kids.push(p); const R = {p, out: '', turns: [], wakes: [], done: new Promise(r => p.on('close', c => r(c)))}; let part = '';
     const take = d => {R.out += d; part += d; const ls = part.split(/\r?\n/); part = ls.pop();
       for (const l of ls) {const t = {real: Date.now(), gm: S.gameMin, line: l};
-        if (/^\[turn \d+\]/.test(l)) R.turns.push(t); const w = l.match(/\[pace\] woke \((\w+)/); if (w) R.wakes.push({...t, kind: w[1]})}};
+        if (/^\[turn \d+\]/.test(l)) R.turns.push(t); const w = l.match(/\[pace\] woke \((\w+)/); if (w) R.wakes.push({...t, kind: w[1], line: l})}};
     p.stdout.on('data', take); p.stderr.on('data', take); return R;
   }
   const until = async (f, ms) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {if (f()) return true; await sleep(50)} return false};
 
   // A. a quiet hero: turns come from the heartbeat (60 game minutes here), never back to back
-  {const a = pick(), hb = 60, gap = 1;
+  // The world around the hero is not scripted: a hero going down within 12 tiles of the town gate tells it (an urgent 'down and dying' event,
+  // #658) and starts a 'now' turn early (#762). This section is about the heartbeat, so the downed hearing is switched off while it runs.
+  {const {DOWN} = await import('../src/sim/downed.js'), keep = {REACH: DOWN.REACH, SEE: DOWN.SEE}; DOWN.REACH = 0; DOWN.SEE = 0;
+   const a = pick(), hb = 60, gap = 1;
     const R = runner(a, 'mock-tools:1b', ['--max-turns', '5', '--heartbeat', String(hb), '--min-gap', String(gap)]);
     const code = await R.done, g0 = R.turns[0], gN = R.turns[R.turns.length - 1];
     const hours = (gN.gm - g0.gm) / 60, perHour = (R.turns.length - 1) / Math.max(hours, 1e-9);
@@ -410,12 +422,12 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     ok(code === 0 && R.turns.length === 5, `a quiet hero plays its 5 turns (${R.turns.length})` + (code === 0 ? '' : '\n' + R.out.slice(-1500)));
     ok(gaps.length === 4 && gaps.every(x => x >= minGm - 6), `turns wait for the game: ${gaps.map(x => Math.round(x)).join(', ')} game minutes between turns (at least ${minGm})`);
     ok(perHour <= 60 / minGm + .05, `at most one turn per ${minGm} game minutes on a quiet world: ${perHour.toFixed(2)} turns per game hour`);
-    ok(R.wakes.every(w => w.kind === 'heartbeat' || w.kind === 'soft') && /up to 5 turns/.test(R.out) && /every 60 game min, at least 1 s apart/.test(R.out), `woken by the heartbeat or the hero's own news (${R.wakes.map(w => w.kind).join(', ')})`);
+    ok(R.wakes.every(w => w.kind === 'heartbeat' || w.kind === 'soft') && /up to 5 turns/.test(R.out) && /every 60 game min, at least 1 s apart/.test(R.out), `woken by the heartbeat or the hero's own news (${R.wakes.map(w => w.kind).join(', ')})${R.wakes.map(w => ' | ' + w.line).join('')}`);
     ok(/Right now \(from the game/.test(JSON.stringify(seen.slice(-6))) && !/still battling/.test(R.out), 'every local turn prompt carries the hero\'s state from the game');
-    sim.markPlayer(a, false)}
+    Object.assign(DOWN, keep); sim.markPlayer(a, false)}
 
   // B. a notification that cannot wait starts a turn at once, inside the gap; the hero's other news waits for the gap
-  {const a = pick();
+  {const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
     const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '4']);
     ok(await until(() => R.turns.length >= 1, 30000), 'a local runner without --max-turns plays (until stopped)');
     ok(/until stopped/.test(R.out), 'and says it runs until stopped');
@@ -426,7 +438,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // (the world may wake the hero first, say an attack on the way: then try again after that turn)
     let w2 = null, dt = null;
     for (let k = 2; k <= 6 && !w2; k++) {
-      await until(() => R.turns.length >= k, 30000); park(a); a.hp = a.maxhp || a.hp;
+      await until(() => R.turns.length >= k, 30000); const idle = await until(() => flight.pace > 0 && flight.tool === 0, 15000); park(a); a.hp = a.maxhp || a.hp; if (!idle) console.log('  note: the runner was not waiting in its pace poll when news ' + k + ' was dropped');
       notify(a, 'A test traveller hails you from the road (' + k + ').', true); const nw = R.wakes.length;
       // the hero's own world news (XP, loot) may name itself in the wake line: any soft wake after the notice counts. An
       // urgent wake ('now') may come first on a slow machine (#603): skip it and measure from the turn before the soft one.
@@ -435,11 +447,12 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const w = R.wakes.slice(nw).find(news);
       if (w) {w2 = w; dt = w.real - Math.max(...R.turns.filter(t => t.real < w.real).map(t => t.real))}
     }
-    ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`);
+    ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`+(w2?'':` | hero ${a.name} state ${a.state} hp ${Math.round(a.hp)} runner exited ${R.exited ?? '?'} turns ${R.turns.length} wakes ${R.wakes.map(w=>w.kind).join(',')}
+${R.out.slice(-800)}`));
     await until(() => R.turns.length >= R.wakes.length + 1, 30000);
-    sim.markPlayer(a, false);
+    clearInterval(pinB); sim.markPlayer(a, false);
     const code = await Promise.race([R.done, sleep(20000).then(() => 'timeout')]);
-    ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 ? '' : '\n' + R.out.slice(-1200)))}
+    ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 && /the hero left agent play/.test(R.out) ? '' : ' (hero ' + a.state + ') ' + '\n' + R.out.slice(-1200)))}
 
   // C. a lazy model (the owner's live bug): re-prompted once per turn, empty turns stop the runner, the scripted rules take over
   {const a = pick(), n0 = seen.length;
@@ -554,6 +567,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const fo = SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); SLT.setSlotMinds(SLT.slotted(), 'agent'); S.brainOn = false;
     ok(fo.ok && SLT.slotted() && SLT.slotted().ids.length === 5, 'a Fellowship of five, Minds: agents' + (fo.ok ? '' : ': ' + fo.error));
     const mem = SLT.slotted().ids.map(id => S.agents.find(x => x.id === id));
+    // This world is unseeded and has been running: a member can be downed here, and a downed hero has no options and sits out an everyone-at-once scene (#654).
+    const standUp = () => {for (const a of mem) if (a.state === 'downed') {delete a.down; a.state = 'town'; a.hp = sim.maxHp(a)}};
+    standUp();
     // the game side first: no waiting out your own turn
     {{const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
       const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0; delete sc0.wk; // the scene set and its members woken (#682)
@@ -592,6 +608,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const claimed = await (async () => {for (let i = 0; i < 200; i++) {const h = await health(PB).catch(() => null); if (h && h.heroes.filter(x => x.fellow && x.claimed).length === 5) return true; await sleep(100)} return false})();
     ok(claimed, 'the Fellowship runner claims all five (mock-fumble:1b)' + (claimed ? '' : '\n' + fout.slice(-1500)));
     await until(() => !S.table, 30000);
+    standUp();
     {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
     const f0 = seen.fumble || 0, t0 = Date.now(), sc = openScene('check', 'A test of nerve', ['The DM calls for a roll at the ford.'], {anchor: mem.find(a => a.state !== 'dead').id});
     ok(sc && sc.pause, 'a scene opens and the world pauses for it');
@@ -635,6 +652,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     {const RF = await import('../src/sim/reflect.js'), NBm = await import('../src/sim/notebook.js'), {memoryMirror} = await import('./memory-mirror.mjs'), {readdirSync} = await import('node:fs');
       const a = mem.find(x => x.state !== 'dead' && x.player); park(a); a.hp = a.maxhp || a.hp; gather(); S.table = null; // G's Table switch stays off until the end of H
       RF.REFLECT.PER_DAY = PER_DAY; delete a.reflect; // a fresh state: no moment left over from the scenes of F
+      // reflectView counts reflections of the current game day: a run that crosses midnight reads 'today 0'. The earlier sections advance the clock by real time, so start well clear of it (the world runs about 30 game minutes here).
+      if (S.gameMin % 1440 > 1440 - 240) S.gameMin = Math.ceil(S.gameMin / 1440) * 1440 + 360;
       const n0 = a.memories ? a.memories.notes.length : 0, r0 = seen.reflect || 0;
       RF.moment(a, 'camp', 'Test Hollow');
       const due = RF.reflectDue(a);

@@ -15,6 +15,9 @@
 // not from a hidden wipe roll. A party that leaves with someone down carries them up the stair, still bleeding. A majority falling back withdraws the party (a rearguard blow
 // as they go); a room not won in `rounds` drives them back. Clearing the last room pays what the abstract
 // run pays. Plain data on CRYPT.group.crawl (numbers and ids only), so a save mid-crawl resumes.
+// Positions (#744, sim/roomgrid.js): cr.pos keeps a tile of the room's own grid for every member and foe ({heroId: {x, y}, f0: ...},
+// for room cr.posR). The party comes in at the stair in slot order, the foes stand at the den. An agent's act may carry a move (a spot,
+// a relation or steps; it lands at once), guard, hold and retreat imply one, a reflex goes where its act goes. No die reads a tile yet.
 import {rnd,ri,pickA} from '../core/rng.js';
 import {CRYPT} from '../world/map.js';
 import {BESTIARY,VARIANTS,ROLES,heroTag,baseId} from '../data/bestiary.js';
@@ -29,7 +32,10 @@ import {notify} from './notify.js';
 import {setCrawlHook,payClear,clearXp} from './dungeon.js';
 import {tableOn,openScene,setSceneKind,sceneFor} from './table.js';
 import {moment,setReflectHold} from './reflect.js'; // no reflection while a crawl runs; one moment when it ends (#687)
-import {companyOf,companyById,roleOf,slotKeyOf,slotted} from './company.js';
+import {companyOf,companyById,roleOf,slotKeyOf,slotted,slotHeroes} from './company.js';
+import {buildInterior} from '../world/interior.js';
+import {siteInterior} from '../world/siteinterior.js';
+import {roomGrid,placeRoom,resolveMove,roomWords,moveNames,spotFor,spotAt,spotWord,goSpot,goBeside} from './roomgrid.js'; // who stands where in the room (#744)
 import {isDown,crawlDown,leftBehind,toWorld,bleedOut,bleedingOf,stabText,stabilizeAt,reviveBonus} from './downed.js'; // the downed below ground (#654)
 
 export const CRAWL={
@@ -95,6 +101,7 @@ function frameOf(g,room){const cr=g.crawl,rem=liveFoes(cr),by={};for(const f of 
 function openRound(g){const cr=g.crawl,room=roomsOf(g)[cr.i];
   if(!cr.foes){cr.foes=buildFoes(room,cr.lvl,cr,dunOf(g));cr.rd=0;cr.stats.rooms++;
     if(room.alvl!=null)cr.cap=Math.max(room.rounds||CRAWL.ROUNDS,Math.ceil(cr.foes.reduce((t,f)=>t+f.hp,0)/(Math.max(1,cr.crew||1)*.6))+1)} // a site room (#69): a small crew gets the rounds its blows need
+  placed(g); // the party at the stair, the foes at the den (#744)
   cr.guard=[];cr.back=[];cr.shield=0;cr.edge=Math.round(g.bonus||0); // the site scene's choices at the stair (sim/table.js g.bonus) tip every roll of the crawl
   return openScene('crawl',room.name+(cr.rd?' (round '+(cr.rd+1)+')':''),frameOf(g,room),g.site!=null?{room:cr.i,rd:cr.rd,site:g.site}:{room:cr.i,rd:cr.rd},companyById(cr.co)||undefined)}
 
@@ -111,6 +118,24 @@ const standing=g=>members(g).filter(a=>!isDown(a)); // the crew on their feet (#
 const healerCls=b=>!!(CLS[b.cls]&&CLS[b.cls].heal);
 const hpOf=a=>isDown(a)?'down':pct(a)+'%';
 const pct=a=>Math.round(a.hp/maxHp(a)*100);
+// ---- who stands where (#744): the room as the sim keeps it and as one member reads it ----
+const gridOf=g=>{const D=dunOf(g),i=g.crawl.i;return roomGrid(g.site!=null&&D!==CRYPT?siteInterior(D):buildInterior(D),i,roomsOf(g)[i])};
+const inOrder=g=>{const C=companyById(g.crawl.co),L=members(g),H=C&&C.slots?slotHeroes(C).filter(a=>L.includes(a)):[];return [...H,...L.filter(a=>!H.includes(a))]};
+// The room's tiles for everyone in it, set on the room's first round; a crawl saved before #744 gets them here. Null: no room to stand in.
+function placed(g){const cr=g.crawl;if(!cr.foes)return null;const G=gridOf(g);if(!G)return null;placeRoom(G,cr,inOrder(g).map(a=>a.id),cr.foes.length);return G}
+function seen(g,a){const G=placed(g);if(!G)return null;const cr=g.crawl;return {G,cr,me:a.id,mates:members(g).map(b=>({id:b.id,name:b.name,down:isDown(b)})),foes:cr.foes.map((f,k)=>({key:'f'+k,name:f.name,hp:f.hp})).filter(f=>f.hp>0)}}
+// An act that goes somewhere by itself: guard and hold to the front, a retreat toward the stair; a reflex, or a silent agent's,
+// where the act goes (roomgrid.js spotFor: the same table the dungeon view drew from, #742). A move given with the act comes first.
+const IMPLIED={guard:1,hold:1,retreat:1};
+function actMove(sc,g,a,act){if(act.moved||isDown(a)||(act.by==='agent'&&!IMPLIED[act.k]))return;const s=spotFor(act.k,sc.beats.filter(b=>b.k==='strike').length);if(!s)return;
+  const R=seen(g,a);if(!R)return;const t=s==='downed'?bleedingOf(members(g),a):null,to=t?goBeside(R,t.id):goSpot(R,s);if(to)R.cr.pos[a.id]={x:to.x,y:to.y}}
+// scene_act's move, read but not yet made: {x, y, word} or {error}. place makes it; view is the room in words for tableView and
+// the pace brief; spotOf names where a member stands for the scene's so_far lines.
+function moveOf(sc,a,text){const g=grp(sc),R=g&&seen(g,a);return R?resolveMove(R,text):{error:'There is nowhere to move just now.'}}
+function placeMove(sc,a,mv){const g=grp(sc);if(g&&g.crawl.pos)g.crawl.pos[a.id]={x:mv.x,y:mv.y}}
+function view(sc,a){const g=grp(sc),R=g&&g.crawl.i===sc.ctx.room?seen(g,a):null;if(!R||!R.cr.pos[a.id])return {};const can=!sc.acts[a.id]&&!isDown(a)&&sc.phase!=='outcome';
+  return {room:roomWords(R,can),...(can?{moves:moveNames(R)}:{})}}
+function spotOf(sc,a){const g=grp(sc),cr=g&&g.crawl,p=cr&&cr.posR===cr.i&&cr.pos&&cr.pos[a.id],G=p&&gridOf(g),s=G?spotAt(G,p.x,p.y):null;return s?spotWord(G,s):null}
 const lowest=g=>{let lo=null;for(const b of members(g))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
 function options(sc,a){const g=grp(sc);if(!g)return [];const cr=g.crawl,f=liveFoes(cr)[0],lo=lowest(g),o=[];
   o.push({k:'strike',text:'Strike '+(f?f.name:'the foe')});
@@ -132,7 +157,7 @@ function reflex(sc,a){const g=grp(sc);if(!g)return 'strike';const cr=g.crawl,lo=
 const skill=(a,cr,f)=>{const bz=(f&&species(f.type))||{},tag=heroTag(a.cls),w=(bz.weak||{})[tag]||1,rs=(bz.res||{})[tag]||1;
   return Math.round((a.lvl+a.gear*.3)/2)+cr.edge+(w>1.1?1:0)-(rs<.95?1:0)};
 const heal=(b,amt)=>{const h=Math.min(maxHp(b)-b.hp,Math.round(amt));b.hp+=h;return h};
-function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=act.k,f=liveFoes(cr)[0];
+function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=act.k,f=liveFoes(cr)[0];actMove(sc,g,a,act);
   switch(k){
   case 'strike':{if(!f)return 'the room is quiet';const d=ri(1,20),dc=CRAWL.DC+Math.floor(f.lvl/2),t=d+skill(a,cr,f);cr.stats.blows++;
     if(d===1){cr.open=(cr.open||[]);cr.open.push(a.id);return 'missed badly and left an opening'}
@@ -187,7 +212,7 @@ function outcome(sc){const g=grp(sc);if(!g)return '';const cr=g.crawl,room=rooms
   cr.rd++;if(cr.rd>=(room.alvl!=null&&cr.cap?cr.cap:room.rounds||CRAWL.ROUNDS)){cr.end='retreat';cr.driven=true;tail+=' They cannot win this room; the party is driven back up the stair.'}
   return tail}
 
-setSceneKind('crawl',{options,reflex,apply,outcome});
+setSceneKind('crawl',{options,reflex,apply,outcome,view,move:moveOf,place:placeMove,spotOf});
 
 // ---- the driver, once per step while the group is inside (called from dungeon.js dungeonCheck) ----
 function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;a.x=D.x+(rnd()-.5)*1.5;a.y=D.y+.5+rnd()*.6}}
