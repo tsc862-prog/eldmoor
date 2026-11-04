@@ -190,6 +190,10 @@ console.log('launcher (real children on spare ports)');
     ok(await seen(/relay: ok/, m, 8000) && await seen(/art loop: /, m, 8000) && /ollama: not reachable/.test(out.slice(m)), 'status shows the relay and Ollama');
     ok(await seen(/art loop: waiting until \d{4}-\d\d-\d\d \d\d:\d\d .*; last pass made 0/, m, 8000), 's shows the art loop: its next check and last pass: ' + (out.slice(m).match(/art loop: .*/) || [''])[0]);
     ok(await seen(/cost today: /, m, 8000), 's shows the spend of the day in one line (#799): ' + (out.slice(m).match(/cost today: .*/) || [''])[0]);
+    // a: art review (#712) and s ending with it
+    m = mark(); send('a');
+    ok(await seen(/art review: nothing waiting/, m, 15000) && /art terrain: 0 accepted, 0 waiting/.test(out.slice(m)), 'a prints the art review, one line per slice');
+    m = mark(); send('h'); ok(await seen(/a  art review/, m, 4000), 'h lists the a key');
     // u: dirty tree refused
     appendFileSync(join(work, 'a.txt'), 'local edit\n'); m = mark(); send('update');
     ok(await seen(/update refused: the working tree has local changes/, m, 15000), 'u refuses a dirty tree');
