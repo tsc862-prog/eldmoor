@@ -317,7 +317,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   // The DM's voice is answering a call (#682): a voice poll handed it a call (table/talk/ruling) and its answer has not come
   // yet. The runner supervisor lets a hero's Claude slot request yield DM_FIRST_MS meanwhile (scripts/runners.mjs).
   let dmVoiceAt = 0;
-  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say']);
+  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call', 'companion_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say', 'companion_say']);
   const dmVoiceBusy = () => dmVoiceAt > 0 && now() - dmVoiceAt < DM_VOICE_MS;
   // A DM tool call (issue #66): counted, logged, never thrown.
   async function dmCall(tool, args) {
@@ -335,7 +335,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
     if (VOICE_POLLS.has(tool) && r.ok && r.call && Number(r.call.seconds_left) > 0) dmVoiceAt = now(); else if (VOICE_ANSWERS.has(tool) && (tool !== 'npc_say' || (args && args.conv != null))) dmVoiceAt = 0;
-    if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
+    if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call' || tool === 'companion_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
     log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'}${note} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
     return r;

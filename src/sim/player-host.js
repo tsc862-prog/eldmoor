@@ -47,7 +47,7 @@ export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now(
 // once instead of every second (the relay counts one call). Each check is the ordinary tool, so it stamps the DM as listening.
 // Any other tool, or no wait_ms, is answered at once (dmAct). A refusal (the seat closed) comes back at once.
 export const DM_WAIT={MAX:25000,POLL:150};
-const DM_POLLS={table_call:1,npc_call:1,ruling_call:1};
+const DM_POLLS={table_call:1,npc_call:1,ruling_call:1,companion_call:1};
 export const dmWaitMs=(tool,args)=>DM_POLLS[tool]&&args&&typeof args==='object'?Math.min(DM_WAIT.MAX,Math.max(0,Number(args.wait_ms)||0)):0;
 export async function hostDm(tool,args,{poll=DM_WAIT.POLL,nap=sleep,now=()=>Date.now()}={}){
   const a=args&&typeof args==='object'?args:{},w=dmWaitMs(tool,a);if(!w)return dmAct(tool,a);
