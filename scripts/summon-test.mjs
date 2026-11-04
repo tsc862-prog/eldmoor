@@ -32,8 +32,10 @@ ok(N0 === 5 && DM_TOOLS.some(t => t.name === 'summon_hero' && t.act && t.args.wh
 
 // one hero, near the company, at the level asked
 field();
+const nums = () => JSON.stringify(mem.map(m => [m.id, m.hp, m.xp, m.lvl, m.cls, m.gold, m.honor, m.gear])), nums0 = nums();
 let r = dmAct('summon_hero', {fac: FN[1], cls: 'Rogue', level: 8, near: 'fellowship', name: 'Sefa Dray', people: racesOf(1)[0].name, why: 'a rival to test them'});
 const a = r.ok && byName('Sefa Dray');
+ok(nums() === nums0, 'cls and level name the new hero only: no existing hero's numbers change');
 ok(r.ok && a && S.agents.length === N0 + 1, 'one hero is made' + (r.ok ? '' : ': ' + r.error));
 ok(a && a.lvl === 8 && a.fac === 1 && a.cls === 'Rogue' && a.race === racesOf(1)[0].id && a.hp === maxHp(a), 'at the level, faction, class and people asked');
 ok(a && !a.player && a.company == null && !a.brain && a.state === 'hunt' && a.summoned && a.guild == null, 'a scripted background hero, in no company, hunting');
