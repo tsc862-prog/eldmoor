@@ -11,10 +11,11 @@ import {readFileSync,writeFileSync,existsSync,mkdirSync,rmSync} from 'node:fs';
 import {join,dirname} from 'node:path';
 import {ASSETS,loadIndex,loadQueue,saveQueue,fileOf,sha256,splitKey,TILE,tierKey} from './lib.mjs';
 import {parseArgs,writeIndex} from './gen.mjs';
+import {staleIncoming} from './review.mjs';
 
 export function main(argv=process.argv.slice(2)){
-  const o=parseArgs(argv,['dir']),dir=o.dir||ASSETS,q=loadQueue(dir),waiting=Object.keys(q.incoming).sort();
-  if(o.list||!o._.length){console.log(waiting.length?`[art] waiting for review (${waiting.length}):\n`+waiting.map(k=>`  ${k}  assets/incoming/${q.incoming[k].date}/${q.incoming[k].file}`).join('\n'):'[art] nothing waits for review');
+  const o=parseArgs(argv,['dir']),dir=o.dir||ASSETS,q=loadQueue(dir),stale=staleIncoming(q,loadIndex(dir)),waiting=Object.keys(q.incoming).filter(k=>!stale.includes(k)).sort(); // #712: ids already in assets/index.json do not wait
+  if(o.list||!o._.length){if(stale.length)console.log(`[art] ${stale.length} in assets/queue.json already in assets/index.json, skipped: ${stale.join(', ')}`);console.log(waiting.length?`[art] waiting for review (${waiting.length}):\n`+waiting.map(k=>`  ${k}  assets/incoming/${q.incoming[k].date}/${q.incoming[k].file}`).join('\n'):'[art] nothing waits for review');
     if(!o._.length&&!o.list)console.log('[art] usage: npm run art:accept -- <ids>|all [--reject]');return 0}
   // a key without a tier means the game's tier: 'tile:grass' -> 'tile:grass@32', 'tile:grass#alt1' -> 'tile:grass@32#alt1'
   const keys=o._.includes('all')?waiting:o._.map(k=>/@\d+/.test(k)?k:k.replace(/^([^#]*)/,`$1@${TILE}`)),unknown=keys.filter(k=>!q.incoming[k]);

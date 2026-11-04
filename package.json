@@ -86,6 +86,7 @@
     "art:daily": "node scripts/art/daily.mjs",
     "art:loop": "node scripts/art/daily.mjs --loop",
     "art:accept": "node scripts/art/accept.mjs",
+    "art:review": "node scripts/art/review.mjs",
     "art:sheet": "node scripts/art/sheet.mjs",
     "art:reprocess": "node scripts/art/reprocess.mjs",
     "art:space": "node scripts/art/space-push.mjs"
