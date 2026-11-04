@@ -281,7 +281,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   a hunt, follow the party, fight back, go home when hurt or full. In town (#466) it rests at the inn when hurt, sells
   loot, buys up to 2 potions, then walks to its last hunting ground (`a.playGround`) or a known region that fits its level
   and hunts; in the field with no hunt order it hunts a region that fits, moves on from one it outgrew, or heads home from
-  one beyond it. A follower waits for a leader in town 4 more game hours, then hunts nearby alone; an open vote holds it. It
+  one beyond it. A follower waits for a leader in town 4 more game hours, then hunts nearby alone; an open vote holds it. Town-idle guard (#790, `townGuard`): an agent hero in town with no XP, kill, buy, sell, job or talk for `TP.IDLE_TOWN` 12 game hours gets an urgent wake naming the board's fitting jobs and bounties and the fitting ground, and autopilot then hunts that ground whatever wait aim it holds (the agent still decides jobs, votes, Crypt and raid; autopilot never takes a hook); a stale wait aim also lets a company follower go once its leader has left town. The clock pauses while hurt, in a scene, at an open vote or meeting plan, split off, or while the world is held; the `town-idle` anomaly counts it. A level refusal at `take_adventure`/`take_quest` lists the hooks and bounties the hero can take now, with ids, before the hunt advice. It
   never takes a job, bounty, Crypt or raid. The agent stays the mind; nothing is ever handed to the scripted rules, and any
   command takes over again. A level refusal at take_adventure names a ground to hunt instead.
 - Danger edges (#465): a move_to or hunt {where} whose road enters a region whose lowest level is 5+ above the hero's
@@ -290,8 +290,8 @@ is silent, and scene choices time out to the scripted branch, so the world never
   range of a party leader who will not follow says so (`apart`). Town errands (#727): an arrival in a town on the agent's own
   order (a move_to or the aim's walk) is a now wake and holds autopilot's leave-town steps for `TP.ARRIVE_HOLD` 120 game minutes
   (rest, sell, buy still run); an aim with errand words (ask, information, directions, buy, sell, trainer, board, rest; `errandOf`
-  in `intent.js`) is a wait-kind order in that town until its until (`INTENT.ERRAND` 4 h by default), and talk, list_jobs, buy,
-  sell, earshot, learn_profession and rest count as its progress; `intent` or `move_to` naming the town the hero stands in answers
+  in `intent.js`) is a wait-kind order in that town until its until (`INTENT.ERRAND` 4 h by default, never past `INTENT.WAIT_MAX`; a walked errand counts from its arrival, `waitAt`), and talk, list_jobs, buy,
+  sell, earshot, learn_profession and rest count as its progress. It is a wait like any other (#790): the time itself earns nothing, so an unrun errand goes stale at 2 h (still held, the next turn asks), a level condition turns it into a hunt, it holds nothing once the hero is out of town, and neither a new errand, the board read nor a fresh arrival touches the town-idle clock: `townGuard` overrides the wait and `TP.ARRIVE_HOLD` alike; `intent` or `move_to` naming the town the hero stands in answers
   "You are already in <town>" with who is about and the tools (no walk); a forced reflection's aim copying a finished one word for
   word is dropped (`stale-aim-dropped` turn flag); the `errand-unacted` anomaly (an errand held in town let go with none of
   talk, list_jobs, buy, sell, earshot) is counted per mind beside `no-aim` in the report's Mind comparison. `npm run townpilotcheck` covers it all.
@@ -398,7 +398,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   tool; local/OpenAI reflections also carry an optional `intent` object in the forced answer); a scene open only names it. The order
   comes from the command the agent gives (or carries out) under the aim, else the goal's words (wait/rest, follow <name>, a known place,
   hunt words); autopilot then walks on to the place, hunts the ground (if it fits), follows or waits, after its safety checks. Done on
-  arrival, the kills made, the hours up, the followed hero gone, or `done: "yes"`. A wait-like aim with no until ends in 2 h; with no aim
+  arrival, the kills made, the hours up, the followed hero gone, or `done: "yes"`. A wait is never progress (#790): a wait-like aim goes stale after `INTENT.STALE` like any other ("waiting has earned nothing for 2 h") and ends after `INTENT.WAIT_MAX` 240 game minutes whatever its until says (a camp's rest is exempt). A level condition in the until words (or a wait-like goal's), "level 4", "level four", "all five are level four", "until we are level 5", is read (`levelCond`): the aim saves `untilLevel`/`untilAll`, the tool's note says levels come from kills and names the fitting ground and the board's takeable hooks, the carried order is a hunt on the lowest present member's fitting ground (no kill count), the header reads "until level 4 (you are 3)", and it is done when the hero (all: every party member within 12 tiles) reaches it. A wait-like aim with no until ends in 2 h; with no aim
   `wait` is held to `INTENT.WAIT_NOAIM` (120). A company leader's new aim is shouted (a party line in range; `a.heardAim`), and those
   who heard it carry "Your leader's aim: ..." in their header. 12 aims a game day. Private otherwise (channelcheck). The purpose line
   (#534) reads it. Behavior: `no-aim` anomaly (`BW.NO_AIM_MIN`, outside camp and town rest) and "Aims stated (intent) per hero per game

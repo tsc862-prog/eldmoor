@@ -72,7 +72,7 @@ import {fileWish} from './wish.js'; // a note for the people who build the game 
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote} from './council.js';
 import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sightings.js';
-import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js';
+import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH,openPlans} from './reach.js';
 import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
 import {sceneAct,tableView} from './table.js';
 import {sceneOf} from './scenes.js'; // the hero's own company's scene (#518)
@@ -86,7 +86,7 @@ import {MOVES} from '../data/moves.js';
 import {searchAct,examineView,SR} from './search.js'; // search and examine marked places, signs and landmarks (#525)
 import {enterSiteTool} from './sites.js'; // DM-made dungeon sites (#69)
 import {noticeHeroes,sighted} from './sighthero.js'; // heroes coming into sight (#570)
-import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,intentView,waitish,errandOf,errandTool} from './intent.js'; // the hero's stated aim (#535)
+import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,aimState,intentView,waitish,levelCond,errandOf,errandTool,waitFrom} from './intent.js'; // the hero's stated aim (#535)
 import {localsNear} from './locals.js'; // who is about in town, for "you are already here" (#727)
 import {pay as payGold} from './pay.js'; // pay (#628)
 import {finishTool,spareTool} from './mercy.js'; // finish or spare a downed enemy (#657)
@@ -196,10 +196,11 @@ function waryPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y)),gz=cmd.ground;let
 // loot, buy a potion or two, then walk out to its last hunting ground (or a known region that fits its level) and hunt.
 // A follower waits for its leader (it follows them out, town()) and only goes hunting near town on its own after TP.WAIT
 // more game minutes with the leader still in town. Agent-played heroes only: the scripted world never comes here.
-const TP={HUNT:5,POTIONS:2,LOOT:4,WAIT:240,FIT_UP:1,DANGER:5,DARE_MIN:720,ARRIVE_HOLD:120};
+const TP={HUNT:5,POTIONS:2,LOOT:4,WAIT:240,FIT_UP:1,DANGER:5,DARE_MIN:720,IDLE_TOWN:720,ARRIVE_HOLD:120};
 // #727: after the hero arrives in a town on its agent's own order (a move_to, or the aim's walk), autopilot does not walk it back
 // out (to its ground, or an aim's hunt) for TP.ARRIVE_HOLD game minutes: the agent came for something. Rest, sell and buy still run.
-const leaveHeld=a=>a.state==='town'&&a.playArrive!=null&&S.gameMin-a.playArrive<TP.ARRIVE_HOLD;
+// The town-idle guard (#790) outranks the hold: an arrival inside town must not keep a hero who has earned nothing there for 12 hours.
+const leaveHeld=a=>a.state==='town'&&a.playArrive!=null&&S.gameMin-a.playArrive<TP.ARRIVE_HOLD&&!townIdleOver(a);
 const stayCmd=a=>{const c=cityAt(a),m=Math.round(S.gameMin-a.playArrive);return {kind:'rest',until:a.playArrive+TP.ARRIVE_HOLD,hold:true,auto:'staying in '+(c?c.name:'town')+' a while (you arrived '+m+' min ago)',label:'rest'}};
 // The town the hero stands in (inside its walls), and the answer when it asks to go there (#727): who is about, and the tools.
 const townHere=a=>a.state==='town'?cityAt(a):null;
@@ -223,10 +224,30 @@ const bestPotion=a=>Object.keys(USES).filter(k=>{const U=USES[k];return U.kind==
 // What autopilot carries on for an aim (sim/intent.js), where it maps to one: walk on to its place, hunt its ground (one that
 // fits, wary as ever), wait where it is. A follow aim is the standing follow order (a.playOrder, #445). Safety comes first:
 // autopilot only gets here once hurt, storm and full-pack checks passed, and an aim that is done maps to nothing.
+// ---- waiting earns nothing (issue #790) ----
+// Town-idle guard: an agent hero in town with no XP, kill, buy, sell, job or talk for TP.IDLE_TOWN game hours is woken with the board's
+// fitting jobs and the fitting ground, and autopilot hunts that ground whatever wait aim it holds. The agent still decides jobs, votes and
+// the Crypt; autopilot never takes a hook. Held back while hurt, in a scene, at an open vote or meeting plan, or while the world is held.
+const townIdleOver=a=>{const T=a.townIdle;return !!(T&&a.state==='town'&&S.gameMin-T.at>=TP.IDLE_TOWN)};
+const followerFree=a=>{const L=gLeader(a);return !!(L&&L.state!=='town'&&!L.hidden&&aimState(a)==='stale')};
+function boardFits(a,mem){const c=homeOf(a),lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a),out=[];
+  for(const h of (S.adventures||[]))if(h.phase==='open'&&h.town===c.name&&!jobFit(a,h,mem)){const zn=h.zone!=null?ZONES[h.zone]:null;out.push('job:'+h.id+' '+jobText(h)+(zn?' ('+zn+')':''))}
+  for(const b of bountiesAt(c))if(MOBS[b.type]&&fits(lo,b.z))out.push('bounty: kill '+b.need+' '+MOBS[b.type].pl+' in '+ZONES[b.z]);
+  return out.slice(0,4)}
+// How long one step of a wait rests: an hour, stopping at the aim's end, the wait cap and the guard, each of which ends the wait.
+const waitStep=(a,I)=>{const T=a.state==='town'?a.townIdle:null;return Math.max(S.gameMin+1,Math.min(S.gameMin+60,I.untilAt??1e12,waitFrom(I)+INTENT.WAIT_MAX,T?T.at+TP.IDLE_TOWN:1e12))};
+function townGuard(a){const now=S.gameMin;if(a.state!=='town'||a.hidden){if(a.townIdle)a.townIdle=null;return}
+  const C=companyOf(a),sig=[a.lvl,Math.round(a.xp||0),a.kills||0,Math.round(a.gold||0),a.adv||0,a.quest?a.quest.have||0:-1,heldCount(a),a.conv==null?'':a.conv,invOf(a).list.length].join(',');
+  const T=a.townIdle,pause=!!(sceneOf(a)||worldHeld()||a.hp<maxHp(a)*.6||a.splitUntil>now||(C&&(openProps(C).length||openPlans(C).length)));
+  if(!T||T.sig!==sig||pause){a.townIdle={at:now,sig,woke:T?T.woke:0};return}
+  if(now-T.at<TP.IDLE_TOWN||now-(T.woke||0)<TP.IDLE_TOWN)return;
+  T.woke=now;const mem=[a,...partyMates(a)],lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a),z=groundFor(lo),bd=boardFits(a,mem),hrs=Math.round((now-T.at)/60);
+  ev(a,hrs+' game hours in '+homeOf(a).name+' with nothing earned: waiting earns no levels. '+(bd.length?'The board has, for you now: '+bd.join('; ')+'. ':'')+(z!=null?'Autopilot hunts '+ZONES[z]+' (it fits '+lo.name+') unless you decide otherwise: take a job, or hunt {where} yourself.':'Hunt out in the world to grow.'),2)}
 function intentPilot(a){if(!aimHeld(a))return null;const I=a.intent,o=I.order;if(!o)return null;const why=' (your aim: '+clean(I.goal,60)+')';
   const sg=o.kind==='move'?sighted(a):null;if(sg)return {kind:'rest',until:S.gameMin+30,auto:'holding where you are: you saw '+sg.name+' (your aim: '+clean(I.goal,60)+')',label:'rest'}; // stopped on sight (#570): the agent decides next
-  if(o.kind==='wait'){const ct=o.town?townHere(a):null; // a town errand waits in that town (#727); a hold rest does not end at full health
-    return {kind:'rest',until:Math.min(S.gameMin+60,I.untilAt!=null?Math.max(S.gameMin+1,I.untilAt):1e12),hold:true,auto:(ct?'waiting in '+ct.name:'waiting where you are')+why,label:'rest'}}
+  if(o.kind==='wait'){if(townIdleOver(a)||followerFree(a)||(o.town&&!townHere(a)))return null; // waiting earns nothing (#790): 12 idle hours in town, or a stale wait behind a leader who has gone, lets autopilot hunt; an errand ends at the gate (#727)
+    const ct=o.town?townHere(a):null; // a town errand waits in that town (#727); a hold rest does not end at full health, so it stops at each limit itself
+    return {kind:'rest',until:waitStep(a,I),hold:true,auto:(ct?'waiting in '+ct.name:'waiting where you are')+why,label:'rest'}}
   if(o.kind==='move'){if(o.to&&dist(a,o.to)<=INTENT.NEAR)return null;let p=o.target?plan(a,o.target):null;
     if((!p||p.error)&&o.to&&o.last!=='town')p=toFieldOf(a,o.to,o.label);if(!p||p.error)return null;
     return {kind:'move',legs:p.legs,last:p.last,label:p.label,aim:true,auto:'carrying on to '+p.label+why}} // aim: the agent's own walk (an arrival wakes it, #727)
@@ -391,7 +412,7 @@ export const isPlayer=a=>!!(a&&a.player);
 // Returns true when it handled the step; false hands it to updAgent (duels, assists, regroups,
 // ghosts, a consented crypt or raid, following a party leader, and the DM-led legs of an adventure).
 export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
-  watch(a);intentWatch(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
+  watch(a);intentWatch(a);townGuard(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
   // A Fellowship member whose runner is gone, once the owner said go on (or with no host at all: the headless sim,
   // play-headless before a runner claims it): its reflexes play it whole, the scripted rules, until a runner holds
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
@@ -1094,7 +1115,7 @@ const T={
     const c=homeOf(a),mine=h.for===a.id;
     need(h.town===c.name&&(mine||inTown(a)),h.town!==c.name?'That job is posted in '+h.town+', not your town.':'Take a posted job at your town board: go home first.');
     need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');
-    const w=jobFit(a,h,[a,...(a.party&&a.party.leader===a?partyMates(a):[])]);need(!w,'The job-giver will not give it to you: '+w+'.');
+    const mem=[a,...(a.party&&a.party.leader===a?partyMates(a):[])],w=jobFit(a,h,mem);need(!w,'The job-giver will not give it to you: '+w+'.'+growHint(a,w,mem));
     h.phase='taken';h.taker=a.id;h.takenAt=Math.round(S.gameMin);h.until=S.gameMin+DMK.MAX_DAYS*1440;learnJob(a,h);
     const q=questLog(a).active.find(x=>x.id==='job:'+n),t=q?q.title:jobText(h);record(a,'Took a job: ',{t,c:'gd'},' ('+(h.giver?h.giver.name:'the board')+').');
     return {ok:true,took:t,id:'job:'+n,holding:heldCount(a)+'/'+QL.MAX,note:'It waits in your quest log for up to '+DMK.MAX_DAYS+' game days: focus_quest {id: "job:'+n+'"} to set out on it.'}},
@@ -1363,8 +1384,13 @@ const T={
     const c=a.pq&&a.pq[0],ct=townHere(a),er=ct?errandOf(g):null;let order=orderOf(a,c&&!c.auto?(c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c):null),here=false;
     if(!order){const go=goalOrder(a,g),toHere=!!(ct&&go&&go.kind==='move'&&go.target===ct.name);here=!!(ct&&namesTown(g,ct)&&(!go||toHere));
       order=er&&(!go||toHere||go.kind==='wait')?{kind:'wait',errand:er.k,town:ct.name}:toHere?null:go}
-    const r=setIntent(a,{goal:g,why,until},order,{forced:/^(yes|true|1)$/i.test(String(forced||''))});if(r.ok===false)throw new Rule(r.error);if(r.dropped)return r;
-    if(here||order&&order.errand){Object.assign(r,alreadyHere(a,ct));if(!here)delete r.here}
+    // #790: a level condition is never a wait, an errand's included: it maps to a hunt on the fitting ground
+    const lc=levelCond(until)||(waitish(g)?levelCond(g):null);let ord=order,level=null;
+    if(lc&&(!ord||ord.kind==='wait')){const mem=lc.all?[a,...partyMates(a)]:[a],lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a);
+      if(lo.lvl>=lc.level)ord=null;else{const z=groundFor(lo),bd=boardFits(a,mem);ord=z!=null?{kind:'hunt',k0:a.kills,ground:ZONES[z],lvl:lc.level}:null;
+        level='Levels come from kills, not from waiting in town. '+(z!=null?'Autopilot hunts '+ZONES[z]+' for them':'No ground you know fits '+lo.name+': hunt {where}')+(bd.length?'; the board has: '+bd.join('; '):'')+'.'}}
+    const r=setIntent(a,{goal:g,why,until},ord,{forced:/^(yes|true|1)$/i.test(String(forced||'')),level});if(r.ok===false)throw new Rule(r.error);if(r.dropped)return r;
+    if(here||ord&&ord.errand){Object.assign(r,alreadyHere(a,ct));if(!here)delete r.here}
     const sh=shoutAim(a);if(sh){r.shouted=sh.heard_by.length?'heard by '+sh.heard_by.join(', '):'no one was near enough to hear';if(sh.too_far)r.too_far=sh.too_far}
     return r},
 };
@@ -1431,7 +1457,8 @@ function jobText(h){const T=D.ADVENTURES[h.tpl];const thing=h.data&&h.data.thing
 // that leaves a company at the gate.
 function growHint(a,w,mem){if(!/^needs level/.test(w))return '';const lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a),z=groundFor(lo);
   const g=z!=null?ZONES[z]:null,n=mem.length-1;
-  return ' Grow first: '+(g?'hunt {where: "'+g+'"}':'hunt out in the world')+(n?(a.party&&a.party.leader===a?' and your companions follow you out':'; tell the others where you hunt'):'')+'. Left at the gate, autopilot hunts there too.'}
+  const bd=boardFits(a,mem);
+  return (bd.length?' The board has, for you now: '+bd.join('; ')+'.':' Nothing else on this board suits you yet.')+' Grow first: '+(g?'hunt {where: "'+g+'"}':'hunt out in the world')+(n?(a.party&&a.party.leader===a?' and your companions follow you out':'; tell the others where you hunt'):'')+'. Left at the gate, autopilot hunts there too.'}
 function jobFit(a,h,mem){const T=D.ADVENTURES[h.tpl];if(!T)return 'unknown job';const lo=Math.min(...mem.map(b=>b.lvl));
   if(h.for!=null&&!mem.some(b=>b.id===h.for))return 'it is meant for someone else';
   if(lo<Math.max(DMK.MIN_LVL,T.lvl||0))return 'needs level '+Math.max(DMK.MIN_LVL,T.lvl||0);

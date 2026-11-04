@@ -135,7 +135,7 @@ for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
 const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
 ok(memA.ok, 'A wrote a memory (#179)');
-const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Hold the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
+const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Patrol the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
 ok(aimA.ok, 'A stated an aim (#535)');
 // C's agent keeps it in town on purpose (#466: a silent member's autopilot now walks out of town to hunt, so a stuck member
 // is one whose agent keeps acting without going anywhere): every game hour its runner orders a rest in town.
@@ -359,6 +359,9 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   IN.setIntent(h, {goal: 'Rest and recover at the inn', why: 'hurt'}, {kind: 'wait', errand: 'rest', town: home.name}); adv(20); IN.endIntent(h, 'rested'); adv(10);
   h.state = 'hunt'; IN.setIntent(h, {goal: 'Find out what lurks in the woods', why: 'curious'}, null); adv(20); IN.endIntent(h, 'x'); adv(10);
   ok(errs().length === 2, 'a rest errand, and an errand never held in town, raise nothing');
+  h.state = 'town'; IN.setIntent(h, {goal: 'Ask the smith about the road', why: 'the way'}, {kind: 'wait', errand: 'ask', town: home.name}); adv(150);
+  ok(errs().length === 2 && IN.aimState(h) === 'stale', 'an errand gone stale but still held (#790) is not judged yet: it can still be run');
+  IN.endIntent(h, 'x'); adv(10); ok(errs().length === 3 && errs()[2].rec.evidence.ended === 'done', 'and it is flagged when it ends unrun');
   h.state = 'town';
   // the report counts it per mind in the Mind comparison, beside no-aim
   const dirE = join(ROOT, 'errand'), {mkdirSync: mk4} = await import('node:fs'); mk4(dirE, {recursive: true});
