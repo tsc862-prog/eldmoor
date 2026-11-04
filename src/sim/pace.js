@@ -14,7 +14,8 @@
 // tool call hands them over as usual. It writes nothing (but for a Fellowship letter it delivers to a new
 // member's notebook, sim/notebook.js), so a world with no runner is unchanged.
 import {S,clockStr} from './state.js';
-import {wakeLevel} from './notify.js';
+import {swornOf,threadText,askOpen} from './oath.js'; // the hero's own oath, or the thread its past offers (#800)
+import {wakeLevel,mostNews} from './notify.js';
 import {tableView,optionsFor} from './table.js';
 import {sceneOf} from './scenes.js';
 import {heardLines,metNames} from './talk.js';
@@ -23,7 +24,7 @@ import {ZONES,zoneAt,CITY} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {notTold,NOT_TOLD} from './reach.js';
 import {heroRelevant} from './notebook.js'; // the notes that matter now (#155)
-import {reflectDue} from './reflect.js'; // reflection moments (#179)
+import {reflectDue,REFLECT} from './reflect.js'; // reflection moments (#179)
 import {asleep,campView} from './camp.js';
 import {localsNear} from './locals.js';
 import {sightLine} from './sighthero.js'; // companions in sight beyond earshot (#570)
@@ -38,6 +39,7 @@ import {followBrief} from './follow.js'; // who the hero follows and who follows
 import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
 import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
 import {leaderFor} from './council.js';
+import {woundLine} from './tend.js';
 import {worldHeld} from './prep.js'; // the world held before play (#559)
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
@@ -79,7 +81,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
   const t=a.target,fighting=(a.state==='fight'||a.state==='duel'||a.state==='assist')&&t&&(t.hp>0||t.alive);
   const foe=fighting?foeName(a,t):null;
-  const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
+  const seen=a.playEvSeen||0,news=mostNews((a.playEv||[]).filter(e=>e.n>seen),8).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:placeOf(a),
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),earshot:earshotLine(a),hold:S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold.rule:null,insight:sightLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
@@ -90,7 +92,11 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
     aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
-    reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
+    wounds:woundLine(a), // a lasting wound in words (#656); null when whole
+    ...(swornOf(a)?{oath:a.goal.text}:{}),...(askOpen(a)?{thread:threadText(a)}:{}), // the turn header: what it swore, or for a while what its past holds
+    reflect:reflectBrief(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
+// The first evening asks once more what the hero makes of its past (#800): the answer closes the offer (reflectDone).
+function reflectBrief(a){const r=reflectDue(a);return r&&askOpen(a)&&(r.kind==='dusk'||S.gameMin%1440>=REFLECT.DUSK)?{...r,thread:threadText(a)}:r}
 // The hall's open jobs that concern the Fellowship (issue #326), as the board shows them to a member standing in town:
 // a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting
 // says (id, title, giver, reward), never who posted it behind the scenes (in-game channels, #123). Reads only; at most
@@ -108,9 +114,9 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
 // The scene this hero still has to answer, for the runner's forced scene turn (issue #163): its legal option keys and
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
 function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options||tv.waiting_for==='the DM')return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
-  const g=a.goal&&!a.goal.done&&a.goal.text?a.goal.text:null,tl=toldLine(a);
+  const g=swornOf(a)&&a.goal.text?a.goal.text:null,tl=toldLine(a);
   return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
-    you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{})},...(tv.room?{room:tv.room}:{}),...(tv.moves?{moves:tv.moves}:{}),...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)
+    you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{}),...(tv.your_past?{past:tv.your_past}:{})},...(tv.swear?{swear:tv.swear}:{}),...(tv.room?{room:tv.room}:{}),...(tv.moves?{moves:tv.moves}:{}),...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)
 // Where the hero stands, for the header (#399): a town by name when it is inside one ("Highgate (town; Lowmark around it)"), so
 // an agent waiting in town no longer reads the region and calls hunt there. The same words move_to reads back.
 const inTown=(c,p)=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5; // player.js cityAt

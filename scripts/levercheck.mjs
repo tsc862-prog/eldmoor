@@ -132,7 +132,7 @@ ok(S.levers.active.length === 0, 'nothing left active');
 // ---- validation ----
 console.log('\nvalidation');
 const rej = (name, p, re, label, o = by) => {const x = pull(name, p, o), e = S.dmLog[0]; ok(!x.ok && re.test(x.reason) && e.kind === 'lever' && /^rejected/.test(e.detail.result), `${label}: "${x.reason}" (logged)`)};
-rej('mark_place', {kind: 'ruin', at: bad}, /walkable/, 'non-walkable tile');
+rej('mark_place', {kind: 'ruin', at: bad}, /solid ground.*nearest open ground is [\d.]+,[\d.]+/, 'non-walkable tile');
 rej('mark_place', {kind: 'ruin', at: {x: town.gate.x + 1, y: town.gate.y}}, /gate|inside/, 'next to a town gate');
 rej('mark_place', {kind: 'ruin', at: {x: -3, y: 4}}, /off the map/, 'off the map');
 rej('mark_dangerous', {at: S0[3], lvl: 20}, /outside Thornvale/, 'out-of-band level 20 in ' + ZONES[0]);

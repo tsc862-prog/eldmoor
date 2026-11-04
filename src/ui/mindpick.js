@@ -32,6 +32,8 @@ export const openaiModels=()=>{poll();const o=provs()&&provs().openai,l=o&&o.ok&
 export const hfModels=()=>{poll();const o=provs()&&provs().huggingface;if(!(o&&o.ok&&Array.isArray(o.models)))return [];const l=o.models.slice();if(o.default&&!l.includes(o.default))l.unshift(o.default);return l};
 // Gemini chat models the key can use (#672; /health providers.google.models); GOOGLE_MODEL's default first.
 export const googleModels=()=>{poll();const o=provs()&&provs().google;if(!(o&&o.ok&&Array.isArray(o.models)))return [];const l=o.models.slice();if(o.default&&!l.includes(o.default))l.unshift(o.default);l.prices=o.prices;return l}; // .prices: price labels (#677; $0 on the free tier)
+// Every list a runner picker shows, in runnerPick's order: one call for a hero, a company and the DM alike (#824).
+export const mindLists=()=>[pulledModels(),openaiModels(),hfModels(),googleModels()];
 const byHid=id=>S.agents.find(x=>x.id==id);
 const modeOf=a=>a.player?'agent':a.brain?'ai':'scripted';
 
@@ -40,7 +42,7 @@ export const mindRowSig=a=>modeOf(a)+':'+JSON.stringify(a.brainCfg||null)+':'+ve
 export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   const row=el('div','mindrow'),mode=modeOf(a);
   if(inSlots(a)){const ml=mindLabel(a),n=el('span','dm mnote',ml.text);n.title=ml.title+' A Fellowship member is always played by its agent; choose the model its runner plays with.';row.append(n);
-    const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,pulledModels(),openaiModels(),hfModels(),googleModels()));row.append(r);
+    const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,...mindLists()));row.append(r);
     node.append(row);return}
   const seg=el('span','mseg');
   for(const [k,label,title] of [['scripted','Scripted','The scripted rules play this hero'],['ai','AI','A language model makes the decisions through the relay (scripted when it is silent)'],['agent','Agent','An agent runner plays this hero through the game tools (npm run agent)']]){
@@ -63,7 +65,7 @@ export function renderMindRow(node,a){if(!a||a.state==='dead')return;poll();
   if(mode==='agent'){const ml=mindLabel(a),n=el('span','dm mnote',ml.text);
     n.title=ml.title;row.append(n);
     // app runners: start or stop this hero's runner from the page, with the mind it starts with
-    const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,pulledModels(),openaiModels(),hfModels(),googleModels()));row.append(r)}
+    const r=runnerControl(a,{line:true});if(!r.querySelector('[data-runact="stop"]')&&!r.textContent.startsWith('Fellowship'))row.append(runnerPick('hero:'+a.id,...mindLists()));row.append(r)}
   node.append(row)}
 
 export function mindAct(t){if(!t||!t.dataset||!t.dataset.mmode)return false;

@@ -137,9 +137,11 @@ console.log('wait');
  ok(!A.intent.done, 'a camp rest is not cut off by the wait cap'); A.state = 'town'; intentWatch(A); ok(!!A.intent.done, 'out of camp the cap applies');
  // the town-idle guard against a stubborn agent who keeps stating a wait
  fresh(A, 3); A.intent = null; A.townIdle = null; A.playEv = []; const g0 = S.gameMin; let nextRe = g0, still10 = null, wake = null; const watchWake = () => {const e = (A.playEv || []).find(e => /waiting earns no levels/.test(e.text)); if (e && !wake) wake = e.text}; act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); nextRe += 100; idle(A);
- gm(840, () => {if (S.gameMin >= nextRe) {act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); A.pq = (A.pq || []).filter(x => !x.auto); nextRe += 100} idle(A); watchWake(); if (still10 == null && S.gameMin - g0 >= 600) still10 = inTownRect(A)});
+const guardCleared = new Set(); // a chance fight must not send the hero home before the check: full health, nobody near
+ gm(840, () => {if (S.gameMin >= nextRe) {act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); A.pq = (A.pq || []).filter(x => !x.auto); nextRe += 100} A.hp = maxHp(A); for (const m of S.mobs) if (m.alive && !m.gone && dist(m, A) < 16) {m.alive = false; m.gone = true; m.target = null; guardCleared.add(m)} idle(A); watchWake(); if (still10 == null && S.gameMin - g0 >= 600) still10 = inTownRect(A)});
  ok(still10 === true, 'before 12 idle hours the guard does not move a hero that keeps its wait');
  ok(!inTownRect(A) || A.state !== 'town', 'after 12 idle hours autopilot hunts whatever wait aim it holds (' + A.state + ' in ' + ZONES[zoneAt(A.x, A.y)] + ')');
+ for (const m of guardCleared) {m.alive = true; m.gone = false; m.target = null; m.hp = m.maxhp} rebuild();
  ok(wake && /Autopilot hunts/.test(wake) && /board has|Hunt out/.test(wake), 'and the agent was woken with a line naming the ground and the board: ' + String(wake).slice(0, 220));
  ok(!A.adv && !A.quest, 'still no job taken for it');
  // legitimate waits: an open meeting plan keeps the clock from running
