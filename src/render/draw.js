@@ -9,12 +9,12 @@
 //   free camera ('map'): sc = fit * zoom, zoom one of ZOOMS; camX/camY is the view
 //     centre in world px, clamped so the view never leaves the map (at zoom 1 that
 //     pins it to the map centre, exactly the old whole-map view).
-//   follow: sc = max(fit*2.6, canvas/FOLLOW_VIEW) and the centre eases to the hero.
+//   follow: sc = max(fit*2.6, canvas/(followTiles(canvas)*T), art-snapped) and the centre eases to the hero.
 //   A wheel, drag or minimap click in follow mode drops to the free camera at the
 //   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
 import {W,H,LAVA} from '../world/tiles.js';
-import {U as T,ART,PROC_SCALE,HEAD,FOLLOW_TILES} from './tile.js';
+import {U as T,ART,PROC_SCALE,HEAD,followTiles} from './tile.js';
 import {OUTPOSTS} from '../world/map.js';
 import {outpostsView} from '../sim/outposts.js';
 import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
@@ -48,8 +48,6 @@ const HIT_NUM=/^\d+!?$/; // a blow's number from the sim; a fight on a patch sho
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null,hover:null,icons:true}; // hover, icons: the hovered hero and the Intent icons switch in Settings (#534, render/purposefx.js)
-// Follow view shows about FOLLOW_TILES (29) tiles across the screen.
-const FOLLOW_VIEW=FOLLOW_TILES*T;
 const BOSS_HEAD=SPR.boss[0].length*PROC_SCALE+6; // Kragmaw's nameplate height over its feet
 // The facing of each entity for a generated sheet (0 down, 1 left, 2 right, 3 up), from how it last moved.
 const FACE=new WeakMap();
@@ -64,7 +62,9 @@ const MARGIN=48;
 let cvRef=null;const listeners=[];
 export function onCamChange(fn){listeners.push(fn)}
 const changed=()=>{for(const f of listeners)f(cam)};
-const followScale=()=>cvRef?Math.max(cam.fit*2.6,cvRef.width/FOLLOW_VIEW):cam.fit*2.6;
+// Whole art pixels where it costs under a quarter step, so the generated art stays sharp (art px per unit is ART).
+const snapArt=sc=>{const a=sc*ART,r=Math.round(a);return Math.abs(a-r)<.3&&r>=1?r/ART:sc};
+const followScale=()=>cvRef?Math.max(cam.fit*2.6,snapArt(cvRef.width/(followTiles(cvRef.width)*T))):cam.fit*2.6;
 // 'fellow' view (#68): cam.frame() (set by ui/controls.js) returns {x,y,w,h} in tiles framing the Fellowship, or null.
 const framed=()=>cam.view==='fellow'&&typeof cam.frame==='function'?cam.frame():cam.view==='region'&&typeof cam.regionFrame==='function'?cam.regionFrame():null; // 'region' view (#430): cam.regionFrame() frames the picked region
 const frameScale=f=>cvRef?clamp(Math.min(cvRef.width/((f.w+8)*T),cvRef.height/((f.h+6)*T)),cam.fit,followScale()):cam.fit*2.6;

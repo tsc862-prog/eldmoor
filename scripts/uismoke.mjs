@@ -1453,7 +1453,8 @@ console.log('the DM prepares the table');
   const pf=P.purposeOf(fol);ok(pf.kind==='follow'&&pf.line.startsWith('Following → '+lead.name+' (3 tiles)')&&pf.tether&&pf.tether.id===lead.id,'purpose: an agent follower names whom it follows, how far, and tethers ('+pf.line+')');
   // a waiting hero: in town, the party leader still there
   const c=CITY.find(t=>t.fac===waiter.fac)||CITY[0],kw={state:waiter.state,party:waiter.party,pq:waiter.pq,act:waiter.playActAt,x:waiter.x,y:waiter.y};
-  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;waiter.x=c.gate.x;waiter.y=c.gate.y;
+  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;// stand a little off the gate, away from the leader: the wait line is not drawn to someone within 0.8 tiles, and the leader may stand at the gate
+  waiter.x=c.gate.x;waiter.y=c.gate.y;for(const[dx,dy]of[[0,0],[2,1],[-2,1],[2,-1],[-2,-1],[3,0]]){waiter.x=c.gate.x+dx;waiter.y=c.gate.y+dy;if(Math.hypot(lead.x-waiter.x,lead.y-waiter.y)>1.5)break}
   const pw=P.purposeOf(waiter);ok(pw.kind==='wait'&&pw.line.startsWith('Waiting for '+lead.name)&&/40 min/.test(pw.line)&&pw.wait&&pw.wait.id===lead.id,'purpose: a waiting hero names whom it waits for and how long ('+pw.line+')');
   // a traveller on a walk order
   const kt={pq:trav.pq,state:trav.state,adv:trav.adv},dest={x:c.gate.x+6,y:c.gate.y+4};trav.adv=null;trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
@@ -1481,7 +1482,9 @@ console.log('the DM prepares the table');
   cam.sel=trav;cam.dpr=1;cam.sc=2;m=mk();const lab=[];FX.drawPurposeGround(m.ctx,S,cam,{drawText:t=>lab.push(t),blink:0});
   ok(m.L.strokes>=1&&from(trav,m.L)>=1,'overlays: the followed traveller gets its dotted road, from itself');ok(lab.includes('the old mill'),'overlays: the marker names what is there');
   cam.sel=fol;cam.hover=waiter;m=mk();FX.drawPurposeGround(m.ctx,S,cam,{drawText:()=>{},blink:0});
-  ok(from(fol,m.L)>=1&&from(waiter,m.L)>=1&&from(trav,m.L)===0&&from(hunter,m.L)===0,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else');
+  {const who=a=>a.name+' '+a.state+' ('+a.x.toFixed(2)+','+a.y.toFixed(2)+')'+(a.hidden?' hidden':''),n={fol:from(fol,m.L),waiter:from(waiter,m.L),trav:from(trav,m.L),hunter:from(hunter,m.L)},
+    bad=[n.fol>=1?'':'follower tether missing',n.waiter>=1?'':'waiter wait line missing (leader '+who(lead)+', distance '+Math.hypot(lead.x-waiter.x,lead.y-waiter.y).toFixed(2)+')',n.trav===0?'':'traveller drawn',n.hunter===0?'':'hunter drawn'].filter(Boolean);
+  ok(!bad.length,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else'+(bad.length?' ['+bad.join('; ')+'] counts '+JSON.stringify(n)+' fol='+who(fol)+' waiter='+who(waiter)+' trav='+who(trav)+' hunter='+who(hunter)+' lead='+who(lead):''))}
   // intent icons: close zoom with the switch on; off hides them except the focused hero's hourglass
   const cnt=(a,close)=>{let n=0;const ctx=new Proxy({},{get:(o,k)=>k==='fillRect'?()=>n++:typeof o[k]!=='undefined'?o[k]:()=>{},set:(o,k,v)=>{o[k]=v;return true}});FX.drawIntentIcon(ctx,S,cam,a,0,0,12,close);return n};
   const vi=$('vIcons');PV.setIcons(true);ok(cnt(hunter,true)>0&&cnt(hunter,false)===0,'icons: a hunter’s icon at close zoom, none far out');
