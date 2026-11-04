@@ -40,7 +40,9 @@ grudges, run a dungeon and raid a world boss on their own, and the player watche
   (the owner's browser) still sees everything. See "In-game channels" below; `npm run channelcheck`.
 - **Generated art, procedural fallback, no build step to play.** Art is generated images under `assets/`
   (PNGs plus `assets/index.json`, committed and served by Vite as static files) made offline by the Hugging Face
-  pipeline in `scripts/art/` (#177); every asset has a procedural fallback (the pixel arrays and procedural
+  pipeline in `scripts/art/` (#177), or cut from the free third-party CC0 and LPC sets the owner allowed on #789 (fetched by
+  `npm run art:packs` into the gitignored `assets/packs/`, each committed piece with `source` and `license` on its index entry
+  and its credit in `docs/CREDITS.md`; paid or no-redistribution sets are never committed); every asset has a procedural fallback (the pixel arrays and procedural
   textures in `src/render/`), so a missing or absent `assets/` never breaks a world and looks as before. The sim,
   the map and its hash, lighting, weather, effects and the minimap stay procedural; `HF_TOKEN` is read only by
   `scripts/art/*.mjs` (and the relay for its Hugging Face minds), never by the browser.
