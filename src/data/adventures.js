@@ -224,3 +224,40 @@ export const ADVENTURES={
         pass:'The chapel rings once for {thing}.',fail:'Nobody comes to claim it.'},
     ]},
 };
+
+// ---- goods jobs (issue #720, epic #238) ----
+// A board job that asks for a crafted or gathered good instead of a walk: "Three Redroot Draughts for the chapel". Not an
+// adventure (no scenes, no party): a hero takes it (take_quest) and hands the goods in with turn_in at the town it was posted
+// in, or just turns them in. Kept apart from ADVENTURES on purpose, so the scripted DM's draw over adventure templates never
+// meets them; sim/supply.js runs them and post_hook accepts their names as `tpl`.
+//   want   {kind: 'craft'|'gather', id, n:[min,max]}  craft: a recipe's result (data/recipes.js out.id, a consumable or a
+//          crafted piece of gear); gather: a gathered material (data/items.js MATERIALS)
+//   prof   the trade a hero needs to make it (the scripted DM posts it for a member who holds it, and at a skill band that can)
+//   title  {N} the amount as a word, {item} the good (plural by `pl`, else + "s"); givers: townsfolk roles (data/npcs.js)
+//   bonus  [material id, n] handed over with the gold now and then
+//   hint   a line the giver adds (a rare-material hook)
+export const SUPPLY={
+  draughts:{name:'Draughts for the chapel',want:{kind:'craft',id:'Redroot Draught',n:[3,4]},prof:'alchemy',givers:['priest','innkeeper'],
+    title:'{N} {item} for the chapel',bonus:['Hearthbloom',1],hint:'The chapel’s shelves are bare after the last fever.'},
+  tonics:{name:'Tonics for the sick-room',want:{kind:'craft',id:'Marrowmend Tonic',n:[2,3]},prof:'alchemy',givers:['priest'],
+    title:'{N} {item} for the sick-room',bonus:['Fen Moss',1],hint:'Bad cuts, and nothing left to knit them.'},
+  blade:{name:'A blade for the gate',want:{kind:'craft',id:'Tinforged Weapon',n:[1,1]},prof:'smithing',givers:['captain','quartermaster'],
+    title:'{N} {item} for the gate captain',bonus:['Tin Ore',2],hint:'The watch’s steel is notched past mending.'},
+  cowl:{name:'A cowl for the gate',want:{kind:'craft',id:'Wolfhide Cowl',n:[1,1]},prof:'leatherworking',givers:['captain'],
+    title:'{N} {item} for the gate captain',bonus:['Wolf Sinew',2],hint:'The winter watch wants something warm for the post on the wall.'},
+  meals:{name:'Suppers for the road',want:{kind:'craft',id:'Spit-Roast Perch',n:[3,4],pl:'Spit-Roast Perch'},prof:'cooking',givers:['innkeeper','quartermaster'],
+    title:'{N} {item} for the drovers’ table',bonus:['River Perch',2],hint:'A drover train is in, hungry and not particular.'},
+  scrolls:{name:'Wards for the chapel',want:{kind:'craft',id:'Scroll of Hearthward',n:[2,2]},prof:'scribing',givers:['priest','bard'],
+    title:'{N} {item} for the chapel',bonus:['Rushpulp',2],hint:'The chapel hands them to travellers who ask.'},
+  herbs:{name:'Redroot for the herbwives',want:{kind:'gather',id:'Redroot Leaf',n:[5,6],pl:'Redroot Leaf'},prof:'herbalism',givers:['priest','innkeeper'],
+    title:'{N} {item}, fresh',bonus:null,hint:'The herbwives cannot keep up with the cut.'},
+  ore:{name:'Ore for the forge',want:{kind:'gather',id:'Tin Ore',n:[4,6],pl:'Tin Ore'},prof:'mining',givers:['smith','quartermaster'],
+    title:'{N} {item} for the forge',bonus:null,hint:'The forge is cold until someone brings it ore.'},
+  sinew:{name:'Sinew for the saddlers',want:{kind:'gather',id:'Wolf Sinew',n:[4,5],pl:'Wolf Sinew'},prof:'skinning',givers:['quartermaster','smith'],
+    title:'{N} {item} for the saddlers',bonus:null,hint:'Harness, stitching, and not a strand to be had.'},
+  perch:{name:'Perch for the inn',want:{kind:'gather',id:'River Perch',n:[4,6],pl:'River Perch'},prof:'fishing',givers:['innkeeper'],
+    title:'{N} {item} for the inn',bonus:null,hint:'The kitchen wants them whole and cold.'},
+  rimebloom:{name:'A Rimebloom patch',want:{kind:'gather',id:'Rimebloom',n:[2,3],pl:'Rimebloom'},prof:'herbalism',givers:['priest'],
+    title:'{N} {item}, from the patch seen above the tarn',bonus:['Hearthbloom',1],hint:'A drover saw a patch of it above the tarn, blue in the snow.'},
+};
+export const SUPPLY_KEYS=Object.keys(SUPPLY);

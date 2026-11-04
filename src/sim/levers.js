@@ -41,7 +41,7 @@ import {makeItem} from './gear.js';
 import {notify} from './notify.js';
 import {RACES} from '../data/races.js';
 import {npcRole,WANDER_ROLES} from '../data/npcs.js';
-import {BEAST,ADVENTURES} from '../data/adventures.js';
+import {BEAST,ADVENTURES,SUPPLY} from '../data/adventures.js';
 import {S} from './state.js';
 import {sceneOf} from './scenes.js';
 import {takeProp} from './props.js'; // the scene prop that held the item is gone (#592)
@@ -52,6 +52,7 @@ import {npcSay,ensureNpcs} from './npcs.js';
 import {moveTo} from './heroes.js';
 import {spawnMob} from './mobs.js';
 import {postHook,withdrawHook} from './dm.js';
+import {postSupply,withdrawSupply,openAt as supplyOpenAt,SUP} from './supply.js'; // goods jobs (#720): post_hook takes their names as tpl
 import {customFoe,spawnFoe} from './encounterbuilder.js';
 import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
 import {CUSTOM} from '../data/encounter-tables.js';
@@ -334,25 +335,29 @@ function shock(p){const g=GOODS[p.good],s=SHOCK_SUPPLY[p.direction][p.size];if(p
 const TPLS=Object.keys(ADVENTURES).filter(k=>k!=='fallen');
 const REWARD={small:.8,fair:1,generous:1.25};
 register({name:'post_hook',about:'Post a job on a town board: template, giver role, an optional target place or person, and a reward scale (gold only).',
-  params:{town:{type:'town'},tpl:{type:'enum',values:Object.keys(ADVENTURES)},giver:{type:'enum',values:['captain','innkeeper','smith','quartermaster','priest','bard'],opt:true},
+  params:{town:{type:'town'},tpl:{type:'enum',values:[...Object.keys(ADVENTURES),...Object.keys(SUPPLY)]},giver:{type:'enum',values:['captain','innkeeper','smith','quartermaster','priest','bard'],opt:true},
     target:{type:'id',opt:true},region:{type:'region',opt:true},reward:{type:'enum',values:Object.keys(REWARD),def:'fair'},
     src:{type:'enum',values:['request','writ','rumour','oath','follow','remnant','death','dm'],def:'dm'},forHero:{type:'id',opt:true},spec:{type:'obj',opt:true}},
   limits:{perDay:80},cooldown:0,hide:['spec'],
   region:p=>{const c=townOf(p.town);return zoneAt(c.gate.x,c.gate.y)},
   check(p,ctx){if(p.tpl==='fallen'&&ctx.by!=='scripted')return 'only the world posts a recovery for the fallen';
     if(p.spec&&ctx.by!=='scripted')return 'spec is for the scripted DM';
+    if(SUPPLY[p.tpl]){const c=townOf(p.town);if(supplyOpenAt(c).length>=SUP.BOARD_MAX)return p.town+'’s board already holds '+SUP.BOARD_MAX+' goods jobs';
+      if(p.target!=null)return 'a goods job names no place (leave place out)'}
     const open=(S.adventures||[]).filter(h=>h.phase==='open'&&h.town===p.town).length;if(open>=LK.BOARD_MAX)return p.town+'’s board is full ('+open+')';
     if(p.target!=null&&!(S.places||[]).some(x=>x.id===p.target)&&!anyNpc(p.target))return 'no such place or person';
     if(p.forHero!=null&&!S.agents.some(a=>a.id===p.forHero&&a.state!=='dead'))return 'no such living hero';return null},
   apply(p,ctx){const c=townOf(p.town),o=p.spec?{...p.spec}:{};o.data={...(o.data||{})};if(ctx&&ctx.by)o.by=ctx.by; // the quest log tells the DM agent's jobs apart (sim/questlog.js)
     if(p.giver&&!o.giver)o.roles=[p.giver];if(p.forHero!=null)o.for=p.forHero;if(p.region!=null&&o.zone==null)o.zone=p.region;
     if(p.target!=null){const t=(S.places||[]).find(x=>x.id===p.target)||anyNpc(p.target);o.data.x=t.x;o.data.y=t.y;o.data.place=t.name;if(o.zone==null)o.zone=zoneAt(t.x,t.y)}
+    if(SUPPLY[p.tpl]){const j=postSupply(c,p.tpl,{...o,by:ctx&&ctx.by,src:p.src,reward:p.reward,for:p.forHero!=null?p.forHero:o.for});
+      return {ok:true,effect:{hook:j.id,tpl:j.tpl,giver:j.giver?j.giver.name:null,zone:'any',wants:j.want.n+' '+j.want.id,pays:j.gold+'g'},ret:j}}
     if(p.reward!=='fair')o.data.payMul=REWARD[p.reward];
     const h=postHook(c,p.tpl,p.src,o);return {ok:true,effect:{hook:h.id,tpl:h.tpl,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone]},ret:h}},
   describe:p=>p.tpl+' at '+p.town+(p.giver?' from the '+p.giver:'')});
 register({name:'withdraw_hook',about:'Take an open job down from a board.',params:{hook:{type:'id'}},limits:{perDay:60},
-  check(p){const h=(S.adventures||[]).find(x=>x.id===p.hook);return !h?'no such hook':h.phase!=='open'?'hook #'+p.hook+' is already taken':null},
-  apply(p){const h=withdrawHook(p.hook);return h?{ok:true,effect:{hook:h.id,tpl:h.tpl,town:h.town}}:{ok:false,effect:'could not take it down'}},
+  check(p){const h=(S.adventures||[]).find(x=>x.id===p.hook)||(S.supply||[]).find(x=>x.id===p.hook);return !h?'no such hook':h.phase!=='open'?'hook #'+p.hook+' is already taken':null},
+  apply(p){const h=withdrawHook(p.hook)||withdrawSupply(p.hook);return h?{ok:true,effect:{hook:h.id,tpl:h.tpl,town:h.town}}:{ok:false,effect:'could not take it down'}},
   describe:p=>'hook #'+p.hook+' taken down'});
 
 // Hand a hero an object, or take one back (issue #524; the old give_token / take_token levers are folded in: pull() reads them as

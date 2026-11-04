@@ -32,6 +32,7 @@ import {K as DMK,holdAdventure,resumeAdventure} from './dm.js';
 import {ev} from './notify.js';
 import {wakeQuestDone} from './wakes.js'; // finished quests wake the agent (one wake helper, no copy)
 import {inSlots} from './company.js'; // the slotted company (#588)
+import {supplyTick,supplyOf,openAt,supplyId,textOf as supplyText,wantText,rewardText,have as supplyHave,setSupplyDone,SUP} from './supply.js'; // goods jobs (#720)
 
 export const QL={
   MAX:5,        // quests a hero holds at once (oaths and blood debts come on top)
@@ -80,6 +81,11 @@ function jobQ(a,h,status,focus){const T=D.ADVENTURES[h.tpl]||{},on=h.phase==='ac
   return mk({id:jobId(h),kind:jobKind(h),title:jobTitle(h),giver:h.giver?h.giver.name:null,where,objective,progress:on?sceneProgress(h):null,reward:payText(a,h),status,focus,
     started:h.started!=null?h.started:h.phase==='taken'?h.takenAt:h.born,ends:h.started!=null?h.started+DMK.MAX_DAYS*1440:h.until,from:jobFrom(h,a)})}
 
+// A goods job (sim/supply.js, #720): bring crafted or gathered goods to the town that posted it. A taken one is held; one on the
+// board is offered. Kind dm when the DM agent or the scripted DM's Fellowship-first posting made it.
+function supplyQ(a,j,status,focus){return mk({id:supplyId(j),kind:j.by==='dm-agent'||j.ff?'dm':'board',title:supplyText(j),giver:j.giver?j.giver.name:null,where:j.town,
+  objective:wantText(j)+(j.hint?'. '+j.hint:''),progress:{have:Math.min(supplyHave(a,j.want),j.want.n),need:j.want.n},reward:rewardText(j),status,focus,
+  started:j.phase==='taken'?j.takenAt:j.born,ends:j.until,from:j.by==='dm-agent'?'DM agent':j.ff?'scripted DM':'town board'})}
 function oathQ(a,g,status,focus){const where=g.type==='pilgrimCrypt'&&CRYPT?CRYPT.name:g.zone!=null&&typeof g.zone==='number'?ZONES[g.zone]||null:null;
   return mk({id:oathId(g),kind:'oath',title:g.text,giver:null,where,objective:g.text+(g.target?' ('+g.target+')':''),
     progress:g.need>1?{have:Math.min(g.progress||0,g.need),need:g.need}:null,reward:null,status,focus,started:g.at,ends:null,from:'oath'})}
@@ -97,7 +103,7 @@ export const heldOf=a=>advs().filter(v=>v.phase==='active'&&v.held===a.id);
 export const takenOf=a=>advs().filter(h=>h.phase==='taken'&&h.taker===a.id);
 export const offersOf=a=>advs().filter(h=>h.phase==='open'&&h.for===a.id&&h.town===homeOf(a).name);
 // Quests that count toward QL.MAX.
-export const heldCount=a=>(a.quest?1:0)+(runningOf(a)?1:0)+heldOf(a).length+takenOf(a).length;
+export const heldCount=a=>(a.quest?1:0)+(runningOf(a)?1:0)+heldOf(a).length+takenOf(a).length+supplyOf(a).length;
 
 // The id in focus: a running adventure always (the DM leads it), else what the hero focused (while it still holds
 // it), else the kill quest, else the oath.
@@ -106,6 +112,7 @@ export function focusId(a){const r=runningOf(a);if(r)return jobId(r);
   if(a.quest)return killId(a.quest);if(a.goal&&!a.goal.done)return oathId(a.goal);return null}
 function holds(a,id){if(a.vow&&a.vow.id===id)return true;if(a.quest&&killId(a.quest)===id)return true;if(a.goal&&!a.goal.done&&oathId(a.goal)===id)return true;
   if(/^debt:/.test(id)){const k=hero(Number(id.slice(5)));return !!(a.nemesis&&k&&a.nemesis[k.id]&&alive(k))}
+  if(/^supply:/.test(id))return supplyOf(a).some(j=>supplyId(j)===id);
   const n=parseJob(id);return n!=null&&(heldOf(a).some(v=>v.id===n)||takenOf(a).some(h=>h.id===n))}
 
 // ---- the read API (the dossier's Quest tab, the quests tool) ----
@@ -115,6 +122,7 @@ export function questLog(a){if(!a||a.kind!=='hero')return {active:[],done:[],foc
   if(r)out.push(jobQ(a,r,'active',true));
   for(const v of heldOf(a))out.push(jobQ(a,v,'held',f===jobId(v)));
   for(const h of takenOf(a))out.push(jobQ(a,h,'held',false));
+  for(const j of supplyOf(a))out.push(supplyQ(a,j,'held',f===supplyId(j)));
   if(a.quest)out.push(killQ(a,a.quest,'active',f===killId(a.quest)));
   if(a.goal&&!a.goal.done)out.push(oathQ(a,a.goal,'active',f===oathId(a.goal)));
   if(a.vow)out.push(vowQ(a,a.vow,'active',f===a.vow.id));
@@ -122,6 +130,7 @@ export function questLog(a){if(!a||a.kind!=='hero')return {active:[],done:[],foc
   const rec=tableRec(a);if(rec)out.push(sceneQ(a,rec,'active'));
   out.sort((p,q)=>(q.focus?1:0)-(p.focus?1:0));
   const offered=offersOf(a).map(h=>({...jobQ(a,h,'active',false),status:'offered'}));
+  for(const j of openAt(homeOf(a)))if(j.for===a.id)offered.push({...supplyQ(a,j,'active',false),status:'offered'});
   return {active:out,done:(a.qlog&&a.qlog.done||[]).slice(0,QL.DONE).map(unpack),focus:f,offered}}
 
 // The hero's own view (the quests tool): no word of who made a job behind the scenes.
@@ -160,9 +169,14 @@ export function oathDone(a,g,st){push(a,ended(oathQ(a,g,st,false),st))}
 export function debtDone(a,k){const v=a.nemesis&&a.nemesis[k.id];if(!v)return;push(a,ended(debtQ(a,k,v,false),'done'))}
 export function killAbandoned(a,why){if(!a.quest)return;const q=killQ(a,a.quest,'abandoned',false);if(why)q.objective=clip(q.objective+' ('+why+')',160);push(a,ended(q,'abandoned'))}
 export function setFocus(a,id){logOf(a).focus=id}
+// A goods job ended (sim/supply.js calls this through setSupplyDone): filled, or gone cold in the hero's hands.
+export function supplyDone(a,j,st,gold){const q=supplyQ(a,j,st,false);if(st==='done'){q.progress={have:j.want.n,need:j.want.n};q.objective=clip('Done: '+wantText(j),160)}
+  else q.objective=clip(q.objective+' (it went cold before you filled it)',160);push(a,ended(q,st),gold)}
+setSupplyDone(supplyDone);
 
 // ---- once per step (sim/index.js): no dice; only taken jobs, held adventures and staged scenes ----
 export function questTick(){
+  supplyTick();
   let A=S.adventures;if(A&&A.length){
     for(let i=A.length-1;i>=0;i--){const h=A[i];if(h.phase!=='taken')continue;const t=hero(h.taker);
       if(alive(t)&&S.gameMin<=h.until)continue;A.splice(i,1);if(alive(t)){takenGone(t,h,'expired','it went cold before you set out');ev(t,'The job '+jobTitle(h)+' went cold before you set out on it.')}}
