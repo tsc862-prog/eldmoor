@@ -412,7 +412,7 @@ if (process.argv[2] === '--fireside') {
   if (sd) {k = 0; while (S.table === sd && !(sd.wk && sd.wk[live.id]) && k++ < 600) step(1 / 60); P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'Too close. I owe you all a drink.'})} k = 0; while (S.table === sd && k++ < 60 * 60) step(1 / 60); // answered once woken (#682: seats are woken 1.5 s apart)
   ok(sd && /talked it over/.test(sd.summary) && !S.table, 'the debrief plays one round: ' + (sd && sd.summary));
   // 3b. the start gate holds the world (#559): no fire opens while it holds, and it opens once the hold lifts
-  CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; field(); SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
+  CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; field(); for (const x of S.agents) if (SLT.inSlots(x)) x.adv = null; S.adventures = (S.adventures || []).filter(h => h.phase !== 'open'); if (S.table && S.table.ctx && S.table.ctx.adv != null) {S.tables = {}; S.table = null} /* a job's scene is not what this asks about, and the member left in town would take one */ SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
   ok(!S.table, 'while the start gate holds the world no fireside opens');
   SIM.setGateHold(false); k = 0; while (!(S.table && S.table.kind === 'fireside') && k++ < 600) step(1 / 60);
   ok(S.table && S.table.kind === 'fireside', 'once the hold lifts the waiting fireside opens'); k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
