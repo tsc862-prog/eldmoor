@@ -174,7 +174,7 @@ const STEPPING_CRYPT_ROOMS=[
 ];
 
 // The Hollow Cairn's chambers (#717): four, pitched for Cairnwold (levels 8-13; offsets from the party's average).
-// Bestiary species only; the boss is a Grave Warden under the name the spec already reserved, and its six blows get four rounds (#891: reflex parties clear 65%, at three 18%). The rooms are data on the
+// Bestiary species only; the boss is a Grave Warden under the name the spec already reserved, and its six blows get four rounds (#891: reflex parties clear about 60%, at three 18%). The rooms are data on the
 // landmark, and every crypt landmark is a dungeon of its own (sim/crypts.js, #891).
 const CAIRN_ROOMS=[
   {id:'throat',name:'The Cold Throat',frame:'The hill opens into a low passage of fitted stones, breathing out cold. Small legs click along the walls ahead of the light.',
