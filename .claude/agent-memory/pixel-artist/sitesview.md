@@ -14,3 +14,4 @@ metadata:
   and openDungeon(s). slotMembers returns {slot,hero} rows; use slotHeroes. The top-right floor tile of a chamber carries
   the cleared badge; keep props off it. A page that reloads mid-staging (vite HMR after an edit) draws nothing: rerun.
   See [[dungeon-view]], [[previews]].
+- #678 polish: temple pillar is SITEP.sitepillar (theme stone); interior.js roomEdge outlines only floor edges; wall-tile lights are clipped to their row. Staging gotcha: in headless Chrome the page's rAF loop may leave the dungeon canvas blank, so call dungeonview.drawDungeon(now) via CDP right before Page.captureScreenshot.
