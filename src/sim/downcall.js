@@ -6,7 +6,7 @@
 // DCALL.WAIT_GM game minutes) while the DM listens; then the DM's reflex (#561) fills it with a scripted line, logged as a
 // fill. Nothing ever waits: the world and any scene go on meanwhile. The line goes to the scene the hero sits in, else to
 // the agent heroes who see the downing (sim/downed.js hearers).
-// Bounded: one call waiting per hero, DCALL.PER_DOWN calls a downing (the downing and the end are always voiced, the
+// Bounded: one call not yet picked up per hero (news replaces it; a line the voice is already writing is left to finish), DCALL.PER_DOWN calls a downing (the downing and the end are always voiced, the
 // saves only while room is left), DCALL.PER_DAY a game day. Only with a host that reports runner links (hasLinks) and an
 // open DM seat, so npm run sim and the seeded checks never make one and their hashes stay put.
 import {S,clockStr,dayNo} from './state.js';
@@ -23,7 +23,7 @@ export const DCALL={
   ON:true,
   PER_DOWN:4,     // calls a downing: the downing, the end, and saves while room is left
   PER_DAY:30,     // calls a game day, all heroes
-  WAIT_GM:30,     // game minutes a call may wait at most (the world runs on meanwhile)
+  WAIT_GM:60,     // game minutes a call may wait at most (the world runs on meanwhile): at 1x this is TABLE.dmMs + PICKUP_MS, the real-time budget, so it never cuts a voice short at 1x
   POLL_MS:5000,   // real ms: the DM counts as listening if it polled table_call this recently (or a runner holds the seat)
   LINE_MAX:600,   // the DM's line, as a Table line (TABLE.LINE_MAX)
   ID_BASE:1000,   // call ids start here, apart from a scene's own call ids (1, 2, ...)
@@ -69,7 +69,7 @@ function news(a,kind,info){if(!DCALL.ON||!a||!a.player||!hasLinks()||!seatOpen()
   else if(!per)return; // a downing we never voiced (before the seat opened): its saves and end stay unvoiced
   const P=D.per[a.id],pend=D.cur.find(c=>c.hero===a.id&&c.state==='wait');
   if(k==='save'&&(pend||P.n>=DCALL.PER_DOWN-1)){D.stats.skipped++;return}
-  if(pend)fill(pend,'slow');
+  for(const c of D.cur.slice())if(c.hero===a.id&&c.state==='wait'&&c.seen==null)fill(c,'slow'); // overtaken before the voice read it; once read, it is being written: let it land
   const day=dayNo();if(D.day.d!==day)D.day={d:day,n:0};
   if(D.day.n>=DCALL.PER_DAY){D.stats.skipped++;if(k==='end')delete D.per[a.id];return}
   D.day.n++;P.n++;if(k==='end')delete D.per[a.id];
