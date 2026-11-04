@@ -56,7 +56,7 @@ import {nearHeroes,nearMobs} from './spatial.js';
 import {dmDepart,advLine,K as DMK,holdAdventure,resumeAdventure,beginJob,abandonAdventure,bountiesAt,bountyFor,takeBounty} from './dm.js';
 import {supplyById,supplyJobs,takeSupply,dropSupply,fillSupply,textOf as supplyText,wantText as supplyWant,rewardText as supplyReward,mayHave as supplyMay,have as supplyHave,supplyId,SUP} from './supply.js'; // goods jobs (#720)
 import {supplyDone} from './questlog.js';
-import {questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
+import {oathId as oathIdOf,questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard,selfView,become} from './persona.js'; // Fellowship (#68); self and become (#409)
 import {ev} from './notify.js';
@@ -102,6 +102,8 @@ import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfessio
 import {craftTool,smithTool} from './craft.js'; // crafting (#258)
 import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid,bestUse,count as invCount} from './inv.js'; // the pack (#124)
+import {swornOf,threadOf,threadText,offerThread,withdrawThread} from './oath.js'; // offered threads and sworn oaths (#800)
+import {swearBlock,swearWord,takeOath,setAside,keepOath,renounceOath,wordsOnly} from './sworn.js';
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
 import {attempt as attemptRuled} from './ruling.js'; // free actions ruled by the DM (#522)
 import {holdStart,holdAnswered} from './gambithold.js'; // a gambit hold stops the world until the agent acts (#630)
@@ -381,12 +383,12 @@ function sinceLook(a,args){const L=a.playLook;if(!L)return null;const out=[],f=f
 
 // ---- marking ----
 export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
-  if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
+  if(on){if(a.state==='dead')return false;if(!a.player)offerThread(a);a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
     ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');soloFor(a);return true}
   if(inSlots(a)&&a.state!=='dead')return false; // the Fellowship is always agent-played (#148): a member is handed back only by leaving
-  a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
+  withdrawThread(a);a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
   {const C=companyOf(a);if(C&&!C.slots)leaveCompany(a)} // out of agent play: a solo's company ends with it
   return true}
 export const isPlayer=a=>!!(a&&a.player);
@@ -914,7 +916,7 @@ const T={
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
       state:a.state,doing:a.playDoing||null,queue:(a.pq||[]).map(cmdText),
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
-      oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
+      oath:a.goal&&!a.goal.offered?a.goal.text+(a.goal.done?' (kept)':a.goal.sworn&&a.goal.sworn.words?'':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,...(threadOf(a)?{thread:threadText(a)}:{}),vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
       abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),score_growth:growthText(a),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
@@ -1116,7 +1118,13 @@ const T={
       return {ok:true,focus:adv.title,scene:plain(advLine(a))||undefined,held:held.length?held:undefined,note:'The adventure leads you now; what you set aside waits in your quest log.'}}
     let aside=null;if(run)aside=holdAdventure(a);setFocus(a,q.id);
     return {ok:true,focus:q.title,set_aside:aside?aside.title:undefined,note:aside?aside.title+' waits where it stands (focus_quest it, or come back near its place).':undefined}},
-  swear_oath(a,{text,kind,about,days}){const no=canSwear(a);need(!no,no);
+  swear_oath(a,{text,kind,about,days,thread}){const th=clean(thread,4).toLowerCase();
+    if(th){need(th==='yes'||th==='no','thread is yes (take it up as it stands) or no (set it aside).');const no=swearBlock(a,th);need(!no,no);
+      if(th==='no'){setAside(a);return {ok:true,set_aside:true,note:'It stays with you as a memory. You are bound to nothing, and it costs nothing.'}}
+      const H=sayHearers(a),t=a.goal.text;agentLine(a,speak(a,clean('I swear it: '+t,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));const g=takeOath(a,'yes',{hearers:H});
+      return {ok:true,sworn:g.text,oath:true,heard_by:H.map(b=>b.name),note:'Your oath now, and spoken: it is in your quest log. renounce_oath gives it up, at a cost.'}}
+    const oath=!swornOf(a)&&(days==null||days===''); // no oath yet and no term: these words are the hero's oath (#800); with a term, or beside an oath, a vow
+    if(!oath){const no=canSwear(a);need(!no,no)}else need(a.state!=='ghost'&&a.state!=='dead','The dead swear nothing.');
     const k=clean(kind,12).toLowerCase()||'vow';need(VOW.KINDS.includes(k),'kind is one of '+VOW.KINDS.join(', ')+'.');
     const w=clean(about,60);need(k==='vow'||w,'A '+k+' vow needs an about: '+(k==='reach'?'a region, town or landmark you know':k==='protect'?'a companion by name':k==='recover'?'the epic you mean to find':'the foe you mean to slay')+'.');
     let ab=w?{name:w}:null;
@@ -1124,15 +1132,24 @@ const T={
     if(k==='protect'){const c=companyOf(a),ids=new Set([...(c?c.ids:[]),...partyMates(a).map(b=>b.id)]);const b=S.agents.find(x=>x!==a&&alive(x)&&ids.has(x.id)&&vnorm(x.name)===vnorm(w));
       need(b,'You can protect only a companion: '+([...ids].map(id=>S.agents.find(x=>x.id===id)).filter(x=>x&&x!==a&&alive(x)).map(x=>x.name).join(', ')||'you ride alone')+'.');ab={name:b.name,id:b.id}}
     const t=vowText(k,ab,clean(text,VOW.TEXT));need(t,'Say the words of the vow (text).');need(!notEnglish(t),ENGLISH);
+    if(oath){const no=swearBlock(a,t);need(!no,no)}
     const H=sayHearers(a),line=t.toLowerCase().indexOf('swear')>=0?t:'I swear it: '+t;
     agentLine(a,speak(a,clean(line,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));
+    if(oath){const g=takeOath(a,t,{hearers:H,...(clean(kind,12)?{kind:k,about:ab}:{})});return {ok:true,sworn:g.text,oath:true,heard_by:H.map(b=>b.name),
+      note:wordsOnly(g)?'Your oath, held as words: the world cannot see it kept, so it stands until you say it is done (keep_oath) or give it up (renounce_oath, at a cost).':'Your oath: the world will show when it is kept. renounce_oath gives it up, at a cost.'}}
     const v=swearVow(a,{kind:k,about:ab,text:t,days,hearers:H});
     return {ok:true,sworn:v.text,id:v.id,kind:k,term_days:v.days,heard_by:H.map(b=>b.name),note:'It is in your quest log as an oath. Keep it, or renounce_oath (that costs).'}},
-  renounce_oath(a,{id,reason}){need(a.vow,'You hold no sworn vow. Only a vow you swore with swear_oath can be renounced; the oath you began with is not yours to break.');
+  keep_oath(a,{how}){const g=swornOf(a);need(g,'You hold no oath to keep.');need(wordsOnly(g),'The world will show when this oath is kept; it is not yours to declare: '+g.text);
+    const t=clean(how,VOW.TEXT);need(t,'Say aloud how it was kept (how).');need(!notEnglish(t),ENGLISH);const H=sayHearers(a);agentLine(a,speak(a,clean(t,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));
+    keepOath(a);return {ok:true,kept:g.text,heard_by:H.map(b=>b.name),note:'You are bound to nothing now. swear_oath takes a new oath when you have one.'}},
+  renounce_oath(a,{id,reason,why}){const g=swornOf(a),s=String(id==null?'':id).trim(),r0=reason==null?why:reason;
+    if(g&&(!a.vow||/^oath$/i.test(s)||s===oathIdOf(g)||(s&&vnorm(s)===vnorm(g.text)))){need(!(a.persona&&a.persona.pins&&a.persona.pins.oath),'This oath is fixed by the one who keeps your sheet: it cannot be renounced now.');
+      const r=renounceOath(a,r0);return {ok:true,renounced:r.oath.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. Those who heard it remember, and so do you. swear_oath takes a new oath if you ever have one.'}}
+    need(a.vow,'You hold no sworn vow or oath. Only what you swore can be renounced.');
     need(!id||String(id).trim()===a.vow.id||vnorm(id)===vnorm(a.vow.text),'You hold no vow "'+id+'" (yours is '+a.vow.id+').');
-    const r=renounceVow(a,clean(reason,120));return {ok:true,renounced:r.vow.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. The witnesses remember it, and so do you.'}},
+    const r=renounceVow(a,clean(r0,120));return {ok:true,renounced:r.vow.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. The witnesses remember it, and so do you.'}},
   abandon_quest(a,{id,reason}){const why=clean(reason,120)||null,q=findQ(a,id);need(q,'You hold no quest "'+id+'". quests lists them.');
-    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own'+(a.vow&&a.vow.id===q.id?' (a vow you swore: renounce_oath, at a cost)':'')+'.');
+    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own'+((a.vow&&a.vow.id===q.id)||(swornOf(a)&&oathIdOf(swornOf(a))===q.id)?' (what you swore: renounce_oath, at a cost)':'')+'.');
     need(!/^scene:/.test(q.id),'You are in that scene; it ends at the table.');
     if(/^kill:/.test(q.id)){killAbandoned(a,why);a.quest=null;record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'The gate captain’s bounties stay posted: turn_in takes one if you want it.'}}
     if(/^supply:/.test(q.id)){const sj=supplyById(q.id);need(sj,'That job is gone.');dropSupply(a,sj);supplyDone(a,sj,'abandoned',0);record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'It goes back on the board.'}}
@@ -1295,9 +1312,9 @@ const T={
     record(a,'Pinned a notice at ',c.name,'.');return {ok:true,posted:n.text,town:c.name,lapses_in_days:SIGHT.NOTICE_DAYS,note:'Anyone who reads the board at '+c.name+' learns your name and this text. Ask for them at the inn.'}},
   send_courier(a,{to,text}){need(companyOf(a),'Only an agent hero can hire a courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
-  scene_act(a,{option,line,move}){const x=sceneAct(a,option,line,move);if(x===FRAMING)return {ok:false,error:x,offline:true,waiting_for:'the DM'}; // not a failed turn (#682)
+  scene_act(a,{option,line,move,swear}){const x=sceneAct(a,option,line,move,swear);if(x===FRAMING)return {ok:false,error:x,offline:true,waiting_for:'the DM'}; // not a failed turn (#682)
     if(typeof x==='string')throw new Rule(x);const v=tableView(a);
-    return {ok:true,chose:x.k,said:x.line||undefined,moved:x.moved||undefined,...(String(move==null?'':move).trim()&&!x.moved?{move_note:'There is no moving in this scene: you act from where you stand.'}:{}),waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
+    return {ok:true,chose:x.k,said:x.line||undefined,moved:x.moved||undefined,swears:x.swear||undefined,...(String(move==null?'':move).trim()&&!x.moved?{move_note:'There is no moving in this scene: you act from where you stand.'}:{}),waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   // ---- professions and gathering (#257): only the caller's own hero ----
   recipes(a,{profession}={}){let id=null;if(profession!=null&&String(profession).trim()){id=profKey(profession);
       need(id,'There is no profession called "'+clean(profession,40)+'". Leave it out for all of yours, or name one: herbalism, mining, skinning, fishing, alchemy, smithing, leatherworking, cooking, scribing.')}

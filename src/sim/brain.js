@@ -142,7 +142,7 @@ export function snapshotFor(a,kind,extra={}){
     combat:combatLine(a), // the five combat totals (sim/stats.js), one short string
     traits:(a.traits||[]).join(', '),origin:clip(a.origin,160),
     scores:topScores(a),skills:(a.prof||[]).join(', '), // ability scores (sim/abilities.js)
-    goal:a.goal?clip(a.goal.text,100)+' ('+a.goal.progress+'/'+a.goal.need+')':'none',
+    goal:a.goal&&!a.goal.offered?clip(a.goal.text,100)+' ('+a.goal.progress+'/'+a.goal.need+')':'none',
     quest:q?(MOBS[q.type].q||q.type)+' '+q.have+'/'+q.need:'none',
     where:ZONES[z]||'the road',weather:weatherName(z),time:dayPart()};
   const mates=partyMates(a);
