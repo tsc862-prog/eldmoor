@@ -30,6 +30,7 @@
 // Several scenes (#518): every other company's open scene is one more line under the banner ("Scene at Mirefen: Dovas and
 // company", a button that follows that company), so the watcher sees every live table at once.
 import {TABLE,bannerOf,stepNext,optionsFor,pauseAll,setPauseAll,openScenes} from '../sim/table.js';
+import {liveLimit} from '../sim/scenewait.js'; // a queued member's countdown runs on into the extension (#687)
 import {reflexMay,ownerHeld} from '../sim/runlink.js';
 import {classColor} from '../core/colors.js';
 import {sceneHead} from '../core/scenehead.js';
@@ -206,7 +207,8 @@ export function memberRows(){const sc=S.table;if(!sc||sc.rd!=null)return null;co
     else if(sc.all||sc.ids[sc.i]===id){const t=sc.all?((sc.w&&sc.w[id]&&sc.w[id].t)||0):sc.t||0;
       if(sc.phase==='frame')r.st=sc.all?'wait':'turn';
       else if(ownerHeld(a))r.st='held';else if(reflexMay(a))r.st=sc.all?'reflex':'turn';
-      else{r.st=sc.all?'wait':'turn';r.timer=t*1000>=TABLE.turnMs?'reflex in '+secs(TABLE.liveMs/1000-t):t>=1?secs(t):''}}
+      else{r.st=sc.all?'wait':'turn';const lim=liveLimit(sc,a,TABLE.liveMs)/1000,qd=lim>TABLE.liveMs/1000; // a queued member's wait runs on into the extension (#687)
+        r.timer=t*1000>=TABLE.turnMs?(qd?'queued · ':'')+'reflex in '+secs(lim-t):t>=1?secs(t):''}}
     else r.st=i<sc.i?'out':'next';
     out.push(r)});
   return out}

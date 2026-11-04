@@ -81,7 +81,12 @@ if (argv[0] === '--companies') {
   for (const a of [x1, x2, x3]) a.cryptOk = true;
   D.musterCrypt([x1, x2, x3, f1, f2], 0, null, CX.name);
   const hp0 = [f1, f2].map(a => a.hp);
-  const seen = crawl([x1, x2, x3], {act: () => 'strike', maxS: 900});
+  const RF = await import('../src/sim/reflect.js'), mid = []; // #687: no reflection moment while the crawl runs, one combined moment when it ends
+  RF.moment(x1, 'scene', 'the stair'); RF.moment(x2, 'scene', 'the stair');
+  const seen = crawl([x1, x2, x3], {act: () => {mid.push(RF.reflectDue(x1) || RF.reflectDue(x2)); return 'strike'}, maxS: 900});
+  cok(mid.length >= 1 && mid.every(d => d == null), `no reflection moment is due mid-crawl (${mid.length} checks, a stair moment waiting)`);
+  {const alive = [x1, x2].filter(a => a.state !== 'dead'), d = alive.map(a => RF.reflectDue(a)).filter(Boolean);
+   cok(!alive.length || (d.length === alive.length && d.every(x => /dungeon crawl/.test(x.why) && /stair/.test(x.why))), 'when it ends each survivor has one combined moment: ' + d.map(x => x.kind + ' ' + x.why).join(' | '))}
   cok(seen.length >= 1 && seen.every(s => s.ids.length === 3 && s.ids.every(id => CX.ids.includes(id))), `${seen.length} scenes, only the company's three at the table`);
   cok(CX.crawl && CX.crawl.runs === 1, 'the tally sits on the company: ' + JSON.stringify(CX.crawl));
   cok(seen.every(s => !/object Object/.test(s.frame)) && seen.some(s => /(bars? the way|still stands?)\./.test(s.frame)), 'room frames read as words (#738): ' + (seen[0] && seen[0].frame || '').slice(0, 160));
