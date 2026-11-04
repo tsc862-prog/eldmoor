@@ -7,11 +7,13 @@
 // #771: a together company stands in one hall whatever its peoples (the Stepping Lands have two towns a faction), the
 // hall is the setup's choice, an apart group stands together, and a single-people setup is left exactly where it stood.
 // Usage: npm run setupcheck      (internal: --child <seed> [v1|apart] prints a world signature)
+import {DM_PROVIDERS} from './dm-agent.mjs';
+import {checkStart} from './runners.mjs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {init, S, validateSetup, defaultSetup, applyPreset, cleanSetup, snapshot} from '../src/sim/index.js';
 import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
-import {seatCap, seatNote, asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION, hallTowns} from '../src/sim/setup.js';
+import {seatCap, seatNote, asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION, SETUP_PROVIDERS, hallTowns} from '../src/sim/setup.js';
 import {companies, members} from '../src/sim/company.js';
 import {CITY, REGIONS} from '../src/world/map.js';
 
@@ -132,7 +134,10 @@ ok(defaultSetup(1).dm.mode === 'agent' && defaultSetup(1).dm.provider === 'anthr
 {const old = chosenV1(4242); old.dm = {mode: 'scripted'}; const c = cleanSetup(old);
  ok(c.dm.mode === 'agent' && /haiku/.test(c.dm.model) && validateSetup(c).length === 0 && validateSetup(old).some(x => /DM is always an agent/.test(x)), 'an older setup with a scripted DM cleans to the default DM agent (and is refused raw)');
  ok(applyPreset('last', s, {last: old}).dm.mode === 'agent', 'Last used turns a remembered scripted DM into an agent');
- ok(cleanSetup({...old, dm: {mode: 'agent', provider: 'ollama', model: 'qwen2.5:14b'}}).dm.model === 'qwen2.5:14b', 'a chosen DM model survives cleaning')}
+ ok(cleanSetup({...old, dm: {mode: 'agent', provider: 'ollama', model: 'qwen2.5:14b'}}).dm.model === 'qwen2.5:14b', 'a chosen DM model survives cleaning');
+ // #824: the setup page offers every provider for the DM, and the DM runner takes every one (the runs are in openaicheck, hfcheck and googlecheck)
+ for (const provider of SETUP_PROVIDERS) {const model = provider + '-model', c2 = cleanSetup({...old, dm: {mode: 'agent', provider, model}}), j = planRunners(c2).find(r => r.kind === 'dm');
+  ok(validateSetup(c2).length === 0 && j.provider === provider && j.model === model && DM_PROVIDERS.includes(provider) && !checkStart({kind: 'dm', provider, model}, [], {}).error, 'a DM on ' + provider + ' validates, plans its runner and the runner takes it')}}
 {const old = chosenV1(4242); old.slots.dps2.mind = {mode: 'scripted'}; old.slots.dps1.mind = {mode: 'ai', provider: 'ollama', model: 'qwen2.5:14b'};
  const c = cleanSetup(old); ok(c.heroes[D2].mind.mode === 'agent' && /haiku/.test(c.heroes[D2].mind.model) && c.heroes[D1].mind.mode === 'agent' && c.heroes[D1].mind.model === 'qwen2.5:14b' && validateSetup(c).length === 0, 'an older setup with scripted/AI members cleans to agents');
  ok(applyPreset('last', s, {last: old}).heroes[D2].mind.mode === 'agent', 'Last used turns a remembered scripted member into an agent')}

@@ -55,6 +55,7 @@
 // scene open is not looked at, and C.tableQ is left only for a merge's paired vote (#500) while that company's own scene is
 // open. With one company nothing of this is ever used. A scene that runs on the live clock (stopsWorld false) holds its
 // members and foes in place (engaged, ENG in sim/scenes.js) until it resolves; boss and Crypt scenes hold no one.
+import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
@@ -74,7 +75,7 @@ import {companyById,companyOf,companies,members,leaderOf,isSolo,campaign,followe
 import {setProposeHook,castVote,resolveProp,reflexVote,propById,propCompany,leaderOfF,openProps,waitingVoters,voters} from './council.js';
 import {inRange} from './reach.js';
 import {setFellowChoice} from './player-choice.js';
-import {reflexMay,ownerHeld} from './runlink.js';
+import {reflexMay,ownerHeld,hasLinks} from './runlink.js';
 import {ENG,allScenes,sceneOf} from './scenes.js'; // one open scene per company, the engaged hold (#518)
 import {liveLimit,missed,framing,unwoken,heldBack,FRAMING} from './scenewait.js'; // a queued live member gets a bounded extra wait; a timed-out one is reported (#515)
 import {MOVES} from '../data/moves.js';
@@ -83,7 +84,7 @@ import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName,roundEnd,stunCheck,ca
 import {condOn,condsOf,clearRounds} from './eff.js';
 import {CONDITIONS} from '../data/moves.js';
 import {socialSkill,trained} from './abilities.js';
-import {DOWN,isDown,tableSave,stabilizeAt,upAgain,reviveBonus,bleedingOf,stabText} from './downed.js'; // the downed at the table (#654)
+import {DOWN,isDown,tableSave,stabilizeAt,upAgain,reviveBonus,bleedingOf,stabText,onWatch} from './downed.js'; // the downed at the table (#654)
 import {PICKUP_MS,callDeadline,goneEpoch} from './dmreflex.js'; // the DM call budget counts from pickup (#680)
 
 export const TABLE={
@@ -172,6 +173,8 @@ const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').re
 const SEED0=0x1f2e3d4c;let seed=SEED0;export const resetTableSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
+// Watch mode's downed clock (#655): Table Off, an agent hero and a host with runner links (never npm run sim or a seeded check).
+onWatch(a=>TABLE.mode==='off'&&!!a.player&&hasLinks());
 export const tableOn=()=>(!!slotted()||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
 // The scene's company and its members. The Fellowship keeps its slot order (slotHeroes(slotted())); any other company its join order.
 export const sceneCompany=sc=>!sc?null:sc.company!=null?companyById(sc.company):slotted()||null;
@@ -353,7 +356,7 @@ function wakeStep(sc,dt){const W=sc.wk;if(!W||W.done||sc.phase!=='turn'||framing
   if(!left){W.done=1;if(!all)startTurn(sc)}}
 
 // An agent's answer (scene_act), before or during its turn. Returns an error string or the act.
-export function sceneAct(a,opt,line,move){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
+export function sceneAct(a,opt,line,move,swear){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
   if(isDown(a))return 'You are down and bleeding: you cannot act. Your death save is rolled on your turn.'; // #654
   if(sc.phase==='outcome'||sc.phase==='done')return 'The scene is over.';
   if(together(sc)&&sc.resolved)return 'The table has already answered.';
@@ -365,10 +368,11 @@ export function sceneAct(a,opt,line,move){const sc=sceneOf(a);if(!sc||!sc.ids.in
   const said=clean(line,1e4);if(said.length>TABLE.LINE_MAX)return 'Too long: keep your line under '+TABLE.LINE_MAX+' characters (yours has '+said.length+').';
   if(said&&sameLine(sc,a,said))return 'Someone already said that at this table; say it your own way, about yourself.';
   const K=kindOf(sc),mv=K&&K.move&&String(move==null?'':move).trim()?K.move(sc,a,String(move)):null;if(mv&&mv.error)return mv.error; // a refused move leaves the act unsaid (#744)
+  const sw=String(swear==null?'':swear).trim();if(sw){const no=K&&K.swear?K.swear(sc,a,sw):'An oath is sworn at the first table, or with swear_oath.';if(no)return no} // sworn aloud as the act plays (#800); a refusal leaves the act unsaid
   const moved=()=>{if(!mv)return {};K.place(sc,a,mv);return {moved:mv.word}}; // it lands now, the formation building as answers come in
   if(o.k==='attempt'){if(!ATT)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.';const rid=ATT.start(sc,a,said);if(typeof rid==='string')return rid;
     sc.acts[a.id]={k:'attempt',line:said,by:'agent',rid,...moved()};return sc.acts[a.id]} // the DM rules on it before the member's turn plays (#522)
-  sc.acts[a.id]={k:o.k,line:said,by:'agent',...moved()};return sc.acts[a.id]}
+  sc.acts[a.id]={k:o.k,line:said,by:'agent',...(sw?{swear:sw}:{}),...moved()};return sc.acts[a.id]}
 
 // ---- turns ----
 function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc,use=sc.ru;delete sc.rr;delete sc.rc;delete sc.ru; // a strike's roll as data (#285), a parley's check (#296)
@@ -404,7 +408,7 @@ function apply(sc,a,act){if(act.k==='attempt')return ATT?ATT.apply(sc,a,act):'no
     {const h=f.hp;strike(a,f);return 'hit for '+Math.max(0,Math.round(h-f.hp))}
   case 'guard':if(!f)return 'nothing to guard against';if(f.kind==='mob'){f.target=a;if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}return 'drew it on'}
     if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&a.fac!==f.fac){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
-  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
+  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
   case 'stabilize':{const t=bleedingOf(downIn(sc),a);if(!t)return 'nobody is bleeding';return stabilizeAt(a,t).text} // #654
   case 'potion':{const lo=lowest(sc),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});useNote(sc,a,id,lo,r);return r.ok?'+'+r.healed+' to '+lo.name+' ('+id+')':r.error}
   case 'parley':if(!rounds(sc)||!canParley(f))return 'no one there will listen';return parley(sc,a,foesOf(sc),fighters(sc)); // a say-check against the foe's temper (#296)

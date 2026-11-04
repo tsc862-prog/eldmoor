@@ -1,4 +1,5 @@
 - [Brain design](brain-design.md) — decision points, relay protocol, model choice, cost and test approach from issue #40
+- [Budget stop](budget-stop.md) — #807 cause was gate clicks; budgetOut, active.json spent, events.jsonl by/why, price on buttons
 - [Agent player](agent-player.md) — #75/#93 MCP tools, per-hero routing+claims, WS protocol, runner settings, per-hero sessions, cost per turn, playcheck
 - [Fellowship](fellowship.md) — #68 phase A shapes and hooks; phase B council, Table mode, Minds=agents, runner cost per member
 - [Mixed minds](mixed-minds.md) — #97 parts 1+2: adapters, think:false, a.brainCfg, local agent loop, claim runner tags, local latency/tokens
@@ -56,6 +57,7 @@
 - [DM reflexes](dm-reflexes.md) — #561 dmreflex.js heard/alive/gone, no seat-closed paths, fill why slow|gone, dmShare arrival, RNG test pitfall
 - [Scene props](scene-props.md) — #592 sc.props data, examine/search/give_item hooks, cast.item, pitfalls
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
+- [Cost report](cost-report.md) — #799 sources, wake classes, game hours from digests, measured spend and lever evidence
 - [Tool map](tool-map.md) — #640 toolmap.mjs generated tool inventory in hero/DM orders, groups, budget, orderscheck assertions
 - [DM when/watch](dm-when-watch.md) — #635 deferred actions on triggers + DM-chosen wakes: dmwhen.js, run() hook, eventDue watch, test child, pitfalls
 - [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
@@ -75,3 +77,6 @@
 - [localcheck pacing flake #762](localcheck-pacing-downed.md) — downed-companion urgent event woke the test hero; DOWN.REACH/SEE zeroed in section A; no parallel runs
 - [Companion voice](companion-voice.md) — #764 compvoice.js: companion_call/say, per-listener memory, no-repeat fill, PER_DAY 6, hooks, pitfalls
 - [Session size](session-size.md) — #787 roll + compaction net: CLI threshold math, Haiku 100k line, real cost per turn, mock pitfalls
+- [Check flakes](check-flakes.md) — #324/#378 hunt: SAVECHECK_SEED, crawlcheck PARTS, upcheck lock, not reproduced
+- [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons
+- [DM every mind](dm-every-mind.md) — #824 PROVIDERS one list, compat DM, mindSwitched, budget in waits, fitTools 1024, dm-mind-cases, pitfalls
