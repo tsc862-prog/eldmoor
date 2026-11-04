@@ -26,6 +26,7 @@ import {bestUse,useItem} from './inv.js';
 import {notify} from './notify.js';
 import {setCrawlHook,payClear,clearXp} from './dungeon.js';
 import {tableOn,openScene,setSceneKind,sceneFor} from './table.js';
+import {moment,setReflectHold} from './reflect.js'; // no reflection while a crawl runs; one moment when it ends (#687)
 import {companyOf,companyById,roleOf,slotKeyOf,slotted} from './company.js';
 
 export const CRAWL={
@@ -195,7 +196,9 @@ export function crawlLost(g){const who=whoOf(g),D=dunOf(g);
   if(g.site!=null&&SITE_END)SITE_END(g,'wiped');
   tally('wipes',g,g.crawl)}
 // The Fellowship's crawl record (slotted().crawl: runs, clears, driven back, withdrawn, wipes, deaths, rooms won), for the sim summary and the checks.
-function tally(k,g,cr){const F=companyById(cr.co)||slotted();if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
+// A hero of a company with a crawl running holds its reflection moments; the end of the run raises one combined moment per survivor.
+setReflectHold(a=>{const gs=[CRYPT.group,...((S.sites&&S.sites.list)||[]).map(s=>s.group)];return gs.some(g=>g&&g.crawl&&g.mem&&g.mem.includes(a))});
+function tally(k,g,cr){for(const a of crewOf(g))if(living(a))moment(a,'crawl',k==='clears'?'cleared':k==='driven'?'driven back':'withdrew');const F=companyById(cr.co)||slotted();if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
   C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.rooms+=cr.end==='clear'?roomsOf(g).length:cr.i;C.deaths+=(cr.crew!=null?cr.crew:g.mem0)-members(g).length}
 export function crawlTick(g,dt){const cr=g.crawl;
   if(g.site!=null?sceneFor(companyById(cr.co)):S.table)return; // a scene (the stair, or a room) is open: the table runs it (a site: its company's scene)

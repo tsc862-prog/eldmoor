@@ -481,7 +481,7 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
     log(nar(''),gd(F.name||(leadOf(F)||{}).name||'A company'),' at the table: '+sc.title+'. '+tail)}
   if(COMBAT[sc.kind]){for(const a of mem)tickRound(a);const f=foeOf(sc);if(f)tickRound(f); // a round has passed: ability cooldowns and round-long effects run down
     if(rounds(sc))for(const e of [...mem,...sceneFoes(sc)])clearRounds(e)} // conditions and round-counted effects end with the scene (#296)
-  for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id))moment(a,'scene',sc.title)} // reflection moment (#179)
+  for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id)&&sc.kind!=='crawl')moment(a,'scene',sc.title)} // reflection moment (#179)
   {const H=dmOf(sc);if(H&&H.done)H.done(sc)}
   for(const f of enders){try{f(sc)}catch(e){}}}
 function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);closeScene(sc)}
