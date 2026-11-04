@@ -73,6 +73,7 @@
 - [Scene ready](scene-ready.md) — #682 members held until the DM frame, staggered wakes, hush, DM voice first on Claude slots; test pitfalls
 - [Downed agent side](downed-agent.md) — #658 aid-phase gambits, presets = old reflex, onAid hook, downed reflection, stabilize/tend/carry, heredoc pitfall
 - [Slot and scene](slot-scene.md) — #687 slot wait watches due (scene:true first), queued why + miss cause, wait holds at an answered scene
+- [DM reserved slot](dm-reserved-slot.md) — #733 RUNNER_DM_SLOTS, heroes held during prep, prep clock from first call + HARD_MS, _poll
 - [Scene grab](scene-grab.md) — #737 sceneGrab aborts mid-turn Claude query after 15 s due, resume, queued countdown
 - [localcheck pacing flake #762](localcheck-pacing-downed.md) — downed-companion urgent event woke the test hero; DOWN.REACH/SEE zeroed in section A; no parallel runs
 - [Companion voice](companion-voice.md) — #764 compvoice.js: companion_call/say, per-listener memory, no-repeat fill, PER_DAY 6, hooks, pitfalls
@@ -81,3 +82,4 @@
 - [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons
 - [DM every mind](dm-every-mind.md) — #824 PROVIDERS one list, compat DM, mindSwitched, budget in waits, fitTools 1024, dm-mind-cases, pitfalls
 - [Role words](role-words.md) — #863 placeWord(cls): class word for a company place, never Tank/Healer/Damage; personacheck guard
+- [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
