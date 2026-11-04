@@ -9,6 +9,7 @@
 //   s  status   relay health, runners, Ollama models loaded
 //   n  notes    the last 10 patch notes (issue #664); on start and after u the launcher prints every note merged since
 //               the commit you last saw (logs/last-seen.json in the repo) under [notes], then records HEAD
+//   a  art review  one line per art slice (accepted / waiting / missing) and the day's accept line (npm run art:review)
 //   h  help
 //   q  quit     (or Ctrl+C, or closing the window) runners stop cleanly first, then the relay, then Vite
 //
@@ -23,7 +24,7 @@
 // Options: --relay-port N (8787, or RELAY_PORT), --vite-port N (5173), --no-open, --no-art, --repo DIR (the git checkout `u`
 // pulls; default: this one). Children are started with node and an argument array, never a shell. The old way
 // (npm run relay -- --runners and npm run dev in two terminals) still works.
-import {spawn} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 import {watch, existsSync, readFileSync} from 'node:fs';
 import {join, dirname, basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -205,6 +206,14 @@ function envValue(name) {
     for (const line of readFileSync(p, 'utf8').split(/\r?\n/)) {const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/); if (m && m[1] === name && !line.trim().startsWith('#')) return m[2].replace(/^["']|["']$/g, '')}}} catch {}
   return '';
 }
+function artReview() { // #712: npm run art:review --json, one line per slice
+  const r = spawnSync(process.execPath, [join(ROOT, 'scripts', 'art', 'review.mjs'), '--json', '--dir', join(REPO, 'assets'), '--log', join(REPO, 'logs', 'art.log')], {encoding: 'utf8', timeout: 20000, windowsHide: true});
+  let j = null; try {j = JSON.parse(r.stdout)} catch {}
+  if (!j) return up('art review: not available (' + String(r.stderr || r.error || 'no output').trim().split(/\r?\n/)[0].slice(0, 100) + ')');
+  if (!j.waiting) up('art review: nothing waiting');
+  for (const x of j.slices) if (x.total) up(`art ${x.name}: ${x.accepted} accepted, ${x.waiting} waiting, ${x.missing} missing of ${x.total}`);
+  for (const d of j.days) up(`art ${d.date}: ${d.waiting} waiting${d.sheet ? ', sheet ' + d.sheet : ''}${d.accept ? '; ' + d.accept : ''}${d.preview.length ? '; ' + d.preview.length + ' need an in-game preview first' : ''}`);
+}
 async function status() {
   const age = p => p && !p.exited ? Math.round((Date.now() - p.started) / 1000) + ' s' : 'down';
   up(`relay pid ${relay && !relay.exited ? relay.pid : '-'} (up ${age(relay)}), vite pid ${vite && !vite.exited ? vite.pid : '-'} (up ${age(vite)})`);
@@ -231,19 +240,21 @@ async function status() {
     const j = JSON.parse(readFileSync(process.env.ART_STATE || join(ROOT, 'logs', 'art-loop.json'), 'utf8')), l = j.last || {};
     up(`art loop: ${NO_ART ? 'off' : j.state === 'waiting' ? `waiting until ${j.nextAt || j.next} (${j.why})` : j.state}${l.at ? `; last pass made ${l.made || 0} (${String(l.stop || '').slice(0, 50)})` : ''}${l.monthly ? `; today $${(l.spentToday || 0).toFixed(3)} of a daily share of $${(l.budget || 0).toFixed(3)} (${l.budgetFrom || 'the month share'}; ART_DAILY_BUDGET changes it), month $${(l.spentMonth || 0).toFixed(3)} of $${l.monthly.toFixed(2)}` : ''}${l.provider === 'space' ? `; ${l.images || 0} images today, ${(l.gpuMin || 0).toFixed(1)} GPU min of ${l.quotaMin || 40} (stops at ${l.capMin || 36})` : ''}`);
   } catch {up(`art loop: ${NO_ART ? 'off (--no-art or ART_LOOP=0)' : 'no state yet'}`)}
+  artReview();
   if (codeChanged) up('relay code changed since it started: press u (or r) to apply');
 }
 
 const HELP = ['u  update: git pull --ff-only, npm install if the lockfile changed, restart the relay (and Vite if its config changed)',
-  'r  restart the relay and its runners (no pull)', 's  status: relay, runners, Ollama', 'n  the last 10 patch notes (npm run notes -- --since <commit> for more)', 'h  this help', 'q  quit (Ctrl+C or closing the window too): runners stop cleanly first'];
+  'r  restart the relay and its runners (no pull)', 's  status: relay, runners, Ollama', 'n  the last 10 patch notes (npm run notes -- --since <commit> for more)', 'a  art review: one line per art slice, what waits and the accept line (npm run art:review)', 'h  this help', 'q  quit (Ctrl+C or closing the window too): runners stop cleanly first'];
 
 // ---- commands ----
 async function command(word) {
   const w = String(word).trim().toLowerCase();
-  const map = {u: 'u', update: 'u', r: 'r', restart: 'r', q: 'q', quit: 'q', exit: 'q', s: 's', status: 's', n: 'n', notes: 'n', h: 'h', help: 'h', '?': 'h'};
+  const map = {u: 'u', update: 'u', r: 'r', restart: 'r', q: 'q', quit: 'q', exit: 'q', s: 's', status: 's', n: 'n', notes: 'n', a: 'a', art: 'a', h: 'h', help: 'h', '?': 'h'};
   const k = map[w]; if (!k) {if (w) up(`unknown command "${w}". Press h for help.`); return}
   if (k === 'h') return HELP.forEach(l => up(l));
   if (k === 'n') return showLast(10);
+  if (k === 'a') return artReview();
   if (k === 'q') return shutdown('quit');
   if (busy) return up(`busy (${busy}); wait for it to finish`);
   busy = {u: 'updating', r: 'restarting', s: 'status'}[k];
@@ -286,7 +297,7 @@ async function main() {
     process.exit(1);
   }
   if (process.stdout.isTTY) process.stdout.write('\x1b]0;Eldmoor\x07');
-  up('Eldmoor launcher. Keys: u update, r restart relay, s status, n patch notes, h help, q quit.');
+  up('Eldmoor launcher. Keys: u update, r restart relay, s status, a art review, n patch notes, h help, q quit.');
   showUnseen();
   startRelay(); startVite(); startArt();
   if (!NO_OPEN) setTimeout(openGame, 20000).unref(); // if Vite's ready line is missed

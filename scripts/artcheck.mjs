@@ -29,13 +29,14 @@
 //     the procedural drawing, fixture PNGs on (only inside the pieces' boxes), one piece removed, and off again exactly.
 import http from 'node:http';
 import {spawn} from 'node:child_process';
-import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,utimesSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,utimesSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
 import {deflateSync} from 'node:zlib';
 import {ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf,sizeOf,tierKey,normKey,splitKey,keyFile,loadQueue,tierCfg,TILE,TIERS,nextCheck} from './art/lib.mjs';
 import {runLoop} from './art/daily.mjs';
 import {summarize,render,staleIncoming,IN_GAME_KINDS} from './art/review.mjs';
+import {reviewFixture} from './art/fixtures.mjs';
 import {decodePng,encodePng,pngSize} from './art/png.mjs';
 import {resolvePalette,hexToRgb,downscale} from './art/post.mjs';
 import {postProcess,detectGrid,expandPalette,colorCount} from './art/post-texture.mjs';
@@ -255,10 +256,22 @@ try{
       qs.incoming['building:stone-inn@32']={date:'2026-01-01',file:'building/32/stone-inn.png'};qs.rejected['sprite:hero-mage@32']=2;qs.failed['prop:rock-meadow-1@32']={tries:1,why:'HTTP 500',at:'x'};qs.stats={sprite:{made:3,flat:1,failed:0}};
       const sm=summarize({man,idx:loadIndex(dir),q:qs,logText:'',tier:32}),txt=render(sm);
       ok(staleIncoming(qs,loadIndex(dir)).join()==='tile:grass@32'&&sm.waiting===w0+1,'art:review skips inbox ids already in assets/index.json');
-      ok(sm.preview.some(x=>x.kind==='building'&&x.keys.includes('building:stone-inn@32'))&&IN_GAME_KINDS.join()==='building,landmark,sprite'&&/Needs an in-game preview/.test(txt)&&/rejected/.test(txt)&&/prop:rock-meadow-1@32: HTTP 500/.test(txt)&&sm.rows.find(x=>x.kind==='sprite').rejected===2&&sm.rows.find(x=>x.kind==='sprite').flat===1,'art:review flags buildings, landmarks and sprites for an in-game preview and shows rejects and failures with why');
+      ok(sm.preview.some(x=>x.kind==='building'&&x.keys.includes('building:stone-inn@32'))&&IN_GAME_KINDS.join()==='building,landmark,sprite'&&/needs an in-game preview first/.test(txt)&&/rejected/.test(txt)&&/prop:rock-meadow-1@32: HTTP 500/.test(txt)&&sm.rows.find(x=>x.kind==='sprite').rejected===2&&sm.rows.find(x=>x.kind==='sprite').flat===1,'art:review flags buildings, landmarks and sprites for an in-game preview and shows rejects and failures with why');
       const w=JSON.parse(JSON.stringify(q0));w.incoming['tile:grass@32']=qs.incoming['tile:grass@32'];writeFileSync(join(dir,'queue.json'),JSON.stringify(w));
       r=await node('accept.mjs',['--dir',dir,'--list']);ok(r.s.includes('waiting for review ('+w0+')')&&r.s.includes('already in assets/index.json, skipped: tile:grass@32'),'art:accept --list skips ids already in the index');
       writeFileSync(join(dir,'queue.json'),JSON.stringify(q0))}
+    // art:review on a fixture inbox (#712): slices, days, sheet per day, accept line without in-game kinds, --json; and an empty tree
+    {const RF=reviewFixture(),rd=join(tmp,'review-assets'),w=(f,t)=>{mkdirSync(dirname(join(rd,f)),{recursive:true});writeFileSync(join(rd,f),t)};
+      const base=loadIndex(dir);base.assets={'tile:grass@32':base.assets['tile:grass@32']||{id:'tile:grass',tier:32}};w('index.json',JSON.stringify(base));
+      for(const f of RF.files)w(f,'<html></html>');utimesSync(join(rd,'incoming/2026-11-02/sheet.html'),new Date(1e12),new Date(1e12));utimesSync(join(rd,'incoming/2026-11-02/sheet-2.html'),new Date(2e12),new Date(2e12));
+      w('queue.json',JSON.stringify(RF.queue));
+      const rj=await node('review.mjs',['--dir',rd,'--log',join(tmp,'none.log'),'--json']);let j=null;try{j=JSON.parse(rj.s)}catch{}
+      const sl=n=>j&&j.slices.find(x=>x.name===n),dnew=j&&j.days.find(x=>x.date==='2026-11-02'),dold=j&&j.days.find(x=>x.date==='2026-10-30');
+      ok(j&&j.slices.map(x=>x.name).join()==='terrain,towns,sprites,portraits,scene,props'&&sl('terrain').waiting===2&&sl('towns').waiting===1&&sl('sprites').waiting===1&&sl('props').waiting===0&&sl('terrain').accepted===1,'art:review --json: counts per priority slice (terrain, towns, sprites, portraits, scene, props)');
+      ok(dnew&&dnew.sheet==='assets/incoming/2026-11-02/sheet-2.html'&&dold&&dold.sheet==='assets/incoming/2026-10-30/sheet.html'&&j.days[0].date==='2026-11-02','art:review: the newest contact sheet per day, newest day first');
+      ok(dnew.accept==='npm run art:accept -- tile:snow@32'&&dnew.preview.join()==='building:stone-inn@32,sprite:hero-mage@32'&&dold.accept==='npm run art:accept -- prop:tree-meadow-1@32'&&j.stale.join()==='tile:grass@32','art:review: the accept line keeps buildings, landmarks and sprites out (listed as needing an in-game preview); stale ids skipped');
+      const rt=await node('review.mjs',['--dir',rd,'--log',join(tmp,'none.log')]);ok(/ready to accept: npm run art:accept -- tile:snow@32/.test(rt.s)&&/needs an in-game preview first, NOT in the line above: building:stone-inn@32 sprite:hero-mage@32/.test(rt.s)&&/prop:rock-meadow-1@32: HTTP 500/.test(rt.s),'art:review text: ready line, preview warning, failures with why');
+      const re=await node('review.mjs',['--dir',join(tmp,'no-such-assets'),'--log',join(tmp,'none.log')]);ok(re.code===0&&/nothing waiting/.test(re.s),'art:review with no assets/incoming and no queue prints "nothing waiting"')}
     r=await node('accept.mjs',['--dir',dir,'--reject','tile:mud']);q=Q();ok(r.code===0&&q.rejected['tile:mud@32']===1&&!q.incoming['tile:mud@32'],'a rejected asset leaves the queue for a redraw');
     r=await node('accept.mjs',['--dir',dir,'tile:nope']);ok(r.code===2,'accepting an unknown id is refused');
     const p5=P0();r=await daily(['--now','--date',days[d]]);q=Q();

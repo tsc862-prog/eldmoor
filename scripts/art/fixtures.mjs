@@ -181,3 +181,17 @@ export function fixtures(man,tier=32){const out={};
     else if((m=/^landmark:([a-z-]+)$/.exec(e.id)))im=landmark(m[1],size,e.seed);
     if(im&&im.w===size[0]&&im.h===size[1])out[e.id]=im}
   return out}
+
+// A fixture inbox for art:review (#712): pure data, the artcheck writes it to a temp folder.
+// -> {queue: assets/queue.json, files: [relative path under the assets folder], accepted: [keys already in the index]}
+// Two days of waiting art: the older day a prop and a tile that main already has (stale), the newer day a tile, a building and a
+// sprite (the last two need an in-game preview), plus one rejected redraw and one failed draw with its reason.
+export function reviewFixture(){
+  const old='2026-10-30',cur='2026-11-02',inc=(date,file)=>({date,file});
+  return {accepted:['tile:grass@32'],
+    files:[`incoming/${old}/sheet.html`,`incoming/${cur}/sheet.html`,`incoming/${cur}/sheet-2.html`],
+    queue:{version:1,model:{pinned:null,tried:{}},incoming:{
+      'tile:grass@32':inc(old,'tile/32/grass.png'),'prop:tree-meadow-1@32':inc(old,'prop/32/tree-meadow-1.png'),
+      'tile:snow@32':inc(cur,'tile/32/snow.png'),'building:stone-inn@32':inc(cur,'building/32/stone-inn.png'),'sprite:hero-mage@32':inc(cur,'sprite/32/hero-mage.png')},
+      failed:{'prop:rock-meadow-1@32':{tries:1,why:'HTTP 500',at:'2026-11-02T10:00:00Z'}},rejected:{'tile:mud@32':1},alts:{},
+      stats:{tile:{made:3,flat:1,failed:0},prop:{made:1,flat:0,failed:1}},costProbe:null,next:[],lastRun:null}}}
