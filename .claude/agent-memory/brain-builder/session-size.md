@@ -18,6 +18,6 @@ metadata:
 
 **Why:** owner spend (issue evidence), and the roll cannot delay a scene while compaction can fire mid-turn. **How to apply:** continuity is the known cost of rolling that often; `SESSION_ROLL_TOKENS=0` gives summaries instead (compacts at 67k, mid-turn). A `/compact` prompt between turns is the untested better idea if owners dislike the amnesia.
 
-**Pitfalls:** mock must answer a compaction with text (the summary request carries the tools; a tool_use answer makes the attempt fail silently), and must look at the last TWO messages for a tool_result (the CLI adds a budget line after it). Mock turns take about 1 s, so give runners room: no small `--max-turns` before an async step, and wait for the call, not just the log line. A Fellowship world at `--speed 8` opens a Crypt vote fast and rolls are rightly held: use `--speed 1`.
+**Pitfalls:** on Windows a rename over an open session file throws EPERM (writeAtomic retries, then skips). Mock must answer a compaction with text (the summary request carries the tools; a tool_use answer makes the attempt fail silently), and must look at the last TWO messages for a tool_result (the CLI adds a budget line after it). Mock turns take about 1 s, so give runners room: no small `--max-turns` before an async step, and wait for the call, not just the log line. A Fellowship world at `--speed 8` opens a Crypt vote fast and rolls are rightly held: use `--speed 1`.
 
 See [[agent-player]], [[runner-pacing]], [[token-deltas]], [[scene-grab]].
