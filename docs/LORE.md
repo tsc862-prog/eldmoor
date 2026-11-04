@@ -733,15 +733,20 @@ Moss, Venom Sac, Ember Core, Rime Pelt, Hoar Wool) are ordinary creature loot, n
 | Tarn Whitefish Chowder | A camp meal; the best the Hoarfell camps can offer. |
 | Hoarfell Survey Chart | A scribed map of the high country that tells a reader where they are. |
 | Fenwater Salve | A thin green potion of redroot in fen-water (crafted, skill band 1). |
-| Wightbone Philtre | Crypt marrow cut with rimebloom; the strongest crafted draught (band 4). |
+| Wightbone Philtre | Tarn Wight marrow cut with rimebloom; the strongest crafted draught (band 4). |
 | Hearthbloom Fish Pie | A camp meal of perch in a petal crust; sharpens the eye (band 1). |
 | Tarn Hunter's Feast | A Hoarfell hunter's winter-march meal of whitefish and eel (band 4). |
 | Scroll of the Brief Ward | A hurried, weak ward (band 1). |
 | Scroll of the Unbroken Line | A strong ward inked with grave dust (band 4). |
-| Mireforged Greaves | Fen-forged boots of tin and bogiron (smithing band 1, item level 8). |
-| Rimesteel Greatblade | A frost-hard master's weapon of icevein and cinder scale (band 4, item level 20). |
-| Boarhide Buckler | A small round shield of wolf pelt and mud-boar bristle (band 1, item level 7). |
-| Shagmane Hood | A master's hood of hoar wool and shaghorn horn (band 4, item level 20). |
+
+**Crafted gear pieces** (`CRAFT_GEAR` rows for skill bands 1 and 4; a gear row, not a consumable):
+
+| Name | Slot | Item level | What it is |
+| --- | --- | --- | --- |
+| Mireforged Greaves | feet | 8 | Fen-forged boots of tin and bogiron (smithing band 1). |
+| Boarhide Buckler | off hand | 7 | A small round shield of wolf pelt and mud-boar bristle (leatherworking band 1). |
+| Rimesteel Greatblade | main hand | 20 | A frost-hard master's weapon of icevein and cinder scale (smithing band 4). |
+| Shagmane Hood | head | 20 | A master's hood of hoar wool and shaghorn horn (leatherworking band 4). |
 
 **Crafted gear** (`CRAFT_GEAR`): Tinforged Weapon, Bogiron Handguard, Ashsteel Cuirass, Wolfhide Cowl, Hoarfrost Greatcoat.
 Tinforged is a new material word (tin-forged, the plain first alloy of a new smith, sitting below Bogiron in the

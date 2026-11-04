@@ -150,7 +150,7 @@ export const USES={
   'Hoarfell Survey Chart':{kind:'map',reveal:'region',price:40,lvl:12,drop:0,craft:true,flavour:'Ink on scraped hide: the safe fords, the thin ice and the old cairns of the Hoarfell, drawn by someone who walked them.'},
   // Bands 1 and 4 (issue #718), same rules as the rows above.
   'Fenwater Salve':    {kind:'potion', heal:.45,price:20,lvl:6, tier:0,drop:0,craft:true,flavour:'Redroot pounded into fen-water until it runs green; thin stuff, but it closes a cut by morning.'},
-  'Wightbone Philtre': {kind:'potion', heal:.8, price:110,lvl:18,tier:0,drop:0,craft:true,flavour:'Crypt marrow ground fine and cut with rimebloom. It tastes of a cold cellar and brings a hero back from the edge.'},
+  'Wightbone Philtre': {kind:'potion', heal:.8, price:110,lvl:18,tier:0,drop:0,craft:true,flavour:'Tarn wight marrow ground fine and cut with rimebloom. It tastes of a cold cellar and brings a hero back from the edge.'},
   'Hearthbloom Fish Pie':{kind:'ration',heal:.3,price:20,lvl:4,drop:0,craft:true,buff:{stat:'crit',v:.02,mins:90},flavour:'Perch baked in a crust with hearthbloom petals. The first bite makes the eye sharper.'},
   "Tarn Hunter's Feast":{kind:'ration',heal:.6,price:80,lvl:16,drop:0,craft:true,buff:{stat:'health',v:.08,mins:240},flavour:'Whitefish, eel and bloom in one pot, the meal a Hoarfell hunter saves for a long winter march.'},
   'Scroll of the Brief Ward':{kind:'scroll',effect:'ward',ward:.15,price:20,lvl:3,drop:0,craft:true,flavour:'A hurried ward in cheap ink; it holds only a moment, but a moment is sometimes enough.'},
