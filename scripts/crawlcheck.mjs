@@ -60,6 +60,8 @@ if (argv[0] === '--hash' || argv[0] === '--hash-off') {
   init({fellowship: false}); for (let i = 0; i < 1500 * 60; i++) step(1 / 60);
   let h = Math.round(S.gameMin); for (const a of S.agents) h = (Math.imul(h, 31) + a.lvl * 1000 + Math.round(a.xp) + Math.round(a.x * 10) * 7 + Math.round(a.hp) + a.deaths * 13 + Math.round(a.gold)) | 0;
   const gu = (S.GUILDS || []).reduce((t, g) => t + g.clears * 7 + g.wipes * 3, 0);
+  // PARTS (#378): what the hash was made of, one entry a hero, so a mismatch between two children names the first differing value (hashcheck reads only the HASH line)
+  console.log('PARTS ' + JSON.stringify({min: S.gameMin, guilds: gu, heroes: S.agents.map(a => [a.id, a.lvl, Math.round(a.xp), Math.round(a.x * 10), Math.round(a.hp), a.deaths, Math.round(a.gold)])}));
   console.log('HASH ' + h + ' guilds:' + gu); process.exit(0);
 }
 
@@ -362,11 +364,19 @@ console.log('background groups keep the abstract roll');
   const hash = flag => {
     const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), flag], {encoding: 'utf8'});
     const line = (r.stdout || '').split(NL).find(l => l.startsWith('HASH '));
+    try {parts.last = JSON.parse(((r.stdout || '').split(NL).find(l => l.startsWith('PARTS ')) || 'PARTS null').slice(6))} catch {parts.last = null}
     runs.push(flag + ': ' + (line || 'NO HASH LINE') + ' | exit ' + r.status + ' signal ' + r.signal + (r.error ? ' error ' + r.error.message : '') + (line ? '' : ' | stderr: ' + String(r.stderr || '').slice(-300).trim()));
     return line;
   };
-  const h1 = hash('--hash'), h2 = hash('--hash'), off = hash('--hash-off');
-  if (!(h1 && h1 === h2 && h1 === off)) console.log('  child runs (seed ' + (process.env.CRAWLCHECK_SEED || 'default') + '):' + NL + '    ' + runs.join(NL + '    '));
+  const parts = {};
+  const h1 = hash('--hash'), p1 = parts.last, h2 = hash('--hash'), p2 = parts.last, off = hash('--hash-off'), p3 = parts.last;
+  if (!(h1 && h1 === h2 && h1 === off)) {
+    console.log('  child runs (seed ' + (process.env.CRAWLCHECK_SEED || 'default') + '):' + NL + '    ' + runs.join(NL + '    '));
+    // the first differing value between the children, so a moved hash names itself (a native crash has no PARTS line and shows above)
+    const first = (x, y, path = '$') => {if (x === y) return null; if (typeof x !== 'object' || typeof y !== 'object' || !x || !y) return path + ': ' + JSON.stringify(x) + ' vs ' + JSON.stringify(y);
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {const d = first(x[k], y[k], path + '.' + k); if (d) return d} return null};
+    for (const [n, x, y] of [['--hash #1 vs #2', p1, p2], ['--hash vs --hash-off', p1, p3]]) if (x && y) console.log('  first difference, ' + n + ': ' + (first(x, y) || 'none (the parts agree; only the hash line differs)'));
+  }
   ok(h1 && h1 === h2, 'a seeded world without a Fellowship repeats: ' + h1);
   ok(h1 && h1 === off, 'with the crawl unplugged it hashes the same: the background does not touch it');
   ok(!BASE || h1 === 'HASH ' + BASE, 'it matches the hash on main (' + BASE + ')');

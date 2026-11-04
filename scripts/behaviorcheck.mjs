@@ -195,6 +195,7 @@ ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.n
 ok(world.some(w => w.intents && w.intents[A.name] >= 1) && anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id !== A.id) && !anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id === A.id), 'digests count aims stated per hero; no-aim flags the silent ones, not A (#535)');
 ok(/Aims stated \(intent\) per hero per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: aims stated per hero per game day');
 ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the last world digest');
+ok(/## Cost/.test(md) && /Turns by wake reason/.test(md) && rep.cost && rep.cost.total.turns > 0, 'report has a Cost section from the turn lines (#799)');
 // ---- per company (issue #460): the digest names every company, its size, minds and deaths; members carry their company ----
 {const FC = SLT.slotted().id, wc = world.filter(w => Array.isArray(w.companies));
   ok(wc.length === world.length && wc.every(w => w.companies.some(c => c.id === FC && c.fellowship && c.size >= 1 && c.minds >= 1 && Number.isInteger(c.deaths))), 'every digest lists the companies: the Fellowship\'s with its size, minds and deaths this hour (#460)');

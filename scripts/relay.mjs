@@ -156,7 +156,7 @@ const cap = (t, n = ECHO_MAX) => t.length > n ? t.slice(0, n) + '…[cut]' : t;
 // providers: {name: adapter} (scripts/providers/); default built from client and the environment.
 // localTimeout: {decide, write} ms for local providers (a writing kind gets at least its KIND_TIMEOUT).
 // limits: {provider: makeLimiter()} (default: Anthropic at ANTHROPIC_CONCURRENCY); {} turns limiting off.
-// onDecide({kind, hero, provider, model, ok, status, ms, choice?, error?}): every /decide call as answered, for the
+// onDecide({kind, hero, provider, model, ok, status, ms, cost?, tokensIn?, tokensOut?, choice?, error?}): every /decide call as answered, for the
 // behavior logs (issue #129, scripts/behavior-log.mjs relayDecision); never the prompt, the reply text or a key.
 export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null, providers = null, localTimeout = LOCAL_TIMEOUT, limits = makeLimits(), onDecide = null} = {}) {
   providers = providers || makeProviders({anthropicClient: client || null, model});
@@ -236,7 +236,7 @@ export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MOD
       const bad = checkRequest(body); if (bad) return send(400, {error: bad});
       stats.requests++;
       const t0 = Date.now(), seen = r => {if (onDecide) try {onDecide({kind: body.kind, hero: body.snapshot.name || null, ...r, ms: Date.now() - t0})} catch {}};
-      try {const out = await decide(body); send(200, out); seen({provider: out.provider, model: out.model, ok: true, status: 200, choice: out.choice ?? (out.crypt != null ? String(out.crypt) : null)})}
+      try {const out = await decide(body); send(200, out); seen({provider: out.provider, model: out.model, ok: true, status: 200, ...(out.usage ? {cost: out.usage.cost, tokensIn: out.usage.in, tokensOut: out.usage.out} : {}), choice: out.choice ?? (out.crypt != null ? String(out.crypt) : null)})}
       catch (e) {
         stats.errors++;
         const timeout = isAbort(e);

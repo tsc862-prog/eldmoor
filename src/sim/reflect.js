@@ -32,7 +32,7 @@ export const REFLECT={
   TALK:4,       // lines an agent hero says to others (say, party_say, talk_to) within TALK_MIN that make a conversation
   TALK_MIN:180, // game minutes a conversation's lines must fall within
 };
-export const KINDS={fireside:'a night round the fire',camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day',lesson:'a hard lesson',title:'a name given you',downed:'lying in the dark',crawl:'the end of a dungeon crawl',vision:'a vision'}; // downed (#658): the downed agent's own turn, no acting tools // lesson: a near death or a fall witnessed (sim/lore.js, #188)
+export const KINDS={fireside:'a night round the fire',camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day',lesson:'a hard lesson',title:'a name given you',downed:'lying in the dark',wound:'a wound that will not close',crawl:'the end of a dungeon crawl',vision:'a vision'}; // downed (#658): the downed agent's own turn, no acting tools // lesson: a near death or a fall witnessed (sim/lore.js, #188)
 
 const DAY=1440;
 const dayNo=gm=>Math.floor(gm/DAY)+1;
@@ -74,7 +74,8 @@ export function downedOver(a){const R=a&&a.reflect;if(R&&R.cur&&R.cur.kind==='do
 export function reflectDone(a,id,wrote){if(!a||a.kind!=='hero')return {ok:false,error:'No such hero.'};const R=stateOf(a),gm=Math.round(S.gameMin),k=Math.max(0,Math.min(20,Math.round(Number(wrote)||0)));
   const past=R.log.find(x=>x.id===id&&gm-x.gm<=REFLECT.OPEN);if(past){past.wrote=Math.max(past.wrote,k);return {ok:true,reflected:id,wrote:past.wrote,already:true}} // closed already (by its first note)
   const due=reflectDue(a);if(!due||due.id!==id)return {ok:false,error:'No reflection '+id+' is due.'};
-  R.n++;R.last=gm;R.ev=a.playEvN||0;if(due.kind==='dusk'||gm%DAY>=REFLECT.DUSK)R.dusk=dayNo(gm);if(R.cur&&R.cur.id===id)R.cur=null;
+  R.n++;R.last=gm;R.ev=a.playEvN||0;if(due.kind==='dusk'||gm%DAY>=REFLECT.DUSK){R.dusk=dayNo(gm);if(a.goal&&a.goal.offered)a.goal.quiet=true} // the offer of a thread is asked once more, here, and never again (#800)
+  if(R.cur&&R.cur.id===id)R.cur=null;
   R.log.push({id,kind:due.kind,why:due.why,gm,day:dayNo(gm),wrote:k});if(R.log.length>REFLECT.LOG)R.log.shift();
   return {ok:true,reflected:id,wrote:k,today:R.n}}
 
