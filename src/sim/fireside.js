@@ -63,7 +63,7 @@ const plain=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:
 const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1];
 const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const pickH=(seed,k,list)=>list[Math.floor(hash(seed|0,k,71)*list.length)%list.length];
-const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C);
+const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const fireOf=C=>C.fire||(C.fire={last:-1e9,seq:0,past:0,ev:[]});
 const FIGHTING=['fight','duel','assist','raid','dungeon'];
 const isFire=k=>k==='fireside'||k==='debrief';

@@ -99,7 +99,7 @@ export function checkIndex(man,dir=ASSETS){
 
 // assets/queue.json: the daily run's local state (gitignored): the model that answered, what waits in
 // assets/incoming/<date>/ for review, what failed and why, rejected redraws, alternates made, what is next.
-export const QUEUE0=()=>({version:1,model:{pinned:null,tried:{}},incoming:{},failed:{},rejected:{},alts:{},next:[],lastRun:null});
+export const QUEUE0=()=>({version:1,model:{pinned:null,tried:{}},incoming:{},failed:{},rejected:{},alts:{},stats:{},costProbe:null,next:[],lastRun:null});
 // Keys are tier keys ('tile:grass@32', 'tile:grass@32#alt1'); a queue from before tiers is read as the 32 tier.
 export function loadQueue(dir=ASSETS){const p=join(dir,'queue.json');if(!existsSync(p))return QUEUE0();
   const q={...QUEUE0(),...JSON.parse(readFileSync(p,'utf8'))};q.model={pinned:null,tried:{},...(q.model||{})};
@@ -110,3 +110,17 @@ export function saveQueue(dir,q){mkdirSync(dir,{recursive:true});const p=join(di
 // <kind>/<tier>/<name>.alt2.png.
 export function splitKey(k){const m=/^(.*?)(?:@(\d+))?(?:#alt(\d+))?$/.exec(k);return {id:m[1],tier:m[2]?Number(m[2]):LEGACY_TIER,alt:m[3]?Number(m[3]):0}}
 export function keyFile(k){const {id,tier,alt}=splitKey(k);const f=fileOf(id,tier);return alt?f.replace(/\.png$/,`.alt${alt}.png`):f}
+
+// When to look again after a run stopped (#661). kind: share (the day's share is spent: a new one opens at local
+// midnight), provider (the provider refused: ART_RETRY_HOURS or its retry-after, whichever is later), month (the
+// month's credits are spent: the 1st), complete (nothing left to make: tomorrow, or when the manifest changes), cap (a call cap, try
+// again in a minute), anything else (error): ART_RETRY_HOURS.
+export const WAIT_WHY={share:"day's share spent",provider:'the provider refused',month:"month's credits spent",complete:'nothing left to make',cap:'call cap reached',error:'a problem, see the stop reason'};
+export function nextCheck(kind,now,{retryHours=4,retryAfter=0}={}){
+  const t=now.getTime(),retry=t+retryHours*3600e3,mid=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1).getTime();
+  if(kind==='share')return new Date(Math.min(retry,mid));
+  if(kind==='provider')return new Date(Math.max(retry,t+retryAfter*1000));
+  if(kind==='month')return new Date(now.getFullYear(),now.getMonth()+1,1);
+  if(kind==='complete')return new Date(mid);
+  if(kind==='cap')return new Date(t+60e3);
+  return new Date(retry)}

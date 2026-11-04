@@ -207,6 +207,83 @@ console.log('E. a slow DM frame and five live members: nobody acts before the fr
   ok(sc.beats.length === live.length && sc.beats.every(b => b.by === 'agent'), 'every member answered by its agent: ' + sc.beats.map(b => b.name + '/' + b.by).join(', '));
   setRunnerLinks(null);
 }
+// ---------------------------------------------------------------- F. Claude slots and the scene (#687)
+// Three Claude slots under the supervisor (RUNNER_CLAUDE_MAX 3), five Claude members and the DM. Three members are deep in
+// long turns holding the slots, the DM and a fourth member (for a party line) wait for one, the fifth proposes a vote, and
+// everyone answers at once. The waiting member's slot wait sees its scene: it tells the table (queued, why slot) and asks
+// again as a scene, which the supervisor serves before the DM. Every answer lands, nobody's reflex votes, and a member that
+// answered and waits gets one wait back when the table settles.
+console.log('F. three Claude slots, five Claude members and the DM: every vote lands, the slot wait answers the scene first');
+{
+  const {EventEmitter} = await import('node:events'), {attachRunners} = await import('./runners.mjs'), {takeClaudeSlot} = await import('./pacing.mjs');
+  const {localBackend} = await import('./play-headless.mjs'), {allScenes} = await import('../src/sim/scenes.js');
+  for (const sc of allScenes()) sc.resolved = true; S.table = null;
+  const live = mem.filter(a => a.state !== 'dead'); gather(); for (const a of live) a.playEv = [];
+  sim.setDmSeat(true); setRunnerLinks(() => 'connected'); TABLE.speed = 1; TABLE.mode = 'auto';
+  const liveMs0 = TABLE.liveMs, extra0 = SW.EXTRA_MS; TABLE.liveMs = 9000; SW.EXTRA_MS = 30000; // a short live wait: only a queued member outlasts it
+  let last = Date.now(); const tick = setInterval(() => {const n = Date.now(); for (const a of live) a.hp = Math.max(a.hp, a.maxhp || 0); sim.step(Math.min(.1, (n - last) / 1000)); last = n}, 20);
+  const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
+  const play = attachPlay(server, {backend: localBackend(), log: () => {}}); setRunnerLinks(() => 'connected'); // every member's runner holds it (after the backend's own links)
+  const fakeSpawn = () => {const k = new EventEmitter(); k.pid = 50000 + Math.floor(Math.random() * 1000); k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write() {}}); k.kill = () => setTimeout(() => k.emit('exit', null), 5); return k};
+  const tmpF = mkdtempSync(join(tmpdir(), 'eldmoor-slotscene-'));
+  let PBF = null;
+  const sup = attachRunners(server, {play, enabled: true, log: () => {}, spawnImpl: fakeSpawn, base: () => PBF, logs: tmpF, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '3'}});
+  await new Promise(r => server.listen(0, '127.0.0.1', r)); PBF = `http://127.0.0.1:${server.address().port}`;
+  const J = (path, body, origin) => fetch(PBF + path, {method: 'POST', headers: {'content-type': 'application/json', ...(origin ? {origin} : {})}, body: JSON.stringify(body)}).then(r => r.json());
+  const starts = [];
+  for (const a of live) starts.push(await J('/play/runner/start', {hero: a.id, provider: 'anthropic'}, 'http://localhost:5173'));
+  starts.push(await J('/play/runner/start', {kind: 'dm', provider: 'anthropic'}, 'http://localhost:5173'));
+  ok(starts.every(x => x.ok !== false) && live.length === 5, 'five Claude member runners and the DM under the supervisor, 3 slots: ' + starts.filter(x => x.ok === false).map(x => x.error).join('; '));
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const due = id => async () => {const h = await (await fetch(PBF + '/play/health')).json(); const me = (h.heroes || []).find(x => x.id === id); return !!(me && me.due)};
+  const why = {}, logs = [];
+  const queued = (a, w) => async () => {why[a.id] = w; await J('/play/pace', {hero: a.id, queued: true, why: w})};
+  const call = (a, tool, args) => J('/play/call', {hero: a.id, tool, args});
+  const answer = async a => {const r = await call(a, 'scene_act', {option: 'yes', line: 'Aye.'}); return r.ok};
+  const [A, B, C, D, E] = live, answered = {};
+  // a member's answer once its scene is due: a slot (scene first), one model call (1 s), scene_act, release
+  const answerWhenDue = async (a, w) => {for (let i = 0; i < 600 && !(await due(a.id)()); i++) await sleep(100);
+    const free = await takeClaudeSlot(PBF, s => logs.push(a.name + ' ' + s), {key: 'hero:' + a.id, due: due(a.id), onDue: queued(a, w)});
+    await sleep(1000); answered[a.id] = await answer(a); free()};
+  // A, B, C: long turns holding the three slots (16 s of model time); when their scene comes up mid-turn they say so (turn)
+  const long = async a => {const free = await takeClaudeSlot(PBF, () => {}, {key: 'hero:' + a.id});
+    for (let i = 0; i < 160; i++) {await sleep(100); if (!why[a.id] && await due(a.id)()) await queued(a, 'turn')()} free(); await answerWhenDue(a, 'turn')};
+  const runs = [long(A), long(B), long(C)];
+  await sleep(500);
+  // the DM's turn waits for a slot; D waits for one for a party line; its scene opens while it waits
+  runs.push((async () => {const free = await takeClaudeSlot(PBF, () => {}, {key: 'dm'}); logs.push('dm got a slot'); await sleep(3000); free()})());
+  let dSlot = null;
+  runs.push((async () => {const free = await takeClaudeSlot(PBF, s => logs.push(D.name + ' ' + s), {key: 'hero:' + D.id, due: due(D.id), onDue: queued(D, 'slot')}); dSlot = free.scene;
+    logs.push(D.name + ' got a slot' + (free.scene ? ' for its scene' : ''));
+    if (free.scene) {await sleep(1000); answered[D.id] = await answer(D)} free(); if (!answered[D.id]) await answerWhenDue(D, 'slot')})());
+  await sleep(500);
+  const pr = await call(E, 'propose', {kind: 'other', details: 'Ride for the ford at first light'});
+  ok(pr.ok, 'the fifth member puts a vote to the company: ' + (pr.error || 'ok'));
+  const sc = await (async () => {for (let i = 0; i < 100 && !(S.table && S.table.kind === 'decision'); i++) await sleep(50); return S.table})();
+  ok(sc && sc.all && sc.ids.length === 5, 'an everyone-answers vote opens for the five');
+  // A answers and then waits: one wait, back when the table settles
+  let waits = 0, wr = null;
+  const aWait = (async () => {for (let i = 0; i < 1200 && !answered[A.id]; i++) await sleep(50); waits++; wr = await call(A, 'wait', {minutes: 30})})();
+  await Promise.all(runs); await aWait;
+  for (let i = 0; i < 100 && S.table === sc; i++) await sleep(100);
+  clearInterval(tick);
+  const beats = sc ? sc.beats : [];
+  ok(beats.length === 5 && beats.every(b => b.by === 'agent'), 'every member\'s answer landed, no reflex voted: ' + beats.map(b => b.name + ' ' + b.k + '/' + b.by).join(', '));
+  ok(sc && !(sc.miss && sc.miss.length) && !sc.late, 'nobody was missed');
+  ok(dSlot === true && sc && sc.qw && sc.qw[D.id] === 'slot' && sc.q.includes(D.id), `${D.name}, waiting for a slot when its scene opened, told the table (queued, why slot) and got a slot for the scene`);
+  const dmAt = logs.indexOf('dm got a slot'), dAt = logs.findIndex(l => l.startsWith(D.name + ' got a slot'));
+  ok(dAt >= 0 && dmAt >= 0 && dAt < dmAt, 'the supervisor served the scene request before the DM, which asked first: ' + logs.filter(l => /got a slot/.test(l)).join(' | '));
+  ok(sc && [A, B, C].every(a => sc.qw && sc.qw[a.id] === 'turn'), 'the members mid-turn reported why (turn)');
+  ok(waits === 1 && wr && wr.ok && wr.why === 'the table settled' && /Passed 5-0/.test(wr.scene_outcome || ''), `the member that answered and waited got one wait back when the table settled (${wr && wr.why}: ${wr && wr.scene_outcome})`);
+  // the cause of a miss reaches the anomaly and the report
+  const {missCause} = await import('../src/sim/scenewait.js');
+  ok(missCause(sc, D.id) === 'waiting for a slot' && missCause(sc, A.id) === 'mid-turn' && missCause({}, 1) === 'no answer', 'the miss cause names what the answer waited behind');
+  const rep = sceneAnswers([], [{kind: 'scene-missed', hero: {name: 'X'}, evidence: {cause: 'waiting for a slot'}}, {kind: 'scene-missed', hero: {name: 'X'}, evidence: {cause: 'mid-turn'}, heldBack: 1}]);
+  const xm = rep.data.members.find(m => m.name === 'X');
+  ok(xm && xm.missed === 3 && xm.causes['waiting for a slot'] === 1 && xm.causes['mid-turn'] === 2 && /missed by cause/.test(rep.lines.join('\n')), 'the report splits misses by cause');
+  TABLE.liveMs = liveMs0; SW.EXTRA_MS = extra0; setRunnerLinks(null); sup.killAll(); server.close();
+  try {rmSync(tmpF, {recursive: true, force: true})} catch {}
+}
 closeOllama();
 for (const k of kids) try {k.kill()} catch {}
 try {rmSync(tmp, {recursive: true, force: true})} catch {}

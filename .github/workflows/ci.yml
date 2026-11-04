@@ -52,6 +52,7 @@ jobs:
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: init() reset, run: npm run initcheck}
       - {name: Downed and death saves, run: npm run downcheck}
+      - {name: Hero will (bequeath), run: npm run bequeathcheck}
       - {name: Fellowship archetypes, run: npm run archetypecheck}
       - {name: Agent-built personality, run: npm run personacheck}
       - {name: Pack and inventory, run: npm run invcheck}
@@ -111,6 +112,7 @@ jobs:
       - {name: Hero standing orders, run: npm run orderscheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
       - {name: Hugging Face provider (mock router and no token), run: npm run hfcheck}
+      - {name: Gemini provider (mock Gemini and no key), run: npm run googlecheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
       - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
@@ -188,6 +190,9 @@ jobs:
       - {name: Learn the world, run: npm run lorecheck}
       - {name: Tool quick wins, run: npm run toolwincheck}
       - {name: Pay and mark tools, run: npm run paymarkcheck}
+      - {name: Wish tool for the builders (DM and heroes), run: npm run wishcheck}
+      - {name: Hire tool, run: npm run hirecheck}
+      - {name: Challenge tool (honour duels at the table), run: npm run challengecheck}
       - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
       - {name: DM voices long-poll and answer in time (issue 680), run: npm run voicecheck}
       - {name: More turn triggers, run: npm run wakecheck}

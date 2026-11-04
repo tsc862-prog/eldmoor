@@ -67,10 +67,10 @@ export function companyCard(a){const C=companyOf(a);if(!C||C.ids.length<2)return
 
 // ---- shared refusals ----
 // Why b cannot ride with company C (joining as an agent mind or a companion), or null.
-function roomFor(C,b){if(C.ids.length>=PARTY.MAX)return C.name+' already holds '+PARTY.MAX+' heroes, the most a company can.';
+export function roomFor(C,b){if(C.ids.length>=PARTY.MAX)return C.name+' already holds '+PARTY.MAX+' heroes, the most a company can.';
   if(b.player&&minds(C).length>=PARTY.MINDS)return C.name+' already has '+PARTY.MINDS+' who choose their own road, the most a company can; '+b.name+' cannot join it.';
   return null}
-function pending(C){if(C.wait&&(C.wait.crypt||C.wait.raid))return 'Your company is answering a call to the Crypt or a raid; settle that first.';
+export function pending(C){if(C.wait&&(C.wait.crypt||C.wait.raid))return 'Your company is answering a call to the Crypt or a raid; settle that first.';
   if(openProps(C).some(P=>P.kind==='crypt'||P.kind==='raid'))return 'A vote on the Crypt or a raid is open in your company; settle it first.';return null}
 // Said aloud: the offer is heard by everyone in earshot (in-game channels, #123). -> {text, heard} or {error}.
 function sayAloud(a,text,dflt){let t=dflt;if(text!=null&&String(text).trim()){const L=spokenLine(a,text,OFFER.LEN);if(L.error)return {error:L.error};t=L.text}
@@ -91,7 +91,7 @@ const WHY={loner:'is a loner and will not ride with anyone',gap:'is too far from
 
 // ---- joining ----
 // joiner rides with C from now on: the joiner's own solo log folds in, one `join` line in C's log, bonds, events.
-function joinInto(C,joiner,asker){const old=companyOf(joiner),wasSolo=!!(old&&old!==C&&old.ids.length===1);
+export function joinInto(C,joiner,asker){const old=companyOf(joiner),wasSolo=!!(old&&old!==C&&old.ids.length===1);
   if(wasSolo&&old.log.length){for(const e of old.log)C.log.push({...e,folded:old.id});C.log.sort((x,y)=>(y.gameMin||0)-(x.gameMin||0));if(C.log.length>LOG_CAP)C.log.length=LOG_CAP}
   if(joiner.party)leaveParty(joiner);
   const r=joinCompany(C,joiner);if(!r.ok)return r;
@@ -240,7 +240,7 @@ export function companionsView(a){const C=companyOf(a);if(!C||isSolo(C)){const r
     const ofs=offersBrief(a);if(ofs)r.offers_to_you=ofs;const es=earshot(a);if(es&&es.ok)r.earshot=es;return r}
   const seen=a.seen||{},now=S.gameMin;
   const riders=members(C).filter(b=>b!==a).map(b=>{const o={name:b.name,class:b.cls,level:b.lvl+0};
-    if(isCompanion(b))o.rides_as='companion';
+    if(isCompanion(b))o.rides_as=b.hire&&!b.hire.over?'hired '+(b.hire.role==='guide'?'guide':'blade')+', '+Math.max(0,Math.ceil((b.hire.until-S.gameMin)/1440))+' paid day(s) left':'companion';
     if(inRange(a,b))o.at='beside you';
     else{const e=seen[b.id];if(e){const h=Math.max(0,Math.round((now-e.at)/60*10)/10);o.at='last seen near '+e.where+(h>=.2?', '+h+' game hours ago':' just now')}else o.at='not seen since you joined'}
     return o});

@@ -14,8 +14,10 @@
 //   already plays scripted when the relay answers with an error.
 // - rateLimited(ms) counts a 429 and holds the queue so nothing new starts until it ends; calls in flight finish.
 // - stats(): {max, inflight, queued, queuedUrgent, rateLimited, dropped, paused (ms left), served}.
-export function makeLimiter({max = 2, now = () => Date.now()} = {}) {
+// rpm (optional, #672): at most rpm starts a minute, spaced evenly (a free tier's per-minute quota); 0 = no spacing.
+export function makeLimiter({max = 2, rpm = 0, now = () => Date.now()} = {}) {
   max = Math.max(1, Math.floor(Number(max) || 1));
+  const gap = Number(rpm) > 0 ? 60000 / Number(rpm) : 0; let nextAt = 0;
   const q = []; // {fn, urgent, res, rej, signal, onAbort}
   let inflight = 0, pausedUntil = 0, timer = null;
   const st = {rateLimited: 0, dropped: 0, served: 0};
@@ -26,9 +28,10 @@ export function makeLimiter({max = 2, now = () => Date.now()} = {}) {
     const wait = pausedUntil - now();
     if (wait > 0) {timer = setTimeout(() => {timer = null; pump()}, wait); if (timer.unref) timer.unref(); return}
     while (inflight < max && q.length) {
+      if (gap && now() < nextAt) {timer = setTimeout(() => {timer = null; pump()}, nextAt - now()); if (timer.unref) timer.unref(); return}
       const j = q.shift(); if (j.signal) j.signal.removeEventListener('abort', j.onAbort);
       if (j.deadline != null && j.deadline - now() < j.minLeft) {st.dropped++; j.rej(abortErr()); continue} // too late to be worth sending
-      inflight++; st.served++;
+      inflight++; st.served++; if (gap) nextAt = now() + gap;
       Promise.resolve().then(j.fn).then(j.res, j.rej).finally(() => {inflight--; pump()});
     }
   }
@@ -44,14 +47,15 @@ export function makeLimiter({max = 2, now = () => Date.now()} = {}) {
   }
   // Hold new starts for ms (a 429 asked us to slow down); counts the 429.
   function rateLimited(ms) {st.rateLimited++; const until = now() + Math.max(0, ms); if (until > pausedUntil) pausedUntil = until; if (timer) {clearTimeout(timer); timer = null} pump()}
-  const stats = () => ({max, inflight, queued: q.length, queuedUrgent: q.filter(j => j.urgent).length, ...st, paused: Math.max(0, pausedUntil - now())});
+  const stats = () => ({max, ...(gap ? {rpm: Number(rpm)} : {}), inflight, queued: q.length, queuedUrgent: q.filter(j => j.urgent).length, ...st, paused: Math.max(0, pausedUntil - now())});
   return {run, rateLimited, stats, get max() {return max}};
 }
 
 // Is this error a 429 from the provider? Returns {retryAfterMs} or null. Reads the Anthropic SDK's
 // APIError (status, headers as a Headers object or a plain object) and plain fakes alike.
 export function rateLimitOf(e) {
-  if (!e || (e.status !== 429 && !/rate_limit_error|\b429\b/.test(String(e.message || '')))) return null;
+  if (!e || e.kind === 'quota') return null; // a used-up quota or allowance is never retried (#672)
+  if ((e.status !== 429 && !/rate_limit_error|\b429\b/.test(String(e.message || '')))) return null;
   const h = e.headers, raw = h ? (typeof h.get === 'function' ? h.get('retry-after') : h['retry-after']) : null;
   const sec = Number(raw);
   return {retryAfterMs: Number.isFinite(sec) && sec >= 0 ? Math.min(60000, sec * 1000) : null};

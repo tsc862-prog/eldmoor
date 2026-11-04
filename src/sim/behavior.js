@@ -40,7 +40,9 @@ import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
 import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
 import {gambitRec,noFlee} from './gambits.js';
+import {takeWishes} from './wish.js'; // wishes for the builders (#663)
 import {drainHolds} from './gambithold.js'; // finished gambit holds (#630) // the hero's own rules (#617)
+import {missCause} from './scenewait.js'; // why a live member missed its scene (#687)
 
 export const BW={
   DIGEST_MIN:60,     // game minutes between world digests
@@ -89,7 +91,7 @@ export function makeWatch(opts={}){
   const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
-  function baseline(){base=true;lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
+  function baseline(){base=true;seenRuling.clear();for(const p of (S.rulings&&S.rulings.past)||[])seenRuling.add(p.id);lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
     T.clear();seenProps.clear();emitted.clear();H=fresh();tLast=tStats();dmC=dmCounts();dmWin=[];dmHeld=null;
     seq0.clear();for(const a of seats())seq0.set(a.id,a.memories?a.memories.seq||0:0); // notes written before a seat is first tracked still count (#179)
     iseq0.clear();for(const a of seats())iseq0.set(a.id,a.intentSeq||0); // aims stated before a seat is first tracked still count (#535)
@@ -174,7 +176,7 @@ export function makeWatch(opts={}){
       const mine=scene.beats.filter(b=>{const a=byId(b.id);return a&&a.player});
       H.table.queued+=(scene.q||[]).length;
       for(const id of scene.miss||[]){const a=byId(id);if(!a)continue;H.table.missed++; // a live member's scene turn fell to its reflex after the table's wait (#515)
-        anomaly(out,'scene-missed',a,a.name+' did not answer the Table scene "'+scene.title+'" in time: its runner held it, the reflex acted',{scene:scene.title,kind:scene.kind,queued:!!(scene.q&&scene.q.includes(id)),mind:mindOf(a)},'bad')}
+        {const cause=missCause(scene,id);anomaly(out,'scene-missed',a,a.name+' did not answer the Table scene "'+scene.title+'" in time ('+cause+'): its runner held it, the reflex acted',{scene:scene.title,kind:scene.kind,queued:!!(scene.q&&scene.q.includes(id)),cause,mind:mindOf(a)},'bad')}}
       if(mine.length){if(mine.every(b=>b.by==='reflex'))sceneRun++;else sceneRun=0;
         if(sceneRun>=BW.SCENE_RUN){anomaly(out,'reflex-scenes',null,'Reflex took every agent turn at the table for '+sceneRun+' scenes in a row (last: '+scene.title+')',{scenes:sceneRun,last:scene.title,kind:scene.kind,members:mine.map(b=>b.name)},'bad');sceneRun=0}}}
     scene=sc||null}
@@ -205,13 +207,19 @@ export function makeWatch(opts={}){
   function companyDigest(){const L=companies().map(C=>({id:C.id,name:C.name||null,size:C.ids.length,minds:minds(C).length,deaths:coDeaths[C.id]||0,...(C.slots?{fellowship:true}:{})}));
     for(const id in coDeaths)if(!L.some(c=>c.id===+id))L.push({id:+id,name:null,size:0,minds:0,deaths:coDeaths[id],ended:true});return L}
 
+  // wishes (#663) and the attempts the DM ruled on (S.rulings) go to the builders' wishes.jsonl; read-only on the world
+  const seenRuling=new Set();
+  function wishes(out){for(const w of takeWishes())out.push({kind:'wish',rec:w});
+    const R=S.rulings;if(R)for(const p of R.past){if(seenRuling.has(p.id))continue;seenRuling.add(p.id);
+      out.push({kind:'wish',rec:{type:'attempt',seat:'hero:'+p.hero,name:p.name||null,day:p.day||null,gameMin:Math.round(S.gameMin),what:String(p.what||'').slice(0,300),skill:p.skill||null,pass:p.pass==null?null:!!p.pass,by:p.by||null}})}}
+
   return {
     tick(){const out=[];
       if(!base||S.gameMin<lastGm||(S.dmLogSeq||0)<dmSeen){baseline();return out}
       const dt=S.gameMin-lastGm;lastGm=S.gameMin;
       // a paused world (a Table scene at 1x) keeps its clock: scenes, votes and levers are still read
       if(dt>0){dmSeat(out,dt);for(const a of seats())track(out,a,dt);for(const id of [...T.keys()]){const a=byId(id);if(!a||a.state==='dead')T.delete(id)}}
-      dmLog(out);holds(out);table(out);votes(out);decisions(out);heard();deaths();for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
+      dmLog(out);holds(out);table(out);votes(out);decisions(out);wishes(out);heard();deaths();for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
       const h=Math.floor(S.gameMin/BW.DIGEST_MIN);if(h>hour){hour=h;digest(out)}
       return out},
     reset(){base=false}};
