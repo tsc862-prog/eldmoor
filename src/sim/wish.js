@@ -42,4 +42,8 @@ export function fileWish(holder,who,args){
   queueWish({type:'wish',seat:who.seat,name:who.name||null,day:d,clock:w.clock,gameMin:w.gameMin,place:w.place,tool,what,why,moment,summary:clean(who.summary,200)});
   return {ok:true,filed:tool,left_today:WISH.PER_DAY-wd.n,note:'Noted for the people who build the game. It is read later and never answered in play; nothing changes this session.'};
 }
+// The invitation (#829): one sentence at the end of a refusal whose cause is a missing capability, at most once a game day per
+// holder (the hero, or S.dmAgent). It costs no call and no turn; holder.wishInv is a day number, saved with the holder.
+export const WISH_INVITE='If you wished you had this, say so with wish {tool, what, why, moment} (read later by the builders; nothing changes now).';
+export function wishInvite(holder){const d=dayNo();if(!holder||holder.wishInv===d)return '';holder.wishInv=d;return ' '+WISH_INVITE}
 export const wishesOf=holder=>holder&&holder.wishes?holder.wishes.slice():[];
