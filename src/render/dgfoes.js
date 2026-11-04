@@ -2,7 +2,9 @@
 //   foeKind(type)             {name, pl, role, family, base} from the bestiary (a site creature borrows a field species' sprite)
 //   foeSpot(room, k, n)       where foe k of n stands in a chamber, in tiles ({x, y} are the feet)
 //   drawFoes(ctx, m, st, now, dpr, sc, pseudo)  the live crawl's foes with HP bars (one pip per blow it takes), fallen ones faint
-//   foeAt(m, st, tx, ty)      the foe whose sprite is under tile-space point (tx, ty), or null (for the hover detail)
+//   foeSprite(type, fr)       the foe's sprite canvas (frame 0 or 1), never null
+//   foeAt(m, st, tx, ty)      the foe whose sprite is under world-unit point (tx, ty), or null; the live crawl's foes are drawn
+//                             by render/crawlview.js (#742) at their den, and its foeAt is the one the view asks
 // st.foes: [{type, name, hp, hits, lvl, boss, eff}] for the chamber st.foeRoom (render/dungeonview.js stateOf), read only.
 import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {BESTIARY,VARIANTS,baseId} from '../data/bestiary.js';
@@ -14,7 +16,10 @@ import {drawConditions} from './conditions.js';
 
 export function foeKind(type){const v=VARIANTS[type],b=BESTIARY[baseId(type)],sp=v||b||{},base=v?v.base:baseId(type),M=MOBS[base]||MOBS[baseId(type)];
   return {name:sp.name||(M&&M.name)||'foe',pl:sp.pl||(M&&M.pl)||'foes',role:sp.role||'brute',family:sp.family||'',base,M}}
-const sprOf=(type,fr)=>{const k=foeKind(type),M=k.M;return M&&SPR[M.spr]?sprite('dgf-'+k.base+fr,SPR[M.spr][fr&1],M.col):null};
+// A foe's sprite (frame fr): its species' map sprite; a kind with none (a DM's own creature) borrows the wight's, so no foe is ever invisible.
+const WIGHT_COL={W:'#7d94ad',E:'#9af8ff',M:'#4a7a96'};
+export const foeSprite=(type,fr)=>{const k=foeKind(type),M=k.M;return M&&SPR[M.spr]?sprite('dgf-'+k.base+(fr&1),SPR[M.spr][fr&1],M.col):sprite('dgf-wight'+(fr&1),SPR.wight[fr&1],WIGHT_COL)};
+const sprOf=foeSprite;
 
 // Foes stand in a row across the upper half of the chamber, the party below them.
 export function foeSpot(r,k,n){const half=(r.w-1.4)/2,step=Math.min(1.35,n>1?half*2/(n-1):0),x=r.cx+(k-(n-1)/2)*step;

@@ -73,3 +73,4 @@
 - [Slot and scene](slot-scene.md) — #687 slot wait watches due (scene:true first), queued why + miss cause, wait holds at an answered scene
 - [DM reserved slot](dm-reserved-slot.md) — #733 RUNNER_DM_SLOTS, heroes held during prep, prep clock from first call + HARD_MS, _poll
 - [Scene grab](scene-grab.md) — #737 sceneGrab aborts mid-turn Claude query after 15 s due, resume, queued countdown
+- [Companion voice](companion-voice.md) — #764 compvoice.js: companion_call/say, per-listener memory, no-repeat fill, PER_DAY 6, hooks, pitfalls
