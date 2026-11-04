@@ -233,7 +233,7 @@ export const STEPPING={
   // many random spawn points, so heroes stay local in regions too big for the Eldmoor 7-tile test.
   spawn:{townPad:[4,3],nearest:40},
   nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{
-    lowmark:{herb:16,ore:8,hide:12,fish:8},sedgewater:{herb:14,ore:8,hide:12,fish:6},cairnwold:{herb:12,ore:12,hide:10,fish:0},
+    lowmark:{herb:16,ore:8,hide:12,fish:8},sedgewater:{herb:14,ore:8,hide:12,fish:5},cairnwold:{herb:12,ore:12,hide:10,fish:0},
     cinderreach:{herb:8,ore:14,hide:10,fish:0},rimeholt:{herb:8,ore:10,hide:10,fish:0},palereach:{herb:6,ore:8,hide:8,fish:0}}},
 };
 
