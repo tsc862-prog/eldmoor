@@ -624,7 +624,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const rd = rollDue(sess, rollAt, {busy: st === prepSt && !!prepSt, legacy: /haiku/i.test(model)}); // between turns (waitTurn never returns with a scene or a vote open), never in the prep (#787)
     if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}
-    const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
+    const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping, member: 'DM', tools: () => tools, onLost: () => {if (turnAbort) turnAbort.abort()}}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const prepping = st === prepSt && !!prepSt, prepTimer = prepping ? setTimeout(() => {if (turnAbort) turnAbort.abort()}, prepSt.prep.max_seconds * 1000) : null;
     const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {

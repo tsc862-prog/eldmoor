@@ -127,7 +127,7 @@ other. The rules:
 - `npm run localcheck`: the local agent runner against a mock Ollama (see "Model providers"), and runner
   pacing (turns per game hour on a quiet world, a notification starts a turn at once, the failure stop, a lazy
   model re-prompted and stopped, the scripted takeover of an idle hero).
-- `npm run scenewaitcheck`: Table scene waits (#515): the Ollama queue puts scene answers first, a free turn gives way to its
+- `npm run scenewaitcheck`: Table scene waits (#515, #868: the slot deadlock replayed, resting at the table): the Ollama queue puts scene answers first, a free turn gives way to its
   scene, `table_waits`/`waited_s`/`{queued}`/`scene-missed`, and five slow mock members answering an everyone-at-once scene in time.
 - `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
@@ -357,8 +357,14 @@ is silent, and scene choices time out to the scripted branch, so the world never
   The setup page starts one company runner for an apart group sharing one mind (`planRunners`). Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
   /play/runner/slot`, released after the turn, freed when the child exits) and waits for one when all are
-  taken, so starting is never refused for slots (a company runner also queues its members with
-  `--claude-concurrency`). The DM seat has slots of its own outside that count (`RUNNER_DM_SLOTS`, default 1; 0 = it queues in
+  taken, so starting is never refused for slots (a terminal company runner queues its members with
+  `--claude-concurrency`; under the supervisor its slots are the cap). `RUNNER_SCENE_SLOTS` (default 1, 0 = none, #868) of those are kept for scene
+  answers: a request marked scene goes first and other turns stop one short of the cap, so a member whose scene is due never waits behind free turns
+  and the total never passes `RUNNER_CLAUDE_MAX` (at a cap of 3, two free turns at once). Leases (#868): `GET /play/runner` `claude.leases` lists
+  each one (id, key, member, age_s, quiet_s, idle, scene); nothing is granted to a request that went away, and a request given up after its grant was
+  sent is cancelled by its ticket (`/play/runner/slot/cancel`); the holder beats every `SLOT_BEAT_MS` 30 s (`/play/runner/slot/beat`, with its tool count
+  and idle while in a wait), a lease silent for `SLOT_LOST_MS` 95 s is reclaimed, and a holder with no tool call for `SLOT_MAX_MS` 10 min is told it lost
+  the slot and ends that turn, each with a `[runners]` log line. The DM seat has slots of its own outside that count (`RUNNER_DM_SLOTS`, default 1; 0 = it queues in
   the hero pool as before; #733): its turns and its prep lease one first and never queue behind hero turns ("waiting for the
   DM slot" only when its own are held). While the DM's prep holds the world, hero runners lease no slot: their request waits
   for the prep to end ("the DM prepares the table" in their pace line). Without `--runners` the buttons say how to turn it on.
@@ -600,6 +606,13 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (90 s) more for that live member (`sc.q`). A live member the table still times out is `sc.miss` -> the `scene-missed`
   anomaly. `scene_act` returns `waited_s` (turn lines `sceneS`; the report's "Table scene answers": p50/p90 per mind,
   answers and misses per member). `npm run scenewaitcheck` (five slow mock members on one queue, a member mid-turn).
+- Resting at the table (#868, `tableRest` in `src/sim/scenewait.js`): a member in an open scene that asks nothing of it right now (it has answered, the DM still
+  frames it, its turn has passed), or a hero outside a scene that stops the world, can pass no game time, so `wait` comes back at once with `turn_over: true`
+  ("Your turn is over: end it here. You will be woken when the table settles or asks you again."), for every mind. A Claude turn ends there from a `PostToolUse`
+  hook (`tableHooks` in `scripts/pacing.mjs`: the query stops with no further model call and its usual result and cost; turn flag `table-rest`), a local or
+  OpenAI turn with no closing narration call. Nobody keeps a Claude slot waiting for the table, so the member whose turn it is can always get one. Pacing keeps
+  the promise: at rest only what must be answered (level 3) starts a turn, and `a.tableRest` gives one soft wake once the table has settled (a scene's outcome
+  stays unread for that turn's header). A member whose own scene is due gets its wait back at once with `table_waits`.
 - Talk (`src/sim/talk.js`): an agent's `say`/`party_say` that repeats one of its last 5 lines, or a second
   introduction once members have met (both spoke in each other's hearing), is refused; every turn header
   carries the last 8 lines heard and the companions met.

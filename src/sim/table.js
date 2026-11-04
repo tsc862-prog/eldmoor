@@ -199,6 +199,7 @@ export const canPause=()=>tableOn()&&TABLE.speed<=1;
 // (S.pauseAll, saved with the world; absent = off, so older saves and seeded worlds are untouched). One company: always.
 export const pauseAll=()=>!!S.pauseAll;
 export function setPauseAll(on){if(on)S.pauseAll=true;else delete S.pauseAll}
+export const worldAtTable=()=>allScenes().some(sc=>sc.pause&&!sc.resolved&&stopsWorld(sc)); // a scene holds the whole world now (#868)
 export const stopsWorld=sc=>{if(!sc||!sc.pause||S.pauseAll)return !!(sc&&sc.pause);const F=followed();return !F||sceneCompany(sc)===F};
 // #148: do these members' agents (or the owner, for an absent runner) have the say? Then the moment waits.
 export const agentsDecide=L=>L.some(a=>a&&a.player&&a.state!=='dead'&&!reflexMay(a));

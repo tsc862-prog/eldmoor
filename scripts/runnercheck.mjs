@@ -82,9 +82,11 @@ console.log('runner routes (fake children)');
     k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d; if (exitOnStop && /stop/.test(d)) setTimeout(() => k.emit('exit', 0), 5)}});
     k.kill = () => {k.killed = true; setTimeout(() => k.emit('exit', null), 5)}; kids.push(k); return k};
   let exitOnStop = false; // a runner that releases its heroes and leaves on the stop line (the real ones do)
-  const mk = async (enabled, extra = {RUNNER_CLAUDE_MAX: '10'}) => {const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
+  let voiceBusy = false; // #868: the DM's voice busy for one test
+  const mk = async (enabled, extra = {RUNNER_CLAUDE_MAX: '10'}, over = {}) => {const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
     const play = attachPlay(server, {backend: be, log: () => {}});
-    const sup = attachRunners(server, {play, enabled, log: () => {}, spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', ...extra}});
+    if (over.log) {const busy = play.dmVoiceBusy; play.dmVoiceBusy = () => voiceBusy || (busy ? busy() : false)}
+    const sup = attachRunners(server, {play, enabled, log: () => {}, spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', ...extra}, ...over});
     await new Promise(r => server.listen(0, '127.0.0.1', r)); return {server, sup, base: `http://127.0.0.1:${server.address().port}`}};
 
   const off = await mk(false);
@@ -253,7 +255,7 @@ console.log('runner routes (fake children)');
   // #733: the DM seat's own slot (RUNNER_DM_SLOTS, outside RUNNER_CLAUDE_MAX) and heroes held while the DM prepares
   {const {DM_SLOTS} = await import('./runners.mjs');
     ok(DM_SLOTS === 1, 'one DM slot by default');
-    const ds = await mk(true, {RUNNER_CLAUDE_MAX: '3'}), realDm = RUNNER_KINDS.dm.script; RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs';
+    const ds = await mk(true, {RUNNER_CLAUDE_MAX: '3', RUNNER_SCENE_SLOTS: '0'}), realDm = RUNNER_KINDS.dm.script; RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs';
     for (const id of [1, 2, 3, 4]) await req(ds.base, '/play/runner/start', {method: 'POST', body: {hero: id, provider: 'anthropic'}, origin: PAGE});
     await req(ds.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic'}, origin: PAGE});
     const hl = []; for (const id of [1, 2, 3]) hl.push(await req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:' + id}}));
@@ -298,6 +300,75 @@ console.log('runner routes (fake children)');
     await req(d0.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:2', lease: w2r.lease}}); const wdr = await wd;
     ok(wdr.ok && !wdr.dm, 'then the DM, from the hero pool');
     RUNNER_KINDS.dm.script = realDm; d0.sup.killAll(); d0.server.close()}
+  // #868: one slot kept for scenes, leases listed and reclaimed, nothing granted to a request that went away
+  {const {SCENE_SLOTS, SLOT_LOST_MS, SLOT_MAX_MS, DM_FIRST_MS} = await import('./runners.mjs'), {takeClaudeSlot, withClaudeSlot} = await import('./pacing.mjs');
+    const lines = [], clock = {t: 1e6}, L = (s, key, x = {}) => req(s.base, '/play/runner/slot', {method: 'POST', body: {key, ...x}}), R = (s, x) => req(s.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'x', lease: x.lease}});
+    const ss = await mk(true, {RUNNER_CLAUDE_MAX: '3', RUNNER_DM_SLOTS: '0'}, {log: s => lines.push(s), now: () => clock.t});
+    ok(SCENE_SLOTS === 1, 'one slot kept for scene answers by default');
+    for (const id of [1, 2, 3, 4, 5]) await req(ss.base, '/play/runner/start', {method: 'POST', body: {hero: id, provider: 'anthropic'}, origin: PAGE});
+    const a = await L(ss, 'hero:1', {member: 'Ann', ticket: 't-a'}), b = await L(ss, 'hero:2');
+    let done3 = null; const c = L(ss, 'hero:3').then(x => {done3 = x; return x}); await sleep(120);
+    g = await req(ss.base, '/play/runner');
+    ok(a.ok && b.ok && done3 === null && g.claude.used === 2 && g.claude.waiting === 1 && g.claude.sceneSlots === 1, `free turns stop one short of the cap: two run, the third waits (used ${g.claude.used} of ${g.claude.slots})`);
+    let t = Date.now(); const s4 = await L(ss, 'hero:4', {scene: true}); g = await req(ss.base, '/play/runner');
+    ok(s4.ok && Date.now() - t < 500 && g.claude.used === 3, `a scene request takes the kept slot at once (${Date.now() - t} ms), and the three in use are RUNNER_CLAUDE_MAX`);
+    const s5w = L(ss, 'hero:5', {scene: true}); await sleep(100); g = await req(ss.base, '/play/runner');
+    ok(g.claude.used === 3 && g.claude.waiting === 2, 'a second scene request waits: nothing passes the cap');
+    await R(ss, s4); const s5 = await s5w; g = await req(ss.base, '/play/runner');
+    ok(s5.ok && done3 === null && g.claude.used === 3, 'the freed slot goes to the scene ahead of the free turn that asked first');
+    await R(ss, s5); await sleep(60); g = await req(ss.base, '/play/runner');
+    ok(done3 === null && g.claude.used === 2, 'and with no scene waiting the kept slot stays free: the free turn still waits');
+    await R(ss, b); const cr = await c;
+    ok(cr.ok, 'a free turn ending lets the next free turn in');
+    // leases are listed
+    clock.t += 40000; await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, idle: true, tools: 0}}); g = await req(ss.base, '/play/runner');
+    const la = g.claude.leases.find(x => x.id === a.lease);
+    ok(la && la.key === 'hero:1' && la.member === 'Ann' && la.age_s === 40 && la.idle === true && la.scene === false && g.claude.leases.length === 2, 'GET /play/runner lists each lease: ' + JSON.stringify(la));
+    await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, tools: 3}}); g = await req(ss.base, '/play/runner');
+    ok(g.claude.leases.find(x => x.id === a.lease).idle === false, 'a new tool call clears idle');
+    // a lease nobody beats for is reclaimed; one that beats stays
+    clock.t += 60000; await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, tools: 3}});
+    clock.t += SLOT_LOST_MS - 60000 + 1000; const probe = await L(ss, 'hero:2'); g = await req(ss.base, '/play/runner');
+    ok(g.claude.leases.some(x => x.id === a.lease) && !g.claude.leases.some(x => x.id === cr.lease) && lines.some(l => /reclaimed: no heartbeat for \d+ s/.test(l)), 'a lease with no heartbeat is reclaimed with a log line, a beating one stays: ' + lines.filter(l => /reclaimed/.test(l)).join(' / '));
+    const lost = await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:3', lease: cr.lease}});
+    ok(lost.lost === true, 'a holder of a reclaimed lease hears it lost it');
+    await R(ss, probe);
+    // a live holder with no tool call for SLOT_MAX_MS: told, and only then is the slot free again
+    for (let i = 0; i < 9; i++) {clock.t += 70000; await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, tools: 3}})}
+    clock.t += 80000; const over = await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, tools: 3}}); g = await req(ss.base, '/play/runner');
+    ok(over.lost === true && g.claude.used === 0 && lines.some(l => /reclaimed: no tool call for 1\d min/.test(l)), `no tool call for ${SLOT_MAX_MS / 60000} min: reclaimed with a log line, the holder told: ` + over.why);
+    const live = await L(ss, 'hero:1'); for (let i = 0; i < 12; i++) {clock.t += 70000; const k = await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: live.lease, tools: i + 1}}); if (k.lost) ok(false, 'a long turn that keeps calling tools lost its slot')}
+    g = await req(ss.base, '/play/runner'); ok(g.claude.leases.length === 1, 'a long turn that keeps calling tools keeps its slot (14 minutes)'); await R(ss, live);
+    // a grant nobody received
+    clock.t += 1000; const tk = await L(ss, 'hero:2', {ticket: 't-b'}); const cancel = await req(ss.base, '/play/runner/slot/cancel', {method: 'POST', body: {key: 'hero:2', ticket: 't-b'}}); g = await req(ss.base, '/play/runner');
+    ok(tk.ok && cancel.ok && g.claude.used === 0 && lines.some(l => /returned: its request was given up/.test(l)), 'a request given up after its grant was sent: the ticket returns the slot at once');
+    // an aborted request while it sat in the DM's-voice delay, and one in the queue
+    ss.sup; const ac = new AbortController();
+    const held = fetch(ss.base + '/play/runner/slot', {method: 'POST', headers: {'content-type': 'application/json', origin: PAGE}, body: JSON.stringify({key: 'hero:4'}), signal: ac.signal}).catch(() => null);
+    voiceBusy = true; // the mock's voice is busy for this request onward (the next one sits in the delay)
+    const held2c = new AbortController(), held2 = fetch(ss.base + '/play/runner/slot', {method: 'POST', headers: {'content-type': 'application/json', origin: PAGE}, body: JSON.stringify({key: 'hero:5'}), signal: held2c.signal}).catch(() => null);
+    await sleep(200); held2c.abort(); await held2; await held; await sleep(DM_FIRST_MS + 200); voiceBusy = false; g = await req(ss.base, '/play/runner');
+    const hold = g.claude.leases.filter(x => x.key === 'hero:5');
+    ok(hold.length === 0, `a request aborted during the DM's-voice delay gets no lease (the leak of #868; used ${g.claude.used})`);
+    for (const x of g.claude.leases) await req(ss.base, '/play/runner/slot/release', {method: 'POST', body: {key: x.key, lease: x.id}});
+    const f1 = await L(ss, 'hero:1'), f2 = await L(ss, 'hero:2'), qac = new AbortController();
+    const q = fetch(ss.base + '/play/runner/slot', {method: 'POST', headers: {'content-type': 'application/json', origin: PAGE}, body: JSON.stringify({key: 'hero:3'}), signal: qac.signal}).catch(() => null);
+    await sleep(100); qac.abort(); await q; await sleep(60); await R(ss, f1); await sleep(60); g = await req(ss.base, '/play/runner');
+    ok(g.claude.used === 1 && g.claude.waiting === 0, 'a request aborted in the queue never gets the slot that frees'); await R(ss, f2);
+    ss.sup.killAll(); ss.server.close();
+    // the runner's side
+    const calls = [], fk = script => {let i = 0; return async (u, o) => {const b = JSON.parse(o.body), p = u.replace('http://x', ''); calls.push({p, b}); if (/cancel|release|beat/.test(p)) return {status: 200, json: async () => p.endsWith('beat') ? beatAns : {ok: true}};
+      const x = script[Math.min(i++, script.length - 1)]; if (x instanceof Error) throw x; return {status: 200, json: async () => x}}}; let beatAns = {ok: true};
+    const tout = Object.assign(new Error('timed out'), {name: 'TimeoutError'});
+    let rel = await takeClaudeSlot('http://x', () => {}, {key: 'hero:1', member: 'Ann', tools: () => 7, fetchImpl: fk([tout, {ok: true, lease: 'L1'}]), beatMs: 20});
+    ok(calls.filter(c => c.p === '/play/runner/slot').length === 2 && calls.some(c => c.p.endsWith('cancel')) && calls.find(c => c.p === '/play/runner/slot').b.member === 'Ann' && calls.find(c => c.p === '/play/runner/slot').b.ticket, 'a slot request that timed out is cancelled and asked again, never run without a lease');
+    await sleep(70); const bt = calls.filter(c => c.p.endsWith('beat')); ok(bt.length >= 2 && bt[0].b.lease === 'L1' && bt[0].b.tools === 7, `the holder beats while it holds the lease (${bt.length} beats, its tool count on them)`);
+    rel.idle(true); await sleep(10); ok(calls.filter(c => c.p.endsWith('beat')).some(c => c.b.idle === true), 'release.idle tells the supervisor'); rel(); const nb = calls.length; await sleep(60);
+    ok(calls.length === nb + 0 || calls.slice(nb).every(c => !c.p.endsWith('beat')), 'a released lease stops beating');
+    let lostN = 0; beatAns = {ok: false, lost: true, why: 'no tool call for 10 min'}; const say = []; rel = await takeClaudeSlot('http://x', s => say.push(s), {key: 'hero:1', fetchImpl: fk([{ok: true, lease: 'L2'}]), beatMs: 15, onLost: () => lostN++}); await sleep(70);
+    ok(lostN === 1 && say.some(s => /took this Claude slot back/.test(s)), 'a holder told it lost its slot ends the turn, once: ' + say.join(' / ')); rel(); beatAns = {ok: true};
+    let ran = 0; const r0 = await withClaudeSlot('http://x', async () => {ran++; return true}, () => {}, {key: 'hero:1', stopped: () => true, fetchImpl: fk([{ok: true, lease: 'L3'}])});
+    ok(ran === 0 && r0 === false, 'a runner told to stop runs no turn on the way out (it would run with no lease)')}
   // six minds: the Fellowship's five as hero runners and the DM start together, whatever the caps
   {for (const h of heroes) h.fellow = h.id <= 5;
     const six = await mk(true, {RUNNER_CLAUDE_MAX: '1', RELAY_MAX_RUNNERS: '2'}), n2 = kids.length;
@@ -392,11 +463,11 @@ console.log('a slow page: late answers kept for the retry, held waits, page busy
   ok(calls().length === before + 1, 'past lateMs the kept answer is gone and the page is asked again'); ws.say({type: 'result', id: calls().at(-1).id, result: {ok: true}}); await p5;
   // 5. a wait the live page still holds (an answered Table scene) is not offline
   r = await be.call(1, 'wait', {minutes: 10});
-  ok(r.ok === true && r.held === true && !r.offline && r.why === HELD_WAIT.why, 'a wait still held by a live page answers "still waiting", not offline');
+  ok(r.ok === true && r.held === true && r.turn_over === true && !r.offline && r.why === HELD_WAIT.why, 'a wait a live page has not answered yet ends the turn (turn_over), not offline');
   const w0 = calls().length, p6 = be.call(1, 'wait', {minutes: 10}); await sleep(20);
   ok(calls().length === w0, 'the next wait joins the one the page still holds');
-  ws.say({type: 'result', id: calls().filter(m => m.tool === 'wait').at(-1).id, result: {ok: true, waited_min: 0, why: 'the table settled'}}); r = await p6;
-  ok(r.ok && r.why === 'the table settled', 'and gets the table\'s end when it comes');
+  ws.say({type: 'result', id: calls().filter(m => m.tool === 'wait').at(-1).id, result: {ok: true, waited_min: 30, why: 'time passed'}}); r = await p6;
+  ok(r.ok && r.why === 'time passed', 'and gets the page\'s own answer when it comes');
   // 6. a silent page (no beat) is page busy, and is told so
   clearInterval(beat); await sleep(1050);
   r = await be.call(1, 'wait', {minutes: 5});

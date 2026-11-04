@@ -266,34 +266,59 @@ export function wakeNote(w) {
 // for the turn and release it after, so any number of Claude runners can be started (five members and
 // the DM) while at most RUNNER_CLAUDE_MAX talk to the API at once (the DM has its own, RUNNER_DM_SLOTS, #733; while the DM's
 // prep holds the world a hero's request waits for it). Outside the supervisor (a terminal runner) or when the supervisor does
-// not answer, the turn just runs.
+// not answer, the turn just runs. One slot of RUNNER_CLAUDE_MAX is kept for scene answers (RUNNER_SCENE_SLOTS, #868).
 // #687: due() says whether the member's own Table scene waits for its answer (the /play/health watch). While the runner waits for
 // a slot it asks every DUE_POLL_MS; once due, onDue() runs once (the runner tells the game its answer is queued: POST /play/pace
 // {queued:true, why:'slot'}) and the request is asked again with scene:true, which the supervisor serves first. The release
 // function carries .scene = true when the scene came up while waiting, so the turn answers it first.
+// #868: a lease is held by a turn that says so: every SLOT_BEAT_MS the holder posts /play/runner/slot/beat with its tool-call count
+// (tools()), so the supervisor can reclaim what nobody holds any more. onLost() runs when the answer says the slot was taken back (a
+// turn with no tool call for SLOT_MAX_MS): the runner ends that turn, so a reclaimed slot never runs alongside its new holder.
+// Each request names a ticket; a request cut off here is cancelled by it, so a grant whose answer never reached us goes back at once.
+// A time-out asks again (running without a lease would pass RUNNER_CLAUDE_MAX). The release function carries .idle(on): the runner
+// reports while it sits in a wait call, which GET /play/runner shows. member: who the lease is for (a company runner has many).
 export const DUE_POLL_MS = 1000;
-export async function takeClaudeSlot(base, log = () => {}, {key = process.env.ELDMOOR_RUNNER_KEY, stopped = () => false, fetchImpl = fetch, due = null, onDue = null} = {}) {
-  if (!key || !base) return Object.assign(() => {}, {scene: false});
+let slotTickets = 0;
+export async function takeClaudeSlot(base, log = () => {}, {key = process.env.ELDMOOR_RUNNER_KEY, stopped = () => false, fetchImpl = fetch, due = null, onDue = null, member = null, tools = () => 0, onLost = null, beatMs = SLOT_BEAT_MS} = {}) {
+  if (!key || !base) return Object.assign(() => {}, {scene: false, idle: () => {}});
   const post = (path, body, ms, signal) => fetchImpl(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms)});
   const isDue = async () => {try {return !!(due && await due())} catch {return false}};
   let lease = null, said = false, scene = await isDue(), told = false, waitedFor = false;
   while (!stopped()) {
-    const ac = new AbortController();
+    const ac = new AbortController(), ticket = process.pid + '-' + (++slotTickets);
     const watch = due ? setInterval(async () => {if (!(await isDue())) return; waitedFor = true;
       if (!told) {told = true; try {if (onDue) await onDue()} catch {}}
       if (!scene) {scene = true; ac.abort()}}, DUE_POLL_MS) : null;
-    let j = null, cut = false;
-    try {const r = await post('/play/runner/slot', {key, ...(scene ? {scene: true} : {})}, 30000, ac.signal); j = r.status === 200 ? await r.json() : null} catch {cut = ac.signal.aborted}
+    let j = null, cut = false, late = false;
+    try {const r = await post('/play/runner/slot', {key, ticket, ...(member ? {member} : {}), ...(scene ? {scene: true} : {})}, 30000, ac.signal); j = r.status === 200 ? await r.json() : null} catch (e) {cut = ac.signal.aborted; late = !cut && e && e.name === 'TimeoutError'}
     if (watch) clearInterval(watch);
+    if (cut || late) await post('/play/runner/slot/cancel', {key, ticket}, 5000).catch(() => {}); // it may have been granted as we gave up on it
     if (cut) {log('[pace] its own Table scene opened while it waited for a Claude slot: asking again, scene first'); continue}
+    if (late) continue;
     if (!j) break; // no supervisor here: run without a lease
     if (j.ok) {lease = j.lease; if (said) log('[pace] got a ' + (j.dm ? 'DM slot' : 'Claude slot') + (waitedFor ? ' (scene first)' : '')); break}
     if (!said || (j.prep ? said !== 'prep' : said === 'prep')) {said = j.prep ? 'prep' : true; // #733: the DM's prep holds hero turns; the DM's line names its own slot
       log(j.prep ? '[pace] the DM prepares the table: no Claude turn until it is done' : j.dm ? `[pace] waiting for the DM slot (its ${j.dmSlots ?? 1} and all ${j.slots} hero slots in use; RUNNER_DM_SLOTS)` : `[pace] waiting for a Claude slot (all ${j.slots} in use; RUNNER_CLAUDE_MAX)`)}
   }
-  return Object.assign(() => {if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}}, {scene: waitedFor});
+  const beat = async idle => {if (!lease) return;
+    try {const r = await post('/play/runner/slot/beat', {key, lease, tools: tools(), ...(idle == null ? {} : {idle})}, 5000), b = await r.json();
+      if (b && b.lost && lease) {lease = null; clearInterval(timer); log('[pace] the supervisor took this Claude slot back: ' + (b.why || 'no tool call for too long') + '; the turn ends'); if (onLost) onLost()}} catch {}};
+  const timer = lease ? setInterval(() => beat(), beatMs) : null; if (timer && timer.unref) timer.unref();
+  return Object.assign(() => {if (timer) clearInterval(timer); if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}}, {scene: waitedFor, idle: on => {beat(!!on)}});
 }
-export async function withClaudeSlot(base, fn, log, opts) {const release = await takeClaudeSlot(base, log, opts); try {return await fn()} finally {release()}}
+// opts.onLease(release): the turn's lease, for release.idle. A runner told to stop runs no turn on the way out (it would run unleased).
+export async function withClaudeSlot(base, fn, log, opts = {}) {const release = await takeClaudeSlot(base, log, opts); if (opts.onLease) opts.onLease(release);
+  try {return opts.stopped && opts.stopped() ? false : await fn()} finally {release()}}
+
+// #868: the Agent SDK hooks of a Claude hero turn. A wait that came back with turn_over ends the turn right there: the PostToolUse hook
+// stops the query, so no further model call is made (the turn's result, cost and session arrive as usual; checked on the real CLI,
+// sessioncheck). A model that would call wait again cannot, so nobody keeps a slot at the table. idle(on) reports the wait to the lease.
+export const WAIT_TOOL = 'mcp__eldmoor__wait';
+export const turnOver = v => /turn_over\\*"\s*:\s*true/.test(typeof v === 'string' ? v : JSON.stringify(v) || '');
+export function tableHooks({idle = () => {}, onOver = () => {}} = {}) {
+  return {PreToolUse: [{matcher: WAIT_TOOL, hooks: [async () => {idle(true); return {}}]}],
+    PostToolUse: [{matcher: WAIT_TOOL, hooks: [async i => {idle(false); if (!turnOver(i && i.tool_response)) return {}; onOver(); return {continue: false, stopReason: 'your turn is over at the table'}}]}]};
+}
 
 // #687 (follow-up): a Claude member whose own Table scene has been due for SCENE_GRAB_MS with no scene_act is mid-turn in a model
 // call that no tool result can interrupt. sceneGrab polls due() every `every` ms; once it has held for `ms` it calls abort() once
@@ -355,7 +380,7 @@ export async function closeReflection(base, hero, runner, id, wrote, fetchImpl =
 // other heroes, and a runner that keeps its claims then plays nobody. worldChanged() names the held heroes whose
 // identity changed. Identity today: the hero's name for its id (and the world instance id, once /play/health carries
 // it as `world`: both sides must have one). Swap the test here when the game names the world.
-import {NEW_WORLD_EXIT} from './runners.mjs';
+import {NEW_WORLD_EXIT, SLOT_BEAT_MS} from './runners.mjs';
 export {NEW_WORLD_EXIT};
 export function worldChanged(known, heroes) {
   const out = [];
