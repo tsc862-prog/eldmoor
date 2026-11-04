@@ -59,6 +59,7 @@
 - [Apart companycheck #459](apart_companycheck.md) — companycheck-apart.mjs sections, fixture traps (links/seat not reset by init), heir-wait fix
 - [Starved company #530](starved_company.md) — serveStarved in dm.js refill, LEAD 120, busy not skipped, dmcheck bound 360
 - [Fireside #571](fireside.md) — fireside/debrief kinds, table.js next/liveMs/onSceneEnd hooks, hasLinks gate, 600-char lines, copy refusal, townsfolk hmem
+- [DM spoke for #750](dm_spoke_for.md) — fire asks the question; spokefor.js cuts DM quotes of agent heroes in dmagent run(); newcomer and own-words exempt
 - [Sight events #570](sight_events.md) — sighthero.js: you-see events on coming into sight, seeker stops on sight, In sight header, Looking for
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap
 - [Night sight #583](night_sight.md) — sightFor(a,z): night 0.6 for agent heroes only, towns exempt, hash unchanged
