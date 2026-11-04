@@ -732,6 +732,16 @@ Moss, Venom Sac, Ember Core, Rime Pelt, Hoar Wool) are ordinary creature loot, n
 | Fenmire Eel Stew | A camp meal; the name is the camp cook's joke, the recipe is serious. |
 | Tarn Whitefish Chowder | A camp meal; the best the Hoarfell camps can offer. |
 | Hoarfell Survey Chart | A scribed map of the high country that tells a reader where they are. |
+| Fenwater Salve | A thin green potion of redroot in fen-water (crafted, skill band 1). |
+| Wightbone Philtre | Crypt marrow cut with rimebloom; the strongest crafted draught (band 4). |
+| Hearthbloom Fish Pie | A camp meal of perch in a petal crust; sharpens the eye (band 1). |
+| Tarn Hunter's Feast | A Hoarfell hunter's winter-march meal of whitefish and eel (band 4). |
+| Scroll of the Brief Ward | A hurried, weak ward (band 1). |
+| Scroll of the Unbroken Line | A strong ward inked with grave dust (band 4). |
+| Mireforged Greaves | Fen-forged boots of tin and bogiron (smithing band 1, item level 8). |
+| Rimesteel Greatblade | A frost-hard master's weapon of icevein and cinder scale (band 4, item level 20). |
+| Boarhide Buckler | A small round shield of wolf pelt and mud-boar bristle (band 1, item level 7). |
+| Shagmane Hood | A master's hood of hoar wool and shaghorn horn (band 4, item level 20). |
 
 **Crafted gear** (`CRAFT_GEAR`): Tinforged Weapon, Bogiron Handguard, Ashsteel Cuirass, Wolfhide Cowl, Hoarfrost Greatcoat.
 Tinforged is a new material word (tin-forged, the plain first alloy of a new smith, sitting below Bogiron in the
@@ -756,6 +766,16 @@ Thornvale tier); the other material words are the existing ones under Equipment.
 | Scribing | scroll-hearthward | 0 | 2 Rushpulp, Redroot Leaf | Scroll of Hearthward |
 | Scribing | scroll-steadfast | 2 | Rushpulp, Venom Sac | Scroll of the Steadfast Hour |
 | Scribing | chart-hoarfell | 3 | 3 Rushpulp, Venom Sac | Hoarfell Survey Chart |
+| Alchemy | salve-fenwater | 1 | 2 Redroot Leaf, Fen Moss | Fenwater Salve |
+| Alchemy | philtre-wightbone | 4 | Rimebloom, Wight Marrow, Hearthbloom | Wightbone Philtre |
+| Smithing | forge-mireforged | 1 | 2 Tin Ore, 2 Bogiron Ore | Mireforged Greaves |
+| Smithing | forge-rimesteel | 4 | 3 Icevein Ore, 2 Cinder Scale, 2 Ember Core | Rimesteel Greatblade |
+| Leatherworking | cure-boarhide | 1 | 2 Wolf Pelt, 2 Mudback Bristle | Boarhide Buckler |
+| Leatherworking | cure-shagmane | 4 | 3 Hoar Wool, 2 Shaghorn Horn, Cinder Scale | Shagmane Hood |
+| Cooking | meal-bloom-pie | 1 | 2 River Perch, Hearthbloom | Hearthbloom Fish Pie |
+| Cooking | meal-hunters-feast | 4 | 2 Tarn Whitefish, Hearthbloom, Mere Eel | Tarn Hunter's Feast |
+| Scribing | scroll-brief-ward | 1 | 2 Rushpulp, Fen Moss | Scroll of the Brief Ward |
+| Scribing | scroll-unbroken | 4 | 3 Rushpulp, Grave Dust, Venom Sac | Scroll of the Unbroken Line |
 
 **Where things are made (issue #258).** Every recipe can be made at the workshops of a friendly town; at a camp fire only
 cooking and alchemy (a meal over the coals, a draught in a pot). A crafted piece of gear takes the crafter's class noun
