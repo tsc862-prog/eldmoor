@@ -190,6 +190,7 @@ jobs:
       - {name: Learn the world, run: npm run lorecheck}
       - {name: Tool quick wins, run: npm run toolwincheck}
       - {name: Pay and mark tools, run: npm run paymarkcheck}
+      - {name: Wish tool for the builders (DM and heroes), run: npm run wishcheck}
       - {name: Hire tool, run: npm run hirecheck}
       - {name: Challenge tool (honour duels at the table), run: npm run challengecheck}
       - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
