@@ -25,6 +25,7 @@
 //             dm-scripted (issue #541): the DM agent answered under BW.DM_SHARE of the answerable calls (talk, table voice, slot)
 //             over BW.DM_WIN game minutes while the seat stayed held by a runner.
 //             no-flee-rule: an agent hero whose gambits hold no flee rule (issue #617), again every BW.NO_FLEE_MIN
+//             dm-spoke-for (issue #750): a DM-voiced line quoted an agent-played member and the game cut it (seat dm, the DM model).
 //             no-aim: an agent hero with no stated aim (issue #535, sim/intent.js) for BW.NO_AIM_MIN outside camp and town
 //             rest (the digest counts aims stated per hero, by name).
 //   decision  each hero's Mind entry (sim/brain.js) once it settles: kind, provider, model, options,
@@ -154,10 +155,15 @@ export function makeWatch(opts={}){
     const A=dmWin.reduce((t,w)=>t+w.ag,0),B=dmWin.reduce((t,w)=>t+w.sc,0),N=A+B;
     if(S.gameMin-dmHeld>=BW.DM_WIN&&N>=BW.DM_MIN_CALLS&&A/N<BW.DM_SHARE&&S.gameMin-dmAnom>=BW.DM_WIN){dmAnom=S.gameMin;
       anomaly(out,'dm-scripted',null,'The DM agent answered '+A+' of '+N+' answerable calls ('+Math.round(100*A/N)+'%) over '+BW.DM_WIN/60+' game hours while its seat was held: the scripted DM filled '+B,{agent:A,scripted:B,share:Math.round(100*A/N)/100,windowMin:BW.DM_WIN,seat:st})}}
+  // dm-spoke-for (#750): the game cut a DM-voiced line that quoted an agent-played member (sim/spokefor.js); one per cut, the logger
+  // keeps one line per seat in BD.QUIET and counts the rest. The model is the DM runner's latest reported turn.
+  function spoke(out,e){const d=e.detail||{};if(!d.spoke_for)return;H.dmSpokeFor=(H.dmSpokeFor||0)+1;const t=S.dmAgent&&S.dmAgent.turns&&S.dmAgent.turns.find(x=>x.model)||null;H.anomalies++;
+    out.push({kind:'anomaly',rec:{kind:'dm-spoke-for',seat:'dm',hero:null,gameMin:Math.round(S.gameMin),clock:day(),severity:'warn',text:'The DM spoke for '+d.spoke_for+' ('+(d.voice||d.call||d.tool||e.kind)+'): the line was cut',
+      evidence:{who:String(d.spoke_for),voice:d.voice||d.call||d.tool||null,scene:d.scene||null,provider:t&&t.provider||null,model:t&&t.model||null}}})}
   function dmLog(out){const L=S.dmLog||[],seq=S.dmLogSeq||0;if(seq<=dmSeen)return;
     const fresh_=L.filter(e=>e.id>dmSeen).reverse();dmSeen=seq;const now=S.gameMin;
     const fo=focus();
-    for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;shareOf(e);if(fo&&countable(e)){H.dmFocus.acts++;if(touches(e,fo))H.dmFocus.fellow++}if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');
+    for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;shareOf(e);spoke(out,e);if(fo&&countable(e)){H.dmFocus.acts++;if(touches(e,fo))H.dmFocus.fellow++}if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');
       const ok=d.result==='applied';H.levers[ok?'pulled':'refused']++;const b=H.levers.by[by]||(H.levers.by[by]={pulled:0,refused:0});b[ok?'pulled':'refused']++;
       pulls.push(now);if(!ok)refusals.push(now);
       if(ok&&BW.DANGER.includes(d.lever)){const P=d.params||{},at=Number.isFinite(+P.x)&&Number.isFinite(+P.y)?{x:+P.x,y:+P.y}:null;
