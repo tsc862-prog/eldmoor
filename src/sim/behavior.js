@@ -89,7 +89,7 @@ export function makeWatch(opts={}){
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map(),iseq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
     levers:{pulled:0,refused:0,by:{}},dmlog:{},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{},gambits:{}});
-  const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
+  const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0,capped:(t.capped||0)+(t.stalled||0),fights:t.fights||0}:{scenes:0,agent:0,reflex:0,capped:0,fights:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
   function baseline(){base=true;seenRuling.clear();for(const p of (S.rulings&&S.rulings.past)||[])seenRuling.add(p.id);lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
@@ -174,7 +174,7 @@ export function makeWatch(opts={}){
   // gambit holds (#630): the digest counts holds and held seconds per hero; one that ran to HOLD_MAX_S unanswered is an anomaly
   function holds(out){for(const h of drainHolds()){const t=H.holds||(H.holds={n:0,heldS:0,expired:0,by:{}}),b=t.by[h.name]||(t.by[h.name]={n:0,s:0});t.n++;t.heldS+=h.s;b.n++;b.s+=h.s;
     if(h.how==='expired'){t.expired++;const a=byId(h.id);anomaly(out,'hold-expired',a||null,h.name+' held the world with "'+h.rule+'" and did not act in '+h.s+' s',{rule:h.rule,seconds:h.s},'warn')}}}
-  function table(out){const t=tStats();H.table.opened+=Math.max(0,t.scenes-tLast.scenes);H.table.agentTurns+=Math.max(0,t.agent-tLast.agent);H.table.reflexTurns+=Math.max(0,t.reflex-tLast.reflex);tLast=t;
+  function table(out){const t=tStats();H.table.opened+=Math.max(0,t.scenes-tLast.scenes);H.table.agentTurns+=Math.max(0,t.agent-tLast.agent);H.table.reflexTurns+=Math.max(0,t.reflex-tLast.reflex);H.table.capped=(H.table.capped||0)+Math.max(0,t.capped-tLast.capped);H.table.fights=(H.table.fights||0)+Math.max(0,t.fights-tLast.fights);tLast=t;
     const sc=S.table;
     if(scene&&(scene!==sc||scene.phase==='outcome')&&!seenScene.has(scene)){seenScene.add(scene);H.table.resolved++;
       const mine=scene.beats.filter(b=>{const a=byId(b.id);return a&&a.player});

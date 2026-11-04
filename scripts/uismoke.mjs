@@ -758,7 +758,7 @@ console.log('the DM prepares the table');
       {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[0].name+' (drawn)',res:'d20 1+4=5 vs AC 15 (a natural 1): missed',by:'foe',rd:2,roll:R(1,4,15,0,0,0,ms[0].name)}]};
   m.target=ms[0];S.table=sc;TB.renderTable(1);
   const t=()=>box.textContent,v=TB.combatView();
-  ok(!box.hidden&&/ROUND 2\/3/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+'/'+(v&&v.of)+')');
+  ok(!box.hidden&&/ROUND 2(?!\/)/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+', no "of")');
   const chips=box.querySelectorAll('.tci');
   ok(chips.length===ms.length+1&&chips[1].classList.contains('foe'),'combat banner: initiative order with the foe at its place ('+chips.length+' chips)');
   ok(chips[2].classList.contains('cur')&&/▶/.test(chips[2].textContent)&&!chips[1].classList.contains('cur'),'combat banner: the current actor is marked');

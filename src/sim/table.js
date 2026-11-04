@@ -251,18 +251,34 @@ const upIn=sc=>sc.ids.map(byId).filter(b=>living(b)&&!isDown(b)&&!(sc.out||[]).i
 function inPlay(sc,a){if(inFight(sc,a))return true;if(!bleeding(sc)||!living(a)||(sc.out||[]).includes(a.id))return false;
   return isDown(a)||bleedIn(sc).some(d=>dist(a,d)<=DOWN.REACH)}
 const fightOver=sc=>(!!sc.end||!foeOf(sc)||!fighters(sc).length)&&!bleeding(sc);
-const roundCap=sc=>bleeding(sc)?TABLE.DOWN_ROUNDS:TR.ROUNDS;
+// Combat plays until it is decided (#875). The hard cap and the stall rule only guard against loops: TR.ROUNDS_MAX rounds
+// (Kragmaw TR.BOSS_ROUNDS_MAX), and TR.STALL rounds in a row with no HP change on either side. Past the fight's end a bleeding
+// member keeps the table open TABLE.DOWN_ROUNDS more rounds (#654), counted from the round the fight ended (sc.eb).
+const roundCap=sc=>sc.kind==='boss'?TR.BOSS_ROUNDS_MAX:TR.ROUNDS_MAX;
+const looseOver=sc=>!!sc.end||!foeOf(sc)||!fighters(sc).length; // the fight itself is decided (a bleeding member may still hold the table)
+const hpSig=sc=>Math.round([...scMem(sc),...foesOf(sc)].reduce((t,e)=>t+(e.hp||0),0)*10);
+// Why the table must close now, or null (also counts the stall): 'cap' | 'stall' | 'bleed' (the extension ran out).
+function closeWhy(sc){if(looseOver(sc)){if(sc.eb==null)sc.eb=sc.rd;return sc.rd>=sc.eb+TABLE.DOWN_ROUNDS?'bleed':null}
+  if(sc.rd>=roundCap(sc)&&!(bleeding(sc)&&sc.rd<roundCap(sc)+TABLE.DOWN_ROUNDS))return 'cap'; // a member still bleeding at the cap gets the rescue rounds (#654)
+  if(bleeding(sc)){sc.st=0;return null} // death saves are not a stall
+  const g=hpSig(sc);if(g===sc.sig)sc.st=(sc.st||0)+1;else{sc.sig=g;sc.st=0}
+  return sc.st>=TR.STALL?'stall':null}
 const foeDue=sc=>rounds(sc)&&!sc.fd&&sc.i>=sc.foeAt;
 function foeAct(sc){for(const b of foeTurn(sc,foesOf(sc),fighters(sc))){b.rd=sc.rd;sc.beats.push(b)}}
 // The round is done: start the next one while the fight goes on (its rolls go to the DM log with the outcome). True = a new round.
-function nextRound(sc){if(fightOver(sc)||sc.rd>=roundCap(sc))return false;delete sc.sh;
+function nextRound(sc){if(fightOver(sc))return false;
+  {const w=closeWhy(sc);if(w){if(w!=='bleed')capScene(sc,w);return false}}delete sc.sh;
   for(const b of roundEnd(sc,sc.ids.map(byId).filter(a=>living(a)&&!isDown(a)&&!(sc.out||[]).includes(a.id)),foesOf(sc))){b.rd=sc.rd;sc.beats.push(b)} // poison bites, roots and poisons are saved against (#296)
   if(fightOver(sc))return false;
   for(const a of scMem(sc))tickRound(a);for(const f of foesOf(sc))tickRound(f); // a round has passed: ability cooldowns and round-long effects run down
   sc.rd++;sc.acts={};sc.i=0;sc.fd=0;startTurn(sc);return true}
 // Step mode (#285): a round is done and another will follow; hold the paused scene for the watcher (TABLE.step).
 // sc.sh = {rd, t, go}: the round it holds after, real seconds held, released. True = hold this step.
-const moreRounds=sc=>rounds(sc)&&!fightOver(sc)&&sc.rd<roundCap(sc);
+const moreRounds=sc=>rounds(sc)&&!fightOver(sc)&&(looseOver(sc)?sc.rd<(sc.eb==null?sc.rd:sc.eb)+TABLE.DOWN_ROUNDS:(sc.rd<roundCap(sc)||(bleeding(sc)&&sc.rd<roundCap(sc)+TABLE.DOWN_ROUNDS))&&(sc.st||0)<TR.STALL);
+// A scene closed by a guard (#875): a beat, the outcome's words and the DM log line say so; the fight goes on in the world.
+function capScene(sc,why){if(sc.capped)return;sc.capped=why;
+  sc.beats.push({id:0,name:'The table',k:'capped',text:why==='stall'?'The fight grinds on':'The fight runs long',res:why==='stall'?TR.STALL+' rounds with no blow that told':sc.rd+' rounds, the table closes',by:'cond',rd:sc.rd});
+  (sc.rl||(sc.rl=[])).push({rd:sc.rd,by:'The table',at:'the fight',d20:null,hit:true,dmg:0,note:'scene-capped ('+why+') after '+sc.rd+' rounds: the fight goes on in the world'})}
 function stepHold(sc,dt){if(TABLE.step==='off'||!stopsWorld(sc)||TABLE.speed>1||!moreRounds(sc))return false;
   const h=sc.sh&&sc.sh.rd===sc.rd?sc.sh:(sc.sh={rd:sc.rd,t:0,go:0});if(h.go)return false;
   h.t+=dt;if(TABLE.step==='auto'&&h.t>=TABLE.stepS){h.go=1;return false}return true}
@@ -510,9 +526,9 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
     const adv=(S.adventures||[]).find(v=>v.id===sc.ctx.adv);
     if(adv&&adv.phase==='active'){adv.tablePick={k:sc.ctx.k,br};if(adv.stage==='choose')adv.stage='go';const ld=byId(adv.lead);if(ld&&(ld.state==='hunt'||ld.state==='travel')){ld.state='travel';ld.dest=null}}}
   else if(sc.kind==='decision'){const P=resolveProp(propById(sc.ctx.prop),'voted at the table');tail=P&&P.result?P.result+'.':''}
-  else if(COMBAT[sc.kind]){if(rounds(sc))flushRolls(sc);const f=foeOf(sc),fl=by('retreat'),fell=(sc.fell||[]).map(byId).filter(Boolean).map(b=>b.name);
+  else if(COMBAT[sc.kind]){if(rounds(sc)){fightStats(F,sc);flushRolls(sc)}const f=foeOf(sc),fl=by('retreat'),fell=(sc.fell||[]).map(byId).filter(Boolean).map(b=>b.name);
     tail=(sc.end==='yield'&&f?foeName(f)+' yields and breaks off'+(sc.talk?' at '+sc.talk+'\'s words':''):sc.end==='fled'&&f?foeName(f)+' breaks away and runs'+(sc.talk?' at '+sc.talk+'\'s words':''):f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?hurtWord(f.hp/(f.maxhp||maxHp(f))):'still stands'):sc.ctx&&sc.ctx.down&&sc.ctx.mob==null?'No foe stands over them':'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')+
-      (fell.length?' '+fell.join(' and ')+' fell.':'')+downTail(sc)+(sc.rd>1?' ('+sc.rd+' rounds.)':'')}
+      (fell.length?' '+fell.join(' and ')+' fell.':'')+downTail(sc)+(sc.capped?' The fight grinds on, out in the world.':'')+(sc.rd>1?' ('+sc.rd+' rounds.)':'')}
   else if(sc.kind==='site'||sc.kind==='room'){const g=CRYPT.group;tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
   else if(sc.kind==='check')tail='The road goes on.';
   else if(EXTRA[sc.kind])tail=EXTRA[sc.kind].outcome(sc)||'';
@@ -527,6 +543,9 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
   for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id)&&sc.kind!=='crawl')moment(a,'scene',sc.title)} // reflection moment (#179)
   {const H=dmOf(sc);if(H&&H.done)H.done(sc)}
   for(const f of enders){try{f(sc)}catch(e){}}}
+// What the fights cost the table (#875): fights, rounds in all, the last 300 round counts, and how many a guard closed.
+function fightStats(F,sc){if(!F)return;const t=F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};t.fights=(t.fights||0)+1;t.rdSum=(t.rdSum||0)+sc.rd;
+  (t.rds||(t.rds=[])).push(sc.rd);if(t.rds.length>300)t.rds.shift();if(sc.capped==='cap')t.capped=(t.capped||0)+1;if(sc.capped==='stall')t.stalled=(t.stalled||0)+1}
 // Who was brought back and who still lies down when a scene ends (#654).
 function downTail(sc){const ups=[...new Set(sc.up||[])].map(byId).filter(b=>living(b)&&!isDown(b)).map(b=>b.name),dn=downIn(sc);
   return (ups.length?' '+ups.join(' and ')+(ups.length>1?' are':' is')+' back on their feet.':'')+(dn.length?' '+dn.map(b=>b.name+(b.down.stable?' lies stable':' still bleeds')).join('; ')+'.':'')}
@@ -648,7 +667,7 @@ const foeWords=f=>({name:foeName(f),looks:f.kind==='hero'?'still stands':hurtWor
 export function tableView(a){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return null;const cur=byId(sc.ids[sc.i]);
   const held=heldBack(sc,a),all=together(sc),live=all&&!sc.resolved&&!held&&(sc.phase==='frame'||sc.phase==='turn');
   const v={scene:sc.title,kind:sc.kind,frame:framedText(sc),phase:sc.phase,order:sc.ids.map(byId).filter(Boolean).map(b=>b.name),
-    ...(rounds(sc)?{round:sc.rd+' of up to '+TR.ROUNDS,initiative:orderNames(sc),...(foeOf(sc)?{foe:foeWords(foeOf(sc))}:{}),...(condWords(a).length?{your_conditions:condWords(a)}:{})}:{}),
+    ...(rounds(sc)?{round:sc.rd,initiative:orderNames(sc),...(foeOf(sc)?{foe:foeWords(foeOf(sc))}:{}),...(condWords(a).length?{your_conditions:condWords(a)}:{})}:{}),
     turn:!all&&sc.phase==='turn'&&cur?cur.name:null,your_turn:all?live&&!sc.acts[a.id]:!held&&sc.phase==='turn'&&cur===a,acted:!!sc.acts[a.id]};
   if(held)v.waiting_for='the DM'; // the DM is still setting the scene (#682): no turn, no scene_act yet
   if(all){const n=answered(sc);v.everyone_answers=true;v.answered=n.done+'/'+n.of;if(live&&n.wait.length)v.waiting_on=n.wait.map(b=>b.name)} // all answer at once; once you have, you may wait
@@ -687,5 +706,5 @@ export function bannerOf(sc=S.table){if(!sc)return null;const cur=byId(sc.ids[sc
   else line=sc.summary||'';
   const C=sceneCompany(sc);
   return {title:sc.title,kind:sc.kind,company:C?C.id:null,companyName:C?C.name||null:null,solo:!!C&&!C.slots&&isSolo(C),frame:sc.frame,line,who,last:last?last.name+': '+last.text+(last.res?' ('+last.res+')':''):null,
-    order:sc.ids.map(byId).filter(Boolean),...(rounds(sc)?{round:sc.rd,rounds:TR.ROUNDS,foeAt:sc.foeAt,foe:foeBanner(sc),hold,conds:Object.fromEntries(sc.ids.map(id=>[id,condsOf(byId(id))]))}:{}),turn:sc.phase==='turn'&&!together(sc)?sc.i:-1,all:together(sc),phase:sc.phase,paused:stopsWorld(sc),live:!!sc.pause&&!stopsWorld(sc),where:sceneWhere(sc),narr:sc.narr?sc.narr.text:null,
+    order:sc.ids.map(byId).filter(Boolean),...(rounds(sc)?{round:sc.rd,rounds:roundCap(sc),foeAt:sc.foeAt,foe:foeBanner(sc),hold,conds:Object.fromEntries(sc.ids.map(id=>[id,condsOf(byId(id))]))}:{}),turn:sc.phase==='turn'&&!together(sc)?sc.i:-1,all:together(sc),phase:sc.phase,paused:stopsWorld(sc),live:!!sc.pause&&!stopsWorld(sc),where:sceneWhere(sc),narr:sc.narr?sc.narr.text:null,
     ...(sc.ctx&&sc.ctx.cast?{cast:sc.ctx.cast,staged:true}:{})}} // a staged scene's cast (#132)
