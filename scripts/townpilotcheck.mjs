@@ -143,7 +143,7 @@ console.log('wait');
  ok(inTownRect(A) && !wake, 'an open meeting plan is a legitimate wait: no guard wake in 14 hours');
  C.plans = [];
  // the refusal names the board
- fresh(A, 5); A.intent = null; const hi = postHook(homeOf(A), 'negotiate', 'writ'), lo = postHook(homeOf(A), 'rescue', 'writ');
+ fresh(A, 5); A.intent = null; S.adventures = (S.adventures || []).filter(h => !(h.phase === 'open' && h.town === homeOf(A).name)); /* the refusal lists four: a full board would crowd these out */ const hi = postHook(homeOf(A), 'negotiate', 'writ'), lo = postHook(homeOf(A), 'rescue', 'writ');
  r = act(A, 'take_adventure', {job_id: hi.id});
  ok(!r.ok && /needs level 6/.test(r.error) && new RegExp('job:' + lo.id).test(r.error) && /Grow first/.test(r.error), 'a level refusal lists the takeable hooks with ids: ' + String(r.error).slice(0, 200));
  r = act(A, 'take_quest', {id: 'job:' + hi.id});
