@@ -240,7 +240,7 @@ if (process.argv[2] === '--arrival') {
   // the Continue prep: half the caps; the time cap ends it; the call cap ends it
   let clk = 0; PR.setPrepClock(() => clk); PR.beginPrep('resume');
   ok(PR.prepView().max_calls === Math.round(PR.PREP.CALLS * PR.PREP.SHORT) && PR.prepView().kind === 'resume', 'a Continue prep has half the calls');
-  clk = PR.PREP.MS; PR.prepTick(); ok(!PR.prepActive() && PR.prepView().why === 'time', 'the time cap ends it');
+  dmAct('regions'); clk = PR.PREP.MS; PR.prepTick(); ok(!PR.prepActive() && PR.prepView().why === 'time', 'the time cap ends it (counted from the first call, #733)');
   PR.beginPrep('opening'); for (let i = 0; i < PR.PREP.CALLS; i++) dmAct('regions');
   ok(!PR.prepActive() && PR.prepView().why === 'calls', `the call cap ends it (${PR.PREP.CALLS} calls)`); PR.setPrepClock(null);
   // the arrival: a death queues the recruit; nothing opens in the Crypt; it opens in town
