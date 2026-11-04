@@ -39,6 +39,7 @@ import {followBrief} from './follow.js'; // who the hero follows and who follows
 import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
 import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
 import {leaderFor} from './council.js';
+import {woundLine} from './tend.js';
 import {worldHeld} from './prep.js'; // the world held before play (#559)
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
@@ -91,6 +92,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
     aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
+    wounds:woundLine(a), // a lasting wound in words (#656); null when whole
     ...(swornOf(a)?{oath:a.goal.text}:{}),...(askOpen(a)?{thread:threadText(a)}:{}), // the turn header: what it swore, or for a while what its past holds
     reflect:reflectBrief(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The first evening asks once more what the hero makes of its past (#800): the answer closes the offer (reflectDone).

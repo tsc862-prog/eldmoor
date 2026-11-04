@@ -20,6 +20,7 @@ import {convertItem} from './gear.js';
 import {convertBag} from './inv.js';
 import {reserveNames} from '../data/races.js';
 import {normalizeProfs} from './professions.js';
+import {normalizeWounds} from './tend.js';
 import {ensureCampaign,setDmSeat,dmSeatOn} from './dmagent.js';
 import {DEFAULT_DM} from './setup.js';
 import {dmlog} from './dmlog.js';
@@ -129,6 +130,7 @@ export function restore(snap){
   for(const n in MATERIALS){const g=MATERIALS[n],s=snap.MATS&&snap.MATS[n];g.supply=s?s.supply:6;g.prev=s&&s.prev!=null?s.prev:price(n)} // an older save: the table's opening stock
   if(snap.CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
+  for(const a of S.agents||[])if(a.kind==='hero')normalizeWounds(a); // a.wounds (#656): an old save's heroes carry none
   for(const a of S.agents||[])if(a.profs!==undefined)normalizeProfs(a); // a.profs is optional (professions, #254): absent reads as [], present is cleaned
   reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
   relinkCompanies(); // stale a.fellow / p.fellow fields dropped (#588); agent heroes without a company ride as solos
