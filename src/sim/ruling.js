@@ -21,6 +21,7 @@ import {MOBS} from '../data/mobs.js';
 import {SKILLS,SKILL_IDS,check,skillMod,trained} from './abilities.js';
 import {ri} from '../core/rng.js';
 import {notify} from './notify.js';
+import {wishInvite} from './wish.js'; // #829
 import {speak,agentLine,sayHearers} from './chat.js';
 import {findPerson,warm,talkTo,convWith} from './talk.js';
 import {ensureNpcs} from './npcs.js';
@@ -294,7 +295,7 @@ export function rulingCall(args={}){rulingHeard(args&&args.budget_s);const R=S.r
   return {ok:true,call:callView(r),waiting:R.cur.filter(x=>x.state==='wait').length}}
 function refuse(why,r,forbidden){const R=rulingState(),d=today();R.stats.refused++;d.refused++;
   dmlog('agent',null,['Ruling refused',r?' (call '+r.id+')':'',': ',why],{by:'dm-agent',ruling:true,refused:why,...(forbidden?{forbidden:true}:{}),...(r?{call:r.id}:{})},{heroes:[]});
-  return {ok:false,error:why,hint:'Answer with ruling_answer {call, skill, dc (easy|fair|hard|heroic), effects:[...], fail_effects:[...], text, fail_text}; effect forms: '+EFFECT_FORMS.join('; ')}}
+  return {ok:false,error:why+(forbidden?wishInvite(S.dmAgent):''),hint:'Answer with ruling_answer {call, skill, dc (easy|fair|hard|heroic), effects:[...], fail_effects:[...], text, fail_text}; effect forms: '+EFFECT_FORMS.join('; ')}}
 const asList=v=>Array.isArray(v)?v:typeof v==='string'?(v.trim()?(v.trim().startsWith('[')?(()=>{try{return JSON.parse(v)}catch(e){return [v]}})():v.split(/\s*;\s*|\s*\|\s*/)):[]):v&&typeof v==='object'?[v]:[];
 export function rulingAnswer(args={}){const R=S.rulings,id=Math.round(Number(args.call));const r=R&&R.cur.find(x=>x.id===id);
   if(!r){const p=R&&R.past.find(x=>x.id===id);return {ok:false,error:p?'Call '+id+' was already ruled'+(p.by==='scripted'?' (the scripted DM filled it while you were silent)':'')+'.':'No ruling call '+(Number.isFinite(id)?id:'')+' is waiting (ruling_call shows the one that is).'}}
