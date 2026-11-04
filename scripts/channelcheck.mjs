@@ -8,7 +8,7 @@
 //            prompt, another member's journal, memories (recent and long), persona and backstory,
 //            mind (a brain prompt), runner narration (Agent tab) and saved session prompt, the notebooks of
 //            issue #155 (another member's memories, a fallen member's private note, the DM's remember), another
-//            member's landmark and journal chapter (issue #153)
+//            member's landmark and journal chapter (issue #153), another member's will before it executes (issue #631)
 //   hero     every hero tool result (status, look, chat_read, party_read, journal_read, journal_search, events,
 //            wait, scene views ...), the runner prompts (system prompt, Fellowship orders, turn
 //            prompts) and the brain snapshots (townPlan, say, fightOrFlee, cryptCall, persona,
@@ -156,6 +156,10 @@ B.backstory.paras = {...B.backstory.paras, flaw: 'B hides ' + plant('bFlaw')};
 ok(act(B, 'become', {field: 'beliefs', text: 'B believes ' + plant('bBelief'), why: 'B changed because ' + plant('bWhy')}).ok, 'B changes its own beliefs (become)');
 ok(act(B, 'become', {field: 'traits', text: 'B is ' + plant('bTrait').slice(0, 30), why: 'B noticed'}).ok, 'B notes a trait of its own');
 ok(act(B, 'become', {field: 'stance', about: A.name, text: 'Of A, B thinks ' + plant('bStanceA'), why: 'B judged ' + plant('bStanceWhy')}).ok, 'B changes its stance toward A');
+// the will (issue #631): B leaves A gold with words; private to B until B falls (A, the DM and the others never see it)
+B.gold = Math.max(B.gold || 0, 5);
+{const rw = act(B, 'bequeath', {to: A.name, gold: 1, words: 'For the road, ' + plant('bWill')});
+  ok(rw.ok && JSON.stringify(act(B, 'status')).includes(SECRETS.bWill), 'B writes a will naming A (bequeath), and its own status lists it' + (rw.ok ? '' : ': ' + rw.error))}
 // the aim (issue #535): a member's stated aim is private; only a leader's new aim leaves it, shouted to the company in range
 {const {leaderFor} = await import('../src/sim/council.js'), who = [B, ...rest].find(x => x.state !== 'dead' && leaderFor(x) !== x);
   const ra = act(who, 'intent', {goal: 'Aim ' + plant('bAim'), why: 'Because ' + plant('bAimWhy')});

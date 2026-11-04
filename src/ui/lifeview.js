@@ -10,9 +10,10 @@ import {followedMembers} from './companyview.js'; // the followed company's hero
 import {tiersView} from '../sim/tiers.js';
 import {patch,keyed} from './stable.js';
 import {SELF_LABEL} from '../sim/persona.js'; // the persona history (#409)
+import {willView} from '../sim/will.js'; // the will and what was received (#631)
 
 export const LIFE={ENTRIES:10,ENTRY_LEN:300,MARK_LEN:200,SELF:10,SELF_LEN:160};
-const KIND={death:'loss',friend:'loss',fellowship:'fellowship',level:'level',crypt:'crypt',boss:'boss',elite:'elite',vow:'vow',nemesis:'debt paid',own:'own'};
+const KIND={will:'received',death:'loss',friend:'loss',fellowship:'fellowship',level:'level',crypt:'crypt',boss:'boss',elite:'elite',vow:'vow',nemesis:'debt paid',own:'own'};
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const clean=s=>String(s==null?'':s).replace(/\s+/g,' ').trim();
 export const cutText=(s,n)=>{s=clean(s);if(s.length<=n)return s;const t=s.slice(0,n-1),i=t.lastIndexOf(' ');return (i>n*.6?t.slice(0,i):t)+'…'};
@@ -28,7 +29,10 @@ export function lifeRows(){return followedMembers().map(m=>{const a=m.hero;
   const entries=J.slice(-LIFE.ENTRIES).reverse().map(e=>({t:clean(e.t),text:cutText(e.text,LIFE.ENTRY_LEN),key:(e.gameMin||0)+':'+clean(e.text).slice(0,40)}));
   const H=a.persona&&Array.isArray(a.persona.hist)?a.persona.hist:[]; // the persona the hero grew itself (become, #409), newest first
   const self=H.slice(-LIFE.SELF).reverse().map(h=>({day:h.d,gm:h.gm,field:h.f,label:(SELF_LABEL[h.f]||h.f)+(h.about?' · '+h.about:''),before:cutText(h.before||'',LIFE.SELF_LEN),after:cutText(h.after||'',LIFE.SELF_LEN),why:cutText(h.why||'',LIFE.SELF_LEN)}));
-  return {slot:m.slot,role:m.role,label:m.label,hero:a,tiers:!!T,marks,chapters,entries,total:J.length,pend:T?T.pend:0,self,selfTotal:H.length}})}
+  // the will (#631, view only): what the member leaves and to whom, or once fallen how it went; and what they received
+  const will=a.state==='dead'&&Array.isArray(a.willDone)?a.willDone.map(w=>({to:w.to,what:w.what,how:w.how,why:w.why||'',words:''})):(willView(a)||[]).map(w=>({to:w.to,what:w.what,how:'',why:'',words:w.words||''}));
+  const received=(Array.isArray(a.received)?a.received:[]).slice().reverse().map(r=>({day:r.day,from:r.from,what:r.what,words:r.words||''}));
+  return {slot:m.slot,role:m.role,label:m.label,hero:a,tiers:!!T,marks,chapters,entries,total:J.length,pend:T?T.pend:0,self,selfTotal:H.length,will,received}})}
 
 // ---- DOM ----
 function section(title,n,rows,empty){const s=el('section','lfsec');const h=el('h4','lfh',title+(n?' ('+n+')':''));s.append(h);
@@ -39,7 +43,7 @@ function card(c){const box=keyed(el('article','lfcard'),'lf'+c.slot);
   if(!c.hero){hd.append(el('span','dm',' place empty'));box.append(hd);return box}
   const a=c.hero,n=el('span','hn f'+a.fac,a.name);n.dataset.hid=a.id;
   hd.append(' ',n,el('span','dm',' '+a.cls+' · L'+a.lvl+(a.state==='dead'?' · fallen':'')));box.append(hd);
-  if(!c.tiers&&!c.entries.length&&!c.self.length){box.append(el('p','dm lfnone','No life written yet: landmarks, chapters and journal entries appear once '+a.name+' lives through something worth keeping.'));return box}
+  if(!c.tiers&&!c.entries.length&&!c.self.length&&!c.will.length&&!c.received.length){box.append(el('p','dm lfnone','No life written yet: landmarks, chapters and journal entries appear once '+a.name+' lives through something worth keeping.'));return box}
   box.append(section('Landmarks',c.marks.length,c.marks.map(m=>{const li=keyed(el('li','lfrow lfmark k-'+m.k),'m'+m.day+':'+m.k+':'+m.text.slice(0,40));
     li.append(el('span','lfday','Day '+m.day),el('span','lftag',m.kind),el('span','lftx',m.text));return li}),'No landmarks yet.'));
   box.append(section('Chapters',c.chapters.length,c.chapters.map(ch=>{const li=keyed(el('li','lfrow lfch'),'c'+ch.n);
@@ -50,12 +54,18 @@ function card(c){const box=keyed(el('article','lfcard'),'lf'+c.slot);
   box.append(section('Who they became',c.selfTotal>c.self.length?c.self.length+' of '+c.selfTotal:c.self.length,c.self.map(s=>{const li=keyed(el('li','lfrow lfself'),'s'+s.gm+':'+s.field+':'+s.after.slice(0,30));
     li.append(el('span','lfday','Day '+s.day),el('span','lftag',s.label),el('span','lftx',(s.before?s.before+' → ':'')+s.after),el('span','lfwhy',' · '+s.why));li.title='Why: '+s.why;return li}),
     'No changes yet: '+a.name+' has not changed who they are.'));
+  box.append(section(a.state==='dead'?'Their will':'Will',c.will.length,c.will.map(w=>{const li=keyed(el('li','lfrow lfwill'),'w'+w.to+':'+w.what);
+    li.append(el('span','lftag',w.how||'to '+w.to),el('span','lftx',w.what+(w.how?' to '+w.to:'')+(w.why?' ('+w.why+')':'')));if(w.words)li.title='"'+w.words+'"';return li}),
+    a.state==='dead'?'They left no will.':'No will: '+a.name+' has left nothing to anyone.'));
+  box.append(section('Received',c.received.length,c.received.map(r=>{const li=keyed(el('li','lfrow lfrecv'),'r'+r.day+':'+r.from+':'+r.what);
+    li.append(el('span','lfday','Day '+r.day),el('span','lftag','from '+r.from),el('span','lftx',r.what));if(r.words)li.title='"'+r.words+'"';return li}),
+    'Nothing received from a fallen companion.'));
   return box}
 
 let sig='';
 // Patch the life cards into host. Returns true when it changed (or was held and must try again).
 export function renderLife(host,{force=false}={}){if(!host)return false;const L=lifeRows();
-  const k=JSON.stringify(L.map(c=>c.hero?[c.slot,c.hero.id,c.hero.name,c.hero.lvl,c.hero.state==='dead',c.marks,c.chapters,c.entries,c.total,c.pend,c.selfTotal,c.self[0]&&c.self[0].gm]:[c.slot]));
+  const k=JSON.stringify(L.map(c=>c.hero?[c.slot,c.hero.id,c.hero.name,c.hero.lvl,c.hero.state==='dead',c.marks,c.chapters,c.entries,c.total,c.pend,c.selfTotal,c.self[0]&&c.self[0].gm,c.will,c.received.length]:[c.slot]));
   if(!force&&k===sig&&host.firstChild)return false;
   const done=patch(host,t=>{const g=el('div','lfgrid');for(const c of L)g.append(card(c));t.append(g)},{force});
   if(done)sig=k;return done}
