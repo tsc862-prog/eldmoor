@@ -801,6 +801,12 @@ console.log('the DM prepares the table');
   ok(rows[0].querySelector('.tma.yes').textContent==='YES'&&rows[1].querySelector('.tma.no').textContent==='NO','banner: a row shows the vote cast (YES, NO)');
   ok(/Taking the watch instead/.test(rows[1].querySelector('.tmq').textContent),'banner: a row carries what the member said');
   ok(rows[2].classList.contains('st-wait')&&/reflex in 111 s/.test(rows[2].querySelector('.tmt').textContent),'banner: a nudged member shows the reflex timer ('+rows[2].querySelector('.tmt').textContent+')');
+  {const SWm=await import('../src/sim/scenewait.js'),e0=SWm.SW.EXTRA_MS;SWm.SW.EXTRA_MS=90000;sc.q=[ms[2].id];TB.renderTable(1); // #687: a queued member's countdown runs on into the extension
+   const tq=[...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent;
+   ok(/^queued · reflex in 201 s$/.test(tq),'banner: a queued member counts down the extension too ('+tq+')');
+   w[ms[2].id].t=210;TB.renderTable(1);ok(/^queued · reflex in 0 s$/.test([...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent),'banner: it reaches 0 s only when the extension is over');
+   w[ms[2].id].t=9;delete sc.q;SWm.SW.EXTRA_MS=e0;TB.renderTable(1);
+   ok(/^reflex in 111 s$/.test([...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent),'banner: not queued, the plain countdown is back')}
   ok(rows[4]&&rows[4].classList.contains('st-wait')&&rows[4].querySelector('.tmt').textContent==='4 s','banner: a thinking member shows how long ('+(rows[4]&&rows[4].querySelector('.tmt').textContent)+')');
   ok(rows[3].classList.contains('st-held')&&/no runner/.test(rows[3].textContent),'banner: a member with no runner says so');
   ok(!/answered · waiting for/.test(box.textContent)&&/has no runner: Restart runner/.test((box.querySelector('.tl')||{}).textContent||''),'banner: the waiting list is not said twice (rows only); what to do about a missing runner stays');
@@ -1432,6 +1438,19 @@ console.log('the DM prepares the table');
   ok(!side.querySelectorAll('section').some(x=>x.classList.contains('doff'))&&$('setPop').contains($('vIcons')),'1280 px: no section hidden by the dock; Intent icons back in Settings');
   ok(side.children.filter(x=>x.tagName==='SECTION'&&!x.hidden).map(x=>x.id)[0]==='fellowship','1280 px: the side column opens with the Companies panel');
   window.innerWidth=keepW;S.pinned=keepPin;cam.sel=keepSel;uiFast()}
+// ---- a world reset stops every runner with one relay call and says so once (#691) ----
+{console.log('World reset');
+  const posts=[];const realFetch=globalThis.fetch;
+  let n=3;globalThis.fetch=async(url,o)=>{url=String(url);posts.push({url,body:o&&o.body?JSON.parse(o.body):null});return {ok:true,status:200,json:async()=>({ok:true,stopped:n,keys:[]})}};
+  const sv=await import('../src/ui/save.js');
+  const tx=()=>document.getElementById('wStatus').textContent;
+  const r1=await sv.resetRunners();
+  ok(r1===3&&posts.length===1&&posts[0].url.endsWith('/play/runner/stop-all'),'one call to /play/runner/stop-all, not one per runner: '+posts.map(p=>p.url).join());
+  ok(tx()==='World reset: 3 runners stopped','the page says "World reset: 3 runners stopped": '+tx());
+  n=1;const r2=await sv.resetRunners();ok(r2===1&&tx()==='World reset: 1 runner stopped','one runner reads singular: '+tx());
+  const both=[sv.resetRunners(),sv.resetRunners()];await Promise.all(both);ok(posts.length===3,'two resets at once share one call');
+  globalThis.fetch=async()=>{throw new Error('relay down')};const before=tx();const r3=await sv.resetRunners();ok(r3===null&&tx()===before,'no relay: nothing is said, the reload goes on');
+  globalThis.fetch=realFetch}
 // ---- the downed (#659): party frames, the dossier header, the purpose line, the Log, the timeline, the chronicle, the banner ----
 {const S=sim.S,DN=await import('../src/sim/downed.js'),DV=await import('../src/ui/downview.js'),FR=await import('../src/ui/frames.js'),TB=await import('../src/ui/table.js');
   const {cam}=await import('../src/render/draw.js'),{setTimelineFilter}=await import('../src/ui/timeline.js');

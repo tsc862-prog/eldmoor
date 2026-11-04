@@ -147,6 +147,7 @@ export const PLAY={elite:'turns',ambush:'turns',boss:'turns',rescue:'turns',site
   decision:'all',check:'all',choice:'all',meeting:'all',social:'all',trap:'all',mystery:'all',talk:'all', // talk: a conversation turned decision (#407, sim/talkscene.js)
   interrogation:'turns', // a yielded foe or a suspect questioned, question by question (#431 slice 3, sim/interrogate.js)
   arrival:'all',opening:'all', // a fallen member's recruit arrives (#452); session zero (#437): sim/arrival.js
+  vision:'all', // a vision the DM staged: everyone present sees it at once (#639, sim/vision.js)
   fireside:'turns',debrief:'all'}; // talk round the fire, in turns over 3-6 rounds, and a one-round debrief after a hard scene (#571, sim/fireside.js)
 const together=sc=>!!sc&&sc.all===true;
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
@@ -248,7 +249,7 @@ export function stepNext(){const sc=S.table;if(!holding(sc))return false;sc.sh.g
 // The order as names, the foe at its place (agents' notices and tableView).
 const orderNames=sc=>{const L=sc.ids.map(byId).filter(Boolean).map(a=>a.name),f=foeOf(sc);if(rounds(sc)&&f)L.splice(Math.min(sc.foeAt,L.length),0,foeName(f)+' (foe)');return L};
 export function optionsFor(sc,a){const o0=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels,o=L?o0.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o0;
-  if(ATT&&a&&a.player&&sc&&sc.kind!=='decision'&&o.length)o.push({k:'attempt',text:ATT.label});return o} // the DM's own labels for a staged scene's actions
+  if(ATT&&a&&a.player&&sc&&sc.kind!=='decision'&&!(EXTRA[sc.kind]&&EXTRA[sc.kind].noAttempt)&&o.length)o.push({k:'attempt',text:ATT.label});return o} // the DM's own labels for a staged scene's actions
 function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])return EXTRA[k].options(sc,a);
   if(COMBAT[k]){const f=foeOf(sc),fn=f?(f.kind==='hero'?f.name:mobName(f)):'the foe',lo=lowest(sc),o=[{k:'strike',text:'Strike '+fn}];
     if(f&&f.kind!=='boss')o.push({k:'guard',text:'Draw '+fn+' onto yourself'});
@@ -480,7 +481,7 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
     log(nar(''),gd(F.name||(leadOf(F)||{}).name||'A company'),' at the table: '+sc.title+'. '+tail)}
   if(COMBAT[sc.kind]){for(const a of mem)tickRound(a);const f=foeOf(sc);if(f)tickRound(f); // a round has passed: ability cooldowns and round-long effects run down
     if(rounds(sc))for(const e of [...mem,...sceneFoes(sc)])clearRounds(e)} // conditions and round-counted effects end with the scene (#296)
-  for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id))moment(a,'scene',sc.title)} // reflection moment (#179)
+  for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id)&&sc.kind!=='crawl')moment(a,'scene',sc.title)} // reflection moment (#179)
   {const H=dmOf(sc);if(H&&H.done)H.done(sc)}
   for(const f of enders){try{f(sc)}catch(e){}}}
 function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);closeScene(sc)}
@@ -628,8 +629,8 @@ export function bannerOf(sc=S.table){if(!sc)return null;const cur=byId(sc.ids[sc
   else if(hold)line='Round '+hold.round+' is done · '+(hold.auto?'the next round in '+hold.left+' s':'Next round when you are ready');
   else if(pc&&sc.pause)line='The DM is '+(pc.kind==='voice'||pc.kind==='oath'?'giving them a voice':pc.kind==='frame'?'setting the table':pc.kind==='complication'?'weighing a complication':'describing it')+'… ('+Math.ceil(callLeft(pc))+' s)';
   else if(sc.phase==='turn'&&together(sc)){const n=answered(sc),held=n.wait.find(b=>b.player&&!reflexMay(b)&&ownerHeld(b)),w0=n.wait.reduce((m,b)=>Math.max(m,(sc.w[b.id]&&sc.w[b.id].t)||0),0);
-    line=!n.wait.length?'Everyone has answered.':n.done+'/'+n.of+' answered · waiting for '+n.wait.map(b=>b.name).join(', ')+(held?' ('+held.name+' has no runner: Restart runner, or Resume without it)':w0*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-w0))+' s before reflexes)':'')}
-  else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]&&!reflexMay(cur)?(ownerHeld(cur)?cur.name+' has no runner: the table waits for you (Restart runner, or Resume without it)':cur.name+' is thinking…'+(sc.t*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(TABLE.liveMs/1000-sc.t))+' s before reflexes)':'')):cur.name+' acts'}
+    line=!n.wait.length?'Everyone has answered.':n.done+'/'+n.of+' answered · waiting for '+n.wait.map(b=>b.name).join(', ')+(held?' ('+held.name+' has no runner: Restart runner, or Resume without it)':w0*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(n.wait.reduce((m,b)=>Math.max(m,liveLimit(sc,b,TABLE.liveMs)),0)/1000-w0))+' s before reflexes)':'')}
+  else if(sc.phase==='turn'&&cur){who=cur;line=cur.player&&!sc.acts[cur.id]&&!reflexMay(cur)?(ownerHeld(cur)?cur.name+' has no runner: the table waits for you (Restart runner, or Resume without it)':cur.name+' is thinking…'+(sc.t*1000>=TABLE.turnMs?' ('+Math.max(0,Math.ceil(liveLimit(sc,cur,TABLE.liveMs)/1000-sc.t))+' s before reflexes)':'')):cur.name+' acts'}
   else line=sc.summary||'';
   const C=sceneCompany(sc);
   return {title:sc.title,kind:sc.kind,company:C?C.id:null,companyName:C?C.name||null:null,solo:!!C&&!C.slots&&isSolo(C),frame:sc.frame,line,who,last:last?last.name+': '+last.text+(last.res?' ('+last.res+')':''):null,
