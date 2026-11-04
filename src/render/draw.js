@@ -32,7 +32,7 @@ import {drawCamp,drawCampLight} from './camp.js';
 import {trafficEnts,isTraffic,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
-import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
+import {getChunk,CH,CHUNKS_X,CHUNKS_Y,treesNear,drawTree} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {syncSpells,drawSpells} from './spellfx.js';
 import {TEXT,MARK,LIGHT,BOSS_PAL} from './palette.js';
@@ -141,7 +141,7 @@ export function createRenderer(cv,screenEl){
       const x0=Math.round(cam.offX+i*cs*sc),y0=Math.round(cam.offY+j*cs*sc),x1=Math.round(cam.offX+(i*cs+c.uw)*sc),y1=Math.round(cam.offY+(j*cs+c.uh)*sc); // c.uw/uh: the chunk in world units, whatever its resolution
       ctx.drawImage(c,0,0,c.width,c.height,x0,y0,x1-x0,y1-y0)}}
 
-  let blink=0;
+  let blink=0,frameNo=1;
   function draw(){
     trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
     if(drawSceneView(performance.now()/1000))return; // an indoor scene map covers the world too (#431)
@@ -190,9 +190,14 @@ export function createRenderer(cv,screenEl){
     for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ents.push(p);
     if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ents.push(boss);
     if(close&&!cut)trafficEnts(S,inView,MARGIN,ents); // road traffic, skipped at whole-map zoom
+    // whole trees (#834) are painted into the terrain chunk, under everything; one that stands in front of an entity (rooted below its feet)
+    // is sorted in among the entities and drawn again over it, with the trees near it, so a hero walks behind a trunk and not over a crown
+    if(close){const n=ents.length;for(let i=0;i<n;i++)treesNear(ents[i].x,ents[i].y,ents,frameNo)}
+    frameNo++;
     ents.sort((a,b)=>a.y-b.y);
-    for(const e of ents){
-      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
+    let ghostA=1; // 1, or the see-through strength of a company member drawn again over the tree that stands in front of it
+    const drawEnt=e=>{
+      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);return}
       const fr=e.moving?Math.floor(blink*6+e.id)%2:0;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
@@ -203,14 +208,14 @@ export function createRenderer(cv,screenEl){
       // a generated sheet (#177) for a living hero or creature, else the procedural sprite scaled to the same height
       const G=live&&e.state!=='ghost'&&(e.kind==='hero'||e.kind==='mob')?sheetFrame(e,dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
       const sw=G?G.fw/ART:s.width*PROC_SCALE,sh=G?G.fh/ART:s.height*PROC_SCALE;
-      if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
+      if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6*ghostA;
       if(live)shadow(px,py,sw);
       if(close&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
       if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);
       else{const o=worldSprite(s,live),ow=live?1/ART:0; // living entities get the dark outline, one art pixel wide
         ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);
         ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-ow,py-sh-ow,o.width/ART,o.height/ART);ctx.restore()}
-      ctx.globalAlpha=1;
+      ctx.globalAlpha=ghostA;
       const top=py-sh;
       // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
       if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle=MARK.quest;ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
@@ -220,7 +225,12 @@ export function createRenderer(cv,screenEl){
         ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
       if(e.kind==='hero'&&!cut)drawIntentIcon(ctx,S,cam,e,px,top,sw,close); // the intent icon at the right shoulder (#534)
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
-    }
+    };
+    for(let ei=0;ei<ents.length;ei++){const e=ents[ei];
+      if(e.tree){drawTree(ctx,e); // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
+        for(let j=0;j<ei;j++){const o=ents[j];if(o.tree||Math.abs(o.x-e.x)>2.4||o.y>=e.y||o.y<e.y-5||!(o===sel||(o.kind==='hero'&&inSlots(o))))continue;ghostA=.45;ctx.globalAlpha=.45;drawEnt(o);ghostA=1;ctx.globalAlpha=1}
+        continue}
+      drawEnt(e)}
     // effects: bolts leave a short fading trail; the boss's breath ring
     for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;if(!inView(p.x0*T,p.y0*T,96))continue;ctx.fillStyle=p.col;
         for(let k=2;k>=0;k--){const tk=Math.max(0,t-k*.12),x=(p.x0+(p.x1-p.x0)*tk)*T,y=(p.y0+(p.y1-p.y0)*tk)*T;ctx.globalAlpha=k?.25*(3-k):1;ctx.fillRect(Math.round(x),Math.round(y),k?2:3,2)}
