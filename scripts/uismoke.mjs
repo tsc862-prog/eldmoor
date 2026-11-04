@@ -202,32 +202,32 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
 const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});(await import('../src/sim/council.js')).partySay(sp,'Hold the line at the ford.'); // a repeat said outside the agent tool (agents' own near-repeats are refused since #163)
   const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
   ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
-  select(mem[0]);setTab('chat');uiFast();const ul=tb().querySelector('.log');
+  select(mem[0]);setTab('chat');uiFast();
+  ok(/Chat panel/.test(tb().textContent)&&!tb().querySelector('.log.chat'),'dossier Mind > Chat holds no copy of the chat (#845): it points to the Chat panel');
+  const ul=$('chatList');
   const li=ul&&ul.children.find(x=>/Hold the line/.test(x.textContent));
-  ok(!!li&&/Hold the line at the ford. ×2/.test(li.textContent)&&/shouts: /.test(li.textContent)&&!!li.querySelector('.chheard'),'chat: repeated shout shows once with a count and who heard: '+(li&&li.textContent));
+  ok(!!li&&/Hold the line at the ford./.test(li.textContent)&&/shouts: /.test(li.textContent)&&!!li.querySelector('.chheard'),'chat: the shout shows with who heard it: '+(li&&li.textContent));
   ok(!!li&&!li.textContent.includes(sp.name+': '+sp.name),'chat: the own-name prefix is dropped');
   ok(!tb().querySelector('.ai-badge'),'chat: no mind or model badge');
   ok(!!li&&!li.querySelector('.chtag')&&li.querySelector('.hn').classList.contains('fmn'),'chat: no channel tag box, role-coloured name on the one line')
   ok(!!li&&li.querySelector('.chheard').textContent.includes(mem[0].name),'chat: the dim list names who heard: '+(li&&li.querySelector('.chheard')&&li.querySelector('.chheard').textContent));
   // an out-of-range shout (#182): "Fena calls out, but no one is near"
   {mem[0].chat.push({t:'12:00',d:Math.floor(sim.S.gameMin/1440)+1,from:sp,text:'Anyone out there?',trigger:'party',party:true,heard:[],far:[mem[2].name]});uiFast();
-   const lo=tb().querySelector('.log').children.find(x=>/Anyone out there/.test(x.textContent));
+   const lo=$('chatList').children.find(x=>/Anyone out there/.test(x.textContent));
    ok(!!lo&&/calls out, but no one is near/.test(lo.textContent)&&!lo.querySelector('.chheard'),'chat: a shout nobody heard reads "calls out, but no one is near": '+(lo&&lo.textContent))}
   // day stamps and separators (#168): "D3 13:57", a "Day N" row where the day changes; an older entry with no day keeps its bare time
   {const h=mem[0];const d0=Math.floor(sim.S.gameMin/1440)+1;h.chat.push({t:'23:58',d:d0+5,from:sp,text:'Stamp test A.',trigger:'x',party:true},{t:'01:10',d:d0+6,from:sp,text:'Stamp test B.',trigger:'x',party:true});
-   uiFast();const u2=tb().querySelector('.log.chat'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
+   uiFast();const u2=$('chatList'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
    ok(tm.some(t=>/^D\d+ \d\d:\d\d$/.test(t)),'chat: times carry the game day: '+tm.slice(0,3).join(', '));
    ok(u2.children.filter(x=>x.classList.contains('daysep')).length>=2,'chat: day separators appear where the day changes');
-   // #181: the dossier Chat tab is a per-hero filter of the chat panel's stream; the phone-width View group wraps
-   {const mine=tb().querySelector('.log.chat').textContent;h.chat.push({t:'09:00',d:d0+7,from:h,text:'Only-for-me test line.',trigger:'x'});
-    const other=mem.find(m=>m!==h&&m!==sp&&m.chat)||{chat:[]};other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
-    const t2=tb().querySelector('.log.chat').textContent;
-    ok(/Only-for-me/.test(t2)&&!/Only-for-other/.test(t2),'dossier chat: shows this heros slice of the stream only');
-    ok(tb().querySelector('.log.chat').children.length>0&&mine.length>0,'dossier chat: built from the stream');
-    const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   {const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
     ok(/\.group\{[^}]*flex-wrap:wrap/.test(css0),'phone width: the View button group wraps instead of widening the page')}
    const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8').match(/\.log\.chat li\.chl\{[^}]*\}/);
    ok(!!css&&!/text-indent:\s*-/.test(css[0]),'chat: no negative text-indent (the stamp cannot start left of the list box)')}}
+// Company tab Lately feed and the whole-map spots (#845, #844)
+{uiFast();const ly=$('felbody').querySelector('.fellately');ok(!!ly&&!!ly.querySelector('.fth-h'),'Company tab: a Lately feed sits under the threads');
+  const {companySpots}=await import('../src/render/wholemap.js');const sp=companySpots();
+  ok(sp.length>0&&sp.every(x=>x.name&&x.r>=5)&&sp.filter(x=>x.followed).length===1,'whole map: each company has a ring spot and a name, one followed: '+sp.map(x=>x.name).join(', '))}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 
 // The Agents panel (#145): limits and spend in one place, sent to the relay's supervisor

@@ -34,6 +34,7 @@ import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
 import {createMinimap} from './minimap.js';
+import {drawWholeMap} from './wholemap.js'; // company rings and name tags in the whole-map view (#844)
 import {syncSpells,drawSpells} from './spellfx.js';
 import {TEXT,MARK,LIGHT,BOSS_PAL} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
@@ -143,8 +144,8 @@ export function createRenderer(cv,screenEl){
 
   let blink=0;
   function draw(){
-    trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
-    if(drawSceneView(performance.now()/1000))return; // an indoor scene map covers the world too (#431)
+    trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
+    if(drawSceneView(performance.now()/1000)){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');return} // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
     const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height));
@@ -280,6 +281,8 @@ export function createRenderer(cv,screenEl){
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
         if(!close)lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,13,a===sel?10:7)}}
     flushLabels(sc);
+    const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
+    if(whole)drawWholeMap(ctx,cam,blink);
     if(close){drawBubbles(ctx,S,cam,drawText);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
