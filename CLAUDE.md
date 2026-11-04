@@ -982,6 +982,7 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   landmarks and roads (polylines, or A* `routeRoad` between named endpoints
   that bridges rivers) and derives `ZONES`, `CITY`, `LAIR`, `CRYPT`, the
   `zoneFor` level ladder from region bands, `ZPTS` spawn points, `LIGHTS` and
+  town plans (#793): every `CITY[i].buildings = [{piece, box:[x,y,w,h], door:[x,y], serves, draw}]` is sim data laid out by `planBuildings` in `gen.js` from `data/townart.js` `TOWN_PIECES` (or a spec town's own `buildings`): `box` the whole solid tiles (solid but for the one `door` tile, `passable.js`), `draw` the art box `src/render/townart.js` draws from; the spots a building `serves` (quartermaster, gate, smith, chapel, inn) stand at its door; `standAt(x,y)` in `passable.js` moves a point that falls in a building to the nearest open tile (heroes created in town, company spreads, the bard's stroll); `npm run passablecheck` checks it.
   `LABELS`; `map.js` builds `ELDMOOR` once and re-exports it under the old
   names (`tiles`, `zone`, `I`, `riverX`, `z2X`, `hoarY`, ...). `npm run
   worldcheck` builds both specs and fails if the Eldmoor map drifts from its
