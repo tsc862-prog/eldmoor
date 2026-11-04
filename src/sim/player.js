@@ -56,7 +56,7 @@ import {nearHeroes,nearMobs} from './spatial.js';
 import {dmDepart,advLine,K as DMK,holdAdventure,resumeAdventure,beginJob,abandonAdventure,bountiesAt,bountyFor,takeBounty} from './dm.js';
 import {supplyById,supplyJobs,takeSupply,dropSupply,fillSupply,textOf as supplyText,wantText as supplyWant,rewardText as supplyReward,mayHave as supplyMay,have as supplyHave,supplyId,SUP} from './supply.js'; // goods jobs (#720)
 import {supplyDone} from './questlog.js';
-import {questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
+import {oathId as oathIdOf,questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard,selfView,become} from './persona.js'; // Fellowship (#68); self and become (#409)
 import {ev} from './notify.js';
@@ -72,7 +72,7 @@ import {fileWish} from './wish.js'; // a note for the people who build the game 
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote} from './council.js';
 import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sightings.js';
-import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js';
+import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH,openPlans} from './reach.js';
 import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
 import {sceneAct,tableView} from './table.js';
 import {sceneOf} from './scenes.js'; // the hero's own company's scene (#518)
@@ -86,7 +86,7 @@ import {MOVES} from '../data/moves.js';
 import {searchAct,examineView,SR} from './search.js'; // search and examine marked places, signs and landmarks (#525)
 import {enterSiteTool} from './sites.js'; // DM-made dungeon sites (#69)
 import {noticeHeroes,sighted} from './sighthero.js'; // heroes coming into sight (#570)
-import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,intentView,waitish} from './intent.js'; // the hero's stated aim (#535)
+import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,aimState,intentView,waitish,levelCond} from './intent.js'; // the hero's stated aim (#535)
 import {pay as payGold} from './pay.js'; // pay (#628)
 import {finishTool,spareTool} from './mercy.js'; // finish or spare a downed enemy (#657)
 import {bequeath as writeWill,willView} from './will.js'; // a will (#631)
@@ -102,6 +102,8 @@ import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfessio
 import {craftTool,smithTool} from './craft.js'; // crafting (#258)
 import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid,bestUse,count as invCount} from './inv.js'; // the pack (#124)
+import {swornOf,threadOf,threadText,offerThread,withdrawThread} from './oath.js'; // offered threads and sworn oaths (#800)
+import {swearBlock,swearWord,takeOath,setAside,keepOath,renounceOath,wordsOnly} from './sworn.js';
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
 import {attempt as attemptRuled} from './ruling.js'; // free actions ruled by the DM (#522)
 import {holdStart,holdAnswered} from './gambithold.js'; // a gambit hold stops the world until the agent acts (#630)
@@ -195,7 +197,7 @@ function waryPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y)),gz=cmd.ground;let
 // loot, buy a potion or two, then walk out to its last hunting ground (or a known region that fits its level) and hunt.
 // A follower waits for its leader (it follows them out, town()) and only goes hunting near town on its own after TP.WAIT
 // more game minutes with the leader still in town. Agent-played heroes only: the scripted world never comes here.
-const TP={HUNT:5,POTIONS:2,LOOT:4,WAIT:240,FIT_UP:1,DANGER:5,DARE_MIN:720};
+const TP={HUNT:5,POTIONS:2,LOOT:4,WAIT:240,FIT_UP:1,DANGER:5,DARE_MIN:720,IDLE_TOWN:720};
 const bandOf=z=>REGIONS[z]&&REGIONS[z].band||null;
 // A region this hero can hunt: its lowest level within TP.FIT_UP of the hero's.
 const fits=(a,z)=>{const b=bandOf(z);return !!(b&&b[0]<=a.lvl+TP.FIT_UP)};
@@ -211,9 +213,27 @@ const bestPotion=a=>Object.keys(USES).filter(k=>{const U=USES[k];return U.kind==
 // What autopilot carries on for an aim (sim/intent.js), where it maps to one: walk on to its place, hunt its ground (one that
 // fits, wary as ever), wait where it is. A follow aim is the standing follow order (a.playOrder, #445). Safety comes first:
 // autopilot only gets here once hurt, storm and full-pack checks passed, and an aim that is done maps to nothing.
+// ---- waiting earns nothing (issue #790) ----
+// Town-idle guard: an agent hero in town with no XP, kill, buy, sell, job or talk for TP.IDLE_TOWN game hours is woken with the board's
+// fitting jobs and the fitting ground, and autopilot hunts that ground whatever wait aim it holds. The agent still decides jobs, votes and
+// the Crypt; autopilot never takes a hook. Held back while hurt, in a scene, at an open vote or meeting plan, or while the world is held.
+const townIdleOver=a=>{const T=a.townIdle;return !!(T&&a.state==='town'&&S.gameMin-T.at>=TP.IDLE_TOWN)};
+const followerFree=a=>{const L=gLeader(a);return !!(L&&L.state!=='town'&&!L.hidden&&aimState(a)==='stale')};
+function boardFits(a,mem){const c=homeOf(a),lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a),out=[];
+  for(const h of (S.adventures||[]))if(h.phase==='open'&&h.town===c.name&&!jobFit(a,h,mem)){const zn=h.zone!=null?ZONES[h.zone]:null;out.push('job:'+h.id+' '+jobText(h)+(zn?' ('+zn+')':''))}
+  for(const b of bountiesAt(c))if(MOBS[b.type]&&fits(lo,b.z))out.push('bounty: kill '+b.need+' '+MOBS[b.type].pl+' in '+ZONES[b.z]);
+  return out.slice(0,4)}
+function townGuard(a){const now=S.gameMin;if(a.state!=='town'||a.hidden){if(a.townIdle)a.townIdle=null;return}
+  const C=companyOf(a),sig=[a.lvl,Math.round(a.xp||0),a.kills||0,Math.round(a.gold||0),a.adv||0,a.quest?a.quest.have||0:-1,heldCount(a),a.conv==null?'':a.conv,invOf(a).list.length].join(',');
+  const T=a.townIdle,pause=!!(sceneOf(a)||worldHeld()||a.hp<maxHp(a)*.6||a.splitUntil>now||(C&&(openProps(C).length||openPlans(C).length)));
+  if(!T||T.sig!==sig||pause){a.townIdle={at:now,sig,woke:T?T.woke:0};return}
+  if(now-T.at<TP.IDLE_TOWN||now-(T.woke||0)<TP.IDLE_TOWN)return;
+  T.woke=now;const mem=[a,...partyMates(a)],lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a),z=groundFor(lo),bd=boardFits(a,mem),hrs=Math.round((now-T.at)/60);
+  ev(a,hrs+' game hours in '+homeOf(a).name+' with nothing earned: waiting earns no levels. '+(bd.length?'The board has, for you now: '+bd.join('; ')+'. ':'')+(z!=null?'Autopilot hunts '+ZONES[z]+' (it fits '+lo.name+') unless you decide otherwise: take a job, or hunt {where} yourself.':'Hunt out in the world to grow.'),2)}
 function intentPilot(a){if(!aimHeld(a))return null;const I=a.intent,o=I.order;if(!o)return null;const why=' (your aim: '+clean(I.goal,60)+')';
   const sg=o.kind==='move'?sighted(a):null;if(sg)return {kind:'rest',until:S.gameMin+30,auto:'holding where you are: you saw '+sg.name+' (your aim: '+clean(I.goal,60)+')',label:'rest'}; // stopped on sight (#570): the agent decides next
-  if(o.kind==='wait')return {kind:'rest',until:S.gameMin+60,auto:'waiting where you are'+why,label:'rest'};
+  if(o.kind==='wait'){if(townIdleOver(a)||followerFree(a))return null; // waiting earns nothing (#790): 12 idle hours in town, or a stale wait behind a leader who has gone, lets autopilot hunt
+    return {kind:'rest',until:S.gameMin+60,auto:'waiting where you are'+why,label:'rest'}}
   if(o.kind==='move'){if(o.to&&dist(a,o.to)<=INTENT.NEAR)return null;let p=o.target?plan(a,o.target):null;
     if((!p||p.error)&&o.to&&o.last!=='town')p=toFieldOf(a,o.to,o.label);if(!p||p.error)return null;
     return {kind:'move',legs:p.legs,last:p.last,label:p.label,auto:'carrying on to '+p.label+why}}
@@ -362,12 +382,12 @@ function sinceLook(a,args){const L=a.playLook;if(!L)return null;const out=[],f=f
 
 // ---- marking ----
 export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
-  if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
+  if(on){if(a.state==='dead')return false;if(!a.player)offerThread(a);a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
     ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');soloFor(a);return true}
   if(inSlots(a)&&a.state!=='dead')return false; // the Fellowship is always agent-played (#148): a member is handed back only by leaving
-  a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
+  withdrawThread(a);a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
   {const C=companyOf(a);if(C&&!C.slots)leaveCompany(a)} // out of agent play: a solo's company ends with it
   return true}
 export const isPlayer=a=>!!(a&&a.player);
@@ -376,7 +396,7 @@ export const isPlayer=a=>!!(a&&a.player);
 // Returns true when it handled the step; false hands it to updAgent (duels, assists, regroups,
 // ghosts, a consented crypt or raid, following a party leader, and the DM-led legs of an adventure).
 export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
-  watch(a);intentWatch(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
+  watch(a);intentWatch(a);townGuard(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
   // A Fellowship member whose runner is gone, once the owner said go on (or with no host at all: the headless sim,
   // play-headless before a runner claims it): its reflexes play it whole, the scripted rules, until a runner holds
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
@@ -895,7 +915,7 @@ const T={
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
       state:a.state,doing:a.playDoing||null,queue:(a.pq||[]).map(cmdText),
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
-      oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
+      oath:a.goal&&!a.goal.offered?a.goal.text+(a.goal.done?' (kept)':a.goal.sworn&&a.goal.sworn.words?'':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,...(threadOf(a)?{thread:threadText(a)}:{}),vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
       abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
@@ -1076,7 +1096,7 @@ const T={
     const c=homeOf(a),mine=h.for===a.id;
     need(h.town===c.name&&(mine||inTown(a)),h.town!==c.name?'That job is posted in '+h.town+', not your town.':'Take a posted job at your town board: go home first.');
     need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');
-    const w=jobFit(a,h,[a,...(a.party&&a.party.leader===a?partyMates(a):[])]);need(!w,'The job-giver will not give it to you: '+w+'.');
+    const mem=[a,...(a.party&&a.party.leader===a?partyMates(a):[])],w=jobFit(a,h,mem);need(!w,'The job-giver will not give it to you: '+w+'.'+growHint(a,w,mem));
     h.phase='taken';h.taker=a.id;h.takenAt=Math.round(S.gameMin);h.until=S.gameMin+DMK.MAX_DAYS*1440;learnJob(a,h);
     const q=questLog(a).active.find(x=>x.id==='job:'+n),t=q?q.title:jobText(h);record(a,'Took a job: ',{t,c:'gd'},' ('+(h.giver?h.giver.name:'the board')+').');
     return {ok:true,took:t,id:'job:'+n,holding:heldCount(a)+'/'+QL.MAX,note:'It waits in your quest log for up to '+DMK.MAX_DAYS+' game days: focus_quest {id: "job:'+n+'"} to set out on it.'}},
@@ -1096,7 +1116,13 @@ const T={
       return {ok:true,focus:adv.title,scene:plain(advLine(a))||undefined,held:held.length?held:undefined,note:'The adventure leads you now; what you set aside waits in your quest log.'}}
     let aside=null;if(run)aside=holdAdventure(a);setFocus(a,q.id);
     return {ok:true,focus:q.title,set_aside:aside?aside.title:undefined,note:aside?aside.title+' waits where it stands (focus_quest it, or come back near its place).':undefined}},
-  swear_oath(a,{text,kind,about,days}){const no=canSwear(a);need(!no,no);
+  swear_oath(a,{text,kind,about,days,thread}){const th=clean(thread,4).toLowerCase();
+    if(th){need(th==='yes'||th==='no','thread is yes (take it up as it stands) or no (set it aside).');const no=swearBlock(a,th);need(!no,no);
+      if(th==='no'){setAside(a);return {ok:true,set_aside:true,note:'It stays with you as a memory. You are bound to nothing, and it costs nothing.'}}
+      const H=sayHearers(a),t=a.goal.text;agentLine(a,speak(a,clean('I swear it: '+t,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));const g=takeOath(a,'yes',{hearers:H});
+      return {ok:true,sworn:g.text,oath:true,heard_by:H.map(b=>b.name),note:'Your oath now, and spoken: it is in your quest log. renounce_oath gives it up, at a cost.'}}
+    const oath=!swornOf(a)&&(days==null||days===''); // no oath yet and no term: these words are the hero's oath (#800); with a term, or beside an oath, a vow
+    if(!oath){const no=canSwear(a);need(!no,no)}else need(a.state!=='ghost'&&a.state!=='dead','The dead swear nothing.');
     const k=clean(kind,12).toLowerCase()||'vow';need(VOW.KINDS.includes(k),'kind is one of '+VOW.KINDS.join(', ')+'.');
     const w=clean(about,60);need(k==='vow'||w,'A '+k+' vow needs an about: '+(k==='reach'?'a region, town or landmark you know':k==='protect'?'a companion by name':k==='recover'?'the epic you mean to find':'the foe you mean to slay')+'.');
     let ab=w?{name:w}:null;
@@ -1104,15 +1130,24 @@ const T={
     if(k==='protect'){const c=companyOf(a),ids=new Set([...(c?c.ids:[]),...partyMates(a).map(b=>b.id)]);const b=S.agents.find(x=>x!==a&&alive(x)&&ids.has(x.id)&&vnorm(x.name)===vnorm(w));
       need(b,'You can protect only a companion: '+([...ids].map(id=>S.agents.find(x=>x.id===id)).filter(x=>x&&x!==a&&alive(x)).map(x=>x.name).join(', ')||'you ride alone')+'.');ab={name:b.name,id:b.id}}
     const t=vowText(k,ab,clean(text,VOW.TEXT));need(t,'Say the words of the vow (text).');need(!notEnglish(t),ENGLISH);
+    if(oath){const no=swearBlock(a,t);need(!no,no)}
     const H=sayHearers(a),line=t.toLowerCase().indexOf('swear')>=0?t:'I swear it: '+t;
     agentLine(a,speak(a,clean(line,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));
+    if(oath){const g=takeOath(a,t,{hearers:H,...(clean(kind,12)?{kind:k,about:ab}:{})});return {ok:true,sworn:g.text,oath:true,heard_by:H.map(b=>b.name),
+      note:wordsOnly(g)?'Your oath, held as words: the world cannot see it kept, so it stands until you say it is done (keep_oath) or give it up (renounce_oath, at a cost).':'Your oath: the world will show when it is kept. renounce_oath gives it up, at a cost.'}}
     const v=swearVow(a,{kind:k,about:ab,text:t,days,hearers:H});
     return {ok:true,sworn:v.text,id:v.id,kind:k,term_days:v.days,heard_by:H.map(b=>b.name),note:'It is in your quest log as an oath. Keep it, or renounce_oath (that costs).'}},
-  renounce_oath(a,{id,reason}){need(a.vow,'You hold no sworn vow. Only a vow you swore with swear_oath can be renounced; the oath you began with is not yours to break.');
+  keep_oath(a,{how}){const g=swornOf(a);need(g,'You hold no oath to keep.');need(wordsOnly(g),'The world will show when this oath is kept; it is not yours to declare: '+g.text);
+    const t=clean(how,VOW.TEXT);need(t,'Say aloud how it was kept (how).');need(!notEnglish(t),ENGLISH);const H=sayHearers(a);agentLine(a,speak(a,clean(t,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));
+    keepOath(a);return {ok:true,kept:g.text,heard_by:H.map(b=>b.name),note:'You are bound to nothing now. swear_oath takes a new oath when you have one.'}},
+  renounce_oath(a,{id,reason,why}){const g=swornOf(a),s=String(id==null?'':id).trim(),r0=reason==null?why:reason;
+    if(g&&(!a.vow||/^oath$/i.test(s)||s===oathIdOf(g)||(s&&vnorm(s)===vnorm(g.text)))){need(!(a.persona&&a.persona.pins&&a.persona.pins.oath),'This oath is fixed by the one who keeps your sheet: it cannot be renounced now.');
+      const r=renounceOath(a,r0);return {ok:true,renounced:r.oath.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. Those who heard it remember, and so do you. swear_oath takes a new oath if you ever have one.'}}
+    need(a.vow,'You hold no sworn vow or oath. Only what you swore can be renounced.');
     need(!id||String(id).trim()===a.vow.id||vnorm(id)===vnorm(a.vow.text),'You hold no vow "'+id+'" (yours is '+a.vow.id+').');
-    const r=renounceVow(a,clean(reason,120));return {ok:true,renounced:r.vow.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. The witnesses remember it, and so do you.'}},
+    const r=renounceVow(a,clean(r0,120));return {ok:true,renounced:r.vow.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. The witnesses remember it, and so do you.'}},
   abandon_quest(a,{id,reason}){const why=clean(reason,120)||null,q=findQ(a,id);need(q,'You hold no quest "'+id+'". quests lists them.');
-    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own'+(a.vow&&a.vow.id===q.id?' (a vow you swore: renounce_oath, at a cost)':'')+'.');
+    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own'+((a.vow&&a.vow.id===q.id)||(swornOf(a)&&oathIdOf(swornOf(a))===q.id)?' (what you swore: renounce_oath, at a cost)':'')+'.');
     need(!/^scene:/.test(q.id),'You are in that scene; it ends at the table.');
     if(/^kill:/.test(q.id)){killAbandoned(a,why);a.quest=null;record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'The gate captain’s bounties stay posted: turn_in takes one if you want it.'}}
     if(/^supply:/.test(q.id)){const sj=supplyById(q.id);need(sj,'That job is gone.');dropSupply(a,sj);supplyDone(a,sj,'abandoned',0);record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'It goes back on the board.'}}
@@ -1275,9 +1310,9 @@ const T={
     record(a,'Pinned a notice at ',c.name,'.');return {ok:true,posted:n.text,town:c.name,lapses_in_days:SIGHT.NOTICE_DAYS,note:'Anyone who reads the board at '+c.name+' learns your name and this text. Ask for them at the inn.'}},
   send_courier(a,{to,text}){need(companyOf(a),'Only an agent hero can hire a courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
-  scene_act(a,{option,line,move}){const x=sceneAct(a,option,line,move);if(x===FRAMING)return {ok:false,error:x,offline:true,waiting_for:'the DM'}; // not a failed turn (#682)
+  scene_act(a,{option,line,move,swear}){const x=sceneAct(a,option,line,move,swear);if(x===FRAMING)return {ok:false,error:x,offline:true,waiting_for:'the DM'}; // not a failed turn (#682)
     if(typeof x==='string')throw new Rule(x);const v=tableView(a);
-    return {ok:true,chose:x.k,said:x.line||undefined,moved:x.moved||undefined,...(String(move==null?'':move).trim()&&!x.moved?{move_note:'There is no moving in this scene: you act from where you stand.'}:{}),waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
+    return {ok:true,chose:x.k,said:x.line||undefined,moved:x.moved||undefined,swears:x.swear||undefined,...(String(move==null?'':move).trim()&&!x.moved?{move_note:'There is no moving in this scene: you act from where you stand.'}:{}),waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   // ---- professions and gathering (#257): only the caller's own hero ----
   recipes(a,{profession}={}){let id=null;if(profession!=null&&String(profession).trim()){id=profKey(profession);
       need(id,'There is no profession called "'+clean(profession,40)+'". Leave it out for all of yours, or name one: herbalism, mining, skinning, fishing, alchemy, smithing, leatherworking, cooking, scribing.')}
@@ -1341,7 +1376,11 @@ const T={
     if(!g)return intentView(a,leaderFor(a));
     need(!notEnglish(g+' '+(why||'')),'Not set: say it in English, as everyone in Eldmoor speaks.');
     const c=a.pq&&a.pq[0],order=orderOf(a,c&&!c.auto?(c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c):null)||goalOrder(a,g);
-    const r=setIntent(a,{goal:g,why,until},order);if(r.ok===false)throw new Rule(r.error);
+    const lc=levelCond(until)||(waitish(g)?levelCond(g):null);let ord=order,extra=null;
+    if(lc&&(!ord||ord.kind==='wait')){const mem=lc.all?[a,...partyMates(a)]:[a],lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a);
+      if(lo.lvl>=lc.level)ord=null;else{const z=groundFor(lo),bd=boardFits(a,mem);ord=z!=null?{kind:'hunt',k0:a.kills,ground:ZONES[z],lvl:lc.level}:null;
+        extra={level:'Levels come from kills, not from waiting in town. '+(z!=null?'Autopilot hunts '+ZONES[z]+' for them':'No ground you know fits '+lo.name+': hunt {where}')+(bd.length?'; the board has: '+bd.join('; '):'')+'.'}}}
+    const r=setIntent(a,{goal:g,why,until},ord,extra);if(r.ok===false)throw new Rule(r.error);
     const sh=shoutAim(a);if(sh){r.shouted=sh.heard_by.length?'heard by '+sh.heard_by.join(', '):'no one was near enough to hear';if(sh.too_far)r.too_far=sh.too_far}
     return r},
 };
@@ -1408,7 +1447,8 @@ function jobText(h){const T=D.ADVENTURES[h.tpl];const thing=h.data&&h.data.thing
 // that leaves a company at the gate.
 function growHint(a,w,mem){if(!/^needs level/.test(w))return '';const lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a),z=groundFor(lo);
   const g=z!=null?ZONES[z]:null,n=mem.length-1;
-  return ' Grow first: '+(g?'hunt {where: "'+g+'"}':'hunt out in the world')+(n?(a.party&&a.party.leader===a?' and your companions follow you out':'; tell the others where you hunt'):'')+'. Left at the gate, autopilot hunts there too.'}
+  const bd=boardFits(a,mem);
+  return (bd.length?' The board has, for you now: '+bd.join('; ')+'.':' Nothing else on this board suits you yet.')+' Grow first: '+(g?'hunt {where: "'+g+'"}':'hunt out in the world')+(n?(a.party&&a.party.leader===a?' and your companions follow you out':'; tell the others where you hunt'):'')+'. Left at the gate, autopilot hunts there too.'}
 function jobFit(a,h,mem){const T=D.ADVENTURES[h.tpl];if(!T)return 'unknown job';const lo=Math.min(...mem.map(b=>b.lvl));
   if(h.for!=null&&!mem.some(b=>b.id===h.for))return 'it is meant for someone else';
   if(lo<Math.max(DMK.MIN_LVL,T.lvl||0))return 'needs level '+Math.max(DMK.MIN_LVL,T.lvl||0);
