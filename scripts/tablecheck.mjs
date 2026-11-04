@@ -240,7 +240,7 @@ if (process.argv[2] === '--arrival') {
   // the Continue prep: half the caps; the time cap ends it; the call cap ends it
   let clk = 0; PR.setPrepClock(() => clk); PR.beginPrep('resume');
   ok(PR.prepView().max_calls === Math.round(PR.PREP.CALLS * PR.PREP.SHORT) && PR.prepView().kind === 'resume', 'a Continue prep has half the calls');
-  clk = PR.PREP.MS; PR.prepTick(); ok(!PR.prepActive() && PR.prepView().why === 'time', 'the time cap ends it');
+  dmAct('regions'); clk = PR.PREP.MS; PR.prepTick(); ok(!PR.prepActive() && PR.prepView().why === 'time', 'the time cap ends it (counted from the first call, #733)');
   PR.beginPrep('opening'); for (let i = 0; i < PR.PREP.CALLS; i++) dmAct('regions');
   ok(!PR.prepActive() && PR.prepView().why === 'calls', `the call cap ends it (${PR.PREP.CALLS} calls)`); PR.setPrepClock(null);
   // the arrival: a death queues the recruit; nothing opens in the Crypt; it opens in town
@@ -412,7 +412,7 @@ if (process.argv[2] === '--fireside') {
   if (sd) {k = 0; while (S.table === sd && !(sd.wk && sd.wk[live.id]) && k++ < 600) step(1 / 60); P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'Too close. I owe you all a drink.'})} k = 0; while (S.table === sd && k++ < 60 * 60) step(1 / 60); // answered once woken (#682: seats are woken 1.5 s apart)
   ok(sd && /talked it over/.test(sd.summary) && !S.table, 'the debrief plays one round: ' + (sd && sd.summary));
   // 3b. the start gate holds the world (#559): no fire opens while it holds, and it opens once the hold lifts
-  CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; field(); SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
+  CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; field(); for (const x of S.agents) if (SLT.inSlots(x)) x.adv = null; S.adventures = (S.adventures || []).filter(h => h.phase !== 'open'); if (S.table && S.table.ctx && S.table.ctx.adv != null) {S.tables = {}; S.table = null} /* a job's scene is not what this asks about, and the member left in town would take one */ SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
   ok(!S.table, 'while the start gate holds the world no fireside opens');
   SIM.setGateHold(false); k = 0; while (!(S.table && S.table.kind === 'fireside') && k++ < 600) step(1 / 60);
   ok(S.table && S.table.kind === 'fireside', 'once the hold lifts the waiting fireside opens'); k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
@@ -497,8 +497,8 @@ if (process.argv[2] === '--interrogate') {
   ok(sc.calls.every(c => c.by === 'scripted') && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'interrogation' && e.detail.fill && e.detail.why === 'gone'), 'a DM that does not poll: its reflexes voice the prisoner, logged as fills (why: gone)');
   // 5. the camp: an ambush on the watch carries the camp spot; a fireside too
   CM.CAMP.AMBUSH_P = 1; const why = CM.leaderRest(live, 4); M.forEach(x => {x.state = 'hunt'}); // the scene opens on the camp's next roll
-  const field = () => {for (const [i, x] of M.entries()) {x.state = 'hunt'; x.x = home.x + 14 + (i % 3) * .5; x.y = home.y + 2 + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.hp = maxHp(x)}};
-  field(); CM.leaderRest(live, 4); g = 0; while (!(S.table && S.table.kind === 'ambush') && g++ < 60 * 300) step(1 / 60); const am = S.table;
+  const field = () => {for (const [i, x] of M.entries()) {x.state = 'hunt'; x.x = spot.x + (i % 3) * .5; x.y = spot.y + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.adv = null; x.hp = maxHp(x)} if (S.table && S.table.kind === 'choice') {S.tables = (S.tables || []).filter(t => t !== S.table); S.table = null}}; // no job under way: its choice scene waits on the live member and holds the table
+  field(); SLT.slotted().camp = null; CM.leaderRest(live, 4); g = 0; while (!(S.table && S.table.kind === 'ambush') && g++ < 60 * 300) step(1 / 60); const am = S.table;
   ok(am && am.ctx.camp && Math.abs(am.ctx.camp.x - SLT.slotted().camp.x) < .01, 'an ambush on the watch carries the camp spot (the scene plays round the fire)' + (am ? '' : ' (' + why + ')'));
   // 6. no host: a yield queues nothing
   T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto'; SIM.setRunnerLinks(null); delete SLT.slotted().iqQ;
@@ -1611,7 +1611,7 @@ console.log('talking takes presence');
  for (const x of mem) if (!PP.votes[x.id] && PP.status === 'open') act(x, 'vote', {proposal_id: PP.id, vote: 'yes', reason: 'ok'});
  ok(PP.status !== 'open' && !PP.votes[RB.id] && /Passed 4-0/.test(PP.result), 'a vote counts only the members present, and settles without the absent one: ' + PP.result);
  const cq = act(RA, 'propose', {kind: 'crypt', details: 'Down we go'});
- ok(!cq.ok && /whole Fellowship together/.test(JSON.stringify(cq)), 'a Crypt call needs everyone together');
+ ok(!cq.ok && /whole Fellowship/.test(JSON.stringify(cq)), 'a Crypt vote needs everyone together');
  // meeting plans
  gather(); awayB(); for (const x of RM) x.memories = null;
  const pl = C.makeMeeting(RA, 'the ford at Mirefen', 6);
@@ -1653,7 +1653,8 @@ T.TABLE.mode = 'off'; T.TABLE.speed = 1; // outside Table mode: the Crypt call i
 const reset = () => {if (CRYPT.group) for (const a of CRYPT.group.mem) {a.state = 'hunt'; a.hidden = false} CRYPT.group = null; CRYPT.cd = 0};
 // everyone of the faction safe in town (in the Crypt pool, and nothing attacks them there)
 const field = () => {for (const a of S.agents) if (a.fac === 0 && a.state !== 'dead') {const c = homeOf(a); a.lvl = SLT.inSlots(a) ? 8 : 6; a.state = 'town'; a.townStep = 2; a.wait = 9; a.x = c.gate.x; a.y = c.gate.y - 1; a.target = null; a.pq = []; a.hidden = false; a.raid = false; a.hp = maxHp(a)}};
-for (const x of RM) link(x, 'none');
+// no host at all (npm run sim): the reflex draft (#826: with a host the world never asks, see initiatecheck)
+const hostLinks = x => LINK[x.id] || 'none'; SIM.setRunnerLinks(null);
 ok(RM.every(x => x.player && SIM.reflexMay(x)), 'no runner holds any member: their reflexes play them and vote (#148)');
 field(); const others = S.agents.filter(a => a.fac === 0 && !SLT.inSlots(a) && a.state !== 'dead').slice(0, 2); for (const a of others) a.lvl = 8;
 let formed = null; for (let k = 0; k < 400 && !formed; k++) {reset(); field(); for (const a of others) a.lvl = 8; S.dmLogSeq = S.dmLogSeq; step(1 / 60); const g = CRYPT.group; if (g && g.fac === 0) formed = g.mem.slice();}
@@ -1662,11 +1663,12 @@ reset(); field(); for (const a of others) a.lvl = 8; RM[4].state = 'ghost'; // o
 let split = false; for (let k = 0; k < 400; k++) {reset(); field(); for (const a of others) a.lvl = 8; RM[4].state = 'ghost'; step(1 / 60); const g = CRYPT.group; if (g && g.mem.some(a => SLT.inSlots(a))) {split = true; break}}
 ok(!split, 'with one member unable to go, none of them is drafted');
 ok(SLT.slotted().log.some(e => e.kind === 'council' && /not all of/.test(e.parts.map(p => typeof p === 'string' ? p : '').join(''))), 'the log says they stayed together');
-// an agent party is asked, not drafted
-for (const x of RM) link(x, 'waiting'); reset(); field(); for (const a of others) a.lvl = 8; SLT.slotted().cool = {};
+// an agent party is never asked and never drafted (#826): the leader's own proposal is the road
+SIM.setRunnerLinks(hostLinks); for (const x of RM) link(x, 'waiting'); reset(); field(); for (const a of others) a.lvl = 8; SLT.slotted().cool = {};
 let prop = null; for (let k = 0; k < 400 && !prop; k++) {reset(); field(); for (const a of others) a.lvl = 8; step(1 / 60); prop = C.openProps().find(q => q.kind === 'crypt'); if (CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))) break}
-ok(prop && !(CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))), `an agent-played Fellowship gets a proposal instead of a draft: "${prop && prop.details}"`);
+ok(!prop && !(CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))), 'a background muster opens no vote for an agent-played Fellowship and takes none of them');
 reset(); field();
+{const r = act(C.leaderOfF(), 'propose', {kind: 'crypt', details: 'Down we go'}); ok(r.ok, 'the leader\'s own proposal goes'); prop = C.openProps().find(q => q.kind === 'crypt')}
 for (const a of SLT.slotHeroes(SLT.slotted())) if (!prop.votes[a.id]) act(a, 'vote', {proposal_id: prop.id, vote: 'yes', reason: 'Together.'});
 ok(prop.status === 'passed' && CRYPT.group && SLT.slotHeroes(SLT.slotted()).every(a => CRYPT.group.mem.includes(a) && a.cryptOk), `they vote yes and set out together (${prop.result})`);
 step(1 / 60); step(1 / 60);
