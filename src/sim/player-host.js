@@ -4,6 +4,7 @@
 // uses timers, so the world keeps stepping while a `wait` is pending.
 import {playerAct,waitOver,finishWait,turnStart,turnEnd,lookSnap} from './player.js';
 import {paceCheck,paceIdle,paceBrief,PACE} from './pace.js';
+import {worldHeld} from './prep.js';
 import {reflectDone} from './reflect.js';
 import {markQueued,sceneDue} from './scenewait.js';
 import {S} from './state.js';
@@ -34,6 +35,7 @@ export const WAIT_SCENE_MS=240000; // the longest a wait holds at a scene alread
 export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now()}={}){
   const p=args&&typeof args==='object'?args:{},me=()=>S.agents.find(x=>x.id===Number(heroId));
   if(p.brief){const r=paceBrief(heroId,{self:!!p.self}),a=me();if(r&&r.ok&&a&&a.playFresh){a.playFresh=false;lookSnap(a)}return r} // the state header for a turn prompt, at once; the one a runner reads after its wake is the agent's view of the world (#240; the relay's after-turn brief for the behavior log is not)
+  if(p.held){const a=me();if(!a||a.kind!=='hero')return {ok:false,gone:true,error:'No such hero.'};if(a.state==='dead')return {ok:false,dead:true,error:a.name+' is dead.'};if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};return {ok:true,held:worldHeld()||null}} // the first turn of a run asks whether the start gate or the DM's prep still holds the world (#770)
   if(p.queued!=null){const a=me();return a?markQueued(a,!!p.queued,p.why):{ok:false,gone:true,error:'No such hero.'}} // the runner: this member's scene answer is queued behind other work (#515)
   if(p.reflected!=null){const a=S.agents.find(x=>x.id===Number(heroId));return a&&a.player?reflectDone(a,String(p.reflected),p.wrote):{ok:false,error:'not agent-played'}} // a reflection closed (#179)
   const t0=now(),rm=Number(p.realMs),realMs=Math.min(PACE.REAL_MAX,Number.isFinite(rm)&&rm>=0&&p.realMs!==null?rm:PACE.REAL_MS);
