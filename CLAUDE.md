@@ -717,6 +717,8 @@ Owner setup:
    hero's session file; later runs need only `--hero`), or `npm run fellowship -- --provider openai --model <id>`.
    Tags read like `gpt-6-luna · openai`.
 
+Tool descriptions: Chat Completions answers 400 to a function description past 1024 characters (developers' reports; OpenAI's docs do not print it, and no live call has checked it here), and `stage_scene`, `when`, `pull_lever` and `swear_oath` run past that. `fitTools` in `openai.mjs` cuts them at a sentence and sends the rest in the system message, for every provider on this adapter; the mocks answer 400 past the limit.
+
 Model lists (#677): `OPENAI_MODELS=a,b` in `.env` makes `providers.openai.models` exactly that list, in that order, checked once against the
 key's `/models` (an id the key cannot use is dropped, with `dropped` in `/health` and a line in the relay log); unset, the key's chat models come
 cheapest first from `PRICES` (unpriced last). `/health` also carries `prices` (per 1M tokens) and the pickers label each model ("gpt-6-luna · $0.10 /
@@ -829,18 +831,19 @@ encounters and speak at their tables (issue #132, below).
 
 - In the game: `npm run relay -- --runners` (or `start-eldmoor.cmd`) and `npm run dev`; the seat is
   open from the first tick (the setup page picks the DM's mind); open the **Dungeon Master** panel and press
-  **Start DM** (Claude or a pulled local model). The seat (link, runner mind, runner state and last error) shows there and as the
+  **Start DM** (any mind a hero can have, from the same picker lists: Claude, local, OpenAI, Hugging Face, Gemini; #824). The seat (link, runner mind, runner state and last error) shows there and as the
   DM row of **Minds at play** (Start DM / Stop DM there too). Without `--runners` the button says how to
   turn runners on; from a terminal instead: `npm run dm` (one runner; it claims the seat).
 - Headless: `node scripts/play-headless.mjs --dm --agents 0 --port 8789` (no agent hero, the seat open),
   then `npm run dm -- --url http://127.0.0.1:8789`.
 - Runner (`scripts/dm-agent.mjs`): Agent SDK with `claude-sonnet-5-5` by default (`DM_MODEL`, `--model`,
-  `--effort`), or `--provider ollama --model M` through `scripts/local-agent.mjs`; `--budget 1.00` by default
+  `--effort`), or `--provider ollama|openai|huggingface|google --model M` through `scripts/local-agent.mjs`; `--budget 1.00` by default
   and no turn cap (`--max-turns N` optional; a local DM runs until stopped); `--cadence evening` (a turn now, then one every game
   evening at 18:00) or `--cadence S` real seconds, never less than `--min-gap S` (20) apart; stops after
   `--max-fails` failed or empty turns in a row; never starts a turn while a Table scene or a party vote is open. One model
   call at a time; a rate limit (429/overloaded) backs off 30 s up to 10 min and retries. Cost line per
   turn. Session `logs/agents/dm.json` (keyed by the world's tag, resumed next run, `--new` sets it aside).
+- The DM's mind (#824): `src/data/providers.js` `PROVIDERS` is the one provider list; `MIND_PROVIDERS`, `SETUP_PROVIDERS`, `RUNNER_PROVIDERS` and `DM_PROVIDERS` are that array, and every picker takes `mindLists()` (`src/ui/mindpick.js`), so the setup page, the pickers and the runners cannot disagree. OpenAI, Hugging Face and Gemini run the DM on the Chat Completions loop (`isCompat`): the seat's model for the table, talk, ruling and companion voices (8 s budgets), real cost in the turn line, `--budget` (checked between turns and while it waits, so a voice can end the run as a budget stop; a model that reports no price says the budget cannot limit it), no Claude slot, no roll by size (only Claude Haiku has the price line; a fresh session asked from the page still rolls). Switching: Stop DM, pick, Start DM; a run on another provider sets the conversation aside like `--new` (`mindSwitched`) and its first turn is told to read its notes and the DM log, which stay in `S.dmAgent` with the whens. `scripts/dm-mind-cases.mjs` plays all of it from `openaicheck`, `hfcheck` and `googlecheck`, a setup choice through the supervisor to the prep and the opening frame included.
 - Tools (`src/data/dm-tools.js`, game side `src/sim/dmagent.js`), over MCP at `/mcp?role=dm` (or the
   `X-Eldmoor-Role: dm` header), plain JSON at `POST /play/dm {tool, args}`: `dm_status`,
   `read_timeline`, `read_chronicle`, `read_dm_log`, `fellowship_view`, `heroes_near`, `npcs`,
