@@ -1,1 +1,2 @@
 - [Baselines](project_baselines.md) — dated sim numbers; latest 2026-11-01 main vs PR147 (main: 17.7 deaths/h, PvP 53%, Kragmaw 8/120min)
+- [Patch #746](project_patch746.md) — 2026-11-04 patch vs old rounds x30: Fellowship deaths 1.47 vs 1.43, noise; walking 4% of strikes

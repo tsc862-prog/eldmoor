@@ -84,6 +84,7 @@
 - [Others none #780](others_none.md) — no-roster world, summon_hero lever, guild skip, GOODS floor, heir rule, fixture traps
 - [Log outcome tags #785](log_outcome_tags.md) — OUTCOME regex in history.js leaves src off outcome lines; add new outcome openings there
 - [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap
+- [Open patch #746](open_patch.md) — fights on the map: sc.fp, agentsDecide gate, tiles to x y, ELDMOOR_PATCH=all, what was left out
 - [Crawl geometry #745](crawl_geometry.md) — geometry.js rules, reach fine at rounds:2, GUARD_CUT not monotonic, deaths noise needs 60+ sims
 - [Wait is not progress #790](wait_not_progress.md) — wait cap 240, level condition -> hunt, 12 h town-idle guard, refusals list the board
 - [Paths #794](paths_794.md) — path.js rules: near lines skip A*, mob limit, clearLine, reachable goal swap, road shoulders, fixture traps
