@@ -156,7 +156,7 @@ function arrive(T,w){const s=net().byName.get(w.to);T.stats.arrived++;
 const living=b=>b&&b.state!=='dead'&&!b.hidden;
 const mobById=id=>S.mobs.find(m=>m.id===id)||null;
 const here=w=>ZONES[zoneAt(w.x,w.y)]||'the wilds';
-const foeWord=m=>m.name||(MOBS[m.type]?'a '+MOBS[m.type].name.toLowerCase():'something');
+const foeWord=m=>m.name||(MOBS[m.type]?an(MOBS[m.type].name)+' '+MOBS[m.type].name.toLowerCase():'something');
 function goOn(w){w.beset=null;w.moving=true}
 function lost(T,w){T.stats.lost++;T.list.splice(T.list.indexOf(w),1);log('A ',bare(w),' never came off the road in ',here(w),'.')}
 function endAlone(T,w){if(rand(T)<TRAFFIC.LOST_P)lost(T,w);else{T.stats.freed++;goOn(w)}}
