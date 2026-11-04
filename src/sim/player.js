@@ -54,6 +54,8 @@ import {record,asSrc} from './history.js';
 import {fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {dmDepart,advLine,K as DMK,holdAdventure,resumeAdventure,beginJob,abandonAdventure,bountiesAt,bountyFor,takeBounty} from './dm.js';
+import {supplyById,supplyJobs,takeSupply,dropSupply,fillSupply,textOf as supplyText,wantText as supplyWant,rewardText as supplyReward,mayHave as supplyMay,have as supplyHave,supplyId,SUP} from './supply.js'; // goods jobs (#720)
+import {supplyDone} from './questlog.js';
 import {questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard,selfView,become} from './persona.js'; // Fellowship (#68); self and become (#409)
@@ -1035,6 +1037,7 @@ const T={
     for(const h of (S.adventures||[]))if(h.phase==='open'&&h.town===c.name){const T=D.ADVENTURES[h.tpl],zn=h.zone!=null?ZONES[h.zone]:null;learnJob(a,h); // its region and the place it names (#188, #423)
       out.push({id:h.id,job:jobText(h),giver:h.giver?h.giver.name:'the gate captain',where:zn||'near the town',party:T&&T.size?(T.size[0]>1?'wants '+T.size[0]+' to '+T.size[1]+' blades':'one blade will do'):undefined,
         for_you:h.for!=null?h.for===a.id:undefined,rumour:h.zone!=null?jobRumour(a,h.zone):undefined,expires_in_min:Math.max(0,Math.round(h.until-S.gameMin))})}
+    for(const j of supplyJobs())if(j.phase==='open'&&j.town===c.name&&supplyMay(a,j))out.push({id:j.id,job:supplyText(j),goods:true,giver:j.giver?j.giver.name:'the gate captain',where:c.name,wants:supplyWant(j),pays:supplyReward(j),you_carry:supplyHave(a,j.want),for_you:j.for!=null?j.for===a.id:undefined,expires_in_min:Math.max(0,Math.round(j.until-S.gameMin))}); // a goods job (#720): take_quest {id} to hold it, turn_in to hand the goods in
     const bounties=bountiesAt(c).filter(b=>MOBS[b.type]).map(b=>({bounty:MOBS[b.type].q,kill:b.need+' '+MOBS[b.type].pl,where:ZONES[b.z],giver:b.giver,yours:a.quest&&a.quest.bounty===b.id||undefined,expires_in_min:Math.max(0,Math.round(b.until-S.gameMin))}));
     const sg=sightingLines(a,c.name),nt=noticesAt(a,c.name);for(const x of sg)if(x.bound)learnPlace(a,x.bound,'told');
     const gw=gateWord(a,c.name); // the gate's word: what the town is saying (#637)
@@ -1056,7 +1059,9 @@ const T={
     setFocus(a,jobId(h));const adv=advOf(a);return {ok:true,adventure:adv.title,scenes:adv.scenes.length,scene:plain(advLine(a)),set_aside:setAside?setAside.title:undefined,note:'The adventure now leads you. Scene choices wait for choose(); fights are real.'+(setAside?' '+setAside.title+' waits in your quest log (focus_quest to go back to it).':'')}},
   // ---- the quest log (sim/questlog.js): several quests, one in focus ----
   quests(a){return {ok:true,...questsView(a)}},
-  take_quest(a,{id}){const n=parseJob(id);need(n!=null,'Give a job id (job:42 or 42) from list_jobs or quests.');
+  take_quest(a,{id}){const sj=supplyById(id);if(sj){need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');need(sj.phase!=='taken'||sj.taker!==a.id,'You already hold that one: bring the goods and turn_in.');need(inTown(a)||sj.for===a.id,'Take a posted job at your town board: go home first.');
+      const r=takeSupply(a,sj);need(r.ok,r.error);return {ok:true,took:supplyText(sj),id:supplyId(sj),wants:supplyWant(sj),pays:supplyReward(sj),holding:heldCount(a)+'/'+QL.MAX,note:'Make or gather it, carry it home to '+sj.town+' and turn_in. It goes cold in '+SUP.TAKEN_DAYS+' game days.'}}
+    const n=parseJob(id);need(n!=null,'Give a job id (job:42 or 42) from list_jobs or quests.');
     const h=(S.adventures||[]).find(x=>x.id===n);need(h&&h.phase!=='done','No job '+n+' is open.');
     need(!(h.phase==='taken'&&h.taker===a.id)&&!(h.phase==='active'&&(h.held===a.id||h.mem&&h.mem.includes(a.id))),'You already hold that one: focus_quest {id: "job:'+n+'"}.');
     need(h.phase==='open','Someone else has that job.');
@@ -1102,6 +1107,7 @@ const T={
     need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own'+(a.vow&&a.vow.id===q.id?' (a vow you swore: renounce_oath, at a cost)':'')+'.');
     need(!/^scene:/.test(q.id),'You are in that scene; it ends at the table.');
     if(/^kill:/.test(q.id)){killAbandoned(a,why);a.quest=null;record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'The gate captain’s bounties stay posted: turn_in takes one if you want it.'}}
+    if(/^supply:/.test(q.id)){const sj=supplyById(q.id);need(sj,'That job is gone.');dropSupply(a,sj);supplyDone(a,sj,'abandoned',0);record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'It goes back on the board.'}}
     const n=parseJob(q.id),h=(S.adventures||[]).find(x=>x.id===n);need(h,'That job is gone.');
     if(h.phase==='taken'){h.phase='open';h.taker=null;takenGone(a,h,'abandoned',why);if(S.gameMin>h.until)S.adventures.splice(S.adventures.indexOf(h),1);
       record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'It goes back on the board.'}}
@@ -1201,6 +1207,7 @@ const T={
   // The gate captain's bounties (issue #67): hand in a finished one, or take one if you hold none. Never handed out unasked.
   turn_in(a,{region}={}){need(inTown(a),'The gate captain is at '+homeOf(a).name+'’s gate ('+Math.round(dist(a,homeOf(a).gate))+' tiles). move_to("home"), then turn_in.');const q=a.quest,doneQ=q&&q.have>=q.need,g=a.gold,l=a.lvl,c=homeOf(a);
     const bt=x=>(MOBS[x.type].q)+': '+x.need+' '+MOBS[x.type].pl+' in '+ZONES[MOBS[x.type].z];
+    {const f=fillSupply(a);if(f)return {ok:true,filled:supplyText(f.job),reward_gold:f.gold,honor:f.honor,bonus:f.bonus?f.bonus.n+' '+f.bonus.id:undefined,gold:a.gold,note:q?'Your bounty is still ahead of you: turn_in again when it is done.':'A job well filled: the board remembers.'}} // goods jobs first (#720): the pack holds what a taken or posted job asks for
     if(doneQ){turnIn(a);return {ok:true,reward_gold:a.gold-g,leveled:a.lvl>l||undefined,note:'The captain keeps bounties posted: turn_in again to take another (list_jobs shows them).'}}
     if(q)return {ok:false,error:'Your bounty is not done ('+q.have+'/'+q.need+').',bounty:bt(q)};
     need(heldCount(a)<QL.MAX,'You already hold '+QL.MAX+' quests. Finish or abandon_quest one first.');
