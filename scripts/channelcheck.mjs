@@ -8,7 +8,7 @@
 //            prompt, another member's journal, memories (recent and long), persona and backstory,
 //            mind (a brain prompt), runner narration (Agent tab) and saved session prompt, the notebooks of
 //            issue #155 (another member's memories, a fallen member's private note, the DM's remember), another
-//            member's landmark and journal chapter (issue #153)
+//            member's landmark and journal chapter (issue #153), another member's will before it executes (issue #631)
 //   hero     every hero tool result (status, look, chat_read, party_read, journal_read, journal_search, events,
 //            wait, scene views ...), the runner prompts (system prompt, Fellowship orders, turn
 //            prompts) and the brain snapshots (townPlan, say, fightOrFlee, cryptCall, persona,
@@ -134,6 +134,12 @@ ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.stageReason)), '
   const ru = at.call ? DMA.dmAct('ruling_answer', {call: at.call, skill: 'perception', dc: 'fair', effects: ['none'], fail_effects: ['none'], text: 'A hollow echo answers.', fail_text: 'Only stone.', note: 'Ruling ' + plant('rulingNote')}) : {ok: false, error: at.error || 'no call'};
   keep('attempt result', at); keep('ruling events', A.playEv || []);
   ok(ru.ok && S.dmLog.some(e => JSON.stringify(e.detail || {}).includes(SECRETS.rulingNote)), 'a ruling: its note is in the DM log only' + (ru.ok ? '' : ': ' + ru.error))}
+// when and watch (issue #635): a when's reason, its action not yet fired and a watch's note are the DM's own
+r = DMA.dmAct('when', {trigger: 'near_place', on: {place: '2,2', radius: 1, hero: B.name}, action: 'narrate', args: {text: 'Unfired ' + plant('whenText'), near: '{who}'}, reason: 'When ' + plant('whenReason')});
+ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.whenReason)), 'a when: its reason (and its unfired line) in the DM log only' + (r.ok ? '' : ': ' + r.error));
+r = DMA.dmAct('watch', {trigger: 'enter_town', on: {town: 'Nowhere'}, note: 'x'}); // refused (no such town): nothing set
+r = DMA.dmAct('watch', {trigger: 'hero_levels', on: {hero: B.name, level: 60}, note: 'Watch ' + plant('watchNote')});
+ok(r.ok && JSON.stringify(DMA.dmAct('whens')).includes(SECRETS.watchNote), 'a watch: its note is the DM\'s own (whens)' + (r.ok ? '' : ': ' + r.error));
 S.dmLog[0].prompt = 'DM model prompt ' + plant('dmPrompt'); S.dmLog[0].reply = 'DM model reply ' + plant('dmReply');
 ok(act(B, 'journal_write', {text: 'Dear diary, ' + plant('bJournal')}).ok, 'B\'s journal');
 // tiered memory (issue #153): B's own landmark and a chapter of B's older lines stay B's
@@ -150,6 +156,10 @@ B.backstory.paras = {...B.backstory.paras, flaw: 'B hides ' + plant('bFlaw')};
 ok(act(B, 'become', {field: 'beliefs', text: 'B believes ' + plant('bBelief'), why: 'B changed because ' + plant('bWhy')}).ok, 'B changes its own beliefs (become)');
 ok(act(B, 'become', {field: 'traits', text: 'B is ' + plant('bTrait').slice(0, 30), why: 'B noticed'}).ok, 'B notes a trait of its own');
 ok(act(B, 'become', {field: 'stance', about: A.name, text: 'Of A, B thinks ' + plant('bStanceA'), why: 'B judged ' + plant('bStanceWhy')}).ok, 'B changes its stance toward A');
+// the will (issue #631): B leaves A gold with words; private to B until B falls (A, the DM and the others never see it)
+B.gold = Math.max(B.gold || 0, 5);
+{const rw = act(B, 'bequeath', {to: A.name, gold: 1, words: 'For the road, ' + plant('bWill')});
+  ok(rw.ok && JSON.stringify(act(B, 'status')).includes(SECRETS.bWill), 'B writes a will naming A (bequeath), and its own status lists it' + (rw.ok ? '' : ': ' + rw.error))}
 // the aim (issue #535): a member's stated aim is private; only a leader's new aim leaves it, shouted to the company in range
 {const {leaderFor} = await import('../src/sim/council.js'), who = [B, ...rest].find(x => x.state !== 'dead' && leaderFor(x) !== x);
   const ra = act(who, 'intent', {goal: 'Aim ' + plant('bAim'), why: 'Because ' + plant('bAimWhy')});

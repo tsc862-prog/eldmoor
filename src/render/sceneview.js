@@ -7,7 +7,8 @@
 //            world renderer (render/draw.js) keeps drawing the chunk terrain, trees, road, river, snow, weather, night,
 //            the members and foes where they stand, condition glyphs and spell effects, and only takes its camera
 //            from sceneCut(); past the map's edge a generated biome arena fills in (arenaPattern)
-//   dungeon  the Crypt's scenes (site, room, crawl) open the dungeon view as before (render/dungeonview.js)
+//   dungeon  the Crypt's scenes (site, room, crawl) open the dungeon view as before (render/dungeonview.js); a DM-made site's
+//            crawl (ctx.site, #642) opens it on the site's own interior
 //   camp     (#431 slice 3) a scene that breaks out at a camp (ctx.camp: the fireside, an ambush on the watch, a yielded foe
 //            questioned by the fire) is an outdoor cut centred on the fire, smaller (data/settings.js OUTDOOR_SETTINGS.camp),
 //            the fire and the bedrolls kept drawn while it lasts (render/camp.js); an interrogation in a town plays in the cell
@@ -40,7 +41,7 @@ import {SETTINGS,SETTING_IDS,OUTDOOR_SETTINGS} from '../data/settings.js';
 import {buildSetting} from '../world/interior.js';
 import {drawSetting,bubble,answerMark} from './interior.js';
 import {texel} from './terrain.js';
-import {openDungeon,closeDungeon,dungeonOpen} from './dungeonview.js';
+import {openDungeon,closeDungeon,dungeonOpen,dungeonOf,dungeonGroup,isSite} from './dungeonview.js';
 import {biomeOfZone,SCENE,MARK,TEXT} from './palette.js';
 import {classColor,DISP} from '../core/colors.js';
 import {sceneHead} from '../core/scenehead.js';
@@ -51,6 +52,7 @@ import {inSlots} from '../sim/company.js'; // the slotted company (#588)
 
 const KEY='eldmoor.sceneMaps';
 const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social','interrogation','talk']); // interrogation (#431 slice 3): the cell in a town
+const ROOM_KINDS=new Set(['opening','arrival']); // session zero and an arrival in a town (#701): arrival.js names the tavern in ctx.setting; at a camp they keep the camp cut
 const TOWN_PAD=3,NEAR=14,SPEAK_S=9;
 let auto=true;try{if(typeof localStorage!=='undefined'&&localStorage.getItem(KEY)==='off')auto=false}catch(_){}
 
@@ -81,11 +83,12 @@ export function pickSetting(sc,town,people=[]){const want=sc&&sc.ctx&&sc.ctx.set
 
 export function sceneSpec(sc=S.table){if(!sc)return null;
   const members=sc.ids.map(byId).filter(Boolean),cast=castOf(sc),an=anchorOf(sc,members);
-  if(sc.ctx&&sc.ctx.site!=null)return null; // a DM-made site's crawl (#69): no interior view yet (the Crypt's view would be wrong); the banner plays it
-  if(DUNGEON_KINDS.has(sc.kind))return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:CRYPT?CRYPT.name:'the Crypt'};
+  if(sc.ctx&&sc.ctx.site!=null){const D=dungeonOf(sc); // a DM-made site's crawl (#642): the dungeon view with the site's own interior
+    return D?{mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:D.name,dungeon:D}:null}
+  if(DUNGEON_KINDS.has(sc.kind))return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:CRYPT?CRYPT.name:'the Crypt',dungeon:CRYPT};
   const c=sc.ctx||{},town=(c.town&&CITY.find(t=>t.name===c.town))||(an?townAt(an.x,an.y):null),z=an?zoneAt(an.x,an.y):-1;
   // indoors: in a town, or wherever the DM named a room (stage_scene setting, #431 slice 2: a house by the road)
-  if(INDOOR_KINDS.has(sc.kind)&&(sc.kind==='talk'?SETTINGS[c.setting]:(town||SETTINGS[c.setting]))){ // a talk (#407) plays indoors only when talkscene.js set its room (the person stands in a town); in the field it keeps the cut
+  if((INDOOR_KINDS.has(sc.kind)||ROOM_KINDS.has(sc.kind))&&(sc.kind==='talk'||ROOM_KINDS.has(sc.kind)?SETTINGS[c.setting]:(town||SETTINGS[c.setting]))){ // a talk (#407) plays indoors only when talkscene.js set its room (the person stands in a town); in the field it keeps the cut
     const people=cast.filter(e=>e.kind!=='hero'&&e.kind!=='mob'),setting=pickSetting(sc,town,people),place=town?town.name:(ZONES[z]||'the wilds');
     return {mode:'indoor',kind:sc.kind,title:sc.title,members,cast,anchor:an,town,setting,key:place+'|'+sc.id,where:SETTINGS[setting].name+' in '+place}}
   // at a camp (#431 slice 3): the fireside, an ambush on the watch or questions by the fire play on the real ground round the fire
@@ -94,7 +97,7 @@ export function sceneSpec(sc=S.table){if(!sc)return null;
   return {mode:'outdoor',kind:sc.kind,title:sc.title,members,cast,anchor:an,town,where:(town?'Outside '+town.name+', ':'')+(ZONES[z]||'the wilds')}}
 
 // ---- state ----
-let open=false,openId=null,spec=null,dismissed=null,seenId=null,autoDg=false,dgShut=false,speaker=null,lastBeats=0,lastNarr=null;
+let open=false,openId=null,spec=null,dismissed=null,seenId=null,autoDg=false,dgShut=false,dgAt=null,speaker=null,lastBeats=0,lastNarr=null;
 export const sceneOpen=()=>open;
 export const sceneSpeaker=()=>speaker; // {e, text} the bubble shows, or null (#536)
 export const sceneMode=()=>open&&spec?spec.mode:null;
@@ -105,7 +108,7 @@ export function setSceneAuto(on){auto=!!on;try{localStorage.setItem(KEY,auto?'au
 const follows=(cam,sc)=>!!cam&&(cam.view==='fellow'||(!!cam.sel&&(sc.ids.includes(cam.sel.id)||(cam.view==='follow'&&inSlots(cam.sel)))));
 
 export function openSceneView(sc=S.table){const sp=sceneSpec(sc);if(!sp)return false;
-  if(sp.mode==='dungeon'){autoDg=true;dgShut=false;return openDungeon(CRYPT)}
+  if(sp.mode==='dungeon'){autoDg=true;dgShut=false;dgAt=sp.dungeon||CRYPT;return openDungeon(dgAt)}
   if(!root&&!build())return false;
   open=true;openId=sc.id;spec=sp;sig='';root.hidden=false;root.classList.toggle('scout',sp.mode==='outdoor');root.dataset.mode=sp.mode;
   const scr=document.getElementById('screen');if(scr){scr.classList.add('scopen');scr.classList.toggle('scin',sp.mode==='indoor')}
@@ -126,12 +129,12 @@ const clock=()=>typeof performance!=='undefined'?performance.now()/1000:Date.now
 // Once a frame: open on a new scene of the followed Fellowship, close when it ends, keep the speaker.
 export function sceneTick(cam){const sc=S.table;
   if(sc&&sc.id!==seenId){seenId=sc.id;if(auto&&follows(cam,sc)&&dismissed!==sc.id){const sp=sceneSpec(sc);
-    if(sp&&sp.mode==='dungeon'){if(!dgShut&&!dungeonOpen()){autoDg=true;openDungeon(CRYPT)}}else if(sp)openSceneView(sc)}}
+    if(sp&&sp.mode==='dungeon'){if(!dgShut&&!dungeonOpen()){autoDg=true;dgAt=sp.dungeon||CRYPT;openDungeon(dgAt)}}else if(sp)openSceneView(sc)}}
   if(!sc)seenId=null;
   if(open){if(!sc||sc.id!==openId)closeSceneView(false);else{spec=sceneSpec(sc);track(sc);const scr=document.getElementById('screen');if(scr&&spec)scr.classList.toggle('scin',spec.mode==='indoor')}}
-  if(autoDg){const g=CRYPT&&CRYPT.group,inside=!!(g&&g.mem&&g.mem.some(a=>inSlots(a)));
+  if(autoDg){const site=isSite(dgAt),g=site?dungeonGroup(dgAt):CRYPT&&CRYPT.group,inside=!!(g&&g.mem&&(site?g.mem.length:g.mem.some(a=>inSlots(a)))); // a site: while its group is inside
     if(!dungeonOpen()&&inside)dgShut=true; // Back to world during the crawl: not again until it is over
-    if(!inside){if(dungeonOpen())closeDungeon();autoDg=false;dgShut=false}}
+    if(!inside){if(dungeonOpen())closeDungeon();autoDg=false;dgShut=false;dgAt=null}}
   if(speaker&&clock()-speaker.t>SPEAK_S)speaker=null}
 
 // ---- the outdoor cut ----
@@ -217,9 +220,10 @@ export function answerMarks(sc=S.table){const o={};if(!sc||sc.phase==='outcome')
   return o}
 // How dim the room is: the setting's own dimness, deeper at night and dusk, and as the frame tells it.
 const DARKW=/\b(dark|darkness|gloom|gloomy|shadow(s|ed|y)?|gutter(s|ing|ed)?|dim(ly|ming)?|unlit|pitch|black|midnight|night|moonless|guttering)\b/i,BRIGHTW=/\b(sunlit|sunlight|bright|blazing|lamplit|well[- ]lit|noon|daylight)\b/i;
+export const DARK_CAP=.55; // owner request: a room never goes near-black, whatever the hour and the frame (setting dark + night + gloom, capped)
 export function sceneDark(sc=S.table,base=0){const h=(((S.gameMin||0)%1440)+1440)%1440/60,said=(sc?[sc.title,plain(sc.frame)].join(' '):'');
   let d=base+(h<5||h>=21?.3:h<7||h>=19?.15:0);if(DARKW.test(said))d+=.2;if(BRIGHTW.test(said))d-=.15;
-  return Math.max(0,Math.min(.8,Math.round(d*100)/100))}
+  return Math.max(0,Math.min(DARK_CAP,Math.round(d*100)/100))}
 // The one item the frame or the person's words name, drawn as a small lit prop in front of the speaker. Order matters:
 // the first kind whose words appear wins.
 export function sceneItem(sc=S.table){const p=liveProps(sc)[0];return p?p.id:null} // from sc.props (sim/props.js, #592); a prop whose item was handed to a hero (give_item, #524) is gone

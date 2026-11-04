@@ -73,7 +73,7 @@ import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH} from './reach.js
 import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
 import {sceneAct,tableView} from './table.js';
 import {sceneOf} from './scenes.js'; // the hero's own company's scene (#518)
-import {waitsNote,waitedS} from './scenewait.js'; // a scene that waits on you, said in every tool result; how long it waited (#515)
+import {waitsNote,waitedS,FRAMING} from './scenewait.js'; // a scene that waits on you, said in every tool result; how long it waited (#515)
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
 import {passOnTo,gateWord} from './rumours.js'; // what the town is saying (seed_rumour, #637)
 import {titleOf,styled} from './epithet.js'; // a name given for a deed (bestow, #638)
@@ -84,6 +84,9 @@ import {enterSiteTool} from './sites.js'; // DM-made dungeon sites (#69)
 import {noticeHeroes,sighted} from './sighthero.js'; // heroes coming into sight (#570)
 import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,intentView,waitish} from './intent.js'; // the hero's stated aim (#535)
 import {pay as payGold} from './pay.js'; // pay (#628)
+import {bequeath as writeWill,willView} from './will.js'; // a will (#631)
+import {hire as hireOn,dismiss as dismissHire,guideWords} from './hire.js'; // hire and dismiss (#634)
+import {issue as challengeIssue,answer as challengeAnswer} from './challenge.js'; // challenge and answer_challenge (#633)
 import {markPlace,unmarkPlace,markAt,markHow,hearMarks} from './marks.js'; // mark (#632)
 import {mobView,foeName,threatText,perceived,engage,nearDeath,visit,hear,knowsPlace,learnPlace,placesView,placeWarn,placeMemory,roadsLine,loreView,loreOf,knownMark,learnJob,preyKey,pickPrey,feared,keyOf,sight,npcWarning,captainWarning,jobRumour,LORE} from './lore.js'; // learn the world (#188)
 import {movesOf,useMove,abilityView,abilityLine} from './moves.js'; // class abilities (#81)
@@ -652,11 +655,11 @@ function dangerAhead(a,legs){const here=zoneAt(a.x,a.y);let px=a.x,py=a.y,safe={
       safe={x,y}}
     px=l.x;py=l.y}
   return null}
-function dangerWords(a,z){const n=ZONES[z],known=knowsPlace(a,n),b=bandOf(z),R=REGIONS[z];
+function dangerWords(a,z){let gw;const n=ZONES[z],known=knowsPlace(a,n),b=bandOf(z),R=REGIONS[z];
   const feel=FEEL[R&&R.biome]||'the beasts here look far beyond you',worse=b[0]-a.lvl>=10;
   const lw=known?placeWarn(a,n):null,tw=npcWarning(a);
   return (known?n:'The land ahead')+': '+feel+'. '+(worse?'Nothing there would even notice a blade of your strength before it killed you.':'The beasts there look far beyond you.')
-    +(lw?' What you know: '+lw:'')+(tw&&known&&tw.startsWith(n)?' The townsfolk said: "'+tw+'"':'')+' Hardcore: one life.'}
+    +(lw?' What you know: '+lw:'')+(tw&&known&&tw.startsWith(n)?' The townsfolk said: "'+tw+'"':'')+((gw=guideWords(a,z))?' '+gw:'')+' Hardcore: one life.'}
 const forceYes=f=>f===true||/^(yes|true|1|force)$/i.test(String(f==null?'':f).trim());
 // Check a planned walk. Returns {p} to go as planned (p.warn may be set), {p, stopped} with the walk cut at the edge, or {refuse}.
 function guardWalk(a,p,force){const dz=dangerAhead(a,p.legs);if(!dz)return {p};const n=ZONES[dz.z],known=knowsPlace(a,n),words=dangerWords(a,dz.z);
@@ -898,6 +901,7 @@ const T={
       const op=openProps(companyOf(a)).map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name);if(notTold(a))r.warning=NOT_TOLD;const tv=tableView(a);if(tv)r.table=tv} // Fellowship (#68): persona, memory, companions, council, table
     else{const C=companyOf(a);if(C&&C.ids.length>1){const op=openProps(C).map(propText);if(op.length)r.proposals=op;const far=outOfRange(a);if(far.length)r.out_of_earshot=far.map(b=>b.name)}} // any company of two or more (#439)
     if(!r.table){const tv=tableView(a);if(tv)r.table=tv} // any company's scene, a solo's too (#440)
+    {const w=willView(a);if(w)r.will=w} // your own will (#631), private to you
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
     // only the places this hero knows (#188); the rest of the world is learned by going there or hearing of it
     r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...placesView(a),...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];r.explore='a direction (north, south, east, west, northeast, ...) or "x,y" takes you where you have never been';
@@ -938,9 +942,14 @@ const T={
     need(i!=null&&Number.isFinite(i),'Give what? item (a name, like "Redroot Draught" or "2 rations") or index (from inventory). '+packList(a));
     need(invOf(a).list[i],'No pack entry '+i+'. '+packList(a));
     const r=giveItem(a,b,i,n==null||n===''?1:n);need(r.ok,r.error);return {ok:true,result:r.text}},
+  bequeath(a,{to,item,gold,words}){const r=writeWill(a,{to,item,gold,words});need(r.ok,r.error);return r},
   pay(a,{to,gold,why}){need(!['fight','duel','assist'].includes(a.state),'You are in a fight. Pay when it is over.');need(a.state!=='ghost','Ghosts carry no gold.');
     if(why!=null&&String(why).trim())need(!notEnglish(String(why)),ENGLISH);
     const r=payGold(a,{to,gold,why});need(!r.error,r.error);return r},
+  hire(a,{npc,days}){need(!['fight','duel','assist'].includes(a.state),'You are in a fight. Hire when it is over.');const r=hireOn(a,{npc,days});need(r.ok,r.error);return r},
+  dismiss(a,{npc}){const r=dismissHire(a,{npc});need(r.ok,r.error);return r},
+  challenge(a,{hero:who,to,text}){if(text!=null&&String(text).trim())need(!notEnglish(String(text)),ENGLISH);const r=challengeIssue(a,{hero:who,to,text});need(r.ok,r.error);return r}, // an honour duel (#633)
+  answer_challenge(a,{answer,text}){if(text!=null&&String(text).trim())need(!notEnglish(String(text)),ENGLISH);const r=challengeAnswer(a,{answer,text});need(r.ok,r.error);return r},
   mark(a,{name,note,what}){need(a.state!=='ghost','Ghosts leave no marks.');for(const t of [name,note])if(t!=null&&String(t).trim())need(!notEnglish(String(t)),ENGLISH);
     const r=markPlace(a,{name,note,what});need(!r.error,r.error);return r},
   unmark(a,{name}){const r=unmarkPlace(a,{name});need(!r.error,r.error);return r},
@@ -1218,7 +1227,7 @@ const T={
     return {ok:true,entries:j.length,...(m.ok?{memory:m.remembered.id}:{}),...(lm?lm.ok?{landmark:lm.id}:{note:lm.note}:{})}},
   // memories (issue #155, sim/notebook.js): the hero's own notebook only
   // who you are (#409, sim/persona.js): the hero's own persona, read and grown by its agent
-  self:a=>selfView(a),
+  self:a=>{const r=selfView(a),w=willView(a);if(w&&r&&typeof r==='object')r.will=w;return r},
   become(a,x){const t=x&&x.text!=null?String(Array.isArray(x.text)?x.text.join(', '):x.text):'';need(!t||!notEnglish(t),'Not changed: write it in English, as everyone in Eldmoor speaks.');return become(a,x||{})},
   remember:(a,x)=>heroMemory(a,'remember',x),recall:(a,x)=>heroMemory(a,'recall',x),update_memory:(a,x)=>heroMemory(a,'update_memory',x),forget:(a,x)=>heroMemory(a,'forget',x),pin:(a,x)=>heroMemory(a,'pin',x),
   party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const no=lineRefusal(a,spokenLine(a,text,1e9).text);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
@@ -1250,7 +1259,8 @@ const T={
     record(a,'Pinned a notice at ',c.name,'.');return {ok:true,posted:n.text,town:c.name,lapses_in_days:SIGHT.NOTICE_DAYS,note:'Anyone who reads the board at '+c.name+' learns your name and this text. Ask for them at the inn.'}},
   send_courier(a,{to,text}){need(companyOf(a),'Only an agent hero can hire a courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
-  scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(typeof x==='string')throw new Rule(x);const v=tableView(a);
+  scene_act(a,{option,line}){const x=sceneAct(a,option,line);if(x===FRAMING)return {ok:false,error:x,offline:true,waiting_for:'the DM'}; // not a failed turn (#682)
+    if(typeof x==='string')throw new Rule(x);const v=tableView(a);
     return {ok:true,chose:x.k,said:x.line||undefined,waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   // ---- professions and gathering (#257): only the caller's own hero ----
   recipes(a,{profession}={}){let id=null;if(profession!=null&&String(profession).trim()){id=profKey(profession);
@@ -1373,7 +1383,8 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(!a.player)return {ok:false,error:a.name+' is not agent-played.'};
   if(a.state==='dead'){const r={ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+', at '+(a.diedAt||'?')+'). Hardcore: one life. Their story is over.'};logCall(a,tool,args,r);return r}
   const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'};
-  if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}} // held before play (#559): look, recall and the other reads still answer
+  if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}}
+  if(meta.act&&a.state==='downed'&&tool!=='wait'){const r={ok:false,downed:true,offline:true,error:'You are down, bleeding at zero health: you cannot act until someone brings you back or you rise. Listen, remember, or wait.'};logCall(a,tool,args,r);return r} // downed (#626): reads still answer // held before play (#559): look, recall and the other reads still answer
   if(args&&args._pool===true&&(tool==='recall'||tool==='journal_search'))return fn(a,args); // the relay's ask for the texts it embeds (#553): not a turn, not logged
   if(meta.act){const st=a.playRate||(a.playRate=[]);while(st.length&&st[0]<S.gameMin-60)st.shift();
     if(st.length>=PK.RATE){const r={ok:false,error:'Slow down: at most '+PK.RATE+' actions per game hour. Try wait().',retry_after_min:Math.ceil(st[0]+60-S.gameMin)};logCall(a,tool,args,r);return r}

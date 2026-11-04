@@ -39,13 +39,24 @@ export const PRICES = {
 // A dated snapshot (gpt-4o-2024-08-06) is priced as its family when the table has no row for the snapshot itself.
 export const priceFor = model => {const m = String(model || ''); return PRICES[m] || PRICES[m.replace(/-\d{4}-\d{2}-\d{2}$/, '')] || null};
 // -> number, or null when the model is not in the table (the caller reports 'unknown').
+// The picker list (#677): with an allow list (OPENAI_MODELS) exactly those the key can use, in the order given, the rest
+// reported as dropped; without one the key's chat models cheapest first (input + output price), unpriced last.
+// prices: {id: {in, out}} per 1M tokens for the listed models that have a row, for the picker's labels (OpenAI only).
+// labelOf: the price shown beside each model (default priceOf for the OpenAI table, none for another priceOf unless given; Gemini, #672).
+export function shapeList(models, allow = null, priceOf = priceFor, labelOf = priceOf === priceFor ? priceFor : null) {
+  const have = new Set(models), dropped = allow && allow.length ? allow.filter(m => !have.has(m)) : [];
+  let list = allow && allow.length ? allow.filter(m => have.has(m)) : models.slice();
+  if (!(allow && allow.length)) { const cost = m => { const p = priceOf(m); return p ? p.in + p.out : Infinity }; list = list.map((m, i) => [m, i]).sort((a, b) => cost(a[0]) - cost(b[0]) || a[1] - b[1]).map(x => x[0]) }
+  const prices = {}; if (labelOf) for (const m of list) { const p = labelOf(m); if (p) prices[m] = {in: p.in, out: p.out} }
+  return {models: list, dropped, prices: labelOf ? prices : null};
+}
 export const costOf = (model, inTok, outTok) => {const p = priceFor(model); return p ? (inTok * p.in + outTok * p.out) / 1e6 : null};
 
 // Chat-capable models out of GET /models (which also lists embeddings, speech, images, moderation ...).
 export const isChatModel = id => /^(gpt-|o\d|chatgpt-|chat-latest)/.test(id)
   && !/(embedding|whisper|tts|dall-e|image|audio|realtime|transcribe|moderation|search|codex|instruct|davinci|babbage|computer-use|sora|deep-research|diarize)/.test(id);
 
-const scrub = s => String(s == null ? '' : s).replace(/sk-[A-Za-z0-9_-]{6,}/g, 'sk-…').replace(/hf_[A-Za-z0-9]{6,}/g, 'hf_…').replace(/Bearer\s+\S+/gi, 'Bearer …');
+export const scrub = s => String(s == null ? '' : s).replace(/sk-[A-Za-z0-9_-]{6,}/g, 'sk-…').replace(/hf_[A-Za-z0-9]{6,}/g, 'hf_…').replace(/AIza[A-Za-z0-9_-]{6,}/g, 'AIza…').replace(/([?&]key=)[^&\s]+/gi, '$1…').replace(/Bearer\s+\S+/gi, 'Bearer …');
 const fail = (msg, extra) => Object.assign(new Error(msg), extra || {});
 const sleep = (ms, signal) => new Promise((res, rej) => {
   const t = setTimeout(res, ms);
@@ -70,7 +81,19 @@ export const hfAdapter = (o = {}) => openaiAdapter({...HF_OPTS, ...o});
 
 export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel = null, fetchImpl = globalThis.fetch, statusTtl = 60000,
   name = 'openai', label = 'OpenAI', keyName = 'OPENAI_API_KEY', free = false, sendEffort = true, tokensField = 'max_completion_tokens', modelFilter = isChatModel, pricesSource = PRICES_SOURCE,
-  costField = null, models: curated = null, note: statusNote = null} = {}) {
+  costField = null, models: curated = null, note: statusNote = null,
+  // Hooks for other OpenAI-compatible endpoints (Gemini, #672); each defaults to the OpenAI behaviour.
+  effortValue = () => 'none', // the reasoning_effort sent (when sendEffort)
+  headroom = () => 0, // tokens added to max tokens (a thinking model spends output tokens before it answers)
+  costFn = null, // (model, in, out) -> $ or null; default the OpenAI price table (or costField)
+  mapError = null, // (status, body, message, retryAfter) -> Error or null, before the default mapping
+  onBadRequest = null, // (err, body) -> a body to send instead, or null (asked once per request)
+  native = null, // {structured(body, {signal, error})}: a native endpoint for strict schemas the compat layer rejects
+  modelId = id => id, // a listed model id as the picker shows it
+  allow = null, // an allow list (OPENAI_MODELS, GOOGLE_MODELS; #677)
+  priceOf = priceFor, // a model's {in, out} per 1M for sorting the picker list (#677)
+  labelOf = undefined, // the price shown beside it (default: priceOf for OpenAI, none otherwise); Gemini's free tier shows $0
+} = {}) {
   const base = String(baseUrl || OPENAI_URL).replace(/\/+$/, '');
   const noEffort = new Set(); // models that rejected reasoning_effort
   let cached = null, cachedAt = 0, verified = null; // verified: a curated list after its one tiny call per model (kept for the adapter's life)
@@ -78,9 +101,11 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
 
   // The API's own error, mapped to a short message the relay and the UI can show. Never contains the key.
   function apiError(status, j, headers) {
+    if (Array.isArray(j)) j = j[0]; // some compatible servers answer an error as a one-element array
     const e = j && typeof j.error === 'object' && j.error || {}, msg = scrub(e.message || (j && typeof j.error === 'string' ? j.error : '')).slice(0, 160), code = e.code || e.type || '';
     const ra = Number(headers && headers.get && headers.get('retry-after'));
     const retryAfter = Number.isFinite(ra) && ra >= 0 ? ra : null;
+    if (mapError) {const m = mapError(status, j, msg, retryAfter); if (m) return m}
     if (status === 401) return fail(name + ': bad or missing ' + (name === 'openai' ? 'key' : keyName), {status, kind: 'auth'});
     if (curated && (code === 'model_not_supported' || /model_not_supported/.test(msg))) return fail(name + ': model not supported by an enabled provider; the picker list: ' + (verified || curated).join(', '), {status, kind: 'model', code: 'model_not_supported'});
     if (free && (status === 402 || (status === 429 && /credit|quota|allowance|exceeded your monthly/i.test(msg || String(e).slice(0, 200))))) return fail(label + ' allowance used up (recharge is off); the hero plays scripted / the runner waits', {status, kind: 'quota'});
@@ -101,6 +126,7 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
       if (r.ok) return j;
       if (r.status === 400 && 'reasoning_effort' in body && /reasoning_effort/i.test(String(j && j.error && j.error.message))) {noEffort.add(body.model); delete body.reasoning_effort; continue}
       const err = apiError(r.status, j, r.headers);
+      if (r.status === 400 && onBadRequest && !body._again) {const nb = onBadRequest(err, body); if (nb) {body = Object.defineProperty(nb, '_again', {value: true}); continue}}
       if (r.status === 400 && body.tools && /tool|function/i.test(err.apiMessage || '') && /support|enabled|allowed|unavailable/i.test(err.apiMessage || '')) err.noTools = true; // the loop switches to JSON actions
       if (err.kind === 'rate' && attempt < retries) {
         const wait = Math.max(500, (err.retryAfter != null ? err.retryAfter : 1) * 1000);
@@ -137,7 +163,16 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     else if (sch) msgs.unshift({role: 'system', content: 'Reply with one JSON object only, matching this JSON schema: ' + JSON.stringify(sch)});
     return {...body, response_format: {type: 'json_object'}, messages: msgs};
   };
+  const nativeSchema = new Set(); // models whose compat layer rejected the strict schema: asked natively from then on
   async function withSchema(body, _schema, opts) {
+    if (native && body.response_format && body.response_format.type === 'json_schema') {
+      if (nativeSchema.has(body.model) || native.always) return native.structured(body, {...opts, error: apiError});
+      try {return await post('/chat/completions', body, opts)}
+      catch (e) {
+        if (e.status === 400 && e.kind === 'http' && /response_format|json_schema|schema|structured/i.test(e.apiMessage || '')) {nativeSchema.add(body.model); return native.structured(body, {...opts, error: apiError})}
+        throw e;
+      }
+    }
     if (!curated || !body.response_format || body.response_format.type !== 'json_schema') return post('/chat/completions', body, opts);
     if (noSchema.has(body.model)) return post('/chat/completions', asJsonObject(body), opts);
     try {return await post('/chat/completions', body, opts)}
@@ -147,10 +182,11 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     }
   }
 
-  const effortField = mdl => !sendEffort || noEffort.has(mdl) ? {} : {reasoning_effort: 'none'};
+  const effortField = mdl => !sendEffort || noEffort.has(mdl) ? {} : {reasoning_effort: effortValue(mdl)};
+  const tokens = (mdl, n) => n + (Number(headroom(mdl)) || 0);
 
   return {
-    name, label, local: false, free, defaultModel: defaultModel || null, pricesSource,
+    name, label, local: false, free, defaultModel: defaultModel || null, pricesSource, nativeModels: () => [...nativeSchema],
     configured: () => !!apiKey,
     // Reachable and the key accepted, and the chat models this key can use (GET /models). Cached.
     async status() {
@@ -162,8 +198,9 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
         const r = await fetchImpl(base + '/models', {headers: {authorization: 'Bearer ' + apiKey}, signal: ac.signal});
         let j = null; try {j = await r.json()} catch {}
         if (!r.ok) throw apiError(r.status, j, r.headers);
-        const models = (Array.isArray(j && j.data) ? j.data : []).map(m => m && m.id).filter(id => typeof id === 'string' && modelFilter(id)).sort();
-        cached = {ok: true, models, default: defaultModel || null, ...(defaultModel ? {} : {note: 'pick a model (' + keyName.replace(/_(API_KEY|TOKEN)$/, '') + '_MODEL sets a default)'})};
+        const models = (Array.isArray(j && j.data) ? j.data : []).map(m => m && typeof m.id === 'string' ? modelId(m.id) : null).filter(id => typeof id === 'string' && modelFilter(id)).sort();
+        const listed = shapeList(models, allow, priceOf, labelOf === undefined ? (priceOf === priceFor ? priceFor : null) : labelOf), pick = defaultModel ? null : 'pick a model (' + keyName.replace(/_(API_KEY|TOKEN)$/, '') + '_MODEL sets a default)';
+        cached = {ok: true, models: listed.models, ...(listed.prices ? {prices: listed.prices} : {}), ...(listed.dropped.length ? {dropped: listed.dropped} : {}), default: defaultModel || null, ...(free ? {free: true} : {}), ...(pick || statusNote ? {note: [statusNote, pick].filter(Boolean).join('; ')} : {})};
       } catch (e) {
         cached = {ok: false, models: [], default: defaultModel || null, error: e.name === 'AbortError' ? 'not reachable (timeout)' : e.kind ? e.message.replace(name + ': ', '') : 'not reachable (' + scrub(e.cause && e.cause.code || e.message).slice(0, 60) + ')'};
       } finally {clearTimeout(t)}
@@ -175,7 +212,7 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
       const mdl = model || defaultModel;
       if (!mdl) throw fail(name + ': no model chosen (pick one in the mind row, or set the default model in .env)');
       const t0 = Date.now();
-      const body = {model: mdl, ...effortField(mdl), [tokensField]: maxTokens,
+      const body = {model: mdl, ...effortField(mdl), [tokensField]: tokens(mdl, maxTokens),
         response_format: {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema}},
         messages: [{role: 'system', content: system}, {role: 'user', content: user}]};
       const j = await withSchema(body, schema, {signal, retries: 0}); // a 429 goes to the relay's limiter (queue pause, writing kinds retried)
@@ -190,13 +227,13 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     async chat({model, messages, tools, format, strict = false, maxTokens = 600, signal}) {
       const mdl = model || defaultModel;
       if (!mdl) throw fail(name + ': no model chosen (use --model, or set the default model in .env)');
-      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), [tokensField]: maxTokens, messages: toOpenAI(messages),
+      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), [tokensField]: tokens(mdl, maxTokens), messages: toOpenAI(messages),
         ...(tools ? {tools} : {}), ...(format ? {response_format: strict ? {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema: format}} : {type: 'json_object'}} : {})};
       const j = await withSchema(body, format, {signal, waitMs: 30000, retries: 4});
       const out = finish(j, mdl, t0, false);
       const m = out.raw, calls = Array.isArray(m.tool_calls) ? m.tool_calls.filter(c => c && c.function).map(c => {
         let args = c.function.arguments; try {args = JSON.parse(args || '{}')} catch {} // a string that is not JSON stays a string; cleanArgs rejects it
-        return {function: {name: c.function.name, arguments: args}}}) : [];
+        return {function: {name: c.function.name, arguments: args}, ...(c.extra_content ? {extra_content: c.extra_content} : {})}}) : []; // extra_content: Gemini's thought signature, sent back within the turn
       return {message: {role: 'assistant', content: m.content || '', ...(calls.length ? {tool_calls: calls} : {})}, usage: out.usage, model: out.model, ms: out.ms, done: out.finish};
     },
   };
@@ -204,7 +241,9 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
   function finish(j, mdl, t0, structured) {
     const ch = j && Array.isArray(j.choices) ? j.choices[0] : null, m = ch && ch.message || {};
     const billed = j && j.model || mdl, u = j && j.usage || {};
-    const inTok = +u.prompt_tokens || 0, outTok = +u.completion_tokens || 0, ec = costField ? Number(u[costField]) : NaN, c = costField ? (Number.isFinite(ec) && ec >= 0 ? ec : null) : costOf(billed, inTok, outTok) ?? costOf(mdl, inTok, outTok);
+    // out: completion tokens, or total minus prompt when that is larger (thinking tokens billed as output but not counted as completion)
+    const inTok = +u.prompt_tokens || 0, outTok = Math.max(+u.completion_tokens || 0, (+u.total_tokens || 0) - inTok), ec = costField ? Number(u[costField]) : NaN;
+    const c = costFn ? costFn(billed, inTok, outTok) ?? costFn(mdl, inTok, outTok) : costField ? (Number.isFinite(ec) && ec >= 0 ? ec : null) : costOf(billed, inTok, outTok) ?? costOf(mdl, inTok, outTok);
     const usage = {in: inTok, out: outTok, cost: c ?? 0, costKnown: c != null, ...(c == null ? {costNote: 'unknown'} : {})};
     const text = typeof m.content === 'string' ? m.content : null;
     const out = {text, usage, model: billed, ms: Date.now() - t0, raw: m, finish: ch && ch.finish_reason || null};
@@ -229,7 +268,7 @@ export function toOpenAI(messages) {
     if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
       const calls = m.tool_calls.map(c => {const id = 'call_' + (++n); pending.push(id);
         const a = c.function && c.function.arguments;
-        return {id, type: 'function', function: {name: String(c.function && c.function.name || ''), arguments: typeof a === 'string' ? a : JSON.stringify(a || {})}}});
+        return {id, type: 'function', function: {name: String(c.function && c.function.name || ''), arguments: typeof a === 'string' ? a : JSON.stringify(a || {})}, ...(c.extra_content ? {extra_content: c.extra_content} : {})}});
       out.push({role: 'assistant', content: m.content || null, tool_calls: calls});
     } else if (m.role === 'tool') {
       const id = pending.shift();

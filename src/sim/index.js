@@ -9,7 +9,8 @@ import {CRYPT} from '../world/map.js';
 import {reserveNames} from '../data/races.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
-import {makeHero,updAgent} from './heroes.js';
+import {makeHero,updAgent,setFallHook} from './heroes.js';
+import {executeWill,estateTick} from './will.js'; // a hero's will (#631): executes on the final death, far heirs get it when they rest
 import {spawnAll,updMob,ecologyTick} from './mobs.js';
 import {partyTick} from './party.js';
 import {weatherTick} from './weather.js';
@@ -18,14 +19,14 @@ import {updBoss,raidCheck} from './boss.js';
 import {pvpCheck} from './pvp.js';
 import {dungeonCheck} from './dungeon.js';
 import {updMarket} from './market.js';
-import {chatTick} from './chat.js';
-import {npcsTick} from './npcs.js';
-import {talkTick} from './talk.js'; // NPC conversations (#170)
+import {chatTick,resetChatSeed} from './chat.js';
+import {npcsTick,resetNpcSeed} from './npcs.js';
+import {talkTick,resetTalkSeed} from './talk.js'; // NPC conversations (#170)
 import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {installRumourLever} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever} from './epithet.js'; // bestow (#638)
-import {localsTick} from './locals.js'; // arrival news and hails for the Fellowship's agents
+import {localsTick,resetLocals} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
 import {guildsTick} from './guilds.js';
@@ -33,15 +34,18 @@ import {rivalsTick} from './rivals.js';
 import {focusTick} from './guildfocus.js'; // guild focus (#6)
 import {rebuild} from './spatial.js';
 import {bondsTick} from './bonds.js';
-import {brainTick} from './brain.js';
+import {brainTick,resetBrain} from './brain.js';
 import {dmTick} from './dm.js';
-import {leverTick} from './levers.js';
-import {memorialsTick} from './memorials.js';
+import {leverTick,resetLeverSeed} from './levers.js';
+import {resetStagedSeed} from './staged.js';
+import {memorialsTick,resetMemorials} from './memorials.js';
 import {playerUpd} from './player.js';
-import {slotsTick} from './company.js'; // the slotted company's muster, watch and replacement (#588)
+import {slotsTick,resetCompanyWatch} from './company.js'; // the slotted company's muster, watch and replacement (#588)
 import {councilTick} from './council.js';
+import {hireTick} from './hire.js'; // hired companions (#634): days up, dismissals, the fallen mourned
+import {challengeTick} from './challenge.js'; // honour duels (#633): an unanswered challenge lapses; registers the duel scene kind
 import {companionTick} from './offers.js'; // offers lapse, companies of 2+ keep a walking party, companions (#442)
-import {tableTick,tableHold} from './table.js';
+import {tableTick,tableHold,resetTableSeed} from './table.js';
 import {holdTick} from './gambithold.js';
 export {holdResume,holdView,holdRelease} from './gambithold.js';
 import './events.js'; // DM world events: festival and plague (#10)
@@ -80,6 +84,7 @@ export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath 
 export {planOpening,openingDue,openingPending,arrivalsView,ARRIVE} from './arrival.js'; // session zero and arrivals (#437, #452)
 export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost,setGateHold,worldHeld,holdLine} from './prep.js'; // the DM's prep before the table opens (#437)
 
+setFallHook(executeWill); // a will executes on the final death (#631)
 installRumourLever();installBestowLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
@@ -90,7 +95,8 @@ const GOODS0={};for(const n in GOODS)GOODS0[n]={supply:GOODS[n].supply,prev:GOOD
 const CRYPT_CD0=CRYPT.cd;
 function resetWorld(){resetS();
   for(const n in GOODS0){GOODS[n].supply=GOODS0[n].supply;GOODS[n].prev=GOODS0[n].prev}
-  CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[])}
+  CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[]);
+  resetCompanyWatch();resetLocals();resetMemorials();resetBrain();resetChatSeed();resetNpcSeed();resetTalkSeed();resetLeverSeed();resetTableSeed();resetStagedSeed()} // the modules' private random streams start over with a world (#674)
 export function init(o={}){resetWorld();
   S.worldId=newWorldId(); // a new world instance (hosts purge the old world's memory mirror on a new id)
   resetMats(); // a new world's auction house opens with the materials table's stock
@@ -117,7 +123,7 @@ export function step(dt){rulingTick(); // a ruling the DM let lapse is filled ev
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first
-  partyTick();slotsTick(dt);companionTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
+  partyTick();slotsTick(dt);estateTick();companionTick();hireTick();challengeTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);outpostsTick(dt);dungeonCheck(dt);siteTick(dt);updMarket(dt);
   chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
