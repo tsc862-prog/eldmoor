@@ -4,6 +4,7 @@
 import {wounded} from './wounds.js'; // a wounded background hero stays out of the Crypt (#656)
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {CRYPT,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
 import {DG_EPICS} from '../data/items.js';
@@ -70,7 +71,7 @@ export function dungeonCheck(dt){const agents=S.agents;
   const n=g.mem.length,avg=g.mem.reduce((t,a)=>t+a.lvl+a.gear*.3,0)/n;
   const pw=avg+(g.mem.some(a=>CLS[a.cls]&&CLS[a.cls].heal)?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+n*.6+(g.bonus||0)+Math.min(1.5,cryptDraughts(g.mem)/n*.6); // g.bonus: the Fellowship's choices at the table (sim/table.js); the draughts the party drinks below (sim/inv.js)
   const ok=rnd()<clamp((pw-8)/8,.15,.92),who=tagOf(g.guild,g.fac,g.name);
-  for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6}
+  for(const a of g.mem){a.hidden=false;Object.assign(a,standAt(CRYPT.x+(rnd()-.5)*1.5,CRYPT.y+.5+rnd()*.6))}
   if(ok){if(g.guild){g.guild.clears++;rivalDeed('crypt',g.guild)} // a clear close behind an enemy guild's stokes a rivalry (sim/rivals.js)
     log(who,' cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'!');
     if(first('crypt:'+(g.guild?g.guild.tag:'f'+g.fac)))timeline('crypt',who,' cleared ',{t:CRYPT.name,c:'gd'},' for the first time.');
