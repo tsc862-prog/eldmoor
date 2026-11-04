@@ -32,6 +32,7 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
+import {fileWish} from './wish.js'; // #663
 import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS,validate as leverValidate} from './levers.js';
 import {log as chronLog} from './chronicle.js';
 import {setWhen,setWatch,cancel as whenCancel,whensView,whenStatus,whenTick,setWhenHooks} from './dmwhen.js'; // deferred actions and chosen wakes (#635)
@@ -514,6 +515,8 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};if(MORE_FLAT[tool])retu
   const e=r.effect||{};
   return {...r,tool,...(tool==='mark_place'?{place:e.name,at:params.at}:{}),...(tool==='create_site'?{site:e.name,at:e.at,band:e.band,rooms:e.rooms,boss:e.boss}:{}),...(tool==='place_person'?{person:e.name,npc:e.npc,at:e.at,where:e.where}:{}),...(want?{want}:{})}}
 
+// A note for the people who build the game (#663): the watcher and the builders only, never a hero, never answered in play.
+function dmWish(args){return fileWish(dmState(),{seat:'dm',name:'DM',place:null,summary:'DM seat, day '+dayNo()+' '+clockStr()},args)}
 // ---- the remaining levers as flat tools, and taking things back (issue #636) ----
 const FAC_NAMES=()=>FAC.map(f=>f.name).join('|');
 const MORE_FLAT={retire_person:1,withdraw_hook:1,set_attitude:1,set_condition:1,price_shock:1,mark_danger:1,start_event:1,nudge_relation:1,custom_foe:1};
@@ -772,6 +775,7 @@ function run(tool,args){let r;
     case 'dismiss':r=dismissTool(args);break;
     case 'unstage':r=unstageTool(args);break;
     case 'log_intent':r=logIntent(args.text);break;
+    case 'wish':r=dmWish(args);break;
     case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;
     case 'npc_say':r=npcSay(args);break;

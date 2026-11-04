@@ -175,7 +175,8 @@ other. The rules:
   on fal-ai through Hugging Face Inference Providers) and `allowance.monthlyUsd`. `npm run art:daily` (`daily.mjs`;
   `-- --now` to run at once, `--tier 32|64` (default `TILE`; the tier's LoRA scale, pixel grid and palette widening from
   the manifest's `tiers`: 0.55 / grid 4 at 32, 0.2 / grid 2 at 64), `--max N`, `ART_MAX_CALLS`, `ART_DAILY_BUDGET`/`--budget`, `--dry-run`) generates missing
-  assets in priority order into `assets/incoming/<date>/` with a contact sheet, and stops at the day's share of the
+  assets in priority order into `assets/incoming/<date>/` with a contact sheet. **`npm run art:loop`** (`--loop`, #661; `npm run up` starts it as a
+  third child, `--no-art` or `ART_LOOP=0` skips it, `s` shows its next check and spend) repeats that run by itself with no `--max`: a pass ends at the day's share, the month's credits or the provider's refusal, the log line says "check again <time> (why)", it sleeps `ART_RETRY_HOURS` (4, or the provider's retry-after if later; a spent share never past local midnight, a spent month until the 1st), and unused share carries inside the month (`allowance.carry`; `--no-carry`). Spend is the cost the provider's answer reports (a cost header or `usage.estimated_cost`) when it carries one, else the manifest's `costPerImage` guess; every `art.log` line says `billed`, `estimated` or `mixed`, the stop reasons name the daily share (`daily share $0.067 used (estimated; ...)`), the first answer's cost-looking headers are kept in `queue.json` `costProbe`, and `s` shows the share (`ART_DAILY_BUDGET` changes it). A run stops at the day's share of the
   monthly credits (monthlyUsd / days in the month; HF gives free accounts no Inference Providers credits and PRO $2.00 a
   month, about $0.01 an image with pixel-xl), at the month's total, or when the provider refuses (402, a quota 429/403,
   rate headers at 0). It keeps every provider image as it came under `assets/incoming/<date>/raw/` before
