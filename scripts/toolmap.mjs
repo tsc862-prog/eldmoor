@@ -27,7 +27,7 @@ export const DM_GROUPS = {
   'Your notes': ['notes_read', 'notes_write', 'remember', 'recall', 'update_memory', 'forget', 'pin', 'log_intent', 'wish'],
   'Shape the world': ['pull_lever', 'post_hook', 'place_person', 'mark_place', 'give_item', 'take_item', 'stage_scene', 'create_site', 'retire_person', 'withdraw_hook', 'set_attitude', 'set_condition', 'price_shock', 'mark_danger', 'start_event', 'nudge_relation', 'custom_foe', 'seed_rumour', 'bestow'],
   'Take back and plan ahead': ['undo', 'dismiss', 'unstage', 'when', 'whens', 'unwhen', 'watch', 'watches', 'unwatch'],
-  'Speak in the game': ['narrate', 'npc_say', 'whisper', 'dream', 'npc_call', 'npc_offer'],
+  'Speak in the game': ['narrate', 'npc_say', 'whisper', 'dream', 'npc_call', 'npc_offer', 'companion_call', 'companion_say'],
   'At the table': ['table_call', 'table_answer', 'ruling_call', 'ruling_answer', 'prep_done'],
 };
 

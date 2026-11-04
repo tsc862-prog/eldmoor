@@ -16,6 +16,7 @@ import {companies} from '../sim/company.js';
 import {WORLD_ID} from '../world/map.js';
 import {mirrorDirty} from '../sim/notebook.js';
 import {sleep as wsleep,every} from './ticker.js';
+import {relayLate,takeAnomalies,pageDigest} from './pagewatch.js'; // the page watchdog (#736)
 
 const DEFAULT_URL='ws://127.0.0.1:8787/play';
 let ws=null,status='off',timer=null,lastHello='',links={},runners={},dmLinkInfo=null,readies={},linksIn=false; // linksIn: the relay's first links since connecting (#563)
@@ -66,7 +67,8 @@ function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecti
       send({type:'result',id:m.id,result:r})}
     else if(m.type==='narrate'){const a=seat(m.hero);if(a)playerNarrate(a.id,String(m.text||''))}
     else if(m.type==='dmcall'){let r;try{r=await hostDm(String(m.tool),m.args||{},{nap:wsleep})}catch(err){r={ok:false,error:String(err&&err.message||err)}}try{noteDmCall(String(m.tool),m.args||{},r)}catch(err){}send({type:'result',id:m.id,result:r})}
-    else if(m.type==='links')takeLinks(m)};
+    else if(m.type==='links')takeLinks(m)
+    else if(m.type==='pagelate')relayLate(m)}; // the relay gave up on a call while this page was silent (#736): the labels read page busy
   ws.onclose=()=>{ws=null;lastHello='';links={};runners={};readies={};dmLinkInfo=null;status=wanted()?'offline':'off';if(wanted())later()};
   ws.onerror=()=>{}}
 function takeLinks(m){if(!m.links||typeof m.links!=='object')return;links=m.links;runners=m.runners&&typeof m.runners==='object'?m.runners:{};readies=m.ready&&typeof m.ready==='object'?m.ready:{};dmLinkInfo=m.dm&&typeof m.dm==='object'?m.dm:null;linksIn=true}
@@ -78,7 +80,11 @@ function disconnect(){if(ws){const w=ws;ws=null;try{w.close()}catch(e){}}status=
 
 // On page load (a restored save may hold agent-played heroes) and every few seconds after,
 // so the relay always knows which heroes are played.
+// A beat every BEAT_MS (#736): the relay tells a page that is busy (silent) from one that holds a long wait. The worker clock's tick
+// runs its callback on this page's thread, so a blocked thread sends no beat.
+const BEAT_MS=2000;
 export function initBridge(){if(wanted())connect();every(3000,()=>{if(wanted()){if(!ws)connect();else hello()}});
+  every(BEAT_MS,()=>{if(ws&&ws.readyState===1&&status==='connected')send({type:'beat'})});
   setInterval(behaviorTick,BEHAVIOR_MS);setInterval(mirrorTick,MIRROR_MS)}
 
 // Behavior logs (issue #129): the world digest, game-side anomalies and settled Mind decisions (sim/behavior.js) go to
@@ -86,7 +92,9 @@ export function initBridge(){if(wanted())connect();every(3000,()=>{if(wanted()){
 // (up to BEHAVIOR_HOLD records) while the socket is down, dropped beyond that. Never sent to any agent.
 const BEHAVIOR_MS=500,BEHAVIOR_HOLD=200,watch=makeWatch({dmLink:()=>dmLink()}),held=[];
 function behaviorTick(){let out;try{out=watch.tick()}catch(e){return}
-  for(const o of out){held.push(o);if(held.length>BEHAVIOR_HOLD)held.shift()}
+  for(const rec of takeAnomalies())out.push({kind:'anomaly',rec}); // page-stall from the watchdog (#736)
+  for(const o of out){if(o.kind==='world'&&o.rec&&typeof o.rec==='object')o.rec={...o.rec,page:pageDigest()}; // the hour's long frames on the digest
+    held.push(o);if(held.length>BEHAVIOR_HOLD)held.shift()}
   if(!ws||ws.readyState!==1||status!=='connected')return;
   while(held.length){const o=held.shift();send({type:'behavior',kind:o.kind,rec:o.rec})}}
 
