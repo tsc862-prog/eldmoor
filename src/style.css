@@ -970,3 +970,30 @@ body:not(.docked) .fellately .flately{max-height:320px;overflow-y:auto}
 .fellately .flately li{padding:3px 0;border-top:1px solid rgba(255,255,255,.06)}
 .fellately .flately time{color:#8a8fa8;margin-right:6px}
 .storyempty{padding:8px 4px}
+/* #847: the setup and title pages at wide widths. Scoped to .setup and .title; narrow widths keep the grid. */
+.sprofd>summary{cursor:pointer;list-style:revert}
+.sprofd>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.sprofd[open]>summary{margin-bottom:4px}
+.sprofd .sprofs{margin-bottom:4px}
+.ssum{font-family:var(--mono);font-size:20px;color:var(--gold);overflow-wrap:anywhere}
+.setup .sfinal{position:sticky;bottom:-28px;z-index:2;margin:0 -2px;border-color:var(--gold)}
+@media (min-width:2200px){
+  .setup{padding:20px 40px 0}
+  .setup .spage{zoom:1.5;max-width:none;gap:10px}
+  .setup .shead{display:flex;align-items:baseline;gap:20px;flex-wrap:wrap}
+  .setup .shead h2{margin:0}
+  .setup .scards{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .setup .sgrid{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .setup .spresets .mini{font-size:9px}
+  .setup .sfinal{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:24px;row-gap:4px;align-items:center;padding:8px 14px}
+  .setup .sfinal>.ssum,.setup .sfinal>.srelay,.setup .sfinal>.srun,.setup .sfinal>.sprobs,.setup .sfinal>.sseatnote,.setup .sfinal>.sbad{grid-column:1}
+  .setup .sfinal>.sbtns,.setup .sfinal>.sconfirm{grid-column:2;grid-row:1/span 3}
+  .setup .sfinal .sbtns .mini{font-size:11px;padding:14px 22px}
+  .setup .sfinal .srelay{font-size:inherit}
+  .setup .sfinal{bottom:0}
+  .title{padding:40px 60px}
+  .title .tnews .tnread{width:auto;padding:8px 14px}
+  .title .tpage{zoom:1.6;max-width:1500px;margin-top:6vh;display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);column-gap:40px;align-content:start}
+  .title .tpage>*{grid-column:1}
+  .title .tpage>.tnews{grid-column:2;grid-row:1/span 7;align-self:start}
+}

@@ -125,13 +125,13 @@ const startAllCost=()=>(missing.some(m=>m.kind==='hero')?startCost('fellowship')
 function paint(){const box=$('rgate');if(!box)return;
   const gw=ctl.held?null:openingWait(),show=(ctl.held||gw)&&!setupOpen(); // session zero waits for the company (#771): the world runs, the line only tells why no table opens
   const pv=prepping?prepView():null;
-  const s=show?missing.map(m=>m.key+'='+m.link+'='+whyMissing(m)).join('|')+'|'+ctl.speed+'|'+readyN+'/'+total+(pv?'|prep:'+pv.seconds+':'+pv.calls:'')+(gw?'|gather:'+gw.names.join()+':'+Math.ceil(gw.minutes_left/60):'')+'|'+spentRunners().map(r=>r.key+r.cost).join()+(spentRunners().length?':'+startAllCost()+':'+sessionInfo().spent+':'+sessionInfo().budget:''):'';
+  const s=show?missing.map(m=>m.key+'='+m.link+'='+whyMissing(m)).join('|')+'|'+ctl.speed+'|'+readyN+'/'+total+(pv?'|prep:'+pv.seconds+':'+pv.calls+':'+(pv.started?'':pv.hard_left):'')+(gw?'|gather:'+gw.names.join()+':'+Math.ceil(gw.minutes_left/60):'')+'|'+spentRunners().map(r=>r.key+r.cost).join()+(spentRunners().length?':'+startAllCost()+':'+sessionInfo().spent+':'+sessionInfo().budget:''):'';
   if(s===sig)return;sig=s;
   if(!show){box.hidden=true;box.replaceChildren();return}
   box.hidden=false;box.replaceChildren();
   if(gw){box.append(el('div','rt','SESSION ZERO WAITS'),el('div','rl dm','Waiting for '+gw.names.join(', ')+' to reach '+gw.where+'; the table opens without them in about '+Math.ceil(gw.minutes_left/60)+' game hours.'));return}
   if(pv){box.append(el('div','rt','THE DM PREPARES THE TABLE · '+pv.seconds+' S · '+pv.calls+'/'+pv.max_calls+' CALLS'));
-    box.append(el('div','rl dm',(pv.kind==='opening'?'The DM reads the world and the campaign and writes its plans; the opening scene follows.':'The DM re-reads where the companies are before the clock runs.')+' At most '+pv.max_seconds+' s.'));
+    box.append(el('div','rl dm',(pv.kind==='opening'?'The DM reads the world and the campaign and writes its plans; the opening scene follows.':'The DM re-reads where the companies are before the clock runs.')+' At most '+pv.max_seconds+' s'+(pv.started?'.':', from its first call (waiting for it: '+pv.waited+' s; the table opens anyway in '+pv.hard_left+' s).')));
     const go=el('button','mini runbtn','Start anyway');go.dataset.gateanyway='1';go.title='End the prep of the DM now and open the table';const bt=el('div','rb');bt.append(go);box.append(bt);return}
   const paused=ctl.speed===0;
   box.append(el('div','rt','WAITING FOR MINDS · '+readyN+'/'+total+' READY'));
