@@ -111,7 +111,7 @@ for (const id in SPECS) {const P = SPECS[id], ids = SPEC_MOVES[id] || [], cap = 
   const a14 = mk(P.cls, 14); chooseSpec(a14, id); ok(!movesOf(a14).includes(cap[0]) && !useMove(a14, cap[0], a14).ok, `${id}: not learned at 14`);
   const a = mk(P.cls, 15); chooseSpec(a, id); a.mcd = {}; a.mcr = {}; a.eff = {}; a.hp = combatStats(a).health * .6;
   ok(movesOf(a).includes(cap[0]) && abilityView(a).some(r => r.id === cap[0] && r.learned && r.lvl === 15), `${id}: ${M.name} is learned and listed at 15`);
-  const f = M.target === 'foe' || M.target === 'foes' ? foeNear(a) : null, t = M.target === 'ally' ? a : f;
+  const f = M.target === 'foe' || M.target === 'foes' ? foeNear(a) : null; if (f) for (const m of S.mobs) if (m !== f) m.target = null; rebuild(); const t = M.target === 'ally' ? a : f;
   const r = useMove(a, cap[0], M.target === 'foe' || M.target === 'ally' ? t : null, {mates: [a], foe: f});
   ok(r.ok && cdLeft(a, cap[0]) > 0 && roundsLeft(a, cap[0]) === M.rounds, `${id}: ${M.name} works and cools down: ${r.text || r.error}`);
   if (M.kind === 'attack') ok(r.dmg > 0, `${id}: ${M.name} deals damage`);
