@@ -146,12 +146,21 @@ if (process.argv[2] === '--arrival') {
   for (const [t, a] of ACTS) {const r = P.playerAct(live.id, t, a); ok(r.ok === false && r.held === 'prep' && r.error === 'The DM is preparing the table; wait for the opening scene.', 'the DM prepares: ' + t + ' is refused with the prep line')}
   for (const t of ['look', 'status', 'self', 'lore', 'recall', 'journal_read']) {const r = P.playerAct(live.id, t, {}); ok(r.ok !== false || !r.held, 'the DM prepares: ' + t + ' (read-only) still answers' + (r.ok === false ? ' (' + r.error + ')' : ''))}
   ok(PC.paceCheck(live.id, {since: 0, minutes: 5, wake: 'all'}) === null, 'the DM prepares: no paced turn');
+  { // a runner's first turn waits for the hold like a paced one (#770): the real pacer against the real host answer
+    const {hostPace} = await import('../src/sim/player-host.js'), {makePacer} = await import('./pacing.mjs');
+    const pc = makePacer({base: 'x', hero: live.id, runner: 'r', fetchImpl: async (u, o) => ({status: 200, json: async () => hostPace(live.id, JSON.parse(o.body))})});
+    const h = await hostPace(live.id, {held: true}); ok(h.ok && h.held === 'prep', 'pace {held} says the DM prep holds the world');
+    let started = false; const first = pc.ready().then(r => {started = true; return r});
+    await new Promise(r => setTimeout(r, 1500)); ok(!started, 'a runner started during the prep takes no first turn while it holds');
+    globalThis.__firstTurn = {first, flag: () => started};
+  }
   run(2); ok(!heardIntro(), 'no hero line lands before the opening scene');
   ok(A.openingDue() && PR.prepView().state === 'running' && PR.prepView().max_calls === PR.PREP.CALLS, 'session zero is due and the DM prepares (full caps)');
   run(2); ok(!S.table, 'no opening scene while the DM prepares');
   dmAct('dm_status'); dmAct('notes_read'); ok(PR.prepView().calls === 2, 'DM tool calls during the prep are counted');
   dmAct('table_call'); ok(PR.prepView().calls === 2, 'an idle table_call poll is not counted');
   const pd = dmAct('prep_done', {summary: 'Plans written.'}); ok(pd.ok && PR.prepView().state === 'done' && PR.prepView().why === 'done', 'prep_done ends the prep');
+  {const ft = globalThis.__firstTurn, t0 = Date.now(), r = await Promise.race([ft.first, new Promise(r => setTimeout(() => r(null), 4000))]); ok(r && !r.dead && !r.gone && !r.stopped && ft.flag() && Date.now() - t0 < 2500, 'the first turn runs promptly when the hold lifts (' + (Date.now() - t0) + ' ms)'); delete globalThis.__firstTurn}
   step(1 / 60); let sc = S.table;
   ok(sc && sc.kind === 'opening' && /^SESSION ZERO · /.test(sc.title) && sc.all && sc.pause, `the opening scene opens, everyone at once, paused (${sc && sc.title})`);
   ok(!A.openingPending() && !S.opening, 'one company: the opening queue is empty');

@@ -123,7 +123,25 @@ export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbe
       const j = await r.json(); return j && j.ok && j.brief ? j.brief : null;
     } catch {return null}
   }
-  return {next, brief, turnDone() {lastEnd = Date.now(); since = null}, state: st};
+  // The first turn of a run (#770): wait while the start gate or the DM's prep holds the world, as a paced turn does.
+  // -> {} when it may start, or {dead}/{gone}/{stopped}. An older host, or one that does not answer, never blocks it.
+  async function ready() {
+    let said = false;
+    for (;;) {
+      if (stopped()) return {stopped: true};
+      let r = null;
+      try {
+        const x = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, held: true}), signal: AbortSignal.timeout(8000)});
+        r = x.status === 404 ? null : await x.json().catch(() => null);
+      } catch {r = null}
+      if (!r) return {};
+      if (r.ok === false) {if (r.dead) return {dead: true, why: r.error}; if (r.gone) return {gone: true, why: r.error}; return {}}
+      if (!r.held) return {};
+      if (!said) {said = true; log(`[pace] the world is held (${r.held}): the first turn waits`)}
+      await sleep(1000);
+    }
+  }
+  return {next, ready, brief, turnDone() {lastEnd = Date.now(); since = null}, state: st};
 }
 
 // The state header as prompt text: fresh from the game every turn, so even a lazy model cannot narrate
