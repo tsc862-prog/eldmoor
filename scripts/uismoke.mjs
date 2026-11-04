@@ -801,6 +801,12 @@ console.log('the DM prepares the table');
   ok(rows[0].querySelector('.tma.yes').textContent==='YES'&&rows[1].querySelector('.tma.no').textContent==='NO','banner: a row shows the vote cast (YES, NO)');
   ok(/Taking the watch instead/.test(rows[1].querySelector('.tmq').textContent),'banner: a row carries what the member said');
   ok(rows[2].classList.contains('st-wait')&&/reflex in 111 s/.test(rows[2].querySelector('.tmt').textContent),'banner: a nudged member shows the reflex timer ('+rows[2].querySelector('.tmt').textContent+')');
+  {const SWm=await import('../src/sim/scenewait.js'),e0=SWm.SW.EXTRA_MS;SWm.SW.EXTRA_MS=90000;sc.q=[ms[2].id];TB.renderTable(1); // #687: a queued member's countdown runs on into the extension
+   const tq=[...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent;
+   ok(/^queued · reflex in 201 s$/.test(tq),'banner: a queued member counts down the extension too ('+tq+')');
+   w[ms[2].id].t=210;TB.renderTable(1);ok(/^queued · reflex in 0 s$/.test([...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent),'banner: it reaches 0 s only when the extension is over');
+   w[ms[2].id].t=9;delete sc.q;SWm.SW.EXTRA_MS=e0;TB.renderTable(1);
+   ok(/^reflex in 111 s$/.test([...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent),'banner: not queued, the plain countdown is back')}
   ok(rows[4]&&rows[4].classList.contains('st-wait')&&rows[4].querySelector('.tmt').textContent==='4 s','banner: a thinking member shows how long ('+(rows[4]&&rows[4].querySelector('.tmt').textContent)+')');
   ok(rows[3].classList.contains('st-held')&&/no runner/.test(rows[3].textContent),'banner: a member with no runner says so');
   ok(!/answered · waiting for/.test(box.textContent)&&/has no runner: Restart runner/.test((box.querySelector('.tl')||{}).textContent||''),'banner: the waiting list is not said twice (rows only); what to do about a missing runner stays');
