@@ -5,6 +5,8 @@
 import {rnd,ri,pickA} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {tiles,zone,I,ZONES,zonePoint,zoneAt,dist,tileAt} from '../world/map.js';
+import {standAt,solidAt} from '../world/passable.js';
+import {clearLine,noWay} from './path.js'; // paths (#794): a mob walks round what is solid, and gives up what it cannot reach
 import {MOBS,COUNTS,ELITES,ECO} from '../data/mobs.js';
 import {blockOf,ABILITIES,ELITE_TEMPLATE,ELITE_EXTRA,NAMED_KITS,tagMul,heroTag} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
@@ -102,9 +104,9 @@ function useAbility(m,t){for(const id of m.ab||[]){const A=ABILITIES[id];if(!A||
     case 'poison':{const dps=A.dmg*u/A.dur/(inSlots(t)?hitRamp(m):1),d=(m.dots||(m.dots=[])).find(x=>x.h===t&&x.id===id);if(d){d.rem=A.dur;d.dps=dps}else m.dots.push({h:t,id,rem:A.dur,dps});pop(t.x,t.y-.9,'POISON','#7dce5a');break}
     case 'slow':case 'root':case 'fear':t.cd+=A.lose;hurt(t,m,A.dmg*u);pop(t.x,t.y-.9,A.fx==='slow'?'SLOWED':A.fx==='root'?'ROOTED':'FEAR','#9ad0ff');break;
     case 'knockback':{hurt(t,m,A.dmg*u);if(t.hp>0){const dx=t.x-m.x,dy=t.y-m.y,d=Math.hypot(dx,dy)||1,nx=t.x+dx/d*A.push,ny=t.y+dy/d*A.push;
-      if(WALKABLE.includes(tileAt(nx,ny))&&zoneAt(nx,ny)===zoneAt(t.x,t.y)){t.x=nx;t.y=ny}t.cd+=A.lose;pop(t.x,t.y-.9,'KNOCKED BACK','#ffd080')}break}
+      if(WALKABLE.includes(tileAt(nx,ny))&&!solidAt(nx,ny)&&zoneAt(nx,ny)===zoneAt(t.x,t.y)){t.x=nx;t.y=ny}t.cd+=A.lose;pop(t.x,t.y-.9,'KNOCKED BACK','#ffd080')}break}
     case 'summon':{for(let k=0;k<A.n&&liveAdds(m)<A.max;k++){const a=spawnMob(m.type,null,{variant:m.v,lvl:Math.max(1,m.lvl-3),hpMul:.4,hitMul:.6,abilities:[],add:true,parent:m.id});
-      a.x=m.x+(rnd()-.5)*1.4;a.y=m.y+(rnd()-.5)*1.4;a.home={x:a.x,y:a.y};a.spawn={x:a.x,y:a.y};a.target=t;a.pack=true}pop(m.x,m.y-.8,'KIN','#c0e090');break}
+      Object.assign(a,standAt(m.x+(rnd()-.5)*1.4,m.y+(rnd()-.5)*1.4));a.home={x:a.x,y:a.y};a.spawn={x:a.x,y:a.y};a.target=t;a.pack=true}pop(m.x,m.y-.8,'KIN','#c0e090');break}
     case 'heal':{const o=alliesHurt(m);if(!o)break;o.hp=Math.min(o.maxhp,o.hp+o.maxhp*A.amount);o.hpl=o.hp;pop(o.x,o.y-.6,'+'+Math.round(o.maxhp*A.amount),'#7dce5a');break}
     case 'breath':{S.fx.push({type:'ring',x:m.x,y:m.y-.5,life:.5});for(const h of nearHeroes(m.x,m.y,A.radius,h=>h===t||h.target===m))hurt(h,m,A.dmg*u);break}
   }
@@ -139,7 +141,7 @@ export function updMob(m,dt){
     if(t.state==='ghost'||t.state==='dead'||!engaged||dist(m,t)>10||held(t)){m.target=null;m.pack=false;m.dest={...m.home};m.hpl=m.hp;return} // a hero held in a scene (#518) is let be
     if(t.state!=='fight'&&t.state!=='downed'){t.state='fight';t.target=m;t.dest=null}
     const d=dist(m,t);m.face=t.x>m.x?1:-1;
-    if(d>B.reach){moveTo(m,t.x,t.y,dt,2.1);m.hpl=m.hp;return}m.moving=false;
+    if(d>B.reach){moveTo(m,t.x,t.y,dt,2.1);if(noWay(m)){m.target=null;m.pack=false;m.dest={...m.home};if(t.target===m&&t.state==='fight'){t.target=null;t.state='hunt'}}m.hpl=m.hp;return}m.moving=false; // no way to it: back home, and it is free of the mob
     for(const id of m.ab||[])if(m.abcd[id]==null)m.abcd[id]=ABILITIES[id].cd*(.4+rnd()*.4); // first use a little way into the fight
     if(B.beh.flee&&!m.fledOnce&&!m.elite&&m.hp<m.maxhp*B.beh.flee){m.fledOnce=true;m.fled=2.5;pop(m.x,m.y-.8,'FLEES','#ffb060');m.hpl=m.hp;return}
     if(m.cd<=0&&(t.state==='downed'||!useAbility(m,t))){m.cd=m.acd*(m.frenzy>0?.8:1);const v=.8+rnd()*.4,cr=rnd()<B.crit;hurt(t,m,unitOf(m)*(m.frenzy>0?1.35:1)*v*(cr?1.6:1),cr)} // the downed get a plain blow, not an ability
@@ -153,7 +155,7 @@ export function updMob(m,dt){
   if(m.scan<=0){m.scan=.6;const reach=m.elite?ELITE_TEMPLATE.aggro:B.beh.aggro*sightMul(z); // ambush reach; the index returns heroes within it, id-ascending (sim/spatial.js)
     for(const a of nearHeroes(m.x,m.y,reach)){if((a.state!=='travel'&&a.state!=='hunt')||held(a)||(B.beh.territorial&&zoneAt(a.x,a.y)!==z))continue; // territorial: no ambushing travellers outside the mob's own zone
       if(m.elite){if(a.lvl<m.lvl-2||a.hp<.9*(CLS[a.cls].hp+a.lvl*14+a.gear*6+a.epics.length*10))continue; // elites ignore small prey and the already wounded
-        if(dist(a,m)<ELITE_TEMPLATE.aggro&&rnd()<.5){m.target=a;a.state='fight';a.target=m;a.dest=null;break}continue}
+        if(dist(a,m)<ELITE_TEMPLATE.aggro&&rnd()<.5&&clearLine(m,a)){m.target=a;a.state='fight';a.target=m;a.dest=null;break}continue}
       if(m.lvl<a.lvl-3)continue;
-      if(dist(a,m)<B.beh.aggro*sightMul(z)&&rnd()<.3){m.target=a;a.state='fight';a.target=m;a.dest=null;callPack(m,a,B);break}}}
+      if(dist(a,m)<B.beh.aggro*sightMul(z)&&rnd()<.3&&clearLine(m,a)){m.target=a;a.state='fight';a.target=m;a.dest=null;callPack(m,a,B);break}}}
   m.hpl=m.hp}

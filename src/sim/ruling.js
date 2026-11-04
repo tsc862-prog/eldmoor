@@ -15,8 +15,8 @@
 //   - State on S.rulings (plain data, saved). Only agent heroes attempt, so a seeded scripted world never reaches this
 //     module (rulingTick is a no-op without S.rulings).
 import {S,clockStr,dayNo} from './state.js';
-import {ZONES,LANDMARKS,CRYPT,zoneAt,tileAt,dist} from '../world/map.js';
-import {W,H,WALL,RIVER,LAVA} from '../world/tiles.js';
+import {ZONES,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {solidAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {SKILLS,SKILL_IDS,check,skillMod,trained} from './abilities.js';
 import {ri} from '../core/rng.js';
@@ -179,7 +179,7 @@ export function parseEffect(x){let k,t='',v='';
   return {k,t,v}}
 const DIRS={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0],northeast:[.71,-.71],northwest:[-.71,-.71],southeast:[.71,.71],southwest:[-.71,.71],
   n:[0,-1],s:[0,1],e:[1,0],w:[-1,0],ne:[.71,-.71],nw:[-.71,-.71],se:[.71,.71],sw:[-.71,.71],up:[0,-1],down:[0,1],ahead:null,forward:null};
-const open_=(x,y)=>x>=0&&y>=0&&x<W&&y<H&&![WALL,RIVER,LAVA].includes(tileAt(x,y));
+const open_=(x,y)=>!solidAt(x,y); // solid ground, as the walkers read it (#794)
 function moveSpot(a,to){const s=lc(to),m=/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/.exec(s);let x,y;
   if(m){x=+m[1];y=+m[2]}else{const w=s.split(' '),d=DIRS[w[0]];if(d===undefined)return {err:'move: to is a direction (north, south-east, ...) with tiles (up to '+ATTEMPT.MOVE_MAX+'), or "x,y" within '+ATTEMPT.MOVE_MAX+' tiles'};
     const v=d||(a.dest?[(a.dest.x-a.x)/(dist(a,a.dest)||1),(a.dest.y-a.y)/(dist(a,a.dest)||1)]:[0,-1]),n=Math.min(ATTEMPT.MOVE_MAX,Math.max(1,Number(w[1])||3));x=a.x+v[0]*n;y=a.y+v[1]*n}

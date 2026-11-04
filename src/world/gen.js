@@ -6,6 +6,7 @@
 // Owned by world-builder.
 import {hash,vnoise,fbm,clamp,pickA} from '../core/rng.js';
 import {placeNodes} from './nodes.js';
+import {solidGrid,landsOf,bridgeShoulders} from './solidgrid.js';
 import {TOWN_PIECES,TOWN_REF} from '../data/townart.js';
 import {G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE,WALKABLE} from './tiles.js';
 
@@ -147,6 +148,11 @@ export function buildWorld(spec){
     const wd=spec.river.width||2;
     if(c.axis==='y'){for(let y=0;y<h;y++){const x0=c.fn(y);for(let k=0;k<wd;k++)if(x0+k>=0&&x0+k<w)tiles[I(x0+k,y)]=RIVER}}
     else{for(let x=0;x<w;x++){const y0=c.fn(x);for(let k=0;k<wd;k++)if(y0+k>=0&&y0+k<h)tiles[I(x,y0+k)]=RIVER}}}
+  // fords (#794): spec.river.fords, places along the river (a y on a north-south river, an x on an east-west one) where it
+  // can be waded. The tiles stay RIVER, so they keep its slow pace; the solid grid leaves them open.
+  const fords=[];
+  if(spec.river)for(const t of spec.river.fords||[]){const c=curves[spec.river.curve],wd=spec.river.width||2,at=c.fn(t);
+    for(let k=0;k<wd;k++)fords.push(c.axis==='y'?I(at+k,t):I(t,at+k))}
 
   // towns
   const CITY=(spec.towns||[]).map(mkTown);
@@ -187,6 +193,10 @@ export function buildWorld(spec){
       if(!path)throw new Error('world spec: no road route from '+r.from+' to '+r.to);
       ROUTES.push(path);paintPolyline(world,path)}}
 
+  // what cannot be walked (solidgrid.js, #794): after the roads, since a road opens what it crosses
+  fords.push(...bridgeShoulders({tiles,I,w,h}));
+  const solid=solidGrid({tiles,I,w,h,CITY,LANDMARKS,fords}),{land,main:mainLand}=landsOf({tiles,I,w,h,CITY},solid);
+
   // level ladder: the region whose band holds the level. Ties go to the one
   // nearest `near` (a hero's home) when given, else the lower index.
   const bands=regions.map(r=>r.band||[1,Infinity]);
@@ -207,7 +217,7 @@ export function buildWorld(spec){
   const excl=LANDMARKS.filter(l=>l.exclude>0).map(l=>l.mouth?{x:(l.mouth.x0+l.mouth.x1+1)/2,y:(l.mouth.y0+l.mouth.y1+1)/2,r:l.exclude}:{x:l.x,y:l.y,r:l.exclude});
   const ZPTS=regions.map(()=>[]);
   for(let y=1;y<h-1;y++)tile:for(let x=1;x<w-1;x++){const t=tiles[I(x,y)];
-    if(WALKABLE.indexOf(t)<0)continue;
+    if(WALKABLE.indexOf(t)<0||land[I(x,y)]!==mainLand)continue; // never on solid ground, nor in a pocket nobody can walk to (#794)
     for(const c of CITY)if(x>=c.x0-pad[0]&&x<=c.x1+pad[0]&&y>=c.y0-pad[1]&&y<=c.y1+pad[1])continue tile;
     for(const e of excl)if(Math.hypot(x+.5-e.x,y+.5-e.y)<e.r)continue tile;
     ZPTS[zone[I(x,y)]].push({x:x+.5,y:y+.5})}
@@ -226,8 +236,8 @@ export function buildWorld(spec){
     ...CITY.map(c=>[c.name.toUpperCase(),(c.x0+c.x1+1)/2,c.y0>2?c.y1+2.2:c.y0-.6])];
 
   const OUTPOSTS=(spec.outposts||[]).map(o=>({id:o.id,name:o.name,x:o.x,y:o.y,r:o.r||3.5,z:zoneAt(o.x,o.y)})); // contested outposts (#11): data only, never painted
-  const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS},spec); // gathering nodes (#255): an overlay list, not tiles
+  const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS,land,mainLand},spec); // gathering nodes (#255): an overlay list, not tiles
   return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
     REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT,ROUTES,OUTPOSTS,
-    zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,
+    zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,solid,land,mainLand,fords,
     road:pts=>paintPolyline(world,pts)}}

@@ -25,6 +25,7 @@
 //   S.table.calls [{id, kind, about, legal?, who?, t, done, by, text, pick}] while a staged scene is open
 import {S,clockStr,dayNo} from './state.js';
 import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {BESTIARY} from '../data/bestiary.js';
 import {WANDER_ROLES} from '../data/npcs.js';
@@ -344,7 +345,7 @@ function frameMisfit(frame,plan,castName,kind){const f=' '+frame.toLowerCase().r
   const own=kind==='elite'?'Your elite is '+castPlan(kind,plan):'Your ambush is '+castPlan(kind,plan);
   return 'the frame does not fit the cast. '+own+(ppl?', not people: no "'+ppl[1]+'" in this scene':'')+'. Write the frame for '+(plan.length>1?'them':'it')+' (name the creature, or say '+famWords(plan).slice(0,3).join(', ')+') and try again, or call stage_scene with preview:true to see the cast first';
 }
-function place(m,p){m.x=p.x;m.y=p.y;m.home={x:p.x,y:p.y};m.spawn={x:p.x,y:p.y};m.dest=null;m.target=null;m.hpl=m.hp}
+function place(m,p){Object.assign(m,standAt(p.x,p.y));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};m.dest=null;m.target=null;m.hpl=m.hp}
 function defaultTitle(kind,C){return kind==='vision'?C.name||'A vision':kind==='ambush'?'Ambush: '+C.name:kind==='trap'?'A trap on the road':kind==='mystery'?C.name:C.name||cap(kind)}
 function castLine(rec){const C=rec.cast,out=[];
   for(const id of C.mobs){const m=mobOf(id);if(m)out.push((m.name||MOBS[m.type].name)+(m.title?', '+m.title:'')+' (L'+m.lvl+' '+MOBS[m.type].name+')'+(liveMob(m)?'':' - down'))}

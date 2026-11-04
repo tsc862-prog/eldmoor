@@ -33,7 +33,7 @@
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
 import {clamp} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
-import {solidAt,solidWhy,nearestOpen} from '../world/passable.js';
+import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {GOODS,QUEST_ITEMS,USES,EPICS,BOSS_EPICS,DG_EPICS,SLOTS} from '../data/items.js';
@@ -458,7 +458,7 @@ register({name:'custom_foe',about:'A special foe from the bestiary: base creatur
   apply(p,ctx){const lvl=p.lvl!=null?bandLvl(p.region,p.lvl).lvl:band(p.region)[0]+2,pair=v=>v&&Array.isArray(v.pair)&&v.pair.length===2?v.pair:undefined;
     const f=customFoe(p.base,{name:p.name,levels:p.levels,swap:pair(p.swap),resist:pair(p.resist)},{region:p.region,level:lvl,reason:ctx.reason,adv:ctx.adv});
     if(!f){const e=S.dmLog&&S.dmLog[0];return {ok:false,effect:e&&e.kind==='custom'?String(e.summary[0]).replace('Special foe refused: ',''):'the bestiary refused it'}}
-    const m=spawnFoe(f);m.hpl=m.hp;m.x=p.at.x;m.y=p.at.y;m.home={...p.at};m.spawn={...p.at};m.lever=ctx.id;if(ctx.adv)m.adv=ctx.adv.id;
+    const m=spawnFoe(f);m.hpl=m.hp;Object.assign(m,standAt(p.at.x,p.at.y));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};m.lever=ctx.id;if(ctx.adv)m.adv=ctx.adv.id;
     return {ok:true,effect:{mob:m.id,name:f.name,lvl:m.lvl,points:f.points},until:S.gameMin+DAY,ret:m}},
   expire(rec){mobsOf(rec.id,true)},
   describe:p=>(p.name||p.base)+' in '+ZONES[p.region]});
