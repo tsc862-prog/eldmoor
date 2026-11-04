@@ -7,13 +7,14 @@
 import {readFileSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
 import {join,dirname,relative,sep} from 'node:path';
 import {ROOT,ASSETS,loadManifest,loadIndex,TILE,sizeOf} from './lib.mjs';
-import {encodePng} from './png.mjs';
+import {encodePng,decodePng} from './png.mjs';
 import {resolvePalette} from './post.mjs';
 
 const o={};{const a=process.argv.slice(2);for(let i=0;i<a.length;i++)if(a[i].startsWith('--'))o[a[i].slice(2)]=a[i+1]&&!a[i+1].startsWith('--')?a[++i]:true}
 const out=o.out||join(ROOT,'logs','art','sheet.html'),dir=o.assets||ASSETS,tier=o.tier?Number(o.tier):TILE;
 const man=loadManifest(),idx=loadIndex(dir);
 const PAL=await import('../../src/render/palette.js');
+const {FAC}=await import('../../src/data/factions.js');
 const {texel,ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS}=await import('../../src/render/terrain.js');
 const {tiles}=await import('../../src/world/map.js');
 const {W,H}=await import('../../src/world/tiles.js');
@@ -31,6 +32,14 @@ function tileFallback(id,[w,h]){const v=ASSET_TILES[id]??ASSET_ROAD[id]??ASSET_E
     data[o]=parseInt(c.slice(1,3),16);data[o+1]=parseInt(c.slice(3,5),16);data[o+2]=parseInt(c.slice(5,7),16);data[o+3]=255}
   return uri(encodePng({w,h,data}))}
 
+// A hero sheet (palette from SPRITE.key) as the second faction sees it (#711): the review shows that the tabard takes the
+// faction colour (palette.js recolour, the renderer's own swap), so a sheet that would not is caught before art:accept.
+function recoloured(bytes,fac=1){const im=decodePng(bytes),sw=PAL.recolour(fac),d=im.data;
+  for(let i=0;i<im.w*im.h;i++){const o=i*4;if(!d[o+3])continue;const c=sw['#'+[d[o],d[o+1],d[o+2]].map(v=>v.toString(16).padStart(2,'0')).join('')];
+    if(c){d[o]=parseInt(c.slice(1,3),16);d[o+1]=parseInt(c.slice(3,5),16);d[o+2]=parseInt(c.slice(5,7),16)}}
+  return uri(encodePng(im))}
+const keyed=e=>e.kind==='sprite'&&((e.palette&&e.palette.from)||[]).includes('SPRITE.key');
+
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
 const scales=[1,2,4];
 const cell=(src,[w,h])=>src?scales.map(k=>`<img src="${src}" width="${w*k}" height="${h*k}" alt="">`).join(''):'<span class="none">none</span>';
@@ -46,7 +55,7 @@ const rows=keys.map(([k,e])=>{const a=idx.assets[k],p=a&&join(dir,a.file);const 
   return `<tr><td><b>${esc(k)}</b><br>${size.join('x')} · ${esc(e.kind)} · priority ${e.priority}<br><small>${a?esc(a.model+' · '+a.repo+' · seed '+a.seed)+'<br>'+esc(a.at||''):r?esc(r.model+' · seed '+r.seed):'seed '+e.seed}${a&&a.colors?'<br>'+a.colors+' colours · grid '+esc(a.grid||'?'):''}</small>
 <div class="pal">${pal.map(c=>`<i style="background:${c}" title="${c}"></i>`).join('')}</div></td>
 <td>${rawCell(k)}</td>
-<td class="g">${has?cell(uri(readFileSync(p)),size):`<span class="none">${r?'rejected (flat); raw kept':'not generated'}</span>`}</td>
+<td class="g">${has?cell(uri(readFileSync(p)),size)+(keyed(e)?`<br><small>as ${esc(FAC[1].name)}:</small><br>`+cell(recoloured(readFileSync(p)),size):''):`<span class="none">${r?'rejected (flat, or a sheet without its frames or tabard); raw kept':'not generated'}</span>`}</td>
 <td class="g">${cell(tileFallback(e.id,size),size)}</td>
 <td><small>${esc(e.prompt)}</small></td></tr>`}).join('\n');
 
