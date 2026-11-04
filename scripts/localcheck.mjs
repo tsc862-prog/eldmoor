@@ -427,7 +427,11 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     Object.assign(DOWN, keep); sim.markPlayer(a, false)}
 
   // B. a notification that cannot wait starts a turn at once, inside the gap; the hero's other news waits for the gap
-  {const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
+  // The pin below clears the hero's orders every 50 ms, so autopilot (2.5 s after the last act at 8x) writes a minor line every tick: more than the
+  // event list holds before the gap ends. That is why this section once failed on Linux (news pushed out unread, sim/notify.js): the news must survive it.
+  // Downed hearing is off as in A: a hero falling near the gate is a true 'now' turn, but it takes the turn this section measures (#762).
+  {const {DOWN} = await import('../src/sim/downed.js'), keepDown = {REACH: DOWN.REACH, SEE: DOWN.SEE}; DOWN.REACH = 0; DOWN.SEE = 0;
+   const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
     const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '4']);
     ok(await until(() => R.turns.length >= 1, 30000), 'a local runner without --max-turns plays (until stopped)');
     ok(/until stopped/.test(R.out), 'and says it runs until stopped');
@@ -436,21 +440,21 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     ok(await until(() => R.wakes.length >= 1, 4000), `an attack starts the next turn at once: ${R.wakes[0] ? R.wakes[0].kind + ' after ' + (R.wakes[0].real - tN) + ' ms' : 'no turn'}`);
     ok(R.wakes[0] && R.wakes[0].kind === 'now' && R.wakes[0].real - R.turns[0].real < 4000, 'inside the 4 s minimum gap');
     // (the world may wake the hero first, say an attack on the way: then try again after that turn)
-    let w2 = null, dt = null;
+    let w2 = null, dt = null, late = null;
     for (let k = 2; k <= 6 && !w2; k++) {
-      await until(() => R.turns.length >= k, 30000); const idle = await until(() => flight.pace > 0 && flight.tool === 0, 15000); park(a); a.hp = a.maxhp || a.hp; if (!idle) console.log('  note: the runner was not waiting in its pace poll when news ' + k + ' was dropped');
-      notify(a, 'A test traveller hails you from the road (' + k + ').', true); const nw = R.wakes.length;
+      await until(() => R.turns.length >= Math.max(k, R.wakes.length + 1), 30000); const idle = await until(() => flight.pace > 0 && flight.tool === 0, 15000); park(a); a.hp = a.maxhp || a.hp; if (!idle) console.log('  note: the runner was not waiting in its pace poll when news ' + k + ' was dropped');
+      notify(a, 'A test traveller hails you from the road (' + k + ').', true); const nw = R.wakes.length, tNews = Date.now(), nN = a.playEvN;
       // the hero's own world news (XP, loot) may name itself in the wake line: any soft wake after the notice counts. An
-      // urgent wake ('now') may come first on a slow machine (#603): skip it and measure from the turn before the soft one.
+      // urgent wake ('now') may come first on a slow machine (#603): that turn reads the notice, so try again after it.
       const news = x => /test traveller/.test(x.line) || x.kind === 'soft';
-      await until(() => R.wakes.slice(nw).some(news), 15000);
+      await until(() => R.wakes.slice(nw).some(news) || (a.playEvSeen || 0) >= nN, 15000);
       const w = R.wakes.slice(nw).find(news);
-      if (w) {w2 = w; dt = w.real - Math.max(...R.turns.filter(t => t.real < w.real).map(t => t.real))}
+      if (w) {w2 = w; const prev = Math.max(...R.turns.filter(t => t.real < w.real).map(t => t.real)); dt = w.real - prev; late = w.real - Math.max(tNews, prev + 4000)} // late: how long after it could first start
     }
-    ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`+(w2?'':` | hero ${a.name} state ${a.state} hp ${Math.round(a.hp)} runner exited ${R.exited ?? '?'} turns ${R.turns.length} wakes ${R.wakes.map(w=>w.kind).join(',')}
+    ok(w2 && w2.kind === 'soft' && dt >= 3500 && late < 10000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms, ${late} ms after it could`+(w2?'':` | hero ${a.name} state ${a.state} hp ${Math.round(a.hp)} runner exited ${R.exited ?? '?'} turns ${R.turns.length} wakes ${R.wakes.map(w=>w.line.slice(7,110)).join(' || ')}
 ${R.out.slice(-800)}`));
     await until(() => R.turns.length >= R.wakes.length + 1, 30000);
-    clearInterval(pinB); sim.markPlayer(a, false);
+    clearInterval(pinB); Object.assign(DOWN, keepDown); sim.markPlayer(a, false);
     const code = await Promise.race([R.done, sleep(20000).then(() => 'timeout')]);
     ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 && /the hero left agent play/.test(R.out) ? '' : ' (hero ' + a.state + ') ' + '\n' + R.out.slice(-1200)))}
 

@@ -59,7 +59,7 @@ import {supplyDone} from './questlog.js';
 import {oathId as oathIdOf,questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard,selfView,become} from './persona.js'; // Fellowship (#68); self and become (#409)
-import {ev} from './notify.js';
+import {ev,mostNews} from './notify.js';
 import {campView,campBlock,leaderBreak,leaderRest,onCamp} from './camp.js';
 import {heroMemory} from './notebook.js'; // agent memories (#155)
 import {tiersOf,spillEntry,ownMark,overview as journalOverview,search as journalSearch} from './tiers.js'; // tiered memory (#153)
@@ -160,8 +160,8 @@ const legal=['town','hunt','travel','return','fight','follow','regroup','duel','
 const FOLLOWS=['town','hunt','travel','return','follow'];
 
 // Events: what happened to the hero, handed to the agent with the next tool result.
-function takeEvents(a){const seen=a.playEvSeen||0,out=(a.playEv||[]).filter(e=>e.n>seen).map(e=>e.t+' '+e.text);a.playEvSeen=a.playEvN||0;
-  return out.length>PK.EV_OUT?['('+(out.length-PK.EV_OUT)+' earlier events not shown)',...out.slice(-PK.EV_OUT)]:out}
+function takeEvents(a){const seen=a.playEvSeen||0,all=(a.playEv||[]).filter(e=>e.n>seen),out=mostNews(all,PK.EV_OUT).map(e=>e.t+' '+e.text);a.playEvSeen=a.playEvN||0;
+  return all.length>out.length?['('+(all.length-out.length)+' older minor events not shown)',...out]:out}
 function done(a,text,urgent=true){if(a.pq&&a.pq.length)a.pq.shift();if(text)ev(a,text,urgent)}
 const key=e=>e?e.t+'|'+e.text:'';
 // Entries of list that came after the one whose key is k (all of them when k is not found).

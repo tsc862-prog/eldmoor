@@ -15,7 +15,7 @@
 // member's notebook, sim/notebook.js), so a world with no runner is unchanged.
 import {S,clockStr} from './state.js';
 import {swornOf,threadText,askOpen} from './oath.js'; // the hero's own oath, or the thread its past offers (#800)
-import {wakeLevel} from './notify.js';
+import {wakeLevel,mostNews} from './notify.js';
 import {tableView,optionsFor} from './table.js';
 import {sceneOf} from './scenes.js';
 import {heardLines,metNames} from './talk.js';
@@ -80,7 +80,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
   const t=a.target,fighting=(a.state==='fight'||a.state==='duel'||a.state==='assist')&&t&&(t.hp>0||t.alive);
   const foe=fighting?foeName(a,t):null;
-  const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
+  const seen=a.playEvSeen||0,news=mostNews((a.playEv||[]).filter(e=>e.n>seen),8).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:placeOf(a),
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),earshot:earshotLine(a),hold:S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold.rule:null,insight:sightLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
