@@ -16,7 +16,7 @@ setWorldSize(WORLD.w,WORLD.h);
 applyFauna(WORLD.REGIONS); // worlds with their own regions swap in region-keyed mob, elite and epic tables
 export {WORLD_ID};
 
-export const {tiles,zone,I,ZONES,REGIONS,CITY,LANDMARKS,LAIR,CRYPT,ZPTS,LIGHTS,LABELS,zoneFor,zoneAt,tileAt,zonePoint,road,OUTPOSTS}=WORLD;
+export const {tiles,zone,I,ZONES,REGIONS,CITY,LANDMARKS,LAIR,CRYPT,ZPTS,LIGHTS,LABELS,zoneFor,zoneAt,tileAt,zonePoint,road,OUTPOSTS,solid,land,mainLand}=WORLD;
 export const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 
 // Compatibility: the three boundary curves by their old names. Prefer zoneAt.

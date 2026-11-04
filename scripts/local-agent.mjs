@@ -65,10 +65,14 @@ export function ollamaTools(list = PLAYER_TOOLS) {
 
 // A model's arguments checked against the tool table: {args} or {error}. Numbers given as strings are
 // coerced, unknown keys dropped, enums and required arguments enforced. The game validates again.
+// The wish invitation (#829) on a runner-side unknown tool: at most once an hour of real time per runner process (the game side
+// keeps the once-a-game-day count for its own refusals); one sentence, no extra call.
+let inviteAt = 0;
+const wishInviteOnce = () => {const n = Date.now(); if (n - inviteAt < 3600e3) return ''; inviteAt = n; return '. If you wished you had this, say so with wish {tool, what, why, moment} (read later by the builders; nothing changes now).'};
 export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
   const M = byName(list), t = M.get(name);
   // a DM calling a world lever by name (post_hook, mark_place: issue #401) is pointed at pull_lever
-  if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '')};
+  if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '') + (M.has('wish') ? wishInviteOnce() : '')};
   let a = raw; if (typeof a === 'string') {try {a = a.trim() ? JSON.parse(a) : {}} catch {return {error: 'arguments are not valid JSON'}}}
   if (a == null) a = {}; if (typeof a !== 'object' || Array.isArray(a)) return {error: 'arguments must be an object'};
   // a tool with one object argument (pull_lever's params): keys the tool does not take are that object's, not dropped
@@ -351,9 +355,9 @@ export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep
 // free-form notes, which the runner submits with remember. Notes stay the agent's own: any title, text and tags.
 export const REFLECT_NOTES = 3;
 // strict: OpenAI's strict json_schema (every property required, no maxItems/maxLength; cut here instead).
-export function reflectSchema({strict = false, swear = false} = {}) {
+export function reflectSchema({strict = false, swear = false, wish = false} = {}) {
   const s = (d, n) => ({type: 'string', description: d, ...(strict ? {} : {maxLength: n})});
-  return {type: 'object', additionalProperties: false, required: strict ? ['notes', 'become', 'intent', ...(swear ? ['swear'] : [])] : ['notes'], properties: {...(swear ? {swear: s('Your oath in your own words, or yes to take what your past holds as it stands, or no to set it aside, or empty to leave it', 200)} : {}), notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
+  return {type: 'object', additionalProperties: false, required: strict ? ['notes', 'become', 'intent', ...(swear ? ['swear'] : []), ...(wish ? ['wish'] : [])] : ['notes'], properties: {...(wish ? {wish: {type: 'object', additionalProperties: false, required: ['tool', 'what', 'why', 'moment'], description: 'A thing you wanted to do today that no tool allowed, for the people who build the game; leave the fields empty if none (#829)', properties: {tool: s('The name you would give the tool, or empty', 32), what: s('What it would have done, or empty', 300), why: s('Why this moment needed it, or empty', 200), moment: s('The moment itself, a sentence, or empty', 200)}}} : {}), ...(swear ? {swear: s('Your oath in your own words, or yes to take what your past holds as it stands, or no to set it aside, or empty to leave it', 200)} : {}), notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
     description: 'The memories you want to keep (0-3); empty if nothing is worth it',
     items: {type: 'object', additionalProperties: false, required: strict ? ['title', 'text', 'tags', 'about'] : ['title', 'text', 'tags'], properties: {
       title: s('A short title of your choosing', 80), text: s('The memory in your own words', 600),
@@ -400,6 +404,13 @@ export function recentOf(sess, chars = 2400) {
   return out.join('\n').slice(-chars);
 }
 // The notes of a structured answer, cleaned (0-3, text required, tags strings). -> [{title, text, tags, about?}] or null (not the JSON)
+// The optional wish of a dusk reflection answer (#829) -> {tool, what, why, moment} or null (not given, or any field empty).
+export function reflectWish(text) {
+  let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
+  const w = j && typeof j === 'object' && j.wish && typeof j.wish === 'object' ? j.wish : null; if (!w) return null;
+  const f = {tool: String(w.tool || '').trim().slice(0, 32), what: String(w.what || '').trim().slice(0, 300), why: String(w.why || '').trim().slice(0, 200), moment: String(w.moment || '').trim().slice(0, 200)};
+  return f.tool && f.what && f.why && f.moment ? f : null;
+}
 export function reflectNotes(text) {
   let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
   const L = Array.isArray(j) ? j : j && Array.isArray(j.notes) ? j.notes : j && typeof j === 'object' && /^none$/i.test(String(j.notes || '')) ? [] : null;
@@ -412,11 +423,11 @@ export function reflectNotes(text) {
 export async function reflectTurn({ask, call, sess, moment, prompt, context = '', on = () => {}, keep = true, strict = false}) {
   const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'reflect', forced: true, calls: [], misses: 0, notes: [], moment: moment && moment.id};
   const recent = recentOf(sess), user = [recent ? 'What you did and heard lately (your own turns):\n' + recent : '', context ? context.trim() : '', prompt].filter(Boolean).join('\n\n');
-  let notes = null, note = '', bec = null, aim = null, oath = null;
+  let notes = null, note = '', bec = null, aim = null, oath = null, wsh = null;
   for (let k = 0; k < 2 && !notes; k++) {
-    const r = await ask(sess.system || '', user + note, reflectSchema({strict, swear: !!(moment && moment.thread)})), u = r.usage || {};
+    const r = await ask(sess.system || '', user + note, reflectSchema({strict, swear: !!(moment && moment.thread), wish: !!(moment && moment.kind === 'dusk')})), u = r.usage || {};
     stat.modelCalls++; stat.in += u.in || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
-    notes = reflectNotes(r.text); bec = reflectBecome(r.text); aim = reflectIntent(r.text); oath = moment && moment.thread ? reflectSwear(r.text) : null;
+    notes = reflectNotes(r.text); bec = reflectBecome(r.text); aim = reflectIntent(r.text); oath = moment && moment.thread ? reflectSwear(r.text) : null; wsh = moment && moment.kind === 'dusk' ? reflectWish(r.text) : null;
     if (!notes) {const w = parseTextCalls(r.text).filter(c => c.function.name === 'remember').map(c => c.function.arguments).filter(a => a && a.text); if (w.length) notes = w.slice(0, REFLECT_NOTES)} // remember written as text still counts
     if (!notes) {stat.misses++; note = '\n\nThat was not the JSON object. Answer only with {"notes": [...]} (an empty list for none).'}
   }
@@ -444,6 +455,12 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
     let r; try {r = await call('swear_oath', oath)} catch (e) {r = {ok: false, error: String(e.message || e)}}
     on('result', typeof r === 'string' ? r : JSON.stringify(r));
     if (r && r.ok !== false) {stat.calls.push({name: 'swear_oath', ok: true}); stat.swore = oath.text || oath.thread} else {stat.rejected++; stat.calls.push({name: 'swear_oath', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
+  }
+  if (wsh && !stat.dead) { // a thing wanted today that no tool allowed (#829): one wish to the builders' log, refused or not
+    on('tool', 'wish', wsh); stat.tools++;
+    let r; try {r = await call('wish', wsh)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    on('result', typeof r === 'string' ? r : JSON.stringify(r));
+    if (r && r.ok !== false) {stat.calls.push({name: 'wish', ok: true}); stat.wished = wsh.tool} else {stat.rejected++; stat.calls.push({name: 'wish', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
   }
   stat.answered = !!notes; stat.wrote = stat.notes.length;
   stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) + (stat.became ? ` Something in them has changed (${stat.became}).` : '') + (stat.aimed ? ` Next: ${stat.aimed}.` : '') : '';
@@ -520,6 +537,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     if (/"dead":true/.test(text)) stat.dead = true;
     if (name === 'scene_act' && r && r.ok !== false && Number.isFinite(r.waited_s)) (stat.sceneS = stat.sceneS || []).push(r.waited_s); // the table's wait when it answered (issue #515)
     else if (r && typeof r === 'object' && r.table_waits && !stat.sceneJump) {stat.sceneJump = true; on('jump', 'table_waits')} // its own scene opened mid-turn: answer that first (issue #515)
+    else if (r && typeof r === 'object' && r.turn_over) stat.tableRest = true; // the wait has nothing to wait for at the table (#868): the turn ends with no closing call, pacing wakes it
     // the breaker (#467): a refusal (not the page being away) counts per tool and in a row; enough ends the turn
     const refused = r && typeof r === 'object' && r.ok === false && !(r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')));
     if (refused) {refusedBy.set(name, (refusedBy.get(name) || 0) + 1); inRow++;
@@ -532,7 +550,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   const capHit = () => {const now = Date.now(); while (times.length && now - times[0] > 60000) times.shift();
     if (times.length < o.callsPerMin) {times.push(now); return false}
     if (!stat.throttled) {stat.throttled = true; on('throttle', times.length)} return true};
-  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled || !!stat.sceneJump;
+  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled || !!stat.sceneJump || !!stat.tableRest;
   try {
   for (let i = 0; i < toolTurns && !stat.dead; i++) {
     let res;

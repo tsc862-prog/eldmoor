@@ -35,6 +35,7 @@ const ABOUT = {
   'lever-near-hurt': 'a danger lever pulled near a badly hurt Fellowship member',
   'request-flood': 'too many tool or relay calls in a minute',
   'no-memories': 'an agent-played Fellowship member wrote no memory for two game days',
+  'refused-talk': 'an agent hero had several lines refused by the talk guard in one game hour (a repeat or a second introduction, #870)',
   'no-flee-rule': 'an agent hero ran with gambits that hold no flee rule (flee_home or retreat_to), its own call (#617)',
   'no-aim': 'an agent hero had no stated aim (intent) for two game hours outside camp and town rest (#535)',
   'town-idle': 'an agent hero earned nothing in town for twelve game hours (no XP, kill, buy, sell, job or talk); it was woken with the board and autopilot hunts (#790)',
@@ -188,6 +189,11 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
     for (const m of last.members || []) if (m.agent && !aim.has(m.name)) aim.set(m.name, new Map());
     L.push('', 'Aims stated (intent) per hero per game day:', '');
     L.push(aim.size ? table(['hero', ...dl.map(d => 'day ' + d), 'total'], [...aim.entries()].map(([k, m]) => [k, ...dl.map(d => m.get(d) || 0), [...m.values()].reduce((t, v) => t + v, 0)])) : '_none stated_', '');
+    // refused talk (#870), from the digests
+    const rt = new Map();
+    for (const w of W) for (const [k, v] of Object.entries(w.talkRefused || {})) {const m = rt.get(k) || {same: 0, intro: 0}; m.same += v.same || 0; m.intro += v.intro || 0; rt.set(k, m)}
+    L.push('', 'Lines refused by the talk guard per hero:', '');
+    L.push(rt.size ? table(['hero', 'repeats', 'introductions', 'total'], [...rt.entries()].map(([k, m]) => [k, m.same, m.intro, m.same + m.intro])) : '_none refused_', '');
     // gambits (issue #617): rule-driven acts and edits per hero, and who ran without a flee rule
     const gb = new Map();
     for (const w of W) for (const [k, v] of Object.entries(w.gambits || {})) {const m = gb.get(k) || {acts: 0, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}; m.acts += v.acts || 0; m.edits += v.edits || 0; m.wrote = Math.max(m.wrote, v.wrote || 0); m.wroteAb = Math.max(m.wroteAb, v.wroteAb || 0); m.noFlee = !!v.noFlee; m.own = m.own || !!v.own; gb.set(k, m)}
@@ -304,6 +310,12 @@ export function wishSection(rows, turns, table) {
     L.push(table(['asked-for tool', 'asks', 'seats', 'worlds'], d.groups.map(g => [g.tool, g.n, g.seats.slice(0, 8).join(', '), g.worlds.length || '-'])), '');
     for (const g of d.groups) {const b = g.best; L.push(`- **${g.tool}** (${g.n}): ${b.what} Why: ${b.why} Moment: ${b.moment} (${b.seat === 'dm' ? 'the DM' : b.name || b.seat}, day ${b.day ?? '?'}${b.place ? ', ' + b.place : ''}${b.model ? ', ' + (b.provider || '?') + '/' + b.model : ''})`)}
     L.push('');
+  }
+  { // wishes per seat per game day (#829): who is asking at all, beside the memories table
+    const w = rows.filter(r => r.type === 'wish'), seats = new Map();
+    for (const r of w) {const k = r.seat === 'dm' ? 'DM' : r.name || r.seat || '?'; let x = seats.get(k); if (!x) seats.set(k, x = {n: 0, days: new Set()}); x.n++; if (r.day != null) x.days.add(r.day)}
+    const span = new Set(w.map(r => r.day).filter(x => x != null)), nd = Math.max(1, span.size ? Math.max(...span) - Math.min(...span) + 1 : 1);
+    L.push('### Wishes per seat per game day', '', seats.size ? table(['seat', 'wishes', 'game days with one', 'per game day'], [...seats].sort((p, q) => q[1].n - p[1].n).map(([k, x]) => [k, x.n, x.days.size, (x.n / nd).toFixed(2)])) : 'No seat has written a wish yet.', '');
   }
   L.push('### Tools tried that do not exist', '');
   L.push(d.unknown.length ? table(['name tried', 'times', 'seats'], d.unknown.slice(0, 15).map(u => [u.tool, u.n, u.seats.slice(0, 6).join(', ')])) : 'None in the turn lines.', '');
