@@ -21,6 +21,7 @@
 import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
 import {rnd,ri,pickA} from '../core/rng.js';
 import {CRYPT} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {BESTIARY,VARIANTS,ROLES,heroTag,baseId} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
 import {S} from './state.js';
@@ -64,7 +65,7 @@ const dunOf=g=>g&&g.site!=null?siteById(g.site)||CRYPT:CRYPT;
 const roomsOf=g=>dunOf(g).rooms||[];
 var SITE_END=null;export function setSiteEnd(f){SITE_END=f} // sim/sites.js: pays a cleared site, marks a ruin
 // The crawl runs for a group the Fellowship is in, in a dungeon with rooms, while Table mode is on (Watch mode keeps the roll).
-// The company is the first group member who rides in one (a drafted company comes first, see council.js unitDraft); a solo is a company of one.
+// The company is the first group member who rides in one (a company in a group comes first, see council.js unitDraft); a solo is a company of one.
 const coOf=g=>{for(const a of g.mem){const C=companyOf(a);if(C)return C}return null};
 export const crawlFits=g=>!!(g&&coOf(g)&&roomsOf(g).length&&tableOn());
 const lvlOf=g=>{const L=g.mem.filter(a=>crewOf(g).includes(a));return Math.max(1,Math.round(L.reduce((t,a)=>t+a.lvl,0)/Math.max(1,L.length)))};
@@ -216,7 +217,7 @@ function outcome(sc){const g=grp(sc);if(!g)return '';const cr=g.crawl,room=rooms
 setSceneKind('crawl',{options,reflex,apply,outcome,view,move:moveOf,place:placeMove,spotOf});
 
 // ---- the driver, once per step while the group is inside (called from dungeon.js dungeonCheck) ----
-function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;a.x=D.x+(rnd()-.5)*1.5;a.y=D.y+.5+rnd()*.6}}
+function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;Object.assign(a,standAt(D.x+(rnd()-.5)*1.5,D.y+.5+rnd()*.6))}}
 const endGroup=g=>{if(g.site!=null){const D=siteById(g.site);if(D)D.group=null}else CRYPT.group=null};
 const whoOf=g=>{const C=g.crawl&&companyById(g.crawl.co);return {t:g.name||(C?C.name:'The company'),c:'f'+g.fac}};
 function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats;leave(g);
@@ -234,7 +235,7 @@ function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats;leave(g);
 // Called when the group has no one left (everyone fell): the wipe, at the table's dice.
 export function crawlLost(g){const who=whoOf(g),D=dunOf(g);
   for(const a of crewOf(g))bleedOut(a); // nobody stands to carry them: the downed die where they lie (#654)
-  for(const a of g.mem)if(living(a)){a.hidden=false;a.x=D.x+(rnd()-.5)*1.5;a.y=D.y+.5+rnd()*.6;record(a,'Came up the stair alone from ',gd(D.name),'.');goHome(a)} // fill-ins who rode along with a crew that fell
+  for(const a of g.mem)if(living(a)){a.hidden=false;Object.assign(a,standAt(D.x+(rnd()-.5)*1.5,D.y+.5+rnd()*.6));record(a,'Came up the stair alone from ',gd(D.name),'.');goHome(a)} // fill-ins who rode along with a crew that fell
   log(who,' was lost in ',gd(D.name),'. No one came back up the stair.');timeline('death',who,' was lost in ',gd(D.name),' to the last man.');
   if(g.site!=null&&SITE_END)SITE_END(g,'wiped');
   tally('wipes',g,g.crawl)}

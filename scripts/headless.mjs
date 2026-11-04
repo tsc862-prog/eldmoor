@@ -4,6 +4,7 @@
 //        npm run sim -- 120     (120 minutes)
 import {init, step, S, spatialStats} from '../src/sim/index.js';
 import {outpostsView} from '../src/sim/outposts.js';
+import {pathStats} from '../src/sim/path.js';
 import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 
 const minutes = Number(process.argv[2] || 60);
@@ -35,4 +36,5 @@ console.log('Recent deaths:', S.fallen.slice(0, 8).map((f) => `${f.name} L${f.lv
 {const v=S.invStats,L=alive.filter((a)=>a.inv),n=(a,k)=>a.inv.list.reduce((t,e)=>t+(e.kind==='use'&&/Draught|Tonic/.test(e.id)?e.n:0),0);if(v)console.log(`Packs: ${L.length} heroes, ${(L.reduce((t,a)=>t+n(a),0)/Math.max(1,L.length)).toFixed(1)} potions each on average, ${(L.reduce((t,a)=>t+a.inv.list.length,0)/Math.max(1,L.length)).toFixed(1)} slots used | ${Object.entries(v).map(([k,x])=>k+' '+x).join(', ')}`)}
 {const g=S.gatherStats,c=S.craftStats;if(g||c)console.log(`Professions: gathered ${g?g.got+'/'+g.tries+' tries, '+g.units+' units':'none'} | crafted ${c?c.made+' ('+Object.entries(c.byProf).map(([k,x])=>k+' '+x).join(', ')+'), fees '+c.fees+'g, crafters learned '+c.learned+', meals eaten '+c.meals+', at camp '+c.camp:'none'}`)}
 {const t=S.tradeStats;if(t){const av=S.agents.filter(h=>h.state!=="dead"),g=av.reduce((s,h)=>s+h.gold,0)/Math.max(1,av.length);console.log(`Trades (#14): listed ${t.listed}, sold ${t.sold} (gear ${t.gear}, goods ${t.goods}), lapsed ${t.lapsed}, ${t.gold}g traded, fees ${t.fees}g | open ${(S.listings||[]).length} | avg gold ${Math.round(g)}`)}}
+console.log(`Paths (#794): ${pathStats.plans} plans, ${(pathStats.plans / (frames / 60)).toFixed(1)} a second | ${(pathStats.nodes / Math.max(1, pathStats.plans)).toFixed(0)} nodes a plan, worst ${pathStats.peak} | ${(pathStats.us / Math.max(1, pathStats.plans)).toFixed(0)} us a plan | waited a tick ${pathStats.held} | no way ${pathStats.none}`);
 console.log(`Spatial index: ${spatialStats.cells} cells | indexed ${spatialStats.heroes} heroes, ${spatialStats.mobs} mobs | ${(spatialStats.queries / frames).toFixed(1)} queries/step, ${(spatialStats.candidates / Math.max(1, spatialStats.queries)).toFixed(1)} candidates/query`);
