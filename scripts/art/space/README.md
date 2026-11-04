@@ -18,9 +18,14 @@ tags:
 # Eldmoor art (private ZeroGPU Space)
 
 The generator behind Eldmoor's image assets (issue #703). SDXL base with the manifest's pixel-art LoRAs
-(`loras.json`, written from `scripts/art/manifest.json`), one API function:
+(`loras.json`, written from `scripts/art/manifest.json`), two API functions:
 
 `generate(prompt, negative, seed, steps, guidance, width, height, lora_scale, lora_repo) -> (PNG, GPU seconds)`
+
+`img2img(prompt, negative, seed, steps, guidance, init_png, strength, lora_scale, lora_repo) -> (PNG, GPU seconds)`
+
+`img2img` (issue #763) starts from the game's own procedural art (`init_png`: a PNG in base64, its size is the image's size):
+buildings, landmarks and sprites keep the game's view and silhouette, and the model adds texture.
 
 `scripts/art/daily.mjs` and `gen.mjs` call it through Gradio's HTTP API (`/gradio_api/call/generate`) with the same
 prompts, seeds and settings as before; images draw on the owner's daily ZeroGPU quota (PRO: 40 minutes a day), never on

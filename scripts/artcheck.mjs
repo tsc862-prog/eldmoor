@@ -27,11 +27,25 @@
 //  8. towns and landmarks (slice 3, src/render/townart.js) on headless Eldmoor and Stepping Lands maps, drawn through a
 //     small raster of its own (no canvas in Node): each town in its faction's style with every piece placed, no assets =
 //     the procedural drawing, fixture PNGs on (only inside the pieces' boxes), one piece removed, and off again exactly.
+//  9. the building recipe (#763, scripts/art/post-flat.mjs): standing buildings and landmarks on the flat palette and the game's
+//     view, sizes = their footprint boxes, a clean flat building passing and a painterly facade (and the old recipe's output)
+//     refused by the style gate, art:accept refusing a building without an art:preview shot of this very image at 3440x1440
+//     zoom 1 or one that fails the gate, the check recorded on accept, the kindModel trial switch, and the renderer's base strip.
+// 10. sprite sheets (slice 4, #711, scripts/art/post-sheet.mjs): a model answer drawn from each sheet's fixture (figures in a
+//     3x4 grid on white, not on the frame grid) comes out one figure a frame, feet on the frame floor, clear ground, palette
+//     and outline only, deterministic; a hero keeps its tabard in the recolourable key; 3 rows, 2 columns or a hero with
+//     no tabard are rejected (raw kept); the 64 tier; the mock answers sprite prompts with such sheets in the runs above.
+//     Image to image (#763, scripts/art/init.mjs, post-init.mjs, inside the mock Space part of 4): every building, landmark and
+//     sprite has procedural art at both tiers that survives its own recipe, tiles and props stay text only; the procedural pixels
+//     reach the mock Space's img2img API with the manifest's strength; the answer keeps the silhouette and passes the gates, a
+//     redrawn or spilt answer is refused with its raw kept; raws and art:reprocess keep working; the router leaves these kinds
+//     out; a Space from before img2img stops the run with the word to push; the router runs of part 4 use the manifest without
+//     kindInit, which also proves the text recipe on these kinds still works for raws made before.
 import http from 'node:http';
 import {spawn} from 'node:child_process';
-import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,utimesSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,utimesSync,mkdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
 import {deflateSync} from 'node:zlib';
 import {ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf,sizeOf,tierKey,normKey,splitKey,keyFile,loadQueue,tierCfg,TILE,TIERS,nextCheck} from './art/lib.mjs';
 import {runLoop} from './art/daily.mjs';
@@ -121,6 +135,77 @@ const houseArt=()=>{const a=stoneArt();for(let y=0;y<1024;y++)for(let x=0;x<1024
   ok(!bad,'only palette colours (and the outline)');ok(clear>40,`background cleared (${clear} clear pixels)`);ok(line>8,`1px outline drawn (${line} pixels)`);
   const t=postProcess(pixelArt(),{kind:'tile',size:[32,32],post:{}},pal);let opaque=0;for(let i=0;i<32*32;i++)if(t.data[i*4+3]===255)opaque++;ok(opaque===1024,'a tile stays opaque')}
 
+console.log('the building recipe and its gates (#763)');
+{const FB=await import('./art/fixtures-buildings.mjs'),PF=await import('./art/post-flat.mjs'),{TOWN_PIECES}=await import('../src/data/townart.js'),{withKindModel,QUEUE0,saveQueue}=await import('./art/lib.mjs');
+  const standing=man.assets.filter(e=>e.post&&e.post.flat),byId=new Map(man.assets.map(e=>[e.id,e])),styles=Object.keys(PAL.TOWN);
+  const want=[...styles.flatMap(s=>TOWN_PIECES.map(p=>`building:${s}-${p.piece}`)),'landmark:crypt-mouth','landmark:lair'];
+  ok(want.every(id=>byId.get(id)&&byId.get(id).post.flat)&&standing.length===want.length,`every standing building and landmark is on the flat recipe (${standing.length}); walls, corners and gates keep the masonry recipe`);
+  ok(standing.every(e=>{const c=resolvePalette(e.palette,PAL).colors;return c.length>=5&&c.length<=PF.GATE.maxColors&&/^FLAT\./.test(e.palette.from[0])}),`their palettes are the procedural building's flat colours, ${PF.GATE.maxColors} at most (FLAT.<style>)`);
+  ok(standing.every(e=>/thick black outline/.test(e.prompt)&&/flat shading/.test(e.prompt)&&!/front facing/.test(e.prompt))&&standing.filter(e=>e.kind==='building').every(e=>/top-down three-quarter view, the roof fills the top two thirds/.test(e.prompt)),"their prompts ask for the game's view: top-down three-quarter, roof two thirds, flat shading, thick outline; no front elevation");
+  {const bad=[];for(const s of styles)for(const p of TOWN_PIECES){const e=byId.get(`building:${s}-${p.piece}`);for(const t of TIERS){const z=sizeOf(e,t);if(z[0]!==Math.round(p.box[2]*t)||z[1]!==Math.round(p.box[3]*t))bad.push(`${e.id}@${t} ${z} vs box ${p.box[2]}x${p.box[3]}`)}}
+    ok(!bad.length,'each building is generated at its footprint: its manifest size is its town layout box in tiles times the tier'+(bad.length?': '+bad.join('; '):''))}
+  const pal=s=>resolvePalette({from:['FLAT.'+s]},PAL).colors,luma=c=>{const [r,g,b]=hexToRgb(c);return r*.299+g*.587+b*.114};
+  const run=(e,raw,tier=32)=>{try{return postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline,{hint:tierCfg(man,man.models['pixel-xl'],tier).grid,tier})}catch(x){return x}};
+  for(const id of ['building:stone-hall','building:timber-chapel','building:stone-board','landmark:crypt-mouth']){const e=byId.get(id),z=sizeOf(e,32),st=id==='landmark:crypt-mouth'?'crypt':id.split(':')[1].split('-')[0];
+    const good=run(e,FB.flatBuilding(PAL.FLAT[st],z,e.seed)),again=run(e,FB.flatBuilding(PAL.FLAT[st],z,e.seed)),bad=run(e,FB.painterlyFacade(z,e.seed));
+    const P=new Set(pal(st).map(c=>hexToRgb(c).join(','))),base=e.post.base||0,line=hexToRgb(pal(st).slice().sort((a,b)=>luma(a)-luma(b))[0]).join(',');let off=0,baseLit=0,rim=0;
+    if(!(good instanceof Error)){for(let i=0;i<good.w*good.h;i++){const o=i*4;if(!good.data[o+3])continue;if(!P.has([good.data[o],good.data[o+1],good.data[o+2]].join(',')))off++;if(Math.floor(i/good.w)>=good.h-base)baseLit++}
+      for(let x=0;x<good.w;x++)for(let y=0;y<good.h;y++){const o=(y*good.w+x)*4;if(good.data[o+3]){if([good.data[o],good.data[o+1],good.data[o+2]].join(',')===line)rim++;break}}}
+    ok(!(good instanceof Error)&&good.w===z[0]&&good.h===z[1]&&good.notes.colors<=PF.GATE.maxColors&&!off&&!baseLit&&rim>=z[0]*.5&&Buffer.from(good.data).equals(Buffer.from(again.data)),
+      `${id}: a clean flat-colour building passes: ${z.join('x')}, ${good.notes&&good.notes.colors} palette colours, outline on the rim, ${base} base rows clear, deterministic`+(good instanceof Error?': '+good.message:''));
+    ok(bad instanceof Error&&bad.kind==='flat'&&bad.why==='off-style',`${id}: the painterly facade (front elevation, close greys, downscaled) is refused: ${bad.message}`)}
+  // the #761 failure as it was: the facade through the old recipe (TOWN.stone widened, texture post) comes out speckled, and the gate says so
+  const oldRecipe=e=>({...e,palette:{from:['TOWN.stone']},post:{fit:'scale',downscale:'mode',transparent:true,outline:true,minColors:4}});
+  const oldOut=e=>postProcess(FB.painterlyFacade(sizeOf(e,32)),oldRecipe(e),resolvePalette({from:['TOWN.stone']},PAL).colors,PAL.MARK.outline,{hint:4,minPalette:10,factors:PAL.TIER_SHADES[32].factors});
+  {const e=byId.get('building:stone-hall'),g=PF.styleGate(oldOut(e),pal('stone'),PF.gateOf(e));
+    ok(!g.ok&&g.colors>PF.GATE.maxColors&&g.speckle>PF.GATE.maxSpeckle,`regression fixture: the old recipe gives ${g.colors} colours and ${Math.round(g.speckle*100)}% lone pixels; the gate refuses it (${g.why.join('; ')})`)}
+  // art:accept: the in-game look and the style gate
+  {const dir=mkdtempSync(join(tmpdir(),'eldmoor-accept-')),date='2026-11-04',{writeIndex}=await import('./art/gen.mjs'),{recordPreview}=await import('./art/preview.mjs');
+    try{const q=QUEUE0(),ii={version:1,assets:{}},inc=join(dir,'incoming',date),put=(id,png)=>{const key=tierKey(id,32),file=fileOf(id,32),p=join(inc,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);q.incoming[key]={date,file};const sz=pngSize(png);ii.assets[key]={id,tier:32,kind:id.split(':')[0],file,w:sz.w,h:sz.h}};
+      const hall=byId.get('building:stone-hall'),inn=byId.get('building:stone-inn'),auction=byId.get('building:stone-auction');
+      const good=run(hall,FB.flatBuilding(PAL.FLAT.stone,sizeOf(hall,32))),gi=run(inn,FB.flatBuilding(PAL.FLAT.stone,sizeOf(inn,32)));
+      put('building:stone-hall',encodePng(good));put('building:stone-auction',encodePng(oldOut(auction)));put('building:stone-inn',encodePng(gi));writeIndex(inc,ii);saveQueue(dir,q);
+      const acc=a=>new Promise(f=>{const c=spawn(process.execPath,[join(ROOT,'scripts','art','accept.mjs'),'--dir',dir,...a],{stdio:['ignore','pipe','pipe']});let s='';c.stdout.on('data',d=>s+=d);c.stderr.on('data',d=>s+=d);c.on('close',code=>f({code,s}))});
+      let r=await acc(['--list']);ok(/stone-hall@32 .*needs npm run art:preview first/.test(r.s),'art:accept --list marks buildings that still need their in-game look');
+      r=await acc(['building:stone-hall']);ok(r.code===2&&/refused: no in-game look yet/.test(r.s)&&!existsSync(join(dir,'building')),'a building without an art:preview shot is refused');
+      const shot=encodePng(synth(8,8));for(const k of ['building:stone-hall@32','building:stone-auction@32'])recordPreview(dir,k,{shot,town:'fixture town'});
+      recordPreview(dir,'building:stone-inn@32',{shot,town:'fixture town',view:{w:1280,h:800,zoom:1}});
+      r=await acc(['building:stone-auction']);ok(r.code===2&&/refused: off-style \(\d+ colours/.test(r.s)&&!existsSync(join(dir,fileOf('building:stone-auction',32))),'a speckled building is refused by the style gate even with its preview: '+((r.s.match(/off-style \([^)]*\)/)||[''])[0]));
+      r=await acc(['building:stone-inn']);ok(r.code===2&&/not at 3440x1440, zoom 1/.test(r.s),'a preview shot at another size is not the in-game check');
+      const hp=join(inc,fileOf('building:stone-hall',32)),tweak=decodePng(readFileSync(hp));tweak.data[3]=tweak.data[3]?0:255;writeFileSync(hp,encodePng(tweak));
+      r=await acc(['building:stone-hall']);ok(r.code===2&&/an earlier image/.test(r.s),'a preview of an earlier image (reprocessed since) does not count');
+      writeFileSync(hp,encodePng(good));r=await acc(['building:stone-hall']);const a=loadIndex(dir).assets['building:stone-hall@32'];
+      ok(r.code===0&&a&&a.check&&a.check.preview===`incoming/${date}/building/32/stone-hall.preview.png`&&a.check.view.zoom===1&&a.check.gate.ok&&a.check.town==='fixture town'&&!a.preview&&!checkIndex(man,dir).errs.length,'with its in-game look and a clean gate it is accepted, and the index records the check')}
+    finally{rmSync(dir,{recursive:true,force:true})}}
+  // the trial switch for a view-following model
+  {const m2=JSON.parse(JSON.stringify(man));ok(m2.kindModel&&m2.kindModel.on===false&&m2.kindModel.model==='ume-flux'&&man.assets.every(e=>e.model===undefined),'kindModel: ume-flux prepared for buildings and landmarks, switched off');
+    m2.kindModel.on=true;withKindModel(m2);ok(m2.assets.every(e=>(e.kind==='building'||e.kind==='landmark')===(e.model==='ume-flux')),'switched on, every building and landmark asks ume-flux and nothing else changes');
+    const m3=JSON.parse(JSON.stringify(man));m3.kindModel.model='nope';ok(validateManifest(m3,PAL,resolvePalette).some(x=>/kindModel: unknown model nope/.test(x)),'an unknown kindModel model is a manifest error')}}
+console.log('sprite sheets (#711, scripts/art/post-sheet.mjs)');
+{const F=await import('./art/fixtures.mjs'),{processRaw}=await import('./art/gen.mjs'),A=id=>man.assets.find(a=>a.id===id),pm=man.models['pixel-xl'];
+  const keySet=new Set(Object.keys(PAL.recolour(1))),hex=(d,o)=>'#'+[d[o],d[o+1],d[o+2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+  const run=(e,v={},tier=32)=>{try{return processRaw(encodePng(F.sheetArt(e,{tier,...v})),e,PAL,pm,tier,man).img}catch(err){return {err}}};
+  let bad=[];
+  for(const e of man.assets.filter(a=>a.kind==='sprite')){const im=run(e);if(im.err){bad.push(`${e.id}: ${im.err.message}`);continue}
+    const [W,H]=sizeOf(e,32),{cols,rows}=e.frames,fw=W/cols,fh=H/rows,pal=new Set([...expandPalette(resolvePalette(e.palette,PAL).colors,PAL.TIER_SHADES[32].minPalette,PAL.TIER_SHADES[32].factors),PAL.MARK.outline]);
+    if(im.w!==W||im.h!==H){bad.push(`${e.id}: ${im.w}x${im.h}`);continue}
+    const floors=new Set();let empty=0,corner=0,off=0;
+    for(let r=0;r<rows;r++)for(let k=0;k<cols;k++){let n=0,low=-1;
+      for(let y=r*fh;y<(r+1)*fh;y++)for(let x=k*fw;x<(k+1)*fw;x++){const o=(y*W+x)*4;if(!im.data[o+3])continue;n++;low=Math.max(low,y-r*fh);if(!pal.has(hex(im.data,o)))off++}
+      if(!n)empty++;floors.add(low);for(const [x,y] of [[0,0],[fw-1,0]]){if(im.data[((r*fh+y)*W+k*fw+x)*4+3])corner++}}
+    if(empty||corner||off||floors.size!==1||[...floors][0]!==fh-1)bad.push(`${e.id}: ${empty} empty frames, ${corner} filled top corners, ${off} pixels off the palette, feet at ${[...floors]}`)}
+  ok(!bad.length,`every sheet (${man.assets.filter(a=>a.kind==='sprite').length}): the model's 3x4 figures found and laid on the frame grid, one per frame, feet on the frame floor, clear background, palette and outline only`+(bad.length?': '+bad.join('; '):''));
+  const w=A('sprite:hero-warrior'),a=run(w),b=run(w);ok(!a.err&&Buffer.from(a.data).equals(Buffer.from(b.data)),'deterministic');
+  ok(!a.err&&a.notes.key==='12/12'&&a.notes.grid==='figures',`a hero sheet keeps its tabard in the faction key (${a.notes&&a.notes.key} frames)`);
+  {let key=0,stray=0;const ramp=new Set([...PAL.SPRITE.key,...PAL.SPRITE.keyRamp]);for(let i=0;i<a.w*a.h;i++){const o=i*4;if(!a.data[o+3])continue;const h=hex(a.data,o);if(keySet.has(h))key++;if(ramp.has(h)&&!keySet.has(h))stray++}
+    ok(key>100&&!stray&&PAL.SPRITE.keyRamp.every(c=>keySet.has(c)),`every tabard pixel takes the faction recolour (${key} pixels; the key ramp is in palette.js recolour)`)}
+  const r3=run(w,{rows:3});ok(r3.err&&r3.err.kind==='flat'&&/layout: 3 rows of figures \(needs 4\)/.test(r3.err.message),'a sheet with 3 rows of figures is rejected (raw kept): '+(r3.err&&r3.err.message));
+  const c2=run(w,{cols:2});ok(c2.err&&c2.err.kind==='flat'&&/layout: 2 columns/.test(c2.err.message),'a sheet with 2 columns is rejected: '+(c2.err&&c2.err.message));
+  const nk=run(w,{key:false});ok(nk.err&&nk.err.kind==='flat'&&/no faction key/.test(nk.err.message),'a hero whose tabard is not the key colour is rejected: '+(nk.err&&nk.err.message));
+  const wolf=run(A('sprite:mob-wolf'),{key:false});ok(!wolf.err&&!wolf.notes.key,'a creature sheet needs no faction key');
+  const t64=run(w,{block:2},64);ok(!t64.err&&t64.w===192&&t64.h===384,`the 64 tier lays out the same figures at ${t64.w}x${t64.h}`+(t64.err?": "+t64.err.message:""));
+  ok(/sprite sheet/.test(man.kindStyle.sprite)&&!/seamless/.test(man.kindStyle.sprite),'sprite prompts carry their own style (a sheet on plain ground, not a seamless tile)')}
+
 console.log('gen.mjs and daily.mjs against a mock Hugging Face server');
 const tmp=mkdtempSync(join(tmpdir(),'eldmoor-art-'));
 try{
@@ -135,8 +220,13 @@ try{
   const S={costMode:null,costVal:0,posts:[],ok:0,lookups:0,deny:false,refuse:null,quota402:Infinity,quota429:Infinity,zeroLeft:false,flat:false,headers:[]};
   const img=encodePng(pixelArt()),flatImg=encodePng(pixelArt(1024,8,{flat:true}));
   // what a prompt asks for: a transition (two grounds, top and bottom) or a prop on a plain white background
-  const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt())},
-    mockKind=pr=>/town wall|town gate/.test(pr)?'stone':/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/transition tile/.test(pr)?'two':'tile';
+  // the building recipe (#763): a prompt that asks for the flat look gets a flat top-down house in its style's flat palette
+  const FB=await import('./art/fixtures-buildings.mjs'),flatOf=s=>encodePng(FB.flatBuilding(PAL.FLAT[s],[96,64]));
+  const FX=await import('./art/fixtures.mjs'),sheetOf=id=>encodePng(FX.sheetArt(man.assets.find(a=>a.id===id)));
+  const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt()),hero:sheetOf('sprite:hero-warrior'),beast:sheetOf('sprite:mob-wolf'),
+    'flat-stone':flatOf('stone'),'flat-timber':flatOf('timber'),'flat-crypt':flatOf('crypt'),'flat-lair':flatOf('lair')},
+    flatKind=pr=>/limestone/.test(pr)?'flat-stone':/tarred timber/.test(pr)?'flat-timber':/crypt/.test(pr)?'flat-crypt':/dragon's nest/.test(pr)?'flat-lair':null,
+    mockKind=pr=>/character sprite sheet/.test(pr)?'hero':/creature sprite sheet/.test(pr)?'beast':/town wall|town gate/.test(pr)?'stone':/thick black outline/.test(pr)&&flatKind(pr)?flatKind(pr):/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/transition tile/.test(pr)?'two':'tile';
   const srv=http.createServer((req,res)=>{let body='';req.on('data',c=>body+=c);req.on('end',()=>{
     const u=new URL(req.url,'http://x');S.headers.push(req.headers);
     if(req.method==='GET'&&u.pathname.startsWith('/api/models/')){S.lookups++;const id=u.pathname.slice(12);res.setHeader('content-type','application/json');
@@ -171,26 +261,36 @@ try{
         const stage=SP.broken?'RUNTIME_ERROR':SP.stages.length?SP.stages.shift():'RUNNING';
         return res.end(JSON.stringify({id,private:true,runtime:{stage,hardware:{current:stage==='RUNNING'?'zero-a10g':null,requested:'zero-a10g'}}}))}
       if(req.method==='GET'&&u.pathname==='/space/'){SP.wakes++;return res.end('<html></html>')}
-      if(req.method==='POST'&&u.pathname==='/space/gradio_api/call/generate'){
+      if(req.method==='GET'&&u.pathname==='/space/gradio_api/info'){res.setHeader('content-type','application/json');return res.end(JSON.stringify({named_endpoints:{'/generate':{},...(SP.oldSpace?{}:{'/img2img':{}})}}))}
+      if(req.method==='POST'&&/^\/space\/gradio_api\/call\/(generate|img2img)$/.test(u.pathname)){const api=u.pathname.split('/').pop();
+        if(api==='img2img'&&SP.oldSpace){res.statusCode=500;return res.end('Internal Server Error')} // what Gradio answers for an API it does not have
         if(auth!==`Bearer ${MOCK_TOKEN}`){res.statusCode=401;return res.end('{"error":"Invalid credentials"}')}
         if(SP.ok>=SP.quota429){res.statusCode=429;res.setHeader('content-type','application/json');return res.end(JSON.stringify({error:'You have exceeded your GPU quota (25s requested vs. 12s left). Try again in 2:31:05'}))}
-        const j=JSON.parse(body),id='ev'+(SP.posts.length+1);SP.posts.push({data:j.data,id,auth});res.setHeader('content-type','application/json');return res.end(JSON.stringify({event_id:id}))}
-      if(req.method==='GET'&&(m=/^\/space\/gradio_api\/call\/generate\/(ev\d+)$/.exec(u.pathname))){const p=SP.posts.find(x=>x.id===m[1]);
+        const j=JSON.parse(body),id='ev'+(SP.posts.length+1);SP.posts.push({data:j.data,id,auth,api});res.setHeader('content-type','application/json');return res.end(JSON.stringify({event_id:id}))}
+      if(req.method==='GET'&&(m=/^\/space\/gradio_api\/call\/(?:generate|img2img)\/(ev\d+)$/.exec(u.pathname))){const p=SP.posts.find(x=>x.id===m[1]);
         if(!p||auth!==`Bearer ${MOCK_TOKEN}`){res.statusCode=404;return res.end()}
         res.setHeader('content-type','text/event-stream');
         if(SP.sseQuota)return res.end('event: heartbeat\ndata: null\n\nevent: error\ndata: "You have exceeded your Pro GPU quota (25s requested vs. 3s left). Try again in 0:45:00"\n\n');
         if(SP.refuse&&p.data[8]===SP.refuse)return res.end(`event: error\ndata: ${JSON.stringify(`unknown LoRA '${p.data[8]}': not in the Space`)}\n\n`);
-        SP.ok++;const k=mockKind(p.data[0]),file={path:`/tmp/gradio/${m[1]}.png`,url:`${base}/space/gradio_api/file=/tmp/gradio/${m[1]}.png?k=${k}`,orig_name:'image.png',meta:{_type:'gradio.FileData'}};
+        SP.ok++;const k=p.api==='img2img'?'i2i-'+m[1]:mockKind(p.data[0]),file={path:`/tmp/gradio/${m[1]}.png`,url:`${base}/space/gradio_api/file=/tmp/gradio/${m[1]}.png?k=${k}`,orig_name:'image.png',meta:{_type:'gradio.FileData'}};
         return res.end(`event: heartbeat\ndata: null\n\nevent: complete\ndata: ${JSON.stringify([file,SP.gpuS])}\n\n`)}
       if(req.method==='GET'&&u.pathname.startsWith('/space/gradio_api/file=')){if(auth!==`Bearer ${MOCK_TOKEN}`){res.statusCode=403;return res.end()}
-        res.setHeader('content-type','image/png');return res.end(MOCK[u.searchParams.get('k')]||img)}}
+        const kk=u.searchParams.get('k'),ip=/^i2i-/.test(kk||'')&&SP.posts.find(x=>x.id===kk.slice(4));res.setHeader('content-type','image/png');
+        if(ip)return res.end(encodePng(FX.img2imgArt(decodePng(Buffer.from(ip.data[5],'base64')),{strength:ip.data[6],seed:ip.data[2],...(SP.i2i||{})})));
+        return res.end(MOCK[kk]||img)}}
     res.statusCode=404;res.end('no')})});
   await new Promise(f=>srv.listen(0,'127.0.0.1',f));const base=`http://127.0.0.1:${srv.address().port}`;
   const env={...process.env,HF_TOKEN:MOCK_TOKEN,HF_ROUTER_URL:base,HF_HUB_URL:base,ART_DAILY_BUDGET:'100'};delete env.ART_MAX_CALLS;for(const k of ['HF_ART_SPACE','HF_SPACE_URL','ART_GPU_MINUTES','ART_SPACE_POLL_MS'])delete env[k];env.HF_SPACE_TOKEN='';
   // gen.mjs and daily.mjs default to the Space (#703); the router tests ask for the router explicitly unless a test names a provider
-  const node=(script,a,extra={})=>new Promise(f=>{const c=spawn(process.execPath,[join(ROOT,'scripts','art',script),...(/^(gen|daily)\.mjs$/.test(script)&&!a.includes('--provider')&&!extra.HF_SPACE_URL?['--provider','router']:[]),...a],{env:{...env,...extra},stdio:['ignore','pipe','pipe']});
+  // the router has no image to image (#763): its runs take the manifest without kindInit, the text recipe on every kind
+  const textMan=join(tmp,'manifest-text.json');{const j=JSON.parse(readFileSync(join(ROOT,'scripts','art','manifest.json'),'utf8'));delete j.kindInit;writeFileSync(textMan,JSON.stringify(j))}
+  const node=(script,a,extra={})=>new Promise(f=>{const router=/^(gen|daily)\.mjs$/.test(script)&&!a.includes('--provider')&&!extra.HF_SPACE_URL;
+    const c=spawn(process.execPath,[join(ROOT,'scripts','art',script),...(router?['--provider','router',...(a.includes('--manifest')?[]:['--manifest',textMan])]:[]),...a],{env:{...env,...extra},stdio:['ignore','pipe','pipe']});
     let s='';c.stdout.on('data',d=>s+=d);c.stderr.on('data',d=>s+=d);c.on('close',code=>f({code,s}))});
   const N=man.assets.length;
+  // what art:preview writes (#763), without a browser: a stand-in shot recorded for every waiting building and landmark
+  const {recordPreview}=await import('./art/preview.mjs');
+  const previewAll=async dir=>{const q=loadQueue(dir);for(const k of Object.keys(q.incoming))if(/^(building|landmark):/.test(k))recordPreview(dir,k,{shot:encodePng(synth(8,8)),town:'fixture town'})};
 
   // --- gen.mjs: the direct tool, straight into an assets folder
   {const out=join(tmp,'gen-assets'),run=(...a)=>node('gen.mjs',['--out',out,...a]);
@@ -251,16 +351,23 @@ try{
     const p5=P0();r=await daily(['--now','--date',days[d]]);q=Q();
     ok(S.posts.slice(p5).some(p=>p.seed===1775+7919),'the rejected asset is redrawn with a new seed');
     ok(Object.keys(q.incoming).length+checkIndex(man,dir).count===N,`--now finishes the manifest (${Object.keys(q.incoming).length} waiting + ${checkIndex(man,dir).count} accepted)`);
-    r=await node('accept.mjs',['--dir',dir,'all']);ok(r.code===0&&checkIndex(man,dir).count===N&&!checkIndex(man,dir).errs.length&&!Object.keys(Q().incoming).length,'accept all: every asset in assets/, index valid');
+    // buildings and landmarks (#763) wait for an in-game look: refused without an art:preview record, taken with one
+    {const gatedN=man.assets.filter(e=>e.kind==='building'||e.kind==='landmark').length;
+      r=await node('accept.mjs',['--dir',dir,'all']);const left=Object.keys(Q().incoming);
+      ok(r.code===2&&/refused: no in-game look yet\. Run npm run art:preview/.test(r.s)&&left.length===gatedN&&left.every(k=>/^(building|landmark):/.test(k))&&checkIndex(man,dir).count===N-gatedN,`accept all without a preview: the ${gatedN} buildings and landmarks are refused and stay waiting, the rest are accepted`);
+      await previewAll(dir)}
+    r=await node('accept.mjs',['--dir',dir,'all']);ok(r.code===0&&checkIndex(man,dir).count===N&&!checkIndex(man,dir).errs.length&&!Object.keys(Q().incoming).length,'accept all: every asset in assets/, index valid'+(r.code?': '+r.s.slice(0,400):''));
+    {const ix=loadIndex(dir),b=Object.values(ix.assets).filter(a=>/^(building|landmark):/.test(a.id));
+      ok(b.length&&b.every(a=>a.check&&a.check.view.w===3440&&a.check.view.zoom===1&&/\.preview\.png$/.test(a.check.preview)&&!a.preview)&&b.filter(a=>a.check.gate).every(a=>a.check.gate.ok&&a.check.gate.colors<=8),`accepted buildings and landmarks record the in-game check (shot, 3440x1440, zoom 1) and the style gate (${b.length})`)}
     {const sh=await node('sheet.mjs',['--assets',dir,'--out',join(tmp,'sheet.html')]);const html=existsSync(join(tmp,'sheet.html'))?readFileSync(join(tmp,'sheet.html'),'utf8'):'';
       const TN=man.assets.filter(e=>e.hook.module==='src/render/terrain.js').length; // terrain fallbacks are painted in Node; sprite fallbacks need a canvas
       ok(sh.code===0&&(html.match(/<img /g)||[]).length>=N*3+TN*3,`contact sheet: ${N} assets at 1x/2x/4x and the ${TN} terrain fallbacks`+(sh.code?' '+sh.s.slice(0,300):' ('+(html.match(/<img /g)||[]).length+' images)'))}
     // alternates once the manifest is complete; an accepted alternate replaces its asset
     d++;const p6=P0();r=await daily(['--date',days[d],'--max','3']);q=Q();
     ok(P0()-p6===3&&Object.keys(q.incoming).every(k=>/#alt1$/.test(k))&&S.posts.slice(p6).every(p=>p.seed>=2771),'complete manifest: alternates with new seeds (--max 3)');
-    const altKey=Object.keys(q.incoming)[0],before=checkIndex(man,dir);r=await node('accept.mjs',['--dir',dir,altKey]);
+    await previewAll(dir);const altKey=Object.keys(q.incoming)[0],before=checkIndex(man,dir);r=await node('accept.mjs',['--dir',dir,altKey]);
     {const ix=loadIndex(dir),id=altKey.split('#')[0];ok(r.code===0&&ix.assets[id].fromAlt===1&&before.count===N&&!checkIndex(man,dir).errs.length,'an accepted alternate replaces its asset')}
-    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
+    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
     d++;const p7=P0();r=await daily(['--date','2026-12-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
     ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
     S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
@@ -412,6 +519,47 @@ try{
     {const dir=join(tmp,'sp5'),logP=join(tmp,'sp5.log');SP.ok=0;SP.refuse='nerijs/pixel-art-xl';const p0=SP.posts.length;
       r=await sNode('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-04','--max','2']);SP.refuse=null;const q=JSON.parse(readFileSync(join(dir,'queue.json'),'utf8'));
       ok(SP.ok===2&&q.spaceTried['pixel-xl'].ok===false&&q.spaceTried['pixel-redmond'].ok===true&&SP.posts.slice(p0).every(p=>['nerijs/pixel-art-xl','artificialguybr/PixelArtRedmond'].includes(p.data[8])),'space: a refused LoRA moves to the next Space model (pixel-redmond); FLUX and Z-Image stay router-only')}
+    // image to image (#763): the game's own art goes in, its silhouette comes out
+    {const I=await import('./art/init.mjs'),{processRaw}=await import('./art/gen.mjs'),pm=man.models['pixel-xl'],byId=id=>man.assets.find(a=>a.id===id),chain=man.assets.filter(e=>e.init);
+      ok(chain.length===man.assets.filter(e=>['building','landmark','sprite'].includes(e.kind)).length&&chain.every(e=>e.init==='procedural'&&e.strength>=.3&&e.strength<=.45)&&man.assets.filter(e=>!['building','landmark','sprite'].includes(e.kind)).every(e=>!e.init),`img2img: every building, landmark and sprite (${chain.length}) starts from the procedural art at a low strength per kind (${['building','landmark','sprite'].map(k=>k+' '+man.kindInit[k].strength).join(', ')}); tiles and props stay text only`);
+      {const bad=[];for(const e of chain)for(const t of TIERS){const a=I.initArt(e,t,PAL,pm,man),z=sizeOf(e,t);if(!a||a.w!==z[0]||a.h!==z[1]){bad.push(e.id+'@'+t+' no art');continue}
+          const L=I.initLayout(a.w,a.h,pm.width,pm.height),raw=I.initCanvas(a,L);
+          try{const o=processRaw(encodePng(raw),e,PAL,pm,t,man,{small:a,...L,strength:e.strength}).img;if(o.notes.drift>12||!Buffer.from(o.data).equals(Buffer.from(a.data)))bad.push(`${e.id}@${t} not a fixed point (drift ${o.notes.drift})`)}catch(x){bad.push(`${e.id}@${t}: ${x.message}`)}
+          if(e.frames){const {cols,rows}=e.frames,fw=a.w/cols,fh=a.h/rows;for(let f=0;f<cols*rows;f++){let n=0,floor=0;for(let y=0;y<fh;y++)for(let x=0;x<fw;x++)if(a.data[(((Math.floor(f/cols)*fh+y)*a.w)+(f%cols)*fw+x)*4+3]){n++;if(y===fh-1)floor++}if(n<fw*fh*.1||!floor)bad.push(`${e.id}@${t} frame ${f}: ${n} px, floor ${floor}`)}}}
+        ok(!bad.length,`img2img: all ${chain.length} have procedural art at both tiers, sized to the manifest, every sheet frame filled and on its floor, and the art through its own recipe and gates comes back unchanged`+(bad.length?': '+bad.slice(0,6).join('; '):''))}
+      {const e=byId('sprite:hero-warrior'),a=I.initArt(e,32,PAL,pm,man),keys=new Set(Object.keys(PAL.recolour(1)).map(c=>hexToRgb(c).join()));let n=0;for(let i=0;i<a.w*a.h;i++)if(a.data[i*4+3]&&keys.has([a.data[i*4],a.data[i*4+1],a.data[i*4+2]].join()))n++;
+        const fr=(c,r)=>{const b=[];for(let y=0;y<48;y++)b.push(Buffer.from(a.data.subarray(((r*48+y)*a.w+c*32)*4,((r*48+y)*a.w+(c+1)*32)*4)).toString('hex'));return b.join('')};
+        ok(n>500&&fr(0,0)!==fr(0,3)&&fr(0,0)!==fr(1,0)&&fr(1,0)!==fr(2,0)&&fr(0,1)!==fr(0,2),`img2img: a hero's init sheet has the tabard in the recolourable key (${n} px), and stand, step and other step, front, side and back differ`)}
+      const tiny=(ids,f)=>{const j=JSON.parse(readFileSync(join(ROOT,'scripts','art','manifest.json'),'utf8'));j.assets=j.assets.filter(a=>ids.includes(a.id));writeFileSync(f,JSON.stringify(j));return f};
+      const ids=['tile:grass','building:stone-hall','landmark:crypt-mouth','sprite:hero-warrior','sprite:mob-wolf'],mf=tiny(ids,join(tmp,'manifest-i2i.json')),dir=join(tmp,'sp6'),logP=join(tmp,'sp6.log'),date='2026-12-05',p0=SP.posts.length;SP.ok=0;
+      r=await sNode('gen.mjs',['--out',join(tmp,'sp6-dry'),'--manifest',mf,'--only','building:stone-hall','--dry-run']);ok(r.code===0&&/gradio_api\/call\/img2img/.test(r.s)&&/<init PNG 1024x1024, the art x10, \d+ base64 characters>/.test(r.s)&&SP.posts.length===p0,'img2img: gen --dry-run shows the img2img call with the init summed up, and calls nothing');
+      r=await sNode('daily.mjs',['--dir',dir,'--log',logP,'--date',date,'--manifest',mf]);
+      const posts=SP.posts.slice(p0),i2=posts.filter(p=>p.api==='img2img'),q=loadQueue(dir),inc=join(dir,'incoming',date),ri=loadIndex(join(inc,'raw'));
+      ok(r.code===0&&posts.length===5&&i2.length===4&&posts.find(p=>p.api==='generate').data.length===9&&Object.keys(q.incoming).length===5,`img2img: one run makes the tile by text and the other four from their art (${Object.keys(q.incoming).length} waiting)`+(r.code?': '+r.s.slice(-300):''));
+      {const bad=[];for(const p of i2){const e=chain.find(c=>p.data[0].includes(c.prompt)),a=I.initArt(e,32,PAL,pm,man),L=I.initLayout(a.w,a.h,1024,1024),im=decodePng(Buffer.from(p.data[5],'base64'));
+          if(im.w!==1024||im.h!==1024||p.data.length!==9||p.data[6]!==e.strength||p.data[7]!==.55||p.data[8]!==pm.repo||p.data[3]!==pm.steps)bad.push(e.id+' request');
+          for(let y=0;y<a.h;y++)for(let x=0;x<a.w;x++){const s=(y*a.w+x)*4;for(const [dx,dy] of [[0,0],[L.k-1,L.k-1]]){const o=((L.oy+y*L.k+dy)*1024+L.ox+x*L.k+dx)*4,want=a.data[s+3]?[a.data[s],a.data[s+1],a.data[s+2]]:I.BACKGROUND;if(im.data[o]!==want[0]||im.data[o+1]!==want[1]||im.data[o+2]!==want[2])bad.push(`${e.id} ${x},${y}`)}}}
+        ok(!bad.length,`img2img: every procedural pixel reaches the mock Space on its nearest-neighbour cell of the 1024 canvas, with the manifest's strength, the tier's LoRA scale and the model's steps`+(bad.length?': '+bad.slice(0,5).join('; '):''))}
+      {const bad=[];for(const id of ids.slice(1)){const e=byId(id),o=decodePng(readFileSync(join(inc,keyFile(tierKey(id,32))))),a=I.initArt(e,32,PAL,pm,man),m=ri.assets[tierKey(id,32)];
+          for(let i=0;i<a.w*a.h;i++)if(!!a.data[i*4+3]!==!!o.data[i*4+3]){bad.push(id+' silhouette');break}
+          if(!m.init||m.init.strength!==e.strength||!existsSync(join(inc,'raw',m.init.file)))bad.push(id+' init kept')}
+        const flatOut=decodePng(readFileSync(join(inc,keyFile('building:stone-hall@32')))),a=I.initArt(byId('building:stone-hall'),32,PAL,pm,man);let same=0,n=0;for(let i=0;i<a.w*a.h;i++)if(a.data[i*4+3]){n++;if(a.data[i*4]===flatOut.data[i*4]&&a.data[i*4+1]===flatOut.data[i*4+1]&&a.data[i*4+2]===flatOut.data[i*4+2])same++}
+        ok(!bad.length&&same/n>.7,`img2img: the answers keep the procedural silhouette exactly (${Math.round(same/n*100)}% of the hall's pixels keep their colour), pass their recipe's gates, and raw/ keeps each init with its layout`+(bad.length?': '+bad.join('; '):''))}
+      {const before=readFileSync(join(inc,keyFile('sprite:hero-warrior@32')));r=await sNode('reprocess.mjs',[date,'--dir',dir,'--manifest',mf]);ok(r.code===0&&/reprocessed 5, rejected 0/.test(r.s)&&Buffer.from(readFileSync(join(inc,keyFile('sprite:hero-warrior@32')))).equals(before),'img2img: art:reprocess re-reads the raws through their kept init with no call, to the same pixels')}
+      // bad answers: refused with the raw kept
+      {const e=byId('building:stone-hall'),a=I.initArt(e,32,PAL,pm,man),L=I.initLayout(a.w,a.h,1024,1024),cv=I.initCanvas(a,L),run=(v,en=e,s=a,l=L,c=cv)=>{try{return processRaw(encodePng(FX.img2imgArt(c,v)),en,PAL,pm,32,man,{small:s,...l,strength:.4})}catch(x){return x}};
+        const rd=run({redraw:true}),sp=run({spill:true}),w=byId('sprite:mob-wolf'),wa=I.initArt(w,32,PAL,pm,man),wl=I.initLayout(wa.w,wa.h,1024,1024),wr=run({redraw:true},w,wa,wl,I.initCanvas(wa,wl));
+        ok(rd.kind==='flat'&&/redrawn: drift/.test(rd.message)&&wr.kind==='flat'&&/redrawn/.test(wr.message),'img2img: an answer that ignored the init is refused as redrawn: '+rd.message);
+        const ch=byId('building:stone-chapel'),ca=I.initArt(ch,32,PAL,pm,man),cl=I.initLayout(ca.w,ca.h,1024,1024),sc=run({spill:true},ch,ca,cl,I.initCanvas(ca,cl));
+        ok(sc.kind==='flat'&&/drew outside the silhouette/.test(sc.message),'img2img: an answer that painted round the subject is refused: '+sc.message);
+        const he=byId('sprite:hero-warrior'),ha=I.initArt(he,32,PAL,pm,man),hl=I.initLayout(ha.w,ha.h,1024,1024),hc=I.initCanvas(ha,hl);for(let i=0;i<hc.w*hc.h;i++){const o=i*4;if(hc.data[o+2]>hc.data[o]+30&&hc.data[o+2]>hc.data[o+1]+10){hc.data[o]=150;hc.data[o+1]=150;hc.data[o+2]=160}}
+        const nk=run({},he,ha,hl,hc);ok(nk.kind==='flat'&&/no faction key/.test(nk.message),'img2img: a hero whose tabard the model repainted is refused by the sheet check: '+nk.message)}
+      // the router has no init route; a Space from before this is told to push
+      {const rd=join(tmp,'sp6-router'),rp=S.posts.length;r=await node('gen.mjs',['--out',rd,'--manifest',mf,'--provider','router','--yes']);ok(/made image to image on the Space only/.test(r.s)&&S.posts.length===rp+1&&existsSync(join(rd,'tile','32','grass.png'))&&!existsSync(join(rd,'building')),'img2img: a router run leaves these kinds out and says so')
+        const od=join(tmp,'sp7'),ol=join(tmp,'sp7.log'),p1=SP.posts.length,mo=tiny(['building:stone-hall'],join(tmp,'manifest-old.json'));SP.oldSpace=true;r=await sNode('daily.mjs',['--dir',od,'--log',ol,'--date',date,'--manifest',mo]);SP.oldSpace=false;
+        ok(/has no img2img API: run npm run art:space -- --push/.test(lines(ol).pop())&&SP.posts.length===p1&&!existsSync(join(od,'incoming',date,'raw','index.json')),'img2img: a Space from before this (Gradio answers 500) stops the run with the word to push: '+lines(ol).pop().slice(40,170))}
+      {const {spaceDuration}=await import('./art/space.mjs'),py=readFileSync(join(ROOT,'scripts','art','space','app.py'),'utf8');
+        ok(spaceDuration(pm,.4)===16&&/api_name="img2img"/.test(py)&&/AutoPipelineForImage2Image\.from_pipe\(pipe\)/.test(py)&&/@spaces\.GPU\(duration=gpu_duration_i2i\)/.test(py)&&/strength=float\(strength\)/.test(py),'img2img: the Space app shares the loaded weights through from_pipe, exposes the img2img API with a strength and reserves GPU time by strength (16 s at .4)')}}
     // the rules in small: reset parsing and the 24 h window
     {const {quotaReset,gpuWindow,spaceDuration,parseSse}=await import('./art/space.mjs'),t0=new Date(2026,11,1,8,0);
       ok(quotaReset('Try again in 2:31:05',t0).getTime()-t0.getTime()===9065e3&&quotaReset('try again in 45:00',t0).getTime()-t0.getTime()===2700e3&&quotaReset('no time',t0,600).getTime()-t0.getTime()===600e3&&quotaReset('nothing',t0)===null,'quota reset: "Try again in H:MM:SS", "MM:SS", else retry-after');
@@ -620,6 +768,13 @@ async function townProbe(){
   A.setAssetPixels(hall,null);const part=render(),d2=diffs(part,on,inside(hallBoxes));
   ok(d2.n>0&&!d2.out,`${hall} removed: ${d2.n} pixels fall back, all inside its ${hallBoxes.length} hall box(es)`+(d2.out?` (${d2.out} outside)`:''));
   install(hall);ok(same(render(),on),'and back when it returns');
+  // the base strip (#763): a generated building stands on a dark strip over the bottom 2 world units of its box, which the
+  // building recipe leaves clear (post.base); here the hall's bottom rows are cut away so the strip shows
+  {const f=fx[hall],cut={w:f.w,h:f.h,data:new Uint8Array(f.data)},rows=Math.round(2*ART);for(let y=f.h-rows;y<f.h;y++)for(let x=0;x<f.w;x++)cut.data[(y*f.w+x)*4+3]=0;
+    A.setAssetPixels(hall,A.pixelsOf(cut.w,cut.h,cut.data));const px=render();let tot=0,dark=0;
+    px.forEach((p,k)=>{const [x0,y0,x1]=regions[k],w=(x1-x0)*RT;for(let j=0;j<p.length;j++){const tx=x0+(j%w+.5)/RT,ty=y0+(Math.floor(j/w)+.5)/RT;
+      for(const q of hallBoxes){const b=q.box;if(tx>=b[0]+1/U&&tx<b[0]+b[2]-1/U&&ty>=b[1]+b[3]-2/U&&ty<b[1]+b[3]){tot++;if(p[j]===0xff000000)dark++}}}});
+    ok(tot>0&&dark===tot&&!diffs(px,on,inside(hallBoxes)).out,`the base strip lies under a generated building, inside its box (${dark}/${tot} art pixels)`);install(hall)}
   {const L=LP.find(p=>p.id==='landmark:lair');if(L)ok(L.rot===({W:0,N:1,E:2,S:3}[L.L.opening]||0),`the lair's nest faces its mouth (${L.L.opening}, ${L.rot} quarter turns)`)}
   for(const id of mine)A.setAssetPixels(id,null);
   ok(same(render(),off),'fixtures removed: the procedural towns and landmarks are back, pixel for pixel');

@@ -80,6 +80,7 @@ import {waitsNote,waitedS,FRAMING} from './scenewait.js'; // a scene that waits 
 import {followRefusal,startFollow,followStep,followLine,followersOf,standingFollow} from './follow.js'; // follow without joining (#445)
 import {passOnTo,gateWord} from './rumours.js'; // what the town is saying (seed_rumour, #637)
 import {titleOf,styled} from './epithet.js'; // a name given for a deed (bestow, #638)
+import {voiced,talkCompanion} from './compvoice.js'; // a companion of the hero's company answers talk (#764)
 import {lineRefusal,noteSaid,publicAnswer} from './talk.js'; // no repeated lines or second introductions from an agent (owner's screenshot)
 import {MOVES} from '../data/moves.js';
 import {searchAct,examineView,SR} from './search.js'; // search and examine marked places, signs and landmarks (#525)
@@ -988,6 +989,9 @@ const T={
     const id=Number(target),b=S.agents.find(x=>x!==a&&x.state!=='dead'&&(x.id===id||x.name.toLowerCase()===t));
     need(b,'Nobody called "'+target+'" is here.');need(dist(a,b)<=PK.TALK*1.5,b.name+' is too far away to talk to.');
     if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
+    if(voiced(b)&&companyOf(b)===companyOf(a)){need(a.state!=='ghost','Ghosts do not speak.');let line=''; // a companion of your company answers through the DM's voice (#764)
+      if(text!=null&&String(text).trim()){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);need(!notEnglish(L.text),ENGLISH);line=L.text;agentLine(a,speak(a,line,'agent'))}
+      talked(a,[b.name]);return {...talkCompanion(a,b,line),...(line?{said:line}:{})}}
     talked(a,[b.name]);const n=(b.chat||[]).length;say(b,'idle',{});const e=(b.chat||[])[(b.chat||[]).length-1];
     return {ok:true,who:b.name,answer:(b.chat||[]).length>n&&e&&e.from===b?e.text:'('+b.name+' is busy and does not answer.)'}},
   attempt(a,{what,how,at}){return attemptRuled(a,{what,how,at})}, // anything the tools never named; the DM rules on it (#522)
