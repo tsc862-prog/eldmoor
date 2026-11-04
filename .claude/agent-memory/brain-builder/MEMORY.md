@@ -82,3 +82,4 @@
 - [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons
 - [DM every mind](dm-every-mind.md) — #824 PROVIDERS one list, compat DM, mindSwitched, budget in waits, fitTools 1024, dm-mind-cases, pitfalls
 - [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
+- [Voice seconds left](voice-seconds-left.md) — #885 left N s on [ruling]/[table] lines; abort math
