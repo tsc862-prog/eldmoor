@@ -103,6 +103,7 @@ r = DMA.dmAct('notes_write', {section: 'threads', op: 'add', text: 'Thread ' + p
 ok(r.ok, 'DM notes: an open thread (its text goes into the DM log)');
 r = DMA.dmAct('notes_write', {section: 'plans', op: 'add', text: 'Plan ' + plant('dmPlan')});
 ok(r.ok, 'DM notes: a plan');
+r = DMA.dmAct('wish', {tool: 'rewind_clock', what: 'Wind the night back ' + plant('dmWish'), why: 'The scene needed it ' + plant('dmWishWhy'), moment: 'A drover wept at the ford ' + plant('dmWishMoment')}); // a wish goes to the builders only (#663)
 r = DMA.dmAct('log_intent', {text: 'Intent ' + plant('dmIntent')});
 ok(r.ok, 'DM log: an intent line');
 r = DMA.dmAct('pull_lever', {lever: 'set_condition', params: {region: ZONES[zone > 0 ? zone : 1], kind: 'fogbound', strength: 1, hours: 6}, reason: 'Reason ' + plant('leverReason')});
@@ -142,6 +143,7 @@ r = DMA.dmAct('watch', {trigger: 'hero_levels', on: {hero: B.name, level: 60}, n
 ok(r.ok && JSON.stringify(DMA.dmAct('whens')).includes(SECRETS.watchNote), 'a watch: its note is the DM\'s own (whens)' + (r.ok ? '' : ': ' + r.error));
 S.dmLog[0].prompt = 'DM model prompt ' + plant('dmPrompt'); S.dmLog[0].reply = 'DM model reply ' + plant('dmReply');
 ok(act(B, 'journal_write', {text: 'Dear diary, ' + plant('bJournal')}).ok, 'B\'s journal');
+ok(act(B, 'wish', {tool: 'hear_oaths', what: 'Hear every oath ' + plant('bWish'), why: 'I missed one ' + plant('bWishWhy'), moment: 'The camp fell quiet ' + plant('bWishMoment')}).ok, 'B wishes for a tool (a note for the builders, #663)');
 // tiered memory (issue #153): B's own landmark and a chapter of B's older lines stay B's
 ok(act(B, 'journal_write', {text: 'A turning point: ' + plant('bLandmark'), landmark: 'yes'}).landmark > 0, 'B\'s own landmark');
 {const TI = await import('../src/sim/tiers.js'); TI.spill(B, {day: 1, text: 'An old line ' + plant('bChapter') + ' of the road', src: 'journal'});
@@ -440,7 +442,16 @@ ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');
   r = act(A, 'emote', {text: 'sharpens his blade ' + sE}); ok(r.ok && r.seen_by.length === 2, 'A emotes');
   const ec = act(W1, 'chat_read', {}); ok(ec.lines.some(l => l.includes('*') && l.includes(sE)), 'a bystander sees the act in italics'); keep('emote chat_read (bystander)', ec);
   ok(!(B.chat || []).some(e => e.emote) && !JSON.stringify(DMA.dmAct('hear', {n: 200})).includes(sE), 'the far member and the DM see no emote');
-  ok((A.bubble || {}).text === '*sharpens his blade ' + sE + '*', 'the emote shows as a bubble')}
+  ok((A.bubble || {}).text === '*sharpens his blade ' + sE + '*', 'the emote shows as a bubble');
+  // a hero's whisper inside an open Table scene (#646): the banner and every table view carry only the veiled line, never the words
+  T.TABLE.mode = 'auto'; const sW2 = secret('whisper'), sc2 = T.openScene('check', 'A low door', ['The door is low.'], {anchor: A.id});
+  ok(!!sc2 && sc2.ids.includes(A.id) && sc2.ids.includes(W0.id), 'a scene is open around A and W0 for the hero whisper');
+  A.playRate = []; r = act(A, 'whisper', {to: W0.name, text: 'The door is a trap, ' + sW2}); ok(r.ok, 'A whispers to W0 inside the scene' + (r.ok ? '' : ': ' + r.error));
+  const bn2 = T.bannerOf().narr || '', views = sc2.ids.map(id => S.agents.find(x => x.id === id)).filter(Boolean).map(x => JSON.stringify(T.tableView(x)));
+  ok(bn2 === A.name + ' leans close to ' + W0.name + '.' && !bn2.includes(sW2), 'the Table banner shows "A leans close to W0", never the text (' + bn2 + ')');
+  ok(views.length >= 2 && views.every(v => !v.includes(sW2) && v.includes('leans close to')), 'every member table view carries the veiled line and not the words');
+  ok(!JSON.stringify([bn2, sc2.narr, sc2.beats.map(b => b.line)]).includes(sW2) && !JSON.stringify(act(W1, 'chat_read', {n: 30})).includes(sW2) && !JSON.stringify(act(W1, 'look')).includes(sW2), 'the banner data and a bystander never see the whispered words');
+  S.table = null; T.TABLE.mode = 'off'}
 // the mirror: Markdown for the owner, never read back
 const mir = MM.memoryMirror({root: LOGS, world: 'check'}), sentM = new Map();
 const flush = () => {const out = NBm.mirrorDirty(sentM); mir.write(out); for (const o of out) sentM.set(o.key, o.sig); return out};

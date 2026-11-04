@@ -283,7 +283,13 @@ if (process.argv[2] === '--fireside') {
   CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; SLT.campaign(SLT.slotted(), 'death', 'Old Brannoc fell at level 9 (a test).'); setDmSeat(false); LINK[live.id] = 'connected';
   camp(); const sb = S.table;
   ok(sb && sb.kind === 'fireside' && sb.ctx.rounds === 6 && sb.ctx.tk === 'death', `a big event makes a 6-round fireside on it (${sb && sb.ctx.topic})`);
-  k = 0; while (S.table === sb && k++ < 60 * 600) step(1 / 60);
+  // a listener's line is an emote (#646): the live member listens with a short act, the others see "<name> <act>", it is no spoken line
+  let emoted = null; k = 0;
+  while (S.table === sb && k++ < 60 * 600) {if (!emoted && sb.phase === 'turn' && sb.ids[sb.i] === live.id && !sb.acts[live.id]) emoted = P.playerAct(live.id, 'scene_act', {option: 'listen', line: 'pokes the fire with a stick'}); step(1 / 60)}
+  {const eb = sb.beats.find(b => b.id === live.id && b.k === 'listen' && /pokes the fire/.test(b.res || '')), el = (other.chat || []).find(e => e.emote && /pokes the fire/.test(e.text));
+    ok(emoted && emoted.ok && eb && !eb.line, 'a listener line at the fire is an emote: the beat is a listen with no spoken line');
+    ok(el && el.from === live && el.text === 'pokes the fire with a stick' && !(other.chat || []).some(e => !e.emote && /pokes the fire/.test(e.text)), 'the emote shows to the others as "<name> <act>" (a chat line of kind emote), never as speech');
+    const bad = P.playerAct(live.id, 'emote', {text: 'x'.repeat(130)}); ok(!bad.ok && /Too long/.test(bad.error), 'the same validation as the emote tool: a 130-character act is refused')}
   ok(sb && sb.ctx.quiet && sb.rd === 1 && (sb.calls || []).every(c => c.by === 'scripted'), 'a silent round ends the talk early; no DM runner polls (its calls refused), so its reflexes frame it');
   ok(sb && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'fireside' && e.detail.fill && e.detail.why === 'gone'), 'the fireside frame filled by the reflex is logged as a fill (why: gone) (#561)');
   // 3. a debrief after a hard scene: one round, everyone at once
