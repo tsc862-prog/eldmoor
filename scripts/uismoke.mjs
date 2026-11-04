@@ -54,6 +54,14 @@ tick(120);
 const busy=ranked().slice().sort((a,b)=>(b.history||[]).length-(a.history||[]).length)[0];
 select(busy);setView('follow');tick(1);
 
+// Log tags (#785): outcomes carry no source, decisions keep who drove the hero
+{const {record}=await import('../src/sim/history.js');const f={player:true,name:'T',history:[]};
+  record(f,'Reached level 2.');record(f,'Slew ',{t:'a wolf',c:'gd'},'.');record(f,'Fell at level 3, slain by a wolf.');record(f,'Looted ',{t:'Axe'},' from a wolf.');
+  record(f,'Set out for Highgate.');record(f,'Took a job: x.');
+  ok(f.history.slice(0,4).every(e=>!('src' in e)),'log: outcome lines (level, slew, fell, looted) carry no source');
+  ok(f.history[4].src==='agent'&&f.history[5].src==='agent','log: decision lines of an agent hero keep the agent tag');
+  record(f,'Went down at level 3 to a wolf.');ok(!('src' in f.history[6]),'log: a downing carries no source')}
+
 // Scroll a list, tick, check it held. get() re-finds the list after the tick (a rebuilt list would be a new node).
 // ranked: rows move by rank, so only the scroll position must hold
 function holds(name,get,{sec=20,min=3,ranked=false}={}){let n=get();
@@ -1056,7 +1064,7 @@ console.log('the DM prepares the table');
   dv.closeDungeon();ok(dv.dungeonSite()===null,'dungeon view: closed, the minimap has no mark');
   a.state=was;CRYPT.group=keep;uiFast()}
 // ---- the crawl as it is played (#742): named spots per chamber, members on the spot their act names, foes at the den, beats ----
-{const dv=await import('../src/render/dungeonview.js'),cv=await import('../src/render/crawlview.js'),{CRYPT}=await import('../src/world/map.js'),{buildInterior,IT}=await import('../src/world/interior.js'),{TABLE}=await import('../src/sim/table.js');
+{const dv=await import('../src/render/dungeonview.js'),cv=await import('../src/render/crawlview.js'),RG=await import('../src/sim/roomgrid.js'),{CRYPT}=await import('../src/world/map.js'),{buildInterior,IT}=await import('../src/world/interior.js'),{TABLE}=await import('../src/sim/table.js');
   const S=sim.S,keep=CRYPT.group,keepT=S.table,m=buildInterior(CRYPT),walk=t=>t===IT.FLOOR||t===IT.WATER||t===IT.DAIS||t===IT.DOOR;
   const inRoom=(r,p)=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h&&walk(m.tiles[Math.floor(p.y-.3)*m.w+Math.floor(p.x)]);
   ok(m.rooms.every((r,i)=>{const s=cv.crawlSpots(m,i);return cv.SPOT_IDS.every(id=>inRoom(r,s[id]))}),'crawl spots: every chamber has stair, back, front, both flanks, cover and den on its own floor');
@@ -1069,14 +1077,17 @@ console.log('the DM prepares the table');
   CRYPT.group={phase:'inside',name:'The Fellowship',mem,tSite:true,crawl:{i:0,rd:0,gap:0,foes,end:null}};
   const sc={id:97420,kind:'crawl',title:CRYPT.rooms[0].name,frame:['x'],ids:mem.map(a=>a.id),i:0,phase:'turn',t:0,acts:{},beats:[],ctx:{room:0,rd:0},pause:true,at:0};S.table=sc;
   const sp0=TABLE.speed;TABLE.speed=1;let t=1000;const tick=(n,dt=.05)=>{let v;for(let k=0;k<n;k++){t+=dt;v=cv.crawlView(m,dv.stateOf(CRYPT),t)}return v};
-  let v=tick(3);ok(v.live&&cv.crawlRoom()===0&&mem.every(a=>cv.crawlPlacement()[a.id]==='back'),'crawl view: before any act the party waits at the back of the room in progress');
-  const ks=['guard','ward','strike','strike','scout'];mem.forEach((a,i)=>{sc.acts[a.id]={k:ks[i],line:'',by:'agent'}});tick(60);
-  const P=cv.crawlPlacement(),want=['front','back','flankL','flankR','cover'];
-  ok(mem.every((a,i)=>P[a.id]===want[i]),'crawl view: each member heads for the spot its act names, pre-answers included ('+mem.map(a=>P[a.id]).join(', ')+')');
+  // the sim keeps the tiles (#744): the party comes in at the stair, the foes at the den; the view walks everyone to their tile
+  const G0=RG.roomGrid(m,0,CRYPT.rooms[0]),cr0=CRYPT.group.crawl,stand=(a,id)=>{cr0.pos[a.id]={x:G0.spots[id].x,y:G0.spots[id].y}};
+  RG.placeRoom(G0,cr0,mem.map(a=>a.id),foes.length);
+  let v=tick(3);ok(v.live&&cv.crawlRoom()===0&&mem.every(a=>cv.crawlPlacement()[a.id]==='stair'||cv.crawlPlacement()[a.id]==='back'),'crawl view: the party stands by the way in as the sim set it ('+mem.map(a=>cv.crawlPlacement()[a.id]).join(', ')+')');
+  const want=['front','back','flankL','flankR','cover'];mem.forEach((a,i)=>stand(a,want[i]));tick(60);
+  const P=cv.crawlPlacement();
+  ok(mem.every((a,i)=>P[a.id]===want[i]),'crawl view: each member heads for the tile the sim keeps ('+mem.map(a=>P[a.id]).join(', ')+')');
   ok(mem.every(a=>{const p=cv.crawlPos(a.id);return Math.hypot(p.x-p.tx,p.y-p.ty)<.05}),'crawl view: and walks there within a few seconds');
   const S0=cv.crawlSpots(m,0),f0=cv.foePos(0),fr=cv.crawlPos(mem[0].id);
   ok(Math.hypot(f0.x-S0.den.x,f0.y-S0.den.y)<Math.hypot(fr.x-S0.den.x,fr.y-S0.den.y),'crawl view: the foes stand at the den, past the front');
-  sc.acts[mem[4].id]={k:'retreat',line:'',by:'agent'};tick(80);ok(cv.crawlPlacement()[mem[4].id]==='stair','crawl view: a retreat walks the member back to the stair');
+  stand(mem[4],'stair');tick(80);ok(cv.crawlPlacement()[mem[4].id]==='stair','crawl view: a retreat walks the member back to the stair');
   // a round resolves at once: the beats are queued and play over a few seconds; the HP bars wait for them
   foes[0].hp=0;sc.beats.push({id:mem[2].id,name:mem[2].name,k:'strike',text:'Strike',res:'a crushing blow',by:'agent',rd:1});
   sc.beats.push({id:mem[3].id,name:mem[3].name,k:'strike',text:'Strike',res:'missed badly and left an opening',by:'agent',rd:1});
