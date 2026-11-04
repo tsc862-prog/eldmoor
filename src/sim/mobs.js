@@ -62,7 +62,7 @@ function spawnElite(z){const E=ELITES[z];if(!E)return; // no row for this zone (
 // Slide a mob's home toward the nearest road tile of its zone, never across a zone border.
 function driftHome(m,z){const R=ZROADS[z];if(!R.length)return;let best=null,bd=1e9;
   for(const r of R){const d=dist(m.home,r);if(d<bd){bd=d;best=r}}
-  if(bd<1)return;const st=Math.min(ECO.drift,bd-.8),nx=m.home.x+(best.x-m.home.x)/bd*st,ny=m.home.y+(best.y-m.home.y)/bd*st;
+  if(!best||bd<1)return;const st=Math.min(ECO.drift,bd-.8),nx=m.home.x+(best.x-m.home.x)/bd*st,ny=m.home.y+(best.y-m.home.y)/bd*st;
   if(zoneAt(nx,ny)!==z)return;m.home.x=nx;m.home.y=ny}
 
 // Called once per step after the mob loop. Tracks hero presence per zone, grows unhunted zones

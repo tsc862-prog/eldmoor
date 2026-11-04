@@ -17,4 +17,4 @@ moveTo asks pathLeg (src/sim/path.js). Rules added in #794 and why:
 
 **Why:** owner: nothing walks through walls, without losing the movement feel; scale 20-30x.
 
-**How to apply:** the plan budget resets on pathTick or a changed S.gameMin, so a check driving moveTo outside step() with a frozen clock runs out after PER_TICK plans (call pathTick). Loop changes shift the RNG: see [[check-fixtures]]; #794 broke fixtures that used one random zonePoint, a job's choice scene taking the table, and a fixed x+4 spot. An empty route must still return its goal leg: NaN coordinates teleport a walker.
+**How to apply:** the plan budget resets on pathTick or a changed S.gameMin, so a check driving moveTo outside step() with a frozen clock runs out after PER_TICK plans (call pathTick). Loop changes shift the RNG: see [[check-fixtures]]; #794 broke fixtures that used one random zonePoint, a job's choice scene taking the table, and a fixed x+4 spot. An empty route must still return its goal leg: NaN coordinates teleport a walker. A loop over a distance must stop at the map's edge: blockedBy with a 1e308 target froze the process until it did.

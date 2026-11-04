@@ -27,9 +27,9 @@ export const PATH={
   SMOOTH:24,     // tiles a straightened leg may span
   GOAL_R:12};    // tiles around a solid target to look for ground to stand on
 export const HOLD=0,DONE=1; // pathLeg's answers beside a point: stand this tick; arrived as near as the ground allows
-export const pathStats={plans:0,nodes:0,peak:0,held:0,none:0,us:0}; // recording only
+export const pathStats={plans:0,nodes:0,peak:0,held:0,none:0,refused:0,us:0}; // recording only
 
-const inb=(x,y)=>x>=0&&y>=0&&x<W&&y<H;
+const inb=(x,y)=>x>=0&&y>=0&&x<W&&y<H,fin=Number.isFinite;
 let COST=null,N=0,G=null,FROM=null,SEEN=null,stamp=0,HI=null,HF=null,hn=0,used=0,usedAt=-1,usedNodes=0;
 function ready(){if(COST)return;N=W*H;COST=new Float32Array(N);for(let i=0;i<N;i++)COST[i]=solid[i]?Infinity:1/SPEED[tiles[i]];
   G=new Float32Array(N);FROM=new Int32Array(N);SEEN=new Uint32Array(N);HI=new Int32Array(1024);HF=new Float32Array(1024)}
@@ -56,8 +56,8 @@ export function lineCost(x0,y0,x1,y1){ready();
   return Infinity}
 export const clearLine=(a,b)=>lineCost(a.x,a.y,b.x,b.y)<Infinity;
 // What stands on the straight line between two points: 'river', 'wall', 'building', 'peak', 'lava', 'rock', 'forest', or null.
-export function blockedBy(x0,y0,x1,y1){const n=Math.ceil(Math.hypot(x1-x0,y1-y0)*4);
-  for(let k=1;k<=n;k++){const x=Math.floor(x0+(x1-x0)*k/n),y=Math.floor(y0+(y1-y0)*k/n);if(inb(x,y)&&solid[I(x,y)])return WHY[solid[I(x,y)]]}return null}
+export function blockedBy(x0,y0,x1,y1){const L=Math.hypot(x1-x0,y1-y0);if(!fin(L)||!fin(x0)||!fin(y0))return null;
+  for(let d=.25;d<=L;d+=.25){const x=Math.floor(x0+(x1-x0)*d/L),y=Math.floor(y0+(y1-y0)*d/L);if(!inb(x,y))return null;if(solid[I(x,y)])return WHY[solid[I(x,y)]]}return null} // stops at the map's edge: a target far off it must not cost a walk there
 
 function push(f,i){if(hn===HI.length){const a=new Int32Array(hn*2),b=new Float32Array(hn*2);a.set(HI);b.set(HF);HI=a;HF=b}
   let k=hn++;while(k>0){const p=(k-1)>>1;if(HF[p]<=f)break;HF[k]=HF[p];HI[k]=HI[p];k=p}HF[k]=f;HI[k]=i}
@@ -75,7 +75,7 @@ function search(s,t,limit){stamp+=2;hn=0;const open=stamp,closed=stamp+1,tx=t%W,
       const g=G[i]+COST[j]*(dx&&dy?1.4142:1);if(SEEN[j]===open&&g>=G[j])continue;
       G[j]=g;FROM[j]=i;SEEN[j]=open;push(g+heur(nx,ny),j)}}
   pathStats.nodes+=nodes;usedNodes+=nodes;if(nodes>pathStats.peak)pathStats.peak=nodes;
-  if(!found)return null;const out=[];for(let i=t;i>=0;i=FROM[i])out.push(i);return out.reverse()}
+  if(!found)return null;const out=[];for(let i=t;i>=0&&out.length<=N;i=FROM[i])out.push(i);return out.length>N?null:out.reverse()} // never longer than the map
 
 // The nearest ground on land l to (x,y), or null. Rings first; past them one pass over the map (rare: a target far inside rock).
 function groundNear(x,y,l,scan){const o=nearestOpen(x,y,PATH.GOAL_R,p=>land[I(Math.floor(p.x),Math.floor(p.y))]===l);if(o||!scan)return o;
@@ -97,7 +97,7 @@ function straighten(L,x0,y0,gx,gy){const n=L.length;if(n<2)return [gx,gy]; // gr
 //   {pts, len, cross, why, near}: legs [x,y,...]; len, the tiles walked; cross, the bridges and fords used, in order,
 //   [{k:'bridge'|'ford', x, y}]; why, what stands on the straight line ('river', 'wall', ...), when something does;
 //   near, true when the target itself cannot be reached and this ends as close as the ground allows.
-export function route(x0,y0,x,y,limit=0){ready();const t0=performance.now();
+export function route(x0,y0,x,y,limit=0){ready();if(!fin(x)||!fin(y)||!inb(Math.floor(x0),Math.floor(y0))){pathStats.refused++;return null}const t0=performance.now();
   const s=I(Math.floor(x0),Math.floor(y0)),l=land[s];let gx=x,gy=y,near=false;
   if(!inb(Math.floor(x),Math.floor(y))||land[I(Math.floor(x),Math.floor(y))]!==l){const o=groundNear(x,y,l,!limit);if(!o)return null;gx=o.x;gy=o.y;near=true}
   const L=search(s,I(Math.floor(gx),Math.floor(gy)),limit);pathStats.plans++;
@@ -112,11 +112,15 @@ export function route(x0,y0,x,y,limit=0){ready();const t0=performance.now();
 const LEG={x:0,y:0};
 const leg=(x,y)=>{LEG.x=x;LEG.y=y;return LEG};
 const wp=p=>leg(p.pts[p.i],p.pts[p.i+1]);
+const pathOk=p=>Array.isArray(p.pts)&&Number.isInteger(p.i)&&p.i>=0&&p.i%2===0&&fin(p.tx)&&fin(p.ty)&&fin(p.lx)&&fin(p.ly)&&(p.i>=p.pts.length||fin(p.pts[p.i])&&fin(p.pts[p.i+1]));
 // Where e should walk now, on its way to (x,y): a point (reused: read it at once), HOLD or DONE.
 export function pathLeg(e,x,y){ready();
+  if(!fin(x)||!fin(y)){pathStats.refused++;e.path=null;return DONE} // no such place: nothing to walk to, and nobody waits on it
+  if(!fin(e.x)||!fin(e.y)){pathStats.refused++;const o=nearestOpen(x,y,PATH.GOAL_R)||{x,y};e.x=o.x;e.y=o.y;e.path=null;return HOLD} // lost its own position: it stands at its target
   const sx=Math.floor(e.x),sy=Math.floor(e.y);
   if(!inb(sx,sy)||solid[I(sx,sy)]){const o=nearestOpen(e.x,e.y,PATH.GOAL_R);e.path=null;return o?leg(o.x,o.y):leg(x,y)} // put on solid ground somehow: out by the shortest way
   let p=e.path;
+  if(p&&!pathOk(p)){pathStats.refused++;p=e.path=null} // a save or a bug left it unreadable: plan again
   if(p&&(Math.abs(e.x-p.lx)>PATH.OFF||Math.abs(e.y-p.ly)>PATH.OFF))p=e.path=null; // moved by something else: this path is not where they stand
   const near=Math.hypot(x-e.x,y-e.y)<=PATH.NEAR;
   if(p&&Math.hypot(x-p.tx,y-p.ty)<=PATH.REPLAN){

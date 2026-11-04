@@ -93,7 +93,7 @@ export function seedLevel(a,lvl){lvl=Math.max(1,Math.min(20,Math.round(lvl)));if
 export function moveTo(e,x,y,dt,sp){let st=-1;
   for(let k=0;k<12;k++){if(Math.hypot(x-e.x,y-e.y)<.12){e.moving=false;e.path=null;return true}
     const q=pathLeg(e,x,y);if(q===DONE){e.moving=false;return true}if(q===HOLD){e.moving=false;return false}
-    if(st<0){st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt*(1-woundSpeed(e));e.moving=true}
+    if(st<0){st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt*(1-woundSpeed(e));if(!(st>=0)){e.moving=false;return false}e.moving=true} // a bad pace walks nowhere
     const dx=q.x-e.x,dy=q.y-e.y,d=Math.hypot(dx,dy);if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
     if(st<d){const nx=e.x+dx/d*st,ny=e.y+dy/d*st;if(pathStep(e,nx,ny)){e.x=nx;e.y=ny}else e.moving=false;return false}
     e.x=q.x;e.y=q.y;st-=d;pathReached(e)} // a leg's end inside this tick: the rest of the step goes on along the next

@@ -14,7 +14,7 @@ import {init,step,S,snapshot,restore,markPlayer,playerAct} from '../src/sim/inde
 import {moveTo} from '../src/sim/heroes.js';
 import {updMob,spawnMob} from '../src/sim/mobs.js';
 import {MOBS} from '../src/data/mobs.js';
-import {PATH,pathStats,pathTick,route,lineCost,clearLine,noWay} from '../src/sim/path.js';
+import {PATH,pathStats,pathTick,route,lineCost,clearLine,noWay,blockedBy} from '../src/sim/path.js';
 import {seedRng} from '../src/core/rng.js';
 
 let fail=0;const ok=(c,m)=>{if(!c){fail++;console.log('FAIL '+m)}else console.log('ok   '+m)};
@@ -83,6 +83,16 @@ for(const L of LANDMARKS)if(L.kind==='lair'){const a=nearestOpen(L.x,L.y,4,p=>la
   if(pocket){e=walker(g.x,g.y);t=walk(e,pocket.x,pocket.y);ok(t>=0&&landAt(e.x,e.y)===mainLand,'a target shut in by peaks: arrives as near as the ground allows ('+t+' ticks)')}
   e=walker(g.x,g.y);ok(walk(e,-5,-5)>=0,'a target off the map ends too');
   const b=CITY[0].buildings[0];if(b){const c=walker(CITY[0].spots.square.x,CITY[0].spots.square.y);ok(walk(c,b.box[0]+.5,b.box[1]+.5,4000)>=0&&!solidAt(c.x,c.y),'a target inside a building: stops at open ground')}}
+
+// ---- bad numbers: refused, never a freeze, a teleport or a spoiled position ----
+{const BAD=[NaN,Infinity,-Infinity,undefined,null,1e308,-1e308,3.7e9,'12',{}],g=gates[0],good=ZPTS.flat()[40],sane=e=>Number.isFinite(e.x)&&Number.isFinite(e.y);let spoiled=0,threw=0;const t0=performance.now();
+  for(const k of [{kind:'hero'},{kind:'mob',type:'x'}])for(const x of BAD)for(const y of [...BAD,good.y]){const e=walker(g.x,g.y,k);try{for(let i=0;i<10;i++){pathTick();moveTo(e,x,y,1/60,2.4)}}catch(err){threw++}if(!sane(e)||solidAt(e.x,e.y))spoiled++}
+  ok(!threw&&!spoiled&&performance.now()-t0<3000,'bad targets are refused or end at open ground ('+threw+' threw, '+spoiled+' spoiled, '+(performance.now()-t0).toFixed(0)+' ms)');
+  let e=walker(NaN,5);pathTick();moveTo(e,good.x,good.y,1/60,2.4);ok(sane(e)&&!solidAt(e.x,e.y),'a walker that lost its position stands at its target');
+  e=walker(good.x,good.y);const before={x:e.x,y:e.y};for(const [dt,sp] of [[NaN,2],[1/60,undefined],[1/60,-1]]){pathTick();moveTo(e,good.x+6,good.y,dt,sp)}ok(e.x===before.x&&e.y===before.y,'a bad pace walks nowhere, and never jumps');
+  let bad=0;for(const p of [{},{pts:null},{pts:[1],i:0},{pts:[NaN,NaN],i:0,tx:good.x,ty:good.y,lx:good.x,ly:good.y},{pts:[good.x,good.y],i:NaN},{pts:[good.x,good.y],i:1,tx:1,ty:1,lx:1,ly:1},{none:1,tx:NaN}]){const f=walker(good.x,good.y,{path:p});try{for(let i=0;i<20;i++){pathTick();moveTo(f,good.x+2,good.y,1/60,2.4)}}catch(err){bad++}if(!sane(f))bad++}ok(bad===0,'an unreadable path, as a bad save could leave, is dropped and planned again ('+bad+')');
+  ok(route(good.x,good.y,NaN,1)===null&&route(NaN,1,good.x,good.y)===null,'route refuses what is not a place');
+  const t1=performance.now();blockedBy(good.x,good.y,1e308,5);blockedBy(good.x,good.y,Infinity,5);ok(performance.now()-t1<50,'a target far off the map costs no walk there')}
 
 // ---- doors and walls ----
 for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp)for(const b of sp){const e=walker(a.x,a.y);if(walk(e,b.x,b.y,3000)<0||Math.hypot(e.x-b.x,e.y-b.y)>.2)bad++}
