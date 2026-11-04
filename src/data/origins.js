@@ -94,3 +94,21 @@ export const GOAL_DONE={
   hoard:' has banked {need} gold, as sworn.',
   delve:' walked out of the Sunken Crypt victorious, as sworn.',
 };
+
+// An offered thread (#800): what an agent-played hero is given in place of a rolled oath, told as the past and never as a
+// promise. {name} the hero; the others as GOAL_TEXT ({zone} a region's name, {fac} a faction's). Only the hero and the DM read
+// it; it becomes an oath when the hero swears it aloud.
+export const THREAD_TEXT={
+  avenge:'{name} has not forgotten {target}, and {target} is still out there.',
+  avengeHero:'{name} carries a grudge: {victim} fell to {target}, and nobody has answered for it.',
+  heirloom:'{name}’s family once held the {target}. It was lost, and they never stopped speaking of it.',
+  heirloomCrypt:'The {target} went down into the Sunken Crypt, and {name}’s people still speak of it.',
+  heirloomBoss:'The {target} went into Kragmaw’s hoard, and {name}’s people still speak of it.',
+  pilgrimFar:'{name} grew up on stories of the snows of {zone}.',
+  pilgrimCrypt:'{name} grew up on stories of the mouth of the Sunken Crypt.',
+  ascend:'{name} left home with something to prove.',
+  rival:'{name} measures every day against {target} of the {fac}.',
+  legend:'{name} was raised on tales of Kragmaw the Cinder Wyrm.',
+  hoard:'{name} knows what it is to go without gold.',
+  delve:'{name} has heard what lies in the Sunken Crypt and cannot leave it alone.',
+};

@@ -668,7 +668,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   ok(r.ok && r.going === 'going to ' + ground + ' to hunt' && h.pq.length === 2 && h.pq[0].kind === 'move' && h.pq[1].kind === 'hunt', `hunt {where: "${ground}"} from town walks there first: ${r.going || r.error}`);
   ok(h.playOrder && h.playOrder.kind === 'hunt' && h.playOrder.n === 2, 'the hunt order is remembered for autopilot');
   let hunted = false;
-  for (let i = 0; i < 60 * 600 && !hunted; i++) {step(1 / 60); if (h.state === 'dead') break; const c0 = h.pq && h.pq[0]; hunted = !!(c0 && c0.kind === 'hunt' && c0.k0 != null && h.pq.length === 1 && h.state !== 'town')}
+  for (let i = 0; i < 60 * 600 && !hunted; i++) {if (h.state !== 'dead' && h.state !== 'downed') h.hp = maxHp(h); /* fixture: the walk out tests the order, not the road's mobs */ step(1 / 60); if (h.state === 'dead') break; const c0 = h.pq && h.pq[0]; hunted = !!(c0 && c0.kind === 'hunt' && c0.k0 != null && h.pq.length === 1 && h.state !== 'town')}
   ok(hunted, `${h.name} walked out and is hunting (${h.state}, in ${ZONES[zoneAt(h.x, h.y)]})`);
   P.markPlayer(h, false); paused = false;
 }

@@ -25,6 +25,7 @@
 // State (plain data, saved with the world): C.fire {last, seq, past, ev:[{k, text, big, gm}]}: the last fireside's game minute,
 // the campaign-log entry and fallen count it had read, and the day's oaths and lessons since; C.fireQ {mode, at, ...}: one waiting.
 import {S} from './state.js';
+import {swornOf,oathSaid} from './oath.js'; // only a spoken oath is talk for the fire (#800)
 import {CRYPT,ZONES} from '../world/map.js';
 import {hash} from '../core/rng.js';
 import {maxHp} from './heroes.js';
@@ -78,10 +79,10 @@ function topicsOf(C,here){const F=fireOf(C),since=Math.max(F.last,S.gameMin-FIRE
   for(const a of here)for(const m of (a.tiers&&a.tiers.marks)||[])if(m.gm>since&&TALK_MARK[m.k])add(m.k,a.name+': '+m.text,BIG_MARK[m.k]); // landmarks (sim/tiers.js)
   for(const v of F.ev||[])if(v.gm>since)add(v.k,v.text,v.big);
   out.sort((x,y)=>y.big-x.big);
-  if(!out.length){const sworn=here.filter(a=>a.goal&&!a.goal.done&&a.goal.text);
+  if(!out.length){const sworn=here.filter(a=>swornOf(a)&&a.goal.text);
     const fresh=here.filter(a=>C.joined&&C.joined[a.id]!=null&&S.gameMin-C.joined[a.id]<2*1440);
     if(fresh.length)add('newcomer','There is a newer face at the fire: '+fresh[0].name);
-    if(sworn.length){const a=pickH(C.id+S.gameMin,1,sworn);add('oath',a.name+' has sworn to '+String(a.goal.text).replace(/^./,c=>c.toLowerCase()).replace(/[.!?]+$/,''))}
+    if(sworn.length){const a=pickH(C.id+S.gameMin,1,sworn);add('oath',oathSaid(a))}
     // the fire asks, never a member (#750): no one is named as the asker, so no voice can put the question in a member's mouth
     if(here.length>1){const b=pickH(C.id+S.gameMin,3,here),q=pickH(b.id+S.gameMin,4,QUESTIONS);
       add('question','The fire puts a question to '+b.name+': '+q,0,{to:b.id,q})}}
