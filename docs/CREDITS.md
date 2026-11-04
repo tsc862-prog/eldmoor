@@ -33,6 +33,12 @@ with its hue and saturation shifted toward olive; no pixel is scaled. The pieces
 file lists the authors of each underlying set: Sharm, Daneeklu, Jetrel, Zabin, Hyptosis, Casper Nilsson, Buko Studios (frozen lake, CC-BY 3.0), Nushio,
 ZaPaper, billknye, William Thompson, caeles, Redshrike, Bertram and RayaneFLX.
 
+## LPC mountains (#895)
+
+The mountains (`autotile:peak-stone`, `autotile:peak-ash`, `autotile:peak-snow`) are cut by `scripts/art/packcut-peaks.mjs` from `tiles/mountains.png` of the LPC
+base assets (Lanea Zimmerman (Sharm), CC-BY-SA 3.0, above) and recoloured; the snow on them is the Snow block of "[LPC] Terrains" (above). The standing peaks are
+reshaped from the sheet's cliff face. Being adapted from CC-BY-SA art, they are offered under CC-BY-SA 3.0.
+
 ## LPC hero sheets
 
 `sprite:hero-<class>-<people>` (seven classes by the six peoples of `src/data/races.js`) and the class fallback sheets

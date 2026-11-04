@@ -31,11 +31,12 @@ const GROUND={
 const TILE_GROUND={'tile:grass':'grass','tile:meadow':'meadow','tile:fen-grass':'fen','tile:swamp':'swamp','tile:mud':'mud','tile:ash-rock':'ash','tile:snow':'snow','tile:ice':'ice','tile:road':'road','tile:water':'water','tile:lava':'lava'};
 // Transition pairs: A side, B side and a seam colour drawn on the A side of the border (foam, a worn rim, dying grass).
 const PAIR={'grass-road':['grass','road','#2f6a2c'],'bank-water':['grass','water','#dce8f8'],'meadow-fen':['grass','fen','#3f5a30'],
-  'fen-ash':['fen','ash','#6a6640'],'ash-snow':['ash','snow','#a8b0b8'],
+  'fen-ash':['ash','fen','#6a6640'],'ash-snow':['ash','snow','#a8b0b8'],
   'fen-river':['fen','water','#dce8f8'],'snow-river':['snow','water','#e8f0f8'],'mud-swamp':['mud','swamp','#3e3c22'],
-  'mud-fen':['mud','fen','#3f5a30'],'fen-swamp':['fen','swamp','#3e3c22'],'snow-ice':['ice','snow','#c4ced8'],'meadow-ash':['grass','ash','#4a423e'],'mud-ash':['mud','ash','#4a423e'],
+  'mud-fen':['mud','fen','#3f5a30'],'fen-swamp':['fen','swamp','#3e3c22'],'snow-ice':['ice','snow','#c4ced8'],'meadow-ash':['ash','grass','#4a423e'],'mud-ash':['ash','mud','#4a423e'],
   'ash-lava':['ash','lava','#2a2422'],'road-fen':['fen','road','#3f5a30'],'road-mud':['mud','road','#3e3c22'],'road-ash':['ash','road','#4a423e'],'road-snow':['snow','road','#c4ced8'],
-  'road-swamp':['swamp','road','#3e3c22'],'fen-snow':['fen','snow','#c4ced8'],'swamp-snow':['swamp','snow','#c4ced8'],'mud-snow':['mud','snow','#c4ced8'],'ice-ash':['ice','ash','#4a423e'],'meadow-snow':['grass','snow','#c4ced8']};
+  'road-swamp':['swamp','road','#3e3c22'],'fen-snow':['fen','snow','#c4ced8'],'swamp-snow':['snow','swamp','#c4ced8'],'mud-snow':['mud','snow','#c4ced8'],'ice-ash':['ice','ash','#4a423e'],'meadow-snow':['grass','snow','#c4ced8'],
+  'ice-fen':['ice','fen','#3f5a30'],'lava-snow':['snow','lava','#2a2422'],'ash-swamp':['ash','swamp','#3e3c22'],'mud-river':['mud','water','#dce8f8'],'swamp-river':['swamp','water','#dce8f8'],'meadow-swamp':['grass','swamp','#3e3c22'],'meadow-mud':['mud','grass','#3f5a30'],'road-ice':['ice','road','#c4ced8']};
 
 // Colour of ground g at pixel (x,y) of a texture repeating every p pixels.
 function ground(g,x,y,p,s){const G=GROUND[g],n=pnoise(x,y,p,8,s)*.75+pnoise(x,y,p,4,s+9)*.25,h=hh(x,y,s+3);
