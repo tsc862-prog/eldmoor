@@ -35,6 +35,12 @@
 //     3x4 grid on white, not on the frame grid) comes out one figure a frame, feet on the frame floor, clear ground, palette
 //     and outline only, deterministic; a hero keeps its tabard in the recolourable key; 3 rows, 2 columns or a hero with
 //     no tabard are rejected (raw kept); the 64 tier; the mock answers sprite prompts with such sheets in the runs above.
+//     Image to image (#763, scripts/art/init.mjs, post-init.mjs, inside the mock Space part of 4): every building, landmark and
+//     sprite has procedural art at both tiers that survives its own recipe, tiles and props stay text only; the procedural pixels
+//     reach the mock Space's img2img API with the manifest's strength; the answer keeps the silhouette and passes the gates, a
+//     redrawn or spilt answer is refused with its raw kept; raws and art:reprocess keep working; the router leaves these kinds
+//     out; a Space from before img2img stops the run with the word to push; the router runs of part 4 use the manifest without
+//     kindInit, which also proves the text recipe on these kinds still works for raws made before.
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,utimesSync,mkdirSync} from 'node:fs';
@@ -255,24 +261,31 @@ try{
         const stage=SP.broken?'RUNTIME_ERROR':SP.stages.length?SP.stages.shift():'RUNNING';
         return res.end(JSON.stringify({id,private:true,runtime:{stage,hardware:{current:stage==='RUNNING'?'zero-a10g':null,requested:'zero-a10g'}}}))}
       if(req.method==='GET'&&u.pathname==='/space/'){SP.wakes++;return res.end('<html></html>')}
-      if(req.method==='POST'&&u.pathname==='/space/gradio_api/call/generate'){
+      if(req.method==='GET'&&u.pathname==='/space/gradio_api/info'){res.setHeader('content-type','application/json');return res.end(JSON.stringify({named_endpoints:{'/generate':{},...(SP.oldSpace?{}:{'/img2img':{}})}}))}
+      if(req.method==='POST'&&/^\/space\/gradio_api\/call\/(generate|img2img)$/.test(u.pathname)){const api=u.pathname.split('/').pop();
+        if(api==='img2img'&&SP.oldSpace){res.statusCode=500;return res.end('Internal Server Error')} // what Gradio answers for an API it does not have
         if(auth!==`Bearer ${MOCK_TOKEN}`){res.statusCode=401;return res.end('{"error":"Invalid credentials"}')}
         if(SP.ok>=SP.quota429){res.statusCode=429;res.setHeader('content-type','application/json');return res.end(JSON.stringify({error:'You have exceeded your GPU quota (25s requested vs. 12s left). Try again in 2:31:05'}))}
-        const j=JSON.parse(body),id='ev'+(SP.posts.length+1);SP.posts.push({data:j.data,id,auth});res.setHeader('content-type','application/json');return res.end(JSON.stringify({event_id:id}))}
-      if(req.method==='GET'&&(m=/^\/space\/gradio_api\/call\/generate\/(ev\d+)$/.exec(u.pathname))){const p=SP.posts.find(x=>x.id===m[1]);
+        const j=JSON.parse(body),id='ev'+(SP.posts.length+1);SP.posts.push({data:j.data,id,auth,api});res.setHeader('content-type','application/json');return res.end(JSON.stringify({event_id:id}))}
+      if(req.method==='GET'&&(m=/^\/space\/gradio_api\/call\/(?:generate|img2img)\/(ev\d+)$/.exec(u.pathname))){const p=SP.posts.find(x=>x.id===m[1]);
         if(!p||auth!==`Bearer ${MOCK_TOKEN}`){res.statusCode=404;return res.end()}
         res.setHeader('content-type','text/event-stream');
         if(SP.sseQuota)return res.end('event: heartbeat\ndata: null\n\nevent: error\ndata: "You have exceeded your Pro GPU quota (25s requested vs. 3s left). Try again in 0:45:00"\n\n');
         if(SP.refuse&&p.data[8]===SP.refuse)return res.end(`event: error\ndata: ${JSON.stringify(`unknown LoRA '${p.data[8]}': not in the Space`)}\n\n`);
-        SP.ok++;const k=mockKind(p.data[0]),file={path:`/tmp/gradio/${m[1]}.png`,url:`${base}/space/gradio_api/file=/tmp/gradio/${m[1]}.png?k=${k}`,orig_name:'image.png',meta:{_type:'gradio.FileData'}};
+        SP.ok++;const k=p.api==='img2img'?'i2i-'+m[1]:mockKind(p.data[0]),file={path:`/tmp/gradio/${m[1]}.png`,url:`${base}/space/gradio_api/file=/tmp/gradio/${m[1]}.png?k=${k}`,orig_name:'image.png',meta:{_type:'gradio.FileData'}};
         return res.end(`event: heartbeat\ndata: null\n\nevent: complete\ndata: ${JSON.stringify([file,SP.gpuS])}\n\n`)}
       if(req.method==='GET'&&u.pathname.startsWith('/space/gradio_api/file=')){if(auth!==`Bearer ${MOCK_TOKEN}`){res.statusCode=403;return res.end()}
-        res.setHeader('content-type','image/png');return res.end(MOCK[u.searchParams.get('k')]||img)}}
+        const kk=u.searchParams.get('k'),ip=/^i2i-/.test(kk||'')&&SP.posts.find(x=>x.id===kk.slice(4));res.setHeader('content-type','image/png');
+        if(ip)return res.end(encodePng(FX.img2imgArt(decodePng(Buffer.from(ip.data[5],'base64')),{strength:ip.data[6],seed:ip.data[2],...(SP.i2i||{})})));
+        return res.end(MOCK[kk]||img)}}
     res.statusCode=404;res.end('no')})});
   await new Promise(f=>srv.listen(0,'127.0.0.1',f));const base=`http://127.0.0.1:${srv.address().port}`;
   const env={...process.env,HF_TOKEN:MOCK_TOKEN,HF_ROUTER_URL:base,HF_HUB_URL:base,ART_DAILY_BUDGET:'100'};delete env.ART_MAX_CALLS;for(const k of ['HF_ART_SPACE','HF_SPACE_URL','ART_GPU_MINUTES','ART_SPACE_POLL_MS'])delete env[k];env.HF_SPACE_TOKEN='';
   // gen.mjs and daily.mjs default to the Space (#703); the router tests ask for the router explicitly unless a test names a provider
-  const node=(script,a,extra={})=>new Promise(f=>{const c=spawn(process.execPath,[join(ROOT,'scripts','art',script),...(/^(gen|daily)\.mjs$/.test(script)&&!a.includes('--provider')&&!extra.HF_SPACE_URL?['--provider','router']:[]),...a],{env:{...env,...extra},stdio:['ignore','pipe','pipe']});
+  // the router has no image to image (#763): its runs take the manifest without kindInit, the text recipe on every kind
+  const textMan=join(tmp,'manifest-text.json');{const j=JSON.parse(readFileSync(join(ROOT,'scripts','art','manifest.json'),'utf8'));delete j.kindInit;writeFileSync(textMan,JSON.stringify(j))}
+  const node=(script,a,extra={})=>new Promise(f=>{const router=/^(gen|daily)\.mjs$/.test(script)&&!a.includes('--provider')&&!extra.HF_SPACE_URL;
+    const c=spawn(process.execPath,[join(ROOT,'scripts','art',script),...(router?['--provider','router',...(a.includes('--manifest')?[]:['--manifest',textMan])]:[]),...a],{env:{...env,...extra},stdio:['ignore','pipe','pipe']});
     let s='';c.stdout.on('data',d=>s+=d);c.stderr.on('data',d=>s+=d);c.on('close',code=>f({code,s}))});
   const N=man.assets.length;
   // what art:preview writes (#763), without a browser: a stand-in shot recorded for every waiting building and landmark
@@ -506,6 +519,47 @@ try{
     {const dir=join(tmp,'sp5'),logP=join(tmp,'sp5.log');SP.ok=0;SP.refuse='nerijs/pixel-art-xl';const p0=SP.posts.length;
       r=await sNode('daily.mjs',['--dir',dir,'--log',logP,'--date','2026-12-04','--max','2']);SP.refuse=null;const q=JSON.parse(readFileSync(join(dir,'queue.json'),'utf8'));
       ok(SP.ok===2&&q.spaceTried['pixel-xl'].ok===false&&q.spaceTried['pixel-redmond'].ok===true&&SP.posts.slice(p0).every(p=>['nerijs/pixel-art-xl','artificialguybr/PixelArtRedmond'].includes(p.data[8])),'space: a refused LoRA moves to the next Space model (pixel-redmond); FLUX and Z-Image stay router-only')}
+    // image to image (#763): the game's own art goes in, its silhouette comes out
+    {const I=await import('./art/init.mjs'),{processRaw}=await import('./art/gen.mjs'),pm=man.models['pixel-xl'],byId=id=>man.assets.find(a=>a.id===id),chain=man.assets.filter(e=>e.init);
+      ok(chain.length===man.assets.filter(e=>['building','landmark','sprite'].includes(e.kind)).length&&chain.every(e=>e.init==='procedural'&&e.strength>=.3&&e.strength<=.45)&&man.assets.filter(e=>!['building','landmark','sprite'].includes(e.kind)).every(e=>!e.init),`img2img: every building, landmark and sprite (${chain.length}) starts from the procedural art at a low strength per kind (${['building','landmark','sprite'].map(k=>k+' '+man.kindInit[k].strength).join(', ')}); tiles and props stay text only`);
+      {const bad=[];for(const e of chain)for(const t of TIERS){const a=I.initArt(e,t,PAL,pm,man),z=sizeOf(e,t);if(!a||a.w!==z[0]||a.h!==z[1]){bad.push(e.id+'@'+t+' no art');continue}
+          const L=I.initLayout(a.w,a.h,pm.width,pm.height),raw=I.initCanvas(a,L);
+          try{const o=processRaw(encodePng(raw),e,PAL,pm,t,man,{small:a,...L,strength:e.strength}).img;if(o.notes.drift>12||!Buffer.from(o.data).equals(Buffer.from(a.data)))bad.push(`${e.id}@${t} not a fixed point (drift ${o.notes.drift})`)}catch(x){bad.push(`${e.id}@${t}: ${x.message}`)}
+          if(e.frames){const {cols,rows}=e.frames,fw=a.w/cols,fh=a.h/rows;for(let f=0;f<cols*rows;f++){let n=0,floor=0;for(let y=0;y<fh;y++)for(let x=0;x<fw;x++)if(a.data[(((Math.floor(f/cols)*fh+y)*a.w)+(f%cols)*fw+x)*4+3]){n++;if(y===fh-1)floor++}if(n<fw*fh*.1||!floor)bad.push(`${e.id}@${t} frame ${f}: ${n} px, floor ${floor}`)}}}
+        ok(!bad.length,`img2img: all ${chain.length} have procedural art at both tiers, sized to the manifest, every sheet frame filled and on its floor, and the art through its own recipe and gates comes back unchanged`+(bad.length?': '+bad.slice(0,6).join('; '):''))}
+      {const e=byId('sprite:hero-warrior'),a=I.initArt(e,32,PAL,pm,man),keys=new Set(Object.keys(PAL.recolour(1)).map(c=>hexToRgb(c).join()));let n=0;for(let i=0;i<a.w*a.h;i++)if(a.data[i*4+3]&&keys.has([a.data[i*4],a.data[i*4+1],a.data[i*4+2]].join()))n++;
+        const fr=(c,r)=>{const b=[];for(let y=0;y<48;y++)b.push(Buffer.from(a.data.subarray(((r*48+y)*a.w+c*32)*4,((r*48+y)*a.w+(c+1)*32)*4)).toString('hex'));return b.join('')};
+        ok(n>500&&fr(0,0)!==fr(0,3)&&fr(0,0)!==fr(1,0)&&fr(1,0)!==fr(2,0)&&fr(0,1)!==fr(0,2),`img2img: a hero's init sheet has the tabard in the recolourable key (${n} px), and stand, step and other step, front, side and back differ`)}
+      const tiny=(ids,f)=>{const j=JSON.parse(readFileSync(join(ROOT,'scripts','art','manifest.json'),'utf8'));j.assets=j.assets.filter(a=>ids.includes(a.id));writeFileSync(f,JSON.stringify(j));return f};
+      const ids=['tile:grass','building:stone-hall','landmark:crypt-mouth','sprite:hero-warrior','sprite:mob-wolf'],mf=tiny(ids,join(tmp,'manifest-i2i.json')),dir=join(tmp,'sp6'),logP=join(tmp,'sp6.log'),date='2026-12-05',p0=SP.posts.length;SP.ok=0;
+      r=await sNode('gen.mjs',['--out',join(tmp,'sp6-dry'),'--manifest',mf,'--only','building:stone-hall','--dry-run']);ok(r.code===0&&/gradio_api\/call\/img2img/.test(r.s)&&/<init PNG 1024x1024, the art x10, \d+ base64 characters>/.test(r.s)&&SP.posts.length===p0,'img2img: gen --dry-run shows the img2img call with the init summed up, and calls nothing');
+      r=await sNode('daily.mjs',['--dir',dir,'--log',logP,'--date',date,'--manifest',mf]);
+      const posts=SP.posts.slice(p0),i2=posts.filter(p=>p.api==='img2img'),q=loadQueue(dir),inc=join(dir,'incoming',date),ri=loadIndex(join(inc,'raw'));
+      ok(r.code===0&&posts.length===5&&i2.length===4&&posts.find(p=>p.api==='generate').data.length===9&&Object.keys(q.incoming).length===5,`img2img: one run makes the tile by text and the other four from their art (${Object.keys(q.incoming).length} waiting)`+(r.code?': '+r.s.slice(-300):''));
+      {const bad=[];for(const p of i2){const e=chain.find(c=>p.data[0].includes(c.prompt)),a=I.initArt(e,32,PAL,pm,man),L=I.initLayout(a.w,a.h,1024,1024),im=decodePng(Buffer.from(p.data[5],'base64'));
+          if(im.w!==1024||im.h!==1024||p.data.length!==9||p.data[6]!==e.strength||p.data[7]!==.55||p.data[8]!==pm.repo||p.data[3]!==pm.steps)bad.push(e.id+' request');
+          for(let y=0;y<a.h;y++)for(let x=0;x<a.w;x++){const s=(y*a.w+x)*4;for(const [dx,dy] of [[0,0],[L.k-1,L.k-1]]){const o=((L.oy+y*L.k+dy)*1024+L.ox+x*L.k+dx)*4,want=a.data[s+3]?[a.data[s],a.data[s+1],a.data[s+2]]:I.BACKGROUND;if(im.data[o]!==want[0]||im.data[o+1]!==want[1]||im.data[o+2]!==want[2])bad.push(`${e.id} ${x},${y}`)}}}
+        ok(!bad.length,`img2img: every procedural pixel reaches the mock Space on its nearest-neighbour cell of the 1024 canvas, with the manifest's strength, the tier's LoRA scale and the model's steps`+(bad.length?': '+bad.slice(0,5).join('; '):''))}
+      {const bad=[];for(const id of ids.slice(1)){const e=byId(id),o=decodePng(readFileSync(join(inc,keyFile(tierKey(id,32))))),a=I.initArt(e,32,PAL,pm,man),m=ri.assets[tierKey(id,32)];
+          for(let i=0;i<a.w*a.h;i++)if(!!a.data[i*4+3]!==!!o.data[i*4+3]){bad.push(id+' silhouette');break}
+          if(!m.init||m.init.strength!==e.strength||!existsSync(join(inc,'raw',m.init.file)))bad.push(id+' init kept')}
+        const flatOut=decodePng(readFileSync(join(inc,keyFile('building:stone-hall@32')))),a=I.initArt(byId('building:stone-hall'),32,PAL,pm,man);let same=0,n=0;for(let i=0;i<a.w*a.h;i++)if(a.data[i*4+3]){n++;if(a.data[i*4]===flatOut.data[i*4]&&a.data[i*4+1]===flatOut.data[i*4+1]&&a.data[i*4+2]===flatOut.data[i*4+2])same++}
+        ok(!bad.length&&same/n>.7,`img2img: the answers keep the procedural silhouette exactly (${Math.round(same/n*100)}% of the hall's pixels keep their colour), pass their recipe's gates, and raw/ keeps each init with its layout`+(bad.length?': '+bad.join('; '):''))}
+      {const before=readFileSync(join(inc,keyFile('sprite:hero-warrior@32')));r=await sNode('reprocess.mjs',[date,'--dir',dir,'--manifest',mf]);ok(r.code===0&&/reprocessed 5, rejected 0/.test(r.s)&&Buffer.from(readFileSync(join(inc,keyFile('sprite:hero-warrior@32')))).equals(before),'img2img: art:reprocess re-reads the raws through their kept init with no call, to the same pixels')}
+      // bad answers: refused with the raw kept
+      {const e=byId('building:stone-hall'),a=I.initArt(e,32,PAL,pm,man),L=I.initLayout(a.w,a.h,1024,1024),cv=I.initCanvas(a,L),run=(v,en=e,s=a,l=L,c=cv)=>{try{return processRaw(encodePng(FX.img2imgArt(c,v)),en,PAL,pm,32,man,{small:s,...l,strength:.4})}catch(x){return x}};
+        const rd=run({redraw:true}),sp=run({spill:true}),w=byId('sprite:mob-wolf'),wa=I.initArt(w,32,PAL,pm,man),wl=I.initLayout(wa.w,wa.h,1024,1024),wr=run({redraw:true},w,wa,wl,I.initCanvas(wa,wl));
+        ok(rd.kind==='flat'&&/redrawn: drift/.test(rd.message)&&wr.kind==='flat'&&/redrawn/.test(wr.message),'img2img: an answer that ignored the init is refused as redrawn: '+rd.message);
+        const ch=byId('building:stone-chapel'),ca=I.initArt(ch,32,PAL,pm,man),cl=I.initLayout(ca.w,ca.h,1024,1024),sc=run({spill:true},ch,ca,cl,I.initCanvas(ca,cl));
+        ok(sc.kind==='flat'&&/drew outside the silhouette/.test(sc.message),'img2img: an answer that painted round the subject is refused: '+sc.message);
+        const he=byId('sprite:hero-warrior'),ha=I.initArt(he,32,PAL,pm,man),hl=I.initLayout(ha.w,ha.h,1024,1024),hc=I.initCanvas(ha,hl);for(let i=0;i<hc.w*hc.h;i++){const o=i*4;if(hc.data[o+2]>hc.data[o]+30&&hc.data[o+2]>hc.data[o+1]+10){hc.data[o]=150;hc.data[o+1]=150;hc.data[o+2]=160}}
+        const nk=run({},he,ha,hl,hc);ok(nk.kind==='flat'&&/no faction key/.test(nk.message),'img2img: a hero whose tabard the model repainted is refused by the sheet check: '+nk.message)}
+      // the router has no init route; a Space from before this is told to push
+      {const rd=join(tmp,'sp6-router'),rp=S.posts.length;r=await node('gen.mjs',['--out',rd,'--manifest',mf,'--provider','router','--yes']);ok(/made image to image on the Space only/.test(r.s)&&S.posts.length===rp+1&&existsSync(join(rd,'tile','32','grass.png'))&&!existsSync(join(rd,'building')),'img2img: a router run leaves these kinds out and says so')
+        const od=join(tmp,'sp7'),ol=join(tmp,'sp7.log'),p1=SP.posts.length,mo=tiny(['building:stone-hall'],join(tmp,'manifest-old.json'));SP.oldSpace=true;r=await sNode('daily.mjs',['--dir',od,'--log',ol,'--date',date,'--manifest',mo]);SP.oldSpace=false;
+        ok(/has no img2img API: run npm run art:space -- --push/.test(lines(ol).pop())&&SP.posts.length===p1&&!existsSync(join(od,'incoming',date,'raw','index.json')),'img2img: a Space from before this (Gradio answers 500) stops the run with the word to push: '+lines(ol).pop().slice(40,170))}
+      {const {spaceDuration}=await import('./art/space.mjs'),py=readFileSync(join(ROOT,'scripts','art','space','app.py'),'utf8');
+        ok(spaceDuration(pm,.4)===16&&/api_name="img2img"/.test(py)&&/AutoPipelineForImage2Image\.from_pipe\(pipe\)/.test(py)&&/@spaces\.GPU\(duration=gpu_duration_i2i\)/.test(py)&&/strength=float\(strength\)/.test(py),'img2img: the Space app shares the loaded weights through from_pipe, exposes the img2img API with a strength and reserves GPU time by strength (16 s at .4)')}}
     // the rules in small: reset parsing and the 24 h window
     {const {quotaReset,gpuWindow,spaceDuration,parseSse}=await import('./art/space.mjs'),t0=new Date(2026,11,1,8,0);
       ok(quotaReset('Try again in 2:31:05',t0).getTime()-t0.getTime()===9065e3&&quotaReset('try again in 45:00',t0).getTime()-t0.getTime()===2700e3&&quotaReset('no time',t0,600).getTime()-t0.getTime()===600e3&&quotaReset('nothing',t0)===null,'quota reset: "Try again in H:MM:SS", "MM:SS", else retry-after');

@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {join,dirname,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {pngSize} from './png.mjs';
-import {TILE,TIERS} from '../../src/render/tile.js';
+import {TILE,TIERS,U} from '../../src/render/tile.js';
 
 export const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..','..');
 export const MANIFEST=join(ROOT,'scripts','art','manifest.json');
@@ -13,7 +13,12 @@ export const ASSETS=join(ROOT,'assets');
 export const KINDS=['tile','autotile','building','landmark','sprite','portrait','prop','icon'];
 const ID=/^([a-z]+):([a-z0-9][a-z0-9-]*)$/;
 
-export const loadManifest=(p=MANIFEST)=>withKindModel(JSON.parse(readFileSync(p,'utf8')));
+export const loadManifest=(p=MANIFEST)=>withKindInit(withKindModel(JSON.parse(readFileSync(p,'utf8'))));
+// Image to image from the game's own art (#763, manifest kindInit {kind: {init, strength}}): every entry of those kinds starts
+// from its procedural art at that strength; an entry's own init (false: text only) and strength win.
+export const INIT_KINDS=['building','landmark','sprite'];
+export function withKindInit(man){const ki=(man&&man.kindInit)||{};
+  for(const e of man.assets||[]){const c=ki[e.kind];if(!c)continue;if(e.init===undefined)e.init=c.init;if(e.strength===undefined)e.strength=c.strength}return man}
 // The trial switch (#763, manifest kindModel {on, model, kinds}): with on, every entry of those kinds that names no model of
 // its own is made with that model. Off (or absent) leaves the manifest as written.
 export function withKindModel(man){const km=man&&man.kindModel;if(!km||!km.on||!km.model)return man;
@@ -22,7 +27,7 @@ export function withKindModel(man){const km=man&&man.kindModel;if(!km||!km.on||!
 export const PREVIEW_KINDS=['building','landmark'];
 // Tiers (#177, src/render/tile.js): the renderer draws the assets of its TILE size; every asset is made per tier from the
 // same manifest entry (sizes per tier, same prompt and seed) with the tier's generation settings (manifest tiers).
-export {TILE,TIERS};
+export {TILE,TIERS,U};
 export const LEGACY_TIER=32; // index entries and queue keys made before tiers were 32 px art
 // ('tile:grass', 32) -> 'tile/32/grass.png' (relative to the assets folder; the same path the browser asks for).
 export function fileOf(id,tier=TILE){const m=ID.exec(id);if(!m)throw new Error('bad asset id '+id);return `${m[1]}/${tier}/${m[2]}.png`}
@@ -55,8 +60,11 @@ export function validateManifest(man,PAL,resolvePalette){
   if(man.pinnedModel&&!(man.models||{})[man.pinnedModel])errs.push(`pinnedModel: unknown model ${man.pinnedModel}`);
   if(man.kindModel){const km=man.kindModel;if(!(man.models||{})[km.model])errs.push(`kindModel: unknown model ${km.model}`);
     for(const k of km.kinds||[])if(!KINDS.includes(k))errs.push(`kindModel: unknown kind ${k}`);if(typeof km.on!=='boolean')errs.push('kindModel.on must be true or false')}
+  for(const k of Object.keys(man.kindInit||{})){if(k==='about')continue;if(!INIT_KINDS.includes(k))errs.push(`kindInit: ${k} stays text only (image to image is for ${INIT_KINDS.join(', ')})`)}
   for(const e of man.assets){const m=ID.exec(e.id||'');
     if(!m){errs.push(`bad id ${e.id}`);continue}
+    if(e.init&&(e.init!=='procedural'||!INIT_KINDS.includes(e.kind)))errs.push(`${e.id}: init must be 'procedural' on ${INIT_KINDS.join(', ')}`);
+    if(e.init&&!(e.strength>=.1&&e.strength<=.9))errs.push(`${e.id}: strength must be .1 to .9`);
     if(seen.has(e.id))errs.push(`duplicate id ${e.id}`);seen.add(e.id);
     if(!KINDS.includes(e.kind))errs.push(`${e.id}: unknown kind ${e.kind}`);else if(m[1]!==e.kind)errs.push(`${e.id}: kind ${e.kind} differs from the id prefix`);
     if(e.size!==undefined)errs.push(`${e.id}: 'size' is replaced by 'sizes' per tier`);

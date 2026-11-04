@@ -12,6 +12,7 @@
 import {hexToRgb,rgbToHex,quantiser,clearBackground,downscale,outline} from './post.mjs';
 import {postFlat} from './post-flat.mjs';
 import {postSheet} from './post-sheet.mjs';
+import {postInit} from './post-init.mjs';
 
 const luma=(d,o)=>d[o]*.299+d[o+1]*.587+d[o+2]*.114;
 // Edge energy per column (axis 'x') or row ('y'): how much the image changes across that line.
@@ -74,8 +75,10 @@ export class FlatError extends Error{constructor(n,min,notes){super(`flat: ${n} 
 // taken as is), minPalette and factors (the tier's palette widening; post.minPalette wins), key (sprite sheets: the
 // colours recoloured per faction, which a hero sheet must show; post-sheet.mjs).
 // An entry with frames {cols, rows} is a sprite sheet: its figures are found in the model image and laid on the frame
-// grid (post-sheet.mjs).
-export function postProcess(img,entry,pal,outlineColor,{hint=8,tier=32,minPalette=6,factors,key=null}={}){
+// grid (post-sheet.mjs). opts.init: the image was made from this init (scripts/art/init.mjs): its cells are read back through
+// the same layout and the silhouette is the procedural art's (post-init.mjs), then the recipe's own gates apply.
+export function postProcess(img,entry,pal,outlineColor,{hint=8,tier=32,minPalette=6,factors,key=null,init=null}={}){
+  if(init)return postInit(img,entry,pal,outlineColor,{tier,minPalette,factors,key,init});
   const p=entry.post||{};if(p.flat)return postFlat(img,entry,pal,{hint,tier}); // buildings and standing landmarks (#763): post-flat.mjs
   const [W,H]=(entry.sizes&&entry.sizes[tier])||entry.size,tile=entry.kind==='tile'||entry.kind==='autotile';
   // a sprite sheet: the figures from the full image (a sheet is mostly plain ground, where no pixel grid shows)

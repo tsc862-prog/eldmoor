@@ -701,13 +701,17 @@ const WEAPON={
 export function heroSprite(a,ghost,frame=0){
   frame=frame?1:0;const skin=a.skin||FAC[a.fac].skin[0],hair=a.hair||'#2a2020';
   const key='h'+a.fac+a.cls+(a.race||'')+skin+hair+(ghost?'g':'')+frame;if(sprCache[key])return sprCache[key];
+  const {rows,map}=heroArt(a,ghost,frame);return sprite(key,rows,map)}
+// The hero's pixel strings and colour map, with no canvas (the art pipeline's init sheets read them in Node, #763).
+export function heroArt(a,ghost,frame=0){
+  frame=frame?1:0;const skin=a.skin||FAC[a.fac].skin[0],hair=a.hair||'#2a2020';
   const rows=HERO_BODY.map(r=>r.split(''));
   if(frame){rows[10]=HERO_LEGS1[0].split('');rows[11]=HERO_LEGS1[1].split('')}
   for(const [x,y,ch] of WEAPON[a.cls]||[]){const yy=y-frame;if(yy>=0&&yy<12)rows[yy][x]=ch}
   const c=CLS[a.cls],f=FAC[a.fac];
   const map=ghost?{H:'#d8ecff',R:'#c8e0f8',S:'#d8ecff',E:'#b8d4f4',A:'#b8d4f4',B:'#a8c8f0',D:'#98b8e0',L:'#88a8d0',K:'#7898c0',W:'#c8e0ff',O:'#ffffff'}
     :{H:c.head,R:hair,S:skin,E:'#1a1218',A:c.acc,B:f.color,D:f.dark,L:'#3a2f2a',K:'#241c18',W:c.wep,O:c.orb||c.wep};
-  return sprite(key,rows.map(r=>r.join('')),map)}
+  return {rows:rows.map(r=>r.join('')),map}}
 
 // Townsfolk (data/npcs.js roles, sim/npcs.js entities): the role's shape in the people's
 // skin and hair with the role's faction palette; a hood or cap colour (pal.H) replaces the hair.

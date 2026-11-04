@@ -83,7 +83,10 @@ export function postFlat(img,entry,pal,{hint=8,tier=32}={}){
   const out={w:W,h:H,data:new Uint8Array(W*H*4)},ox=Math.floor((W-im.w)/2),oy=Math.max(0,H2-im.h);
   for(let y=0;y<im.h&&y+oy<H;y++)for(let x=0;x<im.w&&x+ox<W;x++){const s=(y*im.w+x)*4,o=((y+oy)*W+x+ox)*4;for(let c=0;c<4;c++)out.data[o+c]=im.data[s+c]}
   notes.subject=`${sub.w}x${sub.h} -> ${im.w}x${im.h}`;notes.base=base;
+  return finishFlat(out,entry,pal,dist,notes)}
+// The gate and the finish, for an image already on the footprint (post-init.mjs comes here too): steps 4 and 5.
+export function finishFlat(out,entry,pal,dist,notes){const p=entry.post||{};
   const gate=styleGate(out,pal,gateOf(entry),dist);notes.gate=gate;
   if(!gate.ok)throw new OffStyleError(gate,notes);
   const fin=rimOutline(despeckle(out),p.outlineColor||darkest(pal));notes.colors=colorCount(fin);
-  return {w:W,h:H,data:fin.data,notes}}
+  return {w:out.w,h:out.h,data:fin.data,notes}}

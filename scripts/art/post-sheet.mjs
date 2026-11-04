@@ -66,6 +66,9 @@ export function postSheet(img,entry,pal,outlineColor,{tier=32,minPalette=6,facto
       out.data.set(fig.data.subarray(sI,sI+4),(Y*W+X)*4)}});
   im=quantise(out,colors,{dither:p.dither??0});
   if(p.outline!==false)im=outline(im,p.outlineColor||outlineColor);
+  return checkSheet(im,entry,key,notes,tier)}
+// The checks of a finished sheet (post-init.mjs comes here too): enough colours, and a hero's tabard in the faction key.
+export function checkSheet(im,entry,key,notes,tier=32){const p=entry.post||{},[W,H]=(entry.sizes&&entry.sizes[tier])||entry.size,{cols,rows}=entry.frames,fw=W/cols,fh=H/rows;
   notes.colors=colorCount(im);
   const min=p.minColors??2;if(notes.colors<min)throw new SheetError(`flat: ${notes.colors} colour${notes.colors===1?'':'s'} (needs ${min}+)`,notes);
   if(key&&key.length){const ks=new Set(key.map(c=>hexToRgb(c.toLowerCase()).join(','))),need=p.keyFrames??Math.ceil(cols*rows/2),least=p.keyMin??3;let n=0;
