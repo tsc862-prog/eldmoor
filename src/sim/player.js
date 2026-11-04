@@ -434,8 +434,8 @@ const heardText=e=>e.whisper?'(whispered) '+(e.from&&e.from.name||'Someone')+': 
 // Hearing (issue #126): a line from an agent-played hero (aloud in earshot, or on the party channel) starts the
 // listener's turn promptly (2), at most once per PK.HEAR_WAKE game minutes per listener so two agents cannot
 // talk each other into turns forever; the narrator, an NPC or a scripted companion's party line wake after the gap (1).
-function hearWake(a,e){const f=e.from;
-  if(f&&f.kind==='hero'&&f.player){if(S.gameMin-(a.playHeardAt??-1e9)>=PK.HEAR_WAKE){a.playHeardAt=S.gameMin;return 2}return 0}
+export function hearWake(a,e){const f=e.from;
+  if(f&&f.kind==='hero'&&f.player){if(S.gameMin-(a.playHeardAt??-1e9)>=(a.playHearGap??PK.HEAR_WAKE)){a.playHeardAt=S.gameMin;return 2}return 0}
   if(e.talk||e.dream)return 2; // a person answering the hero in a conversation (#170): a turn at once
   return e.party||f&&(f.kind==='dm'||f.kind==='npc')?1:0}
 // Notice what changed since the last step and turn it into events.

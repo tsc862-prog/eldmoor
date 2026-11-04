@@ -14,7 +14,7 @@ import {readFileSync, writeFileSync, existsSync, readdirSync, statSync} from 'no
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {behaviorRoot, FILES, ROTATE, scrub, legacyTokens} from './behavior-log.mjs';
-import {mindSection, pctile} from './mind-compare.mjs';
+import {mindSection, ctxSection, pctile} from './mind-compare.mjs';
 
 const SEV = {bad: 3, warn: 2, info: 1};
 const ABOUT = {
@@ -146,7 +146,7 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   const sa = sceneAnswers(T, A); L.push(...sa.lines);
 
   // ---- minds per member (issue #280) ----
-  const mc = mindSection(T, D, W, table, A); L.push(...mc.lines); // A: aim anomalies per mind (#727)
+  const mc = mindSection(T, D, W, table, A); L.push(...mc.lines); L.push(...ctxSection(T, table)); // A: aim anomalies per mind (#727)
 
 
   // ---- DM agent share (issue #541) ----
