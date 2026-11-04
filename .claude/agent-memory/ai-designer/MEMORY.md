@@ -63,6 +63,7 @@
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap
 - [Night sight #583](night_sight.md) — sightFor(a,z): night 0.6 for agent heroes only, towns exempt, hash unchanged
 - [Fold Fellowship #588](fold_fellowship.md) — slot model in company.js (slots option); shims and fellowship.js deleted, rulescheck guards; SLT in scripts
+- [One hall #771](one_hall.md) — gather only with a setup, Eldmoor has one town a faction so test in stepping, hold + cap at session zero, a.born
 - [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut
 - [Talk setting #431](talk_setting.md) — talk scenes open on tavern/chapel/smithy/gate by where the person stands; field keeps the cut
 - [Gambits #617](gambits.md) — per-hero rules run by autopilot/fight reflex; presets = old policy rule for rule; hashcheck autopilot row guards it
@@ -77,5 +78,6 @@
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
 - [Fight log #773](fight_log_773.md) — hurt who=attacker; won via shared xp; over vs fled
+- [Others none #780](others_none.md) — no-roster world, summon_hero lever, guild skip, GOODS floor, heir rule, fixture traps
 - [Log outcome tags #785](log_outcome_tags.md) — OUTCOME regex in history.js leaves src off outcome lines; add new outcome openings there
 - [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap
