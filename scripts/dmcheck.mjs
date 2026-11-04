@@ -67,6 +67,7 @@ const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {ZONES, ZPTS, zoneAt, LANDMARKS} = await import('../src/world/map.js');
+const {spotErr: SPOTERR} = await import('../src/sim/levers.js');
 (await import('../src/sim/outposts.js')).OP.ON = false; // the DM scenarios below set their own fixtures; contested outposts (#11) move hunters and would shift them (outposts have their own check)
 // a spot well inside its region (not within 11 tiles of a border): a staged cast lands 6-10 tiles away, and over a border it would stand in ground far above a level-2 party, which changes which refusal comes first
 const awayFromSites = p => LANDMARKS.every(l => Math.hypot(p.x - l.x, p.y - l.y) > 9); // a fixture spot never sits on the Crypt or the lair (a pull there is refused for its own reasons)
@@ -547,7 +548,8 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
     'mark_place near the Fellowship puts a shrine on open ground by them' + (r.ok ? ' at ' + r.at.x + ',' + r.at.y : ': ' + r.error));
   const zl = zoneAt(pl.x, pl.y);
   r = dmAct('mark_place', {kind: 'ruin', near: 'the lantern stone', reason: 'a second marker in that region'});
-  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: {x: pl.x + 4, y: pl.y}}, reason: 'a second marker in that region'});
+  const at2 = [[4, 0], [-4, 0], [0, 4], [0, -4], [3, 3], [-3, -3], [3, -3], [-3, 3]].map(([dx, dy]) => ({x: pl.x + dx, y: pl.y + dy})).find(p => !SPOTERR(p, {region: zl})) || {x: pl.x + 4, y: pl.y}; // ground the lever would take, so the cooldown is what refuses it
+  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: at2}, reason: 'a second marker in that region'});
   ok(r.ok === false && /^Refused: cooldown/.test(r.error) && pv.ok === false && /^Refused: cooldown/.test(pv.error) && !r.usage, 'a second mark_place in ' + ZONES[zl] + ' meets the lever\'s cooldown, as pull_lever does: ' + r.error);
   r = dmAct('mark_place', {kind: 'ruin', near: '0,0', reason: 'off the map'});
   ok(r.ok === false && /no open ground at 0,0/.test(r.error) && /mark_place needs at: a point/.test(r.error), 'mark_place on bad ground says what the lever needed: ' + r.error.slice(0, 100));

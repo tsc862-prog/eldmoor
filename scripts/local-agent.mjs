@@ -559,6 +559,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     if (/"dead":true/.test(text)) stat.dead = true;
     if (name === 'scene_act' && r && r.ok !== false && Number.isFinite(r.waited_s)) (stat.sceneS = stat.sceneS || []).push(r.waited_s); // the table's wait when it answered (issue #515)
     else if (r && typeof r === 'object' && r.table_waits && !stat.sceneJump) {stat.sceneJump = true; on('jump', 'table_waits')} // its own scene opened mid-turn: answer that first (issue #515)
+    else if (r && typeof r === 'object' && r.turn_over) stat.tableRest = true; // the wait has nothing to wait for at the table (#868): the turn ends with no closing call, pacing wakes it
     // the breaker (#467): a refusal (not the page being away) counts per tool and in a row; enough ends the turn
     const refused = r && typeof r === 'object' && r.ok === false && !(r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')));
     if (refused) {refusedBy.set(name, (refusedBy.get(name) || 0) + 1); inRow++;
@@ -571,7 +572,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   const capHit = () => {const now = Date.now(); while (times.length && now - times[0] > 60000) times.shift();
     if (times.length < o.callsPerMin) {times.push(now); return false}
     if (!stat.throttled) {stat.throttled = true; on('throttle', times.length)} return true};
-  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled || !!stat.sceneJump;
+  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled || !!stat.sceneJump || !!stat.tableRest;
   try {
   for (let i = 0; i < toolTurns && !stat.dead; i++) {
     let res;
