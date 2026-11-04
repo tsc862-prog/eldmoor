@@ -171,7 +171,8 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   const n0 = (run.out().match(/\| ctx 85k/g) || []).length;
   ok(await until(() => (run.out().match(/\| ctx 85k/g) || []).length > n0), 'with the table open the next turn plays on');
   ok(!/session rolled/.test(run.out()) && readSess(hero.id).sessionId === sid && !oldFiles().length, 'and nothing rolls mid-scene, past the roll point or not');
-  const since = api.calls.length; px.table = false; api.ctx = () => 26000;
+  // the size stays 85k until a fresh session starts: a turn in flight as the table closes must not report the small size, or nothing is left to roll
+  const since = api.calls.length; px.table = false; let small = false; api.ctx = c => {if (c.tool && !c.isResult && c.msgs <= 2) small = true; return small ? 26000 : 85000};
   ok(await until(() => /\[session rolled: 85k tokens\]/.test(run.out())), 'the table closed, the next turn rolls: [session rolled: 85k tokens]');
   const s2 = await until(() => {const s = readSess(hero.id); return s && s.sessionId && s.sessionId !== sid ? s : null});
   ok(s2 && s2.rolls === 1 && s2.system === orders && s2.runner && s2.runner.model === 'claude-haiku-5-5' && s2.turns >= 3, 'the session file has a new session, the same standing orders and mind, the turns counted on, one roll');
@@ -192,7 +193,8 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
 // A resume after an update: a long session with no size kept rolls before it is paid for.
 {
   const s = readSess(hero.id); delete s.ctx; s.turns = 44; writeFileSync(join(tmp, 'agents', hero.id + '.json'), JSON.stringify(s)); api.ctx = () => 26000;
-  const run = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1']);
+  // one turn only: a reflection due at dusk would rightly hold the roll back, and this case is about the old session
+  const run = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1', '--no-reflect']);
   await run.done;
   ok(/\[session rolled: size not kept, 44 turns\]/.test(run.out()), 'a long session from before this fix rolls on its first turn, before a call is paid for at the old size');
 }
