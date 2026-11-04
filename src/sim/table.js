@@ -74,7 +74,7 @@ import {companyById,companyOf,companies,members,leaderOf,isSolo,campaign,followe
 import {setProposeHook,castVote,resolveProp,reflexVote,propById,propCompany,leaderOfF,openProps,waitingVoters,voters} from './council.js';
 import {inRange} from './reach.js';
 import {setFellowChoice} from './player-choice.js';
-import {reflexMay,ownerHeld} from './runlink.js';
+import {reflexMay,ownerHeld,hasLinks} from './runlink.js';
 import {ENG,allScenes,sceneOf} from './scenes.js'; // one open scene per company, the engaged hold (#518)
 import {liveLimit,missed,framing,unwoken,heldBack,FRAMING} from './scenewait.js'; // a queued live member gets a bounded extra wait; a timed-out one is reported (#515)
 import {MOVES} from '../data/moves.js';
@@ -83,7 +83,7 @@ import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName,roundEnd,stunCheck,ca
 import {condOn,condsOf,clearRounds} from './eff.js';
 import {CONDITIONS} from '../data/moves.js';
 import {socialSkill,trained} from './abilities.js';
-import {DOWN,isDown,tableSave,stabilizeAt,upAgain,reviveBonus,bleedingOf,stabText} from './downed.js'; // the downed at the table (#654)
+import {DOWN,isDown,tableSave,stabilizeAt,upAgain,reviveBonus,bleedingOf,stabText,onWatch} from './downed.js'; // the downed at the table (#654)
 import {PICKUP_MS,callDeadline,goneEpoch} from './dmreflex.js'; // the DM call budget counts from pickup (#680)
 
 export const TABLE={
@@ -172,6 +172,8 @@ const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').re
 const SEED0=0x1f2e3d4c;let seed=SEED0;export const resetTableSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
 
+// Watch mode's downed clock (#655): Table Off, an agent hero and a host with runner links (never npm run sim or a seeded check).
+onWatch(a=>TABLE.mode==='off'&&!!a.player&&hasLinks());
 export const tableOn=()=>(!!slotted()||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
 // The scene's company and its members. The Fellowship keeps its slot order (slotHeroes(slotted())); any other company its join order.
 export const sceneCompany=sc=>!sc?null:sc.company!=null?companyById(sc.company):slotted()||null;
