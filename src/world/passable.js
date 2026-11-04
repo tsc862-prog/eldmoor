@@ -61,5 +61,9 @@ export function nearestOpen(x,y,maxR=12,ok){const cx=Math.floor(x),cy=Math.floor
       const p={x:tx+.5,y:ty+.5};if(ok&&!ok(p))continue;
       const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=p}}}
   return best}
+// Where to stand for a point that may fall on solid ground (a building's footprint when a hero is placed in a town
+// at random, #793): the point itself when open, else the nearest open tile centre within maxR (default 4), else the point.
+// No dice, so the callers' random draws stay as they were. Returns {x,y}.
+export function standAt(x,y,maxR=4){if(!solidAt(x,y))return {x,y};const o=nearestOpen(x,y,maxR);return o||{x,y}}
 // Count of solid tiles, by reason (for the world check and the survey note).
 export function solidCounts(){const g=grid(),o={};for(let i=0;i<g.length;i++)if(g[i])o[WHY[g[i]]]=(o[WHY[g[i]]]||0)+1;return o}

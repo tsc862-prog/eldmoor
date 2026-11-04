@@ -37,6 +37,7 @@ import {RACES,racesOf,homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {WORLDS} from '../world/spec.js';
 import {S} from './state.js';
 import {makeHero} from './heroes.js';
@@ -239,7 +240,7 @@ export function suggestName(raceId,u1=rnd(),u2=rnd()){const r=RACES.find(x=>x.id
 const free=(a,fac,used)=>a.kind==='hero'&&a.state!=='dead'&&a.fac===fac&&!inSlots(a)&&!a.player&&!used.has(a.id);
 // Make a level-1 hero of this people: new skin, hair and home town, abilities rolled again.
 export function restyle(a,raceId){const r=RACES.find(x=>x.id===raceId);if(!r||r.fac!==a.fac||a.race===r.id)return;
-  a.race=r.id;a.skin=pickA(r.skin);a.hair=pickA(r.hair);a.town=r.home;const c=homeOf(a);a.town=c.name;a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;rollScores(a)}
+  a.race=r.id;a.skin=pickA(r.skin);a.hair=pickA(r.hair);a.town=r.home;const c=homeOf(a);a.town=c.name;Object.assign(a,standAt(c.x0+2+rnd()*7,c.y0+4+rnd()*3));rollScores(a)}
 // One hero for a setup entry: a level-1 recruit of the chosen class (and people, when one of the roster already
 // is), else a fresh newcomer made to fit; then the chosen people and name.
 function pickOne(p,fac,used,taken){
