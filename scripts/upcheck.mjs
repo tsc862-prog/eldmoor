@@ -189,6 +189,7 @@ console.log('launcher (real children on spare ports)');
     m = mark(); send('s');
     ok(await seen(/relay: ok/, m, 8000) && await seen(/art loop: /, m, 8000) && /ollama: not reachable/.test(out.slice(m)), 'status shows the relay and Ollama');
     ok(await seen(/art loop: waiting until \d{4}-\d\d-\d\d \d\d:\d\d .*; last pass made 0/, m, 8000), 's shows the art loop: its next check and last pass: ' + (out.slice(m).match(/art loop: .*/) || [''])[0]);
+    ok(await seen(/cost today: /, m, 8000), 's shows the spend of the day in one line (#799): ' + (out.slice(m).match(/cost today: .*/) || [''])[0]);
     // u: dirty tree refused
     appendFileSync(join(work, 'a.txt'), 'local edit\n'); m = mark(); send('update');
     ok(await seen(/update refused: the working tree has local changes/, m, 15000), 'u refuses a dirty tree');

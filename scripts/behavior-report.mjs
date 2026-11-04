@@ -2,7 +2,8 @@
 // scripts/behavior-log.mjs) into Markdown at logs/behavior/<world>/report.md, for the watcher and the
 // playtest-reviewer agent: top anomalies with counts and examples, per-seat health, a model comparison
 // (empty-turn rate, latency, tokens and cost per provider/model), a mind comparison per Fellowship member and
-// provider/model (scripts/mind-compare.mjs, issue #280), the world digests and the decisions.
+// provider/model (scripts/mind-compare.mjs, issue #280), the cost (scripts/cost-report.mjs, issue #799), the world digests
+// and the decisions.
 //
 //   npm run behavior-report                    the world whose logs changed last
 //   npm run behavior-report -- --world eldmoor-headless
@@ -11,10 +12,11 @@
 //   last N real hours), --stdout (print the report too)
 // Plain Node, no dependency. Reads rotated files too (turns.jsonl.3 .. turns.jsonl).
 import {readFileSync, writeFileSync, existsSync, readdirSync, statSync} from 'node:fs';
-import {join} from 'node:path';
+import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {behaviorRoot, FILES, ROTATE, scrub, legacyTokens} from './behavior-log.mjs';
 import {mindSection, ctxSection, pctile} from './mind-compare.mjs';
+import {costSection, worldVoices} from './cost-report.mjs';
 
 const SEV = {bad: 3, warn: 2, info: 1};
 const ABOUT = {
@@ -62,7 +64,7 @@ const f1 = v => v == null ? '-' : (Math.round(v * 10) / 10).toString();
 const money = v => v == null ? '-' : '$' + v.toFixed(4);
 const cell = s => String(s == null ? '' : s).replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
 const q = (s, n = 140) => {s = cell(s); return s.length > n ? s.slice(0, n) + '…' : s};
-const table = (head, rows) => rows.length ? ['| ' + head.join(' | ') + ' |', '|' + head.map(() => ' --- ').join('|') + '|', ...rows.map(r => '| ' + r.map(cell).join(' | ') + ' |')].join('\n') : '_none_';
+export const table = (head, rows) => rows.length ? ['| ' + head.join(' | ') + ' |', '|' + head.map(() => ' --- ').join('|') + '|', ...rows.map(r => '| ' + r.map(cell).join(' | ') + ' |')].join('\n') : '_none_';
 const day = gm => gm == null ? '?' : `day ${Math.floor(gm / 1440) + 1} ${String(Math.floor(gm % 1440 / 60)).padStart(2, '0')}:${String(Math.floor(gm % 60)).padStart(2, '0')}`;
 const mind = r => (r.provider || '?') + '/' + (r.model || (r.src === 'game' ? 'relay default' : '?')); // a Mind entry without a model asked the relay's default
 
@@ -201,13 +203,16 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   // ---- companies (issue #460) ----
   const co = companySection(W, T, table); L.push(...co.lines);
 
+  // ---- cost (issue #799) ----
+  const cs = costSection(T, W, D, table, {voices: world ? worldVoices(dirname(dir), world, sinceMs) : {}}); L.push(...cs.lines);
+
   // ---- decisions ----
   L.push('## Decisions by kind', '');
   const dk = new Map();
   for (const d of D) {const k = (d.src || '?') + ' ' + (d.kind || '?'); let x = dk.get(k); if (!x) dk.set(k, x = {k, n: 0, res: {}}); x.n++; const r = d.src === 'relay' ? (d.ok ? 'answered' : 'failed ' + (d.status || '')) : d.outcome || '?'; x.res[r] = (x.res[r] || 0) + 1}
   L.push(table(['source and kind', 'count', 'results'], [...dk.values()].map(x => [x.k, x.n, Object.entries(x.res).map(([k, v]) => `${k.trim()} ${v}`).join(', ')])), '');
   const wsh = wishSection(readJsonl(dir, FILES.wish, sinceMs), T, table); L.push(...wsh.lines);
-  return {md: scrub(L.join('\n') + '\n'), wishes: wsh.data, minds: mc.data, companies: co.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
+  return {md: scrub(L.join('\n') + '\n'), wishes: wsh.data, minds: mc.data, cost: cs.data, companies: co.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
 }
 
 
