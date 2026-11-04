@@ -56,6 +56,8 @@ import {compCall,compSay,compSummary} from './compvoice.js'; // scripted compani
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
 import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf} from './company.js';
 import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
+import {wounded} from './wounds.js';
+import {woundSpanWord} from './tend.js'; // lasting wounds in the DM's needs (#656)
 import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
 import {installRumourLever,rumoursView} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever,epithetView} from './epithet.js'; // bestow (#638)
@@ -206,6 +208,7 @@ function fellowshipNeeds(){const F=slotted(),fo=focus();if(!F||!fo)return null;
   if(S.table)items.push('A Table scene is open: let it play; answer only calls of a scene you staged.');
   if(props.length)items.push('A vote is open ('+props.map(P=>P.kind).join(', ')+'): leave it to them.');
   for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them; a road home, a camp, a friendly face.');
+  for(const a of fo.members)if(wounded(a)&&!isDown(a))items.push(a.name+' carries a wound for '+woundSpanWord(a)+': a healer, a fire or a chapel on their road.');
   const open=th.slice(0,4).map(t=>txt(t.parts));
   for(const t of open)items.push('Open thread: '+t);
   for(const x of seeItems(fo,dmState()))items.push(x);
@@ -238,6 +241,7 @@ export function companiesNeeds(){const fs=focuses();if(!fs.length)return [];cons
     if(pend.scene)items.push('A Table scene of theirs is open: let it play.');
     if(pend.vote)items.push('A vote is open among them: leave it to them.');
     for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them.');
+    for(const a of fo.members)if(wounded(a)&&!isDown(a))items.push(a.name+' carries a wound for '+woundSpanWord(a)+'.');
     for(const t of th.slice(0,2))items.push('Open thread: '+txt(t.parts));
     for(const x of seeItems(fo,dmState()).slice(0,2))items.push(x);
     const quiet=!down.length&&!pend.scene&&!pend.vote&&!hurt.length&&!fo.busy;

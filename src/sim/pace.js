@@ -38,6 +38,7 @@ import {followBrief} from './follow.js'; // who the hero follows and who follows
 import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
 import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
 import {leaderFor} from './council.js';
+import {woundLine} from './tend.js';
 import {worldHeld} from './prep.js'; // the world held before play (#559)
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
@@ -90,6 +91,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
     aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
+    wounds:woundLine(a), // a lasting wound in words (#656); null when whole
     reflect:reflectDue(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The hall's open jobs that concern the Fellowship (issue #326), as the board shows them to a member standing in town:
 // a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting

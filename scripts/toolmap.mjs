@@ -19,7 +19,7 @@ export const HERO_GROUPS = {
   'Talk and company': ['say', 'whisper', 'emote', 'talk', 'party_say', 'chat_read', 'party_read', 'invite', 'hire', 'dismiss', 'join_party', 'accept', 'decline', 'leave_party', 'propose', 'vote', 'challenge', 'answer_challenge', 'break_camp', 'lead_to', 'send_courier'],
   'Memory and self': ['journal_read', 'journal_write', 'journal_search', 'remember', 'recall', 'update_memory', 'forget', 'pin', 'self', 'become', 'wish'],
   'The table and the unforeseen': ['scene_act', 'attempt', 'wait'],
-  'A companion down': ['stabilize', 'tend', 'carry'],
+  'A companion down': ['stabilize', 'tend', 'carry', 'chapel_tend'],
 };
 export const DM_GROUPS = {
   'Read the world': ['dm_status', 'read_timeline', 'read_chronicle', 'read_dm_log', 'regions', 'npcs', 'hooks', 'levers', 'survey', 'world_standing'],
