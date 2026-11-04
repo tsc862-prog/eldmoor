@@ -200,7 +200,7 @@ function allView(node){const L=companies(),F=followedCompany();
 // band, the day it was posted, whose oath or which elite it is, and who posted it (the watcher may see that; the
 // heroes' brief never says it).
 const hallMeta=r=>[r.region,r.band?'Lv '+r.band[0]+'-'+r.band[1]:null,'posted day '+r.day,
-  r.oath?r.oath.name+'’s oath':null,r.elite?'elite '+r.elite.name+(r.elite.lvl!=null?' (Lv '+r.elite.lvl+')':'')+(r.elite.alive?'':', slain'):null,
+  r.oath?r.oath.name+(r.oath.thread?'’s past':'’s oath'):null,r.elite?'elite '+r.elite.name+(r.elite.lvl!=null?' (Lv '+r.elite.lvl+')':'')+(r.elite.alive?'':', slain'):null,
   'by '+r.by].filter(Boolean).join(' · ');
 const hallSig=C=>hallBoard(C).map(r=>r.id+':'+r.title+':'+hallMeta(r)).join('~');
 function hallView(node,C){const L=hallBoard(C),box=el('div','felhall');box.setAttribute('data-k','hall');
@@ -218,6 +218,7 @@ function sheetView(node,a){node.replaceChildren();if(!a)return;
   const ta=(which,k,label,v,rows)=>{const l=el('label','fta');l.append(el('span','dm',label));const t=el('textarea');t.rows=rows||2;t.value=v||'';t.dataset.fw=which;t.dataset.fk=k;l.append(t);box.append(l)};
   archRow(box,a);
   for(const [k,label] of PERSONA_ORDER){ta('persona',k,label,personaValue(a.persona,k),2);pinBox(box.lastChild,a,k)}
+  if(a.goal&&!a.goal.offered&&!a.goal.done){const o=el('div','dm','Oath: '+a.goal.text);box.append(o);pinBox(o,a,'oath')} // a pinned oath cannot be renounced (#800)
   stanceBlock(box,a);
   ta('backstory','summary','Backstory summary',a.backstory&&a.backstory.summary,2);
   for(const [k,label] of BACKSTORY_ORDER)ta('backstory',k,label,a.backstory&&a.backstory.paras&&a.backstory.paras[k],3);

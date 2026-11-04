@@ -96,6 +96,14 @@ for (let i = 0; i < PE.SELF.HIST + 5; i++) {nextDay(); act(A, 'become', {field: 
 ok(A.persona.hist.length === PE.SELF.HIST && A.persona.hist[A.persona.hist.length - 1].after === 'Quirk number ' + (PE.SELF.HIST + 4), 'capped at ' + PE.SELF.HIST + ', newest kept');
 ok(act(A, 'self').recent_changes.length === PE.SELF.SHOW && /^Day \d+: quirk:/.test(act(A, 'self').recent_changes[0]), 'self shows the latest changes');
 
+console.log('oaths and threads in self (#800)');
+{const keep = A.goal, t = {type: 'hoard', tier: 0, text: 'Bank 9999 gold', need: 9999, progress: 0, done: false, at: 0, offered: true, offeredAt: Math.round(S.gameMin)}; A.goal = t;
+ const s1 = act(A, 'self'); ok(s1.from_your_past && s1.not_sworn && !s1.oath, 'self names the thread as the past, and that it binds to nothing: ' + s1.from_your_past);
+ ok(PE.factsOf(A).oath === null && PE.factsOf(A).thread === s1.from_your_past, 'the sheet\'s facts carry a thread, not an oath');
+ delete t.offered; const s2 = act(A, 'self'); ok(s2.oath === t.text && !s2.from_your_past, 'once sworn, self says your oath');
+ t.aside = true; t.offered = true; const s3 = act(A, 'self'); ok(!s3.oath && !s3.from_your_past, 'set aside, self says nothing of it'); A.goal = keep;
+ ok(PE.pinField(A, 'oath', true) && PE.pinned(A, 'oath') && PE.pinField(A, 'oath', false), 'the owner can pin an oath like a persona field')}
+
 console.log('relay writing and sheets keep it');
 const mine = A.persona.fears, model = {voice: 'Model voice.', wants: 'Model wants.', fears: 'Model fears.', quirk: 'Model quirk.', never_says: 'Model line.', stances: {[B.id]: 'Model stance.', [C.id]: 'Model stance C.'}};
 ok(PE.applyPersona(A, model, SLT.slotHeroes(SLT.slotted()), 'test-model') && A.persona.fears === mine && A.persona.stances[B.id].startsWith('Owes me a life') && A.persona.hist.length === PE.SELF.HIST, 'applyPersona never overwrites the hero\'s own fields, stances or history');
