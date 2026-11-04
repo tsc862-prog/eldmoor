@@ -564,6 +564,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const fo = SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); SLT.setSlotMinds(SLT.slotted(), 'agent'); S.brainOn = false;
     ok(fo.ok && SLT.slotted() && SLT.slotted().ids.length === 5, 'a Fellowship of five, Minds: agents' + (fo.ok ? '' : ': ' + fo.error));
     const mem = SLT.slotted().ids.map(id => S.agents.find(x => x.id === id));
+    // This world is unseeded and has been running: a member can be downed here, and a downed hero has no options and sits out an everyone-at-once scene (#654).
+    const standUp = () => {for (const a of mem) if (a.state === 'downed') {delete a.down; a.state = 'town'; a.hp = sim.maxHp(a)}};
+    standUp();
     // the game side first: no waiting out your own turn
     {{const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
       const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0; delete sc0.wk; // the scene set and its members woken (#682)
@@ -602,6 +605,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const claimed = await (async () => {for (let i = 0; i < 200; i++) {const h = await health(PB).catch(() => null); if (h && h.heroes.filter(x => x.fellow && x.claimed).length === 5) return true; await sleep(100)} return false})();
     ok(claimed, 'the Fellowship runner claims all five (mock-fumble:1b)' + (claimed ? '' : '\n' + fout.slice(-1500)));
     await until(() => !S.table, 30000);
+    standUp();
     {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
     const f0 = seen.fumble || 0, t0 = Date.now(), sc = openScene('check', 'A test of nerve', ['The DM calls for a roll at the ford.'], {anchor: mem.find(a => a.state !== 'dead').id});
     ok(sc && sc.pause, 'a scene opens and the world pauses for it');
