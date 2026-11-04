@@ -189,7 +189,7 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
     try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a reflection moment (issue #179)
       if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a Fellowship member's own scene (issue #163)
-      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + briefText(b0), model: rs.model, toolTurns,
+      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + briefText(b0), model: rs.model, toolTurns,
       on})), {pacer, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on})}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
@@ -309,7 +309,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let b0 = await pacer.brief(); const tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, // under the app supervisor: one of the Claude slots for this turn
