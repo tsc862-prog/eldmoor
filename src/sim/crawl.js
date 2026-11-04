@@ -86,7 +86,7 @@ const woundedWord=a=>a.hp<maxHp(a)*.35?' (badly hurt)':a.hp<maxHp(a)*.65?' (hurt
 function frameOf(g,room){const cr=g.crawl,rem=liveFoes(cr),by={};for(const f of rem)by[f.name]=(by[f.name]||0)+1;
   const list=Object.keys(by).map(n=>by[n]>1?by[n]+' '+(species((rem.find(f=>f.name===n)||{}).type)||{}).pl||n+'s':n).join(' and ');
   const fresh=cr.rd===0,hurt=members(g).filter(a=>a.hp<maxHp(a)*.65).map(a=>a.name+woundedWord(a));
-  return [fresh?room.frame+' ':'The fight goes on. ',gd(list)+(fresh?' bar the way.':' still stand.'),hurt.length?' Hurt: '+hurt.join(', ')+'.':'',
+  return [fresh?room.frame+' ':'The fight goes on. ',gd(list),rem.length===1?(fresh?' bars the way.':' still stands.'):(fresh?' bar the way.':' still stand.'),hurt.length?' Hurt: '+hurt.join(', ')+'.':'',
     ' Room '+(cr.i+1)+' of '+roomsOf(g).length+', round '+(cr.rd+1)+'.']}
 
 function openRound(g){const cr=g.crawl,room=roomsOf(g)[cr.i];
