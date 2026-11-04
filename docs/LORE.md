@@ -384,11 +384,13 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 | --- | --- | --- | --- |
 | Highgate | Concord | Hallowan | As in Eldmoor, in the north-west corner. |
 | Cairnmoot | Concord | Tarrow | A cairn-ringed hill market on the western bank of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Brinereach | Concord | Skerrin | A salt-reach fishing town of net-menders on the western bank of the Greywater, south of Cairnmoot. Its name was reserved in "Peoples of Eldmoor". |
 | Grimhold | Warband | Ashfolk | As in Eldmoor, in the south-west corner. |
 | Murkstead | Warband | Mirekin | A stilted salt-boilers' town at the fen margin, west of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Thornteeth | Warband | Thornhide | A bone-carvers' ridge-town in the south-east of the fen country, on the road to the Sunken Crypt. Its name was reserved in "Peoples of Eldmoor". |
 
 - **The Greywater**: the river that divides Lowmark from the fen and the upland.
-- **Brinereach** (Stepping Lands town, Concord, Skerrin home, Lowmark/Sedgewater side, level 1-5 to 4-9): a salt-reach fishing town of net-menders on the west bank of the Greywater, road to the western hub. Not Eldmoor canon geography.
+- **Brinereach** (Stepping Lands town, Concord, Skerrin home, Lowmark, level 1-5): a salt-reach fishing town of net-menders on the west bank of the Greywater, road to the western hub. Not Eldmoor canon geography.
 - **Thornteeth** (Stepping Lands town, Warband, Thornhide home, Sedgewater, level 4-9): a bone-carvers' ridge-town in the south, roads to Murkstead and the Sunken Crypt. Not Eldmoor canon geography.
 - **The Sunken Crypt of the Stepping Lands** (level 4-9, Sedgewater): the same dungeon name, but the crawl here is three chambers of its own (#309), proving the rooms are data per world. Creatures are the Crypt species (Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens).
   - **The Reed Sump**: a flooded stair-foot choked with dead reeds; Tomb Skitters under the water-mat.
@@ -397,7 +399,7 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 - **The Hollow Cairn** (level 8-13, Cairnwold): placeholder second dungeon. Only the entrance exists today; it has no group runs, boss fight or loot. Its warden, **The Cairn-Warden**, is reserved for the future dungeon.
 - **Brask Ironhorn, the Ram-King of the Cairnwold** (Cairnwold elite, level 15, kin Tundra Shaghorn): a crag-ram with one horn snapped and the other grown into his own shoulder. Placeholder.
 - **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.
-- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (below).
+- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (see the town table and entries above).
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
