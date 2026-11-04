@@ -75,3 +75,4 @@
 - [Scene grab](scene-grab.md) — #737 sceneGrab aborts mid-turn Claude query after 15 s due, resume, queued countdown
 - [localcheck pacing flake #762](localcheck-pacing-downed.md) — downed-companion urgent event woke the test hero; DOWN.REACH/SEE zeroed in section A; no parallel runs
 - [Companion voice](companion-voice.md) — #764 compvoice.js: companion_call/say, per-listener memory, no-repeat fill, PER_DAY 6, hooks, pitfalls
+- [Session size](session-size.md) — #787 roll + compaction net: CLI threshold math, Haiku 100k line, real cost per turn, mock pitfalls
