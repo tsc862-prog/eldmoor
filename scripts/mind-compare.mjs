@@ -145,11 +145,11 @@ export function mindSection(T, D, W, tableFn) {
   const writes = r => {const parts = Object.entries(r.writers || {}).map(([m, n]) => n + ' by ' + m); if (r.writing) parts.unshift(r.writing + ' by this mind');
     return parts.length ? parts.join(', ') + (r.writingFail ? ' (' + r.writingFail + ' failed)' : '') : '-'};
   const lat = (xs, unit) => {const a = pctile(xs, 50), b = pctile(xs, 90); return a == null ? '-' : `${r1(a)} / ${r1(b)}${unit}`};
-  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'turns/min', 'ctx p50/peak', 'rolls', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'lifetime (game h)'],
+  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'lifetime (game h)', 'turns/min', 'ctx p50/peak', 'rolls'],
     c.rows.map(r => {const h = r.hero, t = r.turns > 0, d = r.dec > 0, life = h.lifeH == null ? '-' : r1(h.lifeH) + (h.died ? ' (died' + (r.died ? ': ' + r.died : '') + ')' : ' (alive)');
       return [h.name + (h.named === false ? ' (unnamed)' : ''), h.role || (h.fellow ? 'member' : 'agent hero'), r.mind, dash(r.turns, t), dash(r.empty, t), dash(r.failed, t), t || r.table ? r.table : '-', dash(r.dec, d), dash(r.rejected, d), dash(r.fallback, d),
-        writes(r), lat(r.secs, ' s'), lat(d ? r.decMs : r.relayMs, ' ms'), r.tokN ? `${r.tin} / ${r.tout}` : '-', r.crN ? r.cr : '-', r.costN ? money(r.cost) : '-', perMin(r), r.ctx.length ? `${kTok(pctile(r.ctx, 50))} / ${kTok(Math.max(...r.ctx))}` : '-', r.ctx.length ? r.rolls : '-',
-        r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, life]})), '');
+        writes(r), lat(r.secs, ' s'), lat(d ? r.decMs : r.relayMs, ' ms'), r.tokN ? `${r.tin} / ${r.tout}` : '-', r.crN ? r.cr : '-', r.costN ? money(r.cost) : '-',
+        r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, life, perMin(r), r.ctx.length ? `${kTok(pctile(r.ctx, 50))} / ${kTok(Math.max(...r.ctx))}` : '-', r.ctx.length ? r.rolls : '-']})), '');
   L.push('Overall per mind:', '');
   L.push(tableFn(['mind', 'heroes', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'fallbacks', 'sheets written (failed)', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out per turn', 'cache read per turn', 'cost per turn', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths'],
     c.overall.map(o => {const t = o.turns > 0;

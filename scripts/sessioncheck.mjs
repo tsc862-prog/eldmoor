@@ -46,6 +46,7 @@ ok(ctxText(212345) === 'ctx 212k' && ctxText(null) === 'ctx ?', 'the turn line s
   ok(rollDue(S({sessionId: null}), 80000) === null, 'nothing to roll without a session');
   ok(rollDue(S({ctx: null, turns: 44}), 80000).why === 'legacy', 'a long session saved before ctx was kept rolls at once: it is not paid for again');
   ok(rollDue(S({ctx: null, turns: 3}), 80000) === null, 'a short one plays on until its size is known');
+  ok(rollDue(S({ctx: null, turns: 44}), 150000, {legacy: false}) === null, 'a Sonnet DM, far under its point, is not rolled unseen');
   const s = {sessionId: 's1', heroId: 7, system: 'orders\nYOUR PERSONA\nbold\n(end of your persona)', runner: {provider: 'anthropic', model: 'claude-haiku-5-5'}, turns: 44, costUsd: 1.5, lastTotal: 1.2, lastUsage: {tokensIn: 9}, ctx: 212000, lastScene: 'x'}; let aside = 0;
   rollSession(s, () => {aside++; return 'path'});
   ok(aside === 1 && s.sessionId === null && s.ctx === null && s.lastTotal === 0 && s.lastUsage === null, 'a roll sets the file aside and restarts the session and its cost baselines');
@@ -53,6 +54,17 @@ ok(ctxText(212345) === 'ctx 212k' && ctxText(null) === 'ctx ?', 'the turn line s
   const L = {sessionId: null, local: {mode: 'tools', history: [{role: 'user'}]}, turns: 3}; askFresh();
   const f = rollDue(L, 0); ok(f && f.why === 'asked', 'a fresh session asked from the page rolls a local mind too');
   rollSession(L, () => null); ok(L.local.history.length === 0 && L.local.mode === 'tools' && rollDue(L, 0) === null, 'its history is emptied, once');
+}
+
+// A save while someone has the file open (Windows refuses the rename): retried, never fatal. The poll in section 3 found this as a crash.
+{
+  const {saveSession, sessionPath} = await import('./agent-sessions.mjs'), logs = join(tmp, 'lockcheck');
+  saveSession({heroId: 9, turns: 1}, {}, logs);
+  const fs = await import('node:fs'), fd = fs.openSync(sessionPath(9, logs), 'r'); let threw = null;
+  try {saveSession({heroId: 9, turns: 2}, {}, logs)} catch (e) {threw = e}
+  fs.closeSync(fd); saveSession({heroId: 9, turns: 3}, {}, logs);
+  ok(!threw, 'a save over an open session file does not throw');
+  ok(JSON.parse(fs.readFileSync(sessionPath(9, logs), 'utf8')).turns === 3, 'and the next save lands');
 }
 
 // ---------------------------------------------------------------- the mock Messages API
@@ -170,8 +182,11 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   const h = await health(WORLD), me = h.heroes.find(x => x.id === hero.id); ok(me && me.link !== 'none', `the claim held through the roll (link ${me && me.link})`);
   ok(await until(() => {const s = readSess(hero.id); return s && s.ctx === 26105}), 'and the next turns report the small size');
   await run.done;
+  if (!/\b1 rolls, 0 compactions/.test(run.out())) console.log(run.out().split('\n').slice(-25).map(l => '    | ' + l.slice(0, 200)).join('\n'));
   ok(/\b1 rolls, 0 compactions/.test(run.out()), 'the run ends counting its rolls');
-  const lines = (() => {try {return readdirSync(join(tmp, 'behavior')).flatMap(d => readFileSync(join(tmp, 'behavior', d, 'turns.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l)))} catch {return []}})();
+  const jsonl = name => {try {return readdirSync(join(tmp, 'behavior')).flatMap(d => readFileSync(join(tmp, 'behavior', d, name), 'utf8').trim().split('\n').map(l => JSON.parse(l)))} catch {return []}};
+  const lines = jsonl('turns.jsonl');
+  ok(await until(() => jsonl('world.jsonl').some(w => w.ctx && Object.values(w.ctx).some(Number.isFinite)), 20000), 'the world digest carries each seat\'s size');
   ok(lines.some(t => t.ctx === 85105) && lines.some(t => (t.flags || []).includes('session-rolled')), `the behavior turn lines carry ctx and the roll (${lines.length} lines)`);
 }
 // A resume after an update: a long session with no size kept rolls before it is paid for.

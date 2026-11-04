@@ -603,7 +603,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
-    const rd = rollDue(sess, rollAt, {busy: st === prepSt && !!prepSt}); // between turns (waitTurn never returns with a scene or a vote open), never in the prep (#787)
+    const rd = rollDue(sess, rollAt, {busy: st === prepSt && !!prepSt, legacy: /haiku/i.test(model)}); // between turns (waitTurn never returns with a scene or a vote open), never in the prep (#787)
     if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();

@@ -46,14 +46,14 @@ export const ctxText = n => Number.isFinite(n) ? `ctx ${Math.round(n / 1000)}k` 
 // at its next safe moment, a multi-hero runner's each on its own. Counted per session object, never saved.
 let freshAsks = 0; const freshSeen = new WeakMap();
 export const askFresh = () => {freshAsks++};
-export function rollDue(sess, limit, {busy = false} = {}) {
+export function rollDue(sess, limit, {busy = false, legacy = true} = {}) {
   if (busy) return null;
   if (freshAsks > (freshSeen.get(sess) || 0)) {
     if (sess.sessionId || (sess.local && sess.local.history && sess.local.history.length)) return {why: 'asked', line: '[session rolled: a fresh session was asked for]'};
     freshSeen.set(sess, freshAsks); // nothing to set aside yet
   }
   if (!sess.sessionId || !(limit > 0)) return null;
-  if (sess.ctx == null) return sess.turns >= ROLL.LEGACY_TURNS ? {why: 'legacy', line: `[session rolled: size not kept, ${sess.turns} turns]`} : null;
+  if (sess.ctx == null) return legacy && sess.turns >= ROLL.LEGACY_TURNS ? {why: 'legacy', line: `[session rolled: size not kept, ${sess.turns} turns]`} : null;
   return sess.ctx >= limit ? {why: 'size', line: `[session rolled: ${Math.round(sess.ctx / 1000)}k tokens]`} : null;
 }
 // Roll in place, so everything the runner holds on the session object (standing orders, runner settings, scene and voice marks,
