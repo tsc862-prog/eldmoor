@@ -64,7 +64,7 @@ const dunOf=g=>g&&g.site!=null?siteById(g.site)||CRYPT:CRYPT;
 const roomsOf=g=>dunOf(g).rooms||[];
 var SITE_END=null;export function setSiteEnd(f){SITE_END=f} // sim/sites.js: pays a cleared site, marks a ruin
 // The crawl runs for a group the Fellowship is in, in a dungeon with rooms, while Table mode is on (Watch mode keeps the roll).
-// The company is the first group member who rides in one (a drafted company comes first, see council.js unitDraft); a solo is a company of one.
+// The company is the first group member who rides in one (a company in a group comes first, see council.js unitDraft); a solo is a company of one.
 const coOf=g=>{for(const a of g.mem){const C=companyOf(a);if(C)return C}return null};
 export const crawlFits=g=>!!(g&&coOf(g)&&roomsOf(g).length&&tableOn());
 const lvlOf=g=>{const L=g.mem.filter(a=>crewOf(g).includes(a));return Math.max(1,Math.round(L.reduce((t,a)=>t+a.lvl,0)/Math.max(1,L.length)))};

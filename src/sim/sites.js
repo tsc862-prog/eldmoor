@@ -1,7 +1,7 @@
 // DM-made dungeon sites (issue #69, slice 1). The DM raises a site with the create_site lever (sim/levers.js; the DM agent's
 // flat tool create_site, sim/dmagent.js): a barrow, fortress, temple, mine, den or ruin in a region, at a level clamped to the
 // region's band. It appears as a real marker on the map (S.places, kind 'site', never terrain), is discovered when a hero
-// comes near, entered by a company (enter_site: a solo goes down at once, a company votes like a Crypt call), played room by
+// comes near, entered by a company (enter_site: a solo goes down at once, a company votes as for the Crypt), played room by
 // room at the Table through the dungeon crawl (sim/crawl.js, #65/#441; the abstract roll when no agent of the company has the
 // say or Table mode is off), and ends cleared (a ruin marker, a timeline entry, the boss's guaranteed epic) or collapsed
 // (left too long). Uncleared sites grow more dangerous every few days. Nothing here runs until the lever is pulled: S.sites

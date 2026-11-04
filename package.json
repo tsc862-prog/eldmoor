@@ -45,6 +45,7 @@
     "localscheck": "node scripts/localscheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",
     "sightcheck": "node scripts/sightcheck.mjs",
+    "initiatecheck": "node scripts/initiatecheck.mjs",
     "companycheck": "node scripts/companycheck.mjs && node scripts/companycheck-apart.mjs",
     "ratecheck": "node scripts/ratecheck.mjs",
     "fellowship": "node scripts/fellowship.mjs",
