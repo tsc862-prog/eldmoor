@@ -14,7 +14,7 @@ import {rulesOf,gambitRec,ruleText,noFlee,gambitDiff} from '../sim/gambits.js'; 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const STATUS={connected:'connected to the relay',connecting:'connecting to the relay…',offline:'relay not reachable (start npm run relay, then npm run agent)',off:'not connected'};
 
-const LINK={connected:['live','a runner holds this hero (calling tools, thinking or between turns)'],waiting:['live','a runner holds this hero (calling tools, thinking or between turns)'],busy:['Ollama busy','the local model is busy or loading; the runner waits for it'],none:['no runner','start one: npm run agent -- --hero ']};
+const LINK={connected:['live','a runner holds this hero (calling tools, thinking or between turns)'],waiting:['live','a runner holds this hero (calling tools, thinking or between turns)'],busy:['Ollama busy','the local model is busy or loading; the runner waits for it'],none:['no runner','start one: npm run agent -- --hero '],pagebusy:['page busy','this page froze for a moment (a long frame) and answered the relay late; the runner is still there']};
 
 export const hasAgent=a=>!!(a&&(a.player||(a.playLog&&a.playLog.length)||(a.journal&&a.journal.length)));
 

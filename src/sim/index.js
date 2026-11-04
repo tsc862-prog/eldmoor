@@ -22,6 +22,7 @@ import {updMarket} from './market.js';
 import {chatTick,resetChatSeed} from './chat.js';
 import {npcsTick,resetNpcSeed} from './npcs.js';
 import {talkTick,resetTalkSeed} from './talk.js'; // NPC conversations (#170)
+import {compTick} from './compvoice.js'; // scripted companions voiced by the DM (#764)
 import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import {downCallTick} from './downcall.js'; // the DM's voice on a downing (#655)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
@@ -127,6 +128,6 @@ export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lap
   // agent-played heroes (sim/player.js) run a reduced machine first
   partyTick();slotsTick(dt);estateTick();companionTick();hireTick();challengeTick();councilTick();campTick(dt);tableTick();sessionTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   updBoss(dt);raidCheck(dt);pvpCheck(dt);outpostsTick(dt);dungeonCheck(dt);siteTick(dt);updMarket(dt);
-  chatTick(dt);npcsTick(dt);talkTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
+  chatTick(dt);npcsTick(dt);talkTick();compTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}

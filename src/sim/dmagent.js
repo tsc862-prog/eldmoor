@@ -51,6 +51,7 @@ import {isDown} from './downed.js';
 import {sceneCall,sceneAnswer,ourScene,openingDue} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
 import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
+import {compCall,compSay,compSummary} from './compvoice.js'; // scripted companions of an agent company, voiced by the DM (#764)
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
 import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf} from './company.js';
 import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
@@ -282,6 +283,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
+    ...(compSummary()?{companions:compSummary()}:{}), // scripted companions of agent companies speak through you (#764)
     ...(S.sites?{sites:sitesView()}:{}), // the dungeon sites you raised (#69): state hidden, discovered, entered, cleared or collapsed
     proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,
     fellowship:F?{name:F.name,minds:mindsOf(F),members:slotMembers(slotted()).map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:m.label,lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:m.label,empty:true})}:null,
@@ -747,6 +749,7 @@ export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40)
 export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
   const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
+  if(tool==='companion_call'&&dmSeatOn())return compCall(args); // the companion voice's poll (#764): its own listening stamp, never kept as a turn call
   if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
@@ -790,6 +793,7 @@ function run(tool,args){let r;
     case 'dream':r=dream(args);break;
     case 'npc_call':r=npcCall();break;
     case 'npc_offer':r=npcOffer(args);break;
+    case 'companion_say':r=compSay(args);break; // #764
     case 'stage_scene':r=stageScene(args);if(r&&r.ok&&r.staged!=null&&!r.preview)dmState().last={kind:'stage',id:r.staged,tool:'stage_scene',at:Math.round(S.gameMin)};break;
     case 'table_call':r=downCall()||sceneCall()||tableCall();break;
     case 'table_answer':r=downAnswer(args)||sceneAnswer(args)||tableAnswer(args);break;
