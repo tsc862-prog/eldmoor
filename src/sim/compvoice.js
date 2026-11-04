@@ -19,6 +19,7 @@
 //           e.by are for the watcher's Chat tab only). DM log kind 'companion': the companion's name and line, never the hero's
 // State S.compVoice {seq, cur:[call], day:{d, n:{heroId:count}, total}, stats}, saved with the world.
 import {S,clockStr,dayNo} from './state.js';
+import {swornOf} from './oath.js';
 import {hash} from '../core/rng.js';
 import {ZONES,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
@@ -153,7 +154,7 @@ export function talkCompanion(a,b,text){if(!voiced(b)||companyOf(b)!==companyOf(
 // ---- the DM's side ----
 function card(sp){const C=companyOf(sp),P=sp.persona,h=sp.hire,home=homeOf(sp);
   const c={id:sp.id,name:sp.name,cls:sp.cls,level:sp.lvl,...(sp.race?{race:sp.race}:{}),home:home?home.name:null,...(sp.originShort?{origin:sp.originShort}:{}),
-    traits:(sp.traits||[]).map(t=>String(t).toLowerCase()),...(sp.goal&&!sp.goal.done&&sp.goal.text?{oath:sp.goal.text}:{}),
+    traits:(sp.traits||[]).map(t=>String(t).toLowerCase()),...(swornOf(sp)&&sp.goal.text?{oath:sp.goal.text}:{}),
     rides:h&&!h.over?'hired: '+(h.line||h.kind||'a blade for coin')+' ('+Math.max(0,Math.ceil((h.until-S.gameMin)/DAY))+' paid days left)':sp.companion!=null?'a companion who answered an invite':'a member of the company',
     company:C?C.name:null};
   if(P){for(const k of ['voice','wants','fears','quirk','never_says'])if(P[k])c[k]=P[k]}

@@ -17,7 +17,11 @@
 // involved opens a rescue scene (table.js due). There the saves are per round, in initiative order (tableSave), and a
 // companion's act may heal, give a potion or stabilize (stabilizeAt); the world's clock leaves them be (savesAtTable).
 // In the Crypt crawl a hero at zero is downed too (crawlDown): the room's dice roll the saves, a wipe ends them all.
-// Not yet: Watch-mode clock (#655), wounds (#656), PvP spare (#657), agent tools and gambits (#658), UI (#659).
+// Watch mode (#655, owner answer 2): with the Table Off and a host that reports runner links, a downed agent hero's saves come
+// every DOWN.WATCH_TICK game minutes instead of DOWN.TICK, and its kin in reach get an urgent wake at each save, so their
+// runners have a turn before the next one (table.js registers the test, onWatch). The DM voices each downing, save and end
+// through its table_call (sim/downcall.js, onDownNews): words only, the dice here decide.
+// Every downing leaves a wound (#656, sim/tend.js takeWound); a death ends it with the hero. Not yet: UI (#659).
 import {ri,rnd} from '../core/rng.js';
 import {dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
@@ -38,9 +42,11 @@ import {nearDeath} from './lore.js';
 import {held,sceneOf} from './scenes.js';
 import {maxHp,moveTo,healOne,slay,fall} from './heroes.js';
 import {pvpDowned} from './mercy.js'; // finish or spare (#657)
+import {takeWound} from './tend.js'; // the lasting cost of a downing (#656)
 
 export const DOWN={
   TICK:10,          // game minutes between death saves away from a table
+  WATCH_TICK:20,    // the same for an agent hero in Watch mode (Table Off) with live runners (#655): time for its companions to act
   DC:10,            // a death save: d20, this or more a success
   SAVES:3,          // successes to stabilize, failures to die
   HEALER_FAILS:4,   // failures to die while a healer of theirs stands within heal range
@@ -62,6 +68,17 @@ export const DOWN={
 };
 
 const R=DOWN;
+// Watch mode (#655): table.js registers the test (Table Off, an agent hero, a host with runner links). Hoisted holders, as
+// aidHook: an import cycle through heroes.js.
+function watchHook(){}
+export function onWatch(f){watchHook.f=typeof f==='function'?f:null}
+const watching=a=>!!(watchHook.f&&watchHook.f(a));
+export const tickOf=a=>watching(a)?R.WATCH_TICK:R.TICK;
+// The DM's voice on a downing (#655, sim/downcall.js): told of each downing, save and end. kind: down, save, stable, revived,
+// up, died, finished.
+function newsHook(){}
+export function onDownNews(f){newsHook.f=typeof f==='function'?f:null}
+const news=(a,kind,info)=>{if(newsHook.f)newsHook.f(a,kind,info)};
 const now=()=>S.gameMin;
 const stats=()=>S.downStats||(S.downStats={downed:0,stable:0,revived:0,rose:0,woke:0,stabilized:0,died:0,why:{fails:0,massive:0,finish:0,alone:0}});
 export const downStats=()=>stats();
@@ -87,9 +104,10 @@ export function goDown(a,killer){
   if(killer.kind==='mob')nearDeath(a,killer); // lore: what nearly killed them (#188)
   record(a,'Went down at level '+a.lvl+' to ',killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:killer.kind==='hero'?killer:'a '+mobName(killer),'.');
   if(a.lvl>=10||a.company!=null)log(a,' is down, bleeding, in the grass.');
-  ev(a,'You are down: you lie bleeding at zero health. Death saves every '+R.TICK+' game minutes (each round at a Table scene); three failures and you die.',2);
+  ev(a,'You are down: you lie bleeding at zero health. Death saves every '+tickOf(a)+' game minutes (each round at a Table scene); three failures and you die.',2);
   if(a.player){const L=a.downs||(a.downs=[]);L.push(Math.round(now()));if(L.length>R.DOWNS)L.shift();
     moment(a,'downed','struck down by '+(killer.kind==='boss'?'Kragmaw':killer.kind==='hero'?killer.name:'a '+mobName(killer)))} // the downed agent's next turn: a reflection, no acting tools (#658)
+  takeWound(a,killer.kind==='boss'?'Kragmaw':killer.kind==='hero'?killer.name:'a '+mobName(killer),killer);
   for(const b of nearKin(a,R.REACH))if(!b.player)ev(b,a.name+' is down and dying nearby!',2);
   tellNear(a,'down');
   if(!sceneOf(a))callHelp(a); // at a scene the table's rounds are the rescue (#654)
@@ -97,7 +115,7 @@ export function goDown(a,killer){
   return true}
 // The downed record and state, for the world and the crawl alike.
 function lay(a,by){stats().downed++;
-  a.down={at:now(),next:now()+R.TICK,s:0,f:0,stable:false,wake:0,by};
+  a.down={at:now(),next:now()+tickOf(a),s:0,f:0,stable:false,wake:0,by};
   a.hp=0;a.state='downed';a.target=null;a.dest=null;a.moving=false;a.raid=false;a.aid=null}
 const mobName=m=>m.kind==='mob'&&MOBS[m.type]?MOBS[m.type].name:m.name||'foe';
 
@@ -141,14 +159,20 @@ function downStep(a,dt){const d=a.down;a.moving=false;
   if(d.crawl||savesAtTable(sceneOf(a)))return;        // the table rolls their saves, a round at a time (#654)
   if(d.stable){if(now()>=d.wake){a.hp=1;rise(a,'woke')}return}
   if(now()<d.next)return;
-  d.next+=R.TICK;
+  d.next+=tickOf(a);
   const r=ri(1,20);
   if(r===20){a.hp=1;rise(a,'rose');return}
   if(r===1)d.f+=2;else if(r>=R.DC)d.s++;else d.f++;
-  if(d.f>=fails(a)){die(a,'fails');return}
+  const of=fails(a);
+  if(d.f>=of){die(a,'fails');return}
   if(d.s>=R.SAVES){if(!nearKin(a,R.REACH).length){die(a,'alone');return}
     stable(a,'their own will');return}
+  news(a,'save',{die:r,s:d.s,f:d.f,of,out:r===1?'two failures':r>=R.DC?'success':'failure'});
+  if(watching(a))watchWake(a,of);
   callHelp(a)}
+// Watch mode (#655): no table gives the companions a turn, so each save wakes the kin in reach at once.
+function watchWake(a,of){const d=a.down,first=a.name.split(' ')[0];
+  for(const b of nearKin(a,R.REACH))if(b.player)notify(b,a.name+' still lies bleeding ('+dirOf(b,a)+'): '+d.s+' of '+R.SAVES+' saves made, '+d.f+' of '+of+' failed; the next comes in about '+R.WATCH_TICK+' game minutes. stabilize {who: "'+first+'"}, a potion or a heal can save them.',2)}
 
 function stable(a,by){const d=a.down;if(!d||d.stable)return;d.stable=true;d.wake=now()+R.WAKE;stats().stable++;
   pop(a.x,a.y-.8,'STABLE','#9ad0ff');record(a,'Was stabilized by '+by+'.');tellNear(a,'stable');
@@ -193,7 +217,10 @@ export function tellNear(a,kind){for(const b of nearHeroes(a.x,a.y,R.REACH)){if(
     :kind==='revived'?a.name+' is brought back up'+where+'.':kind==='up'?a.name+' is back on their feet'+where+'.'
     :kind==='finished'?a.name+' is finished where they lay'+where+'.'
     :a.name+' has died of their wounds'+where+'.';
-  notify(b,text,2)}}
+  notify(b,text,2)}
+  news(a,kind)}
+// The agent heroes who see a downing (tellNear's hearers): kin within shouting range, anyone else within sight (sim/downcall.js).
+export const hearersOf=a=>nearHeroes(a.x,a.y,R.REACH).filter(b=>b!==a&&b.player&&b.state!=='dead'&&!b.hidden&&b.kind==='hero'&&dist(a,b)<=(kin(a,b)?R.REACH:R.SEE));
 
 // ---- the helper's step (updAgent case 'aid') ----
 function aidStep(b,dt){const t=heroById(b.aid);
@@ -267,6 +294,7 @@ export function tableSave(a,o={}){const d=a.down;if(!isDown(a)||!d||d.stable)ret
   if(f>=of){die(a,'fails');out='dead'}
   else if(s>=R.SAVES){if(!o.kin){die(a,'alone');out='dead'}else{stable(a,'their own will');out='stable'}}
   else out=r===1?'two failures':r>=dc?'success':'failure';
+  if(out!=='dead'&&out!=='stable')news(a,'save',{die:r,s,f,of,out});
   return {die:r,dc,out,s,f,of}}
 // A companion's stabilize at the table: a Linen Bandage binds it, else d20 + Healing against DOWN.STAB_DC. Returns {ok, text}.
 export function stabilizeAt(b,t){if(!bleeds(t))return {ok:false,text:t.name+' is not bleeding'};
@@ -283,9 +311,11 @@ export function crawlDown(a,foe,cause,rec){if(!a||a.kind!=='hero'||isDown(a))ret
   lay(a,{kind:'mob',id:null,type:null,name:foe&&foe.name||null});a.down.crawl=true;a.down.cause=cause;a.down.rec=rec;
   record(a,'Went down at level '+a.lvl+' below ground, to '+(foe&&foe.name||'a foe')+'.');
   ev(a,'You are down: you lie bleeding at zero health. A death save each round; three failures and you die.',2);
+  takeWound(a,foe&&foe.name||'a foe',foe);
+  news(a,'down');
   return true}
 // The crawl is over and they come up the stair still down (carried out): the world's clock and helpers take over.
-export function toWorld(a){if(!a||!a.down||a.state==='dead')return;const d=a.down;/* a goHome on the way out may have changed the state */d.crawl=false;d.next=now()+R.TICK;
+export function toWorld(a){if(!a||!a.down||a.state==='dead')return;const d=a.down;/* a goHome on the way out may have changed the state */d.crawl=false;d.next=now()+tickOf(a);
   a.state='downed';a.hidden=false;a.target=null;a.dest=null;a.moving=false;callHelp(a)}
 // Left on the stair (DOWN.CRAWL_LEFT): a party driven back or withdrawing cannot carry one still bleeding.
 export function leftBehind(a){if(!isDown(a)||!a.down.crawl||a.down.stable||rnd()>=R.CRAWL_LEFT)return false;a.down.rec=(a.down.rec||'')+' Left behind as the party fell back.';die(a,'fails');return true}

@@ -58,7 +58,7 @@ ok(S0.length >= 4 && S1.length >= 4 && roads[0].length > 0 && bad, `found legal 
 console.log('\nforbidden effects');
 for (const k of ['hp', 'xp', 'stats', 'cls', 'loot', 'item', 'revive', 'kill']) {let threw = false; try {register({name: 'evil_' + k, params: {[k]: {type: 'int'}}, apply: () => ({ok: true})})} catch (e) {threw = true} ok(threw && !LEVERS['evil_' + k], `register() refuses a lever with a '${k}' parameter`)}
 {let threw = false; try {register({name: 'xp', params: {}, apply: () => ({ok: true})})} catch (e) {threw = true} ok(threw, 'register() refuses a lever named xp')}
-ok(Object.values(LEVERS).every(d => Object.keys(d.params).every(k => !/^(hp|maxhp|xp|stats?|cls|class|gold|loot|epic|gear|lvl)$/.test(k) || (k === 'item' && ['give_item', 'take_item'].includes(d.name)) || (k === 'lvl' && ['mark_dangerous', 'mark_cleared', 'named_foe', 'custom_foe'].includes(d.name)))), 'no lever parameter names a hero number (lvl only as a monster or area level)');
+ok(Object.values(LEVERS).every(d => Object.keys(d.params).every(k => !/^(hp|maxhp|xp|stats?|cls|class|gold|loot|epic|gear|lvl)$/.test(k) || (k === 'item' && ['give_item', 'take_item'].includes(d.name)) || (k === 'cls' && d.name === 'summon_hero') || (k === 'lvl' && ['mark_dangerous', 'mark_cleared', 'named_foe', 'custom_foe'].includes(d.name)))), 'no lever parameter names a hero number (lvl only as a monster or area level)');
 const heroNums = () => JSON.stringify(S.agents.map(a => [a.id, a.hp, a.xp, a.lvl, a.cls, a.state, a.gold, a.honor, a.gear, (a.epics || []).length, JSON.stringify(a.abil || null), JSON.stringify(a.eq || null)]));
 const before = heroNums();
 
@@ -132,7 +132,7 @@ ok(S.levers.active.length === 0, 'nothing left active');
 // ---- validation ----
 console.log('\nvalidation');
 const rej = (name, p, re, label, o = by) => {const x = pull(name, p, o), e = S.dmLog[0]; ok(!x.ok && re.test(x.reason) && e.kind === 'lever' && /^rejected/.test(e.detail.result), `${label}: "${x.reason}" (logged)`)};
-rej('mark_place', {kind: 'ruin', at: bad}, /walkable/, 'non-walkable tile');
+rej('mark_place', {kind: 'ruin', at: bad}, /solid ground.*nearest open ground is [\d.]+,[\d.]+/, 'non-walkable tile');
 rej('mark_place', {kind: 'ruin', at: {x: town.gate.x + 1, y: town.gate.y}}, /gate|inside/, 'next to a town gate');
 rej('mark_place', {kind: 'ruin', at: {x: -3, y: 4}}, /off the map/, 'off the map');
 rej('mark_dangerous', {at: S0[3], lvl: 20}, /outside Thornvale/, 'out-of-band level 20 in ' + ZONES[0]);

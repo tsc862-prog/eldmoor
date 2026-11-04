@@ -592,6 +592,11 @@ try{
       const q={gpu:{start:new Date(2026,11,1,8).toISOString(),s:600,images:20}};ok(gpuWindow(q,new Date(2026,11,2,7,59)).s===600&&gpuWindow(q,new Date(2026,11,2,8,0)).s===0,'the GPU window closes 24 h after it opened');
       ok(spaceDuration(man.models['pixel-xl'])===25&&parseSse('event: heartbeat\ndata: null\n\nevent: complete\ndata: [1,2]\n\n').map(e=>e.event).join()==='heartbeat,complete','reserved GPU seconds (25 for 25 steps at 1024) and the event-stream parser')}
     // npm run art:space: the plan, a read-only token named and nothing sent, then create + one commit + ZeroGPU hardware
+    {const {checkReadme}=await import('./art/space-push.mjs');const {readFileSync:rf}=await import('node:fs');
+      const ours=checkReadme(rf(new URL('./art/space/README.md',import.meta.url),'utf8')),fm=t=>'---\ntitle: T\nsdk: gradio\nsdk_version: 6.30.0\n'+t+'---\n';
+      ok(ours.length===0,'space: our README front matter passes the Hub limits: '+ours.join('; '));
+      ok(/short_description is 61/.test(checkReadme(fm('short_description: '+'x'.repeat(61)+'\n')).join())&&checkReadme(fm('short_description: '+'x'.repeat(60)+'\n')).length===0,'space: a short_description over 60 is caught before any call, 60 passes');
+      ok(/sdk_version is missing/.test(checkReadme('---\ntitle: T\nsdk: gradio\n---\n').join()),'space: a missing sdk_version is caught')}
     {const push=(a,extra)=>sNode('space-push.mjs',a,{...extra});
       r=await push([]);ok(r.code===0&&/files: app\.py, requirements\.txt, README\.md, loras\.json \(pixel-xl = nerijs\/pixel-art-xl\/pixel-art-xl\.safetensors; pixel-redmond = /.test(r.s)&&!SP.creates&&!SP.commits.length,'art:space without --push: the plan only');
       r=await push(['--push'],{HF_TOKEN:'hf_readOnlyMock999'});ok(r.code===2&&/read-only for tsc862\/eldmoor-art \(a read-only token\)/.test(r.s)&&/Nothing was sent/.test(r.s)&&!SP.creates&&!SP.commits.length&&!r.s.includes('hf_readOnlyMock999'),'art:space --push with a read-only token says so plainly and sends nothing');

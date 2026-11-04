@@ -20,6 +20,16 @@ import {spaceToken,spaceOf,spacePage,spaceStatus,DEFAULT_SPACE} from './space.mj
 const DIR=join(dirname(fileURLToPath(import.meta.url)),'space');
 const HUB=()=>(process.env.HF_HUB_URL||'https://huggingface.co').replace(/\/$/,'');
 export const FILES=['app.py','requirements.txt','README.md'];
+// The Hub validates the README front matter on commit (a 400 after the Space is already created), so check it first.
+export function checkReadme(text){const m=/^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text||''));if(!m)return ['README.md has no front matter (--- ... ---)'];
+  const fm={};for(const l of m[1].split(/\r?\n/)){const k=/^([a-z_]+):\s*(.*)$/.exec(l);if(k)fm[k[1]]=k[2].replace(/^["']|["']$/g,'').trim()}
+  const errs=[];for(const k of ['title','sdk','sdk_version'])if(!fm[k])errs.push(k+' is missing');
+  if(fm.short_description&&fm.short_description.length>60)errs.push(`short_description is ${fm.short_description.length} characters; the Hub allows 60`);
+  if(fm.title&&fm.title.length>60)errs.push(`title is ${fm.title.length} characters; keep it under 60`);
+  if(fm.emoji&&[...fm.emoji].length>2)errs.push('emoji must be a single emoji');
+  if(fm.sdk&&!['gradio','streamlit','docker','static'].includes(fm.sdk))errs.push('sdk must be gradio, streamlit, docker or static');
+  if(fm.sdk_version&&!/^\d+\.\d+(\.\d+)?$/.test(fm.sdk_version))errs.push('sdk_version must look like 6.30.0');
+  return errs}
 export const FLAVOR='zero-a10g'; // the Hub's hardware id for ZeroGPU (huggingface_hub SpaceHardware.ZERO_A10G)
 const scrub=t=>String(t||'').replace(/hf_[A-Za-z0-9]+/g,'hf_***').replace(/\s+/g,' ').slice(0,240);
 
@@ -51,6 +61,7 @@ export async function main(argv=process.argv.slice(2),env=process.env){
   const loras=lorasOf(man,space);
   if(!loras.loras.length){console.error(`[space] no model of the manifest is on ${space} (models[].space)`);return 2}
   const missing=FILES.filter(f=>!existsSync(join(DIR,f)));if(missing.length){console.error(`[space] missing ${missing.join(', ')} in scripts/art/space/`);return 2}
+  {const bad=checkReadme(readFileSync(join(DIR,'README.md'),'utf8'));if(bad.length){console.error('[space] README.md front matter would be refused by the Hub: '+bad.join('; ')+'. Nothing was sent.');return 2}}
   if(!o.push&&!o.status){
     console.log(`[space] ${space} (${spacePage(space)}): private, Gradio SDK, ZeroGPU hardware`);
     console.log(`[space] files: ${FILES.join(', ')}, loras.json (${loras.loras.map(l=>`${l.key} = ${l.repo}/${l.weights}`).join('; ')})`);

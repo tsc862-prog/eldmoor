@@ -19,6 +19,13 @@ import {seedRng} from '../src/core/rng.js';
 import {openScene} from '../src/sim/table.js';
 import {companyOf, companies, PARTY, roleOf, foundCompany, joinCompany, leaveCompany, mergeCompanies, members, leaderOf, isSolo, mates} from '../src/sim/company.js';
 
+// Seeded dice (#324): the world, its 20 minutes and the child's 10 more all draw from one generator, so a failure names its seed
+// and 'SAVECHECK_SEED=<n> npm run savecheck' replays it. Default 324 (CI is deterministic); SAVECHECK_SEED=random picks a fresh
+// one and prints it, which is how to hunt a rare invariant break. The child inherits the seed through the environment.
+const SEED = process.env.SAVECHECK_SEED === 'random' ? (Math.floor(Math.random() * 2 ** 31) || 1) : (Number(process.env.SAVECHECK_SEED) || 324);
+process.env.SAVECHECK_SEED = String(SEED);
+{let r = SEED >>> 0; seedRng(SEED); Math.random = () => {r = (Math.imul(r, 1664525) + 1013904223) >>> 0; return r / 4294967296}}
+
 const RUN_MIN = 20, DIRTY_MIN = 2, MORE_MIN = 10, TWO_DAYS_MIN = 8; // real minutes at 1x; a game-day is 4
 let fail = 0;
 const ok = (cond, msg) => {if (cond) console.log('  ok   ' + msg); else {console.error('  FAIL ' + msg); fail++}};
@@ -96,7 +103,7 @@ if (args[0] === '--restore') {
 }
 
 // ---- main phase ----
-console.log(`\nEldmoor savecheck: ${RUN_MIN} min, snapshot, round-trip, restore, ${MORE_MIN} more\n`);
+console.log(`\nEldmoor savecheck: ${RUN_MIN} min, snapshot, round-trip, restore, ${MORE_MIN} more (seed ${SEED})\n`);
 init();
 setDmSeat(true); // every real world has its DM seat open (#520); a closed seat converts on restore, checked below
 // An agent-played hero (issue #75) with a journal and a command in its queue rides along.
@@ -267,5 +274,5 @@ process.stdout.write(child.stdout || ''); process.stderr.write(child.stderr || '
 ok(child.status === 0, 'child restore into a pristine module state passed');
 rmSync(dir, {recursive: true, force: true});
 
-console.log(fail ? `\n${fail} check(s) failed` : '\nsavecheck: all checks passed');
+console.log(fail ? `\n${fail} check(s) failed (seed ${SEED}: SAVECHECK_SEED=${SEED} replays it)` :'\nsavecheck: all checks passed');
 process.exit(fail ? 1 : 0);
