@@ -624,7 +624,7 @@ export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks 
 setProposeHook(P=>{const C=propCompany(P)||companyOf(byId(P.by))||slotted(),L=memOf(C);if(voteRefusal(C))return false;if(agentsDecide(L))requestDrop('a vote: '+P.details); // #148: 3x/8x drop to 1x at a decision
   if(!holdOk(L))return false;const by=byId(P.by);
   if(sceneFor(C)){if(P.src==='pair'&&!C.tableQ&&atTable(C)){C.tableQ={kind:'decision',title:'Put to the party: '+P.details,frame:[gd('The other company'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],ctx:{prop:P.id},at:Math.round(S.gameMin)};return true}return false} // a merge's second scene waits its turn (#500)
-  const sc=open('decision','Put to the party: '+P.details,[by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id},C);
+  const sc=open('decision','Put to the party: '+P.details,[P.caller?gd(P.caller):by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id},C);
   if(sc)for(const id in P.votes)if(sc.ids.includes(+id))sc.acts[id]={k:P.votes[id].v,line:P.votes[id].reason||'',by:P.votes[id].by==='reflex'?'reflex':'agent'}; // a vote already cast counts as that member's turn
   if(sc&&sc.wk)for(const id of sc.ids)hush(byId(id),e=>e.text.includes('vote('+P.id+',')); // the scene wakes them once the DM has set it (#682), not the proposal
   return !!sc});
