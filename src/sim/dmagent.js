@@ -24,9 +24,10 @@
 //              turn: {id, day, t (clock), gm0, gm1 (game minutes), open, calls, errors, reads:{tool:n}, tools:{tool:{ok,bad}}, notes, levers, staged, said, other,
 //                     and once the runner reported: turn (its number), model, provider, cost, seconds, tokensIn, tokensOut}
 //   The turn record is the DM's own data for the watcher's DM tab: no hero tool, prompt or snapshot reads it (issue #123).
-import {S,clockStr,dayNo} from './state.js';
+import {S,clockStr,dayNo,noOthers} from './state.js';
 import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,zoneAt,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
+import {CLS} from '../data/classes.js';
 import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
 import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
@@ -46,7 +47,7 @@ import {stageScene,tableCall,tableAnswer,stagedView,STAGE,unstage} from './stage
 import {sitesView} from './sites.js'; // DM-made dungeon sites (#69)
 import {rulingCall,rulingAnswer,rulingSummary} from './ruling.js'; // free actions the DM rules on (#522)
 import {gone as dmGone} from './dmreflex.js'; // the DM's reflexes (#561)
-import {sceneCall,sceneAnswer,ourScene,openingDue} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
+import {sceneCall,sceneAnswer,ourScene,openingDue,openingWait} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
 import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {compCall,compSay,compSummary} from './compvoice.js'; // scripted companions of an agent company, voiced by the DM (#764)
@@ -56,6 +57,7 @@ import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per c
 import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
 import {installRumourLever,rumoursView} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever,epithetView} from './epithet.js'; // bestow (#638)
+import {installSummonLever,summonView,summonedAlive,SUMMON} from './summon.js'; // summon_hero (#780)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
 // ---- knobs ----
@@ -81,7 +83,7 @@ export const DMA={
   UNDOS_PER_DAY:6,     // undo, dismiss and unstage calls per game day
 };
 const DAY=1440;
-const PILING=['mark_dangerous','custom_foe','named_foe','set_condition','start_event'];
+const PILING=['mark_dangerous','custom_foe','named_foe','set_condition','start_event','summon_hero'];
 const DANGER_CONDS=['bandits','migration']; // the region conditions that add danger: set_condition of these kinds, or a world event that runs as one (invasion = bandits, migration)
 
 // ---- the seat ----
@@ -272,7 +274,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     fellowship_first:F?'The Fellowship comes first: read fellowship_needs, act for them, and only then shape the wider world (and only when nothing is pending for them).':null,
     fellowship_needs:fellowshipNeeds(),fellowship_change:companiesSig(),
     ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
-    prep:{...prepView(),...(openingDue()?{opening_due:true}:{})}, // #437: while it runs the world is held for you; end it with prep_done
+    prep:{...prepView(),...(openingDue()?{opening_due:true}:{}),...(openingWait()?{opening_waits_for:openingWait().names}:{})}, // #437: while it runs the world is held for you; end it with prep_done
     table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
@@ -285,6 +287,8 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
+    ...(noOthers()?{others:'none: no background heroes ride here, only the companies and whoever you bring (summon_hero)'}:{}), // the world setting (#780)
+    ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
     campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
@@ -428,6 +432,7 @@ function pullLever(a,via){const day=today(),D=dmState(),name0=clean(a.lever,40),
   const usage=via?via.usage+'. The lever: '+leverUsage(name):leverUsage(name)+'; '+call;
   if(!params)return refuse('params must be an object such as {"region":"'+ZONES[0]+'"}',usage);
   if(name==='named_foe')return refuse('named foes are raised by the scripted DM inside a running scene');
+  if(name==='summon_hero'&&!via&&params.near!=null)return summonTool({...params,why:reason}); // near reads as the flat tool reads it (#780)
   if(!reason)return refuse('a reason is required (one sentence for the DM log)',usage);
   if(day.pulls>=DMA.PULLS_PER_DAY)return refuse('the DM agent has pulled '+DMA.PULLS_PER_DAY+' levers today; the world needs time to answer');
   const pile=pileOn(name,params);if(pile)return refuse(pile);
@@ -450,7 +455,7 @@ function leverRefuse(name,why,usage,reason,params,via){const D=dmState();D.stats
 // rule, the lever's own limits, cooldown and the Fellowship's reserved share (levers.js pull) and the DM log are identical.
 // Nothing is validated twice: the lever refuses, and its contract comes back with the refusal.
 export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_place:'mark_place',give_item:'give_item',take_item:'take_item',
-  retire_person:'retire_npc',withdraw_hook:'withdraw_hook',set_attitude:'set_attitude',set_condition:'set_condition',price_shock:'price_shock',mark_danger:'mark_dangerous',start_event:'start_event',nudge_relation:'nudge_relation',custom_foe:'custom_foe',create_site:'create_site'}; // #636: every remaining lever as a flat tool
+  retire_person:'retire_npc',withdraw_hook:'withdraw_hook',set_attitude:'set_attitude',set_condition:'set_condition',price_shock:'price_shock',mark_danger:'mark_dangerous',start_event:'start_event',nudge_relation:'nudge_relation',custom_foe:'custom_foe',create_site:'create_site',summon_hero:'summon_hero'}; // #636: every remaining lever as a flat tool
 const NEAR_FORMS='"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region';
 const FLAT_USAGE={
   post_hook:'post_hook takes: town (a town: '+CITY.map(c=>c.name).join('|')+', or "fellowship", a member or a region for the nearest board), tpl (rescue|escort|investigate|clear|relic|negotiate|hunt|deliver, or a goods job that asks for crafted or gathered goods: draughts|tonics|blade|cowl|meals|scrolls|herbs|ore|sinew|perch|rimebloom), giver? (captain|innkeeper|smith|quartermaster|priest|bard), reward? (small|fair|generous), region? (where the job leads), place? (a place or person by name or id), for? (a hero by name or id), reason',
@@ -720,6 +725,15 @@ function renownTool(tool,a){a=a&&typeof a==='object'?a:{};installRumourLever();i
     params={hero:h.id,title:typeof a.title==='string'?a.title:a.title,...opt('by',by)}}
   const r=pullLever({lever:tool,params,reason},via);if(!r.ok)return r;const e=r.effect||{};
   return {...r,tool,...(tool==='seed_rumour'?{rumour:e.rumour,towns:e.towns,tellers:e.tellers,days:e.days,note:'The tellers pass it on in their own words; nobody learns where it started. hooks lists the live rumours.'}:{known_as:e.known_as,by:e.by,heard_by:e.heard_by})}}
+// ---- summon_hero (#780): a flat lever tool like post_hook, through pullLever (caps, reserve, pile-on, DM log) ----
+const summonUsage=()=>'summon_hero takes: fac ('+FAC_NAMES()+'), cls ('+Object.keys(CLS).join('|')+'), level? (up to '+SUMMON.LVL_UP+' above the nearest company\'s average; default that average), near ('+NEAR_FORMS+'), name?, people? (a people of that faction), why (one sentence, the DM log only)';
+function summonTool(a){a=a&&typeof a==='object'?a:{};installSummonLever();const usage=summonUsage(),via={tool:'summon_hero',usage},reason=clean(a.why||a.reason,DMA.REASON_MAX);
+  const no=(why,params)=>leverRefuse('summon_hero',why,usage+'. The lever: '+leverUsage('summon_hero'),reason,params||{},via);
+  const W=nearSpot(a.near,{min:2,max:5});if(W.err||!W.town&&!W.at)return no((W.err||'no open ground near '+clean(a.near,40))+'; '+nearTakes());
+  const opt=(k,v)=>v==null||v===''?{}:{[k]:v},lvl=a.level==null||a.level===''?undefined:Number.isFinite(Number(a.level))?Math.round(Number(a.level)):a.level;
+  const params={fac:a.fac==null?a.fac:String(a.fac),cls:a.cls,...opt('level',lvl),...(W.town?{town:W.town}:{at:W.at}),...opt('name',a.name),...opt('people',a.people)};
+  const r=pullLever({lever:'summon_hero',params,reason},via);if(!r.ok)return r;const e=r.effect||{};
+  return {...r,tool:'summon_hero',hero:e.hero,hero_id:e.id,level:e.level,where:e.where}}
 const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // A tool name that is not a DM tool (issue #401): a lever name called as a tool (post_hook, mark_place, create_npc,
 // or create_npc_placeholder) is pointed at pull_lever with that lever's contract; anything else lists the tools.
@@ -799,6 +813,7 @@ function run(tool,args){let r;
     case 'unwhen':r=whenCancel('when',args.id);break;
     case 'unwatch':r=whenCancel('watch',args.id);break;
     case 'seed_rumour':case 'bestow':r=renownTool(tool,args);break; // #637, #638
+    case 'summon_hero':r=summonTool(args);break; // #780
   }
   return r}
 
