@@ -157,5 +157,6 @@ export const DM_TOOLS=[
   {name:'watches',act:false,desc:'The same list as whens: your watches and whens, and what tripped in the last game day.',args:{}},
   {name:'unwatch',act:true,desc:'Drop a watch by id (whens or watches lists them).',args:{id:{type:'integer',desc:'The watch id'}}},
   {name:'log_intent',act:true,desc:'Write one line of your reasoning or plan into the DM log (max 200 characters, a few a day), so the watcher can follow what you are preparing.',args:{text:{type:'string',desc:'The line'}}},
+  {name:'wish',act:false,desc:'Leave a note for the people who build the game about a tool you wished you had, to tell this story. It is read later and never answered in play; nothing changes this session, and you may wish for things the rules forbid (touching HP, life, levels, time). 3 a game day, so pick the ones that mattered. English only.',args:{tool:{type:'string',desc:'The name you would give it (2-32 characters, snake_case suggested)'},what:{type:'string',desc:'What it would have done (up to 300 characters)'},why:{type:'string',desc:'Why this moment needed it (up to 200)'},moment:{type:'string',desc:'The moment itself, a sentence of story (up to 200)'}}},
 ];
 export const DM_TOOL_NAMES=DM_TOOLS.map(t=>t.name);
