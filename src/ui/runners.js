@@ -108,6 +108,13 @@ export async function startCompany(C){const L=coHeroes(C);if(liveKey('company:'+
   if(L.length>1&&!L.some(a=>liveKey('hero:'+a.id))){await startRunner('company',C.id,'co:'+C.id);return}
   for(const a of L)if(!liveKey('hero:'+a.id))await startRunner('hero',a.id,'co:'+C.id)}
 export async function stopCompany(C){if(liveKey('company:'+C.id))await stopRunner('company',C.id);for(const a of coHeroes(C))if(liveKey('hero:'+a.id))await stopRunner('hero',a.id)}
+// A world reset (#691: New world, Load, Import, any start that is not Continue): ONE relay call stops every runner before the
+// page replaces the world. -> the number stopped, or null when the relay is unreachable or runners are off (nothing to stop).
+export async function stopAllForReset(timeoutMs=9000){
+  try{const ctl=typeof AbortController!=='undefined'?new AbortController():null,t=ctl?setTimeout(()=>ctl.abort(),timeoutMs):0;
+    const r=await fetch(base()+'/stop-all',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({why:'world reset'}),...(ctl?{signal:ctl.signal}:{})});
+    if(t)clearTimeout(t);const j=await r.json().catch(()=>({}));return r.ok&&j&&typeof j.stopped==='number'?j.stopped:null}
+  catch(e){return null}}
 export async function stopAllFellows(){const ids=(slotted()&&slotted().ids)||[];await stopRunner('fellowship');
   for(const id of ids){const r=runnerByKey('hero:'+id);if(r&&!DONE[r.state])await stopRunner('hero',id)}}
 
