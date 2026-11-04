@@ -16,3 +16,4 @@
 - [Crawl as played](crawlview.md) — #742 spots per chamber, act->spot, beats from sc.beats + HP drops, close-up framing, staging beats
 - [Image to image](img2img.md) — #763 owner decision: art from procedural init, layout contract, real Gradio facts, local Space test
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
+- [LPC trees and rocks](lpctrees.md) — #834 whole canopy trees painted in chunk, redrawn over entities; cutter needs ELDMOOR_PACKS; C: disk full gotcha
