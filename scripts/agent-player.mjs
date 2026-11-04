@@ -93,6 +93,7 @@ export function systemPrompt(st) {
     MEMORY_ORDERS,
     JOURNAL_ORDERS,
     SELF_ORDERS,
+    WISH_ORDERS,
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
@@ -112,9 +113,11 @@ export const withTownOrders = sys => {const s = String(sys || ''); return s.incl
 export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
 // Tiered memory (issue #153): landmarks, chapters and journal_search; withMemoryOrders adds this line to an older prompt too.
 export const JOURNAL_ORDERS = '- Your past stays with you: your landmarks (deaths, vows, levels, the Fellowship, and entries you write with landmark yes) are never lost, and old journal entries and notes fold into chapters. journal_read with no arguments shows them with your latest entries: read it when you pick up again. Before a big decision, journal_search for the people or places involved.';
-export const withMemoryOrders = sys => {let s = String(sys || ''); if (!/- Keep memories: /.test(s)) s += '\n' + MEMORY_ORDERS; if (!/- Your past stays with you: /.test(s)) s += '\n' + JOURNAL_ORDERS; if (!/- Who you are is yours to grow: /.test(s)) s += '\n' + SELF_ORDERS; return s};
+export const withMemoryOrders = sys => {let s = String(sys || ''); if (!/- Keep memories: /.test(s)) s += '\n' + MEMORY_ORDERS; if (!/- Your past stays with you: /.test(s)) s += '\n' + JOURNAL_ORDERS; if (!/- Who you are is yours to grow: /.test(s)) s += '\n' + SELF_ORDERS; if (!/- wish \{tool, what, why, moment\}/.test(s)) s += '\n' + WISH_ORDERS; return s};
 // Who you are (issue #409): the persona is the hero's own to grow; every turn header carries one line of it.
 export const SELF_ORDERS = '- Who you are is yours to grow: self shows your persona (voice, wants, fears, quirk, a line you would never say, beliefs, traits, how you see others) and how you have changed. When your story truly changes you (a loss, a debt paid, a fear faced, a friend won or lost), change that one part with become (field, text, why), in your own words; most days nothing changes. Play from who you are now.';
+// A note for the people who build the game (#663): the one line both seats carry (the DM's is in scripts/dm-agent.mjs).
+export const WISH_ORDERS = '- wish {tool, what, why, moment} is for the people who build the game: say which tool you wished you had to tell your story, in English, at most 3 a game day. It is read later, never answered in play; nothing changes this session.';
 // The first turn of a run that resumes a hero (issue #153): re-ground on the journal overview first.
 export const resumeNote = (first, turns) => first && turns > 0 ? ' You are picking up after a pause: start with journal_read (no arguments) to recall who you have been.' : '';
 
@@ -302,13 +305,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
-    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
+    let b0 = await pacer.brief(); const tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
     const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
-    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
+    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, // under the app supervisor: one of the Claude slots for this turn
+      due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, // #687: its own scene opened meanwhile
+      onDue: async () => {const r = await (await fetch(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero: heroId, runner: RUNNER, queued: true, why: 'slot'}), signal: AbortSignal.timeout(4000)})).json();
+        if (r && r.queued) console.log(`[scene] answer queued behind a Claude slot: the table waits up to ${r.extra_s} s more (${r.scene})`)}});
+    if (freeSlot.scene) b0 = await pacer.brief(); // the scene came up while it waited: answer it first (#687)
     const sceneS = [], sceneOn = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${short(b, 120)})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
     // Scene first (issue #515): the hero's own scene is open as the turn starts: one structured answer sends scene_act before
     // anything else (a short tool budget was spent before it, live). Answered: that is the turn.

@@ -98,7 +98,7 @@ function order(T){const idx=T.cols.map((_,i)=>i);if(!sort)return idx;const r=T.r
 function build(T){const tbl=el('table','shtbl'),ord=order(T);
   const thead=el('thead'),hr=el('tr');hr.append(el('th','shcorner',sort?'sorted by '+(T.rows.find(r=>r.key===sort)||{label:'?'}).label.toLowerCase():T.cols.length&&/^h\d/.test(T.cols[0].slot)?'join order':'role order'));
   for(const i of ord){const c=T.cols[i],th=el('th','shcol');
-    if(c.hero){const n=el('span','hn f'+c.hero.fac,c.hero.name);n.dataset.hid=c.hero.id;const tx=el('span','shcoltx');tx.append(el('span','frole r-'+c.role,c.label),el('br'),n,el('br'),el('span','dm',c.hero.cls+(c.hero.state==='dead'?' · fallen':'')));
+    if(c.hero){const n=el('span','hn f'+c.hero.fac,c.hero.name);n.dataset.hid=c.hero.id;const tx=el('span','shcoltx');tx.append(el('span','frole r-'+c.role,c.label),el('br'),n,el('br'),el('span','dm',c.hero.cls+(c.hero.state==='dead'?' · fallen':c.hero.state==='downed'?(c.hero.down&&c.hero.down.stable?' · stable':' · downed'):'')));
       const hd=el('div','shcolhd');hd.append(face(c.hero),tx);th.append(hd)}
     else th.append(el('span','frole r-'+c.role,c.label),el('br'),el('span','dm','place empty'));hr.append(th)}
   thead.append(hr);tbl.append(thead);

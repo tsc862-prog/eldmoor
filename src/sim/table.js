@@ -163,7 +163,7 @@ const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80
 export const tableOn=()=>(!!slotted()||companies().length>0)&&TABLE.mode!=='off'; // any company (#440)
 // The scene's company and its members. The Fellowship keeps its slot order (slotHeroes(slotted())); any other company its join order.
 export const sceneCompany=sc=>!sc?null:sc.company!=null?companyById(sc.company):slotted()||null;
-const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C);
+const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const leadOf=C=>!C?null:C===slotted()?leaderOfF():leaderOf(C);
 const scMem=sc=>memOf(sceneCompany(sc));
 // A company other than the Fellowship comes to the table only while one of its agents has the say (a runner holds it,
@@ -299,7 +299,7 @@ export function scaleElite(F,L,ctx){const m=ctx&&ctx.mob!=null?S.mobs.find(x=>x.
 function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||sceneFor(F))return null;const all=PLAY[kind]==='all';
   if(kind==='decision'&&voteRefusal(F))return null; // a solo has no one to vote with (#440)
   if(!atTable(F))return null; // no agent of this company has the say: it plays on by reflex (#440)
-  const L=(all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||dunMem(ctx).includes(a))).filter(a=>!(ctx.skip||[]).includes(a.id)); // skip: the newcomer of an arrival (#452), voiced by the DM
+  const L=(ctx.ids?ctx.ids.map(byId).filter(living):all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||dunMem(ctx).includes(a))).filter(a=>!(ctx.skip||[]).includes(a.id)); // ctx.ids: a kind that names its own actors (the honour duel's two, #633, sim/challenge.js) // skip: the newcomer of an arrival (#452), voiced by the DM
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,company:F.id,kind,title:clean(title,80),frame,ids:(all?L:initiative(L)).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin),...(all?{all:true,w:{}}:{})};
   if(kind==='elite')scaleElite(F,L,ctx);

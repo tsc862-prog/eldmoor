@@ -14,6 +14,7 @@ import {spokenLine} from './council.js';
 import {MSG_SAME} from './talk.js';
 import {notEnglish} from './lang.js';
 import {inSlots,slotted} from './company.js';
+import {sceneOf} from './scenes.js';
 
 export const ASIDE={WHISPER:2,WHISPER_LEN:200,WHISPER_PER_HOUR:6,EMOTE_LEN:120,EMOTE_PER_HOUR:10,SAME:.8};
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.';
@@ -50,6 +51,7 @@ export function whisperTo(a,{to,text,target,name,who,hero_id}){
   // everyone else in sight sees only that the speaker leans close (no words)
   const v=tagAgent(a,stampE(a,'leans close to '+b.name,{emote:true,veil:true,to:b.id}));if(S.table&&S.table.ctx)v.scene=true;if(fh)v.fh=true;
   for(const x of hs)push(x,v);
+  const sc=sceneOf(a);if(sc&&sc.ids.includes(b.id))sc.narr={t:v.t,text:a.name+' leans close to '+b.name+'.'}; // the Table banner and tableView: the fact of it, never the words (#646)
   return {ok:true,whispered_to:b.name,text:L.text,seen_by:hs.map(x=>x.name),note:'Only '+b.name+' heard the words; '+(hs.length?hs.map(x=>x.name).join(', ')+' saw you lean close.':'nobody else is near.')}}
 
 const close=a=>nearHeroes(a.x,a.y,ASIDE.WHISPER).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden&&dist(a,b)<=ASIDE.WHISPER);

@@ -262,5 +262,43 @@ console.log('\nhow a list differs from its class preset (#679)');
   ok(d.dropped.length === Pr.length && d.safety.flee === 'gone' && d.safety.potion === 'gone' && d.safety.defend === 'gone', 'the empty preset: ' + d.summary);
   Wr.gambits = saved; Wr.gambitHist = hist; Wr.gambitDay = day;
 }
+
+// ---------------------------------------------------------------- the downed (#658)
+console.log('\nthe downed (#658): aid rules and presets');
+{
+  ok(D.CONDS.ally_downed && D.CONDS.no_healer && D.CONDS.self_downed_count && ['revive_ally', 'stabilize', 'carry'].every(k => D.ACTS[k] && D.ACTS[k].phase === 'aid'), 'conditions ally_downed, no_healer, self_downed_count and aid actions revive_ally, stabilize, carry are in the vocabulary');
+  for (const cls of Object.keys(CLS)) {const L = G.presetFor(cls), heal = L.findIndex(r => r.then === 'heal');
+    const rv = L.findIndex(r => r.when === 'ally_downed' && r.then === 'revive_ally'), st = L.find(r => r.when === 'ally_downed' && r.then === 'stabilize');
+    ok(rv >= 0 && st && st.and === 'no_healer' && (CLS[cls].heal ? !L[rv].and && rv < heal : L[rv].and === 'no_healer'), cls + (CLS[cls].heal ? ': "ally downed -> revive_ally" above its heal rule' : ': "ally downed and no healer -> revive_ally" (a potion)') + ', and "ally downed and no healer -> stabilize"');}
+  const V = G.vocabulary(); ok(V.actions.some(x => /^carry <to>/.test(x) && /when a companion goes down/.test(x)), 'the vocabulary names when aid rules act');
+  // words: the new conditions and actions parse
+  ok(JSON.stringify(G.parseWords(D.CONDS, 'self downed count 2 days 3', 'condition')) === JSON.stringify({name: 'self_downed_count', args: {n: 2, days: 3}}), 'set_gambit words: "self downed count 2 days 3"');
+  ok(G.parseWords(D.ACTS, 'carry camp', 'action').args.to === 'camp' && G.parseWords(D.ACTS, 'carry', 'action').args.to === 'town' && G.parseWords(D.ACTS, 'carry somewhere', 'action').error, 'carry {to} defaults to town; to is town, camp or leader');
+  ok(G.parseWords(D.CONDS, 'self_downed_count', 'condition').error, 'self_downed_count needs n');
+  // the conditions read the world; the aid actions never run between turns or in a fight
+  init({fellowship: false}); run(5);
+  const L = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.party && !CLS[a.cls].heal).slice(0, 2), [X, Y] = L;
+  for (const a of L) {if (!a.player) P.markPlayer(a, true); a.pq = []; a.state = 'hunt'; a.x = 40; a.y = 25; a.hidden = false}
+  Y.x = 43; const pt = {id: 991, fac: X.fac, leader: X, mem: [X, Y], zone: 1, home: false}; S.parties.push(pt); X.party = Y.party = pt; Y.fac = X.fac;
+  Y.state = 'downed'; Y.hp = 0; Y.down = {at: S.gameMin, next: 1e9, s: 0, f: 0, stable: false, wake: 0, by: {kind: 'mob'}}; rebuild();
+  const ctx = {field: true, town: false};
+  X.gambits = [{id: 1, when: 'ally_downed', then: 'revive_ally', on: true}, {id: 2, when: 'ally_downed', then: 'wake_me', on: true}]; X.gambitsDown = 1;
+  const ev0 = X.playEvN || 0; G.idlePick(X, ctx);
+  ok(G.gambitRec(X).last && G.gambitRec(X).last.id === 2 && (X.playEvN || 0) > ev0, 'between turns an aid rule is skipped; "ally downed -> wake_me" calls the hero');
+  X.gambits = [{id: 1, when: 'ally_downed', w: {who: 'nobody'}, then: 'wake_me', on: true}]; G.gambitRec(X, true).last = null; G.idlePick(X, ctx);
+  ok(!G.gambitRec(X).last, 'ally_downed {who} names one companion');
+  X.downs = [S.gameMin - 3000, S.gameMin - 10]; X.gambits = [{id: 1, when: 'self_downed_count', w: {n: 2}, then: 'wake_me', on: true}, {id: 2, when: 'self_downed_count', w: {n: 2, days: 1}, then: 'hold_position', on: true}];
+  G.gambitRec(X, true).last = null; G.gambitRec(X).once = {}; G.idlePick(X, ctx); ok(G.gambitRec(X).last && G.gambitRec(X).last.id === 1, 'self_downed_count 2 holds after two downings in a life');
+  X.gambits.shift(); G.gambitRec(X, true).last = null; G.idlePick(X, ctx); ok(!G.gambitRec(X).last, 'but not "in the last day" when one was days ago');
+  // set_gambit through the tool, and the edit keeps the aid rules of an older list
+  X.gambits = null; X.gambitsDown = 0; X.gambitDay = null;
+  let r = P.playerAct(X.id, 'set_gambit', {when: 'ally downed', then: 'carry camp', why: 'get them to the fire'});
+  ok(r.ok && X.gambits.some(x => x.then === 'carry' && x.t.to === 'camp') && X.gambits.filter(x => D.ACTS[x.then].phase === 'aid').length === 3, 'set_gambit "ally downed -> carry camp" joins the preset aid rules (' + (r.done || r.error) + ')');
+  ok(G.aidPlan(X, Y, {noHealer: true}).how.carry === 'camp', 'aidPlan: every aid rule that holds adds what the hero does (revive, stabilize, carry to camp)');
+  const old = G.presetFor(X.cls).filter(x => x.when !== 'ally_downed').map(x => ({...x})); X.gambits = old; delete X.gambitsDown; X.gambitDay = null;
+  r = P.playerAct(X.id, 'drop_gambit', {id: 999});
+  ok(!r.ok && X.gambits.filter(x => x.when === 'ally_downed').length === 2, 'a refused edit on an older list keeps the aid rules it took');
+  const d = G.gambitDiff(X); ok(!d.dropped.some(x => x.rule.startsWith('ally_downed')), 'the diff reads the migrated aid rules as the preset rules');
+}
 console.log('\n' + (fail ? fail + ' FAILED' : 'all ok'));
 process.exit(fail ? 1 : 0);

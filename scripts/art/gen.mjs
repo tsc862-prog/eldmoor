@@ -23,7 +23,7 @@
 // (default https://huggingface.co).
 import {readFileSync,writeFileSync,existsSync,mkdirSync,renameSync} from 'node:fs';
 import {join,dirname} from 'node:path';
-import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest,TILE,TIERS,tierKey,tierCfg} from './lib.mjs';
+import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,fileOf,keyFile,sha256,validateManifest,TILE,TIERS,tierKey,tierCfg,nextCheck} from './lib.mjs';
 import {decodePng,encodePng,isPng} from './png.mjs';
 import {resolvePalette} from './post.mjs';
 import {postProcess} from './post-texture.mjs';
@@ -75,10 +75,11 @@ export function buildRequest(man,m,mp,e,seed=e.seed,tier=TILE){
   return {url:`${ROUTER()}/${mp.provider}/${mp.providerId}`,body}}
 
 // Image bytes from a provider answer: raw image bytes, or JSON with images[0].url (https or data:), image, or b64_json.
-async function imageBytes(r){
+async function imageBytes(r,info={}){
   const ct=r.headers.get('content-type')||'';
   if(ct.startsWith('image/'))return Buffer.from(await r.arrayBuffer());
   let j;try{j=await r.json()}catch{throw new ArtError('image','answer is neither an image nor JSON')}
+  info.json=j;
   const it=(j.images&&j.images[0])||(j.data&&j.data[0])||j;
   const url=typeof it==='string'?it:it.url,b64=it.b64_json||it.image||it.base64;
   if(url&&url.startsWith('data:'))return Buffer.from(url.slice(url.indexOf(',')+1),'base64');
@@ -88,7 +89,8 @@ async function imageBytes(r){
 
 const QUOTA=/quota|credit|exceeded|limit reached|usage limit|monthly|daily|subscribe|pre-?paid|payment/i;
 // HTTP status + body -> ArtError. 402 and a 429 that speaks of quota or credit mean the credits are used up.
-export function classify(status,body,retryAfter){
+export function classify(status,body,retryAfter){const e=classify0(status,body,retryAfter);e.retryAfter=retryAfter||0;return e}
+function classify0(status,body,retryAfter){
   const txt=String(body||'').slice(0,240).replace(/hf_[A-Za-z0-9]+/g,'hf_***').replace(/\s+/g,' ');
   if(status===402)return new ArtError('quota',`allowance used: HTTP 402 ${txt}`,status);
   if(status===429)return QUOTA.test(txt)||retryAfter>120?new ArtError('quota',`allowance used: HTTP 429 ${txt}`,status):new ArtError('rate',`rate limited: HTTP 429 ${txt}`,status);
@@ -97,7 +99,19 @@ export function classify(status,body,retryAfter){
   if(status===400||status===404||status===405||status===410||status===422)return new ArtError('model',`HTTP ${status} model or route refused ${txt}`,status);
   return new ArtError('transient',`HTTP ${status} ${txt}`,status)}
 
-// One image call. Returns {bytes, last}: last is true when the rate headers say nothing is left after this call.
+// What the answer says it cost, in dollars, or null (#661). The HF docs promise no cost field for image routes (the chat
+// route has usage.estimated_cost, used by the OpenAI-style adapter), so look at the likely places: a header named like
+// cost/price/billed, usage.estimated_cost, estimated_cost, cost, billing.cost in the JSON. probe lists what the answer
+// carried (header names and values that look billing-ish, the JSON's top-level keys), logged once so the real shape is known.
+const COSTISH=/cost|price|bill|credit|usage|ratelimit/i;
+export function billed(headers,json){
+  let cost=null,from='';const num=v=>{const n=typeof v==='string'?parseFloat(v):v;return typeof n==='number'&&isFinite(n)&&n>=0?n:null},hs={};
+  for(const [k,v] of headers.entries())if(COSTISH.test(k)){hs[k]=String(v).slice(0,40);if(cost===null&&/cost|price|billed/i.test(k)&&!/ratelimit/i.test(k)){const n=num(v);if(n!==null){cost=n;from='header '+k}}}
+  if(json&&typeof json==='object'){
+    for(const [name,v] of [['usage.estimated_cost',json.usage&&json.usage.estimated_cost],['estimated_cost',json.estimated_cost],['cost',json.cost],['billing.cost',json.billing&&json.billing.cost]])if(cost===null){const n=num(v);if(n!==null){cost=n;from='body '+name}}}
+  return {cost,costFrom:from,probe:{headers:hs,bodyKeys:json&&typeof json==='object'?Object.keys(json).slice(0,12):[]}}}
+
+// One image call. Returns {bytes, last, cost, costFrom, probe}: last is true when the rate headers say nothing is left after this call.
 // count() is called once per HTTP attempt (the daily cap counts attempts).
 export async function callImage(req,token,{timeout=120000,count=()=>{},wait=s=>new Promise(f=>setTimeout(f,s*1000))}={}){
   for(let attempt=0;attempt<3;attempt++){
@@ -105,7 +119,7 @@ export async function callImage(req,token,{timeout=120000,count=()=>{},wait=s=>n
     let r;try{r=await fetch(req.url,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json',accept:'image/png, application/json'},body:JSON.stringify(req.body),signal:ac.signal})}
     catch(err){clearTimeout(t);throw new ArtError('transient',err.name==='AbortError'?`timed out after ${timeout/1000}s`:err.message)}
     clearTimeout(t);
-    if(r.ok){const rem=r.headers.get('x-ratelimit-remaining')??r.headers.get('ratelimit-remaining');return {bytes:await imageBytes(r),last:rem!==null&&Number(rem)<=0}}
+    if(r.ok){const rem=r.headers.get('x-ratelimit-remaining')??r.headers.get('ratelimit-remaining'),info={},bytes=await imageBytes(r,info);return {bytes,last:rem!==null&&Number(rem)<=0,...billed(r.headers,info.json)}}
     const ra=Number(r.headers.get('retry-after'))||0,e=classify(r.status,await r.text().catch(()=>''),ra);
     if((e.kind==='rate'||r.status===503)&&attempt<2){const s=Math.min(60,ra||5*(attempt+1));console.log(`  ${r.status}, waiting ${s}s`);await wait(s);continue}
     throw e}}
@@ -162,7 +176,7 @@ export async function main(argv=process.argv.slice(2)){
       const file=fileOf(e.id,tier),p=join(out,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);
       idx.assets[key]={id:e.id,tier,kind:e.kind,file,w:img.w,h:img.h,sha256:sha256(png),model:k,repo:m.repo,provider:mp.provider,seed:e.seed,at:new Date().toISOString()};
       writeIndex(out,idx);made++;console.log(`[art] ${e.id} -> ${file} ${img.w}x${img.h} (${((Date.now()-t0)/1000).toFixed(1)}s)`)}
-    catch(err){failed++;console.error(`[art] ${e.id} failed: ${err.message}`);if(['quota','auth','rate'].includes(err.kind))break}}
+    catch(err){failed++;console.error(`[art] ${e.id} failed: ${err.message}`);if(['quota','auth','rate'].includes(err.kind)){const n=nextCheck(err.kind==='auth'?'error':'provider',new Date(),{retryHours:Number(process.env.ART_RETRY_HOURS)||4,retryAfter:err.retryAfter});console.error(`[art] stopped at the provider's limit: check again at ${today(n)} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')} (npm run art:loop does this by itself)`);break}}}
   console.log(`[art] made ${made}, failed ${failed}; npm run art:sheet to review, then npm run artcheck`);
   return failed?1:0}
 
