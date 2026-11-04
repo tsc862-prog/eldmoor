@@ -64,3 +64,20 @@ that licence (attribution), not under CC-BY-SA; the same goes for any other laye
 - `weapon/sword/dagger`: bluecarrot16, Johannes Sjölund (wulax), Matthew Krohn (makrohn). Offered under OGA-BY 3.0, CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-medieval-fantasy-character-sprites https://opengameart.org/content/lpc-extended-weapon-animations
 - `weapon/sword/rapier`: Johannes Sjölund (wulax), bluecarrot16. Offered under OGA-BY 3.0, CC-BY-SA 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-medieval-fantasy-character-sprites https://opengameart.org/content/lpc-extended-weapon-animations
 <!-- lpc-heroes:end -->
+
+## LPC creature sheets
+
+`sprite:mob-<creature>` for wolf, rimehound, boar, mudboar, spider, lurker, golem, wight and bog are cut by
+`scripts/art/lpc-creatures.mjs` (choices in `scripts/art/lpc-creatures.json`) from community LPC packs on OpenGameArt: three walk
+frames by four directions, recoloured by luminance to the creature's own tint, never scaled. Each sheet is a derivative work
+shared under the licence in its line below (the packs offer CC-BY-SA 3.0, or OGA-BY 3.0 among others; the OGA-BY ones are used under OGA-BY 3.0, attribution).
+The bestiary's Ash Drake and Tundra Shaghorn have no fitting free art and stay procedural.
+
+<!-- lpc-creatures:begin -->
+- https://opengameart.org/content/lpc-wolf-animation: Stephen Challener (Redshrike), commissioned and uploaded by zerohero. Offered under CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0; used under OGA-BY 3.0. Cut into: `mob-wolf`, `mob-rimehound`.
+- https://opengameart.org/content/lpc-wild-boar: FiveBrosStopMosYT (based on the pig of Daniel Eddeland (daneeklu), colours from the LPC Wolf). Offered under CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. Cut into: `mob-boar`, `mob-mudboar`.
+- https://opengameart.org/content/lpc-spider: Stephen Challener (Redshrike), commissioned and uploaded by zerohero. Offered under CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0; used under OGA-BY 3.0. Cut into: `mob-spider`, `mob-lurker`.
+- https://opengameart.org/content/lpc-golem: Stephen Challener (Redshrike), uploaded by Nemisys. Offered under CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0; used under OGA-BY 3.0. Cut into: `mob-golem`.
+- https://opengameart.org/content/lpc-skeleton: Johannes Sjolund (wulax), Matthew Krohn (makrohn), Snabisch. Offered under CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. Cut into: `mob-wight`.
+- https://opengameart.org/content/lpc-frogman: Puffolotti (after Stephen Challener (Redshrike)'s frog man). Offered under CC-BY 3.0, OGA-BY 3.0; used under OGA-BY 3.0. Cut into: `mob-bog`.
+<!-- lpc-creatures:end -->
