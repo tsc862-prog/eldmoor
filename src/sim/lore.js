@@ -104,14 +104,14 @@ export function mobView(a,m){const e=sight(a,m),o={id:m.id,what:foeName(a,m),thr
   if(e&&e.fresh){o.new_to_you=true;delete e.fresh}
   if(m.elite||m.named)o.named=true;if(m.hp<m.maxhp)o.wounded=m.hp<m.maxhp*.5?'badly':'lightly';return o}
 // Should hunt-without-prey leave this one alone? Only for what this hero has learned to fear.
-export function feared(a,m){const e=a.lore&&a.lore.c[keyOf(m)];if(!e)return false;const r=perceived(a,m);
+export function feared(a,m){const e=a.lore&&a.lore.c[keyOf(m)];if(!e)return false;if(e.fear)return true;const r=perceived(a,m);
   if(r!=null)return r>=LORE.FEAR;return !!e.warned&&!e.killed}
 
 // ---- learning from experience ----
 // The hero closes with a creature (watch() in sim/player.js, once per foe): its name, a truer measure, the place.
 export function engage(a,m){if(!learner(a)||!m||m.kind!=='mob')return;const e=sight(a,m);if(!e)return;if(a.loreFoe===m.id)return;a.loreFoe=m.id;
   const first=!e.fought;e.fought=(e.fought||0)+1;e.name=1;seenLvl(e,m);if(first)ev(a,'You learn what you face: '+realName(m)+' ('+RANKS[rankOf(effLvl(m)-a.lvl)]+').')}
-export function slain(a,m){if(!learner(a)||!m)return;const e=entry(a,keyOf(m));e.killed=(e.killed||0)+1;e.name=1;seenLvl(e,m);where(e,m)}
+export function slain(a,m){if(!learner(a)||!m)return;const e=entry(a,keyOf(m));e.killed=(e.killed||0)+1;e.name=1;seenLvl(e,m);where(e,m);if(e.fear)delete e.fear} // beaten since it wounded you: the fear is spent
 // A trick the creature used on the hero (sim/mobs.js): id is an ABILITIES key, or 'pack' when it called its kin.
 export function trick(a,m,id){if(!learner(a)||!m)return;const e=entry(a,keyOf(m));if(e.tricks.includes(id))return;e.tricks.push(id);
   ev(a,'You learn a trick of the '+foeName(a,m).replace(/^an? /,'')+': '+trickName(id)+'.')}
@@ -121,6 +121,10 @@ export function nearDeath(a,m){if(!learner(a)||!m||m.kind!=='mob'||a.loreNear===
   const z=ZONES[zoneAt(a.x,a.y)];if(z){const p=place(a,z,'been');p.hurt=(p.hurt||0)+1}
   const what=realName(m);ev(a,'A hard lesson: '+(m.elite||m.named?what:'a '+what)+' nearly killed you'+(z?' in '+z:'')+'.',true);
   moment(a,'lesson',what+' nearly killed you'+(z?' in '+z:''))}
+// A creature left a lasting wound (sim/tend.js takeWound, #656): feared until the hero has killed one. foe: a mob, the boss, or a crawl foe {type, name}.
+export function woundFear(a,foe){if(!learner(a)||!foe||foe.kind==='hero')return;
+  const key=foe.kind==='boss'?'n:'+foe.name:foe.kind==='mob'||MOBS[foe.type]?keyOf(foe):foe.name?'n:'+foe.name:null;if(!key)return;
+  const e=entry(a,key);e.fear=1;e.name=1;e.hurt=e.hurt||1;ev(a,'You will not forget what did this: '+keyName(key)+'. You fear it now, until you have killed one.')}
 // A hero fell to a creature: every learner who saw it (in sight, or a companion) learns it, and where.
 export function witness(dead,m){if(!dead||!m||m.kind!=='mob')return;const z=ZONES[zoneAt(dead.x,dead.y)];
   // Sight, not a list: a hero sees a fall within its own sight (never out of the Crypt, or from it); a companion of the fallen within shouting range knows too (#539).
@@ -197,7 +201,7 @@ function creatureLine(a,key,e){const name=knowsName(e)?keyName(key):'unnamed: '+
   if(e.hi!=null&&(e.fought||e.read))out.threat=(e.fought?'':'looks ')+RANKS[rankOf(e.hi+(key.startsWith('n:')?LORE.ELITE_RANK:0)-a.lvl)];
   else if(e.warned)out.threat='you were warned of it';else out.threat=e.seen?'hard to judge':'only heard of';
   const k=[];if(e.fought)k.push('fought '+(e.fought===1?'once':e.fought+' times')+(e.killed?', killed '+(e.killed===1?'one':e.killed):''));else if(e.killed)k.push('killed '+(e.killed===1?'one':e.killed));
-  if(e.hurt)k.push('it nearly killed you'+(e.hurt>1?' '+e.hurt+' times':''));if(e.fell)k.push('you know of '+(e.fell===1?'one':e.fell)+' who fell to it');
+  if(e.hurt)k.push('it nearly killed you'+(e.hurt>1?' '+e.hurt+' times':''));if(e.fear)k.push('it left a wound on you: you fear it until you have killed one');if(e.fell)k.push('you know of '+(e.fell===1?'one':e.fell)+' who fell to it');
   if(e.tricks.length)k.push('tricks: '+e.tricks.map(trickName).join('; '));if(e.z.length)k.push('found in '+e.z.join(', '));
   if(e.warned)k.push('warned: '+e.warned);if(e.from&&!e.fought&&!e.killed)k.push('heard of it from '+e.from);if(k.length)out.known=k;return out}
 // The worst creature the hero knows in a region, rated at a typical level (the last it met), not the highest ever seen (#539).

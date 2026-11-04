@@ -18,6 +18,7 @@
 // Positions (#744, sim/roomgrid.js): cr.pos keeps a tile of the room's own grid for every member and foe ({heroId: {x, y}, f0: ...},
 // for room cr.posR). The party comes in at the stair in slot order, the foes stand at the den. An agent's act may carry a move (a spot,
 // a relation or steps; it lands at once), guard, hold and retreat imply one, a reflex goes where its act goes. No die reads a tile yet.
+import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
 import {rnd,ri,pickA} from '../core/rng.js';
 import {CRYPT} from '../world/map.js';
 import {BESTIARY,VARIANTS,ROLES,heroTag,baseId} from '../data/bestiary.js';
@@ -167,7 +168,7 @@ function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=ac
   case 'hold':cr.shield++;cr.guard.push(a.id);return 'held the line';
   case 'ward':{let n=0;for(const b of standing(g))n+=heal(b,maxHp(b)*.08);cr.edge+=1;return n?'mended the group':'steadied the group'}
   case 'scout':case 'read':cr.edge+=2;return k==='scout'?'found a gap':'turned the wards';
-  case 'heal':{const lo=lowest(g);if(!lo)return 'nobody to heal';return '+'+heal(lo,maxHp(lo)*.25+reviveBonus(lo))+' to '+lo.name}
+  case 'heal':{const lo=lowest(g);if(!lo)return 'nobody to heal';const h=heal(lo,maxHp(lo)*.25+reviveBonus(lo));tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
   case 'stabilize':{const t=bleedingOf(members(g),a);if(!t)return 'nobody is bleeding';return stabilizeAt(a,t).text}
   case 'potion':{const lo=lowest(g),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});return r.ok?'+'+r.healed+' to '+lo.name:r.error}
   case 'retreat':cr.back.push(a.id);return 'fell back'}

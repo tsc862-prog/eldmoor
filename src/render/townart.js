@@ -9,7 +9,7 @@
 import {U} from './tile.js';
 import {CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
-import {TOWN_STYLES,TOWN_PIECES,TOWN_REF,WALL_PIECES,townStyle} from '../data/townart.js';
+import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle} from '../data/townart.js';
 import {assetPixels,onAssets} from './assets.js';
 import {drawHouse,drawCryptMouth} from './pieceart.js';
 
@@ -36,11 +36,6 @@ export function pieceImage(id){if(imgC.has(id))return imgC.get(id);
 // ---- the plan: every piece with its box in tiles ----
 // Turns: 0 as drawn (a north wall, outside up), 1 a quarter turn clockwise (east), 2 south, 3 west.
 const SIDE_ROT={N:0,E:1,S:2,W:3};
-// A layout box's centre in the town (TOWN_REF, gate east) mapped through the town's gate side and size like the world's
-// spots (world/gen.js spotAt); the box keeps its size and the image stays upright.
-function placeBox(c,[bx,by,bw,bh]){const fx=(bx+bw/2)/(TOWN_REF[0]-1),fy=(by+bh/2)/(TOWN_REF[1]-1),w=c.w-1,h=c.h-1,g=c.gateSide||'E';
-  const p=g==='E'?[c.x0+fx*w,c.y0+fy*h]:g==='W'?[c.x0+(1-fx)*w,c.y0+fy*h]:g==='S'?[c.x0+fy*w,c.y0+fx*h]:[c.x0+fy*w,c.y0+(1-fx)*h];
-  return [p[0]-bw/2,p[1]-bh/2,bw,bh]}
 // The pieces of town c in drawing order: walls, gate, buildings (back to front). Each {id, box:[x,y,w,h] tiles, rot}.
 const planC=new Map();
 export function townPlan(c){let P=planC.get(c);if(P)return P;P=[];const st=townStyle(c),id=p=>pieceId(st,p);
@@ -52,7 +47,7 @@ export function townPlan(c){let P=planC.get(c);if(P)return P;P=[];const st=townS
   {const g=c.gateTiles,xs=g.map(v=>v[0]),ys=g.map(v=>v[1]),side=c.gateSide||'E',along=side==='E'||side==='W';
     const gx=Math.min(...xs),gy=Math.min(...ys);
     P.push({id:id('gate'),box:along?[gx,gy-1,1,g.length+2]:[gx-1,gy,g.length+2,1],rot:SIDE_ROT[side]})}
-  const bs=TOWN_PIECES.map(p=>({id:id(p.piece),piece:p.piece,box:placeBox(c,p.box),rot:0}));
+  const bs=(c.buildings||[]).map(b=>({id:id(b.piece),piece:b.piece,box:b.draw||b.box,rot:0})); // the plan is world data (c.buildings, gen.js planBuildings, #793)
   bs.sort((a,b)=>(a.box[1]+a.box[3])-(b.box[1]+b.box[3])||a.box[0]-b.box[0]);
   P.push(...bs);planC.set(c,P);return P}
 // Landmark pieces: every crypt mouth over its rock patch, and every lair's nest over its inner disc, turned so its

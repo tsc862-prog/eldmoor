@@ -10,7 +10,7 @@
 //   - the pack reflex: idle out in the field with no order, before autopilot starts, only sell_loot rules run.
 // A rule: {id, when, w?:{args}, and?, w2?:{args}, then, t?:{args}, on}. `and` is an optional second condition.
 export const GAMBIT={
-  MAX:24,        // rules a hero keeps (the class presets use up to 19: today's autopilot and reflexes written out)
+  MAX:30,        // rules a hero keeps (the class presets use about 20: today's autopilot and reflexes written out; #779)
   PER_DAY:20,    // edits (set, move, toggle, drop, reset) a game day
   SHOUT_GAP:60,  // game minutes between two shouts of one rule
   WAKE_GAP:30,   // game minutes between two wake_me calls of one rule

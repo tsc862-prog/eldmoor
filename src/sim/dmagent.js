@@ -57,9 +57,12 @@ import {compCall,compSay,compSummary} from './compvoice.js'; // scripted compani
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
 import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf} from './company.js';
 import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
+import {wounded} from './wounds.js';
+import {woundSpanWord} from './tend.js'; // lasting wounds in the DM's needs (#656)
 import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
 import {installRumourLever,rumoursView} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever,epithetView} from './epithet.js'; // bestow (#638)
+import {trafficView} from './traffic.js'; // who is on the road (#796)
 import {installSummonLever,summonView,summonedAlive,SUMMON} from './summon.js'; // summon_hero (#780)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
@@ -210,6 +213,7 @@ function fellowshipNeeds(){const F=slotted(),fo=focus();if(!F||!fo)return null;
   if(S.table)items.push('A Table scene is open: let it play; answer only calls of a scene you staged.');
   if(props.length)items.push('A vote is open ('+props.map(P=>P.kind).join(', ')+'): leave it to them.');
   for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them; a road home, a camp, a friendly face.');
+  for(const a of fo.members)if(wounded(a)&&!isDown(a))items.push(a.name+' carries a wound for '+woundSpanWord(a)+': a healer, a fire or a chapel on their road.');
   const open=th.slice(0,4).map(t=>txt(t.parts));
   for(const t of open)items.push('Open thread: '+t);
   for(const r of oathRows(fo.members).offered)items.push(r.hero+' has sworn nothing. Offered from their past: '+r.thread+OFFERED_NOTE);
@@ -243,6 +247,7 @@ export function companiesNeeds(){const fs=focuses();if(!fs.length)return [];cons
     if(pend.scene)items.push('A Table scene of theirs is open: let it play.');
     if(pend.vote)items.push('A vote is open among them: leave it to them.');
     for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them.');
+    for(const a of fo.members)if(wounded(a)&&!isDown(a))items.push(a.name+' carries a wound for '+woundSpanWord(a)+'.');
     for(const t of th.slice(0,2))items.push('Open thread: '+txt(t.parts));
     for(const x of seeItems(fo,dmState()).slice(0,2))items.push(x);
     const quiet=!down.length&&!pend.scene&&!pend.vote&&!hurt.length&&!fo.busy;
@@ -273,6 +278,7 @@ function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
     ...(F?{fellowship_regions:fo?[...fo.zones].map(z=>ZONES[z]):[],note:'Fellowship first: start an event only when nothing is pending for them, in a region they ride (fellowship_regions) or are headed to, and say why it serves their story.'}:{})}}
 
 // companies_needs is shown once a company other than the Fellowship rides (with the Fellowship alone dm_status reads as before).
+const roadTraffic=()=>{const v=trafficView(S.agents.filter(a=>a.company!=null&&a.state!=='dead'));return v?{road_traffic:v}:{}};
 const manyCompanies=()=>{const fs=focuses();return fs.length>1||fs.length===1&&!fs[0].company.slots};
 export const COMPANIES_FIRST='Every company is a thread: serve the company at the head of companies_needs first (the followed company first only when it must choose), then each other company in turn, the one longest without you next; a split-off member is a thread of its own, and a solo is the most fragile.';
 const unheardOf=D=>{const u=unheard(D),n=u.reduce((t,r)=>t+r.lines,0);return {total:n,by_company:u,...(n?{note:'Words were said aloud that you have not heard: read hear first.'}:{})}};
@@ -290,6 +296,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
+    ...roadTraffic(), // carts and travellers, nearest the companies first: stage_scene near "traffic:<n>" (#796)
     ...(compSummary()?{companions:compSummary()}:{}), // scripted companions of agent companies speak through you (#764)
     ...(S.sites?{sites:sitesView()}:{}), // the dungeon sites you raised (#69): state hidden, discovered, entered, cleared or collapsed
     proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,

@@ -170,12 +170,14 @@ export const sightNote = b => b && typeof b.insight === 'string' && b.insight ? 
 // Session zero held for members out of range (brief.gather, #771).
 export const gatherNote = b => b && typeof b.gather === 'string' && b.gather ? `\nSESSION ZERO: ${b.gather.slice(0, 200)}` : '';
 export const holdNote = b => b && typeof b.hold === 'string' && b.hold ? `\nTHE WORLD IS HELD FOR YOU by your rule (${b.hold.slice(0, 160)}): nothing moves until you act (any acting tool), at most 2 minutes. Look, then act.` : '';
+export const woundNote = b => b && typeof b.wounds === 'string' && b.wounds ? `\n${b.wounds.slice(0, 320)}.` : ''; // a lasting wound (brief.wounds, #656)
 export const earshotNote = b => b && typeof b.earshot === 'string' && b.earshot ? `\nIn earshot: ${b.earshot.slice(0, 300)} (the earshot tool tells more).` : '';
 export function talkText(b) {
   if (!b) return '';
   const heard = Array.isArray(b.heard) ? b.heard : [], met = Array.isArray(b.met) ? b.met : [];
   const near = Array.isArray(b.nearby) ? b.nearby : [];
-  return holdNote(b) + earshotNote(b) + sightNote(b) + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
+  const road = Array.isArray(b.road) ? b.road : [];
+  return holdNote(b) + earshotNote(b) + sightNote(b) + (road.length ? `\nOn the road: ${road.join('; ')}.` : '') + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
     (met.length ? `\nCompanions you have met: ${met.join(', ')}. You know each other: do not introduce yourself again or repeat a line; talk to move the party forward (propose, vote, lead_to, or answer a question you were asked).` : '');
 }
 
@@ -186,7 +188,7 @@ export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
 What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return gatherNote(b) + personaNote(b) + oathNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return gatherNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
 // header; when it is done, stale or was never stated, the turn asks first "What are you trying to do now?" (any mind: the
