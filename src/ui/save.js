@@ -6,6 +6,7 @@
 // so every panel is rebuilt from state by the normal start-up path.
 import {S,log,snapshot,restore,isSave,describeSave} from '../sim/index.js';
 import {WORLD_ID} from '../world/map.js';
+import {stopAllForReset} from './runners.js';
 
 export const saveKeyFor=id=>id==='eldmoor'?'eldmoor.save.v1':'eldmoor.save.v1.'+id;
 export const SAVE_KEY=saveKeyFor(WORLD_ID); // one slot per world
@@ -24,6 +25,15 @@ export const hasPending=()=>{try{const j=JSON.parse(store().getItem(PENDING_KEY)
 const dayOf=min=>Math.floor(min/1440)+1;
 const clock=min=>{const m=Math.floor(min)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
 function status(msg){const el=$('wStatus');if(el)el.textContent=msg}
+// A world reset (#691): every runner is stopped with one relay call before the page replaces the world (New world, Load,
+// Import, the default world, another map); the page then says so once, here and again after the reload.
+export const RESET_NOTE_KEY='eldmoor.reset.note';
+let resetting=null;
+export function resetRunners(){if(resetting)return resetting;
+  resetting=stopAllForReset().then(n=>{resetting=null;if(n==null)return null;const msg='World reset: '+n+' runner'+(n===1?'':'s')+' stopped';status(msg);
+    const ss=session();try{if(ss)ss.setItem(RESET_NOTE_KEY,msg)}catch(e){}return n},()=>{resetting=null;return null});return resetting}
+// Stop the runners, then go (a failed or slow relay never keeps the page from reloading).
+export const afterReset=go=>{resetRunners().then(go,go)};
 
 export function readSave(){const st=store();if(!st)return null;const raw=st.getItem(SAVE_KEY);if(!raw)return null;
   const snap=JSON.parse(raw);return isSave(snap)?snap:null}
@@ -56,7 +66,7 @@ export function exportStored(id=WORLD_ID){let raw=null;try{raw=store().getItem(s
 export function queueNewWorld(setup){const st=store();if(!st)return 'No storage available: the setup cannot be passed to the new page.';
   try{st.setItem(PENDING_KEY,JSON.stringify(setup));st.removeItem(saveKeyFor(setup.world));st.removeItem(atKey(saveKeyFor(setup.world)));if(setup.world===WORLD_ID)suppress=true}catch(e){return 'Storage refused the setup.'}
   const u=new URL(location.href);if(setup.world==='eldmoor')u.searchParams.delete('world');else u.searchParams.set('world',setup.world);
-  if(u.href===location.href)location.reload();else location.href=u.href;return null}
+  afterReset(()=>{if(u.href===location.href)location.reload();else location.href=u.href});return null}
 const takePending=()=>{const st=store();if(!st)return null;let raw=null;try{raw=st.getItem(PENDING_KEY);st.removeItem(PENDING_KEY)}catch(e){return null}
   if(!raw)return null;try{const j=JSON.parse(raw);return j&&j.world===WORLD_ID?j:null}catch(e){return null}};
 export function boot(init){booted=true;let snap=null;const pend=takePending();
@@ -77,7 +87,7 @@ export function exportSave(){const snap=snapshot(),blob=new Blob([JSON.stringify
 
 function reloadWith(json){const st=store();if(!st){status('No storage available');return}
   suppress=true;try{st.removeItem(atKey(SAVE_KEY));if(json==null)st.removeItem(SAVE_KEY);else st.setItem(SAVE_KEY,json)}catch(e){suppress=false;status('Storage refused the save');return}
-  if(json!=null)skipNext();location.reload()}
+  if(json!=null)skipNext();afterReset(()=>location.reload())}
 
 // Import a save file into this world's slot and reload into it. say(msg) reports a problem (the World bar's status by default).
 export function importFile(file,say=status){if(!file)return;const r=new FileReader();
@@ -89,11 +99,12 @@ export function importFile(file,say=status){if(!file)return;const r=new FileRead
 export function initSaveUI(){
   const on=(id,f)=>{const el=$(id);if(el)el.onclick=f};
   on('wSave',()=>writeSave());
-  on('wLoad',()=>{if(!hasSave()){status('No save yet');return}suppress=true;skipNext();location.reload()}); // boot() restores the save; progress since then is dropped
+  on('wLoad',()=>{if(!hasSave()){status('No save yet');return}suppress=true;skipNext();afterReset(()=>location.reload())}); // boot() restores the save; progress since then is dropped
   on('wExport',exportSave);
   on('wImport',()=>{const f=$('wFile');if(f){f.value='';f.click()}});
   const file=$('wFile');if(file)file.onchange=()=>importFile(file.files&&file.files[0]);
   on('wNew',()=>{if(newWorld)return newWorld();if(confirm('Start a new world? The saved one is erased.'))reloadWith(null)});
   window.addEventListener('beforeunload',()=>{if(!suppress)writeSave()});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&!suppress)writeSave()});
+  {const ss=session();let note=null;try{note=ss&&ss.getItem(RESET_NOTE_KEY);if(ss)ss.removeItem(RESET_NOTE_KEY)}catch(e){}if(note)status(note)}
   if(!$('wStatus')||!$('wStatus').textContent)status(hasSave()?'Auto-save on':'New world · auto-save on')}
