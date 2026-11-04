@@ -137,7 +137,7 @@ export function goalEvent(a,kind,x){
   case 'kill':if(g.type==='avenge'&&x.elite&&x.name===g.target)complete(a);break;
   case 'epic':if(g.type.indexOf('heirloom')===0&&x===g.target)complete(a);break;
   case 'level':if(g.type==='ascend'){g.progress=a.lvl;if(a.lvl>=g.need)complete(a)}else if(g.type==='rival')checkRival(a);break;
-  case 'crypt':if(g.type==='delve'&&(g.at||CRYPT.name)===x)complete(a);break; // x: the dungeon cleared; an oath is to one dungeon (#891)
+  case 'crypt':if(g.type==='delve'&&(g.dun||CRYPT.name)===x)complete(a);break; // x: the dungeon cleared; an oath is to one dungeon (#891)
   case 'boss':if(g.type==='legend')complete(a);break;
   case 'died':if(rnd()<.5&&!g.offered)log(a,' died with the oath unkept: ',{t:g.text,c:'dm'},'.');break;
   }}

@@ -174,7 +174,7 @@ const STEPPING_CRYPT_ROOMS=[
 ];
 
 // The Hollow Cairn's chambers (#717): four, pitched for Cairnwold (levels 8-13; offsets from the party's average).
-// Bestiary species only; the boss is a Grave Warden under the name the spec already reserved, and its six blows take three rounds (#891). The rooms are data on the
+// Bestiary species only; the boss is a Grave Warden under the name the spec already reserved, and its six blows get four rounds (#891: reflex parties clear 65%, at three 18%). The rooms are data on the
 // landmark, and every crypt landmark is a dungeon of its own (sim/crypts.js, #891).
 const CAIRN_ROOMS=[
   {id:'throat',name:'The Cold Throat',frame:'The hill opens into a low passage of fitted stones, breathing out cold. Small legs click along the walls ahead of the light.',
@@ -184,7 +184,7 @@ const CAIRN_ROOMS=[
   {id:'lamps',name:'The Hall of Unlit Lamps',frame:'Rows of stone lamps, every wick long dead. Archers stand among them, and something old and patient watches from behind the last row.',
     foes:[{type:'boneshot',n:2,hits:1},{type:'graveward',n:1,hits:2}],lvl:1,hit:.34,rounds:2},
   {id:'warden',name:"The Cairn-Warden's Door",frame:'The last chamber is closed by one great slab, and it stands open. The Warden within has kept the door against everyone, the living and the dead, and knows the weight of every name.',
-    foes:[{type:'graveward',n:1,name:'The Cairn-Warden',hits:4,atk:1.6},{type:'shambler',n:1}],lvl:2,hit:.42,rounds:3,boss:true},
+    foes:[{type:'graveward',n:1,name:'The Cairn-Warden',hits:4,atk:1.6},{type:'shambler',n:1}],lvl:2,hit:.42,rounds:4,boss:true},
 ];
 
 export const STEPPING={

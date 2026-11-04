@@ -40,7 +40,7 @@ export function matchWords(a,text,kind,about){
   if(kind==='vow')return {type:'own',kind:'vow',about:null};
   if(kind)return (kind==='slay'&&slayGoal(a,about.name))||(kind==='recover'&&knownEpic(about.name))||{type:'own',kind,about};
   const boss=Object.values(BOSSES).find(b=>names(text,b.name));if(boss&&SLAY.test(text))return {type:'legend'};
-  {const D=CRYPTS.find(x=>names(text,x.name));if(D&&CLEAR.test(text))return D===CRYPT?{type:'delve'}:{type:'delve',at:D.name}}
+  {const D=CRYPTS.find(x=>names(text,x.name));if(D&&CLEAR.test(text))return D===CRYPT?{type:'delve'}:{type:'delve',dun:D.name}}
   const E=longest(ELITES).find(e=>names(text,e.name));if(E)return {type:'avenge',target:E.name};
   const ep=longest(allEpics()).find(n=>names(text,n));if(ep)return epicGoal(ep);
   if(SLAY.test(text)){const h=S.agents.find(x=>x.kind==='hero'&&x.fac!==a.fac&&alive(x)&&names(text,x.name));if(h)return slayGoal(a,h.name)}

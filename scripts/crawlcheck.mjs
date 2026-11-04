@@ -309,8 +309,8 @@ if (argv[0] === '--cairn') {
     for (const b of M) if (b !== L) act(b, 'vote', {proposal_id: P.id, vote: 'yes'});
     sok(CAIRN.group && CAIRN.group.mem.length === M.length && !CRYPT.group, 'the vote sends the whole company to the Cairn');
     SIM.setRunnerLinks(null);
-    const g1 = {type: 'delve', at: CAIRN.name, text: 'x'}, a = M[0]; a.goal = g1; goalEvent(a, 'crypt', CRYPT.name); sok(!g1.done, 'an oath to the Cairn is not kept in the Crypt');
-    const m = SW.matchWords(a, 'I will clear the Hollow Cairn', null, null); sok(m.type === 'delve' && m.at === CAIRN.name, 'the words of an oath name the dungeon');
+    const g1 = {type: 'delve', dun: CAIRN.name, text: 'x'}, a = M[0]; a.goal = g1; goalEvent(a, 'crypt', CRYPT.name); sok(!g1.done, 'an oath to the Cairn is not kept in the Crypt');
+    const m = SW.matchWords(a, 'I will clear the Hollow Cairn', null, null); sok(m.type === 'delve' && m.dun === CAIRN.name, 'the words of an oath name the dungeon');
   }
   process.exit(sk.n ? 1 : 0);
 }
