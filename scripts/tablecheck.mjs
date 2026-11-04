@@ -435,7 +435,7 @@ if (process.argv[2] === '--vision') {
   let tc = dmAct('table_call');
   ok(tc.ok && tc.call && tc.call.kind === 'frame' && tc.scene.kind === 'vision' && tc.call.about.includes(crypt.name), 'the DM agent is asked to frame the vision (table_call), with what it may show');
   ok(dmAct('table_answer', {call: tc.call.id, text: 'Cold water closes over them; far below, a green bell swings in the dark.'}).ok, 'the DM frames it');
-  const hp0 = M.map(x => x.hp);
+  const hp0 = M.map(x => x.hp); settle(); // the DM sets the scene first (#694): no answer before the frame lands
   const sa = P.playerAct(live.id, 'scene_act', {option: 'ask', line: 'Who rings the bell, and for whom?'});
   ok(sa.ok !== false && !sa.error, 'the live member asks the vision a question' + (sa.error ? ': ' + sa.error : ''));
   const att = P.playerAct(live.id, 'scene_act', {option: 'attempt', line: 'I reach into the water.'});
@@ -462,7 +462,7 @@ if (process.argv[2] === '--vision') {
   if (spot2) {const [x, y] = spot2.at.split(',').map(Number); for (const m of M) if (m !== away) {m.x = x + (m === live ? 0 : .5); m.y = y; m.dest = null}}
   k = 0; while (!(S.table && S.table.kind === 'vision') && k++ < 600) step(1 / 60); const s2 = S.table;
   ok(s2 && s2.kind === 'vision' && s2.ctx.trig === 'place', 'one of them stands there: it opens');
-  if (s2) for (const id of s2.ids) P.playerAct(id, 'scene_act', {option: 'turn_away', line: ''});
+  if (s2) {settle(); for (const id of s2.ids) P.playerAct(id, 'scene_act', {option: 'turn_away', line: ''})}
   k = 0; while (S.table === s2 && k++ < 60 * 120) step(1 / 60);
   ok(s2 && /turn from it, every one/.test(s2.summary) && (s2.calls || []).every(c => c.by === 'scripted') && !(s2.calls || []).some(c => c.kind === 'answer'), 'all turned away: it fades; nobody asked, so nothing to answer: ' + (s2 && s2.summary));
   ok(!unknown || !M.some(x => x.lore && x.lore.p[unknown]), 'turned away, they learn nothing of ' + unknown);
