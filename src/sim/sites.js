@@ -219,7 +219,7 @@ export function wireSites(){provide('createSite',createSite);setSiteHook(VOTE);s
 // ---- once per step (sim/index.js), a no-op until a site exists ----
 export function siteTick(dt){const X=S.sites;if(!X)return;
   for(const s of X.list){const g=s.group;if(!g)continue;
-    g.mem=g.mem.filter(a=>a.state==='dungeon');
+    g.mem=g.mem.filter(a=>a.state==='dungeon'||(a.down&&a.down.crawl&&a.state==='downed')); // the downed below ground stay with the crawl (#654)
     if(!g.mem.length){if(g.crawl)crawlLost(g);s.group=null;continue}
     if(g.crawl){crawlTick(g,dt);continue}
     g.t-=dt;if(g.t<=0){s.group=null;rollSite(g,s)}}
