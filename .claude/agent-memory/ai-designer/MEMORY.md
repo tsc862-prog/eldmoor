@@ -73,5 +73,6 @@
 - [Downed and saves #652/#653](downed_saves.md) — downed.js: hero blows finish, table and crawl down since #654, aid state, finishes flag, fixture pitfalls
 - [Table rescue and saves #654](table_rescue_saves.md) — downed stay in scenes, saves per round, scene extends while bleeding, crawl downs, world downing opens rescue
 - [Hire tool #634](hire_tool.md) — hires are scripted heroes outside slots, wanderers only, voters skip them, inSlots true in Fellowship
+- [PvP mercy #657](pvp_mercy.md) — mercy.js: downs not kills, finish/spare odds, life-debts, bled = no credit, finish = guild grudge
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls

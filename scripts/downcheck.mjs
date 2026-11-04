@@ -13,6 +13,12 @@ const {agentDie, maxHp} = await import('../src/sim/heroes.js');
 const {DOWN, downHit, foeOnDowned, downStats, downedStep} = await import('../src/sim/downed.js');
 const {addUse} = await import('../src/sim/inv.js');
 const {rebuild} = await import('../src/sim/spatial.js');
+const {MERCY, mercyStats, finishTool, spareTool, finishOdds} = await import('../src/sim/mercy.js');
+const {pvpCheck} = await import('../src/sim/pvp.js');
+const {setRunnerLinks} = await import('../src/sim/runlink.js');
+const {markPlayer} = await import('../src/sim/player.js');
+const {tiersOf} = await import('../src/sim/tiers.js');
+const {zoneAt} = await import('../src/world/map.js');
 
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
@@ -20,6 +26,7 @@ console.log('\nEldmoor downcheck\n');
 
 // A quiet corner: no mobs, every other hero home in town; heroes under test stand in the open.
 const P = {x: 40, y: 25};
+const SP = (() => {for (let x = 40; x < 80; x++) if (zoneAt(x, 25) >= 1) return {x: x + 2, y: 25}; return P})(); // outside the safe zone, where duels happen
 function world() {
   forced.length = 0; seed = 0x5eed; init({fellowship: false});
   for (const m of S.mobs) {m.alive = false; m.respawn = 1e9; m.target = null}
@@ -43,11 +50,11 @@ world(); {const a = hero(0), m = mob();
   ok(a.state === 'downed' && a.hp === 0 && a.down && a.down.f === 0, 'a hero at zero HP from a mob is downed (hp 0, saves 0/0)');
   ok(S.facStats[a.fac].fallen === 0 && S.recruits.length === 0, 'a downing is not a death: no grave, no recruit');
   const b = hero(1); b.fac = 1 - a.fac;
-  const c = hero(2); c.hp = -1; agentDie(c, b);
-  ok(c.state === 'dead' && S.recruits.length === 1, 'a blow from a hero finishes (PvP spare comes with #657)');
+  const c = hero(2); c.hp = -1; forced.push(.5, .001); agentDie(c, b); // pop's jitter, then the victor's die: under the odds, a finish
+  ok(c.state === 'dead' && S.recruits.length === 1, 'a hero downed by an enemy who rolls to finish dies (#657)');
   const e = hero(3); e.hp = -maxHp(e) - 1; agentDie(e, m);
   ok(e.state === 'dead', 'a blow from zero past full health kills outright');
-  ok(downStats().why.massive === 1 && downStats().why.finish === 1, 'the summary counts both');}
+  ok(downStats().why.massive === 1 && mercyStats().finished === 1, 'the summary counts both');}
 
 // 2. Saves: three failures die (through fall: grave and recruit), a 1 is two failures, a 20 rises on 1 HP.
 world(); {const a = hero(0), m = mob(), b = hero(1); mates(a, b); b.state = 'town'; b.x = 5; // kin far away, no helper
@@ -194,9 +201,89 @@ world(); {const {markPlayer, playerAct} = await import('../src/sim/player.js'); 
     runScene(sc);
     ok(sc.beats.some(x => x.by === 'foe' && /where they lie/.test(x.text)), 'with nobody else standing the foe strikes the one who lies down');
     ok(a.state === 'dead' || !a.down || a.down.stable || sc.rd >= T.TABLE.DOWN_ROUNDS, 'and it ended at the dice (' + a.state + ', ' + sc.rd + ' rounds)');}
+  // (e) a PvP downing at a Table scene (#657 at the table): the hero goes down there too, and the scripted victor finishes or spares at once
+  world(); {const a = hero(0), k = hero(1); const C = company(a); k.fac = 1 - a.fac; k.nemesis = {}; a.nemesis = {}; k.player = false;
+    k.state = 'duel'; k.target = a; a.state = 'duel'; a.target = k; k.x = a.x + 1; k.y = a.y;
+    const sc = T.openScene('ambush', 'Ambush: ' + k.name, [k, ' falls on ', a, '.'], {foe: k.id}, C);
+    rebuild(); a.hp = -3; (await import('../src/sim/heroes.js')).agentDie(a, k);
+    const spared = a.state === 'downed' && a.down && a.down.stable && a.debts && a.debts[k.id], finished = a.state === 'dead';
+    ok(sc && sc.ids.includes(a.id) && (spared || finished), 'a PvP downing at a Table scene goes through finish or spare (' + (spared ? 'spared: stable, owes a life' : finished ? 'finished' : a.state) + ')');
+    T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto';}
   RL.setRunnerLinks(null); T.TABLE.liveMs = LM; T.TABLE.turnMs = TM;
 }
 
+
+// 9b. PvP finish or spare (#657). A hero's blow downs an enemy hero; the victor finishes or spares.
+const foes = () => {const a = hero(0), k = hero(1); a.fac = 0; k.fac = 1; a.lvl = 6; k.lvl = 7; a.nemesis = {}; k.nemesis = {}; return [a, k]};
+world(); {const [a, k] = foes(); const h0 = k.honor, g0 = a.gold = 100;
+  rebuild(); a.hp = -1; forced.push(.5, .999); agentDie(a, k); // pop's jitter, then the victor's die: over the odds, a spare
+  ok(a.state === 'downed' && a.down.stable && a.debts && a.debts[k.id], 'a scripted victor who rolls high spares: stable, and a life-debt on the spared');
+  ok(k.honor === h0 && a.gold === g0 && mercyStats().spared === 1, 'sparing takes no honour and no gold');
+  ok(S.chronicle.some(e => e.parts.some(p => p === ' spared ')), 'the chronicle names the mercy');
+  const vf = {...k, nemesis: {[a.id]: 'Bram'}}; ok(finishOdds(vf, a) === 1, 'a sworn blood debt is always finished');
+  ok(finishOdds(k, a) >= MERCY.MIN && finishOdds(k, a) <= MERCY.MAX, 'otherwise the odds are bounded (' + finishOdds(k, a).toFixed(2) + ')');}
+
+// An agent victor whose runner holds it waits; a third hero who finishes takes the honour, the XP and the gold.
+world(); {const [a, k] = foes(), f = hero(2); f.fac = 1; f.lvl = 7; f.nemesis = {}; a.gold = 200;
+  markPlayer(k, true); setRunnerLinks(x => x === k ? 'connected' : 'none');
+  rebuild(); a.hp = -1; agentDie(a, k);
+  ok(a.state === 'downed' && a.down.victor === k.id, 'an agent victor with a live runner gets the choice (the downed waits)');
+  const kh = k.honor, kx = k.xp, kg = k.gold, fh = f.honor, fx = f.xp, fg = f.gold;
+  rebuild(); const r = finishTool(f, a.name);
+  ok(r.ok && a.state === 'dead', 'finish {hero} kills the downed enemy');
+  ok(f.honor > fh && f.xp !== fx && f.gold === fg + 20, 'honour, XP and a tenth of the gold go to the finisher (' + (f.honor - fh) + ' honour, ' + (f.gold - fg) + 'g)');
+  ok(k.honor === kh && k.xp === kx && k.gold === kg, 'the one who downed them gets nothing');
+  setRunnerLinks(null);}
+
+// Left to bleed: an agent victor who never chooses; the downed fails their saves; nobody gets the credit.
+world(); {const [a, k] = foes(); markPlayer(k, true); setRunnerLinks(x => x === k ? 'connected' : 'none');
+  rebuild(); a.hp = -1; agentDie(a, k); const kh = k.honor; k.x = a.x + 6;
+  d20(5, 5, 5); tick(3);
+  ok(a.state === 'dead' && /^bled out after /.test(a.cause || '') && k.honor === kh && mercyStats().bled === 1, 'a downed enemy left to bleed dies with no honour to anyone (' + a.cause + ')');
+  setRunnerLinks(null);}
+
+// Agent spare through the tool: a landmark for both; the debt holds back the debtor's blade and the finish tool.
+world(); {const [a, k] = foes(); markPlayer(a, true); markPlayer(k, true); setRunnerLinks(() => 'connected');
+  rebuild(); a.hp = -1; agentDie(a, k);
+  rebuild(); const r = spareTool(k, a.name);
+  ok(r.ok && a.down.stable && a.debts[k.id] && a.debts[k.id].name === k.name, 'spare {hero} leaves them stable and owing a life');
+  ok(tiersOf(k).marks.some(m => m.k === 'mercy') && tiersOf(a).marks.some(m => m.k === 'mercy'), 'both get a landmark');
+  setRunnerLinks(null);
+  // the spared wakes and meets the sparer again: sworn on them, still no charge
+  a.down = null; a.state = 'hunt'; a.hp = maxHp(a); a.nemesis[k.id] = 'a friend'; a.spotCd = 0; k.state = 'hunt'; k.hp = maxHp(k);
+  a.player = false; k.player = false; a.x = SP.x; a.y = SP.y; k.x = SP.x + 2; k.y = SP.y;
+  rebuild(); S.pvpT = 0; pvpCheck(.5);
+  ok(a.state !== 'duel' && k.state !== 'duel' && mercyStats().held >= 1, 'a life owed holds back a sworn charge');
+  k.state = 'downed'; k.hp = 0; k.down = {at: S.gameMin, next: S.gameMin + 10, s: 0, f: 0, stable: false, wake: 0, by: {kind: 'mob'}};
+  rebuild(); const t = finishTool(a, k.name);
+  ok(!t.ok && /owe/.test(t.error || ''), 'finish is refused against the one you owe a life');}
+
+// The debt is paid once: the sparer hard pressed by a creature near the debtor, or down near them.
+world(); {const [a, k] = foes(); (a.debts = {})[k.id] = {name: k.name, fac: 1, day: 1}; const m = mob();
+  k.state = 'fight'; k.target = m; m.target = k; k.hp = Math.floor(maxHp(k) * .3); m.lvl = a.lvl; a.x = k.x + 2;
+  rebuild(); S.pvpT = 0; pvpCheck(.5);
+  ok(a.state === 'fight' && a.target === m && !a.debts && mercyStats().repaid === 1, 'the debtor joins the sparer\'s fight with a creature: the debt is paid');}
+world(); {const [a, k] = foes(); (a.debts = {})[k.id] = {name: k.name, fac: 1, day: 1}; const m = mob(); a.x = k.x + 3;
+  down(k, m); rebuild(); S.pvpT = 0; pvpCheck(.5);
+  ok(a.state === 'aid' && a.aid === k.id && !a.debts, 'the debtor comes to the downed sparer\'s side');}
+
+// The grudge: a level-5 hero finished passes it to the whole guild; one who bled out only to their party.
+const G = () => ({tag: 'TT', name: 'Test Guild', fac: 0});
+world(); {const [a, k] = foes(), g = hero(2); g.fac = 0; a.lvl = 5; a.guild = g.guild = G(); g.nemesis = {};
+  rebuild(); a.hp = -1; forced.push(.5, .001); agentDie(a, k);
+  ok(a.state === 'dead' && g.nemesis[k.id] === a.name, 'a finished hero below level 12 still swears their whole guild');}
+world(); {const [a, k] = foes(), g = hero(2); g.fac = 0; a.lvl = 5; a.guild = g.guild = G(); g.nemesis = {}; g.state = 'town'; g.x = 5;
+  markPlayer(k, true); setRunnerLinks(x => x === k ? 'connected' : 'none');
+  rebuild(); a.hp = -1; agentDie(a, k); k.x = a.x + 6; d20(5, 5, 5); tick(3);
+  ok(a.state === 'dead' && !g.nemesis[k.id], 'one who bled out below level 12 does not');
+  setRunnerLinks(null);}
+
+// Save and restore: the debt and a waiting victor survive.
+world(); {const [a, k] = foes(); markPlayer(k, true); setRunnerLinks(x => x === k ? 'connected' : 'none');
+  (a.debts = {})[99] = {name: 'Old Friend', fac: 1, day: 1}; rebuild(); a.hp = -1; agentDie(a, k);
+  const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap); const r = S.agents.find(x => x.id === a.id);
+  ok(r.down && r.down.victor === k.id && r.debts && r.debts[99], 'save and restore keep the waiting victor and the debts');
+  setRunnerLinks(null);}
 // 9. The agent side (#658): events in range, the downed agent's reflection, aid rules, the stabilize/tend/carry tools.
 {const PL = await import('../src/sim/player.js'), G = await import('../src/sim/gambits.js'), RF = await import('../src/sim/reflect.js');
  const PC = await import('./pacing.mjs');
@@ -287,6 +374,15 @@ world(); {const {markPlayer, playerAct} = await import('../src/sim/player.js'); 
  world(); {const a = hero(0), b = hero(1); agent(b);
   const r = PL.playerAct(b.id, 'tend', {});
   ok(!r.ok && /No one of your side lies downed in sight/.test(r.error), 'tend with no one down says so');}
+ // a PvP downing (#657 with #658): the agent victor is offered finish or spare, the downed's companion still hears it and comes
+ world(); {const a = hero(0, 'Warrior'), k = hero(1), b = hero(0, 'Priest'); k.fac = 1 - a.fac; k.nemesis = {}; mates(a, b); b.x = a.x + 6;
+  agent(k); agent(b); setRunnerLinks(() => 'connected');
+  rebuild(); a.hp = -1; agentDie(a, k);
+  ok(a.state === 'downed' && a.down.victor === k.id && heard(k, /finish \{hero:/), 'a PvP downing offers the agent victor finish or spare');
+  ok(heard(b, /is down and dying/) && b.state === 'aid', 'the companion of the downed hears it and comes (aid)');
+  rebuild(); finishTool(k, a.name);
+  ok(a.state === 'dead' && heard(b, /is finished where they lay/), 'a finish is heard by the companion in range');
+  setRunnerLinks(null);}
 }
 
 // 8. Determinism: two runs from the same seed give the same downings and deaths.

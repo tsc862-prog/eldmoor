@@ -1,0 +1,10 @@
+# Pinned for Eldmoor's ZeroGPU art Space (#703). Versions read from PyPI on 2026-11-03, each at least about two weeks old;
+# torch is the newest version on the ZeroGPU supported list (https://huggingface.co/docs/hub/spaces-zerogpu: 2.8.0 to 2.13.0).
+# gradio itself comes from README.md sdk_version (6.30.0).
+spaces==0.51.3
+torch==2.13.0
+diffusers==0.41.0
+transformers==5.20.2
+accelerate==1.15.0
+peft==0.21.2
+safetensors==0.8.0
