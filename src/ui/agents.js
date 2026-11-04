@@ -8,7 +8,7 @@
 //     its next start (the row says which).
 // Limits are kept per viewer (localStorage, ui/runners.js). The relay enforces them (scripts/runners.mjs).
 import {S,playerSeats,dmSeatOn} from '../sim/index.js';
-import {runnerByKey,allRunners,runnersEnabled,relayUp,kindInfo,pickOf,limitOf,limitNote,setLimit,sessionInfo,setSessionBudget,stateLine,watchRunners,HOW_TEXT,DONE_STATE,BUDGETS,NO_SESSION,noSessionBudget} from './runners.js';
+import {freshAll,runnerByKey,allRunners,runnersEnabled,relayUp,kindInfo,pickOf,limitOf,limitNote,setLimit,sessionInfo,setSessionBudget,stateLine,watchRunners,HOW_TEXT,DONE_STATE,BUDGETS,NO_SESSION,noSessionBudget} from './runners.js';
 import {patch} from './stable.js';
 import {inSlots,slotted,mindsOf} from '../sim/company.js'; // the slotted company (#588)
 
@@ -16,7 +16,7 @@ const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const usd=v=>'$'+(+v||0).toFixed(2);
 const SESSION_OPTS=[1,2,5,10,20,50,100];
-let btn=null,pop=null,body=null,isOpen=false;
+let btn=null,pop=null,body=null,isOpen=false,freshNote='';
 
 // The runners the game can start or has running: [{key, kind, name, hero}]
 export function agentRows(){const out=[],seen=new Set(),add=(key,kind,name,hero)=>{if(seen.has(key))return;seen.add(key);out.push({key,kind,name,hero})};
@@ -61,7 +61,9 @@ function build(n){
   sessionBox(n);
   const rows=agentRows();
   if(!rows.length){n.append(el('div','dm','No agent-played hero yet. Set the Fellowship’s Minds to agents, or press Agent on a hero.'));return}
-  n.append(el('div','slbl agsub','Runners'));for(const x of rows)runnerRow(n,x)}
+  n.append(el('div','slbl agsub','Runners'));for(const x of rows)runnerRow(n,x);
+  // #787: long conversations cost more each turn; the heroes keep their journal, notes and persona
+  if(allRunners().some(r=>!DONE_STATE[r.state])){const b=el('button','agfresh','Fresh sessions for all');b.type='button';b.dataset.agfresh='1';b.title='Every running runner sets its conversation aside at its next safe moment, never in a scene. Heroes keep their journal, notes and persona.';n.append(b);if(freshNote)n.append(el('div','dm agnote',freshNote))}}
 
 function btnText(){const s=sessionInfo();return 'Agents'+(s.spent?' · '+usd(s.spent)+(s.budget!=null?' / '+usd(s.budget):''):'')}
 export function renderAgents(){if(!btn)return;const t=btnText();if(btn.textContent!==t)btn.textContent=t;
@@ -75,7 +77,8 @@ export function initAgents(){btn=$('agentsBtn');pop=$('agentsPop');if(!btn||!pop
   const hd=el('div','aghead');const cl=el('button','mini','Close');cl.dataset.agclose='1';hd.append(el('span','fname','Agents'),cl);
   body=el('div','agbody');pop.append(hd,body,el('div','dm agfoot','Budgets are kept in this browser and sent to the relay. They apply to the next start; on a running runner a lower one applies now.'));
   btn.addEventListener('click',()=>isOpen?closeAgents():openAgents());
-  pop.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-agclose]')){closeAgents();btn.focus()}});
+  pop.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-agclose]')){closeAgents();btn.focus()}
+    if(e.target.closest&&e.target.closest('[data-agfresh]'))freshAll().then(r=>{freshNote=r&&r.ok?'Asked '+r.asked.length+' runner'+(r.asked.length===1?'':'s')+': each starts fresh at its next safe moment.':(r&&r.error)||'The relay did not answer.';renderAgents()})});
   pop.addEventListener('change',e=>{const s=e.target;if(!s||!s.dataset)return;
     if(s.dataset.agsess)setSessionBudget(s.value===''?null:Number(s.value)).then(renderAgents);
     else if(s.dataset.aglim)setLimit(s.dataset.aglim,s.dataset.agf,s.value).then(renderAgents);

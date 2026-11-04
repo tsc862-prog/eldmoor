@@ -128,6 +128,20 @@ console.log('runner routes (fake children)');
     for (const id of [2, 3, 4, 5, 6, 7, 8, 9, 10]) await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: id, ...lo}, origin: PAGE});}
   s = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 11, provider: 'ollama', model: 'qwen2.5:14b'}, origin: PAGE});
   ok(s.status === 429 && /Seats full: 10/.test(JSON.stringify(s.body || s)), 'ten local agent heroes at most, the eleventh is refused');
+  // issue #787: the context size from the turn lines, the rolls, and the page's fresh session
+  {k1.stdout.emit('data', Buffer.from('tokens this turn | ctx 212k | turn\n  [session rolled: 212k tokens]\ntokens this turn | ctx 31k | turn\n')); await sleep(10);
+    const v = (await req(on.base, '/play/runner', {origin: PAGE})).runners.find(r => r.key === 'hero:1');
+    ok(v && v.ctx === 31 && v.rolls === 1, `the runner view carries the last context size and the rolls: ctx ${v && v.ctx}k, ${v && v.rolls} roll`);
+    let f = await req(on.base, '/play/runner/fresh', {method: 'POST', body: {key: 'hero:1'}, origin: PAGE});
+    ok(f.status === 200 && f.asked.length === 1 && /fresh\n$/.test(k1.got), 'fresh session: a "fresh" line on the runner\'s stdin');
+    f = await req(on.base, '/play/runner/fresh', {method: 'POST', body: {}, origin: PAGE});
+    ok(f.status === 200 && f.asked.includes('hero:1') && f.asked.length > 1, `fresh sessions for all: ${f.asked.length} runners asked`);
+    f = await req(on.base, '/play/runner/fresh', {method: 'POST', body: {key: 'hero:99'}, origin: PAGE}); ok(f.status === 404, 'a runner that is not live is refused');
+    f = await req(on.base, '/play/runner/fresh', {method: 'POST', body: {}, origin: 'http://evil.example'}); ok(f.status === 403, 'another origin is refused');
+    const c = checkStart({hero: 1, fresh: true}, [{id: 1, name: 'Ann', alive: true}]);
+    ok(c.req.fresh === true && runnerArgs(c.req, 'http://x').includes('--new') && !runnerArgs(checkStart({hero: 1}, [{id: 1, name: 'Ann', alive: true}]).req, 'http://x').includes('--new'), 'Fresh session on a start is --new, and only when asked');
+    ok(!/fresh/.test(readFileSync(join(tmp, 'runners', 'active.json'), 'utf8')), 'it is never saved for a resume');
+    k1.got = ''}
   // stop: "stop" on stdin; the child exits cleanly
   s = await req(on.base, '/play/runner/stop', {method: 'POST', body: {hero: 1}, origin: PAGE});
   ok(s.status === 200 && s.runner.state === 'stopping' && k1.got === 'stop\n', 'stop asks the runner to stop (on its stdin)');

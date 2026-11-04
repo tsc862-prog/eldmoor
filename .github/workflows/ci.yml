@@ -114,6 +114,7 @@ jobs:
       - {name: Hugging Face provider (mock router and no token), run: npm run hfcheck}
       - {name: Gemini provider (mock Gemini and no key), run: npm run googlecheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
+      - {name: Session size (real CLI on a mock API), run: npm run sessioncheck}
       - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
 

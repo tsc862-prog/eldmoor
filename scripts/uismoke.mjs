@@ -234,9 +234,9 @@ holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 console.log('Agents panel');
 {const posts=[];const hk='hero:'+mem[1].id;
   const relay={ok:true,enabled:true,session:{budget:null,spent:.42,left:null},kinds:{hero:{defaults:{maxTurns:20,budget:1},caps:{maxTurns:200,budget:5}},fellowship:{defaults:{maxTurns:6,budget:2},caps:{maxTurns:100,budget:10}},dm:{defaults:{maxTurns:12,budget:1},caps:{maxTurns:200,budget:5}}},
-    runners:[{key:hk,kind:'hero',hero:mem[1].id,heroes:[mem[1].id],name:mem[1].name,state:'live',turns:3,cost:.42,budget:1,provider:'anthropic',model:'claude-haiku-5-5',lines:[]}]};
+    runners:[{key:hk,kind:'hero',hero:mem[1].id,heroes:[mem[1].id],name:mem[1].name,state:'live',turns:3,cost:.42,budget:1,provider:'anthropic',model:'claude-haiku-5-5',ctx:212,rolls:1,lines:[]}]};
   globalThis.fetch=async(url,o)=>{url=String(url);const j=v=>({ok:true,status:200,json:async()=>v});
-    if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push({url,body});
+    if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push({url,body});if(url.endsWith('/fresh'))return j({ok:true,asked:[hk]});
       if(url.endsWith('/limits')){if('sessionBudget' in body)relay.session={budget:body.sessionBudget,spent:.42,left:body.sessionBudget==null?null:body.sessionBudget-.42};return j({ok:true,session:relay.session,applies:body.budget!=null&&body.budget<1?'now':'next start'})}
       return j({ok:true})}
     if(url.endsWith('/play/runner'))return j(relay);throw new Error('no route '+url)};
@@ -253,6 +253,10 @@ console.log('Agents panel');
   ok(JSON.parse(localStorage.getItem('eldmoor.agentLimits')).session===5,'the session budget is kept per viewer');
   const row=pop.querySelector('.agr[data-k='+hk.replace(':','\\:')+']')||pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
   ok(!!row&&row.textContent.includes(mem[1].name),'a row for the agent-played hero');
+  ok(/ctx 212k/.test(row.textContent),'the state line shows the session size (#787): '+row.textContent.slice(0,120));
+  {const fb=pop.querySelector('[data-agfresh]');ok(!!fb&&/Fresh sessions for all/.test(fb.textContent),'Fresh sessions for all shows while a runner runs');
+    fb.dispatch('click',{target:fb,bubbles:true});pop.dispatch('click',{target:fb});await wait();await wait();uiSlow();
+    ok(posts.some(p=>p.url.endsWith('/play/runner/fresh')),'and asks the relay');ok(/Asked 1 runner/.test(pop.textContent),'and says so')}
   const bs=row.querySelectorAll('select').find(x=>x.dataset.agf==='budget');bs.value='0.5';bs.dispatch('change',{target:bs});await wait();uiSlow();
   ok(posts.some(p=>p.body.key===hk&&p.body.budget===.5),'a lower budget on a running runner is sent live');
   const row2=pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
