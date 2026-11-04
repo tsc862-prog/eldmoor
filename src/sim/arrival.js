@@ -69,7 +69,7 @@ const pickH=(seed,k,list)=>list[Math.floor(hash(seed|0,k,53)*list.length)%list.l
 const NARRATOR={kind:'dm',name:'The Narrator'};
 const LIVE={connected:1,waiting:1};
 const isFellowship=C=>!!C&&C===slotted();
-const memOf=C=>!C?[]:isFellowship(C)?slotHeroes(slotted()):members(C);
+const memOf=C=>!C?[]:isFellowship(C)?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const leadOf=C=>{if(!C)return null;if(isFellowship(C)){const P=slotParty(slotted());if(P&&living(P.leader))return P.leader;const L=slotHeroes(slotted());let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}return leaderOf(C)||members(C)[0]||null};
 const townOf=C=>{const ld=leadOf(C);return C&&C.hall?C.hall:ld?homeOf(ld).name:'town'};
 
@@ -101,7 +101,7 @@ function openingFrame(C,q){const L=memOf(C),ld=leadOf(C),town=townOf(C),d=Math.f
 function openOpening(q){const C=companyById(q.company),L=memOf(C);if(!C||!L.length)return null;const ld=leadOf(C),town=townOf(C),solo=L.length===1;
   if(q.kind==='heir')log(nar(''),'The Chronicle remembers ',gd(q.fallen||'one who fell'),(q.cause?', '+q.cause:'')+'. In '+town+', ',L[0],' takes up the road.');
   const title='SESSION ZERO · '+(solo?L[0].name:C.name||ld.name+'\'s company');
-  const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town)};
+  const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,setting:'tavern',...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town)};
   const frame=openingFrame(C,q);
   if(!tableOn())return settleOpening(C,ctx,[],title);
   const sc=openScene('opening',title,frame,ctx,C);
@@ -170,7 +170,7 @@ function place(C,a,where){if(where==='camp'){const g=C.camp;a.x=g.x+1.2;a.y=g.y+
 function openArrival(C,q,where){const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=q.slot?lcRoleOf(q.slot):roleOf(a.cls);
   const title='A newcomer: '+a.name;
   const frame=[a,', a level '+a.lvl+' '+a.cls.toLowerCase()+', comes to '+at+', sent to take ',gd(q.name),'\'s place as the company\'s '+role+'.'];
-  const ctx={arrival:1,recruit:a.id,fallen:q.fallen,fname:q.name,role,slot:q.slot||null,skip:[a.id],anchor:ld?ld.id:null,at};
+  const ctx={arrival:1,recruit:a.id,fallen:q.fallen,fname:q.name,role,slot:q.slot||null,skip:[a.id],anchor:ld?ld.id:null,at,...(where==='town'?{setting:'tavern',town:homeOf(leadOf(C)||a).name}:{})};
   for(const b of memOf(C))if(b!==a&&b.player)notify(b,a.name+' has come to take '+q.name+'\'s place.',false);
   if(!tableOn())return settleArrival(C,ctx,[]);
   const sc=openScene('arrival',title,frame,ctx,C);

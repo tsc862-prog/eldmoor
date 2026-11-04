@@ -16,11 +16,12 @@ export const costOf = (model, inTok, outTok) => {const p = PRICES[model]; return
 const fail = (msg, raw) => Object.assign(new Error(msg), raw != null ? {raw} : {});
 
 // client: the @anthropic-ai/sdk client (or a fake with messages.create in tests); null when no key.
-export function anthropicAdapter({client = null, defaultModel = DEFAULT_MODEL} = {}) {
+export function anthropicAdapter({client = null, defaultModel = DEFAULT_MODEL, allow = null} = {}) {
+  const listed = () => allow && allow.length ? allow.filter(m => PRICES[m]) : Object.keys(PRICES); // ANTHROPIC_MODELS (#677): only models the price table knows
   return {
     name: 'anthropic', local: false, defaultModel,
     configured: () => !!client,
-    status: async () => client ? {ok: true, models: Object.keys(PRICES), default: defaultModel} : {ok: false, models: [], error: 'no ANTHROPIC_API_KEY'},
+    status: async () => client ? {ok: true, models: listed(), prices: PRICES, default: defaultModel} : {ok: false, models: [], error: 'no ANTHROPIC_API_KEY'},
     async call({system, user, schema, maxTokens, model, effort = 'low', signal, timeoutMs}) {
       if (!client) throw fail('anthropic is not configured (no ANTHROPIC_API_KEY)');
       const mdl = model || defaultModel, t0 = Date.now();

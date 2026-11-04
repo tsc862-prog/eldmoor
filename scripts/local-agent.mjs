@@ -260,19 +260,28 @@ export function sceneSchema(keys, {strict = false} = {}) {
 }
 // The open scene as the brief (/play/pace {brief:true}, field scene) or a status/look reply (field table) gives it
 // -> {title, kind, frame, keys, options, your_turn, so_far}, or null when there is nothing to answer.
+// Never a scene this hero already acted in, an everyone-answers one that is not open to it, or a turn scene on someone else's turn (#681).
+export const sceneKey = t => t ? [t.title || t.scene || '', t.kind || '', String(t.frame || '').slice(0, 80)].join('|') : '';
 export function sceneFrom(t) {
   if (!t || t.acted || t.phase === 'outcome' || t.phase === 'done') return null;
+  if (t.your_turn === false && (t.everyone_answers || t.phase === 'turn')) return null;
   const options = Array.isArray(t.options) ? t.options : [], keys = Array.isArray(t.keys) && t.keys.length ? t.keys : options.map(o => String(o).split(' = ')[0].trim()).filter(Boolean);
   if (!keys.length) return null;
-  return {title: t.title || t.scene || 'a scene', kind: t.kind || null, frame: t.frame || '', keys, options: options.length ? options : keys, your_turn: !!t.your_turn, so_far: t.so_far || [],
+  return {key: sceneKey(t), title: t.title || t.scene || 'a scene', kind: t.kind || null, frame: t.frame || '', keys, options: options.length ? options : keys, your_turn: !!t.your_turn, so_far: t.so_far || [],
     ...(t.you ? {you: t.you} : {}), ...(t.topic ? {topic: t.topic} : {}), ...(t.asked_you ? {asked_you: t.asked_you} : {})}; // who answers (#571)
 }
 // The scene a turn has to answer: from the brief, or (a page or relay from before #163 sends no brief.scene) from
 // status when the brief or the wake says a scene is open. call(tool, args) -> the game's reply.
-export async function sceneToAnswer(brief, call, hinted = false) {
-  if (brief && 'scene' in brief) return sceneFrom(brief.scene); // null: nothing open for this hero (or already answered)
+export async function sceneToAnswer(brief, call, hinted = false, sess = null) {
+  if (brief && 'scene' in brief) return sceneDue(brief.scene, sess); // null: nothing open for this hero (or already answered)
   if (!(hinted || (brief && brief.table))) return null;
-  try {const st = await call('status', {}); return st && st.ok !== false ? sceneFrom(st.table) : null} catch {return null}
+  try {const st = await call('status', {}); return st && st.ok !== false ? sceneDue(st.table, sess) : null} catch {return null}
+}
+// sceneFrom, minus the scene this session answered a moment ago (the session remembers it: answeredScene, 10 real minutes).
+export const ANSWERED_MS = 10 * 60 * 1000;
+export function sceneDue(t, sess = null) {
+  const sc = sceneFrom(t), a = sess && sess.answeredScene;
+  return sc && a && a.key === sc.key && Date.now() - a.at < ANSWERED_MS ? null : sc;
 }
 // The answering hero itself (#571: two members once gave the frame's job back as their own quest, names swapped).
 const youText = y => y && y.name ? `You are ${y.name}${y.cls ? ', a ' + String(y.cls).toLowerCase() : ''}.` + (y.persona ? ' Who you are: ' + String(y.persona).slice(0, 300) + '.' : '') + (y.oath ? ' Your own oath: ' + String(y.oath).slice(0, 160) + '.' : '') + (y.told ? ' ' + String(y.told).slice(0, 400) : '') : '';
@@ -318,7 +327,7 @@ export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep
   on('tool', 'scene_act', args); stat.tools++;
   let r; try {r = await call('scene_act', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
   const text = typeof r === 'string' ? r : JSON.stringify(r); on('result', text);
-  if (r && r.ok !== false) {stat.acts++; stat.calls.push({name: 'scene_act', ok: true}); stat.narration = pick.line ? `${pick.line} (${pick.option})` : `Chose ${pick.option} at the table.`;
+  if (r && r.ok !== false) {stat.acts++; if (sess && sc.key) sess.answeredScene = {key: sc.key, at: Date.now()}; stat.calls.push({name: 'scene_act', ok: true}); stat.narration = pick.line ? `${pick.line} (${pick.option})` : `Chose ${pick.option} at the table.`;
     if (r && Number.isFinite(r.waited_s)) stat.sceneS = [r.waited_s]} // how long the table had waited (issue #515)
   else {stat.rejected++; stat.calls.push({name: 'scene_act', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
   if (/"dead":true/.test(text)) stat.dead = true;
@@ -431,6 +440,8 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
 }
 
 const strip = m => {const o ={role: m.role, content: m.content || ''}; if (m.tool_calls) o.tool_calls = m.tool_calls; if (m.tool_name) o.tool_name = m.tool_name; return o};
+// Gemini thought signatures (#672) go back only within their turn: the kept history (and the session file) drops them.
+const noSig = m => m.tool_calls && m.tool_calls.some(c => c && c.extra_content) ? {...m, tool_calls: m.tool_calls.map(c => ({function: c.function}))} : m;
 const cut = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
 // Drop the oldest whole turns (a turn starts at a message marked turn:1) until the history fits.
 export function trimHistory(h, budget) {
@@ -537,7 +548,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     if (!calls && (!stat.tools || notEnglish(content)) && !reprompted && i < toolTurns - 1) {reprompted = stat.reprompted = true; turnMsgs.push({role: 'assistant', content: notEnglish(content) ? '(not in English)' : cut(said || content, 300), narr: 1}, {role: 'user', content: notEnglish(content) ? REPROMPT_EN : REPROMPT}); continue}
     if (!calls) {stat.narration = said; turnMsgs.push({role: 'assistant', content: stat.narration, narr: 1}); break}
     calls = calls.slice(0, o.callsPerReply);
-    turnMsgs.push({role: 'assistant', content: said, tool_calls: calls.map(c => ({function: {name: c.function && c.function.name, arguments: c.function && c.function.arguments || {}}}))});
+    turnMsgs.push({role: 'assistant', content: said, tool_calls: calls.map(c => ({function: {name: c.function && c.function.name, arguments: c.function && c.function.arguments || {}}, ...(c.extra_content ? {extra_content: c.extra_content} : {})}))}); // extra_content: a Gemini thought signature, sent back within this turn (#672)
     if (said && !notEnglish(said)) on('text', said);
     for (const c of calls) {
       const name = String(c.function && c.function.name || '');
@@ -571,7 +582,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   // the model's own past narrations are not fed back (a small model copies them instead of looking): only this turn's stays
   const lastNarr = turnMsgs.filter(m => m.narr).pop();
   L.history = L.history.filter(m => !m.narr);
-  L.history.push(...turnMsgs.filter(m => !m.narr || m === lastNarr));
+  L.history.push(...turnMsgs.filter(m => !m.narr || m === lastNarr).map(noSig));
   // a narration close to the last one is a repeat; with no world-changing call it makes an empty turn (scripts/pacing.mjs localWorked)
   if (stat.narration && L.lastNarr && similar(stat.narration, L.lastNarr) >= REPEAT_SIM) stat.repeat = true;
   if (stat.narration) L.lastNarr = stat.narration.slice(0, 400);

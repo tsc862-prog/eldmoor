@@ -112,6 +112,8 @@ export function downHit(a,src,crit){if(!isDown(a))return;const d=a.down;
   d.f+=crit?2:1;pop(a.x,a.y-.8,crit?'FAIL x2':'FAIL','#ff6a5a');
   if(d.f>=fails(a))die(a,'fails')}
 const fails=a=>nearHeroes(a.x,a.y,R.HEAL_RANGE).some(b=>standing(b)&&kin(a,b)&&healer(b)&&dist(a,b)<=R.HEAL_RANGE)?R.HEALER_FAILS:R.SAVES;
+// Read-only, for the watcher (#659): failures that would end a downed hero now (four while a healer of theirs is near).
+export const failsOf=a=>isDown(a)?fails(a):R.SAVES;
 
 // ---- the downed hero's step (updAgent case 'downed') ----
 function downStep(a,dt){const d=a.down;a.moving=false;

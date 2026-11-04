@@ -18,4 +18,7 @@ export function ev(a,text,urgent,wake){if(!a)return;const e={n:(a.playEvN=(a.pla
 // Only agent-played heroes read events; scripted heroes are skipped so their saves stay small.
 export const notify=(a,text,urgent,wake)=>{if(a&&a.player)ev(a,text,urgent,wake)};
 // How strongly an event calls for the agent's next turn: 2 at once, 1 after the runner's gap, 0 not at all.
+// An event that should no longer start a turn (#682): a vote that became a Table scene wakes its members with the scene's frame
+// instead, once the DM has set it. The text stays for the agent to read; only its wake is dropped.
+export function hush(a,pred){if(!a||!a.playEv)return;for(const e of a.playEv)if(pred(e)){delete e.w;delete e.u}}
 export const wakeLevel=e=>e?e.w||(e.u?1:0):0; // 3 must answer now, 2 at once, 1 after the gap, 0 never

@@ -511,7 +511,27 @@ console.log('the DM prepares the table');
   root.querySelector('[data-a="new"]').click();ok(/replaces the saved/.test(root.textContent),'New world asks first');
   key('Enter');ok(played.length===0,'Enter does not Continue while the question is open');
   key('Escape');ok(!/replaces the saved/.test(root.textContent),'Escape closes the question');
-  key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away')}
+  key('Enter');ok(played.join()==='continue'&&!root.parentNode,'Enter = Continue, and the title goes away');
+  // What's new (#664): unread patch notes, newest first, three open and a fold, a NEW badge until Got it
+  const note=(t,d)=>'---\ntitle: '+t+'\ndate: '+d+'\narea: ui\nissues: []\n---\n- Line of '+t+'.\n';
+  title.provideNotes({'../docs/patchnotes/0000-before.md':note('Before','2026-11-02'),'../docs/patchnotes/10.md':note('Ten','2026-11-03'),'../docs/patchnotes/11.md':note('Eleven','2026-11-03'),
+    '../docs/patchnotes/12.md':note('Twelve','2026-11-04'),'../docs/patchnotes/_draft.md':note('Draft','2026-11-04')});
+  localStorage.removeItem('eldmoor.notesSeen');played=[];
+  const r2=title.showTitle(k=>played.push(k)),news=()=>r2.querySelector('.tnews');
+  ok(news()&&/What's new/.test(news().textContent)&&news().querySelector('.tnew')&&news().querySelector('.tnew').textContent==='NEW',"the title shows What's new with a NEW badge");
+  const heads=()=>[...news().querySelectorAll('.tnt')].map(x=>x.textContent);
+  ok(heads().join()==='Twelve,Eleven,Ten'&&!/Draft/.test(news().textContent)&&/#12/.test(news().textContent)&&/Line of Twelve\./.test(news().textContent),'newest three expanded, newest first, a draft left out ('+heads().join()+')');
+  const more=r2.querySelector('[data-a="notesmore"]');ok(more&&/1 more/.test(more.textContent),'the rest behind a fold');
+  more.click();ok(heads().join()==='Twelve,Eleven,Ten,Before'&&/Before patch notes/.test(news().textContent),'the fold opens the older notes ('+heads().join()+')');
+  r2.querySelector('[data-a="notesread"]').click();
+  ok(!news()||!news().querySelector('.tnew'),'Got it clears the NEW badge');
+  ok(JSON.parse(localStorage.getItem('eldmoor.notesSeen')).ids.length===4,'read notes are kept per viewer');
+  ok(r2.querySelector('[data-a="notesmore"]')&&!r2.querySelector('.tnote'),'once read, the notes fold away behind Show the latest');
+  r2.querySelector('[data-a="notesmore"]').click();ok(heads().join()==='Twelve,Eleven,Ten','Show the latest opens the last three ('+heads().join()+')');
+  title.provideNotes({'../docs/patchnotes/12.md':note('Twelve','2026-11-04'),'../docs/patchnotes/14.md':note('Fourteen','2026-11-05')});
+  r2.querySelector('[data-a="notesmore"]').click();
+  ok(news().querySelector('.tnew')&&heads().join()==='Fourteen','a note merged later is new again, alone ('+heads().join()+')');
+  key('Enter');ok(played.join()==='continue'&&JSON.parse(localStorage.getItem('eldmoor.notesSeen')).ids.includes('14'),'leaving the title marks the notes read')}
 
 // ---- the Quests tab (owner request): groups, focus, folded Done, held scroll ----
 {select(busy);const mk=(id,kind,extra={})=>({id,kind,title:'T '+id,giver:'G',where:'W',objective:'Do '+id,progress:kind==='oath'?{have:1,need:3}:null,reward:'5g',status:'active',focus:false,started:0,ends:sim.S.gameMin+3000,from:'scripted',...extra});
@@ -1412,5 +1432,60 @@ console.log('the DM prepares the table');
   ok(!side.querySelectorAll('section').some(x=>x.classList.contains('doff'))&&$('setPop').contains($('vIcons')),'1280 px: no section hidden by the dock; Intent icons back in Settings');
   ok(side.children.filter(x=>x.tagName==='SECTION'&&!x.hidden).map(x=>x.id)[0]==='fellowship','1280 px: the side column opens with the Companies panel');
   window.innerWidth=keepW;S.pinned=keepPin;cam.sel=keepSel;uiFast()}
+// ---- the downed (#659): party frames, the dossier header, the purpose line, the Log, the timeline, the chronicle, the banner ----
+{const S=sim.S,DN=await import('../src/sim/downed.js'),DV=await import('../src/ui/downview.js'),FR=await import('../src/ui/frames.js'),TB=await import('../src/ui/table.js');
+  const {cam}=await import('../src/render/draw.js'),{setTimelineFilter}=await import('../src/ui/timeline.js');
+  const keepT=S.table,keepSel=cam.sel,keepGuard=guardMem;guardMem=null;S.table=null;
+  const a=S.agents.find(x=>x.company!=null&&x.state!=='dead'&&!x.hidden&&x.state!=='dungeon'),m=S.mobs.find(x=>x.alive&&!x.gone);
+  if(!a||!m)console.log('  skip downed (no member or no creature)');else{
+  const frame=()=>$('frames').querySelector('.pf[data-hid="'+a.id+'"]'),row=()=>FR.frameRows().find(r=>r.name===a.name);
+  a.state='hunt';a.hp=0;ok(DN.goDown(a,m)&&DN.isDown(a),'downed: the member goes down (sim/downed.js goDown)');
+  uiFast();let f=frame(),dn=f&&f.querySelector('.pfdown');
+  ok(!!f&&f.classList.contains('downed')&&!!dn&&!dn.hidden,'downed: the frame turns red and shows the downed row');
+  ok(dn&&dn.querySelector('.pfdl').textContent==='DOWNED'&&dn.querySelector('.pips.ok').textContent==='○○○'&&dn.querySelector('.pips.bad').textContent==='○'.repeat(DN.failsOf(a)),'downed: DOWNED with three empty saves and '+DN.failsOf(a)+' empty failures (four with a healer near)');
+  ok(/^save in 10 min$/.test(dn.querySelector('.pfdt').textContent),'downed: the save timer ('+dn.querySelector('.pfdt').textContent+')');
+  ok(/^DOWNED · saved 0\/3 · failed 0\/[34] · save in 10 min/.test(row().down)&&!row().chips.includes('WOUNDED'),'downed: frameRows carries the tally and timer, no WOUNDED chip ('+row().down+')');
+  ok(/^Bleeding out/.test(row().purpose)&&/^Bleeding out/.test(f.querySelector('.pfdo').textContent),'downed: the purpose line says they bleed out ('+row().purpose+')');
+  const same=dn.querySelector('.pips.ok');a.down.s=1;a.down.next+=DN.DOWN.TICK;uiFast();
+  ok(frame().querySelector('.pips.ok')===same&&same.textContent==='●○○'&&row().flash==='SAVED','downed: a save made fills a circle in place and flashes SAVED');
+  a.down.f=1;uiFast();ok(row().flash==='STRUCK'&&frame().querySelector('.pips.bad').textContent==='●'+'○'.repeat(DN.failsOf(a)-1),'downed: a blow while down is a failure, flashed STRUCK (the save clock did not move)');
+  a.down.f=3;a.down.next+=DN.DOWN.TICK;uiFast();ok(row().flash==='FAILED x2','downed: a natural 1 on a save reads FAILED x2 ('+row().flash+')');a.down.f=1;uiFast();
+  select(a);uiFast();{const h=$('hero').querySelector('.hdown');ok(!!h&&/DOWNED/.test(h.textContent)&&/●○○/.test(h.textContent)&&/save in/.test(h.textContent),'downed: the hero card shows the same row under HP')}
+  ok(/Bleeding out/.test($('hero').querySelector('.purp').textContent),'downed: the hero card purpose line');
+  a.down.stable=true;a.down.wake=S.gameMin+60;uiFast();f=frame();
+  ok(f.classList.contains('stable')&&f.querySelector('.pfdl').textContent==='STABLE'&&/^wakes in 1 h$/.test(f.querySelector('.pfdt').textContent)&&row().flash==='STABLE','downed: stable, with the wake timer, flashed STABLE');
+  a.down.stable=false;a.down.s=1;uiFast();
+  // a helper comes: the purpose says so, the helper's line says whom they tend
+  const b=S.agents.find(x=>x.aid===a.id&&x.state==='aid'&&x.company===a.company)||S.agents.find(x=>x!==a&&x.company===a.company&&x.state!=='dead'); // the sim may already have sent one (callHelp)
+  if(b){const st=b.state;b.state='aid';b.aid=a.id;uiFast();const hp=DV.helperOf(a),br=FR.frameRows().find(r=>r.name===b.name);ok(!!hp&&new RegExp(hp.name+' (is coming|at their side)').test(row().purpose)&&(!br||br.purpose==='Tending '+a.name+' · who lies dying'),'downed: the helper shows on both frames ('+row().purpose+')');b.state=st;b.aid=null}
+  // up again: a heal lands, the world's step raises them
+  a.hp=5;DN.downedStep(a,.05);uiFast();f=frame();
+  ok(!DN.isDown(a)&&!f.classList.contains('downed')&&row().flash==='UP'&&!f.querySelector('.pfdown').hidden&&f.querySelector('.pfdx').textContent==='UP','downed: up again, the frame flashes UP');
+  // the words: the Log, the timeline, the chronicle
+  setTab('log');uiFast();{const L=$('hero').querySelectorAll('.hist li');const dl=L.find(x=>x.classList.contains('dk-down')),ul=L.find(x=>x.classList.contains('dk-up'));
+    ok(!!dl&&/DOWN/.test(dl.querySelector('.badge').textContent)&&!!ul&&/UP/.test(ul.querySelector('.badge').textContent),'downed: the dossier Log marks going down and coming back')}
+  setTab('stats');uiSlow();{const tl=$('tlist'),L=tl.children.filter(x=>x.textContent.includes(a.name));
+    ok(L.some(x=>/DOWN/.test(x.querySelector('.badge').textContent)&&/went down at level/.test(x.textContent))&&L.some(x=>x.querySelector('.badge').textContent==='UP'),'downed: the timeline records the downing and the revival');
+    const k0=tl.children[0].dataset.k;uiSlow();ok(tl.children[0].dataset.k===k0,'downed: timeline rows keep their keys');
+    setTimelineFilter('downs');ok(tl.children.length>=2&&tl.children.every(x=>/DOWN|UP|STABLE|DEATH|MERCY|FINISH/.test((x.querySelector('.badge')||{}).textContent||'')),'downed: the Downed filter');setTimelineFilter('all')}
+  ok(/ is down, bleeding/.test(S.chronicle[0].parts.slice(1).join(''))&&$('log').children[0].classList.contains('dk-down'),'downed: the chronicle line is marked');
+  ok(DV.downKind('Ilsa spared Kerin, who lay at her mercy.')==='mercy'&&DV.downKind('Ilsa finished off Kerin.')==='finish'&&DV.downKind('Slew a wolf.')===null,'downed: mercy and finish words are ready for #657');
+  // the Table banner (#654's data): a downed member's chip carries the tally, each death save is a roll line
+  a.hp=0;a.state='hunt';DN.goDown(a,m);a.down.s=1;a.down.f=1;
+  const ms=[a,...S.agents.filter(x=>x!==a&&x.company===a.company&&x.state!=='dead').slice(0,1)];
+  const sc={id:9659,kind:'rescue',title:a.name+' is down',frame:[a,' lies bleeding.'],ids:ms.map(x=>x.id),i:1,phase:'turn',t:0,acts:{},ctx:{hero:a.id,down:1},pause:true,at:0,rd:2,fd:1,foeAt:ms.length,
+    beats:[{id:a.id,name:a.name,k:'save',text:'Fights for breath',res:'death save d20 14 vs DC 10: a success (1 of 3 saved, 1 of 4 failed)',by:'down',rd:2,check:{kind:'death',die:14,mod:0,total:14,vs:10,hit:true,crit:false,dmg:0,target:a.name,down:false,s:1,f:1,of:4}}]};
+  S.table=sc;TB.renderTable(1);const box=$('tbanner'),ch=box.querySelectorAll('.tci')[0],rl=box.querySelector('.trl.death');
+  ok(!!ch&&ch.classList.contains('dn')&&/downed/.test(ch.textContent)&&ch.querySelector('.pips.ok').textContent==='●○○'&&ch.querySelector('.pips.bad').textContent==='●○○○','banner: the downed member\'s chip shows the tally, four failures with a healer at the table ('+(ch&&ch.textContent)+')');
+  ok(!!rl&&rl.classList.contains('hit')&&/death save d20 14 vs DC 10/.test(rl.textContent)&&/SAVED/.test(rl.textContent),'banner: the death save shows as it is rolled ('+(rl&&rl.textContent)+')');
+  sc.beats.push({id:a.id,name:a.name,k:'save',text:'Fights for breath',res:'',by:'down',rd:2,check:{kind:'death',die:1,mod:0,total:1,vs:10,hit:false,crit:false,dmg:0,target:a.name,down:false,s:1,f:3,of:4}});TB.renderTable(1);
+  ok(/2 FAILURES/.test(box.querySelectorAll('.trl.death')[1].textContent),'banner: a natural 1 reads two failures');
+  sc.phase='outcome';TB.renderTable(1);ok([...box.querySelectorAll('.tendc')].some(x=>x.textContent===a.name+' still bleeds'),'banner: the end says who still bleeds');
+  sc.rd=null;sc.phase='turn';TB.renderTable(1);{const r=box.querySelector('.tmr.st-down');ok(!!r&&/downed/.test(r.textContent),'banner: a scene without rounds lists the downed member as downed')}
+  S.table=keepT;TB.renderTable(1);
+  // bleeding out: the third failure ends them (the death choke point); the frame reads fallen
+  a.down.f=DN.failsOf(a)-1;DN.downHit(a,m,false);uiFast();ok(a.state==='dead'&&!FR.frameRows().some(r=>r.name===a.name&&r.down),'downed: three failures and they are gone; no downed row on the fallen');
+  }
+  guardMem=keepGuard;cam.sel=keepSel;uiFast()}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

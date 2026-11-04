@@ -3,7 +3,7 @@
 import {T} from '../world/tiles.js';
 import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
-import {cryptAt,lairAt,openDungeon} from '../render/dungeonview.js'; // the dungeon view (#85): a click on a crypt's door opens it
+import {cryptAt,lairAt,siteAt,openDungeon} from '../render/dungeonview.js'; // the dungeon view (#85): a click on a crypt's door opens it
 import {renderHero,renderTops,ranked,setPicker} from './panels.js';
 import {companies} from '../sim/company.js';
 import {followedCompany,followedMembers,companyLabel,followNext,storyLead} from './companyview.js'; // the follow cycle (#456)
@@ -99,6 +99,6 @@ export function initControls(renderer){R=renderer;
   scr.addEventListener('click',e=>{if(dragged){dragged=false;return}
     const {x:wx,y:wy}=renderer.screenToWorld(e.clientX,e.clientY);
     const best=heroAt(wx,wy);
-    if(best){select(best);setView('follow');showDock('hero')}else{const L=cryptAt(wx,wy)||lairAt(wx,wy);if(L)openDungeon(L)}}); // a crypt's door or a lair's ring (the raid arena, #85)
+    if(best){select(best);setView('follow');showDock('hero')}else{const L=cryptAt(wx,wy)||lairAt(wx,wy)||siteAt(wx,wy);if(L)openDungeon(L)}}); // a crypt's door, a lair's ring (the raid arena, #85) or a DM-made site's mouth (#642)
   syncView();
 }

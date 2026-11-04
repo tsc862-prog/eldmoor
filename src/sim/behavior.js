@@ -41,6 +41,7 @@ import {focus,touches,countable} from './dmfocus.js';
 import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
 import {gambitRec,noFlee} from './gambits.js';
 import {drainHolds} from './gambithold.js'; // finished gambit holds (#630) // the hero's own rules (#617)
+import {missCause} from './scenewait.js'; // why a live member missed its scene (#687)
 
 export const BW={
   DIGEST_MIN:60,     // game minutes between world digests
@@ -174,7 +175,7 @@ export function makeWatch(opts={}){
       const mine=scene.beats.filter(b=>{const a=byId(b.id);return a&&a.player});
       H.table.queued+=(scene.q||[]).length;
       for(const id of scene.miss||[]){const a=byId(id);if(!a)continue;H.table.missed++; // a live member's scene turn fell to its reflex after the table's wait (#515)
-        anomaly(out,'scene-missed',a,a.name+' did not answer the Table scene "'+scene.title+'" in time: its runner held it, the reflex acted',{scene:scene.title,kind:scene.kind,queued:!!(scene.q&&scene.q.includes(id)),mind:mindOf(a)},'bad')}
+        {const cause=missCause(scene,id);anomaly(out,'scene-missed',a,a.name+' did not answer the Table scene "'+scene.title+'" in time ('+cause+'): its runner held it, the reflex acted',{scene:scene.title,kind:scene.kind,queued:!!(scene.q&&scene.q.includes(id)),cause,mind:mindOf(a)},'bad')}}
       if(mine.length){if(mine.every(b=>b.by==='reflex'))sceneRun++;else sceneRun=0;
         if(sceneRun>=BW.SCENE_RUN){anomaly(out,'reflex-scenes',null,'Reflex took every agent turn at the table for '+sceneRun+' scenes in a row (last: '+scene.title+')',{scenes:sceneRun,last:scene.title,kind:scene.kind,members:mine.map(b=>b.name)},'bad');sceneRun=0}}}
     scene=sc||null}
