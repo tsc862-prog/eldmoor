@@ -989,6 +989,7 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   names (`tiles`, `zone`, `I`, `riverX`, `z2X`, `hoarY`, ...). `npm run
   worldcheck` builds both specs and fails if the Eldmoor map drifts from its
   snapshot hashes.
+  town plans (#793): every `CITY[i].buildings = [{piece, box:[x,y,w,h], door:[x,y], serves, draw}]` is sim data laid out by `planBuildings` in `gen.js` from `data/townart.js` `TOWN_PIECES` (or a spec town's own `buildings`): `box` the whole solid tiles (solid but for the one `door` tile, `passable.js`), `draw` the art box `src/render/townart.js` draws from; the spots a building `serves` (quartermaster, gate, smith, chapel, inn) stand at its door; `standAt(x,y)` in `passable.js` moves a point that falls in a building to the nearest open tile (heroes created in town, company spreads, the bard's stroll); `npm run passablecheck` checks it.
 - `src/data/` (pure tables, no logic): `factions.js` FAC, guild roster, names
   (character-builder); `classes.js` CLS (character-builder); `mobs.js` MOBS and
   COUNTS (creature-designer); `items.js` EPICS, BOSS_EPICS, DG_EPICS, GOODS and
