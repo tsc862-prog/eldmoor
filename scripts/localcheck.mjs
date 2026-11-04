@@ -207,6 +207,13 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
 // tool table); the forced reflection answer carries an optional intent the runner sends with the intent tool.
 {
   const LA = await import('./local-agent.mjs'), PC = await import('./pacing.mjs');
+  {const sw = LA.reflectSchema({swear: true}), ss = LA.reflectSchema({swear: true, strict: true}); // a first dusk asks about the thread (#800)
+   ok(sw.properties.swear && !sw.required.includes('swear') && ss.required.includes('swear') && !LA.reflectSchema().properties.swear, 'the reflection carries swear only when a thread is asked about');
+   ok(LA.reflectSwear('{"notes":[],"swear":""}') === null && LA.reflectSwear('{"notes":[],"swear":"No."}').thread === 'no' && LA.reflectSwear('{"notes":[],"swear":"yes"}').thread === 'yes' && LA.reflectSwear('{"notes":[],"swear":"I will find her."}').text === 'I will find her.', 'its answer becomes swear_oath arguments');
+   const sent = []; const t = await LA.reflectTurn({ask: async () => ({text: '{"notes":[],"swear":"I will find her."}', usage: {}, ms: 0}), call: async (tool, args) => {sent.push([tool, args]); return {ok: true}}, sess: {system: 's'}, moment: {id: 'd1', kind: 'dusk', why: 'dusk', thread: 'Ann left home with something to prove.'}, prompt: 'p', keep: false});
+   ok(sent.length === 1 && sent[0][0] === 'swear_oath' && sent[0][1].text === 'I will find her.' && t.swore, 'a forced reflection swears through the tool');
+   const none = []; await LA.reflectTurn({ask: async () => ({text: '{"notes":[],"swear":"I will find her."}', usage: {}, ms: 0}), call: async (tool, args) => {none.push(tool); return {ok: true}}, sess: {system: 's'}, moment: {id: 'd2', kind: 'dusk', why: 'dusk'}, prompt: 'p', keep: false});
+   ok(!none.length, 'with no thread asked about, nothing is sworn')}
   const lo = LA.reflectSchema(), st = LA.reflectSchema({strict: true});
   ok(lo.properties.intent && !lo.required.includes('intent') && st.required.includes('intent') && st.properties.intent.required.join() === 'goal,why,until', 'the reflection schema carries an intent object (optional; required by strict OpenAI)');
   ok(/"intent": \{"goal"/.test(PC.reflectPrompt({why: 'camp'}, {tools: false})) && /What are you trying to do next\?/.test(PC.reflectPrompt({why: 'camp'})), 'the reflection prompt asks what next (forced answer: an intent object; tool use: the intent tool)');

@@ -75,7 +75,7 @@ export function biography(a,agents=[]){
 
   // 5. Oath.
   const g=a.goal;
-  if(g&&g.text){const oath=lc(g.text.replace(/\.$/,''));
+  if(g&&g.text&&!g.offered){const oath=lc(g.text.replace(/\.$/,''));
     paras.push(dead?[`The oath on the books at the end: ${oath}. It stays unkept.`]
       :[`${a.name} has sworn to ${oath}.`+(g.tier>=1?' It is not their first oath.':'')])}
 

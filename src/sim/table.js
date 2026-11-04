@@ -353,7 +353,7 @@ function wakeStep(sc,dt){const W=sc.wk;if(!W||W.done||sc.phase!=='turn'||framing
   if(!left){W.done=1;if(!all)startTurn(sc)}}
 
 // An agent's answer (scene_act), before or during its turn. Returns an error string or the act.
-export function sceneAct(a,opt,line,move){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
+export function sceneAct(a,opt,line,move,swear){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
   if(isDown(a))return 'You are down and bleeding: you cannot act. Your death save is rolled on your turn.'; // #654
   if(sc.phase==='outcome'||sc.phase==='done')return 'The scene is over.';
   if(together(sc)&&sc.resolved)return 'The table has already answered.';
@@ -365,10 +365,11 @@ export function sceneAct(a,opt,line,move){const sc=sceneOf(a);if(!sc||!sc.ids.in
   const said=clean(line,1e4);if(said.length>TABLE.LINE_MAX)return 'Too long: keep your line under '+TABLE.LINE_MAX+' characters (yours has '+said.length+').';
   if(said&&sameLine(sc,a,said))return 'Someone already said that at this table; say it your own way, about yourself.';
   const K=kindOf(sc),mv=K&&K.move&&String(move==null?'':move).trim()?K.move(sc,a,String(move)):null;if(mv&&mv.error)return mv.error; // a refused move leaves the act unsaid (#744)
+  const sw=String(swear==null?'':swear).trim();if(sw){const no=K&&K.swear?K.swear(sc,a,sw):'An oath is sworn at the first table, or with swear_oath.';if(no)return no} // sworn aloud as the act plays (#800); a refusal leaves the act unsaid
   const moved=()=>{if(!mv)return {};K.place(sc,a,mv);return {moved:mv.word}}; // it lands now, the formation building as answers come in
   if(o.k==='attempt'){if(!ATT)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.';const rid=ATT.start(sc,a,said);if(typeof rid==='string')return rid;
     sc.acts[a.id]={k:'attempt',line:said,by:'agent',rid,...moved()};return sc.acts[a.id]} // the DM rules on it before the member's turn plays (#522)
-  sc.acts[a.id]={k:o.k,line:said,by:'agent',...moved()};return sc.acts[a.id]}
+  sc.acts[a.id]={k:o.k,line:said,by:'agent',...(sw?{swear:sw}:{}),...moved()};return sc.acts[a.id]}
 
 // ---- turns ----
 function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc,use=sc.ru;delete sc.rr;delete sc.rc;delete sc.ru; // a strike's roll as data (#285), a parley's check (#296)

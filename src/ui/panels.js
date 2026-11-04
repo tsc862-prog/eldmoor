@@ -48,6 +48,7 @@ import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 import {downView,downText,downTitle,flashOf,pips,downKind,DOWN_BADGE} from './downview.js'; // the downed (#659)
+import {threadText} from '../sim/oath.js'; // an unsworn thread, in words (#800)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -161,8 +162,8 @@ function story(b,a){sec(b,'Story');
   const tr=el('div','meta');tr.append('Traits: ');const ts=a.traits||[];if(!ts.length)tr.append('none');
   ts.forEach((t,i)=>{const s=el('span','gd',t);if(TRAITS[t])s.title=TRAITS[t].desc;tr.append(s);if(i<ts.length-1)tr.append(', ')});b.append(tr);
   if(a.origin)b.append(el('div','meta',a.origin));
-  if(a.goal){const g=el('div','goal');g.append(el('div',a.goal.done?'gd':'',(a.goal.done?'Done: ':'Goal: ')+a.goal.text));
-    if(a.goal.need){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}
+  if(a.goal&&!a.goal.aside){const th=a.goal.offered,g=el('div','goal');g.append(el('div',a.goal.done?'gd':'',th?'Unsworn: '+threadText(a):(a.goal.done?'Done: ':'Goal: ')+a.goal.text));
+    if(a.goal.need&&!th){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}
   {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
   const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
