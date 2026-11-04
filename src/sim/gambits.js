@@ -10,7 +10,9 @@
 //   idlePick(a, ctx)    autopilot: the first rule that holds and can run; returns a command (or list), or null
 //   fightRules(a, ctx)  every moment of a fight: each fight rule that holds acts in turn; flee/retreat/hold end it
 //   reflexPick(a, ctx)  idle in the field with no order: only sell_loot rules (the full-pack reflex)
-import {GAMBIT,CONDS,ACTS,PRESETS,PRESET_IDLE,PRESET_FIGHT,PRESET_HEAL,PRESET_GUARD,TANK_CLASSES} from '../data/gambits.js';
+//   aidPlan(a, t, o)    a companion t went down near the hero (sim/downed.js callHelp, #658): every 'aid' rule that holds
+//                       adds what the hero does for them (revive_ally, stabilize, carry); none: the hero does not come
+import {GAMBIT,CONDS,ACTS,PRESETS,PRESET_IDLE,PRESET_FIGHT,PRESET_HEAL,PRESET_GUARD,TANK_CLASSES,PRESET_DOWN_HEAL,PRESET_DOWN_POTION,PRESET_DOWN_STAB} from '../data/gambits.js';
 import {CLS} from '../data/classes.js';
 import {S} from './state.js';
 import {zoneAt,dist,REGIONS} from '../world/map.js';
@@ -21,6 +23,7 @@ import {feared} from './lore.js';
 import {nearMobs} from './spatial.js';
 import {maxHp} from './heroes.js';
 import {tm} from '../data/traits.js';
+import {onAid,healerNearer} from './downed.js'; // a companion goes down (#626, #658): the aid rules decide whether and how the hero comes
 
 // a hoisted holder: sim/player.js may register before this module has run (an import cycle through company.js)
 function impl(){return impl.v||(impl.v={c:{},a:{}})}
@@ -35,14 +38,21 @@ export const HOLD={hold:true};
 const PRE={};
 const clone=r=>JSON.parse(JSON.stringify(r));
 // The class preset: fight rules (a healer's heal first, a tank's guard suggestion, off), then the between-turns rules.
+// The aid rules (#658) come first: a healer's revive_ally above its heal rule, everyone's stabilize when no healer comes.
 export function presetFor(cls,name='class'){const k=cls+'|'+name;if(PRE[k])return PRE[k];
-  let L=[...(CLS[cls]&&CLS[cls].heal?[PRESET_HEAL]:[]),...(TANK_CLASSES.includes(cls)?[PRESET_GUARD]:[]),...PRESET_FIGHT,...PRESET_IDLE];
+  const H=!!(CLS[cls]&&CLS[cls].heal);
+  let L=[H?PRESET_DOWN_HEAL:PRESET_DOWN_POTION,PRESET_DOWN_STAB,...(H?[PRESET_HEAL]:[]),...(TANK_CLASSES.includes(cls)?[PRESET_GUARD]:[]),...PRESET_FIGHT,...PRESET_IDLE];
   if(name==='cautious')L=L.flatMap(r=>r.when==='past_flee_mark'?[{when:'foe_is',w:{what:'elite'},and:'attacked',then:'hold'},{when:'self_hp_below',w:{pct:35},then:'flee_home'},r]:[r]);
   if(name==='empty')L=[];
   const out=L.map((r,i)=>Object.freeze({id:i+1,...clone(r),on:r.on!==false}));
   return PRE[k]=Object.freeze(out)}
 // The hero's rules: its own list once it edited one, else its class preset (shared and frozen; never stored on the hero).
-export const rulesOf=a=>a.gambits||presetFor(a.cls);
+export const rulesOf=a=>{if(a.gambits&&!a.gambitsDown)downMigrate(a);return a.gambits||presetFor(a.cls)};
+// A list the hero made before #658 has no aid rules: the class preset's are put at its top once (a.gambitsDown), so an
+// edited hero still comes to a downed companion as it did by reflex. Dropping them later is the hero's call; they stay out.
+const isAid=r=>!!(ACTS[r.then]&&ACTS[r.then].phase==='aid');
+function downMigrate(a){a.gambitsDown=1;if(a.gambits.some(isAid))return;let n=a.gambits.reduce((m,r)=>Math.max(m,r.id||0),0);
+  const add=presetFor(a.cls).filter(isAid).map(r=>({...clone(r),id:++n}));a.gambits.unshift(...add)}
 export const edited=a=>!!a.gambits;
 
 // ---- runtime record (not saved: non-enumerable, like the action log) ----
@@ -83,6 +93,12 @@ const BASE={
   level_below_region:a=>{const R=REGIONS[zoneAt(a.x,a.y)],b=R&&R.band;return !!(b&&b[0]>a.lvl)},
   gold_above:(a,w)=>(a.gold||0)>num(w.n,0,1e6,100),
   vote_open:a=>inSlots(a)&&openProps().length>0,
+  // the downed (#658). ctx.downed: the companion who just went down (aidPlan); else the nearest downed companion in sight
+  ally_downed:(a,w,ctx)=>{const who=String(w.who||'').toLowerCase().split(' ')[0],nm=b=>!who||b.name.toLowerCase().split(' ')[0]===who;
+    if(ctx&&ctx.downed)return nm(ctx.downed)?ctx.downed:null;
+    let best=null,bd=1e9;for(const b of mates(a)){if(b.state!=='downed'||b.hidden||!nm(b))continue;const d=dist(a,b);if(d<=SEE&&d<bd){bd=d;best=b}}return best},
+  no_healer:(a,w,ctx)=>{if(ctx&&ctx.noHealer!=null)return !!ctx.noHealer;const t=ctx&&ctx.downed||BASE.ally_downed(a,{},null);return !t||!healerNearer(t,a)},
+  self_downed_count:(a,w)=>{const n=num(w.n,1,9,1),d=w.days!=null?num(w.days,1,30,1):0;return (a.downs||[]).filter(t=>!d||S.gameMin-t<=d*1440).length>=n},
 };
 const num=(v,lo,hi,d)=>{const n=Math.round(Number(v));return Number.isFinite(n)?Math.min(hi,Math.max(lo,n)):d};
 function cond(a,name,w,ctx){const f=impl().c[name]||BASE[name];return f?f(a,w||{},ctx):false}
@@ -91,18 +107,26 @@ function holds(a,r,ctx){const c1=cond(a,r.when,r.w,ctx);if(!c1)return null;if(!r
 
 // ---- the three phases ----
 export function idlePick(a,ctx){const L=rulesOf(a);
-  for(let i=0;i<L.length;i++){const r=L[i];if(r.on===false)continue;const A=ACTS[r.then];if(!A||A.phase==='fight')continue;
+  for(let i=0;i<L.length;i++){const r=L[i];if(r.on===false)continue;const A=ACTS[r.then];if(!A||A.phase==='fight'||A.phase==='aid')continue;
     const hit=holds(a,r,ctx);if(!hit)continue;const f=impl().a[r.then];if(!f)continue;ctx.hit=hit;ctx.rule=r;
     const out=f(a,r.t||{},ctx);if(out==null)continue;fired(a,r,'idle',out);return out===HOLD?null:out}
   return null}
 export function fightRules(a,ctx){const L=rulesOf(a);
-  for(let i=0;i<L.length;i++){const r=L[i];if(r.on===false)continue;const A=ACTS[r.then];if(!A||A.phase==='idle')continue;
+  for(let i=0;i<L.length;i++){const r=L[i];if(r.on===false)continue;const A=ACTS[r.then];if(!A||A.phase==='idle'||A.phase==='aid')continue;
     const hit=holds(a,r,ctx);if(!hit)continue;const f=impl().a[r.then];if(!f)continue;ctx.hit=hit;ctx.rule=r;
     const out=f(a,r.t||{},ctx);if(!out)continue;fired(a,r,'fight');if(out==='end'||out===HOLD)return}}
 export function reflexPick(a,ctx){const L=rulesOf(a);
   for(let i=0;i<L.length;i++){const r=L[i];if(r.on===false||r.then!=='sell_loot')continue;const hit=holds(a,r,ctx);if(!hit)continue;
     const f=impl().a.sell_loot;ctx.hit=hit;ctx.rule=r;ctx.reflex=true;const out=f&&f(a,r.t||{},ctx);if(out==null)continue;fired(a,r,'reflex',out);return out===HOLD?null:out}
   return null}
+// A companion t went down within reach (#658). -> {how:{revive?, stab?, carry?}, rule} or null (no aid rule holds: the hero does
+// not come). o.noHealer: whether a healer nearer to t than this hero is free to come (callHelp knows who is free).
+export function aidPlan(a,t,o={}){const L=rulesOf(a),how={},ctx={downed:t,noHealer:o.noHealer,aid:true};let first=null;
+  for(const r of L){if(r.on===false||!isAid(r))continue;const hit=holds(a,r,ctx);if(!hit||hit!==true&&hit!==t)continue;
+    if(r.then==='revive_ally')how.revive=true;else if(r.then==='stabilize')how.stab=true;else if(r.then==='carry')how.carry=r.t&&r.t.to||'town';
+    if(!first)first=r}
+  return first?{how,rule:first}:null}
+onAid({plan:aidPlan,fire:(a,p)=>{if(p&&p.rule)fired(a,p.rule,'aid',null)}});
 
 // ---- words ----
 const argText=o=>{const k=o?Object.keys(o):[];return k.length?' {'+k.map(x=>x+': '+o[x]).join(', ')+'}':''};
@@ -116,7 +140,7 @@ export const ruleText=r=>condText(r.when,r.w)+(r.and?' and '+condText(r.and,r.w2
 // counted (S.gambitStats), and a list with no flee rule left is marked in the view (no_flee_rule).
 const ARGS_OF=(T,name)=>Object.keys((T[name]&&T[name].args)||{});
 const ENUMS={scale:['retreat','flee'],what:['elite','named','above_my_level','known_dangerous'],to:['leader','camp','town'],target:['self','leader','weakest_ally','foe'],inn:['yes','no']};
-const NUMS=new Set(['pct','n','tiles','minutes','hours']);
+const NUMS=new Set(['pct','n','tiles','minutes','hours','days']);
 // "self_hp_below 30 retreat" -> {name, args} or {error}; T is CONDS or ACTS
 export function parseWords(T,s,kind){const raw=String(s==null?'':s).trim();if(!raw)return {error:'No '+kind+' given.'};
   // the name may be written with spaces ("ally hp below 40"): the longest run of words that names one is taken
@@ -126,7 +150,9 @@ export function parseWords(T,s,kind){const raw=String(s==null?'':s).trim();if(!r
   const keys=ARGS_OF(T,name),out={};let rest=(m[2]||'').trim();
   if(name==='shout'){const t=rest.replace(/^text\s*=\s*/i,'').replace(/^["']|["']$/g,'').trim();if(!t)return {error:'shout needs its line: then "shout Fall back to me!".'};out.text=t.slice(0,120);return {name,args:out}}
   const toks=rest?rest.replace(/[{},]/g,' ').split(/\s+/).filter(Boolean):[];let pos=0;
-  for(const tok of toks){const kv=/^([a-z_]+)\s*[=:]\s*(.+)$/i.exec(tok);let k,v;if(kv){k=kv[1].toLowerCase();v=kv[2]}else{k=keys[pos++];v=tok}
+  for(let j=0;j<toks.length;j++){const tok=toks[j],kv=/^([a-z_]+)\s*[=:]\s*(.+)$/i.exec(tok);let k,v;if(kv){k=kv[1].toLowerCase();v=kv[2]}
+    else if(keys.includes(tok.toLowerCase())&&j+1<toks.length){k=tok.toLowerCase();v=toks[++j]} // "days 3": a key named, then its value (#658)
+    else{k=keys[pos++];v=tok}
     if(!k||!keys.includes(k))return {error:name+' takes '+(keys.length?keys.join(', '):'no arguments')+'; "'+tok+'" is not one of them. '+describe(T,name)};
     v=String(v).replace(/^["']|["']$/g,'');
     if(NUMS.has(k)){const n=Math.round(Number(v));if(!Number.isFinite(n))return {error:name+': '+k+' must be a number.'};out[k]=n}
@@ -134,17 +160,17 @@ export function parseWords(T,s,kind){const raw=String(s==null?'':s).trim();if(!r
     else out[k]=ENUMS[k]?v.toLowerCase():v.slice(0,40)}
   if(name==='self_hp_below'||name==='ally_hp_below'||name==='leader_hp_below'){if(out.pct==null)return {error:name+' needs a share: "'+name+' 30" (1-99).'};out.pct=Math.min(99,Math.max(1,out.pct))}
   if(name==='foe_is'&&!out.what)return {error:'foe_is needs what: '+ENUMS.what.join(', ')+'.'};
-  if((name==='foes_more_than'||name==='gold_above'||name==='potions_below')&&out.n==null)return {error:name+' needs n: "'+name+' 2".'};
+  if((name==='foes_more_than'||name==='gold_above'||name==='potions_below'||name==='self_downed_count')&&out.n==null)return {error:name+' needs n: "'+name+' 2".'};
   if(name==='apart_from_leader'&&out.tiles==null)return {error:'apart_from_leader needs tiles: "apart_from_leader 15".'};
   if(name==='use_ability'&&!out.id)return {error:'use_ability needs an ability id (status.abilities): then "use_ability <id> self".'};
-  if(name==='retreat_to'&&!out.to)out.to='town';
+  if((name==='retreat_to'||name==='carry')&&!out.to)out.to='town';
   return {name,args:Object.keys(out).length?out:null}}
 const describe=(T,name)=>{const d=T[name];if(!d)return '';const k=d.args?Object.keys(d.args):[];return name+(k.length?' '+k.map(x=>'<'+x+'>').join(' '):'')+': '+d.desc+(k.length?' ('+k.map(x=>x+': '+d.args[x]).join('; ')+')':'')};
-export const vocabulary=()=>({conditions:Object.keys(CONDS).map(n=>describe(CONDS,n)),actions:Object.keys(ACTS).map(n=>describe(ACTS,n)+' ['+(ACTS[n].phase==='fight'?'in a fight':ACTS[n].phase==='idle'?'between turns':'both')+']')});
+export const vocabulary=()=>({conditions:Object.keys(CONDS).map(n=>describe(CONDS,n)),actions:Object.keys(ACTS).map(n=>describe(ACTS,n)+' ['+(ACTS[n].phase==='fight'?'in a fight':ACTS[n].phase==='idle'?'between turns':ACTS[n].phase==='aid'?'when a companion goes down':'both')+']')});
 
 const today=()=>Math.floor(S.gameMin/1440)+1;
 function budget(a){const d=today();if(!a.gambitDay||a.gambitDay.d!==d)a.gambitDay={d,n:0};return a.gambitDay}
-const own=a=>{if(!a.gambits)a.gambits=rulesOf(a).map(r=>clone(r));return a.gambits};
+const own=a=>{if(!a.gambits){a.gambits=rulesOf(a).map(r=>clone(r));a.gambitsDown=1}return a.gambits};
 const nextId=L=>L.reduce((m,r)=>Math.max(m,r.id||0),0)+1;
 const safetyKinds=L=>{const o={};for(const r of L)if(r.on!==false&&ACTS[r.then]&&ACTS[r.then].safety){const k=ACTS[r.then].safety;(o[k]=o[k]||[]).push(ruleText(r))}return o};
 const sig=L=>{const o=safetyKinds(L);return Object.keys(o).sort().map(k=>k+':'+o[k].join('|')).join(' / ')};
@@ -155,6 +181,7 @@ export function onSafetyChange(f){impl().safety=f}
 function err(a,msg){stats().refused++;return {ok:false,error:msg}}
 // Run one edit: check the budget, apply fn to the hero's own list, record it. fn returns {text} or {error}.
 function edit(a,kind,why,fn){const B=budget(a);if(B.n>=GAMBIT.PER_DAY)return err(a,'You have changed your rules '+GAMBIT.PER_DAY+' times today; they stand until tomorrow.');
+  rulesOf(a); // an old list takes its aid rules first (#658), so a refused edit cannot drop them
   const before=a.gambits?a.gambits.map(r=>({...r})):null,L0=rulesOf(a),s0=sig(L0),flee0=!noFlee(a);
   const L=own(a);const r=fn(L);if(r.error){if(!before)a.gambits=null;else a.gambits=before;return err(a,r.error)}
   B.n++;stats().edits++;a.gambitEdits=(a.gambitEdits||0)+1;const s1=sig(L),safety=s0!==s1,fleeGone=flee0&&noFlee(a),w=String(why||'').replace(/\s+/g,' ').trim().slice(0,160);
@@ -172,7 +199,7 @@ function viewList(a){const L=rulesOf(a),g=gambitRec(a),last=g&&g.last;
     ...(g&&g.at[r.id]!=null?{last_fired:Math.round(S.gameMin-g.at[r.id])+' game min ago'}:{}),...(last&&last.id===r.id?{fired_last:true}:{}),...(S.gambitHold&&S.gambitHold.id===a.id&&S.gambitHold.rid===r.id?{holding:true}:{})}))}
 export function gambitsView(a,{vocab}={}){const g=gambitRec(a),last=g&&g.last,L=rulesOf(a),B=budget(a);
   const r={ok:true,source:a.gambits?'your own list':'your class preset (untouched: it is how you have always played)',rules:viewList(a),
-    how:'In a fight every fight rule that holds acts in turn, top to bottom (flee or retreat ends the moment). Between your turns (autopilot) the first rule that holds and can run acts; one that cannot run here falls through.',
+    how:'In a fight every fight rule that holds acts in turn, top to bottom (flee or retreat ends the moment). Between your turns (autopilot) the first rule that holds and can run acts; one that cannot run here falls through. When a companion goes down near you, every aid rule that holds (revive_ally, stabilize, carry) says what you do for them; with none you do not come.',
     edits_left_today:GAMBIT.PER_DAY-B.n,max_rules:GAMBIT.MAX};
   if(last){const x=L.find(y=>y.id===last.id);r.last_fired={id:last.id,rule:x?ruleText(x):last.when+' -> '+last.then,ago:Math.round(S.gameMin-last.at)+' game min'}}
   const hv=S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold:null;if(hv)r.holding={rule:hv.rule,rule_id:hv.rid,seconds:Math.round(hv.s),note:'The world is held for you until your next acting call (or '+GAMBIT.HOLD_MAX_S+' s).'};
@@ -205,3 +232,48 @@ export function resetGambits(a,{preset,why}={}){const p=String(preset==null||pre
   if(!PRESETS.includes(p))return err(a,'Presets: '+PRESETS.join(', ')+' (class: how your class has always played; cautious: also flee below 35%; empty: no rules at all).');
   return edit(a,'reset',why,L=>{const P=presetFor(a.cls,p).map(r=>clone(r));L.splice(0,L.length,...P);stats().resets++;return {text:'rules reset to the '+p+' preset ('+P.length+' rules)'}})}
 export {GAMBIT,CONDS,ACTS};
+
+// ---- how a hero's list differs from its class preset (issue #679; read-only, no RNG, for the watcher) ----
+// Rules are matched by identity (when + and + then and their arguments): an exact match is the preset rule (kept, or
+// turned off when the preset had it on); then a rule with the same id and the same when or then, or the same when/and/then
+// with other arguments, is that preset rule changed; the rest are added; preset rules left over are dropped. Among the
+// matched rules, those outside the longest run kept in the preset's relative order are moved, up or down. The safety kinds
+// (flee, potion, defend) are flagged when gone (no rule of the kind on any more: 'off' when one is only turned off, else
+// 'gone') or weakened (a preset rule of the kind dropped, off or changed while another of the kind still stands).
+const argKey=o=>o?Object.keys(o).sort().map(k=>k+'='+o[k]).join(','):'';
+const idKey=r=>r.when+'('+argKey(r.w)+')&'+(r.and||'')+'('+argKey(r.w2)+')>'+r.then+'('+argKey(r.t)+')';
+const shapeKey=r=>r.when+'&'+(r.and||'')+'>'+r.then;
+// the hero's last edit of rule id since its last reset (the hover shows its day and why)
+const histFor=(a,id)=>{const H=a.gambitHist||[];for(let i=H.length-1;i>=0;i--){const h=H[i];if(h.kind==='reset')return null;const m=/\brule (\d+)\b/.exec(h.text||'');
+  if(m&&+m[1]===id)return {day:h.d,kind:h.kind,text:h.text,...(h.why?{why:h.why}:{})}}return null};
+const safeOf=r=>ACTS[r.then]&&ACTS[r.then].safety||null;
+export function gambitDiff(a){const P=presetFor(a.cls),L=rulesOf(a),free=new Set(P.map((_,i)=>i)),pair=new Array(L.length).fill(-1);
+  const take=(i,test)=>{let best=-1;for(const j of free)if(test(P[j])){if(P[j].id===L[i].id){best=j;break}if(best<0)best=j}if(best>=0){free.delete(best);pair[i]=best}};
+  for(let i=0;i<L.length;i++)take(i,p=>idKey(p)===idKey(L[i]));
+  for(let i=0;i<L.length;i++)if(pair[i]<0)take(i,p=>p.id===L[i].id&&(p.then===L[i].then||p.when===L[i].when));
+  for(let i=0;i<L.length;i++)if(pair[i]<0)take(i,p=>shapeKey(p)===shapeKey(L[i]));
+  // moved: the matched rules outside the longest increasing run of their preset positions, in the hero's order
+  const mi=[];for(let i=0;i<L.length;i++)if(pair[i]>=0)mi.push(i);
+  const len=mi.map(()=>1),prev=mi.map(()=>-1);let bi=-1;
+  for(let x=0;x<mi.length;x++){for(let y=0;y<x;y++)if(pair[mi[y]]<pair[mi[x]]&&len[y]+1>len[x]){len[x]=len[y]+1;prev[x]=y}if(bi<0||len[x]>len[bi])bi=x}
+  const keep=new Set();for(let x=bi;x>=0;x=prev[x])keep.add(mi[x]);
+  const rankH=new Map(mi.map((i,k)=>[i,k])),rankP=new Map([...mi].sort((u,v)=>pair[u]-pair[v]).map((i,k)=>[i,k]));
+  const rules=L.map((r,i)=>{const j=pair[i],p=j>=0?P[j]:null,on=r.on!==false,s=safeOf(r);
+    const status=!p?'added':idKey(p)!==idKey(r)?'changed':on!==(p.on!==false)?(on?'changed':'off'):'same';
+    const moved=p&&!keep.has(i)?(rankH.get(i)<rankP.get(i)?'up':'down'):null;
+    const o={id:r.id,order:i+1,rule:ruleText(r),on,status,moved,...(s?{safety:s}:{})};
+    if(p&&(status!=='same'||moved))o.preset={id:p.id,order:j+1,rule:ruleText(p),on:p.on!==false,...(safeOf(p)?{safety:safeOf(p)}:{})};
+    if(status!=='same'||moved){const h=histFor(a,r.id);if(h)o.edit=h}
+    return o});
+  const dropped=[...free].sort((x,y)=>x-y).map(j=>{const s=safeOf(P[j]),o={id:P[j].id,order:j+1,rule:ruleText(P[j]),on:P[j].on!==false,status:'dropped',...(s?{safety:s}:{})},h=histFor(a,P[j].id);if(h)o.edit=h;return o});
+  const counts={added:0,changed:0,moved:0,off:0,dropped:dropped.length};for(const r of rules){if(r.status!=='same')counts[r.status]++;if(r.moved)counts.moved++}
+  const safety={};for(const k of ['flee','potion','defend']){if(!P.some(r=>r.on!==false&&safeOf(r)===k))continue;
+    if(!L.some(r=>r.on!==false&&safeOf(r)===k))safety[k]=L.some(r=>safeOf(r)===k)?'off':'gone';
+    else if(rules.some(r=>r.preset&&r.preset.on&&r.preset.safety===k&&(r.status==='changed'||r.status==='off'))||dropped.some(r=>r.safety===k&&r.on))safety[k]='weakened'}
+  const unchanged=!rules.some(r=>r.status!=='same'||r.moved)&&!dropped.length;
+  const parts=['added','changed','moved','off','dropped'].filter(k=>counts[k]).map(k=>counts[k]+' '+(k==='off'?'turned off':k));
+  for(const k of Object.keys(safety))parts.push(k+' rule '+safety[k]);
+  const summary=unchanged?(a.gambits?'own list, same as the '+a.cls+' preset':'class preset, unchanged'):'differs from the '+a.cls+' preset: '+parts.join(', ');
+  return {cls:a.cls,edited:!!a.gambits,unchanged,counts,safety,rules,dropped,summary}}
+// a rule of the hero's own list that is not in its class preset as written (the purpose line says "by its own rule")
+export const ownRule=(a,id)=>{if(!a||!a.gambits)return false;const r=a.gambits.find(x=>x.id===id);return !!r&&!presetFor(a.cls).some(p=>idKey(p)===idKey(r))};

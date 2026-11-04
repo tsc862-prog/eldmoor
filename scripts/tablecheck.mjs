@@ -47,6 +47,12 @@ const C = await import('../src/sim/council.js');
 const {CRYPT, ZONES, zoneFor, zonePoint, dist} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
 const {score} = await import('../src/sim/abilities.js');
+const {allScenes} = await import('../src/sim/scenes.js'), SW_ = await import('../src/sim/scenewait.js');
+// The DM sets a paused scene first (#682): its members are woken (staggered in an everyone-answers scene) once the frame is final.
+// settle() steps the world until no open scene still holds anyone back; scene_act and vote below settle first.
+const heldNow = () => allScenes().some(sc => sc.pause && !sc.resolved && sc.phase !== 'outcome' && (SW_.framing(sc) || sc.wk && !sc.wk.done));
+const settle = (maxS = 20) => {let f = 0; while (heldNow() && f < 60 * maxS) {step(1 / 60); f++} return f / 60};
+const PA = (id, tool, args) => {settle(); return P.playerAct(id, tool, args)}; // a scene answer after the DM has set the scene
 
 // ---- determinism child: a seeded world without a Fellowship, hashed ----
 if (process.argv[2] === '--hash') {
@@ -80,7 +86,7 @@ if (process.argv[2] === '--simul') {
   let f = 0; while (!(S.table && S.table.phase === 'turn') && f++ < 60 * 120) step(1 / 60);
   const sc = S.table; if (!r.ok || !sc) {console.log('NO SCENE ' + (r.error || '')); process.exit(1)}
   const pick = ['spot', 'disarm', 'round', 'spot', 'disarm'], ids = rev ? sc.ids.slice().reverse() : sc.ids.slice();
-  for (const id of ids) {for (let k = 0; k < 20; k++) step(1 / 60); P.playerAct(id, 'scene_act', {option: pick[sc.ids.indexOf(id)]})}
+  for (const id of ids) {for (let k = 0; k < 20; k++) step(1 / 60); PA(id, 'scene_act', {option: pick[sc.ids.indexOf(id)]})}
   while (S.table && f++ < 60 * 240) step(1 / 60);
   console.log('ORDER ' + JSON.stringify(sc.beats.map(b => [b.id, b.k, b.by, b.res])) + ' ' + sc.summary + ' hp:' + M.map(x => Math.round(x.hp)).join(','));
   process.exit(0);
@@ -100,13 +106,13 @@ if (process.argv[2] === '--rounds') {
   if (process.argv[3] === 'fall') { // one member alone in reach at 1 HP, a hard-hitting foe that goes first
     M.slice(1).forEach(x => {x.x = spot.x + 40}); q.lvl = 12; q.hit = 50; const lone = M[0]; lone.hp = 1;
     const sf = T.openScene('elite', 'Fall test', ['A brute.'], {mob: q.id}); sf.foeAt = 0; let g = 0;
-    while (S.table && g++ < 60 * 120) {const c = S.table; if (c.phase === 'turn' && !c.acts[lone.id] && lone.state !== 'dead') P.playerAct(lone.id, 'scene_act', {option: 'strike'}); step(1 / 60)}
+    while (S.table && g++ < 60 * 120) {const c = S.table; if (c.phase === 'turn' && !c.acts[lone.id] && lone.state !== 'dead') PA(lone.id, 'scene_act', {option: 'strike'}); step(1 / 60)}
     const good = !S.table && lone.state === 'dead' && (sf.fell || []).includes(lone.id) && / fell./.test(sf.summary) && sf.rd <= TRD.TR.ROUNDS;
     console.log((good ? 'FALL ok' : 'FALL bad') + ' (round ' + sf.rd + '): ' + sf.summary); process.exit(0);
   }
   const sc = T.openScene('elite', 'Order test', ['A brute.'], {mob: q.id}); let f = 0;
   while (S.table && f++ < 60 * 240) {const c = S.table;
-    if (c.phase === 'turn') {const ids = rev ? c.ids.slice().reverse() : c.ids.slice(); for (const id of ids) if (!c.acts[id]) P.playerAct(id, 'scene_act', {option: 'strike'})}
+    if (c.phase === 'turn') {const ids = rev ? c.ids.slice().reverse() : c.ids.slice(); for (const id of ids) if (!c.acts[id]) PA(id, 'scene_act', {option: 'strike'})}
     step(1 / 60)}
   console.log('ROUNDS ' + JSON.stringify(sc.beats.map(b => [b.id, b.rd, b.k, b.by, b.res])) + ' ' + sc.summary + ' hp:' + M.map(x => Math.round(x.hp)).join(',') + ' foe:' + Math.round(q.hp));
   process.exit(0);
@@ -154,7 +160,7 @@ if (process.argv[2] === '--arrival') {
   ok(tc.ok && tc.call && tc.call.kind === 'frame' && /Session zero/.test(tc.call.about) && tc.scene.kind === 'opening', 'the DM is asked to frame the opening (table_call)');
   const fr = dmAct('table_answer', {call: tc.call.id, text: 'Rain on the hall roof; five strangers and one long table.'});
   ok(fr.ok && M.every(x => (x.chat || []).some(e => /five strangers/.test(e.text))), 'the DM framing reaches every member at the table');
-  ok(P.playerAct(live.id, 'scene_act', {option: 'lead', line: 'I will lead if you will have me.'}).ok && sc.acts[live.id].k === 'lead', 'a live agent offers to lead');
+  ok(PA(live.id, 'scene_act', {option: 'lead', line: 'I will lead if you will have me.'}).ok && sc.acts[live.id].k === 'lead', 'a live agent offers to lead');
   let g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
   ok(!S.table && sc.beats.length === M.length, 'every member acted at the opening');
   const refl = sc.beats.find(b => b.by === 'reflex' && b.k === 'introduce');
@@ -189,7 +195,7 @@ if (process.argv[2] === '--arrival') {
   ok(nh && dist(nh, home.gate) < 1.5, 'the newcomer is placed at the town gate');
   frameOut(); tc = dmAct('table_call'); ok(tc.call && tc.call.kind === 'voice' && tc.call.who === nh.name && tc.scene.cast.length === 1, 'the DM voices the newcomer (table_call voice, the cast names them)');
   dmAct('table_answer', {call: tc.call.id, text: nh.name + ' ducks under the lintel: "I was told there was a place."'});
-  ok(P.playerAct(live.id, 'scene_act', {option: 'object', line: 'No one fills that seat so fast.'}).ok && sc.acts[live.id].k === 'object', 'a live member objects');
+  ok(PA(live.id, 'scene_act', {option: 'object', line: 'No one fills that seat so fast.'}).ok && sc.acts[live.id].k === 'object', 'a live member objects');
   g = 0; while (S.table && g++ < 60 * 60) {step(1 / 60); dmAct('table_call')} // the DM keeps polling but stays silent on the oath: the scripted DM fills it
   const rec = SLT.slotted().log.find(e => e.kind === 'recruit');
   ok(rec && /at the table/.test(txt(rec)) && /spoke against it/.test(txt(rec)), `the oath is sworn at the table; the objection is spoken, not a veto (${rec && txt(rec)})`);
@@ -211,7 +217,7 @@ if (process.argv[2] === '--arrival') {
   ok(sc2 && sc2.calls && sc2.calls[0] && !sc2.calls[0].done && sc2.calls[0].t > 0, 'a runner that holds the seat but is busy is waited for (its bounded TABLE.dmMs)');
   dmUp = false; DR.gone(); step(1 / 60); // the runner is gone (the host saw its claim drop)
   ok(sc2 && sc2.calls[0].done && sc2.calls[0].by === 'scripted', 'the runner gone: its reflex fills the waiting call at once');
-  if (sc2) P.playerAct(live.id, 'scene_act', {option: 'greet'}); g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
+  if (sc2) PA(live.id, 'scene_act', {option: 'greet'}); g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
   ok(sc2 && sc2.calls.length === 2 && sc2.calls.every(c => c.by === 'scripted'), 'with the DM runner gone its reflexes voice the newcomer and the oath');
   ok(fills('slow').some(e => e.detail.call === 'voice') && fills('gone').some(e => e.detail.call === 'oath'), 'each fill is logged: the voice it waited for (slow), the oath nobody listened to (gone)');
   DR.setDmAlive(null);
@@ -247,17 +253,18 @@ if (process.argv[2] === '--fireside') {
   ok(fa.ok && fa.rounds === 4 && sc.ctx.rounds === 4 && M.filter(x => x !== away).every(x => (x.chat || []).some(e => /owl calls twice/.test(e.text))), 'the DM frames it and sets 4 rounds; everyone at the fire hears the frame');
   // lines: 300 characters arrive whole, 700 are refused, a near copy of another member's line is refused
   const L300 = ('I grew up on the drover roads east of the river, where my mother kept the tally of every beast we brought to market, and I learned early that a count kept honest is worth more than a sword. ').repeat(2).slice(0, 300).trim();
-  const long = P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'x'.repeat(700)});
+  LINK[other.id] = 'connected'; // held at the table (not its reflex) until the copy is tried: nobody acts before the DM's frame (#682)
+  const long = PA(live.id, 'scene_act', {option: 'speak', line: 'x'.repeat(700)});
   ok(!long.ok && /Too long: keep your line under 600/.test(long.error), 'a 700-character line is refused, not cut (' + (long.error || '').slice(0, 60) + ')');
-  const sp = P.playerAct(live.id, 'scene_act', {option: 'speak', line: L300});
+  const sp = PA(live.id, 'scene_act', {option: 'speak', line: L300});
   ok(sp.ok && sc.acts[live.id].line === L300, 'a 300-character line is taken whole');
-  const dup = P.playerAct(other.id, 'scene_act', {option: 'speak', line: L300.replace(live.name, other.name)});
-  ok(!dup.ok && /already said that/.test(dup.error), 'a near copy of another member\'s line at the table is refused');
+  const dup = PA(other.id, 'scene_act', {option: 'speak', line: L300.replace(live.name, other.name)}); delete LINK[other.id];
+  ok(!dup.ok && /already said that/.test(dup.error), 'a near copy of another member\'s line at the table is refused: ' + JSON.stringify(dup).slice(0, 200));
   const plan = [null, null, {option: 'tell', line: 'When I was nine the river took our ferry, and my father with it; I swore then I would never again wait on a bank for anyone.'}, {option: 'ask-' + other.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), line: 'What brought you to the Concord, truly?'}, {option: 'speak', line: 'Sleep, all of you. I will keep the fire.'}];
   k = 0; let sawView = null, sawBrief = null;
   while (S.table === sc && k++ < 60 * 600) {const rd = sc.rd || 1;
     if (rd === 2 && !sawBrief && sc.phase === 'turn' && !sc.acts[live.id]) sawBrief = PC.paceBrief(live.id).brief.scene;
-    if (sc.phase === 'turn' && !sc.acts[live.id] && plan[rd]) {const r = P.playerAct(live.id, 'scene_act', plan[rd]); if (!r.ok) console.error('  act refused: ' + r.error)}
+    if (sc.phase === 'turn' && !sc.acts[live.id] && plan[rd]) {const r = PA(live.id, 'scene_act', plan[rd]); if (!r.ok) console.error('  act refused: ' + r.error)}
     if (rd === 2 && !sawView) sawView = T.tableView(live);
     step(1 / 60)}
   ok(sc.rd === 4 && sc.beats.filter(b => b.id === live.id && b.line).length === 4, `four rounds were played, the live member spoke in each (${sc.rd})`);
@@ -278,7 +285,13 @@ if (process.argv[2] === '--fireside') {
   CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; SLT.campaign(SLT.slotted(), 'death', 'Old Brannoc fell at level 9 (a test).'); setDmSeat(false); LINK[live.id] = 'connected';
   camp(); const sb = S.table;
   ok(sb && sb.kind === 'fireside' && sb.ctx.rounds === 6 && sb.ctx.tk === 'death', `a big event makes a 6-round fireside on it (${sb && sb.ctx.topic})`);
-  k = 0; while (S.table === sb && k++ < 60 * 600) step(1 / 60);
+  // a listener's line is an emote (#646): the live member listens with a short act, the others see "<name> <act>", it is no spoken line
+  let emoted = null; k = 0;
+  while (S.table === sb && k++ < 60 * 600) {if (!emoted && sb.phase === 'turn' && sb.ids[sb.i] === live.id && !sb.acts[live.id]) emoted = P.playerAct(live.id, 'scene_act', {option: 'listen', line: 'pokes the fire with a stick'}); step(1 / 60)}
+  {const eb = sb.beats.find(b => b.id === live.id && b.k === 'listen' && /pokes the fire/.test(b.res || '')), el = (other.chat || []).find(e => e.emote && /pokes the fire/.test(e.text));
+    ok(emoted && emoted.ok && eb && !eb.line, 'a listener line at the fire is an emote: the beat is a listen with no spoken line');
+    ok(el && el.from === live && el.text === 'pokes the fire with a stick' && !(other.chat || []).some(e => !e.emote && /pokes the fire/.test(e.text)), 'the emote shows to the others as "<name> <act>" (a chat line of kind emote), never as speech');
+    const bad = P.playerAct(live.id, 'emote', {text: 'x'.repeat(130)}); ok(!bad.ok && /Too long/.test(bad.error), 'the same validation as the emote tool: a 130-character act is refused')}
   ok(sb && sb.ctx.quiet && sb.rd === 1 && (sb.calls || []).every(c => c.by === 'scripted'), 'a silent round ends the talk early; no DM runner polls (its calls refused), so its reflexes frame it');
   ok(sb && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'fireside' && e.detail.fill && e.detail.why === 'gone'), 'the fireside frame filled by the reflex is logged as a fill (why: gone) (#561)');
   // 3. a debrief after a hard scene: one round, everyone at once
@@ -286,7 +299,7 @@ if (process.argv[2] === '--fireside') {
   const rs = T.openScene('rescue', live.name + ' is going down', [live, ' is down.'], {hero: live.id}); k = 0; while (S.table === rs && k++ < 600) step(1 / 60);
   k = 0; while (!(S.table && S.table.kind === 'debrief') && k++ < 600) step(1 / 60); const sd = S.table;
   ok(sd && sd.kind === 'debrief' && sd.all && !sd.ids.includes(away.id), 'a hard scene (a rescue) is followed by a debrief for those present, everyone at once');
-  if (sd) P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'Too close. I owe you all a drink.'}); k = 0; while (S.table === sd && k++ < 60 * 60) step(1 / 60);
+  if (sd) {k = 0; while (S.table === sd && !(sd.wk && sd.wk[live.id]) && k++ < 600) step(1 / 60); P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'Too close. I owe you all a drink.'})} k = 0; while (S.table === sd && k++ < 60 * 60) step(1 / 60); // answered once woken (#682: seats are woken 1.5 s apart)
   ok(sd && /talked it over/.test(sd.summary) && !S.table, 'the debrief plays one round: ' + (sd && sd.summary));
   // 3b. the start gate holds the world (#559): no fire opens while it holds, and it opens once the hold lifts
   CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; field(); SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
@@ -336,7 +349,7 @@ if (process.argv[2] === '--interrogate') {
   ok(va.ok && sc.narr && sc.narr.text.startsWith(sc.ctx.who.name + ': '), 'the DM\'s voice is the prisoner\'s own words on the banner (' + (sc.narr && sc.narr.text.slice(0, 60)) + ')');
   // 2. the live member asks; the dice give the truth (a natural 20), the DM voices it true to the dice, the place is learned
   sc.ctx.dc = 99; k = 0; while (S.table === sc && !(sc.phase === 'turn' && sc.ids[sc.i] === live.id && !(sc.calls || []).some(c => !c.done)) && k++ < 6000) {const c0 = dmAct('table_call').call; if (c0) dmAct('table_answer', {call: c0.id, text: 'Nothing. A stare.'}); step(1 / 60)}
-  sc.ctx.dc = -40; sc.ctx.up = 0; const sa = P.playerAct(live.id, 'scene_act', {option: 'ask', line: 'Who sent you, and from where?'});
+  sc.ctx.dc = -40; sc.ctx.up = 0; const sa = PA(live.id, 'scene_act', {option: 'ask', line: 'Who sent you, and from where?'});
   ok(sa.ok !== false && !sa.error, 'the live member asks its question (scene_act ask)' + (sa.error ? ': ' + sa.error : ''));
   const mine = () => (sc.calls || []).find(c => c.kind === 'answer' && !c.done && sc.beats[c.beat] && sc.beats[c.beat].id === live.id);
   k = 0; while (S.table === sc && !mine() && k++ < 600) step(1 / 60);
@@ -367,7 +380,7 @@ if (process.argv[2] === '--interrogate') {
   g = 0; while (!(S.table && S.table.kind === 'interrogation') && g++ < 600) step(1 / 60); sc = S.table;
   ok(sc && sc.ctx.watch && T.optionsFor(sc, live).some(o => o.k === 'hand_over'), 'near a town of theirs the watch will take a prisoner (hand_over at ' + (sc && sc.ctx.watch) + ')');
   const gold0 = M.map(x => x.gold || 0); k = 0; while (S.table === sc && !(sc.phase === 'turn' && sc.ids[sc.i] === live.id) && k++ < 600) step(1 / 60);
-  P.playerAct(live.id, 'scene_act', {option: 'hand_over', line: 'You can tell it to the watch.'}); g = 0; while (S.table === sc && g++ < 60 * 60) step(1 / 60);
+  PA(live.id, 'scene_act', {option: 'hand_over', line: 'You can tell it to the watch.'}); g = 0; while (S.table === sc && g++ < 60 * 60) step(1 / 60);
   ok(!t2.alive && t2.gone && /goes to the watch/.test(sc.summary) && sc.ids.map(byId).every((x, i) => (x.gold || 0) > gold0[M.findIndex(y => y.id === x.id)]), 'handed over: the watch takes it and pays the members: ' + sc.summary);
   ok(sc.calls.some(c => c.kind === 'answer' && c.k === 'handed'), 'the DM is asked to voice the hand-over too');
   ok(sc.calls.every(c => c.by === 'scripted') && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'interrogation' && e.detail.fill && e.detail.why === 'gone'), 'a DM that does not poll: its reflexes voice the prisoner, logged as fills (why: gone)');
@@ -480,7 +493,7 @@ if (process.argv[2] === '--parley') {
     q.x = spot.x + 1; q.y = spot.y; q.lvl = opt.lvl || 9; q.maxhp = 4000; q.hp = opt.hp || 4000; q.cd = 99; q.fledOnce = true; q.hit = .001; q.target = M[0]; q.eff = {}; q.ab = opt.ab || []; // tricks only where a case asks for them
     SLT.slotted().tableSeen = {}; const sc = T.openScene('elite', 'Talk test', ['A rough voice from the brush.'], {mob: q.id}); sc.foeAt = sc.ids.length; return sc};
   const toTurns = () => {let g = 0; while (S.table && S.table.phase === 'frame' && g++ < 600) step(1 / 60)};
-  const strikeAll = () => {const c = S.table; if (c && c.phase === 'turn') for (const id of c.ids) if (!c.acts[id]) P.playerAct(id, 'scene_act', {option: 'strike'})};
+  const strikeAll = () => {const c = S.table; if (c && c.phase === 'turn') for (const id of c.ids) if (!c.acts[id]) PA(id, 'scene_act', {option: 'strike'})};
   const finish = (maxS = 60) => {let g = 0; while (S.table && g++ < 60 * maxS) {strikeAll(); step(1 / 60)}};
   const tableText = () => {const e = S.dmLog.filter(x => x.kind === 'table')[0]; return e ? e.summary.join('') : ''};
 
@@ -494,7 +507,7 @@ if (process.argv[2] === '--parley') {
   const spk = byId(sc.ids[0]), o1 = T.optionsFor(sc, spk).find(o => o.k === 'parley'), tv = P.playerAct(spk.id, 'status', {}).table;
   ok(o1 && /^Talk .+ down \((persuasion|intimidation), once a fight\)$/.test(o1.text) && tv && tv.options.some(s => /^parley = /.test(s)), `parley is offered against ${MOBS[talker.type].name}: ${o1 && o1.text}`);
   // (b) the legal action through scene_act: its result agrees with its dice, in the beat, the banner and the DM log
-  const ans = P.playerAct(spk.id, 'scene_act', {option: 'parley', line: 'Put it down and walk away.'});
+  const ans = PA(spk.id, 'scene_act', {option: 'parley', line: 'Put it down and walk away.'});
   ok(ans && !ans.error, 'scene_act parley is accepted');
   step(1 / 60); const pb = sc.beats.find(b => b.k === 'parley'), ck = pb && pb.check;
   const want = ck && (ck.die === 20 || (ck.hit && ck.total - ck.vs >= 5) ? 'yield' : ck.hit ? 'flee' : 'hold');
@@ -593,7 +606,7 @@ if (process.argv[2] === '--use') {
   // (b) hurt: the potion is offered by name (status too); scene_act takes the item's name; drunk once, logged, on the banner and in the DM log
   A.hp = Math.round(maxHp(A) * .5); const o = uses(sc, A), tv = P.playerAct(A.id, 'status', {}).table;
   ok(o.length === 1 && o[0].k === 'use:redroot-draught' && /^Use Redroot Draught on yourself \(50%; heals 35%\)$/.test(o[0].text) && tv && tv.options.some(s => /^use:redroot-draught = Use Redroot Draught/.test(s)), `a hurt member is offered its potion: ${o[0] && o[0].k} = ${o[0] && o[0].text}`);
-  const ans = P.playerAct(A.id, 'scene_act', {option: 'use:Redroot Draught', line: 'One swallow.'});
+  const ans = PA(A.id, 'scene_act', {option: 'use:Redroot Draught', line: 'One swallow.'});
   ok(ans && !ans.error, 'scene_act use:<item name> is accepted' + (ans && ans.error ? ': ' + ans.error : ''));
   const hp0 = A.hp; let g = 0; while (S.table && !sc.beats.some(b => b.id === A.id) && g++ < 600) step(1 / 60);
   const ub = sc.beats.find(b => b.id === A.id);
@@ -602,13 +615,13 @@ if (process.argv[2] === '--use') {
   const il = actionLog(A, {kinds: ['item']}); ok(il.length && il[il.length - 1].name === 'Redroot Draught', 'the action log has the item');
   const bl = T.bannerOf(); ok(sc.beats[sc.beats.length - 1] === ub && bl && /^.+: Use Redroot Draught on yourself .*\(Drank Redroot Draught: \+\d+ health\.\)$/.test(bl.last || ''), `the banner line names it: ${bl && bl.last}`);
   ok(!uses(sc, A).length, 'nothing left to use: the option is gone');
-  let k = 0; while (S.table && k++ < 60 * 60) {const c = S.table; if (c.phase === 'turn') for (const id of c.ids) if (!c.acts[id]) P.playerAct(id, 'scene_act', {option: 'strike'}); step(1 / 60)}
+  let k = 0; while (S.table && k++ < 60 * 60) {const c = S.table; if (c.phase === 'turn') for (const id of c.ids) if (!c.acts[id]) PA(id, 'scene_act', {option: 'strike'}); step(1 / 60)}
   ok(!S.table && new RegExp(A.name + ' uses Redroot Draught \\(\\+\\d+ health\\)').test(tableText()), `the DM log has it: ${(tableText().match(/[^:;.]*uses Redroot[^;.]*/) || [''])[0]}`);
   // (c) a companion's potion for the hurt member; a bare 'use' takes the first item offered
   sc = setup(); const [C, D] = sc.ids.map(byId); INV.addUse(D, 'Redroot Draught', 2); C.hp = Math.round(maxHp(C) * .3);
   const pty = C.party, dty = D.party; D.party = null; ok(!uses(sc, D).length, 'out of one party: no potion for the other'); C.party = D.party = pty || {id: 'usecheck', mem: [C, D]};
   const od = uses(sc, D); ok(od.length === 1 && new RegExp('^Use Redroot Draught on ' + C.name + ' \\(30%').test(od[0].text), `a full-health member offers its potion to the hurt one: ${od[0] && od[0].text}`);
-  const bare = P.playerAct(D.id, 'scene_act', {option: 'use'}); ok(bare && !bare.error && sc.acts[D.id] && sc.acts[D.id].k === 'use:redroot-draught', 'a bare use picks the item offered');
+  const bare = PA(D.id, 'scene_act', {option: 'use'}); ok(bare && !bare.error && sc.acts[D.id] && sc.acts[D.id].k === 'use:redroot-draught', 'a bare use picks the item offered');
   const c0 = C.hp, r1 = TRD.useInRound(sc, D, 'use:redroot-draught', C); ok(C.hp > c0 && INV.count(D, 'Redroot Draught') === 1 && /^Gave Redroot Draught to /.test(r1), `given across the table: ${r1}`);
   C.party = pty; D.party = dty;
   close();
@@ -673,7 +686,7 @@ if (process.argv[2] === '--companies') {
   ok(tv && tv.your_turn !== undefined && tv.options && tv.round, `the solo sees its table in status (round ${tv && tv.round})`);
   const bn = T.bannerOf(); ok(bn && bn.company === CX.id && bn.solo === true, 'the banner names the scene\'s company (a solo)');
   const dw = T.decisionsWaiting(); ok(dw.some(d => d.a === X && d.company === CX.id), 'decisionsWaiting carries the company');
-  ok(P.playerAct(X.id, 'scene_act', {option: 'strike', line: 'Not today.'}).ok, 'the solo strikes'); delete LINK[X.id]; // later rounds by reflex
+  ok(PA(X.id, 'scene_act', {option: 'strike', line: 'Not today.'}).ok, 'the solo strikes'); delete LINK[X.id]; // later rounds by reflex
   {let g = 0; while (S.table && g++ < 60 * 30) step(1 / 60)}
   ok(!S.table && sc.beats.some(b => b.by === 'foe') && sc.beats.some(b => b.id === X.id && b.by === 'agent'), `the foe's round is rolled: ${sc.beats.map(b => b.name + '=' + b.k).join(', ')}`);
   ok(CX.log.some(e => e.kind === 'table') && (CX.tableStats || {}).scenes >= 1, 'the outcome lands in the solo company\'s own log and stats');
@@ -699,7 +712,7 @@ if (process.argv[2] === '--companies') {
   ok(SC.held(Y) && SC.held(m2) && !SC.held(X) && !SC.held(m1), `the live scene's member and foe are engaged (held); the paused scene's are not (the world is stopped anyway)`);
   // X answers; its later rounds by reflex. Its scene resolves while Y's live scene still waits for Y's agent.
   {const toT = () => {let g = 0; while (sX.phase === 'frame' && g++ < 600) step(1 / 60)}; toT();
-   ok(P.playerAct(X.id, 'scene_act', {option: 'retreat', line: 'Back!'}).ok, `${X.name} answers at its own table`); delete LINK[X.id];
+   ok(PA(X.id, 'scene_act', {option: 'retreat', line: 'Back!'}).ok, `${X.name} answers at its own table`); delete LINK[X.id];
    let g = 0; while (S.table === sX && g++ < 60 * 30) step(1 / 60)}
   ok(sX.phase !== 'turn' && S.table === sY && !S.tables && !sY.resolved && sY.phase !== 'outcome', `${X.name}'s scene resolves on its own; ${Y.name}'s live scene becomes the primary, still waiting for its agent`);
   {const y0 = [Y.x, Y.y, Y.state, Y.target], f0 = [m2.x, m2.y, m2.hp], t0 = S.gameMin; m2.cd = 0; m2.hit = 50;
@@ -711,7 +724,7 @@ if (process.argv[2] === '--companies') {
      const pick = H.findMob(hunter); ok(pick !== m2, `a hunter beside the held foe does not pick it (${pick ? 'picks another' : 'picks none'})`);
      m2.target = Y; [hunter.x, hunter.y, hunter.zone, hunter.lvl] = hz}
    m2.cd = 99; m2.hit = .001}
-  ok(P.playerAct(Y.id, 'scene_act', {option: 'strike', line: 'Now.'}).ok, `${Y.name} answers its live scene`); delete LINK[Y.id];
+  ok(PA(Y.id, 'scene_act', {option: 'strike', line: 'Now.'}).ok, `${Y.name} answers its live scene`); delete LINK[Y.id];
   {let g = 0; while (S.table && g++ < 60 * 30) step(1 / 60)}
   step(1 / 60);
   ok(!S.table && !S.tables && !SC.held(Y) && !SC.held(m2), 'it resolves on its own; nobody is held any more and S.tables is gone');
@@ -755,10 +768,10 @@ if (process.argv[2] === '--companies') {
   sc = T.openScene('check', 'A rope bridge', ['The planks are rotten.'], {anchor: V.id});
   ok(sc && sc.company === CU.id && sc.all && sc.ids.join() === CU.ids.join(), 'an everyone-at-once scene for the pair: both at the table, join order');
   toTurns();
-  ok(P.playerAct(V.id, 'scene_act', {option: 'press', line: 'Go.'}).ok, `${V.name} answers first`);
+  ok(PA(V.id, 'scene_act', {option: 'press', line: 'Go.'}).ok, `${V.name} answers first`);
   {let g = 0; while (S.table && g++ < 60 * 3) step(1 / 60)}
   ok(S.table && /1\/2 answered/.test((T.bannerOf() || {}).line || ''), `the table waits for the other: ${(T.bannerOf() || {}).line}`);
-  ok(P.playerAct(U.id, 'scene_act', {option: 'steady', line: 'Easy.'}).ok, `${U.name} answers second`);
+  ok(PA(U.id, 'scene_act', {option: 'steady', line: 'Easy.'}).ok, `${U.name} answers second`);
   {let g = 0; while (S.table && g++ < 60 * 30) step(1 / 60)}
   const order = sc.beats.filter(b => b.by !== 'foe').map(b => b.id);
   ok(!S.table && order.join() === CU.ids.join(), `resolved in join order (${sc.beats.map(b => b.name + '=' + b.k).join(', ')}), not answer order`);
@@ -767,7 +780,7 @@ if (process.argv[2] === '--companies') {
   LINK[Y.id] = 'connected'; Y.x = spot.x; Y.y = spot.y - 4; Y.state = 'hunt';
   sc = T.openScene('check', 'A locked door', ['Old iron, older rust.'], {anchor: Y.id});
   ok(sc && sc.company === CY.id && sc.ids.length === 1 && sc.all, 'a solo\'s everyone-at-once scene has one seat');
-  toTurns(); ok(P.playerAct(Y.id, 'scene_act', {option: 'press'}).ok, 'it answers');
+  toTurns(); ok(PA(Y.id, 'scene_act', {option: 'press'}).ok, 'it answers');
   {let g = 0; while (S.table && g++ < 60 * 10) step(1 / 60)}
   ok(!S.table && sc.beats.length === 1 && sc.resolved, 'one answer resolves it');
 
@@ -806,8 +819,8 @@ if (process.argv[2] === '--companies') {
     ok(pj && !gCU.tableQ && sU && sU.kind === 'decision' && sU.ctx.prop === pj.id && S.tables && S.tables[gCU.id] === sU, 'the other company\'s decision scene opens at once beside it, keyed by its own proposal');
     ok(gCU.props.find(q => q.kind === 'merge') && !CO.isSolo(gCU) && gCU.id !== gCX.id, 'the paired proposal sits in the other company');
     {let g = 0; while ([S.table, sU].some(x => x && x.phase === 'frame') && g++ < 600) step(1 / 60)}
-    for (const h of [gx, gy]) P.playerAct(h.id, 'scene_act', {option: 'yes'}); // the proposer's own vote already counts
-    for (const h of [gu, gv]) ok(P.playerAct(h.id, 'scene_act', {option: 'yes'}).ok, h.name + ' votes at its own company\'s table, beside the other');
+    for (const h of [gx, gy]) PA(h.id, 'scene_act', {option: 'yes'}); // the proposer's own vote already counts
+    for (const h of [gu, gv]) ok(PA(h.id, 'scene_act', {option: 'yes'}).ok, h.name + ' votes at its own company\'s table, beside the other');
     {let g = 0; while (S.table && g++ < 60 * 40) step(1 / 60)}
     ok(!S.table, 'both scenes settle');
     close();
@@ -818,7 +831,7 @@ if (process.argv[2] === '--companies') {
 
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
-const act = (a, tool, args) => P.playerAct(a.id, tool, args || {});
+const act = (a, tool, args) => {if (tool === 'scene_act' || tool === 'vote') settle(); return P.playerAct(a.id, tool, args || {})};
 
 // ---- talk escalates to a Table scene (issue #407), in a child with a fresh world: node scripts/tablecheck.mjs --talk ----
 // Plain talk (greetings, small talk, buying, rumours, a blessing) never opens a scene; an offer that needs an answer, a
@@ -832,6 +845,7 @@ if (process.argv[2] === '--talk') {
   SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false});
   const M = SLT.slotMembers(SLT.slotted()).map(m => m.hero), A = M[0], c0 = homeOf(A);
   T.TABLE.speed = 1; T.TABLE.mode = 'auto'; TK.CONV.PER_DAY = 99;
+  SIM.setRunnerLinks(x => x === A ? 'connected' : 'none'); // A's runner answers (it is woken once the scene is set, #682); the rest by reflex
   const npc = role => S.npcs.find(p => p.town === c0.name && p.role === role);
   const beside = (a, p, dx = 1, dy = 0) => {a.state = 'town'; a.town = c0.name; a.x = p.x + dx; a.y = p.y + dy; a.pq = []; a.target = null; a.dest = null; a.hidden = false; a.hp = maxHp(a)};
   const away = () => {for (const x of M) {x.x = c0.gate.x + 30; x.y = c0.gate.y; x.state = 'hunt'; x.pq = []}};
@@ -868,7 +882,8 @@ if (process.argv[2] === '--talk') {
   ok(sc && sc.ids.includes(A.id) && sc.ids.includes(M[1].id) && sc.company === SLT.slotted().id, `the company present is at the table (${sc && sc.ids.map(nm).join(', ')})`);
   const tv = act(A, 'status').table;
   ok(tv && tv.everyone_answers && tv.options.map(o => o.split(' = ')[0]).join() === 'accept,decline,bargain,leave,attempt', 'options: ' + (tv && tv.options.join('; ')));
-  ok((A.playEv || []).some(e => /TABLE \(talk\)/.test(e.text)), 'the member is told at once (a must-answer event)');
+  ok(!(A.playEv || []).some(e => /TABLE \(talk\)/.test(e.text)), 'nobody is told while the DM sets the scene (#682)'); settle();
+  ok((A.playEv || []).some(e => /TABLE \(talk\)/.test(e.text)), 'the member is told once it is set (a must-answer event)');
   const said0 = (A.chat || []).length, ids0 = sc.ids.length;
   sc = playOut('bargain'); const ab = sc.beats.find(b => b.id === A.id) || {};
   ok(!S.table && sc.beats.length === ids0 && ab.k === 'bargain' && /(success|failure), \d+ vs \d+/.test(ab.res || ''), `A bargains with a d20 (${ab.res}); the outcome: ${sc.summary}`);
@@ -1129,6 +1144,7 @@ T.tableTick(); // the trigger rules (step() runs them after the heroes move)
 let sc = S.table;
 ok(sc && sc.kind === 'rescue' && sc.pause, `a member at ${Math.round(victim.hp / maxHp(victim) * 100)}% opens a rescue scene (${sc && sc.title}), world paused`);
 ok(sc && sc.ids.length === 5 && sc.ids.every((id, i) => i === 0 || score(S.agents.find(x => x.id === sc.ids[i - 1]), 'reflex') >= score(S.agents.find(x => x.id === id), 'reflex')), 'initiative order follows Reflex (with gear)');
+ok(!(A.playEv || []).some(e => /TABLE \(rescue\)/.test(e.text)), 'no table event while the DM sets the scene (#682)'); settle();
 const evA = (A.playEv || []).slice(-3).map(e => e.text).join(' | ');
 ok(/TABLE \(rescue\)/.test(evA) && (A.playEv || []).some(e => e.w === 3), 'the agent gets a must-answer table event with its options');
 let st = act(A, 'status');
@@ -1355,9 +1371,15 @@ console.log('everyone answers at once');
  const pb = act(lead, 'propose', {kind: 'break_camp', details: 'Break camp and ride on'});
  const sc = S.table, others = RM.filter(x => x !== lead);
  ok(pb.ok && sc && sc.kind === 'decision' && sc.all && sc.ids.length === 5, `a break_camp vote opens a scene where everyone answers (${sc && sc.ids.length} at the table)`);
- ok(others.every(x => (x.playEv || []).some(e => /Everyone answers at once/.test(e.text) && e.w === 3)), 'all four other members got the scene at the same moment, as a must-answer event');
+ const PACE = await import('../src/sim/pace.js'), told = x => (x.playEv || []).some(e => /Everyone answers at once/.test(e.text) && e.w === 3);
+ // the DM sets the scene first (#682): no wake, no turn, no scene_act until the frame is final; then wakes by seat, TABLE.wakeGapMs apart
+ ok(others.every(x => !told(x)) && others.every(x => PACE.paceCheck(x.id, {since: S.gameMin, wake: 'must'}) === null), 'while the DM sets the scene no member is woken (no must-answer event, no pace wake)');
+ {const t = act(others[0], 'status').table; ok(t && !t.your_turn && t.waiting_for === 'the DM' && !PACE.paceBrief(others[0].id).brief.scene, 'status: not your turn yet, waiting for the DM; the pace brief has no scene to force')}
+ {const r = P.playerAct(others[0].id, 'scene_act', {option: 'yes'}); ok(!r.ok && r.offline && /still setting the scene/.test(r.error) && !sc.acts[others[0].id], 'scene_act during the frame is refused, offline (never a failed turn): ' + r.error)}
+ {const at = {}; let f = 0; while (heldNow() && f < 60 * 20) {step(1 / 60); f++; for (const x of others) if (at[x.id] == null && told(x)) at[x.id] = f / 60}
+  const seq = sc.ids.filter(id => at[id] != null).map(id => at[id]), gaps = seq.slice(1).map((t, i) => t - seq[i]);
+  ok(seq.length === 4 && seq[0] >= T.TABLE.frameS - .05 && gaps.every(g => Math.abs(g - T.TABLE.wakeGapMs / 1000) < .1), `then the four are woken in seat order, ${T.TABLE.wakeGapMs / 1000} s apart (at ${seq.map(t => t.toFixed(2)).join(', ')} s)`)}
  ok(others.every(x => {const t = act(x, 'status').table; return t && t.your_turn && t.everyone_answers}), 'your_turn is true for every member who has not answered');
- const PACE = await import('../src/sim/pace.js');
  ok(others.every(x => {const b = PACE.paceBrief(x.id).brief.scene; return b && b.your_turn && b.keys.join() === 'yes,no'}), 'the pace brief carries the scene (yes/no) with your_turn for each of them');
  const [o1, o2, o3, o4] = others;
  run(2); act(o3, 'scene_act', {option: 'yes', line: 'Dawn is up.'}); run(1); act(o1, 'scene_act', {option: 'yes'}); act(o2, 'scene_act', {option: 'no'});

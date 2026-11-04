@@ -238,17 +238,30 @@ export function wakeNote(w) {
 // for the turn and release it after, so any number of Claude runners can be started (five members and
 // the DM) while at most RUNNER_CLAUDE_MAX talk to the API at once. Outside the supervisor (a terminal
 // runner) or when the supervisor does not answer, the turn just runs.
-export async function takeClaudeSlot(base, log = () => {}, {key = process.env.ELDMOOR_RUNNER_KEY, stopped = () => false, fetchImpl = fetch} = {}) {
-  if (!key || !base) return () => {};
-  const post = (path, body, ms) => fetchImpl(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(ms)});
-  let lease = null, said = false;
+// #687: due() says whether the member's own Table scene waits for its answer (the /play/health watch). While the runner waits for
+// a slot it asks every DUE_POLL_MS; once due, onDue() runs once (the runner tells the game its answer is queued: POST /play/pace
+// {queued:true, why:'slot'}) and the request is asked again with scene:true, which the supervisor serves first. The release
+// function carries .scene = true when the scene came up while waiting, so the turn answers it first.
+export const DUE_POLL_MS = 1000;
+export async function takeClaudeSlot(base, log = () => {}, {key = process.env.ELDMOOR_RUNNER_KEY, stopped = () => false, fetchImpl = fetch, due = null, onDue = null} = {}) {
+  if (!key || !base) return Object.assign(() => {}, {scene: false});
+  const post = (path, body, ms, signal) => fetchImpl(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms)});
+  const isDue = async () => {try {return !!(due && await due())} catch {return false}};
+  let lease = null, said = false, scene = await isDue(), told = false, waitedFor = false;
   while (!stopped()) {
-    let j = null; try {const r = await post('/play/runner/slot', {key}, 30000); j = r.status === 200 ? await r.json() : null} catch {}
+    const ac = new AbortController();
+    const watch = due ? setInterval(async () => {if (!(await isDue())) return; waitedFor = true;
+      if (!told) {told = true; try {if (onDue) await onDue()} catch {}}
+      if (!scene) {scene = true; ac.abort()}}, DUE_POLL_MS) : null;
+    let j = null, cut = false;
+    try {const r = await post('/play/runner/slot', {key, ...(scene ? {scene: true} : {})}, 30000, ac.signal); j = r.status === 200 ? await r.json() : null} catch {cut = ac.signal.aborted}
+    if (watch) clearInterval(watch);
+    if (cut) {log('[pace] its own Table scene opened while it waited for a Claude slot: asking again, scene first'); continue}
     if (!j) break; // no supervisor here: run without a lease
-    if (j.ok) {lease = j.lease; if (said) log('[pace] got a Claude slot'); break}
+    if (j.ok) {lease = j.lease; if (said) log('[pace] got a Claude slot' + (waitedFor ? ' (scene first)' : '')); break}
     if (!said) {said = true; log(`[pace] waiting for a Claude slot (all ${j.slots} in use; RUNNER_CLAUDE_MAX)`)}
   }
-  return () => {if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}};
+  return Object.assign(() => {if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}}, {scene: waitedFor});
 }
 export async function withClaudeSlot(base, fn, log, opts) {const release = await takeClaudeSlot(base, log, opts); try {return await fn()} finally {release()}}
 
@@ -265,14 +278,18 @@ export const INTENT_ASK = 'What are you trying to do next? If your aim changed o
 export const BECOME_FIELDS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 'beliefs', 'traits', 'stance'];
 // Reflections are on unless AGENT_REFLECT=0 or --no-reflect (--reflect turns them on again); checks that count exact turns turn them off.
 export const REFLECT_ON = process.argv.includes('--reflect') || !(process.env.AGENT_REFLECT === '0' || process.argv.includes('--no-reflect'));
+// Downed (#658): the hero lies at zero health and cannot act; its turn is this reflection, with no acting tools.
+export const DOWNED_ASK = 'You lie in the dark, bleeding at zero health: you cannot move, fight or speak, and your acting tools are refused until someone brings you back or you rise. What do you hear? What do you think of, lying there?';
 export function reflectPrompt(r, {tools = true} = {}) {
   const why = r && r.why ? ` (now: ${String(r.why).slice(0, 200)})` : '';
-  return `Before you rest${why}: what is worth remembering from today? ` + (tools
+  const lead = r && r.kind === 'downed' ? `${DOWNED_ASK}${why} What is worth remembering? ` : `Before you rest${why}: what is worth remembering from today? `;
+  return lead + (tools
     ? `Write 1-${REFLECT_MAX} memories with remember (title, text, tags; about is optional), in your own words, or answer "none" if nothing is. Anything you want to keep: a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion. Prefer remember to journal_write for this. ${BECOME_ASK} If it has, change that one part with become (field, text, why). ${INTENT_ASK} (intent {goal, why, until}).`
     : `Write 0-${REFLECT_MAX} memories in your own words: anything you want to keep (a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion). ${BECOME_ASK} ${INTENT_ASK} Answer only with the JSON object {"notes": [{"title": "...", "text": "...", "tags": ["..."], "about": "who or what it concerns, or empty"}], "become": {"field": "none", "text": "", "why": "", "about": ""}, "intent": {"goal": "", "why": "", "until": ""}}; an empty list if nothing is worth keeping, and field "none" unless you changed (else one of ${BECOME_FIELDS.join(', ')}, with your new words in text, why it changed, and for a stance who it is about); intent goal empty to keep your aim as it is (else what you will do next, why, and until: game hours or a condition).`);
 }
 // Should this turn be a reflection? A due moment, no scene open, and nothing that cannot wait.
-export const reflectNow = (b, w) => !!(REFLECT_ON && b && b.reflect && b.reflect.id && !b.scene && !(w && (w.wake === 'now' || w.must || w.table)));
+// A downed hero (#658): its turn is the reflection whatever woke it (its acting tools are refused anyway), unless a scene is open.
+export const reflectNow = (b, w) => !!(REFLECT_ON && b && b.reflect && b.reflect.id && !b.scene && ((b.state === 'downed' && b.reflect.kind === 'downed') || !(w && (w.wake === 'now' || w.must || w.table))));
 // Close the moment at the game (POST /play/pace {reflected, wrote}). Never throws; an older relay just ignores it.
 export async function closeReflection(base, hero, runner, id, wrote, fetchImpl = fetch) {
   try {const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, reflected: id, wrote}), signal: AbortSignal.timeout(8000)});

@@ -33,7 +33,7 @@ import {dirname, join, resolve} from 'node:path';
 import {init, step, S, snapshot, restore, isSave, markPlayer, playerSeat, playerSeats, playerNarrate, autoPick, TABLE, dmAct, dmSeatOn, setDmSeat, setRunnerLinks, planOpening, openingDue, beginPrep, endPrep, prepTick, prepView, prepActive, setPrepHost, setGateHold, setDmAlive} from '../src/sim/index.js';
 import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 import {onLog} from '../src/sim/chronicle.js';
-import {hostCall, seatInfo} from '../src/sim/player-host.js';
+import {hostCall, hostDm, seatInfo} from '../src/sim/player-host.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs';
 import {attachRunners} from './runners.mjs';
 import {behaviorLog} from './behavior-log.mjs';
@@ -63,7 +63,7 @@ export function localBackend(hostOpts) {
     links: map => {linkMap = map && typeof map === 'object' ? map : {}},
     call: (heroId, tool, args) => {const a = heroId != null ? playerSeat(heroId) : playerSeat();
       return a ? hostCall(a.id, tool, args, hostOpts) : Promise.resolve({ok: false, error: heroId != null ? `Hero #${heroId} is not agent-played.` : 'No agent-played hero.', offline: true})},
-    dmCall: (tool, args) => Promise.resolve(dmAct(tool, args)), // the DM seat (issue #66): answered at once, no waits
+    dmCall: (tool, args) => hostDm(tool, args, hostOpts), // the DM seat (issue #66): answered at once, the voice calls long-polled (#680)
     narrate: (heroId, text) => {const a = heroId != null ? playerSeat(heroId) : playerSeat(); if (a) playerNarrate(a.id, text)},
     info: () => ({connected: true, dm: dmSeatOn(), ...(prepView().state !== 'idle' ? {dmPrep: prepView()} : {}), heroes: seats().map(seatInfo)}),
   };

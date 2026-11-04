@@ -25,6 +25,7 @@ import * as sim from '../sim/index.js';
 import {span} from './combat.js';
 import {portrait} from '../render/sprites.js'; // generated face portraits (#367, #372)
 import {renderLife,resetLife} from './lifeview.js'; // the Life view (#389)
+import {gambitDiff} from '../sim/gambits.js'; // how a member's rules differ from its class preset (#679)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -64,6 +65,8 @@ export function sheetRows(){const ms=followedMembers().slice(0,MAX_HEROES),cols=
   row('oath','Story','Oath',a=>{const g=a.goal;if(!g)return {t:'none',n:-1,c:'dm'};const f=g.done?1:g.need?(g.progress||0)/g.need:0;
     return {t:(g.done?'Done: ':'')+g.text+(g.need?' ('+(g.done?g.need:g.progress||0)+'/'+g.need+')':''),n:f,c:g.done?'gd':''}});
   row('mem','Story','Last memory',a=>{const r=a.memory&&a.memory.recent;const e=r&&r.length?r[r.length-1]:null;return e?{t:e.t+' · '+e.text,n:a.memory.n||0}:{t:'nothing yet',n:0,c:'dm'}});
+  row('gambits','Agent','Gambits',a=>{if(!a.player)return {t:'-',n:null,c:'dm'};const D=gambitDiff(a),n=Object.values(D.counts).reduce((s,x)=>s+x,0);
+    return {t:D.unchanged?'class preset':D.summary.replace(/^differs from the \S+ preset: /,'own: '),n,c:Object.keys(D.safety).length?'lo':D.unchanged?'dm':'hi'}});
   for(const c of cols){if(!c.hero)continue;const b=c.hero;
     row('bond_'+b.id,'Bonds','Toward '+b.name,a=>a===b?{t:'-',n:null,c:'dm'}:{t:String(Math.round(bond(a,b)*10)/10),n:bond(a,b),c:bond(a,b)>=15?'hi':bond(a,b)>=6?'':'dm'})}
   return {cols,rows}}
@@ -95,7 +98,7 @@ function order(T){const idx=T.cols.map((_,i)=>i);if(!sort)return idx;const r=T.r
 function build(T){const tbl=el('table','shtbl'),ord=order(T);
   const thead=el('thead'),hr=el('tr');hr.append(el('th','shcorner',sort?'sorted by '+(T.rows.find(r=>r.key===sort)||{label:'?'}).label.toLowerCase():T.cols.length&&/^h\d/.test(T.cols[0].slot)?'join order':'role order'));
   for(const i of ord){const c=T.cols[i],th=el('th','shcol');
-    if(c.hero){const n=el('span','hn f'+c.hero.fac,c.hero.name);n.dataset.hid=c.hero.id;const tx=el('span','shcoltx');tx.append(el('span','frole r-'+c.role,c.label),el('br'),n,el('br'),el('span','dm',c.hero.cls+(c.hero.state==='dead'?' · fallen':'')));
+    if(c.hero){const n=el('span','hn f'+c.hero.fac,c.hero.name);n.dataset.hid=c.hero.id;const tx=el('span','shcoltx');tx.append(el('span','frole r-'+c.role,c.label),el('br'),n,el('br'),el('span','dm',c.hero.cls+(c.hero.state==='dead'?' · fallen':c.hero.state==='downed'?(c.hero.down&&c.hero.down.stable?' · stable':' · downed'):'')));
       const hd=el('div','shcolhd');hd.append(face(c.hero),tx);th.append(hd)}
     else th.append(el('span','frole r-'+c.role,c.label),el('br'),el('span','dm','place empty'));hr.append(th)}
   thead.append(hr);tbl.append(thead);

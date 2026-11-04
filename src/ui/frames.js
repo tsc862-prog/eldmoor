@@ -33,6 +33,7 @@ import {mountDmFrame,renderDmFrame} from './dmframe.js'; // the DM beside the pa
 import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
 import {agentReadyWord} from './player-bridge.js'; // the start gate (#222): claimed / warming / ready / failed
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
+import {downView,downText,downTitle,flashOf,pips} from './downview.js'; // DOWNED, the save tally and the timer (#659)
 const READY_TEXT={claimed:'claimed',warming:'warming up',ready:'ready',failed:'warm-up failed'};
 const mindLine=a=>{const w=a&&a.player&&a.state!=='dead'?agentReadyWord(a):null;return mindText(a)+(w?' · '+READY_TEXT[w]:'')};
 // The mind dot (#546): the frame carries the glance only. agent = a runner plays it (live or thinking), autopilot = the agent
@@ -65,7 +66,7 @@ export function chipsOf(a){const out=[];if(!a)return out;
   if(a.state==='dead')return [{t:'FALLEN',c:'bad',title:'Hardcore: gone for good.'}];
   if(a.state==='ghost')out.push({t:'GHOST',c:'dim',title:'Running back as a ghost.'});
   if(a.blessed)out.push({t:'BLESSED',c:'good',title:'The next strike lands at +20% (a wayside shrine or a crypt blessing).'});
-  const mh=maxHp(a);if(a.state!=='ghost'&&a.hp<mh*.35)out.push({t:'WOUNDED',c:'bad',title:'Below a third of their health.'});
+  const mh=maxHp(a);if(a.state!=='ghost'&&a.state!=='downed'&&a.hp<mh*.35)out.push({t:'WOUNDED',c:'bad',title:'Below a third of their health.'});
   out.push(...effectChips(a));
   if(a.hidden&&a.state==='dungeon')out.push({t:'IN CRYPT',c:'crypt',title:'Inside the Sunken Crypt.'});
   const c=conditionAt(a.zone);if(c&&CONDITIONS[c.kind])out.push({t:CONDITIONS[c.kind].label.toUpperCase(),c:'cond',title:CONDITIONS[c.kind].about+' (over '+ZONES[c.z]+')',col:CONDITIONS[c.kind].col});
@@ -86,7 +87,7 @@ export function frameRows(){const out=[];for(const g of frameGroups()){const lea
   if(!a){const p=before(m.slot);out.push({row:g.title,role:m.label,empty:true,text:m.label+' · place empty'+(p?' · † '+p.name+', '+p.cause:'')});continue}
   const mh=maxHp(a);
   out.push({row:g.title,role:m.label,name:a.name,cls:a.cls,lvl:a.lvl,hp:Math.max(0,Math.round(a.hp))+' / '+mh,status:doing(a),purpose:purposeLine(a),target:targetOf(a),
-    chips:chipsOf(a).map(c=>c.t),pots:potText(a),mind:mindLine(a),replaced:replacedLine(m.slot),lead:lead===a,
+    chips:chipsOf(a).map(c=>c.t),down:downText(a),flash:(flashOf(a)||{}).word||'',pots:potText(a),mind:mindLine(a),replaced:replacedLine(m.slot),lead:lead===a,
     hover:combatRows(a).map(r=>r[1]+' '+r[2]).concat(['Skills: '+topSkills(a).join(', ')])})}}
   return out}
 // The rows themselves, for the smoke and the Companies panel: [{title, alone, followed, n, room, names}].
@@ -115,27 +116,41 @@ function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
   const sub=el('div','pfsub');sub.append(el('span','frole r-'+m.role,m.label),' ');r.sub=el('span','dm');sub.append(r.sub);id.append(r.name,sub);
   top.append(r.port,id);
   const hp=el('div','meter hp pfhp');r.hpi=document.createElement('i');r.hpt=el('span','pfhpt');hp.append(r.hpi,r.hpt);
+  // downed (#659): the label, saves made and failures (filled circles) and the save timer, under the health bar
+  r.dn=el('div','pfdown');r.dn.hidden=true;r.dnl=el('span','pfdl');r.dns=el('span','pips ok');r.dnf=el('span','pips bad');r.dnt=el('span','pfdt dm');r.dnx=el('span','pfdx');
+  r.dn.append(r.dnl,r.dns,r.dnf,r.dnt,r.dnx);
   r.doing=el('div','pfdo purp');r.doing._base='pfdo';r.tgt=el('div','pftg');r.chips=el('div','pfchips');
   const foot=el('div','pffoot');r.pot=el('span','pfpot');r.mind=el('span','pfdot');r.mind.setAttribute('role','img');foot.append(r.pot,r.mind);
   r.rep=el('div','dm pfrep');
-  f.append(top,hp,r.doing,r.tgt,r.chips,r.rep,foot);
+  f.append(top,hp,r.dn,r.doing,r.tgt,r.chips,r.rep,foot);
   return {node:f,hid:a.id,r}}
 
 function update(fr,m,lead,no,total){const a=m.hero,r=fr.r;
   setText(r.key,no<=9?String(no):'');setAttr(r.key,'title',no<=9?KEY_TIP(total):null);
   if(!a){const p=before(m.slot);setText(r.past,p?'† '+p.name+', Lv '+p.lvl+' '+p.cls+', '+p.cause:'');return}
-  const dead=a.state==='dead',mh=maxHp(a);
-  setCls(fr.node,'pf r-'+m.role+(cam.sel===a?' sel':'')+(dead?' dead':a.state==='ghost'?' ghost':'')+(a.hp<mh*.35&&!dead?' low':''));
+  const dead=a.state==='dead',mh=maxHp(a),dv=dead?null:downView(a);
+  setCls(fr.node,'pf r-'+m.role+(cam.sel===a?' sel':'')+(dead?' dead':a.state==='ghost'?' ghost':'')+(dv?dv.stable?' downed stable':' downed':a.hp<mh*.35&&!dead?' low':''));
   // portrait: redraw only when the face itself changes (ghost, fallen, a new hero)
   const s=portrait(a,dead?'dead':a.state==='ghost'?'ghost':'');if(r.port._s!==s){r.port._s=s;r.port.width=s.width;r.port.height=s.height;const c=r.port.getContext&&r.port.getContext('2d');if(c){c.clearRect(0,0,s.width,s.height);c.drawImage(s,0,0)}}
   r.star.hidden=lead!==a;setText(r.nm,styled(a)); // a name given for a deed (#638)
   setText(r.sub,'Lv '+a.lvl+' '+a.cls);
   const w=dead?0:Math.max(0,Math.min(100,a.hp/mh*100));if(r.hpi._w!==w){r.hpi._w=w;r.hpi.style.width=w.toFixed(1)+'%'}
   setText(r.hpt,dead?'fallen':Math.max(0,Math.round(a.hp))+' / '+mh);
+  downRow(r,a,dv,dead);
   setPurpose(r.doing,a,'f');const t=targetOf(a);setText(r.tgt,t?'» '+t:'');
   const ch=chipsOf(a),ck=ch.map(c=>c.t).join('|');if(r.chips._k!==ck){r.chips._k=ck;r.chips.replaceChildren();for(const c of ch){const s=el('span','chip c-'+c.c,c.t);s.title=c.title||'';if(c.col)s.style.color=c.col;r.chips.append(s)}}
   setText(r.rep,replacedLine(m.slot));setText(r.pot,dead?'':potText(a));
   const md=mindDot(a);setText(r.mind,md.word);setCls(r.mind,'pfdot d-'+md.k);setAttr(r.mind,'title',md.title||null);setAttr(r.mind,'aria-label',md.word?'Mind: '+md.word:null)}
+
+// The downed row (#659): DOWNED or STABLE, saves made of 3 and failures of 3 (4 with a healer near), the timer, and the
+// last change to the tally for a few seconds (SAVED, FAILED, STRUCK, STABLE; UP once they rise). Written only when it changes.
+function downRow(r,a,v,dead){const fl=dead?null:flashOf(a),show=!!v||!!fl&&fl.word==='UP';
+  if(r.dn.hidden===show)r.dn.hidden=!show;if(!show)return;
+  setCls(r.dn,'pfdown'+(v&&v.stable?' stable':'')+(v?'':' up'));
+  setText(r.dnl,v?v.stable?'STABLE':'DOWNED':'');setText(r.dns,v?pips(v.s,v.of3):'');setText(r.dnf,v?pips(v.f,v.of):'');setText(r.dnt,v?v.timer:'');
+  setAttr(r.dns,'title',v?v.s+' of '+v.of3+' death saves made':null);setAttr(r.dnf,'title',v?v.f+' of '+v.of+' failures'+(v.of>v.of3?' (a healer near: one more)':''):null);
+  setText(r.dnx,fl?fl.word:'');setCls(r.dnx,'pfdx'+(fl?' t-'+fl.tone:''));
+  setAttr(r.dn,'title',v?downTitle(v):null);setAttr(r.dn,'aria-label',v?downText(a)+(fl?' · '+fl.word:''):'Up again')}
 
 // A company row: a head (shown only when there is more than one row) and the frames. A company's head names it, says how
 // many ride with it and how many more it may take ('+3'), and follows it on a click; the Alone row's head only names it.

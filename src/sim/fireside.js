@@ -33,6 +33,7 @@ import {remember} from './memory.js';
 import {addHeroNote} from './notebook.js';
 import {moment,onMoment} from './reflect.js';
 import {tellStory} from './persona.js';
+import {emoteAct} from './aside.js';
 import {hasLinks} from './runlink.js';
 import {worldHeld} from './prep.js';
 import {inRange} from './reach.js';
@@ -62,7 +63,7 @@ const plain=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:
 const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1];
 const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const pickH=(seed,k,list)=>list[Math.floor(hash(seed|0,k,71)*list.length)%list.length];
-const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C);
+const memOf=C=>!C?[]:C===slotted()?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const fireOf=C=>C.fire||(C.fire={last:-1e9,seq:0,past:0,ev:[]});
 const FIGHTING=['fight','duel','assist','raid','dungeon'];
 const isFire=k=>k==='fireside'||k==='debrief';
@@ -135,11 +136,12 @@ function options(sc,a){const c=sc.ctx,o=[];
   o.push({k:'speak',text:'Speak'+(c.topic?' to the talk ('+cut(c.topic,60)+')':' your mind')});
   for(const b of others(sc,a))o.push({k:'ask-'+slug(b.name),text:'Ask '+b.name+' something (your line is the question; they may answer on their turn)'});
   o.push({k:'tell',text:'Tell a story from your own past (your line is the story; it becomes part of your backstory and they will remember it)'});
-  o.push({k:'listen',text:'Listen; say nothing this round'});return o}
+  o.push({k:'listen',text:'Listen; say nothing this round (a short line is an act, shown as "<you> <line>", like "pokes the fire")'});return o}
 // A silent agent, or a member with no runner, listens: nobody's words are made up for them.
 const reflex=()=>'listen';
 function apply(sc,a,act){const c=sc.ctx,k=act.k,line=act.line||'';
-  if(k==='listen')return 'listens';
+  if(k==='listen'){const t=line&&emoteAct(a,{text:line});act.line=''; // a listener's line is an emote, never speech (#646)
+    return t&&t.ok?'listens, and '+t.emoted:'listens'}
   if(k==='speak')return line?'speaks':'says little';
   if(k==='answer'){const q=c.asked&&c.asked[a.id];if(q)delete c.asked[a.id];return line?'answers '+(q?q.name:'them'):'shrugs off the question'}
   if(k==='tell'){if(!line)return 'begins a story, then lets it go';(c.told||(c.told=[])).push({id:a.id,text:line});return 'tells of their past'}

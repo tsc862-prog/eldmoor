@@ -27,8 +27,8 @@ function rack(){const out=['L'.repeat(22)];for(let r=0;r<3;r++){out.push('L'+'D'
 export const FURN={
   table:{make:()=>table(28),map:woodMap,ox:2,oy:4},
   longtable:{make:()=>table(60),map:woodMap,ox:2,oy:4},
-  pew:{make:w=>bench(w,true),map:woodMap,ox:1,oy:2},
-  bench:{make:w=>bench(w,false),map:woodMap,ox:1,oy:6},
+  pew:{make:w=>bench(w>5?w:30,true),map:woodMap,ox:1,oy:2},
+  bench:{make:w=>bench(w>5?w:30,false),map:woodMap,ox:1,oy:6},
   ladder:{make:()=>ladder(30),map:woodMap,ox:2,oy:-14,light:'day'},
   rack:{make:rack,map:th=>({...woodMap(th),R:'#7a2a3a',r:'#c8607a',G:'#3a6a3a',g:'#7ab07a'}),ox:-3,oy:-12},
   chair:{rows:[

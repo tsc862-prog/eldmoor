@@ -7,3 +7,5 @@
 - [Art tiers](tiletiers.md) — #177 32 px TILE vs 16 unit U split, tier keys @32/@64, sprite sheets and faction recolour
 - [Raid arena](raidarena.md) — #85 lair as interior in the dungeon frame, raid record, staging a raid shot (rAF before capture)
 - [Towns and landmarks](towns.md) — #177 slice 3: townart.js pieces, faction styles in data/townart.js, wall is tile kind, Node raster check
+- [Site dungeon view](sitesview.md) — #642 themed site interiors, per-dungeon keys, staging a site crawl shot
+- [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes

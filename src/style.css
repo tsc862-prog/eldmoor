@@ -110,6 +110,10 @@ button[aria-pressed="true"]{background:var(--gold);color:#1a1206;border-color:va
 .facs .k{color:var(--dim)}
 .log{list-style:none;margin:0;padding:0;max-height:330px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;font-size:18px}
 .log li{line-height:1.1}
+.gambits .gbm{display:inline-block;min-width:4ch;color:var(--gold)} /* #679: + added, ~ changed, ^ v moved, off, - dropped */
+.gambits .gb-added .gbm{color:var(--green)} .gambits .gb-dropped{color:var(--dim)} .gambits .gb-dropped s{text-decoration-thickness:2px}
+.gambits li.gbsafe .gbm,.gambits li.gbsafe s{color:var(--red)} .gambits li[title]{cursor:help} .gambits li[tabindex]:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.meta.gbsum.gbdiff{color:var(--gold)} .meta.warn{color:var(--amber)}
 .log time{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-nums}
 .daysep{list-style:none;color:var(--gold);font-family:var(--px);font-size:7px;letter-spacing:.08em;margin:8px 0 3px;padding-bottom:2px;border-bottom:1px solid var(--edge)}
 div.daysep{margin:8px 0 3px}
@@ -394,6 +398,28 @@ button.frrh:hover,button.frrh:focus-visible{border-bottom-color:var(--gold)}
 .pf.sel{border-color:var(--gold);background:var(--panel2)}
 .pf.low .pfhp{border-color:var(--red)}
 .pf.dead,.pf.ghost{opacity:.6}
+/* downed (#659): a red frame, the tally in filled circles, the save timer and each save's word as it lands */
+.pf.downed{border-color:#a8403a;background:#1c0f12}
+.pf.downed.stable{border-color:#4a6a98;background:#0f1422}
+.pf.downed.sel{border-color:var(--gold)}
+.pfdown{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap;font-size:16px;line-height:1}
+.pfdown[hidden]{display:none}
+.pfdl{font-family:var(--px);font-size:7px;color:#ff6a5a;letter-spacing:.5px}
+.pfdown.stable .pfdl{color:#9ad0ff}
+.pfdown.up .pfdl{display:none}
+.pips{font-size:13px;letter-spacing:1px;line-height:1}
+.pips.ok{color:#7fe08a} .pips.bad{color:#ff6a5a}
+.pips:empty{display:none}
+.pfdt{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pfdx{font-family:var(--px);font-size:7px;margin-left:auto;padding:1px 3px}
+.pfdx:empty{display:none}
+.pfdx.t-good{color:#0d0e19;background:#7fe08a} .pfdx.t-bad{color:#0d0e19;background:#ff6a5a} .pfdx.t-calm{color:#0d0e19;background:#9ad0ff}
+.purp.p-down{color:#ff8a7a} .purp.p-aid{color:#7fe08a}
+.hero .hdown{margin:3px 0 2px}
+.hist li.dk-down,.hist li.dk-finish,#log li.dk-down,#log li.dk-finish{color:#ffb0a8}
+.hist li.dk-stable,.hist li.dk-up,.hist li.dk-aid,.hist li.dk-mercy,#log li.dk-stable,#log li.dk-up,#log li.dk-aid,#log li.dk-mercy{color:#b8e8b0}
+.hist li .badge{font-size:6px;margin-right:4px}
+.b-down,.b-finish{color:#ff6a5a} .b-stable{color:#9ad0ff} .b-up,.b-aid,.b-mercy{color:var(--green)}
 .pf.empty{cursor:default;align-items:flex-start}
 .pfempty{font-family:var(--px);font-size:8px;color:var(--dim)}
 .pftop{display:flex;gap:6px;align-items:center;min-width:0}
@@ -675,6 +701,11 @@ button.tbtn.danger{border-color:var(--red)}
 .tbanner .trl.miss .trr{color:#8a8fa8}
 .tbanner .trl.crit .trr{color:#ffd866}
 .tbanner .trr.fall{color:#ff6a5a}
+.tbanner .tci.dn{border-color:#a8403a;background:rgba(48,16,16,.7)} .tbanner .tci.dn.stable{border-color:#4a6a98;background:rgba(16,24,48,.7)}
+.tbanner .tcdn{display:inline-flex;gap:3px}
+.tbanner .trl.death .trd{color:#e0b0a8}
+.tbanner .trl.death.hit .trr{color:#7fe08a} .tbanner .trl.death.miss .trr{color:#ff8a7a}
+.tbanner .st-down .tms{color:#ff8a7a}
 .tbanner .tend{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .tbanner .tendc{font-family:var(--px);font-size:7px;padding:2px 4px;border:1px solid #3a3f58;color:#cfd3e8}
 .tbanner .tendc.win{border-color:#4f8a56;color:#7fe08a}
@@ -900,3 +931,18 @@ button.tbtn.danger{border-color:var(--red)}
 .pchip.now{color:var(--gold);border:1px solid var(--gold);padding:0 3px}
 .profmeal{margin:2px 0 4px;padding:1px 4px;border-left:2px solid var(--gold);overflow-wrap:anywhere}
 .mk{font-style:italic}
+/* What's new on the title screen (#664): the patch notes not read yet, a NEW badge until Got it */
+.tnews{display:flex;flex-direction:column;gap:8px;background:var(--panel);border:2px solid var(--edge);box-shadow:4px 4px 0 #05060c;padding:12px 14px;min-width:0}
+.tnews.unread{border-color:var(--gold)}
+.tnhead{display:flex;align-items:center;gap:10px;justify-content:space-between;min-width:0}
+.tnttl{font-family:var(--px);font-size:10px;margin:0;color:var(--gold);display:flex;align-items:center;gap:8px}
+.tnew{font-family:var(--px);font-size:7px;padding:3px 5px;background:var(--gold);color:#1a1206;letter-spacing:.06em}
+button.tnread,button.tnmore{font-size:8px;padding:6px 9px;box-shadow:none}
+button.tnmore{align-self:flex-start}
+.tnote{min-width:0;border-top:1px solid var(--edge);padding-top:6px}
+.tnh{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:18px;min-width:0}
+.tnn{color:var(--dim);flex:none}
+.tnt{color:var(--ink);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.tnd{color:var(--dim);font-size:16px;flex:none}
+.tnl{margin:4px 0 0;padding-left:18px;font-size:18px;line-height:1.15;color:#d8d4c4;overflow-wrap:anywhere}
+.tnl li{margin:2px 0}

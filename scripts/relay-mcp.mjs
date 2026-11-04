@@ -72,6 +72,8 @@ import {DM_TOOLS} from '../src/data/dm-tools.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
+export const DM_VOICE_MS = 10000; // the longest a voice call counts as pending without its answer (#682)
+export const DM_WAIT_MAX = 25000; // the longest long poll of table_call / npc_call / ruling_call {wait_ms} (#680; src/sim/player-host.js DM_WAIT.MAX)
 // What an agent hears while the game page is away (#399): a pause in the world, not advice to a human ("Press Agent ...", which
 // models read as something they must do). offline:true marks it for the runners (not the model's mistake, scripts/local-agent.mjs).
 export const PAUSED = 'The world is paused or reloading; wait and try again (your runner picks up when it is back).';
@@ -129,8 +131,9 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
       if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
       if (!dmSeat) return Promise.resolve({ok: false, error: 'The DM seat is closed: the page opens it for the world it plays.', offline: true});
       const id = ++seq;
+      const held = Math.min(DM_WAIT_MAX, Math.max(0, Number(args && args.wait_ms) || 0)); // a long-polled voice call (#680) is held by the page up to wait_ms
       return new Promise(res => {
-        const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, CALL_MS);
+        const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, CALL_MS + held);
         waiting.set(id, {res, t});
         send({type: 'dmcall', id, tool, args: args || {}});
       });
@@ -201,7 +204,9 @@ const readBody = req => new Promise((res, rej) => {
 // behavior: a scripts/behavior-log.mjs writer (issue #129); without it the host keeps no behavior logs.
 export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null, embed = null} = {}) {
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
-  const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, rec, {links: links(), runners: runners()}) : false;
+  // A wish (#663) is stamped with the model that holds its seat; nothing of it ever goes back out.
+  const wishRunner = seat => {try {const s = String(seat || ''), r = s === 'dm' ? runnerOf(DM_KEY) : runnerOf(Number.isFinite(+s.slice(5)) ? +s.slice(5) : s.slice(5)); return r ? {provider: r.provider || null, model: r.model || null} : {}} catch (e) {return {}}};
+  const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, kind === 'wish' && rec && rec.type === 'wish' ? {...wishRunner(rec.seat), ...rec} : rec, {links: links(), runners: runners()}) : false;
   const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror || embed ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id); if (embed) embed.setWorld(w, id)} : null,
     onMirror: mirror ? seats => mirror.write(seats) : null, onHello: () => pushLinks()}); // mirror: scripts/memory-mirror.mjs (issue #155)
   const stats = {calls: 0, errors: 0};
@@ -263,6 +268,11 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     vlog({ts: new Date().toISOString(), hero: id, tool, args, result: r, ms: now() - t0});
     return r;
   }
+  // The DM's voice is answering a call (#682): a voice poll handed it a call (table/talk/ruling) and its answer has not come
+  // yet. The runner supervisor lets a hero's Claude slot request yield DM_FIRST_MS meanwhile (scripts/runners.mjs).
+  let dmVoiceAt = 0;
+  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say']);
+  const dmVoiceBusy = () => dmVoiceAt > 0 && now() - dmVoiceAt < DM_VOICE_MS;
   // A DM tool call (issue #66): counted, logged, never thrown.
   async function dmCall(tool, args) {
     const t0 = now(); stats.calls++;
@@ -278,6 +288,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     a.inflight--; a.last = now(); pushLinks();
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
+    if (VOICE_POLLS.has(tool) && r.ok && r.call && Number(r.call.seconds_left) > 0) dmVoiceAt = now(); else if (VOICE_ANSWERS.has(tool) && (tool !== 'npc_say' || (args && args.conv != null))) dmVoiceAt = 0;
     if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
     log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'}${note} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
@@ -404,7 +415,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (path === '/play/pace') {const id = hero;
         if (id == null) return send(400, {ok: false, error: 'pace needs the hero id'});
         const holder = heldBy(id, rid); if (holder) return send(409, refusedSeat(id, holder));
-        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.queued != null ? {queued: !!a.queued} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
+        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.queued != null ? {queued: !!a.queued, ...(typeof a.why === 'string' ? {why: a.why.slice(0, 12)} : {})} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
         let r; try {r = await be.call(id, 'pace', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
         return send(200, r && typeof r === 'object' ? r : {ok: false, error: 'no answer'})}
       if (path === '/play/narrate') {const id = resolve(hero);
@@ -433,5 +444,5 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   const dropRunner = prefix => {let n = 0; for (const [id, c] of claims) if (c.runner === prefix || c.runner.startsWith(prefix + ':')) {claims.delete(id); act.delete(id); n++}
     if (n) {log(`[play] runner ${prefix} gone: ${n} claim(s) dropped`); pushLinks()} return n};
   const holderOf = id => {const c = claimOf(id); return c ? c.runner : null}; // the runner id holding a seat (the supervisor matches its children by host:pid, #563)
-  return {backend: be, stats, call, dmCall, dmInfo, linkOf, links, runnerOf, readyOf, claimed, holderOf, dropRunner, behaviorIngest, behavior};
+  return {backend: be, stats, call, dmCall, dmVoiceBusy, dmInfo, linkOf, links, runnerOf, readyOf, claimed, holderOf, dropRunner, behaviorIngest, behavior};
 }

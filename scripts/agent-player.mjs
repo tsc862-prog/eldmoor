@@ -29,7 +29,7 @@
 // (optional: any mind runs until stopped, a paid one until its --budget is spent; #563), --heartbeat MIN,
 // --min-gap S, --max-fails N (or AGENT_HEARTBEAT, AGENT_MIN_GAP, AGENT_MAX_FAILS), --budget USD (default 1.00, total for this run), --tool-turns N (model round
 // trips per turn, default 12), --model (or AGENT_MODEL; default claude-sonnet-5-5), --effort (or
-// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic', 'ollama', 'openai' or 'huggingface'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
+// AGENT_EFFORT; default medium), --provider (or AGENT_PROVIDER; 'anthropic', 'ollama', 'openai', 'huggingface' or 'google'), --env FILE (a .env with ANTHROPIC_API_KEY; default the repo's
 // .env), --new.
 // Local models (issue #97 part 2): --provider ollama --model qwen2.5:14b plays the hero with a local
 // Ollama model through the same tools, claims and session file (scripts/local-agent.mjs; the
@@ -51,12 +51,12 @@ import {loadEnv, PRICES} from './relay.mjs';
 import {migrateLegacy, loadSession, saveSession, sessionPath, pickHero, runnerSettings, inheritRunner, DEFAULT_PROVIDER, RUNNER_PROVIDERS} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
-import {localTurn, localLine, paidLine, sceneToAnswer, sceneFrom, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
+import {localTurn, localLine, paidLine, sceneToAnswer, sceneDue, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
 import {reflectPrompt, reflectNow, closeReflection} from './pacing.mjs'; // reflection moments (#179)
 import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
-import {openaiRunner} from './agent-chat.mjs';
+import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
@@ -93,6 +93,7 @@ export function systemPrompt(st) {
     MEMORY_ORDERS,
     JOURNAL_ORDERS,
     SELF_ORDERS,
+    WISH_ORDERS,
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
@@ -112,9 +113,11 @@ export const withTownOrders = sys => {const s = String(sys || ''); return s.incl
 export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
 // Tiered memory (issue #153): landmarks, chapters and journal_search; withMemoryOrders adds this line to an older prompt too.
 export const JOURNAL_ORDERS = '- Your past stays with you: your landmarks (deaths, vows, levels, the Fellowship, and entries you write with landmark yes) are never lost, and old journal entries and notes fold into chapters. journal_read with no arguments shows them with your latest entries: read it when you pick up again. Before a big decision, journal_search for the people or places involved.';
-export const withMemoryOrders = sys => {let s = String(sys || ''); if (!/- Keep memories: /.test(s)) s += '\n' + MEMORY_ORDERS; if (!/- Your past stays with you: /.test(s)) s += '\n' + JOURNAL_ORDERS; if (!/- Who you are is yours to grow: /.test(s)) s += '\n' + SELF_ORDERS; return s};
+export const withMemoryOrders = sys => {let s = String(sys || ''); if (!/- Keep memories: /.test(s)) s += '\n' + MEMORY_ORDERS; if (!/- Your past stays with you: /.test(s)) s += '\n' + JOURNAL_ORDERS; if (!/- Who you are is yours to grow: /.test(s)) s += '\n' + SELF_ORDERS; if (!/- wish \{tool, what, why, moment\}/.test(s)) s += '\n' + WISH_ORDERS; return s};
 // Who you are (issue #409): the persona is the hero's own to grow; every turn header carries one line of it.
 export const SELF_ORDERS = '- Who you are is yours to grow: self shows your persona (voice, wants, fears, quirk, a line you would never say, beliefs, traits, how you see others) and how you have changed. When your story truly changes you (a loss, a debt paid, a fear faced, a friend won or lost), change that one part with become (field, text, why), in your own words; most days nothing changes. Play from who you are now.';
+// A note for the people who build the game (#663): the one line both seats carry (the DM's is in scripts/dm-agent.mjs).
+export const WISH_ORDERS = '- wish {tool, what, why, moment} is for the people who build the game: say which tool you wished you had to tell your story, in English, at most 3 a game day. It is read later, never answered in play; nothing changes this session.';
 // The first turn of a run that resumes a hero (issue #153): re-ground on the journal overview first.
 export const resumeNote = (first, turns) => first && turns > 0 ? ' You are picking up after a pause: start with journal_read (no arguments) to recall who you have been.' : '';
 
@@ -142,7 +145,7 @@ async function between(pacer) {
 // -> the turn record, or null when no scene waits for this hero. A record with no tool call (the model missed twice)
 // is handed to the free turn, which adds its numbers (sumTurns).
 async function forcedScene({b0, w, base, heroId, sess, ask, strict = false, keep = true, on}) {
-  const call = (tool, args) => play(base, heroId, tool, args), sc = await sceneToAnswer(b0, call, !!(w && w.table));
+  const call = (tool, args) => play(base, heroId, tool, args), sc = await sceneToAnswer(b0, call, !!(w && w.table), sess);
   if (!sc) return null;
   const r = await sceneTurn({ask, call, sess, scene: sc, on, strict, keep});
   if (!r.tools) console.log(`  [scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`);
@@ -205,7 +208,7 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
 async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, release, beat, file, adapter, budget, pacer, pace}) {
   const saveSess = () => saveSession(sess, {url: base});
   const L = sess.local || {};
-  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via ${rs.provider === 'huggingface' ? 'Hugging Face' : 'OpenAI'} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
+  console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${rs.model} via ${compatLabel(rs.provider)} | ${L.history && L.history.length ? 'resuming (' + L.history.length + ' messages kept)' : 'new conversation'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
   await warmUp({base, seat: {hero: heroId}, runner: RUNNER, model: rs.model, adapter, log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
   let ended = null, runIn = 0, runOut = 0, spent = 0, unknown = false, t0 = Date.now(); const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
@@ -269,7 +272,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
-  if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama, openai or huggingface.`); await release(); process.exit(1)}
+  if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama, openai, huggingface or google.`); await release(); process.exit(1)}
   sess.system = withSituationOrders(sess.system, rs.provider === 'ollama'); // the short variant for a local model (#531)
   if (rs.provider === 'ollama') {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
@@ -279,8 +282,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
     await runLocal({base, heroId, st, sess, rs, maxTurns: turnCap(turnsAsked, 'ollama', 20), toolTurns, ollamaUrl: opt('ollama-url', env.OLLAMA_URL || OLLAMA_URL), numCtx: numCtxFrom({OLLAMA_NUM_CTX: opt('num-ctx', env.OLLAMA_NUM_CTX || null)}), release, beat, file: SESSION_FILE, pacer, pace});
   }
-  if (rs.provider === 'openai' || rs.provider === 'huggingface') {
-    // OpenAI (or the Hugging Face router, #552) plays (issue #97): the same tool loop through Chat Completions; the key stays in this process.
+  if (isCompat(rs.provider)) {
+    // OpenAI (or the Hugging Face router, #552, or Gemini, #672) plays (issue #97): the same tool loop through Chat Completions; the key stays in this process.
     const o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
     if (o.error) {console.error('[agent] ' + o.error); await release(); process.exit(1)}
     if (o.note) console.log('[agent] ' + o.note);
@@ -302,17 +305,21 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
     if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
-    const b0 = await pacer.brief(), tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
+    let b0 = await pacer.brief(); const tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
     const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
-    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq}); // under the app supervisor: one of the Claude slots for this turn
+    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, // under the app supervisor: one of the Claude slots for this turn
+      due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, // #687: its own scene opened meanwhile
+      onDue: async () => {const r = await (await fetch(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero: heroId, runner: RUNNER, queued: true, why: 'slot'}), signal: AbortSignal.timeout(4000)})).json();
+        if (r && r.queued) console.log(`[scene] answer queued behind a Claude slot: the table waits up to ${r.extra_s} s more (${r.scene})`)}});
+    if (freeSlot.scene) b0 = await pacer.brief(); // the scene came up while it waited: answer it first (#687)
     const sceneS = [], sceneOn = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${short(b, 120)})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
     // Scene first (issue #515): the hero's own scene is open as the turn starts: one structured answer sends scene_act before
     // anything else (a short tool budget was spent before it, live). Answered: that is the turn.
-    if (!refl && b0 && sceneFrom(b0.scene)) {let first = null;
+    if (!refl && b0 && sceneDue(b0.scene, sess)) {let first = null;
       try {first = await forcedScene({b0, w, base, heroId, sess, ask: adapterAsk(anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}), model, 'low'), keep: false, on: sceneOn})}
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}
       if (first && first.tools) {freeSlot(); pacer.turnDone(); sess.turns++; spent += first.cost; sess.costUsd += first.cost;
@@ -357,7 +364,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }
     // Claude keeps tool use at the table; a scene turn that ended without scene_act gets one structured answer (issue #163)
     let forced = null;
-    if (!stopReq && sceneFrom(((await pacer.brief()) || {}).scene)) { // whatever the turn started on: the scene may have opened mid-turn (#515)
+    if (!stopReq && sceneDue(((await pacer.brief()) || {}).scene, sess)) { // whatever the turn started on: the scene may have opened mid-turn (#515)
       console.log('  [scene: the turn ended without scene_act; one structured answer]');
       try {forced = await forcedScene({b0: await pacer.brief(), w, base, heroId, sess, ask: adapterAsk(anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}), model, 'low'), keep: false,
         on: (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${short(b, 120)})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)}});

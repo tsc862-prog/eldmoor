@@ -172,7 +172,7 @@ const slotIds=C=>SLOT_KEYS.map(k=>C.slots[k]).filter(id=>id!=null);
 // ---- reading ----
 export const slotted=()=>fellowshipCompany(); // the company with the five places, or null
 // A hero in a slotted company / a party walking for one.
-export function inSlots(a){const C=companyOf(a);return !!(C&&C.slots)}
+export function inSlots(a){const C=companyOf(a);return !!(C&&C.slots)&&!a.hire} // a hire rides with the Fellowship but holds no place in it (#634)
 export function partySlotted(p){if(!p)return false;const C=companyById(p.company);return !!(C&&C.slots)}
 // The hero's slot key (tank, healer, dps1-3), or undefined.
 export function slotKeyOf(a){const C=companyOf(a);if(!C||!C.slots)return undefined;for(const k in C.slots)if(C.slots[k]===a.id)return k;return undefined}
@@ -434,6 +434,7 @@ function session(F){const d=day();if(d<=F.day)return;const prev=F.day;F.day=d;
   for(const a of slotHeroes(F))refreshStances(a,F.ids)}
 
 let acc=0;
+export function resetCompanyWatch(){fightSeen.clear();lastState.clear();acc=0} // a new world starts the per-hero watch over (#674)
 // Once per step: every company's upkeep, then the slotted company's muster, hold, watch and DM beats.
 export function slotsTick(dt){companyTick();const F=slotted();if(!F)return;
   enforceAgents(F);
