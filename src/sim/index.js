@@ -50,8 +50,9 @@ import {holdTick} from './gambithold.js';
 export {holdResume,holdView,holdRelease} from './gambithold.js';
 import './events.js'; // DM world events: festival and plague (#10)
 import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Table (#65)
-import {siteTick,wireSites} from './sites.js'; // DM-made dungeon sites (#69): a no-op until the DM pulls create_site
-wireSites();
+import {siteTick,wireSites,siteRoom} from './sites.js'; // DM-made dungeon sites (#69): a no-op until the DM pulls create_site
+import {setSiteRoom} from './dm.js';
+wireSites();setSiteRoom(siteRoom); // the scripted DM raises sites too (#642)
 import {sessionTick,planOpening} from './arrival.js';
 import {iqTick} from './interrogate.js'; // a yielded foe questioned at the table (#431 slice 3)
 import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
