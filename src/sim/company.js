@@ -13,6 +13,7 @@
 // inSlots(a), slotKeyOf(a) and partySlotted(p). Saves carry only S.companies / a.company / p.company (the old
 // S.fellowship, a.fellow, a.fellowRole and p.fellow accessors are gone; save.js migrates v6 saves that stored them).
 import {S,clockStr} from './state.js';
+import {swornOf,hushOath} from './oath.js'; // only a sworn oath is an open thread (#800)
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {bond} from './bonds.js';
@@ -83,7 +84,7 @@ export function openThreads(C){if(!C)return [];const out=[],seen=new Set();
   for(const a of members(C)){for(const id in a.nemesis||{}){const n=byId(id);if(alive(n)&&!seen.has(n.id)){seen.add(n.id);out.push({kind:'nemesis',parts:['Blood owed: ',n,' of the '+FAC[n.fac].name+' (',a,' swore it for '+a.nemesis[id]+')']})}}
     if(a.vow)out.push({kind:'oath',parts:[a,' swore, aloud: ',gd(a.vow.text)]}); // a sworn vow (#526): the DM can stage its keeping
     const bk=a.vowBroke&&S.gameMin-a.vowBroke.at<3*1440?a.vowBroke:null;if(bk)out.push({kind:'broken',parts:[a,bk.how==='failed'?' failed a vow: ':' broke their word: ',gd(bk.text)]});
-    if(a.goal&&!a.goal.done)out.push({kind:'oath',parts:[a,' swore to ',gd(a.goal.text.charAt(0).toLowerCase()+a.goal.text.slice(1)),' ('+(a.goal.progress||0)+'/'+a.goal.need+')']})}
+    const g=swornOf(a);if(g)out.push({kind:'oath',parts:g.sworn&&g.sworn.words?[a,' swore: ',gd(g.text)]:[a,' swore to ',gd(g.text.charAt(0).toLowerCase()+g.text.slice(1)),' ('+(g.progress||0)+'/'+g.need+')']})}
   return out}
 
 // ---- writing (data only: no lines, no chronicle; the callers write the story) ----
@@ -234,7 +235,7 @@ export function checkSlots(slots,fac){const seen=new Set(),F=slotted();
 // It arrives a few levels under the company's lowest living member (balance #107), not at level 1 beside veterans.
 export const SEED_BEHIND=2;
 function recruit(C,fac,cls){const i=S.recruits.findIndex(r=>r.fac===fac&&r.cls===cls);if(i>=0)S.recruits.splice(i,1);
-  const mates=slotHeroes(C),a=makeHero(fac,cls,null,1);if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
+  const mates=slotHeroes(C),a=hushOath(()=>makeHero(fac,cls,null,1));if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
 
 // ---- founding, joining, leaving ----
 // Where the i-th of n stands around a point: two rows, a tile and a half apart, in order. No dice.

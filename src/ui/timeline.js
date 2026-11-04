@@ -13,8 +13,8 @@ const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className
 
 // Filters by kind. Hero-facing events, boss and raid events, deaths.
 // Downed (#659): downings, stabilizes, revivals (and, with #657, mercies and finishes) read from the heroes' Logs, and deaths.
-export const FILTERS=[['all','All',null],['heroes','Heroes',['level','oath','crypt','elite','title']],['bosses','Bosses',['boss','raid']],['downs','Downed',['down','stable','up','mercy','finish','death']],['deaths','Deaths',['death']]];
-const BADGE={boss:'BOSS',raid:'RAID',crypt:'CRYPT',level:'LVL',death:'DEATH',elite:'ELITE',oath:'OATH',rival:'RIVAL',guild:'GUILD',title:'TITLE',...DOWN_BADGE};
+export const FILTERS=[['all','All',null],['heroes','Heroes',['level','oath','swore','crypt','elite','title']],['bosses','Bosses',['boss','raid']],['downs','Downed',['down','stable','up','mercy','finish','death']],['deaths','Deaths',['death']]];
+const BADGE={boss:'BOSS',raid:'RAID',crypt:'CRYPT',level:'LVL',death:'DEATH',elite:'ELITE',oath:'OATH',swore:'OATH',rival:'RIVAL',guild:'GUILD',title:'TITLE',...DOWN_BADGE};
 let filter='all',seen=-1,seenTop=null,box=null,list=null;
 
 export const dayOf=e=>Math.floor((e.gameMin||0)/1440)+1;
