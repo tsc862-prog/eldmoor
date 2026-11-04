@@ -425,7 +425,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     Object.assign(DOWN, keep); sim.markPlayer(a, false)}
 
   // B. a notification that cannot wait starts a turn at once, inside the gap; the hero's other news waits for the gap
-  {const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
+  {const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {if (a.state === 'downed') delete a.down; park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
     const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '4']);
     ok(await until(() => R.turns.length >= 1, 30000), 'a local runner without --max-turns plays (until stopped)');
     ok(/until stopped/.test(R.out), 'and says it runs until stopped');
@@ -445,7 +445,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const w = R.wakes.slice(nw).find(news);
       if (w) {w2 = w; dt = w.real - Math.max(...R.turns.filter(t => t.real < w.real).map(t => t.real))}
     }
-    ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`);
+    ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`+(w2?'':` | hero ${a.name} state ${a.state} hp ${Math.round(a.hp)} runner exited ${R.exited ?? '?'} turns ${R.turns.length} wakes ${R.wakes.map(w=>w.kind).join(',')}
+${R.out.slice(-800)}`));
     await until(() => R.turns.length >= R.wakes.length + 1, 30000);
     clearInterval(pinB); sim.markPlayer(a, false);
     const code = await Promise.race([R.done, sleep(20000).then(() => 'timeout')]);
@@ -649,6 +650,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     {const RF = await import('../src/sim/reflect.js'), NBm = await import('../src/sim/notebook.js'), {memoryMirror} = await import('./memory-mirror.mjs'), {readdirSync} = await import('node:fs');
       const a = mem.find(x => x.state !== 'dead' && x.player); park(a); a.hp = a.maxhp || a.hp; gather(); S.table = null; // G's Table switch stays off until the end of H
       RF.REFLECT.PER_DAY = PER_DAY; delete a.reflect; // a fresh state: no moment left over from the scenes of F
+      // reflectView counts reflections of the current game day: a run that crosses midnight reads 'today 0'. The earlier sections advance the clock by real time, so start well clear of it (the world runs about 30 game minutes here).
+      if (S.gameMin % 1440 > 1440 - 240) S.gameMin = Math.ceil(S.gameMin / 1440) * 1440 + 360;
       const n0 = a.memories ? a.memories.notes.length : 0, r0 = seen.reflect || 0;
       RF.moment(a, 'camp', 'Test Hollow');
       const due = RF.reflectDue(a);
