@@ -82,6 +82,9 @@ r = await call('say', {text: 'Ale first, then the road.'}); ok(r.ok && a.bubble 
 // whisper and emote (#627): reach, limits, refusals; only the target hears the words
 {const SP = await import('../src/sim/spatial.js'), other = S.agents.find(x => x !== a && !x.player && x.state !== 'dead' && x.fac === a.fac);
   a.playRate = []; r = await call('emote', {text: 'Kerin spits in the fire'}); ok(r.ok && r.emoted === 'Kerin spits in the fire' && a.bubble && /spits in the fire/.test(a.bubble.text), 'emote shows a bubble and returns the act');
+  a.playRate = []; r = await call('emote', {text: 'Kerin spits in the fire'}); ok(!r.ok && /already did that/.test(r.error), 'the same emote again is refused: ' + r.error);
+  a.playRate = []; r = await call('emote', {text: 'spits in the fire.'}); ok(!r.ok && /already did that/.test(r.error), 'a near copy is refused too');
+  {const sp = await import('../src/sim/spatial.js'), me = {x: a.x, y: a.y}, far = S.agents.filter(x => x !== a && Math.hypot(x.x - a.x, x.y - a.y) < 12 && !x.hidden); a.x = 1; a.y = 1; sp.rebuild(); a.playRate = []; r = await call('emote', {text: 'stares at the sky'}); ok(r.ok && r.act === false && r.seen_by.length === 0 && /no one is near/.test(r.note), 'an unseen emote is ok but act:false'); a.x = me.x; a.y = me.y; sp.rebuild()}
   a.playRate = []; r = await call('emote', {text: 'x'.repeat(130)}); ok(!r.ok && /Too long/.test(r.error), 'a long emote is refused');
   a.playRate = []; r = await call('emote', {text: '   '}); ok(!r.ok, 'an empty emote is refused');
   a.playRate = []; r = await call('whisper', {to: 'Nobody Here', text: 'psst'}); ok(!r.ok && /Nobody called/.test(r.error), 'whisper to nobody near is refused');
