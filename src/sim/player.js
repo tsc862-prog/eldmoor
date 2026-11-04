@@ -87,6 +87,7 @@ import {enterSiteTool} from './sites.js'; // DM-made dungeon sites (#69)
 import {noticeHeroes,sighted} from './sighthero.js'; // heroes coming into sight (#570)
 import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,intentView,waitish} from './intent.js'; // the hero's stated aim (#535)
 import {pay as payGold} from './pay.js'; // pay (#628)
+import {finishTool,spareTool} from './mercy.js'; // finish or spare a downed enemy (#657)
 import {bequeath as writeWill,willView} from './will.js'; // a will (#631)
 import {hire as hireOn,dismiss as dismissHire,guideWords} from './hire.js'; // hire and dismiss (#634)
 import {issue as challengeIssue,answer as challengeAnswer} from './challenge.js'; // challenge and answer_challenge (#633)
@@ -950,6 +951,8 @@ const T={
   pay(a,{to,gold,why}){need(!['fight','duel','assist'].includes(a.state),'You are in a fight. Pay when it is over.');need(a.state!=='ghost','Ghosts carry no gold.');
     if(why!=null&&String(why).trim())need(!notEnglish(String(why)),ENGLISH);
     const r=payGold(a,{to,gold,why});need(!r.error,r.error);return r},
+  finish(a,{hero}){need(a.state!=='ghost'&&a.state!=='dead','You cannot.');const r=finishTool(a,hero);need(!r.error,r.error);return r},
+  spare(a,{hero}){need(a.state!=='ghost'&&a.state!=='dead','You cannot.');const r=spareTool(a,hero);need(!r.error,r.error);return r},
   hire(a,{npc,days}){need(!['fight','duel','assist'].includes(a.state),'You are in a fight. Hire when it is over.');const r=hireOn(a,{npc,days});need(r.ok,r.error);return r},
   dismiss(a,{npc}){const r=dismissHire(a,{npc});need(r.ok,r.error);return r},
   challenge(a,{hero:who,to,text}){if(text!=null&&String(text).trim())need(!notEnglish(String(text)),ENGLISH);const r=challengeIssue(a,{hero:who,to,text});need(r.ok,r.error);return r}, // an honour duel (#633)

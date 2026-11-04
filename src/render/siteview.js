@@ -79,7 +79,7 @@ export function siteInterior(site){const base=buildInterior(site),th=SITE_LOOK[s
     // wall pieces along the face over the top row, from a random start, every `gap` tiles
     if(D.wall){const g=D.gap||3;let j=0;for(let x=m.x+Math.floor(R()*g);x<=x1;x+=g){if(m.boss&&Math.abs(x-Math.floor(m.cx))<=1)continue;if(face(x,m.y-1)){put(x,m.y-1,D.wall[j%D.wall.length]);j++}}}
     // a temple's pillars: two rows inside the long walls
-    if(D.pillars&&m.w>=6)for(let x=m.x+1;x<x1;x+=2)for(const y of [m.y+1,y1-1])if(free(x,y)&&at(x,y)===IT.FLOOR)put(x,y,'pillar');
+    if(D.pillars&&m.w>=6)for(let x=m.x+1;x<x1;x+=2)for(const y of [m.y+1,y1-1])if(free(x,y)&&at(x,y)===IT.FLOOR)put(x,y,'sitepillar');
     // the rim: the top-left corner first, then the sides, then the bottom; never the middle the party and foes use, nor the
     // top-right tile (the cleared badge)
     if(D.edge){const spots=[];const add=(x,y)=>{if(free(x,y)&&!(m.boss&&y<=m.y+2&&Math.abs(x-m.cx)<4))spots.push([x,y])};

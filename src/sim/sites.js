@@ -341,7 +341,7 @@ function gatherTick(g,s,dt){g.t-=dt;const here=g.mem.filter(a=>dist(a,s)<2.6),lo
 // ---- once per step (sim/index.js), a no-op until a site exists ----
 export function siteTick(dt){const X=S.sites;if(!X)return;
   for(const s of X.list){const g=s.group;if(!g)continue;
-    g.mem=g.mem.filter(a=>a.state==='dungeon');
+    g.mem=g.mem.filter(a=>a.state==='dungeon'||(a.down&&a.down.crawl&&a.state==='downed')); // the downed below ground stay with the crawl (#654)
     if(!g.mem.length){if(g.crawl)crawlLost(g);s.group=null;continue}
     if(g.phase==='gather'){gatherTick(g,s,dt);continue}
     if(g.crawl){if(s.raid)bossPhase(g,s);crawlTick(g,dt);continue}

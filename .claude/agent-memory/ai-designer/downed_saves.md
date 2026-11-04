@@ -8,7 +8,7 @@ metadata:
 Downed and death saves live in `src/sim/downed.js`; `agentDie` asks `goDown` first and `slay` is the only road to `fall` (2026-11-03, PR for #652/#653).
 
 - A hero's blow on a hero always finishes (PvP unchanged until #657 brings spare/mercy). **Why:** keeps PvP deaths and honour identical in slice 1. **How to apply:** #657 changes `goDown`'s `killer.kind==='hero'` line, nothing else.
-- `goDown` returns false inside `sceneOf(a)` (Table scenes) and in the Crypt (hidden/dungeon); the crawl calls `fall` directly. **Why:** the rescue scene and crawl downing are #654; mob blows at the table go through `mobBlow -> hurt -> agentDie`, so without the guard a table hero would lie downed while the table thought them dead.
+- (Until #654) `goDown` returned false inside `sceneOf(a)` and in the Crypt. **Since #654** the scene guard is gone (see [[table-rescue-saves]]); the hidden/dungeon guard stays for the abstract Crypt, and the crawl downs through `crawlDown`.
 - Helpers use a new `aid` state (not conditions in hunt): kin = party, company or guild of the same faction, from hunt/travel/follow/return/regroup only, healer preferred. Agent heroes aid as a reflex too (the issue's gambit preset "ally downed: revive_ally"; #658 moves it into gambits).
 - "Nobody left to help" = three successes with no standing kin within 12 tiles -> dies alone. A natural 20 still rises.
 - `beh.finishes` in the bestiary (wolf, rimehound, wight) keeps a mob on the downed; others turn to a standing hero who fights them or came to aid. Kragmaw's breath hits the downed.
