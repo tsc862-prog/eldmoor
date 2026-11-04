@@ -6,7 +6,7 @@
 // Owned by world-builder.
 import {hash,vnoise,fbm,clamp,pickA} from '../core/rng.js';
 import {placeNodes} from './nodes.js';
-import {solidGrid,landsOf,bridgeShoulders} from './solidgrid.js';
+import {solidGrid,landsOf} from './solidgrid.js';
 import {TOWN_PIECES,TOWN_REF} from '../data/townart.js';
 import {G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE,WALKABLE} from './tiles.js';
 
@@ -194,7 +194,6 @@ export function buildWorld(spec){
       ROUTES.push(path);paintPolyline(world,path)}}
 
   // what cannot be walked (solidgrid.js, #794): after the roads, since a road opens what it crosses
-  fords.push(...bridgeShoulders({tiles,I,w,h}));
   const solid=solidGrid({tiles,I,w,h,CITY,LANDMARKS,fords}),{land,main:mainLand}=landsOf({tiles,I,w,h,CITY},solid);
 
   // level ladder: the region whose band holds the level. Ties go to the one

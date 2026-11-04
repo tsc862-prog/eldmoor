@@ -81,7 +81,8 @@ function groundNear(x,y,l,scan){const o=nearestOpen(x,y,PATH.GOAL_R,p=>land[I(Ma
 
 // Straighten a tile list into a few legs. A leg may skip tiles only if it is clear and no slower than the tiles it skips,
 // so a road that pays stays walked. Returns flat [x,y,...] from the first leg's end to (gx,gy).
-function straighten(L,x0,y0,gx,gy){const n=L.length,px=new Float64Array(n),py=new Float64Array(n),T=new Float64Array(n);
+function straighten(L,x0,y0,gx,gy){const n=L.length;if(n<2)return [gx,gy]; // ground in the walker's own tile
+  const px=new Float64Array(n),py=new Float64Array(n),T=new Float64Array(n);
   for(let k=0;k<n;k++){const i=L[k];px[k]=i%W+.5;py[k]=(i-i%W)/W+.5}px[0]=x0;py[0]=y0;px[n-1]=gx;py[n-1]=gy;
   for(let k=1;k<n;k++)T[k]=T[k-1]+Math.hypot(px[k]-px[k-1],py[k]-py[k-1])*(COST[L[k]]+COST[L[k-1]])/2;
   const out=[];let i=0;

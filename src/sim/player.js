@@ -42,6 +42,7 @@ import {S,clockStr,dayNo} from './state.js';
 import {soloFor,companyOf,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
+import {route,doorAt} from './path.js'; // the way a walk goes (#794)
 import {partyMates,leaderOf,leaveParty} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {whisperTo,emoteAct} from './aside.js'; // whisper and emote (#627)
@@ -677,12 +678,22 @@ const FEEL={meadow:'even the meadow beasts here move like hunters',fen:'the air 
   tundra:'the wind brings a bitter cold, and the tracks in the snow are bigger than you are',highland:'the wind howls over bare stone, and something up there has been feeding well'};
 // The first point of the walk that enters such a region: {z, li (the leg), stop (the last safe point before it)}, or null.
 function dangerAhead(a,legs){const here=zoneAt(a.x,a.y);let px=a.x,py=a.y,safe={x:a.x,y:a.y};
-  for(let li=0;li<legs.length;li++){const l=legs[li],k=Math.max(1,Math.ceil(Math.hypot(l.x-px,l.y-py)));
-    for(let i=1;i<=k;i++){const x=px+(l.x-px)*i/k,y=py+(l.y-py)*i/k;
-      if(l.st!=='town'){const z=zoneAt(x,y),b=bandOf(z);if(z!==here&&b&&b[0]>=a.lvl+TP.DANGER)return {z,li,stop:safe}}
-      safe={x,y}}
+  for(let li=0;li<legs.length;li++){const l=legs[li],r=route(px,py,l.x,l.y),pts=r?r.pts:[l.x,l.y]; // the way it will really walk (#794)
+    for(let q=0;q<pts.length;q+=2){const ex=pts[q],ey=pts[q+1],k=Math.max(1,Math.ceil(Math.hypot(ex-px,ey-py)));
+      for(let i=1;i<=k;i++){const x=px+(ex-px)*i/k,y=py+(ey-py)*i/k;
+        if(l.st!=='town'){const z=zoneAt(x,y),b=bandOf(z);if(z!==here&&b&&b[0]>=a.lvl+TP.DANGER)return {z,li,stop:safe}}
+        safe={x,y}}
+      px=ex;py=ey}
     px=l.x;py=l.y}
   return null}
+// The way a walk will go, as facts beside the answer's going and distance (#794; the words are #797's): tiles walked, what stands
+// on the straight line (blocked), the bridges and fords on the way (by: kind, direction and tiles from the hero, the region only
+// when the hero knows it, so a route names no place it has not heard of), the door it ends at, and short when the ground ends it early.
+function routeFacts(a,p){let x=a.x,y=a.y,n=0,blocked=null,short=false;const by=[];
+  for(const l of p.legs){const r=route(x,y,l.x,l.y);if(!r)return null;n+=r.len;blocked=blocked||r.why||null;short=short||!!r.near;
+    for(const c of r.cross||[]){const z=ZONES[zoneAt(c.x,c.y)],o={crossing:c.k,dir:compass(c.x-a.x,c.y-a.y),tiles:Math.round(Math.hypot(c.x-a.x,c.y-a.y))};if(knowsPlace(a,z))o.region=z;by.push(o)}
+    const e=r.pts.length-2;x=r.pts[e];y=r.pts[e+1]}
+  const o={tiles:Math.round(n*10)/10};if(blocked)o.blocked=blocked;if(by.length)o.by=by;const d=doorAt(x,y);if(d)o.door=d.serves||d.piece;if(short)o.ends_short=true;return o}
 function dangerWords(a,z){let gw;const n=ZONES[z],known=knowsPlace(a,n),b=bandOf(z),R=REGIONS[z];
   const feel=FEEL[R&&R.biome]||'the beasts here look far beyond you',worse=b[0]-a.lvl>=10;
   const lw=known?placeWarn(a,n):null,tw=npcWarning(a);
@@ -989,7 +1000,7 @@ const T={
     const p0=plan(a,target);if(p0.error)throw new Rule(p0.error);
     const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // a region far above the hero: stop at its edge first (#465)
     if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;
+    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))},rt=routeFacts(a,p);if(rt)r.route=rt;if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;
     if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;return r},
   talk(a,{target,text}){const t=clean(target,60).toLowerCase();need(t,'Talk to whom?');
     ensureNpcs();const here=cityAt(a);
@@ -1194,7 +1205,7 @@ const T={
       const z=ZONES.indexOf(p.label);
       if(z>=0&&fieldState(a)&&!inTown(a)&&!cityAt(a)&&zoneAt(a.x,a.y)===z){a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;return {ok:true,hunting:what+' in '+ZONES[z],note:'You are already in '+ZONES[z]+'.'}}
       a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label},hunt];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
-      const r={ok:true,going:'going to '+p.label+' to hunt',hunting:what+' once there',distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r}
+      const r={ok:true,going:'going to '+p.label+' to hunt',hunting:what+' once there',distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))},rt=routeFacts(a,p);if(rt)r.route=rt;if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r}
     a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;
     return {ok:true,hunting:what+' in '+ZONES[zoneAt(a.x,a.y)]}},
   flee(a){need(['fight','duel','assist'].includes(a.state),'You are not in a fight.');flee(a,false);return {ok:true,fleeing_to:homeOf(a).name,hp:pct(a.hp,maxHp(a))+'%'}},

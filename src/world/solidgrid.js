@@ -3,7 +3,7 @@
 // passable.js is the one reader for everyone else (solidAt, nearestOpen, landAt).
 // Solid: WALL, RIVER (a BRIDGE is a different tile; a ford is a RIVER tile left open), PEAK, LAVA, the towns' building
 // footprints and the landmarks' solid parts. Open but slow: TREE, MUD, SWAMP, ... (speeds stay in tiles.js SPEED).
-import {ROCK,TREE,WALL,RIVER,PEAK,LAVA,BRIDGE} from './tiles.js';
+import {ROCK,TREE,WALL,RIVER,PEAK,LAVA,BRIDGE,ROAD} from './tiles.js';
 
 // Terrain that is solid by its tile id.
 export const SOLID_TILES=[WALL,RIVER,PEAK,LAVA];
@@ -41,17 +41,16 @@ export function solidGrid({tiles,I,w,h,CITY,LANDMARKS,fords}){
         if(tiles[I(x,y)]===ROCK&&Math.hypot(x+.5-L.x,y+.5-L.y)<=r)solid[I(x,y)]=6}
     else if(L.kind==='crypt'&&L.mouth){const m=L.mouth; // the mouth rock
       for(let y=m.y0;y<=m.y1;y++)for(let x=m.x0;x<=m.x1;x++)if(x>=0&&y>=0&&x<w&&y<h&&tiles[I(x,y)]===ROCK)solid[I(x,y)]=6}}
+  // A road may run corner to corner between two solid tiles (a bridge over the river, a pass through peaks). Those two tiles are
+  // its shoulders and stay open, so walkers follow it on the plain step rule and no line ever scrapes solid ground. Never a wall, a building or a landmark's rock.
+  const way=i=>tiles[i]===ROAD||tiles[i]===BRIDGE,soft=i=>solid[i]>1&&solid[i]<5||solid[i]===7; // river, peak, lava, forest
+  for(let y=0;y<h-1;y++)for(let x=0;x<w;x++){if(!way(I(x,y)))continue;
+    for(const dx of [-1,1]){const nx=x+dx;if(nx<0||nx>=w||!way(I(nx,y+1)))continue;const a=I(nx,y),b=I(x,y+1);
+      if(soft(a)&&soft(b))solid[a]=solid[b]=0}}
   return solid}
 
 // A crossing tile: a bridge, or river left open (a ford, or a bridge's shoulder).
 export const crossing=(t,open)=>t===BRIDGE||(t===RIVER&&open);
-// A road may lay a bridge corner to corner across the river. The two river tiles at such a corner are its shoulders: they stay
-// open, so walkers cross on the plain rule below and no line ever scrapes a river tile. Returns their tile indices.
-export function bridgeShoulders({tiles,I,w,h}){const out=[];
-  for(let y=0;y<h-1;y++)for(let x=0;x<w;x++){if(tiles[I(x,y)]!==BRIDGE)continue;
-    for(const dx of [-1,1]){const nx=x+dx;if(nx<0||nx>=w||tiles[I(nx,y+1)]!==BRIDGE)continue;
-      for(const i of [I(nx,y),I(x,y+1)])if(tiles[i]===RIVER)out.push(i)}}
-  return out}
 // One step of a walker: onto an open tile, and on a diagonal only with both tiles beside it open.
 export function stepOpen(solid,I,x,y,dx,dy){if(solid[I(x+dx,y+dy)])return false;return !dx||!dy||(!solid[I(x+dx,y)]&&!solid[I(x,y+dy)])}
 
