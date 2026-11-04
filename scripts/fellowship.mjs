@@ -63,7 +63,7 @@ import {query} from '@anthropic-ai/claude-agent-sdk';
 import {loadEnv, PRICES} from './relay.mjs';
 import {withSituationOrders} from './orders.mjs';
 import {systemPrompt, withMemoryOrders, withKnowledgeOrders, withTownOrders, resumeNote, DEFAULT_AGENT_MODEL, RUNNER_PROVIDERS} from './agent-player.mjs';
-import {migrateLegacy, loadSession, saveSession, runnerSettings, inheritRunner, DEFAULT_PROVIDER} from './agent-sessions.mjs';
+import {LOGS, migrateLegacy, loadSession, saveSession, setAside, runnerSettings, inheritRunner, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} from './providers/ollama.mjs';
 import {localTurn, localLine, paidLine, sceneToAnswer, sceneDue, sceneTurn, chatAsk, adapterAsk, reflectTurn, joinTurns} from './local-agent.mjs';
 import Anthropic from '@anthropic-ai/sdk';
@@ -72,10 +72,11 @@ import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
+import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
 import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-let LOG_FILE = join(ROOT, 'logs', 'fellowship.log'); const RUNS_FILE = join(ROOT, 'logs', 'fellowship-runs.jsonl');
+let LOG_FILE = join(LOGS, 'fellowship.log'); const RUNS_FILE = join(LOGS, 'fellowship-runs.jsonl'); // AGENT_LOGS moves them for tests
 
 // The Fellowship's part of a member's standing orders (appended to systemPrompt(status)).
 export function fellowshipPrompt(st) {
@@ -138,7 +139,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (coArg != null) {const hs = (h0.heroes || []).filter(x => Number.isInteger(x.company)), low = String(coArg).trim().toLowerCase();
     const hit = /^\d{1,9}$/.test(low) && hs.find(x => x.company === Number(low)) || hs.find(x => String(x.companyName || '').toLowerCase() === low) || hs.find(x => String(x.name || '').toLowerCase() === low);
     if (!hit) {console.error(`No company "${coArg}" with an agent-played member in the game (companies: ${[...new Set(hs.map(x => x.company + (x.companyName ? ' ' + x.companyName : '')))].join(', ') || 'none'}).`); process.exit(1)}
-    cid = hit.company; LOG_FILE = join(ROOT, 'logs', `company-${cid}.log`)}
+    cid = hit.company; LOG_FILE = join(LOGS, `company-${cid}.log`)}
   const fellowsOf = h => (h.heroes || []).filter(x => x.alive && (cid != null ? x.company === cid : x.fellow));
   const coOf = h => {const x = (h.heroes || []).find(y => y.company === cid); return x ? {name: x.companyName || '', size: x.size || 1} : {name: '', size: 1}};
   const label = cid != null ? (coOf(h0).name || 'your company') : 'the Fellowship', Label = label.charAt(0).toUpperCase() + label.slice(1);
@@ -146,10 +147,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!env.ANTHROPIC_API_KEY) out(null, 'No ANTHROPIC_API_KEY in the environment or .env (use --env FILE): only members with a local runner (provider ollama) will play.');
   const moved = migrateLegacy(); if (moved) out(null, moved);
 
-  const runnerId = `${hostname()}:${process.pid}:${cid != null ? 'company' : 'fellowship'}`; RUNNER = runnerId; const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-fellowship/1.0'};
+  const runnerId = `${hostname()}:${process.pid}:${cid != null ? 'company' : 'fellowship'}`; RUNNER = runnerId; const rollAt = rollPoint('hero', null, env); const childEnv = withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-fellowship/1.0'}, rollAt, env); // the roll and the compaction net (#787)
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   const members = new Map(); // heroId -> {id, name, sess, rs, turns, cost, ended, scene}
-  let spent = 0, stopping = null, inScene = new Set(), leadId = null;
+  let spent = 0, netSaid = false, stopping = null, inScene = new Set(), leadId = null;
   // the claim names the member's runner model once it is known, so the game can tag it (#97)
   const mindOf = id => {const m = members.get(id); return m && m.rs ? {provider: m.rs.provider, model: m.rs.model} : {}};
   const claim = (id, mind = mindOf(id)) => post(base, '/play/claim', {hero: id, runner: runnerId, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
@@ -218,6 +219,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     m.inTurn = true;
     try {
       const b = !scene && m.pacer ? await m.pacer.brief() : null, refl = reflectNow(b, w) ? b.reflect : null;
+      // between turns only, and never with the member's scene open or due or on a reflection (#787); a local or OpenAI mind only when asked
+      const rd = rollDue(m.sess, m.local ? 0 : rollAt, {busy: !!(scene || m.due || refl || (b && (b.scene || b.table)))});
+      if (rd) {rollSession(m.sess, setAside); saveSession(m.sess, {url: base}); m.rolls = (m.rolls || 0) + 1; m.rolledNow = true; out(m.name, rd.line)}
       if (m.local) return await (refl ? localReflect(m, b, w) : localMemberTurn(m, scene, w));
       await slot(scene || m.due);
       m.slotWait = true; // #687: the supervisor's slot wait watches the member's own scene (served first, the table told)
@@ -252,7 +256,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
     const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129); outside a scene the fresh state header and the turn order (#401)
     if (await refreshPersona(m.pacer, m.sess, b0)) {out(m.name, '[persona: standing orders refreshed]'); saveSession(m.sess, {url: base})} // who the member is now (#409)
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + memberPrompt(m.sess.turns, scene, w, Label) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns) + claudeBrief(b0)); // a reflection (#179): the same prompt, with tool use
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + memberPrompt(m.sess.turns, scene, w, Label) + (scene ? '' : resumeNote(m.turns === 0 || m.sess.rolled, m.sess.turns) + claudeBrief(b0)); // a reflection (#179): the same prompt, with tool use
     if (refl) out(m.name, `[reflection: ${refl.why}]`);
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
     // Scene first (issue #515): the member's own scene is open as the turn starts. One structured answer (the member's model, effort
@@ -277,9 +281,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const sceneS = [], gs = grabSpend(); // #747: what an aborted query reports before the cut
     try {for await (const msg of q) {
       if (msg.type === 'assistant') gs.add(msg);
-      if (msg.type === 'system' && msg.subtype === 'init') {m.sess.sessionId = msg.session_id; saveSession(m.sess, {url: base})}
-      else if (msg.type === 'system' && msg.subtype === 'compact_boundary') out(m.name, `[compacted: ${msg.compact_metadata.pre_tokens} -> ${msg.compact_metadata.post_tokens ?? '?'} tokens]`);
+      if (msg.type === 'system' && msg.subtype === 'init') {m.sess.sessionId = msg.session_id; if (!refl && !scene) delete m.sess.rolled; saveSession(m.sess, {url: base}); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => out(m.name, s))}}
+      else if (msg.type === 'system' && msg.subtype === 'compact_boundary') {m.compacts = (m.compacts || 0) + 1; m.sess.compacts = (m.sess.compacts || 0) + 1; out(m.name, `[compacted: ${msg.compact_metadata.pre_tokens} -> ${msg.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (msg.type === 'assistant' && !msg.parent_tool_use_id) {
+        m.sess.ctx = ctxOf(msg.message.usage) ?? m.sess.ctx; // the last call's prompt: what the price line is measured on (#787)
         for (const b of msg.message.content || []) {
           if (b.type === 'text' && b.text.trim()) {out(m.name, b.text.trim()); tc.text(b.text); post(base, '/play/narrate', {hero: m.id, text: b.text.trim(), runner: runnerId}, 5000).catch(() => {})}
           else if (b.type === 'tool_use') {tools++; tc.tool(b.name, b.id); out(m.name, `> ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 120) : ''})`)}
@@ -303,7 +308,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const ud = usageDelta(m.sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)
       const tot = result.total_cost_usd || 0, cost = tot >= m.sess.lastTotal ? tot - m.sess.lastTotal : tot; m.sess.lastTotal = tot;
       spent += cost; m.cost += cost; m.sess.costUsd += cost; turnCost = cost;
-      out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${model} | ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s | tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | turn ${money(cost)} | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`);
+      out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${model} | ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s | tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(m.sess.ctx)} | turn ${money(cost)} | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`);
     }
     // Claude keeps tool use at the table; a scene turn that ended without scene_act gets the forced answer once (issue #163)
     // (issue #515: also when the scene opened while the turn was in flight, not only when it started at the table)
@@ -314,9 +319,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         if (forced) {turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; m.tools += forced.tools; if (forced.sceneS) sceneS.push(...forced.sceneS)}}}
     let wrote = 0; if (refl) {wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; m.notes = (m.notes || 0) + wrote; m.reflections = (m.reflections || 0) + 1;
       await closeReflection(base, m.id, runnerId, refl.id, wrote); out(m.name, `[reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
-    reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
-    saveSession(m.sess, {url: base});
+    reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(m.sess.ctx != null ? {ctx: m.sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
+      flags: [...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+    m.rolledNow = false; saveSession(m.sess, {url: base});
     if (grab.grabbed() && !again && !stopping && !m.ended && !failed) {out(m.name, '[scene answered; resuming the turn]'); return (await claudeTurn(m, null, w, null, true)) || tools > 0}
     return !failed && (tools > 0 || !!refl);
   }
@@ -349,7 +354,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
         if (!r.tools) out(m.name, `[scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`)}
       const answered = b0 && 'scene' in b0 && !sc; // in the scene but already acted: an ordinary turn
-      if (!r || !r.tools) {const r0 = r, free = !sc && !(scene && !answered); r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w, Label) + (scene ? '' : resumeNote(m.turns === 0, m.sess.turns)) + briefText(b0), model: m.rs.model,
+      if (!r || !r.tools) {const r0 = r, free = !sc && !(scene && !answered); r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w, Label) + (scene ? '' : resumeNote(m.turns === 0 || m.sess.rolled, m.sess.turns)) + briefText(b0), model: m.rs.model,
         toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, on, interrupt: free && !m.due ? () => !!m.due : null}); // a free turn gives way to the member's own scene opening meanwhile (#515)
         if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0;
         // its scene opened mid-turn: the forced answer comes next, ahead of the other members' calls (issue #515)
@@ -369,11 +374,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   // One member's turns, paced by the game (scripts/pacing.mjs): the first at once, then on its events or heartbeat.
   async function loop(m) {
-    const pacer = makePacer({base, hero: m.id, runner: runnerId, heartbeat: pace.heartbeat, minGap: pace.minGap, log: s => out(m.name, s), stopped: () => !!(stopping || m.ended)}); m.pacer = pacer;
+    const pacer = makePacer({base, hero: m.id, runner: runnerId, heartbeat: pace.heartbeat, minGap: pace.minGap, hearWake: pace.hearWake, log: s => out(m.name, s), stopped: () => !!(stopping || m.ended)}); m.pacer = pacer;
     // the start gate (issue #222): one tiny call with the member's model before its first turn; the page holds the world until it answers
     const ad = m.paid ? m.ad : m.local ? ollama : (claudeWarm = claudeWarm || claudeWarmAdapter(env.ANTHROPIC_API_KEY));
     await warmUp({base, seat: {hero: m.id}, runner: runnerId, model: m.rs.model, adapter: await ad, log: s => out(m.name, s)});
     let w = null;
+    {const r = await pacer.ready(); if (r.dead) m.ended = 'dead'; else if (r.gone) m.ended = 'left agent play'} // the first turn waits for a held world like a paced one (#770)
     while (!m.ended && !stopping && m.turns < m.maxTurns) {
       // the budget binds the paid members (Claude, OpenAI); a local member plays on
       if (spent >= budget && !(m.local && !m.paid)) {m.ended = 'budget reached'; break}
@@ -419,7 +425,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const rows = [...members.values()].filter(m => m.sess);
     out(null, `Run over${stopping ? ' (' + stopping + ')' : ''}: ${money(spent)} in all.`);
     for (const m of rows) out(null, `  ${m.name.padEnd(12)} ${String(m.role || '').padEnd(7)} ${m.turns} turns (${m.scenes} at the table), ${m.tools} tool calls, ${m.notes || 0} memories in ${m.reflections || 0} reflections, ${m.paid ? money(m.cost) + ', tokens ' + m.tin + ' in / ' + m.tout + ' out' : m.local ? '$0 (local), tokens ' + m.tin + ' in / ' + m.tout + ' out' : money(m.cost)} | session ${money(m.sess.costUsd)} | ${m.rs.model}${m.paid ? ' (OpenAI)' : m.local ? ' (local)' : followerModel ? ' / ' + followerModel : ''}`);
-    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, ...(cid != null ? {company: cid} : {}), spent, budget, maxTurns: turnsAsked != null ? Number(turnsAsked) : null, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, reflections: m.reflections || 0, notes: m.notes || 0, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: m.paid ? 'openai' : 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
+    try {appendFileSync(RUNS_FILE, JSON.stringify({at: new Date().toISOString(), url: base, ...(cid != null ? {company: cid} : {}), spent, budget, maxTurns: turnsAsked != null ? Number(turnsAsked) : null, followerModel, members: rows.map(m => ({id: m.id, name: m.name, role: m.role, turns: m.turns, scenes: m.scenes, tools: m.tools, reflections: m.reflections || 0, notes: m.notes || 0, rolls: m.rolls || 0, compacts: m.compacts || 0, ctx: m.sess.ctx ?? null, cost: m.cost, model: m.rs.model, ...(m.local ? {provider: m.paid ? 'openai' : 'ollama', tokensIn: m.tin, tokensOut: m.tout} : {})}))}) + '\n')} catch {}
     for (const mdl of new Set(rows.map(m => m.rs.model).concat(followerModel ? [followerModel] : []))) if (PRICES[mdl]) out(null, `  list price ${mdl}: $${PRICES[mdl].in} in / $${PRICES[mdl].out} out per 1M tokens`);
   }
   process.exit(0);
