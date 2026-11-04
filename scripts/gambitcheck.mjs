@@ -34,7 +34,7 @@ const D = await import('../src/data/gambits.js');
 const {CLS} = await import('../src/data/classes.js');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {rebuild} = await import('../src/sim/spatial.js');
-const {dist} = await import('../src/world/map.js');
+const {dist, CITY, zonePoint} = await import('../src/world/map.js');
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -55,6 +55,8 @@ init({fellowship: false}); run(5);
 const heroes = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.party);
 const fightSetup = (a, hpShare, lvl) => {
   if (!a.player) P.markPlayer(a, true);
+  // fight in the field, well away from every gate: a hero that flees home from a step outside the gate arrives (state town) within the run
+  if (CITY.some(c => dist(a, c.gate) < 12)) {let p = null; for (let i = 0; i < 80 && !p; i++) {const q = zonePoint(a.zone, null, CITY[0].gate); if (CITY.every(c => dist(q, c.gate) >= 12)) p = q} if (p) {a.x = p.x; a.y = p.y}}
   a.pq = []; a.party = null; a.partyOk = false; a.adv = null; a.traits = []; a.hidden = false; a.playActAt = S.gameMin; a.playIdle = false; a.playTurn = null;
   const m = S.mobs.find(x => x.alive && !x.gone && !x.elite && !x.named && !x.target && dist(x, a) > 3);
   for (const x of S.mobs) if (x !== m && x.target === a) x.target = null;

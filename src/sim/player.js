@@ -56,10 +56,10 @@ import {nearHeroes,nearMobs} from './spatial.js';
 import {dmDepart,advLine,K as DMK,holdAdventure,resumeAdventure,beginJob,abandonAdventure,bountiesAt,bountyFor,takeBounty} from './dm.js';
 import {supplyById,supplyJobs,takeSupply,dropSupply,fillSupply,textOf as supplyText,wantText as supplyWant,rewardText as supplyReward,mayHave as supplyMay,have as supplyHave,supplyId,SUP} from './supply.js'; // goods jobs (#720)
 import {supplyDone} from './questlog.js';
-import {questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
+import {oathId as oathIdOf,questLog,questsView,parseJob,heldOf,takenOf,heldCount,setFocus,killAbandoned,takenGone,jobId,QL} from './questlog.js'; // several quests per hero
 import {CHOICE_MIN} from './player-choice.js';
 import {fellowCard,selfView,become} from './persona.js'; // Fellowship (#68); self and become (#409)
-import {ev} from './notify.js';
+import {ev,mostNews} from './notify.js';
 import {campView,campBlock,leaderBreak,leaderRest,onCamp} from './camp.js';
 import {heroMemory} from './notebook.js'; // agent memories (#155)
 import {tiersOf,spillEntry,ownMark,overview as journalOverview,search as journalSearch} from './tiers.js'; // tiered memory (#153)
@@ -102,12 +102,16 @@ import {GATHER,canGather,gatherCmd,pickNode,nodesView,recipesView,learnProfessio
 import {craftTool,smithTool} from './craft.js'; // crafting (#258)
 import {MATERIALS} from '../data/items.js';
 import {invOf,used,capOf,isGear,kindOf,load,addGear,addUse,sellLoot,sellEntry,equipSpare,useItem,giveItem,dropEntry,fightAid,bestUse,count as invCount} from './inv.js'; // the pack (#124)
+import {swornOf,threadOf,threadText,offerThread,withdrawThread} from './oath.js'; // offered threads and sworn oaths (#800)
+import {swearBlock,swearWord,takeOath,setAside,keepOath,renounceOath,wordsOnly} from './sworn.js';
 import {VOW,swear as swearVow,renounce as renounceVow,canSwear,vowLeft,vowText,placeNamed,norm as vnorm} from './vows.js'; // sworn vows (#526)
 import {attempt as attemptRuled} from './ruling.js'; // free actions ruled by the DM (#522)
 import {holdStart,holdAnswered} from './gambithold.js'; // a gambit hold stops the world until the agent acts (#630)
 import {worldHeld,holdLine} from './prep.js'; // the world held before play (#559)
 import {defineGambits,idlePick,fightRules,reflexPick,HOLD,gambitRec,ruleText,GAMBIT,gambitsView,setGambit,moveGambit,toggleGambit,dropGambit,resetGambits,onSafetyChange} from './gambits.js'; // the hero's own rules (#617)
 import {aidOrder,aidView,DOWN} from './downed.js'; // help a downed companion: stabilize, tend, carry (#626, #658)
+import {tendBy,tendBlock,chapelTend,woundLook,woundsView} from './tend.js'; // wounds: tend, the chapel priest (#656)
+import {wounded} from './wounds.js';
 import {histNote} from './persona.js';
 onSafetyChange((a,before,after,why)=>histNote(a,'gambits',before,after,why)); // a safety rule changed: the persona history says so (#617)
 
@@ -158,8 +162,8 @@ const legal=['town','hunt','travel','return','fight','follow','regroup','duel','
 const FOLLOWS=['town','hunt','travel','return','follow'];
 
 // Events: what happened to the hero, handed to the agent with the next tool result.
-function takeEvents(a){const seen=a.playEvSeen||0,out=(a.playEv||[]).filter(e=>e.n>seen).map(e=>e.t+' '+e.text);a.playEvSeen=a.playEvN||0;
-  return out.length>PK.EV_OUT?['('+(out.length-PK.EV_OUT)+' earlier events not shown)',...out.slice(-PK.EV_OUT)]:out}
+function takeEvents(a){const seen=a.playEvSeen||0,all=(a.playEv||[]).filter(e=>e.n>seen),out=mostNews(all,PK.EV_OUT).map(e=>e.t+' '+e.text);a.playEvSeen=a.playEvN||0;
+  return all.length>out.length?['('+(all.length-out.length)+' older minor events not shown)',...out]:out}
 function done(a,text,urgent=true){if(a.pq&&a.pq.length)a.pq.shift();if(text)ev(a,text,urgent)}
 const key=e=>e?e.t+'|'+e.text:'';
 // Entries of list that came after the one whose key is k (all of them when k is not found).
@@ -380,12 +384,12 @@ function sinceLook(a,args){const L=a.playLook;if(!L)return null;const out=[],f=f
 
 // ---- marking ----
 export function markPlayer(a,on){if(!a||a.kind!=='hero')return false;
-  if(on){if(a.state==='dead')return false;a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
+  if(on){if(a.state==='dead')return false;if(!a.player)offerThread(a);a.player=true;a.playActAt=S.gameMin;a.playIdle=false;a.playTurn=null;a.pq=a.pq||[];a.journal=a.journal||[];a.playLog=a.playLog||[];a.playEv=a.playEv||[];
     a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kills:a.kills,hist:key((a.history||[]).slice(-1)[0]),chat:key((a.chat||[]).slice(-1)[0])};
     if(!S.playerHeroes)S.playerHeroes=[];if(!S.playerHeroes.includes(a.id))S.playerHeroes.push(a.id);
     ev(a,a.name+' wakes with a will of their own.');record(a,'Began to choose their own road.');soloFor(a);return true}
   if(inSlots(a)&&a.state!=='dead')return false; // the Fellowship is always agent-played (#148): a member is handed back only by leaving
-  a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
+  withdrawThread(a);a.player=false;a.pq=[];a.partyOk=false;a.playDoing=null;if(S.playerHeroes)S.playerHeroes=S.playerHeroes.filter(id=>id!==a.id);
   {const C=companyOf(a);if(C&&!C.slots)leaveCompany(a)} // out of agent play: a solo's company ends with it
   return true}
 export const isPlayer=a=>!!(a&&a.player);
@@ -800,7 +804,7 @@ const fieldState=a=>['hunt','travel','follow','return'].includes(a.state);
 // world (a creature seen for the first time is sized up, as look does). Never a number for anyone else's HP, never a
 // creature's level, and nothing of another hero's persona, memories, mind or journal, nor a person's DM record.
 const HURT=(h,m)=>{const r=m>0?h/m:1;return r>=.95?'unhurt':r>=.7?'lightly hurt':r>=.4?'hurt':r>=.15?'badly hurt':'near death'};
-const ST_WORD={town:'in town',travel:'on the road',hunt:'out hunting',return:'heading home',follow:'following their party',regroup:'regrouping with their party',camp:'at camp',dungeon:'down in a dungeon',raid:'on a raid',ghost:'a pale ghost, walking to the graveyard',downed:'down at zero health, bleeding where they lie',aid:'tending a fallen companion'};
+const ST_WORD={town:'in town',mend:'in town, mending',travel:'on the road',hunt:'out hunting',return:'heading home',follow:'following their party',regroup:'regrouping with their party',camp:'at camp',dungeon:'down in a dungeon',raid:'on a raid',ghost:'a pale ghost, walking to the graveyard',downed:'down at zero health, bleeding where they lie',aid:'tending a fallen companion'};
 const fullName=p=>(p.title?p.title+' ':'')+p.name;
 const gearWord=it=>it.name+' ('+it.slot+(it.epic?', epic':it.quality&&it.quality!=='plain'?', '+it.quality:'')+')';
 // Who and what is in sight now, nearest first: the look rule (sight radius; the whole town square inside a town).
@@ -814,7 +818,7 @@ function heroDoing(a,b){const t=b.target&&alive(b.target)?(b.target===a?'you':fo
   if(b.state==='fight')return 'fighting'+(t?' '+t:'');if(b.state==='duel')return 'in a duel'+(t?' with '+t:'');if(b.state==='assist')return 'helping someone in a fight';
   if(b.state==='town'&&b.moving)return 'walking through town';return ST_WORD[b.state]||b.state}
 function heroLook(a,b){const self=b===a,o={ok:true,kind:'hero',name:b.name,...(titleOf(b)?{known_as:styled(b)}:{}),who:raceOf(b).name+' '+b.cls+', level '+b.lvl,
-    faction:FAC[b.fac].name+(self?'':b.fac===a.fac?' (your side)':' (the other side: they may attack you)'),looks:HURT(b.hp,maxHp(b)),doing:heroDoing(a,b)};
+    faction:FAC[b.fac].name+(self?'':b.fac===a.fac?' (your side)':' (the other side: they may attack you)'),looks:HURT(b.hp,maxHp(b)),...(woundLook(b)?{wound:woundLook(b)}:{}),doing:heroDoing(a,b)};
   if(b.guild)o.guild='<'+b.guild.tag+'> '+b.guild.name;
   if(inSlots(b)&&slotKeyOf(b)){const L={tank:'Tank',healer:'Healer'}[slotKeyOf(b)]||'DPS';o.fellowship='of the Fellowship ('+L+')'}
   const w=SLOTS.map(k=>b.slots&&b.slots[k]).filter(Boolean).map(gearWord);o.wears=w.length?w:'plain clothes, no gear to speak of';
@@ -913,9 +917,10 @@ const T={
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
       state:a.state,doing:a.playDoing||null,queue:(a.pq||[]).map(cmdText),
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
-      oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
+      oath:a.goal&&!a.goal.offered?a.goal.text+(a.goal.done?' (kept)':a.goal.sworn&&a.goal.sworn.words?'':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,...(threadOf(a)?{thread:threadText(a)}:{}),vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
       abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
+    if(wounded(a))r.wounds=woundsView(a);
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
     if(a.party&&a.party.leader===a)r.party_lead=true;
     const cv=campView(a);if(cv)r.camp=cv;
@@ -1114,7 +1119,13 @@ const T={
       return {ok:true,focus:adv.title,scene:plain(advLine(a))||undefined,held:held.length?held:undefined,note:'The adventure leads you now; what you set aside waits in your quest log.'}}
     let aside=null;if(run)aside=holdAdventure(a);setFocus(a,q.id);
     return {ok:true,focus:q.title,set_aside:aside?aside.title:undefined,note:aside?aside.title+' waits where it stands (focus_quest it, or come back near its place).':undefined}},
-  swear_oath(a,{text,kind,about,days}){const no=canSwear(a);need(!no,no);
+  swear_oath(a,{text,kind,about,days,thread}){const th=clean(thread,4).toLowerCase();
+    if(th){need(th==='yes'||th==='no','thread is yes (take it up as it stands) or no (set it aside).');const no=swearBlock(a,th);need(!no,no);
+      if(th==='no'){setAside(a);return {ok:true,set_aside:true,note:'It stays with you as a memory. You are bound to nothing, and it costs nothing.'}}
+      const H=sayHearers(a),t=a.goal.text;agentLine(a,speak(a,clean('I swear it: '+t,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));const g=takeOath(a,'yes',{hearers:H});
+      return {ok:true,sworn:g.text,oath:true,heard_by:H.map(b=>b.name),note:'Your oath now, and spoken: it is in your quest log. renounce_oath gives it up, at a cost.'}}
+    const oath=!swornOf(a)&&(days==null||days===''); // no oath yet and no term: these words are the hero's oath (#800); with a term, or beside an oath, a vow
+    if(!oath){const no=canSwear(a);need(!no,no)}else need(a.state!=='ghost'&&a.state!=='dead','The dead swear nothing.');
     const k=clean(kind,12).toLowerCase()||'vow';need(VOW.KINDS.includes(k),'kind is one of '+VOW.KINDS.join(', ')+'.');
     const w=clean(about,60);need(k==='vow'||w,'A '+k+' vow needs an about: '+(k==='reach'?'a region, town or landmark you know':k==='protect'?'a companion by name':k==='recover'?'the epic you mean to find':'the foe you mean to slay')+'.');
     let ab=w?{name:w}:null;
@@ -1122,15 +1133,24 @@ const T={
     if(k==='protect'){const c=companyOf(a),ids=new Set([...(c?c.ids:[]),...partyMates(a).map(b=>b.id)]);const b=S.agents.find(x=>x!==a&&alive(x)&&ids.has(x.id)&&vnorm(x.name)===vnorm(w));
       need(b,'You can protect only a companion: '+([...ids].map(id=>S.agents.find(x=>x.id===id)).filter(x=>x&&x!==a&&alive(x)).map(x=>x.name).join(', ')||'you ride alone')+'.');ab={name:b.name,id:b.id}}
     const t=vowText(k,ab,clean(text,VOW.TEXT));need(t,'Say the words of the vow (text).');need(!notEnglish(t),ENGLISH);
+    if(oath){const no=swearBlock(a,t);need(!no,no)}
     const H=sayHearers(a),line=t.toLowerCase().indexOf('swear')>=0?t:'I swear it: '+t;
     agentLine(a,speak(a,clean(line,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));
+    if(oath){const g=takeOath(a,t,{hearers:H,...(clean(kind,12)?{kind:k,about:ab}:{})});return {ok:true,sworn:g.text,oath:true,heard_by:H.map(b=>b.name),
+      note:wordsOnly(g)?'Your oath, held as words: the world cannot see it kept, so it stands until you say it is done (keep_oath) or give it up (renounce_oath, at a cost).':'Your oath: the world will show when it is kept. renounce_oath gives it up, at a cost.'}}
     const v=swearVow(a,{kind:k,about:ab,text:t,days,hearers:H});
     return {ok:true,sworn:v.text,id:v.id,kind:k,term_days:v.days,heard_by:H.map(b=>b.name),note:'It is in your quest log as an oath. Keep it, or renounce_oath (that costs).'}},
-  renounce_oath(a,{id,reason}){need(a.vow,'You hold no sworn vow. Only a vow you swore with swear_oath can be renounced; the oath you began with is not yours to break.');
+  keep_oath(a,{how}){const g=swornOf(a);need(g,'You hold no oath to keep.');need(wordsOnly(g),'The world will show when this oath is kept; it is not yours to declare: '+g.text);
+    const t=clean(how,VOW.TEXT);need(t,'Say aloud how it was kept (how).');need(!notEnglish(t),ENGLISH);const H=sayHearers(a);agentLine(a,speak(a,clean(t,PK.SAY_LEN),'agent'));talked(a,H.map(b=>b.name));
+    keepOath(a);return {ok:true,kept:g.text,heard_by:H.map(b=>b.name),note:'You are bound to nothing now. swear_oath takes a new oath when you have one.'}},
+  renounce_oath(a,{id,reason,why}){const g=swornOf(a),s=String(id==null?'':id).trim(),r0=reason==null?why:reason;
+    if(g&&(!a.vow||/^oath$/i.test(s)||s===oathIdOf(g)||(s&&vnorm(s)===vnorm(g.text)))){need(!(a.persona&&a.persona.pins&&a.persona.pins.oath),'This oath is fixed by the one who keeps your sheet: it cannot be renounced now.');
+      const r=renounceOath(a,r0);return {ok:true,renounced:r.oath.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. Those who heard it remember, and so do you. swear_oath takes a new oath if you ever have one.'}}
+    need(a.vow,'You hold no sworn vow or oath. Only what you swore can be renounced.');
     need(!id||String(id).trim()===a.vow.id||vnorm(id)===vnorm(a.vow.text),'You hold no vow "'+id+'" (yours is '+a.vow.id+').');
-    const r=renounceVow(a,clean(reason,120));return {ok:true,renounced:r.vow.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. The witnesses remember it, and so do you.'}},
+    const r=renounceVow(a,clean(r0,120));return {ok:true,renounced:r.vow.text,cooled:r.bonds_cooled.length?r.bonds_cooled:undefined,note:'You broke your word. The witnesses remember it, and so do you.'}},
   abandon_quest(a,{id,reason}){const why=clean(reason,120)||null,q=findQ(a,id);need(q,'You hold no quest "'+id+'". quests lists them.');
-    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own'+(a.vow&&a.vow.id===q.id?' (a vow you swore: renounce_oath, at a cost)':'')+'.');
+    need(q.kind!=='oath','An oath is not set down with a word: it is kept, or it fails on its own'+((a.vow&&a.vow.id===q.id)||(swornOf(a)&&oathIdOf(swornOf(a))===q.id)?' (what you swore: renounce_oath, at a cost)':'')+'.');
     need(!/^scene:/.test(q.id),'You are in that scene; it ends at the table.');
     if(/^kill:/.test(q.id)){killAbandoned(a,why);a.quest=null;record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'The gate captain’s bounties stay posted: turn_in takes one if you want it.'}}
     if(/^supply:/.test(q.id)){const sj=supplyById(q.id);need(sj,'That job is gone.');dropSupply(a,sj);supplyDone(a,sj,'abandoned',0);record(a,'Gave up ',{t:q.title,c:'gd'},why?': '+why+'.':'.');return {ok:true,abandoned:q.title,note:'It goes back on the board.'}}
@@ -1293,9 +1313,9 @@ const T={
     record(a,'Pinned a notice at ',c.name,'.');return {ok:true,posted:n.text,town:c.name,lapses_in_days:SIGHT.NOTICE_DAYS,note:'Anyone who reads the board at '+c.name+' learns your name and this text. Ask for them at the inn.'}},
   send_courier(a,{to,text}){need(companyOf(a),'Only an agent hero can hire a courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);
     return {ok:true,to:r.msg.toName,cost:r.msg.cost,gold:a.gold,arrives_in_hours:r.hours,note:'The courier rides out; the message arrives as an event after that many game hours. A reply needs its own courier from a town gate.'}},
-  scene_act(a,{option,line,move}){const x=sceneAct(a,option,line,move);if(x===FRAMING)return {ok:false,error:x,offline:true,waiting_for:'the DM'}; // not a failed turn (#682)
+  scene_act(a,{option,line,move,swear}){const x=sceneAct(a,option,line,move,swear);if(x===FRAMING)return {ok:false,error:x,offline:true,waiting_for:'the DM'}; // not a failed turn (#682)
     if(typeof x==='string')throw new Rule(x);const v=tableView(a);
-    return {ok:true,chose:x.k,said:x.line||undefined,moved:x.moved||undefined,...(String(move==null?'':move).trim()&&!x.moved?{move_note:'There is no moving in this scene: you act from where you stand.'}:{}),waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
+    return {ok:true,chose:x.k,said:x.line||undefined,moved:x.moved||undefined,swears:x.swear||undefined,...(String(move==null?'':move).trim()&&!x.moved?{move_note:'There is no moving in this scene: you act from where you stand.'}:{}),waited_s:waitedS(sceneOf(a),a),note:v&&v.everyone_answers?'Locked in; the table resolves once everyone present has answered ('+v.answered+').':v&&v.your_turn?'Done; it happens now.':'Locked in; it happens on your turn.'}},
   // ---- professions and gathering (#257): only the caller's own hero ----
   recipes(a,{profession}={}){let id=null;if(profession!=null&&String(profession).trim()){id=profKey(profession);
       need(id,'There is no profession called "'+clean(profession,40)+'". Leave it out for all of yours, or name one: herbalism, mining, skinning, fishing, alchemy, smithing, leatherworking, cooking, scribing.')}
@@ -1350,7 +1370,9 @@ const T={
   reset_gambits(a,args={}){const r=resetGambits(a,args);need(r.ok,r.error);return r},
   // a downed companion (#626, #658): go to them and keep them alive; sim/downed.js does the dice
   stabilize(a,{who,hero_id}={}){return aidTool(a,who,hero_id,{stab:true},'stabilize')},
-  tend(a,{who,hero_id}={}){return aidTool(a,who,hero_id,{revive:true,stab:true},'tend')},
+  tend(a,{who,hero_id}={}){const w=woundTarget(a,who,hero_id);return w?tendWound(a,w):aidTool(a,who,hero_id,{revive:true,stab:true},'tend')}, // the downed first, as #658; else a wound (#656)
+  chapel_tend(a,{who,hero_id}={}){const t=who!=null&&String(who).trim()||hero_id!=null&&hero_id!==''?nearSide(a,who,hero_id):a;need(t,'No one of that name stands near you.');
+    const r=chapelTend(a,t);need(r.ok,r.error);return r},
   carry(a,{who,hero_id,to}={}){const t=String(to==null||to===''?'town':to).toLowerCase().trim();
     need(['town','camp','leader'].includes(t),'carry to town, camp or leader (default town).');return aidTool(a,who,hero_id,{stab:true,carry:t},'carry')},
   wish(a,x){const hp=pct(a.hp,maxHp(a)),pl=ZONES[zoneAt(a.x,a.y)]||null;return fileWish(a,{seat:'hero:'+a.id,name:a.name,place:pl,summary:a.name+', level '+a.lvl+' '+(a.cls||'')+', '+a.state+(pl?' in '+pl:'')+', '+hp+'% HP'+(a.playDoing?', '+clean(a.playDoing,80):'')},x)}, // a note for the builders (#663, sim/wish.js)
@@ -1385,6 +1407,23 @@ function aidTool(a,who,hero_id,how,verb){const L=downedInSight(a),i=idIn(hero_id
   else out.how=(stable?'':'They still bleed: you stabilize them first ('+(band?'a Linen Bandage':'a roll')+'), then ')+'carry them to '+(how.carry==='town'?homeOf(a).name:'the '+how.carry)+' at '+Math.round(DOWN.CARRY*100)+'% of your pace and lay them down.';
   out.note='wait() while you work; a creature may turn on you. Your other orders are set aside.';
   return out}
+// A hero of your side in sight by name or id, yourself included (#656).
+function nearSide(a,who,hero_id){const i=idIn(hero_id!=null&&hero_id!==''?hero_id:who),n=nameKey(who),R=sightOf(a);if(i===a.id||n&&a.name.toLowerCase().startsWith(n))return a;
+  const L=nearHeroes(a.x,a.y,R).filter(b=>b!==a&&b.kind==='hero'&&b.fac===a.fac&&b.state!=='dead'&&!b.hidden&&dist(a,b)<=R).sort(byDist(a));
+  return (i!=null?L.find(b=>b.id===i):n?L.find(b=>b.name.toLowerCase()===n)||L.find(b=>b.name.toLowerCase().split(' ')[0]===n)||L.find(b=>b.name.toLowerCase().startsWith(n)):null)||null}
+// Whom tend means when it is a wound and not the downed (#656): the one named, if standing and wounded; with no name and no one down, the nearest who can be tended. null: the downed path.
+function woundTarget(a,who,hero_id){const named=who!=null&&String(who).trim()||hero_id!=null&&hero_id!=='';
+  if(named){const t=nearSide(a,who,hero_id);return t&&t.state!=='downed'&&(wounded(t)||t===a)?t:null}
+  if(downedInSight(a).length||!(CLS[a.cls].heal||a.state==='camp'))return null;const R=sightOf(a);
+  return nearHeroes(a.x,a.y,R).filter(b=>dist(a,b)<=R&&!b.hidden&&b.kind==='hero'&&!tendBlock(a,b)).sort(byDist(a))[0]||null}
+// tend on a wound: at a company camp the action, no spell needed; elsewhere a healer's heal from range. Either takes a day off.
+function tendWound(a,t){need(!['dungeon','raid','duel','ghost'].includes(a.state)&&!a.hidden,'Not now ('+(ST_WORD[a.state]||a.state)+').');
+  const bad=tendBlock(a,t);need(!bad,bad);
+  const camp=a.state==='camp'&&t.state==='camp'&&a.company===t.company,heal=!!CLS[a.cls].heal;
+  if(camp)tendBy(a,t,'camp');
+  else{need(heal,'Only a healer\'s heal tends a wound on the road. At a company camp anyone can (tend {who} at the fire); the chapel priest in town does it for gold (chapel_tend).');
+    need(dist(a,t)<=DOWN.HEAL_RANGE,t.name+' is too far: a heal reaches '+DOWN.HEAL_RANGE+' tiles.');need(a.healCd<=0,'Your heal is not ready yet: wait a moment.');healOne(a,t)}
+  return {ok:true,tended:t.name,how:camp?'at the fire':'your heal',result:'The wound will close a day sooner.',wounds:woundsView(t)}}
 // A quest the hero holds, by its id from quests (a bare number is a job id).
 function findQ(a,id){const L=questLog(a),s=String(id==null?'':id).trim(),n=parseJob(s);return L.active.find(x=>x.id===s)||(n!=null?L.active.find(x=>x.id==='job:'+n):null)||null}
 // A second call to break camp while a break_camp proposal is open: the caller's yes on it, never a refusal (#400).

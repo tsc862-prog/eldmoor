@@ -312,6 +312,9 @@ ok(!sc.ids.includes(B.id) && !(B.chat || []).some(e => e.text === said.table), '
   ok(!DMA.dmAct('whisper', {hero: B.name, text: 'x'}).ok, 'a hero outside the scene is refused');
   }
 keep('A status at the table', act(A, 'status'));
+// An offered thread (#800) is B's own and the DM's, and no companion's: it is never said aloud.
+B.goal = {type: 'avenge', tier: 0, target: plant('bThread'), text: 'Slay it', need: 1, progress: 0, done: false, offered: true, offeredAt: Math.round(S.gameMin)};
+ok(JSON.stringify(act(B, 'status')).includes(SECRETS.bThread) && JSON.stringify(DMA.dmAct('dm_status').fellowship_needs).includes(SECRETS.bThread) && JSON.stringify(DMA.dmAct('fellowship_view')).includes(SECRETS.bThread), 'B reads its own offered thread, and so does the DM');
 {const own = JSON.stringify(act(B, 'status')), other = Object.entries(SECRETS).filter(([k]) => !k.startsWith('b')).filter(([, v]) => own.includes(v)).map(([k]) => k);
   ok(own.includes(SECRETS.bWants) && !other.length, 'B\'s own status carries B\'s own sheet and memories, and nothing of the DM\'s or another member\'s' +(other.length ? ': ' + other.join(', ') : ''))}
 S.table = null; T.TABLE.mode = 'off';
@@ -448,7 +451,7 @@ ok(act(D2, 'recall', {}).dead === true, 'the fallen hero\'s tools answer dead');
   ok(act(B, 'party_say', {text: heardShout}).ok, 'B shouts to the party');
   const hr = DMA.dmAct('hear', {n: 200});
   ok(hr.ok && JSON.stringify(hr.lines).includes(sHS) && JSON.stringify(hr.lines).includes(sHH), 'hear carries the say line and the party shout');
-  const privates = Object.keys(SECRETS).filter(k => /^(b|mate|dead)/.test(k) && !/^(bWants|bFears|bVoice|bSummary|bFlaw)$/.test(k));
+  const privates = Object.keys(SECRETS).filter(k => /^(b|mate|dead)/.test(k) && !/^(bWants|bFears|bVoice|bSummary|bFlaw|bThread)$/.test(k));
   const personaTxt = ['bWants', 'bFears', 'bVoice', 'bSummary', 'bFlaw'];
   const newReads = JSON.stringify([hr, DMA.dmAct('hear', {since: 100000}), DMA.dmAct('survey', {near: 'fellowship'}), DMA.dmAct('survey', {near: B.name, radius: 30}), DMA.dmAct('world_standing'), DMA.dmAct('heroes_near', {near: B.name, radius: 30}), DMA.dmAct('companies_view'), DMA.dmAct('dm_status')]), fvRaw = JSON.stringify(DMA.dmAct('fellowship_view'));
   const leaked = [...privates.filter(k => newReads.includes(SECRETS[k])), ...privates.filter(k => !['bMemory', 'bLong'].includes(k) && fvRaw.includes(SECRETS[k]))]; // bMemory/bLong are the game's own memory digest, shown to the DM since #68
