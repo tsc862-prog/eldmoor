@@ -200,7 +200,7 @@ console.log('hold');
   {const Wt = makeWatch(); Wt.tick(); S.table = null; S.tables = {}; HD.holdStart(W, hr); S.gambitHold.s = D.GAMBIT.HOLD_MAX_S - .01; run(1); const out = Wt.tick();
     ok(out.some(x => x.kind === 'anomaly' && x.rec.kind === 'hold-expired'), 'the behavior watch flags hold-expired')}
   // the runner is gone
-  HD.holdStart(W, hr); setRunnerLinks(() => 'none'); run(.1);
+  S.table = null; S.tables = {}; HD.holdStart(W, hr); setRunnerLinks(() => 'none'); run(.1); // a scene left by the run above would refuse the hold
   ok(!S.gambitHold && S.gambitStats.holdLog.slice(-1)[0].how === 'no-runner', 'with no runner the hold releases at once and the reflexes play');
   ok(!HD.holdStart(W, hr).ok, 'and none starts without a live runner'); S.gambitHold = null;
   setRunnerLinks(a => a.id === W.id ? 'connected' : 'none');

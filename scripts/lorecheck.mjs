@@ -65,7 +65,8 @@ r = act(A, 'move_to', {target: CRYPT.name}); ok(!r.ok, 'move_to an unheard-of la
 // toward the middle of the map: the roster can seat A by the edge, where that way is (rightly) refused as the world's end
 {const {H} = await import('../src/world/tiles.js'); const way = A.y < H / 2 ? 'south' : 'north';
   r = act(A, 'move_to', {target: 'explore ' + way}); ok(r.ok && r.explore, `a direction is always open: ${r.going}`)}
-r = act(A, 'move_to', {target: Math.round(spot.x + 3) + ',' + Math.round(spot.y)}); ok(r.ok, 'coordinates are always open');
+{const {CITY: TW} = await import('../src/world/map.js'), far = (await import('../src/world/map.js')).ZPTS.flat().find(p => TW.every(c => Math.hypot(p.x - (c.x0 + c.x1) / 2, p.y - (c.y0 + c.y1) / 2) > 16)); // clear of every town: an enemy wall refuses
+  r = act(A, 'move_to', {target: Math.round(far.x) + ',' + Math.round(far.y), force: 'yes'}); ok(r.ok, 'coordinates are always open' + (r.ok ? '' : ': ' + r.error))}
 r = act(A, 'move_to', {target: ZONES[home]}); ok(r.ok, 'the home region is known');
 A.pq = []; A.state = 'hunt';
 

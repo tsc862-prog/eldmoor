@@ -226,7 +226,8 @@ function boardFits(a,mem){const c=homeOf(a),lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x
   for(const h of (S.adventures||[]))if(h.phase==='open'&&h.town===c.name&&!jobFit(a,h,mem)){const zn=h.zone!=null?ZONES[h.zone]:null;out.push('job:'+h.id+' '+jobText(h)+(zn?' ('+zn+')':''))}
   for(const b of bountiesAt(c))if(MOBS[b.type]&&fits(lo,b.z))out.push('bounty: kill '+b.need+' '+MOBS[b.type].pl+' in '+ZONES[b.z]);
   return out.slice(0,4)}
-function townGuard(a){const now=S.gameMin;if(a.state!=='town'||a.hidden){if(a.townIdle)a.townIdle=null;return}
+function townGuard(a){const now=S.gameMin;if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk||a.state==='raid'&&a.raid&&!a.raidOk)return; // a draft it steps out of below is no time away from town
+  if(a.state!=='town'||a.hidden){if(a.townIdle)a.townIdle=null;return}
   const C=companyOf(a),sig=[a.lvl,Math.round(a.xp||0),a.kills||0,Math.round(a.gold||0),a.adv||0,a.quest?a.quest.have||0:-1,heldCount(a),a.conv==null?'':a.conv,invOf(a).list.length].join(',');
   const T=a.townIdle,pause=!!(sceneOf(a)||worldHeld()||a.hp<maxHp(a)*.6||a.splitUntil>now||(C&&(openProps(C).length||openPlans(C).length)));
   if(!T||T.sig!==sig||pause){a.townIdle={at:now,sig,woke:T?T.woke:0};return}
