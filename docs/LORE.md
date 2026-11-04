@@ -777,6 +777,10 @@ Name check (2026-11-02): all of the above pass; no franchise proper nouns, no du
 sits one letter-shuffle from the zone Mirefen (kept as the cook's joke, but never use it as a place name); Rimebloom and
 Rimeblood differ by one syllable (plant and potion, kept); "Shaghorn Horn" repeats itself, acceptable as a trade-name.
 
+## Beasts of the yard and field, and town life (issue #795)
+
+Ambient animals that are not creatures of the bestiary: nothing fights them and nobody hunts them. Town yards keep chickens, dogs, cats and goats; the open country keeps deer and hares (meadow, highland, tundra; the tundra hare is white), and crows and gulls (gulls by water). Hares and deer bolt from a hero and come home; birds take wing and glide back later. A few trees hold roosting birds that burst out when a hero passes. Each town's gate is flanked by two guards in a tabard of the town's colours, a third walks the wall opposite, the smithy's forge smokes through the working day, the inn's hearth at breakfast and from the afternoon, stalls open in the plaza in market hours (shut in rain and at night), lamps are lit at dusk and a pennant flies over the hall. No new named people or places.
+
 ## Townsfolk
 Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
 routines). Each is one of the town's own people, named from that people's syllables when the
