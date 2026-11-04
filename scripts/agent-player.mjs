@@ -60,7 +60,7 @@ import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -183,13 +183,14 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
   let ended = null, runIn = 0, runOut = 0, t0 = Date.now(), lastNote = null; const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     let r = null, w = null;
-    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    const again = resume; resume = false;
+    if (turn > 1 && !again) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     {const n = await localModelNote(ol, rs.model); if (n && n !== lastNote) console.log('[agent] ' + n); lastNote = n} // before every turn: another model on the GPU
     const b0 = await pacer.brief(); let err = null;
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
     try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a reflection moment (issue #179)
       if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a Fellowship member's own scene (issue #163)
-      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + briefText(b0), model: rs.model, toolTurns,
+      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + briefText(b0), model: rs.model, toolTurns,
       on})), {pacer, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on})}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
@@ -300,7 +301,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   await warmUp({base, seat: {hero: heroId}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
-  let spent = 0, ended = null;
+  let spent = 0, ended = null, resume = false; // resume: the last turn was cut for its scene (#687), so the next carries on at once
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
@@ -327,6 +328,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
         saveSess(); fails.ok(true); continue}}
     turnAbort = new AbortController();
+    // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the next turn carries on
+    const grab = sceneGrab({due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, abort: () => turnAbort.abort(),
+      onGrab: () => console.log(`  [scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
     const q = query({prompt, options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
@@ -351,9 +355,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       } else if (m.type === 'result') result = m;
     }} catch (e) {
       // Running out of tool turns (--tool-turns) only ends this turn; the next one resumes the session.
-      if (result && result.subtype === 'error_max_turns') console.log(`[agent] turn hit the ${toolTurns} model-call cap; continuing next turn`);
+      if (grab.grabbed()) {} // our own abort, not a failure
+      else if (result && result.subtype === 'error_max_turns') console.log(`[agent] turn hit the ${toolTurns} model-call cap; continuing next turn`);
       else {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`); failed = true}}
-    freeSlot(); pacer.turnDone(); sess.turns++;
+    grab.stop(); freeSlot(); pacer.turnDone(); sess.turns++;
     let turnCost = null, tin = null, tout = null, cread = null, cwrite = null;
     if (result) {
       // total_cost_usd is cumulative for the session when resumed; take the part this turn added.
@@ -373,8 +378,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
     if (refl) {const wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; await closeReflection(base, heroId, RUNNER, refl.id, wrote); console.log(`  [reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
-    saveSess();
+      flags: [...(grab.grabbed() ? ['scene-grab'] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+    saveSess(); if (grab.grabbed() && !failed && !stopReq) resume = true;
     if (fails.ok(!failed && (tools > 0 || !!refl)) && !ended) ended = fails.why();
   }
   clearInterval(beat); await release();
