@@ -29,7 +29,7 @@ export const WHEN={MAX:6,PER_DAY:12,HOURS:24,MIN_H:1,MAX_H:72,EVERY:2,KEEP:12,SE
 export const WATCH={MAX:6,PER_DAY:12};
 const DAY=1440,NIGHT_HH=20,DAWN_HH=6;
 // The actions a when may carry: the DM's voice and its world tools (only those that exist in DM_TOOLS; create_site joins when it lands).
-const DEFER0=['narrate','npc_say','whisper','dream','stage_scene','post_hook','place_person','mark_place','give_item','take_item','create_site','summon_hero','pull_lever'];
+const DEFER0=['narrate','npc_say','whisper','dream','stage_scene','post_hook','place_person','mark_place','give_item','take_item','create_site','summon_hero','call_to','pull_lever'];
 export const deferTools=()=>DEFER0.filter(n=>DM_TOOLS.some(t=>t.name===n));
 const WHO_RE=/\{who\}|\$who\b/gi,WHO_TEST=/\{who\}|\$who\b/i;
 // The trigger table (append-only): args (? = optional), what it means, and whether it names a hero ({who}).

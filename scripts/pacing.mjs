@@ -187,7 +187,7 @@ export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
 What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return gatherNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return gatherNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + askedNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
 // header; when it is done, stale or was never stated, the turn asks first "What are you trying to do now?" (any mind: the
@@ -202,6 +202,8 @@ export function aimNote(b) {
   const why = String(m.why || '').slice(0, 120);
   return `\n${AIM_ASK} ${line ? 'Your aim was: ' + line + '; ' + why : why.charAt(0).toUpperCase() + why.slice(1)}. Say it first with intent {goal, why, until} (one call), then act on it.${m.wait_limit ? ' Until you do, ' + String(m.wait_limit).replace(/^with no aim, /, '') + '.' : ''}` + lead;
 }
+// A question someone in the world put to a hero riding alone (issue #826): it stands a few game hours, and silence is a no.
+export const askedNote = b => { const q = b && b.asked; return q && q.line ? `\n${String(q.by).slice(0, 60)} asked you: "${String(q.line).slice(0, 200)}" Answer aloud with answer_call {answer: accept|decline, line}; it lapses as a no in about ${Number(q.left) || 1} game hours.` : ''; };
 // What the hero swore, or for a while what its past offers (issue #800). A thread is the past, never a promise.
 export const oathNote = b => (b && b.oath ? `\nYour oath: ${String(b.oath).slice(0, 200).replace(/[.!?]+$/, '')}.` : '') + (b && b.thread ? `\nFrom your past, not sworn: ${String(b.thread).slice(0, 200)} It binds you to nothing unless you swear it (swear_oath, in your own words).` : '');
 // Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.

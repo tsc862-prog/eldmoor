@@ -534,6 +534,16 @@ act(C1, 'forget', {id: id1});
   ok(P.playerAct(cid, 'recall', {tag: 'f3'}).notes.length === 1 && DMA.dmAct('recall', {tag: 'fog'}).notes.length === 1, 'recall works on the restored world')}
 
 // ---------------------------------------------------------------- 7. the verdict
+// call_to (#826), late in this check because reflexes may take the company down: the words and the proposal reach it, the reason stays in the DM log, and nobody hears who sent it
+{const T_C = C, tm = T.TABLE.mode, CO = SLT.companyOf(A), L = T_C.leaderOfC(CO), hp = CO.ids.map(id => {const b = S.agents.find(x => x.id === id); const h = b.hp; b.hp = maxHp(b); return [b, h]});
+  T.TABLE.mode = 'off'; r = DMA.dmAct('call_to', {kind: 'crypt', company: L.name, text: 'They say the deep door stands open. Will you go down?', reason: 'Call ' + plant('callReason')});
+  const Q = r.ok && CO.props.find(q => q.src === 'dm');
+  ok(r.ok && S.dmLog.some(e => JSON.stringify(e).includes(SECRETS.callReason)), 'a call to a company: its reason in the DM log' + (r.ok ? '' : ': ' + r.error));
+  ok(!!Q && (L.chat || []).some(e => /deep door stands open/.test(e.text)) && (L.playEv || []).some(e => /deep door stands open/.test(e.text) && !e.text.includes(SECRETS.callReason)), 'the call reaches the leader as spoken words and the proposal, never the reason');
+  keep('leader events after a call', (L.playEv || []).map(e => e.text).join(' | ')); keep('leader chat after a call', (L.chat || []).map(e => e.text).join(' | '));
+  const view = keep('party_read after a call', act(L, 'party_read'));
+  ok(view.ok !== false && !/\bDM\b|dungeon master/i.test(JSON.stringify(view)), 'what the party reads never says who sent it');
+  T.TABLE.mode = tm; for (const [b, h] of hp) b.hp = h}
 console.log('the verdict');
 const L = leaks();
 ok(Object.keys(SECRETS).length >= 20, `${Object.keys(SECRETS).length} secrets planted`);
