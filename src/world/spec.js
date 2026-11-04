@@ -16,7 +16,7 @@
 //             mask kinds: 'all' | 'rect'{x0,y0,x1,y1} | 'west-of-curve' |
 //               'east-of-curve' | 'north-of-curve' | 'south-of-curve' (curve: name) |
 //               'and'{masks} | 'or'{masks} | 'not'{mask}
-//   river     {curve, width} painted as RIVER along the curve; roads bridge it.
+//   river     {curve, width, fords?} painted as RIVER along the curve; roads bridge it. fords: places along it (y on a north-south river) left walkable.
 //   towns     {name, fac, x0, y0, w, h, gate:'E'|'W'|'N'|'S', race, spots, npcs}
 //             WALL border, FLOOR inside, two gate tiles in the middle of the gate
 //             wall; gate point and graveyard are derived from the rect by gen.js.
@@ -199,7 +199,7 @@ export const STEPPING={
       sky:[['clear',.5],['fog',.35],['snow',.15]], // fog-bound far north
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'paleEdge'},{kind:'north-of-curve',curve:'frostLine'}]}},
   ],
-  river:{curve:'river',width:2},
+  river:{curve:'river',width:2,fords:[72]}, // the one bridge is far north; the south wades here (#794)
   towns:[
     {name:'Highgate',fac:0,x0:2,y0:2,w:11,h:9,gate:'E',race:'hallowan',spots:TOWN_SPOTS},
     {name:'Grimhold',fac:1,x0:2,y0:87,w:11,h:9,gate:'E',race:'ashfolk',spots:TOWN_SPOTS},

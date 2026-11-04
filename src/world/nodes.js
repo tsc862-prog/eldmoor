@@ -16,7 +16,7 @@ export const NODE_KINDS=['herb','ore','hide','fish']; // fixed order: placement 
 export const NODE_NAMES={herb:'Herb patch',ore:'Ore vein',hide:'Game trail',fish:'Fishing spot'};
 // Tiles each kind prefers (tried first); a region without enough of them falls back to any other walkable tile.
 const PREFER={herb:[FLOWER,G,SGRASS,MUD,SNOW],ore:[ROCK,PEAK],hide:[G,SGRASS,MUD,SNOW,ROCK,TREE,ICE]};
-const SPACE={herb:3,ore:3,hide:4,fish:4}; // minimum tiles between two nodes of the same kind
+const SPACE={herb:3,ore:3,hide:4,fish:3}; // minimum tiles between two nodes of the same kind (fish 3: peaks stand on part of Hoarfell's short shore, #794)
 const SPACE_ANY=2;                         // ...and between any two nodes
 
 // Skill band of a node from its region's level band: the middle of the band on a ladder of five levels a step,
@@ -26,11 +26,11 @@ export function bandOf(band){const lo=band[0],hi=Number.isFinite(band[1])?band[1
 
 export function placeNodes(world,spec){
   const cfg=spec.nodes;if(!cfg||!cfg.regions)return[];
-  const {tiles,zone,w,h,I,REGIONS,CITY,LANDMARKS}=world;
+  const {tiles,zone,w,h,I,REGIONS,CITY,LANDMARKS,land,mainLand}=world;
   const pad=(spec.spawn&&spec.spawn.townPad)||[4,3];
   const excl=LANDMARKS.filter(l=>l.exclude>0).map(l=>l.mouth?{x:(l.mouth.x0+l.mouth.x1+1)/2,y:(l.mouth.y0+l.mouth.y1+1)/2,r:l.exclude}:{x:l.x,y:l.y,r:l.exclude});
   const walk=new Set(WALKABLE);
-  const free=(x,y)=>{const t=tiles[I(x,y)];if(!walk.has(t)||t===ROAD||t===BRIDGE)return false;
+  const free=(x,y)=>{const t=tiles[I(x,y)];if(!walk.has(t)||t===ROAD||t===BRIDGE||land[I(x,y)]!==mainLand)return false; // a node stands where a hero can walk (#794)
     for(const c of CITY)if(x>=c.x0-pad[0]&&x<=c.x1+pad[0]&&y>=c.y0-pad[1]&&y<=c.y1+pad[1])return false;
     for(const e of excl)if(Math.hypot(x+.5-e.x,y+.5-e.y)<e.r)return false;return true};
   const waterOf=(x,y)=>{for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy;
