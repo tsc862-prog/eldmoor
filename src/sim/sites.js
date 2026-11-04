@@ -16,6 +16,7 @@
 import {rnd,clamp,hash} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
 import {tiles,I,ZONES,REGIONS,CITY,CRYPT,zoneAt,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {EPICS,DG_EPICS} from '../data/items.js';
 import {baseId,ELITE_TEMPLATE} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
@@ -205,7 +206,7 @@ function clearSite(s,g,L,share){S.sites.stats.clears++;const who=gd(g.name||'The
 function rollSite(g,s){const n=g.mem.length,avg=g.mem.reduce((t,a)=>t+a.lvl+a.gear*.3,0)/n;
   const pw=avg+(g.mem.some(a=>CLS[a.cls]&&CLS[a.cls].heal)?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+n*.6;
   const need=s.band[1]+s.grow+1,ok=rnd()<clamp((pw-need)/8,.15,.92);
-  for(const a of g.mem){a.hidden=false;a.x=s.x+(rnd()-.5)*1.5;a.y=s.y+.5+rnd()*.6}
+  for(const a of g.mem){a.hidden=false;Object.assign(a,standAt(s.x+(rnd()-.5)*1.5,s.y+.5+rnd()*.6))}
   if(ok){siteEnd(g,'clear');return}
   const lost=[];for(const a of g.mem){if(rnd()<SITE.LOST){lost.push(a);record(a,'Lost forever in ',gd(s.name),'.');fall(a,'lost in '+s.name)}else{record(a,'Fled ',gd(s.name),'.');goHome(a)}}
   for(const a of g.mem)delete a.siteIn;S.sites.stats.wipes++;
