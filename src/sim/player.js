@@ -26,6 +26,7 @@
 //   - World-changing tools are rate limited (RATE per game hour).
 // Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
+import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
 import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
@@ -910,6 +911,7 @@ const T={
       weather:weatherName(z),you:{hp:pct(a.hp,maxHp(a))+'%',state:a.state,doing:a.playDoing||null},sight:here?'the whole town':Math.round(sightOf(a))+' tiles',...s};
     const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv;
     const near=LANDMARKS.filter(l=>dist(a,l)<20).map(l=>l.name+' ('+r1(dist(a,l))+' tiles)');if(near.length)r.landmarks=near;
+    {const road=roadLook(a);if(road.length)r.on_the_road=road} // carts, travellers and guards in sight, in words (#796)
     {const f=followLine(a);if(f)r.following=f;const by=followersOf(a);if(by.length)r.walks_with_you=by.map(b=>b.name+' walks with you')} // follow (#445)
     lookSnap(a);return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
@@ -1496,7 +1498,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   const q0=a.pq&&a.pq[0];let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
-  if(meta.act&&r&&r.ok!==false){holdAnswered(a);a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
+  if(meta.act&&r&&r.ok!==false&&r.act!==false){holdAnswered(a);a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
     if((tool==='move_to'||tool==='hunt'||tool==='follow'||tool==='rest')&&a.intent&&!a.intent.done&&!a.intent.order){const c=a.pq&&a.pq[0];attachOrder(a,orderOf(a,c&&c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c,tool==='move_to'?args&&args.target:null))} // a command under an aim with none becomes its order (#535)
     if(tool==='follow'){const f=a.pq[0];a.playOrder={kind:'follow',id:f.id,until:f.until,h:f.h}}else if(a.playOrder&&a.playOrder.kind==='follow'&&(a.pq&&a.pq[0])!==q0)a.playOrder=null} // a new order ends a standing follow (#445) // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}

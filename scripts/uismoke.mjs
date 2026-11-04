@@ -492,6 +492,20 @@ console.log('the DM prepares the table');
   const start=dmf.querySelector('.dmfrun').querySelector('[data-runact=start]');ok(!!start&&/Start DM/.test(start.textContent),'a stopped DM offers Start DM');
   document._ls.pointerdown.forEach(f=>f({button:0,target:start,preventDefault(){},stopPropagation(){}}));await wait();
   ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'),'Start DM goes to the relay');
+  // the DM's picker offers every provider a hero's has (#824), with the same price labels, and a pick reaches the relay
+  {const mp=await import('../src/ui/mindpick.js'),rn=await import('../src/ui/runners.js'),ds=await import('../src/ui/dmseat.js');
+   relay.health={providers:{ollama:{ok:true,models:['q:1b']},openai:{ok:true,models:['gpt-6-luna'],prices:{'gpt-6-luna':{in:.1,out:.5}}},huggingface:{ok:true,models:['meta-llama/Llama-3.3-70B-Instruct']},google:{ok:true,models:['gemini-3.8-flash'],free:true,prices:{'gemini-3.8-flash':{in:0,out:0}}}}};
+   const pf=globalThis.fetch;globalThis.fetch=async(url,o)=>String(url).endsWith('/health')?{ok:true,status:200,json:async()=>relay.health}:pf(url,o);
+   mp.mindChange({dataset:{mprov:'-1'},value:'ollama'});mp.pulledModels();for(let i=0;i<20&&!mp.openaiModels().length;i++)await wait();
+   const pick=rn.runnerPick('dm',...mp.mindLists()).children[0],vals=pick.children.map(o=>o.value),texts=pick.children.map(o=>o.textContent||o.text||'').join(' | ');
+   ok(['ollama:q:1b','openai:gpt-6-luna','huggingface:meta-llama/Llama-3.3-70B-Instruct','google:gemini-3.8-flash','anthropic:claude-haiku-5-5'].every(v=>vals.includes(v)),'the DM picker lists Claude, local, OpenAI, Hugging Face and Gemini: '+vals.join(', '));
+   ok(/\$0\.10 \/ \$0\.50/.test(texts),'with the price labels of a hero\'s picker: '+texts);
+   ok(/another provider|set aside/.test(pick.title)&&/notes/.test(pick.title),'its title says what a switch keeps and what it sets aside');
+   ok(ds.dmSeatSig().includes('gpt-6-luna'),'a list that arrives late rebuilds the seat');
+   document._ls.change.forEach(f=>f({target:{dataset:{runpick:'dm'},value:'openai:gpt-6-luna'}}));
+   posts.length=0;await rn.startRunner('dm');
+   ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'&&p.body.provider==='openai'&&p.body.model==='gpt-6-luna'),'Start DM sends the picked mind');
+   document._ls.change.forEach(f=>f({target:{dataset:{runpick:'dm'},value:''}}));globalThis.fetch=pf}
   const box=$('dmlog'),wb=$('worldbox');box.open=false;wb.open=false;dmf.dispatch('click',{target:dmf.querySelector('.dmfdo')});
   ok(box.open&&wb.open,'a click on the frame opens the Dungeon Master panel');
   box.open=false;dmf.dispatch('click',{target:dmf.querySelector('[data-dmnotes]')});

@@ -6,6 +6,7 @@ import {writeSighting} from './sightings.js';
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {outpostHonor,outpostDest} from './outposts.js';
 import {SPEED} from '../world/tiles.js';
+import {standAt} from '../world/passable.js';
 import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {assignRace,homeOf} from '../data/races.js';
 import {FAC,genName} from '../data/factions.js';
@@ -76,7 +77,7 @@ export function makeHero(f,cls,guild,wait,name){
   assignBackstory(a);
   rollScores(a); // six ability scores and skill training, after the people and trade are known
   a.hp=maxHp(a);
-  const c=homeOf(a);a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
+  const c=homeOf(a);Object.assign(a,standAt(c.x0+2+rnd()*7,c.y0+4+rnd()*3)); // not inside a building (#793)
   S.agents.push(a);
   // Trait reveal for recruits (not the opening roster): "Thrakash is reckless and greedy; Grimhold will remember that."
   if(S.gameMin>0&&rnd()<.3)log(a,' is ',{t:traitPhrase(a),c:'gd'},'; ',c.name,' will remember that.');

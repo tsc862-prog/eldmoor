@@ -561,7 +561,14 @@ console.log('budget stops (fake children, #807)');
   // a world reset forgets them: a new world's DM is not held back by the old world's spend
   await req(C.B, '/play/runner/stop-all', {method: 'POST', body: {}, origin: PAGE}).then(() => {});
   ok(!JSON.parse(readFileSync(C.sup.activeFile, 'utf8')).spent, 'a world reset clears the spent list');
-  C.sup.killAll(); await sleep(20); C.server.close();
+  // the DM's chosen mind (#824): --resume-runners starts it on the same provider and model, any provider
+  kids[kids.length - 1].emit('exit', 0); await sleep(10); // the DM the owner started above leaves
+  s = await req(C.B, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'huggingface', model: 'meta-llama/Llama-3.3-70B-Instruct', budget: 2, by: 'setup'}, origin: PAGE});
+  ok(s.status === 200, 'a DM on a Hugging Face model starts' + (s.status === 200 ? '' : ': ' + s.error));
+  await C.sup.shutdown(300); C.server.close(); const n4 = kids.length, D = await host(), r4 = await D.sup.resume({waitMs: 2000, pollMs: 20, settleMs: 10, heroWaitMs: 50});
+  const a4 = (kids.slice(n4).find(k => /dm-agent/.test(k.args.join(' '))) || {args: []}).args.join(' ');
+  ok(r4.resumed.includes('dm') && /--provider huggingface/.test(a4) && /--model meta-llama\/Llama-3\.3-70B-Instruct/.test(a4) && /--budget 2/.test(a4), 'resume starts it with the provider, model and budget chosen: ' + a4);
+  D.sup.killAll(); await sleep(20); D.server.close();
 }
 
 // ---------------------------------------------------------------- 3. end to end

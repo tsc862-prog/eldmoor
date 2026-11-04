@@ -11,3 +11,4 @@
 - [World events hooks](project_world_events_hooks.md) — #10: per-faction event hooks, facStats outcomes, DM log entry, 3-day cooldown
 - [Crypt lethality](project_crypt_lethality.md) — #269 room hit x2.25, 0.6 Fellowship Crypt deaths/run, sweep numbers
 - [Passability layer](project_passability.md) — #792 passable.js, forest mask 5x5, slice 2/3 seams, camp hash move
+- [Town plans](project_town_plans.md) — #793 buildings as data, doors, spots at doors, standAt, hash move reason

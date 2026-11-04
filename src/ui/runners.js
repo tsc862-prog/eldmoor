@@ -20,6 +20,7 @@
 // When the relay runs without --runners the controls say how to turn it on; the world never waits on any of this.
 import {bridgeUrl} from './player-bridge.js';
 import {priceLabel} from './pricelabel.js';
+import {PROVIDERS} from '../data/providers.js';
 import {S,playerSeats} from '../sim/index.js';
 import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
@@ -107,8 +108,8 @@ async function send(path,body){
   try{const r=await fetch(base()+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));
     return r.ok?{ok:true,runner:j.runner,applies:j.applies,session:j.session,asked:j.asked}:{ok:false,error:j.how||j.error||('HTTP '+r.status)}}
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
-// pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
-const pickBody=(k,lk=k)=>{const p=picks[k]||'',L=limitOf(lk),t={...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:p.startsWith('huggingface:')?{provider:'huggingface',model:p.slice(12)}:p.startsWith('google:')?{provider:'google',model:p.slice(7)}:{}),...t}};
+// pick: '' (the seat's saved mind), 'anthropic', or '<provider>:<model>' for any provider of the one list (#824)
+const pickBody=(k,lk=k)=>{const p=picks[k]||'',L=limitOf(lk),t={...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};const i=p.indexOf(':'),pr=i<0?p:p.slice(0,i),m=i<0?'':p.slice(i+1);return {...(PROVIDERS.includes(pr)?{provider:pr,...(m?{model:m}:{})}:{}),...t}};
 // kind 'company' (#460): `hero` is the company's id and the runner's key is 'company:<id>'
 const keyOf=(kind,hero)=>kind==='hero'?'hero:'+hero:kind==='company'?'company:'+hero:kind;
 // Fresh sessions for all (#787): every live runner sets its conversations aside at its next safe moment, never in a scene.
@@ -208,7 +209,8 @@ export function dmRunnerControl(){poll(true);const d=el('span','runctl');const r
 export const dmRunnerSig=()=>{poll(true);const r=runnerByKey('dm');return (r?r.state+':'+r.turns+':'+(r.model||'')+':'+(r.error||'')+(r.budgetSpent?':spent':''):'-')+':'+(note.dm||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks.dm||'')};
 
 // The mind a runner starts with. models: pulled local models (from the relay's /health), may be empty.
-export function runnerPick(k,models,openai,hf,gm){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude). Hugging Face models share the free allowance with the art pipeline.';
+export const DM_PICK_TITLE='The mind the DM starts with (saved: what the DM used last, else Claude). Stop DM, pick another and Start DM to switch: the notes, plans and DM log stay with the world; on another provider the old conversation is set aside in logs/agents/old/ and the DM reads its notes again. Hugging Face models share the free allowance with the art pipeline.';
+export function runnerPick(k,models,openai,hf,gm){const s=el('select','msel');s.dataset.runpick=k;s.title=k==='dm'?DM_PICK_TITLE:'The mind the runner starts with (saved: what this hero used last, else Claude). Hugging Face models share the free allowance with the art pipeline.';
   // Claude by model (the owner pays per model): Haiku is also what a runner started here plays when nothing is saved
   const opts=[['','saved mind (new: Claude Haiku)'],['anthropic:claude-haiku-5-5','Claude Haiku'],['anthropic:claude-sonnet-5-5','Claude Sonnet']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai'+(openai&&openai.prices?priceLabel(openai,m):'')])).concat((hf||[]).map(m=>['huggingface:'+m,m+' · huggingface'])).concat((gm||[]).map(m=>['google:'+m,m+' · google'+(gm&&gm.prices?priceLabel(gm,m):'')]));
   if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai|huggingface|google|anthropic):/,'')+(picks[k].startsWith('openai:')?' · openai':picks[k].startsWith('huggingface:')?' · huggingface':picks[k].startsWith('google:')?' · google':picks[k].startsWith('anthropic')?'':' · local')]);
