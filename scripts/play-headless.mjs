@@ -12,6 +12,7 @@
 //                                                  set to agents: all five are agent-played (npm run fellowship);
 //                                                  --no-relay keeps the world off the brain relay, --turn-ms MS the table
 //                                                  turn budget, --watch never pauses for scenes
+//   node scripts/play-headless.mjs --others none   a world with no background heroes (#780): the default company alone
 //   node scripts/play-headless.mjs --dm            open the DM seat (issue #66) for npm run dm -- --url http://127.0.0.1:8789
 //                                                  (with --agents 0 no hero is agent-played: only the DM agent plays)
 //   node scripts/play-headless.mjs --runners       runners can be started and stopped over HTTP (scripts/runners.mjs)
@@ -86,7 +87,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     restore(snap);
     console.log(`[play] resumed ${worldFile} at day ${Math.floor(S.gameMin / 1440) + 1}`);
   } else {
-    const fs = flag('fellowship') || opt('fellowship', null); init(fs ? {fac: Number(opt('fac', 0)) === 1 ? 1 : 0} : {fellowship: false}); const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
+    const fs = flag('fellowship') || opt('fellowship', null); const others = opt('others', null), none = (others || process.env.ELDMOOR_OTHERS) === 'none'; init(fs || none ? {fac: Number(opt('fac', 0)) === 1 ? 1 : 0, ...(others ? {others} : {})} : {fellowship: false}); // --others none (#780): the company alone, whoever the DM brings const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
   }
   // Heroes to play: named ones, else --agents N alternating the factions (Concord first).
   // The Fellowship (#68): found one with every member agent-played, unless the save already has one.

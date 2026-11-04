@@ -3,7 +3,7 @@
 import {GOODS,MATERIALS,USES,INV,price} from '../data/items.js';
 import {RECIPES} from '../data/recipes.js';
 import {hasProfession} from './professions.js';
-import {S} from './state.js';
+import {S,noOthers} from './state.js';
 import {SELL_VALUE} from './gear.js';
 import {invOf,isGear,room,used,capOf,count,addGood,addUse,addGear,countKind,useItem} from './inv.js';
 import {record} from './history.js';
@@ -11,9 +11,14 @@ import {record} from './history.js';
 // Gathered materials (#257) sell here too; their supply decays the same way but never below MAT_FLOOR, the stock the
 // table starts with, so a material nobody gathers keeps its listed price (no RNG either way).
 const MAT_FLOOR=6;
+// A world with no others (#780): no background hero sells, so supply would decay to nothing and every good read as sold out at
+// its dearest. It stops at the stock where price() gives the table's base; a price_shock in force still moves its good.
+const GOOD_FLOOR=.5/.035;
+function floorGoods(){const held=(S.levers&&S.levers.active||[]).filter(x=>x.name==='price_shock').map(x=>x.params.good);
+  for(const n in GOODS)if(GOODS[n].supply<GOOD_FLOOR&&!held.includes(n))GOODS[n].supply=GOOD_FLOOR}
 const listeners=[];
 export function onMarketTick(f){listeners.push(f)}
-export function updMarket(dt){for(const n in GOODS)GOODS[n].supply*=1-.025*dt;for(const n in MATERIALS)MATERIALS[n].supply=Math.max(MAT_FLOOR,MATERIALS[n].supply*(1-.025*dt));S.mktT-=dt;
+export function updMarket(dt){for(const n in GOODS)GOODS[n].supply*=1-.025*dt;for(const n in MATERIALS)MATERIALS[n].supply=Math.max(MAT_FLOOR,MATERIALS[n].supply*(1-.025*dt));if(noOthers())floorGoods();S.mktT-=dt;
   if(S.mktT<=0){S.mktT=12;tradeTick();for(const f of listeners)f();for(const n in GOODS)GOODS[n].prev=price(n);for(const n in MATERIALS)MATERIALS[n].prev=price(n)}}
 
 // ---- hero-to-hero trades (#14) ----
