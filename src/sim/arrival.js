@@ -29,7 +29,7 @@
 // State (plain data, saved with the world):
 //   S.opening  {queue:[{company, kind:'new'|'heir', fallen?, cause?, hold?:{since, away:[id], where}}]}  openings still to play; gone once all have
 //   C.arrivals [{slot?, cls, fallen, name, lvl, since}]                   recruits waiting for the next camp or town
-import {S,clockStr,dayNo} from './state.js';
+import {S,clockStr,dayNo,noOthers} from './state.js';
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
@@ -165,10 +165,11 @@ function queueArrival(C,q){if(!q.cls)return false;reserve(C.fac,q.cls);(C.arriva
   for(const b of memOf(C))if(b.player)notify(b,'Word goes back to '+townOf(C)+': '+q.name+'\'s place will be filled. The newcomer will meet you at your next camp or in town.',false);return true}
 setArrivalHook((F,q)=>hosted()?queueArrival(F,q):false);
 // Any other company: an agent member's seat is refilled the same way; a solo's heir starts at home (owner answer 2).
-setCompanyDeathHook((C,a)=>{if(!hosted()||!a||!a.player)return;
+// In a world with no others (#780) no recruit comes behind them: the last of a company always leaves an heir, host or no host.
+setCompanyDeathHook((C,a)=>{const none=noOthers();if(!(hosted()||none)||!a||!a.player)return;
   const rest=C.ids.map(byId).filter(x=>living(x)&&x!==a);
-  if(rest.length){queueArrival(C,{cls:a.cls,fallen:a.id,name:a.name,lvl:a.lvl});return}
-  if(!LIVE[runnerLink(a)])return; // a solo nobody was playing leaves no heir behind (its replacement is the world's usual recruit)
+  if(rest.length){if(hosted())queueArrival(C,{cls:a.cls,fallen:a.id,name:a.name,lvl:a.lvl});return}
+  if(!none&&!LIVE[runnerLink(a)])return; // a solo nobody was playing leaves no heir behind (its replacement is the world's usual recruit)
   reserve(a.fac,a.cls);const h=makeHero(a.fac,a.cls,null,1);h.succeeds=a.id;markPlayer(h,true);const N=soloFor(h);
   if(N&&C.letters){N.letters={};for(const k in C.letters){const l=C.letters[k];if(l&&l.from===a.id)N.letters[k]={...l}}}
   if(N)(S.opening||(S.opening={queue:[]})).queue.push({company:N.id,kind:'heir',fallen:a.name,cause:a.cause||null,since:Math.round(S.gameMin)})});
@@ -282,7 +283,7 @@ export function sessionTick(){const O=S.opening,CS=S.companies;
   if(O&&O.queue&&O.queue.length){if(prepActive())return;const i=O.queue.findIndex(q=>heirReady(q)&&!sceneFor(companyById(q.company))&&gathered(q));
     if(i>=0){const q=O.queue.splice(i,1)[0];if(!O.queue.length)delete S.opening;openOpening(q);return}}
   for(const C of companies()){if(!C.arrivals||!C.arrivals.length||sceneFor(C))continue; // each company its own table (#518)
-    const where=settled(C)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!(CRYPT.group&&CRYPT.group.mem.some(a=>memOf(C).includes(a)))?'town':false);if(!where)continue;
+    const where=settled(C)||(noOthers()&&!memOf(C).length?'town':false)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!(CRYPT.group&&CRYPT.group.mem.some(a=>memOf(C).includes(a)))?'town':false);if(!where)continue;
     const q=C.arrivals.shift();if(!C.arrivals.length)delete C.arrivals;openArrival(C,q,where);return}}
 // The panels: what waits.
 export function arrivalsView(C){return (C&&C.arrivals||[]).map(q=>({cls:q.cls,fallen:q.name,since:q.since}))}

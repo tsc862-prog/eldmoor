@@ -27,6 +27,7 @@ import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {installRumourLever} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever} from './epithet.js'; // bestow (#638)
+import {installSummonLever} from './summon.js'; // summon_hero (#780)
 import {localsTick,resetLocals} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
@@ -59,7 +60,7 @@ import {iqTick} from './interrogate.js'; // a yielded foe questioned at the tabl
 import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
-import {opening} from './opening.js';
+import {opening,othersStart} from './opening.js';
 import {resetMats} from './gather.js'; // gathered materials at the auction house (#257)
 import {questTick} from './questlog.js'; // several quests per hero
 import {held} from './scenes.js'; // the engaged of a live-clock Table scene stay put (#518)
@@ -76,8 +77,8 @@ export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} fr
 export {foundSlots,autoPick,disbandSlots,slotMembers,slotHeroes,setSlotMinds,slotted} from './company.js'; // the five places (#588)
 export {TABLE,bannerOf,decisionsWaiting} from './table.js';
 export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} from './runlink.js'; // the Fellowship's decisions wait for its runners (#148)
-export {fellowshipStart,START_BANDS} from './opening.js';
-export {defaultSetup,validateSetup,cleanSetup,applyPreset,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,resolveArchetype,slotsView,asV2,MODES,SHAPE_PRESETS,MIND_PRESETS,SEATS,seatCap,seatNote} from './setup.js'; // New World setup (#133; v2 #453)
+export {fellowshipStart,othersStart,START_BANDS} from './opening.js';
+export {defaultSetup,validateSetup,cleanSetup,applyPreset,OTHERS,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,resolveArchetype,slotsView,asV2,MODES,SHAPE_PRESETS,MIND_PRESETS,SEATS,seatCap,seatNote} from './setup.js'; // New World setup (#133; v2 #453)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
 export {setDmAlive,gone as dmGone,dmAlive} from './dmreflex.js'; // the DM's reflexes: the host's word on its runner (#561)
 import {ensureCampaign,dreamTick} from './dmagent.js';
@@ -87,7 +88,7 @@ export {planOpening,openingDue,openingPending,openingWait,arrivalsView,ARRIVE} f
 export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost,setGateHold,worldHeld,holdLine} from './prep.js'; // the DM's prep before the table opens (#437)
 
 setFallHook(executeWill); // a will executes on the final death (#631)
-installRumourLever();installBestowLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
+installRumourLever();installBestowLever();installSummonLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
@@ -104,9 +105,11 @@ export function init(o={}){resetWorld();
   resetMats(); // a new world's auction house opens with the materials table's stock
   const seeded=!!(o.setup&&o.setup.seed!=null);
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
+  const none=othersStart(o)==='none';if(none)S.setup={others:'none'}; // no background heroes (#780): the opening makes only the setup's
   spawnAll();
-  for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5);
+  if(!none)for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5);
   try{opening(o)}finally{if(seeded)seedRng(null)}
+  if(none)S.setup={...S.setup,others:'none'}; // the opening writes its own record of the setup
   if(o.setup)planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
   log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
