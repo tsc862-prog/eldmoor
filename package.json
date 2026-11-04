@@ -59,6 +59,7 @@
     "paymarkcheck": "node scripts/paymarkcheck.mjs",
     "wishcheck": "node scripts/wishcheck.mjs",
     "hirecheck": "node scripts/hirecheck.mjs",
+    "compvoicecheck": "node scripts/compvoicecheck.mjs",
     "challengecheck": "node scripts/challengecheck.mjs",
     "attemptcheck": "node scripts/attemptcheck.mjs",
     "voicecheck": "node scripts/voicecheck.mjs",
@@ -88,6 +89,7 @@
     "art:accept": "node scripts/art/accept.mjs",
     "art:sheet": "node scripts/art/sheet.mjs",
     "art:reprocess": "node scripts/art/reprocess.mjs",
+    "art:preview": "node scripts/art/preview.mjs",
     "art:space": "node scripts/art/space-push.mjs"
   },
   "devDependencies": {

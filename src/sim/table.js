@@ -37,6 +37,11 @@
 // Parley and conditions (#296, sim/tableround.js): a member may talk an intelligent foe down once a fight (parley: hold,
 // flee or yield, a dice line); stunned, rooted, poisoned and warded are checked in the round (a stun on its holder's turn,
 // a root or poison at the round's end, each a save) and all of them end with the scene.
+// Downed (#654, epic #626): a member at zero HP in a combat scene stays in it, downed; on its turn it rolls a death save
+// (sim/downed.js tableSave) instead of acting, in initiative order. Companions may heal, give a potion or stabilize as their
+// act; a foe strikes the downed only when nobody else stands (or when it finishes, bestiary beh.finishes). While anyone at the
+// table still bleeds the scene goes on, past the foe's fall and past TR.ROUNDS, up to TABLE.DOWN_ROUNDS. A downing in the
+// world with an agent involved (the downed one, or a member in shouting range) opens a rescue scene (due, ctx.down).
 // Scene state is plain data on S.table / S.tables (ids only), so a save taken mid-scene resumes it.
 // Companies (#440, epic #402): every scene belongs to a company (sc.company; a scene saved before it belongs to the
 // Fellowship) and its roster is that company's members. tableTick looks at the companies in id order; a moment that
@@ -78,6 +83,7 @@ import {TR,foeSlot,foeTurn,memberStrike,flushRolls,foeName,roundEnd,stunCheck,ca
 import {condOn,condsOf,clearRounds} from './eff.js';
 import {CONDITIONS} from '../data/moves.js';
 import {socialSkill,trained} from './abilities.js';
+import {DOWN,isDown,tableSave,stabilizeAt,upAgain,reviveBonus,bleedingOf,stabText} from './downed.js'; // the downed at the table (#654)
 import {PICKUP_MS,callDeadline,goneEpoch} from './dmreflex.js'; // the DM call budget counts from pickup (#680)
 
 export const TABLE={
@@ -102,6 +108,7 @@ export const TABLE={
   queueMin:30,     // game minutes a company's queued moment (#440) may wait for the table before it is dropped as stale
   LINE_MAX:600,    // characters of a member's line at the table (#571: an introduction or a story needs room); a longer one is refused, never cut
   SAME:.8,SAME_MIN:6, // a line this alike (shared words, names left out) to another member's line in the scene is refused, from SAME_MIN words up (#571)
+  DOWN_ROUNDS:8,   // rounds a combat scene may run while a member still bleeds (#654): the rescue goes on past TR.ROUNDS
 };
 // A company of one has no one to put a vote to (#440; council.js refuses the proposal itself).
 export const SOLO_VOTE='You ride alone: decide and act (take_adventure; lead_to is move_to for you).';
@@ -126,7 +133,9 @@ const dmOf=sc=>sc&&EXTRA[sc.kind]&&EXTRA[sc.kind].dm?EXTRA[sc.kind].dm:staged(sc
 // A kind may bring more (#571, the fireside): next(sc) -> true to play another round (acts cleared, the same order); liveMs, the
 // real wait for a live agent instead of TABLE.liveMs (a member that ran it out once is not waited for again in that scene);
 // lineMax, the length of a member's line; view(sc, a), more fields for tableView; everyBeat, its DM's onBeat call in every
-// round, not only the first (#431: an interrogation's suspect answers each question).
+// round, not only the first (#431: an interrogation's suspect answers each question). move(sc, a, text) reads scene_act's move
+// ({x, y, word} or {error}, nothing changed yet) and place(sc, a, plan) makes it; spotOf(sc, a) names where a member stands, for
+// so_far (#744: sim/crawl.js; a kind without them has no moving, and scene_act says so).
 const kindOf=sc=>sc&&EXTRA[sc.kind]||null;
 const liveOf=sc=>{const K=kindOf(sc);return K&&K.liveMs||TABLE.liveMs};
 const moreOf=sc=>{const K=kindOf(sc);return !!(K&&K.next)};
@@ -154,6 +163,8 @@ const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
 const byId=id=>S.agents.find(x=>x.id==id)||null;
 const living=a=>a&&a.kind==='hero'&&a.state!=='dead';
 const pct=a=>Math.round(a.hp/maxHp(a)*100);
+const hpOf=a=>isDown(a)?'down':pct(a)+'%'; // a downed member reads 'down', not 0%
+const healerCls=b=>!!(b&&CLS[b.cls]&&CLS[b.cls].heal);
 const mobName=m=>m.kind==='boss'?m.name:m.elite||m.named?m.name:MOBS[m.type]?MOBS[m.type].name:'the foe';
 const plain=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join('');
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
@@ -228,18 +239,27 @@ function sceneFoes(sc){const c=sc.ctx||{},L=[];if(sc.kind==='boss'&&S.boss)L.pus
   if(c.foe!=null){const b=byId(c.foe);if(b)L.push(b)}return L}
 function inFight(sc,a){const f=foeOf(sc);return !!f&&living(a)&&!a.hidden&&!(sc.out||[]).includes(a.id)&&dist(a,f)<=TR.REACH&&(f.kind!=='boss'||a.state==='raid')}
 const fighters=sc=>sc.ids.map(byId).filter(a=>inFight(sc,a));
-const fightOver=sc=>!!sc.end||!foeOf(sc)||!fighters(sc).length;
+// The downed at the table (#654): those lying in it, those still bleeding, and those standing to help.
+const downIn=sc=>sc.ids.map(byId).filter(isDown);
+const bleedIn=sc=>downIn(sc).filter(b=>!b.down.stable);
+const bleeding=sc=>rounds(sc)&&bleedIn(sc).length>0;
+const upIn=sc=>sc.ids.map(byId).filter(b=>living(b)&&!isDown(b)&&!(sc.out||[]).includes(b.id)&&(!b.hidden||sc.kind==='crawl'));
+// In the fight, or (while someone bleeds) near enough to the bleeding to help; the downed are in it for their saves.
+function inPlay(sc,a){if(inFight(sc,a))return true;if(!bleeding(sc)||!living(a)||(sc.out||[]).includes(a.id))return false;
+  return isDown(a)||bleedIn(sc).some(d=>dist(a,d)<=DOWN.REACH)}
+const fightOver=sc=>(!!sc.end||!foeOf(sc)||!fighters(sc).length)&&!bleeding(sc);
+const roundCap=sc=>bleeding(sc)?TABLE.DOWN_ROUNDS:TR.ROUNDS;
 const foeDue=sc=>rounds(sc)&&!sc.fd&&sc.i>=sc.foeAt;
 function foeAct(sc){for(const b of foeTurn(sc,foesOf(sc),fighters(sc))){b.rd=sc.rd;sc.beats.push(b)}}
 // The round is done: start the next one while the fight goes on (its rolls go to the DM log with the outcome). True = a new round.
-function nextRound(sc){if(fightOver(sc)||sc.rd>=TR.ROUNDS)return false;delete sc.sh;
-  for(const b of roundEnd(sc,sc.ids.map(byId).filter(a=>living(a)&&!(sc.out||[]).includes(a.id)),foesOf(sc))){b.rd=sc.rd;sc.beats.push(b)} // poison bites, roots and poisons are saved against (#296)
+function nextRound(sc){if(fightOver(sc)||sc.rd>=roundCap(sc))return false;delete sc.sh;
+  for(const b of roundEnd(sc,sc.ids.map(byId).filter(a=>living(a)&&!isDown(a)&&!(sc.out||[]).includes(a.id)),foesOf(sc))){b.rd=sc.rd;sc.beats.push(b)} // poison bites, roots and poisons are saved against (#296)
   if(fightOver(sc))return false;
   for(const a of scMem(sc))tickRound(a);for(const f of foesOf(sc))tickRound(f); // a round has passed: ability cooldowns and round-long effects run down
   sc.rd++;sc.acts={};sc.i=0;sc.fd=0;startTurn(sc);return true}
 // Step mode (#285): a round is done and another will follow; hold the paused scene for the watcher (TABLE.step).
 // sc.sh = {rd, t, go}: the round it holds after, real seconds held, released. True = hold this step.
-const moreRounds=sc=>rounds(sc)&&!fightOver(sc)&&sc.rd<TR.ROUNDS;
+const moreRounds=sc=>rounds(sc)&&!fightOver(sc)&&sc.rd<roundCap(sc);
 function stepHold(sc,dt){if(TABLE.step==='off'||!stopsWorld(sc)||TABLE.speed>1||!moreRounds(sc))return false;
   const h=sc.sh&&sc.sh.rd===sc.rd?sc.sh:(sc.sh={rd:sc.rd,t:0,go:0});if(h.go)return false;
   h.t+=dt;if(TABLE.step==='auto'&&h.t>=TABLE.stepS){h.go=1;return false}return true}
@@ -248,13 +268,14 @@ const holding=sc=>!!(sc&&sc.sh&&!sc.sh.go&&sc.sh.rd===sc.rd&&sc.phase==='turn'&&
 export function stepNext(){const sc=S.table;if(!holding(sc))return false;sc.sh.go=1;return true}
 // The order as names, the foe at its place (agents' notices and tableView).
 const orderNames=sc=>{const L=sc.ids.map(byId).filter(Boolean).map(a=>a.name),f=foeOf(sc);if(rounds(sc)&&f)L.splice(Math.min(sc.foeAt,L.length),0,foeName(f)+' (foe)');return L};
-export function optionsFor(sc,a){const o0=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels,o=L?o0.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o0;
+export function optionsFor(sc,a){if(isDown(a))return [];const o0=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels,o=L?o0.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o0;
   if(ATT&&a&&a.player&&sc&&sc.kind!=='decision'&&!(EXTRA[sc.kind]&&EXTRA[sc.kind].noAttempt)&&o.length)o.push({k:'attempt',text:ATT.label});return o} // the DM's own labels for a staged scene's actions
 function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])return EXTRA[k].options(sc,a);
   if(COMBAT[k]){const f=foeOf(sc),fn=f?(f.kind==='hero'?f.name:mobName(f)):'the foe',lo=lowest(sc),o=[{k:'strike',text:'Strike '+fn}];
     if(f&&f.kind!=='boss')o.push({k:'guard',text:'Draw '+fn+' onto yourself'});
-    if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
-    const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
+    if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+hpOf(lo)+')'});
+    const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+hpOf(lo)+')'});
+    {const bt=bleedingOf(downIn(sc),a);if(bt)o.push({k:'stabilize',text:stabText(a,bt)})} // a companion lies bleeding (#654)
     for(const id of movesOf(a))if(ready(a,id,'round')){const M=MOVES[id];if(M.target==='foe'&&!f)continue;if(M.target==='ally'&&!lo)continue;
       o.push({k:id,text:'Ability, '+M.name+' ('+M.kind+', cooldown '+M.rounds+' rounds): '+M.desc})} // class abilities (data/moves.js); ready ones only
     o.push(...useOptions(sc,a,lo)); // a potion or scroll from the pack as the round's act (#360): 'use:<item>'
@@ -270,6 +291,7 @@ function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])retu
 export function reflexFor(sc,a){if(EXTRA[sc.kind])return EXTRA[sc.kind].reflex(sc,a);const k=sc.kind,mh=maxHp(a),hurt=a.hp<mh*.2,lo=lowest(sc),mem=scMem(sc),healer=CLS[a.cls]&&CLS[a.cls].heal;
   if(COMBAT[k]){const f=foeOf(sc),talk=rounds(sc)&&canParley(f)&&!(sc.pl||[]).includes(a.id),rooted=rounds(sc)&&condOn(a,'root');
     const low=lo&&lo.hp<maxHp(lo)*.35,hm=healer&&low?tableHealMove(a,mem):null;if(hm)return hm;if(low&&bestUse(a,'potion'))return 'potion'; // badly hurt: a healer's class move first, then a potion, then the plain heal below (#387)
+    if(!healer&&bleedingOf(downIn(sc),a)&&!upIn(sc).some(b=>b!==a&&healerCls(b)))return 'stabilize'; // a companion bleeds and no healer stands: bind them (#654)
     if(hurt&&!(healer&&lo===a)&&!rooted)return 'retreat';if(hurt&&rooted&&talk)return 'parley';if(healer&&lo&&lo.hp<maxHp(lo)*.6)return tableHealMove(a,mem)||'heal'; // the class heal move when it is ready and fits (#347), else the plain heal
     if(talk&&f.hp<(f.kind==='hero'?maxHp(f):f.maxhp)*.35&&trained(a,socialSkill(a)))return 'parley'; // a trained tongue offers a beaten foe its life (#296)
     if(f){const mv=pickMove(a,f,mem,true,'round');if(mv)return mv.id} // the scripted ability policy, in rounds (sim/moves.js)
@@ -300,7 +322,7 @@ export function scaleElite(F,L,ctx){const m=ctx&&ctx.mob!=null?S.mobs.find(x=>x.
 function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||sceneFor(F))return null;const all=PLAY[kind]==='all';
   if(kind==='decision'&&voteRefusal(F))return null; // a solo has no one to vote with (#440)
   if(!atTable(F))return null; // no agent of this company has the say: it plays on by reflex (#440)
-  const L=(ctx.ids?ctx.ids.map(byId).filter(living):all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||dunMem(ctx).includes(a))).filter(a=>!(ctx.skip||[]).includes(a.id)); // ctx.ids: a kind that names its own actors (the honour duel's two, #633, sim/challenge.js) // skip: the newcomer of an arrival (#452), voiced by the DM
+  const L=(ctx.ids?ctx.ids.map(byId).filter(living):all?present(kind,ctx,F):memOf(F).filter(a=>!(kind==='site'||kind==='room'||kind==='crawl')||dunMem(ctx).includes(a))).filter(a=>!(ctx.skip||[]).includes(a.id)&&!(all&&isDown(a))); // ctx.ids: a kind that names its own actors (the honour duel's two, #633, sim/challenge.js) // skip: the newcomer of an arrival (#452), voiced by the DM // the downed answer no vote (#654)
   if(!L.length)return null;
   const sc={id:F.tableSeq=(F.tableSeq||0)+1,company:F.id,kind,title:clean(title,80),frame,ids:(all?L:initiative(L)).map(a=>a.id),i:0,phase:'frame',t:0,acts:{},beats:[],ctx,pause:holdOk(L),at:Math.round(S.gameMin),...(all?{all:true,w:{}}:{})};
   if(kind==='elite')scaleElite(F,L,ctx);
@@ -331,7 +353,8 @@ function wakeStep(sc,dt){const W=sc.wk;if(!W||W.done||sc.phase!=='turn'||framing
   if(!left){W.done=1;if(!all)startTurn(sc)}}
 
 // An agent's answer (scene_act), before or during its turn. Returns an error string or the act.
-export function sceneAct(a,opt,line){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
+export function sceneAct(a,opt,line,move){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
+  if(isDown(a))return 'You are down and bleeding: you cannot act. Your death save is rolled on your turn.'; // #654
   if(sc.phase==='outcome'||sc.phase==='done')return 'The scene is over.';
   if(together(sc)&&sc.resolved)return 'The table has already answered.';
   if(heldBack(sc,a))return FRAMING; // the DM sets the scene first (#682)
@@ -341,14 +364,17 @@ export function sceneAct(a,opt,line){const sc=sceneOf(a);if(!sc||!sc.ids.include
   const o=key==='use'?optionsFor(sc,a).find(x=>x.k.startsWith('use:')):optionsFor(sc,a).find(x=>x.k===key);if(!o)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.'; // a bare 'use': the first item offered
   const said=clean(line,1e4);if(said.length>TABLE.LINE_MAX)return 'Too long: keep your line under '+TABLE.LINE_MAX+' characters (yours has '+said.length+').';
   if(said&&sameLine(sc,a,said))return 'Someone already said that at this table; say it your own way, about yourself.';
+  const K=kindOf(sc),mv=K&&K.move&&String(move==null?'':move).trim()?K.move(sc,a,String(move)):null;if(mv&&mv.error)return mv.error; // a refused move leaves the act unsaid (#744)
+  const moved=()=>{if(!mv)return {};K.place(sc,a,mv);return {moved:mv.word}}; // it lands now, the formation building as answers come in
   if(o.k==='attempt'){if(!ATT)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.';const rid=ATT.start(sc,a,said);if(typeof rid==='string')return rid;
-    sc.acts[a.id]={k:'attempt',line:said,by:'agent',rid};return sc.acts[a.id]} // the DM rules on it before the member's turn plays (#522)
-  sc.acts[a.id]={k:o.k,line:said,by:'agent'};return sc.acts[a.id]}
+    sc.acts[a.id]={k:'attempt',line:said,by:'agent',rid,...moved()};return sc.acts[a.id]} // the DM rules on it before the member's turn plays (#522)
+  sc.acts[a.id]={k:o.k,line:said,by:'agent',...moved()};return sc.acts[a.id]}
 
 // ---- turns ----
 function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc,use=sc.ru;delete sc.rr;delete sc.rc;delete sc.ru; // a strike's roll as data (#285), a parley's check (#296)
   const F=sceneCompany(sc);if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
-  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{})}); // an item used (#360): {item, on, ok, effect, healed?}
+  const spot=kindOf(sc)&&kindOf(sc).spotOf?kindOf(sc).spotOf(sc,a):null; // where they stand as they act (#744)
+  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(spot?{spot}:{}),...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{})}); // an item used (#360): {item, on, ok, effect, healed?}
   const first=!(sc.rd>1);sc.beats[sc.beats.length-1].rd=sc.rd||1;
   {const H=dmOf(sc),K=kindOf(sc);if(H&&H.onBeat&&!together(sc)&&(first||(K&&K.everyBeat)))H.onBeat(sc,sc.beats[sc.beats.length-1])} // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
   if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
@@ -378,7 +404,8 @@ function apply(sc,a,act){if(act.k==='attempt')return ATT?ATT.apply(sc,a,act):'no
     {const h=f.hp;strike(a,f);return 'hit for '+Math.max(0,Math.round(h-f.hp))}
   case 'guard':if(!f)return 'nothing to guard against';if(f.kind==='mob'){f.target=a;if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}return 'drew it on'}
     if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&a.fac!==f.fac){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
-  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
+  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
+  case 'stabilize':{const t=bleedingOf(downIn(sc),a);if(!t)return 'nobody is bleeding';return stabilizeAt(a,t).text} // #654
   case 'potion':{const lo=lowest(sc),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});useNote(sc,a,id,lo,r);return r.ok?'+'+r.healed+' to '+lo.name+' ('+id+')':r.error}
   case 'parley':if(!rounds(sc)||!canParley(f))return 'no one there will listen';return parley(sc,a,foesOf(sc),fighters(sc)); // a say-check against the foe's temper (#296)
   case 'retreat':if(rounds(sc)&&condOn(a,'root'))return 'rooted: cannot fall back';if(rounds(sc))(sc.out||(sc.out=[])).push(a.id);if(a.raid){a.raid=false}if(f&&f.target===a)f.target=null;if(a.state==='duel'&&f&&f.target===a&&f.kind==='hero'){f.state='hunt';f.target=null}
@@ -391,7 +418,7 @@ function apply(sc,a,act){if(act.k==='attempt')return ATT?ATT.apply(sc,a,act):'no
   case 'a':case 'b':case 'yes':case 'no':if(sc.kind==='decision')castVote(a,sc.ctx.prop,k,act.line||'',act.by);return null;
   }}
 
-function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;sc.nudge=0;if(!a||!a.player||sc.acts[a.id]||sc.wk&&!sc.wk.done)return; // not before the DM has set the scene (#682)
+function startTurn(sc){const a=byId(sc.ids[sc.i]);sc.t=0;sc.nudge=0;if(!a||!a.player||sc.acts[a.id]||isDown(a)||sc.wk&&!sc.wk.done)return; // not before the DM has set the scene (#682); the downed roll a save, no turn (#654)
   if(rounds(sc)&&(foeDue(sc)||fightOver(sc)||(sc.rd>1&&!inFight(sc,a))||condOn(a,'stun')))return; // the foe goes first, or the fight is over, or this member is out of it or stunned (its save comes first, #296)
   notify(a,'YOUR TURN at the table ('+sc.title+(rounds(sc)?', round '+sc.rd:'')+'): '+optionsFor(sc,a).map(o=>o.k+' = '+o.text).join('; ')+'. scene_act(option, line); the table waits for you.',3)}
 // Advance the turn pointer as far as it can go this step. Returns true while an agent is thinking.
@@ -402,7 +429,8 @@ function runTurns(sc,dt,instant){
     if(sc.i>=sc.ids.length){if(R&&!instant&&stepHold(sc,dt))return true;if(R&&nextRound(sc)){dt=0;continue} // the watcher's step mode (#285)
       if(!R&&moreOf(sc)&&kindOf(sc).next(sc)){sc.acts={};sc.i=0;startTurn(sc);dt=0;continue}break} // another round of a kind that plays several (#571)
     const a=byId(sc.ids[sc.i]);
-    if(!living(a)||(COMBAT[sc.kind]&&(R?fightOver(sc)||(sc.out||[]).includes(a.id)||(sc.rd>1&&!inFight(sc,a)):!foeOf(sc)))){sc.i++;startTurn(sc);continue}
+    if(!living(a)||(COMBAT[sc.kind]&&(R?fightOver(sc)||(sc.out||[]).includes(a.id)||((sc.rd>1||(sc.ctx&&sc.ctx.down))&&!inPlay(sc,a)):!foeOf(sc)))){sc.i++;startTurn(sc);continue}
+    if(isDown(a)){if(!sc.acts[a.id]){sc.acts[a.id]={k:'save',line:'',by:'down'};const b=saveBeat(sc,a);if(b)sc.beats.push(b)}sc.i++;startTurn(sc);dt=0;continue} // a death save on its turn (#654)
     if(R&&condOn(a,'stun')){const b=stunCheck(sc,a);b.rd=sc.rd;sc.beats.push(b); // a stunned member's save, before anyone waits on it (#296)
       if(b.k==='stunned'){sc.acts[a.id]={k:'stunned',line:'',by:'cond'};if(a.player)notify(a,'You are stunned and lose your turn ('+b.res+').',false);sc.i++;startTurn(sc);dt=0;continue}
       startTurn(sc)}
@@ -416,8 +444,19 @@ function runTurns(sc,dt,instant){
     if(!act){const k=reflexFor(sc,a),late=a.player&&!reflexMay(a);act=sc.acts[a.id]={k,line:'',by:'reflex'};
       if(a.player)notify(a,late?'The table waited '+Math.round(liveOf(sc)/1000)+' s for you; your reflexes chose: '+k+'.':'Your turn passed; your reflexes chose: '+k+'.',false)}
     if(act.rid&&ATT&&ATT.hold(sc,act,instant||!sc.pause))return true; // the DM still weighs a free action (bounded, #522)
-    take(sc,a,act);sc.i++;if(sc.i<sc.ids.length)startTurn(sc);dt=0}
+    take(sc,a,act);upAll(sc);sc.i++;if(sc.i<sc.ids.length)startTurn(sc);dt=0}
   return false}
+// A downed member's death save at the table (#654): who stands with them decides dying alone and the healer's fourth failure.
+const SAVE_WORD={success:'a success',failure:'a failure','two failures':'a natural 1, two failures',stable:'a third success: stable',rose:'a natural 20: up on 1 HP',dead:'dead'};
+function saveBeat(sc,a){if(a.down.stable)return null;const up=upIn(sc),r=tableSave(a,{kin:up.length>0,healer:up.some(healerCls)});if(!r)return null;
+  if(r.out==='dead')(sc.fell||(sc.fell=[])).push(a.id);if(r.out==='rose')(sc.up||(sc.up=[])).push(a.id);
+  const word=r.out==='dead'?(r.f>=r.of?r.f+' failures: dead':'stable, but nobody stands near: dead'):SAVE_WORD[r.out];
+  const tally=r.out==='dead'||r.out==='rose'?'':' ('+r.s+' of 3 saved, '+r.f+' of '+r.of+' failed)';
+  if(rounds(sc))(sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by:a.name,at:a.name,kind:'death',die:r.die,dc:r.dc,pass:r.die>=r.dc,note:word});
+  return {id:a.id,name:a.name,k:'save',text:'Fights for breath',res:'death save d20 '+r.die+' vs DC '+r.dc+': '+word+tally,by:'down',rd:sc.rd||1,
+    check:{kind:'death',die:r.die,mod:0,total:r.die,vs:r.dc,hit:r.die>=r.dc,crit:r.die===20,dmg:0,target:a.name,down:r.out==='dead',s:r.s,f:r.f,of:r.of}}}
+// A heal or a potion brought a downed member above zero: up again (#654).
+function upAll(sc){for(const b of downIn(sc))if(b.hp>0&&upAgain(b)&&!(sc.up||[]).includes(b.id))(sc.up||(sc.up=[])).push(b.id)}
 // Everyone at once: tick each unanswered live agent's own wait (nudge, then reflex), side by side; once nobody is
 // waiting, resolve every act in slot order (reflexes chosen then, so arrival order never matters). True = waiting.
 const fromVote=(sc,a)=>{if(sc.kind!=='decision'||sc.acts[a.id])return;const P=propById(sc.ctx.prop),v=P&&P.votes[a.id];
@@ -439,7 +478,7 @@ function runAll(sc,dt,instant){
     for(const id of sc.ids){const a=byId(id);if(!living(a))continue;let act=sc.acts[id];
       if(!act){const k=reflexFor(sc,a),late=!!(sc.w[id]&&sc.w[id].late);act=sc.acts[id]={k,line:'',by:'reflex'};
         if(a.player)notify(a,late?'The table waited '+Math.round(TABLE.liveMs/1000)+' s for you; your reflexes chose: '+k+'.':'The table moved on; your reflexes chose: '+k+'.',false)}
-      take(sc,a,act)}
+      take(sc,a,act);upAll(sc)}
     {const H=dmOf(sc);if(H&&H.onAll)H.onAll(sc)}dt=0}
   return !!(sc.calls&&callWait(sc,dt,instant))}
 // A staged scene's DM calls, oldest first: the DM agent's answer, or a wait of up to TABLE.dmMs at 1x, or
@@ -468,8 +507,8 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
     if(adv&&adv.phase==='active'){adv.tablePick={k:sc.ctx.k,br};if(adv.stage==='choose')adv.stage='go';const ld=byId(adv.lead);if(ld&&(ld.state==='hunt'||ld.state==='travel')){ld.state='travel';ld.dest=null}}}
   else if(sc.kind==='decision'){const P=resolveProp(propById(sc.ctx.prop),'voted at the table');tail=P&&P.result?P.result+'.':''}
   else if(COMBAT[sc.kind]){if(rounds(sc))flushRolls(sc);const f=foeOf(sc),fl=by('retreat'),fell=(sc.fell||[]).map(byId).filter(Boolean).map(b=>b.name);
-    tail=(sc.end==='yield'&&f?foeName(f)+' yields and breaks off'+(sc.talk?' at '+sc.talk+'\'s words':''):sc.end==='fled'&&f?foeName(f)+' breaks away and runs'+(sc.talk?' at '+sc.talk+'\'s words':''):f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?hurtWord(f.hp/(f.maxhp||maxHp(f))):'still stands'):'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')+
-      (fell.length?' '+fell.join(' and ')+' fell.':'')+(sc.rd>1?' ('+sc.rd+' rounds.)':'')}
+    tail=(sc.end==='yield'&&f?foeName(f)+' yields and breaks off'+(sc.talk?' at '+sc.talk+'\'s words':''):sc.end==='fled'&&f?foeName(f)+' breaks away and runs'+(sc.talk?' at '+sc.talk+'\'s words':''):f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?hurtWord(f.hp/(f.maxhp||maxHp(f))):'still stands'):sc.ctx&&sc.ctx.down&&sc.ctx.mob==null?'No foe stands over them':'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')+
+      (fell.length?' '+fell.join(' and ')+' fell.':'')+downTail(sc)+(sc.rd>1?' ('+sc.rd+' rounds.)':'')}
   else if(sc.kind==='site'||sc.kind==='room'){const g=CRYPT.group;tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
   else if(sc.kind==='check')tail='The road goes on.';
   else if(EXTRA[sc.kind])tail=EXTRA[sc.kind].outcome(sc)||'';
@@ -484,6 +523,9 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
   for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id)&&sc.kind!=='crawl')moment(a,'scene',sc.title)} // reflection moment (#179)
   {const H=dmOf(sc);if(H&&H.done)H.done(sc)}
   for(const f of enders){try{f(sc)}catch(e){}}}
+// Who was brought back and who still lies down when a scene ends (#654).
+function downTail(sc){const ups=[...new Set(sc.up||[])].map(byId).filter(b=>living(b)&&!isDown(b)).map(b=>b.name),dn=downIn(sc);
+  return (ups.length?' '+ups.join(' and ')+(ups.length>1?' are':' is')+' back on their feet.':'')+(dn.length?' '+dn.map(b=>b.name+(b.down.stable?' lies stable':' still bleeds')).join('; ')+'.':'')}
 function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);closeScene(sc)}
 
 // ---- once per step: the paused scene (sim/index.js calls this first; true = skip the world) ----
@@ -523,6 +565,12 @@ const FIGHTING=['fight','duel','assist','raid'];
 // A company's due moment, or null: {kind, title, frame, ctx, key (its cooldown key)}. The first rule that fires wins,
 // in the order rescue, boss, ambush, elite, the Crypt, a DM check (the order the Fellowship always had).
 function due(C,L){
+  // rescue (#654): a member lies downed and bleeding in the world, and an agent is involved (the downed one, or a member in shout range)
+  for(const a of L){if(!isDown(a)||a.down.stable||a.hidden||a.down.crawl||sceneOf(a))continue;
+    if(!a.player&&!L.some(b=>b!==a&&b.player&&living(b)&&!isDown(b)&&inRange(a,b)))continue;
+    const key='down:'+a.id+':'+a.down.at;if(seen(C,key,1e9))continue;
+    const by=a.down.by||{},m=by.kind==='mob'?S.mobs.find(x=>x.id===by.id&&x.alive&&!x.gone&&dist(x,a)<=TR.REACH):null;
+    return {kind:'rescue',title:a.name+' is down',frame:[a,' lies bleeding'+(m?' before ':''),...(m?[gd(mobName(m))]:[]),'. Every breath could be the last. Who moves?'],ctx:{hero:a.id,down:1,...(m?{mob:m.id}:{})},key}}
   // rescue: a member below RESCUE in a fight
   for(const a of L){if(!FIGHTING.includes(a.state)||a.hp>=maxHp(a)*TABLE.RESCUE)continue;
     if(seen(C,'rescue:'+a.id,COOL.rescue))continue;const f=a.target;
@@ -549,7 +597,7 @@ function due(C,L){
 // A queued moment that no longer holds (#440): too old, its member gone or out of the fight, its foe gone.
 function stale(C,q){if(S.gameMin-q.at>TABLE.queueMin)return true;const c=q.ctx||{},L=memOf(C);
   if(q.kind==='decision'){const P=propById(c.prop);return !P||P.status!=='open'}
-  if(c.hero!=null){const a=byId(c.hero);if(!living(a)||!L.includes(a)||q.kind==='rescue'&&!FIGHTING.includes(a.state))return true}
+  if(c.hero!=null){const a=byId(c.hero);if(!living(a)||!L.includes(a)||q.kind==='rescue'&&!(c.down?isDown(a):FIGHTING.includes(a.state)))return true}
   if(c.mob!=null){const m=S.mobs.find(x=>x.id===c.mob);if(!m||!m.alive||m.gone)return true}
   if(c.foe!=null&&!living(byId(c.foe)))return true;
   if(q.kind==='boss'&&!(S.boss&&S.boss.alive))return true;
@@ -602,7 +650,8 @@ export function tableView(a){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))
   if(all){const n=answered(sc);v.everyone_answers=true;v.answered=n.done+'/'+n.of;if(live&&n.wait.length)v.waiting_on=n.wait.map(b=>b.name)} // all answer at once; once you have, you may wait
   if(!sc.acts[a.id]&&sc.phase!=='outcome')v.options=optionsFor(sc,a).map(o=>o.k+' = '+o.text);
   if(v.your_turn)v.waiting_for_you=true; // #148: the table waits for your scene_act (a reflex only after a long wait)
-  if(sc.beats.length)v.so_far=sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':''));
+  if(sc.beats.length)v.so_far=sc.beats.map(b=>b.name+(b.spot?' ('+b.spot+')':'')+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':''));
+  {const dn=downIn(sc);if(dn.length)v.downed=dn.map(b=>({name:b.name,saved:b.down.s,failed:b.down.f,stable:!!b.down.stable}));if(isDown(a))v.you_are_down=true} // #654: who lies bleeding, and the tally
   if(sc.narr)v.narrator=sc.narr.text; // the DM's narrate line at this table (issue #123)
   {const K=kindOf(sc);if(K&&K.view)Object.assign(v,K.view(sc,a))} // a kind's own fields (#571: the fireside's topic and round)
   if(sc.summary)v.outcome=sc.summary;return v}

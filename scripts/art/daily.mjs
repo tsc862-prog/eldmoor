@@ -81,7 +81,7 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
   if(!o.now&&!o['dry-run']&&existsSync(logPath)){const last=readFileSync(logPath,'utf8').trim().split(/\r?\n/).filter(l=>l.startsWith(date)).pop();
     if(last&&DONE.test(last)){console.log(`[art] already ran today: ${last}\n[art] (--now runs again)`);return 0}}
   const bad=validateManifest(man,PAL,resolvePalette);if(bad.length){console.error('manifest problems:\n  '+bad.join('\n  '));return 2}
-  const idx=loadIndex(dir),q=loadQueue(dir),jobs=jobsFor(man,idx,q,{retryFailed:!!o['retry-failed'],tier});
+  const idx=loadIndex(dir),q=loadQueue(dir),jobs=jobsFor(man,idx,q,{retryFailed:!!o['retry-failed'],tier}).filter(j=>mode==='space'||!j.e.init); // image to image is the Space's alone (#763)
   const max=o.max!==undefined?Math.max(0,parseInt(o.max,10)||0):Infinity,maxCalls=Math.max(1,parseInt(o['max-calls']??env.ART_MAX_CALLS??'100',10)||100);
   const space=mode==='space',onSpace=k=>!!(man.models[k]&&spaceOf(man.models[k],env));q.spaceTried=q.spaceTried||{};
   const candidates=space?[...new Set([man.pinnedModel,...man.candidates].filter(k=>k&&onSpace(k)&&!(q.spaceTried[k]&&q.spaceTried[k].ok===false)))]
@@ -116,7 +116,7 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
     if(ctx.stopped&&ctx.stopped()){stop='stopped';kind='stop';break}
     if(made>=max){stop=`--max ${max} reached`;kind='error';break}
     if(calls>=maxCalls){stop=`ART_MAX_CALLS ${maxCalls} reached`;kind='cap';break}
-    if(space){const m0=man.models[e.model||candidates[ci]||candidates[0]],need=spaceDuration(m0);
+    if(space){const m0=man.models[e.model||candidates[ci]||candidates[0]],need=spaceDuration(m0,e.init?e.strength:1);
       if(gw.s+need>capMin*60){stop=`GPU cap reached (${(gw.s/60).toFixed(1)} of ${capMin} min counted; the quota resets ${stamp(windowEnd(gw)||now)})`;kind='gpu';break}}
     else{const next=next$(man.models[e.model||candidates[ci]||candidates[0]]);
       if(monthly&&spentMonth+cost+next>monthly+1e-9){stop=`monthly credits used ($${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)}, ${basis()})`;kind='month';break}
@@ -126,13 +126,13 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
       const m=man.models[k];
       try{let mp=maps.get(k);if(!mp){mp=await routeOf(m,mode);maps.set(k,mp)}
         const first=mp.provider==='space'&&!maps.get('#awake');if(first){await ensureAwake(mp.space,token,{env});maps.set('#awake',true)} // a sleeping Space loads SDXL: 1-3 minutes
-        const got=await fetchRaw({man,m,mp,e,token,seed:job.seed,timeout:first?Math.max(timeout,300000):timeout,count,tier,now:()=>now});
+        const got=await fetchRaw({man,m,mp,e,token,seed:job.seed,timeout:first?Math.max(timeout,300000):timeout,count,tier,now:()=>now,PAL});
         if(mp.provider==='space'){gpu+=got.gpuS||0;gw={...gw,start:gw.start||now.toISOString(),s:gw.s+(got.gpuS||0),images:gw.images+1};q.gpu=gw;saveQueue(dir,q)} // the Space: $0, GPU seconds of the window
         else{const c=got.cost!=null?got.cost:m.costPerImage;cost+=c;lastCost=got.cost!=null?got.cost:null;if(got.cost!=null){billedN++;billedUsd+=c}else estN++; // refused calls draw nothing; the answer's own cost wins over the manifest guess
         if(!q.costProbe){q.costProbe={at:now.toISOString(),billed:got.cost!=null,from:got.costFrom||'',...got.probe};console.log(`[art] what the provider's answer says about cost: ${got.cost!=null?'$'+got.cost+' ('+got.costFrom+')':'nothing usable, so the manifest estimate is used'}; headers ${JSON.stringify(got.probe.headers)}, body keys ${got.probe.bodyKeys.join(',')||'-'}`)}}
         // keep the provider's image before anything else, so post-processing can be re-run offline (art:reprocess)
-        saveRaw(inc,job.key,got.bytes,{id:e.id,tier,kind:e.kind,model:k,repo:m.repo,provider:mp.provider,seed:job.seed,...(job.alt?{alt:job.alt}:{})});
-        try{res={...processRaw(got.bytes,e,PAL,m,tier,man),last:got.last,mp}}catch(err){res={err,last:got.last}}break}
+        saveRaw(inc,job.key,got.bytes,{id:e.id,tier,kind:e.kind,model:k,repo:m.repo,provider:mp.provider,seed:job.seed,...(job.alt?{alt:job.alt}:{})},got.init);
+        try{res={...processRaw(got.bytes,e,PAL,m,tier,man,got.init),last:got.last,mp}}catch(err){res={err,last:got.last}}break}
       catch(err){
         if(space&&err.kind==='model'&&!e.model){q.spaceTried[k]={ok:false,why:err.message.slice(0,160),at:now.toISOString()};console.log(`[art] the Space refused ${k}: ${err.message.slice(0,160)}; trying the next`);ci++;saveQueue(dir,q);continue}
         if(err.kind==='model'&&!e.model&&!man.pinnedModel&&!q.model.pinned){q.model.tried[k]={ok:false,why:err.message.slice(0,160),at:now.toISOString()};console.log(`[art] model ${k} refused: ${err.message.slice(0,160)}; trying the next`);ci++;saveQueue(dir,q);continue}

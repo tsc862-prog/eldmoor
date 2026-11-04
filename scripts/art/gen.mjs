@@ -28,6 +28,7 @@ import {decodePng,encodePng,isPng} from './png.mjs';
 import {resolvePalette} from './post.mjs';
 import {postProcess} from './post-texture.mjs';
 import {spaceOf,buildSpaceRequest,callSpace,spaceToken,DEFAULT_SPACE,ensureAwake,spaceDuration,gpuWindow,windowEnd} from './space.mjs';
+import {makeInit,saveInit} from './init.mjs';
 
 export const today=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
@@ -134,25 +135,30 @@ export async function callImage(req,token,{timeout=120000,count=()=>{},wait=s=>n
     if((e.kind==='rate'||r.status===503)&&attempt<2){const s=Math.min(60,ra||5*(attempt+1));console.log(`  ${r.status}, waiting ${s}s`);await wait(s);continue}
     throw e}}
 
-// One call: the provider's image bytes. Callers keep them raw (saveRaw) before anything else happens.
-export async function fetchRaw({man,m,mp,e,token,seed=e.seed,timeout,count,tier=TILE,now}){
-  if(mp.provider==='space')return callSpace(buildSpaceRequest(man,m,mp,e,seed,tier),token,{timeout,count,now});
+// One call: the provider's image bytes (and the init it was made from: image to image, #763, is the Space's alone). Callers keep
+// them raw (saveRaw) before anything else happens.
+export async function fetchRaw({man,m,mp,e,token,seed=e.seed,timeout,count,tier=TILE,now,PAL}){
+  if(mp.provider==='space'){const init=makeInit(e,tier,m,PAL||await import('../../src/render/palette.js'),man);
+    return {...await callSpace(buildSpaceRequest(man,m,mp,e,seed,tier,process.env,init),token,{timeout,count,now}),init}}
   return callImage(buildRequest(man,m,mp,e,seed,tier),token,{timeout,count})}
 
-// Raw bytes -> asset image and PNG (post-texture.mjs). Throws ArtError 'image' (not a PNG) or 'flat' (too few colours).
+// Raw bytes -> asset image and PNG (post-texture.mjs). Throws ArtError 'image' (not a PNG) or 'flat' (too few colours; a
+// sprite sheet without cols x rows figures or, for a hero, without its faction tabard: post-sheet.mjs).
 // At a tier: its size from e.sizes, the model's pixel grid and the palette widening from the tier's settings.
-export function processRaw(bytes,e,PAL,m,tier=TILE,man=null){
+export function processRaw(bytes,e,PAL,m,tier=TILE,man=null,init=null){
   let raw;try{raw=decodePng(bytes)}catch(err){throw new ArtError('image',err.message)}
   const cfg=tierCfg(man,m,tier),sh=(PAL.TIER_SHADES&&PAL.TIER_SHADES[tier])||{};
-  try{const img=postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline,{hint:cfg.grid||(m&&m.grid)||8,tier,minPalette:cfg.minPalette??sh.minPalette??6,factors:sh.factors});return {img,png:encodePng(img)}}
+  const key=e.frames&&((e.palette&&e.palette.from)||[]).includes('SPRITE.key')&&PAL.recolour?Object.keys(PAL.recolour(1)):null; // a hero sheet must keep its tabard recolourable
+  try{const img=postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline,{hint:cfg.grid||(m&&m.grid)||8,tier,minPalette:cfg.minPalette??sh.minPalette??6,factors:sh.factors,key,init});return {img,png:encodePng(img)}}
   catch(err){if(err.kind==='flat')throw Object.assign(new ArtError('flat',err.message),{notes:err.notes});throw err}}
 
 // Keep the provider's image as it came, before post-processing, so every later tweak re-runs offline
-// (npm run art:reprocess): <inc>/raw/<kind>/<name>[.altK].<png|jpg|bin> plus <inc>/raw/index.json with the request facts.
-export function saveRaw(inc,key,bytes,meta){
+// (npm run art:reprocess): <inc>/raw/<kind>/<name>[.altK].<png|jpg|bin> plus <inc>/raw/index.json with the request facts, and
+// for an image made from an init image that init beside it (<name>.init.png) with its layout.
+export function saveRaw(inc,key,bytes,meta,init=null){
   const ext=isPng(bytes)?'png':bytes[0]===0xff&&bytes[1]===0xd8?'jpg':'bin',file=keyFile(key).replace(/\.png$/,'.'+ext),p=join(inc,'raw',file);
   mkdirSync(dirname(p),{recursive:true});writeFileSync(p,bytes);
-  const ri=loadIndex(join(inc,'raw'));ri.assets[key]={...meta,file,bytes:bytes.length,sha256:sha256(bytes),at:new Date().toISOString()};writeIndex(join(inc,'raw'),ri);
+  const ri=loadIndex(join(inc,'raw'));ri.assets[key]={...meta,...(init?{init:saveInit(inc,key,init)}:{}),file,bytes:bytes.length,sha256:sha256(bytes),at:new Date().toISOString()};writeIndex(join(inc,'raw'),ri);
   return file}
 
 export function writeIndex(dir,idx){mkdirSync(dir,{recursive:true});const p=join(dir,'index.json'),s={version:1,assets:Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]))};
@@ -170,7 +176,8 @@ export async function main(argv=process.argv.slice(2)){
   if(o.model&&!man.models[o.model]){console.error(`--model: ${o.model} is not in the manifest`);return 2}
   const idx=loadIndex(out),only=o.only?new Set(String(o.only).split(',')):null;
   if(only)for(const id of only)if(!man.assets.some(e=>e.id===id)){console.error(`--only: ${id} is not in the manifest`);return 2}
-  const have=e=>idx.assets[tierKey(e.id,tier)],want=man.assets.filter(e=>(!only||only.has(e.id))&&(o.force||!have(e)||!existsSync(join(out,have(e).file))));
+  const have=e=>idx.assets[tierKey(e.id,tier)],want=man.assets.filter(e=>(mode==='space'||!e.init)&&(!only||only.has(e.id))&&(o.force||!have(e)||!existsSync(join(out,have(e).file))));
+  if(mode!=='space'&&man.assets.some(e=>e.init&&(!only||only.has(e.id))))console.log('[art] buildings, landmarks and sprites are made image to image on the Space only: left out of this router run');
   const max=o.max!==undefined?Math.max(0,parseInt(o.max,10)||0):Infinity,todo=want.slice(0,max);
   const mk=e=>mode==='space'?(e.model||o.model||(man.candidates||[]).find(k=>spaceOf(man.models[k]))):modelKey(man,e,o.model);
   if(mode==='space'&&todo.some(e=>!mk(e)||!spaceOf(man.models[mk(e)]))){console.error('[art] no model of the manifest is on the Space (models[].space); --provider router uses the paid router');return 2}
@@ -180,19 +187,20 @@ export async function main(argv=process.argv.slice(2)){
   console.log(mode==='space'?`[art] provider: the ZeroGPU Space (cost $0.000; GPU quota, not credits)`:`[art] estimated cost: $${cost.toFixed(3)} for ${todo.length} image${todo.length===1?'':'s'} (--provider router: Inference Providers credits; art:daily keeps to a daily budget, art:gen does not)`);
   if(!todo.length){console.log('[art] nothing to do');return 0}
   if(o['dry-run']){const e=todo[0],m=man.models[mk(e)];let mp;try{mp=await routeOf(m,mode)}catch(err){mp={provider:m.routerProvider||m.provider||'?',providerId:m.providerId||'?'};console.log('[art] mapping lookup failed: '+err.message)}
-    const {url,body}=mp.provider==='space'?buildSpaceRequest(man,m,mp,e,e.seed,tier):buildRequest(man,m,mp,e,e.seed,tier);console.log(`[art] dry run: first request POST ${url}\n${JSON.stringify(body,null,1)}`);return 0}
+    const init=mp.provider==='space'?makeInit(e,tier,m,PAL,man):null,{url,body}=mp.provider==='space'?buildSpaceRequest(man,m,mp,e,e.seed,tier,process.env,init):buildRequest(man,m,mp,e,e.seed,tier);
+    console.log(`[art] dry run: first request POST ${url}\n${JSON.stringify(init?{...body,data:body.data.map(v=>v===init.b64?`<init PNG ${init.cw}x${init.ch}, the art x${init.k}, ${v.length} base64 characters>`:v)}:body,null,1)}`);return 0}
   if(!o.yes){console.log('[art] add --yes to generate');return 0}
   const token=tokenFor(mode);if(!token){console.error(mode==='space'?'[art] no HF_TOKEN (or HF_SPACE_TOKEN): put it in .env (a token that can read the Space)':'[art] no HF_TOKEN: put HF_TOKEN=hf_... in .env (a token with the "Inference Providers" permission)');return 2}
   const timeout=(Number(o.timeout)||120)*1000,maps=new Map();let made=0,failed=0;
   // the Space: the same GPU window and stop as art:daily (the queue beside the assets), so a direct run never runs into overage
   let first=true;const q=mode==='space'?loadQueue(out):null,zg=(man.allowance&&man.allowance.zeroGpu)||{},capS=(Number(process.env.ART_GPU_MINUTES)||zg.stopAtMinutes||36)*60;
   for(const e of todo){const k=mk(e),m=man.models[k],t0=Date.now();
-    if(q){const gw=gpuWindow(q,new Date());if(gw.s+spaceDuration(m)>capS){console.error(`[art] GPU cap reached (${(gw.s/60).toFixed(1)} of ${capS/60} min counted); the quota resets ${windowEnd(gw)?windowEnd(gw).toLocaleTimeString():'within 24 h'}`);break}}
+    if(q){const gw=gpuWindow(q,new Date());if(gw.s+spaceDuration(m,e.init?e.strength:1)>capS){console.error(`[art] GPU cap reached (${(gw.s/60).toFixed(1)} of ${capS/60} min counted); the quota resets ${windowEnd(gw)?windowEnd(gw).toLocaleTimeString():'within 24 h'}`);break}}
     try{let mp=maps.get(k);if(!mp){mp=await routeOf(m,mode);maps.set(k,mp)}
       if(mp.provider==='space'&&first)await ensureAwake(mp.space,token);
-      const key=tierKey(e.id,tier),got=await fetchRaw({man,m,mp,e,token,timeout:first&&mp.provider==='space'?Math.max(timeout,300000):timeout,tier}),{bytes}=got;first=false;
-      if(q){const gw=gpuWindow(q,new Date());q.gpu={...gw,start:gw.start||new Date().toISOString(),s:gw.s+(got.gpuS||0),images:gw.images+1};saveQueue(out,q)}saveRaw(join(out,'incoming',today()),key,bytes,{id:e.id,tier,model:k,repo:m.repo,provider:mp.provider,seed:e.seed});
-      const {img,png}=processRaw(bytes,e,PAL,m,tier,man);
+      const key=tierKey(e.id,tier),got=await fetchRaw({man,m,mp,e,token,timeout:first&&mp.provider==='space'?Math.max(timeout,300000):timeout,tier,PAL}),{bytes}=got;first=false;
+      if(q){const gw=gpuWindow(q,new Date());q.gpu={...gw,start:gw.start||new Date().toISOString(),s:gw.s+(got.gpuS||0),images:gw.images+1};saveQueue(out,q)}saveRaw(join(out,'incoming',today()),key,bytes,{id:e.id,tier,model:k,repo:m.repo,provider:mp.provider,seed:e.seed},got.init);
+      const {img,png}=processRaw(bytes,e,PAL,m,tier,man,got.init);
       const file=fileOf(e.id,tier),p=join(out,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);
       idx.assets[key]={id:e.id,tier,kind:e.kind,file,w:img.w,h:img.h,sha256:sha256(png),model:k,repo:m.repo,provider:mp.provider,seed:e.seed,at:new Date().toISOString()};
       writeIndex(out,idx);made++;console.log(`[art] ${e.id} -> ${file} ${img.w}x${img.h} (${((Date.now()-t0)/1000).toFixed(1)}s${mp.provider==='space'?`, quota: ${(got.gpuS||0).toFixed(1)} s of GPU`:''})`)}

@@ -63,6 +63,7 @@
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap
 - [Night sight #583](night_sight.md) — sightFor(a,z): night 0.6 for agent heroes only, towns exempt, hash unchanged
 - [Fold Fellowship #588](fold_fellowship.md) — slot model in company.js (slots option); shims and fellowship.js deleted, rulescheck guards; SLT in scripts
+- [One hall #771](one_hall.md) — gather only with a setup, Eldmoor has one town a faction so test in stepping, hold + cap at session zero, a.born
 - [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut
 - [Talk setting #431](talk_setting.md) — talk scenes open on tavern/chapel/smithy/gate by where the person stands; field keeps the cut
 - [Gambits #617](gambits.md) — per-hero rules run by autopilot/fight reflex; presets = old policy rule for rule; hashcheck autopilot row guards it
@@ -70,8 +71,12 @@
 - [DM sites #69](dm_sites.md) — create_site/enter_site, crawl by g.site, alvl gap scaling, round cap, wireSites cycle, private LCG
 - [Gambit hold #630](gambit_hold.md) — hold action stops the clock until the agent acts; release paths, limits, cautious preset only
 - [Pay and mark tools #628/#632](pay_mark_tools.md) — pay.js, marks.js (lore mk:1/2), emote chat flag, set_attitude steps, edit pitfalls
+- [Downed and saves #652/#653](downed_saves.md) — downed.js: hero blows finish, table and crawl down since #654, aid state, finishes flag, fixture pitfalls
+- [Table rescue and saves #654](table_rescue_saves.md) — downed stay in scenes, saves per round, scene extends while bleeding, crawl downs, world downing opens rescue
 - [Hire tool #634](hire_tool.md) — hires are scripted heroes outside slots, wanderers only, voters skip them, inSlots true in Fellowship
-- [Downed and saves #652/#653](downed_saves.md) — downed.js: hero blows finish, table/crawl keep old death until #654, aid state, finishes flag, fixture pitfalls
 - [PvP mercy #657](pvp_mercy.md) — mercy.js: downs not kills, finish/spare odds, life-debts, bled = no credit, finish = guild grudge
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
+- [Others none #780](others_none.md) — no-roster world, summon_hero lever, guild skip, GOODS floor, heir rule, fixture traps
+- [Log outcome tags #785](log_outcome_tags.md) — OUTCOME regex in history.js leaves src off outcome lines; add new outcome openings there
+- [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap

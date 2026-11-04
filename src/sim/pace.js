@@ -87,6 +87,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
     growth:growthText(a),quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}),...(toldLine(a)?{told:toldLine(a)}:{}), // stories it told of its past round the fire (#571): keep them straight // the hero's own persona (#409): one line for the header, a signature, and on request the full text
+    ...gatherBrief(a), // gather: session zero waits for the whole company (#771)
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
     aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
@@ -95,6 +96,9 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
 // a job for one of the five, the hall's Fellowship job, or one in a region they ride or work in. Only what the posting
 // says (id, title, giver, reward), never who posted it behind the scenes (in-game channels, #123). Reads only; at most
 // PACE.HALL, the hall's own Fellowship jobs first. {} when the hero is no member, is not in town, or nothing is posted.
+// Session zero held for members out of range (sim/arrival.js, #771): where to walk, or who the table waits for. {} otherwise.
+function gatherBrief(a){const q=S.opening&&S.opening.queue&&S.opening.queue.find(x=>x.hold&&x.company===a.company);if(!q)return {};
+  return {gather:q.hold.away.includes(a.id)?'Your company waits for you at '+q.hold.where+' for its first table: walk there before anything else.':'The first table waits for companions still on the road; stay close.'}}
 function hallBrief(a){if(!inSlots(a)||a.state!=='town'||!slotted())return {};const f=focus();if(!f)return {};
   const town=homeOf(a);if(!town||town.name!==slotted().hall)return {};
   const L=hallHooks(town.name,f); // one selection with the watcher's Fellowship panel (#334)
@@ -107,7 +111,7 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
 function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options||tv.waiting_for==='the DM')return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
   const g=a.goal&&!a.goal.done&&a.goal.text?a.goal.text:null,tl=toldLine(a);
   return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
-    you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{})},...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)
+    you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{})},...(tv.room?{room:tv.room}:{}),...(tv.moves?{moves:tv.moves}:{}),...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)
 // Where the hero stands, for the header (#399): a town by name when it is inside one ("Highgate (town; Lowmark around it)"), so
 // an agent waiting in town no longer reads the region and calls hunt there. The same words move_to reads back.
 const inTown=(c,p)=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5; // player.js cityAt
