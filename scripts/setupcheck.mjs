@@ -220,4 +220,43 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  ok(r && r.id !== old.id && P.professionsOf(r).map(x => x.id).join() === 'mining,smithing', 'a replacement keeps the choice of the place');
  const sn = JSON.stringify(snapshot()); ok(/"profs":\{"tank":\["mining","smithing"\]/.test(sn), 'the place choice is saved with the world');
 }
+
+// A world with no others (#780): the setup's heroes and nobody else; the setting saved; nothing queued; a death still refilled.
+{const {step, setRunnerLinks, restore, setDmSeat} = await import('../src/sim/index.js'), {slay, maxHp} = await import('../src/sim/heroes.js'), {openingPending, arrivalsView} = await import('../src/sim/arrival.js');
+ const {GOODS} = await import('../src/data/items.js'), {TABLE} = await import('../src/sim/table.js'), {OTHERS} = await import('../src/sim/setup.js');
+ ok(OTHERS.join() === 'full,none' && !('others' in defaultSetup(1)), 'others: full or none, the default says nothing');
+ const none = (seed, shape) => {const q = shape ? applyPreset(shape, defaultSetup(seed, 'eldmoor', 0)) : defaultSetup(seed, 'eldmoor', 0); q.others = 'none'; return q};
+ {const t = none(11); t.others = 'some'; ok(validateSetup(t).some(x => /Other heroes/.test(x)), 'an unknown others is refused')}
+ const c = cleanSetup(none(11)); ok(validateSetup(none(11)).length === 0 && c.others === 'none' && !('others' in cleanSetup(defaultSetup(11))), 'cleanSetup keeps none and leaves a full world\'s setup as it was');
+ ok(slotsView(none(11)).others === 'none' && cleanSetup(slotsView(none(11))).others === 'none', 'a v1 view of it keeps the setting');
+ ok(applyPreset('last', defaultSetup(12), {last: none(11)}).others === 'none' && !('others' in applyPreset('last', none(12), {last: defaultSetup(11)})), 'the last-setup preset carries the setting either way');
+
+ init({setup: c});
+ ok(S.agents.length === 5 && S.agents.every(a => a.player) && SLT.slotHeroes(SLT.slotted()).length === 5, 'together: exactly the five, all agent-played');
+ ok(S.setup.others === 'none' && S.setup.seed === 11 && !!S.setup.dm, 'S.setup keeps the setting beside the record');
+ {const t = S.chronicle.flatMap(e => e.parts.map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '')).join(' '); ok(/empty of banners/.test(t) && !/Infinity/.test(t) && !/already worn/.test(t), 'the opening line says the roads are empty')}
+ {const n = JSON.parse(JSON.stringify(snapshot())); init({}); ok(S.agents.length > 5 && !(S.setup && S.setup.others), 'a world made after it has its roster again'); restore(n); ok(S.setup.others === 'none' && S.agents.length === 5, 'a load keeps the setting')}
+ TABLE.mode = 'off'; let rq = 0, low = 1e9; for (let i = 0; i < 480; i++) {step(1); rq = Math.max(rq, S.recruits.length); for (const n in GOODS) low = Math.min(low, GOODS[n].supply)} // 48 game hours
+ ok(S.GUILDS.length === 0 && S.agents.every(a => !a.guild), 'no guild after 48 game hours');
+ ok(rq === 0, 'no recruit queued');
+ ok(low >= 14 && Object.keys(GOODS).every(n => GOODS[n].supply >= 14), 'the auction house holds its floor: goods never read as sold out, prices at the table\'s base');
+ // a death with runners: the arrival; none queued for the world; the hero is made directly
+ if (S.opening) S.opening.queue.length = 0; // session zero is not what this asks
+ const F = SLT.slotted(), L = SLT.slotHeroes(F), link = x => x.player ? 'connected' : 'none'; setRunnerLinks(link); setDmSeat(true); TABLE.mode = 'auto'; TABLE.speed = 1;
+ for (const a of L) {a.hp = maxHp(a); a.state = 'town'; a.town = F.hall; a.target = null; a.dest = null; a.quest = null}
+ const dead = L[4], n0 = S.agents.length; slay(dead, S.mobs[0]);
+ ok(dead.state === 'dead' && S.recruits.length === 0, 'a member\'s death queues no recruit');
+ for (let i = 0; i < 200 && S.agents.length === n0; i++) step(.2);
+ ok(arrivalsView(F).length === 0 && S.table && S.table.kind === 'arrival' && S.recruits.length === 0, 'it opens an arrival scene at the hall');
+ const nw = S.agents[S.agents.length - 1];
+ ok(S.agents.length === n0 + 1 && nw.player && nw.cls === dead.cls && nw.succeeds === dead.id, 'and the newcomer arrives, agent-played');
+ // the last hero of an apart world: an heir, or the world would be empty; with a host or without
+ setRunnerLinks(null); init({setup: cleanSetup(none(13, 'solo'))}); setDmSeat(true); ok(S.agents.length === 1 && companies().length === 1, 'apart solo: one hero, one company');
+ const s0 = S.agents[0]; slay(s0, S.mobs[0]); step(1);
+ ok(S.agents.filter(a => a.state !== 'dead').length === 1 && S.agents[1].player && S.agents[1].cls === s0.cls && S.agents[1].succeeds === s0.id && S.recruits.length === 0, 'a solo\'s heir comes though nobody runs it: a world with no others never empties');
+ // the flags
+ const flag = (env, args) => spawnSync(process.execPath, ['--input-type=module', '-e', "const {init,S}=await import(process.argv[1]);init(" + (args || '{}') + ");console.log('N='+S.agents.length+' '+(S.setup&&S.setup.others))", new URL('../src/sim/index.js', import.meta.url).href], {encoding: 'utf8', env: {...process.env, ...env}}).stdout.trim();
+ ok(flag({ELDMOOR_OTHERS: 'none'}) === 'N=5 none', 'ELDMOOR_OTHERS=none: ' + flag({ELDMOOR_OTHERS: 'none'}));
+ ok(flag({ELDMOOR_OTHERS: 'full'}) === 'N=28 undefined' && flag({}) === 'N=28 undefined', 'unset or full: the usual roster, no setting written');
+ ok(flag({}, "{others:'none',fellowship:false}") === 'N=0 none', 'no company and no others: an empty world the DM can fill')}
 console.log(fail ? fail + ' FAILED' : 'setupcheck passed'); process.exit(fail ? 1 : 0);

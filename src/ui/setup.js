@@ -189,6 +189,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   if(together()){wrow.append(field('Faction',select('fac',FAC.map((f,i)=>[String(i),f.name]),String(s.fac))));
     const fn=el('input','sinput');fn.type='text';fn.maxLength=40;fn.placeholder='Fellowship name: chosen for you';fn.value=s.name||'';fn.dataset.f='fname';
     wrow.append(field('Fellowship name',fn))}
+  wrow.append(field('Other heroes',select('others',[['full','The usual roster'],['none','None: the company and whoever the DM brings']],s.others==='none'?'none':'full','Whether the world has background heroes of its own')));
   wsec.append(wrow);page.append(wsec);
 
   const fsec=el('section','ssec');
@@ -232,6 +233,7 @@ function refreshFinal(){const a=document.activeElement,tag=a&&a.dataset&&a.datas
 
 function onChange(e){const t=e.target;if(!t||!t.dataset||!t.dataset.f)return;const f=t.dataset.f,v=t.value;st.confirm=false;st.error='';
   if(f==='world')st.setup.world=v;
+  else if(f==='others'){if(v==='none')st.setup.others='none';else delete st.setup.others}
   else if(f==='fac'){st.setup.fac=+v;for(const h of st.setup.heroes){h.fac=+v;delete h.race;delete h.name}}
   else if(f.startsWith('hfac:')){const k=f.slice(5),h=heroAt(k);h.fac=+v;delete h.race;delete h.name;h.start={town:'home'};if(idx(k)===0)st.setup.fac=+v}
   else if(f.startsWith('start:')){const h=heroAt(f.slice(6)),i=v.indexOf(':');h.start=v==='home'?{town:'home'}:{[v.slice(0,i)]:v.slice(i+1)}}

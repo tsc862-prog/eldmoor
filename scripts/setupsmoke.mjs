@@ -125,11 +125,14 @@ if(mode==='a'){
   const n2=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:healer');n2.value='';n2.dispatch('input',{target:n2});
   click(ids.get('setup'),b=>b.dataset.a==='nameroll'&&b.dataset.slot==='dps1');
   ok(all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1').value.length>=3,'name reroll fills a name');
+  {const o=sels(ids.get('setup'),'others');ok(o&&o.value==='full'&&o.childNodes.map(x=>x.value).join()==='full,none','Other heroes (#780): the usual roster by default, or none');
+   o.value='none';o.dispatch('change',{target:o});ok(sels(ids.get('setup'),'others').value==='none','the choice stays on the page')}
   click(ids.get('setup'),b=>b.dataset.a==='start');
   for(let i=0;i<100&&reloads<1;i++)await new Promise(r=>setTimeout(r,20)); // the reload follows the runners' stop call (#691)
   const pend=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
   ok(pend&&pend.world==='eldmoor'&&reloads===1&&pend.v===2&&pend.mode==='together'&&pend.heroes.length===5&&pend.heroes[0].cls==='Warrior'&&pend.heroes[0].mind.mode==='agent','Start queues the setup (v2 together, #453) and reloads');
   ok(sim.validateSetup(pend).length===0,'the queued setup validates');
+  ok(pend.others==='none','the queued setup carries Other heroes: none');
   {const last=JSON.parse(localStorage.getItem('eldmoor.setup.last')||'null');setup.openSetup({first:false});
    const nm=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1');
    ok(last&&last.v===2&&all(ids.get('setup'),'.scard').length===5&&nm&&nm.value===pend.heroes[2].name,'a stored v2 last setup opens on the page as its five places (#453)')}

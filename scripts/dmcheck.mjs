@@ -342,6 +342,13 @@ console.log('when and watch (scripts/dmwhen-test.mjs)');
   const n = (out.match(/^\s+ok /gm) || []).length;
   ok(k.status === 0 && /WHEN OK/.test(out), `when and watch: ${n} checks (set, list, cancel, every trigger, firing through the same tools, expiry, refused at fire time, caps, reserve, save/restore, the runner's wake)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
 
+// ---------------------------------------------------------------- 0b. summon_hero (issue #780), in a world of its own
+console.log('summon_hero (scripts/summon-test.mjs)');
+{const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'summon-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
+  for (const l of out.split(/\r?\n/)) if (/^\s+FAIL /.test(l)) console.error(l);
+  const n = (out.match(/^\s+ok /gm) || []).length;
+  ok(k.status === 0 && /SUMMON OK/.test(out), `summon_hero: ${n} checks (one scripted hero at the level asked, its caps and refusals, the DM log, the companies' reserve, a when, no replacement, save/restore)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
+
 // ---------------------------------------------------------------- 1. the DM tools in the sim
 console.log('the DM tools');
 init({fac: 0}); run(60);
