@@ -1,6 +1,23 @@
 {
  "version": 1,
  "assets": {
+  "tile:ash-rock@32": {
+   "id": "tile:ash-rock",
+   "tier": 32,
+   "kind": "tile",
+   "file": "tile/32/ash-rock.png",
+   "w": 32,
+   "h": 32,
+   "colors": 13,
+   "grid": "8x32",
+   "sha256": "3e33362a50d6c60c9c325a70aa7b01148723db0f317a428d244e372f95aa6af7",
+   "model": "pixel-xl",
+   "repo": "nerijs/pixel-art-xl",
+   "provider": "fal-ai",
+   "seed": 1776,
+   "at": "2026-11-04T01:31:19.754Z",
+   "accepted": "2026-11-04T02:50:38.452Z"
+  },
   "tile:fen-grass@32": {
    "id": "tile:fen-grass",
    "kind": "tile",
@@ -51,6 +68,40 @@
    "at": "2026-11-03T15:57:05.812Z",
    "tier": 32,
    "accepted": "2026-11-03T20:47:51.994Z"
+  },
+  "tile:road@32": {
+   "id": "tile:road",
+   "tier": 32,
+   "kind": "tile",
+   "file": "tile/32/road.png",
+   "w": 32,
+   "h": 32,
+   "colors": 10,
+   "grid": "8x8",
+   "sha256": "3ea28adc54f3345f9da392d371b47c2fa09d56ad0f321286264676db298c224c",
+   "model": "pixel-xl",
+   "repo": "nerijs/pixel-art-xl",
+   "provider": "fal-ai",
+   "seed": 1779,
+   "at": "2026-11-04T01:31:40.568Z",
+   "accepted": "2026-11-04T02:50:38.456Z"
+  },
+  "tile:water@32": {
+   "id": "tile:water",
+   "tier": 32,
+   "kind": "tile",
+   "file": "tile/32/water.png",
+   "w": 32,
+   "h": 32,
+   "colors": 10,
+   "grid": "8x8",
+   "sha256": "4752a45f0f809b9b24386ce43b527ac6df310c986481818d14b161f5ee7b10f7",
+   "model": "pixel-xl",
+   "repo": "nerijs/pixel-art-xl",
+   "provider": "fal-ai",
+   "seed": 1780,
+   "at": "2026-11-04T01:31:47.453Z",
+   "accepted": "2026-11-04T02:50:38.455Z"
   }
  }
 }
