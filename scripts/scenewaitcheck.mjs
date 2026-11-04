@@ -227,7 +227,7 @@ console.log('F. three Claude slots, five Claude members and the DM: every vote l
   const fakeSpawn = () => {const k = new EventEmitter(); k.pid = 50000 + Math.floor(Math.random() * 1000); k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write() {}}); k.kill = () => setTimeout(() => k.emit('exit', null), 5); return k};
   const tmpF = mkdtempSync(join(tmpdir(), 'eldmoor-slotscene-'));
   let PBF = null;
-  const sup = attachRunners(server, {play, enabled: true, log: () => {}, spawnImpl: fakeSpawn, base: () => PBF, logs: tmpF, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '3'}});
+  const sup = attachRunners(server, {play, enabled: true, log: () => {}, spawnImpl: fakeSpawn, base: () => PBF, logs: tmpF, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '3', RUNNER_DM_SLOTS: '0'}}); // the DM in the shared pool, as before its own slot (#733): scene first still holds there
   await new Promise(r => server.listen(0, '127.0.0.1', r)); PBF = `http://127.0.0.1:${server.address().port}`;
   const J = (path, body, origin) => fetch(PBF + path, {method: 'POST', headers: {'content-type': 'application/json', ...(origin ? {origin} : {})}, body: JSON.stringify(body)}).then(r => r.json());
   const starts = [];

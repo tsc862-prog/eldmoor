@@ -75,8 +75,8 @@ console.log('runner routes (fake children)');
 {
   const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
   const heroes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(id => ({id, name: 'H' + id, alive: true}));
-  let dmSeat = true; // the game's DM seat (#66): a DM runner starts only while it is open
-  const be = {call: async () => ({ok: true}), dmCall: async t => t === 'table_call' ? {ok: true, call: {id: 1, kind: 'frame', seconds_left: 8}} : {ok: true}, narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat})}; // a frame call waits for the DM's voice (#682)
+  let dmSeat = true, dmPrep = null; // the game's DM seat (#66): a DM runner starts only while it is open; dmPrep: the page's prep report (#733)
+  const be = {call: async () => ({ok: true}), dmCall: async t => t === 'table_call' ? {ok: true, call: {id: 1, kind: 'frame', seconds_left: 8}} : {ok: true}, narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat, ...(dmPrep ? {dmPrep} : {})})}; // a frame call waits for the DM's voice (#682)
   const kids = [];
   const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 40000 + kids.length; k.cmd = cmd; k.args = args; k.opts = opts; k.got = '';
     k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d; if (exitOnStop && /stop/.test(d)) setTimeout(() => k.emit('exit', 0), 5)}});
@@ -236,6 +236,54 @@ console.log('runner routes (fake children)');
     ok(z.ok && Date.now() - t < 500, 'once the DM has answered, a slot is leased at once');
     await req(sl.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: z.lease}})}
   sl.sup.killAll(); sl.server.close();
+  // #733: the DM seat's own slot (RUNNER_DM_SLOTS, outside RUNNER_CLAUDE_MAX) and heroes held while the DM prepares
+  {const {DM_SLOTS} = await import('./runners.mjs');
+    ok(DM_SLOTS === 1, 'one DM slot by default');
+    const ds = await mk(true, {RUNNER_CLAUDE_MAX: '3'}), realDm = RUNNER_KINDS.dm.script; RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs';
+    for (const id of [1, 2, 3, 4]) await req(ds.base, '/play/runner/start', {method: 'POST', body: {hero: id, provider: 'anthropic'}, origin: PAGE});
+    await req(ds.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic'}, origin: PAGE});
+    const hl = []; for (const id of [1, 2, 3]) hl.push(await req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:' + id}}));
+    let t = Date.now(); const h4 = req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:4'}});
+    const d1 = await req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'dm'}}), dWait = Date.now() - t;
+    g = await req(ds.base, '/play/runner');
+    ok(hl.every(x => x.ok) && d1.ok && d1.dm === true && dWait < 500 && g.claude.used === 3 && g.claude.dmSlots === 1 && g.claude.dmUsed === 1 && g.claude.waiting === 1,
+      `three hero turns hold every Claude slot and a fourth waits, yet the DM's request is served at once from its own slot (${dWait} ms; used ${g.claude.used}/${g.claude.slots}, DM ${g.claude.dmUsed}/${g.claude.dmSlots})`);
+    await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'dm', lease: d1.lease}});
+    g = await req(ds.base, '/play/runner');
+    ok(g.claude.dmUsed === 0 && g.claude.used === 3, 'the DM gives its slot back after the turn; the hero slots are untouched');
+    await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: hl[0].lease}}); const h4r = await h4;
+    ok(h4r.ok, 'the waiting hero gets the slot a hero turn released');
+    for (const x of [hl[1], hl[2], h4r]) await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero', lease: x.lease}});
+    // the DM prepares the table: a hero's request waits, the DM's is served
+    dmPrep = {state: 'running', kind: 'opening', calls: 0, max_calls: 20};
+    t = Date.now(); let got = null; const hp = req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:2'}}).then(x => {got = x; return x});
+    await sleep(600); g = await req(ds.base, '/play/runner');
+    const dp = await req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'dm'}});
+    ok(got === null && g.claude.used === 0 && dp.ok && dp.dm, 'while the DM prepares, a hero runner leases no Claude slot (its request waits) and the DM still gets its own');
+    dmPrep = {state: 'done', kind: 'opening', calls: 4, max_calls: 20, why: 'done'}; const hpr = await hp;
+    ok(hpr.ok && Date.now() - t < 3000, `once the prep is over the hero's request is served (${Date.now() - t} ms)`);
+    await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:2', lease: hpr.lease}});
+    await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'dm', lease: dp.lease}}); dmPrep = null;
+    // the runner's own lines (takeClaudeSlot): the DM names its slot, a hero names the prep
+    const {takeClaudeSlot} = await import('./pacing.mjs');
+    const fake = answers => {let i = 0; return async () => ({status: 200, json: async () => answers[Math.min(i++, answers.length - 1)]})};
+    let lines = []; let rel = await takeClaudeSlot('http://x', l => lines.push(l), {key: 'dm', fetchImpl: fake([{ok: false, busy: true, dm: true, dmSlots: 1, slots: 3}, {ok: true, lease: 'D9', dm: true}])}); rel();
+    ok(lines.some(l => /waiting for the DM slot/.test(l)) && !lines.some(l => /waiting for a Claude slot/.test(l)) && lines.some(l => /got a DM slot/.test(l)), 'the DM runner line says DM slot, not waiting for a Claude slot: ' + lines.join(' / '));
+    lines = []; rel = await takeClaudeSlot('http://x', l => lines.push(l), {key: 'hero:1', fetchImpl: fake([{ok: false, busy: true, prep: true, slots: 3}, {ok: true, lease: 'L9'}])}); rel();
+    ok(lines.some(l => /the DM prepares the table/.test(l)), 'a hero runner held by the prep says so: ' + lines.join(' / '));
+    RUNNER_KINDS.dm.script = realDm; ds.sup.killAll(); ds.server.close();
+    // RUNNER_DM_SLOTS=0: no slot of its own; the DM queues in the hero pool as before #733
+    const d0 = await mk(true, {RUNNER_CLAUDE_MAX: '1', RUNNER_DM_SLOTS: '0'}); RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs';
+    for (const id of [1, 2]) await req(d0.base, '/play/runner/start', {method: 'POST', body: {hero: id, provider: 'anthropic'}, origin: PAGE});
+    await req(d0.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic'}, origin: PAGE});
+    const a1 = await req(d0.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:1'}});
+    const order = []; const w2 = req(d0.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:2'}}).then(x => {order.push('hero'); return x});
+    await sleep(100); const wd = req(d0.base, '/play/runner/slot', {method: 'POST', body: {key: 'dm'}}).then(x => {order.push('dm'); return x});
+    await sleep(100); await req(d0.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: a1.lease}});
+    const w2r = await w2; ok(w2r.ok && order[0] === 'hero', 'with RUNNER_DM_SLOTS=0 the DM has no slot of its own: it queues in the hero pool as before (the hero asked first)');
+    await req(d0.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:2', lease: w2r.lease}}); const wdr = await wd;
+    ok(wdr.ok && !wdr.dm, 'then the DM, from the hero pool');
+    RUNNER_KINDS.dm.script = realDm; d0.sup.killAll(); d0.server.close()}
   // six minds: the Fellowship's five as hero runners and the DM start together, whatever the caps
   {for (const h of heroes) h.fellow = h.id <= 5;
     const six = await mk(true, {RUNNER_CLAUDE_MAX: '1', RELAY_MAX_RUNNERS: '2'}), n2 = kids.length;

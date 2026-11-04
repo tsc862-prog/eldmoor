@@ -743,7 +743,7 @@ export function dmAct(tool,args={}){
   if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
-  const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
+  const prepping=prepActive();prepCall(tool,args); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
   try{r=run(tool,args)}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
   if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene'||tool==='mark_danger'||tool==='custom_foe')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';

@@ -355,7 +355,8 @@ export const talkNote = st => {const w = talkWaiting(st); return w.length ? ` A 
 // 20 tool calls; half on Continue or for a DM runner started again mid-session). A fresh runner waits for the host to start
 // it (dm_status prep.state 'running'): as long as session zero is due (prep.opening_due), else PREP_WAIT_MS. The turn has
 // the prep's call cap as its model-call cap and is aborted at its time cap; then the runner calls prep_done (a cap the game
-// counted may already have ended it) and the opening scene opens; the table voice frames it.
+// counted may already have ended it) and the opening scene opens; the table voice frames it. The game starts the prep's
+// clock at the turn's first call (#733), and the DM's turn leases the reserved DM slot (RUNNER_DM_SLOTS), never queued behind heroes.
 export const PREP_WAIT_MS = 15000;
 export const prepPrompt = st => {const p = st.prep || {}, cap = `at most ${p.max_calls || 20} tool calls and ${p.max_seconds || 90} seconds`;
   return p.kind === 'opening'
@@ -365,7 +366,7 @@ export async function waitPrep({base, log = () => {}, stopped = () => false, too
   const t0 = Date.now(); let said = false;
   for (;;) {
     if (stopped()) return null;
-    const st = await tool(base, 'dm_status'), p = st && st.ok ? st.prep : null;
+    const st = await tool(base, 'dm_status', {_poll: true}), p = st && st.ok ? st.prep : null; // _poll: this wait neither counts nor starts the prep clock (#733)
     if (p && p.state === 'running') return st;
     if (!(p && p.host)) return null; // nobody holds the world for a prep (an older page, play-headless without --wait-ready)
     if (!(p && p.opening_due) && Date.now() - t0 >= waitMs) return null;

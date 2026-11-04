@@ -49,9 +49,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // scripts/pacing.mjs withClaudeSlot) and waits its turn when all are taken, so any number of Claude runners
 // can be started (five members and the DM always fit) while at most this many talk to the API at once.
 // A Fellowship runner also gets --claude-concurrency so its members queue inside it (scene turns first).
-// The relay itself keeps RELAY_ANTHROPIC_CONCURRENCY (default 2) for brain calls; keep the sum of the two
-// within the API org's concurrent-request limit (default 2 + 3 = 5). Local (Ollama) runners take none.
-export const CLAUDE_SLOTS = 3, LEASE_MS = 15 * 60000, LEASE_WAIT_MS = 20000;
+// The DM seat has slots of its own (env RUNNER_DM_SLOTS, default DM_SLOTS 1; 0 = none, the old shared pool), outside
+// RUNNER_CLAUDE_MAX (#733): its turns and its prep lease one first and never queue behind hero turns (only when its own are
+// all held does it queue in the hero pool, as every runner did before). While the DM's prep holds the world (/play/runner/slot sees the
+// page's or play-headless's dm prep running), hero runners get no slot: their request waits for the prep to end.
+// The relay itself keeps RELAY_ANTHROPIC_CONCURRENCY (default 2) for brain calls; keep the sum of the three
+// within the API org's concurrent-request limit (default 2 + 3 + 1 = 6). Local (Ollama) runners take none.
+export const CLAUDE_SLOTS = 3, DM_SLOTS = 1, LEASE_MS = 15 * 60000, LEASE_WAIT_MS = 20000, PREP_POLL_MS = 250;
 export const DM_FIRST_MS = 2000; // a hero runner asking for a Claude slot while the DM's voice answers a call waits this long first (#682)
 // At most MAX_RUNNERS at once (env RELAY_MAX_RUNNERS). SEATS: the Fellowship's five and the DM, which always
 // fit whatever the setting: a runner for a Fellowship member, the Fellowship runner or the DM is refused only
@@ -174,12 +178,17 @@ export function runnerArgs(req, base) {
 //   base: () => the URL runners use to reach this server (http://127.0.0.1:<port>)
 export function attachRunners(server, {play, enabled = false, origin = 'http://localhost:5173', base, log = console.log, spawnImpl = spawn, logs = LOGS, env = process.env, now = () => Date.now()} = {}) {
   const claudeMax = Number.isFinite(Number(env.RUNNER_CLAUDE_MAX)) && env.RUNNER_CLAUDE_MAX !== '' && env.RUNNER_CLAUDE_MAX != null ? Math.max(1, Number(env.RUNNER_CLAUDE_MAX)) : CLAUDE_SLOTS;
+  const dmSlots = env.RUNNER_DM_SLOTS !== '' && env.RUNNER_DM_SLOTS != null && Number.isFinite(Number(env.RUNNER_DM_SLOTS)) ? Math.max(0, Math.round(Number(env.RUNNER_DM_SLOTS))) : DM_SLOTS;
+  const dmLeases = new Map(); // the DM seat's own slots (#733): lease id -> {key, at}
+  const prepHolds = () => {try {const p = play && play.backend && play.backend.info && (play.backend.info() || {}).dmPrep; return !!(p && p.state === 'running')} catch {return false}};
   const maxRunners = Number(env.RELAY_MAX_RUNNERS) >= 1 ? Math.round(Number(env.RELAY_MAX_RUNNERS)) : MAX_RUNNERS;
   // Claude slot leases: lease id -> {key, at}; waiters get the next free one in order
   const leases = new Map(), waiters = []; let leaseSeq = 0;
   const grantNext = () => {for (const [id, l] of leases) if (now() - l.at > LEASE_MS) leases.delete(id); // a lease never held forever
     while (waiters.length && leases.size < claudeMax) {const w = waiters.shift(); const id = 'L' + (++leaseSeq); leases.set(id, {key: w.key, at: now()}); clearTimeout(w.t); w.res(id)}};
-  const dropLeases = key => {for (const [id, l] of leases) if (l.key === key) leases.delete(id); grantNext()};
+  const dropLeases = key => {for (const [id, l] of leases) if (l.key === key) leases.delete(id); for (const [id, l] of dmLeases) if (l.key === key) dmLeases.delete(id); grantNext()};
+  const dmLease = key => {for (const [id, l] of dmLeases) if (now() - l.at > LEASE_MS) dmLeases.delete(id);
+    if (dmLeases.size >= dmSlots) return null; const id = 'D' + (++leaseSeq); dmLeases.set(id, {key, at: now()}); return id};
   // the provider a hero's runner will use: the request's, else the hero's saved runner settings, else the default
   const providerFor = (id, asked) => {if (asked) return asked;
     try {const f = typeof id === 'string' ? join(logs, 'agents', id + '.json') : sessionPath(id, logs); if (existsSync(f)) {const j = JSON.parse(readFileSync(f, 'utf8')); if (j && j.runner && j.runner.provider) return j.runner.provider}} catch {}
@@ -466,7 +475,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     // The runners' output (narration, tool results, the DM's thinking) is for the watcher's page only (issue #123):
     // a request without the page's origin (another local process, a runner) gets the states without the lines.
     if (path === '/play/runner' && req.method === 'GET') {const page = o === origin, rs = enabled ? list().map(v => page ? v : {...v, lines: [], error: v.error ? 'see the runner log' : null}) : [];
-      return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), session: sessionView(), max: maxRunners, seats: SEATS, claude: {slots: claudeMax, used: leases.size, waiting: waiters.length}, kinds, providers: RUNNER_PROVIDERS, runners: rs})}
+      return send(200, {ok: true, enabled, ...(enabled ? {} : {how: HOW}), session: sessionView(), max: maxRunners, seats: SEATS, claude: {slots: claudeMax, used: leases.size, waiting: waiters.length, dmSlots, dmUsed: dmLeases.size}, kinds, providers: RUNNER_PROVIDERS, runners: rs})}
     if (req.method !== 'POST') return send(404, {error: 'not found'});
     if (!enabled) return send(403, {error: 'runners are off', how: HOW});
     let b; try {b = await readBody(req)} catch (e) {return send(400, {error: e.message})}
@@ -476,19 +485,30 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (path === '/play/runner/slot') {
       const key = typeof b.key === 'string' ? b.key : '', r = table.get(key);
       if (!r || r.done) return send(404, {ok: false, error: 'no such live runner'});
-      if (key !== 'dm' && play && play.dmVoiceBusy && play.dmVoiceBusy()) await new Promise(r => setTimeout(r, DM_FIRST_MS)); // the DM's voice first (#682)
+      const t0 = Date.now(); // one request waits at most LEASE_WAIT_MS in all (the runner's own timeout is 30 s)
+      const isDm = !!(RUNNER_KINDS[r.kind] && RUNNER_KINDS[r.kind].seat === 'dm');
+      if (isDm) {const id = dmLease(key); if (id) return send(200, {ok: true, lease: id, slots: claudeMax, dm: true})} // the DM's own slot first (#733)
+      if (!isDm && prepHolds()) { // the DM prepares the table: heroes wait for it, they lease nothing (#733)
+        let gone = false; res.on('close', () => {if (!res.writableEnded) gone = true});
+        while (prepHolds() && !gone && Date.now() - t0 < LEASE_WAIT_MS) await new Promise(r => setTimeout(r, PREP_POLL_MS));
+        if (gone) return;
+        if (prepHolds()) return send(200, {ok: false, busy: true, prep: true, slots: claudeMax, waiting: waiters.length});
+      }
+      if (!isDm && play && play.dmVoiceBusy && play.dmVoiceBusy()) await new Promise(r => setTimeout(r, DM_FIRST_MS)); // the DM's voice first (#682)
       grantNext();
       if (leases.size < claudeMax && !waiters.length) {const id = 'L' + (++leaseSeq); leases.set(id, {key, at: now()}); return send(200, {ok: true, lease: id, slots: claudeMax})}
-      // a member whose own Table scene waits (scene: true, #687) goes before every request that has nothing that cannot wait
+      // a member whose own Table scene waits (scene: true, #687) goes before every request that has nothing that cannot wait;
+      // a DM whose own slots are all held (RUNNER_DM_SLOTS 0) queues here like any turn, as before #733
       const scene = b.scene === true;
-      const id = await new Promise(done => {const w = {key, res: done, scene}; w.t = setTimeout(() => {const i = waiters.indexOf(w); if (i >= 0) waiters.splice(i, 1); done(null)}, LEASE_WAIT_MS);
+      const id = await new Promise(done => {const w = {key, res: done, scene}; w.t = setTimeout(() => {const i = waiters.indexOf(w); if (i >= 0) waiters.splice(i, 1); done(null)}, Math.max(1000, LEASE_WAIT_MS - (Date.now() - t0)));
         const at = scene ? waiters.findIndex(x => !x.scene) : -1; if (at >= 0) waiters.splice(at, 0, w); else waiters.push(w);
         res.on('close', () => {if (res.writableEnded) return; const i = waiters.indexOf(w); if (i >= 0) {waiters.splice(i, 1); clearTimeout(w.t); done(null)}})}); // the runner gave up this request (it asks again as a scene)
       if (id && (res.destroyed || res.writableEnded)) {leases.delete(id); grantNext(); return} // granted to a request nobody waits on any more: the slot goes back
-      return send(200, id ? {ok: true, lease: id, slots: claudeMax} : {ok: false, busy: true, slots: claudeMax, waiting: waiters.length});
+      return send(200, id ? {ok: true, lease: id, slots: claudeMax} : {ok: false, busy: true, slots: claudeMax, waiting: waiters.length, ...(isDm ? {dm: true, dmSlots} : {})});
     }
     if (path === '/play/runner/slot/release') {
       if (typeof b.lease === 'string' && leases.has(b.lease)) {leases.delete(b.lease); grantNext()}
+      else if (typeof b.lease === 'string') dmLeases.delete(b.lease);
       return send(200, {ok: true});
     }
     if (path === '/play/runner/stop-all') {
