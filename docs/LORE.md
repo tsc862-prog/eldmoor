@@ -115,6 +115,10 @@ that."), and the hero card lists them.
 | Boastful | Picks fights for the story, and loots for the audience. | 20% more likely to duel; hunts a little longer before selling. |
 
 ## Origins and goals
+A hero who plays by its own mind is given the past and chooses the oath (#800): the origin stays, and the rolled goal is only an
+offered thread, told as the past ("Brunok's family once held the Magma-Tempered Gauntlets. It was lost, and they never stopped
+speaking of it."). Nobody calls it an oath until the hero swears, aloud, in its own words. What follows is the background heroes' way.
+
 Every recruit arrives with a one-sentence backstory (`src/data/origins.js`, filled from the
 living world by `src/sim/goals.js`) and swears an oath: a personal goal they pursue and the
 Chronicle announces when kept ("Pellora has kept the oath: Hollowfang is dead. A new oath:

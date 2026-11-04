@@ -74,7 +74,8 @@ export function downedOver(a){const R=a&&a.reflect;if(R&&R.cur&&R.cur.kind==='do
 export function reflectDone(a,id,wrote){if(!a||a.kind!=='hero')return {ok:false,error:'No such hero.'};const R=stateOf(a),gm=Math.round(S.gameMin),k=Math.max(0,Math.min(20,Math.round(Number(wrote)||0)));
   const past=R.log.find(x=>x.id===id&&gm-x.gm<=REFLECT.OPEN);if(past){past.wrote=Math.max(past.wrote,k);return {ok:true,reflected:id,wrote:past.wrote,already:true}} // closed already (by its first note)
   const due=reflectDue(a);if(!due||due.id!==id)return {ok:false,error:'No reflection '+id+' is due.'};
-  R.n++;R.last=gm;R.ev=a.playEvN||0;if(due.kind==='dusk'||gm%DAY>=REFLECT.DUSK)R.dusk=dayNo(gm);if(R.cur&&R.cur.id===id)R.cur=null;
+  R.n++;R.last=gm;R.ev=a.playEvN||0;if(due.kind==='dusk'||gm%DAY>=REFLECT.DUSK){R.dusk=dayNo(gm);if(a.goal&&a.goal.offered)a.goal.quiet=true} // the offer of a thread is asked once more, here, and never again (#800)
+  if(R.cur&&R.cur.id===id)R.cur=null;
   R.log.push({id,kind:due.kind,why:due.why,gm,day:dayNo(gm),wrote:k});if(R.log.length>REFLECT.LOG)R.log.shift();
   return {ok:true,reflected:id,wrote:k,today:R.n}}
 

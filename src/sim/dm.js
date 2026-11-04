@@ -215,7 +215,7 @@ export function withdrawHook(id){const i=S.adventures.findIndex(h=>h.id===id&&h.
 let boardLever=null;
 function newHook(c,tpl,src,o={},reason,quiet){const r=pull('post_hook',{town:c.name,tpl,src,spec:o},{by:'scripted',reason:reason||HOOK_WHY[src]||'a job for the board',log:quiet?false:undefined});
   if(quiet)boardLever=r.entry?{...r.entry.detail}:null;return r.ok?r.ret:null}
-const HOOK_WHY={death:'a hero of this town fell recently',remnant:'a road encounter left a remnant',rumour:'a living elite is about',oath:'a hero in town has a matching oath',
+const HOOK_WHY={death:'a hero of this town fell recently',remnant:'a road encounter left a remnant',rumour:'a living elite is about',oath:'a hero in town has a matching oath or thread',
   follow:'follow-up to a finished job',request:'a townsfolk request',writ:'the gate captain’s writ'};
 
 // ---- the gate captain's bounties (issue #67) ----
@@ -259,7 +259,7 @@ function fellowHook(c,fo){
   const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl)),five=!!fo.company.slots,co=fo.cid;
   if(!five&&lo<K.MIN_LVL)return null; // nothing on a board fits a company with a member this green (#450)
   for(const a of fo.members){if(a.adv||a.lvl<K.MIN_LVL||S.adventures.some(h=>h.phase==='open'&&h.for===a.id))continue;
-    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data,ff:1,cid:co},five?'a Fellowship member’s oath':'a company member’s oath',true)}
+    const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data,ff:1,cid:co},(five?'a Fellowship member’s ':'a company member’s ')+(a.goal.offered?'unsworn thread':'oath'),true)}
   const taken=m=>S.adventures.some(h=>h.data&&h.data.eliteId===m.id&&h.phase!=='done');
   const E=S.mobs.filter(m=>m.elite&&m.alive&&!m.gone&&!taken(m)&&m.lvl<=hi+2).sort((p,q)=>dist(p,fo)-dist(q,fo)||p.id-q.id)[0];
   // a hunt needs two blades walking together (another company: its walking party)
@@ -355,7 +355,7 @@ function start(h,a,mem){const T=D.ADVENTURES[h.tpl],L=a,c=homeOf(L);
   for(const b of mem){if(b.adv&&b.adv!==adv.id)drop(b);b.adv=adv.id}
   bump(stats().started,h.tpl);bump(stats().bySrc,h.src);
   adv.told=watched(adv)||S.adventures.filter(v=>v.phase==='active'&&v.told).length<K.TOLD;if(adv.told)stats().told++;
-  const C=ctx(adv);beat(adv,false,...fill(pickA(D.OFFER[h.src]||D.OFFER.writ),C));
+  const C=ctx(adv),by=h.src==='oath'&&hero(h.for),src=by&&by.goal&&by.goal.offered?'thread':h.src;beat(adv,false,...fill(pickA(D.OFFER[src]||D.OFFER.writ),C)); // two lines either way: the same die (#800)
   for(const b of mem)record(b,'Took up an adventure: ',gd(adv.title),' ('+(h.giver?h.giver.name:'the gate')+').');
   if(T.carry==='start')carryItem(adv);
   return adv}
@@ -719,7 +719,7 @@ const hookRow=(h,why)=>({id:h.id,tpl:h.tpl,src:h.src,giver:h.giver?h.giver.name:
 function boardLog(c,h,removed,levers){const open=S.adventures.filter(x=>x.phase==='open'&&x.town===c.name);
   if(!h){if(levers.length)dmlog('lever',null,['Board at '+c.name+': nothing posted ('+levers.map(l=>l.lever+' '+l.result).join('; ')+').'],{lever:levers.map(l=>l.lever).join(', '),levers,open:open.length},{town:c.name});return}
   const who=h.for!=null?hero(h.for):null;
-  const why=h.src==='death'?'a hero of this town fell recently':h.src==='remnant'?'a road encounter left a remnant':h.src==='oath'?'a hero in town has a matching oath':
+  const why=h.src==='death'?'a hero of this town fell recently':h.src==='remnant'?'a road encounter left a remnant':h.src==='oath'?'a hero in town has a matching oath or thread':
     h.src==='follow'?'follow-up to a finished job':h.data.eliteId!=null?'a living elite is about':'townsfolk request or gate writ, template drawn at random';
   dmlog('hooks',null,['Board at '+c.name+': '+h.tpl+' posted by '+(h.giver?h.giver.name:'the gate')+' ('+h.src+')',...(who?[' for ',who]:[]),
     removed.length?'; '+removed.length+' taken down.':'.'],
