@@ -83,7 +83,7 @@ export {setDmAlive,gone as dmGone,dmAlive} from './dmreflex.js'; // the DM's ref
 import {ensureCampaign,dreamTick} from './dmagent.js';
 export {provideCampaigns,parseCampaign,campaignIdOf} from './campaign.js'; // the campaign seed
 export {questLog,QL} from './questlog.js'; // the quest log: board, DM and oath quests, one in focus
-export {planOpening,openingDue,openingPending,arrivalsView,ARRIVE} from './arrival.js'; // session zero and arrivals (#437, #452)
+export {planOpening,openingDue,openingPending,openingWait,arrivalsView,ARRIVE} from './arrival.js'; // session zero and arrivals (#437, #452)
 export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost,setGateHold,worldHeld,holdLine} from './prep.js'; // the DM's prep before the table opens (#437)
 
 setFallHook(executeWill); // a will executes on the final death (#631)

@@ -70,6 +70,7 @@ for (const k of Object.keys(counts)) ok(counts[k] <= POLL_BOUND, `${k}: ${counts
 // 2. session zero's frame, picked up 5 s late
 console.log(`session zero: the frame picked up ${PICKUP_S} s after it was posted`);
 await voices.table.stop(); setDmAlive(() => true); // a runner holds the seat but its table voice is busy elsewhere
+{const L = SLT.slotHeroes(SLT.slotted()); for (const a of L) {a.x = L[0].x; a.y = L[0].y}} // session zero waits for members out of range (#771)
 A_.planOpening();
 let sc = null; {const w = Date.now(); while (Date.now() - w < 5000 && !(S.table && S.table.kind === 'opening' && S.table.calls && S.table.calls.length)) await sleep(25); sc = S.table}
 ok(sc && sc.kind === 'opening' && sc.calls && sc.calls[0] && sc.calls[0].kind === 'frame', 'the opening scene asks for its frame');
