@@ -20,7 +20,9 @@ export const MATERIALS={};
  ['Wolf Sinew','hide',0,4],['Mudback Bristle','hide',1,9],['Shaghorn Horn','hide',3,33],
  ['River Perch','fish',0,3],['Mere Eel','fish',1,8],['Tarn Whitefish','fish',3,24]]
   .forEach(([n,kind,band,b])=>MATERIALS[n]={kind,band,base:b,supply:6,prev:0});
-export const price=n=>{const g=GOODS[n]||MATERIALS[n];return Math.max(1,Math.round(g.base*clamp(1.5-g.supply*.035,.35,1.8)))};
+export const price=n=>{const g=GOODS[n]||MATERIALS[n];if(!g){const u=USES[n]; // a crafted consumable (#719) has no supply curve: the shop price is the going price
+  return u?Math.max(1,u.price):1}
+  return Math.max(1,Math.round(g.base*clamp(1.5-g.supply*.035,.35,1.8)))};
 for(const n in GOODS)GOODS[n].prev=price(n);
 for(const n in MATERIALS)MATERIALS[n].prev=price(n);
 

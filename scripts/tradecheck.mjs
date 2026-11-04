@@ -41,6 +41,31 @@ s.slots.head = null; s.lvl = Math.max(s.lvl, 12);
 ok(scriptedList(s) === 1 && listings().length === 1, 'a scripted hero lists a spare');
 const buyer = M[3]; buyer.cls = s.cls; toTown(buyer); buyer.player = false; buyer.lvl = 12; buyer.gold = 400; buyer.slots.head = null;
 ok(scriptedBuy(buyer, null) === 1 && !listings().length, 'a scripted hero buys the upgrade');
+// crafted goods (#719): every recipe result has a price; crafted gear keeps its maker; a crafted potion lists, is bought, and the house panel names the maker
+{
+  const {RECIPES} = await import('../src/data/recipes.js'), {price, USES} = await import('../src/data/items.js');
+  ok(RECIPES.filter(r => r.out.kind === 'use').every(r => USES[r.out.id] && price(r.out.id) >= 1), 'price() covers every consumable a recipe makes');
+  const {craftOne} = await import('../src/sim/craft.js'), {learn} = await import('../src/sim/professions.js'), {addUse} = await import('../src/sim/inv.js');
+  const {RECIPE_BY_ID} = await import('../src/data/recipes.js');
+  const sm = M[0], by = M[1]; toTown(sm); toTown(by); sm.player = true; by.player = true; S.listings = []; invOf(sm).list = []; invOf(by).list = [];
+  learn(sm, 'smithing'); learn(sm, 'alchemy'); sm.gold = 1000; by.gold = 1000;
+  addGood(sm, 'Tin Ore', 3); addGood(sm, 'Wolf Sinew', 1);
+  const mk = craftOne(sm, RECIPE_BY_ID['forge-tinforged'], {by: 'agent', cls: sm.cls});
+  const gi = invOf(sm).list.indexOf(mk.item);
+  let q = call(sm, 'auction_list', {index: gi}); ok(q.ok, 'crafted gear lists: ' + (q.error || q.listed));
+  q = call(by, 'auction_browse'); ok(q.listings.some(l => l.crafted_by === sm.name), 'the listing names its maker');
+  q = call(by, 'auction_buy', {id: S.listings[0].id}); const got = invOf(by).list.find(e => e.maker); ok(q.ok && got && got.maker === sm.name && got.makerId === sm.id && q.crafted_by === sm.name, 'the buyer holds the piece with its maker and makerId');
+  addUse(sm, 'Redroot Draught', 5);
+  q = call(sm, 'auction_list', {index: invOf(sm).list.findIndex(e => e.id === 'Redroot Draught'), n: 5}); ok(q.ok && S.listings[0].kind === 'use' && S.listings[0].maker === sm.name, 'a crafted potion stack lists: ' + (q.error || q.listed));
+  const b0 = by.gold; q = call(by, 'auction_buy', {id: S.listings[0].id, n: 2}); ok(q.ok && count(by, 'Redroot Draught') === 2 && by.gold < b0, 'a crafted potion is bought');
+  addUse(sm, 'Bogroot Antidote', 1);
+  q = call(sm, 'auction_list', {index: invOf(sm).list.findIndex(e => e.id === 'Bogroot Antidote')}); ok(!q.ok, 'a shop-only consumable still cannot be listed');
+  const sc = M[2]; toTown(sc); sc.player = false; sc.lvl = 8; invOf(sc).list = []; S.listings = []; addUse(sc, 'Redroot Draught', 9);
+  ok(scriptedList(sc) === 1 && S.listings.length === 1 && S.listings[0].n === 5, 'a scripted hero lists potions beyond the four it keeps');
+  const bu = M[3]; toTown(bu); bu.player = false; bu.lvl = 8; bu.gold = 400; invOf(bu).list = [];
+  ok(scriptedBuy(bu, null) >= 1 && count(bu, 'Redroot Draught') >= 1, 'a scripted hero buys crafted potions it is short of');
+  const st = S.tradeStats; ok(st.craftedListed >= 2 && st.craftedSold >= 2, 'crafted trades are counted: ' + st.craftedListed + ' listed, ' + st.craftedSold + ' sold');
+}
 const snap = snapshot(); reseed(1); restore(snap); ok(Array.isArray(S.trades), 'trades survive a save round trip');
 const run = () => {reseed(7); init({fellowship: false}); for (let i = 0; i < 600 * 60; i++) step(1 / 60); return S.agents.reduce((h, x) => (h * 33 + x.gold + x.lvl) >>> 0, 5381) + ':' + (S.tradeStats ? S.tradeStats.listed : 0)};
 const h1 = run(), h2 = run(); ok(h1 === h2, 'deterministic: ' + h1);
