@@ -22,6 +22,7 @@ const SEV = {bad: 3, warn: 2, info: 1};
 const ABOUT = {
   'no-tool-calls': 'turns in a row with no tool call (the agent only talks)',
   'repeated-narration': 'a narration close to one of the last few',
+  'repeated-act': 'the same emote, say or whisper as the turn before (counts as an empty turn)',
   'not-english': 'an answer in another language',
   'stale-claim': 'narration contradicts the game state (e.g. a fight while in town)',
   'refused-calls': 'every tool call of several turns failed or was refused',

@@ -67,7 +67,7 @@ export function failTracker(maxFails) {
 // Did a local-loop turn (scripts/local-agent.mjs result) do anything?
 // (a turn with no call, every call rejected, or a narration repeating the last one with no world-changing call is empty)
 // null (neither worked nor failed; also a turn whose calls failed because the game page did not answer: a hidden or reloading tab is not the runner's fault, failTracker leaves its count): a turn Ollama aborted twice for repeating tokens (#221) with no call made.
-export const localWorked = r => r && r.looped && !r.tools ? null : r && r.gameDown && !r.acts ? null : !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.foreign);
+export const localWorked = r => r && r.looped && !r.tools ? null : r && r.gameDown && !r.acts ? null : !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.repeatAct && !r.foreign);
 
 // makePacer({base, hero, runner, heartbeat, minGap, log, stopped}) -> {next(), turnDone(), state}
 //   next(): waits for the next turn. -> {wake:'now'|'soft'|'heartbeat', why, table, clock} or {dead} / {gone, why} / {stopped}

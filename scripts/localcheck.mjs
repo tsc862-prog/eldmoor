@@ -25,7 +25,7 @@ import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:f
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneDue, sceneToAnswer, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
+import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneDue, sceneToAnswer, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS, actSig, REPEAT_ACTS} from './local-agent.mjs';
 import {ollamaAdapter, numCtxFrom} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
@@ -528,6 +528,19 @@ ${R.out.slice(-800)}`));
     ok(/fresh context/.test(R.out) && mine.some(b => b.messages.filter(m => m.role === 'assistant').length === 0 && /^Turn 3/.test((b.messages[1] || {}).content || '')), 'after two empty turns the next one starts from a fresh context');
     const sz = sim.playerAct(a.id, 'say', {text: '我将带领团队去见萨满'});
     ok(!sz.ok && /speak in English/.test(sz.error), 'the game refuses a foreign-script line: ' + sz.error);
+    sim.markPlayer(a, false)}
+
+  // E2. repeated acts (#801): the same emote every turn is flagged repeat-act and counts as an empty turn; consistent play is never flagged
+  {const sg = (name, args) => actSig([{name, args}]);
+    ok(sg('emote', {text: 'a'}) === sg('emote', {text: 'a'}) && sg('emote', {text: 'a'}) !== sg('emote', {text: 'b'}) && sg('say', {text: 'a'}) !== sg('emote', {text: 'a'}), 'actSig: same call and arguments match, another text or tool does not');
+    ok(['wait', 'hunt', 'move_to', 'follow', 'rest', 'scene_act', 'use_ability', 'buy', 'sell', 'take_quest', 'look', 'status', 'fight', 'lead_to'].every(t => actSig([{name: t, args: {}}]) === null) && actSig([]) === null && actSig(undefined) === null && actSig([{name: 'emote', args: {text: 'a'}}, {name: 'say', args: {text: 'b'}}]) === null, 'actSig: wait, hunt, move_to, follow, rest, scene_act, abilities, trade, quests, reads, no act and a turn with two acts are never flagged');
+    ok([...REPEAT_ACTS].sort().join() === 'emote,party_say,say,whisper', 'only emote, say, party_say and whisper can be flagged');
+    const a = pick(), n0 = seen.length;
+    const R = runner(a, 'mock-pose:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--max-turns', '8', '--new']);
+    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]);
+    const flagged = (R.out.match(/repeat-act: the same emote/g) || []).length, refused = (R.out.match(/already did that/g) || []).length;
+    ok(code === 0 && /3 failed or empty turns in a row/.test(R.out) && R.turns.length <= 5, `a model looping one emote is stopped by --max-fails after ${R.turns.length} turns` + (code === 0 ? '' : '\n' + R.out.slice(-1200)));
+    ok(flagged >= 2 || refused >= 1, `the loop is caught by the runner flag (${flagged} repeat-act) or the game's own refusal (${refused})`);
     sim.markPlayer(a, false)}
 
   // I. a New World reuses the hero's id for another hero (issue #219): the runner notices, releases its claim and
