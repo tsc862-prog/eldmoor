@@ -8,7 +8,7 @@
 //     its next start (the row says which).
 // Limits are kept per viewer (localStorage, ui/runners.js). The relay enforces them (scripts/runners.mjs).
 import {S,playerSeats,dmSeatOn} from '../sim/index.js';
-import {runnerByKey,allRunners,runnersEnabled,relayUp,kindInfo,pickOf,limitOf,limitNote,setLimit,sessionInfo,setSessionBudget,stateLine,watchRunners,HOW_TEXT,DONE_STATE,BUDGETS} from './runners.js';
+import {runnerByKey,allRunners,runnersEnabled,relayUp,kindInfo,pickOf,limitOf,limitNote,setLimit,sessionInfo,setSessionBudget,stateLine,watchRunners,HOW_TEXT,DONE_STATE,BUDGETS,NO_SESSION,noSessionBudget} from './runners.js';
 import {patch} from './stable.js';
 import {inSlots,slotted,mindsOf} from '../sim/company.js'; // the slotted company (#588)
 
@@ -39,7 +39,7 @@ function sessionBox(n){const s=sessionInfo(),box=el('div','agsess');
   const spent=el('div','agspent');spent.append(el('span',null,'Spent '+usd(s.spent)+(s.budget!=null?' of '+usd(s.budget):'')));
   if(s.budget!=null){const m=el('div','meter agm');const i=document.createElement('i');i.style.width=Math.min(100,s.spent/s.budget*100).toFixed(1)+'%';m.append(i);spent.append(m);
     if(s.left!=null&&s.left<=0)spent.append(el('span','sbad','Reached: paid runners are stopped until you raise it.'))}
-  box.append(spent);n.append(box)}
+  box.append(spent);if(noSessionBudget())box.append(el('div','dm agnote',NO_SESSION));n.append(box)} // #807: shown, never defaulted
 
 function runnerRow(n,x){const r=runnerByKey(x.key),on=r&&!DONE_STATE[r.state],L=limitOf(x.key),K=kindInfo(x.kind),loc=isLocal(x.key);
   const row=el('div','agr');row.setAttribute('data-k',x.key);

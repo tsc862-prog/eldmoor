@@ -145,7 +145,7 @@ other. The rules:
   release their heroes, then the relay, then Vite; the process trees are killed with `taskkill /T /F` as a last resort, so
   no node process or port stays held; closing the window does the same). A change under `scripts/` while it runs prints
   "relay code changed: press u (or r) to apply" (never an automatic restart mid-play). The relay keeps the running runners
-  in `logs/runners/active.json` (kind, hero, name, mind, caps; a stop from the page, a crash or a finished runner leaves the
+  in `logs/runners/active.json` (kind, hero, name, mind, caps; a stop from the page, a crash, a spent budget or a finished runner leaves the
   list, a relay quit does not) and with `--resume-runners` (`RELAY_RESUME_RUNNERS=1`) starts them again once the page
   reconnects and names the same heroes (same id and name, alive; a hero that is gone, renamed by a new world or dead is
   skipped). The page's bridge reconnects by itself after a relay restart. Options: `--relay-port N`, `--vite-port N`,
@@ -347,6 +347,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   /play/runner/slot`, released after the turn, freed when the child exits) and waits for one when all are
   taken, so starting is never refused for slots (a company runner also queues its members with
   `--claude-concurrency`). Without `--runners` the buttons say how to turn it on.
+- Budget stops (#807): a runner that spent its budget is never started again or replaced by anything but the owner. The supervisor marks it (`r.budgetOut`; the view's `budgetSpent`, `spentWhy`) on the runner's own line (`[Name] done (budget reached)`, `stopped after N turns (budget reached)`) or a cap or session-budget stop; a Fellowship or company runner is out from its first member's line, while other members finish. `adopt` hands its heroes no runner (a heir, a member who leaves; both logged as `no-restart`) and `resume` skips it, the open DM seat included: it leaves the active list for that file's `spent`, and comes back on the page as a stopped runner after a relay restart. A crash, a heir of a runner that ended any other way, and a member leaving on a live budget go on as before; there is no automatic crash restart (none since #691). The world pauses at the gate as for any stopped runner, the bar says what was spent ("budget spent: $2.05 of $2.00"), and the buttons what they will spend ("Restart · another $2.00", "Start all · another $3.00"; a local pick is free). Restart is one click (it waits for the old child, `restartRunner`). No default session budget (owner's call): where it is unset the gate, the Agents panel and the runner pickers say so. Every start and end goes to `logs/runners/events.jsonl` (`start` with `by`: owner, page, setup, resume, adopt, local; `end` with `why`, `by`, cost, budget, exit; `budget`; `no-restart`), and the runner log's `===` lines carry `| by owner` and `| why budget reached, $2.05 of $2.00`. Only the page's origin can say owner or setup.
 - Relay concurrency: the owner's API org caps concurrent requests across all models. The relay keeps at most
   `RELAY_ANTHROPIC_CONCURRENCY` (default 2) Anthropic calls in flight (`scripts/providers/limiter.mjs`):
   decisions queue ahead of writing kinds and are dropped when their deadline passes in the queue (the sim

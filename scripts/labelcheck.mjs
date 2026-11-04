@@ -132,6 +132,10 @@ ok(runs.size === 1 && /done with .*budget reached/.test([...runs][0]), `its runn
 ok(why.size === 1 && new RegExp(done.name + ': the Fellowship runner is done with').test([...why][0]), `the gate says why (${[...why][0]})`);
 {const box = document.getElementById('rgate'), b = box && box.querySelector('[data-runact]');
   ok(!!b && b.dataset.runact === 'restart' && b.dataset.runkind === 'fellowship' && b.dataset.runhero == null, 'the gate\'s button restarts the Fellowship runner, not a hero runner the seats would refuse')}
+{const box = document.getElementById('rgate'), t = box.textContent, w = [...why][0]; // a budget stop's alert (#807): what was spent, what another start costs
+  ok(/budget spent: \$\d+\.\d\d of \$2\.00/.test(w) && /Restart spends another \$2\.00/.test(w), `the gate names the spend and the price (${w})`);
+  ok(/Restart · another \$2\.00/.test(t) && /Start all · another \$\d+\.00/.test(t), 'the buttons carry the price: ' + [...box.querySelectorAll('button')].map(b => b.textContent).join(' | '));
+  ok(/No session budget is set/.test(t), 'and the alert says no session budget is set')}
 const others = mem.filter(a => a !== done).map(labels);
 ok(others.every(L => /live\) · ready/.test(L.mind) && /^Fellowship runner/.test(L.run)), 'the other four still read live and ready under the Fellowship runner');
 const rv = RN.runnerByKey('fellowship');
@@ -170,7 +174,10 @@ ok(rv && !rv.heroes.includes(done.id) && rv.left && rv.left[0].id === done.id &&
   for (let i = 0; i < 3; i++) {T += 1000; await up3(); await dmClaim(); await post('/play/ready', {role: 'dm', runner: drid, state: 'failed', error: 'model not found', model: 'x'}); await view(); G.checkRunGate(T)}
   ok(st4.status === 200 && !ctl.held, 'a DM runner is back (its warm-up failed, but it is there and playing: active)');
   dkid.emit('exit', 1); for (let i = 0; i < 3; i++) {T += 1000; await up3(); await view(); G.checkRunGate(T)}
-  ok(ctl.held && /^DM: /.test(gate()[0] || ''), 'the override held only until the next change: the DM runner goes again and the world pauses again')}
+  ok(ctl.held && /^DM: /.test(gate()[0] || ''), 'the override held only until the next change: the DM runner goes again and the world pauses again');
+  // Restart is one click (#807): it waits for the old child to go; the relay refuses a start while it is stopping
+  const n5 = kids.length, p5 = RN.restartRunner('fellowship'); await sleep(40); k3.emit('exit', 0); const r5 = await p5;
+  ok(r5.ok && kids.length === n5 + 1, 'Restart stops the runner and starts it again with one click: ' + JSON.stringify(r5.error || 'started'))}
 
 server.close(); try {rmSync(tmp, {recursive: true, force: true})} catch {}
 Date.now = realNow;
