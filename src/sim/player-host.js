@@ -25,8 +25,8 @@ export async function hostCall(heroId,tool,args,{poll=100,nap=sleep,now=()=>Date
   const settled=()=>held&&(sceneOf(me)!==held||held.phase==='outcome'||held.phase==='done');
   for(;;){if(settled()){const out=finishWait(p,false);out.why='the table settled';if(held.summary)out.scene_outcome=held.summary;return out} // the scene's end first (its result event would end the wait too)
     if(waitOver(p))return finishWait(p,false);
-    if(now()-t0>=(held?WAIT_SCENE_MS:p.realMs))return finishWait(p,true);await nap(poll)}}
-export const WAIT_SCENE_MS=240000; // the longest a wait holds at a scene already answered (the table's live wait plus a queued extra)
+    if(now()-t0>=(held?WAIT_SCENE_MS:p.realMs)){const out=finishWait(p,true);if(held){out.why='the table is still open; call wait again';out.hint='The scene has not settled yet. Call wait again to keep waiting for it.'}return out}await nap(poll)}}
+export const WAIT_SCENE_MS=55000; // the longest one wait call holds at a scene already answered (#752): under the runners' 90 s tool cap and the relay's 60 s WAIT_MS, so no layer times out on another; the answer says to call wait again
 
 // Runner pacing (issue #126, sim/pace.js): not a game tool (MCP and /play/call never offer it; the relay
 // sends it from POST /play/pace). Resolves when the hero's next turn should start, or after realMs

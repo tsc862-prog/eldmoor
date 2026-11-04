@@ -102,12 +102,22 @@ const gather = () => {const L = mem.find(a => a.state !== 'dead'); let i = 0; fo
   const ans = sim.playerAct(a.id, 'scene_act', {option: 'press', line: 'Now.'});
   ok(ans.ok && ans.waited_s >= 1.2 && ans.waited_s <= 2 && !('table_waits' in ans), `scene_act says how long the table had waited (${ans.waited_s} s) and carries no waits note`);
   ok(!('table_waits' in sim.playerAct(a.id, 'look', {})), 'once answered, its tool results say nothing of the scene');
+  // #752: a long table. Each wait call holds at most WAIT_SCENE_MS (55 s) and says to call again; the last one ends on the settle
+  const {WAIT_SCENE_MS} = await import('../src/sim/player-host.js');
+  ok(WAIT_SCENE_MS >= 50000 && WAIT_SCENE_MS <= 58000, `one held wait is capped under the relay's 60 s (${WAIT_SCENE_MS} ms)`);
+  let clock = 0; const fake = {poll: 5, now: () => clock, nap: async () => {clock += 1000}};
+  const longs = [];
+  for (let k = 0; k < 4; k++) {const t0 = clock, w = await hostCall(a.id, 'wait', {minutes: 30}, fake); longs.push({ms: clock - t0, w})}
+  ok(longs.every(x => x.ms <= 56000 && x.ms >= 54000 && x.w.ok && /still open/.test(x.w.why) && /wait again/.test(x.w.why) && x.w.table), `four waits across a long table each held under 55 s and said the table is still open (${longs.map(x => (x.ms / 1000) + ' s').join(', ')}: ${longs[0].w.why})`);
   for (let i = 0; i < 60 * 2; i++) sim.step(1 / 60); // past liveMs for everyone but c
   const late = mem.filter(x => sc.ids.includes(x.id) && x !== a && x !== c);
   ok(late.every(x => sc.w[x.id] && sc.w[x.id].late) && !(sc.w[c.id] && sc.w[c.id].late) && S.table === sc && !sc.resolved, 'past the wait the unqueued live members fall to their reflex; the queued one is still waited for');
   ok(late.every(x => sc.miss.includes(x.id)) && !sc.miss.includes(c.id), 'the table records the missed members: ' + sc.miss.length);
   const cAns = sim.playerAct(c.id, 'scene_act', {option: 'steady', line: 'Here.'});
   ok(cAns.ok && cAns.waited_s > 2, `the queued member answers inside its extra wait (${cAns.waited_s} s, beyond the ${TABLE.liveMs / 1000} s base)`);
+  // the last wait of the long table: the world runs while it holds, and the call ends on the settle, not the cap
+  const used = clock, fw = await hostCall(a.id, 'wait', {minutes: 30}, {poll: 5, now: () => clock, nap: async () => {clock += 1000; for (let i = 0; i < 60; i++) sim.step(1 / 60)}});
+  ok(fw.ok && fw.why === 'the table settled' && clock - used < WAIT_SCENE_MS, `and the next wait ended when the table settled (${fw.why}, ${(clock - used) / 1000} s)`);
   for (let i = 0; i < 60 * 3 && S.table === sc; i++) sim.step(1 / 60);
   ok(sc.resolved && sc.acts[c.id].by === 'agent' && sc.acts[a.id].by === 'agent' && late.every(x => sc.acts[x.id].by === 'reflex'), 'the scene resolves: a and the queued member by their agents, the rest by reflex');
   for (let i = 0; i < 60 * 30 && S.table; i++) sim.step(1 / 60);
