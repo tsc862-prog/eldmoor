@@ -514,6 +514,7 @@ console.log('budget stops (fake children, #807)');
   await req(C.B, '/play/runner/stop-all', {method: 'POST', body: {}, origin: PAGE}).then(() => {});
   ok(!JSON.parse(readFileSync(C.sup.activeFile, 'utf8')).spent, 'a world reset clears the spent list');
   // the DM's chosen mind (#824): --resume-runners starts it on the same provider and model, any provider
+  kids[kids.length - 1].emit('exit', 0); await sleep(10); // the DM the owner started above leaves
   s = await req(C.B, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'huggingface', model: 'meta-llama/Llama-3.3-70B-Instruct', budget: 2, by: 'setup'}, origin: PAGE});
   ok(s.status === 200, 'a DM on a Hugging Face model starts' + (s.status === 200 ? '' : ': ' + s.error));
   await C.sup.shutdown(300); C.server.close(); const n4 = kids.length, D = await host(), r4 = await D.sup.resume({waitMs: 2000, pollMs: 20, settleMs: 10, heroWaitMs: 50});
