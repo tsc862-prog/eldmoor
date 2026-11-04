@@ -72,3 +72,4 @@
 - [Downed agent side](downed-agent.md) — #658 aid-phase gambits, presets = old reflex, onAid hook, downed reflection, stabilize/tend/carry, heredoc pitfall
 - [Slot and scene](slot-scene.md) — #687 slot wait watches due (scene:true first), queued why + miss cause, wait holds at an answered scene
 - [Scene grab](scene-grab.md) — #737 sceneGrab aborts mid-turn Claude query after 15 s due, resume, queued countdown
+- [localcheck pacing flake #762](localcheck-pacing-downed.md) — downed-companion urgent event woke the test hero; DOWN.REACH/SEE zeroed in section A; no parallel runs
