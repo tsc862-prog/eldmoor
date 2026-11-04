@@ -245,12 +245,12 @@ if (comp && comp.ids.length > 1) {
   const CF = comp(foe, foeB);
   r = prop(X1, {kind: 'merge', company: foe.name});
   ok(!r.ok && /faction/.test(r.error), 'merge across factions is refused: ' + r.error);
-  put(Y1, 0, 40);
+  const far = sp2.y < 25 ? 30 : -30; put(Y1, 0, far); put(Y2, 1, far); // the whole company far out of shouting range (either may lead it), but on the map: 40 south can fall off it, where the spot lies depends on the home town
   r = prop(X1, {kind: 'merge', company: Y1.name});
   ok(!r.ok && /shouting range/.test(r.error), 'merge with leaders out of range is refused: ' + r.error);
-  put(Y1, 4, 5);
+  put(Y1, 4, 5); put(Y2, 5, 5);
   // a failing pair: a grudge says no; both fail, nobody moves
-  bump(Y1, X1, -4);
+  for (const y of [Y1, Y2]) for (const x of [X1, X2]) bump(y, x, -4); // every cross pair (either may lead its company, and the vote is the whole company's)
   r = prop(X1, {kind: 'merge', company: Y1.name});
   ok(r.ok, 'merge proposed in both companies: ' + JSON.stringify(r).slice(0, 100));
   run(2);
@@ -259,7 +259,7 @@ if (comp && comp.ids.length > 1) {
   ok(PX.status === 'failed' && PY.status === 'failed', 'either failing fails both: ' + PX.status + '/' + PY.status);
   ok(CX.ids.length === 2 && CY.ids.length === 2 && CO.companyOf(X1) === CX, 'no one moved when the merge failed');
   // a passing pair
-  bump(Y1, X1, 1);
+  for (const y of [Y1, Y2]) for (const x of [X1, X2]) bump(y, x, 1);
   r = prop(X1, {kind: 'merge', company: Y1.name});
   ok(r.ok, 'merge proposed again: ' + JSON.stringify(r).slice(0, 100));
   run(2);
@@ -381,6 +381,8 @@ ok(!r.ok, 'a Fellowship member cannot propose an expel: ' + r.error);
   ok(/You are following/.test(followNote(paceBrief(F.id).brief)) && /Walking with you/.test(followNote(paceBrief(L.id).brief)), 'the runner prompt names it');
   // a long walk: the follower keeps pace on autopilot (no order for hours), never joins, votes or shouts
   const way = [[18, 8], [4, 16], [20, 2], [0, 10], [14, 14]].map(([dx, dy]) => cl(at.x + dx, MW) + ',' + cl(at.y + dy, MH));
+  for (const m of S.mobs) if (m.alive && dist(m, at) < 35) {m.alive = false; m.gone = true} // the walk is about keeping pace, not about what the road holds (a fight or a hurt retreat ends the follow, whatever seed or spots)
+  rebuild();
   let wi = 0, cps = 0, lost = 0;
   F.playActAt = S.gameMin - 1000;
   const partyLines = () => S.agents.reduce((n, b) => n + (b.chat || []).filter(e => e.from === F && e.party).length, 0), pl0 = partyLines();
@@ -480,6 +482,7 @@ console.log('POOL',hs.length,[...new Set(hs.map(b=>b.fac+homeOf(b).name))]);
   S.conditions = [];
   // night shortens sight (#583): noon 12, midnight 7.2, dusk and dawn between; a scripted hero and a lit town keep it
   {const t0 = S.gameMin, day0 = (Math.floor(t0 / 1440) + 1) * 1440, at = h => {S.gameMin = day0 + h * 60};
+    for (const w of S.weather || []) {w.k = 'clear'; w.until = S.gameMin + 1e6} // the numbers below are the clear sky's: the weather the run has drawn by now is the world's, not this case's
     at(12); const noon = SH.sightRange(W); at(0); const mid = SH.sightRange(W); at(19.5); const dusk = SH.sightRange(W); at(6.5); const dawn = SH.sightRange(W);
     ok(Math.abs(noon - 12) < 1e-9 && Math.abs(mid - 7.2) < 1e-9, 'sight at noon ' + noon.toFixed(1) + ', at midnight ' + mid.toFixed(1));
     ok(dusk > mid && dusk < noon && dawn > mid && dawn < noon, 'dusk ' + dusk.toFixed(1) + ' and dawn ' + dawn.toFixed(1) + ' ramp between');
