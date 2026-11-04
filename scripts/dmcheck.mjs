@@ -497,6 +497,16 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
     'post_hook posts through the lever: on ' + hall + '\'s board, by dm-agent, the reason in the DM log, one pull counted' + (r.ok ? '' : ': ' + r.error));
   r = dmAct('post_hook', {town: 'fellowship', tpl: 'hunt', reason: 'a beast near their camp'});
   ok(r.ok && S.adventures.some(h => h.id === r.effect.hook && CITY.some(c => c.name === h.town)), 'post_hook town "fellowship" takes the nearest board' + (r.ok ? '' : ': ' + r.error));
+  // a goods job (#720): the same tool, a goods template as tpl; it lands on S.supply, never on the adventure board
+  S.supply = []; const nAdv = S.adventures.length, pulls0 = S.dmAgent.day.pulls;
+  r = dmAct('post_hook', {town: hall, tpl: 'draughts', reward: 'generous', reason: 'the chapel is out of draughts'});
+  const gj = r.ok && (S.supply || []).find(j => j.id === r.effect.hook);
+  ok(r.ok && gj && gj.town === hall && gj.by === 'dm-agent' && gj.want.id === 'Redroot Draught' && S.adventures.length === nAdv && lastLever().detail.lever === 'post_hook' && lastLever().detail.result === 'applied',
+    'post_hook with tpl draughts posts a goods job by dm-agent (wants ' + (gj && gj.want.n + ' ' + gj.want.id) + '), logged as a post_hook pull' + (r.ok ? '' : ': ' + r.error));
+  dmAct('post_hook', {town: hall, tpl: 'ore', reason: 'the forge is cold'}); r = dmAct('post_hook', {town: hall, tpl: 'perch', reason: 'a third'});
+  ok(r.ok === false && /goods jobs/.test(r.error), 'a third goods job on one board is refused: ' + (r.error || '').slice(0, 90));
+  r = dmAct('withdraw_hook', {hook: gj.id, reason: 'the chapel found a supplier'}); ok(r.ok && !S.supply.some(j => j.id === gj.id), 'withdraw_hook takes a goods job down');
+  S.supply = []; S.dmAgent.day.pulls = pulls0; // the goods pulls above are not the cap check's business
   r = dmAct('post_hook', {town: hall, reason: 'no template'});
   const viaPull = dmAct('pull_lever', {lever: 'post_hook', params: {town: hall}, reason: 'no template'});
   ok(r.ok === false && /^Refused: tpl is required/.test(r.error) && /post_hook takes: town/.test(r.error) && /post_hook takes params: town/.test(r.error) && r.usage,

@@ -53,6 +53,7 @@ import './crawl.js'; // the Fellowship's dungeon crawl, room by room at the Tabl
 import {siteTick,wireSites} from './sites.js'; // DM-made dungeon sites (#69): a no-op until the DM pulls create_site
 wireSites();
 import {sessionTick,planOpening} from './arrival.js';
+import './vision.js'; // a vision the DM stages: its Table scene kind (#639)
 import {iqTick} from './interrogate.js'; // a yielded foe questioned at the table (#431 slice 3)
 import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
 import {legendsTick} from './legends.js';

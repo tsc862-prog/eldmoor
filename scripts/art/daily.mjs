@@ -28,6 +28,11 @@
 // Output: assets/incoming/<date>/<kind>/<tier>/<name>.png (+ index.json and sheet.html there) for review; npm run art:accept
 // moves what you keep into assets/ and assets/index.json. State: assets/queue.json (gitignored). One line a run is
 // appended to logs/art.log (date, made, calls, cost, model, stop reason, next), which the launcher's `s` shows.
+// Provider (#703): by default the images are made on the owner's private ZeroGPU Space (scripts/art/space.mjs): $0, the PRO
+// account's daily GPU quota (40 min, resets 24 h after its first use). A run counts GPU seconds in that window (assets/queue.json
+// gpu) and stops at manifest allowance.zeroGpu.stopAtMinutes (ART_GPU_MINUTES overrides) before the quota could run into paid
+// overage, or at the Space's quota refusal ("try again in H:MM:SS"): the loop then sleeps until exactly that reset. The credit
+// share and ART_DAILY_BUDGET apply only to --provider router (Inference Providers, billed), which is never an automatic fallback.
 // No paid option is ever sent (no bill-to header, no provider key); the token is HF_TOKEN from .env, never printed.
 // Credits: Hugging Face gives free accounts no Inference Providers credits and PRO $2.00 a month (docs, 2026-11-03);
 // a run spends at most the day's share of manifest allowance.monthlyUsd and stops for the month at the full amount.
@@ -38,14 +43,15 @@ import {join,dirname} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,sha256,validateManifest,loadQueue,saveQueue,keyFile,splitKey,TILE,TIERS,tierKey,nextCheck,WAIT_WHY} from './lib.mjs';
 import {resolvePalette} from './post.mjs';
-import {parseArgs,hfToken,mapping,fetchRaw,saveRaw,processRaw,writeIndex} from './gen.mjs';
+import {parseArgs,fetchRaw,saveRaw,processRaw,writeIndex,providerOf,PROVIDERS,routeOf,tokenFor} from './gen.mjs';
+import {spaceOf,spaceDuration,ensureAwake,gpuWindow,windowEnd} from './space.mjs';
 
-const VALUED=['max','max-calls','manifest','dir','log','date','timeout','budget','tier','retry-hours','state'];
+const VALUED=['max','max-calls','manifest','dir','log','date','timeout','budget','tier','retry-hours','state','provider'];
 const pad=n=>String(n).padStart(2,'0');
 const today=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const stamp=(d,date=today(d))=>`${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 // A day counts as done once a run ended for a reason that will not change before tomorrow.
-const DONE=/stop: (allowance used|rate headers|ART_MAX_CALLS|manifest complete|daily share|monthly credits)/;
+const DONE=/stop: (allowance used|rate headers|ART_MAX_CALLS|manifest complete|daily share|monthly credits|ZeroGPU quota|GPU cap)/;
 // Estimated credits spent on the given day (YYYY-MM-DD) or month (YYYY-MM), read back from art.log lines.
 export function spentOn(text,prefix){let t=0;for(const l of String(text).split(/\r?\n/))if(l.startsWith(prefix)){const m=/(?:est\.|estimated|billed|mixed) \$([\d.]+)/.exec(l)||/~\$([\d.]+) of the free allowance/.exec(l);if(m)t+=Number(m[1])}return t}
 
@@ -67,6 +73,7 @@ export function jobsFor(man,idx,q,{retryFailed=false,tier=TILE}={}){
 export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
   const o=parseArgs(argv,VALUED),tier=o.tier?Number(o.tier):TILE;
   if(!TIERS.includes(tier)){console.error(`--tier: ${o.tier} is not one of ${TIERS.join(', ')}`);return 2}
+  const mode=providerOf(o);if(!mode){console.error(`--provider: ${o.provider} is not one of ${PROVIDERS.join(', ')}`);return 2}
   const dir=o.dir||env.ART_ASSETS||ASSETS,logPath=o.log||env.ART_LOG||join(ROOT,'logs','art.log'),now=ctx.now?ctx.now():new Date(),date=o.date||today(now);
   const retryHours=Number(o['retry-hours']??env.ART_RETRY_HOURS)||4;let chk='';
   const man=loadManifest(o.manifest||MANIFEST),PAL=await import('../../src/render/palette.js');
@@ -76,7 +83,11 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
   const bad=validateManifest(man,PAL,resolvePalette);if(bad.length){console.error('manifest problems:\n  '+bad.join('\n  '));return 2}
   const idx=loadIndex(dir),q=loadQueue(dir),jobs=jobsFor(man,idx,q,{retryFailed:!!o['retry-failed'],tier});
   const max=o.max!==undefined?Math.max(0,parseInt(o.max,10)||0):Infinity,maxCalls=Math.max(1,parseInt(o['max-calls']??env.ART_MAX_CALLS??'100',10)||100);
-  const candidates=man.pinnedModel?[man.pinnedModel]:q.model.pinned?[q.model.pinned]:man.candidates.filter(k=>!(q.model.tried[k]&&q.model.tried[k].ok===false));
+  const space=mode==='space',onSpace=k=>!!(man.models[k]&&spaceOf(man.models[k],env));q.spaceTried=q.spaceTried||{};
+  const candidates=space?[...new Set([man.pinnedModel,...man.candidates].filter(k=>k&&onSpace(k)&&!(q.spaceTried[k]&&q.spaceTried[k].ok===false)))]
+    :man.pinnedModel?[man.pinnedModel]:q.model.pinned?[q.model.pinned]:man.candidates.filter(k=>!(q.model.tried[k]&&q.model.tried[k].ok===false));
+  // the ZeroGPU window (space): GPU seconds counted since the quota's last reset, and where this run stops
+  const zg=(man.allowance&&man.allowance.zeroGpu)||{},quotaMin=zg.dailyMinutes||40,capMin=Number(env.ART_GPU_MINUTES)||zg.stopAtMinutes||36;let gw=gpuWindow(q,now),gpu=0;
   // Credits: the account's monthly Inference Providers credits (manifest allowance.monthlyUsd, $2.00 on PRO) are spread
   // over the month: a run stops at today's share (ART_DAILY_BUDGET or --budget overrides) and once the month's estimated
   // spend reaches the monthly amount, before the provider ever has to refuse (or bill) a call.
@@ -86,40 +97,50 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
   // carry: what the month has earned by the end of today (monthly x day / days) less what it spent before today
   const budget=Number(explicit??(carry?Math.max(0,monthly*Number(date.slice(8,10))/dim-(spentMonth-spentToday)):monthly/dim));
   let billedN=0,estN=0,billedUsd=0,lastCost=null;const basis=()=>billedN&&!estN?'billed':billedN?'mixed':'estimated',next$=m=>lastCost??m.costPerImage;
-  const line=(made,rej,calls,cost,model,stop,next)=>`${stamp(now,date)} | made ${made} | rejected ${rej} | calls ${calls} | ${calls?basis():'estimated'} $${cost.toFixed(3)}${billedN&&estN?` (billed $${billedUsd.toFixed(3)})`:''} (month $${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)} credits) | model ${model||'-'} | stop: ${stop} | next: ${next||'-'}${chk}`;
+  const line=(made,rej,calls,cost,model,stop,next)=>space?`${stamp(now,date)} | made ${made} | rejected ${rej} | calls ${calls} | quota: ${gpu.toFixed(1)} s of GPU (${(gw.s/60).toFixed(1)} of ${quotaMin} min this window, stop at ${capMin}) | est. $0.000 | model ${model||'-'} · space | stop: ${stop} | next: ${next||'-'}${chk}`
+    :`${stamp(now,date)} | made ${made} | rejected ${rej} | calls ${calls} | ${calls?basis():'estimated'} $${cost.toFixed(3)}${billedN&&estN?` (billed $${billedUsd.toFixed(3)})`:''} (month $${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)} credits) | model ${model||'-'} | stop: ${stop} | next: ${next||'-'}${chk}`;
   // when to look again: on the log line, and in ctx.result for the loop
-  const setNext=(kind,stop,made=0,cost=0,retryAfter=0)=>{const n=nextCheck(kind,now,{retryHours,retryAfter});chk=` | check again ${stamp(n,today(n))} (${WAIT_WHY[kind]||kind})`;
-    ctx.result={kind,next:n,made,stop,spentToday:spentToday+cost,spentMonth:spentMonth+cost,monthly,budget,budgetFrom:explicit!==undefined?'ART_DAILY_BUDGET or --budget':carry?'the month\'s share, carried':'the month\'s share',at:now.toISOString()}};
+  const setNext=(kind,stop,made=0,cost=0,retryAfter=0)=>{const n=nextCheck(kind,now,{retryHours,retryAfter,resetAt:kind==='gpu'?windowEnd(gw):null});chk=` | check again ${stamp(n,today(n))} (${WAIT_WHY[kind]||kind})`;
+    ctx.result={kind,next:n,made,stop,spentToday:spentToday+cost,spentMonth:spentMonth+cost,monthly,budget,budgetFrom:explicit!==undefined?'ART_DAILY_BUDGET or --budget':carry?'the month\'s share, carried':'the month\'s share',at:now.toISOString(),...(space?{provider:'space',monthly:0,gpuMin:+(gw.s/60).toFixed(1),quotaMin,capMin,images:gw.images}:{})}};
   if(!jobs.length){setNext('complete','manifest complete');log(line(0,0,0,0,q.model.pinned||man.pinnedModel,'manifest complete, alternates too: no call',''));q.next=[];saveQueue(dir,q);return 0}
   console.log(`[art] tier ${tier}: ${jobs.length} to make (${jobs.filter(j=>j.alt).length?'alternates':'missing assets'}), first ${jobs.slice(0,5).map(j=>j.key).join(', ')}; caps: ${max===Infinity?'no --max':'--max '+max}, ${maxCalls} calls`);
-  console.log(`[art] credits: today's share $${budget.toFixed(3)}${carry&&explicit===undefined?' (carried forward)':''} (spent today ~$${spentToday.toFixed(3)}), month ~$${spentMonth.toFixed(3)} of $${monthly.toFixed(2)}`);
+  if(space)console.log(`[art] provider: the ZeroGPU Space (cost $0); GPU this window ${(gw.s/60).toFixed(1)} of ${quotaMin} min, this run stops at ${capMin} min${gw.start?' (window opened '+stamp(new Date(gw.start))+')':''}`);
+  else console.log(`[art] credits: today's share $${budget.toFixed(3)}${carry&&explicit===undefined?' (carried forward)':''} (spent today ~$${spentToday.toFixed(3)}), month ~$${spentMonth.toFixed(3)} of $${monthly.toFixed(2)}`);
   console.log(`[art] model: ${man.pinnedModel?man.pinnedModel+' (pinned in the manifest)':q.model.pinned?q.model.pinned+' (answered before)':'try '+candidates.join(', ')}`);
   if(o['dry-run'])return 0;
   if(!candidates.length){setNext('error','no candidate model');log(line(0,0,0,0,null,'no candidate model left (every one was refused; edit the manifest or reset assets/queue.json model.tried)',jobs[0].key));return 2}
-  const token=hfToken(env);if(!token){setNext('error','no HF_TOKEN');log(line(0,0,0,0,null,'no HF_TOKEN in .env',jobs[0].key));return 2}
+  const token=tokenFor(mode,env);if(!token){setNext('error','no HF_TOKEN');log(line(0,0,0,0,null,'no HF_TOKEN in .env',jobs[0].key));return 2}
   const inc=join(dir,'incoming',date),incIdx=loadIndex(inc),maps=new Map(),timeout=(Number(o.timeout)||120)*1000;
   let made=0,rej=0,calls=0,cost=0,stop='',kind='cap',ra=0,ci=0,inRow=0,i=0;const count=()=>calls++;
   for(;i<jobs.length;i++){const job=jobs[i],e=job.e;
     if(ctx.stopped&&ctx.stopped()){stop='stopped';kind='stop';break}
     if(made>=max){stop=`--max ${max} reached`;kind='error';break}
     if(calls>=maxCalls){stop=`ART_MAX_CALLS ${maxCalls} reached`;kind='cap';break}
-    {const next=next$(man.models[e.model||candidates[ci]||candidates[0]]);
+    if(space){const m0=man.models[e.model||candidates[ci]||candidates[0]],need=spaceDuration(m0);
+      if(gw.s+need>capMin*60){stop=`GPU cap reached (${(gw.s/60).toFixed(1)} of ${capMin} min counted; the quota resets ${stamp(windowEnd(gw)||now)})`;kind='gpu';break}}
+    else{const next=next$(man.models[e.model||candidates[ci]||candidates[0]]);
       if(monthly&&spentMonth+cost+next>monthly+1e-9){stop=`monthly credits used ($${(spentMonth+cost).toFixed(3)} of $${monthly.toFixed(2)}, ${basis()})`;kind='month';break}
       if(spentToday+cost+next>budget+1e-9){stop=`daily share $${budget.toFixed(3)} used (${basis()}; spent today $${(spentToday+cost).toFixed(3)})`;kind='share';break}}
     let k,res=null;
     for(;;){k=e.model||candidates[ci];if(!k){stop='no candidate model answered';kind='error';break}
       const m=man.models[k];
-      try{let mp=maps.get(k);if(!mp){mp=await mapping(m);maps.set(k,mp)}
-        const got=await fetchRaw({man,m,mp,e,token,seed:job.seed,timeout,count,tier});const c=got.cost!=null?got.cost:m.costPerImage;cost+=c;lastCost=got.cost!=null?got.cost:null;if(got.cost!=null){billedN++;billedUsd+=c}else estN++; // refused calls draw nothing; the answer's own cost wins over the manifest guess
-        if(!q.costProbe){q.costProbe={at:now.toISOString(),billed:got.cost!=null,from:got.costFrom||'',...got.probe};console.log(`[art] what the provider's answer says about cost: ${got.cost!=null?'$'+got.cost+' ('+got.costFrom+')':'nothing usable, so the manifest estimate is used'}; headers ${JSON.stringify(got.probe.headers)}, body keys ${got.probe.bodyKeys.join(',')||'-'}`)}
+      try{let mp=maps.get(k);if(!mp){mp=await routeOf(m,mode);maps.set(k,mp)}
+        const first=mp.provider==='space'&&!maps.get('#awake');if(first){await ensureAwake(mp.space,token,{env});maps.set('#awake',true)} // a sleeping Space loads SDXL: 1-3 minutes
+        const got=await fetchRaw({man,m,mp,e,token,seed:job.seed,timeout:first?Math.max(timeout,300000):timeout,count,tier,now:()=>now});
+        if(mp.provider==='space'){gpu+=got.gpuS||0;gw={...gw,start:gw.start||now.toISOString(),s:gw.s+(got.gpuS||0),images:gw.images+1};q.gpu=gw;saveQueue(dir,q)} // the Space: $0, GPU seconds of the window
+        else{const c=got.cost!=null?got.cost:m.costPerImage;cost+=c;lastCost=got.cost!=null?got.cost:null;if(got.cost!=null){billedN++;billedUsd+=c}else estN++; // refused calls draw nothing; the answer's own cost wins over the manifest guess
+        if(!q.costProbe){q.costProbe={at:now.toISOString(),billed:got.cost!=null,from:got.costFrom||'',...got.probe};console.log(`[art] what the provider's answer says about cost: ${got.cost!=null?'$'+got.cost+' ('+got.costFrom+')':'nothing usable, so the manifest estimate is used'}; headers ${JSON.stringify(got.probe.headers)}, body keys ${got.probe.bodyKeys.join(',')||'-'}`)}}
         // keep the provider's image before anything else, so post-processing can be re-run offline (art:reprocess)
         saveRaw(inc,job.key,got.bytes,{id:e.id,tier,kind:e.kind,model:k,repo:m.repo,provider:mp.provider,seed:job.seed,...(job.alt?{alt:job.alt}:{})});
         try{res={...processRaw(got.bytes,e,PAL,m,tier,man),last:got.last,mp}}catch(err){res={err,last:got.last}}break}
       catch(err){
+        if(space&&err.kind==='model'&&!e.model){q.spaceTried[k]={ok:false,why:err.message.slice(0,160),at:now.toISOString()};console.log(`[art] the Space refused ${k}: ${err.message.slice(0,160)}; trying the next`);ci++;saveQueue(dir,q);continue}
         if(err.kind==='model'&&!e.model&&!man.pinnedModel&&!q.model.pinned){q.model.tried[k]={ok:false,why:err.message.slice(0,160),at:now.toISOString()};console.log(`[art] model ${k} refused: ${err.message.slice(0,160)}; trying the next`);ci++;saveQueue(dir,q);continue}
         res={err};break}}
     if(stop)break;
     if(res.err){const err=res.err;
+      if(err.kind==='gpu'){stop=err.message.slice(0,200);kind='gpu';gw={...gw,start:gw.start||now.toISOString(),resetAt:(err.resetAt||new Date(now.getTime()+24*3600e3)).toISOString()};q.gpu=gw;saveQueue(dir,q);break}
+      if(err.kind==='space'){stop=err.message.slice(0,240);kind='error';break}
       if(['quota','auth','rate'].includes(err.kind)){stop=err.message.slice(0,200);kind=err.kind==='auth'?'error':'provider';ra=err.retryAfter||0;break}
       const f=q.failed[job.key]||{tries:0};q.failed[job.key]={tries:f.tries+1,why:err.message.slice(0,200),at:now.toISOString()};saveQueue(dir,q);
       {const st=q.stats[e.kind]=q.stats[e.kind]||{made:0,flat:0,failed:0};st[err.kind==='flat'?'flat':'failed']++}
@@ -127,7 +148,8 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
       if(res.last){stop='rate headers: allowance used';kind='provider';i++;break}
       if(++inRow>=3){stop=`3 failures in a row (${err.message.slice(0,120)})`;kind='error';break}continue}
     inRow=0;
-    if(!e.model&&!q.model.pinned&&!man.pinnedModel){q.model.pinned=k;q.model.tried[k]={ok:true,at:now.toISOString()};console.log(`[art] model ${k} (${man.models[k].repo}) answered: pinned in assets/queue.json (copy it to the manifest's pinnedModel)`)}
+    if(space){if(!q.spaceTried[k]||!q.spaceTried[k].ok){q.spaceTried[k]={ok:true,at:now.toISOString()};saveQueue(dir,q)}}
+    else if(!e.model&&!q.model.pinned&&!man.pinnedModel){q.model.pinned=k;q.model.tried[k]={ok:true,at:now.toISOString()};console.log(`[art] model ${k} (${man.models[k].repo}) answered: pinned in assets/queue.json (copy it to the manifest's pinnedModel)`)}
     const file=keyFile(job.key),p=join(inc,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,res.png);
     incIdx.assets[job.key]={id:e.id,tier,kind:e.kind,file,w:res.img.w,h:res.img.h,colors:res.img.notes.colors,grid:res.img.notes.grid,sha256:sha256(res.png),model:k,repo:man.models[k].repo,provider:res.mp.provider,seed:job.seed,at:new Date().toISOString(),...(job.alt?{alt:job.alt}:{})};
     writeIndex(inc,incIdx);q.incoming[job.key]={date,file};if(job.alt){const b=tierKey(e.id,tier);q.alts[b]=Math.max(q.alts[b]||0,job.alt)}delete q.failed[job.key];saveQueue(dir,q);
@@ -139,8 +161,8 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
   const left=jobsFor(man,loadIndex(dir),q,{tier});q.next=left.slice(0,10).map(j=>j.key);q.lastRun={date,made,calls,stop};saveQueue(dir,q);
   if(made||rej){const r=spawnSync(process.execPath,[join(ROOT,'scripts','art','sheet.mjs'),'--assets',inc,'--out',join(inc,'sheet.html'),'--generated','--tier',String(tier)],{encoding:'utf8'});
     if(r.status===0)console.log(`[art] review: ${join(inc,'sheet.html')}\n[art] keep: npm run art:accept -- <ids> (or all); drop: npm run art:accept -- --reject <ids>`);else console.log('[art] sheet failed: '+(r.stderr||'').slice(0,200))}
-  log(line(made,rej,calls,cost,q.model.pinned||man.pinnedModel||candidates[ci],stop,q.next[0]));
-  return /HTTP 401|HTTP 403 token|no candidate/.test(stop)?2:0}
+  log(line(made,rej,calls,cost,space?candidates[ci]||candidates[0]:q.model.pinned||man.pinnedModel||candidates[ci],stop,q.next[0]));
+  return /HTTP 401|HTTP 403 token|no candidate|cannot (read|use) the Space/.test(stop)?2:0}
 
 // The loop (#661). Injected clock, sleep and stop flag let artcheck run days in a moment.
 export async function runLoop(argv,env=process.env,{now=()=>new Date(),sleep=ms=>new Promise(r=>setTimeout(r,ms)),stopped=()=>false,maxPasses=Infinity}={}){
@@ -154,7 +176,7 @@ export async function runLoop(argv,env=process.env,{now=()=>new Date(),sleep=ms=
     const ctx={now,stopped};
     try{await main([...rest,'--now','--date',today(now())],env,ctx)}catch(e){console.log('[art] pass failed: '+(e&&e.message||e))}
     const r=ctx.result||{kind:'error',next:new Date(now().getTime()+retryMs),stop:'the pass failed'};
-    last={at:r.at||now().toISOString(),made:r.made||0,stop:r.stop||'',spentToday:r.spentToday,spentMonth:r.spentMonth,monthly:r.monthly,budget:r.budget,budgetFrom:r.budgetFrom};
+    last={at:r.at||now().toISOString(),made:r.made||0,stop:r.stop||'',spentToday:r.spentToday,spentMonth:r.spentMonth,monthly:r.monthly,budget:r.budget,budgetFrom:r.budgetFrom,...(r.provider==='space'?{provider:'space',gpuMin:r.gpuMin,quotaMin:r.quotaMin,capMin:r.capMin,images:r.images}:{})};
     if(r.kind==='stop')break;
     const m0=mtime();
     if(r.kind==='complete'&&said!=='complete')console.log('[art] nothing left to make: sleeping until the manifest changes or tomorrow');

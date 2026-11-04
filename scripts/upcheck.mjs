@@ -40,8 +40,8 @@ console.log('active.json and resume (fake children)');
   const active = join(tmp, 'runners', 'active.json');
   const readActive = () => {try {return JSON.parse(readFileSync(active, 'utf8')).runners} catch {return null}};
   let heroes = [{id: 1, name: 'Ann', alive: true}, {id: 2, name: 'Bo', alive: true}, {id: 3, name: 'Cy', alive: true}, {id: 4, name: 'Di', alive: false}];
-  let connected = true, dm = false;
-  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected, heroes, dm})};
+  let connected = true, dm = false, world = null; // world: the page's S.worldId (#691)
+  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected, heroes, dm, ...(world ? {worldId: world} : {})})};
   const kids = [];
   const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 50000 + kids.length; k.args = args; k.got = '';
     k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d; if (/stop/.test(d)) setTimeout(() => k.emit('exit', 0), 5)}});
@@ -98,7 +98,17 @@ console.log('active.json and resume (fake children)');
   connected = true; dm = true; const D = await mk(); const r3 = await D.sup.resume({waitMs: 3000, pollMs: 20, settleMs: 20, heroWaitMs: 100});
   ok(r3.resumed.join() === 'hero:1,dm' && /dm-agent\.mjs/.test(kids[kids.length - 1].args.join(' ')), 'an open DM seat with no saved DM runner: resume starts one (the DM is always played): ' + JSON.stringify(r3));
   dm = false;
-  B.server.close(); C.server.close(); D.server.close();
+  // only the same world (#691): the list carries the world id it was saved in
+  const ONE = [{kind: 'hero', hero: 1, name: 'Ann', provider: 'ollama', model: 'qwen2.5:14b', maxTurns: null, budget: null}];
+  writeFileSync(active, JSON.stringify({saved: 'x', world: 'w-old', runners: ONE})); world = 'w-new'; connected = true;
+  const E = await mk(), nE = kids.length, r4 = await E.sup.resume({waitMs: 3000, pollMs: 20, settleMs: 20, heroWaitMs: 100});
+  ok(!r4.resumed.length && kids.length === nE && r4.skipped.some(x => x.why === 'another world') && E.lines.some(l => /another world/.test(l)), 'a page that plays another world gets nothing resumed, even for a hero with the same id and name: ' + JSON.stringify(r4));
+  writeFileSync(active, JSON.stringify({saved: 'x', world: 'w-same', runners: ONE})); world = 'w-same';
+  const F = await mk(), r5 = await F.sup.resume({waitMs: 3000, pollMs: 20, settleMs: 20, heroWaitMs: 100});
+  ok(r5.resumed.join() === 'hero:1', 'the same world id resumes the list: ' + JSON.stringify(r5));
+  ok(JSON.parse(readFileSync(active, 'utf8')).world === 'w-same', 'the list records the world it was saved in');
+  F.sup.stop('hero:1'); world = null;
+  B.server.close(); E.server.close(); F.server.close(); C.server.close(); D.server.close();
   rmSync(tmp, {recursive: true, force: true});
 }
 

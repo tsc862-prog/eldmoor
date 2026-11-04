@@ -265,6 +265,26 @@ export async function takeClaudeSlot(base, log = () => {}, {key = process.env.EL
 }
 export async function withClaudeSlot(base, fn, log, opts) {const release = await takeClaudeSlot(base, log, opts); try {return await fn()} finally {release()}}
 
+// #687 (follow-up): a Claude member whose own Table scene has been due for SCENE_GRAB_MS with no scene_act is mid-turn in a model
+// call that no tool result can interrupt. sceneGrab polls due() every `every` ms; once it has held for `ms` it calls abort() once
+// (the runner aborts the Agent SDK query; the session stays resumable) and onGrab(). stop() ends the poll when the turn does;
+// grabbed() says whether it fired. due() is the runner's own view of /play/health (the member's scene waits on it).
+export const SCENE_GRAB_MS = 15000;
+export function sceneGrab({due, abort, onGrab = null, ms = SCENE_GRAB_MS, every = 1000}) {
+  let since = null, fired = false, busy = false;
+  const t = setInterval(async () => {
+    if (fired || busy) return; busy = true; let d = false;
+    try {d = !!(await due())} catch {} busy = false;
+    if (fired) return;
+    if (!d) {since = null; return}
+    if (since == null) since = Date.now();
+    if (Date.now() - since >= ms) {fired = true; clearInterval(t); try {if (onGrab) onGrab()} catch {} try {abort()} catch {}}
+  }, every);
+  if (t.unref) t.unref();
+  return {stop: () => clearInterval(t), grabbed: () => fired};
+}
+export const GRAB_RESUME = 'Your turn was paused so the Table scene could be answered, and it has been (see the state header). Carry on from what you were doing; do not repeat what you already did.';
+
 // ---- reflection moments (issue #179) ----
 // The game names a moment to write memories in the state header (brief.reflect = {id, kind, why}, src/sim/reflect.js):
 // making camp, the end of a scene, a companion's death, an oath kept, a big trade, a conversation, or the end of the day.
@@ -321,7 +341,7 @@ export function watchWorld({base, known, onNew, every = 3000, fetchImpl = fetch}
   t.unref();
   return () => {done = true; clearInterval(t)};
 }
-export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}) so the runner starts again for the current members; the old sessions are set aside in logs/agents/old/.`;
+export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}); nothing starts this runner again by itself (#691), the new world's setup or a resume starts the ones it wants, and the old sessions are set aside in logs/agents/old/.`;
 
 // Claude turns (issue #401): the same fresh state header the local turns get (briefText: state, HP, place, foe, news,
 // memories, what was said lately), without its generic last line, plus the turn order. A Claude turn used to open with

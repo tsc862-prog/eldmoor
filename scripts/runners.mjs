@@ -60,9 +60,11 @@ export const DM_FIRST_MS = 2000; // a hero runner asking for a Claude slot while
 // mind (Claude or OpenAI), ten when every one is local (Ollama); the DM seat is outside the count, so SEATS is 5 + 1 paid, 10 + 1 local.
 export const HERO_SEATS = {PAID: 5, LOCAL: 10};
 export const SEATS = HERO_SEATS.LOCAL + 1;
-// A runner that finds its heroes belong to a new world (same ids, other heroes; issue #219) exits with this code; the
-// supervisor then starts it again with the same request after RESTART_MS (at most MAX_RESTARTS in a row without a turn).
-export const NEW_WORLD_EXIT = 75, RESTART_MS = 1500, MAX_RESTARTS = 5;
+// A runner that finds its heroes belong to a new world (same ids, other heroes; issue #219) exits with this code. Since #691
+// the supervisor does NOT start it again: a world reset stops every runner with one call (POST /play/runner/stop-all) before
+// the page replaces the world, and the New World setup or --resume-runners (same world id only) starts the ones the new world
+// wants. MAX_RESTARTS and RESTART_MS are for crashes only (none restarts today); a new-world exit never counts toward them.
+export const NEW_WORLD_EXIT = 75, RESTART_MS = 1500, MAX_RESTARTS = 5, RESET_WAIT_MS = 5000;
 // Seat restarts (#460): how often the supervisor looks for a solo's heir or a member who left a company, and how long
 // after a hero runner ended with its hero's death it still looks for the heir.
 export const ADOPT_MS = 2000, HEIR_WAIT_MS = 10 * 60000;
@@ -192,6 +194,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   const heroes = () => (play.backend.info().heroes || []);
   const running = () => [...table.values()].filter(r => !r.done);
   const host = hostname();
+  let lastWorld = null; const worldNow = () => {try {const w = (play.backend.info() || {}).worldId; if (w) lastWorld = w} catch {} return lastWorld}; // the page's S.worldId from its hello (#691)
 
   // A runner's state from its process and its heroes' claims and links.
   function stateOf(r) {
@@ -243,7 +246,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   function saveActive() {
     if (closing || !enabled) return;
     const rs = running().filter(r => !r.stopping).map(r => ({kind: r.kind, hero: r.hero ?? null, name: r.name, ...(r.kind === 'company' ? {company: r.company, members: (r.heroes || []).map(id => {const h = heroes().find(x => x.id === id); return {id, name: h ? h.name : null}})} : {}), provider: r.provider || null, model: r.model || null, maxTurns: r.maxTurns ?? null, budget: r.budget ?? null}));
-    try {mkdirSync(dir, {recursive: true}); const tmp = activeFile + '.tmp'; writeFileSync(tmp, JSON.stringify({saved: new Date(now()).toISOString(), runners: rs}, null, 1)); renameSync(tmp, activeFile)} catch {}
+    try {mkdirSync(dir, {recursive: true}); const tmp = activeFile + '.tmp'; writeFileSync(tmp, JSON.stringify({saved: new Date(now()).toISOString(), world: worldNow(), runners: rs}, null, 1)); renameSync(tmp, activeFile)} catch {}
   }
 
   function start(req) {
@@ -278,15 +281,14 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (r.partial) take('\n', false);
       r.done = true; r.ended = now(); r.exit = code; clearTimeout(r.killT);
       const nw = code === NEW_WORLD_EXIT && !r.stopping;
-      r.state = r.stopping || code === 0 || nw ? 'stopped' : 'crashed'; if (nw) r.stopWhy = 'a new world: starting again for its heroes';
+      r.state = r.stopping || code === 0 || nw ? 'stopped' : 'crashed'; if (nw) r.stopWhy = 'a new world: stopped (start it again for the new heroes)';
       if (r.state === 'crashed') r.error = r.lastErr || (code == null ? 'the process could not start' : 'exited with code ' + code);
       write(`=== ${new Date().toISOString()} ${r.state}${code != null ? ' (exit ' + code + ')' : ''}${r.error ? ': ' + r.error : ''}`);
       log(`[runners] ${r.key} ${r.name} ${r.state}${r.error ? ': ' + r.error : ''} (${r.turns} turns${r.cost ? ', $' + r.cost.toFixed(4) : ''})`);
       if (r.pid) play.dropRunner(`${host}:${r.pid}`); // its claims, in case it could not release them
       if (r.kind === 'hero' && !r.stopping && !closing) {const h = heroes().find(x => x.id === r.hero); if (!h || !h.alive) r.heirWatch = true} // a solo's heir may come (#460)
       dropLeases(r.key); saveActive();
-      if (nw && (req.restarts || 0) < MAX_RESTARTS) {const next = {...req, restarts: r.turns ? 1 : (req.restarts || 0) + 1}; log(`[runners] ${r.key} sees a new world: starting it again`);
-        setTimeout(() => {if (table.get(req.key) !== r) return; const o = start(next); if (o.error) log(`[runners] restart of ${r.key} failed: ${o.error}`)}, RESTART_MS)}
+      if (nw) log(`[runners] ${r.key} saw a new world and stopped; it is not started again by itself`);
       const done = [...table.values()].filter(x => x.done); // keep a few finished runners for the page
       if (done.length > KEEP_DONE) table.delete(done[0].key);
     }
@@ -335,6 +337,17 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     return {runner: view(r)};
   }
   function stopAll() {for (const r of running()) stop(r.key)}
+  // A world reset (#691: New world, Load, Import, any start that is not Continue): stop every runner with one call, wait
+  // (up to waitMs) until they are gone so the new world's starts are not refused as "already running", and leave the
+  // active list empty so --resume-runners brings nothing back. -> {stopped: N, keys, left}
+  async function resetAll({why = 'world reset', waitMs = RESET_WAIT_MS} = {}) {
+    const keys = running().map(r => r.key);
+    for (const r of running()) stop(r.key, why);
+    for (const w of waiters.splice(0)) {clearTimeout(w.t); w.res(null)}
+    const t0 = Date.now(); while (running().length && Date.now() - t0 < waitMs) await new Promise(r => setTimeout(r, 50));
+    saveActive(); log(`[runners] world reset: ${keys.length} runner(s) stopped`);
+    return {stopped: keys.length, keys, left: running().length};
+  }
   // Host shutdown (relay quit or restart): stop every runner cleanly but keep them on the active list. Resolves when
   // they are all gone, or after maxMs.
   function shutdown(maxMs = STOP_GRACE_MS + 2000) {
@@ -377,7 +390,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   async function resume({waitMs = 5 * 60000, pollMs = 500, settleMs = 1200, heroWaitMs = 6000} = {}) {
     const out = {resumed: [], skipped: []};
     if (!enabled) return out;
-    let saved; try {saved = JSON.parse(readFileSync(activeFile, 'utf8')).runners} catch {return out}
+    let saved, savedWorld = null; try {const j = JSON.parse(readFileSync(activeFile, 'utf8')); saved = j.runners; savedWorld = typeof j.world === 'string' ? j.world : null} catch {return out}
     saved = (Array.isArray(saved) ? saved : []).filter(x => x && typeof x === 'object' && RUNNER_KINDS[x.kind]);
     if (!saved.length) return out;
     log(`[runners] ${saved.length} runner(s) from the last run to resume once the game page connects: ${saved.map(x => x.kind === 'hero' ? (x.name || '#' + x.hero) : x.kind).join(', ')}`);
@@ -386,6 +399,15 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     while (!info().connected) {if (closing || Date.now() - t0 > waitMs) {log('[runners] resume: the game page did not connect, nothing resumed (the list is kept)'); return out} await sleep(pollMs)}
     const t1 = Date.now(); while (!(info().heroes.length || info().dm) && Date.now() - t1 < heroWaitMs) await sleep(pollMs);
     await sleep(settleMs);
+    // Only the same world (#691): the list was saved while the page played world `savedWorld` (S.worldId); a page that now
+    // names another one (a New World, an Import, another save) gets none of it. An older list without an id, or a page
+    // that sent none, falls back to the hero-name checks below.
+    const nowWorld = info().worldId || null;
+    if (savedWorld && nowWorld && savedWorld !== nowWorld) {
+      for (const x of saved) {const what = x.kind === 'hero' ? (x.name || '#' + x.hero) : x.kind; out.skipped.push({what, why: 'another world'})}
+      log(`[runners] resume: the page plays another world (${nowWorld}, the list is from ${savedWorld}): nothing resumed`);
+      saved = [];
+    }
     for (const x of saved) {
       if (closing) break;
       const what = x.kind === 'hero' ? (x.name || '#' + x.hero) : x.kind, skip = why => {out.skipped.push({what, why}); log(`[runners] resume: skipped ${what}: ${why}`)};
@@ -469,6 +491,10 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (typeof b.lease === 'string' && leases.has(b.lease)) {leases.delete(b.lease); grantNext()}
       return send(200, {ok: true});
     }
+    if (path === '/play/runner/stop-all') {
+      const o = await resetAll({why: typeof b.why === 'string' && b.why ? b.why.slice(0, 60) : 'world reset', waitMs: Number.isFinite(Number(b.waitMs)) ? Math.min(RESET_WAIT_MS, Math.max(0, Number(b.waitMs))) : RESET_WAIT_MS});
+      return send(200, {ok: true, ...o});
+    }
     if (path === '/play/runner/limits') {
       const l = limits(b); if (l.error) return send(l.code, {ok: false, error: l.error});
       return send(200, {ok: true, ...l});
@@ -481,7 +507,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     }
     send(404, {error: 'not found'});
   });
-  return {list, start, stop, stopAll, shutdown, killAll, table, limits, resume, adopt, session: sessionView, activeFile};
+  return {list, start, stop, stopAll, resetAll, shutdown, killAll, table, limits, resume, adopt, session: sessionView, activeFile};
 }
 
 // A supervised runner (ELDMOOR_SUPERVISED=1) calls this once: fn runs on a "stop" line on stdin, or
