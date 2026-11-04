@@ -698,7 +698,13 @@ const WEAPON={
 // skin and hair of the hero's people (a.skin, a.hair from data/races.js; a hero made
 // without a race falls back to the faction's first skin tone and dark hair).
 // frame 0 is the idle pose; frame 1 steps the legs apart and lifts the weapon arm.
+// Per hero, the four canvases (ghost x frame) last returned, kept while its look (faction, class, race, skin, hair) holds:
+// the renderer asks for every hero in view each frame, and this skips building the cache key string (#716).
+const HSC=new WeakMap();
 export function heroSprite(a,ghost,frame=0){
+  let m=HSC.get(a);if(!m||m.fac!==a.fac||m.cls!==a.cls||m.race!==a.race||m.skin!==a.skin||m.hair!==a.hair){m={fac:a.fac,cls:a.cls,race:a.race,skin:a.skin,hair:a.hair,c:[null,null,null,null]};HSC.set(a,m)}
+  const i=(ghost?2:0)+(frame?1:0);return m.c[i]||(m.c[i]=heroSpriteOf(a,ghost,frame))}
+function heroSpriteOf(a,ghost,frame){
   frame=frame?1:0;const skin=a.skin||FAC[a.fac].skin[0],hair=a.hair||'#2a2020';
   const key='h'+a.fac+a.cls+(a.race||'')+skin+hair+(ghost?'g':'')+frame;if(sprCache[key])return sprCache[key];
   const rows=HERO_BODY.map(r=>r.split(''));
@@ -785,7 +791,8 @@ const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-');
 export const ASSET_SPRITES={};
 for(const cls of Object.keys(CLS))ASSET_SPRITES['sprite:hero-'+slug(cls)]={kind:'hero',cls};
 for(const key of Object.keys(MOBS))ASSET_SPRITES['sprite:mob-'+slug(key)]={kind:'mob',type:key};
-const heroId=cls=>'sprite:hero-'+slug(cls),mobId=type=>'sprite:mob-'+slug(type);
+const IDS=new Map(),idOf=(p,k)=>{const m=p+'|'+k;let v=IDS.get(m);if(v===undefined){v='sprite:'+p+'-'+slug(k);IDS.set(m,v)}return v}; // memoised: sheetFrame asks per entity per frame (#716)
+const heroId=cls=>idOf('hero',cls),mobId=type=>idOf('mob',type);
 const sheetC=new Map();
 // The sheet canvas for id in faction fac's colours, or null while it is missing or loading.
 function sheetOf(id,fac){const key=id+'|'+fac;let c=sheetC.get(key);if(c!==undefined)return c;

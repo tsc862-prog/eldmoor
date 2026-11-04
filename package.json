@@ -19,6 +19,7 @@
     "setupcheck": "node scripts/setupcheck.mjs",
     "setupsmoke": "node scripts/setupsmoke.mjs . a && node scripts/setupsmoke.mjs . b && node scripts/setupsmoke.mjs . c && node scripts/setupsmoke.mjs . d",
     "uismoke": "node scripts/uismoke.mjs",
+    "perfprobe": "node scripts/perfprobe.mjs",
     "invcheck": "node scripts/invcheck.mjs",
     "relay": "node scripts/relay.mjs",
     "up": "node scripts/up.mjs",
