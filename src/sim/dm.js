@@ -629,7 +629,7 @@ function worldAfter(adv,outcome,why){const by={by:'scripted',adv};
 // migration or an invasion raises a den or a hold in its region (eventSite). Through the create_site lever, so its limits,
 // cooldown, the companies' reserved share and the DM log all hold; a raid site only where the region's band reaches the raid
 // level. No dice: the adventure's id picks, so the gameplay RNG is not touched.
-export const DSITE={P:.4,FROM:{clear:['den','mine'],relic:['barrow','temple','ruin']},EVENT:{migration:'den',invasion:'fortress'},RETRY:360};
+export const DSITE={P:.3,FROM:{clear:['den','mine'],relic:['barrow','temple','ruin']},EVENT:{migration:'den',invasion:'fortress'},RETRY:360};
 // sim/sites.js siteRoom(z, raid) -> {ok, raid}: the open-site caps (checked first so no refusal is logged) and whether the region's
 // band reaches the raid level. Set from sim/index.js (wireSites), as sites.js cannot be imported here (an import cycle through crawl.js).
 let siteRoom=()=>({ok:false});export function setSiteRoom(f){siteRoom=f}

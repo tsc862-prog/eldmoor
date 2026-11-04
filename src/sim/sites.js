@@ -79,6 +79,8 @@ export const SITE={
   PHASES:[{at:.6,hit:1.25,say:' rises in fury; its blows come harder.'},{at:.3,hit:1.5,say:', near its end, fights like a cornered thing.'}],
   // background parties (#642)
   CALL:28,          // tiles within which heroes answer a site (a background party, or fill-ins for a company short of a raid)
+  RAID_CALL:44,     // tiles within which background raiders answer a raid site (a warband gathers from farther)
+  BG_LOST:.25,      // a beaten background party at an ordinary site: each member is lost with this chance (they choose fights they can win less well than a company, but flee sooner)
   BG:[3,5],         // a background party for an ordinary site
   BG_P:.5,          // chance a muster check raises a party
   MUSTER:25,        // seconds between background muster checks
@@ -266,7 +268,7 @@ function rollSite(g,s){const n=g.mem.length,avg=g.mem.reduce((t,a)=>t+a.lvl+a.ge
   const ph=s.raid?(ok?SITE.PHASES.length:Math.floor(rnd()*(SITE.PHASES.length+1))):0;
   for(let i=0;i<ph;i++)log(gd(s.boss),SITE.PHASES[i].say);
   if(ok){siteEnd(g,'clear');return}
-  const lose=SITE.LOST*(s.raid?.6+.2*ph:1);
+  const lose=(g.bg&&!s.raid?SITE.BG_LOST:SITE.LOST)*(s.raid?.6+.2*ph:1);
   const lost=[];for(const a of g.mem){if(rnd()<lose){lost.push(a);record(a,'Lost forever in ',siteTag(s),'.');fall(a,'lost in '+s.name)}else{record(a,'Fled ',siteTag(s),'.');goHome(a)}}
   for(const a of g.mem){delete a.siteIn;delete a.siteAt}S.sites.stats.wipes++;S.sites.stats.deaths+=lost.length;
   const parts=[gd(g.name||'The company'),' were beaten back in ',gd(s.name),'.'];
@@ -316,7 +318,7 @@ function bgMuster(){const X=S.sites,now=S.gameMin;X.mt-=SITE.TICK;if(X.mt>0)retu
   const L=X.list.filter(s=>(s.state==='discovered'||s.state==='entered')&&!s.group&&(s.by==='scripted'||now-s.born>=SITE.BG_AFTER*DAY)
     &&!(S.companies||[]).some(C=>C.siteGo&&C.siteGo.site===s.id)&&!nearCompany(s));
   if(!L.length||rnd()>=SITE.BG_P)return;
-  const s=L[Math.floor(rnd()*L.length)],pool=S.agents.filter(a=>bgFree(a)&&dist(a,s)<=SITE.CALL&&a.lvl>=s.band[0]-1&&a.lvl<=s.band[1]+5);
+  const s=L[Math.floor(rnd()*L.length)],pool=S.agents.filter(a=>bgFree(a)&&dist(a,s)<=(s.raid?SITE.RAID_CALL:SITE.CALL)&&a.lvl>=(s.raid?s.band[0]-1:s.band[1])&&a.lvl<=s.band[1]+5); // an ordinary site: tried blades only (its top level or more)
   const n=FAC.map(()=>0);for(const a of pool)if(n[a.fac]!=null)n[a.fac]++;let f=0;n.forEach((v,i)=>{if(v>n[f])f=i});const mine=pool.filter(a=>a.fac===f); // the side with the most heroes near
   const gc=new Map();for(const a of mine)if(a.guild)gc.set(a.guild,(gc.get(a.guild)||0)+1);
   let gu=null;for(const [k,v] of gc)if(v>=2&&(!gu||v>gc.get(gu)))gu=k;
