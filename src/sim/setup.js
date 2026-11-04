@@ -3,12 +3,14 @@
 // opening all use the same rules.
 //
 // A setup (v2) is
-//   {v:2, world, seed, mode:'together'|'apart', fac, name?,
+//   {v:2, world, seed, mode:'together'|'apart', fac, name?, hall?,
 //    heroes:[{cls, name?, race?, fac, mind, profs?, archetype?, start?:{town?, region?}, group?}],   // 1..MAX_HEROES
 //    dm:{mode, provider?, model?}}
 //   mode  'together' (the default, permanently; owner decision 3 on #402): one company of every hero in one hall,
 //         the classic five-place Fellowship (a Tank, a Healer, three DPS, in any order), all of one faction (`fac`);
 //         `start` and `group` are ignored. A New World with no choices plays exactly as before v2.
+//   hall  together only (#771): the town of `fac` the company founds its hall in, every member standing there from the
+//         first tick whatever their people's home town. Absent = the Tank's home town, as ever.
 //         'apart': every hero sets out from its own start town (`start.town`: a town of its faction, or 'home' /
 //         absent for its people's home town), at level 1 in town, or seasoned to the low end of `start.region`'s
 //         band and out hunting there. Heroes sharing a `group` ride as one company (the first member's start is the
@@ -33,6 +35,7 @@ import {RACES,racesOf,homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
+import {WORLDS} from '../world/spec.js';
 import {S} from './state.js';
 import {makeHero} from './heroes.js';
 import {rollScores} from './abilities.js';
@@ -88,7 +91,7 @@ export function slotsOf(s){s=asV2(s);const H=s&&Array.isArray(s.heroes)?s.heroes
 // The v1 editing shape of a together setup of the five (the setup page edits places until #454), or null.
 export function slotsView(s){s=asV2(s);if(!s||s.mode==='apart')return null;const map=slotsOf(s);if(!map)return null;
   const slots={};for(const k of SLOT_KEYS){const {fac,start,group,...h}=s.heroes[map[k]];slots[k]=clone(h)}
-  return {v:1,world:s.world,seed:s.seed,fac:s.fac,...(s.name?{name:s.name}:{}),slots,dm:clone(s.dm||DEFAULT_DM())}}
+  return {v:1,world:s.world,seed:s.seed,fac:s.fac,...(s.name?{name:s.name}:{}),...(s.hall?{hall:s.hall}:{}),slots,dm:clone(s.dm||DEFAULT_DM())}}
 
 // The archetype a hero gets: the chosen id, or for 'random' one picked from the seed and the hero's index (a hash,
 // so the world's random stream is untouched and the same seed gives the same picks). null = none.
@@ -118,7 +121,7 @@ export const MIND_PRESETS=['haiku','claude','local','last'];
 export const PRESETS=[...SHAPE_PRESETS,...MIND_PRESETS];
 const PAIRS=[1,1,2,2,null]; // groups of the classic five for 'pairs-and-solo'
 function shaped(s,mode,n,groups){const old=s.heroes||[],fac=s.fac|0;
-  s.mode=mode;s.heroes=CLASSIC.slice(0,n).map((cls,i)=>{const o=old[i]&&old[i].cls===cls&&(old[i].fac==null||old[i].fac===fac)?old[i]:{cls};
+  s.mode=mode;if(mode==='apart')delete s.hall;s.heroes=CLASSIC.slice(0,n).map((cls,i)=>{const o=old[i]&&old[i].cls===cls&&(old[i].fac==null||old[i].fac===fac)?old[i]:{cls};
     const {start,group,...h}=clone(o);h.fac=fac;h.mind=agentOnly(old[i]&&old[i].mind);
     if(mode==='apart'){h.start={town:'home'};if(groups&&groups[i]!=null)h.group=groups[i]}
     return h});
@@ -135,7 +138,7 @@ export function applyPreset(name,base,ctx={}){const b=asV2(base);if(!b||!Array.i
   if(name==='last'){const l=cleanSetup(ctx.last);if(!l||!l.heroes.length)return null;
     if(l.dm)s.dm={...l.dm}; // cleanSetup: always an agent
     // the viewer's last heroes, kept whole when of the same faction (or apart); else only their minds, by index
-    if(l.mode==='apart'||l.fac===s.fac){s.mode=l.mode;s.fac=l.fac;s.heroes=clone(l.heroes);if(l.name)s.name=l.name;else delete s.name;return s}
+    if(l.mode==='apart'||l.fac===s.fac){s.mode=l.mode;s.fac=l.fac;s.heroes=clone(l.heroes);if(l.name)s.name=l.name;else delete s.name;if(l.hall)s.hall=l.hall;else delete s.hall;return s}
     s.heroes.forEach((h,i)=>{if(l.heroes[i])h.mind={...l.heroes[i].mind}});
     return s}
   return null}
@@ -150,6 +153,11 @@ function mindProblem(m,what,modes=MIND_MODES){if(!m||typeof m!=='object'||!modes
   if(typeof m.model!=='string'||!MODEL_OK.test(m.model))return what+': there is no model for the '+(m.mode==='ai'?'AI':'agent')+'; pick one'+(m.provider==='ollama'?' (is Ollama running with a model pulled?)':'')+'.';
   return null}
 const townOf=(name,fac)=>CITY.find(c=>c.name===name&&c.fac===fac)||null;
+// The towns a together company of this faction may found its hall in (#771), from the world spec: the page may be choosing
+// for another map than the one it stands on.
+export const hallTowns=(world,fac)=>((WORLDS[world]||{}).towns||CITY).filter(t=>t.fac===fac).map(t=>t.name);
+// The hall a setup chose, when it is a town of this world (undefined: the leader's home town, as ever).
+export const hallOf=s=>s&&s.hall&&townOf(s.hall,s.fac)?s.hall:undefined;
 const regionOf=name=>{const i=REGIONS.findIndex(r=>r.name===name);return i<0?null:{i,r:REGIONS[i]}};
 const facOf=(s,h)=>h&&h.fac!=null?h.fac:s.fac;
 // The companies a setup founds, as lists of hero indexes: together one of all; apart one per group (in order of
@@ -171,6 +179,7 @@ export function validateSetup(s0){const out=[];
   if(!MODES.includes(mode))out.push('Pick Together or Apart.');
   if(!(Number.isInteger(s.seed)&&s.seed>=0))out.push('The seed must be a whole number.');
   if(mode!=='apart'&&!FAC[s.fac])out.push('Pick a faction.');
+  else if(mode!=='apart'&&s.hall&&!hallTowns(s.world,s.fac).includes(s.hall))out.push('The hall: '+s.hall+' is not a town of the '+FAC[s.fac].name+'.');
   if(!H||!H.length)return out.concat(['Pick at least one hero.']);
   if(H.length>MAX_HEROES)out.push('At most '+MAX_HEROES+' heroes.');
   else if(H.length>seatCap(s))out.push('Seats full: '+H.length+' heroes, but only '+SEATS.PAID+' agent heroes may play while any mind is paid (Claude or OpenAI). Up to '+SEATS.LOCAL+' when every hero uses a local model.');
@@ -214,7 +223,7 @@ export function cleanSetup(s0){if(!s0||typeof s0!=='object')return null;const s=
       ...(mode==='apart'&&p.group!=null&&p.group!==''?{group:typeof p.group==='number'?p.group:String(p.group)}:{}),
       mind:agentOnly(p.mind)}}); // agents only (#148): an older page's scripted or AI mind becomes an agent
   const dm=s.dm&&(s.dm.mode==='agent'||s.dm.mode==='ai')&&s.dm.provider&&s.dm.model?{mode:'agent',provider:s.dm.provider,model:s.dm.model}:DEFAULT_DM(); // the DM is always an agent (#520): an older scripted DM becomes the default
-  return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,mode,fac,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),heroes,dm}}
+  return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,mode,fac,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),...(mode==='together'&&s.hall?{hall:String(s.hall)}:{}),heroes,dm}}
 
 // ---- names ----
 // A name in a people's voice (the same tables as data/races.js, with the caller's dice so a reroll is cheap).
