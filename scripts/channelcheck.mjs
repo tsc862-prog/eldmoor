@@ -103,6 +103,7 @@ r = DMA.dmAct('notes_write', {section: 'threads', op: 'add', text: 'Thread ' + p
 ok(r.ok, 'DM notes: an open thread (its text goes into the DM log)');
 r = DMA.dmAct('notes_write', {section: 'plans', op: 'add', text: 'Plan ' + plant('dmPlan')});
 ok(r.ok, 'DM notes: a plan');
+r = DMA.dmAct('wish', {tool: 'rewind_clock', what: 'Wind the night back ' + plant('dmWish'), why: 'The scene needed it ' + plant('dmWishWhy'), moment: 'A drover wept at the ford ' + plant('dmWishMoment')}); // a wish goes to the builders only (#663)
 r = DMA.dmAct('log_intent', {text: 'Intent ' + plant('dmIntent')});
 ok(r.ok, 'DM log: an intent line');
 r = DMA.dmAct('pull_lever', {lever: 'set_condition', params: {region: ZONES[zone > 0 ? zone : 1], kind: 'fogbound', strength: 1, hours: 6}, reason: 'Reason ' + plant('leverReason')});
@@ -142,6 +143,7 @@ r = DMA.dmAct('watch', {trigger: 'hero_levels', on: {hero: B.name, level: 60}, n
 ok(r.ok && JSON.stringify(DMA.dmAct('whens')).includes(SECRETS.watchNote), 'a watch: its note is the DM\'s own (whens)' + (r.ok ? '' : ': ' + r.error));
 S.dmLog[0].prompt = 'DM model prompt ' + plant('dmPrompt'); S.dmLog[0].reply = 'DM model reply ' + plant('dmReply');
 ok(act(B, 'journal_write', {text: 'Dear diary, ' + plant('bJournal')}).ok, 'B\'s journal');
+ok(act(B, 'wish', {tool: 'hear_oaths', what: 'Hear every oath ' + plant('bWish'), why: 'I missed one ' + plant('bWishWhy'), moment: 'The camp fell quiet ' + plant('bWishMoment')}).ok, 'B wishes for a tool (a note for the builders, #663)');
 // tiered memory (issue #153): B's own landmark and a chapter of B's older lines stay B's
 ok(act(B, 'journal_write', {text: 'A turning point: ' + plant('bLandmark'), landmark: 'yes'}).landmark > 0, 'B\'s own landmark');
 {const TI = await import('../src/sim/tiers.js'); TI.spill(B, {day: 1, text: 'An old line ' + plant('bChapter') + ' of the road', src: 'journal'});
