@@ -46,6 +46,8 @@ import {stageScene,tableCall,tableAnswer,stagedView,STAGE,unstage} from './stage
 import {sitesView} from './sites.js'; // DM-made dungeon sites (#69)
 import {rulingCall,rulingAnswer,rulingSummary} from './ruling.js'; // free actions the DM rules on (#522)
 import {gone as dmGone} from './dmreflex.js'; // the DM's reflexes (#561)
+import {downCall,downAnswer,downCallSummary} from './downcall.js'; // a hero down: the DM voices it (#655)
+import {isDown} from './downed.js';
 import {sceneCall,sceneAnswer,ourScene,openingDue} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
 import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
@@ -191,8 +193,11 @@ function seeItems(fo,D){listen(D);const out=[],mine=fo.members.map(a=>a.id);
   const k=earOf(D).lines.filter(l=>!l.h&&mine.includes(l.wid)).length;if(k)out.push('They spoke '+k+' line'+(k===1?'':'s')+' you have not heard (hear {company}): what they plan, fear or ask for.');
   for(const a of fo.members.slice(0,5)){const q=carriesOf(a).quest_items;if(q.length)out.push(a.name+' carries '+q.slice(0,2).join(', ')+'.')}
   return out.slice(0,3)}
+// A downed member, for the needs lists (#655): first, and words for the DM's part (voice it; no danger, no rescue by fiat).
+const downItem=a=>a.name+' is down and dying'+(a.down&&a.down.stable?' (stable, still down)':'')+' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the dice decide; voice it when table_call asks, and pull nothing dangerous near them.';
 function fellowshipNeeds(){const F=slotted(),fo=focus();if(!F||!fo)return null;
-  const th=companyThreads(slotted()),props=openProps(),items=[],hurt=fo.members.filter(a=>a.state!=='town'&&!a.hidden&&a.hp<maxHp(a)*DMA.PILE_HP);
+  const th=companyThreads(slotted()),props=openProps(),items=[],down=fo.members.filter(isDown),hurt=fo.members.filter(a=>!isDown(a)&&a.state!=='town'&&!a.hidden&&a.hp<maxHp(a)*DMA.PILE_HP);
+  for(const a of down)items.push(downItem(a)); // a downed member first (#655)
   const field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),inTown=fo.members.length-field.length;
   const sv=stagedView(),at=field.length?(ZONES[zoneAt(fo.x,fo.y)]||'the wilds'):(fo.town?fo.town.name:'town');
   if(S.table)items.push('A Table scene is open: let it play; answer only calls of a scene you staged.');
@@ -204,8 +209,8 @@ function fellowshipNeeds(){const F=slotted(),fo=focus();if(!F||!fo)return null;
   const adv=(S.adventures||[]).filter(v=>v.phase==='active'&&v.mem&&v.mem.some(id=>fo.ids.has(id)));
   for(const v of adv.slice(0,2))items.push('Under way: '+(v.title||v.tpl)+' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+').');
   if(!adv.length&&!sv.cur&&!S.table&&!props.length&&!hurt.length)items.push('Nothing is under way for them: a hook near '+at+', a rumour of a named foe on their road, or a staged scene ('+(field.length?'stage_scene near "fellowship"':'in town: stage_scene kind meeting or social with at "'+at+'" and a setting')+') would give their next game hours something.');
-  const quiet=!S.table&&!props.length&&!hurt.length&&!adv.length&&!sv.cur;
-  return {summary:(field.length?field.length+' riding in '+at:'all '+fo.members.length+' in '+at)+(inTown&&field.length?', '+inTown+' in town':'')+'; '+(th.length?th.length+' open thread'+(th.length===1?'':'s'):'no open threads')+(adv.length?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(S.table?'; a Table scene is open':'')+'.',
+  const quiet=!down.length&&!S.table&&!props.length&&!hurt.length&&!adv.length&&!sv.cur;
+  return {summary:(down.length?down.length+' down and dying; ':'')+(field.length?field.length+' riding in '+at:'all '+fo.members.length+' in '+at)+(inTown&&field.length?', '+inTown+' in town':'')+'; '+(th.length?th.length+' open thread'+(th.length===1?'':'s'):'no open threads')+(adv.length?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(S.table?'; a Table scene is open':'')+'.',
     where:at,riding:field.length,in_town:inTown,items,quiet,share_of_dm_actions:focusStats()}}
 // What changed for them since the last look: place, falls, scenes, finished jobs and oaths. A string; equal means nothing new.
 function sigOf(fo){const F=fo.company,field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),z=field.length?zoneAt(fo.x,fo.y):-1,t=F.tableStats||{};
@@ -223,22 +228,23 @@ export function companiesSig(){const fs=focuses();if(!fs.length)return null;retu
 const pendingOf=fo=>({scene:!!findScene(sc=>(sc.ids||[]).some(id=>fo.ids.has(id))),vote:(fo.company.props||[]).some(P=>P.status==='open')});
 export const NEED_WHY=['the followed company must choose','a scene or vote is pending','members badly hurt in the field','longest without you','the most fragile'];
 export function companiesNeeds(){const fs=focuses();if(!fs.length)return [];const fol=followedCompany();
-  const rows=fs.map(fo=>{const C=fo.company,pend=pendingOf(fo),field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),hurt=field.filter(a=>a.hp<maxHp(a)*DMA.PILE_HP);
+  const rows=fs.map(fo=>{const C=fo.company,pend=pendingOf(fo),field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),down=fo.members.filter(isDown),hurt=field.filter(a=>!isDown(a)&&a.hp<maxHp(a)*DMA.PILE_HP);
     const at=field.length?(ZONES[zoneAt(fo.x,fo.y)]||'the wilds'):(fo.town?fo.town.name:'town'),th=companyThreads(C),since=touchedAt(C)==null?null:Math.max(0,Math.round(S.gameMin-touchedAt(C)));
     const n=fo.members.length,label=C.slots?'the Fellowship':n===1?fo.members[0].name+' (riding alone)':(C.name||'a company of '+n),items=[],must=C===fol&&(pend.scene||pend.vote);
+    for(const a of down)items.push(downItem(a)); // a downed member first (#655)
     if(pend.scene)items.push('A Table scene of theirs is open: let it play.');
     if(pend.vote)items.push('A vote is open among them: leave it to them.');
     for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them.');
     for(const t of th.slice(0,2))items.push('Open thread: '+txt(t.parts));
     for(const x of seeItems(fo,dmState()).slice(0,2))items.push(x);
-    const quiet=!pend.scene&&!pend.vote&&!hurt.length&&!fo.busy;
+    const quiet=!down.length&&!pend.scene&&!pend.vote&&!hurt.length&&!fo.busy;
     if(quiet)items.push('Nothing is under way for them: a hook on their road near '+at+(fo.town?' or on the '+fo.town.name+' board':'')+', a person, or a staged scene near one of them.');
-    const why=must?NEED_WHY[0]:pend.scene||pend.vote?NEED_WHY[1]:hurt.length?NEED_WHY[2]:since==null?'no DM action for them yet':NEED_WHY[3];
+    const why=must?NEED_WHY[0]:pend.scene||pend.vote?NEED_WHY[1]:hurt.length||down.length?NEED_WHY[2]:since==null?'no DM action for them yet':NEED_WHY[3];
     return {id:C.id,company:label,size:n,solo:n===1,followed:C===fol,hall:fo.town?fo.town.name:null,where:at,riding:field.length,
-      pending:pend.scene?'scene':pend.vote?'vote':null,hurt:hurt.length,busy:fo.busy,since_dm_min:since,open_threads:th.length,
-      summary:(field.length?field.length+' riding in '+at:(n===1?'in ':'all '+n+' in ')+at)+(fo.busy?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(since==null?'; nothing from you yet':'; your last act for them '+Math.round(since/60)+'h ago')+'.',
+      pending:pend.scene?'scene':pend.vote?'vote':null,hurt:hurt.length,...(down.length?{down:down.length}:{}),busy:fo.busy,since_dm_min:since,open_threads:th.length,
+      summary:(down.length?down.length+' down and dying; ':'')+(field.length?field.length+' riding in '+at:(n===1?'in ':'all '+n+' in ')+at)+(fo.busy?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(since==null?'; nothing from you yet':'; your last act for them '+Math.round(since/60)+'h ago')+'.',
       items:items.slice(0,4),quiet,why,
-      _k:[must?0:1,pend.scene||pend.vote?0:1,hurt.length?0:1,-(since==null?Infinity:since),n,C.id]}});
+      _k:[must?0:1,pend.scene||pend.vote?0:1,hurt.length||down.length?0:1,-(since==null?Infinity:since),n,C.id]}});
   rows.sort((x,y)=>{for(let i=0;i<x._k.length;i++)if(x._k[i]!==y._k[i])return x._k[i]<y._k[i]?-1:1;return 0});
   for(const r of rows)delete r._k;
   return rows}
@@ -283,6 +289,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
+    ...(downCallSummary()?{downed:downCallSummary()}:{}), // a hero down: voice it through table_call (#655)
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
     campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
@@ -784,8 +791,8 @@ function run(tool,args){let r;
     case 'npc_call':r=npcCall();break;
     case 'npc_offer':r=npcOffer(args);break;
     case 'stage_scene':r=stageScene(args);if(r&&r.ok&&r.staged!=null&&!r.preview)dmState().last={kind:'stage',id:r.staged,tool:'stage_scene',at:Math.round(S.gameMin)};break;
-    case 'table_call':r=sceneCall()||tableCall();break;
-    case 'table_answer':r=sceneAnswer(args)||tableAnswer(args);break;
+    case 'table_call':r=downCall()||sceneCall()||tableCall();break;
+    case 'table_answer':r=downAnswer(args)||sceneAnswer(args)||tableAnswer(args);break;
     case 'ruling_call':r=rulingCall(args);break;
     case 'ruling_answer':r=rulingAnswer(args);break;
     case 'prep_done':r=prepDone(args);break;

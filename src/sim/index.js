@@ -23,6 +23,7 @@ import {chatTick,resetChatSeed} from './chat.js';
 import {npcsTick,resetNpcSeed} from './npcs.js';
 import {talkTick,resetTalkSeed} from './talk.js'; // NPC conversations (#170)
 import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
+import {downCallTick} from './downcall.js'; // the DM's voice on a downing (#655)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {installRumourLever} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever} from './epithet.js'; // bestow (#638)
@@ -115,7 +116,7 @@ export function init(o={}){resetWorld();
 
 // Advance the world by dt real seconds at 1x (6 game minutes per second).
 import {outpostsTick} from './outposts.js';
-export function step(dt){rulingTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
+export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
   if(holdTick(dt)){updFx(dt);return} // a gambit hold stops the clock until the agent acts (#630)
   if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
   S.gameMin+=dt*6;
