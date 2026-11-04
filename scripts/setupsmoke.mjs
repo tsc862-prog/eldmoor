@@ -126,6 +126,7 @@ if(mode==='a'){
   click(ids.get('setup'),b=>b.dataset.a==='nameroll'&&b.dataset.slot==='dps1');
   ok(all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1').value.length>=3,'name reroll fills a name');
   click(ids.get('setup'),b=>b.dataset.a==='start');
+  for(let i=0;i<100&&reloads<1;i++)await new Promise(r=>setTimeout(r,20)); // the reload follows the runners' stop call (#691)
   const pend=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
   ok(pend&&pend.world==='eldmoor'&&reloads===1&&pend.v===2&&pend.mode==='together'&&pend.heroes.length===5&&pend.heroes[0].cls==='Warrior'&&pend.heroes[0].mind.mode==='agent','Start queues the setup (v2 together, #453) and reloads');
   ok(sim.validateSetup(pend).length===0,'the queued setup validates');
@@ -141,6 +142,7 @@ if(mode==='a'){
   ok(!/Replace the saved/.test(text(ids.get('setup')))&&reloads===0,'Back keeps everything');
   click(ids.get('setup'),b=>b.dataset.a==='start');
   click(ids.get('setup'),b=>b.dataset.a==='go');
+  for(let i=0;i<100&&reloads<1;i++)await new Promise(r=>setTimeout(r,20));
   ok(reloads===1&&!localStorage.getItem(SAVE_KEY)&&!!localStorage.getItem(PENDING_KEY),'Replace erases the save and queues the setup');
   localStorage.setItem(SAVE_KEY,'x');
   setup.openSetup({first:false});click(ids.get('setup'),b=>b.dataset.a==='cancel');
@@ -166,6 +168,7 @@ if(mode==='a'){
   click(sp,b=>b.dataset.a==='cancel');
   ok(sp.hidden&&!t.hidden&&played.length===0,'Back returns to the title, still no world');
   click(t,b=>b.dataset.a==='default');
+  for(let i=0;i<100&&played.length<1;i++)await new Promise(r=>setTimeout(r,20)); // after the runners' stop call (#691)
   ok(played.join()==='default'&&!ids.get('title').parentNode,'the default world plays and the title goes away');
   // a saved world
   sim.init();save.writeSave();
@@ -185,6 +188,7 @@ if(mode==='a'){
   click(t,b=>b.dataset.a==='new');click(t,b=>b.dataset.a==='replace');
   sp=ids.get('setup');ok(!sp.hidden&&t.hidden,'Set up a new world opens the setup page');
   reloads=0;click(sp,b=>b.dataset.a==='start');
+  for(let i=0;i<100&&reloads<1;i++)await new Promise(r=>setTimeout(r,20)); // after the runners' stop call (#691)
   ok(reloads===1&&!localStorage.getItem(SAVE_KEY)&&!!localStorage.getItem(PENDING_KEY),'Start does not ask a second time: the save goes and the setup is queued');
   ok(title.titleWanted('')===false,'the reload into the queued setup skips the title');
   localStorage.removeItem(PENDING_KEY);
