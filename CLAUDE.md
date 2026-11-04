@@ -121,13 +121,14 @@ other. The rules:
 - `npm run hashcheck` (#573, `scripts/hashcheck.mjs`): the one source of the seeded hashes PRs quote (professioncheck with and without the Fellowship, tablecheck --hash and --hash-talk, crawlcheck, dmcheck seat closed and open, focuscheck, the no-company world, the Eldmoor map). It runs them here and on `git archive origin/main` extracted to a temp dir (never a worktree) and prints both side by side; exit 2 when one moved. The CI job `hash-guard` comments that table on every PR and fails when a hash moved unless the PR has the label `hash-change-ok` (add the label, then re-run the job). Quote its table in PRs, not hand-run hashes.
 - `npm run rulescheck` (#573): src/sim, src/world and src/data never import src/render or src/ui; no zone, faction or town name literals outside src/data and src/world (known ones in `scripts/rulescheck.allow.json`, with a reason); the append-only tables (MOBS, EPICS, GOODS, CLS, the world specs' regions and towns, ...) keep every existing row in place against origin/main; every `scripts/*check.mjs` with an npm script is a step in ci.yml. CI also runs on `merge_group` for GitHub's merge queue.
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
+- `npm run pathcheck` (#794): walking over the solid grid on both worlds: every gate reaches every gate, landmark, hunting ground and node; rivers crossed only at bridges and fords; the replan rules and `PATH.PER_TICK` in a worst-case tick; solid and unreachable targets; mob limits; save mid-path; move_to's route facts; nobody in a solid tile in a long run.
 - `npm run savecheck`: snapshot/restore round trip of the sim state.
 - `npm run invcheck`: the pack, consumables, quest items, the bag-to-pack save migration and determinism.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
 - `npm run localcheck`: the local agent runner against a mock Ollama (see "Model providers"), and runner
   pacing (turns per game hour on a quiet world, a notification starts a turn at once, the failure stop, a lazy
   model re-prompted and stopped, the scripted takeover of an idle hero).
-- `npm run scenewaitcheck`: Table scene waits (#515): the Ollama queue puts scene answers first, a free turn gives way to its
+- `npm run scenewaitcheck`: Table scene waits (#515, #868: the slot deadlock replayed, resting at the table): the Ollama queue puts scene answers first, a free turn gives way to its
   scene, `table_waits`/`waited_s`/`{queued}`/`scene-missed`, and five slow mock members answering an everyone-at-once scene in time.
 - `npm run openaicheck`: the OpenAI provider against a mock OpenAI server (adapter, relay, agent loop, runner).
 - `npm run fellowship`, `npm run tablecheck`: the Fellowship played by agents, and Table mode (see below).
@@ -289,6 +290,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   one beyond it. A follower waits for a leader in town 4 more game hours, then hunts nearby alone; an open vote holds it. Town-idle guard (#790, `townGuard`): an agent hero in town with no XP, kill, buy, sell, job or talk for `TP.IDLE_TOWN` 12 game hours gets an urgent wake naming the board's fitting jobs and bounties and the fitting ground, and autopilot then hunts that ground whatever wait aim it holds (the agent still decides jobs, votes, Crypt and raid; autopilot never takes a hook); a stale wait aim also lets a company follower go once its leader has left town. The clock pauses while hurt, in a scene, at an open vote or meeting plan, split off, or while the world is held; the `town-idle` anomaly counts it. A level refusal at `take_adventure`/`take_quest` lists the hooks and bounties the hero can take now, with ids, before the hunt advice. It
   never takes a job, bounty, Crypt or raid. The agent stays the mind; nothing is ever handed to the scripted rules, and any
   command takes over again. A level refusal at take_adventure names a ground to hunt instead.
+- Paths (#794, `src/sim/path.js`): `moveTo` walks round what is solid. A clear line within `PATH.NEAR` 10 tiles is simply walked; anything else is planned once (A* on the tile grid, cost 1/SPEED, so roads pay; string-pulled into a few legs) and cached as `e.path` (plain data, saved), replanned when the target moves more than `PATH.REPLAN` 2 tiles or the walker was put more than `PATH.OFF` 3 tiles off it, or its next step is solid. At most `PATH.PER_TICK` 8 plans (and `PATH.TICK_NODES` 16000 nodes searched) a tick; the rest keep their old path or stand a tick. A target on solid ground, or on land the walker cannot reach, is swapped for the nearest ground it can reach, and `moveTo` then answers arrived, so nobody freezes. Bad numbers are refused, not walked: a non-finite target ends at once, a walker with a lost position stands at its target, a bad pace walks nowhere, an unreadable `e.path` is planned again (`pathStats.refused` counts them). Common mobs search at most `PATH.MOB_NODES` 500 nodes; a chase with no way is called off (`noWay`) and frees the hero; a mob does not aggro, a hero does not pick prey, and no duel starts without a clear line (`clearLine`), so nobody fights across a river. Facts for the agents (the words are #797's): `move_to` and `hunt {where}` keep `going` and `distance` and add `route {tiles, blocked?, by?: [{crossing: bridge|ford, dir, tiles, region?}], door?, ends_short?}`; `region` only when the hero knows it. `e.path` carries `len`, `cross`, `why`, `near`. Danger edges read the route, not the straight line.
 - Danger edges (#465): a move_to or hunt {where} whose road enters a region whose lowest level is 5+ above the hero's
   stops at its edge the first time, with the danger in words (the land's feel, the hero's lore, the townsfolk's warning);
   the same call again within 12 game hours, or `force: "yes"`, walks on (never a hard block). Walking out of shouting
@@ -357,8 +359,14 @@ is silent, and scene choices time out to the scripted branch, so the world never
   The setup page starts one company runner for an apart group sharing one mind (`planRunners`). Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
   /play/runner/slot`, released after the turn, freed when the child exits) and waits for one when all are
-  taken, so starting is never refused for slots (a company runner also queues its members with
-  `--claude-concurrency`). The DM seat has slots of its own outside that count (`RUNNER_DM_SLOTS`, default 1; 0 = it queues in
+  taken, so starting is never refused for slots (a terminal company runner queues its members with
+  `--claude-concurrency`; under the supervisor its slots are the cap). `RUNNER_SCENE_SLOTS` (default 1, 0 = none, #868) of those are kept for scene
+  answers: a request marked scene goes first and other turns stop one short of the cap, so a member whose scene is due never waits behind free turns
+  and the total never passes `RUNNER_CLAUDE_MAX` (at a cap of 3, two free turns at once). Leases (#868): `GET /play/runner` `claude.leases` lists
+  each one (id, key, member, age_s, quiet_s, idle, scene); nothing is granted to a request that went away, and a request given up after its grant was
+  sent is cancelled by its ticket (`/play/runner/slot/cancel`); the holder beats every `SLOT_BEAT_MS` 30 s (`/play/runner/slot/beat`, with its tool count
+  and idle while in a wait), a lease silent for `SLOT_LOST_MS` 95 s is reclaimed, and a holder with no tool call for `SLOT_MAX_MS` 10 min is told it lost
+  the slot and ends that turn, each with a `[runners]` log line. The DM seat has slots of its own outside that count (`RUNNER_DM_SLOTS`, default 1; 0 = it queues in
   the hero pool as before; #733): its turns and its prep lease one first and never queue behind hero turns ("waiting for the
   DM slot" only when its own are held). While the DM's prep holds the world, hero runners lease no slot: their request waits
   for the prep to end ("the DM prepares the table" in their pace line). Without `--runners` the buttons say how to turn it on.
@@ -600,6 +608,13 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   (90 s) more for that live member (`sc.q`). A live member the table still times out is `sc.miss` -> the `scene-missed`
   anomaly. `scene_act` returns `waited_s` (turn lines `sceneS`; the report's "Table scene answers": p50/p90 per mind,
   answers and misses per member). `npm run scenewaitcheck` (five slow mock members on one queue, a member mid-turn).
+- Resting at the table (#868, `tableRest` in `src/sim/scenewait.js`): a member in an open scene that asks nothing of it right now (it has answered, the DM still
+  frames it, its turn has passed), or a hero outside a scene that stops the world, can pass no game time, so `wait` comes back at once with `turn_over: true`
+  ("Your turn is over: end it here. You will be woken when the table settles or asks you again."), for every mind. A Claude turn ends there from a `PostToolUse`
+  hook (`tableHooks` in `scripts/pacing.mjs`: the query stops with no further model call and its usual result and cost; turn flag `table-rest`), a local or
+  OpenAI turn with no closing narration call. Nobody keeps a Claude slot waiting for the table, so the member whose turn it is can always get one. Pacing keeps
+  the promise: at rest only what must be answered (level 3) starts a turn, and `a.tableRest` gives one soft wake once the table has settled (a scene's outcome
+  stays unread for that turn's header). A member whose own scene is due gets its wait back at once with `table_waits`.
 - Talk (`src/sim/talk.js`): an agent's `say`/`party_say` that repeats one of its last 5 lines, or a second
   introduction once members have met (both spoke in each other's hearing), is refused; every turn header
   carries the last 8 lines heard and the companions met.
@@ -999,7 +1014,7 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   `LABELS`; `map.js` builds `ELDMOOR` once and re-exports it under the old
   names (`tiles`, `zone`, `I`, `riverX`, `z2X`, `hoarY`, ...). `npm run
   worldcheck` builds both specs and fails if the Eldmoor map drifts from its
-  snapshot hashes.
+  snapshot hashes. `solidgrid.js` the solid grid, built per world by `gen.js` after the roads: what is solid and why, a road's corner-to-corner shoulders (open, so a bridge laid on the diagonal can be walked), `spec.river.fords` (river left open, keeping its slow pace), the nest (`NEST_CORE`: raiders stand on the rest of the lair's rock) and `land`/`mainLand` (open tiles joined by legal steps; spawn points and gathering nodes keep to the land the towns stand on); `passable.js` is its one reader (`solidAt`, `nearestOpen`, `standAt`, `landAt`, `onMainLand`).
   town plans (#793): every `CITY[i].buildings = [{piece, box:[x,y,w,h], door:[x,y], serves, draw}]` is sim data laid out by `planBuildings` in `gen.js` from `data/townart.js` `TOWN_PIECES` (or a spec town's own `buildings`): `box` the whole solid tiles (solid but for the one `door` tile, `passable.js`), `draw` the art box `src/render/townart.js` draws from; the spots a building `serves` (quartermaster, gate, smith, chapel, inn) stand at its door; `standAt(x,y)` in `passable.js` moves a point that falls in a building to the nearest open tile (heroes created in town, company spreads, the bard's stroll); `npm run passablecheck` checks it.
 - `src/data/` (pure tables, no logic): `factions.js` FAC, guild roster, names
   (character-builder); `classes.js` CLS (character-builder); `mobs.js` MOBS and
@@ -1008,6 +1023,7 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
 - `src/sim/` (DOM-free; ai-designer owns behaviour, creature-designer owns boss
   numbers): `state.js` the single `S` state object and game clock;
   `chronicle.js` `log(...parts)` and `onLog`; `effects.js` pop/bolt;
+  `path.js` the way a walker goes (#794, see Paths under Agent player);
   `heroes.js` stat formulas, quests, movement, combat, death and the `updAgent`
   state machine (`town`, `travel`, `hunt`, `fight`, `return`, `ghost`, `duel`,
   `assist`, `dungeon`, `raid`, `dead`); `mobs.js` spawning and mob AI;
@@ -1054,6 +1070,7 @@ render or ui, so the headless harness stays stub-free.
   `src/sim/heroes.js`. Hero combat totals (Health, Attack, Defense, Crit, Speed) and their
   level terms: `combatStats` in `src/sim/stats.js`; item armor/damage rates and properties:
   `src/data/items.js`. Class table `CLS`: `src/data/classes.js`.
+- Paths: `PATH` in `src/sim/path.js` (plans a tick, near, replan, mob nodes, heuristic). Tile speeds stay `SPEED` in `src/world/tiles.js`.
 - Mob stats (`maxhp: 25 + lvl*16`, hit `(3 + lvl*2) * MOB_HIT`, MOB_HIT 1.35 for mob level 7+, ramping from level 3), aggro and wander: `src/sim/mobs.js`.
 - Boss: `maxhp` 13000, respawn 600s in `src/data/bosses.js`; hit 55-85 every 1.6s, breath every
   7s, raids need level 14+ heroes, 5+ of them or 4 with average gear 9+; raiders

@@ -14,6 +14,7 @@ import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off i
 import {rnd,ri} from '../core/rng.js';
 import {WALKABLE} from '../world/tiles.js';
 import {zoneAt,tileAt,dist} from '../world/map.js';
+import {lineCost} from './path.js'; // a leap stops at what is solid (#794)
 import {CLS} from '../data/classes.js';
 import {MOVES,CLASS_MOVES,PASSIVES,SPEC_MOVES,MOVE_CONDS,CONDITIONS} from '../data/moves.js';
 import {specOf,ensureSpec,specBlock,pickSpec,chooseSpec} from './spec.js';
@@ -71,7 +72,7 @@ export function canUse(a,id,t,mode='sec'){const M=MOVES[id];
 const NOTE={attack:'#ff8a5a',control:'#9ad0ff',defend:'#c8c8e0',heal:'#7dce5a',move:'#c58cff',buff:'#f2c14e'};
 function engagedNear(a,r){return nearMobs(a.x,a.y,r,m=>m.alive&&!m.gone&&!!m.target)}
 function blink(a,from,d){const dx=a.x-from.x,dy=a.y-from.y,n=Math.hypot(dx,dy)||1;
-  for(let k=d;k>=1;k-=.5){const x=a.x+dx/n*k,y=a.y+dy/n*k;if(WALKABLE.includes(tileAt(x,y))&&zoneAt(x,y)===zoneAt(a.x,a.y)){a.x=x;a.y=y;return k}}return 0}
+  for(let k=d;k>=1;k-=.5){const x=a.x+dx/n*k,y=a.y+dy/n*k;if(WALKABLE.includes(tileAt(x,y))&&lineCost(a.x,a.y,x,y)<Infinity&&zoneAt(x,y)===zoneAt(a.x,a.y)){a.x=x;a.y=y;return k}}return 0}
 const slow=(e,sec)=>{if(!sec)return;e.cd=(e.cd||0)+(e.kind==='boss'?sec/2:sec)}
 
 function onFoe(a,M,e,round,R,id){const fx=M.fx;if(!living(e))return;
