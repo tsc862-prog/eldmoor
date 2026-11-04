@@ -89,6 +89,7 @@
     "art:review": "node scripts/art/review.mjs",
     "art:sheet": "node scripts/art/sheet.mjs",
     "art:reprocess": "node scripts/art/reprocess.mjs",
+    "art:preview": "node scripts/art/preview.mjs",
     "art:space": "node scripts/art/space-push.mjs"
   },
   "devDependencies": {

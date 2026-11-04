@@ -5,7 +5,7 @@
 // Read-only. Options: --dir assets, --log logs/art.log, --manifest FILE, --tier N, --json.
 import {readFileSync,existsSync,readdirSync,statSync} from 'node:fs';
 import {join} from 'node:path';
-import {ROOT,ASSETS,MANIFEST,KINDS,TILE,loadManifest,loadIndex,loadQueue,tierKey,splitKey} from './lib.mjs';
+import {ROOT,ASSETS,MANIFEST,KINDS,PREVIEW_KINDS,TILE,loadManifest,loadIndex,loadQueue,tierKey,splitKey} from './lib.mjs';
 import {parseArgs,today} from './gen.mjs';
 import {spentOn,jobsFor} from './daily.mjs';
 import {gpuWindow,windowEnd} from './space.mjs';
@@ -15,7 +15,8 @@ export const SLICES=['terrain','towns','sprites','portraits','scene','props'];
 export const sliceName=(man,n)=>{const p=(man.priorities||[]).find(x=>x.n===n);return SLICES[n-1]||(p?p.name.split(/[ :(]/)[0]:'slice '+n)};
 
 // Owner rule (#712): these are judged in the game, not on the contact sheet.
-export const IN_GAME_KINDS=['building','landmark','sprite'];
+// PREVIEW_KINDS (lib.mjs) are the kinds art:accept refuses without an art:preview shot; sprites are judged in the game too.
+export const IN_GAME_KINDS=[...PREVIEW_KINDS,'sprite'];
 
 // Inbox keys whose asset is already in assets/index.json (an alternate is a real candidate: it replaces the asset, so it stays).
 export function staleIncoming(q,idx){return Object.keys(q.incoming).filter(k=>{const {id,tier,alt}=splitKey(k);return !alt&&!!idx.assets[tierKey(id,tier)]}).sort()}
@@ -73,7 +74,7 @@ export function render(s){
   L.push('','Review:');
   for(const d of s.days){L.push(`  ${d.date} (${d.ageDays} d old): ${d.waiting} waiting`+(d.sheet?`, contact sheet ${d.sheet}`:', no contact sheet'));
     if(d.accept)L.push('    ready to accept: '+d.accept);
-    if(d.preview.length)L.push('    needs an in-game preview first, NOT in the line above: '+d.preview.join(' '))}
+    if(d.preview.length)L.push('    needs an in-game preview first, NOT in the line above ('+(d.preview.some(k=>PREVIEW_KINDS.includes(kindOf(k)))?'art:accept refuses buildings and landmarks until npm run art:preview -- <id> has staged them at 3440x1440; ':'')+'look at sprites in the game before accepting): '+d.preview.join(' '))}
   if(s.preview.length){L.push('  Buildings, landmarks and sprites are judged in the game, not on the contact sheet (owner rule).')}
   const sheet=s.rows.filter(r=>!IN_GAME_KINDS.includes(r.kind)&&(r.waiting.length||r.alts));
   if(sheet.length)L.push('  Fine on the contact sheet: '+sheet.map(r=>`${r.kind} (${r.waiting.length+r.alts})`).join(', '));
