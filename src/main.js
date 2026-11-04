@@ -16,6 +16,9 @@ import {checkRunGate} from './ui/rungate.js'; // hold the world while an agent s
 import {initUI,uiFast,uiSlow} from './ui/app.js'; // every panel and its refresh cadence (shared with npm run uismoke)
 import {titleWanted,showTitle,provideNotes} from './ui/title.js'; // Continue, New world, Load: nothing runs until a choice
 import {slotted} from './sim/company.js'; // the slotted company (#588)
+import {frameDone,gapSeen,setWhere} from './ui/pagewatch.js'; // frame-time watchdog (#736)
+import {viewWhere} from './render/viewinfo.js'; // what the screen shows, for the watchdog's lines
+import {installProbe} from './ui/probe.js'; // ?probe=1: frame timings for npm run shoot -- --crawl (#736)
 
 // The world is built only when the owner picks Continue (or the default world) on the title screen, or at once with
 // ?continue=1 / ?skip-title=1, a queued New World setup, or a Load/Import reload. New world goes to the setup page
@@ -47,11 +50,18 @@ function advance(real){
   if(ctl.speed>0&&!ctl.held){let dt=real*ctl.speed;const n=Math.ceil(dt/.05);for(let i=0;i<n;i++)step(dt/n);autoSaveTick()}
   checkRunAlerts();syncRunAlert();
   renderTable(ctl.held?0:ctl.speed);renderHold()} // Table mode (#68): the sim pauses for Fellowship scenes only at 1x
+// The watchdog (#736, ui/pagewatch.js): each frame's sim, render and panel halves, and the time between frames when the thread
+// was busy elsewhere (a tool call, a long message). A hidden tab has no frames, so its gap is not counted.
+let frameEnd=0;
 function frame(now){const real=Math.min(.1,(now-last)/1000);last=now;
-  advance(real);
-  renderer.draw();uiT-=real;if(uiT<=0){uiT=.3;uiFast()}
+  if(frameEnd&&now-frameEnd>=250)gapSeen(now-frameEnd,now);
+  const t0=performance.now();advance(real);const t1=performance.now();
+  renderer.draw();const t2=performance.now();uiT-=real;if(uiT<=0){uiT=.3;uiFast()}
   if(Math.floor(now/1000)!==Math.floor((now-real*1000)/1000))uiSlow();
+  const t3=performance.now();frameDone({ms:t3-t0,sim:t1-t0,render:t2-t1,ui:t3-t2},t3);frameEnd=t3;
   requestAnimationFrame(frame)}
+if(typeof document!=='undefined')document.addEventListener('visibilitychange',()=>{frameEnd=0});
+setWhere(()=>viewWhere(document.getElementById('cv')));installProbe();
 every(250,()=>{if(!renderer||typeof document==='undefined'||!document.hidden)return;
   const now=performance.now(),real=Math.min(.5,(now-last)/1000);last=now;advance(real)});
 if(titleWanted())showTitle(start);else start('direct');

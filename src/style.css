@@ -120,7 +120,7 @@ div.daysep{margin:8px 0 3px}
 .src{font-family:var(--px);font-size:6px;padding:1px 3px;margin-right:4px;vertical-align:middle;border:1px solid var(--edge);color:var(--dim);white-space:nowrap}
 .src.s-agent{color:var(--gold);border-color:var(--gold)} .src.s-autopilot{color:#7fd6c2;border-color:#7fd6c2} .src.s-reflex{color:var(--amber);border-color:var(--amber)} .src.s-ai{color:#7fd6c2;border-color:#7fd6c2}
 .ai-badge.mk-scripted{background:var(--edge);color:var(--dim)} .ai-badge.mk-agent{background:var(--gold)} .ai-badge.mk-quiet{background:var(--edge);color:var(--dim)}
-.mlink.busy{color:var(--amber)}
+.mlink.busy,.mlink.pagebusy{color:var(--amber)}
 /* a Fellowship member's name in chat: bold, role colour as on the party frames, lightened for the dark theme */
 .hn.fmn{font-weight:bold} /* a member's colour is its class, set inline from core/colors.js */
 .hn.npcn{font-weight:normal;text-decoration:underline dotted;text-underline-offset:3px}

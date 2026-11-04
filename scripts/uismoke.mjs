@@ -1500,5 +1500,28 @@ console.log('the DM prepares the table');
   a.down.f=DN.failsOf(a)-1;DN.downHit(a,m,false);uiFast();ok(a.state==='dead'&&!FR.frameRows().some(r=>r.name===a.name&&r.down),'downed: three failures and they are gone; no downed row on the fallen');
   }
   guardMem=keepGuard;cam.sel=keepSel;uiFast()}
+// The page watchdog (#736): a long frame logs one line, a run of them (or one over 2 s) is a page-stall anomaly, and the link labels
+// read "page busy (3.2 s frame)" instead of flipping to connecting while the page is the one that is slow.
+console.log('page watchdog');
+{const PW=await import('../src/ui/pagewatch.js'),BR=await import('../src/ui/player-bridge.js'),ML=await import('../src/ui/mindlabel.js'),{dmFrameData}=await import('../src/ui/dmframe.js');
+  const a=SLT.slotMembers(SLT.slotted()).map(m=>m.hero).find(h=>h&&h.player&&h.state!=='dead');
+  const lines=[];PW.setPageLog(l=>lines.push(l));PW.resetPageWatch();PW.setWhere(()=>'dungeon The Sunken Crypt room 2/5 · 3440x1300');
+  const links={};if(a)links[a.id]='connected';BR.bridgeFeed({links,runners:{},ready:{},dm:{seat:true,link:'connected',claimed:true}});
+  ok(!!a&&ML.linkOf(a)==='connected'&&/live/.test(ML.mindLabel(a).text),'before: the link reads live ('+(a&&ML.mindLabel(a).text)+')');
+  const t=performance.now();
+  ok(!PW.frameDone({ms:16,sim:1,render:14,ui:1},t)&&!lines.length,'a normal frame logs nothing');
+  ok(PW.frameDone({ms:400,sim:2,render:395,ui:3},t)&&lines.length===1&&/\[page\] 400 ms frame \(sim 2, render 395, ui 3 ms\) · dungeon The Sunken Crypt room 2\/5/.test(lines[0]),'a scripted 400 ms frame logs one line naming the view and its halves: '+lines[0]);
+  ok(!PW.takeAnomalies().length&&ML.linkOf(a)==='connected','one 400 ms frame is no anomaly and the label stays live');
+  PW.frameDone({ms:400,render:400},t+1500);PW.frameDone({ms:400,render:400},t+3000);
+  const an=PW.takeAnomalies();ok(an.length===1&&an[0].kind==='page-stall'&&an[0].seat==='page'&&/3 frames over 250 ms/.test(an[0].text)&&an[0].evidence.where.startsWith('dungeon'),'three 400 ms frames in a minute: one page-stall anomaly ('+(an[0]&&an[0].text)+')');
+  PW.frameDone({ms:3200,sim:1,render:3198,ui:1},performance.now());
+  const big=PW.takeAnomalies();ok(big.length===1&&big[0].severity==='bad'&&/froze for 3\.2 s/.test(big[0].text),'a 3.2 s frame is a page-stall anomaly at once');
+  ok(ML.linkOf(a)==='pagebusy'&&/page busy \(3\.2 s frame\)/.test(ML.mindLabel(a).text),'the member label reads page busy, not connecting: '+ML.mindLabel(a).text);
+  {const was=sim.dmSeatOn();sim.setDmSeat(true);const d=dmFrameData();sim.setDmSeat(was);ok(d.link==='pagebusy'&&d.linkText==='page busy (3.2 s frame)','the DM frame reads page busy too ('+d.linkText+')')}
+  const dg=PW.pageDigest();ok(dg.longFrames===4&&dg.worstMs===3200&&/Sunken Crypt/.test(dg.where)&&PW.pageDigest().longFrames===0,'the hour digest carries {longFrames, worstMs, where} and resets');
+  PW.resetPageWatch();PW.relayLate({tool:'scene_act',ms:15000,silentMs:16200});
+  ok(/page busy \(no answer for 16\.2 s\)/.test(ML.mindLabel(a).text),'a relay time-out on a silent page reads page busy as well: '+ML.mindLabel(a).text);
+  PW.resetPageWatch();ok(ML.linkOf(a)==='connected','once it passes the label is live again');
+  BR.bridgeFeed(null);PW.setPageLog(null)}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
