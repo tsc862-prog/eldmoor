@@ -8,7 +8,7 @@ import {FAC} from '../data/factions.js';
 import {npcRole} from '../data/npcs.js';
 import {MOBS} from '../data/mobs.js';
 import {PROC_SCALE,ART,SHEET} from './tile.js';
-import {assetPixels,onAssets} from './assets.js';
+import {assetPixels,onAssets,hasAsset} from './assets.js';
 import {recolour} from './palette.js';
 
 const sprCache={};
@@ -802,7 +802,15 @@ onAssets(()=>sheetC.clear());
 // One frame of the entity's generated sheet: {img, sx, sy, fw, fh} in art pixels, or null (draw the procedural sprite).
 // dir: 0 down, 1 left, 2 right, 3 up; col: 0 stand, 1 step, 2 other step.
 const FR={img:null,sx:0,sy:0,fw:0,fh:0};
+// A hero's sheet by class and people (#789): 'sprite:hero-<class>-<race>' (race ids from data/races.js) when such a sheet is in
+// the index, else the class sheet 'sprite:hero-<class>', else null (the procedural sprite). Sheets of a people are index-only
+// entries (made from the LPC generator, never generated), so they are not in ASSET_SPRITES or the manifest. Cached per hero.
+const peopleId={}; // class -> race -> sheet id (or null), no allocation per call
+export function heroSheetId(cls,race){const per=peopleId[cls]||(peopleId[cls]={}),k=race||"";let id=per[k];if(id!==undefined)return id;
+  const base=HERO_ID[cls],byPeople=race&&base?base+"-"+race:null;
+  return per[k]=byPeople&&hasAsset(byPeople)?byPeople:base||null}
+onAssets(()=>{for(const c of Object.keys(peopleId))delete peopleId[c]});
 export function sheetFrame(e,dir,col){
-  const id=e.kind==='hero'?HERO_ID[e.cls]:e.kind==='mob'?MOB_ID[e.type]:null;if(!id)return null;
+  const id=e.kind==='hero'?heroSheetId(e.cls,e.race):e.kind==='mob'?MOB_ID[e.type]:null;if(!id)return null;
   const c=sheetOf(id,e.kind==='hero'?e.fac:0);if(!c)return null;
   FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}

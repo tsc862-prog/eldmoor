@@ -29,6 +29,7 @@ import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
 import {drawCamp,drawCampLight} from './camp.js';
+import {trafficEnts,isTraffic,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
@@ -192,9 +193,11 @@ export function createRenderer(cv,screenEl){
     for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ents.push(p);
     if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ents.push(boss);
     lt=performance.now();if(!cut)lifeEnts(ents);lifeStats.acc+=performance.now()-lt;
+    if(close&&!cut)trafficEnts(S,inView,MARGIN,ents); // road traffic, skipped at whole-map zoom
     ents.sort((a,b)=>a.y-b.y);
     for(const e of ents){
       if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);continue} // critters, stalls and guards (townlife.js)
+      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
       const fr=e.moving?Math.floor(blink*6+e.id)%2:0;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}

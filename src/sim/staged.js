@@ -48,6 +48,7 @@ import {findScene} from './scenes.js'; // a staged scene may sit beside another 
 import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {talkFromScene} from './talk.js'; // NPC conversations (#170)
 import {SETTINGS,SETTING_IDS} from '../data/settings.js';
+import {trafficBy,stagedBeset,trafficSceneEnd} from './traffic.js'; // a staged foe may fall on a cart or traveller on the road (#796)
 import {inRange} from './reach.js'; // a vision takes the members within shouting range of the one it found (#639)
  // scene maps (#431): the rooms a meeting or social scene plays in
 
@@ -83,6 +84,7 @@ export const COMPLICATIONS={elite:['none','omen','falter','reinforce'],ambush:['
 const COMP_ABOUT={none:'nothing changes',omen:'a sign or a sound, words only',falter:'the foe, if already below half its health, breaks off for a moment',reinforce:'one more foe of the pack (two levels under the party) joins',
   rival:'the person turns one step colder (the next words are harder)',tremor:'the place turns against them: the remaining rolls are 2 harder'};
 const FIGHTING={elite:1,ambush:1,trap:1}; // kinds the pile-on rule guards
+const fightKind=k=>k==='elite'||k==='ambush';
 const STATIC={trap:1,mystery:1}; // kinds with no one to walk: they wait where the party passes
 const SKILL={hear:'empathy',spot:'perception',disarm:'traps',round:'survival',study:'lore',search:'perception',parley:'persuasion',press:'intimidation'};
 const ATT=['hostile','wary','neutral','friendly'],ATT_DC={hostile:3,wary:1,neutral:0,friendly:-2};
@@ -129,8 +131,8 @@ const band=z=>REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];
 // the scene from the Table's own outcome, in the world's words, never the DM's bookkeeping ("staged", reasons).
 const LOG=(kind,summary,detail)=>dmlog(kind,null,summary,{by:'dm-agent',...detail},{heroes:[]});
 // The call's contract, added to the refusals of a call shaped wrong (issue #401), so the next call can be right.
-export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark or a region), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, creature (vision), item (an object the first prop of the frame holds, found with search), choices), hours? (vision: game hours it waits, 1-'+STAGE.VISION_MAX_H+'); with preview "true" only kind, near and reason are needed';
-function refuse(why,a,usage){const err='Refused: '+why+(usage?'. '+STAGE_USAGE:'');if(a&&a.preview)return {ok:false,error:err}; // a preview stages nothing, so it leaves no trace
+export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark, a region, or someone on the road as dm_status road_traffic names them, "traffic:3"), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, creature (vision), item (an object the first prop of the frame holds, found with search), choices), hours? (vision: game hours it waits, 1-'+STAGE.VISION_MAX_H+'); with preview "true" only kind, near and reason are needed';
+function refuse(why,a,usage){const err='Refused: '+why+(usage?'. '+STAGE_USAGE:'');if(a&&(a.preview||a._quiet))return {ok:false,error:err}; // a preview stages nothing, so it leaves no trace
   const G=stagedState();G.stats.refused++;
   LOG('agent',['Staged scene refused: '+why+(a&&a.kind?' ('+clean(a.kind,12)+')':'')+'.'],{staged:null,kind:a&&a.kind?clean(a.kind,12):null,reason:clean(a&&a.reason,STAGE.REASON_MAX),result:'rejected: '+why});
   return {ok:false,error:err}}
@@ -147,6 +149,8 @@ function spotNear(c,min,max,toward){const z0=zoneAt(c.x,c.y),R=q=>Math.round(q*1
 // near: '' / 'fellowship' / 'party' (the leader, or whoever is out in the field), a member's name or id,
 // "x,y", a DM-placed place's name, or a region. Returns {hero?, at, label} or {err}.
 function whereOf(near){const nt=nearText(near);if(nt.err)return {err:nt.err};const s=clean(nt.s,60),lo=s.toLowerCase();
+  const tw=trafficBy(s);if(tw){if(tw.beset&&tw.beset.staged!=null)return {err:'that one is already part of a staged scene'}; // someone on the road (#796): the scene waits where they stopped
+    const q=spotErr(tw)?spotNear(tw,1,4):{x:Math.round(tw.x*10)/10,y:Math.round(tw.y*10)/10};return q?{at:q,label:'on the road',traffic:tw}:{err:'no open ground beside them'}}
   const cm=/^company\s*[:#]?\s*(\d+)$/.exec(lo),CO=cm?companies().find(c=>c.id===Number(cm[1])):companies().find(c=>!c.slots&&c.name&&c.name.toLowerCase()===lo);
   if(cm&&!CO)return {err:'no company '+cm[1]+' rides ('+companies().map(c=>c.id+(c.name?' '+c.name:'')).join(', ')+')'};
   if(CO){const F=memOfCo(CO).filter(a=>!a.hidden&&a.state!=='town'&&a.state!=='dungeon'),ld=fiveCo(CO)?leaderOfF():companyLead(CO),h=ld&&F.includes(ld)?ld:F[0];
@@ -211,7 +215,8 @@ function placeName(v){const lo=clean(v,60).toLowerCase().replace(/^the /,'');if(
 
 // ---- staging (the DM tool stage_scene) ----
 // a: {kind, near, frame, title?, cast:{name, title, foe, level, role, faction, attitude, want, voice, reveal, item, trap, place, choices:{act:label}}, reason} (cast.item: a give_item name the frame's first prop holds; search finds it)
-export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(),F=slotted()||companies()[0]||null,seed0=seed,pv=a.preview===true||a.preview==='true';
+// o: the game's own call, not the DM's (the road's rescue hook, #796): {by, quiet (a refusal leaves no trace), minutes (how long it waits)}. The caps below are the same.
+export function stageScene(a,o={}){a=a&&typeof a==='object'?{...a}:{};delete a._quiet;if(o.quiet)a._quiet=true;const G=stagedState(),F=slotted()||companies()[0]||null,seed0=seed,pv=a.preview===true||a.preview==='true';
   const kind=String(a.kind||'').toLowerCase().trim(),reason=clean(a.reason,STAGE.REASON_MAX);
   let cast=a.cast;if(typeof cast==='string'){try{cast=cast.trim()?JSON.parse(cast):{}}catch(e){cast=null}}if(cast==null)cast={};
   if(!STAGE_KINDS.includes(kind))return refuse('kind must be one of '+STAGE_KINDS.join(', '),a,1);
@@ -312,12 +317,13 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     C.dc=9+Math.ceil(P.avg/2)}
   G.seq=rid;today().n++;if(!nearAny(at))today().nw=(today().nw||0)+1;if(cmp){const c=today().c||(today().c={});c[cmp.id]=(c[cmp.id]||0)+1}G.stats.staged++;
   const title=clean(a.title,STAGE.TITLE_MAX)||defaultTitle(kind,C);
-  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},...(cmp&&!cmp.slots?{company:cmp.id}:{}),at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(kind==='vision'?C.hours*60:town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN)),phase:'waiting',...(kind==='vision'?{trig:W.hero?'rest':'place'}:{}),scene:null,result:null,
+  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},...(cmp&&!cmp.slots?{company:cmp.id}:{}),at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(o.minutes||(kind==='vision'?C.hours*60:town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN))),phase:'waiting',...(kind==='vision'?{trig:W.hero?'rest':'place'}:{}),scene:null,result:null,
     ...(setId?{setting:setId}:{}),...(town?{town:town.name,spot}:{})};
   const where=whereLine(label,z,town,setId);if(ignored.length)notes.push('choices must map to the legal actions: '+STAGE_ACTS[kind].join(', '));
   G.cur=rec;
-  LOG('frame',['DM agent stages ',gd(kind),': ',gd(title),' '+where+(lvl!=null?' (level '+lvl+', party '+P.avg+')':'')+' - '+reason+'.'],
-    {staged:rid,kind,title,frame,reason,cast:castLine(rec),at:rec.at,region:ZONES[z],lvl,party:P.avg,...(setId?{setting:setId,picked}:{}),...(town?{town:town.name,spot}:{}),...(Object.keys(labels).length?{labels}:{}),...(ignored.length?{ignored}:{})});
+  if(W.traffic&&fightKind(kind)){rec.traffic=W.traffic.id;stagedBeset(W.traffic,rid,C.name)} // the cart stops for it, and the scene's end settles it
+  LOG('frame',[(o.by?'The road stages ':'DM agent stages '),gd(kind),': ',gd(title),' '+where+(lvl!=null?' (level '+lvl+', party '+P.avg+')':'')+' - '+reason+'.'],
+    {...(o.by?{by:o.by}:{}),staged:rid,kind,title,frame,reason,cast:castLine(rec),at:rec.at,region:ZONES[z],lvl,party:P.avg,...(setId?{setting:setId,picked}:{}),...(town?{town:town.name,spot}:{}),...(Object.keys(labels).length?{labels}:{}),...(ignored.length?{ignored}:{})});
   return {ok:true,staged:rid,kind,title,where,at:rec.at,cast:castLine(rec),...(setId?{setting:setId,setting_name:SETTINGS[setId].name,...(picked?{setting_picked:'you named no setting; the game picked one that fits'}:{})}:{}),...(lvl!=null?{level:lvl,party_level:P.avg}:{}),
     choices:STAGE_ACTS[kind].map(k=>k+(labels[k]?' = '+labels[k]:'')),...(ignored.length?{ignored_choices:ignored}:{}),...(notes.length?{note:cap(notes.join('; '))+'.'}:{}),
     ...(kind==='vision'?{opens:rec.trig==='rest'?'when '+(cmp?coName(cmp):'they')+' next rest (a camp, or a rest at an inn)':'when one of them stands '+label}:{}),waits_until_h:Math.round((rec.until-rec.born)/60),scenes_today:today().n+'/'+STAGE.PER_DAY}}
@@ -417,6 +423,7 @@ function meet(rec,a){const G=S.staged,F=slotted(),fight=rec.kind==='elite'||rec.
   return false}
 
 function expire(rec){const G=S.staged;G.stats.expired++;
+  if(rec.traffic!=null)trafficSceneEnd(rec.traffic,!rec.cast.mobs.some(id=>liveMob(mobOf(id))),recMem(rec).map(b=>b.id)); // heroes who cut the cast down before it met them still saved the cart
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.gone){m.alive=false;m.gone=true;m.target=null}}
   LOG('abandon',['Staged ',gd(rec.kind),' ',gd(rec.title),' never met '+coName(recCo(rec))+'; the cast moves on.'],{staged:rec.id,kind:rec.kind,result:'expired'});
   rec.phase='done';rec.result='expired';retire(rec)}
@@ -430,11 +437,13 @@ export function unstage(which){const G=S.staged,rec=G&&G.cur&&G.cur.phase!=='don
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.gone){m.alive=false;m.gone=true;m.target=null}}
   if(rec.cast.npc!=null){const wn=npcOf(rec.cast.npc);if(wn){const t=wn.lever!=null?takeBack(wn.lever):{ok:false};if(!t.ok&&S.wanderers.includes(wn))S.wanderers.splice(S.wanderers.indexOf(wn),1)}}
   if(rec.cast.place!=null){const pl=(S.places||[]).find(x=>x.id===rec.cast.place);if(pl&&pl.lever!=null){const t=takeBack(pl.lever);if(!t.ok)S.places.splice(S.places.indexOf(pl),1)}}
+  if(rec.traffic!=null)trafficSceneEnd(rec.traffic,true);
   G.stats.unstaged=(G.stats.unstaged||0)+1;
   LOG('abandon',['DM agent takes back staged ',gd(rec.kind),' ',gd(rec.title),'; the cast moves on.'],{staged:rec.id,kind:rec.kind,result:'unstaged'});
   rec.phase='done';rec.result='unstaged';retire(rec);
   return {ok:true,staged:rec.id,kind:rec.kind,title:rec.title}}
 function finish(rec,sc,why){if(rec.phase==='done')return;rec.phase='done';rec.result=why||(sc&&sc.summary)||'done';
+  if(rec.traffic!=null){const m=rec.cast.mobs.find(id=>liveMob(mobOf(id)));trafficSceneEnd(rec.traffic,m==null,sc?sc.ids:recMem(rec).map(b=>b.id),sc?null:m)} // no scene (Table off): the foe is still out there, and the cart still held
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.alive&&!m.gone){m.gone=true;m.target=null}}
   LOG('payoff',['Staged ',gd(rec.kind),' ',gd(rec.title),' ends: '+clean(rec.result,180)],{staged:rec.id,kind:rec.kind,result:rec.result,calls:sc&&sc.calls?sc.calls.map(c=>({kind:c.kind,by:c.by,...(c.pick?{pick:c.pick}:{})})):null,heroes:sc?sc.ids:[]});
   const F=slotted();if(F)F.tableDm=S.dmLogSeq||0; // the scene's own rolls do not reopen the table as a DM check
