@@ -876,7 +876,7 @@ console.log('the DM prepares the table');
 {const fb=$('felbody'),P=await import('../src/sim/persona.js'),LV=await import('../src/ui/lifeview.js');
   const a=SLT.slotHeroes(SLT.slotted())[0];let sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));
   if(!sb){fb.querySelector('[data-fact="drawer:members"]').click();uiFast();sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id))}sb.click();
-  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null);
+  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null&&i.dataset.fpin!=='oath'); // a sworn oath has its own pin (#800)
   ok(pins.length===P.PERSONA_ORDER.length+1,'pins: one per persona field and one for the stances ('+pins.length+')');
   ok(fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='beliefs')&&fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='traits'),'sheet editor: beliefs and traits boxes');
   const pw=pins.find(i=>i.dataset.fpin==='wants');pw.checked=true;pw.dispatch('change',{target:pw});uiFast();
